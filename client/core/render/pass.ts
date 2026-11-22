@@ -7,6 +7,7 @@ import type { Tier } from "../assets/tiers.ts";
 import type { RemoteSample } from "../session.ts";
 import type { FrameBudget } from "./budget.ts";
 import type { Camera } from "./camera.ts";
+import type { Draws } from "./draws.ts";
 import type { Hiding } from "./hide.ts";
 import type { FramePacket } from "./packet.ts";
 import type { OwnBody, RenderWorld } from "./scene.ts";
@@ -39,12 +40,15 @@ export class Frame {
   readonly world: RenderWorld;
   readonly assets: Assets;
   readonly budget: FrameBudget;
+  /** The packet's writer, which every draw goes through. */
+  readonly put: Draws;
 
-  constructor(packet: FramePacket, world: RenderWorld, assets: Assets, budget: FrameBudget) {
+  constructor(packet: FramePacket, world: RenderWorld, assets: Assets, budget: FrameBudget, put: Draws) {
     this.packet = packet;
     this.world = world;
     this.assets = assets;
     this.budget = budget;
+    this.put = put;
   }
 }
 

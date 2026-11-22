@@ -27,7 +27,7 @@ import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
-import { sortF64, sortU32 } from "../../../shared/sort.ts";
+import { sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
 import { DEFAULT_FINISH_GLOSS, DEFAULT_ROAD_FINISH } from "../settings.ts";
 import { StreetDraws } from "./street-draws.ts";
@@ -47,7 +47,7 @@ import { MARKS, POSE_COMING, POSE_FLYING, POSE_GONE, POSE_LANDED, newPose, suppl
 import { nearestColour } from "../../../shared/pack/palette.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
-import { FAR_FROM, farPlane, type Camera } from "./camera.ts";
+import { farPlane, type Camera } from "./camera.ts";
 import { Characters, riderFitScratch, seatScratch, type RiderFit, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { exhaustPhase } from "./suit-finish.ts";
 import { Clouds } from "./clouds.ts";
@@ -62,13 +62,11 @@ import { CrownCover, coverDistance, type CoverLooks, type CoverRule } from "./co
 import { FarNodes, farLevelOf, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { HIDE_PIXELS, Hiding, OCCLUDER } from "./hide.ts";
-import { PROGRAM, drawProgram } from "./programs.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
-import { WEAR_KEY } from "./wear.ts";
 import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
-import { BEND_BUFFERS, BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
+import { BEND_BUFFERS, BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
 import { recipeIndex } from "../../../content/texgen/finishes.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
@@ -91,6 +89,7 @@ import { KERB_BACK } from "../../../shared/world/bends.ts";
 import { landmarkFars } from "../../../shared/pack/far.ts";
 import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } from "./motion.ts";
 import { Frame, walk, type Pass } from "./pass.ts";
+import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 import type { Tier } from "../assets/tiers.ts";
 
 export interface RenderWorld {
@@ -212,107 +211,11 @@ function indexOfId(remote: RemoteSample, id: number): number {
   return -1;
 }
 
-/**
- * A draw's place in the order in `range`, as stepOf will find it, two to an opaque step for its cut-outs (`cutAt`) and
- * the rest (`restAt`), and -1 where it is not drawn there.
- */
-function placeOf(flags: number, range: number, cutAt: number, restAt: number): number {
-  let s = (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - range : range;
-  if ((flags & DRAW_NEAR) !== 0) s = range === PASS_NEAR ? STEP_BODY : -1;
-  const at = s <= STEP_FAR && (flags & DRAW_CUTOUT) !== 0 ? cutAt : restAt;
-  return s < 0 || at < 0 ? -1 : s <= STEP_FAR ? s * 2 + at : s + 2;
-}
-
-/**
- * The edges, in metres from the camera to a draw's nearest point, of the buckets an opaque step's draws go in nearest
- * first: few, so that the draws of one program and material in a bucket still run together.
- */
-export const NEAR_BUCKETS = [24, 64, 160, 400, 1000, 2500];
-
-function bucketOf(near: number): number {
-  let b = 0;
-  while (b < NEAR_BUCKETS.length && near >= NEAR_BUCKETS[b]!) b++;
-  return b;
-}
-
-/** Programs a key holds room for. */
-const KEY_PROGRAMS = 32;
-
-/**
- * A draw's key for `sortRuns`, whole in a double: its bucket by distance, its program, its material, the low 16 bits of
- * its level's slot, and its place as made.
- */
-function stateKey(bucket: number, program: number, material: number, slot: number, made: number): number {
-  return (((bucket * KEY_PROGRAMS + program) * 65536 + material) * 65536 + (slot & 0xffff)) * MAX_DRAWS + made;
-}
-
-/**
- * Sorts keys `from` to `to`, turns every other run of one program and material round, counting on from `turns`, and
- * puts each one's place as made in `out`. The runs counted so far.
- */
-function sortRuns(keys: Float64Array, from: number, to: number, turns: number, out: Uint16Array): number {
-  sortF64(keys, from, to);
-  for (let k = from; k < to; turns++) {
-    const run = Math.floor(keys[k]! / (65536 * MAX_DRAWS));
-    let end = k + 1;
-    while (end < to && Math.floor(keys[end]! / (65536 * MAX_DRAWS)) === run) end++;
-    for (let a = k, b = end - 1; turns % 2 === 1 && a < b; a++, b--) {
-      const t = keys[a]!;
-      keys[a] = keys[b]!;
-      keys[b] = t;
-    }
-    k = end;
-  }
-  for (let k = from; k < to; k++) out[k] = keys[k]! - Math.floor(keys[k]! / MAX_DRAWS) * MAX_DRAWS;
-  return turns;
-}
-
-/** A column of rows as its bits, an element of one, two or four bytes. */
-type Bits = Uint8Array | Uint16Array | Uint32Array;
-
-function bitsOf(a: Uint8Array | Int8Array | Uint16Array | Uint32Array | Float32Array): Bits {
-  const n = a.length;
-  return a.BYTES_PER_ELEMENT === 1 ? new Uint8Array(a.buffer, a.byteOffset, n) : a.BYTES_PER_ELEMENT === 2 ? new Uint16Array(a.buffer, a.byteOffset, n) : new Uint32Array(a.buffer, a.byteOffset, n);
-}
-
-/**
- * Puts the first `count` rows of each column (a row as many elements as its length is `capacity`) in the order `order`
- * names them from the first `rows` as they were, by way of `copy`. A loop for each width of element, since
- * JavaScriptCore is many times slower at one loop over arrays of several kinds.
- */
-function reorder(columns: readonly Bits[], capacity: number, rows: number, count: number, order: Uint16Array, copy: Float64Array): void {
-  for (let c = 0; c < columns.length; c++) {
-    const a = columns[c]!;
-    const w = a.length / capacity;
-    if (a instanceof Uint8Array) reorder8(a, w, rows, count, order, copy);
-    else if (a instanceof Uint16Array) reorder16(a, w, rows, count, order, copy);
-    else reorder32(a, w, rows, count, order, copy);
-  }
-}
-
-function reorder8(a: Uint8Array, w: number, rows: number, count: number, order: Uint16Array, copy: Float64Array): void {
-  for (let k = 0; k < rows * w; k++) copy[k] = a[k]!;
-  for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
-}
-
-function reorder16(a: Uint16Array, w: number, rows: number, count: number, order: Uint16Array, copy: Float64Array): void {
-  for (let k = 0; k < rows * w; k++) copy[k] = a[k]!;
-  for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
-}
-
-function reorder32(a: Uint32Array, w: number, rows: number, count: number, order: Uint16Array, copy: Float64Array): void {
-  for (let k = 0; k < rows * w; k++) copy[k] = a[k]!;
-  for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
-}
-
 /** Metres round the camera within which Scene.nearPiece finds the nearest piece. */
 const CLEAR = 8;
 /** Metres over the lowest ground drawn a tile's ground must stand for the box under it to be put in the picture. */
 const RELIEF = 2;
 
-/** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
-export type Cutouts = "last" | "made" | "first" | "none";
-export const CUTOUTS: readonly Cutouts[] = ["last", "made", "first", "none"];
 
 /** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
 export interface Thing {
@@ -516,13 +419,23 @@ export class Scene {
    * them all, where it can reject none but those the ground hides; "none", left out. The device page sets them side by
    * side, and prices the cut-outs by the last two.
    */
-  cutouts: Cutouts = "last";
+  get cutouts(): Cutouts {
+    return this.put.cutouts;
+  }
+  set cutouts(to: Cutouts) {
+    this.put.cutouts = to;
+  }
   /**
    * Whether a frame leaves out what something drawn in it wholly hides (hide.ts), and whether an opaque step's draws go
    * nearest first, the ground after them. A page turns either off for a before and after (passes.ts).
    */
   hide = true;
-  nearFirst = true;
+  get nearFirst(): boolean {
+    return this.put.nearFirst;
+  }
+  set nearFirst(on: boolean) {
+    this.put.nearFirst = on;
+  }
   /** The light of the street lamps that still work (street-lamps.ts). */
   readonly streetLamps: StreetLamps;
   /** The wires between the utility poles still standing (street-wires.ts). */
@@ -649,29 +562,6 @@ export class Scene {
   private readonly nearest: Float32Array;
   private readonly from: Float32Array;
   private readonly to: Float32Array;
-  /** The depth ranges of each draw made so far, a bit each by PASS_, and how many draws are in both. */
-  private readonly passOf = new Uint8Array(MAX_DRAWS);
-  private doubled = 0;
-  /**
-   * For putting the draws in order: the packet's columns of draws as their bits, room for one of them as made, each
-   * draw's place in each range (its step, an opaque step's cut-outs a place after its other draws), where each place
-   * begins, the draw and range each place in the order takes, and the keys an opaque place is sorted by (`stateKey`).
-   */
-  private readonly columns: Bits[];
-  private readonly copy = new Float64Array(MAX_DRAWS * 3);
-  private readonly steps = new Int8Array(MAX_DRAWS * 2);
-  private readonly starts = new Int32Array(STEP_BODY + 4);
-  private readonly source = new Uint16Array(MAX_DRAWS);
-  private readonly sourcePass = new Uint8Array(MAX_DRAWS);
-  private readonly keys = new Float64Array(MAX_DRAWS);
-  /**
-   * Per draw made this frame: how far off its nearest point is, in metres, by which its step draws it; and where `boxed` is
-   * 1, the camera-relative box round all it draws, by which it is left out where hidden. `nearAt` is what `draw` gives.
-   */
-  private readonly nearOf = new Float32Array(MAX_DRAWS);
-  private readonly boxed = new Uint8Array(MAX_DRAWS);
-  private readonly boxOf = new Float32Array(MAX_DRAWS * 6);
-  private nearAt = 0;
   /** Chunks of the near store whose mesh has a draw this frame; per chunk that casts, its casters from and to and its shadow's box. */
   private readonly meshDrawn = new Set<number>();
   private readonly chunkCasts: number[] = [];
@@ -748,7 +638,7 @@ export class Scene {
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). A one-bone draw's offset holds its stand-in's first bone. */
-  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer);
+  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number): void => this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer);
   /** Bases drawn as blocks where the near store does not hold their chunks whole, given a far source and the far mesh. */
   private readonly far: FarBlocks | null;
   /** Nodes past the near node field, given a source of them. */
@@ -849,6 +739,8 @@ export class Scene {
   private readonly cloudRange = [0, 0];
   /** What the passes read of the frame, filled by `begin`; the passes in the frame's order; and their hooks, each a walk of them. */
   private readonly frame: Frame;
+  /** The packet's writer: every draw of the frame goes through it (draws.ts). */
+  readonly put: Draws;
   readonly passes: readonly Pass[];
   private readonly hooks: Required<Pass>;
 
@@ -957,6 +849,7 @@ export class Scene {
     this.leafyOf = new Uint16Array(table.sections.length);
     this.leafyFrame = new Int32Array(table.sections.length).fill(-1);
     this.learn(table.sections.map((_, mesh) => mesh));
+    this.put = new Draws(this.packet, this.assets, this.budget, { groundFlags: this.groundFlags, bentFlags: this.bentFlags, flatFlags: this.flatFlags, materialFlags: this.materialFlags, barkOf: this.barkOf, treeOf: this.treeOf, trisOfMesh: this.trisOfMesh });
     this.counts = new Uint32Array(table.count);
     this.cursor = new Uint32Array(table.count);
     this.fallLevel = new Int8Array(table.count).fill(-1);
@@ -976,8 +869,6 @@ export class Scene {
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
-    const p = this.packet as unknown as Record<string, unknown>;
-    this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => bitsOf(p[k] as Uint8Array));
     let reach = 0;
     for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
     this.bodySlack = reach * 2;
@@ -1011,7 +902,7 @@ export class Scene {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
     }
-    this.frame = new Frame(this.packet, world, this.assets, this.budget);
+    this.frame = new Frame(this.packet, world, this.assets, this.budget, this.put);
     this.passes = this.rows();
     this.hooks = walk(this.passes);
   }
@@ -1087,7 +978,7 @@ export class Scene {
     const f = this.begin(cam, remote, focus, loadTime);
     this.hooks.update(f);
     this.hooks.draw(f);
-    this.order();
+    this.put.order();
     const p = this.packet;
     this.streetDraws.write(p);
     markJoins(p);
@@ -1104,14 +995,12 @@ export class Scene {
     for (const chunk of this.hiddenChanged) { const batch = this.batches.get(NODE_BUFFERS + chunk); if (batch) batch.shape = -1; }
     if (this.hiddenChanged.size > 0) this.cover.stale = true;
     this.hiddenChanged.clear();
-    this.doubled = 0;
-    this.boxed.fill(0);
+    this.put.begin();
     this.hiding.on = false;
     this.meshDrawn.clear();
     this.closes.clear();
     this.chunkCasts.length = 0;
     this.later.length = 0;
-    this.nearAt = 0;
     // Low poly's one depth range resolves about 2 m at 3 km, which a sight magnifies into the picture: through one, it
     // splits as the lit tiers do (D1077).
     cam.split = p.split = this.assets.tier.split > 0 ? this.assets.tier.split : cam.zoom > EYE_FROM ? WINDOW_SPLIT : 0;
@@ -1598,7 +1487,7 @@ export class Scene {
     // The meshes are drawn after: room for each cell of them in view a draw in each range, or no picture.
     let cells = 0;
     for (let k = 0; k < this.later.length; k += 5) for (const v of this.batches.get(this.later[k]!)!.inView) cells += v;
-    if (p.dropped > 0 || p.drawCount + this.doubled + 2 * cells > MAX_DRAWS) return;
+    if (p.dropped > 0 || p.drawCount + this.put.doubled + 2 * cells > MAX_DRAWS) return;
     const slope = Math.tan(cam.fovY / 2);
     const reach = cam.near * Math.sqrt(1 + slope * slope * (1 + cam.aspect * cam.aspect));
     // The highest the ground stands round the camera, as the tile under it draws it: the samples of its quad and those round it.
@@ -1678,18 +1567,18 @@ export class Scene {
     }
     p.tileCount = tiles;
     // The near store's draws, and its chunks' casters.
-    const tris = this.trisOfMesh, box = this.boxOf;
+    const tris = this.trisOfMesh, box = this.put.boxOf;
     let kept = 0;
     for (let d = 0; d < p.drawCount; d++) {
       const o = d * 6;
-      if (this.boxed[d] === 0 || !h.hidesOver(box[o]!, box[o + 1]!, box[o + 2]!, box[o + 3]!, box[o + 4]!, box[o + 5]!)) {
-        if (kept !== d) this.moveRow(d, kept);
+      if (this.put.boxed[d] === 0 || !h.hidesOver(box[o]!, box[o + 1]!, box[o + 2]!, box[o + 3]!, box[o + 4]!, box[o + 5]!)) {
+        if (kept !== d) this.put.moveRow(d, kept);
         kept++;
         continue;
       }
-      const copies = this.passOf[d] === (NEAR | FAR) ? 2 : 1;
+      const copies = this.put.passOf[d] === (NEAR | FAR) ? 2 : 1;
       p.triangles -= ((p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.drawIndexCount[d]! / 3 : tris[p.drawMesh[d]!]![p.drawLod[d]!]!) * p.drawInstances[d]! * copies;
-      this.doubled -= copies - 1;
+      this.put.doubled -= copies - 1;
     }
     // The rows let go take what beginFrame gives every row, which draws that leave them alone count on.
     for (const a of [p.drawFade, p.drawHand, p.drawLayer, p.drawWear, p.drawSwap]) a.fill(0, kept, p.drawCount);
@@ -1714,16 +1603,6 @@ export class Scene {
   /** The cascades of a caster's bits, counted. */
   private maps(cascades: number): number {
     return (cascades & 1) + ((cascades >> 1) & 1) + ((cascades >> 2) & 1) + ((cascades >> 3) & 1) + ((cascades >> 4) & 1);
-  }
-
-  /** Moves draw `from` of the frame to `to`, an earlier row. */
-  private moveRow(from: number, to: number): void {
-    for (const a of this.columns) {
-      const w = a.length / MAX_DRAWS;
-      for (let j = 0; j < w; j++) a[to * w + j] = a[from * w + j]!;
-    }
-    this.passOf[to] = this.passOf[from]!;
-    this.nearOf[to] = this.nearOf[from]!;
   }
 
   /** Moves caster `from` of the frame to `to`, an earlier one or the same. */
@@ -1850,96 +1729,6 @@ export class Scene {
     for (; draws !== 0; draws &= draws - 1) p.castDraws++;
   }
 
-  /**
-   * Puts the draws in the order of the steps they are drawn in (packet.ts), each in the ranges `passOf` gives it, so a
-   * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says, each part of it nearest first by
-   * NEAR_BUCKETS and in a bucket by what its draws bind (`byState`), unless they are to stay as made; and says where each
-   * opaque step's ground goes: after its draws but the cut-outs, which a tiled GPU may then reject more of. A see-through
-   * draw made ahead of an opaque one still goes after it, the rest staying as made. With `nearFirst` off the parts go by
-   * what they bind alone and the ground first, and with one range as well they stay as made unless a cut-out is to move.
-   */
-  private order(): void {
-    const p = this.packet;
-    const n = p.drawCount;
-    const one = p.split <= 0;
-    const made = this.cutouts === "made";
-    // A cut-out's place and the rest's within the step, -1 for left out.
-    const cutAt = this.cutouts === "last" ? 1 : this.cutouts === "none" ? -1 : 0;
-    const restAt = this.cutouts === "first" ? 1 : 0;
-    let sort = !made;
-    p.groundAt.fill(0);
-    if (one) {
-      p.drawPass.fill(PASS_NEAR, 0, n);
-      p.skyAt = n;
-    }
-    if (one && !this.nearFirst) {
-      let cut = false, late = false;
-      for (let d = 0, last = 0; d < n && !cut; d++) {
-        const flags = p.drawFlags[d]!, place = placeOf(flags, PASS_NEAR, cutAt, restAt);
-        cut = cutAt !== restAt && (flags & (DRAW_CUTOUT | DRAW_BLEND | DRAW_NEAR)) === DRAW_CUTOUT;
-        late ||= place < last;
-        if (place > last) last = place;
-      }
-      if (!cut && !late) return;
-      sort &&= cut;
-    }
-    // Each draw's place in each range, -1 where it is not drawn in that range.
-    const steps = this.steps;
-    const starts = this.starts.fill(0);
-    for (let d = 0; d < n; d++) {
-      const flags = p.drawFlags[d]!;
-      for (let range = PASS_NEAR; range <= PASS_FAR; range++) {
-        const drawn = one ? range === PASS_NEAR : (this.passOf[d]! & (1 << range)) !== 0;
-        const place = drawn ? placeOf(flags, range, cutAt, restAt) : -1;
-        steps[d * 2 + range] = place;
-        if (place >= 0) starts[place + 1]!++;
-      }
-    }
-    for (let s = 1; s < starts.length; s++) starts[s]! += starts[s - 1]!;
-    const total = starts[STEP_BODY + 3]!;
-    p.skyAt = one ? total : starts[STEP_FAR_SEE + 2]!;
-    for (let s = STEP_NEAR; s <= STEP_FAR; s++) p.groundAt[s] = this.nearFirst ? starts[s * 2 + restAt + 1]! : starts[s * 2]!;
-    const source = this.source;
-    const pass = this.sourcePass;
-    let moved = total !== n;
-    for (let d = 0; d < n; d++) {
-      for (let range = PASS_NEAR; range <= PASS_FAR; range++) {
-        const s = steps[d * 2 + range]!;
-        if (s < 0) continue;
-        const at = starts[s]!++;
-        source[at] = d;
-        pass[at] = range;
-        moved ||= at !== d;
-      }
-    }
-    // The opaque steps' places, near then far, two a step.
-    if (sort) for (let s = 0, turns = 0; s < STEP_FAR * 2 + 2; s++) turns = this.byState(s === 0 ? 0 : starts[s - 1]!, starts[s]!, s % 2 === 0 ? 0 : turns, s >> 1);
-    if (moved || sort) reorder(this.columns, MAX_DRAWS, n, total, source, this.copy);
-    for (let k = 0; k < total; k++) p.drawPass[k] = pass[k]!;
-    p.drawCount = total;
-  }
-
-  /**
-   * Sorts places `from` to `to` of the order, in range `range`, nearest first by NEAR_BUCKETS where `nearFirst` is on, and
-   * in a bucket by what their draws bind, so that each changes as little as it can of what the one before it bound: by
-   * program, material and level, and then as made, which keeps a level's instances in the same order in each of its runs.
-   * Every other run of a bucket's program and material, counted on from `turns`, is turned round, so that a level ends a
-   * run on the instances it begins the next with. The runs counted so far.
-   */
-  private byState(from: number, to: number, turns: number, range: number): number {
-    const p = this.packet;
-    const keys = this.keys, source = this.source;
-    const materials = this.assets.table.materials;
-    const least = range === PASS_FAR ? p.split * FAR_FROM : 0;
-    for (let k = from; k < to; k++) {
-      const d = source[k]!;
-      const flags = p.drawFlags[d]!;
-      const program = (flags & DRAW_DETAILS) !== 0 ? PROGRAM.details : drawProgram(p, d, materials[p.drawMaterial[d]!]);
-      keys[k] = stateKey(this.nearFirst ? bucketOf(Math.max(least, this.nearOf[d]!)) : 0, program, (flags & DRAW_TEXTURED) !== 0 ? p.drawMaterial[d]! : 0, p.drawSlot[d]!, d);
-    }
-    return sortRuns(keys, from, to, turns, source);
-  }
-
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
@@ -1970,42 +1759,17 @@ export class Scene {
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
     const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
-    this.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
-    this.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
-    this.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
-    this.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
-    this.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
-    this.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
-    this.drawDetails(street, wheelsAndGlass - street, DRAW_BLEND, streetLamps.passes(cam));
-    this.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
-    this.drawDetails(seen, solid, DRAW_CUTOUT, far);
-    this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
-    this.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
-  }
-
-  /** `count` of the packet's details from `first`, one draw in the depth ranges `passes`. */
-  private drawDetails(first: number, count: number, flags: number, passes: number): void {
-    const p = this.packet;
-    const d = p.drawCount;
-    if (count === 0) return;
-    const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.doubled + copies > MAX_DRAWS) {
-      p.dropped++;
-      return;
-    }
-    this.nearOf[d] = 0;
-    p.drawMesh[d] = 0;
-    p.drawLod[d] = 0;
-    p.drawSlot[d] = 0;
-    p.drawBuffer[d] = 0;
-    p.drawFirst[d] = first;
-    p.drawInstances[d] = count;
-    p.drawFlags[d] = DRAW_DETAILS | flags;
-    p.drawOffset.fill(0, d * 3, d * 3 + 3);
-    this.passOf[d] = passes;
-    this.doubled += copies - 1;
-    p.drawCount = d + 1;
-    p.triangles += count * 2 * copies;
+    this.put.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
+    this.put.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
+    this.put.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
+    this.put.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
+    this.put.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
+    this.put.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
+    this.put.drawDetails(street, wheelsAndGlass - street, DRAW_BLEND, streetLamps.passes(cam));
+    this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
+    this.put.drawDetails(seen, solid, DRAW_CUTOUT, far);
+    this.put.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
+    this.put.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
   }
 
   /** A tile of far blocks, `near` metres off: one instance of its own level, gone at the tier's reach where it reaches into the fade (far.ts). */
@@ -2013,11 +1777,11 @@ export class Scene {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.doubled + copies > MAX_DRAWS) {
+    if (d + this.put.doubled + copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
-    this.nearOf[d] = near;
+    this.put.nearOf[d] = near;
     p.drawMesh[d] = this.far!.mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
@@ -2029,9 +1793,9 @@ export class Scene {
     p.drawOffset[d * 3 + 1] = oy;
     p.drawOffset[d * 3 + 2] = oz;
     p.drawFade[d] = fade;
-    this.passOf[d] = passes;
+    this.put.passOf[d] = passes;
     p.drawCount = d + 1;
-    this.doubled += copies - 1;
+    this.put.doubled += copies - 1;
     p.triangles += triangles * copies;
   };
 
@@ -2090,11 +1854,11 @@ export class Scene {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.doubled + copies > MAX_DRAWS) {
+    if (d + this.put.doubled + copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
-    this.nearOf[d] = near;
+    this.put.nearOf[d] = near;
     p.drawMesh[d] = this.farMesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
@@ -2108,9 +1872,9 @@ export class Scene {
     p.drawOffset[d * 3] = ox;
     p.drawOffset[d * 3 + 1] = oy;
     p.drawOffset[d * 3 + 2] = oz;
-    this.passOf[d] = passes;
+    this.put.passOf[d] = passes;
     p.drawCount = d + 1;
-    this.doubled += copies - 1;
+    this.put.doubled += copies - 1;
     p.triangles += (indexCount / 3) * copies;
   };
 
@@ -2119,11 +1883,11 @@ export class Scene {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.doubled + copies > MAX_DRAWS) {
+    if (d + this.put.doubled + copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
-    this.nearOf[d] = Math.hypot(ox, oy, oz);
+    this.put.nearOf[d] = Math.hypot(ox, oy, oz);
     p.drawMesh[d] = mesh;
     p.drawLod[d] = level;
     p.drawSlot[d] = this.assets.residency.slot(mesh, level);
@@ -2137,9 +1901,9 @@ export class Scene {
     p.drawOffset[d * 3] = ox;
     p.drawOffset[d * 3 + 1] = oy;
     p.drawOffset[d * 3 + 2] = oz;
-    this.passOf[d] = passes;
+    this.put.passOf[d] = passes;
     p.drawCount = d + 1;
-    this.doubled += copies - 1;
+    this.put.doubled += copies - 1;
     p.triangles += (indexCount / 3) * copies;
   };
 
@@ -2148,11 +1912,11 @@ export class Scene {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.doubled + copies > MAX_DRAWS) {
+    if (d + this.put.doubled + copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
-    this.nearOf[d] = near;
+    this.put.nearOf[d] = near;
     p.drawMesh[d] = mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
@@ -2167,9 +1931,9 @@ export class Scene {
     p.drawOffset[d * 3 + 2] = oz;
     p.drawFade[d] = reach;
     p.drawHand[d] = hand;
-    this.passOf[d] = passes;
+    this.put.passOf[d] = passes;
     p.drawCount = d + 1;
-    this.doubled += copies - 1;
+    this.put.doubled += copies - 1;
     p.triangles += (indices / 3) * count * copies;
   };
 
@@ -2429,7 +2193,7 @@ export class Scene {
     const first = p.transientCount++; this.transient.setSkinned(first, bone, this.colorOfForm[event.form]!); p.transientIds[first] = 0;
     const level = this.assets.choose(this.assets.table.error[mesh]!, Math.max(0, distance - radius), -1);
     this.assets.wantTextured(mesh, level, distance);
-    this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED | DRAW_ONE_BONE, cam.passes(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius));
+    this.put.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED | DRAW_ONE_BONE, cam.passes(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius));
   }
 
   private showFalling(cam: Camera, f: Falling): void {
@@ -2463,7 +2227,7 @@ export class Scene {
     // reaches. Whether it is in the view and was drawn.
     const piece = (which: number, glow = false, size = 1, tall = 0): boolean => {
       const m = mesh[which]!;
-      if (m < 0 || p.transientCount >= p.transientIds.length || p.drawCount + this.doubled >= MAX_DRAWS || p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return false;
+      if (m < 0 || p.transientCount >= p.transientIds.length || p.drawCount + this.put.doubled >= MAX_DRAWS || p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return false;
       const cx = rows[3]!, cy = rows[7]! + tall / 2, cz = rows[11]!;
       const r = (this.radiusOfMesh[m]! + 0.5) * size;
       const up = Math.max(r, tall / 2);
@@ -2476,7 +2240,7 @@ export class Scene {
       p.bones.set(rows, bone * BONE_FLOATS);
       this.transient.setSkinned(first, bone, this.capsuleDye);
       p.transientIds[first] = 0;
-      this.draw(m, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_PLAIN | DRAW_SKINNED | (glow ? DRAW_EMISSIVE : 0), cam.passes(cx - r, cy - up, cz - r, cx + r, cy + up, cz + r));
+      this.put.draw(m, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_PLAIN | DRAW_SKINNED | (glow ? DRAW_EMISSIVE : 0), cam.passes(cx - r, cy - up, cz - r, cx + r, cy + up, cz + r));
       return true;
     };
     const seconds = view.tick / TICK_RATE;
@@ -2505,11 +2269,11 @@ export class Scene {
         sy *= near;
         sz *= near;
         const wide = shaftRadius(reach, cam.fovY, this.viewHeight) * near;
-        this.effect[0] = (view.tick - row.land) / TICK_RATE;
-        this.effect[1] = rgb;
-        this.effect[2] = power;
+        this.put.effect[0] = (view.tick - row.land) / TICK_RATE;
+        this.put.effect[1] = rgb;
+        this.put.effect[2] = power;
         // The tubes are lit flat where they are a few pixels wide; the figures and halos are not tubes.
-        this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look, shaftFlat(reach, cam.fovY, this.viewHeight));
+        this.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look, shaftFlat(reach, cam.fovY, this.viewHeight));
         uprightBone(rows, 0, sx, sy, sz, wide, near);
         // The tube is as wide as its bone makes it, whatever the reach of the mesh it is sized from.
         if (shaftSeen(cam, sx, sy, sz, wide, SHAFT_HEIGHT * near) && piece(PIECE.shaft, true, Math.max(wide, 1), SHAFT_HEIGHT * near)) view.shafts++;
@@ -2528,18 +2292,18 @@ export class Scene {
           // Low poly draws light as flat colour that hides what is behind it: a halo would be a slab, so it has none.
           for (let k = 0; k < HALOS && reach < 500 && p.lit; k++) {
             haloAt(seconds + row.look, k, halo);
-            this.effect[2] = power * halo.strength;
+            this.put.effect[2] = power * halo.strength;
             uprightBone(rows, 0, sx, sy + halo.height, sz, sheath * 1.2, 1);
             piece(PIECE.halo, true, sheath * 1.2, 0.4);
           }
         }
         // Nor the glow on the ground at its foot, which would be a disc of paint.
         if (pose.state !== POSE_COMING && reach < 400 && p.lit) {
-          this.effect[2] = power * (0.4 + 0.6 * pose.standing);
+          this.put.effect[2] = power * (0.4 + 0.6 * pose.standing);
           uprightBone(rows, 0, sx, sy, sz, FOOT_REACH, 1);
           piece(PIECE.foot, true, FOOT_REACH, 0.1);
         }
-        this.effect.fill(0);
+        this.put.effect.fill(0);
       }
       if (pose.state === POSE_COMING) continue;
       s.x = pose.x - cam.x;
@@ -2555,14 +2319,14 @@ export class Scene {
         const wx = hx - pose.x, wy = hy - pose.y, wz = hz - pose.z, went = Math.hypot(wx, wy, wz);
         if (went > 0.01) {
           const wide = Math.max(0.8, far * 0.0016) / 0.11;
-          this.effect[0] = seconds;
-          this.effect[1] = rgb;
-          this.effect[2] = Math.min(1, (view.tick - row.release) / (0.5 * TICK_RATE)) * (1 - Math.max(0, (along - 0.93) / 0.07));
-          this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
+          this.put.effect[0] = seconds;
+          this.put.effect[1] = rgb;
+          this.put.effect[2] = Math.min(1, (view.tick - row.release) / (0.5 * TICK_RATE)) * (1 - Math.max(0, (along - 0.93) / 0.07));
+          this.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
           const long = Math.min(TRAIL_MOST, speed * 0.3);
           alongBone(rows, 0, s.x, s.y, s.z, wx / went, wy / went, wz / went, wide, long);
           piece(PIECE.jet, true, long, 0);
-          this.effect.fill(0);
+          this.put.effect.fill(0);
         }
         supplyPose(row, view.tick, TICK_RATE, pose);
       }
@@ -2572,17 +2336,17 @@ export class Scene {
       const over = pose.y - row.y;
       if (pose.thrust > 0.01 && far < JET_REACH) {
         s.yaw = (row.look / 256) * 2 * Math.PI;
-        this.effect[0] = seconds;
-        this.effect[1] = rgb;
-        this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
+        this.put.effect[0] = seconds;
+        this.put.effect[1] = rgb;
+        this.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
         for (let k = 0; k < CAPSULE.legs; k++) {
           bellAt(this.capsuleBell, s, k);
           const long = jetLength(pose.thrust, seconds, k, over + CAPSULE.bells.exit);
-          this.effect[2] = pose.thrust;
+          this.put.effect[2] = pose.thrust;
           uprightBone(rows, 0, this.capsuleBell[0]!, this.capsuleBell[1]!, this.capsuleBell[2]!, 1 + 0.5 * pose.thrust, long);
           piece(PIECE.jet, true, long + 1, 0);
         }
-        this.effect.fill(0);
+        this.put.effect.fill(0);
         if (over < WASH_HEIGHT && view.tick - (this.capsuleWash.get(row.id) ?? -Infinity) > WASH_EVERY * TICK_RATE) {
           this.capsuleWash.set(row.id, view.tick);
           this.details.groundDust(row.id, row.x, row.y, row.z, view.tick, 1.2 + 1.6 * (1 - over / WASH_HEIGHT), 3, 6);
@@ -2632,13 +2396,13 @@ export class Scene {
       markBone(rows, 0, s);
       piece(PIECE.mark + (worn < MARKS.length ? worn : 0));
       // Its lit strips: the seconds since it landed, its colour, how far its lantern is open, and its count.
-      this.effect[0] = (view.tick - row.land) / TICK_RATE;
-      this.effect[1] = rgb;
-      this.effect[2] = pose.shutters;
-      this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
+      this.put.effect[0] = (view.tick - row.land) / TICK_RATE;
+      this.put.effect[1] = rgb;
+      this.put.effect[2] = pose.shutters;
+      this.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
       fixedBone(rows, 0, s);
       piece(6, true);
-      this.effect.fill(0);
+      this.put.effect.fill(0);
     }
   }
 
@@ -2663,7 +2427,7 @@ export class Scene {
         const cy = y + h + (hinge < 0 ? 0 : 33 * Math.sin(hinge));
         const cz = z - radial * sn + depth * cs;
         if (!cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r)) return;
-        if (p.transientCount >= p.transientIds.length || p.drawCount + this.doubled >= MAX_DRAWS) return;
+        if (p.transientCount >= p.transientIds.length || p.drawCount + this.put.doubled >= MAX_DRAWS) return;
         const articulated = hinge >= 0 || roll !== 0 || shutter !== undefined || scale > 255 / SIZE_UNITS;
         if (articulated && p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return;
         const first = p.transientCount++;
@@ -2702,7 +2466,7 @@ export class Scene {
         }
         p.transientIds[first] = 0;
         const passes = cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
-        this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, passes);
+        this.put.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, passes);
       };
       draw(this.eyeMesh.deck, 0, site.radius + 1, site.radius / DECK_RADIUS);
       if (open > 0) draw(this.eyeMesh.deckLight, 0, site.radius + 1, site.radius / DECK_RADIUS, { glow: true });
@@ -2759,7 +2523,7 @@ export class Scene {
     p.transientIds[first] = 0;
     const mesh = this.meshOfKind[g.kind]!;
     const r = this.radiusOfMesh[mesh]!;
-    this.draw(mesh, 0, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_BLEND, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
+    this.put.draw(mesh, 0, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_BLEND, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
     p.transientCount = first + 1;
   }
 
@@ -2782,7 +2546,7 @@ export class Scene {
       this.transient.set(first, x, y, z, 0, 0);
       p.transientIds[first] = 0;
       const d = p.drawCount;
-      this.draw(t.mesh, wanted, TRANSIENT_BUFFER, first, 1, 0, 0, 0, 0, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
+      this.put.draw(t.mesh, wanted, TRANSIENT_BUFFER, first, 1, 0, 0, 0, 0, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
       // What was drawn, which is coarser than what was wanted until that has come.
       t.level = p.drawCount > d ? p.drawLod[d]! : -1;
       wanted = -1;
@@ -2831,7 +2595,7 @@ export class Scene {
         // shadow whole, and the sun's own breadth all but washes it out a few metres down.
         const casts = this.casting && !through ? this.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.cascades.fits(r) : 0;
         if (!seen && casts === 0) continue;
-        if (p.boneCount >= bones || p.transientCount === p.transientIds.length || (seen && p.drawCount + this.doubled >= draws)) {
+        if (p.boneCount >= bones || p.transientCount === p.transientIds.length || (seen && p.drawCount + this.put.doubled >= draws)) {
           p.dropped++;
           continue;
         }
@@ -2848,8 +2612,8 @@ export class Scene {
         this.assets.wantTextured(mesh, level, far);
         if (seen) {
           const d = p.drawCount;
-          this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED, cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r));
-          this.boxRows(d, p.drawCount, cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
+          this.put.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED, cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r));
+          this.put.boxRows(d, p.drawCount, cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
           for (let k = d; k < p.drawCount; k++) p.drawFade[k] = reach;
           p.frame[FRAME.fade] = tier.fade;
         }
@@ -2874,7 +2638,7 @@ export class Scene {
       n++;
     }
     p.dropped += Math.floor(this.beams.length / 3) - n;
-    this.draw(this.beamMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, 0, cam.passesOf(from, to));
+    this.put.draw(this.beamMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, 0, cam.passesOf(from, to));
     p.transientCount = first + n;
   }
 
@@ -2919,7 +2683,7 @@ export class Scene {
     }
     if (n === 0) return false;
     const d = p.drawCount;
-    this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, lit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
+    this.put.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, lit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
     p.transientCount = first + n;
     if (!lit || p.drawCount === d) return false;
     p.drawMaterial[d] = this.waterMaterial;
@@ -2944,11 +2708,11 @@ export class Scene {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.doubled + copies > MAX_DRAWS) {
+    if (d + this.put.doubled + copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
-    this.nearOf[d] = 0;
+    this.put.nearOf[d] = 0;
     p.drawMesh[d] = this.lakes!.mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
@@ -2960,9 +2724,9 @@ export class Scene {
     p.drawOffset[d * 3 + 1] = oy;
     p.drawOffset[d * 3 + 2] = oz;
     p.drawMaterial[d] = this.waterMaterial;
-    this.passOf[d] = passes;
+    this.put.passOf[d] = passes;
     p.drawCount = d + 1;
-    this.doubled += copies - 1;
+    this.put.doubled += copies - 1;
     p.triangles += triangles * copies;
     this.lakesWaved ||= this.lakesLit;
   };
@@ -3160,7 +2924,7 @@ export class Scene {
           this.assets.wantTextured(mesh, near, dist / reach);
           if (crown !== near) this.assets.wantTextured(mesh, crown, dist / reach);
           const d0 = this.packet.drawCount;
-          for (let s = 0, n = this.spansOf(b, at0, 0, cells, all); s < n; s++) this.draw(mesh, near, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, 0, 0, crown, leavesAt(b.thin[q]!));
+          for (let s = 0, n = this.spansOf(b, at0, 0, cells, all); s < n; s++) this.put.draw(mesh, near, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, 0, 0, crown, leavesAt(b.thin[q]!));
           this.boxRun(d0, b, q, mesh, 0, cells, cam);
         }
         if (whole || light) continue;
@@ -3264,14 +3028,14 @@ export class Scene {
         // A cell changing level is drawn at its new levels keeping a share of the pattern, then at its old keeping the rest.
         // A flat draw's program has no swap: a change of level to or from one drawn flat is taken at once.
         const qc = runs[k + 12]!;
-        const swap = runs[k + 11] !== 0 && this.texturedAt(mesh, runs[k + 6]!, flags) && this.texturedAt(mesh, b.cellWas[qc]!, flags) ? runs[k + 11]! : 0;
-        this.swap = swap;
-        for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.draw(mesh, runs[k + 2]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
+        const swap = runs[k + 11] !== 0 && this.put.texturedAt(mesh, runs[k + 6]!, flags) && this.put.texturedAt(mesh, b.cellWas[qc]!, flags) ? runs[k + 11]! : 0;
+        this.put.swap = swap;
+        for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.put.draw(mesh, runs[k + 2]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
         if (swap !== 0) {
-          this.swap = -swap;
-          for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.draw(mesh, b.cellWasTrunk[qc]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, b.cellWas[qc]!, leavesAt(runs[k + 8]!));
+          this.put.swap = -swap;
+          for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.put.draw(mesh, b.cellWasTrunk[qc]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, b.cellWas[qc]!, leavesAt(runs[k + 8]!));
         }
-        this.swap = 0;
+        this.put.swap = 0;
         this.boxRun(d0, b, q, mesh, runs[k + 9]!, runs[k + 10]!, cam);
       }
     }
@@ -3326,11 +3090,11 @@ export class Scene {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.doubled + copies > MAX_DRAWS) {
+    if (d + this.put.doubled + copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
-    this.boxCells(d, d + 1, b.mesh!.cellBox, c0, c1, ox, oy, oz);
+    this.put.boxCells(d, d + 1, b.mesh!.cellBox, c0, c1, ox, oy, oz);
     p.drawMesh[d] = this.near!.mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = b.mesh!.slot;
@@ -3343,9 +3107,9 @@ export class Scene {
     p.drawOffset[d * 3] = ox;
     p.drawOffset[d * 3 + 1] = oy;
     p.drawOffset[d * 3 + 2] = oz;
-    this.passOf[d] = passes;
+    this.put.passOf[d] = passes;
     p.drawCount = d + 1;
-    this.doubled += copies - 1;
+    this.put.doubled += copies - 1;
     p.triangles += (to - from) * 2 * copies;
   }
 
@@ -3387,22 +3151,6 @@ export class Scene {
     }
   }
 
-  /** Gives draws `from` up to `to` the camera-relative box from (x0, y0, z0) to (x1, y1, z1), and how far off its nearest point is. */
-  private boxRows(from: number, to: number, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void {
-    const near = Math.hypot(Math.max(x0, -x1, 0), Math.max(y0, -y1, 0), Math.max(z0, -z1, 0));
-    const b = this.boxOf;
-    for (let d = from; d < to; d++) {
-      this.boxed[d] = 1;
-      b[d * 6] = x0;
-      b[d * 6 + 1] = y0;
-      b[d * 6 + 2] = z0;
-      b[d * 6 + 3] = x1;
-      b[d * 6 + 4] = y1;
-      b[d * 6 + 5] = z1;
-      this.nearOf[d] = near;
-    }
-  }
-
   /**
    * Gives the draws from `from` on the box round range `q`'s instances in cells `c0` up to `c1` of a chunk: a piece's
    * whole, a node's to its mesh's reach sideways from its trunk at the largest size in the cell.
@@ -3421,22 +3169,7 @@ export class Scene {
       y1 = Math.max(y1, box[k + 4]!);
       z1 = Math.max(z1, box[k + 5]! + spread);
     }
-    if (x0 <= x1) this.boxRows(from, this.packet.drawCount, x0 - cam.x, y0 - cam.y, z0 - cam.z, x1 - cam.x, y1 - cam.y, z1 - cam.z);
-  }
-
-  /** Gives draws `from` up to `to` the box round cells `c0` up to `c1` of `boxes` (six numbers a cell), each moved by (ox, oy, oz). */
-  private boxCells(from: number, to: number, boxes: Float32Array, c0: number, c1: number, ox: number, oy: number, oz: number): void {
-    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
-    for (let k = c0 * 6; k < c1 * 6; k += 6) {
-      if (boxes[k]! > boxes[k + 3]!) continue;
-      x0 = Math.min(x0, boxes[k]!);
-      y0 = Math.min(y0, boxes[k + 1]!);
-      z0 = Math.min(z0, boxes[k + 2]!);
-      x1 = Math.max(x1, boxes[k + 3]!);
-      y1 = Math.max(y1, boxes[k + 4]!);
-      z1 = Math.max(z1, boxes[k + 5]!);
-    }
-    if (x0 <= x1) this.boxRows(from, to, x0 + ox, y0 + oy, z0 + oz, x1 + ox, y1 + oy, z1 + oz);
+    if (x0 <= x1) this.put.boxRows(from, this.packet.drawCount, x0 - cam.x, y0 - cam.y, z0 - cam.z, x1 - cam.x, y1 - cam.y, z1 - cam.z);
   }
 
   /** The first instance of cell `c` of the range whose blocks begin at `at0` in `cellFirst`, as if each cell's shell and interior lay together. */
@@ -3851,101 +3584,14 @@ export class Scene {
         const level = levels ? (levels[m] = this.assets.choose(this.assets.table.error[m]!, near, levels[m]!)) : 0;
         if (levels) this.assets.wantTextured(m, level, near);
         else showMaterials(this.assets, m, near);
-        this.nearAt = near;
-        this.draw(m, level, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, flags, cam.passesOf(this.from[m]!, this.to[m]!));
+        this.put.nearAt = near;
+        this.put.draw(m, level, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, flags, cam.passesOf(this.from[m]!, this.to[m]!));
       }
       total += counts[m]!;
     }
-    this.nearAt = 0;
+    this.put.nearAt = 0;
     return total;
   }
-
-  /**
-   * Draws `count` instances of a mesh at the level the card has nearest to `wanted`: one draw for each of the level's
-   * sections when the card has everything its materials take, and otherwise one flat draw of the whole of it. `passes`
-   * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two. A section whose
-   * material has its layer on the card draws it at `layer`, which holds its wear story too (wear.ts WEAR_KEY). A tree's crown may be drawn at a level of its own, `crown`,
-   * and its cut-out leaves at a share, the first of them (tools/pack/sprays.ts): its bark from the level wanted and the
-   * rest from the crown's, while both are drawn with their materials, else all of it at the crown's.
-   */
-  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0, layer = 0, crown = wanted, leaves = 1): void {
-    const p = this.packet;
-    const n = p.drawCount;
-    const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (n + this.doubled + copies > MAX_DRAWS) {
-      p.dropped++;
-      return;
-    }
-    let lod = this.drawable(mesh, wanted, flags);
-    if (lod < 0) {
-      p.skipped++;
-      return;
-    }
-    // A flat draw's program has no swap: a cell changing level while its materials are not on the card changes at once.
-    if (this.swap < 0 && !this.ready) return;
-    const sections = this.assets.table.sections[mesh]!;
-    let runs = this.ready ? sections[lod]! : FLAT;
-    // The crown's level and its runs; where that level is drawn flat, it draws the whole tree.
-    let top = lod, over = runs;
-    if ((crown !== wanted || leaves < 1) && this.ready) {
-      const c = this.drawable(mesh, Math.max(crown, lod), flags);
-      if (c >= 0) {
-        top = c;
-        over = this.ready ? sections[c]! : FLAT;
-        if (!this.ready) {
-          lod = c;
-          runs = FLAT;
-        }
-      }
-    }
-    const parts = this.parts(over, runs, top !== lod, leaves);
-    const draws = parts.length / 4;
-    // A mesh the frame has no room for all of is left out whole.
-    if (n + this.doubled + draws * copies > MAX_DRAWS) {
-      p.dropped++;
-      return;
-    }
-    const slot = this.assets.residency.slot(mesh, lod);
-    const topSlot = top === lod ? slot : this.assets.residency.slot(mesh, top);
-    let tris = 0, crowns = 0;
-    for (let k = 0; k < draws; k++) {
-      const d = n + k;
-      const material = parts[k * 4]!, trunk = parts[k * 4 + 1] === 1, from = parts[k * 4 + 2]!, indices = parts[k * 4 + 3]!;
-      this.passOf[d] = passes;
-      this.nearOf[d] = this.nearAt;
-      p.drawMesh[d] = mesh;
-      p.drawLod[d] = trunk ? lod : top;
-      p.drawSlot[d] = trunk ? slot : topSlot;
-      p.drawBuffer[d] = buffer;
-      p.drawFirst[d] = first;
-      p.drawInstances[d] = count;
-      p.drawOffset[d * 3] = ox;
-      p.drawOffset[d * 3 + 1] = oy;
-      p.drawOffset[d * 3 + 2] = oz;
-      p.drawFlags[d] = flags | this.groundFlags[mesh]! | this.bentFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
-      p.drawHand[d] = hand;
-      p.drawSwap[d] = material < 0 ? 0 : this.swap;
-      p.drawEffect.set(this.effect, d * 4);
-      p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
-      p.drawWear[d] = p.drawLayer[d]! > 0 ? Math.floor(layer / WEAR_KEY) : 0;
-      const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;
-      tris += made;
-      if (material < 0 || this.barkOf[material] === 0) crowns += made;
-      if (material < 0) continue;
-      p.drawMaterial[d] = material;
-      p.drawFirstIndex[d] = from;
-      p.drawIndexCount[d] = indices;
-    }
-    p.drawCount = n + draws;
-    this.doubled += draws * (copies - 1);
-    p.triangles += tris * count * copies;
-    if (this.treeOf[mesh] === 1) this.budget.crowns += crowns * count * copies;
-  }
-
-  /** The effect `draw` gives its draws (packet.ts drawEffect): all 0 but while a supply drop's lights are drawn. */
-  private readonly effect = new Float32Array(4);
-  /** The swap `draw` gives its draws (packet.ts drawSwap): 0 but while a cell of trees changing level is drawn (`swapOf`). */
-  private swap = 0;
 
   /**
    * How far cell `qc` of a range of trees has come in changing level, now that it is drawn with its trunk at `level`
@@ -4024,12 +3670,6 @@ export class Scene {
     return level;
   }
 
-  /** Whether a mesh wanted at `level` is drawn with its materials, as `draw` would draw it now. */
-  private texturedAt(mesh: number, level: number, flags: number): boolean {
-    this.drawable(mesh, level, flags);
-    return this.ready;
-  }
-
   /** Whether no cell of range `q` that holds trees is changing level, nor would start to if drawn at `level` and `crown`. */
   private steady(b: ChunkBatch, q: number, at0: number, level: number, crown: number, ms: number): boolean {
     const now = this.now;
@@ -4054,49 +3694,6 @@ export class Scene {
     }
   }
 
-  /** Scratch for the draws of a level, four numbers each: material, 1 if from the trunk's level, first index, indices. */
-  private readonly drawParts: number[] = [];
-
-  /**
-   * The draws of a level's runs `over`: with `split`, a bark run from the trunk's `runs` in its place; cut-out runs to
-   * the first `leaves` of their triangles, and none where that is none.
-   */
-  private parts(over: readonly number[], runs: readonly number[], split: boolean, leaves: number): readonly number[] {
-    const out = this.drawParts;
-    out.length = 0;
-    for (let k = 0; k < over.length; k += 3) {
-      const material = over[k]!;
-      let trunk = 0, from = over[k + 1]!, indices = over[k + 2]!;
-      if (split && material >= 0 && this.barkOf[material] === 1) {
-        for (let j = 0; j < runs.length; j += 3) {
-          if (runs[j] !== material) continue;
-          trunk = 1;
-          from = runs[j + 1]!;
-          indices = runs[j + 2]!;
-        }
-      }
-      if (leaves < 1 && material >= 0 && (this.materialFlags[material]! & DRAW_CUTOUT) !== 0) indices = Math.floor((indices / 3) * leaves) * 3;
-      if (material < 0 || indices > 0) out.push(material, trunk, from, indices);
-    }
-    return out;
-  }
-
-  /** Whether the level `drawable` last gave is drawn with its materials. */
-  private ready = false;
-
-  /**
-   * The level of a mesh to draw for `wanted`, or -1: the nearest held, and while that cannot be drawn with its materials
-   * a finer one that can, so that a thing does not turn flat on its way from one level to the next. What is see-through
-   * is drawn flat. An instrument's light is drawn with its strip where it has one, which says where on the light a
-   * point is (programs.ts drawProgram). Sets `ready`.
-   */
-  private drawable(mesh: number, wanted: number, flags: number): number {
-    const held = this.assets.level(mesh, wanted);
-    const textured = (flags & (DRAW_BLEND | DRAW_SKYLINE)) === 0 ? this.assets.texturedLevel(mesh, wanted, held) : -1;
-    this.ready = textured >= 0;
-    return this.ready ? textured : held;
-  }
-
   /**
    * The depth ranges of the characters' draws from `from` on, which are drawn on bones. Each instance is placed by its
    * first bone, and nothing of it reaches farther from where that bone puts its origin than its mesh, its offset and
@@ -4112,8 +3709,8 @@ export class Scene {
       const first = p.drawFirst[d]!;
       // The sections of a level are drawn from the same instances.
       if (d > from && first === p.drawFirst[d - 1] && p.drawMesh[d] === p.drawMesh[d - 1]) {
-        this.passOf[d] = this.passOf[d - 1]!;
-        this.nearOf[d] = this.nearOf[d - 1]!;
+        this.put.passOf[d] = this.put.passOf[d - 1]!;
+        this.put.nearOf[d] = this.put.nearOf[d - 1]!;
         continue;
       }
       const r = this.radiusOfMesh[p.drawMesh[d]!]! + this.bodySlack;
@@ -4130,19 +3727,19 @@ export class Scene {
         if (w + reach > hi) hi = w + reach;
       }
       let passes = cam.passesOf(lo, hi);
-      this.nearOf[d] = Math.max(0, lo);
+      this.put.nearOf[d] = Math.max(0, lo);
       if (passes === (NEAR | FAR)) {
         let sections = 1;
         while (d + sections < p.drawCount && p.drawFirst[d + sections] === first && p.drawMesh[d + sections] === p.drawMesh[d]) sections++;
-        if (p.drawCount + this.doubled + sections > MAX_DRAWS) {
+        if (p.drawCount + this.put.doubled + sections > MAX_DRAWS) {
           p.dropped++;
           passes = NEAR;
         } else {
-          this.doubled += sections;
+          this.put.doubled += sections;
           p.triangles += this.trisOfMesh[p.drawMesh[d]!]![p.drawLod[d]!]! * p.drawInstances[d]!;
         }
       }
-      this.passOf[d] = passes;
+      this.put.passOf[d] = passes;
     }
   }
 }
@@ -4165,4 +3762,4 @@ function grow(box: Float32Array, at: number, x0: number, y0: number, z0: number,
   box[at + 5] = Math.max(box[at + 5]!, z1);
 }
 
-export { bodySeed };
+export { bodySeed, CUTOUTS, NEAR_BUCKETS, type Cutouts };
