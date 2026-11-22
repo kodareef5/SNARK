@@ -170,9 +170,9 @@ export class Supply {
     this.deadline = ctx.deadlines.kind("supply", (a, stamp) => this.due(a, stamp));
     this.capsule = ctx.world.reg.index.get("core:supply_capsule") ?? -1;
     this.catalog = catalogOf(ctx.world.reg);
-    ctx.death.gate = (c, box) => this.gate(c, box);
-    ctx.death.onOpened = (c, box) => this.opened(c, box);
-    ctx.death.onRemoved = (box) => this.removed(box);
+    ctx.death.gate.on((c, box) => this.gate(c, box));
+    ctx.death.onOpened.on((c, box) => this.opened(c, box));
+    ctx.death.onRemoved.on((box) => this.removed(box));
   }
 
   /** The book in force, compiled against the game's items: again whenever the book or the quality setting changes. */

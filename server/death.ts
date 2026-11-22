@@ -21,6 +21,7 @@ import { CAUSE_NAMES, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 import type { Rules } from "./settings/rules.ts";
 import { event, type Bus } from "./events/bus.ts";
+import { Signal, Veto } from "./signal.ts";
 
 /** Journal op: survivor pid, cause, cache pid (0 if it carried nothing). */
 export const OP_DEATH = 3;
@@ -55,11 +56,11 @@ export class Death {
   eye: ((entity: number, out: Float64Array) => void) | null = null;
   private readonly eyeAt = new Float64Array(3);
   /** The use button found nothing here to act on. Another system may want it (a bush to pick). */
-  onUse: ((c: Client) => void) | null = null;
+  readonly onUse = new Signal<[c: Client]>();
   /** The use button was pressed looking at a structure (`ref`) with nothing nearer. Returns a result code, or -1 if it has no use. */
   onUseBuilt: ((c: Client, ref: number) => number) | null = null;
-  /** Whether a session may open a creature that is awake (one of its tribe's). */
-  canOpen: ((c: Client, rec: EntityRecord) => boolean) | null = null;
+  /** Whether a session may open a creature that is awake (one of its tribe's). Any listener may refuse; while none listens, nobody may. */
+  readonly canOpen = new Veto<[c: Client, rec: EntityRecord]>(true);
   /** Whether a session that has the built container at `ref` open may go on using it. */
   keepsBuilt: ((c: Client, ref: number) => boolean) | null = null;
   /** Reach and authorization for a live hull or a salvage hull opened at its stern. */
@@ -68,16 +69,18 @@ export class Death {
   riding: ((c: Client) => boolean) | null = null;
   offMount: ((c: Client) => void) | null = null;
   onRide: ((c: Client, e: number) => number) | null = null;
-  onShut: ((rec: EntityRecord) => void) | null = null;
+  /** A session shut `rec`, which it had open. */
+  readonly onShut = new Signal<[rec: EntityRecord]>();
   /**
    * Why `c` may not open the thing lying there, or "": a rule of the game's own, asked at every use (a supply drop's
    * level, server/supply.ts). It is not a `container.open` handler: the bus is the modules', and switches one off that fails.
+   * The first listener with a reason gives it.
    */
-  gate: ((c: Client, box: EntityRecord) => string) | null = null;
+  readonly gate = new Veto<[c: Client, box: EntityRecord], string>("");
   /** `c` opened `box`. */
-  onOpened: ((c: Client, box: EntityRecord) => void) | null = null;
+  readonly onOpened = new Signal<[c: Client, box: EntityRecord]>();
   /** `box` is about to be removed: emptied, out of time, or cleared away. Its record is still whole. */
-  onRemoved: ((box: EntityRecord) => void) | null = null;
+  readonly onRemoved = new Signal<[box: EntityRecord]>();
   /** Where a creature's body goes when it dies. Without it the creature leaves a cache of what it carried. */
   corpses: Corpses | null = null;
   /** Ref of the structure the last target() call hit, or -1. */
@@ -515,7 +518,7 @@ export class Death {
   remove(cache: EntityRecord): void {
     const { world, records, items, game } = this.ctx;
     for (const c of game.clients) if (c?.open === cache.pid) this.close(c);
-    this.onRemoved?.(cache);
+    this.onRemoved.emit(cache);
     if (cache.inv) items.burnAll(cache);
     const e = records.entOf.get(cache.pid);
     if (e !== undefined) world.ents.destroy(e);
@@ -544,9 +547,13 @@ export class Death {
     if (box.at >= 0) return this.keepsBuilt?.(c, box.at) ?? true;
     const e = this.ctx.records.entOf.get(box.pid);
     if (e !== undefined && this.isBoat(e)) return this.keepsBoatCargo?.(c, e) ?? false;
-    if (e !== undefined && (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 && this.gate && this.gate(c, box) !== "") return false;
+    if (e !== undefined && (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 && this.gate.ask(c, box) !== "") return false;
     if (e === undefined || (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 || box.out) return true;
-    return this.canOpen?.(c, box) ?? false;
+    return this.opens(c, box);
+  }
+
+  private opens(c: Client, rec: EntityRecord): boolean {
+    return this.canOpen.size > 0 && this.canOpen.ask(c, rec);
   }
 
   private isBoat(e: number): boolean {
@@ -557,7 +564,7 @@ export class Death {
   close(c: Client): void {
     const was = c.open !== 0 ? this.ctx.records.byPid.get(c.open) : undefined;
     c.open = 0;
-    if (was) this.onShut?.(was);
+    if (was) this.onShut.emit(was);
   }
 
   /** Once per tick. Handles the use button, closes a container that is gone or out of reach, and removes an emptied cache or bag. */
@@ -655,14 +662,14 @@ export class Death {
     }
     // A prop (a cache or a bag), an unconscious creature, or one that canOpen allows. Never an egg or a survivor.
     const there = hit >= 0 ? this.ctx.records.byPid.get(ents.pid[hit]!) : undefined;
-    const pid = hit >= 0 && there?.egg == null && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || (this.canOpen?.(c, there) ?? false)))) ? ents.pid[hit]! : 0;
+    const pid = hit >= 0 && there?.egg == null && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || this.opens(c, there)))) ? ents.pid[hit]! : 0;
     const box = pid !== 0 ? there : undefined;
     if (box && c.open !== pid) {
-      const why = (ents.flags[hit]! & F_PROP) !== 0 && this.gate ? this.gate(c, box) : "";
+      const why = (ents.flags[hit]! & F_PROP) !== 0 ? this.gate.ask(c, box) : "";
       if (why !== "") this.ctx.game.sendText(c, TEXT_NOTICE, why);
       else if (this.ctx.game.mayOpen(c, pid)) {
         c.open = pid;
-        this.onOpened?.(c, box);
+        this.onOpened.emit(c, box);
       }
       return;
     }
@@ -674,6 +681,6 @@ export class Death {
     }
     const had = c.open !== 0;
     this.close(c);
-    if (!had && !box) this.onUse?.(c);
+    if (!had && !box) this.onUse.emit(c);
   }
 }

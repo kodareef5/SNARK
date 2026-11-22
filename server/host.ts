@@ -616,9 +616,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       creatures.claimed(e);
     }
   } }, (opts.seed ?? 1) + 71);
-  // Its tribe may open a tamed creature while it is awake. Closing it reschedules its meal, because its food may have changed.
-  death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
-  death.onShut = (rec) => taming.meal(rec);
+  // Closing a creature reschedules its meal, because its food may have changed.
+  death.onShut.on((rec) => taming.meal(rec));
   // A hit's buff goes through entangling, which reads the bola's fields (weapons-plan.md, M6); a bola'd body is not mounted.
   const entangle = new Entangle({ world, game, records, buffs });
   combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
@@ -643,10 +642,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
     discard: e => { const pid = world.ents.pid[e]!; persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid); },
   });
-  death.canOpen = (c, rec) => {
+  // Its tribe may open a tamed creature while it is awake, and whoever may use a vehicle may open it.
+  death.canOpen.on((c, rec) => {
     const actor = records.byPid.get(c.pid);
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
-  };
+  });
   death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
   game.onVehicleStep = e => urban.impact(e);
   game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
@@ -927,7 +927,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   buffs.onChange = (rec) => refreshBody(rec);
   const use = new Use({ world, game, records, items, survival, buffs });
   // E with nothing else to use picks a bush, else drinks the water the survivor stands in.
-  death.onUse = (c) => void (harvest?.pick(c) || use.drink(c));
+  death.onUse.on((c) => void (harvest?.pick(c) || use.drink(c)));
   if (harvest) {
     if (persistence) {
       if (!loaded!.fresh) for (const row of persistence.store.loadBlobs(harvest.tag)) harvest.decode(row.chunk, row.data);
