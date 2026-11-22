@@ -4,7 +4,7 @@
 // draws bands of rows within its share of the card's time, which the shell measures where the card can be timed.
 
 import { WEATHER_RECIPE } from "../../../content/texgen/weather.ts";
-import { WEATHER_BAYS, WEATHER_LAYERS, bayFeatures, baySeed, fieldLut, fieldSeed } from "./weather.ts";
+import { MADE_FIRST, MADE_LAYERS, WEATHER_BAYS, WEATHER_LAYERS, bayFeatures, baySeed, fieldLut, fieldSeed } from "./weather.ts";
 
 /** Levels under the widest that the first pass is drawn at: an eighth of the side, a 64th of the work. */
 export const WEATHER_COARSE = 3;
@@ -13,7 +13,7 @@ export const WEATHER_RISE = 20;
 /** Pixels a frame draws before the card's time has been measured, and the least and most it ever draws. */
 const FIRST_PIXELS = 1 << 16, LEAST_PIXELS = 1 << 13, MOST_PIXELS = 1 << 21;
 /** Draws a frame holds at most: a band of a layer's rows each, or of a bay's half. */
-const MOST_DRAWS = WEATHER_LAYERS * 2 + 2;
+const MOST_DRAWS = MADE_LAYERS * 2 + 2;
 
 export class WeatherPlan {
   /** The side asked for, the level being drawn, and its next layer and row. */
@@ -30,8 +30,9 @@ export class WeatherPlan {
   drawn = 0;
   spentMs = 0;
   /**
-   * This frame's draws, `count` of them, four numbers each: the layer, the first row and the rows, and the half of a
-   * bay's layer (0 top, 1 bottom; -1 a field) whose table it is drawn with, all at level `at`, `wide` a side.
+   * This frame's draws, `count` of them, four numbers each: the layer, the first row and the rows, and what it is: the
+   * half of a bay's layer whose table it is drawn with (0 top, 1 bottom), -1 a field, or for a made material's layer 2
+   * its base colour and 3 its relief; all at level `at`, `wide` a side.
    */
   readonly draws = new Int32Array(MOST_DRAWS * 4);
   count = 0;
@@ -69,13 +70,14 @@ export class WeatherPlan {
     const wide = (this.wide = this.side >> this.level), half = wide >> 1;
     let left = Math.max(1, Math.floor(this.pixels / wide));
     this.drawn = 0;
-    while (left > 0 && this.layer < WEATHER_LAYERS && this.count < MOST_DRAWS) {
+    while (left > 0 && this.layer < MADE_LAYERS && this.count < MOST_DRAWS) {
       // A bay's two halves are two variants, each drawn with its own table, so no draw crosses the middle.
       const field = this.layer >= WEATHER_BAYS, to = field || this.row >= half ? wide : half, n = Math.min(left, to - this.row), d = this.count++ * 4;
+      const made = this.layer >= MADE_FIRST ? 2 + ((this.layer - MADE_FIRST) & 1) : 0;
       this.draws[d] = this.layer;
       this.draws[d + 1] = this.row;
       this.draws[d + 2] = n;
-      this.draws[d + 3] = field ? -1 : this.row >= half ? 1 : 0;
+      this.draws[d + 3] = made || (field ? -1 : this.row >= half ? 1 : 0);
       this.drawn += n * wide;
       left -= n;
       this.row += n;
@@ -84,7 +86,7 @@ export class WeatherPlan {
         this.layer++;
       }
     }
-    if (this.layer >= WEATHER_LAYERS) {
+    if (this.layer >= MADE_LAYERS) {
       this.whole = this.level;
       this.shown = true;
       if (this.level === 0) this.done = true;
