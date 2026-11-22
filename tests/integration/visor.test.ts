@@ -7,6 +7,8 @@ import { DRAW_HEAT_SHIFT, DRAW_SKINNED, HEAT_COLD, HEAT_HOT, HEAT_WARM, HEAT_WOR
 import { kindHeat } from "../../client/core/render/characters.ts";
 import { VISOR_FIRST } from "../../client/core/visor.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
+import { takeInHand } from "../fixtures/gather.ts";
+import { FLAG_ON } from "../../shared/sim/items.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 test("in the whole client: the issued helmet's visor held up zooms from the eye, its window a wide box, the server told; N turns night vision on; let go, all as it was", () => {
@@ -81,4 +83,61 @@ test("in the whole client: through the visor's heat view the survivors' draws sa
   // The kinds the test pack has no rigs for, by their content.
   const at = (name: string): number => h.reg.index.get(name)!;
   expect([kindHeat(h.reg, at("core:carbonemys")), kindHeat(h.reg, at("core:dodo")), kindHeat(h.reg, at("core:survivor")), kindHeat(h.reg, at("core:compact"))]).toEqual([HEAT_COLD, HEAT_WARM, HEAT_WARM, HEAT_WORLD]);
+});
+
+test("in the whole client: N held raises the visor and held again lowers it; a tap while it is up turns its view, and G is melee again", () => {
+  const h = new Harness({}, 1, 60, { dev: true, config: asShipped() });
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  app.ui.settings.thirdPerson = false;
+  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
+  run(1500);
+  // A tap does not raise it.
+  app.key("KeyN", true);
+  run(100);
+  app.key("KeyN", false);
+  run(500);
+  expect([app.visor.held, app.hud.visor]).toEqual([false, false]);
+  app.key("KeyN", true);
+  run(700);
+  app.key("KeyN", false);
+  run(1000);
+  expect([app.visor.held, app.hud.visor]).toEqual([true, true]);
+  // Up, a tap turns its view.
+  app.key("KeyN", true);
+  run(100);
+  app.key("KeyN", false);
+  run(200);
+  expect(app.hud.visorMode).toBe(OPTIC_NIGHT);
+  app.key("KeyN", true);
+  run(700);
+  app.key("KeyN", false);
+  run(1000);
+  expect([app.visor.held, app.hud.visor]).toEqual([false, false]);
+  // G is melee again, not the visor's.
+  app.key("KeyG", true);
+  run(100);
+  app.key("KeyG", false);
+  run(300);
+  expect(app.visor.held).toBe(false);
+});
+
+test("in the whole client: with the helmet worn a tap of N still switches the held weapon's laser, sent as the tap ends", () => {
+  const h = new Harness({}, 1, 60, { dev: true, config: asShipped() });
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
+  run(1500);
+  const s = app.session;
+  const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
+  const items = h.host.items, at = (name: string): number => h.reg.index.get(name)!;
+  items.mint(rec, at("core:pistol"), 1);
+  items.mint(rec, at("core:laser"), 1);
+  run(300);
+  const slot = takeInHand(h, s, at("core:pistol"));
+  expect(items.attach(rec, slot, items.inv(rec).item.indexOf(at("core:laser")))).toBe(true);
+  run(400);
+  app.key("KeyN", true);
+  run(100);
+  app.key("KeyN", false);
+  run(500);
+  expect([items.inv(rec).flags[slot], app.visor.held]).toEqual([FLAG_ON, false]);
 });

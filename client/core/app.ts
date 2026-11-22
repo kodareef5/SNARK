@@ -129,6 +129,8 @@ const AIM_FOV = 0.79;
 const HOLO_TINT = 0.22;
 /** Milliseconds between CMD_GAZEs while a sight's zoom holds: well inside GAZE_TICKS, after which the server lets it go. */
 const GAZE_RESEND_MS = 1000;
+/** Milliseconds N is held to raise or lower a helmet's visor. */
+const VISOR_HOLD_MS = 400;
 /** Milliseconds between finds of what a sight is on. */
 const FOCUS_MS = 250;
 /** A zooming sight's step of the wheel, and a zero's, metres, as far as ZERO_MOST. */
@@ -222,6 +224,10 @@ export class App {
   /** The zoom the server was last told of (App.gaze), and when. */
   private gazeSent = 0;
   private gazeAt = -Infinity;
+  /** When N went down with a visor to raise (-1 when it is up), whether it has been held long, and a tap's press to send. */
+  private nDownAt = -1;
+  private nLong = false;
+  private nPulse = 0;
   /** When what the sight is on was last found (App.gaze). */
   private focusAt = -Infinity;
   readonly remote = new RemoteSample();
@@ -511,14 +517,20 @@ export class App {
       }
       return true;
     }
-    // G raises a worn helmet's visor and lowers it again, for a mouse with no middle button (which holds it up; D1080).
-    if (code === "KeyG" && this.ui.wantsPointerLock && (this.visorOptic !== null || this.visor.held)) {
-      if (down && !repeat) this.visor.held = !this.visor.held;
-      return true;
-    }
-    // With a visor up, N turns its view, not what the held weapon has fitted.
-    if (code === "KeyN" && this.visor.up) {
-      if (down && !repeat) this.visor.cycle();
+    // With a helmet's visor to raise, N held VISOR_HOLD_MS raises it or lowers it again, as ARK's Tek helmet takes a long
+    // press, for a mouse with no middle button (which holds it up); a tap turns its view while it is up, and is what the
+    // held weapon has fitted otherwise, sent as it is let go (D1089).
+    if (code === "KeyN" && this.ui.wantsPointerLock && (this.visorOptic !== null || this.visor.held)) {
+      if (down && !repeat) {
+        this.nDownAt = this.nowMs;
+        this.nLong = false;
+      } else if (!down && this.nDownAt >= 0) {
+        if (!this.nLong) {
+          if (this.visor.up) this.visor.cycle();
+          else this.nPulse = 2;
+        }
+        this.nDownAt = -1;
+      }
       return true;
     }
     if (this.builder.key(code, down, repeat, this.nowMs, this.reg)) return true;
@@ -1355,6 +1367,12 @@ export class App {
     }
     if (this.ui.menu || this.ui.inspect) this.blur();
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
+    // N held long raises or lowers the visor; a tap's press goes as it is let go (App.key).
+    if (this.nDownAt >= 0 && !this.nLong && nowMs - this.nDownAt >= VISOR_HOLD_MS) {
+      this.nLong = true;
+      this.visor.held = !this.visor.held;
+    }
+    if (this.nPulse > 0) c.key("KeyN", --this.nPulse > 0);
     this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
     this.refreshCockpitLook();
