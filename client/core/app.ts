@@ -331,7 +331,7 @@ export class App {
     this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
       this.ui.creator.result(seq, code === RESULT_OK);
-      this.ui.inventory.serviceResult(seq, code);
+      this.ui.inventory.result(seq, code, session.tickClock);
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.

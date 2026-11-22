@@ -12,6 +12,7 @@ import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, 
 import { RemoteSample, type ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, fitText, lineHeight, wrapText, type UiFrame } from "./nodes.ts";
 import { KEY_STATION_VIEW, StationPanel } from "./station.ts";
+import { TakeAll } from "./take-all.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
 
 export const KEY_INV_PANEL = 290;
@@ -98,6 +99,8 @@ export function itemLabel(reg: Registry, item: number): string {
 
 export class InventoryScreen {
   open = false;
+  /** Take all, while it is still asking for stacks. */
+  readonly taking = new TakeAll();
   /** The last thing used was a finger (Ui.touch): the screen's words name presses, not keys and mouse buttons. */
   touch = false;
   /** The app starts the world preview; the inventory never creates a vehicle directly. */
@@ -108,7 +111,13 @@ export class InventoryScreen {
   private serviceHandle = 0;
   private serviceFeedback = "";
 
-  serviceResult(seq: number, code: number): void {
+  /** The server's answer to a command of this session's, for whichever of the screen's asks it was. */
+  result(seq: number, code: number, tick: number): void {
+    this.serviceResult(seq, code);
+    this.taking.result(seq, code, tick);
+  }
+
+  private serviceResult(seq: number, code: number): void {
     if (!this.serviceSeq || seq !== this.serviceSeq) return;
     this.serviceSeq = 0;
     this.serviceFeedback = code === RESULT_OK ? "" : SERVICE_REFUSAL[code] ?? "Service unavailable.";
@@ -154,6 +163,7 @@ export class InventoryScreen {
     this.open = false;
     this.serviceSeq = 0; this.serviceFeedback = "";
     this.held = -1;
+    this.taking.stop();
     if (session?.open) session.command(CMD_CLOSE);
   }
 
@@ -297,12 +307,12 @@ export class InventoryScreen {
     return true;
   }
 
-  /** Everything the open box holds, a stack to each free slot of the bag, while there is room. */
+  /**
+   * Everything the open box holds, a stack to each free slot of the bag, while there is room. The moves are asked a
+   * few at a time over the next frames (take-all.ts), since the server runs only so many of a session's commands a tick.
+   */
   private takeAll(session: ClientSession): void {
-    const other = session.open?.inventory;
-    if (!other) return;
-    const taken = new Set<number>();
-    for (let s = 0; s < other.cap; s++) if (other.item[s] !== 0 && !this.take(session, s, taken)) break;
+    this.taking.begin(session);
     this.held = -1;
   }
 
@@ -320,6 +330,7 @@ export class InventoryScreen {
   build(f: UiFrame, session: ClientSession | null, reg: Registry | null, palette: Uint8Array | null): void {
     // A container the server has just opened brings the screen up with it.
     const isOpen = !!session?.open;
+    if (session) this.taking.update(session);
     if (isOpen && !this.hadOpen) {
       this.open = true;
       this.page = 0; this.vehicleBag = false;

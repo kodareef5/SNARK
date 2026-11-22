@@ -7,7 +7,7 @@ import { App } from "../../client/core/app.ts";
 import { KEY_INV_SLOT, KEY_OPEN_SLOT, KEY_OPEN_TAKE_ALL } from "../../client/core/ui/inventory.ts";
 import { TAKE_ONLY } from "../../server/own.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { RESULT_BUSY, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { LEAVE_SECONDS, POSE_BRAKING, POSE_COMING, POSE_LANDED, POSE_LEAVING } from "../../shared/sim/supply.ts";
 import type { SupplyBook } from "../../shared/supply/book.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
@@ -123,6 +123,59 @@ artTest("the whole client: a drop's shaft from near and from far, its capsule in
   expect([app.supply.stateOf(row()), app.supply.capsules]).toEqual([POSE_LEAVING, 1]);
   run(LEAVE_SECONDS * 1000);
   expect([s.supply.rows, app.supply.shafts, app.supply.capsules, h.host.items.audit(), me.dead]).toEqual([[], 0, 0, [], false]);
+  h.host.shutdown();
+});
+
+artTest("take all takes all: twenty stacks and more leave a capsule at one press, though the server runs a session's commands a few at a time", () => {
+  const { h, app, s, run, stand, tap, me } = client();
+  const { supply, items } = h.host;
+  const bow = h.reg.index.get("core:bow")!;
+  let busy = 0;
+  const heard = s.onResult;
+  s.onResult = (seq, code) => {
+    if (code === RESULT_BUSY) busy++;
+    heard?.(seq, code);
+  };
+  s.text("addxp 200000");
+  run(400);
+  /** A ringed white drop landed at (x, z) with twenty bows beside its own loot: a stack to a slot, so more moves than the server queues. */
+  const landed = (x: number, z: number) => {
+    s.text(`supply call ${x} ${z} white provisions ringed 0`);
+    run(600);
+    const d = supply.drops.at(-1)!;
+    s.text(`supply land ${d.id} 0`);
+    run(600);
+    const box = h.host.records.byPid.get(d.pid)!;
+    expect([d.landed, items.mint(box, bow, 20)]).toEqual([true, 20]);
+    stand(x, z - 3.2, x, z, -0.3);
+    return { d, box, held: items.inv(box).used() };
+  };
+  const a = landed(640, 660);
+  expect(a.held).toBeGreaterThan(20);
+  // Its name is said whole, though an entity's own is cut at twenty-four characters.
+  expect(app.hud.prompt).toBe("E  open Ringed White Provisions drop");
+  tap("KeyE");
+  expect([s.open?.name, s.open?.takeOnly, s.open?.inventory.used()]).toEqual(["Ringed White Provisions drop", true, a.held]);
+  const mine = s.inventory!;
+  const before = mine.used();
+  expect(mine.bag - before).toBeGreaterThanOrEqual(a.held);
+  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
+  expect(app.ui.inventory.taking.busy).toBe(true);
+  run(1500);
+  // Everything is hers, the capsule shut on being emptied and is leaving, and the server had room for all she asked.
+  expect([mine.used() - before, s.open, app.ui.inventory.taking.busy, h.host.records.byPid.has(a.d.pid), a.d.left > 0, busy, items.audit()]).toEqual([a.held, null, false, false, true, 0, []]);
+  // With room for five stacks and no more, she takes five, and the rest stays in a capsule that stays open.
+  if (app.ui.inventory.open) tap("KeyI");
+  const free = (): number => mine.bag - mine.used();
+  expect(items.mint(me, bow, free() - 5)).toBe(mine.bag - mine.used() - 5);
+  run(300);
+  expect(free()).toBe(5);
+  const b = landed(700, 660);
+  tap("KeyE");
+  expect(s.open?.inventory.used()).toBe(b.held);
+  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
+  run(1500);
+  expect([free(), s.open?.inventory.used(), app.ui.inventory.taking.busy, items.inv(b.box).used(), b.d.left, busy, items.audit()]).toEqual([0, b.held - 5, false, b.held - 5, 0, 0, []]);
   h.host.shutdown();
 });
 
