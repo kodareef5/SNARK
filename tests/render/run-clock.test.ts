@@ -35,3 +35,26 @@ test("a run's clock times the scene and the tide's eyes, its view held or turnin
   app.frame(last + 16, 1280, 720);
   expect([app.scene!.now, app.controls.yaw]).toEqual([still + 5000, Math.PI / 2]);
 });
+
+test("a picture tool holds the tide's eyes and the view where it says, frame by frame", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = new App(h.join("owner", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  // A picture tool's page whose orders play the obelisks' clock from 40 s (tools/mapworld/gpu-views.ts --film).
+  app.address(() => null, true, { eyeSeconds: 40, playEye: true });
+  let last = 0;
+  h.run(1500, (now) => void app.frame((last = now), 1280, 720));
+  expect(app.eyeHeld).toBe(40);
+  expect(app.scene!.eyeSeconds).toBeGreaterThanOrEqual(40);
+  for (const at of [12.5, 12.5 + 1 / 12]) {
+    app.holdEye(at);
+    app.frame((last += 100), 1280, 720);
+    app.frame((last += 100), 1280, 720);
+    expect(app.scene!.eyeSeconds).toBe(at);
+  }
+  // And a picture tool's turn holds the view at each step of it (tools/snap/lamp-play.ts).
+  for (const yaw of [0.5, 0.75]) {
+    app.holdLook(yaw, -0.1);
+    app.frame((last += 100), 1280, 720);
+    expect([app.controls.yaw, app.controls.pitch]).toEqual([yaw, -0.1]);
+  }
+});

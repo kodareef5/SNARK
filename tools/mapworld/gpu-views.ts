@@ -54,7 +54,7 @@ async function recordIgnition(send: (method: string, params: object) => Promise<
   try {
     for (let frame = 0; frame < Math.round(12 * duration); frame++) {
       const response = await send("Runtime.evaluate", {
-        expression: `(async () => { const app = globalThis.snarkTrip.app; if (!app.scene || app.artEyeTime == null) throw Error("camera has not loaded"); app.playEye = false; app.artEyeAt = null; app.artEyeTime = ${start + frame / 12}; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return true; })()`,
+        expression: `(async () => { const app = globalThis.snarkTrip.app; if (!app.scene || app.eyeHeld == null) throw Error("camera has not loaded"); app.holdEye(${start + frame / 12}); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return true; })()`,
         awaitPromise: true, returnByValue: true,
       });
       if (response?.result?.value !== true) throw new Error("Could not set the obelisk clock for " + file);
