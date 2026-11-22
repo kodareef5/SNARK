@@ -5,7 +5,7 @@ import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
 
 import { PredictedTrees } from "./vehicle-trees.ts";
-import { ownKinds, type Readers } from "./readers.ts";
+import { messages, ownKinds, type Readers } from "./readers.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
@@ -1310,7 +1310,8 @@ export class ClientSession {
     [this.sentInput, this.sentAck] = [newest, this.latestSnapshot];
   }
 
-  /** The table of owner state (client/core/readers.ts), with this file's readers added. */
+  /** The two tables the server is read by (client/core/readers.ts), with this file's readers added. */
+  private static readonly messages = ClientSession.addMessages();
   private static readonly ownKinds = ClientSession.addOwnKinds();
 
   private receive(_channel: number, data: Uint8Array): void {
@@ -1318,76 +1319,128 @@ export class ClientSession {
     this.stats.bytesIn += data.length;
     const r = this.r;
     r.reset(data);
-    const type = r.u8();
-    if (type === S_SNAPSHOT) {
-      if (this.state === "active") this.snapshot(r);
-    } else if (type === S_CHUNK) this.chunk(r);
-    else if (type === S_CHUNK_DROP) {
-      const chunk = r.u16();
-      this.whole[chunk] = 0;
-      this.world?.structs.dropChunk(chunk);
-    }
-    else if (type === S_NODES) this.nodes(r);
-    else if (type === S_EVENT) this.event(r);
-    else if (type === S_TACTICAL && this.world) this.tactical.readCells(r, this.world.hf);
-    else if (type === S_MARKS && this.world) this.tactical.readMarks(r, this.world.hf);
-    else if (type === S_FAR && this.world) this.far.read(r, this.world.dims);
-    else if (type === S_WELCOME) this.welcome(r);
-    else if (type === S_RESULT) {
-      const seq = r.u16();
-      const code = r.u8();
-      if (r.overflow) return;
-      if (seq !== 0 && seq === this.staticsSeq) {
-        if (code === RESULT_OK) this.staticKinds = staticKinds(this.arrived!, this.registry);
-        else if (code === RESULT_BUSY) this.staticsSeq = 0;
-      }
-      // The newest view or far request, refused, is forgotten so that it is asked again.
-      if (code === RESULT_BUSY && seq !== 0 && (seq === this.viewSeq || seq === this.farSeq)) {
-        if (seq === this.viewSeq) this.viewCap = this.viewBytes = -1;
-        else this.farAsked = -1;
-        this.askAt = this.lastNow + ASK_AGAIN_MS;
-      }
-      this.onResult?.(seq, code);
-    } else if (type === S_TEXT) {
-      const channel = r.u8();
-      const text = r.string(MAX_SERVER_TEXT_BYTES);
-      if (r.overflow) return;
-      this.log.push({ channel, text });
-      if (this.log.length > LOG_LINES) this.log.shift();
-      this.logVersion++;
-    } else if (type === S_OWN) this.ownState(r);
-    else if (type === S_MOTION) {
-      const told = readMotions(r);
-      if (told) for (const [ref, s] of told) this.motions.set(ref, s);
-    }
-    else if (type === S_SUPPLY) {
-      const told = readSupply(r);
-      if (told) {
-        this.supply = told;
-        this.supplyVersion++;
-      }
-    }
-    else if (type === S_CORPSE) {
-      const motion = readCorpseMotion(r);
-      if (motion && newerCorpseMotion(motion, this.corpseMotions.get(motion.id))) {
-        this.corpseMotions.delete(motion.id);
-        while (this.corpseMotions.size >= MAX_VIEW) this.corpseMotions.delete(this.corpseMotions.keys().next().value!);
-        this.corpseMotions.set(motion.id, motion);
-      }
-    }
-    else if (type === S_REJECT) {
-      const was = this.state;
-      this.state = "closed";
-      this.closeReason = r.u8();
-      if (was === "active") this.prediction.closed(this, `the server put it out (${this.closeReason})`);
-      if (this.closeReason === REJECT_TRAVEL) this.closeText = r.string(MAX_SERVER_TEXT_BYTES);
-      this.welcomedNow();
-    } else if (type === S_TRAVEL) {
-      const ticket = new Uint8Array(TICKET_BYTES);
-      for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
-      const world = r.u16();
-      if (!r.overflow) this.travelled = { ticket, world };
-    }
+    // A kind with no reader is ignored.
+    ClientSession.messages.read(r.u8(), this, r);
+  }
+
+  /** Adds the readers of the server's messages that are this file's, and gives the table. A feature's own message is added from its own file (client/core/readers.ts). */
+  private static addMessages(): Readers {
+    messages.add({
+      kind: S_SNAPSHOT,
+      read(s, r) {
+        if (s.state === "active") s.snapshot(r);
+      },
+    });
+    messages.add({ kind: S_CHUNK, read: (s, r) => s.chunk(r) });
+    messages.add({
+      kind: S_CHUNK_DROP,
+      read(s, r) {
+        const chunk = r.u16();
+        s.whole[chunk] = 0;
+        s.world?.structs.dropChunk(chunk);
+      },
+    });
+    messages.add({ kind: S_NODES, read: (s, r) => s.nodes(r) });
+    messages.add({ kind: S_EVENT, read: (s, r) => s.event(r) });
+    messages.add({
+      kind: S_TACTICAL,
+      read(s, r) {
+        if (s.world) s.tactical.readCells(r, s.world.hf);
+      },
+    });
+    messages.add({
+      kind: S_MARKS,
+      read(s, r) {
+        if (s.world) s.tactical.readMarks(r, s.world.hf);
+      },
+    });
+    messages.add({
+      kind: S_FAR,
+      read(s, r) {
+        if (s.world) s.far.read(r, s.world.dims);
+      },
+    });
+    messages.add({ kind: S_WELCOME, read: (s, r) => s.welcome(r) });
+    messages.add({
+      kind: S_RESULT,
+      read(s, r) {
+        const seq = r.u16();
+        const code = r.u8();
+        if (r.overflow) return;
+        if (seq !== 0 && seq === s.staticsSeq) {
+          if (code === RESULT_OK) s.staticKinds = staticKinds(s.arrived!, s.registry);
+          else if (code === RESULT_BUSY) s.staticsSeq = 0;
+        }
+        // The newest view or far request, refused, is forgotten so that it is asked again.
+        if (code === RESULT_BUSY && seq !== 0 && (seq === s.viewSeq || seq === s.farSeq)) {
+          if (seq === s.viewSeq) s.viewCap = s.viewBytes = -1;
+          else s.farAsked = -1;
+          s.askAt = s.lastNow + ASK_AGAIN_MS;
+        }
+        s.onResult?.(seq, code);
+      },
+    });
+    messages.add({
+      kind: S_TEXT,
+      read(s, r) {
+        const channel = r.u8();
+        const text = r.string(MAX_SERVER_TEXT_BYTES);
+        if (r.overflow) return;
+        s.log.push({ channel, text });
+        if (s.log.length > LOG_LINES) s.log.shift();
+        s.logVersion++;
+      },
+    });
+    messages.add({ kind: S_OWN, read: (s, r) => s.ownState(r) });
+    messages.add({
+      kind: S_MOTION,
+      read(s, r) {
+        const told = readMotions(r);
+        if (told) for (const [ref, motion] of told) s.motions.set(ref, motion);
+      },
+    });
+    messages.add({
+      kind: S_SUPPLY,
+      read(s, r) {
+        const told = readSupply(r);
+        if (told) {
+          s.supply = told;
+          s.supplyVersion++;
+        }
+      },
+    });
+    messages.add({
+      kind: S_CORPSE,
+      read(s, r) {
+        const motion = readCorpseMotion(r);
+        if (motion && newerCorpseMotion(motion, s.corpseMotions.get(motion.id))) {
+          s.corpseMotions.delete(motion.id);
+          while (s.corpseMotions.size >= MAX_VIEW) s.corpseMotions.delete(s.corpseMotions.keys().next().value!);
+          s.corpseMotions.set(motion.id, motion);
+        }
+      },
+    });
+    messages.add({
+      kind: S_REJECT,
+      read(s, r) {
+        const was = s.state;
+        s.state = "closed";
+        s.closeReason = r.u8();
+        if (was === "active") s.prediction.closed(s, `the server put it out (${s.closeReason})`);
+        if (s.closeReason === REJECT_TRAVEL) s.closeText = r.string(MAX_SERVER_TEXT_BYTES);
+        s.welcomedNow();
+      },
+    });
+    messages.add({
+      kind: S_TRAVEL,
+      read(s, r) {
+        const ticket = new Uint8Array(TICKET_BYTES);
+        for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
+        const world = r.u16();
+        if (!r.overflow) s.travelled = { ticket, world };
+      },
+    });
+    return messages;
   }
 
   /** The used-up nodes of a chunk. Applied now if the chunk is filled, and remembered for when it is. */
