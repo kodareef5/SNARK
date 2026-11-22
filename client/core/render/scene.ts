@@ -40,11 +40,7 @@ import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { SupplyView } from "../supply.ts";
-import { JET_REACH, WASH_EVERY, WASH_HEIGHT, bellAt, jetLength, squash, TRAIL_MOST, TRAIL_REACH, alongBone, CAPSULE, CAPSULE_REACH, shaftFlat, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "./supply.ts";
-import { packEffect } from "./supply-light.ts";
-import { TRAIL_SECONDS, writeDropSky } from "./supply-sky.ts";
-import { MARKS, POSE_COMING, POSE_FLYING, POSE_GONE, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
-import { nearestColour } from "../../../shared/pack/palette.ts";
+import { writeDropSky } from "./supply-sky.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
 import { farPlane, type Camera } from "./camera.ts";
@@ -90,6 +86,7 @@ import { landmarkFars } from "../../../shared/pack/far.ts";
 import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } from "./motion.ts";
 import { Frame, walk, type Pass } from "./pass.ts";
 import { Casting } from "./casting.ts";
+import { SupplyDrops } from "./passes/supply-drops.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 import type { Tier } from "../assets/tiers.ts";
 
@@ -186,8 +183,6 @@ const CAST_RUN = 5;
 const SETTLE = 2000;
 /** A node form with nothing to draw: what is left of a used-up node whose mesh no pack has. */
 const HIDDEN = 0xffff;
-/** Whether a shaft of light `wide` in radius and `tall` high, its foot camera-relative, is in the view. */
-const shaftSeen = (cam: Camera, x: number, y: number, z: number, wide: number, tall: number): boolean => cam.boxVisible(x - wide, y, z - wide, x + wide, y + tall, z + wide);
 const NEAR = 1 << PASS_NEAR;
 const FAR = 1 << PASS_FAR;
 const NO_SHOTS: readonly ShotEnd[] = [];
@@ -470,20 +465,6 @@ export class Scene {
   private readonly birthScale: Float32Array;
   /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
   shots: Shots | null = null;
-  /** The supply drops live on the map, drawn from the list the server tells (client/core/supply.ts). The app sets it. */
-  supply: SupplyView | null = null;
-  /** The capsule's pieces' meshes in the order of supply.ts PIECES, and the kind of the server's prop, which the model stands in for (-1 with no model). */
-  private readonly capsuleMesh: Int32Array;
-  private readonly capsuleKind: number;
-  private readonly capsuleStance: CapsuleStance = { x: 0, y: 0, z: 0, yaw: 0, legs: 0, shutters: 0, hatch: 0, hoop: 0 };
-  private readonly capsulePose = newPose();
-  private readonly capsuleRows = new Float32Array(BONE_FLOATS);
-  private readonly capsuleTints = new Map<number, number>();
-  private readonly capsuleHalo = { height: 0, strength: 0 };
-  private readonly capsuleBell = new Float32Array(3);
-  /** By drop: the tick its jets last raised dust, and the state it was last seen in, for the burst as it lands. */
-  private readonly capsuleWash = new Map<number, number>();
-  private readonly capsuleState = new Map<number, number>();
   shotTick = 0;
   /** Structures falling after a removal. The app sets it. */
   falling: Falling | null = null;
@@ -678,6 +659,11 @@ export class Scene {
   readonly put: Draws;
   /** Sun shadows: the cascades and the lamp's view fitted this frame, what casts into them, and the casters (casting.ts). */
   readonly casting: Casting;
+  /** The supply drops live on the map (passes/supply-drops.ts), and the kind of the server's prop its model stands in for, or -1. */
+  private readonly supplyDrops: SupplyDrops;
+  private readonly capsuleKind: number;
+  get supply(): SupplyView | null { return this.supplyDrops.view; }
+  set supply(view: SupplyView | null) { this.supplyDrops.view = view; }
   get cascades(): Cascades {
     return this.casting.cascades;
   }
@@ -711,9 +697,6 @@ export class Scene {
     this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow"), light: eye("crown_light"), deckLight: eye("deck_light") };
     this.lanternMesh = { frame: eye("lantern"), shutter: eye("shutter"), lip: eye("shutter_light"), light: eye("well_light"), masts: eye("mast_light") };
     this.sextantMesh = { frame: eye("sextant"), needle: eye("needle"), indexLight: eye("index_light"), keelLight: eye("keel_light") };
-    // The supply capsule's pieces (supply.ts), each -1 in a pack without its model, which draws the stand-in.
-    this.capsuleMesh = Int32Array.from(CAPSULE_PIECES, (piece) => table.find("core:supply_capsule/" + piece));
-    this.capsuleKind = this.capsuleMesh[0]! >= 0 ? (reg.index.get("core:supply_capsule") ?? -1) : -1;
     this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -820,6 +803,8 @@ export class Scene {
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
+    this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
+    this.capsuleKind = this.supplyDrops.kind;
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
     let reach = 0;
@@ -855,7 +840,7 @@ export class Scene {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
     }
-    this.frame = new Frame(this.packet, world, this.assets, this.budget, this.put, this.casting);
+    this.frame = new Frame(this.packet, world, this.assets, this.budget, this.put, this.casting, this.transient);
     this.passes = this.rows();
     this.hooks = walk(this.passes);
   }
@@ -1048,6 +1033,7 @@ export class Scene {
     if (p.tileCount === MAX_TILES) p.dropped++;
     const f = this.frame;
     f.cam = cam;
+    f.viewHeight = this.viewHeight;
     f.remote = remote;
     f.own = this.own;
     f.tier = this.assets.tier;
@@ -1084,7 +1070,7 @@ export class Scene {
       },
       // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
       { draw: (f) => { if (this.world.tideEyes) this.showTideEyes(f.cam, this.world.tideEyes); } },
-      { draw: (f) => { if (this.supply?.list && this.capsuleKind >= 0) this.showSupply(f.cam, this.supply); } },
+      this.supplyDrops,
       { draw: (f) => { if (this.world.motion && this.motionReg) this.showMotion(f.cam, this.world.motion); } },
       {
         draw: (f) => {
@@ -1947,205 +1933,6 @@ export class Scene {
     }
     p.transientCount = total;
   }
-
-  /**
-   * The supply capsules, each from its drop's pose (shared/sim/supply.ts) and in pieces, each piece a draw with one
-   * bone (supply.ts): the hull, its legs folding out as it brakes, the louvres' slats opening one after another once it
-   * stands, the hatch ajar once it has been opened, a collar for each step of its tier, its class's top-mark, the hoop
-   * of a ringed one turning, and its own lit strips, which take the drop's effect. Past CAPSULE_REACH its shaft is all
-   * there is of it.
-   */
-  private showSupply(cam: Camera, view: SupplyView): void {
-    const p = this.packet;
-    const list = view.list!;
-    const pose = this.capsulePose, s = this.capsuleStance, rows = this.capsuleRows, mesh = this.capsuleMesh;
-    view.modelled = true;
-    view.capsules = view.shafts = 0;
-    // `size` is how many times its modelled size a piece of light is drawn, and `tall` how far up from its origin it
-    // reaches. Whether it is in the view and was drawn.
-    const piece = (which: number, glow = false, size = 1, tall = 0): boolean => {
-      const m = mesh[which]!;
-      if (m < 0 || p.transientCount >= p.transientIds.length || p.drawCount + this.put.doubled >= MAX_DRAWS || p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return false;
-      const cx = rows[3]!, cy = rows[7]! + tall / 2, cz = rows[11]!;
-      const r = (this.radiusOfMesh[m]! + 0.5) * size;
-      const up = Math.max(r, tall / 2);
-      if (!cam.boxVisible(cx - r, cy - up, cz - r, cx + r, cy + up, cz + r)) return false;
-      const first = p.transientCount++;
-      const distance = Math.max(1, Math.hypot(cx, rows[7]!, cz) - r) / size;
-      const level = this.assets.choose(this.assets.table.error[m]!, distance, -1);
-      this.assets.wantTextured(m, level, distance);
-      const bone = p.boneCount++;
-      p.bones.set(rows, bone * BONE_FLOATS);
-      this.transient.setSkinned(first, bone, this.capsuleDye);
-      p.transientIds[first] = 0;
-      this.put.draw(m, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_PLAIN | DRAW_SKINNED | (glow ? DRAW_EMISSIVE : 0), cam.passes(cx - r, cy - up, cz - r, cx + r, cy + up, cz + r));
-      return true;
-    };
-    const seconds = view.tick / TICK_RATE;
-    const halo = this.capsuleHalo;
-    // What is kept by drop is let go with its drop.
-    if (this.capsuleState.size > list.rows.length + 8) {
-      this.capsuleState.clear();
-      this.capsuleWash.clear();
-    }
-    for (const row of list.rows) {
-      supplyPose(row, view.tick, TICK_RATE, pose);
-      if (pose.state === POSE_GONE) continue;
-      const tier = list.tiers[row.tier];
-      const rgb = tier?.rgb ?? 0xffffff;
-      // The shaft, where the drop will land or has: a tube of light sized by its bone, never thinner than two pixels,
-      // brought in to the edge of the view where it stands beyond it, and kept through the haze. Its pulses, its
-      // sheath and halos (a ringed drop's), its class's figure near its foot and under its head, the glow at its foot.
-      let sx = row.x - cam.x, sy = row.y - cam.y, sz = row.z - cam.z;
-      const reach = Math.hypot(sx, sz);
-      const fog = Math.max(0, Math.min(1, (reach - p.fogStart) / Math.max(1, p.fogEnd - p.fogStart)));
-      const power = pose.shaft * shaftKeeps(reach, fog);
-      if (power > 0.01 && view.shafts < SHAFTS_MOST) {
-        // Past nine tenths of the far plane it is drawn there, as wide and as tall as it then looks.
-        const near = reach > 0.9 * cam.far ? (0.9 * cam.far) / reach : 1;
-        sx *= near;
-        sy *= near;
-        sz *= near;
-        const wide = shaftRadius(reach, cam.fovY, this.viewHeight) * near;
-        this.put.effect[0] = (view.tick - row.land) / TICK_RATE;
-        this.put.effect[1] = rgb;
-        this.put.effect[2] = power;
-        // The tubes are lit flat where they are a few pixels wide; the figures and halos are not tubes.
-        this.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look, shaftFlat(reach, cam.fovY, this.viewHeight));
-        uprightBone(rows, 0, sx, sy, sz, wide, near);
-        // The tube is as wide as its bone makes it, whatever the reach of the mesh it is sized from.
-        if (shaftSeen(cam, sx, sy, sz, wide, SHAFT_HEIGHT * near) && piece(PIECE.shaft, true, Math.max(wide, 1), SHAFT_HEIGHT * near)) view.shafts++;
-        const mark = list.classes[row.cls]?.mark ?? 0;
-        const figure = PIECE.figure + (mark < MARKS.length ? mark : 0);
-        if (reach < 700) {
-          uprightBone(rows, 0, sx, sy + FIGURE_NEAR, sz, 1, 1);
-          piece(figure, true, 1, 3);
-        }
-        uprightBone(rows, 0, sx, sy + (SHAFT_HEIGHT - FIGURE_UNDER_HEAD) * near, sz, FIGURE_FAR_SIZE * near, FIGURE_FAR_SIZE * near);
-        piece(figure, true, FIGURE_FAR_SIZE * near, 30 * near);
-        if (row.ringed) {
-          const sheath = shaftRadius(reach, cam.fovY, this.viewHeight, SHEATH_WIDER) * near;
-          uprightBone(rows, 0, sx, sy, sz, sheath, near);
-          piece(PIECE.sheath, true, Math.max(sheath, 1), SHAFT_HEIGHT * near);
-          // Low poly draws light as flat colour that hides what is behind it: a halo would be a slab, so it has none.
-          for (let k = 0; k < HALOS && reach < 500 && p.lit; k++) {
-            haloAt(seconds + row.look, k, halo);
-            this.put.effect[2] = power * halo.strength;
-            uprightBone(rows, 0, sx, sy + halo.height, sz, sheath * 1.2, 1);
-            piece(PIECE.halo, true, sheath * 1.2, 0.4);
-          }
-        }
-        // Nor the glow on the ground at its foot, which would be a disc of paint.
-        if (pose.state !== POSE_COMING && reach < 400 && p.lit) {
-          this.put.effect[2] = power * (0.4 + 0.6 * pose.standing);
-          uprightBone(rows, 0, sx, sy, sz, FOOT_REACH, 1);
-          piece(PIECE.foot, true, FOOT_REACH, 0.1);
-        }
-        this.put.effect.fill(0);
-      }
-      if (pose.state === POSE_COMING) continue;
-      s.x = pose.x - cam.x;
-      s.y = pose.y - cam.y;
-      s.z = pose.z - cam.z;
-      const far = Math.hypot(s.x, s.y, s.z);
-      if (pose.state === POSE_FLYING && (far < TRAIL_REACH || s.y < -0.01 * far) && far < cam.far * 0.9) {
-        // In flight it trails light. The sky's streak is this from afar (supply-sky.ts); near, and from above where
-        // the sky is not behind it, it is a plume turned to lie along the way it came.
-        const speed = pose.speed, along = pose.along;
-        const hx = pose.x, hy = pose.y, hz = pose.z;
-        supplyPose(row, Math.max(row.release, view.tick - TRAIL_SECONDS * TICK_RATE * 0.2), TICK_RATE, pose);
-        const wx = hx - pose.x, wy = hy - pose.y, wz = hz - pose.z, went = Math.hypot(wx, wy, wz);
-        if (went > 0.01) {
-          const wide = Math.max(0.8, far * 0.0016) / 0.11;
-          this.put.effect[0] = seconds;
-          this.put.effect[1] = rgb;
-          this.put.effect[2] = Math.min(1, (view.tick - row.release) / (0.5 * TICK_RATE)) * (1 - Math.max(0, (along - 0.93) / 0.07));
-          this.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
-          const long = Math.min(TRAIL_MOST, speed * 0.3);
-          alongBone(rows, 0, s.x, s.y, s.z, wx / went, wy / went, wz / went, wide, long);
-          piece(PIECE.jet, true, long, 0);
-          this.put.effect.fill(0);
-        }
-        supplyPose(row, view.tick, TICK_RATE, pose);
-      }
-      if (far > CAPSULE_REACH || !cam.boxVisible(s.x - 1.6, s.y - 0.2, s.z - 1.6, s.x + 1.6, s.y + 2.9, s.z + 1.6)) continue;
-      // Its jets: a plume under each bell while it brakes, a moment after it stands, and as it goes; and the dust they
-      // raise while they play on the ground, with a burst as it touches down.
-      const over = pose.y - row.y;
-      if (pose.thrust > 0.01 && far < JET_REACH) {
-        s.yaw = (row.look / 256) * 2 * Math.PI;
-        this.put.effect[0] = seconds;
-        this.put.effect[1] = rgb;
-        this.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
-        for (let k = 0; k < CAPSULE.legs; k++) {
-          bellAt(this.capsuleBell, s, k);
-          const long = jetLength(pose.thrust, seconds, k, over + CAPSULE.bells.exit);
-          this.put.effect[2] = pose.thrust;
-          uprightBone(rows, 0, this.capsuleBell[0]!, this.capsuleBell[1]!, this.capsuleBell[2]!, 1 + 0.5 * pose.thrust, long);
-          piece(PIECE.jet, true, long + 1, 0);
-        }
-        this.put.effect.fill(0);
-        if (over < WASH_HEIGHT && view.tick - (this.capsuleWash.get(row.id) ?? -Infinity) > WASH_EVERY * TICK_RATE) {
-          this.capsuleWash.set(row.id, view.tick);
-          this.details.groundDust(row.id, row.x, row.y, row.z, view.tick, 1.2 + 1.6 * (1 - over / WASH_HEIGHT), 3, 6);
-        }
-      }
-      if (far < JET_REACH) {
-        // The touchdown itself, once, as it is seen to land.
-        const was = this.capsuleState.get(row.id);
-        if (was !== undefined && was !== POSE_LANDED && pose.state === POSE_LANDED && pose.since < 0.5) this.details.groundDust(row.id + 65536, row.x, row.y, row.z, view.tick, 2.6, 22, 30);
-        this.capsuleState.set(row.id, pose.state);
-      }
-      // It sinks on its legs as it takes its weight, and comes up again.
-      if (pose.state === POSE_LANDED) s.y -= squash(pose.since);
-      let dye = this.capsuleTints.get(rgb);
-      if (dye === undefined) this.capsuleTints.set(rgb, (dye = nearestColour(this.groundPalette, (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)));
-      this.capsuleDye = dye;
-      s.yaw = (row.look / 256) * 2 * Math.PI;
-      s.legs = pose.legs;
-      s.shutters = pose.shutters;
-      s.hatch = row.opened && pose.state === POSE_LANDED ? Math.min(1, Math.max(0, pose.since)) : 0;
-      s.hoop = (view.tick / TICK_RATE) * HOOP_RATE + row.look;
-      view.capsules++;
-      fixedBone(rows, 0, s);
-      piece(0);
-      for (let k = 0; k < CAPSULE.legs; k++) {
-        legBone(rows, 0, s, k);
-        piece(1);
-      }
-      if (far < SLAT_REACH) {
-        for (let k = 0; k < CAPSULE.legs; k++) for (let j = 0; j < CAPSULE.lantern.slats; j++) {
-          slatBone(rows, 0, s, k, j);
-          piece(2);
-        }
-      }
-      hatchBone(rows, 0, s);
-      piece(3);
-      const count = Math.min(CAPSULE.collar.most, tier?.count ?? 1);
-      for (let k = 0; k < count; k++) {
-        collarBone(rows, 0, s, k);
-        piece(4);
-      }
-      if (row.ringed) {
-        hoopBone(rows, 0, s);
-        piece(5);
-      }
-      const worn = list.classes[row.cls]?.mark ?? 0;
-      markBone(rows, 0, s);
-      piece(PIECE.mark + (worn < MARKS.length ? worn : 0));
-      // Its lit strips: the seconds since it landed, its colour, how far its lantern is open, and its count.
-      this.put.effect[0] = (view.tick - row.land) / TICK_RATE;
-      this.put.effect[1] = rgb;
-      this.put.effect[2] = pose.shutters;
-      this.put.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
-      fixedBone(rows, 0, s);
-      piece(6, true);
-      this.put.effect.fill(0);
-    }
-  }
-
-  /** The palette colour nearest the tier of the capsule being drawn: its glass's dye. */
-  private capsuleDye = 0;
 
   private showTideEyes(cam: Camera, sites: readonly TideEyeSite[]): void {
     const p = this.packet;

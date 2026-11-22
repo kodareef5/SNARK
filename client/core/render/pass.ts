@@ -10,7 +10,7 @@ import type { Camera } from "./camera.ts";
 import type { Casting } from "./casting.ts";
 import type { Draws } from "./draws.ts";
 import type { Hiding } from "./hide.ts";
-import type { FramePacket } from "./packet.ts";
+import type { FramePacket, InstanceWriter } from "./packet.ts";
 import type { OwnBody, RenderWorld } from "./scene.ts";
 
 export interface Pass {
@@ -32,6 +32,8 @@ export class Frame {
   now = 0;
   /** Metres to the end of the view (Scene.viewDistance). */
   view = 0;
+  /** The height of the view in pixels (Scene.viewHeight). */
+  viewHeight = 720;
   /** Whether the eye is under water. */
   under = false;
   /** What hides what, from the pass that finds it on: undefined before it, and on a frame that hides nothing. */
@@ -45,14 +47,17 @@ export class Frame {
   readonly put: Draws;
   /** The frame's shadows: whether anything casts, into which cascades a box does, and the caster list's writer. */
   readonly casting: Casting;
+  /** The writer of the packet's instances made for one frame (TRANSIENT_BUFFER). */
+  readonly transient: InstanceWriter;
 
-  constructor(packet: FramePacket, world: RenderWorld, assets: Assets, budget: FrameBudget, put: Draws, casting: Casting) {
+  constructor(packet: FramePacket, world: RenderWorld, assets: Assets, budget: FrameBudget, put: Draws, casting: Casting, transient: InstanceWriter) {
     this.packet = packet;
     this.world = world;
     this.assets = assets;
     this.budget = budget;
     this.put = put;
     this.casting = casting;
+    this.transient = transient;
   }
 }
 
