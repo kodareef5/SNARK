@@ -4,6 +4,7 @@
 // `perf` keeps a record with a picture at each end, and the record runs only while the mode is armed.
 
 import { expect, test } from "bun:test";
+import { PASS_CASTERS, PASS_NEAR } from "../../client/core/passes.ts";
 import { App } from "../../client/core/app.ts";
 import { FrameRing } from "../../client/core/assets/frames.ts";
 import { NOTES_KIT } from "../../client/core/notes-kit.ts";
@@ -36,7 +37,7 @@ function fakePort(answers: Answer[], failing: readonly number[] = []): NotePort 
     // By pass the casters take 1.5 ms and the near pass 3; whole, the frame 4.5.
     gpu: (mode: number, out: Float64Array) => {
       out.fill(0);
-      if (mode === 2) [out[1], out[2]] = [1.5, 3];
+      if (mode === 2) [out[PASS_CASTERS], out[PASS_NEAR]] = [1.5, 3];
       else out[0] = 4.5;
       return mode > 0;
     },
