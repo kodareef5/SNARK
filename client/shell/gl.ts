@@ -2,47 +2,61 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
-import { moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_HEAT_SHIFT, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_RANGED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
-import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
+import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
+import { AT_DRAW, AT_FRAME, AT_TILES, Drawn, SEND_1F, SEND_1I, SEND_2F, SEND_3F, SEND_3FV, SEND_FLOATS, SHELL_UNIFORMS, type UniformRow } from "../core/render/uniforms.ts";
 import { WeatherMasks } from "./texgen.ts";
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
-import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift } from "../core/render/post.ts";
 import { POLYGON_OFFSET, shadowLayer, shadowLayers } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
-import { LAYER_LEVELS, NEUTRAL, lampsOn, materialEmission, skinMode } from "../core/render/surface.ts";
+import { NEUTRAL, lampsOn } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseArea, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import type { Tier } from "../core/assets/tiers.ts";
 import type { Manifest, ManifestMesh } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
-import { CELL, mipOffset } from "../../shared/pack/details.ts";
+import { mipOffset } from "../../shared/pack/details.ts";
 import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { ROAD_PLANES, ROAD_STEP, roadSamples } from "../../shared/world/roadframe.ts";
 
+/** A row a program's texts declare (uniforms.ts): where it is, and where `held` keeps what it was last sent, or sent for. */
+interface Held {
+  row: UniformRow;
+  at: WebGLUniformLocation;
+  slot: number;
+}
+
 interface Program {
   program: WebGLProgram;
   /** Its texts until its link is checked, the first time it is drawn with, and null after. */
   text: ProgramText | null;
-  /**
-   * Where each of U's uniforms is, found when its link is checked, and what each holds: a number as it was set, and
-   * for a vector what it was set from (a mesh, a material, a frame or a view).
-   */
+  /** Its rows (programs.ts UNIFORMS), and from when its link is checked those its texts declare, by when each is set. */
+  rows: readonly UniformRow[];
+  frame: Held[];
+  draw: Held[];
+  tiles: Held[];
+  held: Float64Array;
+  /** Where each of the shell's own uniforms is (U), and what each holds as it was set. */
   at: (WebGLUniformLocation | null)[];
   last: Float64Array;
+  /** The step or cascade, and the frame, whose uniforms it holds. */
+  view: number;
+  serial: number;
   /** The bounds uCenter and uHalf were set from: a level's own or its mesh's. */
   bounds: object | null;
 }
 
-/** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers follow its place in `last`, and uEffect's four end it. */
-const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, heat: 46, weatherReady: 47 } as const;
+/** The uniforms the shell sets by code (uniforms.ts SHELL_UNIFORMS), by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
+const own = (name: (typeof SHELL_UNIFORMS)[number]): number => SHELL_UNIFORMS.indexOf(name);
+const U = { viewProj: own("uViewProj"), from: own("uFrom"), worldReady: own("uWorldReady"), weatherReady: own("uWeatherReady"), pass: own("uPass"), extent: own("uExtent"), center: own("uCenter"), half: own("uHalf"), offset: own("uOffset") } as const;
+const NO_FLOATS = new Float64Array(0);
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -158,9 +172,9 @@ export class GlRenderer {
   /** The walls' weathering masks, made on the card (texgen.ts). */
   private weather!: WeatherMasks;
   private readonly anisotropyOf = (target: number): void => this.anisotropy(target);
-  /** How much a material that glows only by night glows in this frame (surface.ts `lampsOn`). */
-  private night = 0;
-  private exposure = 1;
+  /** What the rows of a program's uniforms read (uniforms.ts): the frame, and the draw being drawn; and where a row's floats are put. */
+  private readonly drawn: Drawn;
+  private readonly scratch = new Float64Array(4);
   /** The world finishes' maps by role, each an array of a layer a finish, its side and the finest level drawn; and each world texture's role * 32 + layer. */
   private world: (WebGLTexture | null)[] = [];
   private worldSide = [0, 0, 0];
@@ -193,7 +207,6 @@ export class GlRenderer {
   private readonly streetRevisions = [-1, -1];
   private streetWidth = 0;
   private readonly noReflection = new Float32Array(1);
-  private readonly wheelCenters: Float32Array[];
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
   private detailAtlas: WebGLTexture | null = null;
@@ -245,8 +258,8 @@ export class GlRenderer {
     }
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.meshes = manifest.meshes;
-    this.wheelCenters = (pack.header.rigs ?? []).map(rig => Float32Array.from(rig.rest.slice(0,96)));
     this.finish = finishTable(pack.palette, manifest);
+    this.drawn = new Drawn(pack, hf, this.ground, this.materials, this.meshes, this.finish.row);
     this.forced = forced;
     this.init();
   }
@@ -376,8 +389,8 @@ export class GlRenderer {
     const blend = (p.drawFlags[d]! & DRAW_BLEND) !== 0;
     const prog = this.use(PROGRAM.details, p);
     this.set(blend, false, !blend);
-    this.uniform(prog, U.blend, blend ? 1 : 0);
-    this.uniform(prog, U.cells, (this.pack.header.details?.atlas.side ?? CELL) / CELL);
+    this.drawn.flags = p.drawFlags[d]!;
+    this.give(prog, prog.draw);
     gl.activeTexture(gl.TEXTURE0 + UNIT.details);
     gl.bindTexture(gl.TEXTURE_2D, this.detailAtlas);
     this.vertexArray(this.detailVao);
@@ -549,7 +562,7 @@ export class GlRenderer {
   private program(n: number, light = this.light > 0, tier = this.warmed!): Program {
     const text = Object.values(PROGRAMS)[n]!(tier, this.format, this.shadowLookup === "hard", light);
     const key = n + text.defines + text.vertex + text.fragment;
-    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!;
+    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text, n)).get(key)!;
     return light === this.light > 0 && tier === this.warmed ? (this.made[n] = made) : made;
   }
 
@@ -575,7 +588,74 @@ export class GlRenderer {
     if (buffer !== this.arrayBuffer) this.gl.bindBuffer(this.gl.ARRAY_BUFFER, (this.arrayBuffer = buffer));
   }
 
-  /** Sets float uniform `k` of `prog`, the program in use, unless it has none or holds `v` already. */
+  /**
+   * Sets each of `rows` of `prog`, the program in use, from what `drawn` says, unless the program holds it already: a
+   * number that is the one last sent, and floats or an array last sent for the same key (uniforms.ts). It makes nothing.
+   */
+  private give(prog: Program, rows: readonly Held[]): void {
+    const gl = this.gl, c = this.drawn, last = prog.held, out = this.scratch;
+    for (let i = 0; i < rows.length; i++) {
+      const h = rows[i]!, row = h.row, k = h.slot, send = row.send;
+      if (row.value !== null) {
+        const v = row.value(c);
+        if (last[k] === v) continue;
+        last[k] = v;
+        if (send === SEND_1F) gl.uniform1f(h.at, v);
+        else if (send === SEND_1I) gl.uniform1i(h.at, v);
+        else gl.uniform1ui(h.at, v);
+        continue;
+      }
+      if (row.key !== null) {
+        const key = row.key(c);
+        if (last[k] === key) continue;
+        if (row.array !== null) {
+          const a = row.array(c) as Float32List | null;
+          if (a === null) continue;
+          last[k] = key;
+          if (send === SEND_3FV) gl.uniform3fv(h.at, a);
+          else gl.uniform4fv(h.at, a);
+          continue;
+        }
+        last[k] = key;
+        row.fill!(c, out);
+      } else {
+        row.fill!(c, out);
+        let same = true;
+        for (let j = 0; j < SEND_FLOATS[send]!; j++) {
+          if (last[k + j] !== out[j]) same = false;
+          last[k + j] = out[j]!;
+        }
+        if (same) continue;
+      }
+      if (send === SEND_2F) gl.uniform2f(h.at, out[0]!, out[1]!);
+      else if (send === SEND_3F) gl.uniform3f(h.at, out[0]!, out[1]!, out[2]!);
+      else gl.uniform4f(h.at, out[0]!, out[1]!, out[2]!, out[3]!);
+    }
+  }
+
+  /**
+   * Finds the place of each of a linked program's rows that its texts declare, once, and sorts them by when they are
+   * set; a row that starts with a number is given it. A row of one number, or with a key, keeps one number in `held`.
+   */
+  private find(prog: Program): void {
+    const gl = this.gl;
+    const starts: Held[] = [];
+    let slots = 0;
+    for (const row of prog.rows) {
+      const at = gl.getUniformLocation(prog.program, row.name);
+      if (at === null) continue;
+      const held = { row, at, slot: slots };
+      slots += row.fill !== null && row.key === null ? SEND_FLOATS[row.send]! : 1;
+      if (row.start !== null) starts.push(held);
+      if (row.at === AT_FRAME) prog.frame.push(held);
+      else if (row.at === AT_DRAW) prog.draw.push(held);
+      else if (row.at === AT_TILES) prog.tiles.push(held);
+    }
+    prog.held = new Float64Array(slots).fill(NaN);
+    for (const h of starts) gl.uniform1f(h.at, (prog.held[h.slot] = h.row.start!));
+  }
+
+  /** Sets float uniform `k` of the shell's own of `prog`, the program in use, unless it has none or holds `v` already. */
   private uniform(prog: Program, k: number, v: number): void {
     if (prog.last[k] === v || prog.at[k] === null) return;
     prog.last[k] = v;
@@ -612,13 +692,13 @@ export class GlRenderer {
   private use(n: number, p: FramePacket): Program {
     const gl = this.gl;
     const prog = this.made[n] ?? this.program(n);
-    const at = prog.at, last = prog.last;
+    const at = prog.at;
     if (prog.text) {
       if (!gl.getProgramParameter(prog.program, gl.LINK_STATUS)) throw new Error("program: " + gl.getProgramInfoLog(prog.program) + gl.getAttachedShaders(prog.program)!.map((s) => gl.getShaderInfoLog(s)).join(""));
       gl.useProgram((this.current = prog).program);
       for (const s in prog.text.samplers) gl.uniform1i(gl.getUniformLocation(prog.program, s), prog.text.samplers[s]!);
-      for (const name of Object.keys(U) as (keyof typeof U)[]) at[U[name]] = gl.getUniformLocation(prog.program, "u" + name[0]!.toUpperCase() + name.slice(1));
-      this.uniform(prog, U.alpha, 1);
+      for (let k = 0; k < SHELL_UNIFORMS.length; k++) at[k] = gl.getUniformLocation(prog.program, SHELL_UNIFORMS[k]!);
+      this.find(prog);
       const block = gl.getUniformBlockIndex(prog.program, "Frame");
       if (block !== gl.INVALID_INDEX) gl.uniformBlockBinding(prog.program, block, 0);
       prog.text = null;
@@ -628,62 +708,14 @@ export class GlRenderer {
       this.uniform(prog, U.worldReady, this.worldReady);
       this.uniform(prog, U.weatherReady, this.weather.plan.ready);
     }
-    if (last[U.viewProj] === this.view) return prog;
-    last[U.viewProj] = this.view;
+    if (prog.view === this.view) return prog;
+    prog.view = this.view;
     gl.uniformMatrix4fv(at[U.viewProj]!, false, this.matrix, this.matrixAt, 16);
     this.uniform(prog, U.from, this.from);
-    if (last[U.sun] === this.serial) return prog;
-    last[U.sun] = this.serial;
-    if (at[U.sun]) gl.uniform3fv(at[U.sun], p.sun);
-    if (at[U.sky]) gl.uniform3fv(at[U.sky], drawsLight(p.tier, this.light) ? p.sky : p.skyShown);
-    if (at[U.fog]) gl.uniform2f(at[U.fog], p.fogStart, p.fogEnd);
-    // Checker parity repeats every 16 m, so a small remainder keeps float precision.
-    if (at[U.camMod]) gl.uniform3f(at[U.camMod], p.camX % 16, p.camY % 16, p.camZ % 16);
-    this.uniform(prog, U.light, p.light);
-    if (at[U.worldEye]) gl.uniform3f(at[U.worldEye], p.camX, p.camY, p.camZ);
-    if (at[U.worldPhase]) gl.uniform3fv(at[U.worldPhase], p.worldPhase);
-    if (at[U.worldLeast]) gl.uniform3fv(at[U.worldLeast], p.worldLeast);
-    if (at[U.field]) gl.uniform4f(at[U.field], this.hf.minY, this.hf.stepY, this.ground.cell[SOURCE_MAP]!, p.camY);
-    if (at[U.surfaceCity]) gl.uniform4fv(at[U.surfaceCity], p.surfaceCity);
-    if (at[U.cascades] && last[U.cascades] !== p.cascadeCount) gl.uniform1i(at[U.cascades], (last[U.cascades] = p.cascadeCount));
+    if (prog.serial === this.serial) return prog;
+    prog.serial = this.serial;
+    this.give(prog, prog.frame);
     return prog;
-  }
-
-  /**
-   * Material `m` of a textured draw or caster of `mesh`: its tint, grey and cutoff, what the mesh's texture coordinates
-   * span, and the first `roles` of its maps; and for a draw with a layer at `level`, the level and its wear story.
-   */
-  private material(prog: Program, m: number, mesh: number, cutout: boolean, level: number, roles: number, wear = 0): void {
-    const gl = this.gl;
-    const mat = this.materials[m]!;
-    const at = prog.at, last = prog.last;
-    if (last[U.tint] !== m && at[U.tint]) {
-      last[U.tint] = m;
-      gl.uniform3f(at[U.tint]!, mat.tint[0], mat.tint[1], mat.tint[2]);
-    }
-    this.uniform(prog, U.grey, mat.grey);
-    this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
-    this.uniform(prog, U.sheet, mat.sheet ?? 0);
-    this.uniform(prog, U.emissive, materialEmission(mat, this.night, this.exposure));
-    if (last[U.uv] !== mesh) {
-      last[U.uv] = mesh;
-      gl.uniform4fv(at[U.uv]!, this.meshes[mesh]!.uv ?? WHOLE_UV);
-    }
-    if (level > 0) this.uniform(prog, U.level, level / LAYER_LEVELS);
-    if (level > 0) this.uniform(prog, U.wear, wear);
-    this.maps(mat, roles);
-  }
-
-  private streetFinish(prog: Program, p: FramePacket, d: number): void {
-    const gl = this.gl, at = prog.at, last = prog.last;
-    const wheels = p.drawWheelBones[d]!, rig = this.meshes[p.drawMesh[d]!]!.rig ?? -1;
-    this.uniform(prog, U.streetMaterial, p.drawStreetMaterial[d]!);
-    this.uniform(prog, U.optics, p.drawOptics[d]!);
-    if (wheels && at[U.wheelCenters] && last[U.wheelCenters] !== rig) {
-      gl.uniform3fv(at[U.wheelCenters]!, this.wheelCenters[rig]!);
-      last[U.wheelCenters] = rig;
-    }
-    if (at[U.wheelBones] && last[U.wheelBones] !== wheels) gl.uniform1ui(at[U.wheelBones]!, last[U.wheelBones] = wheels);
   }
 
   /**
@@ -756,6 +788,10 @@ export class GlRenderer {
     this.streetEnvironment(p);
     this.drawCalls = 0;
     this.serial++;
+    const c = this.drawn;
+    c.p = p;
+    c.serial = this.serial;
+    c.lightTarget = drawsLight(p.tier, this.light);
     this.failed.length = this.failedTextures.length = 0;
     if (p.tier !== this.warmed) {
       this.made = this.programs.get(p.tier) ?? [];
@@ -866,8 +902,8 @@ export class GlRenderer {
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
     if (p.street && !this.streetTexture) gl.bufferSubData(gl.UNIFORM_BUFFER, (FRAME.reflection + 3) * 4, this.noReflection);
-    this.night = lampsOn(p.frame);
-    this.exposure = p.frame[FRAME.exposure]!;
+    c.night = lampsOn(p.frame);
+    c.exposure = p.frame[FRAME.exposure]!;
 
     // Resource changes first, in order.
     for (const u of p.uploads) {
@@ -962,25 +998,18 @@ export class GlRenderer {
       const blend = (flags & DRAW_BLEND) !== 0;
       const m = p.drawMaterial[d]!;
       const layer = p.drawLayer[d]!;
-      const prog = this.use(drawProgram(p, d, this.materials[m]), p);
+      c.d = d;
+      c.flags = flags;
+      c.mesh = p.drawMesh[d]!;
+      c.m = m;
+      c.material = this.materials[m];
+      c.skinned = lod.skin;
+      const prog = this.use(drawProgram(p, d, c.material), p);
       this.set(blend, (textured || !blend) && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
-      this.uniform(prog, U.skin, skinMode(flags, textured && lod.skin));
-      this.uniform(prog, U.fade, p.drawFade[d]!);
-      this.uniform(prog, U.hand, p.drawHand[d]!);
-      this.uniform(prog, U.swap, p.drawSwap[d]!);
-      const fx = p.drawEffect, e = d * 4;
-      if (prog.at[U.effect] && moved(prog.last, U.effect, fx, e, 4)) gl.uniform4f(prog.at[U.effect]!, fx[e]!, fx[e + 1]!, fx[e + 2]!, fx[e + 3]!);
-      this.uniform(prog, U.heat, (flags >>> DRAW_HEAT_SHIFT) & 3);
-      if (textured) {
-        this.streetFinish(prog, p, d);
-        this.material(prog, m, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length, p.drawWear[d]!);
-      }
-      else if ((flags & DRAW_WATER) !== 0) this.maps(this.materials[m], MAP_ROLES.length);
-      else {
-        this.uniform(prog, U.fixture, p.drawFixture[d]!);
-        this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
-        this.uniform(prog, U.alpha, blend && this.finish.row[p.drawMesh[d]!] === 0 ? WATER_ALPHA : 1);
-      }
+      this.give(prog, prog.draw);
+      // A material's maps, and with a layer its layer; the sea's waves are a material's.
+      if (textured) this.maps(c.material, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length);
+      else if ((flags & DRAW_WATER) !== 0) this.maps(c.material, MAP_ROLES.length);
       this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d, (flags & DRAW_BENT) !== 0 ? this.buffers.get(p.drawBuffer[d]! + BEND_BUFFERS) : undefined);
       if (textured || (flags & DRAW_RANGED) !== 0) d = this.ranges(lod, p.drawFirstIndex, p.drawIndexCount, p.drawInstances[d]!, p.drawJoined, null, 0, d, p.drawCount);
       else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
@@ -1116,11 +1145,18 @@ export class GlRenderer {
         if (!lod || !buffer) continue;
         const flags = p.casterFlags[e]!;
         const cutout = (flags & DRAW_CUTOUT) !== 0, both = (flags & DRAW_TWO_SIDED) !== 0;
+        const c = this.drawn;
+        c.d = e;
+        c.flags = flags;
+        c.mesh = p.casterMesh[e]!;
+        c.m = p.casterMaterial[e]!;
+        c.material = this.materials[c.m];
+        c.skinned = lod.skin;
         const prog = this.use(cutout ? PROGRAM.depthCutout : PROGRAM.depth, p);
         this.set(false, !both, false, both);
-        this.uniform(prog, U.skin, skinMode(flags, lod.skin));
+        this.give(prog, prog.draw);
         // The cut-out caster's program reads the base colour alone.
-        if (cutout) this.material(prog, p.casterMaterial[e]!, p.casterMesh[e]!, true, 0, 1);
+        if (cutout) this.maps(c.material, 1);
         this.bind(prog, lod, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e, (flags & DRAW_BENT) !== 0 ? this.buffers.get(p.casterBuffer[e]! + BEND_BUFFERS) : undefined);
         if ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0) e = this.ranges(lod, p.casterFirstIndex, p.casterIndexCount, p.casterInstances[e]!, p.casterJoined, p.casterCascades, 1 << k, e, p.casterCount);
         else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.casterInstances[e]!);
@@ -1242,7 +1278,7 @@ export class GlRenderer {
    */
   private tiles(p: FramePacket, bit: number, map: number, window: number): void {
     const gl = this.gl;
-    const data = this.tileData, g = this.ground;
+    const data = this.tileData;
     for (let source = SOURCE_MAP; source <= SOURCE_WINDOW; source++) {
       let n = 0;
       for (let t = 0; t < p.tileCount; t++) {
@@ -1257,12 +1293,7 @@ export class GlRenderer {
       }
       if (n === 0) continue;
       const prog = this.use(source === SOURCE_MAP ? map : window, p);
-      this.uniform(prog, U.solid, 0);
-      if (prog.last[U.field] !== this.serial) {
-        prog.last[U.field] = this.serial;
-        gl.uniform4f(prog.at[U.field]!, this.hf.minY, this.hf.stepY, g.cell[source]!, p.camY);
-        gl.uniform2f(prog.at[U.last]!, g.width[source]! - 1, g.height[source]! - 1);
-      }
+      this.give(prog, prog.tiles);
       this.set(false, true, false);
       this.vertexArray(this.tileVao);
       this.array(this.tileBuffer);
@@ -1287,7 +1318,7 @@ export class GlRenderer {
   }
 
   /** Compiles and links the texts as given, with the defines after their first line, the #version line, asking nothing of either until `use`. */
-  private link(text: ProgramText): Program {
+  private link(text: ProgramText, n: number): Program {
     const gl = this.gl;
     const program = gl.createProgram()!;
     for (const type of [gl.VERTEX_SHADER, gl.FRAGMENT_SHADER]) {
@@ -1297,6 +1328,6 @@ export class GlRenderer {
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    return { program, text, at: [], last: new Float64Array(U.weatherReady + 1).fill(NaN), bounds: null };
+    return { program, text, rows: UNIFORMS[n]!, frame: [], draw: [], tiles: [], held: NO_FLOATS, at: [], last: new Float64Array(SHELL_UNIFORMS.length + 2).fill(NaN), view: -1, serial: -1, bounds: null };
   }
 }

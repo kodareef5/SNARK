@@ -11,10 +11,11 @@ import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./faca
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { DROP_GLSL } from "./supply-light.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
+import { CASTER_ROWS, CUTOUT_CASTER_ROWS, DETAIL_ROWS, FLAT_ROWS, FRAME_ROWS, LAYER_ROWS, MATERIAL_ROWS, MESH_ROWS, tileRows, type UniformRow } from "./uniforms.ts";
 import { ownVertex, worldVertex } from "./world-surfaces.ts";
 import { WATER_FRAGMENT } from "./water.ts";
 
@@ -187,6 +188,44 @@ void main() {
 export const PROGRAMS: Readonly<Record<string, Make>> = MAKE;
 /** Each program's number, its place in PROGRAMS: how a frame's draws name the one they are drawn with, and how a shell keeps them. */
 export const PROGRAM = Object.fromEntries(Object.keys(MAKE).map((name, n) => [name, n])) as Readonly<Record<keyof typeof MAKE, number>>;
+
+const FLAT_DRAW = [...FRAME_ROWS, ...MESH_ROWS, ...FLAT_ROWS], SURFACE_DRAW = [...FRAME_ROWS, ...MESH_ROWS, ...MATERIAL_ROWS];
+const GROUND_TILES = [...FRAME_ROWS, ...tileRows(SOURCE_MAP)], WINDOW_TILES = [...FRAME_ROWS, ...tileRows(SOURCE_WINDOW)];
+
+/**
+ * Each program's uniforms as rows (uniforms.ts), in the order a shell sets them. A row its texts do not declare costs
+ * nothing: a shell looks for a row's place when the program links and walks those it found. So a uniform for a
+ * program is a row in its list here, and a new program's uniforms are its list. The finish's passes take theirs from
+ * the shell alone (uniforms.ts SHELL_UNIFORMS).
+ */
+const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
+  flat: FLAT_DRAW,
+  terrain: GROUND_TILES,
+  terrainWindow: WINDOW_TILES,
+  seeThrough: FLAT_DRAW,
+  far: FLAT_DRAW,
+  pulled: FLAT_DRAW,
+  surface: SURFACE_DRAW,
+  surfaceWhole: SURFACE_DRAW,
+  surfaceUndyed: SURFACE_DRAW,
+  surfaceUndyedWhole: SURFACE_DRAW,
+  surfaceLayer: [...SURFACE_DRAW, ...LAYER_ROWS],
+  sky: FRAME_ROWS,
+  water: [...FRAME_ROWS, ...MESH_ROWS],
+  waterWake: [...FRAME_ROWS, ...MESH_ROWS],
+  details: [...FRAME_ROWS, ...DETAIL_ROWS],
+  depth: CASTER_ROWS,
+  depthCutout: CUTOUT_CASTER_ROWS,
+  depthTerrain: GROUND_TILES,
+  skyline: FLAT_DRAW,
+  signal: FLAT_DRAW,
+  depthTerrainWindow: WINDOW_TILES,
+  bloomDown: [],
+  bloomUp: [],
+  finish: [],
+};
+/** The same by a program's number. */
+export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
 
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
 const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details"];
