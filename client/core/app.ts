@@ -42,7 +42,8 @@ import { Controls, LOOK_SPEED } from "./controls.ts";
 import { pressKey } from "./key-row.ts";
 import { KEY_ROWS } from "./keys.ts";
 import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
-import { HudFill, type HudFrame } from "./hud/widget.ts";
+import { HudFill } from "./hud/widget.ts";
+import { AppFrame, type FramePart } from "./frame.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
 import { seatScratch } from "./render/characters.ts";
@@ -180,7 +181,9 @@ export class App {
   readonly hud = new HudModel();
   /** What the HUD's widgets fill from (hud/widget.ts): made once, set each frame. */
   private readonly hudFill = new HudFill();
-  private hudFrame: HudFrame | null = null;
+  /** The frame's values and its parts in their order (frame.ts): made once, the values set each frame. */
+  private readonly f: AppFrame;
+  private readonly parts: readonly FramePart[];
   /** The hour the sky shows: the server's, swept when it is set, or the one in an admin's hand on the sundial. */
   readonly sky = new SkyClock();
   /** The dash's readings of the vehicle driven. */
@@ -347,6 +350,7 @@ export class App {
     this.shown = reg;
     this.bagKind = reg.index.get(BAG) ?? -1;
     this.pack = pack;
+    this.f = new AppFrame(session, this.controls, this.ui, this.hud, this.cam, this.remote, pack);
     this.seatedAim = new SeatedAim(reg, pack);
     session.shotOrigin = (out, tick, yaw, pitch) => {
       if (!session.world || session.driving >= 0 || !session.own.seat) return false;
@@ -406,6 +410,7 @@ export class App {
       this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
+    this.parts = this.rows();
   }
 
   readonly builder = new Builder();
@@ -1200,11 +1205,46 @@ export class App {
 
   /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
+    const f = this.f;
+    this.measure(f, nowMs, width, height);
+    if (!this.turn(f)) return null;
+    const parts = this.parts;
+    for (let i = 0; i < parts.length; i++) parts[i]!.step(f);
+    return f.packet;
+  }
+
+  /**
+   * The frame's parts, once the session has had its turn and there is a world. A part's place here is its place in the
+   * frame. A new part is a file of its own and a line here. The rows written out here are the app's own still.
+   */
+  private rows(): FramePart[] {
+    return [
+      { step: (f) => this.follow(f) },
+      { step: (f) => this.telemetry(f) },
+      { step: (f) => this.sight(f) },
+      { step: (f) => this.ownBody(f) },
+      { step: (f) => this.place(f) },
+      { step: (f) => this.stage(f) },
+      { step: (f) => this.fillHud(f) },
+      { step: (f) => this.hear(f) },
+      { step: (f) => this.ghost(f) },
+      { step: (f) => this.usePrompt(f) },
+      { step: (f) => this.interface(f) },
+    ];
+  }
+
+  /** The frame's time and window, the interface's canvas for it, and the modules a setting first asks for. */
+  private measure(f: AppFrame, nowMs: number, width: number, height: number): void {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
     this.interval = this.last < 0 ? 0 : dt;
     this.last = nowMs;
     this.fps += (1000 / Math.max(dt, 1) - this.fps) * 0.05;
-    const aspect = width / Math.max(height, 1);
+    f.nowMs = nowMs;
+    f.dt = dt;
+    f.width = width;
+    f.height = height;
+    f.aspect = width / Math.max(height, 1);
+    f.steer = this.steer;
     // The interface's canvas for this window: shorter for a short one, with the screen's edges kept clear.
     const ui = this.ui, units = canvasHeight(width, height);
     this.unit = Math.max(height, 1) / units;
@@ -1218,9 +1258,6 @@ export class App {
     ui.creatureAhead = this.lookedAt >= 0;
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
     ui.storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
-    const session = this.session;
-    const hud = this.hud;
-    const c = this.controls;
     this.nowMs = nowMs;
     // The resource monitor is a file of its own, fetched once Diagnostics is first "monitor".
     if (ui.settings.monitor && !this.monitorAsked) {
@@ -1232,6 +1269,14 @@ export class App {
       this.notesAsked = true;
       void import("./notes/notes.ts").then((m) => (this.notes = new m.Notes(this, NOTES_KIT)), () => (this.notesAsked = false));
     }
+  }
+
+  /**
+   * The session's turn: the keys' pulses and meanings, the input sent and the own body predicted, the others sampled.
+   * False until there is a world, and once the session has closed: then the interface is built and nothing is drawn.
+   */
+  private turn(f: AppFrame): boolean {
+    const session = this.session, hud = this.hud, c = this.controls, nowMs = f.nowMs;
     hud.vehicle = null;
     if (!this.facing && session.state === "active") {
       // Mouse movement while connecting is an offset from the arrival view, not a reason to face +Z.
@@ -1247,9 +1292,9 @@ export class App {
       this.vehicleTelemetry.stop();
       // Only the reasons a player can act on are spelled out.
       hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
-      this.ui.build(aspect, hud, session);
+      this.ui.build(f.aspect, hud, session);
       if (this.sound) this.sounds?.hush(this.sound);
-      return null;
+      return false;
     }
     if (this.ui.menu || this.ui.inspect) this.blur();
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
@@ -1259,7 +1304,7 @@ export class App {
       this.visor.held = !this.visor.held;
     }
     if (this.nPulse > 0) c.key("KeyN", --this.nPulse > 0);
-    this.holding = this.heldInArms();
+    f.holding = this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
     this.refreshCockpitLook();
     // A glass raised takes the primary for its range: the hand holding it does not strike.
@@ -1272,10 +1317,18 @@ export class App {
     if (session.state !== "active" || !world) {
       this.vehicleTelemetry.stop();
       hud.status = "connecting";
-      this.ui.build(aspect, hud, session);
+      this.ui.build(f.aspect, hud, session);
       if (this.sound) this.sounds?.hush(this.sound);
-      return null;
+      return false;
     }
+    f.world = world;
+    this.arrive(f, world);
+    return true;
+  }
+
+  /** With a world: the scene made for it once, the sounds once their code has come, and the others sampled for the frame. */
+  private arrive(f: AppFrame, world: NonNullable<ClientSession["world"]>): void {
+    const session = this.session, hud = this.hud, nowMs = f.nowMs;
     if (this.shown !== session.registry) {
       this.shown = session.registry;
       this.seatedAim = new SeatedAim(this.shown, this.pack);
@@ -1299,6 +1352,7 @@ export class App {
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
+    const scene = (f.scene = this.scene);
     // The sound library starts once the sounds' rows and its code have come; the code is asked for once there is a device.
     if (this.split && !App.late && !this.soundAsked) {
       this.soundAsked = true;
@@ -1310,23 +1364,27 @@ export class App {
       code.hearSession(session, this.sounds);
       this.ui.hear = (key) => this.sounds?.hearUi(code.cueKey(key));
     }
-    for (const event of session.predictedTrees?.present() ?? []) {
-      this.scene.hideNode(event.ref, event.action === "break");
-      this.scene.treeFalls.add(event, nowMs);
+    const trees = session.predictedTrees;
+    if (trees) for (const event of trees.present()) {
+      scene.hideNode(event.ref, event.action === "break");
+      scene.treeFalls.add(event, nowMs);
       if (event.action === "break") {
         const size = session.nodeField!.forms.size[event.form]! / 64;
-        this.scene.details.nodeBreak(event.kind, event.ref, event.x, event.y, event.z, session.renderClock - session.remoteDelay, size);
+        scene.details.nodeBreak(event.kind, event.ref, event.x, event.y, event.z, session.renderClock - session.remoteDelay, size);
         this.sounds?.build.treeImpact(event.kind, event.x, event.y, event.z);
       }
     }
-    hud.status = this.debug ? `${this.scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
+    hud.status = this.debug ? `${scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
     // Sampled before the camera, which puts a passenger in its seat on the vehicle as it is drawn.
     session.sampleRemote(this.remote);
+  }
 
+  /** Who the camera follows and from where: the body's place this frame, what it rides or sits in, and the view of it. */
+  private follow(f: AppFrame): void {
+    const session = this.session, c = this.controls, nowMs = f.nowMs, dt = f.dt;
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
-    const cam = this.cam;
     const a = session.alpha;
-    const alive = session.sessionState === SESSION_ALIVE;
+    const alive = (f.alive = session.sessionState === SESSION_ALIVE);
     // A server takes a typed line a few ticks apart.
     if (alive && this.script.length > 0 && nowMs >= this.lineAt) {
       session.text(this.script.shift()!);
@@ -1336,44 +1394,38 @@ export class App {
       [c.yaw, c.pitch] = this.held;
       if (alive && this.releaseLook && this.script.length === 0) this.held = null;
     }
-    const move = this.reg.move[session.bodyKind];
+    const move = (f.move = this.reg.move[session.bodyKind]);
     // The eye eases toward the stance height, so crouching is a movement and not a cut.
-    const eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0;
+    const eyeNow = (f.eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0);
     // A body that has just appeared starts at its eye height.
     if (!alive) this.eye = -1;
     else this.eye = this.eye < 0 ? eyeNow : this.eye + (eyeNow - this.eye) * Math.min(1, dt / 90);
-    const eye = alive ? this.eye : 0;
-    const bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
-    const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
-    const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
-    const car = this.reg.vehicle[session.bodyKind];
-    const rotor = car?.movement === "rotor", boat = car?.movement === "boat", fullAttitude = car !== undefined && car !== null;
-    const vehiclePose = car ? predictedVehiclePose(session.ownPrev, session.own, a, rotor, boat, session.vehicleCorrection) : undefined;
-    if (alive && car && session.driving >= 0) {
-      if (car.movement === "rotor") {
-        const altitude = castWorld(world, bx, by + .05, bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : by - world.hf.heightAt(bx, bz);
-        this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, this.steer && (c.buttons & BTN_PRONE) !== 0);
-      } else if (car.movement === "boat") this.vehicleTelemetry.updateBoat(session.driving, session.own, car.spec, this.steer && (c.buttons & BTN_SPRINT) !== 0);
-      else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
-      this.vehicleTelemetry.lightMode = isWheelVehicle(car) && car.emergencyLights ? 0 : -1;
-      hud.vehicle = this.vehicleTelemetry;
-    } else this.vehicleTelemetry.stop();
-    const carYaw = vehiclePose?.qw !== undefined ? Math.atan2(2 * (vehiclePose.qw * vehiclePose.qy! + vehiclePose.qx! * vehiclePose.qz!), 1 - 2 * (vehiclePose.qx! ** 2 + vehiclePose.qy! ** 2))
-      : session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
-    const passenger = alive && session.driving < 0 && session.own.seatSlot !== 0 && session.own.seat > 0;
+    f.eye = alive ? this.eye : 0;
+    const bx = (f.bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX);
+    const by = (f.by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY);
+    const bz = (f.bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ);
+    const car = (f.car = this.reg.vehicle[session.bodyKind]);
+    const rotor = (f.rotor = car?.movement === "rotor"), boat = (f.boat = car?.movement === "boat");
+    const vehiclePose = (f.vehiclePose = car ? predictedVehiclePose(session.ownPrev, session.own, a, rotor, boat, session.vehicleCorrection) : undefined);
+    const carYaw = (f.carYaw = vehiclePose?.qw !== undefined ? Math.atan2(2 * (vehiclePose.qw * vehiclePose.qy! + vehiclePose.qx! * vehiclePose.qz!), 1 - 2 * (vehiclePose.qx! ** 2 + vehiclePose.qy! ** 2))
+      : session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a);
+    const passenger = (f.passenger = alive && session.driving < 0 && session.own.seatSlot !== 0 && session.own.seat > 0);
     // A passenger's chase camera is third person, so it obeys the same server rule.
-    let passengerFullAttitude = false, passengerCockpit = false;
-    let cockpitFrame: VehicleFrame | undefined = fullAttitude ? { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw } : undefined;
+    let passengerVehicle = false, passengerCockpit = false;
+    let cockpitFrame: VehicleFrame | undefined = car ? { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw } : undefined;
     if (passenger) for (let i = 0; i < this.remote.count; i++) {
       const r = this.remote;
       if (r.id[i] !== session.own.seat - 1 || r.gen[i] !== session.own.seatGen) continue;
-      passengerFullAttitude = !!this.reg.vehicle[r.kind[i]!];
+      passengerVehicle = !!this.reg.vehicle[r.kind[i]!];
       passengerCockpit = r.vehicleRotorcraft[i] !== 0 || r.vehicleBoat[i] !== 0;
-      if (passengerFullAttitude) cockpitFrame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
+      if (passengerVehicle) cockpitFrame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
     }
+    f.passengerVehicle = passengerVehicle;
+    f.passengerCockpit = passengerCockpit;
+    f.cockpitFrame = cockpitFrame;
     const helicopterHost = (rotor || boat) && session.driving >= 0 ? session.driving : passengerCockpit ? session.own.seat - 1 : -1;
     this.cockpitLook(helicopterHost, cockpitFrame);
-    const chase = passenger && session.thirdPerson && (!passengerCockpit || this.view.thirdPerson);
+    const chase = (f.chase = passenger && session.thirdPerson && (!passengerCockpit || this.view.thirdPerson));
     // The orbit goes round the body, its mount or the host of a passenger's chase view (-1 for none). A driver's chase
     // camera and a cockpit look round freely already. A new subject is a view the game forces: the orbit gives way at
     // once, and the camera eases from where it was as between any two views. The rule turning off, or death, eases it out.
@@ -1381,7 +1433,7 @@ export class App {
     if (this.orbit.follow(subject)) this.view.turn();
     this.orbitFree = alive && session.thirdPerson && subject !== -1;
     if (!this.orbitFree) this.orbit.set(false);
-    if (!alive || car || (session.driving < 0 && (!chase || passengerFullAttitude))) this.mountCamera.reset();
+    if (!alive || car || (session.driving < 0 && (!chase || passengerVehicle))) this.mountCamera.reset();
     // On foot the view is the one the player chose: from behind unless it chose the eye (Settings.thirdPerson). A survivor
     // rises in it, and comes back to it out of a vehicle, a seat or a saddle, whose views are their own. A page that
     // measures rises at the eye (fromEye).
@@ -1402,9 +1454,32 @@ export class App {
     this.gliderOpen = gliderOpen;
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.
-    const third = this.view.thirdPerson || (alive && !!car && !rotor && !boat);
+    f.third = this.view.thirdPerson || (alive && !!car && !rotor && !boat);
     if (!alive) this.view.thirdPerson = false;
-    else if (session.driving >= 0 && !fullAttitude) this.view.thirdPerson = true;
+    else if (session.driving >= 0 && !car) this.view.thirdPerson = true;
+  }
+
+  /** The instruments of the vehicle driven, read from its predicted body. */
+  private telemetry(f: AppFrame): void {
+    const session = this.session, c = this.controls, world = f.world, car = f.car;
+    if (f.alive && car && session.driving >= 0) {
+      if (car.movement === "rotor") {
+        const altitude = castWorld(world, f.bx, f.by + .05, f.bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : f.by - world.hf.heightAt(f.bx, f.bz);
+        this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, this.steer && (c.buttons & BTN_PRONE) !== 0);
+      } else if (car.movement === "boat") this.vehicleTelemetry.updateBoat(session.driving, session.own, car.spec, this.steer && (c.buttons & BTN_SPRINT) !== 0);
+      else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, f.dt);
+      this.vehicleTelemetry.lightMode = isWheelVehicle(car) && car.emergencyLights ? 0 : -1;
+      this.hud.vehicle = f.dash = this.vehicleTelemetry;
+    } else {
+      this.vehicleTelemetry.stop();
+      f.dash = null;
+    }
+  }
+
+  /** The aim and any sight raised: where the view looks, how wide it is, its window, and what the server is told of it. */
+  private sight(f: AppFrame): void {
+    const session = this.session, hud = this.hud, c = this.controls, cam = this.cam, world = f.world, nowMs = f.nowMs, dt = f.dt;
+    const alive = f.alive, a = session.alpha, passenger = f.passenger, move = f.move;
     // The view turns with the kick and, through a scope, with the sway, as a shot does (shared/sim/aim.ts), so the middle of
     // the view is where the next shot is pointed. The look the input sends stays the player's own.
     const gun = alive && session.weaponsAllowed ? (this.reg.weapon[session.own.held] ?? null) : null;
@@ -1427,7 +1502,7 @@ export class App {
       }
       lookPitch = lookPitch > PI / 2 ? PI / 2 : lookPitch;
     }
-    cam.aspect = aspect;
+    cam.aspect = f.aspect;
     // Aiming narrows the view in proportion to the player's setting; through a sight, by its optic's zoom. The mouse slows
     // to match on the tangent of the view's half (optics.ts lookScale). A sight that magnifies is seen from the eye, as
     // over the shoulder the middle of a narrow view is not where the shot goes; the player's choice of view is kept.
@@ -1459,7 +1534,7 @@ export class App {
       if (press && !this.glassPressed) this.glass.lase(nowMs);
       this.glassPressed = press;
     } else this.glassPressed = false;
-    hud.behind = alive && third && !this.view.atEye && session.driving < 0 && !passenger;
+    hud.behind = alive && f.third && !this.view.atEye && session.driving < 0 && !passenger;
     if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
     if (hud.vehicle?.active && hud.vehicle.boosting && !aiming) {
       // A thruster car's boost opens the view further and shakes it a little while the nozzles fire; the look sent does not.
@@ -1491,7 +1566,7 @@ export class App {
     hud.visorMode = this.visor.mode;
     hud.visorDigital = visorUp && this.visor.digital;
     hud.visorRange = this.visor.range;
-    this.visor.frame(this.scene.optic, daylight(this.sky.hour));
+    this.visor.frame(f.scene.optic, daylight(this.sky.hour));
     if (hud.scope && gun) {
       const pace = Math.hypot(session.own.vx, session.own.vz) / Math.max(1, move?.walkSpeed ?? 1);
       const kick = gun.recoilKick ? (session.own.kick * KICK_UNIT * UNIT_RADIANS) / ((gun.recoilKick * PI) / 180) : 0;
@@ -1502,7 +1577,7 @@ export class App {
     } else hud.sightOffX = hud.sightOffY = 0;
     const win = cam.window;
     if ((hud.scope || visorUp) && hud.banner === "") {
-      windowBox(hud.sightShape, hud.sightShare, aspect, this.windowAt);
+      windowBox(hud.sightShape, hud.sightShare, f.aspect, this.windowAt);
       win[0] = this.windowAt[0]! * 2 - 1; win[1] = 1 - this.windowAt[3]! * 2; win[2] = this.windowAt[2]! * 2 - 1; win[3] = 1 - this.windowAt[1]! * 2;
     } else { win[0] = win[1] = -1; win[2] = win[3] = 1; }
     hud.holo = alive && sight === "holo" && !orbiting;
@@ -1510,9 +1585,9 @@ export class App {
     this.sightAt.yaw = lookYaw;
     this.sightAt.pitch = lookPitch;
     this.sightAt.laser = alive && sight === "laser" && (session.inventory!.flags[held]! & FLAG_ON) !== 0;
-    this.sightAt.x = bx;
-    this.sightAt.y = by + eye;
-    this.sightAt.z = bz;
+    this.sightAt.x = f.bx;
+    this.sightAt.y = f.by + f.eye;
+    this.sightAt.z = f.bz;
     if (alive && this.ownSeatEye(world, this.remote, session.tickClock, c.yaw, c.pitch, this.posedEye)) {
       this.sightAt.x = this.posedEye[0]!; this.sightAt.y = this.posedEye[1]!; this.sightAt.z = this.posedEye[2]!;
     }
@@ -1521,7 +1596,7 @@ export class App {
     cam.zoom = magnification(base, this.fov);
     // Through a sight the server is told how far it magnifies and what it is on, so its cone widens the view (D1079).
     this.gaze(nowMs, world, (sighting || visorUp || glassUp) && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
-    this.lookReach = (sighting || visorUp || glassUp) && zoom > 1 ? Math.max(30, Math.min(GAZE_FARTHEST, GAZE_REACH * zoom)) : 30;
+    f.lookReach = this.lookReach = (sighting || visorUp || glassUp) && zoom > 1 ? Math.max(30, Math.min(GAZE_FARTHEST, GAZE_REACH * zoom)) : 30;
     hud.glass = glassUp;
     hud.zooming = this.zooming;
     hud.glassHeld = this.glassOptic !== null;
@@ -1540,18 +1615,25 @@ export class App {
     c.zoom = lookScale(base, this.fov, settings.sensitivity, settings.zoomSensitivity);
     // The crosshair opens with the cone the next shot would leave within.
     hud.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;
-    const body = this.body;
+    f.lookYaw = lookYaw;
+    f.lookPitch = lookPitch;
+  }
+
+  /** The own body as the scene draws it: the survivor, or the mount or vehicle it steers. */
+  private ownBody(f: AppFrame): void {
+    const session = this.session, c = this.controls, alive = f.alive, car = f.car, passenger = f.passenger;
+    const body = (f.body = this.body);
     body.kind = session.ownKind;
-    body.x = bx;
-    body.y = by;
-    body.z = bz;
+    body.x = f.bx;
+    body.y = f.by;
+    body.z = f.bz;
     body.yaw = c.yaw;
     body.tick = session.tickClock;
-    body.firstPerson = !(third && !this.view.atEye) && !chase;
+    body.firstPerson = !(f.third && !this.view.atEye) && !f.chase;
     body.id = handleIndex(session.ownHandle);
     body.generation = handleGen(session.ownHandle);
     body.vehicle = undefined;
-    body.cockpitActor = fullAttitude && !third ? handleIndex(session.ownHandle) : undefined;
+    body.cockpitActor = car && !f.third ? handleIndex(session.ownHandle) : undefined;
     body.attachment = passenger ? { host: session.own.seat - 1, slot: session.own.seatSlot, generation: session.own.seatGen } : undefined;
     body.look = session.ownLook;
     const inv = session.inventory;
@@ -1574,11 +1656,11 @@ export class App {
     for (let i = 0; i < this.remote.count; i++) if (this.remote.id[i] === body.id) body.state.unpackEmote(this.remote.emote[i]!);
     // While riding, the mount is the body it predicts, drawn from the prediction and always from outside.
     // Its own body is then one more remote body, where the server has it on the seat.
-    const riding = alive && session.driving >= 0;
+    const riding = (f.riding = alive && session.driving >= 0);
     if (riding) {
       body.kind = session.bodyKind;
-      body.yaw = car ? carYaw : (session.own.yaw / 65536) * TAU;
-      if (car) body.vehicle = vehiclePose;
+      body.yaw = car ? f.carYaw : (session.own.yaw / 65536) * TAU;
+      if (car) body.vehicle = f.vehiclePose;
       body.firstPerson = false;
       body.id = session.driving;
       body.generation = 0;
@@ -1606,17 +1688,25 @@ export class App {
         body.state.unpackCue(r.cue[i]!);
       }
     }
-    this.scene.skip = riding ? session.driving : -1;
-    this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
+    f.scene.skip = riding ? session.driving : -1;
+    f.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
+  }
+
+  /** Where the camera goes: behind or inside a vehicle driven, behind a mount, with a passenger's seat, or with the body on foot. */
+  private place(f: AppFrame): void {
+    const session = this.session, c = this.controls, cam = this.cam, world = f.world, scene = f.scene, dt = f.dt;
+    const alive = f.alive, car = f.car, rotor = car?.movement === "rotor", boat = car?.movement === "boat", vehiclePose = f.vehiclePose, carYaw = f.carYaw, third = f.third;
+    const passenger = f.passenger, passengerVehicle = f.passengerVehicle, passengerCockpit = f.passengerCockpit, cockpitFrame = f.cockpitFrame, chase = f.chase;
+    const bx = f.bx, by = f.by, bz = f.bz, eye = f.eye, lookYaw = f.lookYaw, lookPitch = f.lookPitch, body = this.body;
     // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
-    if (alive && car && fullAttitude) {
+    if (alive && car) {
       const frame = { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw };
       if (third) {
         vehiclePoint(frame, [0, boat && !car.family ? 1.1 : rotor ? 1.65 : car.spec.height * 2 / 3, rotor || boat ? -.35 : 0], this.seatSpot);
         const heading = this.view.placeVehicle(cam, world, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, !rotor && !boat, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: rotor || boat ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3 });
         if (!rotor && !boat) c.yaw = heading;
       } else {
-        const slot = car.seats.findIndex(seat => seat.driver) + 1, ch = this.scene.characters;
+        const slot = car.seats.findIndex(seat => seat.driver) + 1, ch = scene.characters;
         ch.seat(session.bodyKind, bx, by, bz, carYaw, this.body.state, session.tickClock, this.seatSpot, slot, vehiclePose);
         const seat = ch.seatPose(session.bodyKind, slot, vehiclePose!, this.seatSpot, carYaw, undefined, this.seated);
         if (!seat || !ch.seatedEye(session.ownKind, seat, this.seatSpot)) {
@@ -1625,14 +1715,13 @@ export class App {
         }
         this.view.placeCockpit(cam, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, frame, this.cockpit.yaw, this.cockpit.pitch);
       }
-    } else if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + car.spec.height * 2 / 3, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: car.spec.halfLength * 3 });
-    else if (alive && session.driving >= 0) {
+    } else if (alive && session.driving >= 0) {
       // Riding, the camera is behind where the rider looks, which the mount turns to and flies along: at the rider's head,
       // on a boom as long as the mount is big, and drawn in by whatever is in the way.
       const o = session.own, def = this.reg.defs[session.bodyKind];
-      const obstruction = def?.type === "species" && def.camera?.avoidBody ? this.scene.prepareCameraBody(body) : null;
+      const obstruction = def?.type === "species" && def.camera?.avoidBody ? scene.prepareCameraBody(body) : null;
       const view = this.mountView(body.kind, body.gear[GEAR_WORN]!);
-      const identity = makeHandle(body.id, body.generation);
+      const identity = makeHandle(body.id, body.generation!);
       const px = bx + Math.sin(body.yaw) * view.forward, pz = bz + Math.cos(body.yaw) * view.forward;
       // A posed dinosaur solves body clearance and roof height together. Other mounts anticipate the roof from inside their capsule.
       const pivot = obstruction ? by + view.up : this.mountCamera.height(world, identity, px, pz, by + (this.reg.move[body.kind]?.height ?? 1) * .5, by + view.up, o.vx, o.vz, dt);
@@ -1640,7 +1729,7 @@ export class App {
       this.view.placeVehicle(cam, world, px, pivot, pz, orbit ? orbit.yaw : lookYaw, orbit ? orbit.pitch + CHASE_TILT : lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: identity, boom: orbit ? orbit.back : view.boom, anticipate: !obstruction, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY }, obstruction);
     } else if (passenger) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw, boom: number | undefined, chaseVx = 0, chaseVz = 0;
-      if (!chase && passengerFullAttitude && cockpitFrame) {
+      if (!chase && passengerVehicle && cockpitFrame) {
         const host = this.remote.id.subarray(0, this.remote.count).indexOf(session.own.seat - 1);
         const anchor = this.reg.vehicle[this.remote.kind[host] ?? 0]?.seats[session.own.seatSlot - 1]?.anchor;
         if (anchor) {
@@ -1650,7 +1739,7 @@ export class App {
       }
       for (let i = 0; i < this.remote.count; i++) {
         const r = this.remote;
-        const ch = this.scene.characters;
+        const ch = scene.characters;
         if (r.id[i] !== session.own.seat - 1 || r.gen[i] !== session.own.seatGen) continue;
         heading = r.yaw[i]!;
         const vehicle = ch.vehicle(r.kind[i]!);
@@ -1661,13 +1750,13 @@ export class App {
             py = this.mountCamera.height(world, makeHandle(r.id[i]!, r.gen[i]!), px, pz, r.y[i]! + (this.reg.move[r.kind[i]!]?.height ?? 1) * .5, py, undefined, undefined, dt);
             chaseVx = this.mountCamera.vx; chaseVz = this.mountCamera.vz;
           }
-          boom = vehicle ? Math.max(6, (this.reg.vehicle[r.kind[i]!]!.spec.halfLength) * (passengerFullAttitude ? 2 : 3)) : view?.boom;
+          boom = vehicle ? Math.max(6, (this.reg.vehicle[r.kind[i]!]!.spec.halfLength) * (passengerVehicle ? 2 : 3)) : view?.boom;
         } else if (vehicle) {
           const pose = remoteVehiclePose(r, i);
           if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.seatSpot, session.own.seatSlot, pose)) {
             const seat = ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading, undefined, this.seated)!;
-            const found = passengerFullAttitude ? ch.seatedEye(session.ownKind, seat, this.seatSpot) : ch.seatedOrigin(session.ownKind, seat, this.seatSpot);
-            if (found) { px = this.seatSpot[0]!; py = this.seatSpot[1]! + (passengerFullAttitude ? 0 : eye); pz = this.seatSpot[2]!; }
+            const found = passengerVehicle ? ch.seatedEye(session.ownKind, seat, this.seatSpot) : ch.seatedOrigin(session.ownKind, seat, this.seatSpot);
+            if (found) { px = this.seatSpot[0]!; py = this.seatSpot[1]! + (passengerVehicle ? 0 : eye); pz = this.seatSpot[2]!; }
           }
         } else {
           // On a saddle, the eye is over the seat's origin as the server has it, posed as its creature is drawn.
@@ -1685,7 +1774,7 @@ export class App {
       if (chase) {
         const orbit = this.orbit.place(this.chaseRig(lookYaw, lookPitch, boom ?? CHASE_BOOM), boom ?? CHASE_BOOM, dt);
         const motion = boom === undefined ? orbit ? { vx: 0, vy: 0, vz: 0, boom: orbit.back } : undefined
-          : { vx: chaseVx, vy: 0, vz: chaseVz, id: makeHandle(session.own.seat - 1, session.own.seatGen), boom: orbit ? orbit.back : boom, anticipate: !passengerFullAttitude, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY };
+          : { vx: chaseVx, vy: 0, vz: chaseVz, id: makeHandle(session.own.seat - 1, session.own.seatGen), boom: orbit ? orbit.back : boom, anticipate: !passengerVehicle, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY };
         this.view.placeVehicle(cam, world, px, py, pz, orbit ? orbit.yaw : lookYaw, orbit ? orbit.pitch + CHASE_TILT : lookPitch, heading, 0, dt, false, motion);
       } else if (passengerCockpit && cockpitFrame) this.view.placeCockpit(cam, px, py, pz, cockpitFrame, this.cockpit.yaw, this.cockpit.pitch);
       else this.view.place(cam, world, px, py, pz, lookYaw, lookPitch, dt);
@@ -1697,16 +1786,21 @@ export class App {
     // The orbit shows the whole body once the camera is clear of the head.
     if (this.orbit.inUse && this.orbit.shown.back > HEAD_CLEAR) body.firstPerson = false;
     this.view.thirdPerson = third;
-    if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
+    if (session.sessionState === SESSION_CREATING) this.preview(f.nowMs, f.aspect);
+  }
+
+  /** What the session brought this frame is handed to what draws it, the scene's values are set, and the frame is built. */
+  private stage(f: AppFrame): void {
+    const session = this.session, hud = this.hud, cam = this.cam, world = f.world, scene = f.scene, nowMs = f.nowMs, width = f.width, height = f.height, alive = f.alive;
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
     this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
     this.tamedHeard = session.tamed.length;
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
-    this.scene.shotTick = session.tickClock;
+    scene.shotTick = session.tickClock;
     // Blows that landed on bodies near: each is drawn snapping back where it was struck (render/impact-springs.ts).
     if (session.impacts.length > 0) {
-      const r = this.remote, own = handleIndex(session.ownHandle), ch = this.scene.characters;
+      const r = this.remote, own = handleIndex(session.ownHandle), ch = scene.characters;
       for (const im of session.impacts) {
         if (im.id === own) ch.impact(session.ownKind, own, this.body.yaw, im.bone, im.dx, im.dy, im.dz, im.strength);
         else for (let j = 0; j < r.count; j++) if (r.id[j] === im.id) { ch.impact(r.kind[j]!, im.id, r.yaw[j]!, im.bone, im.dx, im.dy, im.dz, im.strength); break; }
@@ -1717,78 +1811,91 @@ export class App {
     this.supply.tick = session.tickClock;
     this.falling!.absorb(session.rubble, nowMs, cam.x, cam.y, cam.z);
     this.falling!.step(nowMs);
-    const beams = this.scene.beams;
+    const beams = scene.beams;
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     hud.dpr = this.dpr;
-    this.scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
-    this.scene.viewHeight = height;
-    this.scene.now = nowMs;
+    scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
+    scene.viewHeight = height;
+    scene.now = nowMs;
     if (this.playEye && this.artEyeAt === null && alive && this.script.length === 0) this.artEyeAt = nowMs;
-    this.scene.eyeSeconds = this.artEyeTime === null ? session.renderClock / TICK_RATE
+    scene.eyeSeconds = this.artEyeTime === null ? session.renderClock / TICK_RATE
       : this.artEyeTime + (this.artEyeAt === null ? 0 : (nowMs - this.artEyeAt) / 1000);
     // A picture tool that holds the obelisks' clock holds the drops' with it: a cast leaves by that clock.
-    if (this.artEyeTime !== null) this.supply.tick = this.scene.eyeSeconds * TICK_RATE;
+    if (this.artEyeTime !== null) this.supply.tick = scene.eyeSeconds * TICK_RATE;
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
-    this.scene.alternate = alternate;
-    this.scene.finishGloss = this.ui.settings.finishGloss;
-    this.scene.roadFinish = this.ui.settings.roadFinish;
-    this.scene.assets.residency.holdBack = this.session.behind;
+    scene.alternate = alternate;
+    scene.finishGloss = this.ui.settings.finishGloss;
+    scene.roadFinish = this.ui.settings.roadFinish;
+    scene.assets.residency.holdBack = this.session.behind;
     const chosen = forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst);
     const governed = tierWithout(this.governor.tier(chosen, this.ui.settings.steady, this.dpr, nowMs), off);
     if (this.tierReady && chosen !== this.warmedBase) this.warming.splice(0, Infinity, ...ladder((this.warmedBase = chosen), this.dpr).map((l) => tierWithout(l.tier, off)));
     if (this.tierReady && this.warming.length > 0) this.tierReady(this.warming.shift()!);
-    if (!this.tierShown || governed === this.scene.assets.tier || !this.tierReady || this.tierReady(governed)) {
-      this.scene.assets.tier = governed;
+    if (!this.tierShown || governed === scene.assets.tier || !this.tierReady || this.tierReady(governed)) {
+      scene.assets.tier = governed;
       this.tierShown = true;
     }
-    const ratio = canvasRatio(this.scene.assets.tier, this.dpr, width, height);
-    [this.scene.canvasWidth, this.scene.canvasHeight] = [Math.floor(width * ratio), Math.floor(height * ratio)];
-    this.scene.supersampled = ratio > ownRatio(this.scene.assets.tier, this.dpr);
+    const ratio = canvasRatio(scene.assets.tier, this.dpr, width, height);
+    [scene.canvasWidth, scene.canvasHeight] = [Math.floor(width * ratio), Math.floor(height * ratio)];
+    scene.supersampled = ratio > ownRatio(scene.assets.tier, this.dpr);
     // The scene's share is of the canvas the chosen tier draws at the screen's own pixels; the governor's steps take
     // their shares of it (governor.ts).
     const own = width * height * ownRatio(chosen, this.dpr) ** 2;
-    [this.scene.share, this.ui.settings.autoShare] = [sceneShare(chosen, this.shareAsked || (RESOLUTIONS[this.ui.settings.resolution]?.share ?? 0), own), sceneShare(chosen, 0, own)];
-    session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
-    session.askFar(this.scene.assets.tier.reach.bases);
-    session.holdNodes(this.scene.assets.tier.nodes.chunks);
-    this.scene.characters.corpseMotions = session.corpseMotions;
-    sceneWithout(this.scene, this.off);
+    [scene.share, this.ui.settings.autoShare] = [sceneShare(chosen, this.shareAsked || (RESOLUTIONS[this.ui.settings.resolution]?.share ?? 0), own), sceneShare(chosen, 0, own)];
+    session.view(scene.assets.tier.view, this.ui.settings.snapshotBytes);
+    session.askFar(scene.assets.tier.reach.bases);
+    session.holdNodes(scene.assets.tier.nodes.chunks);
+    scene.characters.corpseMotions = session.corpseMotions;
+    sceneWithout(scene, this.off);
     // The street lamps' light and the wires between the poles, which a bench turns off every other frame (`?ab=lamps`, `wires`).
-    this.scene.streetLamps.on = !off.has("lamps");
-    this.scene.streetWires.on = !off.has("wires");
+    scene.streetLamps.on = !off.has("lamps");
+    scene.streetWires.on = !off.has("wires");
     // The moon's shadows by night, the street lamp that lights as a light and the shadows in the lamps' pool cards, which a
     // bench turns off every other frame (`?ab=moon`, `lamp`, `pools`).
-    this.scene.moonShadows = !off.has("moon");
-    this.scene.streetLamps.light = !off.has("lamp");
-    this.scene.streetLamps.shaded = !off.has("pools");
+    scene.moonShadows = !off.has("moon");
+    scene.streetLamps.light = !off.has("lamp");
+    scene.streetLamps.shaded = !off.has("pools");
     // Damage numbers are drawn with the world, where the server's rule and the reader's setting let them.
-    this.scene.damage.enabled = session.damageNumbers && this.ui.settings.damageNumbers;
-    const packet = this.scene.build(cam, this.remote);
-    session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
+    scene.damage.enabled = session.damageNumbers && this.ui.settings.damageNumbers;
+    const packet = (f.packet = scene.build(cam, this.remote));
+    session.requestCorpseMotions(scene.characters.corpseCheckpointRequests);
     packetWithout(packet, off);
-    // The HUD: each widget fills its slice of the model from the session and this frame (hud/widgets.ts). The sight's
-    // fields were set above, with the camera; hit marks, marks over creatures, laser dots and the voice have fills of their own.
-    const fill = this.hudFill;
-    const view = (this.hudFrame ??= { settings: this.ui.settings, scene: this.scene, cam, world, reg: this.reg, palette: this.pack.palette, menu: false, alive: false, inCar: false, rivalry: false, steady: "" });
-    view.settings = this.ui.settings; view.scene = this.scene; view.cam = cam; view.world = world; view.reg = this.reg;
-    view.menu = this.ui.menu; view.alive = alive; view.inCar = alive && !!car; view.rivalry = riding && body.state.rivalry && !body.state.out;
-    view.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
-    fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = view;
+  }
+
+  /**
+   * The HUD: each widget fills its slice of the model from the session and this frame (hud/widgets.ts). The sight's
+   * fields were set with the camera; hit marks, marks over creatures, laser dots and the voice have fills of their own.
+   */
+  private fillHud(f: AppFrame): void {
+    const session = this.session, hud = this.hud, cam = this.cam, c = this.controls, alive = f.alive, nowMs = f.nowMs;
+    const fill = this.hudFill, body = this.body;
+    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out;
+    f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
+    fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
-    this.feedback.absorb(session, this.reg, nowMs, this.scene.damage);
+    this.feedback.absorb(session, this.reg, nowMs, f.scene.damage);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.hitMarkers);
-    fillOverhead(hud.overhead, session, this.remote, cam, this.scene.characters, alive && !hud.out ? eyeNow : -1, c.yaw, c.pitch, this.lookReach);
-    this.fillSights(world, alive);
+    fillOverhead(hud.overhead, session, this.remote, cam, f.scene.characters, alive && !hud.out ? f.eyeNow : -1, c.yaw, c.pitch, this.lookReach);
+    this.fillSights(f.world, alive);
     this.listen(hud);
-    const vol = this.ui.settings;
+  }
+
+  /** The sound device is told what to play. */
+  private hear(f: AppFrame): void {
+    const vol = this.ui.settings, scene = f.scene;
     if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);
-    if (this.sounds) this.sounds.assetsIdle = this.scene.assets.residency.flying === 0 && this.scene.assets.residency.waiting === 0;
-    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.muted ? 0 : vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, App.late!.soundView(session, this.sky), this.scene.characters.fallen);
-    const ghost = this.scene.ghost;
+    if (this.sounds) this.sounds.assetsIdle = scene.assets.residency.flying === 0 && scene.assets.residency.waiting === 0;
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, f.nowMs, this.remote, f.world.hf, this.cam, { master: vol.muted ? 0 : vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, App.late!.soundView(this.session, this.sky), scene.characters.fallen);
+  }
+
+  /** A piece in hand, or a vehicle to set down, is tried where the look is on, and drawn there from the next frame. */
+  private ghost(f: AppFrame): void {
+    const session = this.session, c = this.controls, world = f.world, nowMs = f.nowMs, eyeNow = f.eyeNow;
+    const ghost = f.scene.ghost;
     ghost.kind = 0;
     const b = this.builder, v = this.vehiclePlacement;
-    if (alive && session.driving < 0) {
+    if (f.alive && session.driving < 0) {
       lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.aim);
       b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
       v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
@@ -1805,6 +1912,12 @@ export class App {
       ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw;
       ghost.color = v.problem === RESULT_OK ? GHOST_OK : GHOST_BAD;
     }
+  }
+
+  /** What the use key would act on, and the words that say so. */
+  private usePrompt(f: AppFrame): void {
+    const session = this.session, hud = this.hud, c = this.controls, world = f.world, nowMs = f.nowMs, alive = f.alive, eyeNow = f.eyeNow;
+    const b = this.builder, v = this.vehiclePlacement;
     const menu = this.ui.structure;
     menu.tick(nowMs);
     this.seatNotice.tick(nowMs);
@@ -1831,10 +1944,13 @@ export class App {
     if (emotes.open) this.scene!.characters.wantEmotes();
     hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(world, eyeNow) || whom || built || this.gliderPrompt();
     if (b.active) hud.ammo = "E turn   Q next place   R form";
-    this.ui.build(aspect, hud, session);
+  }
+
+  /** The interface is built over the HUD. */
+  private interface(f: AppFrame): void {
+    this.ui.build(f.aspect, this.hud, this.session);
     // Over the interface: an open note's line, its bar and a picture's flash (notes/notes.ts).
-    this.notes?.frame(nowMs, width, height);
-    return packet;
+    this.notes?.frame(f.nowMs, f.width, f.height);
   }
 
   /** The console's and chat's words of bug report mode: `notes` turns it on and off, `perf [seconds]` keeps a record. Null for any other line. */
