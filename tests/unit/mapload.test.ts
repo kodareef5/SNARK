@@ -655,9 +655,15 @@ function cornerScene(hf: Heightfield, layers: readonly NodeLayer[]) {
   [cam.x, cam.y, cam.z, cam.yaw, cam.pitch, cam.aspect] = [150, 60, 40, 0.4, -0.45, 4 / 3];
   const raster = new Rasterizer(160, 120, pack, hf);
   return {
-    frame(): Uint8ClampedArray {
+    /**
+     * A frame, its picture drawn where `draw` says: else the rasterizer takes what it gives the card alone, as a frame no
+     * picture is taken of. A drawn frame of this scene is some 49,000 triangles in the software rasterizer, about 20 ms.
+     */
+    frame(draw = true): Uint8ClampedArray {
       scene.now += 1000 / 60;
-      raster.render(scene.build(cam, null));
+      const p = scene.build(cam, null);
+      if (draw) raster.render(p);
+      else raster.take(p);
       return raster.color;
     },
   };
@@ -671,7 +677,7 @@ test("parts come late and in a scrambled order: every frame's ground is the map'
   const filled = new StagedMap(ch);
   for (const p of ch.parts.filter((q) => q.kind === "overview")) filled.take(readPart(ch, p, corner.subarray(p.at, p.at + p.length)) as OverviewPiece);
   const want = cornerScene(mapHeightfield(map), map.nodes);
-  for (let f = 0; f < 60; f++) want.frame();
+  for (let f = 0; f < 60; f++) want.frame(false);
   const picture = want.frame();
   for (const seed of [1, 2]) {
     const rng = new Rng(seed);
@@ -683,17 +689,20 @@ test("parts come late and in a scrambled order: every frame's ground is the map'
     const scene = cornerScene(hf, loader.staged.nodes);
     let drawn = false;
     void loader.follow(() => ({ x: 150, z: 150, vx: 0, vz: 0 })).then(() => (drawn = true));
-    let [frames, wrong] = [0, 0];
+    let [frames, wrong, pictures] = [0, 0, 0];
     for (let f = 0; f < 120; f++) {
-      if (s.waiting.length > 0 && rng.int(3) === 0) await s.answer(rng.int(s.waiting.length));
+      // Each frame a part came in is drawn, and those between are taken by the card alone.
+      const came = s.waiting.length > 0 && rng.int(3) === 0;
+      if (came) await s.answer(rng.int(s.waiting.length));
       await settle();
       if (!drawn) continue;
       for (let k = 0; k < hf.heights.length; k++) if (hf.heights[k] !== map.heights[k] && hf.heights[k] !== filled.hf.heights[k]) wrong++;
-      scene.frame();
+      scene.frame(came);
       frames++;
+      if (came) pictures++;
     }
     await s.drain();
-    for (let f = 0; f < 40; f++) scene.frame();
-    expect([wrong, frames > 60, hf.heights, scene.frame()]).toEqual([0, true, map.heights, picture]);
+    for (let f = 0; f < 40; f++) scene.frame(false);
+    expect([wrong, frames > 60, pictures > 0, hf.heights, scene.frame()]).toEqual([0, true, true, map.heights, picture]);
   }
 });
