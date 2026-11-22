@@ -1054,7 +1054,10 @@ export class Scene {
 
   /** Only the controlled native mount, whose full pose has reserved bones even under frame pressure. */
   prepareCameraBody(own: OwnBody): CameraBody | null {
-    if (!this.charactersPrepared) this.characters.begin(this.packet, this.world);
+    if (!this.charactersPrepared) {
+      this.characters.clock = this.shotTick;
+      this.characters.begin(this.packet, this.world);
+    }
     this.charactersPrepared = true;
     return this.characters.prepareCameraBody(own.kind, own.id, own.generation ?? 0, own.x, own.y, own.z, own.yaw, own.state, own.tick);
   }
@@ -2082,7 +2085,10 @@ export class Scene {
     const ch = this.characters;
     const st = this.state;
     const own = this.own;
-    if (!this.charactersPrepared) ch.begin(p, this.world);
+    if (!this.charactersPrepared) {
+      ch.clock = this.shotTick;
+      ch.begin(p, this.world);
+    }
     this.charactersPrepared = false;
     let unseen = 0;
     if (remote) {

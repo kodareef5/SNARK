@@ -5,7 +5,7 @@ import { BLOCK_SOFT_SPEED, blockOut, pushOut, turnFree } from "./blockers.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
-import { SKIN, builtFree, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
+import { SKIN, wallFree, wallOut, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
 import { Found } from "../world/structures.ts";
 
@@ -574,11 +574,14 @@ function jetMode(b: Body, prior: number, buttons: number, ready: boolean, moving
  * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
  * straight up. These are the quantized values sent on the wire.
  */
-/** Whether a body of `p` at (x, y, z) facing `yaw` (65536ths of a turn) has its head clear of every wall (MoveParams.headRadius). */
+/** Whether a body of `p` at (x, y, z) facing `yaw` (65536ths of a turn) has its head clear of every wall (MoveParams.headRadius, collide.ts wallFree). */
 export function headClear(w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number): boolean {
   const r = p.headRadius!, a = (yaw * TAU) / 65536, ahead = p.headAhead!;
-  return builtFree(w, x + detSin(a) * ahead, y + p.headUp! - r, z + detCos(a) * ahead, r, 2 * r);
+  return wallFree(w, x + detSin(a) * ahead, y + p.headUp! - r, z + detCos(a) * ahead, r);
 }
+
+/** How square to its facing a wall must stand to hold a head back: walls more beside it than this are grazed. */
+const HEAD_AHEAD = 0.5;
 
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   stepOut.landSpeed = 0;
@@ -825,6 +828,9 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   let x = b.x;
   let y = b.y;
   let z = b.z;
+  /** Its facing in plan, for whether a wall its head meets is ahead of it. */
+  const fx = p.headRadius ? detSin((b.yaw * TAU) / 65536) : 0;
+  const fz = p.headRadius ? detCos((b.yaw * TAU) / 65536) : 0;
 
   for (let i = 0; i < n; i++) {
     let nx = x + sx;
@@ -1018,12 +1024,22 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       clear = false;
     }
 
-    // A head held clear of walls: a step that would put it into one keeps what of the step does not, as along a wall, or
-    // none of it. A head already in one (turned there by something else) is let back out.
-    if (p.headRadius && !headClear(w, p, nx, ny, nz, b.yaw) && headClear(w, p, x, y, z, b.yaw)) {
-      if (headClear(w, p, nx, ny, z, b.yaw)) nz = z;
-      else if (headClear(w, p, x, ny, nz, b.yaw)) nx = x;
-      else {
+    // A head held clear of walls: a step that would put it into one ahead of it slides along the wall it met, as the body
+    // slides along what it meets, or is not taken. A wall beside or behind the head it may graze, as a long body walking
+    // along one does, and a head already in one (turned there by something else) is let back out. Only the level step is
+    // held, at the height it began: a body walking down a slope beside a wall may dip its head toward the wall's top.
+    if (p.headRadius && !headClear(w, p, nx, y, nz, b.yaw) && headClear(w, p, x, y, z, b.yaw) && wallOut.x * fx + wallOut.z * fz < -HEAD_AHEAD) {
+      const ox = wallOut.x, oz = wallOut.z;
+      let dx = nx - x, dz = nz - z;
+      const into = dx * ox + dz * oz;
+      if (into < 0) {
+        dx -= ox * into;
+        dz -= oz * into;
+      }
+      if (headClear(w, p, x + dx, y, z + dz, b.yaw)) {
+        nx = x + dx;
+        nz = z + dz;
+      } else {
         nx = x;
         nz = z;
       }

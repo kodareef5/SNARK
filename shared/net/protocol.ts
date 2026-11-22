@@ -84,7 +84,8 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079); CMD_MARK, a
  * creature spotted for the tribe, and its mark (MARK_SPOT, D1082).
  * 43: an eleventh button, BTN_VISOR, a visor held up, which the server takes as the proof of its gaze (D1084).
- * 44: CMD_THROW, the held thing thrown as a loose body, and CMD_TAKE taking up a bag of one stack (server/loose.ts).
+ * 44: CMD_THROW, the held thing thrown as a loose body, and CMD_TAKE taking up a bag of one stack (server/loose.ts);
+ * RULE_SURVIVORS_PASS (server/blocking.ts); EVENT_IMPACT, where a blow landed on a body, to everyone near it.
  */
 export const PROTOCOL_VERSION = 44;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
@@ -640,6 +641,22 @@ export const EVENT_TAMED = 7;
  * (3 x f32), and its body's radius and height in metres (2 x f32).
  */
 export const EVENT_BALL = 8;
+/**
+ * Protocol 44. IMPACT, to clients within IMPACT_HEARD of a body a blow landed on, at most IMPACTS_PER_TICK a tick each:
+ * the body's handle u32, the bone the blow's ray hit u8 (255 for none: a blast, a bite or a car), the way the blow went as a
+ * facing u8 (256ths of a turn) and a pitch s8 (127ths of a quarter turn, up positive), how hard u8 (255 for IMPACT_FULL
+ * damage or more), and its kind 2 bits (IMPACT_). Every watcher's draw of that body snaps back from it
+ * (client/core/render/impact-springs.ts); it changes nothing the server judges.
+ */
+export const EVENT_IMPACT = 9;
+export const IMPACT_SHOT = 0;
+export const IMPACT_MELEE = 1;
+export const IMPACT_BLAST = 2;
+export const IMPACT_VEHICLE = 3;
+/** Damage of a blow that strikes as hard as any is drawn, metres an impact is told within, and impacts a client is told a tick. */
+export const IMPACT_FULL = 40;
+export const IMPACT_HEARD = 150;
+export const IMPACTS_PER_TICK = 16;
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

@@ -85,6 +85,7 @@ import {
   EVENT_NAME_BYTES,
   EVENT_SHOT,
   EVENT_BLAST,
+  EVENT_IMPACT,
   EVENT_BALL,
   OWN_KEPT,
   S_OWN,
@@ -208,6 +209,19 @@ export interface Rubble {
 
 /** Beyond this the oldest queued rubble is dropped. */
 const MAX_RUBBLE_QUEUED = 2048;
+
+/** A blow that landed on body `id` (an entity index): the bone hit or -1, the unit way it went, how hard 0 to 1, and its IMPACT_ kind. */
+export interface Impact {
+  readonly id: number;
+  readonly bone: number;
+  readonly dx: number;
+  readonly dy: number;
+  readonly dz: number;
+  readonly strength: number;
+  readonly kind: number;
+}
+/** Impacts kept for the scene between frames. */
+const MAX_IMPACTS = 64;
 
 export class RemoteSample {
   count = 0;
@@ -499,6 +513,8 @@ export class ClientSession {
   private firedTick = 0;
   /** Oldest first. Shots.absorb takes the shots and blasts, then Feedback.absorb empties it. */
   readonly events: CombatEvent[] = [];
+  /** Blows that landed on bodies near, oldest first (EVENT_IMPACT). The scene takes them each frame. */
+  readonly impacts: Impact[] = [];
   /** Creatures just tamed, waiting for the naming prompt. te is in percent. */
   readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
   /** The creature whose inventory is open, or null when the open container is not a creature. Shares are 0 to 1. */
@@ -1729,6 +1745,14 @@ export class ClientSession {
       // Not a combat event. It is queued for the naming prompt.
       const won = { handle: r.u32(), kind: r.u16(), level: r.u16(), te: r.u8() };
       if (!r.overflow && this.tamed.length < 8) this.tamed.push(won);
+      return;
+    } else if (kind === EVENT_IMPACT) {
+      // Not a combat event: where a blow landed on a body, for its draw to snap back from it (render/impact-springs.ts).
+      const handle = r.u32(), bone = r.u8(), facing = r.u8(), pitch = (r.u8() << 24) >> 24, strength = r.u8(), how = r.bits(2);
+      if (r.overflow) return;
+      const up = (pitch / 127) * (Math.PI / 2), level = Math.cos(up), turn = (facing / 256) * Math.PI * 2;
+      if (this.impacts.length >= MAX_IMPACTS) this.impacts.shift();
+      this.impacts.push({ id: handleIndex(handle), bone: bone === 255 ? -1 : bone, dx: Math.sin(turn) * level, dy: Math.sin(up), dz: Math.cos(turn) * level, strength: strength / 255, kind: how });
       return;
     } else return;
     if (r.overflow) return;

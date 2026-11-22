@@ -1021,9 +1021,11 @@ export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: nu
 }
 
 /** Authored pose, slope-aware stride rate and spatial support shared by drawing, seats and authoritative contacts. */
-export function poseCreatureOn(a: CreatureAnim, st: AnimState, tick: number, world: CollisionWorld | null | undefined, x: number, y: number, z: number, yaw: number, size = 1, gait: Gait | null = null, solved: Solved = a.rig.solved): void {
+export function poseCreatureOn(a: CreatureAnim, st: AnimState, tick: number, world: CollisionWorld | null | undefined, x: number, y: number, z: number, yaw: number, size = 1, gait: Gait | null = null, solved: Solved = a.rig.solved, adjust: ((pose: Pose) => void) | null = null): void {
   const rig = a.rig;
   creaturePose(a, st, tick, rig.a, gait, groundSpeedScale(rig, st, world, x, y, z, yaw, size) / size);
+  // A drawing's own turns before the pose is solved (client/core/render/impact-springs.ts); the server passes none.
+  adjust?.(rig.a);
   solve(rig, rig.a, solved);
   conformCreature(rig, st, rig.a, solved, world, x, y, z, yaw, size);
 }

@@ -1853,6 +1853,15 @@ export class App {
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
+    // Blows that landed on bodies near: each is drawn snapping back where it was struck (render/impact-springs.ts).
+    if (session.impacts.length > 0) {
+      const r = this.remote, own = handleIndex(session.ownHandle), ch = this.scene.characters;
+      for (const im of session.impacts) {
+        if (im.id === own) ch.impact(session.ownKind, own, this.body.yaw, im.bone, im.dx, im.dy, im.dz, im.strength);
+        else for (let j = 0; j < r.count; j++) if (r.id[j] === im.id) { ch.impact(r.kind[j]!, im.id, r.yaw[j]!, im.bone, im.dx, im.dy, im.dz, im.strength); break; }
+      }
+      session.impacts.length = 0;
+    }
     this.supply.list = session.supply;
     this.supply.tick = session.tickClock;
     this.falling!.absorb(session.rubble, nowMs, cam.x, cam.y, cam.z);

@@ -41,9 +41,11 @@ test("a premature release, dry stamina and vanished input cannot launch a charge
   c.tick(0, true); expect(c.b.act).toBe(ACT_NONE); expect(c.b.creaturePower).toBe(0);
 });
 test("a charge stops on the ordinary collision wall and never moves through it", () => {
-  const { w, b, tick } = setup(); w.structs.add(w.kind("core:wall"), 64, 1.5, 29, 0, 0, 1);
+  const { w, b, p, tick } = setup(); w.structs.add(w.kind("core:wall"), 64, 1.5, 29, 0, 0, 1);
   for (let i = 0; i < 100; i++) tick(i < 31 ? BTN_SECONDARY : 0);
-  expect(b.z).toBeLessThan(28); expect(b.z).toBeGreaterThan(26);
+  // It stops with its head at the wall's face, 28.9, not through it (MoveParams.headRadius); a head-less one at its capsule.
+  const front = b.z + (p.headRadius ? p.headAhead! + p.headRadius : p.radius);
+  expect(front).toBeLessThan(28.91); expect(front).toBeGreaterThan(28.2);
   expect(b.act).not.toBe(ACT_HOLD); expect(b.creatureCooldown).toBeGreaterThan(0);
 });
 test("knockout and water cancel committed actions without another hit phase", () => {

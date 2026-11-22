@@ -281,6 +281,9 @@ export class Client {
   vehicleSeatSnapshot = 0;
   /** The snapshot acknowledged by the first packet accepted for each input. */
   readonly inputAcks = new Uint32Array(INPUT_WINDOW);
+  /** The tick of the last impacts this client was told (EVENT_IMPACT), and how many it was told then. */
+  impactsAt = 0;
+  impacts = 0;
   /** The tick on which each buffered input arrived, by its own tick: how far ahead the client really sent it. */
   readonly arrived = new Uint32Array(INPUT_WINDOW);
   heldX = 0;

@@ -177,7 +177,9 @@ test("the settings the wiki lists are the rows marked public, and every command 
   expect(publicSettings().find((s) => s.name === "StarterMount")?.def).toBe("True");
   // And whether supply drops come, and how fine what they hold is.
   expect(publicSettings().filter((s) => /LootCrates|SupplyCrateLoot/.test(s.name)).map((s) => [s.name, s.def])).toEqual([["SupplyCrateLootQualityMultiplier", "1"], ["bDisableLootCrates", "False"]]);
-  expect(publicSettings().length).toBe(31);
+  // And whether survivors of different tribes walk through one another (server/blocking.ts).
+  expect(publicSettings().find((s) => s.name === "SurvivorsBlock")?.def).toBe("True");
+  expect(publicSettings().length).toBe(32);
   expect(commands().filter((c) => c.examples.length > 0).length).toBeGreaterThan(10);
 });
 

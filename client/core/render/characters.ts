@@ -1,3 +1,6 @@
+import { ImpactSprings } from "./impact-springs.ts";
+import { TICK_RATE } from "../../../shared/coords.ts";
+import { blockMass } from "../../../shared/sim/blockers.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
 // A body is one skeleton and several meshes, one per body slot, so a worn piece can replace the part under it.
 // Its bones go into the packet once, and each of its meshes is one instance that names the body's first bone.
@@ -402,6 +405,12 @@ export class Characters {
   /** Each body's gait, by its id, so its legs go by the ground it covers (shared/anim/gait.ts). */
   private readonly gaits = new Map<number, Stride>();
   private frame = 0;
+  /** Blows landed on bodies, drawn as springs (impact-springs.ts), the body being posed now, and the clock they last moved at. */
+  readonly springs = new ImpactSprings();
+  private posingId = -1;
+  private springsAt = -1;
+  /** The session's tick clock at this frame, fractional (ClientSession.tickClock); the scene sets it before `begin`. */
+  clock = 0;
   /** The packet is the same one every frame, and holds the camera by the time seat() is asked. */
   private packet: FramePacket | null = null;
   /** Bodies that died, as their death clips and ragdolls pose them. */
@@ -735,8 +744,9 @@ export class Characters {
         solve(rig, rig.a, solved);
         conformCreature(rig, st, rig.a, solved, this.groundWorld, worldX, worldY, worldZ, yaw, size);
       }
-    } else if (this.due(g, kind * 4, id, distance, unseen, aloft ? 0 : g.speed, always)) {
-      poseCreatureOn(c.anim, st, tick, this.groundWorld, worldX, worldY, worldZ, yaw, size, g, solved);
+    } else if (this.due(g, kind * 4, id, distance, unseen, aloft ? 0 : g.speed, always || this.springs.active(id))) {
+      const springs = this.springs;
+      poseCreatureOn(c.anim, st, tick, this.groundWorld, worldX, worldY, worldZ, yaw, size, g, solved, springs.active(id) ? (pose) => springs.apply(id, rig, pose, solved) : null);
       g.posedGait.phase = g.phase; g.posedGait.speed = g.speed; g.posedGait.domain = creatureFootfallDomain(c.anim, st, tick);
     }
     return solved;
@@ -1259,7 +1269,16 @@ export class Characters {
   }
 
   /** Begins a frame, in `p` where one is drawn. */
+  /** A blow landed on body `id` of `kind`, drawn facing `yaw` radians: at `bone` (-1 for none), the unit way (dx, dy, dz), `strength` 0 to 1. */
+  impact(kind: number, id: number, yaw: number, bone: number, dx: number, dy: number, dz: number, strength: number): void {
+    const skel = this.kinds[kind] != null ? HUMAN : this.creatures[kind]?.anim.rig;
+    if (skel) this.springs.hit(id, skel, yaw, bone, dx, dy, dz, strength, blockMass(this.reg, kind));
+  }
+
   begin(p: FramePacket | null = null, world: CollisionWorld | null = null): void {
+    // The springs move on by the frame's time, on the session's tick clock (`clock`), as the scene sets it.
+    if (this.springsAt >= 0 && this.clock > this.springsAt) this.springs.step(Math.min(0.1, (this.clock - this.springsAt) / TICK_RATE));
+    this.springsAt = this.clock;
     this.cameraBody.clear();
     this.groundWorld = world;
     this.packet = p ?? this.packet;
@@ -1410,7 +1429,11 @@ export class Characters {
       const over = this.override !== null && this.override.id === id ? this.override : null;
       // The viewer's own body in first person, up on its feet or swimming: its eye does not bend over with its back.
       const eyeOwn = own && headless && !seat && !vehicleSeat && !impaled && st.stance !== STANCE_PRONE && !st.out && !st.dead;
-      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null)) this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
+      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null || this.springs.active(id))) {
+        this.posingId = id;
+        this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
+        this.posingId = -1;
+      }
       if (seat) {
         // A rider sits in its seat's whole frame, and leans, pitches and banks as the seat does.
         writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, 0, 0, 0, 0);
@@ -1571,6 +1594,8 @@ export class Characters {
     }
     // Longer legs lift the hips, so the feet stay on the ground.
     if (scales && !seat && !vehicleSeat && !impaled) this.pose.root[1]! += lookLift(scales, set.rest);
+    // Snapped back where a blow landed (impact-springs.ts), from the pose it was last solved in.
+    if (this.posingId >= 0 && this.springs.active(this.posingId)) this.springs.apply(this.posingId, HUMAN, this.pose, solved);
     solve(HUMAN, this.pose, solved, set.rest, scales);
     if (rider?.profile && seat) fitRiderControls(this.pose, solved, set.rest, scales, rider.targets, steers, undefined, soles, grips);
     if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);

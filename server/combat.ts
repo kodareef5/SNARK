@@ -21,7 +21,7 @@ import { quatRotate } from "../shared/math/quat.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { CreatureAttackDef, CreatureModeDef, SpeciesDef } from "../shared/content/defs.ts";
-import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, PASSENGER_VIEW_DELAY, SESSION_ALIVE, S_EVENT } from "../shared/net/protocol.ts";
+import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_IMPACT, EVENT_KILL, IMPACTS_PER_TICK, IMPACT_BLAST, IMPACT_FULL, IMPACT_HEARD, IMPACT_MELEE, IMPACT_SHOT, IMPACT_VEHICLE, PASSENGER_VIEW_DELAY, SESSION_ALIVE, S_EVENT } from "../shared/net/protocol.ts";
 import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DAMAGE_TYPES, DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
@@ -205,6 +205,13 @@ export class Combat {
   /** Where the last `castBodies` hit: the zone, and the distance along the ray. */
   zone = ZONE_NONE;
   t = 0;
+  /**
+   * The body the last castBodies hit, the bone of it that was hit (-1 where no bone was) and the way its ray ran: the
+   * `land` that follows tells every watcher of it (EVENT_IMPACT), so the place struck snaps back from the blow.
+   */
+  private aimedAt = -1;
+  private aimedBone = -1;
+  private readonly ray = new Float64Array(3);
   /** A shot left `c`'s weapon. `draw` is 0 to 1. */
   onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
   /** A thrown item left `c`'s hand. `draw` is how long a charged throw was held, 0 to 1, and 1 for any other. */
@@ -661,6 +668,8 @@ export class Combat {
     const reg = world.reg;
     const dims = world.dims;
     this.at = at >= world.tick ? -1 : at;
+    this.aimedAt = -1;
+    this.ray[0] = dx; this.ray[1] = dy; this.ray[2] = dz;
     this.sweep = sweep;
     this.span = maxT;
     // Gather every body whose bounding sphere could touch the ray. A body judged in the past may have moved since, so the search is padded.
@@ -937,6 +946,8 @@ export class Combat {
           this.t = zoneHit.t * scale;
           this.zone = zone;
           best = i;
+          this.aimedAt = i;
+          this.aimedBone = seated ? -1 : zoneHit.bone;
         }
       } else if (this.anims[kind] && !reg.vehicle[kind]) {
         st.unpack(past.anim, past.cue);
@@ -952,6 +963,8 @@ export class Combat {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;
           best = i;
+          this.aimedAt = i;
+          this.aimedBone = zoneHit.bone;
         }
       } else if (reg.vehicle[kind]) {
         // Animals bite the enclosing body. Aimed fire and beams can pass through the cabin openings.
@@ -964,6 +977,8 @@ export class Combat {
           this.t = t * scale;
           this.zone = ZONE_TORSO;
           best = i;
+          this.aimedAt = i;
+          this.aimedBone = -1;
         }
       } else {
         const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
@@ -973,6 +988,8 @@ export class Combat {
           this.t = t * scale;
           this.zone = ZONE_TORSO;
           best = i;
+          this.aimedAt = i;
+          this.aimedBone = -1;
         }
       }
     }
@@ -1130,6 +1147,7 @@ export class Combat {
       }
     }
 
+    this.impact(src, target, taken, killed, x, y, z, impact);
     if (!present && !killed) return;
     const game = this.ctx.game;
     const shown = Math.min(65535, Math.max(taken > 0 ? 1 : 0, Math.round(taken)));
@@ -1162,6 +1180,55 @@ export class Combat {
         w.u16(Math.min(65535, Math.round(far * 10)));
       }
       game.endOwn(vc);
+    }
+  }
+
+  /**
+   * Tells every client near `target` how a blow that did `taken` landed on it (EVENT_IMPACT): the bone the ray that brought
+   * it hit, where one did, the way it came, and how hard, so that every watcher sees the place struck snap back from it
+   * (client/core/render/impact-springs.ts). Bounded to IMPACTS_PER_TICK a client, the weakest left out.
+   */
+  private impact(src: Source, target: number, taken: number, killed: boolean, x: number, y: number, z: number, crash?: CorpseImpact): void {
+    const { world, game } = this.ctx;
+    const ents = world.ents;
+    const aimed = this.aimedAt === target;
+    this.aimedAt = -1;
+    if (killed || !(taken > 0)) return;
+    let dx: number, dy: number, dz: number, kind: number;
+    if (crash) {
+      dx = crash.vx; dy = crash.vy; dz = crash.vz;
+      kind = IMPACT_VEHICLE;
+    } else if (aimed) {
+      dx = this.ray[0]!; dy = this.ray[1]!; dz = this.ray[2]!;
+      kind = src.type === DMG_MELEE ? IMPACT_MELEE : IMPACT_SHOT;
+    } else {
+      dx = ents.x[target]! - src.x; dy = 0; dz = ents.z[target]! - src.z;
+      kind = src.type === DMG_EXPLOSIVE ? IMPACT_BLAST : IMPACT_MELEE;
+    }
+    const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (!(l > 1e-6)) return;
+    dx /= l; dy /= l; dz /= l;
+    // How hard, 0 to 255: a blow of IMPACT_FULL damage or more is the hardest. How far that moves a body is its client's to say by its weight.
+    const strength = Math.min(255, Math.max(1, Math.round((taken / IMPACT_FULL) * 255)));
+    const bone = aimed ? this.aimedBone : -1;
+    const tick = world.tick;
+    for (const c of game.clients) {
+      if (!c?.active || c.closed) continue;
+      const at = c.ent >= 0 ? c.ent : -1;
+      const cx = at >= 0 ? ents.x[at]! : c.body.x, cz = at >= 0 ? ents.z[at]! : c.body.z;
+      if ((cx - x) * (cx - x) + (cz - z) * (cz - z) > IMPACT_HEARD * IMPACT_HEARD) continue;
+      if (c.impactsAt !== tick) { c.impactsAt = tick; c.impacts = 0; }
+      if (c.impacts >= IMPACTS_PER_TICK) continue;
+      c.impacts++;
+      const w = game.begin(S_EVENT);
+      w.u8(EVENT_IMPACT);
+      w.u32(ents.handleOf(target));
+      w.u8(bone >= 0 && bone < 255 ? bone : 255);
+      w.u8(Math.round((Math.atan2(dx, dz) / (Math.PI * 2)) * 256) & 255);
+      w.u8(Math.round(Math.asin(dy) / (Math.PI / 2) * 127) & 255);
+      w.u8(strength);
+      w.bits(kind, 2);
+      game.endOwn(c);
     }
   }
 

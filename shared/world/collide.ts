@@ -540,21 +540,33 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
   return true;
 }
 
+/** Metres a piece stands, at least, to be a wall to a head: slabs, steps and kerbs are lower. */
+const WALL_TALL = 1.2;
+
 /**
- * Whether the capsule is clear of every structure and resource node, the ground not asked: what a creature's head is
- * held clear of (shared/sim/character.ts), which may dip below a rise ahead as it climbs.
+ * Whether the sphere of radius `r` whose bottom is at (x, y, z) is clear of every wall: a box of a piece at least
+ * WALL_TALL high whose way out of it is mostly level. Floors, ceilings, roofs and steps (too low), ramps (convex parts),
+ * the ground and resource nodes are not asked: what a creature's head is held clear of (shared/sim/character.ts), which
+ * may dip toward a ramp it climbs and pass under a roof it clips, as ARK's mounts do (D777).
  */
-export function builtFree(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number): boolean {
-  const top = y + (h > 2 * r ? h : 2 * r) + PAD;
-  const n = w.structs.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
-  for (let i = 0; i < n; i++) if (capsuleBox(w.structs, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
-  const nodes = w.nodes;
-  if (nodes) {
-    const m = nodes.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
-    for (let i = 0; i < m; i++) if (capsuleBox(nodes, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
+export function wallFree(w: CollisionWorld, x: number, y: number, z: number, r: number): boolean {
+  const structs = w.structs;
+  const n = structs.query(x - r, z - r, x + r, z + r, found, y - PAD, y + 2 * r + PAD);
+  for (let i = 0; i < n; i++) {
+    const ref = found.refs[i]!, kind = structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!;
+    if (2 * structs.halfY[kind]! < WALL_TALL) continue;
+    if (capsuleBox(structs, ref, x, y, z, r, 2 * r, SKIN) && !push.hull && push.y * push.y < 0.25 * push.depth * push.depth) {
+      const l = Math.sqrt(push.x * push.x + push.z * push.z);
+      wallOut.x = l > 0 ? push.x / l : 0;
+      wallOut.z = l > 0 ? push.z / l : 0;
+      return false;
+    }
   }
   return true;
 }
+
+/** Where `wallFree` found a wall, the level unit way out of it. */
+export const wallOut = { x: 0, z: 0 };
 
 /** True when no structure or node reaches the capsule's footprint between the heights `low` and `high`. */
 export function nothingBuilt(w: CollisionWorld, x: number, z: number, r: number, low: number, high: number): boolean {
