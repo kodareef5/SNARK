@@ -17,7 +17,7 @@ import { CHUNK_CELLS, type NearStore } from "./near-store.ts";
 
 const NEAR = 1 << PASS_NEAR;
 const FAR = 1 << PASS_FAR;
-/** Metres round the camera within which Scene.nearPiece finds the nearest piece. */
+/** Metres round the camera within which Occlusion.nearPiece finds the nearest piece. */
 const CLEAR = 8;
 /** Metres over the lowest ground drawn a tile's ground must stand for the box under it to be put in the picture. */
 const RELIEF = 2;

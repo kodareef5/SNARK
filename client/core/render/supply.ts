@@ -5,7 +5,7 @@
 // pin, the hoop about the capsule's axis, a collar for each step of the tier, the top-mark on the mast.
 //
 // Everything here is arithmetic on what a drop's pose gives (shared/sim/supply.ts): the scene asks for a piece's rows
-// and draws it (scene.ts showSupply).
+// and draws it (passes/supply-drops.ts).
 
 import profile from "../../../shared/world/supply-capsule.json" with { type: "json" };
 import { MARKS } from "../../../shared/sim/supply.ts";

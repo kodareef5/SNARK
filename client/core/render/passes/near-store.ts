@@ -61,7 +61,7 @@ const INSTANCES = "chunk instances";
 const SETTLE = 2000;
 /** A node form with nothing to draw: what is left of a used-up node whose mesh no pack has. */
 export const HIDDEN = 0xffff;
-/** Numbers a run of cells takes in `runs` (Scene.ranges), and in `castRuns` (Scene.castChunk). */
+/** Numbers a run of cells takes in `runs` (ranges), and in `castRuns` (castChunk). */
 const RUN = 13;
 const CAST_RUN = 5;
 
@@ -111,7 +111,7 @@ export interface ChunkBatch {
   thin: Uint8Array;
   cellCrown: Int8Array;
   cellThin: Uint8Array;
-  /** For trees that swap levels (Scene.swapOf): the crown and trunk levels a cell was last drawn at and when, and the levels it is changing from and since when; -1 for none. */
+  /** For trees that swap levels (swapOf): the crown and trunk levels a cell was last drawn at and when, and the levels it is changing from and since when; -1 for none. */
   cellShown: Int8Array;
   cellShownTrunk: Int8Array;
   cellWas: Int8Array;
@@ -144,7 +144,7 @@ export interface ChunkBatch {
   /** The mesh its statics of kinds drawn flat as their form are drawn with in place of their instances (nearcity.ts), or null; and its one instance, after the pieces', which is every instance's count. */
   mesh: NearMesh | null;
   meshAt: number;
-  /** Per cell, 1 where its mesh has faces in view this frame (Scene.meshCells). */
+  /** Per cell, 1 where its mesh has faces in view this frame (meshCells). */
   inView: Uint8Array;
   /**
    * Per instance, its bend where its kind is bent (bend.ts), eight numbers each, which go up as the buffer BEND_BUFFERS past

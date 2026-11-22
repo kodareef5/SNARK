@@ -46,7 +46,7 @@ export class Casting {
   moonShadows = true;
   /** The lowest a receiver in any cascade's sphere can be. A caster's shadow reaches as far as its top stands over this. */
   floor = 0;
-  /** Metres past where a caster's shadow falls that a lookup of it may reach (Scene.shadeHidden). */
+  /** Metres past where a caster's shadow falls that a lookup of it may reach (shadeHidden). */
   shadeSlack = 0;
   /** Metres from the camera past which nothing casts into a cascade: as far as a cascade's cube reaches, and MAX_REACH on. */
   castRange = 0;

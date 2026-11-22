@@ -1,6 +1,7 @@
-// A frame is a list of passes (`passes` in scene.ts). A pass is one file: the state it keeps from frame to frame, what it
-// brings up to date, and what it draws. The scene walks the list once for each hook, so a pass's place in the list is its
-// place in the frame: what is earlier is put in the packet first, and takes of the budget first.
+// A frame is a list of passes (`rows` in scene.ts). A pass is one file under passes/: the state it keeps from frame to
+// frame, what it brings up to date, and what it draws. The scene walks the list once for each hook, every `update` and
+// then every `draw`, so a pass's place in the list is its place in the frame: what is earlier is put in the packet first,
+// and takes of the budget first. A layer with two places in the frame gives two rows (the near store's meshes).
 
 import type { Assets } from "../assets/assets.ts";
 import type { Tier } from "../assets/tiers.ts";

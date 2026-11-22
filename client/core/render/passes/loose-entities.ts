@@ -143,7 +143,7 @@ export class LooseEntities implements Pass {
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
       if (p.lit && this.speciesKind[kind] !== Number(plain)) continue;
-      // A supply capsule is drawn from its drop, in pieces (showSupply), where the pack has its model.
+      // A supply capsule is drawn from its drop, in pieces (supply-drops.ts), where the pack has its model.
       if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0 || kind === this.capsuleKind || this.dropped.flying(kind, remote.anim[i]!)) continue;
       const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;

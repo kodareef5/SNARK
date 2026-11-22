@@ -109,7 +109,7 @@ function reorder32(a: Uint32Array, w: number, rows: number, count: number, order
   for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
 }
 
-/** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
+/** Where an opaque step's cut-out draws go among its others (Draws.cutouts). */
 export type Cutouts = "last" | "made" | "first" | "none";
 export const CUTOUTS: readonly Cutouts[] = ["last", "made", "first", "none"];
 

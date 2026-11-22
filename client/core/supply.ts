@@ -33,7 +33,7 @@ export class SupplyView {
   /** How many shafts and capsules the last frame drew. */
   shafts = 0;
   capsules = 0;
-  /** The scene draws the capsules from their model (render/scene.ts showSupply), and this the shafts alone. */
+  /** The scene draws the capsules from their model (render/passes/supply-drops.ts), and this the shafts alone. */
   modelled = false;
   private readonly box: number;
   private readonly beam: number;
@@ -60,7 +60,7 @@ export class SupplyView {
   }
 
   draw(ch: Characters, p: FramePacket, cam: Camera): void {
-    // Where the pack has the capsule's model the scene draws it all, shafts too (render/scene.ts showSupply).
+    // Where the pack has the capsule's model the scene draws it all, shafts too (render/passes/supply-drops.ts).
     if (this.modelled) return;
     this.shafts = this.capsules = 0;
     const list = this.list;

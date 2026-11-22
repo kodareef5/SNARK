@@ -61,7 +61,7 @@ export class CrownCover {
   private shapes = -1;
   private held = -1;
   stale = true;
-  /** How many times the grid has been made: a count taken from an earlier grid is taken again (Scene.coverCells). */
+  /** How many times the grid has been made: a count taken from an earlier grid is taken again (NearStore.coverCells). */
   made = 0;
   /** Crowns on the grid, for tests and the bench. */
   crowns = 0;
