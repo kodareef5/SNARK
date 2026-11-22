@@ -146,6 +146,78 @@ test("each kerb line runs along its street's edge, cut where a cross street take
   for (const l of lines) for (let k = 1; k < l.stations.length; k++) expect(l.stations[k]!).toBeGreaterThan(l.stations[k - 1]!);
 });
 
+/** The least distance from (x, z) to a centre line's segments. */
+function toLine(xz: Float64Array, x: number, z: number): number {
+  let best = Infinity;
+  for (let q = 2; q < xz.length; q += 2) {
+    const ax = xz[q - 2]!, az = xz[q - 1]!, ex = xz[q]! - ax, ez = xz[q + 1]! - az, t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez)));
+    best = Math.min(best, Math.hypot(x - ax - ex * t, z - az - ez * t));
+  }
+  return best;
+}
+
+test("a kerb line follows its street's edge round a bend in its centre line, mitred inside it and round outside, and runs on into the next stretch", () => {
+  // A street that bends by 30 degrees at (200, 100), then another of the same street on from its end bending 20 more.
+  const a = (30 * Math.PI) / 180, b = (50 * Math.PI) / 180;
+  const p1 = [200 + 100 * Math.cos(a), 100 + 100 * Math.sin(a)] as const, p2 = [p1[0] + 80 * Math.cos(b), p1[1] + 80 * Math.sin(b)] as const;
+  const part: StreetsPart = {
+    x0: 0, z0: 0,
+    stretches: [
+      { type: 0, flags: 0, seed: 1, sides: [side, side], xz: Float64Array.of(100, 100, 200, 100, ...p1) },
+      { type: 0, flags: 0, seed: 2, sides: [side, side], xz: Float64Array.of(...p1, ...p2) },
+    ],
+    corners: [],
+  };
+  const lines = kerbLines(held(part), part);
+  // One line a side of each stretch, every point the kerb's 4 m from the centre line, as the ground draws the edge.
+  expect(lines.length).toBe(4);
+  for (const l of lines) for (let q = 0; q < l.xz.length; q += 2) {
+    const d = Math.min(toLine(part.stretches[0]!.xz, l.xz[q]!, l.xz[q + 1]!), toLine(part.stretches[1]!.xz, l.xz[q]!, l.xz[q + 1]!));
+    expect(Math.abs(d - 4)).toBeLessThan(1e-6);
+  }
+  // No step longer than a metre, and each side's two lines meet at one point where the stretches meet.
+  for (const l of lines) for (let q = 2; q < l.xz.length; q += 2) expect(Math.hypot(l.xz[q]! - l.xz[q - 2]!, l.xz[q + 1]! - l.xz[q - 1]!)).toBeLessThanOrEqual(1 + 1e-9);
+  for (const side of [0, 1]) {
+    const [one, two] = [lines.find((l) => l.stretch === 0 && l.side === side)!, lines.find((l) => l.stretch === 1 && l.side === side)!];
+    expect(Math.hypot(one.xz[one.xz.length - 2]! - two.xz[0]!, one.xz[one.xz.length - 1]! - two.xz[1]!)).toBeLessThan(1e-6);
+  }
+  // Its stations are its own line's length: the inside of the bends shorter than the outside.
+  const length = (side: number): number => lines.filter((l) => l.side === side).reduce((n, l) => n + l.stations[l.stations.length - 1]! - l.stations[0]!, 0);
+  expect(length(0)).toBeLessThan(length(1));
+});
+
+test("a stretch's kerb ends at the end of the corner's arc it comes into, the two meeting end to end", () => {
+  // Along x at z = 100 to a cross street at x = 200, its left kerb (z = 104) rounding into the cross street's (x = 196)
+  // on a 6 m arc about (190, 110).
+  const cross = heldSide(4, 0, 2, kindsByte(0, WALK, RAISED));
+  const part: StreetsPart = {
+    x0: 0, z0: 0,
+    stretches: [{ type: 0, flags: 0, seed: 1, sides: [side, side], xz: Float64Array.of(0, 100, 400, 100) }, { type: 0, flags: 0, seed: 2, sides: [cross, cross], xz: Float64Array.of(200, 100, 200, 300) }],
+    corners: [{ cx: 190, cz: 110, radius: 6, reach: Math.hypot(6, 6), ax: 0, az: -1, bx: 1, bz: 0, stretch: 0, side: 0 }],
+  };
+  const lines = kerbLines(held(part), part);
+  const run = lines.find((l) => l.stretch === 0 && l.side === 0 && l.corner < 0)!, arc = lines.find((l) => l.corner === 0)!;
+  // The run's last point is the arc's first, and no point of the run lies past it: no metre of kerb laid twice.
+  expect([run.xz[run.xz.length - 2], run.xz[run.xz.length - 1]]).toEqual([190, 104]);
+  expect([arc.xz[0], arc.xz[1]]).toEqual([190, 104]);
+  for (let q = 0; q < run.xz.length; q += 2) expect(run.xz[q]!).toBeLessThanOrEqual(190);
+  // The cross street's left kerb (x = 196) comes out of the arc's other end.
+  const out = lines.find((l) => l.stretch === 1 && l.corner < 0 && Math.abs(l.xz[0]! - 196) < 1e-6)!;
+  expect(out.xz[1]).toBeCloseTo(110, 9);
+});
+
+test("a road of two points across the map's edge has its kerbs, from the sector it crosses", () => {
+  // Held is one sector, 0 to 1,024 m; the road runs from inside it to 76 m past its edge, its end point off the map.
+  const part: StreetsPart = { x0: 0, z0: 0, stretches: [{ type: 0, flags: 0, seed: 1, sides: [side, side], xz: Float64Array.of(1000, 500, 1100, 500) }], corners: [] };
+  const lines = kerbLines(held(part), part);
+  expect(lines.filter((l) => l.stretch === 0).length).toBe(2);
+  // Given once: by a part of a sector past the edge, were one held there, it is not.
+  const far: StreetsPart = { ...part, x0: 1024 };
+  const both = new StreetSectors();
+  both.put(0, decodeStreets(encodeStreets(part), 0, 0), 0, 0, 16, 16);
+  expect(kerbLines(both, decodeStreets(encodeStreets(far), 1024, 0)).length).toBe(0);
+});
+
 test("a map carries its streets' parts and gives them back, and its heightfield's wheels follow them", () => {
   // The fixture's south-east corner is at column 2040 and row 2050 of the lattice: its first sector's square, column 127
   // and row 128, begins 8 chunks west and 2 south of it, so its places are from (-512, -128).
