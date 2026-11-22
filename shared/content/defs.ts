@@ -86,6 +86,8 @@ export interface SpeciesDef extends Named {
   readonly still?: boolean;
   /** "flees" (the default) runs from what hurts it, "defends" attacks what hurts it, and "hunts" attacks any survivor it sees. */
   readonly temper?: "flees" | "defends" | "hunts";
+  /** How it shows in a visor's heat view (D1034): "warm" (the default) or "cold", a cold-blooded thing barely there. */
+  readonly blood?: "warm" | "cold";
   /** How far off it notices what it hunts, in metres. Defaults to 20. */
   readonly sight?: number;
   /** How far from where a hunt began it follows before it gives up, in metres. Defaults to 60. */

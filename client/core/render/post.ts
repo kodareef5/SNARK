@@ -164,6 +164,7 @@ export function opticFrame(frame: Float32Array, tier: Tier, optic: Optic, seed: 
   frame[OPTIC_AT] = optic.mode;
   frame[OPTIC_AT + 1] = tier.post ? optic.grain : 0;
   frame[OPTIC_AT + 2] = seed % 4096;
+  // The heat view's palette is the grade's (surface.ts ironbow); night vision's light is amplified and its phosphor told.
   if (optic.mode !== OPTIC_NIGHT) return;
   for (let c = 0; c < 3; c++) {
     frame[FRAME.grade + c] = frame[FRAME.grade + c]! * optic.gain;

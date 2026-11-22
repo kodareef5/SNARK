@@ -41,7 +41,7 @@ import { nearestColour, REGION_BASE } from "../../../shared/pack/palette.ts";
 import { RIDER_TARGET_FLOATS, RIDER_SOLES, RIDER_GRIPS, RIDER_GRIP_RADIUS, RIDER_GRIP_LOW, RIDER_GRIP_HIGH, RIDER_FOREARM_ALIGNMENT, fitRiderControls } from "../../../shared/anim/rider-controls.ts";
 import { anchorFrame, riderTargets, saddleSeat, seatFrame } from "../../../shared/anim/seat.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
-import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
+import { BONE_FLOATS, DRAW_HEAT_SHIFT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, HEAT_COLD, HEAT_WARM, HEAT_WORLD, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 import { MARINE_STORIES, ROAD_STORIES, WEAR_KEY, wearOf } from "./wear.ts";
 import { TireContacts } from "./tire-contact.ts";
@@ -118,6 +118,8 @@ interface Creature {
   color: number;
   /** An unset gene on a palette-only draw takes its region's first colour. Null regions have no dye. */
   flatColors: Uint8Array | null;
+  /** How hot it shows in a visor's heat view (packet.ts HEAT_): a vehicle as the world does, a cold-blooded thing cold, the rest warm. */
+  heat: number;
   /** How far each level of its mesh lies from the finest, in metres. */
   error: readonly number[];
   /**
@@ -518,7 +520,7 @@ export class Characters {
       });
       const wreck = bind.own(d.id, "wreck");
       const flatColors = d.class === "creature" && d.regions ? Uint8Array.from(d.regions, (r) => r?.colors[0]?.[0] ?? 0) : null;
-      return { flatColors, wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
+      return { flatColors, heat: reg.vehicle[i] ? HEAT_WORLD : (d as SpeciesDef).blood === "cold" ? HEAT_COLD : HEAT_WARM, wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -1129,6 +1131,7 @@ export class Characters {
    */
   private queueCreature(c: Creature, mesh: number, error: readonly number[], first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, stand: number, unseen: boolean, layer = 0): number {
     const n = this.count++;
+    if (c.heat !== HEAT_WARM) this.meshHeat.set(mesh, c.heat);
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, error, far);
@@ -1669,6 +1672,11 @@ export class Characters {
   }
 
   /** Writes the instances queued as `want`, a draw for each key unless `draw` is null. */
+  /** The meshes of kinds that show other than warm in a heat view, and how (packet.ts HEAT_); the rest are warm. */
+  private readonly meshHeat = new Map<number, number>();
+  /** A visor's heat view is on this frame (the scene sets it): only then do bodies' draws say how hot they are. */
+  heatView = false;
+
   private group(p: FramePacket, writer: InstanceWriter, want: number, draw: DrawFn | null, cast: CastFn | null, flags: number): void {
     const counts = this.counts.fill(0);
     const byMask = cast ? this.maskCounts : null;
@@ -1688,8 +1696,8 @@ export class Characters {
       const key = x < 0 ? k : this.extra[x]!;
       const stand = x < 0 ? -1 : this.extra[x + 2]!;
       const mesh = Math.floor(key / this.levels), lod = key % this.levels;
-      // Bodies standing in a pose on one bone are a draw of their own.
-      const f = stand >= 0 ? flags | DRAW_ONE_BONE : flags;
+      // Bodies standing in a pose on one bone are a draw of their own. Each shows as hot as its kind in a heat view.
+      const f = (stand >= 0 ? flags | DRAW_ONE_BONE : flags) | (this.heatView ? (this.meshHeat.get(mesh) ?? HEAT_WARM) << DRAW_HEAT_SHIFT : 0);
       draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand);
       if (byMask) {
         for (let m = 0, at = total; m < MASKS; m++) {

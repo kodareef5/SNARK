@@ -20,6 +20,8 @@ export const CARBONEMYS: readonly Def[] = [
     walkSpeed: 1.05, sprintMul: 2, swimSpeed: 3.2, turn: 62, strafe: false, jumpSpeed: 0,
     fists: 13, bite: { harvest: "berries", reach: 2.7, ticks: 24, lands: 12, stamina: 6 },
     temper: "defends", alarm: 12, leash: 30, defendsEgg: true,
+    // A turtle: cold-blooded, barely there in a visor's heat view (D1034).
+    blood: "cold",
     zones: { torso: .2, tail: .5 }, takes: { bullet: .7 },
     slots: 100, keeps: 4, torporDrain: .3, killXp: 12,
     taming: { a0: 3000, a1: 150, foodBase: .003156, proneMult: 352.0631, k: .2 },

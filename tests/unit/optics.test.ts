@@ -6,9 +6,9 @@ import { KEY_SIGHT, KEY_SIGHT_SHADE, buildHud } from "../../client/core/ui/hud.t
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { S_LENS, S_LENS_TWIN } from "../../client/core/ui/style.ts";
 import { DIGITAL_GRAIN, NIGHT_GAIN, NIGHT_GRAIN, VISOR_FIRST, VISOR_GLASS, VISOR_STEP, Visor } from "../../client/core/visor.ts";
-import { FRAME, FramePacket, OPTIC_AT, OPTIC_NIGHT, OPTIC_NONE } from "../../client/core/render/packet.ts";
+import { FRAME, FramePacket, HEAT_COLD, HEAT_HOT, HEAT_WARM, HEAT_WORLD, OPTIC_AT, OPTIC_HEAT, OPTIC_NIGHT, OPTIC_NONE } from "../../client/core/render/packet.ts";
 import { PHOSPHOR, opticFrame, postFrame, type Optic } from "../../client/core/render/post.ts";
-import { graded } from "../../client/core/render/surface.ts";
+import { graded, heatOfShown, ironbow, shown } from "../../client/core/render/surface.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { KEY_CROSS, KEY_VISOR } from "../../client/core/ui/hud.ts";
 import type { Def, ItemDef } from "../../shared/content/defs.ts";
@@ -241,4 +241,38 @@ test("a visor's window is a wide box that narrows to a slit, framed, with its zo
   expect((box[2]! - box[0]!) * (16 / 9) / (box[3]! - box[1]!)).toBeCloseTo(VISOR_WIDE, 9);
   windowBox(SHAPE_VISOR, 0.86, 16 / 9, box);
   expect([box[0], box[2]]).toEqual([0, 1]);
+});
+
+test("the heat view: its palette runs from black through red to white as the heat rises; a body by its kind, hotter than the world however lit, a cold-blooded one cooler than a warm", () => {
+  const out = [0, 0, 0];
+  const luma = (t: number): number => (ironbow(t, out), out[0]! * 0.2126 + out[1]! * 0.7152 + out[2]! * 0.0722);
+  let last = -1;
+  for (let t = 0; t <= 1.0001; t += 0.05) {
+    expect(luma(t)).toBeGreaterThanOrEqual(last - 1e-9);
+    last = luma(t);
+  }
+  ironbow(0, out);
+  expect(out).toEqual([0, 0, 0]);
+  ironbow(1, out);
+  expect(out).toEqual([1, 1, 1]);
+  const p = new FramePacket();
+  postFrame(p.frame, tierOf("medium"), 14, 720);
+  opticFrame(p.frame, tierOf("medium"), { mode: OPTIC_HEAT, gain: 1, grain: 0 }, 0);
+  p.frame[FRAME.exposure] = 1;
+  const seen = (code: number, light: number): number => {
+    heatOfShown(code);
+    const rgb = [0, 0, 0];
+    shown(rgb, [light, light, light], 10, p);
+    heatOfShown(0);
+    return rgb[0]! * 0.2126 + rgb[1]! * 0.7152 + rgb[2]! * 0.0722;
+  };
+  // The world warms as it is lit, but no sunlit wall is as hot as a cold-blooded body in the dark.
+  expect(seen(HEAT_WORLD, 0.01)).toBeLessThan(seen(HEAT_WORLD, 50));
+  expect(seen(HEAT_WORLD, 50)).toBeLessThan(seen(HEAT_COLD, 0));
+  expect(seen(HEAT_COLD, 0)).toBeLessThan(seen(HEAT_WARM, 0));
+  expect(seen(HEAT_WARM, 0)).toBeLessThan(seen(HEAT_HOT, 0));
+  // A body is as hot however it is lit.
+  expect(seen(HEAT_WARM, 50)).toBe(seen(HEAT_WARM, 0));
+  const v = new Visor();
+  expect([v.mode, (v.cycle(), v.mode), (v.cycle(), v.mode), (v.cycle(), v.mode)]).toEqual([OPTIC_NONE, OPTIC_NIGHT, OPTIC_HEAT, OPTIC_NONE]);
 });

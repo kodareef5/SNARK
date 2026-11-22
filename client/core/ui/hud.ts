@@ -158,7 +158,7 @@ function buildVisor(f: UiFrame, W: number, H: number, m: HudModel): void {
   ink(W / 2 - 0.5, H / 2 - 7, 1, 14);
   const zoom = m.visorZoom >= 10 ? m.visorZoom.toFixed(0) : m.visorZoom.toFixed(1);
   const range = m.visorRange > 0 ? `${Math.round(m.visorRange).toLocaleString("en-US")} m` : "---";
-  const words = [`${zoom}x${m.visorDigital ? " DIGITAL" : ""}`, m.visorMode === 1 ? "NIGHT" : "PLAIN", `${Math.round(m.heading).toString().padStart(3, "0")}`, range];
+  const words = [`${zoom}x${m.visorDigital ? " DIGITAL" : ""}`, m.visorMode === 1 ? "NIGHT" : m.visorMode === 2 ? "HEAT" : "PLAIN", `${Math.round(m.heading).toString().padStart(3, "0")}`, range];
   const across = (x1 - x0) / words.length, y = Math.min(H - 20, y1 + 6);
   for (let i = 0; i < words.length; i++) f.text(k++, x0 + across * i, y, across, S_VISOR, words[i]!).tint = VISOR_INK;
 }

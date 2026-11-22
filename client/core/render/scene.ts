@@ -61,6 +61,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
+import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
 import { BEND_BUFFERS, BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
@@ -1064,11 +1065,13 @@ export class Scene {
     if (p.tier.lit) this.finishNear.update(cam.x, cam.y, cam.z, this.world.hf, this.world.structs, scale, finishTaps(p.tier));
     this.finishes.frame(p, this.assets.residency, p.tier, near, scale);
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
+    this.characters.heatView = false;
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky, this.fadeFrom);
       postFrame(p.frame, p.tier, this.hour, Math.round(this.canvasHeight * p.room), p.share);
       opticFrame(p.frame, p.tier, this.optic, Math.floor(this.now / 16));
+      this.characters.heatView = p.frame[OPTIC_AT] === OPTIC_HEAT;
       p.lightSamples = lightSamples(this.supersampled);
       // A vehicle's glass covers a share of a pixel's samples where the frame has them: a canvas is drawn antialiased, a
       // light target with samples unless it is supersampled (vehicle-glass.ts).

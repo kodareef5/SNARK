@@ -142,6 +142,7 @@ const SPECIES = {
   killXp: f("number"),
   still: f("switch"),
   temper: f("text"),
+  blood: f("text", "none: ours, how it shows in a visor's heat view"),
   sight: f("number"),
   leash: f("number"),
   bite: f("facet", "AttackInfos"),
@@ -445,7 +446,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "blood", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },

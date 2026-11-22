@@ -33,10 +33,10 @@ const WORKER_HEAP_RAM = 500_000_000;
  * hold the executor's mirror of the card's state, which sends a frame's changes alone; 100 are for the maps round's far
  * shadow, filtering and map loader (D748); 5 time the assets' uploads and fetch the data utility's record of frames
  * (D899); 6 make the streets' two pictures round the camera and put each frame's tiles of them on the card (D1000); 3
- * point attributes 13 and 14 at a bent draw's stream of bends, beside its instances (D1006); the last 5 hold a sight's
- * scissor to its window and mask its lens (D1030).
+ * point attributes 13 and 14 at a bent draw's stream of bends, beside its instances (D1006); 5 hold a sight's scissor to
+ * its window and mask its lens (D1030); the last 1 gives a draw's heat to a visor's heat view (D1034).
  */
-const SHELL_MAX_LINES = 1619;
+const SHELL_MAX_LINES = 1620;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */

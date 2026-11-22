@@ -138,6 +138,15 @@ export const DRAW_SKYLINE = 32768;
  * buffer BEND_BUFFERS past its instances', at the same place, and the draw's vertices are bent by it before it is turned.
  */
 export const DRAW_BENT = 65536;
+/**
+ * Two bits from DRAW_HEAT_SHIFT: how hot a body a draw is in a visor's heat view (D1034), 0 where the world's own heat is
+ * shown, 1 a cold-blooded creature's, 2 a warm one's, 3 hot. The shell gives the code to `uHeat`.
+ */
+export const DRAW_HEAT_SHIFT = 17;
+export const HEAT_WORLD = 0;
+export const HEAT_COLD = 1;
+export const HEAT_WARM = 2;
+export const HEAT_HOT = 3;
 /** A chunk's buffer of its bent pieces' bends, beside its instances' buffer `id`, is `id` + BEND_BUFFERS, a bend BEND_BYTES. */
 export const BEND_BUFFERS = 4 << 20;
 export { BEND_BYTES } from "../../../shared/world/bends.ts";
@@ -415,6 +424,7 @@ export const SHORE_AT = GLASS_AT + 4;
 export const OPTIC_AT = SHORE_AT + 4;
 export const OPTIC_NONE = 0;
 export const OPTIC_NIGHT = 1;
+export const OPTIC_HEAT = 2;
 export const FRAME_FLOATS = OPTIC_AT + 8;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
