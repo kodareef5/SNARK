@@ -236,29 +236,62 @@ export function tierPrograms(tier: Tier): number[] {
   return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) ? [n] : []));
 }
 
-/** The SURFACE programs by whether a draw is dyed, twice, and may drop fragments, once. */
-const SURFACES = [PROGRAM.surfaceUndyedWhole, PROGRAM.surfaceUndyed, PROGRAM.surfaceWhole, PROGRAM.surface] as const;
+/**
+ * What picks a draw's program besides its DRAW_ flags, as bits over them (the flags stay under bit 24): it has a layer
+ * (packet.ts drawLayer); its material is dyed, having a mask, or it has no material; it is in a node's hand-over; its
+ * cell of trees is changing level (hand.ts swapKeeps); it fades out with distance; the frame has wakes on the water; the
+ * frame's tier splits the view in two depth ranges.
+ */
+export const IS_LAYERED = 1 << 24, IS_DYED = 1 << 25, IS_HANDED = 1 << 26, IS_SWAPPING = 1 << 27, IS_FADED = 1 << 28, HAS_WAKES = 1 << 29, HAS_SPLIT = 1 << 30;
+
+/** A row of the choice: a program, for a draw with every flag and fact of `all`, one of `any` where it names some, and none of `none`. */
+export interface Choice {
+  readonly program: number;
+  readonly all: number;
+  readonly any: number;
+  readonly none: number;
+}
+const pick = (program: number, all = 0, any = 0, none = 0): Choice => ({ program, all, any, none });
+/** A textured draw may drop fragments where it is cut out, in a hand-over, or of a cell changing level. */
+const DROPS = DRAW_CUTOUT | IS_HANDED | IS_SWAPPING;
 
 /**
- * The program draw `d` of a frame is drawn with, `material` its material where it has one. A textured draw is drawn
- * undyed where its material has no masks, and by a program that never drops a fragment unless it is cut out or in a
- * node's hand-over; a body with its layer by `surfaceLayer`.
+ * The program a draw is drawn with: that of the first row it fits. A textured draw is drawn undyed where its material
+ * has no masks, and by a program that never drops a fragment unless it may; a body with its layer by `surfaceLayer`. A
+ * new kind of draw is a row here, before the first row that would take it otherwise.
  */
-export function drawProgram(p: FramePacket, d: number, material: PackMaterial | undefined): number {
-  const flags = p.drawFlags[d]!;
+export const CHOICE: readonly Choice[] = [
   // An instrument's light with its strip is a SURFACE draw, which its street material draws as a channel of energy.
-  if ((flags & DRAW_EMISSIVE) !== 0 && (flags & DRAW_TEXTURED) === 0) return PROGRAM.signal;
-  if (flags & DRAW_SKYLINE) return PROGRAM.skyline;
-  const hand = p.drawHand[d]!;
-  if ((flags & DRAW_TEXTURED) !== 0) {
-    if (p.drawLayer[d]! > 0) return PROGRAM.surfaceLayer;
-    const dyed = !material || material.mask >= 0 || material.mask2 >= 0;
-    // A cell of trees changing level drops fragments as one in the hand-over does (hand.ts swapKeeps).
-    const swapping = p.drawSwap[d] !== 0;
-    return SURFACES[(dyed ? 2 : 0) + (hand !== 0 || swapping || (flags & DRAW_CUTOUT) !== 0 ? 1 : 0)]!;
+  pick(PROGRAM.signal, DRAW_EMISSIVE, 0, DRAW_TEXTURED),
+  pick(PROGRAM.skyline, DRAW_SKYLINE),
+  pick(PROGRAM.surfaceLayer, DRAW_TEXTURED | IS_LAYERED),
+  pick(PROGRAM.surface, DRAW_TEXTURED | IS_DYED, DROPS),
+  pick(PROGRAM.surfaceWhole, DRAW_TEXTURED | IS_DYED),
+  pick(PROGRAM.surfaceUndyed, DRAW_TEXTURED, DROPS),
+  pick(PROGRAM.surfaceUndyedWhole, DRAW_TEXTURED),
+  pick(PROGRAM.pulled, DRAW_PULLED),
+  pick(PROGRAM.far, 0, IS_FADED | IS_HANDED),
+  pick(PROGRAM.waterWake, DRAW_WATER | HAS_WAKES),
+  pick(PROGRAM.water, DRAW_WATER),
+  pick(PROGRAM.seeThrough, DRAW_BLEND | HAS_SPLIT),
+  pick(PROGRAM.flat),
+];
+/** The rows as numbers, four a row, which the walk below reads. */
+const PICKS = Int32Array.from(CHOICE.flatMap((c) => [c.all, c.any, c.none, c.program]));
+
+/** The program draw `d` of a frame is drawn with (CHOICE), `material` its material where it has one. */
+export function drawProgram(p: FramePacket, d: number, material: PackMaterial | undefined): number {
+  const is = p.drawFlags[d]!
+    | (p.drawLayer[d]! > 0 ? IS_LAYERED : 0)
+    | (!material || material.mask >= 0 || material.mask2 >= 0 ? IS_DYED : 0)
+    | (p.drawHand[d] !== 0 ? IS_HANDED : 0)
+    | (p.drawSwap[d] !== 0 ? IS_SWAPPING : 0)
+    | (p.drawFade[d] !== 0 ? IS_FADED : 0)
+    | (p.frame[WATER_MARK_COUNT]! > 0 ? HAS_WAKES : 0)
+    | (p.split > 0 ? HAS_SPLIT : 0);
+  for (let k = 0; k < PICKS.length; k += 4) {
+    const all = PICKS[k]!, any = PICKS[k + 1]!;
+    if ((is & all) === all && (any === 0 || (is & any) !== 0) && (is & PICKS[k + 2]!) === 0) return PICKS[k + 3]!;
   }
-  if ((flags & DRAW_PULLED) !== 0) return PROGRAM.pulled;
-  if (p.drawFade[d] !== 0 || hand !== 0) return PROGRAM.far;
-  if ((flags & DRAW_WATER) !== 0) return p.frame[WATER_MARK_COUNT]! > 0 ? PROGRAM.waterWake : PROGRAM.water;
-  return (flags & DRAW_BLEND) !== 0 && p.split > 0 ? PROGRAM.seeThrough : PROGRAM.flat;
+  return PROGRAM.flat;
 }
