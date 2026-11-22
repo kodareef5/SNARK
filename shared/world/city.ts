@@ -21,7 +21,7 @@ import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz, type MapDims } fro
 import { TAU, detCos, detSin, len3 } from "../math/scalar.ts";
 import { MAX_CORNERS, hullPoint, hullSteps, type HullDef, type HullTable } from "./convex.ts";
 import type { Heightfield } from "./heightfield.ts";
-import { MapStatics, type ChunkBends, type MapStatic } from "./mapfile.ts";
+import { MapStatics, type MapStatic } from "./mapfile.ts";
 import { TACTICAL_CELL, farTopByte } from "./tactical.ts";
 import { EYE_COLLIDERS } from "./tide-eye.ts";
 
@@ -52,14 +52,21 @@ export class CityStatics {
   /** Every kind's boxes and convex parts as walked (the registry's parts), and as drawn near. */
   readonly walked: CityForm;
   readonly look: CityForm;
-  /** The map's bent pieces' bends by chunk and slot (mapfile.ts MapStatics.bends), which the near store draws them by. */
-  readonly bends: Map<number, ChunkBends>;
+  /**
+   * The map's statics the near store draws a bent piece by, its row and its bend by chunk and slot (mapfile.ts
+   * MapStatics.bends): those this city is made of, or, where those are some sectors' rows copied out of the map's as a page
+   * sets it in, that table, so that a sector's kerbs are drawn once its statics have come, whatever is still on its way.
+   * Its kinds as content indexes in `bentKind`, 0 for one that is not a structure here.
+   */
+  readonly bent: MapStatics;
+  readonly bentKind: Uint16Array;
 
   /** `rows`, where given, are what CityStatics.steps made of `statics` with `reg`. */
   constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[], reg: Registry, rows?: CityRows) {
     this.dims = dims;
     const table = MapStatics.of(dims, statics);
-    this.bends = table.bends;
+    this.bent = table.coming ?? table;
+    this.bentKind = structureKinds(this.bent.kinds, reg);
     ({ first: this.first, kind: this.kind, yaw: this.yaw, x: this.x, y: this.y, z: this.z } = rows ?? finish(rowSteps(dims, table, reg)));
     this.halfX = reg.halfX;
     this.halfY = reg.halfY;
@@ -88,6 +95,9 @@ export class CityStatics {
     return this.first[chunk + 1]! - this.first[chunk]!;
   }
 }
+
+/** No bent piece, for a city made only for its faces (render/citymake.ts, render/farshadow.ts on a thread). */
+export const UNBENT: Pick<CityStatics, "bent" | "bentKind"> = { bent: MapStatics.blank([], 0, 0, false), bentKind: new Uint16Array(0) };
 
 /** Pieces made between two pauses (CityStatics.steps, chunkReach). */
 const SLICE = 1 << 15;
@@ -181,13 +191,17 @@ function finish<T>(steps: Generator<void, T>): T {
   for (let s = steps.next(); ; s = steps.next()) if (s.done) return s.value;
 }
 
-/** The pieces of `t` with a content index each, those of a kind this content lacks or that is not a structure left out. */
-function* rowSteps(dims: MapDims, t: MapStatics, reg: Registry): Generator<void, CityRows> {
-  // Each of the map's kinds as a content index, or 0 for one this content lacks or that is not a structure.
-  const of = Uint16Array.from(t.kinds, (id) => {
+/** Each of a map's kinds `kinds` as a content index of `reg`, or 0 for one it lacks or that is not a structure. */
+function structureKinds(kinds: readonly string[], reg: Registry): Uint16Array {
+  return Uint16Array.from(kinds, (id) => {
     const k = reg.index.get(id);
     return k !== undefined && reg.defs[k]?.type === "structure" ? k : 0;
   });
+}
+
+/** The pieces of `t` with a content index each, those of a kind this content lacks or that is not a structure left out. */
+function* rowSteps(dims: MapDims, t: MapStatics, reg: Registry): Generator<void, CityRows> {
+  const of = structureKinds(t.kinds, reg);
   const kind = new Uint16Array(t.length);
   let n = 0;
   for (let r = 0; r < kind.length; r++) {

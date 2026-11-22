@@ -20,7 +20,7 @@
 // only where its texels a metre are positive.
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
-import { cityReach, cityTops, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { UNBENT, cityReach, cityTops, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { CityKinds, CityMaker } from "./citymake.ts";
@@ -281,7 +281,7 @@ export function doSweep(kinds: CityKinds, job: SweepJob): SweepMade {
   if (!solid || !ground) {
     const m = job.make!;
     const { first, kind, yaw, x, y, z } = m;
-    const city: CityStatics = { dims: d, first, kind, yaw, x, y, z, halfX: kinds.halfX, halfY: kinds.halfY, halfZ: kinds.halfZ, color: kinds.color, plain: kinds.plain, near: kinds.near ?? new Uint8Array(kinds.plain.length), walked: kinds.walked, look: kinds.look, bends: new Map(), count: kind.length, in: (c: number) => first[c + 1]! - first[c]! };
+    const city: CityStatics = { dims: d, first, kind, yaw, x, y, z, halfX: kinds.halfX, halfY: kinds.halfY, halfZ: kinds.halfZ, color: kinds.color, plain: kinds.plain, near: kinds.near ?? new Uint8Array(kinds.plain.length), walked: kinds.walked, look: kinds.look, ...UNBENT, count: kind.length, in: (c: number) => first[c + 1]! - first[c]! };
     const g = kinds.ground;
     const hf = new Heightfield(d, g.cell, g.minY, g.stepY, m.heights, new Uint8Array(0));
     ground = new Uint16Array(d.chunksX * d.chunksZ * SIDE * SIDE);
