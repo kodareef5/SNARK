@@ -21,6 +21,13 @@ export const STREET_TILE_BYTES = CHUNK_SIDE * CHUNK_SIDE * PLANE_BYTES;
  */
 export const STREET_TILES_FRAME = 8;
 
+/** Whether chunk `key` (cz * 65536 + cx) lies in one of the chunk rectangles `changed` (cx0, cz0, cx1, cz1 each, StreetSectors changedSince). */
+function changedAt(changed: readonly number[], key: number): boolean {
+  const cx = key & 65535, cz = key >>> 16;
+  for (let k = 0; k < changed.length; k += 4) if (cx >= changed[k]! && cz >= changed[k + 1]! && cx < changed[k + 2]! && cz < changed[k + 3]!) return true;
+  return false;
+}
+
 /**
  * The region of the streets' pictures round the camera: which chunk each tile of the pictures holds, and the work of a
  * frame. A region drawn before its tiles have come reads a tile that holds another chunk, which its tag tells, or
@@ -29,21 +36,27 @@ export const STREET_TILES_FRAME = 8;
 export class StreetRegion {
   /** The chunk each tile holds, cz * 65536 + cx, or -1. */
   private readonly held = new Int32Array(STREET_CHUNKS * STREET_CHUNKS).fill(-1);
-  /** The streets' version the tiles were worked out at. */
+  /** The streets the tiles were worked out from, and at what version. */
+  private from: StreetSectors | null = null;
   private version = -1;
   /** Tiles put on the card in all: for the frame's numbers. */
   tiles = 0;
   private readonly order: number[] = [];
+  private readonly changed: number[] = [];
 
   /**
    * This frame's tiles: those of the chunks within the region round chunk (x, z) of the camera that the pictures do not
-   * hold, nearest first, STREET_TILES_FRAME at most.
+   * hold, nearest first, STREET_TILES_FRAME at most. A sector's part that comes or goes takes back only the tiles of its
+   * own square's chunks (StreetSectors changedSince), none where the square is outside the region.
    */
   follow(streets: StreetSectors | null, x: number, z: number, p: FramePacket): void {
     p.streetTiles = 0;
     if (!streets) return;
-    if (streets.version !== this.version) {
-      this.held.fill(-1);
+    if (streets !== this.from || streets.version !== this.version) {
+      if (streets === this.from && streets.changedSince(this.version, this.changed)) {
+        for (let s = 0; s < this.held.length; s++) if (this.held[s]! >= 0 && changedAt(this.changed, this.held[s]!)) this.held[s] = -1;
+      } else this.held.fill(-1);
+      this.from = streets;
       this.version = streets.version;
     }
     const ccx = Math.floor(x / CHUNK_SIZE), ccz = Math.floor(z / CHUNK_SIZE), half = STREET_CHUNKS / 2;
@@ -73,6 +86,7 @@ export class StreetRegion {
 
   reset(): void {
     this.held.fill(-1);
+    this.from = null;
     this.version = -1;
   }
 }
@@ -86,12 +100,18 @@ export class StreetPlanes {
   private readonly chunks = new Map<number, { dist: Uint8Array; kinds: Uint8Array }>();
   private seen = -1;
   private readonly streets: StreetSectors;
+  private readonly changed: number[] = [];
   constructor(streets: StreetSectors) {
     this.streets = streets;
   }
 
   private chunk(cx: number, cz: number): { dist: Uint8Array; kinds: Uint8Array } {
-    if (this.streets.version !== this.seen) { this.chunks.clear(); this.seen = this.streets.version; }
+    if (this.streets.version !== this.seen) {
+      // As the region does: the chunks of a sector that came or went worked out again, the rest kept.
+      if (!this.streets.changedSince(this.seen, this.changed)) this.chunks.clear();
+      else for (const key of this.chunks.keys()) if (changedAt(this.changed, key)) this.chunks.delete(key);
+      this.seen = this.streets.version;
+    }
     const key = cz * 65536 + cx;
     let c = this.chunks.get(key);
     if (!c) {

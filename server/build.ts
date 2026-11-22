@@ -81,6 +81,8 @@ export class Build {
   /** Counters. `fallen` counts pieces that fell when their support went. */
   placed = 0;
   refused = 0;
+  /** Why nothing may be built at a place for a reason of the game's own, or "": a supply drop's site on a PvE server (server/supply.ts). */
+  keepClear: ((x: number, z: number) => string) | null = null;
   fallen = 0;
   /** `returned` counts pieces that came down with a picked-up or demolished one and were given back. */
   pickedUp = 0;
@@ -670,6 +672,11 @@ export class Build {
     if (obstructed(structs, reg.parts, kind, px, py, pz, pose.yaw) || this.bodyIn(kind, px, py, pz, pose.yaw)) return RESULT_OBSTRUCTED;
     if (this.enemyNear(rec.team, px, pz)) return RESULT_ENEMY_NEAR;
     if (!this.support.stands(kind, pose.x, pose.y, pose.z, pose.yaw)) return RESULT_NO_SUPPORT;
+    const kept = this.keepClear?.(px, pz) ?? "";
+    if (kept !== "") {
+      this.ctx.game.sendText(c, TEXT_NOTICE, kept);
+      return RESULT_DENIED;
+    }
     const refused = this.ctx.bus.before(BUILD_PLACE, { byPid: rec.pid, team: rec.team, kind: reg.ids[kind]!, x: px, y: py, z: pz, yaw: pose.yaw, target });
     if (refused !== "") {
       this.ctx.game.sendText(c, TEXT_NOTICE, refused);

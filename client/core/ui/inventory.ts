@@ -12,6 +12,7 @@ import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, 
 import { RemoteSample, type ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, fitText, lineHeight, wrapText, type UiFrame } from "./nodes.ts";
 import { KEY_STATION_VIEW, StationPanel } from "./station.ts";
+import { TakeAll } from "./take-all.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
 
 export const KEY_INV_PANEL = 290;
@@ -78,6 +79,8 @@ export const KEY_VEHICLE_PULL = 2904;
 /** By touch, with a stack picked up: use it, as a right click does, and take half of it, as a middle click does. */
 export const KEY_INV_USE = 2905;
 export const KEY_INV_HALF = 2906;
+/** On a box that is only taken from (a supply drop's capsule): everything it holds, into the bag. */
+export const KEY_OPEN_TAKE_ALL = 2907;
 /** A slot's colour by quality: none for primitive, then green, blue, purple, gold and cyan, as ARK's tiers read. */
 const QUALITY_TINT: readonly number[] = [-1, 0x3f7a42, 0x31579a, 0x6c4290, 0x8f7426, 0x2b8790];
 
@@ -96,6 +99,8 @@ export function itemLabel(reg: Registry, item: number): string {
 
 export class InventoryScreen {
   open = false;
+  /** Take all, while it is still asking for stacks. */
+  readonly taking = new TakeAll();
   /** The last thing used was a finger (Ui.touch): the screen's words name presses, not keys and mouse buttons. */
   touch = false;
   /** The app starts the world preview; the inventory never creates a vehicle directly. */
@@ -106,7 +111,13 @@ export class InventoryScreen {
   private serviceHandle = 0;
   private serviceFeedback = "";
 
-  serviceResult(seq: number, code: number): void {
+  /** The server's answer to a command of this session's, for whichever of the screen's asks it was. */
+  result(seq: number, code: number, tick: number): void {
+    this.serviceResult(seq, code);
+    this.taking.result(seq, code, tick);
+  }
+
+  private serviceResult(seq: number, code: number): void {
     if (!this.serviceSeq || seq !== this.serviceSeq) return;
     this.serviceSeq = 0;
     this.serviceFeedback = code === RESULT_OK ? "" : SERVICE_REFUSAL[code] ?? "Service unavailable.";
@@ -152,6 +163,7 @@ export class InventoryScreen {
     this.open = false;
     this.serviceSeq = 0; this.serviceFeedback = "";
     this.held = -1;
+    this.taking.stop();
     if (session?.open) session.command(CMD_CLOSE);
   }
 
@@ -159,7 +171,7 @@ export class InventoryScreen {
   pointer(kind: number, key: number, button: number, session: ClientSession): void {
     const at = this.where(key, session);
     const box = at < 0 ? BOX_SELF : Math.floor(at / 1000);
-    const slot = at < 0 ? -1 : at % 1000;
+    let slot = at < 0 ? -1 : at % 1000;
     if (kind === 2) {
       this.hoverBox = box;
       this.hover = slot;
@@ -223,6 +235,10 @@ export class InventoryScreen {
       return;
     }
     if (kind === 0 && key === KEY_INV_HALF) { if (this.held >= 0) this.half = !this.half; return; }
+    if (kind === 0 && key === KEY_OPEN_TAKE_ALL) {
+      this.takeAll(session);
+      return;
+    }
     if (kind === 0 && key === KEY_INV_USE) {
       const from = this.held, mine = this.box(session, this.heldBox);
       if (from >= 0 && mine) this.use(this.heldBox, from, mine, session);
@@ -231,7 +247,10 @@ export class InventoryScreen {
     const inv = this.box(session, box);
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
-      this.use(box, slot, inv, session);
+      // A right click on what a supply drop holds takes it.
+      if (box === BOX_OPEN && session.open?.takeOnly) this.take(session, slot, new Set());
+      else this.use(box, slot, inv, session);
+      this.held = -1;
       return;
     }
     if (this.held < 0) {
@@ -247,6 +266,12 @@ export class InventoryScreen {
     this.held = -1;
     if (!src || (fromBox === box && from === slot) || src.item[from] === 0) return;
     const count = this.half ? Math.max(1, src.count[from]! >> 1) : 0;
+    // Out of a box that is only taken from, a stack cannot change places with another: put down on one it does not join,
+    // it goes to the first free slot of the bag.
+    if (fromBox === BOX_OPEN && box === BOX_SELF && session.open?.takeOnly && inv.item[slot] !== 0 && (inv.item[slot] !== src.item[from] || inv.quality[slot] !== src.quality[from] || inv.flags[slot] !== src.flags[from])) {
+      const free = inv.free();
+      if (free >= 0) slot = free;
+    }
     // Ammunition put down on a carried weapon that takes it sets the weapon's ammunition kind. An attachment that fits is attached.
     const target = fromBox === BOX_SELF && box === BOX_SELF && this.registry ? (this.registry.defs[inv.item[slot]!] as ItemDef | null)?.weapon : undefined;
     const what = this.registry?.ids[src.item[from]!] ?? "";
@@ -268,6 +293,29 @@ export class InventoryScreen {
     });
   }
 
+  /** Takes the stack in `slot` of the open box into the first free slot of the bag that `taken` does not hold. False with no room. */
+  private take(session: ClientSession, slot: number, taken: Set<number>): boolean {
+    const own = session.inventory;
+    const other = session.open?.inventory;
+    if (!own || !other || other.item[slot] === 0) return false;
+    let to = -1;
+    for (let s = 0; s < own.bag && to < 0; s++) if (own.item[s] === 0 && !taken.has(s)) to = s;
+    if (to < 0) return false;
+    taken.add(to);
+    const item = other.item[slot]!;
+    session.command(CMD_MOVE, (w) => (w.bits(BOX_OPEN, 1), w.varint(slot), w.bits(BOX_SELF, 1), w.varint(to), w.u16(0), w.u16(item)));
+    return true;
+  }
+
+  /**
+   * Everything the open box holds, a stack to each free slot of the bag, while there is room. The moves are asked a
+   * few at a time over the next frames (take-all.ts), since the server runs only so many of a session's commands a tick.
+   */
+  private takeAll(session: ClientSession): void {
+    this.taking.begin(session);
+    this.held = -1;
+  }
+
   /** Uses what is in `slot` of `box`: a right click, or by touch the Use button on a stack picked up. */
   private use(box: number, slot: number, inv: Inventory, session: ClientSession): void {
     // Only a carried item can be used, but in an open creature's inventory a torpor dose is fed to it and a saddle put on.
@@ -282,6 +330,7 @@ export class InventoryScreen {
   build(f: UiFrame, session: ClientSession | null, reg: Registry | null, palette: Uint8Array | null): void {
     // A container the server has just opened brings the screen up with it.
     const isOpen = !!session?.open;
+    if (session) this.taking.update(session);
     if (isOpen && !this.hadOpen) {
       this.open = true;
       this.page = 0; this.vehicleBag = false;
@@ -409,8 +458,14 @@ export class InventoryScreen {
       f.add(KEY_OPEN_PANEL, K_PANEL, x0, y, w, otherH, S_PANEL);
       const pagerW = this.pages > 1 ? 120 : 0;
       const viewW = narrow ? 84 : 0;
-      const titleW = w - PAD * 2 - pagerW - (viewW > 0 ? viewW + GAP : 0);
+      const takeW = session.open!.takeOnly ? 84 : 0;
+      const titleW = w - PAD * 2 - pagerW - (viewW > 0 ? viewW + GAP : 0) - (takeW > 0 ? takeW + GAP : 0);
       f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, titleW, S_TITLE, fitText(session.open!.name, titleW, S_TITLE));
+      if (takeW > 0) {
+        const b = f.add(KEY_OPEN_TAKE_ALL, K_BUTTON, x0 + w - PAD - pagerW - (pagerW > 0 ? GAP : 0) - (viewW > 0 ? viewW + GAP : 0) - takeW, y + PAD - 2, takeW, 22, S_BUTTON);
+        b.text = "Take all";
+        b.interactive = true;
+      }
       if (viewW > 0) {
         const b = f.add(KEY_STATION_VIEW, K_BUTTON, x0 + w - PAD - pagerW - (pagerW > 0 ? GAP : 0) - viewW, y + PAD - 2, viewW, 22, S_BUTTON);
         b.text = "Crafting";

@@ -6,7 +6,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { SLOT_BLUEPRINT } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BLUEPRINT_KG, FLAG_BLUEPRINT, Inventory, QUALITY_MUL, QUALITY_NAMES, blueprintCost, craftedQuality, moveSlot, qualityOfRating } from "../../shared/sim/items.ts";
-import { lootFaults, rollLoot } from "../../shared/sim/loot.ts";
+import { POWER_MOST, lootFaults, powSixteenths, rollLoot } from "../../shared/sim/loot.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -55,7 +55,74 @@ test("a loot roll is the same for a seed, differs between seeds, and stays in it
   expect(blueprints / tools).toBeLessThan(0.6);
   // An item that may not be a blueprint comes as itself, however sure the chance.
   const sure: LootDef = { type: "loot", id: "t:stone", from: [{ min: 1, max: 1, entries: [{ items: ["core:stone"], min: 3, max: 3, blueprint: 1 }] }] };
-  expect(rollLoot(sure, new Rng(1), index, reg.blueprints)).toEqual([{ item: id("stone"), count: 3, quality: 0, blueprint: false }]);
+  expect(rollLoot(sure, new Rng(1), index, reg.blueprints)).toEqual([{ item: id("stone"), count: 3, quality: 0, blueprint: false, rating: 0 }]);
+});
+
+test("a definition written before powers, chances and forced blueprints rolls, seed for seed, what it always rolled", () => {
+  // 3987126563 is what main's roll gave for these 401 seeds before shared/sim/loot.ts learned them (taken from main at
+  // 67d0b9d8 with this same hash): the id, count, tier and blueprint mark of every drop, in order.
+  let h = 2166136261 >>> 0;
+  for (let seed = 0; seed <= 400; seed++) {
+    for (const d of rollLoot(CRATE, new Rng(seed), index, reg.blueprints)) {
+      for (const v of [reg.ids[d.item], d.count, d.quality, d.blueprint ? 1 : 0]) for (const ch of `${v},`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+      // The rating it now carries is the one its tier came from.
+      expect(qualityOfRating(d.rating)).toBe(d.quality);
+    }
+  }
+  expect(h).toBe(3987126563);
+  // A power of 1 and a chance of 1 change nothing either, though the chance is drawn for.
+  const same: LootDef = { ...CRATE, sets: { ...CRATE.sets!, power: 1 }, from: CRATE.from.map((set) => ({ ...set, power: 1 })) };
+  for (let seed = 0; seed < 50; seed++) expect(rollLoot(same, new Rng(seed), index, reg.blueprints)).toEqual(rollLoot(CRATE, new Rng(seed), index, reg.blueprints));
+});
+
+test("a count's power leans it to its least or its most, by roots and products alone; replace draws one again", () => {
+  // Sixteenths of a power, against the exact values where they are exact.
+  expect([powSixteenths(0.25, 0.5), powSixteenths(0.5, 2), powSixteenths(0.0625, 0.25), powSixteenths(0.5, 3), powSixteenths(0.25, 1.5), powSixteenths(0.7, 1)]).toEqual([0.5, 0.25, 0.5, 0.125, 0.125, 0.7]);
+  for (const p of [1 / 16, 0.3125, 0.75, 1.0625, 2.5, 7.9375, POWER_MOST]) {
+    for (const u of [0.001, 0.2, 0.5, 0.83, 0.999]) expect(Math.abs(powSixteenths(u, p) - Math.pow(u, p))).toBeLessThan(1e-12);
+    expect([powSixteenths(0, p), powSixteenths(1, p)]).toEqual([0, 1]);
+  }
+  const many = (power: number | undefined): number => {
+    const def: LootDef = { type: "loot", id: "t:many", from: [{ min: 1, max: 6, ...(power === undefined ? {} : { power }), entries: [1, 2, 3, 4, 5, 6].map(() => ({ items: ["core:stone"], min: 1, max: 1 })) }] };
+    let n = 0;
+    for (let seed = 0; seed < 3000; seed++) n += rollLoot(def, new Rng(seed), index, reg.blueprints).length;
+    return n / 3000;
+  };
+  // Evenly from 1 to 6 is 3.5 a roll. A power of 3 leans to the least, a power of a quarter to the most.
+  const [even, low, high] = [many(undefined), many(3), many(0.25)];
+  expect(Math.abs(even - 3.5)).toBeLessThan(0.1);
+  expect(low).toBeLessThan(2.3);
+  expect(high).toBeGreaterThan(4.9);
+  // With replace, more entries are drawn than the set has, and one comes more than once.
+  const twice: LootDef = { type: "loot", id: "t:twice", from: [{ min: 5, max: 5, replace: true, entries: [{ items: ["core:stone"], min: 1, max: 1 }, { items: ["core:flint"], min: 1, max: 1 }] }] };
+  for (let seed = 0; seed < 20; seed++) expect(rollLoot(twice, new Rng(seed), index, reg.blueprints).length).toBe(5);
+  const sets: LootDef = { type: "loot", id: "t:sets", sets: { min: 3, max: 3, replace: true }, from: [{ min: 1, max: 1, entries: [{ items: ["core:stone"], min: 2, max: 2 }] }] };
+  expect(rollLoot(sets, new Rng(1), index, reg.blueprints).map((d) => d.count)).toEqual([2, 2, 2]);
+});
+
+test("an entry's chance leaves it out that often, and a forced blueprint is one wherever the item may be", () => {
+  const def = (chance: number): LootDef => ({ type: "loot", id: "t:chance", from: [{ min: 2, max: 2, entries: [{ items: ["core:stone"], min: 3, max: 3, chance }, { items: ["core:hatchet"], min: 4, max: 4, forceBlueprint: true, quality: [2.5, 2.5] }] }] });
+  let stones = 0;
+  for (let seed = 0; seed < 2000; seed++) {
+    const drops = rollLoot(def(0.25), new Rng(seed), index, reg.blueprints);
+    if (drops.some((d) => d.item === id("stone"))) stones++;
+    // The hatchet is always there, always a blueprint, one of it, at the tier its rating reaches.
+    expect(drops.filter((d) => d.item === id("hatchet")).map((d) => [d.count, d.blueprint, d.quality, d.rating])).toEqual([[1, true, 2, 2.5]]);
+  }
+  expect(Math.abs(stones / 2000 - 0.25)).toBeLessThan(0.03);
+  expect(rollLoot(def(0), new Rng(3), index, reg.blueprints).length).toBe(1);
+  expect(rollLoot(def(1), new Rng(3), index, reg.blueprints).length).toBe(2);
+  // An item that may not be a blueprint comes as itself, in its count (a fired thing has no blueprint: Registry.blueprints).
+  expect(reg.blueprints[id("ingot")]).toBe(0);
+  const fired: LootDef = { type: "loot", id: "t:fired", from: [{ min: 1, max: 1, entries: [{ items: ["core:ingot"], min: 7, max: 7, forceBlueprint: true }] }] };
+  expect(rollLoot(fired, new Rng(5), index, reg.blueprints).map((d) => [d.count, d.blueprint])).toEqual([[7, false]]);
+  // Bad numbers are named.
+  const bad: LootDef = { type: "loot", id: "t:bad", sets: { min: 1, max: 1, power: 0.3 }, from: [{ min: 1, max: 1, power: 17, entries: [{ items: ["core:stone"], min: 1, max: 1, chance: 1.5 }] }] };
+  expect(lootFaults(bad)).toEqual([
+    "t:bad: the sets' power is a whole number of sixteenths from 1/16 to 16",
+    "t:bad: a set's power is a whole number of sixteenths from 1/16 to 16",
+    "t:bad: an entry's chance is from 0 to 1",
+  ]);
 });
 
 test("ARK's tiers: a rating's tier, what a blueprint costs, and what crafting skill adds to what one makes", () => {

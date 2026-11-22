@@ -3,7 +3,7 @@
 
 import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER } from "../../../content/surfaces.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
-import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_EXHAUST, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_BLEND, MATERIAL_EXHAUST, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
@@ -59,7 +59,7 @@ export const DRAW_CUTOUT = 128;
 
 export function texturedFlags(flags: number): number {
   return DRAW_TEXTURED | ((flags & MATERIAL_TWO_SIDED) ? DRAW_TWO_SIDED : 0)
-    | ((flags & MATERIAL_CUTOUT) ? DRAW_CUTOUT : 0) | ((flags & (MATERIAL_LENS | MATERIAL_EXHAUST)) ? DRAW_BLEND : 0);
+    | ((flags & MATERIAL_CUTOUT) ? DRAW_CUTOUT : 0) | ((flags & (MATERIAL_LENS | MATERIAL_EXHAUST | MATERIAL_BLEND)) ? DRAW_BLEND : 0);
 }
 
 /**
@@ -213,6 +213,19 @@ export const STEP_FAR = PASS_FAR;
 export const STEP_FAR_SEE = 2;
 export const STEP_NEAR_SEE = 3;
 export const STEP_BODY = 4;
+
+/**
+ * Whether the `n` numbers from `o` of `from` differ from those a renderer keeps at `at` of `last`, which are made the
+ * same: a renderer sets a program's vector (a draw's offset, its effect) only when this says so. Nothing is made.
+ */
+export function moved(last: Float64Array, at: number, from: Float32Array, o: number, n: number): boolean {
+  let same = true;
+  for (let k = 0; k < n; k++) {
+    if (last[at + k] !== from[o + k]) same = false;
+    last[at + k] = from[o + k]!;
+  }
+  return !same;
+}
 
 /** The step draw `d` is drawn in. */
 export function stepOf(p: FramePacket, d: number): number {
@@ -407,7 +420,16 @@ export const LAMP_AT = CAST_AT + 4;
  */
 export const GLASS_AT = LAMP_AT + 28;
 export const SHORE_AT = GLASS_AT + 4;
-export const FRAME_FLOATS = SHORE_AT + 4;
+/**
+ * fDrops: the supply drops' casts in the sky (supply-sky.ts). Two lanes a streak, four streaks: the unit way to its
+ * head from the eye and its strength, then the unit way to where its tail ends and its tier's colour as 0xRRGGBB. Then
+ * a lane for each obelisk's place in fEyes: the way its cast's bolt runs from the knot along the ground (x and z, a
+ * unit), how strongly it flashes, 0 to 1, and which strike it is.
+ */
+export const DROPS_AT = SHORE_AT + 4;
+export const DROP_STREAKS = 4;
+export const DROP_LANES = DROP_STREAKS * 2 + 3;
+export const FRAME_FLOATS = DROPS_AT + DROP_LANES * 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -423,6 +445,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp mat4 fLampShadow;
   highp vec4 fLampWay, fGlass;
   highp vec4 fShore;
+  highp vec4 fDrops[${4 * 2 + 3}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -614,6 +637,12 @@ export class FramePacket {
   /** How far a draw of a cell of trees that is changing level has come (hand.ts `swapKeeps`): t for the new level, -t for the old, 0 for any other. */
   readonly drawSwap = new Float32Array(MAX_DRAWS);
   /**
+   * Four numbers a draw for a light that is worked out and not painted (supply-light.ts): a supply drop's seconds since
+   * it landed, its tier's colour as 0xRRGGBB, its power, and its count, ringed bit, standing bit and look, packed. All
+   * 0 for any other draw, which is how a program knows it is no drop's.
+   */
+  readonly drawEffect = new Float32Array(MAX_DRAWS * 4);
+  /**
    * For a DRAW_TEXTURED draw of bodies that are hurt or dead, whose material has a layer on the card: the level its layer
    * is drawn at, in LAYER_LEVELS of the whole (surface.ts `wounded`). 0 for any other, which reads no layer.
    */
@@ -727,6 +756,7 @@ export class FramePacket {
     this.drawFade.fill(0);
     this.drawHand.fill(0);
     this.drawSwap.fill(0);
+    this.drawEffect.fill(0);
     this.drawLayer.fill(0);
     this.drawWear.fill(0);
     this.drawCount = 0;

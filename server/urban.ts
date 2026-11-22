@@ -97,6 +97,9 @@ export class Urban {
   private readonly scopes = new Map<number, Scope>();
   /** The entities sessions drive this tick. */
   private readonly drivers = new Set<number>();
+  /** Drive intents of the world's people (Cast's drivers, server/cast/drive.ts): a vehicle's steer, throttle and buttons
+   * as a driver's keys would give them, and the tick they were given; a stale one stops the car on its handbrake. */
+  private readonly npcDrive = new Map<number, { x: number; z: number; buttons: number; t: number }>();
   /** The bytes a car's mechanical component would be saved as, made again each tick without allocating. */
   private readonly saving = new Uint8Array(BASE_BYTES + ROTOR_FIELDS.length * 4 + 1);
   private readonly savingView = new DataView(this.saving.buffer);
@@ -705,6 +708,41 @@ export class Urban {
     return this.begin(rec.pid, ents.pid[vehicle]!, seat, 'enter');
   }
 
+  /** A person who is not a survivor, seated, gets out by its door (Cast's driver at the end of a drive). */
+  alightNpc(actor: number): number {
+    const { world } = this.ctx, pid = world.ents.pid[actor]!;
+    const place = this.occupancy.seatOf(pid);
+    if (!place || (world.ents.flags[actor]! & F_PLAYER) !== 0) return RESULT_INVALID;
+    return this.begin(pid, place.host, place.seat, 'exit');
+  }
+
+  /** Whether `actor` sits in a seat now (not getting in or out). */
+  seatedNpc(actor: number): boolean {
+    const pid = this.ctx.world.ents.pid[actor]!;
+    return !!this.occupancy.seatOf(pid) && !this.occupancy.pending(pid);
+  }
+
+  /**
+   * Keys for a vehicle this tick from the person at its wheel who is not a survivor, as a player's would come: steer
+   * (moveX) and throttle (moveZ), -127 to 127, and buttons (BTN_JUMP the handbrake). Ignored unless such a one holds its
+   * wheel; held for half a second, then the car stops.
+   */
+  drive(vehicle: number, moveX: number, moveZ: number, buttons: number): void {
+    this.npcDrive.set(vehicle, { x: moveX, z: moveZ, buttons, t: this.ctx.world.tick });
+  }
+
+  private npcIntent(pid: number, e: number): { x: number; z: number; buttons: number } | null {
+    const i = this.npcDrive.get(e);
+    if (!i) return null;
+    const control = this.occupancy.control(pid), ents = this.ctx.world.ents;
+    const driver = control ? this.entity(control.actor) : -1;
+    if (this.ctx.world.tick - i.t > 15 || driver < 0 || (ents.flags[driver]! & F_PLAYER) !== 0) {
+      this.npcDrive.delete(e);
+      return null;
+    }
+    return i;
+  }
+
   /** Commits seat transitions before the real player-input loop can drive any body. */
   beforeStep(): void {
     const { world, game } = this.ctx, ents = world.ents;
@@ -796,14 +834,17 @@ export class Urban {
       const pushed = this.recoveryCoasting(e);
       if (!pushed) this.pushes.delete(pid);
       const resting = this.resting(e);
-      if (!driven && (!resting || (world.tick + e) % REST_TICKS === 0)) {
+      // One of the world's people at the wheel drives it with keys as a player's (Cast); otherwise it rests on its brake.
+      const npc = driven ? null : this.npcIntent(pid, e);
+      if (!driven && (npc || !resting || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
         this.stepped++;
-        const beat = resting && !pushed ? (host.beat ??= new RestingBeat()) : null;
+        const beat = resting && !pushed && !npc ? (host.beat ??= new RestingBeat()) : null;
         if (beat?.holds(world, this.body)) this.restingKept++;
         else {
           beat?.begin(this.body);
-          (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
+          if (npc) (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, npc.x, npc.z, npc.buttons, host.definition, TICK_DT, this.body.yaw, true);
+          else (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
           beat?.end(world, this.body);
         }
         ents.storeBody(e, this.body);

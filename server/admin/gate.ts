@@ -57,3 +57,17 @@ export function adminAsked(pathname: string): boolean {
   const at = adminPath(pathname);
   return at === "/sounds.html" || at === "/admin" || (at?.startsWith("/admin/") ?? false);
 }
+
+/**
+ * Whether a request that changes something came from a page of this server: its Origin is the host it asked for. A
+ * browser sends Origin with every POST from a page, so another site's page cannot make a signed-in browser send one
+ * that passes; a request with no Origin is not from a page at all, and is as the admin's own tool sent it.
+ */
+export function sameOrigin(req: Request): boolean {
+  const origin = req.headers.get("origin");
+  if (origin === null) return true;
+  const host = req.headers.get("host");
+  const page = origin.toLowerCase();
+  const scheme = page.indexOf("://");
+  return scheme > 0 && host !== null && page.slice(scheme + 3) === host.toLowerCase();
+}

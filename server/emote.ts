@@ -54,6 +54,8 @@ export class Emotes {
   played = 0;
   paired = 0;
   private readonly playing = new Map<number, Playing>();
+  /** Bodies that are not survivors but may emote: Cast's people (server/cast/stage.ts), by entity index. */
+  readonly people = new Set<number>();
   /** Invites by the body invited: from whom, which emote, until when. */
   private readonly invites = new Map<number, { from: number; gen: number; n: number; until: number }>();
   private readonly lastAt = new Map<number, number>();
@@ -157,7 +159,8 @@ export class Emotes {
   /** Whether `e` may play `def` now: alive, on the ground, not swimming, riding, carrying or acting; still, unless it may move. */
   private free(e: number, def: EmoteDef, playing = false): boolean {
     const ents = this.ctx.world.ents;
-    if ((ents.flags[e]! & (F_ALIVE | F_PLAYER | F_GROUNDED)) !== (F_ALIVE | F_PLAYER | F_GROUNDED)) return false;
+    if ((ents.flags[e]! & (F_ALIVE | F_GROUNDED)) !== (F_ALIVE | F_GROUNDED)) return false;
+    if ((ents.flags[e]! & F_PLAYER) === 0 && !this.people.has(e)) return false;
     if (ents.mode[e] !== MODE_WALK || ents.seat[e] !== 0 || ents.stance[e] === STANCE_PRONE || ents.hold[e] === HOLD_CARRY) return false;
     if (ents.act[e] !== ACT_NONE) return false;
     if (!def.moving) {

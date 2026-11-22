@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "2b072915e8bb53f7",
+    "id": "b5310efa4195121e",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -110,6 +110,7 @@
       {"name": "core-sfx-speedboat", "file": "core-sfx-speedboat.237c1856bbcb.tar.zst", "bytes": 12206290, "sha256": "237c1856bbcb4789d248f3c6c4d89bd71fcc21c63033f8ad59b984c083769a30"},
       {"name": "core-sfx-status", "file": "core-sfx-status.cccf5d8a0d6d.tar.zst", "bytes": 8186466, "sha256": "cccf5d8a0d6dace1108a1387b419065ed6cf7650e378fd9729996bea6945f611"},
       {"name": "core-sfx-structure", "file": "core-sfx-structure.05c70786c78d.tar.zst", "bytes": 6023514, "sha256": "05c70786c78da15161c48d97b2ff579d84823a60e92451240ded760b2b7f5ec2"},
+      {"name": "core-sfx-supply", "file": "core-sfx-supply.df36cb298363.tar.zst", "bytes": 5128762, "sha256": "df36cb298363464b7d28209fe13bef357471e14f4d237d995facc7fa31ef65b0"},
       {"name": "core-sfx-surface", "file": "core-sfx-surface.3dca08b950fd.tar.zst", "bytes": 11918746, "sha256": "3dca08b950fd9ec83cc0465e4c7c1f3e5bbbdbda02751aafb66832841847994e"},
       {"name": "core-sfx-tech", "file": "core-sfx-tech.9a88f2593e40.tar.zst", "bytes": 2908622, "sha256": "9a88f2593e40ff91882cda203bc245c9761fdc5bae8e56e1c95e47955f0910f5"},
       {"name": "core-sfx-truck", "file": "core-sfx-truck.a7606800befe.tar.zst", "bytes": 13482277, "sha256": "a7606800befee44ac601c691f0b546fb8a678412e526458dd6a7b378e48a281b"},
@@ -125,6 +126,7 @@
       {"name": "core-sky-moon", "file": "core-sky-moon.1e753a0824fe.tar.zst", "bytes": 6678172, "sha256": "1e753a0824feead2ba46ece457cd76929440bc641942effc7d4fe7d64d6d466a"},
       {"name": "core-structures-stations", "file": "core-structures-stations.410055be0c5a.tar.zst", "bytes": 15740402, "sha256": "410055be0c5a211be6a8fd74e95b6b95a6cc9a5c501e03ba229748105d466ed8"},
       {"name": "core-structures-stone", "file": "core-structures-stone.771d1db1a386.tar.zst", "bytes": 138436122, "sha256": "771d1db1a3862aefd28fa334b0816c3bb7c2405b211cfe6c0d723f895a9c3f9d"},
+      {"name": "core-structures-supply-capsule", "file": "core-structures-supply-capsule.d1ba341c9aea.tar.zst", "bytes": 15560275, "sha256": "d1ba341c9aea1cf36a26f4393a5c0df0a0028965830668ad8738f88a1479ed87"},
       {"name": "core-structures-thatch", "file": "core-structures-thatch.c03fae60de49.tar.zst", "bytes": 185571995, "sha256": "c03fae60de49a8039410d1c5d018d14190a977af1935307b9aa97d07a36e4628"},
       {"name": "core-structures-tide-eye", "file": "core-structures-tide-eye.4d4260fbe384.tar.zst", "bytes": 43417605, "sha256": "4d4260fbe38408f6da55e18d053b6a887ff46fe1d1dfe10a4030d9cd375ca433"},
       {"name": "core-structures-wood", "file": "core-structures-wood.5f76c32dad28.tar.zst", "bytes": 111477830, "sha256": "5f76c32dad287ff0f09deb7f1bace555f06e80b95fde52e90795d7a3e3152788"},

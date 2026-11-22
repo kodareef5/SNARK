@@ -149,6 +149,10 @@ export class Projectiles {
   /** Rays the last shot sent, and how many of them hit a body: for tests and measurement. */
   readonly lastShot = { rays: 0, hits: 0 };
 
+  /** Told of every shot (where it left, who fired it, whether silenced) and every blast (where, and the survivor whose
+   * it was), whatever it hits or misses: what the people about hear (server/cast/host.ts). */
+  readonly heard: ((kind: "shot" | "blast", x: number, z: number, by: string | null, silenced: boolean) => void)[] = [];
+
   constructor(ctx: ProjectilesContext, seed: number) {
     this.ctx = ctx;
     this.stuckKind = ctx.world.reg.index.get("core:arrow_stuck") ?? 0;
@@ -526,12 +530,13 @@ export class Projectiles {
     const radius = this.ctx.world.reg.ammoBlast[ammo]!;
     const src = this.bring(by, weapon, quality, ammo, draw, ox, oz);
     this.blasts++;
-    this.boom(x, y, z, radius);
+    this.boom(x, y, z, radius, by && by.keyHash !== null ? by.name : null);
     this.ctx.combat.blast(src, x, y, z, radius, direct);
   }
 
   /** Tells every client within hearing of a blast at (x, y, z). */
-  private boom(x: number, y: number, z: number, radius: number): void {
+  private boom(x: number, y: number, z: number, radius: number, by: string | null = null): void {
+    for (const l of this.heard) l("blast", x, z, by, false);
     const { world, game } = this.ctx;
     const ents = world.ents;
     for (const other of game.clients) {
@@ -703,7 +708,7 @@ export class Projectiles {
     const radius = reg.blast[g.item]!;
     this.bursts++;
     this.ended(g.x, g.y, g.z, -1);
-    this.boom(g.x, g.y, g.z, radius);
+    this.boom(g.x, g.y, g.z, radius, src.by && src.by.keyHash !== null ? src.by.name : null);
     combat.blast(src, g.x, g.y + 0.05, g.z, radius);
   }
 
@@ -769,6 +774,7 @@ export class Projectiles {
    * silencer (W7): others draw no flash.
    */
   private tell(shooter: Client, ox: number, oy: number, oz: number, ammo: number, flies: boolean, a: number, b: number, c: number, back: number, rays = 1, seed = 0, silenced = false): void {
+    for (const l of this.heard) l("shot", ox, oz, shooter.name, silenced);
     const game = this.ctx.game;
     const ents = this.ctx.world.ents;
     for (const other of game.clients) {

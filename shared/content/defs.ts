@@ -470,7 +470,7 @@ export interface MaterialDef extends Named {
 
 export interface ItemDef extends Named {
   readonly type: "item";
-  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact" | "glider" | "ball";
+  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact" | "glider" | "ball" | "instrument";
   readonly id: string;
   /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
@@ -942,6 +942,24 @@ export interface LootEntry {
   readonly quality?: readonly [number, number];
   /** Chance, 0 to 1, that it comes as a single blueprint, for an item that may be one (ChanceToBeBlueprintOverride). */
   readonly blueprint?: number;
+  /** It always comes as a blueprint, where the item may be one (bForceBlueprint). */
+  readonly forceBlueprint?: boolean;
+  /** Chance, 0 to 1, that it gives anything once it is drawn. Omitted, it always does. */
+  readonly chance?: number;
+}
+
+/**
+ * How many are drawn of a loot table's sets, or of a set's entries: from `min` to `max`. `power` skews the count as ARK's
+ * NumItemSetsPower and NumItemsPower do: the count is min + floor(u^power * (max - min + 1)) for u drawn evenly, so a
+ * power above 1 leans to the least and one below 1 to the most. It is a multiple of 1/16 from 1/16 to 16, so that it is
+ * worked out with square roots and products alone and every engine gets the same count (shared/sim/loot.ts). `replace`
+ * lets one be drawn more than once (bSetsRandomWithoutReplacement and bItemsRandomWithoutReplacement off).
+ */
+export interface LootCount {
+  readonly min: number;
+  readonly max: number;
+  readonly power?: number;
+  readonly replace?: boolean;
 }
 
 /**
@@ -952,8 +970,14 @@ export interface LootDef extends Named {
   readonly type: "loot";
   readonly id: string;
   /** How many of the sets are drawn. One, where not given. */
-  readonly sets?: { readonly min: number; readonly max: number };
-  readonly from: readonly { readonly weight?: number; readonly min: number; readonly max: number; readonly entries: readonly LootEntry[] }[];
+  readonly sets?: LootCount;
+  readonly from: readonly LootSet[];
+}
+
+/** One set of a loot table: its weight among the sets, how many of its entries are drawn, and the entries. */
+export interface LootSet extends LootCount {
+  readonly weight?: number;
+  readonly entries: readonly LootEntry[];
 }
 
 /** Which creatures live in a place, in what share and in what groups. A spawn zone of a map names one. */

@@ -1,6 +1,7 @@
 // Worlds reached at paths of one host (--public-url /miami), the site around them, and the front that sends each path to its
 // world (server/site.ts, server/front.ts).
 
+import type { SupplyBook } from "../../shared/supply/book.ts";
 import { afterAll, expect, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -195,6 +196,45 @@ test("the front sends each path to its world and the site to the lowest world, s
   expect((await get(`${at}/miami/admin/chat.json`, good)).status).toBe(401);
   expect((await get(`${at}/tampa/admin/chat.json`)).status).toBe(401);
   expect(await (await get(`${at}/tampa/admin/overview.json`, good)).json()).toMatchObject({ stats: { world: { name: "Tampa" } }, positions: [], chat: [] });
+  // The drop book's page, through the front (server/admin/supply-routes.ts): it reads with GET and changes with POST.
+  const drops = `${at}/tampa/admin/supply`;
+  const post = (what: string, body: unknown, headers: Record<string, string> = { ...good.headers, origin: at, "content-type": "application/json" }): Promise<Response> => get(`${drops}/${what}`, { method: "POST", headers, body: JSON.stringify(body) });
+  const read = await (await get(`${drops}/book.json`, good)).json() as { revision: number; starter: boolean; kept: boolean; book: SupplyBook };
+  expect([read.revision, read.starter, read.kept, read.book.tiers.length, read.book.classes.length]).toEqual([0, true, true, 7, 7]);
+  const items = (await (await get(`${drops}/catalog.json`, good)).json() as { items: { id: string }[] }).items;
+  expect([items.some((i) => i.id === "core:spear"), items.some((i) => i.id === "core:pike")]).toEqual([true, true]);
+  // Not signed in: 401, reading or changing. Signed in to another world: 401 too.
+  expect([(await get(`${drops}/book.json`)).status, (await post("book", { revision: 0, book: read.book }, { origin: at, "content-type": "application/json" })).status, (await get(`${at}/miami/admin/supply/book.json`, good)).status]).toEqual([401, 401, 401]);
+  // From another site's page: 403. Not JSON: 400. A read route asked to change, and a write route read: 405.
+  expect((await post("book", { revision: 0, book: read.book }, { ...good.headers, origin: "https://elsewhere.example", "content-type": "application/json" })).status).toBe(403);
+  expect((await post("book", { revision: 0, book: read.book }, { ...good.headers, origin: at, "content-type": "text/plain" })).status).toBe(400);
+  expect([(await get(`${drops}/book.json`, { method: "POST", headers: { ...good.headers, origin: at } })).status, (await get(`${drops}/book`, good)).status]).toEqual([405, 405]);
+  // A book with a fault: 422, the fault with its path, and nothing saved.
+  const broken = structuredClone(read.book);
+  broken.rules.flightSeconds = 300;
+  const refusedBook = await post("book", { revision: 0, book: broken, note: "a flight longer than its notice" });
+  expect([refusedBook.status, ((await refusedBook.json()) as { faults: { path: string }[] }).faults.map((f) => f.path), tampa.host.supplyBook.book.revision]).toEqual([422, ["rules.flightSeconds", "rules.noticeSeconds"], 0]);
+  // A save: the book in force is the next revision, by the page, and the journal has it.
+  const richer = structuredClone(read.book);
+  richer.rules.ringedChance = 0.1;
+  const saved = await post("book", { revision: 0, book: richer, note: "ringed twice as often" });
+  expect([saved.status, await saved.json(), tampa.host.supplyBook.book.rules.ringedChance, tampa.host.supplyBook.starter]).toEqual([200, { revision: 1 }, 0.1, false]);
+  // Saved again from the page that still holds revision 0: 409, with the revision it lost to, and nothing changed.
+  const stale = await post("book", { revision: 0, book: read.book });
+  expect([stale.status, ((await stale.json()) as { revision: number }).revision, tampa.host.supplyBook.book.revision]).toEqual([409, 1, 1]);
+  expect((await (await get(`${drops}/revisions.json`, good)).json() as { revision: number; by: string; note: string }[]).map((r) => [r.revision, r.by, r.note])).toEqual([[1, "(admin page)", "ringed twice as often"]]);
+  // The starter again is a revision too, and an old revision comes back as a new one.
+  expect([(await post("reset", { revision: 0 })).status, await (await post("reset", { revision: 1 })).json()]).toEqual([409, { revision: 2 }]);
+  expect([await (await post("restore", { revision: 2, to: 1 })).json(), tampa.host.supplyBook.book.rules.ringedChance, (await post("restore", { revision: 3, to: 77 })).status]).toEqual([{ revision: 3 }, 0.1, 404]);
+  // A test drop is the console's own `supply call`: it is live at once, and an unknown tier is said, with 422.
+  const [mid, called, unknown] = [tampa.host.world.hf.sizeX / 2, await post("call", { x: tampa.host.world.hf.sizeX / 2, z: tampa.host.world.hf.sizeZ / 2, tier: "blue", cls: "arms", ringed: true }), await post("call", { x: 10, z: 10, tier: "mauve", cls: "arms" })];
+  const made = (await called.json()) as { id: number };
+  expect([called.status, tampa.host.supply.get(made.id)?.tierKey, tampa.host.supply.get(made.id)?.ringed, tampa.host.supply.get(made.id)?.x === mid, unknown.status, ((await unknown.json()) as { error: string }).error]).toEqual([200, "blue", true, true, 422, 'the book has no tier "mauve"']);
+  const live = (await (await get(`${drops}/live.json`, good)).json()) as { drops: { id: number; state: string; tier: string }[]; acts: { what: string }[] };
+  expect([live.drops.map((d) => [d.id, d.tier, d.state]), live.acts.length >= 5, live.acts.at(-1)!.what.startsWith("supply call 10 10 mauve arms plain: the book has no tier")]).toEqual([[[made.id, "blue", "coming"]], true, true]);
+  expect([(await (await post("cancel", { id: made.id })).json() as { said: string }).said, tampa.host.supply.live(), (await post("land", { id: "x" })).status]).toEqual([`cancelled ${made.id}`, 0, 400]);
+  // The front passes these acts and nothing else under a world's admin pages.
+  expect((await get(`${at}/tampa/admin/stats.json`, { method: "POST", headers: good.headers })).status).toBe(405);
   const terrain = await get(`${at}/tampa/admin/terrain.rgba`, { headers: { ...good.headers, "accept-encoding": "identity" } });
   const rgba = new Uint8Array(await terrain.arrayBuffer());
   expect([terrain.status, terrain.headers.get("cache-control"), rgba.length]).toEqual([200, "no-store", ADMIN_TERRAIN_SIDE ** 2 * 4]);

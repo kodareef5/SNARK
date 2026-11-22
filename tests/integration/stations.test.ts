@@ -1,5 +1,6 @@
 // A campfire that burns and cooks unobserved, and a mortar and pestle things are made at. Beds are in beds.test.ts.
 
+import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +18,9 @@ import { flatGround } from "../fixtures/arena.ts";
 import { builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+
+// What is blocked out is made at stations too: tests/unit/blockouts.test.ts holds where and of what.
+const BLOCKED = new Set(BLOCKED_OUT);
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -191,7 +195,7 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
 
   // The client lists what the mortar makes, from content: the item names it in craft.at. Since S6, the narcotic, gunpowder and
   // cementing paste too (tests/unit/ark-stations.test.ts).
-  expect(stationRecipes(reg, id("mortar")).sort((a, b) => a - b)).toEqual([spark, id("narcotic"), id("paste"), id("gunpowder")].sort((a, b) => a - b));
+  expect(stationRecipes(reg, id("mortar")).filter((k) => !BLOCKED.has(reg.ids[k]!)).sort((a, b) => a - b)).toEqual([spark, id("narcotic"), id("paste"), id("gunpowder")].sort((a, b) => a - b));
   expect([reg.craftAt[spark], reg.craftAt[id("pick")]]).toEqual([id("mortar"), 0]);
   // With nothing open, or a box that is no station open, nothing is made at one.
   expect(at_(ada, spark, 1)).toBe(RESULT_DENIED);

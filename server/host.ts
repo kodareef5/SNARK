@@ -15,6 +15,8 @@ import { Build } from "./build.ts";
 import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
+import { CastHost } from "./cast/host.ts";
+import type { CastSettings } from "../shared/cast/state.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Urban } from "./urban.ts";
@@ -93,6 +95,12 @@ import { settle, settleNear } from "./place.ts";
 import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
 import { CarReturn, DEADLINE_CAR } from "./car-return.ts";
+import { withSites } from "../content/supply/sites.ts";
+import { starterBook } from "../content/supply/starter.ts";
+import { catalogOf } from "../shared/supply/catalog.ts";
+import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
+import { DEADLINE_SUPPLY, Supply } from "./supply.ts";
+import { BookStore } from "./supply/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
@@ -126,6 +134,8 @@ export interface HostOptions {
   store?: StoreOptions;
   /** Keep the map's spawn regions stocked with wild creatures (server/spawner.ts), as a running server does. Off where not given. */
   wild?: boolean;
+  /** Cast's background people (server/cast): settings over its defaults, or true for them as they are. Off unless given. */
+  cast?: boolean | Partial<CastSettings>;
   /** For a new world: wild creatures scattered near the spawn point, their species (core:grazer by default), and hunters further off. */
   startingCreatures?: number;
   startingSpecies?: string;
@@ -201,6 +211,8 @@ export interface Host {
   readonly taming: Taming;
   readonly riding: Riding;
   readonly urban: Urban;
+  /** The city's background people (server/cast): always there, idle while CastEnabled is off. */
+  readonly cast: CastHost;
   readonly vehicles: VehicleService;
   readonly entangle: Entangle;
   readonly breeding: Breeding;
@@ -220,6 +232,9 @@ export interface Host {
   readonly spawner: Spawner | null;
   /** Null for a map that parks no car. */
   readonly carReturn: CarReturn | null;
+  /** Supply drops, and the drop book they are rolled from (server/supply.ts). */
+  readonly supply: Supply;
+  readonly supplyBook: BookStore;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -750,6 +765,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     hurt.harmed(victim, points);
   };
   const chat = new Chat({ game, records, rules, tribes, bus });
+  // Cast is always there, doing nothing while CastEnabled is off, so the admin page can turn it on live.
+  const castHost = new CastHost({
+    world, game, records, creatures, emotes, chat, items, urban, bus, refresh: (rec) => refreshBody(rec), seed: (opts.seed ?? 1) + 907,
+    park: (id, x, z, yaw) => parkVehicle(id, x, z, 0, yaw, "cast"),
+    places: (parsed?.content?.landmarks ?? []).map((l) => ({ name: l.name, kind: "landmark", x: l.x, z: l.z })),
+    rules,
+    ...(typeof opts.cast === "object" ? { settings: { enabled: true, ...opts.cast } } : opts.cast === true ? { settings: { enabled: true } } : {}),
+    logDir: opts.dbPath ? join(dirname(resolve(opts.dbPath)), "cast") : null,
+  });
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
@@ -814,6 +838,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
+  // Every shot and blast, hit or miss, is heard by Cast's people near it.
+  projectiles.heard.push((kind, x, z, by, silenced) => castHost.heard(kind, x, z, by, silenced));
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
   combat.onThrow = (c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality));
@@ -1047,6 +1073,24 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     carReturn.begin(persistence && !loaded!.fresh ? (persistence.store.meta("carReturn") as string | null) : null);
     persistence?.sidecar("carReturn", carReturn.saved);
   }
+  // Supply drops (server/supply.ts). The drop book is a file beside the save, which a wipe of the world leaves; the
+  // drops that are live are the save's, written in the commit that writes their capsules.
+  // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
+  const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
+  const supply = new Supply({ world, game, records, items, death, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
+  {
+    // ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects.
+    const loot = catalogOf(reg);
+    const ark = arkCrates(rules.list(ARK_CRATES), supplyBook.book.tiers, (name) => lists.ids(ARK_CRATES, name, "item"), (id) => loot.byId.get(id)?.never !== true);
+    supply.overrides = ark.tables;
+    for (const line of ark.passed) say(line);
+  }
+  supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
+  persistence?.sidecar("supply", supply.saved);
+  build.keepClear = (x, z) => supply.buildFault(x, z);
+  // Cast's people and planned stories are kept a minute at a time; its bodies never are (a start sweeps them).
+  castHost.cast.load(persistence && !loaded!.fresh ? (persistence.store.meta("cast") as string | null) : null);
+  persistence?.sidecar("cast", castHost.saved, 60 * TICK_RATE);
 
   // A name belongs to the first device key that takes a body under it.
   game.sameCreation=(name,key,request)=>{
@@ -1219,6 +1263,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       else if (kind === DEADLINE_CORPSE) corpses.due(pid, stamp);
       else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
       else if (kind === DEADLINE_CAR) carReturn?.due(pid, stamp);
+      else if (kind === DEADLINE_SUPPLY) supply.due(pid, stamp);
     });
     refreshInventories();
     parts.mark(PART.deadlines);
@@ -1226,6 +1271,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     entangle.step(tick);
     creatureTraits.step(creatures.awake, creatures.awakeCount);
     death.step();
+    supply.step();
     parts.mark(PART.life);
     // Riders move with their mounts before combat aims at either.
     urban.step();
@@ -1248,6 +1294,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     parts.mark(PART.contacts);
     impale.step();
     spawner?.step(tick);
+    castHost.step();
     parts.mark(PART.spawner);
     build.step();
     parts.mark(PART.build);
@@ -1401,6 +1448,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     syncOwn(own, c);
     harvest?.sync(c);
     tactical.sync(c);
+    supply.sync(c);
   };
   game.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
   const corpseReplication = new CorpseReplication(game, corpses);
@@ -1551,6 +1599,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     taming,
     riding,
     urban,
+    cast: castHost,
     vehicles,
     entangle,
     breeding,
@@ -1566,6 +1615,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     hurt,
     spawner,
     carReturn,
+    supply,
+    supplyBook,
     beds,
     cluster,
     settled,

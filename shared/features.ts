@@ -23,5 +23,6 @@ export const FEATURES = {
   cosmetics: "Skins, dyes, costumes and shields",
   bosses: "Bosses, artifacts and what a boss unlocks",
   points: "A points ledger: a shop, kits and rewards",
+  instruments: "Instruments held to look through or to read: a spyglass, a compass, a GPS, a radio",
 } as const;
 export type Feature = keyof typeof FEATURES;

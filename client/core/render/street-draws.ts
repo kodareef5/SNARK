@@ -1,5 +1,5 @@
 // Resolve the authored finish once per material or mesh and put each draw's optical inputs in the frame.
-import { crownedSpokes, fixtureKind, CHANNEL, EXHAUST, LENS } from "../../../content/street-finishes.ts";
+import { crownedSpokes, fixtureKind, CHANNEL, DROP_GLOW, DROP_LIGHT, EXHAUST, LENS } from "../../../content/street-finishes.ts";
 import { MATERIAL_EXHAUST, MATERIAL_LENS, type PackHeader } from "../../../shared/pack/pack.ts";
 import { nearMeshSlot } from "./nearcity.ts";
 import { DRAW_EMISSIVE, DRAW_CUTOUT, DRAW_TEXTURED, type FramePacket } from "./packet.ts";
@@ -46,9 +46,10 @@ export class StreetDraws {
         p.drawOptics[d]! |= OPTICS_CUT;
       }
       const flags = material?.flags ?? 0;
-      // An instrument's own light wears its atlas for the strip alone, and is drawn as energy in a channel.
-      p.drawStreetMaterial[d] = (p.drawFlags[d]! & DRAW_EMISSIVE) !== 0 ? CHANNEL : flags & MATERIAL_EXHAUST ? EXHAUST : flags & MATERIAL_LENS ? LENS
-        : this.materials.code(m, material?.id ?? "", mesh, wheels !== 0);
+      const code = this.materials.code(m, material?.id ?? "", mesh, wheels !== 0);
+      // A supply drop's lights are its own, whatever else the draw says. An instrument's own light wears its atlas for
+      // the strip alone, and is drawn as energy in a channel.
+      p.drawStreetMaterial[d] = code === DROP_LIGHT || code === DROP_GLOW ? code : (p.drawFlags[d]! & DRAW_EMISSIVE) !== 0 ? CHANNEL : flags & MATERIAL_EXHAUST ? EXHAUST : flags & MATERIAL_LENS ? LENS : code;
     }
   }
 }

@@ -78,12 +78,14 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     material: 4,
     node: 14,
     "prop/container": 2,
+    "prop/crate": 1,
     "prop/projectile": 2,
     buff: 7,
     spawns: 4,
     map: 5, // miami-coast became Miami (D810)
   });
-  expect(rest.length).toBe(252 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length);
+  // 253 with the supply drop's capsule (content/core.ts).
+  expect(rest.length).toBe(253 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

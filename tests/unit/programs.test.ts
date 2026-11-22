@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
-import { CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT } from "../../client/core/render/packet.ts";
+import { DROPS_AT, DROP_LANES, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
 import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
@@ -57,8 +57,10 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   expect([FRAME.reflection + 4, FRAME.previousReflection + 4, FRAME.streetLook + 4, FRAME.tireContacts + 4*MAX_TIRE_CONTACTS]).toEqual([FRAME.previousReflection, FRAME.streetLook, FRAME.tireContacts, FRAME.exhaustPhase]);
   expect(FRAME.exhaustPhase + 4).toBe(WATER_BOUNDS);
   expect(WATER_MARKS + 8 * MAX_WATER_MARKS).toBe(WATER_PATHS);
-  expect([WATER_PATHS + 4 * MAX_WATER_MARKS, ROOF_AT + 4, CAST_AT + 4, LAMP_AT + 8 + 16 + 4, GLASS_AT + 4, SHORE_AT + 4]).toEqual([ROOF_AT, CAST_AT, LAMP_AT, GLASS_AT, SHORE_AT, FRAME_FLOATS]);
-  expect(FRAME_BLOCK).toContain("highp vec4 fRoof, fCast, fLamp, fLampColor;\n  highp mat4 fLampShadow;\n  highp vec4 fLampWay, fGlass;\n  highp vec4 fShore;\n};");
+  // The supply drops' casts are the block's last lanes (supply-sky.ts).
+  expect([WATER_PATHS + 4 * MAX_WATER_MARKS, ROOF_AT + 4, CAST_AT + 4, LAMP_AT + 8 + 16 + 4, GLASS_AT + 4, SHORE_AT + 4, DROPS_AT + 4 * DROP_LANES]).toEqual([ROOF_AT, CAST_AT, LAMP_AT, GLASS_AT, SHORE_AT, DROPS_AT, FRAME_FLOATS]);
+  expect(FRAME_BLOCK).toContain(`highp vec4 fDrops[${DROP_LANES}]`);
+  expect(FRAME_BLOCK).toContain("highp vec4 fRoof, fCast, fLamp, fLampColor;\n  highp mat4 fLampShadow;\n  highp vec4 fLampWay, fGlass;\n  highp vec4 fShore;\n  highp vec4 fDrops[11];\n};");
   expect(FRAME_BLOCK).toContain(`fWaterMarks[${2 * MAX_WATER_MARKS}]`);
   const p = new FramePacket();
   p.split = 384;
@@ -125,4 +127,55 @@ test("a tier's programs are every one its frames may draw with, each once, the s
       expect(texts.size).toBe(names.length);
     }
   }
+});
+
+// The words GLSL ES 3.00 keeps for itself and gives no meaning (its specification, 3.9 Keywords, "reserved for future
+// use"), and the words it uses. A text that names a value with one of either compiles nowhere, and nothing but a GPU
+// says so: the sky's text once named a strike `cast`, and every frame on a real card was black while the software
+// renderer's twin drew it; the shaft's once named a value `flat`, which the cost probe's compile caught.
+const RESERVED = "attribute varying coherent volatile restrict readonly writeonly resource atomic_uint noperspective patch sample subroutine common partition active asm class union enum typedef template this goto inline noinline public static extern external interface long short double half fixed unsigned superp input output hvec2 hvec3 hvec4 dvec2 dvec3 dvec4 fvec2 fvec3 fvec4 sampler3DRect filter sizeof cast namespace using".split(" ");
+const TYPES = "float int uint bool void vec2 vec3 vec4 ivec2 ivec3 ivec4 uvec2 uvec3 uvec4 bvec2 bvec3 bvec4 mat2 mat3 mat4 mat2x2 mat2x3 mat2x4 mat3x2 mat3x3 mat3x4 mat4x2 mat4x3 mat4x4 sampler2D sampler3D samplerCube sampler2DShadow samplerCubeShadow sampler2DArray sampler2DArrayShadow isampler2D isampler3D isamplerCube isampler2DArray usampler2D usampler3D usamplerCube usampler2DArray".split(" ");
+const KEYWORDS = [...TYPES, ..."const uniform layout centroid flat smooth break continue do for while switch case default if else in out inout true false invariant discard return lowp mediump highp precision struct".split(" ")];
+
+/** The names a text declares: after a type, each name of the declaration, to its semicolon, brace or closing bracket. */
+function declared(code: string): string[] {
+  const out: string[] = [];
+  const type = new RegExp(`\\b(?:${TYPES.join("|")})\\s+([A-Za-z_]\\w*)`, "g");
+  for (const m of code.matchAll(type)) {
+    out.push(m[1]!);
+    // What follows in the same declaration: `float a = f(x, y), b, c;` names b and c, and not x or y.
+    let depth = 0;
+    for (let i = m.index! + m[0].length; i < code.length; i++) {
+      const ch = code[i]!;
+      if (ch === "(" || ch === "[") depth++;
+      else if (ch === ")" || ch === "]") {
+        if (depth-- === 0) break;
+      } else if (ch === ";" || ch === "{") break;
+      else if (ch === "," && depth === 0) {
+        const next = /^\s*([A-Za-z_]\w*)\s*(?=[=,;[])/.exec(code.slice(i + 1));
+        if (next) out.push(next[1]!);
+      }
+    }
+  }
+  return out;
+}
+
+test("no program names a value with a word GLSL keeps for itself or uses", () => {
+  const reserved = new Set(RESERVED);
+  const taken = new Set([...RESERVED, ...KEYWORDS]);
+  expect(declared("float a = f(x, y), flat = 2.0, c; vec3 n = v, cast; void main(vec4 sample, float ok) {")).toEqual(["a", "flat", "c", "n", "cast", "main", "sample", "ok"]);
+  const found = new Set<string>();
+  for (const tier of TIERS) {
+    for (const format of TEXTURE_FORMATS) {
+      for (const [name, make] of Object.entries(PROGRAMS)) {
+        const p = make(tier, format);
+        for (const [stage, text] of [["vertex", p.vertex], ["fragment", p.fragment]] as const) {
+          const code = text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+          for (const m of code.matchAll(/[A-Za-z_]\w*/g)) if (reserved.has(m[0])) found.add(`${name} ${stage}: ${m[0]}`);
+          for (const d of declared(code)) if (taken.has(d)) found.add(`${name} ${stage}: ${d} is declared`);
+        }
+      }
+    }
+  }
+  expect([...found]).toEqual([]);
 });

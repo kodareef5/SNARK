@@ -109,6 +109,10 @@ ev("item.move", "before", "byPid from to item n", "the remote-inventory question
 ev("item.use", "before", "byPid item", "the allow-use question and the use request", "server/own.ts", "wired", "An item is about to be eaten, drunk or used.");
 ev("item.drop", "before", "byPid item n", "the drop request", "server/own.ts", "wired", "A stack is about to be dropped.");
 ev("container.open", "before", "byPid pid", "inventory access", "server/game.ts", "wired", "A box, a body or a creature's bag is about to be opened.");
+ev("supply.call", "before", "x z tier! class! ringed! source circuit site", "the supply crate's spawn", "server/supply.ts", "wired", "A supply drop is about to be called at a place, by a circuit of the drop book, the console, the admin page or a module. `tier` and `class` are the book's keys. `ringed` is 1, 0, or -1 for the book's chance to decide.");
+ev("supply.landed", "after", "id pid x y z tier class ringed stacks source", "", "server/supply.ts", "wired", "A supply drop's capsule has landed, holding `stacks` stacks. `pid` is the capsule's record. Each stack was asked of `item.gain` with the reason \"supply\".");
+ev("supply.opened", "after", "id pid byPid tier class first", "the supply crate's inventory access", "server/supply.ts", "wired", "A survivor opened a supply drop's capsule. `first` is 1 for the first to open it.");
+ev("supply.gone", "after", "id tier class why landed opened", "the supply crate's destruction", "server/supply.ts", "wired", "A supply drop is over. `why` is \"emptied\", \"expired\", \"cancelled\", \"removed\", or \"empty\" for one that had nothing to hold and never landed.");
 ev("craft.start", "before", "pid item count!", "the can-craft question and the craft request", "server/progression.ts", "wired", "A crafting job is about to be queued.");
 ev("craft.done", "after", "pid item n", "the finish-crafting call", "server/progression.ts", "wired", "Something was made.");
 ev("harvest", "after", "pid node item n", "the harvested call", "server/harvest.ts", "wired", "A node gave something.");

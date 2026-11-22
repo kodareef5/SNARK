@@ -17,7 +17,7 @@ import type { World } from "../ground.ts";
 import { streetGraph } from "../street-graph.ts";
 import { cornerWithDrops, dropsOf, withDrops, type HeldPart } from "./drops.ts";
 import { fitRuns, readRuns, type Run } from "./fit.ts";
-import { matchOverlay, readOverlay, sortedKey, type Applied } from "./overlay.ts";
+import { conflictRecord, conflictText, matchOverlay, overlayConflicts, readOverlay, sortedKey, type Applied } from "./overlay.ts";
 import { sideSection, streetRules, typeOf, widthOf, type Facts, type Rule, type Section, type StreetType } from "./rules.ts";
 
 /** A side as the rules and the overlay left it, and in metres. */
@@ -72,6 +72,9 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
   const unsorted = new Set(entries.filter((e, k) => k > 0 && entries[k - 1]!.file === e.file && sortedKey(entries[k - 1]!) > sortedKey(e)).map((e) => e.file));
   for (const file of unsorted) log(`streets: streets/${file} is not sorted (bun tools/maps/street.ts <city> --sort sorts it)`);
   const allApplied = matchOverlay(entries, all, lonLatToMap, className);
+  // Entries as particular that disagree, each settled by a priority (matchOverlay stops on one that is not): said, and in the report.
+  const settled = overlayConflicts(allApplied);
+  for (const c of settled) log(`streets: in the overlay, ${conflictText(c, all)}`);
   // The runs on the map, with what reaches past its edge.
   const reach = 40;
   const kept: number[] = [];
@@ -241,6 +244,7 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
     stretches: runs.length, km: round(fits.reduce((n, f) => n + f.length, 0) / 1000, 1), corners: corners.length, parts: parts.length, bytes, drops: drops.count,
     types: Object.fromEntries([...typeCount].sort((a, b) => b[1].km - a[1].km).map(([k, v]) => [k, { stretches: v.stretches, km: round(v.km, 1) }])),
     rules: Object.fromEntries([...ruleCount].sort((a, b) => b[1] - a[1])), sets: Object.fromEntries([...setCount].sort((a, b) => b[1] - a[1])), overlay: overlayUse,
+    conflicts: settled.map((c) => conflictRecord(c, all)),
   };
   if (existsSync(report)) {
     writeFileSync(join(report, "streets.json"), `{\n"summary": ${JSON.stringify(summary)},\n"types": ${JSON.stringify(rules.types)},\n"stretches": [\n${records.join(",\n")}\n]\n}\n`);

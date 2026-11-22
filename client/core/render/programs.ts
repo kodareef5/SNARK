@@ -10,6 +10,7 @@ import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./deta
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
+import { DROP_GLSL } from "./supply-light.ts";
 import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
@@ -148,17 +149,20 @@ const MAKE = {
   skyline: () => ({ vertex: FLAT_MESH_VERTEX, fragment: FLAT_FRAGMENT.replace("fog * fog", `min(fog * fog, ${SKYLINE_MAX_FOG})`), defines: "", samplers: MESH }),
   // An instrument's own lights (packet.ts DRAW_EMISSIVE) where they are drawn flat: energy in a channel by the site's
   // clock (tide-eye.ts eyeEnergy), along the instrument by where the point is and hotter on the faces turned to the eye,
-  // as light that blooms where the frame is drawn into the light target, and never fogged.
+  // as light that blooms where the frame is drawn into the light target, and never fogged. A supply drop's lights
+  // drawn flat are its own (supply-light.ts), which the draw's effect says: a tube of its tier's colour, hot along its middle.
   signal: (tier, _, __, light = false) => ({ vertex: FLAT_MESH_VERTEX, fragment: `#version 300 es
 precision highp float;
 in vec3 vRel;
 flat in vec3 vColor;
+uniform vec4 uEffect;
 out vec4 o;
-${FRAME_BLOCK}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}
+${FRAME_BLOCK}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${DROP_GLSL}
 void main() {
   vec3 n = normalize(cross(dFdx(vRel), dFdy(vRel)));
   float facing = abs(dot(n, normalize(vRel)));
-  vec3 light = fEyes[0].w > 0. ? eyeEnergy(vRel, -2.e9, .85*sqrt(max(0., 1.-facing*facing)), length(fwidth(vRel))) : vColor*vColor;
+  vec3 light = uEffect.y > 0. ? dropLight(0., sqrt(max(0., 1.-facing*facing)), uEffect)
+    : fEyes[0].w > 0. ? eyeEnergy(vRel, -2.e9, .85*sqrt(max(0., 1.-facing*facing)), length(fwidth(vRel))) : vColor*vColor;
 #ifdef LIGHT_TARGET
   o = vec4(light, 1.);
 #else

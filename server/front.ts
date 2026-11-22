@@ -22,6 +22,18 @@ import { pathOf } from "./site.ts";
  * A world the front sends to: the path it is reached at ("" for the root of a host), its port on this machine, and where
  * its built client and its map's parts are, where it says.
  */
+
+/** Whether the front passes a request on to a world: any read, and the writes a world takes behind its own gate (its
+ * survivors, its directory, play, its admin page's Cast panel, its drop book's acts) and the cluster's scene studio. */
+export function frontPasses(method: string, path: string): boolean {
+  if (method === "GET" || method === "HEAD") return true;
+  if ((method === "POST" || method === "OPTIONS") && /\/(survivors|directory|__play|admin\/cast)$/.test(path)) return true;
+  // The drop book's page changes its world's book and calls test drops (server/admin/supply-routes.ts): its acts and no
+  // other path under a world's admin pages.
+  if (method === "POST" && /\/admin\/supply\/[a-z]+$/.test(path)) return true;
+  return method === "POST" && path === "/cluster/admin/scenes/api";
+}
+
 export interface FrontWorld {
   world: number;
   path: string;
@@ -174,10 +186,7 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
     ...(hostname ? { hostname } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
-      const worldWrite = (req.method === "POST" || req.method === "OPTIONS") && /\/(survivors|directory|__play)$/.test(url.pathname);
-      const shotWrite = req.method === "POST" && url.pathname === "/cluster/admin/scenes/api";
-      if (req.method !== "GET" && req.method !== "HEAD" && !worldWrite && !shotWrite)
-        return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
+      if (!frontPasses(req.method, url.pathname)) return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
       const to = frontRoute(worlds(), url.pathname);
       if (!to) return new Response("no world of this cluster is running", { status: 503, headers: { "retry-after": "10" } });
       // The world believes who the client is from a proxy on its own machine (clientAddress).

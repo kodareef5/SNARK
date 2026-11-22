@@ -1,3 +1,4 @@
+import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -105,7 +106,9 @@ artTest("the content hangs together: every engram can be reached, every thing th
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
   // A soul ball is held and swung as a thrown weapon is, and harms nothing (content/items/balls.ts): the full one is never
   // made, an empty one becomes it. tests/integration/balls.test.ts holds them; here, that their meshes follow a hand.
-  const weapons = items.filter((d) => d.weapon && !d.ball);
+  // What is blocked out is a plain box in the hand (tests/unit/blockouts.test.ts).
+  const blocked = new Set(BLOCKED_OUT);
+  const weapons = items.filter((d) => d.weapon && !d.ball && !blocked.has(d.id));
   const balls = items.filter((d) => d.ball);
   expect(balls.map((d) => [d.id.slice(5), d.weapon?.kind, d.craft !== undefined, pack.header.meshes[pack.meshIndex.get(d.weapon!.mesh!)!]!.skeleton])).toEqual([["soul_ball", "thrown", true, "human"], ["soul_ball_full", "thrown", false, "human"]]);
   expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bola", "bow", "club", "crossbow", "flare_gun", "grenade", "grenade_poison", "grenade_smoke", "hatchet", "pick", "pistol", "rifle", "shotgun", "slingshot", "spear"]);
@@ -119,9 +122,10 @@ artTest("the content hangs together: every engram can be reached, every thing th
     if (d.weapon!.ammo) expect(d.weapon!.ammo.some((a) => made.some((r) => r.id === a) || gathered.has(a))).toBe(true);
     expect(d.craft !== undefined, d.id).toBe(true);
   }
-  // Five independently wearable sets.
+  // Five independently wearable sets, and four blocked out (fur, ghillie, riot and SCUBA's four pieces), which are drawn
+  // as hide's pieces are.
   const worn = items.filter((d) => d.wear);
-  expect(worn.length).toBe(25);
+  expect([worn.filter((d) => !blocked.has(d.id)).length, worn.filter((d) => blocked.has(d.id)).length]).toEqual([25, 19]);
   const rating = (tier: string): number => worn.find((d) => d.id === `core:${tier}_shirt`)!.wear!.armor;
   expect([rating("cloth"), rating("hide"), rating("chitin"), rating("flak"), rating("meridian")]).toEqual([10, 20, 50, 100, 180]);
   for (const d of worn) {

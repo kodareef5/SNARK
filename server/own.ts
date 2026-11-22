@@ -3,7 +3,7 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import { fitBytes, type BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, MAX_OPEN_NAME_BYTES, OPEN_TAKE_ONLY, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { FLAG_BLUEPRINT, FLAG_ISSUED, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -45,6 +45,9 @@ function issuedStays(ctx: OwnContext, item: number): string {
   const reg = ctx.world.reg;
   return reg.ballFull[item] !== 0 || reg.ballEmpty[item] !== 0 ? ISSUED_BALL_STAYS : ISSUED_STAYS;
 }
+
+/** What a survivor is told when it would put something into a supply drop's capsule. */
+export const TAKE_ONLY = "A supply drop is only taken from: nothing can be put into it.";
 
 /** The count is one byte on the wire. A larger tribe sends only its first members. */
 const MAX_MEMBERS_SENT = 255;
@@ -248,7 +251,9 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     w.bool(open !== null);
     if (open) {
       w.varint(ctx.items.inv(open).cap);
-      w.string(open.name);
+      w.string(fitBytes(open.name, MAX_OPEN_NAME_BYTES));
+      // Protocol 41: what kind of box it is (OPEN_ bits).
+      w.u8(ctx.world.reg.takeOnly[open.kind] === 1 ? OPEN_TAKE_ONLY : 0);
     }
     game.endOwn(c);
     c.sentOpen = openPid;
@@ -387,6 +392,11 @@ export function addOwnCommands(ctx: OwnContext): void {
     // An issued piece moves about its survivor's own inventory only, and is not swapped out of it either.
     if (a !== b && (ctx.items.issued(a, fromSlot) || ctx.items.issued(b, toSlot))) {
       ctx.game.sendText(c, TEXT_NOTICE, issuedStays(ctx, ctx.items.issued(a, fromSlot) ? expect : ctx.items.inv(b).item[toSlot]!));
+      return RESULT_DENIED;
+    }
+    // Nothing is put into a supply capsule, nor swapped into one.
+    if (a !== b && !ctx.items.takes(a, fromSlot, b, toSlot)) {
+      ctx.game.sendText(c, TEXT_NOTICE, TAKE_ONLY);
       return RESULT_DENIED;
     }
     // A module is asked about a stack that changes hands, not one moved about in one inventory.

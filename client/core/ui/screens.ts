@@ -68,7 +68,7 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): voi
   // Creatures in view belong to the minimap. The most important marker is drawn last, so it is on top.
   for (let i = Math.min(hud.markers.length, MAX_MARKERS) - 1; i >= 0; i--) {
     const k = hud.markers[i]!;
-    if (k.kind !== "creature" && k.kind !== "death" && k.kind !== "self") pin(KEY_MAP_MARK + i, k.u, k.v, 3, MARKER_STYLE[k.kind], MARKER_TINT[k.kind]);
+    if (k.kind !== "creature" && k.kind !== "death" && k.kind !== "self" && k.kind !== "dropPip") pin(KEY_MAP_MARK + i, k.u, k.v, k.kind === "drop" ? 4 : 3, MARKER_STYLE[k.kind], (k.tint ?? -1) >= 0 ? k.tint : MARKER_TINT[k.kind]);
   }
   const now = session.serverTick;
   for (let i = 0; i < deaths.length && i < 16; i++) {

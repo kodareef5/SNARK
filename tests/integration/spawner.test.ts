@@ -52,14 +52,11 @@ test("a new proving ground fills at once: the herd north of the plaza, raptors b
   expect(hunters!.count).toBeGreaterThanOrEqual(4);
   // Parasaurs can also belong to the northern herd. Count beach members in their own region.
   expect(beach!.count).toBe(13);
-  expect(beach!.of).toEqual(new Map([
-    [reg.index.get("core:dodo")!, 8],
-    [reg.index.get("core:parasaur")!, 2],
-    [reg.index.get("core:pteranodon")!, 1],
-    [reg.index.get("core:trike")!, 2],
-  ]));
+  // Eight dodos, three pteranodons and two turtles since the trilobite's group joined the beach's table and the draws
+  // fell otherwise (content/spawns.ts).
+  expect(beach!.of).toEqual(new Map([[reg.index.get("core:dodo")!, 8], [reg.index.get("core:pteranodon")!, 3], [reg.index.get("core:carbonemys")!, 2]]));
   const flyers = of(host, "core:pteranodon");
-  expect(flyers.length).toBe(1);
+  expect(flyers.length).toBe(3);
   for (const r of flyers) {
     const e = host.records.entOf.get(r.pid)!;
     expect([host.world.ents.mode[e], (host.world.ents.flags[e]! & F_GROUNDED) !== 0, r.y >= PROVING_SEA_LEVEL]).toEqual([MODE_WALK, true, true]);
@@ -77,7 +74,8 @@ test("a new proving ground fills at once: the herd north of the plaza, raptors b
   const again = createHost(reg, { wild: true, seed: 6 });
   ticks(again, 60);
   expect(look(again)).toEqual(look(host));
-  const other = createHost(reg, { wild: true, seed: 1 });
+  // Seed 3's beach has turtles.
+  const other = createHost(reg, { wild: true, seed: 3 });
   ticks(other, 60);
   const turtles = of(other, "core:carbonemys");
   expect(turtles.length).toBe(3);
@@ -94,7 +92,8 @@ test("what dies or is tamed is replaced at a later check, never within 60 m of a
     api: 1,
     setup: (m) => m.on("creature.spawn", (e) => void (her >= 0 && away.push(Math.hypot(Number(e.data.x) - h.world.ents.x[her]!, Number(e.data.z) - h.world.ents.z[her]!)))),
   };
-  const h = new Harness({}, 1, 30, { wild: true, dev: true, modules: [watch] });
+  // The world of seed 6, whose beach fills at once with dodos among it (the first test).
+  const h = new Harness({}, 1, 30, { wild: true, dev: true, modules: [watch], seed: 6 });
   h.run(2000);
   const ada = h.join("ada");
   h.run(1000);
@@ -113,7 +112,7 @@ test("what dies or is tamed is replaced at a later check, never within 60 m of a
   her = h.ent(ada);
   expect(host.taming.give(dodos[0]!, me, 1)).toBe(true);
   for (const d of dodos.slice(1)) kill(host, d.pid);
-  expect([beach.count, of(host, "core:dodo").length]).toEqual([4, 0]);
+  expect([beach.count, of(host, "core:dodo").length]).toEqual([5, 0]);
   // A check adds one group at most, at its leader's place 60 m from her or more.
   const old = new Set(wild(host).map((r) => r.pid));
   let most = 0;
@@ -130,14 +129,15 @@ test("what dies or is tamed is replaced at a later check, never within 60 m of a
   // She goes east, and in a few more checks the beach is full again, its dodos within their limit.
   h.say(ada, "tp 460 256");
   h.run(8 * CHECK_SECONDS * 1000);
+  // Which species came back is the draws': dodos or none, and never more than their share.
   const dodosNow = of(host, "core:dodo").length;
-  expect([dodosNow > 0 && dodosNow <= 8, beach.count >= beach.desired]).toEqual([true, true]);
+  expect([dodosNow <= 8, beach.count >= beach.desired]).toEqual([true, true]);
 });
 
 test("nothing is put down within 40 m of a tribe's creature, nor within 60 m of 15 of a tribe's foundations and ceilings", () => {
   expect([TAME_RANGE, CORE_MOST, CORE_RANGE]).toEqual([40, 15, 60]);
   const base = (pieces: number, kind: string, owner: number): Host => {
-    const host = createHost(reg, { wild: true });
+    const host = createHost(reg, { wild: true, seed: 6 });
     const k = host.world.reg.index.get(kind)!;
     for (let i = 0; i < pieces; i++) host.world.structs.add(k, PROVING_POOL.x + (i % 5) * 3, 0.15, PROVING_POOL.z + Math.floor(i / 5) * 3, 0, owner, 1000);
     ticks(host, 120);
@@ -145,9 +145,9 @@ test("nothing is put down within 40 m of a tribe's creature, nor within 60 m of 
   };
   // Fifteen foundations at the pool keep the whole beach clear; fourteen, fifteen pillars, or fifteen of nobody's do not.
   expect(base(15, "core:foundation_wood", 99).spawner!.regions[1]!.count).toBe(0);
-  expect(base(14, "core:foundation_wood", 99).spawner!.regions[1]!.count).toBe(12);
-  expect(base(15, "core:pillar_wood", 99).spawner!.regions[1]!.count).toBe(12);
-  expect(base(15, "core:foundation_wood", 0).spawner!.regions[1]!.count).toBe(12);
+  expect(base(14, "core:foundation_wood", 99).spawner!.regions[1]!.count).toBe(13);
+  expect(base(15, "core:pillar_wood", 99).spawner!.regions[1]!.count).toBe(13);
+  expect(base(15, "core:foundation_wood", 0).spawner!.regions[1]!.count).toBe(13);
   // A tribe's raptor at the pool: what comes stands 40 m from it, less a group's spread.
   const host = createHost(reg, { wild: true });
   const e = host.spawnCreature("core:raptor", PROVING_POOL.x, PROVING_POOL.z + 30, 1, "admin");
@@ -199,11 +199,12 @@ test("nothing is put down inside a node nobody has loaded, nor in what is left o
 
 test("a saved world comes back with its creatures where they were, counted, and is not filled on top of them", () => {
   const db = join(dir, "kept.db");
-  const first = createHost(reg, { wild: true, dbPath: db });
+  // Seed 6 fills every region at once, so a later check has nothing to add.
+  const first = createHost(reg, { wild: true, dbPath: db, seed: 6 });
   ticks(first, 60);
   const before = wild(first).map((r) => [r.pid, r.x, r.z]).sort();
   first.shutdown();
-  const second = createHost(reg, { wild: true, dbPath: db });
+  const second = createHost(reg, { wild: true, dbPath: db, seed: 6 });
   expect(second.spawner!.count).toBe(before.length);
   expect(second.spawner!.regions.map((r) => r.count)).toEqual(first.spawner!.regions.map((r) => r.count));
   ticks(second, 2 * CHECK_SECONDS * TICK_RATE);
@@ -268,9 +269,9 @@ test("the settings: DinoCountMultiplier scales what each region holds, a species
   };
   const double = counted(["DinoCountMultiplier=2"]);
   expect(double.spawner!.regions.map((r) => r.desired)).toEqual([48, 24, 8]);
-  expect(of(double, "core:dodo").length).toBe(15);
+  expect(of(double, "core:dodo").length).toBe(12);
   const none = counted([], ['NPCReplacements=(FromClassName="core:dodo",ToClassName="")']);
-  expect([of(none, "core:dodo").length, none.spawner!.regions[1]!.count]).toEqual([0, 6]);
+  expect([of(none, "core:dodo").length, none.spawner!.regions[1]!.count]).toEqual([0, 12]);
   for (const flag of ["-NoDinos", "-NoDinosExceptForcedSpawn", "-NoDinosExceptStreamingSpawn", "-NoDinosExceptManualSpawn", "-NoDinosExceptWaterSpawn"]) {
     const quiet = counted([], [], [flag]);
     expect([quiet.spawner, quiet.world.ents.count]).toEqual([null, 0]);
