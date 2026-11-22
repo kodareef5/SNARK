@@ -75,21 +75,18 @@ test("a map written in parts and read back is the map it was made of: every heig
   expect(writeMap(back)).toEqual(file);
 });
 
-test("a map built before the bent kerbs, the streets' lines or the roads' frame is read as one with none of them, and an older or newer one is refused", () => {
+test("a map of version 11 is read as one with no streets, and any other old or new one is refused", () => {
   const plain = writeMap(wideMap());
   const as = (version: number): Uint8Array<ArrayBuffer> => {
     const f = plain.slice();
     new DataView(f.buffer).setUint16(4, version, true);
     return f;
   };
-  // The version is outside what the head's hash covers, so a file of this version with no bends, road or streets part is one of the last three.
-  for (const v of [10, 11, 12, 13]) {
-    const old = parseMap(as(v), true, true);
-    expect(old.road).toBeUndefined();
-    expect(old.streets).toBeUndefined();
-    expect(old.heights).toEqual(parseMap(plain).heights);
-  }
-  for (const v of [9, 15]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
+  // The version is outside what the head's hash covers, so a file of this version with no bends or streets part is one of 11.
+  const old = parseMap(as(11), true, true);
+  expect(old.streets).toBeUndefined();
+  expect(old.heights).toEqual(parseMap(plain).heights);
+  for (const v of [10, 12, 13, 15]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
 });
 
 test("a map's roads' frame rides in a part of its own for each sector a road runs in, is read whole only where it is drawn from, and is held a sector at a time", () => {

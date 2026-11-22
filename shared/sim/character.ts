@@ -1,6 +1,7 @@
 // One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
+import { flags } from "../codes.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
@@ -32,26 +33,30 @@ export function bootThrust(mode: number, gear: number, speed: number): boolean {
   return (gear & JET_BOOTS) !== 0 && (mode >= JET_UP || (mode === JET_HOVER && (gear & JET_GREAVES) !== 0 && speed > 6));
 }
 
-export const BTN_JUMP = 1;
-export const BTN_SPRINT = 2;
+/** A button's bit is its place among these lines. A new button is one more line, and the wire widens for it. */
+const button = flags();
+export const BTN_JUMP = button();
+export const BTN_SPRINT = button();
 /** Swing, harvest, attack. The server acts on the tick it consumes the press. */
-export const BTN_PRIMARY = 4;
-export const BTN_USE = 8;
+export const BTN_PRIMARY = button();
+export const BTN_USE = button();
 /** Aim, draw, block. */
-export const BTN_SECONDARY = 16;
-export const BTN_RELOAD = 32;
+export const BTN_SECONDARY = button();
+export const BTN_RELOAD = button();
 /** Strike with the held item, or a fist. */
-export const BTN_MELEE = 64;
+export const BTN_MELEE = button();
 /** Held while the body should stay low. The client turns a key press into this. */
-export const BTN_CROUCH = 128;
-export const BTN_PRONE = 256;
+export const BTN_CROUCH = button();
+export const BTN_PRONE = button();
 /** Toggles the held item's attachment. */
-export const BTN_MOD = 512;
+export const BTN_MOD = button();
 /**
  * A helmet's visor held up (client/core/visor.ts): the step makes nothing of it, and the server takes it as the proof a
  * visor's gaze needs (server/gaze.ts, D1084), as a sight's is the secondary held.
  */
-export const BTN_VISOR = 1024;
+export const BTN_VISOR = button();
+/** How many buttons there are. */
+export const buttonCount = button.count;
 
 /** A lower stance is a shorter capsule, a lower eye and a slower walk. */
 export const STANCE_STAND = 0;

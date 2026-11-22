@@ -123,14 +123,8 @@ import { StreetSectors, decodeStreets } from "./streets.ts";
 import { HIT_PREFIX, bentNext, madeHits, walkedFlush } from "./bends.ts";
 
 export const MAP_VERSION = 14;
-/**
- * The versions before, read as they are: 13 holds its bent pieces' collision pieces as pieces of their own; 12 has no
- * bends at the end of a statics part, 11 no streets part either and 10 no road part: they are read as maps with none of
- * them, drawn with the stepped edges and without lane wear until they are built again.
- */
-const EARLIER_VERSIONS = [10, 11, 12, 13];
-/** The first version whose bent pieces' collision pieces are made where a part is read, not stored. */
-const MADE_HITS = 14;
+/** Read too, until the city maps in var/maps are built again: they are 11, which is 14 with no streets part and no bent piece. */
+const KEPT_VERSION = 11;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -1538,7 +1532,7 @@ export interface MapHead {
   readonly water: { readonly cell: number; readonly bodies: readonly WaterBody[] } | null;
   /** The whole map at every chunk's corner, which a client draws until each overview comes. */
   readonly coarse: CoarsePicture;
-  /** Its version (MAP_VERSION, or one of those before it this build reads). */
+  /** Its version: MAP_VERSION or KEPT_VERSION. */
   readonly version: number;
   /** The content ids its statics name by number. */
   readonly kinds: readonly string[];
@@ -1583,7 +1577,7 @@ export function readHead(file: Uint8Array, verify = true): MapHead {
   const v = new DataView(file.buffer, file.byteOffset, file.byteLength);
   if (file.length < 16 || v.getUint32(0, true) !== MAGIC) throw new Error("map: this is not a map file");
   const version = v.getUint16(4, true);
-  if (version !== MAP_VERSION && !EARLIER_VERSIONS.includes(version)) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
+  if (version !== MAP_VERSION && version !== KEPT_VERSION) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
   const bytes = v.getUint32(12, true);
   if (bytes < HEADER_BYTES || bytes > file.length) throw new Error("map: it is cut short");
   const hash = v.getUint32(8, true);
@@ -1937,7 +1931,7 @@ function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
 function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, StaticsPiece> {
   const n = s.u32();
   const b = s.take(n * STAT_ROW);
-  // Its bent pieces first: from version 14 a bent piece after a bent piece is coded against the guess of the one before.
+  // Its bent pieces first: a bent piece after a bent piece is coded against the guess of the one before.
   let bendAt = new Uint32Array(0), bend = new Int16Array(0);
   if (s.at < s.bytes.length) {
     const m = s.u32();
@@ -1961,7 +1955,6 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
       bendGuess(guess, bend.subarray(q * 8, q * 8 + 8));
     }
   }
-  const guessed = head.version >= MADE_HITS;
   const [id, yaw, chunk] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];
   const [xs, ys, zs] = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
   const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
@@ -1976,7 +1969,7 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
     if (id[i]! >= head.kinds.length) throw new Error("map: a static piece is of a kind its table does not name");
     // A bent piece after a bent piece: from where it would stand as the next of that one's line.
     const bent = q < bendAt.length && bendAt[q] === i;
-    if (guessed && bent && q > 0 && bendAt[q - 1] === i - 1) {
+    if (bent && q > 0 && bendAt[q - 1] === i - 1) {
       bentNext(x, y, z, turn, bend.subarray((q - 1) * 8, q * 8), bend.subarray(q * 8, q * 8 + 8), next);
       [x, y, z, turn] = [next[0]!, next[1]!, next[2]!, next[3]!];
     }
@@ -1995,7 +1988,7 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
     if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) throw off(id[i]!, ax, y, az, `its sector ${sq.col}, ${sq.row}`);
     if (i % SLICE === SLICE - 1) yield;
   }
-  if (head.version < MADE_HITS || bendAt.length === 0) return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk, bendAt, bend };
+  if (bendAt.length === 0) return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk, bendAt, bend };
   // The collision pieces under its bent pieces, made from them as the writer counted them, those in this sector after its
   // own pieces.
   const kindOf = kindIndex(head.kinds);

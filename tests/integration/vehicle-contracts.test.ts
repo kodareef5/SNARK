@@ -1,26 +1,7 @@
 import { expect, test } from "bun:test";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
-import { BitWriter } from "../../shared/net/codec.ts";
-import { REJECT_VERSION, RESULT_DENIED, RESULT_OK, writeHello } from "../../shared/net/protocol.ts";
-import { CH_RELIABLE } from "../../shared/net/transport.ts";
-import { Harness, testKey } from "../fixtures/net.ts";
-
-test("protocol 20 carries rotorcraft and boat state, and previous layouts are refused", () => {
-  const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });
-  try {
-    const reasons: number[] = [];
-    for (const version of [13, 15, 16, 17, 18, 19]) {
-      const end = h.net.connect();
-      end.onMessage = (_ch, data) => reasons.push(data[1]!);
-      const w = new BitWriter(128);
-      writeHello(w, version, h.reg.hash, h.world.anim.set.hash, "old-layout", 0, testKey("old-layout"));
-      end.send(CH_RELIABLE, w.bytes()); h.run(100);
-      expect(end.open).toBe(false);
-    }
-    expect(reasons).toEqual([REJECT_VERSION, REJECT_VERSION, REJECT_VERSION, REJECT_VERSION, REJECT_VERSION, REJECT_VERSION]);
-    expect(h.server.playerCount).toBe(0);
-  } finally { h.host.shutdown(); }
-});
+import { RESULT_DENIED, RESULT_OK } from "../../shared/net/protocol.ts";
+import { Harness } from "../fixtures/net.ts";
 
 test("the engine's bola restriction gates vehicle entry both before and during its door action", () => {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });

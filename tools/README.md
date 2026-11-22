@@ -29,9 +29,8 @@ from here.
 | `settings.ts` | `bun run settings` | Writes `planning/reference/settings.md` from the catalogue of server settings; a test fails if the page is stale |
 | `sky/` | `bun tools/sky/build.ts`, `bun tools/sky/base.ts`, `bun tools/sky/preview.ts --sheet file` | The sky on lit tiers: the physical sky (after Hillaire 2020) graded to the mood keys and written as the table `client/core/render/skytable.ts` and `assets/source/core/sky/table.png`; the panoramas the keys are painted over; and those panoramas under the table's sky |
 
-`check.ts` holds the allow-list of development packages, the zone import table,
-the shell line budget, and the check time budget. Changing any of them is a
-decision recorded in [decisions](../planning/decisions.md).
+`check.ts` holds the allow-list of development packages and the zone import table.
+It prints the line count of each untested client zone and fails on none.
 
 `snap` options: `--pos x,y,z --yaw degrees --pitch degrees --size WxH --out file`.
 Yaw 0 faces +Z (north) and positive yaw turns toward +X. `--map file.snmap`

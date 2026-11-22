@@ -15,7 +15,7 @@ import { K_IMAGE, K_PANEL } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
 import { ICONS_A_SHEET, ICON_SIZE } from "../../shared/pack/icons.ts";
-import { MANIFEST_VERSION, describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
+import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { TEXT_TRIBE } from "../../shared/net/protocol.ts";
@@ -115,7 +115,6 @@ test("a vehicle assembly is pictured from its authored deployment model and live
 });
 
 test("a sheet of pictures is a file of the manifest, which refuses a picture outside its sheet", () => {
-  expect(MANIFEST_VERSION).toBe(8);
   expect([sheet.role, [...sheet.bytes.subarray(0, 8)]]).toEqual(["icon", [137, 80, 78, 71, 13, 10, 26, 10]]);
   // One picture, alone on its sheet: one cell across and down.
   const m = parseManifest(JSON.stringify(manifest));

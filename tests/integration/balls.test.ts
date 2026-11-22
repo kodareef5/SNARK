@@ -14,6 +14,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { BAG_TICKS, CACHE_TICKS } from "../../server/death.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_STRUCT, CMD_DROP, CMD_MOVE, CMD_OPEN, CMD_NAME, CMD_ORDER, CMD_SELECT, CMD_USE, CARRY_PICK_UP, CMD_CARRY, CMD_FEED, EVENT_BALL, ORDER_FOLLOW, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { BTN_PRIMARY } from "../../shared/sim/character.ts";
 import { F_ALIVE, F_PROP } from "../../shared/sim/entities.ts";
 import { CHARGED } from "../../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
@@ -70,9 +71,9 @@ function tame(h: Harness, owner: EntityRecord, x: number, z: number, name = "Bit
 
 /** One click: the button down long enough for the throw's strike, and let go. */
 function click(h: Harness, pilot: Pilot): void {
-  pilot.buttons |= 4;
+  pilot.buttons |= BTN_PRIMARY;
   h.run(300);
-  pilot.buttons &= ~4;
+  pilot.buttons &= ~BTN_PRIMARY;
   h.run(400);
 }
 
@@ -598,9 +599,9 @@ test("a modified client cannot reach a kept tame by its old handle, nor click a 
   // Held down, the button looses once and then keeps the same tame again at most: there is never a second.
   pilot.yaw = 0;
   pilot.pitch = -0.3;
-  pilot.buttons |= 4;
+  pilot.buttons |= BTN_PRIMARY;
   h.run(4000);
-  pilot.buttons &= ~4;
+  pilot.buttons &= ~BTN_PRIMARY;
   h.run(500);
   const ents = h.world.ents;
   let bodies = 0;

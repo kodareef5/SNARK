@@ -3,7 +3,7 @@ import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_USE, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_STALE } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BTN_SPRINT, MF_NO_SPRINT, MF_ROOTED } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SPRINT, MF_NO_SPRINT, MF_ROOTED } from "../../shared/sim/character.ts";
 import type { Inventory } from "../../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../../shared/sim/vitals.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
@@ -160,7 +160,7 @@ test("a head under water runs out of air, then of health; surfacing brings the a
   expect(hurt).toBeGreaterThan(10);
   expect(s.vitals.at(V_HEALTH, h.world.tick)).toBe(rec.vitals!.at(V_HEALTH, h.world.tick));
 
-  pilot.buttons = 1;
+  pilot.buttons = BTN_JUMP;
   h.run(4000);
   pilot.buttons = 0;
   expect(sv.isSubmerged(rec)).toBe(false);
@@ -184,7 +184,7 @@ test("a head under water runs out of air, then of health; surfacing brings the a
   expect(expected).toBeGreaterThan(20);
   expect(Math.abs(lost - expected)).toBeLessThan((g / 30) * 7 + 1.5);
   const now = sv.value(rec, V_HEALTH);
-  pilot.buttons = 1;
+  pilot.buttons = BTN_JUMP;
   h.run(200);
   pilot.buttons = 0;
   h.run(2000);

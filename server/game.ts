@@ -1230,7 +1230,7 @@ export class GameServer {
 
   /** False if the hello is malformed. One that is refused is told why. Only one that is accepted is given a session. */
   private hello(conn: Connection, r: BitReader): boolean {
-    const version = r.u16();
+    const version = r.u32();
     // Another version lays the rest out differently, so nothing more is read.
     if (!r.overflow && version !== PROTOCOL_VERSION) return this.refuse(conn, REJECT_VERSION);
     const contentHash = r.u32();
@@ -1372,7 +1372,7 @@ export class GameServer {
     const w = this.welcomeW;
     w.reset();
     w.u8(S_WELCOME);
-    w.u16(PROTOCOL_VERSION);
+    w.u32(PROTOCOL_VERSION);
     w.u32(world.tick);
     w.u32(c.ent >= 0 ? ents.handleOf(c.ent) : 0);
     w.u16(c.kind);

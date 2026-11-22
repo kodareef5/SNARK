@@ -1,8 +1,12 @@
 // Message layouts live here and nowhere else. Every message starts with its type, and each type has a fixed channel. A client's
-// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 15 to 255 are free.
+// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart.
+//
+// No code here is numbered by hand (shared/codes.ts): a kind of message, a command, an own component, an event or a flag
+// takes its number from its place among its kind's lines. To add one, add its line after the last of its kind. There is no
+// version to raise: PROTOCOL_VERSION is a hash of the source.
 //
 //   client -> server
-//     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
+//     HELLO     reliable     version u32, content hash u32 (of the definitions as written, untuned), clip hash u32,
 //                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
 //                            with HELLO_TICKET a travel ticket (32 bytes), password string ("" for none), with HELLO_NEW a 16-byte create request id
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
@@ -11,13 +15,13 @@
 //     COMMAND   reliable     sequence u16 (1 to 65,535, then 1 again), op u8, arguments by op
 //               CMD_CREATE carries the look and an optional public spawn index (u8).
 //   server -> client
-//     WELCOME   reliable     version u16, tick u32, own handle u32, species u16, session state 2 bits, admin 1 bit,
+//     WELCOME   reliable     version u32, tick u32, own handle u32, species u16, session state 2 bits, admin 1 bit,
 //                            day offset u32, map id string, map hash u32, chunksX-1 u8, chunksZ-1 u8, own body,
 //                            yaw u16, tuned content hash u32, tuning string (shared/content/tuning.ts), the clock's
 //                            cycle, day and night scales (f64 each), MOTD seconds u16, takes the map's statics 1 bit
 //     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8, ticks given up since the welcome
 //                            1 bit and if set u16 (wrapping), buttons carried into this tick from an input that came
-//                            after its own 1 bit and if set 10 bits, session state 2 bits, driven entity index + 1
+//                            after its own 1 bit and if set BUTTON_BITS bits, session state 2 bits, driven entity index + 1
 //                            varint (0 = its own body), that body, entity delta (see view.ts)
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits; to a client that takes statics, for
 //                            a chunk that holds map statics, from the map 1 bit, and if set first slot u16 and count
@@ -49,43 +53,19 @@
 
 import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
-import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
+import { counter, flags } from "../codes.ts";
+import { BTN_CROUCH, BTN_PRONE, Body, buttonCount } from "../sim/character.ts";
 
+declare const __WIRE__: number;
 /**
- * 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. 16: the flyers'.
- * 17: the stations wave's (planning/reference/stations-plan.md, S0), OWN_STATION's layout. 18: vehicles: a body's
- * mechanical state and seat after the flight counters, and a view entry's vehicle parts (view.ts).
- * 19: rotor state/condition, observer rotor and service parts, and vehicle maintenance/deployment commands.
- * 20: marine hull/flooding state and physical shoreline recovery. 21: compact chunk rows, rows in place, and chunks
- * taken from the map (HELLO_STATICS). 22: the map's statics told of after the hello (CMD_STATICS). 23: S_MOTION, a
- * travelling static's state. 24: S_MOTION's states are added to those told before: all of them after a welcome, in as many
- * messages as they take, and then each static as it is thrown. 25: wheeled full-attitude/flooding state and
- * replicated fatal-impact corpse checkpoints (S_CORPSE/CMD_CORPSE). 26: local car push/pull and manual flip commands.
- * 27: driver contact bodies and held controls precede each snapshot view; depleted node rows distinguish crushed trees.
- * 29: ground creature ability mode, cooldowns, charge power and attack side in the owner body.
- * 31 combines ground creature prediction counters with the parked-car brake in contact snapshots.
- * The earlier road-only 29 and ground-mount 30 clients cannot read the combined contract.
- * 32: a hello that makes a new survivor carries its create request (HELLO_NEW, HELLO_RESUME), and a driver cycles a patrol
- * vehicle's warning lights (VEHICLE_LIGHTS).
- * 33 adds equipped flight armor, remaining reserve accounting and active thrust to the owner body. It was written as 32
- * on its branch while main took 32 for the above; the two merged without a conflict and would have let a client of one
- * read the other's bodies wrong.
- * 34: creative mode, RULE_CREATIVE and the sundial's CMD_CLOCK. They were written as 33 on their branch while main took 33
- * for the above.
- * 35: a snapshot's margin is told against the tick due on the loop's clock, and it says the ticks the loop gave up.
- * 36: a snapshot says the buttons its tick carried from an input that came after its own tick.
- * 37: a survivor's emote, its own word beside the pose and the cues in a view (AnimState.packEmote), and CMD_EMOTE.
- * 38: the owner's powered maneuvers, button edges, tap windows and recovery. CUE_JET selects the powered motion layout for observers.
- * 39: the glider on the owner's body (the grade carried, open or not, and its keys as last sampled), behind one bit; under an
- * open glider CUE_JET is set and the motion bits' mode field holds ANIM_GLIDE and the phase (planning/workstreams/glider.md).
- * 40: the tames kept in a box's soul balls (OWN_KEPT), and a tame going into or coming out of one (EVENT_BALL).
- * 41: supply drops (planning/workstreams/supply.md): OWN_OPEN says what kind of box is open (OPEN_TAKE_ONLY), and S_SUPPLY
- * tells every session the drops that are live.
- * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079); CMD_MARK, a
- * creature spotted for the tribe, and its mark (MARK_SPOT, D1082).
- * 43: an eleventh button, BTN_VISOR, a visor held up, which the server takes as the proof of its gaze (D1084).
+ * A hash of the source under shared/ (shared/net/wire.ts). A hello of another is refused before the rest of it is read.
+ * A build gives it to the page; a server or an agent run from source reads its own and calls stampWire. A process that
+ * never does holds 0, which is the same on both sides where a client and a server share the process, as in a test.
  */
-export const PROTOCOL_VERSION = 43;
+export let PROTOCOL_VERSION: number = typeof __WIRE__ === "number" ? __WIRE__ : 0;
+export function stampWire(version: number): void {
+  PROTOCOL_VERSION = version;
+}
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -190,60 +170,64 @@ function readVehicle(r: BitReader, b: Body): void {
   b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
 }
 
-export const C_HELLO = 1;
-export const C_INPUT = 2;
-export const C_COMMAND = 3;
 
-export const S_WELCOME = 1;
-export const S_SNAPSHOT = 2;
-export const S_CHUNK = 3;
-export const S_CHUNK_DROP = 4;
-export const S_REJECT = 5;
-export const S_RESULT = 6;
-export const S_TEXT = 7;
-export const S_OWN = 8;
-export const S_NODES = 9;
-export const S_EVENT = 10;
+/** New kinds go last: HELLO, WELCOME and REJECT then keep their numbers, and a page of another version still reads its refusal. */
+const clientKind = counter();
+export const C_HELLO = clientKind();
+export const C_INPUT = clientKind();
+export const C_COMMAND = clientKind();
+
+const serverKind = counter();
+export const S_WELCOME = serverKind();
+export const S_SNAPSHOT = serverKind();
+export const S_CHUNK = serverKind();
+export const S_CHUNK_DROP = serverKind();
+export const S_REJECT = serverKind();
+export const S_RESULT = serverKind();
+export const S_TEXT = serverKind();
+export const S_OWN = serverKind();
+export const S_NODES = serverKind();
+export const S_EVENT = serverKind();
 /**
  * One chunk's structures as the map shows them (shared/world/tactical.ts). Reliable. chunk u16, level 2 bits (cells of 4, 8, 16
  * or 32 m), team count 3 bits, a varint per team, then runs until the chunk's cells are covered, row by row: length-1 (8 bits,
  * less 2 for each level), filled 1 bit, and if filled: palette colour u8, height band 3 bits, owner 3 bits (an index into the
  * teams, or 7 for a team not among them).
  */
-export const S_TACTICAL = 11;
+export const S_TACTICAL = serverKind();
 /**
  * Tribe mates and tames anywhere on the map, once a second. Unreliable. The receiver's own place in the list u8 (255 for none),
  * the map zoom the server holds for it 2 bits, the players rule 2 bits (off, view, all), count u8, then per mark: kind 3 bits
  * (mate, tame, other), x and z as 14-bit shares of the map, heading 5 bits.
  */
-export const S_MARKS = 12;
+export const S_MARKS = serverKind();
 /**
  * Every tribe's structures beyond the view, to draw on the horizon (shared/world/tactical.ts). Reliable. chunk u16, then runs
  * until its 256 cells of 4 m are covered, row by row: length-1 u8, filled 1 bit, and if filled: palette colour u8, top u8
  * (half metres above the ground at the cell's middle to 64 m, then 2 m steps to 318 m). No owner or team. A chunk is sent
  * whole, and an emptied one is sent empty. Protocol 9.
  */
-export const S_FAR = 13;
+export const S_FAR = serverKind();
 /**
  * Protocol 14. The survivor has left for another server of the cluster: the travel ticket (TICKET_BYTES) and the destination's
  * world id u16. The page takes the ticket to the destination, whose HELLO carries it, and the server closes this connection.
  */
-export const S_TRAVEL = 14;
+export const S_TRAVEL = serverKind();
 /**
  * Protocol 23. Where statics that move when used stand (StructureDef.motion), every one in as many messages as they take after
  * a welcome, and each again as it is thrown (24): count u8, then per static ref u32, where it left from and goes to u16 (the top bit set when it goes to
  * its second state, the rest the progress it left from in 1/32,767), and the tick it left u32. Its kind and place are the
  * client's map's (shared/sim/motion.ts).
  */
-export const S_MOTION = 15;
+export const S_MOTION = serverKind();
 /** Protocol 25. Sparse, generation-qualified corpse motion checkpoint; shared/net/corpse.ts defines its bounded payload. */
-export const S_CORPSE = 16;
+export const S_CORPSE = serverKind();
 /**
  * Protocol 41. The supply drops that are live on the map, whole, to every session after its welcome and again whenever
  * one is called, lands, is first opened or goes: what each tier and class among them shows, then a row a drop
  * (shared/sim/supply.ts writeSupply). A session works out where each is from its ticks, so nothing more is sent as it flies.
  */
-export const S_SUPPLY = 17;
+export const S_SUPPLY = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -262,16 +246,17 @@ export const REJECT_TRAVEL = 9;
 export const MAX_PASSWORD_BYTES = 64;
 export const MAX_TUNING_BYTES = 1 << 20;
 
-export const HELLO_SPECTATE = 1;
+const helloFlag = flags();
+export const HELLO_SPECTATE = helloFlag();
 /** A look follows the key. A new survivor gets it at once and skips the creator. */
-export const HELLO_LOOK = 2;
+export const HELLO_LOOK = helloFlag();
 /** Protocol 14. A travel ticket follows the look: the survivor arrives from another server of the cluster (S_TRAVEL). */
-export const HELLO_TICKET = 4;
+export const HELLO_TICKET = helloFlag();
 /** Protocol 21. The client holds the map's statics (shared/world/mapfile.ts) and takes a chunk's from them, all but the slots CHUNK sends. */
-export const HELLO_STATICS = 8;
+export const HELLO_STATICS = helloFlag();
 /** Explicit title actions distinguish making a new survivor from resuming an existing one. */
-export const HELLO_NEW = 16;
-export const HELLO_RESUME = 32;
+export const HELLO_NEW = helloFlag();
+export const HELLO_RESUME = helloFlag();
 export const KEY_BYTES = 16;
 /** A transfer's id (16 bytes), then the secret that lets one browser take it (16 bytes). */
 export const TICKET_BYTES = 32;
@@ -282,58 +267,59 @@ export const SESSION_SPECTATING = 2;
 /** A new survivor with no look yet. It has no body until it sends a look with CMD_CREATE. */
 export const SESSION_CREATING = 3;
 
-export const CMD_TEXT = 1;
+const command = counter();
+export const CMD_TEXT = command();
 /** From box 1 bit, slot varint, to box 1 bit, slot varint, count u16 (0 = the whole stack), expected item u16. */
-export const CMD_MOVE = 2;
+export const CMD_MOVE = command();
 /** Eats or uses the item in an own slot: slot varint, expected item u16. */
-export const CMD_USE = 3;
+export const CMD_USE = command();
 
 /** Closes the open container. No arguments. */
-export const CMD_CLOSE = 4;
+export const CMD_CLOSE = command();
 /** Index u8 into the places OWN_RESPAWN listed, then that list's number u8. A place from a list since replaced is STALE. */
-export const CMD_RESPAWN = 5;
+export const CMD_RESPAWN = command();
 
 /** Stat u8. It gets one level-up point. */
-export const CMD_SPEND = 6;
+export const CMD_SPEND = command();
 /** Engram content index u16. */
-export const CMD_LEARN = 7;
+export const CMD_LEARN = command();
 /** Recipe content index u16, count u8. */
-export const CMD_CRAFT = 8;
+export const CMD_CRAFT = command();
 
 /** A look, 28 bytes (shared/anim/look.ts). Accepted only in SESSION_CREATING. */
-export const CMD_CREATE = 9;
+export const CMD_CREATE = command();
 
 /** Hotbar slot u8, 0 to 9, or 255 to put away the held item. */
-export const CMD_SELECT = 10;
+export const CMD_SELECT = command();
 /** Weapon slot varint, ammunition item u16. The weapon then takes that ammunition, and rounds of another kind in it go back to the bag. */
-export const CMD_LOAD = 11;
+export const CMD_LOAD = command();
 /** Weapon slot varint, attachment slot varint, both own slots. */
-export const CMD_ATTACH = 12;
+export const CMD_ATTACH = command();
 /** DETACH, UNLOAD and REPAIR each take an own slot varint. A repair costs a share of the item's ingredients. */
-export const CMD_DETACH = 13;
-export const CMD_UNLOAD = 14;
-export const CMD_REPAIR = 15;
+export const CMD_DETACH = command();
+export const CMD_UNLOAD = command();
+export const CMD_REPAIR = command();
 /** Slot varint, count u16 (0 = the whole stack), expected item u16. */
-export const CMD_DROP = 16;
+export const CMD_DROP = command();
 /** Channel 3 bits (TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE), then the text string. */
-export const CMD_CHAT = 17;
+export const CMD_CHAT = command();
 /**
  * Places the building piece in hand: form index u8, then target u32. A structure ref is followed by its socket u8, and for
  * socket 255 (a thing set on top of it) by x and z (s32 lattice units) and yaw u16. 0xffffffff means open ground and is
  * followed by x and z (s32 lattice units), yaw u16 and lift (s8 steps). Last is the turn in place u8. The server works
  * the position out again itself.
  */
-export const CMD_PLACE = 18;
+export const CMD_PLACE = command();
 /**
  * Structure ref u32, then a STRUCT_ action u8 (shared/world/upkeep.ts). STRUCT_PIN and STRUCT_USE add a PIN u16: 0 to 9999, or
  * 0xffff for none. STRUCT_NAME adds a name string.
  */
-export const CMD_STRUCT = 19;
+export const CMD_STRUCT = command();
 /**
  * Orders a tribe creature: entity index u32 or ORDER_ALL, then order u8. The order is an ORDER_ value, ORDER_STANCE plus a
  * stance (passive, neutral, aggressive), ORDER_YOURS, or ORDER_LEVEL plus a stat to spend one of its unspent levels on.
  */
-export const CMD_ORDER = 20;
+export const CMD_ORDER = command();
 export const ORDER_STAY = 0;
 export const ORDER_FOLLOW = 1;
 export const ORDER_STANCE = 2;
@@ -354,36 +340,36 @@ export const ORDER_ALL = 0xffffffff;
 /** Metres. */
 export const WHISTLE_RANGE = 40;
 /** Names a tribe creature: entity handle u32, then a string of at most 24 bytes. */
-export const CMD_NAME = 21;
+export const CMD_NAME = command();
 /** Feeds the creature whose inventory is open from that inventory: slot varint, expected item u16. */
-export const CMD_FEED = 22;
+export const CMD_FEED = command();
 /** Opens a tribe creature's inventory: entity index u32. The use button rides a saddled creature, so this command reaches its inventory. */
-export const CMD_OPEN = 23;
+export const CMD_OPEN = command();
 /**
  * The most entities the client wants to be shown u16, and its snapshot byte budget u16. The server holds both to its own
  * limits and lets them change once a second. A client that never asks is shown VIEW_DEFAULT entities in the server's own budget.
  */
-export const CMD_VIEW = 24;
+export const CMD_VIEW = command();
 /** The finest map zoom the client is showing, 2 bits. Structure cells are sent at the size that suits it (S_TACTICAL). */
-export const CMD_MAP_ZOOM = 25;
+export const CMD_MAP_ZOOM = command();
 /** Metres u16: how far off the client wants far cells (S_FAR). The server holds it to FarRadius and reads it once a second. 0, or never asking, is none. */
-export const CMD_FAR = 26;
+export const CMD_FAR = command();
 /**
  * Protocol 11. A creature in a survivor's arms: a CARRY_ action u8, and for CARRY_PICK_UP the creature's entity index u32.
  * Dropping and throwing name nothing: the throw goes where the body looks.
  */
-export const CMD_CARRY = 27;
+export const CMD_CARRY = command();
 export const CARRY_PICK_UP = 0;
 export const CARRY_DROP = 1;
 export const CARRY_THROW = 2;
 /** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
-export const CMD_TAKE = 28;
+export const CMD_TAKE = command();
 /**
  * Protocol 12. Crafting at a station: item u16, count u8. Queued on the station the session has open, made from what lies in
  * it and put there; the session's survivor must know the engram, and gets the experience. Refused for an item made
  * elsewhere, and with no station open.
  */
-export const CMD_CRAFT_AT = 29;
+export const CMD_CRAFT_AT = command();
 /**
  * Protocol 12. Crafting from a blueprint: box 1 bit (BOX_), slot varint, count u8. The blueprint lies in the inventory the
  * item is made from: the session's own (BOX_SELF) for an item made in the hands, the station it has open (BOX_OPEN) for one
@@ -391,30 +377,30 @@ export const CMD_CRAFT_AT = 29;
  * quality's, and what is made is of its quality or above. Refused for a slot that holds no blueprint and for the wrong
  * station (INVALID), and without the ingredients (SHORT).
  */
-export const CMD_CRAFT_BLUEPRINT = 30;
+export const CMD_CRAFT_BLUEPRINT = command();
 /**
  * Protocol 14. The survivor leaves for another server of the cluster: its world id u16. Refused (DENIED, with a notice that
  * says why) where it may not go; on success the answer is S_TRAVEL, once its leaving is saved.
  */
-export const CMD_TRAVEL = 31;
+export const CMD_TRAVEL = command();
 /** Vehicle service: action u8 then generation-qualified target u32 (refuel adds count u8, 0 fills).
  * Deploy instead sends own inventory slot u8, x/y/z f32 and yaw u16. */
-export const CMD_VEHICLE = 32;
+export const CMD_VEHICLE = command();
 /**
  * Protocol 22. The client holds the map's statics now, as a browser does once the end of the map file has come, though its
  * hello did not say HELLO_STATICS. The answer, OK, is the place in the reliable stream from which chunks are sent as to a
  * client whose hello did; INVALID where the world has no map file.
  */
-export const CMD_STATICS = 33;
+export const CMD_STATICS = command();
 /** Refresh up to eight currently visible corpse checkpoints: count u8, then generation-qualified entity handles u32. */
-export const CMD_CORPSE = 34;
+export const CMD_CORPSE = command();
 /**
  * Protocol 34. An admin turns the time of day on the Creative screen's sundial: the hour u16, in two-second steps from
  * midnight below CLOCK_SHARES (shared/sim/clock.ts), then 1 bit set on the turn's last message. DENIED without the admin
  * role or while the server does not show creative mode (RULE_CREATIVE). A turn is journalled once, as `settime` at the
  * hour it ended on.
  */
-export const CMD_CLOCK = 35;
+export const CMD_CLOCK = command();
 /**
  * Protocol 37. A survivor's emote (shared/anim/emotes.ts, server/emote.ts): the op 2 bits (0 play, 1 stop, 2 join), the
  * emote's number u16, and the entity it is aimed at plus one as a varint (0 for none). Playing a pair's emote at someone
@@ -422,7 +408,7 @@ export const CMD_CLOCK = 35;
  * the one joined. BUSY within a third of a second of the last, DENIED while the body cannot (moving, swimming, riding,
  * carrying, acting), FAR beyond reach of the one aimed at.
  */
-export const CMD_EMOTE = 36;
+export const CMD_EMOTE = command();
 /**
  * Looking through a sight (D1079): how many times it magnifies, in sixteenths u16 (0 or 16 and under for none), how far
  * off, in metres, what the middle of the view is on u16 (0 for nothing found), and the zero dialled, metres u16 (0 for
@@ -431,7 +417,7 @@ export const CMD_EMOTE = 36;
  * wakes the creatures round what it is on. A session sends it as its zoom changes and once a second while it looks;
  * GAZE_TICKS after the last, the cone is gone.
  */
-export const CMD_GAZE = 37;
+export const CMD_GAZE = command();
 export const GAZE_TICKS = 90;
 /** Metres a gaze's cone reaches for each time its sight magnifies, and at most: the map's width. */
 export const GAZE_REACH = 200;
@@ -441,7 +427,7 @@ export const GAZE_FARTHEST = 8000;
  * generation u16: it must be in the session's view or its cone, alive, and no survivor. Its tribe's marks hold it as
  * MARK_SPOT where it is for SPOT_TICKS, SPOTS_MOST a tribe, the oldest let go first. A survivor with no tribe is denied.
  */
-export const CMD_MARK = 38;
+export const CMD_MARK = command();
 export const SPOT_TICKS = 1800;
 export const SPOTS_MOST = 8;
 export const VEHICLE_INSPECT = 0;
@@ -491,15 +477,16 @@ export const RESULT_LOCKED = 24;
 export const RESULT_PIN = 25;
 export const RESULT_NOT_EMPTY = 26;
 
-export const OWN_SESSION = 1;
+const ownKind = counter();
+export const OWN_SESSION = ownKind();
 /** base tick u32, then for health, food, water, oxygen: value uint53, rate svarint, max uint53 (millionths of a point). */
-export const OWN_VITALS = 2;
+export const OWN_VITALS = ownKind();
 /**
  * box 1 bit, capacity varint, bag size varint, full 1 bit (forget every slot first), count u16, then per slot: index varint,
  * item u16, and if the item is not 0: count u16, quality u8, flags u8 (SLOT_ bits, protocol 12), durability u16, spoil tick u32, and 1
  * bit for "it holds something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
-export const OWN_SLOTS = 3;
+export const OWN_SLOTS = ownKind();
 /**
  * A slot's flags, protocol 12. The slot holds a blueprint of its item: one alone, at its quality, crafted from
  * (CMD_CRAFT_BLUEPRINT) and never spent. Stacks join only at the same quality and flags (shared/sim/items.ts FLAG_BLUEPRINT).
@@ -515,7 +502,7 @@ export const SLOT_ON = 2;
  * open 1 bit, and if open: capacity varint, name string, and since protocol 41 flags u8 (OPEN_ bits). Its slots follow as
  * OWN_SLOTS for the open box.
  */
-export const OWN_OPEN = 4;
+export const OWN_OPEN = ownKind();
 /** The open box is only taken from (a supply drop's capsule): the client offers no way to put a stack in. */
 export const OPEN_TAKE_ONLY = 1;
 /**
@@ -524,13 +511,13 @@ export const OPEN_TAKE_ONLY = 1;
  */
 export const MAX_OPEN_NAME_BYTES = 208;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
-export const OWN_MARKERS = 5;
+export const OWN_MARKERS = ownKind();
 /**
  * The places a survivor without a body may rise at, sent whenever they change while it chooses: why it chooses (CHOOSE_), the
  * list's number u8 (CMD_RESPAWN names it), count u8, then per place: the bed's structure kind u16 (0 for one of the map's spawn
  * points), name string, x f32, z f32, and the tick it is ready from u32 (0 for now).
  */
-export const OWN_RESPAWN = 6;
+export const OWN_RESPAWN = ownKind();
 /** Why a survivor has no body and chooses where to rise: it died, it arrived from another server, it travels from a bed. */
 export const CHOOSE_DIED = 0;
 export const CHOOSE_ARRIVED = 1;
@@ -540,34 +527,35 @@ export const CHOOSE_TRAVEL = 2;
  * experience u32, level u16, unspent stat points u16, unspent engram points varint, learned engrams (count varint, content
  * index u16 each), crafting jobs (count u8, then recipe u16, units left u8, tick the current unit is done u32 each).
  */
-export const OWN_PROGRESSION = 7;
+export const OWN_PROGRESSION = ownKind();
 
 /** 28 bytes. Sent when the survivor gets a body. */
-export const OWN_LOOK = 8;
+export const OWN_LOOK = ownKind();
 
 /** Hotbar slot u8, 255 for none. */
-export const OWN_HELD = 9;
+export const OWN_HELD = ownKind();
 /** count u8, then per buff: content index u16, end tick u32 (0 for no end). */
-export const OWN_BUFFS = 10;
+export const OWN_BUFFS = ownKind();
 /** The server rules a client acts on, which may change while it runs: flags u16 of RULE_ bits. */
-export const OWN_RULES = 11;
-export const RULE_DAMAGE_NUMBERS = 1;
-export const RULE_GLOBAL_CHAT = 2;
-export const RULE_HIT_MARKERS = 4;
-export const RULE_THIRD_PERSON = 8;
-export const RULE_CROSSHAIR = 16;
-export const RULE_MAP_LOCATION = 32;
-export const RULE_CORPSE_LOCATOR = 64;
+export const OWN_RULES = ownKind();
+const ruleFlag = flags();
+export const RULE_DAMAGE_NUMBERS = ruleFlag();
+export const RULE_GLOBAL_CHAT = ruleFlag();
+export const RULE_HIT_MARKERS = ruleFlag();
+export const RULE_THIRD_PERSON = ruleFlag();
+export const RULE_CROSSHAIR = ruleFlag();
+export const RULE_MAP_LOCATION = ruleFlag();
+export const RULE_CORPSE_LOCATOR = ruleFlag();
 /** Protocol 34. The server shows creative mode (bShowCreativeMode): the game's menu has a Creative entry. */
-export const RULE_CREATIVE = 128;
+export const RULE_CREATIVE = ruleFlag();
 /**
  * team varint, tribe name string (empty for a survivor alone, and then rank and members are absent), rank u8, members (count
  * u8, then per member: name string, online 1 bit, owner 1 bit). Then a pending invitation: tribe name string (empty for
  * none) and, if there is one, the inviter's name string.
  */
-export const OWN_TRIBE = 12;
+export const OWN_TRIBE = ownKind();
 /** What the session needs to open the voice socket: speaker number u16, token (8 bytes), permissions u8 (bit 0: speak). */
-export const OWN_VOICE = 13;
+export const OWN_VOICE = ownKind();
 /**
  * The creature whose inventory the session has open: present 1 bit, then being tamed 1 bit, owned 1 bit, level u16, taming
  * progress and effectiveness and its torpor and food as shares of their maximum (thousandths, 10 bits each), entity index
@@ -575,13 +563,13 @@ export const OWN_VOICE = 13;
  * 1 bit, female 1 bit, growth stage 2 bits (baby, juvenile, adolescent, grown), maturity and its pair's mating progress
  * (thousandths, 10 bits each), and the seconds until a female may mate again (varint).
  */
-export const OWN_SUBJECT = 14;
+export const OWN_SUBJECT = ownKind();
 /**
  * The creature the survivor looks at (server/overhead.ts): present 1 bit, then entity index u32, and each only where the viewer
  * is told it: health, food and torpor as shares (1 bit, then thousandths in 10 bits each), taming 1 bit then its progress and
  * effectiveness (10 bits each), its pair's mating progress (1 bit, 10 bits), its tribe's name (1 bit, string).
  */
-export const OWN_OVERHEAD = 15;
+export const OWN_OVERHEAD = ownKind();
 /**
  * Protocol 12, laid out again in 17. The open station, sent when it changes: the station's kind u16 (0 when what is open is
  * no longer a station, and all that follows 0), its structure ref u32, the tick its fire is due to go out u32 (0 when it does
@@ -589,13 +577,13 @@ export const OWN_OVERHEAD = 15;
  * waits); then a count u8 of jobs and per job: item u16, units left u8, done tick u32, and the ticks left of a unit paused for
  * want of fuel u32 (0 for one that is not).
  */
-export const OWN_STATION = 16;
+export const OWN_STATION = ownKind();
 /**
  * Protocol 40. The tames kept in the soul balls of a box (server/balls.ts), sent whole after that box's slots whenever a
  * ball in it changed: box 1 bit, count varint, then per full ball: slot varint, species content index u16, level u16, name
  * string (empty for one not named). A session is told only of balls in its own inventory and in the box it has open.
  */
-export const OWN_KEPT = 17;
+export const OWN_KEPT = ownKind();
 
 export const MARKER_DEATH = 1;
 
@@ -607,31 +595,32 @@ export const MARKER_DEATH = 1;
  * DEATH, to the victim: the HURT fields, then killer name string, weapon content index u16 (0 for bare hands), distance u16 (tenths of a metre).
  * KILL, to the killer: victim name string, its level u16, experience gained u16 (tenths).
  */
-export const EVENT_HIT = 1;
+const eventKind = counter();
+export const EVENT_HIT = eventKind();
 /** 24 characters of up to three bytes each. */
 export const EVENT_NAME_BYTES = 72;
-export const EVENT_HURT = 2;
-export const EVENT_DEATH = 3;
-export const EVENT_KILL = 4;
+export const EVENT_HURT = eventKind();
+export const EVENT_DEATH = eventKind();
+export const EVENT_KILL = eventKind();
 /**
  * SHOT, to other clients nearby: origin (3 x f32), ammunition content index u16, flies 1 bit, then 3 x f32. For a shot that
  * flies they are its velocity, followed by the ticks since it left u8. Otherwise they are where it ended. Then rays u8 (1:
  * the shot is the one ray above), seed u32 (0: the seed a shot of many rays is cast from, W3 of
  * planning/reference/weapons-plan.md), and silenced 1 bit (its weapon has a silencer, and no flash is drawn: M10).
  */
-export const EVENT_SHOT = 5;
+export const EVENT_SHOT = eventKind();
 /** BLAST, to clients nearby: position (3 x f32), reach f32 in metres. */
-export const EVENT_BLAST = 6;
+export const EVENT_BLAST = eventKind();
 /**
  * TAMED, to the new owner: entity handle u32, species content index u16, level u16, taming effectiveness u8 in percent (255
  * for one claimed as young, not tamed). The client then asks for a name.
  */
-export const EVENT_TAMED = 7;
+export const EVENT_TAMED = eventKind();
 /**
  * Protocol 40. BALL, to clients nearby: a tame went into a soul ball (1 bit set) or came out of one, the place of its feet
  * (3 x f32), and its body's radius and height in metres (2 x f32).
  */
-export const EVENT_BALL = 8;
+export const EVENT_BALL = eventKind();
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;
@@ -684,9 +673,9 @@ export const MAX_TEXT_BYTES = 200;
 export const MAX_CHAT_BYTES = 360;
 /** A text message from the server. */
 export const MAX_SERVER_TEXT_BYTES = 1000;
-/** Bits of an input's buttons on the wire. InputBuffer.set clears any outside the mask. */
-export const BUTTON_BITS = 11;
-export const BUTTON_MASK = 0x7ff;
+/** Bits of an input's buttons on the wire: one a button. InputBuffer.set clears any outside the mask. */
+export const BUTTON_BITS = buttonCount();
+export const BUTTON_MASK = (1 << BUTTON_BITS) - 1;
 /** Pitch units: 16384 is straight up. */
 export const PITCH_LIMIT = 16384;
 
@@ -843,7 +832,7 @@ export function readBody(r: BitReader, b: Body): void {
 /** `key` must be KEY_BYTES long, and a `ticket` TICKET_BYTES. */
 export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = "", ticket: Uint8Array | null = null, createRequest?: Uint8Array): void {
   w.bits(C_HELLO, 4);
-  w.u16(version);
+  w.u32(version);
   w.u32(contentHash);
   w.u32(clipHash);
   w.string(name);

@@ -227,19 +227,10 @@ test("a kerb's drops come back from a part's bytes and with its kerb lines, and 
   expect(back.stretches[0]!.drops![1]).toBeNull();
   expect(back.stretches[1]!.drops).toBeUndefined();
   expect(Array.from(back.corners[1]!.drops!)).toEqual([4, 5.5, DROP_RAMP]);
-  // A part of the version before reads as one with no drops.
-  const old = encodeStreets({ ...part, stretches: part.stretches.map(({ drops: _, ...s }) => s), corners: part.corners.map(({ drops: _, ...c }) => c) });
-  const before = new Uint8Array(old.length - 3 * 2 - 2);
-  // Version 1's bytes: its version, and each kerb and corner without its count of drops.
-  let from = 0, to = 0;
-  const copy = (n: number): void => { before.set(old.subarray(from, from + n), to); from += n; to += n; };
-  copy(5);
-  before[0] = 1;
-  for (const s of part.stretches) { copy(14 + (s.xz.length / 2 - 1) * 4 + 8); from += 2; }
-  for (const _ of part.corners) { copy(23); from += 1; }
-  const v1 = decodeStreets(before, 0, 0);
-  expect(v1.stretches.length).toBe(3);
-  expect(v1.stretches[0]!.drops).toBeUndefined();
+  // A part of another version is not read.
+  const other = encodeStreets(part);
+  other[0] = 1;
+  expect(() => decodeStreets(other, 0, 0)).toThrow("streets: version 1 is not one this build reads");
   const lines = kerbLines(held(part), part);
   // The street's left kerb has its crossing where its run holds it; the corner into the drive is let down its whole length.
   const left = lines.find((l) => l.stretch === 0 && l.side === 0 && l.corner < 0 && l.stations[0]! < 50)!;
