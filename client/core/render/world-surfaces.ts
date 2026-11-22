@@ -417,9 +417,9 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
 
 /**
  * A pixel's footprint, metres, from which the walls' weathering fades out, gone at twice it, as the finishes go to their
- * means by theirs (WORLD_FAR): from about 115 to 230 m on 1,080 lines, and from 205 to 410 m on 1,924.
+ * means by theirs (WORLD_FAR): from about 90 to 185 m on 1,080 lines, and from 165 to 330 m on 1,924.
  */
-export const WEATHER_SEEN = 0.15;
+export const WEATHER_SEEN = 0.12;
 /**
  * Metres of a box's rounded arris, about which its outer edges turn, wear and chip, and a hand's width over each floor
  * line, an inside corner, within which dirt darkens a wall.
@@ -458,7 +458,7 @@ const PLANE_CELL = 2, PLANE_EDGE = 0.125, PLANE_BLEND = 0.1;
  */
 const STAMP_TAPS = 2;
 /** A pixel's footprint, metres, at which the formwork's joints, a centimetre wide, are gone; they fade from half of it. */
-const JOINTS_GONE = 0.08;
+const JOINTS_GONE = 0.05;
 /** What rust bled from a fixing, growth at a wall's foot and a green film leave, as multipliers of its light. */
 const RUST = [0.81, 0.43, 0.24] as const, GROWTH = [0.55, 0.7, 0.42] as const, ALGAE = [0.62, 0.72, 0.5] as const;
 /** The bay's own cell's choices: its stamp's layer and band and whether it is mirrored (bayStamp). */
