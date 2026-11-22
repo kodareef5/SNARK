@@ -67,7 +67,8 @@ import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
 import { BEND_BUFFERS, BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
-import { WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
+import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
+import { recipeIndex } from "../../../content/texgen/finishes.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
@@ -877,6 +878,12 @@ export class Scene {
       // A static whose levels are chosen farther off than it stands: every static of its mesh is (StructureDef.coarse).
       if (mesh >= 0 && d.type === "structure" && d.coarse) this.reachOfStatic[mesh] = Math.min(this.reachOfStatic[mesh]!, 1 / d.coarse);
       if (d.type === "structure" && d.colors) this.regionsOfKind.set(d.colors, k * 5);
+      // A piece of a material made from a recipe, drawn as an instance, says it in its last two regions: MADE_MARK, which
+      // is no colour, then the recipe's number (world-surfaces.ts worldVertex). Such a piece's mesh has no regions of its own.
+      if (d.type === "structure" && d.recipe && !d.colors) {
+        this.regionsOfKind[k * 5 + 3] = MADE_MARK;
+        this.regionsOfKind[k * 5 + 4] = recipeIndex(d.recipe);
+      }
       if (mesh >= 0 && d.type === "structure" && d.mesh !== "shape") {
         const of = reg.defs[reg.index.get(d.mesh) ?? 0];
         if (of?.type === "species" && of.vehicle) vehicleMeshes.add(mesh);

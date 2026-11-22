@@ -1,9 +1,9 @@
 // The walls' weathering masks drawn on the card as their plan says (client/core/texgen/plan.ts): an RGBA8 array of
-// WEATHER_LAYERS square layers on its unit, drawn by a program of its own into an attached layer and level.
-import { WEATHER_BAYS, WEATHER_GEN_VERTEX, WEATHER_LAYERS, weatherFragment } from "../core/texgen/weather.ts";
+// MADE_LAYERS square layers on its unit, drawn by a program of its own into an attached layer and level.
+import { MADE_FIRST, MADE_LAYERS, WEATHER_BAYS, WEATHER_GEN_VERTEX, weatherFragment } from "../core/texgen/weather.ts";
 import { WeatherPlan } from "../core/texgen/plan.ts";
 
-const U = ["uSeed", "uField", "uSide", "uLut", "uBay"] as const;
+const U = ["uSeed", "uField", "uSide", "uLut", "uBay", "uFinish"] as const;
 export class WeatherMasks {
   texture: WebGLTexture | null = null;
   readonly plan = new WeatherPlan();
@@ -32,7 +32,7 @@ export class WeatherMasks {
       gl.activeTexture(gl.TEXTURE0 + this.unit);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, (this.texture = side ? gl.createTexture() : null));
       if (side) {
-        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), gl.RGBA8, side, side, WEATHER_LAYERS);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), gl.RGBA8, side, side, MADE_LAYERS);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_BASE_LEVEL, p.level);
         anisotropy(gl.TEXTURE_2D_ARRAY);
@@ -54,12 +54,13 @@ export class WeatherMasks {
     for (let k = 0; k < p.count; k++) {
       const layer = p.draws[k * 4]!, row = p.draws[k * 4 + 1]!, rows = p.draws[k * 4 + 2]!, half = p.draws[k * 4 + 3]!;
       gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.texture, p.at, layer);
-      gl.uniform1i(this.at[1]!, half < 0 ? 1 : 0);
+      gl.uniform1i(this.at[1]!, half < 0 ? 1 : half >= 2 ? half : 0);
       gl.uniform1f(this.at[2]!, p.wide);
       if (half < 0) {
         gl.uniform1i(this.at[0]!, p.seeds[layer - WEATHER_BAYS]!);
         gl.uniform4fv(this.at[3]!, p.luts[layer - WEATHER_BAYS]!);
-      } else gl.uniform4fv(this.at[4]!, p.tables[layer * 2 + half]!);
+      } else if (half >= 2) gl.uniform1i(this.at[5]!, ((layer - MADE_FIRST) >> 1) + 1);
+      else gl.uniform4fv(this.at[4]!, p.tables[layer * 2 + half]!);
       gl.viewport(0, row, p.wide, rows);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }

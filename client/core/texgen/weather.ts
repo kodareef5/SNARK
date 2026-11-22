@@ -7,7 +7,9 @@
 // to an even spread of values (`equalize`), so a threshold over it takes that share of the wall.
 
 import { WEATHER_RECIPE, type WeatherRecipe } from "../../../content/texgen/weather.ts";
+import { FINISH_RECIPES } from "../../../content/texgen/finishes.ts";
 import { sample, type Texture } from "../render/cpu-texture.ts";
+import { finishGlsl, finishTexel } from "./finishes.ts";
 import { NOISE_GLSL, cells, fbm, hash3, line, smoothstep, tiled } from "./noise.ts";
 
 /** Metres across a bay's layer and up one of its two storeys, and a side of a field's layer. */
@@ -18,6 +20,12 @@ export const WEATHER_FIELD = 16;
 export const WEATHER_BAYS = WEATHER_RECIPE.bays;
 export const WEATHER_FIELDS = WEATHER_RECIPE.fields;
 export const WEATHER_LAYERS = WEATHER_BAYS + WEATHER_FIELDS;
+/**
+ * The array's layers in all: the weathering masks', then two for each material made from a recipe (finishes.ts), its
+ * base colour and its relief; recipe k (from 1) at MADE_FIRST + 2 (k - 1).
+ */
+export const MADE_FIRST = WEATHER_LAYERS;
+export const MADE_LAYERS = WEATHER_LAYERS + 2 * FINISH_RECIPES.length;
 /** The side of the layers the rasterizer and the self-check make for themselves: the card's are as wide as the tier's finishes. */
 export const WEATHER_TWIN_SIDE = 256;
 /** Steps of a field's equalizing table. */
@@ -193,6 +201,7 @@ export function fieldLut(seed: number): Float32Array {
  */
 export function weatherPixels(layer: number, side: number, recipe: WeatherRecipe = WEATHER_RECIPE): Uint8Array {
   const out = new Uint8Array(side * side * 4), v = new Float64Array(4), sum = new Float64Array(4);
+  if (layer >= MADE_FIRST) return finishPixels(layer, side);
   const field = layer >= recipe.bays, seed = field ? fieldSeed(recipe, layer - recipe.bays) : 0, lut = field ? fieldLut(seed) : null;
   const tables = field ? [] : [bayFeatures(recipe, baySeed(recipe, layer, 0)), bayFeatures(recipe, baySeed(recipe, layer, 1))];
   for (let py = 0; py < side; py++) {
@@ -208,6 +217,23 @@ export function weatherPixels(layer: number, side: number, recipe: WeatherRecipe
           bayTexel(recipe, tables[half]!, ((px + 0.25 + 0.5 * s) / side) * WEATHER_BAY, (t * 2 - half) * WEATHER_STOREY, v);
           for (let c = 0; c < 4; c++) sum[c]! += v[c]! / 2;
         }
+      }
+      for (let c = 0; c < 4; c++) out[(py * side + px) * 4 + c] = Math.round(Math.min(Math.max(sum[c]!, 0), 1) * 255);
+    }
+  }
+  return out;
+}
+
+/** A layer of a made material, `side` pixels a side, as RGBA8: each pixel the mean of four reads within it. */
+function finishPixels(layer: number, side: number): Uint8Array {
+  const r = FINISH_RECIPES[(layer - MADE_FIRST) >> 1]!, which = (layer - MADE_FIRST) & 1;
+  const out = new Uint8Array(side * side * 4), v = new Float64Array(4), sum = new Float64Array(4);
+  for (let py = 0; py < side; py++) {
+    for (let px = 0; px < side; px++) {
+      sum.fill(0);
+      for (let s = 0; s < 4; s++) {
+        finishTexel(r, which, ((px + 0.25 + 0.5 * (s & 1)) / side) * r.metres, ((py + 0.25 + 0.5 * (s >> 1)) / side) * r.metres, v);
+        for (let c = 0; c < 4; c++) sum[c]! += v[c]! / 4;
       }
       for (let c = 0; c < 4; c++) out[(py * side + px) * 4 + c] = Math.round(Math.min(Math.max(sum[c]!, 0), 1) * 255);
     }
@@ -265,7 +291,7 @@ export function weatherFragment(recipe: WeatherRecipe = WEATHER_RECIPE): string 
   return `#version 300 es
 precision highp float;
 precision highp int;
-uniform int uSeed, uField;
+uniform int uSeed, uField, uFinish;
 uniform float uSide;
 uniform vec4 uLut[${LUT_STEPS + 1}];
 uniform vec4 uBay[${rows}];
@@ -341,9 +367,18 @@ float equalize(float v, int c) {
   }
   return 1.0;
 }
+${finishGlsl()}
+const float FINISH_METRES[${FINISH_RECIPES.length + 1}] = float[${FINISH_RECIPES.length + 1}](1.0, ${FINISH_RECIPES.map((r) => fl(r.metres)).join(", ")});
 void main() {
   vec2 p = floor(gl_FragCoord.xy);
   float t = (p.y + 0.5) / uSide;
+  // A made material's layer: 2 its base colour, 3 its relief, each pixel the mean of four reads.
+  if (uField >= 2) {
+    vec4 sum = vec4(0.0);
+    for (int s = 0; s < 4; s++) sum += finishTexel(uFinish, uField - 2, (p.x + 0.25 + 0.5 * float(s & 1)) / uSide * FINISH_METRES[uFinish], (p.y + 0.25 + 0.5 * float(s >> 1)) / uSide * FINISH_METRES[uFinish]) * 0.25;
+    o = clamp(sum, 0.0, 1.0);
+    return;
+  }
   if (uField == 1) {
     vec4 v = fieldRaw(uSeed, (p.x + 0.5) / uSide * ${fl(WEATHER_FIELD)}, t * ${fl(WEATHER_FIELD)});
     o = vec4(equalize(v.r, 0), equalize(v.g, 1), equalize(v.b, 2), equalize(v.a, 3));

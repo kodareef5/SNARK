@@ -4,7 +4,9 @@ import { fixtureShader } from "./street-finish.ts";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, MASK_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
 import { hash3 } from "../texgen/noise.ts";
-import { WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_LAYERS, WEATHER_STOREY, WEATHER_TWIN_SIDE, weatherRead } from "../texgen/weather.ts";
+import { FINISH_RECIPES, roofOf, type FinishRecipe } from "../../../content/texgen/finishes.ts";
+import { REGION_BASE } from "../../../shared/pack/palette.ts";
+import { MADE_FIRST, MADE_LAYERS, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_STOREY, WEATHER_TWIN_SIDE, weatherRead } from "../texgen/weather.ts";
 import { ROAD_ACROSS, ROAD_ALONG, ROAD_CELL, ROAD_HALF, ROAD_ONE_WAY, ROAD_PLANES, ROAD_STEP, ROAD_WEAR_SHIFT, ROAD_WRAP, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
@@ -120,7 +122,7 @@ export function heldWidening(dx: readonly number[], dy: readonly number[], least
  */
 export const weatherSide = (tier: Tier, side: number): number => (side > 0 && tier.finish === "full" ? (tier.finishes >= 2048 ? 1024 : 512) : 0);
 /** Bytes the masks hold on the card with layers `side` wide, every level of each. */
-export const weatherBytes = (side: number): number => Math.round((side * side * 4 * WEATHER_LAYERS * 4) / 3);
+export const weatherBytes = (side: number): number => Math.round((side * side * 4 * MADE_LAYERS * 4) / 3);
 /** Metres nearer than which a surface is wanted as if it were this near. */
 const NEAREST = 0.25;
 
@@ -296,6 +298,36 @@ function relief(id: number, u: number, v: number, spread: number, view: Numbers,
   met[1] = v + av * along;
 }
 const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Float64Array(2), patch: 0 };
+const madeOut = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Float64Array(2) };
+const madeRead = new Float64Array(4), madeRelief = new Float64Array(4);
+
+/**
+ * Material `k` made from a recipe at world point (u, v) metres across and down its face, a pixel `footprint` metres wide,
+ * in place of a painted finish whose base colour's mean is `painted`: its base colour, its light about that mean, its packed map as a painted finish's (occlusion from its height, roughness, no metal, height) and its
+ * lean, its second copy moved by whole modules over the second copies' patches, its means far off. Into `madeOut`.
+ */
+function madeMaps(k: number, painted: readonly number[], u: number, v: number, footprint: number, masks: WorldSample): void {
+  const r = FINISH_RECIPES[k - 1]!, m = r.metres, qu = u / m, qv = v / m, spread = Math.log2(Math.max(footprint / m, 1e-9));
+  const layer = MADE_FIRST + (k - 1) * 2, shift = madeShift(r), second = secondShare(qu, qv);
+  masks(3, layer, qu, qv, spread, madeOut.base);
+  masks(3, layer + 1, qu, qv, spread, madeRelief);
+  if (second > 0) {
+    masks(3, layer, qu + shift[0], qv + shift[1], spread, madeRead);
+    for (let c = 0; c < 4; c++) madeOut.base[c] = madeOut.base[c]! + (madeRead[c]! - madeOut.base[c]!) * second;
+    masks(3, layer + 1, qu + shift[0], qv + shift[1], spread, madeRead);
+    for (let c = 0; c < 4; c++) madeRelief[c] = madeRelief[c]! + (madeRead[c]! - madeRelief[c]!) * second;
+  }
+  // Its light about the painted finish's mean, which it is far off, so that it sits in the light as the painted one did.
+  const far = clamp((spread - WORLD_FAR) / WORLD_FAR_BAND);
+  for (let c = 0; c < 3; c++) madeOut.base[c] = (madeOut.base[c]! * painted[c]!) / r.light * (1 - far) + painted[c]! * far;
+  madeOut.base[3] = madeOut.base[3]! + (r.dye - madeOut.base[3]!) * far;
+  madeOut.mro[0] = 0.7 + 0.3 * madeRelief[3]!;
+  madeOut.mro[1] = madeRelief[2]!;
+  madeOut.mro[2] = 0;
+  madeOut.mro[3] = madeRelief[3]!;
+  madeOut.lean[0] = (madeRelief[0]! - 0.5) * 2 * (1 - far);
+  madeOut.lean[1] = (madeRelief[1]! - 0.5) * 2 * (1 - far);
+}
 
 /**
  * A finish's maps at tile point (u, v), its second copy shown over the first where secondShare says, the higher
@@ -374,10 +406,12 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
  * takes; `smooth`, where given, is the normal the light falls on and the bump turns (the ground's, from its heights),
  * and otherwise the face's is. `early` is the frame's (FramePacket `worldEarly`): 1 while only the base colours have
  * come, read as the far path reads them, and 2 before any has, the finish its means. `eye`, where given, is the way to the eye, and the finish is read where that ray meets
- * its painted height (assets/tiers.ts `relief`).
+ * its painted height (assets/tiers.ts `relief`). `made` is the material made from a recipe the face wears (vMade), or
+ * 0, which comes up from the painted finish as `ready` (the made array's, from 0 to 1) does, read from `masks`.
  */
 export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Numbers, index: number, x: number, y: number, z: number,
-  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null, early = 0): number {
+  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null, early = 0,
+  made = 0, ready = 1, masks: WorldSample = twinMasks): number {
   const f = finishes[index]!;
   const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
   const metres = finishMetres(index, city);
@@ -392,6 +426,14 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     if (tangent[2] > 0.1) depth = (f.height / 1000 / metres) * clamp(2 - 2 ** spread * RELIEF_TEXELS);
   }
   finishMaps(index, u, v, spread, sample, light, tangent, depth, early);
+  if (made > 0 && ready > 0 && !light) {
+    madeMaps(axis === 1 && ny > 0 ? roofOf(made) : made, f.base, (axis === 0 ? z : x), axis === 1 ? z : -y, footprint, masks);
+    for (let c = 0; c < 4; c++) {
+      maps.base[c] = maps.base[c]! + (madeOut.base[c]! - maps.base[c]!) * ready;
+      maps.mro[c] = maps.mro[c]! + (madeOut.mro[c]! - maps.mro[c]!) * ready;
+    }
+    for (let c = 0; c < 2; c++) maps.lean[c] = maps.lean[c]! + (madeOut.lean[c]! - maps.lean[c]!) * ready;
+  }
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
   const stain = light ? 0 : 0.75 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.25 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
   const weather = f.weather * city[4]!;
@@ -939,16 +981,34 @@ export function walkWorn(albedo: Out, orm: Out, normal: Out, id: number, x: numb
 }
 
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
+/** Materials made from recipes. */
+const R = FINISH_RECIPES.length;
+/**
+ * How far, in its tiles, a made material's second copy is moved: by whole modules of a laid or ribbed one, so its joints
+ * and ribs meet themselves; any way for a grain that has none.
+ */
+export function madeShift(r: FinishRecipe): [number, number] {
+  return r.name === "block" ? [0.875, 0.625] : r.name === "corrugated" ? [0.3, 0.37] : r.name === "seam" ? [0.5, 0.41] : [0.37, 0.71];
+}
 const vectors = (name: string, rows: readonly (readonly number[])[]): string => {
   const t = `vec${rows[0]!.length}`;
   return `const ${t} ${name}[${N}] = ${t}[${N}](${rows.map((a) => `${t}(${a.map(fl).join(",")})`).join(",")});\n`;
 };
-/** Adds a material index to FLAT's mesh vertex texts, and gives the colour as light, keeping the low-poly texts byte-for-byte. */
+/** The byte a piece drawn as an instance puts in its fifth region where its sixth is the material made from a recipe it wears: no colour of the palette's. */
+export const MADE_MARK = 255;
+/**
+ * Adds a material index to FLAT's mesh vertex texts, and gives the colour as light, keeping the low-poly texts
+ * byte-for-byte; and vMade, the material made from a recipe the vertex wears (content/texgen/finishes.ts, from 1), or 0:
+ * a near chunk's from its stream of them (attribute 15, render/nearcity.ts), an instance's from its last two regions.
+ */
 export function worldVertex(vertex: string): string {
   const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, false));
-  const lookup = `#ifdef STREET_FINISH\nuniform float uFixture;\nflat out int vFixture;\n${fixtureShader()}\n#endif\nflat out int vSurface;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
+  const lookup = `#ifdef STREET_FINISH\nuniform float uFixture;\nflat out int vFixture;\n${fixtureShader()}\n#endif\nflat out int vSurface;\nlayout(location=15) in uint aMade;\nflat out int vMade;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
   const light = "  vColor = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));\n";
-  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  vFixture = fixtureFace(fixture,i,l);\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n${light}  vRel = p;`);
+  // An instance's material from its regions, where the text has regions; a near chunk's from its stream.
+  const regions = vertex.includes("in uint aColor;") && vertex.includes("in uvec2 iRegB;");
+  const made = regions ? `aMade > 0u ? int(aMade) : aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;` : "int(aMade);";
+  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  vFixture = fixtureFace(fixture,i,l);\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n  vMade = ${made}\n${light}  vRel = p;`);
 }
 
 /**
@@ -1108,6 +1168,41 @@ void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out ve
 }
 // Whether the finish is smooth enough to mirror the sky as a picture (worldSharp's twin), set by worldSurface.
 bool worldSharp = false;
+// The material made from a recipe the pixel wears (vMade), set before worldSurface, or 0.
+int worldMade = 0;
+#ifdef WORLD_WEATHER
+uniform highp sampler2DArray uWeather;
+uniform float uWeatherReady;
+const float MADE_METRES[${R + 1}] = float[${R + 1}](1.0, ${FINISH_RECIPES.map((r) => fl(r.metres)).join(", ")});
+const vec4 MADE_MEAN[${R + 1}] = vec4[${R + 1}](vec4(0.5), ${FINISH_RECIPES.map((r) => `vec4(${fl(r.light)}, ${fl(r.light)}, ${fl(r.light)}, ${fl(r.dye)})`).join(", ")});
+const vec2 MADE_SHIFT[${R + 1}] = vec2[${R + 1}](vec2(0.0), ${FINISH_RECIPES.map((r) => `vec2(${madeShift(r).map(fl).join(", ")})`).join(", ")});
+const int MADE_ROOF[${R + 1}] = int[${R + 1}](0, ${FINISH_RECIPES.map((_, k) => roofOf(k + 1)).join(", ")});
+// madeMaps's twin: a material made from a recipe at the pixel rel from the eye on a face projected along axis, its
+// second copy moved by whole modules over the patches the painted finishes' second copies show in, its light about
+// the mean of painted finish id's, which it is far off.
+void madeMaps(int k, int id, int axis, vec3 rel, vec3 dpx, vec3 dpy, out vec4 b, out vec4 r, out vec2 bump) {
+  float m = MADE_METRES[k];
+  vec3 ph = fract(uWorldEye / m);
+  vec2 q = axis == 1 ? rel.xz / m + ph.xz : axis == 0 ? vec2(rel.z / m + ph.z, -rel.y / m - ph.y) : vec2(rel.x / m + ph.x, -rel.y / m - ph.y);
+  vec2 dx = (axis == 1 ? dpx.xz : axis == 0 ? vec2(dpx.z, -dpx.y) : vec2(dpx.x, -dpx.y)) / m;
+  vec2 dy = (axis == 1 ? dpy.xz : axis == 0 ? vec2(dpy.z, -dpy.y) : vec2(dpy.x, -dpy.y)) / m;
+  float layer = float(${MADE_FIRST} + (k - 1) * 2);
+  float second = clamp((surfaceNoise(q * ${fl(WORLD_PATCH)} + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
+  second = second * second * (3.0 - 2.0 * second);
+  b = textureGrad(uWeather, vec3(q, layer), dx, dy);
+  vec4 rr = textureGrad(uWeather, vec3(q, layer + 1.0), dx, dy);
+  if (second > 0.0) {
+    vec2 q2 = q + MADE_SHIFT[k];
+    b = mix(b, textureGrad(uWeather, vec3(q2, layer), dx, dy), second);
+    rr = mix(rr, textureGrad(uWeather, vec3(q2, layer + 1.0), dx, dy), second);
+  }
+  // Far off it is its means, as a painted finish is.
+  float far = clamp((log2(max(length(dx), length(dy))) - ${fl(WORLD_FAR)}) / ${fl(WORLD_FAR_BAND)}, 0.0, 1.0);
+  b = mix(vec4(b.rgb * WB[id].rgb / MADE_MEAN[k].x, b.a), vec4(WB[id].rgb, MADE_MEAN[k].w), far);
+  r = vec4(0.7 + 0.3 * rr.a, rr.b, 0.0, rr.a);
+  bump = (rr.rg - 0.5) * 2.0 * (1.0 - far);
+}
+#endif
 // Returns the height in millimetres with the finish's lift.
 float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int id, vec3 rel, vec3 dpx, vec3 dpy) {
   vec4 f = WF[id], tint = WT[id], w = WW[id];
@@ -1127,6 +1222,18 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   if (view.z > 0.1) depth = WM[id].z * 0.001 / metres * clamp(2.0 - max(length(dx), length(dy)) * ${fl(RELIEF_TEXELS)}, 0.0, 1.0);
 #endif
   finishMaps(id, q, dx, dy, view, depth, base, mro, bump, tone);
+#ifdef WORLD_WEATHER
+  // A material made from a recipe comes up from the painted finish as its layers are made.
+  if (worldMade > 0 && uWeatherReady > 0.0) {
+    vec4 mb, mr;
+    vec2 mbump;
+    // A face that looks up is a flat roof, which wears its recipe's roof.
+    madeMaps(axis == 1 && face.y > 0.0 ? MADE_ROOF[worldMade] : worldMade, id, axis, rel, dpx, dpy, mb, mr, mbump);
+    base = mix(base, mb, uWeatherReady);
+    mro = mix(mro, mr, uWeatherReady);
+    bump = mix(bump, mbump, uWeatherReady);
+  }
+#endif
   vec3 p = rel + uWorldEye;
   float macro = surfaceNoise(vec2(p.x/37.0+p.y/53.0,p.z/37.0));
 #ifdef WORLD_LIGHT
@@ -1151,8 +1258,6 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
 ${vectors("WX", weatherings.map((w) => [w.runs, w.damp, w.peel, w.joints]))}const float WV[${N}] = float[${N}](${weatherings.map((w) => fl(w.value)).join(",")});
 const vec3 WL[${N}] = vec3[${N}](${weatherings.map((w) => `vec3(${LEFT[w.left].map(fl).join(",")})`).join(",")});
 ${vectors("WY", weatherings.map((w) => [w.drips, w.splash, w.bleach, w.algae]))}const float WZ[${N}] = float[${N}](${weatherings.map((w) => fl(w.salt)).join(",")});
-uniform highp sampler2DArray uWeather;
-uniform float uWeatherReady;
 // hash3's twin (client/core/texgen/noise.ts).
 float weatherHash(int a, int b, int c) {
   uint h = uint(a) * 1597334677u ^ uint(b) * 3812015801u ^ uint(c) * 2654435761u;

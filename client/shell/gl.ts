@@ -288,6 +288,8 @@ export class GlRenderer {
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
     // A level without skin entries leaves the SURFACE program's four bones at this, which must be whole numbers.
     gl.vertexAttribI4ui(10, 0, 0, 0, 0);
+    // Nor any material made from a recipe where a level has none (render/nearcity.ts).
+    gl.vertexAttribI4ui(15, 0, 0, 0, 0);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     const texture = (unit: number, internal: number, w: number, h: number, format: number, type: number, data: ArrayBufferView | null, filter: number = gl.NEAREST): WebGLTexture => {
       const t = gl.createTexture()!;
@@ -419,6 +421,13 @@ export class GlRenderer {
       for (let a = 2; a <= 5; a++) {
         gl.enableVertexAttribArray(a);
         gl.vertexAttribDivisor(a, 1);
+      }
+      // A near chunk's material made from a recipe, a byte a vertex beside its vertices (render/nearcity.ts).
+      if (u.made) {
+        this.array(lod.buffers[lod.buffers.push(gl.createBuffer()!) - 1]!);
+        gl.bufferData(gl.ARRAY_BUFFER, u.made, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(15);
+        gl.vertexAttribIPointer(15, 1, gl.UNSIGNED_BYTE, 1, 0);
       }
     } else if (!lod) return;
     this.vertexArray(lod.vao);
