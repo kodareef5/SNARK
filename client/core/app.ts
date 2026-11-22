@@ -15,15 +15,12 @@ import type { AssetPort } from "./assets/port.ts";
 import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tiers.ts";
 import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
 import type { FrameRing } from "./assets/frames.ts";
-import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
+import type { Effect } from "./passes.ts";
 import { RESOLUTIONS, sceneShare } from "./render/post.ts";
-import { VOLUME_MAX } from "./settings.ts";
 import { toggleBudget, toggleMonitor, toggleNotes } from "./settings.ts";
 import { MONITOR_KIT } from "./ui/monitor-kit.ts";
 import { NOTES_KIT } from "./notes-kit.ts";
 import type { NotePort } from "./notes/port.ts";
-import { stressThings, type Mark } from "./stress.ts";
-import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MountCameraPivot } from "./mount-camera.ts";
@@ -44,6 +41,10 @@ import { KEY_ROWS } from "./keys.ts";
 import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
 import { HudFill } from "./hud/widget.ts";
 import { AppFrame, type FramePart } from "./frame.ts";
+import { ToolHooks, autopilot, type ToolOrders } from "./tool-hooks.ts";
+import type { Mark } from "./stress.ts";
+
+export { MEASURED_VOLUME, type ToolOrders } from "./tool-hooks.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
 import { seatScratch } from "./render/characters.ts";
@@ -103,8 +104,6 @@ import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
 import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
 
-/** The master volume of a page that measures itself (a probe, a bench, the device page), of 1 for full: `?volume=` gives another. */
-export const MEASURED_VOLUME = 0.02;
 /** Metres. Matches the server's REACH. */
 const REACH = 3.5;
 /** Holding the use key on a structure this long opens its menu. */
@@ -123,6 +122,9 @@ const BOOST_FOV = 10 * Math.PI / 180, BOOST_SHAKE = .0035;
 const GLIDER_KEY_TICKS = 6;
 /** Metres the orbit's camera is behind the eye before the body is drawn whole; nearer than the near plane its head is not seen. */
 const HEAD_CLEAR = .1;
+
+/** No effect turned off: the game's own frame. */
+const NO_EFFECTS: ReadonlySet<Effect> = new Set();
 
 /** Initial vertical field of view, in radians. AIM_FOV multiplies the player's setting while aiming. */
 const BASE_FOV = 1.2217;
@@ -161,29 +163,17 @@ function attachmentOf(reg: Registry, inv: Inventory | null, slot: number): ItemD
 /** Radians in a unit of yaw or pitch on the wire (65536 to a turn). */
 const UNIT_RADIANS = TAU / 65536;
 
-/** What a tool's own server tells a page that is the tool's look at a place (`App.address`). */
-export interface ToolOrders {
-  readonly run?: readonly unknown[];
-  readonly look?: readonly unknown[];
-  readonly eyeSeconds?: number;
-  readonly playEye?: boolean;
-  readonly holdLook?: boolean;
-}
-
 export class App {
   readonly session: ClientSession;
   readonly controls = new Controls();
   readonly ui = new Ui();
   readonly cam = new Camera();
-  private artEyeTime: number | null = null;
-  private playEye = false;
-  private artEyeAt: number | null = null;
   readonly hud = new HudModel();
   /** What the HUD's widgets fill from (hud/widget.ts): made once, set each frame. */
   private readonly hudFill = new HudFill();
   /** The frame's values and its parts in their order (frame.ts): made once, the values set each frame. */
   private readonly f: AppFrame;
-  private readonly parts: readonly FramePart[];
+  private parts: readonly FramePart[];
   /** The hour the sky shows: the server's, swept when it is set, or the one in an admin's hand on the sundial. */
   readonly sky = new SkyClock();
   /** The dash's readings of the vehicle driven. */
@@ -247,9 +237,6 @@ export class App {
   private readonly mountCamera = new MountCameraPivot();
   private readonly cockpit = new CockpitLook();
   scene: Scene | null = null;
-  /** Draw the stress meshes, if the pack has them. `marks` are the rocks whose colour says which level is on the screen. */
-  stress = false;
-  marks: Mark[] = [];
   /** Show the asset library's state on the status line. */
   debug = false;
   /** The manifest and the asset port the scene is made with once the session has a world. */
@@ -258,17 +245,8 @@ export class App {
   private split: SplitPort | null = null;
   /** Smoothed. */
   fps = 60;
-  /** False while the self-check holds the body still. */
-  steer = true;
-  /** The dome drawn as the sky table alone and nothing hazed, as the rasterizer draws, so the self-check's colours are the twins'. */
-  plainSky = false;
-  /**
-   * A page that measures or takes pictures (the self-check, a bench, the device page, a tool's look, a trip): the survivor
-   * rises looking from the eye, whatever Settings.thirdPerson says, so these pages keep measuring the view they always did.
-   */
-  fromEye = false;
-  /** A bench page's `?farpalm=fronds`: far palms drawn as their frond level (render/farnodes.ts farLevelOf). */
-  private farPalms = false;
+  /** What a page that measures asks of the frame (tool-hooks.ts): null in the game, made when a tool first asks. */
+  private tools: ToolHooks | null = null;
   /** Keeps the frame steady under the tier chosen (governor.ts). The shell tells it what each frame took. */
   readonly governor = new Governor();
   /** What each frame took and what came in it, for the data utility's monitor (assets/frames.ts), once the shell has fetched it. */
@@ -293,12 +271,8 @@ export class App {
   private warmedBase: Tier | null = null;
   private readonly warming: Tier[] = [];
   private tierShown = false;
-  /** The screen's device pixels a CSS pixel, and effects the page's address turned off (passes.ts). */
+  /** The screen's device pixels a CSS pixel. */
   dpr = 1;
-  off: ReadonlySet<Effect> = new Set();
-  /** What every other frame draws with off instead (`?ab=`, passes.ts), or null, and the frames drawn. */
-  private other: ReadonlySet<Effect> | null = null;
-  private drawnFrames = 0;
   private interval = 0;
   /** Whether the keys are a flyer's, and the last tick stepped before its wing was last wanted. */
   private flying = false;
@@ -323,13 +297,6 @@ export class App {
   private last = -1;
   /** Adopt the welcome's authored/saved facing once, before the first input overwrites it. */
   private facing = false;
-  /** A tool's look at a place (`address`): the commands still to send, and the facing held. */
-  private script: string[] = [];
-  private held: [number, number] | null = null;
-  /** The scene's share a page that measures asks (`?scale=`, render/post.ts sceneShare), in place of the setting's; 0 for none. */
-  private shareAsked = 0;
-  private releaseLook = false;
-  private lineAt = 0;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private helicopterViewHost = -1;
@@ -630,14 +597,9 @@ export class App {
     if (!this.ui.settings.toggleTalk) this.talk(false);
   }
 
-  /**
-   * Steers for a measurement run, `ms` into its measured frames: the body stands and the view turns once round in
-   * BENCH_TURN_MS, a little up and down, so that every run of a scene sees the same views. Call it each frame instead
-   * of forwarding input.
-   */
+  /** A measurement run's steering, `ms` into its measured frames (tool-hooks.ts). */
   autopilot(ms: number): void {
-    this.controls.yaw = (ms / BENCH_TURN_MS) * TAU;
-    this.controls.pitch = Math.sin(ms / 2300) * 0.2 - 0.05;
+    autopilot(this.controls, ms);
   }
 
   textInput(key: number, value: string): void {
@@ -1108,35 +1070,34 @@ export class App {
   }
 
   /**
-   * What the page's address asks: `off`, effects turned off for a before and after (passes.ts). A page that pins pictures
-   * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier` and the scene's
-   * share of the canvas a side, `scale` (1 for the canvas's own). It plays at
-   * MEASURED_VOLUME, or at `volume`. A tool's look at a place is such a page, and its `orders` are what the server the
-   * tool started for it gave it, never the address's: `run`, lines sent as typed once the body is in the world, and
-   * `look`, the way it faces held, yaw and pitch in radians. Any other page sends no line it was not typed and holds no view.
+   * What the page's address asks of the frame (ToolHooks.address): effects off, and for a page that measures or is a
+   * tool's look, its tier, volume, lines and view. An ordinary page's address asks nothing, and no hook is made for it.
    */
   address(get: (name: string) => string | null, pinned: boolean, orders: ToolOrders | null = null): void {
-    this.off = effectsOff(get("off"));
-    this.other = get("ab") === null ? null : effectsOff(get("ab"));
-    this.script = pinned && Array.isArray(orders?.run) ? orders.run.filter((line): line is string => typeof line === "string") : [];
-    const look = pinned && Array.isArray(orders?.look) ? orders.look : [];
-    this.releaseLook = orders?.holdLook === false;
-    this.playEye = pinned && orders?.playEye === true;
-    this.artEyeAt = null;
-    this.artEyeTime = pinned && Number.isFinite(orders?.eyeSeconds) ? orders!.eyeSeconds! : null;
-    this.held = look.length === 2 && look.every((v) => typeof v === "number" && Number.isFinite(v)) ? [look[0] as number, look[1] as number] : null;
-    if (!pinned) return;
-    this.farPalms = get("farpalm") === "fronds";
-    this.governor.held = Number(get("level") ?? 0);
-    this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
-    const share = Number(get("scale"));
-    this.shareAsked = share > 0 && share <= 1 ? share : 0;
-    // Such a page runs unattended, often behind someone's other work, and its music would start at full volume. It is
-    // not muted, since nobody is there to unmute it and the self-check listens for a sound.
-    this.ui.settings.muted = false;
-    const volume = Number(get("volume") ?? MEASURED_VOLUME);
-    this.ui.settings.masterVolume = Number.isFinite(volume) ? Math.max(0, Math.min(VOLUME_MAX, volume)) : MEASURED_VOLUME;
+    if (pinned || get("off") !== null || get("ab") !== null || this.tools) this.tooled().address(get, pinned, orders, this.governor, this.ui.settings);
   }
+
+  /** The tools' hooks, made and given their rows in the frame the first time one is asked for. */
+  private tooled(): ToolHooks {
+    if (!this.tools) {
+      this.tools = new ToolHooks(this.supply);
+      this.parts = this.rows();
+    }
+    return this.tools;
+  }
+
+  /** A tool's settings, which stand on its hooks (tool-hooks.ts). One left as the game has it makes no hooks. */
+  get stress(): boolean { return this.tools?.stress ?? false; }
+  set stress(on: boolean) { if (on || this.tools) this.tooled().stress = on; }
+  get marks(): Mark[] { return this.tools?.marks ?? []; }
+  get steer(): boolean { return this.tools?.steer ?? true; }
+  set steer(on: boolean) { if (!on || this.tools) this.tooled().steer = on; }
+  get plainSky(): boolean { return this.tools?.plainSky ?? false; }
+  set plainSky(on: boolean) { if (on || this.tools) this.tooled().plainSky = on; }
+  get fromEye(): boolean { return this.tools?.fromEye ?? false; }
+  set fromEye(on: boolean) { if (on || this.tools) this.tooled().fromEye = on; }
+  get off(): ReadonlySet<Effect> { return this.tools?.off ?? NO_EFFECTS; }
+  set off(off: ReadonlySet<Effect>) { if (off.size > 0 || this.tools) this.tooled().off = off; }
 
   /**
    * After the frame is handed to WebGL: our code took `ours` ms of it, `uploadMs` of them handing the assets' bytes to
@@ -1218,13 +1179,18 @@ export class App {
    * frame. A new part is a file of its own and a line here. The rows written out here are the app's own still.
    */
   private rows(): FramePart[] {
+    const tools = this.tools;
     return [
+      ...(tools ? [tools.lines] : []),
       { step: (f) => this.follow(f) },
       { step: (f) => this.telemetry(f) },
       { step: (f) => this.sight(f) },
       { step: (f) => this.ownBody(f) },
       { step: (f) => this.place(f) },
-      { step: (f) => this.stage(f) },
+      { step: (f) => this.absorb(f) },
+      ...(tools ? [tools.stage] : []),
+      { step: (f) => this.build(f) },
+      ...(tools ? [tools.finish] : []),
       { step: (f) => this.fillHud(f) },
       { step: (f) => this.hear(f) },
       { step: (f) => this.ghost(f) },
@@ -1245,6 +1211,7 @@ export class App {
     f.height = height;
     f.aspect = width / Math.max(height, 1);
     f.steer = this.steer;
+    f.fromEye = this.fromEye;
     // The interface's canvas for this window: shorter for a short one, with the screen's edges kept clear.
     const ui = this.ui, units = canvasHeight(width, height);
     this.unit = Math.max(height, 1) / units;
@@ -1309,7 +1276,7 @@ export class App {
     this.refreshCockpitLook();
     // A glass raised takes the primary for its range: the hand holding it does not strike.
     // A visor held up is told the server as a button: the proof its gaze needs (D1084).
-    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, ((this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons) & (this.glass.up ? ~BTN_PRIMARY : ~0)) | (this.visor.held ? BTN_VISOR : 0));
+    if (f.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, ((this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons) & (this.glass.up ? ~BTN_PRIMARY : ~0)) | (this.visor.held ? BTN_VISOR : 0));
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
@@ -1338,15 +1305,10 @@ export class App {
     if (!this.scene) {
       // Sounds share the asset port, each side taking only what it asked for.
       this.split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
-      this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.farPalms });
+      this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.tools?.farPalms ?? false });
       this.scene.shots = this.shots;
       this.scene.supply = this.supply;
-      this.scene.plainSky = this.plainSky;
-      if (this.stress) {
-        const made = stressThings(this.scene.assets, world.hf, PROVING_SPAWN, world.hf.heightAt(PROVING_SPAWN.x, PROVING_SPAWN.z) + 1.62);
-        this.scene.things = made.things;
-        this.marks = made.marks;
-      }
+      this.tools?.dress(this.scene, world);
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
       const chart = (hud.chart = new Chart(world.hf, this.pack.palette));
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
@@ -1381,19 +1343,10 @@ export class App {
 
   /** Who the camera follows and from where: the body's place this frame, what it rides or sits in, and the view of it. */
   private follow(f: AppFrame): void {
-    const session = this.session, c = this.controls, nowMs = f.nowMs, dt = f.dt;
+    const session = this.session, dt = f.dt;
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
     const a = session.alpha;
     const alive = (f.alive = session.sessionState === SESSION_ALIVE);
-    // A server takes a typed line a few ticks apart.
-    if (alive && this.script.length > 0 && nowMs >= this.lineAt) {
-      session.text(this.script.shift()!);
-      this.lineAt = nowMs + 500;
-    }
-    if (this.held) {
-      [c.yaw, c.pitch] = this.held;
-      if (alive && this.releaseLook && this.script.length === 0) this.held = null;
-    }
     const move = (f.move = this.reg.move[session.bodyKind]);
     // The eye eases toward the stance height, so crouching is a movement and not a cut.
     const eyeNow = (f.eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0);
@@ -1438,7 +1391,7 @@ export class App {
     // rises in it, and comes back to it out of a vehicle, a seat or a saddle, whose views are their own. A page that
     // measures rises at the eye (fromEye).
     const onFoot = alive && session.driving < 0 && !passenger;
-    if (onFoot && !this.wasOnFoot) this.view.thirdPerson = this.ui.settings.thirdPerson && !this.fromEye;
+    if (onFoot && !this.wasOnFoot) this.view.thirdPerson = this.ui.settings.thirdPerson && !f.fromEye;
     this.wasOnFoot = onFoot;
     // A server rule can forbid third person. A rider still sees its mount from behind.
     // From the eye a glider's wings are overhead and out of sight, so the view stands back as one is thrown open, where the
@@ -1465,9 +1418,9 @@ export class App {
     if (f.alive && car && session.driving >= 0) {
       if (car.movement === "rotor") {
         const altitude = castWorld(world, f.bx, f.by + .05, f.bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : f.by - world.hf.heightAt(f.bx, f.bz);
-        this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, this.steer && (c.buttons & BTN_PRONE) !== 0);
-      } else if (car.movement === "boat") this.vehicleTelemetry.updateBoat(session.driving, session.own, car.spec, this.steer && (c.buttons & BTN_SPRINT) !== 0);
-      else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, f.dt);
+        this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, f.steer && (c.buttons & BTN_PRONE) !== 0);
+      } else if (car.movement === "boat") this.vehicleTelemetry.updateBoat(session.driving, session.own, car.spec, f.steer && (c.buttons & BTN_SPRINT) !== 0);
+      else this.vehicleTelemetry.update(session.driving, session.own, f.steer ? c.moveZ : 0, f.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, f.dt);
       this.vehicleTelemetry.lightMode = isWheelVehicle(car) && car.emergencyLights ? 0 : -1;
       this.hud.vehicle = f.dash = this.vehicleTelemetry;
     } else {
@@ -1483,7 +1436,7 @@ export class App {
     // The view turns with the kick and, through a scope, with the sway, as a shot does (shared/sim/aim.ts), so the middle of
     // the view is where the next shot is pointed. The look the input sends stays the player's own.
     const gun = alive && session.weaponsAllowed ? (this.reg.weapon[session.own.held] ?? null) : null;
-    const aiming = alive && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && gun !== null && gun.clip > 0;
+    const aiming = alive && f.steer && (c.buttons & BTN_SECONDARY) !== 0 && gun !== null && gun.clip > 0;
     // The orbit's view does not look along the aim: it neither narrows to it nor shows a sight, and the centre of the
     // screen is not where a shot goes, so the crosshair is hidden while it is in use. The aim itself is the body's.
     const orbiting = this.orbit.inUse, sighting = aiming && !orbiting;
@@ -1518,7 +1471,7 @@ export class App {
     // A held glass, raised with the secondary on foot (glass.ts, D1082).
     const heldDef = alive && session.driving < 0 && !passenger ? (this.reg.defs[session.own.held] as ItemDef | null) : null;
     this.glassOptic = heldDef?.class === "instrument" ? (heldDef.optic ?? null) : null;
-    const glassUp = this.glassOptic !== null && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && !orbiting && hud.banner === "";
+    const glassUp = this.glassOptic !== null && f.steer && (c.buttons & BTN_SECONDARY) !== 0 && !orbiting && hud.banner === "";
     this.glass.raise(glassUp);
     // A helmet's visor, held up, on foot, the helmet working and no sight aimed through (visor.ts, D1080).
     const visorUp = this.visor.step((this.visorOptic = this.wornOptic(session.inventory)), alive && session.driving < 0 && !passenger && !sighting && !glassUp && !orbiting && hud.banner === "");
@@ -1789,9 +1742,9 @@ export class App {
     if (session.sessionState === SESSION_CREATING) this.preview(f.nowMs, f.aspect);
   }
 
-  /** What the session brought this frame is handed to what draws it, the scene's values are set, and the frame is built. */
-  private stage(f: AppFrame): void {
-    const session = this.session, hud = this.hud, cam = this.cam, world = f.world, scene = f.scene, nowMs = f.nowMs, width = f.width, height = f.height, alive = f.alive;
+  /** What the session brought this frame is handed to what draws it, and the scene is told the time. */
+  private absorb(f: AppFrame): void {
+    const session = this.session, hud = this.hud, cam = this.cam, world = f.world, scene = f.scene, nowMs = f.nowMs;
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
     this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
     this.tamedHeard = session.tamed.length;
@@ -1816,21 +1769,20 @@ export class App {
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     hud.dpr = this.dpr;
     scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
-    scene.viewHeight = height;
+    scene.viewHeight = f.height;
     scene.now = nowMs;
-    if (this.playEye && this.artEyeAt === null && alive && this.script.length === 0) this.artEyeAt = nowMs;
-    scene.eyeSeconds = this.artEyeTime === null ? session.renderClock / TICK_RATE
-      : this.artEyeTime + (this.artEyeAt === null ? 0 : (nowMs - this.artEyeAt) / 1000);
-    // A picture tool that holds the obelisks' clock holds the drops' with it: a cast leaves by that clock.
-    if (this.artEyeTime !== null) this.supply.tick = scene.eyeSeconds * TICK_RATE;
-    const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
-    scene.alternate = alternate;
+    scene.eyeSeconds = session.renderClock / TICK_RATE;
+  }
+
+  /** The tier the frame is drawn at and its canvas, what the session is asked to send for it, and the frame built. */
+  private build(f: AppFrame): void {
+    const session = this.session, scene = f.scene, nowMs = f.nowMs, width = f.width, height = f.height, tools = this.tools;
     scene.finishGloss = this.ui.settings.finishGloss;
     scene.roadFinish = this.ui.settings.roadFinish;
     scene.assets.residency.holdBack = this.session.behind;
     const chosen = forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst);
-    const governed = tierWithout(this.governor.tier(chosen, this.ui.settings.steady, this.dpr, nowMs), off);
-    if (this.tierReady && chosen !== this.warmedBase) this.warming.splice(0, Infinity, ...ladder((this.warmedBase = chosen), this.dpr).map((l) => tierWithout(l.tier, off)));
+    const governor = this.governor.tier(chosen, this.ui.settings.steady, this.dpr, nowMs), governed = tools ? tools.tier(governor) : governor;
+    if (this.tierReady && chosen !== this.warmedBase) this.warming.splice(0, Infinity, ...ladder((this.warmedBase = chosen), this.dpr).map((l) => (tools ? tools.tier(l.tier) : l.tier)));
     if (this.tierReady && this.warming.length > 0) this.tierReady(this.warming.shift()!);
     if (!this.tierShown || governed === scene.assets.tier || !this.tierReady || this.tierReady(governed)) {
       scene.assets.tier = governed;
@@ -1842,25 +1794,15 @@ export class App {
     // The scene's share is of the canvas the chosen tier draws at the screen's own pixels; the governor's steps take
     // their shares of it (governor.ts).
     const own = width * height * ownRatio(chosen, this.dpr) ** 2;
-    [scene.share, this.ui.settings.autoShare] = [sceneShare(chosen, this.shareAsked || (RESOLUTIONS[this.ui.settings.resolution]?.share ?? 0), own), sceneShare(chosen, 0, own)];
+    [scene.share, this.ui.settings.autoShare] = [sceneShare(chosen, (tools ? tools.shareAsked : 0) || (RESOLUTIONS[this.ui.settings.resolution]?.share ?? 0), own), sceneShare(chosen, 0, own)];
     session.view(scene.assets.tier.view, this.ui.settings.snapshotBytes);
     session.askFar(scene.assets.tier.reach.bases);
     session.holdNodes(scene.assets.tier.nodes.chunks);
     scene.characters.corpseMotions = session.corpseMotions;
-    sceneWithout(scene, this.off);
-    // The street lamps' light and the wires between the poles, which a bench turns off every other frame (`?ab=lamps`, `wires`).
-    scene.streetLamps.on = !off.has("lamps");
-    scene.streetWires.on = !off.has("wires");
-    // The moon's shadows by night, the street lamp that lights as a light and the shadows in the lamps' pool cards, which a
-    // bench turns off every other frame (`?ab=moon`, `lamp`, `pools`).
-    scene.moonShadows = !off.has("moon");
-    scene.streetLamps.light = !off.has("lamp");
-    scene.streetLamps.shaded = !off.has("pools");
     // Damage numbers are drawn with the world, where the server's rule and the reader's setting let them.
     scene.damage.enabled = session.damageNumbers && this.ui.settings.damageNumbers;
-    const packet = (f.packet = scene.build(cam, this.remote));
+    f.packet = scene.build(this.cam, this.remote);
     session.requestCorpseMotions(scene.characters.corpseCheckpointRequests);
-    packetWithout(packet, off);
   }
 
   /**

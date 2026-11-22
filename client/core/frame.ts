@@ -45,8 +45,9 @@ export class AppFrame implements HudFrame {
   width = 0;
   height = 0;
   aspect = 1;
-  /** False while a tool holds the body still. */
+  /** False while a tool holds the body still; and a page that measures, whose survivor rises looking from the eye. */
   steer = true;
+  fromEye = false;
   /** Entity index of the creature in the arms of the own body, or -1. */
   holding = -1;
   world!: CollisionWorld;
