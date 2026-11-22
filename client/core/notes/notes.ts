@@ -74,6 +74,8 @@ export class Notes {
   private told = "";
   private wantShot = false;
   private afterShot = false;
+  /** Pictures copied and not yet encoded: the frames meanwhile are a picture's too, and flagged so. */
+  private making = 0;
   private flashAt = -Infinity;
   private escAt = -Infinity;
   private nowMs = 0;
@@ -150,7 +152,7 @@ export class Notes {
   drawn(p: FramePacket, ours: number, width: number, height: number, upload: number): void {
     if (!this.armed) return;
     const t0 = this.port!.now(), port = this.port!, e = this.extra, o = this.open;
-    e.flags = this.afterShot ? FLAG_AFTER_SHOT : 0;
+    e.flags = this.afterShot || this.making > 0 ? FLAG_AFTER_SHOT : 0;
     this.afterShot = false;
     e.shotMs = 0;
     if (this.wantShot && o && o.state === "taking") {
@@ -178,7 +180,8 @@ export class Notes {
     const t0 = this.port!.now(), app = this.app, n = o.shots.length, first = n === 0;
     const { picture } = this.port!.shot(SHOT_WIDE_MOST, first ? THUMB_WIDE : 0);
     o.pictures.push(picture);
-    picture.catch(() => {});
+    this.making++;
+    void picture.then(() => void this.making--, () => void this.making--);
     const cam = app.cam, own = app.session.own, r2 = (v: number): number => Math.round(v * 100) / 100;
     this.canvas[0] = width;
     this.canvas[1] = height;

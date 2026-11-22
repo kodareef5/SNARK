@@ -57,8 +57,8 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
       const t0 = performance.now();
       const scale = Math.min(1, wide / canvas.width), w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
       const n = ++id;
-      // The bitmap is the canvas as it is now; the worker scales and encodes it.
-      const bitmap = createImageBitmap(canvas);
+      // The bitmap is the canvas as it is now, made at the picture's size; the worker encodes it.
+      const bitmap = scale < 1 ? createImageBitmap(canvas, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }) : createImageBitmap(canvas);
       const picture = bitmap.then((b) => new Promise<Picture>((done, fail) => {
         waiting.set(n, (e) => (e.jpeg ? done({ jpeg: e.jpeg, w, h, thumb: e.thumb }) : fail(new Error(e.why))));
         encoder().postMessage({ id: n, bitmap: b, w, h, thumb: thumb > 0 ? [thumb, Math.round((h * thumb) / w)] : null, quality: QUALITY }, [b]);
