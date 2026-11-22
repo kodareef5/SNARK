@@ -9,7 +9,7 @@ import { remoteVehiclePose } from "../vehicle-view.ts";
 // piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn. Resource nodes are drawn
 // the same way, each as the mesh of its form (shared/world/nodes.ts) at its size.
 
-import { MAX_MOVING_REACH, type Registry } from "../../../shared/content/registry.ts";
+import type { Registry } from "../../../shared/content/registry.ts";
 import { TICK_RATE, CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
@@ -80,14 +80,18 @@ import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
 import { WaterTrails } from "./water-trails.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
-import { bendOf, type MapLandmark, type MapStatics } from "../../../shared/world/mapfile.ts";
+import { bendOf, type MapLandmark } from "../../../shared/world/mapfile.ts";
 import { KERB_BACK } from "../../../shared/world/bends.ts";
 import { landmarkFars } from "../../../shared/pack/far.ts";
-import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } from "./motion.ts";
+import type { MotionSource } from "./motion.ts";
 import { Frame, walk, type Pass } from "./pass.ts";
 import { Casting } from "./casting.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
+import { MovingStatics } from "./passes/moving-statics.ts";
+import { Beams } from "./passes/beams.ts";
+import { Ghost } from "./passes/ghost.ts";
+import { Things, type Thing } from "./passes/things.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 import type { Tier } from "../assets/tiers.ts";
 
@@ -163,9 +167,6 @@ const TERRAIN_FOCUS = 8;
 const CHUNK_COLUMN = 1000;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
-const BEAM_MESH = "core:beam";
-/** Palette colour of the beam over a place of death. */
-const BEAM_COLOR = 8;
 /** A draw costs about what drawing this many more triangles does. Neighbouring cells share a draw when that saves more. */
 const RUN_TRIANGLES = 4096;
 /** A cell of trees drawn this long ago or less is still on screen, so a change of its level is swapped, not taken at once. */
@@ -210,14 +211,6 @@ const CLEAR = 8;
 const RELIEF = 2;
 
 
-/** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
-export interface Thing {
-  mesh: number;
-  x: number;
-  y: number;
-  z: number;
-  level: number;
-}
 
 interface ChunkBatch {
   /** The table's `shape` and `placed` when the instances were built. */
@@ -323,10 +316,6 @@ export class Scene {
     const chunk = Math.floor(ref / 65536); this.hiddenChanged.add(chunk);
     this.world.farNodes?.changes.touch(chunk);
   }
-  /** The registry where it has moving statics, else null, and those of the map once its statics have come. */
-  private readonly motionReg: Registry | null;
-  private movingFrom: MapStatics | null = null;
-  private moving: Moving[] = [];
   readonly terrain: TerrainLod;
   /**
    * Metres to the end of the view: the tier's (Tier.viewDistance), or what is set here, as tests and tools hold it. The
@@ -393,8 +382,6 @@ export class Scene {
   readonly damage = new DamageNumbers();
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
   plainSky = false;
-  /** Loose meshes to draw: the stress scene's. */
-  things: Thing[] = [];
   /**
    * Where an opaque step's cut-out draws go among its other draws: "last", after them all, so that a tiled GPU can
    * reject the cut-out pixels an opaque surface hides before it shades them; "made", as they were made; "first", before
@@ -546,11 +533,6 @@ export class Scene {
   readonly finishNear: FinishNear;
   private readonly facades: FacadeAtlases;
   private readonly waterMaterial: number;
-  private readonly beamMesh: number;
-  /** Places to mark with a beam, x, y, z each. The app sets them before build(). */
-  readonly beams: number[] = [];
-  /** The piece shown where it would be built. kind is 0 for none, x, y, z are metres, yaw is in wire units, color is a palette index. */
-  readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
   private readonly vehicleSeats: (VehicleSeatPose | undefined)[] = new Array(MAX_VIEW);
   /** What vehicleSeats points into, a pose a slot, and the own body's seat. */
@@ -659,6 +641,16 @@ export class Scene {
   set sextantScale(s: number) { this.eyes.sextantScale = s; }
   get eyeHold(): number | null { return this.eyes.hold; }
   set eyeHold(s: number | null) { this.eyes.hold = s; }
+  /** The map's moving statics' parts (passes/moving-statics.ts). */
+  private readonly movingStatics: MovingStatics;
+  /** Beams over places to mark, the piece about to be built, and loose meshes, each a pass, which the app sets through these. */
+  private readonly marks: Beams;
+  private readonly placing: Ghost;
+  private readonly loose: Things;
+  get beams(): number[] { return this.marks.beams; }
+  get ghost(): Ghost["ghost"] { return this.placing.ghost; }
+  get things(): Thing[] { return this.loose.things; }
+  set things(list: Thing[]) { this.loose.things = list; }
   /** The supply drops live on the map (passes/supply-drops.ts), and the kind of the server's prop its model stands in for, or -1. */
   private readonly supplyDrops: SupplyDrops;
   private readonly capsuleKind: number;
@@ -693,7 +685,6 @@ export class Scene {
     // The renderer holds the sky table on every tier.
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
-    this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
@@ -800,6 +791,10 @@ export class Scene {
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
     this.eyes = new TideEyes(this.assets);
+    this.movingStatics = new MovingStatics(reg, this.assets, this.flatFlags, this.landmarkKinds);
+    this.marks = new Beams(this.assets);
+    this.placing = new Ghost(this.assets, this.meshOfKind);
+    this.loose = new Things(this.assets);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.capsuleKind = this.supplyDrops.kind;
     this.characters.thrusterPlumes.pictures(pack.header.details);
@@ -826,7 +821,6 @@ export class Scene {
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
     this.lakes = world.hf.water && far >= 0 ? new Lakes(world.hf, world.hf.water, far) : null;
     this.waterMesh = table.find(WATER_MESH);
-    this.beamMesh = table.find(BEAM_MESH);
     this.finishes = new WorldFinishes(table.materials, this.assets.manifest.textures ?? []);
     this.finishNear = new FinishNear(reg, surfaceCity(world.mapId ?? "default") === "las-vegas");
     this.facades = new FacadeAtlases(table.materials, world.mapId ?? "default");
@@ -1031,6 +1025,7 @@ export class Scene {
     const f = this.frame;
     f.cam = cam;
     f.viewHeight = this.viewHeight;
+    f.lift = this.lift;
     f.remote = remote;
     f.own = this.own;
     f.tier = this.assets.tier;
@@ -1068,7 +1063,7 @@ export class Scene {
       // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
       this.eyes,
       this.supplyDrops,
-      { draw: (f) => { if (this.world.motion && this.motionReg) this.showMotion(f.cam, this.world.motion); } },
+      this.movingStatics,
       {
         draw: (f) => {
           this.structures(f.cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
@@ -1125,11 +1120,11 @@ export class Scene {
       },
       { draw: (f) => { if (f.remote) this.entities(f.cam, f.remote); } },
       { draw: (f) => this.bodies(f.cam, f.remote) },
-      { draw: (f) => { if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(f.cam); } },
+      this.marks,
       { draw: (f) => { if (this.falling && this.falling.count > 0) this.showFalling(f.cam, this.falling); } },
       { draw: (f) => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, (event, pose) => this.showTreeFall(f.cam, event, pose)); } },
-      { draw: (f) => { if (this.ghost.kind !== 0) this.showGhost(f.cam); } },
-      { draw: (f) => { if (this.things.length > 0) this.showThings(f.cam); } },
+      this.placing,
+      this.loose,
       { draw: (f) => this.showDetails(f.cam, f.remote) },
       {
         // The viewer's own body goes over everything else, water included.
@@ -1545,6 +1540,7 @@ export class Scene {
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];
     if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));
+    this.movingStatics.landmarks = this.landmarks;
     return this.city;
   }
 
@@ -1929,134 +1925,6 @@ export class Scene {
       p.transientIds[at] = 0;
     }
     p.transientCount = total;
-  }
-
-  private showGhost(cam: Camera): void {
-    const p = this.packet;
-    const g = this.ghost;
-    const first = p.transientCount;
-    const x = g.x - cam.x, y = g.y - cam.y, z = g.z - cam.z;
-    this.transient.set(first, x, y, z, g.yaw, g.color);
-    p.transientIds[first] = 0;
-    const mesh = this.meshOfKind[g.kind]!;
-    const r = this.radiusOfMesh[mesh]!;
-    this.put.draw(mesh, 0, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_BLEND, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
-    p.transientCount = first + 1;
-  }
-
-  private showThings(cam: Camera): void {
-    const p = this.packet;
-    const errors = this.assets.table.error;
-    let wanted = -1;
-    for (const t of this.things) {
-      const r = this.radiusOfMesh[t.mesh]!;
-      const x = t.x - cam.x, y = t.y - cam.y, z = t.z - cam.z;
-      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
-      if (p.transientCount === p.transientIds.length) {
-        p.dropped++;
-        continue;
-      }
-      const far = Math.sqrt(x * x + y * y + z * z);
-      wanted = this.assets.choose(errors[t.mesh]!, far, wanted < 0 ? t.level : wanted);
-      this.assets.wantTextured(t.mesh, wanted, far);
-      const first = p.transientCount;
-      this.transient.set(first, x, y, z, 0, 0);
-      p.transientIds[first] = 0;
-      const d = p.drawCount;
-      this.put.draw(t.mesh, wanted, TRANSIENT_BUFFER, first, 1, 0, 0, 0, 0, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
-      // What was drawn, which is coarser than what was wanted until that has come.
-      t.level = p.drawCount > d ? p.drawLod[d]! : -1;
-      wanted = -1;
-      p.transientCount = first + 1;
-    }
-  }
-
-  /**
-   * The map's moving statics' parts, to their own reach: posed while they move, and as they were while they rest. A
-   * landmark's are drawn as far as its far mesh, the far city's reach, so its sails do not end before its hull; but a
-   * part at rest struck, a sail furled, only while the near store holds its static's chunk, and past that the far mesh
-   * stands for it. A part that never moves, a landmark's rig, is never struck, nor is a see-through one, a line that does
-   * not break into dots: a headsail's roll. A part put away where it rests is not drawn. Low poly draws no see-through part.
-   */
-  private showMotion(cam: Camera, source: MotionSource): void {
-    const p = this.packet, tier = this.assets.tier, table = this.assets.table;
-    const statics = source.statics();
-    if (statics !== this.movingFrom) {
-      this.movingFrom = statics;
-      this.moving = statics ? movingOf(this.motionReg!, statics) : [];
-    }
-    const own = Math.min(this.viewDistance, tier.reach.parts), landmark = Math.min(this.viewDistance, Math.max(tier.reach.parts, this.alongGround(tier.reach.city)));
-    const states = source.states(), tick = source.tick();
-    const bones = Math.min(tier.bones, MAX_BONES), draws = Math.min(MAX_DRAWS, tier.budget.draws);
-    for (const t of this.moving) {
-      const ours = this.landmarkKinds[t.kind] === 1;
-      const x = t.x - cam.x, y = t.y - cam.y, z = t.z - cam.z;
-      if (Math.sqrt(x * x + y * y + z * z) > (ours ? landmark : own) + MAX_MOVING_REACH) continue;
-      poseMoving(t, states.get(t.ref), tick);
-      const reach = ours ? landmark : own, struck = ours && t.progress === 0 && this.landmarks?.isFar(Math.floor(t.ref / 65536));
-      const parts = t.facet.parts, pose = t.pose;
-      for (let i = 0; i < parts.length; i++) {
-        const mesh = table.find(parts[i]!.mesh);
-        if (mesh < 0) {
-          p.skipped++;
-          continue;
-        }
-        const through = (this.flatFlags[mesh]! & DRAW_BLEND) !== 0;
-        if ((struck && t.fixed[i] === 0 && !through) || (!tier.lit && through) || (t.progress === 0 && (t.away[i]! & 1) !== 0) || (t.progress === 1 && (t.away[i]! & 2) !== 0)) continue;
-        const at = i * PART_FLOATS, r = this.radiusOfMesh[mesh]! * pose[at + 12]!;
-        const cx = x + pose[at + 3]!, cy = y + pose[at + 7]!, cz = z + pose[at + 11]!;
-        const far = Math.max(0, Math.sqrt(cx * cx + cy * cy + cz * cz) - r);
-        if (far > reach) continue;
-        const seen = cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
-        // A see-through part, a rig of wires drawn wider and fainter than they are, casts nothing: no cascade holds a wire's
-        // shadow whole, and the sun's own breadth all but washes it out a few metres down.
-        const casts = this.casting.on && !through ? this.casting.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.casting.cascades.fits(r) : 0;
-        if (!seen && casts === 0) continue;
-        if (p.boneCount >= bones || p.transientCount === p.transientIds.length || (seen && p.drawCount + this.put.doubled >= draws)) {
-          p.dropped++;
-          continue;
-        }
-        const bone = p.boneCount++, b = bone * BONE_FLOATS;
-        for (let k = 0; k < BONE_FLOATS; k++) p.bones[b + k] = pose[at + k]!;
-        p.bones[b + 3] = cx;
-        p.bones[b + 7] = cy;
-        p.bones[b + 11] = cz;
-        const first = p.transientCount++;
-        this.transient.setSkinned(first, bone, t.color);
-        p.transientIds[first] = 0;
-        const level = this.assets.choose(table.error[mesh]!, far, t.level[i]!);
-        t.level[i] = level;
-        this.assets.wantTextured(mesh, level, far);
-        if (seen) {
-          const d = p.drawCount;
-          this.put.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED, cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r));
-          this.put.boxRows(d, p.drawCount, cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
-          for (let k = d; k < p.drawCount; k++) p.drawFade[k] = reach;
-          p.frame[FRAME.fade] = tier.fade;
-        }
-        if (casts !== 0) this.casting.castBody(mesh, level, first, 1, DRAW_SKINNED, casts, 0);
-      }
-    }
-  }
-
-  private markBeams(cam: Camera): void {
-    const p = this.packet;
-    const first = p.transientCount;
-    let n = 0;
-    let from = Infinity;
-    let to = -Infinity;
-    const r = this.radiusOfMesh[this.beamMesh]!;
-    for (let i = 0; i + 2 < this.beams.length && n < 16; i += 3) {
-      const x = this.beams[i]! - cam.x, y = this.beams[i + 1]! - cam.y, z = this.beams[i + 2]! - cam.z;
-      this.transient.set(first + n, x, y, z, 0, BEAM_COLOR);
-      p.transientIds[first + n] = 0;
-      from = Math.min(from, cam.depth(x, y, z) - r);
-      to = Math.max(to, cam.depth(x, y, z) + r);
-      n++;
-    }
-    p.dropped += Math.floor(this.beams.length / 3) - n;
-    this.put.draw(this.beamMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, 0, cam.passesOf(from, to));
-    p.transientCount = first + n;
   }
 
   /**
@@ -3179,4 +3047,4 @@ function grow(box: Float32Array, at: number, x0: number, y0: number, z0: number,
   box[at + 5] = Math.max(box[at + 5]!, z1);
 }
 
-export { bodySeed, CUTOUTS, NEAR_BUCKETS, type Cutouts };
+export { bodySeed, CUTOUTS, NEAR_BUCKETS, type Cutouts, type Thing };

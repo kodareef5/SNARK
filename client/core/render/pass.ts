@@ -34,6 +34,8 @@ export class Frame {
   view = 0;
   /** The height of the view in pixels (Scene.viewHeight). */
   viewHeight = 720;
+  /** The camera's height over the ground under it. */
+  lift = 0;
   /** Whether the eye is under water. */
   under = false;
   /** What hides what, from the pass that finds it on: undefined before it, and on a frame that hides nothing. */
@@ -58,6 +60,11 @@ export class Frame {
     this.put = put;
     this.casting = casting;
     this.transient = transient;
+  }
+
+  /** The distance from the camera that reaches `metres` along the ground below it (Scene.alongGround). */
+  alongGround(metres: number): number {
+    return Math.hypot(metres, this.lift);
   }
 }
 
