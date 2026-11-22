@@ -1,6 +1,7 @@
 // The client's part of the map: what the server has sent of structures and friends beyond the view, where the terrain's
 // picture comes from, and the pictures the minimap and the map screen show, composed of terrain, structure cells and grid.
 
+import { G_WORLD, type KeyRow } from "./key-row.ts";
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { BitReader } from "../../shared/net/codec.ts";
 import { COORD_UNIT, SECTOR_UNITS, latOf, lonOf, xOfLon, zOfLat, type MapExtent } from "../../shared/world/coords.ts";
@@ -486,3 +487,24 @@ export class Chart {
     return true;
   }
 }
+
+// Minus and Equal zoom the minimap, or the map while it is open, where the arrows move it (Chart.key).
+export const CHART_KEYS: readonly KeyRow[] = [{
+  name: "chart",
+  keys: ["Minus", "Equal", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+  guide: [
+    { code: "Minus", group: G_WORLD, title: "Zoom out", detail: "Zoom the open map, or the minimap during play." },
+    { code: "Equal", group: G_WORLD, title: "Zoom in", detail: "Zoom the open map, or the minimap during play." },
+    { code: "ArrowUp", group: G_WORLD, title: "Pan map up" },
+    { code: "ArrowDown", group: G_WORLD, title: "Pan map down" },
+    { code: "ArrowLeft", group: G_WORLD, title: "Pan map left" },
+    { code: "ArrowRight", group: G_WORLD, title: "Pan map right" },
+  ],
+  when: (c) => c.hud.chart !== null,
+  press(c, code, down, repeat) {
+    const chart = c.hud.chart!;
+    if (!chart.key(code, down && !repeat, c.ui.map)) return undefined;
+    if (!c.ui.map && down && !repeat) { c.ui.settings.minimapZoom = chart.miniZoom; c.ui.settings.changed(); }
+    return true;
+  },
+}];

@@ -9,8 +9,6 @@ import { chunkAt } from "../../shared/coords.ts";
 import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticMost, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
 import { Visor } from "./visor.ts";
 import { Glass, MARKED_MS } from "./glass.ts";
-import { MARK_SPOT } from "../../shared/world/tactical.ts";
-import { CUE_DEAD, CUE_SCOPED } from "../../shared/anim/pose.ts";
 import type { OpticFacet } from "../../shared/content/defs.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
@@ -33,15 +31,18 @@ import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { GLIDE_DIVE, JET_CUIRASS, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_GAZE, CMD_MARK, CMD_THROW, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
-import { CARRY_THROW, CMD_VEHICLE, VEHICLE_DOOR, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CMD_GAZE, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { structName } from "./ui/structure.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { Controls, LOOK_SPEED } from "./controls.ts";
-import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
+import { pressKey } from "./key-row.ts";
+import { KEY_ROWS } from "./keys.ts";
+import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
+import { HudFill, type HudFrame } from "./hud/widget.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
 import { seatScratch } from "./render/characters.ts";
@@ -109,8 +110,7 @@ const REACH = 3.5;
 const STRUCT_HOLD_MS = 350;
 /** Metres. */
 const NAME_RANGE = 30;
-/** Bits of the replicated entity flags. */
-const VIEW_FLAG_PLAYER = 4;
+/** A bit of the replicated entity flags. */
 const VIEW_FLAG_PROP = 8;
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
@@ -144,11 +144,6 @@ const FOCUS_MS = 250;
 const SIGHT_STEP = 1.25;
 const ZERO_STEP = 50;
 const ZERO_MOST = 1000;
-/** A glint shows within this of straight at the viewer, radians, and past this many metres. */
-const GLINT_HALF = 0.12;
-const GLINT_NEAR = 20;
-/** Metres over the ground a spotted creature's mark is drawn. */
-const SPOT_RISE = 3;
 /** Milliseconds the eye takes to settle most of the way to where it is off a scope's axis. */
 const EYE_EASE_MS = 120;
 /** Metres a holo-scope's crosshair finds what it is on, and its colours (Holo-Scope Attachment). */
@@ -183,6 +178,9 @@ export class App {
   private playEye = false;
   private artEyeAt: number | null = null;
   readonly hud = new HudModel();
+  /** What the HUD's widgets fill from (hud/widget.ts): made once, set each frame. */
+  private readonly hudFill = new HudFill();
+  private hudFrame: HudFrame | null = null;
   /** The hour the sky shows: the server's, swept when it is set, or the one in an admin's hand on the sundial. */
   readonly sky = new SkyClock();
   /** The dash's readings of the vehicle driven. */
@@ -227,21 +225,21 @@ export class App {
   private zeroSent = 0;
   /** How far the look reaches what it tells of a creature this frame (fillOverhead): through a sight, its gaze's. */
   private lookReach = 30;
-  private visorOptic: OpticFacet | null = null;
+  visorOptic: OpticFacet | null = null;
   /** The zoom the server was last told of (App.gaze), and when. */
   private gazeSent = 0;
   private gazeAt = -Infinity;
   /** When N went down with a visor to raise (-1 when it is up), whether it has been held long, and a tap's press to send. */
-  private nDownAt = -1;
-  private nLong = false;
-  private nPulse = 0;
+  nDownAt = -1;
+  nLong = false;
+  nPulse = 0;
   /** When what the sight is on was last found (App.gaze). */
   private focusAt = -Infinity;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   /** The orbit camera on K, and whether the last frame's view lets it start. */
   readonly orbit = new Orbit();
-  private orbitFree = false;
+  orbitFree = false;
   private readonly viewRig = rig();
   private readonly mountCamera = new MountCameraPivot();
   private readonly cockpit = new CockpitLook();
@@ -334,11 +332,11 @@ export class App {
   private helicopterViewHost = -1;
   private readonly aim = [0, 0, 0];
   /** Whether the survivor was on its own feet last frame, to know the frame it rises or gets out of a vehicle, a seat or a saddle. */
-  private wasOnFoot = false;
+  wasOnFoot = false;
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
   /** The session's registry. It is content as written until the welcome, then as the server tuned it. */
-  private get reg(): Registry {
+  get reg(): Registry {
     return this.session.registry;
   }
 
@@ -424,29 +422,29 @@ export class App {
   /** The travel list was opened for a survivor turned away. */
   private turnedAway = false;
   /** Time of the last frame. */
-  private nowMs = 0;
+  nowMs = 0;
   /** Entity index of the tribe's creature under the crosshair, or -1. */
   lookedAt = -1;
   /** Crosshair hit for boat service, including unclaimed hulls and salvage. */
-  private aimedBoat = -1;
+  aimedBoat = -1;
   /** Entity index of any body under the crosshair within NAME_RANGE, or -1: what the attack whistle names. */
   target = -1;
   /** Entity index of the creature in the arms of the viewer's own body, as the last frame's remote sample says, or -1. */
   holding = -1;
   /** useDownAt is when the use key went down, or -1. aimed is the ref of the player-built structure under the crosshair, or -1. */
-  private useDownAt = -1;
+  useDownAt = -1;
   aimed = -1;
   /** The use key went down on a structure. The body does not get the press until it proves to be a tap. */
-  private useKept = false;
+  useKept = false;
   /** Frames left of the synthetic use press that follows a tap. */
-  private usePulse = 0;
+  usePulse = 0;
   /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
-  private eggAimed = -1;
+  eggAimed = -1;
   /** The content index of a bag (client/core/render/dropped.ts), or -1. */
   private readonly bagKind: number;
   /** The obelisk terminal under the crosshair within reach, or -1. */
-  private terminalAimed = -1;
-  private eggKept = false;
+  terminalAimed = -1;
+  eggKept = false;
 
   voice: VoicePort | null = null;
   /** Plays the world's sounds. Null in tests and wherever there is no audio: then no sound work is done at all. */
@@ -463,10 +461,10 @@ export class App {
   private talkMode = MODE_TALK;
   private volumeSet = -1;
   /** With the talk key, Alt whispers and Shift yells. */
-  private alt = false;
-  private shift = false;
+  alt = false;
+  shift = false;
 
-  private talk(on: boolean): void {
+  talk(on: boolean): void {
     if (on === this.talking) return;
     this.talking = on;
     if (on) this.talkMode = this.alt ? MODE_WHISPER : this.shift ? MODE_YELL : MODE_TALK;
@@ -511,178 +509,10 @@ export class App {
   /** Scratch for hear(). */
   private readonly heardAt = new Float32Array(HEAR_FIELDS * 128);
 
-  /** Returns true if the page should not also act on the key. */
+  /** Returns true if the page should not also act on the key. The rows of keys.ts say what each key does, first row first. */
   key(code: string, down: boolean, repeat = false, source = 0): boolean {
     if (down && !repeat) this.ui.inputDevice = source;
-    // F8 takes a note in bug report mode, from any screen (notes/notes.ts).
-    if (code === "F8" && this.notes) return this.notes.key(down, repeat);
-    if (!this.ui.captureKeyboard && this.vehiclePlacement.key(code, down, repeat)) return true;
-    if (this.ui.key(code, down, repeat, this.session)) {
-      // A screen that captures the keyboard releases the body's keys and a push-to-talk microphone.
-      if (this.ui.captureKeyboard) {
-        this.blur();
-      }
-      return true;
-    }
-    if (this.ui.inspect && (code === "Minus" || code === "Equal")) { if (down && !repeat) this.zoomMini(code === "Equal" ? 1 : -1); return true; }
-    if (this.ui.captureKeyboard) return false;
-    // A raised sight that zooms takes the arrows up and down, as the wheel (and a finger's zoom buttons, which send them).
-    if ((code === "ArrowUp" || code === "ArrowDown") && this.zooming && !this.ui.map) {
-      if (down) this.zoomBy(code === "ArrowUp" ? -1 : 1);
-      return true;
-    }
-    // With a glass raised, N marks what the look is on for the tribe (D1082).
-    if (code === "KeyN" && this.glass.up) {
-      const o = this.hud.overhead;
-      if (down && !repeat && o.lookedId >= 0) {
-        this.session.command(CMD_MARK, (w) => (w.u32(o.lookedId), w.u16(o.lookedGen)));
-        this.glass.markedAt = this.nowMs;
-      }
-      return true;
-    }
-    // With a helmet's visor to raise, N held VISOR_HOLD_MS raises it or lowers it again, as ARK's Tek helmet takes a long
-    // press, for a mouse with no middle button (which holds it up); a tap turns its view while it is up, and is what the
-    // held weapon has fitted otherwise, sent as it is let go (D1089).
-    if (code === "KeyN" && this.ui.wantsPointerLock && (this.visorOptic !== null || this.visor.held)) {
-      if (down && !repeat) {
-        this.nDownAt = this.nowMs;
-        this.nLong = false;
-      } else if (!down && this.nDownAt >= 0) {
-        if (!this.nLong) {
-          if (this.visor.up) this.visor.cycle();
-          else this.nPulse = 2;
-        }
-        this.nDownAt = -1;
-      }
-      return true;
-    }
-    if (this.builder.key(code, down, repeat, this.nowMs, this.reg)) return true;
-    // Minus and Equal zoom the minimap, or the map while it is open, where the arrows move it.
-    if (this.hud.chart?.key(code, down && !repeat, this.ui.map)) {
-      if (!this.ui.map && down && !repeat) { this.ui.settings.minimapZoom = this.hud.chart.miniZoom; this.ui.settings.changed(); }
-      return true;
-    }
-    if (code === "AltLeft" || code === "AltRight") {
-      // Returning true keeps the browser from opening its menu.
-      this.alt = down;
-      return true;
-    }
-    if (code === "ShiftLeft" || code === "ShiftRight") this.shift = down;
-    // The use key on an egg takes it up with a command of its own, and the body does not get the press.
-    if (code === "KeyE" && (this.eggKept || (down && !repeat && this.eggAimed >= 0))) {
-      if (!this.eggKept) this.session.command(CMD_TAKE, (w) => w.u32(this.eggAimed >>> 0));
-      this.eggKept = down;
-      return true;
-    }
-    // The use key at an obelisk's terminal opens the list of servers to travel to.
-    if (code === "KeyE" && down && !repeat && this.terminalAimed >= 0) {
-      this.ui.travel.openAt(this.terminalAimed);
-      return true;
-    }
-    // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
-    if (code === "KeyE") {
-      if (down && !repeat) {
-        this.seatNotice.pressed(this.seatPress());
-        this.useDownAt = this.nowMs;
-        this.useKept = this.aimed >= 0;
-      } else if (!down) {
-        if (this.useKept && this.useDownAt >= 0) this.usePulse = 4;
-        this.useDownAt = -1;
-      }
-      if (this.useKept) {
-        if (!down) this.useKept = false;
-        return true;
-      }
-    }
-    if (code === "KeyK" && this.session.driving >= 0) {
-      const def = this.reg.vehicle[this.session.bodyKind];
-      if (def && isWheelVehicle(def) && def.emergencyLights) {
-        const r = this.remote, i = r.id.subarray(0, r.count).indexOf(this.session.driving);
-        if (down && !repeat && i >= 0) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_LIGHTS); w.u32(makeHandle(this.session.driving, r.gen[i]!)); });
-        return true;
-      }
-    }
-    // Q on foot throws what is in hand along the look (server/loose.ts). Building and placing a car take Q first. The key
-    // is not kept: nothing else on foot is bound to it. In a car's seat, Q swings its door open or shut, and a door held
-    // open on a car going fast strikes whoever it passes (server/urban.ts).
-    if (code === "KeyQ" && down && !repeat && this.ui.wantsPointerLock) {
-      const s = this.session, r = this.remote, ids = r.id.subarray(0, r.count);
-      const host = s.driving >= 0 ? s.driving : s.own.seatSlot && s.own.seat > 0 ? s.own.seat - 1 : -1;
-      const at = host >= 0 ? ids.indexOf(host) : -1;
-      const def = at >= 0 ? this.reg.vehicle[r.kind[at]!] : undefined;
-      // A vehicle whose controls take Q for themselves (a helicopter's, a thruster's) keeps it.
-      if (def && isWheelVehicle(def) && !this.controls.binds("KeyQ")) {
-        s.command(CMD_VEHICLE, (w) => { w.u8(VEHICLE_DOOR); w.u32(makeHandle(host, r.gen[at]!)); });
-        return true;
-      }
-      if (s.driving < 0) s.command(CMD_THROW, () => {});
-    }
-    // Elsewhere K is the orbit camera, where the view lets it (frame()).
-    if (code === "KeyK") {
-      if (down && !repeat) this.orbit.set(!this.orbit.on && this.orbitFree);
-      return true;
-    }
-    // F opens the occupied boat, the hull being aimed at, or a tribe creature's inventory.
-    if (code === "KeyF") {
-      if (down && !repeat) {
-        const s = this.session, r = this.remote, ids = r.id.subarray(0, r.count);
-        let which = s.driving;
-        if (which < 0 && s.own.seatSlot && s.own.seat > 0) {
-          const at = ids.indexOf(s.own.seat - 1);
-          if (at >= 0 && r.gen[at] === s.own.seatGen && this.reg.vehicle[r.kind[at]!]?.movement === "boat") which = r.id[at]!;
-        }
-        if (which < 0) which = this.aimedBoat >= 0 ? this.aimedBoat : this.lookedAt;
-        if (which >= 0) {
-          const at = ids.indexOf(which);
-          if (at >= 0 && this.reg.vehicle[r.kind[at]!]) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_INSPECT); w.u32(makeHandle(which, r.gen[at]!)); });
-          else this.session.command(CMD_OPEN, w => w.u32(which >>> 0));
-        }
-      }
-      return true;
-    }
-    // Whistles. T and Y tell the creature looked at to follow or stay. J and U tell every tribe creature that hears.
-    if (code === "KeyT" || code === "KeyY" || code === "KeyJ" || code === "KeyU") {
-      if (down && !repeat) {
-        const one = code === "KeyT" || code === "KeyY";
-        const which = one ? this.lookedAt : ORDER_ALL;
-        if (which >= 0) this.session.command(CMD_ORDER, (w) => (w.u32(which >>> 0), w.u8(code === "KeyT" || code === "KeyJ" ? ORDER_FOLLOW : ORDER_STAY)));
-      }
-      return true;
-    }
-    // Period, as in ARK, sends every tribe creature that hears at the body looked at. ARK's equals, the attack-my-target
-    // whistle, zooms the minimap here, so it is the right bracket beside it.
-    if (code === "Period" || code === "BracketRight") {
-      if (down && !repeat) {
-        const at = this.target;
-        if (code === "BracketRight") this.session.command(CMD_ORDER, (w) => (w.u32(ORDER_ALL), w.u8(ORDER_YOURS)));
-        else if (at >= 0) this.session.command(CMD_ORDER, (w) => (w.u32(ORDER_ALL), w.u8(ORDER_ATTACK), w.u32(at >>> 0)));
-      }
-      return true;
-    }
-    if (code === "KeyB") {
-      if (repeat) return true;
-      if (!this.ui.settings.toggleTalk) this.talk(down);
-      else if (down) this.talk(!this.talking);
-      return true;
-    }
-    const digit = /^Digit(\d)$/.exec(code);
-    if (digit) {
-      // Keys 1 to 9 then 0 are slots 0 to 9. The key of the held slot puts it away (255).
-      const slot = (Number(digit[1]) + 9) % 10;
-      if (down && !repeat) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
-      return true;
-    }
-    if (code === "KeyV") {
-      // On foot the choice is kept (Settings.thirdPerson). In a helicopter or a boat V picks the cockpit or the chase view, for that ride only.
-      if (down && !repeat && this.session.thirdPerson) {
-        this.view.thirdPerson = !this.view.thirdPerson;
-        if (this.wasOnFoot) { this.ui.settings.thirdPerson = this.view.thirdPerson; this.ui.settings.changed(); }
-      }
-      return true;
-    }
-    // Arms round a creature do not lie down with it.
-    if (code === "KeyX" && down && this.holding >= 0) return true;
-    return this.controls.key(code, down, source);
+    return pressKey(KEY_ROWS, this, code, down, repeat, source);
   }
 
   mouseButton(button: number, down: boolean, source = 0): void {
@@ -828,7 +658,7 @@ export class App {
     if (this.ui.menu) this.blur();
   }
 
-  private zoomMini(turn: number): void {
+  zoomMini(turn: number): void {
     const chart = this.hud.chart;
     if (!chart) return;
     chart.key(turn > 0 ? "Equal" : "Minus", true, false);
@@ -893,7 +723,7 @@ export class App {
   }
 
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
-  private seatPress(): Ridden | null {
+  seatPress(): Ridden | null {
     const s = this.session, r = this.remote;
     if (s.driving >= 0) return riddenOf(this.reg, s.bodyKind, true);
     if (s.own.seat > 0 && s.own.seatSlot !== 0 && s.own.seatSlot !== IMPALE_SLOT) {
@@ -1937,47 +1767,19 @@ export class App {
     const packet = this.scene.build(cam, this.remote);
     session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
     packetWithout(packet, off);
-    hud.minimapVisible = this.ui.settings.minimap && !this.ui.menu;
-    if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
-    updateHud(hud, session, this.remote, this.fps, this.unit, nowMs);
-    hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
+    // The HUD: each widget fills its slice of the model from the session and this frame (hud/widgets.ts). The sight's
+    // fields were set above, with the camera; hit marks, marks over creatures, laser dots and the voice have fills of their own.
+    const fill = this.hudFill;
+    const view = (this.hudFrame ??= { settings: this.ui.settings, scene: this.scene, cam, world, reg: this.reg, palette: this.pack.palette, menu: false, alive: false, inCar: false, rivalry: false, steady: "" });
+    view.settings = this.ui.settings; view.scene = this.scene; view.cam = cam; view.world = world; view.reg = this.reg;
+    view.menu = this.ui.menu; view.alive = alive; view.inCar = alive && !!car; view.rivalry = riding && body.state.rivalry && !body.state.out;
+    view.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
+    fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = view;
+    fillHud(hud, fill);
     this.feedback.absorb(session, this.reg, nowMs, this.scene.damage);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.hitMarkers);
     fillOverhead(hud.overhead, session, this.remote, cam, this.scene.characters, alive && !hud.out ? eyeNow : -1, c.yaw, c.pitch, this.lookReach);
-    // Another survivor's glass glints to one it faces (CUE_SCOPED, D1083): brighter the straighter it looks.
-    const r = this.remote, spot = this.spot;
-    hud.glintCount = 0;
-    for (let i = 0; i < r.count && hud.glintCount < 4; i++) {
-      if ((r.cue[i]! & CUE_SCOPED) === 0 || (r.flags[i]! & VIEW_FLAG_PLAYER) === 0 || (r.cue[i]! & CUE_DEAD) !== 0) continue;
-      const dx = cam.x - r.x[i]!, dz = cam.z - r.z[i]!, far = Math.hypot(dx, dz);
-      let off = Math.abs(Math.atan2(dx, dz) - r.yaw[i]!) % TAU;
-      if (off > PI) off = TAU - off;
-      if (far < GLINT_NEAR || off > GLINT_HALF) continue;
-      const y = r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * 0.9;
-      if (!cam.project(r.x[i]!, y, r.z[i]!, spot) || spot[0]! < 0 || spot[0]! > 1 || spot[1]! < 0 || spot[1]! > 1) continue;
-      const ey = y - cam.y, d = Math.hypot(dx, ey, dz);
-      if (castWorld(world, cam.x, cam.y, cam.z, -dx / d, ey / d, -dz / d, d - 0.5) !== HIT_NONE) continue;
-      const g = (hud.glints[hud.glintCount++] ??= { u: 0, v: 0, alpha: 0 });
-      g.u = spot[0]!;
-      g.v = spot[1]!;
-      g.alpha = 1 - off / GLINT_HALF;
-    }
-    // What the tribe spotted, where it stands on the screen (D1082).
-    const marks = session.tactical.marks;
-    hud.spotCount = 0;
-    for (let i = 0; i < marks.count && hud.spotCount < 8; i++) {
-      if (marks.kind[i] !== MARK_SPOT) continue;
-      const x = marks.x[i]!, z = marks.z[i]!;
-      if (!cam.project(x, world.hf.heightAt(x, z) + SPOT_RISE, z, spot) || spot[0]! < 0 || spot[0]! > 1 || spot[1]! < 0 || spot[1]! > 1) continue;
-      const out = (hud.spots[hud.spotCount++] ??= { u: 0, v: 0 });
-      out.u = spot[0]!;
-      out.v = spot[1]!;
-    }
     this.fillSights(world, alive);
-    fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
-    fillAction(hud, alive ? session : null, this.reg);
-    fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette, riding && body.state.rivalry && !body.state.out);
-    if (alive && car) hud.ammo = "";
     this.listen(hud);
     const vol = this.ui.settings;
     if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);

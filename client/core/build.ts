@@ -1,6 +1,8 @@
 // Works out each frame where the building piece in hand would go (shared/world/snap.ts) and whether it may,
 // so a ghost can show it. The server checks all of it again when asked.
 
+import { G_BUILD, type KeyRow } from "./key-row.ts";
+import { T_LOWER, T_RAISE, T_ROTATE, T_SNAP } from "./touch.ts";
 import type { StructureDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
@@ -206,3 +208,22 @@ export class Builder {
     this.refusalUntil = nowMs + 2500;
   }
 }
+
+// While a piece is being placed its keys are the builder's (Builder.key). The guide's Build tab is these words.
+export const BUILD_KEYS: readonly KeyRow[] = [{
+  name: "build",
+  keys: ["KeyQ", "KeyE", "KeyR", "ArrowUp", "ArrowDown"],
+  touch: { KeyE: T_ROTATE, KeyQ: T_SNAP, ArrowUp: T_RAISE, ArrowDown: T_LOWER },
+  pad: { KeyE: 3, KeyR: 2 },
+  guide: [
+    { code: "KeyQ", group: G_BUILD, title: "Next snap point / thruster flip", detail: "Tap to cycle snaps. Hold to toggle free placement. At the wheel of a thruster car (the Zephyr), on or just off the ground, flip: hold W for a front flip, S for a back flip, A or D for a barrel roll, or nothing for a kickflip; its nozzles catch it on its wheels. G flips too." },
+    { code: "KeyQ", group: G_BUILD, title: "Next snap point", detail: "Tap to cycle snaps. Hold to toggle free placement.", sheet: G_BUILD },
+    { code: "KeyE", group: G_BUILD, title: "Rotate", detail: "Rotate the active building preview.", sheet: G_BUILD },
+    { code: "KeyR", group: G_BUILD, title: "Next variant", detail: "Cycle the active building piece variants.", sheet: G_BUILD },
+    { code: "ArrowUp", group: G_BUILD, title: "Raise preview", sheet: G_BUILD },
+    { code: "ArrowDown", group: G_BUILD, title: "Lower preview", sheet: G_BUILD },
+    { code: "Mouse0", group: G_BUILD, title: "Place", sheet: G_BUILD },
+  ],
+  when: (c) => c.builder.active,
+  press: (c, code, down, repeat) => c.builder.key(code, down, repeat, c.nowMs, c.reg) || undefined,
+}];

@@ -1,4 +1,6 @@
 // The assembled vehicle is always created by the server. This preview uses the same physical envelope and landing test.
+import type { KeyRow } from "./key-row.ts";
+import { T_CANCEL, T_ROTATE, T_SNAP } from "./touch.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { CMD_VEHICLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, VEHICLE_DEPLOY } from "../../shared/net/protocol.ts";
@@ -112,3 +114,12 @@ export class VehiclePlacement {
     this.refusalUntil = nowMs + 2500;
   }
 }
+
+// While a vehicle is being placed Q and E turn it and Escape leaves off (VehiclePlacement.key), before any screen has the key.
+export const PLACEMENT_KEYS: readonly KeyRow[] = [{
+  name: "place vehicle",
+  keys: ["KeyQ", "KeyE", "Escape"],
+  touch: { KeyE: T_ROTATE, KeyQ: T_SNAP, Escape: T_CANCEL },
+  when: (c) => !c.ui.captureKeyboard && c.vehiclePlacement.active,
+  press: (c, code, down, repeat) => c.vehiclePlacement.key(code, down, repeat) || undefined,
+}];

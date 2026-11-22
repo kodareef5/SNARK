@@ -2,6 +2,8 @@
 // shakes in the hand less crouched and least lying down, ranges what its middle is on with the primary, a second's
 // lasing, and marks for the tribe with N what the look is on.
 
+import type { KeyRow } from "./key-row.ts";
+import { CMD_MARK } from "../../shared/net/protocol.ts";
 import type { OpticFacet } from "../../shared/content/defs.ts";
 import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
 
@@ -70,3 +72,18 @@ export class Glass {
     out[1] = a * (0.6 * Math.sin(t * 1.3 + 0.7) + 0.4 * Math.sin(t * 3.7 + 2.3));
   }
 }
+
+// With a glass raised, N marks what the look is on for the tribe (D1082).
+export const GLASS_KEYS: readonly KeyRow[] = [{
+  name: "glass mark",
+  keys: ["KeyN"],
+  when: (c) => c.glass.up,
+  press(c, _code, down, repeat) {
+    const o = c.hud.overhead;
+    if (down && !repeat && o.lookedId >= 0) {
+      c.session.command(CMD_MARK, (w) => (w.u32(o.lookedId), w.u16(o.lookedGen)));
+      c.glass.markedAt = c.nowMs;
+    }
+    return true;
+  },
+}];
