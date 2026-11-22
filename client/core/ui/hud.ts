@@ -291,7 +291,7 @@ function panelOf(f: UiFrame, m: HudModel, touch: TouchPlan | null): { w: number;
   if (!dash && !jet) return null;
   return {
     w: !dash ? JET_W : dash.rotor ? HELI_W : dash.boat ? BOAT_W : DASH_W,
-    h: !dash ? jet : lean ? (dash.rotor ? 124 : dash.boat ? 106 : 88) : dash.rotor ? HELI_H : dash.boat ? BOAT_H : DASH_H,
+    h: (!dash ? jet : lean ? (dash.rotor ? 124 : dash.boat ? 106 : 88) : dash.rotor ? HELI_H : dash.boat ? BOAT_H : DASH_H) + (dash?.thrusters && !dash.rotor && !dash.boat ? 26 : 0),
     lean,
     aside: dash !== null && touch !== null && f.width > f.height,
   };
@@ -474,7 +474,18 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     const warn = dash.flooding > .04 ? `TAKING WATER ${Math.round(dash.flooding * 100)}%` : dash.engineCondition <= .08 ? "ENGINE DAMAGED" : dash.handbrake ? "HANDBRAKE" : dash.brake > 0 ? "BRAKING" : "";
     if (warn || !lean) f.text(KEY_VEHICLE + 5, x + 12, y + 65, DASH_W - 24, warn ? S_WARNING : S_MENU_NOTE, warn || "W/S drive · A/D steer");
     if (lean) { if (!warn && dash.lightMode >= 0) f.text(KEY_VEHICLE + 6, x + 12, y + 65, DASH_W - 24, S_MENU_NOTE, `Lights · ${PATROL_LIGHT_MODES[dash.lightMode]}`); }
-    else f.text(KEY_VEHICLE + 6, x + 12, y + 83, DASH_W - 24, S_MENU_NOTE, dash.flooding > .04 && dash.engineCondition <= .08 ? "E exit · Push ashore to repair" : dash.engineCondition <= .08 ? "F service · Repair engine" : dash.lightMode >= 0 ? `K / R3 lights · ${PATROL_LIGHT_MODES[dash.lightMode]}` : "Space brake · E exit");
+    else f.text(KEY_VEHICLE + 6, x + 12, y + 83, DASH_W - 24, S_MENU_NOTE, dash.flooding > .04 && dash.engineCondition <= .08 ? "E exit · Push ashore to repair" : dash.engineCondition <= .08 ? "F service · Repair engine" : dash.lightMode >= 0 ? `K / R3 lights · ${PATROL_LIGHT_MODES[dash.lightMode]}` : dash.thrusters ? "Shift boost · Q flip (+WASD)" : "Space brake · E exit");
+    if (dash.thrusters) {
+      // Two gauges a thruster car adds under its keys: each fills as its cooldown runs out, and a move with none shows lit.
+      const row = y + (lean ? 83 : 101), half = (DASH_W - 30) / 2;
+      const gauge = (k: number, at: number, name: string, ready: number, firing: boolean): void => {
+        const full = ready < 0 || ready >= 1;
+        f.text(KEY_VEHICLE + k, at, row, half, firing ? S_WARNING : full ? S_MENU_FOCUS : S_MENU_NOTE, firing ? `${name} !` : name);
+        f.add(KEY_VEHICLE + k + 1, K_BAR, at, row + 16, half, 4, firing ? S_WARNING : full ? S_OXYGEN : S_MENU_FOCUS).value = ready < 0 ? 1 : Math.max(0, Math.min(1, ready));
+      };
+      gauge(12, x + 12, lean ? "Boost" : "Boost · Shift", dash.boostReady, dash.boosting);
+      gauge(14, x + 18 + half, lean ? "Flip" : "Flip · Q", dash.flipReady, dash.bursting);
+    }
   }
   if (dash?.rotor) {
     const v = dash, x = dashX, y = dashY, line = HELI_W - 24;

@@ -31,12 +31,13 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   // 39 is the glider's (tests/integration/glider.test.ts), and 40 the soul balls' (tests/integration/balls.test.ts).
   // 41 is the supply drops' (tests/integration/supply-capsule.test.ts).
   // 42 a sight's CMD_GAZE (37, tests/integration/gaze.test.ts) and CMD_MARK (38, tests/integration/glass.test.ts).
-  expect(P.PROTOCOL_VERSION).toBe(43);
+  // 44 a thruster car's flip, BTN_BURST, a twelfth button (tests/unit/vehicle-thrusters.test.ts).
+  expect(P.PROTOCOL_VERSION).toBe(44);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   // OWN_KEPT (17), EVENT_BALL (8) and COMP_STORED (25) are the soul balls'; COMP_ISSUED (26), the starter mount's mark, took
   // nothing on the wire (tests/integration/starter-mount.test.ts). CMD_GAZE (37) is a sight's (tests/integration/gaze.test.ts).
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([38, 17, 8, 11]);
+  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([38, 17, 8, 12]);
   // FLAG_ON, W7's: the next slot flag after the blueprint's, the same bit on the slot and on the wire.
   expect([P.SLOT_BLUEPRINT, P.SLOT_ON, FLAG_BLUEPRINT, FLAG_ON]).toEqual([1, 2, 1, 2]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");

@@ -48,6 +48,7 @@ import { TireContacts } from "./tire-contact.ts";
 import { Windscreens } from "./windscreens.ts";
 import { RotorBlur } from "./rotor-blur.ts";
 import { CameraBody } from "../camera-body.ts";
+import { ThrusterPlumes } from "./thruster-plumes.ts";
 import { PatrolLights } from "./patrol-lights.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
@@ -165,6 +166,8 @@ export interface VehicleRenderPose {
   /** Each door's open share, 8 bits a door (shared/sim/vehicle-body.ts vehicleDoor). */
   doors?: number;
   lightMode?: number;
+  /** A thruster car's packed state (shared/sim/vehicle-thrusters.ts): which nozzles blow. */
+  thrust?: number;
 }
 /** The pelvis target in camera-relative world space; the character's own rest proportions determine its origin. */
 export interface VehicleSeatPose extends VehicleRenderPose, OccupantSeat {
@@ -303,6 +306,7 @@ export class Characters {
   readonly windscreens = new Windscreens();
   readonly rotorBlur = new RotorBlur();
   readonly patrolLights = new PatrolLights();
+  readonly thrusterPlumes = new ThrusterPlumes();
   readonly anim: HumanAnim;
   /** Bodies drawn on bones of their own this frame, and those of them whose pose was worked out anew. */
   posed = 0;
@@ -1056,6 +1060,9 @@ export class Characters {
     if (!unseen && vehicle?.lightMode && def && isWheelVehicle(def) && def.emergencyLights) {
       this.patrolLights.add(p, first, def.emergencyLights, vehicle.lightMode, tick, id, size);
     }
+    if (!unseen && vehicle?.thrust && def && isWheelVehicle(def) && def.nozzles) {
+      this.thrusterPlumes.add(p, first, def.nozzles, vehicle.thrust, tick, id, size);
+    }
     if (!c.vehicle) {
       const g = this.gaitOf(id);
       g.kind = kind; g.shown = solved; g.shownFrame = this.frame; g.shownTick = tick; g.shownRigid = rigid;
@@ -1268,6 +1275,7 @@ export class Characters {
     this.windscreens.begin();
     this.rotorBlur.begin();
     this.patrolLights.begin();
+    this.thrusterPlumes.begin();
     this.posed = 0;
     this.fresh = 0;
     for (const at of this.palms.values()) this.palmPool.push(at);

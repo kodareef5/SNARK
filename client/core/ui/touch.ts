@@ -186,6 +186,11 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
     corner(T_JUMP, I_BRAKE, "Brake");
     at(T_VIEW, 0, BUTTON, I_VIEW, "View");
     if (v.lightMode >= 0) at(T_ORBIT, 1, BUTTON, I_LIGHTS, "Lights");
+    if (v.thrusters) {
+      // A thruster car: the boost latched on like a helicopter's agile mode, and a flip whose way is the stick's.
+      at(T_SHIFT, 2, BUTTON, I_SPRINT, "Boost", t.shifted);
+      at(T_SNAP, 3, SMALL, I_UP, "Flip");
+    }
   } else if (situation === "placing") {
     corner(T_ATTACK, I_PLACE, "Place");
     at(T_ROTATE, 0, BUTTON, I_RIGHT, "Turn right");

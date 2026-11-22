@@ -3,6 +3,7 @@
 
 import type { CraftFacet, Def, EngramDef, ItemDef, LevelsDef, NodeDef, SpeciesDef, StructureDef } from "./defs.ts";
 import { MAX_BURN_SECONDS, MAX_LEVELS, MAX_NODE_HITS, MAX_SPOIL_HOURS, STAMINA_DEFAULT, compileContent, type Registry } from "./registry.ts";
+import { cooldownTicks } from "../sim/vehicle-thrusters.ts";
 
 export interface Tuning {
   /** Multiplies every stack larger than one. */
@@ -38,6 +39,8 @@ export interface Tuning {
   readonly fuel?: number;
   /** Multiplies the hits a node takes. */
   readonly nodeHits?: number;
+  /** Seconds between a thruster car's boosts and between its flips (shared/sim/vehicle-thrusters.ts); 0 is none. */
+  readonly thrusters?: { readonly boost?: number; readonly flip?: number };
 }
 
 export interface Gains {
@@ -98,6 +101,17 @@ function levelTable(v: unknown): number[] | null {
   if (!Array.isArray(v) || v.length < 2 || v.length > MAX_LEVELS || v[0] !== 0) return null;
   for (let i = 1; i < v.length; i++) if (!isNumber(v[i]) || !(v[i] > v[i - 1])) return null;
   return v as number[];
+}
+
+/** A thruster car's two cooldowns from the tuning's seconds; any other species, or a tuning without them, is returned as it was. */
+function tunedThrusters(d: SpeciesDef, t: Tuning["thrusters"]): SpeciesDef {
+  const vehicle = d.vehicle, spec = vehicle && "spec" in vehicle ? vehicle.spec : undefined;
+  const thrusters = spec && "thrusters" in spec ? spec.thrusters : undefined;
+  if (!vehicle || !spec || !thrusters || t === null || typeof t !== "object") return d;
+  const boostCooldownTicks = isNumber(t.boost) && t.boost >= 0 ? cooldownTicks(t.boost) : thrusters.boostCooldownTicks;
+  const flipCooldownTicks = isNumber(t.flip) && t.flip >= 0 ? cooldownTicks(t.flip) : thrusters.flipCooldownTicks;
+  if (boostCooldownTicks === thrusters.boostCooldownTicks && flipCooldownTicks === thrusters.flipCooldownTicks) return d;
+  return { ...d, vehicle: { ...vehicle, spec: { ...spec, thrusters: { ...thrusters, boostCooldownTicks, flipCooldownTicks } } } as typeof vehicle };
 }
 
 /**
@@ -186,10 +200,11 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
       return out;
     }
     if (d.type === "species") {
-      const own = Object.hasOwn(staminaOf, d.id) ? staminaOf[d.id] : undefined;
+      const sp = tunedThrusters(d, t.thrusters);
+      const own = Object.hasOwn(staminaOf, sp.id) ? staminaOf[sp.id] : undefined;
       const m = isNumber(own) && own >= 0 ? own : stamina;
-      const g = record<unknown>(Object.hasOwn(gainsOf, d.id) ? gainsOf[d.id] : gains);
-      let stats = d.stats;
+      const g = record<unknown>(Object.hasOwn(gainsOf, sp.id) ? gainsOf[sp.id] : gains);
+      let stats = sp.stats;
       if (stats) {
         const next: Record<string, readonly [number, number, number]> = {};
         let changed = false;
@@ -199,9 +214,9 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
         }
         if (changed) stats = next as NonNullable<SpeciesDef["stats"]>;
       }
-      if (m === 1 && stats === d.stats) return d;
-      const s = d.stamina ?? STAMINA_DEFAULT;
-      const out: SpeciesDef = { ...d, ...(stats ? { stats } : {}), ...(m !== 1 ? { stamina: { ...s, sprint: s.sprint * m, jump: s.jump * m } } : {}) };
+      if (m === 1 && stats === sp.stats) return sp;
+      const s = sp.stamina ?? STAMINA_DEFAULT;
+      const out: SpeciesDef = { ...sp, ...(stats ? { stats } : {}), ...(m !== 1 ? { stamina: { ...s, sprint: s.sprint * m, jump: s.jump * m } } : {}) };
       return out;
     }
     if (d.type === "structure" && d.burns && fuel !== 1) {

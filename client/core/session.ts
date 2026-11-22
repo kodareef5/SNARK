@@ -231,6 +231,8 @@ export class RemoteSample {
   readonly vehicleGear = new Int8Array(MAX_VIEW);
   readonly vehicleRpm = new Float32Array(MAX_VIEW);
   readonly vehicleLightMode = new Uint8Array(MAX_VIEW);
+  /** A thruster car's packed thruster state (shared/sim/vehicle-thrusters.ts), from its rotor word. */
+  readonly vehicleThrust = new Uint32Array(MAX_VIEW);
   readonly vehicleShifting = new Uint8Array(MAX_VIEW);
   readonly vehicleRotorcraft = new Uint8Array(MAX_VIEW);
   readonly vehicleBoat = new Uint8Array(MAX_VIEW);
@@ -1023,7 +1025,8 @@ export class ClientSession {
     out.vehicleHullCondition[n] = unpackBoatHullCondition(b.vehicleWater[j]!);
     out.vehicleFlooding[n] = unpackBoatFlooding(b.vehicleWater[j]!);
     const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
-    out.vehicleRotorRpm[n] = unpackRotorRpm(rotor); out.vehicleRotorPhase[n] = unpackRotorPhase(rotor);
+    out.vehicleRotorRpm[n] = movement === "rotor" ? unpackRotorRpm(rotor) : 0; out.vehicleRotorPhase[n] = movement === "rotor" ? unpackRotorPhase(rotor) : 0;
+    out.vehicleThrust[n] = movement === "rotor" ? 0 : rotor;
     out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
     out.vehicleRotorCondition[n] = unpackRotorCondition(systems); out.vehicleEngineOn[n] = vehicleEngineRunning(systems) ? 1 : 0;
     unpackVehicleQuaternion(b.vehicleAttitudeA[j]!, b.vehicleAttitudeB[j]!, this.rotorQuat);
@@ -2179,7 +2182,7 @@ function noVehicle(out: RemoteSample, n: number): void {
   out.vehicleDoors[n] = 0; out.vehicleRotorcraft[n] = 0; out.vehicleBoat[n] = 0;
   out.vehicleHullCondition[n] = 1; out.vehicleFlooding[n] = 0;
   out.vehicleRotorRpm[n] = 0; out.vehicleRotorPhase[n] = 0; out.vehicleFuel[n] = 0; out.vehicleEngineCondition[n] = 0; out.vehicleRotorCondition[n] = 0; out.vehicleEngineOn[n] = 0;
-  out.vehicleLightMode[n] = 0; out.vehicleGear[n] = -1; out.vehicleRpm[n] = 0; out.vehicleShifting[n] = 0;
+  out.vehicleLightMode[n] = 0; out.vehicleThrust[n] = 0; out.vehicleGear[n] = -1; out.vehicleRpm[n] = 0; out.vehicleShifting[n] = 0;
   out.vehicleQx[n] = 0; out.vehicleQy[n] = 0; out.vehicleQz[n] = 0; out.vehicleQw[n] = 1;
 }
 

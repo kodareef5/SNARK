@@ -125,6 +125,7 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
   const some = (o: Record<string, number>): boolean => Object.keys(o).length > 0;
   const creatures = { ...(some(wild) ? { wild } : {}), ...(some(tamed) ? { tamed } : {}) };
   const people = { ...(some(spent) ? { tamed: spent } : {}), ...(some(base) ? { base } : {}) };
+  const thrusterBoost = rules.num("ThrusterBoostCooldown"), thrusterFlip = rules.num("ThrusterFlipCooldown");
   const tuning: Tuning = {
     stack: rules.num("ItemStackSizeMultiplier"),
     stacks,
@@ -144,6 +145,8 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
     spoil: rules.num("GlobalSpoilingTimeMultiplier"),
     fuel: rules.num("FuelConsumptionIntervalMultiplier"),
     nodeHits: rules.num("HarvestHealthMultiplier"),
+    // Sent only when set, so a server at the defaults keeps the tuning that changes nothing.
+    ...(thrusterBoost !== rowOf("ThrusterBoostCooldown")!.def || thrusterFlip !== rowOf("ThrusterFlipCooldown")!.def ? { thrusters: { boost: thrusterBoost, flip: thrusterFlip } } : {}),
   };
   return { tuning, passed };
 }

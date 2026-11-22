@@ -9,6 +9,7 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
 import { isBoatVehicle, isRotorVehicle } from "../../../shared/sim/vehicle.ts";
 import { DEFAULT_DRIVETRAIN } from "../../../shared/sim/vehicle-drivetrain.ts";
+import { FIRED_BOOST, thrustBurstTick, thrustersOf } from "../../../shared/sim/vehicle-thrusters.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Hear } from "./bodies.ts";
@@ -27,6 +28,8 @@ const K_WASH_WATER = cueKey("vehicle/wash/water");
 const K_CABIN = cueKey("vehicle/cabin");
 const K_HULL_SLOW = cueKey("vehicle/hull/slow");
 const K_HULL_FAST = cueKey("vehicle/hull/fast");
+const K_BOOST = cueKey("vehicle/thruster/boost");
+const K_BURST = cueKey("vehicle/thruster/burst");
 /** Downwash is heard from this height over what is under the rotor down to it, from this share of rotor speed. */
 const WASH_HEIGHT = 15;
 const WASH_SPIN = 0.6;
@@ -67,6 +70,9 @@ export class VehicleSounds {
   /** Seats taken this frame, as host entity * 256 + seat slot. */
   private readonly taken = new Set<number>();
   private readonly levels = [0, 0, 0, 0];
+  /** By content index, 1 for a car with thrusters; by entity, the burst tick last heard, so a burst is heard once. */
+  private readonly thrusters: Uint8Array;
+  private readonly burst = new Map<number, number>();
 
   constructor(reg: Registry, ownerOf: (id: string) => number) {
     const n = reg.defs.length;
@@ -74,6 +80,7 @@ export class VehicleSounds {
     this.how = new Uint8Array(n);
     this.full = new Float32Array(n);
     this.driver = new Uint8Array(n);
+    this.thrusters = new Uint8Array(n);
     for (let kind = 0; kind < n; kind++) {
       const v = reg.vehicle[kind];
       if (!v) continue;
@@ -81,6 +88,7 @@ export class VehicleSounds {
       this.how[kind] = isRotorVehicle(v) ? ROTOR : isBoatVehicle(v) ? BOAT : CAR;
       this.full[kind] = isRotorVehicle(v) ? v.spec.rotorRpm : isBoatVehicle(v) ? v.spec.maxRpm : (v.spec.drivetrain ?? DEFAULT_DRIVETRAIN).redlineRpm;
       this.driver[kind] = v.seats.findIndex((s) => s.driver) + 1;
+      this.thrusters[kind] = thrustersOf(v) ? 1 : 0;
     }
   }
 
@@ -118,6 +126,13 @@ export class VehicleSounds {
         const under = wet ? water : ground, wash = share >= WASH_SPIN ? Math.max(0, 1 - (y - under) / WASH_HEIGHT) : 0;
         place(base + 5, owner, K_WASH, x, under, z, wash, wash > 0.01 && !wet, false);
         place(base + 6, owner, K_WASH_WATER, x, under, z, wash, wash > 0.01 && wet, false);
+      } else if (this.thrusters[kind]) {
+        // A thruster car: its boost roars while it fires, and a burst is heard once as it begins, from where it is.
+        const thrust = remote.vehicleThrust[i]!, burst = thrustBurstTick(thrust);
+        place(base + 7, owner, K_BOOST, x, y, z, 1, (thrust & FIRED_BOOST) !== 0, false);
+        if (d < NEAR * 4) want(owner, K_BURST, d);
+        if (burst > 0 && burst <= 3 && (this.burst.get(id) ?? 0) === 0) hear(owner, K_BURST, id, x, y, z, 1, 1, id === inside);
+        this.burst.set(id, burst);
       } else if (!car) {
         const afloat = wet && Math.abs(y - water) < AFLOAT, fast = share >= HULL_FAST;
         place(base + 5, owner, K_HULL_SLOW, x, water, z, 1, afloat && !fast, false);
@@ -125,5 +140,6 @@ export class VehicleSounds {
       }
     }
     for (const id of this.running.keys()) if (!this.seen.has(id)) this.running.delete(id);
+    for (const id of this.burst.keys()) if (!this.seen.has(id)) this.burst.delete(id);
   }
 }

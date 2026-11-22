@@ -84,8 +84,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079); CMD_MARK, a
  * creature spotted for the tribe, and its mark (MARK_SPOT, D1082).
  * 43: an eleventh button, BTN_VISOR, a visor held up, which the server takes as the proof of its gaze (D1084).
+ * 44: a twelfth button, BTN_BURST, a thruster car's flip, and the car's thruster state on the owner's body (D1085).
  */
-export const PROTOCOL_VERSION = 43;
+export const PROTOCOL_VERSION = 44;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -146,6 +147,9 @@ function writeVehicle(w: BitWriter, b: Body): void {
     const marine = b.vehicleHullCondition !== 1 || b.vehicleFlooding !== 0;
     w.bool(marine);
     if (marine) { w.f32(b.vehicleHullCondition); w.f32(b.vehicleFlooding); }
+    const thrust = b.vehicleThrust !== 0 || b.vehicleThrustCool !== 0;
+    w.bool(thrust);
+    if (thrust) { w.u32(b.vehicleThrust); w.u32(b.vehicleThrustCool); }
     // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
   }
   // A seat costs a body one bit when it has none: the entity it sits on, the seat's place in it from 1, and the entity's generation.
@@ -185,6 +189,9 @@ function readVehicle(r: BitReader, b: Body): void {
   const marine = b.vehicle && r.bool();
   b.vehicleHullCondition = marine ? r.f32() : 1;
   b.vehicleFlooding = marine ? r.f32() : 0;
+  const thrust = b.vehicle && r.bool();
+  b.vehicleThrust = thrust ? r.u32() : 0;
+  b.vehicleThrustCool = thrust ? r.u32() : 0;
   b.seat = r.bool() ? r.varint() + 1 : 0;
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;
   b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
@@ -685,8 +692,8 @@ export const MAX_CHAT_BYTES = 360;
 /** A text message from the server. */
 export const MAX_SERVER_TEXT_BYTES = 1000;
 /** Bits of an input's buttons on the wire. InputBuffer.set clears any outside the mask. */
-export const BUTTON_BITS = 11;
-export const BUTTON_MASK = 0x7ff;
+export const BUTTON_BITS = 12;
+export const BUTTON_MASK = 0xfff;
 /** Pitch units: 16384 is straight up. */
 export const PITCH_LIMIT = 16384;
 

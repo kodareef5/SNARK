@@ -961,6 +961,7 @@ export class Scene {
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
+    this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
     const p = this.packet as unknown as Record<string, unknown>;
     this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => bitsOf(p[k] as Uint8Array));
@@ -1850,16 +1851,18 @@ export class Scene {
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
-    const { rotorBlur, patrolLights, windscreens, tireContacts } = this.characters;
+    const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires } = this;
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
     this.damage.build(cam, this.now);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count + this.damage.count);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count);
     const particles = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
     patrolLights.write(p);
+    const plumes = p.detailCount;
+    thrusterPlumes.write(p);
     const wires = p.detailCount;
     streetWires.write(p);
     const street = p.detailCount;
@@ -1878,7 +1881,8 @@ export class Scene {
     this.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
     this.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
     this.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
-    this.drawDetails(lamps, wires - lamps, DRAW_BLEND, patrolLights.passes(cam));
+    this.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
+    this.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
     this.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
     this.drawDetails(street, wheelsAndGlass - street, DRAW_BLEND, streetLamps.passes(cam));
     this.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
