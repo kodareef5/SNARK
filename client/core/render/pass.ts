@@ -27,6 +27,8 @@ export class Frame {
   remote: RemoteSample | null = null;
   /** The viewer's own body, or null. */
   own: OwnBody | null = null;
+  /** The id of an entity left out of the remote bodies, because `own` is that body as the viewer predicts it, or -1. */
+  skip = -1;
   tier!: Tier;
   /** The frame's time, in milliseconds. */
   now = 0;

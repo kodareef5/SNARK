@@ -44,7 +44,7 @@ import { writeDropSky } from "./supply-sky.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
 import { farPlane, type Camera } from "./camera.ts";
-import { Characters, riderFitScratch, seatScratch, type RiderFit, showMaterials, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
+import { Characters, riderFitScratch, seatScratch, type RiderFit, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { exhaustPhase } from "./suit-finish.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
@@ -83,6 +83,7 @@ import { Casting } from "./casting.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
 import { Water } from "./passes/water.ts";
+import { LooseEntities } from "./passes/loose-entities.ts";
 import { Occlusion } from "./passes/occlusion.ts";
 import { CHUNK_CELLS, HIDDEN, NODE_BUFFERS, NearStore } from "./passes/near-store.ts";
 import { MovingStatics } from "./passes/moving-statics.ts";
@@ -298,8 +299,6 @@ export class Scene {
   /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
   shots: Shots | null = null;
   shotTick = 0;
-  /** Structures falling after a removal. The app sets it. */
-  falling: Falling | null = null;
   /** What assets there are and which are loaded. */
   readonly assets: Assets;
   private readonly trisOfMesh: readonly (readonly number[])[];
@@ -332,19 +331,9 @@ export class Scene {
   finishGloss = DEFAULT_FINISH_GLOSS;
   roadFinish = DEFAULT_ROAD_FINISH;
   private readonly world: RenderWorld;
-  /** Rigid species keep palette lighting; the static fallback finish belongs to world geometry. */
-  private readonly speciesKind: Uint8Array;
-  private readonly counts: Uint32Array;
-  private readonly cursor: Uint32Array;
   /** The most indices of quads the card has been sent levels for, 16-bit and 32-bit, as the shell holds them once for all. */
   private readonly quadIndices = [0, 0];
   private quadsReserved = 0;
-  /** Per mesh, the level its falling pieces were last drawn at, or -1. */
-  private readonly fallLevel: Int8Array;
-  /** Per mesh counted in `counts`, the square of how far off the nearest instance is, and how far along the view they all lie. */
-  private readonly nearest: Float32Array;
-  private readonly from: Float32Array;
-  private readonly to: Float32Array;
   /** The farthest any body's posed vertex gets from where its first bone puts its origin, short of its own mesh and offset. */
   private readonly bodySlack: number;
   private readonly transient: InstanceWriter;
@@ -485,9 +474,12 @@ export class Scene {
   get ghost(): Ghost["ghost"] { return this.placing.ghost; }
   get things(): Thing[] { return this.loose.things; }
   set things(list: Thing[]) { this.loose.things = list; }
-  /** The supply drops live on the map (passes/supply-drops.ts), and the kind of the server's prop its model stands in for, or -1. */
+  /** Entities that are one mesh each, and pieces falling after a removal (passes/loose-entities.ts). */
+  private readonly looseEntities: LooseEntities;
+  get falling(): Falling | null { return this.looseEntities.falling; }
+  set falling(f: Falling | null) { this.looseEntities.falling = f; }
+  /** The supply drops live on the map (passes/supply-drops.ts). */
   private readonly supplyDrops: SupplyDrops;
-  private readonly capsuleKind: number;
   get supply(): SupplyView | null { return this.supplyDrops.view; }
   set supply(view: SupplyView | null) { this.supplyDrops.view = view; }
   get cascades(): Cascades {
@@ -522,7 +514,6 @@ export class Scene {
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
-    this.speciesKind = Uint8Array.from(reg.defs, (d) => d?.type === "species" ? 1 : 0);
     this.pitched = Uint8Array.from(reg.defs, (d) => (d?.type === "prop" && d.pitched ? 1 : 0));
     this.birthScale = reg.birthScale;
     this.saddleSeats = reg.saddleSeats;
@@ -598,12 +589,6 @@ export class Scene {
     this.learn(table.sections.map((_, mesh) => mesh));
     this.casting = new Casting(this.packet, this.assets, this.terrain, this.hiding, { materialFlags: this.materialFlags, bentFlags: this.bentFlags, trisOfMesh: this.trisOfMesh, radiusOfMesh: this.radiusOfMesh, foliageOf: this.foliageOf });
     this.put = new Draws(this.packet, this.assets, this.budget, { groundFlags: this.groundFlags, bentFlags: this.bentFlags, flatFlags: this.flatFlags, materialFlags: this.materialFlags, barkOf: this.barkOf, treeOf: this.treeOf, trisOfMesh: this.trisOfMesh });
-    this.counts = new Uint32Array(table.count);
-    this.cursor = new Uint32Array(table.count);
-    this.fallLevel = new Int8Array(table.count).fill(-1);
-    this.nearest = new Float32Array(table.count);
-    this.from = new Float32Array(table.count);
-    this.to = new Float32Array(table.count);
     this.transient = new InstanceWriter(this.packet.transient);
     const t = this.packet.transient;
     this.transientF32 = new Float32Array(t.buffer, t.byteOffset, t.byteLength >> 2);
@@ -622,9 +607,9 @@ export class Scene {
     this.placing = new Ghost(this.assets, this.meshOfKind);
     this.loose = new Things(this.assets);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
-    this.capsuleKind = this.supplyDrops.kind;
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
+    this.looseEntities = new LooseEntities(reg, this.assets, this.packet, this.put, this.transient, this.hiding, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, pitched: this.pitched, capsuleKind: this.supplyDrops.kind, characters: this.characters, clouds: this.clouds, dropped: this.dropped });
     let reach = 0;
     for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
     this.bodySlack = reach * 2;
@@ -844,6 +829,7 @@ export class Scene {
     f.plainSky = this.plainSky;
     f.remote = remote;
     f.own = this.own;
+    f.skip = this.skip;
     f.tier = this.assets.tier;
     f.now = this.now;
     f.view = this.viewDistance;
@@ -906,10 +892,10 @@ export class Scene {
         update: (f) => { if (this.casting.on && !this.terrain.casters(f.cam, p, this.viewDistance, this.casting.groundCasts)) p.casterDropped++; },
         draw: () => { if (this.casting.on) this.casting.groundCast(); },
       },
-      { draw: (f) => { if (f.remote) this.entities(f.cam, f.remote); } },
+      this.looseEntities,
       { draw: (f) => this.bodies(f.cam, f.remote) },
       this.marks,
-      { draw: (f) => { if (this.falling && this.falling.count > 0) this.showFalling(f.cam, this.falling); } },
+      this.looseEntities.rubble,
       { draw: (f) => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, (event, pose) => this.showTreeFall(f.cam, event, pose)); } },
       this.placing,
       this.loose,
@@ -1399,111 +1385,6 @@ export class Scene {
     const level = this.assets.choose(this.assets.table.error[mesh]!, Math.max(0, distance - radius), -1);
     this.assets.wantTextured(mesh, level, distance);
     this.put.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED | DRAW_ONE_BONE, cam.passes(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius));
-  }
-
-  private showFalling(cam: Camera, f: Falling): void {
-    const p = this.packet;
-    this.counts.fill(0);
-    for (let i = 0; i < f.count; i++) this.tally(cam, this.meshOfKind[f.kind[i]!]!, f.x[i]! - cam.x, f.y[i]! - cam.y, f.z[i]! - cam.z);
-    const total = this.drawTallied(cam, p.transientCount, 0, this.fallLevel);
-    for (let i = 0; i < f.count; i++) {
-      const kind = f.kind[i]!;
-      const at = this.cursor[this.meshOfKind[kind]!]!++;
-      this.transient.set(at, f.x[i]! - cam.x, f.y[i]! - cam.y, f.z[i]! - cam.z, f.yaw[i]!, this.colorOfKind[kind]!);
-      p.transientIds[at] = 0;
-    }
-    p.transientCount = total;
-  }
-
-  private entities(cam: Camera, remote: RemoteSample): void {
-    this.entityBatch(cam, remote, false);
-    if (this.packet.lit) this.entityBatch(cam, remote, true);
-  }
-
-  /** A prop and a species can share a mesh, so the lit palette policy groups instances by kind as well as mesh. */
-  private entityBatch(cam: Camera, remote: RemoteSample, plain: boolean): void {
-    const p = this.packet;
-    this.counts.fill(0);
-    let visible = 0;
-    const bodies = this.characters;
-    for (let i = 0; i < remote.count; i++) {
-      if (p.lit && this.speciesKind[remote.kind[i]!] !== Number(plain)) continue;
-      // A cloud has no mesh of its own: it is puffs among the details (clouds.ts).
-      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0 || this.clouds.kinds[remote.kind[i]!] !== 0 || remote.kind[i] === this.capsuleKind || this.dropped.flying(remote.kind[i]!, remote.anim[i]!)) continue;
-      // A bag of one stack is drawn as its item, where the item has a lying mesh.
-      const lies = this.dropped.item(remote.kind[i]!, remote.gear, i * GEAR_COUNT);
-      const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[remote.kind[i]!]!;
-      const r = this.radiusOfMesh[mesh]!;
-      // The mount the viewer rides is where its prediction has it, as its rider is drawn on it (bodies()).
-      const mine = this.own !== null && remote.id[i] === this.skip;
-      const x = (mine ? this.own!.x : remote.x[i]!) - cam.x;
-      const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
-      const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
-      // Culled entries are left out of the counts. The second pass repeats the test.
-      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r) || this.hiding.hidesOver(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
-      this.tally(cam, mesh, x, y, z);
-      visible++;
-    }
-    if (visible === 0) return;
-    const total = this.drawTallied(cam, p.transientCount, plain ? DRAW_PLAIN : 0);
-    for (let i = 0; i < remote.count; i++) {
-      const kind = remote.kind[i]!;
-      if (p.lit && this.speciesKind[kind] !== Number(plain)) continue;
-      // A supply capsule is drawn from its drop, in pieces (showSupply), where the pack has its model.
-      if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0 || kind === this.capsuleKind || this.dropped.flying(kind, remote.anim[i]!)) continue;
-      const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
-      const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
-      const r = this.radiusOfMesh[mesh]!;
-      const mine = this.own !== null && remote.id[i] === this.skip;
-      const x = (mine ? this.own!.x : remote.x[i]!) - cam.x;
-      const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
-      const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
-      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r) || this.hiding.hidesOver(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
-      const at = this.cursor[mesh]!++;
-      const yaw = Math.round(((mine ? this.own!.yaw : remote.yaw[i]!) / (2 * Math.PI)) * 65536) & 0xffff;
-      if (lies !== 0) this.transient.set(at, x, y, z, this.dropped.yaw(remote.id[i]!, yaw), this.dropped.colorOf(lies));
-      else this.transient.set(at, x, y, z, yaw, this.colorOfKind[kind]!);
-      this.transient.regions(at, remote.colors, i * 6);
-      p.transientIds[at] = remote.id[i]!;
-    }
-    p.transientCount = total;
-  }
-
-  /** Counts an instance of `mesh` that is (x, y, z) from the camera, and keeps how near the nearest of them is and how far along the view they lie. */
-  private tally(cam: Camera, mesh: number, x: number, y: number, z: number): void {
-    const far = x * x + y * y + z * z;
-    const along = cam.depth(x, y, z);
-    const r = this.radiusOfMesh[mesh]!;
-    if (this.counts[mesh] === 0) { this.nearest[mesh] = far; this.from[mesh] = along - r; this.to[mesh] = along + r; }
-    else {
-      if (far < this.nearest[mesh]!) this.nearest[mesh] = far;
-      if (along - r < this.from[mesh]!) this.from[mesh] = along - r;
-      if (along + r > this.to[mesh]!) this.to[mesh] = along + r;
-    }
-    this.counts[mesh]!++;
-  }
-
-  /**
-   * Draws what was tallied, the instances of each mesh together, from transient instance `total` on. Returns where
-   * they end. With `levels`, each mesh's are drawn at the level the nearest point of the nearest asks for, which it
-   * keeps there; otherwise at their finest however far off, so only their materials are told how near they are.
-   */
-  private drawTallied(cam: Camera, total: number, flags = 0, levels: Int8Array | null = null): number {
-    const counts = this.counts;
-    for (let m = 0; m < counts.length; m++) {
-      this.cursor[m] = total;
-      if (counts[m]! > 0) {
-        const near = levels ? Math.max(0, Math.sqrt(this.nearest[m]!) - this.radiusOfMesh[m]!) : Math.sqrt(this.nearest[m]!);
-        const level = levels ? (levels[m] = this.assets.choose(this.assets.table.error[m]!, near, levels[m]!)) : 0;
-        if (levels) this.assets.wantTextured(m, level, near);
-        else showMaterials(this.assets, m, near);
-        this.put.nearAt = near;
-        this.put.draw(m, level, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, flags, cam.passesOf(this.from[m]!, this.to[m]!));
-      }
-      total += counts[m]!;
-    }
-    this.put.nearAt = 0;
-    return total;
   }
 
   /**
