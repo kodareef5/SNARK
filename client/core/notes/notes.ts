@@ -367,19 +367,20 @@ export class Notes {
       [o.state, o.why] = ["failed", why];
       this.say(`Report not saved: ${why}. F8 tries again; Esc twice discards it.`);
     };
-    let pictures: Picture[];
-    try {
-      pictures = await Promise.all(o.pictures);
-    } catch (err) {
-      return fail(`a picture was not made (${err instanceof Error ? err.message : String(err)})`);
+    // A picture the browser could not make is left out, with its pose and count, and the note goes with the rest.
+    const settled = await Promise.allSettled(o.pictures), made = settled.flatMap((r, n) => (r.status === "fulfilled" ? [n] : []));
+    if (made.length === 0) {
+      const why = settled.find((r): r is PromiseRejectedResult => r.status === "rejected")?.reason;
+      return fail(made.length === settled.length ? "it has no picture yet" : `no picture was made (${why instanceof Error ? why.message : String(why)})`);
     }
-    if (pictures.length === 0) return fail("it has no picture yet");
+    const pictures = made.map((n) => (settled[n] as PromiseFulfilledResult<Picture>).value);
+    const census = made.flatMap((n, k) => o.census.filter((c) => c.shot === n).map((c) => ({ ...c, shot: k })));
     const from = o.began - BEFORE_MS, summary = this.ring.summary(o.began, end);
     const perf = {
       version: REPORT_VERSION, start: Math.round(o.began), fields: FRAME_FIELDS, frames: this.ring.frames(from, end, o.began), secondFields: SECOND_FIELDS, seconds: this.ring.secondRows(o.began),
-      summary: { ...summary, ringMs: this.costFrames > 0 ? Math.round((this.costMs / this.costFrames) * 10000) / 10000 : 0 }, worst: this.ring.worst(o.began, end, 20), census: o.census, sound: {},
+      summary: { ...summary, ringMs: this.costFrames > 0 ? Math.round((this.costMs / this.costFrames) * 10000) / 10000 : 0 }, worst: this.ring.worst(o.began, end, 20), census, sound: {},
     };
-    const shots = o.shots.map((s, n) => ({ ...s, w: pictures[n]!.w, h: pictures[n]!.h }));
+    const shots = made.map((n, k) => ({ ...o.shots[n]!, w: pictures[k]!.w, h: pictures[k]!.h }));
     const s = app.session;
     const report: Report = { version: REPORT_VERSION, kind: o.kind, began: o.wall, ms: Math.round(end - o.began), ...o.head, map: { id: s.world?.mapId ?? "" }, build: this.build, shots, text: o.text, voice: { segments: [] } };
     const token = `${s.voice.slot}:${Array.from(s.voice.token, (b) => b.toString(16).padStart(2, "0")).join("")}`;

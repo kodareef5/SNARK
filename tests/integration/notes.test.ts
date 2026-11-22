@@ -20,7 +20,7 @@ const pack = parsePack(corePackBytes());
 interface Posted { fields: Record<string, string>; files: [string, unknown][] }
 
 /** The browser's part, as a test sees it: pictures named by their number, and the server's answers in turn. */
-function fakePort(answers: Answer[]): NotePort & { posted: Posted[]; shots: number } {
+function fakePort(answers: Answer[], failing: readonly number[] = []): NotePort & { posted: Posted[]; shots: number } {
   let clock = 0;
   const port = {
     posted: [] as Posted[],
@@ -28,7 +28,7 @@ function fakePort(answers: Answer[]): NotePort & { posted: Posted[]; shots: numb
     now: () => (clock += 0.01),
     shot: (_wide: number, thumb: number) => {
       const n = ++port.shots;
-      return { ms: 0.5, picture: Promise.resolve({ jpeg: `picture ${n}`, w: 1280, h: 720, thumb: thumb > 0 ? "thumbnail" : null }) };
+      return { ms: 0.5, picture: failing.includes(n) ? Promise.reject(new Error("the card was lost")) : Promise.resolve({ jpeg: `picture ${n}`, w: 1280, h: 720, thumb: thumb > 0 ? "thumbnail" : null }) };
     },
     heap: () => 120,
     longTasks: (out: Float64Array) => void out.fill(0),
@@ -275,4 +275,36 @@ test("`/budget` shows the frame's budget without the mode armed, costs nothing o
   expect(perf.census[0].gpu.find((g: { name: string }) => g.name === "near").ms).toBe(3);
   expect(perf.census[0].budget.triangles).toBeGreaterThan(0);
   expect(perf.fields).toContain("scene");
+});
+
+test("a picture the browser could not make is left out with its pose and count, and the note goes with the rest", async () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = new App(h.join("owner", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  const port = fakePort([{ status: 200, text: '{"id":10,"folder":"0010","pictures":2}' }], [2]);
+  app.notePort = () => Promise.resolve(port);
+  const frames = async (ms: number): Promise<void> => {
+    for (let t = 0; t < ms; t += 50) {
+      h.run(Math.min(50, ms - t), (now) => {
+        const p = app.frame(now, 1280, 720);
+        if (p) app.drawn(p, 2, 1280, 720, 0);
+      });
+      await settle();
+    }
+  };
+  app.ui.settings.notes = true;
+  app["notesAsked"] = true;
+  app.notes = new Notes(app, NOTES_KIT);
+  await frames(500);
+  app.session.text("enablecheats");
+  await frames(500);
+  app.key("F8", true);
+  await frames(6500);
+  app.key("F8", true);
+  await frames(200);
+  expect(port.shots).toBe(3);
+  const sent = port.posted[0]!, report = JSON.parse(sent.fields.report!), perf = JSON.parse(sent.fields.perf!);
+  expect(sent.files.map(([, v]) => v)).toEqual(["picture 1", "picture 3", "thumbnail"]);
+  expect(report.shots.map((s: { at: number }) => Math.round(s.at / 1000))).toEqual([0, 6]);
+  expect(perf.census.map((c: { shot: number }) => c.shot)).toEqual([0, 1]);
+  expect(app.ui.chat.lines.at(-1)!.text).toBe("Saved report 10 (2 pictures).");
 });
