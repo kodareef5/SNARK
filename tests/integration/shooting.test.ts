@@ -624,12 +624,12 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   // The action bar also shows the reload.
   expect(f.find(KEY_ACTION)).not.toBeNull();
   expect(eve.session.events.length).toBe(0);
-  // Aiming narrows the view and slows the mouse by the same ratio.
+  // Aiming narrows the view and slows the mouse by the same ratio of the tangents of their halves (optics.ts lookScale).
   const wide = app.cam.fovY;
   app.controls.mouseButton(2, true);
   run(600);
   expect(app.cam.fovY).toBeLessThan(wide * 0.85);
-  expect(app.controls.zoom).toBeCloseTo(app.cam.fovY / wide, 5);
+  expect(app.controls.zoom).toBeCloseTo(Math.tan(app.cam.fovY / 2) / Math.tan(wide / 2), 5);
   app.controls.mouseButton(2, false);
   run(600);
   expect(app.cam.fovY).toBeCloseTo(wide, 2);

@@ -9,6 +9,7 @@ import { ladder } from "../../client/core/governor.ts";
 import { FAR_BUFFER, fadeKeeps } from "../../client/core/render/far.ts";
 import { ThreadedCityMaker, cityJob, cityKinds, cityThreads, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker, type CityThread } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
+import { zoomed } from "../../client/core/optics.ts";
 import { doSweep, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
@@ -442,6 +443,73 @@ test("levels are held by their form: other levels in the same forms remake nothi
   const back = settle();
   expect(back.made).toBeLessThanOrEqual(nearer.dropped);
   expect(back.unseen).toBe(0);
+});
+
+test("through a sight the tiles in its window are made at the levels their distance over the zoom asks, kept a while once it is lowered, and the rest untouched", () => {
+  // A row of towers 1,500 m ahead, and another to the side, out of the window; on medium.
+  const statics: MapStatic[] = [];
+  for (let k = 0; k < 6; k++) statics.push(...building(...mid(20 + k, 40), 0, 6, 2, k * 1700), ...building(...mid(40, 14 + k), 0, 6, 2, k * 1900));
+  const w = cityWorld({ chunks: 64, statics, width: 320, height: 180 });
+  w.scene.assets.tier = tierOf("medium");
+  w.look(22.5 * CHUNK_SIZE, 20, 40.5 * CHUNK_SIZE, 1500, 0, 6);
+  const city = w.scene.city!;
+  const cityIndices = (p: FramePacket): number => cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0);
+  const settle = (): { made: number; dropped: number; unseen: number; indices: number } => {
+    const out = { made: 0, dropped: 0, unseen: 0, indices: 0 };
+    for (let f = 0; f < 600; f++) {
+      const p = w.frame();
+      out.made += p.assetUploads.length;
+      out.dropped += p.assetDrops.length;
+      out.unseen = Math.max(out.unseen, city.stats.unseen);
+      out.indices = cityIndices(p);
+      if (f > 2 && city.stats.behind === 0 && p.assetUploads.length === 0) return out;
+    }
+    throw new Error("still making");
+  };
+  const base = w.cam.fovY;
+  const plain = settle();
+  expect(plain.indices).toBeGreaterThan(0);
+  // The same narrow view as if nothing magnified it, for the levels the distances alone ask in it.
+  w.cam.fovY = zoomed(base, 8);
+  w.cam.window.set([-0.25, -1, 0.25, 1]);
+  const narrow = cityIndices(w.frame());
+  expect(narrow).toBeGreaterThan(0);
+  // Eight times, the window a quarter of the view's width: the row ahead comes to finer levels, and nothing goes undrawn.
+  w.cam.zoom = 8;
+  const scoped = settle();
+  expect(scoped.made).toBeGreaterThan(0);
+  expect(scoped.unseen).toBe(0);
+  expect(scoped.indices).toBeGreaterThan(narrow);
+  // The levels its own distance asks are kept beside them: lowered, nothing is made and the view is whole at once.
+  w.cam.fovY = base;
+  w.cam.zoom = 1;
+  w.cam.window.set([-1, -1, 1, 1]);
+  const lowered = { made: 0, dropped: 0 };
+  for (let f = 0; f < 60; f++) {
+    const p = w.frame();
+    lowered.made += p.assetUploads.length;
+    lowered.dropped += p.assetDrops.length;
+    expect(city.stats.unseen).toBe(0);
+  }
+  expect(lowered).toEqual({ made: 0, dropped: 0 });
+  expect(cityIndices(w.frame())).toBe(plain.indices);
+  // Raised again within the while: nothing to make.
+  w.cam.fovY = zoomed(base, 8);
+  w.cam.zoom = 8;
+  w.cam.window.set([-0.25, -1, 0.25, 1]);
+  for (let f = 0; f < 30; f++) expect(w.frame().assetUploads.length).toBe(0);
+  // Lowered for longer than the while, the finer levels are let go and nothing is made again.
+  w.cam.fovY = base;
+  w.cam.zoom = 1;
+  w.cam.window.set([-1, -1, 1, 1]);
+  const after = { made: 0, dropped: 0 };
+  for (let f = 0; f < 240; f++) {
+    const p = w.frame();
+    after.made += p.assetUploads.length;
+    after.dropped += p.assetDrops.length;
+  }
+  expect(after).toEqual({ made: 0, dropped: scoped.made });
+  expect(cityIndices(w.frame())).toBe(plain.indices);
 });
 
 test("levels made on threads are each asked of the one with the fewest in hand, three ahead a thread, and are the levels the page makes", async () => {

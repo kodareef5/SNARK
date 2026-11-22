@@ -229,6 +229,11 @@ export class MapStatics {
   readonly row: Uint32Array;
   /** The bent pieces of each chunk that has some, by chunk. */
   readonly bends: Map<number, ChunkBends>;
+  /**
+   * Where these are some sectors' rows copied out of the map's statics as a page sets those in a sector at a time
+   * (client/core/mapload.ts rowsOf): that table, whose other sectors' rows and bends are set in as each comes. Else null.
+   */
+  coming: MapStatics | null = null;
 
   /** With `of`, its columns without the map's order. */
   private constructor(kinds: readonly string[], chunks: number, n: number, order: boolean, of: MapStatics | null = null) {

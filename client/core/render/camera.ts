@@ -40,6 +40,16 @@ export class Camera {
   far = 6000;
   /** Metres from the camera at which the far depth range begins, 0 for one range. */
   split = 0;
+  /** How many times the view magnifies the player's own (optics.ts magnification), which a sight narrows it to. */
+  zoom = 1;
+  /**
+   * The part of the view drawn, in its clip space (x0, y0, x1, y1, y up): all of it, or a sight's window (D1077). The
+   * projection is the whole view's, so what is drawn is magnified alike; only what lies outside the window is left out,
+   * by the frustum's sides, and the shell's scissor keeps its pixels from being shaded.
+   */
+  readonly window = new Float64Array([-1, -1, 1, 1]);
+  /** Whether the window is less than the whole view. */
+  get windowed(): boolean { const w = this.window; return w[0]! > -1 || w[1]! > -1 || w[2]! < 1 || w[3]! < 1; }
 
   /** Column-major view-projection for camera-relative positions, from `near` to `far`. What is culled is culled by it. */
   readonly viewProj = new Float32Array(16);
@@ -79,14 +89,17 @@ export class Camera {
       depthRows(this.ranges[PASS_FAR], this.split * FAR_FROM, this.far, fx, fy, fz);
     }
 
-    const p = this.planes;
+    // Each side is where the clip coordinate meets its bound of the window times w: the lower `row - lo w >= 0`, the
+    // upper `hi w - row >= 0`. With the whole view, lo -1 and hi 1, these are the usual w + row and w - row exactly.
+    const p = this.planes, win = this.window;
     for (let i = 0; i < 6; i++) {
       const row = i >> 1;
-      const sign = (i & 1) === 0 ? 1 : -1;
-      let px = m[3]! + sign * m[row]!;
-      let py = m[7]! + sign * m[4 + row]!;
-      let pz = m[11]! + sign * m[8 + row]!;
-      let pd = m[15]! + sign * m[12 + row]!;
+      const lower = (i & 1) === 0;
+      const bound = row === 2 ? (lower ? -1 : 1) : win[row + (lower ? 0 : 2)]!;
+      let px = lower ? m[row]! - bound * m[3]! : bound * m[3]! - m[row]!;
+      let py = lower ? m[4 + row]! - bound * m[7]! : bound * m[7]! - m[4 + row]!;
+      let pz = lower ? m[8 + row]! - bound * m[11]! : bound * m[11]! - m[8 + row]!;
+      let pd = lower ? m[12 + row]! - bound * m[15]! : bound * m[15]! - m[12 + row]!;
       const inv = 1 / Math.hypot(px, py, pz);
       px *= inv; py *= inv; pz *= inv; pd *= inv;
       p[i * 4] = px; p[i * 4 + 1] = py; p[i * 4 + 2] = pz; p[i * 4 + 3] = pd;

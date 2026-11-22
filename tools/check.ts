@@ -32,12 +32,14 @@ const WORKER_HEAP_RAM = 500_000_000;
  * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares 250 among round 8's phases; 50
  * hold the executor's mirror of the card's state, which sends a frame's changes alone; 100 are for the maps round's far
  * shadow, filtering and map loader (D748); 5 time the assets' uploads and fetch the data utility's record of frames
- * (D899); 6 make the streets' two pictures round the camera and put each frame's tiles of them on the card (D1000); the
- * last 3 point attributes 13 and 14 at a bent draw's stream of bends, beside its instances (D1006); 102 make the walls'
- * weathering masks on the card as their plan in client/core/texgen says: the array, its program, its draws, the card's
- * timer and an older pack's painted mask left unheld (D1076).
+ * (D899); 6 make the streets' two pictures round the camera and put each frame's tiles of them on the card (D1000); 3
+ * point attributes 13 and 14 at a bent draw's stream of bends, beside its instances (D1006); 5 hold a sight's scissor to
+ * its window and mask its lens (D1077); 1 gives a draw's heat to a visor's heat view (D1081); 106 make the walls'
+ * weathering masks and the materials made from recipes on the card as their plan in client/core/texgen says: the
+ * array, its program, its draws, the card's timer and an older pack's painted mask left unheld (D1100); the last
+ * 7 point attribute 15 at a near chunk's stream of materials (D1101).
  */
-const SHELL_MAX_LINES = 1716;
+const SHELL_MAX_LINES = 1733;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
@@ -57,6 +59,11 @@ const ADMIN_MAX_LINES = 1150;
  * and what an edit does are in client/core/drops.
  */
 const DROPS_MAX_LINES = 900;
+/**
+ * Bug report mode's part that needs the browser (planning/workstreams/bug-notes.md): the canvas copied and encoded, the
+ * heap, long tasks, the GPU's clock and the two requests. Its decisions are in client/core/notes.
+ */
+const NOTES_MAX_LINES = 120;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {
@@ -75,11 +82,12 @@ const ZONES: Zone[] = [
   { dir: "client/assets", may: ["shared", "client/core", "client/assets"], builtins: false },
   { dir: "client/sound", may: ["shared", "client/core", "client/sound"], builtins: false },
   { dir: "client/city", may: ["shared", "client/core", "client/city"], builtins: false },
-  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/city", "client/shell"], builtins: false },
+  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/city", "client/notes", "client/shell"], builtins: false },
   { dir: "client/entry", may: ["shared", "client/core", "client/entry", "client/assets", "client/city", "client/shell"], builtins: false },
   { dir: "client/wiki", may: ["shared", "client/core", "client/wiki"], builtins: false },
   { dir: "client/admin", may: ["shared", "client/core", "client/admin"], builtins: false },
   { dir: "client/drops", may: ["shared", "client/core", "client/admin", "client/drops"], builtins: false },
+  { dir: "client/notes", may: ["shared", "client/core", "client/notes"], builtins: false },
   { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
   // What a module is written against. It names nothing of the server's own.
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },
@@ -171,6 +179,7 @@ function checkPolicy(): void {
   let wikiLines = 0;
   let adminLines = 0;
   let dropsLines = 0;
+  let notesLines = 0;
 
   for (const file of files) {
     const rel = repoPath(file);
@@ -211,6 +220,10 @@ function checkPolicy(): void {
     if (zone.dir === "client/drops") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/drops has no tests; move logic into client/core/drops`);
       dropsLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    }
+    if (zone.dir === "client/notes") {
+      if (rel.endsWith(".test.ts")) fail(`${rel}: client/notes has no tests; move logic into client/core/notes`);
+      notesLines += src.split("\n").filter((l) => l.trim().length > 0).length;
     }
 
     // An import the rules below cannot read the name of is an import they cannot judge.
@@ -262,6 +275,8 @@ function checkPolicy(): void {
   console.log(`  admin size   ${adminLines}/${ADMIN_MAX_LINES} lines`);
   if (dropsLines > DROPS_MAX_LINES) fail(`client/drops is ${dropsLines} lines (budget ${DROPS_MAX_LINES}); move logic into client/core/drops`);
   console.log(`  drops size   ${dropsLines}/${DROPS_MAX_LINES} lines`);
+  if (notesLines > NOTES_MAX_LINES) fail(`client/notes is ${notesLines} lines (budget ${NOTES_MAX_LINES}); move logic into client/core/notes`);
+  console.log(`  notes size   ${notesLines}/${NOTES_MAX_LINES} lines`);
 }
 
 /** `cpu` is the CPU-seconds of the process and of the processes it waited for. */

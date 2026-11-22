@@ -36,7 +36,7 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
     // Escape releases the lock without telling the page which key it was.
     const locked = document.pointerLockElement === canvas;
     if (!locked && lockedBefore && app.ui.wantsPointerLock) {
-      app.ui.openMenu();
+      app.ui.escaped();
       escapedAt = performance.now();
     }
     if (!locked) app.blur();

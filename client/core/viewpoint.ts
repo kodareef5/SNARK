@@ -84,6 +84,8 @@ export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: 
 
 export class Viewpoint {
   thirdPerson = false;
+  /** Looking through a sight that magnifies (optics.ts forcesEye): the own view is at the eye whatever the choice, which is kept. */
+  atEye = false;
   /** 0 to 1, eased by the app: how far the own view is under an open glider, which third person stands back from to hold its wings. */
   gliding = 0;
   private vehicleLook = false;
@@ -378,7 +380,7 @@ export class Viewpoint {
 
   /** Fills `out` with the eye's own view looking at `yaw` and `pitch`: at the eye, or over the shoulder in third person. */
   own(out: OrbitRig, yaw: number, pitch: number): OrbitRig {
-    const third = this.thirdPerson;
+    const third = this.thirdPerson && !this.atEye;
     out.yaw = yaw;
     out.pitch = pitch;
     out.back = third ? BACK + GLIDE_BACK * this.gliding : 0;

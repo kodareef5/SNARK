@@ -152,9 +152,15 @@ export class Overhead {
     }
   }
 
-  /** The creature under `c`'s aim within LOOK_RANGE, unless the world or another body is in the way, or -1. */
+  /** How far beyond LOOK_RANGE a session's look reaches: through a sight, its gaze's (server/gaze.ts lookReach, D1082). */
+  reach: (c: Client) => number = () => 0;
+
+  /**
+   * The creature under `c`'s aim within LOOK_RANGE, or through a sight as far as its gaze reaches among the chunks round it
+   * and those of its cone, unless the world or another body is in the way, or -1.
+   */
   lookedAt(c: Client): number {
-    const { world } = this.ctx;
+    const { world, game } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     const from = c.drive >= 0 ? c.drive : c.ent;
@@ -163,32 +169,35 @@ export class Overhead {
     const oz = ents.z[from]!;
     const d = this.dir;
     lookDirection(c.heldYaw, c.heldPitch, d);
-    let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, LOOK_RANGE) === HIT_NONE ? LOOK_RANGE : rayHit.t;
+    const range = Math.max(LOOK_RANGE, this.reach(c));
+    let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, range) === HIT_NONE ? range : rayHit.t;
     let hit = -1;
     const dims = world.dims;
     const home = chunkAt(dims, ox, oz);
     const hx = chunkCx(dims, home);
     const hz = chunkCz(dims, home);
-    const near = LOOK_RANGE + 4;
-    for (let cz = hz - 1; cz <= hz + 1; cz++) {
-      for (let cx = hx - 1; cx <= hx + 1; cx++) {
-        if (cx < 0 || cz < 0 || cx >= dims.chunksX || cz >= dims.chunksZ) continue;
-        for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
-          if (i === c.ent || i === from || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
-          const dx = ents.x[i]! - ox;
-          const dz = ents.z[i]! - oz;
-          if (dx * dx + dz * dz > near * near) continue;
-          const kind = ents.kind[i]!;
-          const size = ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, ents.span[i]!, ents.grown[i]!, world.tick) : 1;
-          const r = reg.bodyRadius[kind]! * size;
-          const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[kind]! * size, ents.z[i]! + r);
-          if (t < best) {
-            best = t;
-            hit = i;
-          }
+    const near = range + 4;
+    const cone = range > LOOK_RANGE && game.cone ? game.cone(c) : null;
+    const test = (chunk: number): void => {
+      for (let i = ents.chunkHead[chunk]!; i >= 0; i = ents.next[i]!) {
+        if (i === c.ent || i === from || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
+        const dx = ents.x[i]! - ox;
+        const dz = ents.z[i]! - oz;
+        if (dx * dx + dz * dz > near * near) continue;
+        const kind = ents.kind[i]!;
+        const size = ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, ents.span[i]!, ents.grown[i]!, world.tick) : 1;
+        const r = reg.bodyRadius[kind]! * size;
+        const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[kind]! * size, ents.z[i]! + r);
+        if (t < best) {
+          best = t;
+          hit = i;
         }
       }
+    };
+    for (let cz = hz - 1; cz <= hz + 1; cz++) {
+      for (let cx = hx - 1; cx <= hx + 1; cx++) if (cx >= 0 && cz >= 0 && cx < dims.chunksX && cz < dims.chunksZ) test(cz * dims.chunksX + cx);
     }
+    for (let k = 0; cone && k < cone.count; k++) test(cone.chunks[k]!);
     return hit >= 0 && (ents.flags[hit]! & F_PLAYER) === 0 && (ents.cue[hit]! & CUE_DEAD) === 0 ? hit : -1;
   }
 

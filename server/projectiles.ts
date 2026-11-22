@@ -5,7 +5,7 @@
 import { TAU } from "../shared/math/scalar.ts";
 import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
-import { aimSeed, aimShot, scopeFitted, shotAim, shotDir } from "../shared/sim/aim.ts";
+import { aimSeed, aimShot, scopeFitted, shotAim, shotDir, zeroUnits } from "../shared/sim/aim.ts";
 import { Body } from "../shared/sim/character.ts";
 import { shotRays } from "../shared/content/registry.ts";
 import { falloff } from "../shared/sim/damage.ts";
@@ -182,6 +182,11 @@ export class Projectiles {
     return this.flares[i]!;
   }
 
+  /** For tests: where flying round `i` is, and how fast it goes. */
+  flyingAt(i: number): { x: number; y: number; z: number; vx: number; vy: number; vz: number } {
+    return this.flying[i]!;
+  }
+
   /** For tests. */
   thrownAt(i: number): { x: number; y: number; z: number; resting: boolean } {
     return this.thrown[i]!;
@@ -199,7 +204,7 @@ export class Projectiles {
     if (e < 0 || ammo === 0) return;
     const d = this.dir;
     const rays = shotRays(reg, weapon, ammo);
-    this.aim(c, rec, weapon, 0, d, rays);
+    this.aim(c, rec, weapon, 0, d, rays, ammo);
     const view = combat.viewTick(c);
     combat.eye(e, this.eyeAt, combat.originTick(c), true, c);
     const ox = this.eyeAt[0]!, oy = this.eyeAt[1]!, oz = this.eyeAt[2]!;
@@ -234,7 +239,10 @@ export class Projectiles {
    * its own tracer is this ray. The rays of a shot of many (W3) are more `k`: for one of `rays` above 1, the aim and cone
    * are kept as the 32-bit floats EVENT_SHOT carries them in, so every client lays the same rays (`shotSeed` keeps the seed).
    */
-  private aim(c: Client, rec: EntityRecord, weapon: number, k: number, out: number[], rays = 1): void {
+  /** The zero a session has dialled for its sight, metres (server/gaze.ts, D1083), 0 for none. */
+  zero: (c: Client) => number = () => 0;
+
+  private aim(c: Client, rec: EntityRecord, weapon: number, k: number, out: number[], rays = 1, ammo = 0): void {
     const { world, items } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
@@ -244,7 +252,9 @@ export class Projectiles {
     const inv = items.inv(rec);
     const slot = inv.hotbar >= 0 && rec.held >= 0 ? inv.hotbar + rec.held : -1;
     const handle = ents.handleOf(e);
-    aimShot(b, c.heldButtons, reg.weapon[weapon] ?? FISTS, reg.tamedMove[b.kind]!, ents.yaw[e]!, ents.pitch[e]!, scopeFitted(reg, inv, slot), handle, world.tick);
+    // The aimed look's 256ths of a unit, and a zero that lifts a flying round to cross the look where it was dialled (D1083).
+    const zero = ammo !== 0 ? zeroUnits(this.zero(c), reg.ammoSpeed[ammo]!, reg.ammoGravity[ammo]!) : 0;
+    aimShot(b, c.heldButtons, reg.weapon[weapon] ?? FISTS, reg.tamedMove[b.kind]!, ents.yaw[e]! + c.heldFineYaw / 256, ents.pitch[e]! + c.heldFinePitch / 256, scopeFitted(reg, inv, slot), handle, world.tick, zero);
     if (rays > 1) {
       shotAim.yaw = Math.fround(shotAim.yaw);
       shotAim.pitch = Math.fround(shotAim.pitch);

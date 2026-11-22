@@ -59,6 +59,11 @@ const FLIGHTS = 3;
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
 /** A tile leaves a level for a coarser one this much past where the level ends, and comes back this much short of it. */
 const HYSTERESIS = 1.08;
+/**
+ * Updates a tile looked at through a sight keeps the levels its distance over the zoom asked for, after the sight is
+ * lowered or turned off it: one raised again within it makes nothing (D1078).
+ */
+const ZOOM_LINGER = 180;
 /** The most levels a tier has, and the most forms a city is drawn in (a bit each in a tile's `wants`). */
 const LEVELS = 8;
 const FORMS = 30;
@@ -126,6 +131,9 @@ interface Tile {
   version: number;
   /** Where its levels go in this frame's order of making: lower first. */
   rank: number;
+  /** The levels it last wanted through a sight, a bit each, and the update until which it keeps them (ZOOM_LINGER). */
+  zoomed: number;
+  zoomedUntil: number;
 }
 
 /** A level asked of the maker, by its form, and its tile's counts then. */
@@ -256,7 +264,7 @@ export class FarCity {
       const base = Math.floor(box[1]!);
       if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
       for (const c of list) this.tileOfChunk[c] = this.tiles.length;
-      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0 });
+      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0, zoomed: 0, zoomedUntil: 0 });
     }
     this.listed = new Uint8Array(this.tiles.length);
     this.shownAt = new Uint32Array(this.tiles.length);
@@ -319,6 +327,7 @@ export class FarCity {
     }
     this.on = reach > 0 && levels.length > 0;
     this.share = share;
+    this.updates++;
     for (const slot of this.dropping) p.assetDrops.push(slot);
     this.dropping.length = 0;
     this.standing(near, cells);
@@ -340,7 +349,17 @@ export class FarCity {
         continue;
       }
       if (off > reach) continue;
-      const needed = (tile.wants = this.formsOf(this.needed(tile, cam, off, share)));
+      // Through a sight a tile in its window wants the levels its distance over the zoom asks for (Camera.zoom, D1078),
+      // its own as well, so the view is whole the moment the sight is lowered; and keeps them for ZOOM_LINGER.
+      const tb = tile.box;
+      const z = cam.zoom > 1 && cam.boxVisible(tb[0]! - cam.x, tb[1]! - cam.y, tb[2]! - cam.z, tb[3]! - cam.x, tb[4]! - cam.y, tb[5]! - cam.z) ? cam.zoom : 1;
+      let bits = this.needed(tile, cam, off, share, z);
+      if (z > 1) {
+        tile.zoomed = bits;
+        tile.zoomedUntil = this.updates + ZOOM_LINGER;
+        bits |= this.needed(tile, cam, off, share, 1, false);
+      } else if (this.updates < tile.zoomedUntil) bits |= tile.zoomed;
+      const needed = (tile.wants = this.formsOf(bits));
       const any = tile.held.some((h) => h !== null);
       let short = false;
       for (let f = 0; f < this.forms.length; f++) {
@@ -473,7 +492,7 @@ export class FarCity {
         // fade draws as if there were none.
         const out = l >= 0 && this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0;
         const into = l >= 0 && this.blends(l) && (drawn & (1 << (l - 1))) !== 0;
-        const end = out ? levels[l]!.to : into ? levels[l - 1]!.to : 0;
+        const end = (out ? levels[l]!.to : into ? levels[l - 1]!.to : 0) * cam.zoom;
         const start = end * (1 - this.share);
         // Each chunk in view and the depth ranges its faces are in, a run being chunks alike in those: a box's faces stay
         // within it, and a cell's may lie a cell past it.
@@ -528,6 +547,8 @@ export class FarCity {
   /** The form drawn in place of this tier's levels by the last `chosen`, or -1; and whether it chose coarser than wanted. */
   private other = -1;
   private coarser = false;
+  /** Calls of `update`, the clock ZOOM_LINGER counts in. */
+  private updates = 0;
 
   /**
    * The levels `tile`, `near` metres off, is drawn at, a bit each: those wanted that are on the card; or, if none is yet,
@@ -535,7 +556,7 @@ export class FarCity {
    */
   private chosen(tile: Tile, cam: Camera, near: number): number {
     const levels = this.levels;
-    const needed = this.needed(tile, cam, near, this.share);
+    const needed = this.needed(tile, cam, near, this.share, cam.zoom);
     let drawn = 0;
     for (let l = 0; l < levels.length; l++) if ((needed & (1 << l)) !== 0 && tile.held[this.formOf[l]!]) drawn |= 1 << l;
     this.other = -1;
@@ -581,22 +602,24 @@ export class FarCity {
    * The levels `tile`, `off` metres away, wants on the card, a bit each: the one its nearest point asks for, and across
    * a fade between the lattice and the mass, both.
    */
-  private needed(tile: Tile, cam: Camera, off: number, share: number): number {
+  private needed(tile: Tile, cam: Camera, off: number, share: number, zoom = 1, keep = true): number {
     const levels = this.levels;
+    // Through a sight `zoom` times, a tile is chosen for as if it stood that many times nearer (D1078).
+    const at = off / zoom;
     let l = levels.length - 1;
     for (let k = 0; k < levels.length - 1; k++) {
       const end = levels[k]!.to * (k === tile.primary ? HYSTERESIS : k < tile.primary ? 1 / HYSTERESIS : 1);
-      if (off < end) {
+      if (at < end) {
         l = k;
         break;
       }
     }
-    tile.primary = l;
+    if (keep) tile.primary = l;
     let bits = 1 << l;
     const b = tile.box;
-    const most = Math.hypot(Math.max(cam.x - b[0]!, b[3]! - cam.x), Math.max(cam.y - b[1]!, b[4]! - cam.y), Math.max(cam.z - b[2]!, b[5]! - cam.z));
+    const most = Math.hypot(Math.max(cam.x - b[0]!, b[3]! - cam.x), Math.max(cam.y - b[1]!, b[4]! - cam.y), Math.max(cam.z - b[2]!, b[5]! - cam.z)) / zoom;
     if (this.blends(l + 1) && most > levels[l]!.to * (1 - share)) bits |= 1 << (l + 1);
-    if (this.blends(l) && off < levels[l - 1]!.to) bits |= 1 << (l - 1);
+    if (this.blends(l) && at < levels[l - 1]!.to) bits |= 1 << (l - 1);
     return bits;
   }
 

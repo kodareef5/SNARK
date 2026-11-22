@@ -20,7 +20,7 @@ import { VEHICLE_GLASS_GLSL } from "./vehicle-glass.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
-import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, OPTIC_AT, type FramePacket } from "./packet.ts";
 import { LAMP_SEES, LAMP_WASH, lampAlbedo, lampLight } from "./lamp.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
@@ -78,6 +78,14 @@ const DARKEN = 0.3;
 /** A fresh wound is wet: its roughness goes to this, drying as the corpse decays. */
 const WET = 0.32;
 const LUMA = [0.2126, 0.7152, 0.0722] as const;
+/**
+ * A visor's heat view (D1081): a body's heat is HEAT_BODY and HEAT_STEP for each step of its kind's code (cold-blooded 1,
+ * warm 2, hot 3); the world's is HEAT_WORLD, and HEAT_SOAK more the more it is lit, at most.
+ */
+export const HEAT_BODY = 0.12;
+export const HEAT_STEP = 0.27;
+export const HEAT_WORLD = 0.06;
+export const HEAT_SOAK = 0.3;
 
 type Numbers = ArrayLike<number>;
 type Out = number[] | Float32Array | Float64Array;
@@ -337,12 +345,18 @@ export function untone(out: Out, t: Numbers): void {
 
 /**
  * The grade after the tone curve (content/grade.ts), from the frame block's finish: each colour kept `saturation` as far
- * from its grey, then raised to `gamma`. The twin of the GLSL `graded`.
+ * from its grey, then raised to `gamma`; through night vision, that grey in its phosphor's colour (D1080). The twin of
+ * the GLSL `graded`.
  */
 export function graded(out: Out, frame: Numbers): void {
   const grey = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
   const saturation = frame[FRAME.saturation]!, gamma = frame[FRAME.gamma]!;
   for (let c = 0; c < 3; c++) out[c] = Math.pow(Math.max(grey + (out[c]! - grey) * saturation, 0), gamma);
+  if (frame[OPTIC_AT]! > 1.5) ironbow(out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2], out);
+  else if (frame[OPTIC_AT]! > 0.5) {
+    const shown = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
+    for (let c = 0; c < 3; c++) out[c] = shown * frame[OPTIC_AT + 4 + c]!;
+  }
 }
 
 /** `graded` undone, for a colour it did not clamp: the gamma taken back, then the colour as far from its grey as it was, which the grey keeps. */
@@ -360,8 +374,24 @@ export function ungraded(out: Out, frame: Numbers): void {
  * out (D264). A tier with a light target (post.ts) mixes the fog in as light before the tone curve, as its finishing
  * pass does; its bloom, sharpen and dither are the GPU's alone.
  */
+let shownHeat = 0;
+/** How hot (packet.ts HEAT_) what `shown` shows next is, in a visor's heat view: the rasterizer says so for each draw. */
+export function heatOfShown(code: number): void {
+  shownHeat = code;
+}
+
 export function shown(out: Out, light: Numbers, dist: number, p: FramePacket): void {
   const f = p.frame, exposure = f[FRAME.exposure]!, post = p.tier.post !== null, grading = f[FRAME.gamma]! > 0;
+  // A visor's heat view (D1081), the twin of the GLSL heatShown: through no air, a body by its kind, the world by its light.
+  if (f[OPTIC_AT]! > 1.5) {
+    const l = (light[0]! * LUMA[0] + light[1]! * LUMA[1] + light[2]! * LUMA[2]) * exposure;
+    const h = shownHeat > 0 ? HEAT_BODY + HEAT_STEP * shownHeat : HEAT_WORLD + (HEAT_SOAK * l) / (1 + l);
+    out[0] = out[1] = out[2] = h;
+    tone(out, out);
+    graded(out, f);
+    for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(out[c]!, 0), 1));
+    return;
+  }
   let fog = f[FRAME.eyeHeight]! >= 0 ? 0 : (dist - p.fogStart) / (p.fogEnd - p.fogStart);
   fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
   const air = [0, 0, 0];
@@ -563,9 +593,27 @@ const DYE = `vec3 dye(uint i) {
 export const SURFACE_VERTEX = surfaceVertex(SURFACE_ANY);
 
 /** `graded` as GLSL, after the frame block. */
-export const GRADED = `vec3 graded(vec3 c) {
+/**
+ * The heat view's palette (D1081), "ironbow": from black at the coldest through violet, red and orange to yellow and white
+ * at the hottest. The twin of the GLSL `ironbow`.
+ */
+export function ironbow(t: number, out: Out): void {
+  const s = (a: number, b: number, x: number): number => { const u = Math.min(1, Math.max(0, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+  const v = Math.min(1, Math.max(0, t));
+  out[0] = s(0.05, 0.55, v);
+  out[1] = s(0.4, 0.92, v);
+  out[2] = 0.55 * s(0, 0.3, v) * (1 - s(0.3, 0.6, v)) + s(0.82, 1, v);
+}
+const IRONBOW = `vec3 ironbow(float t) {
+  float v = clamp(t, 0.0, 1.0);
+  return vec3(smoothstep(0.05, 0.55, v), smoothstep(0.4, 0.92, v), 0.55 * smoothstep(0.0, 0.3, v) * (1.0 - smoothstep(0.3, 0.6, v)) + smoothstep(0.82, 1.0, v));
+}
+`;
+export const GRADED = `${IRONBOW}vec3 graded(vec3 c) {
   float grey = dot(c, vec3(${LUMA.map(f).join(", ")}));
-  return pow(max(mix(vec3(grey), c, fGrade.a), 0.0), vec3(fFinish.x));
+  vec3 g = pow(max(mix(vec3(grey), c, fGrade.a), 0.0), vec3(fFinish.x));
+  if (fOptic.x > 1.5) return ironbow(dot(g, vec3(${LUMA.map(f).join(", ")})));
+  return fOptic.x > 0.5 ? dot(g, vec3(${LUMA.map(f).join(", ")})) * fPhosphor.rgb : g;
 }
 `;
 
@@ -663,7 +711,17 @@ vec3 fogShown() {
 const float SHOWN_STEP = ${f(1 / 255)};
 #endif
 vec3 hazed(vec3 light, vec3 rel);
+uniform float uHeat;
+// What a visor's heat view shows (D1081), through no air: a body's own heat by its kind (uHeat, packet.ts DRAW_HEAT_SHIFT);
+// else the world's, cold, warmer the more the sun or a lamp lights it. As light, so the grade and the finish take it as
+// they take light, and the palette is the grade's (graded).
+vec3 heatShown(vec3 light) {
+  float l = dot(light * fSunColor.w, vec3(${LUMA.map(f).join(", ")}));
+  float h = uHeat > 0.5 ? ${f(HEAT_BODY)} + ${f(HEAT_STEP)} * uHeat : ${f(HEAT_WORLD)} + ${f(HEAT_SOAK)} * l / (1.0 + l);
+  return display(vec3(h) / max(fGrade.rgb, vec3(0.001)));
+}
 vec3 shown(vec3 light, vec3 rel) {
+  if (fOptic.x > 1.5) return heatShown(light);
   if (fHaze.z >= 0.0) return display(hazed(light, rel) * fSunColor.w);
   float fog = clamp((length(rel) - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
   return mix(display(light * fSunColor.w), fogShown(), fog * fog);

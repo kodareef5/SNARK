@@ -2,7 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
-import { moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_HEAT_SHIFT, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -42,7 +42,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers follow its place in `last`, and uEffect's four end it. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, weatherReady: 46 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, heat: 46, weatherReady: 47 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -941,6 +941,9 @@ export class GlRenderer {
     const sky = finish ? p.sky : p.skyShown;
     gl.clearColor(sky[0]!, sky[1]!, sky[2]!, this.transparentStage ? 0 : 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // A sight's window: nothing outside it is shaded (packet.ts window, D1077).
+    const win = p.window, dw = this.post.drawn[0], dh = this.post.drawn[1];
+    if (win[2]! > 0) { gl.enable(gl.SCISSOR_TEST); gl.scissor(Math.floor(win[0]! * dw), Math.floor(win[1]! * dh), Math.ceil((win[2]! - win[0]!) * dw), Math.ceil((win[3]! - win[1]!) * dh)); }
     let step = -1;
     for (let d = 0; d < p.drawCount; d++) {
       const s = stepOf(p, d);
@@ -967,6 +970,7 @@ export class GlRenderer {
       this.uniform(prog, U.swap, p.drawSwap[d]!);
       const fx = p.drawEffect, e = d * 4;
       if (prog.at[U.effect] && moved(prog.last, U.effect, fx, e, 4)) gl.uniform4f(prog.at[U.effect]!, fx[e]!, fx[e + 1]!, fx[e + 2]!, fx[e + 3]!);
+      this.uniform(prog, U.heat, (flags >>> DRAW_HEAT_SHIFT) & 3);
       if (textured) {
         this.streetFinish(prog, p, d);
         this.material(prog, m, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length, p.drawWear[d]!);
@@ -984,6 +988,7 @@ export class GlRenderer {
     }
     // The terrain and the dome are drawn when there is no draw after them.
     while (step < STEP_FAR_SEE) this.step(p, ++step);
+    gl.disable(gl.SCISSOR_TEST);
     if (finish) this.toCanvas(p);
     // Every draw ends in the state the next begins from, as the mirror of it says, whatever another user of the context
     // (the device page) puts back between. The next frame's clear writes depth.

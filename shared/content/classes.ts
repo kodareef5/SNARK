@@ -93,6 +93,7 @@ const ITEM = {
   ammo: f("facet", "", { refs: { buff: "buff" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
+  optic: f("facet", "the scope's zoom (ScopeOverlay, FOV)"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
   deploys: f("text", "the vehicle an assembly deploys", { refs: { "": "species/vehicle" } }),
   craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" } }),
@@ -141,6 +142,7 @@ const SPECIES = {
   killXp: f("number"),
   still: f("switch"),
   temper: f("text"),
+  blood: f("text", "none: ours, how it shows in a visor's heat view"),
   sight: f("number"),
   leash: f("number"),
   bite: f("facet", "AttackInfos"),
@@ -410,12 +412,12 @@ const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
 row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "burnsInto", "spoilHours", "spoilsInto", "youngFor", "ammo"], slots: { shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "A material: gathered, stacked, and spent in crafting. One a weapon fires, as a slingshot fires stone, has an ammo facet." });
 row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "spoilsInto", "cooks", "fuel", "burnsInto", "youngFor", "use"], any: ["eat", "dose", "use"], slots: { held: HELD, ...ITEM_SLOTS }, doc: "Something eaten, drunk or fed for what it does to a body." });
-row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool", "ammo"], slots: { held: mesh("must", "{weapon.mesh}", "none"), shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool. A thrown one with an ammo facet of its own flies and hits as an arrow does (the bola)." });
+row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool", "ammo", "optic"], slots: { held: mesh("must", "{weapon.mesh}", "none"), shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool. A thrown one with an ammo facet of its own flies and hits as an arrow does (the bola)." });
 row("item/ball", "item", ITEM, { parent: "item/weapon", ark: "PrimalItem_WeaponEmptyCryopod", shelf: "items/balls", must: ["stack", "weapon", "ball"], may: [...ANY_ITEM, "spoilHours", "spoilsInto", "charge"], slots: { held: mesh("must", "{weapon.mesh}", "none"), ...ITEM_SLOTS }, doc: "Held in the hand: a click keeps the tame looked at in it, or looses the one it holds." });
 row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: [...ANY_ITEM, "spoilHours", "spoilsInto"], slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
-row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
+row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: [...ANY_ITEM, "optic"], slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it. A sight has an optic facet: how many times it magnifies." });
 row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item type Equipment", shelf: "items/equipment", doc: "Worn by a body, in a slot." });
-row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: ANY_ITEM, slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "{body}/{wear.slot}"), vents: mesh("may", "{body}/armor/{wear.set}/{wear.vents}", "none"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
+row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: [...ANY_ITEM, "optic"], slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "{body}/{wear.slot}"), vents: mesh("may", "{body}/armor/{wear.set}/{wear.vents}", "none"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
 row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden. Drawn as its worn mesh on the creature's bones, unless the creature has a saddled model, which is drawn in place of both." });
 row("item/structure", "item", ITEM, { parent: "item", ark: "PrimalItemStructure_", shelf: "items/structures", must: ["stack", "places"], may: ANY_ITEM, slots: { preview: mesh("may", "{id}/preview", "#mesh"), ...ITEM_SLOTS }, doc: "Set down as a structure." });
 row("item/vehicle", "item", ITEM, { parent: "item", ark: "a deployable vehicle assembly", shelf: "items/vehicles", must: ["stack", "deploys"], may: ANY_ITEM, slots: { preview: mesh("may", "{deploys}", "box"), ...ITEM_SLOTS }, doc: "A completed assembly placed as a vehicle on a clear supporting surface." });
@@ -426,7 +428,7 @@ row("item/shield", "item", ITEM, { parent: "item/equipment", ark: "equipment typ
 row("item/costume", "item", ITEM, { parent: "item/equipment", ark: "equipment types Costume and Trophy", status: "stub", waits: "cosmetics", shelf: "items/costumes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Worn for its look alone." });
 row("item/skin", "item", ITEM, { parent: "item", ark: "PrimalItemSkin_", status: "stub", waits: "cosmetics", shelf: "items/skins", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Changes the look of the item it is put on." });
 row("item/dye", "item", ITEM, { parent: "item", ark: "PrimalItemDye_", status: "stub", waits: "cosmetics", shelf: "items/dyes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Colours a region of what it is used on." });
-row("item/instrument", "item", ITEM, { parent: "item", ark: "PrimalItem_WeaponSpyglass, _WeaponCompass, _WeaponGPS, _WeaponMagnifyingGlass, PrimalItemRadio", status: "partial", waits: "instruments", shelf: "items/instruments", must: ["stack"], may: ANY_ITEM, slots: { held: HELD, ...ITEM_SLOTS }, doc: "Held to look through or to read. Blocked out: it is made, carried and dropped, and does nothing in the hand yet." });
+row("item/instrument", "item", ITEM, { parent: "item", ark: "PrimalItem_WeaponSpyglass, _WeaponCompass, _WeaponGPS, _WeaponMagnifyingGlass, PrimalItemRadio", status: "partial", waits: "instruments", shelf: "items/instruments", must: ["stack"], may: [...ANY_ITEM, "optic"], slots: { held: HELD, ...ITEM_SLOTS }, doc: "Held to look through or to read. Blocked out: it is made, carried and dropped, and does nothing in the hand yet." });
 row("item/artifact", "item", ITEM, { parent: "item", ark: "PrimalItemArtifact_", status: "stub", waits: "bosses", shelf: "items/artifacts", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Found once in its place and spent to call a boss." });
 
 row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "item"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: ["{item}/icon", "swatch"] } }, doc: "Learned with points at a level, for good. Its one item can then be made." });
@@ -446,7 +448,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "blood", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },

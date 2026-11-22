@@ -228,6 +228,9 @@ interface Pending {
 }
 
 /** One survivor's session, made when its hello is accepted. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
+/** The most entities a session's sight's cone adds to its view (D1079). */
+export const CONE_ENTITIES = 192;
+
 export class Client {
   /** Slot in `GameServer.clients`. */
   id: number;
@@ -264,6 +267,9 @@ export class Client {
   readonly body = new Body();
   /** Centre of this session's interest. */
   chunk = 0;
+  /** Its view with what its sight's cone adds (GameServer.cone), and their ranks; made the first time it has one. */
+  wide: SentView | null = null;
+  wideRanks: Uint16Array | null = null;
   readonly inputs = new InputBuffer(INPUT_WINDOW);
   /** First snapshot actually sent with the current urban seat. -1 from the authoritative board until send. */
   vehicleSeatSnapshot = 0;
@@ -275,6 +281,9 @@ export class Client {
   heldZ = 0;
   heldYaw = 0;
   heldPitch = 0;
+  /** The aimed look past its units, in 256ths (InputBuffer.fineYaw), for a shot. */
+  heldFineYaw = 0;
+  heldFinePitch = 0;
   heldButtons = 0;
   /** The tick its last input was for. Past INPUT_HOLD_TICKS without another, the body stops; a vehicle driven, VEHICLE_HOLD_TICKS. */
   inputAt = 0;
@@ -494,6 +503,11 @@ export class GameServer {
   contactProxies: ((c: Client, out: ContactSnapshot) => void) | null = null;
   /** The shared view around a session as that session may be sent it, or the same view. */
   viewFor: ((c: Client, cur: SentView) => SentView) | null = null;
+  /**
+   * The chunks past its own a session looks into through a sight (server/gaze.ts), best first, or null: their entities
+   * are added to its view after those round it, which come first under its cap (D1079).
+   */
+  cone: ((c: Client) => { readonly chunks: Int32Array; readonly count: number } | null) | null = null;
   /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
   allows: ((c: Client, op: number) => boolean) | null = null;
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
@@ -634,6 +648,8 @@ export class GameServer {
         c.heldZ = inputs.moveZ[i]!;
         c.heldYaw = inputs.yaw[i]!;
         c.heldPitch = inputs.pitch[i]!;
+        c.heldFineYaw = inputs.fineYaw[i]!;
+        c.heldFinePitch = inputs.finePitch[i]!;
         c.heldButtons = inputs.buttons[i]!;
         c.inputAt = T;
       } else {
@@ -1455,23 +1471,74 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = Math.floor(ids[k]! / MAX_VIEW);
       rank[k] = ids[k]! % MAX_VIEW;
-      const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", v = ents.vrow[i]!;
-      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6,
-        (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!,
-        vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
-        vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
-        vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
-        ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[v]!, ents.vehicleRpm[v]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0) : 0,
-        rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : 0,
-        vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
-        vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
-        vehicle ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,
-        vehicle ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0, ents.emote[i]!);
-      cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
+      this.pushEntity(cur, i);
     }
     this.aroundTick[chunk] = T;
     this.aroundAt[chunk] = at;
     return at;
+  }
+
+  /** Adds entity `i` as it stands to `view`, and whether its changes go first. */
+  private pushEntity(view: SentView, i: number): void {
+    const ents = this.world.ents;
+    const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", v = ents.vrow[i]!;
+    view.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6,
+      (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!,
+      vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
+      vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
+      vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
+      ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[v]!, ents.vehicleRpm[v]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0) : 0,
+      rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : 0,
+      vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
+      vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
+      vehicle ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,
+      vehicle ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0, ents.emote[i]!);
+    view.urgent[view.count - 1] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
+  }
+
+  /**
+   * `cur`, the view round `c`, and after it the entities of the chunks of its cone (`cone`) as far as CONE_ENTITIES: players
+   * and what they ride first, then what moves, then the rest, each in the cone's order. Ascending by index as a view is,
+   * ranked after all of `cur`'s, so a cap leaves them out first. Written to the session's own view and ranks.
+   */
+  private widen(c: Client, cur: SentView, ranks: Uint16Array, cone: { readonly chunks: Int32Array; readonly count: number }): SentView {
+    const ents = this.world.ents;
+    const { ids, movers, idle } = this;
+    const most = Math.min(CONE_ENTITIES, MAX_VIEW - cur.count);
+    let n = 0, nm = 0, ni = 0;
+    for (let k = 0; k < cone.count; k++) {
+      for (let i = ents.chunkHead[cone.chunks[k]!]!; i >= 0; i = ents.next[i]!) {
+        const f = ents.flags[i]!;
+        if ((f & F_PLAYER) !== 0 || ents.driven[i] !== 0) {
+          if (n < most) ids[n++] = i;
+        } else if ((f & F_PROP) === 0 && (ents.vx[i] !== 0 || ents.vz[i] !== 0 || ents.vy[i] !== 0 || ents.act[i] !== 0)) {
+          if (nm < most) movers[nm++] = i;
+        } else if (ni < most) idle[ni++] = i;
+      }
+    }
+    for (let k = 0; k < nm && n < most; k++) ids[n++] = movers[k]!;
+    for (let k = 0; k < ni && n < most; k++) ids[n++] = idle[k]!;
+    for (let k = 0; k < n; k++) ids[k] = ids[k]! * MAX_VIEW + k;
+    sortU32(ids, n);
+    const wide = (c.wide ??= new SentView()), wideRanks = (c.wideRanks ??= new Uint16Array(MAX_VIEW));
+    wide.count = 0;
+    let a = 0, b = 0;
+    while (a < cur.count || b < n) {
+      const fromCone = b < n ? Math.floor(ids[b]! / MAX_VIEW) : -1;
+      if (a < cur.count && (b >= n || cur.id[a]! <= fromCone)) {
+        // An entity in both is the view's own: the cone's copy is left out.
+        if (cur.id[a] === fromCone) b++;
+        wide.copyFrom(cur, a);
+        wide.urgent[wide.count - 1] = cur.urgent[a]!;
+        wideRanks[wide.count - 1] = ranks[a]!;
+        a++;
+      } else {
+        this.pushEntity(wide, fromCone);
+        wideRanks[wide.count - 1] = cur.count + (ids[b]! % MAX_VIEW);
+        b++;
+      }
+    }
+    return wide;
   }
 
   private snapshot(c: Client, T: number): void {
@@ -1479,7 +1546,13 @@ export class GameServer {
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
     const at = this.viewAround(c.chunk, T);
-    const cur = this.viewFor ? this.viewFor(c, this.around[at]!) : this.around[at]!;
+    let cur = this.viewFor ? this.viewFor(c, this.around[at]!) : this.around[at]!;
+    let ranks = this.ranks[at]!;
+    const cone = this.cone ? this.cone(c) : null;
+    if (cone && cone.count > 0) {
+      cur = this.widen(c, cur, ranks, cone);
+      ranks = c.wideRanks!;
+    }
     // What it asked for takes effect once a second at most, so that it cannot have its view sent over and over.
     if ((c.wantView !== c.viewCap || c.wantBytes !== c.snapshotBytes) && T >= c.viewReadyAt) {
       c.viewCap = c.wantView;
@@ -1521,7 +1594,7 @@ export class GameServer {
     if (c.drive >= 0 && this.world.reg.vehicle[c.body.kind]) this.contactProxies?.(c, contacts);
     // Leave at least two thirds of the remaining packet for the ordinary view, and never exceed the selected snapshot budget.
     writeContacts(w, contacts, Math.min(320 * 8, Math.floor((bytes * 8 - w.pos) / 3)));
-    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? this.ranks[at]! : null, limit, c.views);
+    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? ranks : null, limit, c.views);
     if (w.overflow) {
       // Part of a snapshot is of no use. Nothing is sent, and the view the client would have held is forgotten.
       this.stats.overflows++;

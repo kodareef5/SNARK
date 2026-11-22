@@ -30,6 +30,7 @@ const HELP: readonly string[] = [
   "A line that begins with / is a command: /who, /pos, /time, /help give. The ` key opens the console.",
   "V changes the view, F3 the monitor, O opens Settings, I the inventory, M the map.",
   "Key 1 takes in hand the soul ball with your pteranodon, unless the server gives none: click to let it out, E to get on, Space to take off.",
+  "G (or the middle button, held) raises the helmet's visor: the wheel zooms it, N changes its view (plain, night, heat).",
 ];
 const HELP_TICKS = 20 * 30;
 const ANSWER_TICKS = 4 * 30;
@@ -88,12 +89,21 @@ export class ChatState {
     this.input = value.length > MAX_CHAT_CHARS ? value.slice(0, MAX_CHAT_CHARS) : value;
   }
 
+  /**
+   * A command this client answers itself, as the console's (Ui.local), and while bug report mode has a note open the
+   * note, which takes a typed line in place of chat (notes/notes.ts): each gives what to show, or null to pass the line on.
+   */
+  local: ((line: string) => string | null) | null = null;
+  note: ((line: string) => string | null) | null = null;
+
   submit(session: ClientSession | null): void {
     const line = this.input.trim();
     this.input = "";
     this.open = false;
     if (line === "") return;
     if (line.startsWith("/")) return this.command(line.slice(1).trim(), session);
+    const noted = this.note?.(line) ?? null;
+    if (noted !== null) return this.print(TEXT_NOTICE, noted, session ? session.serverTick : 0);
     if (!session || (session.chat(this.channel, line) === 0 && session.state !== "active")) this.print(TEXT_NOTICE, "Not connected; nothing was said.", session ? session.serverTick : 0);
   }
 
@@ -103,9 +113,11 @@ export class ChatState {
    */
   private command(line: string, session: ClientSession | null): void {
     const at = session ? session.serverTick : 0;
+    const answer = line === "" || line === "help" ? null : (this.local?.(line) ?? null);
     if (line === "" || line === "help") {
       for (const text of HELP) this.print(TEXT_NOTICE, text, at, HELP_TICKS);
-    } else if (!session || (session.text(line) === 0 && session.state !== "active")) {
+    } else if (answer !== null) this.print(TEXT_NOTICE, answer, at);
+    else if (!session || (session.text(line) === 0 && session.state !== "active")) {
       this.print(TEXT_NOTICE, "Not connected; nothing was done.", at);
     } else this.answers = at + ANSWER_TICKS;
   }

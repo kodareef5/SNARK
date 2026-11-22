@@ -93,6 +93,8 @@ export const CUE_HURT_SHIFT = 24;
 export const CUE_DECAY_SHIFT = 26;
 /** On a living creature only. A corpse uses these bits for its decay stage. */
 export const CUE_RIVALRY = 1 << CUE_DECAY_SHIFT;
+/** On a living survivor, the same bit: it looks through a sight (server/gaze.ts), and its glass glints to those it faces (D1083). */
+export const CUE_SCOPED = 1 << CUE_DECAY_SHIFT;
 /**
  * The second decay bit on living survivors marks a body whose motion bits are laid out for the air: active chest thrust,
  * with its mode less one in three bits from bit 8, or an open glider, with ANIM_GLIDE and its phase there.
