@@ -8,16 +8,20 @@
 //   --build                     also a client build in the copy, which starts with no texture cache
 //   --probe                     also `bun run probe` in the copy; --probe-slow, --probe-lose, --probe-twice and
 //                               --probe-stress run it with that flag. --all runs every option
+//   --no-art                    the check with --no-art, where no art can be had: a runner's container
+//
+// The copy has no art of its own. Its check links the art this machine shares (tools/release/media.py), and fails
+// where there is none unless --no-art is given.
 //
 // It exits with the check's own status, or 1 if the check passed and anything else did not. See planning/ci.md.
 
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PROBES = ["probe", "probe-slow", "probe-lose", "probe-twice", "probe-stress"];
-const OPTIONS = ["slow", "build", ...PROBES, "all"];
+const OPTIONS = ["slow", "build", ...PROBES, "all", "no-art"];
 
 /**
  * Tools that write committed files without Blender. In the copy each writes its files again, and they must come out as
@@ -39,6 +43,7 @@ if (commits.length > 1 || flags.some((f) => !OPTIONS.includes(f))) {
   process.exit(2);
 }
 const wants = (option: string): boolean => flags.includes(option) || flags.includes("all");
+const noArt = flags.includes("no-art");
 
 // Git's own variables, which a hook runs with, would point every git command at the repository the hook came from.
 const env: Record<string, string> = {};
@@ -70,10 +75,14 @@ if (Number(nodeVersion.match(/^v(\d+)/)?.[1] ?? 0) < 24) {
   process.exit(1);
 }
 
-const base = realpathSync(tmpdir());
+// Beside the shared art where the machine has some: files link only within one filesystem, and the art is 4 GB to copy.
+const shared = process.env.SNARK_CACHE || join(homedir(), ".cache/snark");
+const beside = !noArt && existsSync(join(shared, "art"));
+if (beside) mkdirSync(join(shared, "ci"), { recursive: true });
+const base = realpathSync(beside ? join(shared, "ci") : tmpdir());
 const within = (dir: string): boolean => base === dir || base.startsWith(dir + sep);
 if (within(realpathSync(ROOT)) || within(dirname(dirname(objects)))) {
-  console.error(`ci: the temporary folder ${base} is inside the repository. Set TMPDIR to a folder outside it.`);
+  console.error(`ci: the copy's folder ${base} is inside the repository. Set TMPDIR${beside ? " or SNARK_CACHE" : ""} to a folder outside it.`);
   process.exit(2);
 }
 const copy = mkdtempSync(join(base, "snark-ci-"));
@@ -152,7 +161,7 @@ try {
     })) === 0;
 
   if (installed) {
-    checkStatus = await step("check", async () => exited(await bun(["run", "check", ...(wants("slow") ? ["--slow"] : [])])));
+    checkStatus = await step("check", async () => exited(await bun(["run", "check", ...(wants("slow") ? ["--slow"] : []), ...(noArt ? ["--no-art"] : [])])));
     await step("tree after check", async () => {
       const left = changed();
       return left.length === 0 ? { status: 0, note: "as committed" } : { status: 1, note: `the check changed or left files that are not ignored:\n${left.join("\n")}` };

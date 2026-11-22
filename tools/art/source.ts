@@ -6,15 +6,13 @@ import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { detailsAtlas, parsePack, type PackRig } from "../../shared/pack/pack.ts";
+import { artInstalled } from "./installed.ts";
 import { unpackMeshes, type SourceDetails, type SourceMesh } from "../pack/write.ts";
 
 export const SOURCE = fileURLToPath(new URL("../../assets/source", import.meta.url));
 
-/** Left by the media command once every art archive the manifest names is in place: the manifest's art id. */
-const receipt = fileURLToPath(new URL("../../assets/.art-installed", import.meta.url));
-const manifest = fileURLToPath(new URL("../../distribution/release.json", import.meta.url));
-export const ART = existsSync(receipt) && existsSync(manifest)
-  && readFileSync(receipt, "utf8").trim() === JSON.parse(readFileSync(manifest, "utf8")).art?.id;
+/** Whether every art archive the manifest pins is installed in this checkout. */
+export const ART = artInstalled();
 
 /**
  * A module of an art folder's own (its builder's shapes and finishes), by its path under assets/source. The art is
