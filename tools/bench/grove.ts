@@ -214,7 +214,7 @@ export function walk(o: Options): { middle: [number, number]; rows: { cast: numb
       w.raster.render(p);
       [p.drawCount, p.casterCount, p.tileCount] = [draws, casters, tiles];
     }
-    // A frame after the eye moves a step, which counts every cell in view again (Scene.coverCells).
+    // A frame after the eye moves a step, which counts every cell in view again (NearStore.coverCells).
     w.look(sx + 1.5, eye, sz, 0, 0);
     const t0 = performance.now();
     const step1 = w.frame(false);

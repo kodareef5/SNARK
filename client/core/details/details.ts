@@ -168,7 +168,7 @@ export class Details {
 
   /**
    * Dust thrown up from the ground at a place: a supply capsule's jets as it comes down on them, its touchdown, and
-   * its going (render/scene.ts showSupply). The trees' authored dust, on the ordinary budgets; `size` scales the puffs
+   * its going (render/passes/supply-drops.ts). The trees' authored dust, on the ordinary budgets; `size` scales the puffs
    * and `least` to `most` is how many.
    */
   groundDust(id: number, x: number, y: number, z: number, tick: number, size: number, least: number, most: number): void {
