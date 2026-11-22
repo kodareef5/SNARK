@@ -67,7 +67,7 @@ export const smoothstep = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-/** The same, for the card. */
+/** The same, for the card. `%` of a negative is undefined there, so whole periods are added first: i is never under -64 of them. */
 export const NOISE_GLSL = `
 float hash3(int a, int b, int c) {
   uint h = uint(a) * 1597334677u ^ uint(b) * 3812015801u ^ uint(c) * 2654435761u;
@@ -75,7 +75,6 @@ float hash3(int a, int b, int c) {
   h = (h ^ (h >> 13u)) * 3266489917u;
   return float((h ^ (h >> 16u)) >> 8u) / 16777216.0;
 }
-// % of a negative is undefined on the card, so whole periods are added first: i is never under -64 of them.
 int wrapi(int i, int n) { return (i + n * 64) % n; }
 float ease(float t) { return t * t * t * (t * (t * 6.0 - 15.0) + 10.0); }
 float line(float t, int seed) {

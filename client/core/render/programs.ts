@@ -26,8 +26,8 @@ import { WATER_FRAGMENT } from "./water.ts";
  * 15 holds the details atlas for the details draws alone, and is free outside them: a program that does not read it may
  * bind something else there. 16, the first past the sixteen a program may read at most, holds the sky's openness
  * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection, 24 what stands
- * overhead (roof.ts), 25 and 26 the streets' distances and kinds round the camera (streets.ts), and 27 the walls'
- * weathering masks, which the page makes (client/shell/texgen.ts). WebGL2 has 32 units
+ * overhead (roof.ts), 25 and 26 the streets' distances and kinds round the camera (streets.ts), and 27 the textures the
+ * card makes (client/core/texgen). WebGL2 has 32 units
  * at the least, and no program reads more than sixteen.
  */
 export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27 } as const;
@@ -46,7 +46,7 @@ export const withDefines = (source: string, defines: string): string => source.r
 
 // Remove the unused sampler declaration as well as its lookup on programs with no local environment.
 const streetText = (fragment: string, on: boolean): string => on ? fragment : fragment.replace("uniform highp sampler2DArray uStreetEnv;", "");
-// The walls' weathering masks (texgen/weather.ts) are read only where a program weathers.
+// The textures the card makes (texgen/layers.ts) are read only where a program weathers.
 const texgenText = (fragment: string, on: boolean): string => on ? fragment : fragment.replace("uniform highp sampler2DArray uTexgen;", "");
 const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
 const GROUND = { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint };

@@ -440,22 +440,8 @@ const smooth = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 const bare = new Float64Array(4);
-/** A static instance's place in quarter metres, from its origin's world x and z, which the vertex text gives as vPlace: storeys stacked on one bay share it. */
+/** A static instance's place in quarter metres, from its origin's world x and z: storeys stacked on one bay share it. */
 export const staticPlace = (x: number, z: number): [number, number] => [Math.floor(x * 4 + 0.5), Math.floor(z * 4 + 0.5)];
-/** The seed of a static at a place (staticPlace), from 0 to 1. */
-export const staticSeed = (place: readonly number[]): number => surfaceHash(place[0]!, place[1]!);
-
-/**
- * Where a static's weathering is read on a wall, from the point in its instance's own frame (`own`, metres, as the
- * vertex text gives it in vOwn) and its face's normal in that frame: metres along the wall, the way a reader facing the
- * face reads, and metres up. Into `out`, with 1 in its third place on a wall and 0 on a face that looks up or down.
- */
-export function weatherFrame(ox: number, oy: number, oz: number, nx: number, ny: number, nz: number, out: Float64Array | Float32Array): void {
-  const facesZ = Math.abs(nz) >= Math.abs(nx);
-  out[0] = facesZ ? ox * (nz < 0 ? -1 : 1) : oz * (nx < 0 ? 1 : -1);
-  out[1] = oy;
-  out[2] = Math.abs(ny) < 0.5 ? 1 : 0;
-}
 
 /** The way the afternoon sun comes from, on the ground (x west, z north): south and a little west. A wall facing it bleaches. */
 export const SUN_FACE = [0.42, -0.91] as const;
@@ -936,24 +922,20 @@ export function worldVertex(vertex: string): string {
 }
 
 /**
- * A static's own frame, for its walls' weathering and edges and for whatever else is drawn on a wall. Adds to FLAT's
+ * A static's own frame, for its walls' edges and for whatever else is drawn on a wall. Adds to FLAT's
  * mesh vertex text, after worldVertex, on the lit tiers that read the finishes in full (programs.ts, WORLD_WEATHER):
  *
  * - vOwn (vec3, metres): the vertex in its instance's own frame, its mesh's position sized; x and z turn with the
  *   instance's yaw, y is up from its origin. A near chunk mesh's frame is the chunk's (shared/world/city.ts).
- * - vPlace (flat vec2, quarter metres): the instance's origin in the world, x and z, rounded (staticPlace). Its seed,
- *   from 0 to 1, is surfaceHash(ivec2(vPlace)) (staticSeed): storeys stacked on one bay share it, neighbours do not;
- *   a near chunk's statics share their chunk's.
+ * - vPlace (flat vec2, quarter metres): the instance's origin in the world, x and z, rounded (staticPlace), which the
+ *   facades take their parts from: storeys stacked on one bay share it, neighbours do not.
  * - vFace (vec2, 0 to 1): across and up the face, from its corners, where the mesh says them (aBone, a body's bone
  *   byte, which a static keeps for this: bits 0 and 1 its corner, shared/world/city.ts cornerByte); 0 where it does not.
  * - vEdges (flat uint, bits): which of the face's borders are outer edges, u at 0, u at 1, v at 0, v at 1 (bits 2 to 5
  *   of aBone); 0 where none or unknown.
  *
- * A fragment reads its wall with staticWall (GLSL, after WORLD_GLSL) or weatherFrame (TypeScript): the face's normal in
- * the own frame from vOwn's steps between pixels; metres along the wall, the way a reader facing it reads (vOwn.x or
- * vOwn.z); metres over the ground (skyopen.ts overGround); the storey, of WEATHER_STOREY (4 m) from the ground; the bay,
- * of WEATHER_BAY (8 m) along; and the seed. A face's size and its nearest outer border come from vFace's and vRel's
- * steps between pixels (edgeOf).
+ * A face's size and its nearest outer border come from vFace's and vRel's steps between pixels (edgeOf); its weathering
+ * from its world point and normal (wallFrame).
  */
 export function ownVertex(vertex: string): string {
   if (!vertex.includes("out vec3 vRel;") || !vertex.includes("  vRel = p;")) throw new Error("ownVertex: not a flat mesh vertex text");
@@ -1161,8 +1143,6 @@ vec4 stamped(int bay, int storey, int key, float u, float down, vec2 gx, vec2 gy
   float lx = length(gx), ly = length(gy), least = max(lx, ly) / ${fl(STAMP_TAPS)};
   return textureGrad(uTexgen, vec3(q, layer), vec2(gx.x * flip, gx.y) * max(1.0, least / max(lx, 1e-12)), vec2(gy.x * flip, gy.y) * max(1.0, least / max(ly, 1e-12)));
 }
-// weathered's twin, on a static at the pixel rel from the eye, over metres over the ground with open of the sky's
-// light; face, dpx and dpy are LIT's.
 void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open, vec3 rel, vec3 face, vec3 dpx, vec3 dpy) {
   float ox = dFdx(over), oy = dFdy(over);
   vec3 p = rel + uWorldEye;

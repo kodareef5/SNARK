@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FIELD_LAYER, FORMWORK_LAYER, WEATHER_BAYS, WEATHER_GROUND } from "../../client/core/texgen/layers.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_SEEN, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, bayStamp, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_SEEN, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, wallFrame, weathered, bayStamp, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
@@ -306,18 +306,7 @@ test("city bump tuning changes relief without changing albedo or finish selectio
   city[8] = 0; draw(); expect(n[0]).toBe(0); expect(n[2]).toBe(0); expect(a).toEqual(colour);
 });
 
-test("a static's frame reads along a wall the way its face looks and up from its origin; a roof is no wall; storeys on one bay share a seed and neighbours do not", () => {
-  const out = new Float64Array(3);
-  weatherFrame(3, 5, -1, 0, 0, -1, out);
-  expect([...out]).toEqual([-3, 5, 1]);
-  weatherFrame(3, 5, -1, 0, 0, 1, out);
-  expect([...out]).toEqual([3, 5, 1]);
-  weatherFrame(1, 2, 4, 1, 0, 0, out);
-  expect([...out]).toEqual([-4, 2, 1]);
-  weatherFrame(1, 2, 4, 0, 1, 0, out);
-  expect(out[2]).toBe(0);
-  expect(staticSeed(staticPlace(812, -36))).toBe(staticSeed(staticPlace(812.001, -35.999)));
-  expect(staticSeed(staticPlace(812, -36))).not.toBe(staticSeed(staticPlace(820, -36)));
+test("a static's own frame is in its vertex text: its point in its frame, its place and its face", () => {
   const text = ownVertex(worldVertex(FLAT_MESH_VERTEX));
   for (const line of ["out vec3 vOwn;", "flat out vec2 vPlace;", "  vOwn = l;"]) expect(text).toContain(line);
   expect(() => ownVertex("void main() {}")).toThrow();

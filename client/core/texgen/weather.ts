@@ -15,8 +15,6 @@ import { formworkJob } from "./formwork.ts";
 import { FIELD_LAYER, FORMWORK_LAYER, GROWTH_TOP, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELD_UP, WEATHER_GROUND, WEATHER_PAD, WEATHER_STOREY } from "./layers.ts";
 import { cells, fbm, hash3, hash32, line, smoothstep, tiled } from "./noise.ts";
 
-/** The side of the layers the rasterizer and the self-check make for themselves: the card's are as wide as the tier's finishes. */
-export const WEATHER_TWIN_SIDE = 256;
 /** A period long enough that a noise read only for its grain never repeats in a layer. */
 const FREE = 1 << 20;
 /**

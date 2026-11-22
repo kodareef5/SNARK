@@ -17,7 +17,7 @@ import { DRY_ASPHALT, MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, surfaceIndex, s
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherTwin } from "../../client/core/texgen/weather.ts";
-import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -641,13 +641,13 @@ export class Rasterizer {
   /** The streets the heightfield holds, and their planes as the card holds them. */
   private streetsFrom: StreetSectors | null = null;
   private streetPlanes: StreetPlanes | null = null;
-  /** On a weathered static (world-surfaces.ts `weathered`), its weatherFrame and its instance's seed, or a seed of -1. */
+  /** On a static the flat program weathers (world-surfaces.ts `weathered`), 1 in its fourth place; -1 elsewhere. */
   private readonly deferredOwn: Float32Array;
-  /** The instance being drawn, where the flat program weathers it: its yaw's cosine and sine, its origin from the eye, and its seed, or -1. */
+  /** The instance being drawn, where the flat program weathers it: its yaw's cosine and sine, its origin from the eye, and whether it is weathered. */
   private ownC = 1;
   private ownS = 0;
   private readonly ownAt = new Float64Array(3);
-  private ownSeed = -1;
+  private onStatic = false;
   /** On a weathered static's triangle that knows its face's borders: which are outer, a corner's place and its corner of the face, and the face's way across and up per unit of vFace. */
   private edgeFlags = 0;
   /** Whether the draw is the far program's (programs.ts drawProgram), whose windows are their bay's mean. */
@@ -868,8 +868,8 @@ export class Rasterizer {
    * the pixel's static has no face known or is not weathered.
    */
   private facadeAt(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, colour: number, footprint: number, out: Float32Array): void {
-    out[0] = this.ownSeed < 0 && this.farProgram ? FACADE_FAR : -1;
-    if (!this.faceKnown || this.ownSeed < 0 || Math.abs(ny) > 0.5) return;
+    out[0] = !this.onStatic && this.farProgram ? FACADE_FAR : -1;
+    if (!this.faceKnown || !this.onStatic || Math.abs(ny) > 0.5) return;
     let pu = this.edgeU, pv = this.edgeV;
     const dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
     let a = pu[0]! * pu[0]! + pu[1]! * pu[1]! + pu[2]! * pu[2]!, c = pv[0]! * pv[0]! + pv[1]! * pv[1]! + pv[2]! * pv[2]!;
@@ -905,11 +905,11 @@ export class Rasterizer {
     out.set([facadeKind(FACADE_COLOURS[colour] ?? 0, w, h, ny), u * w, v * h, w, h, edges, oc * ox - os * oz, cy - this.ownAt[1]!, os * ox + oc * oz, (oc * pu[0]! - os * pu[2]!) * su / w, (os * pu[0]! + oc * pu[2]!) * su / w, place[0], place[1], footprint, this.packet.camY]);
   }
 
-  /** Into `out`, the weatherFrame and seed of a point of the instance being drawn with that face's normal, or a seed of -1 where it is not weathered. */
+  /** Into `out`'s fourth place, 1 where the instance being drawn is weathered and -1 where not; and the pixel's nearest outer edge. */
   private owned(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, out: Float32Array): void {
-    out[3] = this.ownSeed;
+    out[3] = this.onStatic ? 1 : -1;
     edgeNow[0] = -1;
-    if (this.ownSeed < 0) return;
+    if (!this.onStatic) return;
     if (this.edgeFlags !== 0) {
       // The pixel's corner of its face from its place, as the face's way across and up give it.
       const pu = this.edgeU, pv = this.edgeV, dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
@@ -917,8 +917,6 @@ export class Rasterizer {
       const e = pu[0]! * dx + pu[1]! * dy + pu[2]! * dz, f = pv[0]! * dx + pv[1]! * dy + pv[2]! * dz, det = a * c - b * b;
       if (det > 0) edgeOf(this.edgeAt[3]! + (c * e - b * f) / det, this.edgeAt[4]! + (a * f - b * e) / det, this.edgeFlags, pu, pv, edgeNow);
     }
-    const c = this.ownC, s = this.ownS, dx = rx - this.ownAt[0]!, dz = rz - this.ownAt[2]!;
-    weatherFrame(c * dx - s * dz, ry - this.ownAt[1]!, s * dx + c * dz, c * nx - s * nz, ny, s * nx + c * nz, out);
   }
 
   /**
@@ -1139,7 +1137,7 @@ export class Rasterizer {
 
   private draw(p: FramePacket, d: number): void {
     this.drawing = d;
-    this.ownSeed = -1;
+    this.onStatic = false;
     this.farProgram = p.drawFade[d] !== 0 || p.drawHand[d] !== 0;
     [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
     this.swap = p.drawSwap[d]!;
@@ -1203,7 +1201,7 @@ export class Rasterizer {
         if (weathers) {
           [this.ownC, this.ownS] = [c, s];
           this.ownAt.set([ix, iy, iz]);
-          this.ownSeed = staticSeed(staticPlace(ix + p.camX, iz + p.camZ));
+          this.onStatic = true;
         }
         const k = sized ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
         const bend = this.bendOf(p.drawFlags[d]!, p.drawBuffer[d]!, inst), b = this.bentFlat;
@@ -1230,7 +1228,7 @@ export class Rasterizer {
         let color = lod.colors[last]!;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
-        this.edgeFlags = this.ownSeed >= 0 ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
+        this.edgeFlags = this.onStatic ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
         const fixture = fixtureFace(packedFixture ? lod.bones[last]! >>> 6 : meshFixture, color, lod.positions[last*3+1]!, lod.positions[last*3+2]!);
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0, fixture);
       }
