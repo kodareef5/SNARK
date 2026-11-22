@@ -11,6 +11,10 @@ export interface PadTarget {
   readonly inspecting: boolean;
   readonly flying: boolean;
   readonly patrol: boolean;
+  /** A sight that zooms is raised (a scope, a glass, a visor): the d-pad's up and down step it (`zoom`), not the hotbar. */
+  readonly zooming?: boolean;
+  /** With `alt`, a scope's zero in place of its zoom (LB held). */
+  zoom?(notches: number, alt?: boolean): void;
   key(code: string, down: boolean): void;
   mouse(button: number, down: boolean): void;
   move(x: number, z: number): void;
@@ -87,7 +91,7 @@ export class GamepadInput {
         if(this.pending[i]===1 && !target.inMenu)this.pulse(PAD_TAPS[i]!,target);
         this.pending[i]=0;
         const key=this.active.get(i); if(key){target.key(key,false);this.active.delete(i);}
-        const mouse=i===6?2:i===7?0:-1;if(this.mouse.delete(mouse))target.mouse(mouse,false);
+        const mouse=i===6?2:i===7?0:i===11?1:-1;if(this.mouse.delete(mouse))target.mouse(mouse,false);
         continue;
       }
       target.used();
@@ -98,6 +102,10 @@ export class GamepadInput {
         continue;
       }
       const modifier=down(4);
+      // A raised sight's zoom on the d-pad's up and down; LB and the right stick's press hold a helmet's visor up, as the
+      // middle mouse button does (client/core/visor.ts).
+      if((i===12 || i===13) && target.zooming){target.zoom?.(i===12?-1:1,modifier);continue;}
+      if(modifier && i===11 && !target.flying){this.mouse.add(1);target.mouse(1,true);continue;}
       // Four directional slots, a second bank on LB, and the last pair on LB + X/Y.
       if(i>=12 && i<=15){const slot=PAD_SLOTS[i]!+(modifier?4:0);this.pulse(`Digit${slot+1}`,target);}
       else if(modifier && (i===2 || i===3))this.pulse(i===2?"Digit9":"Digit0",target);

@@ -12,6 +12,7 @@ import { inflateRawSync } from "node:zlib";
 import { SURFACE_PREFIX } from "../content/surfaces.ts";
 import { parseManifest, readPages, storedStep, type Manifest } from "../shared/pack/manifest.ts";
 import type { ManifestSound } from "../shared/pack/sound.ts";
+import { pageScriptProblems } from "./page-script.ts";
 import { STEP0_SIZE, stepOf, topIn, type TextureFormat } from "../shared/pack/texture.ts";
 
 const KB = 1024;
@@ -97,6 +98,11 @@ export function weigh(dist: string): boolean {
     ok &&= pass;
     const shown = (n: number): string => (Math.abs(n) >= 10 * MB ? `${(n / MB).toFixed(1)} MB` : Math.abs(n) >= 10 * KB ? `${(n / KB).toFixed(0)} KB` : n.toFixed(n % 1 === 0 ? 0 : 1));
     console.log(`  ${name.padEnd(52)} ${shown(value).padStart(10)}  ${budget === undefined ? "" : `${pass ? "ok" : "MISS"} (budget ${shown(budget)})`}`);
+  }
+  // The page's script as tools/page-script.ts writes it, or the late files' code is split out of it again.
+  for (const problem of pageScriptProblems(dist)) {
+    ok = false;
+    console.log(`  MISS the page's script: ${problem}`);
   }
   return ok;
 }

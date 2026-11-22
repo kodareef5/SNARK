@@ -147,3 +147,21 @@ test("pressing the right stick cycles patrol lights once and leaves crouch avail
   r.pad.buttons[11]!.pressed = false; r.step();
   expect(r.actions.slice(-2)).toEqual(["KeyC:true", "KeyC:false"]);
 });
+
+test("LB and the right stick's press hold a helmet's visor up as the middle mouse button does; with a sight that zooms raised the d-pad's up and down step it, and with LB its zero",()=>{
+  const r=rig(), mice: string[]=[], zooms: string[]=[];
+  let zooming=false;
+  Object.assign(r.target,{ mouse(button: number, down: boolean){ mice.push(`m${button}:${down}`); }, zoom(n: number, alt?: boolean){ zooms.push(`${n}:${!!alt}`); } });
+  Object.defineProperty(r.target,"zooming",{ get: () => zooming });
+  r.pad.buttons[4]!.pressed=true; r.pad.buttons[11]!.pressed=true; r.step();
+  r.pad.buttons[11]!.pressed=false; r.step(); r.pad.buttons[4]!.pressed=false; r.step();
+  expect(mice).toEqual(["m1:true","m1:false"]);
+  // Not zooming, the d-pad picks the hotbar; zooming, it zooms, and with LB dials the zero.
+  r.pad.buttons[12]!.pressed=true; r.step(); r.pad.buttons[12]!.pressed=false; r.step();
+  expect([zooms, r.actions.includes("Digit1:true")]).toEqual([[], true]);
+  zooming=true;
+  r.pad.buttons[12]!.pressed=true; r.step(); r.pad.buttons[12]!.pressed=false; r.step();
+  r.pad.buttons[13]!.pressed=true; r.step(); r.pad.buttons[13]!.pressed=false; r.step();
+  r.pad.buttons[4]!.pressed=true; r.pad.buttons[12]!.pressed=true; r.step();
+  expect(zooms).toEqual(["-1:false","1:false","-1:true"]);
+});

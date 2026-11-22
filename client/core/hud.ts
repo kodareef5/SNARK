@@ -391,6 +391,13 @@ export class HudModel {
    * A scope whose reticle is marked in milliradians (D1083): the view's vertical field (radians), which spaces its marks
    * so they grow with the zoom, its zoom, and its zero (metres, 0 for none).
    */
+  /**
+   * How many times the sight looked through magnifies now, and the least and most it may (0 for no sight): the
+   * magnification ladder beside its window (ui/hud.ts buildMagnify, D1086).
+   */
+  magnify = 0;
+  magnifyMin = 0;
+  magnifyMax = 0;
   sightMil = false;
   sightFov = 1;
   sightZoom = 0;
@@ -405,6 +412,10 @@ export class HudModel {
    * (degrees), and whether a mark was just made.
    */
   glass = false;
+  /** A sight that zooms is raised, a glass is held, and a worn helmet's visor may be raised (for the touch buttons). */
+  zooming = false;
+  glassHeld = false;
+  visorReady = false;
   glassZoom = 0;
   glassRange = 0;
   glassBearing = 0;

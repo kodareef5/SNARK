@@ -228,6 +228,8 @@ interface Pending {
 }
 
 /** One survivor's session, made when its hello is accepted. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
+/** Ticks a chunk a sight's cone had sent is held after the cone leaves it: turning about or lowering it makes no churn (D1087). */
+export const CONE_KEEP = 150;
 /** The most entities a session's sight's cone adds to its view (D1079). */
 export const CONE_ENTITIES = 192;
 
@@ -267,6 +269,8 @@ export class Client {
   readonly body = new Body();
   /** Centre of this session's interest. */
   chunk = 0;
+  /** The chunks a sight's cone has had it sent, and the tick each may be let go from (GameServer.syncChunks, D1087). */
+  readonly coneKept = new Map<number, number>();
   /** Its view with what its sight's cone adds (GameServer.cone), and their ranks; made the first time it has one. */
   wide: SentView | null = null;
   wideRanks: Uint16Array | null = null;
@@ -507,7 +511,7 @@ export class GameServer {
    * The chunks past its own a session looks into through a sight (server/gaze.ts), best first, or null: their entities
    * are added to its view after those round it, which come first under its cap (D1079).
    */
-  cone: ((c: Client) => { readonly chunks: Int32Array; readonly count: number } | null) | null = null;
+  cone: ((c: Client) => { readonly chunks: Int32Array; readonly count: number; readonly players?: readonly number[] } | null) | null = null;
   /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
   allows: ((c: Client, op: number) => boolean) | null = null;
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
@@ -1501,11 +1505,13 @@ export class GameServer {
    * and what they ride first, then what moves, then the rest, each in the cone's order. Ascending by index as a view is,
    * ranked after all of `cur`'s, so a cap leaves them out first. Written to the session's own view and ranks.
    */
-  private widen(c: Client, cur: SentView, ranks: Uint16Array, cone: { readonly chunks: Int32Array; readonly count: number }): SentView {
+  private widen(c: Client, cur: SentView, ranks: Uint16Array, cone: { readonly chunks: Int32Array; readonly count: number; readonly players?: readonly number[] }): SentView {
     const ents = this.world.ents;
     const { ids, movers, idle } = this;
     const most = Math.min(CONE_ENTITIES, MAX_VIEW - cur.count);
     let n = 0, nm = 0, ni = 0;
+    // The survivors its sight sees wherever they stand in it first (D1088); a chunk's own count them again, left out below.
+    for (const e of cone.players ?? []) if (n < most) ids[n++] = e;
     for (let k = 0; k < cone.count; k++) {
       for (let i = ents.chunkHead[cone.chunks[k]!]!; i >= 0; i = ents.next[i]!) {
         const f = ents.flags[i]!;
@@ -1520,6 +1526,10 @@ export class GameServer {
     for (let k = 0; k < ni && n < most; k++) ids[n++] = idle[k]!;
     for (let k = 0; k < n; k++) ids[k] = ids[k]! * MAX_VIEW + k;
     sortU32(ids, n);
+    // One counted twice, as a survivor seen and in a chunk of the cone, once.
+    let u = 0;
+    for (let k = 0; k < n; k++) if (u === 0 || Math.floor(ids[k]! / MAX_VIEW) !== Math.floor(ids[u - 1]! / MAX_VIEW)) ids[u++] = ids[k]!;
+    n = u;
     const wide = (c.wide ??= new SentView()), wideRanks = (c.wideRanks ??= new Uint16Array(MAX_VIEW));
     wide.count = 0;
     let a = 0, b = 0;
@@ -1549,7 +1559,7 @@ export class GameServer {
     let cur = this.viewFor ? this.viewFor(c, this.around[at]!) : this.around[at]!;
     let ranks = this.ranks[at]!;
     const cone = this.cone ? this.cone(c) : null;
-    if (cone && cone.count > 0) {
+    if (cone && (cone.count > 0 || (cone.players?.length ?? 0) > 0)) {
       cur = this.widen(c, cur, ranks, cone);
       ranks = c.wideRanks!;
     }
@@ -1648,16 +1658,29 @@ export class GameServer {
       if (t && t.version > c.known[chunk]!) budget = this.sendChunk(c, chunk, t, budget);
     }
     c.rowsWaiting = budget <= 0;
+    // A sight's cone past the square round the body (server/gaze.ts): its chunks as well, nearest what it is on first, with
+    // what the square leaves, so that what is far is drawn as near; kept CONE_KEEP after the cone leaves them (D1087). A
+    // chunk as the map has it costs a client holding the statics its header alone.
+    const cone = this.cone ? this.cone(c) : null;
+    for (let k = 0; cone && k < cone.count; k++) {
+      const chunk = cone.chunks[k]!;
+      c.coneKept.set(chunk, T + CONE_KEEP);
+      const t = world.structs.chunks[chunk];
+      if (budget > 0 && t && t.version > c.known[chunk]!) budget = this.sendChunk(c, chunk, t, budget);
+    }
 
     // Forget chunks the player has left behind.
     if ((T + c.id) % 16 === 0) {
       const limit = this.opts.structRadius + 1;
       const w = this.w;
+      for (const [chunk, until] of c.coneKept) if (until <= T && c.known[chunk] === 0) c.coneKept.delete(chunk);
       for (let i = c.subscribed.length - 1; i >= 0; i--) {
         const chunk = c.subscribed[i]!;
         const dx = chunkCx(dims, chunk) - ccx;
         const dz = chunkCz(dims, chunk) - ccz;
         if (dx <= limit && dx >= -limit && dz <= limit && dz >= -limit) continue;
+        if ((c.coneKept.get(chunk) ?? 0) > T) continue;
+        c.coneKept.delete(chunk);
         c.subscribed[i] = c.subscribed[c.subscribed.length - 1]!;
         c.subscribed.pop();
         c.known[chunk] = 0;

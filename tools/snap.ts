@@ -1519,7 +1519,8 @@ if (import.meta.main) {
     // --sight scope|holo|dot: a scope's reticle, a holo-scope's tint and red crosshair, or a laser's dot below the middle
     // (weapons-plan.md, M10). The view is not zoomed.
     const sight = arg("sight");
-    if (sight === "scope") [hud.scope, hud.sightShare] = [true, Number(arg("share") ?? 1)];
+    // With --zoom, its magnification ladder from --min to --max (its zoom for each by default).
+    if (sight === "scope") [hud.scope, hud.sightShare, hud.magnify, hud.magnifyMin, hud.magnifyMax] = [true, Number(arg("share") ?? 1), zoom, Number(arg("min") ?? zoom), Number(arg("max") ?? zoom)];
     else if (sight === "holo") [hud.holo, hud.tint, hud.crossTint] = [true, 0.22, 0xff3a30];
     else if (sight === "dot") {
       hud.dots[0] = { u: 0.5, v: 0.58, alpha: 1 };
