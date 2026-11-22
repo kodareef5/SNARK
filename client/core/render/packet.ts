@@ -2,6 +2,8 @@
 // Uploads and drops persist across frames and must be applied in order. Draws and terrain tiles describe this frame only.
 
 import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES } from "../../../content/surfaces.ts";
+import { MATERIAL_RECIPES } from "../../../content/texgen/materials.ts";
+import { MADE_FLOATS } from "../texgen/slots.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_BLEND, MATERIAL_EXHAUST, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
@@ -309,6 +311,7 @@ export const FRAME_SECTIONS = [
   { name: "shore", first: "fShore", floats: 4 },
   { name: "drops", first: "fDrops", floats: DROP_LANES * 4 },
   { name: "optic", first: "fOptic", floats: 8 },
+  { name: "made", first: "fMade", floats: MATERIAL_RECIPES.length * MADE_FLOATS },
 ] as const satisfies readonly FrameSection[];
 
 /** Where each section of `rows` begins, in floats, by its name, and where the last ends, `end`. */
@@ -496,6 +499,11 @@ export const DROPS_AT = SECTION.drops;
  * shows its grey in. All zero for none.
  */
 export const OPTIC_AT = SECTION.optic;
+/**
+ * fMade: for each material made from a recipe (content/texgen/materials.ts), two lanes: its slot's first layer of the
+ * made array (-1 for none) and how far it has come up, 0 to 1; then where the eye is in its tiles (texgen/slots.ts).
+ */
+export const MADE_AT = SECTION.made;
 export const OPTIC_NONE = 0;
 export const OPTIC_NIGHT = 1;
 export const OPTIC_HEAT = 2;
@@ -517,6 +525,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fShore;
   highp vec4 fDrops[${4 * 2 + 3}];
   highp vec4 fOptic, fPhosphor;
+  highp vec4 fMade[${(MATERIAL_RECIPES.length * MADE_FLOATS) / 4}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -588,6 +597,9 @@ export class FramePacket {
   readonly worldPhase = new Float32Array(SURFACE_NAMES.length * 3);
   /** The side of the layers of the textures the card makes and keeps (texgen/layers.ts texgenSide), 0 where the tier makes none. */
   texgenSide = 0;
+  /** The version wanted of each of their layers (texgen/slots.ts MadeSlots `want`), and what the card holds of each, which the shell says from the engine. */
+  texgenWant: Int32Array | null = null;
+  texgenHolds: Int32Array | null = null;
   /** The textures the facades read, by their index in the manifest, -1 for none: the elements' base colour, normal and packed map, the rooms', the marks' (facade.ts FacadeAtlases). */
   readonly facadeSlots = new Int32Array(5).fill(-1);
   /** Linear 0..1 RGB. */

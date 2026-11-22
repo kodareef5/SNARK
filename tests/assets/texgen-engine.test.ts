@@ -6,8 +6,8 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import type { QueryGl } from "../../client/core/passes.ts";
 import { DRAW_INTS, SLICE, SLICE_LOW, TEXGEN_COARSE, TEXGEN_RISE, Texgen, jobFragment, jobPixels, type Job, type Orders } from "../../client/core/texgen/engine.ts";
 import { formworkJob } from "../../client/core/texgen/formwork.ts";
-import { FIELD_LAYER, FORMWORK_LAYER, TEXGEN_BUDGET, TEXGEN_LAYERS, texgenBytes, texgenSide } from "../../client/core/texgen/layers.ts";
-import { weatherJobs } from "../../client/core/texgen/weather.ts";
+import { texgenJobs } from "../../client/core/texgen/late.ts";
+import { FIELD_LAYER, FORMWORK_LAYER, MADE_LAYER, TEXGEN_BUDGET, TEXGEN_LAYERS, texgenBytes, texgenSide } from "../../client/core/texgen/layers.ts";
 
 const high = tierOf("high"), medium = tierOf("medium");
 
@@ -193,15 +193,17 @@ test("the warming draws a pixel with each job's program into an array a pixel wi
 });
 
 test("the weathering's three jobs at 512 on a card with no timer: its first pass comes up within twelve frames, and all of it is made and eased in within two hundred", () => {
-  const t = new Texgen(weatherJobs()), held = { side: 0 };
+  const t = new Texgen(texgenJobs()), held = { side: 0 };
   let up = -1, frames = 0;
-  for (; frames < 400 && !t.done; frames++) {
+  for (; frames < 800 && !t.done; frames++) {
     shell(t.frame(512, high, false), held);
     if (up < 0 && t.ready > 0) up = frames;
   }
-  expect([t.orders.layers, t.first]).toEqual([TEXGEN_LAYERS, [0, FIELD_LAYER, FORMWORK_LAYER]]);
+  expect([t.orders.layers, t.first]).toEqual([TEXGEN_LAYERS, [0, FIELD_LAYER, FORMWORK_LAYER, MADE_LAYER]]);
   expect(up).toBeLessThanOrEqual(12);
-  expect(frames).toBeLessThan(200);
+  // The slots' eight layers are left by the first pass and made whole after the weathering's.
+  expect(frames).toBeLessThan(200 + 8 * 40);
+  expect(Array.from(t.holds)).toEqual(Array.from({ length: TEXGEN_LAYERS }, () => 1));
 });
 
 test("a job of another shape: the formwork's one band, which tiles, drawn as its twin says, its program the engine's, in the layer after the jobs before it", () => {
@@ -224,4 +226,35 @@ test("the array keeps to its budget: every layer at 512 on medium, high and ultr
   expect(texgenSide(high, high.finishes, TEXGEN_LAYERS * 2)).toBe(256);
   expect(texgenSide(high, high.finishes, Math.floor(TEXGEN_BUDGET / texgenBytes(256, 1)) + 1)).toBe(0);
   expect([texgenSide(lowpoly, lowpoly.finishes), texgenSide(high, 0)]).toEqual([0, 0]);
+});
+
+test("a layer whose version changes is made again whole while the rest are held, and is not held until it is", () => {
+  const t = new Texgen([job(2, 1), job(4, 1)]), held = { side: 0 }, want = Int32Array.of(1, 1, 3, 3, 0, 0);
+  for (let f = 0; f < 400 && !t.done; f++) shell(t.frame(512, high, false, want), held);
+  // A layer asked for at 0 is left unmade.
+  expect([t.done, Array.from(t.holds)]).toEqual([true, [1, 1, 3, 3, 0, 0]]);
+  want[4] = want[5] = 5;
+  want[2] = 7;
+  const drawn = new Set<number>();
+  let frames = 0;
+  for (; frames < 400 && (frames === 0 || !t.done); frames++) {
+    const o = t.frame(512, high, false, want);
+    for (let d = 0; d < o.count; d++) {
+      drawn.add(o.draws[d * DRAW_INTS + 1]!);
+      // Whole, never the first pass's level, and the finer levels are not held back again.
+      expect([o.draws[d * DRAW_INTS + 2], o.minLod]).toEqual([0, 0]);
+    }
+    if (o.count > 0) expect([t.holds[2], t.holds[4], t.holds[5], t.holds[3]]).toEqual([0, 0, 0, 3]);
+    if (frames === 0) expect(t.done).toBe(false);
+    shell(o, held);
+  }
+  expect([...drawn].sort()).toEqual([2, 4, 5]);
+  expect(Array.from(t.holds)).toEqual([1, 1, 7, 3, 5, 5]);
+  expect(frames).toBeLessThan(40);
+  // A version that changes while its layer is drawn is drawn again at the new one.
+  want[3] = 9;
+  shell(t.frame(512, high, false, want), held);
+  want[3] = 11;
+  for (let f = 0; f < 400 && (f === 0 || !t.done); f++) shell(t.frame(512, high, false, want), held);
+  expect(t.holds[3]).toBe(11);
 });

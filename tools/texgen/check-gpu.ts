@@ -1,6 +1,7 @@
 // Whether this machine's card makes the textures the page makes (client/core/texgen) as their TypeScript twins do, drawn
 // by the shipped primitive (client/shell/texgen.ts) as the engine orders it, frame by frame and timed as in play: the
-// weathering's bays and field and the formwork's tile. Each layer's bytes are set against its twin's; the card's
+// weathering's bays and field, the formwork's tile and the materials' slots, which hold the first materials and then
+// are made again with the rest. Each layer's bytes are set against its twin's; the card's
 // floats are 32 bits where the twin's are 64, so a byte may differ by a step where a feature's edge falls between them.
 // It says too how long the card took to make each program's pipeline at its first draw, and to make everything.
 //
@@ -13,7 +14,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { jobPixels } from "../../client/core/texgen/engine.ts";
-import { weatherJobs } from "../../client/core/texgen/weather.ts";
+import { texgenJobs } from "../../client/core/texgen/late.ts";
+import { MADE_LAYER, MADE_SLOTS } from "../../client/core/texgen/layers.ts";
+import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
 import { encodePng } from "../snap/png.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
@@ -27,10 +30,12 @@ const entry = join(work, "entry.ts");
 const taking = (names: string, file: string): string => ["import", `{ ${names} }`, "from", JSON.stringify(join(root, file))].join(" ") + ";";
 writeFileSync(entry, `${taking("made", "client/shell/texgen.ts")}
 ${taking("Texgen", "client/core/texgen/engine.ts")}
-${taking("weatherJobs", "client/core/texgen/weather.ts")}
+${taking("texgenJobs", "client/core/texgen/late.ts")}
 ${taking("tierOf", "client/core/assets/tiers.ts")}
 const gl = (document.getElementById("c") as HTMLCanvasElement).getContext("webgl2")!;
-const engine = new Texgen(weatherJobs(), gl), gen = made(gl, 0), tier = tierOf("high");
+const engine = new Texgen(texgenJobs(), gl), gen = made(gl, 0), tier = tierOf("high");
+const want = new Int32Array(engine.orders.layers).fill(1);
+for (let l = ${MADE_LAYER}; l < want.length; l++) want[l] = ((l - ${MADE_LAYER}) >> 1) + 1;
 const programs = engine.orders.programs.map((p) => {
   const g = gl.createProgram()!;
   for (const [type, text] of [[gl.VERTEX_SHADER, p.vertex], [gl.FRAGMENT_SHADER, p.fragment]] as const) {
@@ -48,28 +53,44 @@ const pixel = (): void => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, n
 const warming = engine.warm(), w0 = performance.now();
 while (warming.drawn < warming.count) gen.draw(warming, (k) => programs[k]!, () => {});
 pixel();
-const warm = performance.now() - w0, t0 = performance.now();
-let frames = 0, slowest = 0;
-for (; frames < 5000 && !engine.done; frames++) {
-  const f0 = performance.now();
-  gen.draw(engine.frame(${side}, tier, true), (k) => programs[k]!, () => {});
-  pixel();
-  slowest = Math.max(slowest, performance.now() - f0);
-}
-const ms = performance.now() - t0;
+const warm = performance.now() - w0;
+let slowest = 0, slowAt = "";
+/** Frames until everything wanted is made, and the page's ms they took. */
+const run = (): [number, number] => {
+  const t0 = performance.now();
+  let frames = 0;
+  for (; frames < 5000 && (frames === 0 || !engine.done); frames++) {
+    const f0 = performance.now();
+    const o = engine.frame(${side}, tier, true, want), what = \`frame \${frames}: \${o.count} draws from job \${o.draws[0]} at level \${o.draws[2]}\${o.mipmap ? ", then the levels under it" : ""}\`;
+    gen.draw(o, (k) => programs[k]!, () => {});
+    pixel();
+    if (performance.now() - f0 > slowest) [slowest, slowAt] = [performance.now() - f0, what];
+  }
+  return [frames, performance.now() - t0];
+};
 const fb = gl.createFramebuffer();
-gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb);
-const out: string[] = [];
-for (let l = 0; l < engine.orders.layers; l++) {
-  gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gen.texture, 0, l);
-  const px = new Uint8Array(${side} * ${side} * 4);
-  gl.readPixels(0, 0, ${side}, ${side}, gl.RGBA, gl.UNSIGNED_BYTE, px);
-  let s = "";
-  for (let i = 0; i < px.length; i += 8192) s += String.fromCharCode(...px.subarray(i, i + 8192));
-  out.push(btoa(s));
-}
+const out: { layer: number; version: number; bytes: string }[] = [];
+const read = (from: number, to: number): void => {
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb);
+  for (let l = from; l < to; l++) {
+    gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gen.texture, 0, l);
+    const px = new Uint8Array(${side} * ${side} * 4);
+    gl.readPixels(0, 0, ${side}, ${side}, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    let s = "";
+    for (let i = 0; i < px.length; i += 8192) s += String.fromCharCode(...px.subarray(i, i + 8192));
+    out.push({ layer: l, version: engine.holds[l]!, bytes: btoa(s) });
+  }
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+};
+const [frames, ms] = run();
+read(0, engine.orders.layers);
+// The materials past the slots take the first slots: each slot made again while the rest are held.
+const more = Math.min(${MATERIAL_RECIPES.length - MADE_SLOTS}, ${MADE_SLOTS});
+for (let k = 0; k < more; k++) want[${MADE_LAYER} + k * 2] = want[${MADE_LAYER} + k * 2 + 1] = ${MADE_SLOTS} + k + 1;
+const [againFrames, againMs] = more > 0 ? run() : [0, 0];
+read(${MADE_LAYER}, ${MADE_LAYER} + more * 2);
 const info = gl.getExtension("WEBGL_debug_renderer_info");
-(globalThis as Record<string, unknown>).done = { renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), warm, frames, ms, slowest, out, first: engine.first };
+(globalThis as Record<string, unknown>).done = { renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), warm, frames, ms, slowest, out, first: engine.first, more, againFrames, againMs, slowAt };
 `);
 const built = await Bun.build({ entrypoints: [entry], target: "browser", minify: false });
 if (!built.success) throw new Error(built.logs.map(String).join("\n"));
@@ -93,18 +114,19 @@ try {
   ws.onmessage = (e) => { const d = JSON.parse(String(e.data)); if (d.id && waiting.has(d.id)) { waiting.get(d.id)!(d.result); waiting.delete(d.id); } };
   const send = (method: string, params: object): Promise<any> => new Promise((r) => { waiting.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
   await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/` });
-  let done: { error?: string; renderer: string; warm: number; frames: number; ms: number; slowest: number; out: string[]; first: number[] } | null = null;
+  let done: { error?: string; renderer: string; warm: number; frames: number; ms: number; slowest: number; out: { layer: number; version: number; bytes: string }[]; first: number[]; more: number; againFrames: number; againMs: number; slowAt: string } | null = null;
   for (let i = 0; i < 1200 && !done; i++) {
     await Bun.sleep(100);
     done = (await send("Runtime.evaluate", { expression: "globalThis.done ?? null", returnByValue: true }))?.result?.value ?? null;
   }
   if (!done) throw new Error("the page made nothing");
   if (done.error) throw new Error(done.error);
-  console.log(`card: ${done.renderer}; ${side} a side; its programs' first draws ${done.warm.toFixed(1)} ms; made in ${done.frames} frames, ${done.ms.toFixed(0)} ms by the page's clock with every frame waited for, the slowest frame ${done.slowest.toFixed(1)} ms`);
-  const jobs = weatherJobs();
+  console.log(`card: ${done.renderer}; ${side} a side; its programs' first draws ${done.warm.toFixed(1)} ms; made in ${done.frames} frames, ${done.ms.toFixed(0)} ms by the page's clock with every frame waited for, the slowest frame ${done.slowest.toFixed(1)} ms (${done.slowAt})`);
+  console.log(`${done.more} slots made again with other materials in ${done.againFrames} frames, ${done.againMs.toFixed(0)} ms`);
+  const jobs = texgenJobs();
   let worst = 0;
-  for (let l = 0; l < done.out.length; l++) {
-    const j = done.first.findLastIndex((f) => f <= l), job = jobs[j]!, card = Uint8Array.from(atob(done.out[l]!), (c) => c.charCodeAt(0)), twin = jobPixels(job, l - done.first[j]!, side);
+  for (const { layer: l, version, bytes } of done.out) {
+    const j = done.first.findLastIndex((f) => f <= l), job = jobs[j]!, card = Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0)), twin = jobPixels(job, l - done.first[j]!, side, job.taps, version);
     let most = 0, over = 0;
     const diff = new Uint8Array(card.length);
     for (let i = 0; i < card.length; i++) {
@@ -114,10 +136,10 @@ try {
       diff[i] = (i & 3) === 3 ? 255 : Math.min(255, d * 16);
     }
     worst = Math.max(worst, over / card.length);
-    console.log(`layer ${l} (job ${j}): largest difference ${most}, ${((100 * over) / card.length).toFixed(3)}% of bytes over 2`);
+    console.log(`layer ${l} (job ${j}${l >= MADE_LAYER ? `, ${MATERIAL_RECIPES[version - 1]?.name}` : ""}): largest difference ${most}, ${((100 * over) / card.length).toFixed(3)}% of bytes over 2`);
     if (values.out) {
       mkdirSync(values.out, { recursive: true });
-      for (const [name, data] of [["card", card], ["twin", twin], ["diff", diff]] as const) writeFileSync(join(values.out, `layer${l}-${name}.png`), encodePng(side, side, data));
+      for (const [name, data] of [["card", card], ["twin", twin], ["diff", diff]] as const) writeFileSync(join(values.out, `layer${l}${l >= MADE_LAYER ? "-" + MATERIAL_RECIPES[version - 1]?.name : ""}-${name}.png`), encodePng(side, side, data));
     }
   }
   if (worst > 0.001) {

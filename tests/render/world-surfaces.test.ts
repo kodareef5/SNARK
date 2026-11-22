@@ -276,7 +276,8 @@ test("each finish is asked for as wide as its nearest surface shows it, twice wh
 test("every read of the finishes' arrays goes through worldGrad, held to its layer's finest level on the card, which widens a read only where a level less than that could be read; the weathering masks, made whole on the card, are read directly", () => {
   for (const text of [WORLD_GLSL, ROAD_GLSL]) expect(text.match(/textureGrad\(uWorld/g)).toBeNull();
   expect(WORLD_GLSL.match(/textureGrad\((?!uTexgen)/g)!.length).toBe(1);
-  expect(WORLD_GLSL.match(/textureGrad\(uTexgen/g)!.length).toBe(3);
+  // The weathering's three, and a made material's two layers at each of its two copies.
+  expect(WORLD_GLSL.match(/textureGrad\(uTexgen/g)!.length).toBe(7);
   for (const read of ["worldBase(q, id, dx, dy)", "worldOrm(q, id, dx, dy)", "worldNormal(qb, id, bx, by)"]) expect(WORLD_GLSL).toContain(read);
   for (const layer of [ROAD_LAYER, REPAIRS_LAYER]) expect(ROAD_GLSL).toContain(`, ${layer}, `);
 });

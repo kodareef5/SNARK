@@ -1,5 +1,5 @@
 import { hash3 } from "./raster.ts";
-import { BREAK_AT, FACADE_AT, RUIN_SHAPES, type FacadeModule, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { BREAK_AT, FACADE_AT, RUIN_SHAPES, flatRoof, type FacadeModule, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { crownOf } from "./ruin-crowns.ts";
 import { inside, Mason, SIDES, tileKey, tilesOf, type Tile } from "./ruin-geometry.ts";
 import type { Composition, Round, Rule, Vocabulary } from "./ruin-vocabulary.ts";
@@ -92,7 +92,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     const roof = level === top;
     return (level <= playable || roof) && !(openHall && !safe(t) && !roof) && !(damaged.has(t) && ["burnt", "hanging"].includes(mode) && !roof);
   };
-  const plates = new Map<number, Tile[]>();
+  // A flat roof's top plates are apart from the storeys' under them: they may be of tar and gravel (content/ruins.ts flatRoof).
+  const plates = new Map<number, Tile[]>(), roofs = new Map<number, Tile[]>();
   for (const t of tiles) {
     const top = tops.get(tileKey(t.i, t.j))!;
     for (let level = 1; level <= top; level++) {
@@ -100,10 +101,12 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       const roof = level === top; const supported = level <= playable || roof;
       if (!supported || openHall && !safe(t) && !roof) continue;
       if (damaged.has(t) && ["burnt", "hanging"].includes(mode) && !roof) continue;
-      if (!plates.has(level)) plates.set(level, []); plates.get(level)!.push(t);
+      const rows = roof ? roofs : plates;
+      if (!rows.has(level)) rows.set(level, []); rows.get(level)!.push(t);
     }
   }
   for (const [level, row] of plates) mergeFloors(m, row, bay, base + level * 4);
+  for (const [level, row] of roofs) mergeFloors(m, row, bay, base + level * 4, form.roof === "flat" ? flatRoof(rule.finish) : "concrete");
   const posts = new Map<string, { u: number; v: number; top: number }>();
   // Where a tower's top was torn, the storeys standing over the gap are open: their slabs, broken at the edge, and the
   // columns at the bay's ends, each once.
@@ -373,7 +376,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       for (const c of cores.slice(0, 1)) if ((tops.get(tileKey(c.i, c.j)) ?? 0) === floors) m.put("zcore", c.u, base + height + 2, c.v, rule.finish);
       for (const e of escape.slice(0, 1)) if ((tops.get(tileKey(e.i, e.j)) ?? 0) === floors) m.put("zcore", e.u + 1.5, base + height + 2, e.v, rule.finish);
     }
-    if (form.roof === "hip" || form.roof === "pitched") pitched(m, cap, bay, base + height);
+    if (form.roof === "hip" || form.roof === "pitched") pitched(m, cap, bay, base + height, /sheet|steel|blue|rust|block|render/.test(rule.finish) ? "seam" : "clay");
     if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zpitch8", r.u, base + height + 5.4, r.v, form.roof === "nave" ? "clay" : "rust"); }
     if (form.front === "belfry") { m.put("zcore", t.u, base + height + 2, t.v, rule.finish); m.put("fin8", t.u, base + height + 8, t.v, rule.finish); m.put("trim4", t.u, base + height + 10, t.v, rule.finish); }
     if (height <= 20 && !["hip", "pitched", "nave"].includes(form.roof) && hash3(opts.seed, 32, 1) / 4294967296 < (rule.roofGrowth ?? 0)) {
@@ -456,25 +459,26 @@ function facade(m: Mason, name: RuinShape, u: number, h: number, v: number, side
   m.put(name, u + dx * (at[2]! + out), h + at[1]!, v + dz * (at[2]! + out), finish, [180, 90, 0, 270][side]!);
 }
 
-function pitched(m: Mason, tiles: Tile[], bay: number, y: number): void {
+/** A pitched roof over `tiles`: clay tile, or standing-seam sheet on a sheet, block or render building. */
+function pitched(m: Mason, tiles: Tile[], bay: number, y: number, finish: "clay" | "seam"): void {
   const left = new Set(tiles.map((t) => tileKey(t.i, t.j)));
   for (const t of tiles) {
     if (!left.has(tileKey(t.i, t.j))) continue;
     let cells = 1;
     for (const n of bay === 4 ? [4, 2] : [2]) if (Array.from({ length: n * n }, (_, k) => left.has(tileKey(t.i + k % n, t.j + Math.floor(k / n)))).every(Boolean)) { cells = n; break; }
     const shape = bay * cells >= 16 ? "zpitch16" : bay * cells === 8 ? "zpitch8" : "zpitch4";
-    m.put(shape, t.u + (cells - 1) * bay / 2, y + RUIN_SHAPES[shape][1] / 2, t.v + (cells - 1) * bay / 2, "clay");
+    m.put(shape, t.u + (cells - 1) * bay / 2, y + RUIN_SHAPES[shape][1] / 2, t.v + (cells - 1) * bay / 2, finish);
     for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) left.delete(tileKey(t.i + i, t.j + j));
   }
 }
 
-function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number): void {
+function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number, finish: RuinFinish = "concrete"): void {
   const left = new Map(tiles.map((t) => [tileKey(t.i, t.j), t]));
   for (const t of tiles) {
     if (!left.has(tileKey(t.i, t.j))) continue;
     let cells = 1;
     for (const n of bay === 4 ? [4, 2] : [2]) if (Array.from({ length: n * n }, (_, k) => left.has(tileKey(t.i + k % n, t.j + Math.floor(k / n)))).every(Boolean)) { cells = n; break; }
-    m.floor([t.u + (cells - 1) * bay / 2, t.v + (cells - 1) * bay / 2], y, bay * cells);
+    m.floor([t.u + (cells - 1) * bay / 2, t.v + (cells - 1) * bay / 2], y, bay * cells, finish);
     for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) left.delete(tileKey(t.i + i, t.j + j));
   }
 }

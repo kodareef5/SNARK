@@ -57,11 +57,13 @@ import { CrownCover } from "./cover.ts";
 import { FarNodes, familyOf, type FarNodeSource } from "./farnodes.ts";
 import { Hiding } from "./hide.ts";
 import { NearCity } from "./nearcity.ts";
-import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
+import { MADE_AT, OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
 import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
-import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
+import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { texgenBytes } from "../texgen/layers.ts";
-import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
+import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_MADE, NEAR_WALL } from "./finish-near.ts";
+import { MadeSlots, madePhase } from "../texgen/slots.ts";
+import { materialIndex } from "../../../content/texgen/materials.ts";
 import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW } from "./shading.ts";
 import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } from "./atmosphere.ts";
@@ -342,6 +344,9 @@ export class Scene {
   private readonly finishes: WorldFinishes;
   /** How near the eye each finish, wall, front and glass comes, which sizes what the finishes and the facades ask for. */
   readonly finishNear: FinishNear;
+  /** The slots of the materials made from recipes (texgen/slots.ts), and how near each material is, of the look's distances. */
+  private readonly madeSlots = new MadeSlots();
+  private readonly nearMade: Float32Array;
   private readonly facades: FacadeAtlases;
   readonly characters: Characters;
   private readonly vehicleSeats: (VehicleSeatPose | undefined)[] = new Array(MAX_VIEW);
@@ -526,6 +531,11 @@ export class Scene {
       // A static whose levels are chosen farther off than it stands: every static of its mesh is (StructureDef.coarse).
       if (mesh >= 0 && d.type === "structure" && d.coarse) this.reachOfStatic[mesh] = Math.min(this.reachOfStatic[mesh]!, 1 / d.coarse);
       if (d.type === "structure" && d.colors) this.regionsOfKind.set(d.colors, k * 5);
+      // A piece of a material made from a recipe says so in its last two regions (world-surfaces.ts ownVertex).
+      if (d.type === "structure" && d.made && !d.colors) {
+        this.regionsOfKind[k * 5 + 3] = MADE_MARK;
+        this.regionsOfKind[k * 5 + 4] = materialIndex(d.made);
+      }
       if (mesh >= 0 && d.type === "structure" && d.mesh !== "shape") {
         const of = reg.defs[reg.index.get(d.mesh) ?? 0];
         if (of?.type === "species" && of.vehicle) vehicleMeshes.add(mesh);
@@ -604,6 +614,7 @@ export class Scene {
     this.layers.startCity();
     this.finishes = new WorldFinishes(table.materials, this.assets.manifest.textures ?? []);
     this.finishNear = new FinishNear(reg, surfaceCity(world.mapId ?? "default") === "las-vegas");
+    this.nearMade = this.finishNear.metres.subarray(NEAR_MADE);
     this.facades = new FacadeAtlases(table.materials, world.mapId ?? "default");
     citySurface(this.packet.surfaceCity, world.mapId ?? "default");
     this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
@@ -736,6 +747,9 @@ export class Scene {
     this.finishes.frame(p, this.assets.residency, p.tier, near, scale);
     // The textures the card makes are not fetched (texgen/layers.ts), so their bytes are held apart.
     this.assets.residency.reserve("made textures", texgenBytes(this.finishes.wanted));
+    p.texgenWant = this.madeSlots.want;
+    this.madeSlots.frame(this.nearMade, p.texgenSide > 0 ? p.texgenHolds : null, p.frame, MADE_AT);
+    madePhase(p.frame, MADE_AT, cam.x, cam.y, cam.z);
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
     this.characters.heatView = false;
     if (p.tier.lit) {

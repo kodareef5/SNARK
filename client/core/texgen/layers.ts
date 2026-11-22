@@ -11,13 +11,16 @@ export const WEATHER_FIELD_UP = 8;
 export const FORMWORK = 2;
 /**
  * The array's layers: the stamps of the storeys over the ground, two a layer; the ground storey's; the field's two
- * tiles; and the formwork's tile.
+ * tiles; the formwork's tile; and the slots of the materials made from recipes (materials.ts), two layers each, its
+ * base colour and its relief, which hold the materials nearest the eye (MadeSlots).
  */
 export const WEATHER_BAYS = 6;
 export const WEATHER_GROUND = 3;
 export const FIELD_LAYER = WEATHER_BAYS + WEATHER_GROUND;
 export const FORMWORK_LAYER = FIELD_LAYER + 1;
-export const TEXGEN_LAYERS = FORMWORK_LAYER + 1;
+export const MADE_LAYER = FORMWORK_LAYER + 1;
+export const MADE_SLOTS = 4;
+export const TEXGEN_LAYERS = MADE_LAYER + 2 * MADE_SLOTS;
 /** Metres over the ground under which a ground storey's stain is growth, and over which it is rust. */
 export const GROWTH_TOP = 0.6;
 /**
@@ -29,7 +32,7 @@ export const WEATHER_PAD = 1 / 16;
 /** Bytes the array holds with layers `side` wide, every level of each: RGBA8, uncompressed. */
 export const texgenBytes = (side: number, layers = TEXGEN_LAYERS): number => Math.round((side * side * 4 * layers * 4) / 3);
 /** The most the array may hold on the card, every level of every layer; a new job's layers come out of it. */
-export const TEXGEN_BUDGET = 16 * 1024 * 1024;
+export const TEXGEN_BUDGET = 26 * 1024 * 1024;
 /**
  * The array's side on a tier whose finishes the card keeps `finishes` wide (0 for none), where it reads them in full:
  * 512, a texel 1.6 cm of a bay's 8 m, finer than a track of runoff, or the widest under it that holds `layers` within

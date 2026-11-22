@@ -3,13 +3,16 @@ import { fixtureShader } from "./street-finish.ts";
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, MASK_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
+import { MATERIAL_RECIPES, type MaterialRecipe } from "../../../content/texgen/materials.ts";
 import { hash32 } from "../texgen/hash.ts";
+import { MADE_FLOATS } from "../texgen/slots.ts";
 import { FIELD_LAYER, FORMWORK, FORMWORK_LAYER, GROWTH_TOP, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELD_UP, WEATHER_GROUND, WEATHER_PAD, WEATHER_STOREY, texgenSide } from "../texgen/layers.ts";
 import { ROAD_ACROSS, ROAD_ALONG, ROAD_CELL, ROAD_HALF, ROAD_ONE_WAY, ROAD_PLANES, ROAD_STEP, ROAD_WEAR_SHIFT, ROAD_WRAP, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { WEIGHT } from "../assets/residency.ts";
+import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
 import { CHUNK_SIDE, PAVED_VERGE, PLANE_MOST, PLANE_STEP, STREET_TINT, VERGE_TINTS, WALK_TINT } from "../../../shared/world/streets.ts";
@@ -293,6 +296,79 @@ function relief(id: number, u: number, v: number, spread: number, view: Numbers,
   met[1] = v + av * along;
 }
 const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Float64Array(2), patch: 0 };
+/** What a material made from a recipe has in place of its finish's roughness, bump and height scales, by how far it shows. */
+const scales = { rough: 1, bump: 1, height: 1 };
+const madeBase = new Float64Array(4), madeRelief = new Float64Array(4), madeBase2 = new Float64Array(4), madeRelief2 = new Float64Array(4);
+
+/** Metres across the cells of the noise that says where a made material's second copy shows, in its tiles; and of its mottle's two noises. */
+const MOTTLE = [2.3, 0.9] as const;
+/**
+ * How far a made material's second copy is moved, in its tiles: by whole units of its courses and ribs, so that its
+ * joints and ribs meet themselves, and any way where it has none.
+ */
+export function madeShift(r: MaterialRecipe): [number, number] {
+  const T = r.metres, mu = r.course ? r.course.size[0] : r.rib ? r.rib.pitch : 0, mv = r.course ? r.course.size[1] * (r.course.bond ? 2 : 1) : 0;
+  return [mu > 0 ? (Math.max(1, Math.round((0.37 * T) / mu)) * mu) / T : 0.37, mv > 0 ? (Math.max(1, Math.round((0.71 * T) / mv)) * mv) / T : 0.71];
+}
+/**
+ * Metres a made material goes to its means over, as a finish does over its tile (WORLD_FAR): its tile, or four of its
+ * least course or rib, so that these are gone before a pixel is as wide as half of one.
+ */
+export const madeFar = (r: MaterialRecipe): number => Math.min(r.metres, 4 * Math.min(r.course ? r.course.size[1] : Infinity, r.rib ? r.rib.pitch : Infinity));
+const shifts = MATERIAL_RECIPES.map(madeShift);
+
+/**
+ * Material `k` made from a recipe (content/texgen/materials.ts, from 1) on finish `id` at world point (x, y, z) of a
+ * face projected along `axis`, a pixel `footprint` metres wide, into `maps` and `scales`: its two layers of the made
+ * array, read from `masks` at the layer `slots` gives it (packet.ts fMade), by how far it has come up there; its
+ * finish's means where it has no slot, and far off as the painted finishes go to theirs, with the finish's own tone
+ * from patch to patch (`patch`). A second copy, moved by whole units, shows in patches of the world over the first,
+ * the higher showing, and the world's own mottle lies over both, so no tile is seen twice alike. A roof's ribs run
+ * down its fall.
+ */
+function made(k: number, id: number, axis: number, x: number, y: number, z: number, nx: number, nz: number, footprint: number, slots: Numbers, masks: WorldSample, patch: number): void {
+  const f = finishes[id]!, r = MATERIAL_RECIPES[k - 1]!, m = r.metres, turn = axis === 1 && Math.abs(nx) > Math.abs(nz);
+  const wu = axis === 0 ? z : x, wv = axis === 1 ? z : -y;
+  const u = (turn ? wv : wu) / m, v = (turn ? wu : wv) / m;
+  const spread = Math.log2(Math.max(footprint / m, 1e-9));
+  const t = slots[(k - 1) * MADE_FLOATS + 1]! * (1 - clamp((Math.log2(Math.max(footprint / madeFar(r), 1e-9)) - WORLD_FAR) / WORLD_FAR_BAND));
+  for (let c = 0; c < 4; c++) maps.base[c] = f.base[c]!;
+  for (let c = 0; c < 3; c++) maps.mro[c] = f.mean[c]!;
+  maps.mro[3] = 0.5;
+  maps.lean[0] = maps.lean[1] = 0;
+  maps.patch = patch;
+  if (t <= 0) return;
+  const layer = slots[(k - 1) * MADE_FLOATS]!, shift = shifts[k - 1]!;
+  const second = clamp((surfaceNoise((wu * WORLD_PATCH) / m + 5.3, (wv * WORLD_PATCH) / m + 1.7) - 0.35) / 0.3), share = second * second * (3 - 2 * second);
+  madeBase.fill(0);
+  madeRelief.fill(0);
+  if (share < 1) {
+    masks(3, layer, u, v, spread, madeBase);
+    masks(3, layer + 1, u, v, spread, madeRelief);
+  }
+  if (share > 0) {
+    masks(3, layer, u + shift[0], v + shift[1], spread, madeBase2);
+    masks(3, layer + 1, u + shift[0], v + shift[1], spread, madeRelief2);
+    const w = share >= 1 ? 1 : higher(madeRelief[3]!, madeRelief2[3]!, share);
+    for (let c = 0; c < 4; c++) {
+      madeBase[c] = madeBase[c]! + (madeBase2[c]! - madeBase[c]!) * w;
+      madeRelief[c] = madeRelief[c]! + (madeRelief2[c]! - madeRelief[c]!) * w;
+    }
+  }
+  const mottle = 1 + r.mottle * t * (1.2 * surfaceNoise(wu / MOTTLE[0] + 3.1, wv / MOTTLE[0] + 9.2) + 0.8 * surfaceNoise(wu / MOTTLE[1] + 7.7, wv / MOTTLE[1] + 2.4) - 1);
+  for (let c = 0; c < 3; c++) maps.base[c] = (maps.base[c]! + (f.base[c]! * 2 * madeBase[c]! - maps.base[c]!) * t) * mottle;
+  maps.base[3] = maps.base[3]! + (madeBase[3]! - maps.base[3]!) * t;
+  // Its hollows are shaded a little about its finish's own occlusion.
+  maps.mro[0] = maps.mro[0]! + (maps.mro[0]! * Math.min(1, 0.8 + 0.4 * madeRelief[3]!) - maps.mro[0]!) * t;
+  maps.mro[1] = maps.mro[1]! + (madeRelief[2]! - maps.mro[1]!) * t;
+  maps.mro[3] = maps.mro[3]! + (madeRelief[3]! - maps.mro[3]!) * t;
+  const lx = (madeRelief[0]! - 0.5) * 2 * t, ly = (madeRelief[1]! - 0.5) * 2 * t;
+  maps.lean[0] = turn ? -ly : lx;
+  maps.lean[1] = turn ? -lx : ly;
+  scales.rough += (1 - scales.rough) * t;
+  scales.bump += (1 - scales.bump) * t;
+  scales.height += (r.relief - scales.height) * t;
+}
 
 /**
  * A finish's maps at tile point (u, v), its second copy shown over the first where secondShare says, the higher
@@ -371,10 +447,12 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
  * takes; `smooth`, where given, is the normal the light falls on and the bump turns (the ground's, from its heights),
  * and otherwise the face's is. `early` is the frame's (FramePacket `worldEarly`): 1 while only the base colours have
  * come, read as the far path reads them, and 2 before any has, the finish its means. `eye`, where given, is the way to the eye, and the finish is read where that ray meets
- * its painted height (assets/tiers.ts `relief`).
+ * its painted height (assets/tiers.ts `relief`). `wears` is the material made from a recipe the face wears, or 0, drawn
+ * where `slots` and `masks` are given (made).
  */
 export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Numbers, index: number, x: number, y: number, z: number,
-  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null, early = 0): number {
+  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null, early = 0,
+  wears = 0, slots: Numbers | null = null, masks: WorldSample | null = null): number {
   const f = finishes[index]!;
   const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
   const metres = finishMetres(index, city);
@@ -388,7 +466,11 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     tangent[2] = axis === 1 ? eye[1]! * Math.sign(ny) : axis === 0 ? eye[0]! * Math.sign(nx) : eye[2]! * Math.sign(nz);
     if (tangent[2] > 0.1) depth = (f.height / 1000 / metres) * clamp(2 - 2 ** spread * RELIEF_TEXELS);
   }
-  finishMaps(index, u, v, spread, sample, light, tangent, depth, early);
+  scales.rough = f.rough;
+  scales.bump = f.bump;
+  scales.height = f.height;
+  if (wears > 0 && slots && masks && !light && (!MATERIAL_RECIPES[wears - 1]!.lies || (axis === 1 && ny > 0))) made(wears, index, axis, x, y, z, nx, nz, footprint, slots, masks, secondShare(u, v));
+  else finishMaps(index, u, v, spread, sample, light, tangent, depth, early);
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
   const stain = light ? 0 : 0.75 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.25 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
   const weather = f.weather * city[4]!;
@@ -400,7 +482,7 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     albedo[c] = maps.base[c]! * dye * f.tint[c]! * city[c]! * (1 + (macro - 0.5) * 0.5 - stain * weather * 0.5) * (1 + (maps.patch - 0.5) * f.patch) * (1 - wet * 0.28) * (1 - growth + growth * green);
   }
   // The normal map's lean across and up the tile, in the tile's frame: across is +u, up is -v.
-  const k = f.bump * city[8]!, lx = light ? 0 : maps.lean[0]!, ly = light ? 0 : maps.lean[1]!;
+  const k = scales.bump * city[8]!, lx = light ? 0 : maps.lean[0]!, ly = light ? 0 : maps.lean[1]!;
   const lz = Math.sqrt(Math.max(0, 1 - lx * lx - ly * ly));
   const bx = lx * k, by = ly * k;
   let ox = (smooth ? smooth[0]! : nx) * lz, oy = (smooth ? smooth[1]! : ny) * lz, oz = (smooth ? smooth[2]! : nz) * lz;
@@ -410,9 +492,9 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   normal[1] = oy / length;
   normal[2] = oz / length;
   orm[0] = maps.mro[0]!;
-  orm[1] = clamp(maps.mro[1]! * f.rough - wet * 0.35, 0.12, 1);
+  orm[1] = clamp(maps.mro[1]! * scales.rough - wet * 0.35, 0.12, 1);
   orm[2] = maps.mro[2]! * f.metal;
-  return maps.mro[3]! * f.height + f.lift;
+  return maps.mro[3]! * scales.height + f.lift;
 }
 
 /**
@@ -935,12 +1017,19 @@ export function worldVertex(vertex: string): string {
  * - vEdges (flat uint, bits): which of the face's borders are outer edges, u at 0, u at 1, v at 0, v at 1 (bits 2 to 5
  *   of aBone); 0 where none or unknown.
  *
+ * - vMade (flat int): the material made from a recipe the face wears (content/texgen/materials.ts, from 1), or 0: a near
+ *   chunk's from its stream of them (attribute 15, render/nearcity.ts), an instance's from its last two regions, the
+ *   mark MADE_MARK, which is no colour, and then the number (scene.ts).
+ *
  * A face's size and its nearest outer border come from vFace's and vRel's steps between pixels (edgeOf); its weathering
  * from its world point and normal (wallFrame).
  */
+export const MADE_MARK = 255;
 export function ownVertex(vertex: string): string {
   if (!vertex.includes("out vec3 vRel;") || !vertex.includes("  vRel = p;")) throw new Error("ownVertex: not a flat mesh vertex text");
-  return vertex.replace("out vec3 vRel;", "out vec3 vRel;\nout vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nuniform vec3 uWorldEye;")
+  // A near chunk's material is its stream's; an instance's its last two regions (MADE_MARK), where its mesh's colour is the instance's.
+  return vertex.replace("out vec3 vRel;", "out vec3 vRel;\nout vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nlayout(location=15) in uint aMade;\nflat out int vMade;\nuniform vec3 uWorldEye;")
+    .replace("  vRel = p;", `  vMade = aMade > 0u ? int(aMade) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n  vRel = p;`)
     .replace("  vRel = p;", "  vOwn = l;\n  vPlace = floor((iPos + uOffset + uWorldEye).xz * 4.0 + 0.5);\n  vFace = vec2(float(aBone & 1u), float((aBone >> 1u) & 1u));\n  vEdges = uSkin > 0.5 ? 0u : (aBone >> 2u) & 15u;\n  vRel = p;");
 }
 
@@ -1075,6 +1164,55 @@ void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out ve
 }
 // Whether the finish is smooth enough to mirror the sky as a picture (worldSharp's twin), set by worldSurface.
 bool worldSharp = false;
+#ifdef WORLD_WEATHER
+uniform highp sampler2DArray uTexgen;
+uniform float uTexgenReady;
+int worldMade = 0;
+const vec4 MD[${MATERIAL_RECIPES.length + 1}] = vec4[${MATERIAL_RECIPES.length + 1}](vec4(1.0), ${MATERIAL_RECIPES.map((r) => `vec4(${fl(r.metres)}, ${fl(r.relief)}, ${fl(madeFar(r))}, ${fl(r.mottle)})`).join(", ")});
+const vec2 MS[${MATERIAL_RECIPES.length + 1}] = vec2[${MATERIAL_RECIPES.length + 1}](vec2(0.0), ${MATERIAL_RECIPES.map((r) => `vec2(${madeShift(r).map(fl).join(", ")})`).join(", ")});
+const bool ML[${MATERIAL_RECIPES.length + 1}] = bool[${MATERIAL_RECIPES.length + 1}](false, ${MATERIAL_RECIPES.map((r) => String(r.lies === true)).join(", ")});
+void made(int k, int id, int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy, vec2 qf, out vec4 base, out vec4 mro, out vec2 bump, out float tone, inout vec3 scales) {
+  float m = MD[k].x;
+  vec4 s = fMade[k * 2 - 2];
+  vec3 ph = fMade[k * 2 - 1].xyz, p = rel + uWorldEye;
+  bool turn = axis == 1 && abs(face.x) > abs(face.z);
+  vec2 q = axis == 1 ? rel.xz / m + ph.xz : axis == 0 ? vec2(rel.z / m + ph.z, -rel.y / m - ph.y) : vec2(rel.x / m + ph.x, -rel.y / m - ph.y);
+  vec2 w = axis == 1 ? p.xz : axis == 0 ? vec2(p.z, -p.y) : vec2(p.x, -p.y);
+  vec2 dx = (axis == 1 ? dpx.xz : axis == 0 ? vec2(dpx.z, -dpx.y) : vec2(dpx.x, -dpx.y)) / m;
+  vec2 dy = (axis == 1 ? dpy.xz : axis == 0 ? vec2(dpy.z, -dpy.y) : vec2(dpy.x, -dpy.y)) / m;
+  if (turn) {
+    q = q.yx;
+    dx = dx.yx;
+    dy = dy.yx;
+  }
+  tone = clamp((surfaceNoise(qf * ${fl(WORLD_PATCH)} + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
+  tone = tone * tone * (3.0 - 2.0 * tone);
+  float t = s.y * (1.0 - clamp((log2(max(length(dx), length(dy)) * m / MD[k].z) - ${fl(WORLD_FAR)}) / ${fl(WORLD_FAR_BAND)}, 0.0, 1.0));
+  base = WB[id];
+  mro = WO[id];
+  bump = vec2(0.0);
+  if (t <= 0.0) return;
+  float share = clamp((surfaceNoise(w * ${fl(WORLD_PATCH)} / m + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
+  share = share * share * (3.0 - 2.0 * share);
+  vec4 b = vec4(0.0), r = vec4(0.0);
+  if (share < 1.0) {
+    b = textureGrad(uTexgen, vec3(q, s.x), dx, dy);
+    r = textureGrad(uTexgen, vec3(q, s.x + 1.0), dx, dy);
+  }
+  if (share > 0.0) {
+    vec4 b2 = textureGrad(uTexgen, vec3(q + MS[k], s.x), dx, dy), r2 = textureGrad(uTexgen, vec3(q + MS[k], s.x + 1.0), dx, dy);
+    float over = share >= 1.0 ? 1.0 : higher(r.a, r2.a, share, 1.0, ${fl(WORLD_BAND)});
+    b = mix(b, b2, over);
+    r = mix(r, r2, over);
+  }
+  float mottle = 1.0 + MD[k].w * t * (1.2 * surfaceNoise(w / ${fl(MOTTLE[0])} + vec2(3.1, 9.2)) + 0.8 * surfaceNoise(w / ${fl(MOTTLE[1])} + vec2(7.7, 2.4)) - 1.0);
+  base = vec4(mix(base.rgb, base.rgb * 2.0 * b.rgb, t) * mottle, mix(base.a, b.a, t));
+  mro = mix(mro, vec4(mro.r * min(1.0, 0.8 + 0.4 * r.a), r.b, mro.b, r.a), t);
+  bump = (r.rg - 0.5) * 2.0 * t;
+  if (turn) bump = -bump.yx;
+  scales = mix(scales, vec3(1.0, 1.0, MD[k].y), t);
+}
+#endif
 // Returns the height in millimetres with the finish's lift.
 float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int id, vec3 rel, vec3 dpx, vec3 dpy) {
   vec4 f = WF[id], tint = WT[id], w = WW[id];
@@ -1093,6 +1231,11 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   view = vec3(axis == 0 ? e.z : e.x, axis == 1 ? e.z : -e.y, axis == 1 ? e.y * sign(face.y) : axis == 0 ? e.x * sign(face.x) : e.z * sign(face.z));
   if (view.z > 0.1) depth = WM[id].z * 0.001 / metres * clamp(2.0 - max(length(dx), length(dy)) * ${fl(RELIEF_TEXELS)}, 0.0, 1.0);
 #endif
+  vec3 scales = vec3(f.z, f.y, WM[id].z);
+#ifdef WORLD_WEATHER
+  if (worldMade > 0 && (!ML[worldMade] || (axis == 1 && face.y > 0.0))) made(worldMade, id, axis, face, rel, dpx, dpy, q, base, mro, bump, tone, scales);
+  else
+#endif
   finishMaps(id, q, dx, dy, view, depth, base, mro, bump, tone);
   vec3 p = rel + uWorldEye;
   float macro = surfaceNoise(vec2(p.x/37.0+p.y/53.0,p.z/37.0));
@@ -1108,18 +1251,16 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   albedo = base.rgb*(1.0+(clamp(albedo/0.3,0.18,2.2)-1.0)*tint.w*base.a)*tint.rgb*uSurfaceCity[0].rgb;
   albedo *= (1.0+(macro-0.5)*0.5-stain*weather*0.5)*(1.0+(tone-0.5)*WS[id])*(1.0-wet*0.28)*mix(vec3(1.0),vec3(0.55,0.75,0.35),growth);
   float z = sqrt(max(0.0, 1.0 - dot(bump, bump)));
-  bump *= f.y*uSurfaceCity[2].x;
+  bump *= scales.y*uSurfaceCity[2].x;
   n = normalize(n * z + (axis==1 ? vec3(bump.x,0.0,-bump.y) : axis==0 ? vec3(0.0,bump.y,bump.x) : vec3(bump.x,bump.y,0.0)));
-  orm = vec3(mro.r,clamp(mro.g*f.z-wet*0.35,0.12,1.0),mro.b*f.w);
+  orm = vec3(mro.r,clamp(mro.g*scales.x-wet*0.35,0.12,1.0),mro.b*f.w);
   worldSharp = orm.y < ${fl(WORLD_SHARP)};
-  return mro.a * WM[id].z + WM[id].w;
+  return mro.a * scales.z + WM[id].w;
 }
 #ifdef WORLD_WEATHER
 ${vectors("WX", weatherings.map((w) => [w.runs, w.damp, w.peel, w.joints]))}const float WV[${N}] = float[${N}](${weatherings.map((w) => fl(w.value)).join(",")});
 const vec3 WL[${N}] = vec3[${N}](${weatherings.map((w) => `vec3(${LEFT[w.left].map(fl).join(",")})`).join(",")});
-${vectors("WY", weatherings.map((w) => [w.drips, w.splash, w.bleach, w.algae]))}uniform highp sampler2DArray uTexgen;
-uniform float uTexgenReady;
-uint weatherHash(int a, int b, int c) {
+${vectors("WY", weatherings.map((w) => [w.drips, w.splash, w.bleach, w.algae]))}uint weatherHash(int a, int b, int c) {
   uint h = uint(a) * 1597334677u ^ uint(b) * 3812015801u ^ uint(c) * 2654435761u;
   h = (h ^ (h >> 16u)) * 2246822519u;
   h = (h ^ (h >> 13u)) * 3266489917u;

@@ -1,4 +1,5 @@
 import { GRATE, UTILITY_ENAMEL as BOX } from "./colours.ts";
+import { roofOf } from "./texgen/materials.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { leaning, pitchedRoof, slopeShape, slopedSlab, stairFlight, staticOf, wedge } from "../shared/content/slopes.ts";
 import type { HullDef } from "../shared/world/convex.ts";
@@ -444,7 +445,39 @@ export const RUIN_FINISHES = {
   rust: { color: 179, under: 178, material: "core:mat_metal", hp: 8000 },
   blue: { color: 5, under: 87, material: "core:mat_metal", hp: 9000 },
   fracture: { color: 102, under: 97, material: "core:mat_stone", hp: 12000 },
+  // Finishes of materials made from recipes (content/texgen/materials.ts), each in a painted one's colour, which dyes it
+  // and whose weathering it keeps: stucco and painted block in rose and mint, render in limestone, block in grey, sheet in the metals'.
+  rosestucco: { color: 81, under: 111, material: "core:mat_stone", hp: 10000, made: "stucco" },
+  mintstucco: { color: 75, under: 142, material: "core:mat_stone", hp: 10000, made: "stucco" },
+  roseblock: { color: 81, under: 111, material: "core:mat_stone", hp: 11000, made: "block" },
+  mintblock: { color: 75, under: 142, material: "core:mat_stone", hp: 11000, made: "block" },
+  limerender: { color: 10, under: 101, material: "core:mat_stone", hp: 12000, made: "render" },
+  greyblock: { color: 100, under: 97, material: "core:mat_stone", hp: 14000, made: "block" },
+  steelsheet: { color: 89, under: 87, material: "core:mat_metal", hp: 12000, made: "corrugated" },
+  bluesheet: { color: 5, under: 87, material: "core:mat_metal", hp: 9000, made: "corrugated" },
+  rustsheet: { color: 179, under: 178, material: "core:mat_metal", hp: 7000, made: "corrugated" },
+  // A pitched roof of standing-seam sheet, in steel's colour: a roof's finish alone (ROOF_FINISHES).
+  seam: { color: 89, under: 87, material: "core:mat_metal", hp: 12000, made: "seam" },
+  // A flat roof's top plate in tar and gravel, which lies on its top alone, in a colour whose painted finish is
+  // asphalt: what the far city and a phone draw it as, and the mean the gravel is made about.
+  tar: { color: 85, under: 97, material: "core:mat_stone", hp: 16000, made: "gravel" },
 } as const;
+/** Finishes only a roof's pieces come in. */
+const ROOF_FINISHES = new Set<string>(["seam", "tar"]);
+/** What a building of `finish` has its flat roof's plates in: tar and gravel where its material's roof is (MaterialRecipe `roof`). */
+export const flatRoof = (finish: keyof typeof RUIN_FINISHES): keyof typeof RUIN_FINISHES => {
+  const made = (RUIN_FINISHES[finish] as { made?: string }).made;
+  return made && roofOf(made) === "gravel" ? "tar" : "concrete";
+};
+/**
+ * The finishes made from recipes that a building of a painted finish may wear in its place, by its id (ruin-vocabulary.ts
+ * `ruleFor`): MADE_SHARE of them do, each of the list alike.
+ */
+export const MADE_FINISHES: Partial<Record<keyof typeof RUIN_FINISHES, readonly (keyof typeof RUIN_FINISHES)[]>> = {
+  rose: ["rosestucco", "roseblock"], mint: ["mintstucco", "mintblock"], limestone: ["limerender"], concrete: ["greyblock"],
+  steel: ["steelsheet"], blue: ["bluesheet"], rust: ["rustsheet"],
+};
+export const MADE_SHARE = 0.55;
 
 export type RuinShape = keyof typeof RUIN_SHAPES;
 export type RuinFinish = keyof typeof RUIN_FINISHES;
@@ -454,7 +487,7 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 // Keep structural meshes shared across districts. Only the facade and salvage pieces vary in finish.
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
-  zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
+  zpitch4: ["clay", "seam"], zpitch8: ["clay", "rust", "seam"], zpitch16: ["clay", "seam"], floor4: ["concrete", "tar"], floor8: ["concrete", "tar"], floor16: ["concrete", "tar"], zdeckramp: ["concrete"],
   zwedge: ["concrete"], zskirt1: ["concrete"], zskirt2: ["concrete"], zendsag: ["fracture"], zdrape: ["concrete"], zleancol: ["concrete"], zmoss: ["concrete"], zvine: ["concrete"], zvine2: ["concrete"], zvine3: ["concrete"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zpipetop: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
@@ -471,7 +504,7 @@ const FOOTED_SHAPES = new Map([...FOOTED].map((name): [string, ShapeDef] => {
   const [w, h, d] = RUIN_SHAPES[name as RuinShape];
   return [name, { type: "shape", id: shaped(name), role: "thing", boxes: [{ at: [0, h / 2, 0], half: [w / 2, h / 2, d / 2] }] }];
 }));
-export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && !GROWN[name] && (PAINTED.has(name) || name.startsWith("z"))));
+export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && !ROOF_FINISHES.has(finish) && !GROWN[name] && (PAINTED.has(name) || name.startsWith("z"))));
 const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zvine2", "zvine3", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub", "zivy1", "zivy2", "zivy3", "zmoss"]);
 const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
   (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name as RuinShape, finish)).map((finish) => ({

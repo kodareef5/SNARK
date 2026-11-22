@@ -89,7 +89,7 @@ export class Mason {
   cover(u: number, v: number, radius: number): void {
     const [x, z] = worldPoint(this.frame, u, v); this.clear.push({ x, z, radius });
   }
-  floor(t: Point, y: number, bay: number): void { this.put(bay === 16 ? "floor16" : bay === 8 ? "floor8" : "floor4", t[0], y - .2, t[1]); }
+  floor(t: Point, y: number, bay: number, finish: RuinFinish = "concrete"): void { this.put(bay === 16 ? "floor16" : bay === 8 ? "floor8" : "floor4", t[0], y - .2, t[1], finish); }
   post(u: number, bottom: number, v: number, height: number): void {
     for (let y = 0; y < height - .01;) {
       const h = height - y >= 16 ? 16 : height - y >= 8 ? 8 : 4;

@@ -566,7 +566,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2788795000 until the bent street sections (content/bends.ts) added their grey meshes (554916778 with those
   // and without the capsule and the things blocked out). It was 2690609907 until a sinking walk's slopes
   // (content/bends.ts) added their kinds after them; without those it is that again.
-  expect(hash).toBe(2681943990);
+  // It was 2681943990 until the finishes of materials made from recipes (content/ruins.ts) added their kinds.
+  expect(hash).toBe(927678146);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -608,7 +609,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 2064018380 until the things blocked out and their box.
   // And 3496432371 until the bent street sections, as above (1784790367 with those alone), and 1840630290 until a
   // sinking walk's slopes, as above.
-  expect(saddled.hash).toBe(2416789718);
+  // And 2416789718 until the finishes of materials made from recipes, as above.
+  expect(saddled.hash).toBe(3120527);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

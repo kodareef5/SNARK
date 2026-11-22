@@ -1,7 +1,7 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
 // Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot (--share SHARE)); --zoom N magnifies the view N times.
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
-// --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
+// --hour H draws at that hour of the day. --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
 // with its landmarks; --moved 1 draws their moving statics at their second state (a yacht's sails set).
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
 // --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
@@ -1329,6 +1329,7 @@ if (import.meta.main) {
     if (pos) [view.cam.x, view.cam.y, view.cam.z] = pos as [number, number, number];
     view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
     view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
+    if (arg("hour") !== undefined) view.scene.hour = Number(arg("hour"));
     if (mapFile) {
       // With no --pos the camera is at the map's first spawn point, at eye height and facing as it does.
       if (!pos) {

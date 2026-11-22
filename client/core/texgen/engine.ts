@@ -1,7 +1,8 @@
 // Textures the card makes from recipes (texgen): jobs that each fill layers of one RGBA8 array, drawn a frame's share
 // at a time by the shell's primitive (client/shell/texgen.ts) as `Orders` say. Every layer is drawn first at an eighth
 // of the side and read from at once, then whole, and the finer levels are eased in. A job is GLSL that gives a value at
-// a point and its TypeScript twin, which the tests, the rasterizer and the card's check hold to the card.
+// a point and its TypeScript twin, which the tests, the rasterizer and the card's check hold to the card. A layer has a
+// version, which its reader asks for each frame: one whose version changes is made again while the rest are read.
 
 import type { Tier } from "../assets/tiers.ts";
 import type { QueryGl } from "../passes.ts";
@@ -19,12 +20,14 @@ export interface Job {
   readonly cost: number;
   /** vec4 rows of uniforms a band is drawn with, from uJob[2]. */
   readonly rows: number;
+  /** Its layers are read only whole, so the first pass, which the rest come up from, leaves them. */
+  readonly whole?: boolean;
   /** GLSL defining `vec4 made(vec2 at)`: the value at `at`, 0 to 1 across the band and down it. */
   readonly glsl: string;
-  /** Band `band` of its layer `layer`'s rows, into `out` from `at`. */
-  fill(layer: number, band: number, out: Float32Array, at: number): void;
+  /** Band `band` of its layer `layer`'s rows at version `version` (Texgen.frame), into `out` from `at`. */
+  fill(layer: number, band: number, out: Float32Array, at: number, version: number): void;
   /** `made`'s twin, into `out`. */
-  made(layer: number, band: number, u: number, v: number, out: Float64Array): void;
+  made(layer: number, band: number, u: number, v: number, out: Float64Array, version: number): void;
 }
 
 /** Levels under the widest that the first pass is drawn at, and frames over which it comes up and the finer levels after it. */
@@ -69,7 +72,7 @@ void main() {
 `;
 
 /** Layer `layer` of `job` at `wide` a side as RGBA8, row 0 first, as the card draws it with `taps`: `jobFragment`'s twin. */
-export function jobPixels(job: Job, layer: number, wide: number, taps: readonly [number, number] = job.taps): Uint8Array {
+export function jobPixels(job: Job, layer: number, wide: number, taps: readonly [number, number] = job.taps, version = 1): Uint8Array {
   const out = new Uint8Array(wide * wide * 4), v = new Float64Array(4), sum = new Float64Array(4), rows = wide / job.bands;
   for (let py = 0; py < wide; py++) {
     const band = Math.floor(py / rows);
@@ -78,7 +81,7 @@ export function jobPixels(job: Job, layer: number, wide: number, taps: readonly 
       for (let j = 0; j < taps[1]; j++) {
         const w = ((py - band * rows + (j + 0.5) / taps[1]) / rows - job.pad) / (1 - 2 * job.pad);
         for (let i = 0; i < taps[0]; i++) {
-          job.made(layer, band, (px + (i + 0.5) / taps[0]) / wide, Math.min(Math.max(w, 0), 1), v);
+          job.made(layer, band, (px + (i + 0.5) / taps[0]) / wide, Math.min(Math.max(w, 0), 1), v, version);
           for (let c = 0; c < 4; c++) sum[c]! += v[c]!;
         }
       }
@@ -170,19 +173,26 @@ export class Texgen {
   readonly orders: Orders;
   /** Each job's first layer. */
   readonly first: readonly number[];
+  /** For each layer, the version it holds whole with every level, which a reader may take; 0 for none. */
+  readonly holds: Int32Array;
   private readonly items: { job: number; layer: number; band: number }[] = [];
   private readonly timer: Timer;
   private side = 0;
   private off = false;
-  /** The level being drawn, -1 once all are, and the next item and row of it; the first pass's level. */
+  /** The level being drawn, -1 for none; the items the pass draws, the next of them and its row; the first pass's level. */
   private level = -1;
+  private readonly todo: Int32Array;
+  private todoCount = -1;
   private item = 0;
   private row = 0;
   private coarse = 0;
+  /** The version each layer is being drawn at. */
+  private readonly drawing: Int32Array;
   /** The pass shown (0 none, 1 the first, 2 the whole), and frames since each. */
   private shown = 0;
   private risen = 0;
   private sharpened = 0;
+  private idle = false;
   /** The card's ns a unit, smoothed; 0 until timed. */
   private rate = 0;
   /** Item and row after each of this frame's draws, and whether they end the pass. */
@@ -200,15 +210,18 @@ export class Texgen {
     this.timer = new Timer(gl);
     this.orders = new Orders(jobs, this.timer);
     this.orders.layers = at;
+    this.holds = new Int32Array(at);
+    this.drawing = new Int32Array(at);
+    this.todo = new Int32Array(this.items.length);
   }
 
   /** From 0 until the first pass is made to 1 once it has come up. */
   get ready(): number {
     return this.risen / TEXGEN_RISE;
   }
-  /** Every level made and eased in. */
+  /** Every layer asked for made and eased in. */
   get done(): boolean {
-    return this.shown === 2 && this.sharpened === TEXGEN_RISE;
+    return this.shown === 2 && this.sharpened === TEXGEN_RISE && this.idle;
   }
 
   /**
@@ -228,8 +241,12 @@ export class Texgen {
     return o;
   }
 
-  /** This frame's orders for the array `side` wide, 0 for none, on `tier`, timed where `timed` and the card can. */
-  frame(want: number, tier: Tier, timed: boolean): Orders {
+  /**
+   * This frame's orders for the array `side` wide, 0 for none, on `tier`, timed where `timed` and the card can.
+   * `versions` is the version wanted of each layer, 1 where none is given and 0 for a layer to leave: a layer whose
+   * version is not the one it holds is made again, whole, once the first two passes are through.
+   */
+  frame(want: number, tier: Tier, timed: boolean, versions: ArrayLike<number> | null = null): Orders {
     const o = this.orders;
     if (o.broken) this.off = true;
     const side = this.off ? 0 : want;
@@ -248,18 +265,20 @@ export class Texgen {
     const ns = this.timer.take();
     if (ns > 0) this.rate = this.rate > 0 ? this.rate + (ns - this.rate) * 0.3 : ns;
     o.time = timed && this.timer.idle;
+    if (side > 0 && this.todoCount < 0) this.list(versions);
+    this.idle = this.level < 0;
     if (this.level < 0) return o;
     const low = tier.finishes < 1024, wide = side >> this.level, stride = o.uniforms.length / MOST_DRAWS;
     let left = this.rate > 0 ? Math.min(MOST, Math.max(LEAST, ((low ? TARGET_LOW : TARGET) * 1e6) / this.rate)) : low ? SLICE_LOW : SLICE;
     let item = this.item, row = this.row, spent = 0;
-    while (item < this.items.length && o.count < MOST_DRAWS) {
-      const it = this.items[item]!, job = this.jobs[it.job]!, rows = wide / job.bands, k = this.level ? 2 : 1;
+    while (item < this.todoCount && o.count < MOST_DRAWS) {
+      const it = this.items[this.todo[item]!]!, job = this.jobs[it.job]!, rows = wide / job.bands, k = this.level ? 2 : 1;
       const tx = job.taps[0] * k, ty = job.taps[1] * k, perRow = wide * tx * ty * job.cost;
       const n = Math.min(rows - row, Math.floor(left / perRow) || (o.count ? 0 : 1));
       if (n <= 0) break;
-      const d = o.count * DRAW_INTS, u = o.count * stride;
+      const d = o.count * DRAW_INTS, u = o.count * stride, layer = this.first[it.job]! + it.layer;
       o.draws[d] = it.job;
-      o.draws[d + 1] = this.first[it.job]! + it.layer;
+      o.draws[d + 1] = layer;
       o.draws[d + 2] = this.level;
       o.draws[d + 3] = it.band * rows + row;
       o.draws[d + 4] = n;
@@ -272,7 +291,7 @@ export class Texgen {
       o.uniforms[u + 4] = tx;
       o.uniforms[u + 5] = ty;
       o.uniforms[u + 6] = o.uniforms[u + 7] = 0;
-      job.fill(it.layer, it.band, o.uniforms, u + 8);
+      job.fill(it.layer, it.band, o.uniforms, u + 8, this.drawing[layer]!);
       left -= n * perRow;
       o.units[o.count] = spent += n * perRow;
       row += n;
@@ -284,18 +303,40 @@ export class Texgen {
       this.after[o.count * 2 + 1] = row;
       o.count++;
     }
-    if (item === this.items.length) {
+    if (item === this.todoCount) {
       this.ends = true;
       o.base = this.level;
       o.mipmap = true;
-      if (this.level === 0) o.minLod = this.coarse;
+      if (this.level === 0 && this.shown < 2) o.minLod = this.coarse;
     }
     return o;
   }
 
+  /** Lists what the next pass draws: every layer whose version wanted is not the one it holds, at that version. None begins a pass only before the first. */
+  private list(versions: ArrayLike<number> | null): void {
+    let n = 0;
+    for (let i = 0; i < this.items.length; i++) {
+      const it = this.items[i]!, layer = this.first[it.job]! + it.layer, v = versions && layer < versions.length ? versions[layer]! : 1;
+      if (v === 0 || v === this.holds[layer] || (this.level > 0 && this.jobs[it.job]!.whole)) continue;
+      this.drawing[layer] = v;
+      // A layer made again is not read while it is drawn.
+      if (this.level < 0) this.holds[layer] = 0;
+      this.todo[n++] = i;
+    }
+    if (n === 0 && this.level < 0) return;
+    this.todoCount = n;
+    if (this.level < 0) this.level = 0;
+    this.item = this.row = 0;
+  }
+
   private passed(): void {
+    if (this.level === 0) for (let t = 0; t < this.todoCount; t++) {
+      const it = this.items[this.todo[t]!]!, layer = this.first[it.job]! + it.layer;
+      this.holds[layer] = this.drawing[layer]!;
+    }
     this.shown = this.level > 0 ? 1 : 2;
     this.level = this.level > 0 ? 0 : -1;
+    this.todoCount = -1;
     this.item = this.row = 0;
   }
 
@@ -303,6 +344,8 @@ export class Texgen {
     this.side = this.orders.side = side;
     this.coarse = side ? Math.max(0, Math.min(TEXGEN_COARSE, 31 - Math.clz32(side) - 6)) : 0;
     this.level = side ? this.coarse : -1;
+    this.todoCount = -1;
+    this.holds.fill(0);
     this.item = this.row = this.shown = this.risen = this.sharpened = 0;
   }
 }

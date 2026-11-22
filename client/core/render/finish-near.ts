@@ -7,6 +7,7 @@
 // which is never more than it can be; a jump starts afresh.
 
 import { SURFACE_NAMES, surfaceIndex } from "../../../content/surfaces.ts";
+import { MOST_MATERIALS, materialIndex } from "../../../content/texgen/materials.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, YAW_UNITS } from "../../../shared/coords.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
@@ -20,7 +21,9 @@ import { FACADE_COLOURS, KINDS, facadeKind } from "./facade.ts";
 export const NEAR_WALL = SURFACE_NAMES.length;
 export const NEAR_FRONT = NEAR_WALL + 1;
 export const NEAR_GLASS = NEAR_WALL + 2;
-const SLOTS = NEAR_GLASS + 1;
+/** After those, the nearest piece of each material made from a recipe (content/texgen/materials.ts): a bit each, and no more than a look's 32 hold. */
+export const NEAR_MADE = NEAR_WALL + 3;
+const SLOTS = NEAR_MADE + MOST_MATERIALS;
 /** Samples of the ground and pieces of the store a frame's look goes over at most. */
 export const LOOK_WORK = 4096;
 /** Metres the eye goes and frames that pass before a look is begun again, and metres in one frame that are a jump. */
@@ -83,6 +86,7 @@ export class FinishNear {
       const shape = d.shape !== undefined ? reg.defs[reg.index.get(d.shape) ?? 0] : null;
       const boxes = shape?.type === "shape" && shape.look?.boxes ? shape.look.boxes.map((b) => ({ half: b.half, color: b.color ?? d.color })) : [{ half: [reg.halfX[k]!, reg.halfY[k]!, reg.halfZ[k]!], color: d.color }];
       let bits = 1 << NEAR_WALL | 1 << surfaceIndex(d.under ?? d.color, false);
+      if (d.made) bits |= 1 << (NEAR_MADE + materialIndex(d.made) - 1);
       for (const { half, color } of boxes) {
         bits |= 1 << surfaceIndex(color, false);
         const cls = FACADE_COLOURS[color] ?? 0;

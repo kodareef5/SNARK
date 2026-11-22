@@ -354,6 +354,7 @@ export class GlRenderer {
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
     // A level without skin entries leaves the SURFACE program's four bones at this, which must be whole numbers.
     gl.vertexAttribI4ui(10, 0, 0, 0, 0);
+    gl.vertexAttribI4ui(15, 0, 0, 0, 0);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     const texture = (
       unit: number,
@@ -527,6 +528,12 @@ export class GlRenderer {
       for (let a = 2; a <= 5; a++) {
         gl.enableVertexAttribArray(a);
         gl.vertexAttribDivisor(a, 1);
+      }
+      if (u.made) {
+        this.array(lod.buffers[lod.buffers.push(gl.createBuffer()!) - 1]!);
+        gl.bufferData(gl.ARRAY_BUFFER, u.made, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(15);
+        gl.vertexAttribIPointer(15, 1, gl.UNSIGNED_BYTE, 1, 0);
       }
     } else if (!lod) return;
     this.vertexArray(lod.vao);
@@ -933,7 +940,7 @@ export class GlRenderer {
     // and it is not timed apart.
     this.set(false, false, false);
     this.passes?.mark(PASS_MAKING);
-    if (this.texgen && this.gen.draw(this.texgen.frame(p.texgenSide, p.tier, !this.passes?.on), this.job, this.anisotropyOf)) {
+    if (this.texgen && this.gen.draw(this.texgen.frame(p.texgenSide, p.tier, !this.passes?.on, (p.texgenHolds = this.texgen.holds, p.texgenWant)), this.job, this.anisotropyOf)) {
       this.current = null;
       this.vao = this.gen.vao;
     }

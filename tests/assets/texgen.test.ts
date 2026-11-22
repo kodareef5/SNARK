@@ -7,11 +7,11 @@ import { hash3, tiled, cells } from "../../client/core/texgen/noise.ts";
 import { FIELD_STRETCH, bayFeatures, bayLayout, bayResult, bayTexel, baySeed, fieldRaw, mipmapped, tileSeed, weatherJobs, weatherPixels, weatherTexture } from "../../client/core/texgen/weather.ts";
 import { jobFragment, jobPixels } from "../../client/core/texgen/engine.ts";
 import { formworkTexel } from "../../client/core/texgen/formwork.ts";
-import { FIELD_LAYER, FORMWORK_LAYER, GROWTH_TOP, TEXGEN_LAYERS, WEATHER_BAYS, WEATHER_GROUND, WEATHER_PAD } from "../../client/core/texgen/layers.ts";
+import { FIELD_LAYER, FORMWORK_LAYER, GROWTH_TOP, WEATHER_BAYS, WEATHER_GROUND, WEATHER_PAD, MADE_LAYER } from "../../client/core/texgen/layers.ts";
 import { sample } from "../../client/core/render/cpu-texture.ts";
 
 const SIDE = 128;
-const layers = Array.from({ length: TEXGEN_LAYERS }, (_, l) => weatherPixels(l, SIDE));
+const layers = Array.from({ length: MADE_LAYER }, (_, l) => weatherPixels(l, SIDE));
 const at = (px: Uint8Array, x: number, y: number, c: number): number => px[((y * SIDE + x) * 4) + c]!;
 const STAMPS = WEATHER_BAYS + WEATHER_GROUND;
 const table = (l: number, half: number): Float32Array => bayFeatures(WEATHER_RECIPE, baySeed(WEATHER_RECIPE, l, half), l >= WEATHER_BAYS);
@@ -208,7 +208,7 @@ test("the rasterizer's texture of a layer has every level, each the mean of the 
 test("the card's programs draw what the TypeScript draws: the same loops, ranges and seeds, as the engine's jobs, in the array's layers", () => {
   const jobs = weatherJobs(), [bays, fields, form] = jobs, texts = jobs.map(jobFragment);
   expect([bays!.layers, fields!.layers, form!.layers, bays!.bands, fields!.bands, form!.bands, bays!.pad, fields!.pad]).toEqual([STAMPS, 1, 1, 2, 2, 1, WEATHER_PAD, 0]);
-  expect([STAMPS, STAMPS + fields!.layers, jobs.reduce((n, j) => n + j.layers, 0)]).toEqual([FIELD_LAYER, FORMWORK_LAYER, TEXGEN_LAYERS]);
+  expect([STAMPS, STAMPS + fields!.layers, jobs.reduce((n, j) => n + j.layers, 0)]).toEqual([FIELD_LAYER, FORMWORK_LAYER, MADE_LAYER]);
   for (const name of ["vec4 bayTexel(", `uJob[${2 + bayLayout(WEATHER_RECIPE).rows}]`, `i < ${WEATHER_RECIPE.runs.heads[1] * WEATHER_RECIPE.runs.trails[1]}`, `i < ${WEATHER_RECIPE.runs.threads[1]}`]) expect(texts[0]).toContain(name);
   for (const name of ["void fieldRaw(", "float stretch(", "uJob[3]"]) expect(texts[1]).toContain(name);
   expect(texts[2]).toContain("float hole(");
