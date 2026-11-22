@@ -1,8 +1,10 @@
 // The drop book's admin page, served to look at (planning/workstreams/supply.md): builds the page alone (not the game's
 // client), starts a development world, and prints where the page is. With --shots it pictures each view in Chrome
-// into var/supply/page/ and stops.
+// into var/supply/page/ and stops. With --drive it works the page in Chrome as an admin would (tools/supply/drive.ts:
+// a circuit switched off and one taken out, a site dragged, the simulator, an ARK paste), judges each by the book the
+// server then holds, and stops with a fault if any went wrong.
 //
-//   bun tools/supply/page.ts [--port 8790] [--shots] [--map <file.snmap>]
+//   bun tools/supply/page.ts [--port 8790] [--shots] [--drive] [--map <file.snmap>]
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -11,9 +13,10 @@ import { startServer } from "../../server/main.ts";
 import { corePackBytes } from "../../tests/fixtures/pack.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 import { splitPack } from "../pack/split.ts";
+import { drive } from "./drive.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
-const { values } = parseArgs({ options: { port: { type: "string", default: "8790" }, shots: { type: "boolean" }, map: { type: "string" } } });
+const { values } = parseArgs({ options: { port: { type: "string", default: "8790" }, shots: { type: "boolean" }, drive: { type: "boolean" }, map: { type: "string" } } });
 const dist = join(ROOT, "var/supply/page");
 mkdirSync(join(dist, "admin"), { recursive: true });
 mkdirSync(join(dist, "assets"), { recursive: true });
@@ -27,6 +30,14 @@ writeFileSync(join(dist, "admin/drops.html"), readFileSync(join(ROOT, "client/dr
 const server = startServer({ port: Number(values.port), clientDir: dist, dev: true, ...(values.map ? { map: resolve(values.map) } : {}) });
 const at = `http://127.0.0.1:${server.port}/admin/drops.html`;
 console.log(`the drops page: ${at}`);
+if (values.drive) {
+  const chrome = findChrome();
+  if (!chrome) throw new Error("no Chrome to drive the page in");
+  const faults = await drive(chrome, at, server.host);
+  console.log(faults.length === 0 ? "the page did all that was asked of it" : `${faults.length} things went wrong:\n${faults.map((f) => `  ${f}`).join("\n")}`);
+  server.stop();
+  process.exit(faults.length === 0 ? 0 : 1);
+}
 if (values.shots) {
   const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome to picture the page in");
