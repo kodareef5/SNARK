@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCount, chunkCx, chunkCz, framed } from "../../shared/coords.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import type { MapZone } from "../../shared/content/defs.ts";
-import type { MapData, MapSpawn, MapStatic, MapVehicle, NodeLayer as Layer } from "../../shared/world/mapfile.ts";
+import type { Def, MapZone } from "../../shared/content/defs.ts";
+import type { MapData, MapLandmark, MapSpawn, MapStatic, MapVehicle, NodeLayer as Layer } from "../../shared/world/mapfile.ts";
+import { roadSamples, type MapRoad } from "../../shared/world/roadframe.ts";
 import { MapWater } from "../../shared/world/water.ts";
 import { readGrey, writeGrey } from "./png.ts";
 
@@ -28,6 +29,11 @@ type Zone = { kinds: Record<string, number>; bare?: number };
 type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string; out?: string; other?: string } | { seed: number; perChunk: number; zones: Zone[]; zone: string; out?: string; other?: string } | { list: Node[] };
 type Region = { spawns: string; count: number; x: number; z: number; radius?: number; half?: [number, number] };
 type Water = { squares: string; bodies: { name: string; surface: number }[] };
+type Streets = { col: number; row: number; file: string }[];
+type Landmarks = { landmarks: (Omit<MapLandmark, "yaw"> & { yaw: number })[]; defs: Def[] };
+
+/** The roads' frame's planes, each a picture of its own (road-<plane>.png). */
+const ROAD_PLANES = ["across", "along", "half", "lanes"] as const;
 
 export const toYaw = (degrees = 0): number => Math.round((degrees / 360) * YAW_UNITS) & (YAW_UNITS - 1);
 const toDegrees = (yaw: number): number => (yaw * 360) / YAW_UNITS;
@@ -118,6 +124,12 @@ export function readLayers(folder: string, statics?: readonly MapStatic[]): MapD
     const bodies = lakes.bodies.map((b) => ({ name: b.name, level: Math.round((b.surface - about.minY) / about.stepY) }));
     water = MapWater.fromGrid(dims, about.minY, about.stepY, cell, bodies, (image.data as Uint16Array).reverse());
   }
+  // The streets' parts as the build wrote them, the roads' frame a picture a plane, and the landmarks with their definitions.
+  const streets = json<Streets>("streets.json")?.map((s) => ({ col: s.col, row: s.row, bytes: need(file(s.file), s.file) }));
+  const planes = ROAD_PLANES.map((p) => picture(`road-${p}`, 8, roadSamples(nx), roadSamples(nz)) as Uint8Array | null);
+  if (planes.some((p) => p) && !planes.every((p) => p)) throw new Error(`${folder} has some of the roads' frame's pictures (${ROAD_PLANES.map((p) => `road-${p}.png`).join(", ")}) and not all`);
+  const road: MapRoad | null = planes[0] ? { across: planes[0], along: planes[1]!, half: planes[2]!, lanes: planes[3]! } : null;
+  const marks = json<Landmarks>("landmarks.json");
 
   return {
     id: about.id,
@@ -136,7 +148,30 @@ export function readLayers(folder: string, statics?: readonly MapStatic[]): MapD
     ...(regions ? { regions: regions.map((r): MapZone => ({ kind: "spawn", spawns: r.spawns, count: r.count, at: [r.x, r.z], ...(r.half ? { half: r.half } : { radius: r.radius ?? 0 }) })) } : {}),
     ...(vehicles ? { vehicles: vehicles.map((v): MapVehicle => ({ ...v, yaw: toYaw(v.yaw) })) } : {}),
     ...(water ? { water } : {}),
+    ...(streets?.length ? { streets } : {}),
+    ...(road ? { road } : {}),
+    ...(marks ? { content: { landmarks: marks.landmarks.map((l) => ({ ...l, yaw: toYaw(l.yaw) })), defs: marks.defs } } : {}),
   };
+}
+
+/**
+ * Writes into `folder` what a map holds that a city's build adds after it reads its layers back (tools/mapworld/build.ts),
+ * so the folder builds the same map: its streets' parts (streets.json and a file of each part's bytes), its roads' frame
+ * (a picture a plane) and its landmarks with their definitions (landmarks.json). writeLayers writes them too.
+ */
+export function writeAttached(map: MapData, folder: string): void {
+  const put = (name: string, data: Uint8Array | string): void => writeFileSync(join(folder, name), data);
+  const nx = (map.dims.chunksX * CHUNK_SIZE) / TERRAIN_CELL + 1, nz = (map.dims.chunksZ * CHUNK_SIZE) / TERRAIN_CELL + 1;
+  if (map.streets?.length) {
+    const list: Streets = map.streets.map((s) => ({ col: s.col, row: s.row, file: `streets-${s.col}-${s.row}.bin` }));
+    map.streets.forEach((s, k) => put(list[k]!.file, s.bytes));
+    put("streets.json", `[\n${list.map((s) => `  ${JSON.stringify(s)}`).join(",\n")}\n]\n`);
+  }
+  if (map.road) for (const p of ROAD_PLANES) put(`road-${p}.png`, writeGrey(roadSamples(nx), roadSamples(nz), map.road[p].slice().reverse()));
+  if (map.content) {
+    const marks: Landmarks = { landmarks: map.content.landmarks.map((l) => ({ ...l, yaw: toDegrees(l.yaw) })), defs: [...map.content.defs] };
+    put("landmarks.json", `{\n  "landmarks": [\n${marks.landmarks.map((l) => `    ${JSON.stringify(l)}`).join(",\n")}\n  ],\n  "defs": [\n${marks.defs.map((d) => `    ${JSON.stringify(d)}`).join(",\n")}\n  ]\n}\n`);
+  }
 }
 
 /** A map's water as the folder holds it: its bodies, and a picture of their squares north up, 16 bits, a body's number a pixel. */
@@ -176,6 +211,15 @@ export function writeLayers(map: MapData, folder: string): void {
     put("water.json", layer.json);
     put("water.png", layer.png);
   }
+  writeAttached(map, folder);
+  writeNodeLayers(map, folder);
+}
+
+/** Writes a map's node layers into `folder` as nodes.json and the pictures and bits it names, each slot as the map has it. */
+export function writeNodeLayers(map: MapData, folder: string): void {
+  const { chunksX, chunksZ } = framed(map.dims);
+  const put = (name: string, data: Uint8Array | string): void => writeFileSync(join(folder, name), data);
+  const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
   if (map.nodes.length === 0) return;
   const layers = map.nodes.map((layer, i): NodeLayer => {
     const written = plain(layer, i);
