@@ -4,6 +4,7 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import { Icons } from "./assets/icons.ts";
+import { easeFov, forcesEye, FOV_EASE_MS, lookScale, opticZoom, zoomed } from "./optics.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tiers.ts";
@@ -112,12 +113,10 @@ const HEAD_CLEAR = .1;
 const BASE_FOV = 1.2217;
 const AIM_FOV = 0.79;
 /**
- * How many times a sight magnifies, aimed through it: the scope "zooms by about 3x" (Scope Attachment), the holo-scope "a
- * slight zoom (around 1.25x)" (Holo-Scope Attachment). The holo-scope tints the view green, "similar to a nightvision mode",
- * this much.
+ * How many times a sight magnifies is its item's optic facet (optics.ts): the scope "zooms by about 3x" (Scope
+ * Attachment), the holo-scope "a slight zoom (around 1.25x)" (Holo-Scope Attachment). The holo-scope tints the view
+ * green, "similar to a nightvision mode", this much.
  */
-export const SCOPE_ZOOM = 3;
-export const HOLO_ZOOM = 1.25;
 const HOLO_TINT = 0.22;
 /** Metres a holo-scope's crosshair finds what it is on, and its colours (Holo-Scope Attachment). */
 const HOLO_REACH = 300;
@@ -125,15 +124,10 @@ const HOLO_FRIEND = 0x48e05a;
 const HOLO_FOE = 0xff3a30;
 const HOLO_OTHER = 0xf2d23a;
 
-/** The vertical field of view that magnifies `base` (radians) `zoom` times: the tangent of its half is the zoom's share. */
-export function zoomed(base: number, zoom: number): number {
-  return 2 * Math.atan(Math.tan(base / 2) / zoom);
-}
-
-/** The kind of attachment (ItemDef.attachment) on the weapon in `slot` of `inv`, or "". */
-function attachmentKind(reg: Registry, inv: Inventory | null, slot: number): string {
+/** The attachment (ItemDef) on the weapon in `slot` of `inv`, or null. */
+function attachmentOf(reg: Registry, inv: Inventory | null, slot: number): ItemDef | null {
   const fitted = inv && slot >= 0 ? inv.attach[slot]! : 0;
-  return fitted === 0 ? "" : ((reg.defs[fitted] as ItemDef | null)?.attachment ?? "");
+  return fitted === 0 ? null : (reg.defs[fitted] as ItemDef | null);
 }
 /** Radians in a unit of yaw or pitch on the wire (65536 to a turn). */
 const UNIT_RADIANS = TAU / 65536;
@@ -1351,7 +1345,6 @@ export class App {
     // screen is not where a shot goes, so the crosshair is hidden while it is in use. The aim itself is the body's.
     const orbiting = this.orbit.inUse, sighting = aiming && !orbiting;
     hud.orbit = orbiting;
-    hud.behind = alive && third && session.driving < 0 && !passenger;
     const held = session.inventory && session.inventory.hotbar >= 0 && session.held >= 0 ? session.inventory.hotbar + session.held : -1;
     const scoped = aiming && scopeFitted(this.reg, session.inventory, held);
     let lookYaw = c.yaw;
@@ -1366,12 +1359,17 @@ export class App {
       lookPitch = lookPitch > PI / 2 ? PI / 2 : lookPitch;
     }
     cam.aspect = aspect;
-    // Aiming narrows the view in proportion to the player's setting; through a sight, by its zoom. The mouse slows to match.
+    // Aiming narrows the view in proportion to the player's setting; through a sight, by its optic's zoom. The mouse slows
+    // to match on the tangent of the view's half (optics.ts lookScale). A sight that magnifies is seen from the eye, as
+    // over the shoulder the middle of a narrow view is not where the shot goes; the player's choice of view is kept.
     const settings = this.ui.settings;
     const base = (settings.fov * Math.PI) / 180;
-    const sight = gun && session.driving < 0 ? attachmentKind(this.reg, session.inventory, held) : "";
-    const zoom = sight === "scope" ? SCOPE_ZOOM : sight === "holo" ? HOLO_ZOOM : 0;
+    const fitted = gun && session.driving < 0 ? attachmentOf(this.reg, session.inventory, held) : null;
+    const sight = fitted?.attachment ?? "";
+    const zoom = fitted?.optic ? opticZoom(fitted.optic) : 0;
     let want = sighting ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
+    this.view.atEye = sighting && !passenger && forcesEye(zoom);
+    hud.behind = alive && third && !this.view.atEye && session.driving < 0 && !passenger;
     if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
     // Under a glider the view opens with its speed, a dive's most, and third person stands back to hold the wings.
     const gliding = alive && session.driving < 0 && session.own.glide !== 0;
@@ -1389,9 +1387,9 @@ export class App {
     if (alive && this.ownSeatEye(world, this.remote, session.tickClock, c.yaw, c.pitch, this.posedEye)) {
       this.sightAt.x = this.posedEye[0]!; this.sightAt.y = this.posedEye[1]!; this.sightAt.z = this.posedEye[2]!;
     }
-    this.fov += (want - this.fov) * (hud.vehicle || gliding || this.view.gliding > 0.02 ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / 70));
+    this.fov = easeFov(this.fov, want, hud.vehicle || gliding || this.view.gliding > 0.02 ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / FOV_EASE_MS));
     cam.fovY = this.fov;
-    c.zoom = (this.fov / base) * settings.sensitivity;
+    c.zoom = lookScale(base, this.fov, settings.sensitivity, settings.zoomSensitivity);
     // The crosshair opens with the cone the next shot would leave within.
     hud.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;
     const body = this.body;
@@ -1401,7 +1399,7 @@ export class App {
     body.z = bz;
     body.yaw = c.yaw;
     body.tick = session.tickClock;
-    body.firstPerson = !third && !chase;
+    body.firstPerson = !(third && !this.view.atEye) && !chase;
     body.id = handleIndex(session.ownHandle);
     body.generation = handleGen(session.ownHandle);
     body.vehicle = undefined;

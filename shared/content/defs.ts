@@ -515,6 +515,8 @@ export interface ItemDef extends Named {
    * (FLAG_ON), the laser drawing a dot where the weapon points and the light waiting for local lights (D436).
    */
   readonly attachment?: "scope" | "silencer" | "light" | "laser" | "holo";
+  /** A sight, glass or visor looked through: how many times it magnifies the view (OpticFacet, D1029). */
+  readonly optic?: OpticFacet;
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
   readonly places?: readonly string[];
   /** A completed vehicle assembly. Deployment consumes one only after the named vehicle fits on a supporting surface. */
@@ -586,6 +588,17 @@ export interface GlideFacet {
   readonly grade: number;
   readonly uses: number;
   readonly seconds: number;
+}
+
+/**
+ * What looking through an item does to the view (client/core/optics.ts): the view narrows on the tangent of its half,
+ * `min` times at first, as far as `max` for one that zooms. A fixed sight gives `min` alone. `steps`, inside the two in
+ * order, are the magnifications one that clicks stops at; one with none zooms smoothly.
+ */
+export interface OpticFacet {
+  readonly min: number;
+  readonly max?: number;
+  readonly steps?: readonly number[];
 }
 
 /** How an item is made. ARK keeps this on the item too. */

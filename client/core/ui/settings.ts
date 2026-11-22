@@ -19,7 +19,7 @@ export const KEY_SETTINGS_SLIDER = 5900;
 export const SETTING_GROUPS = [
   { name: "Display", rows: [11, 21, 18, 19, 12, 2, 0] },
   { name: "Audio", rows: [17, 5, 6, 7, 8, 9, 3, 4] },
-  { name: "Input", rows: [1] },
+  { name: "Input", rows: [1, 22] },
   { name: "Interface", rows: [14, 15, 16, 13, 20] },
   // Its one row, Download all, is the page's own buttons (ui/storage.ts).
   { name: "Storage", rows: [10] },

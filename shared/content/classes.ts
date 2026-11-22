@@ -93,6 +93,7 @@ const ITEM = {
   ammo: f("facet", "", { refs: { buff: "buff" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
+  optic: f("facet", "the scope's zoom (ScopeOverlay, FOV)"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
   deploys: f("text", "the vehicle an assembly deploys", { refs: { "": "species/vehicle" } }),
   craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" } }),
@@ -412,7 +413,7 @@ row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumabl
 row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool", "ammo"], slots: { held: mesh("must", "{weapon.mesh}", "none"), shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool. A thrown one with an ammo facet of its own flies and hits as an arrow does (the bola)." });
 row("item/ball", "item", ITEM, { parent: "item/weapon", ark: "PrimalItem_WeaponEmptyCryopod", shelf: "items/balls", must: ["stack", "weapon", "ball"], may: [...ANY_ITEM, "spoilHours", "spoilsInto", "charge"], slots: { held: mesh("must", "{weapon.mesh}", "none"), ...ITEM_SLOTS }, doc: "Held in the hand: a click keeps the tame looked at in it, or looses the one it holds." });
 row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: [...ANY_ITEM, "spoilHours", "spoilsInto"], slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
-row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
+row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: [...ANY_ITEM, "optic"], slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it. A sight has an optic facet: how many times it magnifies." });
 row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item type Equipment", shelf: "items/equipment", doc: "Worn by a body, in a slot." });
 row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: ANY_ITEM, slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "{body}/{wear.slot}"), vents: mesh("may", "{body}/armor/{wear.set}/{wear.vents}", "none"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
 row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden. Drawn as its worn mesh on the creature's bones, unless the creature has a saddled model, which is drawn in place of both." });

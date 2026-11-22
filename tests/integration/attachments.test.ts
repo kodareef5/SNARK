@@ -7,7 +7,8 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { App, HOLO_ZOOM, SCOPE_ZOOM, zoomed } from "../../client/core/app.ts";
+import { App } from "../../client/core/app.ts";
+import { zoomed } from "../../client/core/optics.ts";
 import { Feedback, CombatModel } from "../../client/core/feedback.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { LASER_DAY_FAR, LASER_DAY_NEAR, Lasers, daylight, dotAlpha } from "../../client/core/render/laser.ts";
@@ -306,9 +307,14 @@ test("through a scope a long rifle sways less prone than standing, and a pistol 
 });
 
 test("the scope magnifies three times and the holo-scope 1.25; the HUD shows the scope's reticle for the crosshair, and the holo-scope's tint and coloured crosshair", () => {
+  // Each sight's zoom is its item's optic facet (D1029).
+  const scopeZoom = (reg.defs[id("scope")] as ItemDef).optic!.min;
+  const holoReg = withHolo();
+  const holoZoom = (holoReg.defs[holoReg.index.get("core:test_holo")!] as ItemDef).optic!.min;
+  expect([scopeZoom, holoZoom]).toEqual([3, 1.25]);
   for (const base of [0.9, 1.2217, 1.6]) {
-    expect(Math.tan(base / 2) / Math.tan(zoomed(base, SCOPE_ZOOM) / 2)).toBeCloseTo(3, 9);
-    expect(Math.tan(base / 2) / Math.tan(zoomed(base, HOLO_ZOOM) / 2)).toBeCloseTo(1.25, 9);
+    expect(Math.tan(base / 2) / Math.tan(zoomed(base, scopeZoom) / 2)).toBeCloseTo(3, 9);
+    expect(Math.tan(base / 2) / Math.tan(zoomed(base, holoZoom) / 2)).toBeCloseTo(1.25, 9);
   }
   const f = new UiFrame();
   const hud = new HudModel();
@@ -418,16 +424,33 @@ test("in the whole client: N with a laser fitted draws its dot in the middle of 
   run(1500);
   const base = (app.ui.settings.fov * Math.PI) / 180;
   expect(app.hud.scope).toBe(true);
-  expect(app.cam.fovY).toBeCloseTo(zoomed(base, SCOPE_ZOOM), 3);
+  expect(app.cam.fovY).toBeCloseTo(zoomed(base, 3), 3);
+  // The mouse slows on the tangent of the view's half: a third as far a pixel at three times (optics.ts lookScale).
+  expect(app.controls.zoom).toBeCloseTo(app.ui.settings.sensitivity / 3, 3);
   app.controls.mouseButton(2, false);
   run(800);
   expect(app.hud.scope).toBe(false);
+  expect(app.controls.zoom).toBeCloseTo(app.ui.settings.sensitivity, 3);
+
+  // Seen from behind, the scope is still looked through from the eye, and the view goes back behind as it is lowered.
+  app.view.thirdPerson = true;
+  run(400);
+  const eyeGap = (): number => Math.hypot(app.cam.x - s.own.x, app.cam.z - s.own.z);
+  expect([app.hud.behind, eyeGap() > 1]).toEqual([true, true]);
+  app.controls.mouseButton(2, true);
+  run(1500);
+  expect([app.view.atEye, app.hud.behind, app.view.thirdPerson]).toEqual([true, false, true]);
+  expect(eyeGap()).toBeLessThan(0.5);
+  app.controls.mouseButton(2, false);
+  run(800);
+  expect([app.view.atEye, app.hud.behind]).toEqual([false, true]);
+  expect(eyeGap()).toBeGreaterThan(1);
 });
 
 /** The core content with a holo-scope (an attachment kind no item is yet: it waits for the fabricator) fitting the pistol. */
 function withHolo(): Registry {
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item") as ItemDef;
-  const holo: ItemDef = { type: "item", class: "attachment", id: "core:test_holo", stack: 1, weight: 0.5, color: 8, attachment: "holo" };
+  const holo: ItemDef = { type: "item", class: "attachment", id: "core:test_holo", stack: 1, weight: 0.5, color: 8, attachment: "holo", optic: { min: 1.25 } };
   const fits: ItemDef = { ...pistol, weapon: { ...pistol.weapon!, fits: [...(pistol.weapon!.fits ?? []), "core:test_holo"] } };
   const made = compileContent([...CORE_CONTENT.filter((d) => d !== pistol), fits as Def, holo as Def]);
   expect(made.errors).toEqual([]);
@@ -457,7 +480,9 @@ test("in the whole client: a holo-scope fitted shows its crosshair unaimed, and 
   run(1500);
   const base = (app.ui.settings.fov * Math.PI) / 180;
   expect(app.hud.tint).toBeGreaterThan(0);
-  expect(app.cam.fovY).toBeCloseTo(zoomed(base, HOLO_ZOOM), 3);
+  expect(app.cam.fovY).toBeCloseTo(zoomed(base, 1.25), 3);
+  // At 1.25 times it is still seen from wherever the player chose.
+  expect(app.view.atEye).toBe(false);
   app.controls.mouseButton(2, false);
   run(400);
 });
