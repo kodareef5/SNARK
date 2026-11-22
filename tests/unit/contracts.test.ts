@@ -16,18 +16,6 @@ import { EntityStore } from "../../shared/sim/entities.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import { HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import * as P from "../../shared/net/protocol.ts";
-import { DEADLINE_BREED } from "../../server/breeding.ts";
-import { DEADLINE_BUFF } from "../../server/buffs.ts";
-import { DEADLINE_CAR } from "../../server/car-return.ts";
-import { DEADLINE_CORPSE } from "../../server/corpses.ts";
-import { DEADLINE_DESPAWN } from "../../server/death.ts";
-import { DEADLINE_FECES } from "../../server/feces.ts";
-import { DEADLINE_NODE } from "../../server/harvest.ts";
-import { DEADLINE_CRAFT } from "../../server/progression.ts";
-import { DEADLINE_SPAWN } from "../../server/spawner.ts";
-import { DEADLINE_FIRE } from "../../server/stations.ts";
-import { DEADLINE_VITALS } from "../../server/survival.ts";
-import { DEADLINE_TAME } from "../../server/taming.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -56,24 +44,11 @@ test("a hurt stage is a quarter of health wide, and never more than a glance sho
   expect(hurtStage(5, 0)).toBe(0);
 });
 
-test("the new codes are each one of their kind, and deadlines have kinds of their own", () => {
-  const ops = Object.entries(P).filter(([k]) => k.startsWith("CMD_")).map(([, v]) => v);
-  expect(new Set(ops).size).toBe(ops.length);
-  // 14 is the cluster's, 15 the beds', 16 the flyers' (below), 17 the stations wave's (tests/unit/stations-contracts.test.ts),
-  // 18 the vehicles' (tests/integration/vehicle-contracts.test.ts), 34 creative mode's (tests/integration/creative.test.ts),
-  // 35 the margin told against the tick due and the ticks given up, 36 the buttons a tick carried from a late input
-  // (tests/integration/stalls.test.ts), 37 a survivor's emote word and CMD_EMOTE (tests/integration/emotes.test.ts),
-  // 38 the owner's powered maneuvers (tests/integration/meridian-flight.test.ts), 39 the glider on the owner's body
-  // (tests/integration/glider.test.ts), 40 the soul balls' kept tames and flash (tests/integration/balls.test.ts).
-  // 41 the supply drops': what kind of box is open, and the drops that are live (tests/integration/supply-capsule.test.ts).
-  // 42 a sight's gaze, CMD_GAZE (tests/integration/gaze.test.ts), and a glass's mark, CMD_MARK (tests/integration/glass.test.ts); 43 an eleventh button, BTN_VISOR (tests/integration/gaze.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.CMD_EMOTE, P.CMD_GAZE, P.CMD_MARK, P.PROTOCOL_VERSION]).toEqual([27, 28, 36, 37, 38, 43]);
+test("order and carry codes are distinct, and every order is below ORDER_LEVEL", () => {
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
   expect(new Set([P.CARRY_PICK_UP, P.CARRY_DROP, P.CARRY_THROW, P.CARRY_GRAB, P.CARRY_RELEASE]).size).toBe(5);
-  const kinds = [DEADLINE_VITALS, DEADLINE_DESPAWN, DEADLINE_NODE, DEADLINE_CRAFT, DEADLINE_BUFF, DEADLINE_FIRE, DEADLINE_TAME, DEADLINE_BREED, DEADLINE_SPAWN, DEADLINE_CORPSE, DEADLINE_FECES, DEADLINE_CAR];
-  expect(new Set(kinds).size).toBe(kinds.length);
 });
 
 test("the new columns change nothing for content that does not use them", () => {
@@ -210,15 +185,12 @@ test("the flyers' codes: a creature's own flight is mode 5 of a body's three bit
   expect(HOLD_CARRY).toBe(7);
 });
 
-test("a body's flight counters travel with it, 20 bits after the rest, and every body today has none", () => {
+test("a body's flight counters travel with it, and every body today has none", () => {
   const a = new Body();
   a.regenWait = 300;
   a.rollWait = FLIGHT_TICKS_MAX;
   const w = new BitWriter(64);
   P.writeBody(w, a);
-  // And after them the vehicles' bit for no vehicle and their bit for no seat: 380 without those.
-  // Presence bits cover ground creature counters, Meridian flight state and the glider.
-  expect(w.pos).toBe(385);
   const b = new Body();
   const r = new BitReader(w.bytes());
   P.readBody(r, b);

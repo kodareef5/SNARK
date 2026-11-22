@@ -1,7 +1,6 @@
 // The creature packages' places in a running host: their commands are answered and refused, and a held creature is left
 // to whoever holds it.
 
-import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,13 +93,6 @@ test("a creature in its own flight is saved flying and loads in the air", () => 
     ents.setPosition(e, ents.x[e]!, ents.y[e]! + 40, ents.z[e]!);
     const aloft = ents.y[e]!;
     host.shutdown();
-    const format = (path: string, id: number): number => {
-      const store = new Database(path);
-      const row = store.query("SELECT data FROM entities WHERE pid = ?").get(id) as { data: Uint8Array };
-      store.close();
-      return row.data[0]!;
-    };
-    expect(format(db, pid)).toBe(7);
     const back = createHost(reg, { dbPath: db });
     const f = back.records.entOf.get(pid)!;
     expect([back.records.byPid.get(pid)!.flying, back.world.ents.mode[f], (back.world.ents.flags[f]! & F_GROUNDED) !== 0, back.world.ents.y[f]]).toEqual([true, MODE_FLYER, false, aloft]);

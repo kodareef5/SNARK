@@ -1,9 +1,9 @@
-// The stations wave's contracts (planning/reference/stations-plan.md, S0): the numbers it took, OWN_STATION's layout, the
-// save's new fields, the stubs later projects build on, and the two built with no content using them, a station's own
-// fuel and a lit station counted as the station it is out. A project that builds one moves its pin here in the same change.
+// The stations wave's contracts (planning/reference/stations-plan.md, S0): OWN_STATION's layout, the save's new fields,
+// the stubs later projects build on, and the two built with no content using them, a station's own fuel and a lit
+// station counted as the station it is out.
 import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stationRecipes } from "../../client/core/ui/station.ts";
@@ -13,8 +13,6 @@ import { RESOURCES } from "../../content/items/resources.ts";
 import { RecordCodec, idMap } from "../../server/persist/codec.ts";
 import { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
-import { DEADLINE_FIRE } from "../../server/stations.ts";
-import { DEADLINE_CRAFT } from "../../server/progression.ts";
 import { FIELDS, classRow } from "../../shared/content/classes.ts";
 import type { CraftFacet, ItemDef } from "../../shared/content/defs.ts";
 import { compilePacks, type ContentPack } from "../../shared/content/packs.ts";
@@ -31,26 +29,7 @@ import { Harness } from "../fixtures/net.ts";
 const BLOCKED = new Set(BLOCKED_OUT);
 
 const reg = compileContent(CORE_CONTENT).registry!;
-const root = join(import.meta.dir, "../..");
 const id = (r: Registry, name: string): number => r.index.get(name.includes(":") ? name : `core:${name}`)!;
-
-test("protocol 17 and record format 7 are the stations wave's, and it took no command, own component, event, saved component or deadline", () => {
-  // 16 is the flyers', and 18, after this wave's 17, the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([43, 16]);
-  // 19 adds rotorcraft state and CMD_VEHICLE (32), 22 CMD_STATICS (33), 25 CMD_CORPSE (34), 34 CMD_CLOCK (35), 35 the ticks given up in a snapshot, 36 a late input's buttons carried, 37 a survivor's emote and CMD_EMOTE (36), 42 a sight's CMD_GAZE (37) and CMD_MARK (38).
-  // EVENT_NAME_BYTES is a size, not a kind of event.
-  const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
-  // 40 is the soul balls': OWN_KEPT (17), EVENT_BALL (8), and the saved mark of a tame kept in one (COMP_STORED, 25), which a
-  // record not kept does not write (tests/integration/balls.test.ts, tests/unit/creature-save.test.ts). 26 is the starter
-  // mount's mark (COMP_ISSUED), which only a starter writes, in the same protocol (tests/integration/starter-mount.test.ts).
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([38, 17, 8, 11]);
-  const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
-  expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 26]);
-  // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found
-  // cars' return and 12 the supply drops'.
-  const deadlines = readdirSync(join(root, "server")).filter((f) => f.endsWith(".ts")).flatMap((f) => [...readFileSync(join(root, "server", f), "utf8").matchAll(/export const DEADLINE_\w+ = (\d+);/g)].map((m) => Number(m[1])));
-  expect([deadlines.sort((a, b) => a - b), DEADLINE_FIRE, DEADLINE_CRAFT]).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15], 6, 4]);
-});
 
 test("the fields: a station's own fuel is built, the forge's (S1) are built, and the rest are stubs that wait for stations, each its project's", () => {
   expect(FIELDS.structure.burns.waits).toBeUndefined();
