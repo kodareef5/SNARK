@@ -4,7 +4,8 @@
 import { expect, test } from "bun:test";
 import { WEATHER_RECIPE } from "../../content/texgen/weather.ts";
 import { hash3, tiled, cells } from "../../client/core/texgen/noise.ts";
-import { WEATHER_BAYS, WEATHER_LAYERS, WEATHER_GEN_VERTEX, bayFeatures, bayLayout, bayTexel, baySeed, equalize, fieldLut, fieldSeed, weatherFragment, weatherPixels, weatherTexture } from "../../client/core/texgen/weather.ts";
+import { WEATHER_BAYS, WEATHER_LAYERS, WEATHER_GEN_VERTEX, WEATHER_PAD, bayFeatures, bayLayout, bayTexel, baySeed, equalize, fieldLut, fieldSeed, mipmapped, weatherFragment, weatherPixels, weatherTexture } from "../../client/core/texgen/weather.ts";
+import { sample } from "../../client/core/render/cpu-texture.ts";
 
 const SIDE = 128;
 const layers = Array.from({ length: WEATHER_LAYERS }, (_, l) => weatherPixels(l, SIDE));
@@ -50,6 +51,39 @@ test("a bay's runoff, drips and rust are nothing at its sides, so bays meet in a
     const rows = (x: number): number => Array.from({ length: SIDE }, (_, y) => at(layers[l]!, x, y, 3) > 0).filter(Boolean).length;
     expect(Math.abs(rows(0) - rows(SIDE - 1))).toBeLessThanOrEqual(2);
   }
+});
+
+test("no read of one of a bay layer's two stamps takes the other's, filtered at any level up to half a metre a texel: each storey's top and foot rows hold its own edge, and runoff fades at the floor as drips and rust do", () => {
+  const side = 256, half = side * side * 2, top = Math.log2(side), pad = (side / 2) * WEATHER_PAD;
+  const a = weatherPixels(0, side), b = weatherPixels(1, side);
+  // Layer 0 with layer 1's lower stamp: the upper reads as it did, and the lower as layer 1's, top and foot and across the wrap.
+  const mixed = Uint8Array.from(a);
+  mixed.set(b.subarray(half), half);
+  const [ta, tb, tm] = [a, b, mixed].map((px) => mipmapped(px, side)), x = new Float64Array(4), y = new Float64Array(4);
+  // Half a metre a texel at 256 is level 4, which half a texel of reaches the pad rows and no further.
+  expect(Math.log2(pad) + 1).toBe(4);
+  for (let level = 0; level <= 4; level++) {
+    for (let k = 0; k <= 64; k++) {
+      const down = (k / 64) * 0.9999, u = 0.03 + (k % 9) * 0.11;
+      for (const [lower, own] of [[0, ta], [1, tb]] as const) {
+        const v = (lower + WEATHER_PAD + down * (1 - 2 * WEATHER_PAD)) / 2;
+        sample(own!, u, v, level - top, x);
+        sample(tm!, u, v, level - top, y);
+        expect([...y]).toEqual([...x]);
+      }
+    }
+  }
+  // At the foot runoff, drips and rust are gone; the splash is there.
+  const v = new Float64Array(4);
+  let splash = 0;
+  for (let l = 0; l < WEATHER_BAYS; l++) {
+    for (let x0 = 0.2; x0 < 7.8; x0 += 0.05) {
+      bayTexel(WEATHER_RECIPE, bayFeatures(WEATHER_RECIPE, baySeed(WEATHER_RECIPE, l, 0)), x0, 4, v);
+      expect([v[0], v[1], v[2]]).toEqual([0, 0, 0]);
+      splash += v[3]!;
+    }
+  }
+  expect(splash).toBeGreaterThan(0);
 });
 
 test("runoff begins at the slab line and is strongest near it; splash keeps to the foot", () => {

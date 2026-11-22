@@ -4,7 +4,7 @@ import { fixtureShader } from "./street-finish.ts";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, MASK_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
 import { hash3, hash32 } from "../texgen/noise.ts";
-import { WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_LAYERS, WEATHER_STOREY, WEATHER_TWIN_SIDE, weatherRead } from "../texgen/weather.ts";
+import { WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_LAYERS, WEATHER_PAD, WEATHER_STOREY, WEATHER_TWIN_SIDE, weatherRead } from "../texgen/weather.ts";
 import { ROAD_ACROSS, ROAD_ALONG, ROAD_CELL, ROAD_HALF, ROAD_ONE_WAY, ROAD_PLANES, ROAD_STEP, ROAD_WEAR_SHIFT, ROAD_WRAP, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
@@ -523,7 +523,7 @@ const choice = new Float64Array(5), other = new Float64Array(6);
 /** The masks of a storey of a bay's stamp at (u, down) of it, keyed `key`, then its leak and rust: into `out`. */
 function stamped(masks: WorldSample, bay: number, storey: number, key: number, u: number, down: number, spread: number, out: Float64Array): void {
   bayStamp(bay, storey, key, choice);
-  masks(3, choice[0]!, choice[2] ? 1 - u : u, (down + choice[1]!) / 2, spread, out);
+  masks(3, choice[0]!, choice[2] ? 1 - u : u, (choice[1]! + WEATHER_PAD + down * (1 - 2 * WEATHER_PAD)) / 2, spread, out);
   out[4] = choice[3]!;
   out[5] = choice[4]!;
 }
@@ -1223,7 +1223,7 @@ vec4 stamped(int bay, int storey, int key, float u, float down, vec2 gx, vec2 gy
   uint h = weatherHash(bay, storey, key);
   float flip = ((h >> 16u) & 1u) == 1u ? -1.0 : 1.0;
   leakRust = vec2(float((h >> 17u) & 127u) / 127.0, (h >> 24u) < 154u ? 1.0 : 0.0);
-  vec2 q = vec2(flip < 0.0 ? 1.0 - u : u, (down + float((bay + storey) & 1)) * 0.5);
+  vec2 q = vec2(flip < 0.0 ? 1.0 - u : u, (float((bay + storey) & 1) + ${fl(WEATHER_PAD)} + down * ${fl(1 - 2 * WEATHER_PAD)}) * 0.5);
   return textureGrad(uWeather, vec3(q, float(((h & 65535u) * ${WEATHER_BAYS}u) >> 16u)), vec2(gx.x * flip, gx.y), vec2(gy.x * flip, gy.y));
 }
 float coveredLine(float d, float hw, float f) {
@@ -1256,7 +1256,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   if (!wall || fade <= 0.0) return;
   float ax = side < 2 ? dpx.z : dpx.x, ay = side < 2 ? dpy.z : dpy.x;
   float u = along / ${fl(WEATHER_BAY)} - float(bay), down = 1.0 - (over / ${fl(WEATHER_STOREY)} - float(storey));
-  vec2 gx = vec2(ax, -ox) / ${fl(WEATHER_BAY)}, gy = vec2(ay, -oy) / ${fl(WEATHER_BAY)}, lr, lr2;
+  vec2 gx = vec2(ax, -ox * ${fl(1 - 2 * WEATHER_PAD)}) / ${fl(WEATHER_BAY)}, gy = vec2(ay, -oy * ${fl(1 - 2 * WEATHER_PAD)}) / ${fl(WEATHER_BAY)}, lr, lr2;
   vec4 bm = stamped(bay, storey, key, u, down, gx, gy, lr);
   if (both) {
     vec4 b2 = stamped(bay, storey, keys.y, u, down, gx, gy, lr2);

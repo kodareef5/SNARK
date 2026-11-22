@@ -20,6 +20,11 @@ export const WEATHER_FIELDS = WEATHER_RECIPE.fields;
 export const WEATHER_LAYERS = WEATHER_BAYS + WEATHER_FIELDS;
 /** The side of the layers the rasterizer and the self-check make for themselves: the card's are as wide as the tier's finishes. */
 export const WEATHER_TWIN_SIDE = 256;
+/**
+ * The share of a storey's rows at its top and its foot that hold its slab line's and its floor's own values, so that no
+ * read of one of a layer's two stamps, filtered or anisotropic at any level the weathering is read at, takes the other's.
+ */
+export const WEATHER_PAD = 1 / 16;
 /** Steps of a field's equalizing table. */
 export const LUT_STEPS = 32;
 /** A period long enough that a noise read only for its grain never repeats in a layer. */
@@ -128,7 +133,7 @@ export function bayTexel(recipe: WeatherRecipe, f: Float32Array, x: number, y: n
   // Nothing within 6 cm of a side, so that the pixels either side of where two bays meet hold none of either.
   const sides = (edge: number): number => smoothstep(0.06, 0.06 + edge, x) * smoothstep(0.06, 0.06 + edge, WEATHER_BAY - x);
   const floor = 1 - smoothstep(WEATHER_STOREY - 0.15, WEATHER_STOREY, y);
-  out[0] = runs * sides(0.15);
+  out[0] = runs * sides(0.15) * floor;
   out[1] = streaksAt(f, atDrips, drips, 0.035, 1, 0.4, x, y) * sides(0.1) * floor;
   out[2] = streaksAt(f, atRust, rusts, 0.025, 2, 0.5, x, y) * sides(0.1) * floor;
   // The foot's splash, ragged along its top, the same height at either side so that bays meet.
@@ -207,7 +212,7 @@ export function weatherPixels(layer: number, side: number, recipe: WeatherRecipe
       } else {
         const half = t >= 0.5 ? 1 : 0;
         for (let s = 0; s < 2; s++) {
-          bayTexel(recipe, tables[half]!, ((px + 0.25 + 0.5 * s) / side) * WEATHER_BAY, (t * 2 - half) * WEATHER_STOREY, v);
+          bayTexel(recipe, tables[half]!, ((px + 0.25 + 0.5 * s) / side) * WEATHER_BAY, Math.min(Math.max((t * 2 - half - WEATHER_PAD) / (1 - 2 * WEATHER_PAD), 0), 1) * WEATHER_STOREY, v);
           for (let c = 0; c < 4; c++) sum[c]! += v[c]! / 2;
         }
       }
@@ -225,8 +230,12 @@ const textures = new Map<number, Texture>();
 export function weatherTexture(layer: number, side: number): Texture {
   const key = layer * 65536 + side;
   let t = textures.get(key);
-  if (t) return t;
-  const top = Float32Array.from(weatherPixels(layer, side), (b) => b / 255), pictures = [top];
+  if (!t) textures.set(key, (t = mipmapped(weatherPixels(layer, side), side)));
+  return t;
+}
+/** RGBA8 pixels `side` a side as a texture of the rasterizer's, each picture under the top the mean of four of the one over it, as the card's mipmaps are. */
+export function mipmapped(pixels: Uint8Array, side: number): Texture {
+  const top = Float32Array.from(pixels, (b) => b / 255), pictures = [top];
   for (let s = side >> 1, above = top; s >= 1; s >>= 1) {
     const p = new Float32Array(s * s * 4);
     for (let y = 0; y < s; y++) {
@@ -240,8 +249,7 @@ export function weatherTexture(layer: number, side: number): Texture {
     pictures.unshift(p);
     above = p;
   }
-  textures.set(key, (t = { channels: 4, pictures }));
-  return t;
+  return { channels: 4, pictures };
 }
 /** Reads layer `layer` of the masks `side` pixels a side at (u, v), as `sample` reads a texture: the twin of the card's read. */
 export function weatherRead(layer: number, side: number, u: number, v: number, spread: number, out: Float64Array): void {
@@ -312,7 +320,7 @@ vec4 bayTexel(float x, float y) {
   }
   float floorOf = 1.0 - smoothstep(${fl(WEATHER_STOREY - 0.15)}, ${fl(WEATHER_STOREY)}, y);
   vec4 m;
-  m.r = runs * sides(x, 0.15);
+  m.r = runs * sides(x, 0.15) * floorOf;
   m.g = streaks(${AT_DRIPS}, ${DRIPS}, 0.035, 1.0, 0.4, x, y) * sides(x, 0.1) * floorOf;
   m.b = streaks(${AT_RUST}, ${RUSTS}, 0.025, 2.0, 0.5, x, y) * sides(x, 0.1) * floorOf;
   int s7 = int(uBay[${AT_SPLASH}].x);
@@ -351,7 +359,7 @@ void main() {
     o = vec4(equalize(v.r, 0), equalize(v.g, 1), equalize(v.b, 2), equalize(v.a, 3));
     return;
   }
-  float lower = t >= 0.5 ? 1.0 : 0.0, y = (t * 2.0 - lower) * ${fl(WEATHER_STOREY)};
+  float lower = t >= 0.5 ? 1.0 : 0.0, y = clamp((t * 2.0 - lower - ${fl(WEATHER_PAD)}) / ${fl(1 - 2 * WEATHER_PAD)}, 0.0, 1.0) * ${fl(WEATHER_STOREY)};
   vec4 sum = vec4(0.0);
   for (int s = 0; s < 2; s++) sum += bayTexel((p.x + 0.25 + 0.5 * float(s)) / uSide * ${fl(WEATHER_BAY)}, y) * 0.5;
   o = clamp(sum, 0.0, 1.0);
