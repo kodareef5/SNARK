@@ -19,7 +19,7 @@ import { VEHICLE_GLASS_GLSL } from "./vehicle-glass.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
-import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, OPTIC_AT, type FramePacket } from "./packet.ts";
 import { LAMP_SEES, LAMP_WASH, lampAlbedo, lampLight } from "./lamp.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
@@ -336,12 +336,17 @@ export function untone(out: Out, t: Numbers): void {
 
 /**
  * The grade after the tone curve (content/grade.ts), from the frame block's finish: each colour kept `saturation` as far
- * from its grey, then raised to `gamma`. The twin of the GLSL `graded`.
+ * from its grey, then raised to `gamma`; through night vision, that grey in its phosphor's colour (D1033). The twin of
+ * the GLSL `graded`.
  */
 export function graded(out: Out, frame: Numbers): void {
   const grey = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
   const saturation = frame[FRAME.saturation]!, gamma = frame[FRAME.gamma]!;
   for (let c = 0; c < 3; c++) out[c] = Math.pow(Math.max(grey + (out[c]! - grey) * saturation, 0), gamma);
+  if (frame[OPTIC_AT]! > 0.5) {
+    const shown = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
+    for (let c = 0; c < 3; c++) out[c] = shown * frame[OPTIC_AT + 4 + c]!;
+  }
 }
 
 /** `graded` undone, for a colour it did not clamp: the gamma taken back, then the colour as far from its grey as it was, which the grey keeps. */
@@ -564,7 +569,8 @@ export const SURFACE_VERTEX = surfaceVertex(SURFACE_ANY);
 /** `graded` as GLSL, after the frame block. */
 export const GRADED = `vec3 graded(vec3 c) {
   float grey = dot(c, vec3(${LUMA.map(f).join(", ")}));
-  return pow(max(mix(vec3(grey), c, fGrade.a), 0.0), vec3(fFinish.x));
+  vec3 g = pow(max(mix(vec3(grey), c, fGrade.a), 0.0), vec3(fFinish.x));
+  return fOptic.x > 0.5 ? dot(g, vec3(${LUMA.map(f).join(", ")})) * fPhosphor.rgb : g;
 }
 `;
 

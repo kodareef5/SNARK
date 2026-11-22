@@ -113,6 +113,8 @@ export const S_COMPASS_NORTH = 68;
 /** The black about a sight's round window, and about binoculars' two (Style.lens). */
 export const S_LENS = 69;
 export const S_LENS_TWIN = 70;
+/** A visor's readouts, under its window. */
+export const S_VISOR = 71;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -186,4 +188,5 @@ export const STYLES: readonly Style[] = [
   /* S_COMPASS_NORTH */ style(0, 0xf2a477, 12, 1, true),
   /* S_LENS */ { ...style(0x000000ff, 0xffffff), lens: LENS_ROUND },
   /* S_LENS_TWIN */ { ...style(0x000000ff, 0xffffff), lens: LENS_TWIN },
+  /* S_VISOR */ style(0, 0x7fe6d4, 13, 1, true),
 ];

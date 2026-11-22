@@ -1,10 +1,16 @@
 import { expect, test } from "bun:test";
-import { easeFov, EYE_FROM, EYE_MOST, eyeOff, forcesEye, lookScale, magnification, opticMost, opticZoom, screenPixels, SHAPE_ROUND, SHAPE_TWIN, shapeOf, TWIN_WIDE, windowBox, windowShare, zoomed } from "../../client/core/optics.ts";
+import { easeFov, EYE_FROM, EYE_MOST, eyeOff, forcesEye, lookScale, magnification, opticMost, opticZoom, screenPixels, SHAPE_ROUND, SHAPE_TWIN, SHAPE_VISOR, shapeOf, TWIN_WIDE, VISOR_WIDE, windowBox, windowShare, zoomed } from "../../client/core/optics.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { KEY_SIGHT, KEY_SIGHT_SHADE, buildHud } from "../../client/core/ui/hud.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { S_LENS, S_LENS_TWIN } from "../../client/core/ui/style.ts";
+import { DIGITAL_GRAIN, NIGHT_GAIN, NIGHT_GRAIN, VISOR_FIRST, VISOR_GLASS, VISOR_STEP, Visor } from "../../client/core/visor.ts";
+import { FRAME, FramePacket, OPTIC_AT, OPTIC_NIGHT, OPTIC_NONE } from "../../client/core/render/packet.ts";
+import { PHOSPHOR, opticFrame, postFrame, type Optic } from "../../client/core/render/post.ts";
+import { graded } from "../../client/core/render/surface.ts";
+import { tierOf } from "../../client/core/assets/tiers.ts";
+import { KEY_CROSS, KEY_VISOR } from "../../client/core/ui/hud.ts";
 import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -154,4 +160,85 @@ test("a scope's lens is round and as tall as its window, binoculars' two merged,
   const twin = f.find(KEY_SIGHT + 4)!;
   expect([twin.style, twin.w / twin.h]).toEqual([S_LENS_TWIN, TWIN_WIDE]);
   expect(f.find(KEY_SIGHT + 5)).toBeNull();
+});
+
+test("a visor zooms in steps of the wheel within its helmet's optic, turns to night vision with N, and amplifies by night and not by day", () => {
+  const optic = { min: 2, max: 1000 };
+  const v = new Visor();
+  expect(v.step(optic, true)).toBe(false);
+  v.held = true;
+  expect([v.step(optic, false), v.step(null, true), v.step(optic, true)]).toEqual([false, false, true]);
+  expect(v.zoom).toBe(VISOR_FIRST);
+  v.wheel(optic, -2);
+  expect(v.zoom).toBeCloseTo(VISOR_FIRST * VISOR_STEP ** 2, 9);
+  for (let k = 0; k < 60; k++) v.wheel(optic, -1);
+  expect([v.zoom, v.digital]).toEqual([1000, true]);
+  for (let k = 0; k < 60; k++) v.wheel(optic, 1);
+  expect([v.zoom, v.digital]).toEqual([2, false]);
+  const out: Optic = { mode: 0, gain: 1, grain: 0 };
+  v.frame(out, 0);
+  expect(out).toEqual({ mode: OPTIC_NONE, gain: 1, grain: 0 });
+  v.cycle();
+  v.frame(out, 0);
+  expect(out).toEqual({ mode: OPTIC_NIGHT, gain: NIGHT_GAIN, grain: NIGHT_GRAIN });
+  v.frame(out, 1);
+  expect(out.gain).toBe(1);
+  // Past its glass the picture grows grainier, to forty times past it.
+  v.zoom = VISOR_GLASS * 40;
+  v.frame(out, 1);
+  expect(out.grain).toBeCloseTo(NIGHT_GRAIN + DIGITAL_GRAIN, 9);
+  v.cycle();
+  v.held = false;
+  v.step(optic, true);
+  v.frame(out, 0);
+  expect(out).toEqual({ mode: OPTIC_NONE, gain: 1, grain: 0 });
+});
+
+test("night vision amplifies the frame's light and shows its grey in the phosphor's colour, on the GPU and in its twin alike; low poly is left as it is", () => {
+  const p = new FramePacket();
+  const lit = tierOf("medium");
+  postFrame(p.frame, lit, 23, 720);
+  const gain = [0, 1, 2].map((c) => p.frame[FRAME.grade + c]!);
+  opticFrame(p.frame, lit, { mode: OPTIC_NONE, gain: 1, grain: 0 }, 3);
+  expect(Array.from(p.frame.subarray(OPTIC_AT, OPTIC_AT + 8))).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+  opticFrame(p.frame, lit, { mode: OPTIC_NIGHT, gain: 6, grain: 0.03 }, 3);
+  expect([0, 1, 2].map((c) => p.frame[FRAME.grade + c]!)).toEqual(gain.map((g) => Math.fround(g * 6)));
+  // Medium has no finish to draw grain in.
+  expect(Array.from(p.frame.subarray(OPTIC_AT, OPTIC_AT + 3))).toEqual([OPTIC_NIGHT, 0, 3]);
+  expect(Array.from(p.frame.subarray(OPTIC_AT + 4, OPTIC_AT + 7))).toEqual(PHOSPHOR.map(Math.fround));
+  const out = [0.3, 0.2, 0.1];
+  graded(out, p.frame);
+  expect(out[1]! / out[0]!).toBeCloseTo(PHOSPHOR[1]! / PHOSPHOR[0]!, 5);
+  expect(out[2]! / out[0]!).toBeCloseTo(PHOSPHOR[2]! / PHOSPHOR[0]!, 5);
+  const high = tierOf("high");
+  opticFrame(p.frame, high, { mode: OPTIC_NIGHT, gain: 6, grain: 0.03 }, 3);
+  expect(p.frame[OPTIC_AT + 1]).toBeCloseTo(0.03, 6);
+  const flat = new FramePacket();
+  opticFrame(flat.frame, tierOf("lowpoly"), { mode: OPTIC_NIGHT, gain: 6, grain: 0.03 }, 3);
+  expect(Array.from(flat.frame.subarray(OPTIC_AT, OPTIC_AT + 8))).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+});
+
+test("a visor's window is a wide box that narrows to a slit, framed, with its zoom, view, heading and range under it, and no crosshair or compass", () => {
+  const f = new UiFrame();
+  const m = new HudModel();
+  m.crosshair = true;
+  m.visor = true;
+  m.sightShape = SHAPE_VISOR;
+  m.sightShare = 0.22;
+  m.visorZoom = 240;
+  m.visorDigital = true;
+  m.visorMode = OPTIC_NIGHT;
+  m.visorRange = 1240;
+  m.heading = 7;
+  f.begin(16 / 9);
+  buildHud(f, m);
+  expect(f.find(KEY_CROSS)).toBeNull();
+  const texts = f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_VISOR && n.key < KEY_VISOR + 40 && n.text !== "").map((n) => n.text);
+  expect(texts).toEqual(["240x DIGITAL", "NIGHT", "007", "1,240 m"]);
+  const box = [0, 0, 0, 0];
+  windowBox(SHAPE_VISOR, 0.22, 16 / 9, box);
+  // A slit: wider than tall, a fifth of the height.
+  expect((box[2]! - box[0]!) * (16 / 9) / (box[3]! - box[1]!)).toBeCloseTo(VISOR_WIDE, 9);
+  windowBox(SHAPE_VISOR, 0.86, 16 / 9, box);
+  expect([box[0], box[2]]).toEqual([0, 1]);
 });

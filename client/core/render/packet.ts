@@ -407,7 +407,15 @@ export const LAMP_AT = CAST_AT + 4;
  */
 export const GLASS_AT = LAMP_AT + 28;
 export const SHORE_AT = GLASS_AT + 4;
-export const FRAME_FLOATS = SHORE_AT + 4;
+/**
+ * fOptic and fPhosphor, what a visor does to the picture (D1033): fOptic's mode (OPTIC_NONE, OPTIC_NIGHT), the grain the
+ * finish adds where it draws (0 for none), a seed that moves it each frame, and 0; fPhosphor the colour night vision
+ * shows its grey in. All zero for none.
+ */
+export const OPTIC_AT = SHORE_AT + 4;
+export const OPTIC_NONE = 0;
+export const OPTIC_NIGHT = 1;
+export const FRAME_FLOATS = OPTIC_AT + 8;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -423,6 +431,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp mat4 fLampShadow;
   highp vec4 fLampWay, fGlass;
   highp vec4 fShore;
+  highp vec4 fOptic, fPhosphor;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

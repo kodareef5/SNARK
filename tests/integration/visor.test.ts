@@ -1,0 +1,51 @@
+// The Meridian helmet's visor in the whole client (client/core/visor.ts, D1033).
+
+import { expect, test } from "bun:test";
+import { App } from "../../client/core/app.ts";
+import { zoomed } from "../../client/core/optics.ts";
+import { OPTIC_AT, OPTIC_NIGHT } from "../../client/core/render/packet.ts";
+import { VISOR_FIRST } from "../../client/core/visor.ts";
+import { Harness, asShipped } from "../fixtures/net.ts";
+import { corePack } from "../fixtures/pack.ts";
+
+test("in the whole client: the issued helmet's visor held up zooms from the eye, its window a wide box, the server told; N turns night vision on; let go, all as it was", () => {
+  // As the server ships, every survivor comes to life in the Meridian set (D957).
+  const h = new Harness({}, 1, 60, { dev: true, config: asShipped() });
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  app.ui.settings.thirdPerson = true;
+  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
+  run(1500);
+  const base = (app.ui.settings.fov * Math.PI) / 180;
+  expect([app.hud.visor, app.hud.behind]).toEqual([false, true]);
+  app.visor.held = true;
+  run(1500);
+  expect([app.hud.visor, app.view.atEye, app.hud.behind]).toEqual([true, true, false]);
+  expect(app.cam.fovY).toBeCloseTo(zoomed(base, VISOR_FIRST), 3);
+  expect(h.host.gaze.count).toBe(1);
+  let packet = app.frame(h.now, 1280, 720)!;
+  // Wide open at four times: the whole width, and most of the height.
+  expect([packet.window[0], packet.window[2]]).toEqual([0, 1]);
+  expect(packet.window[3]! - packet.window[1]!).toBeGreaterThan(0.6);
+  // Narrowed, a slit.
+  app.visor.zoom = 400;
+  run(1500);
+  packet = app.frame(h.now, 1280, 720)!;
+  expect(app.cam.fovY).toBeCloseTo(zoomed(base, 400), 4);
+  expect(packet.window[2]! - packet.window[0]!).toBeLessThan(0.6);
+  expect(packet.window[3]! - packet.window[1]!).toBeLessThan(0.35);
+  expect(app.hud.visorDigital).toBe(true);
+  // N: night vision, not the held weapon's attachment.
+  expect(packet.frame[OPTIC_AT]).toBe(0);
+  app.key("KeyN", true);
+  app.key("KeyN", false);
+  run(200);
+  expect(app.hud.visorMode).toBe(OPTIC_NIGHT);
+  expect(app.frame(h.now, 1280, 720)!.frame[OPTIC_AT]).toBe(OPTIC_NIGHT);
+  // Let go: the view as it was, behind, the server told.
+  app.visor.held = false;
+  run(1500);
+  packet = app.frame(h.now, 1280, 720)!;
+  expect([app.hud.visor, app.view.atEye, app.hud.behind, h.host.gaze.count]).toEqual([false, false, true, 0]);
+  expect(app.cam.fovY).toBeCloseTo(base, 4);
+  expect([...packet.window, packet.frame[OPTIC_AT]]).toEqual([0, 0, 0, 0, 0]);
+});

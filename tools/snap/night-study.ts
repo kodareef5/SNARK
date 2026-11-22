@@ -1,4 +1,4 @@
-// bun tools/snap/night-study.ts <miami.snmap> <built assets directory> <output directory> [--gpu] [--hour=22] [--only=name]
+// bun tools/snap/night-study.ts <miami.snmap> <built assets directory> <output directory> [--gpu] [--hour=22] [--only=name] [--optic=night]
 //   [--states=name] [--tier=high] [--view=name]
 //
 // The night moments (planning/workstreams/night-light.md), each drawn in the states the moment has: as main drew it,
@@ -23,6 +23,9 @@
 // names the states drawn, of each scene's, and --view the one view of a scene's. In the states without the lamp's light,
 // every lamp is its cards, which take the shadows of the bodies and cars in their pools (render/lamp.ts poolShade); in
 // `plain` they take none, as before that (`?ab=pools`).
+import { Visor } from "../../client/core/visor.ts";
+import { OPTIC_NIGHT } from "../../client/core/render/packet.ts";
+import { daylight } from "../../client/core/render/laser.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
@@ -164,6 +167,12 @@ const { cam, scene, remote, raster } = v;
 scene.assets.tier = tierOf(tierName);
 scene.viewHeight = height;
 scene.hour = hour;
+// --optic=night: through a visor's night vision (client/core/visor.ts), as amplified at this hour.
+if (process.argv.includes("--optic=night")) {
+  const visor = new Visor();
+  [visor.up, visor.mode] = [true, OPTIC_NIGHT];
+  visor.frame(scene.optic, daylight(hour));
+}
 cam.fovY = (57 * Math.PI) / 180;
 
 /** Puts the camera at `eye` looking at `look`, and the view's bodies in place, in the scene's frame; its ground's height. */

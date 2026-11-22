@@ -5,6 +5,8 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 
 import { Icons } from "./assets/icons.ts";
 import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
+import { Visor } from "./visor.ts";
+import type { OpticFacet } from "../../shared/content/defs.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tiers.ts";
@@ -181,6 +183,9 @@ export class App {
   /** Scratch for the eye's offset off a sight's axis and the sight's window (optics.ts eyeOff, windowBox). */
   private readonly eyeAt = new Float64Array(2);
   private readonly windowAt = new Float64Array(4);
+  /** The Meridian helmet's visor (visor.ts, D1033). */
+  readonly visor = new Visor();
+  private visorOptic: OpticFacet | null = null;
   /** The zoom the server was last told of (App.gaze), and when. */
   private gazeSent = 0;
   private gazeAt = -Infinity;
@@ -454,6 +459,11 @@ export class App {
     }
     if (this.ui.inspect && (code === "Minus" || code === "Equal")) { if (down && !repeat) this.zoomMini(code === "Equal" ? 1 : -1); return true; }
     if (this.ui.captureKeyboard) return false;
+    // With a visor up, N turns its view, not what the held weapon has fitted.
+    if (code === "KeyN" && this.visor.up) {
+      if (down && !repeat) this.visor.cycle();
+      return true;
+    }
     if (this.builder.key(code, down, repeat, this.nowMs, this.reg)) return true;
     // Minus and Equal zoom the minimap, or the map while it is open, where the arrows move it.
     if (this.hud.chart?.key(code, down && !repeat, this.ui.map)) {
@@ -570,6 +580,11 @@ export class App {
 
   mouseButton(button: number, down: boolean, source = 0): void {
     if (down && source !== 1) this.ui.inputDevice = source;
+    // The middle button holds a helmet's visor up (visor.ts).
+    if (button === 1) {
+      this.visor.held = down && this.ui.wantsPointerLock;
+      return;
+    }
     if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
     if (button === 0 && this.vehiclePlacement.active) {
       if (down) this.vehiclePlacement.place(this.session);
@@ -602,7 +617,13 @@ export class App {
   /** The mouse wheel's `deltaY` in pixels, lines or pages (`mode` 0, 1 or 2), as a browser gives it. True when it was used. */
   wheel(deltaY: number, mode = 0): boolean {
     if (!this.ui.wantsPointerLock) return false;
-    return this.orbit.wheel(mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100);
+    const notches = mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100;
+    // A visor up takes the wheel for its zoom.
+    if (this.visor.up && this.visorOptic) {
+      this.visor.wheel(this.visorOptic, notches);
+      return true;
+    }
+    return this.orbit.wheel(notches);
   }
 
   /** `out` as a chase camera shows a look of `yaw` and `pitch` on a boom of `boom` metres. */
@@ -875,9 +896,18 @@ export class App {
       const reach = Math.min(GAZE_FARTHEST, GAZE_REACH * zoom);
       if (castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE) focus = rayHit.t;
     }
+    this.visor.range = focus;
     this.session.command(CMD_GAZE, (w) => (w.u16(Math.min(65535, Math.round(zoom * 16))), w.u16(Math.min(65535, Math.round(focus)))));
     this.gazeSent = zoom;
     this.gazeAt = nowMs;
+  }
+
+  /** The worn helmet's optic where the helmet is not worn out (its visor), or null. */
+  private wornOptic(inv: Inventory | null): OpticFacet | null {
+    const at = inv && inv.armor >= 0 ? inv.armor : -1;
+    const item = at >= 0 ? inv!.item[at]! : 0;
+    const def = item !== 0 ? (this.reg.defs[item] as ItemDef | null) : null;
+    return def?.optic && def.wear?.slot === "head" && (inv!.dur[at]! > 0 || !(def.wear.uses > 0)) ? def.optic : null;
   }
 
   /** Sets `aimed` to the player-built structure within ACT_REACH, and returns its name and health. */
@@ -1397,9 +1427,11 @@ export class App {
     const base = (settings.fov * Math.PI) / 180;
     const fitted = gun && session.driving < 0 ? attachmentOf(this.reg, session.inventory, held) : null;
     const sight = fitted?.attachment ?? "";
-    const zoom = fitted?.optic ? opticZoom(fitted.optic) : 0;
-    let want = sighting ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
-    this.view.atEye = sighting && !passenger && forcesEye(zoom);
+    // A helmet's visor, held up, on foot, the helmet working and no sight aimed through (visor.ts, D1033).
+    const visorUp = this.visor.step((this.visorOptic = this.wornOptic(session.inventory)), alive && session.driving < 0 && !passenger && !sighting && !orbiting && hud.banner === "");
+    const zoom = visorUp ? this.visor.zoom : fitted?.optic ? opticZoom(fitted.optic) : 0;
+    let want = visorUp ? zoomed(base, zoom) : sighting ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
+    this.view.atEye = ((sighting && forcesEye(zoom)) || visorUp) && !passenger;
     hud.behind = alive && third && !this.view.atEye && session.driving < 0 && !passenger;
     if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
     // Under a glider the view opens with its speed, a dive's most, and third person stands back to hold the wings.
@@ -1409,9 +1441,15 @@ export class App {
     hud.scope = sighting && sight === "scope";
     // The scope's window spans less of the screen the more it magnifies; the eye off its axis, as the body moves, a shot
     // kicks or the sway leads, casts its shadow across the lens. Outside the window nothing is drawn (D1030).
-    const optic = fitted?.optic;
+    const optic = visorUp ? this.visorOptic! : fitted?.optic;
     hud.sightShare = optic ? windowShare(optic, zoom) : 1;
     hud.sightShape = shapeOf(optic);
+    hud.visor = visorUp;
+    hud.visorZoom = zoom;
+    hud.visorMode = this.visor.mode;
+    hud.visorDigital = visorUp && this.visor.digital;
+    hud.visorRange = this.visor.range;
+    this.visor.frame(this.scene.optic, daylight(this.sky.hour));
     if (hud.scope && gun) {
       const pace = Math.hypot(session.own.vx, session.own.vz) / Math.max(1, move?.walkSpeed ?? 1);
       const kick = gun.recoilKick ? (session.own.kick * KICK_UNIT * UNIT_RADIANS) / ((gun.recoilKick * PI) / 180) : 0;
@@ -1421,7 +1459,7 @@ export class App {
       hud.sightOffY += (this.eyeAt[1]! - hud.sightOffY) * ease;
     } else hud.sightOffX = hud.sightOffY = 0;
     const win = cam.window;
-    if (hud.scope && hud.banner === "") {
+    if ((hud.scope || visorUp) && hud.banner === "") {
       windowBox(hud.sightShape, hud.sightShare, aspect, this.windowAt);
       win[0] = this.windowAt[0]! * 2 - 1; win[1] = 1 - this.windowAt[3]! * 2; win[2] = this.windowAt[2]! * 2 - 1; win[3] = 1 - this.windowAt[1]! * 2;
     } else { win[0] = win[1] = -1; win[2] = win[3] = 1; }
@@ -1440,7 +1478,7 @@ export class App {
     cam.fovY = this.fov;
     cam.zoom = magnification(base, this.fov);
     // Through a sight the server is told how far it magnifies and what it is on, so its cone widens the view (D1032).
-    this.gaze(nowMs, world, sighting && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
+    this.gaze(nowMs, world, (sighting || visorUp) && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
     c.zoom = lookScale(base, this.fov, settings.sensitivity, settings.zoomSensitivity);
     // The crosshair opens with the cone the next shot would leave within.
     hud.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;

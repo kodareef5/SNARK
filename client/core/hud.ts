@@ -379,6 +379,15 @@ export class HudModel {
   sightShape = 0;
   sightOffX = 0;
   sightOffY = 0;
+  /**
+   * A helmet's visor up (client/core/visor.ts, D1033): its window is the sight's (above), and it shows its zoom, its view
+   * (render/packet.ts OPTIC_), whether its picture is made larger past its glass, and how far off its middle is on.
+   */
+  visor = false;
+  visorZoom = 0;
+  visorMode = 0;
+  visorDigital = false;
+  visorRange = 0;
   holo = false;
   crossTint = -1;
   tint = 0;

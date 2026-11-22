@@ -49,7 +49,10 @@ export function easeFov(fov: number, want: number, rate: number): number {
 /** An optic's window: one round lens, or two merged side by side (a pair of binoculars). */
 export const SHAPE_ROUND = 0;
 export const SHAPE_TWIN = 1;
-export const shapeOf = (o: OpticFacet | undefined): number => (o?.shape === "twin" ? SHAPE_TWIN : SHAPE_ROUND);
+export const SHAPE_VISOR = 2;
+export const shapeOf = (o: OpticFacet | undefined): number => (o?.shape === "twin" ? SHAPE_TWIN : o?.shape === "visor" ? SHAPE_VISOR : SHAPE_ROUND);
+/** A visor's window's width for its height: wide open, and a slit as it narrows. */
+export const VISOR_WIDE = 3;
 /** A twin window's width for its height: two lenses as tall as it, their middles a lens's radius in from each side. */
 export const TWIN_WIDE = 1.76;
 
@@ -70,7 +73,7 @@ export function windowShare(o: OpticFacet, zoom: number): number {
  * takes, as shares of the screen (x0, y0, x1, y1, y down), within the screen. What lies outside it is masked.
  */
 export function windowBox(shape: number, share: number, aspect: number, out: Float64Array | number[]): void {
-  const h = share / 2, w = (shape === SHAPE_TWIN ? h * TWIN_WIDE : h) / aspect;
+  const h = share / 2, w = (shape === SHAPE_TWIN ? h * TWIN_WIDE : shape === SHAPE_VISOR ? h * VISOR_WIDE : h) / aspect;
   out[0] = Math.max(0, 0.5 - w);
   out[1] = Math.max(0, 0.5 - h);
   out[2] = Math.min(1, 0.5 + w);

@@ -18,7 +18,7 @@
 
 import { GRADE, type GradeKey } from "../../../content/grade.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { FRAME, FRAME_BLOCK } from "./packet.ts";
+import { FRAME, FRAME_BLOCK, OPTIC_AT, OPTIC_NIGHT } from "./packet.ts";
 import { sunHeight } from "./sky.ts";
 import { GRADED, TONE } from "./surface.ts";
 
@@ -144,6 +144,33 @@ export function postFrame(frame: Float32Array, tier: Tier, hour: number, height:
   frame[FRAME.levels] = bloomLevels(height, tier.post.bloom);
 }
 
+/** What a visor does to the picture (D1033): its mode (packet.ts OPTIC_), how many times night vision amplifies the light, and the grain the finish adds. */
+export interface Optic {
+  mode: number;
+  gain: number;
+  grain: number;
+}
+/** Night vision's phosphor, a green one's (P43), as linear light at its brightest. */
+export const PHOSPHOR: readonly number[] = [0.42, 1, 0.5];
+
+/**
+ * Fills the frame block's optic (packet.ts OPTIC_AT) for a frame of `tier` through `optic`, after `postFrame`: night
+ * vision amplifies the light by its gain, as the grade's does, and shows its grey in the phosphor's colour, on every lit
+ * tier; the grain, moved by `seed` each frame, is the finish's, where there is one. Low poly is shown as it is.
+ */
+export function opticFrame(frame: Float32Array, tier: Tier, optic: Optic, seed: number): void {
+  frame.fill(0, OPTIC_AT, OPTIC_AT + 8);
+  if (!tier.lit || (optic.mode === 0 && optic.grain === 0)) return;
+  frame[OPTIC_AT] = optic.mode;
+  frame[OPTIC_AT + 1] = tier.post ? optic.grain : 0;
+  frame[OPTIC_AT + 2] = seed % 4096;
+  if (optic.mode !== OPTIC_NIGHT) return;
+  for (let c = 0; c < 3; c++) {
+    frame[FRAME.grade + c] = frame[FRAME.grade + c]! * optic.gain;
+    frame[OPTIC_AT + 4 + c] = PHOSPHOR[c]!;
+  }
+}
+
 const f = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
 /** The part of light `c` past BLOOM_FROM in its brightest channel, the hue kept: the light bloom moves. */
@@ -248,6 +275,8 @@ void main() {
   vec3 t = tone(c * fGrade.rgb);
   float sharp = clamp(l + fFinish.z * (l - 0.25 * (n + s + e + w)), min(l, min(min(n, s), min(e, w))), max(l, max(max(n, s), max(e, w))));
   t = graded(t * (l > 0.0 ? sharp / l : 1.0));
+  // A visor's grain (opticFrame), heavier in the dark as an amplified picture's is.
+  if (fOptic.y > 0.0) t += (hash(uvec3(gl_FragCoord.xy, uint(fOptic.z) + 7u)) - 0.5) * fOptic.y / sqrt(max(dot(t, vec3(0.2126, 0.7152, 0.0722)), 0.04));
   uvec3 at = uvec3(gl_FragCoord.xy, 0u);
   o = vec4(encoded(clamp(t, 0.0, 1.0)) + (hash(at) + hash(at + uvec3(0u, 0u, 1u)) - 1.0) / 255.0, 1.0);
 }`;

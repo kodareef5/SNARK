@@ -10,8 +10,8 @@ import { TAPE_HEIGHT, buildCompass, tapeLayout } from "./compass.ts";
 import type { TouchPlan } from "./touch.ts";
 import { MAX_DOTS } from "../render/laser.ts";
 import { K_BAR, K_BUTTON, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_LENS, S_LENS_TWIN } from "./style.ts";
-import { SHAPE_TWIN, TWIN_WIDE } from "../optics.ts";
+import { S_LENS, S_LENS_TWIN, S_VISOR } from "./style.ts";
+import { SHAPE_TWIN, TWIN_WIDE, VISOR_WIDE } from "../optics.ts";
 import { S_BUFF, S_DARK, S_BANNER, S_CROSS, S_FRAME, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT_TEXT, S_STAMINA, S_TEXT } from "./style.ts";
 import { S_HUD_COUNT, S_HUD_HIT, S_HUD_KEY, S_ICE, S_KEY_SMALL, S_MENU_FOCUS, S_MENU_MAIN, S_MENU_NOTE, S_WARNING } from "./style.ts";
 
@@ -39,6 +39,10 @@ export const KEY_TINT = 38;
 export const KEY_SIGHT = 5000;
 /** The scope's shadow across its lens: the lens again where the eye is, and the two strips that move clears (D1030). */
 export const KEY_SIGHT_SHADE = 5100;
+/** A visor's frame and readouts (D1033). */
+export const KEY_VISOR = 5110;
+/** The visor's ink: its frame, its marks and its words. */
+const VISOR_INK = 0x7fe6d4;
 export const KEY_DOT = 5010;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
@@ -125,6 +129,38 @@ function buildReticle(f: UiFrame, W: number, H: number, m: HudModel): void {
   // The strips of the lens's box that the shadow's box moved off, which lie outside the shadow's hole.
   if (Math.abs(ox) >= 0.5) f.add(KEY_SIGHT_SHADE + 1, K_PANEL, ox > 0 ? x0 : x0 + bw + ox, y0, Math.abs(ox), bh, S_DARK).alpha = shade;
   if (Math.abs(oy) >= 0.5) f.add(KEY_SIGHT_SHADE + 2, K_PANEL, x0, oy > 0 ? y0 : y0 + bh + oy, bw, Math.abs(oy), S_DARK).alpha = shade;
+}
+
+/**
+ * A helmet's visor (D1033): the view masked to its window, a wide box that narrows to a slit as it zooms; corner marks, a
+ * small cross in its middle, and under the window its zoom (and DIGITAL past its glass), its view, its heading and how
+ * far off its middle is on.
+ */
+function buildVisor(f: UiFrame, W: number, H: number, m: HudModel): void {
+  const h = (m.sightShare * H) / 2, w = Math.min(W / 2, h * VISOR_WIDE);
+  const x0 = W / 2 - w, y0 = H / 2 - h, x1 = W / 2 + w, y1 = H / 2 + h;
+  let k = KEY_VISOR;
+  if (x0 > 0) {
+    f.add(k++, K_PANEL, 0, 0, x0, H, S_DARK);
+    f.add(k++, K_PANEL, x1, 0, W - x1, H, S_DARK);
+  }
+  f.add(k++, K_PANEL, x0, 0, x1 - x0, y0, S_DARK);
+  f.add(k++, K_PANEL, x0, y1, x1 - x0, H - y1, S_DARK);
+  const ink = (x: number, y: number, bw: number, bh: number): void => void (f.add(k++, K_PANEL, x, y, bw, bh, S_CROSS).tint = VISOR_INK);
+  const arm = Math.min(28, h * 0.4), t = 2;
+  for (const [cx, sx] of [[x0, 1], [x1, -1]] as const) {
+    for (const [cy, sy] of [[y0, 1], [y1, -1]] as const) {
+      ink(sx > 0 ? cx : cx - arm, sy > 0 ? cy : cy - t, arm, t);
+      ink(sx > 0 ? cx : cx - t, sy > 0 ? cy : cy - arm, t, arm);
+    }
+  }
+  ink(W / 2 - 7, H / 2 - 0.5, 14, 1);
+  ink(W / 2 - 0.5, H / 2 - 7, 1, 14);
+  const zoom = m.visorZoom >= 10 ? m.visorZoom.toFixed(0) : m.visorZoom.toFixed(1);
+  const range = m.visorRange > 0 ? `${Math.round(m.visorRange).toLocaleString("en-US")} m` : "---";
+  const words = [`${zoom}x${m.visorDigital ? " DIGITAL" : ""}`, m.visorMode === 1 ? "NIGHT" : "PLAIN", `${Math.round(m.heading).toString().padStart(3, "0")}`, range];
+  const across = (x1 - x0) / words.length, y = Math.min(H - 20, y1 + 6);
+  for (let i = 0; i < words.length; i++) f.text(k++, x0 + across * i, y, across, S_VISOR, words[i]!).tint = VISOR_INK;
 }
 
 /**
@@ -217,6 +253,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     n.alpha = d.alpha;
   }
   if (m.scope && m.banner === "") buildReticle(f, W, H, m);
+  if (m.visor && m.banner === "") buildVisor(f, W, H, m);
   // The readout, and under it the resource monitor's strip (ui/monitor.ts), which on a canvas too short for both stands
   // in its place; the voice's lines under them.
   // On a narrow canvas the readout keeps left of the minimap, which keeps its place at the top, and the strip stands across under both.
@@ -277,7 +314,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
 
   // The compass in the middle of the top, between what holds its corners, while the view is the body's own.
   m.compassBottom = 0;
-  if (options.compass && !m.bare && !m.out && !m.orbit && !(m.scope && m.banner === "")) {
+  if (options.compass && !m.bare && !m.out && !m.orbit && !((m.scope || m.visor) && m.banner === "")) {
     // What holds the top left: by touch the bar, else the readout and the voice's lines where they show.
     let held = touch ? touch.topEnd : left - 8;
     if (readout) held = Math.max(held, left + Math.min(right - left, 400));
@@ -434,7 +471,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
 
   // Through a scope its reticle (built under the rest) stands in for the crosshair. A holo-scope's crosshair shows whatever
   // the rules say of the crosshair, coloured by what it is on.
-  if (!m.orbit && !m.behind && !(m.scope && m.banner === "") && (m.crosshair || (m.holo && m.banner === ""))) {
+  if (!m.orbit && !m.behind && !((m.scope || m.visor) && m.banner === "") && (m.crosshair || (m.holo && m.banner === ""))) {
     const cross = f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
     if (m.holo) cross.tint = m.crossTint;
     if (m.cone >= 0) {

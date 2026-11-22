@@ -72,7 +72,7 @@ import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes, shadowLayer } from "./shadowtext.ts";
 import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
-import { lightBytes, lightSamples, postFrame, sceneSize } from "./post.ts";
+import { lightBytes, lightSamples, opticFrame, postFrame, sceneSize, type Optic } from "./post.ts";
 import { lampsOn, moonCasts, skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
@@ -454,6 +454,8 @@ export class Scene {
   structureDistance = Infinity;
   /** Hour of the day, 0..24. It sets the sun's position and the brightness. */
   hour = 12;
+  /** What a visor does to the picture this frame (post.ts opticFrame, D1033), which the app sets. */
+  readonly optic: Optic = { mode: 0, gain: 1, grain: 0 };
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
   viewHeight = 720;
   /** The canvas in its own pixels, which the light target takes and bloom's levels are counted from, and whether it draws more than the screen's own (post.ts). */
@@ -1066,6 +1068,7 @@ export class Scene {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky, this.fadeFrom);
       postFrame(p.frame, p.tier, this.hour, Math.round(this.canvasHeight * p.room), p.share);
+      opticFrame(p.frame, p.tier, this.optic, Math.floor(this.now / 16));
       p.lightSamples = lightSamples(this.supersampled);
       // A vehicle's glass covers a share of a pixel's samples where the frame has them: a canvas is drawn antialiased, a
       // light target with samples unless it is supersampled (vehicle-glass.ts).

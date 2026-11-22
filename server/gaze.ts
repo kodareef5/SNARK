@@ -84,7 +84,8 @@ export class Gaze {
       of(inv.item[slot]!);
       of(inv.attach[slot]!);
     }
-    if (inv.armor >= 0) for (let k = 0; k < ARMOR_SLOTS; k++) of(inv.item[inv.armor + k]!);
+    // Worn, where it is not worn out: a helmet's visor.
+    if (inv.armor >= 0) for (let k = 0; k < ARMOR_SLOTS; k++) if (inv.dur[inv.armor + k]! > 0 || !(world.reg.uses[inv.item[inv.armor + k]!]! > 0)) of(inv.item[inv.armor + k]!);
     return best;
   }
 
