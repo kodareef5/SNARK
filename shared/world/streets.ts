@@ -26,7 +26,7 @@
 // A part of version 1 is version 2's with no drops.
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../coords.ts";
-import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
+import { PI, TAU, detAtan2, detCos, detSin, len3 } from "../math/scalar.ts";
 import { GROUND_CLASS } from "./vehicle-surface.ts";
 
 export const STREETS_VERSION = 2;
@@ -868,10 +868,10 @@ function meetCorners(held: StreetSectors, line: { pts: number[]; stations: numbe
     if (c) {
       const ax = pts[q * 2 - 2]!, az = pts[q * 2 - 1]!, bx = pts[q * 2]!, bz = pts[q * 2 + 1]!, mx = (ax + bx) / 2, mz = (az + bz) / 2;
       const ex = [c.cx + c.ax * c.radius, c.cx + c.bx * c.radius], ez = [c.cz + c.az * c.radius, c.cz + c.bz * c.radius];
-      const e = Math.hypot(ex[0]! - mx, ez[0]! - mz) <= Math.hypot(ex[1]! - mx, ez[1]! - mz) ? 0 : 1;
-      const fromA = Math.hypot(ex[e]! - ax, ez[e]! - az), toB = Math.hypot(bx - ex[e]!, bz - ez[e]!);
+      const e = len3(ex[0]! - mx, 0, ez[0]! - mz) <= len3(ex[1]! - mx, 0, ez[1]! - mz) ? 0 : 1;
+      const fromA = len3(ex[e]! - ax, 0, ez[e]! - az), toB = len3(bx - ex[e]!, 0, bz - ez[e]!);
       const s = was ? stations[q - 1]! + fromA : stations[q]! - toB;
-      if (fromA + toB < Math.hypot(bx - ax, bz - az) + 0.3 && s > stations[q - 1]! && s < stations[q]!) {
+      if (fromA + toB < len3(bx - ax, 0, bz - az) + 0.3 && s > stations[q - 1]! && s < stations[q]!) {
         xz.push(ex[e]!, ez[e]!);
         st.push(s);
         on.push(1);
