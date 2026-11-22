@@ -295,6 +295,9 @@ export class App {
   private other: ReadonlySet<Effect> | null = null;
   private drawnFrames = 0;
   private interval = 0;
+  /** A measurement run's clock (autopilot): ms since its scene was still, -1 before or outside a run; and the page's clock then. */
+  private runMs = -1;
+  private runFrom = 0;
   /** Whether the keys are a flyer's, and the last tick stepped before its wing was last wanted. */
   private flying = false;
   private wingFrom = 0;
@@ -388,7 +391,7 @@ export class App {
       field.source.at(chunk, index, nodeSpot);
       if (Math.hypot(nodeSpot.x - session.own.x, nodeSpot.y - session.own.y, nodeSpot.z - session.own.z) > 64) return;
       const form = priorForm || nodeSpot.form;
-      this.scene.treeFalls.add({ action: "break", ref, kind: nodeSpot.kind, form, x: nodeSpot.x, y: nodeSpot.y, z: nodeSpot.z, yaw: nodeSpot.yaw, dx: nodeSpot.x - session.own.x, dz: nodeSpot.z - session.own.z, tick: session.serverTick }, this.nowMs);
+      this.scene.treeFalls.add({ action: "break", ref, kind: nodeSpot.kind, form, x: nodeSpot.x, y: nodeSpot.y, z: nodeSpot.z, yaw: nodeSpot.yaw, dx: nodeSpot.x - session.own.x, dz: nodeSpot.z - session.own.z, tick: session.serverTick }, this.scene.now);
       this.scene.details.nodeBreak(nodeSpot.kind, chunk * 256 + index, nodeSpot.x, nodeSpot.y, nodeSpot.z,
         session.renderClock - session.remoteDelay, field.forms.size[form]! / 64);
     };
@@ -775,10 +778,14 @@ export class App {
 
   /**
    * Steers for a measurement run, `ms` into its measured frames: the body stands and the view turns once round in
-   * BENCH_TURN_MS, a little up and down, so that every run of a scene sees the same views. Call it each frame instead
-   * of forwarding input.
+   * BENCH_TURN_MS, a little up and down, so that every run of a scene sees the same views; below 0 the view is held
+   * (`?still`). `run` is the run's clock (bench-run.ts BenchRun.clock), which the scene's timers follow from the frame
+   * before it begins, in place of the page's. Call it each frame instead of forwarding input.
    */
-  autopilot(ms: number): void {
+  autopilot(ms: number, run = -1): void {
+    if (run >= 0 && this.runMs < 0) this.runFrom = this.last;
+    this.runMs = run;
+    if (ms < 0) return;
     this.controls.yaw = (ms / BENCH_TURN_MS) * TAU;
     this.controls.pitch = Math.sin(ms / 2300) * 0.2 - 0.05;
   }
@@ -1364,6 +1371,8 @@ export class App {
     const hud = this.hud;
     const c = this.controls;
     this.nowMs = nowMs;
+    // In a measurement run what is drawn is timed by the run's clock (autopilot), so each run is at one point of every fade at each frame.
+    const sceneMs = this.runMs >= 0 ? this.runFrom + this.runMs : nowMs;
     // The resource monitor is a file of its own, fetched once Diagnostics is first "monitor".
     if (ui.settings.monitor && !this.monitorAsked) {
       this.monitorAsked = true;
@@ -1454,7 +1463,7 @@ export class App {
     }
     for (const event of session.predictedTrees?.present() ?? []) {
       this.scene.hideNode(event.ref, event.action === "break");
-      this.scene.treeFalls.add(event, nowMs);
+      this.scene.treeFalls.add(event, sceneMs);
       if (event.action === "break") {
         const size = session.nodeField!.forms.size[event.form]! / 64;
         this.scene.details.nodeBreak(event.kind, event.ref, event.x, event.y, event.z, session.renderClock - session.remoteDelay, size);
@@ -1838,22 +1847,23 @@ export class App {
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
     this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
     this.tamedHeard = session.tamed.length;
-    this.shots.absorb(session, world, nowMs);
-    this.shots.step(world, this.remote, session.tickClock, nowMs);
+    this.shots.absorb(session, world, sceneMs);
+    this.shots.step(world, this.remote, session.tickClock, sceneMs);
     this.scene.shotTick = session.tickClock;
     this.supply.list = session.supply;
     this.supply.tick = session.tickClock;
-    this.falling!.absorb(session.rubble, nowMs, cam.x, cam.y, cam.z);
-    this.falling!.step(nowMs);
+    this.falling!.absorb(session.rubble, sceneMs, cam.x, cam.y, cam.z);
+    this.falling!.step(sceneMs);
     const beams = this.scene.beams;
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     hud.dpr = this.dpr;
     this.scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
     this.scene.viewHeight = height;
-    this.scene.now = nowMs;
+    this.scene.now = sceneMs;
     if (this.playEye && this.artEyeAt === null && alive && this.script.length === 0) this.artEyeAt = nowMs;
-    this.scene.eyeSeconds = this.artEyeTime === null ? session.renderClock / TICK_RATE
+    // The tide's eyes open and shut on the server's ticks; in a run, from the run's still frame, so every run sees each eye alike.
+    this.scene.eyeSeconds = this.artEyeTime === null ? (this.runMs >= 0 ? this.runMs / 1000 : session.renderClock / TICK_RATE)
       : this.artEyeTime + (this.artEyeAt === null ? 0 : (nowMs - this.artEyeAt) / 1000);
     // A picture tool that holds the obelisks' clock holds the drops' with it: a cast leaves by that clock.
     if (this.artEyeTime !== null) this.supply.tick = this.scene.eyeSeconds * TICK_RATE;
@@ -1899,8 +1909,8 @@ export class App {
     if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
     updateHud(hud, session, this.remote, this.fps, this.unit, nowMs);
     hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
-    this.feedback.absorb(session, this.reg, nowMs, this.scene.damage);
-    this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.hitMarkers);
+    this.feedback.absorb(session, this.reg, sceneMs, this.scene.damage);
+    this.feedback.fill(hud.combat, cam, c.yaw, alive, sceneMs, session.hitMarkers);
     fillOverhead(hud.overhead, session, this.remote, cam, this.scene.characters, alive && !hud.out ? eyeNow : -1, c.yaw, c.pitch, this.lookReach);
     // Another survivor's glass glints to one it faces (CUE_SCOPED, D1083): brighter the straighter it looks.
     const r = this.remote, spot = this.spot;
