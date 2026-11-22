@@ -1238,6 +1238,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); };
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
+  const lane = game.lane;
   game.onStep = (tick) => {
     creative.step(tick);
     gaze.step(tick);
@@ -1299,11 +1300,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     parts.mark(PART.combat);
     creatures.step(tick);
     parts.mark(PART.creatures);
+    lane.enter();
     creatureContacts.step(creatures.awake, creatures.awakeCount);
     for (const e of urban.contacts!.step()) {
       urban.syncAfterContact(e);
       riding.syncAfterContact(e);
     }
+    lane.leave();
     parts.mark(PART.contacts);
     impale.step();
     spawner?.step(tick);
@@ -1315,7 +1318,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     breeding.step(tick);
     feces.step(tick);
     overhead.step(tick);
+    lane.enter();
     corpses.step(tick);
+    lane.leave();
     hurt.step(tick);
     voice.step(tick);
     parts.mark(PART.world);

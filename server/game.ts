@@ -87,6 +87,7 @@ import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Place } from "./beds.ts";
 import { PART, TickParts } from "./admin/parts.ts";
+import { Lane } from "./lane.ts";
 import { ServerFootContacts } from "./foot-contacts.ts";
 
 export interface GameOptions {
@@ -529,6 +530,8 @@ export class GameServer {
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
   /** Where each tick's time went, part by part (server/admin/parts.ts). The host marks the parts of its step in it. */
   readonly parts = new TickParts();
+  /** Physics' time in each tick, kept for it before the work that can wait (server/lane.ts). */
+  readonly lane = new Lane();
   /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
   readonly feet: ServerFootContacts;
   private readonly footBefore = new Body();
@@ -632,9 +635,12 @@ export class GameServer {
     const behind = this.behind;
     const parts = this.parts;
     parts.begin();
+    this.lane.begin();
 
     this.onBeforeStep?.();
     parts.mark(PART.before);
+    // The sessions' own bodies step first, as physics: what they predict is never put off.
+    this.lane.enter();
 
     for (const c of this.clients) {
       if (!c) continue;
@@ -740,6 +746,7 @@ export class GameServer {
       }
       c.chunk = chunkAt(world.dims, b.x, b.z);
     }
+    this.lane.leave();
     parts.mark(PART.bodies);
 
     for (const c of this.clients) if (c?.active && c.queue.length > 0) this.runCommands(c);
