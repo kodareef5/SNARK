@@ -43,7 +43,7 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
     }).observe({ type: "longtask", buffered: false });
   } catch {}
   let clock: PassClock | null = null, each = false;
-  const about = { browser: navigator.userAgent, card: "", format: "" };
+  const about = { browser: navigator.userAgent, card: "", format: "", display: 0 };
   const json = async (r: Promise<Response>): Promise<Answer> => {
     try {
       const res = await r;
@@ -95,6 +95,7 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
     page() {
       about.card = renderer.rendererName;
       about.format = renderer.format;
+      about.display = (screen.width * 16384 + screen.height) * 64 + Math.round(devicePixelRatio * 8);
       return about;
     },
     get: (path) => json(fetch(path, { cache: "no-store" })),

@@ -1344,6 +1344,7 @@ export class App {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
     this.interval = this.last < 0 ? 0 : dt;
     this.last = nowMs;
+    this.frames?.target.frame(this.interval);
     this.fps += (1000 / Math.max(dt, 1) - this.fps) * 0.05;
     const aspect = width / Math.max(height, 1);
     // The interface's canvas for this window: shorter for a short one, with the screen's edges kept clear.

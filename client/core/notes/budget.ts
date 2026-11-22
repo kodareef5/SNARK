@@ -1,6 +1,7 @@
 // The frame's budget, live (`/budget`): a panel in the right column, under the minimap and what stands below it, that says where a frame goes against its budget as the
-// owner walks. A strip of the last two seconds of frame times against the display's interval and 33 ms, the worst of the
-// last five seconds marked; the processor's part by stage (the app's frame, the scene's build, handing the frame to
+// owner walks. A strip of the last two seconds of frame times against the display's interval (the target, D1120) and
+// 33 ms, the frames late against the display counted and the worst of the last five seconds marked, and the rate the
+// game runs at said against the display's ("30 fps of 60"); the processor's part by stage (the app's frame, the scene's build, handing the frame to
 // WebGL, the assets' uploads) and the card's by pass where timer queries give it (on an Apple GPU through ANGLE a query
 // between passes ends Metal's render pass and every query reads long, so there it times the whole frame alone and says
 // so: client/core/passes.ts); and the frame's triangles and draws
@@ -11,11 +12,13 @@
 // times a second; between, the panel is drawn from them. Off, it costs nothing; on, it says what it costs.
 
 import type { App } from "../app.ts";
+import type { FrameRing } from "../assets/frames.ts";
 import type { NotesKit } from "../notes-kit.ts";
 import type { FramePacket } from "../render/packet.ts";
 import type { UiFrame } from "../ui/nodes.ts";
 import { K_PANEL, LINE, SMALL_LINE, S_HUD_COUNT, S_LABEL, S_MENU_NOTE, S_TEXT } from "../ui/monitor-style.ts";
 import { census, type Count } from "./census.ts";
+import { LATE } from "./ring.ts";
 
 /** The panel's keys, clear of every other screen's: its words from here, its bars from +100, the strip's columns from +200. */
 const KEY_BUDGET = 9700;
@@ -43,6 +46,39 @@ const KEPT = 32;
 /** A bar of parts: each its name, value and colour, the bar's full scale, and the budget's mark on it. */
 interface Bar { label: string; parts: { name: string; value: number }[]; full: number; mark: number; legend: string; note: string }
 
+/**
+ * What the strip says of `ring`'s frames: the display's interval (the target), the middle of the last two seconds' (the
+ * rate the game runs at), and of the last WORST_MS before `nowMs` how many came and how many were late against the
+ * display, the worst and how far back it is; the title and the line under the strip.
+ */
+export interface FrameStrip { target: number; middle: number; counted: number; late: number; worst: number; worstBack: number; title: string; line: string }
+
+export function frameStrip(ring: FrameRing | null, nowMs: number): FrameStrip {
+  const target = ring ? ring.target.ms : 1000 / 60, recent: number[] = [];
+  let worst = 0, worstBack = -1, counted = 0, late = 0;
+  if (ring) for (let back = 0; back < 600; back++) {
+    const k = ring.row(back);
+    if (k < 0 || nowMs - ring.at[k]! > WORST_MS) break;
+    const v = ring.interval[k]!;
+    // The first frame's interval runs from before the ring began.
+    if (v <= 0) continue;
+    if (back < 120) recent.push(v);
+    counted++;
+    if (v > LATE * target) late++;
+    if (v > worst) {
+      worst = v;
+      worstBack = back;
+    }
+  }
+  recent.sort((a, b) => a - b);
+  const middle = recent[recent.length >> 1] ?? 0, hz = Math.round(1000 / target);
+  return {
+    target, middle, counted, late, worst, worstBack,
+    title: middle > 0 ? `${Math.round(1000 / middle)} fps of ${hz} · ${middle.toFixed(1)} ms a frame` : `the display ${hz} Hz`,
+    line: worstBack < 0 ? "" : `last ${WORST_MS / 1000} s: ${late} of ${counted} frames late, the worst ${worst.toFixed(1)} ms (${(worst / target).toFixed(1)} display intervals)`,
+  };
+}
+
 export class BudgetPanel {
   /** The latest frames' stage times (STAGES), and the GPU's by pass where timed (PASS_NAMES), one row a frame. */
   readonly cpu = new Float64Array(KEPT * STAGES.length);
@@ -56,8 +92,8 @@ export class BudgetPanel {
   private costShown = 0;
   private madeAt = -Infinity;
   private title = "";
-  /** The display's interval as the last refresh took it, in ms. */
-  private display = 16.7;
+  /** The display's interval as the last refresh took it, in ms: the strip's line, and the processor's and card's budget. */
+  private display = 1000 / 60;
   private worst = "";
   private worstAt = -1;
   private bars: Bar[] = [];
@@ -113,26 +149,11 @@ export class BudgetPanel {
     this.madeAt = nowMs;
     this.costShown = this.costFrames > 0 ? this.cost / this.costFrames : 0;
     this.cost = this.costFrames = 0;
-    const ring = app.frames;
-    // The display's interval: the middle of the last frames' intervals.
-    const recent: number[] = [];
-    let worst = 0, worstBack = -1;
-    if (ring) for (let back = 0; back < 600; back++) {
-      const k = ring.row(back);
-      if (k < 0 || nowMs - ring.at[k]! > WORST_MS) break;
-      const v = ring.interval[k]!;
-      if (back < 120) recent.push(v);
-      if (v > worst) {
-        worst = v;
-        worstBack = back;
-      }
-    }
-    recent.sort((a, b) => a - b);
-    const display = recent[recent.length >> 1] ?? 16.7, hz = display > 0 ? Math.round(1000 / display) : 0;
+    const strip = frameStrip(app.frames, nowMs), display = strip.target;
     this.display = display;
-    this.title = `${display.toFixed(1)} ms a frame (${hz} Hz)`;
-    this.worstAt = worstBack;
-    this.worst = worstBack < 0 ? "" : `worst of the last 5 s: ${worst.toFixed(1)} ms, ${(worst / Math.max(1, display)).toFixed(1)} display intervals`;
+    this.title = strip.title;
+    this.worstAt = strip.worstBack;
+    this.worst = strip.line;
     const cpu = BudgetPanel.mean(this.cpu, this.cpuRows, STAGES.length), cpuSum = cpu.reduce((a, b) => a + b, 0);
     const bars: Bar[] = [{
       label: `Processor ${cpuSum.toFixed(1)} ms`, parts: STAGES.map((name, i) => ({ name, value: cpu[i]! })), full: Math.max(display, cpuSum), mark: display,
@@ -215,7 +236,7 @@ export class BudgetPanel {
       if (k < 0) break;
       const v = ring.interval[k]!, ch = Math.max(1, scale(v));
       const n = f.add(KEY_BUDGET + 200 + back, K_PANEL, x + PAD + inner - (back + 1) * colW, at + STRIP_H - ch, Math.max(1, colW - 0.5), ch, S_LABEL);
-      n.tint = back === this.worstAt ? 0xffffff : v > 1.25 * display ? LATE_TINT : ON_TIME;
+      n.tint = back === this.worstAt ? 0xffffff : v > LATE * display ? LATE_TINT : ON_TIME;
       n.alpha = back === this.worstAt ? 1 : 0.85;
     }
     for (const [i, ms] of [display, 33.3].entries()) {

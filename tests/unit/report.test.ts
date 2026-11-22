@@ -99,4 +99,7 @@ test("report.md says where, what and how on one screen, quotes the owner's words
   expect(md).toContain("    tp 1234.50 3.25 5678.75");
   expect(md).toContain('"name":"report-0014"');
   expect(md).not.toContain(tmpdir());
+  // A record that knows the display's interval says it apart from the game's rate, and its late frames against it.
+  const halved = reportText(r, { frames: 900, left: 0, target: 8.33, middle: 16.67, p95: 16.8, p99: 17, worst: 33.4, worstIntervals: 4, late: 0.998, over33: 0.001, over50: 0 }, {}, []);
+  expect(halved).toContain("- Frames: 900 timed. The display shows a frame every 8.3 ms (120 Hz, the fastest the page kept up) and the game drew 60 a second of them: middle 16.7 ms, 95th 16.8, 99th 17.0, worst 33.4. Late, past 1.25 display intervals: 99.8%; the worst took 4 display intervals. Over 33 ms 0.1%, over 50 0.0%.");
 });

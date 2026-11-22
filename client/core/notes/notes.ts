@@ -76,6 +76,8 @@ export class Notes {
   private readonly passMs = new Float64Array(PASS_NAMES.length);
   private gpuMode = 0;
   private apple = false;
+  /** The display the page was last on (NotePort.page), 0 before it is known. */
+  private display = 0;
   /** The scene whose build is timed (timeScene), and what its last build took. */
   private timed: { build: (...args: never[]) => unknown } | null = null;
   private sceneMs = 0;
@@ -216,9 +218,13 @@ export class Notes {
     port.longTasks(this.long);
     e.longTasks = this.long[0]!;
     e.longMs = this.long[1]!;
+    // A page moved to another screen learns that display's interval again (assets/frames.ts RefreshTarget).
+    const page = port.page();
+    if (page.display !== this.display && this.display !== 0) this.app.frames?.target.reset();
+    this.display = page.display;
     // The card by pass while the panel shows it, but on an Apple GPU, where a query between passes ends Metal's render
     // pass, whole; whole too while a note is taken. The record keeps the sum.
-    this.apple = /apple/i.test(port.page().card);
+    this.apple = /apple/i.test(page.card);
     this.gpuMode = panel ? (this.apple ? 1 : 2) : o !== null && o.state === "taking" ? 1 : 0;
     const came = port.gpu(this.gpuMode, this.passMs);
     let gpu = 0;

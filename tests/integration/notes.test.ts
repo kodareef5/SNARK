@@ -5,6 +5,7 @@
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
+import { FrameRing } from "../../client/core/assets/frames.ts";
 import { NOTES_KIT } from "../../client/core/notes-kit.ts";
 import { Notes } from "../../client/core/notes/notes.ts";
 import type { Answer, NotePort } from "../../client/core/notes/port.ts";
@@ -40,7 +41,7 @@ function fakePort(answers: Answer[], failing: readonly number[] = []): NotePort 
       return mode > 0;
     },
     glDraws: () => 300,
-    page: () => ({ browser: "a test", card: "no card", format: "rgba" }),
+    page: () => ({ browser: "a test", card: "no card", format: "rgba", display: 1 }),
     get: (path: string) => Promise.resolve(path === "__report" ? { status: 204, text: "" } : { status: 200, text: '{"commit":"c0ffee","clean":true}' }),
     post: (_path: string, fields: readonly (readonly [string, string])[], files: readonly (readonly [string, unknown])[]) => {
       port.posted.push({ fields: Object.fromEntries(fields), files: files.map(([k, v]) => [k, v]) });
@@ -253,11 +254,21 @@ test("`/budget` shows the frame's budget without the mode armed, costs nothing o
   const box = glassBox(app.ui.frame, 9700), f = app.ui.frame;
   expect(box !== null && box.x >= f.left && box.x + box.w <= f.width - f.right && box.y + box.h <= f.height - f.bottom).toBe(true);
   // On an Apple GPU, where a query between passes ends Metal's render pass, the card is timed whole and the panel says so.
-  port.page = () => ({ browser: "a test", card: "ANGLE (Apple, ANGLE Metal Renderer: Apple M5)", format: "bc" });
+  port.page = () => ({ browser: "a test", card: "ANGLE (Apple, ANGLE Metal Renderer: Apple M5)", format: "bc", display: 1 });
   await frames(400);
   expect(texts()).toContain("Card 4.5 ms, the whole frame");
   expect(texts()).toContain("by pass: not measured on an Apple GPU, where a query");
-  port.page = () => ({ browser: "a test", card: "no card", format: "rgba" });
+  port.page = () => ({ browser: "a test", card: "no card", format: "rgba", display: 1 });
+  // The panel says the game's rate against the display's, and a page moved to another screen learns that one's again.
+  const ring = (app.frames = new FrameRing());
+  await frames(1000);
+  expect(texts()).toContain("60 fps of 60 · 16.7 ms a frame");
+  ring.target.ms = 1000 / 144;
+  await frames(500);
+  expect(ring.target.hz).toBe(144);
+  port.page = () => ({ browser: "a test", card: "no card", format: "rgba", display: 2 });
+  await frames(1000);
+  expect(ring.target.hz).toBe(60);
   // The scene's build is timed while the panel is on, and let go once it is off.
   expect(Object.prototype.hasOwnProperty.call(app.scene, "build")).toBe(true);
   expect(notes.panel!.stages().scene).toBeGreaterThanOrEqual(0);

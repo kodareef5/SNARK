@@ -22,7 +22,60 @@ const CACHED = 1;
 const UPLOADED = 2;
 const DISK = 3;
 
+/** The rates a display shows frames at, in Hz, slowest first. */
+export const REFRESH_RATES = [60, 75, 90, 100, 120, 144, 165, 240] as const;
+/** Frames the target takes at a time: their middle interval is a rate the page kept up, which no few frames can make. */
+const WINDOW = 30;
+/** How much slower than a display's rate a window's frames may come and still be taken as that rate. */
+const NEAR = 0.08;
+
+/** The display's rate a page that kept up `hz` frames a second is taken to be shown at: the first of REFRESH_RATES within NEAR of it, else the fastest. */
+export function refreshOf(hz: number): number {
+  for (const r of REFRESH_RATES) if (r >= hz * (1 - NEAR)) return r;
+  return REFRESH_RATES[REFRESH_RATES.length - 1]!;
+}
+
+/**
+ * The interval a page's frames are judged against (D1120): the fastest the page has kept up since it began, or since the
+ * display changed (`reset`), as a display's rate. Frames are taken WINDOW at a time and a window's middle interval is a
+ * rate kept up; the target is the fastest of those, snapped by refreshOf, and 60 Hz until one is faster. A slow stretch
+ * gives slower windows, which never move it, and a long pause or a hidden page is a frame or two in a window, which its
+ * middle does not see. The app gives it every frame, those before the world has come too.
+ */
+export class RefreshTarget {
+  /** The target interval, ms. */
+  ms = 1000 / REFRESH_RATES[0];
+  private readonly window = new Float32Array(WINDOW);
+  private n = 0;
+  private fastest = Infinity;
+
+  get hz(): number {
+    return Math.round(1000 / this.ms);
+  }
+
+  /** A frame `interval` ms after the one before; 0, the first's, says nothing. */
+  frame(interval: number): void {
+    if (!(interval > 0)) return;
+    this.window[this.n++] = interval;
+    if (this.n < WINDOW) return;
+    this.n = 0;
+    const middle = this.window.sort()[WINDOW >> 1]!;
+    if (middle >= this.fastest) return;
+    this.fastest = middle;
+    this.ms = 1000 / refreshOf(1000 / middle);
+  }
+
+  /** The display changed: what was found of the last one is forgotten. */
+  reset(): void {
+    this.n = 0;
+    this.fastest = Infinity;
+    this.ms = 1000 / REFRESH_RATES[0];
+  }
+}
+
 export class FrameRing {
+  /** The display's interval the frames are judged against, which the app gives every frame (App.frame). */
+  readonly target = new RefreshTarget();
   /** Rows written, ever: the latest is at `(rows - 1) % FRAME_ROWS`. */
   rows = 0;
   /** For each frame: when it began and the time since the one before, both in ms on the page's clock, and the ms our code took of it. */

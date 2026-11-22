@@ -152,7 +152,7 @@ try {
   const after = during.filter((r) => (flags(r) & 2) !== 0).map((r) => r[f("interval")]!);
   const plain = during.filter((r) => (flags(r) & 3) === 0).map((r) => r[f("interval")]!);
   // A late frame is one past 1.25 of the display's interval (client/core/notes/ring.ts LATE).
-  const isLate = (v: number): boolean => v > 1.25 * perf.summary.middle, share = (v: number[]): string => `${((v.filter(isLate).length / Math.max(1, v.length)) * 100).toFixed(0)}%`;
+  const isLate = (v: number): boolean => v > 1.25 * perf.summary.target, share = (v: number[]): string => `${((v.filter(isLate).length / Math.max(1, v.length)) * 100).toFixed(0)}%`;
   console.log(`\na picture at a ${canvas[0]}×${canvas[1]} canvas (${cssW}×${cssH} at ${dpr}, ${tier}, ${await p.value<number>(`${app}.notes.wide`)} wide at most): its call took ${median(shotCalls).toFixed(2)} ms at the middle, ${Math.max(...shotCalls).toFixed(2)} at most, on the game's thread; of the ${after.length} frames from a picture until it was encoded ${share(after)} were late (the worst ${Math.max(...after).toFixed(1)} ms), against ${share(plain)} of the other ${plain.length} (middle ${median(plain).toFixed(1)} ms)`);
   console.log(`the record cost ${(perf.summary.ringMs * 1000).toFixed(1)} µs a frame on average; the GPU was ${perf.summary.gpu.frames > 0 ? `timed in ${perf.summary.gpu.frames} frames, middle ${perf.summary.gpu.middle} ms` : "not timed"}`);
   console.log(`the report is ${kb(bytesUnder(folder))}: ${readdirSync(folder).map((n) => `${n} ${kb(statSync(join(folder, n)).size)}`).join(", ")}`);

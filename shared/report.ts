@@ -126,7 +126,7 @@ export const PERF_SHAPE: Shape = {
     seconds: { list: { list: N, most: 64 }, most: SECOND_ROWS_MOST },
     summary: {
       fields: {
-        frames: I, left: I, middle: N, p95: N, p99: N, worst: N, worstIntervals: N, late: N, over33: N, over50: N,
+        frames: I, left: I, target: N, middle: N, p95: N, p99: N, worst: N, worstIntervals: N, late: N, over33: N, over50: N,
         gpu: { fields: { frames: I, middle: N, p95: N, worst: N } }, heap: N, longTasks: I, longMs: N, ringMs: N,
       },
     },
@@ -195,12 +195,15 @@ export interface ReportShot { at?: number; w?: number; h?: number; place?: Point
 export interface ReportBuild { commit?: string; clean?: boolean; at?: string }
 
 /**
- * The summary of a performance record (PERF_SHAPE's). Frame times are ms, the middle the interval the page is shown at;
- * `late` is the share of frames past 1.25 of it, `over33` and `over50` those past 33.4 and 50 ms.
+ * The summary of a performance record (PERF_SHAPE's). Frame times are ms. `target` is the display's interval, the
+ * fastest the page kept up (client/core/assets/frames.ts RefreshTarget), and `middle` what the game ran at; `late` is the
+ * share of frames past 1.25 of the target, `worstIntervals` the worst in targets, `over33` and `over50` the share past
+ * 33.4 and 50 ms. A report from before the target judged its frames against the middle and has no `target`.
  */
 export interface PerfSummary {
   frames?: number;
   left?: number;
+  target?: number;
   middle?: number;
   p95?: number;
   p99?: number;

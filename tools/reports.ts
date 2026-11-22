@@ -16,7 +16,7 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { checkoutBuild, reportIds, streetTypeNames, type KeptReport, type ReportState } from "../server/reports.ts";
+import { checkoutBuild, rateOf, reportIds, streetTypeNames, type KeptReport, type ReportState } from "../server/reports.ts";
 import { reportFolder, type PerfSummary } from "../shared/report.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -106,7 +106,10 @@ export function perf(dir: string, id: number): Lines {
   if (!folder || !p) return [`report ${id} in ${dir} has no performance record`];
   const s = p.summary ?? {}, out: Lines = [];
   const share = (v: number | undefined): string => `${((v ?? 0) * 100).toFixed(1)}%`;
-  out.push(`Report ${id}: ${s.frames ?? 0} frames timed${s.left ? `, ${s.left} beside a picture left out` : ""}. Middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 of the middle), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
+  const timed = `Report ${id}: ${s.frames ?? 0} frames timed${s.left ? `, ${s.left} beside a picture left out` : ""}.`;
+  // A record from before the display's interval was kept apart judged its frames against their own middle.
+  if (s.target === undefined) out.push(`${timed} Middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 of the middle), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
+  else out.push(`${timed} The display ${rateOf(s.target)} Hz (${ms(s.target)}, the fastest the page kept up), the game ${rateOf(s.middle)} fps of ${rateOf(s.target)}: middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 display intervals), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
   out.push(`GPU: ${s.gpu?.frames ? `${s.gpu.frames} frames, middle ${ms(s.gpu.middle)}, 95th ${ms(s.gpu.p95)}, worst ${ms(s.gpu.worst)}` : "not timed"}. Heap ${s.heap?.toFixed(0) ?? "?"} MB. ${s.longTasks ?? 0} long tasks, ${s.longMs?.toFixed(0) ?? 0} ms. The record cost ${s.ringMs !== undefined ? `${(s.ringMs * 1000).toFixed(1)} µs` : "?"} a frame.`);
   const f = p.fields ?? [], col = (name: string): number => f.indexOf(name);
   const pick = ["at", "interval", "own", "build", "scene", "upload", "gpu", "draws", "triangles", "castTriangles", "uploads", "fetched", "longMs", "level", "squeeze"];
