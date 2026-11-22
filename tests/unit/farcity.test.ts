@@ -11,7 +11,7 @@ import { ThreadedCityMaker, cityJob, cityKinds, cityThreads, makeLevel, type Cit
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { zoomed } from "../../client/core/optics.ts";
 import { doSweep, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { PICK_STRUCTURE } from "../../tools/snap/raster.ts";
 import type { ShapeBox, ShapeDef } from "../../shared/content/defs.ts";
@@ -562,6 +562,18 @@ test("through a sight a tile past the tier's reach in its window is made and dra
   expect(indices(w.frame())).toBeGreaterThan(0);
   for (let f = 0; f < 240; f++) w.frame();
   expect(indices(w.frame())).toBe(0);
+});
+
+test("through a sight the near trees' hand-over band is its zoom times the tier's, and the tier's at one times", () => {
+  const w = cityWorld({ chunks: 16, statics: [], width: 160, height: 90 });
+  w.scene.assets.tier = tierOf("medium");
+  w.look(8 * CHUNK_SIZE, 0, 8 * CHUNK_SIZE, 100, 0, 6);
+  const band = tierOf("medium").nodes.band;
+  let p = w.frame();
+  expect([p.frame[FRAME.handFrom], p.frame[FRAME.handTo]]).toEqual([band[0], band[1]]);
+  w.cam.zoom = 8;
+  p = w.frame();
+  expect([p.frame[FRAME.handFrom], p.frame[FRAME.handTo]]).toEqual([band[0] * 8, band[1] * 8]);
 });
 
 test("levels made on threads are each asked of the one with the fewest in hand, three ahead a thread, and are the levels the page makes", async () => {

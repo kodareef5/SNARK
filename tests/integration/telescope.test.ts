@@ -10,7 +10,7 @@ import { writeMap } from "../../shared/world/mapfile.ts";
 import { CONE_KEEP } from "../../server/game.ts";
 import { building } from "../fixtures/cityworld.ts";
 import { takeInHand } from "../fixtures/gather.ts";
-import { flatMap } from "../fixtures/map.ts";
+import { flatMap, wideMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const MID = 24 * CHUNK_SIZE;
@@ -52,4 +52,23 @@ test("through a spyglass a tower 1.3 km off comes whole to the page, as if it st
   expect(held(s)).toBe(true);
   h.run(((CONE_KEEP + 32) * 1000) / 30);
   expect(held(s)).toBe(false);
+});
+
+test("the near trees round what a sight is on are held as those round the body are, and let go as it leaves", () => {
+  const h = new Harness({}, 9, 30, { dev: true, map: writeMap(wideMap()) });
+  const s = h.join("ada");
+  h.run(1500);
+  const nodes = s.nodeField!.store;
+  // 1.3 km west of where the body stands.
+  const focus = chunkAt(h.world.dims, s.own.x - OFF, s.own.z);
+  const before = [...nodes.held];
+  expect(before.includes(focus)).toBe(false);
+  s.focusNodes(focus);
+  // Its chunk and those round it that have nodes, the body's kept.
+  const round = [-1, 0, 1].flatMap((dz) => [-1, 0, 1].map((dx) => focus + dz * h.world.dims.chunksX + dx));
+  expect(nodes.held.includes(focus)).toBe(true);
+  expect(nodes.held.filter((c) => !before.includes(c)).every((c) => round.includes(c))).toBe(true);
+  expect(before.every((c) => nodes.held.includes(c))).toBe(true);
+  s.focusNodes(-1);
+  expect([...nodes.held].sort((a, b) => a - b)).toEqual(before.sort((a, b) => a - b));
 });

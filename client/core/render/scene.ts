@@ -474,6 +474,8 @@ export class Scene {
    */
   focusX = NaN;
   focusZ = NaN;
+  /** The near trees' hand-over band's scale this frame: a sight's zoom, else 1 (D1090). */
+  private handScale = 1;
   /** What a visor does to the picture this frame (post.ts opticFrame, D1080), which the app sets. */
   readonly optic: Optic = { mode: 0, gain: 1, grain: 0 };
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
@@ -1095,7 +1097,12 @@ export class Scene {
     // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
     p.light = flatLight(this.hour, p.sun);
     p.alternate = this.alternate;
-    [p.frame[FRAME.handFrom], p.frame[FRAME.handTo]] = this.assets.tier.nodes.band;
+    // Through a sight the near trees hand over to the far its zoom times as far, so those round what it is on are drawn
+    // near (D1090); out of its window none is drawn at all.
+    this.handScale = cam.zoom > 1 ? cam.zoom : 1;
+    p.frame[FRAME.handFrom] = this.assets.tier.nodes.band[0] * this.handScale;
+    p.frame[FRAME.handTo] = this.assets.tier.nodes.band[1] * this.handScale;
+    if (this.nodesFar) this.nodesFar.handScale = this.handScale;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
     const near = this.finishNear.metres, scale = this.assets.scale;
     if (p.tier.lit) this.finishNear.update(cam.x, cam.y, cam.z, this.world.hf, this.world.structs, scale, finishTaps(p.tier));
@@ -2864,7 +2871,7 @@ export class Scene {
     const p = this.packet;
     const world = this.world;
     const chunks = store.chunks;
-    const band = this.assets.tier.nodes.band[1];
+    const band = this.assets.tier.nodes.band[1] * this.handScale;
     // The node field's crowns, for how many stand in the way of each cell of trees.
     if (sizeOf && this.assets.tier.nodes.cover) this.cover.update(store, this.coverLooks);
     // How far the near plane's corners are from the camera: a room that near may be cut into and seen.
@@ -3001,7 +3008,7 @@ export class Scene {
   private ranges(cam: Camera, b: ChunkBatch, id: number, dist: number, ox: number, oy: number, oz: number, passes: number, all: boolean): void {
     const sized = b.sized;
     const band = this.assets.tier.nodes.band;
-    const from = sized ? band[0] : Infinity, to = sized ? band[1] : Infinity;
+    const from = sized ? band[0] * this.handScale : Infinity, to = sized ? band[1] * this.handScale : Infinity;
     const cells = b.cells;
     const spans = this.spans;
     const box = b.cellBox;

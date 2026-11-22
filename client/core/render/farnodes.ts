@@ -206,6 +206,8 @@ export class FarNodes {
   private tier: Tier | null = null;
   /** The tier's hand-over band. */
   private band: readonly [number, number] = [0, 0];
+  /** The hand-over band's scale, which the scene sets: a sight's zoom, else 1 (D1090). */
+  handScale = 1;
   /** Per mesh, its row of the atlas and how many vertices its row takes (0 to SIZES - 1), or -1; per row, its mesh. */
   private readonly meshRow: Int16Array;
   private readonly meshSize: Int8Array;
@@ -469,7 +471,7 @@ export class FarNodes {
    * how far off its nearest is.
    */
   draw(cam: Camera, put: PutDraw, hider?: Hider): void {
-    const [from, to] = this.band;
+    const from = this.band[0] * this.handScale, to = this.band[1] * this.handScale;
     for (const t of this.tiles.keys()) {
       const tile = this.tiles.get(t)!;
       if (!tile.data || !tile.uploaded) continue;

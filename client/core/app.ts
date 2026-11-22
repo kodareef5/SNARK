@@ -5,6 +5,7 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import { Icons } from "./assets/icons.ts";
+import { chunkAt } from "../../shared/coords.ts";
 import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticMost, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
 import { Visor } from "./visor.ts";
 import { Glass, MARKED_MS } from "./glass.ts";
@@ -133,6 +134,8 @@ const HOLO_TINT = 0.22;
 const GAZE_RESEND_MS = 1000;
 /** Milliseconds N is held to raise or lower a helmet's visor. */
 const VISOR_HOLD_MS = 400;
+/** The zoom from which the near trees round what a sight is on are held (D1090). */
+const NODE_FOCUS = 4;
 /** Milliseconds between finds of what a sight is on. */
 const FOCUS_MS = 250;
 /** A zooming sight's step of the wheel, and a zero's, metres, as far as ZERO_MOST. */
@@ -1000,9 +1003,13 @@ export class App {
         this.scene.focusX = t > 0 ? eye.x + d[0]! * t : NaN;
         this.scene.focusZ = t > 0 ? eye.z + d[2]! * t : NaN;
       }
+      // Its near trees, from NODE_FOCUS times (D1090).
+      const dims = this.session.world?.dims;
+      this.session.focusNodes(dims && t > 0 && zoom >= NODE_FOCUS ? chunkAt(dims, eye.x + d[0]! * t, eye.z + d[2]! * t) : -1);
     } else if (zoom === 0) {
       this.focusAt = -Infinity;
       if (this.scene) this.scene.focusX = this.scene.focusZ = NaN;
+      this.session.focusNodes(-1);
     }
     if (zoom === 0 && this.gazeSent === 0) return;
     const moved = zoom === 0 || this.gazeSent === 0 || Math.abs(zoom - this.gazeSent) > 0.1 * Math.max(zoom, this.gazeSent) || this.zeroSent !== this.sightZero;

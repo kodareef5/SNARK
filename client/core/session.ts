@@ -397,6 +397,9 @@ export interface TextLine {
   text: string;
 }
 
+/** Chunks a side round what a sight is on whose near nodes are held, past the centre (D1090). */
+const FOCUS_NODES = 1;
+
 export class ClientSession {
   state: "connecting" | "active" | "closed" = "connecting";
   /** Reject reason from the server, or a negative local reason. */
@@ -545,6 +548,8 @@ export class ClientSession {
   private treeDriver = 0;
   private nodeChunk = -1;
   private nodeRadius = NODE_RADIUS;
+  /** The chunk a sight is on whose near nodes are held too (focusNodes), or -1. */
+  private nodeFocus = -1;
   /** The chunks the near node field holds for the body, and the ground's changes when they were chosen. */
   private nodeHeld: number[] = [];
   private nodeSeen = -1;
@@ -1341,6 +1346,17 @@ export class ClientSession {
   }
 
   /** The near node field holds `chunks` round the body's chunk from now on, as the tier says. */
+  /**
+   * The chunk a sight that magnifies is on (-1 for none): the near node field holds the chunks round it as well as those
+   * round the body, so its trees are drawn as near ones are (D1090).
+   */
+  focusNodes(chunk: number): void {
+    if (chunk === this.nodeFocus) return;
+    this.nodeFocus = chunk;
+    this.nodeSeen = -1;
+    this.recenterNodes();
+  }
+
   holdNodes(chunks: number): void {
     if (chunks === this.nodeRadius) return;
     this.nodeRadius = chunks;
@@ -1361,16 +1377,20 @@ export class ClientSession {
     if (chunk === this.nodeChunk && hf.changes.length === this.nodeSeen) return;
     [this.nodeChunk, this.nodeSeen] = [chunk, hf.changes.length];
     const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;
-    const [cx, cz, r] = [chunkCx(dims, chunk), chunkCz(dims, chunk), this.nodeRadius];
     const held: number[] = [];
-    for (let z = Math.max(0, cz - r); z <= Math.min(dims.chunksZ - 1, cz + r); z++) {
-      for (let x = Math.max(0, cx - r); x <= Math.min(dims.chunksX - 1, cx + r); x++) {
-        const c = z * dims.chunksX + x;
-        if (hf.exact[c] === 0) continue;
-        if (!this.nodeHeld.includes(c)) field.retain(c, 0, 1, gone, undefined, (chunk, index) => this.nodeCrushed.get(chunk)?.includes(index) ?? false);
-        held.push(c);
+    const square = (centre: number, r: number): void => {
+      const cx = chunkCx(dims, centre), cz = chunkCz(dims, centre);
+      for (let z = Math.max(0, cz - r); z <= Math.min(dims.chunksZ - 1, cz + r); z++) {
+        for (let x = Math.max(0, cx - r); x <= Math.min(dims.chunksX - 1, cx + r); x++) {
+          const c = z * dims.chunksX + x;
+          if (hf.exact[c] === 0 || held.includes(c)) continue;
+          if (!this.nodeHeld.includes(c)) field.retain(c, 0, 1, gone, undefined, (chunk, index) => this.nodeCrushed.get(chunk)?.includes(index) ?? false);
+          held.push(c);
+        }
       }
-    }
+    };
+    square(chunk, this.nodeRadius);
+    if (this.nodeFocus >= 0) square(this.nodeFocus, FOCUS_NODES);
     for (const c of this.nodeHeld) if (!held.includes(c)) field.retain(c, 0, -1, gone);
     this.nodeHeld = held;
   }
