@@ -5,6 +5,7 @@ import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
 
 import { PredictedTrees } from "./vehicle-trees.ts";
+import { ownKinds, type Readers } from "./readers.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
@@ -1309,6 +1310,9 @@ export class ClientSession {
     [this.sentInput, this.sentAck] = [newest, this.latestSnapshot];
   }
 
+  /** The table of owner state (client/core/readers.ts), with this file's readers added. */
+  private static readonly ownKinds = ClientSession.addOwnKinds();
+
   private receive(_channel: number, data: Uint8Array): void {
     if (this.state === "closed") return;
     this.stats.bytesIn += data.length;
@@ -1464,216 +1468,288 @@ export class ClientSession {
     this.nodeHeld = held;
   }
 
-  /** One component per message. */
+  /** One kind of owner state per message. A kind with no reader is ignored. */
   private ownState(r: BitReader): void {
-    const component = r.u8();
-    if (component === OWN_SESSION) {
-      const state = r.bits(2);
-      const admin = r.bool();
-      const handle = r.u32();
-      const dayOffset = r.u32();
-      if (r.overflow) return;
-      this.sessionState = state;
-      // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
-      if (state !== SESSION_DEAD) {
-        this.respawnPoints.length = 0;
-        this.choosing = CHOOSE_DIED;
-      }
-      this.admin = admin;
-      this.ownHandle = handle;
-      this.dayOffset = dayOffset;
-    } else if (component === OWN_VITALS) {
-      const v = this.vitals;
-      const tick = r.u32();
-      const fields = new Array<number>(V_COUNT * 3).fill(0);
-      for (let i = 0; i < V_COUNT * 3; i += 3) {
-        fields[i] = r.uint53();
-        fields[i + 1] = r.svarint();
-        fields[i + 2] = r.uint53();
-      }
-      if (r.overflow) return;
-      v.tick = tick;
-      for (let i = 0; i < V_COUNT; i++) {
-        v.value[i] = fields[i * 3]!;
-        v.rate[i] = fields[i * 3 + 1]!;
-        v.max[i] = fields[i * 3 + 2]!;
-      }
-      v.version++;
-      this.hasVitals = true;
-    } else if (component === OWN_SLOTS) {
-      const box = r.bits(1);
-      const cap = r.varint();
-      const bag = r.varint();
-      const full = r.bool();
-      const count = r.u16();
-      if (r.overflow || bag > cap) return;
-      let inv: Inventory | null;
-      if (box === BOX_SELF) {
-        inv = this.inventory;
-        if (!inv || inv.cap !== cap || inv.bag !== bag || full) inv = this.inventory = new Inventory(cap, bag);
-      } else {
-        if (!this.open) return;
-        if (this.open.inventory.cap !== cap || this.open.inventory.bag !== bag || full) this.open.inventory = new Inventory(cap, bag);
-        inv = this.open.inventory;
-      }
-      for (let k = 0; k < count; k++) {
-        const slot = r.varint();
-        const item = r.u16();
-        const n = item === 0 ? 0 : r.u16();
-        const quality = item === 0 ? 0 : r.u8();
-        // Flags (SLOT_ bits): a blueprint.
-        const flags = item === 0 ? 0 : r.u8();
-        const dur = item === 0 ? 0 : r.u16();
-        const spoilAt = item === 0 ? 0 : r.u32();
-        const holds = item !== 0 && r.bool();
-        const ammo = holds ? r.u16() : 0;
-        const loaded = holds ? r.u8() : 0;
-        const attach = holds ? r.u16() : 0;
-        if (r.overflow || slot >= cap) return;
-        inv.set(slot, item, n, quality, dur, spoilAt, flags);
-        if (holds) inv.setGear(slot, ammo, loaded, attach);
-      }
-    } else if (component === OWN_KEPT) {
-      const box = r.bits(1);
-      const count = r.varint();
-      const got: [number, Kept][] = [];
-      for (let k = 0; k < count && !r.overflow; k++) got.push([r.varint(), { kind: r.u16(), level: r.u16(), name: r.string(MAX_NAME_BYTES * 3) }]);
-      if (r.overflow) return;
-      const kept = this.kept[box === BOX_SELF ? 0 : 1]!;
-      kept.clear();
-      for (const [slot, tame] of got) kept.set(slot, tame);
-    } else if (component === OWN_SUBJECT) {
-      if (!r.bool()) this.subject = null;
-      else {
-        const next = { taming: r.bool(), owned: r.bool(), level: r.u16(), progress: r.bits(10) / 1000, te: r.bits(10) / 1000, torpor: r.bits(10) / 1000, food: r.bits(10) / 1000, id: r.u32(), points: r.u8(), stance: r.bits(2), following: r.bool(), wandering: r.bool(), saddled: r.bool(), breeds: r.bool(), mating: r.bool(), female: r.bool(), stage: r.bits(2), maturity: r.bits(10) / 1000, mate: r.bits(10) / 1000, wait: r.varint() };
-        if (!r.overflow) this.subject = next;
-      }
-    } else if (component === OWN_OVERHEAD) {
-      if (!r.bool()) this.looked = null;
-      else {
-        const share = (): number => (r.bool() ? r.bits(10) / 1000 : -1);
-        const id = r.u32();
-        const [health, food, torpor] = [share(), share(), share()];
-        const tamed = r.bool();
-        const taming = tamed ? r.bits(10) / 1000 : -1;
-        const te = tamed ? r.bits(10) / 1000 : -1;
-        const mating = share();
-        const tribe = r.bool() ? r.string(MAX_NAME_BYTES * 3) : "";
-        if (!r.overflow) this.looked = { id, health, food, torpor, taming, te, mating, tribe };
-      }
-    } else if (component === OWN_STATION) {
-      const kind = r.u16();
-      const ref = r.u32();
-      const out = r.u32();
-      const lanes: { item: number; doneAt: number }[] = [];
-      for (let k = r.u8(); k > 0 && !r.overflow; k--) lanes.push({ item: r.u16(), doneAt: r.u32() });
-      const jobs: { item: number; left: number; doneAt: number; rest: number }[] = [];
-      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32(), rest: r.u32() });
-      if (!r.overflow) this.station = kind === 0 ? null : { kind, ref, out, lanes, jobs };
-    } else if (component === OWN_OPEN) {
-      // A station's queue comes after it is opened, and so does what its soul balls hold.
-      this.station = null;
-      this.kept[1].clear();
-      if (!r.bool()) this.open = null;
-      else {
+    ClientSession.ownKinds.read(r.u8(), this, r);
+  }
+
+  /** Adds the readers of owner state that are this file's, and gives the table. A feature's own kind is added from its own file (client/core/readers.ts). */
+  private static addOwnKinds(): Readers {
+    ownKinds.add({
+      kind: OWN_SESSION,
+      read(s, r) {
+        const state = r.bits(2);
+        const admin = r.bool();
+        const handle = r.u32();
+        const dayOffset = r.u32();
+        if (r.overflow) return;
+        s.sessionState = state;
+        // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
+        if (state !== SESSION_DEAD) {
+          s.respawnPoints.length = 0;
+          s.choosing = CHOOSE_DIED;
+        }
+        s.admin = admin;
+        s.ownHandle = handle;
+        s.dayOffset = dayOffset;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_VITALS,
+      read(s, r) {
+        const v = s.vitals;
+        const tick = r.u32();
+        const fields = new Array<number>(V_COUNT * 3).fill(0);
+        for (let i = 0; i < V_COUNT * 3; i += 3) {
+          fields[i] = r.uint53();
+          fields[i + 1] = r.svarint();
+          fields[i + 2] = r.uint53();
+        }
+        if (r.overflow) return;
+        v.tick = tick;
+        for (let i = 0; i < V_COUNT; i++) {
+          v.value[i] = fields[i * 3]!;
+          v.rate[i] = fields[i * 3 + 1]!;
+          v.max[i] = fields[i * 3 + 2]!;
+        }
+        v.version++;
+        s.hasVitals = true;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_SLOTS,
+      read(s, r) {
+        const box = r.bits(1);
         const cap = r.varint();
-        const name = r.string(MAX_OPEN_NAME_BYTES);
-        const flags = r.u8();
-        if (!r.overflow) this.open = { name, inventory: new Inventory(cap), takeOnly: (flags & OPEN_TAKE_ONLY) !== 0 };
-      }
-    } else if (component === OWN_MARKERS) {
-      const count = r.u8();
-      const list = [];
-      for (let k = 0; k < count; k++) list.push({ kind: r.u8(), x: r.f32(), y: r.f32(), z: r.f32(), tick: r.u32() });
-      if (r.overflow) return;
-      this.markers.length = 0;
-      this.markers.push(...list);
-    } else if (component === OWN_RULES) {
-      const flags = r.u16();
-      if (r.overflow) return;
-      this.damageNumbers = (flags & RULE_DAMAGE_NUMBERS) !== 0;
-      this.globalChat = (flags & RULE_GLOBAL_CHAT) !== 0;
-      this.hitMarkers = (flags & RULE_HIT_MARKERS) !== 0;
-      this.thirdPerson = (flags & RULE_THIRD_PERSON) !== 0;
-      this.crosshair = (flags & RULE_CROSSHAIR) !== 0;
-      this.mapLocation = (flags & RULE_MAP_LOCATION) !== 0;
-      this.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
-      this.creative = (flags & RULE_CREATIVE) !== 0;
-      this.survivorsPass = (flags & RULE_SURVIVORS_PASS) !== 0;
-    } else if (component === OWN_VOICE) {
-      const slot = r.u16();
-      const token = new Uint8Array(TOKEN_BYTES);
-      for (let i = 0; i < TOKEN_BYTES; i++) token[i] = r.u8();
-      const rights = r.u8();
-      if (r.overflow) return;
-      this.voice.slot = slot;
-      this.voice.token = token;
-      this.voice.rights = rights;
-      this.voice.version++;
-    } else if (component === OWN_TRIBE) {
-      const team = r.varint();
-      const name = r.string(MAX_NAME_BYTES * 3);
-      let rank = 0;
-      const members: { name: string; online: boolean; owner: boolean }[] = [];
-      if (name !== "") {
-        rank = r.u8();
-        for (let k = r.u8(); k > 0 && !r.overflow; k--) members.push({ name: r.string(MAX_NAME_BYTES * 3), online: r.bool(), owner: r.bool() });
-      }
-      const invite = r.string(MAX_NAME_BYTES * 3);
-      const inviteBy = invite !== "" ? r.string(MAX_NAME_BYTES * 3) : "";
-      if (r.overflow) return;
-      const t = this.tribe;
-      t.team = team;
-      t.name = name;
-      t.rank = rank;
-      t.members = members;
-      t.invite = invite;
-      t.inviteBy = inviteBy;
-      t.version++;
-    } else if (component === OWN_BUFFS) {
-      const n = r.u8();
-      const got: { buff: number; until: number }[] = [];
-      for (let i = 0; i < n; i++) got.push({ buff: r.u16(), until: r.u32() });
-      if (r.overflow) return;
-      this.buffs.length = 0;
-      this.buffs.push(...got);
-    } else if (component === OWN_HELD) {
-      const held = r.u8();
-      if (!r.overflow) this.held = held === 255 ? -1 : held;
-    } else if (component === OWN_LOOK) {
-      const look = new Uint8Array(LOOK_BYTES);
-      for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
-      if (!r.overflow) this.ownLook = look;
-    } else if (component === OWN_PROGRESSION) {
-      const p = this.progress;
-      const xp = r.u32();
-      const level = r.u16();
-      const statPoints = r.u16();
-      const engramPoints = r.varint();
-      const engrams: number[] = [];
-      for (let k = r.varint(); k > 0 && !r.overflow; k--) engrams.push(r.u16());
-      const jobs: { item: number; left: number; doneAt: number }[] = [];
-      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32() });
-      if (r.overflow) return;
-      p.xp = xp;
-      p.level = level;
-      p.statPoints = statPoints;
-      p.engramPoints = engramPoints;
-      p.engrams = engrams;
-      p.jobs = jobs;
-      p.version++;
-    } else if (component === OWN_RESPAWN) {
-      const why = r.u8();
-      const number = r.u8();
-      const count = r.u8();
-      const list = [];
-      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_PLACE_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
-      if (r.overflow) return;
-      this.choosing = why;
-      this.placesList = number;
-      this.respawnPoints.length = 0;
-      this.respawnPoints.push(...list);
-    }
+        const bag = r.varint();
+        const full = r.bool();
+        const count = r.u16();
+        if (r.overflow || bag > cap) return;
+        let inv: Inventory | null;
+        if (box === BOX_SELF) {
+          inv = s.inventory;
+          if (!inv || inv.cap !== cap || inv.bag !== bag || full) inv = s.inventory = new Inventory(cap, bag);
+        } else {
+          if (!s.open) return;
+          if (s.open.inventory.cap !== cap || s.open.inventory.bag !== bag || full) s.open.inventory = new Inventory(cap, bag);
+          inv = s.open.inventory;
+        }
+        for (let k = 0; k < count; k++) {
+          const slot = r.varint();
+          const item = r.u16();
+          const n = item === 0 ? 0 : r.u16();
+          const quality = item === 0 ? 0 : r.u8();
+          // Flags (SLOT_ bits): a blueprint.
+          const flags = item === 0 ? 0 : r.u8();
+          const dur = item === 0 ? 0 : r.u16();
+          const spoilAt = item === 0 ? 0 : r.u32();
+          const holds = item !== 0 && r.bool();
+          const ammo = holds ? r.u16() : 0;
+          const loaded = holds ? r.u8() : 0;
+          const attach = holds ? r.u16() : 0;
+          if (r.overflow || slot >= cap) return;
+          inv.set(slot, item, n, quality, dur, spoilAt, flags);
+          if (holds) inv.setGear(slot, ammo, loaded, attach);
+        }
+      },
+    });
+    ownKinds.add({
+      kind: OWN_KEPT,
+      read(s, r) {
+        const box = r.bits(1);
+        const count = r.varint();
+        const got: [number, Kept][] = [];
+        for (let k = 0; k < count && !r.overflow; k++) got.push([r.varint(), { kind: r.u16(), level: r.u16(), name: r.string(MAX_NAME_BYTES * 3) }]);
+        if (r.overflow) return;
+        const kept = s.kept[box === BOX_SELF ? 0 : 1]!;
+        kept.clear();
+        for (const [slot, tame] of got) kept.set(slot, tame);
+      },
+    });
+    ownKinds.add({
+      kind: OWN_SUBJECT,
+      read(s, r) {
+        if (!r.bool()) s.subject = null;
+        else {
+          const next = { taming: r.bool(), owned: r.bool(), level: r.u16(), progress: r.bits(10) / 1000, te: r.bits(10) / 1000, torpor: r.bits(10) / 1000, food: r.bits(10) / 1000, id: r.u32(), points: r.u8(), stance: r.bits(2), following: r.bool(), wandering: r.bool(), saddled: r.bool(), breeds: r.bool(), mating: r.bool(), female: r.bool(), stage: r.bits(2), maturity: r.bits(10) / 1000, mate: r.bits(10) / 1000, wait: r.varint() };
+          if (!r.overflow) s.subject = next;
+        }
+      },
+    });
+    ownKinds.add({
+      kind: OWN_OVERHEAD,
+      read(s, r) {
+        if (!r.bool()) s.looked = null;
+        else {
+          const share = (): number => (r.bool() ? r.bits(10) / 1000 : -1);
+          const id = r.u32();
+          const [health, food, torpor] = [share(), share(), share()];
+          const tamed = r.bool();
+          const taming = tamed ? r.bits(10) / 1000 : -1;
+          const te = tamed ? r.bits(10) / 1000 : -1;
+          const mating = share();
+          const tribe = r.bool() ? r.string(MAX_NAME_BYTES * 3) : "";
+          if (!r.overflow) s.looked = { id, health, food, torpor, taming, te, mating, tribe };
+        }
+      },
+    });
+    ownKinds.add({
+      kind: OWN_STATION,
+      read(s, r) {
+        const kind = r.u16();
+        const ref = r.u32();
+        const out = r.u32();
+        const lanes: { item: number; doneAt: number }[] = [];
+        for (let k = r.u8(); k > 0 && !r.overflow; k--) lanes.push({ item: r.u16(), doneAt: r.u32() });
+        const jobs: { item: number; left: number; doneAt: number; rest: number }[] = [];
+        for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32(), rest: r.u32() });
+        if (!r.overflow) s.station = kind === 0 ? null : { kind, ref, out, lanes, jobs };
+      },
+    });
+    ownKinds.add({
+      kind: OWN_OPEN,
+      read(s, r) {
+        // A station's queue comes after it is opened, and so does what its soul balls hold.
+        s.station = null;
+        s.kept[1].clear();
+        if (!r.bool()) s.open = null;
+        else {
+          const cap = r.varint();
+          const name = r.string(MAX_OPEN_NAME_BYTES);
+          const flags = r.u8();
+          if (!r.overflow) s.open = { name, inventory: new Inventory(cap), takeOnly: (flags & OPEN_TAKE_ONLY) !== 0 };
+        }
+      },
+    });
+    ownKinds.add({
+      kind: OWN_MARKERS,
+      read(s, r) {
+        const count = r.u8();
+        const list = [];
+        for (let k = 0; k < count; k++) list.push({ kind: r.u8(), x: r.f32(), y: r.f32(), z: r.f32(), tick: r.u32() });
+        if (r.overflow) return;
+        s.markers.length = 0;
+        s.markers.push(...list);
+      },
+    });
+    ownKinds.add({
+      kind: OWN_RULES,
+      read(s, r) {
+        const flags = r.u16();
+        if (r.overflow) return;
+        s.damageNumbers = (flags & RULE_DAMAGE_NUMBERS) !== 0;
+        s.globalChat = (flags & RULE_GLOBAL_CHAT) !== 0;
+        s.hitMarkers = (flags & RULE_HIT_MARKERS) !== 0;
+        s.thirdPerson = (flags & RULE_THIRD_PERSON) !== 0;
+        s.crosshair = (flags & RULE_CROSSHAIR) !== 0;
+        s.mapLocation = (flags & RULE_MAP_LOCATION) !== 0;
+        s.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
+        s.creative = (flags & RULE_CREATIVE) !== 0;
+        s.survivorsPass = (flags & RULE_SURVIVORS_PASS) !== 0;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_VOICE,
+      read(s, r) {
+        const slot = r.u16();
+        const token = new Uint8Array(TOKEN_BYTES);
+        for (let i = 0; i < TOKEN_BYTES; i++) token[i] = r.u8();
+        const rights = r.u8();
+        if (r.overflow) return;
+        s.voice.slot = slot;
+        s.voice.token = token;
+        s.voice.rights = rights;
+        s.voice.version++;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_TRIBE,
+      read(s, r) {
+        const team = r.varint();
+        const name = r.string(MAX_NAME_BYTES * 3);
+        let rank = 0;
+        const members: { name: string; online: boolean; owner: boolean }[] = [];
+        if (name !== "") {
+          rank = r.u8();
+          for (let k = r.u8(); k > 0 && !r.overflow; k--) members.push({ name: r.string(MAX_NAME_BYTES * 3), online: r.bool(), owner: r.bool() });
+        }
+        const invite = r.string(MAX_NAME_BYTES * 3);
+        const inviteBy = invite !== "" ? r.string(MAX_NAME_BYTES * 3) : "";
+        if (r.overflow) return;
+        const t = s.tribe;
+        t.team = team;
+        t.name = name;
+        t.rank = rank;
+        t.members = members;
+        t.invite = invite;
+        t.inviteBy = inviteBy;
+        t.version++;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_BUFFS,
+      read(s, r) {
+        const n = r.u8();
+        const got: { buff: number; until: number }[] = [];
+        for (let i = 0; i < n; i++) got.push({ buff: r.u16(), until: r.u32() });
+        if (r.overflow) return;
+        s.buffs.length = 0;
+        s.buffs.push(...got);
+      },
+    });
+    ownKinds.add({
+      kind: OWN_HELD,
+      read(s, r) {
+        const held = r.u8();
+        if (!r.overflow) s.held = held === 255 ? -1 : held;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_LOOK,
+      read(s, r) {
+        const look = new Uint8Array(LOOK_BYTES);
+        for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
+        if (!r.overflow) s.ownLook = look;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_PROGRESSION,
+      read(s, r) {
+        const p = s.progress;
+        const xp = r.u32();
+        const level = r.u16();
+        const statPoints = r.u16();
+        const engramPoints = r.varint();
+        const engrams: number[] = [];
+        for (let k = r.varint(); k > 0 && !r.overflow; k--) engrams.push(r.u16());
+        const jobs: { item: number; left: number; doneAt: number }[] = [];
+        for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32() });
+        if (r.overflow) return;
+        p.xp = xp;
+        p.level = level;
+        p.statPoints = statPoints;
+        p.engramPoints = engramPoints;
+        p.engrams = engrams;
+        p.jobs = jobs;
+        p.version++;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_RESPAWN,
+      read(s, r) {
+        const why = r.u8();
+        const number = r.u8();
+        const count = r.u8();
+        const list = [];
+        for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_PLACE_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
+        if (r.overflow) return;
+        s.choosing = why;
+        s.placesList = number;
+        s.respawnPoints.length = 0;
+        s.respawnPoints.push(...list);
+      },
+    });
+    return ownKinds;
   }
 
   /**
