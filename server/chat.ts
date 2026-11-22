@@ -47,6 +47,8 @@ export class Chat {
 
   private readonly recent: AdminChatLine[] = [];
   private readonly ctx: ChatContext;
+  /** Told of every line a survivor says, once it is said: Cast's people hear it (server/cast/host.ts). */
+  readonly listeners: ((speaker: string, channel: number, x: number, z: number, text: string) => void)[] = [];
 
   constructor(ctx: ChatContext) {
     this.ctx = ctx;
@@ -136,6 +138,27 @@ export class Chat {
     if (this.recent.length === RECENT_LINES) this.recent.shift();
     this.recent.push({ at: Date.now(), channel, speaker: c.name, text: line });
     bus.after(CHAT_SAID, { pid: c.pid, channel, text: line, heard: this.delivered - heard });
+    for (const l of this.listeners) l(c.name, channel, x, z, line);
     return RESULT_OK;
+  }
+
+  /**
+   * A line said aloud by one of the world's people (Cast's), heard in local chat by survivors within `range` of where it
+   * stands, as a survivor's would be; a survivor who muted the name hears nothing. Returns how many heard it.
+   */
+  npcSay(name: string, x: number, y: number, z: number, text: string, range = LOCAL_RANGE): number {
+    const line = cleanChat(text);
+    if (line === "") return 0;
+    const out = `${name}: ${line}`;
+    let n = 0;
+    for (const to of this.ctx.game.clients) {
+      if (!to?.active || to.closed || this.muted(to.name, name)) continue;
+      const dx = to.body.x - x, dy = to.body.y - y, dz = to.body.z - z;
+      if (dx * dx + dy * dy + dz * dz > range * range) continue;
+      this.ctx.game.sendText(to, TEXT_LOCAL, out);
+      this.delivered++;
+      n++;
+    }
+    return n;
   }
 }

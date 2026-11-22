@@ -51,6 +51,8 @@ const COMP_JET_SPENT = 24;
 const COMP_STORED = 25;
 /** The survivor a starter mount was issued to (EntityRecord.issuedTo). Only a starter has it. */
 const COMP_ISSUED = 26;
+// Components kept in rec.extra by other parts of the server, numbered apart from these: 83 a survivor's activity
+// (server/survivor-activity.ts), 90 the Cast person a body is (server/cast/host.ts).
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
 /** How an operator goes on from a save that uses content the build lacks. */

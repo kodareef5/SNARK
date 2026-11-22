@@ -278,6 +278,21 @@ new Sheet(SERVER_ROWS, "snark", "Damage")
 new Sheet(SERVER_ROWS, "snark", "Creatures")
   .b("StarterMount", true, "Every survivor has a pteranodon of its own, tamed, saddled and level 240, in a soul ball on its hotbar, ready to let out and ride. It is made as the survivor is, waits in its ball through the survivor's deaths, and is called back into it at the survivor's next rise from wherever it was left, unless it carries something. One that dies is made anew at the next rise. The ball was issued: it cannot be dropped, stored or given away, keeps only that pteranodon, and holds its charge. The pteranodon keeps its saddle, does not mate, counts against no tame limit, and leaves nothing to take when it dies. It does not travel: the server a survivor goes to gives it its own. Off, none is given, and one a survivor has goes at its next rise.", live({ live: true, public: true, note: "Ours. ARK has no key, and gives no survivor a tame. On unless set, for exploring while the game is built (D992); config/official sets it off. bDisableDefaultMapItemSets does not turn it off. Its 240 is a wild level 160 tamed perfectly, its points chosen for travel (server/mount.ts)." }));
 
+new Sheet(SERVER_ROWS, "snark", "Cast")
+  .b("CastEnabled", false, "The city's background people (Cast): stories planned about the map and played out near survivors by people who come in and leave where nobody can see.", live({ live: true, public: true, note: "Ours (D1050 to D1058). Off unless set while it is new; the admin page's Cast panel sets it live." }))
+  .i("CastSize", 300, "Stories Cast keeps planned and running about the map at most.", live({ live: true, min: 0, max: 5000, note: "Ours." }))
+  .f("CastActivity", 1, "How lively the city is: 0 is nobody, 1 the middle, 2 busy.", live({ live: true, public: true, min: 0, max: 3, note: "Ours." }))
+  .f("CastSpikiness", 0.6, "0 keeps the city's liveliness even; toward 1 the quiet runs longer and the busy moments are sharper.", live({ live: true, min: 0, max: 1, note: "Ours." }))
+  .i("CastMaxBodies", 120, "People of Cast's in the world at once, at most.", live({ live: true, min: 0, max: 2000, note: "Ours." }))
+  .i("CastMaxPerPlayer", 14, "People of Cast's about one survivor at once, at most (a crowd scene may hold more, within CastCrowdMax).", live({ live: true, min: 0, max: 400, note: "Ours." }))
+  .i("CastCrowdMax", 200, "People in one crowd scene (a beach, a flash mob) at most.", live({ live: true, min: 0, max: 1000, note: "Ours." }))
+  .i("CastHostility", 2, "0: Cast's people never fight. 1: they fight back. 2: some scenes may start a fight with a survivor (a gang standoff), never within ten minutes of its rise nor near its own buildings.", live({ live: true, public: true, min: 0, max: 2, note: "Ours." }))
+  .i("CastHostileCooldown", 1200, "Seconds between hostile scenes for the same survivor.", live({ live: true, min: 0, note: "Ours." }))
+  .t("CastModel", "anthropic/claude-haiku-5.5", "The OpenRouter model Cast's planner asks; empty runs Cast on its rules alone.", live({ live: true, note: "Ours. Needs CastModelKey or OPENROUTER_API_KEY." }))
+  .t("CastModelKey", "", "The OpenRouter key Cast's planner uses; empty takes OPENROUTER_API_KEY from the environment.", live({ secret: true, note: "Ours." }))
+  .i("CastCallsPerHour", 90, "Calls Cast's planner may make an hour at most.", live({ live: true, min: 0, max: 3600, note: "Ours. About $0.0006 a call with Claude Haiku 5.5." }))
+  .i("CastHourlyBatch", 50, "Featured people the planner's hourly pass looks in on.", live({ live: true, min: 0, max: 500, note: "Ours." }));
+
 new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
   .i("TacticalRadius", 512, "Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's.", live({ live: true, max: 16384, note: "Ours. ARK's map shows no structures." }))
   .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }))
