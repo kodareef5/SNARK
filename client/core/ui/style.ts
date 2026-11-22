@@ -115,6 +115,12 @@ export const S_LENS = 69;
 export const S_LENS_TWIN = 70;
 /** A visor's readouts, under its window. */
 export const S_VISOR = 71;
+/** The same, set to the left: the magnification ladder's words. */
+export const S_VISOR_LEFT = 72;
+/** A mark just made, in the spotted mark's ink. */
+export const S_SPOT_WORD = 73;
+/** The magnification ladder's zoom now, larger than its rungs. */
+export const S_MAGNIFY = 74;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -189,4 +195,7 @@ export const STYLES: readonly Style[] = [
   /* S_LENS */ { ...style(0x000000ff, 0xffffff), lens: LENS_ROUND },
   /* S_LENS_TWIN */ { ...style(0x000000ff, 0xffffff), lens: LENS_TWIN },
   /* S_VISOR */ style(0, 0x7fe6d4, 13, 1, true),
+  /* S_VISOR_LEFT */ style(0, 0x7fe6d4, 13, 0, true),
+  /* S_SPOT_WORD */ style(0, 0xff6a3d, 13, 1, true),
+  /* S_MAGNIFY */ style(0, 0xb4fff1, 20, 0, true),
 ];

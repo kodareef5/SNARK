@@ -83,8 +83,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * tells every session the drops that are live.
  * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079); CMD_MARK, a
  * creature spotted for the tribe, and its mark (MARK_SPOT, D1082).
+ * 43: an eleventh button, BTN_VISOR, a visor held up, which the server takes as the proof of its gaze (D1084).
  */
-export const PROTOCOL_VERSION = 42;
+export const PROTOCOL_VERSION = 43;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -684,8 +685,8 @@ export const MAX_CHAT_BYTES = 360;
 /** A text message from the server. */
 export const MAX_SERVER_TEXT_BYTES = 1000;
 /** Bits of an input's buttons on the wire. InputBuffer.set clears any outside the mask. */
-export const BUTTON_BITS = 10;
-export const BUTTON_MASK = 0x3ff;
+export const BUTTON_BITS = 11;
+export const BUTTON_MASK = 0x7ff;
 /** Pitch units: 16384 is straight up. */
 export const PITCH_LIMIT = 16384;
 

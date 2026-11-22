@@ -10,7 +10,7 @@ import { FRAME, FramePacket, HEAT_COLD, HEAT_HOT, HEAT_WARM, HEAT_WORLD, OPTIC_A
 import { PHOSPHOR, opticFrame, postFrame, type Optic } from "../../client/core/render/post.ts";
 import { graded, heatOfShown, ironbow, shown } from "../../client/core/render/surface.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { KEY_CROSS, KEY_GLASS, KEY_MIL, KEY_SPOT, KEY_VISOR, MARKER_TINT } from "../../client/core/ui/hud.ts";
+import { KEY_CROSS, KEY_GLASS, KEY_MAGNIFY, KEY_MIL, KEY_SPOT, KEY_VISOR, MARKER_TINT } from "../../client/core/ui/hud.ts";
 import { Glass, SHAKE } from "../../client/core/glass.ts";
 import { BTN_SECONDARY, BTN_SPRINT, Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../shared/sim/character.ts";
 import { BREATH_STEADY, aimShot, holdsBreath, scopeFitted, shotAim, sway, swayOut, zeroUnits } from "../../shared/sim/aim.ts";
@@ -240,7 +240,7 @@ test("a visor's window is a wide box that narrows to a slit, framed, with its zo
   buildHud(f, m);
   expect(f.find(KEY_CROSS)).toBeNull();
   const texts = f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_VISOR && n.key < KEY_VISOR + 40 && n.text !== "").map((n) => n.text);
-  expect(texts).toEqual(["240x DIGITAL", "NIGHT", "007", "1,240 m"]);
+  expect(texts).toEqual(["DIGITAL", "NIGHT", "007", "1,240 m"]);
   const box = [0, 0, 0, 0];
   windowBox(SHAPE_VISOR, 0.22, 16 / 9, box);
   // A slit: wider than tall, a fifth of the height.
@@ -325,7 +325,7 @@ test("a glass's lenses show its zoom, its range or that it lases, the bearing an
   f.begin(16 / 9);
   buildHud(f, m);
   const words = (): string[] => f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_GLASS && n.key < KEY_GLASS + 4).map((n) => n.text);
-  expect(words()).toEqual(["16x", "LASING"]);
+  expect(words()).toEqual(["LASING"]);
   m.glassRange = 812.4;
   m.glassBearing = 9;
   m.glassMarked = true;
@@ -333,7 +333,7 @@ test("a glass's lenses show its zoom, its range or that it lases, the bearing an
   m.spotCount = 1;
   f.begin(16 / 9);
   buildHud(f, m);
-  expect(words()).toEqual(["16x", "812 m", "009", "MARKED"]);
+  expect(words()).toEqual(["812 m", "009", "MARKED"]);
   expect(f.find(KEY_SPOT)!.x).toBeCloseTo(f.width / 4 - 4.5, 6);
   expect(MARKER_TINT.spotted).toBeGreaterThan(0);
 });
@@ -355,7 +355,7 @@ test("the sniper's sight: a zero lifts the shot by its exact angle, breath held 
   expect(holdsBreath(b, BTN_SECONDARY | BTN_SPRINT)).toBe(false);
   sway(w, STANCE_STAND, 7, 40);
   const loose = Math.hypot(swayOut.yaw, swayOut.pitch);
-  sway(w, STANCE_STAND, 7, 40, true);
+  sway(w, STANCE_STAND, 7, 40, BREATH_STEADY);
   expect(Math.hypot(swayOut.yaw, swayOut.pitch)).toBeCloseTo(loose * BREATH_STEADY, 9);
   // Its own scope: in hand, nothing fitted, it is scoped.
   const inv = new Inventory(60, 40);
@@ -401,5 +401,50 @@ test("a milliradian reticle's marks are a milliradian apart at the view's field,
   m.sightZero = 300;
   f.begin(16 / 9);
   buildHud(f, m);
-  expect([f.find(KEY_MIL + 99)!.text, f.find(KEY_MIL + 98)!.text]).toEqual(["24x", "ZERO 300 m"]);
+  expect(f.find(KEY_MIL + 98)!.text).toBe("ZERO 300 m");
+});
+
+test("a sight's magnification ladder: its zoom in words beside the window, a rung marked on a ladder from its least to its most on the logarithm, a fixed sight's words alone", () => {
+  const f = new UiFrame();
+  const m = new HudModel();
+  const ladder = (): { words: string[]; markY: number; top: number; foot: number } => {
+    f.begin(16 / 9);
+    buildHud(f, m);
+    const nodes = f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_MAGNIFY && n.key < KEY_MAGNIFY + 40);
+    const spine = nodes.find((n) => n.w === 1.5);
+    const mark = nodes.find((n) => n.w === 14)!;
+    return { words: [f.find(KEY_MAGNIFY + 39)!.text], markY: mark.y + 1.5, top: spine?.y ?? 0, foot: spine ? spine.y + spine.h : 0 };
+  };
+  m.scope = m.sightMil = true;
+  m.sightShare = 0.8;
+  [m.magnify, m.magnifyMin, m.magnifyMax] = [4, 4, 40];
+  const low = ladder();
+  expect(low.words).toEqual(["4.0x"]);
+  expect(low.markY).toBeCloseTo(low.foot, 6);
+  m.magnify = 40;
+  expect(ladder().markY).toBeCloseTo(low.top, 6);
+  // The middle of the logarithm: the square root of 160, half way up.
+  m.magnify = Math.sqrt(160);
+  const mid = ladder();
+  expect(mid.words).toEqual(["13x"]);
+  expect(mid.markY).toBeCloseTo((low.top + low.foot) / 2, 6);
+  // The 3x scope: its words, no ladder.
+  [m.magnify, m.magnifyMin, m.magnifyMax, m.sightMil] = [3, 3, 3, false];
+  f.begin(16 / 9);
+  buildHud(f, m);
+  expect([f.find(KEY_MAGNIFY + 39)!.text, f.nodes.slice(0, f.count).some((n) => n.key >= KEY_MAGNIFY && n.key < KEY_MAGNIFY + 39 && n.h > 20)]).toEqual(["3.0x", false]);
+  // No sight, no ladder.
+  m.scope = false;
+  f.begin(16 / 9);
+  buildHud(f, m);
+  expect(f.find(KEY_MAGNIFY + 39)).toBeNull();
+});
+
+test("what absurd zoom resolves on a 1,080-line screen: a 13.7 m sign letter from the far side of the map at 25x, a 0.3 m shop letter 4 km off at 400x, a 7 cm plate letter there at 1,000x", () => {
+  const base = (70 * Math.PI) / 180;
+  const px = (size: number, far: number, zoom: number): number => screenPixels(size, far, zoomed(base, zoom), 1080);
+  expect(px(13.7, 8000, 25)).toBeGreaterThan(30);
+  expect(px(0.3, 4000, 400)).toBeGreaterThan(20);
+  expect(px(0.07, 4000, 400)).toBeLessThan(6);
+  expect(px(0.07, 4000, 1000)).toBeGreaterThan(12);
 });

@@ -8,7 +8,9 @@ import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { CUE_SCOPED } from "../../shared/anim/pose.ts";
 import { CHUNK_SIZE, TICK_DT } from "../../shared/coords.ts";
 import { CMD_GAZE } from "../../shared/net/protocol.ts";
-import { BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT } from "../../shared/sim/character.ts";
+import { BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, Body, MF_WINDED, stanceEye } from "../../shared/sim/character.ts";
+import { DRAW_NEAR, DRAW_SKINNED } from "../../client/core/render/packet.ts";
+import { BREATH_WINDED, breathShare, holdsBreath } from "../../shared/sim/aim.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -118,4 +120,78 @@ test("in the whole client: the sniper's own scope zooms 4 to 40 times, its retic
   bob.sampleRemote(r);
   expect(r.cue[[...r.id.subarray(0, r.count)].indexOf(h.client(app.session)!.ent)]! & CUE_SCOPED).toBe(0);
   expect([app.hud.scope, h.host.gaze.zeroOf(h.client(app.session)!)]).toEqual([false, 0]);
+});
+
+test("a held breath costs stamina: still and aimed with the sprint key it lasts some six seconds, then the shooter is winded and its sway shakes the more", () => {
+  const h = new Harness({}, 5, 30, { dev: true, map: writeMap(flatMap(48)) });
+  const s = h.join("ada");
+  h.run(1000);
+  armed(h, s, 0);
+  const p = h.pilots[0]!, body = (): Body => h.client(s)!.body;
+  p.buttons |= BTN_SECONDARY;
+  h.run(1000);
+  const full = body().stamina;
+  p.buttons |= BTN_SPRINT;
+  h.run(3000);
+  expect(holdsBreath(body(), p.buttons)).toBe(true);
+  expect(body().stamina).toBeLessThan(full * 0.6);
+  let held = 3000;
+  while (holdsBreath(body(), p.buttons) && held < 12000) {
+    h.run(500);
+    held += 500;
+  }
+  expect(held).toBeGreaterThanOrEqual(5000);
+  expect(held).toBeLessThanOrEqual(8000);
+  expect([(body().mflags & MF_WINDED) !== 0, breathShare(body(), p.buttons)]).toEqual([true, BREATH_WINDED]);
+  // Let go, the breath comes back.
+  p.buttons &= ~BTN_SPRINT;
+  h.run(15000);
+  expect([(body().mflags & MF_WINDED) !== 0, breathShare(body(), p.buttons)]).toEqual([false, 1]);
+});
+
+test("in the whole client: a survivor 1.2 km off comes through the sniper's scope and is drawn finer the more it magnifies, as it fills more of the screen", () => {
+  const h = new Harness({}, 5, 60, { dev: true, map: writeMap(flatMap(48)) });
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  const bob = h.join("bob");
+  app.ui.settings.thirdPerson = false;
+  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
+  run(1000);
+  armed(h, app.session, 0);
+  bob.text("enablecheats");
+  run(300);
+  bob.text(`tp ${MID} ${MID + 600}`);
+  run(1500);
+  const target = h.client(bob)!.ent;
+  const seen = (): boolean => {
+    const r = new RemoteSample();
+    app.session.sampleRemote(r);
+    return [...r.id.subarray(0, r.count)].includes(target);
+  };
+  expect(seen()).toBe(false);
+  // Aimed on him, a little down from the eye to his middle.
+  const eye = stanceEye(h.reg.move[h.reg.index.get("core:survivor")!]!, 0);
+  app.controls.yaw = 0;
+  app.controls.pitch = -Math.atan2(eye - 0.9, 1200);
+  app.controls.mouseButton(2, true);
+  const finest = (): number => {
+    const p = app.frame(h.now, 1280, 720)!;
+    let best = Infinity;
+    for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_SKINNED) !== 0 && (p.drawFlags[d]! & DRAW_NEAR) === 0) best = Math.min(best, p.drawLod[d]!);
+    return best;
+  };
+  app.sightZoom = 4;
+  run(3000);
+  expect(seen()).toBe(true);
+  const at4 = finest();
+  app.sightZoom = 40;
+  run(3000);
+  const at40 = finest();
+  expect(at4).toBeLessThan(Infinity);
+  expect(at40).toBeLessThanOrEqual(at4);
+  expect(at40).toBe(0);
+  // A ridge between them hides him: the server sends no survivor the ground hides, however a page looks (D1088).
+  const hf = h.world.hf;
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) if (Math.abs(j * hf.cell - (MID - 200)) < 16) hf.heights[j * hf.nx + i] = Math.round((40 - hf.minY) / hf.stepY);
+  run(3000);
+  expect(seen()).toBe(false);
 });

@@ -117,7 +117,7 @@ import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
-import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
+import { aimSeed, aimShot, scopeFitted, shotAim, stepAim, zeroUnits } from "../../shared/sim/aim.ts";
 import { F_PROP, GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { FootContacts, FootVehicles } from "../../shared/sim/foot-contact.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -397,6 +397,9 @@ export interface TextLine {
   text: string;
 }
 
+/** Chunks a side round what a sight is on whose near nodes are held, past the centre (D1090). */
+const FOCUS_NODES = 1;
+
 export class ClientSession {
   state: "connecting" | "active" | "closed" = "connecting";
   /** Reject reason from the server, or a negative local reason. */
@@ -521,6 +524,8 @@ export class ClientSession {
   placesList = 0;
   /** The map beyond the view: structure cells and marks, as the server sends them. */
   readonly tactical = new MapStore();
+  /** The zero, metres, the sight the app has raised has dialled (0 for none): a predicted shot is lifted as the server lifts it. */
+  sightZero = 0;
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
   readonly far = new FarStore();
   /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
@@ -543,6 +548,8 @@ export class ClientSession {
   private treeDriver = 0;
   private nodeChunk = -1;
   private nodeRadius = NODE_RADIUS;
+  /** The chunk a sight is on whose near nodes are held too (focusNodes), or -1. */
+  private nodeFocus = -1;
   /** The chunks the near node field holds for the body, and the ground's changes when they were chosen. */
   private nodeHeld: number[] = [];
   private nodeSeen = -1;
@@ -1158,7 +1165,9 @@ export class ClientSession {
       const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
       // It leaves where the server will send it: the look with its kick, sway and cone, from the same body and seed.
       // With the aimed look's 256ths, as the server takes the shot (D1083).
-      aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]! + inp.fineYaw[i]! / 256, inp.pitch[i]! + inp.finePitch[i]! / 256, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
+      // And the zero the sight has dialled, for a round that flies, as the server lifts it (D1083).
+      const zero = ammo !== 0 ? zeroUnits(this.sightZero, this.registry.ammoSpeed[ammo]!, this.registry.ammoGravity[ammo]!) : 0;
+      aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]! + inp.fineYaw[i]! / 256, inp.pitch[i]! + inp.finePitch[i]! / 256, scopeFitted(this.registry, inv, slot), this.ownHandle, t, zero);
       if (ammo !== 0 && this.fired.length < 16) {
         const eye = this.shotEye;
         eye[0] = this.own.x; eye[1] = this.own.y + stanceEye(this.move!, this.own.stance); eye[2] = this.own.z;
@@ -1337,6 +1346,17 @@ export class ClientSession {
   }
 
   /** The near node field holds `chunks` round the body's chunk from now on, as the tier says. */
+  /**
+   * The chunk a sight that magnifies is on (-1 for none): the near node field holds the chunks round it as well as those
+   * round the body, so its trees are drawn as near ones are (D1090).
+   */
+  focusNodes(chunk: number): void {
+    if (chunk === this.nodeFocus) return;
+    this.nodeFocus = chunk;
+    this.nodeSeen = -1;
+    this.recenterNodes();
+  }
+
   holdNodes(chunks: number): void {
     if (chunks === this.nodeRadius) return;
     this.nodeRadius = chunks;
@@ -1357,16 +1377,20 @@ export class ClientSession {
     if (chunk === this.nodeChunk && hf.changes.length === this.nodeSeen) return;
     [this.nodeChunk, this.nodeSeen] = [chunk, hf.changes.length];
     const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;
-    const [cx, cz, r] = [chunkCx(dims, chunk), chunkCz(dims, chunk), this.nodeRadius];
     const held: number[] = [];
-    for (let z = Math.max(0, cz - r); z <= Math.min(dims.chunksZ - 1, cz + r); z++) {
-      for (let x = Math.max(0, cx - r); x <= Math.min(dims.chunksX - 1, cx + r); x++) {
-        const c = z * dims.chunksX + x;
-        if (hf.exact[c] === 0) continue;
-        if (!this.nodeHeld.includes(c)) field.retain(c, 0, 1, gone, undefined, (chunk, index) => this.nodeCrushed.get(chunk)?.includes(index) ?? false);
-        held.push(c);
+    const square = (centre: number, r: number): void => {
+      const cx = chunkCx(dims, centre), cz = chunkCz(dims, centre);
+      for (let z = Math.max(0, cz - r); z <= Math.min(dims.chunksZ - 1, cz + r); z++) {
+        for (let x = Math.max(0, cx - r); x <= Math.min(dims.chunksX - 1, cx + r); x++) {
+          const c = z * dims.chunksX + x;
+          if (hf.exact[c] === 0 || held.includes(c)) continue;
+          if (!this.nodeHeld.includes(c)) field.retain(c, 0, 1, gone, undefined, (chunk, index) => this.nodeCrushed.get(chunk)?.includes(index) ?? false);
+          held.push(c);
+        }
       }
-    }
+    };
+    square(chunk, this.nodeRadius);
+    if (this.nodeFocus >= 0) square(this.nodeFocus, FOCUS_NODES);
     for (const c of this.nodeHeld) if (!held.includes(c)) field.retain(c, 0, -1, gone);
     this.nodeHeld = held;
   }

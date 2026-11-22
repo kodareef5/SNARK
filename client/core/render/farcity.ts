@@ -134,6 +134,13 @@ interface Tile {
   /** The levels it last wanted through a sight, a bit each, and the update until which it keeps them (ZOOM_LINGER). */
   zoomed: number;
   zoomedUntil: number;
+  /**
+   * The reach it was last given in a sight's window, its zoom times the tier's as far as the view ends, and the update until
+   * which it keeps it (D1088); and the reach it was drawn to last.
+   */
+  farReach: number;
+  farUntil: number;
+  shownReach: number;
 }
 
 /** A level asked of the maker, by its form, and its tile's counts then. */
@@ -222,7 +229,6 @@ export class FarCity {
   private readonly shownAt: Uint32Array;
   private readonly shownAs: Uint8Array;
   private drawCount = 0;
-  private shownReach = 0;
 
   /**
    * `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a
@@ -264,7 +270,7 @@ export class FarCity {
       const base = Math.floor(box[1]!);
       if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
       for (const c of list) this.tileOfChunk[c] = this.tiles.length;
-      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0, zoomed: 0, zoomedUntil: 0 });
+      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0, zoomed: 0, zoomedUntil: 0, farReach: 0, farUntil: 0, shownReach: 0 });
     }
     this.listed = new Uint8Array(this.tiles.length);
     this.shownAt = new Uint32Array(this.tiles.length);
@@ -344,11 +350,12 @@ export class FarCity {
     for (const n of this.nearby(p, cam, reach)) {
       const tile = this.tiles[n]!;
       const off = this.off(tile, cam);
-      if (!this.on || off > reach + TILE_METRES) {
+      const tileReach = this.reachOf(tile, cam, reach);
+      if (!this.on || off > tileReach + TILE_METRES) {
         this.letGo(p, tile);
         continue;
       }
-      if (off > reach) continue;
+      if (off > tileReach) continue;
       // Through a sight a tile in its window wants the levels its distance over the zoom asks for (Camera.zoom, D1078),
       // its own as well, so the view is whole the moment the sight is lowered; and keeps them for ZOOM_LINGER.
       const tb = tile.box;
@@ -431,12 +438,13 @@ export class FarCity {
     stats.unseenAt = Infinity;
     stats.unseenFrames = 0;
     stats.coarse = 0;
-    const whole = reach * (1 - this.share);
     const { chunkBox: cb, far, from, kept, band, nearest: nears } = this;
     this.drawCount++;
-    this.shownReach = reach;
     for (const n of this.around) {
       const tile = this.tiles[n]!;
+      // Each tile to its own reach: a sight's window's farther (reachOf).
+      const tileReach = (tile.shownReach = this.reachNow(tile, reach));
+      const whole = tileReach * (1 - this.share);
       const b = tile.box;
       const ax = b[0]! - cam.x;
       const ay = b[1]! - cam.y;
@@ -446,8 +454,8 @@ export class FarCity {
       const bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
       this.shownAt[n] = this.drawCount;
-      this.shownAs[n] = near >= reach || !tile.held.some((h) => h !== null) ? 0 : Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz)) < whole ? 1 : 2;
-      if (near >= reach || !cam.boxVisible(ax - ACROSS, ay, az - ACROSS, bx + ACROSS, by, bz + ACROSS)) {
+      this.shownAs[n] = near >= tileReach || !tile.held.some((h) => h !== null) ? 0 : Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz)) < whole ? 1 : 2;
+      if (near >= tileReach || !cam.boxVisible(ax - ACROSS, ay, az - ACROSS, bx + ACROSS, by, bz + ACROSS)) {
         tile.unseen = 0;
         continue;
       }
@@ -478,7 +486,7 @@ export class FarCity {
       const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
       const ox = tx - LOCAL - cam.x, oy = tile.base - cam.y, oz = tz - LOCAL - cam.z;
       const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
-      const plain = most < whole ? 0 : reach;
+      const plain = most < whole ? 0 : tileReach;
       // Each level drawn, and last another tier's form drawn in their place.
       for (let k = 0; k <= levels.length; k++) {
         const l = k < levels.length ? k : -1;
@@ -541,7 +549,7 @@ export class FarCity {
   shows(chunk: number): number {
     const n = this.tileOfChunk[chunk]!;
     if (!this.on || n < 0 || this.shownAt[n] !== this.drawCount) return 0;
-    return this.shownAs[n] === 1 ? -1 : this.shownAs[n] === 2 ? this.shownReach : 0;
+    return this.shownAs[n] === 1 ? -1 : this.shownAs[n] === 2 ? this.tiles[n]!.shownReach : 0;
   }
 
   /** The form drawn in place of this tier's levels by the last `chosen`, or -1; and whether it chose coarser than wanted. */
@@ -549,6 +557,28 @@ export class FarCity {
   private coarser = false;
   /** Calls of `update`, the clock ZOOM_LINGER counts in. */
   private updates = 0;
+  /** Metres to the view's end, which the scene sets: as far as a tile in a sight's window may reach. */
+  view = Infinity;
+  /** The last update any tile keeps a sight's reach to: till then the tiles are found each update. */
+  private farUntil = 0;
+
+  /** `tile`'s reach, `reach` the tier's: in a sight's window its zoom times that, as far as the view ends, kept ZOOM_LINGER. */
+  private reachOf(tile: Tile, cam: Camera, reach: number): number {
+    if (cam.zoom > 1 && this.view > reach) {
+      const b = tile.box;
+      if (cam.boxVisible(b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z)) {
+        tile.farReach = Math.min(this.view, reach * cam.zoom);
+        tile.farUntil = this.updates + ZOOM_LINGER;
+        this.farUntil = Math.max(this.farUntil, tile.farUntil);
+      }
+    }
+    return this.reachNow(tile, reach);
+  }
+
+  /** The reach `tile` has now, as `reachOf` last gave it. */
+  private reachNow(tile: Tile, reach: number): number {
+    return this.updates < tile.farUntil ? Math.max(reach, tile.farReach) : reach;
+  }
 
   /**
    * The levels `tile`, `near` metres off, is drawn at, a bit each: those wanted that are on the card; or, if none is yet,
@@ -636,14 +666,19 @@ export class FarCity {
    */
   private nearby(p: FramePacket, cam: Camera, reach: number): readonly number[] {
     const at = this.aroundAt;
-    if (reach === at[2] && Math.hypot(cam.x - at[0], cam.z - at[1]) < TILE_METRES) return this.around;
+    // Through a sight, or while a tile keeps a sight's reach, they are found each update: the window turns as the camera does.
+    const sighted = cam.zoom > 1 && this.view > reach;
+    if (!sighted && this.updates >= this.farUntil && reach === at[2] && Math.hypot(cam.x - at[0], cam.z - at[1]) < TILE_METRES) return this.around;
     at[0] = cam.x;
     at[1] = cam.z;
-    at[2] = reach;
+    at[2] = sighted || this.updates < this.farUntil ? NaN : reach;
+    const most = sighted ? Math.min(this.view, reach * cam.zoom) : reach;
     const list: number[] = [];
     for (let n = 0; n < this.tiles.length; n++) {
-      const b = this.tiles[n]!.box;
-      if (Math.hypot(Math.max(b[0]! - cam.x, cam.x - b[3]!, 0), Math.max(b[2]! - cam.z, cam.z - b[5]!, 0)) > reach + 2 * TILE_METRES) continue;
+      const tile = this.tiles[n]!, b = tile.box;
+      const off = Math.hypot(Math.max(b[0]! - cam.x, cam.x - b[3]!, 0), Math.max(b[2]! - cam.z, cam.z - b[5]!, 0));
+      const windowed = sighted && off <= most + TILE_METRES && cam.boxVisible(b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z);
+      if (off > reach + 2 * TILE_METRES && !windowed && !(this.updates < tile.farUntil && off <= tile.farReach + 2 * TILE_METRES)) continue;
       list.push(n);
       this.listed[n] = 2;
     }

@@ -57,6 +57,15 @@ test("in the whole client: a spyglass raised zooms in steps through two lenses, 
   expect([app.hud.glass, app.hud.scope, app.view.atEye, app.hud.glassZoom]).toEqual([true, true, true, 4]);
   expect(app.cam.fovY).toBeCloseTo(zoomed(base, 4), 3);
   expect(h.host.gaze.count).toBe(1);
+  // The arrows step it as the wheel does (and a finger's zoom buttons, which send them).
+  app.key("ArrowUp", true);
+  app.key("ArrowUp", false);
+  run(100);
+  expect([app.hud.glassZoom, app.hud.zooming]).toEqual([8, true]);
+  app.key("ArrowDown", true);
+  app.key("ArrowDown", false);
+  run(1500);
+  expect(app.hud.glassZoom).toBe(4);
   const p = app.frame(h.now, 1280, 720)!;
   expect(((p.window[2]! - p.window[0]!) * 1280) / ((p.window[3]! - p.window[1]!) * 720)).toBeCloseTo(TWIN_WIDE, 1);
   // What it is on, 400 m off, as the floating HUD tells it: past the 30 m a bare look reaches.
