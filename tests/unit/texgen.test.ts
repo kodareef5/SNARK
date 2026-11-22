@@ -27,6 +27,22 @@ test("a recipe makes the same bytes every time, and another seed makes other mas
   expect(layers[0]).not.toEqual(layers[1]!);
 });
 
+test("each variant's runoff wanders and its grain falls as its own: the seeds of its first track, its threads and its streaks are the variant's", () => {
+  const { atSplash, atDrips } = bayLayout(WEATHER_RECIPE), tracks = new Set<number>(), threads = new Set<number>(), drips = new Set<number>();
+  let dripping = 0;
+  for (let l = 0; l < WEATHER_BAYS; l++) {
+    for (const half of [0, 1]) {
+      const f = bayFeatures(WEATHER_RECIPE, baySeed(WEATHER_RECIPE, l, half));
+      tracks.add(f[5]!);
+      threads.add(f[atSplash * 4 + 1]!);
+      if (f[atDrips * 4 + 3]! >= 0) (drips.add(f[atDrips * 4 + 5]!), dripping++);
+      // Whole numbers a float holds, three times of which an int holds.
+      for (const s of [f[5]!, f[atSplash * 4 + 1]!]) expect([Number.isInteger(s), s < 1 << 20]).toEqual([true, true]);
+    }
+  }
+  expect([tracks.size, threads.size, drips.size]).toEqual([WEATHER_BAYS * 2, WEATHER_BAYS * 2, dripping]);
+});
+
 test("a bay's runoff, drips and rust are nothing at its sides, so bays meet in any order; its splash meets at one height either side", () => {
   for (let l = 0; l < WEATHER_BAYS; l++) {
     for (let y = 0; y < SIDE; y++) for (const c of [0, 1, 2]) expect([at(layers[l]!, 0, y, c), at(layers[l]!, SIDE - 1, y, c)]).toEqual([0, 0]);

@@ -40,7 +40,7 @@ export interface WeatherRecipe {
 }
 
 export const WEATHER_RECIPE: WeatherRecipe = {
-  version: 1,
+  version: 2,
   seed: 1729,
   bays: 6,
   fields: 2,

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { WEATHER_BAYS } from "../../client/core/texgen/weather.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, formwork, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, bayStamp, bayTone, formwork, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
@@ -302,11 +302,11 @@ test("a static's frame reads along a wall the way its face looks and up from its
 });
 
 test("a wall's bays are keyed in the world: the same either side of a chunk's edge and along a wall a little off the axes, another for a wall a few metres off or facing the other way, and none on a roof", () => {
-  const out = new Float64Array(4), key = (x: number, z: number, nx: number, nz: number): number => (wallFrame(x, z, nx, 0, nz, out), out[1]!);
+  const out = new Float64Array(6), key = (x: number, z: number, nx: number, nz: number): number => (wallFrame(x, z, nx, 0, nz, out), out[3]! < 0.5 ? out[1]! : out[2]!);
   // A wall facing north along x at z = 52.3: one key along a bay, another bay along, the same key whichever chunk draws it.
   expect(key(1001, 52.3, 0, 1)).toBe(key(1006.9, 52.3, 0, 1));
   wallFrame(1001, 52.3, 0, 0, 1, out);
-  expect([out[0], out[2], out[3]]).toEqual([1001, 2, 1]);
+  expect([out[0], out[3], out[4], out[5]]).toEqual([1001, 1, 2, 1]);
   // Two degrees off x: its plane moves 0.28 m a bay, yet every pixel of a bay has its middle's key.
   const n = [-Math.sin(0.035), Math.cos(0.035)], along = (t: number): [number, number] => [1000 + t * Math.cos(0.035), 52.3 + t * Math.sin(0.035)];
   const keys = new Set<number>();
@@ -318,7 +318,71 @@ test("a wall's bays are keyed in the world: the same either side of a chunk's ed
   expect(key(1001, 55.3, 0, 1)).not.toBe(key(1001, 52.3, 0, 1));
   expect(key(1001, 52.3, 0, -1)).not.toBe(key(1001, 52.3, 0, 1));
   wallFrame(1001, 52.3, 0, 1, 0, out);
-  expect(out[3]).toBe(0);
+  expect(out[5]).toBe(0);
+});
+
+test("a wall on a plane cell's edge, or a millimetre either side of a whole metre, weathers the same as the float's last bits move: it takes a share of both keys", () => {
+  const city = new Float32Array(12); citySurface(city, "core:miami");
+  const plaster = (SURFACE_NAMES as readonly string[]).indexOf("plaster");
+  // Masks unlike from layer to layer and across each: a key that flipped would show.
+  const masks: WorldSample = (_role, layer, u, v, _spread, out) => out.set([0.5 + 0.5 * Math.sin(layer * 2.1 + u * 9 + v * 13), 0.5 + 0.5 * Math.cos(layer * 1.3 + u * 7), 0.5 + 0.5 * Math.sin(layer + v * 5), 0.4]);
+  const albedo = new Float64Array(3), orm = new Float64Array(3);
+  const at = (x: number, z: number, nx: number, nz: number): number[] => {
+    albedo.fill(0.5);
+    orm.set([1, 0.8, 0]);
+    weathered(albedo, orm, plaster, x, 6, z, nx, 0, nz, 6, 0.8, 10, 0.004, city, masks, 1, masks);
+    return [...albedo];
+  };
+  const out = new Float64Array(6);
+  for (const turn of [0, 0.035]) {
+    const nx = -Math.sin(turn), nz = Math.cos(turn);
+    // A cell's edge (an eighth off the even metres), and two whole metres: each moved a millimetre either way.
+    for (const plane of [52.125, 52, 53]) {
+      for (const t of [1.3, 4.1, 6.6]) {
+        const x = 1000 + t * Math.cos(turn), z = plane + t * Math.sin(turn);
+        const here = at(x, z, nx, nz);
+        for (const mm of [-0.001, 0.001]) at(x + nx * mm, z + nz * mm, nx, nz).forEach((c, k) => expect(Math.abs(c - here[k]!)).toBeLessThan(0.01 * here[k]!));
+      }
+    }
+  }
+  // On the edge a wall's bays take half of each key; on a whole metre or a quarter they are far from one.
+  wallFrame(1001, 52.125, 0, 0, 1, out);
+  expect(out[3]).toBeCloseTo(0.5, 6);
+  for (const plane of [52, 52.25, 52.5, 52.75, 53]) {
+    wallFrame(1001, plane, 0, 0, 1, out);
+    expect([0, 1]).toContain(out[3]!);
+  }
+});
+
+test("a bay's choices are bits of one hash each: every stamp mirrored about half the time, the leak over its range, rust in six bays of ten; and no bay takes the stamp of the bay beside it along or up the wall", () => {
+  const out = new Float64Array(5), mirrored = new Array(WEATHER_BAYS * 2).fill(0), seen = new Array(WEATHER_BAYS * 2).fill(0);
+  let leastLeak = 1, mostLeak = 0, rust = 0, n = 0;
+  const stamp = (bay: number, storey: number, key: number): number => (bayStamp(bay, storey, key, out), out[0]! * 2 + out[1]!);
+  for (let key = 0; key < 100; key++) {
+    for (let bay = -32; bay < 32; bay++) {
+      for (let storey = 0; storey < 16; storey++) {
+        const s = stamp(bay, storey, key);
+        seen[s]++;
+        if (out[2]) mirrored[s]++;
+        leastLeak = Math.min(leastLeak, out[3]!);
+        mostLeak = Math.max(mostLeak, out[3]!);
+        rust += out[4]!;
+        n++;
+        expect(stamp(bay + 1, storey, key)).not.toBe(s);
+        expect(stamp(bay, storey + 1, key)).not.toBe(s);
+      }
+    }
+  }
+  for (let s = 0; s < WEATHER_BAYS * 2; s++) {
+    expect(seen[s] / n).toBeWithin(0.06, 0.11);
+    expect(mirrored[s] / seen[s]).toBeWithin(0.4, 0.6);
+  }
+  expect([leastLeak, mostLeak]).toEqual([0, 1]);
+  expect(rust / n).toBeWithin(0.55, 0.65);
+  // The bay's tone eases into the next's over half a metre at its side, and keeps its own within a bay.
+  expect(bayTone(1003.9, 7)).toBe(bayTone(1001, 7));
+  expect(Math.abs(bayTone(1007.999, 7) - bayTone(1008.001, 7))).toBeLessThan(0.01);
+  expect(bayTone(1008.3, 7)).toBe(bayTone(1012, 7));
 });
 
 test("a wall weathers by the masks it is given: runoff more under open sky, a damp foot near the ground, paint let go to concrete on plaster alone, salt on brick, splash at the ground storey's foot, sun bleaching facing the sun and a green film facing away; nothing of the masks while they are being made; all gone far off; a roof keeps only its value from bay to bay", () => {

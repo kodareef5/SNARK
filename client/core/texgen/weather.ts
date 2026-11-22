@@ -8,7 +8,7 @@
 
 import { WEATHER_RECIPE, type WeatherRecipe } from "../../../content/texgen/weather.ts";
 import { sample, type Texture } from "../render/cpu-texture.ts";
-import { NOISE_GLSL, cells, fbm, hash3, line, smoothstep, tiled } from "./noise.ts";
+import { NOISE_GLSL, cells, fbm, hash3, hash32, line, smoothstep, tiled } from "./noise.ts";
 
 /** Metres across a bay's layer and up one of its two storeys, and a side of a field's layer. */
 export const WEATHER_BAY = 8;
@@ -34,6 +34,8 @@ const lerp = (r: readonly [number, number], t: number): number => r[0] + (r[1] -
 const count = (r: readonly [number, number], t: number): number => Math.min(r[1], r[0] + Math.floor(t * (r[1] - r[0] + 1)));
 /** One more stain over what is there: each darkens what the others leave. */
 const over = (acc: number, v: number): number => 1 - (1 - acc) * (1 - Math.min(Math.max(v, 0), 1));
+/** The seed of a feature's wander and grain, the variant's own: a whole number under 2^20, which a float holds and three times of which an int does. */
+const grainSeed = (seed: number, k: number, j: number): number => hash32(seed, k, j + 7) >>> 12;
 
 /**
  * Where each kind of feature begins in a bay variant's table (bayFeatures), in rows of four numbers: two for each track
@@ -61,7 +63,7 @@ export function bayFeatures(recipe: WeatherRecipe, seed: number): Float32Array {
     const hx = r.margin + R(k, 0) * (WEATHER_BAY - 2 * r.margin), a = lerp(r.strength, R(k, 1)), L = lerp(r.length, R(k, 2)), w0 = lerp(r.width, R(k, 3));
     const trails = count(r.trails, R(k, 4));
     for (let j = 0; j < trails; j++) {
-      const tk = k * 4 + j + 1000, at = (i * r.trails[1] + j) * 8;
+      const tk = grainSeed(seed, k, j), at = (i * r.trails[1] + j) * 8;
       f.set([hx, j === 0 ? 0 : (R(tk, 0) - 0.5) * w0 * 3, w0 * (j === 0 ? 1 : 0.5), L, a * (j === 0 ? 1 : 0.35 + 0.45 * R(tk, 1)), tk, 0, 0], at);
     }
   }
@@ -74,12 +76,12 @@ export function bayFeatures(recipe: WeatherRecipe, seed: number): Float32Array {
     const n = count(spec.count, R(base, 0));
     for (let i = 0; i < n; i++) {
       const k = base + 10 + i * 6;
-      f.set([0.5 + R(k, 0) * (WEATHER_BAY - 1), lerp(spec.from, R(k, 1)), lerp(spec.width, R(k, 2)), lerp(spec.length, R(k, 3)), lerp(spec.strength, R(k, 4)), k, 0, 0], (row + i * 2) * 4);
+      f.set([0.5 + R(k, 0) * (WEATHER_BAY - 1), lerp(spec.from, R(k, 1)), lerp(spec.width, R(k, 2)), lerp(spec.length, R(k, 3)), lerp(spec.strength, R(k, 4)), grainSeed(seed, k, 0), 0, 0], (row + i * 2) * 4);
     }
   };
   streaks(recipe.drips, 400, atDrips);
   streaks(recipe.rust, 600, atRust);
-  f.set([seed * 7, 0, 0, 0], atSplash * 4);
+  f.set([seed * 7, grainSeed(seed, 200, 0), 0, 0], atSplash * 4);
   return f;
 }
 
@@ -120,7 +122,7 @@ export function bayTexel(recipe: WeatherRecipe, f: Float32Array, x: number, y: n
   for (let i = 0; i < threads; i++) {
     const a = (atThreads + i) * 4, fx = f[a]!, fw = f[a + 1]!, fl = f[a + 2]!;
     if (fl < 0 || y > fl || Math.abs(x - fx) > 0.025 + 4 * fw) continue;
-    const d = (x - fx - (line(y / 0.5, 200 + i * 4) - 0.5) * 0.05) / fw;
+    const d = (x - fx - (line(y / 0.5, f[atSplash * 4 + 1]! + i * 4) - 0.5) * 0.05) / fw;
     runs = over(runs, f[a + 3]! * Math.exp(-d * d) * (1 - smoothstep(fl * 0.5, fl, y)) * smoothstep(0, 0.02, y));
   }
   // Nothing within 6 cm of a side, so that the pixels either side of where two bays meet hold none of either.
@@ -305,7 +307,7 @@ vec4 bayTexel(float x, float y) {
   for (int i = 0; i < ${THREADS}; i++) {
     vec4 a = uBay[${AT_THREADS} + i];
     if (a.z < 0.0 || y > a.z || abs(x - a.x) > 0.025 + 4.0 * a.y) continue;
-    float d = (x - a.x - (line(y / 0.5, 200 + i * 4) - 0.5) * 0.05) / a.y;
+    float d = (x - a.x - (line(y / 0.5, int(uBay[${AT_SPLASH}].y) + i * 4) - 0.5) * 0.05) / a.y;
     runs = overOf(runs, a.w * exp(-d * d) * (1.0 - smoothstep(a.z * 0.5, a.z, y)) * smoothstep(0.0, 0.02, y));
   }
   float floorOf = 1.0 - smoothstep(${fl(WEATHER_STOREY - 0.15)}, ${fl(WEATHER_STOREY)}, y);

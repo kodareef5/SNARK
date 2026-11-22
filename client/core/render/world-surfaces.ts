@@ -3,7 +3,7 @@ import { fixtureShader } from "./street-finish.ts";
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, MASK_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
-import { hash3 } from "../texgen/noise.ts";
+import { hash3, hash32 } from "../texgen/noise.ts";
 import { WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_LAYERS, WEATHER_STOREY, WEATHER_TWIN_SIDE, weatherRead } from "../texgen/weather.ts";
 import { ROAD_ACROSS, ROAD_ALONG, ROAD_CELL, ROAD_HALF, ROAD_ONE_WAY, ROAD_PLANES, ROAD_STEP, ROAD_WEAR_SHIFT, ROAD_WRAP, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
@@ -460,35 +460,74 @@ export function weatherFrame(ox: number, oy: number, oz: number, nx: number, ny:
 
 /** The way the afternoon sun comes from, on the ground (x west, z north): south and a little west. A wall facing it bleaches. */
 export const SUN_FACE = [0.42, -0.91] as const;
-/** Metres of a wall's plane over which its bays share a key: two walls closer than this are one to the weathering. */
-const PLANE_CELL = 2;
+/**
+ * Metres of a wall's plane over which its bays share a key: two walls closer than this are one to the weathering. The
+ * cells' edges lie an eighth of a metre off the quarter metres walls are often on, and a bay within PLANE_BLEND of one
+ * takes a share of both keys, so a wall on an edge never flickers between them as the float's last bits move.
+ */
+const PLANE_CELL = 2, PLANE_EDGE = 0.125, PLANE_BLEND = 0.1;
+/** Metres either side of a bay's side over which its tone becomes the next bay's. */
+const TONE_BLEND = 0.25;
 /** The second field read's scale against the first, which no whole number of either's tiles meets. */
 const FIELD_TWO = 0.731;
 /** What a field reads as while the masks are being made: damp at its middle, nothing let go, no patina and no salt. */
 const FIELD_NONE = [0.5, 0, 0, 0] as const;
-const bay = new Float64Array(4), field = new Float64Array(4), field2 = new Float64Array(4);
+const bay = new Float64Array(6), field = new Float64Array(4), field2 = new Float64Array(4);
 /** What rust bled from a fixing leaves, as a multiplier of the wall's light; the green of a film of algae; salt's white. */
 const RUST = [0.81, 0.43, 0.24] as const, ALGAE = [0.62, 0.72, 0.5] as const, SALT = [0.72, 0.71, 0.68] as const, GROWTH = [0.55, 0.7, 0.42] as const;
 
 /**
  * Where a wall's weathering is read, from its world point and its face's normal, the same on either side of a chunk's
  * edge and on an instance as on a chunk's mesh: metres along it, measured along world z where the face looks more along
- * x and along x where it looks along z; and the key of its bay in that frame, from its plane where the bay's middle
- * lies, so that a wall a little off the axes keeps its bays' keys along it. Into `out`: along, the key, the side it
- * faces (0 and 1 along x, 2 and 3 along z) and 1 where the face is a wall, 0 where it looks up or down. A face that
- * looks up or down reads along x with no key of its own, as its normal says nothing steady of x and z.
+ * x and along x where it looks along z; and the keys of its bay in that frame, from its plane where the bay's middle
+ * lies, so that a wall a little off the axes keeps its bays' keys along it. Into `out`: along; the keys of the plane
+ * cells either side of the nearest cell edge and the second's share (PLANE_BLEND); the side it faces (0 and 1 along x,
+ * 2 and 3 along z); and 1 where the face is a wall, 0 where it looks up or down. A face that looks up or down reads
+ * along x with no key of its own, as its normal says nothing steady of x and z.
  */
 export function wallFrame(x: number, z: number, nx: number, ny: number, nz: number, out: Float64Array): void {
   const wall = Math.abs(ny) < 0.5, facesX = wall && Math.abs(nx) > Math.abs(nz);
   const along = facesX ? z : x, plane = facesX ? x : z, slope = !wall ? 0 : facesX ? -nz / nx : -nx / nz;
   const side = facesX ? (nx > 0 ? 0 : 1) : nz > 0 ? 2 : 3;
   const centre = (Math.floor(along / WEATHER_BAY) + 0.5) * WEATHER_BAY;
+  const cell = (plane + (centre - along) * slope - PLANE_EDGE) / PLANE_CELL, edge = Math.floor(cell + 0.5);
   out[0] = along;
-  out[1] = wall ? Math.floor((plane + (centre - along) * slope) / PLANE_CELL) * 4 + side : 0;
-  out[2] = side;
-  out[3] = wall ? 1 : 0;
+  out[1] = wall ? (edge - 1) * 4 + side : 0;
+  out[2] = wall ? edge * 4 + side : 0;
+  out[3] = wall ? smooth(-PLANE_BLEND, PLANE_BLEND, (cell - edge) * PLANE_CELL) : 0;
+  out[4] = side;
+  out[5] = wall ? 1 : 0;
 }
-const frame = new Float64Array(4);
+
+/**
+ * A storey of a bay's stamp, keyed `key`: one of the bay layers by its hash, the half of it its place's parity picks so
+ * that the bays beside it along and up the wall never take the same stamp, and mirrored or not; and its leak, 0 to 1,
+ * and whether its fixings bleed rust. Each from bits of one integer hash of their own. Into `out`.
+ */
+export function bayStamp(bay: number, storey: number, key: number, out: Float64Array | number[]): void {
+  const h = hash32(bay, storey, key);
+  out[0] = ((h & 0xffff) * WEATHER_BAYS) >>> 16;
+  out[1] = (bay + storey) & 1;
+  out[2] = (h >>> 16) & 1;
+  out[3] = ((h >>> 17) & 0x7f) / 127;
+  out[4] = h >>> 24 < 154 ? 1 : 0;
+}
+
+/** A wall's tone, 0 to 1, from bay to bay along it, keyed `key`, eased into the next bay's within TONE_BLEND of a bay's side. */
+export function bayTone(along: number, key: number): number {
+  const edge = Math.floor(along / WEATHER_BAY + 0.5), t = smooth(-TONE_BLEND, TONE_BLEND, along - edge * WEATHER_BAY), a = hash3(edge - 1, key, 977);
+  return a + (hash3(edge, key, 977) - a) * t;
+}
+
+const choice = new Float64Array(5), other = new Float64Array(6);
+/** The masks of a storey of a bay's stamp at (u, down) of it, keyed `key`, then its leak and rust: into `out`. */
+function stamped(masks: WorldSample, bay: number, storey: number, key: number, u: number, down: number, spread: number, out: Float64Array): void {
+  bayStamp(bay, storey, key, choice);
+  masks(3, choice[0]!, choice[2] ? 1 - u : u, (down + choice[1]!) / 2, spread, out);
+  out[4] = choice[3]!;
+  out[5] = choice[4]!;
+}
+const frame = new Float64Array(6);
 /** The weathering masks as the page makes them, read at the twin's side (texgen/weather.ts). */
 const twinMasks: WorldSample = (_role, layer, u, v, spread, out) => weatherRead(layer, WEATHER_TWIN_SIDE, u, v, spread, out);
 /** How much of a pixel `footprint` metres wide, `d` metres from a line's middle, the line `half` metres either side of it covers. */
@@ -521,18 +560,21 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   dist: number, footprint: number, city: Numbers, sample: WorldSample, ready = 1, masks: WorldSample = twinMasks): void {
   const w = weatherings[index]!;
   wallFrame(x, z, nx, ny, nz, frame);
-  const along = frame[0]!, key = frame[1]!, side = frame[2]!;
+  const along = frame[0]!, share = frame[3]!, side = frame[4]!, wall = frame[5] === 1, key = share < 1 ? frame[1]! : frame[2]!, both = share > 0 && share < 1;
   const bayAt = Math.floor(along / WEATHER_BAY), storey = Math.floor(over / WEATHER_STOREY);
   // A wall's bays each take their own tone; a roof's tone moves only with the noise.
-  const bh = hash3(bayAt, storey, key), column = frame[3] ? hash3(bayAt, key, 977) : 0.5;
+  const column = !wall ? 0.5 : both ? bayTone(along, key) + (bayTone(along, frame[2]!) - bayTone(along, key)) * share : bayTone(along, key);
   const value = 1 + w.value * ((surfaceNoise(x / 7 + y / 5, z / 7 - y / 4) - 0.5) * 0.7 + (column - 0.5) * 0.3);
   for (let c = 0; c < 3; c++) albedo[c]! *= value;
   const fade = 1 - smooth(WEATHER_NEAR, WEATHER_GONE, dist);
-  if (frame[3] === 0 || fade <= 0) return;
-  // The bay's variant, one of two a layer, its runoff from the slab line at the top of the storey to the floor.
-  const variant = Math.min(Math.floor(bh * WEATHER_BAYS * 2), WEATHER_BAYS * 2 - 1), mirror = fract(bh * 7.31) < 0.5;
-  const u = along / WEATHER_BAY - bayAt, down = 1 - (over / WEATHER_STOREY - storey);
-  masks(3, variant >> 1, mirror ? 1 - u : u, (down + (variant & 1)) / 2, Math.log2(Math.max(footprint / WEATHER_BAY, 1e-9)), bay);
+  if (!wall || fade <= 0) return;
+  // The bay's stamp, its runoff from the slab line at the top of the storey to the floor.
+  const u = along / WEATHER_BAY - bayAt, down = 1 - (over / WEATHER_STOREY - storey), spread = Math.log2(Math.max(footprint / WEATHER_BAY, 1e-9));
+  stamped(masks, bayAt, storey, key, u, down, spread, bay);
+  if (both) {
+    stamped(masks, bayAt, storey, frame[2]!, u, down, spread, other);
+    for (let c = 0; c < 6; c++) bay[c] = bay[c]! + (other[c]! - bay[c]!) * share;
+  }
   const o = side * 5.3, f0 = WEATHER_BAYS + (side & 1), f1 = WEATHER_BAYS + ((side & 1) ^ (WEATHER_FIELDS > 1 ? 1 : 0));
   masks(3, f0, (along + o) / WEATHER_FIELD, -over / WEATHER_FIELD, Math.log2(Math.max(footprint / WEATHER_FIELD, 1e-9)), field);
   masks(3, f1, (along * FIELD_TWO + 3.7 + o) / WEATHER_FIELD, (-over * FIELD_TWO + 1.3) / WEATHER_FIELD, Math.log2(Math.max((footprint * FIELD_TWO) / WEATHER_FIELD, 1e-9)), field2);
@@ -544,7 +586,7 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   const damp = field[0]!, hold = field[1]!, patina = field[2]!, salt = field[3]!;
   // Buildings are much dirtier than their neighbours where a 31 m noise is high; a bay's leaks are its own.
   const dirty = smooth(0.5, 0.75, surfaceNoise(x / 31 + 11.3, z / 31 + 5.7));
-  const wet = (0.55 + 0.9 * surfaceNoise(x / 41 + 3.1, z / 41 + 7.7)) * (1 + dirty), leak = (0.3 + 0.7 * fract(bh * 3.13)) * wet, worn = 0.65 * wet;
+  const wet = (0.55 + 0.9 * surfaceNoise(x / 41 + 3.1, z / 41 + 7.7)) * (1 + dirty), leak = (0.3 + 0.7 * bay[4]!) * wet, worn = 0.65 * wet;
   if (w.peel > 0) {
     // Whole patches of plaster gone, metres across where a wall is dirty, and flakes elsewhere as its leaks loosen it.
     const gone = smooth(0.62, 0.7, surfaceNoise(along / 6, over / 5 + side * 17) + 0.25 * dirty);
@@ -566,7 +608,7 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   const joints = w.joints > 0 ? formwork(along, over, footprint) * w.joints * fade : 0;
   const floor = over - storey * WEATHER_STOREY, dirt = (1 - smooth(0, EDGE_DIRT, floor)) * fade;
   const drips = bay[1]! * w.drips * (0.6 + 0.4 * leak) * fade;
-  const rust = bay[2]! * w.drips * (fract(bh * 13.7) < 0.6 ? 1 : 0) * fade;
+  const rust = bay[2]! * w.drips * bay[5]! * fade;
   const splash = storey === 0 ? bay[3]! * w.splash * fade * (1 - smooth(0.8, 1.2, over)) : 0;
   // The sun bleaches a wall facing it under an open sky, in a patina's patches; facing away in the shade it greens.
   const sunward = nx * SUN_FACE[0] + nz * SUN_FACE[1];
@@ -1153,22 +1195,36 @@ const vec3 WL[${N}] = vec3[${N}](${weatherings.map((w) => `vec3(${LEFT[w.left].m
 ${vectors("WY", weatherings.map((w) => [w.drips, w.splash, w.bleach, w.algae]))}const float WZ[${N}] = float[${N}](${weatherings.map((w) => fl(w.salt)).join(",")});
 uniform highp sampler2DArray uWeather;
 uniform float uWeatherReady;
-// hash3's twin (client/core/texgen/noise.ts).
-float weatherHash(int a, int b, int c) {
+uint weatherHash(int a, int b, int c) {
   uint h = uint(a) * 1597334677u ^ uint(b) * 3812015801u ^ uint(c) * 2654435761u;
   h = (h ^ (h >> 16u)) * 2246822519u;
   h = (h ^ (h >> 13u)) * 3266489917u;
-  return float((h ^ (h >> 16u)) >> 8u) / 16777216.0;
+  return h ^ (h >> 16u);
 }
-// wallFrame's twin: along, the bay's key and the side, from the world point p and the face's normal n.
-bool wallFrame(vec3 p, vec3 n, out float along, out int key, out int side) {
+float weatherUnit(int a, int b, int c) {
+  return float(weatherHash(a, b, c) >> 8u) / 16777216.0;
+}
+bool wallFrame(vec3 p, vec3 n, out float along, out ivec2 keys, out float share, out int side) {
   bool wall = abs(n.y) < 0.5, facesX = wall && abs(n.x) > abs(n.z);
   along = facesX ? p.z : p.x;
   float plane = facesX ? p.x : p.z, slope = !wall ? 0.0 : facesX ? -n.z / n.x : -n.x / n.z;
   side = facesX ? (n.x > 0.0 ? 0 : 1) : (n.z > 0.0 ? 2 : 3);
   float centre = (floor(along / ${fl(WEATHER_BAY)}) + 0.5) * ${fl(WEATHER_BAY)};
-  key = wall ? int(floor((plane + (centre - along) * slope) / ${fl(PLANE_CELL)})) * 4 + side : 0;
+  float cell = (plane + (centre - along) * slope - ${fl(PLANE_EDGE)}) / ${fl(PLANE_CELL)}, edge = floor(cell + 0.5);
+  keys = wall ? ivec2(int(edge) * 4 - 4 + side, int(edge) * 4 + side) : ivec2(0);
+  share = wall ? smoothstep(${fl(-PLANE_BLEND)}, ${fl(PLANE_BLEND)}, (cell - edge) * ${fl(PLANE_CELL)}) : 0.0;
   return wall;
+}
+float bayTone(float along, int key) {
+  float edge = floor(along / ${fl(WEATHER_BAY)} + 0.5);
+  return mix(weatherUnit(int(edge) - 1, key, 977), weatherUnit(int(edge), key, 977), smoothstep(${fl(-TONE_BLEND)}, ${fl(TONE_BLEND)}, along - edge * ${fl(WEATHER_BAY)}));
+}
+vec4 stamped(int bay, int storey, int key, float u, float down, vec2 gx, vec2 gy, out vec2 leakRust) {
+  uint h = weatherHash(bay, storey, key);
+  float flip = ((h >> 16u) & 1u) == 1u ? -1.0 : 1.0;
+  leakRust = vec2(float((h >> 17u) & 127u) / 127.0, (h >> 24u) < 154u ? 1.0 : 0.0);
+  vec2 q = vec2(flip < 0.0 ? 1.0 - u : u, (down + float((bay + storey) & 1)) * 0.5);
+  return textureGrad(uWeather, vec3(q, float(((h & 65535u) * ${WEATHER_BAYS}u) >> 16u)), vec2(gx.x * flip, gx.y), vec2(gy.x * flip, gy.y));
 }
 float coveredLine(float d, float hw, float f) {
   f = max(f, 1e-4);
@@ -1189,21 +1245,25 @@ float formwork(float along, float over, float footprint) {
 void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open, vec3 rel, vec3 face, vec3 dpx, vec3 dpy) {
   float ox = dFdx(over), oy = dFdy(over);
   vec3 p = rel + uWorldEye;
-  float along;
-  int key, side;
-  bool wall = wallFrame(p, face, along, key, side);
-  int bay = int(floor(along / ${fl(WEATHER_BAY)})), storey = int(floor(over / ${fl(WEATHER_STOREY)}));
-  float bh = weatherHash(bay, storey, key), column = wall ? weatherHash(bay, key, 977) : 0.5;
+  float along, share;
+  ivec2 keys;
+  int side;
+  bool wall = wallFrame(p, face, along, keys, share, side), both = share > 0.0 && share < 1.0;
+  int bay = int(floor(along / ${fl(WEATHER_BAY)})), storey = int(floor(over / ${fl(WEATHER_STOREY)})), key = share < 1.0 ? keys.x : keys.y;
+  float column = !wall ? 0.5 : both ? mix(bayTone(along, keys.x), bayTone(along, keys.y), share) : bayTone(along, key);
   albedo *= 1.0 + WV[id] * ((surfaceNoise(vec2(p.x / 7.0 + p.y / 5.0, p.z / 7.0 - p.y / 4.0)) - 0.5) * 0.7 + (column - 0.5) * 0.3);
   float fade = 1.0 - smoothstep(${fl(WEATHER_NEAR)}, ${fl(WEATHER_GONE)}, length(rel));
   if (!wall || fade <= 0.0) return;
   float ax = side < 2 ? dpx.z : dpx.x, ay = side < 2 ? dpy.z : dpy.x;
-  // The bay's variant, one of two a layer, its runoff from the slab line at the top of the storey to the floor.
-  int variant = min(int(bh * ${fl(WEATHER_BAYS * 2)}), ${WEATHER_BAYS * 2 - 1});
-  float flip = fract(bh * 7.31) < 0.5 ? -1.0 : 1.0;
   float u = along / ${fl(WEATHER_BAY)} - float(bay), down = 1.0 - (over / ${fl(WEATHER_STOREY)} - float(storey));
-  vec2 q = vec2(flip < 0.0 ? 1.0 - u : u, (down + float(variant & 1)) * 0.5);
-  vec4 bm = textureGrad(uWeather, vec3(q, float(variant >> 1)), vec2(ax * flip, -ox) / ${fl(WEATHER_BAY)}, vec2(ay * flip, -oy) / ${fl(WEATHER_BAY)}) * uWeatherReady;
+  vec2 gx = vec2(ax, -ox) / ${fl(WEATHER_BAY)}, gy = vec2(ay, -oy) / ${fl(WEATHER_BAY)}, lr, lr2;
+  vec4 bm = stamped(bay, storey, key, u, down, gx, gy, lr);
+  if (both) {
+    vec4 b2 = stamped(bay, storey, keys.y, u, down, gx, gy, lr2);
+    bm = mix(bm, b2, share);
+    lr = mix(lr, lr2, share);
+  }
+  bm *= uWeatherReady;
   float o = float(side) * 5.3;
   int f0 = ${WEATHER_BAYS} + (side & 1), f1 = ${WEATHER_BAYS} + ((side & 1) ^ ${WEATHER_FIELDS > 1 ? 1 : 0});
   vec4 m0 = textureGrad(uWeather, vec3((along + o) / ${fl(WEATHER_FIELD)}, -over / ${fl(WEATHER_FIELD)}, float(f0)), vec2(ax, -ox) / ${fl(WEATHER_FIELD)}, vec2(ay, -oy) / ${fl(WEATHER_FIELD)});
@@ -1213,7 +1273,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   float damp = fm.r, hold = fm.g, patina = fm.b, salt = fm.a;
   // Buildings are much dirtier than their neighbours where a 31 m noise is high; a bay's leaks are its own.
   float dirty = smoothstep(0.5, 0.75, surfaceNoise(vec2(p.x / 31.0 + 11.3, p.z / 31.0 + 5.7)));
-  float wet = (0.55 + 0.9 * surfaceNoise(vec2(p.x / 41.0 + 3.1, p.z / 41.0 + 7.7))) * (1.0 + dirty), leak = (0.3 + 0.7 * fract(bh * 3.13)) * wet, worn = 0.65 * wet;
+  float wet = (0.55 + 0.9 * surfaceNoise(vec2(p.x / 41.0 + 3.1, p.z / 41.0 + 7.7))) * (1.0 + dirty), leak = (0.3 + 0.7 * lr.x) * wet, worn = 0.65 * wet;
   vec4 x = WX[id], y = WY[id];
   if (x.z > 0.0) {
     float gone = smoothstep(0.62, 0.7, surfaceNoise(vec2(along / 6.0, over / 5.0 + float(side) * 17.0)) + 0.25 * dirty);
@@ -1239,7 +1299,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   float joints = x.w > 0.0 ? formwork(along, over, footprint) * x.w * fade : 0.0;
   float dirt = (1.0 - smoothstep(0.0, ${fl(EDGE_DIRT)}, over - float(storey) * ${fl(WEATHER_STOREY)})) * fade;
   float drips = bm.g * y.x * (0.6 + 0.4 * leak) * fade;
-  float rust = bm.b * y.x * (fract(bh * 13.7) < 0.6 ? 1.0 : 0.0) * fade;
+  float rust = bm.b * y.x * lr.y * fade;
   float splash = storey == 0 ? bm.a * y.y * fade * (1.0 - smoothstep(0.8, 1.2, over)) : 0.0;
   // The sun bleaches a wall facing it under an open sky, in a patina's patches; facing away in the shade it greens.
   float sunward = dot(face.xz, vec2(${SUN_FACE.map(fl).join(", ")}));
