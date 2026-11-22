@@ -143,8 +143,8 @@ function fuzz(seed: number): { codes: Map<number, Map<number, number>>; faults: 
   const rng = new Rng(seed * 7919 + 13);
   const ents = h.world.ents;
   const faults: string[] = [];
-  const hook = h.server.onFault;
-  h.server.onFault = (cl, op, command, err) => {
+  const hook = h.server.players.onFault;
+  h.server.players.onFault = (cl, op, command, err) => {
     faults.push(`op ${op}, the message ${Buffer.from(command).toString("hex")}: ${err instanceof Error ? err.stack : String(err)}`);
     return hook ? hook(cl, op, command, err) : false;
   };

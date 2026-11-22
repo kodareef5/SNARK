@@ -39,7 +39,7 @@ test("settled cars' heartbeats are answered from the last, and each answer is wh
       const now = new Body(), stepped = new Body();
       h.world.ents.loadBody(e, now);
       stepped.copy(now);
-      h.server.vehicleStep(h.world, stepped, 0, 0, BTN_JUMP, def, undefined, stepped.yaw, false);
+      h.server.players.vehicleStep(h.world, stepped, 0, 0, BTN_JUMP, def, undefined, stepped.yaw, false);
       expect(FIELDS.filter((k) => stepped[k] !== now[k])).toEqual([]);
     }
   } finally {

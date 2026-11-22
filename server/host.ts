@@ -639,8 +639,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
   };
   const trees = harvest ? new VehicleTrees(world, harvest) : null;
-  if (trees) game.vehicleStep = trees.step;
-  const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
+  if (trees) game.players.vehicleStep = trees.step;
+  const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.players.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
@@ -652,8 +652,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   });
   containers.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
-  game.onVehicleStep.on(e => urban.impact(e));
-  game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
+  game.players.onVehicleStep.on(e => urban.impact(e));
+  game.players.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
     // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
@@ -711,7 +711,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   starter = mounts;
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
-  game.onMountSecondary.on(e => roars.use(e));
+  game.players.onMountSecondary.on(e => roars.use(e));
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
   // A sight's cone widens its session's view and holds what it is on awake (server/gaze.ts, D1079).
   // A look through a sight tells what it is on as far as the sight's gaze reaches (D1082).
@@ -1276,7 +1276,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     knockDown(body);
     combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
   };
-  game.blockBodies = () => [creatures.awake, creatures.awakeCount];
+  game.players.blockBodies = () => [creatures.awake, creatures.awakeCount];
   // The host's own work in the tick. Each is a row of `systems` below, which says when it runs.
   /** A session whose focus left its chunk wakes what is round the new one. */
   const followFocus = (): void => {
@@ -1375,7 +1375,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   // A command that threw may have left the world half done. Its ledger is what a save is checked by as it loads, so while that
   // balances the world goes on; else the server stops as at any other throw, saving nothing but the refusal.
-  game.onFault = (c, op, command, err) => {
+  game.players.onFault = (c, op, command, err) => {
     say(`a command of ${c.name} (survivor ${c.pid}) threw at tick ${world.tick}; it is put out, and its device and machine refused for 10 minutes. Op ${op}, the message ${Buffer.from(command).toString("hex")}:\n${err instanceof Error ? err.stack : String(err)}`);
     const wrong = items.audit();
     if (wrong.length === 0) return true;
@@ -1389,8 +1389,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   // An unconscious survivor can talk, use the console and the sundial, shut what it had open and say how far off it is sent bases. Its client
   // can make it do nothing else.
-  game.allows.on((c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out);
-  game.onLand.on((c, speed) => {
+  game.players.allows.on((c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out);
+  game.players.onLand.on((c, speed) => {
     const rec = records.byPid.get(c.pid);
     if (rec && !(world.ents.jetGear[c.ent]! & JET_BOOTS)) survival.landed(rec, speed);
   });
@@ -1407,7 +1407,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     return best;
   }
-  game.onGlide.on((c, opened) => {
+  game.players.onGlide.on((c, opened) => {
     if (opened) {
       glidingSince.set(c.pid, world.tick);
       return;
@@ -1598,7 +1598,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Riders move with their mounts before combat aims at either.
     urban,
     riding,
-    { beforeStep: () => void (game.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
+    { beforeStep: () => void (game.players.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
     carry,
     emotes,
     mark(PART.riders),
