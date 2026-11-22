@@ -266,7 +266,7 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
       }
     };
     walk(join(root, "server"));
-    expect(readers.sort()).toEqual(["server/commands/core.ts", "server/creative.ts", "server/game.ts", "server/host.ts", "server/persist/persistence.ts", "server/world.ts"]);
+    expect(readers.sort()).toEqual(["server/commands/core.ts", "server/creative.ts", "server/game.ts", "server/host.ts", "server/persist/persistence.ts", "server/replication.ts", "server/world.ts"]);
     h.host.shutdown();
 
     const store = new WorldStore(db, h.reg);

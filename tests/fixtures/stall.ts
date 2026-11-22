@@ -158,7 +158,7 @@ export class Rig {
         drop: (ticks, at) => {
           this.meter.drop(ticks, at);
           this.dropped += ticks;
-          this.h.server.giveUp(ticks);
+          this.h.server.replication.giveUp(ticks);
         },
       },
       now,
@@ -274,7 +274,7 @@ export class Rig {
       const c = clients[i];
       if (c && p.session.state === "active" && !c.inputs.has(T)) p.missing.push(T);
     });
-    this.h.server.behind = behind;
+    this.h.server.replication.behind = behind;
     this.h.server.tick();
     if (!watching) return;
     this.pages.forEach((p, i) => {

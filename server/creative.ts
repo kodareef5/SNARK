@@ -96,7 +96,7 @@ export class Creative {
     t.hour = hour;
     t.at = w.tick;
     w.dayOffset = offsetForHour(w.tick, hour, w.clock);
-    this.game.markAllOwn();
+    this.game.replication.markAllOwn();
     if (last) this.end(c, t);
     return RESULT_OK;
   }

@@ -1445,7 +1445,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     drop: (rec, slot, n) => eggs.put(rec, slot, n) ?? death.drop(rec, slot, n),
   };
   const tactical = new Tactical(world, game, records, rules);
-  game.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
+  game.replication.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
   const corpseReplication = new CorpseReplication(game, corpses);
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
   progression.onChange = (rec) => refreshBody(rec);
@@ -1647,8 +1647,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const tick = walk(systems);
   game.onBeforeStep = tick.beforeStep;
   game.onStep = tick.step;
-  game.onReplicate = tick.replicate;
-  game.onSnapshot = tick.snapshot;
+  game.replication.onReplicate = tick.replicate;
+  game.replication.onSnapshot = tick.snapshot;
   const host: Host = {
     world,
     mapFile,

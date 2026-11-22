@@ -43,7 +43,7 @@ self.onmessage = (e: MessageEvent) => {
     const c = game.clients.find((x) => x?.active);
     const had = c ? c.inputs.has(T) : true;
     tick();
-    if (c && c.newestInput > 0) rows.push([T, game.behind, had ? 1 : 0, c.newestInput - T - game.behind]);
+    if (c && c.newestInput > 0) rows.push([T, game.replication.behind, had ? 1 : 0, c.newestInput - T - game.replication.behind]);
     const ms = stalls.get(T);
     if (ms) for (const end = performance.now() + ms; performance.now() < end; );
   };

@@ -149,7 +149,7 @@ export function addCoreCommands(con: Console): void {
         if (!(hour >= 0 && hour < 24) || !(minute >= 0 && minute < 60) || parts.length > 2) return "usage: settime <hour[:minute]>, for example settime 6:30";
         const w = ctx.host.world;
         w.dayOffset = offsetForHour(w.tick, hour + minute / 60, w.clock);
-        ctx.host.game.markAllOwn();
+        ctx.host.game.replication.markAllOwn();
         return `time is ${formatHour(hourOfDay(w.tick, w.dayOffset, w.clock))}`;
       },
     },

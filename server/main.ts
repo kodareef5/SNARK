@@ -620,7 +620,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     tick: (due, behind) => {
       const began = performance.now();
       parts.due = due;
-      host.game.behind = behind;
+      host.game.replication.behind = behind;
       host.game.tick();
       const ended = performance.now();
       meter.tick(due, began, ended);
@@ -633,7 +633,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     },
     drop: (ticks, at) => {
       meter.drop(ticks, at);
-      host.game.giveUp(ticks);
+      host.game.replication.giveUp(ticks);
       play?.drop(ticks);
     },
   });

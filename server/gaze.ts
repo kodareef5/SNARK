@@ -3,7 +3,7 @@
 // glass or a weapon's scope with the secondary held, or a worn visor with BTN_VISOR held. Until it sees the sight raised the
 // cone is empty, and a claim it never sees raised ends. It finds for itself what the look is on, along the survivor's own
 // look from its own eye, and adds the chunks of the cone to the view, past the survivor's own square, those nearest what it
-// is on first and only those the ground does not hide (GameServer.cone); and holds the creatures round what it is on awake,
+// is on first and only those the ground does not hide (Replication.cone); and holds the creatures round what it is on awake,
 // as a body nearby would, so that what is seen far off lives. Each session's cone is its own.
 
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
@@ -97,7 +97,7 @@ export class Gaze {
     this.watching = new Uint16Array(ctx.world.dims.chunksX * ctx.world.dims.chunksZ);
     ctx.game.handle(CMD_GAZE, (c, r) => this.command(c, r));
     ctx.game.handle(CMD_MARK, (c, r) => this.mark(c, r));
-    ctx.game.cone = (c) => {
+    ctx.game.replication.cone = (c) => {
       const look = this.looks.get(c);
       return look && (look.count > 0 || look.players.length > 0) ? look : null;
     };

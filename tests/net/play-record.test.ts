@@ -29,11 +29,11 @@ function recorded(link: LinkOptions, opts: { unheld?: boolean; manual?: boolean 
     if (loop.owed * tickMs > CATCH_UP_MS) {
       const given = Math.ceil((loop.owed * tickMs - CATCH_UP_MS) / tickMs);
       loop.owed -= given;
-      h.server.giveUp(given);
+      h.server.replication.giveUp(given);
       log.drop(given);
     }
     for (; loop.owed >= 0; loop.owed--) {
-      h.server.behind = loop.owed;
+      h.server.replication.behind = loop.owed;
       tick();
       log.ticked(loop.due - loop.owed * tickMs, h.now, h.now, loop.owed);
     }

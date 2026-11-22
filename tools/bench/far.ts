@@ -55,8 +55,8 @@ export function benchFar(host: Host, run: Run, section: (title: string) => void,
   feed.listFar = timed(list);
   feed.sendFar = timed(send);
   const bytes = new Float64Array(game.clients.length);
-  const spend = game.spendChunkWindow.bind(game);
-  game.spendChunkWindow = (c, n) => {
+  const spend = game.replication.spendChunkWindow.bind(game.replication);
+  game.replication.spendChunkWindow = (c, n) => {
     const ok = spend(c, n);
     if (ok) bytes[c.id] = bytes[c.id]! + n;
     return ok;
@@ -115,7 +115,7 @@ export function benchFar(host: Host, run: Run, section: (title: string) => void,
   host.setSetting("FarRadius", String(FAR_RADIUS));
   feed.listFar = list;
   feed.sendFar = send;
-  game.spendChunkWindow = spend;
+  game.replication.spendChunkWindow = spend;
   benchFarJoins(section, record);
   benchFarBlocks(section, record);
   benchFarNodes(section, record);

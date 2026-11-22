@@ -69,7 +69,7 @@ export class Overhead {
 
   constructor(ctx: OverheadContext) {
     this.ctx = ctx;
-    ctx.game.viewFor = (c, cur) => this.view(c, cur);
+    ctx.game.replication.viewFor = (c, cur) => this.view(c, cur);
   }
 
   /** Each tick, after breeding's. */
@@ -177,7 +177,7 @@ export class Overhead {
     const hx = chunkCx(dims, home);
     const hz = chunkCz(dims, home);
     const near = range + 4;
-    const cone = range > LOOK_RANGE && game.cone ? game.cone(c) : null;
+    const cone = range > LOOK_RANGE && game.replication.cone ? game.replication.cone(c) : null;
     const test = (chunk: number): void => {
       for (let i = ents.chunkHead[chunk]!; i >= 0; i = ents.next[i]!) {
         if (i === c.ent || i === from || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;

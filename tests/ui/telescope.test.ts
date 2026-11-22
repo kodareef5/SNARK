@@ -7,7 +7,7 @@ import { CHUNK_SIZE, chunkAt } from "../../shared/coords.ts";
 import { CMD_GAZE } from "../../shared/net/protocol.ts";
 import { BTN_SECONDARY, stanceEye } from "../../shared/sim/character.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
-import { CONE_KEEP } from "../../server/game.ts";
+import { CONE_KEEP } from "../../server/replication.ts";
 import { building } from "../fixtures/cityworld.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { flatMap, wideMap } from "../fixtures/map.ts";
