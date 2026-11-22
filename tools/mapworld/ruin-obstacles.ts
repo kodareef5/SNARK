@@ -76,7 +76,7 @@ export function meets(a: Box, b: Box, gap = 0): boolean {
 
 const BENT = new Set(BENT_KINDS);
 
-export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: StaticPiece) => void; blocked: (points: readonly Point[]) => boolean; hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean; count: (x: number, z: number, radius: number) => number } {
+export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: StaticPiece) => void; blocked: (points: readonly Point[]) => boolean; hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean; meeting: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => { p: StaticPiece; box: Box }[]; count: (x: number, z: number, radius: number) => number } {
   const bins = new Map<number, { p: StaticPiece; box: Box }[]>();
   const add = (p: StaticPiece): void => {
     // A bent kerb is walked as nothing and its box is its unbent model's; the collision pieces under it stand for it.
@@ -101,6 +101,14 @@ export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: Static
     }
     return false;
   };
+  /** Every piece already set down that meets the box grown by `gap`, with its box, once each. */
+  const meeting = (box: Box, gap = 0, skip?: (p: StaticPiece) => boolean): { p: StaticPiece; box: Box }[] => {
+    const radius = Math.hypot(box.size[0], box.size[2]) / 2 + gap, out = new Set<{ p: StaticPiece; box: Box }>();
+    for (let z = Math.floor((box.z - radius) / 64); z <= Math.floor((box.z + radius) / 64); z++) for (let x = Math.floor((box.x - radius) / 64); x <= Math.floor((box.x + radius) / 64); x++) {
+      for (const q of bins.get(binKey(x, z)) ?? []) if (meets(box, q.box, gap) && !skip?.(q.p)) out.add(q);
+    }
+    return [...out];
+  };
   /** How many pieces have their middle within `radius` of the point. */
   const count = (x: number, z: number, radius: number): number => {
     const seen = new Set<StaticPiece>();
@@ -109,5 +117,5 @@ export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: Static
     }
     return seen.size;
   };
-  return { add, blocked, hits, count };
+  return { add, blocked, hits, meeting, count };
 }
