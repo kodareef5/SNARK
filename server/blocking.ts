@@ -161,8 +161,8 @@ export class BodyBlocking {
       near[m] = j;
       nearFar[m++] = far;
     }
-    // The nearest left each time, until the list is full. One the walker stands in takes no place: in a pack set down
-    // tangled every neighbour may be one, so no more than twice the list's room are offered.
+    // The nearest left each time, until the list is full. A creature is pushed softly out of one it stands in; any other
+    // walker passes it over, and it takes no place, so no more than twice the list's room are offered.
     const offers = Math.min(m, 2 * BLOCK_MOST);
     for (let k = 0; k < offers && list.count < BLOCK_MOST; k++) {
       let best = k;
@@ -171,7 +171,7 @@ export class BodyBlocking {
       near[best] = near[k]!;
       nearFar[best] = nearFar[k]!;
       const always = creature && (ents.driven[j] !== 0 || this.survivor[ents.kind[j]!] === 1);
-      list.add(world.reg, j, ents.kind[j]!, dequantX(quantX(ents.x[j]!)), dequantY(quantY(ents.y[j]!)), dequantX(quantX(ents.z[j]!)), ((ents.yaw[j]! >>> 6) * TAU) / 1024, (ents.anim[j]! & 15) !== 0, ents.kind[e]!, x, y, z, ents.yaw[e]!, always);
+      list.add(world.reg, j, ents.kind[j]!, dequantX(quantX(ents.x[j]!)), dequantY(quantY(ents.y[j]!)), dequantX(quantX(ents.z[j]!)), ((ents.yaw[j]! >>> 6) * TAU) / 1024, (ents.anim[j]! & 15) !== 0, ents.kind[e]!, x, y, z, ents.yaw[e]!, always, creature);
     }
     return this.done();
   }
