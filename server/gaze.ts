@@ -26,7 +26,7 @@ const WIDEST = Math.tan((50 * Math.PI) / 180) * 2.4;
 const SLACK = (CHUNK_SIZE * Math.SQRT2) / 2;
 /** The most chunks a cone holds. */
 export const CONE_CHUNKS = 48;
-/** Chunks a side held awake round what a sight is on, and the most a server holds so for all its sessions. */
+/** Chunks a side held awake round what a sight is on, and the most distinct ones a server holds so for all its sessions. */
 export const WAKE_SIDE = 3;
 export const WAKE_MOST = 64;
 /** The farthest a zero may be dialled, metres. */
@@ -36,6 +36,9 @@ const RAISE_GRACE = 45;
 /** Metres over the ground a far creature's head may stand, which the line of sight to a chunk aims at, and that line's step. */
 const OVER_GROUND = 5;
 const SIGHT_STEP = 24;
+/** Metres a gaze sees a survivor for each time its sight magnifies (a standing one is pixels tall there), and its head's height. */
+export const PLAYER_REACH = 500;
+const PLAYER_HEAD = 1.6;
 /** The most chunks of a cone tested against the ground in a finding. */
 const TESTED_MOST = 160;
 /** Ticks between a cone's chunks found again as its survivor turns. */
@@ -68,6 +71,8 @@ class Look {
   at = -1;
   readonly chunks = new Int32Array(CONE_CHUNKS);
   count = 0;
+  /** The survivors its sight could see wherever they stand in it, past the chunks' budget (D1088). */
+  readonly players: number[] = [];
   /** The chunks it holds awake. */
   readonly waking: number[] = [];
 }
@@ -77,7 +82,11 @@ export class Gaze {
   private readonly looks = new Map<Client, Look>();
   /** Per chunk, the cones it is in. */
   private readonly coned: Uint16Array;
-  /** Chunks held awake by every cone together. */
+  /**
+   * Per chunk, the gazes holding it awake, and how many distinct chunks gazes hold: two survivors watching one place cost
+   * the server's WAKE_MOST that place once (D1088).
+   */
+  private readonly watching: Uint16Array;
   private woken = 0;
   private readonly found: { chunk: number; score: number }[] = [];
   private readonly dir = [0, 0, 0];
@@ -85,11 +94,12 @@ export class Gaze {
   constructor(ctx: GazeContext) {
     this.ctx = ctx;
     this.coned = new Uint16Array(ctx.world.dims.chunksX * ctx.world.dims.chunksZ);
+    this.watching = new Uint16Array(ctx.world.dims.chunksX * ctx.world.dims.chunksZ);
     ctx.game.handle(CMD_GAZE, (c, r) => this.command(c, r));
     ctx.game.handle(CMD_MARK, (c, r) => this.mark(c, r));
     ctx.game.cone = (c) => {
       const look = this.looks.get(c);
-      return look && look.count > 0 ? look : null;
+      return look && (look.count > 0 || look.players.length > 0) ? look : null;
     };
   }
 
@@ -257,6 +267,7 @@ export class Gaze {
   private clear(look: Look): void {
     for (let k = 0; k < look.count; k++) this.coned[look.chunks[k]!]!--;
     look.count = 0;
+    look.players.length = 0;
     for (const chunk of look.waking) this.release(chunk);
     look.waking.length = 0;
   }
@@ -322,6 +333,17 @@ export class Gaze {
       if (this.sighted(ex, ey, ez, chunk)) this.coned[(look.chunks[n++] = chunk)]!++;
     }
     look.count = n;
+    // Survivors, wherever they stand in the cone out to PLAYER_REACH a zoom, the ground not hiding them: what a sniper aims at
+    // is not left to the chunks' budget.
+    look.players.length = 0;
+    const far = Math.min(GAZE_FARTHEST, PLAYER_REACH * look.zoom);
+    for (const o of game.clients) {
+      const t = o?.active ? o.ent : -1;
+      if (t < 0 || t === e || (ents.flags[t]! & F_ALIVE) === 0) continue;
+      const vx = ents.x[t]! - ex, vz = ents.z[t]! - ez, along = vx * dx + vz * dz;
+      if (along <= 0 || along > far || Math.abs(vx * dz - vz * dx) > along * slope + SLACK) continue;
+      if (this.lineOpen(ex, ey, ez, ents.x[t]!, ents.y[t]! + PLAYER_HEAD, ents.z[t]!)) look.players.push(t);
+    }
     // What it is on, and the chunks round it, past its own square, are held awake while it looks.
     const want: number[] = [];
     if (focus > 0) {
@@ -341,8 +363,10 @@ export class Gaze {
       look.waking.splice(k, 1);
     }
     for (const chunk of want) {
-      if (look.waking.includes(chunk) || this.woken >= WAKE_MOST) continue;
+      // One another gaze holds already costs nothing more; a new one, a place of the WAKE_MOST.
+      if (look.waking.includes(chunk) || (this.watching[chunk] === 0 && this.woken >= WAKE_MOST)) continue;
       look.waking.push(chunk);
+      if (this.watching[chunk]!++ > 0) continue;
       this.woken++;
       this.ctx.wake(chunk, 1);
     }
@@ -355,7 +379,12 @@ export class Gaze {
   sighted(ex: number, ey: number, ez: number, chunk: number): boolean {
     const { hf, dims } = this.ctx.world;
     const tx = (chunkCx(dims, chunk) + 0.5) * CHUNK_SIZE, tz = (chunkCz(dims, chunk) + 0.5) * CHUNK_SIZE;
-    const ty = hf.heightAt(tx, tz) + OVER_GROUND;
+    return this.lineOpen(ex, ey, ez, tx, hf.heightAt(tx, tz) + OVER_GROUND, tz);
+  }
+
+  /** Whether the ground leaves the line from (ex, ey, ez) to (tx, ty, tz) open, sampled each SIGHT_STEP metres short of its end. */
+  private lineOpen(ex: number, ey: number, ez: number, tx: number, ty: number, tz: number): boolean {
+    const hf = this.ctx.world.hf;
     const far = Math.hypot(tx - ex, tz - ez);
     for (let t = SIGHT_STEP; t < far - SIGHT_STEP; t += SIGHT_STEP) {
       const a = t / far;
@@ -365,7 +394,13 @@ export class Gaze {
   }
 
   private release(chunk: number): void {
+    if (--this.watching[chunk]! > 0) return;
     this.woken--;
     this.ctx.wake(chunk, -1);
+  }
+
+  /** How many distinct chunks gazes hold awake, for tests and the admin page. */
+  get awake(): number {
+    return this.woken;
   }
 }

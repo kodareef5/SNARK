@@ -537,6 +537,33 @@ test("through a sight a chunk held whole far off in its window has its near mesh
   expect(made(1)[0]).toBe(0);
 });
 
+test("through a sight a tile past the tier's reach in its window is made and drawn, and kept a while once the sight is lowered", () => {
+  // A row of towers 3.4 km ahead, past medium's 2.5 km of far city.
+  const statics: MapStatic[] = [];
+  for (let k = 0; k < 4; k++) statics.push(...building(...mid(20 + k, 60), 0, 8, 3, k * 1700));
+  const w = cityWorld({ chunks: 64, statics, width: 320, height: 180 });
+  w.scene.assets.tier = tierOf("medium");
+  w.look(21.5 * CHUNK_SIZE, 20, 60.5 * CHUNK_SIZE, 3400, 0, 6);
+  const indices = (p: FramePacket): number => cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0);
+  for (let f = 0; f < 60; f++) w.frame();
+  expect(indices(w.frame())).toBe(0);
+  const base = w.cam.fovY;
+  w.cam.fovY = zoomed(base, 16);
+  w.cam.zoom = 16;
+  w.cam.window.set([-0.4, -0.4, 0.4, 0.4]);
+  let drawn = 0;
+  for (let f = 0; f < 600 && drawn === 0; f++) drawn = indices(w.frame());
+  expect(drawn).toBeGreaterThan(0);
+  // Lowered: kept a while, then let go.
+  w.cam.fovY = base;
+  w.cam.zoom = 1;
+  w.cam.window.set([-1, -1, 1, 1]);
+  for (let f = 0; f < 30; f++) w.frame();
+  expect(indices(w.frame())).toBeGreaterThan(0);
+  for (let f = 0; f < 240; f++) w.frame();
+  expect(indices(w.frame())).toBe(0);
+});
+
 test("levels made on threads are each asked of the one with the fewest in hand, three ahead a thread, and are the levels the page makes", async () => {
   // A thread as a worker running client/city/city-worker.ts is, here on this one a turn later, and those each was asked of.
   const asked: number[] = [];

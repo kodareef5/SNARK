@@ -1966,6 +1966,8 @@ export class Scene {
     const p = this.packet;
     const tier = this.assets.tier;
     p.frame[FRAME.fade] = tier.fade;
+    // Through a sight its tiles in the window reach as far as the view ends (D1088).
+    this.city!.view = this.viewDistance;
     this.city!.update(p, this.assets.residency, cam, tier.city.levels, this.alongGround(tier.reach.city), tier.fade, this.world.structs, this.world.far?.cells ?? null);
     // A landmark is drawn to the end of the view, as the city's blocks leave its cells to it.
     this.landmarks?.draw(p, cam, this.assets, this.viewDistance, tier.fade, this.drawLandmark);
