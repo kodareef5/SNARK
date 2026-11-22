@@ -252,6 +252,14 @@ test("on a PvE server nothing is built within thirty metres of a place drops lan
   // 23 m along is three metres from it; 60 m along is forty-three.
   expect([found(20), found(60)]).toEqual([RESULT_DENIED, RESULT_OK]);
   expect(ada.log.slice(-(ada.logVersion - from)).filter((l) => l.channel === TEXT_NOTICE).map((l) => l.text)).toEqual([`Supply drops land here: nothing can be built within ${SITE_CLEAR} m of the place.`]);
+  // A circuit switched off keeps its places. One taken out of the book leaves a site that no circuit names, as a book
+  // read from a file may: nothing lands there, so it holds nobody's ground.
+  edit(h, (book) => void (book.circuits[0]!.on = false));
+  expect(h.host.supply.buildFault(at.x - 58 + 23, at.z)).not.toBe("");
+  edit(h, (book) => void (book.circuits = []));
+  expect([h.host.supplyBook.book.sites.length, h.host.supply.buildFault(at.x - 58 + 23, at.z)]).toEqual([1, ""]);
+  edit(h, (book) => void (book.circuits = [{ key: "c", on: true, sites: ["yard"], maxLive: 1, firstDelay: [600, 600], interval: [600, 600], tierWeights: { white: 1 } }]));
+  expect(h.host.supply.buildFault(at.x - 58 + 23, at.z)).not.toBe("");
   expect(h.host.setSetting("PvEAllowStructuresAtSupplyDrops", "True")).toBe("");
   expect(found(20)).toBe(RESULT_OK);
   // On a server that is not PvE the rule is not asked at all.

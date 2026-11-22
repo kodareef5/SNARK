@@ -50,6 +50,8 @@ export interface ArkWire {
   sets: SupplyBook["sets"];
   tables: SupplyBook["tables"];
   tiers: { tier: string; plain: number; ringed: number }[];
+  /** Tables of these that would be dormant in the draft: worth less than the book lets a table be, so no circuit calls them. */
+  dormant: string[];
   said: string[];
   missing: string[];
   unclear: { name: string; could: string[] }[];
@@ -72,7 +74,7 @@ export const S = {
   tab: "tables" as Tab,
   /** The table opened in the matrix, and what the simulator rolls. */
   open: "",
-  sim: { key: "", ringed: false, n: 5000, seed: 1, designed: false },
+  sim: { key: "", ringed: false, n: 5000, seed: 1, designed: false, world: true },
   /** The map: the circuit new sites join, the site chosen, the place last clicked, how far it is zoomed, and what is live. */
   /** The book's saves, one of them compared with the draft, and what was pasted of ARK's and what came of it. */
   revisions: null as RevisionWire[] | null,

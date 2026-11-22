@@ -2,9 +2,14 @@
 // through them drops differently in the world, drops already called included, and each act is in the page's log. The statuses through the front are held by tests/integration/site.test.ts.
 
 import { expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PAGE, SupplyRoutes } from "../../server/admin/supply-routes.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import type { SupplyBook } from "../../shared/supply/book.ts";
+import { catalogOf } from "../../shared/supply/catalog.ts";
+import { cellsOf, compileBook } from "../../shared/supply/compile.ts";
 import { moveSite } from "../../client/core/drops/place.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -14,8 +19,8 @@ import { coreRegistry } from "../fixtures/world.ts";
 const reg = coreRegistry();
 const CAPSULE = reg.index.get("core:supply_capsule")!;
 
-function world() {
-  const h = new Harness({}, 1, 30, { dev: true });
+function world(host: ConstructorParameters<typeof Harness>[3] = {}) {
+  const h = new Harness({}, 1, 30, { dev: true, ...host });
   h.run(200);
   const routes = new SupplyRoutes(h.host, () => 1_800_000_000_000);
   const at = "http://localhost";
@@ -177,3 +182,88 @@ test("an ARK override pasted is read as the server reads its own, mapped to the 
   // Text that is not an override at all is read as nothing, and says so.
   expect((await post("ark", { text: "hello" })).answer).toMatchObject({ crates: 0, tiers: [], said: ["line 1: not a Key=Value line"] });
 });
+
+test("an override of ARK's ringed crate alone leaves a tier's plain drops the book's, and one of its plain crate alone its ringed drops: circuits still call the tier", async () => {
+  const { h, get, post, held, mid } = world();
+  const read = await get<{ revision: number; book: SupplyBook }>("book.json");
+  const catalog = catalogOf(reg);
+  const blue = (book: SupplyBook): string[] => cellsOf(compileBook(book, catalog), { ...book.circuits[0]!, tierWeights: { blue: 1 } }).map((c) => c.table.key);
+  const before = blue(read.book);
+  expect(before.length).toBe(7);
+  const crate = (name: string, item: string, n: number): string => `(SupplyCrateClassString="${name}",MinItemSets=1,MaxItemSets=1,ItemSets=((MinNumItems=1,MaxNumItems=1,ItemEntries=((ItemClassStrings=("${item}"),MinQuantity=${n},MaxQuantity=${n})))))`;
+  type Got = { sets: SupplyBook["sets"]; tables: SupplyBook["tables"]; tiers: unknown[]; dormant: string[] };
+  const put = async (text: string, note: string, revision: number): Promise<SupplyBook> => {
+    // As the page does: read against its draft, which is the book in force here.
+    const draft = structuredClone((await get<{ book: SupplyBook }>("book.json")).book);
+    const got = (await post("ark", { text, book: draft })).answer as unknown as Got;
+    expect([got.tiers, got.dormant]).toEqual([[{ tier: "blue", plain: text.includes("_Double") ? 0 : 1, ringed: text.includes("_Double") ? 1 : 0 }], []]);
+    Object.assign(draft.sets, got.sets);
+    Object.assign(draft.tables, got.tables);
+    expect((await post("book", { revision, book: draft, note })).answer).toEqual({ revision: revision + 1 });
+    return draft;
+  };
+  // ARK's ringed blue crate, and nothing said of its plain one.
+  const ringedOnly = await put(crate("SupplyCrate_Level25_Double_C", "core:stone", 77), "ARK's ringed blue", 0);
+  expect(blue(ringedOnly)).toEqual(before);
+  // A plain blue drop holds what the book's table gave before, slot for slot; a ringed one is ARK's.
+  const was = read.book.tables["blue/arms"]!.slots;
+  expect(ringedOnly.tables["blue/arms"]!.slots.map((s) => [s.name ?? "", s.chance ?? 1, s.ringed ?? s.chance ?? 1])).toEqual([
+    ...was.filter((s) => (s.chance ?? 1) > 0).map((s) => [s.name ?? "", s.chance ?? 1, 0]),
+    ["ARK's ringed crate", 0, 1],
+  ]);
+  const a = await post("call", { x: mid[0] - 60, z: mid[1], tier: "blue", cls: "arms", seconds: 0 });
+  const b = await post("call", { x: mid[0] + 60, z: mid[1], tier: "blue", cls: "arms", ringed: true, seconds: 0 });
+  await post("land", { id: "all", seconds: 0 });
+  h.run(1000);
+  const [plain, ringed] = [held(h.host.supply.get(a.answer.id as number)!.pid), held(h.host.supply.get(b.answer.id as number)!.pid)];
+  expect([Object.keys(plain).length > 1, plain["core:stone"] === 77, ringed]).toEqual([true, false, { "core:stone": 77 }]);
+  await post("cancel", { id: "all" });
+  // The other way about, from the starter book again: ARK's plain crate, and a ringed drop is still the book's ringed one.
+  expect((await post("reset", { revision: 1 })).answer).toEqual({ revision: 2 });
+  const plainOnly = await put(crate("SupplyCrate_Level25_C", "core:flint", 900), "ARK's plain blue", 2);
+  expect(blue(plainOnly)).toEqual(before);
+  expect(plainOnly.tables["blue/arms"]!.slots.map((s) => [s.name ?? "", s.chance ?? 1, s.ringed ?? s.chance ?? 1])).toEqual([
+    ["ARK's crate", 1, 0],
+    ...was.filter((s) => (s.ringed ?? s.chance ?? 1) > 0).map((s) => [s.name ?? "", 0, s.ringed ?? s.chance ?? 1]),
+  ]);
+  // The ringed crate pasted after it leaves the plain one ARK's: both are ARK's now, and nothing of the book's is left.
+  const both = await put(crate("SupplyCrate_Level25_Double_C", "core:stone", 77), "and its ringed", 3);
+  expect(both.tables["blue/arms"]!.slots.map((s) => s.name)).toEqual(["ARK's crate", "ARK's ringed crate"]);
+  // A crate worth less than the book lets a table be would be dormant, and no circuit would call its tier: the reading says so.
+  const poor = (await post("ark", { text: crate("SupplyCrate_Level25_C", "core:flint", 55), book: both })).answer as unknown as Got;
+  expect([poor.dormant.length, poor.dormant[0]]).toEqual([7, "blue/shelter"]);
+  // Read against a draft with a fault, it is refused, and against no draft it is read against the book in force.
+  const broken = structuredClone(both);
+  broken.tiers[0]!.staple = "none";
+  const refused = await post("ark", { text: crate("SupplyCrate_Level25_C", "core:flint", 900), book: broken });
+  expect([refused.status, (refused.answer.faults as { path: string }[]).map((f) => f.path)]).toEqual([422, ["tiers.0.staple"]]);
+  expect(((await post("ark", { text: crate("SupplyCrate_Level25_C", "core:flint", 900) })).answer as unknown as Got).tables["blue/arms"]!.slots.map((s) => s.name)).toEqual(["ARK's crate", "ARK's ringed crate"]);
+  h.host.shutdown();
+});
+
+test("a save through the page is made or not made, never half: a history that cannot be written is said with the save, and a book that cannot be is refused and changes nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-supply-admin-"));
+  const db = join(dir, "world.db");
+  const { h, get, post } = world({ dbPath: db, log: () => {} });
+  const file = `${db}.supply.json`;
+  const onDisk = (): number => (existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as SupplyBook).revision : 0);
+  const draft = structuredClone((await get<{ book: SupplyBook }>("book.json")).book);
+  draft.tiers[0]!.target = 250;
+  // A folder where the history belongs: the book is saved, in force and answered so, and the answer says what was not kept.
+  mkdirSync(`${file}.history`);
+  const saved = await post("book", { revision: 0, book: draft, note: "" });
+  expect([saved.status, saved.answer.revision, String(saved.answer.unkept).startsWith("its history could not be written"), h.host.supplyBook.book.revision, onDisk(), (await get<{ revision: number }>("book.json")).revision]).toEqual([200, 1, true, 1, 1, 1]);
+  // The book's own file cannot be written (a folder stands in the way of the one it is written beside): nothing changes.
+  rmSync(`${file}.history`, { recursive: true });
+  mkdirSync(`${file}.tmp`);
+  draft.tiers[0]!.target = 300;
+  const failed = await post("book", { revision: 1, book: draft, note: "" });
+  expect([failed.status, String(failed.answer.error).startsWith("The book's file could not be written"), h.host.supplyBook.book.revision, h.host.supplyBook.book.tiers[0]!.target, onDisk()]).toEqual([500, true, 1, 250, 1]);
+  // Put right, the same save is made, and the history has both.
+  rmSync(`${file}.tmp`, { recursive: true });
+  expect((await post("book", { revision: 1, book: draft, note: "" })).answer).toEqual({ revision: 2 });
+  expect([onDisk(), (await get<{ revision: number }[]>("revisions.json")).map((r) => r.revision)]).toEqual([2, [1, 2]]);
+  h.host.shutdown();
+  rmSync(dir, { recursive: true, force: true });
+});
+

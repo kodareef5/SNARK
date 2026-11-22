@@ -2,7 +2,7 @@
 // the file a world keeps it in (server/supply/store.ts).
 
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BookStore } from "../../server/supply/store.ts";
@@ -268,3 +268,32 @@ test("a world's book is a file beside its save: saved by revision, refused on a 
   const loose = new BookStore(null, "miami", book);
   expect([loose.kept, loose.save(book(), 0, "ada", ""), loose.book.revision]).toEqual([false, { ok: true, revision: 1 }, 1]);
 });
+
+test("a save is made at one moment: a history that cannot be kept leaves the file, the world and the answer on the same book, and a book that cannot be written changes nothing", () => {
+  const path = join(dir, "moment.db.supply.json");
+  const said: string[] = [];
+  const open = () => new BookStore(path, "miami", book, (l) => said.push(l), () => 1000);
+  const store = open();
+  // A folder stands where the history belongs, so that it cannot be put there.
+  mkdirSync(`${path}.history`);
+  const next = book();
+  next.tiers[0]!.target = 250;
+  const onDisk = (): number => (existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as SupplyBook).revision : 0);
+  const first = store.save(next, 0, "ada", "");
+  // The book is saved and in force, and says that its history was not kept.
+  expect([first, store.book.revision, store.book.tiers[0]!.target, onDisk()]).toEqual([{ ok: true, revision: 1, unkept: expect.stringContaining("history") }, 1, 250, 1]);
+  expect(said.at(-1)).toMatch(/^drop book: revision 1 is saved, but its history could not be written/);
+  // The next editor saves from what is in force, and a start finds the same book.
+  expect(store.save(next, 0, "bob", "")).toEqual({ ok: false, conflict: 1 });
+  expect([open().book.revision, open().book.tiers[0]!.target]).toEqual([1, 250]);
+  // Once the history can be written again, it holds what was saved while it could not.
+  rmSync(`${path}.history`, { recursive: true });
+  next.tiers[0]!.target = 260;
+  expect(store.save(next, 1, "ada", "again")).toEqual({ ok: true, revision: 2 });
+  expect(open().revisions().map((r) => [r.revision, r.book.tiers[0]!.target])).toEqual([[1, 250], [2, 260]]);
+  // A book with nowhere to be written is not saved, in the world or anywhere: the answer says so and nothing has changed.
+  const lost = new BookStore(join(dir, "no-such-folder", "w.supply.json"), "miami", book, (l) => said.push(l));
+  const r = lost.save(next, 0, "ada", "");
+  expect([r.ok, "failed" in r && r.failed.length > 0, lost.book.revision, lost.starter, lost.revisions().length]).toEqual([false, true, 0, true, 0]);
+});
+

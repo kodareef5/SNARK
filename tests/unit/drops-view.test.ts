@@ -6,6 +6,7 @@ import { OFF_TARGET, catalogOfWire, css, load, matrix, nameOf, num, pct, setsOf,
 import { starterBook } from "../../content/supply/starter.ts";
 import { catalogOf } from "../../shared/supply/catalog.ts";
 import { compileBook } from "../../shared/supply/compile.ts";
+import { simulate } from "../../shared/supply/simulate.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const game = catalogOf(coreRegistry());
@@ -92,3 +93,18 @@ test("a simulation's figures: the rolls' worth against the target, each thing's 
   expect([has(false), has(true), simulation(l, "no/table", false, 10, 1)]).toEqual([false, true, null]);
   expect([num(12800), num(999.6), num(1234567), pct(0.424), pct(0.004), pct(0), css(0x3a8cff), css(0xff)]).toEqual(["12,800", "1,000", "1,234,567", "42%", "under 1%", "0%", "#3a8cff", "#0000ff"]);
 });
+
+test("the simulator rolls a table as this world's server does: at its SupplyCrateLootQualityMultiplier, which the matrix leaves out", () => {
+  const twice = load(book, catalog, 50, 2);
+  // What the server compiles and rolls (server/supply.ts compiled), by the same seed.
+  const server = compileBook(book, catalog, { quality: 2 });
+  const rolled = simulate(server, server.tables.get("red/arms")!, false, 5000, 11);
+  const page = simulation(twice, "red/arms", false, 5000, 11)!;
+  expect([page.stats.mean, page.stats.quality]).toEqual([rolled.mean, rolled.quality]);
+  // It is richer than the book alone, which the page still shows where asked and holds its tables to their targets by.
+  const plain = simulation(twice, "red/arms", false, 5000, 11, false, false, false)!;
+  expect([plain.stats.mean, page.stats.mean > plain.stats.mean * 1.1, twice.quality]).toEqual([simulation(l, "red/arms", false, 5000, 11)!.stats.mean, true, 2]);
+  const held = (of: ReturnType<typeof load>): (number | undefined)[] => matrix(of).flat().map((c) => c?.designed);
+  expect([held(twice), twice.today === twice.world.today, l.world.today === l.today, l.quality]).toEqual([held(load(book, catalog, 50)), false, true, 1]);
+});
+

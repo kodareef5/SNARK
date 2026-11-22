@@ -70,11 +70,12 @@ export function show(kind: Kind, value: unknown): string {
 
 /**
  * A field's text as its value: `ok` false for text that is not its kind, which the page marks and does not put in the
- * draft. An empty field is no value (the key is taken away), where `blank` allows it.
+ * draft. An empty field is no value (the key is taken away), where `blank` allows it. A tick that is not set is no value
+ * too, except on a thing the book must say either way (a circuit's `on`), where it is false.
  */
 export function read(kind: Kind, text: string, blank = true): { ok: boolean; value?: unknown } {
   const t = text.trim();
-  if (kind === "flag") return { ok: true, value: t === "true" ? true : undefined };
+  if (kind === "flag") return { ok: true, value: t === "true" ? true : blank ? undefined : false };
   if (t === "") return blank ? { ok: true, value: undefined } : { ok: false };
   const pair = (): number[] | null => {
     const parts = t.split(/\s*(?:to|-|–|,)\s*/).map(Number);

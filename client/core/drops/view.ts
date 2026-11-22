@@ -5,8 +5,8 @@
 
 import { QUALITY_NAMES } from "../../../shared/sim/items.ts";
 import { tableKey, type EntryDoc, type SupplyBook } from "../../../shared/supply/book.ts";
-import { catalogFrom, type Catalog, type CatalogItem } from "../../../shared/supply/catalog.ts";
-import type { Compiled } from "../../../shared/supply/compile.ts";
+import { catalogFrom, withFuture, type Catalog, type CatalogItem } from "../../../shared/supply/catalog.ts";
+import { compileBook, type Compiled } from "../../../shared/supply/compile.ts";
 import { measure, type Cell } from "../../../shared/supply/measure.ts";
 import { simulate, type SimStats } from "../../../shared/supply/simulate.ts";
 
@@ -28,15 +28,23 @@ export interface Loaded {
   /** The book against what the game has, and against that and what it waits for. */
   readonly today: Compiled;
   readonly designed: Compiled;
+  /**
+   * This world's SupplyCrateLootQualityMultiplier, and the book compiled as its server compiles it (server/supply.ts
+   * compiled). The matrix holds tables to their targets by the book alone; the simulator rolls what this world gives.
+   */
+  readonly quality: number;
+  readonly world: { readonly today: Compiled; readonly designed: Compiled };
 }
 
 export function catalogOfWire(wire: CatalogWire): Catalog {
   return catalogFrom(wire.items, wire.renamed);
 }
 
-/** A book compiled and measured against a catalogue. The book has no faults (bookFaults). */
-export function load(book: SupplyBook, catalog: Catalog, rolls = MATRIX_ROLLS): Loaded {
-  return { book, catalog, ...measure(book, catalog, rolls) };
+/** A book compiled and measured against a catalogue, for a world of the given quality multiplier. The book has no faults (bookFaults). */
+export function load(book: SupplyBook, catalog: Catalog, rolls = MATRIX_ROLLS, quality = 1): Loaded {
+  const measured = measure(book, catalog, rolls);
+  const world = quality === 1 ? { today: measured.today, designed: measured.designed } : { today: compileBook(book, catalog, { quality }), designed: compileBook(book, withFuture(catalog, book), { quality }) };
+  return { book, catalog, ...measured, quality, world };
 }
 
 /** A thing's name to show: the game's label, else ARK's name from the book's future list, else its id without its pack. */
@@ -208,9 +216,13 @@ export interface SimView {
   to: number;
 }
 
-/** A table rolled `n` times: `designed` counts what the book waits for; `fill` is a dormant table opened by an admin. */
-export function simulation(l: Loaded, key: string, ringed: boolean, n: number, seed: number, designed = false, fill = false): SimView | null {
-  const compiled = designed ? l.designed : l.today;
+/**
+ * A table rolled `n` times as this world's server rolls it: `designed` counts what the book waits for, `fill` is a
+ * dormant table opened by an admin, and `world` false leaves out the world's quality multiplier, for the book alone.
+ */
+export function simulation(l: Loaded, key: string, ringed: boolean, n: number, seed: number, designed = false, fill = false, world = true): SimView | null {
+  const from = world ? l.world : l;
+  const compiled = designed ? from.designed : from.today;
   const table = compiled.tables.get(key);
   if (!table) return null;
   const stats = simulate(compiled, table, ringed, Math.max(1, Math.min(200000, Math.floor(n))), seed, fill);

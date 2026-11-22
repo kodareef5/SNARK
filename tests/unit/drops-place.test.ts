@@ -1,8 +1,8 @@
 // Places and pace on the drop book's admin page (client/core/drops/place.ts).
 
 import { expect, test } from "bun:test";
-import { ensureAt, setAt } from "../../client/core/drops/edit.ts";
-import { addCircuit, addSite, circuitOf, forecast, inWorld, moveSite, removeCircuit, removeSite, siteNear, toPixel, toWorld } from "../../client/core/drops/place.ts";
+import { ensureAt, read, setAt } from "../../client/core/drops/edit.ts";
+import { addCircuit, addSite, circuitOf, forecast, inWorld, looseSites, moveSite, removeCircuit, removeLoose, removeSite, siteNear, takeOut, toPixel, toWorld } from "../../client/core/drops/place.ts";
 import { starterBook } from "../../content/supply/starter.ts";
 import { withSites } from "../../content/supply/sites.ts";
 import { bookFaults } from "../../shared/supply/book.ts";
@@ -50,6 +50,34 @@ test("sites are added under a circuit's next key, moved, found by where they are
   ensureAt(b, cls);
   setAt(b, cls, 2);
   expect(b.classes[0]!.weights).toEqual({ red: 2 });
+});
+
+test("a circuit is switched off by its tick and the book still saves; taken out, its sites go with it and no other circuit's do", () => {
+  const b = withSites(starterBook(), "core:miami");
+  const many = b.sites.length;
+  const shore = b.circuits[0]!.sites.length;
+  expect([b.circuits[0]!.key, b.circuits[0]!.on, shore > 100]).toEqual(["shore", true, true]);
+  // The tick of a thing the book must say either way reads as false, not as nothing: a circuit with no `on` is a fault.
+  const off = read("flag", "false", false);
+  expect([off, read("flag", "true", false), read("flag", "false")]).toEqual([{ ok: true, value: false }, { ok: true, value: true }, { ok: true, value: undefined }]);
+  setAt(b, ["circuits", 0, "on"], off.value);
+  expect([b.circuits[0]!.on, "on" in b.circuits[0]!, bookFaults(b).filter((f) => !f.warn), forecast(b, b.circuits[0]!).held]).toEqual([false, true, [], "it is off"]);
+  // A site two circuits name stays while one of them is left.
+  const shared = b.circuits[0]!.sites[0]!;
+  b.circuits[1]!.sites.push(shared);
+  // What the page's button does at a circuit's place: the circuit and the sites it alone named.
+  takeOut(b, ["circuits", 0]);
+  expect([b.circuits.map((c) => c.key), b.sites.length, b.sites.some((s) => s.key === shared), bookFaults(b)]).toEqual([["inland", "deep"], many - shore + 1, true, []]);
+  // Every site left is some circuit's: none is kept that the map would not show.
+  const named = new Set(b.circuits.flatMap((c) => c.sites));
+  expect(b.sites.every((s) => named.has(s.key))).toBe(true);
+  // A book read from a file may have sites no circuit names: they are told apart and taken out together.
+  b.sites.push({ key: "stray/1", x: 10, z: 10 }, { key: "stray/2", x: 20, z: 20 });
+  expect([looseSites(b).map((s) => s.key), removeLoose(b), looseSites(b), b.sites.length]).toEqual([["stray/1", "stray/2"], 2, [], many - shore + 1]);
+  // At any other place it takes out what is there, as before.
+  const slots = b.tables["white/arms"]!.slots.length;
+  takeOut(b, ["tables", "white/arms", "slots", 0]);
+  expect(b.tables["white/arms"]!.slots.length).toBe(slots - 1);
 });
 
 test("a circuit's forecast is its clock's pace, held back by what may be live at once, with each tier's share", () => {

@@ -2,7 +2,7 @@
 // rules. Each draws fields of the draft (state.ts field); the map also listens to its own picture.
 
 import { esc } from "../core/admin/format.ts";
-import { addSite, circuitOf, forecast, inWorld, moveSite, siteNear, toPixel, toWorld } from "../core/drops/place.ts";
+import { addSite, circuitOf, forecast, inWorld, looseSites, moveSite, siteNear, toPixel, toWorld } from "../core/drops/place.ts";
 import { css, num, pct, type Loaded } from "../core/drops/view.ts";
 import { ANNOUNCES, MARKS } from "../../shared/sim/supply.ts";
 import type { CircuitDoc, SiteDoc } from "../../shared/supply/book.ts";
@@ -39,7 +39,7 @@ function circuitHtml(l: Loaded, c: CircuitDoc, k: number): string {
   const f = forecast(d, c);
   const pace = f.hour === 0 ? `<span class="warn">calls none: ${esc(f.held)}</span>` : `about <b>${f.hour.toFixed(1)}</b> an hour with somebody near${f.held === "" ? "" : ` <span class="warn">(its clock asks for ${f.asked.toFixed(1)}; held by ${esc(f.held)})</span>`}`;
   const mix = f.tiers.map((t) => `<i style="width:${(t.share * 100).toFixed(2)}%;background:${css(l.book.tiers.find((x) => x.key === t.key)?.rgb ?? 0x888888)}" title="${esc(t.key)} ${pct(t.share)}"></i>`).join("");
-  return `<div class="slot"><div class="row"><h3>${esc(c.key)}</h3>${field([...at, "name"], "text", 150)}<label>on ${field([...at, "on"], "flag")}</label><span class="grow"></span><button data-do="del" data-at="${esc(JSON.stringify(at))}" class="risk" title="Its sites go with it.">Take this circuit out</button></div>
+  return `<div class="slot"><div class="row"><h3>${esc(c.key)}</h3>${field([...at, "name"], "text", 150)}<label>on ${field([...at, "on"], "flag", 64, false)}</label><span class="grow"></span><button data-do="del" data-at="${esc(JSON.stringify(at))}" class="risk" title="Its sites go with it.">Take this circuit out</button></div>
     <div class="line"><label>most at once ${field([...at, "maxLive"], "whole", 50, false)}</label><label title="Seconds before its first drop.">first after ${field([...at, "firstDelay"], "pair", 100, false)} s</label><label title="Seconds between its drops.">then every ${field([...at, "interval"], "pair", 100, false)} s</label><label title="Empty for the book's.">ringed % ${field([...at, "ringedChance"], "share", 50)}</label><span class="dim">${c.sites.length === 0 ? "open ground" : `${num(c.sites.length)} sites`}</span></div>
     <div class="line"><span class="dim">tiers drawn, by weight</span>${d.tiers.map((t) => `<label>${esc(t.name)} ${field([...at, "tierWeights", t.key], "number", 46)}</label>`).join("")}</div>
     <div class="line"><span class="dim">classes, 1 where empty</span>${d.classes.map((x) => `<label>${esc(x.name)} ${field([...at, "classWeights", x.key], "number", 46)}</label>`).join("")}</div>
@@ -79,7 +79,9 @@ export function mapHtml(l: Loaded): string {
   const drop = `<div class="label" style="margin-top:10px">A test drop</div><div class="line"><select id="dropTier">${d.tiers.map((t) => `<option value="${esc(t.key)}"${t.key === m.tier ? " selected" : ""}>${esc(t.name)}</option>`).join("")}</select><select id="dropCls">${d.classes.map((c) => `<option value="${esc(c.key)}"${c.key === m.cls ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select><label><input type="checkbox" id="dropRinged"${m.ringed ? " checked" : ""}> ringed</label></div>
     <div class="row"><button data-do="drop"${at ? "" : " disabled"} title="Called at once by the book in force, as the console's supply call.">Call it ${at ? `at ${num(at[0]!)}, ${num(at[1]!)}` : "at a place clicked"}</button><button data-do="landall" title="Every pending drop lands now.">Land all</button></div>`;
   const live = m.live ? `<div class="label" style="margin-top:10px">Live now</div>${m.live.drops.length === 0 ? '<span class="dim">no drops</span>' : m.live.drops.map((x) => `<div><span class="swatch" style="background:${css(l.book.tiers.find((t) => t.key === x.tier)?.rgb ?? 0x888888)}"></span>${x.id}: ${x.ringed ? "ringed " : ""}${esc(x.tier)} ${esc(x.cls)}, ${esc(x.state)} <button data-do="cancel" data-id="${x.id}" class="risk">Cancel</button></div>`).join("")}` : "";
-  return `<section class="glass"><div class="row"><h2>Map and sites</h2><span class="dim">${num(d.sites.length)} sites in ${d.circuits.length} circuits; the rings are the obelisks' decks, where no drop lands</span><span class="grow"></span>
+  const loose = looseSites(d).length;
+  const strays = loose === 0 ? "" : `<span class="warn" title="Nothing lands at them and they keep no ground clear. They are the hollow grey squares.">${num(loose)} sites no circuit names</span><button data-do="unloose" class="risk">Take them out</button>`;
+  return `<section class="glass"><div class="row"><h2>Map and sites</h2><span class="dim">${num(d.sites.length - loose)} sites in ${d.circuits.length} circuits; the rings are the obelisks' decks, where no drop lands</span>${strays}<span class="grow"></span>
       <label><input type="checkbox" id="mapAdd"${m.adding ? " checked" : ""}> add sites by clicking</label><label>zoom <select id="mapZoom">${[1, 2, 4].map((z) => `<option${z === m.zoom ? " selected" : ""}>${z}</option>`).join("")}</select></label>
       <button data-do="found" title="A place to each square of 420 m wherever a drop may land now, in three bands by how far each is from where survivors rise. It replaces the draft's sites and circuits; nothing is saved until Save.">Find starter sites</button><button data-do="relive">Read what is live</button></div>
     <div class="mapgrid"><div class="mapbox"><canvas id="map" width="${side()}" height="${side()}" style="width:${side()}px;height:${side()}px"></canvas></div><div>${circuits}${chosen}${drop}${live}</div></div></section>`;
@@ -121,6 +123,13 @@ export function mapDraw(l: Loaded): void {
     }
   });
   g.globalAlpha = 1;
+  // One no circuit names is a hollow grey square: it is in the book and does nothing.
+  g.strokeStyle = "#9aa7b4";
+  g.lineWidth = 1;
+  for (const site of looseSites(d)) {
+    const [px, py] = toPixel(w, site.x, site.z, s);
+    g.strokeRect(px - r / 2, py - r / 2, r, r);
+  }
   for (const x of live.drops) {
     const [px, py] = toPixel(w, x.x, x.z, s);
     g.fillStyle = css(l.book.tiers.find((t) => t.key === x.tier)?.rgb ?? 0x888888);

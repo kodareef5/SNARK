@@ -4,6 +4,7 @@
 // the world's sides across with the world in its middle, north up and x running west.
 
 import type { CircuitDoc, SiteDoc, SupplyBook } from "../../../shared/supply/book.ts";
+import { removeAt, type Path } from "./edit.ts";
 
 export interface WorldSize {
   sizeX: number;
@@ -71,13 +72,37 @@ export function addCircuit(book: SupplyBook, key: string): boolean {
   return true;
 }
 
-/** Takes a circuit away, and its sites with it. */
+/**
+ * Takes a circuit away, and its sites with it: those it alone names. A site another circuit names too stays for that
+ * one, and none is left that no circuit names, which the map would not show and nothing would land at.
+ */
 export function removeCircuit(book: SupplyBook, key: string): void {
-  const c = book.circuits.find((k) => k.key === key);
-  if (!c) return;
-  const gone = new Set(c.sites);
-  book.sites = book.sites.filter((s) => !gone.has(s.key));
+  if (!book.circuits.some((k) => k.key === key)) return;
   book.circuits = book.circuits.filter((k) => k.key !== key);
+  const named = new Set(book.circuits.flatMap((k) => k.sites));
+  book.sites = book.sites.filter((s) => named.has(s.key));
+}
+
+/**
+ * The sites no circuit names (a book read from a file may have them): no drop lands at one and it keeps no ground
+ * clear (server/supply.ts plan), so the map shows them apart and offers to take them out.
+ */
+export function looseSites(book: SupplyBook): SiteDoc[] {
+  const named = new Set(book.circuits.flatMap((c) => c.sites));
+  return book.sites.filter((s) => !named.has(s.key));
+}
+
+export function removeLoose(book: SupplyBook): number {
+  const loose = new Set(looseSites(book).map((s) => s.key));
+  book.sites = book.sites.filter((s) => !loose.has(s.key));
+  return loose.size;
+}
+
+/** What the page's "take out" does at a place of the draft: a circuit goes with its sites, and anything else alone. */
+export function takeOut(book: SupplyBook, path: Path): void {
+  const circuit = path.length === 2 && path[0] === "circuits" && typeof path[1] === "number" ? book.circuits[path[1]] : undefined;
+  if (circuit) removeCircuit(book, circuit.key);
+  else removeAt(book, path);
 }
 
 export interface Forecast {

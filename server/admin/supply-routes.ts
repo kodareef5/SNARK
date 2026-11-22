@@ -10,9 +10,10 @@
 
 import { OP_ADMIN } from "../console.ts";
 import type { Host } from "../host.ts";
-import type { BookFault } from "../../shared/supply/book.ts";
+import { bookFaults, type BookFault, type SupplyBook } from "../../shared/supply/book.ts";
 import { MOST } from "../../shared/supply/book.ts";
 import { catalogOf } from "../../shared/supply/catalog.ts";
+import { compileBook } from "../../shared/supply/compile.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { hashString } from "../../shared/hash.ts";
 import { bandsOf, findSites } from "../../shared/supply/sites.ts";
@@ -160,10 +161,12 @@ export class SupplyRoutes {
     const { supplyBook: store, supply } = this.host;
     const saved = (r: ReturnType<typeof store.save>, did: string): Response => {
       if (r.ok) {
-        this.did(`${did}: revision ${r.revision}`);
-        return json({ revision: r.revision });
+        this.did(`${did}: revision ${r.revision}${r.unkept ? ` (${r.unkept})` : ""}`);
+        return json({ revision: r.revision, ...(r.unkept ? { unkept: r.unkept } : {}) });
       }
       if ("conflict" in r) return json({ error: "The book was saved by another editor since this page read it.", revision: r.conflict }, 409);
+      // The file could not be written: nothing changed, here or on the disk, and the page keeps its draft.
+      if ("failed" in r) return json({ error: `${r.failed[0]!.toUpperCase()}${r.failed.slice(1)}.` }, 500);
       return json({ error: "The book has faults.", faults: r.faults satisfies BookFault[] }, 422);
     };
     if (what === "book" || what === "reset" || what === "restore") {
@@ -198,10 +201,14 @@ export class SupplyRoutes {
       return json({ said: this.console(`supply ${what} ${id}${what === "land" && seconds !== null ? ` ${seconds}` : ""}`) });
     }
     if (what === "ark") {
-      // ARK's own override, as pasted from a Game.ini: what it would make of this book, and what it names that this
-      // build lacks. Nothing is changed: the page puts the sets and tables in its draft.
+      // ARK's own override, as pasted from a Game.ini: what it would make of a book, and what it names that this build
+      // lacks. Nothing is changed: the page puts the sets and tables in its draft. The book is the page's draft where
+      // it sends one, since what an override is silent on is kept from the book it is put in, and else the one in force.
       if (typeof b.text !== "string" || b.text.length > 600000) return json({ error: "Paste ConfigOverrideSupplyCrateItems lines." }, 400);
-      return json(this.ark(b.text));
+      if (b.book === undefined) return json(this.ark(b.text, store.book));
+      const faults = bookFaults(b.book).filter((f) => !f.warn);
+      if (faults.length > 0) return json({ error: "The draft has faults: mend them, then read the paste again.", faults }, 422);
+      return json(this.ark(b.text, b.book as SupplyBook));
     }
     return json({ error: "No such act." }, 404);
   }
@@ -222,19 +229,23 @@ export class SupplyRoutes {
   }
 
   /** A pasted override read as the server reads its own (server/supply/ark.ts), into the book's documents. */
-  private ark(text: string): unknown {
-    const { supplyBook: store, world, rules } = this.host;
+  private ark(text: string, book: SupplyBook): unknown {
+    const { world, rules } = this.host;
     // A line with no key is ARK's value alone: it is read as the setting's.
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "").map((l) => (l.startsWith("(") ? `${SETTING}=${l}` : l));
     const ini = parseIni(lines.join("\n"));
     const entries = ini.entries.filter((e) => e.key.toLowerCase() === SETTING.toLowerCase()).map((e) => e.value);
     const lists = new Lists(rules, world.reg);
     const loot = catalogOf(world.reg);
-    const made = arkCrates(entries, store.book.tiers, (name) => lists.ids(SETTING, name, "item"), (id) => loot.byId.get(id)?.never !== true);
-    const docs = arkDocs(made.tables, store.book.classes);
+    const made = arkCrates(entries, book.tiers, (name) => lists.ids(SETTING, name, "item"), (id) => loot.byId.get(id)?.never !== true);
+    const docs = arkDocs(made.tables, book.classes, book.tables);
+    // A crate of ARK's may be worth less than this book lets a table be (its tier's target times rules.floorShare).
+    // Such a table is dormant: no circuit calls it, and a tier whose every class has it is never called. It is said here.
+    const put = compileBook({ ...book, sets: { ...book.sets, ...docs.sets }, tables: { ...book.tables, ...docs.tables } }, loot, { quality: rules.num("SupplyCrateLootQualityMultiplier") });
     return {
       crates: entries.length,
       ...docs,
+      dormant: Object.keys(docs.tables).filter((key) => put.tables.get(key)?.dormant === true),
       said: [...ini.faults.map((f) => `line ${f.line}: ${f.why}`), ...made.passed],
       missing: [...new Set(lists.missing.map((m) => m.name))],
       unclear: lists.unclear.map((u) => ({ name: u.name, could: [...u.could] })),

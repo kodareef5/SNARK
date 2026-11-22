@@ -147,19 +147,32 @@ export function arkCrates(entries: readonly IniNode[], tiers: readonly TierDoc[]
 export interface ArkDocs {
   sets: Record<string, SetDoc>;
   tables: Record<string, TableDoc>;
+  /** A tier's sets of ARK's for each kind of drop: none where the override is silent, and the book's own are kept. */
   tiers: { tier: string; plain: number; ringed: number }[];
+}
+
+/** A slot as only one kind of drop has it, or null where that kind never had it. */
+function only(slot: SlotDoc, which: "plain" | "ringed"): SlotDoc | null {
+  const plain = slot.chance ?? 1;
+  const ringed = slot.ringed ?? plain;
+  if (which === "plain") return plain > 0 ? { ...slot, ringed: 0 } : null;
+  return ringed > 0 ? { ...slot, chance: 0, ringed } : null;
 }
 
 /**
  * ARK's tables as the book's own documents, so that an override can be made the book's and edited: a set for each of
- * a crate's item sets, and for every class of the crate's tier a table of one slot that picks among them as ARK's
- * crate does. Where a tier has a ringed crate too, the plain slot is a plain drop's alone and the ringed one a ringed
- * drop's. ARK has no classes, so every class of the tier gets the same table.
+ * a crate's item sets, and for every class of the crate's tier a table with a slot that picks among them as ARK's
+ * crate does. ARK has no classes, so every class of the tier gets the same.
+ *
+ * A crate and its `_Double` are two crates to ARK, and an override of one says nothing of the other: the server's own
+ * setting leaves the other kind of drop to the book (server/supply.ts land), and so does this. Where the override has
+ * a tier's ringed crate alone, a plain drop keeps the slots `book` gives it in each class, and the other way about. A
+ * table with nothing for a plain drop would be dormant, and no circuit would call its tier at all.
  */
-export function arkDocs(tables: ReadonlyMap<string, ArkTables>, classes: readonly ClassDoc[]): ArkDocs {
+export function arkDocs(tables: ReadonlyMap<string, ArkTables>, classes: readonly ClassDoc[], book: Readonly<Record<string, TableDoc>> = {}): ArkDocs {
   const out: ArkDocs = { sets: {}, tables: {}, tiers: [] };
   for (const [tier, t] of tables) {
-    const slots: SlotDoc[] = [];
+    const ark: { plain?: SlotDoc; ringed?: SlotDoc } = {};
     for (const which of ["plain", "ringed"] as const) {
       const def = t[which];
       if (!def) continue;
@@ -183,11 +196,17 @@ export function arkDocs(tables: ReadonlyMap<string, ArkTables>, classes: readonl
         };
         return { set: key, ...(set.weight !== undefined ? { weight: set.weight } : {}) };
       });
-      const chances = which === "ringed" ? { chance: 0, ringed: 1 } : t.ringed ? { ringed: 0 } : {};
-      slots.push({ name: which === "ringed" ? "ARK's ringed crate" : "ARK's crate", ...chances, pick: { min: def.sets?.min ?? 1, max: def.sets?.max ?? 1, ...(def.sets?.power !== undefined ? { power: def.sets.power } : {}), ...(def.sets?.replace ? { replace: true } : {}) }, from });
+      const pick = { min: def.sets?.min ?? 1, max: def.sets?.max ?? 1, ...(def.sets?.power !== undefined ? { power: def.sets.power } : {}), ...(def.sets?.replace ? { replace: true } : {}) };
+      ark[which] = which === "ringed" ? { name: "ARK's ringed crate", chance: 0, ringed: 1, pick, from } : { name: "ARK's crate", ringed: 0, pick, from };
     }
-    if (slots.length === 0) continue;
-    for (const cls of classes) out.tables[`${tier}/${cls.key}`] = { tier, cls: cls.key, slots: JSON.parse(JSON.stringify(slots)) as SlotDoc[], note: "From ConfigOverrideSupplyCrateItems, as pasted." };
+    if (!ark.plain && !ark.ringed) continue;
+    for (const cls of classes) {
+      const key = `${tier}/${cls.key}`;
+      const kept = (which: "plain" | "ringed"): SlotDoc[] => (book[key]?.slots ?? []).flatMap((slot) => only(slot, which) ?? []);
+      const slots = [...(ark.plain ? [ark.plain] : kept("plain")), ...(ark.ringed ? [ark.ringed] : kept("ringed"))];
+      const whose = ark.plain && ark.ringed ? "" : ` ${ark.plain ? "Ringed" : "Plain"} drops are the book's own, as they were.`;
+      out.tables[key] = { tier, cls: cls.key, slots: JSON.parse(JSON.stringify(slots)) as SlotDoc[], note: `From ConfigOverrideSupplyCrateItems, as pasted.${whose}` };
+    }
     out.tiers.push({ tier, plain: t.plain?.from.length ?? 0, ringed: t.ringed?.from.length ?? 0 });
   }
   return out;

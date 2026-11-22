@@ -350,8 +350,13 @@ export class Supply {
     this.planned = book;
     this.siteByKey.clear();
     this.siteGrid.clear();
+    // The ground kept clear is where drops land: the sites a circuit names, switched on or not for now. A site no
+    // circuit names is in the book and nowhere else: nothing lands at it, and it holds nobody's ground.
+    const named = new Set<string>();
+    for (const c of book.circuits) for (const key of c.sites) named.add(key);
     for (const s of book.sites) {
       this.siteByKey.set(s.key, s);
+      if (!named.has(s.key)) continue;
       const cell = Math.floor(s.z / CHUNK_SIZE) * 65536 + Math.floor(s.x / CHUNK_SIZE);
       const list = this.siteGrid.get(cell);
       if (list) list.push(s);
@@ -489,7 +494,7 @@ export class Supply {
 
   /**
    * Why nothing may be built at (x, z), or "": on a PvE server nothing is built near a place drops land at, as on
-   * ARK's, unless PvEAllowStructuresAtSupplyDrops.
+   * ARK's, unless PvEAllowStructuresAtSupplyDrops. A place drops land at is a site some circuit names (plan).
    */
   buildFault(x: number, z: number): string {
     const { rules } = this.ctx;

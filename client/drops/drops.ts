@@ -3,8 +3,8 @@
 // is decided in client/core/drops; this file fetches, draws and listens.
 
 import { esc } from "../core/admin/format.ts";
-import { addEntry, addSlot, changes, differs, ensureAt, moveAt, parseBook, read, removeAt, setAt, type Kind, type Path } from "../core/drops/edit.ts";
-import { addCircuit, removeSite } from "../core/drops/place.ts";
+import { addEntry, addSlot, changes, differs, ensureAt, moveAt, parseBook, read, setAt, type Kind, type Path } from "../core/drops/edit.ts";
+import { addCircuit, removeLoose, removeSite, takeOut } from "../core/drops/place.ts";
 import { arkHtml, liveHtml } from "./live.ts";
 import { $, S, TABS, ask, field, post, say, type ArkWire, type BookWire, type RevisionWire, type Tab } from "./state.ts";
 import { circuitsHtml, dropPlace, mapDraw, mapHtml, mapListen, mapRead, tiersHtml } from "./world.ts";
@@ -57,7 +57,7 @@ function tablesHtml(l: Loaded): string {
   const r = l.today.report;
   const notes = [`${Object.keys(l.book.tables).length} tables`, `${r.dormant.length} dormant`, `${r.waiting.length} waiting`, `${r.emptySets.length} sets with nothing the game has`, `${r.lints.length} things to look at`];
   return `<section class="glass"><div class="row"><h2>Every tier and class against its target</h2><span class="dim">${notes.join(" · ")}</span></div>
-    <p class="dim" style="margin:6px 0">A table's mean worth as designed, over its tier's target (the mark is the target). Each is rolled ${num(l.cells[0]?.designed.n ?? 0)} times here; the simulator rolls one as often as asked.</p>
+    <p class="dim" style="margin:6px 0">A table's mean worth as designed, over its tier's target (the mark is the target). Each is rolled ${num(l.cells[0]?.designed.n ?? 0)} times here; the simulator rolls one as often as asked.${l.quality === 1 ? "" : ` This world multiplies quality by ${l.quality} (SupplyCrateLootQualityMultiplier): the figures here are the book's alone, which its targets are held by, and the simulator rolls what the world gives.`}</p>
     <div class="scroll"><table class="matrix"><tr><th></th>${heads}</tr>${rows.join("")}</table></div>
     ${r.lints.length === 0 ? "" : `<p class="warn">${r.lints.map((f) => `${esc(f.path)}: ${esc(f.message)}`).join("<br>")}</p>`}</section>${S.open === "" ? "" : detailHtml(l, S.open)}`;
 }
@@ -122,10 +122,11 @@ function simHtml(l: Loaded): string {
   const keys = Object.keys(l.book.tables);
   if (!keys.includes(S.sim.key)) S.sim.key = keys[0] ?? "";
   const p = S.sim;
-  const v = simulation(l, p.key, p.ringed, p.n, p.seed, p.designed, true);
+  const v = simulation(l, p.key, p.ringed, p.n, p.seed, p.designed, true, p.world);
   const form = `<div class="row"><label>Table <select id="simKey">${keys.map((k) => `<option${k === p.key ? " selected" : ""}>${esc(k)}</option>`).join("")}</select></label>
     <label><input type="checkbox" id="simRinged"${p.ringed ? " checked" : ""}> ringed</label>
     <label title="Counts what the book waits for as if the game had it."><input type="checkbox" id="simDesigned"${p.designed ? " checked" : ""}> as designed</label>
+    <label title="SupplyCrateLootQualityMultiplier, as this world's server rolls. Unticked, the book alone, which is what its targets are held by."${l.quality === 1 ? " hidden" : ""}><input type="checkbox" id="simWorld"${p.world ? " checked" : ""}> at this world's quality × ${l.quality}</label>
     <label>Rolls <input id="simN" type="number" min="1" max="200000" step="1000" value="${p.n}" style="width:96px"></label>
     <label>Seed <input id="simSeed" type="number" min="0" step="1" value="${p.seed}" style="width:96px"></label><button id="simGo" class="go">Roll</button></div>`;
   if (!v) return `<section class="glass"><h2>Simulator</h2>${form}<p class="dim">No such table.</p></section>`;
@@ -182,7 +183,7 @@ function draw(): void {
 /** The draft changed: it is checked, and worked out again if it is sound. With faults the last sound figures stand. */
 function changed(): void {
   S.faults = bookFaults(S.draft!).filter((f) => !f.warn);
-  if (S.faults.length === 0) S.l = load(S.draft!, S.catalog!);
+  if (S.faults.length === 0) S.l = load(S.draft!, S.catalog!, undefined, S.wire!.settings.quality);
   draw();
 }
 
@@ -192,7 +193,7 @@ async function save(what: "book" | "reset", revision: number): Promise<void> {
   const { status, answer } = await post(what, { revision, book: S.draft, note });
   if (status === 200) {
     S.conflict = -1;
-    await start(`saved as revision ${String(answer.revision)}`);
+    await start(`saved as revision ${String(answer.revision)}${answer.unkept ? `, but ${String(answer.unkept)}` : ""}`);
   } else if (status === 409) {
     S.conflict = Number(answer.revision);
     say("not saved: another editor saved first", "warn");
@@ -211,10 +212,11 @@ async function act(at: HTMLElement): Promise<void> {
   if (what === "edit") S.editing = !S.editing;
   else if (what === "line") addEntry(d, at.dataset.set!);
   else if (what === "slot") addSlot(d, at.dataset.table!, $<HTMLSelectElement>("newSlot").value);
-  else if (what === "del") removeAt(d, path);
+  else if (what === "del") takeOut(d, path);
   else if (what === "up" || what === "down") moveAt(d, path, what === "up" ? -1 : 1);
   else if (what === "discard") [S.draft, S.conflict] = [structuredClone(S.wire!.book), -1];
   else if (what === "unsite") [, S.map.site] = [removeSite(d, S.map.site), ""];
+  else if (what === "unloose") say(`${removeLoose(d)} sites taken out: not saved yet`);
   else if (what === "circuit") {
     if (!addCircuit(d, $<HTMLInputElement>("newCircuit").value.trim())) return say("a circuit's key is small letters, digits, _ and -, and not one taken", "warn");
   } else if (what === "found") {
@@ -224,17 +226,17 @@ async function act(at: HTMLElement): Promise<void> {
     if (made.sites.length === 0) return say("no place a drop may land was found", "warn");
     [d.sites, d.circuits] = [made.sites, made.circuits];
     say(`${made.sites.length} sites found in ${made.circuits.length} circuits: not saved yet`);
-  } else if (what === "arkread") {
+  } else if (what === "arkread" || what === "arkput") {
     // ARK's own override, read by the server as it reads its own setting: nothing is changed by reading it.
-    S.ark.text = $<HTMLTextAreaElement>("arkText").value;
-    const got = await post("ark", { text: S.ark.text });
+    // What it is silent on (a tier's plain crate, where it has only the ringed one) is kept from the draft as it stands.
+    if (what === "arkread") S.ark.text = $<HTMLTextAreaElement>("arkText").value;
+    const got = await post("ark", { text: S.ark.text, book: d });
     if (got.status !== 200) return say(String(got.answer.error ?? got.status), "warn");
     S.ark.got = got.answer as unknown as ArkWire;
-    return draw();
-  } else if (what === "arkput") {
-    Object.assign(d.sets, structuredClone(S.ark.got!.sets));
-    Object.assign(d.tables, structuredClone(S.ark.got!.tables));
-    say(`ARK's tables for ${S.ark.got!.tiers.map((t) => t.tier).join(", ")} are in the draft: not saved yet`);
+    if (what === "arkread") return draw();
+    Object.assign(d.sets, S.ark.got.sets);
+    Object.assign(d.tables, S.ark.got.tables);
+    say(`ARK's tables for ${S.ark.got.tiers.map((t) => t.tier).join(", ")} are in the draft: not saved yet`);
     S.tab = "tables";
   } else if (what === "compare") {
     const old = await ask<{ revision: number; book: BookWire["book"] }>(`revision.json?n=${at.dataset.id}`);
@@ -271,7 +273,7 @@ async function act(at: HTMLElement): Promise<void> {
 
 /** Reads the simulator's form into the state. */
 function simRead(): void {
-  S.sim = { key: $<HTMLSelectElement>("simKey").value, ringed: $<HTMLInputElement>("simRinged").checked, designed: $<HTMLInputElement>("simDesigned").checked, n: Number($<HTMLInputElement>("simN").value) || 1000, seed: Number($<HTMLInputElement>("simSeed").value) || 0 };
+  S.sim = { key: $<HTMLSelectElement>("simKey").value, ringed: $<HTMLInputElement>("simRinged").checked, designed: $<HTMLInputElement>("simDesigned").checked, world: $<HTMLInputElement>("simWorld").checked, n: Number($<HTMLInputElement>("simN").value) || 1000, seed: Number($<HTMLInputElement>("simSeed").value) || 0 };
 }
 
 document.addEventListener("click", (e) => {
@@ -334,7 +336,7 @@ async function start(said = ""): Promise<void> {
   S.draft = structuredClone(wire.book);
   S.faults = [];
   S.revisions = null;
-  S.l = load(S.draft, S.catalog);
+  S.l = load(S.draft, S.catalog, undefined, wire.settings.quality);
   say(said);
   fromHash();
   draw();

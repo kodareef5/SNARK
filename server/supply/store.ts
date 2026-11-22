@@ -3,8 +3,12 @@
 // compared as text, and is never the save's to lose. A save names the revision it changes and is refused if another
 // came first. One process owns a world and answers its admin page on the tick's thread, so compare and swap need no
 // lock. Each revision is also appended to a history beside the book, the last of them kept.
+//
+// A save is made at one moment, the rename of the book's file. Before it nothing has changed, in the file or in the
+// world, and whatever fails is answered as a save that was not made. From it on the book is saved, in force and
+// answered so, all three alike; its history is written after, and if that cannot be, the save stands and says so.
 
-import { existsSync, readFileSync, renameSync, writeFileSync, openSync, fsyncSync, closeSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync, openSync, fsyncSync, closeSync } from "node:fs";
 import { MOST, bookFaults, type BookFault, type SupplyBook } from "../../shared/supply/book.ts";
 
 /** Revisions kept in the history file. */
@@ -19,7 +23,35 @@ export interface BookRevision {
   readonly book: SupplyBook;
 }
 
-export type SaveResult = { ok: true; revision: number } | { ok: false; conflict: number } | { ok: false; faults: BookFault[] };
+/**
+ * `unkept` says why a saved book's history was not written: the book is saved and in force all the same. `failed`
+ * says why a book was not written at all: nothing has changed.
+ */
+export type SaveResult = { ok: true; revision: number; unkept?: string } | { ok: false; conflict: number } | { ok: false; faults: BookFault[] } | { ok: false; failed: string };
+
+/** Writes a file whole beside its place and renames it there, so a kill leaves the old file or the new and never half of one. */
+function put(path: string, text: string): void {
+  const tmp = `${path}.tmp`;
+  try {
+    writeFileSync(tmp, text);
+    const fd = openSync(tmp, "r");
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(tmp, path);
+  } catch (err) {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // What could not be written may not be there to take away.
+    }
+    throw err;
+  }
+}
+
+const why = (err: unknown): string => (err instanceof Error ? ((err as NodeJS.ErrnoException).code ?? err.message) : String(err));
 
 export class BookStore {
   /** The book in force. */
@@ -102,20 +134,29 @@ export class BookStore {
     const faults = bookFaults(book).filter((f) => !f.warn);
     if (faults.length > 0) return { ok: false, faults };
     const entry: BookRevision = { revision: book.revision, at: this.now(), by, note: note.slice(0, 200), book };
+    const history = [...this.history, entry].slice(-HISTORY);
+    let unkept = "";
     if (this.path !== null) {
-      // Written whole beside the book and renamed over it, so a kill leaves the old book or the new and never half of one.
-      const tmp = `${this.path}.tmp`;
-      writeFileSync(tmp, `${JSON.stringify(book, null, 1)}\n`);
-      const fd = openSync(tmp, "r");
-      fsyncSync(fd);
-      closeSync(fd);
-      renameSync(tmp, this.path);
-      this.history = [...this.history, entry].slice(-HISTORY);
-      writeFileSync(this.historyPath(), this.history.map((h) => JSON.stringify(h)).join("\n") + "\n");
-    } else this.history = [...this.history, entry].slice(-HISTORY);
+      try {
+        put(this.path, `${JSON.stringify(book, null, 1)}\n`);
+      } catch (err) {
+        // Not saved: the file is the old book's, the world's is too, and the editor is told.
+        this.say(`drop book: revision ${book.revision} could not be written to ${this.path} (${why(err)}), so revision ${this.book.revision} is still in force`);
+        return { ok: false, failed: `the book's file could not be written (${why(err)}): nothing is changed` };
+      }
+      // Saved. The history is the last fifty, each whole, so it is written whole again; what it lacks of this one is
+      // kept while the server runs and written with the next save that can be.
+      try {
+        put(this.historyPath(), history.map((h) => JSON.stringify(h)).join("\n") + "\n");
+      } catch (err) {
+        unkept = `its history could not be written (${why(err)})`;
+        this.say(`drop book: revision ${book.revision} is saved, but ${unkept}: it is kept while the server runs`);
+      }
+    }
+    this.history = history;
     this.book = book;
     this.starter = false;
-    return { ok: true, revision: book.revision };
+    return unkept === "" ? { ok: true, revision: book.revision } : { ok: true, revision: book.revision, unkept };
   }
 
   /** The starter book again, as the next revision. */
