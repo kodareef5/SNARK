@@ -53,8 +53,6 @@ function speciesOf(reg: Registry, kind: number): string {
 }
 
 export class Prompts implements FramePart {
-  /** The words under the crosshair this frame, or "". */
-  words = "";
   /** Entity index of the tribe's creature under the crosshair, or -1. */
   lookedAt = -1;
   /** Crosshair hit for boat service, including unclaimed hulls and salvage. */
@@ -129,8 +127,7 @@ export class Prompts implements FramePart {
       emotes.targetName = r.name[i]!;
     }
     if (emotes.open) characters.wantEmotes();
-    this.words = f.hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
-    if (b.active) f.hud.ammo = "E turn   Q next place   R form";
+    f.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
   }
 
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */

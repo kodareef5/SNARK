@@ -10,7 +10,11 @@ import type { Pack } from "../../shared/pack/pack.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Controls } from "./controls.ts";
 import type { HudModel, VehicleTelemetry } from "./hud.ts";
+import { sightShown, type SightAt, type SightShown } from "./hud/sight.ts";
 import type { HudFrame } from "./hud/widget.ts";
+import type { Lasers } from "./render/laser.ts";
+import type { SeatedAim } from "./seated-aim.ts";
+import type { VoicePort } from "./voice/port.ts";
 import type { Camera } from "./render/camera.ts";
 import type { VehicleRenderPose } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
@@ -38,6 +42,14 @@ export class AppFrame implements HudFrame {
   readonly remote: RemoteSample;
   readonly pack: Pack;
   readonly palette: Uint8Array;
+  /** Casts the lasers' beams. */
+  readonly lasers: Lasers;
+  /** Poses a seated body's aim. The app makes another when the registry changes. */
+  seatedAim: SeatedAim;
+  /** The voice port, or null; whether the talk key is down, and in which MODE_. */
+  voice: VoicePort | null = null;
+  talking = false;
+  talkMode = 0;
 
   /** The frame's time, the milliseconds since the last (16 for the first), and the window in pixels. */
   nowMs = 0;
@@ -86,11 +98,17 @@ export class AppFrame implements HudFrame {
   lookPitch = 0;
   /** Metres a look reaches what it tells of a creature: through a sight, its gaze's. */
   lookReach = 30;
+  /** Where the sight's look starts and how it points, and what the sight shows on the HUD (hud/sight.ts). */
+  readonly sightAt: SightAt = { yaw: 0, pitch: 0, laser: false, x: 0, y: 0, z: 0 };
+  readonly sight: SightShown = sightShown();
   /** The own body as the scene draws it, and whether it is a mount or a vehicle the body steers. */
   body!: OwnBody;
   riding = false;
   /** What the scene built. */
   packet!: FramePacket;
+  /** The words under the crosshair, and whether a piece is in hand to build with. */
+  prompt = "";
+  building = false;
 
   /** For the HUD's fills (hud/widget.ts HudFrame): the pause menu is open, a vehicle is driven, a mount's rivalry shows, what the governor did. */
   menu = false;
@@ -98,7 +116,7 @@ export class AppFrame implements HudFrame {
   rivalry = false;
   steady = "";
 
-  constructor(session: ClientSession, controls: Controls, ui: Ui, hud: HudModel, cam: Camera, remote: RemoteSample, pack: Pack) {
+  constructor(session: ClientSession, controls: Controls, ui: Ui, hud: HudModel, cam: Camera, remote: RemoteSample, pack: Pack, lasers: Lasers, seatedAim: SeatedAim) {
     this.session = session;
     this.controls = controls;
     this.ui = ui;
@@ -107,6 +125,8 @@ export class AppFrame implements HudFrame {
     this.remote = remote;
     this.pack = pack;
     this.palette = pack.palette;
+    this.lasers = lasers;
+    this.seatedAim = seatedAim;
   }
 
   /** The session's registry: content as written until the welcome, then as the server tuned it. */

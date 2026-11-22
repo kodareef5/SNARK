@@ -71,6 +71,8 @@ export const ACTION: HudWidget<ActionModel> = {
     if (!a) return;
     fillAction(m, a.alive ? c.session : null, a.reg);
     if (a.alive && a.inCar) m.ammo = "";
+    // With a piece in hand the line says the builder's keys.
+    if (a.building) m.ammo = "E turn   Q next place   R form";
   },
   build(f, m, at) {
     const { W, H } = at;

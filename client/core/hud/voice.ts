@@ -1,8 +1,13 @@
-// The microphone's state and who is heard, under the readout. The app's voice fills it (App.listen).
+// The microphone's state and who is heard, under the readout. The voice port is told where each speaker is by its own
+// part of the frame (voice/heard.ts).
 
 import { K_PANEL, lineHeight } from "../ui/nodes.ts";
 import { S_BUFF } from "../ui/style.ts";
+import { HEARD_MOST } from "../voice/heard.ts";
 import type { HudWidget } from "./widget.ts";
+
+/** Indexed by MODE_*. */
+const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
 
 /** The voice status line under the readout. KEY_TALKER is one name per survivor being heard. */
 export const KEY_VOICE = 37;
@@ -19,6 +24,22 @@ export interface VoiceModel {
 export const VOICE: HudWidget<VoiceModel> = {
   name: "voice",
   make: () => ({ voice: "", talkers: [], micLevel: 0 }),
+  fill(m, c) {
+    const f = c.frame;
+    if (!f) return;
+    m.talkers.length = 0;
+    m.voice = "";
+    const v = f.voice;
+    if (!v) return;
+    if (v.notice !== "") m.voice = v.notice;
+    else if (f.talking) m.voice = f.settings.toggleTalk && !v.sending ? "MIC OPEN" : TALK_LABEL[f.talkMode]!;
+    m.micLevel = v.level;
+    let n = 0;
+    for (const s of v.speakers.values()) {
+      if (n++ >= HEARD_MOST) break;
+      if (s.speaking && m.talkers.length < 8) m.talkers.push(s.name);
+    }
+  },
   build(f, m, at) {
     const { left, right, voiceY } = at;
     if (m.voice !== "") {

@@ -4,6 +4,10 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import type { HudModel, VehicleTelemetry } from "../hud.ts";
+import type { Lasers } from "../render/laser.ts";
+import type { SeatedAim } from "../seated-aim.ts";
+import type { VoicePort } from "../voice/port.ts";
+import type { SightAt, SightShown } from "./sight.ts";
 import type { Camera } from "../render/camera.ts";
 import type { Scene } from "../render/scene.ts";
 import type { ClientSession, RemoteSample } from "../session.ts";
@@ -57,6 +61,21 @@ export interface HudFrame {
   rivalry: boolean;
   /** What the governor has done, after the frame rate, or "". */
   steady: string;
+  /** The driven vehicle's instruments (hud/vehicle.ts Dash), or null. */
+  dash: VehicleTelemetry | null;
+  /** What a sight looked through shows this frame, and where its look starts and how it points (hud/sight.ts). */
+  sight: SightShown;
+  sightAt: SightAt;
+  /** What casts the lasers' beams, and what poses a seated body's aim. */
+  lasers: Lasers;
+  seatedAim: SeatedAim;
+  /** The voice port, or null; whether the talk key is down, and in which MODE_. */
+  voice: VoicePort | null;
+  talking: boolean;
+  talkMode: number;
+  /** The words under the crosshair (prompts.ts), and whether a piece is in hand to build with. */
+  prompt: string;
+  building: boolean;
 }
 
 /** Where the HUD's shared places are on a canvas, worked out once a build (layout.ts) and read by every widget. */

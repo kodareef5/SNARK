@@ -1,5 +1,6 @@
 // What a sight looked through shows: a scope's reticle and its window, a glass's readouts, a helmet's visor, the
-// magnification ladder, and a holo-scope's tint over the view. The app's sight section fills the model (App.frame).
+// magnification ladder, and a holo-scope's tint over the view. The app's sight says what shows (SightShown), and the fill
+// copies it onto the model.
 
 import type { HudModel } from "../hud.ts";
 import { SHAPE_TWIN, SHAPE_VISOR, TWIN_WIDE, VISOR_WIDE } from "../optics.ts";
@@ -84,6 +85,34 @@ export interface SightModel {
   zooming: boolean;
   glassHeld: boolean;
   visorReady: boolean;
+}
+
+/** Where a sight's look starts and how it points, and whether the held weapon's laser is on. */
+export interface SightAt {
+  yaw: number;
+  pitch: number;
+  laser: boolean;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** What the app's sight says of a frame: this widget's fields, and those of the crosshair's that the sight decides. */
+export interface SightShown extends SightModel {
+  orbit: boolean;
+  behind: boolean;
+  cone: number;
+  holo: boolean;
+}
+
+const start = (): SightModel => ({
+  scope: false, tint: 0, sightShare: 1, sightShape: 0, sightOffX: 0, sightOffY: 0, magnify: 0, magnifyMin: 0, magnifyMax: 0, sightMil: false, sightFov: 1, sightZoom: 0, sightZero: 0,
+  visor: false, visorZoom: 0, visorMode: 0, visorDigital: false, visorRange: 0, glass: false, glassZoom: 0, glassRange: 0, glassBearing: 0, glassMarked: false, zooming: false, glassHeld: false, visorReady: false,
+});
+
+/** What a sight shows before its first frame, made once by whoever keeps it. */
+export function sightShown(): SightShown {
+  return { ...start(), orbit: false, behind: false, cone: -1, holo: false };
 }
 
 /**
@@ -247,10 +276,16 @@ export const HOLO_TINT: HudWidget = {
 /** A scope's reticle over the laser dots, and under the readouts. */
 export const SIGHT: HudWidget<SightModel> = {
   name: "sight",
-  make: () => ({
-    scope: false, tint: 0, sightShare: 1, sightShape: 0, sightOffX: 0, sightOffY: 0, magnify: 0, magnifyMin: 0, magnifyMax: 0, sightMil: false, sightFov: 1, sightZoom: 0, sightZero: 0,
-    visor: false, visorZoom: 0, visorMode: 0, visorDigital: false, visorRange: 0, glass: false, glassZoom: 0, glassRange: 0, glassBearing: 0, glassMarked: false, zooming: false, glassHeld: false, visorReady: false,
-  }),
+  make: start,
+  fill(m, c) {
+    const s = c.frame?.sight;
+    if (!s) return;
+    m.scope = s.scope; m.tint = s.tint; m.sightShare = s.sightShare; m.sightShape = s.sightShape; m.sightOffX = s.sightOffX; m.sightOffY = s.sightOffY;
+    m.magnify = s.magnify; m.magnifyMin = s.magnifyMin; m.magnifyMax = s.magnifyMax; m.sightMil = s.sightMil; m.sightFov = s.sightFov; m.sightZoom = s.sightZoom; m.sightZero = s.sightZero;
+    m.visor = s.visor; m.visorZoom = s.visorZoom; m.visorMode = s.visorMode; m.visorDigital = s.visorDigital; m.visorRange = s.visorRange;
+    m.glass = s.glass; m.glassZoom = s.glassZoom; m.glassRange = s.glassRange; m.glassBearing = s.glassBearing; m.glassMarked = s.glassMarked;
+    m.zooming = s.zooming; m.glassHeld = s.glassHeld; m.visorReady = s.visorReady;
+  },
   build(f, m, at) {
     const { W, H } = at;
     if (m.scope && m.banner === "") buildReticle(f, W, H, m);

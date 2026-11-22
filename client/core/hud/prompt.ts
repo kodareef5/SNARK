@@ -1,4 +1,4 @@
-// What the use key or a click would do, under the crosshair. The app works the words out (App.frame).
+// What the use key or a click would do, under the crosshair. The prompts work the words out (prompts.ts).
 
 import { fitText } from "../ui/nodes.ts";
 import { S_PROMPT } from "../ui/style.ts";
@@ -13,6 +13,9 @@ export interface PromptModel {
 export const PROMPT: HudWidget<PromptModel> = {
   name: "prompt",
   make: () => ({ prompt: "" }),
+  fill(m, c) {
+    if (c.frame) m.prompt = c.frame.prompt;
+  },
   build(f, m, at) {
     const { W, H, touch } = at;
     if (!m.crosshair) return;

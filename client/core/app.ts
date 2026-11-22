@@ -23,13 +23,12 @@ import type { NotePort } from "./notes/port.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MountCameraPivot } from "./mount-camera.ts";
-import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { GLIDE_DIVE, MODE_FLYER, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CMD_GAZE, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
 import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NONE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { Controls, LOOK_SPEED } from "./controls.ts";
 import { pressKey } from "./key-row.ts";
@@ -53,7 +52,7 @@ import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
 import { Falling } from "./rubble.ts";
 import { thrustersOf } from "../../shared/sim/vehicle-thrusters.ts";
-import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_VISOR } from "../../shared/sim/character.ts";
+import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_VISOR } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, breathShare, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD } from "../../shared/anim/pose.ts";
@@ -73,8 +72,9 @@ import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSessio
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { youngScale } from "../../shared/sim/breeding.ts";
-import { voicePan } from "./voice/place.ts";
-import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
+import type { VoicePort } from "./voice/port.ts";
+import { Heard } from "./voice/heard.ts";
+import { Dash } from "./hud/vehicle.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
 import type { SoundSink } from "./sound/packet.ts";
 import type { Sounds } from "./sound/sounds.ts";
@@ -84,8 +84,6 @@ import { SkyClock } from "./sky.ts";
 import type { SoundCode } from "./sound-late.ts";
 import { SplitPort } from "./sound/split.ts";
 
-/** Indexed by MODE_*. */
-const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
 import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
 import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
 import { glass } from "./ui/skin.ts";
@@ -130,11 +128,6 @@ const ZERO_STEP = 50;
 const ZERO_MOST = 1000;
 /** Milliseconds the eye takes to settle most of the way to where it is off a scope's axis. */
 const EYE_EASE_MS = 120;
-/** Metres a holo-scope's crosshair finds what it is on, and its colours (Holo-Scope Attachment). */
-const HOLO_REACH = 300;
-const HOLO_FRIEND = 0x48e05a;
-const HOLO_FOE = 0xff3a30;
-const HOLO_OTHER = 0xf2d23a;
 
 /** The attachment (ItemDef) on the weapon in `slot` of `inv`, or null. */
 function attachmentOf(reg: Registry, inv: Inventory | null, slot: number): ItemDef | null {
@@ -157,18 +150,17 @@ export class App {
   private parts: readonly FramePart[];
   /** The hour the sky shows: the server's, swept when it is set, or the one in an admin's hand on the sundial. */
   readonly sky = new SkyClock();
-  /** The dash's readings of the vehicle driven. */
-  readonly vehicleTelemetry = new VehicleTelemetry();
+  /** The dash's readings of the vehicle driven, which its part of the frame reads (hud/vehicle.ts). */
+  private readonly dash = new Dash();
+  /** Tells the voice port where each speaker is (voice/heard.ts). */
+  private readonly heard = new Heard();
+  get vehicleTelemetry(): VehicleTelemetry { return this.dash.telemetry; }
   readonly feedback = new Feedback();
   /** Laser dots this frame (client/core/render/laser.ts). */
   readonly lasers = new Lasers();
-  private seatedAim: SeatedAim;
   private readonly shotSample = new RemoteSample();
   private readonly shotState = new AnimState();
   private readonly posedEye = new Float64Array(3);
-  /** The frame's view and eye, and whether its own laser is on, for the sights. */
-  private readonly sightAt = { yaw: 0, pitch: 0, laser: false, x: 0, y: 0, z: 0 };
-  private readonly spot = [0, 0, 0];
   /** Where a passenger sits, for its camera (Characters.seat), and the pose of the creature it sits on. */
   private readonly seatSpot = new Float64Array(12);
   private readonly seated = seatScratch();
@@ -197,8 +189,6 @@ export class App {
   sightZoom = 0;
   sightZero = 0;
   private zeroSent = 0;
-  /** How far the look reaches what it tells of a creature this frame (fillOverhead): through a sight, its gaze's. */
-  private lookReach = 30;
   visorOptic: OpticFacet | null = null;
   /** The zoom the server was last told of (App.gaze), and when. */
   private gazeSent = 0;
@@ -297,9 +287,8 @@ export class App {
     this.session = session;
     this.shown = reg;
     this.pack = pack;
-    this.f = new AppFrame(session, this.controls, this.ui, this.hud, this.cam, this.remote, pack);
+    this.f = new AppFrame(session, this.controls, this.ui, this.hud, this.cam, this.remote, pack, this.lasers, new SeatedAim(reg, pack));
     this.prompts = new Prompts(reg, this.builder, this.vehiclePlacement);
-    this.seatedAim = new SeatedAim(reg, pack);
     session.shotOrigin = (out, tick, yaw, pitch) => {
       if (!session.world || session.driving >= 0 || !session.own.seat) return false;
       session.sampleRemote(this.shotSample);
@@ -415,7 +404,6 @@ export class App {
   private tamedHeard = 0;
   talking = false;
   private talkMode = MODE_TALK;
-  private volumeSet = -1;
   /** With the talk key, Alt whispers and Shift yells. */
   alt = false;
   shift = false;
@@ -426,44 +414,6 @@ export class App {
     if (on) this.talkMode = this.alt ? MODE_WHISPER : this.shift ? MODE_YELL : MODE_TALK;
     this.voice?.talk(on, this.talkMode, this.ui.settings.toggleTalk);
   }
-
-  /** Sends the voice port each speaker's distance and pan, and lists the talkers on the HUD. */
-  private listen(hud: HudModel): void {
-    hud.talkers.length = 0;
-    hud.voice = "";
-    const v = this.voice;
-    if (!v) return;
-    if (v.notice !== "") hud.voice = v.notice;
-    else if (this.talking) hud.voice = this.ui.settings.toggleTalk && !v.sending ? "MIC OPEN" : TALK_LABEL[this.talkMode]!;
-    hud.micLevel = v.level;
-    const heard = this.ui.settings.muted ? 0 : this.ui.settings.voiceVolume;
-    if (this.volumeSet !== heard) v.volume((this.volumeSet = heard));
-    if (v.speakers.size === 0) return;
-    const r = this.remote;
-    const own = this.session.own;
-    const at = this.heardAt;
-    let n = 0;
-    for (const [speaker, s] of v.speakers) {
-      if ((n + 1) * HEAR_FIELDS > at.length) break;
-      const index = handleIndex(s.handle);
-      let far = -1;
-      let side = 0;
-      for (let i = 0; i < r.count; i++) {
-        if (r.id[i] !== index) continue;
-        far = Math.hypot(r.x[i]! - own.x, r.y[i]! - own.y, r.z[i]! - own.z);
-        side = voicePan(r.x[i]! - own.x, r.z[i]! - own.z, this.controls.yaw);
-        break;
-      }
-      at[n * HEAR_FIELDS] = speaker;
-      at[n * HEAR_FIELDS + 1] = far;
-      at[n * HEAR_FIELDS + 2] = side;
-      n++;
-      if (s.speaking && hud.talkers.length < 8) hud.talkers.push(s.name);
-    }
-    v.hear(at, n);
-  }
-  /** Scratch for hear(). */
-  private readonly heardAt = new Float32Array(HEAR_FIELDS * 128);
 
   /** Returns true if the page should not also act on the key. The rows of keys.ts say what each key does, first row first. */
   key(code: string, down: boolean, repeat = false, source = 0): boolean {
@@ -659,73 +609,8 @@ export class App {
     st.setMotion(b.vx, b.vz, yaw, pitch, b.vy);
     st.setAction(b.act, (this.reg.weapon[b.held] ?? FISTS).hold, actionTick - b.actTicks);
     st.seed = bodySeed(handleIndex(s.ownHandle));
-    if (!this.seatedAim.pose(remote, s.ownKind, b.seat, b.seatGen, b.seatSlot, st, yaw, tick)) return false;
-    this.seatedAim.eye(world, out, clip); return true;
-  }
-
-  /**
-   * The laser dots on the screen, its own and those of bodies whose laser is on, each where the world or a body first meets
-   * its beam and only where the camera sees that spot; and the holo-scope's crosshair colour (weapons-plan.md, M10).
-   */
-  private fillSights(world: CollisionWorld, alive: boolean): void {
-    const { hud, cam, session, lasers, sightAt: at } = this;
-    const r = this.remote;
-    const d = this.dir;
-    const day = daylight(this.sky.hour);
-    lookDirection((at.yaw / TAU) * 65536, (at.pitch / (PI / 2)) * 16384, d);
-    lasers.clear();
-    if (at.laser) lasers.cast(this.reg, world, r, at.x, at.y, at.z, d[0]!, d[1]!, d[2]!, day, 0, handleIndex(session.ownHandle), this.seatedAim, session.own.seat - 1, session.own.seatGen);
-    lasers.remotes(this.reg, world, r, day, this.seatedAim);
-    const s = this.spot;
-    let n = 0;
-    for (let i = 0; i < lasers.count; i++) {
-      const dot = lasers.dots[i]!;
-      const dx = dot.x - cam.x;
-      const dy = dot.y - cam.y;
-      const dz = dot.z - cam.z;
-      const far = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      // A dot behind something the camera sees first is not drawn.
-      if (far > 0.05 && castWorld(world, cam.x, cam.y, cam.z, dx / far, dy / far, dz / far, far - 0.05) !== HIT_NONE) continue;
-      if (!cam.project(dot.x, dot.y, dot.z, s)) continue;
-      const out = (hud.dots[n++] ??= { u: 0, v: 0, alpha: 0 });
-      out.u = s[0]!;
-      out.v = s[1]!;
-      out.alpha = dot.alpha;
-    }
-    hud.dotCount = n;
-    hud.crossTint = alive && hud.holo ? this.holoTint(world, d) : -1;
-  }
-
-  /**
-   * What a holo-scope's crosshair is on, as its colour: "a yellow crosshair for wild animals or structures from another
-   * tribe, a red crosshair for untamed animals or players from other tribes and a green one for tamed animals, structures
-   * and players from the same tribe" (Holo-Scope Attachment). The page has wild animals both yellow and red; here wild
-   * creatures and another tribe's structures are yellow, another tribe's survivors and tames red, and the tribe's own green.
-   * -1 for nothing in reach. `d` is the view's way.
-   */
-  private holoTint(world: CollisionWorld, d: readonly number[]): number {
-    const { sightAt: eye, session, reg } = this;
-    const r = this.remote;
-    const team = session.tribe.team;
-    let t = castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, HOLO_REACH) === HIT_NONE ? Infinity : rayHit.t;
-    let tint = -1;
-    if (t < Infinity && rayHit.kind === HIT_STRUCTURE) {
-      const ref = rayHit.ref;
-      const owner = world.structs.chunks[Math.floor(ref / 65536)]!.owner[ref & 0xffff]!;
-      if (owner !== 0) tint = team !== 0 && owner === team ? HOLO_FRIEND : HOLO_OTHER;
-    }
-    for (let i = 0; i < r.count; i++) {
-      const kind = r.kind[i]!;
-      const rad = reg.bodyRadius[kind]!;
-      if (reg.move[kind] === null || !(rad > 0) || r.id[i] === session.driving || r.id[i] === handleIndex(session.ownHandle) || (r.id[i] === session.own.seat - 1 && r.gen[i] === session.own.seatGen)) continue;
-      const posed = this.seatedAim.ray(r, i, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, t);
-      const hit = posed ?? rayBox(eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + reg.bodyHeight[kind]!, r.z[i]! + rad);
-      if (!(hit > 0 && hit < t)) continue;
-      t = hit;
-      const mine = team !== 0 && r.team[i] === team;
-      tint = mine ? HOLO_FRIEND : r.team[i] === 0 ? HOLO_OTHER : HOLO_FOE;
-    }
-    return tint;
+    if (!this.f.seatedAim.pose(remote, s.ownKind, b.seat, b.seatGen, b.seatSlot, st, yaw, tick)) return false;
+    this.f.seatedAim.eye(world, out, clip); return true;
   }
 
   /**
@@ -736,7 +621,7 @@ export class App {
     // What the middle of the view is on, found each FOCUS_MS while a sight magnifies: its range, and the point the scene
     // brings its fine ground and far trees to (D1087).
     if (zoom > 0 && nowMs - this.focusAt >= FOCUS_MS) {
-      const d = this.dir, eye = this.sightAt;
+      const d = this.dir, eye = this.f.sightAt;
       lookDirection((yaw / TAU) * 65536, (pitch / (PI / 2)) * 16384, d);
       const reach = Math.min(GAZE_FARTHEST, GAZE_REACH * zoom);
       const t = castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE ? rayHit.t : 0;
@@ -928,7 +813,7 @@ export class App {
     return [
       ...(tools ? [tools.lines] : []),
       { step: (f) => this.follow(f) },
-      { step: (f) => this.telemetry(f) },
+      this.dash,
       { step: (f) => this.sight(f) },
       { step: (f) => this.ownBody(f) },
       { step: (f) => this.place(f) },
@@ -936,10 +821,11 @@ export class App {
       ...(tools ? [tools.stage] : []),
       { step: (f) => this.build(f) },
       ...(tools ? [tools.finish] : []),
-      { step: (f) => this.fillHud(f) },
       { step: (f) => this.hear(f) },
       { step: (f) => this.ghost(f) },
       this.prompts,
+      this.heard,
+      { step: (f) => this.fillHud(f) },
       { step: (f) => this.interface(f) },
     ];
   }
@@ -957,6 +843,9 @@ export class App {
     f.aspect = width / Math.max(height, 1);
     f.steer = this.steer;
     f.fromEye = this.fromEye;
+    f.voice = this.voice;
+    f.talking = this.talking;
+    f.talkMode = this.talkMode;
     // The interface's canvas for this window: shorter for a short one, with the screen's edges kept clear.
     const ui = this.ui, units = canvasHeight(width, height);
     this.unit = Math.max(height, 1) / units;
@@ -989,7 +878,6 @@ export class App {
    */
   private turn(f: AppFrame): boolean {
     const session = this.session, hud = this.hud, c = this.controls, nowMs = f.nowMs;
-    hud.vehicle = null;
     if (!this.facing && session.state === "active") {
       // Mouse movement while connecting is an offset from the arrival view, not a reason to face +Z.
       c.yaw += session.ownYaw;
@@ -1001,7 +889,7 @@ export class App {
     if (this.ui.leftWorld) { this.ui.leftWorld=false; this.page?.go("./?screen=roster"); }
     if (this.ui.reconnectRequested) { this.ui.reconnectRequested = false; this.page?.reload?.(); }
     if (session.state === "closed") {
-      this.vehicleTelemetry.stop();
+      this.dash.none(hud);
       // Only the reasons a player can act on are spelled out.
       hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(f.aspect, hud, session);
@@ -1028,7 +916,7 @@ export class App {
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
     const world = session.world;
     if (session.state !== "active" || !world) {
-      this.vehicleTelemetry.stop();
+      this.dash.none(hud);
       hud.status = "connecting";
       this.ui.build(f.aspect, hud, session);
       if (this.sound) this.sounds?.hush(this.sound);
@@ -1044,7 +932,7 @@ export class App {
     const session = this.session, hud = this.hud, nowMs = f.nowMs;
     if (this.shown !== session.registry) {
       this.shown = session.registry;
-      this.seatedAim = new SeatedAim(this.shown, this.pack);
+      f.seatedAim = new SeatedAim(this.shown, this.pack);
       this.ui.registry = this.shown;
       this.shots.reg = this.shown;
     }
@@ -1159,26 +1047,9 @@ export class App {
     else if (session.driving >= 0 && !car) this.view.thirdPerson = true;
   }
 
-  /** The instruments of the vehicle driven, read from its predicted body. */
-  private telemetry(f: AppFrame): void {
-    const session = this.session, c = this.controls, world = f.world, car = f.car;
-    if (f.alive && car && session.driving >= 0) {
-      if (car.movement === "rotor") {
-        const altitude = castWorld(world, f.bx, f.by + .05, f.bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : f.by - world.hf.heightAt(f.bx, f.bz);
-        this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, f.steer && (c.buttons & BTN_PRONE) !== 0);
-      } else if (car.movement === "boat") this.vehicleTelemetry.updateBoat(session.driving, session.own, car.spec, f.steer && (c.buttons & BTN_SPRINT) !== 0);
-      else this.vehicleTelemetry.update(session.driving, session.own, f.steer ? c.moveZ : 0, f.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, f.dt);
-      this.vehicleTelemetry.lightMode = isWheelVehicle(car) && car.emergencyLights ? 0 : -1;
-      this.hud.vehicle = f.dash = this.vehicleTelemetry;
-    } else {
-      this.vehicleTelemetry.stop();
-      f.dash = null;
-    }
-  }
-
   /** The aim and any sight raised: where the view looks, how wide it is, its window, and what the server is told of it. */
   private sight(f: AppFrame): void {
-    const session = this.session, hud = this.hud, c = this.controls, cam = this.cam, world = f.world, nowMs = f.nowMs, dt = f.dt;
+    const session = this.session, hud = this.hud, shown = f.sight, c = this.controls, cam = this.cam, world = f.world, nowMs = f.nowMs, dt = f.dt;
     const alive = f.alive, a = session.alpha, passenger = f.passenger, move = f.move;
     // The view turns with the kick and, through a scope, with the sway, as a shot does (shared/sim/aim.ts), so the middle of
     // the view is where the next shot is pointed. The look the input sends stays the player's own.
@@ -1187,7 +1058,7 @@ export class App {
     // The orbit's view does not look along the aim: it neither narrows to it nor shows a sight, and the centre of the
     // screen is not where a shot goes, so the crosshair is hidden while it is in use. The aim itself is the body's.
     const orbiting = this.orbit.inUse, sighting = aiming && !orbiting;
-    hud.orbit = orbiting;
+    shown.orbit = orbiting;
     const held = session.inventory && session.inventory.hotbar >= 0 && session.held >= 0 ? session.inventory.hotbar + session.held : -1;
     const scoped = aiming && scopeFitted(this.reg, session.inventory, held);
     let lookYaw = c.yaw;
@@ -1234,9 +1105,9 @@ export class App {
       if (press && !this.glassPressed) this.glass.lase(nowMs);
       this.glassPressed = press;
     } else this.glassPressed = false;
-    hud.behind = alive && f.third && !this.view.atEye && session.driving < 0 && !passenger;
-    if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
-    if (hud.vehicle?.active && hud.vehicle.boosting && !aiming) {
+    shown.behind = alive && f.third && !this.view.atEye && session.driving < 0 && !passenger;
+    if (f.dash && !aiming) want += Math.min(7 * Math.PI / 180, f.dash.speed / 30 * 7 * Math.PI / 180);
+    if (f.dash?.active && f.dash.boosting && !aiming) {
       // A thruster car's boost opens the view further and shakes it a little while the nozzles fire; the look sent does not.
       want += BOOST_FOV;
       lookYaw += Math.sin(nowMs * .071) * BOOST_SHAKE; lookPitch += Math.sin(nowMs * .093 + 1) * BOOST_SHAKE;
@@ -1246,75 +1117,75 @@ export class App {
     if (gliding) want += Math.min(GLIDE_FOV, (Math.hypot(session.own.vx, session.own.vy, session.own.vz) / GLIDE_DIVE) * GLIDE_FOV);
     this.view.gliding += ((gliding ? 1 : 0) - this.view.gliding) * (1 - Math.exp(-Math.max(0, dt) / 280));
     // A glass's lenses are drawn as a scope's are (ui/hud.ts buildReticle), two and no posts.
-    hud.scope = (sighting && sight === "scope") || glassUp;
+    shown.scope = (sighting && sight === "scope") || glassUp;
     // The scope's window spans less of the screen the more it magnifies; the eye off its axis, as the body moves, a shot
     // kicks or the sway leads, casts its shadow across the lens. Outside the window nothing is drawn (D1077).
     const optic = glassUp ? this.glassOptic! : visorUp ? this.visorOptic! : sightOptic;
-    hud.sightMil = hud.scope && optic?.reticle === "mil";
-    hud.sightFov = this.fov;
-    hud.sightZoom = zoom;
+    shown.sightMil = shown.scope && optic?.reticle === "mil";
+    shown.sightFov = this.fov;
+    shown.sightZoom = zoom;
     // The magnification ladder: any sight raised that magnifies, its zoom now within its least and most.
-    hud.magnify = (hud.scope || visorUp) && optic && zoom > 1 ? zoom : 0;
-    hud.magnifyMin = optic ? optic.min : 0;
-    hud.magnifyMax = optic ? opticMost(optic) : 0;
-    hud.sightZero = hud.sightMil ? this.sightZero : 0;
-    session.sightZero = sighting && hud.sightMil ? this.sightZero : 0;
-    hud.sightShare = optic ? windowShare(optic, zoom) : 1;
-    hud.sightShape = shapeOf(optic);
-    hud.visor = visorUp;
-    hud.visorZoom = zoom;
-    hud.visorMode = this.visor.mode;
-    hud.visorDigital = visorUp && this.visor.digital;
-    hud.visorRange = this.visor.range;
+    shown.magnify = (shown.scope || visorUp) && optic && zoom > 1 ? zoom : 0;
+    shown.magnifyMin = optic ? optic.min : 0;
+    shown.magnifyMax = optic ? opticMost(optic) : 0;
+    shown.sightZero = shown.sightMil ? this.sightZero : 0;
+    session.sightZero = sighting && shown.sightMil ? this.sightZero : 0;
+    shown.sightShare = optic ? windowShare(optic, zoom) : 1;
+    shown.sightShape = shapeOf(optic);
+    shown.visor = visorUp;
+    shown.visorZoom = zoom;
+    shown.visorMode = this.visor.mode;
+    shown.visorDigital = visorUp && this.visor.digital;
+    shown.visorRange = this.visor.range;
     this.visor.frame(f.scene.optic, daylight(this.sky.hour));
-    if (hud.scope && gun) {
+    if (shown.scope && gun) {
       const pace = Math.hypot(session.own.vx, session.own.vz) / Math.max(1, move?.walkSpeed ?? 1);
       const kick = gun.recoilKick ? (session.own.kick * KICK_UNIT * UNIT_RADIANS) / ((gun.recoilKick * PI) / 180) : 0;
       eyeOff(pace, kick, swayOut.yaw, -swayOut.pitch, this.eyeAt);
       const ease = 1 - Math.exp(-Math.max(0, dt) / EYE_EASE_MS);
-      hud.sightOffX += (this.eyeAt[0]! - hud.sightOffX) * ease;
-      hud.sightOffY += (this.eyeAt[1]! - hud.sightOffY) * ease;
-    } else hud.sightOffX = hud.sightOffY = 0;
+      shown.sightOffX += (this.eyeAt[0]! - shown.sightOffX) * ease;
+      shown.sightOffY += (this.eyeAt[1]! - shown.sightOffY) * ease;
+    } else shown.sightOffX = shown.sightOffY = 0;
     const win = cam.window;
-    if ((hud.scope || visorUp) && hud.banner === "") {
-      windowBox(hud.sightShape, hud.sightShare, f.aspect, this.windowAt);
+    if ((shown.scope || visorUp) && hud.banner === "") {
+      windowBox(shown.sightShape, shown.sightShare, f.aspect, this.windowAt);
       win[0] = this.windowAt[0]! * 2 - 1; win[1] = 1 - this.windowAt[3]! * 2; win[2] = this.windowAt[2]! * 2 - 1; win[3] = 1 - this.windowAt[1]! * 2;
     } else { win[0] = win[1] = -1; win[2] = win[3] = 1; }
-    hud.holo = alive && sight === "holo" && !orbiting;
-    hud.tint = hud.holo && sighting ? HOLO_TINT : 0;
-    this.sightAt.yaw = lookYaw;
-    this.sightAt.pitch = lookPitch;
-    this.sightAt.laser = alive && sight === "laser" && (session.inventory!.flags[held]! & FLAG_ON) !== 0;
-    this.sightAt.x = f.bx;
-    this.sightAt.y = f.by + f.eye;
-    this.sightAt.z = f.bz;
+    shown.holo = alive && sight === "holo" && !orbiting;
+    shown.tint = shown.holo && sighting ? HOLO_TINT : 0;
+    f.sightAt.yaw = lookYaw;
+    f.sightAt.pitch = lookPitch;
+    f.sightAt.laser = alive && sight === "laser" && (session.inventory!.flags[held]! & FLAG_ON) !== 0;
+    f.sightAt.x = f.bx;
+    f.sightAt.y = f.by + f.eye;
+    f.sightAt.z = f.bz;
     if (alive && this.ownSeatEye(world, this.remote, session.tickClock, c.yaw, c.pitch, this.posedEye)) {
-      this.sightAt.x = this.posedEye[0]!; this.sightAt.y = this.posedEye[1]!; this.sightAt.z = this.posedEye[2]!;
+      f.sightAt.x = this.posedEye[0]!; f.sightAt.y = this.posedEye[1]!; f.sightAt.z = this.posedEye[2]!;
     }
-    this.fov = easeFov(this.fov, want, hud.vehicle || gliding || this.view.gliding > 0.02 ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / FOV_EASE_MS));
+    this.fov = easeFov(this.fov, want, f.dash || gliding || this.view.gliding > 0.02 ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / FOV_EASE_MS));
     cam.fovY = this.fov;
     cam.zoom = magnification(base, this.fov);
     // Through a sight the server is told how far it magnifies and what it is on, so its cone widens the view (D1079).
     this.gaze(nowMs, world, (sighting || visorUp || glassUp) && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
-    f.lookReach = this.lookReach = (sighting || visorUp || glassUp) && zoom > 1 ? Math.max(30, Math.min(GAZE_FARTHEST, GAZE_REACH * zoom)) : 30;
-    hud.glass = glassUp;
-    hud.zooming = this.zooming;
-    hud.glassHeld = this.glassOptic !== null;
-    hud.visorReady = this.visorOptic !== null && alive && session.driving < 0;
-    hud.glassZoom = zoom;
+    f.lookReach = (sighting || visorUp || glassUp) && zoom > 1 ? Math.max(30, Math.min(GAZE_FARTHEST, GAZE_REACH * zoom)) : 30;
+    shown.glass = glassUp;
+    shown.zooming = this.zooming;
+    shown.glassHeld = this.glassOptic !== null;
+    shown.visorReady = this.visorOptic !== null && alive && session.driving < 0;
+    shown.glassZoom = zoom;
     if (glassUp) {
-      const eyeAt = this.sightAt, d = this.dir;
+      const eyeAt = f.sightAt, d = this.dir;
       this.glass.ranged(nowMs, () => {
         lookDirection((lookYaw / TAU) * 65536, (lookPitch / (PI / 2)) * 16384, d);
         return castWorld(world, eyeAt.x, eyeAt.y, eyeAt.z, d[0]!, d[1]!, d[2]!, GAZE_FARTHEST) !== HIT_NONE ? rayHit.t : 0;
       }, hud.heading);
     }
-    hud.glassRange = this.glass.lasing >= 0 ? -1 : this.glass.range;
-    hud.glassBearing = this.glass.bearing;
-    hud.glassMarked = nowMs - this.glass.markedAt < MARKED_MS;
+    shown.glassRange = this.glass.lasing >= 0 ? -1 : this.glass.range;
+    shown.glassBearing = this.glass.bearing;
+    shown.glassMarked = nowMs - this.glass.markedAt < MARKED_MS;
     c.zoom = lookScale(base, this.fov, settings.sensitivity, settings.zoomSensitivity);
     // The crosshair opens with the cone the next shot would leave within.
-    hud.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;
+    shown.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;
     f.lookYaw = lookYaw;
     f.lookPitch = lookPitch;
   }
@@ -1380,7 +1251,6 @@ export class App {
         if (body.vehicle) {
           body.vehicle.doors = r.vehicleDoors[i]!;
           body.vehicle.lightMode = r.vehicleLightMode[i]!;
-          if (this.vehicleTelemetry.lightMode >= 0) this.vehicleTelemetry.lightMode = body.vehicle.lightMode;
         }
         body.generation = r.gen[i]!;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
@@ -1553,21 +1423,19 @@ export class App {
   }
 
   /**
-   * The HUD: each widget fills its slice of the model from the session and this frame (hud/widgets.ts). The sight's
-   * fields were set with the camera; hit marks, marks over creatures, laser dots and the voice have fills of their own.
+   * The HUD, last before the interface is built: each widget fills its slice of the model from the session and from what
+   * the parts before left in the frame (hud/widgets.ts). Hit marks and marks over creatures have fills of their own.
    */
   private fillHud(f: AppFrame): void {
     const session = this.session, hud = this.hud, cam = this.cam, c = this.controls, alive = f.alive, nowMs = f.nowMs;
     const fill = this.hudFill, body = this.body;
-    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out;
+    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active;
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
     this.feedback.absorb(session, this.reg, nowMs, f.scene.damage);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.hitMarkers);
-    fillOverhead(hud.overhead, session, this.remote, cam, f.scene.characters, alive && !hud.out ? f.eyeNow : -1, c.yaw, c.pitch, this.lookReach);
-    this.fillSights(f.world, alive);
-    this.listen(hud);
+    fillOverhead(hud.overhead, session, this.remote, cam, f.scene.characters, alive && !hud.out ? f.eyeNow : -1, c.yaw, c.pitch, f.lookReach);
   }
 
   /** The sound device is told what to play. */
