@@ -56,7 +56,7 @@ type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 type Scene = "base" | "wood" | "flock" | "city";
-type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front" | "marina";
+type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front" | "marina" | "wall" | "canyon";
 /** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off or the far layers. On the city, where and at how many device pixels to one, and how many times slower the page's processor is made. */
 interface Run {
   scene: Scene;
@@ -99,7 +99,13 @@ const CITY_PLACES: Record<View, Place> = {
   // On a marina's walkway among its moored boats (tools/boat/marinas.ts), where CITY_MARINA puts it on the map benched:
   // "east,north,y", metres from its centre and the dock's deck. Only then are its rows run.
   marina: ((at) => ({ name: "marina", east: at[0] ?? 0, north: at[1] ?? 0, y: at[2] ?? 0.7 }))((process.env.CITY_MARINA ?? "").split(",").map(Number)),
+  // On East Flagler Street's south walk facing the Flagler Building's shops across the street, and in its middle looking
+  // west down it, the walls either side at a slant: the views held still, which near trees do not move in.
+  wall: { name: "wall", east: 974, north: -3000, up: 0 },
+  canyon: { name: "canyon", east: 889, north: -3008, up: 0 },
 };
+/** Where a held view faces, yaw and pitch in degrees (yaw 0 north, -90 west), which the page is told as a look's orders. */
+const LOOKS: Partial<Record<View, readonly [number, number]>> = { wall: [0, 8], canyon: [-88, 2] };
 
 export function plan(): Run[] {
   const runs: Run[] = [];
@@ -144,8 +150,9 @@ export function plan(): Run[] {
   for (const tier of ["medium", "high"]) for (const clock of [false, true]) runs.push({ scene: "city", view: "street", tier, scale: 2, window: [1800, 1049], ...(clock ? { clock } : {}) });
   // The bent kerbs' wear (render/bend.ts bentWear), on the canvases of 1,920 by 1,080 and 3,600 by 1,924.
   for (const [tier, scale] of [["medium", 1], ["high", 1], ["high", 2], ["medium", 2]] as const) runs.push({ scene: "city", view: "street", tier, scale, ...(scale === 2 ? { window: [1800, 1049] as [number, number] } : {}), ab: "kerbs" });
-  // The walls' weathering read (world-surfaces.ts weathered), its masks long made by the time a run measures, on the same canvases.
-  for (const [tier, scale] of [["medium", 1], ["high", 1], ["high", 2], ["medium", 2]] as const) runs.push({ scene: "city", view: "street", tier, scale, ...(scale === 2 ? { window: [1800, 1049] as [number, number] } : {}), ab: "weather" });
+  // The walls' weathering read (world-surfaces.ts weathered), its masks long made by the time a run measures: on the street
+  // turning, before a close wall and down a street at a slant, held, on high at 3,600 by 1,924 and medium at 1,920 by 1,080.
+  for (const ab of ["weather", ...(process.env.AB_PARTS ?? "").split(",").filter(Boolean)] as Effect[]) for (const view of ["street", "wall", "canyon"] as const) for (const [tier, scale] of [["medium", 1], ["high", 2]] as const) runs.push({ scene: "city", view, tier, scale, ...(scale === 2 ? { window: [1800, 1049] as [number, number] } : {}), ab });
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
   for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) for (const ab of ["roofs", "bounce"] as const) runs.push({ scene: "city", view: "street", tier, scale, ab });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
@@ -299,7 +306,11 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     const mine = runs.filter((r) => r.scene === scene);
     if (mine.length === 0) continue;
     let got: (report: Record<string, any>) => void = () => {};
-    const routes = (req: Request, url: URL): Response | Promise<Response> | null => (url.pathname === "/__bench" && req.method === "POST" ? req.json().then((r) => (got(r as Record<string, any>), new Response("ok"))) : null);
+    const routes = (req: Request, url: URL): Response | Promise<Response> | null => {
+      const held = LOOKS[url.searchParams.get("view") as View];
+      if (url.pathname === "/__look" && held) return Response.json({ look: held.map((d) => (d * Math.PI) / 180) });
+      return url.pathname === "/__bench" && req.method === "POST" ? req.json().then((r) => (got(r as Record<string, any>), new Response("ok"))) : null;
+    };
     const mapDir = scene === "wood" ? mkdtempSync(join(tmpdir(), "snark-gpu-map-")) : "";
     if (mapDir) {
       const hills = benchHills();
@@ -326,7 +337,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     const day = server.host.world.dayOffset;
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
-        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}`;
+        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}${r.view && LOOKS[r.view] ? `&still&look=${r.view}` : ""}`;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), 150000 * (r.cpu ?? 1)))));
         const pixels = r.view ? [`--window-size=${(r.window ?? [1920, 1080]).join(",")}`, `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
