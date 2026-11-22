@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 536 of them: 170 take effect,
+is listed here, 549 of them: 183 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -124,6 +124,19 @@ may change a setting without a restart.
 | `SelfDamageMultiplier` | 1 | What a survivor's own blast does to them. *Ours. ARK has no key; 1 is its behaviour.* | yes |
 | `FullFriendlyFire` | False | Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts. *Ours. ARK has no key; off is its behaviour as far as the research could tell.* | yes |
 | `StarterMount` | True | Every survivor has a pteranodon of its own, tamed, saddled and level 240, in a soul ball on its hotbar, ready to let out and ride. It is made as the survivor is, waits in its ball through the survivor's deaths, and is called back into it at the survivor's next rise from wherever it was left, unless it carries something. One that dies is made anew at the next rise. The ball was issued: it cannot be dropped, stored or given away, keeps only that pteranodon, and holds its charge. The pteranodon keeps its saddle, does not mate, counts against no tame limit, and leaves nothing to take when it dies. It does not travel: the server a survivor goes to gives it its own. Off, none is given, and one a survivor has goes at its next rise. *Ours. ARK has no key, and gives no survivor a tame. On unless set, for exploring while the game is built (D992); config/official sets it off. bDisableDefaultMapItemSets does not turn it off. Its 240 is a wild level 160 tamed perfectly, its points chosen for travel (server/mount.ts).* | yes |
+| `CastEnabled` | False | The city's background people (Cast): stories planned about the map and played out near survivors by people who come in and leave where nobody can see. *Ours (D1050 to D1058). Off unless set while it is new; the admin page's Cast panel sets it live.* | yes |
+| `CastSize` | 300 | Stories Cast keeps planned and running about the map at most. *Ours.* | yes |
+| `CastActivity` | 1 | How lively the city is: 0 is nobody, 1 the middle, 2 busy. *Ours.* | yes |
+| `CastSpikiness` | 0.6 | 0 keeps the city's liveliness even; toward 1 the quiet runs longer and the busy moments are sharper. *Ours.* | yes |
+| `CastMaxBodies` | 120 | People of Cast's in the world at once, at most. *Ours.* | yes |
+| `CastMaxPerPlayer` | 14 | People of Cast's about one survivor at once, at most (a crowd scene may hold more, within CastCrowdMax). *Ours.* | yes |
+| `CastCrowdMax` | 200 | People in one crowd scene (a beach, a flash mob) at most. *Ours.* | yes |
+| `CastHostility` | 2 | 0: Cast's people never fight. 1: they fight back. 2: some scenes may start a fight with a survivor (a gang standoff), never within ten minutes of its rise nor near its own buildings. *Ours.* | yes |
+| `CastHostileCooldown` | 1200 | Seconds between hostile scenes for the same survivor. *Ours.* | yes |
+| `CastModel` | `anthropic/claude-haiku-5.5` | The OpenRouter model Cast's planner asks; empty runs Cast on its rules alone. *Ours. Needs CastModelKey or OPENROUTER_API_KEY.* | yes |
+| `CastModelKey` | none | The OpenRouter key Cast's planner uses; empty takes OPENROUTER_API_KEY from the environment. *Ours.* | no |
+| `CastCallsPerHour` | 90 | Calls Cast's planner may make an hour at most. *Ours. About $0.0006 a call with Claude Haiku 5.5.* | yes |
+| `CastHourlyBatch` | 50 | Featured people the planner's hourly pass looks in on. *Ours.* | yes |
 | `TacticalRadius` | 512 | Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's. *Ours. ARK's map shows no structures.* | yes |
 | `MapPlayers` | `off` | Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked. *Ours. ARK marks nobody. Any other word is off.* | yes |
 | `FarRadius` | 2048 | Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none. *Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published.* | yes |
