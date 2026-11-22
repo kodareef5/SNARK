@@ -19,6 +19,7 @@ import type { Buffs } from "./buffs.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import { saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Survival } from "./survival.ts";
@@ -658,3 +659,32 @@ export class Taming {
     };
   }
 }
+
+/** How well a tamed creature was tamed and, for one being tamed, what it has been given so far and for whom; then its orders and its saddle. */
+saved({
+  name: "tame",
+  id: 15,
+  has: (rec) => rec.tame !== null || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander,
+  write(rec, w, to) {
+    w.f32(rec.te);
+    w.bool(rec.tame !== null);
+    if (rec.tame) {
+      w.f64(rec.tame.affinity);
+      w.f64(rec.tame.sum);
+      w.uint53(rec.tame.by);
+    }
+    w.u8(rec.stance);
+    w.uint53(rec.follow);
+    w.varint(rec.saddle === 0 ? 0 : to.toSaved[rec.saddle]!);
+    w.bool(rec.wander);
+  },
+  read(rec, r, from) {
+    rec.te = r.f32();
+    if (r.bool()) rec.tame = { affinity: r.f64(), sum: r.f64(), by: r.uint53(), seen: -1, due: 0 };
+    rec.stance = r.u8();
+    rec.follow = r.uint53();
+    const saddle = r.varint();
+    rec.saddle = saddle === 0 ? 0 : (from.toRuntime[saddle] ?? 0);
+    rec.wander = r.bool();
+  },
+});

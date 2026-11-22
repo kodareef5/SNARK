@@ -15,6 +15,7 @@ import type { Client, GameServer } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import { placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import { saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { ServerWorld } from "./world.ts";
@@ -552,3 +553,33 @@ export class Breeding {
     return this.pairs.size;
   }
 }
+
+/**
+ * Mating state, a young one's growing and an egg's hatching. Each timer is a span and an end tick, never a start,
+ * because growing made slower part way through would put the start before the world began.
+ */
+saved({
+  name: "breeding",
+  id: 18,
+  has: (rec) => rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null,
+  write(rec, w, to) {
+    w.bool(rec.mating);
+    w.uint53(rec.mateReadyAt);
+    w.uint53(rec.span);
+    w.uint53(rec.grown);
+    w.bool(rec.egg !== null);
+    if (rec.egg) {
+      w.varint(to.toSaved[rec.egg.species]!);
+      w.uint53(rec.egg.span);
+      w.uint53(rec.egg.hatchAt);
+      w.uint53(rec.egg.carrier);
+    }
+  },
+  read(rec, r, from) {
+    rec.mating = r.bool();
+    rec.mateReadyAt = r.uint53();
+    rec.span = r.uint53();
+    rec.grown = r.uint53();
+    if (r.bool()) rec.egg = { species: from.toRuntime[r.varint()] ?? 0, span: r.uint53(), hatchAt: r.uint53(), carrier: r.uint53() };
+  },
+});

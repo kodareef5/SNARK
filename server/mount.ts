@@ -19,17 +19,6 @@ import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** The survivor a starter was issued to (EntityRecord.issuedTo). Only a starter has it. */
-saved({
-  name: "issued",
-  id: 26,
-  has: (rec) => rec.issuedTo !== 0,
-  write: (rec, w) => w.uint53(rec.issuedTo),
-  read(rec, r, from) {
-    rec.issuedTo = r.uint53();
-    if (rec.issuedTo === 0) from.refused = true;
-  },
-});
 
 /** The species issued, and its level. */
 export const STARTER_SPECIES = "core:pteranodon";
@@ -169,3 +158,15 @@ function place(inv: Inventory): number {
   for (let s = inv.hotbar; s < inv.hotbar + HOTBAR_SLOTS; s++) if (inv.item[s] === 0) return s;
   return inv.free();
 }
+
+/** The survivor a starter was issued to (EntityRecord.issuedTo). Only a starter has it. */
+saved({
+  name: "issued",
+  id: 26,
+  has: (rec) => rec.issuedTo !== 0,
+  write: (rec, w) => w.uint53(rec.issuedTo),
+  read(rec, r, from) {
+    rec.issuedTo = r.uint53();
+    if (rec.issuedTo === 0) from.refused = true;
+  },
+});

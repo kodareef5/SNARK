@@ -15,6 +15,7 @@ import { statOf } from "./survival.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Job, Records } from "./records.ts";
+import { saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
@@ -392,3 +393,73 @@ export class Progression {
     }
   }
 }
+
+/** Experience, learned engrams, crafting jobs. */
+saved({
+  name: "progression",
+  id: 4,
+  has: (rec) => rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0,
+  write(rec, w, to) {
+    const jobs = rec.jobs;
+    let queued = false;
+    let fromBlueprint = false;
+    let resting = false;
+    w.f64(rec.xp);
+    w.varint(rec.engrams.length);
+    for (let i = 0; i < rec.engrams.length; i++) w.varint(to.toSaved[rec.engrams[i]!]!);
+    w.varint(jobs.length);
+    for (let i = 0; i < jobs.length; i++) {
+      const j = jobs[i]!;
+      w.varint(to.toSaved[j.item]!);
+      w.varint(j.left);
+      w.uint53(j.doneAt);
+      if (j.by !== undefined) queued = true;
+      if (j.bp !== undefined) fromBlueprint = true;
+      if (j.rest !== undefined) resting = true;
+    }
+    // Then who queued each job at a station. A job made in the hands has none.
+    w.bool(queued);
+    if (queued) for (let i = 0; i < jobs.length; i++) w.uint53(jobs[i]!.by ?? 0);
+    // Then, as a bit and a byte each, the quality plus one of the blueprint each job is made from, 0 for the engram.
+    w.bool(fromBlueprint);
+    if (fromBlueprint) for (let i = 0; i < jobs.length; i++) w.u8((jobs[i]!.bp ?? -1) + 1);
+    // Then a bit and the ticks plus one each job's unit has left while its station is out, 0 for none.
+    w.bool(resting);
+    if (resting) for (let i = 0; i < jobs.length; i++) w.varint((jobs[i]!.rest ?? -1) + 1);
+  },
+  read(rec, r, from) {
+    rec.xp = r.f64();
+    // Engrams and jobs whose content is gone are dropped. Nothing of value is lost with them.
+    for (let k = r.varint(); k > 0 && !r.overflow; k--) {
+      const saved = r.varint();
+      // An engram that became several is known as all of them.
+      for (const e of from.split.get(saved) ?? [from.toRuntime[saved] ?? 0]) if (e !== 0 && !rec.engrams.includes(e)) rec.engrams.push(e);
+    }
+    const jobs: Job[] = [];
+    for (let k = r.varint(); k > 0 && !r.overflow; k--) {
+      const item = from.toRuntime[r.varint()] ?? 0;
+      const left = r.varint();
+      const doneAt = r.uint53();
+      jobs.push({ item, left, doneAt });
+    }
+    if (r.bool()) {
+      for (const j of jobs) {
+        const by = r.uint53();
+        if (by !== 0) j.by = by;
+      }
+    }
+    if (r.bool()) {
+      for (const j of jobs) {
+        const bp = r.u8();
+        if (bp !== 0) j.bp = bp - 1;
+      }
+    }
+    if (r.bool()) {
+      for (const j of jobs) {
+        const rest = r.varint();
+        if (rest !== 0) j.rest = rest - 1;
+      }
+    }
+    for (const j of jobs) if (j.item !== 0) rec.jobs.push(j);
+  },
+});

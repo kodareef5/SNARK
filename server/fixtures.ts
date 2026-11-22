@@ -3,8 +3,10 @@
 
 import type { Rules } from "./settings/rules.ts";
 import type { ItemDef } from "../shared/content/defs.ts";
+import type { Lane } from "../shared/sim/station.ts";
 import type { Items } from "./items.ts";
-import type { EntityRecord, Records } from "./records.ts";
+import type { EntityRecord, FireState, Records } from "./records.ts";
+import { saved } from "./saved.ts";
 import type { ServerWorld } from "./world.ts";
 
 export class Fixtures {
@@ -101,3 +103,52 @@ export class Fixtures {
     return lock === 1 || (lock === 0 && (this.world.reg.lockedAtFirst[this.kindAt(ref)] === 1 || (this.rules?.on("ForceAllStructureLocking") ?? false)));
   }
 }
+
+/** The ref of the structure it belongs to, whether it is locked, its PIN plus one, a bed's wait, and a fire's state. */
+saved({
+  name: "fixture",
+  id: 14,
+  has: (rec) => rec.at >= 0,
+  write(rec, w, to) {
+    w.u32(rec.at);
+    w.bits(rec.lock, 2);
+    w.varint(rec.pin + 1);
+    w.uint53(rec.readyAt);
+    const fire = rec.fire;
+    w.bool(fire !== null);
+    if (fire) {
+      w.uint53(fire.at);
+      w.varint(fire.fuel);
+      w.varint(fire.cook);
+      // Then the piece burning (0 for none known) and each lane's item and ticks under way.
+      const piece = fire.piece ?? 0;
+      w.varint(piece === 0 ? 0 : to.toSaved[piece]!);
+      const lanes = fire.lanes;
+      w.varint(lanes ? lanes.length : 0);
+      for (let i = 0; lanes && i < lanes.length; i++) {
+        w.varint(to.toSaved[lanes[i]!.item]!);
+        w.varint(lanes[i]!.ticks);
+      }
+    }
+  },
+  read(rec, r, from) {
+    rec.at = r.u32();
+    rec.lock = r.bits(2);
+    rec.pin = r.varint() - 1;
+    rec.readyAt = r.uint53();
+    if (r.bool()) {
+      const fire: FireState = { at: r.uint53(), fuel: r.varint(), cook: r.varint(), due: 0, out: 0 };
+      // A piece or a lane whose content is gone is dropped: it is no item anyone holds.
+      const piece = from.toRuntime[r.varint()] ?? 0;
+      if (piece !== 0) fire.piece = piece;
+      const lanes: Lane[] = [];
+      for (let k = r.varint(); k > 0 && !r.overflow; k--) {
+        const item = from.toRuntime[r.varint()] ?? 0;
+        const ticks = r.varint();
+        if (item !== 0) lanes.push({ item, ticks });
+      }
+      if (lanes.length > 0) fire.lanes = lanes;
+      rec.fire = fire;
+    }
+  },
+});
