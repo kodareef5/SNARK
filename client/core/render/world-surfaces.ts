@@ -248,6 +248,19 @@ export function surfaceNoise(x: number, y: number): number {
   const a = fx * fx * (3 - 2 * fx), b = fy * fy * (3 - 2 * fy);
   return (surfaceHash(ix, iy) * (1 - a) + surfaceHash(ix + 1, iy) * a) * (1 - b) + (surfaceHash(ix, iy + 1) * (1 - a) + surfaceHash(ix + 1, iy + 1) * a) * b;
 }
+/** surfaceNoise along row `row` of its cells alone: the same values, from two hashes in place of four. */
+export function surfaceLine(x: number, row: number): number {
+  const ix = Math.floor(x), f = fract(x), a = f * f * (3 - 2 * f);
+  return surfaceHash(ix, row) * (1 - a) + surfaceHash(ix + 1, row) * a;
+}
+/** Two value noises from one lattice of cells, the high and the low twelve bits of each corner's hash: into `out`. */
+export function surfaceNoise2(x: number, y: number, out: Float64Array): void {
+  const ix = Math.floor(x), iy = Math.floor(y), fx = fract(x), fy = fract(y), a = fx * fx * (3 - 2 * fx), b = fy * fy * (3 - 2 * fy);
+  const h00 = surfaceHash(ix, iy) * 4096, h10 = surfaceHash(ix + 1, iy) * 4096, h01 = surfaceHash(ix, iy + 1) * 4096, h11 = surfaceHash(ix + 1, iy + 1) * 4096;
+  const two = (p: number, q: number, r: number, s: number): number => (p * (1 - a) + q * a) * (1 - b) + (r * (1 - a) + s * a) * b;
+  out[0] = two(Math.floor(h00), Math.floor(h10), Math.floor(h01), Math.floor(h11)) / 4096;
+  out[1] = two(fract(h00), fract(h10), fract(h01), fract(h11));
+}
 /**
  * The share of `b` where `t` of it is wanted and the higher of heights `a` and `b` shows through the other within
  * `band`: 0 at t 0 and 1 at t 1 while the two are less than `scale` apart.
@@ -473,6 +486,14 @@ export const SUN_FACE = [0.42, -0.91] as const;
 const PLANE_CELL = 2, PLANE_EDGE = 0.125, PLANE_BLEND = 0.1;
 /** Metres either side of a bay's side over which its tone becomes the next bay's. */
 const TONE_BLEND = 0.25;
+/**
+ * The most taps along a pixel's footprint a read of a bay's stamp takes: its narrow way is widened to a quarter of its
+ * long, so a wall seen at a slant reads four taps and not the tier's sixteen. The fields, metres across, are read in one.
+ */
+const STAMP_TAPS = 4;
+/** A pixel's footprint, metres, at which the formwork's joints and tie holes, a centimetre wide, are gone; they fade from half of it. */
+const JOINTS_GONE = 0.08;
+const slow = new Float64Array(2);
 /** The second field read's scale against the first, which no whole number of either's tiles meets. */
 const FIELD_TWO = 0.731;
 /** What a field reads as while the masks are being made: damp at its middle, nothing let go, no patina and no salt. */
@@ -590,8 +611,9 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   }
   const damp = field[0]!, hold = field[1]!, patina = field[2]!, salt = field[3]!;
   // Buildings are much dirtier than their neighbours where a 31 m noise is high; a bay's leaks are its own.
-  const dirty = smooth(0.5, 0.75, surfaceNoise(x / 31 + 11.3, z / 31 + 5.7));
-  const wet = (0.55 + 0.9 * surfaceNoise(x / 41 + 3.1, z / 41 + 7.7)) * (1 + dirty), leak = (0.3 + 0.7 * bay[4]!) * wet, worn = 0.65 * wet;
+  surfaceNoise2(x / 31 + 11.3, z / 31 + 5.7, slow);
+  const dirty = smooth(0.5, 0.75, slow[0]!);
+  const wet = (0.55 + 0.9 * slow[1]!) * (1 + dirty), leak = (0.3 + 0.7 * bay[4]!) * wet, worn = 0.65 * wet;
   if (w.peel > 0) {
     // Whole patches of plaster gone, metres across where a wall is dirty, and flakes elsewhere as its leaks loosen it.
     const gone = smooth(0.62, 0.7, surfaceNoise(along / 6, over / 5 + side * 17) + 0.25 * dirty);
@@ -608,9 +630,9 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   const runs = bay[0]! * w.runs * leak * (0.7 + 0.3 * open) * fade, left = LEFT[w.left], wash = (0.12 * w.runs * worn + 0.4 * dirty) * fade;
   // Under every slab line the wall is darker, fading down the storey, which a street sees from far off.
   const below = (over - storey * WEATHER_STOREY) / WEATHER_STOREY, band = below * below * below * 0.35 * w.runs * (0.6 + 0.4 * worn) * (0.7 + 0.3 * open) * fade;
-  const edge = (0.35 + 0.65 * surfaceNoise(along / 9, side * 13)) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1 - smooth(edge - 0.06, edge, over)) * w.damp * fade;
+  const edge = (0.35 + 0.65 * surfaceLine(along / 9, side * 13)) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1 - smooth(edge - 0.06, edge, over)) * w.damp * fade;
   const growth = (1 - smooth(0.1, 0.45 * (0.6 + damp), over)) * foot * clamp(city[6]! * 2.5 + 0.2);
-  const joints = w.joints > 0 ? formwork(along, over, footprint) * w.joints * fade : 0;
+  const joints = w.joints > 0 && footprint < JOINTS_GONE ? formwork(along, over, footprint) * w.joints * fade * (1 - smooth(JOINTS_GONE / 2, JOINTS_GONE, footprint)) : 0;
   const floor = over - storey * WEATHER_STOREY, dirt = (1 - smooth(0, EDGE_DIRT, floor)) * fade;
   const drips = bay[1]! * w.drips * (0.6 + 0.4 * leak) * fade;
   const rust = bay[2]! * w.drips * bay[5]! * fade;
@@ -1200,6 +1222,19 @@ const vec3 WL[${N}] = vec3[${N}](${weatherings.map((w) => `vec3(${LEFT[w.left].m
 ${vectors("WY", weatherings.map((w) => [w.drips, w.splash, w.bleach, w.algae]))}const float WZ[${N}] = float[${N}](${weatherings.map((w) => fl(w.salt)).join(",")});
 uniform highp sampler2DArray uWeather;
 uniform float uWeatherReady;
+float surfaceLine(float x, int row) {
+  int i = int(floor(x));
+  float f = fract(x);
+  return mix(surfaceHash(ivec2(i, row)), surfaceHash(ivec2(i + 1, row)), f * f * (3.0 - 2.0 * f));
+}
+vec2 surfaceNoise2(vec2 p) {
+  ivec2 i = ivec2(floor(p));
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  vec4 h = vec4(surfaceHash(i), surfaceHash(i + ivec2(1, 0)), surfaceHash(i + ivec2(0, 1)), surfaceHash(i + ivec2(1, 1))) * 4096.0;
+  vec4 hi = floor(h) / 4096.0, lo = h - floor(h);
+  return vec2(mix(mix(hi.x, hi.y, f.x), mix(hi.z, hi.w, f.x), f.y), mix(mix(lo.x, lo.y, f.x), mix(lo.z, lo.w, f.x), f.y));
+}
 uint weatherHash(int a, int b, int c) {
   uint h = uint(a) * 1597334677u ^ uint(b) * 3812015801u ^ uint(c) * 2654435761u;
   h = (h ^ (h >> 16u)) * 2246822519u;
@@ -1229,7 +1264,8 @@ vec4 stamped(int bay, int storey, int key, float u, float down, vec2 gx, vec2 gy
   float flip = ((h >> 16u) & 1u) == 1u ? -1.0 : 1.0;
   leakRust = vec2(float((h >> 17u) & 127u) / 127.0, (h >> 24u) < 154u ? 1.0 : 0.0);
   vec2 q = vec2(flip < 0.0 ? 1.0 - u : u, (float((bay + storey) & 1) + ${fl(WEATHER_PAD)} + down * ${fl(1 - 2 * WEATHER_PAD)}) * 0.5);
-  return textureGrad(uWeather, vec3(q, float(((h & 65535u) * ${WEATHER_BAYS}u) >> 16u)), vec2(gx.x * flip, gx.y), vec2(gy.x * flip, gy.y));
+  float lx = length(gx), ly = length(gy), least = max(lx, ly) / ${fl(STAMP_TAPS)};
+  return textureGrad(uWeather, vec3(q, float(((h & 65535u) * ${WEATHER_BAYS}u) >> 16u)), vec2(gx.x * flip, gx.y) * max(1.0, least / max(lx, 1e-12)), vec2(gy.x * flip, gy.y) * max(1.0, least / max(ly, 1e-12)));
 }
 float coveredLine(float d, float hw, float f) {
   f = max(f, 1e-4);
@@ -1259,7 +1295,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   albedo *= 1.0 + WV[id] * ((surfaceNoise(vec2(p.x / 7.0 + p.y / 5.0, p.z / 7.0 - p.y / 4.0)) - 0.5) * 0.7 + (column - 0.5) * 0.3);
   float fade = 1.0 - smoothstep(${fl(WEATHER_NEAR)}, ${fl(WEATHER_GONE)}, length(rel));
   if (!wall || fade <= 0.0) return;
-  float ax = side < 2 ? dpx.z : dpx.x, ay = side < 2 ? dpy.z : dpy.x;
+  float ax = side < 2 ? dpx.z : dpx.x, ay = side < 2 ? dpy.z : dpy.x, footprint = max(length(vec2(ax, ox)), length(vec2(ay, oy)));
   float u = along / ${fl(WEATHER_BAY)} - float(bay), down = 1.0 - (over / ${fl(WEATHER_STOREY)} - float(storey));
   vec2 gx = vec2(ax, -ox * ${fl(1 - 2 * WEATHER_PAD)}) / ${fl(WEATHER_BAY)}, gy = vec2(ay, -oy * ${fl(1 - 2 * WEATHER_PAD)}) / ${fl(WEATHER_BAY)}, lr, lr2;
   vec4 bm = stamped(bay, storey, key, u, down, gx, gy, lr);
@@ -1271,14 +1307,15 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   bm *= uWeatherReady;
   float o = float(side) * 5.3;
   int f0 = ${WEATHER_BAYS} + (side & 1), f1 = ${WEATHER_BAYS} + ((side & 1) ^ ${WEATHER_FIELDS > 1 ? 1 : 0});
-  vec4 m0 = textureGrad(uWeather, vec3((along + o) / ${fl(WEATHER_FIELD)}, -over / ${fl(WEATHER_FIELD)}, float(f0)), vec2(ax, -ox) / ${fl(WEATHER_FIELD)}, vec2(ay, -oy) / ${fl(WEATHER_FIELD)});
-  vec4 m1 = textureGrad(uWeather, vec3((along * ${fl(FIELD_TWO)} + 3.7 + o) / ${fl(WEATHER_FIELD)}, (-over * ${fl(FIELD_TWO)} + 1.3) / ${fl(WEATHER_FIELD)}, float(f1)), vec2(ax, -ox) * ${fl(FIELD_TWO / WEATHER_FIELD)}, vec2(ay, -oy) * ${fl(FIELD_TWO / WEATHER_FIELD)});
+  vec4 m0 = textureGrad(uWeather, vec3((along + o) / ${fl(WEATHER_FIELD)}, -over / ${fl(WEATHER_FIELD)}, float(f0)), vec2(footprint / ${fl(WEATHER_FIELD)}, 0.0), vec2(0.0, footprint / ${fl(WEATHER_FIELD)}));
+  vec4 m1 = textureGrad(uWeather, vec3((along * ${fl(FIELD_TWO)} + 3.7 + o) / ${fl(WEATHER_FIELD)}, (-over * ${fl(FIELD_TWO)} + 1.3) / ${fl(WEATHER_FIELD)}, float(f1)), vec2(footprint * ${fl(FIELD_TWO / WEATHER_FIELD)}, 0.0), vec2(0.0, footprint * ${fl(FIELD_TWO / WEATHER_FIELD)}));
   vec4 none = vec4(${FIELD_NONE.map(fl).join(", ")});
   vec4 fm = mix(none, mix(m0, m1, smoothstep(0.3, 0.7, surfaceNoise(vec2(p.x / 9.0 + p.z / 9.0, p.y / 6.0)))), uWeatherReady);
   float damp = fm.r, hold = fm.g, patina = fm.b, salt = fm.a;
   // Buildings are much dirtier than their neighbours where a 31 m noise is high; a bay's leaks are its own.
-  float dirty = smoothstep(0.5, 0.75, surfaceNoise(vec2(p.x / 31.0 + 11.3, p.z / 31.0 + 5.7)));
-  float wet = (0.55 + 0.9 * surfaceNoise(vec2(p.x / 41.0 + 3.1, p.z / 41.0 + 7.7))) * (1.0 + dirty), leak = (0.3 + 0.7 * lr.x) * wet, worn = 0.65 * wet;
+  vec2 slow = surfaceNoise2(vec2(p.x / 31.0 + 11.3, p.z / 31.0 + 5.7));
+  float dirty = smoothstep(0.5, 0.75, slow.x);
+  float wet = (0.55 + 0.9 * slow.y) * (1.0 + dirty), leak = (0.3 + 0.7 * lr.x) * wet, worn = 0.65 * wet;
   vec4 x = WX[id], y = WY[id];
   if (x.z > 0.0) {
     float gone = smoothstep(0.62, 0.7, surfaceNoise(vec2(along / 6.0, over / 5.0 + float(side) * 17.0)) + 0.25 * dirty);
@@ -1298,10 +1335,9 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   float runs = bm.r * x.x * leak * (0.7 + 0.3 * open) * fade, wash = (0.12 * x.x * worn + 0.4 * dirty) * fade;
   float below = (over - float(storey) * ${fl(WEATHER_STOREY)}) / ${fl(WEATHER_STOREY)};
   float band = below * below * below * 0.35 * x.x * (0.6 + 0.4 * worn) * (0.7 + 0.3 * open) * fade;
-  float edge = (0.35 + 0.65 * surfaceNoise(vec2(along / 9.0, float(side) * 13.0))) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1.0 - smoothstep(edge - 0.06, edge, over)) * x.y * fade;
+  float edge = (0.35 + 0.65 * surfaceLine(along / 9.0, side * 13)) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1.0 - smoothstep(edge - 0.06, edge, over)) * x.y * fade;
   float growth = (1.0 - smoothstep(0.1, 0.45 * (0.6 + damp), over)) * foot * clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0);
-  float footprint = max(length(vec2(ax, ox)), length(vec2(ay, oy)));
-  float joints = x.w > 0.0 ? formwork(along, over, footprint) * x.w * fade : 0.0;
+  float joints = x.w > 0.0 && footprint < ${fl(JOINTS_GONE)} ? formwork(along, over, footprint) * x.w * fade * (1.0 - smoothstep(${fl(JOINTS_GONE / 2)}, ${fl(JOINTS_GONE)}, footprint)) : 0.0;
   float dirt = (1.0 - smoothstep(0.0, ${fl(EDGE_DIRT)}, over - float(storey) * ${fl(WEATHER_STOREY)})) * fade;
   float drips = bm.g * y.x * (0.6 + 0.4 * leak) * fade;
   float rust = bm.b * y.x * lr.y * fade;

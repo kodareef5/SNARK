@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { WEATHER_BAYS } from "../../client/core/texgen/weather.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, bayStamp, bayTone, formwork, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, bayStamp, bayTone, formwork, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceLine, surfaceNoise, surfaceNoise2, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
@@ -28,6 +28,17 @@ test("macro fields are continuous across negative and positive cell boundaries a
     expect(surfaceHash(edge, 43)).toBeWithin(0, 1);
   }
   expect(surfaceNoise(0.1, 0.7)).not.toBe(surfaceNoise(8.1, 0.7));
+  // Along one row of cells the noise is two hashes' worth; two noises from one lattice are each from 0 to 1 and unalike.
+  const two = new Float64Array(2);
+  let same = 0;
+  for (let k = 0; k < 400; k++) {
+    const x = -50 + k * 0.37, row = (k % 9) - 4;
+    expect(surfaceLine(x, row)).toBeCloseTo(surfaceNoise(x, row), 12);
+    surfaceNoise2(x, k * 0.21, two);
+    for (const v of two) expect(v).toBeWithin(0, 1);
+    if (Math.abs(two[0]! - two[1]!) < 0.02) same++;
+  }
+  expect(same).toBeLessThan(40);
 });
 
 test("every finish reads its own layer, has bounded reflectance and unit normals near and far, on the ground and on walls", () => {
@@ -363,7 +374,8 @@ test("a wall on a plane cell's edge, or a millimetre either side of a whole metr
       for (const t of [1.3, 4.1, 6.6]) {
         const x = 1000 + t * Math.cos(turn), z = plane + t * Math.sin(turn);
         const here = at(x, z, nx, nz);
-        for (const mm of [-0.001, 0.001]) at(x + nx * mm, z + nz * mm, nx, nz).forEach((c, k) => expect(Math.abs(c - here[k]!)).toBeLessThan(0.01 * here[k]!));
+        // A part in a hundred, or under half a step of 255 where a channel is near black.
+        for (const mm of [-0.001, 0.001]) at(x + nx * mm, z + nz * mm, nx, nz).forEach((c, k) => expect(Math.abs(c - here[k]!)).toBeLessThan(Math.max(0.01 * here[k]!, 0.5 / 255)));
       }
     }
   }
