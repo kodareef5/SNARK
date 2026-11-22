@@ -33,7 +33,7 @@ export interface CompiledTable {
   readonly worth: number;
   readonly ringedWorth: number;
   readonly jackpot: number;
-  /** Its own worth is under the floor share of its tier's target: circuits pass it over. */
+  /** Its own worth is under the floor share of its tier's target: circuits pass it over. Never, for a table held to no floor. */
   readonly dormant: boolean;
   /** Content indices of its jackpot items. */
   readonly jackpots: readonly number[];
@@ -224,7 +224,7 @@ export function compileBook(book: SupplyBook, catalog: Catalog, opts: CompileOpt
         let jsum = 0;
         let weights = 0;
         for (const f of slot.from) {
-          const made = setOf(f.set, tier, server * (ringed ? book.rules.ringedQuality : 1));
+          const made = setOf(f.set, tier, server * (ringed ? (slot.ringedQuality ?? book.rules.ringedQuality) : 1));
           if (!made) continue;
           const weight = f.weight ?? 1;
           from.push({ ...made.set, weight });
@@ -252,7 +252,8 @@ export function compileBook(book: SupplyBook, catalog: Catalog, opts: CompileOpt
     const tierDoc = tier >= 0 ? book.tiers[tier]! : null;
     const floorSet = tierDoc ? setOf(tierDoc.floor, tier, server) : null;
     const want = tierDoc ? tierDoc.target * book.rules.floorShare : 0;
-    const isDormant = tierDoc !== null && own < want;
+    // A table held to no floor (ARK's own, as pasted) is what it is: never dormant, and so never topped up.
+    const isDormant = tierDoc !== null && t.noFloor !== true && own < want;
     let fill: LootDef | null = null;
     if (isDormant && cls >= 0) {
       // Sized by the least the fill can give, so that the poorest roll of a topped-up table reaches the floor share.

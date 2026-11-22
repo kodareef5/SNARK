@@ -127,6 +127,10 @@ export interface SlotView {
   name: string;
   chance: number;
   ringed: number;
+  /** What a ringed drop multiplies its qualities by: the book's rule, or the slot's own where it has one. */
+  ringedQuality: number;
+  /** Whether that is the slot's own: said beside it, as it is not what the rest of the book does. */
+  ownQuality: boolean;
   sets: SetView[];
 }
 
@@ -149,6 +153,8 @@ export function tableDetail(l: Loaded, key: string): SlotView[] {
       name: slot.name ?? `slot ${k + 1}`,
       chance: slot.chance ?? 1,
       ringed: slot.ringed ?? slot.chance ?? 1,
+      ringedQuality: slot.ringedQuality ?? l.book.rules.ringedQuality,
+      ownQuality: slot.ringedQuality !== undefined,
       sets: slot.from.map((f): SetView => {
         const set = l.book.sets[f.set];
         const entries = set?.entries ?? [];

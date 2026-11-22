@@ -123,6 +123,11 @@ export interface SlotDoc {
   chance?: number;
   /** Its chance in a ringed drop, where that differs: 1 on a slot a plain drop has at 0 adds it to ringed drops only. */
   ringed?: number;
+  /**
+   * What a ringed drop multiplies this slot's quality bands by, where that is not the book's `rules.ringedQuality`: 1
+   * on a slot whose bands are a ringed drop's already, as ARK's `_Double` crate's are, which are drawn as written.
+   */
+  ringedQuality?: number;
   /** One set, where not given. */
   pick?: LootCount;
   from: { set: string; weight?: number }[];
@@ -133,6 +138,11 @@ export interface TableDoc {
   tier?: string;
   cls?: string;
   slots: SlotDoc[];
+  /**
+   * Held to no floor: never dormant and never topped up, however little it holds. A table of ARK's own override is
+   * what its operator wrote, poor or not, as it is when the same lines stand in the server's settings.
+   */
+  noFloor?: boolean;
   note?: string;
 }
 
@@ -373,12 +383,14 @@ export function bookFaults(book: unknown): BookFault[] {
       if (t.cls !== undefined && !classKeys.has(t.cls)) bad(`${path}.cls`, "names a class of the book");
       if ((t.tier === undefined) !== (t.cls === undefined)) bad(path, "a table names both a tier and a class, or neither");
       if (t.tier !== undefined && t.cls !== undefined && k !== tableKey(t.tier, t.cls)) bad(path, `the table of ${t.tier} and ${t.cls} has the key ${tableKey(t.tier, t.cls)}`);
+      if (t.noFloor !== undefined && typeof t.noFloor !== "boolean") bad(`${path}.noFloor`, "true or false");
       if (t.slots.length === 0 || t.slots.length > MOST.slots) bad(`${path}.slots`, `1 to ${MOST.slots} slots`);
       t.slots.slice(0, MOST.slots).forEach((slot, i) => {
         const at = `${path}.slots.${i}`;
         if (!isObject(slot) || !Array.isArray(slot.from)) return bad(at, "a slot is { from }");
         share(`${at}.chance`, slot.chance);
         share(`${at}.ringed`, slot.ringed);
+        if (slot.ringedQuality !== undefined) num(`${at}.ringedQuality`, slot.ringedQuality, 1, 5, "a multiple");
         if (slot.pick !== undefined) count(`${at}.pick`, slot.pick);
         if (slot.from.length === 0 || slot.from.length > MOST.from) bad(`${at}.from`, `1 to ${MOST.from} sets`);
         slot.from.slice(0, MOST.from).forEach((f, j) => {

@@ -80,11 +80,11 @@ function slotEdit(table: string, k: number, slot: SlotView): string {
     return `<div style="margin-top:6px"><b title="${esc(set.key)}">${esc(set.name)}</b> <label>pick weight ${field([...at, "from", f, "weight"], "number", 44)}</label> <label>every line ${field([...sp, "all"], "flag")}</label> <label>draws ${field([...sp, "min"], "whole", 40)}–${field([...sp, "max"], "whole", 40)}</label>
       ${lines.join("")}<button data-do="line" data-set="${esc(set.key)}">Add a line</button></div>`;
   });
-  return `<div class="slot wide"><div class="row"><h3>${field([...at, "name"], "text", 120)}</h3><label>chance % ${field([...at, "chance"], "share", 50)}</label><label title="Where a ringed drop differs.">ringed % ${field([...at, "ringed"], "share", 50)}</label><span class="grow"></span><button data-do="del" data-at="${esc(JSON.stringify(at))}" class="risk">Take this slot out</button></div>${sets.join("")}</div>`;
+  return `<div class="slot wide"><div class="row"><h3>${field([...at, "name"], "text", 120)}</h3><label>chance % ${field([...at, "chance"], "share", 50)}</label><label title="Where a ringed drop differs.">ringed % ${field([...at, "ringed"], "share", 50)}</label><label title="What a ringed drop multiplies this slot's qualities by, where that is not the book's rule (${S.draft!.rules.ringedQuality}): 1 for qualities drawn as they are written, as ARK's ringed crate's are.">ringed quality × ${field([...at, "ringedQuality"], "number", 44)}</label><span class="grow"></span><button data-do="del" data-at="${esc(JSON.stringify(at))}" class="risk">Take this slot out</button></div>${sets.join("")}</div>`;
 }
 
 function slotHtml(slot: SlotView): string {
-  const chance = slot.chance === slot.ringed ? pct(slot.chance) : `${pct(slot.chance)} plain, ${pct(slot.ringed)} ringed`;
+  const chance = `${slot.chance === slot.ringed ? pct(slot.chance) : `${pct(slot.chance)} plain, ${pct(slot.ringed)} ringed`}${slot.ownQuality && slot.ringed > 0 ? ` · ringed quality ${slot.ringedQuality === 1 ? "as written" : `× ${slot.ringedQuality}`}` : ""}`;
   const sets = slot.sets.map((set) => {
     const lines = set.entries.map((e) => {
       const what = e.items.map((i) => `<span class="${i.has ? "" : "faint"}" title="${esc(i.id)}">${esc(i.name)}</span>`).join(" or ");
@@ -102,7 +102,7 @@ function detailHtml(l: Loaded, key: string): string {
   const note = l.book.tables[key]?.note;
   const body = S.editing ? `<div class="slots one">${slots.map((slot, k) => slotEdit(key, k, slot)).join("")}</div><div class="row" style="margin-top:8px"><select id="newSlot">${Object.keys(S.draft!.sets).map((k) => `<option>${esc(k)}</option>`).join("")}</select><button data-do="slot" data-table="${esc(key)}">Add a slot drawing from this set</button></div>` : `<div class="slots" style="margin-top:8px">${slots.map(slotHtml).join("")}</div>`;
   return `<section class="glass"><div class="row"><h2>${esc(key)}</h2><span class="dim">its slots in order: each a chance, a pick among its sets, and what the set gives</span><span class="grow"></span><button data-do="edit" class="${S.editing ? "on" : ""}">${S.editing ? "Done editing" : "Edit"}</button><button data-sim="${esc(key)}">Roll it in the simulator</button><button data-open="">Close</button></div>
-    ${note ? `<p class="dim">${esc(note)}</p>` : ""}${body}</section>`;
+    ${note ? `<p class="dim">${esc(note)}</p>` : ""}${S.editing ? `<div class="row"><label title="Never dormant and never topped up, however little it holds: a table of ARK's own, which is what its operator wrote.">held to no floor ${field(["tables", key, "noFloor"], "flag")}</label></div>` : l.book.tables[key]?.noFloor ? '<p class="dim">Held to no floor: it is never dormant and never topped up.</p>' : ""}${body}</section>`;
 }
 
 function waitingHtml(l: Loaded): string {

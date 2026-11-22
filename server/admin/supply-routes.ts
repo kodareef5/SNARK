@@ -13,7 +13,6 @@ import type { Host } from "../host.ts";
 import { bookFaults, type BookFault, type SupplyBook } from "../../shared/supply/book.ts";
 import { MOST } from "../../shared/supply/book.ts";
 import { catalogOf } from "../../shared/supply/catalog.ts";
-import { compileBook } from "../../shared/supply/compile.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { hashString } from "../../shared/hash.ts";
 import { bandsOf, findSites } from "../../shared/supply/sites.ts";
@@ -25,8 +24,13 @@ import { sameOrigin } from "./gate.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
-/** A change's body at the most: a whole book and a little over. */
-export const SUPPLY_BODY_MOST = MOST.bytes + 8192;
+/** Characters of a pasted override at the most: a whole Game.ini's worth of crates. */
+export const ARK_TEXT_MOST = 600000;
+/**
+ * The largest body a change may be: a book at its largest, and with it (a paste is read against the page's draft) a
+ * pasted override at its largest, whose quotes and line ends JSON writes as two characters each.
+ */
+export const SUPPLY_BODY_MOST = MOST.bytes + 2 * ARK_TEXT_MOST + 8192;
 /** Who a change from the page is by, in the book's revisions and the admin journal. */
 export const PAGE = "(admin page)";
 /** The acts the page has lately done here, newest last, for its log. */
@@ -204,7 +208,7 @@ export class SupplyRoutes {
       // ARK's own override, as pasted from a Game.ini: what it would make of a book, and what it names that this build
       // lacks. Nothing is changed: the page puts the sets and tables in its draft. The book is the page's draft where
       // it sends one, since what an override is silent on is kept from the book it is put in, and else the one in force.
-      if (typeof b.text !== "string" || b.text.length > 600000) return json({ error: "Paste ConfigOverrideSupplyCrateItems lines." }, 400);
+      if (typeof b.text !== "string" || b.text.length > ARK_TEXT_MOST) return json({ error: "Paste ConfigOverrideSupplyCrateItems lines." }, 400);
       if (b.book === undefined) return json(this.ark(b.text, store.book));
       const faults = bookFaults(b.book).filter((f) => !f.warn);
       if (faults.length > 0) return json({ error: "The draft has faults: mend them, then read the paste again.", faults }, 422);
@@ -239,13 +243,9 @@ export class SupplyRoutes {
     const loot = catalogOf(world.reg);
     const made = arkCrates(entries, book.tiers, (name) => lists.ids(SETTING, name, "item"), (id) => loot.byId.get(id)?.never !== true);
     const docs = arkDocs(made.tables, book.classes, book.tables);
-    // A crate of ARK's may be worth less than this book lets a table be (its tier's target times rules.floorShare).
-    // Such a table is dormant: no circuit calls it, and a tier whose every class has it is never called. It is said here.
-    const put = compileBook({ ...book, sets: { ...book.sets, ...docs.sets }, tables: { ...book.tables, ...docs.tables } }, loot, { quality: rules.num("SupplyCrateLootQualityMultiplier") });
     return {
       crates: entries.length,
       ...docs,
-      dormant: Object.keys(docs.tables).filter((key) => put.tables.get(key)?.dormant === true),
       said: [...ini.faults.map((f) => `line ${f.line}: ${f.why}`), ...made.passed],
       missing: [...new Set(lists.missing.map((m) => m.name))],
       unclear: lists.unclear.map((u) => ({ name: u.name, could: [...u.could] })),

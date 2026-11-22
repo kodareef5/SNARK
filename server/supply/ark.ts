@@ -168,6 +168,11 @@ function only(slot: SlotDoc, which: "plain" | "ringed"): SlotDoc | null {
  * setting leaves the other kind of drop to the book (server/supply.ts land), and so does this. Where the override has
  * a tier's ringed crate alone, a plain drop keeps the slots `book` gives it in each class, and the other way about. A
  * table with nothing for a plain drop would be dormant, and no circuit would call its tier at all.
+ *
+ * The same lines drop the same pasted as they do in the server's settings, which is the whole of what a paste is for.
+ * The settings' crate is rolled as written (rollArk): its qualities are not raised for a ringed drop, and it is held
+ * to no floor. So ARK's ringed slot has a ringed quality of 1 in place of the book's bonus, and a table whose plain
+ * drop is ARK's is `noFloor`: never dormant, never topped up. A test holds the two ways to the same capsules.
  */
 export function arkDocs(tables: ReadonlyMap<string, ArkTables>, classes: readonly ClassDoc[], book: Readonly<Record<string, TableDoc>> = {}): ArkDocs {
   const out: ArkDocs = { sets: {}, tables: {}, tiers: [] };
@@ -197,7 +202,8 @@ export function arkDocs(tables: ReadonlyMap<string, ArkTables>, classes: readonl
         return { set: key, ...(set.weight !== undefined ? { weight: set.weight } : {}) };
       });
       const pick = { min: def.sets?.min ?? 1, max: def.sets?.max ?? 1, ...(def.sets?.power !== undefined ? { power: def.sets.power } : {}), ...(def.sets?.replace ? { replace: true } : {}) };
-      ark[which] = which === "ringed" ? { name: "ARK's ringed crate", chance: 0, ringed: 1, pick, from } : { name: "ARK's crate", ringed: 0, pick, from };
+      // A ringed crate's qualities are its own: ARK writes them for the `_Double` crate, and the book's ringed bonus is not put on top.
+      ark[which] = which === "ringed" ? { name: "ARK's ringed crate", chance: 0, ringed: 1, ringedQuality: 1, pick, from } : { name: "ARK's crate", ringed: 0, pick, from };
     }
     if (!ark.plain && !ark.ringed) continue;
     for (const cls of classes) {
@@ -205,7 +211,9 @@ export function arkDocs(tables: ReadonlyMap<string, ArkTables>, classes: readonl
       const kept = (which: "plain" | "ringed"): SlotDoc[] => (book[key]?.slots ?? []).flatMap((slot) => only(slot, which) ?? []);
       const slots = [...(ark.plain ? [ark.plain] : kept("plain")), ...(ark.ringed ? [ark.ringed] : kept("ringed"))];
       const whose = ark.plain && ark.ringed ? "" : ` ${ark.plain ? "Ringed" : "Plain"} drops are the book's own, as they were.`;
-      out.tables[key] = { tier, cls: cls.key, slots: JSON.parse(JSON.stringify(slots)) as SlotDoc[], note: `From ConfigOverrideSupplyCrateItems, as pasted.${whose}` };
+      // The floor judges what a plain drop holds. Where that is ARK's crate, it is held to none; where it is still the
+      // book's, the book's floor stands as it did.
+      out.tables[key] = { tier, cls: cls.key, slots: JSON.parse(JSON.stringify(slots)) as SlotDoc[], ...(ark.plain ? { noFloor: true } : book[key]?.noFloor ? { noFloor: true } : {}), note: `From ConfigOverrideSupplyCrateItems, as pasted.${whose}` };
     }
     out.tiers.push({ tier, plain: t.plain?.from.length ?? 0, ringed: t.ringed?.from.length ?? 0 });
   }

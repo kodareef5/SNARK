@@ -5,9 +5,10 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PAGE, SupplyRoutes } from "../../server/admin/supply-routes.ts";
+import { ARK_TEXT_MOST, PAGE, SupplyRoutes } from "../../server/admin/supply-routes.ts";
 import type { EntityRecord } from "../../server/records.ts";
-import type { SupplyBook } from "../../shared/supply/book.ts";
+import { loadConfig } from "../../server/settings/config.ts";
+import { MOST, type SupplyBook } from "../../shared/supply/book.ts";
 import { catalogOf } from "../../shared/supply/catalog.ts";
 import { cellsOf, compileBook } from "../../shared/supply/compile.ts";
 import { moveSite } from "../../client/core/drops/place.ts";
@@ -191,12 +192,12 @@ test("an override of ARK's ringed crate alone leaves a tier's plain drops the bo
   const before = blue(read.book);
   expect(before.length).toBe(7);
   const crate = (name: string, item: string, n: number): string => `(SupplyCrateClassString="${name}",MinItemSets=1,MaxItemSets=1,ItemSets=((MinNumItems=1,MaxNumItems=1,ItemEntries=((ItemClassStrings=("${item}"),MinQuantity=${n},MaxQuantity=${n})))))`;
-  type Got = { sets: SupplyBook["sets"]; tables: SupplyBook["tables"]; tiers: unknown[]; dormant: string[] };
+  type Got = { sets: SupplyBook["sets"]; tables: SupplyBook["tables"]; tiers: unknown[] };
   const put = async (text: string, note: string, revision: number): Promise<SupplyBook> => {
     // As the page does: read against its draft, which is the book in force here.
     const draft = structuredClone((await get<{ book: SupplyBook }>("book.json")).book);
     const got = (await post("ark", { text, book: draft })).answer as unknown as Got;
-    expect([got.tiers, got.dormant]).toEqual([[{ tier: "blue", plain: text.includes("_Double") ? 0 : 1, ringed: text.includes("_Double") ? 1 : 0 }], []]);
+    expect(got.tiers).toEqual([{ tier: "blue", plain: text.includes("_Double") ? 0 : 1, ringed: text.includes("_Double") ? 1 : 0 }]);
     Object.assign(draft.sets, got.sets);
     Object.assign(draft.tables, got.tables);
     expect((await post("book", { revision, book: draft, note })).answer).toEqual({ revision: revision + 1 });
@@ -229,9 +230,20 @@ test("an override of ARK's ringed crate alone leaves a tier's plain drops the bo
   // The ringed crate pasted after it leaves the plain one ARK's: both are ARK's now, and nothing of the book's is left.
   const both = await put(crate("SupplyCrate_Level25_Double_C", "core:stone", 77), "and its ringed", 3);
   expect(both.tables["blue/arms"]!.slots.map((s) => s.name)).toEqual(["ARK's crate", "ARK's ringed crate"]);
-  // A crate worth less than the book lets a table be would be dormant, and no circuit would call its tier: the reading says so.
+  // A crate worth less than the book lets a table of its own be is still ARK's crate: it is held to no floor, so it is
+  // not dormant and its tier is called, as it is when the same lines stand in the server's settings.
   const poor = (await post("ark", { text: crate("SupplyCrate_Level25_C", "core:flint", 55), book: both })).answer as unknown as Got;
-  expect([poor.dormant.length, poor.dormant[0]]).toEqual([7, "blue/shelter"]);
+  expect([poor.tables["blue/arms"]!.noFloor, blue({ ...both, sets: { ...both.sets, ...poor.sets }, tables: { ...both.tables, ...poor.tables } })]).toEqual([true, before]);
+  // The ringed crate alone leaves the floor the book's, as the plain drop is.
+  expect([ringedOnly.tables["blue/arms"]!.noFloor, ringedOnly.tables["blue/arms"]!.slots.at(-1)!.ringedQuality, plainOnly.tables["blue/arms"]!.noFloor]).toEqual([undefined, 1, true]);
+  // The largest paste against the largest draft is still read: a change may be as large as both together.
+  const large = structuredClone(both);
+  large.tables["white/arms"]!.note = "n".repeat(MOST.bytes - JSON.stringify(both).length - 64);
+  const one = crate("SupplyCrate_Level25_C", "core:flint", 900);
+  const long = `${one}${"\n".repeat(ARK_TEXT_MOST - one.length)}`;
+  const largest = await post("ark", { text: long, book: large });
+  expect([JSON.stringify(large).length > MOST.bytes - 128, long.length, largest.status, (largest.answer as unknown as Got).tiers.length]).toEqual([true, ARK_TEXT_MOST, 200, 1]);
+  expect((await post("ark", { text: `${long}\n`, book: large })).status).toBe(400);
   // Read against a draft with a fault, it is refused, and against no draft it is read against the book in force.
   const broken = structuredClone(both);
   broken.tiers[0]!.staple = "none";
@@ -265,5 +277,47 @@ test("a save through the page is made or not made, never half: a history that ca
   expect([onDisk(), (await get<{ revision: number }[]>("revisions.json")).map((r) => r.revision)]).toEqual([2, [1, 2]]);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("the same lines of ARK's drop the same whether they are in the server's settings or pasted into the book: quality as written, and no floor", async () => {
+  const crate = (name: string, lines: string): string => `ConfigOverrideSupplyCrateItems=(SupplyCrateClassString="${name}",MinItemSets=1,MaxItemSets=1,ItemSets=((MinNumItems=2,MaxNumItems=2,bItemsRandomWithoutReplacement=true,ItemEntries=(${lines}))))`;
+  const line = (item: string, n: number, quality = ""): string => `(ItemClassStrings=("${item}"),MinQuantity=${n},MaxQuantity=${n}${quality})`;
+  const text = [
+    // Blue's crate and its ringed one, each with a crossbow at a quality said outright, and green's with next to nothing.
+    crate("SupplyCrate_Level25_C", `${line("core:crossbow", 1, ",MinQuality=2,MaxQuality=2")},${line("core:arrow_stone", 40)}`),
+    crate("SupplyCrate_Level25_Double_C", `${line("core:crossbow", 1, ",MinQuality=2,MaxQuality=2")},${line("core:stone", 77)}`),
+    crate("SupplyCrate_Level15_C", `${line("core:flint", 3)},${line("core:thatch", 2)}`),
+  ].join("\n");
+  const drops = [["blue", "arms", false], ["blue", "voyage", true], ["green", "works", false]] as const;
+  /** What each of the three drops holds, a stack a line with its quality, in a world made by `host` and readied by `ready`. */
+  const lands = async (host: Parameters<typeof world>[0], ready: (w: ReturnType<typeof world>) => Promise<void>) => {
+    const w = world({ seed: 77, log: () => {}, ...host });
+    await ready(w);
+    const ids: number[] = [];
+    for (const [k, [tier, cls, ringed]] of drops.entries()) ids.push((await w.post("call", { x: w.mid[0] - 60 + k * 60, z: w.mid[1], tier, cls, ringed, seconds: 0 })).answer.id as number);
+    await w.post("land", { id: "all", seconds: 0 });
+    w.h.run(1000);
+    const held = ids.map((id) => {
+      const inv = w.h.host.items.inv(w.h.host.records.byPid.get(w.h.host.supply.get(id)!.pid)!);
+      return Array.from({ length: inv.cap }, (_, k) => k).filter((k) => inv.item[k] !== 0).map((k) => `${reg.ids[inv.item[k]!]} x${inv.count[k]} q${inv.quality[k]}`);
+    });
+    const book = w.h.host.supplyBook.book;
+    const called = cellsOf(compileBook(book, catalogOf(reg)), { ...book.circuits[0]!, tierWeights: { green: 1, blue: 1 } }).length;
+    w.h.host.shutdown();
+    return { held, called };
+  };
+  const set = await lands({ config: loadConfig({ game: `[/script/shootergame.shootergamemode]\n${text}` }).rules }, async () => {});
+  const pasted = await lands({}, async ({ get, post }) => {
+    const draft = structuredClone((await get<{ book: SupplyBook }>("book.json")).book);
+    const got = (await post("ark", { text, book: draft })).answer as unknown as { sets: SupplyBook["sets"]; tables: SupplyBook["tables"] };
+    Object.assign(draft.sets, got.sets);
+    Object.assign(draft.tables, got.tables);
+    expect((await post("book", { revision: 0, book: draft, note: "" })).answer).toEqual({ revision: 1 });
+  });
+  // In the settings: each drop is its crate, the crossbow at the quality the line says, plain and ringed alike.
+  expect(set.held.map((h) => [...h].sort())).toEqual([["core:arrow_stone x40 q0", "core:crossbow x1 q1"], ["core:crossbow x1 q1", "core:stone x77 q0"], ["core:flint x3 q0", "core:thatch x2 q0"]]);
+  // Pasted, the same, and the tiers are called as they were: green's crate is poor and is still green's.
+  expect(pasted).toEqual(set);
+  expect(pasted.called).toBe(14);
 });
 

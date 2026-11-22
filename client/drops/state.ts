@@ -50,8 +50,6 @@ export interface ArkWire {
   sets: SupplyBook["sets"];
   tables: SupplyBook["tables"];
   tiers: { tier: string; plain: number; ringed: number }[];
-  /** Tables of these that would be dormant in the draft: worth less than the book lets a table be, so no circuit calls them. */
-  dormant: string[];
   said: string[];
   missing: string[];
   unclear: { name: string; could: string[] }[];
