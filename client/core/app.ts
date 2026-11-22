@@ -52,6 +52,7 @@ import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
 import { Falling } from "./rubble.ts";
+import { thrustersOf } from "../../shared/sim/vehicle-thrusters.ts";
 import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_VISOR } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, breathShare, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
@@ -114,6 +115,8 @@ const VIEW_FLAG_PROP = 8;
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
 /** Radians the view opens by at a glider's dive speed. */
 const GLIDE_FOV = (6 * Math.PI) / 180;
+/** A thruster car's boost: how much wider the view opens, and how far it shakes, radians. */
+const BOOST_FOV = 10 * Math.PI / 180, BOOST_SHAKE = .0035;
 /** Ticks in the air before C stops being the crouch and becomes the glider's key, so a step off a kerb does not stand a crouched body up. */
 const GLIDER_KEY_TICKS = 6;
 /** Metres the orbit's camera is behind the eye before the body is drawn whole; nearer than the near plane its head is not seen. */
@@ -840,6 +843,7 @@ export class App {
     if (flyer !== this.flying) c.fly(flyer, flyer && s.own.mode === MODE_FLYER);
     this.flying = flyer;
     c.heli(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "rotor");
+    c.thrusterCar(s.sessionState === SESSION_ALIVE && s.driving >= 0 && thrustersOf(this.reg.vehicle[s.own.kind]) !== undefined);
     if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
     this.wingWas = c.wing;
     // On foot and a fifth of a second into the air with a glider carried, C is the glider's (planning/workstreams/glider.md).
@@ -1602,6 +1606,11 @@ export class App {
     } else this.glassPressed = false;
     hud.behind = alive && third && !this.view.atEye && session.driving < 0 && !passenger;
     if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
+    if (hud.vehicle?.active && hud.vehicle.boosting && !aiming) {
+      // A thruster car's boost opens the view further and shakes it a little while the nozzles fire; the look sent does not.
+      want += BOOST_FOV;
+      lookYaw += Math.sin(nowMs * .071) * BOOST_SHAKE; lookPitch += Math.sin(nowMs * .093 + 1) * BOOST_SHAKE;
+    }
     // Under a glider the view opens with its speed, a dive's most, and third person stands back to hold the wings.
     const gliding = alive && session.driving < 0 && session.own.glide !== 0;
     if (gliding) want += Math.min(GLIDE_FOV, (Math.hypot(session.own.vx, session.own.vy, session.own.vz) / GLIDE_DIVE) * GLIDE_FOV);

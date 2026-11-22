@@ -2,6 +2,7 @@
 // Occupancy grants control; this module does not grant ownership or spend inventory items.
 import { clamp, detCos, detSin } from "../math/scalar.ts";
 import { validateSeats, type Seat } from "./seats.ts";
+import { validateThrusterSpec, type ThrusterNozzle, type VehicleThrusterSpec } from "./vehicle-thrusters.ts";
 import { DEFAULT_DRIVETRAIN, validateDrivetrainSpec, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "./vehicle-drivetrain.ts";
 export { stepVehicle } from "./vehicle-chassis.ts";
 
@@ -64,6 +65,8 @@ export interface VehicleSpec extends VehicleHullSpec {
   readonly downforce?: number;
   /** Multiplier on the surface speed-squared resistance (body/tire drag). */
   readonly dragScale?: number;
+  /** Cold-gas boost and flip nozzles (shared/sim/vehicle-thrusters.ts). Without them the car has none. */
+  readonly thrusters?: VehicleThrusterSpec;
 }
 
 /** A vehicle's seats are seats like any host's (shared/sim/seats.ts), in its chassis frame. */
@@ -131,6 +134,8 @@ export interface WheelVehicleDefinition extends VehicleDefinitionBase {
   /** Road chassis family shown in the catalogue. Older wheel definitions use the car family. */
   readonly frame?: "car" | "sports_car" | "van" | "off_road";
   readonly emergencyLights?: readonly EmergencyLamp[];
+  /** Where a thruster car's gas leaves it, for its plumes and sound (shared/sim/vehicle-thrusters.ts); none on another car. */
+  readonly nozzles?: readonly ThrusterNozzle[];
   /** Local X of the aisle from a shared passenger entrance to its rows. */
   readonly passengerAisle?: number;
   readonly spec: VehicleSpec;
@@ -324,6 +329,8 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
   if (isWheelVehicle(d) && d.emergencyLights !== undefined && (!Array.isArray(d.emergencyLights) || d.emergencyLights.length < 1 || d.emergencyLights.length > 16 || !d.emergencyLights.every(lamp =>
     lamp && vec(lamp.at) && (lamp.width === undefined || Number.isFinite(lamp.width) && lamp.width > 0 && lamp.width <= 2) && (lamp.color === "red" || lamp.color === "blue") && (lamp.facing === undefined || lamp.facing === "front" || lamp.facing === "rear")))) throw new Error("invalid emergency lamp layout");
+  if (isWheelVehicle(d) && d.nozzles !== undefined && (!d.spec.thrusters || !Array.isArray(d.nozzles) || d.nozzles.length < 1 || d.nozzles.length > 16 || !d.nozzles.every(n =>
+    n && typeof n.name === "string" && n.name.length > 0 && vec(n.at) && vec(n.dir) && Math.abs(Math.hypot(...n.dir) - 1) < .01))) throw new Error("invalid thruster nozzles");
   const bone = (n: unknown): boolean => typeof n === "string" && n.length > 0 && n.length <= 64;
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
   if (!Array.isArray(d.wheels) || d.wheels.length > 16 || !d.wheels.every((w) => bone(w.bone))) throw new Error("invalid vehicle wheels");
@@ -396,6 +403,9 @@ export interface VehicleState extends VehicleDrivetrainState {
   steering: number;
   wheelAngle: number;
   fuel: number;
+  /** Thruster state and cooldowns, packed (shared/sim/vehicle-thrusters.ts). 0 on a car without thrusters. */
+  thrust?: number;
+  thrustCool?: number;
 }
 export interface CarState extends VehicleState {
   qx: number; qy: number; qz: number; qw: number;
@@ -411,6 +421,9 @@ export interface VehicleInput {
   /** Disengages the transmission for coasting/free revving; an optional future input binding. */
   neutral?: boolean;
   pilot?: boolean;
+  /** Held: the boost nozzles fire when ready. Pressed: a flip starts, its axis from throttle and steer. */
+  boost?: boolean;
+  burst?: boolean;
 }
 
 export interface VehicleWorld {
@@ -444,7 +457,7 @@ export function validateVehicleSpec(s: VehicleSpec): void {
     if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid vehicle ${key}`);
   }
   const zero = new Set(["yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
-  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && key !== "bodyBoxes" && value !== undefined &&
+  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && key !== "bodyBoxes" && key !== "thrusters" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
   if (s.bodyBoxes !== undefined) {
     const limits = [s.halfWidth, s.height, s.halfLength];
@@ -460,6 +473,7 @@ export function validateVehicleSpec(s: VehicleSpec): void {
   if (s.mass !== undefined && (s.mass < 50 || s.mass > 1000000)) throw new Error("invalid vehicle mass");
   if ((s.frontDriveShare ?? 0) > 1 || (s.downforce ?? 0) > 10) throw new Error("invalid vehicle axle split or downforce");
   if (s.drivetrain !== undefined) validateDrivetrainSpec(s.drivetrain);
+  if (s.thrusters !== undefined) validateThrusterSpec(s.thrusters);
   if (s.clearance >= s.height || s.track > 2 * s.halfWidth || s.wheelbase > 2 * s.halfLength || s.maxSteer >= 1.2 || s.minGroundNormal > 1 ||
     (s.handbrakeGrip ?? 0.18) > 1 || (s.suspensionDamping ?? 0.85) > 2 || (s.suspensionFrequency ?? 10) > 24 ||
     (s.suspensionTravel ?? 0.18) > 1) throw new Error("inconsistent vehicle geometry or steering limits");

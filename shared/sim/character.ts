@@ -55,6 +55,8 @@ export const BTN_MOD = button();
  * visor's gaze needs (server/gaze.ts, D1084), as a sight's is the secondary held.
  */
 export const BTN_VISOR = button();
+/** At the wheel of a car with thrusters (shared/sim/vehicle-thrusters.ts), a flip's burst; its axis from the keys held with it. */
+export const BTN_BURST = button();
 /** How many buttons there are. */
 export const buttonCount = button.count;
 
@@ -284,6 +286,9 @@ export class Body {
   vehicleQz = 0;
   vehicleQw = 1;
   vehicleCollective = 0;
+  /** A car's thruster state and its two cooldowns, packed (shared/sim/vehicle-thrusters.ts); 0 on every other vehicle. */
+  vehicleThrust = 0;
+  vehicleThrustCool = 0;
   vehiclePitchRate = 0;
   vehicleRollRate = 0;
   vehicleGroundPitch = 0;
@@ -383,6 +388,8 @@ export class Body {
     this.vehicleQz = o.vehicleQz;
     this.vehicleQw = o.vehicleQw;
     this.vehicleCollective = o.vehicleCollective;
+    this.vehicleThrust = o.vehicleThrust;
+    this.vehicleThrustCool = o.vehicleThrustCool;
     this.vehiclePitchRate = o.vehiclePitchRate;
     this.vehicleRollRate = o.vehicleRollRate;
     this.vehicleGroundPitch = o.vehicleGroundPitch;
@@ -461,6 +468,8 @@ export class Body {
       this.vehicleQz === o.vehicleQz &&
       this.vehicleQw === o.vehicleQw &&
       this.vehicleCollective === o.vehicleCollective &&
+      this.vehicleThrust === o.vehicleThrust &&
+      this.vehicleThrustCool === o.vehicleThrustCool &&
       this.vehiclePitchRate === o.vehiclePitchRate &&
       this.vehicleRollRate === o.vehicleRollRate &&
       this.vehicleGroundPitch === o.vehicleGroundPitch &&

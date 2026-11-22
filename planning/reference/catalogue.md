@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 47 classes: 34 built, 6 partly built, and 7 stubs that
-wait for a feature. The core pack holds 2379 definitions.
+wait for a feature. The core pack holds 2380 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -133,7 +133,7 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `fistsTorpor`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
 | `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `swimDepth`, `swimEyeHeight`, `stamina`, `food`, `slots`, `keeps`, `fists`, `bite`, `roar`, `combat`, `camera`, `drops`, `corpse`, `takes`, `zones`, `killXp`, `temper`, `blood`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `alarm`, `tamedWalkSpeed`, `tamedSwimSpeed`, `tamedSprintMul`, `drag`, `mass`, `carriable`, `feces`, `eggChance`, `fistsTorpor`, `fly`, `grab`, `defendsEgg`, `riderWeight`, `missiles`, `structures`, `tameBonus`, `tamedHealth`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 12 |
 | `species/civilian` | a humanoid creature | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats` | `equips`, `slots`, `crouch`, `prone`, `strafe`, `turn`, `swimSpeed`, `stamina`, `food`, `fists`, `fistsTorpor`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `torporDrain`, `still`, `drops`, `mass` | 1 |
-| `species/vehicle` | a mechanical mount | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `vehicle`, `stats` | `skeleton`, `slots`, `keeps`, `still`, `takes`, `mass`, `fists`, `stamina`, `swimSpeed`, `strafe`, `drag`, `carriable`, `regions`, `corpse`, `drops` | 30 |
+| `species/vehicle` | a mechanical mount | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `vehicle`, `stats` | `skeleton`, `slots`, `keeps`, `still`, `takes`, `mass`, `fists`, `stamina`, `swimSpeed`, `strafe`, `drag`, `carriable`, `regions`, `corpse`, `drops` | 31 |
 | `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `still` | `stats`, `equips`, `slots`, `zones`, `takes`, `torporDrain`, `crouch`, `prone`, `stamina`, `fists`, `food`, `drops`, `killXp` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
@@ -405,7 +405,7 @@ built.
 
 **`species/civilian`** (1): civilian.
 
-**`species/vehicle`** (30): compact, fastback, veloce, berlinetta, panel_van, caravan, patrol_sedan, patrol_jeep, tanker, bus, semi, monster_truck, muscle_car, taxi, helicopter, helicopter_rescue, helicopter_police, boat, boat_rescue, boat_police, needle, thunderbolt, jon_boat, riptide, solstice, meridian, belvedere, sovereign, manta, lagoon.
+**`species/vehicle`** (31): compact, fastback, veloce, berlinetta, panel_van, caravan, patrol_sedan, patrol_jeep, tanker, bus, semi, monster_truck, muscle_car, taxi, zephyr, helicopter, helicopter_rescue, helicopter_police, boat, boat_rescue, boat_police, needle, thunderbolt, jon_boat, riptide, solstice, meridian, belvedere, sovereign, manta, lagoon.
 
 **`species/target`** (1): dummy.
 

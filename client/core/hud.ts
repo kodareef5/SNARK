@@ -1,6 +1,7 @@
 // HUD view model as plain data. A place is told as its latitude and longitude and drawn at its share of the map's picture
 // (shared/world/coords.ts).
 
+import { boostCooling, flipCooling, thrustAxis, thrustBoostLeft } from "../../shared/sim/vehicle-thrusters.ts";
 import { CUE_DEAD, CUE_MATING_SHIFT } from "../../shared/anim/pose.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -232,6 +233,12 @@ export class VehicleTelemetry {
   gear = 1;
   rpm = 0;
   redline = DEFAULT_DRIVETRAIN.redlineRpm;
+  /** A thruster car's: how ready each move is, 0 just used to 1 ready, -1 where its cooldown is none; and what fired. */
+  thrusters = false;
+  boostReady = -1;
+  flipReady = -1;
+  boosting = false;
+  bursting = false;
 
   stop(): void { this.active = false; this.id = -1; this.rpm = 0; }
 
@@ -248,10 +255,16 @@ export class VehicleTelemetry {
     this.gear = body.vehicleGear;
     this.rpm = body.vehicleRpm;
     this.redline = (spec.drivetrain ?? DEFAULT_DRIVETRAIN).redlineRpm;
+    const t = spec.thrusters;
+    this.thrusters = t !== undefined;
+    this.boostReady = t && t.boostCooldownTicks > 0 ? (thrustBoostLeft(body.vehicleThrust) > 0 ? 0 : 1 - boostCooling(body.vehicleThrustCool) / t.boostCooldownTicks) : -1;
+    this.flipReady = t && t.flipCooldownTicks > 0 ? 1 - flipCooling(body.vehicleThrustCool) / t.flipCooldownTicks : -1;
+    this.boosting = t !== undefined && thrustBoostLeft(body.vehicleThrust) > 0;
+    this.bursting = t !== undefined && thrustAxis(body.vehicleThrust) !== 0;
   }
   updateBoat(id: number, body: Body, spec: BoatSpec, precision: boolean): void {
     this.active = true; this.boat = true; this.rotor = false; this.id = id; this.precision = precision;
-    this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy;
+    this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy; this.thrusters = this.boosting = this.bursting = false;
     this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
     this.gear = body.vehicleGear; this.rpm = body.vehicleRpm; this.redline = spec.maxRpm;
     this.engineOn = body.vehicleEngineOn; this.engineCondition = body.vehicleEngineCondition;
@@ -261,6 +274,7 @@ export class VehicleTelemetry {
   }
   updateRotor(id: number, body: Body, spec: HelicopterSpec, altitude: number, direct: boolean, recovery: boolean): void {
     this.active = true; this.rotor = true; this.boat = false; this.id = id; this.direct = direct; this.recovery = recovery;
+    this.thrusters = this.boosting = this.bursting = false;
     this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy; this.altitude = Math.max(0, altitude);
     this.grounded = body.grounded; this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
     this.rpm = body.vehicleRotorRpm; this.redline = spec.rotorRpm; this.collective = body.vehicleCollective;

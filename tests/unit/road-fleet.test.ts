@@ -25,11 +25,11 @@ function drive(spec: VehicleSpec, seconds: number, throttle = 1, initialSpeed = 
   return state;
 }
 
-test("the sports frame loads its tyres with speed and both bodies outrun the compact and vans", () => {
-  expect(defs.map(d => d.frame)).toEqual(["car", "car", "sports_car", "sports_car", "van", "van", "car", "off_road", "van", "van", "van", "off_road", "car", "car"]);
+test("the sports frame loads its tyres with speed and its bodies outrun the compact and vans", () => {
+  expect(defs.map(d => d.frame)).toEqual(["car", "car", "sports_car", "sports_car", "van", "van", "car", "off_road", "van", "van", "van", "off_road", "car", "car", "sports_car"]);
   const speeds = defs.map(d => drive(d.spec, 4).vz);
   expect(speeds[0]).toBe(speeds[1]!);
-  for (const i of [2, 3]) {
+  for (const i of [2, 3, 14]) {
     expect(speeds[i]!).toBeGreaterThan(speeds[0]! * 1.2);
     const spec = defs[i]!.spec;
     expect(drive(spec, 1, 0, 40).rideOffset).toBeLessThan(drive({ ...spec, downforce: 0 }, 1, 0, 40).rideOffset - .005);

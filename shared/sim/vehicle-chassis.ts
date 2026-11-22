@@ -8,6 +8,7 @@ import { vehicleRotation } from "./vehicle-frame.ts";
 import { applyVehicleImpulse, integrateVehiclePose, vehicleMassProperties, vehiclePointInverseMass, vehiclePointVelocity } from "./vehicle-rigid.ts";
 import { holdParkedTyres } from "./vehicle-tyre-static.ts";
 import { applyCarWater, dragCarInWater } from "./vehicle-water.ts";
+import { applyThrusters, beginThrusterTick, endThrusterTick, thrustActive } from "./vehicle-thrusters.ts";
 import type { CarState, VehicleInput, VehicleSpec, VehicleState, VehicleStep, VehicleSurface, VehicleWorld } from "./vehicle.ts";
 
 const q = new Float64Array(4), up = new Float64Array(3), ahead = new Float64Array(3), local = new Float64Array(3), pointV = new Float64Array(3);
@@ -77,6 +78,8 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
   s.engineCondition ??= 1; s.hullCondition ??= 1; s.flooding ??= 0; s.engineOn ??= s.fuel > 0;
   if (s.fuel <= 0 || s.engineCondition <= .08 || s.hullCondition <= 0 || input.pilot === false) s.engineOn = false;
   else if (Math.abs(throttle) > .01) s.engineOn = true;
+  const thrusters = p.thrusters;
+  if (thrusters) beginThrusterTick(s, input.pilot === false ? { throttle: 0, steer: 0 } : { boost: input.boost, burst: input.burst, throttle, steer }, thrusters);
   let restingContact = false;
   const startX = s.x, startY = s.y, startZ = s.z;
   vehicleRotation(s, q); const startQx = q[0]!, startQy = q[1]!, startQz = q[2]!, startQw = q[3]!;
@@ -95,7 +98,7 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
     const mechanical = stepDrivetrain(s, { throttle, forward, wheelRadius: p.wheelRadius, running: s.engineOn,
       disengaged: brake > 0 || input.handbrake || !s.grounded || water.immersion > .75, neutral: input.neutral === true }, drivetrain, dt);
     const spent = Math.min(s.fuel, s.engineOn ? Math.abs(throttle) * p.fuelPerSecond * dt : 0); s.fuel -= spent;
-    if (wheels.length === 0 && prior.grounded && (water.immersion === 0 || s.flooding >= .999) && len3(s.vx, s.vy, s.vz) < .001 && len3(s.pitchRate, s.yawRate, s.rollRate) < .001) {
+    if (!(thrusters && thrustActive(s.thrust ?? 0)) && wheels.length === 0 && prior.grounded && (water.immersion === 0 || s.flooding >= .999) && len3(s.vx, s.vy, s.vz) < .001 && len3(s.pitchRate, s.yawRate, s.rollRate) < .001) {
       const support = restingContact ? null : w.contact(s, { ...s, y: s.y - .01 }, p);
       if (restingContact || support?.balanced && len3(support.nx, 0, support.nz) < support.ny * .45 || bracedAtRest(s, p, w)) {
         restingContact = true;
@@ -103,6 +106,7 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
       }
     }
     s.vy -= gravity * dt;
+    if (thrusters) applyThrusters(s, p, thrusters, ahead, w, dt);
     if (p.downforce && forward > 0 && water.immersion === 0) {
       // Acting at the centre of mass loads the suspension naturally. Do not create a levelling torque in flight.
       const impulse = p.downforce * forward * forward * dt / mass;
@@ -189,6 +193,7 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
     s.pitchRate = clamp(s.pitchRate, -12, 12); s.yawRate = clamp(s.yawRate, -12, 12); s.rollRate = clamp(s.rollRate, -12, 12);
     s.wheelAngle = wrap(s.wheelAngle + forward * dt / p.wheelRadius);
   }
+  if (thrusters) endThrusterTick(s, thrusters);
   if (!restingContact && wheels.length === 0 && len3(s.vx, s.vy, s.vz) < .4 && len3(s.pitchRate, s.yawRate, s.rollRate) < .4) {
     separateVehicleOverlap(s, contacts);
     const support = w.contact(s, { ...s, y: s.y - .01 }, p);

@@ -101,6 +101,9 @@ export class EntityStore {
   vehicleQz: Float32Array;
   vehicleQw: Float32Array;
   vehicleCollective: Float32Array;
+  /** A car's thrusters, packed, and their cooldowns (shared/sim/vehicle-thrusters.ts). */
+  vehicleThrust: Uint32Array;
+  vehicleThrustCool: Uint32Array;
   vehiclePitchRate: Float32Array;
   vehicleRollRate: Float32Array;
   vehicleGroundPitch: Float32Array;
@@ -251,6 +254,8 @@ export class EntityStore {
     this.vehicleQz = new Float32Array(VEHICLE_START);
     this.vehicleQw = new Float32Array(VEHICLE_START);
     this.vehicleCollective = new Float32Array(VEHICLE_START);
+    this.vehicleThrust = new Uint32Array(VEHICLE_START);
+    this.vehicleThrustCool = new Uint32Array(VEHICLE_START);
     this.vehiclePitchRate = new Float32Array(VEHICLE_START);
     this.vehicleRollRate = new Float32Array(VEHICLE_START);
     this.vehicleGroundPitch = new Float32Array(VEHICLE_START);
@@ -505,6 +510,8 @@ export class EntityStore {
     this.vehicleQz = wider(this.vehicleQz, cap);
     this.vehicleQw = wider(this.vehicleQw, cap);
     this.vehicleCollective = wider(this.vehicleCollective, cap);
+    this.vehicleThrust = wider(this.vehicleThrust, cap);
+    this.vehicleThrustCool = wider(this.vehicleThrustCool, cap);
     this.vehiclePitchRate = wider(this.vehiclePitchRate, cap);
     this.vehicleRollRate = wider(this.vehicleRollRate, cap);
     this.vehicleGroundPitch = wider(this.vehicleGroundPitch, cap);
@@ -541,6 +548,8 @@ export class EntityStore {
     this.vehicleQz[v] = 0;
     this.vehicleQw[v] = 1;
     this.vehicleCollective[v] = 0;
+    this.vehicleThrust[v] = 0;
+    this.vehicleThrustCool[v] = 0;
     this.vehiclePitchRate[v] = 0;
     this.vehicleRollRate[v] = 0;
     this.vehicleGroundPitch[v] = 0;
@@ -672,6 +681,8 @@ export class EntityStore {
     b.vehicleQz = this.vehicleQz[v]!;
     b.vehicleQw = this.vehicleQw[v]!;
     b.vehicleCollective = this.vehicleCollective[v]!;
+    b.vehicleThrust = this.vehicleThrust[v]!;
+    b.vehicleThrustCool = this.vehicleThrustCool[v]!;
     b.vehiclePitchRate = this.vehiclePitchRate[v]!;
     b.vehicleRollRate = this.vehicleRollRate[v]!;
     b.vehicleGroundPitch = this.vehicleGroundPitch[v]!;
@@ -772,6 +783,8 @@ export class EntityStore {
     this.vehicleQz[v] = b.vehicleQz;
     this.vehicleQw[v] = b.vehicleQw;
     this.vehicleCollective[v] = b.vehicleCollective;
+    this.vehicleThrust[v] = b.vehicleThrust;
+    this.vehicleThrustCool[v] = b.vehicleThrustCool;
     this.vehiclePitchRate[v] = b.vehiclePitchRate;
     this.vehicleRollRate[v] = b.vehicleRollRate;
     this.vehicleGroundPitch[v] = b.vehicleGroundPitch;

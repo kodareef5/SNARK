@@ -243,7 +243,7 @@ cue("crate/land", "prop", "build", "world", "waits:loot", "a supply crate lands"
 const VEHICLE = "species/vehicle";
 const WAITS_VEHICLES = "waits:vehicles";
 // Every vehicle fires these from its snapshot state (client/core/sound/vehicles.ts).
-const FIRED = new Set(["engine/{revs}", "engine/start", "engine/stop", "vehicle/cabin", "vehicle/wash", "vehicle/wash/water", "vehicle/hull/slow", "vehicle/hull/fast"]);
+const FIRED = new Set(["engine/{revs}", "engine/start", "engine/stop", "vehicle/cabin", "vehicle/wash", "vehicle/wash/water", "vehicle/hull/slow", "vehicle/hull/fast", "vehicle/thruster/boost", "vehicle/thruster/burst"]);
 const vstatus = (name: string): CueStatus => (FIRED.has(name) ? "fire" : WAITS_VEHICLES);
 const vfalls = (n: string, shared = true): string[] => [`{owner}/${n}`, `{family}/${n}`, ...(shared ? [`core:vehicle/${n}`] : [])];
 cue("engine/{revs}", VEHICLE, "vehicle", "body", vstatus("engine/{revs}"), "a running engine (a rotor, a propeller, an outboard): four layers looped and faded across by rpm, not yet pitched to it", { loop: true, falls: vfalls("engine/{revs}") });
@@ -291,6 +291,9 @@ const VEHICLE_LOOPS: Readonly<Record<string, string>> = {
   "roll/smooth": "a skateboard rolling on smooth ground",
 };
 for (const [n, when] of Object.entries(VEHICLE_LOOPS)) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", vstatus(`vehicle/${n}`), when, { loop: true, falls: vfalls(n, false) });
+// A thruster car's cold gas (shared/sim/vehicle-thrusters.ts), until it has takes of its own: the supply capsule's jets.
+cue("vehicle/thruster/boost", VEHICLE, "vehicle", "body", vstatus("vehicle/thruster/boost"), "a thruster car's boost: compressed air roaring from its tail nozzles", { loop: true, falls: [...vfalls("thruster/boost", false), "core:supply/jet"] });
+cue("vehicle/thruster/burst", VEHICLE, "vehicle", "body", vstatus("vehicle/thruster/burst"), "a thruster car's burst: a sharp blast of compressed air that hops it and turns it over", { falls: [...vfalls("thruster/burst", false), "core:supply/ignite"] });
 
 /** The shared families a vehicle may belong to, each by the words that name it, and the family each one also falls back to. */
 export const VEHICLE_FAMILIES: Readonly<Record<string, { words: readonly string[]; also?: string }>> = {

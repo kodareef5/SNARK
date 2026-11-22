@@ -7,7 +7,7 @@ import { boatWorld } from "../world/boat.ts";
 import { stepBoat, type BoatState, type BoatStep } from "./boat.ts";
 import { stepHelicopter, type HelicopterState, type HelicopterStep } from "./helicopter.ts";
 import { StaticVehicleWorld } from "../world/vehicle.ts";
-import { BTN_CROUCH, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, BTN_JUMP, MODE_NONE, MODE_WALK, type Body, stepOut } from "./character.ts";
+import { BTN_BURST, BTN_CROUCH, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, BTN_JUMP, MODE_NONE, MODE_WALK, type Body, stepOut } from "./character.ts";
 import { stepVehicle, type VehicleDefinition, type VehicleWorld } from "./vehicle.ts";
 
 const worlds = new WeakMap<CollisionWorld, StaticVehicleWorld>();
@@ -46,6 +46,7 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   state.qx = b.vehicleQx; state.qy = b.vehicleQy; state.qz = b.vehicleQz; state.qw = b.vehicleQw;
   state.engineCondition = b.vehicleEngineCondition; state.engineOn = b.vehicleEngineOn;
   state.hullCondition = b.vehicleHullCondition; state.flooding = b.vehicleFlooding;
+  state.thrust = b.vehicleThrust; state.thrustCool = b.vehicleThrustCool;
   if (def.movement === "rotor") {
     state.qx = b.vehicleQx; state.qy = b.vehicleQy; state.qz = b.vehicleQz; state.qw = b.vehicleQw;
     state.rotorRpm = b.vehicleRotorRpm; state.rotorPhase = b.vehicleRotorPhase; state.collective = b.vehicleCollective;
@@ -69,7 +70,8 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
     b.vehicleQx = state.qx; b.vehicleQy = state.qy; b.vehicleQz = state.qz; b.vehicleQw = state.qw;
     b.vehicleEngineCondition = state.engineCondition; b.vehicleEngineOn = state.engineOn;
     b.vehicleHullCondition = state.hullCondition; b.vehicleFlooding = state.flooding;
-  } else Object.assign(vehicleStep, stepVehicle(state, { throttle: moveZ / 127, steer: -moveX / 127, brake: 0, handbrake: (buttons & BTN_JUMP) !== 0, pilot }, def.spec, environment ?? world));
+  } else Object.assign(vehicleStep, stepVehicle(state, { throttle: moveZ / 127, steer: -moveX / 127, brake: 0, handbrake: (buttons & BTN_JUMP) !== 0, pilot,
+    boost: (buttons & BTN_SPRINT) !== 0, burst: (buttons & BTN_BURST) !== 0 }, def.spec, environment ?? world));
   stepOut.landSpeed = vehicleStep.landSpeed;
   b.vehicle = true; b.mode = MODE_WALK; b.grounded = state.grounded; b.stance = 0;
   // The store and wire use f32: round here on BOTH sides before another predicted tick.
@@ -79,6 +81,7 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   b.vehicleQx = Math.fround(state.qx); b.vehicleQy = Math.fround(state.qy); b.vehicleQz = Math.fround(state.qz); b.vehicleQw = Math.fround(state.qw);
   b.vehicleEngineCondition = Math.fround(state.engineCondition); b.vehicleEngineOn = state.engineOn;
   b.vehicleHullCondition = Math.fround(state.hullCondition); b.vehicleFlooding = Math.fround(state.flooding);
+  b.vehicleThrust = state.thrust ?? 0; b.vehicleThrustCool = state.thrustCool ?? 0;
   b.steering = Math.fround(state.steering); b.wheelAngle = Math.fround(state.wheelAngle); b.fuel = Math.fround(state.fuel);
   b.vehicleGear = state.gear; b.vehicleRpm = Math.fround(state.engineRpm); b.vehicleShiftTime = Math.fround(state.shiftTime); b.vehiclePayloadMass = Math.fround(state.payloadMass);
   b.vehicleYawRate = Math.fround(state.yawRate);
