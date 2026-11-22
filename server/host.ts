@@ -74,7 +74,7 @@ import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { walk, type System } from "./system.ts";
 import { Items } from "./items.ts";
 import { COMMAND_FAMILIES } from "./commands/families.ts";
-import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
+import { addOwnCommands, addOwnState, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Loose } from "./loose.ts";
 import { Projectiles } from "./projectiles.ts";
@@ -1447,6 +1447,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
+  addOwnState(own);
 
   function refreshInventories(): void {
     for (const rec of inventoryChanged) {

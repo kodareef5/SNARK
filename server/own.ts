@@ -145,36 +145,47 @@ function sendKept(ctx: OwnContext, c: Client, box: number, inv: Inventory, told:
   return slots.length > 0;
 }
 
+/** Registers the kinds of owner state that have no system of their own to register them. */
+export function addOwnState(ctx: OwnContext): void {
+  const own = ctx.game.own;
+  own.add({
+    kind: OWN_LOOK,
+    version: (_c, rec) => rec.look ?? undefined,
+    write(w, _c, rec) {
+      for (let i = 0; i < LOOK_BYTES; i++) w.u8(rec.look![i]!);
+    },
+  });
+  own.add({
+    kind: OWN_VITALS,
+    version: (_c, rec) => rec.vitals?.version,
+    write(w, _c, rec) {
+      const v = rec.vitals!;
+      w.u32(v.tick);
+      for (let i = 0; i < V_COUNT; i++) {
+        w.uint53(v.value[i]!);
+        w.svarint(v.rate[i]!);
+        w.uint53(v.max[i]!);
+      }
+    },
+  });
+  // The survivor's own inventory: the slots that changed, then the tames its soul balls keep.
+  own.group(OWN_SLOTS, (c, rec) => {
+    const inv = ctx.items.inv(rec);
+    const sent = (c.sent[OWN_SLOTS] as number | undefined) ?? -1;
+    if (inv.version === sent) return;
+    sendSlots(ctx, c, BOX_SELF, inv, sent, sent < 0);
+    c.sent[OWN_SLOTS] = inv.version;
+    c.sent[OWN_KEPT] = sendKept(ctx, c, BOX_SELF, inv, c.sent[OWN_KEPT] === true);
+    // The load changes how the body moves, and others see its gear.
+    if (c.ent >= 0) ctx.refresh(rec);
+  });
+}
+
 export function syncOwn(ctx: OwnContext, c: Client): void {
   const rec = ctx.records.byPid.get(c.pid);
   if (!rec) return;
   const game = ctx.game;
-  if (rec.look && c.sentLook !== rec.look) {
-    const w = game.beginOwn(OWN_LOOK);
-    for (let i = 0; i < LOOK_BYTES; i++) w.u8(rec.look[i]!);
-    game.endOwn(c);
-    c.sentLook = rec.look;
-  }
-  const v = rec.vitals;
-  if (v && v.version !== c.sentVitals) {
-    const w = game.beginOwn(OWN_VITALS);
-    w.u32(v.tick);
-    for (let i = 0; i < V_COUNT; i++) {
-      w.uint53(v.value[i]!);
-      w.svarint(v.rate[i]!);
-      w.uint53(v.max[i]!);
-    }
-    game.endOwn(c);
-    c.sentVitals = v.version;
-  }
-  const inv = ctx.items.inv(rec);
-  if (inv.version !== c.sentInv) {
-    sendSlots(ctx, c, BOX_SELF, inv, c.sentInv, c.sentInv < 0);
-    c.sentInv = inv.version;
-    c.sentKept = sendKept(ctx, c, BOX_SELF, inv, c.sentKept);
-    // The load changes how the body moves, and others see its gear.
-    if (c.ent >= 0) ctx.refresh(rec);
-  }
+  game.own.sync(c, rec);
   if (ctx.rules.version !== c.sentRules) {
     const w = game.beginOwn(OWN_RULES);
     const rules = ctx.rules;

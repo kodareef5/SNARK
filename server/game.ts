@@ -65,6 +65,7 @@ import {
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { PassengerView } from "./passenger-view.ts";
+import { OwnState } from "./ownstate.ts";
 import { Signal, Veto } from "./signal.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
@@ -367,9 +368,9 @@ export class Client {
   textReadyAt = 0;
   /** OWN_SESSION must be sent. */
   ownDirty = false;
+  /** What this connection was last sent of each kind of owner state, by OWN_ kind (server/ownstate.ts). Nothing at a kind: it was sent none. */
+  readonly sent: unknown[] = [];
   /** Each sent field is the version of owner-private state this connection last got. -1 means nothing yet. */
-  sentVitals = -1;
-  sentInv = -1;
   sentMarkers = -1;
   /** What was last sent of the creature it has open, packed into one number, and when. */
   sentSubject = -1;
@@ -382,11 +383,9 @@ export class Client {
   readonly respawnAt: Place[] = [];
   placesList = 0;
   sentPlaces = -1;
-  sentLook: Uint8Array | null = null;
   sentHeld = -2;
   sentBuffs = -1;
-  /** Whether the session was last told of a kept tame in its own inventory, and in the box it has open (OWN_KEPT). */
-  sentKept = false;
+  /** Whether the session was last told of a kept tame in the box it has open (OWN_KEPT). */
   sentKeptOpen = false;
   sentRules = -1;
   /** inviteUntil is the tick the invitation it was shown expires, or 0. */
@@ -440,12 +439,12 @@ export class Client {
     this.joined = false;
     this.left = "left";
     this.ownDirty = false;
-    this.sentVitals = this.sentInv = this.sentMarkers = this.sentOpenVersion = -1;
+    this.sent.length = 0;
+    this.sentMarkers = this.sentOpenVersion = -1;
     this.sentPlaces = -1;
-    this.sentLook = null;
     this.sentHeld = -2;
     this.sentBuffs = -1;
-    this.sentKept = this.sentKeptOpen = false;
+    this.sentKeptOpen = false;
     this.sentRules = -1;
     this.sentTribe = -1;
     this.inviteUntil = 0;
@@ -501,6 +500,8 @@ export class GameServer {
   readonly onBody = new Signal<[c: Client]>();
   /** The session's entity is about to be destroyed. */
   readonly onBodyGone = new Signal<[c: Client]>();
+  /** What only a survivor's own session is sent of it. A system registers the kinds it owns here (server/ownstate.ts). */
+  readonly own = new OwnState(this);
   /** Called once per tick before bodies move, to apply changes queued outside the step. */
   onBeforeStep: (() => void) | null = null;
   /** Called once per tick after bodies move and commands run, before replication. */

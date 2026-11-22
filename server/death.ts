@@ -2,7 +2,7 @@
 // things or dead with a cache that holds them. A client never names what it opens. The server casts a ray from the body's eye.
 
 import { BitWriter } from "../shared/net/codec.ts";
-import { CHOOSE_DIED, MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CHOOSE_DIED, MARKER_DEATH, OWN_SLOTS, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
 import { leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
 import { useVehicle } from "../shared/sim/vehicle-frame.ts";
@@ -394,7 +394,7 @@ export class Death {
     if (c) {
       this.close(c);
       this.ctx.game.kill(c);
-      c.sentInv = -1;
+      c.sent[OWN_SLOTS] = undefined;
       c.why = CHOOSE_DIED;
       c.sentPlaces = -1;
       this.ctx.game.sendText(c, TEXT_NOTICE, `You ${CAUSE_NAMES[cause] ?? "died"}.`);
