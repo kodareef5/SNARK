@@ -84,6 +84,8 @@ export const MATERIAL_LENS = 8;
 export const MATERIAL_INDICATOR = 16;
 /** Emitting gas with procedural coverage along its local UV axis. */
 export const MATERIAL_EXHAUST = 32;
+/** Light with no surface of its own: drawn after everything opaque, blended over it, showing both faces and writing no depth. */
+export const MATERIAL_BLEND = 64;
 
 export interface PackMaterial {
   id: string;

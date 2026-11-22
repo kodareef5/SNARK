@@ -35,6 +35,18 @@ export const STANCE_AGGRESSIVE = 2;
 export const STANCE_YOURS = 3;
 export const STANCES: readonly string[] = ["passive", "neutral", "aggressive", "attacks your target"];
 
+/** How a body walks to its goal: not at all, strolling, walking, running. */
+export const GOAL_NONE = 0;
+export const GOAL_STROLL = 1;
+export const GOAL_WALK = 2;
+export const GOAL_RUN = 3;
+/** Standing where it was told and staying there: no wandering while it waits, serves or emotes. */
+export const GOAL_STAY = 4;
+/** Metres from its goal a body counts as there. */
+export const GOAL_ARRIVE = 0.9;
+/** No temper of its own: its species'. */
+export const TEMPER_SPECIES = 255;
+
 export const MIND_WANDER = 0;
 export const MIND_FLEE = 1;
 export const MIND_HUNT = 2;
@@ -332,6 +344,15 @@ export class Behavior {
   wanders = new Uint8Array(0);
   /** Ticks in a row it has been stuck, as `moved` counts them. */
   stuck = new Uint8Array(0);
+  /**
+   * A point it walks to (Cast's people: server/cast/stage.ts), and how: a GOAL_ pace, GOAL_NONE for none. Hunting and
+   * fleeing come first; arrived, it stands until told otherwise.
+   */
+  goalX = new Float32Array(0);
+  goalZ = new Float32Array(0);
+  goalPace = new Uint8Array(0);
+  /** A TEMPER_ value over its species' own, or TEMPER_SPECIES: a cop who fights back where a civilian runs. */
+  temperOf = new Uint8Array(0);
   private leaderGen = new Uint16Array(0);
   /** Owned creatures that are awake. */
   readonly owned = new Set<number>();
@@ -422,6 +443,10 @@ export class Behavior {
     this.leader = wider(this.leader, cap, -1);
     this.wanders = wider(this.wanders, cap);
     this.stuck = wider(this.stuck, cap);
+    this.goalX = wider(this.goalX, cap);
+    this.goalZ = wider(this.goalZ, cap);
+    this.goalPace = wider(this.goalPace, cap);
+    this.temperOf = wider(this.temperOf, cap, TEMPER_SPECIES);
     this.leaderGen = wider(this.leaderGen, cap);
     this.target = wider(this.target, cap, -1);
     this.targetGen = wider(this.targetGen, cap);
@@ -452,6 +477,8 @@ export class Behavior {
     this.wanders[e] = 0;
     this.calm[e] = 0;
     this.ordered[e] = 0;
+    this.goalPace[e] = GOAL_NONE;
+    this.temperOf[e] = TEMPER_SPECIES;
     this.owned.delete(e);
     this.lose(e);
     if (this.reg.flies[this.world.ents.kind[e]!]) this.ground(e);
@@ -636,6 +663,40 @@ export class Behavior {
     this.lose(e);
   }
 
+  /** Its temper: its own if it has one, else its species'. */
+  temper(e: number): number {
+    const own = this.temperOf[e]!;
+    return own !== TEMPER_SPECIES ? own : this.reg.temper[this.world.ents.kind[e]!]!;
+  }
+
+  /** Walks `e` to a point at a GOAL_ pace, finding its way round what is in it; GOAL_NONE stops it where it is. A hunt or
+   * a fright comes first, and it goes on to the point after. */
+  goTo(e: number, x: number, z: number, pace: number): void {
+    const moved = this.goalPace[e] === GOAL_NONE || Math.abs(this.goalX[e]! - x) + Math.abs(this.goalZ[e]! - z) > 2;
+    this.goalX[e] = x;
+    this.goalZ[e] = z;
+    this.goalPace[e] = pace;
+    if (pace === GOAL_NONE) {
+      this.move[e] = 0;
+      this.buttons[e] = 0;
+    }
+    if (moved) this.lose(e);
+    if (this.mind[e] === MIND_WANDER) this.until[e] = 0;
+  }
+
+  /** Whether `e` is within `r` metres of its goal (on the flat). */
+  arrived(e: number, r = GOAL_ARRIVE): boolean {
+    const ents = this.world.ents;
+    const dx = this.goalX[e]! - ents.x[e]!, dz = this.goalZ[e]! - ents.z[e]!;
+    return dx * dx + dz * dz <= r * r;
+  }
+
+  /** Turns `e` to face a point, standing. */
+  face(e: number, x: number, z: number): void {
+    const ents = this.world.ents;
+    this.look[e] = Math.round((Math.atan2(x - ents.x[e]!, z - ents.z[e]!) / (Math.PI * 2)) * 65536) & 0xffff;
+  }
+
   /** The entity index `e` hunts, or -1. */
   targetOf(e: number): number {
     if (this.mind[e] !== MIND_HUNT) return -1;
@@ -663,7 +724,7 @@ export class Behavior {
       if (this.stance[e] !== STANCE_PASSIVE && by >= 0 && by !== e && ents.team[by] !== team) this.hunt(e, by, tick);
       return;
     }
-    if (this.reg.temper[ents.kind[e]!] !== TEMPER_FLEES && by >= 0 && by !== e) {
+    if (this.temper(e) !== TEMPER_FLEES && by >= 0 && by !== e) {
       this.hunt(e, by, tick);
       return;
     }
@@ -961,6 +1022,7 @@ export class Behavior {
       if (!this.head(e, tick, ents.x[prey]!, ents.z[prey]!, turn && this.blocked(e, prey, tick))) this.giveUp(e, tick);
       return;
     }
+    if (this.goalPace[e] !== GOAL_NONE && mind !== MIND_FLEE) return this.seek(e, tick, turn, heading);
     if (ents.team[e] !== 0) {
       // An owned creature follows its leader, wanders, or stands. An aggressive one first looks for prey on its turn.
       if (turn && this.stance[e] === STANCE_AGGRESSIVE && tick >= this.rested[e]!) {
@@ -1008,14 +1070,14 @@ export class Behavior {
       if (flyer) this.cruise(this.flight(e), tick);
     }
     if (flyer) {
-      if (turn && this.reg.temper[ents.kind[e]!] === TEMPER_HUNTS && tick >= this.rested[e]!) {
+      if (turn && this.temper(e) === TEMPER_HUNTS && tick >= this.rested[e]!) {
         const prey = this.prey(e);
         if (prey >= 0) return this.hunt(e, prey, tick);
       }
       return this.roam(e, tick, turn, heading);
     }
     if (!turn && tick < this.until[e]!) return;
-    if (turn && this.reg.temper[ents.kind[e]!] === TEMPER_HUNTS && tick >= this.rested[e]!) {
+    if (turn && this.temper(e) === TEMPER_HUNTS && tick >= this.rested[e]!) {
       const prey = this.prey(e);
       if (prey >= 0) return this.hunt(e, prey, tick);
     }
@@ -1023,6 +1085,30 @@ export class Behavior {
   }
 
   /** Now and then it walks a new way, or stands a while. It walks at its walking speed, as ARK's wild creatures wander. */
+  /** Walks to its goal at its pace; there, it stands still facing the way it was told. */
+  private seek(e: number, tick: number, turn: boolean, heading: boolean): void {
+    if (this.goalPace[e] === GOAL_STAY || this.arrived(e)) {
+      this.way[e] = WAY_STRAIGHT;
+      this.move[e] = 0;
+      this.buttons[e] = 0;
+      return;
+    }
+    if (!heading) return;
+    const ents = this.world.ents;
+    const gx = this.goalX[e]!, gz = this.goalZ[e]!;
+    this.look[e] = Math.round((Math.atan2(gx - ents.x[e]!, gz - ents.z[e]!) / (Math.PI * 2)) * 65536) & 0xffff;
+    this.pitch[e] = 0;
+    const pace = this.goalPace[e]!;
+    this.move[e] = pace === GOAL_STROLL ? 64 : 127;
+    this.buttons[e] = pace === GOAL_RUN ? BTN_SPRINT : 0;
+    this.homeX[e] = gx;
+    this.homeZ[e] = gz;
+    if (!this.head(e, tick, gx, gz, turn && this.blocked(e, -1, tick))) {
+      this.move[e] = 0;
+      this.buttons[e] = 0;
+    }
+  }
+
   private amble(e: number, tick: number): void {
     if (tick < this.until[e]!) return;
     const rng = this.rng;
@@ -1679,6 +1765,9 @@ export class Behavior {
       if (o < 0 || (ents.flags[o]! & F_ALIVE) === 0) return -1;
       gx = ents.x[o]!;
       gz = ents.z[o]!;
+    } else if (this.goalPace[e] !== GOAL_NONE && this.mind[e] !== MIND_FLEE) {
+      gx = this.goalX[e]!;
+      gz = this.goalZ[e]!;
     } else if (this.mind[e] === MIND_FLEE) {
       this.fleeGoal(e);
       gx = this.homeX[e]!;

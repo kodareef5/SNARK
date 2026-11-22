@@ -64,8 +64,9 @@ test("a creature's page has its stats by level, the wiki's taming table, its dro
   const raptor = byId("core:raptor");
   expect(raptor.tables.find((t) => t.title === "Stats")!.rows[0]).toEqual(["Health", "200", "+40 (20%)", "+5.4%"]);
   expect(raptor.tables.find((t) => t.title === "Harvesting")!.rows).toEqual([
-    [{ id: "core:hide" }, { rate: "body", v: "1 1", text: "1" }, "55.6%", { id: "core:hatchet" }],
-    [{ id: "core:meat" }, { rate: "body", v: "1 1", text: "1" }, "44.4%", { id: "core:pick" }],
+    // Each favoured by the stone tool and the metal one blocked out after it, in one cell.
+    [{ id: "core:hide" }, { rate: "body", v: "1 1", text: "1" }, "55.6%", [{ id: "core:hatchet" }, { id: "core:hatchet_metal" }]],
+    [{ id: "core:meat" }, { rate: "body", v: "1 1", text: "1" }, "44.4%", [{ id: "core:pick" }, { id: "core:pick_metal" }]],
   ]);
   expect(raptor.facts.find((f) => f.label === "Maturation")!.value).toEqual([{ rate: "mature", v: "133333", text: "1 d 13 h" }]);
   expect(raptor.console).toBe("spawn core:raptor");
@@ -102,7 +103,7 @@ test("a node, a status and a landmark added get their entries, and the links run
   const hut: Landmark = { name: "hut", defs: LANDMARKS[0]!.defs, pieces: [{ kind: piece.id, at: [0, 0, 0], yaw: 0 }], vehicles: [{ kind: "core:compact", id: "hut/car", at: [4, 0, 0], yaw: 0 }], ground: [] };
   const list = buildCatalogue({ defs: [...CORE_CONTENT, ...added], landmarks: [...LANDMARKS, hut] });
   const of = (id: string) => list.find((e) => e.id === id)!;
-  expect(of("wiki:cactus").tables[0]!.rows.map((r) => r.map((c) => (typeof c === "string" ? c : Array.isArray(c) ? "" : "rate" in c ? c.text : c.id)))).toEqual([["core:fiber", "1 to 2", "3 to 6"], ["core:wood", "", "3"]]);
+  expect(of("wiki:cactus").tables[0]!.rows.map((r) => r.map((c) => (typeof c === "string" ? c : Array.isArray(c) ? "" : "rate" in c ? c.text : c.id)))).toEqual([["core:fiber", "1 to 2", "3 to 6", "5 to 10"], ["core:wood", "", "3", "5"]]);
   expect(of("core:hatchet").related.find((r) => r.relation === "Works")!.refs).toContainEqual({ id: "wiki:cactus" });
   expect(of("core:fiber").related.find((r) => r.relation === "Gathered from")!.refs).toContainEqual({ id: "wiki:cactus" });
   expect(of("wiki:prickled").related).toContainEqual({ relation: "Given by", refs: [{ id: "wiki:needle" }] });
@@ -121,7 +122,7 @@ test("every class of definition is ruled on: each has its entry, is shown within
     else if ("within" in ruling) expect([def.id, ids.has(ruling.within) || pages.has(ruling.within)]).toEqual([def.id, true]);
   }
   for (const l of LANDMARKS) expect(ids.has(l.name)).toBe(true);
-  expect(leftOut(rulings).map((l) => l.why)).toEqual(["scenery", "form", "standIn", "target", "unmade", "remains", "flight", "noFile"]);
+  expect(leftOut(rulings).map((l) => l.why)).toEqual(["scenery", "form", "standIn", "target", "unmade", "remains", "flight", "capsule", "noFile"]);
   expect(leftOut(rulings).find((l) => l.why === "noFile")!.names).toEqual(["Tampa", "San Francisco", "Los Angeles"]);
   expect(() => coverage({ defs: [{ type: "prop", class: "seat", id: "wiki:chair" } as unknown as Def], landmarks: [], has: () => true, maps: new Set() })).toThrow("no ruling on prop/seat");
 });
@@ -135,7 +136,7 @@ test("a world's settings change the figures they rule, worked out on the page as
   const banyan = byId("core:banyan");
   const cells = banyan.tables[0]!.rows.flat().filter((c): c is { rate: string; v: string; text: string } => typeof c === "object" && "rate" in c);
   for (const c of cells) expect(rated(c.rate, c.v)).toBe(c.text);
-  expect(cells.map((c) => rated(c.rate, c.v, fifty))).toEqual(["100 to 200", "300 to 600", "0 to 50", "150 to 450"]);
+  expect(cells.map((c) => rated(c.rate, c.v, fifty))).toEqual(["100 to 200", "300 to 600", "500 to 1,000", "0 to 50", "150 to 450", "250 to 750"]);
   const fact = (e: string, label: string) => byId(e).facts.find((f) => f.label === label)!.value.find((c) => typeof c === "object" && "rate" in c) as { rate: string; v: string };
   expect(rated(fact("core:banyan", "Grows back").rate, fact("core:banyan", "Grows back").v, fifty)).toBe("12 min");
   expect(rated(fact("core:wood", "Stack").rate, fact("core:wood", "Stack").v, fifty)).toBe("1,000");
@@ -174,7 +175,9 @@ test("the settings the wiki lists are the rows marked public, and every command 
   expect(publicSettings().find((s) => s.name === "bDisableDefaultMapItemSets")?.def).toBe("False");
   // And whether it comes with a pteranodon of its own.
   expect(publicSettings().find((s) => s.name === "StarterMount")?.def).toBe("True");
-  expect(publicSettings().length).toBe(26);
+  // And whether supply drops come, and how fine what they hold is.
+  expect(publicSettings().filter((s) => /LootCrates|SupplyCrateLoot/.test(s.name)).map((s) => [s.name, s.def])).toEqual([["SupplyCrateLootQualityMultiplier", "1"], ["bDisableLootCrates", "False"]]);
+  expect(publicSettings().length).toBe(31);
   expect(commands().filter((c) => c.examples.length > 0).length).toBeGreaterThan(10);
 });
 

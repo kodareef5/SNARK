@@ -35,7 +35,7 @@ function tables(mode: string[]) {
   return { beach, made, lists, plain: (t = beach) => t.entries.map((e) => [e.kinds.map((kind) => reg.ids[kind]), e.chances, e.weight]) };
 }
 
-test("the beach preserves the native species groups, chances, offsets and limits", () => {
+test("the beach preserves the native species groups, chances, offsets and limits, and has the trilobite, which ARK keeps in the sea", () => {
   const { beach, plain, made } = tables([]);
   expect(plain()).toEqual([
     [Array(5).fill("core:dodo"), [1, 0.7, 0.6, 0.25, 0.2], 0.425],
@@ -43,13 +43,15 @@ test("the beach preserves the native species groups, chances, offsets and limits
     [["core:pteranodon", "core:pteranodon"], [1, 0.5], 0.15],
     [["core:trike", "core:trike"], [1, 0.5], 0.1],
     [["core:carbonemys", "core:carbonemys"], [1, 0.45], 0.14],
+    // Blocked out and ours on the sand (content/creatures/trilobite.ts): ARK's groups of five, from its ocean's tables.
+    [Array(5).fill("core:trilobite"), [1, 1, 1, 1, 1], 0.12],
   ]);
   const trike = k("core:trike"), jungle = made.tables.get(k("core:spawns_jungle"))!;
   expect(beach.entries.find(e => e.kinds[0] === trike)!.offsets).toEqual([[0, 6.8], [0, -6.8]]);
   expect(jungle.entries.find(e => e.kinds[0] === trike)).toEqual({ kinds: [trike, trike], chances: [1, 0.6], offsets: [[0, 0], [0, 6.8]], weight: 0.075 });
   expect(jungle.limits.get(trike)).toBe(0.15);
   expect(beach.entries[0]!.offsets).toEqual([[0, 6.8], [0, 0], [0, -6.8], [0, -3.4], [0, 3.4]]);
-  expect([...beach.limits].map(([kind, share]) => [reg.ids[kind], share])).toEqual([["core:dodo", 0.6], ["core:parasaur", 0.2], ["core:pteranodon", 0.25], ["core:trike", 0.2], ["core:carbonemys", 0.2]]);
+  expect([...beach.limits].map(([kind, share]) => [reg.ids[kind], share])).toEqual([["core:dodo", 0.6], ["core:parasaur", 0.2], ["core:pteranodon", 0.25], ["core:trike", 0.2], ["core:carbonemys", 0.2], ["core:trilobite", 0.15]]);
 });
 
 test("the spawn settings: override, then add, then subtract; one species for another or for none; a species' weight and limit by its tag", () => {
@@ -68,9 +70,10 @@ test("the spawn settings: override, then add, then subtract; one species for ano
     [["core:pteranodon", "core:pteranodon"], [1, 0.5], 0.15],
     [["core:trike", "core:trike"], [1, 0.5], 0.1],
     [["core:carbonemys", "core:carbonemys"], [1, 0.45], 0.14],
+    [Array(5).fill("core:trilobite"), [1, 1, 1, 1, 1], 0.12],
     [["core:grazer", "core:grazer"], [1, 1], 0.1],
   ]);
-  expect([...beach.limits].map(([kind, share]) => [reg.ids[kind], share])).toEqual([["core:dodo", 0.3], ["core:pteranodon", 0.25], ["core:trike", 0.2], ["core:carbonemys", 0.2], ["core:grazer", 0.1]]);
+  expect([...beach.limits].map(([kind, share]) => [reg.ids[kind], share])).toEqual([["core:dodo", 0.3], ["core:pteranodon", 0.25], ["core:trike", 0.2], ["core:carbonemys", 0.2], ["core:trilobite", 0.15], ["core:grazer", 0.1]]);
   // The hunters' table is wholly the override's, offsets in metres.
   const hunters = made.tables.get(k("core:spawns_proving_hunters"))!;
   expect(plain(hunters)).toEqual([[["core:dodo", "core:dodo"], [1, 0.25], 2]]);

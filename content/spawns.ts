@@ -12,6 +12,7 @@ const rex = "core:rex";
 const ptera = "core:pteranodon";
 const trike = "core:trike";
 const stego = "core:stego";
+const trilobite = "core:trilobite";
 
 export const SPAWNS: readonly Def[] = [
   // The Island's beach groups for the available native species.
@@ -24,8 +25,11 @@ export const SPAWNS: readonly Def[] = [
       { name: "Ptero (1-2)", weight: 0.15, group: [ptera, ptera], chances: [1, 0.5], offsets: [[0, 2.5], [0, -2.5]] },
       { name: "Trike (1-2)", weight: 0.1, group: [trike, trike], chances: [1, 0.5], offsets: [[0, 6.8], [0, -6.8]] },
       { name: "Shore turtles", weight: 0.14, group: [carbonemys, carbonemys], chances: [1, 0.45], offsets: [[0, 0], [5, -3]] },
+      // ARK keeps trilobites in the sea, five to a group at a weight of 0.38 among what swims (Spawn entries, 2026-11-21).
+      // Nothing swims here yet, so they are on the sand, at a weight chosen to put a group on a beach in every few.
+      { name: "Trilobite (5)", weight: 0.12, group: [trilobite, trilobite, trilobite, trilobite, trilobite], chances: [1, 1, 1, 1, 1], offsets: [[0, 0], [2, 1.5], [-2, 1.5], [1.5, -2], [-1.5, -2]] },
     ],
-    limits: [{ species: dodo, share: 0.6 }, { species: para, share: 0.2 }, { species: ptera, share: 0.25 }, { species: trike, share: 0.2 }, { species: carbonemys, share: 0.20 }],
+    limits: [{ species: dodo, share: 0.6 }, { species: para, share: 0.2 }, { species: ptera, share: 0.25 }, { species: trike, share: 0.2 }, { species: carbonemys, share: 0.20 }, { species: trilobite, share: 0.15 }],
   },
   // The jungle species inhabit Miami's hammocks, gardens and ruins.
   {

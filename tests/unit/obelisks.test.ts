@@ -4,7 +4,9 @@ import { OBELISK, OBELISK_PIECES, TRAVEL_TERMINAL, obeliskStatics } from "../../
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { EYE_PERIOD, aperture, eyeBloom, eyeEnergy, eyeFigure, eyePhase, eyePower, eyeRadiance, eyeSeed, shutterOpening, writeEyeSky } from "../../client/core/render/tide-eye.ts";
 import { parseMap, readHead, writeMap } from "../../shared/world/mapfile.ts";
-import { EMITTERS, EYE_COLORS, EYE_FORMS, KEEL, LANTERN_MASTS, LENS_HEIGHT, type TideEyeSite } from "../../shared/world/tide-eye.ts";
+import { CAST_PHASE, EMITTERS, EYE_COLORS, EYE_FORMS, EYE_KNOT, KEEL, LANTERN_MASTS, LENS_HEIGHT, nextCast, type TideEyeSite } from "../../shared/world/tide-eye.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
+import { createMapWorld } from "../../server/world.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -465,4 +467,38 @@ test("a map's page marks each instrument where its deck stands, and an old colum
   const named = [{ name: "Ybor City", at: [-82.4394, 27.9604] as [number, number] }];
   expect(obeliskMarks([{ name: "Ybor City", x: 5300, z: 7100 }], named, mark, () => [1, 2])).toEqual([{ name: "Ybor City", x: 530, y: 710 }]);
   expect(obeliskMarks(undefined, named, mark, () => [1, 2])).toEqual([{ name: "Ybor City", x: 1, y: 2 }]);
+});
+
+test("a cast leaves a site at one tick of its cycle, at full power and never with its mechanism shut, by whole ticks alone", () => {
+  expect([CAST_PHASE, EYE_KNOT, EYE_PERIOD * TICK_RATE]).toEqual([16, 2790, 3600]);
+  for (const color of EYE_COLORS) {
+    const site = { color };
+    let last = -1;
+    for (const from of [0, 1, 479, 480, 481, 3599, 3600, 100000, 2 ** 31 - 5000]) {
+      const tick = nextCast(from, color, TICK_RATE);
+      // At or after the tick asked, less than a cycle on, and a whole tick.
+      expect([Number.isInteger(tick), tick >= from, tick - from < EYE_PERIOD * TICK_RATE]).toEqual([true, true, true]);
+      // The display, which reads seconds, is then exactly at the cast phase: full power, mechanism open.
+      const phase = eyePhase(tick / TICK_RATE, site);
+      expect([Math.abs(phase - CAST_PHASE) < 1e-6, eyePower(phase), aperture(phase)]).toEqual([true, 1, 1]);
+      // Asked again at that tick, it is that tick; a tick later, the next cycle's.
+      expect([nextCast(tick, color, TICK_RATE), nextCast(tick + 1, color, TICK_RATE)]).toEqual([tick, tick + EYE_PERIOD * TICK_RATE]);
+      expect(tick).toBeGreaterThanOrEqual(last);
+      last = tick;
+    }
+  }
+  // The three colours' casts are forty seconds apart, so a map with three sites has one about every forty seconds.
+  const first = EYE_COLORS.map((c) => nextCast(0, c, TICK_RATE)).sort((a, b) => a - b);
+  expect([first[1]! - first[0]!, first[2]! - first[1]!]).toEqual([40 * TICK_RATE, 40 * TICK_RATE]);
+});
+
+test("the server's world knows its map's obelisks: those with a display first, then the plain ones, each once", () => {
+  const blue: TideEyeSite = { name: "Blue", color: "blue", x: 64, z: 64, y: 0, yaw: 0, radius: 70 };
+  const plain = obeliskStatics(reg, { name: "north", x: 180, z: 150, yaw: 0 }, () => 0);
+  const world = createMapWorld(reg, parseMap(writeMap(flatMap(4, { tideEyes: [blue], statics: plain }))));
+  expect(world.tideEyes.map((s) => [s.name, s.color])).toEqual([["Blue", "blue"]]);
+  // The plain obelisk's three blocks are one place.
+  expect(world.obelisks).toEqual([{ x: 64, z: 64, eye: 0 }, { x: 180, z: 150, eye: -1 }]);
+  const none = createMapWorld(reg, parseMap(writeMap(flatMap(4))));
+  expect([none.tideEyes, none.obelisks]).toEqual([[], []]);
 });

@@ -68,7 +68,9 @@ test("a survivor who spent more than the level table gives keeps what it spent a
   me.engrams.push(...h.reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : [])));
   const cost = me.engrams.reduce((sum, e) => sum + (h.reg.defs[e] as EngramDef).cost, 0);
   const health = statOf(h.reg.defs[me.kind] as SpeciesDef, me.genome, STAT_HEALTH, 0);
-  expect([prog.level(me), prog.statPoints(me), prog.engramPoints(me)]).toEqual([78, 0, 1884 - cost]);
+  // Every engram costs more than level 78 gives since the blocked-out things brought theirs (content/items/blockouts.ts):
+  // she is not short below nothing.
+  expect([prog.level(me), prog.statPoints(me), prog.engramPoints(me), cost > 1884]).toEqual([78, 0, 0, true]);
   expect([prog.spend(me, STAT_HEALTH), me.genome!.tamed[STAT_HEALTH], health]).toEqual([RESULT_SHORT, 99, 100 * (1 + 99 * 0.1)]);
   expect(me.engrams.every((e) => prog.knows(me, e))).toBe(true);
   // With less experience than her engrams cost under this table, she has none to spend and still knows them.

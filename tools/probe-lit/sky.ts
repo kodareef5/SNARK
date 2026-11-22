@@ -200,27 +200,37 @@ try {
     }
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   }
+  // Runs of one program's two texts share it, compiled once: a large program takes a card many seconds to compile.
+  const built = new Map();
   const programs = runs.map((r) => {
-    const program = gl.createProgram();
-    for (const [type, source] of [[gl.VERTEX_SHADER, r.vertex], [gl.FRAGMENT_SHADER, r.fragment]]) {
-      const s = gl.createShader(type);
-      gl.shaderSource(s, source);
-      gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(r.name + ": " + gl.getShaderInfoLog(s));
-      gl.attachShader(program, s);
+    const key = r.vertex + "\\0" + r.fragment;
+    let program = built.get(key);
+    if (!program) {
+      program = gl.createProgram();
+      for (const [type, source] of [[gl.VERTEX_SHADER, r.vertex], [gl.FRAGMENT_SHADER, r.fragment]]) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, source);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(r.name + ": " + gl.getShaderInfoLog(s));
+        gl.attachShader(program, s);
+      }
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+      gl.uniformBlockBinding(program, gl.getUniformBlockIndex(program, "Frame"), 0);
+      built.set(key, program);
     }
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
-    gl.useProgram(program);
-    for (const name in r.samplers) gl.uniform1i(gl.getUniformLocation(program, name), r.samplers[name]);
-    gl.uniformBlockBinding(program, gl.getUniformBlockIndex(program, "Frame"), 0);
     const u = (name) => gl.getUniformLocation(program, name);
-    gl.uniformMatrix4fv(u("uViewProj"), false, r.matrix);
-    gl.uniform3f(u("uSky"), 0.6, 0.75, 0.9);
-    gl.uniform3f(u("uCamMod"), 0.3, 0.2, 0.1);
-    gl.uniform2f(u("uFog"), 1e6, 2e6);
-    for (const name of ["uSolid", "uAlpha"]) gl.uniform1f(u(name), 1);
-    return { program, frame: new Float32Array(r.frame) };
+    const set = () => {
+      for (const name in r.samplers) gl.uniform1i(u(name), r.samplers[name]);
+      gl.uniformMatrix4fv(u("uViewProj"), false, r.matrix);
+      gl.uniform3f(u("uSky"), 0.6, 0.75, 0.9);
+      gl.uniform3f(u("uCamMod"), 0.3, 0.2, 0.1);
+      gl.uniform2f(u("uFog"), 1e6, 2e6);
+      for (const name of ["uSolid", "uAlpha"]) gl.uniform1f(u(name), 1);
+      // A run's own values: a draw's material and effect, where it times a program a draw sets up.
+      for (const name in r.uniforms ?? {}) gl["uniform" + r.uniforms[name].length + "f"](u(name), ...r.uniforms[name]);
+    };
+    return { program, set, frame: new Float32Array(r.frame) };
   });
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
@@ -230,6 +240,7 @@ try {
   const finish = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, one);
   const ms = async (p, n) => {
     gl.useProgram(p.program);
+    p.set();
     gl.bufferData(gl.UNIFORM_BUFFER, p.frame, gl.DYNAMIC_DRAW);
     for (let i = 0; i < 4; i++) gl.drawArrays(gl.TRIANGLES, 0, 3);
     finish();
@@ -293,8 +304,15 @@ function timingRuns(): Record<string, unknown>[] {
 
 /** The sky and LIT full screen in Chrome, blended, in ms a megapixel. */
 export async function timeSky(chrome: string): Promise<Record<string, number | string | boolean>> {
+  return timeRuns(chrome, timingRuns());
+}
+
+/**
+ * Each of `runs` (a name, a program's two texts and samplers, a frame block, a view-projection and any `uniforms` of
+ * its own) drawn full screen at 1,024 square in Chrome, blended, in ms a megapixel: seven rounds, the median.
+ */
+export async function timeRuns(chrome: string, runs: readonly Record<string, unknown>[]): Promise<Record<string, number | string | boolean>> {
   const pictures = skyPictures();
-  const runs = timingRuns();
   let finish: (r: Record<string, number | string | boolean>) => void = () => {};
   const finished = new Promise<Record<string, number | string | boolean>>((r) => (finish = r));
   const server = Bun.serve({
@@ -314,7 +332,7 @@ export async function timeSky(chrome: string): Promise<Record<string, number | s
     },
   });
   const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--enable-gpu", "--ignore-gpu-blocklist", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
   const done = await Promise.race([finished, new Promise<Record<string, string>>((r) => setTimeout(() => r({ error: "the page sent nothing within five minutes" }), 300000))]);
   browser.kill();
   await browser.exited;

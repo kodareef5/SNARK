@@ -11,7 +11,8 @@ export { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { MATERIAL_INDICATOR, MATERIAL_NIGHT, type PackMaterial } from "../../../shared/pack/pack.ts";
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { EXHAUST_GLSL, POLISHED_SKY } from "./suit-finish.ts";
-import { CHANNEL, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street-finishes.ts";
+import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street-finishes.ts";
+import { DROP_GLSL } from "./supply-light.ts";
 import { CHANNEL_DIM, CHANNEL_STRIP, EYE_ENERGY_GLSL, EYE_GLINT_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import { VEHICLE_SHADE_GLSL, VEHICLE_SHADE_UNIFORMS } from "./vehicle-shade.ts";
@@ -741,9 +742,10 @@ uniform float uCutoff, uSheet, uSkin, uEmissive;
 flat in float vFinishSeed;
 in vec3 vWheelPoint;
 in vec4 vWheel;
-uniform float uStreetMaterial, uOptics;
+uniform float uStreetMaterial, uOptics, uFrom;
+uniform vec4 uEffect;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -766,6 +768,31 @@ ${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetM
   if (int(uStreetMaterial) == ${EXHAUST}) {
     vec4 gas = exhaustLight(vUv,dot(normalize(vNormal),-normalize(vRel)),fEffects.x,fSunColor.w);
     o = vec4(shown(gas.rgb,vRel),gas.a);
+    return;
+  }
+  if (int(uStreetMaterial) == ${DROP_LIGHT}) {
+    // A supply capsule's lit strip (supply-light.ts dropLight): its row says which, and where the point is across it.
+    float row = 8.0*vUv.y, band = floor(row);
+    vec3 e = dropLight(band, 2.0*clamp((row-band-0.04)/0.92,0.0,1.0)-1.0, uEffect);
+#ifdef LIGHT_TARGET
+    o = vec4(e,1.0);
+#else
+    o = vec4(1.0-exp(-e),1.0);
+#endif
+    return;
+  }
+  if (int(uStreetMaterial) == ${DROP_GLOW}) {
+    // Its light with no surface: a tube seen by how its side faces the eye, blended over what is behind it. Across
+    // the two depth ranges it is drawn in each, and in the far one what the near one drew adds nothing (glsl.ts
+    // SEE_THROUGH_SPLIT, without the drop: this program never drops a fragment).
+    vec4 g = dropGlow(floor(8.0*vUv.y), vUv.x, abs(dot(normalize(vNormal), normalize(vRel))), uEffect);
+    float depth = 1.0/gl_FragCoord.w;
+    if (depth + 0.5*fwidth(depth) < uFrom) g = vec4(0.0);
+#ifdef LIGHT_TARGET
+    o = vec4(g.rgb, g.a);
+#else
+    o = vec4(1.0-exp(-g.rgb), g.a);
+#endif
     return;
   }
   vec4 base = texture(uBase, vUv);

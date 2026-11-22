@@ -46,9 +46,15 @@ const ASSETS_MAX_LINES = 500;
 const WIKI_MAX_LINES = 190;
 /**
  * The admin page's script in its files: polling, the map's and the timeline's canvases, the tables, panels and charts.
- * Its decisions are in client/core/admin. 600 held the live page; the timeline over the survivor log brought 330.
+ * Its decisions are in client/core/admin. 600 held the live page; the timeline over the survivor log brought 330; the
+ * Cast panel's wiring 50 (D1058).
  */
-const ADMIN_MAX_LINES = 1100;
+const ADMIN_MAX_LINES = 1150;
+/**
+ * The drop book's admin page in its files (planning/workstreams/supply.md): it fetches, draws and listens. What it shows
+ * and what an edit does are in client/core/drops.
+ */
+const DROPS_MAX_LINES = 900;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {
@@ -71,6 +77,7 @@ const ZONES: Zone[] = [
   { dir: "client/entry", may: ["shared", "client/core", "client/entry", "client/assets", "client/city", "client/shell"], builtins: false },
   { dir: "client/wiki", may: ["shared", "client/core", "client/wiki"], builtins: false },
   { dir: "client/admin", may: ["shared", "client/core", "client/admin"], builtins: false },
+  { dir: "client/drops", may: ["shared", "client/core", "client/admin", "client/drops"], builtins: false },
   { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
   // What a module is written against. It names nothing of the server's own.
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },
@@ -161,6 +168,7 @@ function checkPolicy(): void {
   let soundLines = 0;
   let wikiLines = 0;
   let adminLines = 0;
+  let dropsLines = 0;
 
   for (const file of files) {
     const rel = repoPath(file);
@@ -197,6 +205,10 @@ function checkPolicy(): void {
     if (zone.dir === "client/admin") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/admin has no tests; move logic into client/core/admin`);
       adminLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    }
+    if (zone.dir === "client/drops") {
+      if (rel.endsWith(".test.ts")) fail(`${rel}: client/drops has no tests; move logic into client/core/drops`);
+      dropsLines += src.split("\n").filter((l) => l.trim().length > 0).length;
     }
 
     // An import the rules below cannot read the name of is an import they cannot judge.
@@ -246,6 +258,8 @@ function checkPolicy(): void {
   console.log(`  wiki size    ${wikiLines}/${WIKI_MAX_LINES} lines`);
   if (adminLines > ADMIN_MAX_LINES) fail(`client/admin is ${adminLines} lines (budget ${ADMIN_MAX_LINES}); move logic into client/core/admin`);
   console.log(`  admin size   ${adminLines}/${ADMIN_MAX_LINES} lines`);
+  if (dropsLines > DROPS_MAX_LINES) fail(`client/drops is ${dropsLines} lines (budget ${DROPS_MAX_LINES}); move logic into client/core/drops`);
+  console.log(`  drops size   ${dropsLines}/${DROPS_MAX_LINES} lines`);
 }
 
 /** `cpu` is the CPU-seconds of the process and of the processes it waited for. */

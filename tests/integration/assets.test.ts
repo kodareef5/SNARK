@@ -170,8 +170,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // They were 58bad411 and 3b6b9b91 until the parked trailer added its mesh to the pack.
   // The obelisk meshes change the fixture's mesh numbers. So do the soul balls' and their flash's (e1a058b1 and
   // a90344f1 without them).
-  expect(beforePlain).toBe("aec32f25");
-  expect(hash).toBe("f66c7b45");
+  // The supply drop's capsule (content/core.ts) moves the fixture's kind numbers: aec32f25 and f66c7b45 without it.
+  // The things blocked out (content/items/blockouts.ts) and their box move them again: a0689849 without them.
+  expect(beforePlain).toBe("45ebac35");
+  // And 8a56e259 without them.
+  expect(hash).toBe("abaec19d");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -196,7 +199,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // draws went nearest first, as above, and 186ca8fd and 8373e09d until the Parasaur used its authored colours, as above
   // (2e5ae961 and de62efa1 with that alone), and the tanker salvage meshes, as above (8a46cd9d and 9db5f46d with those alone).
   // They were 71084b01 and 79c43231 until the same trailer mesh, and c8dc6d21 and eb1a0e91 until the soul balls'.
-  expect(saddled.beforePlain).toBe("380c32ad");
-  expect(saddled.hash).toBe("c2d8419d");
+  // And 380c32ad and c2d8419d until the supply drop's capsule.
+  // And 3bc3899d until the things blocked out and their box.
+  expect(saddled.beforePlain).toBe("72c44dd1");
+  // And e2d31e0d until the things blocked out and their box.
+  expect(saddled.hash).toBe("8e058329");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

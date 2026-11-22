@@ -21,7 +21,7 @@ import { distanceGain, earAxes, lowpassAt } from "../../client/core/sound/place.
 import { Sounds } from "../../client/core/sound/sounds.ts";
 import { SOUND_SLOT, SplitPort } from "../../client/core/sound/split.ts";
 import { bodyDown, groundPecks, mouthOpens, strikeAt } from "../../client/core/sound/timing.ts";
-import { bandwidth, buildSounds, loudness, prepareTake, rateFor, readWav, writeWav } from "../../tools/pack/sound.ts";
+import { bandwidth, buildSounds, findSheets, loudness, prepareTake, rateFor, readWav, waitingSheets, writeWav } from "../../tools/pack/sound.ts";
 import { codeTake } from "../../tools/pack/transform.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -194,6 +194,29 @@ test("the build names each sound by its owner and occasion, and a manifest that 
   expect(() => parseManifest(wrong((s) => (s.takes[0]!.bytes = 1)))).toThrow("size");
   expect(() => parseManifest(wrong((s) => (s.at = built.file.length)))).toThrow("outside");
   expect(() => parseManifest(wrong((s) => (s.id = "dodo call")))).toThrow("named");
+});
+
+test("a family whose takes are not installed is left out whole and named, and one with only some of its takes is refused", () => {
+  // Git carries a sheet and not its takes, so a branch's new family reaches a clone before its takes are in the release.
+  const root = mkdtempSync(join(tmpdir(), "snark-waiting-"));
+  try {
+    const sheet = (folder: string, takes: string[], have: string[]): void => {
+      const dir = join(root, "core", folder, "sound");
+      mkdirSync(join(dir, "takes"), { recursive: true });
+      for (const t of have) writeFileSync(join(dir, "takes", t), writeWav(chirp(0.2, 32000), 32000));
+      writeFileSync(join(dir, "sounds.json"), JSON.stringify({ sounds: { hum: { range: 20, level: -20, takes: takes.map((t) => ({ file: `takes/${t}` })) } } }));
+    };
+    sheet("sfx/tech", ["a.wav"], ["a.wav"]);
+    sheet("sfx/supply", ["a.wav", "b.wav"], []);
+    expect([findSheets(root).map((s) => s.owner), waitingSheets(root)]).toEqual([["core:tech"], ["core:supply"]]);
+    expect(buildSounds(1, root, null)!.sounds.map((s) => s.id)).toEqual(["core:tech/sound/hum"]);
+    // One of its two takes is here: it is found, and the build says which take is not.
+    sheet("sfx/supply", ["a.wav", "b.wav"], ["a.wav"]);
+    expect([findSheets(root).map((s) => s.owner), waitingSheets(root)]).toEqual([["core:supply", "core:tech"], []]);
+    expect(() => buildSounds(1, root, null)).toThrow("takes/b.wav");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the build refuses a sound every client would refuse: one named as no id may be, or two folders that are one owner", () => {

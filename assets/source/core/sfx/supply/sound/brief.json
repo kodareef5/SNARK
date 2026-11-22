@@ -1,0 +1,163 @@
+{
+  "asset": "core/sfx/supply",
+  "about": "A supply drop (planning/workstreams/supply.md): the hum of its shaft of light, its capsule passing overhead, its three jets lighting, burning and cutting, and its landing on three legs.",
+  "bits": 16,
+  "notes": "First round, 2026-11-21. Six sounds; the rest of a drop's occasions fall to the tech, bang and weather families (shared/sound/cues.ts, supply/*). MOSS denoises thirty seconds whatever is asked, so each one-shot's prompt asks for several with pauses, and the events are taken apart. The takes were chosen by measure and not yet by ear (tools/sound/README.md: nothing merges until the owner has listened). Shaft: the steady hum (27901), not the pure 440 Hz tone that pulsed (27900) or the second round's two that wavered. Jet: the roar with body from 100 Hz up (27930); the second round's two were nothing but rumble under 150 Hz. The model leaves a narrow tone at 16 kHz in its jets, which the build's 32 kHz resample takes out. Ignite: the first prompt gave burns of five to ten seconds, so the second asked for short bursts and three of its were kept. Pass, cut and land: whole events only, none cut off by the end of its file; a cut begins at the pop as the roar stops.",
+  "slots": {
+    "shaft": {
+      "kind": "impact",
+      "range": 140,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a tall column of light humming",
+      "prompts": [
+        {
+          "id": "v1-27900",
+          "models": [
+            "moss"
+          ],
+          "seed": 27900,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A tall column of pure light hums: a steady airy electrical tone with a soft glassy shimmer and a slow gentle pulse, calm and bright, unchanging. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-27960",
+          "models": [
+            "moss"
+          ],
+          "seed": 27960,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A steady soft breathy drone of air moving in a long glass pipe, with a low electrical hum beneath it and a faint high shimmer, calm, constant and unchanging. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "pass": {
+      "kind": "impact",
+      "range": 700,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a capsule passing fast overhead",
+      "prompts": [
+        {
+          "id": "v1-27910",
+          "models": [
+            "moss"
+          ],
+          "seed": 27910,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 30,
+          "text": "Three separate fly-bys with pauses of silence between them: each time a small meteor passes fast overhead, a tearing whoosh that rises quickly, roars past and falls away into a low rumble. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "ignite": {
+      "kind": "impact",
+      "range": 350,
+      "level": -8,
+      "vary": 0.04,
+      "want": "three small jets lighting at once",
+      "prompts": [
+        {
+          "id": "v1-27920",
+          "models": [
+            "moss"
+          ],
+          "seed": 27920,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 30,
+          "text": "Three separate ignitions with pauses of silence between them: each time three small rocket engines light at once with a sharp crack and a whump, then a hard roaring hiss for a second that stops. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-27980",
+          "models": [
+            "moss"
+          ],
+          "seed": 27980,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 30,
+          "text": "Five separate short bursts with long pauses of silence between them: each time a gas burner lights with a sharp pop and a whump, a brief one-second burst of flame, then silence. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "jet": {
+      "kind": "impact",
+      "range": 350,
+      "level": -10,
+      "vary": 0.04,
+      "want": "small jets burning steadily",
+      "prompts": [
+        {
+          "id": "v1-27930",
+          "models": [
+            "moss"
+          ],
+          "seed": 27930,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "Small rocket engines burning steadily: a continuous roaring hiss with a deep flutter, steady thrust, unchanging. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-27970",
+          "models": [
+            "moss"
+          ],
+          "seed": 27970,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "The deep rumbling roar of a rocket engine burning steadily, heard close: a low thunderous rumble with a crackling flame, constant and unchanging. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "cut": {
+      "kind": "impact",
+      "range": 200,
+      "level": -12,
+      "vary": 0.04,
+      "want": "jets cutting off",
+      "prompts": [
+        {
+          "id": "v1-27940",
+          "models": [
+            "moss"
+          ],
+          "seed": 27940,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 30,
+          "text": "Three separate shutdowns with pauses of silence between them: each time roaring rocket engines stop abruptly with a short falling hiss, a pop, and the ticking of hot metal. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land": {
+      "kind": "impact",
+      "range": 180,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a heavy capsule landing on three legs",
+      "prompts": [
+        {
+          "id": "v1-27950",
+          "models": [
+            "moss"
+          ],
+          "seed": 27950,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 30,
+          "text": "Three separate landings with pauses of silence between them: each time a heavy metal capsule drops onto three legs on hard ground with a deep thud, a metallic clank and a short hydraulic hiss. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

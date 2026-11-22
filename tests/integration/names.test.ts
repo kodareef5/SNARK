@@ -50,13 +50,13 @@ test("only the family asked for is meant, and a name that fits several things me
   expect(ids("t:rations", "species")).toEqual([]);
   // Two packs each have a stone. One pack's alias is another's name.
   expect(find(REG, "stone")).toEqual({ kinds: [], could: ["core:stone", "t:stone"], renamed: false });
-  expect(find(REG, "pike")).toEqual({ kinds: [], could: ["t:lance", "u:pike"], renamed: false });
+  expect(find(REG, "pike")).toEqual({ kinds: [], could: ["t:lance", "core:pike", "u:pike"], renamed: false });
   expect(ids("u:pike")).toEqual(["u:pike"]);
 });
 
 test("a variant shares its base's tag, and an alias is one definition's alone", () => {
   expect(REG.tags.get("raptor")!.map((k) => REG.ids[k])).toEqual(["core:raptor", "t:raptor_alpha"]);
-  expect([...REG.tags.keys()].sort()).toEqual(["brachio", "carbonemys", "dodo", "grazer", "parasaur", "pteranodon", "raptor", "rex", "spino", "stego", "trike"]);
+  expect([...REG.tags.keys()].sort()).toEqual(["brachio", "carbonemys", "dodo", "grazer", "parasaur", "pteranodon", "raptor", "rex", "spino", "stego", "trike", "trilobite"]);
   expect([REG.ids[REG.aliases.get("pike")!], (REG.defs[REG.index.get("t:lance_long")!] as ItemDef).aliases]).toEqual(["t:lance", undefined]);
 
   const errors = (defs: DefPatch[]): string[] => packs(defs).errors;
@@ -76,7 +76,7 @@ test("the console takes any of a thing's names, and says which things an unclear
   const has = (id: string): number => rec.inv!.total(REG.index.get(id)!);
 
   expect(h.say(ada, "give spear")).toEqual(["gave 1 core:spear"]);
-  expect(h.say(ada, "give Pike 2")).toEqual(['"Pike" could be t:lance or u:pike; say which']);
+  expect(h.say(ada, "give Pike 2")).toEqual(['"Pike" could be t:lance or core:pike or u:pike; say which']);
   expect(h.say(ada, "give PrimalItem_Lance_C 2")).toEqual(["gave 2 t:lance"]);
   expect(h.say(ada, "give t:javelin")).toEqual(["gave 1 core:spear"]);
   expect(h.say(ada, "give t:rations")).toEqual(['"t:rations" is now core:berry, core:meat; say which']);

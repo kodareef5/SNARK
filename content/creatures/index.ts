@@ -20,5 +20,6 @@ import { TRIKE } from "./trike.ts";
 import { STEGO } from "./stego.ts";
 import { BRACHIO } from "./brachio.ts";
 import { SPINO } from "./spino.ts";
+import { TRILOBITE } from "./trilobite.ts";
 
-export const CREATURES: readonly Def[] = [...DODO, ...GRAZER, ...PARASAUR, ...PTERANODON, ...RAPTOR, ...TRIKE, ...STEGO, ...CARBONEMYS, ...REX, ...SPINO, ...BRACHIO];
+export const CREATURES: readonly Def[] = [...DODO, ...GRAZER, ...PARASAUR, ...PTERANODON, ...RAPTOR, ...TRIKE, ...STEGO, ...CARBONEMYS, ...REX, ...SPINO, ...BRACHIO, ...TRILOBITE];

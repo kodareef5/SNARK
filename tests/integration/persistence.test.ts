@@ -19,6 +19,14 @@ import { coreRegistry } from "../fixtures/world.ts";
 const dir = mkdtempSync(join(tmpdir(), "snark-test-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
+/**
+ * `defs` as a build that has taken `gone` out would have them: without those, and with no engram still coming after
+ * one of them (the water jar comes after the waterskin, which these tests take out).
+ */
+function lacking(defs: readonly Def[], gone: ReadonlySet<string>): Def[] {
+  return defs.filter((d) => !gone.has(d.id)).map((d) => (d.type === "engram" && d.requires?.some((r) => gone.has(r)) ? { ...d, requires: d.requires.filter((r) => !gone.has(r)) } : d));
+}
+
 test("a world survives restart: tick, structures, records and where a survivor stood", () => {
   const db = join(dir, "restart.db");
   const reg = coreRegistry();
@@ -126,7 +134,7 @@ test("an item whose content is gone stops the load, and a ledger that does not b
   expect(host.items.mint(rec, stone, 250)).toBe(250);
   host.shutdown();
 
-  const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
+  const without = compileContent(lacking(CORE_CONTENT, gone)).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/content this build does not have/);
   const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true }, log: () => {} });
   expect(forced.records.byPid.get(rec.pid)!.inv!.total(without.index.get("core:stone")!)).toBe(250);
@@ -160,7 +168,7 @@ test("an operator goes on without removed content by one start: what was made of
 
   // A species, an item with its engram, and a piece of building.
   const gone = new Set(["core:grazer", "core:waterskin", "core:engram-waterskin", "test:obelisk"]);
-  const without = compileContent([...CORE_CONTENT, OBELISK].filter((d) => !gone.has(d.id))).registry!;
+  const without = compileContent(lacking([...CORE_CONTENT, OBELISK], gone)).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/core:grazer[^]*--allow-missing-content/);
   // The server reads the flag its refusal names.
   expect(readFileSync(join(import.meta.dir, "../../server/main.ts"), "utf8")).toContain('allowMissingContent: args.includes("--allow-missing-content")');

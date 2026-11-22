@@ -5,6 +5,7 @@
 // yet is left out or stood in for, as the deviation named beside it says. Then, a station at a time, every one of them is
 // refused in the hand and made at its station from its slots into them, for the survivor who queued it.
 
+import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
 import { expect, test } from "bun:test";
 import { stationRecipes } from "../../client/core/ui/station.ts";
 import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
@@ -14,8 +15,13 @@ import { Harness } from "../fixtures/net.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
+// What is blocked out is made at stations too: tests/unit/blockouts.test.ts holds where and of what.
+const BLOCKED = new Set(BLOCKED_OUT);
+
 const reg = coreRegistry();
 const at = (name: string): number => reg.index.get(`core:${name}`)!;
+/** What a station makes of what is not blocked out, by name. */
+const recipes = (kind: string): string[] => stationRecipes(reg, at(kind)).map((k) => reg.ids[k]!).filter((n) => !BLOCKED.has(n)).map((n) => n.slice(5)).sort();
 const item = (name: string): ItemDef => reg.defs[at(name)] as ItemDef;
 
 /** How it is made: where, its ingredients, seconds, experience and how many one crafting makes; then its engram's level and points. */
@@ -39,7 +45,7 @@ const MORTAR: Readonly<Record<string, Made>> = {
 test("cementing paste, the narcotic and gunpowder are made at the mortar and pestle at ARK's numbers (Cementing Paste, Narcotic, Gunpowder)", () => {
   for (const name of Object.keys(MORTAR)) expect([name, made(name)]).toEqual([name, MORTAR[name]!]);
   // The mortar makes these and sparkpowder.
-  expect(stationRecipes(reg, at("mortar")).map((k) => reg.ids[k]!.slice(5)).sort()).toEqual(["gunpowder", "narcotic", "paste", "sparkpowder"]);
+  expect(recipes("mortar")).toEqual(["gunpowder", "narcotic", "paste", "sparkpowder"]);
   // The smoke grenade, made in the hand as in ARK, takes its 10 charcoal (Smoke Grenade; DEV143 keeps the rest).
   expect(made("grenade_smoke").slice(0, 2)).toEqual(["hand", "1 ingot, 10 charcoal, 2 wood, 6 hide, 3 flint, 15 fiber, 5 thatch, 5 sparkpowder"]);
 });
@@ -139,7 +145,7 @@ test("the smithy makes the guns, rounds, grenade, tranquilizer dart, scope and s
   expect(Object.keys(SMITHY).length).toBe(27);
   for (const name of Object.keys(SMITHY)) expect([name, made(name)]).toEqual([name, SMITHY[name]!]);
   // What it makes is these and the fabricator and the Rex, Spino and Brachio saddles.
-  expect(stationRecipes(reg, at("smithy")).map((k) => reg.ids[k]!.slice(5)).sort()).toEqual([...Object.keys(SMITHY), "piece_fabricator", "saddle_brachio", "saddle_rex", "saddle_spino"].sort());
+  expect(recipes("smithy")).toEqual([...Object.keys(SMITHY), "piece_fabricator", "saddle_brachio", "saddle_rex", "saddle_spino"].sort());
   // Each armor piece weighs what its page says (Chitin Helmet to Flak Boots); the metal pieces 4 (Metal Foundation to Metal Stairs).
   const weight = (name: string): number => item(name).weight!;
   expect(["hat", "shirt", "gloves", "pants", "boots"].map((p) => [weight(`chitin_${p}`), weight(`flak_${p}`)])).toEqual([[4, 4], [6, 10], [3, 2], [6, 10], [3, 4]]);
@@ -166,7 +172,7 @@ const FABRICATOR: Readonly<Record<string, Made>> = {
 test("the fabricator makes the shock dart, the flashlight and laser, the poison grenade and the vault, at ARK's numbers (Fabricator, and each page)", () => {
   for (const name of Object.keys(FABRICATOR)) expect([name, made(name)]).toEqual([name, FABRICATOR[name]!]);
   // What it makes, lit or out, includes these, S2's materials and SNARK's original vehicle assemblies.
-  const makes = (kind: string): string[] => stationRecipes(reg, at(kind)).map((k) => reg.ids[k]!.slice(5)).sort();
+  const makes = recipes;
   // The soul ball and its vault are ARK's Cryopod and Cryofridge, whose numbers tests/integration/balls.test.ts holds.
   const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly", "soul_ball", "piece_soul_vault",
     ...["hat", "shirt", "gloves", "pants", "boots"].map(piece => `meridian_${piece}`)].sort();

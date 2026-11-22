@@ -3,6 +3,12 @@ import trailer from "./vehicles/trailer-axles.json" with { type: "json" };
 import { GRATE, UTILITY_ENAMEL } from "./colours.ts";
 
 export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3, LENS = 4, ENAMEL_ARMOR = 5, EXHAUST = 6, INSTRUMENT = 7, CHANNEL = 8;
+/**
+ * A supply drop's own light (client/core/render/supply-light.ts): the lit strips of its capsule, which are a surface,
+ * and its shaft, halos, figure and jets, which are light with none and are blended. Each is worked out from the draw's
+ * effect and reads no texture.
+ */
+export const DROP_LIGHT = 9, DROP_GLOW = 10;
 const materials = new Map<string, number>();
 for (const part of [
   "berlinetta/coachwork", "bus/livery", "compact/body", "compact_abandoned/body",
@@ -19,6 +25,10 @@ materials.set("core:compact_wreck/body", BURNT_SHEET);
 materials.set("core:human-bodies/meridian", ENAMEL_ARMOR);
 // The Miami instruments: glazed ceramic and fired enamel under a clear coat, cast and brushed metal that keeps its own colour, cut glass.
 for (const atlas of ["instrument", "livery"]) materials.set("core:tide-eye/" + atlas, INSTRUMENT);
+// The capsule is the instruments' kin: the same ceramic, bronze and glass, and its own two lights.
+materials.set("core:supply-capsule/capsule", INSTRUMENT);
+materials.set("core:supply-capsule/light", DROP_LIGHT);
+materials.set("core:supply-capsule/glow", DROP_GLOW);
 for (const part of [
   "compact/cabin", "compact/trim", "compact_abandoned/cabin", "compact_abandoned/trim", "compact_wreck/cabin",
   "compact_wreck/trim", "fastback/detail", "road_van/cabin", "road_van/fittings", "street/street", "street/street_cut",

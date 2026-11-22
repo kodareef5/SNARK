@@ -277,6 +277,12 @@ export class Creatures {
     this.world.ents.destroy(e);
   }
 
+  /** Wakes `e` if it is now in an awake chunk: one put there by something other than its own steps (Cast's stage walks a
+   * sleeping body in from where no player is). */
+  settle(e: number): void {
+    if (this.chunkRefs[this.world.ents.chunk[e]!]! > 0) this.wake(e);
+  }
+
   isChunkAwake(chunk: number): boolean {
     return this.chunkRefs[chunk]! > 0;
   }

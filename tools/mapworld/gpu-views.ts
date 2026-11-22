@@ -13,7 +13,10 @@
 // and one headless Chrome, muted, opens each view on each tier and keeps a screenshot as <out>/<view>-<tier>.png, or with
 // effects off (client/core/passes.ts EFFECTS) as <out>/<view>-<tier>-off-<effects>.png. The cameras file is
 // { hour, views: [{ name, x, z, up | y, look: [x, z, metres over the ground] | yaw and pitch in degrees }] } in engine
-// metres, x west and z north (assets/source/maps/miami/look/route.json). With --film, a camera with replayEyeSeconds
+// metres, x west and z north (assets/source/maps/miami/look/route.json). A view's `run` is console lines the survivor types
+// once there, as an admin: a supply drop to call and bring down (assets/source/maps/miami/look/drops.json). With --film,
+// a view with `cast` (and `eyeSeconds`, which holds the page's clock) also films the last drop it called, from `before`
+// seconds ahead of its cast leaving to `after` seconds past its landing. With --film, a camera with replayEyeSeconds
 // also produces a 12 fps clip from that time. replayDuration gives its length in seconds and defaults to 20.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -21,13 +24,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { DEV_CONFIG, startServer } from "../../server/main.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";
 import { loadConfigFolder } from "../../server/settings/config.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 import { placeFileCameras } from "./obelisk-cameras.ts";
 
-interface Camera { obelisk?: string; fromSpawn?: string; hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; replayDuration?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
+interface Camera { run?: string[]; cast?: { before?: number; after?: number }; obelisk?: string; fromSpawn?: string; hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; replayDuration?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { film: { type: "boolean" }, "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" }, canvas: { type: "string", default: "1920x1080@1" }, page: { type: "string", multiple: true, default: [] }, suffix: { type: "string", default: "" } } });
 const [size, dpr = "1"] = values.canvas!.split("@"), [winW, winH] = size!.split("x").map(Number), scale = Number(dpr);
@@ -84,7 +88,7 @@ for (const v of views) {
     pitch = Math.atan2(ground(lx, lz) + lup - eye, Math.hypot(lx - v.x, lz - v.z));
   }
   // A body's place is its feet, 1.62 m under its eye.
-  orders.set(v.name, { eyeSeconds: v.eyeSeconds, run: ["enablecheats", `settime ${v.hour ?? file.hour ?? 14}`], look: [yaw, pitch], at: [v.x, eye - 1.62, v.z] });
+  orders.set(v.name, { eyeSeconds: v.eyeSeconds, run: ["enablecheats", `settime ${v.hour ?? file.hour ?? 14}`, ...(v.run ?? [])], look: [yaw, pitch], at: [v.x, eye - 1.62, v.z] });
 }
 // Every survivor is held at the view being taken, still, as a ghost: a line typed on arrival would move it only after the
 // page had placed its camera.
@@ -141,7 +145,7 @@ try {
     for (const v of views) {
       lines.length = 0;
       at = orders.get(v.name)!.at;
-      await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}v${taken++ % NAMES}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.film && v.replayEyeSeconds !== undefined ? "&trip" : ""}${values.off ? `&off=${values.off}` : ""}${values.page!.map((p) => `&${p}`).join("")}` });
+      await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}v${taken++ % NAMES}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.film && (v.replayEyeSeconds !== undefined || v.cast) ? "&trip" : ""}${values.off ? `&off=${values.off}` : ""}${values.page!.map((p) => `&${p}`).join("")}` });
       // The first view fetches the map and the art as well.
       await Bun.sleep((first ? 2 : 1) * seconds * 1000);
       first = false;
@@ -153,6 +157,13 @@ try {
       writeFileSync(join(out, name), Buffer.from(shot.data, "base64"));
       if (values.film && v.replayEyeSeconds !== undefined) {
         await recordIgnition(send, v.replayEyeSeconds, v.replayDuration ?? 20, join(out, `${v.name}-${tier}.mp4`));
+      }
+      // A cast: the last supply drop called, from a little before it leaves its sender to a little after it lands,
+      // on the clock the page is held to (the view pins `eyeSeconds`, and the drops' clock goes with the obelisks').
+      const drop = v.cast ? server.host.supply.drops[server.host.supply.drops.length - 1] : undefined;
+      if (values.film && drop) {
+        const from = drop.release / TICK_RATE - (v.cast!.before ?? 4);
+        await recordIgnition(send, from, drop.land / TICK_RATE + (v.cast!.after ?? 10) - from, join(out, `${v.name}-${tier}.mp4`));
       }
       const gl = await send("Runtime.evaluate", { expression: "(() => { const c = document.querySelector('canvas'); const g = c && c.getContext('webgl2'); const i = g && g.getExtension('WEBGL_debug_renderer_info'); return JSON.stringify({ renderer: i ? g.getParameter(i.UNMASKED_RENDERER_WEBGL) : null }); })()", returnByValue: true });
       report.push({ name, ...(v.hour !== undefined ? { hour: v.hour } : {}), ...JSON.parse(gl.result.value), console: lines.slice(0, 8) });

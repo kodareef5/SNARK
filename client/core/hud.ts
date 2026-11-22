@@ -29,10 +29,13 @@ import { paintRelief, type Chart } from "./tactical.ts";
 import { Compass } from "./ui/compass.ts";
 
 /** One of the reader's tribe is a mate and one of its creatures a tame. A player is a survivor of another tribe, and a creature is not the tribe's. */
-export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature";
+export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature" | "drop" | "dropPip";
 
 export interface Marker {
+  /** A "drop" is a supply drop the server's drop book tells of on the map, and a "dropPip" one it tells of on the compass alone. */
   kind: MarkerKind;
+  /** 0xRRGGBB of its own, or none for its kind's: a drop's is its tier's. */
+  tint?: number;
   /** Where on the map's picture, 0..1 east and south from its north-west corner (mapU, mapV). */
   u: number;
   v: number;
@@ -390,14 +393,15 @@ export class HudModel {
   private readoutAge = 0;
 
   /** Adds a marker at (x, z), unless the map has all it shows. */
-  mark(kind: MarkerKind, hf: Heightfield, x: number, z: number): void {
+  mark(kind: MarkerKind, hf: Heightfield, x: number, z: number, tint = -1): void {
     const n = this.markers.length;
     if (n >= MAX_MARKERS) {
       this.unmarked++;
       return;
     }
-    const m = (this.pool[n] ??= { kind, u: 0, v: 0 });
+    const m = (this.pool[n] ??= { kind, u: 0, v: 0, tint: -1 });
     m.kind = kind;
+    m.tint = tint;
     m.u = mapU(hf, x);
     m.v = mapV(hf, z);
     this.markers.push(m);
@@ -478,6 +482,8 @@ function fillMarkers(model: HudModel, session: ClientSession, remote: RemoteSamp
   markView(model, hf, remote, team, false, true, "tame");
   markFar(model, hf, marks, remote, team, MARK_TAME, "tame");
   for (const m of session.markers) model.mark("death", hf, m.x, m.z);
+  // Supply drops, where the server's drop book tells of them: on the compass, or on the compass and the map.
+  for (const d of session.supply.rows) if (d.left === 0 && d.announce > 0) model.mark(d.announce > 1 ? "drop" : "dropPip", hf, d.x, d.z, session.supply.tiers[d.tier]?.rgb ?? -1);
   // Beds and spawn points, while one is being chosen.
   if (session.sessionState === SESSION_DEAD) for (const p of session.respawnPoints) model.mark("spawn", hf, p.x, p.z);
   // Survivors of other tribes: those the server marks, and those in view if its rule lets them show.

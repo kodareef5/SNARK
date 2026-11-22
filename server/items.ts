@@ -4,7 +4,7 @@
 
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
-import { FLAG_BLUEPRINT, FLAG_ISSUED, FLAG_ON, GEAR_SLOTS, CHARGED, Inventory, QUALITY_MUL, carried, clockMoved, fitsSlot, moveSlot, type ItemTable } from "../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, FLAG_ISSUED, FLAG_ON, GEAR_SLOTS, CHARGED, Inventory, QUALITY_MUL, carried, clockMoved, fitsSlot, moveSlot, type ItemTable, stackOf } from "../shared/sim/items.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -540,9 +540,24 @@ export class Items {
     for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) this.burn(rec, s, inv.count[s]!, true);
   }
 
+  /**
+   * Whether a stack may go from `a` to `b`'s slot under the take-only rule (Registry.takeOnly, a supply capsule): nothing
+   * goes into one, and what leaves one lands on an empty slot or joins its like, since a swap would put the taker's stack in.
+   */
+  takes(a: EntityRecord, sa: number, b: EntityRecord, sb: number): boolean {
+    if (this.reg.takeOnly[b.kind] === 1) return false;
+    if (this.reg.takeOnly[a.kind] !== 1) return true;
+    const src = this.inv(a);
+    const dst = this.inv(b);
+    if (sa >= src.cap || sb >= dst.cap || dst.item[sb] === 0) return true;
+    const item = src.item[sa]!;
+    return dst.item[sb] === item && stackOf(item, src.flags[sa]!, this.table) > 1 && dst.quality[sb] === src.quality[sa] && dst.flags[sb] === (src.flags[sa]! & ~FLAG_ON);
+  }
+
   /** Within one record or across two. Returns how many moved. An issued piece never goes to another record, moved or swapped. */
   move(a: EntityRecord, sa: number, b: EntityRecord, sb: number, n: number): number {
     if (a !== b && (this.issued(a, sa) || this.issued(b, sb))) return 0;
+    if (a !== b && !this.takes(a, sa, b, sb)) return 0;
     const moved = moveSlot(this.inv(a), sa, this.inv(b), sb, n, this.table, this.world.tick);
     if (moved > 0) {
       this.changed(a);
@@ -553,7 +568,7 @@ export class Items {
 
   /** Moves `n` of an item to another record, wherever it fits. All or nothing. Blueprints of it stay, and so do issued pieces. */
   give(from: EntityRecord, to: EntityRecord, item: number, n: number): boolean {
-    if (from === to || !(n > 0) || !Number.isInteger(n)) return false;
+    if (from === to || !(n > 0) || !Number.isInteger(n) || this.reg.takeOnly[to.kind] === 1) return false;
     const src = this.inv(from);
     const dst = this.inv(to);
     if (src.total(item) < n || dst.room(item, 0, this.table) < n) return false;

@@ -65,7 +65,8 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   // (tests/integration/stalls.test.ts), 37 a survivor's emote word and CMD_EMOTE (tests/integration/emotes.test.ts),
   // 38 the owner's powered maneuvers (tests/integration/meridian-flight.test.ts), 39 the glider on the owner's body
   // (tests/integration/glider.test.ts), 40 the soul balls' kept tames and flash (tests/integration/balls.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.CMD_EMOTE, P.PROTOCOL_VERSION]).toEqual([27, 28, 36, 40]);
+  // 41 the supply drops': what kind of box is open, and the drops that are live (tests/integration/supply-capsule.test.ts).
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.CMD_EMOTE, P.PROTOCOL_VERSION]).toEqual([27, 28, 36, 41]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
@@ -83,15 +84,17 @@ test("the new columns change nothing for content that does not use them", () => 
     if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
     // The pteranodon is carried as 149 of drag weight by what can lift it, its mass is 190, and its kind takes fright with
     // it within 15 m. A vehicle's mass is its curb mass.
-    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:brachio": [0, 1100, 26000, 0, 0], "core:carbonemys": [12, 250, 800, 0, 0], "core:rex": [0, 550, 8300, 0, 0], "core:pteranodon": [15, 149, 190, 0, 0], "core:trike": [22, 300, 6000, 0, 0], "core:spino": [0, 550, 6200, 0, 0], "core:stego": [15, 250, 5000, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
+    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:trilobite": [12, 30, 30, 1, 0], "core:brachio": [0, 1100, 26000, 0, 0], "core:carbonemys": [12, 250, 800, 0, 0], "core:rex": [0, 550, 8300, 0, 0], "core:pteranodon": [15, 149, 190, 0, 0], "core:trike": [22, 300, 6000, 0, 0], "core:spino": [0, 550, 6200, 0, 0], "core:stego": [15, 250, 5000, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
-    if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
+    // The blocked-out metal pick and electric prod have theirs (tests/unit/blockouts.test.ts).
+    if (!["core:survivor", "core:club", "core:pick", "core:pick_metal", "core:prod"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
     // Prime meat (content/corpses.ts) is what the young give in place of raw meat.
     if (d.id !== "core:meat") expect(reg.youngItem[i]).toBe(0);
     // Eggs, feces, prime meat and jerky (decomposesin 120, Cooked Meat Jerky, Prime Meat Jerky) lie on the ground for a time;
     // nothing else declares one yet.
-    const prime = ["core:meat_prime", "core:meat_prime_cooked", "core:jerky", "core:jerky_prime"].includes(d.id);
+    // The stimulant too, blocked out (Stimulant: gone from the ground in 120 s).
+    const prime = ["core:meat_prime", "core:meat_prime_cooked", "core:jerky", "core:jerky_prime", "core:stimulant"].includes(d.id);
     if (!(d.type === "item" && (d.class === "egg" || d.class === "feces")) && !prime) expect(reg.decomposeTicks[i]).toBe(0);
   }
 });
