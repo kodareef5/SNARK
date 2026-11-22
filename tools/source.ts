@@ -36,6 +36,8 @@ export function writeSourceRoot(out: string): void {
   for (const file of [".gitignore", "LICENSE"]) copyFileSync(join(game, file), join(out, file));
   const pkg = JSON.parse(readFileSync(join(game, "package.json"), "utf8"));
   const scripts = Object.fromEntries(Object.keys(pkg.scripts).map((name) => [name, `bun run --cwd game ${name}`]));
+  // The code as shown has no art until its reader installs it, and its check says how many tests that skipped.
+  for (const name of ["check", "slow"]) if (scripts[name]) scripts[name] += " --no-art";
   scripts.postinstall = "bun install --cwd game --frozen-lockfile";
   writeFileSync(join(out, "package.json"), JSON.stringify({ private: true, engines: pkg.engines, scripts }, null, 2) + "\n");
 
