@@ -7,15 +7,10 @@ import { BTN_JUMP, BTN_SPRINT, MF_NO_SPRINT, MF_ROOTED } from "../../shared/sim/
 import type { Inventory } from "../../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../../shared/sim/vitals.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
-import { Harness } from "../fixtures/net.ts";
+import { camp, id, proving } from "../kit/kit.ts";
 
 function setup(link = {}) {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const s = h.join("ada", link);
-  h.run(500);
-  expect(h.say(s, "enablecheats")).toEqual(["cheats enabled"]);
-  const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
-  const id = (name: string) => h.reg.index.get(name)!;
+  const { h, ada: s, me: rec } = camp({ place: proving(), link });
   return { h, s, rec, id, pilot: h.pilots[0]!, ents: h.world.ents, e: h.ent(s), items: h.host.items, sv: h.host.survival };
 }
 

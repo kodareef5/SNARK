@@ -2,30 +2,19 @@
 // the fourth stance and wandering, as a player gives them through the whole client.
 
 import { expect, test } from "bun:test";
-import { App } from "../../client/core/app.ts";
+import type { App } from "../../client/core/app.ts";
 import { KEY_OPEN_ORDER, KEY_OPEN_WANDER } from "../../client/core/ui/inventory.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { STANCE_AGGRESSIVE, STANCE_NEUTRAL, STANCE_PASSIVE, STANCE_YOURS } from "../../server/behavior.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
-import { flatGround } from "../fixtures/arena.ts";
-import { Harness } from "../fixtures/net.ts";
-import { corePack } from "../fixtures/pack.ts";
+import type { Harness } from "../fixtures/net.ts";
+import { camp, clearing, screen } from "../kit/kit.ts";
 
 /** Ada in the whole client on level ground with two dodos of hers and a wild one before her, all told to stand. */
 function field() {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
-  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
-  run(600);
-  const s = app.session;
-  s.text("enablecheats");
-  run(400);
-  const g = flatGround(h, 40, 30);
-  const at = { x: g.x + 20, z: g.z + 6 };
-  s.text(`tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
-  run(400);
-  const me = h.host.records.byPid.get(h.client(s)!.pid)!;
-  h.host.survival.gods.add(me.pid);
+  const { h, ada, at, me } = camp({ place: clearing(), god: true, screen: true });
+  const app = screen(h, ada).app;
+  const run = (ms: number): void => h.run(ms);
   const put = (x: number, z: number): { e: number; rec: EntityRecord } => {
     const e = h.host.spawnCreature("core:dodo", x, z, 1);
     expect(e).toBeGreaterThanOrEqual(0);

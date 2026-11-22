@@ -15,6 +15,7 @@ import { takeInHand } from "../fixtures/gather.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { camp, clearing } from "../kit/kit.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -23,18 +24,9 @@ const EYE = 1.62;
 
 /** The survivor stands at the south end of a level range, looking north. */
 function range(deep = 30) {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const s = h.join("ada");
-  h.run(500);
-  h.say(s, "enablecheats");
+  const { h, ada: s, me: rec, at } = camp({ place: clearing(24, deep, 1.5) });
   const pilot = h.pilots[0]!;
-  const g = flatGround(h, 24, deep);
-  const at = { x: g.x + 12, z: g.z + 1.5, y: g.y };
-  h.say(s, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
-  pilot.yaw = 0;
-  pilot.pitch = 0;
   h.run(300);
-  const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
   const structs = h.world.structs;
   /** A wall across the range `far` metres off. Returns its ref. */
   const wall = (kind: string, far: number, side = 0): number => {

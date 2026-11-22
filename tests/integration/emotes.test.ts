@@ -7,24 +7,17 @@ import { AnimState, EMOTE_LEAD, EMOTE_PARTNER } from "../../shared/anim/pose.ts"
 import { TAU } from "../../shared/math/scalar.ts";
 import { EMOTE_JOIN, EMOTE_PLAY } from "../../server/emote.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { Harness } from "../fixtures/net.ts";
+import type { Harness } from "../fixtures/net.ts";
+import { camp, proving, survivor } from "../kit/kit.ts";
 
 const num = (id: string) => EMOTE_NUMBER.get(id)!;
 
 /** Two survivors standing `apart` metres from each other on open ground. */
 function two(apart = 2) {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const a = h.join("Ana");
-  const b = h.join("Bo");
-  h.run(800);
-  h.say(a, "enablecheats");
-  const ea = h.ent(a), eb = h.ent(b);
-  const [x, z] = [h.world.ents.x[ea]!, h.world.ents.z[ea]!];
-  h.say(a, `tp ${x.toFixed(3)} ${z.toFixed(3)}`);
-  h.say(b, "enablecheats");
-  h.say(b, `tp ${(x + apart).toFixed(3)} ${z.toFixed(3)}`);
+  const { h, ada: a, at } = camp({ place: proving(), name: "Ana" });
+  const b = survivor(h, "Bo", { at: { x: at.x + apart, z: at.z } });
   h.run(500);
-  return { h, a, b, ea, eb };
+  return { h, a, b, ea: h.ent(a), eb: h.ent(b) };
 }
 
 /** The emote as entity `e`'s word unpacks it. */

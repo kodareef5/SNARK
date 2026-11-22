@@ -8,8 +8,7 @@ import { AnimState, hurtStage } from "../../shared/anim/pose.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BTN_PRIMARY } from "../../shared/sim/character.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
-import { flatGround } from "../fixtures/arena.ts";
-import { Harness } from "../fixtures/net.ts";
+import { camp, clearing } from "../kit/kit.ts";
 
 const stageOf = (cue: number): number => {
   const st = new AnimState();
@@ -18,14 +17,7 @@ const stageOf = (cue: number): number => {
 };
 
 test("a dodo's hurt stage follows its health down at each blow and back up as it mends, a quarter at a time, and one who joins later sees it", () => {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const ada = h.join("ada");
-  h.run(500);
-  h.say(ada, "enablecheats");
-  const g = flatGround(h, 40, 30);
-  const at = { x: g.x + 20, z: g.z + 6 };
-  h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
-  h.host.survival.gods.add(h.client(ada)!.pid);
+  const { h, at } = camp({ place: clearing(), god: true });
   const e = h.host.spawnCreature("core:dodo", at.x, at.z + 1.2, 30);
   const ents = h.world.ents;
   const rec = h.host.records.byPid.get(ents.pid[e]!)!;

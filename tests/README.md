@@ -1,5 +1,7 @@
 # Tests
 
+To write a test, start from the [cookbook](COOKBOOK.md): fifteen recipes on the kit in [kit](kit/kit.ts).
+
 Run with `bun run check`, which leaves out the slow tier (files named
 `*.slow.test.ts`); `bun run slow` runs those, and `bun test` alone runs both.
 All of them run in Bun; none opens a browser. See the
