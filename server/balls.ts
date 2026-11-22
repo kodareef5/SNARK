@@ -21,6 +21,7 @@ import type { Death } from "./death.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import { freeAt, freePlace } from "./place.ts";
+import { issuedTo } from "./mount.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Riding } from "./riding.ts";
 import { moved, saved } from "./saved.ts";
@@ -131,8 +132,8 @@ export class Balls {
     if (!rec || records.entOf.get(rec.pid) !== e || rec.keyHash !== null || rec.egg !== null || rec.dead || reg.defs[rec.kind]?.type !== "species" || reg.vehicle[rec.kind]) return NOT_A_TAME;
     if (rec.team === 0) return NOT_A_TAME;
     const issued = items.issued(me, slot);
-    if (issued && rec.issuedTo !== me.pid) return ONLY_ITS_OWN;
-    if (!issued && rec.issuedTo !== 0) return ITS_OWN_BALL;
+    if (issued && issuedTo(rec) !== me.pid) return ONLY_ITS_OWN;
+    if (!issued && issuedTo(rec) !== 0) return ITS_OWN_BALL;
     if (!issued && !tribes.may(me, rec.team)) return NOT_YOURS;
     // The sickness knocks it out, and is the reason to give of the two.
     if (this.sick !== 0 && buffs.has(rec, this.sick)) return SICK;

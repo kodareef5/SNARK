@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { ballInfo } from "../../client/core/balls.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { ISSUED_BALL_STAYS } from "../../server/own.ts";
-import { STARTER_LEVEL } from "../../server/mount.ts";
+import { STARTER_LEVEL, issuedTo } from "../../server/mount.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import type { Rules } from "../../server/settings/rules.ts";
@@ -65,7 +65,7 @@ function setup(config = shipped(), dbPath?: string) {
 }
 
 /** Every starter mount issued to `me`, in the world or kept. */
-const starters = (h: Harness, me: EntityRecord): EntityRecord[] => [...h.host.records.byPid.values()].filter((r) => r.issuedTo === me.pid);
+const starters = (h: Harness, me: EntityRecord): EntityRecord[] => [...h.host.records.byPid.values()].filter((r) => issuedTo(r) === me.pid);
 
 /** One click: the button down long enough for the throw's strike, and let go. */
 function click(h: Harness, pilot: Pilot): void {
@@ -304,7 +304,7 @@ test("a world saved before the mount was given loads as it was: its survivor get
   expect([inv.item[again.hotbar], inv.flags[again.hotbar], inv.spoilAt[again.hotbar], inv.refOf(again.hotbar), starters(again.h, again.me).map((r) => r.pid)]).toEqual([FULL, FLAG_ISSUED, CHARGED, p!.pid, [p!.pid]]);
   expect(again.h.host.balls.mended).toBe(0);
   const kept = again.h.host.records.byPid.get(p!.pid)!;
-  expect([kept.issuedTo, kept.saddle, kept.genome!.level]).toEqual([again.me.pid, SADDLE, STARTER_LEVEL]);
+  expect([issuedTo(kept), kept.saddle, kept.genome!.level]).toEqual([again.me.pid, SADDLE, STARTER_LEVEL]);
   loose(again.h, again.s, again.pilot, kept);
   expect([again.h.host.items.minted[FULL], again.h.host.items.audit()]).toEqual([1, []]);
   again.h.host.shutdown();

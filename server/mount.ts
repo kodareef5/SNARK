@@ -13,12 +13,23 @@ import { Rng } from "../shared/rng.ts";
 import type { Balls } from "./balls.ts";
 import type { Buffs } from "./buffs.ts";
 import type { Items } from "./items.ts";
-import type { EntityRecord, Records } from "./records.ts";
+import { part, type EntityRecord, type Records } from "./records.ts";
 import { saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
+
+/**
+ * A starter's mark: the pid of the survivor it was issued to. It goes only into that survivor's issued ball, keeps its
+ * saddle, does not mate, and leaves nothing to take when it dies.
+ */
+export const ISSUED = part(() => ({ to: 0 }));
+
+/** The pid of the survivor a starter mount was issued to, 0 for any other record. */
+export function issuedTo(rec: EntityRecord): number {
+  return rec.part(ISSUED)?.to ?? 0;
+}
 
 /** The species issued, and its level. */
 export const STARTER_SPECIES = "core:pteranodon";
@@ -65,7 +76,7 @@ export class Mounts {
   /** The starter mount of the survivor `rec` on this server, kept or in the world, or null. */
   of(rec: EntityRecord): EntityRecord | null {
     const found: EntityRecord[] = [];
-    for (const r of this.ctx.records.byPid.values()) if (r.issuedTo === rec.pid) found.push(r);
+    for (const r of this.ctx.records.byPid.values()) if (issuedTo(r) === rec.pid) found.push(r);
     // There is never a second; were there one, it would be let go here.
     for (const r of found.slice(1)) this.drop(r);
     return found[0] ?? null;
@@ -128,7 +139,7 @@ export class Mounts {
     p.team = rec.team;
     p.te = 1;
     p.saddle = this.saddle;
-    p.issuedTo = rec.pid;
+    p.own(ISSUED).to = rec.pid;
     // Kept where its survivor stands, which is where a load sets it should no ball name it then (Balls.resume).
     const e = records.entOf.get(rec.pid);
     const ents = world.ents;
@@ -159,13 +170,14 @@ function place(inv: Inventory): number {
   return inv.free();
 }
 
-/** The survivor a starter was issued to (EntityRecord.issuedTo). Only a starter has it. */
+/** The survivor a starter was issued to (ISSUED). Only a starter has it. */
 saved({
   name: "issued",
-  has: (rec) => rec.issuedTo !== 0,
-  write: (rec, w) => w.uint53(rec.issuedTo),
+  has: (rec) => issuedTo(rec) !== 0,
+  write: (rec, w) => w.uint53(issuedTo(rec)),
   read(rec, r, from) {
-    rec.issuedTo = r.uint53();
-    if (rec.issuedTo === 0) from.refused = true;
+    const to = r.uint53();
+    if (to === 0) from.refused = true;
+    else rec.own(ISSUED).to = to;
   },
 });

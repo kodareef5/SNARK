@@ -14,7 +14,8 @@ import type { Creatures } from "./creatures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import { placeFree } from "./place.ts";
-import type { EntityRecord, Records } from "./records.ts";
+import { issuedTo } from "./mount.ts";
+import { part, type EntityRecord, type Records } from "./records.ts";
 import { moved, saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
@@ -62,6 +63,13 @@ const speed = (rule: number): number => (rule > 0.001 ? rule : 0.001);
  */
 export const fertile = (rec: EntityRecord): boolean => rec.egg !== null && rec.genome !== null;
 export const held = (rec: EntityRecord): boolean => rec.egg !== null && rec.egg.carrier === rec.pid;
+
+/** Breeding's own state on a record: the tick from which a female may mate again, 0 for now. */
+export const BREEDING = part(() => ({ mateReadyAt: 0 }));
+
+export function mateReadyAt(rec: EntityRecord): number {
+  return rec.part(BREEDING)?.mateReadyAt ?? 0;
+}
 
 export class Breeding {
   /** Counters. `laid` includes young carried, and `hatched` includes young born. */
@@ -127,7 +135,7 @@ export class Breeding {
     if (this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind)) return false;
     // It must be owned, enabled for mating, grown, conscious, not following, not ridden, and not heavy or rooted; and no
     // starter mount mates (server/mount.ts).
-    return rec.mating && rec.issuedTo === 0 && rec.team !== 0 && rec.grown === 0 && rec.egg === null && !rec.out && !rec.dead && rec.follow === 0 && rec.genome !== null && world.reg.breedEgg[rec.kind] !== 0xffff && ents.driven[e] === 0 && (ents.mflags[e]! & MF_NO_SPRINT) === 0;
+    return rec.mating && issuedTo(rec) === 0 && rec.team !== 0 && rec.grown === 0 && rec.egg === null && !rec.out && !rec.dead && rec.follow === 0 && rec.genome !== null && world.reg.breedEgg[rec.kind] !== 0xffff && ents.driven[e] === 0 && (ents.mflags[e]! & MF_NO_SPRINT) === 0;
   }
 
   private together(a: number, b: number): boolean {
@@ -156,7 +164,7 @@ export class Breeding {
       const rec = records.byPid.get(ents.pid[e]!);
       if (!rec || !rec.mating || !this.able(rec, e)) continue;
       if (!rec.genome!.female) males.push(e);
-      else if (tick >= rec.mateReadyAt) females.push(e);
+      else if (tick >= mateReadyAt(rec)) females.push(e);
     }
     for (const f of females) {
       const pid = ents.pid[f]!;
@@ -229,7 +237,7 @@ export class Breeding {
     const father = records.byPid.get(pair.male);
     const fe = records.entOf.get(pid);
     const me = father ? records.entOf.get(father.pid) : undefined;
-    if (!father || fe === undefined || me === undefined || !this.able(rec, fe) || !this.able(father, me) || !this.together(fe, me) || world.tick < rec.mateReadyAt || father.kind !== rec.kind || father.team !== rec.team) {
+    if (!father || fe === undefined || me === undefined || !this.able(rec, fe) || !this.able(father, me) || !this.together(fe, me) || world.tick < mateReadyAt(rec) || father.kind !== rec.kind || father.team !== rec.team) {
       this.parted++;
       return;
     }
@@ -273,7 +281,7 @@ export class Breeding {
       deadlines.push(hatchAt, this.deadline, egg.pid, hatchAt);
       this.laid++;
     }
-    mother.mateReadyAt = tick + Math.round(mateWait(this.rng.float()) * TICK_RATE * rules.num("MatingIntervalMultiplier"));
+    mother.own(BREEDING).mateReadyAt = tick + Math.round(mateWait(this.rng.float()) * TICK_RATE * rules.num("MatingIntervalMultiplier"));
     records.dirty.add(mother.pid);
     this.mated++;
   }
@@ -431,8 +439,9 @@ export class Breeding {
         }
         this.next(rec);
       }
-      if (rec.mateReadyAt > tick && interval !== was.interval && was.interval > 0) {
-        rec.mateReadyAt = interval > 0 ? tick + leftAtPeriod(rec.mateReadyAt - tick, was.interval, interval) : tick;
+      const own = rec.part(BREEDING);
+      if (own && own.mateReadyAt > tick && interval !== was.interval && was.interval > 0) {
+        own.mateReadyAt = interval > 0 ? tick + leftAtPeriod(own.mateReadyAt - tick, was.interval, interval) : tick;
         records.dirty.add(rec.pid);
       }
     }
@@ -507,7 +516,7 @@ export class Breeding {
     if (world.reg.breedEgg[rec.kind] === 0xffff || rec.grown !== 0 || rec.team === 0) return RESULT_INVALID;
     const on = what === ORDER_MATE;
     // A starter mount never mates: it is issued, and its young would be a way to make more (server/mount.ts).
-    if (on && (rec.issuedTo !== 0 || this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind))) return RESULT_DENIED;
+    if (on && (issuedTo(rec) !== 0 || this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind))) return RESULT_DENIED;
     if (rec.mating === on) return RESULT_OK;
     rec.mating = on;
     records.dirty.add(rec.pid);
@@ -545,7 +554,7 @@ export class Breeding {
       maturity: maturity(rec.span, rec.grown, tick),
       mate: rec.mating ? this.progress(rec) : 0,
       // In seconds.
-      wait: rec.mateReadyAt > tick ? Math.ceil((rec.mateReadyAt - tick) / TICK_RATE) : 0,
+      wait: mateReadyAt(rec) > tick ? Math.ceil((mateReadyAt(rec) - tick) / TICK_RATE) : 0,
     };
   }
 
@@ -560,10 +569,10 @@ export class Breeding {
  */
 saved({
   name: "breeding",
-  has: (rec) => rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null,
+  has: (rec) => rec.mating || mateReadyAt(rec) !== 0 || rec.grown !== 0 || rec.egg !== null,
   write(rec, w, to) {
     w.bool(rec.mating);
-    w.uint53(rec.mateReadyAt);
+    w.uint53(mateReadyAt(rec));
     w.uint53(rec.span);
     w.uint53(rec.grown);
     w.bool(rec.egg !== null);
@@ -576,13 +585,15 @@ saved({
   },
   read(rec, r, from) {
     rec.mating = r.bool();
-    rec.mateReadyAt = r.uint53();
+    const ready = r.uint53();
+    if (ready !== 0) rec.own(BREEDING).mateReadyAt = ready;
     rec.span = r.uint53();
     rec.grown = r.uint53();
     if (r.bool()) rec.egg = { species: from.toRuntime[r.varint()] ?? 0, span: r.uint53(), hatchAt: r.uint53(), carrier: r.uint53() };
   },
   rebase(rec, delta) {
-    rec.mateReadyAt = moved(rec.mateReadyAt, delta);
+    const own = rec.part(BREEDING);
+    if (own) own.mateReadyAt = moved(own.mateReadyAt, delta);
     rec.grown = moved(rec.grown, delta);
     // A fertilised egg held as an item keeps the time it has left, not a tick.
     if (rec.egg && rec.egg.carrier !== rec.pid) rec.egg.hatchAt = moved(rec.egg.hatchAt, delta);

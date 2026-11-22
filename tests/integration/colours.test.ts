@@ -1,6 +1,7 @@
 // A server rolls a wild creature from its species' colour set, and a mutation gives its young one of the species' own colours.
 import { expect, test } from "bun:test";
 import { CORE_PACK } from "../../content/core.ts";
+import { BREEDING } from "../../server/breeding.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { compilePacks } from "../../shared/content/packs.ts";
 import { ORDER_MATE, RESULT_OK } from "../../shared/net/protocol.ts";
@@ -60,7 +61,7 @@ test("wild creatures take their species' colours region by region, and their you
     return { f, m };
   });
   for (let n = 0; n < 200; n++) {
-    for (const { f } of pairs) f.mateReadyAt = 0;
+    for (const { f } of pairs) f.own(BREEDING).mateReadyAt = 0;
     breeding.step(0);
     for (const { f } of pairs) breeding.due(f.pid, MATE_TICKS);
   }

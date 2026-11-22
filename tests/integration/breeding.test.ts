@@ -14,6 +14,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { DEV_CONFIG } from "../../server/main.ts";
 import { loadConfigFolder } from "../../server/settings/config.ts";
 import type { Rules } from "../../server/settings/rules.ts";
+import { mateReadyAt } from "../../server/breeding.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -129,14 +130,14 @@ test("a female and a male of one tribe, both told they may, have an egg after ha
     expect([f.rec.genome!.wild[s], m.rec.genome!.wild[s]]).toContain(g.wild[s]);
     expect(g.tamed[s]).toBe(0);
   }
-  const rest = (f.rec.mateReadyAt - (info.hatchAt - info.span)) / TICK_RATE / 3600;
+  const rest = (mateReadyAt(f.rec) - (info.hatchAt - info.span)) / TICK_RATE / 3600;
   expect(rest).toBeGreaterThanOrEqual(18);
   expect(rest).toBeLessThan(48);
-  expect(m.rec.mateReadyAt).toBe(0);
+  expect(mateReadyAt(m.rec)).toBe(0);
   h.run(3000);
   expect([breeding.pairCount, breeding.begun]).toEqual([0, 1]);
   expect(ada.subject).toMatchObject({ mating: true, mate: 0 });
-  expect(Math.abs(ada.subject!.wait - (f.rec.mateReadyAt - h.world.tick) / TICK_RATE)).toBeLessThan(2);
+  expect(Math.abs(ada.subject!.wait - (mateReadyAt(f.rec) - h.world.tick) / TICK_RATE)).toBeLessThan(2);
 
   const seen = new RemoteSample();
   ada.sampleRemote(seen);
@@ -232,13 +233,13 @@ test("an egg hatches and what hatches is grown on the ticks they were due, watch
     const info = { ...egg.egg! };
     expect(info.span).toBe(hatchTicks);
     const mother = f.rec.pid;
-    const rest = f.rec.mateReadyAt - (info.hatchAt - info.span);
+    const rest = mateReadyAt(f.rec) - (info.hatchAt - info.span);
     if (away) {
       restart();
       const again = h.host.records.byPid.get(egg.pid)!;
       const ee = h.host.records.entOf.get(egg.pid)!;
       expect([again.egg, (h.world.ents.flags[ee]! & F_PROP) !== 0, h.world.ents.grown[ee]]).toEqual([info, true, info.hatchAt]);
-      expect(h.host.records.byPid.get(mother)).toMatchObject({ mating: true, mateReadyAt: (info.hatchAt - info.span) + rest });
+      expect([h.host.records.byPid.get(mother)!.mating, mateReadyAt(h.host.records.byPid.get(mother)!)]).toEqual([true, (info.hatchAt - info.span) + rest]);
     }
     // grownAt is the tick on which setYoung clears the entity's young state.
     let grownAt = -1;

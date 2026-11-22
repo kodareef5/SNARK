@@ -10,6 +10,7 @@ import { Downlink } from "../../client/core/voice/listen.ts";
 import type { VoicePeer, VoiceSocket } from "../../server/voice.ts";
 import { BOX_OPEN, CMD_CLOSE, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, ORDER_MATE } from "../../shared/net/protocol.ts";
 import { MIND_HUNT } from "../../server/behavior.ts";
+import { mateReadyAt } from "../../server/breeding.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { V_FOOD, V_TORPOR } from "../../shared/sim/vitals.ts";
@@ -547,7 +548,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   expect([breeding.mated, laid.length >= 1]).toEqual([1, true]);
   const mother = rec.genome!.female ? rec : mateRec;
   const motherEnt = rec.genome!.female ? dolly : mate;
-  expect([laid[0]!.genome!.mother, laid[0]!.genome!.father, mother.mateReadyAt > h.world.tick]).toEqual([mother.pid, (rec.genome!.female ? mateRec : rec).pid, true]);
+  expect([laid[0]!.genome!.mother, laid[0]!.genome!.father, mateReadyAt(mother) > h.world.tick]).toEqual([mother.pid, (rec.genome!.female ? mateRec : rec).pid, true]);
   const egg = laid[0]!;
   const hatchAt = egg.egg!.hatchAt;
   expect(egg.egg!.span).toBe(Math.ceil((5142 * TICK_RATE) / 500));

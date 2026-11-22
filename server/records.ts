@@ -41,6 +41,29 @@ export interface FireState extends Fire {
   out: number;
 }
 
+/**
+ * A feature's own state on a record, in place of a field on EntityRecord. The feature declares one in its own file,
+ * `export const ISSUED = part(() => ({ to: 0 }))`: `rec.part(ISSUED)` is that state, or undefined for a record that has
+ * none, and `rec.own(ISSUED)` makes it. What of it is saved is a component declared beside it (server/saved.ts).
+ */
+export class Part<S> {
+  /** Its place among a record's parts: the order parts were declared in on this run, which nothing saves. */
+  readonly at: number;
+  readonly make: () => S;
+
+  constructor(at: number, make: () => S) {
+    this.at = at;
+    this.make = make;
+  }
+}
+
+let parts = 0;
+
+/** Declares a feature's state. `make` gives a record's own, as it is before the feature has set any of it. */
+export function part<S>(make: () => S): Part<S> {
+  return new Part(parts++, make);
+}
+
 export class EntityRecord {
   readonly pid: number;
   kind: number;
@@ -113,11 +136,6 @@ export class EntityRecord {
    * loosed (rebaseTicks). The full ball that holds it names this record (Inventory.ref).
    */
   stored = 0;
-  /**
-   * For a starter mount (server/mount.ts): the pid of the survivor it was issued to, 0 for any other record. It goes only
-   * into that survivor's issued ball, keeps its saddle, does not mate, and leaves nothing to take when it dies.
-   */
-  issuedTo = 0;
   jetSpent = 0;
   /** Selected ground-combat plate mode; transient attacks are never saved. */
   creatureMode = 0;
@@ -127,12 +145,11 @@ export class EntityRecord {
    */
   flying = false;
   /**
-   * Breeding (server/breeding.ts). `mating` is whether an owned creature is willing to mate, and `mateReadyAt` the tick
-   * from which a female may again (0 for now). `span` and `grown` are the ticks growing takes and the tick it ends,
-   * both 0 for one that is grown. `growDue` is the tick it is next a hundredth more grown. It is derived, not saved.
+   * Breeding (server/breeding.ts). `mating` is whether an owned creature is willing to mate. `span` and `grown` are the
+   * ticks growing takes and the tick it ends, both 0 for one that is grown. `growDue` is the tick it is next a hundredth
+   * more grown. It is derived, not saved.
    */
   mating = false;
-  mateReadyAt = 0;
   span = 0;
   grown = 0;
   growDue = 0;
@@ -155,10 +172,25 @@ export class EntityRecord {
   fire: FireState | null = null;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
+  /** Features' own state, by Part.at. Null until a feature makes some. */
+  private parts: unknown[] | null = null;
 
   constructor(pid: number, kind: number) {
     this.pid = pid;
     this.kind = kind;
+  }
+
+  /** A feature's state on this record, or undefined where it has none. */
+  part<S>(of: Part<S>): S | undefined {
+    const parts = this.parts;
+    return parts === null ? undefined : (parts[of.at] as S | undefined);
+  }
+
+  /** A feature's state on this record, made the first time it is asked for and the same object ever after. */
+  own<S>(of: Part<S>): S {
+    const parts = (this.parts ??= []);
+    while (parts.length <= of.at) parts.push(undefined);
+    return (parts[of.at] ??= of.make()) as S;
   }
 }
 

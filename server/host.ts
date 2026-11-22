@@ -38,7 +38,7 @@ import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
 import { issueSuit } from "./suit.ts";
 import { Balls } from "./balls.ts";
-import { Mounts } from "./mount.ts";
+import { Mounts, issuedTo } from "./mount.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
 import { Feces } from "./feces.ts";
@@ -899,7 +899,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     spawner?.left(rec);
     if (reg.vehicle[rec.kind]?.movement === "boat") urban.releaseHost(rec.pid);
     // A starter mount leaves no body to harvest and no saddle: they were issued with it. What it carried lies in a cache.
-    if (rec.issuedTo !== 0) rec.saddle = 0;
+    if (issuedTo(rec) !== 0) rec.saddle = 0;
     else corpses.fell(rec, cause, by, impact);
     if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);

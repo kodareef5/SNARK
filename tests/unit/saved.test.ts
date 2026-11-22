@@ -1,10 +1,13 @@
 // A feature's saved component (server/saved.ts): declared in one place, written only for a record that has some, read
-// back, moved to another clock, and kept as bytes by a build that does not know it.
+// back, moved to another clock, and kept as bytes by a build that does not know it. And a feature's own state on a
+// record (Part, server/records.ts), which needs no field of EntityRecord.
 
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { RecordCodec, idMap, rebaseTicks } from "../../server/persist/codec.ts";
-import { EntityRecord } from "../../server/records.ts";
+import { BREEDING, mateReadyAt } from "../../server/breeding.ts";
+import { ISSUED, issuedTo } from "../../server/mount.ts";
+import { EntityRecord, part } from "../../server/records.ts";
 import { SAVED, moved, saved, savedAs, savedId } from "../../server/saved.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { BitReader } from "../../shared/net/codec.ts";
@@ -96,4 +99,38 @@ test("the bytes of a component this build does not know are kept and written bac
   const back = codec.decode(saved)!;
   expect([...back.extra]).toEqual([[unknown, Uint8Array.of(9, 8, 7)]]);
   expect(codec.encode(back)).toEqual(saved.data);
+});
+
+test("a feature's state on a record is none until it is made, then one object for good, and each record's own", () => {
+  const COUNT = part(() => ({ n: 0 }));
+  const NAME = part(() => ({ text: "" }));
+  const a = new EntityRecord(45, reg.index.get("core:dodo")!);
+  const b = new EntityRecord(46, reg.index.get("core:dodo")!);
+  expect([a.part(COUNT), a.part(NAME)]).toEqual([undefined, undefined]);
+  const made = a.own(COUNT);
+  made.n = 7;
+  expect([a.own(COUNT) === made, a.part(COUNT) === made, a.part(NAME), b.part(COUNT)]).toEqual([true, true, undefined, undefined]);
+  a.own(NAME).text = "seven";
+  b.own(COUNT).n = 1;
+  expect([a.part(COUNT)!.n, a.part(NAME)!.text, b.part(COUNT)!.n]).toEqual([7, "seven", 1]);
+});
+
+test("state kept in a part is saved by its feature's component: a starter's mark, and when a female may mate again", () => {
+  const rec = new EntityRecord(47, reg.index.get("core:pteranodon")!);
+  const plain = row(rec);
+  rec.own(ISSUED).to = 2 ** 40 + 5;
+  rec.own(BREEDING).mateReadyAt = 9000;
+  const saved = row(rec);
+  expect(saved.data.length).toBeGreaterThan(plain.data.length);
+  const back = codec.decode(saved)!;
+  expect([issuedTo(back), mateReadyAt(back)]).toEqual([2 ** 40 + 5, 9000]);
+  expect(codec.encode(back)).toEqual(saved.data);
+  rebaseTicks(back, 500);
+  expect([issuedTo(back), mateReadyAt(back)]).toEqual([2 ** 40 + 5, 9500]);
+  // One that has neither is given no state by a read, and is saved as it was.
+  const bare = codec.decode(plain)!;
+  expect([bare.part(ISSUED), bare.part(BREEDING), issuedTo(bare), mateReadyAt(bare)]).toEqual([undefined, undefined, 0, 0]);
+  // Made and left at nothing, it costs no bytes.
+  bare.own(BREEDING);
+  expect(codec.encode(bare)).toEqual(plain.data);
 });
