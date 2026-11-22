@@ -85,5 +85,9 @@ for (const holds of [true, false]) {
     expect(g.value(10.5)).toBeCloseTo(mid, 9);
     expect(g.events.at(-1)).toEqual({ kind: "target", value: 0, time: 10.5, constant: MUTE_SECONDS / 5 });
     expect(g.value(10.5 + MUTE_SECONDS)).toBeLessThan(0.01);
+    // Asked again for where it is already heading, as when another volume changes, it lays nothing.
+    const laid = g.events.length;
+    ease(g, 0, SLIDER_SECONDS, 11);
+    expect(g.events.length).toBe(laid);
   });
 }

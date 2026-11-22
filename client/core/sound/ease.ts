@@ -23,6 +23,8 @@ const eased = new WeakMap<EasedParam, { from: number; to: number; at: number; co
  */
 export function ease(param: EasedParam, to: number, seconds: number, now: number): void {
   const at = now + EASE_AHEAD, last = eased.get(param);
+  // A level already heading there goes on as it was.
+  if (last && last.to === to) return;
   const from = !last ? 0 : at <= last.at ? last.from : last.to + (last.from - last.to) * Math.exp(-(at - last.at) / last.constant);
   if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(at);
   else {
