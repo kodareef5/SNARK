@@ -1,5 +1,5 @@
 // Diagnostic-only RGBA reference maps. The GPU still fetches and draws its selected variant independently.
-import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceMaterial } from "../../content/surfaces.ts";
+import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, surfaceMaterial } from "../../content/surfaces.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { pictureBytes, stepOf, topIn } from "../../shared/pack/texture.ts";
 import { textureParts, type AssetArrival, type AssetPort, type AssetRequest, type AssetPart } from "./assets/port.ts";
@@ -47,7 +47,7 @@ export class SelfcheckSurfaces implements AssetPort {
     });
     // Each mask's packed map, as the packed array's layer after the finishes' (content/surfaces.ts MASK_MATERIALS).
     const masks = MASK_MATERIALS.map((id) => this.manifest.materials?.find((m) => m.id === id));
-    const wanted: [number, (typeof textures)[number]][] = [...textures.entries(), ...masks.flatMap((m, k) => (m ? [[(WEATHER_LAYER + k) * 3 + 2, this.manifest.textures?.[m.mro]] as [number, (typeof textures)[number]]] : []))];
+    const wanted: [number, (typeof textures)[number]][] = [...textures.entries(), ...masks.flatMap((m, k) => (m ? [[(MASK_LAYER + k) * 3 + 2, this.manifest.textures?.[m.mro]] as [number, (typeof textures)[number]]] : []))];
     if (wanted.some(([, t]) => !t?.in.rgba)) { this.error = "world-surface reference has no RGBA maps"; return; }
     this.left = wanted.length;
     for (const [k, t] of wanted) {

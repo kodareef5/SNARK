@@ -1,7 +1,7 @@
 // Everything a renderer needs to draw one frame, as data. client/core decides what is visible, and a renderer only executes.
 // Uploads and drops persist across frames and must be applied in order. Draws and terrain tiles describe this frame only.
 
-import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER } from "../../../content/surfaces.ts";
+import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES } from "../../../content/surfaces.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_BLEND, MATERIAL_EXHAUST, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
@@ -12,7 +12,7 @@ import { STREET_TILE_BYTES, STREET_TILES_FRAME } from "./streets.ts";
 export { STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE } from "./streets.ts";
 
 /** Layers of the world finishes' arrays: a finish each, then the masks' (content/surfaces.ts MASK_MATERIALS). */
-export const WORLD_LAYERS = WEATHER_LAYER + MASK_MATERIALS.length;
+export const WORLD_LAYERS = MASK_LAYER + MASK_MATERIALS.length;
 export const MAX_DRAWS = 4096;
 export const MAX_TILES = 1024;
 /** Quads per terrain tile side, at every level. */
@@ -515,6 +515,8 @@ export class FramePacket {
   /** Whether the finishes' base colours can come, which they are drawn as their means until they do; false where nothing can bring them. */
   worldComing = false;
   readonly worldPhase = new Float32Array(SURFACE_NAMES.length * 3);
+  /** The side of the layers of the walls' weathering masks the card makes and keeps (texgen/weather.ts), 0 where the tier does not weather. */
+  weatherSide = 0;
   /** The textures the facades read, by their index in the manifest, -1 for none: the elements' base colour, normal and packed map, the rooms', the marks' (facade.ts FacadeAtlases). */
   readonly facadeSlots = new Int32Array(5).fill(-1);
   /** Linear 0..1 RGB. */

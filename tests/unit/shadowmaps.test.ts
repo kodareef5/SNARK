@@ -3,6 +3,7 @@
 // the lit programs carry the tier's shadows, the maps' bytes, the far map's layer among them, come off the card's
 // budget, the rasterizer lights as if in the sun, and the game asks the device what its compared lookups give and
 // leaves the context as it was.
+import { weatherBytes } from "../../client/core/render/world-surfaces.ts";
 import { expect, test } from "bun:test";
 import { FACADE_TIERS } from "../../client/core/render/facade.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
@@ -109,7 +110,8 @@ test("a tier's maps are a 16-bit layer a cascade, the far map's and on high and 
     scene.build(cam, null);
     return scene.assets.residency.reserved;
   };
-  expect(reserved("medium") - reserved("lowpoly")).toBe(shadowBytes(tierOf("medium").shadows));
+  // And on medium the walls' weathering masks, made on the card at 512 a side (world-surfaces.ts weatherSide).
+  expect(reserved("medium") - reserved("lowpoly")).toBe(shadowBytes(tierOf("medium").shadows) + weatherBytes(512));
 });
 
 test("the rasterizer lights as if in the sun, and a pixel out of it loses the sun's own light and nothing else", () => {

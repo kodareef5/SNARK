@@ -5,7 +5,7 @@ import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
 import { DROPS_AT, DROP_LANES, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT } from "../../client/core/render/packet.ts";
-import { PROGRAMS, UNIT, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
+import { PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../../client/core/render/programs.ts";
 import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
 
@@ -30,13 +30,15 @@ test("low poly's programs are the pinned flat texts, and every sampler a program
   }
   // The material's five maps and the rest each have a unit, the layer and the details atlas after them, which only the
   // details program reads and which is free outside its draws, where the finish's passes, after every draw, read their
-  // sources (post.ts); and the sky's openness, the facades' five and what stands overhead past the sixteen: no program
-  // reads more than sixteen, the flat program on a tier that draws facades, two of them in its vertex text and fourteen
-  // in its fragment's, within the sixteen a fragment text may read.
+  // sources (post.ts); and the sky's openness, the facades' five, what stands overhead and the walls' weathering masks
+  // past the sixteen: no program's fragment text reads more than the sixteen it may, the flat program on a tier that
+  // draws facades reading fifteen there and two more in its vertex text.
   const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint, UNIT.atlas, UNIT.layer, UNIT.details, UNIT.open];
   expect([new Set(units).size, Math.max(...units)]).toEqual([17, 16]);
   expect([UNIT.open, UNIT.facade, UNIT.road, UNIT.street, UNIT.roof]).toEqual([16, 17, 22, 23, 24]);
-  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(16);
+  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(17);
+  const fragmentReads = (p: ProgramText): number => Object.keys(p.samplers).filter((name) => new RegExp(`uniform\\s+(?:\\w+\\s+)?\\w*sampler\\w+\\s+[^;]*\\b${name}\\b`).test(p.fragment)).length;
+  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => fragmentReads(make(tier, "bc")))))).toBe(15);
   expect(Object.entries(PROGRAMS).filter(([, make]) => Object.values(make(TIERS[1]!, "bc").samplers).includes(UNIT.details)).map(([name]) => name)).toEqual(["details", "bloomDown", "bloomUp", "finish"]);
 });
 
