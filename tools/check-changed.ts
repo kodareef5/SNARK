@@ -29,7 +29,7 @@ export function importsOf(file: string, src: string, bare = false): string[] {
  */
 export function affectedTests(changed: readonly string[], sources: ReadonlyMap<string, string>, tests: readonly string[]): string[] | "all" {
   if (changed.some((f) => WHOLE.some((r) => r.test(f)))) return "all";
-  // Without comments: "record it in planning/decisions.md" in a comment reads nothing, and named every such file.
+  // Without comments: a file a comment names is read by nothing, and named every such file.
   const code = new Map([...sources].map(([file, src]) => [file, stripComments(src)]));
   const users = new Map<string, string[]>();
   for (const [file, src] of code) {
