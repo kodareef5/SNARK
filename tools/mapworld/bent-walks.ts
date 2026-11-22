@@ -26,7 +26,7 @@
 // - the walk kit's storm drains and utility boxes stand on the straight lengths, as often as the kit has them.
 
 import { BREAK_AT } from "../../content/ruins.ts";
-import { SINK_LENGTH, bentJoin, HIT_PREFIX, KERB_BACK, packBend, placeKerb, underPiece, wrapped, type BentKerb, type BentPiece, type Section } from "../../shared/world/bends.ts";
+import { SINK_LENGTH, bentJoin, bentKind, HIT_PREFIX, KERB_BACK, packBend, placeKerb, underPiece, wrapped, type BentKerb, type BentPiece, type Section } from "../../shared/world/bends.ts";
 import { DROP_CROSSING, DROP_RAMP, kerbLines, kerbOf, walkOf, type KerbLine as StreetKerb } from "../../shared/world/streets.ts";
 import { S } from "./ground.ts";
 import { binKey, hash3 } from "./raster.ts";
@@ -355,6 +355,22 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     const p = pieces[k];
     if (!p || p.bend.walk <= KERB_BACK + 0.01) return;
     const length = p.bend.half * 2;
+    // A short piece whose walk is let down at its other end already: its two halves each let down toward their own end,
+    // or where it is too short for that, its kerb alone.
+    if (p.bend.sink === -toward && length <= 2 * SINK_LENGTH + 0.5) {
+      // A flush kerb or a flare keeps its kerb: its walk is let down at one end only.
+      if (p.kind.includes("_flush")) {
+        out.ledges!++;
+        return;
+      }
+      if (length < SINK_LENGTH || p.kind.endsWith("_c")) pieces[k] = { ...p, kind: bentKind("median", p.kind.endsWith("_c")), kerb: "median", bend: { ...p.bend, sink: 0, walk: KERB_BACK, panel: 0 } };
+      else {
+        const [one, two] = splitStraight(p, length / 2);
+        pieces.splice(k, 1, { ...one, bend: { ...one.bend, sink: -1 } }, { ...two, bend: { ...two.bend, sink: 1 } });
+      }
+      out.sunk!++;
+      return;
+    }
     if (length <= SINK_LENGTH + 0.5) {
       pieces[k] = { ...p, bend: { ...p.bend, sink: toward } };
       out.sunk!++;
