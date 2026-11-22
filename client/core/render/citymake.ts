@@ -5,7 +5,7 @@
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { cellPart, cornerByte, mergedPart, type CityForm, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { UNBENT, cellPart, cornerByte, mergedPart, type CityForm, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
 import { blocksBuffers, type BlocksJob, type BlocksMade } from "./blocks.ts";
 import { sweepBuffers, type SweepJob, type SweepMade } from "./farshadow.ts";
@@ -192,7 +192,7 @@ export class LevelMaking {
     }
     first.fill(at, c);
     const { kind, yaw, x, y, z } = job;
-    this.city = { dims: k.dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, under: k.under, plain: k.plain, near: k.near ?? new Uint8Array(k.plain.length), walked: k.walked, look: k.look, bends: new Map(), count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
+    this.city = { dims: k.dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, under: k.under, plain: k.plain, near: k.near ?? new Uint8Array(k.plain.length), walked: k.walked, look: k.look, ...UNBENT, count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
     this.ground = new HeightWindow({ ...k.ground, i0: job.i0, j0: job.j0, w: job.w, heights: job.heights });
     const gone = (chunk: number): Gone => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
     // Pieces thinner across than the level's `thin` are left out as gone ones are: neither drawn nor hiding a face.

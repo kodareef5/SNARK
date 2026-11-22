@@ -571,8 +571,9 @@ async function stepped<T>(steps: Generator<void, T>, pause: () => Promise<void>)
 
 /**
  * Of `table`, the map's statics as its head lays them out, the rows of `sectors` alone, a table of their own, a slice of
- * rows a step, with their chunks' bends: the near store draws a bent piece by them, and without them no kerb round the
- * body was drawn until the whole map's statics came.
+ * rows a step, for the far city round the body. It names `table` as where they came from (MapStatics.coming): the near
+ * store draws a bent piece by that table's row and bend, so that a sector's kerbs are drawn once its statics come, those
+ * round the body or any other, and not when an unrelated sector's let the whole map's be handed over.
  */
 export function* rowsOf(head: MapHead, table: MapStatics, sectors: readonly MapPart[]): Generator<void, MapStatics> {
   const { dims, counts } = head;
@@ -582,13 +583,12 @@ export function* rowsOf(head: MapHead, table: MapStatics, sectors: readonly MapP
     for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) kept[cz * dims.chunksX + cx] = 1;
   }
   const out = MapStatics.blank(head.kinds, counts.length, counts.reduce((n, k, c) => n + kept[c]! * k, 0), false);
+  out.coming = table;
   for (let c = 0; c < counts.length; c++) out.first[c + 1] = out.first[c]! + kept[c]! * counts[c]!;
   for (let c = 0, since = 0; c < counts.length; c++) {
     const from = table.first[c]!, to = table.first[c + 1]!, at = out.first[c]!;
     if (kept[c] === 0 || to === from) continue;
     for (const k of ["kind", "yaw", "x", "y", "z"] as const) out[k].set(table[k].subarray(from, to), at);
-    const bends = table.bends.get(c);
-    if (bends) out.bends.set(c, bends);
     if ((since += to - from) >= COPY_SLICE) {
       since = 0;
       yield;

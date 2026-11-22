@@ -61,8 +61,11 @@ const CUT_ROUND = 1;
 /** The least walk a piece is cut down to round what stands on it, from the kerb's face, and how far short of it it stops. */
 const CUT_LEAST = KERB_BACK + 0.6, CUT_SHORT = 0.05;
 
-/** A kerb line to lay: its points in the lattice's metres with their heights and stations, its walk's side, its section and its drops. */
-interface Run { x: number[]; y: number[]; z: number[]; s: number[]; side: 1 | -1; section: Section; corner: boolean; drops: number[] }
+/**
+ * A kerb line to lay: its points in the lattice's metres with their heights and stations, its walk's side, its section and
+ * its drops; and its stretches by station, made once its points are final (spansOf).
+ */
+interface Run { x: number[]; y: number[]; z: number[]; s: number[]; side: 1 | -1; section: Section; corner: boolean; drops: number[]; spans?: DropSpan[] }
 
 /** A point of a line: off open ground, not level, its kerb alone (its walk not level), its kerb and walk. */
 const OFF = 0, UNLEVEL = 1, ALONE = 2, WALKED = 3;
@@ -191,7 +194,7 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
   // Each run's ends by where they stand: how many kerbs end there, how many of them with a walk, and how many let down flush.
   const ends = new Map<number, { kerbs: number; walks: number; flush: number }>();
   const endKey = (x: number, z: number): number => binKey(Math.floor(x * 4), Math.floor(z * 4));
-  const flushAt = (r: Run, s: number): boolean => r.section.walk > 0 && dropAt(r.drops, s) >= 0;
+  const flushAt = (r: Run, s: number): boolean => r.section.walk > 0 && spansOf(r).some((sp) => sp.how === "flush" && s >= sp.a - 0.01 && s <= sp.b + 0.01);
   for (const r of runs) if (r.x.length >= 2) for (const e of [0, r.x.length - 1]) {
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       const key = binKey(Math.floor(r.x[e]! * 4) + dx, Math.floor(r.z[e]! * 4) + dz);
@@ -261,35 +264,18 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
   out.droppedMetres = Math.round(out.droppedMetres!);
   return out;
 
+  /** A run's stretches by station (dropSpans), once its points are final. */
+  function spansOf(r: Run): DropSpan[] {
+    return (r.spans ??= dropSpans(r.s[0]!, r.s[r.s.length - 1]!, r.drops, r.section.walk > 0));
+  }
+
   /** A run's pieces, its dropped stretches flush with a flare at each end, in the order that puts its walk on the left. */
   function placeRun(r: Run): BentPiece[] {
-    const s0 = r.s[0]!, s1 = r.s[r.s.length - 1]!;
-    // Its stretches by station: as laid, flared down, flush and flared up.
-    const spans: { a: number; b: number; how: "kerb" | "down" | "flush" | "up" | "gap"; tactile: boolean }[] = [];
-    let from = s0;
-    for (let k = 0; k + 2 < r.drops.length; k += 3) {
-      const d0 = Math.max(s0, r.drops[k]!), d1 = Math.min(s1, r.drops[k + 1]!), kind = r.drops[k + 2]!;
-      if (d1 - d0 < 0.5 || d0 < from) continue;
-      const tactile = kind === DROP_CROSSING || kind === DROP_RAMP;
-      if (r.section.walk === 0) {
-        // A kerb alone is cut where it is dropped: the crossing runs through it at the road's height.
-        if (d0 > from) spans.push({ a: from, b: d0, how: "kerb", tactile: false });
-        spans.push({ a: d0, b: d1, how: "gap", tactile });
-      } else {
-        const f0 = Math.max(from, d0 - FLARE), f1 = Math.min(s1, d1 + FLARE);
-        if (f0 > from + 0.01) spans.push({ a: from, b: f0, how: "kerb", tactile: false });
-        if (d0 - f0 > 0.3) spans.push({ a: f0, b: d0, how: "down", tactile: false });
-        spans.push({ a: d0 - f0 > 0.3 ? d0 : f0, b: d1, how: "flush", tactile });
-        if (f1 - d1 > 0.3) spans.push({ a: d1, b: f1, how: "up", tactile: false });
-        else if (spans.length > 0) spans[spans.length - 1]!.b = f1;
-        from = f1;
-        out.dropped!++;
-        out.droppedMetres! += d1 - d0;
-        continue;
-      }
-      from = d1;
+    const spans = spansOf(r);
+    for (const sp of spans) if (sp.drop && sp.how === "flush") {
+      out.dropped!++;
+      out.droppedMetres! += sp.b - sp.a;
     }
-    if (s1 - from > 0.01) spans.push({ a: from, b: s1, how: "kerb", tactile: false });
     const kerb = r.section.kerb;
     const laid = spans.map((sp) => {
       if (sp.how === "gap") return [];
@@ -588,10 +574,63 @@ export function judged(state: Uint8Array, stations: Float64Array): number {
   return filled;
 }
 
-/** The drop of `drops` (from, to and kind, three a drop) that holds station `s`, by its place, or -1. */
-function dropAt(drops: readonly number[], s: number): number {
-  for (let k = 0; k + 2 < drops.length; k += 3) if (s >= drops[k]! - 0.01 && s <= drops[k + 1]! + 0.01) return k;
-  return -1;
+/** A stretch of a run by station: laid as its kerb, flared down to flush, flush, flared up, or cut (a kerb alone's crossing). */
+export interface DropSpan {
+  a: number;
+  b: number;
+  readonly how: "kerb" | "down" | "flush" | "up" | "gap";
+  /** A crossing's or a corner ramp's flush kerb, which draws a pad. */
+  readonly tactile: boolean;
+  /** A stretch the model marks as dropped; a flush stretch between two drops too near to flare between is not one. */
+  readonly drop: boolean;
+}
+
+/**
+ * A run's stretches by station, from s0 to s1, its drops (from, to and kind, three a drop, in the order of their stations)
+ * let down flush with a flare at each end where it has a walk, and cut where it is a kerb alone. Drops nearer each other
+ * than two flares are one flush stretch, the kerb between them flush too, so no drop is laid as raised kerb: a second
+ * crossing 1 m past the first stood in the first one's flare and was left out. A drop the run holds only an end of is
+ * another run's, but where its middle is in this run.
+ */
+export function dropSpans(s0: number, s1: number, drops: readonly number[], walked: boolean): DropSpan[] {
+  // The run's drops, those too near to flare between gathered into one stretch.
+  const near = walked ? 2 * FLARE : 0.5;
+  const groups: { a: number; b: number; drops: [number, number, boolean][] }[] = [];
+  for (let k = 0; k + 2 < drops.length; k += 3) {
+    const d0 = Math.max(s0, drops[k]!), d1 = Math.min(s1, drops[k + 1]!), kind = drops[k + 2]!, middle = (drops[k]! + drops[k + 1]!) / 2;
+    if (d1 - d0 < 0.5 && (d1 <= d0 || middle < s0 || middle > s1)) continue;
+    const tactile = kind === DROP_CROSSING || kind === DROP_RAMP, last = groups[groups.length - 1];
+    if (last && d0 < last.b + near) {
+      last.drops.push([d0, d1, tactile]);
+      last.b = Math.max(last.b, d1);
+    } else groups.push({ a: d0, b: d1, drops: [[d0, d1, tactile]] });
+  }
+  const spans: DropSpan[] = [];
+  let from = s0;
+  for (const g of groups) {
+    if (!walked) {
+      // A kerb alone is cut where it is dropped: the crossing runs through it at the road's height.
+      if (g.a > from) spans.push({ a: from, b: g.a, how: "kerb", tactile: false, drop: false });
+      spans.push({ a: g.a, b: g.b, how: "gap", tactile: g.drops.some((d) => d[2]), drop: true });
+      from = g.b;
+      continue;
+    }
+    const f0 = Math.max(from, g.a - FLARE), f1 = Math.min(s1, g.b + FLARE);
+    if (f0 > from + 0.01) spans.push({ a: from, b: f0, how: "kerb", tactile: false, drop: false });
+    if (g.a - f0 > 0.3) spans.push({ a: f0, b: g.a, how: "down", tactile: false, drop: false });
+    // Each drop flush with its own pad or none, and the kerb between two of them flush with none.
+    let at = g.a - f0 > 0.3 ? g.a : f0;
+    for (const [d0, d1, tactile] of g.drops) {
+      if (d0 > at + 0.01) spans.push({ a: at, b: d0, how: "flush", tactile: false, drop: false });
+      if (d1 > Math.max(at, d0)) spans.push({ a: Math.max(at, d0), b: d1, how: "flush", tactile, drop: true });
+      at = Math.max(at, d1);
+    }
+    if (f1 - g.b > 0.3) spans.push({ a: g.b, b: f1, how: "up", tactile: false, drop: false });
+    else spans[spans.length - 1]!.b = f1;
+    from = f1;
+  }
+  if (s1 - from > 0.01) spans.push({ a: from, b: s1, how: "kerb", tactile: false, drop: false });
+  return spans;
 }
 
 /**

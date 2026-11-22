@@ -695,9 +695,11 @@ export class Rasterizer {
     this.deferredFacade = new Float32Array(width * height * FACADE_FLOATS);
   }
 
-  render(packet: FramePacket): void {
-    this.packet = packet;
-    trueSun(packet.frame, this.sun);
+  /**
+   * Takes what a frame's packet gives the card to hold, without drawing it: its buffers, levels, textures and maps, as
+   * for a frame no picture is taken of. render takes it first.
+   */
+  take(packet: FramePacket): void {
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
     // Far blocks come as levels of their own (far.ts), with a manifest or without.
@@ -730,6 +732,24 @@ export class Rasterizer {
       this.making.delete(slot);
     }
     for (const u of packet.texUploads) this.texture(u);
+    if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
+      [this.openWidth, this.openHeight] = [packet.openWidth, packet.openHeight];
+      this.open = new Uint8Array(this.openWidth * this.openHeight * OPEN_BYTES);
+    }
+    if (packet.openRows > 0) this.open.set(packet.openMap, packet.openRow * this.openWidth * OPEN_BYTES);
+    if (packet.roofMap.length > 0) this.roof = Uint8Array.from(packet.roofMap);
+    this.roofSide = packet.roofSide;
+    if (packet.atlasRows > 0) {
+      const rows = packet.atlas.subarray(0, packet.atlasRows * ATLAS_WIDTH * 4);
+      if (this.atlas.length < rows.length) this.atlas = new Float32Array(rows.length);
+      this.atlas.set(rows);
+    }
+  }
+
+  render(packet: FramePacket): void {
+    this.packet = packet;
+    trueSun(packet.frame, this.sun);
+    this.take(packet);
     const materials = (this.manifest ?? this.pack.header)?.materials ?? [];
     const finishes = SURFACE_NAMES.map((name) => materials.find((m) => m.id === surfaceMaterial(name)));
     const maps = finishes.map((m) => (m ? [m.base, m.normal, m.mro].map((t) => this.textures.get(t)) : []));
@@ -756,18 +776,6 @@ export class Rasterizer {
     streetEye = [Math.floor(packet.camX / 64), Math.floor(packet.camZ / 64)];
     const facades = Array.from(packet.facadeSlots, (t) => (t >= 0 ? this.textures.get(t) ?? null : undefined));
     this.facadeSample = packet.lit && facades.some((t) => t) && facades.every((t) => t !== null) ? (k, u, v, lod, out) => sample(facades[k]!, u, v, lod - (facades[k]!.pictures.length - 1), out) : null;
-    if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
-      [this.openWidth, this.openHeight] = [packet.openWidth, packet.openHeight];
-      this.open = new Uint8Array(this.openWidth * this.openHeight * OPEN_BYTES);
-    }
-    if (packet.openRows > 0) this.open.set(packet.openMap, packet.openRow * this.openWidth * OPEN_BYTES);
-    if (packet.roofMap.length > 0) this.roof = Uint8Array.from(packet.roofMap);
-    this.roofSide = packet.roofSide;
-    if (packet.atlasRows > 0) {
-      const rows = packet.atlas.subarray(0, packet.atlasRows * ATLAS_WIDTH * 4);
-      if (this.atlas.length < rows.length) this.atlas = new Float32Array(rows.length);
-      this.atlas.set(rows);
-    }
 
     const sky = [packet.sky[0]! * 255, packet.sky[1]! * 255, packet.sky[2]! * 255];
     for (let i = 0; i < this.width * this.height; i++) {
