@@ -68,6 +68,8 @@ export class BenchRun {
   /** Each measured frame's counts, for their medians over the turn. */
   private readonly counts: Record<"triangles" | "draws" | "castTriangles" | "castDraws" | "nearNodes" | "farNodes", number[]> = { triangles: [], draws: [], castTriangles: [], castDraws: [], nearNodes: [], farNodes: [] };
   private first = -1;
+  private draws = -1;
+  private triangles = -1;
   private started = -1;
   private previous = -1;
   private still = 0;
@@ -85,7 +87,12 @@ export class BenchRun {
   frame(now: number, ours: number, gpu: readonly number[][], p: FramePacket, quiet: boolean, drawn: Drawn, tris: readonly (readonly number[])[] = []): ({ frameMs: Record<"median" | "p95" | "p99" | "worst", number> } & Record<string, unknown>) | null {
     if (this.done) return null;
     if (this.first < 0) this.first = now;
-    this.still = quiet && p.assetUploads.length + p.texUploads.length === 0 ? this.still + 1 : 0;
+    // Still: nothing on its way, nothing uploaded, and the view held still drawing what it drew the frame before, so a run
+    // does not start while the map's statics are still coming into the near rows and the far city (one run's draws were
+    // 659 and another's 2,152 of the same street when it started on assets alone).
+    const same = p.drawCount === this.draws && p.triangles === this.triangles;
+    [this.draws, this.triangles] = [p.drawCount, p.triangles];
+    this.still = quiet && same && p.assetUploads.length + p.texUploads.length === 0 ? this.still + 1 : 0;
     const measuring = this.previous >= 0;
     if (!measuring && (this.still >= STILL || now - this.first >= SETTLE_MS)) this.previous = this.started = now;
     if (!measuring) return null;

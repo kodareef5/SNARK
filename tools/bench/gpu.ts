@@ -138,6 +138,9 @@ export function plan(): Run[] {
   // high on a canvas of 1,920 by 1,080 and on a laptop's 3,600 by 1,924.
   for (const tier of ["medium", "high"]) for (const [scale, window] of [[1, [1920, 1167]], [2, [1800, 1049]]] as const) runs.push({ scene: "city", view: "street", tier, scale, window, ab: "streets" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "walks" });
+  // The whole frame on a laptop's 3,600 by 1,924 on medium and high, by query and on the page's clock: what a build with
+  // bent kerbs costs against one with the walk kit, each run on the same client and the same street.
+  for (const tier of ["medium", "high"]) for (const clock of [false, true]) runs.push({ scene: "city", view: "street", tier, scale: 2, window: [1800, 1049], ...(clock ? { clock } : {}) });
   // The bent kerbs' wear (render/bend.ts bentWear), on the canvases of 1,920 by 1,080 and 3,600 by 1,924.
   for (const [tier, scale] of [["medium", 1], ["high", 1], ["high", 2], ["medium", 2]] as const) runs.push({ scene: "city", view: "street", tier, scale, ...(scale === 2 ? { window: [1800, 1049] as [number, number] } : {}), ab: "kerbs" });
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
