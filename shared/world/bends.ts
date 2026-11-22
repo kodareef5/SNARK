@@ -257,19 +257,21 @@ export const bentJoin = (from: BentKerb, to: BentKerb): string => `core:zzzzzben
 /** Segments along a curved piece, and the most a piece of each runs. */
 export const CURVE_SEGMENTS = 8;
 const STRAIGHT_MOST = 32, CURVE_MOST = 8, LEAST = 0.4;
-/** A straight runs this far whatever the line's heights do, and on to STRAIGHT_MOST where they rise evenly (evenRise). */
+/** A straight runs this far where the line's heights keep within HEIGHT_MISS of its rise, and on to STRAIGHT_MOST where they keep within RISE_MISS (evenRise). */
 const STRAIGHT_EVEN = 16;
 /**
  * The most a straight piece's end may stand turned from its chord, as a mitre to the next, how far its chord or a curve
- * may miss the line, and how far a straight's even rise may miss the heights of the line's points along it.
+ * may miss the line, how far a straight's even rise past STRAIGHT_EVEN may miss the heights of the line's points along
+ * it, and how far any piece's may.
  */
-const MITRE = 0.035, MISS = 0.004, RISE_MISS = 0.02;
+const MITRE = 0.035, MISS = 0.004, RISE_MISS = 0.02, HEIGHT_MISS = 0.05;
 
 /**
  * The pieces of a kerb line, its walk on its left as `side` 1 has it (a piece's +z, a quarter counter-clockwise from the
  * way the line runs in x and z) or with `side` -1 on its right, of `section`. A piece runs between two of the
  * line's points; where the line runs straight it goes on over them, up to 16 m, and where it bends it is a curve of up to
- * 8 m, split until each of its eight segments' chords misses the curve by under 4 mm. A piece's static stands at its
+ * 8 m, split until each of its eight segments' chords misses the curve by under 4 mm; either ends short of a point
+ * whose height its rise misses by more than 5 cm. A piece's static stands at its
  * chord's middle at the road's height.
  */
 export function placeKerb(line: KerbLine, side: 1 | -1, section: Section, from = 0): BentPiece[] {
@@ -319,6 +321,9 @@ export function placeKerb(line: KerbLine, side: 1 | -1, section: Section, from =
     while (curve + 1 < n && st[curve + 1]! - st[i]! <= CURVE_MOST && curveFits(px, pz, frame(i), frame(curve + 1), i, curve + 1)) curve++;
     const curved = straight === i || st[curve]! - st[i]! > 2 * (st[straight]! - st[i]!);
     j = curved ? curve : straight;
+    // Short of a point whose height the piece's rise would miss: a dip, or a way in graded below the street, is followed,
+    // not bridged by a kerb in the air.
+    while (j > i + 1 && !evenRise(py, st, i, j, HEIGHT_MISS)) j--;
     lay(out, frame(i), frame(j), curved, kerb, section);
     i = j;
   }
@@ -327,10 +332,10 @@ export function placeKerb(line: KerbLine, side: 1 | -1, section: Section, from =
 
 interface Frame { x: number; y: number; z: number; dx: number; dz: number; s: number }
 
-/** Whether the line's heights from point i to point j keep within RISE_MISS of an even rise between them: a straight rises evenly. */
-function evenRise(py: readonly number[], st: readonly number[], i: number, j: number): boolean {
+/** Whether the line's heights from point i to point j keep within `miss` of an even rise between them, as a piece rises. */
+function evenRise(py: readonly number[], st: readonly number[], i: number, j: number, miss = RISE_MISS): boolean {
   const span = st[j]! - st[i]! || 1e-6;
-  for (let k = i + 1; k < j; k++) if (Math.abs(py[k]! - (py[i]! + ((py[j]! - py[i]!) * (st[k]! - st[i]!)) / span)) > RISE_MISS) return false;
+  for (let k = i + 1; k < j; k++) if (Math.abs(py[k]! - (py[i]! + ((py[j]! - py[i]!) * (st[k]! - st[i]!)) / span)) > miss) return false;
   return true;
 }
 

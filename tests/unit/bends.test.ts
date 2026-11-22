@@ -354,4 +354,13 @@ test("a straight runs to 32 m where its line rises evenly, and past 16 m no furt
   expect(humped.length).toBeGreaterThan(1);
   expect(humped[0]!.bend.half * 2).toBeGreaterThanOrEqual(16);
   expect(humped.every((p) => p.kind.endsWith("_s"))).toBe(true);
+  // A way in graded 40 cm below the street across 6 m of it: the kerb goes down into it and up again, straights all, and
+  // no point of the line is more than 5 cm off its piece's rise, where one straight bridged it in the air.
+  const dip = (k: number): number => 1 - (k >= 8 && k <= 13 ? 0.4 : k === 7 || k === 14 ? 0.2 : 0);
+  const graded = placeKerb({ x: x.slice(0, 22), z: z.slice(0, 22), y: x.slice(0, 22).map(dip) }, 1, SECTION);
+  expect(graded.every((p) => p.kind.endsWith("_s"))).toBe(true);
+  for (let k = 0; k < 22; k++) {
+    const p = graded.find((q) => Math.abs(q.x - k) <= q.bend.half + 1e-9)!;
+    expect(Math.abs(p.y + (p.bend.rise * (k - p.x)) / p.bend.half - dip(k))).toBeLessThan(0.05 + 1e-9);
+  }
 });

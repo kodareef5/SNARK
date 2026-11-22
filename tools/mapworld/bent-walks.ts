@@ -68,12 +68,13 @@ interface Run { x: number[]; y: number[]; z: number[]; s: number[]; side: 1 | -1
 const OFF = 0, UNLEVEL = 1, ALONE = 2, WALKED = 3;
 
 /** Lays the bent kerbs on the street model's kerb lines, and says how many of each kind of thing for the build's report. */
-export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, _way: (box: Box) => boolean, obstacles: { hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean; meeting: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => { p: StaticPiece; box: Box }[] }, _roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
+export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (box: Box) => boolean, obstacles: { hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean; meeting: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => { p: StaticPiece; box: Box }[] }, _roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
   const rules = v.street.walks!, bent = rules.bent || {};
   const out: Record<string, number> = { pieces: 0, curved: 0, joins: 0, collision: 0, lines: 0, runs: 0, alone: 0, unlevel: 0, unlaid: 0, filled: 0, snapped: 0, ends: 0, sunk: 0, ledges: 0, dropped: 0, droppedMetres: 0, narrowed: 0, standing: 0, refused: 0, blocked: 0, drains: 0, boxes: 0 };
   const held = site.ground.streets;
   if (!held) return out;
   let placing = 0;
+  const began = performance.now();
   const laidIn: number[] = [];
   /** What stands on the walks, by the start of its kind: cut round, or standing on the walk. */
   const standing = new Map<string, number>();
@@ -254,7 +255,7 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
   // What placing took: kerb lines to pieces and their collision, for each chunk with some. Said, not kept in the report,
   // which a build must give the same each time.
   const chunks = new Set<number>(laidIn);
-  console.log(`bent walks: ${out.pieces} pieces in ${chunks.size} chunks, placed in ${((placing * 1000) / Math.max(1, chunks.size)).toFixed(0)} us a chunk`);
+  console.log(`bent walks: ${out.pieces} pieces in ${chunks.size} chunks, placed in ${((placing * 1000) / Math.max(1, chunks.size)).toFixed(0)} us a chunk, ${((performance.now() - began) / 1000).toFixed(1)} s in all`);
   console.log(`bent walks: ${out.filled} points laid on over a short failing stretch, ${out.sunk} walk ends let down to the ground and ${out.ledges} left as a step, ${out.dropped} kerbs dropped over ${out.droppedMetres!.toFixed(0)} m, ${out.narrowed} cut round what stands on the walk and ${out.standing} standing on it`);
   console.log(`bent walks: on the walks, ${[...standing].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `${k} ${n}`).join(", ")}`);
   out.droppedMetres = Math.round(out.droppedMetres!);
@@ -482,10 +483,14 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     });
   }
 
-  /** A shape of the walk kit `d` along piece `p`'s chord from its middle and `back` from the kerb's face, at the chord's height there. */
+  /**
+   * A shape of the walk kit `d` along piece `p`'s chord from its middle and `back` from the kerb's face, at the chord's
+   * height there. A box stands nowhere a way in to a building crosses the walk, as the kit's never did: its slab was cut there.
+   */
   function fixture(p: BentPiece, shape: "zdrain" | "zutility", d: number, back: number): boolean {
     const a = (p.yaw * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a), mid = BREAK_AT[shape]!;
     const [x, z] = [p.x + c * d + s * back, p.z - s * d + c * back];
+    if (shape === "zutility" && way({ x, y: p.y, z, yaw: p.yaw, size: [1, 1.3, 0.6] })) return false;
     const m = new Mason({ x: x + c * mid[0]!, z: z - s * mid[0]!, yaw: p.yaw, c, s, width: 8, depth: 3, rings: [] }, p.y + (p.bend.rise * d) / p.bend.half);
     m.put(shape, 0, mid[1]!, 0, "concrete");
     return accept(m);
