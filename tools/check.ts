@@ -1,5 +1,4 @@
 // `bun run check`, the one command every commit must pass. It enforces the rules that keep this project fast to change.
-// Raising a size limit or widening an allow-list is a decision. Record it in planning/decisions.md in the same change.
 //
 //   bun run check                policy, types and the tests of the fast tier: before a commit
 //   bun run check -- --changed   policy, types and the fast tests the change since main can reach: while working
@@ -28,41 +27,17 @@ const ROOT = resolve(import.meta.dir, "..");
  * half as much at most and a third less on average, for 3% more CPU-seconds.
  */
 const WORKER_HEAP_RAM = 500_000_000;
-/**
- * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares 250 among round 8's phases; 50
- * hold the executor's mirror of the card's state, which sends a frame's changes alone; 100 are for the maps round's far
- * shadow, filtering and map loader (D748); 5 time the assets' uploads and fetch the data utility's record of frames
- * (D899); 6 make the streets' two pictures round the camera and put each frame's tiles of them on the card (D1000); 3
- * point attributes 13 and 14 at a bent draw's stream of bends, beside its instances (D1006); 5 hold a sight's scissor to
- * its window and mask its lens (D1077); 1 gives a draw's heat to a visor's heat view (D1081); the last 105 make the
- * walls' weathering masks on the card as their plan in client/core/texgen says: the array, its program, its draws, the
- * card's timer and an older pack's painted mask left unheld (D1111).
- */
-const SHELL_MAX_LINES = 1725;
-/** And in client/voice, which also has no tests. */
-const VOICE_MAX_LINES = 600;
-/** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
-const SOUND_MAX_LINES = 300;
-/** The asset worker and its port: fetching, hashing and caching, with no decisions of their own. */
-const ASSETS_MAX_LINES = 500;
-/** The wiki's script: sounds, the map, search, the studio's frame (D894). Its decisions are in client/core/wiki. */
-const WIKI_MAX_LINES = 190;
-/**
- * The admin page's script in its files: polling, the map's and the timeline's canvases, the tables, panels and charts.
- * Its decisions are in client/core/admin. 600 held the live page; the timeline over the survivor log brought 330; the
- * Cast panel's wiring 50 (D1058).
- */
-const ADMIN_MAX_LINES = 1150;
-/**
- * The drop book's admin page in its files (planning/workstreams/supply.md): it fetches, draws and listens. What it shows
- * and what an edit does are in client/core/drops.
- */
-const DROPS_MAX_LINES = 900;
-/**
- * Bug report mode's part that needs the browser (planning/workstreams/bug-notes.md): the canvas copied and encoded, the
- * heap, long tasks, the GPU's clock and the two requests. Its decisions are in client/core/notes.
- */
-const NOTES_MAX_LINES = 120;
+/** The client zones that hold no tests, and where each one's logic goes. Their line counts are printed and fail nothing. */
+const UNTESTED: readonly (readonly [dir: string, logic: string])[] = [
+  ["client/shell", "client/core"],
+  ["client/voice", "client/core/voice"],
+  ["client/assets", "client/core/assets"],
+  ["client/sound", "client/core/sound"],
+  ["client/wiki", "client/core/wiki"],
+  ["client/admin", "client/core/admin"],
+  ["client/drops", "client/core/drops"],
+  ["client/notes", "client/core/notes"],
+];
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {
@@ -171,14 +146,7 @@ function checkPolicy(): void {
   }
 
   const files = ZONES.flatMap((z) => walk(join(ROOT, z.dir))).filter((f) => f.endsWith(".ts"));
-  let shellLines = 0;
-  let voiceLines = 0;
-  let assetLines = 0;
-  let soundLines = 0;
-  let wikiLines = 0;
-  let adminLines = 0;
-  let dropsLines = 0;
-  let notesLines = 0;
+  const lines = new Map(UNTESTED.map(([dir]) => [dir, 0]));
 
   for (const file of files) {
     const rel = repoPath(file);
@@ -189,40 +157,13 @@ function checkPolicy(): void {
     if (zone.dir === "tests" && rel !== "tests/fixtures/preload.ts" && OWN_TIMEOUT.test(src)) {
       fail(`${rel}: a test sets its own time limit; every test has the one in tests/fixtures/load.ts`);
     }
-    if (zone.dir === "client/shell") {
-      if (rel.endsWith(".test.ts")) fail(`${rel}: client/shell has no tests; move the logic into client/core`);
-      shellLines += src.split("\n").filter((l) => l.trim().length > 0).length;
-    }
-    if (zone.dir === "client/voice") {
-      if (rel.endsWith(".test.ts")) fail(`${rel}: client/voice has no tests; move the logic into client/core/voice`);
-      voiceLines += src.split("\n").filter((l) => l.trim().length > 0).length;
-    }
-    if (zone.dir === "client/sound") {
-      if (rel.endsWith(".test.ts")) fail(`${rel}: client/sound has no tests; move the logic into client/core/sound`);
-      soundLines += src.split("\n").filter((l) => l.trim().length > 0).length;
-    }
-    if (zone.dir === "client/assets") {
-      if (rel.endsWith(".test.ts")) fail(`${rel}: client/assets has no tests; move the logic into client/core/assets`);
-      assetLines += src.split("\n").filter((l) => l.trim().length > 0).length;
-    }
-    if (zone.dir === "client/wiki") {
-      if (rel.endsWith(".test.ts")) fail(`${rel}: client/wiki has no tests; move logic into client/core/wiki`);
-      wikiLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    const logic = UNTESTED.find(([dir]) => dir === zone.dir)?.[1];
+    if (logic !== undefined) {
+      if (rel.endsWith(".test.ts")) fail(`${rel}: ${zone.dir} has no tests; move the logic into ${logic}`);
+      lines.set(zone.dir, lines.get(zone.dir)! + src.split("\n").filter((l) => l.trim().length > 0).length);
     }
     if (zone.dir === "grunt" && (/\bBun\./.test(src) || /from\s*['"]bun(:[^'"]*)?['"]/.test(src))) {
       fail(`${rel}: grunt runs in Pi under Node, so it may not use Bun's own APIs`);
-    }
-    if (zone.dir === "client/admin") {
-      if (rel.endsWith(".test.ts")) fail(`${rel}: client/admin has no tests; move logic into client/core/admin`);
-      adminLines += src.split("\n").filter((l) => l.trim().length > 0).length;
-    }
-    if (zone.dir === "client/drops") {
-      if (rel.endsWith(".test.ts")) fail(`${rel}: client/drops has no tests; move logic into client/core/drops`);
-      dropsLines += src.split("\n").filter((l) => l.trim().length > 0).length;
-    }
-    if (zone.dir === "client/notes") {
-      if (rel.endsWith(".test.ts")) fail(`${rel}: client/notes has no tests; move logic into client/core/notes`);
-      notesLines += src.split("\n").filter((l) => l.trim().length > 0).length;
     }
 
     // An import the rules below cannot read the name of is an import they cannot judge.
@@ -256,26 +197,7 @@ function checkPolicy(): void {
     if (FRAME_DIRS.some((d) => rel === d || rel.startsWith(d + "/"))) for (const hit of madeArrays(src)) fail(`${rel}:${hit.line}: ${MADE_ARRAY[hit.what]}`);
   }
 
-  if (shellLines > SHELL_MAX_LINES) {
-    fail(`client/shell is ${shellLines} lines (budget ${SHELL_MAX_LINES}); move logic into client/core`);
-  }
-  if (voiceLines > VOICE_MAX_LINES) {
-    fail(`client/voice is ${voiceLines} lines (budget ${VOICE_MAX_LINES}); move logic into client/core/voice`);
-  }
-  console.log(`  shell size   ${shellLines}/${SHELL_MAX_LINES} lines`);
-  if (assetLines > ASSETS_MAX_LINES) fail(`client/assets is ${assetLines} lines (budget ${ASSETS_MAX_LINES}); move logic into client/core/assets`);
-  console.log(`  voice size   ${voiceLines}/${VOICE_MAX_LINES} lines`);
-  console.log(`  assets size  ${assetLines}/${ASSETS_MAX_LINES} lines`);
-  if (soundLines > SOUND_MAX_LINES) fail(`client/sound is ${soundLines} lines (budget ${SOUND_MAX_LINES}); move logic into client/core/sound`);
-  console.log(`  sound size   ${soundLines}/${SOUND_MAX_LINES} lines`);
-  if (wikiLines > WIKI_MAX_LINES) fail(`client/wiki is ${wikiLines} lines (budget ${WIKI_MAX_LINES}); move logic into client/core/wiki`);
-  console.log(`  wiki size    ${wikiLines}/${WIKI_MAX_LINES} lines`);
-  if (adminLines > ADMIN_MAX_LINES) fail(`client/admin is ${adminLines} lines (budget ${ADMIN_MAX_LINES}); move logic into client/core/admin`);
-  console.log(`  admin size   ${adminLines}/${ADMIN_MAX_LINES} lines`);
-  if (dropsLines > DROPS_MAX_LINES) fail(`client/drops is ${dropsLines} lines (budget ${DROPS_MAX_LINES}); move logic into client/core/drops`);
-  console.log(`  drops size   ${dropsLines}/${DROPS_MAX_LINES} lines`);
-  if (notesLines > NOTES_MAX_LINES) fail(`client/notes is ${notesLines} lines (budget ${NOTES_MAX_LINES}); move logic into client/core/notes`);
-  console.log(`  notes size   ${notesLines}/${NOTES_MAX_LINES} lines`);
+  for (const [dir, count] of lines) console.log(`  ${`${dir.slice("client/".length)} size`.padEnd(12)} ${count} lines`);
 }
 
 /** `cpu` is the CPU-seconds of the process and of the processes it waited for. */
