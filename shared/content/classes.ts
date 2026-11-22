@@ -3,71 +3,12 @@
 // nor may declare is refused. The reference page, the shape checks and the asset slots are all derived from these rows.
 
 import { FEATURES, type Feature } from "../features.ts";
-import type { BuffDef, DamageDef, Def, EngramDef, GameDef, ItemDef, LevelsDef, LootDef, MapDef, MaterialDef, NodeDef, PropDef, RenameDef, ShapeDef, SpawnsDef, SpeciesDef, StructureDef } from "./defs.ts";
+import { f, icon, mesh, stub, type ClassRow, type Field, type Fields, type Slot, type Status } from "./kind.ts";
+import { KINDS } from "./kinds.ts";
+import type { Def, EngramDef, GameDef, ItemDef, LevelsDef, LootDef, MapDef, MaterialDef, NodeDef, PropDef, RenameDef, ShapeDef, SpawnsDef, SpeciesDef, StructureDef } from "./defs.ts";
 
-/** "built": systems read it. "partial": part of it lives in code. "stub": the row exists and nothing reads it yet. */
-export type Status = "built" | "partial" | "stub";
 
-export interface Field {
-  kind: "text" | "number" | "switch" | "vec3" | "list" | "facet";
-  /** ARK's name for the same thing, or "" for a field of our own. */
-  ark: string;
-  /** Paths in the field that name other definitions, and the class or family each must be. "" is the field itself, "[]" each entry. */
-  refs?: Record<string, string>;
-  /** Packs may add entries to it, and a remap rewrites what it names. */
-  open?: boolean;
-  /** A stub field is declared and checked, and nothing reads it until the feature it waits for is built. */
-  waits?: Feature;
-  /** Fields inside a facet that are stubs in the same sense, and the feature each waits for. The facet itself is read. */
-  stubs?: Readonly<Record<string, Feature>>;
-}
-
-export interface Slot {
-  asset: "mesh" | "rig" | "clip" | "icon" | "sound" | "effect";
-  need: "must" | "may";
-  /**
-   * A slot with several values has one asset for each key: the keys listed, or every hair or beard style, or ("any")
-   * whatever names the content gives.
-   */
-  keys?: readonly string[] | "hair" | "beard" | "any";
-  /** The slot applies only to a definition that declares this field. */
-  when?: string;
-  /**
-   * The asset's id by today's naming. `{id}` is the definition's id, `{mesh}` its mesh (its id, for a generated one),
-   * `{a.b}` a field of it, `{key}` the slot's key, `{sex}` each sex, `{body}` each body a survivor may have.
-   */
-  from: string;
-  /**
-   * What stands in when the slot is empty, tried in order: an asset id written as `from` is, or a word for something
-   * that needs no asset ("box", "shape", "swatch", "none", "hidden", "rigid", "rest", or "#slot" for another slot).
-   */
-  fallback: readonly string[];
-}
-
-export interface ClassRow {
-  /** "item/weapon". A family with one class is its own leaf: "node". */
-  id: string;
-  type: Def["type"];
-  parent: string | null;
-  /** An abstract class groups others and no definition is of it. */
-  abstract: boolean;
-  ark: string;
-  status: Status;
-  waits: Feature | "";
-  /** Where its definitions sit under their pack: "items/weapons". */
-  shelf: string;
-  must: readonly string[];
-  may: readonly string[];
-  /** At least one of these must be present. */
-  any: readonly string[];
-  slots: Readonly<Record<string, Slot>>;
-  doc: string;
-}
-
-const f = (kind: Field["kind"], ark = "", more: Partial<Field> = {}): Field => ({ kind, ark, ...more });
-const stub = (waits: Feature, kind: Field["kind"], ark = "", more: Partial<Field> = {}): Field => ({ kind, ark, waits, ...more });
-
-type Fields<D> = { [K in Exclude<keyof D, "type" | "class" | "id" | "aliases">]-?: Field };
+export type { ClassRow, Field, Slot, Status } from "./kind.ts";
 
 const ITEM = {
   stack: f("number", "MaxItemQuantity"),
@@ -273,26 +214,6 @@ const LEVELS = {
   tame: f("facet", "the tames' ramp"),
 } satisfies Fields<LevelsDef>;
 
-const BUFF = {
-  label: f("text"),
-  color: f("number"),
-  seconds: f("number", "DeactivateAfterTime"),
-  again: f("text"),
-  health: f("number", "ValuesToAddPerSecond"),
-  torpor: f("number", "ValuesToAddPerSecond"),
-  damage: f("text"),
-  speed: f("number", "CharacterMultiplier"),
-  dealt: f("number", "CharacterMultiplier"),
-  taken: f("number", "CharacterMultiplier"),
-  root: f("switch"),
-  immune: f("switch"),
-  good: stub("polish", "switch"),
-  // Built by W4 of planning/reference/weapons-plan.md (server/entangle.ts gives a buff that names them).
-  only: f("list", "the species a bola takes (Bola)", { refs: { "[]": "species" } }),
-  survivorSeconds: f("number", "a bola's time on a survivor"),
-  after: f("text", "", { refs: { "": "buff" } }),
-} satisfies Fields<BuffDef>;
-
 const MATERIAL = {
   takes: f("facet", "the structure settings' damage by type"),
   decayDays: f("number", "DecayDestructionPeriodMultiplier"),
@@ -305,13 +226,6 @@ const SHAPE = {
   look: f("facet"),
   doorway: f("switch"),
 } satisfies Fields<ShapeDef>;
-
-const DAMAGE = {
-  label: stub("polish", "text"),
-  torpor: stub("polish", "number", "DamageTorpidityIncreaseMultiplier"),
-  trueShare: stub("polish", "number", "PercentTrueDamage"),
-  melee: stub("polish", "switch", "bIsMeleeDamage"),
-} satisfies Fields<DamageDef>;
 
 const LOOT = {
   sets: f("facet", "MinItemSets, MaxItemSets"),
@@ -342,6 +256,10 @@ const RENAME = {
   to: f("list", "a reference redirect"),
 } satisfies Fields<RenameDef>;
 
+/** The fields of a type whose kind has a file of its own (kinds.ts). */
+const fieldsOf = (type: string): Readonly<Record<string, Field>> => KINDS.find((k) => k.type === type && k.fields)!.fields!;
+const rowsOf = (type: string): readonly ClassRow[] => KINDS.find((k) => k.type === type && k.rows)!.rows!;
+
 /** Every field of every family that has a definition type. */
 export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>>>> = {
   item: ITEM,
@@ -351,10 +269,10 @@ export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>
   prop: PROP,
   engram: ENGRAM,
   levels: LEVELS,
-  buff: BUFF,
+  buff: fieldsOf("buff"),
   material: MATERIAL,
   shape: SHAPE,
-  damage: DAMAGE,
+  damage: fieldsOf("damage"),
   loot: LOOT,
   spawns: SPAWNS,
   map: MAP,
@@ -362,8 +280,6 @@ export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>
   rename: RENAME,
 };
 
-const mesh = (need: Slot["need"], from: string, ...fallback: string[]): Slot => ({ asset: "mesh", need, from, fallback });
-const icon: Slot = { asset: "icon", need: "may", from: "{id}/icon", fallback: ["swatch"] };
 const ITEM_SLOTS = { icon, dropped: mesh("may", "{id}/dropped", "core:bag") };
 /**
  * An item in the hand that is not a weapon (whose held mesh is its `weapon.mesh`): a pieces asset's held piece, named for
@@ -496,9 +412,9 @@ row("prop/egg", "prop", PROP, { parent: "prop", ark: "a laid or dropped egg, fer
 row("prop/cloud", "prop", PROP, { parent: "prop", ark: "the gas and smoke actors of grenades", shelf: "props/clouds", must: PROP_BODY, slots: PROP_SLOTS, doc: "Smoke or gas that stays where a grenade burst, as far as its radius and as high as its height, for its grenade's seconds, giving its buff to the survivors inside it every half second (server/clouds.ts). It has no body, and is drawn as puffs over that reach (client/core/render/clouds.ts); its mesh is not drawn." });
 row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", shelf: "props/crates", must: [...PROP_BODY, "slots"], slots: PROP_SLOTS, doc: "A supply drop's capsule where it landed: it holds what was rolled for it, is only ever taken from, and goes when it is emptied or its time is up (server/supply.ts)." });
 
-row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "damage", "speed", "dealt", "taken", "root", "immune", "good", "only", "survivorSeconds", "after"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
+rows.push(...rowsOf("buff"));
 
-row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
+rows.push(...rowsOf("damage"));
 row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "partial", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts, qualities and blueprint chances. A seeded roll draws from it (shared/sim/loot.ts) and the console's loot mints one; what opens a crate or leaves a body waits for map zones." });
 row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and in what groups. A map's spawn zones name these." });
 row("map", "map", MAP, { ark: "a level and the game data it names", status: "partial", waits: "maps", shelf: "maps", may: ["label", "seaLevel", "game", "zones"], doc: "A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put." });

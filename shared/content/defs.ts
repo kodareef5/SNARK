@@ -3,16 +3,17 @@
 // `type` is a definition's family. A family with several classes also says which: shared/content/classes.ts has what
 // each class must and may declare.
 
+import type { Named } from "./kind.ts";
+import type { BuffDef } from "./kinds/buffs.ts";
+import type { DamageDef, DamageType } from "./kinds/damage.ts";
 import type { Seat } from "../sim/seats.ts";
 import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
 import type { Feature } from "../features.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
 import { hullPoint, type HullDef } from "../world/convex.ts";
 
-/** Other names a definition answers to at the console and in a settings file. No two definitions share one, and none is inherited. */
-interface Named {
-  readonly aliases?: readonly string[];
-}
+export type { BuffDef } from "./kinds/buffs.ts";
+export type { DamageDef, DamageType } from "./kinds/damage.ts";
 
 export interface SpeciesDef extends Named {
   readonly type: "species";
@@ -647,9 +648,6 @@ export interface CraftFacet {
   readonly fired?: boolean;
 }
 
-/** Species and structure materials each give a multiplier per type. */
-export type DamageType = "melee" | "pierce" | "bullet" | "fire" | "explosive";
-
 export interface WeaponFacet {
   /**
    * "melee" strikes what is in reach. "bow" is drawn and loosed, and a longer draw gives a faster, harder shot.
@@ -910,60 +908,6 @@ export interface PropDef extends Named {
   readonly fertile?: string;
 }
 
-/**
- * Something that acts on a body for a time, such as burning or a dose of narcotic. A body may have several at once.
- * A buff is never stepped. Its end tick is known when it begins, its effect on vitals is a change of rate, and its
- * multipliers are read when needed.
- */
-export interface BuffDef extends Named {
-  readonly type: "buff";
-  readonly id: string;
-  readonly label: string;
-  /** Palette index of its mark in the interface. */
-  readonly color: number;
-  /** Seconds it lasts when its giver does not say. Omitted, it lasts until removed. */
-  readonly seconds?: number;
-  /** When given again while active, "refresh" (the default) restarts its time and "stack" adds another with its own end. */
-  readonly again?: "refresh" | "stack";
-  /** Health per second (negative harms) and torpor per second while it lasts. */
-  readonly health?: number;
-  readonly torpor?: number;
-  /** The kind of damage its harm to health is, scaled by what the body takes of that kind. Omitted, none scales it. */
-  readonly damage?: DamageType;
-  /** Multipliers on the body's speed, the damage it deals and the damage it takes. */
-  readonly speed?: number;
-  readonly dealt?: number;
-  readonly taken?: number;
-  /** The body cannot move. */
-  readonly root?: boolean;
-  /** Nothing harms the body. */
-  readonly immune?: boolean;
-  /** A beneficial buff, shown apart from harmful ones. */
-  readonly good?: boolean;
-  // The bola's fields (planning/reference/weapons-plan.md, M6), read where a hit gives the buff (server/entangle.ts).
-  /** The species it takes, the survivor's among them if it takes survivors; omitted, any. ARK's bola names its list (Bola). */
-  readonly only?: readonly string[];
-  /** Seconds it lasts on a survivor, in place of `seconds` (the bola's 25 against a creature's 30). */
-  readonly survivorSeconds?: number;
-  /**
-   * A buff given as it ends, if the body is one that buff takes, and while that one lasts this one is not given again:
-   * the bola's 10 s of grace (patch 240.5).
-   */
-  readonly after?: string;
-}
-
-/** A type of harm. A stub: the five the engine knows are named in code (`DamageType`). */
-export interface DamageDef extends Named {
-  readonly type: "damage";
-  readonly id: string;
-  readonly label?: string;
-  /** Torpor given, as a multiple of the damage done. */
-  readonly torpor?: number;
-  /** The share of the damage, 0 to 1, that armor does not reduce. */
-  readonly trueShare?: number;
-  readonly melee?: boolean;
-}
-
 export interface LootEntry {
   /** One of these is drawn, by `weights` if given. */
   readonly items: readonly string[];
@@ -1090,6 +1034,9 @@ export interface RenameDef {
   /** What it is now. More than one where a thing was split, as an engram for a whole set into one for each piece. */
   readonly to: readonly string[];
 }
+
+/** Everything but a rename, which is not content. */
+export type Content = Exclude<Def, RenameDef>;
 
 export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
 

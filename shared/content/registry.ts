@@ -21,7 +21,9 @@ import { REGION_BASE } from "../pack/palette.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
 import { creatureCombatFaults } from "./creature-combat.ts";
-import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet, type CreatureCombatFacet } from "./defs.ts";
+import type { Checking, Kind, Making } from "./kind.ts";
+import { KINDS } from "./kinds.ts";
+import { PIECE_ROLES, shapeHalf, type Content, type Def, type NodeShape, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet, type CreatureCombatFacet } from "./defs.ts";
 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
@@ -43,7 +45,8 @@ const SLOPE_COS = 0.71;
 /** A tame's: TamedWalkableFloorZ on ARK's base creature, 53.13 degrees. */
 const TAMED_SLOPE_COS = 0.6;
 
-export interface Registry {
+/** What every kind's definitions have, and the columns more than one kind fills. */
+interface Core {
   /** Definitions by dense index. Entry 0 is null. */
   readonly defs: readonly (Def | null)[];
   readonly ids: readonly string[];
@@ -311,6 +314,36 @@ export interface Registry {
   readonly dry: Uint8Array;
 }
 
+type Join<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
+/** The columns the kinds add (Kind.columns), as they are filled. */
+type Made = Join<ReturnType<NonNullable<(typeof KINDS)[number]["columns"]>>>;
+type Frozen<T> = { readonly [K in keyof T]: T[K] extends (infer E)[] ? readonly E[] : T[K] };
+type Thawed<T> = { -readonly [K in keyof T]: T[K] extends readonly (infer E)[] ? E[] : T[K] };
+
+/**
+ * The compiled content. Each member is a plain field: `reg.maxHp[kind]` is one property and one index. A column is
+ * declared, with what it holds, in the file of the kind that fills it (kinds/).
+ */
+export interface Registry extends Core, Frozen<Made> {}
+
+/** The registry while it is compiled, which a kind's hooks write. */
+export type Filling = Thawed<Core> & Made;
+
+/** The hooks of one name by the type they are given, in the order of the list. */
+function hooks<H extends "check" | "among" | "fill" | "link">(name: H): ReadonlyMap<string, NonNullable<Kind<Content>[H]>[]> {
+  const out = new Map<string, NonNullable<Kind<Content>[H]>[]>();
+  for (const k of KINDS as readonly Kind<Content>[]) {
+    const hook = k[name];
+    if (hook) out.set(k.type, [...(out.get(k.type) ?? []), hook as NonNullable<Kind<Content>[H]>]);
+  }
+  return out;
+}
+const CHECK = hooks("check");
+const AMONG = hooks("among");
+const FILL = hooks("fill");
+const LINK = hooks("link");
+const NO_HOOKS: readonly never[] = [];
+
 /** Default reach of bare hands and of a melee weapon, in metres. */
 const FIST_REACH = 2.2;
 const MELEE_REACH = 2.6;
@@ -342,6 +375,7 @@ export interface CompileResult {
 }
 
 const NONE: ReadonlySet<number> = new Set();
+const NO_BOXES = new Float32Array(0);
 
 /** `reg` with a map's own definitions compiled after it (shared/world/mapfile.ts MapContent), or `reg` where there are none. */
 export function withContent(reg: Registry, defs: readonly Def[]): Registry {
@@ -368,9 +402,15 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (new Set(r.to.map((to) => typeOf.get(to))).size > 1) errors.push(`${r.id}: is renamed to things of different types`);
   }
   if (new Set(renames.map((r) => r.id)).size !== renames.length) errors.push("an id is renamed twice");
-  const positive = (d: Def, name: string, v: number, max: number) => {
+  const positive = (d: { readonly id: string }, name: string, v: number, max: number) => {
     if (!(v > 0 && v <= max)) errors.push(`${d.id}: ${name} must be in (0, ${max}], got ${v}`);
   };
+  const memo = new Map<unknown, unknown>();
+  const once = <T>(make: (input: readonly Content[]) => T): T => {
+    if (!memo.has(make)) memo.set(make, make(input));
+    return memo.get(make) as T;
+  };
+  const cx: Checking = { input, errors, once, positive };
 
   const claimed = new Map<string, string>();
   for (const d of input) {
@@ -384,6 +424,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (by !== undefined) errors.push(`${d.id}: alias "${a}" is ${by}'s`);
       claimed.set(String(a).toLowerCase(), d.id);
     }
+    for (const check of CHECK.get(d.type) ?? NO_HOOKS) check(d, cx);
     if (d.type === "species" && d.tag !== undefined && !TAG.test(d.tag)) errors.push(`${d.id}: tag "${d.tag}" must be one word of lower-case letters, digits and "_"`);
     if (d.type === "species") {
       if (d.vehicle) {
@@ -514,15 +555,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
       for (const [type, v] of Object.entries(d.takes)) {
         if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
       }
-    } else if (d.type === "buff") {
-      if (d.seconds !== undefined) positive(d, "seconds", d.seconds, 86400);
-      if (d.survivorSeconds !== undefined) positive(d, "survivorSeconds", d.survivorSeconds, 86400);
-      if (d.after === d.id) errors.push(`${d.id}: after must name another buff`);
-      for (const [name, v] of [["speed", d.speed], ["dealt", d.dealt], ["taken", d.taken]] as const) {
-        if (v !== undefined && !(v >= 0 && v <= 100)) errors.push(`${d.id}: ${name} must be from 0 to 100`);
-      }
-      if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
-      if (d.damage !== undefined && !DAMAGE_TYPES.includes(d.damage)) errors.push(`${d.id}: damage must name a kind of damage`);
     } else if (d.type === "structure") {
       if (d.under !== undefined && !(Number.isInteger(d.under) && d.under > 0 && d.under < REGION_BASE)) errors.push(`${d.id}: under must be a fixed palette colour`);
       if (d.near !== undefined && d.near !== true) errors.push(`${d.id}: near is true or left out`);
@@ -700,10 +732,12 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const stationSlots = new Map(input.flatMap((d) => (d.type === "structure" && d.class === "station" ? [[d.id, d.slots ?? 0] as const] : [])));
   for (const d of input) if (d.type === "item" && d.craft?.at !== undefined && stationSlots.get(d.craft.at) === 0) errors.push(`${d.id}: it is made at "${d.craft.at}", which has no slots to make it from`);
   errors.push(...stationFaults(input));
+  for (const k of KINDS as readonly Kind<Content>[]) k.survey?.(cx);
   const noAmmo = new Set(input.flatMap((d) => (d.type === "item" && !d.ammo ? [d.id] : [])));
   const taught = new Map<string, string>();
   const young = new Map<string, string>();
   for (const d of input) {
+    for (const among of AMONG.get(d.type) ?? NO_HOOKS) among(d, cx);
     if (d.type === "engram" && typeof d.item === "string") {
       if (!crafted.has(d.item)) errors.push(`${d.id}: "${d.item}" cannot be made, so there is nothing to learn`);
       const other = taught.get(d.item);
@@ -867,10 +901,27 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const materials = new Map(sorted.flatMap((o) => (o.type === "material" ? [[o.id, o] as const] : [])));
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
+    index.set(sorted[i - 1]!.id, i);
+    hash = hashCanonical(sorted[i - 1], hash);
+  }
+  const redirects = new Map(renames.map((r) => [r.id, r.to.map((to) => index.get(to)!)]));
+  const aliases = new Map<string, number>();
+  const tags = new Map<string, number[]>();
+  sorted.forEach((d, at) => {
+    for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
+    if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
+  });
+  const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
+  const parts: Thawed<PartTable> = { vehicleSurface: defs.map(d => d?.type === "structure" && d.vehicleSurface ? Object.freeze({ ...d.vehicleSurface }) : null), start: partStart, box: NO_BOXES };
+  // Spreads, and not Object.assign: V8 keeps an object made by spreads in fast mode whatever its size, and reads one that
+  // Object.assign gave this many members ten times as slowly.
+  let reg = { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, charge, charges, ballFull, ballEmpty, takeOnly, bodyRadius, bodyHeight, footBack, footFront, footRadius, soft, nodeHits, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry } as Filling;
+  for (const k of KINDS) if ("columns" in k) reg = { ...reg, ...(k as Kind<Content, Made>).columns!(n) };
+  const making: Making = { once, boxes: partBox };
+  for (let i = 1; i < n; i++) {
     const d = defs[i]!;
-    index.set(d.id, i);
-    hash = hashCanonical(d, hash);
     partStart[i] = partBox.length / 6;
+    for (const fill of FILL.get(d.type) ?? NO_HOOKS) fill(d as Content, i, reg, making);
     if (d.type === "structure" || d.type === "node") {
       halfX[i] = d.half[0];
       halfY[i] = d.half[1];
@@ -1011,10 +1062,12 @@ export function compileContent(all: readonly Def[]): CompileResult {
     return d?.type === "structure" && d.shape !== undefined && !d.bent ? (shapes.get(d.shape)!.hulls ?? []) : [];
   };
   const anyHull = defs.some((_, k) => hullsOf(k).length > 0);
-  const parts: PartTable = { vehicleSurface: defs.map(d => d?.type === "structure" && d.vehicleSurface ? Object.freeze({ ...d.vehicleSurface }) : null), start: partStart, box: Float32Array.from(partBox), ...(anyHull ? { hulls: hullTable(n, hullsOf) } : {}) };
+  parts.box = Float32Array.from(partBox);
+  if (anyHull) parts.hulls = hullTable(n, hullsOf);
   // A second pass resolves references, now that every definition has its index.
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
+    for (const link of LINK.get(d.type) ?? NO_HOOKS) link(d as Content, i, reg, making);
     if (d.type === "item" && d.places) {
       places[i] = Uint16Array.from(d.places, (id) => index.get(id)!);
       // Every form of a piece maps back to the one item.
@@ -1099,15 +1152,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
     const d = defs[i]!;
     if (d.type === "item" && d.craft?.fired) firedAt[i] = craftAt[i]!;
   }
-  const redirects = new Map(renames.map((r) => [r.id, r.to.map((to) => index.get(to)!)]));
-  const aliases = new Map<string, number>();
-  const tags = new Map<string, number[]>();
-  sorted.forEach((d, at) => {
-    for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
-    if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
-  });
-  const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
-  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, charge, charges, ballFull, ballEmpty, takeOnly, bodyRadius, bodyHeight, footBack, footFront, footRadius, soft, nodeHits, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
+  for (const k of KINDS as readonly Kind<Content>[]) k.finish?.(reg, making);
+  return { registry: reg, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
