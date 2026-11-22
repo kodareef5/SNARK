@@ -456,6 +456,77 @@ On the card on any device: terrain on 8 km 9.46 MB; the sky table 256 KB; the su
 shadow maps 16, 24 and 32 MB on medium, high and ultra, 4 and 6 MB on medium and high
 by the touch rule (`shadowBytes` in `shadowtext.ts`).
 
+### One clock for a run (D1122)
+
+A bench run (`?bench=1`, with `?sync=1`, `?ab=` or `?still` too) draws its scene by one clock of its own: the page's
+until the run says the scene is still (the whole map come and handed over, then 60 frames drawn alike with nothing on
+its way), then a sixtieth of a second a frame on from that frame, whatever the frames take (`client/core/bench-run.ts`
+`BenchRun.clock`, handed to `App.autopilot` each frame). The view's turn already went by frames. Before, a run whose
+frames came slower was further through each cross-fade at each of its frames, and the two runs of downtown's street on
+high at the laptop's canvas drew 1.5 to 2.3% apart in triangles, all of it near trees. `gpu.ts` also holds the world at
+each row's hour through each run, or at the hour the scene's server began, as the day moves an hour in a little over two
+minutes and the two runs of a pair start a minute or two apart. Play is unchanged: outside a run the scene's clock is the
+page's.
+
+That pair on whole Miami, `gpu.ts 2 "city street high x2 in 1800x1049$|city street high x2 in 1800x1049, on the page's
+clock$"`, on quick builds of main before the change and of the change (both runs of a pair at 33.3 ms a frame):
+
+| Over the turn | Before, by query | Before, on the page's clock | After, by query (2 runs) | After, on the page's clock (2 runs) |
+| --- | --- | --- | --- | --- |
+| GL draws | 574 | 578 | 579, 579 | 579, 579 |
+| Triangles | 1,798,166 | 1,825,580 | 1,690,078, 1,690,078 | 1,690,078, 1,690,078 |
+| Near trees, rocks and bushes | 274,310 | 291,072 | 230,402, 230,402 | 230,402, 230,402 |
+| Far ones | 48,192 | 48,192 | 48,192, 48,192 | 48,192, 48,192 |
+| Cast triangles | 345,747 | 325,515 | 344,891, 344,891 | 344,891, 344,773 |
+| Apart | 1.52%, failing | | 0.00% | 0.00% |
+
+The after's triangles are fewer than the before's because its fades run at a sixtieth of a second a frame where these
+frames took a thirtieth: the same scene as a page at 60 frames a second, in both runs. What still differs is small: the
+bodies and things' draws summed over the turn, 26,492 in a server's first run and 27,909 to 28,101 after (their median
+the same, 15 a frame), one draw of the far city in 900 frames, and the casters' triangles once by 0.03%. With the scene's
+clock alone, before the tide's eyes followed it, the draws were 567 to 584, up to 1.6% apart and once failing.
+
+What in the scene reads time to change what is drawn, and whose clock it follows now:
+
+| What | Where | Its clock |
+| --- | --- | --- |
+| A tree cell's swap of levels (400 ms) and the 250 ms a cell counts as still on screen | `scene.ts` swapOf, SEEN_MS | the run's |
+| The frame budget's squeeze: a squeeze found too little held 20 s and more, 4 s after spending past `spendTo`, 2 s after a fall (its steps are a frame each) | `render/budget.ts` | the run's |
+| A chunk's doors settling, 2 s, before its rooms are found again | `scene.ts` SETTLE | the run's |
+| A chunk's street lamps fading in, and the hand-over of the lamp that lights | `street-lamps.ts` | the run's |
+| The street reflection's captures (`reflectionHz`) and their blend | `street-reflections.ts` | the run's |
+| When the far shadow's openness and the map of what stands overhead fall due | `farshadow.ts`, `roofmap.ts` | the run's; the work itself on a worker or a budget of the page's ms (below) |
+| A failed part's retry | `assets/residency.ts` | the run's |
+| A tree falling, shots' tracers and flashes, rubble falling, damage numbers and the hurt marks | `tree-fall.ts`, `shots.ts`, `rubble.ts`, `feedback.ts`, `damage-numbers.ts` | the run's (the app hands it them) |
+| The clouds' drift, the sea's waves, water trails, exhausts' phase, a sight's grain | `scene.ts` | the run's; pixels only |
+| The tide's eyes opening and shutting, whose moving parts are drawn or not as they turn (on Miami, on the skyline) | `scene.ts` showTideEyes, `eyeSeconds` | the run's from its still frame; outside a run the server's ticks |
+| The hour, so the sun, the moon and the lamps' coming on | the server's tick | held at the row's hour by `gpu.ts` |
+| Render scale and the governor's steps | `governor.ts` | none: a bench page holds the governor at its level |
+| Bodies' poses and particles (dust, bursts) | `details.ts`, characters | the server's ticks; a bench city has no creature and nothing struck |
+| What is made in a budget of the page's ms a frame: the near city's meshes, the far city's, the far shadow's sweep, the roofs' map | `citymake.ts`, `farcity.ts`, `farshadow.ts`, `roofmap.ts` | the page's: done before the run is still; any of it in the turn lands on another frame |
+| What the network brings: a level or a texture a turned view asks for | `assets/residency.ts` | the network's |
+| The world's surfaces coming up and the walls' weathering coming up | `world-surfaces.ts` WORLD_RISE, `texgen/plan.ts` WEATHER_RISE | frames already: the same at any rate |
+| Levels of detail and their margins, the crowns in the way counted again | `scene.ts`, `cover.ts` | none: by distance, size on screen and the eye's moving a metre |
+| A sight's focus, a building or vehicle ghost | `app.ts` gaze, `build.ts`, `vehicle-placement.ts` | the page's: a player's alone |
+
+**An honest A/B.** What a change costs is the same scene drawn with and without it, so first make sure the two sides
+draw the same work:
+
+1. One map file (`CITY_MAP`), one place (`CITY_STREET`), one window and scale, one row of `gpu.ts` for both sides. A
+   change in the client is two quick builds, `bun tools/build-client.ts --quick --dist <dir>`, each benched with
+   `CLIENT_DIR=<dir>`; an effect `?off=` or `?ab=` names is one build.
+2. Run each side twice, `bun tools/bench/gpu.ts 2 "<row>$"`, inside `bench.sh`, which waits for the machine to be quiet
+   and holds it. The load each row printed is beside it.
+3. Read the agreement lines before the times: a row's runs and its runs by query and on the page's clock must draw the
+   same within 1% (draws and triangles over the turn; near and far trees are printed beside them). Between the two sides
+   the draws and triangles must agree too, unless the change is meant to change them (the weathering's read cost, a
+   render scale or a shadow's resolution should not). Where they do not, the runs measured two scenes; say so and do not
+   read the times.
+4. Read the page's clock (`?sync=1`), not the query, on this Mac. For costs under a millisecond, `?ab=<effect>` in one
+   run is better than two runs: each frame without it is taken against the frames either side, at one clock.
+5. Say what still differs: what the network brought during the turn (the run waits for nothing on its way only before it
+   starts), and anything made in a budget of the page's ms.
+
 ## The iPhone
 
 `bun run device -- --tunnel`, the reports in `planning/reference/device-reports` and the soaks in `tests/fixtures/device-reports`.

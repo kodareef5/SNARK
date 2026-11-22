@@ -234,7 +234,7 @@ async function boot(): Promise<void> {
     app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
     if (app.ui.touch && !app.ui.layer && !layering) { layering = true; void import("../core/ui/touch.ts").then((m) => (app.ui.layer = m), () => (layering = false)); }
     if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
-    if (bench && !params.has("still")) app.autopilot(bench.since(now));
+    if (bench) app.autopilot(params.has("still") ? -1 : bench.since(now), bench.clock(now));
     drivingCheck?.step(app, now);
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
