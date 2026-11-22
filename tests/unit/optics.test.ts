@@ -439,3 +439,12 @@ test("a sight's magnification ladder: its zoom in words beside the window, a run
   buildHud(f, m);
   expect(f.find(KEY_MAGNIFY + 39)).toBeNull();
 });
+
+test("what absurd zoom resolves on a 1,080-line screen: a 13.7 m sign letter from the far side of the map at 25x, a 0.3 m shop letter 4 km off at 400x, a 7 cm plate letter there at 1,000x", () => {
+  const base = (70 * Math.PI) / 180;
+  const px = (size: number, far: number, zoom: number): number => screenPixels(size, far, zoomed(base, zoom), 1080);
+  expect(px(13.7, 8000, 25)).toBeGreaterThan(30);
+  expect(px(0.3, 4000, 400)).toBeGreaterThan(20);
+  expect(px(0.07, 4000, 400)).toBeLessThan(6);
+  expect(px(0.07, 4000, 1000)).toBeGreaterThan(12);
+});

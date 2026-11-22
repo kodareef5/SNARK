@@ -129,6 +129,8 @@ const AIM_FOV = 0.79;
 const HOLO_TINT = 0.22;
 /** Milliseconds between CMD_GAZEs while a sight's zoom holds: well inside GAZE_TICKS, after which the server lets it go. */
 const GAZE_RESEND_MS = 1000;
+/** Milliseconds between finds of what a sight is on. */
+const FOCUS_MS = 250;
 /** A zooming sight's step of the wheel, and a zero's, metres, as far as ZERO_MOST. */
 const SIGHT_STEP = 1.25;
 const ZERO_STEP = 50;
@@ -220,6 +222,8 @@ export class App {
   /** The zoom the server was last told of (App.gaze), and when. */
   private gazeSent = 0;
   private gazeAt = -Infinity;
+  /** When what the sight is on was last found (App.gaze). */
+  private focusAt = -Infinity;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   /** The orbit camera on K, and whether the last frame's view lets it start. */
@@ -954,17 +958,28 @@ export class App {
    * lasts, with how far off what the middle of the view is on (0 for nothing within the cone's reach); once more as it ends.
    */
   private gaze(nowMs: number, world: CollisionWorld, zoom: number, yaw: number, pitch: number): void {
-    if (zoom === 0 && this.gazeSent === 0) return;
-    const moved = zoom === 0 || this.gazeSent === 0 || Math.abs(zoom - this.gazeSent) > 0.1 * Math.max(zoom, this.gazeSent) || this.zeroSent !== this.sightZero;
-    if (!moved && nowMs - this.gazeAt < GAZE_RESEND_MS) return;
-    let focus = 0;
-    if (zoom > 0) {
+    // What the middle of the view is on, found each FOCUS_MS while a sight magnifies: its range, and the point the scene
+    // brings its fine ground and far trees to (D1087).
+    if (zoom > 0 && nowMs - this.focusAt >= FOCUS_MS) {
       const d = this.aim, eye = this.sightAt;
       lookDirection((yaw / TAU) * 65536, (pitch / (PI / 2)) * 16384, d);
       const reach = Math.min(GAZE_FARTHEST, GAZE_REACH * zoom);
-      if (castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE) focus = rayHit.t;
+      const t = castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE ? rayHit.t : 0;
+      this.focusAt = nowMs;
+      this.visor.range = t;
+      if (this.scene) {
+        this.scene.focusX = t > 0 ? eye.x + d[0]! * t : NaN;
+        this.scene.focusZ = t > 0 ? eye.z + d[2]! * t : NaN;
+      }
+    } else if (zoom === 0) {
+      this.focusAt = -Infinity;
+      if (this.scene) this.scene.focusX = this.scene.focusZ = NaN;
     }
-    this.visor.range = focus;
+    if (zoom === 0 && this.gazeSent === 0) return;
+    const moved = zoom === 0 || this.gazeSent === 0 || Math.abs(zoom - this.gazeSent) > 0.1 * Math.max(zoom, this.gazeSent) || this.zeroSent !== this.sightZero;
+    if (!moved && nowMs - this.gazeAt < GAZE_RESEND_MS) return;
+    // The server finds what the look is on for itself (D1084): the range sent is the page's, for its own word.
+    const focus = zoom > 0 ? this.visor.range : 0;
     this.session.command(CMD_GAZE, (w) => (w.u16(Math.min(65535, Math.round(zoom * 16))), w.u16(Math.min(65535, Math.round(focus))), w.u16(zoom > 0 ? this.sightZero : 0)));
     this.gazeSent = zoom;
     this.gazeAt = nowMs;

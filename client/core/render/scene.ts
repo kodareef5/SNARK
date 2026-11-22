@@ -156,6 +156,10 @@ export const CHUNK_CELLS = 4;
 
 /** Metres the far depth range of a frame with one begins at, through a sight: the lit tiers' split (tiers.ts). */
 const WINDOW_SPLIT = 384;
+/** The zoom from which a sight's focus has the terrain's fine window, the ground round the body unseen (D1087). */
+const TERRAIN_FOCUS = 8;
+/** Metres up and down a chunk's column is taken to reach, to ask whether a sight's window sees it. */
+const CHUNK_COLUMN = 1000;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
@@ -464,6 +468,12 @@ export class Scene {
   structureDistance = Infinity;
   /** Hour of the day, 0..24. It sets the sun's position and the brightness. */
   hour = 12;
+  /**
+   * Where a sight that magnifies is on, x and z (NaN for none), which the app sets: the far trees round it come as if near,
+   * and from TERRAIN_FOCUS times the fine ground is round it (D1087).
+   */
+  focusX = NaN;
+  focusZ = NaN;
   /** What a visor does to the picture this frame (post.ts opticFrame, D1080), which the app sets. */
   readonly optic: Optic = { mode: 0, gain: 1, grain: 0 };
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
@@ -1138,6 +1148,9 @@ export class Scene {
     }
     skyShown(p);
 
+    const focused = !Number.isNaN(this.focusX) && cam.zoom >= TERRAIN_FOCUS;
+    this.terrain.centreX = focused ? this.focusX : NaN;
+    this.terrain.centreZ = focused ? this.focusZ : NaN;
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.groundCasts : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
@@ -1152,7 +1165,7 @@ export class Scene {
     const blocksView = tier.reach.city > 0 && tier.city.levels.length > 0 ? this.viewDistance : 0;
     this.makeBlocks();
     this.blocks?.update(p, this.assets.residency, cam, blocksView, this.city ? this.citySource!.statics : null, this.city);
-    this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier);
+    this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier, cam.zoom > 1 ? this.focusX : NaN, this.focusZ);
     if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.groundCasts)) p.casterDropped++;
     // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
     // See-through draws go as made, and the sea is made first of them, so that a yacht's wires show over it.
@@ -2880,7 +2893,10 @@ export class Scene {
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       if (base === 0 && p.tier.reflectionHz) this.street.indexChunk(t,x0,z0,cam);
-      const own = near ? near.of(chunk, t, statics!, this.city!, this.chunkCells, Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z), p) : null;
+      // Its near mesh is made nearest first, a chunk in a sight's window as if its zoom times nearer (D1087).
+      const across = Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z);
+      const sooner = cam.zoom > 1 && cam.boxVisible(x0 - cam.x, -CHUNK_COLUMN - cam.y, z0 - cam.z, x0 + CHUNK_SIZE - cam.x, CHUNK_COLUMN - cam.y, z0 + CHUNK_SIZE - cam.z) ? cam.zoom : 1;
+      const own = near ? near.of(chunk, t, statics!, this.city!, this.chunkCells, across / sooner, p) : null;
       const mesh = own?.mesh ?? null;
       let batch = this.batches.get(id);
       // A piece that took another kind in place is moved in place; a chunk whose doors have stood a while other than its

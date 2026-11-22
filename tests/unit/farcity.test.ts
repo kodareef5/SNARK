@@ -512,6 +512,31 @@ test("through a sight the tiles in its window are made at the levels their dista
   expect(cityIndices(w.frame())).toBe(plain.indices);
 });
 
+test("through a sight a chunk held whole far off in its window has its near mesh made before one near the body; without, the near one first", () => {
+  const made = (zoom: number): number[] => {
+    // A tower 400 m off to the side and one 1,500 m ahead, both held whole as the server sends them.
+    // Big enough that each takes frames of the near city's making.
+    const statics = [...building(...mid(26, 23), 0, 30, 6, 0), ...building(...mid(20, 43), 0, 30, 6, 0)];
+    const w = cityWorld({ chunks: 64, statics, width: 320, height: 180 });
+    w.scene.assets.tier = tierOf("medium");
+    const near = w.chunkOf(...mid(26, 23)), far = w.chunkOf(...mid(20, 43));
+    w.rows(near);
+    w.rows(far);
+    w.look(20.5 * CHUNK_SIZE, 10, 43.5 * CHUNK_SIZE, 1500 - 64, 0, 6);
+    w.cam.fovY = zoomed(w.cam.fovY, zoom);
+    w.cam.zoom = zoom;
+    if (zoom > 1) w.cam.window.set([-0.3, -0.3, 0.3, 0.3]);
+    const order: number[] = [];
+    for (let f = 0; f < 400 && order.length < 2; f++) {
+      w.frame();
+      for (const c of [near, far]) if (!order.includes(c) && w.scene.near!.chunk(c)?.mesh) order.push(c);
+    }
+    return order.map((c) => (c === near ? 0 : 1));
+  };
+  expect(made(16)[0]).toBe(1);
+  expect(made(1)[0]).toBe(0);
+});
+
 test("levels made on threads are each asked of the one with the fewest in hand, three ahead a thread, and are the levels the page makes", async () => {
   // A thread as a worker running client/city/city-worker.ts is, here on this one a turn later, and those each was asked of.
   const asked: number[] = [];

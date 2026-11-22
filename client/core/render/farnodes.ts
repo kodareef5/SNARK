@@ -53,6 +53,8 @@ const FAR_NOW = 512;
 const FAR_MAKES = 4;
 /** A tile holds the kinds whose reach comes within this of it, so a kind is there before it is in reach. */
 const MARGIN = FAR_TILE_METRES / 2;
+/** Metres round what a sight is on whose tiles are kept (D1087). */
+const FOCUS_SPAN = 300;
 /** Chunks in a tile, each a cell left out when out of view or reach, one row and then the next back the other way. */
 const CELLS = FAR_TILE * FAR_TILE;
 /** The far feed's 4 m cells along a chunk's side. */
@@ -346,7 +348,13 @@ export class FarNodes {
    * Brings the tiles within reach of the camera at (x, z) up to date and on the card, and lets go of those a tile past
    * reach. Uploads and drops go into the packet, and what they weigh is spent and reserved in `budget`.
    */
-  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, x: number, z: number, tier: Tier): void {
+  /**
+   * `fx` and `fz`, where a sight that magnifies is on (NaN for none): the tiles round it within FOCUS_SPAN come and stay as
+   * those round the camera do, made as if they were near (D1087).
+   */
+  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, x: number, z: number, tier: Tier, fx = NaN, fz = NaN): void {
+    const focus = !Number.isNaN(fx);
+    const offOf = (t: number): number => Math.min(this.off(t, x, z), focus ? this.off(t, fx, fz) : Infinity);
     for (const mesh of this.missing) if (this.looks.known(mesh)) this.missing.delete(mesh);
     this.setTier(tier);
     const rows = this.rowMesh.length;
@@ -411,13 +419,18 @@ export class FarNodes {
           if (!this.tiles.has(t) && this.off(t, x, z) <= span) this.tiles.set(t, newTile());
         }
       }
+      if (focus) {
+        const t0x = Math.max(0, Math.floor((fx - FOCUS_SPAN) / FAR_TILE_METRES)), t1x = Math.min(this.tilesX - 1, Math.floor((fx + FOCUS_SPAN) / FAR_TILE_METRES));
+        const t0z = Math.max(0, Math.floor((fz - FOCUS_SPAN) / FAR_TILE_METRES)), t1z = Math.min(this.tilesZ - 1, Math.floor((fz + FOCUS_SPAN) / FAR_TILE_METRES));
+        for (let tz = t0z; tz <= t1z; tz++) for (let tx = t0x; tx <= t1x; tx++) if (!this.tiles.has(tz * this.tilesX + tx)) this.tiles.set(tz * this.tilesX + tx, newTile());
+      }
     }
     const waiting = this.waiting;
     waiting.length = 0;
     for (const t of this.tiles.keys()) {
       const tile = this.tiles.get(t)!;
-      const off = this.off(t, x, z);
-      if (most <= 0 || off > most + FAR_TILE_METRES) {
+      const off = offOf(t);
+      if (most <= 0 || (off > most + FAR_TILE_METRES && !(focus && this.off(t, fx, fz) <= FOCUS_SPAN + FAR_TILE_METRES))) {
         if (tile.uploaded) p.drops.push(FAR_NODE_BUFFERS + t);
         this.tiles.delete(t);
         continue;
@@ -428,8 +441,8 @@ export class FarNodes {
       if (tile.now) this.remake(p, t, tile, off);
       else waiting.push(t);
     }
-    waiting.sort((a, b) => this.off(a, x, z) - this.off(b, x, z));
-    for (let k = 0; k < Math.min(this.makes, waiting.length); k++) this.remake(p, waiting[k]!, this.tiles.get(waiting[k]!)!, this.off(waiting[k]!, x, z));
+    waiting.sort((a, b) => offOf(a) - offOf(b));
+    for (let k = 0; k < Math.min(this.makes, waiting.length); k++) this.remake(p, waiting[k]!, this.tiles.get(waiting[k]!)!, offOf(waiting[k]!));
     let bytes = 0;
     for (const t of this.tiles.keys()) {
       const tile = this.tiles.get(t)!;
@@ -461,7 +474,9 @@ export class FarNodes {
       const tile = this.tiles.get(t)!;
       if (!tile.data || !tile.uploaded) continue;
       const w = tile.whole;
-      if (near(w, 0, cam) >= this.most || !visible(w, 0, cam)) continue;
+      // Through a sight, what is in its window is drawn its zoom times as far (D1087).
+      const zoom = cam.zoom;
+      if (near(w, 0, cam) >= this.most * zoom || !visible(w, 0, cam)) continue;
       // Its cells tested one by one only where much of the tile is hidden.
       const hidden = hider ? hider.share(w[0]! - cam.x, w[1]! - cam.y, w[2]! - cam.z, w[3]! - cam.x, w[4]! - cam.y, w[5]! - cam.z) : 0;
       if (hidden === 1 && hider!.hides(w[0]! - cam.x, w[1]! - cam.y, w[2]! - cam.z, w[3]! - cam.x, w[4]! - cam.y, w[5]! - cam.z)) continue;
@@ -474,7 +489,7 @@ export class FarNodes {
         const size = tile.ranges[r]! % SIZES;
         const reach = this.reach[tile.farthest[q * (CELLS + 1)]!]!;
         const at = q * (CELLS + 1) * 6;
-        if (near(b, at, cam) >= reach || (!whole && !visible(b, at, cam))) continue;
+        if (near(b, at, cam) >= reach * zoom || (!whole && !visible(b, at, cam))) continue;
         const seenAll = whole || inside(b, at, cam);
         // Runs of neighbouring cells: first and end instance, depth ranges and hand-over. `bridge` is where a run may go on from.
         const runs = this.runs;
@@ -491,7 +506,7 @@ export class FarNodes {
             bridge = -1;
             continue;
           }
-          if (seen >= this.reach[tile.farthest[q * (CELLS + 1) + c + 1]!]! || (!seenAll && !visible(b, k, cam)) || (hides !== undefined && hides.hides(b[k]! - cam.x, b[k + 1]! - cam.y, b[k + 2]! - cam.z, b[k + 3]! - cam.x, b[k + 4]! - cam.y, b[k + 5]! - cam.z))) {
+          if (seen >= this.reach[tile.farthest[q * (CELLS + 1) + c + 1]!]! * zoom || (!seenAll && !visible(b, k, cam)) || (hides !== undefined && hides.hides(b[k]! - cam.x, b[k + 1]! - cam.y, b[k + 2]! - cam.z, b[k + 3]! - cam.x, b[k + 4]! - cam.y, b[k + 5]! - cam.z))) {
             bridge = bridge === first && (end - first) * (PULL_VERTICES << size) <= RUN_TRIANGLES * 3 ? end : -1;
             continue;
           }

@@ -228,6 +228,8 @@ interface Pending {
 }
 
 /** One survivor's session, made when its hello is accepted. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
+/** Ticks a chunk a sight's cone had sent is held after the cone leaves it: turning about or lowering it makes no churn (D1087). */
+export const CONE_KEEP = 150;
 /** The most entities a session's sight's cone adds to its view (D1079). */
 export const CONE_ENTITIES = 192;
 
@@ -267,6 +269,8 @@ export class Client {
   readonly body = new Body();
   /** Centre of this session's interest. */
   chunk = 0;
+  /** The chunks a sight's cone has had it sent, and the tick each may be let go from (GameServer.syncChunks, D1087). */
+  readonly coneKept = new Map<number, number>();
   /** Its view with what its sight's cone adds (GameServer.cone), and their ranks; made the first time it has one. */
   wide: SentView | null = null;
   wideRanks: Uint16Array | null = null;
@@ -1648,16 +1652,29 @@ export class GameServer {
       if (t && t.version > c.known[chunk]!) budget = this.sendChunk(c, chunk, t, budget);
     }
     c.rowsWaiting = budget <= 0;
+    // A sight's cone past the square round the body (server/gaze.ts): its chunks as well, nearest what it is on first, with
+    // what the square leaves, so that what is far is drawn as near; kept CONE_KEEP after the cone leaves them (D1087). A
+    // chunk as the map has it costs a client holding the statics its header alone.
+    const cone = this.cone ? this.cone(c) : null;
+    for (let k = 0; cone && k < cone.count; k++) {
+      const chunk = cone.chunks[k]!;
+      c.coneKept.set(chunk, T + CONE_KEEP);
+      const t = world.structs.chunks[chunk];
+      if (budget > 0 && t && t.version > c.known[chunk]!) budget = this.sendChunk(c, chunk, t, budget);
+    }
 
     // Forget chunks the player has left behind.
     if ((T + c.id) % 16 === 0) {
       const limit = this.opts.structRadius + 1;
       const w = this.w;
+      for (const [chunk, until] of c.coneKept) if (until <= T && c.known[chunk] === 0) c.coneKept.delete(chunk);
       for (let i = c.subscribed.length - 1; i >= 0; i--) {
         const chunk = c.subscribed[i]!;
         const dx = chunkCx(dims, chunk) - ccx;
         const dz = chunkCz(dims, chunk) - ccz;
         if (dx <= limit && dx >= -limit && dz <= limit && dz >= -limit) continue;
+        if ((c.coneKept.get(chunk) ?? 0) > T) continue;
+        c.coneKept.delete(chunk);
         c.subscribed[i] = c.subscribed[c.subscribed.length - 1]!;
         c.subscribed.pop();
         c.known[chunk] = 0;
