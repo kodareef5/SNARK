@@ -14,6 +14,7 @@ import { Solved } from "../shared/anim/skeleton.ts";
 import { encodeCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { MF_DOWN, MODE_WALK } from "../shared/sim/character.ts";
+import { HISTORY_TICKS } from "./history.ts";
 import type { ServerWorld } from "./world.ts";
 
 /** The most survivors lying at once. */
@@ -35,6 +36,11 @@ interface Down {
   world: number;
   motion: CorpseMotion | null;
   readonly pose: Solved;
+  /** Its pose at each of the last HISTORY_TICKS ticks, and the tick each is of, for a shot judged in the past. */
+  readonly poses: Solved[];
+  readonly poseTick: Int32Array;
+  /** Once risen, the tick it rose; its past poses are kept until no shot can reach back to them. */
+  rose: number;
 }
 
 const root = new Float64Array(3);
@@ -76,7 +82,8 @@ export class Falls {
     const yaw = yawOf16(ents.yaw[e]!);
     const r = layHuman(wireX(ents.x[e]!), wireY(ents.y[e]!), wireX(ents.z[e]!), yaw);
     r.launch(vx, vy, vz, wx, wy, wz);
-    const d: Down = { e, gen: ents.gen[e]!, fall: new Fall(r), yaw, ticks: 0, revision: ++this.serial, world: 0, motion: null, pose: new Solved(HUMAN.bones) };
+    const d: Down = { e, gen: ents.gen[e]!, fall: new Fall(r), yaw, ticks: 0, revision: ++this.serial, world: 0, motion: null, pose: new Solved(HUMAN.bones),
+      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1 };
     this.down.set(e, d);
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
     // Its facing as it fell, as sent, which its pose is in.
@@ -95,9 +102,33 @@ export class Falls {
     return this.down.get(e)?.pose ?? null;
   }
 
+  /**
+   * The pose body `e` lay in at `tick`, which its history says it lay down in (CUE_DOWN), for a shot judged then; the
+   * nearest kept where that tick's is not.
+   */
+  poseAt(e: number, tick: number): Solved | null {
+    const d = this.down.get(e) ?? this.risen.get(e);
+    if (!d) return null;
+    const k = tick & (HISTORY_TICKS - 1);
+    return d.poseTick[k] === tick ? d.poses[k]! : d.pose;
+  }
+  /** Bodies that rose within HISTORY_TICKS, by entity. */
+  private readonly risen = new Map<number, Down>();
+
   /** The facing in radians a lying body's pose is in. */
   yawOf(e: number): number {
     return this.down.get(e)?.yaw ?? 0;
+  }
+
+  /**
+   * Takes body `e`'s fall away as it dies lying, for its corpse to lie on as it was (server/corpses.ts): its ragdoll's
+   * state, laid standing; null for one not down.
+   */
+  take(e: number): { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null {
+    const d = this.down.get(e);
+    if (!d) return null;
+    this.down.delete(e);
+    return { state: d.fall.ragdoll.checkpoint(), awake: d.fall.ragdoll.awake, ticks: d.fall.ticks };
   }
 
   /** For CorpseReplication: what changed last, and the checkpoint to send. */
@@ -111,6 +142,7 @@ export class Falls {
 
   step(): void {
     const ents = this.world.ents;
+    for (const d of this.risen.values()) if (this.world.tick - d.rose > HISTORY_TICKS) this.risen.delete(d.e);
     for (const d of this.down.values()) {
       if ((ents.flags[d.e]! & F_ALIVE) === 0 || ents.gen[d.e] !== d.gen) {
         this.down.delete(d.e);
@@ -136,6 +168,10 @@ export class Falls {
     r.rebase(x, y, z);
     ents.setPosition(d.e, x, y, z);
     r.pose(d.pose);
+    const k = this.world.tick & (HISTORY_TICKS - 1);
+    d.poses[k]!.rot.set(d.pose.rot);
+    d.poses[k]!.pos.set(d.pose.pos);
+    d.poseTick[k] = this.world.tick;
     const world = r.worldRevision(this.world);
     if (d.motion && world !== d.world) d.revision = ++this.serial;
     d.world = world;
@@ -150,6 +186,8 @@ export class Falls {
     const ents = this.world.ents;
     d.fall.ragdoll.rootPosition(root);
     this.down.delete(d.e);
+    d.rose = this.world.tick;
+    this.risen.set(d.e, d);
     ents.setPosition(d.e, root[0]!, root[1]! - HIPS_UP, root[2]!);
     ents.vx[d.e] = ents.vy[d.e] = ents.vz[d.e] = 0;
     ents.cue[d.e] = (ents.cue[d.e]! & ~CUE_DOWN) >>> 0;

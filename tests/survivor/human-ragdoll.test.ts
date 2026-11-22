@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { HUMAN, HUMAN_RAGDOLL } from "../../shared/anim/human.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
+import { layHuman } from "../../shared/anim/human-fall.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -52,4 +53,15 @@ test("the same shove lays the same body twice", () => {
   const [a, b] = [fall(w, 40, 40, 4), fall(w, 40, 40, 4)];
   for (let f = 0; f < 60; f++) { a.step(w, STEP); b.step(w, STEP); }
   expect([...a.checkpoint()]).toEqual([...b.checkpoint()]);
+});
+
+test("one laid lying starts low and comes to rest close by", () => {
+  const w = world(0);
+  const d = layHuman(40, w.hf.heightAt(40, 40), 40, 0.4, true);
+  const start = [d.x[0]!, d.x[1]!, d.x[2]!];
+  let slept = -1;
+  for (let f = 1; f <= 2 / STEP && slept < 0; f++) if (!d.step(w, STEP)) slept = f;
+  expect(start[1]! - w.hf.heightAt(40, 40)).toBeLessThan(0.3);
+  expect(slept).toBeGreaterThan(0);
+  expect(Math.hypot(d.x[0]! - start[0]!, d.x[2]! - start[2]!)).toBeLessThan(0.3);
 });

@@ -873,7 +873,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const loose = new Loose({ world, game, records, items, combat, death });
   const falls = new Falls(world);
   game.players.isDown = (e) => falls.isDown(e);
-  combat.downPose = (e) => falls.poseOf(e);
+  combat.downPose = (e, tick) => falls.poseAt(e, tick);
+  corpses.handOff = (e) => falls.take(e);
   // A sight's zero lifts its flying rounds (D1083).
   projectiles.zero = (c) => gaze.zeroOf(c);
   // Every shot and blast, hit or miss, is heard by Cast's people near it.

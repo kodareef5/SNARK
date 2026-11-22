@@ -262,7 +262,7 @@ export class HumanFalls {
   private lay(h: HumanFall, motion: CorpseMotion): void {
     const cp = decodeCorpseCheckpoint(motion.data);
     if (!cp) return;
-    const r = layHuman(cp.x, cp.y, cp.z, cp.yaw);
+    const r = layHuman(cp.x, cp.y, cp.z, cp.yaw, cp.out);
     if (!r.restore(cp.state, cp.awake)) return;
     h.fall = new Fall(r);
     h.fall.ticks = cp.ticks;

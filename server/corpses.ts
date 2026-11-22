@@ -23,7 +23,7 @@ import { detCos, detSin } from "../shared/math/scalar.ts";
 import { quatNormalize } from "../shared/math/quat.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
-import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
+import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_PRONE, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
 import { copyMoveSize } from "../shared/sim/move-size.ts";
 import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
@@ -134,6 +134,8 @@ export interface Body {
   readonly wreck: HelicopterState | BoatState | null;
   /** A physical death starts directly in the replicated ragdoll; the capsule never also owns its motion. */
   launch: CorpseImpact | null;
+  /** A survivor's fall it died in (server/falls.ts take), which its ragdoll goes on from instead of being laid anew. */
+  handed: { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null;
   motionRevision: number;
   motionStanding: boolean;
   motionWorld: number;
@@ -199,6 +201,9 @@ export class Corpses {
     return this.byEnt.get(e);
   }
 
+  /** A survivor's fall that entity `e` dies in, taken from server/falls.ts. The host sets it. */
+  handOff: (e: number) => { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null = () => null;
+
   /** Whether the body that is entity `e` is opened by the use key: every one but a survivor's, which carries nothing. */
   opens(e: number): boolean {
     return this.byEnt.get(e)?.kind !== this.survivor;
@@ -247,15 +252,19 @@ export class Corpses {
     const of = def as SpeciesDef;
     const max = (of.corpse?.health ?? HEALTH) * size * rules.num("HarvestHealthMultiplier");
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
-    const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
+    const survivor = rec.kind === this.survivor;
+    // A survivor that dies knocked down goes on lying as its fall had it; one lying prone or knocked out goes limp lying.
+    const handed = survivor ? this.handOff(e) : null;
+    const out = handed ? false : rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0 || (survivor && ents.stance[e] === STANCE_PRONE);
     const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
+    b.handed = handed;
     const rig = this.rigOf(rec.kind);
-    if (impact && impact.victimPid === rec.pid && impact.victimHandle === makeHandle(e, ents.gen[e]!) && rig && rig.ragdoll.bone.length <= CORPSE_BODIES_MAX) {
+    if (!handed && impact && impact.victimPid === rec.pid && impact.victimHandle === makeHandle(e, ents.gen[e]!) && rig && rig.ragdoll.bone.length <= CORPSE_BODIES_MAX) {
       b.launch = impact;
       b.motionRevision = 1;
     }
     // A survivor has no death clip a client could lay it by, so its body is always sent as its ragdoll lies.
-    if (rec.kind === this.survivor) b.motionRevision = 1;
+    if (survivor) b.motionRevision = 1;
     if (b.wreck) {
       const v = ents.vrow[e]!;
       Object.assign(b.wreck, { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!,
@@ -353,7 +362,7 @@ export class Corpses {
       rec, kind, e: -1, max, left, young, size, move, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
       fall: null, pose: !wreck && rig ? new Solved(rig.skel.bones) : null, moving: false, drop: null, dropped: 0, wreck,
-      launch: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD,
+      launch: null, handed: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD,
     };
     this.bodies.set(rec.pid, b);
     return b;
@@ -423,13 +432,18 @@ export class Corpses {
     const human = b.kind === this.survivor;
     // A survivor has no death clip: it goes limp standing, as one knocked down does (shared/anim/human-fall.ts).
     b.motionStanding = human || !!b.launch || checkpoint?.standing === true;
-    const r = human && b.pose ? layHuman(b.x, b.y, b.z, b.yaw) : anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose, b.motionStanding) : null;
+    const r = human && b.pose ? layHuman(b.x, b.y, b.z, b.yaw, b.out) : anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose, b.motionStanding) : null;
     if (r) {
       b.fall = new Fall(r);
       if (saved && (!checkpoint || checkpoint.x !== b.x || checkpoint.y !== b.y || checkpoint.z !== b.z || checkpoint.yaw !== b.yaw || checkpoint.size !== b.size || checkpoint.out !== b.out || checkpoint.air !== b.air || !r.restore(checkpoint.state, checkpoint.awake))) {
         throw new Error(`corpse ${b.rec.pid}: invalid physical checkpoint`);
       }
       if (checkpoint) b.fall.ticks = checkpoint.ticks;
+      if (b.handed) {
+        r.restore(b.handed.state, b.handed.awake);
+        b.fall.ticks = b.handed.ticks;
+        b.handed = null;
+      }
       if (b.launch) {
         const launch = b.launch;
         r.launch(launch.vx, launch.vy, launch.vz, launch.wx, launch.wy, launch.wz);

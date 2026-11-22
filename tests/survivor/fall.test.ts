@@ -79,3 +79,40 @@ test("a survivor who dies leaves a body that falls limp where it stood, carrying
     h.host.shutdown();
   }
 });
+
+test("a shot judged in the past meets the body as it lay then", () => {
+  const { h, e } = scene();
+  try {
+    h.host.falls.knock(e, 0, 1, 4, 3, 0, 0);
+    h.run(200);
+    const then = h.world.tick, was = h.host.falls.poseOf(e)!.pos.slice();
+    h.run(5 * 1000 / 60);
+    // It has moved on since, but the pose kept for that tick is the one it had.
+    expect(h.host.falls.poseOf(e)!.pos).not.toEqual(was);
+    expect(h.host.falls.poseAt(e, then)!.pos).toEqual(was);
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("a survivor who dies knocked down goes on lying as it fell, never standing up", () => {
+  const { h, ada, e } = scene();
+  try {
+    const ents = h.world.ents;
+    h.host.falls.knock(e, 0, 1, 4, 3, 0, 0);
+    h.run(600);
+    h.host.survival.gods.delete(h.client(ada)!.pid);
+    h.say(ada, "suicide");
+    // From the knock to its body's rest the hips never rise as a standing body's would, some 0.9 m up.
+    let high = 0, body = -1;
+    h.run(3000, () => {
+      body = -1;
+      for (let j = 0; j < ents.flags.length; j++) if (h.host.corpses.at(j) && ents.kind[j] === ents.kind[e]) body = j;
+      if (body >= 0) high = Math.max(high, ents.y[body]! - h.world.hf.heightAt(ents.x[body]!, ents.z[body]!));
+    });
+    expect(body).toBeGreaterThanOrEqual(0);
+    expect(high).toBeLessThan(0.5);
+  } finally {
+    h.host.shutdown();
+  }
+});
