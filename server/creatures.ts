@@ -22,6 +22,7 @@ import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../shared/
 import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
+import { Signal } from "./signal.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import { creatureSize, forgetYoungMove, youngMove } from "./young-move.ts";
@@ -45,6 +46,10 @@ function unridden(p: MoveParams | null): MoveParams | null {
 
 export class Creatures {
   bus: Bus = NO_BUS;
+  /** A body was put on the awake list: a creature, or a vehicle or other body its chunk's waking reached. */
+  readonly onWake = new Signal<[e: number]>();
+  /** A body was made for a creature's record, new or loaded. */
+  readonly onAdopt = new Signal<[e: number, rec: EntityRecord]>();
   /** In chunks. */
   readonly wakeRadius: number;
   awakeCount = 0;
@@ -272,6 +277,7 @@ export class Creatures {
     if (rec.vitals) this.survival.restore(rec, true);
     else this.survival.init(rec);
     if (this.chunkRefs[ents.chunk[e]!]! > 0) this.wake(e);
+    this.onAdopt.emit(e, rec);
     return e;
   }
 
@@ -624,6 +630,7 @@ export class Creatures {
     this.awakeSlot[e] = this.awakeCount;
     this.awake[this.awakeCount++] = e;
     ents.flags[e] = flags | F_AWAKE;
+    this.onWake.emit(e);
     this.world.history.track(e);
     // One that wakes under water loses its breath from now.
     const p = this.world.reg.move[ents.kind[e]!];

@@ -705,7 +705,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onBall.on((c, rec, slot) => balls.click(c, rec, slot));
   const mounts = new Mounts({ world, records, items, rules, balls, buffs, survival }, (opts.seed ?? 1) + 113);
   starter = mounts;
-  const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
+  const feces = new Feces({ world, records, items, deadlines, rules, eggs, woke: creatures.onWake, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
   game.onMountSecondary.on(e => roars.use(e));
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
