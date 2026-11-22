@@ -14,6 +14,7 @@
 import type { App } from "../app.ts";
 import type { FrameRing } from "../assets/frames.ts";
 import type { NotesKit } from "../notes-kit.ts";
+import { PASSES } from "../passes.ts";
 import type { FramePacket } from "../render/packet.ts";
 import type { UiFrame } from "../ui/nodes.ts";
 import { K_PANEL, LINE, SMALL_LINE, S_HUD_COUNT, S_LABEL, S_MENU_NOTE, S_TEXT } from "../ui/monitor-style.ts";
@@ -22,8 +23,6 @@ import { LATE } from "./ring.ts";
 
 /** The panel's keys, clear of every other screen's: its words from here, its bars from +100, the strip's columns from +200. */
 const KEY_BUDGET = 9700;
-/** The GPU's passes, as client/core/passes.ts PASSES names them, a copy (D915). */
-export const PASS_NAMES = ["uploads", "casters", "near", "far", "dome", "far see-through", "near see-through", "body", "finish"] as const;
 /** The processor's stages, in the order the bar draws them. */
 export const STAGES = ["frame", "scene", "draw", "uploads"] as const;
 /** How often the words are made again, in ms; the strip's columns; the seconds the worst is looked for over. */
@@ -80,9 +79,14 @@ export function frameStrip(ring: FrameRing | null, nowMs: number): FrameStrip {
 }
 
 export class BudgetPanel {
-  /** The latest frames' stage times (STAGES), and the GPU's by pass where timed (PASS_NAMES), one row a frame. */
+  /**
+   * The GPU's passes in the order the pass clock times them: client/core/passes.ts PASSES itself, never a copy (D1121),
+   * so a pass added there is named here, and in each picture's census, in its place.
+   */
+  readonly passNames: readonly string[];
+  /** The latest frames' stage times (STAGES), and the GPU's by pass where timed (passNames), one row a frame. */
   readonly cpu = new Float64Array(KEPT * STAGES.length);
-  readonly gpu = new Float64Array(KEPT * PASS_NAMES.length);
+  readonly gpu: Float64Array;
   private cpuRows = 0;
   private gpuRows = 0;
   private gpuMode = 0;
@@ -101,6 +105,11 @@ export class BudgetPanel {
   /** The tier's allowance and what the last refresh counted, for a report's picture (notes.ts). */
   stores: Count[] = [];
 
+  constructor(passNames: readonly string[] = PASSES) {
+    this.passNames = passNames;
+    this.gpu = new Float64Array(KEPT * passNames.length);
+  }
+
   /** One frame's stages, after it was drawn: the app's frame, the scene's build, handing it to WebGL, the uploads. */
   frame(frameMs: number, sceneMs: number, drawMs: number, uploadMs: number): void {
     const k = (this.cpuRows++ % KEPT) * STAGES.length;
@@ -117,8 +126,8 @@ export class BudgetPanel {
       this.gpuRows = 0;
       this.gpuMode = mode;
     }
-    const k = (this.gpuRows++ % KEPT) * PASS_NAMES.length;
-    for (let i = 0; i < PASS_NAMES.length; i++) this.gpu[k + i] = ms[i] ?? 0;
+    const n = this.passNames.length, k = (this.gpuRows++ % KEPT) * n;
+    for (let i = 0; i < n; i++) this.gpu[k + i] = ms[i] ?? 0;
   }
 
   /** The mean of each column over the rows kept. */
@@ -137,8 +146,8 @@ export class BudgetPanel {
   /** The GPU's passes now, means over the last half second, or none where nothing timed them. */
   passTimes(): { name: string; ms: number }[] {
     if (this.gpuRows === 0) return [];
-    const m = BudgetPanel.mean(this.gpu, this.gpuRows, PASS_NAMES.length);
-    return PASS_NAMES.map((name, i) => ({ name, ms: Math.round(m[i]! * 100) / 100 }));
+    const m = BudgetPanel.mean(this.gpu, this.gpuRows, this.passNames.length);
+    return this.passNames.map((name, i) => ({ name, ms: Math.round(m[i]! * 100) / 100 }));
   }
 
   /**
@@ -160,16 +169,16 @@ export class BudgetPanel {
       legend: STAGES.map((name, i) => `${name} ${cpu[i]!.toFixed(1)}`).join(" · "), note: "",
     }];
     if (timed === 1 && this.gpuRows > 0) {
-      const whole = BudgetPanel.mean(this.gpu, this.gpuRows, PASS_NAMES.length)[0]!;
+      const whole = BudgetPanel.mean(this.gpu, this.gpuRows, this.passNames.length)[0]!;
       bars.push({
         label: `Card ${whole.toFixed(1)} ms, the whole frame`, parts: [{ name: "the whole frame", value: whole }], full: Math.max(display, whole), mark: display, legend: "by pass: not measured on an Apple GPU, where a query",
         note: "between passes ends Metal's render pass; it reads long",
       });
     } else if (timed === 2 && this.gpuRows > 0) {
-      const gpu = BudgetPanel.mean(this.gpu, this.gpuRows, PASS_NAMES.length), gpuSum = gpu.reduce((a, b) => a + b, 0);
-      const top = PASS_NAMES.map((name, i) => ({ name, value: gpu[i]! })).filter((x) => x.value >= 0.05).sort((a, b) => b.value - a.value);
+      const names = this.passNames, gpu = BudgetPanel.mean(this.gpu, this.gpuRows, names.length), gpuSum = gpu.reduce((a, b) => a + b, 0);
+      const top = names.map((name, i) => ({ name, value: gpu[i]! })).filter((x) => x.value >= 0.05).sort((a, b) => b.value - a.value);
       bars.push({
-        label: `Card ${gpuSum.toFixed(1)} ms`, parts: PASS_NAMES.map((name, i) => ({ name, value: gpu[i]! })), full: Math.max(display, gpuSum), mark: display,
+        label: `Card ${gpuSum.toFixed(1)} ms`, parts: names.map((name, i) => ({ name, value: gpu[i]! })), full: Math.max(display, gpuSum), mark: display,
         legend: top.slice(0, 4).map((x) => `${x.name} ${x.value.toFixed(1)}`).join(" · "),
         note: apple ? "timer queries read long here: read the parts, not the sum" : "by timer queries, a pass each",
       });

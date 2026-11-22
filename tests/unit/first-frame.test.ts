@@ -42,6 +42,12 @@ const MONITOR_FILES = ["client/core/ui/monitor.ts", "client/core/ui/monitor-styl
 const NOTES_FILES = ["client/core/notes/notes.ts", "client/core/notes/budget.ts", "client/core/notes/ring.ts", "client/core/notes/sample.ts", "client/core/notes/place.ts", "client/core/notes/census.ts", "client/core/notes/copies.ts", "shared/report.ts", "shared/listing.ts", "client/notes/port.ts"];
 
 /**
+ * First-frame modules the late files above may import, each a name page.js exports (D1106): the pass clock's list of
+ * passes, which the budget's panel and a note's census name the GPU's passes by in its order (D1121).
+ */
+const TAKEN_FIRST = ["client/core/passes.ts"];
+
+/**
  * The world's sounds' code (D1107): every file of client/core/sound but what the shell's device and the asset port use
  * (ease.ts, packet.ts, split.ts), and the cues.
  */
@@ -71,10 +77,12 @@ test("code a page needs only after its first frame is not in the script the firs
   ];
   expect(SOUND_FILES).toContain("client/core/sound/sounds.ts");
   for (const file of late) expect(files.includes(file), file).toBe(false);
-  // The resource monitor's files and bug report mode's import nothing the first frame holds: what they use of it comes to
-  // them in a kit (client/core/ui/monitor-kit.ts, client/core/notes-kit.ts). They were written so when such an import cut
-  // the first frame's script into more pieces; since D1106 it costs only a name page.js exports, and they keep their kits.
-  for (const file of [...MONITOR_FILES, ...NOTES_FILES]) for (const dep of valueImports(join(ROOT, file))) expect(files.includes(relative(ROOT, dep)), `${file} imports ${relative(ROOT, dep)}`).toBe(false);
+  // The resource monitor's files and bug report mode's import nothing the first frame holds but what TAKEN_FIRST names:
+  // what they use of it comes to them in a kit (client/core/ui/monitor-kit.ts, client/core/notes-kit.ts). They were
+  // written so when such an import cut the first frame's script into more pieces; since D1106 it costs only a name page.js
+  // exports, and they keep their kits. What must never be a copy they import.
+  for (const file of [...MONITOR_FILES, ...NOTES_FILES]) for (const dep of valueImports(join(ROOT, file))) expect(files.includes(relative(ROOT, dep)) && !TAKEN_FIRST.includes(relative(ROOT, dep)), `${file} imports ${relative(ROOT, dep)}`).toBe(false);
+  for (const file of TAKEN_FIRST) expect(files, file).toContain(file);
   // The shell fetches them itself, and the app the Storage tab's page and the resource monitor.
   const fetchedBy = (file: string): string[] => [...readFileSync(join(CLIENT, file), "utf8").matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]!);
   expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts", "../notes/port.ts"]));
