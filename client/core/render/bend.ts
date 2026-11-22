@@ -41,6 +41,17 @@ vec3 bent(vec3 l, inout vec3 n, inout vec3 t) {
 
 /** Metres of the street atlas's strips a width (assets/source/core/props/street/layout.json `tiles`): a bent piece's faces along it are laid by the station. */
 export const STRIP_METRES = 4;
+/**
+ * The street atlas's concrete strip's picture, from its top to its bottom in the atlas's height (layout.json: the eighth
+ * strip of 128 of its 2,048 rows, less its gutter of 8 at top and bottom), and how many metres tall it is (512 rows a
+ * metre, as along). A bent piece's walk top takes its rows by where it lies across, mirrored every strip's height
+ * (BENT_GRAIN), not stretched across the walk as modelled, which drew its grain as streaks on a wide walk.
+ */
+export const CONCRETE_ROWS = [904 / 2048, 1016 / 2048] as const, CONCRETE_METRES = 112 / 512;
+/** A bent walk top's texture coordinate across, in the textured fragment: by where it lies across, mirrored. */
+export const BENT_GRAIN = `vec2 uv = vUv;
+  if (uSkin < -2.5 && vWheelPoint.y > ${KERB_BACK + 0.02} && vNormal.y > 0.8) uv.y = ${CONCRETE_ROWS[0]} + ${CONCRETE_ROWS[1] - CONCRETE_ROWS[0]} * abs(fract(vWheelPoint.y / ${2 * CONCRETE_METRES}) * 2.0 - 1.0);
+`;
 
 /**
  * A bent piece's variety, drawn where its tier reads the finishes in full (BENT_WEAR, programs.ts) and no frame says

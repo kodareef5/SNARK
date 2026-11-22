@@ -26,7 +26,7 @@ import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { BOUNCE_SUN, ROOF_GLSL } from "./roof.ts";
 import { WEAR_GLSL, wearAlpha } from "./wear.ts";
-import { BENT_WEAR_GLSL, BEND_GLSL, STRIP_METRES } from "./bend.ts";
+import { BENT_GRAIN, BENT_WEAR_GLSL, BEND_GLSL, STRIP_METRES } from "./bend.ts";
 
 /** What a surface that is not metal reflects head on. */
 export const DIELECTRIC = 0.04;
@@ -768,9 +768,9 @@ ${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetM
     o = vec4(shown(gas.rgb,vRel),gas.a);
     return;
   }
-  vec4 base = texture(uBase, vUv);
-${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2, vUv).rgb;\n" : ""}  vec3 mro = texture(uMro, vUv).rgb;
-  vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
+  ${BENT_GRAIN}  vec4 base = texture(uBase, uv);
+${dyed ? "  vec3 mask = texture(uMask, uv).rgb;\n  vec3 mask2 = texture(uMask2, uv).rgb;\n" : ""}  vec3 mro = texture(uMro, uv).rgb;
+  vec2 bump = texture(uNormal, uv).${format === "astc" ? "ra" : "rg"};
   vec3 v = -normalize(vRel);
 ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n" + GLASS_COVER + "  if (cover == 0.0) discard;\n" : "  float cover = 1.0, reflected = -1.0;\n"}
   vec3 n = bumped(bump);
