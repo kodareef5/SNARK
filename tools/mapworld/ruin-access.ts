@@ -1,4 +1,5 @@
 import { pieceMiddle, RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
+import type { BridgeRecord, DeckPoint } from "./bridges.ts";
 import { S } from "./ground.ts";
 import { binKey } from "./raster.ts";
 import type { Mason } from "./ruin-geometry.ts";
@@ -7,10 +8,27 @@ import type { Site, StaticPiece } from "./statics.ts";
 /** The ground an approach to a door may start from. */
 const APPROACHED = new Set<number>([S.STREET, S.HIGHWAY, S.SIDEWALK, S.WALKWAY, S.PLAZA]);
 const streetLevel = (ground: number, base: number): number => Math.abs(ground - base) < .4 ? base : base - Math.round((base - ground) * 4) / 4;
+/**
+ * How far an approach may run under or over the ground it crosses, outside its own footprint. gradeApproaches cuts or
+ * fills the ground to it 5 m either side and blends back over 2 m, so deeper than this leaves a trench or a bank steeper
+ * than a survivor climbs (SLOPE_COS) across whatever way passes there.
+ */
+export const APPROACH_DEPTH = 2;
+/** The height a bridge's deck point digs the ground down to, a sample round it, once every building is planned (ruins.ts). */
+export const deckCeiling = (bridge: Pick<BridgeRecord, "kind">, d: DeckPoint): number => d.y - (bridge.kind === "road_bridge" ? .02 : .4);
 
 export interface Approach { street: { x: number; y: number; z: number }; door: { x: number; y: number; z: number }; core: { x: number; y: number; z: number }; ramp: number; }
-export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]): ((m: Mason, owner: number) => Approach[]) & { reserve: (routes: Approach[]) => void } {
+/**
+ * Plans each door's approach from the street. `bridges` are dug down under their decks after every building is planned,
+ * except on the samples `kept` (the road's own ground at their ends), so no approach is laid on ground they dig away.
+ */
+export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[], bridges: readonly Pick<BridgeRecord, "kind" | "deck">[] = [], kept: ReadonlySet<number> = new Set()): ((m: Mason, owner: number) => Approach[]) & { reserve: (routes: Approach[]) => void } {
   const { surface, heaps } = site.ground; const { nx, nz, x1, z1 } = site.ground.grid;
+  const dug = new Map<number, number>();
+  for (const r of bridges) for (const d of r.deck) if (!d.gap) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const row = Math.round((z1 - d.z) / 2) + dz, col = Math.round((x1 - d.x) / 2) + dx, i = row * nx + col;
+    if (row >= 0 && col >= 0 && row < nz && col < nx && !kept.has(i)) dug.set(i, Math.min(dug.get(i) ?? Infinity, deckCeiling(r, d)));
+  }
   const bins = new Map<string, { x: number; z: number }[]>();
   // A solid is in every 4 m bin within w + d of its middle, past which no point it holds can lie, so a point's own bin
   // holds every solid that can stand in its way.
@@ -57,7 +75,10 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       for (let x = bx - 2; x <= bx + 2; x++) for (let z = bz - 2; z <= bz + 2; z++) candidates.push(...bins.get(`${x},${z}`) ?? []);
       // The distances worked out once sort as they would worked out at every comparison.
       const nearest = candidates.map((p) => ({ p, len: Math.hypot(p.x - entry.x, p.z - entry.z) })).sort((a, b) => a.len - b.len).slice(0, 48);
-      const street = [4, 0].flatMap((margin) => nearest.map(({ p, len }) => ({ street: p, len, margin }))).find(({ street: p, len, margin }) => {
+      // The first that passes and keeps within APPROACH_DEPTH of the ground; where none keeps within it, the one that keeps
+      // nearest it, so a door that has a way in keeps one.
+      let shallowest = null as { street: { x: number; z: number }; ramp: number; depth: number } | null;
+      const found = [4, 0].flatMap((margin) => nearest.map(({ p, len }) => ({ street: p, len, margin }))).find(({ street: p, len, margin }) => {
         const groundY = site.groundAt(p.x, p.z); const y = streetLevel(groundY, m.base);
         if (len > 112 || len < 4 || y < .1 || Math.abs(y - m.base) / len > .12) return false;
         let boundary = len;
@@ -77,15 +98,26 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
         if (Math.abs(y - m.base) > .4) ramp = Math.floor(len * ramp / 4) * 4 / len;
         if (ramp <= 0) return false;
         if (Math.abs(y - m.base) / (len * ramp) > .18) return false;
+        let depth = 0;
         for (let s = 0; s <= len; s += .25) {
           const t = s / len; const x = p.x + (entry.x - p.x) * t; const z = p.z + (entry.z - p.z) * t;
           const level = y + (m.base - y) * Math.min(1, t / ramp);
           if (obstructed(x, z, level)) return false;
           for (const a of reserved.get(binKey(Math.floor(x / 32), Math.floor(z / 32))) ?? []) if (clashes(a, x, z, level)) return false;
           for (const a of out) if (clashes(a, x, z, level)) return false;
+          // A bridge's deck dug under it later would leave its ramp standing over the hole.
+          const i = at(x, z);
+          if ((dug.get(i) ?? Infinity) < level - .4) return false;
+          if (heaps.owner[i] !== owner) depth = Math.max(depth, Math.abs(site.groundAt(x, z) - level));
+        }
+        if (depth > APPROACH_DEPTH) {
+          if (!shallowest || depth < shallowest.depth) shallowest = { street: p, ramp, depth };
+          return false;
         }
         return true;
-      })?.street;
+      });
+      if (!found && shallowest) ramp = shallowest.ramp;
+      const street = found?.street ?? shallowest?.street;
       if (!street) continue;
       const groundY = site.groundAt(street.x, street.z);
       const from = { ...street, y: streetLevel(groundY, m.base) }; const door = { x: entry.x, y: m.base, z: entry.z };

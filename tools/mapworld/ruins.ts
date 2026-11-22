@@ -4,7 +4,7 @@ import { BREAK_AT, pieceMiddle, RUIN_SHAPES, type RuinFinish, type RuinShape } f
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { gradeRoadEntrances, roadGroundSamples } from "./bridge-earthwork.ts";
-import { accessPlanner, gradeApproaches, type Approach } from "./ruin-access.ts";
+import { accessPlanner, deckCeiling, gradeApproaches, type Approach } from "./ruin-access.ts";
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
 import { joinFrontages } from "./ruin-frontage.ts";
@@ -104,9 +104,9 @@ export function makeRuins(site: Site): StaticPiece[] {
   const bridges = makeBridges(site, accept);
   const infrastructureCount = pieces.length;
   const corridors = corridorIndex(bridges.corridors);
-  const planAccess = accessPlanner(site, pieces);
   const entrances = bridges.records.flatMap(r => r.entrances);
   const roadGround = roadGroundSamples(site, entrances);
+  const planAccess = accessPlanner(site, pieces, bridges.records, roadGround);
   // Reserve the real dry road, including its width, before choosing pedestrian door approaches. Unlike the
   // bridge deck this is solid earth: a route several metres below it must be replanned, not cut through it.
   for (const e of entrances) for (let k = 1; k < (e.runout?.length ?? 0); k++) {
@@ -224,7 +224,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   for (const r of bridges.records) for (const d of r.deck) if (!d.gap) {
     // The road approach was already fitted to the ground. Cutting a slab thickness out of its
     // earthwork here would excavate a kerb after placement, including just outside the first slab.
-    const ceiling = d.y - (r.kind === "road_bridge" ? .02 : .4);
+    const ceiling = deckCeiling(r, d);
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) lower(Math.round((z1 - d.z) / 2) + dz, Math.round((x1 - d.x) / 2) + dx, ceiling);
   }
   for (const r of bridges.records) for (const d of r.swim) {

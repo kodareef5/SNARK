@@ -265,6 +265,13 @@ reserved corridors. Optional caps and fins yield to circulation. The street
 assembly pass checks every certified street approach and bridge corridor.
 Atomic building admission enforces both chunk and city piece budgets.
 
+A door's approach runs from the nearest street, walk or plaza sample that passes
+(`ruin-access.ts`), graded 5 m either side to its level. Of those that pass, it
+takes the first that keeps within 2 m of the ground it crosses (`APPROACH_DEPTH`),
+since deeper leaves a trench or a bank no survivor climbs; where none does, the
+one that keeps nearest it, so a door keeps its way in. It is never laid on ground
+a bridge's deck digs out after the buildings are planned.
+
 After admission, circulation removes conflicting overhangs from neighbouring
 buildings. Street grading reserves enough width for its slopes and rejects
 crossings with incompatible levels. Bridge decks constrain the final ground.
