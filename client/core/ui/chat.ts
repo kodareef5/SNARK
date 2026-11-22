@@ -30,7 +30,7 @@ const HELP: readonly string[] = [
   "A line that begins with / is a command: /who, /pos, /time, /help give. The ` key opens the console.",
   "V changes the view, F3 the monitor, O opens Settings, I the inventory, M the map.",
   "Key 1 takes in hand the soul ball with your pteranodon, unless the server gives none: click to let it out, E to get on, Space to take off.",
-  "G (or the middle button, held) raises the helmet's visor: the wheel zooms it, N changes its view (plain, night, heat).",
+  "Hold N (or the middle button) to raise the helmet's visor: the wheel zooms it, a tap of N changes its view (plain, night, heat).",
 ];
 const HELP_TICKS = 20 * 30;
 const ANSWER_TICKS = 4 * 30;

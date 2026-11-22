@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { WEATHER_BAYS } from "../../client/core/texgen/weather.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, formwork, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
@@ -241,8 +242,8 @@ test("each finish is asked for as wide as its nearest surface shows it, twice wh
   // packed maps as wide, but no wider than the packed array's 512.
   expect([at(id("asphalt"), 0), at(id("asphalt"), 1), at(id("asphalt"), 2), at(id("plaster"), 0), at(id("plaster"), 2)]).toEqual([1000, 1000, 512, 250, 250]);
   expect([SURFACE_WEATHERING.plaster.peel > 0, at(id("concrete"), 0), at(id("grass"), 0), at(id("grass"), 2)]).toEqual([true, (2 * 500 * finishMetres(id("concrete"), p.surfaceCity)) / 10, 0, 0]);
-  // The weathering a storey of 4 m on a wall 8 m off; the road's macro and its repairs on the asphalt, to the array's side.
-  expect([at(n, 2), at(n + 1, 2), at(n + 2, 2), residency.asked.has(3 * n)]).toEqual([500, 512, 512, false]);
+  // The road's macro and its repairs on the asphalt, to the array's side; the walls' weathering is made, not asked for.
+  expect([at(n, 2), at(n + 1, 2), residency.asked.has(3 * n), residency.asked.has(3 * (n + 2) + 2)]).toEqual([512, 512, false, false]);
   // Read head on, once: half as wide; and no wider than medium keeps them.
   finishes.frame(p, residency, { ...tierOf("high"), anisotropy: 1 }, near, 500);
   expect([at(id("asphalt"), 0), at(id("plaster"), 0)]).toEqual([500, 125]);
@@ -250,10 +251,11 @@ test("each finish is asked for as wide as its nearest surface shows it, twice wh
   expect([at(id("asphalt"), 0), at(id("asphalt"), 2)]).toEqual([512, 256]);
 });
 
-test("every read of the finishes' arrays goes through worldGrad, held to its layer's finest level on the card, which widens a read only where a level less than that could be read", () => {
+test("every read of the finishes' arrays goes through worldGrad, held to its layer's finest level on the card, which widens a read only where a level less than that could be read; the weathering masks, made whole on the card, are read directly", () => {
   for (const text of [WORLD_GLSL, ROAD_GLSL]) expect(text.match(/textureGrad\(uWorld/g)).toBeNull();
-  expect(WORLD_GLSL.match(/textureGrad\(/g)!.length).toBe(1);
-  for (const read of ["worldBase(q, id, dx, dy)", "worldOrm(q, id, dx, dy)", "worldNormal(qb, id, bx, by)", `worldOrm(q, ${WEATHER_LAYER}, gx, gy)`]) expect(WORLD_GLSL).toContain(read);
+  expect(WORLD_GLSL.match(/textureGrad\((?!uWeather)/g)!.length).toBe(1);
+  expect(WORLD_GLSL.match(/textureGrad\(uWeather/g)!.length).toBe(3);
+  for (const read of ["worldBase(q, id, dx, dy)", "worldOrm(q, id, dx, dy)", "worldNormal(qb, id, bx, by)"]) expect(WORLD_GLSL).toContain(read);
   for (const layer of [ROAD_LAYER, REPAIRS_LAYER]) expect(ROAD_GLSL).toContain(`, ${layer}, `);
 });
 
@@ -299,40 +301,87 @@ test("a static's frame reads along a wall the way its face looks and up from its
   expect(() => ownVertex("void main() {}")).toThrow();
 });
 
-test("a wall weathers by the masks: runoff more under open sky, a damp foot near the ground, paint let go to concrete on plaster alone, joints on concrete, salt on brick, all gone far off; a roof keeps only its value from bay to bay", () => {
+test("a wall's bays are keyed in the world: the same either side of a chunk's edge and along a wall a little off the axes, another for a wall a few metres off or facing the other way, and none on a roof", () => {
+  const out = new Float64Array(4), key = (x: number, z: number, nx: number, nz: number): number => (wallFrame(x, z, nx, 0, nz, out), out[1]!);
+  // A wall facing north along x at z = 52.3: one key along a bay, another bay along, the same key whichever chunk draws it.
+  expect(key(1001, 52.3, 0, 1)).toBe(key(1006.9, 52.3, 0, 1));
+  wallFrame(1001, 52.3, 0, 0, 1, out);
+  expect([out[0], out[2], out[3]]).toEqual([1001, 2, 1]);
+  // Two degrees off x: its plane moves 0.28 m a bay, yet every pixel of a bay has its middle's key.
+  const n = [-Math.sin(0.035), Math.cos(0.035)], along = (t: number): [number, number] => [1000 + t * Math.cos(0.035), 52.3 + t * Math.sin(0.035)];
+  const keys = new Set<number>();
+  for (let t = 0.01; t < 7.99; t += 0.05) {
+    const [x, z] = along(t);
+    keys.add(key(x, z, n[0]!, n[1]!));
+  }
+  expect(keys.size).toBe(1);
+  expect(key(1001, 55.3, 0, 1)).not.toBe(key(1001, 52.3, 0, 1));
+  expect(key(1001, 52.3, 0, -1)).not.toBe(key(1001, 52.3, 0, 1));
+  wallFrame(1001, 52.3, 0, 1, 0, out);
+  expect(out[3]).toBe(0);
+});
+
+test("a wall weathers by the masks it is given: runoff more under open sky, a damp foot near the ground, paint let go to concrete on plaster alone, salt on brick, splash at the ground storey's foot, sun bleaching facing the sun and a green film facing away; nothing of the masks while they are being made; all gone far off; a roof keeps only its value from bay to bay", () => {
   const city = new Float32Array(12); citySurface(city, "core:miami");
   const id = (name: string): number => (SURFACE_NAMES as readonly string[]).indexOf(name);
-  const masks = [1, 0.5, 1, 1];
-  const sample: WorldSample = (role, layer, _u, _v, _spread, out) => out.set(layer === WEATHER_LAYER && role === 2 ? masks : [0.05, 0.05, 0.05, 1]);
-  const at = (finish: string, o: { wall?: number; seed?: number; over?: number; open?: number; dist?: number } = {}): number[] => {
+  const bay = [1, 0, 0, 0], field = [0.5, 0, 0, 0];
+  const sample: WorldSample = (role, layer, _u, _v, _spread, out) => out.set(role === 3 ? (layer < WEATHER_BAYS ? bay : field) : [0.05, 0.05, 0.05, 1]);
+  const at = (finish: string, o: { ny?: number; nx?: number; nz?: number; x?: number; over?: number; open?: number; dist?: number; ready?: number } = {}): number[] => {
     const albedo = Float64Array.of(0.5, 0.5, 0.5), orm = Float64Array.of(1, 0.8, 0);
-    weathered(albedo, orm, id(finish), 2, o.wall ?? 1, o.seed ?? 0.61, o.over ?? 3, o.open ?? 1, 10, 3, 30, false, o.dist ?? 10, 0.01, city, sample);
+    const ny = o.ny ?? 0, nz = o.nz ?? (ny ? 0 : 1);
+    weathered(albedo, orm, id(finish), o.x ?? 10.7, 3, 30.2, o.nx ?? 0, ny, nz, o.over ?? 3, o.open ?? 1, o.dist ?? 10, 0.01, city, sample, o.ready ?? 1, sample);
     return [...albedo, orm[1]!];
   };
-  const roof = at("concrete", { wall: 0 }), far = at("concrete", { dist: WEATHER_GONE + 1 });
-  expect(far).toEqual(roof);
-  expect(roof[3]).toBe(0.8);
-  expect(at("concrete", { wall: 0, seed: 0.12 })[0]).not.toBe(roof[0]);
-  // Runoff and joints darken a concrete wall, more under the open sky; a foot darker still and less rough.
+  // Far off a wall keeps only its tone, which moves from bay to bay; a roof's moves only with the noise.
+  const roof = at("concrete", { ny: 1 }), far = at("concrete", { dist: WEATHER_GONE + 1 });
+  expect([roof[3], far[3]]).toEqual([0.8, 0.8]);
+  expect(at("concrete", { dist: WEATHER_GONE + 1, x: 18.7 })[0]).not.toBe(far[0]);
+  expect(at("concrete", { ny: 1, x: 10.71 })[0]).toBeCloseTo(roof[0]!, 3);
+  // Runoff darkens a concrete wall, more under the open sky; a foot darker still and less rough.
   const wall = at("concrete");
   expect(wall[0]!).toBeLessThan(roof[0]!);
   expect(at("concrete", { open: 0 })[0]!).toBeGreaterThan(wall[0]!);
   const foot = at("concrete", { over: 0.05 });
   expect(foot[0]!).toBeLessThan(wall[0]!);
   expect(foot[3]!).toBeLessThan(wall[3]!);
+  // While the masks are made nothing of them shows.
+  const ready0 = at("concrete", { ready: 0 });
+  bay.splice(0, 4, 0, 0, 0, 0);
+  expect(at("concrete")).toEqual(ready0);
   // Salt runs lighten brick; plaster lets go to the concrete under it, which is darker here, and concrete does not.
-  masks.splice(0, 4, 0, 0.5, 0, 0);
   const dry = at("brick")[0]!;
-  masks.splice(0, 4, 1, 0.5, 0, 0);
+  bay[0] = 1;
   expect(at("brick")[0]!).toBeGreaterThan(dry);
   const kept = at("plaster");
-  masks[2] = 1;
+  field[1] = 1;
   expect(at("plaster")[0]!).toBeLessThan(kept[0]!);
-  expect(at("concrete")[0]!).toBe(at("concrete")[0]!);
-  masks.splice(0, 4, 0, 0, 1, 0);
+  field[1] = 0;
+  // Splash darkens the foot of the ground storey and not the foot of the next.
+  bay.splice(0, 4, 0, 0, 0, 0);
+  const clean = [at("concrete", { over: 0.4 })[0]!, at("concrete", { over: 4.4 })[0]!];
+  bay[3] = 1;
+  expect(at("concrete", { over: 0.4 })[0]!).toBeLessThan(clean[0]!);
+  expect(at("concrete", { over: 4.4 })[0]!).toBe(clean[1]!);
+  bay[3] = 0;
+  // Facing the afternoon sun plaster bleaches; facing away in the shade, with a patina, it greens.
+  const shade = at("plaster", { nz: 1, open: 0 }), sun = at("plaster", { nz: -1, open: 1 });
+  field[2] = 1;
+  const film = at("plaster", { nz: 1, open: 0 });
+  expect(sun[0]!).toBeGreaterThan(at("plaster", { nz: 1, open: 1 })[0]!);
+  expect(film[1]! / film[0]!).toBeGreaterThan(shade[1]! / shade[0]!);
   // Without runs the open sky matters only to the band under the slab line, which is gone at the foot of a storey.
+  field[2] = 0;
   expect(at("concrete", { over: 4.001 })[0]!).toBeCloseTo(at("concrete", { open: 0, over: 4.001 })[0]!, 6);
-  expect(at("concrete", { over: 3.6 })[0]!).toBeLessThan(at("concrete", { over: 0.6 })[0]!);
+  field[0] = 0;
+  expect(at("concrete", { over: 3.6 })[0]!).toBeLessThan(at("concrete", { over: 1.6 })[0]!);
+});
+
+test("formwork's joints run every 2 m along a concrete wall and up each storey, with tie holes between them, and fade as a pixel grows wider than a joint", () => {
+  expect(formwork(2.001, 1.3, 0.001)).toBeGreaterThan(0.5);
+  expect(formwork(5.3, 6.0005, 0.001)).toBeGreaterThan(0.5);
+  expect(formwork(0.7, 0.7, 0.001)).toBe(0);
+  expect(formwork(0.38, 0.38, 0.001)).toBeGreaterThan(0.5);
+  expect(formwork(2.001, 1.3, 0.2)).toBeLessThan(0.1);
 });
 
 test("with the masks in the pack, a frame asks for their packed maps alone, as wide as the packed array keeps, and the array is not drawn until they are in", () => {
@@ -341,7 +390,7 @@ test("with the masks in the pack, a frame asks for their packed maps alone, as w
   const residency = finishResidency(held);
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
   finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
-  expect([residency.asked.size, residency.asked.get(3 * n + 2), residency.asked.has(3 * n)]).toEqual([n * 3 + 3, 512, false]);
+  expect([residency.asked.size, residency.asked.get(3 * n + 2), residency.asked.has(3 * n)]).toEqual([n * 3 + 2, 512, false]);
   held.fill(4); held[n * 3 + 2] = -1;
   finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
   expect([...p.worldLevel]).toEqual([0, 0, -1]);

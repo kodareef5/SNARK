@@ -3,10 +3,11 @@
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
 import { moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_HEAT_SHIFT, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
-import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
+import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
+import { WeatherMasks } from "./texgen.ts";
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
@@ -41,7 +42,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers follow its place in `last`, and uEffect's four end it. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, heat: 46 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, heat: 46, weatherReady: 47 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -154,6 +155,9 @@ export class GlRenderer {
   private mappedRoles = 0;
   /** 1 once every world finish's maps are on the card, this frame. */
   private worldReady = 0;
+  /** The walls' weathering masks, made on the card (texgen.ts). */
+  private weather!: WeatherMasks;
+  private readonly anisotropyOf = (target: number): void => this.anisotropy(target);
   /** How much a material that glows only by night glows in this frame (surface.ts `lampsOn`). */
   private night = 0;
   private exposure = 1;
@@ -231,11 +235,13 @@ export class GlRenderer {
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
-    // The masks (the weathering's and the road's) are the packed array's layers after the finishes'; their base colour and normal are never drawn.
+    // The masks (the road's) are the packed array's layers after the finishes'; their base colour and normal are never
+    // drawn. A world material that is neither, such as an older pack's painted weathering, has no layer and is not held.
     for (const m of this.materials) {
       if (!m.id.startsWith(SURFACE_PREFIX)) continue;
-      const mask = (MASK_MATERIALS as readonly string[]).indexOf(m.id);
-      [m.base, m.normal, m.mro].forEach((t, r) => (mask < 0 || r === 2) && this.worldLayer.set(t, r * 32 + (mask >= 0 ? WEATHER_LAYER + mask : (SURFACE_NAMES as readonly string[]).indexOf(m.id.slice(SURFACE_PREFIX.length)))));
+      const mask = (MASK_MATERIALS as readonly string[]).indexOf(m.id), finish = (SURFACE_NAMES as readonly string[]).indexOf(m.id.slice(SURFACE_PREFIX.length));
+      const layer = mask >= 0 ? MASK_LAYER + mask : finish;
+      if (layer >= 0) [m.base, m.normal, m.mro].forEach((t, r) => (mask < 0 || r === 2) && this.worldLayer.set(t, r * 32 + layer));
     }
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.meshes = manifest.meshes;
@@ -265,6 +271,7 @@ export class GlRenderer {
     this.linked.clear();
     this.neutral = [];
     this.world = [null, null, null];
+    this.weather = new WeatherMasks(gl, UNIT.weather);
     this.worldSide = [0, 0, 0];
     this.current = this.warmed = this.mapped = this.vao = this.arrayBuffer = null;
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
@@ -512,7 +519,7 @@ export class GlRenderer {
     gl.activeTexture(gl.TEXTURE0 + UNIT.maps + role);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.world[role] ?? (this.world[role] = gl.createTexture()));
     if (this.worldBase[role] === -2) {
-      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), internal, side, side, role === 2 ? WEATHER_LAYER + MASK_MATERIALS.length : SURFACE_NAMES.length);
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), internal, side, side, role === 2 ? MASK_LAYER + MASK_MATERIALS.length : SURFACE_NAMES.length);
       gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       this.anisotropy(gl.TEXTURE_2D_ARRAY);
       this.worldBase[role] = -1;
@@ -608,7 +615,10 @@ export class GlRenderer {
       prog.text = null;
     }
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
-    if (p.lit) this.uniform(prog, U.worldReady, this.worldReady);
+    if (p.lit) {
+      this.uniform(prog, U.worldReady, this.worldReady);
+      this.uniform(prog, U.weatherReady, this.weather.plan.ready);
+    }
     if (last[U.viewProj] === this.view) return prog;
     last[U.viewProj] = this.view;
     gl.uniformMatrix4fv(at[U.viewProj]!, false, this.matrix, this.matrixAt, 16);
@@ -745,6 +755,14 @@ export class GlRenderer {
       // The governor's step to no light target draws the same tier with these, which a step should not wait to link.
       if (drawsLight(p.tier, this.light)) for (const n of tierPrograms(p.tier)) this.program(n, false);
       this.world.forEach((t, r) => t && (gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r), gl.bindTexture(gl.TEXTURE_2D_ARRAY, t), this.anisotropy(gl.TEXTURE_2D_ARRAY)));
+      if (this.weather.texture) (gl.activeTexture(gl.TEXTURE0 + UNIT.weather), gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.weather.texture), this.anisotropy(gl.TEXTURE_2D_ARRAY));
+    }
+    // The weathering masks are made before anything of the frame is drawn, in a share of the card's time a frame: a
+    // millisecond where the finishes are a thousand pixels wide or more, half that below.
+    this.set(false, false, false);
+    if (this.weather.step(p.weatherSide, p.tier.finishes >= 1024 ? 1 : 0.5, this.anisotropyOf)) {
+      this.current = null;
+      this.vao = this.weather.vao;
     }
     for (let r = 0; r < 3; r++) if (p.worldSide[r] !== this.worldSide[r]) {
       gl.deleteTexture(this.world[r] ?? null);
@@ -1270,6 +1288,6 @@ export class GlRenderer {
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    return { program, text, at: [], last: new Float64Array(U.heat + 1).fill(NaN), bounds: null };
+    return { program, text, at: [], last: new Float64Array(U.weatherReady + 1).fill(NaN), bounds: null };
   }
 }

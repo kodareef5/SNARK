@@ -358,3 +358,21 @@ test("through a sight the ground in view is chosen as if it stood the zoom's tim
   expect(tilesAt(zoomedIn, 600)).toBeGreaterThan(tilesAt(plain, 600));
   expect(placed(hf, zoomedIn)).toBe(true);
 });
+
+test("the fine window centres where a sight that magnifies is on, and back on the camera once it is lowered", () => {
+  const hf = rough(64);
+  const lod = new TerrainLod(hf);
+  const cam = camera(400, 400, hf);
+  const middle = (p: FramePacket): number[] => [(p.groundWindow[1]! + (WINDOW - 1) / 2) * hf.cell, (p.groundWindow[2]! + (WINDOW - 1) / 2) * hf.cell];
+  let p = frame(lod, cam);
+  expect(Math.hypot(middle(p)[0]! - 1025, middle(p)[1]! - 1025)).toBeLessThan(700);
+  // On a point 3 km off: the window is filled there and drawn from there, within the map.
+  lod.centreX = 2700;
+  lod.centreZ = 2600;
+  for (let f = 0; f < 4; f++) p = frame(lod, cam);
+  expect(Math.hypot(middle(p)[0]! - 2700, middle(p)[1]! - 2600)).toBeLessThan(WINDOW_MOVE);
+  expect(placed(hf, p)).toBe(true);
+  lod.centreX = lod.centreZ = NaN;
+  for (let f = 0; f < 4; f++) p = frame(lod, cam);
+  expect(Math.hypot(middle(p)[0]! - 400, middle(p)[1]! - 400)).toBeLessThan(1100);
+});
