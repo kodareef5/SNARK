@@ -84,7 +84,7 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079); CMD_MARK, a
  * creature spotted for the tribe, and its mark (MARK_SPOT, D1082).
  * 43: an eleventh button, BTN_VISOR, a visor held up, which the server takes as the proof of its gaze (D1084).
- * 44: a twelfth button, BTN_BURST, a thruster car's flip, and the car's thruster state on the owner's body (D1085).
+ * 44: a twelfth button, BTN_BURST, a thruster car's flip, and the car's thruster state on the owner's body (D1112).
  */
 export const PROTOCOL_VERSION = 44;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
