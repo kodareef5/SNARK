@@ -535,7 +535,7 @@ export class FramePacket {
   worldComing = false;
   readonly worldPhase = new Float32Array(SURFACE_NAMES.length * 3);
   /** The side of the layers of the walls' weathering masks the card makes and keeps (texgen/weather.ts), 0 where the tier does not weather. */
-  weatherSide = 0;
+  texgenSide = 0;
   /** The textures the facades read, by their index in the manifest, -1 for none: the elements' base colour, normal and packed map, the rooms', the marks' (facade.ts FacadeAtlases). */
   readonly facadeSlots = new Int32Array(5).fill(-1);
   /** Linear 0..1 RGB. */

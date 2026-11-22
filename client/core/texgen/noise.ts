@@ -1,18 +1,11 @@
 // The noises the page makes its pictures from (texgen), twice: in TypeScript for the rasterizer, the tests and the tools,
-// and in GLSL for the card. Both take the same integer hash of whole numbers, so a seed draws the same picture on
-// either, to the float's last bits. Tiling noises take a period in cells along each axis, so a picture made from them
-// wraps without a seam.
+// and in GLSL for the card. Both take the same integer hash of whole numbers (hash.ts), so a seed draws the same
+// picture on either, within a step of 255 where the card's 32-bit floats put an edge on the other side of a texel's
+// middle. Tiling noises take a period in cells along each axis, so a picture made from them wraps without a seam.
 
-/** 32 bits from three whole numbers, each bit as likely as the next. */
-export function hash32(a: number, b: number, c: number): number {
-  let h = (Math.imul(a, 1597334677) ^ Math.imul(b, 3812015801) ^ Math.imul(c, 2654435761)) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 2246822519) >>> 0;
-  h = Math.imul(h ^ (h >>> 13), 3266489917) >>> 0;
-  return (h ^ (h >>> 16)) >>> 0;
-}
+import { hash3 } from "./hash.ts";
 
-/** A number from 0 to 1 from three whole numbers: hash32's top 24 bits, which a float holds exactly. */
-export const hash3 = (a: number, b: number, c: number): number => (hash32(a, b, c) >>> 8) / 16777216;
+export { hash3, hash32 } from "./hash.ts";
 
 /** `i` brought into 0 to `n`. */
 const wrap = (i: number, n: number): number => ((i % n) + n) % n;

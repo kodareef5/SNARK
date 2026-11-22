@@ -1,6 +1,6 @@
 // Whether this machine's card makes the textures the page makes (client/core/texgen) as their TypeScript twins do, drawn
 // by the shipped primitive (client/shell/texgen.ts) as the engine orders it, frame by frame and timed as in play: the
-// weathering's two jobs and the engine's own sample job. Each layer's bytes are set against its twin's; the card's
+// weathering's bays and field and the formwork's tile. Each layer's bytes are set against its twin's; the card's
 // floats are 32 bits where the twin's are 64, so a byte may differ by a step where a feature's edge falls between them.
 // It says too how long the card took to make each program's pipeline at its first draw, and to make everything.
 //

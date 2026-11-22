@@ -5,7 +5,8 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import type { QueryGl } from "../../client/core/passes.ts";
 import { DRAW_INTS, SLICE, SLICE_LOW, TEXGEN_COARSE, TEXGEN_RISE, Texgen, jobFragment, jobPixels, type Job, type Orders } from "../../client/core/texgen/engine.ts";
-import { grainJob } from "../../client/core/texgen/grain.ts";
+import { formworkJob } from "../../client/core/texgen/formwork.ts";
+import { FIELD_LAYER, FORMWORK_LAYER, TEXGEN_BUDGET, TEXGEN_LAYERS, texgenBytes, texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherJobs } from "../../client/core/texgen/weather.ts";
 
 const high = tierOf("high"), medium = tierOf("medium");
@@ -191,39 +192,36 @@ test("the warming draws a pixel with each job's program into an array a pixel wi
   expect(none.frame(0, high, false).side).toBe(0);
 });
 
-test("the weathering's two jobs at 512 on a card with no timer: its first pass comes up within six frames, and all of it is made and eased in within a hundred", () => {
+test("the weathering's three jobs at 512 on a card with no timer: its first pass comes up within twelve frames, and all of it is made and eased in within two hundred", () => {
   const t = new Texgen(weatherJobs()), held = { side: 0 };
   let up = -1, frames = 0;
-  for (; frames < 200 && !t.done; frames++) {
+  for (; frames < 400 && !t.done; frames++) {
     shell(t.frame(512, high, false), held);
     if (up < 0 && t.ready > 0) up = frames;
   }
-  expect([t.orders.layers, t.first]).toEqual([9, [0, 6, 8]]);
-  expect(up).toBeLessThanOrEqual(6);
-  expect(frames).toBeLessThan(100);
+  expect([t.orders.layers, t.first]).toEqual([TEXGEN_LAYERS, [0, FIELD_LAYER, FORMWORK_LAYER]]);
+  expect(up).toBeLessThanOrEqual(12);
+  expect(frames).toBeLessThan(200);
 });
 
-test("a job it was not made for: a tiling noise layer, drawn as its twin says, its program the engine's", () => {
-  const grain = grainJob(77, [8, 8, 4, 2], 4);
-  const text = jobFragment(grain);
-  expect(text).toContain("uniform vec4 uJob[4];");
+test("a job of another shape: the formwork's one band, which tiles, drawn as its twin says, its program the engine's, in the layer after the jobs before it", () => {
+  const form = formworkJob(), text = jobFragment(form);
+  expect(text).toContain("uniform vec4 uJob[2];");
   expect(text).toContain("vec4 made(vec2 at)");
-  const px = jobPixels(grain, 0, 32);
-  // It tiles: across its wrap its values change about as much as within it.
-  let wrap = 0, inside = 0;
-  for (let y = 0; y < 32; y++) for (let c = 0; c < 4; c++) {
-    wrap += Math.abs(px[(y * 32) * 4 + c]! - px[(y * 32 + 31) * 4 + c]!);
-    inside += Math.abs(px[(y * 32 + 15) * 4 + c]! - px[(y * 32 + 16) * 4 + c]!);
-  }
-  expect(wrap).toBeLessThan(inside * 1.6 + 64);
-  // Beside the weathering's two jobs it takes the layer after theirs and draws as they do.
-  const t = new Texgen([job(6, 2), job(2, 1, 4), grain]);
+  const px = jobPixels(form, 0, 64);
+  // It tiles: its joints lie on its edges, the same either side of its wrap.
+  let wrap = 0;
+  for (let y = 0; y < 64; y++) wrap += Math.abs(px[(y * 64) * 4]! - px[(y * 64 + 63) * 4]!) + Math.abs(px[y * 4]! - px[(63 * 64 + y) * 4]!);
+  expect(wrap).toBeLessThan(64 * 2 * 8);
+  const t = new Texgen([job(6, 2), job(2, 1, 4), form]);
   expect([t.first[2], t.orders.layers, t.orders.programs.length]).toEqual([8, 9, 3]);
-  // A channel of fewer cells is smoother.
-  let rough = 0, smooth = 0;
-  for (let i = 0; i < 31; i++) for (let y = 0; y < 32; y++) {
-    rough += Math.abs(px[(y * 32 + i) * 4]! - px[(y * 32 + i + 1) * 4]!);
-    smooth += Math.abs(px[(y * 32 + i) * 4 + 3]! - px[(y * 32 + i + 1) * 4 + 3]!);
-  }
-  expect(smooth).toBeLessThan(rough / 2);
+});
+
+test("the array keeps to its budget: every layer at 512 on medium, high and ultra, a side halved for more layers than fit, and none where even 256 cannot hold them or nothing weathers", () => {
+  const ultra = tierOf("ultra"), lowpoly = tierOf("lowpoly");
+  for (const tier of [medium, high, ultra]) expect(texgenSide(tier, tier.finishes)).toBe(512);
+  expect(texgenBytes(512)).toBeLessThanOrEqual(TEXGEN_BUDGET);
+  expect(texgenSide(high, high.finishes, TEXGEN_LAYERS * 2)).toBe(256);
+  expect(texgenSide(high, high.finishes, Math.floor(TEXGEN_BUDGET / texgenBytes(256, 1)) + 1)).toBe(0);
+  expect([texgenSide(lowpoly, lowpoly.finishes), texgenSide(high, 0)]).toEqual([0, 0]);
 });

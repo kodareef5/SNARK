@@ -85,7 +85,7 @@ export class TripProbe {
     this.set("blocks", (scene.blocks?.stats.draws ?? 0) > 0);
     this.set("colour", p.worldSide[0] === 0 || p.worldLevel[0]! >= 0);
     this.set("soft", r.bare() === 0);
-    this.set("making", p.weatherSide > 0);
+    this.set("making", p.texgenSide > 0);
     this.set("weathered", (this.app.texgen?.ready ?? 0) > 0);
     if (world.city !== this.city) {
       const city = (this.city = world.city);

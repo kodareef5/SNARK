@@ -1,5 +1,5 @@
 // An RGBA8 texture array on a unit that the card draws as core's orders say (client/core/texgen/engine.ts).
-import { DRAW_INTS, type Orders } from "../core/texgen/engine.ts";
+import type { Orders } from "../core/texgen/engine.ts";
 
 export type Made = ReturnType<typeof made>;
 
@@ -31,7 +31,7 @@ export function made(gl: WebGL2RenderingContext, unit: number) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.bindVertexArray(vao);
         o.begin();
-        for (let d = 0, prog: WebGLProgram | null; k < o.count && (prog = program(o.draws[(d = k * DRAW_INTS)]!)); k++) {
+        for (let d = 0, prog: WebGLProgram | null; k < o.count && (prog = program(o.draws[(d = k * o.stride)]!)); k++) {
           gl.useProgram(prog);
           gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, texture, o.draws[d + 2]!, o.draws[d + 1]!);
           gl.viewport(0, o.draws[d + 3]!, side >> o.draws[d + 2]!, o.draws[d + 4]!);

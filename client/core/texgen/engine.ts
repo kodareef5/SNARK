@@ -134,6 +134,8 @@ export class Orders {
   /** Each job's program, by the job's number in the draws. */
   readonly programs: readonly { vertex: string; fragment: string; defines: string; samplers: Record<string, number> }[];
   count = 0;
+  /** DRAW_INTS for each draw. */
+  readonly stride = DRAW_INTS;
   readonly draws = new Int32Array(MOST_DRAWS * DRAW_INTS);
   readonly uniforms: Float32Array;
   /** Once every draw is carried out: the base level, or -1 for as it is, and whether the levels under it are made from it. */

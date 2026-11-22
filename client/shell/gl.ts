@@ -43,7 +43,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers follow its place in `last`, and uEffect's four end it. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, heat: 46, weatherReady: 47 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, heat: 46, texgenReady: 47 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -273,7 +273,7 @@ export class GlRenderer {
     this.linked.clear();
     this.neutral = [];
     this.world = [null, null, null];
-    this.gen = made(gl, UNIT.weather);
+    this.gen = made(gl, UNIT.texgen);
     this.worldSide = [0, 0, 0];
     this.current = this.warmed = this.mapped = this.vao = this.arrayBuffer = null;
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
@@ -638,7 +638,7 @@ export class GlRenderer {
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
     if (p.lit) {
       this.uniform(prog, U.worldReady, this.worldReady);
-      this.uniform(prog, U.weatherReady, this.texgen?.ready ?? 0);
+      this.uniform(prog, U.texgenReady, this.texgen?.ready ?? 0);
     }
     if (last[U.viewProj] === this.view) return prog;
     last[U.viewProj] = this.view;
@@ -776,13 +776,13 @@ export class GlRenderer {
       // The governor's step to no light target draws the same tier with these, which a step should not wait to link.
       if (drawsLight(p.tier, this.light)) for (const n of tierPrograms(p.tier)) this.program(n, false);
       this.world.forEach((t, r) => t && (gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r), gl.bindTexture(gl.TEXTURE_2D_ARRAY, t), this.anisotropy(gl.TEXTURE_2D_ARRAY)));
-      if (this.gen.texture) (gl.activeTexture(gl.TEXTURE0 + UNIT.weather), gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.gen.texture), this.anisotropy(gl.TEXTURE_2D_ARRAY));
+      if (this.gen.texture) (gl.activeTexture(gl.TEXTURE0 + UNIT.texgen), gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.gen.texture), this.anisotropy(gl.TEXTURE_2D_ARRAY));
     }
     // What the card makes is drawn before anything of the frame; a clock timing the frame times it as its first pass,
     // and it is not timed apart.
     this.set(false, false, false);
     this.passes?.mark(PASS_MAKING);
-    if (this.texgen && this.gen.draw(this.texgen.frame(p.weatherSide, p.tier, !this.passes?.on), this.job, this.anisotropyOf)) {
+    if (this.texgen && this.gen.draw(this.texgen.frame(p.texgenSide, p.tier, !this.passes?.on), this.job, this.anisotropyOf)) {
       this.current = null;
       this.vao = this.gen.vao;
     }
@@ -1310,6 +1310,6 @@ export class GlRenderer {
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    return { program, text, at: [], last: new Float64Array(U.weatherReady + 1).fill(NaN), bounds: null };
+    return { program, text, at: [], last: new Float64Array(U.texgenReady + 1).fill(NaN), bounds: null };
   }
 }
