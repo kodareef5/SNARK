@@ -56,6 +56,15 @@
 //                 picture is 16-bit greyscale of 1, 2, 4, 8, 16, 32 or 64 m a pixel, its value the number of the body
 //                 counting from 1, or 0 for the sea's water. A body's water is wherever the ground of one of its squares is
 //                 under its surface, which stands on the heights' lattice. Optional.
+//   streets.json  [{ "col": 134, "row": 131, "file": "streets-134-131.bin" }]
+//                 The streets as lines (shared/world/streets.ts), a sector's part a file of its bytes as the build wrote
+//                 them, by the sector's square on the lattice. Optional.
+//   road-across.png, road-along.png, road-half.png, road-lanes.png
+//                 The roads' frame (shared/world/roadframe.ts), 8-bit greyscale, a pixel every 4 m: all four or none.
+//   landmarks.json { "landmarks": [{ "name": "hut", "x": 300, "y": 10, "z": 300, "yaw": 0 }], "defs": [...] }
+//                 The landmarks the map places and their pieces' own definitions. Optional.
+//
+// A city's build (tools/mapworld/build.ts) writes its folder of layers, these too, so `build` makes the same map from it.
 
 import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -128,7 +137,8 @@ export function describe(file: Uint8Array): string[] {
  * its nodes stand, and the far feed's cells of its chunks baked into its tops.
  */
 export function made(map: MapData): MapData {
-  const reg = registry();
+  // With its landmarks' own definitions, as a city's build has them (tools/mapworld/build.ts).
+  const reg = withContent(registry(), map.content?.defs ?? []);
   return { ...resolveNodes(map, reg), tops: mapTops(map, reg) };
 }
 
@@ -142,7 +152,8 @@ export async function save(path: string, map: MapData | Uint8Array, release = fa
 /** `args` are the words after the command's name, less --release. Another tool adds its command here. */
 export const COMMANDS: Record<string, { usage: string; run(args: string[], release: boolean): void | Promise<void> }> = {
   build: { usage: "<folder> <out.snmap>", run: ([folder, out], release) => save(out!, made(readLayers(folder!)), release) },
-  unpack: { usage: "<file.snmap> <folder>", run: ([file, folder]) => writeLayers(parseMap(new Uint8Array(readFileSync(file!))), folder!) },
+  // Read with what is drawn from it too (the roads' frame), which a server reads past.
+  unpack: { usage: "<file.snmap> <folder>", run: ([file, folder]) => writeLayers(parseMap(new Uint8Array(readFileSync(file!)), true, true), folder!) },
   proving: { usage: "<out.snmap>", run: ([out], release) => save(out!, provingFile(registry()), release) },
   info: { usage: "<file.snmap>", run: ([file]) => describe(new Uint8Array(readFileSync(file!))).forEach((line) => console.log(line)) },
   pack: { usage: "<file.snmap>", run: ([file], release) => save(file!, new Uint8Array(readFileSync(file!)), release) },

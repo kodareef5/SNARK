@@ -4,6 +4,7 @@ import { HAND_NEAR } from "../../client/core/render/hand.ts";
 import { DRAW_BLEND, DRAW_WATER, FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { BENCH_FRAMES, PASSES, PASS_CASTERS, PASS_DOME, PASS_NEAR, PassClock, effectsOff, packetWithout, tierWithout, type QueryGl } from "../../client/core/passes.ts";
 import { BenchRun, alternateSpread, passSpread } from "../../client/core/bench-run.ts";
+import type { MapProgress } from "../../client/core/mapload.ts";
 
 /** A card that runs each query `ms` long and has its result two frames later, or never where `timed` is false. */
 function card(ms: (pass: number) => number, timed = true) {
@@ -110,6 +111,26 @@ test("a bench run measures once the scene is still, turns its view from then, an
   expect(report!.frames).toBe(BENCH_FRAMES);
   expect(report!.frameMs.median).toBeCloseTo(16.7, 5);
   expect([report!.gpuMs, (report!.gpuFrames as number[]).length, report!.renderer, report!.alternate]).toEqual([{ frame: { median: 5, p95: 5 } }, BENCH_FRAMES, "a card", null]);
+});
+
+test("a bench run waits for the whole map before the still frames it starts after, and says what it waited for", () => {
+  // The map's parts come over the first 200 frames, the whole map's statics are handed over at the 150th and the road
+  // parts round the body held at the 180th; the scene is still and nothing else is on its way all the while.
+  const progress = (f: number): MapProgress => ({ left: Math.max(0, 200 - f), parts: 200, near: f >= 50, whole: f >= 150, roads: f >= 180 ? 0 : 3 });
+  const run = new BenchRun();
+  const p = new FramePacket();
+  let f = 0, began = -1, asked = 0;
+  const drawn = { drawCalls: 10, canvas: [100, 100], renderer: "a card", userAgent: "a browser", card: { bytes: 1024, textures: 512 }, squeeze: 0, map: () => (asked++, progress(f)) };
+  let report: ReturnType<BenchRun["frame"]> = null;
+  for (let now = 0; f < 300 + BENCH_FRAMES && !report; f++, now += 16.7) {
+    if (began < 0 && run.since(now) > 0) began = f;
+    report = run.frame(now, 1, [[5]], p, true, drawn);
+  }
+  // Begun at the 60th still frame from the 200th, the first with the whole map, and turning from the next but one; the
+  // map asked of only until then.
+  expect([began, asked]).toEqual([261, 201]);
+  expect(report!.waited).toEqual({ mapMs: Math.round(200 * 16.7), map: progress(200), stillFrames: 60, gaveUp: false });
+  expect("map" in report!).toBe(false);
 });
 
 test("effects off from the address: those in the tier, one copy a tier, and those in the built frame", () => {

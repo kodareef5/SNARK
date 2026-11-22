@@ -261,6 +261,25 @@ test("a road of two points across the map's edge has its kerbs, from the sector 
   expect(kerbLines(both, decodeStreets(encodeStreets(far), 1024, 0)).length).toBe(0);
 });
 
+test("a road whose centre line runs just past a cut's edge has the kerb that lies in the cut, as the whole map has it, each kerb once", () => {
+  // A cut of one sector, 0 to 1,024 m. A road along x whose centre line is 1 m past its north edge, 5 m to each kerb: its
+  // south kerb lies 4 m inside the cut, its north kerb 6 m past it. The road was asphalt inside the cut and had no kerb.
+  const wide = heldSide(5, 0, 2, kindsByte(0, WALK, RAISED));
+  const road = { type: 0, flags: 0, seed: 1, sides: [wide, wide] as const, xz: Float64Array.of(100, 1025, 900, 1025) };
+  const south: StreetsPart = { x0: 0, z0: 0, stretches: [road], corners: [] }, north: StreetsPart = { x0: 0, z0: 1024, stretches: [road], corners: [] };
+  const cut = new StreetSectors(), cutPart = decodeStreets(encodeStreets(south), 0, 0);
+  cut.put(0, cutPart, 0, 0, 16, 16);
+  const onLine = (l: { xz: Float64Array }): number => l.xz[1]!;
+  expect(kerbLines(cut, cutPart).map(onLine)).toEqual([1020]);
+  // The whole map, both sectors held: the south kerb given by the cut's sector, the north by the one past it, once each.
+  const whole = new StreetSectors(), a = decodeStreets(encodeStreets(south), 0, 0), b = decodeStreets(encodeStreets(north), 0, 1024);
+  whole.put(0, a, 0, 0, 16, 16);
+  whole.put(1, b, 0, 16, 16, 32);
+  expect([kerbLines(whole, a).map(onLine), kerbLines(whole, b).map(onLine)]).toEqual([[1020], [1030]]);
+  // The cut's kerb is the whole map's to the point.
+  expect(Array.from(kerbLines(cut, cutPart)[0]!.xz)).toEqual(Array.from(kerbLines(whole, a)[0]!.xz));
+});
+
 test("a map carries its streets' parts and gives them back, and its heightfield's wheels follow them", () => {
   // The fixture's south-east corner is at column 2040 and row 2050 of the lattice: its first sector's square, column 127
   // and row 128, begins 8 chunks west and 2 south of it, so its places are from (-512, -128).

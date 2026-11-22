@@ -7,6 +7,8 @@
 // `bent` takes a vertex as modelled, with its normal and tangent, to the piece's own frame, which the draw's turn and
 // place then take to the world as any rigid piece's; it leaves in gBent how far along its kerb line the vertex is, how far
 // across from the kerb's face, and its height as modelled, which the textured fragment's wear reads (BENT_WEAR_GLSL).
+// How far along is the piece's start's station, within STATION_WRAP, and on along it, unwrapped, so that a texture
+// coordinate or a wear's station is laid across a triangle straight; the fragment wraps what it reads by it.
 
 import { FLUSH_APRON, KERB_BACK, KERB_HEIGHT, MODEL_HALF, MODEL_WALK, SINK_FROM, STATION_WRAP } from "../../../shared/world/bends.ts";
 
@@ -33,7 +35,7 @@ vec3 bent(vec3 l, inout vec3 n, inout vec3 t) {
   vec2 c = vec2(n.x / stretch - grade * n.y, n.z / k), e = vec2(t.x * stretch, t.z * k);
   n = normalize(vec3(w.x * c.x - w.y * c.y, n.y, w.y * c.x + w.x * c.y));
   t = normalize(vec3(w.x * e.x - w.y * e.y, t.y + grade * e.x, w.y * e.x + w.x * e.y));
-  gBent = vec3(mod(s, ${f(STATION_WRAP)}), z, l.y);
+  gBent = vec3(s, z, l.y);
   gLook = vec3((iBendB.y - tactile * 16384.0) * 0.001, walk, tactile);
   return vec3(p.x - w.y * z, l.y + rise * (2.0 * u - 1.0) + lift - ${f(KERB_HEIGHT)} * fall, p.y + w.x * z);
 }
@@ -55,7 +57,8 @@ export const BENT_GRAIN = `vec2 uv = vUv;
 
 /**
  * A bent piece's variety, drawn where its tier reads the finishes in full (BENT_WEAR, programs.ts) and no frame says
- * `?off=kerbs`: by where a point lies along its kerb line (`along`, metres, within STATION_WRAP), across from its face and
+ * `?off=kerbs`: by where a point lies along its kerb line (`station`, metres, wrapped here to STATION_WRAP: a vertex's
+ * is not, so a piece across the wrap is not drawn with its stations run back over the wrap's 600 m), across from its face and
  * up as modelled (bend.ts gBent), its line's seed and wear, its panels' length and its walk's back. None of it reads a
  * texture; every layer is a few hashes of where the point is, so it never repeats with the piece, and each wave's or
  * cell's length divides the wrap, so nothing jumps where the stations start again. The twin of BENT_WEAR_GLSL.
@@ -67,8 +70,8 @@ export const BENT_GRAIN = `vec2 uv = vUv;
  * - grass: in the walk's joints and behind its back where it is worn;
  * - a crossing's ramp (`tactile`): its apron a faded yellow pad of domes.
  */
-export function bentWear(albedo: Float64Array | number[], mro: Float64Array | number[], along: number, across: number, up: number, faceUp: number, code: number, panel: number, walk: number, spread: number, tactile = false): void {
-  const seed = code % 256, wear = Math.floor(code / 256) / 127;
+export function bentWear(albedo: Float64Array | number[], mro: Float64Array | number[], station: number, across: number, up: number, faceUp: number, code: number, panel: number, walk: number, spread: number, tactile = false): void {
+  const seed = code % 256, wear = Math.floor(code / 256) / 127, along = station - Math.floor(station / STATION_WRAP) * STATION_WRAP;
   // A crossing's ramp: its apron's dimpled pad, a faded yellow, its domes fading out where a pixel spans them.
   if (tactile && faceUp > 0.8 && across > 0.12 && across < Math.min(apronOf(walk), PAD_DEEP)) {
     const gx = fract(along / DOME) - 0.5, gy = fract(across / DOME) - 0.5;
@@ -152,7 +155,7 @@ float bentNoise(vec2 p, float period) {
   return mix(mix(bentHash(i), bentHash(j), s.x), mix(bentHash(i + vec2(0.0, 1.0)), bentHash(j + vec2(0.0, 1.0)), s.x), s.y);
 }
 void bentWear(inout vec3 albedo, inout vec3 mro, vec3 at, float faceUp, float code, vec3 look, float spread) {
-  float seed = mod(code, 256.0), wear = floor(code / 256.0) / 127.0, along = at.x, across = at.y, up = at.z;
+  float seed = mod(code, 256.0), wear = floor(code / 256.0) / 127.0, along = mod(at.x, ${f(STATION_WRAP)}), across = at.y, up = at.z;
   if (look.z > 0.5 && faceUp > 0.8 && across > 0.12 && across < min(${f(PAD_DEEP)}, ${f(KERB_BACK)} + ${f(FLUSH_APRON - KERB_BACK)} * (look.y - ${f(KERB_BACK)}) / ${f(MODEL_WALK - KERB_BACK)})) {
     vec2 g = fract(vec2(along, across) / ${f(DOME)}) - 0.5;
     float dome = (1.0 - smoothstep(0.18, 0.3, length(g))) * (1.0 - smoothstep(0.01, 0.03, spread));

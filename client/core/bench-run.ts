@@ -1,13 +1,17 @@
 // A `?bench=1` run: the page measures itself and reports to the tool that opened it (tools/bench/gpu.ts, trees.ts). Only a
 // bench page fetches this file, so a player's first frame does not wait for it (D873).
 
+import type { MapProgress } from "./mapload.ts";
 import { BENCH_FRAMES, PASSES } from "./passes.ts";
 import { DRAW_PULLED, DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "./render/packet.ts";
 import { NODE_BUFFERS } from "./render/scene.ts";
 
-/** Frames with nothing on its way before the measured frames begin, and the most ms to wait for them. */
+/**
+ * Frames with nothing on its way before the measured frames begin, and the most ms to wait for them: the whole map
+ * comes first, every part of it handed over and the road and streets parts round the body held, then the frames.
+ */
 const STILL = 60;
-const SETTLE_MS = 20000;
+export const SETTLE_MS = 180000;
 
 /** Each pass's median and 95th percentile over `frames` (PassClock.take), where passes were timed, and the frame's, in ms; null for none timed. */
 export function passSpread(frames: readonly number[][]): Record<string, { median: number; p95: number }> | null {
@@ -56,6 +60,8 @@ export interface Drawn {
   card: { bytes: number; textures: number };
   /** The budget's squeeze at the last frame: below none where it spends the room left on finer trees (render/budget.ts). */
   squeeze: number;
+  /** How much of the map has come (mapload.ts MapLoader.progress), asked only while the run waits for all of it. */
+  map?: () => MapProgress;
 }
 
 /** A `?bench=1` run: the page flies itself (App.autopilot), or holds its look with `?still`, and reports frame times and the GPU's time by pass. */
@@ -74,6 +80,11 @@ export class BenchRun {
   private previous = -1;
   private still = 0;
   private done = false;
+  /** When the map had all come (ms from the first frame), and how much of it had when the run began. */
+  private mapAt = -1;
+  private mapThen: MapProgress | null = null;
+  /** Frames drawn alike when the run began: STILL, or fewer where it gave up waiting. */
+  private began = 0;
 
   /**
    * The autopilot's clock: a sixtieth of a second for each frame measured so far, 0 before. By frames, not by the time
@@ -92,14 +103,20 @@ export class BenchRun {
   frame(now: number, ours: number, gpu: readonly number[][], p: FramePacket, quiet: boolean, drawn: Drawn, tris: readonly (readonly number[])[] = []): ({ frameMs: Record<"median" | "p95" | "p99" | "worst", number> } & Record<string, unknown>) | null {
     if (this.done) return null;
     if (this.first < 0) this.first = now;
-    // Still: nothing on its way, nothing uploaded, and the view held still drawing what it drew the frame before, so a run
-    // does not start while the map's statics are still coming into the near rows and the far city (one run's draws were
-    // 659 and another's 2,152 of the same street when it started on assets alone).
+    // Still: the whole map come and handed over (the far city made of it, its tops, the road and streets parts round the
+    // body), nothing on its way, nothing uploaded, and the view held still drawing what it drew the frame before. A run
+    // that began while the map still came measured another scene than the next: the same street drew 710 draws and
+    // 2.40 M triangles on the page's clock and 580 and 1.79 M by query, and earlier 659 in one run and 2,152 in another.
+    const measuring = this.previous >= 0;
+    if (!measuring && this.mapAt < 0) {
+      const m = drawn.map?.();
+      if (!m || (m.whole && m.left === 0 && m.roads === 0)) this.mapAt = now - this.first;
+      this.mapThen = m ?? null;
+    }
     const same = p.drawCount === this.draws && p.triangles === this.triangles;
     [this.draws, this.triangles] = [p.drawCount, p.triangles];
-    this.still = quiet && same && p.assetUploads.length + p.texUploads.length === 0 ? this.still + 1 : 0;
-    const measuring = this.previous >= 0;
-    if (!measuring && (this.still >= STILL || now - this.first >= SETTLE_MS)) this.previous = this.started = now;
+    this.still = this.mapAt >= 0 && quiet && same && p.assetUploads.length + p.texUploads.length === 0 ? this.still + 1 : 0;
+    if (!measuring && (this.still >= STILL || now - this.first >= SETTLE_MS)) [this.previous, this.started, this.began] = [now, now, this.still];
     if (!measuring) return null;
     this.intervals.push(now - this.previous);
     this.ours.push(ours);
@@ -117,9 +134,13 @@ export class BenchRun {
     this.done = true;
     const at = (list: number[], q: number): number => Math.round([...list].sort((a, b) => a - b)[Math.floor((list.length - 1) * q)]! * 100) / 100;
     const f = this.intervals;
+    const { map: _, ...shown } = drawn;
     return {
       frames: BENCH_FRAMES,
       settledMs: Math.round(now - this.first - f.reduce((a, b) => a + b, 0)),
+      // What the run waited for before its first measured frame: the map whole (when it was, or how much of it had come
+      // where the run gave up waiting at SETTLE_MS), and STILL frames of it drawn alike with nothing on its way.
+      waited: { mapMs: this.mapAt >= 0 ? Math.round(this.mapAt) : null, map: this.mapThen, stillFrames: this.began, gaveUp: this.began < STILL },
       frameMs: { median: at(f, 0.5), p95: at(f, 0.95), p99: at(f, 0.99), worst: at(f, 1) },
       buildAndSubmitMs: { median: at(this.ours, 0.5), p99: at(this.ours, 0.99) },
       gpuMs: passSpread(this.gpu),
@@ -131,7 +152,7 @@ export class BenchRun {
       // The medians over the measured frames: what the frame drew, what the sun's maps took apart from it, and the trees',
       // rocks' and bushes' triangles by store.
       turn: Object.fromEntries(Object.entries(this.counts).map(([k, list]) => [k, at(list, 0.5)])),
-      ...drawn,
+      ...shown,
       tier: p.tier,
       // The share of the canvas a side the last frame's scene was drawn at (render/post.ts sceneShare).
       share: p.share,

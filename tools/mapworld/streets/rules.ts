@@ -118,16 +118,21 @@ export function typeOf(r: StreetRules, facts: Facts): { type: string; rule: stri
   throw new Error("streets: no rule names a type for every stretch; the last should hold for any");
 }
 
-/** A side's section: its type's, then each `set` rule that holds for the stretch's facts with this side's over them, in order. */
-export function sideSection(r: StreetRules, type: string, facts: Facts): { section: Section; rules: string[] } {
+/**
+ * A side's section: its type's, then each `set` rule that holds for the stretch's facts with this side's over them, in
+ * order; and where each field's value came from, "type <name>" or "rule <id>".
+ */
+export function sideSection(r: StreetRules, type: string, facts: Facts): { section: Section; rules: string[]; from: Record<string, string> } {
   const section: Section = { ...r.types[type]!.section };
   const rules: string[] = [];
+  const from: Record<string, string> = Object.fromEntries(Object.keys(section).map((f) => [f, `type ${type}`]));
   for (const rule of r.rules) {
     if (!rule.set || !holds(rule.when, facts)) continue;
     Object.assign(section, rule.set);
     rules.push(rule.id);
+    for (const f of Object.keys(rule.set)) from[f] = `rule ${rule.id}`;
   }
-  return { section, rules };
+  return { section, rules, from };
 }
 
 /** A width for a seed's share between 0 and 1. */

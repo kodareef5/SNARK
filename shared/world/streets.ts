@@ -589,9 +589,10 @@ export const KERB_STEP = 1;
  *   piece's place on it does not move when a run is cut differently; its drops, where the part marks some (dropped
  *   kerbs at a crossing, a drive or a corner's ramp), are the stretches of stations it is let down flush over.
  *
- * `held` must hold the part. A stretch near a sector's edge is in the parts of every sector it reaches; it is given here
- * only for the part whose square holds the middle of its length on the held map (ownerOf), and a corner for the one that
- * holds its arc's middle, so the lines of every part held together have each kerb once.
+ * `held` must hold the part. A stretch near a sector's edge is in the parts of every sector it reaches; each of its kerbs
+ * is given here only for the part whose square holds the middle of that kerb's length on the held map, and a corner's for
+ * the one that holds its arc's (ownerIs), so the lines of every part held together have each kerb once, and a cut that
+ * holds a kerb has it as the whole map does, though the centre line runs outside the cut.
  */
 export function kerbLines(held: StreetSectors, part: StreetsPart): KerbLine[] {
   const out: KerbLine[] = [];
@@ -617,10 +618,9 @@ export function kerbLines(held: StreetSectors, part: StreetsPart): KerbLine[] {
   };
   const ends = endsOf(part);
   part.stretches.forEach((s, k) => {
-    if (!ownerIs(held, s.xz, mine)) return;
     for (const side of [0, 1]) {
       const from = s.sides[side]!;
-      if (kerbOf(from.kinds) === 1) continue;
+      if (kerbOf(from.kinds) === 1 || !ownerIs(held, beside(s.xz, from.kerb, side === 0 ? 1 : -1), mine)) continue;
       const line = { pts: [] as number[], stations: [] as number[], open: [] as number[] };
       offsetLine(s.xz, from.kerb, side === 0 ? 1 : -1, joinAt(part, ends, k, side, 0), joinAt(part, ends, k, side, 1), line.pts, line.stations);
       // Each point open where no other carriageway covers it and it is no corner's, and where a run comes into a corner
@@ -635,8 +635,7 @@ export function kerbLines(held: StreetSectors, part: StreetsPart): KerbLine[] {
     if (kerbOf(from.kinds) === 1) return;
     const pts: number[] = [], stations: number[] = [];
     arcLine(c, pts, stations);
-    const m = (stations.length >> 1) * 2;
-    if (!mine(pts[m]!, pts[m + 1]!)) return;
+    if (!ownerIs(held, pts, mine)) return;
     lines(c.stretch, c.side, k, pts, stations, (q) => exposed(pts[q * 2]!, pts[q * 2 + 1]!, c, 0.12), from, s, cornerDrops(held, c, pts, stations));
   });
   return out;
@@ -682,11 +681,12 @@ export function arcLine(c: StreetCorner, pts: number[], stations: number[]): voi
 }
 
 /**
- * Whether a stretch's line, held on `held`, is this part's to give (`mine` says whether a point is in its square): the
- * middle by length of what of it lies in a held sector, or its middle where none of it does. A stretch of two points
- * across the map's edge is so given by the sector it crosses, not by its end off the map.
+ * Whether a kerb, a line of points held on `held`, is this part's to give (`mine` says whether a point is in its square):
+ * the middle by length of what of it lies in a held sector, or its middle where none of it does. So a stretch of two
+ * points across the map's edge is given by the sector it crosses, not by its end off the map, and the kerb of a road
+ * whose centre line runs just past the map's edge by the sector the kerb itself lies in.
  */
-function ownerIs(held: StreetSectors, xz: Float64Array, mine: (x: number, z: number) => boolean): boolean {
+function ownerIs(held: StreetSectors, xz: ArrayLike<number>, mine: (x: number, z: number) => boolean): boolean {
   // Its points every 4 m or nearer, and of those the ones on a held sector.
   const inside: number[] = [], all: number[] = [];
   for (let q = 2; q < xz.length; q += 2) {
@@ -699,6 +699,24 @@ function ownerIs(held: StreetSectors, xz: Float64Array, mine: (x: number, z: num
   }
   const pick = inside.length > 0 ? inside : all, m = (pick.length >> 2) * 2;
   return mine(pick[m]!, pick[m + 1]!);
+}
+
+/**
+ * A centre line's points each moved `d` to its `sign` side (1 its left, as offsetLine has it) along its segment's own
+ * normal, both ends of every segment: the kerb's line near enough to say which sector holds it, and the same in every
+ * part that holds the stretch, as no join it meets moves it.
+ */
+function beside(xz: Float64Array, d: number, sign: number): Float64Array {
+  const out = new Float64Array(Math.max(0, xz.length - 2) * 2);
+  for (let q = 2; q < xz.length; q += 2) {
+    const ex = xz[q]! - xz[q - 2]!, ez = xz[q + 1]! - xz[q - 1]!, l = Math.sqrt(ex * ex + ez * ez) || 1;
+    const nx = (-ez / l) * sign * d, nz = (ex / l) * sign * d, at = (q - 2) * 2;
+    out[at] = xz[q - 2]! + nx;
+    out[at + 1] = xz[q - 1]! + nz;
+    out[at + 2] = xz[q]! + nx;
+    out[at + 3] = xz[q + 1]! + nz;
+  }
+  return out;
 }
 
 /** A stretch's ends by the place they stand: its index, and 0 for its first point, 1 for its last. */
