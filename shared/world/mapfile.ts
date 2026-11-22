@@ -84,7 +84,9 @@
 //               u32 count of them, how many pieces lie before each one's since the one before it as a varint (its place
 //               in the columns' order, ascending), and each one's bend as eight 16-bit numbers (packBend) less what the
 //               bend before predicts (bendGuess), modulo 65,536, in planes: every bend's first number's low byte, then
-//               its high byte, then the next. The collision pieces under the bent pieces (shared/world/bends.ts madeHits)
+//               its high byte, then the next. A bent piece after a bent piece is coded in the columns against where it
+//               would stand were it the next of that one's line (shared/world/bends.ts bentNext), not the piece before's
+//               place and turn. The collision pieces under the bent pieces (shared/world/bends.ts madeHits)
 //               are not stored but made from them where the part is read, after its own pieces, each in the chunk it
 //               stands in; one that stands in another sector is stored there, as a piece of its own. STAT's counts and
 //               kinds hold them all.
@@ -118,7 +120,7 @@ import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tact
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 import { ROAD_PLANES, RoadSectors, type MapRoad } from "./roadframe.ts";
 import { StreetSectors, decodeStreets } from "./streets.ts";
-import { HIT_PREFIX, madeHits, walkedFlush } from "./bends.ts";
+import { HIT_PREFIX, bentNext, madeHits, walkedFlush } from "./bends.ts";
 
 export const MAP_VERSION = 14;
 /**
@@ -1210,15 +1212,21 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
     };
     const [x0, z0] = [sq.ox * CHUNK_SIZE * STRUCT_UNITS, sq.oz * CHUNK_SIZE * STRUCT_UNITS];
     let [px, py, pz, pyaw] = [0, 0, 0, 0];
+    let was: Int16Array | null = null;
     for (let i = 0; i < count; i++) {
       const k = order[counts[s]! + i]!;
       const [x, y, z] = [ux[k]! - x0, uy[k]!, uz[k]! - z0];
+      // A bent piece after a bent piece is coded against where it would stand were it the next of that one's line.
+      const bend = bends.has(k) ? Int16Array.from(bends.get(k)!) : null;
+      if (bend && was) bentNext(px, py, pz, pyaw, was, bend, next);
+      const [gx, gy, gz, gyaw] = bend && was ? next : [px, py, pz, pyaw];
       plane(0, i, id[k]!, 2);
-      plane(2, i, yaw[k]! - pyaw, 2);
-      plane(4, i, zigzag(x - px), 3);
-      plane(7, i, zigzag(y - py), 3);
-      plane(10, i, zigzag(z - pz), 3);
+      plane(2, i, yaw[k]! - gyaw!, 2);
+      plane(4, i, zigzag(x - gx!), 3);
+      plane(7, i, zigzag(y - gy!), 3);
+      plane(10, i, zigzag(z - gz!), 3);
       [px, py, pz, pyaw] = [x, y, z, yaw[k]!];
+      was = bend;
     }
     // Its bent pieces, by their places among its own.
     const bent: number[] = [];
@@ -1921,32 +1929,7 @@ function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
 function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, StaticsPiece> {
   const n = s.u32();
   const b = s.take(n * STAT_ROW);
-  const [id, yaw, chunk] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];
-  const [xs, ys, zs] = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
-  const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
-  const three = (column: number, i: number): number => unzig(b[column * n + i]! | (b[(column + 1) * n + i]! << 8) | (b[(column + 2) * n + i]! << 16));
-  const { dims } = head;
-  const [x0, z0] = [sq.ox * CHUNK_SIZE * STRUCT_UNITS, sq.oz * CHUNK_SIZE * STRUCT_UNITS];
-  const [wide, deep] = [dims.chunksX * CHUNK_SIZE * STRUCT_UNITS, dims.chunksZ * CHUNK_SIZE * STRUCT_UNITS];
-  const off = (kind: number, x: number, y: number, z: number, what: string): Error => new Error(`map: a ${head.kinds[kind]} at ${x / STRUCT_UNITS}, ${y / STRUCT_UNITS}, ${z / STRUCT_UNITS} is off ${what}`);
-  let [x, y, z, turn] = [0, 0, 0, 0];
-  for (let i = 0; i < n; i++) {
-    id[i] = b[i]! | (b[n + i]! << 8);
-    if (id[i]! >= head.kinds.length) throw new Error("map: a static piece is of a kind its table does not name");
-    yaw[i] = turn = (turn + (b[2 * n + i]! | (b[3 * n + i]! << 8))) & 0xffff;
-    x = (x + three(4, i)) & 0xffffff;
-    y = ((y + three(7, i)) << 8) >> 8;
-    z = (z + three(10, i)) & 0xffffff;
-    const [ax, az] = [x0 + x, z0 + z];
-    if (ax < 0 || ax > wide || az < 0 || az > deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) throw off(id[i]!, ax, y, az, "the map");
-    xs[i] = ax / STRUCT_UNITS;
-    ys[i] = y / STRUCT_UNITS;
-    zs[i] = az / STRUCT_UNITS;
-    const c = (chunk[i] = chunkAt(dims, xs[i]!, zs[i]!));
-    const [cx, cz] = [chunkCx(dims, c), chunkCz(dims, c)];
-    if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) throw off(id[i]!, ax, y, az, `its sector ${sq.col}, ${sq.row}`);
-    if (i % SLICE === SLICE - 1) yield;
-  }
+  // Its bent pieces first: from version 14 a bent piece after a bent piece is coded against the guess of the one before.
   let bendAt = new Uint32Array(0), bend = new Int16Array(0);
   if (s.at < s.bytes.length) {
     const m = s.u32();
@@ -1969,6 +1952,40 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
       for (let k = 0; k < 8; k++) bend[q * 8 + k] = guess[k]! + ((planes[(k * 2 + 1) * m + q]! << 8) | planes[k * 2 * m + q]!);
       bendGuess(guess, bend.subarray(q * 8, q * 8 + 8));
     }
+  }
+  const guessed = head.version >= MADE_HITS;
+  const [id, yaw, chunk] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];
+  const [xs, ys, zs] = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+  const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
+  const three = (column: number, i: number): number => unzig(b[column * n + i]! | (b[(column + 1) * n + i]! << 8) | (b[(column + 2) * n + i]! << 16));
+  const { dims } = head;
+  const [x0, z0] = [sq.ox * CHUNK_SIZE * STRUCT_UNITS, sq.oz * CHUNK_SIZE * STRUCT_UNITS];
+  const [wide, deep] = [dims.chunksX * CHUNK_SIZE * STRUCT_UNITS, dims.chunksZ * CHUNK_SIZE * STRUCT_UNITS];
+  const off = (kind: number, x: number, y: number, z: number, what: string): Error => new Error(`map: a ${head.kinds[kind]} at ${x / STRUCT_UNITS}, ${y / STRUCT_UNITS}, ${z / STRUCT_UNITS} is off ${what}`);
+  let [x, y, z, turn] = [0, 0, 0, 0];
+  for (let i = 0, q = 0; i < n; i++) {
+    id[i] = b[i]! | (b[n + i]! << 8);
+    if (id[i]! >= head.kinds.length) throw new Error("map: a static piece is of a kind its table does not name");
+    // A bent piece after a bent piece: from where it would stand as the next of that one's line.
+    const bent = q < bendAt.length && bendAt[q] === i;
+    if (guessed && bent && q > 0 && bendAt[q - 1] === i - 1) {
+      bentNext(x, y, z, turn, bend.subarray((q - 1) * 8, q * 8), bend.subarray(q * 8, q * 8 + 8), next);
+      [x, y, z, turn] = [next[0]!, next[1]!, next[2]!, next[3]!];
+    }
+    if (bent) q++;
+    yaw[i] = turn = (turn + (b[2 * n + i]! | (b[3 * n + i]! << 8))) & 0xffff;
+    x = (x + three(4, i)) & 0xffffff;
+    y = ((y + three(7, i)) << 8) >> 8;
+    z = (z + three(10, i)) & 0xffffff;
+    const [ax, az] = [x0 + x, z0 + z];
+    if (ax < 0 || ax > wide || az < 0 || az > deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) throw off(id[i]!, ax, y, az, "the map");
+    xs[i] = ax / STRUCT_UNITS;
+    ys[i] = y / STRUCT_UNITS;
+    zs[i] = az / STRUCT_UNITS;
+    const c = (chunk[i] = chunkAt(dims, xs[i]!, zs[i]!));
+    const [cx, cz] = [chunkCx(dims, c), chunkCz(dims, c)];
+    if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) throw off(id[i]!, ax, y, az, `its sector ${sq.col}, ${sq.row}`);
+    if (i % SLICE === SLICE - 1) yield;
   }
   if (head.version < MADE_HITS || bendAt.length === 0) return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk, bendAt, bend };
   // The collision pieces under its bent pieces, made from them as the writer counted them, those in this sector after its
@@ -2047,6 +2064,9 @@ export function holdStreets(held: StreetSectors, piece: StreetsPiece): void {
   const sq = piece.sq;
   held.put(sq.col * 4096 + sq.row, decodeStreets(piece.bytes, sq.ox * CHUNK_SIZE, sq.oz * CHUNK_SIZE), sq.cx0, sq.cz0, sq.cx1, sq.cz1);
 }
+
+/** Where bentNext puts its guess. */
+const next = [0, 0, 0, 0];
 
 /** The bytes of a sector's road part: its square's cells of the map's frame, or null where no road runs in it. */
 function roadPart(road: MapRoad, dims: FramedDims, sq: Square): Uint8Array | null {

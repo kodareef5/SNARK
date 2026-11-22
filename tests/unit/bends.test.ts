@@ -50,7 +50,8 @@ test("a straight kerb is a few long pieces end to end on its line, each a straig
   const a = (44 * Math.PI) / 180, x: number[] = [], z: number[] = [];
   for (let d = 0; d <= 50; d += 2) [x[x.length], z[z.length]] = [100 + d * Math.cos(a), 200 + d * Math.sin(a)];
   const pieces = placeKerb({ x, z, y: x.map(() => 2) }, 1, SECTION);
-  expect(pieces.length).toBe(4);
+  // Up to 32 m a straight, where the line runs straight and rises evenly.
+  expect(pieces.length).toBe(2);
   expect(pieces.every((p) => p.kind === "core:zzzzzbend_raised_s")).toBe(true);
   for (let k = 0; k < pieces.length; k++) {
     const [sx, , sz] = faceAt(pieces[k]!, 0), [ex, , ez] = faceAt(pieces[k]!, 1);

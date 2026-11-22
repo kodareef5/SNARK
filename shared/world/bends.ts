@@ -229,9 +229,12 @@ export const bentKind = (kerb: BentKerb, curved: boolean): string => `core:zzzzz
 export const bentJoin = (from: BentKerb, to: BentKerb): string => `core:zzzzzbend_${from}_${to}`;
 /** Segments along a curved piece, and the most a piece of each runs. */
 export const CURVE_SEGMENTS = 8;
-const STRAIGHT_MOST = 16, CURVE_MOST = 8, LEAST = 0.4;
-/** The most a straight piece's end may stand turned from its chord, as a mitre to the next, and how far its chord or a curve may miss the line. */
-const MITRE = 0.035, MISS = 0.004;
+const STRAIGHT_MOST = 32, CURVE_MOST = 8, LEAST = 0.4;
+/**
+ * The most a straight piece's end may stand turned from its chord, as a mitre to the next, how far its chord or a curve
+ * may miss the line, and how far a straight's even rise may miss the heights of the line's points along it.
+ */
+const MITRE = 0.035, MISS = 0.004, RISE_MISS = 0.02;
 
 /**
  * The pieces of a kerb line, its walk on its left as `side` 1 has it (a piece's +z, a quarter counter-clockwise from the
@@ -282,7 +285,7 @@ export function placeKerb(line: KerbLine, side: 1 | -1, section: Section, from =
     // A curve where the line bends, and where a straight would run on only a little way and a curve twice as far: a
     // gentle bend is then one curve of eight segments, not straights of a metre or so.
     let straight = straightFits(px, pz, frame(i), frame(j), i, j) ? j : i;
-    if (straight > i) while (straight + 1 < n && st[straight + 1]! - st[i]! <= STRAIGHT_MOST && straightFits(px, pz, frame(i), frame(straight + 1), i, straight + 1)) straight++;
+    if (straight > i) while (straight + 1 < n && st[straight + 1]! - st[i]! <= STRAIGHT_MOST && straightFits(px, pz, frame(i), frame(straight + 1), i, straight + 1) && evenRise(py, st, i, straight + 1)) straight++;
     let curve = j;
     while (curve + 1 < n && st[curve + 1]! - st[i]! <= CURVE_MOST && curveFits(px, pz, frame(i), frame(curve + 1), i, curve + 1)) curve++;
     const curved = straight === i || st[curve]! - st[i]! > 2 * (st[straight]! - st[i]!);
@@ -294,6 +297,13 @@ export function placeKerb(line: KerbLine, side: 1 | -1, section: Section, from =
 }
 
 interface Frame { x: number; y: number; z: number; dx: number; dz: number; s: number }
+
+/** Whether the line's heights from point i to point j keep within RISE_MISS of an even rise between them: a straight rises evenly. */
+function evenRise(py: readonly number[], st: readonly number[], i: number, j: number): boolean {
+  const span = st[j]! - st[i]! || 1e-6;
+  for (let k = i + 1; k < j; k++) if (Math.abs(py[k]! - (py[i]! + ((py[j]! - py[i]!) * (st[k]! - st[i]!)) / span)) > RISE_MISS) return false;
+  return true;
+}
 
 /** The chord from a to b and the turns of their ways from it. */
 function chordOf(a: Frame, b: Frame): { half: number; cx: number; cz: number; turn0: number; turn1: number } {
@@ -385,6 +395,26 @@ function lay(out: BentPiece[], a: Frame, b: Frame, curved: boolean, kerb: BentKe
     bend: { half: c.half, turn0: c.turn0, turn1: c.turn1, station: wrapped(a.s), rise: (b.y - a.y) / 2, panel: kerb === "median" ? 0 : section.panel, walk: kerb === "median" ? KERB_BACK : section.walk, seed: section.seed, wear: section.wear },
     kerb,
   });
+}
+
+/**
+ * Where a bent piece with bend `b` stands were it the next along the kerb line of the piece before, at (x, y, z) on the
+ * map's lattice (its middle in 1/512 m, from any corner, the same on both sides) turned `yaw` (1/65,536 turns) with bend
+ * `a`: its start at that one's end, its chord turned from that one's way there by its own start's turn, its middle half
+ * its chord on and its own rise over. Into `out` as x, y, z and yaw on the same lattice. A map's statics code a bent piece
+ * after a bent piece against it (mapfile.ts), so only what it misses by is written, which along a line is next to nothing.
+ */
+export function bentNext(x: number, y: number, z: number, yaw: number, a: ArrayLike<number>, b: ArrayLike<number>, out: number[] | Float64Array): void {
+  const turn = (yaw * TAU) / YAW_UNITS, cs = detCos(turn), sn = detSin(turn);
+  // Its end: half its chord on along it, and its rise over its middle.
+  const ha = (a[0]! / 1000) * STRUCT_UNITS, hb = (b[0]! / 1000) * STRUCT_UNITS;
+  const ex = x + cs * ha, ez = z - sn * ha, ey = y + (a[4]! / 1000) * STRUCT_UNITS;
+  // The next chord turned from this one by this one's end's turn less the next's start's, a turn toward +z positive.
+  const next = turn - a[2]! / ANGLE + b[1]! / ANGLE, nc = detCos(next), ns = detSin(next);
+  out[0] = round(ex + nc * hb);
+  out[1] = round(ey + (b[4]! / 1000) * STRUCT_UNITS);
+  out[2] = round(ez - ns * hb);
+  out[3] = round((next * YAW_UNITS) / TAU) & 0xffff;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
