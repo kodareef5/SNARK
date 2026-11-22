@@ -42,6 +42,7 @@ import { storeParts, type StoreReport } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 import { mapLandmarks, weigh, weighLandmarks } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
+import { checkoutBuild } from "../server/reports.ts";
 
 /** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
 function stressCards(): TextureSource[] {
@@ -263,6 +264,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
   for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
   await buildEntry(dist);
+  // The commit the client was built from and whether the tree had changes, which a bug report names (server/reports.ts).
+  writeFileSync(join(dist, "build.json"), JSON.stringify({ ...checkoutBuild(root), at: new Date().toISOString() }) + "\n");
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: packBytes + landmarks };
 }
 
