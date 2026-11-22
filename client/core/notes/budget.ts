@@ -56,6 +56,8 @@ export class BudgetPanel {
   private costShown = 0;
   private madeAt = -Infinity;
   private title = "";
+  /** The display's interval as the last refresh took it, in ms. */
+  private display = 16.7;
   private worst = "";
   private worstAt = -1;
   private bars: Bar[] = [];
@@ -127,6 +129,7 @@ export class BudgetPanel {
     }
     recent.sort((a, b) => a - b);
     const display = recent[recent.length >> 1] ?? 16.7, hz = display > 0 ? Math.round(1000 / display) : 0;
+    this.display = display;
     this.title = `${display.toFixed(1)} ms a frame (${hz} Hz)`;
     this.worstAt = worstBack;
     this.worst = worstBack < 0 ? "" : `worst of the last 5 s: ${worst.toFixed(1)} ms, ${(worst / Math.max(1, display)).toFixed(1)} display intervals`;
@@ -199,7 +202,7 @@ export class BudgetPanel {
     // The strip: the last COLUMNS frames, a column each, the display's interval and 33 ms ruled across.
     const ring = app.frames, colW = inner / COLUMNS, top = 50;
     const scale = (ms: number): number => Math.min(STRIP_H, (ms / top) * STRIP_H);
-    const display = Number.parseFloat(this.title) || 16.7;
+    const display = this.display;
     for (let back = 0; ring && back < COLUMNS; back++) {
       const k = ring.row(back);
       if (k < 0) break;
