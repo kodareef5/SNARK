@@ -19,8 +19,10 @@ import type { FrameRing } from "./assets/frames.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { RESOLUTIONS, sceneShare } from "./render/post.ts";
 import { VOLUME_MAX } from "./settings.ts";
-import { toggleMonitor } from "./settings.ts";
+import { toggleMonitor, toggleNotes } from "./settings.ts";
 import { MONITOR_KIT } from "./ui/monitor-kit.ts";
+import { NOTES_KIT } from "./notes-kit.ts";
+import type { NotePort } from "./notes/port.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -267,6 +269,13 @@ export class App {
   frames: FrameRing | null = null;
   private monitorAsked = false;
   /**
+   * Bug report mode (notes/notes.ts), fetched once Settings.notes is first on, as the monitor is; null until then. And
+   * what fetches the browser's part of it, which the shell sets (client/notes/port.ts).
+   */
+  notes: import("./notes/notes.ts").Notes | null = null;
+  notePort: (() => Promise<NotePort>) | null = null;
+  private notesAsked = false;
+  /**
    * Whether the card has linked every program a tier draws with, beginning those it has not (the shell's `ready`). A
    * tier chosen or stepped to is drawn once it has, and the one before until then; null draws it at once.
    */
@@ -358,7 +367,8 @@ export class App {
     };
     // Within the press that chose it, which is when a browser lets a page open another.
     this.ui.openLink = (url) => this.page?.open?.(url);
-    this.ui.local = (line) => (line === "monitor" ? toggleMonitor(this.ui.settings) : this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
+    this.ui.local = (line) => (line === "monitor" ? toggleMonitor(this.ui.settings) : this.notesWord(line) ?? (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null));
+    this.ui.chat.local = (line) => this.notesWord(line);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
@@ -493,6 +503,8 @@ export class App {
   /** Returns true if the page should not also act on the key. */
   key(code: string, down: boolean, repeat = false, source = 0): boolean {
     if (down && !repeat) this.ui.inputDevice = source;
+    // F8 takes a note in bug report mode, from any screen (notes/notes.ts).
+    if (code === "F8" && this.notes) return this.notes.key(down, repeat);
     if (!this.ui.captureKeyboard && this.vehiclePlacement.key(code, down, repeat)) return true;
     if (this.ui.key(code, down, repeat, this.session)) {
       // A screen that captures the keyboard releases the body's keys and a push-to-talk microphone.
@@ -1260,6 +1272,8 @@ export class App {
    */
   drawn(packet: FramePacket, ours: number, width = 0, height = 0, uploadMs = 0): void {
     this.frames?.record(this.nowMs, this.interval, ours, uploadMs, this.scene?.assets.residency ?? null, this.sounds?.library ?? null);
+    // A note's picture is the canvas as just drawn, and its record takes the row above (notes/notes.ts).
+    this.notes?.drawn(packet, ours, width, height, uploadMs);
     const budget = this.scene?.budget;
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
@@ -1345,6 +1359,11 @@ export class App {
     if (ui.settings.monitor && !this.monitorAsked) {
       this.monitorAsked = true;
       void import("./ui/monitor.ts").then((m) => (ui.monitor = new m.Monitor(this, MONITOR_KIT)), () => (this.monitorAsked = false));
+    }
+    // Bug report mode likewise, once Settings.notes is first on (D1091).
+    if (ui.settings.notes && !this.notesAsked) {
+      this.notesAsked = true;
+      void import("./notes/notes.ts").then((m) => (this.notes = new m.Notes(this, NOTES_KIT)), () => (this.notesAsked = false));
     }
     hud.vehicle = null;
     if (!this.facing && session.state === "active") {
@@ -1955,6 +1974,15 @@ export class App {
     hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(world, eyeNow) || whom || built || this.gliderPrompt();
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
+    // Over the interface: an open note's line, its bar and a picture's flash (notes/notes.ts).
+    this.notes?.frame(nowMs, width, height);
     return packet;
+  }
+
+  /** The console's and chat's words of bug report mode: `notes` turns it on and off, `perf [seconds]` keeps a record. Null for any other line. */
+  private notesWord(line: string): string | null {
+    if (line === "notes") return toggleNotes(this.ui.settings);
+    if (!/^perf(\s|$)/.test(line)) return null;
+    return this.notes ? this.notes.perf(line) : "a performance record is kept in bug report mode: /notes turns it on";
   }
 }

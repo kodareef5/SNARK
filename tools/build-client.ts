@@ -42,6 +42,8 @@ import { storeParts, type StoreReport } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 import { mapLandmarks, weigh, weighLandmarks } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
+import { checkoutBuild } from "../server/reports.ts";
+import { writeFirstFrame } from "./first-frame.ts";
 
 /** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
 function stressCards(): TextureSource[] {
@@ -158,7 +160,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     for (const o of result.outputs) if (o.path.endsWith(".js")) writeFileSync(o.path, withoutNotes(readFileSync(o.path, "utf8")));
     return result.outputs;
   };
-  const scripts = [...(await bundle(["client/shell/main.ts"], true)), ...(await bundle(["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts"], false))].filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1));
+  const scripts = [...(await bundle(["client/shell/main.ts"], true)), ...(await bundle(["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/notes/shot-worker.ts"], false))].filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1));
   // The pieces main.js imports before it runs, which the page asks for beside it.
   const pieces = [...readFileSync(join(dist, "main.js"), "utf8").matchAll(/\bimport\s*(?:\{[^}]*\}\s*from\s*)?"\.\/([^"]+\.js)"/g)].map((m) => m[1]!);
   console.log(`ui           ${ui.bytes} bytes transferred, ${ui.decodedBytes} RGBA bytes`);
@@ -263,6 +265,10 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
   for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
   await buildEntry(dist);
+  // The commit the client was built from and whether the tree had changes, which a bug report names (server/reports.ts).
+  writeFileSync(join(dist, "build.json"), JSON.stringify({ ...checkoutBuild(root), at: new Date().toISOString() }) + "\n");
+  // What the first frame waits for, part by part and the script by module, beside the last build's (tools/first-frame.ts).
+  writeFirstFrame(dist, opts.quick ?? false);
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: packBytes + landmarks };
 }
 
