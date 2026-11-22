@@ -122,7 +122,7 @@ export class Orbit {
 
 function angle(n: number): number { return Math.atan2(Math.sin(n), Math.cos(n)); }
 
-// K is the orbit camera, where the view lets it (App.frame). A patrol vehicle's driver has K first, for its lights (keys.ts).
+// K is the orbit camera, where the view lets it (view/director.ts). A patrol vehicle's driver has K first, for its lights (keys.ts).
 export const ORBIT_KEYS: readonly KeyRow[] = [{
   name: "orbit",
   keys: ["KeyK"],

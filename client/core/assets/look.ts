@@ -1,5 +1,5 @@
 // What the crosshair is on, for the resource monitor's inspect card (ui/monitor.ts): the crosshair's own ray, as the app
-// casts it to name who is looked at (App.who), against the ground, structures, nodes (trees, rocks) and bodies, and
+// casts it to name who is looked at (prompts.ts), against the ground, structures, nodes (trees, rocks) and bodies, and
 // from what it meets the model, the level the scene wants of it and the level drawn, and the material under the
 // crosshair where a coarse level the page holds can tell it. Asked for when the card is made, never in a frame of its
 // own. It reads the app's, the scene's and the residency's private fields by name, as the inspectors do (D900), and
@@ -132,7 +132,7 @@ function firstMesh(slots: Int32Array | undefined): number {
   return -1;
 }
 
-/** Fills `out` with what the crosshair is on, by the ray the app cast this frame (App.who): from the eye, along its aim. */
+/** Fills `out` with what the crosshair is on, by the ray the app cast this frame (prompts.ts): from the eye, along its aim. */
 export function pickLook(app: App, kit: MonitorKit, out: LookPick): LookPick {
   out.what = "none";
   out.distance = LOOK_RANGE;

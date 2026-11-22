@@ -1,9 +1,11 @@
-// A vehicle's instruments, under the minimap: a car's dash, a helicopter's and a boat's panels. The app reads the
-// telemetry from the predicted body as it places the camera (App.frame).
+// A vehicle's instruments, under the minimap: a car's dash, a helicopter's and a boat's panels. They are read from the
+// predicted body by a part of the app's frame (Dash), before the view needs the speed.
 
 import { boostCooling, flipCooling, thrustAxis, thrustBoostLeft } from "../../../shared/sim/vehicle-thrusters.ts";
-import type { Body } from "../../../shared/sim/character.ts";
-import { PATROL_LIGHT_MODES, type BoatSpec, type HelicopterSpec, type VehicleSpec } from "../../../shared/sim/vehicle.ts";
+import { BTN_JUMP, BTN_PRONE, BTN_SPRINT, type Body } from "../../../shared/sim/character.ts";
+import { PATROL_LIGHT_MODES, isWheelVehicle, type BoatSpec, type HelicopterSpec, type VehicleSpec } from "../../../shared/sim/vehicle.ts";
+import { HIT_NONE, castWorld, rayHit } from "../../../shared/world/ray.ts";
+import type { AppFrame, FramePart } from "../frame.ts";
 import { DEFAULT_DRIVETRAIN } from "../../../shared/sim/vehicle-drivetrain.ts";
 import { K_BAR } from "../ui/nodes.ts";
 import { glass } from "../ui/skin.ts";
@@ -92,6 +94,33 @@ export class VehicleTelemetry {
 
 }
 
+/** Reads the instruments of the vehicle driven, and leaves them in the frame for the view and the HUD. */
+export class Dash implements FramePart {
+  readonly telemetry = new VehicleTelemetry();
+
+  step(f: AppFrame): void {
+    const session = f.session, c = f.controls, world = f.world, car = f.car, t = this.telemetry;
+    if (f.alive && car && session.driving >= 0) {
+      if (car.movement === "rotor") {
+        const altitude = castWorld(world, f.bx, f.by + .05, f.bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : f.by - world.hf.heightAt(f.bx, f.bz);
+        t.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, f.steer && (c.buttons & BTN_PRONE) !== 0);
+      } else if (car.movement === "boat") t.updateBoat(session.driving, session.own, car.spec, f.steer && (c.buttons & BTN_SPRINT) !== 0);
+      else t.update(session.driving, session.own, f.steer ? c.moveZ : 0, f.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, f.dt);
+      t.lightMode = isWheelVehicle(car) && car.emergencyLights ? 0 : -1;
+      f.dash = t;
+    } else {
+      t.stop();
+      f.dash = null;
+    }
+  }
+
+  /** With no world there is nothing to drive, and the HUD shows no panel. */
+  none(m: VehicleModel): void {
+    this.telemetry.stop();
+    m.vehicle = null;
+  }
+}
+
 export interface VehicleModel {
   vehicle: VehicleTelemetry | null;
 }
@@ -99,6 +128,14 @@ export interface VehicleModel {
 export const VEHICLE: HudWidget<VehicleModel> = {
   name: "vehicle instruments",
   make: () => ({ vehicle: null }),
+  fill(m, c) {
+    const f = c.frame;
+    if (!f) return;
+    const dash = f.dash, shown = f.scene.own?.vehicle?.lightMode;
+    // A patrol vehicle's lights are as its drawn body has them, which is as the server last said.
+    if (dash && dash.lightMode >= 0 && shown !== undefined) dash.lightMode = shown;
+    m.vehicle = dash;
+  },
   build(f, _m, at) {
     const { dash, dashX, dashY, dashH, lean } = at;
     if (dash && !dash.rotor && !dash.boat) {
