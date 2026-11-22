@@ -6,7 +6,7 @@ import { validateVehicleDefinition, type VehicleDefinition } from "../sim/vehicl
 import { validateSeats, type Seat } from "../sim/seats.ts";
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
-import { CHUNK_SIZE, TICK_RATE } from "../coords.ts";
+import { TICK_RATE } from "../coords.ts";
 import { hashString } from "../hash.ts";
 import { FLIGHT_TICKS_MAX, STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
 import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
@@ -18,20 +18,16 @@ import { hullTable, type HullDef } from "../world/convex.ts";
 import { REGION_BASE } from "../pack/palette.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
-import { MAX_SHAPE_BOXES, MAX_STRUCTURE_HALF } from "./kinds/shapes.ts";
+import { MAX_STRUCTURE_HALF } from "./kinds/shapes.ts";
 import { creatureCombatFaults } from "./creature-combat.ts";
 import type { Checking, Kind, Making } from "./kind.ts";
 import { KINDS } from "./kinds.ts";
-import { PIECE_ROLES, shapeHalf, type Content, type Def, type NodeShape, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet, type CreatureCombatFacet } from "./defs.ts";
+import { PIECE_ROLES, shapeHalf, type Content, type Def, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet, type CreatureCombatFacet } from "./defs.ts";
 
 export { MAX_LOOK_PARTS, MAX_SHAPE_BOXES, MAX_STRUCTURE_HALF } from "./kinds/shapes.ts";
 export { MAX_LEVELS } from "./kinds/levels.ts";
+export { MAX_NODE_HEIGHT, MAX_NODE_HITS, MAX_NODE_VARIANTS, MOST_NODE_SIZE } from "./kinds/nodes.ts";
 export const MISSING = 0;
-/** The most a node kind may be drawn at, as a multiple of its modelled size, and the most variants it may have. */
-export const MOST_NODE_SIZE = 3.9;
-export const MAX_NODE_VARIANTS = 64;
-/** Metres a node's boxes may reach up from its origin at its largest size, as a tall palm's trunk does. Sideways, a structure's half. */
-export const MAX_NODE_HEIGHT = 32;
 
 const ID = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_\/-]*$/;
 const ALIAS = /^[A-Za-z0-9_.-]+$/;
@@ -91,8 +87,6 @@ interface Core {
    */
   readonly ballFull: Uint16Array;
   readonly ballEmpty: Uint16Array;
-  /** 1 for a kind whose inventory is only ever taken from: a supply capsule (prop/crate). Nothing is put in or swapped in. */
-  readonly takeOnly: Uint8Array;
   /** Radius and height of a species or prop. Zero otherwise. */
   readonly bodyRadius: Float32Array;
   readonly bodyHeight: Float32Array;
@@ -100,9 +94,6 @@ interface Core {
   readonly footBack: Float32Array;
   readonly footFront: Float32Array;
   readonly footRadius: Float32Array;
-  /** 1 for box kinds that bodies pass through (bushes). */
-  readonly soft: Uint8Array;
-  readonly nodeHits: Float32Array;
   /** The armor slot an item is worn in (0 head, 1 torso, 2 hands, 3 legs, 4 feet), or -1. */
   readonly wearSlot: Int8Array;
   /** Per item: a glider's grade, 0 for anything else, and the ticks in the air that cost it one use (GlideFacet). */
@@ -226,11 +217,6 @@ interface Core {
   readonly carriable: Uint8Array;
   readonly feces: Uint16Array;
   readonly eggChance: Float32Array;
-  /** Per prop: the multiple of its mesh's modelled size it is drawn at, 1 for everything else; for an egg, the item it is once picked up (0 for none). */
-  readonly drawSize: Float32Array;
-  readonly propItem: Uint16Array;
-  /** Per prop: for an egg, the item it is once picked up fertilised (0 for none). */
-  readonly propFertile: Uint16Array;
   /**
    * Per item: the ticks one lies on the ground before it is gone, or 0 for as long as any dropped stack; and what a young
    * body gives in its place (0 for itself).
@@ -355,7 +341,6 @@ export const MAX_SPOIL_HOURS = 1e6;
 /** The stats a use may change at once, and the ones it may change over time, which buffs carry (server/use.ts). */
 export const USE_AT_ONCE: readonly string[] = ["health", "stamina", "oxygen", "food", "water", "torpidity"];
 export const USE_OVER_TIME: readonly string[] = ["health", "torpidity"];
-export const MAX_NODE_HITS = 10000;
 /** Stamina per second of sprinting, per second of rest, and per jump, where a species does not say. */
 export const STAMINA_DEFAULT = { sprint: 5, regen: 8, jump: 6 };
 /** Palette colours every region of a wild creature draws from evenly, where its species has no colour set. */
@@ -488,39 +473,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.eggChance !== undefined && !(d.eggChance >= 0 && d.eggChance <= 1)) errors.push(`${d.id}: eggChance must be from 0 to 1`);
       if (d.fistsTorpor !== undefined && !(d.fistsTorpor >= 0)) errors.push(`${d.id}: fistsTorpor must not be negative`);
       errors.push(...flyerFaults(d), ...creatureCombatFaults(d, input));
-    } else if (d.type === "prop") {
-      // A cloud's radius is its reach, not a body's (server/clouds.ts).
-      positive(d, "radius", d.radius, d.class === "cloud" ? 32 : 8);
-      positive(d, "height", d.height, 32);
-      if (d.size !== undefined) positive(d, "size", d.size, 8);
-    } else if (d.type === "node") {
-      for (let a = 0; a < 3; a++) positive(d, `half[${a}]`, d.half[a]!, MAX_STRUCTURE_HALF);
-      positive(d, "hits", d.hits, MAX_NODE_HITS);
-      positive(d, "respawnHours", d.respawnHours, 1e6);
-      for (const y of d.yields) if (!(y.min >= 0 && y.max >= y.min)) errors.push(`${d.id}: a yield's range must be 0 <= min <= max`);
-      if (d.sea !== undefined && d.sea !== "under" && d.sea !== "either") errors.push(`${d.id}: its sea is "under" or "either", not "${d.sea}"`);
-      if (d.apart !== undefined) positive(d, "apart", d.apart, CHUNK_SIZE);
-      const largest = d.size?.[1] ?? 1;
-      if (!(d.half[1] * 2 * largest <= MAX_NODE_HEIGHT && Math.max(d.half[0], d.half[2]) * largest <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: its box reaches further than ${MAX_STRUCTURE_HALF} m sideways or ${MAX_NODE_HEIGHT} m up from its origin at its largest size`);
-      const shaped = (what: string, s: NodeShape): void => {
-        if (typeof s.mesh !== "string" || s.mesh.length === 0) errors.push(`${d.id}: ${what} names its mesh`);
-        if (s.boxes !== undefined && !(Array.isArray(s.boxes) && s.boxes.length <= MAX_SHAPE_BOXES)) errors.push(`${d.id}: ${what} has at most ${MAX_SHAPE_BOXES} boxes`);
-        for (const b of s.boxes ?? []) {
-          for (let a = 0; a < 3; a++) {
-            positive(d, `a box's half[${a}]`, b.half?.[a]!, MAX_STRUCTURE_HALF);
-            if (!((Math.abs(b.at?.[a]!) + b.half?.[a]!) * largest <= (a === 1 ? MAX_NODE_HEIGHT : MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a box of ${what} reaches further than ${MAX_STRUCTURE_HALF} m sideways or ${MAX_NODE_HEIGHT} m up from its origin at the kind's largest size`);
-          }
-        }
-      };
-      if (d.variants !== undefined && !(d.variants.length >= 1 && d.variants.length <= MAX_NODE_VARIANTS)) errors.push(`${d.id}: a node has 1 to ${MAX_NODE_VARIANTS} variants`);
-      for (const v of d.variants ?? []) {
-        shaped("a variant", v);
-        if (v.weight !== undefined && !(Number.isInteger(v.weight) && v.weight >= 1 && v.weight <= 255)) errors.push(`${d.id}: a variant's weight is a whole number from 1 to 255`);
-        if (v.depleted) shaped("a variant's depleted form", v.depleted);
-      }
-      if (d.depleted) shaped("its depleted form", d.depleted);
-      if (d.footing !== undefined && !(d.footing.reach > 0 && d.footing.reach <= MAX_STRUCTURE_HALF && d.footing.fall >= 0 && d.footing.fall <= MAX_NODE_HEIGHT)) errors.push(`${d.id}: footing reaches more than 0 and at most ${MAX_STRUCTURE_HALF} m, and allows a fall of 0 to ${MAX_NODE_HEIGHT} m`);
-      if (d.size !== undefined && !(d.size.length === 2 && d.size[0] >= 0.25 && d.size[1] >= d.size[0] && d.size[1] <= MOST_NODE_SIZE)) errors.push(`${d.id}: size is [least, most], from 0.25 to ${MOST_NODE_SIZE}`);
     } else if (d.type === "structure") {
       if (d.under !== undefined && !(Number.isInteger(d.under) && d.under > 0 && d.under < REGION_BASE)) errors.push(`${d.id}: under must be a fixed palette colour`);
       if (d.near !== undefined && d.near !== true) errors.push(`${d.id}: near is true or left out`);
@@ -666,7 +618,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.stack !== 1 || d.eat || d.dose || d.weapon || d.wear || d.tool) errors.push(`${d.id}: a vessel stacks to 1, wears no durability of its own, and is drunk from, not eaten`);
       }
     }
-    if (d.type === "species" || d.type === "structure" || d.type === "prop" || d.type === "node") {
+    if (d.type === "species" || d.type === "structure") {
       if (d.mesh.length === 0) errors.push(`${d.id}: mesh is required`);
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
     }
@@ -696,7 +648,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (other !== undefined) errors.push(`${d.id}: ${other} is already given in place of "${d.youngFor}"`);
       young.set(d.youngFor, d.id);
     }
-    if (d.type === "prop" && d.fertile !== undefined && input.some((o) => o.id === d.fertile && o.type === "item" && o.stack !== 1)) errors.push(`${d.id}: its fertile item must stack to 1`);
   }
   if (input.length >= 65535) errors.push("too many definitions for a 16-bit index");
   if (errors.length > 0) return { registry: null, errors };
@@ -718,11 +669,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const charges = new Uint8Array(n);
   const ballFull = new Uint16Array(n);
   const ballEmpty = new Uint16Array(n);
-  const takeOnly = new Uint8Array(n);
   const bodyRadius = new Float32Array(n);
   const bodyHeight = new Float32Array(n);
-  const soft = new Uint8Array(n);
-  const nodeHits = new Float32Array(n);
   const wearSlot = new Int8Array(n).fill(-1);
   const uses = new Uint16Array(n);
   const glide = new Uint8Array(n);
@@ -800,9 +748,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const carriable = new Uint8Array(n);
   const feces = new Uint16Array(n);
   const eggChance = new Float32Array(n);
-  const drawSize = new Float32Array(n).fill(1);
-  const propItem = new Uint16Array(n);
-  const propFertile = new Uint16Array(n);
   const decomposeTicks = new Uint32Array(n);
   const youngItem = new Uint16Array(n);
   const blowDamage = new Float32Array(n);
@@ -852,16 +797,17 @@ export function compileContent(all: readonly Def[]): CompileResult {
   });
   const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
   const parts: Thawed<PartTable> = { vehicleSurface: defs.map(d => d?.type === "structure" && d.vehicleSurface ? Object.freeze({ ...d.vehicleSurface }) : null), start: partStart, box: NO_BOXES };
+  const core: Thawed<Core> = { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, charge, charges, ballFull, ballEmpty, bodyRadius, bodyHeight, footBack, footFront, footRadius, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry };
   // Spreads, and not Object.assign: V8 keeps an object made by spreads in fast mode whatever its size, and reads one that
   // Object.assign gave this many members ten times as slowly.
-  let reg = { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, charge, charges, ballFull, ballEmpty, takeOnly, bodyRadius, bodyHeight, footBack, footFront, footRadius, soft, nodeHits, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry } as Filling;
+  let reg = core as Filling;
   for (const k of KINDS) if ("columns" in k) reg = { ...reg, ...(k as Kind<Content, Made>).columns!(n) };
   const making: Making = { once, boxes: partBox };
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
     partStart[i] = partBox.length / 6;
     for (const fill of FILL.get(d.type) ?? NO_HOOKS) fill(d as Content, i, reg, making);
-    if (d.type === "structure" || d.type === "node") {
+    if (d.type === "structure") {
       halfX[i] = d.half[0];
       halfY[i] = d.half[1];
       halfZ[i] = d.half[2];
@@ -896,12 +842,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (m) structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
         decayDays[i] = d.decayDays ?? m?.decayDays ?? 0;
       }
-      if (d.type === "node") {
-        nodeHits[i] = d.hits;
-        if (d.soft) soft[i] = 1;
-      }
-    } else if (d.type === "species" || d.type === "prop") {
-      if (d.type === "species") {
+    } else if (d.type === "species") {
+      {
         move[i] = moveParams(d);
         combat[i] = d.combat ?? null;
         vehicle[i] = d.vehicle ?? null;
@@ -934,11 +876,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
         for (const [group, v] of Object.entries(d.zones ?? {})) for (const z of ZONE_GROUPS[group]!) zones[z] = v;
         zoneMul[i] = zones;
       }
-      // A cloud has no body, so nothing aims at it, opens it or meets it; its reach is its definition's (server/clouds.ts).
-      const body = d.type !== "prop" || d.class !== "cloud";
-      bodyRadius[i] = body ? d.radius : 0;
-      bodyHeight[i] = body ? d.height : 0;
-      if (d.type === "prop") drawSize[i] = d.size ?? 1;
+      bodyRadius[i] = d.radius;
+      bodyHeight[i] = d.height;
     } else if (d.type === "item") {
       stack[i] = d.stack;
       weight[i] = d.weight ?? 0.1;
@@ -1037,9 +976,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
         weapon[i] = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: d.bite.ticks ?? 27, strikeTick: d.bite.lands ?? 11, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
       }
     }
-    if (d.type === "prop" && d.item !== undefined) propItem[i] = index.get(d.item)!;
-    if (d.type === "prop" && d.fertile !== undefined) propFertile[i] = index.get(d.fertile)!;
-    if (d.type === "prop" && d.class === "crate") takeOnly[i] = 1;
     if (d.type === "item" && d.youngFor !== undefined) youngItem[index.get(d.youngFor)!] = i;
     if (d.type === "item" && d.weapon?.cloud) {
       cloudProp[i] = index.get(d.weapon.cloud.prop)!;

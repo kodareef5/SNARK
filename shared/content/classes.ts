@@ -5,7 +5,7 @@
 import { FEATURES, type Feature } from "../features.ts";
 import { f, icon, mesh, stub, type ClassRow, type Field, type Fields, type Slot, type Status } from "./kind.ts";
 import { KINDS } from "./kinds.ts";
-import type { Def, ItemDef, NodeDef, PropDef, SpeciesDef, StructureDef } from "./defs.ts";
+import type { Def, ItemDef, SpeciesDef, StructureDef } from "./defs.ts";
 
 
 export type { ClassRow, Field, Slot, Status } from "./kind.ts";
@@ -164,37 +164,6 @@ const STRUCTURE = {
   dry: f("switch", "not lit, or not working, under water"),
 } satisfies Fields<StructureDef>;
 
-const NODE = {
-  mesh: f("text"),
-  color: f("number"),
-  half: f("vec3"),
-  top: f("facet"),
-  soft: f("switch"),
-  hits: f("number", "MaxHarvestHealth"),
-  respawnHours: f("number", "the replenish timing"),
-  material: f("text"),
-  yields: f("list", "the harvest component's item entries", { refs: { "[].item": "item" }, open: true }),
-  xp: f("number"),
-  variants: f("list", "the foliage type's meshes"),
-  size: f("list", "the foliage type's scale range"),
-  depleted: f("facet", "what a depleted foliage instance leaves"),
-  footing: f("facet", "", { refs: { else: "node" } }),
-  sea: f("text"),
-  apart: f("number"),
-} satisfies Fields<NodeDef>;
-
-const PROP = {
-  mesh: f("text"),
-  color: f("number"),
-  radius: f("number"),
-  height: f("number"),
-  slots: f("number"),
-  pitched: f("switch"),
-  size: f("number", "the egg's size class"),
-  item: f("text", "the egg item a dropped egg is", { refs: { "": "item/egg" } }),
-  fertile: f("text", "the egg item a fertilised egg is", { refs: { "": "item/egg" } }),
-} satisfies Fields<PropDef>;
-
 /** The fields of a type whose kind has a file of its own (kinds.ts). */
 const fieldsOf = (type: string): Readonly<Record<string, Field>> => KINDS.find((k) => k.type === type && k.fields)!.fields!;
 const rowsOf = (type: string): readonly ClassRow[] => KINDS.find((k) => k.type === type && k.rows)!.rows!;
@@ -204,8 +173,8 @@ export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>
   item: ITEM,
   species: SPECIES,
   structure: STRUCTURE,
-  node: NODE,
-  prop: PROP,
+  node: fieldsOf("node"),
+  prop: fieldsOf("prop"),
   engram: fieldsOf("engram"),
   levels: fieldsOf("levels"),
   buff: fieldsOf("buff"),
@@ -340,16 +309,9 @@ row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "tu
 rows.push(...rowsOf("shape"));
 rows.push(...rowsOf("material"));
 
-row("node", "node", NODE, { ark: "a foliage type and its harvest component", shelf: "nodes", must: ["mesh", "color", "half", "hits", "respawnHours", "yields", "xp"], may: ["top", "soft", "material", "variants", "size", "depleted", "footing", "sea", "apart"], slots: { mesh: mesh("must", "{mesh}", "box"), depleted: { ...mesh("may", "{depleted.mesh}", "hidden"), when: "depleted" } }, doc: "A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place." });
+rows.push(...rowsOf("node"));
 
-const PROP_BODY = ["mesh", "color", "radius", "height"] as const;
-const PROP_SLOTS = { mesh: mesh("must", "{mesh}", "box") };
-row("prop", "prop", PROP, { abstract: true, ark: "an actor that is not alive", shelf: "props", doc: "Stands in the world and neither moves nor lives." });
-row("prop/container", "prop", PROP, { parent: "prop", ark: "a death cache, a dropped bag", shelf: "props/containers", must: [...PROP_BODY, "slots"], slots: PROP_SLOTS, doc: "Holds what was dropped or left by the dead." });
-row("prop/projectile", "prop", PROP, { parent: "prop", ark: "a projectile actor", status: "partial", shelf: "props/projectiles", must: PROP_BODY, may: ["pitched"], slots: PROP_SLOTS, doc: "Something loosed or thrown, where it lies. How it flies is on the ammunition." });
-row("prop/egg", "prop", PROP, { parent: "prop", ark: "a laid or dropped egg, fertilised or not", shelf: "props/eggs", must: PROP_BODY, may: ["size", "item", "fertile"], slots: PROP_SLOTS, doc: "An egg where it lies: taken up as its item, and hatching where it lies if fertilised." });
-row("prop/cloud", "prop", PROP, { parent: "prop", ark: "the gas and smoke actors of grenades", shelf: "props/clouds", must: PROP_BODY, slots: PROP_SLOTS, doc: "Smoke or gas that stays where a grenade burst, as far as its radius and as high as its height, for its grenade's seconds, giving its buff to the survivors inside it every half second (server/clouds.ts). It has no body, and is drawn as puffs over that reach (client/core/render/clouds.ts); its mesh is not drawn." });
-row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", shelf: "props/crates", must: [...PROP_BODY, "slots"], slots: PROP_SLOTS, doc: "A supply drop's capsule where it landed: it holds what was rolled for it, is only ever taken from, and goes when it is emptied or its time is up (server/supply.ts)." });
+rows.push(...rowsOf("prop"));
 
 rows.push(...rowsOf("buff"));
 

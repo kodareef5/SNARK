@@ -5,7 +5,7 @@
 
 import type { Named } from "./kind.ts";
 import type { MaterialDef } from "./kinds/materials.ts";
-import type { ShapeBox, ShapeDef } from "./kinds/shapes.ts";
+import type { ShapeDef } from "./kinds/shapes.ts";
 import type { LootDef } from "./kinds/loot.ts";
 import type { SpawnsDef } from "./kinds/spawns.ts";
 import type { MapDef } from "./kinds/maps.ts";
@@ -13,6 +13,8 @@ import type { GameDef } from "./kinds/game.ts";
 import type { RenameDef } from "./kinds/renames.ts";
 import type { LevelsDef } from "./kinds/levels.ts";
 import type { EngramDef } from "./kinds/engrams.ts";
+import type { NodeDef } from "./kinds/nodes.ts";
+import type { PropDef } from "./kinds/props.ts";
 import type { BuffDef } from "./kinds/buffs.ts";
 import type { DamageDef, DamageType } from "./kinds/damage.ts";
 import type { Seat } from "../sim/seats.ts";
@@ -29,6 +31,8 @@ export type { GameDef } from "./kinds/game.ts";
 export type { RenameDef } from "./kinds/renames.ts";
 export type { LevelsDef } from "./kinds/levels.ts";
 export type { EngramDef } from "./kinds/engrams.ts";
+export type { NodeDef, NodeShape, NodeVariant } from "./kinds/nodes.ts";
+export type { PropDef } from "./kinds/props.ts";
 export type { BuffDef } from "./kinds/buffs.ts";
 export type { DamageDef, DamageType } from "./kinds/damage.ts";
 
@@ -753,95 +757,6 @@ export interface WearFacet {
   readonly set: string;
   /** Palette colours of its three colour regions: main, second, trim. */
   readonly colors: readonly [number, number, number];
-}
-
-/**
- * A mesh a node is drawn as, and the boxes bodies and rays meet, in metres from its origin at its modelled size. Its origin
- * is where it meets the ground.
- */
-export interface NodeShape {
-  readonly mesh: string;
-  readonly boxes?: readonly ShapeBox[];
-}
-
-/** One individual a node kind grows as. */
-export interface NodeVariant extends NodeShape {
-  /** How often it is chosen against the kind's other variants. 1 where not given. */
-  readonly weight?: number;
-  /** What is left of it once used up, in place of the kind's. */
-  readonly depleted?: NodeShape;
-}
-
-/** A resource node: a tree, a rock, a bush. Node positions come from the map and are the same on every client. Only touched nodes are saved. */
-export interface NodeDef extends Named {
-  readonly type: "node";
-  readonly id: string;
-  readonly mesh: string;
-  readonly color: number;
-  /** Graybox half extents, and the collider of a variant without boxes. The node stands on its base. */
-  readonly half: readonly [number, number, number];
-  /** A second box on top of the first, for a crown. Drawn, not collided with. */
-  readonly top?: { readonly half: readonly [number, number, number]; readonly color: number };
-  /** Bodies walk through it (a bush). It can still be looked at and used. */
-  readonly soft?: boolean;
-  /** Hits (or picks) before it is used up. */
-  readonly hits: number;
-  /** In-game hours until it grows back. */
-  readonly respawnHours: number;
-  /** Matched against a tool's `on`. Omitted for things picked by hand with the use key. */
-  readonly material?: string;
-  /**
-   * What each hit gives. `tool` true means only with the right tool. A right tool multiplies every yield by its power but
-   * one marked `flat`, whose range is what a hit gives whatever the tool: where the reference game's page says what its
-   * stone pick gets a hit (oil), or that it gets very little (crystal).
-   */
-  readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean; readonly flat?: boolean }[];
-  /** Experience per hit. */
-  readonly xp: number;
-  /** The individuals it grows as. Each node is one of them, chosen by its place. Without them it is its own mesh and `half`. */
-  readonly variants?: readonly NodeVariant[];
-  /** The least and most it is drawn at, as multiples of its modelled size. Each node's is chosen by its place. 1 where not given. */
-  readonly size?: readonly [number, number];
-  /** What stands where a node was from when it is used up until it grows back. Without it, nothing does. */
-  readonly depleted?: NodeShape;
-  /**
-   * How far its footing spreads from its origin, in metres at its largest size, and how far the ground may fall away
-   * under it below the ground at the origin. A scattered slot whose ground falls further grows the kind `else` names in
-   * its place, as it is, or nothing.
-   */
-  readonly footing?: { readonly reach: number; readonly fall: number; readonly else?: string };
-  /**
-   * Where a scattered slot grows it against the sea: "under", only where the ground is under the sea (a clam, an oil rock);
-   * "either", there or on dry ground (crystal). Without it, only where the ground is 0.3 m above the sea or more. A listed
-   * node stands where it is listed.
-   */
-  readonly sea?: "under" | "either";
-  /**
-   * Metres within which two of its nodes in one chunk of a scattered layer are not the same variant while it has another
-   * to give (shared/world/nodes.ts placedNodes), so heaps side by side differ. Without it, each slot's own hash decides.
-   */
-  readonly apart?: number;
-}
-
-/** An entity that stands in the world but does not move or live, such as an item cache. Its record can hold an inventory. */
-export interface PropDef extends Named {
-  readonly type: "prop";
-  readonly class: "container" | "projectile" | "egg" | "crate" | "cloud";
-  readonly id: string;
-  readonly mesh: string;
-  readonly color: number;
-  readonly radius: number;
-  readonly height: number;
-  /** Inventory slots of its record. */
-  readonly slots?: number;
-  /** It is drawn tilted to its pitch as well as turned to its facing, with its mesh's +Z leading, like an arrow stuck where it landed. */
-  readonly pitched?: boolean;
-  /** Drawn at this multiple of its mesh's modelled size. 1 where not given. */
-  readonly size?: number;
-  /** An egg: the item it is when picked up. */
-  readonly item?: string;
-  /** An egg: the item it is when picked up fertilised, which stacks to 1 and keeps the young it holds. */
-  readonly fertile?: string;
 }
 
 /** Everything but a rename, which is not content. */

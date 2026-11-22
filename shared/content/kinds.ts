@@ -9,8 +9,10 @@ import { levels } from "./kinds/levels.ts";
 import { loot } from "./kinds/loot.ts";
 import { maps } from "./kinds/maps.ts";
 import { materials } from "./kinds/materials.ts";
+import { nodes } from "./kinds/nodes.ts";
+import { props } from "./kinds/props.ts";
 import { renames } from "./kinds/renames.ts";
 import { shapes } from "./kinds/shapes.ts";
 import { spawns } from "./kinds/spawns.ts";
 
-export const KINDS = [engrams, levels, shapes, materials, buffs, damage, loot, spawns, maps, game, renames] as const;
+export const KINDS = [engrams, levels, shapes, materials, nodes, props, buffs, damage, loot, spawns, maps, game, renames] as const;
