@@ -49,7 +49,7 @@ function fixture(host = false) {
   ents.act[actor.e] = ACT_RELOAD; ents.actTicks[actor.e] = 8; ents.pose(actor.e, h.world.tick);
   const refreshes: number[] = [], dealt: number[] = [];
   let mayDismount = false, dismounts = 0;
-  if (!host) h.host.combat.onCreatureHit = null;
+  if (!host) h.host.combat.onCreatureHit.clear();
   const impale = host ? h.host.impale : new CreatureImpale({ world: h.world, records: h.host.records, survival: h.host.survival,
     hostile: (a, v) => a !== v && !(a.team !== 0 && a.team === v.team),
     forceDismount: v => { dismounts++; if (!mayDismount) return false; ents.setSeat(h.host.records.entOf.get(v.pid)!, -1); return true; },

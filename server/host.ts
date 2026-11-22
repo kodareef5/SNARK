@@ -706,7 +706,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     eggGone?.(ref);
     balls.gone(ref);
   };
-  combat.onBall = (c, rec, slot) => balls.click(c, rec, slot);
+  combat.onBall.on((c, rec, slot) => balls.click(c, rec, slot));
   const mounts = new Mounts({ world, records, items, rules, balls, buffs, survival }, (opts.seed ?? 1) + 113);
   starter = mounts;
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
@@ -769,7 +769,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       if (e !== undefined) combat.creatureContact(by, e, attack, mode, [world.ents.x[e]!, world.ents.y[e]! + reg.bodyHeight[victim.kind]! * .5, world.ents.z[e]!], ZONE_TORSO, 1, true, points);
     },
   });
-  combat.onCreatureHit = (by, target, attack, mode) => {
+  combat.onCreatureHit.on((by, target, attack, mode) => {
     const victim = records.byPid.get(world.ents.pid[target]!);
     const slow = mode?.slow ?? attack.slow;
     if (victim && slow) creatureTraits.applySlow(victim, slow.multiplier, slow.seconds);
@@ -780,16 +780,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const force = impulse * Math.min(1, (reg.drag[by.kind]! || 50) / Math.max(1, reg.drag[ents.kind[target]!]! || 50));
       if (distance > .001) { ents.vx[target] = Math.fround(ents.vx[target]! + dx / distance * force); ents.vz[target] = Math.fround(ents.vz[target]! + dz / distance * force); }
     }
-  };
+  });
   const creatureContacts = new CreatureContacts({ world, records, harvest,
     test: (target, from, to, radius) => combat.creatureTest(target, from, to, radius),
     hit: (by, target, attack, mode, point, zone, power) => combat.creatureContact(by, target, attack, mode, point, zone, power),
     structure: (by, ref, attack, mode, point, power) => combat.creatureStructure(by, ref, attack, mode, point, power),
   });
-  combat.onHarm = (victim, points) => {
-    taming.harmed(victim, points);
-    hurt.harmed(victim, points);
-  };
+  combat.onHarm.on((victim, points) => taming.harmed(victim, points));
+  combat.onHarm.on((victim, points) => hurt.harmed(victim, points));
   const chat = new Chat({ game, records, rules, tribes, bus });
   // Cast is always there, doing nothing while CastEnabled is off, so the admin page can turn it on live.
   const castHost = new CastHost({
@@ -848,7 +846,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   persistence?.sidecar("decay", build.decay, DECAY_SAVE_TICKS);
-  combat.onStructureHurt = (ref) => build.hurt(ref);
+  combat.onStructureHurt.on((ref) => build.hurt(ref));
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.on("globalVoiceChat") }, (out) => void crypto.getRandomValues(out));
   /** Lingering bodies are not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
@@ -869,9 +867,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   projectiles.zero = (c) => gaze.zeroOf(c);
   // Every shot and blast, hit or miss, is heard by Cast's people near it.
   projectiles.heard.push((kind, x, z, by, silenced) => castHost.heard(kind, x, z, by, silenced));
-  combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
+  combat.onFire.on((c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw));
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
-  combat.onThrow = (c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality));
+  combat.onThrow.on((c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality)));
   const clouds = new Clouds({ world, records, buffs, rules });
   projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
