@@ -88,3 +88,10 @@ test("code a page needs only after its first frame is not in the script the firs
   expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts", "../notes/port.ts"]));
   expect(fetchedBy("core/app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./ui/monitor.ts", "./notes/notes.ts", "./sound-late.ts"]));
 });
+
+test("the first frame holds the made textures' read; their engine comes later", () => {
+  const files = [...firstFrameFiles()].map((f) => relative(ROOT, f));
+  expect(files.filter((f) => f.startsWith("client/core/texgen/")).sort()).toEqual(["client/core/texgen/hash.ts", "client/core/texgen/layers.ts"]);
+  expect(files.filter((f) => f.startsWith("content/texgen/"))).toEqual([]);
+  expect(readFileSync(join(CLIENT, "shell/main.ts"), "utf8")).toContain('import("../core/texgen/late.ts")');
+});
