@@ -71,7 +71,7 @@ import { JET_BOOTS, JET_CUIRASS, JET_HELMET, stanceEye } from "../shared/sim/cha
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
-import { tickOf, type System } from "./system.ts";
+import { walk, type System } from "./system.ts";
 import { Items } from "./items.ts";
 import { COMMAND_FAMILIES } from "./commands/families.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
@@ -1252,7 +1252,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
-  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); game.blocking.survivorsPass = !rules.on("SurvivorsBlock"); };
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
   const lane = game.lane;
@@ -1449,16 +1448,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     drop: (rec, slot, n) => eggs.put(rec, slot, n) ?? death.drop(rec, slot, n),
   };
   const tactical = new Tactical(world, game, records, rules);
-  game.onReplicate = (c) => {
-    motion.sync(c);
-    syncOwn(own, c);
-    harvest?.sync(c);
-    tactical.sync(c);
-    supply.sync(c);
-  };
   game.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
   const corpseReplication = new CorpseReplication(game, corpses);
-  game.onSnapshot = (c, view) => corpseReplication.sync(c, view);
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
@@ -1588,6 +1579,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The tick. Each hook walks this list from the top, so a row's place here is its place in every hook it has: a new
   // system is a row where its work belongs. The simulation is the same on every run only while the order is.
   const systems: System[] = [
+    { beforeStep: refreshInventories },
     creative,
     gaze,
     { step: followFocus },
@@ -1605,6 +1597,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Riders move with their mounts before combat aims at either.
     urban,
     riding,
+    { beforeStep: () => void (game.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
     carry,
     emotes,
     mark(PART.riders),
@@ -1642,12 +1635,19 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     survivorLog,
     mark(PART.modules),
     { step: save },
+    // Each session's feeds, just before its snapshot, and what follows the view it was sent.
+    { replicate: (c) => motion.sync(c) },
+    { replicate: (c) => syncOwn(own, c) },
+    ...(harvest ? [{ replicate: (c: Client) => harvest.sync(c) }] : []),
+    { replicate: (c) => tactical.sync(c) },
+    { replicate: (c) => supply.sync(c) },
+    { snapshot: (c, view) => corpseReplication.sync(c, view) },
   ];
-  const ticking = tickOf(systems);
-  game.onStep = (tick) => {
-    const rows = ticking.step;
-    for (let i = 0; i < rows.length; i++) rows[i]!.step!(tick);
-  };
+  const tick = walk(systems);
+  game.onBeforeStep = tick.beforeStep;
+  game.onStep = tick.step;
+  game.onReplicate = tick.replicate;
+  game.onSnapshot = tick.snapshot;
   const host: Host = {
     world,
     mapFile,

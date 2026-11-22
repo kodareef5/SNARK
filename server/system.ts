@@ -16,19 +16,24 @@ export interface System {
   snapshot?(c: Client, view: SentView): void;
 }
 
-/** The rows that take part in each hook, in the list's order. */
-export interface Tick {
-  readonly beforeStep: readonly System[];
-  readonly step: readonly System[];
-  readonly replicate: readonly System[];
-  readonly snapshot: readonly System[];
-}
-
-export function tickOf(systems: readonly System[]): Tick {
+/** One function for each hook, which calls the rows that have it in the list's order. They are what GameServer's four tick hooks are set to. */
+export function walk(systems: readonly System[]): Required<System> {
+  const before = systems.filter((s) => s.beforeStep !== undefined);
+  const steps = systems.filter((s) => s.step !== undefined);
+  const feeds = systems.filter((s) => s.replicate !== undefined);
+  const sent = systems.filter((s) => s.snapshot !== undefined);
   return {
-    beforeStep: systems.filter((s) => s.beforeStep !== undefined),
-    step: systems.filter((s) => s.step !== undefined),
-    replicate: systems.filter((s) => s.replicate !== undefined),
-    snapshot: systems.filter((s) => s.snapshot !== undefined),
+    beforeStep: () => {
+      for (let i = 0; i < before.length; i++) before[i]!.beforeStep!();
+    },
+    step: (tick) => {
+      for (let i = 0; i < steps.length; i++) steps[i]!.step!(tick);
+    },
+    replicate: (c) => {
+      for (let i = 0; i < feeds.length; i++) feeds[i]!.replicate!(c);
+    },
+    snapshot: (c, view) => {
+      for (let i = 0; i < sent.length; i++) sent[i]!.snapshot!(c, view);
+    },
   };
 }
