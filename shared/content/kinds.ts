@@ -14,7 +14,8 @@ import { props } from "./kinds/props.ts";
 import { renames } from "./kinds/renames.ts";
 import { shapes } from "./kinds/shapes.ts";
 import { spawns } from "./kinds/spawns.ts";
+import { species } from "./kinds/species.ts";
 import { stations } from "./kinds/stations.ts";
 import { structures } from "./kinds/structures.ts";
 
-export const KINDS = [engrams, levels, structures, stations, shapes, materials, nodes, props, buffs, damage, loot, spawns, maps, game, renames] as const;
+export const KINDS = [engrams, levels, species, structures, stations, shapes, materials, nodes, props, buffs, damage, loot, spawns, maps, game, renames] as const;

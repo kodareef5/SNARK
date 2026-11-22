@@ -1,16 +1,10 @@
 // Dense indices are assigned in id order, so every process that loads the same definitions gets the same indices and hash.
 // Index 0 is reserved. It marks an empty structure slot and stands in for content that no longer exists.
 
-import { validateVehicleDefinition, type VehicleDefinition } from "../sim/vehicle.ts";
 import { validateSeats, type Seat } from "../sim/seats.ts";
-import { BIRTH_SCALE } from "../sim/breeding.ts";
-import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
 import { hashString } from "../hash.ts";
-import { FLIGHT_TICKS_MAX, STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
-import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
-import { ZONE_COUNT, ZONE_TAIL } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
 import type { PartTable } from "../world/structures.ts";
@@ -18,26 +12,20 @@ import type { HullTable } from "../world/convex.ts";
 import type { VehicleSurface } from "../sim/vehicle.ts";
 import { defFaults, refFaults } from "./classes.ts";
 import { MAX_BURN_SECONDS } from "./kinds/stations.ts";
-import { creatureCombatFaults } from "./creature-combat.ts";
 import type { Checking, Kind, Making } from "./kind.ts";
 import { KINDS } from "./kinds.ts";
-import { type Content, type Def, type RenameDef, type SpeciesDef, type WeaponFacet, type CreatureCombatFacet } from "./defs.ts";
+import { type Content, type Def, type RenameDef, type WeaponFacet } from "./defs.ts";
 
 export { MAX_LOOK_PARTS, MAX_SHAPE_BOXES, MAX_STRUCTURE_HALF } from "./kinds/shapes.ts";
 export { MAX_LEVELS } from "./kinds/levels.ts";
 export { MAX_NODE_HEIGHT, MAX_NODE_HITS, MAX_NODE_VARIANTS, MOST_NODE_SIZE } from "./kinds/nodes.ts";
 export { MAX_MOVING_PARTS, MAX_MOVING_REACH } from "./kinds/structures.ts";
 export { MAX_BURN_SECONDS } from "./kinds/stations.ts";
+export { MUTATION_COLORS, STAMINA_DEFAULT, WILD_COLORS } from "./kinds/species.ts";
 export const MISSING = 0;
 
 const ID = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_\/-]*$/;
 const ALIAS = /^[A-Za-z0-9_.-]+$/;
-const TAG = /^[a-z][a-z0-9_]*$/;
-const GRAVITY = 20;
-/** The steepest a survivor or a wild creature stands on, as a cosine: Unreal's WalkableFloorZ, which ARK keeps, 44.765 degrees. */
-const SLOPE_COS = 0.71;
-/** A tame's: TamedWalkableFloorZ on ARK's base creature, 53.13 degrees. */
-const TAMED_SLOPE_COS = 0.6;
 
 /** What every kind's definitions have, and the columns more than one kind fills. */
 interface Core {
@@ -53,8 +41,6 @@ interface Core {
   readonly renames: readonly RenameDef[];
   /** The one definition each alias names. Aliases are kept in lower case. See shared/content/find.ts. */
   readonly aliases: ReadonlyMap<string, number>;
-  /** The creatures that share each tag: a species and its variants. */
-  readonly tags: ReadonlyMap<string, readonly number[]>;
   /**
    * For a registry a server's settings have tuned (shared/content/tuning.ts): the hash of the untuned definitions, the
    * tuning as text, and the untuned registry. For untuned content: its own hash, "", and null.
@@ -72,9 +58,6 @@ interface Core {
   readonly halfX: Float32Array;
   readonly halfY: Float32Array;
   readonly halfZ: Float32Array;
-  /** Null for everything that is not a species. */
-  readonly move: readonly (MoveParams | null)[];
-  readonly vehicle: readonly (VehicleDefinition | null)[];
   /** Item columns, zero for content that is not an item. See shared/sim/items.ts. */
   readonly stack: Uint16Array;
   readonly weight: Float32Array;
@@ -90,10 +73,6 @@ interface Core {
   /** Radius and height of a species or prop. Zero otherwise. */
   readonly bodyRadius: Float32Array;
   readonly bodyHeight: Float32Array;
-  /** A species' body as others on foot meet it (SpeciesDef.footprint): back, front and radius. A circle of its radius where not given. */
-  readonly footBack: Float32Array;
-  readonly footFront: Float32Array;
-  readonly footRadius: Float32Array;
   /** The armor slot an item is worn in (0 head, 1 torso, 2 hands, 3 legs, 4 feet), or -1. */
   readonly wearSlot: Int8Array;
   /** Per item: a glider's grade, 0 for anything else, and the ticks in the air that cost it one use (GlideFacet). */
@@ -110,9 +89,6 @@ interface Core {
   readonly reach: Float32Array;
   /** Armor rating of a worn piece at primitive quality. */
   readonly armor: Float32Array;
-  /** Per species: the multiplier on each DMG_ type it takes, and on a hit to each zone. Null for everything else. */
-  readonly takes: readonly (Float32Array | null)[];
-  readonly zoneMul: readonly (Float32Array | null)[];
   /** What a bow or gun multiplies its ammunition's damage by. */
   readonly power: Float32Array;
   /** Ammunition: metres per second at full power (0 if it arrives the tick it is fired), its fall, and the chance a spent round can be picked up. */
@@ -130,23 +106,6 @@ interface Core {
   readonly places: readonly (Uint16Array | null)[];
   /** Per assembly item: deployed vehicle kind, or 0. */
   readonly vehicleDeploy: Uint16Array;
-  /** Per species: the speed from which it is drawn running, in metres per second. */
-  readonly runAt: Float32Array;
-  /** Per species: its taming numbers, or null if it cannot be tamed, and what it eats, best first, as triples of item, food and affinity. */
-  readonly taming: readonly (TameParams | null)[];
-  readonly eats: readonly (readonly number[] | null)[];
-  /**
-   * Per species that breeds: the prop a female lays (0 if she bears live young), the ticks to hatch and the ticks to grow up,
-   * both at the reference's rates, and a newborn's size as a share of a grown one. A species that does not breed has 0xffff
-   * and 0 ticks.
-   */
-  readonly breedEgg: Uint16Array;
-  readonly incubateTicks: Uint32Array;
-  readonly matureTicks: Uint32Array;
-  readonly birthScale: Float32Array;
-  /** Per species: the colours each region of a wild one may take, and the palette colours a mutation may give a region. Null for everything else. */
-  readonly colorSet: readonly (ColorSet | null)[];
-  readonly mutationColors: readonly (readonly number[] | null)[];
   /**
    * Per species and structure: how many times as long things keep in its inventory (a species' or a structure's `keeps`;
    * for a structure the same as structKeeps). 1 for everything else.
@@ -160,10 +119,6 @@ interface Core {
   /** Per item: the torpor a dose gives and the seconds it takes (0 if it is no dose). */
   readonly doseTorpor: Float32Array;
   readonly doseSeconds: Float32Array;
-  /** Per species: its temper (0 flees, 1 defends, 2 hunts), and its sight and leash in metres. */
-  readonly temper: Uint8Array;
-  readonly sight: Float32Array;
-  readonly leash: Float32Array;
   /** Per item: the ticks one burns (0 if it is no fuel), what it becomes over a fire (0 for nothing), and the ticks that takes. */
   readonly fuelTicks: Uint32Array;
   readonly cooksInto: Uint16Array;
@@ -183,19 +138,6 @@ interface Core {
   readonly blast: Float32Array;
   /** Torpor of one melee hit, as a multiple of its damage: a melee weapon's, and for a species its bare hands'. */
   readonly meleeTorpor: Float32Array;
-  /**
-   * Per species: how far off others of its species take fright with it (0 for none), how it moves once tamed (the very
-   * object `move` holds where taming does not change it), its drag weight and mass (0 where not given), 1 if a survivor may
-   * pick it up, the item it leaves when it defecates (0 for none), and the chance a female lays an egg in its place.
-   */
-  readonly alarm: Float32Array;
-  readonly combat: readonly (CreatureCombatFacet | null)[];
-  readonly tamedMove: readonly (MoveParams | null)[];
-  readonly drag: Float32Array;
-  readonly mass: Float32Array;
-  readonly carriable: Uint8Array;
-  readonly feces: Uint16Array;
-  readonly eggChance: Float32Array;
   /**
    * Per item: the ticks one lies on the ground before it is gone, or 0 for as long as any dropped stack; and what a young
    * body gives in its place (0 for itself).
@@ -234,26 +176,6 @@ interface Core {
    */
   readonly ammoLight: Float32Array;
   readonly ammoLightColor: Uint8Array;
-  // The flyers' columns (planning/reference/flyers-plan.md, FL0), compiled and read by nothing until the package named
-  // builds them. A flyer's speeds, turn, stamina and roll are in its MoveParams.
-  /** Per species: 1 if it flies (SpeciesDef.fly). */
-  readonly flies: Uint8Array;
-  /** FL6, per species: the most drag weight it grabs and lifts (0 if it grabs nothing), and the metres below it it reaches. */
-  readonly grabDrag: Float32Array;
-  readonly grabReach: Float32Array;
-  /** FL3, per species: 1 if its wild go for whoever takes their egg though the species flees. */
-  readonly defendsEgg: Uint8Array;
-  /** FL2, per species: the share of a rider's weight that counts on it, 1 where not given, and the stamina units one bite costs. */
-  readonly riderWeight: Float32Array;
-  readonly biteStamina: Uint32Array;
-  /** FL2, per species: the damage its barrel roll does to each body it passes (`fly.roll.damage`), 0 for none. */
-  readonly rollDamage: Float32Array;
-  /**
-   * Per species: what the damage of a missile, a projectile that is not a bullet, is multiplied by against it, and what its
-   * bite's and bare hands' damage is multiplied by against a structure. 1 where not given.
-   */
-  readonly missileMul: Float32Array;
-  readonly biteStructureMul: Float32Array;
   /** Per item: what one piece leaves in the fire when it has burnt out (0 for nothing). */
   readonly burnsInto: Uint16Array;
 }
@@ -261,7 +183,7 @@ interface Core {
 type Join<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
 /** The columns the kinds add (Kind.columns), as they are filled. */
 type Made = Join<ReturnType<NonNullable<(typeof KINDS)[number]["columns"]>>>;
-type Frozen<T> = { readonly [K in keyof T]: T[K] extends (infer E)[] ? readonly E[] : T[K] };
+type Frozen<T> = { readonly [K in keyof T]: T[K] extends (infer E)[] ? readonly E[] : T[K] extends Map<infer A, (infer E)[]> ? ReadonlyMap<A, readonly E[]> : T[K] };
 type Thawed<T> = { -readonly [K in keyof T]: T[K] extends readonly (infer E)[] ? E[] : T[K] };
 
 /**
@@ -296,8 +218,7 @@ const FILL = hooks("fill");
 const LINK = hooks("link");
 const NO_HOOKS: readonly never[] = [];
 
-/** Default reach of bare hands and of a melee weapon, in metres. */
-const FIST_REACH = 2.2;
+/** Default reach of a melee weapon, in metres. */
 const MELEE_REACH = 2.6;
 /** The longest any weapon timing may be, in ticks, which is what a body's act counter holds. */
 const MAX_ACT_TICKS = 250;
@@ -308,12 +229,6 @@ export const MAX_SPOIL_HOURS = 1e6;
 /** The stats a use may change at once, and the ones it may change over time, which buffs carry (server/use.ts). */
 export const USE_AT_ONCE: readonly string[] = ["health", "stamina", "oxygen", "food", "water", "torpidity"];
 export const USE_OVER_TIME: readonly string[] = ["health", "torpidity"];
-/** Stamina per second of sprinting, per second of rest, and per jump, where a species does not say. */
-export const STAMINA_DEFAULT = { sprint: 5, regen: 8, jump: 6 };
-/** Palette colours every region of a wild creature draws from evenly, where its species has no colour set. */
-export const WILD_COLORS: readonly number[] = [3, 5, 6, 7, 9, 12, 15];
-/** Palette colours a mutation may give a region, where the species does not say. None is a wild colour. */
-export const MUTATION_COLORS: readonly number[] = [8, 10, 11, 13, 14, 17, 19, 21];
 
 export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
 
@@ -373,74 +288,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       claimed.set(String(a).toLowerCase(), d.id);
     }
     for (const check of CHECK.get(d.type) ?? NO_HOOKS) check(d, cx);
-    if (d.type === "species" && d.tag !== undefined && !TAG.test(d.tag)) errors.push(`${d.id}: tag "${d.tag}" must be one word of lower-case letters, digits and "_"`);
-    if (d.type === "species") {
-      if (d.vehicle) {
-        try {
-          if (d.vehicle.id !== d.id) throw new Error("its vehicle must carry its own id");
-          // The body other systems see (radius, height) is the chassis, so nothing reads two sizes for one car.
-          if (d.radius !== d.vehicle.spec.halfWidth || d.height !== d.vehicle.spec.height) throw new Error("its radius and height must be its chassis half width and height");
-          validateVehicleDefinition(d.vehicle);
-        } catch (e) { errors.push(`${d.id}: ${(e as Error).message}`); }
-      }
-      positive(d, "radius", d.radius, 8);
-      positive(d, "height", d.height, 32);
-      positive(d, "walkSpeed", d.walkSpeed, 40);
-      // A slow walk may have a much faster sprint (Trike: 1.5 -> 6.075 m/s). This is a ratio, not an absolute speed cap.
-      positive(d, "sprintMul", d.sprintMul, 8);
-      if (!Number.isFinite(d.jumpSpeed) || d.jumpSpeed < 0 || d.jumpSpeed > 30) errors.push(`${d.id}: jumpSpeed must be between 0 and 30`);
-      if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
-      if (d.swimDepth !== undefined && !(Number.isFinite(d.swimDepth) && d.swimDepth > 0 && d.swimDepth <= d.height)) errors.push(`${d.id}: swimDepth must be positive and within the body height`);
-      if (d.swimEyeHeight !== undefined && !(Number.isFinite(d.swimEyeHeight) && d.swimEyeHeight > 0 && d.swimEyeHeight <= d.height)) errors.push(`${d.id}: swimEyeHeight must be positive and within the body height`);
-      if (d.keeps !== undefined) positive(d, "keeps", d.keeps, 1000);
-      if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
-      // The pack decides which skeletons exist, so only an empty name is an error here.
-      if (d.skeleton !== undefined && d.skeleton.length === 0) errors.push(`${d.id}: a skeleton must be named`);
-      if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0 && (d.stamina.walk ?? 0) >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
-      if (d.class !== "vehicle" && d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
-      if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);
-      for (const [name, st] of [["crouch", d.crouch], ["prone", d.prone]] as const) {
-        if (st && !(st.height > 0 && st.height <= d.height && st.eye > 0 && st.eye <= st.height && st.speed > 0 && st.speed <= 1)) errors.push(`${d.id}: ${name} needs 0 < eye <= height <= the body's height and 0 < speed <= 1`);
-      }
-      if (d.food) {
-        positive(d, "food.max", d.food.max, 1e6);
-        positive(d, "food.perHour", d.food.perHour, 1e6);
-      }
-      if (d.bite?.harvest !== undefined && d.bite.harvest !== "berries" && d.bite.harvest !== "carrion") errors.push(`${d.id}: bite.harvest must be berries or carrion`);
-      for (const [type, v] of Object.entries(d.takes ?? {})) {
-        if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
-      }
-      for (const [zone, v] of Object.entries(d.zones ?? {})) {
-        if (!(zone in ZONE_GROUPS) || !(v >= 0)) errors.push(`${d.id}: zones.${zone} must name a part of the body and not be negative`);
-      }
-      for (const [stat, curve] of Object.entries(d.stats ?? {})) {
-        if (!(STAT_NAMES as readonly string[]).includes(stat)) errors.push(`${d.id}: unknown stat "${stat}"`);
-        else if (!Array.isArray(curve) || curve.length !== 3 || !(curve[0] > 0) || !(curve[1] >= 0) || !(curve[2] >= 0)) errors.push(`${d.id}: stats.${stat} must be [base > 0, perWild >= 0, perTamed >= 0]`);
-      }
-      if (Array.isArray(d.regions)) {
-        if (d.regions.length !== COLOR_REGIONS) errors.push(`${d.id}: regions must list all ${COLOR_REGIONS} colour regions, with null for one that takes no colour`);
-        const weighted = (c: unknown): boolean => Array.isArray(c) && c.length === 2 && paletteIndex(c[0]) && Number.isFinite(c[1]) && c[1] > 0;
-        for (const r of d.regions) {
-          if (r !== null && !(typeof r?.name === "string" && r.name !== "" && Array.isArray(r.colors) && r.colors.length > 0 && r.colors.every(weighted))) errors.push(`${d.id}: a region is null, or a name and its colours, each [palette index, weight above 0]`);
-        }
-      }
-      if (Array.isArray(d.mutations) && !(d.mutations.length > 0 && d.mutations.every(paletteIndex))) errors.push(`${d.id}: mutations must be palette indices, and at least one`);
-      if (d.roar) {
-        for (const [name, max] of [["range", 100], ["maxDrag", 1e6], ["cooldown", 600], ["immunity", 600], ["interrupt", 30]] as const) {
-          positive(d, `roar.${name}`, d.roar[name], max);
-        }
-        if (d.roar.immunity <= d.roar.interrupt) errors.push(`${d.id}: roar immunity must outlast its interrupt`);
-      }
-      if (d.alarm !== undefined) positive(d, "alarm", d.alarm, 1000);
-      if (d.tamedWalkSpeed !== undefined) positive(d, "tamedWalkSpeed", d.tamedWalkSpeed, 100);
-      if (d.tamedSwimSpeed !== undefined) positive(d, "tamedSwimSpeed", d.tamedSwimSpeed, 100);
-      if (d.tamedSprintMul !== undefined) positive(d, "tamedSprintMul", d.tamedSprintMul, 8);
-      if (d.drag !== undefined) positive(d, "drag", d.drag, 1e6);
-      if (d.mass !== undefined) positive(d, "mass", d.mass, 1e6);
-      if (d.eggChance !== undefined && !(d.eggChance >= 0 && d.eggChance <= 1)) errors.push(`${d.id}: eggChance must be from 0 to 1`);
-      if (d.fistsTorpor !== undefined && !(d.fistsTorpor >= 0)) errors.push(`${d.id}: fistsTorpor must not be negative`);
-      errors.push(...flyerFaults(d), ...creatureCombatFaults(d, input));
-    } else if (d.type === "item") {
+    if (d.type === "item") {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
       if (d.deploys !== undefined && (d.stack !== 1 || d.places !== undefined || d.weapon !== undefined || d.eat !== undefined)) errors.push(`${d.id}: a vehicle assembly stacks to 1 and has no other use`);
       if (d.craft) {
@@ -562,10 +410,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.stack !== 1 || d.eat || d.dose || d.weapon || d.wear || d.tool) errors.push(`${d.id}: a vessel stacks to 1, wears no durability of its own, and is drunk from, not eaten`);
       }
     }
-    if (d.type === "species") {
-      if (d.mesh.length === 0) errors.push(`${d.id}: mesh is required`);
-      if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
-    }
   }
   // What a definition names must exist and be of the class its field asks for (shared/content/classes.ts).
   errors.push(...refFaults(input));
@@ -574,7 +418,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const young = new Map<string, string>();
   for (const d of input) {
     for (const among of AMONG.get(d.type) ?? NO_HOOKS) among(d, cx);
-    if (d.type === "species" && d.breeds && !(d.breeds.incubate > 0 && d.breeds.mature > 0)) errors.push(`${d.id}: breeds needs incubate and mature above 0`);
     if (d.type === "item" && d.places && d.places.length === 0) errors.push(`${d.id}: places must name at least one structure`);
     for (const a of d.type === "item" ? (d.weapon?.ammo ?? []) : []) if (noAmmo.has(a)) errors.push(`${d.id}: "${a}" has no ammo facet, so it cannot be fired`);
     if (d.type === "item" && d.youngFor !== undefined) {
@@ -594,8 +437,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const halfX = new Float32Array(n);
   const halfY = new Float32Array(n);
   const halfZ = new Float32Array(n);
-  const move: (MoveParams | null)[] = new Array(n).fill(null);
-  const vehicle: (VehicleDefinition | null)[] = new Array(n).fill(null);
   const stack = new Uint16Array(n);
   const weight = new Float32Array(n);
   const spoilTicks = new Uint32Array(n);
@@ -613,8 +454,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const damageType = new Uint8Array(n);
   const reach = new Float32Array(n);
   const armor = new Float32Array(n);
-  const takes: (Float32Array | null)[] = new Array(n).fill(null);
-  const zoneMul: (Float32Array | null)[] = new Array(n).fill(null);
   const power = new Float32Array(n);
   const ammoSpeed = new Float32Array(n);
   const ammoGravity = new Float32Array(n);
@@ -625,24 +464,12 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const ammoBuff = new Uint16Array(n);
   const places: (Uint16Array | null)[] = new Array(n).fill(null);
   const vehicleDeploy = new Uint16Array(n);
-  const runAt = new Float32Array(n);
-  const taming: (TameParams | null)[] = new Array(n).fill(null);
-  const eats: (number[] | null)[] = new Array(n).fill(null);
-  const breedEgg = new Uint16Array(n).fill(0xffff);
-  const incubateTicks = new Uint32Array(n);
-  const matureTicks = new Uint32Array(n);
-  const birthScale = new Float32Array(n).fill(1);
-  const colorSet: (ColorSet | null)[] = new Array(n).fill(null);
-  const mutationColors: (readonly number[] | null)[] = new Array(n).fill(null);
   const keeps = new Float32Array(n).fill(1);
   const saddleFits = new Uint16Array(n);
   const saddleArmor = new Float32Array(n);
   const saddleSeats: (readonly Seat[] | null)[] = new Array(n).fill(null);
   const doseTorpor = new Float32Array(n);
   const doseSeconds = new Float32Array(n);
-  const temper = new Uint8Array(n);
-  const sight = new Float32Array(n);
-  const leash = new Float32Array(n);
   const fuelTicks = new Uint32Array(n);
   const cooksInto = new Uint16Array(n);
   const cookTicks = new Uint32Array(n);
@@ -657,17 +484,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const fuseTicks = new Uint16Array(n);
   const blast = new Float32Array(n);
   const meleeTorpor = new Float32Array(n);
-  const alarm = new Float32Array(n);
-  const combat: (CreatureCombatFacet | null)[] = new Array(n).fill(null);
-  const tamedMove: (MoveParams | null)[] = new Array(n).fill(null);
-  const drag = new Float32Array(n);
-  const mass = new Float32Array(n);
-  const footBack = new Float32Array(n);
-  const footFront = new Float32Array(n);
-  const footRadius = new Float32Array(n);
-  const carriable = new Uint8Array(n);
-  const feces = new Uint16Array(n);
-  const eggChance = new Float32Array(n);
   const decomposeTicks = new Uint32Array(n);
   const youngItem = new Uint16Array(n);
   const blowDamage = new Float32Array(n);
@@ -685,15 +501,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const ammoPierce = new Float32Array(n);
   const ammoLight = new Float32Array(n);
   const ammoLightColor = new Uint8Array(n);
-  const flies = new Uint8Array(n);
-  const grabDrag = new Float32Array(n);
-  const grabReach = new Float32Array(n);
-  const defendsEgg = new Uint8Array(n);
-  const riderWeight = new Float32Array(n).fill(1);
-  const biteStamina = new Uint32Array(n);
-  const rollDamage = new Float32Array(n);
-  const missileMul = new Float32Array(n).fill(1);
-  const biteStructureMul = new Float32Array(n).fill(1);
   const burnsInto = new Uint16Array(n);
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
@@ -702,13 +509,11 @@ export function compileContent(all: readonly Def[]): CompileResult {
   }
   const redirects = new Map(renames.map((r) => [r.id, r.to.map((to) => index.get(to)!)]));
   const aliases = new Map<string, number>();
-  const tags = new Map<string, number[]>();
   sorted.forEach((d, at) => {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
-    if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
   const parts: FillingParts = { vehicleSurface: new Array<VehicleSurface | null>(n).fill(null), start: partStart, box: NO_BOXES };
-  const core: Omit<Thawed<Core>, "parts"> & { parts: FillingParts } = { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, places, vehicleDeploy, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, charge, ballFull, ballEmpty, bodyRadius, bodyHeight, footBack, footFront, footRadius, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, burnsInto };
+  const core: Omit<Thawed<Core>, "parts"> & { parts: FillingParts } = { defs, ids, index, hash, redirects, renames, aliases, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, places, vehicleDeploy, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, stack, weight, spoilTicks, charge, ballFull, ballEmpty, bodyRadius, bodyHeight, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, throwSpeed, fuseTicks, blast, meleeTorpor, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, burnsInto };
   // Spreads, and not Object.assign: V8 keeps an object made by spreads in fast mode whatever its size, and reads one that
   // Object.assign gave this many members ten times as slowly.
   let reg = core as Filling;
@@ -718,43 +523,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     const d = defs[i]!;
     partStart[i] = partBox.length / 6;
     for (const fill of FILL.get(d.type) ?? NO_HOOKS) fill(d as Content, i, reg, making);
-    if (d.type === "species") {
-      {
-        move[i] = moveParams(d);
-        combat[i] = d.combat ?? null;
-        vehicle[i] = d.vehicle ?? null;
-        // A survivor's tamed numbers are its own. A creature once tamed stands on steeper ground, and may run at another
-        // speed, on the ground and in the air.
-        const m = move[i]!;
-        tamedMove[i] = d.class === "creature" ? { ...m, walkSpeed: d.tamedWalkSpeed ?? m.walkSpeed, swimSpeed: d.tamedSwimSpeed ?? m.swimSpeed, sprintMul: d.tamedSprintMul ?? m.sprintMul, flySprintMul: d.fly?.tamedSprintMul ?? m.flySprintMul, slopeCos: TAMED_SLOPE_COS } : m;
-        if (d.fly) flies[i] = 1;
-        grabDrag[i] = d.grab?.drag ?? 0;
-        grabReach[i] = d.grab?.reach ?? 0;
-        if (d.defendsEgg) defendsEgg[i] = 1;
-        riderWeight[i] = d.riderWeight ?? 1;
-        biteStamina[i] = Math.round((d.bite?.stamina ?? 0) * STAMINA_UNITS);
-        rollDamage[i] = d.fly?.roll.damage ?? 0;
-        missileMul[i] = d.missiles ?? 1;
-        biteStructureMul[i] = d.structures ?? 1;
-        damage[i] = d.fists ?? 8;
-        meleeTorpor[i] = d.fistsTorpor ?? 0;
-        reach[i] = FIST_REACH;
-        alarm[i] = d.alarm ?? 0;
-        drag[i] = d.drag ?? 0;
-        mass[i] = d.mass ?? 0;
-        footBack[i] = d.footprint?.back ?? -d.radius;
-        footFront[i] = d.footprint?.front ?? d.radius;
-        footRadius[i] = d.footprint?.radius ?? d.radius;
-        if (d.carriable) carriable[i] = 1;
-        eggChance[i] = d.eggChance ?? 0;
-        takes[i] = Float32Array.from(DAMAGE_TYPES, (t) => d.takes?.[t] ?? 1);
-        const zones = new Float32Array(ZONE_COUNT).fill(1);
-        for (const [group, v] of Object.entries(d.zones ?? {})) for (const z of ZONE_GROUPS[group]!) zones[z] = v;
-        zoneMul[i] = zones;
-      }
-      bodyRadius[i] = d.radius;
-      bodyHeight[i] = d.height;
-    } else if (d.type === "item") {
+    if (d.type === "item") {
       stack[i] = d.stack;
       weight[i] = d.weight ?? 0.1;
       // At least 1 tick, because 0 means the item never spoils.
@@ -820,29 +589,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
       // Every form of a piece maps back to the one item.
       for (const s of places[i]!) if (reg.pieceItem[s] === 0) reg.pieceItem[s] = i;
     }
-    if (d.type === "species") {
-      runAt[i] = d.walkSpeed * 1.5;
-      temper[i] = Math.max(0, ["flees", "defends", "hunts"].indexOf(d.temper ?? "flees"));
-      sight[i] = d.sight ?? 20;
-      taming[i] = d.taming ?? null;
-      if (d.eats) eats[i] = d.eats.flatMap((f) => [index.get(f.item)!, f.food, f.affinity]);
-      leash[i] = d.leash ?? 60;
-      keeps[i] = d.keeps ?? 1;
-      if (d.feces !== undefined) feces[i] = index.get(d.feces)!;
-      if (d.breeds) {
-        breedEgg[i] = d.breeds.egg !== undefined ? index.get(d.breeds.egg)! : 0;
-        incubateTicks[i] = Math.round(d.breeds.incubate * TICK_RATE);
-        matureTicks[i] = Math.round(d.breeds.mature * TICK_RATE);
-        birthScale[i] = d.breeds.scale ?? BIRTH_SCALE;
-      }
-      colorSet[i] = d.regions ? compileColors(d.regions.map((r) => r && r.colors)) : WILD_SET;
-      mutationColors[i] = d.mutations ?? MUTATION_COLORS;
-      // A bite is the species' melee weapon.
-      if (d.bite) {
-        reach[i] = d.bite.reach;
-        weapon[i] = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: d.bite.ticks ?? 27, strikeTick: d.bite.lands ?? 11, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
-      }
-    }
     if (d.type === "item" && d.youngFor !== undefined) youngItem[index.get(d.youngFor)!] = i;
     if (d.type === "item" && d.weapon?.cloud) {
       cloudProp[i] = index.get(d.weapon.cloud.prop)!;
@@ -883,28 +629,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
-
-/** Each region's colours as pairs of palette index and weight, or null for a region that takes none. */
-function compileColors(regions: readonly (readonly (readonly [palette: number, weight: number])[] | null)[]): ColorSet {
-  const start = new Uint32Array(COLOR_REGIONS + 1);
-  const palette: number[] = [];
-  const upTo: number[] = [];
-  for (let r = 0; r < COLOR_REGIONS; r++) {
-    let sum = 0;
-    for (const [color, weight] of regions[r] ?? []) {
-      palette.push(color);
-      upTo.push((sum += weight));
-    }
-    start[r + 1] = palette.length;
-  }
-  return { start, palette: Uint8Array.from(palette), upTo: Float64Array.from(upTo) };
-}
-
-/** What a species with no colour set rolls: WILD_COLORS at equal weight in every region. */
-const WILD_SET = compileColors(new Array(COLOR_REGIONS).fill(WILD_COLORS.map((c) => [c, 1] as const)));
-
-/** The ZONE_* ids (shared/anim/human.ts) each body part named in content covers. */
-const ZONE_GROUPS: Readonly<Record<string, readonly number[]>> = { head: [1], torso: [2], arms: [3, 4], hands: [5, 6], legs: [7, 8], feet: [9, 10], tail: [ZONE_TAIL] };
 
 /**
  * The rays a shot of `ammo` from `weapon` sends, each tested and landed alone (W3): the gun's own count if it gives one, as
@@ -950,105 +674,6 @@ function blowParams(ticks: number): { meleeTicks: number; meleeStrikeTick: numbe
   return { meleeTicks: ticks, meleeStrikeTick: Math.max(1, Math.min(ticks - 1, Math.round(ticks / 3))) };
 }
 
-function moveParams(d: SpeciesDef): MoveParams {
-  // A capsule is never shorter than it is wide.
-  const low = (h: number): number => (h < 2 * d.radius ? 2 * d.radius : h);
-  const crouchHeight = low(d.crouch?.height ?? (d.height * 2) / 3);
-  const proneHeight = low(d.prone?.height ?? 0);
-  return {
-    radius: d.radius,
-    height: d.height,
-    eyeHeight: d.eyeHeight,
-    lowStance: d.class !== "creature",
-    crouchHeight,
-    crouchEye: d.crouch?.eye ?? crouchHeight * (d.eyeHeight / d.height),
-    crouchMul: d.crouch?.speed ?? 0.5,
-    proneHeight,
-    proneEye: d.prone?.eye ?? proneHeight * 0.45,
-    proneMul: d.prone?.speed ?? 0.2,
-    walkSpeed: d.walkSpeed,
-    sprintMul: d.sprintMul,
-    accelGround: d.walkSpeed * 10,
-    accelAir: d.walkSpeed * 2,
-    jumpSpeed: d.jumpSpeed,
-    gravity: GRAVITY,
-    slopeCos: SLOPE_COS,
-    stepUp: 0.5,
-    stepDown: 0.4,
-    swimSpeed: d.swimSpeed ?? d.walkSpeed * 0.6,
-    swimDepth: d.swimDepth,
-    swimEyeHeight: d.swimEyeHeight,
-    swimSprintMul: 1.5,
-    accelSwim: d.walkSpeed * 3,
-    // Whole stamina units per tick, so both sides count the same integers.
-    staminaSprint: Math.round(((d.stamina?.sprint ?? STAMINA_DEFAULT.sprint) * STAMINA_UNITS) / TICK_RATE),
-    staminaRegen: Math.round(((d.stamina?.regen ?? STAMINA_DEFAULT.regen) * STAMINA_UNITS) / TICK_RATE),
-    staminaJump: Math.round((d.stamina?.jump ?? STAMINA_DEFAULT.jump) * STAMINA_UNITS),
-    // A cost that would round to nothing is a unit.
-    staminaWalk: d.stamina?.walk ? Math.max(1, Math.round((d.stamina.walk * STAMINA_UNITS) / TICK_RATE)) : 0,
-    // Whole units per tick, so both sides turn the same.
-    turnRate: d.turn === undefined ? 0 : turnUnits(d.turn),
-    strafe: d.strafe !== false,
-    ...(d.footprint?.head ? { headAhead: d.footprint.head.ahead, headUp: d.footprint.head.up, headRadius: d.footprint.head.radius } : {}),
-    ...flight(d.fly),
-  };
-}
-
-/** Degrees a second as whole 1/65536 turns a tick, at least one. */
-const turnUnits = (degrees: number): number => Math.max(1, Math.round(((degrees / 360) * 65536) / TICK_RATE));
-
-/** The flight fields of MoveParams, in whole units a tick as the rest are. All 0 for a body that does not fly. */
-function flight(f: SpeciesDef["fly"]) {
-  // A cost a second that would round to nothing is a unit a tick.
-  const perTick = (perSecond: number): number => (perSecond > 0 ? Math.max(1, Math.round((perSecond * STAMINA_UNITS) / TICK_RATE)) : 0);
-  return {
-    flies: f !== undefined,
-    flySpeed: f?.speed ?? 0,
-    flySprintMul: f?.sprintMul ?? 0,
-    accelFly: f?.accel ?? 0,
-    flyTurnRate: f ? turnUnits(f.turn) : 0,
-    staminaFly: f ? perTick(f.stamina.fly) : 0,
-    staminaFlySprint: f ? perTick(f.stamina.sprint) : 0,
-    staminaRoll: f ? Math.round(f.stamina.roll * STAMINA_UNITS) : 0,
-    staminaGrab: f ? Math.round(f.stamina.grab * STAMINA_UNITS) : 0,
-    regenWaitTicks: f ? Math.round(f.wait * TICK_RATE) : 0,
-    rollBurst: f?.roll.burst ?? 0,
-    rollTicks: f ? Math.max(1, Math.round(f.roll.every * TICK_RATE)) : 0,
-  };
-}
-
-
-/** What is wrong with a species' flyer fields (planning/reference/flyers-plan.md, FL0). */
-function flyerFaults(d: SpeciesDef): string[] {
-  const out: string[] = [];
-  const f = d.fly;
-  if (f) {
-    const within = (name: string, v: number | undefined, low: number, high: number, open = true): void => {
-      if (!(v !== undefined && (open ? v > low : v >= low) && v <= high)) out.push(`${d.id}: fly.${name} must be ${open ? "above" : "at least"} ${low} and at most ${high}, got ${v}`);
-    };
-    within("speed", f.speed, 0, 40);
-    within("sprintMul", f.sprintMul, 0, 4);
-    if (f.tamedSprintMul !== undefined) within("tamedSprintMul", f.tamedSprintMul, 0, 4);
-    within("accel", f.accel, 0, 1000);
-    within("turn", f.turn, 0, 3600);
-    for (const cost of ["fly", "sprint", "roll", "grab"] as const) within(`stamina.${cost}`, f.stamina?.[cost], 0, 1e6, false);
-    // Both counters of a body hold FLIGHT_TICKS_MAX.
-    within("wait", f.wait, 0, FLIGHT_TICKS_MAX / TICK_RATE, false);
-    within("roll.burst", f.roll?.burst, 0, 40, false);
-    within("roll.every", f.roll?.every, 0, FLIGHT_TICKS_MAX / TICK_RATE);
-    if (f.roll?.damage !== undefined) within("roll.damage", f.roll.damage, 0, 1e6, false);
-  }
-  if (d.grab && !(d.grab.drag > 0 && d.grab.drag <= 1e6 && d.grab.reach > 0 && d.grab.reach <= 100)) out.push(`${d.id}: grab needs a drag above 0 and a reach above 0 and at most 100 m`);
-  if (d.riderWeight !== undefined && !(d.riderWeight >= 0 && d.riderWeight <= 1)) out.push(`${d.id}: riderWeight must be from 0 to 1`);
-  for (const [name, v] of [["missiles", d.missiles], ["structures", d.structures], ["bite.stamina", d.bite?.stamina]] as const) {
-    if (v !== undefined && !(v >= 0 && v <= 1e6)) out.push(`${d.id}: ${name} must not be negative`);
-  }
-  for (const [stat, pair] of Object.entries(d.tameBonus ?? {})) {
-    if (!(STAT_NAMES as readonly string[]).includes(stat) || !(Array.isArray(pair) && pair.length === 2 && pair[0] >= 0 && pair[1] >= 0)) out.push(`${d.id}: tameBonus.${stat} must name a stat and be [add >= 0, mult >= 0]`);
-  }
-  if (d.tamedHealth !== undefined && !(d.tamedHealth > 0 && d.tamedHealth <= 10)) out.push(`${d.id}: tamedHealth must be above 0 and at most 10`);
-  return out;
-}
 
 const PLAIN_KEY = /^\w*$/;
 

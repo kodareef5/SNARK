@@ -5,7 +5,7 @@
 import { FEATURES, type Feature } from "../features.ts";
 import { f, icon, mesh, stub, type ClassRow, type Field, type Fields, type Slot, type Status } from "./kind.ts";
 import { KINDS } from "./kinds.ts";
-import type { Def, ItemDef, SpeciesDef } from "./defs.ts";
+import type { Def, ItemDef } from "./defs.ts";
 
 
 export type { ClassRow, Field, Slot, Status } from "./kind.ts";
@@ -49,82 +49,6 @@ const ITEM = {
   travels: f("switch", "bPreventUpload, inverted"),
 } satisfies Fields<ItemDef>;
 
-const SPECIES = {
-  vehicle: f("facet"),
-  mesh: f("text"),
-  skeleton: f("text"),
-  color: f("number"),
-  radius: f("number"),
-  height: f("number"),
-  eyeHeight: f("number"),
-  walkSpeed: f("number"),
-  sprintMul: f("number"),
-  jumpSpeed: f("number"),
-  crouch: f("facet"),
-  prone: f("facet"),
-  turn: f("number"),
-  strafe: f("switch"),
-  swimSpeed: f("number"),
-  swimDepth: f("number", "the origin's depth below water while floating, independent of tall plates or horns"),
-  swimEyeHeight: f("number", "the breathing point's height in the conscious swimming pose"),
-  stamina: f("facet"),
-  food: f("facet"),
-  waterPerHour: f("number"),
-  slots: f("number"),
-  keeps: f("number", "GetSpoilingTimeMultiplier of its inventory"),
-  equips: f("switch"),
-  fists: f("number"),
-  fistsTorpor: f("number", "the torpor of a bare-handed strike"),
-  drops: f("list", "DeathHarvestingComponent", { refs: { "[].item": "item" }, open: true }),
-  corpse: f("facet", "DeathHarvestingComponent's health and damage per roll"),
-  stats: f("facet", "MaxStatusValues and the per-level gains"),
-  takes: f("facet", "DamageTypeAdjusters"),
-  zones: f("facet"),
-  killXp: f("number"),
-  still: f("switch"),
-  temper: f("text"),
-  blood: f("text", "none: ours, how it shows in a visor's heat view"),
-  sight: f("number"),
-  leash: f("number"),
-  bite: f("facet", "AttackInfos"),
-  combat: f("facet", "ground attacks, charge and plate modes"),
-  camera: f("facet", "the mounted view measured against the saddle"),
-  roar: f("facet", "mounted roar range and interruption"),
-  taming: f("facet", "RequiredTameAffinity"),
-  eats: f("list", "DinoSettings food effectiveness", { refs: { "[].item": "item" }, open: true }),
-  torporDrain: f("number"),
-  breeds: f("facet", "EggItemsToSpawn, BabyAgeSpeed", { refs: { egg: "prop/egg" } }),
-  tag: f("text", "DinoNameTag"),
-  regions: f("list", "the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions"),
-  mutations: f("list"),
-  alarm: f("number", "the herd that flees with a creature when it is hurt"),
-  tamedWalkSpeed: f("number", "the tamed base walking speed"),
-  tamedSwimSpeed: f("number", "the tamed base swimming speed"),
-  tamedSprintMul: f("number", "the tamed running speed"),
-  drag: f("number", "drag weight"),
-  mass: f("number", "mass"),
-  footprint: f("facet", "its body as others on foot meet it: back, front and radius along its facing"),
-  carriable: f("switch", "picked up and thrown by a player"),
-  feces: f("text", "the creature's feces item", { refs: { "": "item/feces" } }),
-  eggChance: f("number", "the chance of an egg in place of feces"),
-  // The flyers' contracts (planning/reference/flyers-plan.md, FL0), each read once its package builds it: `fly` by the step,
-  // `defendsEgg` by the egg rule.
-  fly: f("facet", "the flying speed, sprint and stamina, and the barrel roll"),
-  grab: stub("flyers", "facet", "the most drag weight a flyer carries"),
-  defendsEgg: f("switch", "a skittish flyer that turns on an egg thief"),
-  riderWeight: f("number", "PassengerWeightMultiplier"),
-  missiles: stub("flyers", "number", "the flyers' damage from projectiles that are not bullets"),
-  structures: stub("flyers", "number", "the flyers' damage to structures"),
-  tameBonus: stub("tameBonus", "facet", "TamingMaxStatAdditions and TamingMaxStatMultipliers"),
-  tamedHealth: stub("tameBonus", "number", "TamedBaseHealthMultiplier"),
-  variant: stub("bosses", "text", "a child blueprint's kind"),
-  attacks: stub("polish", "list", "AttackInfos"),
-  loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
-  saddle: stub("polish", "text", "SaddleItemClass", { refs: { "": "item/saddle" } }),
-  buffs: stub("polish", "list", "DefaultBuffs", { refs: { "[]": "buff" }, open: true }),
-  boss: stub("bosses", "switch", "bIsBossDino"),
-} satisfies Fields<SpeciesDef>;
-
 /** The fields of a type whose kind has a file of its own (kinds.ts). */
 const fieldsOf = (type: string): Readonly<Record<string, Field>> => KINDS.find((k) => k.type === type && k.fields)!.fields!;
 const rowsOf = (type: string): readonly ClassRow[] => KINDS.find((k) => k.type === type && k.rows)!.rows!;
@@ -132,7 +56,7 @@ const rowsOf = (type: string): readonly ClassRow[] => KINDS.find((k) => k.type =
 /** Every field of every family that has a definition type. */
 export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>>>> = {
   item: ITEM,
-  species: SPECIES,
+  species: fieldsOf("species"),
   structure: fieldsOf("structure"),
   node: fieldsOf("node"),
   prop: fieldsOf("prop"),
@@ -156,7 +80,6 @@ const ITEM_SLOTS = { icon, dropped: mesh("may", "{id}/dropped", "core:bag") };
  * hand here when chosen (CMD_SELECT), so a food, a drink or an egg chosen shows in the hand when it has a piece.
  */
 const HELD = mesh("may", "{id}", "none");
-const BODY_PARTS = ["head", "torso", "hands", "legs", "feet"] as const;
 
 interface RowIn<K extends string> {
   parent?: string;
@@ -220,43 +143,7 @@ row("item/artifact", "item", ITEM, { parent: "item", ark: "PrimalItemArtifact_",
 rows.push(...rowsOf("engram"));
 rows.push(...rowsOf("levels"));
 
-const BODY = ["mesh", "color", "radius", "height", "eyeHeight", "walkSpeed", "sprintMul", "jumpSpeed"] as const;
-const HUMAN_SLOTS = {
-  body: { asset: "mesh", need: "must", keys: BODY_PARTS, when: "skeleton", from: "{mesh}_{sex}/{key}", fallback: ["{mesh}/{key}", "core:mannequin/{key}"] },
-  hair: { asset: "mesh", need: "may", keys: "hair", when: "skeleton", from: "{mesh}_{sex}/hair/{key}", fallback: ["none"] },
-  beard: { asset: "mesh", need: "may", keys: "beard", when: "skeleton", from: "{mesh}_{sex}/beard/{key}", fallback: ["none"] },
-  icon,
-} satisfies Record<string, Slot>;
-row("species", "species", SPECIES, { abstract: true, ark: "a character", shelf: "species", doc: "A kind of body that lives." });
-row("species/survivor", "species", SPECIES, { parent: "species", ark: "the player's character", shelf: "survivors", must: [...BODY, "skeleton", "stats", "equips"], may: ["crouch", "prone", "swimSpeed", "stamina", "food", "waterPerHour", "slots", "fists", "fistsTorpor", "drops", "takes", "zones", "killXp", "torporDrain"], slots: HUMAN_SLOTS, doc: "The body a player has." });
-row("species/creature", "species", SPECIES, {
-  parent: "species",
-  ark: "a creature's character, its status component and its entry",
-  shelf: "creatures",
-  must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "blood", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "footprint", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
-  slots: {
-    body: mesh("must", "{mesh}", "box"),
-    rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
-    clip: { asset: "clip", need: "must", keys: ["idle", "walk", "run", "attack", "death"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/idle", "rest"] },
-    // Without one, what it does besides goes on.
-    move: { asset: "clip", need: "may", keys: ["swim", "swim_idle", "fall", "land", "turn", "startled", "flinch", "call", "torpor_eat", "held", "carried", "jump"], when: "skeleton", from: "{mesh}/{key}", fallback: ["none"] },
-    torpor: { asset: "clip", need: "may", keys: ["torpor_in", "torpor_idle", "torpor_out"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/death", "rest"] },
-    // A flyer's own clips (planning/reference/flyers-plan.md, FL4 and FL6). Without one, what it does besides goes on.
-    flight: { asset: "clip", need: "may", keys: ["take_off", "hover", "fly", "fly_fast", "glide", "dive", "attack_air", "barrel_roll", "grab", "carry", "release", "torpor_fall", "death_air"], when: "fly", from: "{mesh}/{key}", fallback: ["none"] },
-    // Two ways to draw a saddle, the asset's to choose (FL5). This is its whole model as it is saddled: the same skeleton,
-    // clips, sockets and hit zones, its own meshes and maps, drawn in place of the bare body while it wears any saddle, and
-    // then no saddle's worn mesh is drawn over it. Without it the bare body is drawn, with the worn saddle's "{id}/worn"
-    // mesh (item/saddle) on its bones where the saddle has one.
-    saddled: { asset: "mesh", need: "may", when: "skeleton", from: "{mesh}/saddled", fallback: ["#body"] },
-    icon,
-    sound: { asset: "sound", need: "may", keys: "any", from: "{id}/sound/{key}", fallback: ["none"] },
-  },
-  doc: "A wild thing that may be tamed, ridden and bred.",
-});
-row("species/civilian", "species", SPECIES, { parent: "species", ark: "a humanoid creature", shelf: "civilians", must: [...BODY, "skeleton", "stats"], may: ["equips", "slots", "crouch", "prone", "strafe", "turn", "swimSpeed", "stamina", "food", "fists", "fistsTorpor", "takes", "zones", "killXp", "temper", "sight", "leash", "torporDrain", "still", "drops", "mass"], slots: HUMAN_SLOTS, doc: "An AI-controlled human using the current survivor body, equipment and creature systems." });
-row("species/vehicle", "species", SPECIES, { parent: "species", ark: "a mechanical mount", shelf: "vehicles", must: [...BODY, "vehicle", "stats"], may: ["skeleton", "slots", "keeps", "still", "takes", "mass", "fists", "stamina", "swimSpeed", "strafe", "drag", "carriable", "regions", "corpse", "drops"], slots: { wreck: { ...mesh("may", "{vehicle.wreck}", "none"), when: "vehicle" }, body: mesh("must", "{mesh}", "box"), rig: { asset: "rig", need: "must", from: "{mesh}", fallback: ["rigid"] }, icon }, doc: "A vehicle with a movement controller, inventory, ownership and named seats." });
-row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: [...BODY, "skeleton", "still"], may: ["stats", "equips", "slots", "zones", "takes", "torporDrain", "crouch", "prone", "stamina", "fists", "food", "drops", "killXp"], slots: HUMAN_SLOTS, doc: "A human-shaped body that stands where it is put, to be practised on. A creature that must stand still is a creature that says so." });
+rows.push(...rowsOf("species"));
 
 rows.push(...rowsOf("structure"));
 rows.push(...rowsOf("shape"));
