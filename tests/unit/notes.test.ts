@@ -48,7 +48,7 @@ function makes(fn: (...args: never[]) => unknown): string[] {
 }
 
 /** A frame as the sampler is handed it. */
-const extra = (over: Partial<FrameExtra> = {}): FrameExtra => ({ gpu: -1, glDraws: 0, longMs: 0, longTasks: 0, shotMs: 0, flags: 0, heap: 0, ...over });
+const extra = (over: Partial<FrameExtra> = {}): FrameExtra => ({ build: 0, scene: 0, gpu: -1, glDraws: 0, longMs: 0, longTasks: 0, shotMs: 0, flags: 0, heap: 0, ...over });
 
 /** An app as far as the sampler reads it: a session, a governor, the data utility's ring, no scene. */
 interface Fake { frames: FrameRing | null; session: { stats: { rttTicks: number; margin: number; bytesIn: number; snapshots: number; corrections: number }; own: { x: number; y: number; z: number } }; scene: null; governor: { level: number }; interval: number; nowMs: number }

@@ -9,6 +9,9 @@ import { C, FLAG_GPU, T, type PerfRing } from "./ring.ts";
 
 /** What the shell and the note know of a frame that the app does not: the GPU's time (-1 for none), the GL calls, long tasks and a picture's cost. */
 export interface FrameExtra {
+  /** The app's frame (App.frame) and the scene's build within it, in ms. */
+  build: number;
+  scene: number;
   gpu: number;
   glDraws: number;
   longMs: number;
@@ -33,6 +36,8 @@ export class FrameSampler {
     s[C.interval] = app["interval"];
     s[C.own] = ours;
     s[C.upload] = upload;
+    s[C.build] = extra.build;
+    s[C.scene] = extra.scene;
     s[C.gpu] = extra.gpu;
     s[C.fetched] = k >= 0 ? f!.fetched[k]! : 0;
     s[C.cached] = k >= 0 ? f!.cached[k]! : 0;

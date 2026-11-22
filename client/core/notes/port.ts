@@ -29,8 +29,12 @@ export interface NotePort {
   heap(): number;
   /** Long tasks the browser reported since the last call: how many in `out[0]` and their ms in `out[1]`. */
   longTasks(out: Float64Array): void;
-  /** Times the GPU while `on`; the ms of the latest frame whose time came back since the last call, -1 for none. */
-  gpu(on: boolean): number;
+  /**
+   * Times the GPU: `mode` 0 not, 1 the whole frame, 2 each pass (client/core/passes.ts PASSES). Fills `out` with the ms
+   * of the latest frame whose times came back since the last call, the whole in `out[0]` or a pass each, and returns
+   * whether one came.
+   */
+  gpu(mode: number, out: Float64Array): boolean;
   /** GL calls the shell made for the latest frame. */
   glDraws(): number;
   /** The browser, the card and the textures' format. */

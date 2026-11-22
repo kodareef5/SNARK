@@ -13,7 +13,8 @@ export const SECOND_SLOTS = 900;
 
 /**
  * A frame's numbers after `at`, its start on the page's clock in ms. Times are ms. From the data utility's row of the
- * frame: interval, own (our code's), upload (handing the assets' bytes to the card), fetched, cached and uploaded bytes,
+ * frame: interval, own (our code's), upload (handing the assets' bytes to the card); then the app's frame of it (build)
+ * and the scene's build within that (scene), which the mode times while it is on; fetched, cached and uploaded bytes,
  * requests under way, bytes waiting for the card, the card's ledger in MB. From the frame: its draws, triangles, the sun's
  * maps' triangles and draws, cascades made and drawn, ground tiles, street tiles, uploads, draws skipped and dropped, and
  * the GL calls the shell made. From the scene: the squeeze, crowns and ambient details given, the governor's level, the
@@ -21,7 +22,7 @@ export const SECOND_SLOTS = 900;
  * corrections this frame. Then the browser's long tasks reported this frame, a picture's own cost, and FLAG_ bits.
  */
 export const CELL_FIELDS = [
-  "interval", "own", "upload", "gpu", "fetched", "cached", "uploaded", "requests", "waiting", "cardMB",
+  "interval", "own", "upload", "build", "scene", "gpu", "fetched", "cached", "uploaded", "requests", "waiting", "cardMB",
   "draws", "triangles", "castTriangles", "castDraws", "cascades", "cascadesDrawn", "tiles", "streetTiles", "uploads", "skipped", "dropped", "glDraws",
   "squeeze", "crowns", "ambient", "level", "share", "world0", "world1", "world2",
   "rttMs", "margin", "bytesIn", "snapshots", "corrections",

@@ -31,7 +31,13 @@ function fakePort(answers: Answer[]): NotePort & { posted: Posted[]; shots: numb
     },
     heap: () => 120,
     longTasks: (out: Float64Array) => void out.fill(0),
-    gpu: (on: boolean) => (on ? 4.5 : -1),
+    // By pass the casters take 1.5 ms and the near pass 3; whole, the frame 4.5.
+    gpu: (mode: number, out: Float64Array) => {
+      out.fill(0);
+      if (mode === 2) [out[1], out[2]] = [1.5, 3];
+      else out[0] = 4.5;
+      return mode > 0;
+    },
     glDraws: () => 300,
     page: () => ({ browser: "a test", card: "no card", format: "rgba" }),
     get: (path: string) => Promise.resolve(path === "__report" ? { status: 204, text: "" } : { status: 200, text: '{"commit":"c0ffee","clean":true}' }),
@@ -200,4 +206,66 @@ test("Esc twice discards a note, `perf` keeps a record with a picture at each en
   expect(notes.ring.rows).toBe(rows);
   expect(app.ui.noteRow).toBe("");
   expect(app.ui.local!("perf")).toBe("bug report mode is off: /notes turns it on");
+});
+
+test("`/budget` shows the frame's budget without the mode armed, costs nothing off, and each picture keeps what it said", async () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = new App(h.join("owner", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  const port = fakePort([{ status: 200, text: '{"id":9,"folder":"0009","pictures":1}' }]);
+  app.notePort = () => Promise.resolve(port);
+  const run = (ms: number): void => h.run(ms, (now) => {
+    const p = app.frame(now, 1280, 720);
+    if (p) app.drawn(p, 6, 1280, 720, 0.5, 4);
+  });
+  const frames = async (ms: number): Promise<void> => {
+    for (let t = 0; t < ms; t += 50) {
+      run(Math.min(50, ms - t));
+      await settle();
+    }
+  };
+  await frames(500);
+  expect(app.ui.local!("budget")).toBe("frame budget on: the panel under the minimap");
+  expect(JSON.parse(app.ui.settings.interfacePreferences()).budget).toBe(true);
+  app["notesAsked"] = true;
+  app.notes = new Notes(app, NOTES_KIT);
+  await frames(600);
+  const notes = app.notes, texts = (): string[] => app.ui.frame.nodes.slice(0, app.ui.frame.count).filter((n) => n.key >= 9700 && n.key < 9800).map((n) => n.text);
+  // Not armed, the record does not run and F8 is the browser's; the panel shows all the same.
+  expect([notes.armed, notes.ring.rows, app.key("F8", true)]).toEqual([false, 0, false]);
+  expect(texts()).toContain("FRAME BUDGET");
+  expect(texts().some((t) => /^Processor \d+\.\d ms$/.test(t))).toBe(true);
+  expect(texts()).toContain("Card 4.5 ms");
+  expect(texts().some((t) => t.startsWith("near 3.0 · casters 1.5"))).toBe(true);
+  expect(texts().some((t) => /^Triangles .* of /.test(t))).toBe(true);
+  expect(texts().some((t) => t.includes("this panel") && t.includes("ms a frame"))).toBe(true);
+  // On an Apple GPU, where a query between passes ends Metal's render pass, the card is timed whole and the panel says so.
+  port.page = () => ({ browser: "a test", card: "ANGLE (Apple, ANGLE Metal Renderer: Apple M5)", format: "bc" });
+  await frames(400);
+  expect(texts()).toContain("Card 4.5 ms, the whole frame");
+  expect(texts()).toContain("by pass: not measured on an Apple GPU, where a query");
+  port.page = () => ({ browser: "a test", card: "no card", format: "rgba" });
+  // The scene's build is timed while the panel is on, and let go once it is off.
+  expect(Object.prototype.hasOwnProperty.call(app.scene, "build")).toBe(true);
+  expect(notes.panel!.stages().scene).toBeGreaterThanOrEqual(0);
+  app.ui.local!("budget");
+  await frames(200);
+  expect(Object.prototype.hasOwnProperty.call(app.scene, "build")).toBe(false);
+  expect(texts()).toEqual([]);
+
+  // With both on, a picture keeps the panel's breakdown.
+  app.ui.local!("budget");
+  app.ui.local!("notes");
+  app.session.text("enablecheats");
+  await frames(600);
+  expect(notes.armed).toBe(true);
+  app.key("F8", true);
+  await frames(300);
+  app.key("F8", true);
+  await frames(200);
+  const perf = JSON.parse(port.posted[0]!.fields.perf!);
+  expect(perf.census[0].cpu.frame).toBeGreaterThanOrEqual(0);
+  expect(perf.census[0].cpu.uploads).toBe(0.5);
+  expect(perf.census[0].gpu.find((g: { name: string }) => g.name === "near").ms).toBe(3);
+  expect(perf.census[0].budget.triangles).toBeGreaterThan(0);
+  expect(perf.fields).toContain("scene");
 });

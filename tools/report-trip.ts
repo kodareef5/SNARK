@@ -91,6 +91,17 @@ try {
   hold("/notes in chat arms the mode and says so", armedLine.startsWith("Bug report mode is armed"), armedLine);
   // The record runs a while before the note, which keeps 30 s before it.
   await until("the record running", `(${app}.notes.ring.rows ?? 0) > 240`, 60_000);
+  // A picture narrower than SHOT_WIDE_MOST, to weigh what the width costs.
+  if (process.argv.includes("--wide")) await p.value(`globalThis.snarkTrip.app.notes.wide = ${Number(value("--wide", "2560"))}`);
+  // The frame's budget beside it, as /budget shows it, and a screenshot of the page with it.
+  if (process.argv.includes("--budget")) {
+    await chat("/budget");
+    await Bun.sleep(3000);
+    const shot = await p.send("Page.captureScreenshot", { format: "png" });
+    const file = join(reports, "budget-panel.png");
+    await Bun.write(file, Buffer.from(shot.data, "base64"));
+    console.log(`the page with the frame's budget: ${file}; the panel costs ${await p.value<number>(`${app}.notes.panel.costShown`)} ms a frame`);
+  }
   await Bun.sleep(4000);
   const canvas = await p.value<[number, number]>(`[document.querySelector("#view").width, document.querySelector("#view").height]`);
   await key("F8", 119);
@@ -112,9 +123,9 @@ try {
   const folder = tool("path", String(id)).trim();
   const report = JSON.parse(readFileSync(join(folder, "report.json"), "utf8"));
   const shots = (report.files as string[]).filter((f) => /^shot-\d+\.jpg$/.test(f));
-  const wide = Math.min(canvas[0], 2560), high = Math.round(canvas[1] * (wide / canvas[0]));
+  const most = await p.value<number>(`${app}.notes.wide`), wide = Math.min(canvas[0], most), high = Math.round(canvas[1] * (wide / canvas[0]));
   const sizes = shots.map((f) => jpegSize(new Uint8Array(readFileSync(join(folder, f)))));
-  hold(`three pictures or more, each the canvas's ${canvas[0]}×${canvas[1]} at most 2,560 wide (${wide}×${high})`, shots.length >= 3 && sizes.every((s) => s !== null && s.w === wide && Math.abs(s.h - high) <= 1), `${shots.length}: ${sizes.map((s) => `${s?.w}×${s?.h}`).join(", ")}`);
+  hold(`three pictures or more, each the canvas's ${canvas[0]}×${canvas[1]} at most ${most} wide (${wide}×${high})`, shots.length >= 3 && sizes.every((s) => s !== null && s.w === wide && Math.abs(s.h - high) <= 1), `${shots.length}: ${sizes.map((s) => `${s?.w}×${s?.h}`).join(", ")}`);
   // Not blank: each picture's brightness varies, as the page itself reads it back.
   const spreads: number[] = [];
   for (const f of shots) {
@@ -140,7 +151,9 @@ try {
   const shotCalls = during.filter((r) => (flags(r) & 1) !== 0).map((r) => r[f("shotMs")]!);
   const after = during.filter((r) => (flags(r) & 2) !== 0).map((r) => r[f("interval")]!);
   const plain = during.filter((r) => (flags(r) & 3) === 0).map((r) => r[f("interval")]!);
-  console.log(`\na picture at a ${canvas[0]}×${canvas[1]} canvas (${cssW}×${cssH} at ${dpr}, ${tier}): its call took ${median(shotCalls).toFixed(2)} ms at the middle, ${Math.max(...shotCalls).toFixed(2)} at most, on the game's thread; the frame after one took ${median(after).toFixed(1)} ms at the middle and ${Math.max(...after).toFixed(1)} at most, against ${median(plain).toFixed(1)} ms for the rest (95th ${[...plain].sort((a, b) => a - b)[Math.floor(plain.length * 0.95)]?.toFixed(1)})`);
+  // A late frame is one past 1.25 of the display's interval (client/core/notes/ring.ts LATE).
+  const isLate = (v: number): boolean => v > 1.25 * perf.summary.middle, share = (v: number[]): string => `${((v.filter(isLate).length / Math.max(1, v.length)) * 100).toFixed(0)}%`;
+  console.log(`\na picture at a ${canvas[0]}×${canvas[1]} canvas (${cssW}×${cssH} at ${dpr}, ${tier}, ${await p.value<number>(`${app}.notes.wide`)} wide at most): its call took ${median(shotCalls).toFixed(2)} ms at the middle, ${Math.max(...shotCalls).toFixed(2)} at most, on the game's thread; of the ${after.length} frames from a picture until it was encoded ${share(after)} were late (the worst ${Math.max(...after).toFixed(1)} ms), against ${share(plain)} of the other ${plain.length} (middle ${median(plain).toFixed(1)} ms)`);
   console.log(`the record cost ${(perf.summary.ringMs * 1000).toFixed(1)} µs a frame on average; the GPU was ${perf.summary.gpu.frames > 0 ? `timed in ${perf.summary.gpu.frames} frames, middle ${perf.summary.gpu.middle} ms` : "not timed"}`);
   console.log(`the report is ${kb(bytesUnder(folder))}: ${readdirSync(folder).map((n) => `${n} ${kb(statSync(join(folder, n)).size)}`).join(", ")}`);
   const ff = firstFrame(dist), late = (await scripts()).filter((s) => !before.has(s.name));

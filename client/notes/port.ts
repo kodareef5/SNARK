@@ -42,7 +42,7 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
       }
     }).observe({ type: "longtask", buffered: false });
   } catch {}
-  let clock: PassClock | null = null;
+  let clock: PassClock | null = null, each = false;
   const json = async (r: Promise<Response>): Promise<Answer> => {
     try {
       const res = await r;
@@ -72,15 +72,22 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
       out[1] = long[1]!;
       long[0] = long[1] = 0;
     },
-    gpu(on) {
-      // A bench page's clock is its own.
-      if (on && !clock && !renderer.passes) renderer.passes = clock = new Clock(renderer.gl, false);
-      if (!on && clock) {
+    gpu(mode, out) {
+      // Off, or timed otherwise than asked: the clock goes. A bench page's clock is its own.
+      if (clock && (mode === 0 || each !== (mode === 2))) {
         if (renderer.passes === clock) renderer.passes = null;
         clock = null;
       }
+      if (mode > 0 && !clock && !renderer.passes) {
+        each = mode === 2;
+        renderer.passes = clock = new Clock(renderer.gl, each);
+      }
       const times = clock ? clock.take() : null;
-      return times && times.length > 0 ? times[times.length - 1]![0]! : -1;
+      if (!times || times.length === 0) return false;
+      const last = times[times.length - 1]!;
+      out.fill(0);
+      for (let i = 0; i < last.length && i < out.length; i++) out[i] = last[i]!;
+      return true;
     },
     glDraws: () => renderer.drawCalls,
     page: () => ({ browser: navigator.userAgent, card: renderer.rendererName, format: renderer.format }),

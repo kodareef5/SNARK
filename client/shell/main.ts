@@ -268,7 +268,7 @@ async function boot(): Promise<void> {
       app.pressure();
     }
     const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
-    app.drawn(packet, ours, width, height, renderer.uploadMs);
+    app.drawn(packet, ours, width, height, renderer.uploadMs, built - t0);
     device?.frame(now, packet, t0, built);
     if (progress?.frames === 30) loser?.loseContext();
     // The self-check asks for a call and listens for it leaving the volume.

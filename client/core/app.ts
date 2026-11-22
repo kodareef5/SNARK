@@ -19,7 +19,7 @@ import type { FrameRing } from "./assets/frames.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { RESOLUTIONS, sceneShare } from "./render/post.ts";
 import { VOLUME_MAX } from "./settings.ts";
-import { toggleMonitor, toggleNotes } from "./settings.ts";
+import { toggleBudget, toggleMonitor, toggleNotes } from "./settings.ts";
 import { MONITOR_KIT } from "./ui/monitor-kit.ts";
 import { NOTES_KIT } from "./notes-kit.ts";
 import type { NotePort } from "./notes/port.ts";
@@ -1224,12 +1224,12 @@ export class App {
 
   /**
    * After the frame is handed to WebGL: our code took `ours` ms of it, `uploadMs` of them handing the assets' bytes to
-   * the card, on a canvas of `width` by `height` device pixels.
+   * the card and `buildMs` in frame(), on a canvas of `width` by `height` device pixels.
    */
-  drawn(packet: FramePacket, ours: number, width = 0, height = 0, uploadMs = 0): void {
+  drawn(packet: FramePacket, ours: number, width = 0, height = 0, uploadMs = 0, buildMs = 0): void {
     this.frames?.record(this.nowMs, this.interval, ours, uploadMs, this.scene?.assets.residency ?? null, this.sounds?.library ?? null);
     // A note's picture is the canvas as just drawn, and its record takes the row above (notes/notes.ts).
-    this.notes?.drawn(packet, ours, width, height, uploadMs);
+    this.notes?.drawn(packet, ours, width, height, uploadMs, buildMs);
     const budget = this.scene?.budget;
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
@@ -1316,8 +1316,8 @@ export class App {
       this.monitorAsked = true;
       void import("./ui/monitor.ts").then((m) => (ui.monitor = new m.Monitor(this, MONITOR_KIT)), () => (this.monitorAsked = false));
     }
-    // Bug report mode likewise, once Settings.notes is first on (D1091).
-    if (ui.settings.notes && !this.notesAsked) {
+    // Bug report mode likewise, once Settings.notes or the budget's panel is first on (D1091, D1095).
+    if ((ui.settings.notes || ui.settings.budget) && !this.notesAsked) {
       this.notesAsked = true;
       void import("./notes/notes.ts").then((m) => (this.notes = new m.Notes(this, NOTES_KIT)), () => (this.notesAsked = false));
     }
@@ -1922,6 +1922,7 @@ export class App {
   /** The console's and chat's words of bug report mode: `notes` turns it on and off, `perf [seconds]` keeps a record. Null for any other line. */
   private notesWord(line: string): string | null {
     if (line === "notes") return toggleNotes(this.ui.settings);
+    if (line === "budget") return toggleBudget(this.ui.settings);
     if (!/^perf(\s|$)/.test(line)) return null;
     return this.notes ? this.notes.perf(line) : "a performance record is kept in bug report mode: /notes turns it on";
   }
