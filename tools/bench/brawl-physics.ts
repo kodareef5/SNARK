@@ -35,6 +35,8 @@ export function benchBrawlPhysics(section: Section, record: Row): void {
   for (let k = 0; k < CREATURES; k++) h.host.spawnCreature(KINDS[k % KINDS.length]!, cx + rng.range(-60, 60), cz + rng.range(-60, 60), 1 + rng.int(30));
   h.run(3000);
   const server = h.server, tick = server.tick.bind(server), lane = server.lane;
+  // Timed as the real server times it.
+  lane.setClock(() => performance.now());
   const lanes: number[] = [], ticks: number[] = [];
   server.tick = () => {
     const t = performance.now();

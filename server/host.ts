@@ -401,6 +401,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const bus = new Bus();
   bus.log = say;
   if (opts.now) bus.now = opts.now;
+  // The physics lane is timed by the same clock: without one, nothing gives way to physics (server/lane.ts).
   const seats = rules.flag("WinLiveMaxPlayers");
   const game = new GameServer(world, {
     password: rules.text("ServerPassword"),
@@ -411,6 +412,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ...opts.game,
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });
+  if (opts.now) game.lane.setClock(opts.now);
   game.bus = bus;
   // A full world still has a place for every survivor that may join.
   world.ents.reserve = game.clients.length;

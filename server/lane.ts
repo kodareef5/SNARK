@@ -29,9 +29,18 @@ export class Lane {
   private began = 0;
   private entered = -1;
   private yieldedNow = false;
-  private readonly now: () => number;
+  private now: () => number;
 
-  constructor(now: () => number = () => performance.now()) {
+  /**
+   * `now` is a clock in milliseconds. Without one nothing is timed and the work that can wait never gives way, so what the
+   * world does does not hang on how busy the machine is: a test's world, as a host given no clock (server/host.ts).
+   */
+  constructor(now: () => number = () => 0) {
+    this.now = now;
+  }
+
+  /** Times the lane by `now` from here on. */
+  setClock(now: () => number): void {
     this.now = now;
   }
 
