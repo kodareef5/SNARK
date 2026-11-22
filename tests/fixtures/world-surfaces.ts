@@ -1,6 +1,10 @@
 // Only the world finishes' maps, without building or fetching every authored material in the game.
+import { expect } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import type { Probe } from "../../client/core/selfcheck.ts";
+import { probePasses, provingProbes, type Probe } from "../../client/core/selfcheck.ts";
+import { SKY_COLOR } from "../../shared/pack/palette.ts";
+import { PICK_ENTITY, PICK_STRUCTURE, PICK_TERRAIN } from "../../tools/snap/raster.ts";
+import { corePack } from "./pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView, type ProvingView } from "../../tools/snap.ts";
@@ -31,6 +35,8 @@ export function referenceManifest(pack: Pack): { manifest: ReturnType<typeof des
  * uploads for a frame, and the twin's sampler. Both read the same pictures, and whole ones would hold a test's worker at 4 GB.
  */
 export function worldMaps(pack: Pack): { sample: WorldSample; uploads: TextureUpload[] } {
+  const before = mapsOf.get(pack);
+  if (before) return before;
   const sources = worldMaterials();
   const uploads: TextureUpload[] = [];
   // The masks' materials are the layers after the finishes', as the packed array has them.
@@ -43,8 +49,13 @@ export function worldMaps(pack: Pack): { sample: WorldSample; uploads: TextureUp
       return decodeTexture(role, t.pictures);
     });
   });
-  return { sample: (role, layer, u, v, spread, out) => sample(maps[layer]![role]!, u, v, spread, out), uploads };
+  const made = { sample: ((role, layer, u, v, spread, out) => sample(maps[layer]![role]!, u, v, spread, out)) as WorldSample, uploads };
+  mapsOf.set(pack, made);
+  return made;
 }
+
+/** Decoded once a pack: nothing changes the maps, and a file's tests ask for them one after another. */
+const mapsOf = new WeakMap<Pack, { sample: WorldSample; uploads: TextureUpload[] }>();
 
 export function surfaceProbeView(width: number, height: number): ProvingView {
   const v = provingView(width, height), r = v.remote;
@@ -69,3 +80,24 @@ export function probeRgb(v: ProvingView, p: Probe): [number, number, number] {
   return [...v.raster.color.subarray(probePixel(v, p) * 4, probePixel(v, p) * 4 + 3)] as [number, number, number];
 }
 
+/** The probes' surface twins hit the same pixels, planes and mips as the software scene drawn at one canvas size and hour. */
+export function surfaceTwins(width: number, height: number, hour: number): void {
+  const maps = worldMaps(corePack());
+  const v = surfaceProbeView(width, height); v.scene.hour = hour;
+  const p = v.scene.build(v.cam, v.remote);
+  p.texUploads.push(...maps.uploads);
+  v.raster.render(p);
+  const probes = provingProbes(v.cam, v.reg, v.pack.palette, SKY_COLOR, v.hf, true, p, { width, height, sample: maps.sample });
+  expect(probes.map((b) => b.name)).toEqual(["sky", "plaza", "block", "slope", "creature", "body"]);
+  for (const b of probes) {
+    const got = probeRgb(v, b);
+    expect(probePasses(b, ...got)).toBe(true);
+    if (["sky", "plaza", "block", "slope"].includes(b.name)) {
+      // Much tighter than the browser's lit tolerance: no compression or unknown body facing here.
+      expect(Math.max(...got.map((c, k) => Math.abs(c - b.rgb[k]!)))).toBeLessThanOrEqual(1);
+    }
+  }
+  for (const [index, kind] of [[1, PICK_TERRAIN], [2, PICK_STRUCTURE], [3, PICK_TERRAIN], [4, PICK_ENTITY]]) expect(v.raster.pickKind[probePixel(v, probes[index!]!)]).toBe(kind);
+  // Without the reference the ground and the statics are left out, never held to palette light.
+  expect(provingProbes(v.cam, v.reg, v.pack.palette, SKY_COLOR, v.hf, true, p, { width, height, sample: null }).map((b) => b.name)).toEqual(["sky", "creature", "body"]);
+}

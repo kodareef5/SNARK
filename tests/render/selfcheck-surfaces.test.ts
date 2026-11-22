@@ -6,34 +6,16 @@ import { probePasses, provingProbes } from "../../client/core/selfcheck.ts";
 import { DRAW_PLAIN } from "../../client/core/render/packet.ts";
 import { lit, srgbToLinear } from "../../client/core/render/surface.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
-import { PICK_ENTITY, PICK_STRUCTURE, PICK_TERRAIN } from "../../tools/snap/raster.ts";
+import { PICK_ENTITY } from "../../tools/snap/raster.ts";
 import { writeTextureFile } from "../../tools/pack/texture.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
-import { referenceManifest, worldMaps, surfaceProbeView, probePixel, probeRgb } from "../fixtures/world-surfaces.ts";
+import { referenceManifest, worldMaps, surfaceProbeView, probePixel, probeRgb, surfaceTwins } from "../fixtures/world-surfaces.ts";
 
-artTest("surface twins hit the same pixels, planes and mips as the software scene at browser and small canvas sizes", () => {
-  const maps = worldMaps(corePack());
-  for (const [width, height, hour] of [[1280, 577, 9], [320, 180, 12]]) {
-    const v = surfaceProbeView(width!, height!); v.scene.hour = hour!;
-    const p = v.scene.build(v.cam, v.remote);
-    p.texUploads.push(...maps.uploads);
-    v.raster.render(p);
-    const probes = provingProbes(v.cam, v.reg, v.pack.palette, SKY_COLOR, v.hf, true, p, { width: width!, height: height!, sample: maps.sample });
-    expect(probes.map((b) => b.name)).toEqual(["sky", "plaza", "block", "slope", "creature", "body"]);
-    for (const b of probes) {
-      const got = probeRgb(v, b);
-      expect(probePasses(b, ...got)).toBe(true);
-      if (["sky", "plaza", "block", "slope"].includes(b.name)) {
-        // Much tighter than the browser's lit tolerance: no compression or unknown body facing here.
-        expect(Math.max(...got.map((c, k) => Math.abs(c - b.rgb[k]!)))).toBeLessThanOrEqual(1);
-      }
-    }
-    for (const [index, kind] of [[1, PICK_TERRAIN], [2, PICK_STRUCTURE], [3, PICK_TERRAIN], [4, PICK_ENTITY]]) expect(v.raster.pickKind[probePixel(v, probes[index!]!)]).toBe(kind);
-    // Without the reference the ground and the statics are left out, never held to palette light.
-    expect(provingProbes(v.cam, v.reg, v.pack.palette, SKY_COLOR, v.hf, true, p, { width: width!, height: height!, sample: null }).map((b) => b.name)).toEqual(["sky", "creature", "body"]);
-  }
+artTest("surface twins hit the software scene's pixels, planes and mips, small", () => {
+  // The browser's canvas size is in selfcheck-surfaces.slow.test.ts.
+  surfaceTwins(320, 180, 12);
 });
 
 artTest("a rigid species keeps its palette light with or without the finishes; removing DRAW_PLAIN reproduces the regression", () => {
