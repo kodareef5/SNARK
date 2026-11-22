@@ -8,7 +8,8 @@ import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { CUE_SCOPED } from "../../shared/anim/pose.ts";
 import { CHUNK_SIZE, TICK_DT } from "../../shared/coords.ts";
 import { CMD_GAZE } from "../../shared/net/protocol.ts";
-import { BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT } from "../../shared/sim/character.ts";
+import { BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, Body, MF_WINDED } from "../../shared/sim/character.ts";
+import { BREATH_WINDED, breathShare, holdsBreath } from "../../shared/sim/aim.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -118,4 +119,31 @@ test("in the whole client: the sniper's own scope zooms 4 to 40 times, its retic
   bob.sampleRemote(r);
   expect(r.cue[[...r.id.subarray(0, r.count)].indexOf(h.client(app.session)!.ent)]! & CUE_SCOPED).toBe(0);
   expect([app.hud.scope, h.host.gaze.zeroOf(h.client(app.session)!)]).toEqual([false, 0]);
+});
+
+test("a held breath costs stamina: still and aimed with the sprint key it lasts some six seconds, then the shooter is winded and its sway shakes the more", () => {
+  const h = new Harness({}, 5, 30, { dev: true, map: writeMap(flatMap(48)) });
+  const s = h.join("ada");
+  h.run(1000);
+  armed(h, s, 0);
+  const p = h.pilots[0]!, body = (): Body => h.client(s)!.body;
+  p.buttons |= BTN_SECONDARY;
+  h.run(1000);
+  const full = body().stamina;
+  p.buttons |= BTN_SPRINT;
+  h.run(3000);
+  expect(holdsBreath(body(), p.buttons)).toBe(true);
+  expect(body().stamina).toBeLessThan(full * 0.6);
+  let held = 3000;
+  while (holdsBreath(body(), p.buttons) && held < 12000) {
+    h.run(500);
+    held += 500;
+  }
+  expect(held).toBeGreaterThanOrEqual(5000);
+  expect(held).toBeLessThanOrEqual(8000);
+  expect([(body().mflags & MF_WINDED) !== 0, breathShare(body(), p.buttons)]).toEqual([true, BREATH_WINDED]);
+  // Let go, the breath comes back.
+  p.buttons &= ~BTN_SPRINT;
+  h.run(15000);
+  expect([(body().mflags & MF_WINDED) !== 0, breathShare(body(), p.buttons)]).toEqual([false, 1]);
 });

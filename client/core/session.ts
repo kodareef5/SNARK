@@ -117,7 +117,7 @@ import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
-import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
+import { aimSeed, aimShot, scopeFitted, shotAim, stepAim, zeroUnits } from "../../shared/sim/aim.ts";
 import { F_PROP, GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { FootContacts, FootVehicles } from "../../shared/sim/foot-contact.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -521,6 +521,8 @@ export class ClientSession {
   placesList = 0;
   /** The map beyond the view: structure cells and marks, as the server sends them. */
   readonly tactical = new MapStore();
+  /** The zero, metres, the sight the app has raised has dialled (0 for none): a predicted shot is lifted as the server lifts it. */
+  sightZero = 0;
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
   readonly far = new FarStore();
   /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
@@ -1158,7 +1160,9 @@ export class ClientSession {
       const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
       // It leaves where the server will send it: the look with its kick, sway and cone, from the same body and seed.
       // With the aimed look's 256ths, as the server takes the shot (D1083).
-      aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]! + inp.fineYaw[i]! / 256, inp.pitch[i]! + inp.finePitch[i]! / 256, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
+      // And the zero the sight has dialled, for a round that flies, as the server lifts it (D1083).
+      const zero = ammo !== 0 ? zeroUnits(this.sightZero, this.registry.ammoSpeed[ammo]!, this.registry.ammoGravity[ammo]!) : 0;
+      aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]! + inp.fineYaw[i]! / 256, inp.pitch[i]! + inp.finePitch[i]! / 256, scopeFitted(this.registry, inv, slot), this.ownHandle, t, zero);
       if (ammo !== 0 && this.fired.length < 16) {
         const eye = this.shotEye;
         eye[0] = this.own.x; eye[1] = this.own.y + stanceEye(this.move!, this.own.stance); eye[2] = this.own.z;

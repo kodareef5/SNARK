@@ -355,7 +355,7 @@ test("the sniper's sight: a zero lifts the shot by its exact angle, breath held 
   expect(holdsBreath(b, BTN_SECONDARY | BTN_SPRINT)).toBe(false);
   sway(w, STANCE_STAND, 7, 40);
   const loose = Math.hypot(swayOut.yaw, swayOut.pitch);
-  sway(w, STANCE_STAND, 7, 40, true);
+  sway(w, STANCE_STAND, 7, 40, BREATH_STEADY);
   expect(Math.hypot(swayOut.yaw, swayOut.pitch)).toBeCloseTo(loose * BREATH_STEADY, 9);
   // Its own scope: in hand, nothing fitted, it is scoped.
   const inv = new Inventory(60, 40);

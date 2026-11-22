@@ -80,6 +80,8 @@ export const BTN_ROLL = BTN_CROUCH;
 
 /** Stamina is stored in thousandths of a point, so it steps in exact integers. */
 export const STAMINA_UNITS = 1000;
+/** Stamina units a tick of a held breath costs: a full hundred lasts six seconds (D1085). */
+export const BREATH_STAMINA = 550;
 
 /**
  * A glider carried and opened in the air (planning/workstreams/glider.md): the frond glider, grade 1 of Body.glideGear's
@@ -672,7 +674,10 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const sprint = glide === 0 && !b.jetThrust && m2 > 0 && standing && canSprint(b, buttons);
   // None comes back in the air once it has glided, nor for a moment after it lands.
   if (glide !== 0 && b.regenWait < GLIDE_REGEN_WAIT) b.regenWait = GLIDE_REGEN_WAIT;
-  let stamina = spendStamina(b, p, sprint, glide !== 0 ? (diving ? GLIDE_DIVE_STAMINA : GLIDE_STAMINA) : m2 > 0 ? p.staminaWalk : 0);
+  // Aimed and still with the sprint key held, the breath is held (shared/sim/aim.ts holdsBreath, D1085): it costs stamina,
+  // and as it runs out the body is winded.
+  const breath = glide === 0 && m2 === 0 && (buttons & (BTN_SPRINT | BTN_SECONDARY)) === (BTN_SPRINT | BTN_SECONDARY) && b.stamina > 0 && (b.mflags & MF_WINDED) === 0;
+  let stamina = spendStamina(b, p, sprint, glide !== 0 ? (diving ? GLIDE_DIVE_STAMINA : GLIDE_STAMINA) : m2 > 0 ? p.staminaWalk : breath ? BREATH_STAMINA : 0);
   // Spent, it folds, and the body falls.
   if (glide !== 0 && stamina <= 0) glide = 0;
   const fastCruise = b.jetThrust === JET_HOVER && (b.jetGear & JET_GREAVES) !== 0 && !(flags & MF_NO_SPRINT);

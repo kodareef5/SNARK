@@ -16,7 +16,7 @@ import type { Registry } from "../content/registry.ts";
 import { YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detCos, detSin, len3 } from "../math/scalar.ts";
 import { lookDirection } from "../world/ray.ts";
-import { BTN_SECONDARY, BTN_SPRINT, MODE_WALK, type Body, type MoveParams } from "./character.ts";
+import { BTN_SECONDARY, BTN_SPRINT, MF_WINDED, MODE_WALK, type Body, type MoveParams } from "./character.ts";
 import type { Inventory } from "./items.ts";
 import { actionOut, type WeaponParams } from "./weapon.ts";
 
@@ -135,14 +135,20 @@ export function shotKick(b: Body, w: WeaponParams, fired: boolean): number {
   return k * KICK_UNIT;
 }
 
-/** The share of its sway a sight keeps while its shooter holds its breath (D1083). */
+/** The share of its sway a sight keeps while its shooter holds its breath (D1083), and has while winded after (D1085). */
 export const BREATH_STEADY = 0.2;
+export const BREATH_WINDED = 1.6;
 /** Squared metres a second a body may move and still hold its breath. */
 const BREATH_STILL = 0.04;
 
 /** Whether `b`, aimed (the secondary held), holds its breath: the sprint key held, standing still (D1083). */
 export function holdsBreath(b: Body, buttons: number): boolean {
-  return (buttons & (BTN_SPRINT | BTN_SECONDARY)) === (BTN_SPRINT | BTN_SECONDARY) && b.vx * b.vx + b.vz * b.vz < BREATH_STILL;
+  return (buttons & (BTN_SPRINT | BTN_SECONDARY)) === (BTN_SPRINT | BTN_SECONDARY) && b.vx * b.vx + b.vz * b.vz < BREATH_STILL && b.stamina > 0 && (b.mflags & MF_WINDED) === 0;
+}
+
+/** The share of its sway an aimed sight has for `b` with `buttons`: steadied by a held breath, shaken while winded (D1085). */
+export function breathShare(b: Body, buttons: number): number {
+  return holdsBreath(b, buttons) ? BREATH_STEADY : (b.mflags & MF_WINDED) !== 0 ? BREATH_WINDED : 1;
 }
 
 /**
@@ -161,8 +167,8 @@ export const swayOut = { yaw: 0, pitch: 0 };
  * A scoped, aimed long gun's wander at tick `t` (fractional for the camera), into swayOut: none for a weapon that does not
  * sway. Its phase is the shooter's own, from its handle, so two snipers do not sway together.
  */
-export function sway(w: WeaponParams, stance: number, handle: number, t: number, steady = false): void {
-  const a = (w.coneSway ?? 0) * (STANCE_SWAY[stance] ?? 1) * UNITS_PER_DEGREE * (steady ? BREATH_STEADY : 1);
+export function sway(w: WeaponParams, stance: number, handle: number, t: number, share = 1): void {
+  const a = (w.coneSway ?? 0) * (STANCE_SWAY[stance] ?? 1) * UNITS_PER_DEGREE * share;
   if (!(a > 0)) {
     swayOut.yaw = swayOut.pitch = 0;
     return;
@@ -201,7 +207,7 @@ export function aimShot(b: Body, buttons: number, w: WeaponParams, p: MoveParams
   // A zero lifts the shot, not the look: the reticle stays on the look (D1083).
   let e = pitch + shotKick(b, w, true) + zero;
   if (scoped && (buttons & BTN_SECONDARY) !== 0) {
-    sway(w, b.stance, handle, tick, holdsBreath(b, buttons));
+    sway(w, b.stance, handle, tick, breathShare(b, buttons));
     y += swayOut.yaw;
     e += swayOut.pitch;
   }

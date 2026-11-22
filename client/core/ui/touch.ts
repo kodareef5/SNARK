@@ -216,8 +216,12 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
       if (flyer) { at(T_ROLL, 1, BUTTON, I_ROTATE, "Roll"); at(T_HOLD, 2, BUTTON, I_BRAKE, "Brake"); }
       else {
         at(T_STANCE, 1, BUTTON, I_CROUCH, "Stance");
-        const armed = m.ammo !== "" || m.cone >= 0 || m.scope || m.holo;
-        if (armed || t.aiming) at(T_AIM, 2, BUTTON, I_AIM, "Aim", t.aiming);
+        // A held glass is raised as a weapon is aimed; with nothing to aim, the toggle holds a helmet's visor up (D1085).
+        const armed = m.ammo !== "" || m.cone >= 0 || m.scope || m.holo || m.glassHeld;
+        t.aimButton = !armed && m.visorReady ? 1 : 2;
+        if (armed || m.visorReady || t.aiming) at(T_AIM, 2, BUTTON, I_AIM, t.aimButton === 1 ? "Visor" : "Aim", t.aiming);
+        // A raised sight that zooms takes the builder's raise and lower as its zoom (the arrow keys).
+        if (m.zooming) { at(T_RAISE, 3, SMALL, I_UP, "Zoom in"); at(T_LOWER, 4, SMALL, I_DOWN, "Zoom out"); }
         if (m.ammo !== "") at(T_RELOAD, 6, SMALL, I_RELOAD, "Reload");
       }
     }

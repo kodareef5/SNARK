@@ -405,6 +405,10 @@ export class HudModel {
    * (degrees), and whether a mark was just made.
    */
   glass = false;
+  /** A sight that zooms is raised, a glass is held, and a worn helmet's visor may be raised (for the touch buttons). */
+  zooming = false;
+  glassHeld = false;
+  visorReady = false;
   glassZoom = 0;
   glassRange = 0;
   glassBearing = 0;

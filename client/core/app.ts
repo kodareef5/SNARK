@@ -51,7 +51,7 @@ import { SupplyView } from "./supply.ts";
 import { Falling } from "./rubble.ts";
 import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_VISOR } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
-import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
+import { KICK_UNIT, breathShare, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
@@ -336,6 +336,8 @@ export class App {
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
+      get zooming() { return app.zooming; },
+      zoom: (notches, alt) => void this.zoomBy(notches, alt),
       adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
       move: (x, z) => this.controls.padMove(x, z), look: (x, y) => this.look(x,y), used: () => { this.ui.inputDevice = 1; },
@@ -491,6 +493,11 @@ export class App {
     }
     if (this.ui.inspect && (code === "Minus" || code === "Equal")) { if (down && !repeat) this.zoomMini(code === "Equal" ? 1 : -1); return true; }
     if (this.ui.captureKeyboard) return false;
+    // A raised sight that zooms takes the arrows up and down, as the wheel (and a finger's zoom buttons, which send them).
+    if ((code === "ArrowUp" || code === "ArrowDown") && this.zooming && !this.ui.map) {
+      if (down) this.zoomBy(code === "ArrowUp" ? -1 : 1);
+      return true;
+    }
     // With a glass raised, N marks what the look is on for the tribe (D1082).
     if (code === "KeyN" && this.glass.up) {
       const o = this.hud.overhead;
@@ -655,13 +662,23 @@ export class App {
     else this.controls.look(dx, dy);
   }
 
+  /** Whether a raised sight takes zoom steps: a scope that zooms, a glass, a visor. */
+  get zooming(): boolean {
+    return this.sightOptic !== null || (this.glass.up && this.glassOptic !== null) || (this.visor.up && this.visorOptic !== null);
+  }
+
   /** The mouse wheel's `deltaY` in pixels, lines or pages (`mode` 0, 1 or 2), as a browser gives it. True when it was used. */
   wheel(deltaY: number, mode = 0): boolean {
     if (!this.ui.wantsPointerLock) return false;
     const notches = mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100;
+    return this.zoomBy(notches) || this.orbit.wheel(notches);
+  }
+
+  /** `notches` of zoom to the raised sight, down (positive) to widen: the wheel's, a pad's d-pad's, a finger's. True when one took them. */
+  zoomBy(notches: number, alt = this.alt): boolean {
     // A sight that zooms takes the wheel: its zoom, or with Alt its zero (D1083).
     if (this.sightOptic) {
-      if (this.alt) this.sightZero = Math.min(ZERO_MOST, Math.max(0, this.sightZero - Math.sign(notches) * ZERO_STEP));
+      if (alt) this.sightZero = Math.min(ZERO_MOST, Math.max(0, this.sightZero - Math.sign(notches) * ZERO_STEP));
       else this.sightZoom = Math.min(opticMost(this.sightOptic), Math.max(this.sightOptic.min, this.sightZoom * SIGHT_STEP ** -notches));
       return true;
     }
@@ -674,7 +691,7 @@ export class App {
       this.visor.wheel(this.visorOptic, notches);
       return true;
     }
-    return this.orbit.wheel(notches);
+    return false;
   }
 
   /** `out` as a chase camera shows a look of `yaw` and `pitch` on a boom of `boom` metres. */
@@ -1474,7 +1491,8 @@ export class App {
     if (gun && session.driving < 0) {
       lookPitch += (session.ownPrev.kick + (session.own.kick - session.ownPrev.kick) * a) * KICK_UNIT * UNIT_RADIANS;
       if (scoped) {
-        sway(gun, session.own.stance, session.ownHandle, session.tickClock);
+        // The breath held or the body winded as the shot will have it (D1085).
+        sway(gun, session.own.stance, session.ownHandle, session.tickClock, breathShare(session.own, c.buttons));
         lookYaw += swayOut.yaw * UNIT_RADIANS;
         lookPitch += swayOut.pitch * UNIT_RADIANS;
       }
@@ -1527,6 +1545,7 @@ export class App {
     hud.sightFov = this.fov;
     hud.sightZoom = zoom;
     hud.sightZero = hud.sightMil ? this.sightZero : 0;
+    session.sightZero = sighting && hud.sightMil ? this.sightZero : 0;
     hud.sightShare = optic ? windowShare(optic, zoom) : 1;
     hud.sightShape = shapeOf(optic);
     hud.visor = visorUp;
@@ -1566,6 +1585,9 @@ export class App {
     this.gaze(nowMs, world, (sighting || visorUp || glassUp) && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
     this.lookReach = (sighting || visorUp || glassUp) && zoom > 1 ? Math.max(30, Math.min(GAZE_FARTHEST, GAZE_REACH * zoom)) : 30;
     hud.glass = glassUp;
+    hud.zooming = this.zooming;
+    hud.glassHeld = this.glassOptic !== null;
+    hud.visorReady = this.visorOptic !== null && alive && session.driving < 0;
     hud.glassZoom = zoom;
     if (glassUp) {
       const eyeAt = this.sightAt, d = this.aim;

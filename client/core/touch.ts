@@ -69,6 +69,12 @@ export class TouchPlay {
   private readonly long = new Uint8Array(T_COUNT);
   /** Aim stays on from one press to the next, and so do the cluster's second page and the way of going that Shift holds. */
   aiming = false;
+  /**
+   * The mouse button the aim toggle holds: the secondary (2), or with no weapon to aim and a helmet's visor to raise, the
+   * middle (1), which holds the visor up (client/core/visor.ts). The layout sets it; a toggle keeps the one it began with.
+   */
+  aimButton = 2;
+  private aimedWith = 2;
   more = false;
   shifted = false;
   /** Whether the stick's rim sprints: on foot and on a mount, not at a wheel or a helm, where Shift means something else. */
@@ -102,7 +108,10 @@ export class TouchPlay {
     if (kind === 0 && this.finger[b] === 0) {
       this.finger[b] = who; this.since[b] = nowMs; this.long[b] = 0;
       if (b === T_ATTACK) { t.mouse(0, true); this.aimX = x; this.aimY = y; }
-      else if (b === T_AIM) t.mouse(2, (this.aiming = !this.aiming));
+      else if (b === T_AIM) {
+        if (!this.aiming) this.aimedWith = this.aimButton;
+        t.mouse(this.aimedWith, (this.aiming = !this.aiming));
+      }
       else if (b === T_MORE) this.more = !this.more;
       else if (b === T_SHIFT) t.key("ShiftLeft", (this.shifted = !this.shifted));
       else if (HELD[b]) t.key(HELD[b]!, true);
@@ -123,7 +132,7 @@ export class TouchPlay {
       if ((shown & (1 << b)) === 0) this.lift(b, t, true);
       else if (b === T_STANCE && !this.long[b] && nowMs - this.since[b]! >= LONG_MS) { this.long[b] = 1; t.key("KeyX", true); t.key("KeyX", false); }
     }
-    if (this.aiming && (shown & (1 << T_AIM)) === 0) t.mouse(2, (this.aiming = false));
+    if (this.aiming && (shown & (1 << T_AIM)) === 0) t.mouse(this.aimedWith, (this.aiming = false));
     if (this.shifted && (shown & (1 << T_SHIFT)) === 0) t.key("ShiftLeft", (this.shifted = false));
     if (this.more && (shown & (1 << T_MORE)) === 0) this.more = false;
   }
