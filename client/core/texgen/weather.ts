@@ -1,30 +1,20 @@
-// The walls' weathering masks, made from a recipe (content/texgen/weather.ts) where they were painted pictures: the card
-// makes them as the page loads (client/shell/texgen.ts), and this file's TypeScript makes the same for the rasterizer,
-// the tests and the tools. A layer is square. A bay's layer is an 8 m bay two storeys high, two variants of one storey
-// one above the other, each from its slab line at the top to the floor at the bottom: runoff in red, drips in green,
-// rust in blue and the splash at the foot in alpha, every one fading to nothing at the bay's sides so that bays meet in
-// any order. A field's layer is 16 m by 16 m and tiles: rising damp, the plaster's hold, a patina and salt, each brought
-// to an even spread of values (`equalize`), so a threshold over it takes that share of the wall.
+// The walls' weathering, made by the card from its recipe (content/texgen/weather.ts) as two jobs of the textures it
+// makes (engine.ts). A bay's layer is an 8 m bay two storeys high, two stamps one above the other, each a storey from
+// its slab line at the top to its floor: runoff in red, drips in green, rust in blue and the splash at the foot in
+// alpha, every one nothing at the bay's sides so that bays meet in any order. A field's layer is 16 m by 16 m and tiles:
+// rising damp, the plaster's hold, a patina and salt, each brought to an even spread of values (`equalize`), so that a
+// threshold over it takes that share of a wall.
 
-import { WEATHER_RECIPE, type WeatherRecipe } from "../../../content/texgen/weather.ts";
+import { WEATHER_LUTS, WEATHER_RECIPE, type WeatherRecipe } from "../../../content/texgen/weather.ts";
 import { sample, type Texture } from "../render/cpu-texture.ts";
-import { NOISE_GLSL, cells, fbm, hash3, hash32, line, smoothstep, tiled } from "./noise.ts";
+import { jobPixels, type Job } from "./engine.ts";
+import { TEXGEN_LAYERS, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_PAD, WEATHER_STOREY } from "./layers.ts";
+import { cells, fbm, hash3, hash32, line, smoothstep, tiled } from "./noise.ts";
 
-/** Metres across a bay's layer and up one of its two storeys, and a side of a field's layer. */
-export const WEATHER_BAY = 8;
-export const WEATHER_STOREY = 4;
-export const WEATHER_FIELD = 16;
-/** Layers of the masks' array: the bays' then the fields'. */
-export const WEATHER_BAYS = WEATHER_RECIPE.bays;
-export const WEATHER_FIELDS = WEATHER_RECIPE.fields;
-export const WEATHER_LAYERS = WEATHER_BAYS + WEATHER_FIELDS;
+export { WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_PAD, WEATHER_STOREY } from "./layers.ts";
+export const WEATHER_LAYERS = TEXGEN_LAYERS;
 /** The side of the layers the rasterizer and the self-check make for themselves: the card's are as wide as the tier's finishes. */
 export const WEATHER_TWIN_SIDE = 256;
-/**
- * The share of a storey's rows at its top and its foot that hold its slab line's and its floor's own values, so that no
- * read of one of a layer's two stamps, filtered or anisotropic at any level the weathering is read at, takes the other's.
- */
-export const WEATHER_PAD = 1 / 16;
 /** Steps of a field's equalizing table. */
 export const LUT_STEPS = 32;
 /** A period long enough that a noise read only for its grain never repeats in a layer. */
@@ -194,32 +184,9 @@ export function fieldLut(seed: number): Float32Array {
   return lut;
 }
 
-/**
- * Layer `layer` of the masks, `side` pixels a side, as RGBA8, the row at the top first, as the card makes it: a bay's
- * pixel the mean of two reads across it, which its streaks run across, and a field's one read at its middle.
- */
+/** Layer `layer` of the masks, `side` pixels a side, as RGBA8, row 0 first, as the card makes it. */
 export function weatherPixels(layer: number, side: number, recipe: WeatherRecipe = WEATHER_RECIPE): Uint8Array {
-  const out = new Uint8Array(side * side * 4), v = new Float64Array(4), sum = new Float64Array(4);
-  const field = layer >= recipe.bays, seed = field ? fieldSeed(recipe, layer - recipe.bays) : 0, lut = field ? fieldLut(seed) : null;
-  const tables = field ? [] : [bayFeatures(recipe, baySeed(recipe, layer, 0)), bayFeatures(recipe, baySeed(recipe, layer, 1))];
-  for (let py = 0; py < side; py++) {
-    for (let px = 0; px < side; px++) {
-      sum.fill(0);
-      const t = (py + 0.5) / side;
-      if (field) {
-        fieldRaw(seed, ((px + 0.5) / side) * WEATHER_FIELD, t * WEATHER_FIELD, v);
-        for (let c = 0; c < 4; c++) sum[c] = equalize(v[c]!, lut!, c);
-      } else {
-        const half = t >= 0.5 ? 1 : 0;
-        for (let s = 0; s < 2; s++) {
-          bayTexel(recipe, tables[half]!, ((px + 0.25 + 0.5 * s) / side) * WEATHER_BAY, Math.min(Math.max((t * 2 - half - WEATHER_PAD) / (1 - 2 * WEATHER_PAD), 0), 1) * WEATHER_STOREY, v);
-          for (let c = 0; c < 4; c++) sum[c]! += v[c]! / 2;
-        }
-      }
-      for (let c = 0; c < 4; c++) out[(py * side + px) * 4 + c] = Math.round(Math.min(Math.max(sum[c]!, 0), 1) * 255);
-    }
-  }
-  return out;
+  return layer < WEATHER_BAYS ? jobPixels(bayJob(recipe), layer, side) : jobPixels(fieldJob(recipe), layer - WEATHER_BAYS, side);
 }
 
 /**
@@ -258,35 +225,58 @@ export function weatherRead(layer: number, side: number, u: number, v: number, s
 
 const fl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
-/** The vertex text of the masks' program: one triangle over the layer. */
-export const WEATHER_GEN_VERTEX = `#version 300 es
-void main() {
-  gl_Position = vec4(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0, 0.0, 1.0);
+/** The bay layers: two bands a layer, each a stamp drawn from its own table (bayFeatures), padded at its top and foot. */
+export function bayJob(recipe: WeatherRecipe = WEATHER_RECIPE): Job {
+  const layout = bayLayout(recipe), tables: Float32Array[] = [];
+  const table = (layer: number, band: number): Float32Array => (tables[layer * 2 + band] ??= bayFeatures(recipe, baySeed(recipe, layer, band)));
+  return {
+    layers: WEATHER_BAYS,
+    bands: 2,
+    pad: WEATHER_PAD,
+    taps: [2, 1],
+    cost: 1,
+    rows: layout.rows,
+    glsl: bayGlsl(recipe),
+    fill: (layer, band, out, at) => out.set(table(layer, band), at),
+    made: (layer, band, u, v, out) => bayTexel(recipe, table(layer, band), u * WEATHER_BAY, v * WEATHER_STOREY, out),
+  };
 }
-`;
 
-/**
- * The fragment text that draws a layer of the masks into the target's pixels, the twin of weatherPixels: `uField` 1
- * for a field, with `uSeed` its seed (fieldSeed) and `uLut` its table (fieldLut); `uSide` the layer's side; and for a
- * bay, `uBay` the table (bayFeatures) of the variant of the half drawn, the top or the bottom, each drawn apart.
- */
-export function weatherFragment(recipe: WeatherRecipe = WEATHER_RECIPE): string {
-  const { tracks: TRACKS, threads: THREADS, drips: DRIPS, rusts: RUSTS, atThreads: AT_THREADS, atDrips: AT_DRIPS, atRust: AT_RUST, atSplash: AT_SPLASH, rows } = bayLayout(recipe);
-  return `#version 300 es
-precision highp float;
-precision highp int;
-uniform int uSeed, uField;
-uniform float uSide;
-uniform vec4 uLut[${LUT_STEPS + 1}];
-uniform vec4 uBay[${rows}];
-out vec4 o;
-${NOISE_GLSL}
-float overOf(float acc, float v) { return 1.0 - (1.0 - acc) * (1.0 - clamp(v, 0.0, 1.0)); }
+/** The field layers: each its seed and its equalizing table, pinned in the content for WEATHER_RECIPE and made for any other. */
+export function fieldJob(recipe: WeatherRecipe = WEATHER_RECIPE): Job {
+  const luts = Array.from({ length: WEATHER_FIELDS }, (_, f) => (recipe === WEATHER_RECIPE ? Float32Array.from(WEATHER_LUTS[f]!) : fieldLut(fieldSeed(recipe, f))));
+  const raw = new Float64Array(4);
+  return {
+    layers: WEATHER_FIELDS,
+    bands: 1,
+    pad: 0,
+    taps: [1, 1],
+    cost: 2.6,
+    rows: LUT_STEPS + 2,
+    glsl: FIELD_GLSL,
+    fill(layer, _band, out, at) {
+      out[at] = fieldSeed(recipe, layer);
+      out[at + 1] = out[at + 2] = out[at + 3] = 0;
+      out.set(luts[layer]!, at + 4);
+    },
+    made(layer, _band, u, v, out) {
+      fieldRaw(fieldSeed(recipe, layer), u * WEATHER_FIELD, v * WEATHER_FIELD, raw);
+      for (let c = 0; c < 4; c++) out[c] = equalize(raw[c]!, luts[layer]!, c);
+    },
+  };
+}
+
+/** The weathering's jobs, in the order their layers lie in the array. */
+export const weatherJobs = (recipe: WeatherRecipe = WEATHER_RECIPE): Job[] => [bayJob(recipe), fieldJob(recipe)];
+
+function bayGlsl(recipe: WeatherRecipe): string {
+  const { tracks: TRACKS, threads: THREADS, drips: DRIPS, rusts: RUSTS, atThreads: AT_THREADS, atDrips: AT_DRIPS, atRust: AT_RUST, atSplash: AT_SPLASH } = bayLayout(recipe);
+  return `float overOf(float acc, float v) { return 1.0 - (1.0 - acc) * (1.0 - clamp(v, 0.0, 1.0)); }
 float sides(float x, float edge) { return smoothstep(0.06, 0.06 + edge, x) * smoothstep(0.06, 0.06 + edge, ${fl(WEATHER_BAY)} - x); }
 float streaks(int row, int n, float spot, float spread, float grain, float x, float y) {
   float acc = 0.0;
   for (int i = 0; i < n; i++) {
-    vec4 a = uBay[row + i * 2], b = uBay[row + i * 2 + 1];
+    vec4 a = uJob[2 + row + i * 2], b = uJob[2 + row + i * 2 + 1];
     float L = a.w, x0 = a.x, t = y - a.y;
     if (L < 0.0 || t < -0.15 || t > L) continue;
     float ww = a.z * (1.0 + spread * max(t, 0.0) / L);
@@ -302,7 +292,7 @@ float streaks(int row, int n, float spot, float spread, float grain, float x, fl
 vec4 bayTexel(float x, float y) {
   float runs = 0.0;
   for (int i = 0; i < ${TRACKS}; i++) {
-    vec4 a = uBay[i * 2], b = uBay[i * 2 + 1];
+    vec4 a = uJob[2 + i * 2], b = uJob[2 + i * 2 + 1];
     float L = a.w;
     if (L < 0.0 || y > L * 1.5) continue;
     float w = a.z * (1.0 + 0.6 * y / L) * (1.0 + 2.0 * exp(-y / 0.12)), near = a.x + a.y * (1.0 + y / L);
@@ -313,9 +303,9 @@ vec4 bayTexel(float x, float y) {
     runs = overOf(runs, b.x * exp(-y / L) * (1.0 - smoothstep(L * 0.7, L * 1.5, y)) * smoothstep(0.0, 0.03, y) * exp(-d * d) * (0.55 + 0.45 * tiled(x / 0.05, y / 0.5, ${FREE}, ${FREE}, tk)));
   }
   for (int i = 0; i < ${THREADS}; i++) {
-    vec4 a = uBay[${AT_THREADS} + i];
+    vec4 a = uJob[2 + ${AT_THREADS} + i];
     if (a.z < 0.0 || y > a.z || abs(x - a.x) > 0.025 + 4.0 * a.y) continue;
-    float d = (x - a.x - (line(y / 0.5, int(uBay[${AT_SPLASH}].y) + i * 4) - 0.5) * 0.05) / a.y;
+    float d = (x - a.x - (line(y / 0.5, int(uJob[2 + ${AT_SPLASH}].y) + i * 4) - 0.5) * 0.05) / a.y;
     runs = overOf(runs, a.w * exp(-d * d) * (1.0 - smoothstep(a.z * 0.5, a.z, y)) * smoothstep(0.0, 0.02, y));
   }
   float floorOf = 1.0 - smoothstep(${fl(WEATHER_STOREY - 0.15)}, ${fl(WEATHER_STOREY)}, y);
@@ -323,14 +313,20 @@ vec4 bayTexel(float x, float y) {
   m.r = runs * sides(x, 0.15) * floorOf;
   m.g = streaks(${AT_DRIPS}, ${DRIPS}, 0.035, 1.0, 0.4, x, y) * sides(x, 0.1) * floorOf;
   m.b = streaks(${AT_RUST}, ${RUSTS}, 0.025, 2.0, 0.5, x, y) * sides(x, 0.1) * floorOf;
-  int s7 = int(uBay[${AT_SPLASH}].x);
+  int s7 = int(uJob[2 + ${AT_SPLASH}].x);
   float up = ${fl(WEATHER_STOREY)} - y;
   float reach = 0.3 + (mix(${fl(recipe.splash.height[0])}, ${fl(recipe.splash.height[1])}, line(x / 1.3, s7 + 600)) - 0.3) * smoothstep(0.0, 1.0, min(x, ${fl(WEATHER_BAY)} - x));
   float edge = reach + (line(x / 0.11, s7 + 601) - 0.5) * ${fl(2 * recipe.splash.ragged)};
   m.a = up > edge ? 0.0 : (1.0 - smoothstep(edge - 0.1, edge, up)) * (0.45 + 0.55 * tiled(x / 0.04, up / 0.03, ${FREE}, ${FREE}, s7 + 602)) * (0.6 + 0.4 * (1.0 - clamp(up / edge, 0.0, 1.0)));
   return m;
 }
-vec4 fieldRaw(int seed, float x, float y) {
+vec4 made(vec2 at) {
+  return bayTexel(at.x * ${fl(WEATHER_BAY)}, at.y * ${fl(WEATHER_STOREY)});
+}
+`;
+}
+
+const FIELD_GLSL = `vec4 fieldRaw(int seed, float x, float y) {
   vec4 m;
   float qx = x + 1.2 * (fbm(x / 2.0, y / 2.0, 8, 8, seed + 1, 3) - 0.5), qy = y + 1.2 * (fbm(x / 2.0, y / 2.0, 8, 8, seed + 2, 3) - 0.5);
   m.r = fbm(qx, qy, 16, 16, seed + 3, 5);
@@ -346,23 +342,13 @@ vec4 fieldRaw(int seed, float x, float y) {
 }
 float equalize(float v, int c) {
   for (int k = 0; k < ${LUT_STEPS}; k++) {
-    float lo = uLut[k][c], hi = uLut[k + 1][c];
+    float lo = uJob[3 + k][c], hi = uJob[4 + k][c];
     if (v < hi) return (float(k) + clamp((v - lo) / max(hi - lo, 1e-6), 0.0, 1.0)) / ${fl(LUT_STEPS)};
   }
   return 1.0;
 }
-void main() {
-  vec2 p = floor(gl_FragCoord.xy);
-  float t = (p.y + 0.5) / uSide;
-  if (uField == 1) {
-    vec4 v = fieldRaw(uSeed, (p.x + 0.5) / uSide * ${fl(WEATHER_FIELD)}, t * ${fl(WEATHER_FIELD)});
-    o = vec4(equalize(v.r, 0), equalize(v.g, 1), equalize(v.b, 2), equalize(v.a, 3));
-    return;
-  }
-  float lower = t >= 0.5 ? 1.0 : 0.0, y = clamp((t * 2.0 - lower - ${fl(WEATHER_PAD)}) / ${fl(1 - 2 * WEATHER_PAD)}, 0.0, 1.0) * ${fl(WEATHER_STOREY)};
-  vec4 sum = vec4(0.0);
-  for (int s = 0; s < 2; s++) sum += bayTexel((p.x + 0.25 + 0.5 * float(s)) / uSide * ${fl(WEATHER_BAY)}, y) * 0.5;
-  o = clamp(sum, 0.0, 1.0);
+vec4 made(vec2 at) {
+  vec4 v = fieldRaw(int(uJob[2].x), at.x * ${fl(WEATHER_FIELD)}, at.y * ${fl(WEATHER_FIELD)});
+  return vec4(equalize(v.r, 0), equalize(v.g, 1), equalize(v.b, 2), equalize(v.a, 3));
 }
 `;
-}

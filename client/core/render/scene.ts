@@ -1108,7 +1108,7 @@ export class Scene {
     if (p.tier.lit) this.finishNear.update(cam.x, cam.y, cam.z, this.world.hf, this.world.structs, scale, finishTaps(p.tier));
     this.finishes.frame(p, this.assets.residency, p.tier, near, scale);
     // The walls' weathering masks are made on the card, not fetched (texgen/weather.ts), so their bytes are held apart.
-    this.assets.residency.reserve("weather masks", weatherBytes(p.weatherSide));
+    this.assets.residency.reserve("weather masks", weatherBytes(this.finishes.wanted));
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
     this.characters.heatView = false;
     if (p.tier.lit) {

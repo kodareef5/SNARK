@@ -145,6 +145,9 @@ export class WorldFinishes {
   /** Frames since every map has come, up to WORLD_RISE; and whether a frame has been drawn without them since the finishes were asked for, which the rise is for. */
   private risen = 0;
   private drawnEarly = false;
+  /** The side the tier has the card make its textures at, which the card's budget holds from the first, and the side it makes them at, from the frame every map had come. */
+  wanted = 0;
+  private making = 0;
   /** Per layer and role as `worldLeast` lays them out, the finest level the card reads, counted from the array's widest. */
   private readonly read = new Float32Array(WORLD_LAYERS * 3);
 
@@ -222,7 +225,9 @@ export class WorldFinishes {
     p.worldEarly = 1 - this.risen / WORLD_RISE;
     // Where their base colours cannot come at all (a picture made with no network), the finishes are not drawn early.
     p.worldComing = side > 0 && this.textures[0]!.every((t) => residency.canHave(t));
-    p.weatherSide = weatherSide(tier, side);
+    // The card makes its textures once the finishes have come, and goes on at that side while it is the one wanted.
+    const want = (this.wanted = weatherSide(tier, side));
+    p.weatherSide = this.making = want > 0 && (full || this.making === want) ? want : 0;
     worldPhase(p.worldPhase, p.camX, p.camY, p.camZ, p.surfaceCity);
     p.frame[FRAME.edgesOff] = 0;
     p.frame[FRAME.roadOff] = 0;

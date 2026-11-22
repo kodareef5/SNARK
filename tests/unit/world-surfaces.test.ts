@@ -226,6 +226,28 @@ test("a frame asks for each finish's maps no wider than its tier keeps them, tel
   for (const tier of TIERS) expect([tier.name, tier.finishes]).toEqual([tier.name, { lowpoly: 0, medium: 512, high: 1024, ultra: 2048 }[tier.name]]);
 });
 
+test("the card makes its textures from the frame every finish's maps have come, at the tier's side, and goes on while one is let go; the card's budget holds them from the first", () => {
+  const { materials, textures } = finishPack(false);
+  const held = new Int8Array(SURFACE_NAMES.length * 3).fill(-1), residency = finishResidency(held);
+  const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect([p.weatherSide, finishes.wanted]).toEqual([0, 512]);
+  held.fill(0);
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect(p.weatherSide).toBe(512);
+  held[4] = -1;
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect(p.weatherSide).toBe(512);
+  // Another side begins only once its finishes have come; the phones' light finish and low poly make none.
+  finishes.frame(p, residency, tierOf("ultra"), AT_EYE, 1000);
+  expect([p.weatherSide, finishes.wanted]).toEqual([0, 1024]);
+  for (const tier of [forTouch(tierOf("high"), true), tierOf("lowpoly")]) {
+    held.fill(4);
+    finishes.frame(p, residency, tier, AT_EYE, 1000);
+    expect([p.weatherSide, finishes.wanted]).toEqual([0, 0]);
+  }
+});
+
 test("each finish is asked for as wide as its nearest surface shows it, twice where the tier reads at a slant; a mask as the nearest of what reads it needs, concrete where paint lets go to it; never wider than the tier keeps, and its first step alone where nothing shows it", () => {
   const { materials, textures } = finishPack(true);
   const n = SURFACE_NAMES.length, held = new Int8Array(textures.length).fill(4);

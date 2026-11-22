@@ -7,7 +7,8 @@ import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../..
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
-import { WeatherMasks } from "./texgen.ts";
+import { made, type Made } from "./texgen.ts";
+import type { Orders, Texgen } from "../core/texgen/engine.ts";
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_MAKING, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
@@ -155,8 +156,9 @@ export class GlRenderer {
   private mappedRoles = 0;
   /** 1 once every world finish's maps are on the card, this frame. */
   private worldReady = 0;
-  /** The walls' weathering masks, made on the card (texgen.ts). */
-  private weather!: WeatherMasks;
+  /** The textures the card makes (texgen.ts) and their engine, once `makeWith` has its programs ready. */
+  private gen!: Made;
+  private texgen: Texgen | null = null;
   private readonly anisotropyOf = (target: number): void => this.anisotropy(target);
   /** How much a material that glows only by night glows in this frame (surface.ts `lampsOn`). */
   private night = 0;
@@ -271,7 +273,7 @@ export class GlRenderer {
     this.linked.clear();
     this.neutral = [];
     this.world = [null, null, null];
-    this.weather = new WeatherMasks(gl, UNIT.weather);
+    this.gen = made(gl, UNIT.weather);
     this.worldSide = [0, 0, 0];
     this.current = this.warmed = this.mapped = this.vao = this.arrayBuffer = null;
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
@@ -556,6 +558,25 @@ export class GlRenderer {
     return progs.every((prog) => !prog.text || this.gl.getProgramParameter(prog.program, COMPLETION_STATUS));
   }
 
+  /** Job `k`'s program of the textures the card makes, once linked; none while it links, and none for good where it failed. */
+  private readonly job = (k: number, o: Orders = this.texgen!.orders): WebGLProgram | null => {
+    const gl = this.gl, text = o.programs[k]!;
+    const prog = this.linked.get(text.fragment) ?? this.linked.set(text.fragment, this.link(text)).get(text.fragment)!;
+    if (prog.text && this.parallel && !gl.getProgramParameter(prog.program, COMPLETION_STATUS)) return null;
+    if (prog.text && !gl.getProgramParameter(prog.program, gl.LINK_STATUS)) return (o.broken = true), this.errors++, null;
+    prog.text = null;
+    return prog.program;
+  };
+
+  /** Makes textures on the card with `engine` once each of its programs has linked and drawn a pixel, which the page waits for while the world loads. */
+  async makeWith(engine: Texgen): Promise<void> {
+    const o = engine.warm();
+    while (!o.broken && (this.gen.draw(o, (k) => this.job(k, o), this.anisotropyOf), o.drawn < o.count)) await new Promise((go) => setTimeout(go, 16));
+    this.current = null;
+    this.vao = this.gen.vao;
+    this.texgen = engine;
+  }
+
   /** Binds a vertex array unless it is bound. */
   private vertexArray(vao: WebGLVertexArrayObject | null): void {
     if (vao !== this.vao) this.gl.bindVertexArray((this.vao = vao));
@@ -617,7 +638,7 @@ export class GlRenderer {
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
     if (p.lit) {
       this.uniform(prog, U.worldReady, this.worldReady);
-      this.uniform(prog, U.weatherReady, this.weather.plan.ready);
+      this.uniform(prog, U.weatherReady, this.texgen?.ready ?? 0);
     }
     if (last[U.viewProj] === this.view) return prog;
     last[U.viewProj] = this.view;
@@ -755,16 +776,15 @@ export class GlRenderer {
       // The governor's step to no light target draws the same tier with these, which a step should not wait to link.
       if (drawsLight(p.tier, this.light)) for (const n of tierPrograms(p.tier)) this.program(n, false);
       this.world.forEach((t, r) => t && (gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r), gl.bindTexture(gl.TEXTURE_2D_ARRAY, t), this.anisotropy(gl.TEXTURE_2D_ARRAY)));
-      if (this.weather.texture) (gl.activeTexture(gl.TEXTURE0 + UNIT.weather), gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.weather.texture), this.anisotropy(gl.TEXTURE_2D_ARRAY));
+      if (this.gen.texture) (gl.activeTexture(gl.TEXTURE0 + UNIT.weather), gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.gen.texture), this.anisotropy(gl.TEXTURE_2D_ARRAY));
     }
-    // The weathering masks are made before anything of the frame is drawn, in a share of the card's time a frame: a
-    // millisecond where the finishes are a thousand pixels wide or more, half that below. A clock timing the frame times
-    // them as its first pass, and they are not timed apart.
+    // What the card makes is drawn before anything of the frame; a clock timing the frame times it as its first pass,
+    // and it is not timed apart.
     this.set(false, false, false);
     this.passes?.mark(PASS_MAKING);
-    if (this.weather.step(p.weatherSide, p.tier.finishes >= 1024 ? 1 : 0.5, this.anisotropyOf, !this.passes?.on)) {
+    if (this.texgen && this.gen.draw(this.texgen.frame(p.weatherSide, p.tier, !this.passes?.on), this.job, this.anisotropyOf)) {
       this.current = null;
-      this.vao = this.weather.vao;
+      this.vao = this.gen.vao;
     }
     for (let r = 0; r < 3; r++) if (p.worldSide[r] !== this.worldSide[r]) {
       gl.deleteTexture(this.world[r] ?? null);

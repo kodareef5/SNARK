@@ -2,9 +2,10 @@
 // bytes, a bay's masks vanish at its sides so bays meet in any order, a field tiles without a seam, and each field's
 // values are spread evenly, so a threshold over it takes that share of a wall.
 import { expect, test } from "bun:test";
-import { WEATHER_RECIPE } from "../../content/texgen/weather.ts";
+import { WEATHER_LUTS, WEATHER_RECIPE } from "../../content/texgen/weather.ts";
 import { hash3, tiled, cells } from "../../client/core/texgen/noise.ts";
-import { WEATHER_BAYS, WEATHER_LAYERS, WEATHER_GEN_VERTEX, WEATHER_PAD, bayFeatures, bayLayout, bayTexel, baySeed, equalize, fieldLut, fieldSeed, mipmapped, weatherFragment, weatherPixels, weatherTexture } from "../../client/core/texgen/weather.ts";
+import { WEATHER_BAYS, WEATHER_LAYERS, WEATHER_PAD, bayFeatures, bayLayout, bayTexel, baySeed, equalize, fieldLut, fieldSeed, mipmapped, weatherJobs, weatherPixels, weatherTexture } from "../../client/core/texgen/weather.ts";
+import { jobFragment, jobPixels } from "../../client/core/texgen/engine.ts";
 import { sample } from "../../client/core/render/cpu-texture.ts";
 
 const SIDE = 128;
@@ -142,12 +143,40 @@ test("the rasterizer's texture of a layer has every level, each the mean of the 
   expect(next[0]!).toBeCloseTo((top[0]! + top[4]! + top[64 * 4]! + top[65 * 4]!) / 4, 6);
 });
 
-test("the card's program draws what the TypeScript draws: the same loops, ranges and seeds", () => {
-  const text = weatherFragment();
-  expect(text.startsWith("#version 300 es")).toBe(true);
-  expect(WEATHER_GEN_VERTEX).toContain("gl_VertexID");
-  for (const name of ["bayTexel", "fieldRaw", "equalize", "uLut[33]", `uBay[${bayLayout(WEATHER_RECIPE).rows}]`, `i < ${WEATHER_RECIPE.runs.heads[1] * WEATHER_RECIPE.runs.trails[1]}`, `i < ${WEATHER_RECIPE.runs.threads[1]}`]) expect(text).toContain(name);
-  // GLSL ES keeps these words, and % of a negative is undefined there.
-  for (const word of [/\bhalf\b(?! a)/, /float dot\b/]) expect(text).not.toMatch(word);
-  expect(text).toContain("(i + n * 64) % n");
+test("the card's programs draw what the TypeScript draws: the same loops, ranges and seeds, as the engine's jobs", () => {
+  const [bays, fields] = weatherJobs(), bay = jobFragment(bays!), field = jobFragment(fields!);
+  expect([bays!.layers, fields!.layers, bays!.bands, fields!.bands, bays!.pad, fields!.pad]).toEqual([WEATHER_BAYS, WEATHER_LAYERS - WEATHER_BAYS, 2, 1, WEATHER_PAD, 0]);
+  for (const name of ["vec4 bayTexel(", `uJob[${2 + bayLayout(WEATHER_RECIPE).rows}]`, `i < ${WEATHER_RECIPE.runs.heads[1] * WEATHER_RECIPE.runs.trails[1]}`, `i < ${WEATHER_RECIPE.runs.threads[1]}`]) expect(bay).toContain(name);
+  for (const name of ["vec4 fieldRaw(", "float equalize(", "uJob[36]", "uJob[3 + k][c]"]) expect(field).toContain(name);
+  for (const text of [bay, field]) {
+    expect(text.startsWith("#version 300 es")).toBe(true);
+    // GLSL ES keeps these words, and % of a negative is undefined there.
+    for (const word of [/\bhalf\b(?! a)/, /float dot\b/]) expect(text).not.toMatch(word);
+    expect(text).toContain("(i + n * 64) % n");
+  }
+});
+
+test("the fields' pinned tables are their recipe's: each channel's 33 shares as fieldLut finds them", () => {
+  for (let f = 0; f < WEATHER_LAYERS - WEATHER_BAYS; f++) {
+    const lut = fieldLut(fieldSeed(WEATHER_RECIPE, f));
+    // Should this fail, the recipe's seed or its fields changed: pin fieldLut's rows again.
+    expect(WEATHER_LUTS[f]!.length).toBe(lut.length);
+    lut.forEach((v, k) => expect(Math.abs(WEATHER_LUTS[f]![k]! - v)).toBeLessThan(2e-6));
+  }
+});
+
+test("the first pass, at an eighth of the side with twice the taps each way, is near the whole pass's mipmap at its level, so that nothing pops as the whole comes in", () => {
+  const side = 256, wide = 64, level = Math.log2(side / wide);
+  for (const [job, layer] of [[weatherJobs()[0]!, 2], [weatherJobs()[1]!, 1]] as const) {
+    const coarse = jobPixels(job, layer, wide, [job.taps[0] * 2, job.taps[1] * 2]), whole = mipmapped(jobPixels(job, layer, side), side).pictures[Math.log2(wide)]!;
+    let sum = 0, most = 0;
+    for (let i = 0; i < coarse.length; i++) {
+      const d = Math.abs(coarse[i]! / 255 - whole[i]!);
+      sum += d;
+      most = Math.max(most, d);
+    }
+    expect(level).toBe(2);
+    expect(sum / coarse.length).toBeLessThan(3 / 255);
+    expect(most).toBeLessThan(0.25);
+  }
 });
