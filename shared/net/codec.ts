@@ -7,6 +7,8 @@ const F64 = new Float64Array(1);
 const F64_BITS = new Uint32Array(F64.buffer);
 
 const TWO_32 = 4294967296;
+/** The fewest bytes of a blob worth copying whole, where it lies on a byte boundary. */
+const WHOLE = 8;
 
 export class BitWriter {
   readonly buf: Uint8Array;
@@ -130,7 +132,34 @@ export class BitWriter {
   /** Raw bytes with a varint length prefix. */
   blob(src: Uint8Array): void {
     this.varint(src.length);
-    for (let i = 0; i < src.length; i++) this.bits(src[i]!, 8);
+    const p = this.pos;
+    const end = p + src.length * 8;
+    // On a byte boundary, more than a few bytes that fit are copied whole.
+    if ((p & 7) !== 0 || src.length < WHOLE || end > this.capBits) {
+      for (let i = 0; i < src.length; i++) this.bits(src[i]!, 8);
+      return;
+    }
+    this.buf.set(src, p >>> 3);
+    this.pos = end;
+    if (end >>> 3 > this.dirtyBytes) this.dirtyBytes = end >>> 3;
+  }
+
+  /** What another writer holds, as a blob, with no view of it made. */
+  blobOf(from: BitWriter): void {
+    const n = from.byteLength;
+    const src = from.buf;
+    this.varint(n);
+    const p = this.pos;
+    const end = p + n * 8;
+    if ((p & 7) !== 0 || end > this.capBits) {
+      for (let i = 0; i < n; i++) this.bits(src[i]!, 8);
+      return;
+    }
+    const at = p >>> 3;
+    if (n < 64) for (let i = 0; i < n; i++) this.buf[at + i] = src[i]!;
+    else this.buf.set(src.subarray(0, n), at);
+    this.pos = end;
+    if (end >>> 3 > this.dirtyBytes) this.dirtyBytes = end >>> 3;
   }
 
   /** UTF-8 with a varint byte-length prefix. */
@@ -291,7 +320,13 @@ export class BitReader {
       return new Uint8Array(0);
     }
     const out = new Uint8Array(n);
-    for (let i = 0; i < n; i++) out[i] = this.bits(8);
+    const p = this.pos;
+    if ((p & 7) !== 0 || n < WHOLE) {
+      for (let i = 0; i < n; i++) out[i] = this.bits(8);
+      return out;
+    }
+    out.set(this.buf.subarray(p >>> 3, (p >>> 3) + n));
+    this.pos = p + n * 8;
     return out;
   }
 

@@ -150,7 +150,7 @@ export class RecordCodec implements Coding {
       rows[i]!.write(rec, c, this);
       if (c.overflow) this.cut = true;
       w.varint(rows[i]!.id);
-      w.blob(c.bytes());
+      w.blobOf(c);
     }
     if (rec.extra.size > 0) {
       for (const [component, blob] of rec.extra) {
