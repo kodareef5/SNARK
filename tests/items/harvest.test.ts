@@ -131,8 +131,8 @@ test("a tree used up and grown back is told past the largest near field a tier h
   expect(watchers.map(seen)).toEqual([[0, stump], [0, stump]]);
 
   // One who joins 5 chunks off is told at once.
-  const saved = h.server.savedPosition;
-  h.server.savedPosition = (name) => (name === "dee" ? { x: 5 * 64 + 10, y: h.world.hf.heightAt(5 * 64 + 10, tree.z), z: tree.z, yaw: 0 } : (saved?.(name) ?? null));
+  const saved = h.server.sessions.savedPosition;
+  h.server.sessions.savedPosition = (name) => (name === "dee" ? { x: 5 * 64 + 10, y: h.world.hf.heightAt(5 * 64 + 10, tree.z), z: tree.z, yaw: 0 } : (saved?.(name) ?? null));
   const dee = h.join("dee");
   dee.holdNodes(5);
   h.run(500);

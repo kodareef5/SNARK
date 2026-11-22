@@ -90,7 +90,7 @@ if (import.meta.main) {
   const big = chunkAt(dims, 3000, 3000);
   for (let n = 0; n < 20000; n++) world.structs.add(reg.index.get("core:wall")!, 2945 + rng.range(0, 62), 200 + rng.range(0, 60), 2945 + rng.range(0, 62), 0, 1, 1e9);
   const net = new LoopbackNet(3);
-  host.game.listen(net);
+  host.game.sessions.listen(net);
   const sessions: ClientSession[] = [];
   for (let i = 0; i < 16; i++) sessions.push(new ClientSession(net.connect(), { name: `bot${i}`, key: new Uint8Array(KEY_BYTES).fill(i + 1), registry: reg, look: defaultLook(), resolveMap: () => hf }));
   let now = 0;

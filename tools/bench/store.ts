@@ -71,7 +71,7 @@ export function storeRows(section: Section, record: Row): void {
   // A survivor joins the world that has outgrown its first slots.
   const hf = mapHeightfield(parseMap(host.mapFile!));
   const net = new LoopbackNet(3);
-  host.game.listen(net);
+  host.game.sessions.listen(net);
   const session = new ClientSession(net.connect(), { name: "bot0", key: new Uint8Array(KEY_BYTES).fill(1), registry: reg, look: defaultLook(), resolveMap: () => hf });
   for (let i = 1; i <= 90; i++) {
     net.advance((i * 1000) / TICK_RATE);

@@ -57,7 +57,7 @@ ev("server.broadcast", "after", "text", "the admin broadcast", "server/commands/
 ev("command", "before", "byPid name line source", "console commands and RCON packets", "server/console.ts", "wired", "A console command is about to run.");
 ev("command.ran", "after", "byPid name line source", "", "server/console.ts", "wired", "A console command ran. This is the audit trail. A turn of the Creative screen's sundial is told once, as the `settime` it ended on.");
 
-ev("session.login", "before", "name address isNew", "the pre-login, ban and exclusive-join checks", "server/game.ts", "wired", "Someone is asking to join. No body exists yet.");
+ev("session.login", "before", "name address isNew", "the pre-login, ban and exclusive-join checks", "server/sessions.ts", "wired", "Someone is asking to join. No body exists yet.");
 ev("session.join", "after", "pid name isNew", "the new-player handler", "server/host.ts", "wired", "A session has a survivor.");
 ev("session.presence", "after", "pid connected", "", "server/host.ts", "wired", "A survivor's connection came or went. Its body may linger.");
 ev("session.leave", "after", "pid why", "logout and kick", "server/host.ts", "wired", "A session ended.");
@@ -70,7 +70,7 @@ ev("zone.leave", "after", "pid zone", "an actor overlap ending", "server/host.ts
 
 ev("chat.say", "before", "pid channel text!", "the chat send, and the chat callback", "server/chat.ts", "wired", "A survivor is about to say something.");
 ev("chat.said", "after", "pid channel text heard", "the per-recipient delivery, as a count", "server/chat.ts", "wired", "Something was said, and how many heard it.");
-ev("name.set", "before", "what text!", "name filters", "server/game.ts", "wired", "A survivor, a tribe, a creature or a bed is about to be named.");
+ev("name.set", "before", "what text!", "name filters", "server/sessions.ts", "wired", "A survivor, a tribe, a creature or a bed is about to be named.");
 
 ev("damage", "before", "target victim kind team byPid byTeam item type zone scale!", "three take-damage hooks and the tribe-war question", "server/combat.ts", "wired", "A blow is about to land on a body or a structure. A scale of 0 stops it.", true);
 ev("damaged", "after", "target victim kind team byPid byTeam item type zone taken blocked killed left", "", "server/combat.ts", "wired", "A blow landed.", true);

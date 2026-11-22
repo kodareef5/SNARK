@@ -360,7 +360,7 @@ export class Death {
     const c = this.clientOf(rec.pid);
     if (c) {
       this.ctx.containers.close(c);
-      this.ctx.game.kill(c);
+      this.ctx.game.sessions.kill(c);
       c.sent[OWN_SLOTS] = undefined;
       c.why = CHOOSE_DIED;
       c.sent[OWN_RESPAWN] = undefined;
@@ -399,7 +399,7 @@ export class Death {
     survival.refill(rec);
     rec.dead = false;
     records.dirty.add(rec.pid);
-    if (!game.revive(c, x, z, yaw, y)) {
+    if (!game.sessions.revive(c, x, z, yaw, y)) {
       rec.dead = true;
       return RESULT_INVALID;
     }

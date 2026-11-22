@@ -257,7 +257,7 @@ export class Beds {
     this.ctx.drop(rec, at.x, at.y, at.z);
     rec.dead = true;
     records.dirty.add(rec.pid);
-    game.kill(c);
+    game.sessions.kill(c);
     // Its inventory is a new one now, so the whole of it is sent again, as after a death.
     c.sent[OWN_SLOTS] = undefined;
     c.why = CHOOSE_TRAVEL;

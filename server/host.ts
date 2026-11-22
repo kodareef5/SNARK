@@ -464,8 +464,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const wrong = items.audit();
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
     persistence.sidecar("ledger", items);
-    if (!loaded!.fresh) game.refusals.restore(persistence.store.meta("refused") as string | null);
-    persistence.sidecar("refused", game.refusals);
+    if (!loaded!.fresh) game.sessions.refusals.restore(persistence.store.meta("refused") as string | null);
+    persistence.sidecar("refused", game.sessions.refusals);
     persistence.open = (path) => new WorldStore(path, reg, storeOptions);
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
@@ -816,7 +816,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const rec = records.byPid.get(c.pid);
     if (!rec) return RESULT_INVALID;
     rec.dead = false;
-    if (!game.revive(c, p.x, p.z, p.yaw, at)) {
+    if (!game.sessions.revive(c, p.x, p.z, p.yaw, at)) {
       rec.dead = true;
       return RESULT_INVALID;
     }
@@ -1120,29 +1120,29 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   persistence?.sidecar("cast", castHost.saved, 60 * TICK_RATE);
 
   // A name belongs to the first device key that takes a body under it.
-  game.sameCreation=(name,key,request)=>{
+  game.sessions.sameCreation=(name,key,request)=>{
     const rec=recordOf(name), prior=rec?.extra.get(CREATE_REQUEST);
     return !!rec && !!prior && ownsSurvivor(rec,key) && prior.length===request.length && request.every((b,i)=>prior[i]===b);
   };
-  game.owns = (name, key) => { const rec = recordOf(name); return !!rec && ownsSurvivor(rec, key); };
-  game.authorize = (name, key) => {
+  game.sessions.owns = (name, key) => { const rec = recordOf(name); return !!rec && ownsSurvivor(rec, key); };
+  game.sessions.authorize = (name, key) => {
     // Nobody joins a world that has not saved for a minute.
     if (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS) return false;
     const rec = recordOf(name);
     return !rec || !rec.keyHash || ownsSurvivor(rec,key);
   };
   if (cluster) {
-    game.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
-    game.nameAway = name => cluster.away.has(name);
-    game.away = (name, key) => cluster.awayCheck(name, key);
+    game.sessions.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
+    game.sessions.nameAway = name => cluster.away.has(name);
+    game.sessions.away = (name, key) => cluster.awayCheck(name, key);
   }
   // A survivor that came from another server and has not risen joins as one that died does: with no body, choosing where.
-  game.savedPosition = (name) => {
+  game.sessions.savedPosition = (name) => {
     const rec = recordOf(name);
     return rec && cluster?.arriving.has(rec.pid) ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, dead: true, team: rec.team } : (rec ?? null);
   };
-  game.needsLook = (name) => !recordOf(name)?.look;
-  game.onBody.on((c) => {
+  game.sessions.needsLook = (name) => !recordOf(name)?.look;
+  game.sessions.onBody.on((c) => {
     let rec = recordOf(c.name);
     const first = !rec;
     if (!rec) {
@@ -1190,7 +1190,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // A session that was in the creator has its survivor only now.
     if (c.entered) joined(c);
   });
-  game.onBodyGone.on((c) => {
+  game.sessions.onBodyGone.on((c) => {
     impale.release(c.pid);
     carry.release(c.pid);
     // Seats are not saved: a survivor in a car or on a creature is saved standing beside it.
@@ -1215,7 +1215,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
   });
   const creative = new Creative(world, game, rules, bus, persistence);
-  game.onEnter.on((c) => {
+  game.sessions.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     creative.enter(c);
@@ -1233,7 +1233,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (name !== "") game.sendText(c, TEXT_MOTD, name);
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
   });
-  game.onPresence.on((c) => {
+  game.sessions.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
     else activity.login(c.pid);
     bus.after(SESSION_PRESENCE, { pid: c.pid, connected: !c.closed });
@@ -1241,7 +1241,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // The voice socket belonged to the old connection.
     voice.revoke(c);
   });
-  game.onExit.on((c) => {
+  game.sessions.onExit.on((c) => {
     activity.leave(c.pid);
     survivorLog.leave(c, c.left);
     bus.after(SESSION_LEAVE, { pid: c.pid, why: c.left });
@@ -1318,7 +1318,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // The idle kick runs only with ARK's -EnableIdlePlayerKick.
     if (tick % TICK_RATE === 0 && rules.flag("EnableIdlePlayerKick") === true) {
       const most = Math.round(rules.num("KickIdlePlayersPeriod") * TICK_RATE);
-      for (const c of game.clients) if (c?.active && !c.closed && tick - c.activeAt > most) game.reject(c, REJECT_KICKED);
+      for (const c of game.clients) if (c?.active && !c.closed && tick - c.activeAt > most) game.sessions.reject(c, REJECT_KICKED);
     }
     // The report is logged only when the live file changed a rule.
     if (opts.live && tick % liveEvery === 0 && rules.flag("UseDynamicConfig") === true) {

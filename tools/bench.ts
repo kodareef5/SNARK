@@ -251,7 +251,7 @@ record(`commit ${CREATURES} new creature records`, performance.now() - t0, "ms")
 // ---------------------------------------------------------------- players
 // 40 players are in one fight, and 60 are in pairs at 30 other bases.
 const net = new LoopbackNet(7);
-host.game.listen(net);
+host.game.sessions.listen(net);
 const places = new Map<string, { x: number; y: number; z: number; yaw: number }>();
 const placeNear = (name: string, base: number, spread: number): void => {
   for (;;) {
@@ -262,8 +262,8 @@ const placeNear = (name: string, base: number, spread: number): void => {
   }
 };
 for (let i = 0; i < PLAYERS; i++) placeNear(`bot${i}`, i < 40 ? 0 : 1 + Math.floor((i - 40) / 2), i < 40 ? 20 : 6);
-const savedBefore = host.game.savedPosition;
-host.game.savedPosition = (name) => places.get(name) ?? savedBefore?.(name) ?? null;
+const savedBefore = host.game.sessions.savedPosition;
+host.game.sessions.savedPosition = (name) => places.get(name) ?? savedBefore?.(name) ?? null;
 
 const bots: Bot[] = [];
 const sessions: ClientSession[] = [];

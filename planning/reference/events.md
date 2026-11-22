@@ -54,7 +54,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `session.login` | before | `name`, `address`, `isNew` |  | the pre-login, ban and exclusive-join checks | `server/game.ts` | wired |
+| `session.login` | before | `name`, `address`, `isNew` |  | the pre-login, ban and exclusive-join checks | `server/sessions.ts` | wired |
 | `session.join` | after | `pid`, `name`, `isNew` |  | the new-player handler | `server/host.ts` | wired |
 | `session.presence` | after | `pid`, `connected` |  |  | `server/host.ts` | wired |
 | `session.leave` | after | `pid`, `why` |  | logout and kick | `server/host.ts` | wired |
@@ -96,7 +96,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `name.set` | before | `what`, `text` | `text` | name filters | `server/game.ts` | wired |
+| `name.set` | before | `what`, `text` | `text` | name filters | `server/sessions.ts` | wired |
 
 - **`name.set`.** A survivor, a tribe, a creature or a bed is about to be named.
 

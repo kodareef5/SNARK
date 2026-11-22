@@ -381,7 +381,7 @@ export class Cluster {
       ctx.say(`${rec.name} could not leave for ${dest.name}: ${err instanceof Error ? err.message : String(err)}`);
       return "the cluster's folder could not be written, so you have not left";
     }
-    const conn = ctx.game.part(c);
+    const conn = ctx.game.sessions.part(c);
     items.sentAway(held);
     for (const r of recs) {
       ctx.forget(r);
@@ -392,7 +392,7 @@ export class Cluster {
     tribes.departed(rec);
     this.note(head, TRANSFER_OUT);
     this.away.set(rec.name, { id, pid: rec.pid, to, settled: false });
-    persistence.afterCommit(() => ctx.game.travel(conn, ticket, to));
+    persistence.afterCommit(() => ctx.game.sessions.travel(conn, ticket, to));
     ctx.say(`${rec.name} left for ${dest.name} by transfer ${id}`);
     return "";
   }
@@ -471,7 +471,7 @@ export class Cluster {
    * with all it carried. Returns a RESULT code.
    */
   rise(c: Client, x: number, z: number, yaw: number, y?: number): number {
-    if (!this.arriving.has(c.pid) || !this.ctx!.game.revive(c, x, z, yaw, y)) return RESULT_INVALID;
+    if (!this.arriving.has(c.pid) || !this.ctx!.game.sessions.revive(c, x, z, yaw, y)) return RESULT_INVALID;
     this.arriving.delete(c.pid);
     this.arrivals.dirty = true;
     return RESULT_OK;

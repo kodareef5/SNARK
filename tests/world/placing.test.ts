@@ -124,8 +124,8 @@ function oakAt(h: Harness): { half: number; stump: number } {
 
 /** `name` was last seen at (x, z), in `team`. */
 function lastSeen(h: Harness, name: string, x: number, z: number, team: number): void {
-  const saved = h.host.game.savedPosition!;
-  h.host.game.savedPosition = (n) => (n === name ? { x, y: h.world.hf.heightAt(x, z), z, yaw: 0, team } : saved(n));
+  const saved = h.host.game.sessions.savedPosition!;
+  h.host.game.sessions.savedPosition = (n) => (n === name ? { x, y: h.world.hf.heightAt(x, z), z, yaw: 0, team } : saved(n));
 }
 
 test("a survivor last seen inside a tree is set at the nearest free place beside it, the same place every time", () => {

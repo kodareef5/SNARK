@@ -337,7 +337,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash);
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
-  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
+  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.sessions.cheatGuesses, tick: () => host.world.tick };
   const meter = new TickMeter(() => gaugesOf(host));
   const playFile = opts.dev && opts.play ? join(opts.play, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.jsonl`) : "";
   const play = playFile ? new PlayLog(host.game, (line) => (mkdirSync(opts.play!, { recursive: true }), appendFileSync(playFile, line + "\n"))) : null;
@@ -376,7 +376,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     ents.setLook(body, look.level, look.colors, "");
   }
   let onConnection: ((conn: Connection) => void) | null = null;
-  host.game.listen({
+  host.game.sessions.listen({
     set onConnection(fn: ((conn: Connection) => void) | null) {
       onConnection = fn;
     },

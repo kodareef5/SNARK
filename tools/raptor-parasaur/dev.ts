@@ -34,7 +34,7 @@ export function paddock(): MapData {
 
 function welcome(host: Host): void {
   const { world, records } = host;
-  host.game.onBody.on(client => {
+  host.game.sessions.onBody.on(client => {
     const owner = records.byPid.get(client.pid);
     if (!owner?.team) return;
     for (const animal of animals) {

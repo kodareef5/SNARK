@@ -134,7 +134,7 @@ export class SurvivorAccess {
     if (data.action === "available")
       return entryReply({
         available:
-          /^[A-Za-z0-9 _-]{1,24}$/.test(name) && name.trim() !== "" && !rec && !this.host.game.nameAway?.(name) && !this.host.game.clients.some((c) => c?.active && c.name === name),
+          /^[A-Za-z0-9 _-]{1,24}$/.test(name) && name.trim() !== "" && !rec && !this.host.game.sessions.nameAway?.(name) && !this.host.game.clients.some((c) => c?.active && c.name === name),
       });
     if (data.action === "pair") {
       if (this.pairs.size >= 2048) return entryReply({ error: "Try again shortly" }, 429);
