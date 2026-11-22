@@ -132,6 +132,9 @@ export const PERF_SHAPE: Shape = {
     },
     worst: { list: { list: N, most: 64 }, most: 20 },
     census: { list: CENSUS, most: SHOTS_MOST },
+    // The sound engine's mix (planning/workstreams/sound-engine.md), a place kept for it and written empty until it is
+    // built: voices playing and virtual, each bus's level, and the audio thread's load.
+    sound: { fields: { voices: I, virtual: I, load: N, buses: { list: { fields: { name: WORD, level: N } }, most: 16 } } },
   },
 };
 

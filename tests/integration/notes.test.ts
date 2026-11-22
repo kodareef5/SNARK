@@ -143,6 +143,8 @@ test("a note takes a picture at once and every three seconds, keeps typed lines,
   expect(perf.summary.left).toBe(3 + after);
   expect(perf.summary.gpu.middle).toBe(4.5);
   expect(perf.census.length).toBe(3);
+  // The sound engine's place, empty until it is built.
+  expect(perf.sound).toEqual({});
   expect(perf.census[0].steps.length).toBeGreaterThan(0);
   expect(perf.summary.ringMs).toBeGreaterThan(0);
 });

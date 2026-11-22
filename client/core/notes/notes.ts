@@ -377,7 +377,7 @@ export class Notes {
     const from = o.began - BEFORE_MS, summary = this.ring.summary(o.began, end);
     const perf = {
       version: REPORT_VERSION, start: Math.round(o.began), fields: FRAME_FIELDS, frames: this.ring.frames(from, end, o.began), secondFields: SECOND_FIELDS, seconds: this.ring.secondRows(o.began),
-      summary: { ...summary, ringMs: this.costFrames > 0 ? Math.round((this.costMs / this.costFrames) * 10000) / 10000 : 0 }, worst: this.ring.worst(o.began, end, 20), census: o.census,
+      summary: { ...summary, ringMs: this.costFrames > 0 ? Math.round((this.costMs / this.costFrames) * 10000) / 10000 : 0 }, worst: this.ring.worst(o.began, end, 20), census: o.census, sound: {},
     };
     const shots = o.shots.map((s, n) => ({ ...s, w: pictures[n]!.w, h: pictures[n]!.h }));
     const s = app.session;
