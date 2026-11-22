@@ -1,23 +1,30 @@
+// The touch layer in a whole HUD: where its zones, cluster, bar and chat box stand at every phone and tablet window,
+// either way up, and what two thumbs do with them. The windows and situations are built from the interface's models
+// (kit `direct`); whole clients on the harness play through real input, pass the same checks, and show that what the
+// models build is, node for node, what the app builds.
+
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CHAT, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW } from "../../client/core/touch.ts";
+import { VehicleTelemetry } from "../../client/core/hud.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CHAT, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, touchKey, type TouchTarget } from "../../client/core/touch.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_SEND, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
-import { TEXT_GLOBAL } from "../../shared/net/protocol.ts";
+import { TEXT_GLOBAL, TEXT_MOTD } from "../../shared/net/protocol.ts";
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
 import { KEY_HOTBAR, KEY_MINIMAP, KEY_PROMPT, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { KEY_INV_ACTION, KEY_INV_HALF, KEY_INV_INFO, KEY_INV_SLOT, KEY_INV_USE } from "../../client/core/ui/inventory.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { KEY_MENU, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
 import { KEY_MAP_IMAGE } from "../../client/core/ui/screens.ts";
-import { K_HOLD, MIN_WIDTH, SCALE_FLOOR, textWidth } from "../../client/core/ui/nodes.ts";
+import { K_HOLD, MIN_WIDTH, SCALE_FLOOR, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
+import type { Ui } from "../../client/core/ui/ui.ts";
 import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
-import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
+import { corePack } from "../fixtures/pack.ts";
+import { PHONES, camp, direct, nodes, screen, stood, vehicle, type Direct, type Phone, type Stood } from "../kit/kit.ts";
 // The touch layer's layout, which a page fetches when a finger is first used; here it is at hand.
 import * as layout from "../../client/core/ui/touch.ts";
 
-const pack = parsePack(corePackBytes());
+const pack = corePack();
 
 /** A phone's client: the last thing used was a finger. */
 function phone(h: Harness, name: string): App {
@@ -27,72 +34,112 @@ function phone(h: Harness, name: string): App {
   return app;
 }
 
-/** Window sizes in CSS pixels with the edges their screens take: left, top, right, bottom. */
-const WINDOWS: [string, number, number, number[]][] = [
-  ["a phone on its side", 844, 390, [47, 0, 47, 21]],
-  ["a small phone on its side", 667, 375, [0, 0, 0, 0]],
-  ["the smallest phone on its side", 568, 320, [0, 0, 0, 0]],
-  ["a phone upright", 390, 844, [0, 47, 0, 34]],
-  ["a small phone upright", 375, 667, [0, 20, 0, 0]],
-  ["a tall narrow phone upright", 360, 800, [0, 32, 0, 24]],
-  ["the smallest phone upright", 320, 568, [0, 20, 0, 0]],
-  ["a tablet", 1024, 768, [0, 24, 0, 20]],
-  ["a tablet upright", 768, 1024, [0, 24, 0, 20]],
-];
+/** A phone's interface at a window, from models. */
+function touched([, w, h, insets]: Phone, muted: boolean, as?: Stood): Direct {
+  const d = direct(w, h, insets, { finger: true, as });
+  d.ui.settings.muted = muted;
+  return d;
+}
 
-test("the touch layer fits every phone and tablet, either way up: inside the screen's edges, finger-sized, nothing stacked", () => {
-  for (const [name, w, h, insets] of WINDOWS) for (const muted of [true, false]) {
-    const net = new Harness(), app = phone(net, "fit");
-    insets.forEach((v, i) => (app.insets[i] = v));
-    app.ui.settings.muted = muted;
-    net.run(600, (now) => app.frame(now, w, h));
+/** A frame's nodes and where they stand, whatever their words. */
+const boxes = (f: UiFrame): string[] => f.nodes.slice(0, f.count).map((n) => [n.key, n.kind, n.x, n.y, n.w, n.h, n.interactive].join(" "));
+
+/** The layer with a full hand fits the window: inside the screen's edges, finger-sized, nothing stacked. */
+function layerFits(ui: Ui, [, w, h, insets]: Phone, muted: boolean, where: string): void {
+  const f = ui.frame;
+  // Never drawn smaller than the floor, and never wider than the window: a phone upright is narrower than 9 to 16.
+  expect(h / f.height, where).toBeGreaterThanOrEqual(Math.min(SCALE_FLOOR, w / MIN_WIDTH) - 0.01);
+  expect(f.width * (h / f.height), where).toBeLessThanOrEqual(w + 1);
+  const unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
+  for (const which of [T_ATTACK, T_JUMP, T_STANCE, T_USE, T_MENU, T_BAG, T_CHARACTER, T_CHAT, T_MAP]) expect(f.find(KEY_TOUCH_BUTTON + which), `${where}: button ${which}`).not.toBeNull();
+  expect(ui.touchShown & (1 << T_ATTACK), where).toBeGreaterThan(0);
+  expect(f.find(KEY_UNMUTE) !== null, where).toBe(muted);
+  // The zones lie under everything, and cover the canvas between them.
+  const move = f.find(KEY_ZONE_MOVE)!, look = f.find(KEY_ZONE_LOOK)!;
+  expect([f.nodes[0]!.key, f.nodes[1]!.key, move.x, move.w, look.x + look.w, move.h, look.h], where).toEqual([KEY_ZONE_MOVE, KEY_ZONE_LOOK, 0, look.x, f.width, f.height, f.height]);
+  const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive && n.key !== KEY_ZONE_MOVE && n.key !== KEY_ZONE_LOOK);
+  for (const n of controls) {
+    const at = `${where}: key ${n.key} "${n.label}"`;
+    expect(n.x, at).toBeGreaterThanOrEqual(l - 0.01);
+    expect(n.y, at).toBeGreaterThanOrEqual(t - 0.01);
+    expect(n.x + n.w, at).toBeLessThanOrEqual(f.width - r + 0.01);
+    expect(n.y + n.h, at).toBeLessThanOrEqual(f.height - b + 0.01);
+    if (n.kind === K_HOLD) expect(Math.min(n.w, n.h), at).toBeGreaterThanOrEqual(44);
+    if (n.text) expect(textWidth(n.text, n.style), at).toBeLessThanOrEqual(n.w + 0.01);
+  }
+  for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+    const p = controls[i]!, q = controls[j]!;
+    expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h, `${where}: ${p.key} "${p.label}" over ${q.key} "${q.label}"`).toBe(false);
+  }
+  // The prompt is offered without its key, the vitals stand clear of the thumbs, and the minimap and hotbar are there.
+  expect(f.find(KEY_PROMPT)!.text.startsWith("ride a raptor"), where).toBe(true);
+  expect(f.find(KEY_VITAL + 1)!.y, where).toBeLessThan(f.height / 3);
+  // The cluster is an arc about Attack in the corner: each of the rest is a finger's gap clear of it and of its neighbours.
+  const middle = (which: number): [number, number, number] => { const n = f.find(KEY_TOUCH_BUTTON + which)!; return [n.x + n.w / 2, n.y + n.h / 2, n.w / 2]; };
+  const around = [T_JUMP, T_STANCE, T_AIM, T_RELOAD, T_MORE, T_ATTACK].map(middle);
+  for (let i = 0; i < around.length; i++) for (let j = i + 1; j < around.length; j++) expect(Math.hypot(around[i]![0] - around[j]![0], around[i]![1] - around[j]![1]) - around[i]![2] - around[j]![2], `${where}: buttons ${i} and ${j}`).toBeGreaterThanOrEqual(3.9);
+  const attack = f.find(KEY_TOUCH_BUTTON + T_ATTACK)!;
+  expect(attack.x + attack.w, where).toBeCloseTo(f.width - r - 12, 5);
+  // What shares an edge shares it exactly: the bar, the vitals' glass or the unmute offer on the left; Attack and the pill on the right.
+  const menu = f.find(KEY_TOUCH_BUTTON + T_MENU)!, use = f.find(KEY_TOUCH_BUTTON + T_USE)!;
+  expect(menu.x, where).toBeCloseTo(l + 12, 5);
+  if (muted) expect(f.find(KEY_UNMUTE)!.x, where).toBeCloseTo(menu.x, 5);
+  if (use.y < attack.y - 100) expect(use.x + use.w, where).toBeCloseTo(attack.x + attack.w, 5);
+  expect(f.find(KEY_MINIMAP) !== null && f.find(KEY_HOTBAR) !== null, where).toBe(true);
+}
+
+/** A situation's cluster fits the window: the buttons it has and lacks, inside the edges, a finger's gap apart. */
+function clusterFits(ui: Ui, [, , h, insets]: Phone, has: readonly number[], lacks: readonly number[], where: string): void {
+  const f = ui.frame, unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
+  for (const k of has) expect(f.find(KEY_TOUCH_BUTTON + k), `${where}: button ${k}`).not.toBeNull();
+  for (const k of lacks) expect(f.find(KEY_TOUCH_BUTTON + k), `${where}: button ${k}`).toBeNull();
+  for (const k of has) expect(ui.touchShown & (1 << k), `${where}: bit ${k}`).toBeGreaterThan(0);
+  const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive && n.key !== KEY_ZONE_MOVE && n.key !== KEY_ZONE_LOOK);
+  for (const n of controls) {
+    const at = `${where}: key ${n.key} "${n.label}"`;
+    expect(n.x >= l - 0.01 && n.y >= t - 0.01 && n.x + n.w <= f.width - r + 0.01 && n.y + n.h <= f.height - b + 0.01, at).toBe(true);
+    if (n.kind === K_HOLD) expect(Math.min(n.w, n.h), at).toBeGreaterThanOrEqual(44);
+    if (n.text) expect(textWidth(n.text, n.style), at).toBeLessThanOrEqual(n.w + 0.01);
+  }
+  for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+    const p = controls[i]!, q = controls[j]!;
+    expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h, `${where}: ${p.key} "${p.label}" over ${q.key} "${q.label}"`).toBe(false);
+  }
+  // Round buttons keep a finger's gap between them.
+  const round = has.map((k) => f.find(KEY_TOUCH_BUTTON + k)!).map((n) => [n.x + n.w / 2, n.y + n.h / 2, n.w / 2] as const);
+  for (let i = 0; i < round.length; i++) for (let j = i + 1; j < round.length; j++) expect(Math.hypot(round[i]![0] - round[j]![0], round[i]![1] - round[j]![1]) - round[i]![2] - round[j]![2], `${where}: buttons ${has[i]} and ${has[j]}`).toBeGreaterThanOrEqual(3.9);
+}
+
+/** The second page's buttons, and those of the first that give way to them. */
+const SECOND_PAGE = [[T_ATTACK, T_MORE, T_MELEE, T_VIEW, T_ORBIT, T_FOLLOW, T_STAY, T_SIC], [T_JUMP, T_STANCE, T_AIM, T_RELOAD]] as const;
+
+/** The shut log's lines. */
+const chatLog = (f: UiFrame): string[] => f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_CHAT_ROW && n.key < KEY_CHAT_ROW + 14).map((n) => n.text);
+
+/** The open chat box stands at the top, a finger's size, inside the edges, its way out clear of it. */
+function chatBoxFits(f: UiFrame, [name, , hh, insets]: Phone): void {
+  const field = f.find(KEY_CHAT_INPUT)!, send = f.find(KEY_CHAT_SEND)!, tag = f.find(KEY_CHAT_TAG)!, unit = hh / f.height;
+  expect(field.focus, name).toBe(true);
+  // The field is in the top half of the screen with room to spare, a finger's height, inside the screen's edges, beside its buttons.
+  expect((field.y + field.h) * unit, name).toBeLessThan(hh * 0.45);
+  expect(Math.min(field.h, send.h, tag.h), name).toBeGreaterThanOrEqual(44);
+  expect(tag.x >= insets[0]! / unit && send.x + send.w <= f.width - insets[2]! / unit, name).toBe(true);
+  expect(tag.x + tag.w <= field.x && field.x + field.w <= send.x, name).toBe(true);
+  expect(textWidth(send.text, send.style), name).toBeLessThanOrEqual(send.w);
+  // The way out is there, and covers neither the field nor its buttons.
+  const close = f.find(KEY_TOUCH_BUTTON + T_CLOSE)!;
+  for (const n of [field, send, tag]) expect(close.x < n.x + n.w && n.x < close.x + close.w && close.y < n.y + n.h && n.y < close.y + close.h, name).toBe(false);
+}
+
+test("the touch layer fits every phone and tablet, either way up", () => {
+  for (const window of PHONES) for (const muted of [true, false]) {
+    const d = touched(window, muted);
     // What a full hand shows: a weapon loaded, something to use, ten slots.
-    const hud = app.hud;
-    hud.prompt = "E  ride a raptor with a long name";
-    hud.ammo = "stone arrow  1 / 1   (24 more)";
-    hud.cone = 0.05;
-    while (hud.hotbar.length < 10) hud.hotbar.push({ tint: -1, label: "", number: "" });
-    app.ui.build(w / h, hud, app.session);
-    const f = app.ui.frame, where = `${name}${muted ? ", muted" : ""}`;
-    // Never drawn smaller than the floor, and never wider than the window: a phone upright is narrower than 9 to 16.
-    expect(h / f.height, where).toBeGreaterThanOrEqual(Math.min(SCALE_FLOOR, w / MIN_WIDTH) - 0.01);
-    expect(f.width * (h / f.height), where).toBeLessThanOrEqual(w + 1);
-    const unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
-    for (const which of [T_ATTACK, T_JUMP, T_STANCE, T_USE, T_MENU, T_BAG, T_CHARACTER, T_CHAT, T_MAP]) expect(f.find(KEY_TOUCH_BUTTON + which), `${where}: button ${which}`).not.toBeNull();
-    expect(app.ui.touchShown & (1 << T_ATTACK), where).toBeGreaterThan(0);
-    expect(f.find(KEY_UNMUTE) !== null, where).toBe(muted);
-    // The zones lie under everything, and cover the canvas between them.
-    const move = f.find(KEY_ZONE_MOVE)!, look = f.find(KEY_ZONE_LOOK)!;
-    expect([f.nodes[0]!.key, f.nodes[1]!.key, move.x, move.w, look.x + look.w, move.h, look.h], where).toEqual([KEY_ZONE_MOVE, KEY_ZONE_LOOK, 0, look.x, f.width, f.height, f.height]);
-    const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive && n.key !== KEY_ZONE_MOVE && n.key !== KEY_ZONE_LOOK);
-    for (const n of controls) {
-      const at = `${where}: key ${n.key} "${n.label}"`;
-      expect(n.x, at).toBeGreaterThanOrEqual(l - 0.01);
-      expect(n.y, at).toBeGreaterThanOrEqual(t - 0.01);
-      expect(n.x + n.w, at).toBeLessThanOrEqual(f.width - r + 0.01);
-      expect(n.y + n.h, at).toBeLessThanOrEqual(f.height - b + 0.01);
-      if (n.kind === K_HOLD) expect(Math.min(n.w, n.h), at).toBeGreaterThanOrEqual(44);
-      if (n.text) expect(textWidth(n.text, n.style), at).toBeLessThanOrEqual(n.w + 0.01);
-    }
-    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
-      const p = controls[i]!, q = controls[j]!;
-      expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h, `${where}: ${p.key} "${p.label}" over ${q.key} "${q.label}"`).toBe(false);
-    }
-    // The prompt is offered without its key, the vitals stand clear of the thumbs, and the minimap and hotbar are there.
-    expect(f.find(KEY_PROMPT)!.text.startsWith("ride a raptor"), where).toBe(true);
-    expect(f.find(KEY_VITAL + 1)!.y, where).toBeLessThan(f.height / 3);
-    // The cluster is an arc about Attack in the corner: each of the rest is a finger's gap clear of it and of its neighbours.
-    const middle = (which: number): [number, number, number] => { const n = f.find(KEY_TOUCH_BUTTON + which)!; return [n.x + n.w / 2, n.y + n.h / 2, n.w / 2]; };
-    const around = [T_JUMP, T_STANCE, T_AIM, T_RELOAD, T_MORE, T_ATTACK].map(middle);
-    for (let i = 0; i < around.length; i++) for (let j = i + 1; j < around.length; j++) expect(Math.hypot(around[i]![0] - around[j]![0], around[i]![1] - around[j]![1]) - around[i]![2] - around[j]![2], `${where}: buttons ${i} and ${j}`).toBeGreaterThanOrEqual(3.9);
-    const attack = f.find(KEY_TOUCH_BUTTON + T_ATTACK)!;
-    expect(attack.x + attack.w, where).toBeCloseTo(f.width - r - 12, 5);
-    // What shares an edge shares it exactly: the bar, the vitals' glass or the unmute offer on the left; Attack and the pill on the right.
-    const menu = f.find(KEY_TOUCH_BUTTON + T_MENU)!, use = f.find(KEY_TOUCH_BUTTON + T_USE)!;
-    expect(menu.x, where).toBeCloseTo(l + 12, 5);
-    if (muted) expect(f.find(KEY_UNMUTE)!.x, where).toBeCloseTo(menu.x, 5);
-    if (use.y < attack.y - 100) expect(use.x + use.w, where).toBeCloseTo(attack.x + attack.w, 5);
-    expect(f.find(KEY_MINIMAP) !== null && f.find(KEY_HOTBAR) !== null, where).toBe(true);
+    d.hud.prompt = "E  ride a raptor with a long name";
+    d.hud.ammo = "stone arrow  1 / 1   (24 more)";
+    d.hud.cone = 0.05;
+    d.build();
+    layerFits(d.ui, window, muted, `${window[0]}${muted ? ", muted" : ""}`);
   }
 });
 
@@ -135,7 +182,7 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   run(50);
   expect([app.ui.inventory.open, f.find(KEY_ZONE_MOVE), f.find(KEY_TOUCH_BUTTON + T_ATTACK)]).toEqual([true, null, null]);
   // Each screen has a way out in the corner that covers none of its own controls, on every phone.
-  for (const [button, open] of [[T_BAG, () => app.ui.inventory.open], [T_CHARACTER, () => app.ui.character], [T_MAP, () => app.ui.map]] as const) for (const [name, w, hh] of WINDOWS) {
+  for (const [button, open] of [[T_BAG, () => app.ui.inventory.open], [T_CHARACTER, () => app.ui.character], [T_MAP, () => app.ui.map]] as const) for (const [name, w, hh] of PHONES) {
     if (!open()) { app.key(button === T_CHARACTER ? "KeyP" : button === T_MAP ? "KeyM" : "KeyI", true, false, 2); h.run(50, (now) => app.frame(now, w, hh)); }
     h.run(50, (now) => app.frame(now, w, hh));
     const close = f.find(KEY_TOUCH_BUTTON + T_CLOSE)!, where = `${name}, screen ${button}`;
@@ -228,44 +275,23 @@ test("the bag by touch: a stack picked up is used with Use, and Half puts down h
   expect([f.find(KEY_INV_USE), f.find(KEY_INV_HALF), f.find(KEY_INV_INFO)!.text.startsWith("left click")]).toEqual([null, null, true]);
 });
 
-test("each situation has its own cluster on the same arcs: the second page, building, placing, a flyer, a car, a boat and a helicopter", () => {
-  const SITUATIONS: [string, (app: App) => void, number[], number[]][] = [
-    ["the second page", (app) => { app.touch.more = true; }, [T_ATTACK, T_MORE, T_MELEE, T_VIEW, T_ORBIT, T_FOLLOW, T_STAY, T_SIC], [T_JUMP, T_STANCE, T_AIM, T_RELOAD]],
-    ["building", (app) => { app.ui.building = true; }, [T_ATTACK, T_ROTATE, T_RELOAD, T_SNAP, T_RAISE, T_LOWER], [T_JUMP, T_STANCE, T_MORE]],
-    ["placing a vehicle", (app) => { app.ui.placing = true; }, [T_ATTACK, T_ROTATE, T_SNAP, T_CANCEL], [T_JUMP, T_STANCE, T_MORE, T_RAISE]],
-    ["a flyer", (app) => { app.ui.flyer = true; }, [T_ATTACK, T_JUMP, T_ROLL, T_HOLD, T_MORE], [T_STANCE, T_AIM]],
-    ["a car", (app) => { Object.assign(app.hud, { vehicle: Object.assign(app.vehicleTelemetry, { active: true, rotor: false, boat: false, lightMode: 0 }) }); }, [T_JUMP, T_VIEW, T_ORBIT], [T_ATTACK, T_STANCE, T_MORE]],
-    ["a boat", (app) => { Object.assign(app.hud, { vehicle: Object.assign(app.vehicleTelemetry, { active: true, rotor: false, boat: true }) }); }, [T_JUMP, T_SHIFT, T_VIEW], [T_ATTACK, T_STANCE, T_MORE]],
-    ["a helicopter", (app) => { Object.assign(app.hud, { vehicle: Object.assign(app.vehicleTelemetry, { active: true, rotor: true, boat: false }) }); }, [T_JUMP, T_DOWN, T_SNAP, T_RELOAD, T_ROLL, T_HOLD, T_SHIFT, T_VIEW], [T_ATTACK, T_STANCE, T_MORE]],
+test("each situation has its own cluster on the same arcs, at every window", () => {
+  const helm = (boat: boolean, rotor: boolean, more: object = {}) => (d: Direct): void => { d.hud.vehicle = Object.assign(new VehicleTelemetry(), { active: true, rotor, boat }, more); };
+  const SITUATIONS: [string, (d: Direct) => void, readonly number[], readonly number[]][] = [
+    ["the second page", (d) => { d.ui.touchPlay!.more = true; }, ...SECOND_PAGE],
+    ["building", (d) => { d.ui.building = true; }, [T_ATTACK, T_ROTATE, T_RELOAD, T_SNAP, T_RAISE, T_LOWER], [T_JUMP, T_STANCE, T_MORE]],
+    ["placing a vehicle", (d) => { d.ui.placing = true; }, [T_ATTACK, T_ROTATE, T_SNAP, T_CANCEL], [T_JUMP, T_STANCE, T_MORE, T_RAISE]],
+    ["a flyer", (d) => { d.ui.flyer = true; }, [T_ATTACK, T_JUMP, T_ROLL, T_HOLD, T_MORE], [T_STANCE, T_AIM]],
+    ["a car", helm(false, false, { lightMode: 0 }), [T_JUMP, T_VIEW, T_ORBIT], [T_ATTACK, T_STANCE, T_MORE]],
+    ["a boat", helm(true, false), [T_JUMP, T_SHIFT, T_VIEW], [T_ATTACK, T_STANCE, T_MORE]],
+    ["a helicopter", helm(false, true), [T_JUMP, T_DOWN, T_SNAP, T_RELOAD, T_ROLL, T_HOLD, T_SHIFT, T_VIEW], [T_ATTACK, T_STANCE, T_MORE]],
   ];
-  for (const [what, set, has, lacks] of SITUATIONS) for (const [name, w, h, insets] of WINDOWS) {
-    const net = new Harness(), app = phone(net, "arc");
-    insets.forEach((v, i) => (app.insets[i] = v));
-    app.ui.settings.muted = false;
-    net.run(600, (now) => app.frame(now, w, h));
-    const hud = app.hud;
-    hud.prompt = "E  exit vehicle";
-    while (hud.hotbar.length < 10) hud.hotbar.push({ tint: -1, label: "", number: "" });
-    set(app);
-    app.ui.build(w / h, hud, app.session);
-    const f = app.ui.frame, where = `${what}, ${name}`, unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
-    for (const k of has) expect(f.find(KEY_TOUCH_BUTTON + k), `${where}: button ${k}`).not.toBeNull();
-    for (const k of lacks) expect(f.find(KEY_TOUCH_BUTTON + k), `${where}: button ${k}`).toBeNull();
-    for (const k of has) expect(app.ui.touchShown & (1 << k), `${where}: bit ${k}`).toBeGreaterThan(0);
-    const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive && n.key !== KEY_ZONE_MOVE && n.key !== KEY_ZONE_LOOK);
-    for (const n of controls) {
-      const at = `${where}: key ${n.key} "${n.label}"`;
-      expect(n.x >= l - 0.01 && n.y >= t - 0.01 && n.x + n.w <= f.width - r + 0.01 && n.y + n.h <= f.height - b + 0.01, at).toBe(true);
-      if (n.kind === K_HOLD) expect(Math.min(n.w, n.h), at).toBeGreaterThanOrEqual(44);
-      if (n.text) expect(textWidth(n.text, n.style), at).toBeLessThanOrEqual(n.w + 0.01);
-    }
-    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
-      const p = controls[i]!, q = controls[j]!;
-      expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h, `${where}: ${p.key} "${p.label}" over ${q.key} "${q.label}"`).toBe(false);
-    }
-    // Round buttons keep a finger's gap between them.
-    const round = has.map((k) => f.find(KEY_TOUCH_BUTTON + k)!).map((n) => [n.x + n.w / 2, n.y + n.h / 2, n.w / 2] as const);
-    for (let i = 0; i < round.length; i++) for (let j = i + 1; j < round.length; j++) expect(Math.hypot(round[i]![0] - round[j]![0], round[i]![1] - round[j]![1]) - round[i]![2] - round[j]![2], `${where}: buttons ${has[i]} and ${has[j]}`).toBeGreaterThanOrEqual(3.9);
+  for (const [what, set, has, lacks] of SITUATIONS) for (const window of PHONES) {
+    const d = touched(window, false);
+    d.hud.prompt = "E  exit vehicle";
+    set(d);
+    d.build();
+    clusterFits(d.ui, window, has, lacks, `${what}, ${window[0]}`);
   }
 });
 
@@ -307,39 +333,46 @@ test("More turns the cluster's page and back, a way of going is held on by its b
   expect([app.touch.shifted, app.controls.buttons & BTN_SPRINT, has(T_SHIFT)]).toEqual([false, 0, false]);
 });
 
-test("chat by touch: the welcome is a line of the shut log, with no box over the stick; the bar opens the box at the top, where a keyboard does not cover it, and Send says it", () => {
-  for (const [name, w, hh, insets] of WINDOWS) {
-    const h = new Harness({}, 1, 60, { config: asShipped() }), app = phone(h, "talker");
-    insets.forEach((v, i) => (app.insets[i] = v));
-    const run = (ms: number) => h.run(ms, (now) => app.frame(now, w, hh));
-    const press = (key: number): void => { app.pointer(0, key, 0, 0, 0, 1); app.pointer(1, key, 0, 0, 0, 1); run(60); };
-    run(600);
-    const f = app.ui.frame;
-    const log = (): string[] => f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_CHAT_ROW && n.key < KEY_CHAT_ROW + 14).map((n) => n.text);
-    expect([log(), f.find(KEY_CHAT_PANEL)], name).toEqual([["Welcome to SNARK. Type /help"], null]);
-    expect([app.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, null]);
-    press(KEY_TOUCH_BUTTON + T_CHAT);
-    const field = f.find(KEY_CHAT_INPUT)!, send = f.find(KEY_CHAT_SEND)!, tag = f.find(KEY_CHAT_TAG)!, unit = hh / f.height;
-    expect([app.ui.chat.open, app.ui.typing, field.focus], name).toEqual([true, true, true]);
-    // The field is in the top half of the screen with room to spare, a finger's height, inside the screen's edges, beside its buttons.
-    expect((field.y + field.h) * unit, name).toBeLessThan(hh * 0.45);
-    expect(Math.min(field.h, send.h, tag.h), name).toBeGreaterThanOrEqual(44);
-    expect(tag.x >= insets[0]! / unit && send.x + send.w <= f.width - insets[2]! / unit, name).toBe(true);
-    expect(tag.x + tag.w <= field.x && field.x + field.w <= send.x, name).toBe(true);
-    expect(textWidth(send.text, send.style), name).toBeLessThanOrEqual(send.w);
-    // The way out is there, and covers neither the field nor its buttons.
-    const close = f.find(KEY_TOUCH_BUTTON + T_CLOSE)!;
-    for (const n of [field, send, tag]) expect(close.x < n.x + n.w && n.x < close.x + close.w && close.y < n.y + n.h && n.y < close.y + close.h, name).toBe(false);
-    app.textInput(KEY_CHAT_INPUT, "anyone near the docks?");
-    press(KEY_CHAT_SEND);
-    run(300);
-    expect([app.ui.chat.open, app.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, false, null]);
-    const said: string[] = [];
-    for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAT_ROW && f.nodes[i]!.key < KEY_CHAT_ROW + 14) said.push(f.nodes[i]!.text);
-    expect(said.join(" "), name).toContain("anyone near the docks?");
+test("chat by touch: the welcome is a shut line; the box opens at the top", () => {
+  for (const window of PHONES) {
+    const [name] = window, d = touched(window, true), f = d.ui.frame;
+    const tap = (button: number): void => { d.ui.key(touchKey(button)!, true, false, d.session); d.ui.key(touchKey(button)!, false, false, d.session); d.build(); };
+    d.ui.chat.print(TEXT_MOTD, "Welcome to SNARK. Type /help", 0, 600);
+    d.build();
+    expect([chatLog(f), f.find(KEY_CHAT_PANEL)], name).toEqual([["Welcome to SNARK. Type /help"], null]);
+    expect([d.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, null]);
+    // The bar's Chat is the Enter key.
+    tap(T_CHAT);
+    expect([d.ui.chat.open, d.ui.typing], name).toEqual([true, true]);
+    chatBoxFits(f, window);
+    d.ui.input(KEY_CHAT_INPUT, "anyone near the docks?");
+    d.ui.pointer(0, KEY_CHAT_SEND, 0, 0, 0, d.session);
+    d.build();
+    expect([d.ui.chat.open, d.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, false, null]);
     // Shut, the log is back where it was, low on the left, and the layer is back with it.
     expect(f.find(KEY_ZONE_MOVE), name).not.toBeNull();
   }
+});
+
+test("a whole client's chat by touch: the welcome, the box, and Send says it", () => {
+  const window = PHONES[3]!, [name, w, hh, insets] = window;
+  const h = new Harness({}, 1, 60, { config: asShipped() }), app = phone(h, "talker");
+  insets.forEach((v, i) => (app.insets[i] = v));
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, w, hh));
+  const press = (key: number): void => { app.pointer(0, key, 0, 0, 0, 1); app.pointer(1, key, 0, 0, 0, 1); run(60); };
+  run(600);
+  const f = app.ui.frame;
+  expect([chatLog(f), f.find(KEY_CHAT_PANEL)], name).toEqual([["Welcome to SNARK. Type /help"], null]);
+  expect([app.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, null]);
+  press(KEY_TOUCH_BUTTON + T_CHAT);
+  expect([app.ui.chat.open, app.ui.typing], name).toEqual([true, true]);
+  chatBoxFits(f, window);
+  app.textInput(KEY_CHAT_INPUT, "anyone near the docks?");
+  press(KEY_CHAT_SEND);
+  run(300);
+  expect([app.ui.chat.open, app.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, false, null]);
+  expect(chatLog(f).join(" "), name).toContain("anyone near the docks?");
+  expect(f.find(KEY_ZONE_MOVE), name).not.toBeNull();
 });
 
 test("the map by touch: a finger drags it, a tap looks there, and two fingers pinch its zoom a step at a time", () => {
@@ -388,19 +421,14 @@ test("the map by touch: a finger drags it, a tap looks there, and two fingers pi
   expect(chart.fullU).toBeCloseTo(app.hud.pointedU, 9);
 });
 
-test("where there is voice the bar has Talk, held to talk; a creature looked at is whistled to alone; and the chat box stands under the vitals", () => {
-  for (const [name, w, hh, insets] of WINDOWS) {
-    const h = new Harness(), app = phone(h, "voice");
-    insets.forEach((v, i) => (app.insets[i] = v));
-    app.ui.settings.muted = false;
-    const run = (ms: number) => h.run(ms, (now) => app.frame(now, w, hh));
-    run(600);
-    const f = app.ui.frame, hud = app.hud;
+test("with voice the bar has Talk; one creature is whistled to; chat stands under", () => {
+  for (const window of PHONES) {
+    const [name, , hh, insets] = window, d = touched(window, false), f = d.ui.frame;
+    d.build();
     expect(f.find(KEY_TOUCH_BUTTON + T_MIC), name).toBeNull();
     // With voice: a fifth button in the bar, clear of the vitals, the minimap and the rest.
-    app.ui.canTalk = true;
-    while (hud.hotbar.length < 10) hud.hotbar.push({ tint: -1, label: "", number: "" });
-    app.ui.build(w / hh, hud, app.session);
+    d.ui.canTalk = true;
+    d.build();
     const mic = f.find(KEY_TOUCH_BUTTON + T_MIC)!, unit = hh / f.height;
     expect(mic !== null && mic.x + mic.w <= f.width - insets[2]! / unit, name).toBe(true);
     const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive && n.key !== KEY_ZONE_MOVE && n.key !== KEY_ZONE_LOOK);
@@ -408,26 +436,73 @@ test("where there is voice the bar has Talk, held to talk; a creature looked at 
       const p = controls[i]!, q = controls[j]!;
       expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h, `${name}: ${p.key} "${p.label}" over ${q.key} "${q.label}"`).toBe(false);
     }
-    // Held, it talks; let go, it stops.
-    app.pointer(0, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 0, 1);
-    expect(app.talking, name).toBe(true);
-    app.pointer(1, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 0, 1);
-    expect(app.talking, name).toBe(false);
+    // Held, it holds the talk key; let go, it lets it go.
+    const keys: string[] = [], target: TouchTarget = { key: (code, down) => void keys.push(`${code} ${down}`), mouse() {}, move() {}, look() {} };
+    d.ui.touchPlay!.pointer(0, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 1, 0, target, unit);
+    d.ui.touchPlay!.pointer(1, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 1, 0, target, unit);
+    expect(keys, name).toEqual(["KeyB true", "KeyB false"]);
     // The second page's whistles are to every creature that hears, or to the one looked at.
-    app.touch.more = true;
-    app.ui.build(w / hh, hud, app.session);
+    d.ui.touchPlay!.more = true;
+    d.build();
     expect([f.find(KEY_TOUCH_BUTTON + T_FOLLOW) !== null, f.find(KEY_TOUCH_BUTTON + T_FOLLOW_ONE)], name).toEqual([true, null]);
-    app.ui.creatureAhead = true;
-    app.ui.build(w / hh, hud, app.session);
+    d.ui.creatureAhead = true;
+    d.build();
     expect([f.find(KEY_TOUCH_BUTTON + T_FOLLOW), f.find(KEY_TOUCH_BUTTON + T_FOLLOW_ONE)!.label, f.find(KEY_TOUCH_BUTTON + T_STAY_ONE)!.label], name).toEqual([null, "Whistle: this one follow", "Whistle: this one stay"]);
     // The chat box, open, starts under the bar and under the vitals where they stand under the bar.
-    app.touch.more = false;
-    app.ui.chat.begin(TEXT_GLOBAL, app.session);
-    app.ui.build(w / hh, hud, app.session);
+    d.ui.touchPlay!.more = false;
+    d.ui.chat.begin(TEXT_GLOBAL, d.session);
+    d.build();
     const box = f.find(KEY_CHAT_PANEL)!, vital = f.find(KEY_VITAL + 1)!, field = f.find(KEY_CHAT_INPUT)!;
     expect(box.y, name).toBeGreaterThanOrEqual(f.top + 12 + 44);
     // Upright, under the vitals too; on its side the keyboard leaves no room for that, and the box may cover them.
     if (f.width < f.height && vital.y > f.top + 12 + 44) expect(box.y, name).toBeGreaterThanOrEqual(vital.y + vital.h - 6);
     expect((field.y + field.h) * unit, name).toBeLessThan(hh * 0.45);
   }
+});
+
+test("a whole client by touch builds what its models build", () => {
+  const window = PHONES[0]!, [name, w, hh, insets] = window;
+  const h = new Harness(), app = phone(h, "whole"), f = app.ui.frame;
+  insets.forEach((v, i) => (app.insets[i] = v));
+  app.ui.settings.muted = true;
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, w, hh));
+  run(600);
+  // As it joined, it is the kit's new survivor: the same nodes in the same boxes.
+  expect(boxes(touched(window, true).build())).toEqual(boxes(f));
+  // A full hand, set on both models: the same frame, and it fits.
+  const full = touched(window, true, stood(app));
+  for (const hud of [app.hud, full.hud]) Object.assign(hud, { prompt: "E  ride a raptor with a long name", ammo: "stone arrow  1 / 1   (24 more)", cone: 0.05 });
+  app.ui.build(w / hh, app.hud, app.session);
+  layerFits(app.ui, window, true, name);
+  expect(nodes(full.build())).toEqual(nodes(f));
+  // A finger on More turns the page, and the frames after are those of a model whose page is turned.
+  app.pointer(0, KEY_TOUCH_BUTTON + T_MORE, 0, 0, 0, 1);
+  app.pointer(1, KEY_TOUCH_BUTTON + T_MORE, 0, 0, 0, 1);
+  run(50);
+  clusterFits(app.ui, window, ...SECOND_PAGE, name);
+  const turned = touched(window, true, stood(app));
+  turned.ui.touchPlay!.more = true;
+  expect(nodes(turned.build())).toEqual(nodes(f));
+  // Talk, held, talks.
+  app.pointer(0, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 0, 1);
+  expect(app.talking).toBe(true);
+  app.pointer(1, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 0, 1);
+  expect(app.talking).toBe(false);
+});
+
+test("a driver's cluster in a whole client is the one its models build", () => {
+  const window = PHONES[7]!, [name, w, hh, insets] = window;
+  const { h, ada } = camp({ screen: true }), view = screen(h, ada), app = view.app;
+  app.ui.inputDevice = 2;
+  app.ui.layer = layout;
+  app.ui.settings.muted = false;
+  insets.forEach((v, i) => (app.insets[i] = v));
+  vehicle(h, ada, "compact", { drive: true });
+  [view.width, view.height] = [w, hh];
+  h.run(600);
+  // A compact has no lights to switch, so its cluster has no button for them.
+  clusterFits(app.ui, window, [T_JUMP, T_VIEW], [T_ATTACK, T_STANCE, T_MORE, T_ORBIT], name);
+  const d = touched(window, false, stood(app));
+  [d.hud.vehicle, d.hud.prompt] = [app.hud.vehicle, app.hud.prompt];
+  expect(nodes(d.build())).toEqual(nodes(app.ui.frame));
 });
