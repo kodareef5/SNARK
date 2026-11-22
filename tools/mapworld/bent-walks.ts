@@ -9,17 +9,25 @@
 //   starts at the kerb (a verge of under half a metre is walk), and where a verge of half a metre or more lies between,
 //   or the side has no walk (a pair's median), the kerb stands alone;
 // - its seed is its stretch's, its wear its type's (the type's `wear` in the street rules), its panels the kerb's;
-// - a line is laid where it stands on open ground: in the map, off water, off a bridge's deck and its way on, and clear of
-//   what stands there already, where the ground behind its face is level with the road and the street no steeper than
-//   one in eight; where the ground across its walk is not level, a way in to a building crosses it or something the city
-//   set down stands on it, its kerb stands alone; a stretch's kerb that ends short of a corner's arc is drawn on to the arc's end, and an
-//   end that meets no other kerb is let down to the road by a flare;
-// - under every piece lie its collision pieces (underPiece); a piece and its collision go into the map as a whole or not;
+// - a line is laid where it stands on open ground: in the map, off water, off a bridge's deck and its way on, where the
+//   ground behind its face is level with the road and the street no steeper than one in eight; where the ground across
+//   its walk is not level, its kerb stands alone. Each is judged over a run of points, not one at a time: a stretch that
+//   fails for under FILL metres between two that pass is laid on, and one that passes for under ISLAND between two that
+//   fail is not, so a kerb on ground that sits on the line is not laid in dashes;
+// - where the line's stretch is dropped (kerbLines' drops: a crossing, a drive, a corner's ramp), its kerb is let down
+//   flush there by a flare at each end;
+// - an end of a kerb that meets no other kerb's end is let down to the road by a flare, and an end of a walk that meets no
+//   other walk's end is let down to the ground over its last SINK_LENGTH (bends.ts sink), so no walk ends in a step;
+// - a way in to a building crosses a walk as it crosses the ground; what the city set down on a walk is cut round where it
+//   stands CUT_ROUND or more behind the kerb's face (the piece's walk ends at it, the piece split so only its length is),
+//   and stands on the walk where it is nearer; a piece whose kerb and first 0.6 m of walk meet it is left out;
+// - under every piece lie its collision pieces (underPiece), which the map does not store but makes again from the bends
+//   where it is read (mapfile.ts); a piece and its collision go into the build's list as a whole or not;
 // - the walk kit's storm drains and utility boxes stand on the straight lengths, as often as the kit has them.
 
 import { BREAK_AT } from "../../content/ruins.ts";
-import { bentJoin, bentKind, KERB_BACK, packBend, placeKerb, underPiece, wrapped, type BentKerb, type BentPiece, type Section } from "../../shared/world/bends.ts";
-import { kerbLines, kerbOf, walkOf, type KerbLine as StreetKerb } from "../../shared/world/streets.ts";
+import { SINK_LENGTH, bentJoin, bentKind, HIT_PREFIX, KERB_BACK, packBend, placeKerb, underPiece, wrapped, type BentKerb, type BentPiece, type Section } from "../../shared/world/bends.ts";
+import { DROP_CROSSING, DROP_RAMP, kerbLines, kerbOf, walkOf, type KerbLine as StreetKerb } from "../../shared/world/streets.ts";
 import { S } from "./ground.ts";
 import { binKey, hash3 } from "./raster.ts";
 import { Mason } from "./ruin-geometry.ts";
@@ -44,22 +52,37 @@ const SNAP = 1.3;
 const STEEPEST = 0.125;
 /** A verge narrower than this at the kerb is taken as walk, as the walk kit takes it (ruins.ts sectionRefuses). */
 const VERGE_LEAST = 0.5;
+/** A stretch of a line failing a level test for under FILL metres between two that pass is laid on; one passing for under ISLAND between two that fail is not. */
+const FILL = 3, ISLAND = 2;
+/** How far short of a corner's centre its walk ends at most. */
+const CORNER_INSIDE = 0.3;
+/** What stands on a walk this far or more behind the kerb's face is cut round; what stands nearer stands on the walk. */
+const CUT_ROUND = 1;
+/** The least walk a piece is cut down to round what stands on it, from the kerb's face, and how far short of it it stops. */
+const CUT_LEAST = KERB_BACK + 0.6, CUT_SHORT = 0.05;
 
-/** A kerb line to lay: its points in the lattice's metres with their heights and stations, its walk's side and its section. */
-interface Run { x: number[]; y: number[]; z: number[]; s: number[]; side: 1 | -1; section: Section; corner: boolean }
+/** A kerb line to lay: its points in the lattice's metres with their heights and stations, its walk's side, its section and its drops. */
+interface Run { x: number[]; y: number[]; z: number[]; s: number[]; side: 1 | -1; section: Section; corner: boolean; drops: number[] }
+
+/** A point of a line: off open ground, not level, its kerb alone (its walk not level), its kerb and walk. */
+const OFF = 0, UNLEVEL = 1, ALONE = 2, WALKED = 3;
 
 /** Lays the bent kerbs on the street model's kerb lines, and says how many of each kind of thing for the build's report. */
-export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (box: Box) => boolean, obstacles: { hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean }, _roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
-  const rules = v.street.walks!, bent = rules.bent!;
-  const out: Record<string, number> = { pieces: 0, curved: 0, joins: 0, collision: 0, lines: 0, runs: 0, alone: 0, unlevel: 0, unlaid: 0, ways: 0, snapped: 0, ends: 0, refused: 0, blocked: 0, drains: 0, boxes: 0 };
+export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, _way: (box: Box) => boolean, obstacles: { hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean; meeting: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => { p: StaticPiece; box: Box }[] }, _roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
+  const rules = v.street.walks!, bent = rules.bent || {};
+  const out: Record<string, number> = { pieces: 0, curved: 0, joins: 0, collision: 0, lines: 0, runs: 0, alone: 0, unlevel: 0, unlaid: 0, filled: 0, snapped: 0, ends: 0, sunk: 0, ledges: 0, dropped: 0, droppedMetres: 0, narrowed: 0, standing: 0, refused: 0, blocked: 0, drains: 0, boxes: 0 };
   const held = site.ground.streets;
   if (!held) return out;
   let placing = 0;
   const laidIn: number[] = [];
+  /** What stands on the walks, by the start of its kind: cut round, or standing on the walk. */
+  const standing = new Map<string, number>();
   const { nx, x0, z0, x1, z1 } = site.ground.grid;
   const inside = (x: number, z: number): boolean => x >= x0 + 2 && x <= x1 - 2 && z >= z0 + 2 && z <= z1 - 2;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
+  // Rubble is not what stands on a kerb or a walk, nor another kerb's collision what stands on a walk.
   const rubble = (p: StaticPiece): boolean => /_z(skirt1|skirt2|wedge)_/.test(p.kind);
+  const passed = (p: StaticPiece): boolean => rubble(p) || p.kind.startsWith(HIT_PREFIX);
   const onWay = (x: number, z: number): boolean => entrances.some((e) => {
     const along = (x - e.x) * e.dx + (z - e.z) * e.dz;
     return along > -24 && along < 12 && Math.abs((z - e.z) * e.dx - (x - e.x) * e.dz) < e.width / 2 + 1;
@@ -84,46 +107,58 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     const kerb = kerbOf(k.kinds) === 2 ? "worn" : "raised";
     const alone = walkOf(k.kinds) === 0 || k.verge >= VERGE_LEAST;
     if (alone) out.alone!++;
-    const section: Section = { kerb, walk: alone ? 0 : k.verge + k.walk, panel: PANEL[kerb], seed: k.seed & 255, wear: street.types[type]?.section.wear ?? 0.4 };
+    // A corner's walk lies inside its arc: no wider than its radius less a little, or it folds over itself round the
+    // arc's centre (a downtown walk of 8.5 m round a corner of 4 m).
+    const most = k.corner >= 0 ? Math.max(KERB_BACK + 0.6, part.corners[k.corner]!.radius - CORNER_INSIDE) : Infinity;
+    const section: Section = { kerb, walk: alone ? 0 : Math.min(most, k.verge + k.walk), panel: PANEL[kerb], seed: k.seed & 255, wear: street.types[type]?.section.wear ?? 0.4 };
     const side = walkSide(k, part.corners), n = k.stations.length;
     const kerbAlone: Section = { ...section, walk: 0 };
-    let run: Run | null = null;
+    // Each point's state, then judged over the line.
+    const state = new Uint8Array(n), ys = new Float64Array(n);
     for (let q = 0; q < n; q++) {
       const x = k.xz[q * 2]! + x0, z = k.xz[q * 2 + 1]! + z0;
-      if (!open(x, z)) {
-        run = null;
-        continue;
-      }
+      if (!open(x, z)) continue;
       // A kerb stands where the ground behind its face is level with the road and the street is no steeper than one in
       // eight; a walk stands level across, so where the ground across it rises or falls more than the walk kit's rule
       // allows, the kerb stands alone there and the ground's walk takes it up.
-      const y = site.groundAt(x, z);
+      const y = (ys[q] = site.groundAt(x, z));
       const a = Math.max(0, q - 1), b = Math.min(n - 1, q + 1), ex = k.xz[b * 2]! - k.xz[a * 2]!, ez = k.xz[b * 2 + 1]! - k.xz[a * 2 + 1]!, l = Math.hypot(ex, ez) || 1;
       const nx = (-ez / l) * side, nz = (ex / l) * side;
       const steep = Math.abs(site.groundAt(k.xz[b * 2]! + x0, k.xz[b * 2 + 1]! + z0) - site.groundAt(k.xz[a * 2]! + x0, k.xz[a * 2 + 1]! + z0)) > l * STEEPEST;
       if (steep || Math.abs(site.groundAt(x + nx * 0.5, z + nz * 0.5) - y) > rules.flat) {
-        out.unlaid!++;
+        state[q] = UNLEVEL;
+        continue;
+      }
+      state[q] = WALKED;
+      if (section.walk > 0) for (const back of [section.walk / 2, section.walk]) if (Math.abs(site.groundAt(x + nx * back, z + nz * back) - y) > rules.flat) state[q] = ALONE;
+    }
+    out.filled! += judged(state, k.stations);
+    let run: Run | null = null;
+    for (let q = 0; q < n; q++) {
+      if (state[q]! < ALONE) {
+        if (state[q] === UNLEVEL) out.unlaid!++;
         run = null;
         continue;
       }
-      let here = section;
-      if (section.walk > 0) for (const back of [section.walk / 2, section.walk]) if (Math.abs(site.groundAt(x + nx * back, z + nz * back) - y) > rules.flat) here = kerbAlone;
+      const here = state[q] === ALONE || section.walk === 0 ? kerbAlone : section;
+      const x = k.xz[q * 2]! + x0, z = k.xz[q * 2 + 1]! + z0;
       if (run && run.section !== here) {
         // The two kerbs meet at this point: it ends the one and begins the other.
         const was: Run = run, last = was.x.length - 1;
-        runs.push((run = { x: [was.x[last]!], y: [was.y[last]!], z: [was.z[last]!], s: [was.s[last]!], side, section: here, corner: k.corner >= 0 }));
+        runs.push((run = { x: [was.x[last]!], y: [was.y[last]!], z: [was.z[last]!], s: [was.s[last]!], side, section: here, corner: k.corner >= 0, drops: k.drops ? Array.from(k.drops) : [] }));
         out.unlevel!++;
       }
-      if (!run) runs.push((run = { x: [], y: [], z: [], s: [], side, section: here, corner: k.corner >= 0 }));
+      if (!run) runs.push((run = { x: [], y: [], z: [], s: [], side, section: here, corner: k.corner >= 0, drops: k.drops ? Array.from(k.drops) : [] }));
       run.x.push(x);
-      run.y.push(y);
+      run.y.push(ys[q]!);
       run.z.push(z);
       run.s.push(k.stations[q]!);
     }
   }
 
   // A stretch's kerb is cut where a corner's fill covers it, at its last point a metre short of the arc's end at most: it
-  // is drawn on to the arc's end where one is that near, ahead of it.
+  // is drawn on to the arc's end where one is that near, ahead of it. The street model's lines meet their arcs end to end
+  // (kerbLines), so this is for what the ground's tests cut short of an arc.
   const arcEnds = new Map<number, [number, number][]>();
   for (const r of runs) if (r.corner) for (const e of [0, r.x.length - 1]) {
     const key = binKey(Math.floor(r.x[e]! / 4), Math.floor(r.z[e]! / 4));
@@ -152,51 +187,66 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     end(0, 1, (x, z, d) => { r.x.unshift(x); r.y.unshift(site.groundAt(x, z)); r.z.unshift(z); r.s.unshift(r.s[0]! - d); });
   }
 
-  // Each end that meets no other kerb's end is let down to the road.
-  const ends = new Map<number, number>();
+  // Each run's ends by where they stand: how many kerbs end there, how many of them with a walk, and how many let down flush.
+  const ends = new Map<number, { kerbs: number; walks: number; flush: number }>();
   const endKey = (x: number, z: number): number => binKey(Math.floor(x * 4), Math.floor(z * 4));
+  const flushAt = (r: Run, s: number): boolean => r.section.walk > 0 && dropAt(r.drops, s) >= 0;
   for (const r of runs) if (r.x.length >= 2) for (const e of [0, r.x.length - 1]) {
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       const key = binKey(Math.floor(r.x[e]! * 4) + dx, Math.floor(r.z[e]! * 4) + dz);
-      ends.set(key, (ends.get(key) ?? 0) + 1);
+      const got = ends.get(key) ?? { kerbs: 0, walks: 0, flush: 0 };
+      got.kerbs++;
+      if (r.section.walk > 0) got.walks++;
+      if (flushAt(r, r.s[e]!)) got.flush++;
+      ends.set(key, got);
     }
   }
-  const alone = (x: number, z: number): boolean => (ends.get(endKey(x, z)) ?? 0) < 2;
+  const endOf = (x: number, z: number): { kerbs: number; walks: number; flush: number } => ends.get(endKey(x, z)) ?? { kerbs: 0, walks: 0, flush: 0 };
 
   for (const r of runs) {
     if (r.x.length < 2) continue;
     out.runs!++;
     const t0 = performance.now();
-    const pieces = placeKerb({ x: r.x, y: r.y, z: r.z, stations: r.s }, r.side, r.section);
+    const pieces = placeRun(r);
     placing += performance.now() - t0;
     if (pieces.length === 0) continue;
     // The pieces run with the walk on their left: from the run's first point on side 1 and from its last on side -1.
     const [first, last] = r.side === 1 ? [0, r.x.length - 1] : [r.x.length - 1, 0];
-    const kerb = pieces[0]!.kerb as BentKerb;
+    const kerb = r.section.walk > 0 ? r.section.kerb : "median";
     if (kerb !== "median") {
-      if (alone(r.x[first]!, r.z[first]!) && join(pieces, 0, "flush", kerb)) out.ends!++;
-      if (alone(r.x[last]!, r.z[last]!) && join(pieces, pieces.length - 1, kerb, "flush")) out.ends!++;
+      // An end that meets no other kerb, or meets one let down flush, is let down to the road by a flare, unless it is let down already.
+      const end = (e: number): boolean => {
+        const there = endOf(r.x[e]!, r.z[e]!);
+        return !flushAt(r, r.s[e]!) && (there.kerbs < 2 || there.flush > 0);
+      };
+      if (end(first) && join(pieces, 0, "flush", kerb)) out.ends!++;
+      if (end(last) && join(pieces, pieces.length - 1, kerb, "flush")) out.ends!++;
+      // An end of the walk that meets no other walk's end is let down to the ground.
+      if (endOf(r.x[first]!, r.z[first]!).walks < 2) sinkEnd(pieces, 0, -1);
+      if (endOf(r.x[last]!, r.z[last]!).walks < 2) sinkEnd(pieces, pieces.length - 1, 1);
     }
-    // Where a way in to a building crosses a piece's walk, or something the city set down stands on it (a stair's foot,
-    // a stoop, a column), its kerb stands alone, so the way in and what stands there meet the ground at its height.
+    // What the city set down on a piece's walk: cut round where it stands back from the kerb, else standing on the walk.
     for (let q = 0; q < pieces.length; q++) {
-      const p = pieces[q]!;
-      if (p.bend.walk <= KERB_BACK + 0.01) continue;
-      const box = walkBox(p, p.bend.walk);
-      if (!way(box) && !obstacles.hits(box, -0.1, rubble)) continue;
-      pieces[q] = { ...p, kind: bentKind("median", p.kind.endsWith("_c")), kerb: "median", bend: { ...p.bend, walk: KERB_BACK, panel: 0 } };
-      out.ways!++;
+      const cut = cutRound(pieces[q]!);
+      if (cut) {
+        pieces.splice(q, 1, ...cut);
+        q += cut.length - 1;
+      }
     }
-    // Runs of pieces clear of what stands there, each laid whole where the chunks' budgets let it, else a piece at a time.
+    // Runs of pieces clear of what stands there, each laid whole where the chunks' budgets let it, else a piece at a time;
+    // a walk that ends where a piece is left out is let down to the ground before it.
     let group: BentPiece[] = [];
     const flush = (): void => {
       if (group.length > 0) fixtures(lay(group) ? group : group.filter((p) => lay([p])), r.section.seed);
       group = [];
     };
-    for (const p of pieces) {
+    for (let q = 0; q < pieces.length; q++) {
+      const p = pieces[q]!;
       if (blocked(p)) {
         out.blocked!++;
+        if (group.length > 0) sinkEnd(group, group.length - 1, 1);
         flush();
+        if (q + 1 < pieces.length && !pieces[q + 1]!.bend.sink) sinkEnd(pieces, q + 1, -1);
       } else group.push(p);
     }
     flush();
@@ -205,11 +255,203 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
   // which a build must give the same each time.
   const chunks = new Set<number>(laidIn);
   console.log(`bent walks: ${out.pieces} pieces in ${chunks.size} chunks, placed in ${((placing * 1000) / Math.max(1, chunks.size)).toFixed(0)} us a chunk`);
+  console.log(`bent walks: ${out.filled} points laid on over a short failing stretch, ${out.sunk} walk ends let down to the ground and ${out.ledges} left as a step, ${out.dropped} kerbs dropped over ${out.droppedMetres!.toFixed(0)} m, ${out.narrowed} cut round what stands on the walk and ${out.standing} standing on it`);
+  console.log(`bent walks: on the walks, ${[...standing].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `${k} ${n}`).join(", ")}`);
+  out.droppedMetres = Math.round(out.droppedMetres!);
   return out;
+
+  /** A run's pieces, its dropped stretches flush with a flare at each end, in the order that puts its walk on the left. */
+  function placeRun(r: Run): BentPiece[] {
+    const s0 = r.s[0]!, s1 = r.s[r.s.length - 1]!;
+    // Its stretches by station: as laid, flared down, flush and flared up.
+    const spans: { a: number; b: number; how: "kerb" | "down" | "flush" | "up" | "gap"; tactile: boolean }[] = [];
+    let from = s0;
+    for (let k = 0; k + 2 < r.drops.length; k += 3) {
+      const d0 = Math.max(s0, r.drops[k]!), d1 = Math.min(s1, r.drops[k + 1]!), kind = r.drops[k + 2]!;
+      if (d1 - d0 < 0.5 || d0 < from) continue;
+      const tactile = kind === DROP_CROSSING || kind === DROP_RAMP;
+      if (r.section.walk === 0) {
+        // A kerb alone is cut where it is dropped: the crossing runs through it at the road's height.
+        if (d0 > from) spans.push({ a: from, b: d0, how: "kerb", tactile: false });
+        spans.push({ a: d0, b: d1, how: "gap", tactile });
+      } else {
+        const f0 = Math.max(from, d0 - FLARE), f1 = Math.min(s1, d1 + FLARE);
+        if (f0 > from + 0.01) spans.push({ a: from, b: f0, how: "kerb", tactile: false });
+        if (d0 - f0 > 0.3) spans.push({ a: f0, b: d0, how: "down", tactile: false });
+        spans.push({ a: d0 - f0 > 0.3 ? d0 : f0, b: d1, how: "flush", tactile });
+        if (f1 - d1 > 0.3) spans.push({ a: d1, b: f1, how: "up", tactile: false });
+        else if (spans.length > 0) spans[spans.length - 1]!.b = f1;
+        from = f1;
+        out.dropped!++;
+        out.droppedMetres! += d1 - d0;
+        continue;
+      }
+      from = d1;
+    }
+    if (s1 - from > 0.01) spans.push({ a: from, b: s1, how: "kerb", tactile: false });
+    const kerb = r.section.kerb;
+    const laid = spans.map((sp) => {
+      if (sp.how === "gap") return [];
+      const line = slice(r, sp.a, sp.b);
+      if (line.x.length < 2) return [];
+      const section: Section = sp.how === "flush" ? { ...r.section, kerb: "flush" } : r.section;
+      // A flare is one piece between its two ends, the way the street runs at each.
+      const flare = sp.how === "down" || sp.how === "up";
+      const pieces = placeKerb(flare ? { x: [line.x[0]!, line.x.at(-1)!], y: [line.y[0]!, line.y.at(-1)!], z: [line.z[0]!, line.z.at(-1)!], dx: [line.dx![0]!, line.dx!.at(-1)!], dz: [line.dz![0]!, line.dz!.at(-1)!], stations: [line.stations[0]!, line.stations.at(-1)!] } : line, r.side, section);
+      return pieces.map((p) => {
+        const along = r.side === 1 ? sp.how : sp.how === "down" ? "up" : sp.how === "up" ? "down" : sp.how;
+        if (along === "down") return { ...p, kind: bentJoin(kerb, "flush"), kerb: "flush" as const };
+        if (along === "up") return { ...p, kind: bentJoin("flush", kerb), kerb: "flush" as const };
+        return sp.tactile && p.kerb === "flush" ? { ...p, bend: { ...p.bend, tactile: true } } : p;
+      });
+    });
+    return (r.side === 1 ? laid : laid.reverse()).flat();
+  }
+
+  /**
+   * Of run `r`, its points from station a to station b, with a point put in at each where none is, and the way the line
+   * runs at the two ends; its stations as placeKerb takes them on the run's side, so a stretch of a run is laid with the
+   * stations it has in the whole of it.
+   */
+  function slice(r: Run, a: number, b: number): { x: number[]; y: number[]; z: number[]; s: number[]; stations: number[]; dx?: number[]; dz?: number[] } {
+    const x: number[] = [], y: number[] = [], z: number[] = [], s: number[] = [];
+    const put = (q: number, t: number): void => {
+      const w = q + 1 < r.x.length ? t : 0, n = Math.min(q + 1, r.x.length - 1);
+      x.push(r.x[q]! + (r.x[n]! - r.x[q]!) * w);
+      y.push(r.y[q]! + (r.y[n]! - r.y[q]!) * w);
+      z.push(r.z[q]! + (r.z[n]! - r.z[q]!) * w);
+      s.push(r.s[q]! + (r.s[n]! - r.s[q]!) * w);
+    };
+    const find = (st: number): [number, number] => {
+      let q = 0;
+      while (q + 2 < r.s.length && r.s[q + 1]! <= st) q++;
+      const span = r.s[q + 1]! - r.s[q]!;
+      return [q, span > 0 ? Math.min(1, Math.max(0, (st - r.s[q]!) / span)) : 0];
+    };
+    const [qa, ta] = find(a), [qb, tb] = find(b);
+    put(qa, ta);
+    for (let q = qa + 1; q <= qb; q++) if (r.s[q]! - s[s.length - 1]! > 0.05 && b - r.s[q]! > 0.05) put(q, 0);
+    if (b - s[s.length - 1]! > 0.05) put(qb, tb);
+    // placeKerb takes a run's stations as they are on side 1 and from its last point on side -1; shifted so a stretch of
+    // the run has the stations the whole run gives it.
+    const shift = r.side === 1 ? 0 : r.s[0]! + r.s[r.s.length - 1]! - s[0]! - s[s.length - 1]!;
+    // The way the run runs at each end of the stretch, from its own points on either side.
+    const way = (st: number): [number, number] => {
+      const [q] = find(st), n = Math.min(q + 1, r.x.length - 1), ex = r.x[n]! - r.x[q]!, ez = r.z[n]! - r.z[q]!, l = Math.hypot(ex, ez) || 1;
+      return [ex / l, ez / l];
+    };
+    if (a <= r.s[0]! + 0.01 && b >= r.s[r.s.length - 1]! - 0.01) return { x, y, z, s, stations: s.map((v) => v + shift) };
+    const [ax, az] = way(a), [bx, bz] = way(b);
+    const dx = x.map((_, i) => (i === 0 ? ax : i === x.length - 1 ? bx : NaN)), dz = z.map((_, i) => (i === 0 ? az : i === z.length - 1 ? bz : NaN));
+    // Between its ends the ways are its points' own; placeKerb takes them all or none, so they are filled in as it would.
+    for (let i = 1; i + 1 < x.length; i++) {
+      const ex = x[i + 1]! - x[i - 1]!, ez = z[i + 1]! - z[i - 1]!, l = Math.hypot(ex, ez) || 1;
+      [dx[i], dz[i]] = [ex / l, ez / l];
+    }
+    return { x, y, z, s, stations: s.map((v) => v + shift), dx, dz };
+  }
+
+  /**
+   * Piece `k` of `pieces` with its walk let down to the ground toward its end (`toward` 1) or its start (-1): the piece
+   * itself where it is short enough, else cut so SINK_LENGTH of it at that end sinks. Counted as a step left where it
+   * cannot be (a long curve), and said as a walk let down where it is.
+   */
+  function sinkEnd(pieces: BentPiece[], k: number, toward: 1 | -1): void {
+    const p = pieces[k];
+    if (!p || p.bend.walk <= KERB_BACK + 0.01) return;
+    const length = p.bend.half * 2;
+    // A short piece whose walk is let down at its other end already: its two halves each let down toward their own end,
+    // or where it is too short for that, its kerb alone.
+    if (p.bend.sink === -toward && length <= 2 * SINK_LENGTH + 0.5) {
+      // A flush kerb or a flare keeps its kerb: its walk is let down at one end only.
+      if (p.kind.includes("_flush")) {
+        out.ledges!++;
+        return;
+      }
+      if (length < SINK_LENGTH || p.kind.endsWith("_c")) pieces[k] = { ...p, kind: bentKind("median", p.kind.endsWith("_c")), kerb: "median", bend: { ...p.bend, sink: 0, walk: KERB_BACK, panel: 0 } };
+      else {
+        const [one, two] = splitStraight(p, length / 2);
+        pieces.splice(k, 1, { ...one, bend: { ...one.bend, sink: -1 } }, { ...two, bend: { ...two.bend, sink: 1 } });
+      }
+      out.sunk!++;
+      return;
+    }
+    if (length <= SINK_LENGTH + 0.5) {
+      pieces[k] = { ...p, bend: { ...p.bend, sink: toward } };
+      out.sunk!++;
+      return;
+    }
+    if (p.kind.endsWith("_c")) {
+      out.ledges!++;
+      return;
+    }
+    const [one, two] = splitStraight(p, toward === 1 ? length - SINK_LENGTH : SINK_LENGTH);
+    pieces.splice(k, 1, toward === 1 ? one : { ...one, bend: { ...one.bend, sink: -1 } }, toward === 1 ? { ...two, bend: { ...two.bend, sink: 1 } } : two);
+    out.sunk!++;
+  }
+
+  /**
+   * A piece cut round what the city set down on its walk, or null where nothing stands on it or what stands there stands on
+   * the walk: its walk ending CUT_SHORT before the nearest of it that stands CUT_ROUND or more behind the kerb's face, and a
+   * straight split so the cut walk is only as long as that is along it, the rest of it as it was.
+   */
+  function cutRound(p: BentPiece): BentPiece[] | null {
+    if (p.bend.walk <= KERB_BACK + 0.01) return null;
+    const met = obstacles.meeting(walkBox(p, p.bend.walk), -0.1, passed);
+    if (met.length === 0) return null;
+    const a = (p.yaw * Math.PI) / 180, cx = Math.cos(a), cz = -Math.sin(a);
+    // Each thing's corners in the piece's chord's frame: along from its middle, across from its face.
+    let back = Infinity, lo = Infinity, hi = -Infinity, near = false;
+    for (const { p: q, box } of met) {
+      const b = (box.yaw * Math.PI) / 180, bc = Math.cos(b), bs = Math.sin(b);
+      let least = Infinity, l0 = Infinity, l1 = -Infinity;
+      for (const [u, w] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+        const ox = box.x + bc * u * box.size[0] / 2 + bs * w * box.size[2] / 2 - p.x, oz = box.z - bs * u * box.size[0] / 2 + bc * w * box.size[2] / 2 - p.z;
+        const along = ox * cx + oz * cz, across = ox * -cz + oz * cx;
+        least = Math.min(least, across);
+        l0 = Math.min(l0, along);
+        l1 = Math.max(l1, along);
+      }
+      const family = q.kind.replace(/^core:/, "").replace(/_[a-z0-9]+$/, "").replace(/\d+$/, "");
+      if (least < CUT_ROUND) {
+        near = true;
+        standing.set(`${family} on`, (standing.get(`${family} on`) ?? 0) + 1);
+        continue;
+      }
+      standing.set(`${family} cut`, (standing.get(`${family} cut`) ?? 0) + 1);
+      back = Math.min(back, least - CUT_SHORT);
+      lo = Math.min(lo, l0);
+      hi = Math.max(hi, l1);
+    }
+    if (back === Infinity) {
+      if (near) out.standing!++;
+      return null;
+    }
+    out.narrowed!++;
+    const walk = Math.max(CUT_LEAST, Math.min(p.bend.walk, back));
+    const cut = (q: BentPiece): BentPiece => ({ ...q, bend: { ...q.bend, walk } });
+    const L = p.bend.half * 2, m0 = Math.max(0, lo - 0.3 + p.bend.half), m1 = Math.min(L, hi + 0.3 + p.bend.half);
+    if (p.kind.endsWith("_c") || p.kind.includes("_flush") || p.bend.sink || m1 - m0 > L - 1) return [cut(p)];
+    // Split so only what stands there has its walk cut: before it, it, and after it, each at least half a metre.
+    const parts: BentPiece[] = [];
+    let rest = p, done = 0;
+    for (const at of [m0, m1]) {
+      if (at - done < 0.5 || L - at < 0.5) continue;
+      const [one, two] = splitStraight(rest, at - done);
+      parts.push(one);
+      rest = two;
+      done = at;
+    }
+    parts.push(rest);
+    return parts.map((q) => {
+      const mid = (q.x - p.x) * cx + (q.z - p.z) * cz + p.bend.half;
+      return mid >= m0 - 0.01 && mid <= m1 + 0.01 ? cut(q) : q;
+    });
+  }
 
   /**
    * Whether a piece's kerb and the first of its walk meet what the city has set down there. What stands further back on a
-   * walk (a stoop, a column, an awning's post) stands on it, as on a walk drawn by the ground.
+   * walk (a stoop, a column, an awning's post) is cut round or stands on it (cutRound).
    */
   function blocked(p: BentPiece): boolean {
     return obstacles.hits(walkBox(p, Math.max(KERB_BACK, Math.min(0.6, p.bend.walk))), -0.1, rubble);
@@ -231,7 +473,7 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     pieces.forEach((p, k) => {
       const length = p.bend.half * 2, mid = along + length / 2;
       along += length;
-      if (!/_(raised|worn)_s$/.test(p.kind) || length < 3 || p.bend.walk < 1) return;
+      if (!/_(raised|worn)_s$/.test(p.kind) || length < 3 || p.bend.walk < 1 || p.bend.sink) return;
       const before = pieces[k - 1]?.y ?? Infinity, after = pieces[k + 1]?.y ?? Infinity;
       if (p.y <= before && p.y <= after && hash3(seed, Math.floor(mid / 32), v.seed + 3) % rules.gutterEvery === 0 && fixture(p, "zdrain", 0, BREAK_AT.zdrain![2]!)) out.drains!++;
       // A box 2 m on from the middle where the piece is long enough, as the kit's is from its slab's.
@@ -252,7 +494,7 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
   /** Turns piece `k` of `pieces` into a flare from one kerb to another, cut down to FLARE long from its end; whether it did. */
   function join(pieces: BentPiece[], k: number, a: BentKerb, b: BentKerb): boolean {
     const p = pieces[k]!;
-    if (p.kind.endsWith("_c") || a === "median" || b === "median") return false;
+    if (p.kind.endsWith("_c") || p.kind.includes("_flush") || a === "median" || b === "median") return false;
     // A flare to or from a flush kerb is walked as the flush kerb's ramp, which is lower than the raised kerb's box.
     const kind = bentJoin(a, b), kerb = a === "flush" || b === "flush" ? "flush" : p.kerb;
     out.joins!++;
@@ -292,6 +534,59 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     out.collision! += hits.length;
     return true;
   }
+}
+
+/**
+ * A line's points' states judged over the line, in place, by their stations: a stretch not level (or its walk not level)
+ * for under FILL metres between two that are is taken as they are, and a stretch laid (or walked) for under ISLAND
+ * between two that are not is taken as they are. Gives how many points were laid on.
+ */
+export function judged(state: Uint8Array, stations: Float64Array): number {
+  let filled = 0;
+  // Between two points at or over `least`, a stretch under it for under FILL metres is raised to the lesser of the two.
+  const fill = (least: number, under: (v: number) => boolean): void => {
+    for (let q = 0; q < state.length; ) {
+      if (!under(state[q]!) || q === 0 || state[q - 1]! < least) {
+        q++;
+        continue;
+      }
+      let e = q;
+      while (e < state.length && under(state[e]!)) e++;
+      if (e < state.length && state[e]! >= least && stations[e]! - stations[q - 1]! <= FILL) {
+        const to = Math.min(state[q - 1]!, state[e]!);
+        for (let k = q; k < e; k++) if (state[k] !== OFF) {
+          state[k] = to;
+          filled++;
+        }
+      }
+      q = e;
+    }
+  };
+  // A stretch at or over `least` for under ISLAND metres between two under it is lowered to `to`.
+  const island = (least: number, to: number): void => {
+    for (let q = 0; q < state.length; ) {
+      if (state[q]! < least) {
+        q++;
+        continue;
+      }
+      let e = q;
+      while (e < state.length && state[e]! >= least) e++;
+      if (q > 0 && e < state.length && stations[e - 1]! - stations[q]! < ISLAND) for (let k = q; k < e; k++) state[k] = Math.min(state[k]!, to);
+      q = e;
+    }
+  };
+  // Short failing stretches first, short passing ones then: no kerb is laid in dashes, nor in crumbs.
+  fill(ALONE, (s) => s === UNLEVEL);
+  fill(WALKED, (s) => s === ALONE);
+  island(WALKED, ALONE);
+  island(ALONE, UNLEVEL);
+  return filled;
+}
+
+/** The drop of `drops` (from, to and kind, three a drop) that holds station `s`, by its place, or -1. */
+function dropAt(drops: readonly number[], s: number): number {
+  for (let k = 0; k + 2 < drops.length; k += 3) if (s >= drops[k]! - 0.01 && s <= drops[k + 1]! + 0.01) return k;
+  return -1;
 }
 
 /**

@@ -9,7 +9,7 @@
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import type { HullDef } from "../shared/world/convex.ts";
 import { PAVING } from "../shared/world/vehicle-surface.ts";
-import { BENT_KERBS, FLUSH_APRON, FLUSH_FACE, HIT_LENGTHS, HIT_WIDTHS, KERB_BACK, KERB_HEIGHT, MODEL_HALF, MODEL_WALK, across, bentJoin, bentKind, hitKind } from "../shared/world/bends.ts";
+import { BENT_KERBS, FLUSH_APRON, FLUSH_FACE, HIT_LENGTHS, HIT_WIDTHS, KERB_BACK, KERB_HEIGHT, MODEL_HALF, MODEL_WALK, SLOPE_LENGTHS, across, bentJoin, bentKind, hitKind, slopeKind } from "../shared/world/bends.ts";
 
 /** The walk kit's concrete and its kerb's pale top (content/ruins.ts street()), for the far city's boxes. */
 const CONCRETE = 100, CURB = 101, WALK = 100;
@@ -46,6 +46,18 @@ function hit(ramp: boolean, width: number, length: number): { shape: ShapeDef; d
   return { shape, def: { type: "structure", class: "static", id, mesh: "none", shape: shape.id, half: shapeHalf(shape.boxes, shape.hulls, shape.look), color: CONCRETE, hp: 16000, near: true, vehicleSurface: PAVING } };
 }
 
-const HITS = [false, true].flatMap((ramp) => HIT_WIDTHS.flatMap((w) => HIT_LENGTHS.map((l) => hit(ramp, w, l))));
+/**
+ * A sinking walk's slope (bends.ts slopesUnder): its walk's band at the kerb's height at its -x end, falling to the road
+ * (a centimetre over it) at its +x end, as its piece is drawn where a walk ends.
+ */
+function slope(width: number, length: number): { shape: ShapeDef; def: StructureDef } {
+  const x = length / 2, h = KERB_HEIGHT / 2, z = width / 2;
+  const corners = [-z, z].flatMap((lz) => [[-x, -h, lz], [-x, h, lz], [x, -h, lz], [x, 0.01 - h, lz]] as const);
+  const id = slopeKind(width, length);
+  const shape: ShapeDef = { type: "shape", id: `${id}_shape`, role: "thing", boxes: [], hulls: [{ corners }] };
+  return { shape, def: { type: "structure", class: "static", id, mesh: "none", shape: shape.id, half: shapeHalf(shape.boxes, shape.hulls), color: CONCRETE, hp: 16000, near: true, vehicleSurface: PAVING } };
+}
+
+const HITS = [...[false, true].flatMap((ramp) => HIT_WIDTHS.flatMap((w) => HIT_LENGTHS.map((l) => hit(ramp, w, l)))), ...HIT_WIDTHS.flatMap((w) => SLOPE_LENGTHS.map((l) => slope(w, l)))];
 
 export const BENT_SECTIONS: readonly Def[] = [...BENT_SHAPES, ...BENT, ...HITS.flatMap((h) => [h.shape, h.def])];

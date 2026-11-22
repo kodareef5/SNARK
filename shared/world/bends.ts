@@ -9,10 +9,13 @@
 //
 // The map's build lays the pieces (placeKerb, from a kerb line with stations and a section) and, under them, collision
 // pieces of plain boxes and ramps drawn as nothing (underPiece, content/bends.ts), which servers, vehicles and the walk
-// proofs meet as they meet any static: a bent kind itself is walked as nothing (StructureDef.bent).
+// proofs meet as they meet any static: a bent kind itself is walked as nothing (StructureDef.bent). A map does not store
+// the collision pieces: each reader makes them from the bends as a part is read (madeHits, mapfile.ts), the same to the
+// bit on a server and a page.
 //
 // Only + - * / Math.floor Math.sqrt Math.abs and the det functions are used here, so a build is the same everywhere.
 
+import { STRUCT_UNITS, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 
 /** A bend's bytes on the card and in a map: eight 16-bit numbers (packBend). */
@@ -52,6 +55,13 @@ export interface Bend {
   /** 0 to 255, the same along a kerb line, and 0 to 1, how worn. */
   readonly seed: number;
   readonly wear: number;
+  /**
+   * Its walk let down to the ground along it, toward its end (1) or its start (-1), where a walk ends and the kerb runs
+   * on alone or stops: the walk's top falls by the kerb's height from one end to the other, the kerb stays as it is.
+   */
+  readonly sink?: -1 | 0 | 1;
+  /** A crossing's ramp: its walk's apron dimpled, as a flush kerb's is where people cross (bentWear). */
+  readonly tactile?: boolean;
 }
 
 const round = (v: number): number => Math.floor(v + 0.5);
@@ -65,8 +75,11 @@ export function packBend(out: Int16Array, at: number, b: Bend): void {
   const cm = round(wrapped(b.station) * 100) % (STATION_WRAP * 100);
   out[at + 3] = cm > 32767 ? cm - 65536 : cm;
   out[at + 4] = short(b.rise * 1000);
-  out[at + 5] = short(b.panel * 1000);
-  out[at + 6] = short(b.walk * 1000);
+  // The panel in the low 14 bits and a crossing's ramp in the next; the walk in the low 14 bits (to 16.38 m) and its sink in
+  // the top two.
+  out[at + 5] = clamp(round(b.panel * 1000), 0, FLAG - 1) | (b.tactile ? FLAG : 0);
+  const walk = clamp(round(b.walk * 1000), 0, FLAG - 1) | (b.sink === 1 ? FLAG : 0) | (b.sink === -1 ? 2 * FLAG : 0);
+  out[at + 6] = walk > 32767 ? walk - 65536 : walk;
   out[at + 7] = (round(clamp(b.wear, 0, 1) * 127) << 8) | (round(b.seed) & 255);
 }
 
@@ -75,9 +88,12 @@ export function unpackBend(r: ArrayLike<number>, at = 0): Bend {
   const station = r[at + 3]!;
   return {
     half: r[at]! / 1000, turn0: r[at + 1]! / ANGLE, turn1: r[at + 2]! / ANGLE, station: (station < 0 ? station + 65536 : station) / 100,
-    rise: r[at + 4]! / 1000, panel: r[at + 5]! / 1000, walk: r[at + 6]! / 1000, seed: r[at + 7]! & 255, wear: (r[at + 7]! >> 8) / 127,
+    rise: r[at + 4]! / 1000, panel: (r[at + 5]! & (FLAG - 1)) / 1000, walk: (r[at + 6]! & (FLAG - 1)) / 1000, seed: r[at + 7]! & 255, wear: (r[at + 7]! >> 8) / 127,
+    sink: r[at + 6]! & (2 * FLAG) ? -1 : r[at + 6]! & FLAG ? 1 : 0, tactile: (r[at + 5]! & FLAG) !== 0,
   };
 }
+/** The first of a bend's flag bits in its panel's and its walk's numbers. */
+const FLAG = 1 << 14;
 
 export function wrapped(station: number): number {
   return station - Math.floor(station / STATION_WRAP) * STATION_WRAP;
@@ -140,6 +156,17 @@ export function across(z: number, walk: number): number {
 }
 
 const at4 = [0, 0, 0, 0];
+/** Past this across from the kerb's face a modelled point is the walk's, not the kerb's. */
+export const SINK_FROM = KERB_BACK + 0.01;
+
+/**
+ * How much of a sinking walk's fall a vertex modelled at (ly, lz) takes: its height over the road as a share of the
+ * kerb's, none on the kerb nor under the road. It falls by that times the kerb's height times how far along toward the
+ * sink's end it is, so the walk's top comes down to the road there and nothing goes under it. The twin of BEND_GLSL's.
+ */
+export function sinkWeight(ly: number, lz: number): number {
+  return lz <= SINK_FROM ? 0 : clamp(ly / KERB_HEIGHT, 0, 1);
+}
 
 /**
  * A vertex of a bent piece, modelled at (lx, ly, lz) with its normal and its tangent, laid along its bend as the vertex
@@ -155,12 +182,15 @@ export function bendVertex(out: Float64Array | number[], b: Bend, lx: number, ly
   const length = arcLength(b.half, b.turn1 - b.turn0);
   const station = b.station + u * length;
   const lift = sag(station, b.seed, b.wear) * sagShare(z, b.walk);
+  // A walk let down to the ground: its points over the walk's foot fall by up to the kerb's height, toward the sink's end.
+  const sink = b.sink ?? 0, weight = sink === 0 ? 0 : sinkWeight(ly, lz), fall = weight * (sink > 0 ? u : sink < 0 ? 1 - u : 0);
   out[0] = px - wz * z;
-  out[1] = ly + b.rise * (2 * u - 1) + lift;
+  out[1] = ly + b.rise * (2 * u - 1) + lift - KERB_HEIGHT * fall;
   out[2] = pz + wx * z;
   // Stretched along, risen along and its walk stretched across, a piece takes its tangent through those and its normal
   // through their inverse, transposed: along by `stretch`, up by `grade` along, across by `k`.
-  const stretch = length / (2 * MODEL_HALF), grade = (2 * b.rise) / length, k = lz > KERB_BACK ? (b.walk - KERB_BACK) / (MODEL_WALK - KERB_BACK) : 1;
+  const stretch = length / (2 * MODEL_HALF), k = lz > KERB_BACK ? (b.walk - KERB_BACK) / (MODEL_WALK - KERB_BACK) : 1;
+  const grade = (2 * b.rise - KERB_HEIGHT * sink * weight) / length;
   const na = nx / stretch - grade * ny, nc = nz / k;
   const n0 = wx * na - wz * nc, n2 = wz * na + wx * nc, nl = Math.sqrt(n0 * n0 + ny * ny + n2 * n2) || 1;
   out[3] = n0 / nl;
@@ -226,9 +256,14 @@ export const bentKind = (kerb: BentKerb, curved: boolean): string => `core:zzzzz
 export const bentJoin = (from: BentKerb, to: BentKerb): string => `core:zzzzzbend_${from}_${to}`;
 /** Segments along a curved piece, and the most a piece of each runs. */
 export const CURVE_SEGMENTS = 8;
-const STRAIGHT_MOST = 16, CURVE_MOST = 8, LEAST = 0.4;
-/** The most a straight piece's end may stand turned from its chord, as a mitre to the next, and how far its chord or a curve may miss the line. */
-const MITRE = 0.035, MISS = 0.004;
+const STRAIGHT_MOST = 32, CURVE_MOST = 8, LEAST = 0.4;
+/** A straight runs this far whatever the line's heights do, and on to STRAIGHT_MOST where they rise evenly (evenRise). */
+const STRAIGHT_EVEN = 16;
+/**
+ * The most a straight piece's end may stand turned from its chord, as a mitre to the next, how far its chord or a curve
+ * may miss the line, and how far a straight's even rise may miss the heights of the line's points along it.
+ */
+const MITRE = 0.035, MISS = 0.004, RISE_MISS = 0.02;
 
 /**
  * The pieces of a kerb line, its walk on its left as `side` 1 has it (a piece's +z, a quarter counter-clockwise from the
@@ -279,7 +314,7 @@ export function placeKerb(line: KerbLine, side: 1 | -1, section: Section, from =
     // A curve where the line bends, and where a straight would run on only a little way and a curve twice as far: a
     // gentle bend is then one curve of eight segments, not straights of a metre or so.
     let straight = straightFits(px, pz, frame(i), frame(j), i, j) ? j : i;
-    if (straight > i) while (straight + 1 < n && st[straight + 1]! - st[i]! <= STRAIGHT_MOST && straightFits(px, pz, frame(i), frame(straight + 1), i, straight + 1)) straight++;
+    if (straight > i) while (straight + 1 < n && st[straight + 1]! - st[i]! <= STRAIGHT_MOST && straightFits(px, pz, frame(i), frame(straight + 1), i, straight + 1) && (st[straight + 1]! - st[i]! <= STRAIGHT_EVEN || evenRise(py, st, i, straight + 1))) straight++;
     let curve = j;
     while (curve + 1 < n && st[curve + 1]! - st[i]! <= CURVE_MOST && curveFits(px, pz, frame(i), frame(curve + 1), i, curve + 1)) curve++;
     const curved = straight === i || st[curve]! - st[i]! > 2 * (st[straight]! - st[i]!);
@@ -291,6 +326,13 @@ export function placeKerb(line: KerbLine, side: 1 | -1, section: Section, from =
 }
 
 interface Frame { x: number; y: number; z: number; dx: number; dz: number; s: number }
+
+/** Whether the line's heights from point i to point j keep within RISE_MISS of an even rise between them: a straight rises evenly. */
+function evenRise(py: readonly number[], st: readonly number[], i: number, j: number): boolean {
+  const span = st[j]! - st[i]! || 1e-6;
+  for (let k = i + 1; k < j; k++) if (Math.abs(py[k]! - (py[i]! + ((py[j]! - py[i]!) * (st[k]! - st[i]!)) / span)) > RISE_MISS) return false;
+  return true;
+}
 
 /** The chord from a to b and the turns of their ways from it. */
 function chordOf(a: Frame, b: Frame): { half: number; cx: number; cz: number; turn0: number; turn1: number } {
@@ -384,6 +426,26 @@ function lay(out: BentPiece[], a: Frame, b: Frame, curved: boolean, kerb: BentKe
   });
 }
 
+/**
+ * Where a bent piece with bend `b` stands were it the next along the kerb line of the piece before, at (x, y, z) on the
+ * map's lattice (its middle in 1/512 m, from any corner, the same on both sides) turned `yaw` (1/65,536 turns) with bend
+ * `a`: its start at that one's end, its chord turned from that one's way there by its own start's turn, its middle half
+ * its chord on and its own rise over. Into `out` as x, y, z and yaw on the same lattice. A map's statics code a bent piece
+ * after a bent piece against it (mapfile.ts), so only what it misses by is written, which along a line is next to nothing.
+ */
+export function bentNext(x: number, y: number, z: number, yaw: number, a: ArrayLike<number>, b: ArrayLike<number>, out: number[] | Float64Array): void {
+  const turn = (yaw * TAU) / YAW_UNITS, cs = detCos(turn), sn = detSin(turn);
+  // Its end: half its chord on along it, and its rise over its middle.
+  const ha = (a[0]! / 1000) * STRUCT_UNITS, hb = (b[0]! / 1000) * STRUCT_UNITS;
+  const ex = x + cs * ha, ez = z - sn * ha, ey = y + (a[4]! / 1000) * STRUCT_UNITS;
+  // The next chord turned from this one by this one's end's turn less the next's start's, a turn toward +z positive.
+  const next = turn - a[2]! / ANGLE + b[1]! / ANGLE, nc = detCos(next), ns = detSin(next);
+  out[0] = round(ex + nc * hb);
+  out[1] = round(ey + (b[4]! / 1000) * STRUCT_UNITS);
+  out[2] = round(ez - ns * hb);
+  out[3] = round((next * YAW_UNITS) / TAU) & 0xffff;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Collision: plain pieces under each bent one.
 
@@ -414,40 +476,95 @@ export interface HitPiece { readonly kind: string; readonly x: number; readonly 
  * curve on chords short enough that each misses the curve by no more than 2 cm at the face, so a wheel meets the kerb within that of where it is drawn. None reaches past the piece's ends.
  */
 export function underPiece(p: BentPiece): HitPiece[] {
-  const b = p.bend, phi = b.turn1 - b.turn0, length = arcLength(b.half, phi);
+  const out: HitPiece[] = [];
+  hitsUnder(p.x, p.y, p.z, p.yaw, p.bend, p.kerb === "flush", (kind, x, y, z, yaw) => out.push({ kind, x, y, z, yaw }));
+  return out;
+}
+
+/** The start of every collision piece's kind (hitKind): a map holds none of them, but makes them from its bends (madeHits). */
+export const HIT_PREFIX = "core:zzzzzbendhit_";
+/** Whether a bent kind is walked as a flush kerb's ramp: a flush kerb, or a flare to or from one (bent-walks.ts join). */
+export const walkedFlush = (kind: string): boolean => kind.includes("_flush");
+
+/**
+ * The collision pieces under a bent piece as a map holds it, on the file's lattice: its middle in 1/512 m, its turn in
+ * 1/65,536 turns, its bend's eight numbers (packBend) and whether it is walked flush. Each comes to `each` as its kind and
+ * its middle and turn on the same lattice. A map stores none of them: a server, a page, the walk proofs and the map's
+ * writer all make them here from the same numbers (mapfile.ts), so every one of them holds the same boxes to the bit.
+ */
+export function madeHits(ux: number, uy: number, uz: number, yaw: number, bend: ArrayLike<number>, flush: boolean, each: (kind: string, ux: number, uy: number, uz: number, yaw: number) => void): void {
+  hitsUnder(ux / STRUCT_UNITS, uy / STRUCT_UNITS, uz / STRUCT_UNITS, (yaw * 360) / YAW_UNITS, unpackBend(bend), flush, (kind, x, y, z, turn) =>
+    each(kind, round(x * STRUCT_UNITS), round(y * STRUCT_UNITS), round(z * STRUCT_UNITS), round((turn * YAW_UNITS) / 360) & 0xffff));
+}
+
+/** underPiece's work, each piece to `each` as its kind, its middle and its turn in degrees. */
+function hitsUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, flush: boolean, each: (kind: string, x: number, y: number, z: number, yaw: number) => void): void {
+  const phi = b.turn1 - b.turn0, length = arcLength(b.half, phi);
+  // A walk let down to the ground: the kerb's boxes alone, and over the walk behind it slopes falling as it does.
+  if (b.sink) slopesUnder(px, py, pz, pyaw, b, each);
+  const walk = b.sink ? KERB_BACK : b.walk;
   // Bands across, as few as the widest box allows, each as wide as the walk needs, rounded up, the first at the face and
   // the last at the walk's back.
-  const most = HIT_WIDTHS[HIT_WIDTHS.length - 1], bands = Math.max(1, Math.ceil(b.walk / most - 1e-6));
-  const width = bands === 1 ? hitWidth(b.walk) : HIT_WIDTHS.find((w) => w >= b.walk / bands - 1e-6) ?? most;
-  const across = (j: number): number => (bands === 1 ? width / 2 : width / 2 + ((b.walk - width) * j) / (bands - 1));
+  const most = HIT_WIDTHS[HIT_WIDTHS.length - 1], bands = Math.max(1, Math.ceil(walk / most - 1e-6));
+  const width = bands === 1 ? hitWidth(walk) : HIT_WIDTHS.find((w) => w >= walk / bands - 1e-6) ?? most;
+  const widthAt = (HIT_WIDTHS as readonly number[]).indexOf(width);
+  const across = (j: number): number => (bands === 1 ? width / 2 : width / 2 + ((walk - width) * j) / (bands - 1));
   // Chords of the curve, each missing it by under 2 cm.
   const radius = Math.abs(phi) > 1e-4 ? length / Math.abs(phi) : Infinity;
   const longest = radius === Infinity ? STRAIGHT_MOST : Math.min(STRAIGHT_MOST, Math.sqrt(8 * radius * 0.02));
   const chords = Math.max(1, Math.ceil(length / longest - 1e-9));
   // A box is level along its length: on a slope none is so long that its ends stand more than 4 cm off the walk.
   const grade = Math.abs((2 * b.rise) / Math.max(length, 1e-6)), level = grade > 1e-4 ? (2 * SLOPE_MISS) / grade : Infinity;
-  const a = (p.yaw * PI) / 180, cs = detCos(a), sn = detSin(a);
-  const out: HitPiece[] = [];
-  const pa = [0, 0, 0, 0], pb = [0, 0, 0, 0];
+  const a = (pyaw * PI) / 180, cs = detCos(a), sn = detSin(a);
+  const pa = hitA, pb = hitB;
   for (let k = 0; k < chords; k++) {
     curveAt(pa, b.half, b.turn0, b.turn1, k / chords);
     curveAt(pb, b.half, b.turn0, b.turn1, (k + 1) / chords);
     const ex = pb[0]! - pa[0]!, ez = pb[1]! - pa[1]!, chord = Math.sqrt(ex * ex + ez * ez);
     const ux = ex / chord, uz = ez / chord;
     // The longest length that fits the chord, and as many as cover it.
-    let size: number = HIT_LENGTHS[0];
-    for (const l of HIT_LENGTHS) if (l <= chord + 1e-6 && l <= level + 1e-6) size = l;
+    let sizeAt = 0;
+    for (let i = 0; i < HIT_LENGTHS.length; i++) if (HIT_LENGTHS[i]! <= chord + 1e-6 && HIT_LENGTHS[i]! <= level + 1e-6) sizeAt = i;
+    const size: number = HIT_LENGTHS[sizeAt]!;
     const count = Math.max(1, Math.ceil(chord / size - 1e-6));
     for (let q = 0; q < count; q++) for (let j = 0; j < bands; j++) {
       const along = count === 1 ? chord / 2 : size / 2 + ((chord - size) * q) / (count - 1);
       // In the piece's frame: along the chord, then across to the middle of the box's width.
       const lx = pa[0]! + ux * along - uz * across(j), lz = pa[1]! + uz * along + ux * across(j);
       const t = (k + along / chord) / chords;
-      const y = p.y + b.rise * (2 * t - 1) + KERB_HEIGHT / 2;
+      const y = py + b.rise * (2 * t - 1) + KERB_HEIGHT / 2;
       // The world: x along (cs, -sn), z across (sn, cs).
-      const yaw = p.yaw + (detAtan2(-uz, ux) * 180) / PI;
-      out.push({ kind: hitKind(p.kerb === "flush" && j === 0, width, size), x: p.x + cs * lx + sn * lz, y, z: p.z - sn * lx + cs * lz, yaw: ((yaw % 360) + 360) % 360 });
+      const yaw = pyaw + (detAtan2(-uz, ux) * 180) / PI;
+      each(kinds[(flush && j === 0 ? 1 : 0) * KINDS_RAMP + widthAt * HIT_LENGTHS.length + sizeAt]!, px + cs * lx + sn * lz, y, pz - sn * lx + cs * lz, ((yaw % 360) + 360) % 360);
     }
   }
-  return out;
+}
+const hitA = [0, 0, 0, 0], hitB = [0, 0, 0, 0];
+/** Every collision piece's kind, boxes then ramps, by width then length, as hitKind names them: made once, not a piece at a time. */
+const KINDS_RAMP = HIT_WIDTHS.length * HIT_LENGTHS.length;
+const kinds: readonly string[] = [false, true].flatMap((ramp) => HIT_WIDTHS.flatMap((w) => HIT_LENGTHS.map((l) => hitKind(ramp, w, l))));
+
+/** How long a walk's fall to the ground is where it ends (bent-walks.ts), and the lengths its slopes come in. */
+export const SINK_LENGTH = 1.5;
+export const SLOPE_LENGTHS = [0.75, SINK_LENGTH] as const;
+/** A sinking walk's slope (content/bends.ts): its width and length, falling the kerb's height along its +x. */
+export const slopeKind = (width: number, length: number): string => `core:zzzzzbendhit_slope_${Math.round(width * 100)}_${Math.round(length * 100)}`;
+const slopes: readonly string[] = HIT_WIDTHS.flatMap((w) => SLOPE_LENGTHS.map((l) => slopeKind(w, l)));
+
+/**
+ * The slopes under a sinking walk, behind its kerb: one a band across, as wide as the walk's band, as long as the piece
+ * (the nearer of the lengths they come in), its middle at the chord's and falling toward the sink's end.
+ */
+function slopesUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, each: (kind: string, x: number, y: number, z: number, yaw: number) => void): void {
+  const behind = b.walk - KERB_BACK, most = HIT_WIDTHS[HIT_WIDTHS.length - 1];
+  if (behind < HIT_WIDTHS[0] / 2) return;
+  const bands = Math.max(1, Math.ceil(behind / most - 1e-6));
+  const width = bands === 1 ? hitWidth(behind) : HIT_WIDTHS.find((w) => w >= behind / bands - 1e-6) ?? most;
+  const lengthAt = Math.abs(2 * b.half - SLOPE_LENGTHS[0]) < Math.abs(2 * b.half - SLOPE_LENGTHS[1]) ? 0 : 1;
+  const a = (pyaw * PI) / 180, cs = detCos(a), sn = detSin(a);
+  const yaw = (((pyaw + (b.sink! < 0 ? 180 : 0)) % 360) + 360) % 360;
+  for (let j = 0; j < bands; j++) {
+    const lz = KERB_BACK + (bands === 1 ? width / 2 : width / 2 + ((behind - width) * j) / (bands - 1));
+    each(slopes[(HIT_WIDTHS as readonly number[]).indexOf(width) * SLOPE_LENGTHS.length + lengthAt]!, px + sn * lz, py + KERB_HEIGHT / 2, pz + cs * lz, yaw);
+  }
 }

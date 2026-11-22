@@ -35,6 +35,13 @@ import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
 import { nodeKey, streetGraph, type Marked, type Segment } from "./street-graph.ts";
 import { cornersOf, filletIndex, returnIndex, type Corner } from "./corners.ts";
 import { CURB_RETURN, isCurbReturn } from "../../content/curbs.ts";
+import { StreetPoint, streetAt } from "../../shared/world/streets.ts";
+
+/**
+ * How far behind a kerb's face, by the streets' lines, a piece's foot stands at least: past the kerb's top, so none stands
+ * on the kerb or in its gutter. A piece set in the road on purpose (`road` under none) is left to the lanes' own rule.
+ */
+const KERB_CLEAR = 0.45;
 
 /** A rule's kinds by their names after "core:zzstreet_", with their weights. */
 type Forms = readonly (readonly [string, number])[];
@@ -234,6 +241,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   for (const p of placed) counts[chunkOf(p.x, p.z)]!++;
   const mine = new Map<number, Box[]>();
   const pieces: StaticPiece[] = [];
+  const kerbPoint = new StreetPoint();
   const summary: FurnitureSummary = { placed: {}, byRule: {}, refused: {} };
   let quiet = false; let lastWhy = "";
   const refuse = (rule: string, why: string): false => { lastWhy = why; if (!quiet) { const r = (summary.refused[rule] ??= {}); r[why] = (r[why] ?? 0) + 1; } return false; };
@@ -258,6 +266,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     if (corners.some(([px, pz]) => (returnAt(px, pz)?.drop ?? 0) > 0.03)) return refuse(rule, "crossing");
     if (corners.some(([px, pz]) => Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge)) return refuse(rule, "edge");
     if (corners.some(([px, pz]) => inLane(px, pz, road))) return refuse(rule, "lane");
+    if (road >= 0 && site.ground.streets && corners.some(([px, pz]) => streetAt(site.ground.streets!, px - x0, pz - z0, kerbPoint) && kerbPoint.d > -1 && kerbPoint.d < KERB_CLEAR)) return refuse(rule, "kerb");
     if (corners.some(([px, pz]) => graph.onCrossing(px, pz, clear.crossing))) return refuse(rule, "crossing");
     // On a walk wherever it touches one, on the lowest ground under it elsewhere.
     const tops = corners.map(([px, pz]) => walkTop(px, pz)); const walk = Math.max(...tops);
