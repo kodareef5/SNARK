@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { App } from "../../client/core/app.ts";
 import { BudgetPanel } from "../../client/core/notes/budget.ts";
-import { PASSES, PassClock, type QueryGl } from "../../client/core/passes.ts";
+import { PASSES, PASS_FINISH, PASS_MAKING, PASS_UPLOADS, PassClock, type QueryGl } from "../../client/core/passes.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { ReportStore } from "../../server/reports.ts";
 import { perf } from "../../tools/reports.ts";
@@ -16,8 +16,9 @@ import { jpegHead } from "../fixtures/jpeg.ts";
 
 const ROOT = join(import.meta.dir, "../..");
 
-/** A pass list with one more pass at its front, as a branch that times the walls' weathering is made gives it. */
-const INSERTED = ["making", ...PASSES];
+/** The clock's list, the textures the card makes its first pass; and the list before that pass was put in front. */
+const INSERTED: string[] = [...PASSES];
+const OLDER = PASSES.filter((name) => name !== "making");
 
 /** A panel given `frames` frames timed by pass: pass i took (i + 1) quarters of a millisecond, whatever its name. */
 function timed(panel: BudgetPanel, frames = 4): BudgetPanel {
@@ -28,6 +29,8 @@ function timed(panel: BudgetPanel, frames = 4): BudgetPanel {
 
 test("the panel and the note's census take the pass clock's own list, with no copy of their own", () => {
   expect(new BudgetPanel().passNames).toBe(PASSES);
+  // The making of the card's textures is the first pass and the finish the last, each at its own constant.
+  expect([PASSES[PASS_MAKING], PASSES[PASS_UPLOADS], PASSES[PASS_FINISH], PASS_FINISH]).toEqual(["making", "uploads", "finish", PASSES.length - 1]);
   // What the clock gives a frame by pass is a number for each pass of the same list.
   const gl: QueryGl = { getExtension: () => ({}), getParameter: () => false, isContextLost: () => false, createQuery: () => ({}), deleteQuery: () => {}, beginQuery: () => {}, endQuery: () => {}, getQueryParameter: (_q, name) => (name === 0x8867 ? true : 1e6), bindFramebuffer: () => {}, readPixels: () => {} };
   const clock = new PassClock(gl, true);
@@ -40,6 +43,7 @@ test("the panel and the note's census take the pass clock's own list, with no co
 });
 
 test("a pass inserted at the front of the list moves every label with it: the census's, the card's bar and its legend", () => {
+  expect([INSERTED[0], INSERTED.length, OLDER.length]).toEqual(["making", 10, 9]);
   const panel = timed(new BudgetPanel(INSERTED));
   const times = panel.passTimes();
   expect(times.map((t) => t.name)).toEqual(INSERTED);
@@ -70,11 +74,10 @@ async function send(dir: string, panel: BudgetPanel): Promise<number> {
 test("a report written with one list of passes reads back right under another", async () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-pass-names-"));
   try {
-    // Written by a page whose list had "making" first; read by a reader whose list does not.
-    const id = await send(dir, timed(new BudgetPanel(INSERTED)));
-    expect(PASSES as readonly string[]).not.toContain("making");
+    // Written by a page whose list had no "making"; read by a reader whose list has it first.
+    const id = await send(dir, timed(new BudgetPanel(OLDER)));
     const card = perf(dir, id).find((l) => l.includes("the card:"))!;
-    expect(card).toBe(`  the processor: frame 1 ms; the card: ${INSERTED.map((name, i) => `${name} ${(i + 1) / 4} ms`).join(", ")}`);
+    expect(card).toBe(`  the processor: frame 1 ms; the card: ${OLDER.map((name, i) => `${name} ${(i + 1) / 4} ms`).join(", ")}`);
     // And one written by today's list reads by its own names, each with its own time, whatever the reader's list says.
     const today = await send(dir, timed(new BudgetPanel()));
     expect(perf(dir, today).find((l) => l.includes("the card:"))).toBe(`  the processor: frame 1 ms; the card: ${PASSES.map((name, i) => `${name} ${(i + 1) / 4} ms`).join(", ")}`);
