@@ -50,6 +50,8 @@ export class AppFrame implements HudFrame {
   fromEye = false;
   /** Entity index of the creature in the arms of the own body, or -1. */
   holding = -1;
+  /** The tick the predicted body was last on the ground, in water or in a seat. */
+  airFrom = 0;
   world!: CollisionWorld;
   scene!: Scene;
 

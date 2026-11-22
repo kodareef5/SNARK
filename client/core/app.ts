@@ -1,4 +1,3 @@
-import { supplyName } from "../../shared/sim/supply.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 import { creatureHold } from "../../shared/sim/creature-actions.ts";
 // One whole client without a browser. The shell owns the renderer, socket and DOM, forwards events
@@ -24,16 +23,13 @@ import type { NotePort } from "./notes/port.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MountCameraPivot } from "./mount-camera.ts";
-import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
-import { GLIDE_DIVE, JET_CUIRASS, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
+import { GLIDE_DIVE, MODE_FLYER, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CMD_GAZE, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
 import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
-import { ACT_REACH } from "../../shared/world/upkeep.ts";
-import { structName } from "./ui/structure.ts";
+import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { Controls, LOOK_SPEED } from "./controls.ts";
 import { pressKey } from "./key-row.ts";
@@ -41,6 +37,7 @@ import { KEY_ROWS } from "./keys.ts";
 import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
 import { HudFill } from "./hud/widget.ts";
 import { AppFrame, type FramePart } from "./frame.ts";
+import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { ToolHooks, autopilot, type ToolOrders } from "./tool-hooks.ts";
 import type { Mark } from "./stress.ts";
 
@@ -59,15 +56,12 @@ import { thrustersOf } from "../../shared/sim/vehicle-thrusters.ts";
 import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_VISOR } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, breathShare, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
-import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_HELD } from "../../shared/anim/pose.ts";
 import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
 import { SeatedAim } from "./seated-aim.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
 import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
-import { loosePrompt } from "./balls.ts";
-import { KEEP_REACH } from "../../shared/sim/balls.ts";
-import { lookAt, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
@@ -79,8 +73,6 @@ import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSessio
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { youngScale } from "../../shared/sim/breeding.ts";
-import { itemLabel, waitWords } from "./ui/inventory.ts";
-import { BAG } from "./render/dropped.ts";
 import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
@@ -100,26 +92,15 @@ import { glass } from "./ui/skin.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
-import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
 import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
 
-/** Metres. Matches the server's REACH. */
-const REACH = 3.5;
-/** Holding the use key on a structure this long opens its menu. */
-const STRUCT_HOLD_MS = 350;
-/** Metres. */
-const NAME_RANGE = 30;
-/** A bit of the replicated entity flags. */
-const VIEW_FLAG_PROP = 8;
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
 /** Radians the view opens by at a glider's dive speed. */
 const GLIDE_FOV = (6 * Math.PI) / 180;
 /** A thruster car's boost: how much wider the view opens, and how far it shakes, radians. */
 const BOOST_FOV = 10 * Math.PI / 180, BOOST_SHAKE = .0035;
-/** Ticks in the air before C stops being the crouch and becomes the glider's key, so a step off a kerb does not stand a crouched body up. */
-const GLIDER_KEY_TICKS = 6;
 /** Metres the orbit's camera is behind the eye before the body is drawn whole; nearer than the near plane its head is not seen. */
 const HEAD_CLEAR = .1;
 
@@ -300,7 +281,7 @@ export class App {
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private helicopterViewHost = -1;
-  private readonly aim = [0, 0, 0];
+  private readonly dir = [0, 0, 0];
   /** Whether the survivor was on its own feet last frame, to know the frame it rises or gets out of a vehicle, a seat or a saddle. */
   wasOnFoot = false;
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
@@ -315,9 +296,9 @@ export class App {
     this.stream = stream;
     this.session = session;
     this.shown = reg;
-    this.bagKind = reg.index.get(BAG) ?? -1;
     this.pack = pack;
     this.f = new AppFrame(session, this.controls, this.ui, this.hud, this.cam, this.remote, pack);
+    this.prompts = new Prompts(reg, this.builder, this.vehiclePlacement);
     this.seatedAim = new SeatedAim(reg, pack);
     session.shotOrigin = (out, tick, yaw, pitch) => {
       if (!session.world || session.driving >= 0 || !session.own.seat) return false;
@@ -382,10 +363,8 @@ export class App {
 
   readonly builder = new Builder();
   readonly vehiclePlacement = new VehiclePlacement();
-  /** Why the server refused the last press of the use key on a seat. */
-  readonly seatNotice = new SeatNotice();
-  /** What the prompt's look is on, as a seat would be ridden: a vehicle, a saddled creature, or null. */
-  private promptRidden: Ridden | null = null;
+  /** What the use key would act on, and the words that say so (prompts.ts). */
+  readonly prompts: Prompts;
   /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
   page: Page | null = null;
   /** The page is on its way to another server, or has said it arrived. */
@@ -395,28 +374,33 @@ export class App {
   private turnedAway = false;
   /** Time of the last frame. */
   nowMs = 0;
-  /** Entity index of the tribe's creature under the crosshair, or -1. */
-  lookedAt = -1;
-  /** Crosshair hit for boat service, including unclaimed hulls and salvage. */
-  aimedBoat = -1;
-  /** Entity index of any body under the crosshair within NAME_RANGE, or -1: what the attack whistle names. */
-  target = -1;
   /** Entity index of the creature in the arms of the viewer's own body, as the last frame's remote sample says, or -1. */
   holding = -1;
-  /** useDownAt is when the use key went down, or -1. aimed is the ref of the player-built structure under the crosshair, or -1. */
-  useDownAt = -1;
-  aimed = -1;
-  /** The use key went down on a structure. The body does not get the press until it proves to be a tap. */
-  useKept = false;
-  /** Frames left of the synthetic use press that follows a tap. */
-  usePulse = 0;
-  /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
-  eggAimed = -1;
-  /** The content index of a bag (client/core/render/dropped.ts), or -1. */
-  private readonly bagKind: number;
-  /** The obelisk terminal under the crosshair within reach, or -1. */
-  terminalAimed = -1;
-  eggKept = false;
+
+  /** What the prompts keep of the use key and of what the look is on, for the keys' rows and the tests (prompts.ts). */
+  get lookedAt(): number { return this.prompts.lookedAt; }
+  get aimedBoat(): number { return this.prompts.aimedBoat; }
+  get target(): number { return this.prompts.target; }
+  get aimed(): number { return this.prompts.aimed; }
+  set aimed(at: number) { this.prompts.aimed = at; }
+  get eggAimed(): number { return this.prompts.eggAimed; }
+  set eggAimed(at: number) { this.prompts.eggAimed = at; }
+  get terminalAimed(): number { return this.prompts.terminalAimed; }
+  set terminalAimed(at: number) { this.prompts.terminalAimed = at; }
+  get seatNotice(): SeatNotice { return this.prompts.seatNotice; }
+  get useDownAt(): number { return this.prompts.useDownAt; }
+  set useDownAt(at: number) { this.prompts.useDownAt = at; }
+  get useKept(): boolean { return this.prompts.useKept; }
+  set useKept(on: boolean) { this.prompts.useKept = on; }
+  get usePulse(): number { return this.prompts.usePulse; }
+  set usePulse(frames: number) { this.prompts.usePulse = frames; }
+  get eggKept(): boolean { return this.prompts.eggKept; }
+  set eggKept(on: boolean) { this.prompts.eggKept = on; }
+  /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
+  seatPress(): Ridden | null { return this.prompts.seatPress(this.session, this.remote); }
+  /** The look as the prompts last cast it, and how far along it body `i` is met: the monitor's and the notes' (assets/look.ts). */
+  private get aim(): readonly number[] { return this.prompts.aim; }
+  protected lookHit(i: number, ox: number, oy: number, oz: number, use = false): number { return this.prompts.lookHit(this.f, i, ox, oy, oz, use); }
 
   voice: VoicePort | null = null;
   /** Plays the world's sounds. Null in tests and wherever there is no audio: then no sound work is done at all. */
@@ -590,9 +574,7 @@ export class App {
   blur(): void {
     this.controls.release();
     this.touch.reset();
-    this.useDownAt = -1;
-    this.useKept = this.eggKept = false;
-    this.usePulse = 0;
+    this.prompts.release();
     this.alt = this.shift = false;
     if (!this.ui.settings.toggleTalk) this.talk(false);
   }
@@ -633,12 +615,6 @@ export class App {
     this.ui.settings.changed();
   }
 
-  /** Scale of remote body `i` relative to its kind. Below 1 for a young one. */
-  private sizeOf(i: number): number {
-    const r = this.remote;
-    return r.grown[i] !== 0 && (r.flags[i]! & VIEW_FLAG_PROP) === 0 ? youngScale(this.reg.birthScale[r.kind[i]!]!, r.span[i]!, r.grown[i]!, r.tick) : 1;
-  }
-
   /** The entity index of the creature the server shows in the arms of the viewer's own body, or -1. */
   private heldInArms(): number {
     const r = this.remote;
@@ -675,60 +651,6 @@ export class App {
   private gliderOpen = false;
   private gliderStoodBack = false;
 
-  /** What the glider's keys do now, for a survivor in the air that carries one: the cuirass's jet has Space, so there it is C. */
-  private gliderPrompt(): string {
-    const s = this.session, own = s.own;
-    if (s.driving >= 0 || own.seat || own.grounded || own.mode !== MODE_WALK || own.glideGear === 0) return "";
-    const key = (own.jetGear & JET_CUIRASS) !== 0 ? "C" : "Space";
-    if (own.glide !== 0) return `${key}  fold glider   Shift  dive   S  flare`;
-    return s.simTick - this.airFrom >= GLIDER_KEY_TICKS && own.vy < -2 && (own.mflags & MF_WINDED) === 0 ? `${key}  open glider` : "";
-  }
-
-  /** With `use`, as the use key meets body `i`; else as a name tag does. */
-  private lookHit(i: number, ox: number, oy: number, oz: number, use = false): number {
-    return lookAt(this.reg, this.remote, i, ox, oy, oz, this.aim, this.sizeOf(i), use);
-  }
-
-  /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
-  seatPress(): Ridden | null {
-    const s = this.session, r = this.remote;
-    if (s.driving >= 0) return riddenOf(this.reg, s.bodyKind, true);
-    if (s.own.seat > 0 && s.own.seatSlot !== 0 && s.own.seatSlot !== IMPALE_SLOT) {
-      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1) return riddenOf(this.reg, r.kind[i]!, true);
-      return "creature";
-    }
-    return this.promptRidden;
-  }
-
-  /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
-  private who(world: CollisionWorld, eye: number): string {
-    const s = this.session;
-    const r = this.remote;
-    const d = this.aim;
-    const ox = s.own.x;
-    const oy = s.own.y + eye;
-    const oz = s.own.z;
-    lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
-    let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, NAME_RANGE) === HIT_NONE ? NAME_RANGE : rayHit.t;
-    let hit = -1;
-    for (let i = 0; i < r.count; i++) {
-      // What is in someone's arms is no mark for the use key, a blow or a whistle.
-      if ((r.cue[i]! & CUE_HELD) !== 0) continue;
-      const t = this.lookHit(i, ox, oy, oz);
-      if (t < best) {
-        best = t;
-        hit = i;
-      }
-    }
-    const mine = hit >= 0 && s.tribe.team !== 0 && r.team[hit] === s.tribe.team;
-    this.target = hit >= 0 && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 ? r.id[hit]! : -1;
-    this.aimedBoat = hit >= 0 && this.reg.vehicle[r.kind[hit]!]?.movement === "boat" ? r.id[hit]! : -1;
-    this.lookedAt = hit >= 0 && mine && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 && !this.scene!.characters.human(r.kind[hit]!) ? r.id[hit]! : -1;
-    // A creature's name is in the mark over it (fillOverhead).
-    if (hit < 0 || r.name[hit] === "" || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0 || !this.scene!.characters.human(r.kind[hit]!)) return "";
-    return `${r.name[hit]}${mine ? " (tribe)" : ""}  level ${r.level[hit]}`;
-  }
-
   /** Current own aim/action pose on the remote carrier at its presentation clock. */
   private ownSeatEye(world: CollisionWorld, remote: RemoteSample, tick: number, yaw: number, pitch: number, out: Float64Array, clip = true, actionTick = this.session.simTick): boolean {
     const s = this.session, b = s.own, st = this.shotState;
@@ -748,7 +670,7 @@ export class App {
   private fillSights(world: CollisionWorld, alive: boolean): void {
     const { hud, cam, session, lasers, sightAt: at } = this;
     const r = this.remote;
-    const d = this.aim;
+    const d = this.dir;
     const day = daylight(this.sky.hour);
     lookDirection((at.yaw / TAU) * 65536, (at.pitch / (PI / 2)) * 16384, d);
     lasers.clear();
@@ -814,7 +736,7 @@ export class App {
     // What the middle of the view is on, found each FOCUS_MS while a sight magnifies: its range, and the point the scene
     // brings its fine ground and far trees to (D1087).
     if (zoom > 0 && nowMs - this.focusAt >= FOCUS_MS) {
-      const d = this.aim, eye = this.sightAt;
+      const d = this.dir, eye = this.sightAt;
       lookDirection((yaw / TAU) * 65536, (pitch / (PI / 2)) * 16384, d);
       const reach = Math.min(GAZE_FARTHEST, GAZE_REACH * zoom);
       const t = castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE ? rayHit.t : 0;
@@ -851,36 +773,6 @@ export class App {
     return def?.optic && def.wear?.slot === "head" && (inv!.dur[at]! > 0 || !(def.wear.uses > 0)) ? def.optic : null;
   }
 
-  /** Sets `aimed` to the player-built structure within ACT_REACH, and returns its name and health. */
-  private builtAt(world: CollisionWorld, eye: number): string {
-    const s = this.session;
-    const d = this.aim;
-    this.aimed = -1;
-    this.terminalAimed = -1;
-    lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
-    if (castWorld(world, s.own.x, s.own.y + eye, s.own.z, d[0]!, d[1]!, d[2]!, ACT_REACH) !== HIT_STRUCTURE) return "";
-    const ref = rayHit.ref;
-    const t = world.structs.chunks[Math.floor(ref / 65536)]!;
-    const kind = t.kind[ref & 0xffff]!;
-    const motion = this.reg.motion[kind];
-    if (motion && rayHit.t <= REACH) {
-      const state = s.motions.get(ref);
-      const p = state ? motionProgress(state, motionTicks(motion), s.tickClock) : 0;
-      const word = `E ${motion.say[state?.to === 1 ? 1 : 0]}`;
-      return p > 0 && p < 1 ? `${word}  ${Math.round(p * 100)}%` : word;
-    }
-    if (kind === this.reg.index.get(TRAVEL_TERMINAL)) {
-      this.terminalAimed = ref;
-      return "E travel to another server";
-    }
-    // Skip structures nobody built.
-    if (this.reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
-    this.aimed = ref;
-    const mine = s.tribe.team !== 0 && t.owner[ref & 0xffff] === s.tribe.team;
-    const usable = (this.reg.opens[kind] !== 0 || this.reg.structSlots[kind] !== 0) && rayHit.t <= REACH;
-    return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(this.reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${this.reg.maxHp[kind]}`;
-  }
-
   /** Authored framing takes precedence over the default boom derived from the saddle and creature's size. */
   private mountView(kind: number, saddle: number): { up: number; boom: number; forward: number } {
     const def = this.reg.defs[kind];
@@ -888,153 +780,6 @@ export class App {
     const seat = this.reg.saddleSeats[saddle]?.find((s) => s.driver);
     const size = Math.max(this.scene?.characters.reach(kind) ?? 0, this.reg.bodyHeight[kind]!, 2 * this.reg.bodyRadius[kind]!);
     return { up: seat ? seat.anchor[1] + 0.75 : this.reg.bodyHeight[kind]! + 0.5, boom: 1.5 + 1.2 * size, forward: 0 };
-  }
-
-  /** The use button's prompt, and before it what a click of the soul ball in hand would do. */
-  private handPrompt(world: CollisionWorld, eye: number): string {
-    const use = this.prompt(world, eye);
-    const ball = this.ballPrompt(world, eye);
-    return ball && use ? `${ball}    ${use}` : ball || use;
-  }
-
-  /**
-   * With a soul ball in hand, what a click would do (server/balls.ts): a full one looses the tame it holds, an empty one
-   * keeps the tribe's creature looked at within KEEP_REACH. "" with anything else in hand, or nothing a click would keep.
-   */
-  private ballPrompt(world: CollisionWorld, eye: number): string {
-    const s = this.session;
-    const r = this.remote;
-    const reg = this.reg;
-    const inv = s.inventory;
-    if (!inv || s.held < 0 || inv.hotbar < 0 || s.driving >= 0 || s.own.seat > 0 || this.holding >= 0) return "";
-    const slot = inv.hotbar + s.held;
-    const item = inv.item[slot]!;
-    if (item === 0) return "";
-    if (reg.ballEmpty[item] !== 0) return loosePrompt(reg, s.kept[0].get(slot));
-    if (reg.ballFull[item] === 0) return "";
-    const d = this.aim;
-    const ox = s.own.x;
-    const oy = s.own.y + eye;
-    const oz = s.own.z;
-    lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
-    const struck = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, KEEP_REACH);
-    let best = struck === HIT_NONE ? KEEP_REACH : rayHit.t;
-    let hit = -1;
-    for (let i = 0; i < r.count; i++) {
-      if ((r.cue[i]! & CUE_HELD) !== 0) continue;
-      const t = this.lookHit(i, ox, oy, oz, true);
-      if (t < best) {
-        best = t;
-        hit = i;
-      }
-    }
-    // Only a creature of the tribe's: not a thing lying there, a vehicle, a survivor, or another tribe's.
-    if (hit < 0 || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0 || reg.vehicle[r.kind[hit]!] || r.kind[hit] === s.ownKind || reg.defs[r.kind[hit]!]?.type !== "species") return "";
-    if (s.tribe.team === 0 || r.team[hit] !== s.tribe.team) return "";
-    const id = reg.ids[r.kind[hit]!] ?? "";
-    const name = r.name[hit] || `the ${id.slice(id.indexOf(":") + 1)}`;
-    return (r.cue[hit]! & CUE_OUT) !== 0 ? `${name} must be awake to go into a soul ball` : `click  keep ${name}`;
-  }
-
-  /** Labels what the use button would act on, with the same ray the server casts. The server's answer is the one that counts. */
-  private prompt(world: CollisionWorld, eye: number): string {
-    const s = this.session;
-    const r = this.remote;
-    const d = this.aim;
-    const ox = s.own.x;
-    const oy = s.own.y + eye;
-    const oz = s.own.z;
-    this.promptRidden = null;
-    if (s.own.seat > 0 && s.own.seatSlot === IMPALE_SLOT) return "Impaled: held by a Stegosaurus";
-    if (s.driving >= 0) {
-      const combat = this.reg.combat[s.bodyKind];
-      if (combat) return `LMB attack   ${combat.charge ? "hold RMB charge" : combat.secondary ? "RMB impale" : ""}   E get off`;
-      if (this.reg.vehicle[s.bodyKind]) return "E  exit vehicle";
-      const mount = this.reg.defs[s.bodyKind];
-      return mount?.type === "species" && mount.roar ? "RMB  roar    E  get off" : "E  get off";
-    }
-    // Seats in cars and saddles have a slot; a carried body has none. Who steers is handled above.
-    if (s.own.seatSlot !== 0 && s.own.seat > 0) {
-      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1) return this.reg.vehicle[r.kind[i]!] ? "E  exit passenger seat" : "E  get off";
-      return "E  get off";
-    }
-    if (this.holding >= 0) return "E  set down   click  throw";
-    lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
-    const struck = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, REACH);
-    let best = struck === HIT_NONE ? REACH : rayHit.t;
-    const node = struck === HIT_NODE ? rayHit.ref : -1;
-    let hit = -1;
-    for (let i = 0; i < r.count; i++) {
-      // What is in someone's arms is no mark for the use key, a blow or a whistle.
-      if ((r.cue[i]! & CUE_HELD) !== 0) continue;
-      const t = this.lookHit(i, ox, oy, oz, true);
-      if (t < best) {
-        best = t;
-        hit = i;
-      }
-    }
-    if (hit >= 0) {
-      // The server also treats using an occupant as using its vehicle or creature, useful when a person fills the doorway.
-      if (r.seatSlot[hit] !== 0) for (let j = 0; j < r.count; j++) {
-        if (r.id[j] === r.seat[hit]! - 1 && r.gen[j] === r.seatGen[hit]) { hit = j; break; }
-      }
-      if (this.reg.vehicle[r.kind[hit]!]) {
-        this.promptRidden = riddenOf(this.reg, r.kind[hit]!, false);
-        return vehiclePrompt(this.reg, r, hit, ox, s.own.y, oz, world.hf.waterAt(ox, oz), s.own.mode === MODE_SWIM);
-      }
-      // A saddled creature of the tribe, grown and awake, is ridden: its steering seat if it is free, else a passenger's.
-      const seats = this.reg.saddleSeats[r.gear[hit * GEAR_COUNT + GEAR_WORN]!];
-      if (seats) this.promptRidden = "creature";
-      if (seats && s.tribe.team !== 0 && r.team[hit] === s.tribe.team && r.grown[hit] === 0 && (r.cue[hit]! & CUE_OUT) === 0) {
-        const taken = (k: number): boolean => {
-          for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === k + 1) return true;
-          return false;
-        };
-        const id = this.reg.ids[r.kind[hit]!] ?? "";
-        const name = r.name[hit] || `the ${id.slice(id.indexOf(":") + 1)}`;
-        const steer = seats.findIndex((seat) => seat.driver);
-        if (!taken(steer)) return `E  ride ${name}`;
-        return seats.some((seat, k) => !seat.driver && !taken(k)) ? `E  ride ${name} as a passenger` : "Every seat is taken";
-      }
-      if ((r.flags[hit]! & VIEW_FLAG_PROP) !== 0) {
-        // A bag of one stack, as a thing thrown or let fall lies, is taken up whole (server/loose.ts); F still opens it.
-        const lying = r.kind[hit] === this.bagKind ? r.gear[hit * GEAR_COUNT + GEAR_HELD]! : 0;
-        if (lying !== 0) {
-          this.eggAimed = r.id[hit]!;
-          return `E  take ${itemLabel(this.reg, lying)}`;
-        }
-        // On a prop, a nonzero grown tick marks a fertilised egg. An egg that is an item is taken up.
-        const left = waitWords(Math.max(0, Math.ceil((r.grown[hit]! - s.serverTick) / TICK_RATE)));
-        if (this.reg.propItem[r.kind[hit]!] !== 0) {
-          this.eggAimed = r.id[hit]!;
-          return `E  take ${r.name[hit]}${r.grown[hit] !== 0 ? `  ${left} to hatch` : ""}`;
-        }
-        if (r.grown[hit] !== 0) return `${r.name[hit]}  hatches in ${left}`;
-        // A supply drop's capsule opens at its tier's level: below it the prompt says the level, and no key.
-        const drop = this.reg.takeOnly[r.kind[hit]!] === 1 ? s.supply.rows.find((d) => d.landed && d.left === 0 && Math.abs(d.x - r.x[hit]!) < 0.5 && Math.abs(d.z - r.z[hit]!) < 0.5) : undefined;
-        const level = drop ? (s.supply.tiers[drop.tier]?.level ?? 0) : 0;
-        // Its name is said whole from the list: an entity's own is cut at twenty-four characters (EntityStore.setLook).
-        const name = drop ? supplyName(s.supply.tiers[drop.tier]?.name ?? "", s.supply.classes[drop.cls]?.name ?? "", drop.ringed) : r.name[hit]!;
-        if (!s.open && s.progress.level < level) return `${name}  opens at level ${level}`;
-        return `E  ${s.open ? "close" : "open"} ${name}`;
-      }
-      if (r.team[hit] === 0 && r.grown[hit] !== 0) {
-        const id = this.reg.ids[r.kind[hit]!] ?? "";
-        return `E  take the young ${id.slice(id.indexOf(":") + 1)}`;
-      }
-      // A small creature, wild or the tribe's, awake, is picked up. F still opens it.
-      if (this.reg.carriable[r.kind[hit]!] === 1 && (r.team[hit] === 0 || (s.tribe.team !== 0 && r.team[hit] === s.tribe.team)) && (r.cue[hit]! & CUE_OUT) === 0) {
-        const id = this.reg.ids[r.kind[hit]!] ?? "";
-        return `E  pick up ${r.name[hit] || `the ${id.slice(id.indexOf(":") + 1)}`}`;
-      }
-      return "";
-    }
-    if (node < 0 || !s.nodeField) return "";
-    // A node without a material is a bush, picked with the use key. Trees and rocks are struck. What is left of a used-up one is neither.
-    const def = this.reg.defs[s.nodeField.standing(Math.floor(node / 65536), node & 0xffff)];
-    if (def?.type !== "node") return "";
-    const what = def.id.slice(def.id.indexOf(":") + 1);
-    return def.material === undefined ? `E  pick ${what}` : `hold click  gather from ${what}`;
   }
 
   /** The creator's view. The camera faces the new survivor from the front, off to one side so the panel does not cover it. */
@@ -1194,7 +939,7 @@ export class App {
       { step: (f) => this.fillHud(f) },
       { step: (f) => this.hear(f) },
       { step: (f) => this.ghost(f) },
-      { step: (f) => this.usePrompt(f) },
+      this.prompts,
       { step: (f) => this.interface(f) },
     ];
   }
@@ -1264,7 +1009,7 @@ export class App {
       return false;
     }
     if (this.ui.menu || this.ui.inspect) this.blur();
-    if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
+    this.prompts.pulse(c);
     // N held long raises or lowers the visor; a tap's press goes as it is let go (App.key).
     if (this.nDownAt >= 0 && !this.nLong && nowMs - this.nDownAt >= VISOR_HOLD_MS) {
       this.nLong = true;
@@ -1273,6 +1018,7 @@ export class App {
     if (this.nPulse > 0) c.key("KeyN", --this.nPulse > 0);
     f.holding = this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
+    f.airFrom = this.airFrom;
     this.refreshCockpitLook();
     // A glass raised takes the primary for its range: the hand holding it does not strike.
     // A visor held up is told the server as a button: the proof its gaze needs (D1084).
@@ -1308,6 +1054,7 @@ export class App {
       this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.tools?.farPalms ?? false });
       this.scene.shots = this.shots;
       this.scene.supply = this.supply;
+      this.ui.emotes.has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
       const chart = (hud.chart = new Chart(world.hf, this.pack.palette));
@@ -1556,7 +1303,7 @@ export class App {
     hud.visorReady = this.visorOptic !== null && alive && session.driving < 0;
     hud.glassZoom = zoom;
     if (glassUp) {
-      const eyeAt = this.sightAt, d = this.aim;
+      const eyeAt = this.sightAt, d = this.dir;
       this.glass.ranged(nowMs, () => {
         lookDirection((lookYaw / TAU) * 65536, (lookPitch / (PI / 2)) * 16384, d);
         return castWorld(world, eyeAt.x, eyeAt.y, eyeAt.z, d[0]!, d[1]!, d[2]!, GAZE_FARTHEST) !== HIT_NONE ? rayHit.t : 0;
@@ -1838,9 +1585,9 @@ export class App {
     ghost.kind = 0;
     const b = this.builder, v = this.vehiclePlacement;
     if (f.alive && session.driving < 0) {
-      lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.aim);
-      b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
-      v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
+      lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.dir);
+      b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
+      v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
     } else { b.active = false; v.active = false; }
     if (b.active && b.problem !== RESULT_NO_SNAP) {
       ghost.kind = b.kind;
@@ -1854,38 +1601,6 @@ export class App {
       ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw;
       ghost.color = v.problem === RESULT_OK ? GHOST_OK : GHOST_BAD;
     }
-  }
-
-  /** What the use key would act on, and the words that say so. */
-  private usePrompt(f: AppFrame): void {
-    const session = this.session, hud = this.hud, c = this.controls, world = f.world, nowMs = f.nowMs, alive = f.alive, eyeNow = f.eyeNow;
-    const b = this.builder, v = this.vehiclePlacement;
-    const menu = this.ui.structure;
-    menu.tick(nowMs);
-    this.seatNotice.tick(nowMs);
-    const built = alive && !b.active && !v.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
-    if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
-      menu.begin(this.aimed);
-      this.useDownAt = -1;
-      this.useKept = false;
-      c.release();
-    }
-    const whom = alive ? this.who(world, eyeNow) : ((this.aimedBoat = this.lookedAt = this.target = -1), "");
-    this.eggAimed = -1;
-    // A move for two goes to the survivor the crosshair is on.
-    const emotes = this.ui.emotes;
-    emotes.tick(nowMs);
-    emotes.target = -1;
-    emotes.targetName = "";
-    for (let i = 0; i < this.remote.count; i++) {
-      if (this.remote.id[i] !== this.target || !this.scene!.characters.human(this.remote.kind[i]!)) continue;
-      emotes.target = this.target;
-      emotes.targetName = this.remote.name[i]!;
-    }
-    emotes.has = (n) => this.scene!.characters.emoteKnown(n);
-    if (emotes.open) this.scene!.characters.wantEmotes();
-    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(world, eyeNow) || whom || built || this.gliderPrompt();
-    if (b.active) hud.ammo = "E turn   Q next place   R form";
   }
 
   /** The interface is built over the HUD. */
