@@ -41,7 +41,7 @@ export function verdict(run: { problems: readonly string[]; art: boolean; noArt:
 }
 
 /** Writes a file whole or not at all, for a check running beside this one in the same checkout. */
-export function writeWhole(file: string, text: string): void {
+export function writeWhole(file: string, text: string | Uint8Array): void {
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(`${file}.${process.pid}`, text);
   renameSync(`${file}.${process.pid}`, file);

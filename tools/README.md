@@ -5,7 +5,8 @@ from here.
 
 | Tool | Command | Purpose |
 | --- | --- | --- |
-| `check.ts` | `bun run check` | The gate: policy rules, zone type checks, tests, time budget |
+| `check.ts` | `bun run check` | The gate, one at a time on a machine: policy rules, zone type checks, every fast test. Given folders or files of tests, or `--smoke`, a look at those while building |
+| `test-area.ts` | `bun tools/test-area.ts --move --paths` | Moves test files a branch left in `tests/unit` or `tests/integration` to their areas, by `test-areas.json`, and rewrites the old paths named in text |
 | `bench.ts` | `bun run bench` | Measurements at the sizing target against budgets. `-- --parts` adds the comparison of our part compression with zlib and Brotli, which takes minutes |
 | `snap.ts`, `snap/` | `bun run snap` | Software rasterizer: a frame packet to a PNG |
 | `probe.ts` | `bun run probe` | The single browser launch: Chrome headless, self-check report |

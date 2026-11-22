@@ -1,11 +1,15 @@
-// `bun run check`, the one command every commit must pass. It enforces the rules that keep this project fast to change.
+// `bun run check`: the policy rules, the type checks and the tests. Whole, it is the gate a branch passes to land. Given
+// folders or files, or the smoke set, it is a look while building.
 //
-//   bun run check                policy, types and the tests of the fast tier: before a commit
-//   bun run check -- --changed   policy, types and the fast tests the change since main can reach: while working
-//   bun run check -- --slow      the same as the first, then the slow tier (`*.slow.test.ts`); CI runs it on main
-//   bun run slow                 the slow tier alone
-//   --workers=N or SNARK_CHECK_WORKERS=N caps the test workers; `taskset -c ...` pins the whole check to cores.
-//   --no-art                     lets the tests that need the art be skipped where it is not installed
+//   bun run check                      policy, types and every fast test: the gate. One runs at a time on a machine
+//   bun run check -- tests/vehicles    policy, types and the fast tests of those folders and files; not the gate
+//   bun run check -- --smoke           policy, types and the twenty files of tests/smoke.txt; not the gate
+//   bun run check -- --slow            the gate, then the slow tier (`*.slow.test.ts`); the integrator runs it on main
+//   bun run slow                       the slow tier alone
+//   --workers=N or SNARK_CHECK_WORKERS=N sets the test workers. Unset, the gate takes the least of 16, the cores less
+//                                      two and free memory over 0.6 GB; a look takes four at most
+//   --no-art                           lets the tests that need the art be skipped where it is not installed
+//   --strict                           fails a gate that cost over this machine's baseline, instead of warning
 //
 // Art that is missing or stale is installed first, from what the machine already holds (tools/release/media.py). A run
 // that still skipped tests for it is not a gate and fails. The tests' whole output is kept in .cache/check/last.log
@@ -18,9 +22,10 @@ import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixture
 import { artInstalled, artState } from "./art/installed.ts";
 import { footprint } from "./memory.ts";
 import { dynamicLoads, IMPORT, madeArrays, stripComments } from "./policy.ts";
-import { affectedTests, changedFiles } from "./check-changed.ts";
 import { baselineFile, compare, history, machineKey, remember, RUNS_NEEDED } from "./check-baseline.ts";
 import { failuresOf, verdict, writeWhole } from "./check-report.ts";
+import { born, freeMemory, lockFile, release, take, workersFor } from "./check-lock.ts";
+import { pick, smokeList } from "./check-pick.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
@@ -160,6 +165,8 @@ function checkPolicy(): void {
     const src = stripComments(readFileSync(file, "utf8"));
 
     if (/\.(spec|e2e)\.ts$/.test(rel)) fail(`${rel}: spec/e2e files are not used here`);
+    if (/^tests\/(unit|integration)\//.test(rel)) fail(`${rel}: tests live by area (tests/README.md); move it with: bun tools/test-area.ts --move --paths`);
+    else if (zone.dir === "tests" && rel.endsWith(".test.ts") && !/^tests\/[^/]+\/[^/]+$/.test(rel)) fail(`${rel}: a test file sits in its area's folder, tests/<area>/, and no deeper`);
     if (zone.dir === "tests" && rel !== "tests/fixtures/preload.ts" && OWN_TIMEOUT.test(src)) {
       fail(`${rel}: a test sets its own time limit; every test has the one in tests/fixtures/load.ts`);
     }
@@ -206,11 +213,16 @@ function checkPolicy(): void {
   for (const [dir, count] of lines) console.log(`  ${`${dir.slice("client/".length)} size`.padEnd(12)} ${count} lines`);
 }
 
+/** What this check has started and not yet seen end, stopped with it if it is stopped. */
+const children = new Set<{ kill(): void }>();
+
 /** `cpu` is the CPU-seconds of the process and of the processes it waited for. */
 async function run(cmd: string[], quiet: boolean, env: Record<string, string | undefined> = process.env): Promise<{ ok: boolean; out: string; cpu: number }> {
   const proc = Bun.spawn(cmd, { cwd: ROOT, env, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
+  children.add(proc);
   const out = quiet ? (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text()) : "";
   const ok = (await proc.exited) === 0;
+  children.delete(proc);
   const used = proc.resourceUsage()?.cpuTime;
   return { ok, out, cpu: used ? Number(used.user + used.system) / 1e6 : 0 };
 }
@@ -235,13 +247,34 @@ async function checkScript(): Promise<void> {
   if (!r.ok) fail(`the page's script is not as the first frame's budget needs it:\n${r.out.trim()}`);
 }
 
-/** The core pack, built here once for the test files instead of once in each of a hundred (tests/fixtures/pack.ts). */
-async function sharedPack(dir: string): Promise<Record<string, string>> {
+/** What the core pack is built from: the code that builds it and the art. */
+const PACK_FROM = ["shared", "content", "client/core", "tools", "assets"];
+
+/** Every file the core pack may be built from, by name, size and date, as one hash: a tenth of a second for 10,000 files. */
+function packKey(): string {
+  const hash = new Bun.CryptoHasher("sha1").update(Bun.version);
+  for (const file of PACK_FROM.flatMap((d) => walk(join(ROOT, d)))) {
+    const s = statSync(file);
+    hash.update(`${file}\0${s.size}\0${s.mtimeMs}\n`);
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * The core pack, built here once for the test files instead of once in each of a hundred (tests/fixtures/pack.ts), and
+ * kept in .cache/check. Building it takes five to ten seconds, so a look takes the kept one while no file it may be
+ * built from has changed. The gate always builds its own.
+ */
+async function sharedPack(): Promise<Record<string, string>> {
   try {
     const { CORE_PACK_FILE } = await import("../tests/fixtures/pack.ts");
-    const { buildCorePack } = await import("./pack/build.ts");
-    const file = join(dir, "core.snpk");
-    writeFileSync(file, buildCorePack());
+    const file = join(ROOT, ".cache/check/core.snpk");
+    const key = packKey();
+    if (!look || !existsSync(file) || !existsSync(`${file}.key`) || readFileSync(`${file}.key`, "utf8") !== key) {
+      const { buildCorePack } = await import("./pack/build.ts");
+      writeWhole(file, buildCorePack());
+      writeWhole(`${file}.key`, key);
+    }
     return { [CORE_PACK_FILE]: file };
   } catch {
     // Then each test file builds its own, and says what is wrong.
@@ -255,23 +288,27 @@ const SEED_TIMES = join(ROOT, "tools/test-times.json");
 
 const args = process.argv.slice(2);
 const WORKERS_ARG = /^--workers=([1-9]\d*)$/;
-const CHANGED_ARG = /^--changed(?:=(.+))?$/;
-const FLAGS = new Set(["--slow", "--slow-only", "--strict", "--no-art"]);
-if (args.some((a) => !FLAGS.has(a) && !WORKERS_ARG.test(a) && !CHANGED_ARG.test(a)) || !/^([1-9]\d*)?$/.test(process.env.SNARK_CHECK_WORKERS ?? "")) {
-  console.error("usage: bun run check -- [--changed[=<ref>]] [--slow | --slow-only] [--strict] [--no-art] [--workers=N]   (or SNARK_CHECK_WORKERS=N)");
+const FLAGS = new Set(["--slow", "--slow-only", "--strict", "--no-art", "--smoke"]);
+const usage = (why: string): never => {
+  console.error(`${why}\nusage: bun run check -- [tests/<area> | tests/<area>/<file>.test.ts ...] [--smoke] [--slow | --slow-only] [--strict] [--no-art] [--workers=N]   (or SNARK_CHECK_WORKERS=N)`);
   process.exit(2);
-}
+};
+/** Folders and files of tests to run in place of the whole fast tier. */
+const asked = args.filter((a) => !a.startsWith("--")).map((a) => repoPath(resolve(ROOT, a)));
+const smoke = args.includes("--smoke");
+/** A look while building: some tests, at most four workers, no lock. Not the gate. */
+const look = smoke || asked.length > 0;
+const unknown = args.filter((a) => a.startsWith("--") && !FLAGS.has(a) && !WORKERS_ARG.test(a));
+if (unknown.length > 0) usage(`${unknown.join(" ")}: not an option`);
+if (!/^([1-9]\d*)?$/.test(process.env.SNARK_CHECK_WORKERS ?? "")) usage("SNARK_CHECK_WORKERS is not a count");
+if (look && args.some((a) => a === "--slow" || a === "--slow-only" || a === "--strict")) usage("--slow, --slow-only and --strict go with the whole check: name a slow file to run it");
 const slowOnly = args.includes("--slow-only");
-/** Only the fast tests a change since main (or <ref>) can reach: a look while working, not the gate (D794). */
-const changedOnly = args.map((a) => CHANGED_ARG.exec(a)).find(Boolean);
 /** A fast tier over this machine's baseline fails instead of only saying so: for a coordinator or CI that wants it. */
 const strict = args.includes("--strict");
-/**
- * The most test workers to run, from --workers=N or SNARK_CHECK_WORKERS, else the cores this process may use. Those
- * honour `taskset`, so `taskset -c 0-5 bun run check` keeps the whole check, its workers' own threads and the type
- * check too, on six cores and leaves the rest quiet for benchmarks; a cap on workers alone does not.
- */
-const maxWorkers = Number(args.map((a) => WORKERS_ARG.exec(a)?.[1]).find(Boolean) ?? (process.env.SNARK_CHECK_WORKERS || availableParallelism()));
+/** The test workers asked for by --workers=N or SNARK_CHECK_WORKERS, which the check then does not size itself. */
+const askedWorkers = Number(args.map((a) => WORKERS_ARG.exec(a)?.[1]).find(Boolean) ?? (process.env.SNARK_CHECK_WORKERS || 0));
+/** The most workers a look runs: it shares the machine with the others' looks. */
+const LOOK_WORKERS = 4;
 
 const noArt = args.includes("--no-art");
 /** Installs art that is missing or stale from what this machine already holds, and says so. It downloads nothing. */
@@ -311,24 +348,26 @@ const logs: string[] = [];
 const failures: string[] = [];
 const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
 
-/** With --changed, the fast test files the change reaches; undefined for the whole fast tier. */
+/** `path`, and where it is now if it is a test's path from before the tests were sorted into areas (tools/test-area.ts). */
+function movedTo(path: string): string {
+  const map = join(ROOT, "tools/test-areas.json");
+  const to = existsSync(map) ? (JSON.parse(readFileSync(map, "utf8")) as Record<string, string>)[path.replace(/^tests\//, "")] : undefined;
+  return to ? `${path} (now tests/${to})` : path;
+}
+
+/** The test files a look runs; undefined for the whole tier. */
 const picked = ((): string[] | undefined => {
-  if (!changedOnly) return undefined;
-  const found = changedFiles(ROOT, changedOnly[1]);
-  if (!found) {
-    console.log("--changed: git cannot say what changed, so every fast test runs");
-    return undefined;
+  if (!look) return undefined;
+  const all = testFiles.map(repoPath);
+  let listed: string[] = [];
+  if (smoke) {
+    listed = smokeList(readFileSync(join(ROOT, "tests/smoke.txt"), "utf8"));
+    const gone = listed.filter((f) => !all.includes(f));
+    if (gone.length > 0) usage(`tests/smoke.txt names no test file at ${gone.join(", ")}`);
   }
-  const fast = testFiles.filter((f) => !SLOW_TEST.test(f));
-  const since = `${found.changed.length} ${found.changed.length === 1 ? "file" : "files"} changed since ${found.base.slice(0, 10)}`;
-  const tests = affectedTests(found.changed, found.sources, fast.map(repoPath));
-  if (tests === "all") {
-    console.log(`--changed: ${since}, one of them read by tests no import names, so every fast test runs`);
-    return undefined;
-  }
-  console.log(`--changed: ${since} reach ${tests.length} of ${fast.length} fast test files. The whole check runs before a commit.`);
-  const reached = new Set(tests);
-  return fast.filter((f) => reached.has(repoPath(f)));
+  const found = pick([...listed, ...asked], all, SLOW_TEST);
+  if (found.none.length > 0) usage(`no test file at ${found.none.map(movedTo).join(", ")}`);
+  return found.files;
 })();
 
 /** The most the workers held together at one moment, and what each was running then, heaviest first. */
@@ -398,22 +437,21 @@ function stopHung(dir: string, workers: number, most: Map<string, number>, stopp
 
 /** Runs the tests of `tier`, with `env` from sharedPack, leaving its reports in `dir`. */
 async function checkTests(tier: Tier, dir: string, env: Record<string, string>): Promise<void> {
-  const some = tier === "fast" ? picked : undefined;
+  const some = picked;
   const files = some?.length ?? testFiles.filter((f) => SLOW_TEST.test(f) === (tier === "slow")).length;
-  if (files === 0) {
-    if (some) console.log("  no fast test reaches this change");
-    return;
-  }
+  if (files === 0) return;
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
-  // More JS heaps than sixteen contend for cache and memory on a machine of many threads, and time out files fast alone.
-  const workers = Math.min(16, maxWorkers, files);
+  const free = freeMemory();
+  const sized = some ? LOOK_WORKERS : workersFor(availableParallelism(), free);
+  const workers = Math.min(askedWorkers ? (some ? Math.min(askedWorkers, LOOK_WORKERS) : askedWorkers) : sized, files);
+  console.log(`  ${workers} workers for ${files} test files${askedWorkers || some ? "" : `: ${availableParallelism()} cores, ${(free / 1e9).toFixed(1)} GB free`}`);
   const report = join(dir, `${tier}.xml`);
   const watch = join(dir, `${tier}-watch`);
   mkdirSync(watch);
   const times = timesOf(tier);
   // The slowest files start first, by their times in the last run, or the last of them may start when the rest are done.
   const timed = existsSync(times) ? ["--timings", times] : tier === "fast" ? ["--timings", SEED_TIMES] : [];
-  const only = some ? some.map((f) => `./${repoPath(f)}`) : tier === "slow" ? [".slow.test.ts"] : ["--path-ignore-patterns=**/*.slow.test.ts"];
+  const only = some ? some.map((f) => `./${f}`) : tier === "slow" ? [".slow.test.ts"] : ["--path-ignore-patterns=**/*.slow.test.ts"];
   const stopped: string[] = [];
   const most = new Map<string, number>();
   const watching = setInterval(() => stopHung(watch, workers, most, stopped), 1000);
@@ -476,20 +514,59 @@ function weighAgainstBaseline(cpu: number, files: [string, number][], workers: n
   remember(key, now);
 }
 
-const t0 = performance.now();
 const step = async (name: string, fn: () => void | Promise<void>) => {
   const t = performance.now();
   await fn();
   console.log(`${name.padEnd(12)} ${((performance.now() - t) / 1000).toFixed(2)}s`);
 };
 
+const span = (ms: number): string => (ms < 90_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`);
+
+/**
+ * Waits until no other whole check runs on this machine and takes the lock (tools/check-lock.ts). Returns what lets it
+ * go. Where the lock cannot be kept, the check says so and runs.
+ */
+async function oneAtATime(): Promise<() => void> {
+  const file = lockFile();
+  const me = { pid: process.pid, born: born(process.pid), checkout: ROOT, since: Date.now() };
+  const from = Date.now();
+  let told = 0;
+  try {
+    for (;;) {
+      me.since = Date.now();
+      const holder = take(file, me, born, (was) => console.log(`lock         taken over: ${was ? `process ${was.pid} of ${was.checkout}, which held it, is gone` : "what held it was not a check"}`));
+      if (!holder) break;
+      if (told !== holder.pid) console.log(`waiting      one whole check runs at a time on this machine. ${holder.checkout} holds the lock (process ${holder.pid}) and has run for ${span(Date.now() - holder.since)}. This one starts when it ends.`);
+      told = holder.pid;
+      await Bun.sleep(1000);
+    }
+  } catch (e) {
+    console.log(`lock         not kept, so this check may run beside another: ${e instanceof Error ? e.message : e}`);
+    return () => {};
+  }
+  if (told) console.log(`waited       ${span(Date.now() - from)}`);
+  return () => release(file, process.pid);
+}
+
 const dir = mkdtempSync(join(tmpdir(), "snark-check-"));
+let unlock = (): void => {};
+// However it ends: the lock let go, what it started stopped, its folder gone.
+process.on("exit", () => {
+  unlock();
+  for (const child of children) child.kill();
+  rmSync(dir, { recursive: true, force: true });
+});
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => process.exit(signal === "SIGINT" ? 130 : 143));
+if (!look) unlock = await oneAtATime();
+
+const t0 = performance.now();
 try {
   let env: Record<string, string> = {};
-  if (testFiles.length > 0) await step("pack", async () => void (env = await sharedPack(dir)));
+  if (testFiles.length > 0) await step("pack", async () => void (env = await sharedPack()));
   if (!slowOnly) {
     const types = step("types", checkTypes);
-    const script = step("script", checkScript);
+    // The page's script is built whole by the gate alone: a look leaves it out.
+    const script = look ? undefined : step("script", checkScript);
     const tests = step("tests", () => checkTests("fast", dir, env));
     // The type check, the script's build and the tests have started in processes of their own; the policy runs here beside them.
     await step("policy", checkPolicy);
@@ -498,14 +575,16 @@ try {
   if (slowOnly || args.includes("--slow")) await step("slow tests", () => checkTests("slow", dir, env));
 } finally {
   rmSync(dir, { recursive: true, force: true });
+  unlock();
 }
 
 const seconds = (performance.now() - t0) / 1000;
 writeWhole(join(ROOT, ".cache/check/last-failures.txt"), failures.map((line) => line + "\n").join(""));
 const end = verdict({ problems, art: ART, noArt, ...tally, ok: `OK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores` });
 const kept = `${logs.map((log) => `\ntests' output: ${log}`).join("")}\nfailing tests: .cache/check/last-failures.txt (${failures.length})`;
+const notGate = picked ? `\nNot the gate: ${picked.length} of ${testFiles.filter((f) => !SLOW_TEST.test(f)).length} fast test files ran. To land, run the whole check once: bun run check` : "";
 if (!end.pass) {
-  console.error(end.text + kept);
+  console.error(end.text + kept + notGate);
   process.exit(1);
 }
-console.log(end.text + kept);
+console.log(end.text + kept + notGate);

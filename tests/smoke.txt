@@ -1,0 +1,53 @@
+# The smoke set: cheap files that together walk the spine of the game.
+# bun run check -- --smoke runs policy, types and these. It is a wider look
+# while building, not the gate. Keep it near twenty files and ten seconds.
+
+# Two clients join a server, walk and see each other; every message's layout
+tests/net/multiplayer.test.ts
+tests/net/protocol.test.ts
+
+# A shot lands where the client drew it
+tests/combat/accuracy.test.ts
+
+# A mount is saddled and ridden
+tests/creatures/riding.test.ts
+
+# A car is driven, alone and by two players together
+tests/vehicles/vehicle-handling.test.ts
+tests/vehicles/vehicle-together.test.ts
+
+# Pieces snap; a tribe builds a house, cooks, and tames a parasaur
+tests/build/snap.test.ts
+tests/build/round4.test.ts
+
+# A campfire cooks and a mortar crafts
+tests/items/stations.test.ts
+
+# A base is saved and comes back after a restart; a setting changes a rule
+tests/server/save-map.test.ts
+tests/server/pairing.test.ts
+
+# A frame is built and its packet checked
+tests/render/ground.test.ts
+tests/render/programs.test.ts
+
+# The HUD is laid out and its menus take keys
+tests/ui/interface.test.ts
+
+# The core content's assets are in the pack
+tests/assets/slots.test.ts
+
+# Every sound the game fires is in the catalogue
+tests/sound/sound-catalogue.test.ts
+
+# A survivor gathers, crafts, eats, drowns, dies and returns
+tests/survivor/survival.test.ts
+
+# A map is made, served and walked on
+tests/world/maps.test.ts
+
+# An agent builds a hut and works its stations
+tests/agents/agent-base.test.ts
+
+# The check's own choosing of tests, and that this list is true
+tests/tools/check-pick.test.ts
