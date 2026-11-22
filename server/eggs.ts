@@ -76,7 +76,7 @@ export class Eggs {
       const egg = reg.breedEgg[i]!;
       if (egg !== 0xffff && egg !== 0) this.speciesOf[egg] = i;
     }
-    ctx.items.onRefGone = (ref) => this.gone(ref);
+    ctx.items.onRefGone.on((ref) => this.gone(ref));
   }
 
   /** The egg prop an item lies as, or 0 if it is no egg. */

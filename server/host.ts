@@ -648,7 +648,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   });
   death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
-  game.onVehicleStep = e => urban.impact(e);
+  game.onVehicleStep.on(e => urban.impact(e));
   game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
@@ -701,17 +701,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
   });
   // What a slot stood for goes with its item: an egg's young (server/eggs.ts), or a soul ball's tame.
-  const eggGone = items.onRefGone;
-  items.onRefGone = (ref) => {
-    eggGone?.(ref);
-    balls.gone(ref);
-  };
+  items.onRefGone.on((ref) => balls.gone(ref));
   combat.onBall.on((c, rec, slot) => balls.click(c, rec, slot));
   const mounts = new Mounts({ world, records, items, rules, balls, buffs, survival }, (opts.seed ?? 1) + 113);
   starter = mounts;
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
-  game.onMountSecondary = e => roars.use(e);
+  game.onMountSecondary.on(e => roars.use(e));
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
   // A sight's cone widens its session's view and holds what it is on awake (server/gaze.ts, D1079).
   // A look through a sight tells what it is on as far as the sight's gaze reaches (D1082).
@@ -1142,7 +1138,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return rec && cluster?.arriving.has(rec.pid) ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, dead: true, team: rec.team } : (rec ?? null);
   };
   game.needsLook = (name) => !recordOf(name)?.look;
-  game.onBody = (c) => {
+  game.onBody.on((c) => {
     let rec = recordOf(c.name);
     const first = !rec;
     if (!rec) {
@@ -1189,8 +1185,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     bus.after(SESSION_SPAWN, { pid: rec.pid, first, why: first ? "made" : c.entered ? "respawned" : "returned" });
     // A session that was in the creator has its survivor only now.
     if (c.entered) joined(c);
-  };
-  game.onBodyGone = (c) => {
+  });
+  game.onBodyGone.on((c) => {
     impale.release(c.pid);
     carry.release(c.pid);
     // Seats are not saved: a survivor in a car or on a creature is saved standing beside it.
@@ -1213,9 +1209,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       }
       records.entOf.delete(c.pid);
     }
-  };
+  });
   const creative = new Creative(world, game, rules, bus, persistence);
-  game.onEnter = (c) => {
+  game.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     creative.enter(c);
@@ -1232,16 +1228,16 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const name = rules.text("SessionName");
     if (name !== "") game.sendText(c, TEXT_MOTD, name);
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
-  };
-  game.onPresence = (c) => {
+  });
+  game.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
     else activity.login(c.pid);
     bus.after(SESSION_PRESENCE, { pid: c.pid, connected: !c.closed });
     tribes.version++;
     // The voice socket belonged to the old connection.
     voice.revoke(c);
-  };
-  game.onExit = (c) => {
+  });
+  game.onExit.on((c) => {
     activity.leave(c.pid);
     survivorLog.leave(c, c.left);
     bus.after(SESSION_LEAVE, { pid: c.pid, why: c.left });
@@ -1249,7 +1245,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     voice.revoke(c);
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
-  };
+  });
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
   const lane = game.lane;
@@ -1390,10 +1386,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // An unconscious survivor can talk, use the console and the sundial, shut what it had open and say how far off it is sent bases. Its client
   // can make it do nothing else.
   game.allows = (c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out;
-  game.onLand = (c, speed) => {
+  game.onLand.on((c, speed) => {
     const rec = records.byPid.get(c.pid);
     if (rec && !(world.ents.jetGear[c.ent]! & JET_BOOTS)) survival.landed(rec, speed);
-  };
+  });
   // A glider wears as it is flown and is charged as it folds, never in the air: one use for each of its `seconds` it was
   // open, and at least one a flight (GlideFacet). The one charged is the one refreshBody says it flies.
   const glidingSince = new Map<number, number>();
@@ -1407,7 +1403,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     return best;
   }
-  game.onGlide = (c, opened) => {
+  game.onGlide.on((c, opened) => {
     if (opened) {
       glidingSince.set(c.pid, world.tick);
       return;
@@ -1421,7 +1417,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const used = Math.max(1, Math.ceil((world.tick - since) / reg.glideTicks[item]!));
     const def = reg.defs[item];
     if (items.wear(rec, slot, used) === 0) notice(c.pid, `Your ${(def?.type === "item" && def.label) || "glider"} has come apart.`);
-  };
+  });
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, tribes, voice,
     use,

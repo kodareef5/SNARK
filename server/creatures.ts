@@ -113,8 +113,8 @@ export class Creatures {
     this.mind.herd = this;
     // One that takes fright is startled before it runs.
     this.mind.onStartle = (e) => this.cue(e, CUE_STARTLE, false);
-    game.onMountLand = (e, speed) => this.landed(e, speed);
-    game.onMountFlight = (e) => this.flew(e);
+    game.onMountLand.on((e, speed) => this.landed(e, speed));
+    game.onMountFlight.on((e) => this.flew(e));
     this.still = Uint8Array.from(world.reg.defs, (d) => (d?.type === "species" && d.still ? 1 : 0));
     this.wildFlight = world.reg.move.map(unridden);
     this.tameFlight = world.reg.tamedMove.map(unridden);
