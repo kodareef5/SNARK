@@ -11,8 +11,8 @@ engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
 Names are matched without regard to case. Lists that name classes take this
-engine's content ids. "While running" says whether the console or the live file
-may change a setting without a restart.
+engine's content ids. "While running" says whether the console, the live file or
+the admin's settings page may change a setting without a restart.
 
 ## What takes effect
 

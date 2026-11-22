@@ -88,7 +88,8 @@ import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, hashKey, type EntityRecord } from "./records.ts";
 import { Use } from "./use.ts";
 import { Rules, timersOf } from "./settings/rules.ts";
-import { CATALOG, rowOf } from "./settings/catalog.ts";
+import { CATALOG, fixedWhy, rowOf } from "./settings/catalog.ts";
+import { KeptSettings, rowNamed } from "./settings/kept.ts";
 import { Lists } from "./settings/lists.ts";
 import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/config.ts";
 import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
@@ -258,6 +259,14 @@ export interface Host {
   online(pid: number): boolean;
   /** Sets a live setting by ARK's name. Returns "" if it was set, or the reason it was not. It lasts until the server restarts. */
   setSetting(name: string, words: string): string;
+  /**
+   * Sets a live setting from the admin page, a list or a command-line flag too (`-Name`), and keeps it across restarts
+   * (settings/kept.ts). Null words take the page's value away. `why` is "" if it was done; `unkept` says why the
+   * change, though made, was not written beside the save.
+   */
+  pageSetting(name: string, words: string | null): { why: string; unkept?: string };
+  /** What the admin page set. */
+  readonly kept: KeptSettings;
   /** Reads the live file again now. Returns the report lines. */
   readLive(): string[];
   /** The setting values a loaded save's timers were computed under. Null for a new world. */
@@ -363,6 +372,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const content = withContent(core, given?.content?.defs ?? []);
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
+  // The admin page's values are laid over them, from their own file beside the save.
+  const kept = new KeptSettings(opts.dbPath ? `${opts.dbPath}.settings.json` : null, rules);
+  const keptSaid = kept.load();
   const lists = new Lists(rules, content);
   // Settings that change content are applied to the definitions once, before anything reads them (D90). From here on `reg` is the only registry.
   const tuned = tuningOf(rules, lists, content);
@@ -400,6 +412,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const records = new Records(opts.worldId ?? cluster?.world ?? (store && !store.fresh ? Number(store.meta("world_id") ?? 1) : 1));
   const activity = new SurvivorActivity(records);
   const say = opts.log ?? ((line: string) => console.log(line));
+  for (const line of keptSaid) say(line);
   // Carries events to modules. Made before the systems, so that each can raise its own.
   const bus = new Bus();
   bus.log = say;
@@ -1709,10 +1722,22 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     setSetting(name, words) {
       const row = rowOf(name);
       if (!row) return `there is no setting called ${name}`;
-      if (row.status !== "live") return `${row.name} does not take effect yet`;
-      if (!row.live) return `${row.name} is read when the server starts: set it in its file and start again`;
-      return rules.assign(row.name, words, "console");
+      const fixed = fixedWhy(row);
+      return fixed === "" ? rules.assign(row.name, words, "console") : `${row.name} ${fixed}`;
     },
+    pageSetting(name, words) {
+      const row = rowNamed(name);
+      if (!row) return { why: `there is no setting called ${name}` };
+      const fixed = fixedWhy(row);
+      if (fixed !== "") return { why: `${row.name} ${fixed}` };
+      const did = words === null ? kept.reset(row) : kept.set(row, words);
+      if (did.why !== "") return { why: words === null ? did.why : `${row.name} ${did.why}` };
+      // In the admin journal as the console's `setting` is, a list by its size and a secret not at all.
+      const shown = words === null ? "(as before the page set it)" : row.secret ? "****" : words.includes("\n") ? `(${words.split("\n").length} lines)` : words;
+      persistence?.journal(OP_ADMIN, new TextEncoder().encode(`(admin page)\tsetting ${name} ${shown}`));
+      return did;
+    },
+    kept,
     readLive,
     loadedUnder,
     projectiles,

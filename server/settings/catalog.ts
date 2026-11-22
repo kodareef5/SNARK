@@ -16,6 +16,12 @@ export function rowOf(name: string, flag = false): Row | undefined {
   return byKey.get(keyOf(name, flag));
 }
 
+/** Why a setting may not change while the server runs, or "" if it may. */
+export function fixedWhy(row: Row): string {
+  if (row.status !== "live") return "does not take effect yet";
+  return row.live ? "" : "is read when the server starts: set it in its file and start again";
+}
+
 /** Faults in the catalogue itself, one per line. The tests run it, so a row cannot be added half made. */
 export function catalogFaults(): string[] {
   const out: string[] = [];

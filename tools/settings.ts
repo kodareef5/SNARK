@@ -65,8 +65,8 @@ export function settingsPage(): string {
   out.push("engine. A setting that does not take effect is still read, checked and");
   out.push("reported when the server starts.", "");
   out.push("Names are matched without regard to case. Lists that name classes take this");
-  out.push("engine's content ids. \"While running\" says whether the console or the live file");
-  out.push("may change a setting without a restart.", "");
+  out.push("engine's content ids. \"While running\" says whether the console, the live file or");
+  out.push("the admin's settings page may change a setting without a restart.", "");
 
   const live = CATALOG.filter((r) => r.status === "live");
   out.push("## What takes effect", "");
