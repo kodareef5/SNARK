@@ -6,23 +6,21 @@ export type SurfaceName = typeof SURFACE_NAMES[number];
 export const SURFACE_PREFIX = "core:zz_world/";
 export const surfaceMaterial = (name: SurfaceName): string => SURFACE_PREFIX + name;
 /**
- * The walls' weathering masks (assets/source/core/world/weather/): runoff, damp, peel and formwork joints, one bay of 8 m
- * along a wall by one storey of 4 m up it. They are the packed array's layer after the finishes'; the material keeps a
- * base colour and a normal only as every material does, and the card never holds them in the arrays.
+ * The packed array's layers after the finishes', for masks the ground reads. The walls' weathering is not among them:
+ * the page makes its masks from a recipe (content/texgen/weather.ts) on an array of its own.
  */
-export const WEATHER_MATERIAL = SURFACE_PREFIX + "weather";
-export const WEATHER_LAYER = SURFACE_NAMES.length;
+export const MASK_LAYER = SURFACE_NAMES.length;
 /**
  * The ground's macros (assets/source/core/world/road/): a used carriageway's light and roughness from above over 32 m,
  * and a beach's; and a road's repairs over 8 m: saw-cut patches, the sealant over their seams, sealed cracks and open
- * ones. The packed array's layers after the weathering masks'.
+ * ones. The packed array's first mask layers.
  */
 export const ROAD_MATERIAL = SURFACE_PREFIX + "road";
-export const ROAD_LAYER = WEATHER_LAYER + 1;
+export const ROAD_LAYER = MASK_LAYER;
 export const REPAIRS_MATERIAL = SURFACE_PREFIX + "repairs";
-export const REPAIRS_LAYER = WEATHER_LAYER + 2;
+export const REPAIRS_LAYER = MASK_LAYER + 1;
 /** The masks' materials in the order of their layers after the finishes'. */
-export const MASK_MATERIALS = [WEATHER_MATERIAL, ROAD_MATERIAL, REPAIRS_MATERIAL] as const;
+export const MASK_MATERIALS = [ROAD_MATERIAL, REPAIRS_MATERIAL] as const;
 export type SurfaceGroup = "living" | "dry" | "wet" | "mineral" | "masonry" | "metal" | "paint" | "timber" | "glass";
 
 /** Multipliers except wetness and growth, which are added. Tint multiplies linear reflectance. */
@@ -84,16 +82,21 @@ export const SURFACE_FINISHES: Record<SurfaceName, SurfaceFinish> = {
 /**
  * How each finish weathers on a wall (world-surfaces.ts `weathered`), each a share of the most: runoff below each slab
  * edge, a damp foot, paint letting go to the concrete under it, the formwork's joints, and its value from bay to bay
- * and across 5 to 30 m, which roofs keep too; and what its runoff leaves, and a leaky bay's grime.
+ * and across 5 to 30 m, which roofs keep too; and what its runoff leaves, and a leaky bay's grime. Then drips from sills
+ * and rust bled from fixings, the dirt splashed up its foot, sun bleaching where it faces the afternoon sun under an
+ * open sky, a green film where it faces away in the shade, and salt blooming out of it where it is wet.
  */
-export interface SurfaceWeathering { runs: number; damp: number; peel: number; joints: number; value: number; left: "grime" | "rust" | "salt" }
-const weathers = (runs: number, damp: number, peel: number, joints: number, value: number, left: SurfaceWeathering["left"] = "grime"): SurfaceWeathering => ({ runs, damp, peel, joints, value, left });
+export interface SurfaceWeathering { runs: number; damp: number; peel: number; joints: number; value: number; left: "grime" | "rust" | "salt"; drips: number; splash: number; bleach: number; algae: number; salt: number }
+type More = readonly [drips: number, splash: number, bleach: number, algae: number, salt: number];
+const weathers = (runs: number, damp: number, peel: number, joints: number, value: number, more: More, left: SurfaceWeathering["left"] = "grime"): SurfaceWeathering =>
+  ({ runs, damp, peel, joints, value, left, drips: more[0], splash: more[1], bleach: more[2], algae: more[3], salt: more[4] });
 export const SURFACE_WEATHERING: Record<SurfaceName, SurfaceWeathering> = {
-  grass: weathers(0, 0, 0, 0, 0.3), sand: weathers(0.3, 0.4, 0, 0, 0.4), dirt: weathers(0.4, 0.5, 0, 0, 0.5), mud: weathers(0.3, 0.3, 0, 0, 0.4),
-  rock: weathers(0.8, 0.8, 0, 0, 0.8), gravel: weathers(0.4, 0.5, 0, 0, 0.5), asphalt: weathers(0.5, 0.5, 0, 0, 0.6), paving: weathers(0.6, 0.7, 0, 0, 0.7),
-  concrete: weathers(1, 1, 0, 1, 1), brick: weathers(0.8, 1, 0, 0, 0.8, "salt"), clay: weathers(0.6, 0.6, 0, 0, 0.7), rust: weathers(0.8, 0.3, 0, 0, 0.7, "rust"),
-  steel: weathers(0.8, 0.3, 0, 0, 0.6, "rust"), plaster: weathers(1, 1, 1, 0, 0.9), wood: weathers(0.7, 0.8, 0, 0, 0.8), glass: weathers(0.4, 0, 0, 0, 0.2),
-  sidewalk: weathers(0.6, 0.7, 0, 0, 0.7),
+  grass: weathers(0, 0, 0, 0, 0.3, [0, 0, 0, 0, 0]), sand: weathers(0.3, 0.4, 0, 0, 0.4, [0.2, 0.3, 0.2, 0, 0]), dirt: weathers(0.4, 0.5, 0, 0, 0.5, [0.3, 0.5, 0.1, 0.2, 0]),
+  mud: weathers(0.3, 0.3, 0, 0, 0.4, [0.2, 0.3, 0, 0.3, 0]), rock: weathers(0.8, 0.8, 0, 0, 0.8, [0.5, 0.6, 0.4, 0.8, 0.3]), gravel: weathers(0.4, 0.5, 0, 0, 0.5, [0.3, 0.5, 0.2, 0.4, 0]),
+  asphalt: weathers(0.5, 0.5, 0, 0, 0.6, [0.3, 0.5, 0.3, 0.3, 0]), paving: weathers(0.6, 0.7, 0, 0, 0.7, [0.5, 0.8, 0.4, 0.7, 0.5]), concrete: weathers(1, 1, 0, 1, 1, [1, 1, 0.5, 1, 0.6]),
+  brick: weathers(0.8, 1, 0, 0, 0.8, [0.7, 1, 0.4, 0.8, 1], "salt"), clay: weathers(0.6, 0.6, 0, 0, 0.7, [0.6, 0.9, 0.5, 0.7, 0.5]), rust: weathers(0.8, 0.3, 0, 0, 0.7, [0.8, 0.5, 0.3, 0, 0], "rust"),
+  steel: weathers(0.8, 0.3, 0, 0, 0.6, [0.8, 0.5, 0.5, 0, 0], "rust"), plaster: weathers(1, 1, 1, 0, 0.9, [1, 1, 1, 0.8, 0.3]), wood: weathers(0.7, 0.8, 0, 0, 0.8, [0.6, 0.9, 1, 0.9, 0]),
+  glass: weathers(0.4, 0, 0, 0, 0.2, [0.3, 0.4, 0, 0.2, 0]), sidewalk: weathers(0.6, 0.7, 0, 0, 0.7, [0.5, 0.8, 0.4, 0.6, 0.4]),
 };
 
 /**

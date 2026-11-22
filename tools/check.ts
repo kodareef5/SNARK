@@ -34,9 +34,11 @@ const WORKER_HEAP_RAM = 500_000_000;
  * shadow, filtering and map loader (D748); 5 time the assets' uploads and fetch the data utility's record of frames
  * (D899); 6 make the streets' two pictures round the camera and put each frame's tiles of them on the card (D1000); 3
  * point attributes 13 and 14 at a bent draw's stream of bends, beside its instances (D1006); 5 hold a sight's scissor to
- * its window and mask its lens (D1077); the last 1 gives a draw's heat to a visor's heat view (D1081).
+ * its window and mask its lens (D1077); 1 gives a draw's heat to a visor's heat view (D1081); the last 102 make the
+ * walls' weathering masks on the card as their plan in client/core/texgen says: the array, its program, its draws, the
+ * card's timer and an older pack's painted mask left unheld (D1084).
  */
-const SHELL_MAX_LINES = 1620;
+const SHELL_MAX_LINES = 1722;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
