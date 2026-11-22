@@ -42,7 +42,8 @@ import { storeParts, type StoreReport } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 import { mapLandmarks, weigh, weighLandmarks } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
-import { buildPageScript, preloaded, withoutNotes } from "./page-script.ts";
+import { buildPageScript, preloaded } from "./page-script.ts";
+import { finishScript, pageWithoutNotes, withoutNotes } from "./script-notes.ts";
 import { checkoutBuild } from "../server/reports.ts";
 import { writeFirstFrame } from "./first-frame.ts";
 
@@ -150,8 +151,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // page.js (tools/page-script.ts). Workers and worklets run in their own threads, so each is bundled as a separate file.
   const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/notes/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });
   if (!workers.success) throw new Error(workers.logs.map(String).join("\n"));
-  // The shaders' notes are some 5 KB of the first frame's Brotli.
-  for (const o of workers.outputs) if (o.path.endsWith(".js")) writeFileSync(o.path, withoutNotes(readFileSync(o.path, "utf8")));
+  // Sent without the notes written for readers, as the page's script is (tools/script-notes.ts).
+  for (const o of workers.outputs) if (o.path.endsWith(".js")) finishScript(o.path);
   const scripts = [...(await buildPageScript(dist, define, root)), ...workers.outputs.filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1))];
   // What main.js imports before it runs, which the page asks for beside it: page.js.
   const pieces = preloaded(dist);
@@ -254,7 +255,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     .replaceAll("HUD_ATLAS_URL", ui.atlas)
     .replace("<!-- MODULES -->", modules)
     .replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName]));
-  writeFileSync(join(dist, "index.html"), html);
+  writeFileSync(join(dist, "index.html"), pageWithoutNotes(html));
   const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
   for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
   await buildEntry(dist);

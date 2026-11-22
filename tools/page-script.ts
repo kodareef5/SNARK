@@ -10,9 +10,10 @@
 //
 //   bun tools/page-script.ts --check [folder]   builds the script into the folder, a passing one if none, and checks it
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { finishScript, withoutNotes } from "./script-notes.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 /** The shell's entry, which alone may wait at its top level. */
@@ -21,14 +22,7 @@ export const ENTRY = "client/shell/main.ts";
 export const PAGE = "page.js";
 const FROM_PAGE = `./${PAGE}`;
 
-/**
- * A script as the page is sent it: each line wholly a `//` comment left empty. In the minifier's output a line break
- * is only ever in template text, where such a line is a shader's note, or between statements, where it is a comment
- * anyway. A line holding a backtick, a `$` or a backslash is kept, and no line is taken away, so the source map reads.
- */
-export function withoutNotes(js: string): string {
-  return js.replace(/\n[ \t]*\/\/[^\n`$\\]*(?=\n)/g, "\n");
-}
+export { withoutNotes };
 
 const resolveFrom = (spec: string, importer: string): string | null => {
   try {
@@ -148,7 +142,8 @@ export async function buildPageScript(dist: string, define: Record<string, strin
   } }] });
   if (!page.success) throw new Error(page.logs.map(String).join("\n"));
   const files = [...main.outputs, ...page.outputs, ...(later?.outputs ?? [])].filter((o) => o.path.endsWith(".js")).map((o) => o.path);
-  for (const f of files) writeFileSync(f, withoutNotes(readFileSync(f, "utf8")));
+  // Sent without the notes written for readers (tools/script-notes.ts).
+  for (const f of files) finishScript(f);
   return files.map((f) => relative(dist, f)).sort((a, b) => (a === "main.js" ? -1 : b === "main.js" ? 1 : a === PAGE ? -1 : b === PAGE ? 1 : a.localeCompare(b)));
 }
 
