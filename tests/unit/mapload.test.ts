@@ -12,18 +12,22 @@ import { nextTask, type Get } from "../../client/core/fetched.ts";
 import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, ROAD_REACH, StagedMap, URGENT_AT_ONCE, firstFrameParts, handOverParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
-import { Scene } from "../../client/core/render/scene.ts";
+import { BEND_BUFFERS } from "../../client/core/render/packet.ts";
+import { Scene, type RenderWorld } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { PREDICTED_REACH } from "../../client/core/session.ts";
-import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
+import { CHUNK_SIZE, SECTOR_CHUNKS, chunkAt } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { OVERVIEW_CHUNKS, mapHeightfield, mapTops, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatics, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
+import { BEND_SHORTS, packBend, placeKerb } from "../../shared/world/bends.ts";
+import { CityStatics } from "../../shared/world/city.ts";
+import { TERRAIN_CELL, type Heightfield } from "../../shared/world/heightfield.ts";
+import { OVERVIEW_CHUNKS, mapHeightfield, mapTops, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatic, type MapStatics, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { ROAD_PLANES, roadSamples } from "../../shared/world/roadframe.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { cornerMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { nodePack, nodeRegistry } from "../fixtures/nodeworld.ts";
+import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 /** wideMap with a landmark, whose definitions are its land part, and none of its nodes listed (see the test of those below). */
@@ -191,6 +195,79 @@ test("the statics of the sectors within reach of the body are handed over once t
   expect(head.parts.filter((p) => p.kind === "statics").every((p) => came.includes(p.name))).toBe(false);
   expect([handed.length, handed[0]![1], handed[0]![0].length, handed[1]![1]]).toEqual([2, false, rows, true]);
   expect(wholeStatics(handed[1]![0])).toBe(true);
+});
+
+/** A flat map three sectors wide, west to east, with a straight raised kerb in the middle of each. */
+function kerbed(): MapData {
+  const dims = { chunksX: 3 * SECTOR_CHUNKS, chunksZ: SECTOR_CHUNKS };
+  const samples = (dims.chunksX * CHUNK_SIZE / TERRAIN_CELL + 1) * (dims.chunksZ * CHUNK_SIZE / TERRAIN_CELL + 1);
+  const statics: MapStatic[] = [0, 1, 2].flatMap((k) =>
+    placeKerb({ x: [k * 1024 + 520, k * 1024 + 550], z: [512, 512], y: [0, 0] }, 1, { kerb: "raised", walk: 3, panel: 1.5, seed: 9 + k, wear: 0.3 }).map((p) => {
+      const bend = new Int16Array(BEND_SHORTS);
+      packBend(bend, 0, p.bend);
+      return { kind: p.kind, x: p.x, y: p.y, z: p.z, yaw: Math.round((p.yaw / 360) * 65536) & 0xffff, bend };
+    }),
+  );
+  return flatMap(4, { dims, heights: new Uint16Array(samples).fill(32 * 256), tint: new Uint8Array(samples).fill(1), statics });
+}
+
+test("a sector's kerbs are drawn once its statics come, whatever else is still on its way: the body goes past the statics handed over round it into a sector whose statics then come while a third's are held back", async () => {
+  const file = writeMap(kerbed()), h = readHead(file), reg = coreRegistry(), dims = h.dims;
+  const whole = parseMap(file).statics;
+  const statics = h.parts.filter((p) => p.kind === "statics");
+  // West to east: A, where the body starts, B, where it goes, and C, whose statics come last.
+  const [a, b, c] = [0, 1, 2].map((k) => statics.find((p) => squareOf(dims, SECTOR_CHUNKS, p.col, p.row)!.cx0 === k * SECTOR_CHUNKS)!);
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${h.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 535, z: 512, vx: 0, vz: 0 };
+  // The near store, its world's city as the session makes it of each hand-over (session.ts staticsSteps).
+  const world: { -readonly [K in keyof RenderWorld]: RenderWorld[K] } = { dims, hf: loader!.staged.hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far: { cells: new FarStore(), complete: () => true } };
+  const handed: boolean[] = [];
+  void loader!.follow(() => body, { arrived: (t, all) => (handed.push(all), (world.city = { statics: new CityStatics(dims, t, reg), complete: () => true })), near: 300 });
+  // Everything is answered but B's and C's statics, until the statics round the body have been handed over.
+  const held = (url: string): boolean => url === nameOf(b!) || url === nameOf(c!);
+  for (let k = s.waiting.findIndex((w) => !held(w.url)); k >= 0 || handed.length === 0; k = s.waiting.findIndex((w) => !held(w.url))) {
+    if (k < 0) await settle();
+    else await s.answer(k);
+  }
+  // Handed over with A's rows, and none of B's.
+  expect([handed, s.asked.includes(nameOf(a!)), world.city!.statics.in(chunkAt(dims, 535, 512)) > 0, world.city!.statics.in(chunkAt(dims, 1559, 512))]).toEqual([[false], true, true, 0]);
+  // The body walks into B, whose chunk the server sends with its kerb as the map set it down.
+  [body.x, body.z] = [1559, 514];
+  const chunk = chunkAt(dims, 1559, 512);
+  for (let r = whole.first[chunk]!; r < whole.first[chunk + 1]!; r++) world.structs.put(chunk, r - whole.first[chunk]!, reg.index.get(whole.kinds[whole.kind[r]!]!)!, whole.x[r]!, whole.y[r]!, whole.z[r]!, whole.yaw[r]!, 0, 100, 1);
+  world.structs.setVersion(chunk, 1);
+  const scene = new Scene(world, reg, corePack());
+  scene.assets.tier = tierOf("medium");
+  const cam = new Camera();
+  [cam.x, cam.y, cam.z, cam.yaw, cam.pitch, cam.aspect] = [1559, 12, 516, 0, -1.3, 4 / 3];
+  /** The bends a frame puts on the card for B's chunk, as text, those that are not blank; or null where it puts none up. */
+  const frame = (): string[] | null => {
+    scene.now += 1000 / 60;
+    const up = scene.build(cam, null).uploads.find((u) => u.buffer === chunk + BEND_BUFFERS);
+    if (!up) return null;
+    const bends = new Int16Array(up.data.buffer, up.data.byteOffset, up.data.byteLength / 2), out: string[] = [];
+    for (let i = 0; i < bends.length; i += 8) if (bends[i] !== 0) out.push(Array.from(bends.subarray(i, i + 8)).join(" "));
+    return out.sort();
+  };
+  const mine = whole.bends.get(chunk)!, want = Array.from({ length: mine.slot.length }, (_, k) => Array.from(mine.bend.subarray(k * 8, k * 8 + 8)).join(" ")).sort();
+  expect(want.length).toBeGreaterThan(0);
+  // Before B's statics come its chunk is laid out with no bend to draw its kerb by.
+  expect(frame()).toEqual([]);
+  // B's statics come, C's are still held back, and nothing more is handed over: the next frame lays the chunk out again
+  // with its bends.
+  await s.answer(s.waiting.findIndex((w) => w.url === nameOf(b!)));
+  await settle();
+  expect(handed).toEqual([false]);
+  expect(frame()).toEqual(want);
+  // Once C's come the whole map's are handed over, and the chunk keeps its bends.
+  await s.drain();
+  await settle();
+  expect(handed).toEqual([false, true]);
+  const again = frame();
+  expect(again === null || Bun.deepEquals(again, want)).toBe(true);
 });
 
 test("the page asks for the head, then the land, then nothing until it knows where the body is; then that sector's ground and its overview alone, then the rest nearest first, and the statics last", async () => {

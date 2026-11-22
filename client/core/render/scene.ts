@@ -399,8 +399,8 @@ interface ChunkBatch {
   inView: Uint8Array;
   /**
    * Per instance, its bend where its kind is bent (bend.ts), eight numbers each, which go up as the buffer BEND_BUFFERS past
-   * the instances'; null where none is. `unbent`: built before its chunk's bends were to hand (in the statics round the
-   * body or the whole map's), so built again once they are.
+   * the instances'; null where none is. `unbent`: built before its chunk's bends were to hand (before its sector's statics
+   * came), so built again once they are.
    */
   bends: Int16Array | null;
   unbent: boolean;
@@ -2889,7 +2889,7 @@ export class Scene {
       let learnt = false;
       if (batch) for (const m of batch.unknown) learnt = this.assets.known(m) || learnt;
       const turned = batch !== undefined && batch.shape !== t.shape && !batch.sized && batch.placed === t.placed;
-      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics?.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) {
+      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics?.bent.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) {
         batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.mine ?? null);
         laid += t.high;
       }
@@ -3498,9 +3498,10 @@ export class Scene {
     const slots = old && old.slots.length === count ? old.slots : new Uint16Array(count);
     const kinds = old && old.kinds.length === count ? old.kinds : new Uint16Array(count);
     const w = new InstanceWriter(data);
-    // A bent piece's bend is the map's for its slot while the slot holds the piece the map set there (city.ts CityStatics.bends).
-    const city = bent > 0 ? this.world.city?.statics : undefined, from = city ? city.first[chunk]! : 0, rows = city ? city.first[chunk + 1]! - from : 0;
-    const bends = bent > 0 ? new Int16Array(count * 8) : null, chunkBends = city?.bends.get(chunk);
+    // A bent piece's bend is the map's for its slot while the slot holds the piece the map set there, of the map's statics
+    // as they come, so a sector's are drawn once it has (city.ts CityStatics.bent).
+    const city = bent > 0 ? this.world.city?.statics : undefined, map = city?.bent, from = map ? map.first[chunk]! : 0, rows = map ? map.first[chunk + 1]! - from : 0;
+    const bends = bent > 0 ? new Int16Array(count * 8) : null, chunkBends = map?.bends.get(chunk);
     const b: ChunkBatch = {
       bends,
       unbent: bent > 0 && !chunkBends,
@@ -3582,7 +3583,7 @@ export class Scene {
       const k = sizeOf ? sizeOf[kind]! / SIZE_UNITS : 1;
       let r = sizeOf ? this.assets.table.reach[mesh]! * k : this.radiusOfMesh[mesh]!;
       if (bends && this.bentKind[kind] === 1) {
-        const bend = city && s < rows && city.kind[from + s] === kind && city.x[from + s] === x && city.z[from + s] === z ? bendOf(chunkBends, s) : null;
+        const bend = map && s < rows && city!.bentKind[map.kind[from + s]!] === kind && map.x[from + s] === x && map.z[from + s] === z ? bendOf(chunkBends, s) : null;
         if (bend) bends.set(bend, i * 8);
         // Its walk in the low 14 bits of its seventh number, a sinking walk's flags over it (bends.ts packBend).
         r = bend ? bend[0]! / 1000 + Math.max(KERB_BACK, (bend[6]! & 0x3fff) / 1000) + 0.5 : r;
