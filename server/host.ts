@@ -50,7 +50,7 @@ import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { CorpseImpact } from "../shared/anim/corpse.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
-import { Stations } from "./stations.ts";
+import { Stations, tellStation } from "./stations.ts";
 import { wirePower } from "./power.ts";
 import { wirePreserve } from "./preserve.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -1419,9 +1419,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (items.wear(rec, slot, used) === 0) notice(c.pid, `Your ${(def?.type === "item" && def.label) || "glider"} has come apart.`);
   });
   const own: OwnContext = {
-    world, game, records, items, survival, progression, rules, tribes, voice,
+    world, game, records, items, survival, progression, rules, voice,
     use,
-    online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),
     beds,
@@ -1448,6 +1447,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
   addOwnState(own);
+  tribes.tell(game, (pid) => sessionOf(pid) !== null);
+  tellStation(game, records);
 
   function refreshInventories(): void {
     for (const rec of inventoryChanged) {

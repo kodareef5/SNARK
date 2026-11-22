@@ -27,6 +27,8 @@ import {
   MAX_NAME_BYTES,
   MAX_PASSWORD_BYTES,
   OWN_SESSION,
+  OWN_STATION,
+  OWN_SUBJECT,
   PROTOCOL_VERSION,
   REJECT_CONTENT,
   REJECT_DENIED,
@@ -335,7 +337,6 @@ export class Client {
   readonly known: Uint32Array;
   /** Version of each chunk's used-up nodes the client holds. */
   readonly nodesKnown: Uint32Array;
-  sentProgress = -1;
   readonly subscribed: number[] = [];
   syncChunk = -1;
   /** Bytes of chunk messages sent on each of the last 32 ticks, and the tick each slot is for. */
@@ -370,32 +371,12 @@ export class Client {
   ownDirty = false;
   /** What this connection was last sent of each kind of owner state, by OWN_ kind (server/ownstate.ts). Nothing at a kind: it was sent none. */
   readonly sent: unknown[] = [];
-  /** Each sent field is the version of owner-private state this connection last got. -1 means nothing yet. */
-  sentMarkers = -1;
-  /** What was last sent of the creature it has open, packed into one number, and when. */
-  sentSubject = -1;
-  sentSubjectAt = 0;
-  /**
-   * Without a body, why it chooses where to rise (CHOOSE_). The places it was last sent (server/beds.ts), in their order, the
-   * list's number, and the version of the beds they were made from (-1 for none sent).
-   */
+  /** Without a body, why it chooses where to rise (CHOOSE_). The places it was last sent (server/beds.ts), in their order, and the list's number. */
   why = CHOOSE_DIED;
   readonly respawnAt: Place[] = [];
   placesList = 0;
-  sentPlaces = -1;
-  sentHeld = -2;
-  sentBuffs = -1;
-  /** Whether the session was last told of a kept tame in the box it has open (OWN_KEPT). */
-  sentKeptOpen = false;
-  sentRules = -1;
-  /** inviteUntil is the tick the invitation it was shown expires, or 0. */
-  sentTribe = -1;
-  inviteUntil = 0;
-  sentVoice: Uint8Array | null = null;
   /** Record id of the container it has open, or 0. */
   open = 0;
-  sentOpen = 0;
-  sentOpenVersion = -1;
 
   edges(): void {
     this.pressed = this.heldButtons & ~this.before;
@@ -422,7 +403,6 @@ export class Client {
     this.views.clear();
     this.known.fill(0);
     this.nodesKnown.fill(0);
-    this.sentProgress = -1;
     this.subscribed.length = 0;
     this.syncChunk = -1;
     this.chunkSent.fill(0);
@@ -439,17 +419,9 @@ export class Client {
     this.joined = false;
     this.left = "left";
     this.ownDirty = false;
-    this.sent.length = 0;
-    this.sentMarkers = this.sentOpenVersion = -1;
-    this.sentPlaces = -1;
-    this.sentHeld = -2;
-    this.sentBuffs = -1;
-    this.sentKeptOpen = false;
-    this.sentRules = -1;
-    this.sentTribe = -1;
-    this.inviteUntil = 0;
-    this.sentVoice = null;
-    this.open = this.sentOpen = 0;
+    // What it was sent of the creature and the station it had open is kept, so the new connection is told that they closed.
+    for (let k = 0; k < this.sent.length; k++) if (k !== OWN_SUBJECT && k !== OWN_STATION) this.sent[k] = undefined;
+    this.open = 0;
     this.pressed = this.before = 0;
   }
 }

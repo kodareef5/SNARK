@@ -3,19 +3,18 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import { fitBytes, type BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, MAX_OPEN_NAME_BYTES, OPEN_TAKE_ONLY, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_SURVIVORS_PASS, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, MAX_OPEN_NAME_BYTES, OPEN_TAKE_ONLY, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_SURVIVORS_PASS, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { FLAG_BLUEPRINT, FLAG_ISSUED, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_WATER } from "../shared/sim/vitals.ts";
+import { sendKept } from "./balls.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Progression } from "./progression.ts";
-import { sendStation } from "./stations.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
-import type { Tribes } from "./tribes.ts";
 import type { Subject } from "./taming.ts";
 import type { Use } from "./use.ts";
 import type { Voice } from "./voice.ts";
@@ -49,9 +48,6 @@ function issuedStays(ctx: OwnContext, item: number): string {
 /** What a survivor is told when it would put something into a supply drop's capsule. */
 export const TAKE_ONLY = "A supply drop is only taken from: nothing can be put into it.";
 
-/** The count is one byte on the wire. A larger tribe sends only its first members. */
-const MAX_MEMBERS_SENT = 255;
-
 export interface OwnContext {
   readonly world: ServerWorld;
   readonly game: GameServer;
@@ -66,9 +62,7 @@ export interface OwnContext {
   subject(rec: EntityRecord): Subject | null;
   readonly progression: Progression;
   readonly rules: Rules;
-  readonly tribes: Tribes;
   readonly voice: Voice;
-  online(pid: number): boolean;
   /** See `Host.refreshBody`. */
   refresh(rec: EntityRecord): void;
   /** Food gives `points` of health. */
@@ -122,32 +116,26 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
   ctx.game.endOwn(c);
 }
 
-/**
- * Sends the tames kept in the soul balls of `inv` (OWN_KEPT), whole, if it holds one or `told` says the session was last
- * told of one. Returns whether it holds one now. Call after the box's slots are sent.
- */
-function sendKept(ctx: OwnContext, c: Client, box: number, inv: Inventory, told: boolean): boolean {
-  const reg = ctx.world.reg;
-  const slots: number[] = [];
-  for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0 && reg.ballEmpty[inv.item[s]!] !== 0 && ctx.records.byPid.get(inv.refOf(s))?.stored) slots.push(s);
-  if (slots.length === 0 && !told) return false;
-  const w = ctx.game.beginOwn(OWN_KEPT);
-  w.bits(box, 1);
-  w.varint(slots.length);
-  for (const s of slots) {
-    const tame = ctx.records.byPid.get(inv.refOf(s))!;
-    w.varint(s);
-    w.u16(tame.kind);
-    w.u16(tame.genome ? tame.genome.level : 1);
-    w.string(tame.name);
-  }
-  ctx.game.endOwn(c);
-  return slots.length > 0;
+/** What a session was last told it has open: the box's record id (0 for none), the version of its slots (-1 for none sent), and whether it was told of a kept tame in it. */
+interface OpenSent {
+  pid: number;
+  version: number;
+  kept: boolean;
 }
 
-/** Registers the kinds of owner state that have no system of their own to register them. */
+/** What a session was last sent of the creature it has open, packed into one number (-1 for none), and when. */
+interface SubjectSent {
+  sum: number;
+  at: number;
+}
+
+/**
+ * Registers the kinds of owner state that no system registers for itself. The tribe's is registered by server/tribes.ts and
+ * the open station's by server/stations.ts.
+ */
 export function addOwnState(ctx: OwnContext): void {
-  const own = ctx.game.own;
+  const game = ctx.game;
+  const own = game.own;
   own.add({
     kind: OWN_LOOK,
     version: (_c, rec) => rec.look ?? undefined,
@@ -175,191 +163,167 @@ export function addOwnState(ctx: OwnContext): void {
     if (inv.version === sent) return;
     sendSlots(ctx, c, BOX_SELF, inv, sent, sent < 0);
     c.sent[OWN_SLOTS] = inv.version;
-    c.sent[OWN_KEPT] = sendKept(ctx, c, BOX_SELF, inv, c.sent[OWN_KEPT] === true);
+    c.sent[OWN_KEPT] = sendKept(game, ctx.records, c, BOX_SELF, inv, c.sent[OWN_KEPT] === true);
     // The load changes how the body moves, and others see its gear.
     if (c.ent >= 0) ctx.refresh(rec);
   });
-}
-
-export function syncOwn(ctx: OwnContext, c: Client): void {
-  const rec = ctx.records.byPid.get(c.pid);
-  if (!rec) return;
-  const game = ctx.game;
-  game.own.sync(c, rec);
-  if (ctx.rules.version !== c.sentRules) {
-    const w = game.beginOwn(OWN_RULES);
-    const rules = ctx.rules;
-    w.u16(
-      (rules.on("ShowFloatingDamageText") ? RULE_DAMAGE_NUMBERS : 0) |
-        (rules.on("ProximityChat") ? 0 : RULE_GLOBAL_CHAT) |
-        (rules.on("AllowHitMarkers") ? RULE_HIT_MARKERS : 0) |
-        (rules.on("AllowThirdPersonPlayer") ? RULE_THIRD_PERSON : 0) |
-        (rules.on("ServerCrosshair") ? RULE_CROSSHAIR : 0) |
-        (rules.on("ShowMapPlayerLocation") ? RULE_MAP_LOCATION : 0) |
-        (rules.on("bUseCorpseLocator") ? RULE_CORPSE_LOCATOR : 0) |
-        (rules.on("bShowCreativeMode") ? RULE_CREATIVE : 0) |
-        (rules.on("SurvivorsBlock") ? 0 : RULE_SURVIVORS_PASS),
-    );
-    game.endOwn(c);
-    c.sentRules = ctx.rules.version;
-  }
+  own.add({
+    kind: OWN_RULES,
+    version: () => ctx.rules.version,
+    write(w) {
+      const rules = ctx.rules;
+      w.u16(
+        (rules.on("ShowFloatingDamageText") ? RULE_DAMAGE_NUMBERS : 0) |
+          (rules.on("ProximityChat") ? 0 : RULE_GLOBAL_CHAT) |
+          (rules.on("AllowHitMarkers") ? RULE_HIT_MARKERS : 0) |
+          (rules.on("AllowThirdPersonPlayer") ? RULE_THIRD_PERSON : 0) |
+          (rules.on("ServerCrosshair") ? RULE_CROSSHAIR : 0) |
+          (rules.on("ShowMapPlayerLocation") ? RULE_MAP_LOCATION : 0) |
+          (rules.on("bUseCorpseLocator") ? RULE_CORPSE_LOCATOR : 0) |
+          (rules.on("bShowCreativeMode") ? RULE_CREATIVE : 0) |
+          (rules.on("SurvivorsBlock") ? 0 : RULE_SURVIVORS_PASS),
+      );
+    },
+  });
   // The voice token is sent once to each connection.
-  const token = ctx.voice.token(c);
-  if (c.sentVoice !== token) {
-    const w = game.beginOwn(OWN_VOICE);
-    w.u16(c.id);
-    for (let i = 0; i < TOKEN_BYTES; i++) w.u8(token[i]!);
-    w.u8(1);
-    game.endOwn(c);
-    c.sentVoice = token;
-  }
-  // Sent whenever any tribe changes, a session comes or goes, or the invitation it was shown expires.
-  const tribes = ctx.tribes;
-  if (tribes.version !== c.sentTribe || (c.inviteUntil !== 0 && ctx.world.tick >= c.inviteUntil)) {
-    const invite = tribes.inviteOf(rec);
-    const tribe = tribes.of(rec);
-    const w = game.beginOwn(OWN_TRIBE);
-    w.varint(rec.team);
-    w.string(tribe ? tribe.name : "");
-    if (tribe) {
-      w.u8(rec.rank);
-      const n = Math.min(tribe.members.length, MAX_MEMBERS_SENT);
-      w.u8(n);
-      for (let i = 0; i < n; i++) {
-        const pid = tribe.members[i]!;
-        w.string(ctx.records.byPid.get(pid)?.name ?? "");
-        w.bool(ctx.online(pid));
-        w.bool(pid === tribe.owner);
+  own.add({
+    kind: OWN_VOICE,
+    version: (c) => ctx.voice.token(c),
+    write(w, c) {
+      const token = ctx.voice.token(c);
+      w.u16(c.id);
+      for (let i = 0; i < TOKEN_BYTES; i++) w.u8(token[i]!);
+      w.u8(1);
+    },
+  });
+  own.add({
+    kind: OWN_BUFFS,
+    version: (_c, rec) => rec.buffsVersion,
+    write(w, _c, rec) {
+      w.u8(rec.buffs.length);
+      for (const b of rec.buffs) {
+        w.u16(b.buff);
+        w.u32(b.until);
+      }
+    },
+  });
+  own.add({
+    kind: OWN_HELD,
+    version: (_c, rec) => rec.held,
+    write: (w, _c, rec) => void w.u8(rec.held < 0 ? 255 : rec.held),
+  });
+
+  // The open container is announced when it changes, then synced like the survivor's own inventory. What is sent of a
+  // creature that is open, and of the tames an open box's soul balls keep, goes with it.
+  own.group(OWN_OPEN, (c) => {
+    const sent = (c.sent[OWN_OPEN] ??= { pid: 0, version: -1, kept: false }) as OpenSent;
+    const open = ctx.openOf(c);
+    const openPid = open ? open.pid : 0;
+    if (openPid !== sent.pid) {
+      const w = game.beginOwn(OWN_OPEN);
+      w.bool(open !== null);
+      if (open) {
+        w.varint(ctx.items.inv(open).cap);
+        w.string(fitBytes(open.name, MAX_OPEN_NAME_BYTES));
+        // Protocol 41: what kind of box it is (OPEN_ bits).
+        w.u8(ctx.world.reg.takeOnly[open.kind] === 1 ? OPEN_TAKE_ONLY : 0);
+      }
+      game.endOwn(c);
+      sent.pid = openPid;
+      sent.version = -1;
+    }
+    // An open creature's state is sent at most every 6 ticks, and only when it changed.
+    const told = (c.sent[OWN_SUBJECT] ??= { sum: -1, at: 0 }) as SubjectSent;
+    const subject = open ? ctx.subject(open) : null;
+    if (!subject) {
+      if (told.sum !== -1) {
+        game.beginOwn(OWN_SUBJECT).bool(false);
+        game.endOwn(c);
+        told.sum = -1;
+      }
+    } else if (ctx.world.tick - told.at >= 6) {
+      const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000), subject.id, subject.points, subject.stance, (subject.following ? 1 : 0) | (subject.wandering ? 2 : 0), subject.saddled ? 1 : 0, (subject.breeds ? 1 : 0) | (subject.mating ? 2 : 0) | (subject.female ? 4 : 0) | (subject.stage << 3), Math.round(subject.maturity * 1000), Math.round(subject.mate * 1000), subject.wait];
+      const sum = q.reduce((h, v) => (Math.imul(h, 31) + v) | 0, 7) >>> 0;
+      if (sum !== told.sum) {
+        const w = game.beginOwn(OWN_SUBJECT);
+        w.bool(true);
+        w.bool(subject.taming);
+        w.bool(subject.owned);
+        w.u16(subject.level);
+        w.bits(q[3]!, 10);
+        w.bits(q[4]!, 10);
+        w.bits(q[5]!, 10);
+        w.bits(q[6]!, 10);
+        w.u32(subject.id >>> 0);
+        w.u8(subject.points);
+        w.bits(subject.stance, 2);
+        w.bool(subject.following);
+        w.bool(subject.wandering);
+        w.bool(subject.saddled);
+        w.bool(subject.breeds);
+        w.bool(subject.mating);
+        w.bool(subject.female);
+        w.bits(subject.stage, 2);
+        w.bits(q[13]!, 10);
+        w.bits(q[14]!, 10);
+        w.varint(subject.wait);
+        game.endOwn(c);
+        told.sum = sum;
+        told.at = ctx.world.tick;
       }
     }
-    w.string(invite ? invite.tribe.name : "");
-    if (invite) w.string(invite.by);
-    game.endOwn(c);
-    c.sentTribe = tribes.version;
-    c.inviteUntil = invite ? invite.until : 0;
-  }
-  if (rec.buffsVersion !== c.sentBuffs) {
-    const w = game.beginOwn(OWN_BUFFS);
-    w.u8(rec.buffs.length);
-    for (const b of rec.buffs) {
-      w.u16(b.buff);
-      w.u32(b.until);
-    }
-    game.endOwn(c);
-    c.sentBuffs = rec.buffsVersion;
-  }
-  if (rec.held !== c.sentHeld) {
-    const w = game.beginOwn(OWN_HELD);
-    w.u8(rec.held < 0 ? 255 : rec.held);
-    game.endOwn(c);
-    c.sentHeld = rec.held;
-  }
-
-  // The open container is announced when it changes, then synced like the survivor's own inventory.
-  const open = ctx.openOf(c);
-  const openPid = open ? open.pid : 0;
-  if (openPid !== c.sentOpen) {
-    const w = game.beginOwn(OWN_OPEN);
-    w.bool(open !== null);
     if (open) {
-      w.varint(ctx.items.inv(open).cap);
-      w.string(fitBytes(open.name, MAX_OPEN_NAME_BYTES));
-      // Protocol 41: what kind of box it is (OPEN_ bits).
-      w.u8(ctx.world.reg.takeOnly[open.kind] === 1 ? OPEN_TAKE_ONLY : 0);
+      const box = ctx.items.inv(open);
+      if (box.version !== sent.version) {
+        // A box newly opened was told nothing of yet, and the client forgot what the last one held.
+        const fresh = sent.version < 0;
+        sendSlots(ctx, c, BOX_OPEN, box, sent.version, fresh);
+        sent.version = box.version;
+        sent.kept = sendKept(game, ctx.records, c, BOX_OPEN, box, sent.kept && !fresh);
+      }
     }
-    game.endOwn(c);
-    c.sentOpen = openPid;
-    c.sentOpenVersion = -1;
-  }
-  // An open creature's state is sent at most every 6 ticks, and only when it changed.
-  const subject = open ? ctx.subject(open) : null;
-  if (!subject) {
-    if (c.sentSubject !== -1) {
-      game.beginOwn(OWN_SUBJECT).bool(false);
-      game.endOwn(c);
-      c.sentSubject = -1;
-    }
-  } else if (ctx.world.tick - c.sentSubjectAt >= 6) {
-    const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000), subject.id, subject.points, subject.stance, (subject.following ? 1 : 0) | (subject.wandering ? 2 : 0), subject.saddled ? 1 : 0, (subject.breeds ? 1 : 0) | (subject.mating ? 2 : 0) | (subject.female ? 4 : 0) | (subject.stage << 3), Math.round(subject.maturity * 1000), Math.round(subject.mate * 1000), subject.wait];
-    const sum = q.reduce((h, v) => (Math.imul(h, 31) + v) | 0, 7) >>> 0;
-    if (sum !== c.sentSubject) {
-      const w = game.beginOwn(OWN_SUBJECT);
-      w.bool(true);
-      w.bool(subject.taming);
-      w.bool(subject.owned);
-      w.u16(subject.level);
-      w.bits(q[3]!, 10);
-      w.bits(q[4]!, 10);
-      w.bits(q[5]!, 10);
-      w.bits(q[6]!, 10);
-      w.u32(subject.id >>> 0);
-      w.u8(subject.points);
-      w.bits(subject.stance, 2);
-      w.bool(subject.following);
-      w.bool(subject.wandering);
-      w.bool(subject.saddled);
-      w.bool(subject.breeds);
-      w.bool(subject.mating);
-      w.bool(subject.female);
-      w.bits(subject.stage, 2);
-      w.bits(q[13]!, 10);
-      w.bits(q[14]!, 10);
-      w.varint(subject.wait);
-      game.endOwn(c);
-      c.sentSubject = sum;
-      c.sentSubjectAt = ctx.world.tick;
-    }
-  }
-  if (open) {
-    const box = ctx.items.inv(open);
-    if (box.version !== c.sentOpenVersion) {
-      // A box newly opened was told nothing of yet, and the client forgot what the last one held.
-      const fresh = c.sentOpenVersion < 0;
-      sendSlots(ctx, c, BOX_OPEN, box, c.sentOpenVersion, fresh);
-      c.sentOpenVersion = box.version;
-      c.sentKeptOpen = sendKept(ctx, c, BOX_OPEN, box, c.sentKeptOpen && !fresh);
-    }
-  }
-  // An open station's queue follows its slots.
-  sendStation(game, c, open);
+  });
 
-  if (rec.markersVersion !== c.sentMarkers) {
-    const w = game.beginOwn(OWN_MARKERS);
-    w.u8(rec.markers.length);
-    for (const m of rec.markers) {
-      w.u8(m.kind);
-      w.f32(m.x);
-      w.f32(m.y);
-      w.f32(m.z);
-      w.u32(m.tick);
-    }
-    game.endOwn(c);
-    c.sentMarkers = rec.markersVersion;
-  }
-
-  if (rec.progVersion !== c.sentProgress) {
-    const prog = ctx.progression;
-    const w = game.beginOwn(OWN_PROGRESSION);
-    w.u32(Math.floor(rec.xp));
-    w.u16(prog.level(rec));
-    w.u16(prog.statPoints(rec));
-    w.varint(prog.engramPoints(rec));
-    const known = prog.known(rec);
-    w.varint(known.length);
-    for (const e of known) w.u16(e);
-    w.u8(rec.jobs.length);
-    for (const j of rec.jobs) {
-      w.u16(j.item);
-      w.u8(j.left > 255 ? 255 : j.left);
-      w.u32(j.doneAt);
-    }
-    game.endOwn(c);
-    c.sentProgress = rec.progVersion;
-  }
+  own.add({
+    kind: OWN_MARKERS,
+    version: (_c, rec) => rec.markersVersion,
+    write(w, _c, rec) {
+      w.u8(rec.markers.length);
+      for (const m of rec.markers) {
+        w.u8(m.kind);
+        w.f32(m.x);
+        w.f32(m.y);
+        w.f32(m.z);
+        w.u32(m.tick);
+      }
+    },
+  });
+  own.add({
+    kind: OWN_PROGRESSION,
+    version: (_c, rec) => rec.progVersion,
+    write(w, _c, rec) {
+      const prog = ctx.progression;
+      w.u32(Math.floor(rec.xp));
+      w.u16(prog.level(rec));
+      w.u16(prog.statPoints(rec));
+      w.varint(prog.engramPoints(rec));
+      const known = prog.known(rec);
+      w.varint(known.length);
+      for (const e of known) w.u16(e);
+      w.u8(rec.jobs.length);
+      for (const j of rec.jobs) {
+        w.u16(j.item);
+        w.u8(j.left > 255 ? 255 : j.left);
+        w.u32(j.doneAt);
+      }
+    },
+  });
 
   // A session without a body is sent where it may rise, and again whenever a bed changes: the map's spawn points, then its
-  // tribe's beds, each with the tick it is ready from. Why it chooses comes first.
-  if (c.state === SESSION_DEAD && c.sentPlaces !== ctx.beds.version) {
+  // tribe's beds, each with the tick it is ready from. Why it chooses comes first. What it remembers is the version of the
+  // beds the places were made from.
+  own.group(OWN_RESPAWN, (c, rec) => {
+    if (c.state !== SESSION_DEAD || c.sent[OWN_RESPAWN] === ctx.beds.version) return;
     const places = ctx.beds.places(rec, c.why);
     c.respawnAt.length = 0;
     c.respawnAt.push(...places);
@@ -376,8 +340,14 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       w.u32(p.readyAt);
     }
     game.endOwn(c);
-    c.sentPlaces = ctx.beds.version;
-  }
+    c.sent[OWN_RESPAWN] = ctx.beds.version;
+  });
+}
+
+/** Sends a session what changed of its survivor's owner state: every registered kind, in the table's order (server/ownstate.ts). */
+export function syncOwn(ctx: OwnContext, c: Client): void {
+  const rec = ctx.records.byPid.get(c.pid);
+  if (rec) ctx.game.own.sync(c, rec);
 }
 
 function box(ctx: OwnContext, c: Client, which: number): EntityRecord | null {
