@@ -30,7 +30,7 @@ function barrier(h: Harness, z = 110): void {
   for (let k = 1; k <= 6; k++) for (const sign of [-1, 1]) h.world.structs.add(wall, 100 + sign * 3 * k, 1.5, z, 0, 99, 10000);
 }
 
-test("a wild dodo in a doorway and a ring of hostile bodies allow deterministic escape without crossing walls", () => {
+test("a wild dodo in a doorway and a ring of hostile bodies the walker starts inside allow escape without crossing walls", () => {
   for (const door of [true, false]) {
     const { h, c, a, creature, tick } = yard();
     try {
@@ -39,7 +39,9 @@ test("a wild dodo in a doorway and a ring of hostile bodies allow deterministic 
       else for (let i = 0; i < 4; i++) blockers.push(creature("raptor", 100 + Math.sin(i * Math.PI / 2) * 1.2, 100 + Math.cos(i * Math.PI / 2) * 1.2));
       h.run(350); const fixed = blockers.map(e => position(h, e)), p = h.reg.move[a.kind[c.ent]!]!;
       for (let i = 0; i < 100; i++) { tick(127); expect(capsuleFree(h.world, a.x[c.ent]!, a.y[c.ent]!, a.z[c.ent]!, p.radius, p.height)).toBe(true); }
-      expect(a.z[c.ent]!).toBeGreaterThan(110); expect(blockers.map(e => position(h, e))).toEqual(fixed);
+      // Out past the door, and the bodies it pressed through gave way a little, as the walker gave way to them.
+      expect(a.z[c.ent]!).toBeGreaterThan(110);
+      blockers.forEach((e, i) => expect(Math.hypot(a.x[e]! - fixed[i]![0]!, a.z[e]! - fixed[i]![2]!)).toBeLessThan(1.5));
     } finally { h.host.shutdown(); }
   }
 });
@@ -74,4 +76,120 @@ test("an owner walks out of a dead end past their following and then staying tam
       expect(a.z[c.ent]!).toBeLessThan(100);
     } finally { h.host.shutdown(); }
   }
+});
+
+/** The least distance from the walker's middle to the stadium of body `j`, less both radii: below 0 it is inside. */
+function gap(h: Harness, walker: number, j: number): number {
+  const a = h.world.ents, reg = h.reg, k = a.kind[j]!;
+  // As the snapshot rounds it, as the walker meets it.
+  const yaw = ((a.yaw[j]! >>> 6) / 1024) * Math.PI * 2, fx = Math.sin(yaw), fz = Math.cos(yaw);
+  const r = reg.footRadius[k]!;
+  let s0 = reg.footBack[k]! + r, s1 = reg.footFront[k]! - r;
+  if (s0 > s1) s0 = s1 = (s0 + s1) / 2;
+  const ax = a.x[j]! + fx * s0, az = a.z[j]! + fz * s0, sx = fx * (s1 - s0), sz = fz * (s1 - s0);
+  const ss = sx * sx + sz * sz, x = a.x[walker]!, z = a.z[walker]!;
+  const t = ss > 0 ? Math.min(1, Math.max(0, ((x - ax) * sx + (z - az) * sz) / ss)) : 0;
+  return Math.hypot(x - (ax + sx * t), z - (az + sz * t)) - r - reg.footRadius[a.kind[walker]!]!;
+}
+
+test("a survivor walking into a standing rex, raptor or trike stops at its body, from the side or the head, predicted with no correction", () => {
+  for (const [name, yaw] of [["rex", 0], ["rex", 16384], ["raptor", 16384], ["trike", 8192]] as const) {
+    const { h, s, c, a, creature, place } = yard(150);
+    try {
+      const e = creature(name, 100, 106);
+      a.yaw[e] = yaw;
+      a.pose(e);
+      place(c.ent, 100, 96);
+      h.run(600);
+      const before = s.stats.corrections;
+      const p = h.pilots[0]!;
+      p.moveZ = 127;
+      let least = Infinity;
+      const facing = a.yaw[e]!;
+      let turned = false;
+      h.run(6000, () => {
+        least = Math.min(least, gap(h, c.ent, e));
+        if (a.yaw[e] !== facing) turned = true;
+      });
+      p.moveZ = 0;
+      h.run(400);
+      // Never more than a skin inside it: it stops at its body, or slides round it as along a wall, never through it. The
+      // walker meets it as its client's snapshot showed it, so a body turning meanwhile is a few centimetres from there.
+      expect(least).toBeGreaterThan(turned ? -0.25 : -0.02);
+      if (a.z[c.ent]! > a.z[e]!) expect(Math.abs(a.x[c.ent]! - a.x[e]!)).toBeGreaterThan(h.reg.footRadius[a.kind[e]!]!);
+      expect(s.stats.corrections - before).toBe(0);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+test("survivors block survivors, but tribemates pass through each other, and a dodo blocks nobody", () => {
+  for (const mates of [false, true]) {
+    const { h, c, a, owner, place } = yard();
+    try {
+      const b = h.join("bo");
+      h.run(1600);
+      const cb = h.client(b)!;
+      place(cb.ent, 100, 103);
+      if (mates) h.host.records.byPid.get(cb.pid)!.team = owner.team || 77, owner.team = owner.team || 77, h.host.refreshBody(owner), h.host.refreshBody(h.host.records.byPid.get(cb.pid)!);
+      h.run(500);
+      const p = h.pilots[0]!;
+      p.moveZ = 127;
+      h.run(3000);
+      p.moveZ = 0;
+      h.run(300);
+      if (mates) expect(a.z[c.ent]!).toBeGreaterThan(106);
+      else {
+        expect(a.z[c.ent]!).toBeLessThan(103);
+        expect(gap(h, c.ent, cb.ent)).toBeGreaterThan(-0.02);
+      }
+    } finally { h.host.shutdown(); }
+  }
+  const { h, c, a, creature, place } = yard();
+  try {
+    creature("dodo", 100, 103);
+    place(c.ent, 100, 96);
+    h.run(300);
+    h.pilots[0]!.moveZ = 127;
+    h.run(3000);
+    expect(a.z[c.ent]!).toBeGreaterThan(106);
+  } finally { h.host.shutdown(); }
+});
+
+test("with SurvivorsBlock off, survivors of different tribes pass through one another, predicted with no correction", () => {
+  const { h, s, c, a, place } = yard(100);
+  try {
+    h.host.setSetting("SurvivorsBlock", "false");
+    const b = h.join("bo");
+    h.run(1600);
+    place(h.client(b)!.ent, 100, 103);
+    h.run(500);
+    expect(s.survivorsPass).toBe(true);
+    const before = s.stats.corrections;
+    h.pilots[0]!.moveZ = 127;
+    h.run(3000);
+    expect(a.z[c.ent]!).toBeGreaterThan(106);
+    expect(s.stats.corrections - before).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("a body that turns from a wall into a tribemate while pressed against is met as each snapshot showed it, with no correction", () => {
+  const { h, s, c, a, owner, place } = yard(150);
+  try {
+    const b = h.join("bo");
+    h.run(1600);
+    const cb = h.client(b)!, bo = h.host.records.byPid.get(cb.pid)!;
+    place(cb.ent, 100, 103);
+    h.run(600);
+    const before = s.stats.corrections;
+    h.pilots[0]!.moveZ = 127;
+    h.run(1500);
+    // Held at bo's body, then bo joins the walker's tribe mid-press and the walker goes on through.
+    expect(a.z[c.ent]!).toBeLessThan(103);
+    expect(h.host.tribes.create(owner, "Walkers")).toBe("");
+    expect(h.host.tribes.invite(owner, bo, true)).toBe("");
+    expect(h.host.tribes.accept(bo)).toBe("");
+    h.run(2500);
+    expect(a.z[c.ent]!).toBeGreaterThan(106);
+    expect(s.stats.corrections - before).toBe(0);
+  } finally { h.host.shutdown(); }
 });

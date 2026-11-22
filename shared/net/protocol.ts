@@ -362,7 +362,7 @@ export const CMD_CARRY = command();
 export const CARRY_PICK_UP = 0;
 export const CARRY_DROP = 1;
 export const CARRY_THROW = 2;
-/** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
+/** Takes into the bag what lies in the world at an entity index u32: an egg, or a bag of one stack. */
 export const CMD_TAKE = command();
 /**
  * Protocol 12. Crafting at a station: item u16, count u8. Queued on the station the session has open, made from what lies in
@@ -428,6 +428,11 @@ export const GAZE_FARTHEST = 8000;
  * MARK_SPOT where it is for SPOT_TICKS, SPOTS_MOST a tribe, the oldest let go first. A survivor with no tribe is denied.
  */
 export const CMD_MARK = command();
+/**
+ * Throws one of the held thing along the session's look (server/loose.ts): it flies as a loose body, strikes the first
+ * body it meets while fast, and comes to rest as a bag of one stack, which CMD_TAKE takes up. No arguments.
+ */
+export const CMD_THROW = command();
 export const SPOT_TICKS = 1800;
 export const SPOTS_MOST = 8;
 export const VEHICLE_INSPECT = 0;
@@ -442,6 +447,11 @@ export const VEHICLE_FLIP = 5;
 export const VEHICLE_PULL = 6;
 /** Cycle the warning lights of the currently driven patrol vehicle. Followed by its handle. */
 export const VEHICLE_LIGHTS = 7;
+/**
+ * Protocol 44. Swing the door of the seat the session sits in open, or shut again, followed by the vehicle's handle. Held
+ * open on a car going 3 m/s or more, it strikes whoever stands where it swings (server/urban.ts doorStrikes).
+ */
+export const VEHICLE_DOOR = 8;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
@@ -548,6 +558,8 @@ export const RULE_MAP_LOCATION = ruleFlag();
 export const RULE_CORPSE_LOCATOR = ruleFlag();
 /** Protocol 34. The server shows creative mode (bShowCreativeMode): the game's menu has a Creative entry. */
 export const RULE_CREATIVE = ruleFlag();
+/** Survivors pass through one another (SurvivorsBlock off, server/blocking.ts). */
+export const RULE_SURVIVORS_PASS = ruleFlag();
 /**
  * team varint, tribe name string (empty for a survivor alone, and then rank and members are absent), rank u8, members (count
  * u8, then per member: name string, online 1 bit, owner 1 bit). Then a pending invitation: tribe name string (empty for
@@ -621,6 +633,22 @@ export const EVENT_TAMED = eventKind();
  * (3 x f32), and its body's radius and height in metres (2 x f32).
  */
 export const EVENT_BALL = eventKind();
+/**
+ * IMPACT, to clients within IMPACT_HEARD of a body a blow landed on, at most IMPACTS_PER_TICK a tick each:
+ * the body's handle u32, the bone the blow's ray hit u8 (255 for none: a blast, a bite or a car), the way the blow went as a
+ * facing u8 (256ths of a turn) and a pitch s8 (127ths of a quarter turn, up positive), how hard u8 (255 for IMPACT_FULL
+ * damage or more), and its kind 2 bits (IMPACT_). Every watcher's draw of that body snaps back from it
+ * (client/core/render/impact-springs.ts); it changes nothing the server judges.
+ */
+export const EVENT_IMPACT = eventKind();
+export const IMPACT_SHOT = 0;
+export const IMPACT_MELEE = 1;
+export const IMPACT_BLAST = 2;
+export const IMPACT_VEHICLE = 3;
+/** Damage of a blow that strikes as hard as any is drawn, metres an impact is told within, and impacts a client is told a tick. */
+export const IMPACT_FULL = 40;
+export const IMPACT_HEARD = 150;
+export const IMPACTS_PER_TICK = 16;
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

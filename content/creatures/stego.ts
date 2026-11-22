@@ -31,6 +31,7 @@ export const STEGO: readonly Def[] = [
     type: "species", class: "creature", id: "core:stego", aliases: ["stegosaurus"], tag: "stego",
     mesh: "core:stego", skeleton: "stego", color: STEGO_DYES[1]!,
     radius: 1.26, height: 4.13, eyeHeight: 1.32, swimDepth: 1.75, swimEyeHeight: 1.95,
+    footprint: { back: -2.6, front: 2.4, radius: 1.2, head: { ahead: 2.75, up: 1.25, radius: 0.4 } },
     // Keep wild, source tame bases and effective fresh-tame movement distinct.
     walkSpeed: 1.7, sprintMul: 6.077 / 1.7, swimSpeed: 3,
     tamedWalkSpeed: tamedWalkBase * freshTameSpeed, tamedSprintMul: tamedRunBase / tamedWalkBase,

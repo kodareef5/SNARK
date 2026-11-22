@@ -181,7 +181,8 @@ export class Spawner {
   step(tick: number): void {
     this.budget(tick);
     let waiting = this.turns.length - this.turn;
-    while (waiting-- > 0 && this.madeNow < TICK_MADE && this.triesNow < TICK_TRIES) {
+    // A tick whose physics ran long makes no more than one try (server/lane.ts).
+    while (waiting-- > 0 && this.madeNow < TICK_MADE && this.triesNow < TICK_TRIES && (this.triesNow === 0 || this.ctx.game.lane.may())) {
       const i = this.turns[this.turn++]!;
       const r = this.regions[i]!;
       if (r.count < r.desired && this.add(i, r)) this.turns.push(i);

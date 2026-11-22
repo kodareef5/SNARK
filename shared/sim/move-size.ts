@@ -14,6 +14,11 @@ export function copyMoveSize(out: SizedMove, source: MoveParams, size = 1): void
   out.proneEye = source.proneEye * size;
   out.stepUp = source.stepUp * size;
   out.stepDown = source.stepDown * size;
+  if (source.headRadius) {
+    out.headAhead = source.headAhead! * size;
+    out.headUp = source.headUp! * size;
+    out.headRadius = source.headRadius * size;
+  }
   out.swimDepth = source.swimDepth === undefined ? undefined : source.swimDepth * size;
   out.swimEyeHeight = source.swimEyeHeight === undefined ? undefined : source.swimEyeHeight * size;
 }

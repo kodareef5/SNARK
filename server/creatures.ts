@@ -1,3 +1,5 @@
+import type { BodyBlocking } from "./blocking.ts";
+import type { Lane } from "./lane.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
 import type { CreatureCombatFacet } from "../shared/content/defs.ts";
@@ -58,6 +60,10 @@ export class Creatures {
   grounded = 0;
 
   private readonly world: ServerWorld;
+  /** Bodies a creature cannot walk through (server/blocking.ts). */
+  private readonly blocking: BodyBlocking;
+  /** The tick's physics time (server/lane.ts): the creatures' steps are physics, their thinking and searching are not. */
+  private readonly lane: Lane;
   private readonly records: Records;
   private readonly survival: Survival;
   private readonly rng: Rng;
@@ -102,6 +108,8 @@ export class Creatures {
     });
     this.chunkRefs = new Uint16Array(chunkCount(world.dims));
     this.mind = new Behavior(world, game, seed + 7);
+    this.blocking = game.blocking;
+    this.lane = game.lane;
     this.mind.herd = this;
     // One that takes fright is startled before it runs.
     this.mind.onStartle = (e) => this.cue(e, CUE_STARTLE, false);
@@ -310,6 +318,7 @@ export class Creatures {
     // Ways asked for are searched before anyone steers, within the tick's budget.
     mind.plan(tick);
     let stepped = 0;
+    this.lane.enter();
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
       // A vehicle's wheels move it (server/urban.ts), and nothing breathes in it.
@@ -370,8 +379,12 @@ export class Creatures {
       const x0 = b.x;
       const z0 = b.z;
       const previousAct = b.act;
+      // It meets the bodies about it (server/blocking.ts), and gives way to every one a client predicts.
+      // What it hunts or fights it presses into, as its reach is counted from its middle.
+      world.blockers = this.blocking.around(e, b.x, b.y, b.z, p.radius, ents.team[e]!, true, mind.targetOf(e));
       if (combat) stepCreature(world, b, 0, move, input.yaw, input.pitch, buttons, pressed, p, combat, TICK_DT, false);
       else stepBody(world, b, 0, move, input.yaw, input.pitch, buttons, p, TICK_DT);
+      world.blockers = null;
       // The tactic chose a mirrored strike from the actual target bearing before the shared action began.
       if (previousAct === ACT_NONE && b.act === ACT_SWING && input.side >= 0) b.creatureSide = input.side;
       const landing = stepOut.landSpeed;
@@ -400,6 +413,7 @@ export class Creatures {
       if (landing > 0) this.landed(e, landing);
       if ((ents.flags[e]! & F_ALIVE) !== 0 && crossed && this.chunkRefs[ents.chunk[e]!] === 0) this.sleep(e);
     }
+    this.lane.leave();
     this.stepped = stepped;
   }
 

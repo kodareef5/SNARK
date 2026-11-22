@@ -1,6 +1,6 @@
 import { SurvivorActivity } from "./survivor-activity.ts";
 import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
-import { ZONE_TORSO } from "../shared/anim/human.ts";
+import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { CreatureTraits, inventoryEffectiveWeight } from "./creature-traits.ts";
 import { CreatureImpale } from "./creature-impale.ts";
@@ -8,7 +8,7 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
@@ -60,7 +60,8 @@ import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs, DEADLINE_BUFF } from "./buffs.ts";
-import { Combat } from "./combat.ts";
+import { Combat, type Source } from "./combat.ts";
+import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { Creatures } from "./creatures.ts";
 import { DEADLINE_DESPAWN, Death, OP_DEATH } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
@@ -74,6 +75,7 @@ import { Items } from "./items.ts";
 import { COMMAND_FAMILIES } from "./commands/families.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
+import { Loose } from "./loose.ts";
 import { Projectiles } from "./projectiles.ts";
 import { Clouds } from "./clouds.ts";
 import type { ModuleDef } from "./api/module.ts";
@@ -224,6 +226,8 @@ export interface Host {
   readonly emotes: Emotes;
   readonly feces: Feces;
   readonly eggs: Eggs;
+  /** Things thrown from the hand, in flight (server/loose.ts). */
+  readonly loose: Loose;
   readonly balls: Balls;
   /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
   readonly mounts: Mounts;
@@ -296,6 +300,13 @@ export function contentFor(content: Registry, rules: Rules): Registry {
 }
 
 /** A host that fails to start lets go of its save, so the next try can open it. */
+
+/** Seconds a survivor knocked off their feet has no hold on where they go. */
+const KNOCKDOWN_SECONDS = 1.2;
+/** A car door's blow: so much and so much a metre a second the car goes, at most so much. */
+const DOOR_HARM_BASE = 8;
+const DOOR_HARM_PER = 1.5;
+const DOOR_HARM_MOST = 50;
 export function createHost(content: Registry, opts: HostOptions = {}): Host {
   const opened: { close(): void }[] = [];
   try {
@@ -390,6 +401,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const bus = new Bus();
   bus.log = say;
   if (opts.now) bus.now = opts.now;
+  // The physics lane is timed by the same clock: without one, nothing gives way to physics (server/lane.ts).
   const seats = rules.flag("WinLiveMaxPlayers");
   const game = new GameServer(world, {
     password: rules.text("ServerPassword"),
@@ -400,6 +412,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ...opts.game,
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });
+  if (opts.now) game.lane.setClock(opts.now);
   game.bus = bus;
   // A full world still has a place for every survivor that may join.
   world.ents.reserve = game.clients.length;
@@ -638,6 +651,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
+    // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
+    struck: (body) => knockDown(body),
     parkingBrake: e => urban.parkingBrake(e),
     resting: e => urban.resting(e),
     boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
@@ -848,6 +863,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
+  const loose = new Loose({ world, game, records, items, combat, death });
   // A sight's zero lifts its flying rounds (D1083).
   projectiles.zero = (c) => gaze.zeroOf(c);
   // Every shot and blast, hit or miss, is heard by Cast's people near it.
@@ -1235,9 +1251,34 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
-  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); };
+  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); game.blocking.survivorsPass = !rules.on("SurvivorsBlock"); };
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
+  const lane = game.lane;
+  // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
+  // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
+  // A survivor knocked off their feet (Knockdowns): stunned a moment, the body has no hold on where it goes, so a throw
+  // carries it as it would carry anything (shared/sim/character.ts, MF_ROOTED), and their client predicts it so.
+  const stunned = reg.index.get("core:stunned") ?? -1;
+  const knockDown = (body: number): void => {
+    if (stunned < 0 || !rules.on("Knockdowns")) return;
+    const rec = records.byPid.get(world.ents.pid[body]!);
+    if (!rec || rec.kind !== survivor) return;
+    buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
+    refreshBody(rec);
+  };
+  const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  urban.onDoorStrike = (vehicle, body, speed, dx, dz) => {
+    const ents = world.ents, driver = game.clients.find((c) => c?.active && c.drive === vehicle);
+    doorBlow.by = driver ? records.byPid.get(driver.pid) ?? null : null;
+    doorBlow.x = ents.x[vehicle]!;
+    doorBlow.z = ents.z[vehicle]!;
+    doorBlow.base = Math.min(DOOR_HARM_MOST, DOOR_HARM_BASE + speed * DOOR_HARM_PER);
+    const impact = { victimHandle: ents.handleOf(body), victimPid: ents.pid[body]!, vx: ents.vx[body]!, vy: ents.vy[body]!, vz: ents.vz[body]!, wx: dz * 3, wy: 0, wz: -dx * 3 };
+    knockDown(body);
+    combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
+  };
+  game.blockBodies = () => [creatures.awake, creatures.awakeCount];
   game.onStep = (tick) => {
     creative.step(tick);
     gaze.step(tick);
@@ -1295,15 +1336,20 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
     projectiles.step();
+    lane.enter();
+    loose.step();
+    lane.leave();
     clouds.step();
     parts.mark(PART.combat);
     creatures.step(tick);
     parts.mark(PART.creatures);
+    lane.enter();
     creatureContacts.step(creatures.awake, creatures.awakeCount);
     for (const e of urban.contacts!.step()) {
       urban.syncAfterContact(e);
       riding.syncAfterContact(e);
     }
+    lane.leave();
     parts.mark(PART.contacts);
     impale.step();
     spawner?.step(tick);
@@ -1315,7 +1361,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     breeding.step(tick);
     feces.step(tick);
     overhead.step(tick);
+    lane.enter();
     corpses.step(tick);
+    lane.leave();
     hurt.step(tick);
     voice.step(tick);
     parts.mark(PART.world);
@@ -1622,6 +1670,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     emotes,
     feces,
     eggs,
+    loose,
     balls,
     mounts,
     overhead,
@@ -1698,7 +1747,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CARRY, (c, r) => carry.command(c, r));
   game.handle(CMD_EMOTE, (c, r) => emotes.command(c, r));
-  game.handle(CMD_TAKE, (c, r) => eggs.take(c, r));
+  game.handle(CMD_TAKE, (c, r) => {
+    const which = r.u32();
+    if (r.overflow) return RESULT_INVALID;
+    const took = loose.take(c, which);
+    return took >= 0 ? took : eggs.take(c, which);
+  });
+  game.handle(CMD_THROW, (c) => loose.command(c));
   game.handle(CMD_TRAVEL, (c, r) => {
     const to = r.u16();
     const at = r.u32();

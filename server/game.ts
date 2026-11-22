@@ -87,6 +87,8 @@ import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Place } from "./beds.ts";
 import { PART, TickParts } from "./admin/parts.ts";
+import { Lane } from "./lane.ts";
+import { BodyBlocking } from "./blocking.ts";
 import { ServerFootContacts } from "./foot-contacts.ts";
 
 export interface GameOptions {
@@ -279,6 +281,9 @@ export class Client {
   vehicleSeatSnapshot = 0;
   /** The snapshot acknowledged by the first packet accepted for each input. */
   readonly inputAcks = new Uint32Array(INPUT_WINDOW);
+  /** The tick of the last impacts this client was told (EVENT_IMPACT), and how many it was told then. */
+  impactsAt = 0;
+  impacts = 0;
   /** The tick on which each buffered input arrived, by its own tick: how far ahead the client really sent it. */
   readonly arrived = new Uint32Array(INPUT_WINDOW);
   heldX = 0;
@@ -529,8 +534,15 @@ export class GameServer {
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
   /** Where each tick's time went, part by part (server/admin/parts.ts). The host marks the parts of its step in it. */
   readonly parts = new TickParts();
+  /** Physics' time in each tick, kept for it before the work that can wait (server/lane.ts). */
+  readonly lane = new Lane();
   /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
   readonly feet: ServerFootContacts;
+  /** Bodies a walker cannot walk through (server/blocking.ts). */
+  readonly blocking: BodyBlocking;
+  /** The bodies besides the sessions' that may block a walker this tick: the awake creatures (server/creatures.ts). */
+  blockBodies: (() => readonly [ArrayLike<number>, number]) | null = null;
+  private sessionBodies = new Int32Array(64);
   private readonly footBefore = new Body();
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
@@ -586,6 +598,7 @@ export class GameServer {
     this.world = world;
     this.opts = { ...DEFAULTS, ...opts };
     this.feet = new ServerFootContacts(world);
+    this.blocking = new BodyBlocking(world);
     this.clients = new Array(this.opts.maxClients).fill(null);
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
     // Removes are sent whatever they cost, 6.7 KB for 2,048 of them, and an update can take two bytes more than it was budgeted at.
@@ -632,9 +645,28 @@ export class GameServer {
     const behind = this.behind;
     const parts = this.parts;
     parts.begin();
+    this.lane.begin();
 
     this.onBeforeStep?.();
     parts.mark(PART.before);
+    // The sessions' own bodies step first, as physics: what they predict is never put off.
+    this.lane.enter();
+    // Every body that may block a walker, where this tick's snapshots will carry it.
+    let sessions = 0;
+    for (const c of this.clients) {
+      if (!c?.active) continue;
+      const e = c.drive >= 0 ? c.drive : c.ent;
+      if (e < 0) continue;
+      if (sessions === this.sessionBodies.length) {
+        const wider = new Int32Array(sessions * 2);
+        wider.set(this.sessionBodies);
+        this.sessionBodies = wider;
+      }
+      this.sessionBodies[sessions++] = e;
+    }
+    const others = this.blockBodies?.();
+    if (others) this.blocking.begin([this.sessionBodies, others[0]], [sessions, others[1]]);
+    else this.blocking.begin([this.sessionBodies], [sessions]);
 
     for (const c of this.clients) {
       if (!c) continue;
@@ -694,8 +726,16 @@ export class GameServer {
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
           this.footBefore.copy(b);
+          const moving = world.reg.tamedMove[b.kind]!;
+          // The bodies about it as the snapshot its client stepped this tick with showed them, where it says which.
+          const ack = c.inputs.has(T) ? c.inputAcks[T & c.inputs.mask]! : 0;
+          const seen = ack !== 0 ? c.views.find(ack) : null;
+          // Its tribe is the survivor's, riding or not, as its client knows it (OWN_TRIBE).
+          const team = c.ent >= 0 ? ents.team[c.ent]! : ents.team[e]!;
+          world.blockers = seen ? this.blocking.inView(e, seen, b.x, b.y, b.z, moving.radius, team) : this.blocking.around(e, b.x, b.y, b.z, moving.radius, team);
           if (combat && driving) stepCreature(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, c.pressed, world.reg.tamedMove[b.kind]!, combat, TICK_DT, true, c.closed || T - c.inputAt > INPUT_HOLD_TICKS);
           else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
+          world.blockers = null;
           this.feet.meet(e, this.footBefore, b, world.reg.tamedMove[b.kind]!);
         } else {
           b.yaw = c.heldYaw;
@@ -740,6 +780,7 @@ export class GameServer {
       }
       c.chunk = chunkAt(world.dims, b.x, b.z);
     }
+    this.lane.leave();
     parts.mark(PART.bodies);
 
     for (const c of this.clients) if (c?.active && c.queue.length > 0) this.runCommands(c);

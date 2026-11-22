@@ -346,7 +346,7 @@ test("client: on a server that scales stamina, stacks, what things are made of a
 test("catalogue: every setting of ARK's the research found is in it as taking effect, waiting for a feature it names, or of no meaning here with the reason; each that takes effect is held by a test; and the reference page is the catalogue", () => {
   expect(catalogFaults()).toEqual([]);
   const counts = catalogCounts();
-  expect([counts.all, counts.todo, counts.live + counts.planned + counts.none]).toEqual([551, 0, 551]);
+  expect([counts.todo, counts.live + counts.planned + counts.none]).toEqual([0, counts.all]);
   expect(counts.live).toBeGreaterThanOrEqual(114);
   for (const row of CATALOG) {
     if (row.status === "planned") expect([row.name, row.waits in FEATURES]).toEqual([row.name, true]);

@@ -24,6 +24,7 @@ export const TRIKE: readonly Def[] = [
     // Capsule encloses the weight-bearing body; articulated zones cover head,
     // horns, shield and tail. A two-metre doorway is too narrow for this animal.
     radius: 1.25, height: 3.17, eyeHeight: 1.97,
+    footprint: { back: -2.0, front: 2.6, radius: 1.15, head: { ahead: 2.9, up: 2.0, radius: 0.75 } },
     // ASE community table: 1.5m/s walk, 6.075 wild sprint, 3m/s swim.
     // Owned sprint is deliberately 6m/s; edition/multiplier reports conflict.
     walkSpeed: 1.5, sprintMul: 4.05, tamedSprintMul: 4, swimSpeed: 3,

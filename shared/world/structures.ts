@@ -210,7 +210,7 @@ export class StructureStore {
 
   /** Per content index, the half extents of the box that bounds the whole structure. */
   private readonly halfX: Float32Array;
-  private readonly halfY: Float32Array;
+  readonly halfY: Float32Array;
   private readonly halfZ: Float32Array;
   readonly parts: PartTable;
 

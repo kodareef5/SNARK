@@ -223,6 +223,30 @@ export class Death {
   }
 
   /**
+   * Lets `n` of the stack in `slot` go from the hand as a bag of its own at (x, y, z): a thing thrown, which
+   * server/loose.ts then flies and lays down. It is drawn as its item (client/core/render/dropped.ts). Null, changing
+   * nothing, if nothing moved or the store has no room for its record.
+   */
+  letGo(rec: EntityRecord, slot: number, n: number, x: number, y: number, z: number): EntityRecord | null {
+    const { world, records, items } = this.ctx;
+    if (world.ents.room < STORE_RESERVE) return null;
+    const bag = records.create(this.bag, "bag");
+    if (items.move(rec, slot, bag, 0, n) === 0) {
+      records.delete(bag.pid);
+      return null;
+    }
+    this.lie(rec.pid, bag);
+    bag.x = x;
+    bag.y = y;
+    bag.z = z;
+    bag.expiresAt = world.tick + this.lifetime(this.bag);
+    records.dirty.add(bag.pid);
+    // With no room for its body it is still a bag, lying where it was let go, as a drop with the store full is.
+    this.place(bag);
+    return bag;
+  }
+
+  /**
    * Leaves everything `rec` carries, worn things too, in one bag at a point: what a survivor that travels from a bed drops
    * there. The bag takes the inventory object, so nothing is copied. The suit it was issued is not left: it goes, and a new
    * one is issued where it rises (server/suit.ts). Null if it carried nothing else.

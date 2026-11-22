@@ -86,6 +86,8 @@ test("cruise peers walk to upper decks and independently saved cabin doors survi
     expect(firstRef).not.toBe(secondRef);
     const kindAt = (ref: number) => h.world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 65535]!;
     const peers = names.map(name => h.join(name, link)); h.run(1300);
+    // The guests all walk the same gangway to the same points, through one another (SurvivorsBlock off).
+    h.host.setSetting("SurvivorsBlock", "false"); h.run(300);
     const before = peers.map(s => s.stats.corrections), approach = cruiseApproach(course);
     const navs = peers.map((_, i) => cruiseNavigator(h, reg, CRUISE_COURSE.vessel, refs, i));
     for (const nav of navs) for (let i = 1; i < approach.length - 2; i++) nav.world(approach[i]!, `guest approach[${i}]`, i > 1);

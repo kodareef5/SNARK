@@ -2,6 +2,7 @@
 // parts are met in shared/world/convex.ts, and the ground as its triangles are drawn.
 // capsuleFree is the authority on legal space. Movement, spawning, mounting and teleporting must all end in a position it accepts.
 
+import type { Blockers } from "../sim/blockers.ts";
 import { sortU32 } from "../sort.ts";
 import { capsuleHull, hullPush } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
@@ -16,6 +17,11 @@ export interface CollisionWorld {
   readonly structs: StructureStore;
   /** Resource nodes near a body, as boxes like structures (shared/world/nodes.ts). */
   readonly nodes?: StructureStore;
+  /**
+   * The bodies a walker stepping now meets (shared/sim/blockers.ts), set by its caller around its step and cleared after.
+   * Only a body walking meets them; the ragdolls and every other query pass through.
+   */
+  blockers?: Blockers | null;
 }
 
 /**
@@ -533,6 +539,37 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
   }
   return true;
 }
+
+/** Metres a piece stands, at least, to be a wall to a head: slabs, steps and kerbs are lower. */
+const WALL_TALL = 1.2;
+
+/**
+ * How deep the sphere of radius `r` whose bottom is at (x, y, z) is in a wall, 0 where it is clear: a box of a piece at
+ * least WALL_TALL high, the deepest of them. Floors, ceilings, roofs and steps (too
+ * low), ramps (convex parts), the ground and resource nodes are not asked: what a creature's head is held clear of
+ * (shared/sim/character.ts), which may dip toward a ramp it climbs and pass under a roof it clips, as ARK's mounts do
+ * (D777). Leaves the deepest wall's level way out in `wallOut`.
+ */
+export function wallDepth(w: CollisionWorld, x: number, y: number, z: number, r: number): number {
+  const structs = w.structs;
+  const n = structs.query(x - r, z - r, x + r, z + r, found, y - PAD, y + 2 * r + PAD);
+  let deepest = 0;
+  for (let i = 0; i < n; i++) {
+    const ref = found.refs[i]!, kind = structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!;
+    if (2 * structs.halfY[kind]! < WALL_TALL) continue;
+    // Every way in counts, the top of a wall as its face: a contact that turns from the one to the other as a head moves
+    // must not jump from nothing to deep.
+    if (!capsuleBox(structs, ref, x, y, z, r, 2 * r, SKIN) || push.hull || push.depth <= deepest) continue;
+    deepest = push.depth;
+    const l = Math.sqrt(push.x * push.x + push.z * push.z);
+    wallOut.x = l > 0 ? push.x / l : 0;
+    wallOut.z = l > 0 ? push.z / l : 0;
+  }
+  return deepest;
+}
+
+/** Where `wallDepth` found the deepest wall, the level unit way out of it. */
+export const wallOut = { x: 0, z: 0 };
 
 /** True when no structure or node reaches the capsule's footprint between the heights `low` and `high`. */
 export function nothingBuilt(w: CollisionWorld, x: number, z: number, r: number, low: number, high: number): boolean {

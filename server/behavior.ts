@@ -74,6 +74,8 @@ const STUCK_SHARE = 0.3;
  * two on a busy machine, so this is one or two milliseconds of a 33 ms tick at most. A search may run over several ticks.
  */
 export const PATH_TICK_CELLS = 1000;
+/** Cells searched between asks of the physics lane whether the tick has room for more. */
+const LANE_CELLS = 250;
 export const SEARCH_CELLS = 4000;
 /** What starting a search costs, counted in cells: clearing its grid. */
 const SEARCH_START = 10;
@@ -768,10 +770,15 @@ export class Behavior {
         this.searching = e;
       }
       const before = f.expanded;
-      const over = f.run(left);
+      // Searched a slice at a time, so that a tick whose physics ran long stops searching (server/lane.ts). The first
+      // slice of a tick is always searched, so the searches never wholly stop.
+      const over = f.run(left < LANE_CELLS ? left : LANE_CELLS);
       left -= f.expanded - before;
       this.searched += f.expanded - before;
-      if (!over) break;
+      if (!over) {
+        if (left > 0 && this.game.lane.may()) continue;
+        break;
+      }
       this.searching = -1;
       this.answer(e, tick, f.finish());
     }

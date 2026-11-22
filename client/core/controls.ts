@@ -20,6 +20,16 @@ const GLIDE_PULSE = 2;
 const MOUSE: readonly number[] = [BTN_PRIMARY, 0, BTN_SECONDARY];
 
 export class Controls {
+  /** The keys the body or vehicle being driven now takes as buttons. A key one claims is no one else's (client/core/app.ts). */
+  bindings(): Record<string, number> {
+    return this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : this.thrusters ? THRUSTER_BINDINGS : BINDINGS;
+  }
+
+  /** Whether what is driven now takes `code` as one of its buttons. */
+  binds(code: string): boolean {
+    return this.bindings()[code] !== undefined;
+  }
+
   /** -1..1: strafe right, walk forward. */
   moveX = 0;
   moveZ = 0;
@@ -162,10 +172,6 @@ export class Controls {
     this.analogX = Number.isFinite(x) ? Math.max(-1, Math.min(1,x)) : 0;
     this.analogZ = Number.isFinite(z) ? Math.max(-1, Math.min(1,z)) : 0;
     this.refresh();
-  }
-
-  private bindings(): Record<string, number> {
-    return this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : this.thrusters ? THRUSTER_BINDINGS : BINDINGS;
   }
 
   private refresh(): void {

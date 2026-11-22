@@ -1055,7 +1055,10 @@ export class Scene {
 
   /** Only the controlled native mount, whose full pose has reserved bones even under frame pressure. */
   prepareCameraBody(own: OwnBody): CameraBody | null {
-    if (!this.charactersPrepared) this.characters.begin(this.packet, this.world);
+    if (!this.charactersPrepared) {
+      this.characters.clock = this.shotTick;
+      this.characters.begin(this.packet, this.world);
+    }
     this.charactersPrepared = true;
     return this.characters.prepareCameraBody(own.kind, own.id, own.generation ?? 0, own.x, own.y, own.z, own.yaw, own.state, own.tick);
   }
@@ -2086,14 +2089,19 @@ export class Scene {
     const ch = this.characters;
     const st = this.state;
     const own = this.own;
-    if (!this.charactersPrepared) ch.begin(p, this.world);
+    if (!this.charactersPrepared) {
+      ch.clock = this.shotTick;
+      ch.begin(p, this.world);
+    }
     this.charactersPrepared = false;
     let unseen = 0;
     if (remote) {
       // Loose things and the dead first: they keep their bones, and the living share what is left.
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
-        if (this.pitched[kind] === 0) continue;
+        // A thing thrown flies along its length, as an arrow is drawn, until it lies (server/loose.ts).
+        const flying = this.dropped.flying(kind, remote.anim[i]!);
+        if (this.pitched[kind] === 0 && !flying) continue;
         const x = remote.x[i]! - cam.x;
         const y = remote.y[i]! - cam.y;
         const z = remote.z[i]! - cam.z;
@@ -2101,7 +2109,8 @@ export class Scene {
         st.unpack(remote.anim[i]!);
         const pitch = (st.pitch / PITCH_STEPS) * (Math.PI / 2);
         const level = Math.cos(pitch);
-        ch.loose(p, this.meshOfKind[kind]!, x, y, z, Math.sin(remote.yaw[i]!) * level, Math.sin(pitch), Math.cos(remote.yaw[i]!) * level, 1);
+        const lies = flying ? this.dropped.item(kind, remote.gear, i * GEAR_COUNT) : 0;
+        ch.loose(p, lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!, x, y, z, Math.sin(remote.yaw[i]!) * level, Math.sin(pitch), Math.cos(remote.yaw[i]!) * level, 1);
       }
       ch.corpses(p, cam, remote, this.world);
     }
@@ -3685,7 +3694,7 @@ export class Scene {
     for (let i = 0; i < remote.count; i++) {
       if (p.lit && this.speciesKind[remote.kind[i]!] !== Number(plain)) continue;
       // A cloud has no mesh of its own: it is puffs among the details (clouds.ts).
-      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0 || this.clouds.kinds[remote.kind[i]!] !== 0 || remote.kind[i] === this.capsuleKind) continue;
+      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0 || this.clouds.kinds[remote.kind[i]!] !== 0 || remote.kind[i] === this.capsuleKind || this.dropped.flying(remote.kind[i]!, remote.anim[i]!)) continue;
       // A bag of one stack is drawn as its item, where the item has a lying mesh.
       const lies = this.dropped.item(remote.kind[i]!, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[remote.kind[i]!]!;
@@ -3706,7 +3715,7 @@ export class Scene {
       const kind = remote.kind[i]!;
       if (p.lit && this.speciesKind[kind] !== Number(plain)) continue;
       // A supply capsule is drawn from its drop, in pieces (showSupply), where the pack has its model.
-      if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0 || kind === this.capsuleKind) continue;
+      if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0 || kind === this.capsuleKind || this.dropped.flying(kind, remote.anim[i]!)) continue;
       const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;

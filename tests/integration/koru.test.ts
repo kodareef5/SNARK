@@ -205,6 +205,8 @@ test("delayed peers walk onto separate yacht decks, see the correct floor, and r
   let h = new Harness({}, 33, 60, opts);
   try {
     const peers = names.map(name => h.join(name, link)); h.run(1300);
+    // The guests all walk the same gangway to the same points, through one another (SurvivorsBlock off).
+    h.host.setSetting("SurvivorsBlock", "false"); h.run(300);
     const before = peers.map(s => s.stats.corrections);
     for (let i = 0; i < peers.length; i++) {
       const walk = board(h, i);

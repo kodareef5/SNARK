@@ -58,7 +58,8 @@ test("public static doors use E, preserve collision on blocked closing, replicat
     walk(64); expect(Math.abs(s.own.z - 64)).toBeLessThan(.15);
     expect(use(63.44, 64.6)).toBe(RESULT_OBSTRUCTED); expect(row().kind[slot]).toBe(open);
     walk(66); expect(s.own.z).toBeGreaterThan(65.8);
-    walkTo(1, 64, 66); expect(observer.own.z).toBeGreaterThan(65.8); walkTo(1, 65.2, 66);
+    // Survivors block one another (server/blocking.ts): the second comes through to stand beside the first.
+    walkTo(1, 64.9, 66.6); expect(observer.own.z).toBeGreaterThan(65.8); walkTo(1, 65.2, 66);
     use(63.44, 64.6); expect(row().kind[slot]).toBe(closed);
     walkTo(1, 63.44, 64.65);
     expect(use(64, 64)).toBe(RESULT_OBSTRUCTED); expect(row().kind[slot]).toBe(closed);

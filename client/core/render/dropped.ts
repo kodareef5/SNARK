@@ -6,6 +6,7 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { GEAR_HELD } from "../../../shared/sim/entities.ts";
 import type { Binding } from "../assets/bind.ts";
+import { droppedTurn, inFlight } from "../../../shared/sim/loose.ts";
 
 /** The container a single drop makes, as server/death.ts names it. */
 export const BAG = "core:bag";
@@ -30,6 +31,11 @@ export class Dropped {
     return item < this.lies.length && this.lies[item]! >= 0 ? item : 0;
   }
 
+  /** Whether a thing of `kind` with the anim word `anim` is a bag in flight (server/loose.ts), drawn along its length. */
+  flying(kind: number, anim: number): boolean {
+    return kind === this.bag && inFlight(anim);
+  }
+
   /** The mesh an item that `item()` gave lies as. */
   mesh(item: number): number {
     return this.lies[item]!;
@@ -42,6 +48,6 @@ export class Dropped {
 
   /** Its yaw in 65536ths of a turn: its bag's, turned by its id, so that things dropped together do not lie side by side in line. */
   yaw(id: number, yaw: number): number {
-    return (yaw + (Math.imul(id, 0x9e3779b1) >>> 16)) & 0xffff;
+    return (yaw + droppedTurn(id)) & 0xffff;
   }
 }
