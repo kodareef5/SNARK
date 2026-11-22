@@ -212,6 +212,8 @@ interface Held {
   readonly near: Uint32Array;
 }
 const CORNER_BIT = 0x80000000;
+/** Changes StreetSectors keeps, each its version and the chunks it touched; one further back is all of them. */
+const CHANGES_KEPT = 64;
 
 /**
  * The streets of the sectors held (Heightfield `streets`): a page's, those round the camera as their parts come; a
@@ -222,6 +224,35 @@ export class StreetSectors {
   private last: Held | null = null;
   /** Counts each part that comes or goes, so what was worked out from them knows to work it out again. */
   version = 0;
+  /**
+   * The last CHANGES_KEPT changes, five numbers each: the version it made, and the chunks cx0, cz0 up to cx1, cz1 whose
+   * points and planes it can have changed, which are its sector's square and no more. A chunk's planes and a point's
+   * distance are read from the part of the sector whose square holds it alone (sectorOf), and `put` lists each stretch
+   * and corner only on its own square's chunks. A neighbour's stretch that reaches over the square's edge (at most 63.9 m
+   * past its centre line: a kerb of 31.9 m and sideReach's 32 m; a corner its reach and a metre more, and its side's) is
+   * in this sector's part too, as the build writes every stretch and corner whose reach meets a square into its part
+   * (tools/mapworld/streets/plan.ts), so what it draws here comes and goes with this part.
+   */
+  private readonly changes: number[] = [];
+
+  private changed(cx0: number, cz0: number, cx1: number, cz1: number): void {
+    this.version++;
+    if (this.changes.length >= CHANGES_KEPT * 5) this.changes.splice(0, 5);
+    this.changes.push(this.version, cx0, cz0, cx1, cz1);
+  }
+
+  /**
+   * The chunks whose points and planes can have changed since `version`, into `out` as cx0, cz0, cx1, cz1 a change (each
+   * from its first chunk up to the one past its last); false where the changes kept do not reach back that far, and all
+   * are to be worked out again.
+   */
+  changedSince(version: number, out: number[]): boolean {
+    out.length = 0;
+    if (version === this.version) return true;
+    if (version > this.version || this.changes.length === 0 || this.changes[0]! > version + 1) return false;
+    for (let k = 0; k < this.changes.length; k += 5) if (this.changes[k]! > version) out.push(this.changes[k + 1]!, this.changes[k + 2]!, this.changes[k + 3]!, this.changes[k + 4]!);
+    return true;
+  }
 
   /** Holds sector `key`'s streets, whose square covers the map's chunks cx0 up to cx1 and cz0 up to cz1. */
   put(key: number, part: StreetsPart, cx0: number, cz0: number, cx1: number, cz1: number): void {
@@ -249,15 +280,20 @@ export class StreetSectors {
     for (let k = 0; k < lists.length; k++) first[k + 1] = first[k]! + lists[k]!.length;
     const near = new Uint32Array(first[w * d]!);
     for (let k = 0; k < lists.length; k++) near.set(lists[k]!, first[k]!);
+    // A sector held again under another square (none is) changes both: the two together.
+    const had = this.held.get(key);
     this.held.set(key, { part, cx0, cz0, w, d, first, near });
     this.last = null;
-    this.version++;
+    if (had) this.changed(Math.min(cx0, had.cx0), Math.min(cz0, had.cz0), Math.max(cx1, had.cx0 + had.w), Math.max(cz1, had.cz0 + had.d));
+    else this.changed(cx0, cz0, cx1, cz1);
   }
 
   drop(key: number): void {
-    if (!this.held.delete(key)) return;
+    const had = this.held.get(key);
+    if (!had) return;
+    this.held.delete(key);
     this.last = null;
-    this.version++;
+    this.changed(had.cx0, had.cz0, had.cx0 + had.w, had.cz0 + had.d);
   }
 
   has(key: number): boolean {

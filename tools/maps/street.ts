@@ -4,7 +4,7 @@
 //   bun tools/maps/street.ts <city> <way | name | lon,lat> [--size 60] [--scale 10] [--out picture.png]
 //   bun tools/maps/street.ts <city> --types          the street types by length, and the rules that named them
 //   bun tools/maps/street.ts <city> --unsure [n]     the n stretches (20) the rules were least sure of
-//   bun tools/maps/street.ts <city> --sort           sorts the city's overlay files, one entry a line, as the build wants
+//   bun tools/maps/street.ts <city> --sort           sorts the city's overlay files, one entry a line (nothing built changes)
 //
 // <city> is a city (its work folder var/mapdata/<city>/current and its map var/maps/<city>.snmap) or a work folder of a
 // cut (tools/mapworld/cut.ts) with --map <its .snmap>. A way is an OpenStreetMap way's number; a name is matched in part,
@@ -25,7 +25,7 @@ import { groundCover, streetCover } from "../../client/core/render/world-surface
 import { mapHeightfield, parseMap } from "../../shared/world/mapfile.ts";
 import { kerbLines } from "../../shared/world/streets.ts";
 import { Base } from "../mapworld/base.ts";
-import { sortedKey, type OverlayEntry } from "../mapworld/streets/overlay.ts";
+import { sortOverlay } from "../mapworld/streets/overlay.ts";
 import { encodePng } from "../snap/png.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -40,18 +40,13 @@ const city = existsSync(join(ROOT, "var/mapdata", place, "current")) ? place : n
 const work = city ? join(ROOT, "var/mapdata", city, "current") : resolve(place);
 
 if (flag("sort")) {
-  // Each overlay file, its entries in the order the build wants them (overlay.ts sortedKey), blank lines kept out.
+  // Each overlay file, its entries in sortedKey's order (overlay.ts sortOverlay), blank lines kept out. The build
+  // applies entries in an order of their own, so sorting changes nothing it builds.
   const dir = city ? join(ROOT, "assets/source/maps", city, "streets") : join(work, "streets");
   for (const file of existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".jsonl")) : []) {
-    const lines = readFileSync(join(dir, file), "utf8").split("\n").filter((l) => l.trim());
-    const keyed = lines.map((text) => {
-      const e = JSON.parse(text) as Record<string, unknown>;
-      const key = (["area", "way", "line", "at"] as const).find((k) => e[k] !== undefined) ?? "way";
-      return { text, key: sortedKey({ ...(e as object), key, text, path: (e.line ?? e.area) as [number, number][] } as unknown as OverlayEntry) };
-    });
-    keyed.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-    writeFileSync(join(dir, file), `${keyed.map((k) => k.text).join("\n")}\n`);
-    console.log(`${file}: ${keyed.length} entries sorted`);
+    const sorted = sortOverlay(readFileSync(join(dir, file), "utf8"), file);
+    writeFileSync(join(dir, file), sorted);
+    console.log(`${file}: ${sorted.split("\n").length - 1} entries sorted`);
   }
   process.exit(0);
 }
