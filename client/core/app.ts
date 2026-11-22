@@ -24,6 +24,7 @@ import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { GLIDE_DIVE, JET_CUIRASS, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
+import { CMD_GAZE, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
 import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
@@ -118,6 +119,8 @@ const AIM_FOV = 0.79;
  * green, "similar to a nightvision mode", this much.
  */
 const HOLO_TINT = 0.22;
+/** Milliseconds between CMD_GAZEs while a sight's zoom holds: well inside GAZE_TICKS, after which the server lets it go. */
+const GAZE_RESEND_MS = 1000;
 /** Milliseconds the eye takes to settle most of the way to where it is off a scope's axis. */
 const EYE_EASE_MS = 120;
 /** Metres a holo-scope's crosshair finds what it is on, and its colours (Holo-Scope Attachment). */
@@ -178,6 +181,9 @@ export class App {
   /** Scratch for the eye's offset off a sight's axis and the sight's window (optics.ts eyeOff, windowBox). */
   private readonly eyeAt = new Float64Array(2);
   private readonly windowAt = new Float64Array(4);
+  /** The zoom the server was last told of (App.gaze), and when. */
+  private gazeSent = 0;
+  private gazeAt = -Infinity;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   /** The orbit camera on K, and whether the last frame's view lets it start. */
@@ -854,6 +860,26 @@ export class App {
     return tint;
   }
 
+  /**
+   * Tells the server the sight's zoom (0 for none) as it changes by a tenth or more, and again each GAZE_RESEND_MS while it
+   * lasts, with how far off what the middle of the view is on (0 for nothing within the cone's reach); once more as it ends.
+   */
+  private gaze(nowMs: number, world: CollisionWorld, zoom: number, yaw: number, pitch: number): void {
+    if (zoom === 0 && this.gazeSent === 0) return;
+    const moved = zoom === 0 || this.gazeSent === 0 || Math.abs(zoom - this.gazeSent) > 0.1 * Math.max(zoom, this.gazeSent);
+    if (!moved && nowMs - this.gazeAt < GAZE_RESEND_MS) return;
+    let focus = 0;
+    if (zoom > 0) {
+      const d = this.aim, eye = this.sightAt;
+      lookDirection((yaw / TAU) * 65536, (pitch / (PI / 2)) * 16384, d);
+      const reach = Math.min(GAZE_FARTHEST, GAZE_REACH * zoom);
+      if (castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE) focus = rayHit.t;
+    }
+    this.session.command(CMD_GAZE, (w) => (w.u16(Math.min(65535, Math.round(zoom * 16))), w.u16(Math.min(65535, Math.round(focus)))));
+    this.gazeSent = zoom;
+    this.gazeAt = nowMs;
+  }
+
   /** Sets `aimed` to the player-built structure within ACT_REACH, and returns its name and health. */
   private builtAt(world: CollisionWorld, eye: number): string {
     const s = this.session;
@@ -1413,6 +1439,8 @@ export class App {
     this.fov = easeFov(this.fov, want, hud.vehicle || gliding || this.view.gliding > 0.02 ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / FOV_EASE_MS));
     cam.fovY = this.fov;
     cam.zoom = magnification(base, this.fov);
+    // Through a sight the server is told how far it magnifies and what it is on, so its cone widens the view (D1032).
+    this.gaze(nowMs, world, sighting && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
     c.zoom = lookScale(base, this.fov, settings.sensitivity, settings.zoomSensitivity);
     // The crosshair opens with the cone the next shot would leave within.
     hud.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;

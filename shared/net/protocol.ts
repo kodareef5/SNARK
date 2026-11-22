@@ -79,8 +79,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 39: the glider on the owner's body (the grade carried, open or not, and its keys as last sampled), behind one bit; under an
  * open glider CUE_JET is set and the motion bits' mode field holds ANIM_GLIDE and the phase (planning/workstreams/glider.md).
  * 40: the tames kept in a box's soul balls (OWN_KEPT), and a tame going into or coming out of one (EVENT_BALL).
+ * 41: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1032).
  */
-export const PROTOCOL_VERSION = 40;
+export const PROTOCOL_VERSION = 41;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -412,6 +413,18 @@ export const CMD_CLOCK = 35;
  * carrying, acting), FAR beyond reach of the one aimed at.
  */
 export const CMD_EMOTE = 36;
+/**
+ * Looking through a sight (D1032): how many times it magnifies, in sixteenths u16 (0 or 16 and under for none), and how far
+ * off, in metres, what the middle of the view is on u16 (0 for nothing found). The server holds the zoom to what the
+ * survivor holds or wears that magnifies, and while it lasts adds the chunks along the survivor's look to its view and
+ * wakes the creatures round what it is on. A session sends it as its zoom changes and once a second while it looks;
+ * GAZE_TICKS after the last, the cone is gone.
+ */
+export const CMD_GAZE = 37;
+export const GAZE_TICKS = 90;
+/** Metres a gaze's cone reaches for each time its sight magnifies, and at most: the map's width. */
+export const GAZE_REACH = 200;
+export const GAZE_FARTHEST = 8000;
 export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;

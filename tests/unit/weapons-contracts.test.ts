@@ -27,13 +27,14 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   // stations wave's, for OWN_STATION's layout (tests/unit/stations-contracts.test.ts), and 18 the vehicles'
   // (tests/integration/vehicle-contracts.test.ts); 19 adds rotorcraft state and CMD_VEHICLE (32); 21 the compact chunk rows; 22 CMD_STATICS (33);
   // 24 S_MOTION's states told a part at a time; 25 adds S_CORPSE and CMD_CORPSE (34); 26 adds car recovery actions; 27 added crushed nodes and contact facts; 28 limits those facts to public motion; 29 adds ground creature prediction counters; 33 flight armor in the owner body; 34 the sundial's CMD_CLOCK (35); 35 a snapshot's margin against the tick due and the ticks given up; 36 the buttons a tick carried from a late input; 37 a survivor's emote and CMD_EMOTE (36); 38 the owner's powered maneuvers.
-  // 39 is the glider's (tests/integration/glider.test.ts), and 40 the soul balls' (tests/integration/balls.test.ts).
-  expect(P.PROTOCOL_VERSION).toBe(40);
+  // 39 is the glider's (tests/integration/glider.test.ts), 40 the soul balls' (tests/integration/balls.test.ts), and 41 a
+  // sight's CMD_GAZE (37, tests/integration/gaze.test.ts).
+  expect(P.PROTOCOL_VERSION).toBe(41);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   // OWN_KEPT (17), EVENT_BALL (8) and COMP_STORED (25) are the soul balls'; COMP_ISSUED (26), the starter mount's mark, took
-  // nothing on the wire (tests/integration/starter-mount.test.ts).
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([36, 17, 8, 10]);
+  // nothing on the wire (tests/integration/starter-mount.test.ts). CMD_GAZE (37) is a sight's (tests/integration/gaze.test.ts).
+  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([37, 17, 8, 10]);
   // FLAG_ON, W7's: the next slot flag after the blueprint's, the same bit on the slot and on the wire.
   expect([P.SLOT_BLUEPRINT, P.SLOT_ON, FLAG_BLUEPRINT, FLAG_ON]).toEqual([1, 2, 1, 2]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");

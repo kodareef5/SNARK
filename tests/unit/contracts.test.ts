@@ -64,8 +64,9 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   // 35 the margin told against the tick due and the ticks given up, 36 the buttons a tick carried from a late input
   // (tests/integration/stalls.test.ts), 37 a survivor's emote word and CMD_EMOTE (tests/integration/emotes.test.ts),
   // 38 the owner's powered maneuvers (tests/integration/meridian-flight.test.ts), 39 the glider on the owner's body
-  // (tests/integration/glider.test.ts), 40 the soul balls' kept tames and flash (tests/integration/balls.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.CMD_EMOTE, P.PROTOCOL_VERSION]).toEqual([27, 28, 36, 40]);
+  // (tests/integration/glider.test.ts), 40 the soul balls' kept tames and flash (tests/integration/balls.test.ts), 41 a
+  // sight's gaze, CMD_GAZE (tests/integration/gaze.test.ts).
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.CMD_EMOTE, P.CMD_GAZE, P.PROTOCOL_VERSION]).toEqual([27, 28, 36, 37, 41]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);

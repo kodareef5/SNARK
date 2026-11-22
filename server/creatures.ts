@@ -550,22 +550,27 @@ export class Creatures {
 
   private adjust(center: number, delta: number, woke?: number[]): void {
     const dims = this.world.dims;
-    const ents = this.world.ents;
     const cx = chunkCx(dims, center);
     const cz = chunkCz(dims, center);
     const r = this.wakeRadius;
     for (let z = Math.max(0, cz - r); z <= Math.min(dims.chunksZ - 1, cz + r); z++) {
-      for (let x = Math.max(0, cx - r); x <= Math.min(dims.chunksX - 1, cx + r); x++) {
-        const chunk = z * dims.chunksX + x;
-        const before = this.chunkRefs[chunk]!;
-        this.chunkRefs[chunk] = before + delta;
-        if (before === 0 && delta > 0) {
-          woke?.push(chunk);
-          for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.wake(e);
-        } else if (before === 1 && delta < 0) {
-          for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.sleep(e);
-        }
-      }
+      for (let x = Math.max(0, cx - r); x <= Math.min(dims.chunksX - 1, cx + r); x++) this.watch(z * dims.chunksX + x, delta, woke);
+    }
+  }
+
+  /**
+   * One chunk held awake (`delta` 1) or let go (-1): round a body, or looked at through a sight (server/gaze.ts, D1032).
+   * Its creatures wake as the first hold comes and sleep as the last goes. Each chunk that wakes is added to `woke`.
+   */
+  watch(chunk: number, delta: number, woke?: number[]): void {
+    const ents = this.world.ents;
+    const before = this.chunkRefs[chunk]!;
+    this.chunkRefs[chunk] = before + delta;
+    if (before === 0 && delta > 0) {
+      woke?.push(chunk);
+      for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.wake(e);
+    } else if (before === 1 && delta < 0) {
+      for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.sleep(e);
     }
   }
 
