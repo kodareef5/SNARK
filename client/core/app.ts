@@ -587,18 +587,23 @@ export class App {
   private rows(): FramePart[] {
     const tools = this.tools;
     return [
+      // A tool's lines are typed and its look held before anything reads the look.
       ...(tools ? [tools.lines] : []),
+      // The camera's subject and its view; the instruments of a vehicle driven, whose speed widens the view; the aim and any sight.
       this.director,
       this.dash,
       this.sight,
+      // With the view decided: the own body as it is drawn, then the camera placed.
       this.director.body,
       this.director.place,
+      // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       { step: (f) => this.absorb(f) },
       ...(tools ? [tools.stage] : []),
       { step: (f) => this.build(f) },
       ...(tools ? [tools.finish] : []),
       { step: (f) => this.hear(f) },
       { step: (f) => this.ghost(f) },
+      // What the use key is on, and the voice port told where speakers are. Then the HUD, which reads all of the above.
       this.prompts,
       this.heard,
       { step: (f) => this.fillHud(f) },
