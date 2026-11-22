@@ -59,6 +59,8 @@ export interface SurvivorOptions {
 }
 
 export interface CampOptions extends SurvivorOptions {
+  /** The first survivor's name: ada, where not given. */
+  name?: string;
   /** The flat field, where not given. */
   place?: Place;
   /** Settings by ARK's names, read as the server's files are. */
@@ -72,7 +74,7 @@ export interface CampOptions extends SurvivorOptions {
 }
 
 export interface Camp {
-  h: ScreenHarness;
+  h: Harness;
   /** The first survivor's client. */
   ada: ClientSession;
   /** Its record on the server. */
@@ -124,7 +126,7 @@ export function camp(o: CampOptions = {}): Camp {
   const started = { host, seed: o.seed ?? 1, fps: o.fps ?? 60 };
   const h = new ScreenHarness({}, started.seed, started.fps, host);
   STARTED.set(h, started);
-  const ada = survivor(h, "ada", o);
+  const ada = survivor(h, o.name ?? "ada", o);
   const to = place.at(h);
   const e = h.ent(ada);
   // A map's own spawn point is where its place says to stand; the proving ground's level ground is reached by teleport.
@@ -133,7 +135,7 @@ export function camp(o: CampOptions = {}): Camp {
 }
 
 /** The server stopped and started again on the same save, with the same place and settings. Nobody is joined: `survivor` joins one again. */
-export function restart(h: Harness): ScreenHarness {
+export function restart(h: Harness): Harness {
   const started = STARTED.get(h);
   if (!started?.host.dbPath) throw new Error("only a camp with a save can restart: camp({ save: true })");
   h.host.shutdown();

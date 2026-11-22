@@ -10,27 +10,18 @@ import type { EntityRecord } from "../../server/records.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_NAME, CMD_OPEN, CMD_ORDER, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
-import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
-import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
+import * as kit from "../kit/kit.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 
-/** Ada is in survival.gods, so nothing harms her. */
+/** Ada stands on level ground with cheats on, and nothing harms her. */
 function camp(host: { dbPath?: string } = {}) {
-  const h = new Harness({}, 1, 60, { dev: true, ...host });
-  const ada = h.join("ada");
-  h.run(500);
-  h.say(ada, "enablecheats");
-  const g = flatGround(h, 40, 30);
-  const at = { x: g.x + 20, z: g.z + 6, y: g.y };
-  h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
-  const rec = h.host.records.byPid.get(h.client(ada)!.pid)!;
-  h.host.survival.gods.add(rec.pid);
+  const { h, ada, at, me: rec } = kit.camp({ place: kit.clearing(), god: true, host });
   return { h, ada, at, rec };
 }
 
@@ -46,20 +37,7 @@ function knockOut(h: Harness, at: { x: number; z: number }, species: string, far
   return { e, rec };
 }
 
-function press(h: Harness, s: ClientSession, e: number): void {
-  const ents = h.world.ents;
-  const me = h.ent(s);
-  const pilot = h.pilots[h.sessions.indexOf(s)]!;
-  const eye = ents.y[me]! + stanceEye(h.reg.move[ents.kind[me]!]!, 0);
-  const [dx, dz] = [ents.x[e]! - ents.x[me]!, ents.z[e]! - ents.z[me]!];
-  pilot.yaw = Math.atan2(dx, dz);
-  pilot.pitch = Math.atan2(ents.y[e]! + h.reg.bodyHeight[ents.kind[e]!]! * 0.5 - eye, Math.hypot(dx, dz));
-  h.run(150);
-  pilot.buttons = BTN_USE;
-  h.run(100);
-  pilot.buttons = 0;
-  h.run(200);
-}
+const press = kit.use;
 
 /** `slot` is a slot of the creature the survivor has open. */
 function give(h: Harness, s: ClientSession, item: string, count: number, slot: number): void {

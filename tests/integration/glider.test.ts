@@ -10,15 +10,11 @@ import { BTN_CROUCH, BTN_JUMP, BTN_PRIMARY, GLIDE_SINK, GLIDE_SPEED, JET_CUIRASS
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { ACT_NONE } from "../../shared/sim/weapon.ts";
 import { Harness } from "../fixtures/net.ts";
+import { camp, id, proving } from "../kit/kit.ts";
 
 function setup() {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const s = h.join("ada", { latencyMs: 50 });
-  h.run(500);
-  expect(h.say(s, "enablecheats")).toEqual(["cheats enabled"]);
+  const { h, ada: s, me: rec } = camp({ place: proving(), link: { latencyMs: 50 } });
   const e = h.ent(s);
-  const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
-  const id = (item: string) => h.reg.index.get(item)!;
   const inv = () => h.host.items.inv(rec);
   const have = (item: string) => inv().total(id(item));
   /** The durability of the first glider it carries. */

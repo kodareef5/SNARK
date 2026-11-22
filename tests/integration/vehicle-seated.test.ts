@@ -7,18 +7,12 @@ import { join } from "node:path";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { RESULT_FAR, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
-import { flatGround } from "../fixtures/arena.ts";
+import { camp, clearing, vehicle } from "../kit/kit.ts";
 
 function setup(dbPath?: string) {
-  const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath });
-  const ada = h.join("ada");
-  h.run(400);
-  const ground = flatGround(h, 24, 28), x = ground.x + 10, z = ground.z + 8;
-  h.say(ada, "enablecheats");
-  h.say(ada, `tp ${x + 1.6} ${z + 0.12}`);
-  h.run(500);
-  const me = h.client(ada)!;
-  const car = h.host.spawnVehicle("core:compact", x, z, h.host.records.byPid.get(me.pid)!.team, 0);
+  const { h, ada, at } = camp({ place: clearing(24, 28, 8.12), host: { clips: NO_CLIPS, rigs: [], dbPath } });
+  const me = h.client(ada)!, x = at.x - 1.6, z = at.z - 0.12;
+  const car = vehicle(h, ada, "compact", { at: { x, z }, yaw: 0 }).e;
   return { h, ada, me, car, x, z };
 }
 

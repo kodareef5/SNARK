@@ -1,45 +1,17 @@
 // A dodo in a running world, at ARK's numbers (ark.wiki.gg, Dodo, 2026-11-14).
 
 import { expect, test } from "bun:test";
-import type { ClientSession } from "../../client/core/session.ts";
 import { MIND_FLEE, MIND_WANDER } from "../../server/behavior.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE } from "../../shared/net/protocol.ts";
-import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
-import { flatGround } from "../fixtures/arena.ts";
-import { Harness } from "../fixtures/net.ts";
+import * as kit from "../kit/kit.ts";
 
 /** Ada stands on level ground with cheats on, and nothing harms her. */
-function camp() {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const ada = h.join("ada");
-  h.run(500);
-  h.say(ada, "enablecheats");
-  const g = flatGround(h, 40, 30);
-  const at = { x: g.x + 20, z: g.z + 6 };
-  h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
-  const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
-  h.host.survival.gods.add(me.pid);
-  return { h, ada, at, me };
-}
-
+const camp = () => kit.camp({ place: kit.clearing(), god: true });
 /** Ada looks at `e` and presses use, which opens it. */
-function open(h: Harness, s: ClientSession, e: number): void {
-  const ents = h.world.ents;
-  const me = h.ent(s);
-  const pilot = h.pilots[h.sessions.indexOf(s)]!;
-  const eye = ents.y[me]! + stanceEye(h.reg.move[ents.kind[me]!]!, 0);
-  const [dx, dz] = [ents.x[e]! - ents.x[me]!, ents.z[e]! - ents.z[me]!];
-  pilot.yaw = Math.atan2(dx, dz);
-  pilot.pitch = Math.atan2(ents.y[e]! + h.reg.bodyHeight[ents.kind[e]!]! * 0.5 - eye, Math.hypot(dx, dz));
-  h.run(150);
-  pilot.buttons = BTN_USE;
-  h.run(100);
-  pilot.buttons = 0;
-  h.run(200);
-}
+const open = kit.use;
 
 test("a level 30 dodo on berries, as the wiki's table has it: fifteen, one every eight seconds, two minutes, 80% and twelve levels for it", () => {
   const { h, ada, at, me } = camp();

@@ -2,24 +2,18 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "../../server/settings/config.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { CLOCK_HOUR_TICKS, cycleTicks, formatHour, hourOfDay } from "../../shared/sim/clock.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { rules as rulesOf } from "../kit/kit.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 
-function rulesOf(server: string[] = []) {
-  const made = loadConfig({ gus: ["[ServerSettings]", ...server].join("\n") });
-  expect([made.report.refused, made.report.unknown, made.report.waiting]).toEqual([[], [], []]);
-  return made.rules;
-}
-
-const FAST = ["DayCycleSpeedScale=10", "DayTimeSpeedScale=2", "NightTimeSpeedScale=0.5"];
+const FAST = { DayCycleSpeedScale: 10, DayTimeSpeedScale: 2, NightTimeSpeedScale: 0.5 };
 
 test("the server's day: its three scales reach the client, both tell the same hour, and the day and the night each take what the scales say", () => {
   const plain = new Harness({}, 1, 60, { dev: true });

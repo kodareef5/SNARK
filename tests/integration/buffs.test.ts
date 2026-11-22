@@ -10,11 +10,11 @@ import type { EntityRecord } from "../../server/records.ts";
 import { EVENT_KILL } from "../../shared/net/protocol.ts";
 import { BTN_PRIMARY, MF_NO_SPRINT, MF_OUT, MF_ROOTED } from "../../shared/sim/character.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
-import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { camp, clearing } from "../kit/kit.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-buffs-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -26,17 +26,9 @@ const EYE = 1.62;
 
 /** A survivor with cheats at the south end of a level range, looking north. */
 function range() {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const s = h.join("ada");
-  h.run(500);
-  h.say(s, "enablecheats");
+  const { h, ada: s, me: rec, at } = camp({ place: clearing(24, 30, 1.5) });
   const pilot = h.pilots[0]!;
-  const g = flatGround(h, 24, 30);
-  const at = { x: g.x + 12, z: g.z + 1.5 };
-  h.say(s, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
-  pilot.yaw = 0;
   h.run(300);
-  const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
   const spawn = (kind: string, far: number, level = 1): { e: number; rec: EntityRecord } => {
     const e = h.host.spawnCreature(`core:${kind}`, at.x, at.z + far, level);
     expect(e).toBeGreaterThanOrEqual(0);
