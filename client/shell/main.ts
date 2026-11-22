@@ -117,6 +117,8 @@ async function boot(): Promise<void> {
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   // The data utility's record of each frame comes as its own file, which the first frame does not wait for (D899).
   void import("../core/assets/frames.ts").then((m) => (app.frames = new m.FrameRing()));
+  // Bug report mode's part that needs the browser, fetched once the mode is first on (D1091).
+  app.notePort = () => import("../notes/port.ts").then((m) => m.notePort(canvas, renderer, PassClock));
   const previous=session.onResult;
   session.onResult=(seq,result)=>{previous?.(seq,result);if(createSeq && seq===createSeq && result!==RESULT_OK)createFailed=true;};
   if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
