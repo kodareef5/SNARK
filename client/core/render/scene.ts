@@ -3342,7 +3342,8 @@ export class Scene {
       if (bends && this.bentKind[kind] === 1) {
         const bend = city && s < rows && city.kind[from + s] === kind && city.x[from + s] === x && city.z[from + s] === z ? bendOf(chunkBends, s) : null;
         if (bend) bends.set(bend, i * 8);
-        r = bend ? bend[0]! / 1000 + Math.max(KERB_BACK, bend[6]! / 1000) + 0.5 : r;
+        // Its walk in the low 14 bits of its seventh number, a sinking walk's flags over it (bends.ts packBend).
+        r = bend ? bend[0]! / 1000 + Math.max(KERB_BACK, (bend[6]! & 0x3fff) / 1000) + 0.5 : r;
       }
       const lo = sizeOf ? y + this.assets.table.low[mesh]! * k : y - r;
       const hi = sizeOf ? y + this.assets.table.high[mesh]! * k : y + r;

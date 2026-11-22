@@ -8,13 +8,13 @@
 // place then take to the world as any rigid piece's; it leaves in gBent how far along its kerb line the vertex is, how far
 // across from the kerb's face, and its height as modelled, which the textured fragment's wear reads (BENT_WEAR_GLSL).
 
-import { KERB_BACK, MODEL_HALF, MODEL_WALK, STATION_WRAP } from "../../../shared/world/bends.ts";
+import { FLUSH_APRON, KERB_BACK, KERB_HEIGHT, MODEL_HALF, MODEL_WALK, SINK_FROM, STATION_WRAP } from "../../../shared/world/bends.ts";
 
 const f = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
 export const BEND_GLSL = `layout(location=13) in vec4 iBendA;
 layout(location=14) in vec4 iBendB;
-vec3 gBent;
+vec3 gBent, gLook;
 vec3 bent(vec3 l, inout vec3 n, inout vec3 t) {
   float h = iBendA.x * 0.001, a0 = iBendA.y / 8192.0, a1 = iBendA.z / 8192.0, phi = abs(a1 - a0);
   float u = l.x / ${f(2 * MODEL_HALF)} + 0.5, u2 = u * u, u3 = u2 * u;
@@ -22,17 +22,20 @@ vec3 bent(vec3 l, inout vec3 n, inout vec3 t) {
   vec2 t0 = m * vec2(cos(a0), sin(a0)), t1 = m * vec2(cos(a1), sin(a1));
   vec2 p = vec2(h * (6.0 * u2 - 4.0 * u3 - 1.0), 0.0) + (u3 - 2.0 * u2 + u) * t0 + (u3 - u2) * t1;
   vec2 w = normalize(vec2(h * (12.0 * u - 12.0 * u2), 0.0) + (3.0 * u2 - 4.0 * u + 1.0) * t0 + (3.0 * u2 - 2.0 * u) * t1);
-  float walk = iBendB.z * 0.001, k = l.z > ${f(KERB_BACK)} ? (walk - ${f(KERB_BACK)}) / ${f(MODEL_WALK - KERB_BACK)} : 1.0, z = l.z > ${f(KERB_BACK)} ? ${f(KERB_BACK)} + (l.z - ${f(KERB_BACK)}) * k : l.z;
+  float wb = iBendB.z < 0.0 ? iBendB.z + 65536.0 : iBendB.z, back = step(32768.0, wb), ahead = step(16384.0, wb - back * 32768.0);
+  float walk = (wb - back * 32768.0 - ahead * 16384.0) * 0.001, tactile = step(16384.0, iBendB.y), k = l.z > ${f(KERB_BACK)} ? (walk - ${f(KERB_BACK)}) / ${f(MODEL_WALK - KERB_BACK)} : 1.0, z = l.z > ${f(KERB_BACK)} ? ${f(KERB_BACK)} + (l.z - ${f(KERB_BACK)}) * k : l.z;
   float len = 2.0 * h * (phi < 0.001 ? 1.0 + phi * phi / 24.0 : phi * 0.5 / sin(phi / 2.0));
   float s = (iBendA.w < 0.0 ? iBendA.w + 65536.0 : iBendA.w) * 0.01 + u * len, seed = mod(iBendB.w, 256.0), wear = floor(iBendB.w / 256.0) / 127.0;
   float lift = (0.006 + 0.022 * wear) * (0.4 + 0.6 * seed / 255.0) * (0.6 * sin(6.2831853 * s / 40.0 + seed * 0.37) + 0.4 * sin(6.2831853 * s / 24.0 + seed * 1.3));
   lift *= walk > ${f(KERB_BACK + 0.01)} ? clamp((z - ${f(KERB_BACK)}) / (walk - ${f(KERB_BACK)}), 0.0, 1.0) : 0.0;
-  float rise = iBendB.x * 0.001, grade = 2.0 * rise / len, stretch = len / ${f(2 * MODEL_HALF)};
+  float sink = ahead - back, weight = l.z > ${f(SINK_FROM)} ? clamp(l.y / ${f(KERB_HEIGHT)}, 0.0, 1.0) * abs(sink) : 0.0;
+  float fall = weight * (sink > 0.0 ? u : 1.0 - u), rise = iBendB.x * 0.001, grade = (2.0 * rise - ${f(KERB_HEIGHT)} * sink * weight) / len, stretch = len / ${f(2 * MODEL_HALF)};
   vec2 c = vec2(n.x / stretch - grade * n.y, n.z / k), e = vec2(t.x * stretch, t.z * k);
   n = normalize(vec3(w.x * c.x - w.y * c.y, n.y, w.y * c.x + w.x * c.y));
   t = normalize(vec3(w.x * e.x - w.y * e.y, t.y + grade * e.x, w.y * e.x + w.x * e.y));
   gBent = vec3(mod(s, ${f(STATION_WRAP)}), z, l.y);
-  return vec3(p.x - w.y * z, l.y + rise * (2.0 * u - 1.0) + lift, p.y + w.x * z);
+  gLook = vec3((iBendB.y - tactile * 16384.0) * 0.001, walk, tactile);
+  return vec3(p.x - w.y * z, l.y + rise * (2.0 * u - 1.0) + lift - ${f(KERB_HEIGHT)} * fall, p.y + w.x * z);
 }
 `;
 
@@ -46,13 +49,21 @@ export const STRIP_METRES = 4;
  * texture; every layer is a few hashes of where the point is, so it never repeats with the piece, and each wave's or
  * cell's length divides the wrap, so nothing jumps where the stations start again. The twin of BENT_WEAR_GLSL.
  * - pours: each 6 m of kerb its own tone, a little warmer the more it is worn;
- * - panels: the walk's joints every `panel` metres along, each panel its own tone, a share of them cracked across by wear;
+ * - panels: the walk's joints every `panel` metres along, each panel its own tone, a share of them cracked by wear: a
+ *   crack mostly across the walk from anywhere in its panel, running part of its width, each as deep as its own;
  * - stains: dark patches on two scales, more the more it is worn, and grime in the gutter;
  * - chips: the kerb's top edge broken back in places, more by wear;
- * - grass: in the walk's joints and behind its back where it is worn.
+ * - grass: in the walk's joints and behind its back where it is worn;
+ * - a crossing's ramp (`tactile`): its apron a faded yellow pad of domes.
  */
-export function bentWear(albedo: Float64Array | number[], mro: Float64Array | number[], along: number, across: number, up: number, faceUp: number, code: number, panel: number, walk: number, spread: number): void {
+export function bentWear(albedo: Float64Array | number[], mro: Float64Array | number[], along: number, across: number, up: number, faceUp: number, code: number, panel: number, walk: number, spread: number, tactile = false): void {
   const seed = code % 256, wear = Math.floor(code / 256) / 127;
+  // A crossing's ramp: its apron's dimpled pad, a faded yellow, its domes fading out where a pixel spans them.
+  if (tactile && faceUp > 0.8 && across > 0.12 && across < apronOf(walk)) {
+    const gx = fract(along / DOME) - 0.5, gy = fract(across / DOME) - 0.5;
+    const dome = (1 - smooth(0.18, 0.3, Math.sqrt(gx * gx + gy * gy))) * (1 - smooth(0.01, 0.03, spread));
+    for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! + (PAD[c]! * (0.85 + 0.25 * dome) - albedo[c]!) * 0.7;
+  }
   const pour = Math.floor(along / 6);
   const tone = 0.94 + 0.12 * hash(pour, seed), warm = hash(seed, pour + 7) * wear;
   for (let c = 0; c < 3; c++) albedo[c]! *= tone * (1 + warm * WARM[c]!);
@@ -63,12 +74,14 @@ export function bentWear(albedo: Float64Array | number[], mro: Float64Array | nu
     const own = hash(cell, seed + 3);
     for (let c = 0; c < 3; c++) albedo[c]! *= (1 - 0.45 * joint) * (0.96 + 0.08 * own);
     mro[0]! *= 1 - 0.3 * joint;
-    if (own < 0.2 + 0.35 * wear) {
-      const a = hash(cell, seed + 9) * Math.PI, u = (p - cell) * panel, v = across;
-      const cu = panel * 0.5 + (hash(cell, 4) - 0.5) * 0.4, cv = (walk + KERB_BACK) * 0.5 + (hash(cell, 5) - 0.5) * 0.3;
-      const line = Math.abs((u - cu) * -Math.sin(a) + (v - cv) * Math.cos(a)) + (noise(u * 9 + cell, v * 9, 0) - 0.5) * 0.02;
-      const crack = 1 - smooth(0.0015, 0.004 + spread, Math.abs(line));
-      for (let c = 0; c < 3; c++) albedo[c]! *= 1 - 0.5 * crack;
+    if (own < 0.08 + 0.22 * wear) {
+      // A crack mostly across the walk, from anywhere in its panel, running part of the way, its depth its own.
+      const a = Math.PI / 2 + (hash(cell, seed + 9) - 0.5) * 1.4, u = (p - cell) * panel, v = across, ca = Math.cos(a), sa = Math.sin(a);
+      const cu = panel * (0.2 + 0.6 * hash(cell, 4)), cv = KERB_BACK + (walk - KERB_BACK) * hash(cell, 5);
+      const line = Math.abs((u - cu) * -sa + (v - cv) * ca) + (noise(u * 9 + cell, v * 9, 0) - 0.5) * 0.02;
+      const reach = (0.25 + 0.6 * hash(cell, 6)) * (walk - KERB_BACK), along = Math.abs((u - cu) * ca + (v - cv) * sa);
+      const crack = (1 - smooth(0.0015, 0.004 + spread, Math.abs(line))) * (1 - smooth(reach * 0.7, reach, along));
+      for (let c = 0; c < 3; c++) albedo[c]! *= 1 - (0.18 + 0.2 * hash(cell, 7)) * crack;
     }
     const green = joint * smooth(0.55, 0.8, noise(along * 0.8, seed, 480)) * smooth(0.35, 0.7, wear);
     for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! + (GRASS[c]! - albedo[c]!) * green * 0.8;
@@ -84,7 +97,10 @@ export function bentWear(albedo: Float64Array | number[], mro: Float64Array | nu
   }
 }
 
-const WARM = [0.03, 0, -0.05], GRASS = [0.09, 0.13, 0.04], CHIP = [0.22, 0.24, 0.28];
+const WARM = [0.03, 0, -0.05], GRASS = [0.09, 0.13, 0.04], CHIP = [0.22, 0.24, 0.28], PAD = [0.62, 0.5, 0.2];
+/** A crossing's pad's domes' spacing, and where a flush kerb's apron ends across a walk of `walk` (bends.ts across). */
+const DOME = 0.06;
+const apronOf = (walk: number): number => KERB_BACK + ((FLUSH_APRON - KERB_BACK) * (walk - KERB_BACK)) / (MODEL_WALK - KERB_BACK);
 const smooth = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -121,8 +137,13 @@ float bentNoise(vec2 p, float period) {
   if (period > 0.0) i.x = mod(i.x, period);
   return mix(mix(bentHash(i), bentHash(j), s.x), mix(bentHash(i + vec2(0.0, 1.0)), bentHash(j + vec2(0.0, 1.0)), s.x), s.y);
 }
-void bentWear(inout vec3 albedo, inout vec3 mro, vec3 at, float faceUp, float code, vec2 look, float spread) {
+void bentWear(inout vec3 albedo, inout vec3 mro, vec3 at, float faceUp, float code, vec3 look, float spread) {
   float seed = mod(code, 256.0), wear = floor(code / 256.0) / 127.0, along = at.x, across = at.y, up = at.z;
+  if (look.z > 0.5 && faceUp > 0.8 && across > 0.12 && across < ${f(KERB_BACK)} + ${f(FLUSH_APRON - KERB_BACK)} * (look.y - ${f(KERB_BACK)}) / ${f(MODEL_WALK - KERB_BACK)}) {
+    vec2 g = fract(vec2(along, across) / ${f(DOME)}) - 0.5;
+    float dome = (1.0 - smoothstep(0.18, 0.3, length(g))) * (1.0 - smoothstep(0.01, 0.03, spread));
+    albedo = mix(albedo, vec3(0.62, 0.5, 0.2) * (0.85 + 0.25 * dome), 0.7);
+  }
   float pour = floor(along / 6.0);
   albedo *= (0.94 + 0.12 * bentHash(vec2(pour, seed))) * (1.0 + bentHash(vec2(seed, pour + 7.0)) * wear * vec3(${f(0.03)}, 0.0, ${f(-0.05)}));
   if (faceUp > 0.8 && across > ${f(KERB_BACK + 0.02)} && across < look.y - 0.03 && look.x > 0.0) {
@@ -130,11 +151,12 @@ void bentWear(inout vec3 albedo, inout vec3 mro, vec3 at, float faceUp, float co
     float joint = 1.0 - smoothstep(0.006, 0.02 + spread, look.x * 0.5 - d), own = bentHash(vec2(cell, seed + 3.0));
     albedo *= (1.0 - 0.45 * joint) * (0.96 + 0.08 * own);
     mro.r *= 1.0 - 0.3 * joint;
-    if (own < 0.2 + 0.35 * wear) {
-      float a = bentHash(vec2(cell, seed + 9.0)) * 3.14159265, u = (p - cell) * look.x;
-      vec2 c = vec2(look.x * 0.5 + (bentHash(vec2(cell, 4.0)) - 0.5) * 0.4, (look.y + ${f(KERB_BACK)}) * 0.5 + (bentHash(vec2(cell, 5.0)) - 0.5) * 0.3);
-      float line = abs(dot(vec2(u, across) - c, vec2(-sin(a), cos(a)))) + (bentNoise(vec2(u * 9.0 + cell, across * 9.0), 0.0) - 0.5) * 0.02;
-      albedo *= 1.0 - 0.5 * (1.0 - smoothstep(0.0015, 0.004 + spread, abs(line)));
+    if (own < 0.08 + 0.22 * wear) {
+      float a = 1.5707963 + (bentHash(vec2(cell, seed + 9.0)) - 0.5) * 1.4, u = (p - cell) * look.x;
+      vec2 c = vec2(look.x * (0.2 + 0.6 * bentHash(vec2(cell, 4.0))), ${f(KERB_BACK)} + (look.y - ${f(KERB_BACK)}) * bentHash(vec2(cell, 5.0))), d = vec2(u, across) - c;
+      float line = abs(dot(d, vec2(-sin(a), cos(a)))) + (bentNoise(vec2(u * 9.0 + cell, across * 9.0), 0.0) - 0.5) * 0.02;
+      float reach = (0.25 + 0.6 * bentHash(vec2(cell, 6.0))) * (look.y - ${f(KERB_BACK)});
+      albedo *= 1.0 - (0.18 + 0.2 * bentHash(vec2(cell, 7.0))) * (1.0 - smoothstep(0.0015, 0.004 + spread, abs(line))) * (1.0 - smoothstep(reach * 0.7, reach, abs(dot(d, vec2(cos(a), sin(a))))));
     }
     float green = joint * smoothstep(0.55, 0.8, bentNoise(vec2(along * 0.8, seed), 480.0)) * smoothstep(0.35, 0.7, wear);
     albedo = mix(albedo, vec3(0.09, 0.13, 0.04), green * 0.8);

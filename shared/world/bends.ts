@@ -55,6 +55,13 @@ export interface Bend {
   /** 0 to 255, the same along a kerb line, and 0 to 1, how worn. */
   readonly seed: number;
   readonly wear: number;
+  /**
+   * Its walk let down to the ground along it, toward its end (1) or its start (-1), where a walk ends and the kerb runs
+   * on alone or stops: the walk's top falls by the kerb's height from one end to the other, the kerb stays as it is.
+   */
+  readonly sink?: -1 | 0 | 1;
+  /** A crossing's ramp: its walk's apron dimpled, as a flush kerb's is where people cross (bentWear). */
+  readonly tactile?: boolean;
 }
 
 const round = (v: number): number => Math.floor(v + 0.5);
@@ -68,8 +75,11 @@ export function packBend(out: Int16Array, at: number, b: Bend): void {
   const cm = round(wrapped(b.station) * 100) % (STATION_WRAP * 100);
   out[at + 3] = cm > 32767 ? cm - 65536 : cm;
   out[at + 4] = short(b.rise * 1000);
-  out[at + 5] = short(b.panel * 1000);
-  out[at + 6] = short(b.walk * 1000);
+  // The panel in the low 14 bits and a crossing's ramp in the next; the walk in the low 14 bits (to 16.38 m) and its sink in
+  // the top two.
+  out[at + 5] = clamp(round(b.panel * 1000), 0, FLAG - 1) | (b.tactile ? FLAG : 0);
+  const walk = clamp(round(b.walk * 1000), 0, FLAG - 1) | (b.sink === 1 ? FLAG : 0) | (b.sink === -1 ? 2 * FLAG : 0);
+  out[at + 6] = walk > 32767 ? walk - 65536 : walk;
   out[at + 7] = (round(clamp(b.wear, 0, 1) * 127) << 8) | (round(b.seed) & 255);
 }
 
@@ -78,9 +88,12 @@ export function unpackBend(r: ArrayLike<number>, at = 0): Bend {
   const station = r[at + 3]!;
   return {
     half: r[at]! / 1000, turn0: r[at + 1]! / ANGLE, turn1: r[at + 2]! / ANGLE, station: (station < 0 ? station + 65536 : station) / 100,
-    rise: r[at + 4]! / 1000, panel: r[at + 5]! / 1000, walk: r[at + 6]! / 1000, seed: r[at + 7]! & 255, wear: (r[at + 7]! >> 8) / 127,
+    rise: r[at + 4]! / 1000, panel: (r[at + 5]! & (FLAG - 1)) / 1000, walk: (r[at + 6]! & (FLAG - 1)) / 1000, seed: r[at + 7]! & 255, wear: (r[at + 7]! >> 8) / 127,
+    sink: r[at + 6]! & (2 * FLAG) ? -1 : r[at + 6]! & FLAG ? 1 : 0, tactile: (r[at + 5]! & FLAG) !== 0,
   };
 }
+/** The first of a bend's flag bits in its panel's and its walk's numbers. */
+const FLAG = 1 << 14;
 
 export function wrapped(station: number): number {
   return station - Math.floor(station / STATION_WRAP) * STATION_WRAP;
@@ -143,6 +156,17 @@ export function across(z: number, walk: number): number {
 }
 
 const at4 = [0, 0, 0, 0];
+/** Past this across from the kerb's face a modelled point is the walk's, not the kerb's. */
+export const SINK_FROM = KERB_BACK + 0.01;
+
+/**
+ * How much of a sinking walk's fall a vertex modelled at (ly, lz) takes: its height over the road as a share of the
+ * kerb's, none on the kerb nor under the road. It falls by that times the kerb's height times how far along toward the
+ * sink's end it is, so the walk's top comes down to the road there and nothing goes under it. The twin of BEND_GLSL's.
+ */
+export function sinkWeight(ly: number, lz: number): number {
+  return lz <= SINK_FROM ? 0 : clamp(ly / KERB_HEIGHT, 0, 1);
+}
 
 /**
  * A vertex of a bent piece, modelled at (lx, ly, lz) with its normal and its tangent, laid along its bend as the vertex
@@ -158,12 +182,15 @@ export function bendVertex(out: Float64Array | number[], b: Bend, lx: number, ly
   const length = arcLength(b.half, b.turn1 - b.turn0);
   const station = b.station + u * length;
   const lift = sag(station, b.seed, b.wear) * sagShare(z, b.walk);
+  // A walk let down to the ground: its points over the walk's foot fall by up to the kerb's height, toward the sink's end.
+  const sink = b.sink ?? 0, weight = sink === 0 ? 0 : sinkWeight(ly, lz), fall = weight * (sink > 0 ? u : sink < 0 ? 1 - u : 0);
   out[0] = px - wz * z;
-  out[1] = ly + b.rise * (2 * u - 1) + lift;
+  out[1] = ly + b.rise * (2 * u - 1) + lift - KERB_HEIGHT * fall;
   out[2] = pz + wx * z;
   // Stretched along, risen along and its walk stretched across, a piece takes its tangent through those and its normal
   // through their inverse, transposed: along by `stretch`, up by `grade` along, across by `k`.
-  const stretch = length / (2 * MODEL_HALF), grade = (2 * b.rise) / length, k = lz > KERB_BACK ? (b.walk - KERB_BACK) / (MODEL_WALK - KERB_BACK) : 1;
+  const stretch = length / (2 * MODEL_HALF), k = lz > KERB_BACK ? (b.walk - KERB_BACK) / (MODEL_WALK - KERB_BACK) : 1;
+  const grade = (2 * b.rise - KERB_HEIGHT * sink * weight) / length;
   const na = nx / stretch - grade * ny, nc = nz / k;
   const n0 = wx * na - wz * nc, n2 = wz * na + wx * nc, nl = Math.sqrt(n0 * n0 + ny * ny + n2 * n2) || 1;
   out[3] = n0 / nl;
@@ -471,12 +498,15 @@ export function madeHits(ux: number, uy: number, uz: number, yaw: number, bend: 
 /** underPiece's work, each piece to `each` as its kind, its middle and its turn in degrees. */
 function hitsUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, flush: boolean, each: (kind: string, x: number, y: number, z: number, yaw: number) => void): void {
   const phi = b.turn1 - b.turn0, length = arcLength(b.half, phi);
+  // A walk let down to the ground: the kerb's boxes alone, and over the walk behind it slopes falling as it does.
+  if (b.sink) slopesUnder(px, py, pz, pyaw, b, each);
+  const walk = b.sink ? KERB_BACK : b.walk;
   // Bands across, as few as the widest box allows, each as wide as the walk needs, rounded up, the first at the face and
   // the last at the walk's back.
-  const most = HIT_WIDTHS[HIT_WIDTHS.length - 1], bands = Math.max(1, Math.ceil(b.walk / most - 1e-6));
-  const width = bands === 1 ? hitWidth(b.walk) : HIT_WIDTHS.find((w) => w >= b.walk / bands - 1e-6) ?? most;
+  const most = HIT_WIDTHS[HIT_WIDTHS.length - 1], bands = Math.max(1, Math.ceil(walk / most - 1e-6));
+  const width = bands === 1 ? hitWidth(walk) : HIT_WIDTHS.find((w) => w >= walk / bands - 1e-6) ?? most;
   const widthAt = (HIT_WIDTHS as readonly number[]).indexOf(width);
-  const across = (j: number): number => (bands === 1 ? width / 2 : width / 2 + ((b.walk - width) * j) / (bands - 1));
+  const across = (j: number): number => (bands === 1 ? width / 2 : width / 2 + ((walk - width) * j) / (bands - 1));
   // Chords of the curve, each missing it by under 2 cm.
   const radius = Math.abs(phi) > 1e-4 ? length / Math.abs(phi) : Infinity;
   const longest = radius === Infinity ? STRAIGHT_MOST : Math.min(STRAIGHT_MOST, Math.sqrt(8 * radius * 0.02));
@@ -511,3 +541,28 @@ const hitA = [0, 0, 0, 0], hitB = [0, 0, 0, 0];
 /** Every collision piece's kind, boxes then ramps, by width then length, as hitKind names them: made once, not a piece at a time. */
 const KINDS_RAMP = HIT_WIDTHS.length * HIT_LENGTHS.length;
 const kinds: readonly string[] = [false, true].flatMap((ramp) => HIT_WIDTHS.flatMap((w) => HIT_LENGTHS.map((l) => hitKind(ramp, w, l))));
+
+/** How long a walk's fall to the ground is where it ends (bent-walks.ts), and the lengths its slopes come in. */
+export const SINK_LENGTH = 1.5;
+export const SLOPE_LENGTHS = [0.75, SINK_LENGTH] as const;
+/** A sinking walk's slope (content/bends.ts): its width and length, falling the kerb's height along its +x. */
+export const slopeKind = (width: number, length: number): string => `core:zzzzzbendhit_slope_${Math.round(width * 100)}_${Math.round(length * 100)}`;
+const slopes: readonly string[] = HIT_WIDTHS.flatMap((w) => SLOPE_LENGTHS.map((l) => slopeKind(w, l)));
+
+/**
+ * The slopes under a sinking walk, behind its kerb: one a band across, as wide as the walk's band, as long as the piece
+ * (the nearer of the lengths they come in), its middle at the chord's and falling toward the sink's end.
+ */
+function slopesUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, each: (kind: string, x: number, y: number, z: number, yaw: number) => void): void {
+  const behind = b.walk - KERB_BACK, most = HIT_WIDTHS[HIT_WIDTHS.length - 1];
+  if (behind < HIT_WIDTHS[0] / 2) return;
+  const bands = Math.max(1, Math.ceil(behind / most - 1e-6));
+  const width = bands === 1 ? hitWidth(behind) : HIT_WIDTHS.find((w) => w >= behind / bands - 1e-6) ?? most;
+  const lengthAt = Math.abs(2 * b.half - SLOPE_LENGTHS[0]) < Math.abs(2 * b.half - SLOPE_LENGTHS[1]) ? 0 : 1;
+  const a = (pyaw * PI) / 180, cs = detCos(a), sn = detSin(a);
+  const yaw = (((pyaw + (b.sink! < 0 ? 180 : 0)) % 360) + 360) % 360;
+  for (let j = 0; j < bands; j++) {
+    const lz = KERB_BACK + (bands === 1 ? width / 2 : width / 2 + ((behind - width) * j) / (bands - 1));
+    each(slopes[(HIT_WIDTHS as readonly number[]).indexOf(width) * SLOPE_LENGTHS.length + lengthAt]!, px + sn * lz, py + KERB_HEIGHT / 2, pz + cs * lz, yaw);
+  }
+}

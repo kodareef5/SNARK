@@ -294,3 +294,44 @@ test("a body steps up a bent kerb and walks round its curved walk on top of it, 
     expect([x, z, mounted]).toEqual([x, z, true]);
   }
 });
+
+test("a walk let down to the ground at its end: its top falls to the road along the piece, the kerb stands, and its collision is a slope", () => {
+  const out = new Int16Array(BEND_SHORTS);
+  for (const sink of [1, -1, 0] as const) for (const tactile of [true, false]) {
+    packBend(out, 0, { half: 0.75, turn0: 0, turn1: 0, station: 12, rise: 0, panel: 1.5, walk: 3.25, seed: 9, wear: 0.3, sink, tactile });
+    const b = unpackBend(out);
+    expect([b.sink, b.tactile, b.walk, b.panel]).toEqual([sink, tactile, 3.25, 1.5]);
+  }
+  const [p] = placeKerb({ x: [0, 1.5], z: [0, 0], y: [1, 1] }, 1, SECTION);
+  const down: BentPiece = { ...p!, bend: { ...p!.bend, sink: 1 } };
+  const at = (b: BentPiece, u: number, z: number, y: number): number => {
+    const o = new Float64Array(11);
+    bendVertex(o, b.bend, (u - 0.5) * 2 * MODEL_HALF, y, z, 0, 1, 0, 1, 0, 0);
+    return o[1]!;
+  };
+  // The walk's top, 0.15 m over the road, at its start and down on the road at its end (each with the walk's sag of a
+  // few millimetres); the kerb's top stays.
+  expect(at(down, 0, 1, 0.15)).toBeCloseTo(0.15, 2);
+  expect(at(down, 1, 1, 0.15)).toBeCloseTo(0, 2);
+  expect(at(down, 1, 0.1, 0.15)).toBeCloseTo(0.15, 6);
+  // Nothing under the road moves but by the sag.
+  expect(at(down, 1, 1, -0.06)).toBeCloseTo(-0.06, 2);
+  // Its collision: the kerb's box 0.3 m wide, and behind it a slope as long as the piece, falling toward its end.
+  const hits = underPiece(down);
+  expect(hits.map((h) => h.kind).sort()).toEqual(["core:zzzzzbendhit_box_30_100", "core:zzzzzbendhit_box_30_100", "core:zzzzzbendhit_slope_275_150"].sort());
+  const reg = coreRegistry();
+  for (const h of hits) expect(reg.index.has(h.kind)).toBe(true);
+  // A survivor walks down it from the walk to the road and does not step off a ledge.
+  const w = flatWorld(4);
+  for (const h of underPiece({ ...down, x: 100.75, z: 100, y: 0 })) w.structs.add(w.kind(h.kind), h.x, h.y, h.z, Math.round((h.yaw / 360) * 65536) & 0xffff, 0, 1);
+  const body = new Body(), params = w.reg.move[w.kind("core:survivor")]!;
+  [body.x, body.z, body.y, body.grounded] = [99.5, 101.8, 0.15, true];
+  let worst = 0, last = body.y;
+  for (let tick = 0; tick < 200 && body.x < 103; tick++) {
+    stepBody(w, body, 0, 90, 16384, 0, 0, params, TICK_DT);
+    worst = Math.max(worst, last - body.y);
+    last = body.y;
+  }
+  expect(body.x).toBeGreaterThan(102.5);
+  expect(body.y).toBeLessThan(0.03);
+});

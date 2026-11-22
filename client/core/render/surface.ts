@@ -522,7 +522,7 @@ ${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
   if (uSkin < -2.5) {
     if (abs(aNormal.x) < 0.5) vUv.x = gBent.x / ${f(STRIP_METRES)};
     vWheelPoint = gBent;
-    vWheel = vec4(iBendB.yz * 0.001, 0.0, 0.0);
+    vWheel = vec4(gLook, 0.0);
     vFinishSeed = iBendB.w;
   }
 ${layered ? "  vBox = aPos;\n" : ""}  gl_Position = ${drops ? "handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : " : ""}uViewProj * vec4(p, 1.0);
@@ -785,7 +785,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   bool burntSheet = int(uStreetMaterial) == ${BURNT_SHEET};
   if (age > 0.0) weatherVehicle(albedo,mro,vWheelPoint,vFinishSeed,age,burntSheet);
 #ifdef BENT_WEAR
-  if (uSkin < -2.5 && fFacade.w < 7.5) bentWear(albedo, mro, vWheelPoint, face.y, vFinishSeed, vWheel.xy, fwidth(vWheelPoint.x));
+  if (uSkin < -2.5 && fFacade.w < 7.5) bentWear(albedo, mro, vWheelPoint, face.y, vFinishSeed, vWheel.xyz, fwidth(vWheelPoint.x));
 #endif
   float coat = 0.0, chrome = 0.0;
   // How much of the sky a wheeled body's own arches, floor and tyres leave it (vehicle-shade.ts).

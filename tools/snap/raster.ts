@@ -2045,7 +2045,7 @@ export class Rasterizer {
             const right = (r0 * poly[v0 + 15]! + r1 * poly[v1 + 15]! + r2 * poly[v2 + 15]!) / (r0 + r1 + r2) - carried[15]!;
             const down = (d0 * poly[v0 + 15]! + d1 * poly[v1 + 15]! + d2 * poly[v2 + 15]!) / (d0 + d1 + d2) - carried[15]!;
             const up = carriedNormal[1]! / (Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!) || 1);
-            bentWear(albedo, mro, carried[15]!, carried[16]!, carried[17]!, back ? -up : up, s.seed, s.bend.panel, s.bend.walk, Math.abs(right) + Math.abs(down));
+            bentWear(albedo, mro, carried[15]!, carried[16]!, carried[17]!, back ? -up : up, s.seed, s.bend.panel, s.bend.walk, Math.abs(right) + Math.abs(down), s.bend.tactile ?? false);
           }
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
           let coat = 0, chrome = 0, own = 1;
