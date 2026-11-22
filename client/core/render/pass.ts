@@ -42,6 +42,9 @@ export class Frame {
   plainSky = false;
   /** The near trees' hand-over band's scale: a sight's zoom, else 1. */
   handScale = 1;
+  /** Where a sight that magnifies is on, x and z, or NaN (Scene.focusX). */
+  focusX = NaN;
+  focusZ = NaN;
   /** Whether the eye is under water. */
   under = false;
   /** What hides what, from the pass that finds it on: undefined before it, and on a frame that hides nothing. */

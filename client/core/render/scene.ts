@@ -17,7 +17,7 @@ import type { Manifest } from "../../../shared/pack/manifest.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
 import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
-import { floatingKinds, landmarkKinds } from "../../../shared/world/city.ts";
+import { landmarkKinds } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
@@ -48,18 +48,17 @@ import { Characters, riderFitScratch, seatScratch, type RiderFit, type VehicleRe
 import { exhaustPhase } from "./suit-finish.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
-import { CITY_BUFFER, FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
+import type { FarSource } from "./far.ts";
 import { FrameBudget } from "./budget.ts";
 import type { FarCity, CitySource } from "./farcity.ts";
 import type { CityBlocks, BlocksSource } from "./cityblocks.ts";
-import type { RoofMap } from "./roofmap.ts";
-import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
+import { FarLandmarks } from "./farlandmarks.ts";
 import { CrownCover } from "./cover.ts";
-import { FarNodes, farLevelOf, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
+import { FarNodes, familyOf, type FarNodeSource } from "./farnodes.ts";
 import { Hiding } from "./hide.ts";
 import { NearCity } from "./nearcity.ts";
 import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
-import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
+import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
 import { recipeIndex } from "../../../content/texgen/finishes.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
@@ -76,13 +75,13 @@ import { lampsOn, skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
 import type { MapLandmark } from "../../../shared/world/mapfile.ts";
-import { landmarkFars } from "../../../shared/pack/far.ts";
 import type { MotionSource } from "./motion.ts";
 import { Frame, walk, type Pass } from "./pass.ts";
 import { Casting } from "./casting.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
 import { Water } from "./passes/water.ts";
+import { FarLayers } from "./passes/far-layers.ts";
 import { LooseEntities } from "./passes/loose-entities.ts";
 import { Occlusion } from "./passes/occlusion.ts";
 import { CHUNK_CELLS, HIDDEN, NODE_BUFFERS, NearStore } from "./passes/near-store.ts";
@@ -91,7 +90,6 @@ import { Beams } from "./passes/beams.ts";
 import { Ghost } from "./passes/ghost.ts";
 import { Things, type Thing } from "./passes/things.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
-import type { Tier } from "../assets/tiers.ts";
 
 export interface RenderWorld {
   /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
@@ -396,36 +394,16 @@ export class Scene {
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). A one-bone draw's offset holds its stand-in's first bone. */
   private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number): void => this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer);
-  /** Bases drawn as blocks where the near store does not hold their chunks whole, given a far source and the far mesh. */
-  private readonly far: FarBlocks | null;
-  /** Nodes past the near node field, given a source of them. */
-  readonly nodesFar: FarNodes | null;
-  /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
-  city: FarCity | null = null;
-  /** The world's statics the far city was made of. */
-  private citySource: CitySource | null = null;
-  /** The map's landmarks where the near store does not hold their pieces' chunks whole, with the far city. */
-  landmarks: FarLandmarks | null = null;
-  /** The city past what the far city and the far blocks draw, as blocks from its tops, given them and the far mesh. */
-  blocks: CityBlocks | null = null;
-  /** What the city's blocks are made from, until the late code (city-late.ts) has come to make them. */
-  private blocksFrom: { tops: BlocksSource; colours: Uint8Array } | null;
-  /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
-  static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks; RoofMap: typeof RoofMap } | null = null;
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
-  /** Per content index, 1 for a kind that stands in the air with nothing under it, which casts no far shadow (city.ts floatingKinds). */
-  private readonly floatingKinds: Uint8Array;
-  private readonly farMesh: number;
-  private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
-  farShadow: FarShadow | null = null;
+  /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
+  static get late(): typeof FarLayers.late { return FarLayers.late; }
+  static set late(code: typeof FarLayers.late) { FarLayers.late = code; }
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
   private readonly unseenFrom = new Uint16Array(MAX_VIEW);
   private readonly unseenAt = new Float64Array(MAX_VIEW * 4);
   private readonly unseenMount = new Int16Array(MAX_VIEW);
   /** Linear RGB of the open sky and of deep water. */
-  /** The pack's colours, four bytes each, which the map of what stands overhead takes the ground's colour from (roof.ts). */
-  private readonly groundPalette: Uint8Array;
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
   /** The nearest and farthest depth the clouds' puffs reach this frame. */
@@ -462,6 +440,13 @@ export class Scene {
   get finder(): NearStore["finder"] { return this.nearStore.finder; }
   /** What hides what, found once the near store has drawn (passes/occlusion.ts). */
   private readonly occlusion: Occlusion;
+  /** What is drawn far away: the far city, bases as blocks, the city's blocks, far nodes, and the far shadow (passes/far-layers.ts). */
+  private readonly layers: FarLayers;
+  get city(): FarCity | null { return this.layers.city; }
+  get blocks(): CityBlocks | null { return this.layers.blocks; }
+  get landmarks(): FarLandmarks | null { return this.layers.landmarks; }
+  get nodesFar(): FarNodes | null { return this.layers.nodesFar; }
+  get farShadow(): FarShadow | null { return this.layers.farShadow; }
   /** The sea and the lakes (passes/water.ts). */
   private readonly waters: Water;
   /** The map's moving statics' parts (passes/moving-statics.ts). */
@@ -505,7 +490,6 @@ export class Scene {
   /** `opts.farPalms`: the far store draws palms as their frond level, not their solid, for a bench's comparison (farLevelOf). */
   constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort; pages?: readonly Uint8Array[] }, opts: { farPalms?: boolean } = {}) {
     this.world = world;
-    this.groundPalette = pack.palette;
     this.terrain = new TerrainLod(world.hf);
     this.assets = new Assets(reg, pack, stream?.manifest, stream?.port, stream?.pages);
     // The renderer holds the sky table on every tier.
@@ -577,7 +561,6 @@ export class Scene {
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
     this.landmarkKinds = landmarkKinds(reg);
-    this.floatingKinds = floatingKinds(reg);
     this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m, mesh) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : vehicleMeshes.has(mesh) ? DRAW_PLAIN : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
@@ -614,23 +597,17 @@ export class Scene {
     for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
     this.bodySlack = reach * 2;
 
-    const far = (this.farMesh = table.find(FAR_MESH));
-    this.farBounds = far >= 0 ? this.assets.manifest.meshes[far] : undefined;
-    // A build works the colours out from every piece. Without them, they are worked out from the pieces the pack holds.
-    const shown = (k: number): number => (this.meshOfKind[k] === missing || this.meshOfKind[k] === HIDDEN ? -1 : (pack.meshIndex.get(this.assets.manifest.meshes[this.meshOfKind[k]!]!.id) ?? -1));
-    const listed = this.assets.manifest.farColours;
-    const colours = this.farBounds && (world.far || world.tops) ? (listed ? Uint8Array.from(listed) : farColours(reg, pack, shown)) : null;
-    this.far = world.far && colours ? new FarBlocks(world.far, world.dims, world.hf, far, this.farBounds!, colours) : null;
-    this.blocksFrom = world.tops && colours ? { tops: world.tops, colours } : null;
-    this.makeBlocks();
+    this.layers = new FarLayers(world, reg, pack, this.assets, this.packet, this.put, this.casting, { meshOfKind: this.meshOfKind, meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, flatFlags: this.flatFlags, landmarkKinds: this.landmarkKinds, missing, farPalms: opts.farPalms ?? false, hidden: (ref) => this.nearStore.hiddenNodes.has(ref) });
+    const far = this.layers.farMesh;
     this.nearStore = new NearStore(world, reg, this.assets, this.packet, this.put, this.casting, this.budget, this.hiding, this.street, (stream?.manifest ?? pack.header).meshes, far, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, meshOfForm: this.meshOfForm, colorOfForm: this.colorOfForm, sizeOfForm: this.sizeOfForm, mostOfForm: this.mostOfForm, reachOfMesh: this.reachOfMesh, reachOfStatic: this.reachOfStatic, groundFlags: this.groundFlags, bentKind: this.bentKind, regionsOfKind: this.regionsOfKind, treeOf: this.treeOf, trisOfMesh: this.trisOfMesh, radiusOfMesh: this.radiusOfMesh, trunkTris: this.trunkTris, leafTris: this.leafTris, landmarkKinds: this.landmarkKinds, missing });
-    this.nearStore.far = this.far;
+    this.nearStore.far = this.layers.far;
     this.occlusion = new Occlusion(world, this.assets, this.packet, this.put, this.casting, this.terrain, this.hiding, this.nearStore);
-    this.startCity();
-    const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.heldGeometry(mesh, farLevelOf(this.assets.manifest.meshes[mesh]!.id, table.tris[mesh]!, opts.farPalms ?? false));
-    const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last, known: (mesh) => this.assets.known(mesh) };
-    if (world.farNodes) world.farNodes.hidden = ref => this.nearStore.hiddenNodes.has(ref);
-    this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
+    this.layers.onCity = () => {
+      this.occlusion.forget();
+      this.nearStore.city = this.occlusion.city = this.layers.city;
+      this.movingStatics.landmarks = this.nearStore.landmarks = this.layers.landmarks;
+    };
+    this.layers.startCity();
     this.finishes = new WorldFinishes(table.materials, this.assets.manifest.textures ?? []);
     this.finishNear = new FinishNear(reg, surfaceCity(world.mapId ?? "default") === "las-vegas");
     this.facades = new FacadeAtlases(table.materials, world.mapId ?? "default");
@@ -661,7 +638,7 @@ export class Scene {
     }
     // A mesh learnt has its extents now, which the crowns' grid is made from. Learnt first before the grid is made.
     if (meshes.length > 0 && this.nearStore) this.nearStore.cover.stale = true;
-    this.nodesFar?.learn();
+    this.layers?.nodesFar?.learn();
   }
 
   /** Counts on the card the indices the shell holds for this frame's levels of quads and every one before. */
@@ -681,15 +658,15 @@ export class Scene {
     this.quadIndices[0] = this.quadIndices[1] = 0;
     this.assets.residency.reset();
     this.terrain.reset();
-    this.far?.reset();
-    this.nodesFar?.reset();
-    this.city?.reset();
+    this.layers.far?.reset();
+    this.layers.nodesFar?.reset();
+    this.layers.city?.reset();
     this.nearStore.near?.reset();
-    this.landmarks?.reset();
+    this.layers.landmarks?.reset();
     this.waters.reset();
-    this.blocks?.reset();
+    this.layers.blocks?.reset();
     this.casting.cascades.clear();
-    this.farShadow?.reset();
+    this.layers.farShadow?.reset();
   }
 
   private charactersPrepared = false;
@@ -758,7 +735,7 @@ export class Scene {
     this.handScale = cam.zoom > 1 ? cam.zoom : 1;
     p.frame[FRAME.handFrom] = this.assets.tier.nodes.band[0] * this.handScale;
     p.frame[FRAME.handTo] = this.assets.tier.nodes.band[1] * this.handScale;
-    if (this.nodesFar) this.nodesFar.handScale = this.handScale;
+    if (this.layers.nodesFar) this.layers.nodesFar.handScale = this.handScale;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
     const near = this.finishNear.metres, scale = this.assets.scale;
     if (p.tier.lit) this.finishNear.update(cam.x, cam.y, cam.z, this.world.hf, this.world.structs, scale, finishTaps(p.tier));
@@ -825,6 +802,8 @@ export class Scene {
     f.cam = cam;
     f.viewHeight = this.viewHeight;
     f.lift = this.lift;
+    f.focusX = this.focusX;
+    f.focusZ = this.focusZ;
     f.handScale = this.handScale;
     f.plainSky = this.plainSky;
     f.remote = remote;
@@ -836,11 +815,6 @@ export class Scene {
     f.under = under;
     f.hider = undefined;
     return f;
-  }
-
-  /** The city's blocks' reach: a tier that draws no far city draws none of its blocks either. */
-  private blocksView(tier: Tier): number {
-    return tier.reach.city > 0 && tier.city.levels.length > 0 ? this.viewDistance : 0;
   }
 
   /** The frame's passes, in the order they update and draw in. */
@@ -856,38 +830,7 @@ export class Scene {
       // What the near store's meshes and the ground hide, of what is drawn so far and from here on: the meshes themselves first.
       this.occlusion,
       this.nearStore.meshes,
-      {
-        // The map's statics handed over again: the far city is made of them, taking over what it can of the one before.
-        update: (f) => {
-          if (this.city && this.world.city !== this.citySource) this.startCity(this.city);
-          if (this.city ?? this.startCity()) this.farCity(f.cam);
-        },
-        draw: (f) => void this.city?.draw(f.cam, this.alongGround(f.tier.reach.city), this.drawCity, f.hider),
-      },
-      {
-        update: (f) => {
-          const cam = f.cam;
-          this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.casting.sunAt : null, this.now, p.cascadeCount > 0 && this.casting.sunCasts ? this.casting.sunAt : null);
-        },
-      },
-      {
-        update: (f) => {
-          p.frame[FRAME.fade] = f.tier.fade;
-          this.far?.update(p, this.assets.residency, f.cam.x, f.cam.z, f.tier.reach.bases);
-        },
-        draw: (f) => void this.far?.draw(f.cam, f.tier.reach.bases, f.tier.fade, this.drawFar, f.hider),
-      },
-      {
-        update: (f) => {
-          this.makeBlocks();
-          this.blocks?.update(p, this.assets.residency, f.cam, this.blocksView(f.tier), this.city ? this.citySource!.statics : null, this.city);
-        },
-        draw: (f) => void this.blocks?.draw(f.cam, this.blocksView(f.tier), this.shown, this.drawCity, f.hider),
-      },
-      {
-        update: (f) => void this.nodesFar?.update(p, this.assets.residency, f.cam.x, f.cam.z, f.tier, f.cam.zoom > 1 ? this.focusX : NaN, this.focusZ),
-        draw: (f) => void this.nodesFar?.draw(f.cam, this.drawFarNodes, f.hider),
-      },
+      ...this.layers.rows,
       {
         update: (f) => { if (this.casting.on && !this.terrain.casters(f.cam, p, this.viewDistance, this.casting.groundCasts)) p.casterDropped++; },
         draw: () => { if (this.casting.on) this.casting.groundCast(); },
@@ -962,171 +905,6 @@ export class Scene {
     this.put.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
     this.put.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
   }
-
-  /** A tile of far blocks, `near` metres off: one instance of its own level, gone at the tier's reach where it reaches into the fade (far.ts). */
-  private readonly drawFar = (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number): void => {
-    const p = this.packet;
-    const d = p.drawCount;
-    const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.put.doubled + copies > MAX_DRAWS) {
-      p.dropped++;
-      return;
-    }
-    this.put.nearOf[d] = near;
-    p.drawMesh[d] = this.far!.mesh;
-    p.drawLod[d] = 0;
-    p.drawSlot[d] = slot;
-    p.drawBuffer[d] = FAR_BUFFER;
-    p.drawFirst[d] = 0;
-    p.drawInstances[d] = 1;
-    p.drawFlags[d] = 0;
-    p.drawOffset[d * 3] = ox;
-    p.drawOffset[d * 3 + 1] = oy;
-    p.drawOffset[d * 3 + 2] = oz;
-    p.drawFade[d] = fade;
-    this.put.passOf[d] = passes;
-    p.drawCount = d + 1;
-    this.put.doubled += copies - 1;
-    p.triangles += triangles * copies;
-  };
-
-  /** The city's blocks, made once the late code has come: at once where it already has, as in tests and tools. */
-  private makeBlocks(): void {
-    if (this.blocks || !this.blocksFrom || !Scene.late) return;
-    this.blocks = new Scene.late.CityBlocks(this.blocksFrom.tops, this.world.dims, this.world.hf, this.farMesh, this.blocksFrom.colours, this.landmarkKinds);
-    this.blocksFrom = null;
-  }
-
-  /**
-   * The far city once the world has the map's statics, which the far blocks then leave their cells to; or, given the far
-   * city `before` of statics handed over before, of those the world has now.
-   */
-  private startCity(before: FarCity | null = null): FarCity | null {
-    const source = this.world.city;
-    if (!source || !this.farBounds || !Scene.late) return null;
-    this.citySource = source;
-    this.occlusion.forget();
-    this.city = new Scene.late.FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
-    this.nearStore.city = this.occlusion.city = this.city;
-    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds, this.floatingKinds);
-    this.farShadow.roof = new Scene.late.RoofMap();
-    this.farShadow.roof.palette = this.groundPalette;
-    this.far?.leaveTo(this.city);
-    const placed = this.world.landmarks ?? [];
-    if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));
-    this.movingStatics.landmarks = this.nearStore.landmarks = this.landmarks;
-    return this.city;
-  }
-
-  /**
-   * The map's buildings to the tier's reach, in place of chunks the near store does not hold whole, faded over the last
-   * of it: what is on the card, and the landmarks' far meshes. The buildings are drawn once the near store is.
-   */
-  private farCity(cam: Camera): void {
-    const p = this.packet;
-    const tier = this.assets.tier;
-    p.frame[FRAME.fade] = tier.fade;
-    // Through a sight its tiles in the window reach as far as the view ends (D1088).
-    this.city!.view = this.viewDistance;
-    this.city!.update(p, this.assets.residency, cam, tier.city.levels, this.alongGround(tier.reach.city), tier.fade, this.world.structs, this.world.far?.cells ?? null);
-    // A landmark is drawn to the end of the view, as the city's blocks leave its cells to it.
-    this.landmarks?.draw(p, cam, this.assets, this.viewDistance, tier.fade, this.drawLandmark);
-  }
-
-  /** Who draws a chunk's buildings other than the city's blocks this frame (cityblocks.ts Shown). */
-  private readonly shown = (chunk: number): number => {
-    if (this.world.far?.complete(chunk) ?? this.world.city?.complete(chunk)) return -1;
-    const city = this.city?.shows(chunk) ?? 0, far = this.far?.shows(chunk) ?? 0;
-    return city < 0 || far < 0 ? -1 : city || far;
-  };
-
-  /** A run of a far city tile's chunks at one of its levels, or of a tile of the city's blocks, `near` metres off: one instance, gone or come at `fade` (farcity.ts). */
-  private readonly drawCity = (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number): void => {
-    const p = this.packet;
-    const d = p.drawCount;
-    const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.put.doubled + copies > MAX_DRAWS) {
-      p.dropped++;
-      return;
-    }
-    this.put.nearOf[d] = near;
-    p.drawMesh[d] = this.farMesh;
-    p.drawLod[d] = 0;
-    p.drawSlot[d] = slot;
-    p.drawBuffer[d] = CITY_BUFFER;
-    p.drawFirst[d] = 0;
-    p.drawInstances[d] = 1;
-    p.drawFlags[d] = DRAW_RANGED;
-    p.drawFirstIndex[d] = firstIndex;
-    p.drawIndexCount[d] = indexCount;
-    p.drawFade[d] = fade;
-    p.drawOffset[d * 3] = ox;
-    p.drawOffset[d * 3 + 1] = oy;
-    p.drawOffset[d * 3 + 2] = oz;
-    this.put.passOf[d] = passes;
-    p.drawCount = d + 1;
-    this.put.doubled += copies - 1;
-    p.triangles += (indexCount / 3) * copies;
-  };
-
-  /** A run of a landmark's far mesh: its one instance, gone at `fade` (farlandmarks.ts), in its own colours as its flat draws are. */
-  private readonly drawLandmark = (mesh: number, level: number, instance: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number): void => {
-    const p = this.packet;
-    const d = p.drawCount;
-    const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.put.doubled + copies > MAX_DRAWS) {
-      p.dropped++;
-      return;
-    }
-    this.put.nearOf[d] = Math.hypot(ox, oy, oz);
-    p.drawMesh[d] = mesh;
-    p.drawLod[d] = level;
-    p.drawSlot[d] = this.assets.residency.slot(mesh, level);
-    p.drawBuffer[d] = LANDMARK_BUFFER;
-    p.drawFirst[d] = instance;
-    p.drawInstances[d] = 1;
-    p.drawFlags[d] = DRAW_RANGED | this.flatFlags[mesh]!;
-    p.drawFirstIndex[d] = firstIndex;
-    p.drawIndexCount[d] = indexCount;
-    p.drawFade[d] = fade;
-    p.drawOffset[d * 3] = ox;
-    p.drawOffset[d * 3 + 1] = oy;
-    p.drawOffset[d * 3 + 2] = oz;
-    this.put.passOf[d] = passes;
-    p.drawCount = d + 1;
-    this.put.doubled += copies - 1;
-    p.triangles += (indexCount / 3) * copies;
-  };
-
-  /** A run of far nodes of every mesh, `near` metres off, each its mesh's row of the atlas (farnodes.ts), gone at its row's reach. */
-  private readonly drawFarNodes = (slot: number, mesh: number, indices: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, hand: number, reach: number, near: number): void => {
-    const p = this.packet;
-    const d = p.drawCount;
-    const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.put.doubled + copies > MAX_DRAWS) {
-      p.dropped++;
-      return;
-    }
-    this.put.nearOf[d] = near;
-    p.drawMesh[d] = mesh;
-    p.drawLod[d] = 0;
-    p.drawSlot[d] = slot;
-    p.drawBuffer[d] = buffer;
-    p.drawFirst[d] = first;
-    p.drawInstances[d] = count;
-    // An instance's vertices: the renderer reads them from the slot, and a count (bench-run.ts) from here.
-    p.drawIndexCount[d] = indices;
-    p.drawFlags[d] = DRAW_PULLED;
-    p.drawOffset[d * 3] = ox;
-    p.drawOffset[d * 3 + 1] = oy;
-    p.drawOffset[d * 3 + 2] = oz;
-    p.drawFade[d] = reach;
-    p.drawHand[d] = hand;
-    this.put.passOf[d] = passes;
-    p.drawCount = d + 1;
-    this.put.doubled += copies - 1;
-    p.triangles += (indices / 3) * count * copies;
-  };
 
   private bodies(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
