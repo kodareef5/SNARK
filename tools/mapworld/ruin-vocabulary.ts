@@ -64,9 +64,10 @@ export interface Vocabulary {
  */
 /**
  * With `bent`, where the map has the streets' lines, the street's edge is bent sections laid on their kerb lines
- * (bent-walks.ts) in place of the walk kit and its returns, but on the street types it leaves `without`.
+ * (bent-walks.ts) in place of the walk kit and its returns, but on the street types it leaves `without`: every city has
+ * it from the shared rules, and a city's `rules.json` turns it off with `"street": {"walks": {"bent": false}}`.
  */
-export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; boxEvery: number; returns?: ReturnRules; bent?: BentRules }
+export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; boxEvery: number; returns?: ReturnRules; bent?: BentRules | false }
 export interface Rule {
   event?: { travel: [number, number]; exposure: number; shelter: number };
   party?: number[];

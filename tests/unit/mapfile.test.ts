@@ -83,13 +83,13 @@ test("a map built before the bent kerbs, the streets' lines or the roads' frame 
     return f;
   };
   // The version is outside what the head's hash covers, so a file of this version with no bends, road or streets part is one of the last three.
-  for (const v of [10, 11, 12]) {
+  for (const v of [10, 11, 12, 13]) {
     const old = parseMap(as(v), true, true);
     expect(old.road).toBeUndefined();
     expect(old.streets).toBeUndefined();
     expect(old.heights).toEqual(parseMap(plain).heights);
   }
-  for (const v of [9, 14]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
+  for (const v of [9, 15]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
 });
 
 test("a map's roads' frame rides in a part of its own for each sector a road runs in, is read whole only where it is drawn from, and is held a sector at a time", () => {

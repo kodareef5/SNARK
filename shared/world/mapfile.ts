@@ -3,7 +3,7 @@
 //
 // The head:
 //   0   "SNMP"
-//   4   u16 version 13, u16 reserved
+//   4   u16 version 14, u16 reserved
 //   8   u32 hash        FNV-1a of every byte of the head after it: the map's hash, which names each part by its own
 //   12  u32 bytes of the head. Its parts follow it in the order of its table, each where the one before ends.
 //   16  u16 chunksX, u16 chunksZ
@@ -84,7 +84,12 @@
 //               u32 count of them, how many pieces lie before each one's since the one before it as a varint (its place
 //               in the columns' order, ascending), and each one's bend as eight 16-bit numbers (packBend) less what the
 //               bend before predicts (bendGuess), modulo 65,536, in planes: every bend's first number's low byte, then
-//               its high byte, then the next.
+//               its high byte, then the next. A bent piece after a bent piece is coded in the columns against where it
+//               would stand were it the next of that one's line (shared/world/bends.ts bentNext), not the piece before's
+//               place and turn. The collision pieces under the bent pieces (shared/world/bends.ts madeHits)
+//               are not stored but made from them where the part is read, after its own pieces, each in the chunk it
+//               stands in; one that stands in another sector is stored there, as a piece of its own. STAT's counts and
+//               kinds hold them all.
 //   5 tops      the far feed's cells of an overview's square's chunks as the map places its statics, where its maker baked
 //               them (mapTops) and some of them are filled: a u16 count of those chunks, each a u16 index among its chunks
 //               row by row, ascending; then 256 bytes each, its 4 m cells' tops row by row from its corner (farTopByte in
@@ -115,14 +120,17 @@ import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tact
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 import { ROAD_PLANES, RoadSectors, type MapRoad } from "./roadframe.ts";
 import { StreetSectors, decodeStreets } from "./streets.ts";
+import { HIT_PREFIX, bentNext, madeHits, walkedFlush } from "./bends.ts";
 
-export const MAP_VERSION = 13;
+export const MAP_VERSION = 14;
 /**
- * The versions before the bent kerbs, the streets' lines and the roads' frame, whose files are this one's with no bends
- * at the end of a statics part, no streets part and no road part: they are read as maps with none of them, drawn with the
- * stepped edges and without lane wear until they are built again. 12 has the streets, 11 the road part.
+ * The versions before, read as they are: 13 holds its bent pieces' collision pieces as pieces of their own; 12 has no
+ * bends at the end of a statics part, 11 no streets part either and 10 no road part: they are read as maps with none of
+ * them, drawn with the stepped edges and without lane wear until they are built again.
  */
-const EARLIER_VERSIONS = [10, 11, 12];
+const EARLIER_VERSIONS = [10, 11, 12, 13];
+/** The first version whose bent pieces' collision pieces are made where a part is read, not stored. */
+const MADE_HITS = 14;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -288,16 +296,43 @@ export class MapStatics {
     return t;
   }
 
-  /** `statics` as a table: itself if it is one, or a list's pieces with their centres set on the lattice as a file would. */
+  /**
+   * `statics` as a table: itself if it is one, or a list's pieces with their centres set on the lattice as a file would,
+   * and as a file of this version holds them: no collision piece of a bent one in the list is kept, but each bent piece's
+   * are made from it (madeOn), after every piece of the list, as a file read whole has them.
+   */
   static of(dims: MapDims, statics: MapStatics | readonly MapStatic[]): MapStatics {
     if (statics instanceof MapStatics) return statics;
     const ids = new Map<string, number>();
-    for (const s of statics) if (!ids.has(s.kind)) ids.set(s.kind, ids.size);
-    const snap = (v: number): number => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
-    const [kind, yaw] = [Uint16Array.from(statics, (s) => ids.get(s.kind)!), Uint16Array.from(statics, (s) => s.yaw)];
+    const unit = (v: number): number => Math.round(v * STRUCT_UNITS);
+    // The collision pieces made, as columns: their kinds' ids, and their places and turns on the lattice.
+    const made: number[][] = [[], [], [], [], []];
+    let n = 0;
+    for (const s of statics) {
+      if (s.kind.startsWith(HIT_PREFIX)) continue;
+      n++;
+      if (!ids.has(s.kind)) ids.set(s.kind, ids.size);
+      if (s.bend) madeOn(dims, s.kind, unit(s.x), unit(s.y), unit(s.z), s.yaw, Int16Array.from(s.bend), (kind, x, y, z, yaw) => {
+        if (!ids.has(kind)) ids.set(kind, ids.size);
+        made[0]!.push(ids.get(kind)!);
+        made[1]!.push(x);
+        made[2]!.push(y);
+        made[3]!.push(z);
+        made[4]!.push(yaw);
+      });
+    }
+    const all = n + made[0]!.length;
+    const [kind, yaw, x, y, z] = [new Uint16Array(all), new Uint16Array(all), new Float32Array(all), new Float32Array(all), new Float32Array(all)];
     const bend = new Map<number, ArrayLike<number>>();
-    statics.forEach((s, i) => s.bend && bend.set(i, s.bend));
-    return finish(MapStatics.group(dims, [...ids.keys()], kind, yaw, Float32Array.from(statics, (s) => snap(s.x)), Float32Array.from(statics, (s) => snap(s.y)), Float32Array.from(statics, (s) => snap(s.z)), true, bend));
+    let i = 0;
+    for (const s of statics) {
+      if (s.kind.startsWith(HIT_PREFIX)) continue;
+      [kind[i], yaw[i], x[i], y[i], z[i]] = [ids.get(s.kind)!, s.yaw, unit(s.x) / STRUCT_UNITS, unit(s.y) / STRUCT_UNITS, unit(s.z) / STRUCT_UNITS];
+      if (s.bend) bend.set(i, s.bend);
+      i++;
+    }
+    for (let k = 0; k < made[0]!.length; k++, i++) [kind[i], x[i], y[i], z[i], yaw[i]] = [made[0]![k]!, made[1]![k]! / STRUCT_UNITS, made[2]![k]! / STRUCT_UNITS, made[3]![k]! / STRUCT_UNITS, made[4]![k]!];
+    return finish(MapStatics.group(dims, [...ids.keys()], kind, yaw, x, y, z, true, bend));
   }
 
   get length(): number {
@@ -346,6 +381,19 @@ function eachStatic(statics: MapStatics | readonly MapStatic[], each: (kind: str
     const r = row.length > 0 ? row[i]! : i;
     each(kinds[kind[r]!]!, x[r]!, y[r]!, z[r]!, yaw[r]!, bent ? statics.bendOfRow(r) : null);
   }
+}
+
+/**
+ * The collision pieces bent piece (ux, uy, uz, yaw) of kind `kind` with `bend` makes (shared/world/bends.ts madeHits), on
+ * the lattice, each to `each` with the chunk it stands in, those that stand on the map at a height a map holds: what a
+ * map's writer counts and what its reader makes, from the same numbers on both sides.
+ */
+export function madeOn(dims: MapDims, kind: string, ux: number, uy: number, uz: number, yaw: number, bend: ArrayLike<number>, each: (kind: string, ux: number, uy: number, uz: number, yaw: number, chunk: number) => void): void {
+  const wide = dims.chunksX * CHUNK_SIZE * STRUCT_UNITS, deep = dims.chunksZ * CHUNK_SIZE * STRUCT_UNITS;
+  madeHits(ux, uy, uz, yaw, bend, walkedFlush(kind), (k, x, y, z, turn) => {
+    if (x < 0 || x >= wide || z < 0 || z >= deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) return;
+    each(k, x, y, z, turn, chunkAt(dims, x / STRUCT_UNITS, z / STRUCT_UNITS));
+  });
 }
 
 export interface MapSpawn {
@@ -1086,34 +1134,65 @@ function topsPart(tops: MapTops, dims: FramedDims, sq: Square): Uint8Array | nul
   return o.done();
 }
 
-/** The map's statics by sector, each sector's in the map's order, the table of content ids they name, and each chunk's count. */
+/**
+ * The map's statics by sector, each sector's in the map's order, the table of content ids they name, and each chunk's count.
+ * No collision piece of a bent piece is stored, but each one's place is counted in its chunk and its kind named: a reader
+ * makes them from the bends (madeOn). One that stands in another sector than its bent piece is stored in its own, after
+ * that sector's other pieces.
+ */
 function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedDims, sectors: readonly Square[]): { ids: Map<string, number>; parts: (Uint8Array | null)[]; chunks: Uint16Array } {
-  const n = statics.length;
   const ids = new Map<string, number>();
   const chunks = new Uint16Array(chunkCount(dims));
-  const [id, yaw, sector] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];
-  const [ux, uy, uz] = [new Int32Array(n), new Int32Array(n), new Int32Array(n)];
   const [col0, row0] = [sectors[0]!.col, sectors[0]!.row];
   const cols = sectors.findLast((s) => s.row === row0)!.col - col0 + 1;
-  const counts = new Uint32Array(sectors.length + 1);
-  // The kinds in the order of their ids, so a piece added or taken away renumbers no other kind.
-  const names = new Set<string>();
-  eachStatic(statics, (kind) => names.add(kind));
-  for (const kind of [...names].sort()) ids.set(kind, ids.size);
-  let i = 0;
-  const bends = new Map<number, ArrayLike<number>>();
-  eachStatic(statics, (kind, x, y, z, turn, bend) => {
-    if (bend) bends.set(i, bend);
-    [ux[i], uy[i], uz[i]] = [Math.round(x * STRUCT_UNITS), Math.round(y * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
-    // Its chunk is that of its place on the lattice, as a reader finds it.
-    const c = chunkAt(dims, ux[i]! / STRUCT_UNITS, uz[i]! / STRUCT_UNITS);
+  const sectorOf = (c: number): number => (Math.floor((dims.frameZ + chunkCz(dims, c)) / SECTOR_CHUNKS) - row0) * cols + Math.floor((dims.frameX + chunkCx(dims, c)) / SECTOR_CHUNKS) - col0;
+  const unit = (v: number): number => Math.round(v * STRUCT_UNITS);
+  const tally = (c: number): void => {
     if (chunks[c] === MAX_SLOTS_PER_CHUNK) throw new Error(`map: chunk ${chunkCx(dims, c)}, ${chunkCz(dims, c)} holds more than ${MAX_SLOTS_PER_CHUNK} statics`);
     chunks[c]!++;
-    const s = (Math.floor((dims.frameZ + chunkCz(dims, c)) / SECTOR_CHUNKS) - row0) * cols + Math.floor((dims.frameX + chunkCx(dims, c)) / SECTOR_CHUNKS) - col0;
+  };
+  // The kinds in the order of their ids, so a piece added or taken away renumbers no other kind; the collision pieces
+  // made counted where they stand, and those that stand in another sector kept to be stored there.
+  const names = new Set<string>();
+  const away: { kind: string; ux: number; uy: number; uz: number; yaw: number }[] = [];
+  let n = 0;
+  eachStatic(statics, (kind, x, y, z, turn, bend) => {
+    if (kind.startsWith(HIT_PREFIX)) return;
+    names.add(kind);
+    n++;
+    if (!bend) return;
+    const [ux, uy, uz] = [unit(x), unit(y), unit(z)];
+    const home = sectorOf(chunkAt(dims, ux / STRUCT_UNITS, uz / STRUCT_UNITS));
+    // From the bend as a reader takes it back, sixteen bits a number.
+    madeOn(dims, kind, ux, uy, uz, turn, Int16Array.from(bend), (k, hx, hy, hz, yaw, c) => {
+      names.add(k);
+      if (sectorOf(c) === home) tally(c);
+      else away.push({ kind: k, ux: hx, uy: hy, uz: hz, yaw });
+    });
+  });
+  for (const kind of [...names].sort()) ids.set(kind, ids.size);
+  n += away.length;
+  const [id, yaw, sector] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];
+  const [ux, uy, uz] = [new Int32Array(n), new Int32Array(n), new Int32Array(n)];
+  const counts = new Uint32Array(sectors.length + 1);
+  let i = 0;
+  const bends = new Map<number, ArrayLike<number>>();
+  const put = (kind: string, x: number, y: number, z: number, turn: number): void => {
+    [ux[i], uy[i], uz[i]] = [x, y, z];
+    // Its chunk is that of its place on the lattice, as a reader finds it.
+    const c = chunkAt(dims, x / STRUCT_UNITS, z / STRUCT_UNITS);
+    tally(c);
+    const s = sectorOf(c);
     [id[i], yaw[i], sector[i]] = [ids.get(kind)!, turn, s];
     counts[s + 1]!++;
     i++;
+  };
+  eachStatic(statics, (kind, x, y, z, turn, bend) => {
+    if (kind.startsWith(HIT_PREFIX)) return;
+    if (bend) bends.set(i, bend);
+    put(kind, unit(x), unit(y), unit(z), turn);
   });
+  for (const a of away) put(a.kind, a.ux, a.uy, a.uz, a.yaw);
   for (let s = 0; s < sectors.length; s++) counts[s + 1]! += counts[s]!;
   // Each sector's pieces in the map's order.
   const order = new Uint32Array(n);
@@ -1133,15 +1212,21 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
     };
     const [x0, z0] = [sq.ox * CHUNK_SIZE * STRUCT_UNITS, sq.oz * CHUNK_SIZE * STRUCT_UNITS];
     let [px, py, pz, pyaw] = [0, 0, 0, 0];
+    let was: Int16Array | null = null;
     for (let i = 0; i < count; i++) {
       const k = order[counts[s]! + i]!;
       const [x, y, z] = [ux[k]! - x0, uy[k]!, uz[k]! - z0];
+      // A bent piece after a bent piece is coded against where it would stand were it the next of that one's line.
+      const bend = bends.has(k) ? Int16Array.from(bends.get(k)!) : null;
+      if (bend && was) bentNext(px, py, pz, pyaw, was, bend, next);
+      const [gx, gy, gz, gyaw] = bend && was ? next : [px, py, pz, pyaw];
       plane(0, i, id[k]!, 2);
-      plane(2, i, yaw[k]! - pyaw, 2);
-      plane(4, i, zigzag(x - px), 3);
-      plane(7, i, zigzag(y - py), 3);
-      plane(10, i, zigzag(z - pz), 3);
+      plane(2, i, yaw[k]! - gyaw!, 2);
+      plane(4, i, zigzag(x - gx!), 3);
+      plane(7, i, zigzag(y - gy!), 3);
+      plane(10, i, zigzag(z - gz!), 3);
       [px, py, pz, pyaw] = [x, y, z, yaw[k]!];
+      was = bend;
     }
     // Its bent pieces, by their places among its own.
     const bent: number[] = [];
@@ -1445,6 +1530,8 @@ export interface MapHead {
   readonly water: { readonly cell: number; readonly bodies: readonly WaterBody[] } | null;
   /** The whole map at every chunk's corner, which a client draws until each overview comes. */
   readonly coarse: CoarsePicture;
+  /** Its version (MAP_VERSION, or one of those before it this build reads). */
+  readonly version: number;
   /** The content ids its statics name by number. */
   readonly kinds: readonly string[];
   /** How many statics each chunk holds, row by row: a chunk's rows of MapStatics, laid out before any sector's come (blankStatics). */
@@ -1493,10 +1580,10 @@ export function readHead(file: Uint8Array, verify = true): MapHead {
   if (bytes < HEADER_BYTES || bytes > file.length) throw new Error("map: it is cut short");
   const hash = v.getUint32(8, true);
   if (verify && hash !== hashBytes(file.subarray(12, bytes))) throw new Error("map: its head is damaged: its hash is not that of its bytes");
-  return within(() => readHeadSections(new In(file.subarray(0, bytes)), hash));
+  return within(() => readHeadSections(new In(file.subarray(0, bytes)), hash, version));
 }
 
-function readHeadSections(r: In, hash: number): MapHead {
+function readHeadSections(r: In, hash: number, version: number): MapHead {
   r.at = 16;
   const dims = { chunksX: r.u16(), chunksZ: r.u16(), frameX: r.u16(), frameZ: r.u16(), originX: r.u16(), originZ: r.u16() };
   const cell = r.view.getFloat32(r.at, true);
@@ -1603,7 +1690,7 @@ function readHeadSections(r: In, hash: number): MapHead {
     if (!vehicles[index]) throw new Error("map: parked vehicle extension names a missing vehicle");
     vehicles[index] = { ...vehicles[index]!, ...extra };
   }
-  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, ...(tideEyes ? { tideEyes } : {}), layers, water, coarse: readCoarse(coarse, dims, water), kinds, counts, parts: parts ?? [] };
+  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), version, id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, ...(tideEyes ? { tideEyes } : {}), layers, water, coarse: readCoarse(coarse, dims, water), kinds, counts, parts: parts ?? [] };
   checkParts(head);
   return head;
 }
@@ -1842,32 +1929,7 @@ function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
 function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, StaticsPiece> {
   const n = s.u32();
   const b = s.take(n * STAT_ROW);
-  const [id, yaw, chunk] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];
-  const [xs, ys, zs] = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
-  const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
-  const three = (column: number, i: number): number => unzig(b[column * n + i]! | (b[(column + 1) * n + i]! << 8) | (b[(column + 2) * n + i]! << 16));
-  const { dims } = head;
-  const [x0, z0] = [sq.ox * CHUNK_SIZE * STRUCT_UNITS, sq.oz * CHUNK_SIZE * STRUCT_UNITS];
-  const [wide, deep] = [dims.chunksX * CHUNK_SIZE * STRUCT_UNITS, dims.chunksZ * CHUNK_SIZE * STRUCT_UNITS];
-  const off = (kind: number, x: number, y: number, z: number, what: string): Error => new Error(`map: a ${head.kinds[kind]} at ${x / STRUCT_UNITS}, ${y / STRUCT_UNITS}, ${z / STRUCT_UNITS} is off ${what}`);
-  let [x, y, z, turn] = [0, 0, 0, 0];
-  for (let i = 0; i < n; i++) {
-    id[i] = b[i]! | (b[n + i]! << 8);
-    if (id[i]! >= head.kinds.length) throw new Error("map: a static piece is of a kind its table does not name");
-    yaw[i] = turn = (turn + (b[2 * n + i]! | (b[3 * n + i]! << 8))) & 0xffff;
-    x = (x + three(4, i)) & 0xffffff;
-    y = ((y + three(7, i)) << 8) >> 8;
-    z = (z + three(10, i)) & 0xffffff;
-    const [ax, az] = [x0 + x, z0 + z];
-    if (ax < 0 || ax > wide || az < 0 || az > deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) throw off(id[i]!, ax, y, az, "the map");
-    xs[i] = ax / STRUCT_UNITS;
-    ys[i] = y / STRUCT_UNITS;
-    zs[i] = az / STRUCT_UNITS;
-    const c = (chunk[i] = chunkAt(dims, xs[i]!, zs[i]!));
-    const [cx, cz] = [chunkCx(dims, c), chunkCz(dims, c)];
-    if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) throw off(id[i]!, ax, y, az, `its sector ${sq.col}, ${sq.row}`);
-    if (i % SLICE === SLICE - 1) yield;
-  }
+  // Its bent pieces first: from version 14 a bent piece after a bent piece is coded against the guess of the one before.
   let bendAt = new Uint32Array(0), bend = new Int16Array(0);
   if (s.at < s.bytes.length) {
     const m = s.u32();
@@ -1891,7 +1953,82 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
       bendGuess(guess, bend.subarray(q * 8, q * 8 + 8));
     }
   }
-  return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk, bendAt, bend };
+  const guessed = head.version >= MADE_HITS;
+  const [id, yaw, chunk] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];
+  const [xs, ys, zs] = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+  const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
+  const three = (column: number, i: number): number => unzig(b[column * n + i]! | (b[(column + 1) * n + i]! << 8) | (b[(column + 2) * n + i]! << 16));
+  const { dims } = head;
+  const [x0, z0] = [sq.ox * CHUNK_SIZE * STRUCT_UNITS, sq.oz * CHUNK_SIZE * STRUCT_UNITS];
+  const [wide, deep] = [dims.chunksX * CHUNK_SIZE * STRUCT_UNITS, dims.chunksZ * CHUNK_SIZE * STRUCT_UNITS];
+  const off = (kind: number, x: number, y: number, z: number, what: string): Error => new Error(`map: a ${head.kinds[kind]} at ${x / STRUCT_UNITS}, ${y / STRUCT_UNITS}, ${z / STRUCT_UNITS} is off ${what}`);
+  let [x, y, z, turn] = [0, 0, 0, 0];
+  for (let i = 0, q = 0; i < n; i++) {
+    id[i] = b[i]! | (b[n + i]! << 8);
+    if (id[i]! >= head.kinds.length) throw new Error("map: a static piece is of a kind its table does not name");
+    // A bent piece after a bent piece: from where it would stand as the next of that one's line.
+    const bent = q < bendAt.length && bendAt[q] === i;
+    if (guessed && bent && q > 0 && bendAt[q - 1] === i - 1) {
+      bentNext(x, y, z, turn, bend.subarray((q - 1) * 8, q * 8), bend.subarray(q * 8, q * 8 + 8), next);
+      [x, y, z, turn] = [next[0]!, next[1]!, next[2]!, next[3]!];
+    }
+    if (bent) q++;
+    yaw[i] = turn = (turn + (b[2 * n + i]! | (b[3 * n + i]! << 8))) & 0xffff;
+    x = (x + three(4, i)) & 0xffffff;
+    y = ((y + three(7, i)) << 8) >> 8;
+    z = (z + three(10, i)) & 0xffffff;
+    const [ax, az] = [x0 + x, z0 + z];
+    if (ax < 0 || ax > wide || az < 0 || az > deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) throw off(id[i]!, ax, y, az, "the map");
+    xs[i] = ax / STRUCT_UNITS;
+    ys[i] = y / STRUCT_UNITS;
+    zs[i] = az / STRUCT_UNITS;
+    const c = (chunk[i] = chunkAt(dims, xs[i]!, zs[i]!));
+    const [cx, cz] = [chunkCx(dims, c), chunkCz(dims, c)];
+    if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) throw off(id[i]!, ax, y, az, `its sector ${sq.col}, ${sq.row}`);
+    if (i % SLICE === SLICE - 1) yield;
+  }
+  if (head.version < MADE_HITS || bendAt.length === 0) return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk, bendAt, bend };
+  // The collision pieces under its bent pieces, made from them as the writer counted them, those in this sector after its
+  // own pieces.
+  const kindOf = kindIndex(head.kinds);
+  const made: number[][] = [[], [], [], [], [], []];
+  for (let q = 0; q < bendAt.length; q++) {
+    const i = bendAt[q]!;
+    madeOn(dims, head.kinds[id[i]!]!, Math.round(xs[i]! * STRUCT_UNITS), Math.round(ys[i]! * STRUCT_UNITS), Math.round(zs[i]! * STRUCT_UNITS), yaw[i]!, bend.subarray(q * 8, q * 8 + 8), (k, hx, hy, hz, turn, c) => {
+      const cx = chunkCx(dims, c), cz = chunkCz(dims, c);
+      if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) return;
+      const kind = kindOf.get(k);
+      if (kind === undefined) throw new Error(`map: a bent piece makes a ${k}, which its table does not name`);
+      made[0]!.push(kind);
+      made[1]!.push(turn);
+      made[2]!.push(hx);
+      made[3]!.push(hy);
+      made[4]!.push(hz);
+      made[5]!.push(c);
+    });
+    if (q % MADE_SLICE === MADE_SLICE - 1) yield;
+  }
+  const all = n + made[0]!.length;
+  const grown = <T extends Uint16Array | Uint32Array | Float32Array>(a: T, column: readonly number[], scale: number): T => {
+    const b = new (a.constructor as new (n: number) => T)(all);
+    b.set(a);
+    for (let k = 0; k < column.length; k++) b[n + k] = column[k]! / scale;
+    return b;
+  };
+  return {
+    kind: "statics", sq, id: grown(id, made[0]!, 1), yaw: grown(yaw, made[1]!, 1), x: grown(xs, made[2]!, STRUCT_UNITS), y: grown(ys, made[3]!, STRUCT_UNITS), z: grown(zs, made[4]!, STRUCT_UNITS),
+    chunk: grown(chunk, made[5]!, 1), bendAt, bend,
+  };
+}
+
+/** Bent pieces whose collision pieces are made between yields when a part is read a step at a time: about a millisecond's work. */
+const MADE_SLICE = 1 << 9;
+const kindIndices = new WeakMap<readonly string[], Map<string, number>>();
+/** A head's kinds by their ids, made once a head. */
+function kindIndex(kinds: readonly string[]): Map<string, number> {
+  let m = kindIndices.get(kinds);
+  if (!m) kindIndices.set(kinds, (m = new Map(kinds.map((k, i) => [k, i]))));
+  return m;
 }
 
 /**
@@ -1927,6 +2064,9 @@ export function holdStreets(held: StreetSectors, piece: StreetsPiece): void {
   const sq = piece.sq;
   held.put(sq.col * 4096 + sq.row, decodeStreets(piece.bytes, sq.ox * CHUNK_SIZE, sq.oz * CHUNK_SIZE), sq.cx0, sq.cz0, sq.cx1, sq.cz1);
 }
+
+/** Where bentNext puts its guess. */
+const next = [0, 0, 0, 0];
 
 /** The bytes of a sector's road part: its square's cells of the map's frame, or null where no road runs in it. */
 function roadPart(road: MapRoad, dims: FramedDims, sq: Square): Uint8Array | null {

@@ -118,13 +118,15 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   const sizing = "    if (uSkin < -0.5 && uSkin > -1.5) l *= float(iRegB.y) / 64.0;\n";
   expect(FLAT_MESH_VERTEX).toContain(sizing);
   // The bent street sections added the bend's function and one line that calls it (client/core/render/bend.ts), since low
-  // poly draws a map's kerbs too. Without those two the text is as it was; with them it is 2539154211.
+  // poly draws a map's kerbs too. Without those two the text is as it was; with them it was 2539154211 until a walk was
+  // let down to the ground at its end (the bend's sink, read with its flags from its walk's and panel's numbers), and is
+  // 231044186.
   expect(FLAT_MESH_VERTEX).toContain(BEND_GLSL);
   expect(FLAT_MESH_VERTEX).toContain(BEND_PLACE);
   const unbent = FLAT_MESH_VERTEX.replace(BEND_GLSL, "").replace(BEND_PLACE, "");
   expect(hashString(FLAT_FRAGMENT + unbent.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(2880639374);
   expect(hashString(FLAT_FRAGMENT + unbent + FLAT_TERRAIN_VERTEX)).toBe(1010688119);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(2539154211);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(231044186);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {
