@@ -65,7 +65,7 @@ import {
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { PassengerView } from "./passenger-view.ts";
-import { Signal } from "./signal.ts";
+import { Signal, Veto } from "./signal.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
 import { BTN_JUMP, BTN_SECONDARY, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
@@ -518,8 +518,8 @@ export class GameServer {
    * are added to its view after those round it, which come first under its cap (D1079).
    */
   cone: ((c: Client) => { readonly chunks: Int32Array; readonly count: number; readonly players?: readonly number[] } | null) | null = null;
-  /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
-  allows: ((c: Client, op: number) => boolean) | null = null;
+  /** Whether the session may run command `op` now: any listener may refuse. A refused command answers RESULT_DENIED and its handler is not called. */
+  readonly allows = new Veto<[c: Client, op: number]>(true);
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   readonly onLand = new Signal<[c: Client, speed: number]>();
   /** A survivor's glider opened this tick, or folded (planning/workstreams/glider.md). */
@@ -1223,7 +1223,7 @@ export class GameServer {
       let code: number;
       try {
         // What a session is shown is its own to ask in any state, so that is answered here.
-        code = op === CMD_VIEW ? this.askView(c, r) : op === CMD_STATICS ? this.takeStatics(c) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
+        code = op === CMD_VIEW ? this.askView(c, r) : op === CMD_STATICS ? this.takeStatics(c) : !handler ? RESULT_INVALID : !this.allows.ask(c, op) ? RESULT_DENIED : handler(c, r);
       } catch (err) {
         this.stats.faults++;
         this.refusals.refuse(refusedAs(c.key, c.conn.address), this.world.tick, this.world.tick + FAULT_REFUSED_TICKS);
