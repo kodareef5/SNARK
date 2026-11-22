@@ -5,7 +5,7 @@ import { BLOCK_SOFT_SPEED, blockOut, pushOut, turnFree } from "./blockers.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
-import { SKIN, wallFree, wallOut, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
+import { SKIN, wallDepth, wallOut, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
 import { Found } from "../world/structures.ts";
 
@@ -574,14 +574,19 @@ function jetMode(b: Body, prior: number, buttons: number, ready: boolean, moving
  * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
  * straight up. These are the quantized values sent on the wire.
  */
-/** Whether a body of `p` at (x, y, z) facing `yaw` (65536ths of a turn) has its head clear of every wall (MoveParams.headRadius, collide.ts wallFree). */
-export function headClear(w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number): boolean {
+/** How deep in a wall the head of a body of `p` at (x, y, z) facing `yaw` (65536ths of a turn) is (MoveParams.headRadius, collide.ts wallDepth). */
+export function headDepth(w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number): number {
   const r = p.headRadius!, a = (yaw * TAU) / 65536, ahead = p.headAhead!;
-  return wallFree(w, x + detSin(a) * ahead, y + p.headUp! - r, z + detCos(a) * ahead, r);
+  return wallDepth(w, x + detSin(a) * ahead, y + p.headUp! - r, z + detCos(a) * ahead, r);
 }
 
-/** How square to its facing a wall must stand to hold a head back: walls more beside it than this are grazed. */
-const HEAD_AHEAD = 0.5;
+/** Whether the head of a body of `p` at (x, y, z) facing `yaw` is clear of every wall. */
+export function headClear(w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number): boolean {
+  return headDepth(w, p, x, y, z, yaw) === 0;
+}
+
+/** Metres deeper into a wall a head may go in a step: rounding, not a graze. */
+const HEAD_SKIN = 0.002;
 
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   stepOut.landSpeed = 0;
@@ -616,7 +621,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     // A long body does not swing itself into a body standing still (shared/sim/blockers.ts), nor its head into a wall.
     const bodies = w.blockers;
     if (bodies && bodies.count > 0 && b.mode === MODE_WALK && !turnFree(bodies, b.kind, b.x, b.y, b.z, b.yaw, (b.yaw + turn) & 0xffff, stanceHeight(p, b.stance))) turn = 0;
-    if (turn !== 0 && p.headRadius && b.mode === MODE_WALK && !headClear(w, p, b.x, b.y, b.z, (b.yaw + turn) & 0xffff) && headClear(w, p, b.x, b.y, b.z, b.yaw)) turn = 0;
+    if (turn !== 0 && p.headRadius && b.mode === MODE_WALK && headDepth(w, p, b.x, b.y, b.z, (b.yaw + turn) & 0xffff) > headDepth(w, p, b.x, b.y, b.z, b.yaw) + HEAD_SKIN) turn = 0;
     b.yaw = (b.yaw + turn) & 0xffff;
   }
   yaw = b.yaw;
@@ -831,9 +836,6 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   let x = b.x;
   let y = b.y;
   let z = b.z;
-  /** Its facing in plan, for whether a wall its head meets is ahead of it. */
-  const fx = p.headRadius ? detSin((b.yaw * TAU) / 65536) : 0;
-  const fz = p.headRadius ? detCos((b.yaw * TAU) / 65536) : 0;
 
   for (let i = 0; i < n; i++) {
     let nx = x + sx;
@@ -1027,26 +1029,32 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       clear = false;
     }
 
-    // A head held clear of walls: a step that would put it into one ahead of it slides along the wall it met, as the body
-    // slides along what it meets, or is not taken. A wall beside or behind the head it may graze, as a long body walking
-    // along one does, and a head already in one (turned there by something else) is let back out. Only the level step is
-    // held, at the height it began: a body walking down a slope beside a wall may dip its head toward the wall's top.
-    if (p.headRadius && !headClear(w, p, nx, y, nz, b.yaw) && headClear(w, p, x, y, z, b.yaw) && wallOut.x * fx + wallOut.z * fz < -HEAD_AHEAD) {
-      const ox = wallOut.x, oz = wallOut.z;
-      let dx = nx - x, dz = nz - z;
-      const into = dx * ox + dz * oz;
-      if (into < 0) {
-        dx -= ox * into;
-        dz -= oz * into;
+    // A head held clear of walls: no step takes it deeper into one than it is, at any angle. A step that would slides along
+    // the wall it met, as the body slides along what it meets, or is not taken; a head already in one (turned there by
+    // something else) is let back out, and one past a wall's end walks on. Only the level step is held, at the height it
+    // began: a body walking down a slope beside a wall may dip its head toward the wall's top.
+    if (p.headRadius) {
+      const was = headDepth(w, p, x, y, z, b.yaw);
+      if (headDepth(w, p, nx, y, nz, b.yaw) > was + HEAD_SKIN) {
+        const ox = wallOut.x, oz = wallOut.z;
+        let dx = nx - x, dz = nz - z;
+        const into = dx * ox + dz * oz;
+        if (into < 0) {
+          dx -= ox * into;
+          dz -= oz * into;
+        }
+        // Along the wall; failing that (at a corner the deepest wall turns), the step's one way or its other.
+        if (headDepth(w, p, x + dx, y, z + dz, b.yaw) <= was + HEAD_SKIN) {
+          nx = x + dx;
+          nz = z + dz;
+        } else if (headDepth(w, p, x, y, nz, b.yaw) <= was + HEAD_SKIN) nx = x;
+        else if (headDepth(w, p, nx, y, z, b.yaw) <= was + HEAD_SKIN) nz = z;
+        else {
+          nx = x;
+          nz = z;
+        }
+        clear = false;
       }
-      if (headClear(w, p, x + dx, y, z + dz, b.yaw)) {
-        nx = x + dx;
-        nz = z + dz;
-      } else {
-        nx = x;
-        nz = z;
-      }
-      clear = false;
     }
 
     // Step up: a grounded body blocked by something no higher than a step climbs onto it.

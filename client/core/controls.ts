@@ -18,6 +18,16 @@ const GLIDE_PULSE = 2;
 const MOUSE: readonly number[] = [BTN_PRIMARY, 0, BTN_SECONDARY];
 
 export class Controls {
+  /** The keys the body or vehicle being driven now takes as buttons. A key one claims is no one else's (client/core/app.ts). */
+  bindings(): Record<string, number> {
+    return this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : BINDINGS;
+  }
+
+  /** Whether what is driven now takes `code` as one of its buttons. */
+  binds(code: string): boolean {
+    return this.bindings()[code] !== undefined;
+  }
+
   /** -1..1: strafe right, walk forward. */
   moveX = 0;
   moveZ = 0;
@@ -108,7 +118,7 @@ export class Controls {
       if (down && !held.has(code)) this.stance = this.stance === stance ? 0 : stance;
     } else if (this.flyer && code === "Space") {
       if (down && !held.has(code)) this.wing = !this.wing;
-    } else if (!MOVE_KEYS.has(code) && (this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : BINDINGS)[code] === undefined) return false;
+    } else if (!MOVE_KEYS.has(code) && this.bindings()[code] === undefined) return false;
     if (down) held.add(code);
     else held.delete(code);
     // From a stance, jump stands the body up and is not sent as a jump. Sprint stands a crouched body up.
@@ -162,7 +172,7 @@ export class Controls {
     this.moveZ = Math.max(-1,Math.min(1,(k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0) + this.analogZ + this.touchZ));
     let buttons = this.mouse | this.padMouse | this.stance | (this.wing ? BTN_JUMP : 0) | (this.helicopter && this.directFlight ? BTN_MOD : 0);
     if (this.gliding && (this.glideUntil >= 0 || k.has("KeyC") || this.padHeld.has("KeyC"))) buttons |= BTN_CROUCH;
-    const bindings = this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : BINDINGS;
+    const bindings = this.bindings();
     for (const code of k) buttons |= bindings[code] ?? 0;
     for (const code of this.padHeld) buttons |= bindings[code] ?? 0;
     this.buttons = buttons;

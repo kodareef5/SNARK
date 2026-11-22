@@ -79,6 +79,24 @@ export function benchBrawlPhysics(section: Section, record: Row): void {
   record("things thrown laid to rest", h.host.loose.stats.rested, "");
   record("things thrown that struck a body", h.host.loose.stats.struck, "");
   record("the delayed survivor's corrections a minute", ((sessions[0]!.stats.corrections - before) * 60) / SECONDS, "");
+
+  // Past the cap: 400 throws in one tick, the last 144 or more over it. Each over it is let fall at the thrower's feet at
+  // the cost of a drop, so the burst costs what its bags do and no physics.
+  const loose = h.host.loose, dropped = loose.stats.dropped, client = h.client(sessions[1]!)!;
+  const t0 = performance.now();
+  for (let k = 0; k < 400; k++) {
+    arm(1);
+    loose.command(client);
+  }
+  // A throw is a command, at most four a session a tick: 400 in a tick is a hundred survivors throwing at once. Its cost is
+  // the bag's record and body, outside the lane, the same thrown or let fall.
+  record("a throw, its bag made: time", (performance.now() - t0) / 400, "ms");
+  record("400 throws in one tick: let fall for want of room in the lane", loose.stats.dropped - dropped, "");
+  const lanesBefore = lanes.length;
+  server.tick = () => { tick(); lanes.push(lane.physicsMs); };
+  h.run(1000);
+  server.tick = tick;
+  record("the second after: physics in the worst tick, the cap's things in flight", Math.max(...lanes.slice(lanesBefore)), "ms", LANE_RESERVE_MS * 2);
   h.host.shutdown();
 }
 

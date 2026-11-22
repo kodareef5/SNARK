@@ -115,15 +115,22 @@ export class Loose {
     this.stats.thrown++;
     const ent = records.entOf.get(bag.pid);
     if (ent === undefined) return RESULT_OK;
-    const body = new LooseBody(looseShape(world.reg.weight[item]!));
-    // With no room in the lane it falls where the thrower stands, at rest at once.
+    // With no room in the lane it is let fall at the thrower's feet, lying there at once, at the cost of a drop: nothing is
+    // stepped for it.
     if (this.flying.length >= LOOSE_MOST) {
       this.stats.dropped++;
-      body.throw(ents.x[e]!, ents.y[e]! + 0.3, ents.z[e]!, d[0]!, 0, d[2]!, 0, 0, 0, 0, 0);
-      for (let k = 0; k < 120 && body.step(world); k++);
-      this.lay(bag, ent, body);
+      ents.setPosition(ent, ents.x[e]!, ents.y[e]!, ents.z[e]!);
+      ents.yaw[ent] = (ents.yaw[e]! - droppedTurn(ent)) & 0xffff;
+      ents.pitch[ent] = 0;
+      ents.hold[ent] = 0;
+      ents.pose(ent);
+      bag.x = ents.x[ent]!;
+      bag.y = ents.y[ent]!;
+      bag.z = ents.z[ent]!;
+      this.ctx.records.dirty.add(bag.pid);
       return RESULT_OK;
     }
+    const body = new LooseBody(looseShape(world.reg.weight[item]!));
     body.throw(x, y, z, d[0]!, d[1]!, d[2]!, THROW_SPEED, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, THROW_SPIN);
     this.flying.push({ bag, ent, gen: ents.gen[ent]!, body, by: e, byRec: rec, item, quality, ox: ex, oz: ez, struck: false });
     this.show(ent, body);

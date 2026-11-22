@@ -14,6 +14,9 @@ import { BodyGrid } from "./bodies.ts";
 import type { ServerWorld } from "./world.ts";
 
 const TAU = Math.PI * 2;
+/** Appearances kept a body, newest first, and bodies kept before the record starts again. */
+const LOOKS_KEPT = 4;
+const LOOKS_MOST = 65536;
 
 /** Whether body `j` blocks a walker of team `team`, as the snapshot shows it: the client's rule too. */
 export function blocks(world: ServerWorld, j: number, team: number): boolean {
@@ -54,14 +57,51 @@ export class BodyBlocking {
   begin(lists: readonly (ArrayLike<number> & { readonly length: number })[], counts: readonly number[]): void {
     const grid = this.grid, ents = this.world.ents;
     grid.clear();
+    if (this.looks.size > LOOKS_MOST) this.looks.clear();
     for (let l = 0; l < lists.length; l++) {
       const list = lists[l]!;
       for (let k = 0; k < counts[l]!; k++) {
         const j = list[k]!;
-        if (j >= 0 && (ents.flags[j]! & F_ALIVE) !== 0) grid.add(j, ents.x[j]!, ents.z[j]!);
+        if (j < 0 || (ents.flags[j]! & F_ALIVE) === 0) continue;
+        grid.add(j, ents.x[j]!, ents.z[j]!);
+        this.remember(j);
       }
     }
   }
+
+  /**
+   * Keeps body `j`'s team, seat and growth by the appearance revision they were sent under (EntityStore.rev, which each
+   * of them bumps), the last LOOKS_KEPT of them, so that a walker meets a body as the snapshot its client stepped with
+   * showed it even while that body boards a car, joins a tribe or comes of age.
+   */
+  private remember(j: number): void {
+    const ents = this.world.ents;
+    let ring = this.looks.get(j);
+    if (!ring || ring[1] !== ents.gen[j]) {
+      ring = new Float64Array(2 + LOOKS_KEPT * 4).fill(-1);
+      ring[1] = ents.gen[j]!;
+      this.looks.set(j, ring);
+    }
+    const rev = ents.rev[j]!;
+    if (ring[2] === rev && ring[3] === ents.team[j] && ring[4] === ents.seat[j] && ring[5] === ents.grown[j]) return;
+    ring.copyWithin(6, 2, 2 + (LOOKS_KEPT - 1) * 4);
+    ring[2] = rev; ring[3] = ents.team[j]!; ring[4] = ents.seat[j]!; ring[5] = ents.grown[j]!;
+  }
+
+  /** Body `id`'s team, seat and growth as it was sent at appearance revision `rev`, into `shown`; its present ones where not kept. */
+  private shownAt(id: number, rev: number): void {
+    const ents = this.world.ents, ring = this.looks.get(id), shown = this.shown;
+    shown[0] = ents.team[id]!; shown[1] = ents.seat[id]!; shown[2] = ents.grown[id]!;
+    if (!ring || ring[1] !== ents.gen[id]) return;
+    for (let k = 0; k < LOOKS_KEPT; k++) {
+      const at = 2 + k * 4;
+      if (ring[at] !== rev) continue;
+      shown[0] = ring[at + 1]!; shown[1] = ring[at + 2]!; shown[2] = ring[at + 3]!;
+      return;
+    }
+  }
+  private readonly looks = new Map<number, Float64Array>();
+  private readonly shown = new Float64Array(3);
 
   /**
    * The bodies walker `e`, of team `team`, standing at (x, y, z) with radius `r`, may meet this tick; null where none. A
@@ -102,7 +142,10 @@ export class BodyBlocking {
       const id = view.id[j]!, kind = view.kind[j]!;
       if (id === e || !(reg.footRadius[kind]! > 0) || reg.vehicle[kind] || (view.flags[j]! & (F_PROP >>> 1)) !== 0) continue;
       if ((view.cue[j]! & (CUE_OUT | CUE_HELD | CUE_DEAD)) !== 0 || ents.gen[id] !== view.gen[j]) continue;
-      if (ents.seat[id] !== 0 || ents.grown[id] !== 0 || (team !== 0 && ents.team[id] === team)) continue;
+      // Its seat, growth and tribe as that snapshot showed them, which its client judges by too.
+      this.shownAt(id, view.rev[j]!);
+      const shown = this.shown;
+      if (shown[1] !== 0 || shown[2] !== 0 || (team !== 0 && shown[0] === team)) continue;
       if (!blocksSession(reg, kind, (view.anim[j]! & 15) !== 0)) continue;
       if (this.survivorsPass && this.survivor[kind] === 1 && this.survivor[ents.kind[e]!] === 1) continue;
       const bx = dequantX(view.qx[j]!), bz = dequantX(view.qz[j]!);

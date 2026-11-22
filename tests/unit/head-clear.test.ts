@@ -88,3 +88,23 @@ test("a rex climbs a hill though its head dips toward the rise ahead", () => {
   expect(b.z).toBeGreaterThan(136);
   expect(b.y).toBeGreaterThan(7);
 });
+
+test("a rex walking at a shallow angle to a wall never puts its head into it, from either side, and goes on along it", () => {
+  const p = reg.move[reg.index.get("core:rex")!]!;
+  for (const degrees of [10, 20, 35]) for (const side of [1, -1]) {
+    const w = world();
+    // A wall along +Z at x = 128 + side * 8, three pieces of two storeys: 21 m long.
+    for (let k = -3; k <= 3; k++) for (const y of [1.5, 4.5]) w.structs.add(wall, 128 + side * 8, y, 110 + k * 3, 16384, 0, 1);
+    const yaw = Math.round(((side * degrees) / 360) * 65536) & 0xffff;
+    const b = creature("rex", 128, 92, yaw);
+    expect(headClear(w, p, b.x, b.y, b.z, b.yaw)).toBe(true);
+    let into = 0;
+    for (let t = 0; t < 240; t++) {
+      stepBody(w, b, 0, 127, yaw, 0, 0, p, TICK_DT);
+      if (!headClear(w, p, b.x, b.y, b.z, b.yaw)) into++;
+    }
+    expect([degrees, side, into]).toEqual([degrees, side, 0]);
+    // Held off the wall, it slid on along it rather than stopping where it met it.
+    expect(b.z).toBeGreaterThan(105);
+  }
+});

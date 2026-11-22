@@ -171,3 +171,25 @@ test("with SurvivorsBlock off, survivors of different tribes pass through one an
     expect(s.stats.corrections - before).toBe(0);
   } finally { h.host.shutdown(); }
 });
+
+test("a body that turns from a wall into a tribemate while pressed against is met as each snapshot showed it, with no correction", () => {
+  const { h, s, c, a, owner, place } = yard(150);
+  try {
+    const b = h.join("bo");
+    h.run(1600);
+    const cb = h.client(b)!, bo = h.host.records.byPid.get(cb.pid)!;
+    place(cb.ent, 100, 103);
+    h.run(600);
+    const before = s.stats.corrections;
+    h.pilots[0]!.moveZ = 127;
+    h.run(1500);
+    // Held at bo's body, then bo joins the walker's tribe mid-press and the walker goes on through.
+    expect(a.z[c.ent]!).toBeLessThan(103);
+    expect(h.host.tribes.create(owner, "Walkers")).toBe("");
+    expect(h.host.tribes.invite(owner, bo, true)).toBe("");
+    expect(h.host.tribes.accept(bo)).toBe("");
+    h.run(2500);
+    expect(a.z[c.ent]!).toBeGreaterThan(106);
+    expect(s.stats.corrections - before).toBe(0);
+  } finally { h.host.shutdown(); }
+});

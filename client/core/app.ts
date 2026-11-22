@@ -607,7 +607,8 @@ export class App {
       const host = s.driving >= 0 ? s.driving : s.own.seatSlot && s.own.seat > 0 ? s.own.seat - 1 : -1;
       const at = host >= 0 ? ids.indexOf(host) : -1;
       const def = at >= 0 ? this.reg.vehicle[r.kind[at]!] : undefined;
-      if (def && isWheelVehicle(def)) {
+      // A vehicle whose controls take Q for themselves (a helicopter's, a thruster's) keeps it.
+      if (def && isWheelVehicle(def) && !this.controls.binds("KeyQ")) {
         s.command(CMD_VEHICLE, (w) => { w.u8(VEHICLE_DOOR); w.u32(makeHandle(host, r.gen[at]!)); });
         return true;
       }

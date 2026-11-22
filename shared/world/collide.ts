@@ -544,28 +544,31 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
 const WALL_TALL = 1.2;
 
 /**
- * Whether the sphere of radius `r` whose bottom is at (x, y, z) is clear of every wall: a box of a piece at least
- * WALL_TALL high whose way out of it is mostly level. Floors, ceilings, roofs and steps (too low), ramps (convex parts),
- * the ground and resource nodes are not asked: what a creature's head is held clear of (shared/sim/character.ts), which
- * may dip toward a ramp it climbs and pass under a roof it clips, as ARK's mounts do (D777).
+ * How deep the sphere of radius `r` whose bottom is at (x, y, z) is in a wall, 0 where it is clear: a box of a piece at
+ * least WALL_TALL high, the deepest of them. Floors, ceilings, roofs and steps (too
+ * low), ramps (convex parts), the ground and resource nodes are not asked: what a creature's head is held clear of
+ * (shared/sim/character.ts), which may dip toward a ramp it climbs and pass under a roof it clips, as ARK's mounts do
+ * (D777). Leaves the deepest wall's level way out in `wallOut`.
  */
-export function wallFree(w: CollisionWorld, x: number, y: number, z: number, r: number): boolean {
+export function wallDepth(w: CollisionWorld, x: number, y: number, z: number, r: number): number {
   const structs = w.structs;
   const n = structs.query(x - r, z - r, x + r, z + r, found, y - PAD, y + 2 * r + PAD);
+  let deepest = 0;
   for (let i = 0; i < n; i++) {
     const ref = found.refs[i]!, kind = structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!;
     if (2 * structs.halfY[kind]! < WALL_TALL) continue;
-    if (capsuleBox(structs, ref, x, y, z, r, 2 * r, SKIN) && !push.hull && push.y * push.y < 0.25 * push.depth * push.depth) {
-      const l = Math.sqrt(push.x * push.x + push.z * push.z);
-      wallOut.x = l > 0 ? push.x / l : 0;
-      wallOut.z = l > 0 ? push.z / l : 0;
-      return false;
-    }
+    // Every way in counts, the top of a wall as its face: a contact that turns from the one to the other as a head moves
+    // must not jump from nothing to deep.
+    if (!capsuleBox(structs, ref, x, y, z, r, 2 * r, SKIN) || push.hull || push.depth <= deepest) continue;
+    deepest = push.depth;
+    const l = Math.sqrt(push.x * push.x + push.z * push.z);
+    wallOut.x = l > 0 ? push.x / l : 0;
+    wallOut.z = l > 0 ? push.z / l : 0;
   }
-  return true;
+  return deepest;
 }
 
-/** Where `wallFree` found a wall, the level unit way out of it. */
+/** Where `wallDepth` found the deepest wall, the level unit way out of it. */
 export const wallOut = { x: 0, z: 0 };
 
 /** True when no structure or node reaches the capsule's footprint between the heights `low` and `high`. */
