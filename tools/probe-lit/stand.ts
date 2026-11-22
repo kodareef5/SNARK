@@ -33,7 +33,7 @@ interface Made {
   pickKind: Uint8Array;
   pickId: Float64Array;
   pickDraw: Int16Array;
-  flags: Uint16Array;
+  flags: Uint32Array;
 }
 const made = new Map<string, Made>();
 

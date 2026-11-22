@@ -93,36 +93,46 @@
     "obelisks": [
       {
         "name": "Raymond James Stadium",
+        "color": "red",
+        "form": "sextant",
         "at": [
-          -82.499,
-          27.9745
+          -82.49937,
+          27.97572
         ],
         "face": [
-          -82.5009,
-          27.9725
-        ]
+          -82.4655,
+          27.9584
+        ],
+        "deck": 40,
+        "why": "on open ground across Himes Avenue from the stadium's east lots, the nearest a 40 m deck finds: a navigator's instrument by the pirate ship's stadium, broadside to downtown"
       },
       {
         "name": "Ybor City",
+        "color": "green",
+        "form": "lantern",
         "at": [
-          -82.4394,
-          27.9604
+          -82.43957,
+          27.96343
         ],
         "face": [
-          -82.4377,
-          27.9599
-        ]
+          -82.4394,
+          27.96
+        ],
+        "deck": 16,
+        "why": "on the one open lot in the old cigar district that holds a deck, north of 7th Avenue: a tower of lit louvres over Ybor's brick, seen up the Selmon and I-4 from downtown"
       },
       {
         "name": "Davis Islands",
+        "color": "blue",
         "at": [
           -82.4487,
           27.916
         ],
         "face": [
-          -82.4548,
-          27.913
-        ]
+          -82.4719,
+          27.9319
+        ],
+        "why": "on the open ground by the island's airfield with the bay on three sides, broadside to Bayshore and downtown across the water"
       }
     ],
     "container_district": "The Port",

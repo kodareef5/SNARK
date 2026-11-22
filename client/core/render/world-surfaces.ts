@@ -11,6 +11,8 @@ import { WEIGHT } from "../assets/residency.ts";
 import { NEAR_WALL } from "./finish-near.ts";
 import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
+import { CHUNK_SIDE, PAVED_VERGE, PLANE_MOST, PLANE_STEP, STREET_TINT, VERGE_TINTS, WALK_TINT } from "../../../shared/world/streets.ts";
+import { STREET_CHUNKS, STREET_SIDE } from "./streets.ts";
 
 type Out = Float64Array;
 type Numbers = ArrayLike<number>;
@@ -724,9 +726,11 @@ const roadBand = (g: number, centre: number, half: number, blur: number): number
  * macro and its repairs. Where the road's frame (roadFrameAt) is sure they lie along the carriageway, its lanes laid out
  * from its edge, with a wheel path under each pair of wheels of a lane and oil between them, sealed joints between its
  * lanes, dirt in its gutters, and its repairs a lane wide by 8 m; elsewhere, as on a lot, in 8 m squares on the world's
- * axes. Each cell has its own share of patches and sealed cracks and its own place in their tile, by where it is.
+ * axes. Each cell has its own share of patches and sealed cracks and its own place in their tile, by where it is. `kerb`,
+ * where 0 or more, is how far in from a raised kerb the point is (streetCover), and the gutter runs along that line; -2
+ * where the streets say the edge is flush, which has none; -1 where they say nothing, and the frame's line has it.
  */
-export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number, footprint: number, sample: WorldSample, frame: Numbers | null = null): void {
+export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number, footprint: number, sample: WorldSample, frame: Numbers | null = null, kerb = -1): void {
   const level = (metres: number): number => Math.log2(Math.max(footprint / metres, 1e-9));
   if (id === SAND) {
     sample(2, ROAD_LAYER, x / ROAD_MACRO, z / ROAD_MACRO, level(ROAD_MACRO), roadMask);
@@ -749,7 +753,7 @@ export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number
     const t = (u + half) / lane, k = Math.floor(t), g = t - k, blur = footprint / lane;
     const wheels = roadBand(g, 0.27, 0.075, blur) + roadBand(g, 0.73, 0.075, blur);
     const oil = roadBand(g, 0.5, 0.07, blur) * (0.4 + 1.2 * surfaceNoise(v / 5.3, k * 3.1));
-    const gutter = roadBand(Math.abs(u), half - 0.25, 0.25, footprint) * s;
+    const gutter = kerb > -1.5 && kerb < 0 ? roadBand(Math.abs(u), half - 0.25, 0.25, footprint) * s : 0;
     shade *= (1 - wheels * ROAD_LOOK.wheels * worn) * (1 - oil * ROAD_LOOK.oil * worn) * (1 - gutter * ROAD_LOOK.gutter);
     rough += gutter * 0.1 - (wheels * 0.06 + oil * 0.1) * worn;
     // The joint between two lanes nearest, sealed along some of its 8 m, by where each 8 m's middle is.
@@ -760,6 +764,11 @@ export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number
     }
     wide = lane;
     from0 = -half;
+  }
+  if (kerb >= 0) {
+    const gutter = roadBand(kerb, 0.25, 0.25, footprint);
+    shade *= 1 - gutter * ROAD_LOOK.gutter;
+    rough += gutter * 0.1;
   }
   // The repairs of this lane's or this square's 8 m: where in their tile, and whether patched and sealed, by where its middle is.
   const ku = Math.floor((u - from0) / wide), kv = Math.floor(v / ROAD_REPAIRS);
@@ -795,10 +804,11 @@ const covered = (d: number, half: number, footprint: number): number => {
  * panel by a hash of where it is takes its own tone and may be stained (the road's macro), cracked (the repairs' cracks)
  * or sunk, leaning a little one way; each joint's piece, a panel's side, may hold grass or dirt along it, in patches.
  */
-export function walkWorn(albedo: Out, orm: Out, normal: Out, id: number, x: number, z: number, footprint: number, city: Numbers, sample: WorldSample): void {
+export function walkWorn(albedo: Out, orm: Out, normal: Out, id: number, x: number, z: number, footprint: number, city: Numbers, sample: WorldSample, place: Numbers | null = null): void {
   if (id !== GROUND_WALK) return;
   const panel = finishMetres(id, city) / 2;
-  const gu = x / panel, gv = z / panel, ku = Math.floor(gu), kv = Math.floor(gv), fu = gu - ku, fv = gv - kv;
+  // Along a street's walk (streetCover) its panels run along it, a row from its inner edge: `place` is where in that frame.
+  const gu = (place ? place[0]! : x) / panel, gv = (place ? place[1]! : z) / panel, ku = Math.floor(gu), kv = Math.floor(gv), fu = gu - ku, fv = gv - kv;
   const h = surfaceHash(ku * 5 + 3, kv * 9 + 1);
   const du = Math.min(fu, 1 - fu) * panel, dv = Math.min(fv, 1 - fv) * panel, d = Math.min(du, dv);
   // The joint nearest, by the panels' corner it starts at and which way it runs.
@@ -1214,10 +1224,192 @@ float walkMeet(float share, float footprint) {
 }
 `;
 
+/** The finishes a street's band may draw over: what the ground of a street, a verge or a walk is made of. Any other among a cell's four is left as it is drawn. */
+const STREET_SOFT = ["asphalt", "sidewalk", "grass", "dirt", "gravel", "paving", "sand"].map((n) => SURFACE_NAMES.indexOf(n as (typeof SURFACE_NAMES)[number]));
+/** The tint a verge takes where none of a cell's four samples is of its finish and its kind names none: rough grass. */
+const BEYOND_TINT = 150;
+/** The verges that are rough (streets.ts VERGES: grass, dirt, gravel), whose far edge is ragged. */
+const STREET_ROUGH = [2, 3, 5];
+/**
+ * How ragged a street's edges are: metres between the noise's points along them, and the most each edge moves, end to
+ * end: a flush kerb's asphalt, a worn kerb's, and a rough verge's far edge.
+ */
+export const STREET_MESSY = { grain: 1.3, flush: 0.36, worn: 0.12, verge: 0.9 } as const;
+
+/**
+ * A walk's way along from its kinds' byte (streets.ts alongByte, the diamond angle of half a turn), into `out` as x and z.
+ */
+export function alongOf(b: number, out: Float64Array): void {
+  const p = (b & 127) / 64, x = p < 1 ? 1 - p : -(p - 1), z = p < 1 ? p : 2 - p, l = Math.sqrt(x * x + z * z);
+  out[0] = x / l;
+  out[1] = z / l;
+}
+
+/**
+ * The ground's cover from the streets where they are near (STREETS_GLSL `streetCover`'s twin): of a cell's four tints
+ * a, b, c, d at (fx, fz), with `e` the distances to the kerb, the verge's end and the walk's end (StreetPlanes) and
+ * `kinds` the side's kinds byte, the band the point is in (0 carriageway, 1 verge, 2 walk, 3 past them) and its tint, the
+ * band across its nearer edge and that one's tint, and how much of it is wanted, half on the edge and none half a pixel
+ * `footprint` metres wide from it: so each edge is a straight line. A band's tint is the one of its finish among the four
+ * with most weight, else the band's own (STREET_TINT, a verge's VERGE_TINTS, WALK_TINT); past the bands, the four's cover
+ * with no street's or walk's tint in it, or as it is where all four are paved. False, and nothing set, where one of the four is of a finish no band draws over
+ * (a footprint's, the water's). Into `out`: band, tint, other band, other tint, share.
+ */
+export function streetCover(a: number, b: number, c: number, d: number, fx: number, fz: number, e: ArrayLike<number>, kinds: number, footprint: number, finish: (tint: number) => number, out: Float64Array, x = 0, z = 0): boolean {
+  const tints = [a, b, c, d], f = tints.map(finish);
+  if (f.some((s) => !STREET_SOFT.includes(s))) return false;
+  const w = [(1 - fx) * (1 - fz), fx * (1 - fz), (1 - fx) * fz, fx * fz];
+  const verge = e[1]! < e[0]! - 0.01, walk = e[2]! < e[1]! - 0.01;
+  // A flush or worn kerb's asphalt crumbles at its edge, and a rough verge (grass, dirt, gravel) meets what is past it
+  // raggedly: each edge moved by a smooth noise along it (STREET_MESSY), the walk's never.
+  const kerb = (kinds >> 5) & 3, rough = STREET_ROUGH.includes(kinds & 7);
+  const e0 = e[0]! + (kerb === 0 ? 0 : (surfaceNoise(x / STREET_MESSY.grain, z / STREET_MESSY.grain) - 0.5) * (kerb === 1 ? STREET_MESSY.flush : STREET_MESSY.worn));
+  const e1 = e[1]! + (rough ? (surfaceNoise(x / STREET_MESSY.grain + 7.1, z / STREET_MESSY.grain + 3.3) - 0.5) * STREET_MESSY.verge : 0);
+  const e2 = walk ? e[2]! : e1;
+  const band = e0 < 0 ? 0 : e1 < 0 ? 1 : e2 < 0 ? 2 : 3;
+  const below = band === 0 ? 1e3 : band === 1 ? e0 : band === 2 ? e1 : e2, above = band === 0 ? -e0 : band === 1 ? -e1 : band === 2 ? -e2 : 1e3;
+  let lower = band - 1, upper = band + 1;
+  if (lower === 2 && !walk) lower = 1;
+  if (lower === 1 && !verge) lower = 0;
+  if (upper === 1 && !verge) upper = 2;
+  if (upper === 2 && !walk) upper = 3;
+  const kind = kinds & 7;
+  const most = (want: number): number => {
+    let best = -1, top = 0;
+    for (let k = 0; k < 4; k++) if (f[k] === want && w[k]! > top) { top = w[k]!; best = tints[k]!; }
+    return best;
+  };
+  const tintOf = (bd: number): number => {
+    if (bd === 0) { const t = most(SURFACE_NAMES.indexOf("asphalt")); return t >= 0 ? t : STREET_TINT; }
+    if (bd === 1) { const own = VERGE_TINTS[kind]?.[0] ?? BEYOND_TINT, t = most(finish(own)); return t >= 0 ? t : own; }
+    if (bd === 2) { const t = most(GROUND_WALK); return t >= 0 ? t : WALK_TINT; }
+    // Past the bands: the four's cover with each street's and walk's tint taken as the other tint with most weight, so
+    // the samples' stepped street stops at the line. Where all four are paved, that is a car park's, a plaza's or more
+    // road's ground, drawn as it is.
+    let other = -1, top = 0;
+    for (let k = 0; k < 4; k++) {
+      if (f[k] === GROUND_WALK || f[k] === SURFACE_NAMES.indexOf("asphalt")) continue;
+      let sum = 0;
+      for (let j = 0; j < 4; j++) if (tints[j] === tints[k]) sum += w[j]!;
+      if (sum > top) { top = sum; other = tints[k]!; }
+    }
+    if (other < 0) return groundCover(a, b, c, d, fx, fz);
+    const kept = tints.map((t, k) => (f[k] === GROUND_WALK || f[k] === SURFACE_NAMES.indexOf("asphalt") ? other : t));
+    return groundCover(kept[0]!, kept[1]!, kept[2]!, kept[3]!, fx, fz);
+  };
+  const dist = Math.min(below, above), across = below < above ? lower : upper;
+  out[0] = band;
+  out[1] = tintOf(band);
+  out[2] = across;
+  out[3] = across >= 0 && across <= 3 ? tintOf(across) : -1;
+  out[4] = out[3] >= 0 ? clamp(0.5 - dist / Math.max(footprint, 1e-3), 0, 0.5) : 0;
+  return true;
+}
+
+/**
+ * The streets' edges on the ground, which follows GROUND_GLSL: `streetsAt` reads the streets' pictures round the camera
+ * (streets.ts) and `streetCover` is the twin of streetCover. For the wear (ROAD_GLSL): `streetKerb`, metres in from a
+ * raised or worn kerb (0 past it), -2 where the edge is flush, or -1 where the streets say nothing; and `walkPlace`,
+ * where a walk's panels are laid out, along its way and across from its inner edge, where `walkAlong`.
+ */
+export const STREETS_GLSL = `float streetKerb = -1.0;
+vec2 walkPlace = vec2(0.0);
+bool walkAlong = false;
+#ifdef GROUND_STREETS
+uniform highp sampler2D uStreets;
+uniform highp usampler2D uStreetKinds;
+const int STREET_SOFT[${STREET_SOFT.length}] = int[${STREET_SOFT.length}](${STREET_SOFT.join(",")});
+const int VERGE_TINT[8] = int[8](${[0, 1, 2, 3, 4, 5, 6, 7].map((k) => VERGE_TINTS[k]?.[0] ?? BEYOND_TINT).join(",")});
+// The streets at world point w: the distances to the kerb, the verge's end and the walk's end between the four samples
+// round it into e, the nearest sample's kinds into k; false where none is near, past the region round the camera, or
+// where the region's place holds another chunk (its tag).
+bool streetsAt(vec2 w, out vec3 e, out uvec4 k) {
+  vec2 s = w / ${fl(TERRAIN_CELL)};
+  ivec2 c = ivec2(floor(s / ${fl(CHUNK_SIDE)})) - ivec2(floor(uWorldEye.xz / ${fl(CHUNK_SIDE * TERRAIN_CELL)}));
+  e = vec3(${fl(PLANE_MOST)});
+  k = uvec4(0u);
+  // Past the region round the camera, or with the frame drawn without them (passes.ts "streets", fFacade.w's third bit).
+  if (max(abs(c.x), abs(c.y)) > ${STREET_CHUNKS / 2 - 1} || mod(fFacade.w, 8.0) > 3.5) return false;
+  e = (128.0 - texture(uStreets, (s + 0.5) / ${fl(STREET_SIDE)}).rgb * 255.0) / ${fl(PLANE_STEP)};
+  if (min(e.x, min(e.y, e.z)) >= ${fl(PLANE_MOST - 0.1)}) return false;
+  ivec2 n = ivec2(floor(s + 0.5)), nc = n >> ${Math.log2(CHUNK_SIDE)};
+  k = texelFetch(uStreetKinds, n & ${STREET_SIDE - 1}, 0);
+  return int(k.y & 15u) == (((nc.x >> 4) & 3) | (((nc.y >> 4) & 3) << 2));
+}
+bool streetSoft(int s) {
+  for (int i = 0; i < ${STREET_SOFT.length}; i++) if (STREET_SOFT[i] == s) return true;
+  return false;
+}
+// Of the four tints, the one of finish want with most weight w, or -1.
+int streetMost(ivec4 t, ivec4 f, vec4 w, int want) {
+  vec4 m = w * vec4(equal(f, ivec4(want)));
+  int best = -1;
+  float top = 0.0;
+  if (m.x > top) { best = t.x; top = m.x; }
+  if (m.y > top) { best = t.y; top = m.y; }
+  if (m.z > top) { best = t.z; top = m.z; }
+  if (m.w > top) best = t.w;
+  return best;
+}
+int streetTint(int band, ivec4 t, ivec4 f, vec4 w, vec2 at, int kind) {
+  if (band == 0) { int s = streetMost(t, f, w, ${SURFACE_NAMES.indexOf("asphalt")}); return s >= 0 ? s : ${STREET_TINT}; }
+  if (band == 1) { int own = VERGE_TINT[kind], s = streetMost(t, f, w, groundSurface(own)); return s >= 0 ? s : own; }
+  if (band == 2) { int s = streetMost(t, f, w, GROUND_WALK); return s >= 0 ? s : ${WALK_TINT}; }
+  bvec4 paved = bvec4(f.x == GROUND_WALK || f.x == ${SURFACE_NAMES.indexOf("asphalt")}, f.y == GROUND_WALK || f.y == ${SURFACE_NAMES.indexOf("asphalt")}, f.z == GROUND_WALK || f.z == ${SURFACE_NAMES.indexOf("asphalt")}, f.w == GROUND_WALK || f.w == ${SURFACE_NAMES.indexOf("asphalt")});
+  vec4 keep = vec4(not(paved));
+  vec4 sums = vec4(dot(w * keep, vec4(equal(t, t.xxxx))), dot(w * keep, vec4(equal(t, t.yyyy))), dot(w * keep, vec4(equal(t, t.zzzz))), dot(w * keep, vec4(equal(t, t.wwww)))) * keep;
+  int other = -1;
+  float top = 0.0;
+  if (sums.x > top) { other = t.x; top = sums.x; }
+  if (sums.y > top) { other = t.y; top = sums.y; }
+  if (sums.z > top) { other = t.z; top = sums.z; }
+  if (sums.w > top) other = t.w;
+  if (other < 0) return groundCover(t, at);
+  ivec4 kept = ivec4(paved.x ? other : t.x, paved.y ? other : t.y, paved.z ? other : t.z, paved.w ? other : t.w);
+  return groundCover(kept, at);
+}
+// streetCover's twin: the band's tint into tint, the band across its nearer edge into other and how much of it into
+// share; streetKerb and walkPlace set. False where one of the four is of a finish no band draws over.
+bool streetCover(ivec4 t, vec2 at, vec3 e, uvec4 k, vec2 w, float footprint, out int tint, out int other, out float share) {
+  ivec4 f = ivec4(groundSurface(t.x), groundSurface(t.y), groundSurface(t.z), groundSurface(t.w));
+  // A walk's panels along its way (the kinds' third byte, the diamond angle of half a turn) and across from its inner
+  // edge, near a street whether or not its bands are drawn here: a walk the data draws beside one lies along it too.
+  float p = float(k.z & 127u) / 64.0;
+  vec2 along = normalize(p < 1.0 ? vec2(1.0 - p, p) : vec2(1.0 - p, 2.0 - p));
+  walkPlace = vec2(dot(w, along), e.y);
+  walkAlong = true;
+  if (!(streetSoft(f.x) && streetSoft(f.y) && streetSoft(f.z) && streetSoft(f.w))) return false;
+  vec4 wt = vec4((1.0 - at.x) * (1.0 - at.y), at.x * (1.0 - at.y), (1.0 - at.x) * at.y, at.x * at.y);
+  bool verge = e.y < e.x - 0.01, walk = e.z < e.y - 0.01;
+  int kind = int(k.x & 7u);
+  uint kerb = (k.x >> 5u) & 3u;
+  // Ragged edges: a flush or worn kerb's asphalt, a rough verge's far edge (STREET_MESSY).
+  if (kerb != 0u) e.x += (surfaceNoise(w / ${fl(STREET_MESSY.grain)}) - 0.5) * (kerb == 1u ? ${fl(STREET_MESSY.flush)} : ${fl(STREET_MESSY.worn)});
+  if (${STREET_ROUGH.map((r) => `kind == ${r}`).join(" || ")}) e.y += (surfaceNoise(w / ${fl(STREET_MESSY.grain)} + vec2(7.1, 3.3)) - 0.5) * ${fl(STREET_MESSY.verge)};
+  if (!walk) e.z = e.y;
+  int band = e.x < 0.0 ? 0 : e.y < 0.0 ? 1 : e.z < 0.0 ? 2 : 3;
+  float below = band == 0 ? 1e3 : band == 1 ? e.x : band == 2 ? e.y : e.z, above = band == 0 ? -e.x : band == 1 ? -e.y : band == 2 ? -e.z : 1e3;
+  int lower = band - 1, upper = band + 1;
+  if (lower == 2 && !walk) lower = 1;
+  if (lower == 1 && !verge) lower = 0;
+  if (upper == 1 && !verge) upper = 2;
+  if (upper == 2 && !walk) upper = 3;
+  int across = below < above ? lower : upper;
+  tint = streetTint(band, t, f, wt, at, kind);
+  other = across >= 0 && across <= 3 ? streetTint(across, t, f, wt, at, kind) : -1;
+  share = other >= 0 ? clamp(0.5 - min(below, above) / max(footprint, 0.001), 0.0, 0.5) : 0.0;
+  streetKerb = ((k.x >> 5u) & 3u) != 1u ? max(-e.x, 0.0) : -2.0;
+  // A paved verge's panels in rows from the kerb.
+  if (kind == ${PAVED_VERGE} && (band == 1 || across == 1)) walkPlace.y = e.x;
+  return true;
+}
+#endif
+`;
+
 /**
  * The ground's wear on asphalt, sand and walks, where the tier reads the finishes in full (WORLD_ROAD): the twins of
  * `roadWorn` and `walkWorn`. The frame block's fFacade.w has 1 in it when the frame is drawn without the first (passes.ts
- * "road") and 2 without the second ("walks").
+ * "road"), 2 without the second ("walks") and 4 without the streets' edges ("streets").
  */
 export const ROAD_GLSL = `#ifdef WORLD_ROAD
 const vec3 TAR = vec3(${TAR.map(fl).join(",")});
@@ -1278,7 +1470,8 @@ void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec2 at, vec3 d
     float t = (w.x + road.x) / lane, k = floor(t), g = t - k, blur = footprint / lane;
     float wheels = roadBand(g, 0.27, 0.075, blur) + roadBand(g, 0.73, 0.075, blur);
     float oil = roadBand(g, 0.5, 0.07, blur) * (0.4 + 1.2 * surfaceNoise(vec2(w.y / 5.3, k * 3.1)));
-    float gutter = roadBand(abs(w.x), road.x - 0.25, 0.25, footprint) * s;
+    // The gutter along the kerb, from the frame's line where the streets do not draw it (below); none at a flush edge.
+    float gutter = streetKerb > -1.5 && streetKerb < 0.0 ? roadBand(abs(w.x), road.x - 0.25, 0.25, footprint) * s : 0.0;
     shade *= (1.0 - wheels * ${fl(ROAD_LOOK.wheels)} * worn) * (1.0 - oil * ${fl(ROAD_LOOK.oil)} * worn) * (1.0 - gutter * ${fl(ROAD_LOOK.gutter)});
     rough += gutter * 0.1 - (wheels * 0.06 + oil * 0.1) * worn;
     float kb = floor(t + 0.5), cell = floor(w.y / ${fl(ROAD_REPAIRS)}), mid = (cell + 0.5) * ${fl(ROAD_REPAIRS)};
@@ -1287,6 +1480,12 @@ void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec2 at, vec3 d
       joint = roadBand((t - kb) * lane + (surfaceNoise(vec2(w.y / 3.1, kb * 5.5)) - 0.5) * 0.08, 0.0, 0.035, footprint) * s;
     wide = lane;
     from0 = -road.x;
+  }
+  // Where the streets draw the asphalt's edge (STREETS_GLSL), the gutter runs along the kerb's own line, so the two agree.
+  if (streetKerb >= 0.0) {
+    float gutter = roadBand(streetKerb, 0.25, 0.25, footprint);
+    shade *= 1.0 - gutter * ${fl(ROAD_LOOK.gutter)};
+    rough += gutter * 0.1;
   }
   // The repairs of this lane's or this square's 8 m: where in their tile, and whether patched and sealed, by where its middle is.
   vec2 size = vec2(wide, ${fl(ROAD_REPAIRS)}), k = floor((w - vec2(from0, 0.0)) / size), mid = vec2(from0, 0.0) + (k + 0.5) * size;
@@ -1306,9 +1505,10 @@ float covered(float d, float width, float footprint) {
 }
 // A walk's wear (walkWorn's twin); fFacade.w's second bit is set when the frame is drawn without it (passes.ts "walks").
 void walkWear(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec3 p, vec3 dpx, vec3 dpy) {
-  if (fFacade.w > 1.5 || id != GROUND_WALK) return;
+  if (mod(fFacade.w, 4.0) > 1.5 || id != GROUND_WALK) return;
   float panel = WF[id].x * uSurfaceCity[0].w * 0.5, footprint = max(length(dpx.xz), length(dpy.xz));
-  vec2 g = p.xz / panel, k = floor(g), f = g - k;
+  // Along a street's walk its panels run along it, a row from its inner edge (STREETS_GLSL walkPlace); elsewhere square to the world.
+  vec2 g = (walkAlong ? walkPlace : p.xz) / panel, k = floor(g), f = g - k;
   ivec2 ik = ivec2(k);
   float h = surfaceHash(ik * ivec2(5, 9) + ivec2(3, 1));
   vec2 dd = min(f, 1.0 - f) * panel;

@@ -29,6 +29,7 @@ tools/mapdata/.venv/bin/pip install -r tools/maps/requirements.txt
 | `places.json`, `compositions.json` | Named places and the shapes built on them. A place names its building by OpenStreetMap way (`osm_way`, a relation's id negative) or by a point in it (`at`, longitude and latitude), which the build finds again whatever the download or split does; one it cannot find stops the vocabulary stage |
 | `heights.json` | Reviewed building heights where the sources are wrong (Aria on the Bay is 163 m, not 8.4): each a `name`, a point in the building (`at`), what to `set` (`height_m`, `levels`, `height_from`), and its `reason` and `sources`. The labels stage sets them; one on no building stops it |
 | `world.json` | The districts as drawn (name, style, how tall, a ring of longitudes and latitudes) and the spawn points as placed. The world stage keeps them and proposes districts and spawn points only for the ground they leave, so a bigger cut grows round them |
+| `streets/*.jsonl` | The street overlay: one entry a line, a street's type or any field of its section for an OpenStreetMap way, a point, a line or an area in longitude and latitude, with its reason, over what the rules (`tools/mapworld/rules/streets.json`, and this city's `rules.json` `streets`) make of it. The build reads them alone, and stops on one that matches no street. How to write one, and the loop to check it: [streets](../../planning/workstreams/streets.md) |
 | `look/` | Cameras and routes for judging the city by eye |
 | `art/map.png` | The map screen's picture, once artist has painted it (below) |
 
@@ -57,7 +58,7 @@ again only when its inputs, its own code or a stage before it changed (`stages.j
 | ways | `tools/mapdata/ways.py` | bridges, piers, towers, stairs, lettered signs |
 | world | `tools/mapdata/world.py --accept` | `world/world.json`: districts round OpenStreetMap's places, spawn points, and what `city.json`'s `world` sets |
 | vocabulary | `tools/mapdata/vocabulary.py` | `ruins/vocabulary.json`: the rule tables, the city's own over them, budgets by its footprints |
-| build | `tools/mapworld/build.ts` | `var/maps/<city>.snmap` |
+| build | `tools/mapworld/build.ts` | `var/maps/<city>.snmap`, and in `reports/` what the streets were fitted and typed as (`streets.json`; `bun tools/maps/street.ts <city> <way, name or lon,lat>` reads it and draws the street) |
 
 The downloads are a build's: keep them on a machine that does map work and fetch them again elsewhere. A 16 km cut
 holds several gigabytes of them; `du -sh var/mapdata/*` says what each city keeps, and an old cut's folder can go.
@@ -89,9 +90,19 @@ to the build's code (`tools/mapworld`, `tools/map`, the shared world code) build
 reaches a stage reading the downloads (prepare to ways) makes `city.ts` fetch them first. A kit made at another commit
 still unpacks: the stages whose code differs run again. Make kits again after a change to a stage before the build.
 
-## Miami's transfer terminals
+## The cities' transfer terminals
 
-Miami's `city.json` assigns the red Sextant to Wynwood, the green Louver Lantern to Miami Beach Golf Club and the blue Tide Eye to Virginia Key. The build finds dry ground near each site, grades the deck and places the travel terminal at its centre. The review cameras in `look/tide-eye.json` follow the sites stored in the generated map.
+Each city's `city.json` gives its three obelisks one red Sextant, one green Louver Lantern and one blue Tide Eye (`color`, and `form`: `sextant`, `lantern` or none), each with its `why`:
+
+| City | Red Sextant | Green Louver Lantern | Blue Tide Eye |
+| --- | --- | --- | --- |
+| Miami | Wynwood | Miami Beach Golf Club | Virginia Key |
+| Tampa | Raymond James Stadium | Ybor City | Davis Islands |
+| San Francisco | Embarcadero | Panhandle | Marina Green |
+| Los Angeles | Griffith Observatory | Hollywood and Highland | Lake Hollywood Park |
+| Las Vegas | The Strat | Welcome to Fabulous Las Vegas | Sphere |
+
+The build finds a deck of dry, open and level enough ground near each site, grades it and places the travel terminal at its centre ([mapworld](../mapworld/README.md), Obelisks): an entry's `deck` caps its radius in metres and `relief` allows more than 4 m of rise under it (Virginia Key's hill). The terminal faces `face`, and so does the broadside of the Sextant and of the Tide Eye's fork. The review cameras in each city's `look/tide-eye.json` follow the sites stored in the generated map; a camera's height over the deck is `over`, so it holds where the decks stand hundreds of metres up.
 
 ## Vehicles in a fresh city
 

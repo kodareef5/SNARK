@@ -80,36 +80,46 @@
     "obelisks": [
       {
         "name": "Marina Green",
+        "color": "blue",
         "at": [
-          -122.4372,
-          37.8061
+          -122.43729,
+          37.80682
         ],
         "face": [
-          -122.4391,
-          37.8066
-        ]
+          -122.423,
+          37.8267
+        ],
+        "deck": 22,
+        "why": "on Marina Green's lawn by the water, which holds a 22 m deck between the boulevard and the shore road: the eye over the bay where it opens to the Golden Gate, broadside to Alcatraz and the Marina"
       },
       {
         "name": "Embarcadero",
+        "color": "red",
+        "form": "sextant",
         "at": [
-          -122.3962,
-          37.7942
+          -122.39622,
+          37.79602
         ],
         "face": [
-          -122.3946,
-          37.7949
-        ]
+          -122.4347,
+          37.7764
+        ],
+        "why": "in Sue Bierman Park by the Ferry Building, the only open ground on the waterfront that holds a deck (16 m): the port's instrument over the piers and downtown's towers, broadside to the city and the Bay Bridge"
       },
       {
         "name": "Panhandle",
+        "color": "green",
+        "form": "lantern",
         "at": [
-          -122.4455,
-          37.7726
+          -122.44535,
+          37.77264
         ],
         "face": [
-          -122.4474,
-          37.7723
-        ]
+          -122.4276,
+          37.7916
+        ],
+        "deck": 22,
+        "why": "in the Panhandle by Masonic Avenue, a 22 m deck in the park's width: a tower of green louvres over its trees in the middle of the city, seen over its hills"
       }
     ]
   },

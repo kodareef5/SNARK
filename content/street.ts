@@ -8,6 +8,7 @@
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { PI, detCos, detSin } from "../shared/math/scalar.ts";
 import type { HullDef } from "../shared/world/convex.ts";
+import { BENT_SECTIONS } from "./bends.ts";
 import { CURB_RETURNS } from "./curbs.ts";
 
 const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number): ShapeBox => ({
@@ -174,7 +175,7 @@ const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
 }));
 // The curb returns at street corners (content/curbs.ts) are the street's too.
-export const STREET: readonly Def[] = [...SHAPES, ...STATICS, ...CURB_RETURNS];
+export const STREET: readonly Def[] = [...SHAPES, ...STATICS, ...CURB_RETURNS, ...BENT_SECTIONS];
 
 /**
  * What a car knocks down (server/vehicle-trees.ts): a lamp or a wooden pole hit hard enough becomes its fallen form where it

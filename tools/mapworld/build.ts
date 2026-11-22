@@ -1,4 +1,4 @@
-// A playable map from a city's base layers: bun tools/mapworld/build.ts <name or folder> [--release]
+// A playable map from a city's base layers: bun tools/mapworld/build.ts <name or folder> [--release] [--out DIR]
 //
 // Reads the city's work folder (tools/maps/work.ts; tools/maps/city.ts runs this as its last stage), or a folder named by
 // a path (its last part the map's name): base/ (its VALUES.md says what each layer holds) and world/world.json (the sea, the
@@ -28,6 +28,7 @@ import { SPAWN_CLEAR, isFurniture } from "./street-furniture.ts";
 import { streetGraph } from "./street-graph.ts";
 import { cornersOf } from "./corners.ts";
 import { roadFrame } from "./road-frame.ts";
+import { planStreets } from "./streets/plan.ts";
 import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
@@ -42,7 +43,7 @@ import { workFolder } from "../maps/work.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
-export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps")): Promise<{ file: string; stats: Record<string, unknown> }> {
+export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps"), options: { streets?: boolean } = {}): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
   // Each step with the process's memory as it ends it and the most it has held: what a machine of 32 GB can build is
   // read here (/proc, so Linux alone; elsewhere the time alone).
@@ -73,7 +74,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // Where two streets meet the corner is rounded (corners.ts): on the ground here, and by a curb return the walks set down.
   const returns = world.heaps === false ? vocabulary(source).street.walks?.returns : undefined;
   const corners = returns ? cornersOf({ source, toLattice: (e, n) => [grid.east + x0 - e, n - (grid.south - z0)] }, returns) : [];
-  const ground = makeGround(base, world, lap, corners);
+  // The streets as lines, fitted, typed by the rules and the city's overlay (streets/plan.ts): the ground is painted from
+  // their sections, and the map carries them in its streets parts.
+  // With `streets` false, as before them: no part, and the ground painted from the data's masks and the corners alone.
+  const streets = options.streets === false ? null : planStreets(source, base, world, world.heaps === false ? (vocabulary(source) as Parameters<typeof planStreets>[3]) : null, join(source, "reports", world.ruins?.report ?? "ruins"), (line) => console.log(`        ${line}`));
+  lap(`the streets: ${streets?.parts.length ?? 0} parts`);
+  const ground = makeGround(base, world, lap, corners, streets?.held ?? null);
   // A step's own working arrays let go before the next takes its own: the ground's are some 26 full-frame arrays, the
   // ruins' their whole city's plans, and without a collection between them the next step's peak was laid on theirs.
   Bun.gc(true);
@@ -225,7 +231,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
     const fd = openSync(join(layers, "statics.json"), "w");
     let chunk = "[\n";
     statics.forEach((p, i) => {
-      chunk += `${i > 0 ? ",\n" : ""}  ${JSON.stringify(engine(p))}`;
+      chunk += `${i > 0 ? ",\n" : ""}  ${JSON.stringify(engine(p.bend ? { ...p, bend: Array.from(p.bend) } : p))}`;
       if (chunk.length > 1 << 20) { writeSync(fd, chunk); chunk = ""; }
     });
     writeSync(fd, `${chunk}\n]\n`);
@@ -241,7 +247,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   lap(`layers in ${layers}`);
 
   // The statics from memory as statics.json says them (readLayers), not read back from it.
-  let map = readLayers(layers, statics.map((p) => ({ kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw) })));
+  let map = readLayers(layers, statics.map((p) => ({ kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw), ...(p.bend ? { bend: p.bend } : {}) })));
   map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
   // The map holds the statics in columns now; the pieces as objects, 7 to 13 M of them, are let go for the rest of the
   // build, and only their count is kept for the numbers.
@@ -303,6 +309,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // The roads' frame, for drawing the wear of their lanes (road-frame.ts), from the street data's pieces.
   map = { ...map, road: roadFrame(streetGraph(site), nx, nz, x0, z0) };
   lap(`the roads' frame on ${map.road!.across.reduce((n, v) => n + (v > 0 ? 1 : 0), 0)} of its 4 m samples`);
+  if (streets && streets.parts.length > 0) map = { ...map, streets: streets.parts };
   const bytes = writeMap(map);
   // The file is the map from here on (the numbers below read it back): the map as built is let go first.
   map = undefined as unknown as typeof map;
@@ -417,7 +424,11 @@ export async function buildMap(named: string, release = false, output = join(ROO
 }
 
 if (import.meta.main) {
-  const words = process.argv.slice(2);
-  const { stats } = await buildMap(words.find((w) => w !== "--release") ?? (() => { throw new Error("Map name required"); })(), words.includes("--release"));
+  // --out <folder> writes the map and its layers there, not var/maps: a cut's build (cut.ts) keeps out of the cities'.
+  // --no-streets builds it as before the streets' lines, to compare.
+  const words = process.argv.slice(2), out = words.indexOf("--out");
+  const output = out >= 0 ? resolve(words[out + 1] ?? "") : join(ROOT, "var/maps");
+  const named = words.filter((w, k) => !w.startsWith("--") && (out < 0 || k !== out + 1))[0];
+  const { stats } = await buildMap(named ?? (() => { throw new Error("Map name required"); })(), words.includes("--release"), output, { streets: !words.includes("--no-streets") });
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }

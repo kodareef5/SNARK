@@ -199,6 +199,12 @@ test("a pack of another version is refused, clips come back within a step, and t
       expect([m.id, fine === 0 && mid > 0 && far > mid && far < 2]).toEqual([m.id, true]);
       continue;
     }
+    if (m.id.startsWith("core:zzzzzbend_") && m.id.endsWith("_c")) {
+      // A bent section's curve in two segments: its chords stand 11 cm off the walk's back on the outside of the tightest
+      // bend, which is stated (assets/source/core/props/street/asset.ts), so it is drawn from further off than the rest.
+      expect([m.id, fine === 0 && mid > 0 && far > mid && far < 0.12]).toEqual([m.id, true]);
+      continue;
+    }
     expect([m.id, coloured.has(m.id) ? fine === 0 && mid === 0 && far === 0 : looks.has(m.id) ? fine === 0 && mid === 0 && far > 0 && far < 1 : fine === 0 && mid > 0 && far > mid && far < 0.1]).toEqual([m.id, true]);
   }
 });

@@ -147,8 +147,8 @@ const footprint = (b: Box): [number, number][] => {
 /** Ground no piece of these stands on: water, a building's floor and walls, heaps, containers and decks. */
 const BARRED = new Set<number>([S.CHANNEL, S.DEEP, S.FLAT, S.SHALLOW, S.POOL, S.HEAP, S.SPILL, S.WALL, S.FLOOR, S.DECK, S.CONTAINER]);
 
-/** A walk's slab, with or without its gutter (not its ramps, drains or boxes). */
-const isWalk = (p: StaticPiece): boolean => /^core:zruin_zwalk8g?_/.test(p.kind);
+/** A walk's slab, with or without its gutter (not its ramps, drains or boxes), or a bent kerb's collision box (bent-walks.ts). */
+const isWalk = (p: StaticPiece): boolean => /^core:(zruin_zwalk8g?_|zzzzzbendhit_box_)/.test(p.kind);
 
 /** A way kept clear besides the site's reserved routes: its points and its width. */
 export type Reserved = Site["growthRoutes"][number];

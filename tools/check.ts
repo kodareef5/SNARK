@@ -31,10 +31,11 @@ const WORKER_HEAP_RAM = 500_000_000;
 /**
  * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares 250 among round 8's phases; 50
  * hold the executor's mirror of the card's state, which sends a frame's changes alone; 100 are for the maps round's far
- * shadow, filtering and map loader (D748); the last 5 time the assets' uploads and fetch the data utility's record of
- * frames (D899).
+ * shadow, filtering and map loader (D748); 5 time the assets' uploads and fetch the data utility's record of frames
+ * (D899); 6 make the streets' two pictures round the camera and put each frame's tiles of them on the card (D1000); the
+ * last 3 point attributes 13 and 14 at a bent draw's stream of bends, beside its instances (D1006).
  */
-const SHELL_MAX_LINES = 1605;
+const SHELL_MAX_LINES = 1614;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
@@ -45,7 +46,8 @@ const ASSETS_MAX_LINES = 500;
 const WIKI_MAX_LINES = 190;
 /**
  * The admin page's script in its files: polling, the map's and the timeline's canvases, the tables, panels and charts.
- * Its decisions are in client/core/admin. 600 held the live page; the timeline over the survivor log brought 330.
+ * Its decisions are in client/core/admin. 600 held the live page; the timeline over the survivor log brought 330; the
+ * Cast panel's wiring 50 (D1025).
  */
 const ADMIN_MAX_LINES = 1150;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);

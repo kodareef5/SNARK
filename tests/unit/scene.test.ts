@@ -57,7 +57,11 @@ function hashPacket(p: FramePacket, h: number): number {
   const count = (...n: number[]): void => add(Float64Array.from(n));
   for (const a of [p.viewProj, p.nearViewProj, p.sky, p.sun]) add(a);
   count(p.camX, p.camY, p.camZ, p.light, p.fogStart, p.fogEnd, p.skipped, p.dropped, p.triangles, p.drawCount, p.tileCount, p.transientCount, p.boneCount);
-  for (const a of [p.drawMesh, p.drawLod, p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances, p.drawFlags]) add(a, p.drawCount * a.BYTES_PER_ELEMENT);
+  for (const a of [p.drawMesh, p.drawLod, p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances]) add(a, p.drawCount * a.BYTES_PER_ELEMENT);
+  // The flags' low 16 bits as they were held before a flag past them (DRAW_BENT), and those past them where any is set.
+  const flags = p.drawFlags.subarray(0, p.drawCount);
+  add(Uint16Array.from(flags));
+  if (flags.some((f) => f > 0xffff)) add(Uint16Array.from(flags, (f) => f >>> 16));
   add(p.drawOffset, p.drawCount * 12);
   add(p.tiles, p.tileCount * 16);
   add(p.tileOrigin, p.tileCount * 8);
@@ -556,8 +560,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // camera up; with the view as a distance from the eye it is that again. It was 48987352 until the street corners' curb
   // returns (content/curbs.ts) added their grey meshes; without them it is that again. It was 2365985713 until a
   // marina's dock kit (content/docks.ts) and the soul balls and their flash (tools/pack/balls.ts) added their grey
-  // meshes (3112871861 with the docks alone, 3364631049 with the balls alone); without them it is that again.
-  expect(hash).toBe(3725999613);
+  // meshes (3112871861 with the docks alone, 3364631049 with the balls alone); without them it is that again. It was
+  // 3725999613 until the bent street sections (content/bends.ts) added their grey meshes; without them it is that again.
+  expect(hash).toBe(554916778);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -594,8 +599,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // list's and the ivy, as above, and 1161881608 until the cladding, the plant room's louvres and the shrub's shape,
   // and 1911735803 until the view was measured along the ground, as above, and 801807325 until the curb returns, as above,
   // and 307392466 until a marina's dock kit and the soul balls' meshes, as above (3681705146 with the docks alone,
-  // 2882051178 with the balls alone).
-  expect(saddled.hash).toBe(3143791074);
+  // 2882051178 with the balls alone), and 3143791074 until the bent street sections, as above.
+  expect(saddled.hash).toBe(1784790367);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

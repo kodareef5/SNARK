@@ -13,7 +13,9 @@ import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
-import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
+import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
@@ -28,7 +30,7 @@ import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyope
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -45,6 +47,8 @@ import { MAP_ROLES, TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { SIZE_UNITS } from "../../shared/world/nodes.ts";
 import { decodeSkin, decodeSurface } from "../pack/surface.ts";
+import { bendVertex, unpackBend, type Bend } from "../../shared/world/bends.ts";
+import { STRIP_METRES, bentWear } from "../../client/core/render/bend.ts";
 
 export const PICK_SKY = 0;
 export const PICK_TERRAIN = 1;
@@ -109,6 +113,9 @@ interface Surfaced {
   normals: Float32Array;
   center: readonly number[];
   half: readonly number[];
+  /** A bent piece's bend, and its vertices' place along its kerb line, across and up (bend.ts gBent); null for any other. */
+  bend: Bend | null;
+  bent: Float32Array | null;
 }
 
 /** What a draw reads where its material has no texture: one pixel of NEUTRAL. */
@@ -223,14 +230,27 @@ function risenTo(albedo: Float64Array | number[], orm: Float64Array | number[], 
  * The ground's wear, asphalt's and sand's (world-surfaces.ts roadWorn) where `road` and a walk's (walkWorn) where
  * `walks`, as much of it as the packed maps have risen to (glsl.ts groundWorn).
  */
-function wornGround(albedo: Float64Array, orm: Float64Array, normal: Float64Array, id: number, x: number, z: number, footprint: number, city: ArrayLike<number>, sample: WorldSample, road: boolean, walks: boolean): void {
+function wornGround(albedo: Float64Array, orm: Float64Array, normal: Float64Array, id: number, x: number, z: number, footprint: number, city: ArrayLike<number>, sample: WorldSample, road: boolean, walks: boolean, streets = false, along = false): void {
   risenFrom(albedo, orm, normal);
   if (road && roadsOf) roadFrameAt(roadsOf, x, z, roadAt);
-  if (road) roadWorn(albedo, orm, id, x, z, footprint, sample, roadsOf ? roadAt : null);
-  if (walks) walkWorn(albedo, orm, normal, id, x, z, footprint, city, sample);
+  // Where the streets draw the ground's edges (STREETS_GLSL): the gutter along the kerb's line; and near a street (`along`
+  // too) the walk's panels along it, a paved verge's in rows from the kerb.
+  const lined = (streets || along) && streetsOf !== null && streetsOf.at(x, z, streetE, streetK);
+  if (lined) {
+    alongOf(streetK[2]!, streetAlong);
+    streetPlace[0] = x * streetAlong[0]! + z * streetAlong[1]!;
+    streetPlace[1] = streets && (streetK[0]! & 7) === PAVED_VERGE && streetE[0]! >= 0 && streetE[1]! < 0 ? streetE[0]! : streetE[1]!;
+  }
+  if (road) roadWorn(albedo, orm, id, x, z, footprint, sample, roadsOf ? roadAt : null, !lined || !streets ? -1 : kerbOf(streetK[0]!) !== 1 ? Math.max(-streetE[0]!, 0) : -2);
+  if (walks) walkWorn(albedo, orm, normal, id, x, z, footprint, city, sample, lined ? streetPlace : null);
   risenTo(albedo, orm, normal, 1 - finishesEarly);
 }
 const wander = new Float64Array(2);
+/** The streets round the camera as the card holds them (client/core/render/streets.ts), for the frame drawn, or null. */
+let streetsOf: StreetPlanes | null = null;
+const streetE = new Float64Array(3), streetK = new Uint8Array(4), streetOut = new Float64Array(5), streetAlong = new Float64Array(2), streetPlace = new Float64Array(2);
+/** The camera's chunk and whether the frame draws the streets' edges at all (a tier that reads the finishes in full, and not "streets" off). */
+let streetEye = [0, 0], streetsDrawn = false;
 
 /**
  * The tint the lit tiers' ground takes at ground point (x, z) of a tile that reads picture `pic`, a pixel `footprint`
@@ -238,8 +258,27 @@ const wander = new Float64Array(2);
  * into `out` the other finish's tint it meets there and how much of it is wanted (`groundMeet`).
  */
 function groundPair(hf: Heightfield, pic: GroundPicture, x: number, z: number, footprint: number, desert: boolean, out: Float64Array): number {
-  groundWander(x, z, footprint, wander);
   const metres = hf.cell * pic.step, finish = (tint: number): number => surfaceIndex(tint, true, desert ? "las-vegas" : "default");
+  // Near a street, on the window's tiles round the camera, its edges from its lines (STREETS_GLSL), the cover looked up
+  // where the point is; a share of -1 - share says so to the shading (litFlat). Where one of the four samples is of a
+  // finish no band draws over, the cover is the samples' own, looked up where the point is, and a share of -10 - share
+  // says that a walk there lies along the street all the same.
+  const near = streetsDrawn && streetsOf !== null && pic.step === 1 && Math.max(Math.abs(Math.floor(x / 64) - streetEye[0]!), Math.abs(Math.floor(z / 64) - streetEye[1]!)) <= STREET_CHUNKS / 2 - 1 && streetsOf.at(x, z, streetE, streetK);
+  if (near) {
+    const s = Math.min(Math.max(x / metres - pic.i, 0), pic.lastI), t = Math.min(Math.max(z / metres - pic.j, 0), pic.lastJ);
+    const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1), at = (pic.j + j) * hf.nx + pic.i + i;
+    const a = hf.tint[at]!, b = hf.tint[at + 1]!, c = hf.tint[at + hf.nx]!, d = hf.tint[at + hf.nx + 1]!;
+    if (streetCover(a, b, c, d, s - i, t - j, streetE, streetK[0]!, footprint, finish, streetOut, x, z)) {
+      out[0] = streetOut[3]!;
+      out[1] = -1 - streetOut[4]!;
+      return streetOut[1]!;
+    }
+    const cover = groundCover(a, b, c, d, s - i, t - j);
+    groundMeet(cover, a, b, c, d, s - i, t - j, finish, out);
+    out[1] = -10 - out[1]!;
+    return cover;
+  }
+  groundWander(x, z, footprint, wander);
   const look = (wx: number, wz: number): number => {
     const s = Math.min(Math.max((x + wx) / metres - pic.i / pic.step, 0), pic.lastI);
     const t = Math.min(Math.max((z + wz) / metres - pic.j / pic.step, 0), pic.lastJ);
@@ -325,19 +364,24 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
     // Asphalt's and sand's wear, as LIT_TERRAIN_FRAGMENT has it where the tier reads the finishes in full: it reads the
     // packed array's masks, so it comes up with them as the weathering does.
-    const off = p.frame[FRAME.roadOff]!, road = off % 2 < 0.5, walks = off < 1.5;
+    const off = p.frame[FRAME.roadOff]! % 4, road = off % 2 < 0.5, walks = off < 1.5;
+    // A street's bands meet on their lines (groundPair said so by a share from -1 down), and near a street a walk lies
+    // along it (a share from -10 down) though its bands are not drawn there.
+    const nearStreet = ground && share <= -9.5, lined = ground && !nearStreet && share < 0;
+    if (nearStreet) share = -10 - share;
+    else if (lined) share = -1 - share;
     const worn = ground && !touch && (road || walks) && finishesEarly < 1;
-    if (worn) wornGround(albedo, worldOrm, normal, index, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks);
+    if (worn) wornGround(albedo, worldOrm, normal, index, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks, lined, nearStreet);
     // A walk meets another finish on a line (walkMeet), and elsewhere the higher of the two shows through.
     const second = other >= 0 ? surfaceIndex(other, true, city) : -1;
-    const straight = ground && other >= 0 && (index === GROUND_WALK || second === GROUND_WALK);
-    if (straight) share = walkMeet(share, footprint);
+    const straight = lined || (ground && other >= 0 && (index === GROUND_WALK || second === GROUND_WALK));
+    if (straight && !lined) share = walkMeet(share, footprint);
     if (other >= 0 && share > 0) {
       for (let c = 0; c < 3; c++) albedo2[c] = srgbToLinear(pal[other * 4 + c]! / 255);
       const h2 = worldSurface(albedo2, orm2, normal2, albedo2, second, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
       const b = straight ? share : higher(h, h2, share, GROUND_SCALE, GROUND_BAND);
       if (ground) asphalt += ((second === DRY_ASPHALT.surface ? 1 : 0) - asphalt) * b;
-      if (worn) wornGround(albedo2, orm2, normal2, second, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks);
+      if (worn) wornGround(albedo2, orm2, normal2, second, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks, lined, nearStreet);
       for (let c = 0; c < 3; c++) {
         albedo[c] = albedo[c]! * (1 - b) + albedo2[c]! * b;
         worldOrm[c] = worldOrm[c]! * (1 - b) + orm2[c]! * b;
@@ -587,9 +631,12 @@ export class Rasterizer {
   private readonly deferredSurface: Uint8Array;
   private readonly deferredAt: Float64Array;
   private readonly deferredNormal: Float64Array;
-  /** On the ground, the other finish's tint where two meet, or -1, and how much of it is wanted. */
+  /** On the ground, the other finish's tint where two meet, or -1, and how much of it is wanted; less than 0 where a street's bands meet (groundPair). */
   private readonly deferredOther: Int16Array;
   private readonly deferredShare: Float32Array;
+  /** The streets the heightfield holds, and their planes as the card holds them. */
+  private streetsFrom: StreetSectors | null = null;
+  private streetPlanes: StreetPlanes | null = null;
   /** On a weathered static (world-surfaces.ts `weathered`), its weatherFrame and its instance's seed, or a seed of -1. */
   private readonly deferredOwn: Float32Array;
   /** The instance being drawn, where the flat program weathers it: its yaw's cosine and sine, its origin from the eye, and its seed, or -1. */
@@ -699,6 +746,12 @@ export class Rasterizer {
     }
     if (this.finishesMeant) finishesEarly = 2;
     roadsOf = this.hf.road;
+    // The streets' edges, as the card draws them round the camera on a tier that reads the finishes in full; the card
+    // holds every chunk of the region once the frames have filled it, which a picture's settled frame has.
+    if (this.hf.streets && this.streetsFrom !== this.hf.streets) this.streetPlanes = new StreetPlanes((this.streetsFrom = this.hf.streets));
+    streetsOf = this.hf.streets ? this.streetPlanes : null;
+    streetsDrawn = packet.lit && packet.tier.finish === "full" && packet.frame[FRAME.roadOff]! % 8 < 3.5;
+    streetEye = [Math.floor(packet.camX / 64), Math.floor(packet.camZ / 64)];
     const facades = Array.from(packet.facadeSlots, (t) => (t >= 0 ? this.textures.get(t) ?? null : undefined));
     this.facadeSample = packet.lit && facades.some((t) => t) && facades.every((t) => t !== null) ? (k, u, v, lod, out) => sample(facades[k]!, u, v, lod - (facades[k]!.pictures.length - 1), out) : null;
     if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
@@ -1123,11 +1176,17 @@ export class Rasterizer {
           this.ownSeed = staticSeed(staticPlace(ix + p.camX, iz + p.camZ));
         }
         const k = sized ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
+        const bend = this.bendOf(p.drawFlags[d]!, p.drawBuffer[d]!, inst), b = this.bentFlat;
         for (let v = 0; v < n; v++) {
-          const lx = lod.positions[v * 3]! * k;
-          const lz = lod.positions[v * 3 + 2]! * k;
+          let lx = lod.positions[v * 3]! * k, ly = lod.positions[v * 3 + 1]! * k, lz = lod.positions[v * 3 + 2]! * k;
+          if (bend) {
+            bendVertex(b, bend, lx, ly, lz, 0, 1, 0, 1, 0, 0);
+            lx = b[0]!;
+            ly = b[1]!;
+            lz = b[2]!;
+          }
           out[v * 3] = c * lx + s * lz + ix;
-          out[v * 3 + 1] = lod.positions[v * 3 + 1]! * k + iy;
+          out[v * 3 + 1] = ly + iy;
           out[v * 3 + 2] = -s * lx + c * lz + iz;
         }
       }
@@ -1479,7 +1538,7 @@ export class Rasterizer {
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
     const wheels = p.drawWheelBones[d]!, finish = p.drawStreetMaterial[d]!;
-    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half };
+    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half, bend: null, bent: null };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1496,7 +1555,14 @@ export class Rasterizer {
         view.getFloat32(at+4,true)+p.drawOffset[d*3+1]!+p.camY,
         view.getFloat32(at+8,true)+p.drawOffset[d*3+2]!+p.camZ);
       s.firstBone = view.getUint16(at+12,true);
+      s.bend = this.bendOf(p.drawFlags[d]!, p.drawBuffer[d]!, inst);
       this.pose(p, d, lod, surface, view, at, s);
+      if (s.bend) {
+        // As SURFACE_VERTEX has it: the faces along the piece take the strip by the station, its wear the seed and wear.
+        const uvs = (s.uvs = surface.uvs.slice());
+        for (let v = 0; v < uvs.length / 2; v++) if (Math.abs(surface.normals[v * 3]!) < 0.5) uvs[v * 2] = s.bent![v * 3]! / STRIP_METRES;
+        s.seed = s.bend.seed + Math.round(s.bend.wear * 127) * 256;
+      } else s.uvs = surface.uvs;
       this.handAt = Math.hypot(view.getFloat32(at, true) + p.drawOffset[d * 3]!, view.getFloat32(at + 4, true) + p.drawOffset[d * 3 + 1]!, view.getFloat32(at + 8, true) + p.drawOffset[d * 3 + 2]!);
       regionDyes(this.dyes, this.pack.palette, data, at + 14, material.grey);
       // A sized instance's last region is its size, and dyes nothing.
@@ -1526,6 +1592,8 @@ export class Rasterizer {
     const first = view.getUint16(at + 12, true);
     let px = view.getFloat32(at, true), py = view.getFloat32(at + 4, true), pz = view.getFloat32(at + 8, true);
     const k = mode === -1 ? view.getUint8(at + 14 + SIZE_REGION) / SIZE_UNITS : 1;
+    const bend = mode === -3 ? s.bend : null;
+    if (bend && (!s.bent || s.bent.length < n * 3)) s.bent = new Float32Array(n * 3);
     if (mode <= 0) {
       const yaw = (first / 65536) * Math.PI * 2;
       const sin = Math.sin(yaw);
@@ -1546,17 +1614,39 @@ export class Rasterizer {
         const b = (first + lod.bones[v]!) * BONE_FLOATS;
         for (let i = 0; i < BONE_FLOATS; i++) m[i] = p.bones[b + i]!;
       }
-      const lx = positions[v * 3]! * k + px, ly = positions[v * 3 + 1]! * k + py, lz = positions[v * 3 + 2]! * k + pz;
+      let lx = positions[v * 3]! * k + px, ly = positions[v * 3 + 1]! * k + py, lz = positions[v * 3 + 2]! * k + pz;
+      if (bend) {
+        // The twin of BEND_GLSL: the vertex laid along the bend in the piece's frame, and its normal and tangent turned so.
+        const b = this.bentAt;
+        bendVertex(b, bend, lx, ly, lz, normals[v * 3]!, normals[v * 3 + 1]!, normals[v * 3 + 2]!, tangents[v * 4]!, tangents[v * 4 + 1]!, tangents[v * 4 + 2]!);
+        lx = b[0]!;
+        ly = b[1]!;
+        lz = b[2]!;
+        for (let i = 0; i < 6; i++) this.bentFrame[i] = b[3 + i]!;
+        s.bent!.set([b[9]!, b[10]!, positions[v * 3 + 1]!], v * 3);
+      }
       out[v * 3] = m[0]! * lx + m[1]! * ly + m[2]! * lz + m[3]!;
       out[v * 3 + 1] = m[4]! * lx + m[5]! * ly + m[6]! * lz + m[7]!;
       out[v * 3 + 2] = m[8]! * lx + m[9]! * ly + m[10]! * lz + m[11]!;
       const bone = lod.bones[v]!;
       if (mode === 1 && s.rest && bone < 32 && (s.wheelBones & (1 << bone))) deflectTire(p.frame,first,bone,s.rest,positions,v,px,py,pz,m,out);
       if (mode === -2) out[v * 3 + 1] = this.onGround(p, out[v * 3]!, out[v * 3 + 1]!, out[v * 3 + 2]!, ly);
-      turned(m, normals, v * 3, this.frames, v * 6);
-      turned(m, tangents, v * 4, this.frames, v * 6 + 3);
+      turned(m, bend ? this.bentFrame : normals, bend ? 0 : v * 3, this.frames, v * 6);
+      turned(m, bend ? this.bentFrame : tangents, bend ? 3 : v * 4, this.frames, v * 6 + 3);
     }
   }
+
+  /** A bent piece's bend (bend.ts): that of instance `inst` of a draw's buffer, in the buffer BEND_BUFFERS past it; null for a draw not bent. */
+  private bendOf(flags: number, buffer: number, inst: number): Bend | null {
+    if ((flags & DRAW_BENT) === 0) return null;
+    const b = this.buffers.get(buffer + BEND_BUFFERS);
+    if (!b) throw new Error(`a bent draw of buffer ${buffer} has no bends`);
+    return unpackBend(new Int16Array(b.data.buffer, b.data.byteOffset, b.data.byteLength >> 1), inst * 8);
+  }
+
+  private readonly bentAt = new Float64Array(11);
+  private readonly bentFrame = new Float32Array(6);
+  private readonly bentFlat = new Float64Array(11);
 
   /** The twin of surface.ts `onGround`: the ground under a camera-relative point, camera-relative, `lift` over it, where the window reaches. */
   private onGround(p: FramePacket, rx: number, ry: number, rz: number, lift: number): number {
@@ -1817,6 +1907,7 @@ export class Rasterizer {
       src[o + 11] = s.tangents[v * 4 + 3]!;
       for (let i = 0; i < 3; i++) src[o + 12 + i] = s.box ? s.box[v * 3 + i]! : 0;
       if (s.weather || s.wheelBones) for (let i = 0; i < 3; i++) src[o+15+i] = s.positions[v*3+i]!;
+      if (s.bent) for (let i = 0; i < 3; i++) src[o + 15 + i] = s.bent[v * 3 + i]!;
       for (let i = 0; i < 3; i++) src[o+18+i] = s.wheelBones || s.glass ? s.normals[v*3+i]! : 0;
       if (bone && bone <= 32 && (s.wheelBones & (1 << (bone-1)))) {
         const at = (bone-1)*3, radius = Math.max(0.12, s.rest![at+1]!);
@@ -1949,6 +2040,13 @@ export class Rasterizer {
             wounded(albedo, mro, layer, s.level, wearLate(s.wear, carried[12]!, carried[13]!, carried[14]!));
           }
           if (s.weather) weatherVehicle(albedo,mro,carried[15]!,carried[16]!,carried[17]!,s.seed,s.weather,s.label === BURNT_SHEET);
+          if (s.bend && p.lit && p.tier.finish === "full" && p.frame[FRAME.roadOff]! < 7.5) {
+            // As SURFACE's BENT_WEAR: by where the pixel lies along the kerb, and how far that moves to the next pixel.
+            const right = (r0 * poly[v0 + 15]! + r1 * poly[v1 + 15]! + r2 * poly[v2 + 15]!) / (r0 + r1 + r2) - carried[15]!;
+            const down = (d0 * poly[v0 + 15]! + d1 * poly[v1 + 15]! + d2 * poly[v2 + 15]!) / (d0 + d1 + d2) - carried[15]!;
+            const up = carriedNormal[1]! / (Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!) || 1);
+            bentWear(albedo, mro, carried[15]!, carried[16]!, carried[17]!, back ? -up : up, s.seed, s.bend.panel, s.bend.walk, Math.abs(right) + Math.abs(down));
+          }
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
           let coat = 0, chrome = 0, own = 1;
           if (wheel) {
@@ -2172,8 +2270,13 @@ export class Rasterizer {
           const [s, co] = [Math.sin(yaw), Math.cos(yaw)];
           const grow = (flags & DRAW_SIZED) !== 0 ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
           const [ix, iy, iz] = [px + p.casterOffset[e * 3]!, py + p.casterOffset[e * 3 + 1]!, pz + p.casterOffset[e * 3 + 2]!];
+          const bend = this.bendOf(flags, p.casterBuffer[e]!, p.casterFirst[e]! + c), b = this.bentFlat;
           for (let v = 0; v < n; v++) {
-            const [lx, ly, lz] = [lod.positions[v * 3]! * grow, lod.positions[v * 3 + 1]! * grow, lod.positions[v * 3 + 2]! * grow];
+            let [lx, ly, lz] = [lod.positions[v * 3]! * grow, lod.positions[v * 3 + 1]! * grow, lod.positions[v * 3 + 2]! * grow];
+            if (bend) {
+              bendVertex(b, bend, lx, ly, lz, 0, 1, 0, 1, 0, 0);
+              [lx, ly, lz] = [b[0]!, b[1]!, b[2]!];
+            }
             place.set([co * lx + s * lz + ix, ly + iy, -s * lx + co * lz + iz], v * 3);
           }
         }

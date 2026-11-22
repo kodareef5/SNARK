@@ -13,6 +13,7 @@ import { parkFreightTrailers } from "./freight.ts";
 import { carPicker, frameYaw, parkCars, roadIndex, type CarGround } from "./street-cars.ts";
 import { junctionAt, streetGraph } from "./street-graph.ts";
 import { cornersOf, type Corner } from "./corners.ts";
+import { makeBentWalks } from "./bent-walks.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { wreckLook } from "../../content/vehicles/wrecks.ts";
@@ -24,6 +25,7 @@ import { binKey, hash3 } from "./raster.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 import { makeSigns, nearSign } from "./signs.ts";
 import type { Footprint, Site, StaticLayer, StaticPiece } from "./statics.ts";
+import { StreetPoint, streetAt, walkOf } from "../../shared/world/streets.ts";
 
 interface NamedPlace { id: string; name: string; footprint: number; layout: string; recipe: string; retain: number; finish: RuinFinish; note: string; source: string; }
 interface Planned { f: Footprint; frame: Frame; rule: Rule; named?: NamedPlace; square: string; facts: Facts; }
@@ -299,7 +301,9 @@ export function makeRuins(site: Site): StaticPiece[] {
   // The walks first, so the street's wrecks and furniture stand clear of them.
   // A walk is cut where a way in to a building crosses it, and nowhere else for the routes inside buildings.
   const ways = corridorIndex(records.flatMap((r) => r.approaches.map((a) => ({ a: [a.street.x, a.street.z] as const, b: [a.door.x, a.door.z] as const, width: 3, low: a.door.y - .5, high: a.door.y + 2.5 }))));
-  const walks = makeWalks(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (box) => crosses(box, ways), obstacles, roads, roadGround, entrances);
+  // Where the rules ask and the map has the streets' lines, the street's edge is bent sections on their kerb lines
+  // (bent-walks.ts) in place of the walk kit.
+  const walks = (v.street.walks?.bent && site.ground.streets ? makeBentWalks : makeWalks)(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (box) => crosses(box, ways), obstacles, roads, roadGround, entrances);
   const carGround = carGroundOf(site, data.places);
   const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads, roadGround, carGround);
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
@@ -522,6 +526,14 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
     return along > -24 && along < 12 && Math.abs((z - e.z) * e.dx - (x - e.x) * e.dz) < e.width / 2 + 1;
   });
   const graph = streetGraph(site);
+  // Whether the street's section at lattice point (x, z), a metre past a kerb, has a verge there or no walk (streets/):
+  // the streets' lines are in the map's metres, lattice less (x0, z0).
+  const point = new StreetPoint();
+  const sectionRefuses = (x: number, z: number): boolean => {
+    const held = site.ground.streets;
+    if (!held || !streetAt(held, x - x0, z - z0, point) || point.d < 0) return false;
+    return walkOf(point.kinds) === 0 || point.verge >= 0.5;
+  };
   // The curb returns first (corners.ts), each where its corner's ground is level and open and nothing stands on its arc;
   // where one stands, the straight walks on both its kerbs begin at its ends, by the way out of the junction each runs
   // along and which side of that way the corner is on (the way it turns from, or the way it turns to).
@@ -589,6 +601,8 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
         // A junction a return turns is not kept clear: the run begins at the return.
         if ((from === undefined || d > length / 2) && (to === undefined || d < length / 2) && junctionAt(site, fx, fz, s.half + rules.fromJunction)) return { ...slot, state: "junction" };
         if (y < 0.1 || corners.some(([x, z, b]) => !(open.has(site.ground.surface[at(x, z)]!) || b < 1 && site.ground.surface[at(x, z)] === S.STREET) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) return { ...slot, state: "bare" };
+        // Where the street's section (streets/) has a verge at the kerb or no walk on this side, the slab is not its: bare.
+        if (sectionRefuses(...curb(d, 1))) return { ...slot, state: "bare" };
         // Nor within a sample of the road ground graded to a bridge.
         if ([-4, 0, 4].some((a) => [-1.5, 0.3, 1.5, rules.width + 1.5].some((b) => { const [x, z] = curb(d + a, b); return graded.has(at(x, z)) || onWay(x, z); }))) return { ...slot, state: "bare" };
         // A crossing over this road meets its curb here: the curb is cut for it, as for a way in.

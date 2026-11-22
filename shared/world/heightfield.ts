@@ -6,6 +6,7 @@
 // samples, and `changes` where samples changed.
 
 import type { RoadSectors } from "./roadframe.ts";
+import { streetClass, type StreetSectors } from "./streets.ts";
 import { CHUNK_SIZE, chunkCount, framed, type FramedDims, type MapDims } from "../coords.ts";
 import type { MapWater } from "./water.ts";
 
@@ -35,6 +36,11 @@ export class Heightfield {
   readonly ground: Uint8Array;
   /** Its roads' frame, used only for drawing (shared/world/roadframe.ts), as far as it is held; null for a server's ground and wherever nothing draws it. */
   road: RoadSectors | null = null;
+  /**
+   * The streets as lines (shared/world/streets.ts), as far as they are held: a server's every sector, a page's those round
+   * its body. Where held they say what a wheel meets at a street's and a walk's edge (groundClassAt).
+   */
+  streets: StreetSectors | null = null;
   readonly groundX: number;
   /** Height of the sea's surface, set by the code that builds the map. -Infinity for a map with no sea. */
   seaLevel = -Infinity;
@@ -72,13 +78,17 @@ export class Heightfield {
     this.exact = new Uint8Array(chunkCount(dims)).fill(1);
   }
 
-  /** The ground's class where (x, z) stands (GROUND_CLASS); 0, plain ground, off the map or where it has none. */
+  /**
+   * The ground's class where (x, z) stands (GROUND_CLASS); 0, plain ground, off the map or where it has none. Where the
+   * streets are held, a street's and a walk's edges are their lines', not the 4 m cells' (streetClass).
+   */
   groundClassAt(x: number, z: number): number {
-    if (this.ground.length === 0) return 0;
+    if (this.ground.length === 0 && !this.streets) return 0;
     const i = Math.round(x / this.cell);
     const j = Math.round(z / this.cell);
     if (i < 0 || j < 0 || i >= this.nx || j >= this.nz) return 0;
-    return this.ground[(j >> 1) * this.groundX + (i >> 1)]!;
+    const cell = this.ground.length === 0 ? 0 : this.ground[(j >> 1) * this.groundX + (i >> 1)]!;
+    return this.streets ? streetClass(this.streets, x, z, cell) : cell;
   }
 
   /** From now on no chunk holds its own samples until it is held: a client's ground, which comes a part at a time. */

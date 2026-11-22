@@ -87,37 +87,46 @@
     "obelisks": [
       {
         "name": "Griffith Observatory",
+        "color": "red",
+        "form": "sextant",
         "at": [
-          -118.3005,
-          34.1203
+          -118.29324,
+          34.11857
         ],
         "face": [
-          -118.3004,
-          34.1182
+          -118.2942,
+          34.1004
         ],
-        "why": "on the parking north of the lawn: on the lawn its 70 m column stood over the planetarium dome from the city"
+        "deck": 28,
+        "why": "the observatory's ridge holds no ground level to 4 m for a deck within 500 m (by its parking the deck would have been cut 46 m into the hill): on the Roosevelt golf course below the Greek Theatre, 700 m east and 115 m down, broadside to the basin; 28 m, as a larger deck lies 400 m further off"
       },
       {
         "name": "Hollywood and Highland",
+        "color": "green",
+        "form": "lantern",
         "at": [
-          -118.33802,
-          34.1016
+          -118.34082,
+          34.09986
         ],
         "face": [
-          -118.341,
-          34.1018
-        ]
+          -118.3393,
+          34.1017
+        ],
+        "deck": 40,
+        "why": "on Hollywood High School's field a block south of the Boulevard, the nearest open ground: a tower of light over the marquees, as a premiere's searchlights"
       },
       {
         "name": "Lake Hollywood Park",
+        "color": "blue",
         "at": [
           -118.3262,
           34.1265
         ],
         "face": [
-          -118.3217,
-          34.1341
-        ]
+          -118.3393,
+          34.1017
+        ],
+        "why": "on the park's lawn under the Hollywood Sign, the only level ground of the hill (an 18 m deck), the reservoir below it, broadside to Hollywood"
       }
     ]
   },
