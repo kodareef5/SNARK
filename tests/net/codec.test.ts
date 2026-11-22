@@ -94,3 +94,49 @@ test("a value named again goes as its place among those named before, in as few 
   out.write(v, 70000, 0);
   expect(v.pos).toBe(1 + 24 + 1);
 });
+
+test("a blob is the same bytes on a byte boundary and off one, short or long, and reads back as a copy", () => {
+  const rng = new Rng(29);
+  for (const lead of [0, 3, 8]) {
+    for (const n of [0, 1, 7, 8, 9, 40, 300]) {
+      const src = Uint8Array.from({ length: n }, () => rng.int(256));
+      const w = new BitWriter(512);
+      const byHand = new BitWriter(512);
+      for (const to of [w, byHand]) to.bits(5, lead);
+      w.blob(src);
+      byHand.varint(n);
+      for (const b of src) byHand.u8(b);
+      // Bits after it land where they should, on bytes the copy left clean.
+      for (const to of [w, byHand]) to.bits(0x2a5, 11);
+      expect([w.pos, w.overflow, [...w.bytes()]]).toEqual([byHand.pos, false, [...byHand.bytes()]]);
+      // Another writer's bytes go in as the same blob.
+      const held = new BitWriter(512);
+      for (const b of src) held.u8(b);
+      const other = new BitWriter(512);
+      other.bits(5, lead);
+      other.blobOf(held);
+      other.bits(0x2a5, 11);
+      expect([other.pos, other.overflow, [...other.bytes()]]).toEqual([byHand.pos, false, [...byHand.bytes()]]);
+      const data = w.bytes().slice();
+      const r = new BitReader(data);
+      r.bits(lead);
+      const back = r.blob(1000);
+      expect([[...back], r.bits(11), r.overflow, r.remainingBits < 8]).toEqual([[...src], 0x2a5, false, true]);
+      data.fill(0);
+      expect([...back]).toEqual([...src]);
+      // What was written is gone after a reset.
+      w.reset();
+      w.bits(1, 1);
+      expect([...w.buf.subarray(0, 400)].reduce((a, b) => a + b, 0)).toBe(1);
+    }
+  }
+  // One that does not fit is flagged, as each of its bytes would be.
+  const small = new BitWriter(16);
+  small.blob(new Uint8Array(40).fill(9));
+  expect(small.overflow).toBe(true);
+  const full = new BitWriter(64);
+  for (let i = 0; i < 40; i++) full.u8(9);
+  small.reset();
+  small.blobOf(full);
+  expect(small.overflow).toBe(true);
+});

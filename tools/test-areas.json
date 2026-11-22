@@ -534,6 +534,7 @@
   "unit/roof.test.ts": "render/roof.test.ts",
   "unit/rooms.test.ts": "render/rooms.test.ts",
   "unit/saddles.test.ts": "creatures/saddles.test.ts",
+  "unit/saved.test.ts": "server/saved.test.ts",
   "unit/scene.test.ts": "render/scene.test.ts",
   "unit/script-notes.test.ts": "tools/script-notes.test.ts",
   "unit/selfcheck-surfaces.test.ts": "render/selfcheck-surfaces.test.ts",

@@ -8,6 +8,7 @@ import { App } from "../../client/core/app.ts";
 import { CLOSED_BAD_CONTENT } from "../../client/core/session.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_RECIPE, TAB_ENGRAMS } from "../../client/core/ui/character.ts";
 import { KEY_STATUS, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { mateReadyAt } from "../../server/breeding.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { CATALOG, catalogCounts, catalogFaults } from "../../server/settings/catalog.ts";
 import { formatReport, loadConfig, loadConfigFolder } from "../../server/settings/config.ts";
@@ -120,7 +121,7 @@ test("operator: a server started from the 50x folder says what it applied, and a
   // Mating takes half a minute, an egg an hour and a half, and a mother's wait 18 to 48 hours. Each is a fiftieth on the 50x server.
   expect([long.took >= MATE_TICKS, long.took < MATE_TICKS + 2 * TICK_RATE, short.took <= MATE_TICKS / 50 + 2 * TICK_RATE]).toEqual([true, true, true]);
   expect([long.egg.egg!.span, short.egg.egg!.span]).toEqual([incubate, Math.ceil(incubate / 50)]);
-  const waits = (m: Camp, mother: EntityRecord): number => (mother.mateReadyAt - m.h.world.tick) / TICK_RATE / 3600;
+  const waits = (m: Camp, mother: EntityRecord): number => (mateReadyAt(mother) - m.h.world.tick) / TICK_RATE / 3600;
   expect([waits(plain, long.mother) > 17.9, waits(plain, long.mother) < 48, waits(fast, short.mother) > 17.9 / 50, waits(fast, short.mother) < 48 / 50]).toEqual([true, true, true, true]);
   // A fiftieth of the incubation is 103 seconds.
   const hatchAt = short.egg.egg!.hatchAt;

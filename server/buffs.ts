@@ -6,6 +6,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { DAMAGE_TYPES } from "../shared/sim/damage.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import { moved, saved } from "./saved.ts";
 import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -187,3 +188,38 @@ export class Buffs {
     this.onChange?.(rec);
   }
 }
+
+/** Each buff's content, the tick it ends, who gave it and the torpor a second it adds, then, if any adds health, the health a second each adds. */
+saved({
+  name: "buffs",
+  has: (rec) => rec.buffs.length > 0,
+  write(rec, w, to) {
+    const buffs = rec.buffs;
+    let heals = false;
+    w.varint(buffs.length);
+    for (let i = 0; i < buffs.length; i++) {
+      const b = buffs[i]!;
+      w.varint(to.toSaved[b.buff]!);
+      w.uint53(b.until);
+      w.uint53(b.by);
+      w.f64(b.torpor);
+      if (b.health !== 0) heals = true;
+    }
+    // The health a second each adds follows them all, and only when one adds some.
+    if (heals) for (let i = 0; i < buffs.length; i++) w.f64(buffs[i]!.health);
+  },
+  read(rec, r, from) {
+    const read: BuffOn[] = [];
+    for (let k = r.varint(); k > 0 && !r.overflow; k--) read.push({ buff: from.toRuntime[r.varint()] ?? 0, until: r.uint53(), by: r.uint53(), torpor: r.f64(), health: 0 });
+    // The healths follow only when one is not 0.
+    if (64 * read.length <= r.remainingBits) for (const on of read) on.health = r.f64();
+    for (const on of read) {
+      // A buff whose content is gone is dropped, and what it gave the vitals with it.
+      if (on.buff !== 0) rec.buffs.push(on);
+      else from.stale = true;
+    }
+  },
+  rebase(rec, delta) {
+    for (const b of rec.buffs) b.until = moved(b.until, delta);
+  },
+});

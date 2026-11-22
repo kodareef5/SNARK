@@ -18,7 +18,9 @@ import { V_FOOD, V_HEALTH, V_TORPOR } from "../shared/sim/vitals.ts";
 import type { Buffs } from "./buffs.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
+import { issuedTo } from "./mount.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import { saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Survival } from "./survival.ts";
@@ -362,7 +364,7 @@ export class Taming {
     for (const r of this.ctx.records.byPid.values()) {
       // One kept in a soul ball is not counted until it is loosed, as ARK counts none in a cryopod (server/balls.ts), and a
       // starter mount is not counted at all: it is issued, one to a survivor, not tamed (server/mount.ts).
-      if (r.team === 0 || r.keyHash !== null || r.egg !== null || r.dead || r.stored !== 0 || r.issuedTo !== 0 || reg.defs[r.kind]?.type !== "species" || !r.vitals) continue;
+      if (r.team === 0 || r.keyHash !== null || r.egg !== null || r.dead || r.stored !== 0 || issuedTo(r) !== 0 || reg.defs[r.kind]?.type !== "species" || !r.vitals) continue;
       all++;
       if (r.team === team) ours++;
     }
@@ -525,7 +527,7 @@ export class Taming {
       if (what === ORDER_UNSADDLE) {
         // The saddle comes off into its inventory, but for a starter mount's, which was issued with it (server/mount.ts).
         if (rec.saddle === 0) return RESULT_INVALID;
-        if (rec.issuedTo !== 0) {
+        if (issuedTo(rec) !== 0) {
           this.ctx.onNotice?.(me.pid, ISSUED_SADDLE);
           return RESULT_DENIED;
         }
@@ -641,7 +643,7 @@ export class Taming {
     return {
       ...(this.bred ? this.bred(rec) : NO_BREEDING),
       // A starter mount never mates, so its panel offers it no mating (server/mount.ts).
-      breeds: world.reg.breedEgg[rec.kind] !== 0xffff && rec.issuedTo === 0,
+      breeds: world.reg.breedEgg[rec.kind] !== 0xffff && issuedTo(rec) === 0,
       saddled: rec.saddle !== 0,
       id: e ?? -1,
       points: rec.team !== 0 ? Math.min(255, this.ctx.progression.statPoints(rec)) : 0,
@@ -658,3 +660,32 @@ export class Taming {
     };
   }
 }
+
+/** How well a tamed creature was tamed and, for one being tamed, what it has been given so far and for whom; then its orders and its saddle. */
+saved({
+  name: "tame",
+  has: (rec) => rec.tame !== null || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander,
+  write(rec, w, to) {
+    w.f32(rec.te);
+    w.bool(rec.tame !== null);
+    if (rec.tame) {
+      w.f64(rec.tame.affinity);
+      w.f64(rec.tame.sum);
+      w.uint53(rec.tame.by);
+    }
+    w.u8(rec.stance);
+    w.uint53(rec.follow);
+    w.varint(rec.saddle === 0 ? 0 : to.toSaved[rec.saddle]!);
+    w.bool(rec.wander);
+  },
+  read(rec, r, from) {
+    rec.te = r.f32();
+    if (r.bool()) rec.tame = { affinity: r.f64(), sum: r.f64(), by: r.uint53(), seen: -1, due: 0 };
+    rec.stance = r.u8();
+    rec.follow = r.uint53();
+    const saddle = r.varint();
+    rec.saddle = saddle === 0 ? 0 : (from.toRuntime[saddle] ?? 0);
+    rec.wander = r.bool();
+  },
+  rebase: (rec) => void (rec.mealDue = 0),
+});

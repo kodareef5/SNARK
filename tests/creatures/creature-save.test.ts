@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
+// A feature declares what it saves as its file loads (server/saved.ts): the soul balls' mark, a tame's saddle.
+import "../../server/balls.ts";
+import "../../server/taming.ts";
 import { RecordCodec, idMap, rebaseTicks } from "../../server/persist/codec.ts";
 import { EntityRecord } from "../../server/records.ts";
 import { compileContent } from "../../shared/content/registry.ts";

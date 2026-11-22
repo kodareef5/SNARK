@@ -41,6 +41,7 @@ import type { GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import { XP_HARVEST, type Progression } from "./progression.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import { saved } from "./saved.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
@@ -837,3 +838,24 @@ export class Corpses {
 function rests(w: CollisionWorld, x: number, y: number, z: number, p: MoveParams): boolean {
   return y - groundUnder(w.hf, x, z, p.radius) <= PROBE || !Number.isNaN(restingAt(w, x, y, z, p.radius, p.height, PROBE, p.slopeCos));
 }
+
+/** A creature's body (EntityRecord.corpse). A build without bodies has no core:corpse either, so it never passes over one. */
+saved({
+  name: "corpse",
+  has: (rec) => rec.corpse !== null,
+  write(rec, w, to) {
+    const b = rec.corpse!;
+    w.varint(to.toSaved[b.species]!);
+    w.f64(b.max);
+    w.f64(b.left);
+    w.varint(b.span);
+    w.bool(b.young);
+    w.bool(b.out);
+    w.uint53(b.life);
+    w.bool(b.air);
+  },
+  read(rec, r, from) {
+    // A body of a species this build lacks keeps 0, and Corpses lets it go with what it held.
+    rec.corpse = { species: from.toRuntime[r.varint()] ?? 0, max: r.f64(), left: r.f64(), span: r.varint(), young: r.bool(), out: r.bool(), life: r.uint53(), air: r.bool() };
+  },
+});

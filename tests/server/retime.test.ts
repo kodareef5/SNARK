@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BAG_TICKS, CACHE_TICKS } from "../../server/death.ts";
 import type { HostOptions } from "../../server/host.ts";
+import { BREEDING, mateReadyAt } from "../../server/breeding.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -148,11 +149,11 @@ test("a rule changed while the server runs: a female's wait, a pair part way thr
   };
   // A tick passes with each change: 100000 halves to 50000, then 49999 trebles to 149997.
   const waiting = own(-12, true);
-  waiting.rec.mateReadyAt = h.world.tick + 100001;
+  waiting.rec.own(BREEDING).mateReadyAt = h.world.tick + 100001;
   let t = set("MatingIntervalMultiplier", "0.5");
-  expect(waiting.rec.mateReadyAt - t).toBe(50000);
+  expect(mateReadyAt(waiting.rec) - t).toBe(50000);
   t = set("MatingIntervalMultiplier", "1.5");
-  expect(waiting.rec.mateReadyAt - t).toBe(149997);
+  expect(mateReadyAt(waiting.rec) - t).toBe(149997);
 
   // A pair is a third of the way through its thirty seconds. Three times as fast, its progress stays and a third of the rest remains.
   const f = own(-2, true);
@@ -282,7 +283,7 @@ test("a world saved under one set of files and loaded under another is brought t
   const wild = recOf(h, h.host.spawnCreature("core:parasaur", PLACE.x + 14, PLACE.z + 14, 4));
   const waiting = recOf(h, h.host.spawnCreature("core:parasaur", PLACE.x - 14, PLACE.z + 14, 4));
   h.host.taming.give(waiting, me, 1);
-  waiting.mateReadyAt = h.world.tick + 90000;
+  waiting.own(BREEDING).mateReadyAt = h.world.tick + 90000;
   // Cooked meat keeps twenty minutes a piece. This was cooked a while ago: its top piece has two game hours left.
   const U = 16;
   const box = (dx: number): EntityRecord => {
@@ -331,7 +332,7 @@ test("a world saved under one set of files and loaded under another is brought t
     eggSpan: egg.egg!.span,
     grown: young.grown - T,
     step: growthStep(young.span, young.grown, T),
-    wait: waiting.mateReadyAt - T,
+    wait: mateReadyAt(waiting) - T,
     bag: bag.expiresAt - T,
     cache: cache.expiresAt - T,
     top: meat(opened)[1]! - T,
@@ -357,7 +358,7 @@ test("a world saved under one set of files and loaded under another is brought t
         eggSpan: get(pids.egg).egg!.span,
         grown: get(pids.young).grown - t,
         step: growthStep(get(pids.young).span, get(pids.young).grown, t),
-        wait: get(pids.waiting).mateReadyAt - t,
+        wait: mateReadyAt(get(pids.waiting)) - t,
         bag: get(pids.bag).expiresAt - t,
         cache: get(pids.cache).expiresAt - t,
         opened: meat(get(pids.opened)).map((v, i) => (i === 1 ? v - t : v)),
