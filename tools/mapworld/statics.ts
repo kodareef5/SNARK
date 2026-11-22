@@ -14,13 +14,17 @@ import { RUINS } from "./ruins.ts";
 import { ROOF_PLANT } from "./roof-plant.ts";
 import { STREET_FURNITURE } from "./street-furniture.ts";
 
-/** A piece as statics.json takes it: a content id, its centre in engine metres, and its turn in degrees from north toward +x. */
+/**
+ * A piece as statics.json takes it: a content id, its centre in engine metres, and its turn in degrees from north toward
+ * +x; a bent piece's bend as its eight numbers (shared/world/bends.ts packBend).
+ */
 export interface StaticPiece {
   readonly kind: string;
   readonly x: number;
   readonly y: number;
   readonly z: number;
   readonly yaw: number;
+  readonly bend?: ArrayLike<number>;
 }
 
 export interface Footprint {

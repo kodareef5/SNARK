@@ -66,7 +66,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
+import { BEND_BUFFERS, BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
@@ -83,7 +83,8 @@ import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WaterTrails } from "./water-trails.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
-import type { MapLandmark, MapStatics } from "../../../shared/world/mapfile.ts";
+import { bendOf, type MapLandmark, type MapStatics } from "../../../shared/world/mapfile.ts";
+import { KERB_BACK } from "../../../shared/world/bends.ts";
 import { landmarkFars } from "../../../shared/pack/far.ts";
 import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } from "./motion.ts";
 
@@ -392,6 +393,12 @@ interface ChunkBatch {
   meshAt: number;
   /** Per cell, 1 where its mesh has faces in view this frame (Scene.meshCells). */
   inView: Uint8Array;
+  /**
+   * Per instance, its bend where its kind is bent (bend.ts), eight numbers each, which go up as the buffer BEND_BUFFERS past
+   * the instances'; null where none is. `unbent`: built before the map's bends were to hand, so built again once they are.
+   */
+  bends: Int16Array | null;
+  unbent: boolean;
 }
 
 export class Scene {
@@ -520,6 +527,11 @@ export class Scene {
   private readonly pitched: Uint8Array;
   /** Per mesh, DRAW_GROUND where a kind of paint on the ground is drawn with it, which casts no shadow; else 0. */
   private readonly groundFlags: Uint16Array;
+  /** Per mesh, DRAW_BENT where a bent kind is drawn with it (bend.ts), else 0; and per kind, 1 for a bent one. */
+  private readonly bentFlags: Uint32Array;
+  private readonly bentKind: Uint8Array;
+  /** The chunks whose bends' buffers the card holds (BEND_BUFFERS). */
+  private readonly bendsOnCard = new Set<number>();
   /** Per mesh, what a static's distance is divided by when its level is chosen: 1, or less for a coarse kind's. */
   private readonly reachOfStatic: Float32Array;
   /** Per species. The size a newborn is drawn at, as a share of a grown one. */
@@ -842,6 +854,8 @@ export class Scene {
     this.sizes = reg;
     this.parkedContacts = new ParkedContacts(reg);
     this.groundFlags = new Uint16Array(table.count);
+    this.bentFlags = new Uint32Array(table.count);
+    this.bentKind = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.bent ? 1 : 0));
     this.reachOfStatic = new Float32Array(table.count).fill(1);
     this.regionsOfKind = new Uint8Array(reg.defs.length * 5);
     const vehicleMeshes = new Set<number>();
@@ -858,6 +872,7 @@ export class Scene {
       this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
       this.colorOfKind[k] = d.color;
       if (mesh >= 0 && d.type === "structure" && d.paint) this.groundFlags[mesh] = DRAW_GROUND;
+      if (mesh >= 0 && d.type === "structure" && d.bent) this.bentFlags[mesh] = DRAW_BENT;
       // A static whose levels are chosen farther off than it stands: every static of its mesh is (StructureDef.coarse).
       if (mesh >= 0 && d.type === "structure" && d.coarse) this.reachOfStatic[mesh] = Math.min(this.reachOfStatic[mesh]!, 1 / d.coarse);
       if (d.type === "structure" && d.colors) this.regionsOfKind.set(d.colors, k * 5);
@@ -1401,7 +1416,7 @@ export class Scene {
     const cutouts = split && this.assets.heldCutouts(mesh, level);
     this.assets.keep(mesh, level, cutouts);
     const slot = this.assets.residency.slot(mesh, level);
-    flags &= CAST_FLAGS;
+    flags = (flags & CAST_FLAGS) | this.bentFlags[mesh]!;
     if (!split) return this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags, 0, 0, 0, cascades);
     for (let k = 0; k < runs.length; k += 3) {
       const m = this.materialFlags[runs[k]!]! & (cutouts ? DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT : DRAW_TEXTURED | DRAW_TWO_SIDED);
@@ -2860,7 +2875,7 @@ export class Scene {
       let learnt = false;
       if (batch) for (const m of batch.unknown) learnt = this.assets.known(m) || learnt;
       const turned = batch !== undefined && batch.shape !== t.shape && !batch.sized && batch.placed === t.placed;
-      if (!batch || learnt || batch.mesh !== mesh || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) {
+      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) {
         batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.mine ?? null);
         laid += t.high;
       }
@@ -2881,10 +2896,16 @@ export class Scene {
       if (!seen && casts === 0) continue;
       if (!batch.uploaded) {
         p.uploads.push({ buffer: id, data: batch.data, slots: batch.slots });
+        const bends = batch.bends ? new Uint8Array(batch.bends.buffer, batch.bends.byteOffset, batch.bends.byteLength) : null;
+        if (bends) {
+          p.uploads.push({ buffer: id + BEND_BUFFERS, data: bends, slots: batch.slots });
+          this.bendsOnCard.add(id);
+        }
+        const bytes = batch.data.length + (bends?.length ?? 0);
         batch.uploaded = true;
-        this.assets.residency.spend(batch.data.length);
-        this.instanceBytes += batch.data.length - batch.onCard;
-        batch.onCard = batch.data.length;
+        this.assets.residency.spend(bytes);
+        this.instanceBytes += bytes - batch.onCard;
+        batch.onCard = bytes;
       }
       this.zones(cam, batch, seen, casts);
       // From outside air a chunk's interior is neither seen nor seen to cast: only its shell is drawn and cast.
@@ -2913,6 +2934,7 @@ export class Scene {
     const b = this.batches.get(id);
     if (!b) return;
     if (b.uploaded || b.onCard > 0) this.packet.drops.push(id);
+    if (this.bendsOnCard.delete(id)) this.packet.drops.push(id + BEND_BUFFERS);
     this.instanceBytes -= b.onCard;
     this.batches.delete(id);
   }
@@ -3329,6 +3351,8 @@ export class Scene {
    * onto outside air. False where a piece took a kind whose mesh has no range here.
    */
   private reform(b: ChunkBatch, t: ChunkTable, meshOf: Uint16Array, colorOf: Uint8Array): boolean {
+    // Moved in place, the bends would no longer stand by their instances.
+    if (b.bends) return false;
     const { slots, kinds, data, ranges, cellFirst } = b;
     const blocks = b.blocks;
     for (let moves = 0; ; moves++) {
@@ -3430,9 +3454,11 @@ export class Scene {
     const shell = rooms?.shell, blockAt = this.blockAt;
     const counts = this.cellCounts.fill(0, 0, this.counts.length * blocks);
     const skip = mesh ? mine! : null;
+    let bent = 0;
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
       if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1) || (sizeOf && this.hiddenNodes.has(chunk * 65536 + s))) continue;
+      if (!sizeOf) bent += this.bentKind[kind]!;
       const i = Math.min(side - 1, Math.max(0, Math.floor(((t.x[s]! - x0) * side) / CHUNK_SIZE)));
       const j = Math.min(side - 1, Math.max(0, Math.floor(((t.z[s]! - z0) * side) / CHUNK_SIZE)));
       const block = (inside && shell![s] === 0 ? cells : 0) + j * side + (j & 1 ? side - 1 - i : i);
@@ -3458,7 +3484,12 @@ export class Scene {
     const slots = old && old.slots.length === count ? old.slots : new Uint16Array(count);
     const kinds = old && old.kinds.length === count ? old.kinds : new Uint16Array(count);
     const w = new InstanceWriter(data);
+    // A bent piece's bend is the map's for its slot while the slot holds the piece the map set there (city.ts CityStatics.bends).
+    const city = bent > 0 ? this.world.city?.statics : undefined, from = city ? city.first[chunk]! : 0, rows = city ? city.first[chunk + 1]! - from : 0;
+    const bends = bent > 0 ? new Int16Array(count * 8) : null, chunkBends = city?.bends.get(chunk);
     const b: ChunkBatch = {
+      bends,
+      unbent: bent > 0 && !city,
       shape: t.shape,
       placed: t.placed,
       unknown: ranges.filter((m, k) => k % 3 === 0 && !this.assets.known(m)),
@@ -3532,9 +3563,15 @@ export class Scene {
       else w.bytes.set(this.regionsOfKind.subarray(kind * 5, kind * 5 + 5), i * INSTANCE_BYTES + 15);
       slots[i] = s;
       kinds[i] = kind;
-      // A node is held by its mesh's own bounds at its size, which for a tall tree are far tighter sideways than a sphere.
+      // A node is held by its mesh's own bounds at its size, which for a tall tree are far tighter sideways than a sphere;
+      // a bent piece by half its chord and its walk.
       const k = sizeOf ? sizeOf[kind]! / SIZE_UNITS : 1;
-      const r = sizeOf ? this.assets.table.reach[mesh]! * k : this.radiusOfMesh[mesh]!;
+      let r = sizeOf ? this.assets.table.reach[mesh]! * k : this.radiusOfMesh[mesh]!;
+      if (bends && this.bentKind[kind] === 1) {
+        const bend = city && s < rows && city.kind[from + s] === kind && city.x[from + s] === x && city.z[from + s] === z ? bendOf(chunkBends, s) : null;
+        if (bend) bends.set(bend, i * 8);
+        r = bend ? bend[0]! / 1000 + Math.max(KERB_BACK, bend[6]! / 1000) + 0.5 : r;
+      }
       const lo = sizeOf ? y + this.assets.table.low[mesh]! * k : y - r;
       const hi = sizeOf ? y + this.assets.table.high[mesh]! * k : y + r;
       if (x - r < b.minX) b.minX = x - r;
@@ -3740,7 +3777,7 @@ export class Scene {
       p.drawOffset[d * 3] = ox;
       p.drawOffset[d * 3 + 1] = oy;
       p.drawOffset[d * 3 + 2] = oz;
-      p.drawFlags[d] = flags | this.groundFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
+      p.drawFlags[d] = flags | this.groundFlags[mesh]! | this.bentFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
       p.drawSwap[d] = material < 0 ? 0 : this.swap;
       p.drawEffect.set(this.effect, d * 4);

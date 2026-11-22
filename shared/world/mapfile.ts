@@ -3,7 +3,7 @@
 //
 // The head:
 //   0   "SNMP"
-//   4   u16 version 12, u16 reserved
+//   4   u16 version 13, u16 reserved
 //   8   u32 hash        FNV-1a of every byte of the head after it: the map's hash, which names each part by its own
 //   12  u32 bytes of the head. Its parts follow it in the order of its table, each where the one before ends.
 //   16  u16 chunksX, u16 chunksZ
@@ -80,7 +80,11 @@
 //               planes (every value's low byte, then the next): u16 kind, its place in STAT; u16 yaw less the piece
 //               before's, modulo 65,536; and x, y, z in 1/512 m from the square's corner and the datum, as zigzagged
 //               differences from the piece before's modulo 2^24, in 3 bytes (the first's from 0). Slot s of a chunk holds
-//               its s-th piece here.
+//               its s-th piece here. Then, where some of its pieces are bent along the street (shared/world/bends.ts), a
+//               u32 count of them, how many pieces lie before each one's since the one before it as a varint (its place
+//               in the columns' order, ascending), and each one's bend as eight 16-bit numbers (packBend) less what the
+//               bend before predicts (bendGuess), modulo 65,536, in planes: every bend's first number's low byte, then
+//               its high byte, then the next.
 //   5 tops      the far feed's cells of an overview's square's chunks as the map places its statics, where its maker baked
 //               them (mapTops) and some of them are filled: a u16 count of those chunks, each a u16 index among its chunks
 //               row by row, ascending; then 256 bytes each, its 4 m cells' tops row by row from its corner (farTopByte in
@@ -112,13 +116,13 @@ import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 import { ROAD_PLANES, RoadSectors, type MapRoad } from "./roadframe.ts";
 import { StreetSectors, decodeStreets } from "./streets.ts";
 
-export const MAP_VERSION = 12;
+export const MAP_VERSION = 13;
 /**
- * The versions before the streets' lines and before the roads' frame, whose files are this one's with no streets part and
- * no road part: they are read as maps with neither, drawn with the stepped edges and without lane wear until they are
- * built again.
+ * The versions before the bent kerbs, the streets' lines and the roads' frame, whose files are this one's with no bends
+ * at the end of a statics part, no streets part and no road part: they are read as maps with none of them, drawn with the
+ * stepped edges and without lane wear until they are built again. 12 has the streets, 11 the road part.
  */
-const EARLIER_VERSIONS = [10, 11];
+const EARLIER_VERSIONS = [10, 11, 12];
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -156,13 +160,46 @@ const MAX_SPAWNS = 16;
 const MAX_TEXT = 80;
 const MAX_REGIONS = 65535;
 
-/** A piece set down with the world and owned by nobody. `kind` is a content id, and `yaw` is in 1/65,536 turns. */
+/**
+ * A piece set down with the world and owned by nobody. `kind` is a content id, and `yaw` is in 1/65,536 turns. A bent
+ * piece's `bend` is its eight numbers (shared/world/bends.ts packBend).
+ */
 export interface MapStatic {
   readonly kind: string;
   readonly x: number;
   readonly y: number;
   readonly z: number;
   readonly yaw: number;
+  readonly bend?: ArrayLike<number>;
+}
+
+/**
+ * What the next bend in a statics part is guessed to be from `bend` (into `guess`): the same, but starting where `bend`
+ * ends along its kerb line, as the next piece of a line does (shared/world/bends.ts packBend: the station in cm within
+ * 600 m, half the chord in mm).
+ */
+function bendGuess(guess: Int16Array, bend: ArrayLike<number>): void {
+  for (let k = 0; k < 8; k++) guess[k] = bend[k]!;
+  guess[3] = ((bend[3]! & 0xffff) + Math.round(bend[0]! / 5)) % 60000;
+}
+
+/** A chunk's bent pieces: each one's slot, ascending, and its bend, eight numbers a slot (shared/world/bends.ts). */
+export interface ChunkBends {
+  readonly slot: Uint16Array;
+  readonly bend: Int16Array;
+}
+
+/** The bend of slot `slot` among a chunk's, or null. */
+export function bendOf(bends: ChunkBends | undefined, slot: number): Int16Array | null {
+  if (!bends) return null;
+  let lo = 0, hi = bends.slot.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1, s = bends.slot[mid]!;
+    if (s === slot) return bends.bend.subarray(mid * 8, mid * 8 + 8);
+    if (s < slot) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return null;
 }
 
 /**
@@ -182,10 +219,13 @@ export class MapStatics {
   readonly z: Float32Array;
   /** The row of the map's `i`th piece. Empty where the map's order was not kept, and its pieces are then the chunks' order. */
   readonly row: Uint32Array;
+  /** The bent pieces of each chunk that has some, by chunk. */
+  readonly bends: Map<number, ChunkBends>;
 
   /** With `of`, its columns without the map's order. */
   private constructor(kinds: readonly string[], chunks: number, n: number, order: boolean, of: MapStatics | null = null) {
     this.kinds = kinds;
+    this.bends = of ? of.bends : new Map();
     this.first = of ? of.first : new Uint32Array(chunks + 1);
     this.row = new Uint32Array(order ? n : 0);
     this.kind = of ? of.kind : new Uint16Array(n);
@@ -207,9 +247,10 @@ export class MapStatics {
 
   /**
    * Pieces as columns in the map's order, `kind` indexing `kinds` and centres on the lattice, grouped by chunk a slice at a
-   * time. Without `order` the map's order is not kept, as a client never reads it.
+   * time, with the bends `bend` gives of pieces by their place in that order. Without `order` the map's order is not kept,
+   * as a client never reads it.
    */
-  static *group(dims: MapDims, kinds: readonly string[], kind: Uint16Array, yaw: Uint16Array, x: Float32Array, y: Float32Array, z: Float32Array, order = true): Generator<void, MapStatics> {
+  static *group(dims: MapDims, kinds: readonly string[], kind: Uint16Array, yaw: Uint16Array, x: Float32Array, y: Float32Array, z: Float32Array, order = true, bend: ReadonlyMap<number, ArrayLike<number>> | null = null): Generator<void, MapStatics> {
     const n = kind.length;
     const chunks = chunkCount(dims);
     const t = new MapStatics(kinds, chunks, n, order);
@@ -232,6 +273,18 @@ export class MapStatics {
       t.z[r] = z[i]!;
       if (i % SLICE === SLICE - 1) yield;
     }
+    if (bend && bend.size > 0) {
+      const lists = new Map<number, { slot: number[]; bend: number[] }>();
+      for (const i of [...bend.keys()].sort((a, b) => a - b)) {
+        const c = chunkAt(dims, x[i]!, z[i]!);
+        let l = lists.get(c);
+        if (!l) lists.set(c, (l = { slot: [], bend: [] }));
+        l.slot.push(row[i]! - first[c]!);
+        for (let k = 0; k < 8; k++) l.bend.push(bend.get(i)![k]!);
+      }
+      // A chunk's rows are in the map's order, so its bent pieces' slots come ascending, as bendOf looks them up.
+      for (const [c, l] of lists) t.bends.set(c, { slot: Uint16Array.from(l.slot), bend: Int16Array.from(l.bend) });
+    }
     return t;
   }
 
@@ -242,7 +295,9 @@ export class MapStatics {
     for (const s of statics) if (!ids.has(s.kind)) ids.set(s.kind, ids.size);
     const snap = (v: number): number => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
     const [kind, yaw] = [Uint16Array.from(statics, (s) => ids.get(s.kind)!), Uint16Array.from(statics, (s) => s.yaw)];
-    return finish(MapStatics.group(dims, [...ids.keys()], kind, yaw, Float32Array.from(statics, (s) => snap(s.x)), Float32Array.from(statics, (s) => snap(s.y)), Float32Array.from(statics, (s) => snap(s.z))));
+    const bend = new Map<number, ArrayLike<number>>();
+    statics.forEach((s, i) => s.bend && bend.set(i, s.bend));
+    return finish(MapStatics.group(dims, [...ids.keys()], kind, yaw, Float32Array.from(statics, (s) => snap(s.x)), Float32Array.from(statics, (s) => snap(s.y)), Float32Array.from(statics, (s) => snap(s.z)), true, bend));
   }
 
   get length(): number {
@@ -252,7 +307,19 @@ export class MapStatics {
   /** The map's `i`th piece as an object, for tools. */
   piece(i: number): MapStatic {
     const r = this.row.length > 0 ? this.row[i]! : i;
-    return { kind: this.kinds[this.kind[r]!]!, x: this.x[r]!, y: this.y[r]!, z: this.z[r]!, yaw: this.yaw[r]! };
+    const bend = this.bends.size > 0 ? this.bendOfRow(r) : null;
+    return { kind: this.kinds[this.kind[r]!]!, x: this.x[r]!, y: this.y[r]!, z: this.z[r]!, yaw: this.yaw[r]!, ...(bend ? { bend } : {}) };
+  }
+
+  /** The bend of row `r`, or null: that of its slot in the last chunk whose rows start at or before it. */
+  bendOfRow(r: number): Int16Array | null {
+    let lo = 0, hi = this.first.length - 2;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.first[mid]! <= r) lo = mid;
+      else hi = mid - 1;
+    }
+    return bendOf(this.bends.get(lo), r - this.first[lo]!);
   }
 
   *[Symbol.iterator](): IterableIterator<MapStatic> {
@@ -267,16 +334,17 @@ export class MapStatics {
   }
 }
 
-/** Calls `each` with every piece of `statics` in the order the map lists them. */
-function eachStatic(statics: MapStatics | readonly MapStatic[], each: (kind: string, x: number, y: number, z: number, yaw: number) => void): void {
+/** Calls `each` with every piece of `statics` in the order the map lists them, a bent piece with its bend. */
+function eachStatic(statics: MapStatics | readonly MapStatic[], each: (kind: string, x: number, y: number, z: number, yaw: number, bend: ArrayLike<number> | null) => void): void {
   if (!(statics instanceof MapStatics)) {
-    for (const s of statics) each(s.kind, s.x, s.y, s.z, s.yaw);
+    for (const s of statics) each(s.kind, s.x, s.y, s.z, s.yaw, s.bend ?? null);
     return;
   }
   const { kinds, kind, x, y, z, yaw, row } = statics;
+  const bent = statics.bends.size > 0;
   for (let i = 0; i < kind.length; i++) {
     const r = row.length > 0 ? row[i]! : i;
-    each(kinds[kind[r]!]!, x[r]!, y[r]!, z[r]!, yaw[r]!);
+    each(kinds[kind[r]!]!, x[r]!, y[r]!, z[r]!, yaw[r]!, bent ? statics.bendOfRow(r) : null);
   }
 }
 
@@ -1033,7 +1101,9 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
   eachStatic(statics, (kind) => names.add(kind));
   for (const kind of [...names].sort()) ids.set(kind, ids.size);
   let i = 0;
-  eachStatic(statics, (kind, x, y, z, turn) => {
+  const bends = new Map<number, ArrayLike<number>>();
+  eachStatic(statics, (kind, x, y, z, turn, bend) => {
+    if (bend) bends.set(i, bend);
     [ux[i], uy[i], uz[i]] = [Math.round(x * STRUCT_UNITS), Math.round(y * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
     // Its chunk is that of its place on the lattice, as a reader finds it.
     const c = chunkAt(dims, ux[i]! / STRUCT_UNITS, uz[i]! / STRUCT_UNITS);
@@ -1072,6 +1142,29 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
       plane(7, i, zigzag(y - py), 3);
       plane(10, i, zigzag(z - pz), 3);
       [px, py, pz, pyaw] = [x, y, z, yaw[k]!];
+    }
+    // Its bent pieces, by their places among its own.
+    const bent: number[] = [];
+    for (let i = 0; i < count; i++) if (bends.has(order[counts[s]! + i]!)) bent.push(i);
+    if (bent.length > 0) {
+      o.u32(bent.length);
+      bent.forEach((i, q) => {
+        for (let gap = i - (q > 0 ? bent[q - 1]! + 1 : 0); ; gap >>>= 7) {
+          o.u8((gap & 127) | (gap > 127 ? 128 : 0));
+          if (gap <= 127) break;
+        }
+      });
+      const planes = o.take(bent.length * 16);
+      const guess = new Int16Array(8);
+      bent.forEach((i, q) => {
+        const bend = bends.get(order[counts[s]! + i]!)!;
+        for (let k = 0; k < 8; k++) {
+          const v = (bend[k]! - guess[k]!) & 0xffff;
+          o.bytes[planes + k * 2 * bent.length + q] = v & 255;
+          o.bytes[planes + (k * 2 + 1) * bent.length + q] = v >> 8;
+        }
+        bendGuess(guess, bend);
+      });
     }
     return o.done();
   });
@@ -1597,6 +1690,9 @@ export interface StaticsPiece {
   readonly y: Float32Array;
   readonly z: Float32Array;
   readonly chunk: Uint32Array;
+  /** Its bent pieces' places among its own, ascending, and their bends, eight numbers each; empty where none is bent. */
+  readonly bendAt: Uint32Array;
+  readonly bend: Int16Array;
 }
 
 /** An overview's square's tops: those of its chunks with a filled cell, by their map's chunks. Nothing waits for it. */
@@ -1772,7 +1868,30 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
     if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) throw off(id[i]!, ax, y, az, `its sector ${sq.col}, ${sq.row}`);
     if (i % SLICE === SLICE - 1) yield;
   }
-  return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk };
+  let bendAt = new Uint32Array(0), bend = new Int16Array(0);
+  if (s.at < s.bytes.length) {
+    const m = s.u32();
+    bendAt = new Uint32Array(m);
+    for (let q = 0, at = 0; q < m; q++) {
+      let gap = 0;
+      for (let scale = 1, b = 128; b >= 128; scale *= 128) {
+        if (scale > 1 << 28) throw new Error("map: its bent pieces are not among its statics");
+        b = s.u8();
+        gap += (b & 127) * scale;
+      }
+      bendAt[q] = at += gap;
+      at++;
+      if (bendAt[q]! >= n) throw new Error("map: its bent pieces are not among its statics");
+    }
+    const planes = s.take(m * 16);
+    bend = new Int16Array(m * 8);
+    const guess = new Int16Array(8);
+    for (let q = 0; q < m; q++) {
+      for (let k = 0; k < 8; k++) bend[q * 8 + k] = guess[k]! + ((planes[(k * 2 + 1) * m + q]! << 8) | planes[k * 2 * m + q]!);
+      bendGuess(guess, bend.subarray(q * 8, q * 8 + 8));
+    }
+  }
+  return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk, bendAt, bend };
 }
 
 /**
@@ -1892,9 +2011,17 @@ function* fillRows(dims: MapDims, t: MapStatics, piece: StaticsPiece, from: numb
   const w = sq.cx1 - sq.cx0;
   const filled = new Uint32Array(w * (sq.cz1 - sq.cz0));
   const fail = (): Error => new Error(`map: the statics of sector ${sq.col}, ${sq.row} do not fill the rows laid out for them`);
-  for (let i = 0; i < piece.id.length; i++) {
+  // Its bent pieces' slots by chunk, as they come in their chunks' order, and their places among the part's bends.
+  const lists = new Map<number, { slot: number[]; at: number[] }>();
+  for (let i = 0, q = 0; i < piece.id.length; i++) {
     const c = piece.chunk[i]!;
     const r = t.first[c]! + filled[(chunkCz(dims, c) - sq.cz0) * w + chunkCx(dims, c) - sq.cx0]!++;
+    if (q < piece.bendAt.length && piece.bendAt[q] === i) {
+      let l = lists.get(c);
+      if (!l) lists.set(c, (l = { slot: [], at: [] }));
+      l.slot.push(r - t.first[c]!);
+      l.at.push(q++);
+    }
     if (r >= t.first[c + 1]!) throw fail();
     t.kind[r] = piece.id[i]!;
     t.yaw[r] = piece.yaw[i]!;
@@ -1907,6 +2034,11 @@ function* fillRows(dims: MapDims, t: MapStatics, piece: StaticsPiece, from: numb
   for (let k = 0; k < filled.length; k++) {
     const c = (sq.cz0 + Math.floor(k / w)) * dims.chunksX + sq.cx0 + (k % w);
     if (filled[k] !== t.first[c + 1]! - t.first[c]!) throw fail();
+  }
+  for (const [c, l] of lists) {
+    const bend = new Int16Array(l.at.length * 8);
+    l.at.forEach((q, k) => bend.set(piece.bend.subarray(q * 8, q * 8 + 8), k * 8));
+    t.bends.set(c, { slot: Uint16Array.from(l.slot), bend });
   }
 }
 

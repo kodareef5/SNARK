@@ -1,3 +1,4 @@
+import { BENT_KINDS } from "../../content/bends.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { wreckLook } from "../../content/vehicles/wrecks.ts";
@@ -73,9 +74,13 @@ export function meets(a: Box, b: Box, gap = 0): boolean {
   return true;
 }
 
+const BENT = new Set(BENT_KINDS);
+
 export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: StaticPiece) => void; blocked: (points: readonly Point[]) => boolean; hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean; count: (x: number, z: number, radius: number) => number } {
   const bins = new Map<number, { p: StaticPiece; box: Box }[]>();
   const add = (p: StaticPiece): void => {
+    // A bent kerb is walked as nothing and its box is its unbent model's; the collision pieces under it stand for it.
+    if (BENT.has(p.kind)) return;
     const box = boxOf(p); const radius = Math.hypot(box.size[0], box.size[2]) / 2 + 1;
     for (let z = Math.floor((box.z - radius) / 64); z <= Math.floor((box.z + radius) / 64); z++) for (let x = Math.floor((box.x - radius) / 64); x <= Math.floor((box.x + radius) / 64); x++) {
       const k = binKey(x, z); if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push({ p, box });

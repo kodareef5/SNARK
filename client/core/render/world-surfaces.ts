@@ -1329,7 +1329,7 @@ bool streetsAt(vec2 w, out vec3 e, out uvec4 k) {
   e = vec3(${fl(PLANE_MOST)});
   k = uvec4(0u);
   // Past the region round the camera, or with the frame drawn without them (passes.ts "streets", fFacade.w's third bit).
-  if (max(abs(c.x), abs(c.y)) > ${STREET_CHUNKS / 2 - 1} || fFacade.w > 3.5) return false;
+  if (max(abs(c.x), abs(c.y)) > ${STREET_CHUNKS / 2 - 1} || mod(fFacade.w, 8.0) > 3.5) return false;
   e = (128.0 - texture(uStreets, (s + 0.5) / ${fl(STREET_SIDE)}).rgb * 255.0) / ${fl(PLANE_STEP)};
   if (min(e.x, min(e.y, e.z)) >= ${fl(PLANE_MOST - 0.1)}) return false;
   ivec2 n = ivec2(floor(s + 0.5)), nc = n >> ${Math.log2(CHUNK_SIDE)};

@@ -16,6 +16,7 @@ import type { Tier } from "../assets/tiers.ts";
 import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./farshadow.ts";
 import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
+import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
 
 /** Texels of the receiver's cascade the lookup is moved along its normal, at most, where the surface runs along the light. */
 export const NORMAL_OFFSET = 0.5;
@@ -311,7 +312,7 @@ mat3x4 bone(int i) {
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
-void main() {
+${BEND_GLSL}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p;
   if (uSkin > 0.5) {
@@ -327,7 +328,7 @@ void main() {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);
     if (uSkin < -0.5 && uSkin > -1.5) l *= float(iRegB.y) / ${g(SIZE_UNITS)};
-    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
+${BEND_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
   }
   vUv = uUv.xy + aUv * uUv.zw;
   gl_Position = uViewProj * vec4(p, 1.0);

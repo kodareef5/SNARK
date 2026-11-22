@@ -57,7 +57,11 @@ function hashPacket(p: FramePacket, h: number): number {
   const count = (...n: number[]): void => add(Float64Array.from(n));
   for (const a of [p.viewProj, p.nearViewProj, p.sky, p.sun]) add(a);
   count(p.camX, p.camY, p.camZ, p.light, p.fogStart, p.fogEnd, p.skipped, p.dropped, p.triangles, p.drawCount, p.tileCount, p.transientCount, p.boneCount);
-  for (const a of [p.drawMesh, p.drawLod, p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances, p.drawFlags]) add(a, p.drawCount * a.BYTES_PER_ELEMENT);
+  for (const a of [p.drawMesh, p.drawLod, p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances]) add(a, p.drawCount * a.BYTES_PER_ELEMENT);
+  // The flags' low 16 bits as they were held before a flag past them (DRAW_BENT), and those past them where any is set.
+  const flags = p.drawFlags.subarray(0, p.drawCount);
+  add(Uint16Array.from(flags));
+  if (flags.some((f) => f > 0xffff)) add(Uint16Array.from(flags, (f) => f >>> 16));
   add(p.drawOffset, p.drawCount * 12);
   add(p.tiles, p.tileCount * 16);
   add(p.tileOrigin, p.tileCount * 8);
@@ -559,7 +563,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // meshes (3112871861 with the docks alone, 3364631049 with the balls alone); without them it is that again.
   // It was 3725999613 until the supply drop's capsule (content/core.ts) moved the kinds' numbers.
   // It was 3401682789 until the things blocked out (content/items/blockouts.ts) and their box moved them again.
-  expect(hash).toBe(2788795000);
+  // It was 2788795000 until the bent street sections (content/bends.ts) added their grey meshes (554916778 with those
+  // and without the capsule and the things blocked out).
+  expect(hash).toBe(2690609907);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -599,7 +605,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // 2882051178 with the balls alone).
   // And 3143791074 until the supply drop's capsule.
   // And 2064018380 until the things blocked out and their box.
-  expect(saddled.hash).toBe(3496432371);
+  // And 3496432371 until the bent street sections, as above (1784790367 with those alone).
+  expect(saddled.hash).toBe(1840630290);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

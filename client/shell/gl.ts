@@ -2,7 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
-import { moved, ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE } from "../core/render/packet.ts";
+import { moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -55,10 +55,11 @@ interface MeshLod {
   /** Its surface and skin entries once they have come, and whether there are skin entries. */
   surface: WebGLBuffer | null;
   skin: boolean;
-  /** The buffer and first instance its instance attributes point at. */
+  /** The buffer and first instance its instance attributes point at, and whether a stream of bends does too (attributes 13 and 14). */
   buffer: WebGLBuffer | null;
   entityIds: boolean;
   first: number;
+  bent: boolean;
 }
 
 /**
@@ -391,7 +392,7 @@ export class GlRenderer {
     const at = u.at ?? 0, end = at + u.data.length, from = Math.max(at, vertices);
     let lod = this.levels.get(u.slot);
     if (at === 0) {
-      lod = { vao: gl.createVertexArray()!, buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, buffer: null, entityIds: false, first: 0 };
+      lod = { vao: gl.createVertexArray()!, buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, buffer: null, entityIds: false, first: 0, bent: false };
       this.levels.set(u.slot, lod);
       this.vertexArray(lod.vao);
       this.array(lod.buffers[0]!);
@@ -949,7 +950,7 @@ export class GlRenderer {
         this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
         this.uniform(prog, U.alpha, blend && this.finish.row[p.drawMesh[d]!] === 0 ? WATER_ALPHA : 1);
       }
-      this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d);
+      this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d, (flags & DRAW_BENT) !== 0 ? this.buffers.get(p.drawBuffer[d]! + BEND_BUFFERS) : undefined);
       if (textured || (flags & DRAW_RANGED) !== 0) d = this.ranges(lod, p.drawFirstIndex, p.drawIndexCount, p.drawInstances[d]!, p.drawJoined, null, 0, d, p.drawCount);
       else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
       this.drawCalls++;
@@ -996,8 +997,11 @@ export class GlRenderer {
     return id === TRANSIENT_BUFFER ? this.transient : this.buffers.get(id);
   }
 
-  /** Binds a level and the instances from `first` of `buffer` for a program, with the offset at `offsets[i * 3]`, as far as they are not bound so. */
-  private bind(prog: Program, lod: MeshLod, buffer: WebGLBuffer, mesh: number, first: number, offsets: Float32Array, i: number): void {
+  /**
+   * Binds a level and the instances from `first` of `buffer` for a program, with the offset at `offsets[i * 3]`, and of a
+   * bent draw its bends from the same place of `bends`, as far as they are not bound so.
+   */
+  private bind(prog: Program, lod: MeshLod, buffer: WebGLBuffer, mesh: number, first: number, offsets: Float32Array, i: number, bends?: WebGLBuffer): void {
     const gl = this.gl;
     const u = prog.at, last = prog.last, info = lod.bounds ?? this.meshes[mesh]!;
     if (prog.bounds !== info && u[U.center]) {
@@ -1026,6 +1030,9 @@ export class GlRenderer {
       gl.vertexAttribDivisor(12, 1);
       gl.vertexAttribIPointer(12, 1, gl.UNSIGNED_INT, 4, first * 4);
     } else gl.disableVertexAttribArray(12);
+    // A level's draws are all bent or none are; one bound bent and then not leaves the stream off.
+    for (let a = 13; a < 15 && (bends || lod.bent); a++) if (!bends) gl.disableVertexAttribArray(a); else { this.array(bends); gl.enableVertexAttribArray(a); gl.vertexAttribDivisor(a, 1); gl.vertexAttribPointer(a, 4, gl.SHORT, false, BEND_BYTES, first * BEND_BYTES + (a - 13) * 8); }
+    lod.bent = bends !== undefined;
   }
 
   /**
@@ -1082,7 +1089,7 @@ export class GlRenderer {
         this.uniform(prog, U.skin, skinMode(flags, lod.skin));
         // The cut-out caster's program reads the base colour alone.
         if (cutout) this.material(prog, p.casterMaterial[e]!, p.casterMesh[e]!, true, 0, 1);
-        this.bind(prog, lod, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e);
+        this.bind(prog, lod, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e, (flags & DRAW_BENT) !== 0 ? this.buffers.get(p.casterBuffer[e]! + BEND_BUFFERS) : undefined);
         if ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0) e = this.ranges(lod, p.casterFirstIndex, p.casterIndexCount, p.casterInstances[e]!, p.casterJoined, p.casterCascades, 1 << k, e, p.casterCount);
         else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.casterInstances[e]!);
         this.drawCalls++;

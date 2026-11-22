@@ -138,6 +138,8 @@ export function plan(): Run[] {
   // high on a canvas of 1,920 by 1,080 and on a laptop's 3,600 by 1,924.
   for (const tier of ["medium", "high"]) for (const [scale, window] of [[1, [1920, 1167]], [2, [1800, 1049]]] as const) runs.push({ scene: "city", view: "street", tier, scale, window, ab: "streets" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "walks" });
+  // The bent kerbs' wear (render/bend.ts bentWear), on the canvases of 1,920 by 1,080 and 3,600 by 1,924.
+  for (const [tier, scale] of [["medium", 1], ["high", 1], ["high", 2], ["medium", 2]] as const) runs.push({ scene: "city", view: "street", tier, scale, ...(scale === 2 ? { window: [1800, 1049] as [number, number] } : {}), ab: "kerbs" });
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
   for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) for (const ab of ["roofs", "bounce"] as const) runs.push({ scene: "city", view: "street", tier, scale, ab });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });

@@ -315,7 +315,7 @@ interface House {
   bytes: Uint8Array;
   raster: Rasterizer;
   /** The flags of each draw of the last frame, which the rasterizer's `pickDraw` names. */
-  flags: Uint16Array;
+  flags: Uint32Array;
   /** Draws in the last frame, those with materials, those of a mesh with materials drawn flat, and those cut out and two-sided. */
   draws: number;
   textured: number;
