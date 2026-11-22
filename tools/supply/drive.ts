@@ -87,7 +87,6 @@ export async function drive(chrome: string, url: string, host: Host): Promise<st
     };
     const q = (selector: string): string => `document.querySelector(${JSON.stringify(selector)})`;
     const click = (selector: string): Promise<unknown> => run(`${q(selector)}.click()`);
-    const type = (selector: string, value: string): Promise<unknown> => run(`(() => { const e = ${q(selector)}; e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event("change", { bubbles: true })); })()`);
     const saidText = (): Promise<string> => run(`document.getElementById("said").textContent`);
     /** Presses Save and waits for the page to say the revision it was saved as. */
     const save = async (): Promise<void> => {
