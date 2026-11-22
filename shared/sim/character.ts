@@ -708,6 +708,9 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   let dvx = (s * mz - c * mx) * speed - b.vx;
   let dvz = (c * mz + s * mx) * speed - b.vz;
   let maxDv = (b.jetThrust ? 18 : b.grounded ? p.accelGround : p.accelAir) * dt;
+  // A body with no hold on where it goes (knocked off its feet, tangled, out cold) does not steer or brake in the air: it
+  // flies as it was thrown until it lands.
+  if (!b.grounded && !b.jetThrust && (flags & (MF_ROOTED | MF_OUT)) !== 0) maxDv = 0;
   if (glide !== 0) {
     // Forward by the stick, faster in a dive, and slipping sideways. The stick back wishes it still, and stops it sooner.
     const forward = mz > 0 ? mz * (diving ? GLIDE_DIVE : GLIDE_SPEED) : 0;

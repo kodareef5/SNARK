@@ -463,6 +463,11 @@ export const VEHICLE_FLIP = 5;
 export const VEHICLE_PULL = 6;
 /** Cycle the warning lights of the currently driven patrol vehicle. Followed by its handle. */
 export const VEHICLE_LIGHTS = 7;
+/**
+ * Protocol 44. Swing the door of the seat the session sits in open, or shut again, followed by the vehicle's handle. Held
+ * open on a car going 3 m/s or more, it strikes whoever stands where it swings (server/urban.ts doorStrikes).
+ */
+export const VEHICLE_DOOR = 8;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;

@@ -31,6 +31,9 @@ export interface VehicleCollisionPair {
   rotorA: boolean; rotorB: boolean; propellerA: boolean; propellerB: boolean;
   hazardFreshA: boolean; hazardFreshB: boolean;
 }
+/** Metres a second a car closes at, at least, to knock a body off its feet (server/host.ts, Knockdowns). */
+export const KNOCK_SPEED = 6;
+
 export interface VehicleContactsContext {
   world: ServerWorld;
   records: Records;
@@ -44,6 +47,8 @@ export interface VehicleContactsContext {
   /** At rest: stepped only on its heartbeat, at under a millimetre a second (server/urban.ts). */
   resting?(vehicle: number): boolean;
   pair?(event: VehicleCollisionPair): void;
+  /** A body other than a vehicle was struck by vehicle `vehicle` closing at `speed` m/s, hard enough to harm: it may be knocked down. */
+  struck?(body: number, speed: number): void;
 }
 /** `settled`: it starts this tick in the pose it was captured in last tick, and nothing placed it since. */
 interface Frame { body: Body; handle: number; pid: number; tick: number; motionEpoch: number; consumed: boolean; by: number; byHandle: number; settled: boolean }
@@ -422,6 +427,7 @@ export class VehicleContacts {
       const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0,
         base: Math.min(300, .5 * harmful * harmful * a.mass / (a.mass + b.mass)), type: DMG_MELEE,
         quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+      if (speed >= KNOCK_SPEED) this.ctx.struck?.(c.entity, speed);
       combat.land(src, c.entity, ZONE_NONE, c.x, c.y, c.z, 0, impact);
     }
     // Either callback can destroy or replace a slot.

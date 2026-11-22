@@ -4,7 +4,7 @@ import { handleGen, handleIndex, makeHandle } from "../shared/ids.ts";
 import { CHUNK_SIZE, TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y } from "../shared/coords.ts";
 import { hashString } from "../shared/hash.ts";
 import { Rng } from "../shared/rng.ts";
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL, VEHICLE_LIGHTS } from "../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL, VEHICLE_LIGHTS, VEHICLE_DOOR } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
@@ -74,6 +74,10 @@ export class VehicleService {
       if (!this.actor(c) || c.drive !== e) return RESULT_DENIED;
       urban.setLightMode(e, (ents.vehicleLightMode[ents.vrow[e]!]! + 1) % PATROL_LIGHT_MODES.length);
       return RESULT_OK;
+    }
+    if (action === VEHICLE_DOOR) {
+      const rec = this.actor(c);
+      return rec && this.ctx.urban.toggleDoor(rec.pid) ? RESULT_OK : RESULT_INVALID;
     }
     if (action === VEHICLE_INSPECT) return this.inspect(c, handle);
     if (action === VEHICLE_REFUEL) return this.refuel(c, handle, count);

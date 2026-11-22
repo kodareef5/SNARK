@@ -43,8 +43,9 @@ test("protocol 17 and record format 7 are the stations wave's, and it took no co
   // 40 is the soul balls': OWN_KEPT (17), EVENT_BALL (8), and the saved mark of a tame kept in one (COMP_STORED, 25), which a
   // record not kept does not write (tests/integration/balls.test.ts, tests/unit/creature-save.test.ts). 26 is the starter
   // mount's mark (COMP_ISSUED), which only a starter writes, in the same protocol (tests/integration/starter-mount.test.ts).
-  // CMD_THROW (39) is a thing thrown's (tests/integration/loose.test.ts).
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([39, 17, 8, 11]);
+  // CMD_THROW (39) is a thing thrown's (tests/integration/loose.test.ts), EVENT_IMPACT (9) where a blow landed
+  // (tests/integration/impacts.test.ts).
+  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([39, 17, 9, 11]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
   expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 26]);
   // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found

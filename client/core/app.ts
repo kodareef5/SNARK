@@ -34,7 +34,7 @@ import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { GLIDE_DIVE, JET_CUIRASS, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CMD_GAZE, CMD_MARK, CMD_THROW, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
-import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_VEHICLE, VEHICLE_DOOR, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -600,8 +600,19 @@ export class App {
       }
     }
     // Q on foot throws what is in hand along the look (server/loose.ts). Building and placing a car take Q first. The key
-    // is not kept: nothing else on foot is bound to it.
-    if (code === "KeyQ" && down && !repeat && this.session.driving < 0 && this.ui.wantsPointerLock) this.session.command(CMD_THROW, () => {});
+    // is not kept: nothing else on foot is bound to it. In a car's seat, Q swings its door open or shut, and a door held
+    // open on a car going fast strikes whoever it passes (server/urban.ts).
+    if (code === "KeyQ" && down && !repeat && this.ui.wantsPointerLock) {
+      const s = this.session, r = this.remote, ids = r.id.subarray(0, r.count);
+      const host = s.driving >= 0 ? s.driving : s.own.seatSlot && s.own.seat > 0 ? s.own.seat - 1 : -1;
+      const at = host >= 0 ? ids.indexOf(host) : -1;
+      const def = at >= 0 ? this.reg.vehicle[r.kind[at]!] : undefined;
+      if (def && isWheelVehicle(def)) {
+        s.command(CMD_VEHICLE, (w) => { w.u8(VEHICLE_DOOR); w.u32(makeHandle(host, r.gen[at]!)); });
+        return true;
+      }
+      if (s.driving < 0) s.command(CMD_THROW, () => {});
+    }
     // Elsewhere K is the orbit camera, where the view lets it (frame()).
     if (code === "KeyK") {
       if (down && !repeat) this.orbit.set(!this.orbit.on && this.orbitFree);

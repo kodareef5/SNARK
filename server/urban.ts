@@ -15,7 +15,7 @@ import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { quatRotate } from '../shared/math/quat.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
 import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
-import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
+import { F_ALIVE, F_GROUNDED, F_PLAYER, F_PROP } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
@@ -84,6 +84,19 @@ const formOf = (movement: VehicleDefinition['movement']): { version: number; ext
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
 const REST_TICKS = 30;
 
+/** Metres a second a car goes at, at least, for a door standing open on it to strike, and how open the door must stand. */
+export const DOOR_STRIKE_SPEED = 3;
+const DOOR_STRIKE_OPEN = 0.5;
+/** Metres out from the door's sill the open door's blade stands, how far about it it reaches, and how high it stands. */
+const DOOR_SWING = 0.45;
+const DOOR_REACH = 0.6;
+const DOOR_HEIGHT = 1.5;
+/** Kilograms a door's blow throws a body with: a survivor of 80 kg is thrown at about three fifths of what it carries. */
+const DOOR_MASS = 120;
+/** Of the car's speed, what the door's blow throws a body out from its side with, and up. */
+const DOOR_OUT = 0.8;
+const DOOR_UP = 0.6;
+
 export class Urban {
   readonly occupancy: Occupancy;
   contacts: VehicleContacts | null = null;
@@ -105,6 +118,17 @@ export class Urban {
   private readonly savingView = new DataView(this.saving.buffer);
   /** Per host this tick, a bit for each door someone is getting in or out by. */
   private readonly opening = new Map<number, number>();
+  /**
+   * Doors their own occupants hold open (VEHICLE_DOOR), by the host's pid: each occupant's pid and its seat's door. A door
+   * held open on a car going at DOOR_STRIKE_SPEED or more strikes whoever stands where it swings (`doorStrikes`).
+   */
+  private readonly held = new Map<number, Map<number, number>>();
+  /** The tick each body was last struck by a door, by vehicle entity and body: a door strikes a body once a second. */
+  private readonly struckAt = new Map<number, number>();
+  /** A door struck body `body` from vehicle `vehicle` going `speed` m/s, its blow the unit way (dx, dz): the host hurts it. */
+  onDoorStrike: ((vehicle: number, body: number, speed: number, dx: number, dz: number) => void) | null = null;
+  /** Diagnostics: bodies struck by doors. */
+  doorStruck = 0;
   private epochs = 0;
   private readonly body = new Body();
   /** A vehicle's state as `save` reads it. */
@@ -812,6 +836,14 @@ export class Urban {
       } else if (ents.driven[e] === 3) ents.driven[e] = 0;
     }
     this.opening.clear();
+    // Doors held open by their own occupants, while each still sits in a seat by that door.
+    for (const [hostPid, byActor] of this.held) {
+      for (const [actor, door] of byActor) {
+        if (this.occupancy.seatOf(actor)?.host !== hostPid) byActor.delete(actor);
+        else this.opening.set(hostPid, (this.opening.get(hostPid) ?? 0) | (1 << door));
+      }
+      if (byActor.size === 0) this.held.delete(hostPid);
+    }
     for (const actor of this.scopes.keys()) {
       const action = this.occupancy.pending(actor), host = action ? this.hosts.get(action.host) : undefined;
       const door = host?.definition.seats.find(seat => seat.id === action!.seat)?.door;
@@ -862,6 +894,7 @@ export class Urban {
         doors = withVehicleDoor(doors, d, (opening & (1 << d)) !== 0 ? Math.min(1, was + 1 / door.openTicks) : Math.max(0, was - 1 / door.closeTicks));
       });
       ents.vehicleDoors[ents.vrow[e]!] = doors;
+      if (doors !== 0) this.doorStrikes(pid, e, host.definition);
       for (let slot = 0; slot < host.definition.seats.length; slot++) {
         const seat = host.definition.seats[slot]!, actor = this.occupancy.occupant(pid, seat.id);
         const ae = this.entity(actor);
@@ -872,6 +905,78 @@ export class Urban {
       }
     }
   }
+
+  /**
+   * VEHICLE_DOOR: the occupant `actor` swings the door of its seat open, or shut again. Any seat with a door may; the door
+   * stays open while it sits there, whatever the car does.
+   */
+  toggleDoor(actor: number): boolean {
+    const place = this.occupancy.seatOf(actor), host = place ? this.hosts.get(place.host) : undefined;
+    const door = host?.definition.seats.find((seat) => seat.id === place!.seat)?.door;
+    if (!place || door === undefined) return false;
+    let byActor = this.held.get(place.host);
+    if (byActor?.has(actor)) {
+      byActor.delete(actor);
+      if (byActor.size === 0) this.held.delete(place.host);
+    } else {
+      if (!byActor) this.held.set(place.host, (byActor = new Map()));
+      byActor.set(actor, door);
+    }
+    return true;
+  }
+
+  /**
+   * A door standing open on vehicle `e` going DOOR_STRIKE_SPEED or more strikes each body standing where it swings, just
+   * outside its seat's door: once a second each, and the door is knocked shut by the blow.
+   */
+  private doorStrikes(hostPid: number, e: number, def: VehicleDefinition): void {
+    const { world } = this.ctx, ents = world.ents, reg = world.reg;
+    const speed = Math.hypot(ents.vx[e]!, ents.vz[e]!);
+    if (speed < DOOR_STRIKE_SPEED) return;
+    const at = this.doorAt, dims = world.dims;
+    for (const seat of def.seats) {
+      const d = seat.door;
+      if (d === undefined || vehicleDoor(ents.vehicleDoors[ents.vrow[e]!]!, d) < DOOR_STRIKE_OPEN) continue;
+      this.door(e, seat, 0, at);
+      // Out from the car's middle to the door, level: the way the door stands open, and the way it throws what it strikes.
+      let nx = at[0]! - ents.x[e]!, nz = at[2]! - ents.z[e]!;
+      const nl = Math.hypot(nx, nz);
+      if (!(nl > 1e-6)) continue;
+      nx /= nl; nz /= nl;
+      const px = at[0]! + nx * DOOR_SWING, pz = at[2]! + nz * DOOR_SWING, py = ents.y[e]!;
+      const cx0 = Math.max(0, Math.floor((px - 2) / CHUNK_SIZE)), cx1 = Math.min(dims.chunksX - 1, Math.floor((px + 2) / CHUNK_SIZE));
+      const cz0 = Math.max(0, Math.floor((pz - 2) / CHUNK_SIZE)), cz1 = Math.min(dims.chunksZ - 1, Math.floor((pz + 2) / CHUNK_SIZE));
+      let struck = false;
+      for (let cz = cz0; cz <= cz1 && !struck; cz++) for (let cx = cx0; cx <= cx1 && !struck; cx++) {
+        for (let j = ents.chunkHead[cz * dims.chunksX + cx]!; j >= 0 && !struck; j = ents.next[j]!) {
+          const k = ents.kind[j]!, r = reg.bodyRadius[k]!;
+          if (j === e || reg.vehicle[k] || !reg.move[k] || (ents.flags[j]! & (F_ALIVE | F_PROP)) !== F_ALIVE || ents.seat[j] !== 0) continue;
+          if (ents.y[j]! + reg.bodyHeight[k]! < py - 0.5 || ents.y[j]! > py + DOOR_HEIGHT) continue;
+          if (Math.hypot(ents.x[j]! - px, ents.z[j]! - pz) > DOOR_REACH + r) continue;
+          const key = e * 1048576 + j;
+          if (world.tick - (this.struckAt.get(key) ?? -TICK_RATE) < TICK_RATE) continue;
+          this.struckAt.set(key, world.tick);
+          if (this.struckAt.size > 4096) this.struckAt.clear();
+          // Thrown out the way the door stands and on with the car, the lighter the farther.
+          const share = DOOR_MASS / (DOOR_MASS + (reg.mass[k]! > 0 ? reg.mass[k]! : 80));
+          ents.vx[j] = ents.vx[j]! + (ents.vx[e]! * 0.6 + nx * speed * DOOR_OUT) * share;
+          ents.vz[j] = ents.vz[j]! + (ents.vz[e]! * 0.6 + nz * speed * DOOR_OUT) * share;
+          ents.vy[j] = Math.max(ents.vy[j]!, speed * DOOR_UP * share);
+          ents.flags[j] = ents.flags[j]! & ~F_GROUNDED;
+          this.doorStruck++;
+          const bx = ents.vx[e]! * 0.6 + nx * speed * DOOR_OUT, bz = ents.vz[e]! * 0.6 + nz * speed * DOOR_OUT, bl = Math.hypot(bx, bz);
+          this.onDoorStrike?.(e, j, speed, bl > 0 ? bx / bl : nx, bl > 0 ? bz / bl : nz);
+          struck = true;
+        }
+      }
+      if (!struck) continue;
+      // The blow knocks the door shut, and whoever held it open lets go.
+      ents.vehicleDoors[ents.vrow[e]!] = withVehicleDoor(ents.vehicleDoors[ents.vrow[e]!]!, d, 0);
+      const byActor = this.held.get(hostPid);
+      if (byActor) for (const [actor, door] of byActor) if (door === d) byActor.delete(actor);
+    }
+  }
+  private readonly doorAt = [0, 0, 0];
 
   private entity(pid: number): number { return this.seating.entity(pid); }
   private client(pid: number): Client | null { return this.ctx.game.clients.find(c => c?.pid === pid && c.ent >= 0) ?? null; }

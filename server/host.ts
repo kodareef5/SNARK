@@ -1,6 +1,6 @@
 import { SurvivorActivity } from "./survivor-activity.ts";
 import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
-import { ZONE_TORSO } from "../shared/anim/human.ts";
+import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { CreatureTraits, inventoryEffectiveWeight } from "./creature-traits.ts";
 import { CreatureImpale } from "./creature-impale.ts";
@@ -60,7 +60,8 @@ import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs, DEADLINE_BUFF } from "./buffs.ts";
-import { Combat } from "./combat.ts";
+import { Combat, type Source } from "./combat.ts";
+import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { Creatures } from "./creatures.ts";
 import { DEADLINE_DESPAWN, Death, OP_DEATH } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
@@ -299,6 +300,13 @@ export function contentFor(content: Registry, rules: Rules): Registry {
 }
 
 /** A host that fails to start lets go of its save, so the next try can open it. */
+
+/** Seconds a survivor knocked off their feet has no hold on where they go. */
+const KNOCKDOWN_SECONDS = 1.2;
+/** A car door's blow: so much and so much a metre a second the car goes, at most so much. */
+const DOOR_HARM_BASE = 8;
+const DOOR_HARM_PER = 1.5;
+const DOOR_HARM_MOST = 50;
 export function createHost(content: Registry, opts: HostOptions = {}): Host {
   const opened: { close(): void }[] = [];
   try {
@@ -641,6 +649,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
+    // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
+    struck: (body) => knockDown(body),
     parkingBrake: e => urban.parkingBrake(e),
     resting: e => urban.resting(e),
     boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
@@ -1243,6 +1253,29 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
   const lane = game.lane;
+  // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
+  // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
+  // A survivor knocked off their feet (Knockdowns): stunned a moment, the body has no hold on where it goes, so a throw
+  // carries it as it would carry anything (shared/sim/character.ts, MF_ROOTED), and their client predicts it so.
+  const stunned = reg.index.get("core:stunned") ?? -1;
+  const knockDown = (body: number): void => {
+    if (stunned < 0 || !rules.on("Knockdowns")) return;
+    const rec = records.byPid.get(world.ents.pid[body]!);
+    if (!rec || rec.kind !== survivor) return;
+    buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
+    refreshBody(rec);
+  };
+  const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  urban.onDoorStrike = (vehicle, body, speed, dx, dz) => {
+    const ents = world.ents, driver = game.clients.find((c) => c?.active && c.drive === vehicle);
+    doorBlow.by = driver ? records.byPid.get(driver.pid) ?? null : null;
+    doorBlow.x = ents.x[vehicle]!;
+    doorBlow.z = ents.z[vehicle]!;
+    doorBlow.base = Math.min(DOOR_HARM_MOST, DOOR_HARM_BASE + speed * DOOR_HARM_PER);
+    const impact = { victimHandle: ents.handleOf(body), victimPid: ents.pid[body]!, vx: ents.vx[body]!, vy: ents.vy[body]!, vz: ents.vz[body]!, wx: dz * 3, wy: 0, wz: -dx * 3 };
+    knockDown(body);
+    combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
+  };
   game.blockBodies = () => [creatures.awake, creatures.awakeCount];
   game.onStep = (tick) => {
     creative.step(tick);
