@@ -18,6 +18,9 @@ import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
 import { WRECK_KINDS, wreckLook } from "../../content/vehicles/wrecks.ts";
 import { extentOf, meets, type Box } from "./ruin-obstacles.ts";
+import { APPROACH_DEPTH, accessPlanner } from "./ruin-access.ts";
+import { S } from "./ground.ts";
+import type { Site } from "./statics.ts";
 import { carPicker, type CarGround } from "./street-cars.ts";
 import { CityStatics, boxPart, cellPart } from "../../shared/world/city.ts";
 import { chunkAt } from "../../shared/coords.ts";
@@ -578,4 +581,34 @@ test("a tower's top reads from a kilometre: torn, set back, a plant floor or a n
     over.push(top[0]! - top[1]!);
   }
   expect([over.some((d) => d >= 8), over.some((d) => d === 4), over.some((d) => d === 0)]).toEqual([true, true, true]);
+});
+
+test("a door's approach keeps to ground it need not cut deep, and off ground a bridge digs away after it", () => {
+  // A door at 132, 148 on level ground at 10 m, and two street samples north of it: one straight ahead past a bank 5 m
+  // high, one 34 m off to the side round it.
+  const grid = gridAt([0, 0, 256, 256]); const n = grid.nx * grid.nz;
+  const at = (x: number, z: number): number => Math.round((grid.z1 - z) / 2) * grid.nx + Math.round((grid.x1 - x) / 2);
+  const plan = (bank: boolean, bridges: Parameters<typeof accessPlanner>[2] = [], kept = new Set<number>()): { x: number; z: number } | null => {
+    const surface = new Uint8Array(n); const height = new Float32Array(n).fill(10);
+    for (const [x, z] of [[132, 172], [108, 172]] as const) surface[at(x, z)] = S.STREET;
+    if (bank) for (let z = 156; z <= 164; z += 2) for (let x = 128; x <= 136; x += 2) height[at(x, z)] = 15;
+    const site = { ground: { grid, surface, height, water: new Uint8Array(n), heaps: { owner: new Int32Array(n).fill(-1) } }, groundAt: (x: number, z: number) => height[at(x, z)]! } as unknown as Site;
+    const m = new Mason(frame(0), 10);
+    m.entries.push({ x: 132, y: 10, z: 148, yaw: 0, coreX: 132, coreZ: 144 });
+    return accessPlanner(site, [], bridges, kept)(m, 0)[0]?.street ?? null;
+  };
+  expect(plan(false)).toMatchObject({ x: 132, z: 172 });
+  // Through the bank it would run 5 m under the ground, more than APPROACH_DEPTH: the street round it is taken.
+  expect(5).toBeGreaterThan(APPROACH_DEPTH);
+  expect(plan(true)).toMatchObject({ x: 108, z: 172 });
+  // A bridge's deck a metre down beside the near street is dug out round it once the buildings are planned: the approach
+  // starts at the dug level, but where the ground is the road's own, which is not dug, at the ground's.
+  const beside = [{ kind: "road_bridge", deck: [{ x: 132, y: 9, z: 174, yaw: 0, gap: false }] }];
+  expect(plan(false, beside)).toMatchObject({ x: 132, y: 9, z: 172 });
+  const road = new Set<number>();
+  for (let dz = -2; dz <= 2; dz += 2) for (let dx = -2; dx <= 2; dx += 2) road.add(at(132 + dx, 174 + dz));
+  expect(plan(false, beside, road)).toMatchObject({ x: 132, y: 10, z: 172 });
+  // One 3 m down across the way would be dug out from under the approach: the street round it is taken.
+  const across = [{ kind: "road_bridge", deck: [{ x: 132, y: 7, z: 160, yaw: 0, gap: false }] }];
+  expect(plan(false, across)).toMatchObject({ x: 108, z: 172 });
 });
