@@ -649,6 +649,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   });
   death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
   game.onVehicleStep.on(e => urban.impact(e));
+  survival.onRated.on((rec) => { if (reg.vehicle[rec.kind]) urban.rated(rec.pid); });
   game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
@@ -656,6 +657,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     struck: (body) => knockDown(body),
     parkingBrake: e => urban.parkingBrake(e),
     resting: e => urban.resting(e),
+    asleep: e => urban.asleep(e),
     boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
     anchored: (e, opposing) => {
       const vehicle = records.byPid.get(world.ents.pid[e]!);

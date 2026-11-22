@@ -203,6 +203,8 @@ export class StructureStore {
   count = 0;
   /** Bumped with any chunk's `shape`. */
   shapes = 0;
+  /** Each is called with the chunk whose `shape` a piece set down or taken away has just bumped. */
+  readonly onShape: ((chunk: number) => void)[] = [];
   /** Entries the last query passed over for lying outside its height band. */
   passed = 0;
   /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
@@ -703,6 +705,7 @@ export class StructureStore {
     t.mod[slot] = mod;
     t.shape++;
     this.shapes++;
+    for (let i = 0; i < this.onShape.length; i++) this.onShape[i]!(chunk);
     t.live++;
     this.count++;
     this.footprint(kind, x, z, yaw);
@@ -760,6 +763,7 @@ export class StructureStore {
     t.mod[slot] = mod;
     t.shape++;
     this.shapes++;
+    for (let i = 0; i < this.onShape.length; i++) this.onShape[i]!(chunk);
     t.live--;
     this.count--;
   }
