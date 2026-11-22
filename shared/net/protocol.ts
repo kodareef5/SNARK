@@ -234,6 +234,11 @@ export const S_CORPSE = serverKind();
  * (shared/sim/supply.ts writeSupply). A session works out where each is from its ticks, so nothing more is sent as it flies.
  */
 export const S_SUPPLY = serverKind();
+/**
+ * The server's settings changed its content while it runs: the tuned content's hash u32 and the tuning as a string, as the
+ * welcome carries them. A session derives the content again and leaves if its hash is another (shared/content/tuning.ts).
+ */
+export const S_TUNING = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;

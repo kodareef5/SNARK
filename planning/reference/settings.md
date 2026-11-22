@@ -23,9 +23,9 @@ the admin's settings page may change a setting without a restart.
 | `XPMultiplier` | 1 | Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier. | yes |
 | `TamingSpeedMultiplier` | 1 | What each piece of food is worth to a creature being tamed. Higher is faster. | yes |
 | `HarvestAmountMultiplier` | 1 | What each harvesting blow yields. Higher is more. | yes |
-| `HarvestHealthMultiplier` | 1 | Health of trees, rocks, bushes and bodies. Higher takes more blows and gives more in all. | no |
+| `HarvestHealthMultiplier` | 1 | Health of trees, rocks, bushes and bodies. Higher takes more blows and gives more in all. | yes |
 | `ResourcesRespawnPeriodMultiplier` | 1 | Time before a harvested node grows back. Lower is sooner. | no |
-| `ItemStackSizeMultiplier` | 1 | Stack sizes. What stacks to 1 is left alone. | no; clients are told |
+| `ItemStackSizeMultiplier` | 1 | Stack sizes. What stacks to 1 is left alone. | yes; clients are told |
 | `DayCycleSpeedScale` | 1 | Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one. | no; clients are told |
 | `DayTimeSpeedScale` | 1 | Speed of the clock by day. Higher is a shorter day. | no; clients are told |
 | `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | no; clients are told |
@@ -45,10 +45,10 @@ the admin's settings page may change a setting without a restart.
 | `AllowHitMarkers` | True | A mark is shown at the crosshair when a hit lands. | yes; clients are told |
 | `PlayerCharacterFoodDrainMultiplier` | 1 | How fast survivors hunger. Higher is faster. | no |
 | `PlayerCharacterWaterDrainMultiplier` | 1 | How fast survivors thirst. Higher is faster. | no |
-| `PlayerCharacterStaminaDrainMultiplier` | 1 | How fast survivors tire. Higher is faster. | no; clients are told |
+| `PlayerCharacterStaminaDrainMultiplier` | 1 | How fast survivors tire. Higher is faster. | yes; clients are told |
 | `PlayerCharacterHealthRecoveryMultiplier` | 1 | How fast survivors mend. Higher is faster. | no |
 | `DinoCharacterFoodDrainMultiplier` | 1 | How fast creatures hunger, wild and tamed. Higher is faster, and one being tamed eats sooner. | no |
-| `DinoCharacterStaminaDrainMultiplier` | 1 | How fast creatures tire. Higher is faster. | no; clients are told |
+| `DinoCharacterStaminaDrainMultiplier` | 1 | How fast creatures tire. Higher is faster. | yes; clients are told |
 | `DinoCharacterHealthRecoveryMultiplier` | 1 | How fast creatures mend. Higher is faster. | no |
 | `OxygenSwimSpeedStatMultiplier` | 1 | Swimming speed gained by each level of oxygen. Higher is more. | no |
 | `StructurePreventResourceRadiusMultiplier` | 1 | How far from a foundation or pillar nodes will not grow back. Higher is further. | yes |
@@ -143,8 +143,8 @@ the admin's settings page may change a setting without a restart.
 | `MapPlayers` | `off` | Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked. *Ours. ARK marks nobody. Any other word is off.* | yes |
 | `FarRadius` | 2048 | Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none. *Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published.* | yes |
 | `FoundCarReturnDays` | 3 | Days of the game's clock after a place where the map parks a car has lost its car, destroyed or driven off, before another is parked there, owned by nobody, its condition and fuel rolled again. One comes only while no survivor is near enough to see it come, nothing a tribe built stands within 60 m, and no body stands where it would. 0 brings none back. *Ours. ARK has no cars. A place is looked at every ten minutes.* | yes |
-| `ThrusterBoostCooldown` | 4 | Seconds after a thruster car's boost ends before it may boost again (the Zephyr; Shift at the wheel). 0 is none: held, the boost runs on. A survivor at the wheel has the new value once it joins again. *Ours. ARK has no cars.* | no |
-| `ThrusterFlipCooldown` | 3 | Seconds from a thruster car's flip before it may flip again (Q at the wheel, with a direction held or none). 0 is none. A survivor at the wheel has the new value once it joins again. *Ours.* | no |
+| `ThrusterBoostCooldown` | 4 | Seconds after a thruster car's boost ends before it may boost again (the Zephyr; Shift at the wheel). 0 is none: held, the boost runs on. *Ours. ARK has no cars.* | yes |
+| `ThrusterFlipCooldown` | 3 | Seconds from a thruster car's flip before it may flip again (Q at the wheel, with a direction held or none). 0 is none. *Ours.* | yes |
 | `FoundBoatReturnDays` | 3 | Days of the game's clock after a berth where the map moors a vessel has lost it, sunk or sailed off, before another of its kind is moored there, owned by nobody, its condition and fuel rolled again. One comes as a car does, and only while the berth still has water enough under its keel. 0 brings none back. *Ours. ARK's rafts and boats are only built. Its own setting, so the yachts can be made rarer than the cars.* | yes |
 
 ### Game.ini `[/script/shootergame.shootergamemode]`
@@ -161,26 +161,26 @@ the admin's settings page may change a setting without a restart.
 | `KillXPMultiplier` | 1 | Experience from kills. Higher is more. | yes |
 | `HarvestXPMultiplier` | 1 | Experience from harvesting. Higher is more. | yes |
 | `CraftXPMultiplier` | 1 | Experience from making things. Higher is more. | yes |
-| `OverrideMaxExperiencePointsPlayer` | 0 | The most experience a survivor may have. 0 leaves it to the level table. | no; clients are told |
-| `OverrideMaxExperiencePointsDino` | 0 | The most experience a tame may have. 0 leaves it to the level table. | no |
-| `LevelExperienceRampOverrides` | none | The level table: `(ExperiencePointsForLevel[0]=5,ExperiencePointsForLevel[1]=20,…)`, each the total needed. The first line is survivors', the second tames'. | no; clients are told |
-| `OverridePlayerLevelEngramPoints` | none | Engram points given at each level, one line for each level in order: the first is level 1. A level gives at most 65,535. | no; clients are told |
-| `OverrideNamedEngramEntries` | none | An engram's level, cost and whether it is offered: `(EngramClassName="core:engram-hatchet",EngramHidden=False,EngramPointsCost=3,EngramLevelRequirement=3,RemoveEngramPreReq=True)`. | no; clients are told |
-| `EngramEntryAutoUnlocks` | none | An engram learned without asking at a level: `(EngramClassName="…",LevelToAutoUnlock=0)`. | no; clients are told |
-| `bAutoUnlockAllEngrams` | False | Every engram is learned as its level is reached. | no; clients are told |
-| `bOnlyAllowSpecifiedEngrams` | False | Only the engrams named in OverrideNamedEngramEntries are offered. | no; clients are told |
+| `OverrideMaxExperiencePointsPlayer` | 0 | The most experience a survivor may have. 0 leaves it to the level table. | yes; clients are told |
+| `OverrideMaxExperiencePointsDino` | 0 | The most experience a tame may have. 0 leaves it to the level table. | yes |
+| `LevelExperienceRampOverrides` | none | The level table: `(ExperiencePointsForLevel[0]=5,ExperiencePointsForLevel[1]=20,…)`, each the total needed. The first line is survivors', the second tames'. | yes; clients are told |
+| `OverridePlayerLevelEngramPoints` | none | Engram points given at each level, one line for each level in order: the first is level 1. A level gives at most 65,535. | yes; clients are told |
+| `OverrideNamedEngramEntries` | none | An engram's level, cost and whether it is offered: `(EngramClassName="core:engram-hatchet",EngramHidden=False,EngramPointsCost=3,EngramLevelRequirement=3,RemoveEngramPreReq=True)`. | yes; clients are told |
+| `EngramEntryAutoUnlocks` | none | An engram learned without asking at a level: `(EngramClassName="…",LevelToAutoUnlock=0)`. | yes; clients are told |
+| `bAutoUnlockAllEngrams` | False | Every engram is learned as its level is reached. | yes; clients are told |
+| `bOnlyAllowSpecifiedEngrams` | False | Only the engrams named in OverrideNamedEngramEntries are offered. | yes; clients are told |
 | `PlayerHarvestingDamageMultiplier` | 1 | What a survivor's blow does to a tree, a rock or a body. Higher uses it up sooner. | yes |
 | `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | yes |
 | `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | yes |
 | `ResourceNoReplenishRadiusStructures` | 1 | How far from a foundation or pillar nodes will not grow back. Higher is further. | yes |
 | `DinoHarvestingDamageMultiplier` | 3.2 | What a tamed creature's blow does to a tree, rock, plant or carcass. | yes |
-| `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied.* | no |
+| `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running, and so can this. How it combines with what a container adds is not documented; they are multiplied.* | yes |
 | `GlobalItemDecompositionTimeMultiplier` | 1 | How long a dropped bag lies. Higher is longer. | yes |
 | `GlobalCorpseDecompositionTimeMultiplier` | 1 | How long a creature's body and what a dead survivor leaves lie. Higher is longer. | yes |
 | `UseCorpseLifeSpanMultiplier` | 1 | The same again, as a second factor. *How it overlaps the one above is not explained; they are multiplied.* | yes |
-| `FuelConsumptionIntervalMultiplier` | 1 | How long a piece of fuel burns. Higher is longer. *Direction taken from the name; the reference gives none.* | no |
-| `ConfigOverrideItemCraftingCosts` | none | What a thing is made of: `(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=1.0,bCraftingRequireExactResourceType=false),…))`. | no; clients are told |
-| `ConfigOverrideItemMaxQuantity` | none | One thing's stack size: `(ItemClassString="core:arrow_stone",Quantity=(MaxItemQuantity=543,bIgnoreMultiplier=True))`. | no; clients are told |
+| `FuelConsumptionIntervalMultiplier` | 1 | How long a piece of fuel burns. Higher is longer. *Direction taken from the name; the reference gives none.* | yes |
+| `ConfigOverrideItemCraftingCosts` | none | What a thing is made of: `(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=1.0,bCraftingRequireExactResourceType=false),…))`. | yes; clients are told |
+| `ConfigOverrideItemMaxQuantity` | none | One thing's stack size: `(ItemClassString="core:arrow_stone",Quantity=(MaxItemQuantity=543,bIgnoreMultiplier=True))`. | yes; clients are told |
 | `SupplyCrateLootQualityMultiplier` | 1 | Quality of what supply drops hold, from 1 to 5: every quality band of the drop book, and of ConfigOverrideSupplyCrateItems, is multiplied by it. | yes |
 | `bDisableLootCrates` | False | No supply drops: the drop book's circuits call none. One called from the console or the admin page still comes. | yes |
 | `ConfigOverrideSupplyCrateItems` | none | What a supply drop holds, in ARK's own form, a crate to an entry: `(SupplyCrateClassString="SupplyCrate_Level25_C",MinItemSets=1,MaxItemSets=2,ItemSets=((MinNumItems=1,MaxNumItems=2,ItemEntries=((EntryWeight=1,ItemClassStrings=("core:bow"),ItemsWeights=(1),MinQuantity=1,MaxQuantity=1,MinQuality=1,MaxQuality=2,ChanceToBeBlueprintOverride=0.25))))))`. The crate's level picks the tier (the highest that opens at or under it), `_Double` its ringed drops, and the table replaces the drop book's for every class of that tier. *Read at start. The admin page shows such a tier's tables locked, and can copy them into the drop book.* | no |
@@ -200,10 +200,10 @@ the admin's settings page may change a setting without a restart.
 | `ConfigAddNPCSpawnEntriesContainer` | none | Groups added to a spawns table: `(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((AnEntryName="Raptors",EntryWeight=0.1,NPCsToSpawnStrings=("core:raptor","core:raptor"))),NPCSpawnLimits=((NPCClassString="core:raptor",MaxPercentageOfDesiredNumToAllow=0.1)))`. NPCsToSpawnPercentageChance and NPCsSpawnOffsets are read too. | no |
 | `ConfigSubtractNPCSpawnEntriesContainer` | none | Species taken out of every group of a spawns table, and their limits: `(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((NPCsToSpawnStrings=("core:parasaur"))),NPCSpawnLimits=((NPCClassString="core:parasaur")))`. | no |
 | `ConfigOverrideNPCSpawnEntriesContainer` | none | A spawns table's groups and limits, whole, in the form ConfigAddNPCSpawnEntriesContainer takes. *Applied first, then what is added, then what is taken out.* | no |
-| `PerLevelStatsMultiplier_Player[n]` | 1 each | What a survivor gains from each level put in a stat. ARK's index: 0 health, 1 stamina, 2 torpidity, 3 oxygen, 4 food, 5 water, 6 temperature, 7 weight, 8 melee, 9 speed, 10 fortitude, 11 crafting. A 0 is read as 1. | no |
-| `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | no |
-| `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | no |
-| `PlayerBaseStatMultipliers[n]` | 1 each; [6] 0, [8] 0, [9] 0, [10] 0, [11] 0 | What a new survivor's stats begin at. Those at 0 cannot be raised. | no |
+| `PerLevelStatsMultiplier_Player[n]` | 1 each | What a survivor gains from each level put in a stat. ARK's index: 0 health, 1 stamina, 2 torpidity, 3 oxygen, 4 food, 5 water, 6 temperature, 7 weight, 8 melee, 9 speed, 10 fortitude, 11 crafting. A 0 is read as 1. | yes |
+| `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | yes |
+| `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | yes |
+| `PlayerBaseStatMultipliers[n]` | 1 each; [6] 0, [8] 0, [9] 0, [10] 0, [11] 0 | What a new survivor's stats begin at. Those at 0 cannot be raised. | yes |
 | `StructureDamageRepairCooldown` | 180 | Seconds after it is damaged before something built may be mended. 0 is at once. | yes |
 | `bDisableFriendlyFire` | False | On a server that is not PvE: nothing of a tribe's own can be harmed by its own, not even by their blasts. *Without it a tribe's own blows, arrows and shots already do its own no harm; only its blasts do. ARK's hosts describe this as the switch for PvP servers and the next as the one for PvE servers.* | yes |
 | `bPvEDisableFriendlyFire` | False | The same on a PvE server. | yes |

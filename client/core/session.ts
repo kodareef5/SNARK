@@ -95,6 +95,7 @@ import {
   S_SNAPSHOT,
   S_TEXT,
   S_TRAVEL,
+  S_TUNING,
   S_MOTION,
   S_SUPPLY,
   S_WELCOME,
@@ -1440,6 +1441,14 @@ export class ClientSession {
         if (!r.overflow) s.travelled = { ticket, world };
       },
     });
+    messages.add({
+      kind: S_TUNING,
+      read(s, r) {
+        const hash = r.u32();
+        const tuning = r.string(MAX_TUNING_BYTES);
+        if (!r.overflow && s.state === "active") s.retune(hash, tuning);
+      },
+    });
     return messages;
   }
 
@@ -1522,6 +1531,29 @@ export class ClientSession {
   }
 
   /** One kind of owner state per message. A kind with no reader is ignored. */
+  /**
+   * The server's settings changed its content while it runs (S_TUNING). The content is derived as at the welcome, and
+   * a session whose content hashes otherwise would predict other numbers, so it leaves. What was predicted under the
+   * old content is corrected by the server's next snapshot.
+   */
+  private retune(hash: number, tuning: string): void {
+    const reg = derive(this.registry, tuning);
+    if (!reg || reg.hash !== hash) {
+      this.state = "closed";
+      this.closeReason = CLOSED_BAD_CONTENT;
+      this.prediction.closed(this, "its content is not the server's after a change of settings");
+      this.conn.close();
+      return;
+    }
+    if (reg === this.registry) return;
+    this.registry = reg;
+    this.move = reg.move[this.ownKind] ?? this.move;
+    this.nodeField?.retable(reg);
+    this.vehicleContacts?.retable(reg);
+    // The foot contacts are made again from the content in force.
+    this.feetWorld = null;
+  }
+
   private ownState(r: BitReader): void {
     ClientSession.ownKinds.read(r.u8(), this, r);
   }

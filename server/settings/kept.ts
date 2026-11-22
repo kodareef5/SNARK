@@ -42,6 +42,8 @@ export class KeptSettings {
   private readonly under = new Map<string, { value: Value; source: Source }>();
   private readonly path: string | null;
   private readonly rules: Rules;
+  /** Says why the rules as a change left them cannot stand, or "". The host sets it once it can tell. */
+  check: () => string = () => "";
 
   constructor(path: string | null, rules: Rules) {
     this.path = path;
@@ -69,8 +71,13 @@ export class KeptSettings {
   private apply(row: Row, words: string): string {
     const name = slotOf(row);
     const was = { value: this.rules.valueOf(row), source: this.rules.sourceOf(row) };
-    const no = this.rules.set(row, words, SOURCE);
+    let no = this.rules.set(row, words, SOURCE);
     if (no !== "") return no;
+    no = this.check();
+    if (no !== "") {
+      this.rules.put(row, was.value, was.source);
+      return no;
+    }
     if (!this.under.has(name)) this.under.set(name, was);
     this.words.set(name, words);
     return "";

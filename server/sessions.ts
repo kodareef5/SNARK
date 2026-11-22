@@ -180,7 +180,9 @@ export class Sessions {
   private readonly pending = new Set<Pending>();
   private readonly survivor: number;
   /** Sized for the tuning string a welcome carries. */
-  private readonly welcomeW: BitWriter;
+  private welcomeW: BitWriter;
+  /** The length of the tuning it was sized for: a server's settings may make its tuning longer while it runs. */
+  private welcomeFor: number;
 
   constructor(ctx: SessionsContext) {
     const world = (this.world = ctx.world);
@@ -192,7 +194,8 @@ export class Sessions {
     this.game = ctx.game;
     this.players = ctx.players;
     this.replication = ctx.replication;
-    this.welcomeW = new BitWriter(1024 + world.reg.tuning.length * 4);
+    this.welcomeFor = world.reg.tuning.length;
+    this.welcomeW = new BitWriter(1024 + this.welcomeFor * 4);
     this.survivor = world.reg.index.get("core:survivor")!;
   }
 
@@ -378,6 +381,10 @@ export class Sessions {
     c.givenAt = this.replication.given;
     const world = this.world;
     const ents = world.ents;
+    if (world.reg.tuning.length !== this.welcomeFor) {
+      this.welcomeFor = world.reg.tuning.length;
+      this.welcomeW = new BitWriter(1024 + this.welcomeFor * 4);
+    }
     const w = this.welcomeW;
     w.reset();
     w.u8(S_WELCOME);

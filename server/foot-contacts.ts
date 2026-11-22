@@ -27,6 +27,11 @@ export class ServerFootContacts {
     this.contacts = new FootContacts(world, world.reg);
   }
 
+  /** Takes the world's content again, which its settings may have changed. */
+  retable(): void {
+    this.contacts.retable(this.world.reg);
+  }
+
   /** Meets `e`'s body `b`, stepped this tick from `before` with `p`, with the vehicles round it. */
   meet(e: number, before: Body, b: Body, p: MoveParams): void {
     const { world } = this, ents = world.ents, dims = world.dims, found = this.found;

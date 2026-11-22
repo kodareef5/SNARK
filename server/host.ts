@@ -93,7 +93,7 @@ import { KeptSettings, rowNamed } from "./settings/kept.ts";
 import { Lists } from "./settings/lists.ts";
 import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/config.ts";
 import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
-import { deriveRegistry } from "../shared/content/tuning.ts";
+import { deriveRegistry, tuningText, type Tuning } from "../shared/content/tuning.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import { CAUSE_WORDS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
@@ -375,13 +375,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The admin page's values are laid over them, from their own file beside the save.
   const kept = new KeptSettings(opts.dbPath ? `${opts.dbPath}.settings.json` : null, rules);
   const keptSaid = kept.load();
+  kept.check = () => (contentNow().reg === null ? `gives content that does not compile: ${contentNow().fault}` : "");
   const lists = new Lists(rules, content);
   // Settings that change content are applied to the definitions once, before anything reads them (D90). From here on `reg` is the only registry.
   const tuned = tuningOf(rules, lists, content);
   lists.warm();
   const derived = deriveRegistry(content, tuned.tuning);
   if (opts.world && opts.world.reg.hash !== derived.hash) throw new Error("a world made before its host must be made of the content the host's settings give: contentFor(content, rules)");
-  const reg = opts.world ? opts.world.reg : derived;
+  // The registry in force. A setting that changes content replaces it while the server runs (recontent, below).
+  let reg = opts.world ? opts.world.reg : derived;
   const storeOptions = { ...opts.store, allowNetworkDisk: opts.store?.allowNetworkDisk ?? rules.flag("AllowNetworkSave") === true };
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, storeOptions) : null;
   if (store) opened.push(store);
@@ -597,7 +599,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
     {
-      reg,
+      get reg() {
+        return reg;
+      },
       world,
       records,
       items,
@@ -973,8 +977,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const RATES = CATALOG.filter((row) => row.retime === "rate").map((row) => row.name);
   /**
    * Re-times everything in progress from the values it was computed under to the server's current ones (D91). It runs once at a
-   * load, for a save made under other settings, and whenever a live rule changes. Spoilage and fires are computed only when read.
-   * Their rules cannot change while the server runs, so they are re-timed only at a load, after being settled at the old values.
+   * load, for a save made under other settings, and whenever a live rule changes. Spoilage and fires are computed only when
+   * read, so they are first settled by the table they ran under: at a load the save's, made again from its values, and
+   * while running the registry that was in force until the change (`timed`).
    */
   const retime = (atLoad: boolean): void => {
     const now = rules.timers();
@@ -986,19 +991,18 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     breeding.retime({ hatch: wasAt("EggHatchSpeedMultiplier"), mature: wasAt("BabyMatureSpeedMultiplier"), interval: wasAt("MatingIntervalMultiplier"), mating: wasAt("MatingSpeedMultiplier") });
     death.retime(wasAt("GlobalItemDecompositionTimeMultiplier"), wasAt("GlobalCorpseDecompositionTimeMultiplier") * wasAt("UseCorpseLifeSpanMultiplier"));
-    if (atLoad) {
-      harvest?.retime(wasAt("ResourcesRespawnPeriodMultiplier"));
-      const spoilWas = wasAt("GlobalSpoilingTimeMultiplier");
-      const fuelWas = wasAt("FuelConsumptionIntervalMultiplier");
-      if (spoilWas !== now.GlobalSpoilingTimeMultiplier || fuelWas !== now.FuelConsumptionIntervalMultiplier) {
-        // The registry as the save had it, for the spoil and fuel timings.
-        const old = deriveRegistry(content, { ...tuned.tuning, spoil: spoilWas, fuel: fuelWas });
-        items.table = old;
-        stations.refuel(old, fuelWas, now.FuelConsumptionIntervalMultiplier!);
-        items.respoil(old, spoilWas, now.GlobalSpoilingTimeMultiplier!);
-        items.table = reg;
-      }
-    } else if (RATES.some((name) => wasAt(name) !== now[name])) {
+    const spoilWas = wasAt("GlobalSpoilingTimeMultiplier");
+    const fuelWas = wasAt("FuelConsumptionIntervalMultiplier");
+    if (spoilWas !== now.GlobalSpoilingTimeMultiplier || fuelWas !== now.FuelConsumptionIntervalMultiplier) {
+      const old = atLoad ? deriveRegistry(content, { ...tuning, spoil: spoilWas, fuel: fuelWas }) : timed;
+      items.table = old;
+      stations.refuel(old, fuelWas, now.FuelConsumptionIntervalMultiplier!);
+      items.respoil(old, spoilWas, now.GlobalSpoilingTimeMultiplier!);
+      items.table = reg;
+    }
+    timed = reg;
+    if (atLoad) harvest?.retime(wasAt("ResourcesRespawnPeriodMultiplier"));
+    else if (RATES.some((name) => wasAt(name) !== now[name])) {
       // The young's hunger is a rate that can change while the server runs. Each young creature is rated again and its meal rescheduled.
       for (const rec of records.byPid.values()) {
         if (rec.grown === 0 || rec.egg !== null || !rec.vitals) continue;
@@ -1010,6 +1014,52 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (settingsAt) settingsAt.dirty = true;
   };
   let retimedAt = rules.version;
+  /** The tuning the registry in force was made from, and what of the content settings was skipped in making it. */
+  let tuning: Tuning = tuned.tuning;
+  let contentPassed: readonly string[] = tuned.passed;
+  /** The registry the spoiling and burning now under way were timed by. */
+  let timed = reg;
+  /** The content the settings now give, made once for each change of them, or why it does not compile. */
+  let contentMade: { version: number; tuning: Tuning; passed: readonly string[]; reg: Registry | null; fault: string } | null = null;
+  const contentNow = (): NonNullable<typeof contentMade> => {
+    if (contentMade?.version === rules.version) return contentMade;
+    const next = tuningOf(rules, lists, content);
+    contentMade = { version: rules.version, tuning: next.tuning, passed: next.passed, reg: null, fault: "" };
+    try {
+      contentMade.reg = tuningText(next.tuning) === reg.tuning ? reg : deriveRegistry(content, next.tuning);
+    } catch (err) {
+      contentMade.fault = (err instanceof Error ? err.message : String(err)).split("\n").slice(0, 3).join("; ");
+    }
+    return contentMade;
+  };
+  /**
+   * Puts the content the settings now give in force, if it is another: the registry is replaced, what kept a table of
+   * the old one takes the new, and every session is told the tuning, to derive the same. Indices never change under a
+   * tuning, so whatever names content by index is as it was. What is already contentMade is left as it is.
+   */
+  const recontent = (): void => {
+    const next = contentNow();
+    if (next.reg === null) return void say(`the content settings give content that does not compile, so the content stays as it was: ${next.fault}`);
+    contentPassed = next.passed;
+    if (next.reg === reg) return;
+    reg = world.reg = next.reg;
+    tuning = next.tuning;
+    // Unless the spoiling or burning times changed, which the re-time settles by the old registry, the new one times them.
+    if (wasAt("GlobalSpoilingTimeMultiplier") === rules.num("GlobalSpoilingTimeMultiplier") && wasAt("FuelConsumptionIntervalMultiplier") === rules.num("FuelConsumptionIntervalMultiplier")) timed = reg;
+    items.table = reg;
+    stations.retable();
+    world.nodeField?.retable(reg);
+    progression.rebuild();
+    supply.retable();
+    urban.retable();
+    game.players.feet.retable();
+    // A body's limits are worked out from its species' numbers, so each body in the world is worked out again.
+    for (const pid of [...records.entOf.keys()]) {
+      const rec = records.byPid.get(pid);
+      if (rec) refreshBody(rec);
+    }
+    game.sendTuning();
+  };
   /** In ticks. ARK reads its live file at every world save. */
   const liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
   const readLive = (): string[] => {
@@ -1344,6 +1394,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     if (retimedAt !== rules.version) {
       retimedAt = rules.version;
+      // Before the re-time, which settles what spoils and burns by the registry this replaces.
+      recontent();
       retime(false);
     }
     // The next commit saves the values the timers now run under.
@@ -1723,7 +1775,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const row = rowOf(name);
       if (!row) return `there is no setting called ${name}`;
       const fixed = fixedWhy(row);
-      return fixed === "" ? rules.assign(row.name, words, "console") : `${row.name} ${fixed}`;
+      if (fixed !== "") return `${row.name} ${fixed}`;
+      const was = { value: rules.valueOf(row), source: rules.sourceOf(row) };
+      const no = rules.assign(row.name, words, "console");
+      if (no !== "" || contentNow().reg !== null) return no;
+      // A value the content cannot be made with is not taken.
+      const fault = contentNow().fault;
+      rules.put(row, was.value, was.source);
+      return `${row.name} gives content that does not compile: ${fault}`;
     },
     pageSetting(name, words) {
       const row = rowNamed(name);
@@ -1752,7 +1811,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     modules,
     adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
     lists,
-    passed: [...tuned.passed, ...spawns.passed],
+    get passed() {
+      return [...contentPassed, ...spawns.passed];
+    },
     dev: opts.dev ?? false,
     spawnCreature,
     spawnVehicle,

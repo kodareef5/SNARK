@@ -55,9 +55,14 @@ function upright(s: DynamicState, x: number, y: number, z: number): void {
 }
 
 export class FootContacts {
+  /** Takes content a server's settings have changed while it runs. */
+  retable(reg: Registry): void {
+    this.reg = reg;
+  }
+
   /** The farthest any vehicle's solid reaches from its origin. */
   readonly reach: number;
-  private readonly reg: Registry;
+  private reg: Registry;
   private readonly pair: VehiclePairQueries;
   private readonly vehicle = body("fixed");
   private readonly walker = body("protected");
