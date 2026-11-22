@@ -13,6 +13,7 @@ import { KEY_MENU_NOTE } from "../../client/core/ui/menu.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
+import { glassBox } from "../fixtures/monitor.ts";
 
 const pack = parsePack(corePackBytes());
 
@@ -240,6 +241,10 @@ test("`/budget` shows the frame's budget without the mode armed, costs nothing o
   expect(texts().some((t) => t.startsWith("near 3.0 · casters 1.5"))).toBe(true);
   expect(texts().some((t) => /^Triangles .* of /.test(t))).toBe(true);
   expect(texts().some((t) => t.includes("this panel") && t.includes("ms a frame"))).toBe(true);
+  // On a phone held upright the panel is as wide as the screen leaves it.
+  h.run(50, (now) => void app.frame(now, 390, 844));
+  const box = glassBox(app.ui.frame, 9700), f = app.ui.frame;
+  expect(box !== null && box.x >= f.left && box.x + box.w <= f.width - f.right && box.y + box.h <= f.height - f.bottom).toBe(true);
   // On an Apple GPU, where a query between passes ends Metal's render pass, the card is timed whole and the panel says so.
   port.page = () => ({ browser: "a test", card: "ANGLE (Apple, ANGLE Metal Renderer: Apple M5)", format: "bc" });
   await frames(400);

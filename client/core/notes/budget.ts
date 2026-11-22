@@ -183,7 +183,8 @@ export class BudgetPanel {
     this.cost += spent;
     this.costFrames++;
     if (nowMs - this.madeAt >= REFRESH_MS) this.refresh(app, p, nowMs, timed, apple);
-    const inner = W - PAD * 2, x = f.width - f.right - 12 - W;
+    // As wide as the screen leaves it on a narrow one, a phone held upright.
+    const pw = Math.min(W, f.width - f.left - f.right - 24), inner = pw - PAD * 2, x = f.width - f.right - 12 - pw;
     const barRow = SMALL_LINE + BAR_H + 4 + SMALL_LINE + 2;
     const h = PAD * 2 + LINE + STRIP_H + 4 + SMALL_LINE + 6 + this.bars.reduce((n, b) => n + barRow + (b.note ? SMALL_LINE : 0), 0) + this.lines.length * SMALL_LINE;
     // Under the lowest of the HUD's pieces in the right column's top half.
@@ -191,10 +192,10 @@ export class BudgetPanel {
     for (let i = 0; i < f.count; i++) {
       const n = f.nodes[i]!;
       if (n.key >= KEY_BUDGET && n.key < KEY_BUDGET + 300) continue;
-      if (n.w < f.width / 2 && n.x + n.w > x && n.x < x + W && n.y < f.height / 2 && n.y + n.h + 8 > below) below = n.y + n.h + 8;
+      if (n.w < f.width / 2 && n.x + n.w > x && n.x < x + pw && n.y < f.height / 2 && n.y + n.h + 8 > below) below = n.y + n.h + 8;
     }
     const y = Math.max(f.top + 12, Math.min(below, f.height - f.bottom - 12 - h));
-    kit.glass(f, KEY_BUDGET, x, y, W, h);
+    kit.glass(f, KEY_BUDGET, x, y, pw, h);
     let at = y + PAD;
     f.text(KEY_BUDGET + 1, x + PAD, at, inner, S_TEXT, "FRAME BUDGET");
     f.text(KEY_BUDGET + 2, x + PAD, at + 1, inner, S_HUD_COUNT, this.title);
