@@ -16,6 +16,7 @@ import { SKY_MATERIAL } from "../client/core/render/atmosphere.ts";
 import { FAR_MESH, farColours } from "../client/core/render/far.ts";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
 import { WATER_MATERIAL } from "../client/core/render/water.ts";
+import { BENT_SECTIONS } from "../content/bends.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, surfaceMaterial } from "../content/surfaces.ts";
 import { HUMAN } from "../shared/anim/human.ts";
@@ -53,6 +54,15 @@ function stressCards(): TextureSource[] {
  */
 export function brotli(bytes: Uint8Array, quick: boolean): Uint8Array {
   return quick ? brotliCompressSync(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 9 } }) : brotliCompressSync(bytes);
+}
+
+/**
+ * A script as the page is sent it: each line wholly a `//` comment left empty. In the minifier's output a line break
+ * is only ever in template text, where such a line is a shader's note, or between statements, where it is a comment
+ * anyway. A line holding a backtick, a `$` or a backslash is kept, and no line is taken away, so the source map reads.
+ */
+export function withoutNotes(js: string): string {
+  return js.replace(/\n[ \t]*\/\/[^\n`$\\]*(?=\n)/g, "\n");
 }
 
 /**
@@ -135,13 +145,17 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // The sky's table and the content are files of their own, not strings in the script.
   const sky = skyFile(theSky().table), skyName = `assets/sky.${partHash(sky)}.bin`;
   writeFileSync(join(dist, skyName), sky);
-  const content = new TextEncoder().encode(JSON.stringify(CORE_CONTENT)), contentName = `assets/content.${partHash(content)}.json`;
+  // The content less the bent sections, which the page makes (client/core/fetched.ts fetchContent).
+  const bent = new Set(BENT_SECTIONS.map((d) => d.id));
+  const content = new TextEncoder().encode(JSON.stringify(CORE_CONTENT.filter((d) => !bent.has(d.id)))), contentName = `assets/content.${partHash(content)}.json`;
   writeFileSync(join(dist, contentName), content);
   // Workers and worklets run in their own threads, so each is bundled as a separate file. The page's script is split, so
   // that the device probe is fetched only by a page that runs it.
   const bundle = async (files: string[], splitting: boolean): Promise<Bun.BuildArtifact[]> => {
     const result = await Bun.build({ entrypoints: files.map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", splitting, target: "browser", minify: true, sourcemap: "linked", define: { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName) } });
     if (!result.success) throw new Error(result.logs.map(String).join("\n"));
+    // The shaders' notes are some 5 KB of the first frame's Brotli.
+    for (const o of result.outputs) if (o.path.endsWith(".js")) writeFileSync(o.path, withoutNotes(readFileSync(o.path, "utf8")));
     return result.outputs;
   };
   const scripts = [...(await bundle(["client/shell/main.ts"], true)), ...(await bundle(["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts"], false))].filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1));
