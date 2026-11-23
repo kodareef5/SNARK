@@ -84,14 +84,17 @@ export interface Region {
   readonly rx: number;
   readonly rz: number;
   readonly round: boolean;
-  readonly table: SpawnTable;
+  /** Its spawn table's content index, and what its zone holds before the server's multiplier. */
+  readonly spawns: number;
+  readonly base: number;
+  table: SpawnTable;
   /** What it holds at the server's DinoCountMultiplier. */
-  readonly desired: number;
+  desired: number;
   count: number;
   /** Members of each species. */
   readonly of: Map<number, number>;
   /** Each species its entries can make. */
-  readonly makes: ReadonlySet<number>;
+  makes: ReadonlySet<number>;
   /** The stamp of its one deadline. Any other is stale. */
   due: number;
   /** It takes turns to add a group, many a second, until a turn adds nothing. */
@@ -144,8 +147,31 @@ export class Spawner {
       if (!table) continue;
       const [rx, rz] = zone.half ?? [zone.radius ?? 0, zone.radius ?? 0];
       const makes = new Set(table.entries.flatMap((e) => e.kinds));
-      this.regions.push({ x: zone.at[0], z: zone.at[1], rx, rz, round: !zone.half, table, desired: Math.round((zone.count ?? 0) * multiplier), count: 0, of: new Map(), makes, due: 0, filling: false });
+      this.regions.push({ x: zone.at[0], z: zone.at[1], rx, rz, round: !zone.half, spawns: k!, base: zone.count ?? 0, table, desired: Math.round((zone.count ?? 0) * multiplier), count: 0, of: new Map(), makes, due: 0, filling: false });
     }
+  }
+
+  /** While set no wild creature is made, as under a -NoDinos flag. Those alive stay, and the regions go on being checked. */
+  quiet = false;
+
+  /**
+   * Takes the spawn tables and the count multiplier as the settings now give them. Creatures alive stay counted where
+   * they are, whatever the new table makes, and a region over its number is not thinned. A region whose table is gone
+   * makes nothing more.
+   */
+  retable(tables: ReadonlyMap<number, SpawnTable>): void {
+    const multiplier = this.ctx.rules.num("DinoCountMultiplier");
+    for (const r of this.regions) {
+      const table = tables.get(r.spawns);
+      r.desired = table ? Math.round(r.base * multiplier) : 0;
+      if (!table) continue;
+      r.table = table;
+      r.makes = new Set(table.entries.flatMap((e) => e.kinds));
+    }
+  }
+
+  private wants(r: Region): boolean {
+    return !this.quiet && r.count < r.desired;
   }
 
   /** Wild creatures some region counts. */
@@ -193,7 +219,7 @@ export class Spawner {
     while (waiting-- > 0 && this.madeNow < TICK_MADE && this.triesNow < TICK_TRIES && (this.triesNow === 0 || this.ctx.game.lane.may())) {
       const i = this.turns[this.turn++]!;
       const r = this.regions[i]!;
-      if (r.count < r.desired && this.add(i, r)) this.turns.push(i);
+      if (this.wants(r) && this.add(i, r)) this.turns.push(i);
       else {
         r.filling = false;
         this.schedule(i, tick + this.checkTicks);
@@ -268,8 +294,8 @@ export class Spawner {
     if (!r || r.due !== stamp) return;
     const tick = this.ctx.world.tick;
     this.budget(tick);
-    if (r.count < r.desired && (this.madeNow >= TICK_MADE || this.triesNow >= TICK_TRIES)) return this.schedule(i, tick + 1);
-    if (r.count < r.desired) this.add(i, r);
+    if (this.wants(r) && (this.madeNow >= TICK_MADE || this.triesNow >= TICK_TRIES)) return this.schedule(i, tick + 1);
+    if (this.wants(r)) this.add(i, r);
     this.schedule(i, tick + this.checkTicks);
   }
 

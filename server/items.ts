@@ -31,7 +31,6 @@ export class Items {
   readonly received: Float64Array;
   readonly sent: Float64Array;
   dirty = false;
-  private readonly reg: Registry;
   private readonly records: Records;
   private readonly world: ServerWorld;
   private readonly spoiled = (item: number, n: number, ref: number, at: number): void => {
@@ -56,9 +55,13 @@ export class Items {
     this.onChange?.(rec);
   }
 
+  /** The world's content now: its settings may change it while the server runs. */
+  private get reg(): Registry {
+    return this.world.reg;
+  }
+
   constructor(world: ServerWorld, records: Records) {
     this.world = world;
-    this.reg = world.reg;
     this.records = records;
     this.table = world.reg;
     this.minted = new Float64Array(world.reg.defs.length);

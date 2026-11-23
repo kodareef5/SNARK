@@ -52,7 +52,7 @@ ev("server.save", "after", "tick folder", "SaveWorld", "server/host.ts", "wired"
 ev("server.saveFailed", "after", "code since", "", "server/host.ts", "wired", "A commit failed. The world runs on and it will be tried again.");
 ev("server.saved", "after", "tick", "", "server/host.ts", "wired", "Commits succeed again after failing.");
 ev("server.stop", "after", "why", "the engine's exit, the crash report", "server/host.ts", "wired", "The server is stopping. The last commit follows.");
-ev("server.settings", "after", "names source", "", "server/host.ts", "wired", "Settings changed while running, from the console or the live file.");
+ev("server.settings", "after", "names source", "", "server/host.ts", "wired", "Settings changed while running, from the console, the live file or the admin's settings page.");
 ev("server.broadcast", "after", "text", "the admin broadcast", "server/commands/core.ts", "ops", "An admin spoke to everyone.");
 ev("command", "before", "byPid name line source", "console commands and RCON packets", "server/console.ts", "wired", "A console command is about to run.");
 ev("command.ran", "after", "byPid name line source", "", "server/console.ts", "wired", "A console command ran. This is the audit trail. A turn of the Creative screen's sundial is told once, as the `settime` it ended on.");

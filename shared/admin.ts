@@ -71,6 +71,41 @@ export interface ChangedSetting {
   status: string;
 }
 
+/** One setting on the admin's settings page (/admin/settings.json): what it is, what it has, and whether it may change now. */
+export interface SettingRow {
+  /** ARK's name, a command-line flag's with its dash. */
+  name: string;
+  /** The heading it is listed under. */
+  group: string;
+  /** "float", "int", "bool", "text", "flag", or a list: "indexed", "struct", "names", "lines". */
+  kind: string;
+  doc: string;
+  note: string;
+  min: number;
+  max: number;
+  /** The default and the value as words: a list's entries one a line, an indexed setting's numbers with commas between. A password's are "". */
+  def: string;
+  value: string;
+  /** Whether a password has a value, which is all that leaves of one. */
+  has: boolean;
+  source: string;
+  secret: boolean;
+  /** Why it may not change while the server runs, or "". */
+  fixed: string;
+  /** The page set it, and its value is kept across restarts. */
+  kept: boolean;
+}
+
+/** /admin/settings.json, and what a change is answered with. `why` says why a change was refused, and `note` what else to know of one made. */
+export interface SettingsPage {
+  ok: boolean;
+  why: string;
+  note: string;
+  /** Whether what the page sets outlives a restart: the world has a save to keep it beside. */
+  keeps: boolean;
+  rows: SettingRow[];
+}
+
 /** The survivor log: its span, whether it is on and why not. /admin/log/span.json adds `now`, the server's time. */
 export interface LogState extends LogSpan {
   on: boolean;

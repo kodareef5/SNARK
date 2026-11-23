@@ -66,7 +66,12 @@ export class VehiclePrediction {
   private readonly treeFactory?: () => PredictedTrees;
 
   private readonly world: CollisionWorld;
-  private readonly registry: Registry;
+  private registry: Registry;
+
+  /** Takes content the server's settings have changed while it runs. */
+  retable(registry: Registry): void {
+    this.registry = registry;
+  }
 
   constructor(world: CollisionWorld, registry: Registry, treeFactory?: () => PredictedTrees, ownTrees?: PredictedTrees) {
     this.world = world;

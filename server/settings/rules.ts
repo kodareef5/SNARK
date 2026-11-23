@@ -3,16 +3,27 @@
 
 import type { ChangedSetting } from "../../shared/admin.ts";
 import { CATALOG, rowOf } from "./catalog.ts";
-import { isList, toNumber, toSwitch, unquote, writeNode, type IniNode } from "./ini.ts";
+import { isList, parseIni, toNumber, toSwitch, unquote, writeNode, type IniNode } from "./ini.ts";
 import type { Row } from "./row.ts";
 
 /** Weakest first. */
-export const SOURCES = ["default", "file", "command line", "live file", "console"] as const;
+export const SOURCES = ["default", "file", "command line", "live file", "console", "admin page"] as const;
 export type Source = (typeof SOURCES)[number];
 
 export type Value = number | boolean | string | readonly number[] | readonly IniNode[];
 
-const slot = (row: Row): string => (row.kind === "flag" ? "-" : "") + row.name;
+/** A setting's name as reports and the admin page write it: a command-line flag's has its dash. */
+export const slotOf = (row: Row): string => (row.kind === "flag" ? "-" : "") + row.name;
+const slot = slotOf;
+
+const isLines = (row: Row): boolean => row.kind === "struct" || row.kind === "names" || row.kind === "lines";
+
+/** A value as `Rules.set` reads it back: a list's entries one a line, an indexed setting's numbers with commas between. */
+export function wordsOf(row: Row, v: Value): string {
+  if (row.kind === "indexed") return (v as readonly number[]).join(",");
+  if (Array.isArray(v)) return (v as readonly (number | IniNode)[]).map((x) => (typeof x === "number" ? String(x) : writeNode(x))).join("\n");
+  return typeof v === "boolean" ? (v ? "True" : "False") : String(v);
+}
 
 function defaultOf(row: Row): Value {
   if (row.kind === "struct" || row.kind === "names" || row.kind === "lines") return [];
@@ -144,10 +155,49 @@ export class Rules {
   assign(name: string, words: string, source: Source): string {
     const row = rowOf(name);
     if (!row) return `there is no setting called ${name}`;
-    if (row.kind === "struct" || row.kind === "names" || row.kind === "lines" || row.kind === "indexed") return `${row.name} is a list: it is set in its file`;
-    const got = readValue(row, words);
-    if (typeof got === "string") return `${row.name} ${got}`;
-    this.put(row, got.value as Value, source);
+    if (isLines(row) || row.kind === "indexed") return `${row.name} is a list: it is set in its file`;
+    const why = this.set(row, words, source);
+    return why === "" ? "" : `${row.name} ${why}`;
+  }
+
+  /**
+   * Sets any setting from words (wordsOf writes them): a list's entries one a line, each as its file has it with or
+   * without its `Key=`, and an indexed setting's numbers with commas between. Returns "" if it was set, or why not, and
+   * then nothing has changed.
+   */
+  set(row: Row, words: string, source: Source): string {
+    if (row.kind === "indexed") {
+      const parts = words.split(",");
+      const n = (row.def as readonly number[]).length;
+      if (parts.length !== n) return `wants ${n} numbers with commas between, got ${parts.length}`;
+      const out: number[] = [];
+      for (const part of parts) {
+        const got = readValue(row, part);
+        if (typeof got === "string") return got;
+        out.push(got.value as number);
+      }
+      this.put(row, out, source);
+      return "";
+    }
+    if (!isLines(row)) {
+      const got = readValue(row, words);
+      if (typeof got === "string") return got;
+      this.put(row, got.value as Value, source);
+      return "";
+    }
+    const out: (number | IniNode)[] = [];
+    const key = `${row.name.toLowerCase()}=`;
+    const lines = words.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const parsed = parseIni(`K=${line.toLowerCase().startsWith(key) ? line.slice(key.length) : line}`);
+      const node = parsed.entries[0]?.value;
+      if (node === undefined) return `line ${i + 1}: ${parsed.faults[0]?.why ?? "cannot be read"}`;
+      const got = readValue(row, node);
+      if (typeof got === "string") return `line ${i + 1} ${got}`;
+      out.push(got.value as number | IniNode);
+    }
+    this.put(row, out as Value, source);
     return "";
   }
 

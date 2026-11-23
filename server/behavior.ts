@@ -373,7 +373,6 @@ export class Behavior {
   spent = 0;
   private readonly world: ServerWorld;
   private readonly game: GameServer;
-  private readonly reg: Registry;
   private readonly rng: Rng;
   /**
    * The hunted entity and its generation, where the hunt began (for a fleeing creature, the point it makes for), the tick the
@@ -417,10 +416,14 @@ export class Behavior {
   private claimedAt = -1;
   private wildAt = -1;
 
+  /** The world's content now: its settings may change it while the server runs. */
+  private get reg(): Registry {
+    return this.world.reg;
+  }
+
   constructor(world: ServerWorld, game: GameServer, seed: number) {
     this.world = world;
     this.game = game;
-    this.reg = world.reg;
     this.rng = new Rng(seed);
     // Each search is for the body that asked, with the numbers it moves by (walker); until the first, a survivor's.
     this.finder = new PathFinder(world, world.reg.move[world.reg.index.get("core:survivor")!]!);

@@ -382,7 +382,7 @@ export function addOwnCommands(ctx: OwnContext): void {
       return RESULT_DENIED;
     }
     // A module is asked about a stack that changes hands, not one moved about in one inventory.
-    if (a !== b && !asked(ctx, c, ITEM_MOVE, { byPid: c.pid, from: a.pid, to: b.pid, item: reg.ids[expect]!, n: count === 0 ? src.count[fromSlot]! : count })) return RESULT_DENIED;
+    if (a !== b && !asked(ctx, c, ITEM_MOVE, { byPid: c.pid, from: a.pid, to: b.pid, item: ctx.world.reg.ids[expect]!, n: count === 0 ? src.count[fromSlot]! : count })) return RESULT_DENIED;
     if (ctx.items.move(a, fromSlot, b, toSlot, count) === 0) return RESULT_INVALID;
     // A loaded weapon swapped into the hands for a spent one of its kind must not fire at once.
     const me = ctx.records.byPid.get(c.pid);
@@ -450,9 +450,8 @@ export function addOwnCommands(ctx: OwnContext): void {
     return rec && on ? ctx.progression.craftBlueprint(rec, on, slot, count) : RESULT_DENIED;
   });
 
-  const reg = ctx.world.reg;
   const itemDef = (kind: number): ItemDef | null => {
-    const d = reg.defs[kind];
+    const d = ctx.world.reg.defs[kind];
     return d?.type === "item" ? d : null;
   };
   /** Null without a body. */
@@ -481,7 +480,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (!own) return RESULT_DENIED;
     const { rec, inv } = own;
     const weapon = slot < inv.cap && (inv.flags[slot]! & FLAG_BLUEPRINT) === 0 ? itemDef(inv.item[slot]!)?.weapon : undefined;
-    if (!weapon?.ammo || !weapon.ammo.includes(reg.ids[ammo] ?? "")) return RESULT_INVALID;
+    if (!weapon?.ammo || !weapon.ammo.includes(ctx.world.reg.ids[ammo] ?? "")) return RESULT_INVALID;
     if (inv.ammo[slot] === ammo) return RESULT_OK;
     // Rounds of the other kind come out first. The new kind goes in at the next reload.
     if (!ctx.items.unload(rec, slot)) return RESULT_FULL;
@@ -499,7 +498,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     const { rec, inv } = own;
     if (slot >= inv.cap || from >= inv.cap) return RESULT_INVALID;
     const weapon = itemDef(inv.item[slot]!)?.weapon;
-    if (!weapon?.fits || !weapon.fits.includes(reg.ids[inv.item[from]!] ?? "")) return RESULT_INVALID;
+    if (!weapon?.fits || !weapon.fits.includes(ctx.world.reg.ids[inv.item[from]!] ?? "")) return RESULT_INVALID;
     return ctx.items.attach(rec, slot, from) ? RESULT_OK : RESULT_INVALID;
   });
 
@@ -531,11 +530,11 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (slot >= inv.cap || inv.item[slot] === 0 || (inv.flags[slot]! & FLAG_BLUEPRINT) !== 0) return RESULT_INVALID;
     const item = inv.item[slot]!;
     const max = ctx.items.maxDur(item, inv.quality[slot]!);
-    const craft = (reg.defs[item] as ItemDef).craft;
+    const craft = (ctx.world.reg.defs[item] as ItemDef).craft;
     if (max === 0 || !craft || inv.dur[slot]! >= max) return RESULT_INVALID;
     // Half of what it is made of, scaled by wear, and at least one of each.
     const worn = 1 - inv.dur[slot]! / max;
-    const cost = craft.needs.map((n) => ({ item: reg.index.get(n.item)!, count: Math.max(1, Math.ceil(n.count * 0.5 * worn)) }));
+    const cost = craft.needs.map((n) => ({ item: ctx.world.reg.index.get(n.item)!, count: Math.max(1, Math.ceil(n.count * 0.5 * worn)) }));
     for (const n of cost) if (inv.total(n.item) < n.count) return RESULT_SHORT;
     for (const n of cost) if (!ctx.items.burnItem(rec, n.item, n.count)) throw new Error("the ingredients were counted");
     ctx.items.mend(rec, slot);
@@ -555,7 +554,7 @@ export function addOwnCommands(ctx: OwnContext): void {
       ctx.game.sendText(c, TEXT_NOTICE, issuedStays(ctx, expect));
       return RESULT_DENIED;
     }
-    if (!asked(ctx, c, ITEM_DROP, { byPid: c.pid, item: reg.ids[expect]!, n: count === 0 ? own.inv.count[slot]! : count })) return RESULT_DENIED;
+    if (!asked(ctx, c, ITEM_DROP, { byPid: c.pid, item: ctx.world.reg.ids[expect]!, n: count === 0 ? own.inv.count[slot]! : count })) return RESULT_DENIED;
     return ctx.drop(own.rec, slot, count) ? RESULT_OK : RESULT_FULL;
   });
 
@@ -572,7 +571,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     // A blueprint is crafted from (CMD_CRAFT_BLUEPRINT), never eaten, used or worn.
     if ((inv.flags[slot]! & FLAG_BLUEPRINT) !== 0) return RESULT_INVALID;
     // Using a wearable item puts it on, or takes it off.
-    const worn = reg.wearSlot[item]!;
+    const worn = ctx.world.reg.wearSlot[item]!;
     if (worn >= 0 && inv.armor >= 0) {
       const to = slot >= inv.armor ? inv.free() : inv.armor + worn;
       if (to < 0) return RESULT_FULL;
@@ -582,7 +581,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     const eat = def.eat;
     const use = def.use;
     if (!eat && !use) return RESULT_INVALID;
-    if (!asked(ctx, c, ITEM_USE, { byPid: c.pid, item: reg.ids[item]! })) return RESULT_DENIED;
+    if (!asked(ctx, c, ITEM_USE, { byPid: c.pid, item: ctx.world.reg.ids[item]! })) return RESULT_DENIED;
     // A vessel is drunk from or filled, and kept.
     if (use?.holds) return ctx.use.vessel(c, rec, slot, def);
     if (!ctx.items.burn(rec, slot, 1)) return RESULT_STALE;

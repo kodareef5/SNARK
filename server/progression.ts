@@ -51,11 +51,11 @@ export class Progression {
   private readonly records: Records;
   private readonly items: Items;
   private readonly deadlines: DeadlineHeap;
-  private readonly levels: LevelsDef | null;
+  private levels: LevelsDef | null = null;
   /** Per item, the engram that unlocks the making of it, or 0. */
-  private readonly engramOf: Uint16Array;
+  private engramOf: Uint16Array = new Uint16Array(0);
   /** Content indices of the engrams learned automatically. */
-  private readonly autos: number[] = [];
+  private autos: number[] = [];
   private readonly survivor: number;
   /** Draws the crafted skill bonus of what a blueprint makes. */
   private readonly rng: Rng;
@@ -69,15 +69,25 @@ export class Progression {
     this.items = items;
     this.deadlines = deadlines;
     this.deadline = deadlines.kind("craft", (a, stamp) => this.due(a, stamp));
-    const reg = world.reg;
+    this.survivor = world.reg.index.get("core:survivor") ?? 0;
+    this.rebuild();
+  }
+
+  /**
+   * Reads the level tables and the engrams from the world's content again, which its settings may have changed. Every
+   * survivor's progression is sent again, since its level and points are worked out from them.
+   */
+  rebuild(): void {
+    const reg = this.world.reg;
     this.levels = (reg.defs.find((d) => d?.type === "levels") as LevelsDef | undefined) ?? null;
     this.engramOf = new Uint16Array(reg.defs.length);
+    this.autos = [];
     reg.defs.forEach((d, k) => {
       if (d?.type !== "engram") return;
       this.engramOf[reg.index.get(d.item)!] = k;
       if (d.auto !== undefined) this.autos.push(k);
     });
-    this.survivor = reg.index.get("core:survivor") ?? 0;
+    for (const rec of this.records.byPid.values()) rec.progVersion++;
   }
 
   /** `tame` uses the tames' level table if content has one. */

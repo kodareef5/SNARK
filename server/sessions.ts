@@ -180,7 +180,9 @@ export class Sessions {
   private readonly pending = new Set<Pending>();
   private readonly survivor: number;
   /** Sized for the tuning string a welcome carries. */
-  private readonly welcomeW: BitWriter;
+  private welcomeW: BitWriter;
+  /** The length of the tuning it was sized for: a server's settings may make its tuning longer while it runs. */
+  private welcomeFor: number;
 
   constructor(ctx: SessionsContext) {
     const world = (this.world = ctx.world);
@@ -192,7 +194,8 @@ export class Sessions {
     this.game = ctx.game;
     this.players = ctx.players;
     this.replication = ctx.replication;
-    this.welcomeW = new BitWriter(1024 + world.reg.tuning.length * 4);
+    this.welcomeFor = world.reg.tuning.length;
+    this.welcomeW = new BitWriter(1024 + this.welcomeFor * 4);
     this.survivor = world.reg.index.get("core:survivor")!;
   }
 
@@ -326,7 +329,10 @@ export class Sessions {
     // Every new name leaves a survivor record for good, so one machine may make only so many an hour.
     if (conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null && !this.newNames.take(conn.address, world.tick)) return this.refuse(conn, REJECT_DENIED);
     const slot = this.clients.indexOf(null);
-    if (slot < 0) return this.refuse(conn, REJECT_FULL);
+    // Seats may outnumber MaxPlayers, where it was lowered while the server runs.
+    let seated = 0;
+    for (const other of this.clients) if (other) seated++;
+    if (slot < 0 || seated >= this.opts.maxClients) return this.refuse(conn, REJECT_FULL);
     // Nothing was kept for the connection until here. A session's memory is given only to a hello that is let in.
     const c = new Client(slot, conn, chunkCount(world.dims));
     this.clients[slot] = c;
@@ -378,6 +384,10 @@ export class Sessions {
     c.givenAt = this.replication.given;
     const world = this.world;
     const ents = world.ents;
+    if (world.reg.tuning.length !== this.welcomeFor) {
+      this.welcomeFor = world.reg.tuning.length;
+      this.welcomeW = new BitWriter(1024 + this.welcomeFor * 4);
+    }
     const w = this.welcomeW;
     w.reset();
     w.u8(S_WELCOME);

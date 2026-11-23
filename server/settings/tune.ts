@@ -10,6 +10,9 @@ import { rowOf } from "./catalog.ts";
 import type { StatName } from "../../shared/sim/genome.ts";
 import { difficulty } from "../../shared/content/wild.ts";
 
+/** The setting that gives each of the ground's surfaces its grip, by the surface's id (shared/world/vehicle-surface.ts). */
+export const SURFACE_GRIPS: Readonly<Record<string, string>> = { asphalt: "SurfaceGripAsphalt", paving: "SurfaceGripPaving", ground: "SurfaceGripGround", gravel: "SurfaceGripGravel", sand: "SurfaceGripSand", mud: "SurfaceGripMud" };
+
 /** ARK's player settings apply to this species, and its creature settings to every other. */
 const SURVIVOR = "core:survivor";
 
@@ -126,6 +129,9 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
   const creatures = { ...(some(wild) ? { wild } : {}), ...(some(tamed) ? { tamed } : {}) };
   const people = { ...(some(spent) ? { tamed: spent } : {}), ...(some(base) ? { base } : {}) };
   const thrusterBoost = rules.num("ThrusterBoostCooldown"), thrusterFlip = rules.num("ThrusterFlipCooldown");
+  // Only the surfaces whose grip is set, so a server at the defaults keeps the tuning that changes nothing.
+  const surfaces: Record<string, number> = {};
+  for (const [surface, name] of Object.entries(SURFACE_GRIPS)) if (rules.num(name) !== rowOf(name)!.def) surfaces[surface] = rules.num(name);
   const tuning: Tuning = {
     stack: rules.num("ItemStackSizeMultiplier"),
     stacks,
@@ -145,6 +151,7 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
     spoil: rules.num("GlobalSpoilingTimeMultiplier"),
     fuel: rules.num("FuelConsumptionIntervalMultiplier"),
     nodeHits: rules.num("HarvestHealthMultiplier"),
+    surfaces,
     // Sent only when set, so a server at the defaults keeps the tuning that changes nothing.
     ...(thrusterBoost !== rowOf("ThrusterBoostCooldown")!.def || thrusterFlip !== rowOf("ThrusterFlipCooldown")!.def ? { thrusters: { boost: thrusterBoost, flip: thrusterFlip } } : {}),
   };

@@ -127,6 +127,11 @@ export class Urban {
   readonly incidents: UrbanIncident[] = [];
   private readonly ctx: UrbanContext;
   private readonly hosts = new Map<number, HostSeat>();
+
+  /** Gives each vehicle its definition from the world's content again, which its settings may have changed. */
+  retable(): void {
+    for (const host of this.hosts.values()) host.definition = this.ctx.world.reg.vehicle[this.ctx.world.ents.kind[host.entity]!] ?? host.definition;
+  }
   /**
    * The vehicles the tick looks at, in the order they were registered. A vehicle sleeps, and leaves the list, once it has
    * rested with nothing to do for SLEEP_AFTER ticks where no chunk near it is awake; it wakes, and is listed again in its
