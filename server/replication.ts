@@ -566,13 +566,26 @@ export class Replication {
     } else {
       // Rows stop where another might not fit, with a byte left for the count of removals.
       const room = w.buf.length * 8 - ROW_BITS - 8;
-      const end = filling ? Math.max(t.high, mapped) : t.high;
-      // A chunk still as the map placed it is all the map's slots and nothing else.
-      if (filling && t.high === mapped && this.world.structs.asPlaced(chunk)) s = end;
+      const end = t.high;
+      if (filling && s < mapped) {
+        // Of the map's slots only those that changed are rows, from the chunk's list of them. The client sets the rest down.
+        const list = this.world.structs.changedSlots(chunk);
+        let k = 0;
+        while (k < list.length && list[k]! < s) k++;
+        while (s < mapped && count < budget && w.pos <= room) {
+          if (k === list.length) {
+            s = mapped;
+            break;
+          }
+          s = list[k++]!;
+          count++;
+          this.row(w, t, s++, x0, z0, false);
+          rows++;
+        }
+      }
+      // Where the map's slots were cut short, there is no room for these either.
       for (; s < end && count < budget && w.pos <= room; s++) {
-        if (filling && s < mapped) {
-          if (this.world.structs.asMap(chunk, s)) continue;
-        } else if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
+        if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
         count++;
         this.row(w, t, s, x0, z0, false);
         rows++;

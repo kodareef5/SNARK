@@ -808,3 +808,35 @@ test("a chunk mended, swapped or set back to the map stands as placed again", ()
   structs.remove(far);
   expect(structs.asPlaced(Math.floor(far / 65536))).toBe(true);
 });
+
+test("a chunk's changed map slots are listed in order, and the list is kept until one more or fewer differs", () => {
+  const pieces = Array.from({ length: 200 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:crate", x: 66 + (i % 20) * 3, y: 1 + Math.floor(i / 20) * 3, z: 10, yaw: 0 }));
+  const map = parseMap(writeMap(flatMap(4, { statics: pieces })));
+  const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(map, structs, reg);
+  const t = structs.chunks[1]!;
+  const [wall, crate] = [reg.index.get("core:wall")!, reg.index.get("core:crate")!];
+  const brute = (): number[] => [...Array(t.mapped).keys()].filter((s) => !structs.asMap(1, s));
+  expect([...structs.changedSlots(1)]).toEqual([]);
+  const rng = new Rng(11);
+  for (let n = 0; n < 400; n++) {
+    const ref = 65536 + rng.int(200);
+    const op = rng.int(5);
+    if (op === 0) structs.remove(ref);
+    else if (op === 1) structs.damage(ref, 1 + rng.int(60));
+    else if (op === 2) structs.swap(ref, rng.int(2) === 0 ? wall : crate);
+    else if (op === 3) structs.mend(ref, reg.maxHp[structs.mapKind(1, ref & 0xffff)]!);
+    else structs.add(wall, 100, 30, 40, 0, 9, 100);
+    if (n % 7 === 0) expect([n, [...structs.changedSlots(1)]]).toEqual([n, brute()]);
+  }
+  const list = structs.changedSlots(1);
+  expect([[...list], list.length, t.differs]).toEqual([brute(), t.changed, t.changed + t.live - (t.mapped - brute().filter((s) => t.kind[s] === 0).length)]);
+  // A blow to a slot already changed, and a piece built, leave the list as it is. A slot that comes to differ makes it again.
+  const hurt = list.find((s) => t.kind[s] !== 0 && t.hp[s]! > 2)!;
+  structs.damage(65536 + hurt, 1);
+  structs.add(wall, 100, 40, 40, 0, 9, 100);
+  expect(structs.changedSlots(1)).toBe(list);
+  const whole = [...Array(200).keys()].find((s) => structs.asMap(1, s))!;
+  structs.damage(65536 + whole, 1);
+  expect([structs.changedSlots(1) === list, [...structs.changedSlots(1)]]).toEqual([false, brute()]);
+});

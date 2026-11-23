@@ -54,6 +54,7 @@ function oneBoxEach(halfX: Float32Array, halfY: Float32Array, halfZ: Float32Arra
 
 /** Grid cells per chunk side (64 m / 4 m). */
 const CELLS = 16;
+const NO_SLOTS = new Uint16Array(0);
 export const MAX_SLOTS_PER_CHUNK = 65535;
 
 /** Why a structure was removed: taken (picked up or demolished), out of health, or left with no support. */
@@ -115,6 +116,8 @@ export class ChunkTable {
   changed = 0;
   /** `changed` and the live slots past the map's. At 0 the chunk stands as the map placed it (StructureStore.asPlaced). */
   differs = 0;
+  /** The changed map slots as StructureStore.changedSlots last listed them, or null once one more or one fewer differs. */
+  diff: Uint16Array | null = null;
   /** Slots [0, high) have been used at some point. */
   high = 0;
   live = 0;
@@ -434,7 +437,23 @@ export class StructureStore {
     if (this.differsAt(t, slot) === was) return;
     const by = was ? -1 : 1;
     t.differs += by;
-    if (slot < t.mapped) t.changed += by;
+    if (slot >= t.mapped) return;
+    t.changed += by;
+    t.diff = null;
+  }
+
+  /**
+   * The map slots of `chunk` that are not as the map set them down, in ascending order. What each now holds is its row. The
+   * list is made when first asked for and kept until a map slot comes to differ or stops differing, so it is made at most
+   * once a version, and a blow to a slot already on it leaves it standing. Authority only.
+   */
+  changedSlots(chunk: number): Uint16Array {
+    const t = this.chunks[chunk];
+    if (!t || t.changed === 0) return NO_SLOTS;
+    if (t.diff) return t.diff;
+    const list = new Uint16Array(t.changed);
+    for (let s = 0, n = 0; n < list.length; s++) if (this.differsAt(t, s)) list[n++] = s;
+    return (t.diff = list);
   }
 
   /** Called with a structure's ref and cause before it is removed, while its row can still be read. Authority only. */

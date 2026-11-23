@@ -164,3 +164,33 @@ test("a near window of the map's statics is whole within a tick of the body's ar
   h.run(1000);
   expect([differ(structs, ada.world!.structs, window), differ(structs, bob.world!.structs, window)]).toEqual([0, 0]);
 });
+
+test("a changed chunk cut over several messages lands whole on a client that holds the map", () => {
+  // 600 crates in one chunk: every fifth gone, every seventh hurt, every eleventh another kind, and 40 pieces built over them.
+  const crates: MapStatic[] = [];
+  for (let k = 0; k < 600; k++) crates.push({ kind: "core:crate", x: 4 * CHUNK_SIZE + 4 + (k % 8) * 7, y: 40 + Math.floor(k / 64) * 3, z: 4 * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 7, yaw: 0 });
+  const h = new Harness({ chunkSlotsPerTick: 16 }, 1, 30, { map: writeMap(flatMap(9, { statics: crates })) });
+  const structs = h.world.structs;
+  const chunk = 4 * 9 + 4;
+  const wall = h.reg.index.get("core:wall")!;
+  for (let s = 0; s < 600; s++) {
+    if (s % 5 === 0) structs.remove(chunk * 65536 + s);
+    else if (s % 7 === 0) structs.damage(chunk * 65536 + s, 1 + (s % 3));
+    else if (s % 11 === 0) structs.swap(chunk * 65536 + s, wall);
+  }
+  for (let i = 0; i < 40; i++) structs.add(wall, 4 * CHUNK_SIZE + 5 + i, 300, 4 * CHUNK_SIZE + 30, 0, 7, 100);
+  for (let i = 0; i < 40; i += 4) structs.remove(chunk * 65536 + 600 + i);
+  const t = structs.chunks[chunk]!;
+  const ada = h.join("ada");
+  let messages = 0;
+  const end = h.ends[0]!;
+  const on = end.onMessage!;
+  end.onMessage = (ch, d) => {
+    if (d[0] === S_CHUNK && (d[1]! | (d[2]! << 8)) === chunk) messages++;
+    on(ch, d);
+  };
+  h.run(3000);
+  // 226 changed map slots and 40 slots past them, 16 rows a message.
+  expect([t.changed, structs.changedSlots(chunk).length, messages]).toEqual([226, 226, 17]);
+  expect([h.client(ada)!.known[chunk], differ(structs, ada.world!.structs, [chunk]), ada.world!.structs.chunks[chunk]!.live]).toEqual([t.version, 0, t.live]);
+});
