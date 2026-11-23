@@ -18,6 +18,8 @@
 //   /admin/settings.html    the settings page (client/admin/settings.ts), /admin/settings.json every setting, POST
 //                           /admin/settings an admin's change to one (settings.ts)
 //   POST /admin/stop        the server stops for an update after a countdown, or a stop is taken back (stop.ts)
+//   /admin/loadouts.html    the loadouts' page (client/admin/loadouts.ts), and /admin/loadouts/... what it reads and
+//                           changes (loadout-routes.ts)
 //   /admin/first-frame.html what the client's first frame downloads (client/admin/first-frame.ts), and
 //                           /admin/first-frame.json the build's weighing of it, beside the client (tools/first-frame.ts)
 
@@ -36,6 +38,7 @@ import { stopAnswer } from "./stop.ts";
 import { originAllowed } from "../origin.ts";
 import { adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
 import { SupplyRoutes } from "./supply-routes.ts";
+import { LoadoutRoutes } from "./loadout-routes.ts";
 import { LogRoutes } from "./log-routes.ts";
 import type { TickMeter } from "./meter.ts";
 import { BackupList, bodiesOf, statsOf } from "./stats.ts";
@@ -59,6 +62,10 @@ const FILES: Readonly<Record<string, [string, string]>> = {
   "/admin/settings.html": ["settings.html", "text/html; charset=utf-8"],
   "/admin/settings.js": ["settings.js", "text/javascript"],
   "/admin/settings.js.map": ["settings.js.map", "application/json"],
+  // The loadouts' page: its requests are loadout-routes.ts's.
+  "/admin/loadouts.html": ["loadouts.html", "text/html; charset=utf-8"],
+  "/admin/loadouts.js": ["loadouts.js", "text/javascript"],
+  "/admin/loadouts.js.map": ["loadouts.js.map", "application/json"],
   "/admin/first-frame.html": ["first-frame.html", "text/html; charset=utf-8"],
   "/admin/first-frame.js": ["first-frame.js", "text/javascript"],
   "/admin/first-frame.js.map": ["first-frame.js.map", "application/json"],
@@ -131,6 +138,7 @@ export class AdminPages {
   private readonly log: LogRoutes;
   /** The drop book's page: the one part of these pages that may change the world (supply-routes.ts). */
   readonly supply: SupplyRoutes;
+  private readonly loadouts: LoadoutRoutes;
 
   constructor(o: AdminOptions) {
     this.o = o;
@@ -153,6 +161,7 @@ export class AdminPages {
     this.version = new EverySecond(() => basesVersion(o.host.tactical.summaries));
     this.log = new LogRoutes(o.host, this.now);
     this.supply = new SupplyRoutes(o.host, this.now);
+    this.loadouts = new LoadoutRoutes(o.host);
   }
 
   /**
@@ -194,7 +203,7 @@ export class AdminPages {
       if (!(level >= 0 && level <= 3 && Number.isInteger(level))) return new Response("level is 0 to 3", { status: 400 });
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
-    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? new Response("not found", { status: 404 });
+    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? this.loadouts.answer(req, at, url) ?? new Response("not found", { status: 404 });
   }
 
   private terrainImage(req: Request): Response {
