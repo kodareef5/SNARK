@@ -694,7 +694,8 @@ export class EntityStore {
     if (this.turnTick[i] !== tick) {
       const fresh = this.turnTick[i] === NO_TICK;
       this.turnFrom[i] = fresh ? this.yaw[i]! : this.turnYaw[i]!;
-      this.turnWas[i] = fresh ? 0 : this.turnNow[i]!;
+      // A body left unposed for a tick, as one at rest is, was not turning: it starts again from none.
+      this.turnWas[i] = tick - this.turnTick[i]! === 1 ? this.turnNow[i]! : 0;
       this.turnTick[i] = tick;
     }
     this.turnYaw[i] = this.yaw[i]!;

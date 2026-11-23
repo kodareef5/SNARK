@@ -132,6 +132,25 @@ test("a creature backing off as it retreats still packs backward, with its turn"
   }
 });
 
+test("a body left unposed for a tick, as one at rest is, keeps no turn from before", () => {
+  const ents = new EntityStore({ chunksX: 2, chunksZ: 2 }, 4, 4, reg.vehicle, reg.move.map(carriageRate));
+  const kind = reg.index.get("core:rex")!, rate = carriageRate(reg.move[kind]);
+  const e = ents.create(kind, 20, 0, 20, 0);
+  const st = new AnimState();
+  const shown = (tick: number): number => (ents.pose(e, tick), st.unpack(ents.anim[e]!), turnOf(st.dir));
+  ents.vz[e] = 2;
+  const turning: number[] = [];
+  for (let tick = 0; tick <= 5; tick++) {
+    if (tick > 0) ents.yaw[e] = (ents.yaw[e]! + rate) & 0xffff;
+    turning.push(shown(tick));
+  }
+  expect(turning).toEqual([0, 1, 2, 3, 3, 3]);
+  // Stopped and skipped for a few ticks, then off again straight, and then turning.
+  expect(shown(9)).toBe(0);
+  ents.yaw[e] = (ents.yaw[e]! + rate) & 0xffff;
+  expect([shown(10), shown(10)]).toEqual([1, 1]);
+});
+
 const rigs = buildRigs(corePack().header.rigs, corePack().clips);
 /** What each modelled species plays, as the server makes it. */
 const anims = (): CreatureAnim[] => creatureAnims(reg, (d) => rigs.get(d.mesh)).filter((a) => a !== null);

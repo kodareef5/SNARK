@@ -35,31 +35,6 @@ export const DIR_STEPS = 16;
  * still say forward or backward.
  */
 export const TURN_STEPS = 3;
-
-/** Whether direction bits say backward: more than a quarter turn from the facing. */
-export function backward(dir: number): boolean {
-  const off = dir <= DIR_STEPS / 2 ? dir : DIR_STEPS - dir;
-  return off > DIR_STEPS / 4;
-}
-
-/** The turn in the direction bits of a body that does not strafe, -TURN_STEPS to TURN_STEPS, toward its left. */
-export function turnOf(dir: number): number {
-  const s = backward(dir) ? dir - DIR_STEPS / 2 : dir >= DIR_STEPS / 2 ? dir - DIR_STEPS : dir;
-  return s > TURN_STEPS ? TURN_STEPS : s < -TURN_STEPS ? -TURN_STEPS : s;
-}
-
-/**
- * The turn a body shows, in steps, from its yaw's change over a tick (1/65536 turns) against the most it turns a tick:
- * at most `most` steps from `was`, the turn it showed a tick before, so each tick moves it a step. A change past twice
- * its rate was no turn but a jump.
- */
-export function turnSteps(change: number, rate: number, was: number, most = 1): number {
-  const d = ((change + 32768) & 0xffff) - 32768;
-  let s = rate > 0 && d <= 2 * rate && d >= -2 * rate ? Math.floor((d * TURN_STEPS) / rate + 0.5) : 0;
-  if (s > TURN_STEPS) s = TURN_STEPS;
-  else if (s < -TURN_STEPS) s = -TURN_STEPS;
-  return s > was + most ? was + most : s < was - most ? was - most : s;
-}
 /** Steps of `AnimState.pitch` from level to straight up. */
 export const PITCH_STEPS = 31;
 
@@ -150,6 +125,31 @@ export const EMOTE_SOLO = 0;
 export const EMOTE_SYNCED = 1;
 export const EMOTE_LEAD = 2;
 export const EMOTE_PARTNER = 3;
+
+/** Whether direction bits say backward: more than a quarter turn from the facing. */
+export function backward(dir: number): boolean {
+  const off = dir <= DIR_STEPS / 2 ? dir : DIR_STEPS - dir;
+  return off > DIR_STEPS / 4;
+}
+
+/** The turn in the direction bits of a body that does not strafe, -TURN_STEPS to TURN_STEPS, toward its left. */
+export function turnOf(dir: number): number {
+  const s = backward(dir) ? dir - DIR_STEPS / 2 : dir >= DIR_STEPS / 2 ? dir - DIR_STEPS : dir;
+  return s > TURN_STEPS ? TURN_STEPS : s < -TURN_STEPS ? -TURN_STEPS : s;
+}
+
+/**
+ * The turn a body shows, in steps, from its yaw's change over a tick (1/65536 turns) against the most it turns a tick:
+ * at most `most` steps from `was`, the turn it showed a tick before, so each tick moves it a step. A change past twice
+ * its rate was no turn but a jump.
+ */
+export function turnSteps(change: number, rate: number, was: number, most = 1): number {
+  const d = ((change + 32768) & 0xffff) - 32768;
+  let s = rate > 0 && d <= 2 * rate && d >= -2 * rate ? Math.floor((d * TURN_STEPS) / rate + 0.5) : 0;
+  if (s > TURN_STEPS) s = TURN_STEPS;
+  else if (s < -TURN_STEPS) s = -TURN_STEPS;
+  return s > was + most ? was + most : s < was - most ? was - most : s;
+}
 
 /** The worst hurt and decay stage. 0 is unhurt, or fresh. */
 export const STAGE_WORST = 3;
