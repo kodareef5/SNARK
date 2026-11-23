@@ -488,6 +488,12 @@ export class Ragdoll {
     if (snap) this.dq0.set(this.dq1);
   }
 
+  /** Sets each drive's target turn against its parent body, four numbers a body, from where the step starts to its end. */
+  driveTo(targets: Float64Array): void {
+    this.dq1.set(targets);
+    this.dq0.set(targets);
+  }
+
   /**
    * Strikes body `i` with (dvx, dvy, dvz): the change of speed the whole body would take from the blow were it rigid. The
    * struck body and every free body above it take the blow together, as one piece, and the joints share it out.
@@ -698,7 +704,8 @@ export class Ragdoll {
       }
     }
     for (let k = 0; k < steps; k++) this.substep(world, h, (k + 1) / steps, this.pairA.length > 0);
-    this.confine(world);
+    // A body held by anchors is kept on the map by whatever walks it.
+    if (this.nAnchored === 0) this.confine(world);
     this.dq0.set(this.dq1);
     const { def, n, x, q, stillX, stillQ } = this;
     let moved = false;

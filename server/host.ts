@@ -34,7 +34,7 @@ import { Emotes } from "./emote.ts";
 import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
-import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
+import { CMD_CLOCK, CMD_CORPSE, IMPACT_BLAST, IMPACT_SHOT } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
 import { issueSuit } from "./suit.ts";
 import { Balls } from "./balls.ts";
@@ -68,7 +68,7 @@ import { Death, OP_DEATH } from "./death.ts";
 import { Harvest } from "./harvest.ts";
 import { VehicleTrees } from "./vehicle-trees.ts";
 import { Progression } from "./progression.ts";
-import { JET_BOOTS, JET_CUIRASS, JET_HELMET, stanceEye } from "../shared/sim/character.ts";
+import { JET_BOOTS, JET_CUIRASS, JET_HELMET, MODE_WALK, stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
@@ -116,7 +116,9 @@ import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
-import { HumanAnim } from "../shared/anim/pose.ts";
+import { CUE_HELD, CUE_OUT, HumanAnim } from "../shared/anim/pose.ts";
+import { REACT_RULES, TIER_FALL } from "../shared/sim/react.ts";
+import { Reactions, SHOVE_MOST } from "./reactions.ts";
 import { Cluster } from "./cluster/cluster.ts";
 import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
@@ -236,6 +238,8 @@ export interface Host {
   readonly loose: Loose;
   /** Survivors knocked off their feet, lying as ragdolls (server/falls.ts). */
   readonly falls: Falls;
+  /** Survivors reeling from blows (server/reactions.ts). */
+  readonly reactions: Reactions;
   readonly balls: Balls;
   /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
   readonly mounts: Mounts;
@@ -696,8 +700,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.players.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
-    // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
-    struck: (body) => knockDown(body),
+    // A car that strikes a survivor staggers them, or knocks them off their feet (Knockdowns) as a door does.
+    struck: (body, dv, dx, dz, y) => {
+      if (reactions.shove(body, dv, dx, dz, y - world.ents.y[body]!, true) === TIER_FALL) knockDown(body);
+    },
     parkingBrake: e => urban.parkingBrake(e),
     resting: e => urban.resting(e),
     asleep: e => urban.asleep(e),
@@ -906,8 +912,28 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
   const loose = new Loose({ world, game, records, items, combat, death });
   const falls = new Falls(world);
+  // Staggers (server/reactions.ts): only a living survivor on its own feet reels.
+  const reactions = new Reactions({
+    world,
+    standing: (e) => {
+      const ents = world.ents;
+      return (ents.flags[e]! & F_ALIVE) !== 0 && ents.kind[e] === survivor && ents.seat[e] === 0 && !falls.isDown(e) &&
+        (ents.cue[e]! & (CUE_HELD | CUE_OUT)) === 0 && ents.mode[e] === MODE_WALK && rules.on("Staggers");
+    },
+    rules: () => ({ bump: REACT_RULES.bump, stagger: rules.num("StaggerSpeed"), fall: rules.on("Knockdowns") ? rules.num("KnockdownSpeed") : Infinity }),
+  });
   game.players.isDown = (e) => falls.isDown(e);
   combat.downPose = (e, tick) => falls.poseAt(e, tick);
+  // A blow or a blast may stagger a survivor, or fell them; a shot never does.
+  combat.onBlow = (target, kind, taken, dx, dz, up) => {
+    if (kind === IMPACT_SHOT) return;
+    if (reactions.blow(target, kind === IMPACT_BLAST, taken, dx, dz, up) === TIER_FALL) {
+      const ents = world.ents, push = Math.min(SHOVE_MOST * 2, taken / 20);
+      ents.vx[target] = ents.vx[target]! + dx * push;
+      ents.vz[target] = ents.vz[target]! + dz * push;
+      knockDown(target, dz * 2, 0.3, -dx * 2);
+    }
+  };
   corpses.handOff = (e) => falls.take(e);
   // A sight's zero lifts its flying rounds (D1083).
   projectiles.zero = (c) => gaze.zeroOf(c);
@@ -1818,6 +1844,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     overhead,
     physics(corpses),
     physics({ step: () => falls.step() }),
+    physics({ step: () => reactions.step() }),
     voice,
     mark(PART.world),
     { step: keepHouse },
@@ -1879,6 +1906,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     eggs,
     loose,
     falls,
+    reactions,
     balls,
     mounts,
     overhead,

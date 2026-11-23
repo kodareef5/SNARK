@@ -145,6 +145,8 @@ export class Fall {
   readonly ragdoll: Ragdoll;
   /** Consecutive ticks with solid support, bounded by SETTLE_TICKS for checkpoint persistence. */
   ticks = 0;
+  /** What a living body does with its limbs each tick as it falls, from its state alone; none for the dead. */
+  reflex: ((r: Ragdoll) => void) | null = null;
 
   constructor(ragdoll: Ragdoll) {
     this.ragdoll = ragdoll;
@@ -159,6 +161,7 @@ export class Fall {
   tick(world: CollisionWorld): boolean {
     const r = this.ragdoll;
     const wasAwake = r.awake;
+    if (wasAwake) this.reflex?.(r);
     if (!r.step(world, 1 / TICK_RATE) && !wasAwake) return false;
     this.ticks = r.supported ? Math.min(SETTLE_TICKS, (wasAwake ? this.ticks : 0) + 1) : 0;
     if (this.ticks === SETTLE_TICKS) r.settle(world);

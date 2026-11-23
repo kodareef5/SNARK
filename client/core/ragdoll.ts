@@ -14,7 +14,7 @@
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
-import { layHuman } from "../../shared/anim/human-fall.ts";
+import { brace, layHuman } from "../../shared/anim/human-fall.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { poseCreatureOn, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
@@ -265,6 +265,8 @@ export class HumanFalls {
     const r = layHuman(cp.x, cp.y, cp.z, cp.yaw, cp.out);
     if (!r.restore(cp.state, cp.awake)) return;
     h.fall = new Fall(r);
+    // A living body braces as the server's does.
+    h.fall.reflex = brace;
     h.fall.ticks = cp.ticks;
     h.x = cp.x; h.y = cp.y; h.z = cp.z; h.yaw = cp.yaw;
     h.clock = motion.tick; h.motionTick = motion.tick; h.motionRevision = motion.revision;

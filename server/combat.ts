@@ -236,6 +236,8 @@ export class Combat {
   corpses: Corpses | null = null;
   /** The pose a survivor knocked down lay in at a tick, to be hit as it lay (server/falls.ts); null for none. The host sets it. */
   downPose: (e: number, tick: number) => Solved | null = () => null;
+  /** A blow that hurt body `target`: its IMPACT_ kind, the damage taken, the unit way it went (dx, dz), and how high it landed above the feet. */
+  onBlow: (target: number, kind: number, taken: number, dx: number, dz: number, up: number) => void = () => {};
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
   private readonly inBlast = new Found(256);
   private readonly found: number[] = [];
@@ -813,6 +815,7 @@ export class Combat {
       out.yaw = ents.yaw[i]!;
       out.anim = ents.anim[i]!;
       out.cue = ents.cue[i]!;
+      out.react = ents.react[i]!;
       out.vehicleFrom(ents, i);
       out.seatFrom(ents, i);
       if (out.seat) out.hostEpoch = world.history.motionEpoch(out.seat - 1);
@@ -823,7 +826,7 @@ export class Combat {
     const k = tick - whole;
     const current = this.vehicleNow;
     current.x = ents.x[i]!; current.y = ents.y[i]!; current.z = ents.z[i]!;
-    current.yaw = ents.yaw[i]!; current.anim = ents.anim[i]!; current.cue = ents.cue[i]!;
+    current.yaw = ents.yaw[i]!; current.anim = ents.anim[i]!; current.cue = ents.cue[i]!; current.react = ents.react[i]!;
     current.vehicleFrom(ents, i); current.seatFrom(ents, i);
     if (current.seat) current.hostEpoch = world.history.motionEpoch(current.seat - 1);
     out.blend(current, k);
@@ -942,8 +945,8 @@ export class Combat {
       const reach = this.t / scale;
       if (this.human[kind] && world.anim) {
         if (past.seat && !this.seatInRay(past, rx, ry, rz, ux, uy, uz, reach)) continue;
-        // A survivor's emote as it is now: emotes change seldom beside the ticks a hit looks back.
-        st.unpack(past.anim, past.cue, world.ents.emote[i]!);
+        // A survivor's emote as it is now: emotes change seldom beside the ticks a hit looks back. Its reaction as it was then.
+        st.unpack(past.anim, past.cue, world.ents.emote[i]!, past.react);
         st.seed = bodySeed(i);
         const seated = this.seated(i, past, tick);
         const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach, this.contactPadding)
@@ -1214,6 +1217,9 @@ export class Combat {
     const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (!(l > 1e-6)) return;
     dx /= l; dy /= l; dz /= l;
+    // A car's own contact sorts its blow (server/vehicle-contacts.ts struck); every other may stagger or fell the body.
+    const flat = Math.sqrt(dx * dx + dz * dz);
+    if (kind !== IMPACT_VEHICLE && flat > 1e-6) this.onBlow(target, kind, taken, dx / flat, dz / flat, y - ents.y[target]!);
     // How hard, 0 to 255: a blow of IMPACT_FULL damage or more is the hardest. How far that moves a body is its client's to say by its weight.
     const strength = Math.min(255, Math.max(1, Math.round((taken / IMPACT_FULL) * 255)));
     const bone = aimed ? this.aimedBone : -1;

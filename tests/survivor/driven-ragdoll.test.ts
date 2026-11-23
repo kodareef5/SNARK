@@ -2,7 +2,8 @@
 // to it after a blow, limits and limb pairs still hold, and the same inputs give the same body.
 import { expect, test } from "bun:test";
 import { HUMAN, HUMAN_RAGDOLL } from "../../shared/anim/human.ts";
-import { standingPose } from "../../shared/anim/human-fall.ts";
+import { brace, standingPose } from "../../shared/anim/human-fall.ts";
+import { Fall } from "../../shared/anim/corpse.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
@@ -156,4 +157,40 @@ test("the same anchors, drives and blow give the same body twice", () => {
     for (const r of [a, b]) { r.follow(target, 40 + f * 0.05, 0, 40, 0.6 + f * 0.01); r.step(w, STEP); }
   }
   expect([...a.checkpoint()]).toEqual([...b.checkpoint()]);
+});
+
+test("a survivor thrown off their feet braces: arms reach the way they go and the head lands softer", () => {
+  const w = flat();
+  const land = (vz: number, braced: boolean) => {
+    const r = new Ragdoll(HUMAN, HUMAN_RAGDOLL);
+    r.start(standingPose(), standingPose(), 40, 0.02, 40, 0, 1);
+    r.launch(0, 0.5, vz, vz > 0 ? 3 : -3, 0, 0);
+    const fall = new Fall(r);
+    if (braced) fall.reflex = brace;
+    let head = -1;
+    for (let t = 1; t <= 90 && head < 0; t++) {
+      const down = -r.v[HEAD * 3 + 1]!;
+      fall.tick(w);
+      if (r.x[HEAD * 3 + 1]! < 0.14) head = down;
+    }
+    return head;
+  };
+  for (const vz of [4, -4]) expect(land(vz, true)).toBeLessThan(land(vz, false) * 0.75);
+});
+
+test("a braced fall goes limp at rest and steps the same twice", () => {
+  const w = flat();
+  const run = () => {
+    const r = new Ragdoll(HUMAN, HUMAN_RAGDOLL);
+    r.start(standingPose(), standingPose(), 40, 0.02, 40, 1.1, 1);
+    r.launch(1, 0.5, 3, 2, 0, -1);
+    const fall = new Fall(r);
+    fall.reflex = brace;
+    for (let t = 1; t <= 120; t++) fall.tick(w);
+    return r;
+  };
+  const a = run(), b = run();
+  expect([...a.checkpoint()]).toEqual([...b.checkpoint()]);
+  expect(a.awake).toBe(false);
+  expect(Math.max(...a.driveOmega)).toBe(0);
 });

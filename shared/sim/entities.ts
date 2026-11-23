@@ -137,6 +137,10 @@ export class EntityStore {
   cue: Uint32Array;
   /** A survivor's emote (AnimState.packEmote), sent beside the pose; 0 for none. The server's Emotes sets and clears it. */
   emote: Uint32Array;
+  /** A survivor's reaction to a blow (shared/anim/reactions.ts), sent beside the pose; 0 for none. */
+  react: Uint32Array;
+  /** Ticks left of a body's reaction to a blow (Body.reactTicks), counted down by its step. */
+  reactTicks: Uint8Array;
   /** The rest of the predicted state. See `Body` in character.ts. */
   mode: Uint8Array;
   stance: Uint8Array;
@@ -276,6 +280,8 @@ export class EntityStore {
     this.anim = new Uint32Array(cap);
     this.cue = new Uint32Array(cap);
     this.emote = new Uint32Array(cap);
+    this.react = new Uint32Array(cap);
+    this.reactTicks = new Uint8Array(cap);
     this.pid = new Float64Array(cap);
     this.mode = new Uint8Array(cap);
     this.stance = new Uint8Array(cap);
@@ -374,6 +380,8 @@ export class EntityStore {
     this.anim[i] = 0;
     this.cue[i] = 0;
     this.emote[i] = 0;
+    this.react[i] = 0;
+    this.reactTicks[i] = 0;
     this.pid[i] = 0;
     this.mode[i] = MODE_WALK;
     this.stance[i] = 0;
@@ -438,6 +446,8 @@ export class EntityStore {
     this.anim = wider(this.anim, cap);
     this.cue = wider(this.cue, cap);
     this.emote = wider(this.emote, cap);
+    this.react = wider(this.react, cap);
+    this.reactTicks = wider(this.reactTicks, cap);
     this.pid = wider(this.pid, cap);
     this.mode = wider(this.mode, cap);
     this.stance = wider(this.stance, cap);
@@ -671,6 +681,8 @@ export class EntityStore {
     b.speedQ = this.speedQ[i]!;
     b.swimQ = this.swimQ[i]!;
     b.mflags = this.mflags[i]!;
+    b.react = this.react[i]!;
+    b.reactTicks = this.reactTicks[i]!;
     b.kind = this.kind[i]!;
     b.yaw = this.yaw[i]!;
     const v = this.vrow[i]!;
@@ -746,6 +758,8 @@ export class EntityStore {
     this.stance[i] = b.stance;
     this.stamina[i] = b.stamina;
     this.mflags[i] = b.mflags;
+    this.react[i] = b.react;
+    this.reactTicks[i] = b.reactTicks;
     this.yaw[i] = b.yaw;
     let v = this.vrow[i]!;
     if (v === 0 && b.vehicle) {

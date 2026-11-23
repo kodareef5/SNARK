@@ -50,6 +50,8 @@ export function ownBody(d: Director, f: AppFrame): void {
   // An emote is the server's to say: the one it plays for this body, as the view has it.
   body.state.unpackEmote(0);
   for (let i = 0; i < r.count; i++) if (r.id[i] === body.id) body.state.unpackEmote(r.emote[i]!);
+  // A blow it reels from is in its predicted body, as the server last set it.
+  body.state.react = session.own.react;
   // While riding, the mount is the body it predicts, drawn from the prediction and always from outside.
   // Its own body is then one more remote body, where the server has it on the seat.
   const riding = (f.riding = alive && session.driving >= 0);

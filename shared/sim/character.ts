@@ -7,6 +7,7 @@ import { BLOCK_SOFT_SPEED, blockOut, pushOut, turnFree } from "./blockers.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
+import { REACT_CONTROL_TICKS, REACT_FRAMES, reactClass } from "./react.ts";
 import { SKIN, wallDepth, wallOut, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
 import { Found } from "../world/structures.ts";
@@ -136,6 +137,8 @@ export function glidePhase(vx: number, vy: number, vz: number): number {
   return vy > -(GLIDE_SINK + GLIDE_FLARE_SINK) / 2 && vx * vx + vz * vz < 4 ? GLIDE_FLARED : GLIDE_TRIM;
 }
 
+/** The share of its usual hold on its own speed a body keeps while it reels from a blow (Body.reactTicks). */
+const STAGGER_HOLD = 0.15;
 /** Bits of Body.mflags. The server sets all but MF_WINDED, which the step sets and clears. */
 export const MF_NO_SPRINT = 1;
 export const MF_NO_JUMP = 2;
@@ -271,6 +274,9 @@ export class Body {
   swimQ = 1000;
   /** MF_ bits. */
   mflags = 0;
+  /** Its reaction to a blow (shared/anim/reactions.ts), set by the server, and the ticks left of it, which the step counts down. */
+  react = 0;
+  reactTicks = 0;
   /**
    * The species whose movement steps this body (a content index), and its facing in 1/65536 turns. Both travel with the body,
    * so the client steps the body it was last told it drives, its survivor's or a mount's.
@@ -380,6 +386,8 @@ export class Body {
     this.speedQ = o.speedQ;
     this.swimQ = o.swimQ;
     this.mflags = o.mflags;
+    this.react = o.react;
+    this.reactTicks = o.reactTicks;
     this.kind = o.kind;
     this.yaw = o.yaw;
     this.vehicle = o.vehicle;
@@ -461,6 +469,8 @@ export class Body {
       this.speedQ === o.speedQ &&
       this.swimQ === o.swimQ &&
       this.mflags === o.mflags &&
+      this.react === o.react &&
+      this.reactTicks === o.reactTicks &&
       this.kind === o.kind &&
       this.yaw === o.yaw &&
       this.vehicle === o.vehicle && sameSkate(this.skate, o.skate) &&
@@ -732,6 +742,13 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   let dvx = (s * mz - c * mx) * speed - b.vx;
   let dvz = (c * mz + s * mx) * speed - b.vz;
   let maxDv = (b.jetThrust ? 18 : b.grounded ? p.accelGround : p.accelAir) * dt;
+  // Knocked off balance, it keeps going the way it was shoved and has little say in it until it finds its feet. The
+  // reaction ends on the same tick on the server and in prediction.
+  if (b.reactTicks > 0) {
+    const kind = reactClass(b.react);
+    if ((REACT_FRAMES[kind] ?? 0) - b.reactTicks < (REACT_CONTROL_TICKS[kind] ?? 0)) maxDv *= STAGGER_HOLD;
+    if (--b.reactTicks === 0) b.react = 0;
+  }
   // A body with no hold on where it goes (knocked off its feet, tangled, out cold) does not steer or brake in the air: it
   // flies as it was thrown until it lands.
   if (!b.grounded && !b.jetThrust && (flags & (MF_ROOTED | MF_OUT)) !== 0) maxDv = 0;

@@ -7,7 +7,7 @@
 
 import { TICK_RATE } from "../shared/coords.ts";
 import { Fall, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
-import { layHuman } from "../shared/anim/human-fall.ts";
+import { brace, layHuman } from "../shared/anim/human-fall.ts";
 import { HUMAN } from "../shared/anim/human.ts";
 import { CUE_DOWN } from "../shared/anim/pose.ts";
 import { Solved } from "../shared/anim/skeleton.ts";
@@ -82,7 +82,9 @@ export class Falls {
     const yaw = yawOf16(ents.yaw[e]!);
     const r = layHuman(wireX(ents.x[e]!), wireY(ents.y[e]!), wireX(ents.z[e]!), yaw);
     r.launch(vx, vy, vz, wx, wy, wz);
-    const d: Down = { e, gen: ents.gen[e]!, fall: new Fall(r), yaw, ticks: 0, revision: ++this.serial, world: 0, motion: null, pose: new Solved(HUMAN.bones),
+    const fall = new Fall(r);
+    fall.reflex = brace;
+    const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision: ++this.serial, world: 0, motion: null, pose: new Solved(HUMAN.bones),
       poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1 };
     this.down.set(e, d);
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;

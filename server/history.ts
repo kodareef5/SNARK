@@ -22,6 +22,8 @@ export class Past {
   /** Packed pose state and cues. See `AnimState.pack` and `packCue`. */
   anim = 0;
   cue = 0;
+  /** A survivor's reaction to a blow (shared/anim/reactions.ts); 0 for none. */
+  react = 0;
   /** Mechanical attitude is sparse in History; ordinary creatures do not allocate a second ring. */
   pitch = 0; roll = 0; qx = 0; qy = 0; qz = 0; qw = 1; steering = 0;
   seat = 0; seatGen = 0; seatSlot = 0; saddle = 0; hostKind = 0;
@@ -77,7 +79,7 @@ export class Past {
     this.blendSeat(other, k);
     const turn = ((other.yaw - this.yaw + 32768) & 0xffff) - 32768;
     this.yaw = (this.yaw + Math.round(turn * k)) & 0xffff;
-    if (k >= 0.5) { this.anim = other.anim; this.cue = other.cue; }
+    if (k >= 0.5) { this.anim = other.anim; this.cue = other.cue; this.react = other.react; }
   }
 
   vehicleFrom(ents: EntityStore, e: number): void {
@@ -120,6 +122,8 @@ export class History {
    * change seldom, so a body without any keeps none. Each is told of by `cued`.
    */
   private readonly cues = new Map<number, Uint32Array>();
+  /** The same for reactions to blows, each told of by `reacted`. */
+  private readonly reacts = new Map<number, Uint32Array>();
   private readonly vehicles = new Map<number, Float32Array>();
   private readonly seats = new Map<number, Float64Array>();
   /** Tokens exist only for queried/teleported tracked bodies; untrack retires them with the history row. */
@@ -184,6 +188,7 @@ export class History {
     this.entOf[r] = e;
     for (let t = 0; t < HISTORY_TICKS; t++) this.write(r * HISTORY_TICKS + t, e);
     if (this.ents.cue[e] !== 0) this.cues.set(e, new Uint32Array(HISTORY_TICKS).fill(this.ents.cue[e]!));
+    if (this.ents.react[e] !== 0) this.reacts.set(e, new Uint32Array(HISTORY_TICKS).fill(this.ents.react[e]!));
   }
 
   /** Call when a body's cues (EntityStore.cue) change. */
@@ -191,11 +196,17 @@ export class History {
     if (this.rowOf[e]! >= 0 && !this.cues.has(e)) this.cues.set(e, new Uint32Array(HISTORY_TICKS));
   }
 
+  /** Call when a body's reaction (EntityStore.react) changes. */
+  reacted(e: number): void {
+    if (this.rowOf[e]! >= 0 && !this.reacts.has(e)) this.reacts.set(e, new Uint32Array(HISTORY_TICKS));
+  }
+
   /** Call when it goes to sleep. record() drops destroyed entities itself. */
   untrack(e: number): void {
     const r = this.rowOf[e]!;
     if (r < 0) return;
     this.cues.delete(e);
+    this.reacts.delete(e);
     this.vehicles.delete(e);
     this.seats.delete(e);
     this.motionEpochs.delete(e);
@@ -255,6 +266,10 @@ export class History {
     for (const [e, ring] of this.cues) {
       ring[slot] = this.ents.cue[e]!;
       if (ring[slot] === 0 && ring.every((c) => c === 0)) this.cues.delete(e);
+    }
+    for (const [e, ring] of this.reacts) {
+      ring[slot] = this.ents.react[e]!;
+      if (ring[slot] === 0 && ring.every((c) => c === 0)) this.reacts.delete(e);
     }
     for (const [e, ring] of this.seats) {
       let occupied = false;
@@ -337,6 +352,7 @@ export class History {
       out.yaw = ents.yaw[e]!;
       out.anim = ents.anim[e]!;
       out.cue = ents.cue[e]!;
+      out.react = ents.react[e]!;
       out.vehicleFrom(ents, e);
       out.seatFrom(ents, e);
       if (out.seat) out.hostEpoch = this.motionEpoch(out.seat - 1);
@@ -350,6 +366,7 @@ export class History {
     out.yaw = this.yaw[i]!;
     out.anim = this.anim[i]!;
     out.cue = this.cues.get(e)?.[tick & MASK] ?? 0;
+    out.react = this.reacts.get(e)?.[tick & MASK] ?? 0;
     const vehicle = this.vehicles.get(e);
     if (vehicle) for (let field = 0; field < VEHICLE_FIELDS.length; field++) out[VEHICLE_FIELDS[field]!] = vehicle[(tick & MASK) * VEHICLE_FIELDS.length + field]!;
     else out.vehicleFrom(ents, e);

@@ -15,6 +15,7 @@ import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWIN
 import { cradle } from "./hold.ts";
 import { emotePose } from "./emote.ts";
 import { EMOTES, emoteClipId } from "./emotes.ts";
+import { react as reactPose } from "./reactions.ts";
 
 /** The three parts of a packed AnimState. Replication sends each part only when it changes. */
 export const ANIM_MOTION_BITS = 12;
@@ -111,6 +112,8 @@ export const CUE_DOWN = 1 << CUE_MATING_SHIFT;
  * with every body playing it so, EMOTE_LEAD and EMOTE_PARTNER: the two sides of a pair), and whether it plays mirrored.
  */
 export const EMOTE_BITS = 29;
+/** A survivor's reaction to a blow, its own word beside the emote: shared/anim/reactions.ts lays it out. */
+export const REACT_BITS = 18;
 export const EMOTE_ID_BITS = 10;
 export const EMOTE_START_SHIFT = 10;
 export const EMOTE_ROLE_SHIFT = 26;
@@ -191,6 +194,8 @@ export class AnimState {
   emoteStart = 0;
   emoteRole = EMOTE_SOLO;
   emoteMirror = false;
+  /** A survivor's reaction to a blow, as shared/anim/reactions.ts packs it; 0 for none. Sent beside the pose and the cues. */
+  react = 0;
 
   /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
@@ -249,9 +254,10 @@ export class AnimState {
     this.mating = (cue >>> CUE_MATING_SHIFT) & 7;
   }
 
-  unpack(word: number, cue = 0, emote = 0): void {
+  unpack(word: number, cue = 0, emote = 0, react = 0): void {
     this.unpackCue(cue);
     this.unpackEmote(emote);
+    this.react = react;
     this.speed = word & 15;
     this.jetMode = JET_LIFT;
     this.bootJets = false;
@@ -749,6 +755,8 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   // Arms round a creature hold it where they hold it, however the back has turned.
   if (hold === HOLD_CARRY) cradle(out, st.stance);
   if (st.jet && st.jetMode === JET_FIST && hold === HOLD_HANDS) jetPunch(out, st, e, pitch);
+  // Reeling from a blow, last, over whatever it was doing.
+  if (st.react !== 0) reactPose(out, st.react, tick);
 }
 
 const fistParent = new Float64Array(4);

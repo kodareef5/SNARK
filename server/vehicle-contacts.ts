@@ -31,8 +31,6 @@ export interface VehicleCollisionPair {
   rotorA: boolean; rotorB: boolean; propellerA: boolean; propellerB: boolean;
   hazardFreshA: boolean; hazardFreshB: boolean;
 }
-/** Metres a second a car closes at, at least, to knock a body off its feet (server/host.ts, Knockdowns). */
-export const KNOCK_SPEED = 6;
 /**
  * A creature at most this share of the car's mass and this tall is run over: the car rolls on over it with a thump of
  * THUMP m/s upward, and it is crushed, from RUN_OVER_SPEED m/s.
@@ -59,8 +57,11 @@ export interface VehicleContactsContext {
   /** Off the active list: it keeps its pose with no capture, until something wakes it (server/urban.ts). */
   asleep?(vehicle: number): boolean;
   pair?(event: VehicleCollisionPair): void;
-  /** A body other than a vehicle was struck by vehicle `vehicle` closing at `speed` m/s, hard enough to harm: it may be knocked down. */
-  struck?(body: number, speed: number): void;
+  /**
+   * A body other than a vehicle was struck by a driven vehicle hard enough to harm: its speed changed by `dv` m/s along the
+   * unit (dx, dz), at `y`. It may stagger or be knocked down (server/reactions.ts).
+   */
+  struck?(body: number, dv: number, dx: number, dz: number, y: number): void;
 }
 /** `settled`: it starts this tick in the pose it was captured in last tick, and nothing placed it since. */
 interface Frame { body: Body; handle: number; pid: number; tick: number; motionEpoch: number; consumed: boolean; by: number; byHandle: number; settled: boolean }
@@ -500,7 +501,9 @@ export class VehicleContacts {
       const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0,
         base: Math.min(300, .5 * harmful * harmful * a.mass / (a.mass + b.mass)), type: DMG_MELEE,
         quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
-      if (speed >= KNOCK_SPEED) this.ctx.struck?.(c.entity, speed);
+      // The way the blow sent it: its velocity now less what it had, flat.
+      const px = b.state.vx - b.prior.vx, pz = b.state.vz - b.prior.vz, flat = Math.sqrt(px * px + pz * pz);
+      if (flat > 1e-6) this.ctx.struck?.(c.entity, Math.abs(result.deltaSpeedB), px / flat, pz / flat, c.y);
       combat.land(src, c.entity, ZONE_NONE, c.x, c.y, c.z, 0, impact);
     }
     // Either callback can destroy or replace a slot.

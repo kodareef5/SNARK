@@ -285,6 +285,8 @@ export class RemoteSample {
   readonly cue = new Uint32Array(MAX_VIEW);
   /** A survivor's emote, packed as `AnimState.packEmote` does; 0 for none. */
   readonly emote = new Uint32Array(MAX_VIEW);
+  /** A survivor's reaction to a blow, as shared/anim/reactions.ts packs it; 0 for none. */
+  readonly react = new Uint32Array(MAX_VIEW);
   /** LOOK_BYTES each, valid where `hasLook` is 1. */
   readonly look = new Uint8Array(MAX_VIEW * LOOK_BYTES);
   readonly hasLook = new Uint8Array(MAX_VIEW);
@@ -1047,10 +1049,12 @@ export class ClientSession {
         out.anim[n] = k < 0.5 ? a!.anim[i]! : b.anim[j]!;
         out.cue[n] = k < 0.5 ? a!.cue[i]! : b.cue[j]!;
         out.emote[n] = k < 0.5 ? a!.emote[i]! : b.emote[j]!;
+        out.react[n] = k < 0.5 ? a!.react[i]! : b.react[j]!;
       } else {
         out.anim[n] = attachment.anim[attachmentRow]!;
         out.cue[n] = attachment.cue[attachmentRow]!;
         out.emote[n] = attachment.emote[attachmentRow]!;
+        out.react[n] = attachment.react[attachmentRow]!;
         out.x[n] = dequantX(attachment.qx[attachmentRow]!);
         out.y[n] = dequantY(attachment.qy[attachmentRow]!);
         out.z[n] = dequantX(attachment.qz[attachmentRow]!);
