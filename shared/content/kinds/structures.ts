@@ -187,6 +187,8 @@ function motionFaults(d: StructureDef): string[] {
 const columns = (n: number) => ({
   /** Per structure: the multiplier on each DMG_ type, from its material. Null for everything else, and for a structure nothing harms. */
   structTakes: list<Float32Array>(n),
+  /** Per structure: its material's index, 0 for none. The material's own columns are read by it. */
+  structMaterial: u16(n),
   /** Per structure with a shape: an index into PIECE_ROLES. -1 for everything else. */
   role: i8(n, -1),
   /** Per structure: 1 if it is a wall with a doorway. */
@@ -341,6 +343,7 @@ if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.len
     }
   },
   link(d, i, reg) {
+    if (d.material !== undefined) reg.structMaterial[i] = reg.index.get(d.material)!;
     if (d.opens !== undefined) reg.opens[i] = reg.index.get(d.opens)!;
     if (d.lights !== undefined) reg.lights[i] = reg.index.get(d.lights)!;
   },
