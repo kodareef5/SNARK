@@ -22,6 +22,10 @@ export interface VehicleHullSpec {
 export interface VehicleSpec extends VehicleHullSpec {
   /** Separate solid sections for an open chassis, in local metres and within the broadphase envelope. */
   readonly bodyBoxes?: readonly VehicleCollisionBox[];
+  /** A tractor's coupling point on its fifth wheel, local metres (vehicle-hitch.ts). */
+  readonly fifthWheel?: readonly [number, number, number];
+  /** A trailer's kingpin, local metres. Its axles then carry only part of its weight. */
+  readonly kingpin?: readonly [number, number, number];
   readonly halfWidth: number;
   readonly halfLength: number;
   readonly height: number;
@@ -139,6 +143,8 @@ export interface WheelVehicleDefinition extends VehicleDefinitionBase {
   /** Local X of the aisle from a shared passenger entrance to its rows. */
   readonly passengerAisle?: number;
   readonly spec: VehicleSpec;
+  /** A trailer's spec while it rides a fifth wheel: its landing legs up, its kingpin on the tractor. */
+  readonly towed?: VehicleSpec;
 }
 
 /** A spinning rigid part, with its physical disc in the chassis frame. Phase is main-rotor phase times ratio. */
@@ -326,6 +332,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
     if (d.frame !== undefined && !["car", "sports_car", "van", "off_road", "skateboard"].includes(d.frame)) throw new Error("invalid road vehicle frame");
     validateVehicleSpec(d.spec, isSkateboard(d));
+    if (d.towed) validateVehicleSpec(d.towed);
     if (d.passengerAisle !== undefined && (!Number.isFinite(d.passengerAisle) || Math.abs(d.passengerAisle) >= d.spec.halfWidth)) throw new Error("passenger aisle outside cabin");
   }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
@@ -462,7 +469,7 @@ export function validateVehicleSpec(s: VehicleSpec, skateboard = false): void {
     if (!Number.isFinite(s[key])) throw new Error(`missing or invalid vehicle ${key}`);
   }
   const zero = new Set([...(skateboard ? ["fuelCapacity", "fuelPerSecond", "maxReverse"] : []), "yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
-  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && key !== "bodyBoxes" && key !== "thrusters" && value !== undefined &&
+  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && key !== "bodyBoxes" && key !== "thrusters" && key !== "fifthWheel" && key !== "kingpin" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
   if (s.bodyBoxes !== undefined) {
     const limits = [s.halfWidth, s.height, s.halfLength];
@@ -474,7 +481,8 @@ export function validateVehicleSpec(s: VehicleSpec, skateboard = false): void {
   if (s.axles && (s.axles.length < 2 || s.axles.length > 8 ||
     s.axles.some((a,i) => !Number.isFinite(a.z) || Math.abs(a.z) >= s.halfLength || (i > 0 && a.z >= s.axles![i-1]!.z) ||
       !(a.track > 0 && a.track <= 2*s.halfWidth && a.loadShare > 0 && a.loadShare < 1)) ||
-    Math.abs(s.axles.reduce((sum,a) => sum+a.loadShare, 0)-1) > .0001)) throw new Error("invalid vehicle axle geometry or load");
+    (s.kingpin ? s.axles.reduce((sum,a) => sum+a.loadShare, 0) > 1.0001 : Math.abs(s.axles.reduce((sum,a) => sum+a.loadShare, 0)-1) > .0001))) throw new Error("invalid vehicle axle geometry or load");
+  for (const point of [s.fifthWheel, s.kingpin]) if (point !== undefined && (!Array.isArray(point) || point.length !== 3 || !point.every(Number.isFinite))) throw new Error("invalid vehicle coupling point");
   if (s.mass !== undefined && (s.mass < (skateboard ? 1 : 50) || s.mass > 1000000)) throw new Error("invalid vehicle mass");
   if ((s.frontDriveShare ?? 0) > 1 || (s.downforce ?? 0) > 10) throw new Error("invalid vehicle axle split or downforce");
   if (s.drivetrain !== undefined) validateDrivetrainSpec(s.drivetrain);

@@ -9,7 +9,8 @@ import { stepHelicopter, type HelicopterState, type HelicopterStep } from "./hel
 import { StaticVehicleWorld } from "../world/vehicle.ts";
 import { BTN_BURST, BTN_CROUCH, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, BTN_JUMP, MODE_NONE, MODE_WALK, type Body, stepOut } from "./character.ts";
 import { stepSkateboard } from "./skateboard.ts";
-import { isSkateboard, stepVehicle, type VehicleDefinition, type VehicleWorld } from "./vehicle.ts";
+import { isSkateboard, stepVehicle, type VehicleDefinition, type VehicleWorld, type WheelVehicleDefinition } from "./vehicle.ts";
+import { stepHitched } from "./vehicle-hitch.ts";
 
 const worlds = new WeakMap<CollisionWorld, StaticVehicleWorld>();
 const state: HelicopterState & BoatState = { qx: 0, qy: 0, qz: 0, qw: 1, collective: 0, rotorRpm: 0, rotorPhase: 0, engineCondition: 1, rotorCondition: 1, engineOn: false, hullCondition: 1, flooding: 0, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0 };
@@ -35,25 +36,7 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   }
   let world = worlds.get(w);
   if (!world) { world = new StaticVehicleWorld(w); worlds.set(w, world); }
-  state.x = b.x; state.y = b.y; state.z = b.z;
-  state.vy = b.vy; state.grounded = b.grounded;
-  state.yawRate = b.vehicleYawRate;
-  state.pitchRate = b.vehiclePitchRate;
-  state.rollRate = b.vehicleRollRate;
-  state.groundPitch = b.vehicleGroundPitch;
-  state.groundRoll = b.vehicleGroundRoll;
-  state.rideOffset = b.vehicleRideOffset;
-  state.rideVelocity = b.vehicleRideVelocity;
-
-  state.gear = b.vehicleGear; state.engineRpm = b.vehicleRpm; state.shiftTime = b.vehicleShiftTime; state.payloadMass = b.vehiclePayloadMass;
-  state.yaw = b.vehicle ? b.vehicleYaw : b.yaw * TAU / 65536;
-  state.pitch = b.vehiclePitch; state.roll = b.vehicleRoll;
-  state.vx = b.vx; state.vz = b.vz; state.steering = b.steering;
-  state.wheelAngle = b.wheelAngle; state.fuel = b.fuel;
-  state.qx = b.vehicleQx; state.qy = b.vehicleQy; state.qz = b.vehicleQz; state.qw = b.vehicleQw;
-  state.engineCondition = b.vehicleEngineCondition; state.engineOn = b.vehicleEngineOn;
-  state.hullCondition = b.vehicleHullCondition; state.flooding = b.vehicleFlooding;
-  state.thrust = b.vehicleThrust; state.thrustCool = b.vehicleThrustCool;
+  loadState(state, b);
   if (def.movement === "rotor") {
     state.qx = b.vehicleQx; state.qy = b.vehicleQy; state.qz = b.vehicleQz; state.qw = b.vehicleQw;
     state.rotorRpm = b.vehicleRotorRpm; state.rotorPhase = b.vehicleRotorPhase; state.collective = b.vehicleCollective;
@@ -80,6 +63,37 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   } else Object.assign(vehicleStep, stepVehicle(state, { throttle: moveZ / 127, steer: -moveX / 127, brake: 0, handbrake: (buttons & BTN_JUMP) !== 0, pilot,
     boost: (buttons & BTN_SPRINT) !== 0, burst: (buttons & BTN_BURST) !== 0 }, def.spec, environment ?? world));
   stepOut.landSpeed = vehicleStep.landSpeed;
+  storeState(b, state);
+}
+
+type FullState = typeof state;
+const trailerState: FullState = { ...state };
+
+/** Copies a body's vehicle columns into a solver state. */
+function loadState(state: FullState, b: Body): void {
+  state.x = b.x; state.y = b.y; state.z = b.z;
+  state.vy = b.vy; state.grounded = b.grounded;
+  state.yawRate = b.vehicleYawRate;
+  state.pitchRate = b.vehiclePitchRate;
+  state.rollRate = b.vehicleRollRate;
+  state.groundPitch = b.vehicleGroundPitch;
+  state.groundRoll = b.vehicleGroundRoll;
+  state.rideOffset = b.vehicleRideOffset;
+  state.rideVelocity = b.vehicleRideVelocity;
+
+  state.gear = b.vehicleGear; state.engineRpm = b.vehicleRpm; state.shiftTime = b.vehicleShiftTime; state.payloadMass = b.vehiclePayloadMass;
+  state.yaw = b.vehicle ? b.vehicleYaw : b.yaw * TAU / 65536;
+  state.pitch = b.vehiclePitch; state.roll = b.vehicleRoll;
+  state.vx = b.vx; state.vz = b.vz; state.steering = b.steering;
+  state.wheelAngle = b.wheelAngle; state.fuel = b.fuel;
+  state.qx = b.vehicleQx; state.qy = b.vehicleQy; state.qz = b.vehicleQz; state.qw = b.vehicleQw;
+  state.engineCondition = b.vehicleEngineCondition; state.engineOn = b.vehicleEngineOn;
+  state.hullCondition = b.vehicleHullCondition; state.flooding = b.vehicleFlooding;
+  state.thrust = b.vehicleThrust; state.thrustCool = b.vehicleThrustCool;
+}
+
+/** Writes a solver state back, rounded to f32 as the store and wire hold it. */
+function storeState(b: Body, state: FullState): void {
   b.vehicle = true; b.mode = MODE_WALK; b.grounded = state.grounded; b.stance = 0;
   // The store and wire use f32: round here on BOTH sides before another predicted tick.
   b.x = Math.fround(state.x); b.y = Math.fround(state.y); b.z = Math.fround(state.z);
@@ -99,6 +113,27 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   b.vehicleRideOffset = Math.fround(state.rideOffset);
   b.vehicleRideVelocity = Math.fround(state.rideVelocity);
   b.yaw = Math.round(b.vehicleYaw * 65536 / TAU) & 65535;
+}
+
+/**
+ * A tractor and the trailer on its fifth wheel step together (vehicle-hitch.ts). The trailer's own step result is in
+ * `trailerStep`. Both must be wheeled; the trailer is stepped with its towed spec.
+ */
+export const trailerStep: { impactSpeed: number; landSpeed: number; blocked: string | null } = { impactSpeed: 0, landSpeed: 0, blocked: null };
+export function stepHitchedBodies(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: WheelVehicleDefinition, trailer: Body, trailerDef: WheelVehicleDefinition, pilot = true, environment?: VehicleWorld): void {
+  vehicleStep.skateHurt = 0;
+  stepOut.landSpeed = 0;
+  vehicleStep.blocked = null; vehicleStep.impactSpeed = vehicleStep.landSpeed = vehicleStep.fuelUsed = 0; vehicleStep.rotorHit = vehicleStep.water = false;
+  vehicleStep.propHit = vehicleStep.capsized = false; vehicleStep.immersion = vehicleStep.propellerImmersion = vehicleStep.planing = 0;
+  let world = worlds.get(w);
+  if (!world) { world = new StaticVehicleWorld(w); worlds.set(w, world); }
+  loadState(state, b); loadState(trailerState, trailer);
+  const [own, towed] = stepHitched(state, { throttle: moveZ / 127, steer: -moveX / 127, brake: 0, handbrake: (buttons & BTN_JUMP) !== 0, pilot,
+    boost: (buttons & BTN_SPRINT) !== 0, burst: (buttons & BTN_BURST) !== 0 }, def.spec, trailerState, trailerDef.towed ?? trailerDef.spec, environment ?? world, world);
+  Object.assign(vehicleStep, own);
+  trailerStep.impactSpeed = towed.impactSpeed; trailerStep.landSpeed = towed.landSpeed; trailerStep.blocked = towed.blocked;
+  stepOut.landSpeed = vehicleStep.landSpeed;
+  storeState(b, state); storeState(trailer, trailerState);
 }
 
 // Remote presentation: one active bit, three signed 10-bit angles, plus a separate 16-bit wheel angle.
