@@ -160,6 +160,20 @@ test("a bench, a low wall and a seat are ledges to grind, found from their boxes
   expect(w.reg.parts.grindLine?.[w.kind("core:wall")]).toBeUndefined();
 });
 
+test("the join of two floor slabs is no edge to grind, but a slab's outer edge is", () => {
+  const w = flatWorld(), kind = w.kind(ruinKind("floor4"));
+  w.structs.add(kind, 40, 0, 40, 0, 0, 16000);
+  w.structs.add(kind, 44, 0, 40, 0, 0, 16000);
+  const ride = (x: number) => {
+    const b = Object.assign(new Body(), { x: x + .05, y: .45, z: 38.5, grounded: false, vy: -1, vz: 6 });
+    let grinding = 0;
+    for (let i = 0; i < 20; i++) { step(w, b, 0, 0, BTN_SPRINT); if (b.skate!.move === GRIND || b.skate!.move === SLIDE) grinding++; }
+    return grinding;
+  };
+  expect(ride(42)).toBe(0);
+  expect(ride(38)).toBeGreaterThan(8);
+});
+
 test("a ramp throws the rider off its lip, and a kerb stops the wheels without a fall", () => {
   const w = flatWorld();
   w.structs.add(w.kind(slopeKind("rubble")), 40, .75, 40, 0, 0, 16000);

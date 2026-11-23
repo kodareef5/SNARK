@@ -290,7 +290,7 @@ export function stepSkateboard(w: CollisionWorld, b: Body, xInput: number, zInpu
     const canCatch = pilot && (keys & BTN_SPRINT) && (edging || !b.grounded && b.vy < 0 && offStraight(s.spin) <= CATCH_OFF) &&
       speed > 1.4 && b.vy >= -9 && !(s.move === FLIP && s.ticks < trickOf(s.trick).ticks - 3) && s.move !== SPECIAL &&
       !(s.move === GRAB && (keys & GRAB_KEYS));
-    const edge = canCatch ? grindAt(w.structs, x, y, z, fx, fz, edging ? .38 : speed > 6 ? .6 : .38, edging ? .2 : SLIDE_LEAST) : null;
+    const edge = canCatch ? grindAt(w, x, y, z, fx, fz, edging ? .38 : speed > 6 ? .6 : .38, edging ? .2 : SLIDE_LEAST, !edging) : null;
     let wheels = false;
     if (edge && (edging || b.y >= edge.y - .025 && y <= edge.y + .12) && capsuleFree(w, edge.x, edge.y + .004 + lift, edge.z, radius, height - lift)) {
       if (!edging) {
