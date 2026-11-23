@@ -211,17 +211,18 @@ export class Falls {
   }
 
   /**
-   * The pose body `e` lay in at `tick`, which its history says it lay down in (CUE_DOWN), for a shot judged then; the
-   * nearest kept where that tick's is not.
+   * The pose body `e` lay in at `tick`, which its history says it lay down in (CUE_DOWN), for a shot judged then: from
+   * whichever of its falls kept lay then, for a body knocked down again keeps the fall before. The nearest kept where no
+   * fall kept that tick's.
    */
   poseAt(e: number, tick: number): Solved | null {
-    const d = this.down.get(e) ?? this.risen.get(e);
-    if (!d) return null;
-    const k = tick & (HISTORY_TICKS - 1);
-    return d.poseTick[k] === tick ? d.poses[k]! : d.pose;
+    const k = tick & (HISTORY_TICKS - 1), now = this.down.get(e), before = this.risen.get(e);
+    if (now && now.poseTick[k] === tick) return now.poses[k]!;
+    if (before) for (let i = before.length - 1; i >= 0; i--) if (before[i]!.poseTick[k] === tick) return before[i]!.poses[k]!;
+    return now?.pose ?? before?.[before.length - 1]?.pose ?? null;
   }
-  /** Bodies that rose within HISTORY_TICKS, by entity. */
-  private readonly risen = new Map<number, Down>();
+  /** Falls that rose within HISTORY_TICKS, by entity, the last to rise last. */
+  private readonly risen = new Map<number, Down[]>();
 
   /** The facing in radians a lying body's pose is in. */
   yawOf(e: number): number {
@@ -254,7 +255,10 @@ export class Falls {
 
   step(): void {
     const ents = this.world.ents;
-    for (const d of this.risen.values()) if (this.world.tick - d.rose > HISTORY_TICKS) this.risen.delete(d.e);
+    for (const [e, falls] of this.risen) {
+      while (falls.length > 0 && this.world.tick - falls[0]!.rose > HISTORY_TICKS) falls.shift();
+      if (falls.length === 0) this.risen.delete(e);
+    }
     for (const d of this.down.values()) {
       if ((ents.flags[d.e]! & F_ALIVE) === 0 || ents.gen[d.e] !== d.gen) {
         this.ended(d);
@@ -307,7 +311,9 @@ export class Falls {
     d.fall.ragdoll.rootPosition(root);
     this.ended(d);
     d.rose = this.world.tick;
-    this.risen.set(d.e, d);
+    const kept = this.risen.get(d.e);
+    if (kept) kept.push(d);
+    else this.risen.set(d.e, [d]);
     ents.setPosition(d.e, root[0]!, root[1]! - HIPS_UP, root[2]!);
     ents.vx[d.e] = ents.vy[d.e] = ents.vz[d.e] = 0;
     ents.cue[d.e] = (ents.cue[d.e]! & ~CUE_DOWN) >>> 0;

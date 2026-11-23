@@ -97,6 +97,35 @@ test("a shot judged in the past meets the body as it lay then", () => {
   }
 });
 
+test("a shot judged in a fall is judged the same once the survivor is knocked down again", () => {
+  const { h, e } = scene();
+  try {
+    h.host.falls.knock(e, 0, 1, 4, 3, 0, 0);
+    // Lying until it gets up: the last tick it lay, and a ray through its head then.
+    let then = -1;
+    for (let t = 0; t < 120 && h.host.falls.isDown(e); t++) h.run(50, () => { if (h.host.falls.isDown(e)) then = h.world.tick; });
+    expect(h.host.falls.isDown(e)).toBe(false);
+    const ents = h.world.ents, head = h.host.falls.poseAt(e, then)!.pos.slice(), st = new AnimState(), at = ents.x[e]!, z = ents.z[e]!;
+    const shot = () => {
+      const pose = h.host.falls.poseAt(e, then)!, hx = pose.pos[3 * 2]!, hy = pose.pos[3 * 2 + 1]!, hz = pose.pos[3 * 2 + 2]!;
+      st.cue = CUE_DOWN;
+      return [pose.pos.slice(), rayBody(h.world.anim!, st, then, at, ents.y[e]!, z, 0, at + hx, ents.y[e]! + hy + 2, z + hz, 0, -1, 0, 4, 0, false, pose)] as const;
+    };
+    const [before, zone] = shot();
+    expect(before).toEqual(head);
+    expect(zone).not.toBe(ZONE_NONE);
+    // Down again a moment later: the fall before still answers for the ticks it lay.
+    expect(h.host.falls.knock(e, 0, 1, -4, -3, 0, 0)).toBe(true);
+    h.run(100);
+    expect(h.host.falls.isDown(e)).toBe(true);
+    const [after, again] = shot();
+    expect(after).toEqual(head);
+    expect(again).toBe(zone);
+  } finally {
+    h.host.shutdown();
+  }
+});
+
 test("a survivor who dies knocked down goes on lying as it fell, never standing up", () => {
   const { h, ada, e } = scene();
   try {
