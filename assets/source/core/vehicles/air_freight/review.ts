@@ -55,8 +55,8 @@ function pose(m: Machine, p: Pose): void {
   };
   turn("roof", 0, 0, 1, (p.roof ?? 0) * T.roof.open);
   turn("side", 0, 0, 1, (p.side ?? 0) * T.side.open);
-  for (const name of ["clamp_front_left", "clamp_rear_left"]) turn(name, 0, 0, 1, (p.clamps ?? 0) * 0.5);
-  for (const name of ["clamp_front_right", "clamp_rear_right"]) turn(name, 0, 0, 1, -(p.clamps ?? 0) * 0.5);
+  for (const name of ["clamp_front_left", "clamp_rear_left"]) turn(name, 0, 0, 1, (p.clamps ?? 0) * C.clampOpen);
+  for (const name of ["clamp_front_right", "clamp_rear_right"]) turn(name, 0, 0, 1, -(p.clamps ?? 0) * C.clampOpen);
   turn("rotor_front", 0, 1, 0, p.rotor ?? 0);
   turn("rotor_rear", 0, 1, 0, -(p.rotor ?? 0));
   for (const [k, imp] of D.impellers.entries()) turn(imp.bone, 0, 1, 0, (p.rotor ?? 0) * imp.turn + k);
@@ -143,7 +143,7 @@ function label(img: Uint8Array, width: number, x0: number, y0: number, text: str
   });
 }
 
-interface Shot { name: string; cam: Camera; layers: Layer[] }
+interface Shot { name: string; cam: Camera; layers: Layer[]; ground?: number }
 const orbit = (around: number, above: number, centre: V3, radius: number): Camera => ({ around, above, centre, radius });
 
 const deck = T.deck;
@@ -155,7 +155,8 @@ const sheets: Record<string, Shot[]> = {
     { name: "side, left", cam: orbit(90, 4, [0, 1.7, 0], 3.6), layers: [{ id: T.id, pose: {} }] },
     { name: "side, right", cam: orbit(-90, 4, [0, 1.7, 0], 3.6), layers: [{ id: T.id, pose: {} }] },
     { name: "open, one bay empty, roadside", cam: look([5.6, 1.7, -1.5], [0, 2.1, 0.2], 1.05), layers: [{ id: T.id, pose: { roof: 1, side: 1, gone: [3] } }] },
-    { name: "open from above", cam: orbit(64, 38, [0.4, 2.2, 0], 5.4), layers: [{ id: T.id, pose: { roof: 1, side: 1, gone: [3] } }] },
+    { name: "open from above", cam: orbit(64, 38, [0.4, 2.2, 0], 4.4), layers: [{ id: T.id, pose: { roof: 1, side: 1, gone: [3] } }] },
+    { name: "open, into the bays", cam: look([2.9, 3.3, -1.2], [-0.2, 2.2, -0.9], 0.85), layers: [{ id: T.id, pose: { roof: 1, side: 1, gone: [3] } }] },
     { name: "cab mirror, driver eye, closed", cam: look([1.9, 2.4, 7.4], [0.6, 1.8, -1.5], 0.9), layers: [{ id: T.id, pose: lifted }] },
     { name: "cab mirror, driver eye, open", cam: look([1.9, 2.4, 7.4], [0.6, 1.8, -1.5], 0.9), layers: [{ id: T.id, pose: { ...lifted, roof: 1, side: 1, gone: [3] } }] },
     { name: "roadside, kingpin and legs", cam: look([-3.2, 1.7, 5.6], [-0.2, 0.9, 2.6], 1.0), layers: [{ id: T.id, pose: {} }] },
@@ -176,6 +177,8 @@ const sheets: Record<string, Shot[]> = {
     { name: "carrying, from below", cam: orbit(130, -10, [0, -0.6, 0], 6.2), layers: [{ id: C.id, pose: { rotor: 0.3 } }, { id: T.id, pose: lifted, at: C.load }] },
     { name: "jaws open, released", cam: orbit(40, 12, [0, -0.6, 0], 6.2), layers: [{ id: C.id, pose: { rotor: 0.3, clamps: 1 } }, { id: T.id, pose: lifted, at: C.load }] },
     { name: "jaw on casting, close", cam: look([3.0, 0.9, 5.4], [1.2, 0.2, 3.52], 0.6), layers: [{ id: C.id, pose: {} }, { id: T.id, pose: lifted, at: C.load }] },
+    { name: "front clamps, jaws closed", cam: look([0.4, 0.2, 8.6], [0, 0.35, 3.5], 0.62), layers: [{ id: C.id, pose: {} }, { id: T.id, pose: lifted, at: C.load }] },
+    { name: "front clamps, jaws open", cam: look([0.4, 0.2, 8.6], [0, 0.35, 3.5], 0.62), layers: [{ id: C.id, pose: { clamps: 1 } }, { id: T.id, pose: lifted, at: C.load }] },
   ],
   drone: [
     { name: "front three quarter", cam: orbit(36, 18, [0, 0.15, 0.02], 0.55), layers: [{ id: D.id, pose: { rotor: 0.2 } }] },
@@ -195,7 +198,7 @@ for (const [sheet, shots] of Object.entries(sheets)) {
   const cols = 2, rows = Math.ceil(shots.length / cols);
   const page = new Uint8Array(cols * W * rows * H * 4);
   shots.forEach((shot, k) => {
-    const img = picture(shot.cam, shot.layers);
+    const img = picture(shot.cam, shot.layers, shot.ground ?? (sheet === "lift" ? C.load[1] : 0));
     label(img, W, 6, 6, shot.name);
     writeFileSync(join(folder, `${sheet}-${k + 1}.png`), encodePng(W, H, img));
     const ox = (k % cols) * W, oy = Math.floor(k / cols) * H;

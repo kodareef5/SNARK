@@ -305,7 +305,7 @@ def interior():
         # The umbilical from the backboard to the drone's belly.
         kit.tube([(-1.05, BAY_Y - 0.3, z + 0.3), (-0.6, BAY_Y - 0.32, z + 0.3), (-0.3, BAY_Y - 0.1, z + 0.22), (-0.1, BAY_Y - 0.06, z + 0.06)], 0.018, "cable", 6)
     # The backboard along the right wall: a rack per bay, cable trays, conduit and lamps.
-    box((-1.17, DECK + 0.05, -DOOR + 0.02), (-1.12, TOP - 0.16, DOOR - 0.02), "panel_d")
+    box((-1.17, DECK + 0.05, -DOOR + 0.02), (-1.12, TOP - 0.16, DOOR - 0.02), "panel_l")
     for i, z in enumerate(BAYS):
         box((-1.12, DECK + 0.7, z - 0.42), (-1.0, DECK + 1.6, z + 0.42), "panel_seamed", bevel=0.015, faces={"+x": "panel_b"})
         box((-1.0, DECK + 1.25, z - 0.3), (-0.995, DECK + 1.5, z + 0.05), "lamp_screen")
@@ -332,7 +332,7 @@ def roof():
     rx, ry = ROOF_HINGE
     with kit.on("roof"):
         # Lid: a ribbed composite panel, a walkway down the middle and the hinge knuckles between the chassis's.
-        box((rx, ry, -DOOR), (WALL + 0.01, ry + 0.04, DOOR), "panel_d", faces={"-y": "inside"})
+        box((rx, ry, -DOOR), (WALL + 0.01, ry + 0.04, DOOR), "panel_d", faces={"-y": "panel_l"})
         for k in range(6):
             z = BAYS[k]
             box((rx + 0.06, ry + 0.04, z - 0.52), (WALL - 0.02, TOP, z + 0.52), "panel", bevel=0.015)

@@ -46,6 +46,8 @@ export const AIR_CARRIER_ART = {
   rotors: [{ bone: "rotor_front", center: [0, 2.85, 3.84] as Point }, { bone: "rotor_rear", center: [0, 3.25, -3.84] as Point }],
   /** Where the trailer's origin sits under a hovering carrier with closed jaws. */
   load: [0, -(DECK + 1.65) + 0.25, 0] as Point,
+  /** The clamps rest closed. Each turns about +Z at its bone: this many radians opens a left one, its negative a right one. */
+  clampOpen: 0.5,
   bones: ["chassis", "rotor_front", "rotor_rear", "clamp_front_left", "clamp_front_right", "clamp_rear_left", "clamp_rear_right"],
   anchors: {
     jaw_front_left: [1.17, 0.25, 3.52] as Point,
