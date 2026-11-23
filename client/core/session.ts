@@ -118,7 +118,8 @@ import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequant
 import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
-import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
+import { SPIN } from "../../shared/sim/skate-state.ts";
+import { isSkateboard, MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
@@ -1006,7 +1007,7 @@ export class ClientSession {
       out.seat[n] = attachment.seat[attachmentRow]!; out.seatSlot[n] = attachment.seatSlot[attachmentRow]!; out.seatGen[n] = attachment.seatGen[attachmentRow]!;
       const vehicle = this.registry.vehicle[b.kind[j]!];
       if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
-        this.vehicleColumns(out, n, b, j, both ? a : null, i, k, vehicle?.movement);
+        this.vehicleColumns(out, n, b, j, both ? a : null, i, k, isSkateboard(vehicle) ? "skateboard" : vehicle?.movement);
         out.bare[n] = 0;
       } else if (out.bare[n] === 0) {
         noVehicle(out, n);
@@ -1066,10 +1067,13 @@ export class ClientSession {
     out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
     out.vehicleLightMode[n] = unpackVehicleLightMode(drive);
     if (a) {
+      const oldDrive = a.vehicleDrive[i]!;
+      const newTrick = movement === "skateboard" && unpackVehicleGear(oldDrive) !== unpackVehicleGear(drive);
       if (b.vehicleAttitudeA[j] || b.vehicleAttitudeB[j]) {
         unpackVehicleQuaternion(a.vehicleAttitudeA[i]!, a.vehicleAttitudeB[i]!, this.rotorQuatA);
         this.rotorQuatB.set(this.rotorQuat);
-        quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
+        const turn = newTrick && unpackVehicleGear(oldDrive) === SPIN ? (k < .5 ? 0 : 1) : k;
+        quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, turn);
       }
       if (out.vehicleRotorcraft[n]) {
         const oldRotor = a.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);
@@ -1091,7 +1095,6 @@ export class ClientSession {
         doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
       }
       out.vehicleDoors[n] = doors;
-      const oldDrive = a.vehicleDrive[i]!;
       out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
       out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;
       out.vehicleShifting[n] = vehicleShifting(k < .5 ? oldDrive : drive) ? 1 : 0;
@@ -1100,7 +1103,7 @@ export class ClientSession {
       wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
       out.wheelAngle[n] = out.vehicleBoat[n]
         ? interpolateRotorPhase(oldWheel, out.wheelAngle[n]!, unpackVehicleRpm(oldDrive) * unpackVehicleGear(oldDrive), unpackVehicleRpm(drive) * unpackVehicleGear(drive), (b.tick - a.tick) / TICK_RATE, k)
-        : oldWheel + wheelTurn * k;
+        : newTrick ? (k < .5 ? oldWheel : out.wheelAngle[n]!) : oldWheel + wheelTurn * k;
     }
     out.vehicleQx[n] = this.rotorQuat[0]!; out.vehicleQy[n] = this.rotorQuat[1]!;
     out.vehicleQz[n] = this.rotorQuat[2]!; out.vehicleQw[n] = this.rotorQuat[3]!;

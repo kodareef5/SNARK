@@ -3,8 +3,8 @@
 // this one. The controls guide reads its words from the rows (ui/controls-guide.ts).
 
 import { makeHandle } from "../../shared/ids.ts";
-import { CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, CMD_THROW, CMD_VEHICLE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, VEHICLE_DOOR, VEHICLE_INSPECT, VEHICLE_LIGHTS } from "../../shared/net/protocol.ts";
-import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
+import { CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, CMD_THROW, CMD_VEHICLE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, VEHICLE_DOOR, VEHICLE_PACK, VEHICLE_INSPECT, VEHICLE_LIGHTS } from "../../shared/net/protocol.ts";
+import { isSkateboard, isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { BUILD_KEYS } from "./build.ts";
 import { GLASS_KEYS } from "./glass.ts";
 import { ANY_KEY, G_WORLD, type KeyRow } from "./key-row.ts";
@@ -141,8 +141,11 @@ const OPEN: KeyRow = {
     if (which < 0) which = c.aimedBoat >= 0 ? c.aimedBoat : c.lookedAt;
     if (which >= 0) {
       const at = ids.indexOf(which);
-      if (at >= 0 && c.reg.vehicle[r.kind[at]!]) s.command(CMD_VEHICLE, (w) => { w.u8(VEHICLE_INSPECT); w.u32(makeHandle(which, r.gen[at]!)); });
-      else s.command(CMD_OPEN, (w) => w.u32(which >>> 0));
+      const vehicle = at >= 0 ? c.reg.vehicle[r.kind[at]!] : undefined;
+      if (vehicle) {
+        const action = s.driving < 0 && isSkateboard(vehicle) ? VEHICLE_PACK : VEHICLE_INSPECT;
+        s.command(CMD_VEHICLE, w => { w.u8(action); w.u32(makeHandle(which, r.gen[at]!)); });
+      } else s.command(CMD_OPEN, (w) => w.u32(which >>> 0));
     }
     return true;
   },

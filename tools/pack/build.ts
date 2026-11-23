@@ -3,8 +3,8 @@
 
 import { HAS_SURFACES, worldSurfaceMeshes } from "../surfaces/build.ts";
 import { HAS_FACADES, facadeMeshes } from "../facade/build.ts";
-import { readFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ShapeBox } from "../../shared/content/defs.ts";
 import { cornerByte } from "../../shared/world/city.ts";
@@ -235,10 +235,10 @@ export function buildCorePack(extra: SourceMesh[] = [], landmarks: readonly Land
   return buildPack([...withArt(made, art.meshes), ...(HAS_SURFACES ? worldSurfaceMeshes() : []), ...(HAS_FACADES ? facadeMeshes() : []), ...extra], defaultPalette(), coreClips(), [...rigs.values()], art.details, landmarks);
 }
 
-/** Every .glb under assets/source, imported. What the import had to say of each is printed. */
+/** Loose models under assets/source, outside authored asset packs. What the import had to say of each is printed. */
 export function importedMeshes(): SourceMesh[] {
   const palette = defaultPalette();
-  return filesUnder(SOURCE, ".glb").map((file) => {
+  return filesUnder(SOURCE, ".glb").filter(file => !existsSync(join(dirname(file), "asset.ts"))).map((file) => {
     const id = `${basename(dirname(file))}:${basename(file, ".glb")}`;
     const report = importGlb(readFileSync(file), id, palette);
     for (const w of report.warnings) console.warn(`${id}: ${w}`);

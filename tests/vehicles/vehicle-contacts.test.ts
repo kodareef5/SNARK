@@ -25,13 +25,13 @@ function separation(h: Harness, car: number, actor: number): number {
   }, e.x[actor]!, e.y[actor]!, e.z[actor]!, p.radius, p.height)?.depth ?? 0;
 }
 
-function setup(host: HostOptions = {}, maxClients = 128) {
+function setup(host: HostOptions = {}, maxClients = 128, vehicle = 'core:compact') {
   const h = new Harness({ maxClients }, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], ...host });
   const session = h.join('driver'); h.run(400);
   const ground = flatGround(h, 28, 32), x = ground.x + 14, z = ground.z + 8;
   const driver = h.client(session)!, ents = h.world.ents;
   const record = h.host.records.byPid.get(driver.pid)!;
-  const car = h.host.spawnVehicle('core:compact', x, z, record.team, 0);
+  const car = h.host.spawnVehicle(vehicle, x, z, record.team, 0);
   expect(car).toBeGreaterThanOrEqual(0);
   ents.setPosition(driver.ent, x + 1.6, ground.y, z + 0.12);
   expect(h.host.urban.mount(driver, car)).toBe(RESULT_OK);
@@ -325,5 +325,21 @@ test('a driver disabled after contact capture loses impact authority in the same
     expect(health(target)).toBe(before); expect(h.host.combat.hits).toBe(hits);
     expect(ents.vx[target]).toBeCloseTo(0, 8); expect(ents.vz[target]).toBeGreaterThan(5);
     expect(ents.vz[car]).toBeGreaterThan(5);
+  } finally { h.host.shutdown(); }
+});
+
+test('a skateboard hits a standing pedestrian without dealing car ram damage', () => {
+  const s = setup({}, 128, 'core:zzzzzskateboard'), { h, x, z, car, ents } = s;
+  try {
+    const target = s.victim('core:civilian', x, z + .95), before = s.health(target);
+    const contacts = h.host.urban.contacts!, count = contacts.contacts;
+    s.placeCar(x, z, 8);
+    contacts.capture(car);
+    ents.setPosition(car, x, s.ground.y, z + .4);
+    contacts.step();
+    expect(contacts.contacts).toBeGreaterThan(count);
+    expect(ents.vz[car]).toBeLessThan(8);
+    expect(s.health(target)).toBe(before);
+    expect(contacts.runOvers).toBe(0);
   } finally { h.host.shutdown(); }
 });

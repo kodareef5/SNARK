@@ -247,15 +247,15 @@ export class Items {
   /**
    * Returns how many fit, which is how many it created. `at` is the tick it happens at. When given, the inventory is not
    * settled first. `why` says where the stack comes from, for a module that is asked about it: it may make it smaller
-   * or larger, or refuse it. `flags` (FLAG_ bits) makes blueprints, one a slot, of an item that may be one (Registry.blueprints).
+   * or larger, or refuse it. A physical conversion can bound that gain with `limit`. `flags` (FLAG_ bits) makes blueprints, one a slot, of an item that may be one (Registry.blueprints).
    */
-  mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0, at = -1, why = "", flags = 0): number {
+  mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0, at = -1, why = "", flags = 0, limit = Infinity): number {
     if (!this.isItem(item) || !(n > 0) || !Number.isInteger(n)) return 0;
     if ((flags & FLAG_BLUEPRINT) !== 0 && this.reg.blueprints[item] === 0) return 0;
     if (this.bus.n[ITEM_GAIN] !== 0) {
       const asked = { pid: rec.pid, item: this.reg.ids[item]!, why, n };
       if (this.bus.before(ITEM_GAIN, asked) !== "") return 0;
-      n = Math.floor(Number(asked.n));
+      n = Math.floor(Math.min(Number(asked.n), limit));
       if (!(n > 0)) return 0;
     }
     // 0 means new, with all its uses. A blueprint has none to wear.

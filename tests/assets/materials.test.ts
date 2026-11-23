@@ -13,7 +13,6 @@ import { convertModel, convertPieces, packOf, repack, type Built } from "../../t
 import { bothWays, checkAsset } from "../../tools/art/check.ts";
 import { describe, gameTextures, materialsOf } from "../../tools/art/materials.ts";
 import { shared, type CreatureAsset, type MaterialSpec, type PiecesAsset } from "../../tools/art/spec.ts";
-import { ART } from "../../tools/art/source.ts";
 import * as image from "../../tools/pack/image.ts";
 import * as surfaces from "../../tools/surfaces/build.ts";
 import { encodePng, readPicture, type Picture } from "../../tools/pack/image.ts";
@@ -239,8 +238,7 @@ test("every texture the game's packs name has its pictures listed for the textur
     read.mockRestore();
     bake.mockRestore();
   }
-  if (ART) expect(named.length).toBeGreaterThan(0);
-  else expect([named, sources]).toEqual([[], []]);
+  expect(named.length).toBeGreaterThan(0);
   for (const t of named) expect([t.id, sources.find((s) => s.id === t.id)?.role, sources.find((s) => s.id === t.id)?.top]).toEqual([t.id, t.role, t.top]);
   // The examples are in no game pack, and theirs are found the same way.
   expect((await gameTextures(join(import.meta.dir, "../../tools/blender/example"))).map((s) => `${s.id} ${s.top}`)).toEqual(["demo:pup/Hide/base 64", "demo:pup/Hide/mask 64", "demo:pup/Hide/mro 64", "demo:pup/Hide/normal 64", "demo:crate/Planks/base 64", "demo:crate/Planks/mro 64", "demo:crate/Planks/normal 64"]);

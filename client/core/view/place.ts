@@ -1,3 +1,4 @@
+import { isSkateboard } from "../../../shared/sim/vehicle.ts";
 // Where the camera goes, by what the view's subject is: behind or inside a vehicle the body drives, behind the mount it
 // rides, with the seat it is a passenger in, or with the body on foot, where a body there is none of looks from where it
 // last stood. Riding, a passenger's chase and on foot are where the orbit camera may place it instead. A survivor still
@@ -54,11 +55,12 @@ function pointIn(d: Director, at: Parameters<typeof vehiclePoint>[0], x: number,
 function driving(d: Director, f: AppFrame): void {
   const session = f.session, c = f.controls, cam = f.cam, world = f.world, car = f.car!, vehiclePose = f.vehiclePose!, carYaw = f.carYaw;
   const rotor = car.movement === "rotor", boat = car.movement === "boat", at = d.carFrame, spot = d.seatSpot;
+  const board = isSkateboard(car);
   if (f.third) {
     // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
-    pointIn(d, at, 0, boat && !car.family ? 1.1 : rotor ? 1.65 : car.spec.height * 2 / 3, rotor || boat ? -.35 : 0);
-    const heading = d.view.placeVehicle(cam, world, spot[0]!, spot[1]!, spot[2]!, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), f.dt, !rotor && !boat,
-      motionOf(d, session.own.vx, session.own.vy, session.own.vz, session.driving, rotor || boat ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3));
+    pointIn(d, at, 0, board ? .94 : boat && !car.family ? 1.1 : rotor ? 1.65 : car.spec.height * 2 / 3, rotor || boat ? -.35 : 0);
+    const heading = d.view.placeVehicle(cam, world, spot[0]!, spot[1]!, spot[2]!, c.yaw, c.pitch - (board ? .09 : 0), carYaw + (board ? .24 - (session.own.skate?.switched ? Math.PI : 0) : 0), Math.hypot(session.own.vx, session.own.vz), f.dt, !rotor && !boat,
+      motionOf(d, session.own.vx, session.own.vy, session.own.vz, session.driving, board ? 3.4 : rotor || boat ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3));
     if (!rotor && !boat) c.yaw = heading;
   } else {
     const slot = driverSlot(car.seats), ch = f.scene.characters;

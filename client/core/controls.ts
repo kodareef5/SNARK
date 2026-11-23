@@ -7,7 +7,8 @@ export const LOOK_SPEED = 0.0025;
 const PITCH_LIMIT = 1.5;
 
 const BINDINGS: Record<string, number> = { Space: BTN_JUMP, ShiftLeft: BTN_SPRINT, KeyE: BTN_USE, KeyR: BTN_RELOAD, KeyG: BTN_MELEE, KeyN: BTN_MOD };
-/** Driving a flyer, ARK's keys: Space takes off and lands (the wing, below), and C rolls and X brakes while held. */
+const BOARD_BINDINGS: Record<string, number> = { ...BINDINGS, ShiftRight: BTN_SPRINT, KeyX: BTN_PRONE, KeyC: BTN_CROUCH, KeyQ: BTN_MOD };
+/** A flyer takes off or lands with Space and rolls or brakes while C or X is held. */
 const FLYER_BINDINGS: Record<string, number> = { ...BINDINGS, Space: 0, KeyC: BTN_ROLL, KeyX: BTN_BRAKE };
 const HELICOPTER_BINDINGS: Record<string, number> = { Space: BTN_JUMP, ControlLeft: BTN_CROUCH, ControlRight: BTN_CROUCH, ShiftLeft: BTN_SPRINT, ShiftRight: BTN_SPRINT, KeyE: BTN_USE, KeyQ: BTN_PRIMARY, KeyR: BTN_SECONDARY, KeyX: BTN_PRONE, KeyC: 0 };
 /** At the wheel of a car with thrusters: Shift boosts (sprint's bit), and Q flips, as does G, a pad's right bumper. */
@@ -22,7 +23,7 @@ const MOUSE: readonly number[] = [BTN_PRIMARY, 0, BTN_SECONDARY];
 export class Controls {
   /** The keys the body or vehicle being driven now takes as buttons. A key one claims is no one else's (client/core/app.ts). */
   bindings(): Record<string, number> {
-    return this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : this.thrusters ? THRUSTER_BINDINGS : BINDINGS;
+    return this.board ? BOARD_BINDINGS : this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : this.thrusters ? THRUSTER_BINDINGS : BINDINGS;
   }
 
   /** Whether what is driven now takes `code` as one of its buttons. */
@@ -46,6 +47,12 @@ export class Controls {
   wing = false;
   private flyer = false;
   private helicopter = false;
+  private board = false;
+  get onBoard(): boolean { return this.board; }
+  skate(on: boolean): void {
+    if (on === this.board) return;
+    this.board = on; this.stance = 0; this.refresh();
+  }
   private thrusters = false;
   /**
    * On foot in the air with a glider carried (planning/workstreams/glider.md): C is the glider's key, not a stance, and no
@@ -115,7 +122,7 @@ export class Controls {
   /** Returns true if the key is bound. */
   key(code: string, down: boolean, source = 0): boolean {
     const held = source === 1 ? this.padHeld : this.held;
-    const stance = this.flyer || this.helicopter ? undefined : STANCE_KEYS[code];
+    const stance = this.board || this.flyer || this.helicopter ? undefined : STANCE_KEYS[code];
     if (this.helicopter && code === "KeyC") {
       if (down && !held.has(code)) this.directFlight = !this.directFlight;
     } else if (this.gliding && stance !== undefined) {

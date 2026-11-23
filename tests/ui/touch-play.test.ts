@@ -6,7 +6,7 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { VehicleTelemetry } from "../../client/core/hud.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CHAT, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, touchKey, type TouchTarget } from "../../client/core/touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CHAT, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_PACK, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, touchKey, type TouchTarget } from "../../client/core/touch.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_SEND, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { TEXT_GLOBAL, TEXT_MOTD } from "../../shared/net/protocol.ts";
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
@@ -93,7 +93,7 @@ function clusterFits(ui: Ui, [, , h, insets]: Phone, has: readonly number[], lac
   const f = ui.frame, unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
   for (const k of has) expect(f.find(KEY_TOUCH_BUTTON + k), `${where}: button ${k}`).not.toBeNull();
   for (const k of lacks) expect(f.find(KEY_TOUCH_BUTTON + k), `${where}: button ${k}`).toBeNull();
-  for (const k of has) expect(ui.touchShown & (1 << k), `${where}: bit ${k}`).toBeGreaterThan(0);
+  for (const k of has) expect(ui.touchShown & (1 << k), `${where}: bit ${k}`).not.toBe(0);
   const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive && n.key !== KEY_ZONE_MOVE && n.key !== KEY_ZONE_LOOK);
   for (const n of controls) {
     const at = `${where}: key ${n.key} "${n.label}"`;
@@ -283,6 +283,7 @@ test("each situation has its own cluster on the same arcs, at every window", () 
     ["placing a vehicle", (d) => { d.ui.placing = true; }, [T_ATTACK, T_ROTATE, T_SNAP, T_CANCEL], [T_JUMP, T_STANCE, T_MORE, T_RAISE]],
     ["a flyer", (d) => { d.ui.flyer = true; }, [T_ATTACK, T_JUMP, T_ROLL, T_HOLD, T_MORE], [T_STANCE, T_AIM]],
     ["a car", helm(false, false, { lightMode: 0 }), [T_JUMP, T_VIEW, T_ORBIT], [T_ATTACK, T_STANCE, T_MORE]],
+    ["a skateboard", helm(false, false, { board: true }), [T_JUMP, T_RELOAD, T_MELEE, T_SHIFT, T_HOLD, T_ROLL, T_SNAP], [T_ATTACK, T_STANCE, T_MORE]],
     ["a boat", helm(true, false), [T_JUMP, T_SHIFT, T_VIEW], [T_ATTACK, T_STANCE, T_MORE]],
     ["a helicopter", helm(false, true), [T_JUMP, T_DOWN, T_SNAP, T_RELOAD, T_ROLL, T_HOLD, T_SHIFT, T_VIEW], [T_ATTACK, T_STANCE, T_MORE]],
   ];
@@ -505,4 +506,14 @@ test("a driver's cluster in a whole client is the one its models build", () => {
   const d = touched(window, false, stood(app));
   [d.hud.vehicle, d.hud.prompt] = [app.hud.vehicle, app.hud.prompt];
   expect(nodes(d.build())).toEqual(nodes(app.ui.frame));
+});
+
+test("a parked board offers separate ride and pickup targets on each phone", () => {
+  for (const window of PHONES) {
+    const d = touched(window, false);
+    d.hud.prompt = "E  ride skateboard   F  pick up";
+    d.build();
+    clusterFits(d.ui, window, [T_PACK], [], window[0]);
+    expect(d.ui.frame.find(KEY_TOUCH_BUTTON + T_USE)?.label).toBe("Ride skateboard");
+  }
 });

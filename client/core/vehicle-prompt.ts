@@ -67,6 +67,7 @@ export function vehiclePrompt(reg: Registry, r: RemoteSample, hit: number, ox: n
     return false;
   };
   const door = car.seats[slot]!;
+  if (door.pose === "skate") return taken(slot) ? "Skateboard occupied" : "E  ride skateboard   F  pick up";
   if (door.driver) return taken(slot) ? "E  carjack driver" : "E  enter driver seat";
   // Passenger seats may share one door, as the bus's do: the server takes the first free one behind it.
   for (let k = 0; k < car.seats.length; k++) {

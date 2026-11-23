@@ -7,6 +7,7 @@
 import { CUE_DEAD } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
+import { BAIL, GRAB, GRIND, KICKFLIP, OLLIE, PUSH, SHOVE, SPIN } from "../../../shared/sim/skate-state.ts";
 import { isBoatVehicle, isRotorVehicle } from "../../../shared/sim/vehicle.ts";
 import { DEFAULT_DRIVETRAIN } from "../../../shared/sim/vehicle-drivetrain.ts";
 import { FIRED_BOOST, thrustBurstTick, thrustersOf } from "../../../shared/sim/vehicle-thrusters.ts";
@@ -46,7 +47,10 @@ const INSIDE = 0.35;
 export const VEHICLE_LOOPS = 1_000_000;
 const ROTOR = 1;
 const BOAT = 2;
-const CAR = 3;
+const CAR = 3, BOARD = 4;
+const skateRoll = cueKey("vehicle/roll/smooth"), skateRough = cueKey("vehicle/roll/rough");
+const skateLand = cueKey("vehicle/land"), skatePush = cueKey("vehicle/push"), skatePop = cueKey("vehicle/ollie");
+const skateGrind = cueKey("vehicle/grind"), skateCrash = cueKey("vehicle/crash/light");
 
 /** The level of each engine layer at engine speed `share` (0 at rest, 1 at full). */
 export function engineLayers(share: number, out: number[] = [0, 0, 0, 0]): number[] {
@@ -65,6 +69,7 @@ export class VehicleSounds {
   private readonly full: Float32Array;
   private readonly driver: Uint8Array;
   /** By entity: whether its engine ran when last heard, so a start or a stop is heard once. */
+  private readonly skating = new Map<number, { move: number; phase: number; ground: boolean }>();
   private readonly running = new Map<number, boolean>();
   private readonly seen = new Set<number>();
   /** Seats taken this frame, as host entity * 256 + seat slot. */
@@ -85,7 +90,7 @@ export class VehicleSounds {
       const v = reg.vehicle[kind];
       if (!v) continue;
       this.owner[kind] = ownerOf(reg.ids[kind]!);
-      this.how[kind] = isRotorVehicle(v) ? ROTOR : isBoatVehicle(v) ? BOAT : CAR;
+      this.how[kind] = isRotorVehicle(v) ? ROTOR : isBoatVehicle(v) ? BOAT : v.frame === "skateboard" ? BOARD : CAR;
       this.full[kind] = isRotorVehicle(v) ? v.spec.rotorRpm : isBoatVehicle(v) ? v.spec.maxRpm : (v.spec.drivetrain ?? DEFAULT_DRIVETRAIN).redlineRpm;
       this.driver[kind] = v.seats.findIndex((s) => s.driver) + 1;
       this.thrusters[kind] = thrustersOf(v) ? 1 : 0;
@@ -103,6 +108,23 @@ export class VehicleSounds {
       const id = remote.id[i]!, x = remote.x[i]!, y = remote.y[i]!, z = remote.z[i]!, rotor = this.how[kind] === ROTOR;
       const d = id === inside ? 0 : Math.hypot(x - ex, y - ey, z - ez);
       if (d >= REACH) continue;
+      if (this.how[kind] === BOARD) {
+        const move = remote.vehicleGear[i]!, phase = remote.wheelAngle[i]!, ground = !!remote.vehicleGrounded[i];
+        const was = this.skating.get(id), speed = remote.vehicleRpm[i]! / 100;
+        let event = 0;
+        if (was) {
+          if (move === BAIL && was.move !== BAIL) event = skateCrash;
+          else if (move === GRIND && was.move !== GRIND) event = skateGrind;
+          else if (!was.ground && ground) event = skateLand;
+          else if (was.ground && !ground && (move === OLLIE || move === KICKFLIP || move === SHOVE || move === GRAB || move === SPIN)) event = skatePop;
+          else if (move === PUSH && (was.move !== PUSH || phase + 1 < was.phase)) event = skatePush;
+        }
+        if (event) hear(owner, event, id, x, y, z, 1, .8, id === inside);
+        const cls = hf.groundClassAt(x,z), rough = cls !== 1 && cls !== 2;
+        place(VEHICLE_LOOPS + id*8, owner, rough ? skateRough : skateRoll, x, y, z, Math.min(.85, speed/8), ground && move !== GRIND && speed > .3, false);
+        this.skating.set(id, { move, phase, ground }); this.seen.add(id);
+        continue;
+      }
       if (d < NEAR) {
         want(owner, K_START, d);
         want(owner, K_STOP, d);
@@ -139,6 +161,7 @@ export class VehicleSounds {
         place(base + 6, owner, K_HULL_FAST, x, water, z, Math.min(1, share), afloat && fast, false);
       }
     }
+    for (const id of this.skating.keys()) if (!this.seen.has(id)) this.skating.delete(id);
     for (const id of this.running.keys()) if (!this.seen.has(id)) this.running.delete(id);
     for (const id of this.burst.keys()) if (!this.seen.has(id)) this.burst.delete(id);
   }

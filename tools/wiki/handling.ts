@@ -4,6 +4,10 @@
 // a vessel's drives) is read from its definition. Speeds are in metres a second, distances in metres, times in seconds,
 // fuel in the tank's own units.
 
+import { Body, BTN_JUMP } from "../../shared/sim/character.ts";
+import { stepVehicleBody } from "../../shared/sim/vehicle-body.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { StructureStore } from "../../shared/world/structures.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { clamp, TAU } from "../../shared/math/scalar.ts";
 import { boatRestY, createBoat, stepBoat, type BoatState, type BoatWorld } from "../../shared/sim/boat.ts";
@@ -92,7 +96,28 @@ export interface RotorHandling {
   rangeCruise: number;
 }
 
-export type Handling = RoadHandling | BoatHandling | RotorHandling;
+interface SkateHandling {
+  movement: "skateboard";
+  top: number;
+  braking: number;
+  ollie: number;
+}
+export type Handling = RoadHandling | BoatHandling | RotorHandling | SkateHandling;
+
+function skateHandling(def: WheelVehicleDefinition): SkateHandling {
+  const dims = { chunksX: 2, chunksZ: 2 }, empty = new Float32Array(0);
+  const world = { hf: new Heightfield(dims, TERRAIN_CELL, 0, 1), structs: new StructureStore(dims, empty, empty, empty) };
+  const body = new Body();
+  Object.assign(body, { x: 20, z: 20, grounded: true });
+  let top = 0, ollie = 0;
+  run(7, () => { stepVehicleBody(world, body, 0, 127, 0, def); top = Math.max(top, body.vz); });
+  const start = body.z;
+  run(6, () => { stepVehicleBody(world, body, 0, -127, 0, def); return body.vz < .01; });
+  const floor = body.y;
+  stepVehicleBody(world, body, 0, 0, BTN_JUMP, def);
+  run(1, () => { stepVehicleBody(world, body, 0, 0, 0, def); ollie = Math.max(ollie, body.y - floor); });
+  return { movement: "skateboard", top, braking: body.z - start, ollie };
+}
 
 const forwardOf = (s: { vx: number; vz: number; yaw: number }): number => s.vx * Math.sin(s.yaw) + s.vz * Math.cos(s.yaw);
 const flatSpeed = (s: { vx: number; vz: number }): number => Math.sqrt(s.vx * s.vx + s.vz * s.vz);
@@ -358,7 +383,7 @@ export function handlingOf(def: VehicleDefinition, driver: number): Handling {
   const key = JSON.stringify([{ ...def, id: "" }, driver]);
   let h = measured.get(key);
   if (!h) {
-    h = def.movement === "rotor" ? rotorHandling(def, driver) : def.movement === "boat" ? boatHandling(def, driver) : roadHandling(def, driver);
+    h = def.movement === "rotor" ? rotorHandling(def, driver) : def.movement === "boat" ? boatHandling(def, driver) : def.frame === "skateboard" ? skateHandling(def) : roadHandling(def, driver);
     measured.set(key, h);
   }
   return h;

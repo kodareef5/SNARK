@@ -4,6 +4,9 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+/** Source-controlled art folders available before a release archive is installed. */
+export const BUNDLED_ART = JSON.parse(readFileSync(new URL("../../distribution/bundled-art.json", import.meta.url), "utf8")) as string[];
+
 const manifest = fileURLToPath(new URL("../../distribution/release.json", import.meta.url));
 /** Written by the media command: the SHA-256 of the archive of each asset that is installed here. */
 const installed = fileURLToPath(new URL("../../assets/.art-archives.json", import.meta.url));
@@ -51,5 +54,5 @@ export function unreleasedHere(): string[] {
   const pinned: Pinned[] = JSON.parse(readFileSync(manifest, "utf8")).art?.files ?? [];
   if (pinned.length === 0) return [];
   const folders = (readdirSync(source, { recursive: true }) as string[]).map((f) => f.replaceAll("\\", "/")).filter((f) => f.endsWith("/asset.ts")).map((f) => f.slice(0, -"/asset.ts".length));
-  return unreleased(folders.sort(), pinned);
+  return unreleased(folders.filter(f => !BUNDLED_ART.includes(f)).sort(), pinned);
 }

@@ -9,9 +9,9 @@ import { stepVehicleBody } from '../../shared/sim/vehicle-body.ts';
 import { dynamicState, DynamicScratch, resolveDynamicContact, type DynamicBody, type DynamicResult, type DynamicState } from '../../shared/sim/vehicle-dynamic.ts';
 import { integrateVehiclePose, vehicleMassProperties } from '../../shared/sim/vehicle-rigid.ts';
 import type { PredictedTrees } from './vehicle-trees.ts';
-import type { VehicleDefinition } from '../../shared/sim/vehicle.ts';
+import { isSkateboard, type VehicleDefinition } from '../../shared/sim/vehicle.ts';
 import { groundUnder, type CollisionWorld } from '../../shared/world/collide.ts';
-import { VehiclePairQueries } from '../../shared/world/vehicle-pair.ts';
+import { SKATER_HEIGHT, VehiclePairQueries } from '../../shared/world/vehicle-pair.ts';
 import type { RemoteSample } from './session.ts';
 import { VehicleCorrection } from './vehicle-correction.ts';
 
@@ -205,7 +205,7 @@ export class VehiclePrediction {
     for (const p of this.proxies.values()) {
       if (!p.physical || !this.live(p, tick)) continue;
       const other = this.registry.vehicle[p.fact.kind] ?? undefined;
-      this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height);
+      this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height, 0, SKATER_HEIGHT);
       while (p.tick < tick) { this.advance(p, other); p.tick++; }
     }
     this.used.clear();
@@ -214,7 +214,7 @@ export class VehiclePrediction {
       for (const [target, p] of this.proxies) {
         if (target === handle || this.used.has(target) || !p.physical || !this.live(p, tick)) continue;
         const other = this.registry.vehicle[p.fact.kind] ?? undefined;
-        this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height);
+        this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height, 0, SKATER_HEIGHT);
         const hit = this.pair.sweep();
         if (hit && (hit.t < firstTime || hit.t === firstTime && target < (first?.fact.handle ?? Infinity))) {
           first = p;
@@ -225,8 +225,8 @@ export class VehiclePrediction {
       const target = first.fact.handle, other = this.registry.vehicle[first.fact.kind] ?? undefined;
       // Vehicle pairs share the host's canonical handle ordering; actors always follow their vehicle.
       const reverse = !!other && target < handle;
-      if (reverse) this.pair.configure(first.body, own, other!, def, this.registry.move[body.kind]!.radius, def.spec.height);
-      else this.pair.configure(own, first.body, def, other, first.fact.radius, first.fact.height);
+      if (reverse) this.pair.configure(first.body, own, other!, def, this.registry.move[body.kind]!.radius, SKATER_HEIGHT, 0, first.fact.height);
+      else this.pair.configure(own, first.body, def, other, first.fact.radius, first.fact.height, 0, SKATER_HEIGHT);
       const hit = this.pair.sweep();
       if (!hit) break;
       if (reverse) resolveDynamicContact(first.body, own, hit, this.pair, this.scratch, this.result);
@@ -265,7 +265,8 @@ export class VehiclePrediction {
       native.vehicleQx = s.qx; native.vehicleQy = s.qy; native.vehicleQz = s.qz; native.vehicleQw = s.qw;
       p.trees?.begin(p.tick + 1, p.fact.handle);
       this.stats.steps++;
-      stepVehicleBody(this.world, native, 0, 0, p.fact.parkingBrake ? BTN_JUMP : 0, def, TICK_DT, 0, false, p.trees);
+      const riddenBoard = isSkateboard(def) && p.fact.height === SKATER_HEIGHT;
+      stepVehicleBody(this.world, native, 0, 0, !riddenBoard && p.fact.parkingBrake ? BTN_JUMP : 0, def, TICK_DT, 0, riddenBoard, p.trees);
       contactBody(native, s);
       return;
     }

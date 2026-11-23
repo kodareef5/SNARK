@@ -24,7 +24,7 @@ import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type Ve
 import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
 import { carShapes } from "../shared/world/vehicle-shapes.ts";
 import { StaticVehicleSolids } from "../shared/world/vehicle-solid.ts";
-import { isBoatVehicle, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { isBoatVehicle, isSkateboard, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
@@ -519,6 +519,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
+    if (isSkateboard(def)) rec.name = "Street skateboard";
     rec.team = ownerTeam; rec.yaw = Math.round(yaw / (2 * Math.PI) * 65536) & 65535;
     world.ents.yaw[e] = rec.yaw;
     // Registered once turned, so the parked state it saves at once has its yaw.
@@ -665,7 +666,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   const trees = harvest ? new VehicleTrees(world, harvest) : null;
   if (trees) game.players.vehicleStep = trees.step;
-  const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.players.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
+  const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.players.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by),
+    mayDisplaceRider: (by, vehicle, rider) => combat.vehicleDisplaces(by, vehicle, rider),
+  });
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
@@ -1408,6 +1411,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const ents = world.ents;
     if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz)) buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
     refreshBody(rec);
+  };
+  urban.onSkateFall = (actor, yaw) => {
+    const dx = Math.sin(yaw), dz = Math.cos(yaw);
+    world.ents.vx[actor] = dx * 1.1; world.ents.vz[actor] = dz * 1.1;
+    knockDown(actor, dz * 2, .35, -dx * 2);
   };
   falls.onUp = (body) => {
     const rec = records.byPid.get(world.ents.pid[body]!);

@@ -4,13 +4,14 @@ import { handleGen, handleIndex, makeHandle } from "../shared/ids.ts";
 import { CHUNK_SIZE, TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y } from "../shared/coords.ts";
 import { hashString } from "../shared/hash.ts";
 import { Rng } from "../shared/rng.ts";
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL, VEHICLE_LIGHTS, VEHICLE_DOOR } from "../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_PACK, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL, VEHICLE_LIGHTS, VEHICLE_DOOR } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { VEHICLE_FUEL_PER_GASOLINE as FUEL_PER_ITEM, VEHICLE_REPAIR_STEP as REPAIR_STEP, VEHICLE_REPAIR_BILL as REPAIR_BILL } from "../shared/sim/vehicle-maintenance.ts";
-import { PATROL_LIGHT_MODES, boatDrives, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
+import { skatePlacement } from "../shared/world/skate-placement.ts";
+import { isSkateboard, PATROL_LIGHT_MODES, boatDrives, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { boatPlacement, boatMeetsCapsule, boatMeetsVehicle } from "../shared/world/boat.ts";
@@ -44,7 +45,7 @@ export interface VehicleServiceContext {
   world: ServerWorld; game: GameServer; records: Records; items: Items; survival: Survival; urban: Urban;
   may(actor: EntityRecord, vehicle: EntityRecord): boolean;
   spawn(kind: string, x: number, z: number, team: number, yaw: number, start: VehicleStart): number;
-  /** Rolls back only the new record if an inventory hook changed the assembly during spawn. */
+  /** Removes a packed vehicle or rolls back an assembly that failed to deploy. */
   discard(e: number): void;
 }
 
@@ -79,6 +80,7 @@ export class VehicleService {
       const rec = this.actor(c);
       return rec && this.ctx.urban.toggleDoor(rec.pid) ? RESULT_OK : RESULT_INVALID;
     }
+    if (action === VEHICLE_PACK) return this.packBoard(c, handle);
     if (action === VEHICLE_INSPECT) return this.inspect(c, handle);
     if (action === VEHICLE_REFUEL) return this.refuel(c, handle, count);
     if (action === VEHICLE_REPAIR) return this.repair(c, handle);
@@ -161,11 +163,33 @@ export class VehicleService {
     return distance < .001 || castWorld(world, ox, oy, oz, dx / distance, dy / distance, dz / distance, distance) === HIT_NONE || rayHit.t >= distance - .05;
   }
 
+  packBoard(c: Client, handle: number): number {
+    const target = this.target(c, handle, false);
+    if (typeof target === "number") return target;
+    const { actor, rec, def, e } = target, { items, world, urban, game } = this.ctx;
+    if (!isSkateboard(def) || actor.team !== rec.team || c.drive >= 0 || world.ents.seat[c.ent]) return RESULT_DENIED;
+    if (world.ents.flags[e]! & F_PROP) return RESULT_INVALID;
+    if (urban.hasOccupants(e) || Math.hypot(world.ents.vx[e]!, world.ents.vy[e]!, world.ents.vz[e]!) > .4) return RESULT_BUSY;
+    if (items.inv(rec).count.some(n => n > 0)) {
+      game.sendText(c, TEXT_NOTICE, "Empty the deck storage before picking it up.");
+      return this.inspect(c, handle);
+    }
+    const item = world.reg.vehicleDeploy.indexOf(rec.kind);
+    // A newly crafted kit has zero wear data. A packed one carries the condition of this deck.
+    const condition = Math.max(1, Math.round(this.health(rec) * 1000));
+    if (item < 0 || !items.mint(actor, item, 1, 0, condition, -1, "pack skateboard", 0, 1)) return RESULT_FULL;
+    for (const client of game.clients) if (client?.open === rec.pid) client.open = 0;
+    this.ctx.discard(e);
+    game.sendText(c, TEXT_NOTICE, "Picked up street skateboard.");
+    return RESULT_OK;
+  }
+
   inspect(c: Client, handle: number): number {
     const target = this.target(c, handle, false);
     if (typeof target === "number") return target;
     const { e, v, rec, def } = target, { world, game } = this.ctx, ents = world.ents;
     if ((ents.flags[e]! & F_PROP) !== 0) game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: salvage wreck. Recover cargo or harvest the remaining materials.`);
+    else if (isSkateboard(def)) game.sendText(c, TEXT_NOTICE, `Street skateboard · ${Math.round(this.health(rec)*100)}% health`);
     else {
       const hp = this.health(rec), engine = Math.round(ents.vehicleEngineCondition[v]! * 100), rotor = Math.round(ents.vehicleRotorCondition[v]! * 100);
       const condition = isRotorVehicle(def) ? `hull ${Math.round(hp * 100)}%` : `health ${Math.round(hp * 100)}%, hull ${Math.round(ents.vehicleHullCondition[v]! * 100)}%`;
@@ -310,10 +334,11 @@ export class VehicleService {
     if (Math.hypot(x - ents.x[c.ent]!, y - ents.y[c.ent]!, z - ents.z[c.ent]!) > DEPLOY_REACH) return RESULT_FAR;
     if (y < WORLD_MIN_Y || y > WORLD_MAX_Y || !this.visible(c, x, y + 1, z)) return RESULT_OBSTRUCTED;
     if (!vehiclePlaceFree(world, x, y, z, yaw, def)) return RESULT_NO_SUPPORT;
-    const e = this.ctx.spawn(world.reg.ids[kind]!, x, z, actor.team, yaw, { y, fuel: 0, hull: 1, engine: 1, rotor: 1 });
+    const hull = isSkateboard(def) && inv.dur[slot] ? Math.min(1, inv.dur[slot]! / 1000) : 1;
+    const e = this.ctx.spawn(world.reg.ids[kind]!, x, z, actor.team, yaw, { y, fuel: 0, hull, engine: 1, rotor: 1 });
     if (e < 0) return RESULT_OBSTRUCTED;
     if (inv.item[slot] !== item || !items.burn(actor, slot, 1)) { this.ctx.discard(e); return RESULT_INVALID; }
-    this.ctx.game.sendText(c, TEXT_NOTICE, `${isBoatVehicle(def) ? "Motorboat" : "Helicopter"} assembled. Add gasoline before starting.`);
+    this.ctx.game.sendText(c, TEXT_NOTICE, isSkateboard(def) ? "Skateboard ready. Look at the deck and press E to ride." : `${isBoatVehicle(def) ? "Motorboat" : "Helicopter"} assembled. Add gasoline before starting.`);
     return RESULT_OK;
   }
 }
@@ -363,6 +388,7 @@ function hullParts(x: number, y: number, z: number, yaw: number, def: VehicleDef
  */
 export function vehicleFitsWorld(world: CollisionWorld & { readonly unloaded?: ServerWorld["unloaded"] }, x: number, y: number, z: number, yaw: number, def: VehicleDefinition): boolean {
   if (![x, y, z, yaw].every(Number.isFinite)) return false;
+  if (isSkateboard(def)) return skatePlacement(world, x, y, z) && !world.unloaded?.meets(x, y+.04, z, .4, 1.8);
   if (isRotorVehicle(def)) {
     if (!helicopterPlacement(world, x, y, z, yaw, def)) return false;
   } else if (isBoatVehicle(def)) {

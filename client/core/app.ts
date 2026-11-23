@@ -46,6 +46,7 @@ import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
 import { Falling } from "./rubble.ts";
+import { isSkateboard } from "../../shared/sim/vehicle.ts";
 import { thrustersOf } from "../../shared/sim/vehicle-thrusters.ts";
 import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD } from "../../shared/sim/character.ts";
 import { CUE_HELD } from "../../shared/anim/pose.ts";
@@ -233,6 +234,7 @@ export class App {
       get inMenu() { return !app.ui.wantsPointerLock; },
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
+      get skating() { return app.controls.onBoard; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
       zoom: (notches, alt) => void this.zoomBy(notches, alt),
@@ -471,6 +473,7 @@ export class App {
     if (flyer !== this.flying) c.fly(flyer, flyer && s.own.mode === MODE_FLYER);
     this.flying = flyer;
     c.heli(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "rotor");
+    c.skate(s.sessionState === SESSION_ALIVE && s.driving >= 0 && isSkateboard(this.reg.vehicle[s.own.kind]));
     c.thrusterCar(s.sessionState === SESSION_ALIVE && s.driving >= 0 && thrustersOf(this.reg.vehicle[s.own.kind]) !== undefined);
     if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
     this.wingWas = c.wing;
