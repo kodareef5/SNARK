@@ -6,7 +6,7 @@ import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { detailsAtlas, parsePack, type PackRig } from "../../shared/pack/pack.ts";
-import { artInstalled } from "./installed.ts";
+import { artInstalled, BUNDLED_ART } from "./installed.ts";
 import { unpackMeshes, type SourceDetails, type SourceMesh } from "../pack/write.ts";
 
 export const SOURCE = fileURLToPath(new URL("../../assets/source", import.meta.url));
@@ -24,7 +24,11 @@ export async function artModule(path: string): Promise<Record<string, any>> {
 
 /** Every file under `dir` whose name ends in `ending`, in name order, so every machine finds them in the same order. */
 export function filesUnder(dir: string, ending: string, out: string[] = []): string[] {
-  if ((dir === SOURCE && !ART) || !existsSync(dir)) return out;
+  if (!existsSync(dir)) return out;
+  if (dir === SOURCE && !ART) {
+    for (const folder of BUNDLED_ART) filesUnder(join(SOURCE, folder), ending, out);
+    return out;
+  }
   for (const name of readdirSync(dir).sort()) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) filesUnder(p, ending, out);
