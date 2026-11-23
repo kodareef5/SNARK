@@ -1,9 +1,10 @@
-// A ridden rex against walls, its rider's client predicting it (shared/sim/character.ts): sliding its head along a wall,
-// turning the long way round from it, and sliding its footprint along a low wall, the client's body is the server's to the bit.
+// A ridden rex against walls, its rider's client predicting it (shared/sim/character.ts): sliding its head along a
+// wall, turning the long way round from it, and sliding its footprint along a low wall, the client's body is the
+// server's to the bit.
 import { expect, test } from "bun:test";
 import { camp, pilot, pos, ride, tame } from "../kit/kit.ts";
 
-test("a ridden rex sliding along walls and turning the long way round from one is predicted with no correction", () => {
+test("a ridden rex at walls, turning the long way round, is predicted uncorrected", () => {
   const { h, ada } = camp({ link: { latencyMs: 60, jitterMs: 5 } });
   const rex = tame(h, ada, "rex", { saddled: true });
   ride(h, ada, rex.e);
@@ -32,9 +33,9 @@ test("a ridden rex sliding along walls and turning the long way round from one i
   yaws.length = 0;
   run(6000);
   expect(yaws.some((yaw) => Math.abs(yaw - 32768) < 4096)).toBe(true);
-  // A low wall under its head, 5 m west of it, and south-south-west along it: its front end slides on it.
+  // A wall of one storey, under its head, 5 m west of it, and south-south-west along it: its front end slides on it.
   const { x, z } = pos(h, rex.e);
-  for (let k = z - 30; k < z - 3; k += 3) h.world.structs.add(wall, x - 5, 0.7, k + 1.5, 16384, 0, 10000);
+  for (let k = z - 30; k < z - 3; k += 3) h.world.structs.add(wall, x - 5, 1.5, k + 1.5, 16384, 0, 10000);
   h.run(1000);
   p.yaw = Math.PI + 0.5;
   p.moveZ = 1;

@@ -1121,7 +1121,7 @@ export class Behavior {
       }
       return this.roam(e, tick, turn, heading);
     }
-    if (!turn && tick < this.until[e]! && !this.atWall(e) && this.leaving[e] === 0) return;
+    if (!turn && tick < this.until[e]! && !this.atWall(e) && this.stuck[e]! < STUCK_TICKS && this.leaving[e] === 0) return;
     if (turn && this.temper(e) === TEMPER_HUNTS && tick >= this.rested[e]!) {
       const prey = this.prey(e);
       if (prey >= 0) return this.hunt(e, prey, tick);
@@ -1156,6 +1156,11 @@ export class Behavior {
 
   private amble(e: number, tick: number): void {
     if (this.atWall(e)) return this.leave(e, tick);
+    if (this.stuck[e]! >= STUCK_TICKS) {
+      // Walking in place against something else, a body or a bank, it turns from it as from a wall square ahead.
+      this.wallYaw[e] = (this.world.ents.yaw[e]! + 32768) & 0xffff;
+      return this.leave(e, tick);
+    }
     const rng = this.rng;
     if (this.leaving[e] !== 0) {
       // Turning from a wall, it walks on once it no longer faces into it.

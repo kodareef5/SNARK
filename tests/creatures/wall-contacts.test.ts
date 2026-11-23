@@ -1,6 +1,6 @@
-// The walls a walker meets (stepOut.wallNx and the rest, shared/sim/character.ts), and a long body's footprint held clear
-// of walls as its head is (MoveParams.endRadius): it slides along a wall, turns by a corner without swinging an end in,
-// turns the long way round when the short way is shut, and is never thrown out of a wall it was put in.
+// The walls a walker meets (stepOut.wallNx and the rest, shared/sim/character.ts), and a long body's footprint held
+// clear of walls as its head is (MoveParams.endRadius): it slides along a wall, turns by a corner without swinging an
+// end in, turns the long way round when the short way is shut, and is never thrown out of a wall it was put in.
 import { expect, test } from "bun:test";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Body, endDepth, headDepth, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
@@ -12,11 +12,14 @@ function world(): TestWorld {
   return flatWorld(4);
 }
 
-/** Two storeys of wall pieces, 6 m tall, from (x0, z) to (x1, z) across +Z, or along +Z at x = x0 from z to x1 with `along`. */
+/**
+ * Wall pieces from (x0, z) to (x1, z) across +Z, or along +Z at x = z from x0 to x1 with `along`: two storeys, 6 m, or
+ * with `low` one, 3 m, which passes under a rex's head and meets its chest.
+ */
 function wall(w: TestWorld, x0: number, x1: number, z: number, along = false, low = false): void {
   const kind = w.kind("core:wall");
   for (let a = x0 + 1.5; a < x1; a += 3) {
-    for (const y of low ? [0.7] : [1.5, 4.5]) w.structs.add(kind, along ? z : a, y, along ? a : z, along ? 16384 : 0, 0, 1);
+    for (const y of low ? [1.5] : [1.5, 4.5]) w.structs.add(kind, along ? z : a, y, along ? a : z, along ? 16384 : 0, 0, 1);
   }
 }
 
@@ -32,7 +35,7 @@ function deepest(w: TestWorld, p: MoveParams, b: Body): number[] {
   return [headDepth(w, p, b.x, b.y, b.z, b.yaw), endDepth(w, p, b.x, b.y, b.z, b.yaw, true), endDepth(w, p, b.x, b.y, b.z, b.yaw, false)];
 }
 
-test("a survivor and a rex walking into a wall report its way out, how fast they press and how high; nothing in the open", () => {
+test("a survivor and a rex walking into a wall report it; nothing in the open", () => {
   for (const [name, at] of [["survivor", (p: MoveParams) => p.height / 2], ["rex", (p: MoveParams) => p.headUp!]] as const) {
     const w = world();
     wall(w, 110, 146, 140);
@@ -58,21 +61,24 @@ test("a survivor and a rex walking into a wall report its way out, how fast they
   }
 });
 
-test("a rex walking at a low wall under its head slides along it at any angle, its footprint never deeper", () => {
+test("a rex slides along a low wall at any angle, its footprint never deeper", () => {
   for (const degrees of [10, 20, 35, 60]) for (const side of [1, -1]) {
     const w = world();
-    // Its top 2.2 m up: under the rex's head, so its footprint's front end is what meets it.
+    // One storey: under the rex's head, so at all but the shallowest angle its footprint's front end is what meets it.
     wall(w, 80, 140, 128 + side * 6, true, true);
     const yaw = Math.round(((side * degrees) / 360) * 65536) & 0xffff;
     const { b, p } = body(w, "rex", 128, 92, yaw);
-    let worst = 0, pressed = 0;
+    let worst = 0, pressed = 0, gap = Infinity;
     for (let t = 0; t < 300; t++) {
       stepBody(w, b, 0, 127, yaw, 0, 0, p, TICK_DT);
       worst = Math.max(worst, ...deepest(w, p, b));
       if (stepOut.wallInto > 0) pressed++;
+      gap = Math.min(gap, 5.9 - side * (b.x - 128) - p.radius);
     }
     expect([degrees, side, worst]).toEqual([degrees, side, 0]);
     expect(pressed).toBeGreaterThan(0);
+    // Its legs never reached the wall: its chest held it off.
+    if (degrees >= 20) expect(gap).toBeGreaterThan(0.05);
     // Ten seconds at its walk, the share of it along the wall: it slid on, and did not stick where it met it.
     const along = 2.8 * 10 * Math.cos((degrees * Math.PI) / 180);
     expect(b.z - 92).toBeGreaterThan(along * 0.8);
@@ -99,7 +105,7 @@ test("a rex turning beside a corner does not swing its footprint into either wal
   expect(new Set(yaws.slice(120)).size).toBe(1);
 });
 
-test("a turn that would put a rex's head through a wall goes the long way round, steadily, to its look", () => {
+test("a turn the short way into a wall goes the long way round, never swinging back", () => {
   const w = world();
   wall(w, 110, 146, 140);
   // Facing +X along the wall, its flank 3 m from it. Its look is behind it and a little toward the wall: the short way
@@ -118,26 +124,26 @@ test("a turn that would put a rex's head through a wall goes the long way round,
   expect(turns.every((d) => d >= 0)).toBe(true);
 });
 
-test("a rex put with its footprint in a wall stays where it was put, goes no deeper, and walks out", () => {
+test("a rex put with its footprint in a wall is not thrown out and walks out", () => {
   const w = world();
   wall(w, 110, 146, 140, false, true);
   // Facing the low wall with its capsule clear of it and its front end half a metre in.
-  const { b, p } = body(w, "rex", 128, 137.4, 0);
+  const { b, p } = body(w, "rex", 128, 137.8, 0);
   const start = endDepth(w, p, b.x, b.y, b.z, b.yaw, true);
   expect(start).toBeGreaterThan(0.4);
   for (let t = 0; t < 60; t++) stepBody(w, b, 0, 0, 0, 0, 0, p, TICK_DT);
-  expect([b.x, b.z]).toEqual([128, 137.4].map(Math.fround));
+  expect([b.x, b.z]).toEqual([128, 137.8].map(Math.fround));
   for (let t = 0; t < 90; t++) {
     stepBody(w, b, 0, 127, 0, 0, 0, p, TICK_DT);
     expect(endDepth(w, p, b.x, b.y, b.z, b.yaw, true)).toBeLessThanOrEqual(start + SKIN);
   }
   // Not thrown back out either: it is where it was.
-  expect(b.z).toBeGreaterThan(137.39);
+  expect(b.z).toBeGreaterThan(137.79);
   for (let t = 0; t < 90; t++) stepBody(w, b, 0, -127, 0, 0, 0, p, TICK_DT);
   expect(endDepth(w, p, b.x, b.y, b.z, b.yaw, true)).toBe(0);
 });
 
-test("a footprint's ends stand a step up: a raptor still climbs stairs onto a landing", () => {
+test("a footprint's ends stand a step up: a raptor still climbs stairs", () => {
   const w = world();
   const stairs = w.kind("core:stairs_wood");
   w.structs.add(stairs, 128, w.reg.halfY[stairs]!, 128, 0, 0, 1);

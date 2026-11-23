@@ -232,8 +232,8 @@ export interface MoveParams {
   readonly headRadius?: number;
   /**
    * The ends of its footprint (SpeciesDef.footprint) held clear of walls as its head is: spheres of radius `endRadius`
-   * standing `stepUp` above its feet, centred `endFront` and `endBack` metres along the facing (behind is negative). An
-   * end is tested only where it reaches past the capsule. Omitted for a body whose footprint is within its capsule.
+   * centred `endFront` and `endBack` metres along the facing (behind is negative), hung from its belly (endUp). An end is
+   * tested only where it reaches past the capsule. Omitted for a body whose footprint is within its capsule.
    */
   readonly endFront?: number;
   readonly endBack?: number;
@@ -620,18 +620,29 @@ export function headClear(w: CollisionWorld, p: MoveParams, x: number, y: number
   return headDepth(w, p, x, y, z, yaw) === 0;
 }
 
+/** A footprint's ends hang from the belly: this share of the body's height above its feet. */
+const BELLY = 0.4;
+
+/**
+ * How high above the feet the bottom of a footprint's end stands: at its belly, and never lower than a step up. Walls
+ * meet it; blocks and kerbs, which its legs stop at or step onto, pass under it.
+ */
+export function endUp(p: MoveParams): number {
+  return p.height * BELLY > p.stepUp ? p.height * BELLY : p.stepUp;
+}
+
 /** How deep in a wall the front end of the footprint of a body of `p` at (x, y, z) facing `yaw` is, or its back end (MoveParams.endRadius). */
 export function endDepth(w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number, front: boolean): number {
   const r = p.endRadius!, a = (yaw * TAU) / 65536, at = front ? p.endFront! : p.endBack!;
-  return wallDepth(w, x + detSin(a) * at, y + p.stepUp, z + detCos(a) * at, r, y + p.height);
+  return wallDepth(w, x + detSin(a) * at, y + endUp(p), z + detCos(a) * at, r, y + p.height);
 }
 
 /** Metres deeper into a wall a head may go in a step: rounding, not a graze. */
 const HEAD_SKIN = 0.002;
 
-// The limbs a walker holds clear of walls: its head, and its footprint's ends where they reach past its capsule, standing a
-// step up from its feet, over whatever its legs step onto. No step or turn takes one deeper into a wall than it is, and
-// none is pushed out, so a body put in a wall is never thrown from it.
+// The limbs a walker holds clear of walls: its head, and its footprint's ends where they reach past its capsule, hung from
+// its belly (endUp). No step or turn takes one deeper into a wall than it is, and none is pushed out, so a body put in a
+// wall is never thrown from it.
 const HEAD = 0, FRONT = 1, BACK = 2;
 /** Per limb: 1 if it is held clear, metres ahead along the facing, its radius, the height of its middle above the feet. */
 const limbOn = new Uint8Array(3);
@@ -648,9 +659,9 @@ let wasZ = 0;
 const wasOffX = new Float64Array(3);
 const wasOffZ = new Float64Array(3);
 const limbWas = new Float64Array(3);
-/** The height of the body whose limbs they are, and how far above its feet the bottom of an end stands. */
+/** The height of the body whose limbs they are, and how far above its feet the bottom of an end stands (endUp). */
 let limbOver = 0;
-let endUp = 0;
+let endBottom = 0;
 /** How much deeper the limb `limbDeeper` named would go. */
 let limbGain = 0;
 
@@ -662,13 +673,13 @@ function limbsFor(p: MoveParams): boolean {
   limbOn[BACK] = er > 0 && er - p.endBack! > p.radius ? 1 : 0;
   if (limbOn[HEAD] === 0 && limbOn[FRONT] === 0 && limbOn[BACK] === 0) return false;
   limbOver = p.height;
-  endUp = p.stepUp;
+  endBottom = er > 0 ? endUp(p) : 0;
   for (let k = HEAD; k <= BACK; k++) {
     if (limbOn[k] === 0) continue;
     const r = k === HEAD ? p.headRadius! : er;
     limbAhead[k] = k === HEAD ? p.headAhead! : k === FRONT ? p.endFront! : p.endBack!;
     limbR[k] = r;
-    limbMid[k] = k === HEAD ? p.headUp! : endUp + r;
+    limbMid[k] = k === HEAD ? p.headUp! : endBottom + r;
   }
   return true;
 }
@@ -685,7 +696,7 @@ function limbsFace(yaw: number): void {
 /** How deep limb `k`, offset (ox, oz), of a body at (x, y, z) is in a wall (collide.ts wallDepth), leaving its way out in wallOut. */
 function limbDepth(w: CollisionWorld, k: number, x: number, y: number, z: number, ox: number, oz: number): number {
   const r = limbR[k]!;
-  return wallDepth(w, x + ox, k === HEAD ? y + limbMid[HEAD]! - r : y + endUp, z + oz, r, y + limbOver);
+  return wallDepth(w, x + ox, k === HEAD ? y + limbMid[HEAD]! - r : y + endBottom, z + oz, r, y + limbOver);
 }
 
 /** Notes a body at (x, y, z), its limbs as they now face, as where the moves `limbDeeper` tries start. */
@@ -797,7 +808,8 @@ function turnClear(w: CollisionWorld, b: Body, p: MoveParams, want: number, turn
   limbsWere(x, y, z);
   const step = faceClear(w, x, y, z, (from + turn) & 0xffff, HEAD_SKIN);
   const other = want > 0 ? want - 65536 : want + 65536;
-  if (turn === want || !faceClear(w, x, y, z, (from + want) & 0xffff, SWEEP_SKIN) || sweepClear(w, x, y, z, from, want) || !sweepClear(w, x, y, z, from, other)) return step ? turn : 0;
+  if (turn === want || !faceClear(w, x, y, z, (from + want) & 0xffff, SWEEP_SKIN)) return step ? turn : 0;
+  if (sweepClear(w, x, y, z, from, want) || !sweepClear(w, x, y, z, from, other)) return step ? turn : 0;
   const back = other > 0 ? rate : -rate;
   const bodies = w.blockers;
   return faceClear(w, x, y, z, (from + back) & 0xffff, HEAD_SKIN)

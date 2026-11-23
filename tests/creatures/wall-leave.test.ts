@@ -1,7 +1,7 @@
-// A creature pinned at a wall (server/behavior.ts, `pinned`): one that wanders turns from the wall and walks on, and one
-// making for a goal stands while it finds a way round, rather than walking in place against the wall.
+// A creature pinned at a wall (server/behavior.ts, `pinned`): one that wanders turns from the wall and walks on, and
+// one making for a goal stands while it finds a way round, rather than walking in place against the wall.
 import { expect, test } from "bun:test";
-import { GOAL_WALK, PINNED_TICKS } from "../../server/behavior.ts";
+import { GOAL_WALK, PINNED_TICKS, STUCK_TICKS } from "../../server/behavior.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -20,7 +20,7 @@ function wall(h: Harness, x0: number, x1: number, z: number, top = 0): void {
   for (let x = x0 + 1.5; x < x1; x += 3) for (const y of top ? [top - 1.5] : [1.5, 4.5]) h.world.structs.add(kind, x, y, z, 0, 0, 10000);
 }
 
-test("a wandering creature that meets a wall stops pressing within a second, turns from it and walks away", () => {
+test("a wandering creature at a wall stops pressing within a second and walks away", () => {
   for (const name of ["rex", "raptor", "dodo"]) {
     const h = field();
     try {
@@ -50,7 +50,35 @@ test("a wandering creature that meets a wall stops pressing within a second, tur
   }
 });
 
-test("a creature making for a goal behind a wall stands while it finds a way round, and goes round", () => {
+test("creatures wandering a pen never walk in place, at a wall or one another", () => {
+  const h = field();
+  try {
+    const ents = h.world.ents;
+    // A pen 24 m a side, well away from the observer at the middle of the map.
+    wall(h, 76, 100, 76);
+    wall(h, 76, 100, 100);
+    const side = h.reg.index.get("core:wall_stone")!;
+    for (const x of [76, 100]) for (let z = 77.5; z < 100; z += 3) for (const y of [1.5, 4.5]) h.world.structs.add(side, x, y, z, 16384, 0, 10000);
+    const herd = ["raptor", "raptor", "parasaur", "dodo", "dodo", "trike", "rex"].map((name, k) => h.host.spawnCreature(`core:${name}`, 82 + (k % 4) * 4, 82 + Math.floor(k / 4) * 8, 1));
+    const run = herd.map(() => 0), longest = herd.map(() => 0);
+    for (let t = 0; t < 60 * TICK_RATE; t++) {
+      const was = herd.map((e) => [ents.x[e]!, ents.z[e]!]);
+      h.server.tick();
+      herd.forEach((e, k) => {
+        const pace = h.reg.move[ents.kind[e]!]!.walkSpeed / TICK_RATE;
+        const pressing = Math.hypot(ents.vx[e]!, ents.vz[e]!) > 0.5 * pace * TICK_RATE && Math.hypot(ents.x[e]! - was[k]![0]!, ents.z[e]! - was[k]![1]!) < 0.3 * pace;
+        run[k] = pressing ? run[k]! + 1 : 0;
+        longest[k] = Math.max(longest[k]!, run[k]!);
+      });
+    }
+    // Stuck against one another, and the tick its walk takes to die away; at a wall it is sooner (PINNED_TICKS).
+    for (const most of longest) expect(most).toBeLessThanOrEqual(STUCK_TICKS + 1);
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("a creature bound behind a wall stands while it finds a way, then goes round", () => {
   const h = field();
   try {
     const ents = h.world.ents, mind = h.host.creatures.mind;

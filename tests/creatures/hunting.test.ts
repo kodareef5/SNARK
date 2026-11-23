@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
-import { MIND_FLEE, MIND_HUNT, PATH_TICK_CELLS } from "../../server/behavior.ts";
+import { MIND_FLEE, MIND_HUNT, PATH_TICK_CELLS, PINNED_TICKS } from "../../server/behavior.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -235,11 +235,12 @@ test("five hundred hunters at once stay within the search budget, and every one 
   const start = pack.map((e) => [ents.x[e]!, ents.z[e]!]);
   let most = 0;
   let idle = 0;
-  // Each steers within three ticks of being set on her. From then on none stands idle.
+  // Each steers within three ticks of being set on her. From then on none stands idle, but one pinned at the wall while
+  // it waits for its way stands there rather than run in place against it.
   h.run(100);
   h.run(4000, () => {
     most = Math.max(most, mind.spent);
-    for (const e of pack) if (mind.mind[e] === MIND_HUNT && mind.move[e] === 0 && mind.pressed[e] === 0 && Math.hypot(ents.x[e]! - ents.x[her]!, ents.z[e]! - ents.z[her]!) > 4) idle++;
+    for (const e of pack) if (mind.mind[e] === MIND_HUNT && mind.move[e] === 0 && mind.pressed[e] === 0 && mind.pinned[e]! < PINNED_TICKS && Math.hypot(ents.x[e]! - ents.x[her]!, ents.z[e]! - ents.z[her]!) > 4) idle++;
   });
   expect(most).toBeLessThanOrEqual(PATH_TICK_CELLS);
   expect(mind.searches).toBeGreaterThan(20);

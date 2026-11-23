@@ -122,7 +122,7 @@ test("movement below the replicated speed step still plants feet at adult and ju
   expect(g.speed).toBeLessThan(.001);
 });
 
-test("legs sent walking on a body drawn standing, as against a wall, ease to rest in a fifth of a second and back", () => {
+test("legs sent walking on a body drawn standing ease to rest, and back once it moves", () => {
   const rig = strider();
   const a = species(rig, 99);
   const st = new AnimState();
