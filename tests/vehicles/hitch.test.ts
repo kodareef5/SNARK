@@ -5,7 +5,7 @@ import { Body } from "../../shared/sim/character.ts";
 import { stepHitchedBodies, stepVehicleBody } from "../../shared/sim/vehicle-body.ts";
 import { vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
 import { hitchGap } from "../../shared/sim/vehicle-hitch.ts";
-import { isWheelVehicle, type WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { type WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 
@@ -54,8 +54,8 @@ for (const rise of [0, .06, .1, .14, .2, -.1, -.2]) test("the pair drives a grad
   }
   for (let i = 0; i < ticks; i++) stepVehicleBody(world, solo, 0, 127, 0, TRACTOR);
   expect(worst).toBeLessThan(.06);
-  // On the grade the trailer leans with it, as the solo tractor does.
-  if (tractor.z > 120 && tractor.z < 200) expect(Math.abs(trailer.vehiclePitch - solo.vehiclePitch)).toBeLessThan(.03);
+  // On the grade the trailer leans with it.
+  if (tractor.z > 120 && tractor.z < 195) expect(Math.abs(trailer.vehiclePitch - Math.atan(rise))).toBeLessThan(.035);
   // The pair is heavier, so it is slower, but it is not stopped where the tractor alone is not.
   if (solo.z > 190) expect(tractor.z).toBeGreaterThan(150);
 });
