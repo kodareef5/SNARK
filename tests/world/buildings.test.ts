@@ -11,9 +11,11 @@ import { MapLoader, StagedMap, handOverParts } from "../../client/core/mapload.t
 import { YAW_UNITS, chunkAt } from "../../shared/coords.ts";
 import { BUILDING_NAMED, BUILDING_ROOF, BUILDING_SPANS, BUILDING_STAIRS, Buildings, SectorBuildings, addressParts, blankFrame, kindWords, place, placeOf, storeyAt, tileOf, type BuildingRow } from "../../shared/world/buildings.ts";
 import { parseMap, partsOf, readHead, readPart, writeMap, type BuildingsPiece, type MapFile } from "../../shared/world/mapfile.ts";
+import { createMapWorld } from "../../server/world.ts";
 import { readLayers, writeLayers } from "../../tools/map/layers.ts";
 import { builtCity } from "../fixtures/buildings.ts";
 import { flatMap, wideMap } from "../fixtures/map.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 
 const city = builtCity();
 const file = writeMap(city.map);
@@ -214,4 +216,34 @@ test("a map without buildings is read as before, and buildings with no piece wri
     expect([head.buildings, head.parts.some((p) => p.kind === "buildings"), back.buildings, "buildings" in back]).toEqual([null, false, undefined, false]);
   }
   expect(readHead(writeMap({ ...flatMap(2), buildings: new Buildings({ chunksX: 2, chunksZ: 2 }, map.buildings!.names) })).buildings).toBeNull();
+});
+
+test("a server holds a map's buildings beside its statics, and none for a map without them", () => {
+  const reg = coreRegistry();
+  expect(createMapWorld(reg, parseMap(writeMap(flatMap(2)))).buildings).toBeNull();
+  const world = createMapWorld(reg, map);
+  expect(world.buildings).toBe(built);
+  // A slot of the store is the map's piece, and the server's table says whose it is and on which storey.
+  let checked = 0;
+  city.statics.forEach((p, i) => {
+    const [chunk, slot] = slotOf(map, i);
+    const t = world.structs.chunks[chunk]!;
+    expect([t.x[slot], t.z[slot], reg.ids[t.kind[slot]!]]).toEqual([Math.round(p.x * 512) / 512, Math.round(p.z * 512) / 512, p.kind]);
+    const b = world.buildings!.buildingOf(chunk, slot);
+    if (b >= 0 && world.buildings!.storeyOf(chunk, slot) === city.storey[i]) checked++;
+  });
+  expect(checked).toBe(city.of.filter((b) => b >= 0).length);
+  // From a slot alone: its building, the building's frame, the piece's tile there, and whether that tile holds a stair.
+  const frame = blankFrame();
+  let flights = 0, slabs = 0;
+  city.statics.forEach((p, i) => {
+    if (city.of[i]! < 0 || !/_(flight|floor8)_/.test(p.kind)) return;
+    const [chunk, slot] = slotOf(map, i), t = world.structs.chunks[chunk]!;
+    const b = world.buildings!.buildingOf(chunk, slot);
+    const tile = tileOf(world.buildings!.frame(b, frame), t.x[slot]!, t.z[slot]!);
+    const stair = world.buildings!.stairAt(b, tile % frame.cols, Math.floor(tile / frame.cols));
+    if (p.kind.includes("_flight_")) expect([i, stair, ++flights > 0]).toEqual([i, true, true]);
+    else if (!stair) slabs++;
+  });
+  expect([flights, slabs > 50]).toEqual([18, true]);
 });
