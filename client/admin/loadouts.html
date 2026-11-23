@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>SNARK admin: Loadouts</title>
+    <style>
+      /* face */
+      :root { --ink: #dbe8f3; --dim: #93a9bd; --faint: #5f778c; --edge: rgba(168, 204, 234, 0.22); --ice: #a9d6f2; --well: #8fd9c4; --warn: #ecb048; --bad: #ec6a52;
+        font: 15px/1.35 "Barlow Semi Condensed", "Barlow", system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--ink); background: #08111c; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: radial-gradient(120% 80% at 18% -10%, #21405f 0%, #102136 46%, #08111c 100%) fixed; min-height: 100vh; }
+      a { color: var(--ice); }
+      h1, h2 { font-weight: 500; margin: 0; letter-spacing: 0.02em; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--dim); margin-bottom: 4px; }
+      p { margin: 6px 0 0; }
+      button, input, select { font: inherit; color: inherit; background: rgba(36, 60, 88, 0.62); border: 1px solid var(--edge); padding: 3px 9px; border-radius: 0; }
+      button { cursor: pointer; }
+      button:hover:not(:disabled), input:focus, select:focus { border-color: var(--ice); outline: none; }
+      button:disabled, input:disabled { color: var(--faint); background: rgba(20, 36, 56, 0.4); cursor: default; }
+      button.go { border-color: var(--well); color: var(--well); }
+      button.risk { border-color: var(--bad); color: var(--bad); }
+      button.go:disabled, button.risk:disabled { border-color: var(--edge); color: var(--faint); }
+      input[type=checkbox] { width: 18px; height: 18px; margin: 2px 0; padding: 0; accent-color: var(--ice); vertical-align: middle; }
+      input.wrong, select.wrong { border-color: var(--bad); }
+      input.odd, select.odd { border-color: var(--warn); }
+      .page { max-width: 1480px; margin: 0 auto; padding: 14px 16px 40px; display: grid; gap: 12px; }
+      header { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
+      header nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
+      .glass { background: rgba(20, 36, 56, 0.78); border: 1px solid var(--edge); padding: 12px 14px; min-width: 0; }
+      .bar { display: flex; gap: 8px 10px; align-items: center; flex-wrap: wrap; }
+      .grow { flex: 1 1 auto; }
+      .lines { font-size: 13px; margin-top: 6px; }
+      #msg { margin: 0; } #msg:empty { display: none; }
+      .cols { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 12px; align-items: start; }
+      #list { display: grid; gap: 4px; margin: 6px 0 10px; }
+      .pick { display: grid; gap: 1px; text-align: left; padding: 6px 9px; background: rgba(8, 17, 28, 0.45); }
+      .pick b { font-weight: 500; overflow-wrap: anywhere; }
+      .pick span { font-size: 13px; overflow-wrap: anywhere; }
+      .pick.on { border-color: var(--ice); background: rgba(60, 96, 132, 0.5); }
+      .marks { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+      .chip { border: 1px solid var(--edge); padding: 0 7px; font-size: 12px; white-space: nowrap; color: var(--dim); }
+      .chip.warn { border-color: var(--warn); color: var(--warn); } .chip.bad { border-color: var(--bad); color: var(--bad); }
+      .fields { display: flex; gap: 8px 14px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+      .fields label.grow { display: flex; gap: 6px; align-items: center; min-width: 16em; }
+      .fields label.grow input { flex: 1 1 auto; min-width: 0; }
+      .scroll { overflow-x: auto; }
+      table { border-collapse: collapse; width: 100%; }
+      th { text-align: left; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); padding: 4px 6px; }
+      td { padding: 3px 6px; border-top: 1px solid rgba(168, 204, 234, 0.08); vertical-align: middle; white-space: nowrap; }
+      td.n { text-align: right; width: 2em; }
+      td input[data-field=item], td input[data-field=tame] { width: 14em; display: block; }
+      td input + .dim { display: block; font-size: 12px; }
+      td input[type=number] { width: 5em; }
+      td select { max-width: 11em; }
+      tr.said td { border-top: none; padding-top: 0; font-size: 13px; white-space: normal; }
+      .tools { text-align: right; } .tools button { margin-left: 3px; padding: 1px 7px; }
+      .hand { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--edge); }
+      .dim { color: var(--dim); } .faint { color: var(--faint); } .warn { color: var(--warn); } .bad { color: var(--bad); } .well { color: var(--well); }
+      [hidden] { display: none !important; }
+      @media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <h1>Loadouts</h1><span class="dim">what a new survivor wears and carries</span><span id="world" class="dim"></span>
+        <nav><a href="./">Admin</a><a href="../">Play</a></nav>
+      </header>
+      <section class="glass">
+        <div id="bar"></div>
+        <p id="msg" class="dim" aria-live="polite"></p>
+      </section>
+      <section class="glass">
+        <div class="bar">
+          <label>New players get <select id="assign-player"></select></label>
+          <label>New admins get <select id="assign-admin"></select></label>
+        </div>
+        <p class="dim">On a server where everyone has cheats (Creative for all, as a server with no config has it) every new survivor takes the admins' loadout.</p>
+      </section>
+      <div class="cols">
+        <section class="glass">
+          <h2>Loadouts</h2>
+          <div id="list"></div>
+          <div class="bar"><button data-do="new">New</button><button data-do="copy">Copy</button><button data-do="remove" class="risk">Delete</button></div>
+        </section>
+        <section class="glass">
+          <div id="loadout"></div>
+          <div class="hand" id="hand">
+            <h2>A survivor</h2>
+            <div class="bar">
+              <select id="survivor" aria-label="Survivor"></select>
+              <button data-do="apply" id="apply">Apply to survivor</button>
+              <label><input type="checkbox" id="clear" /> Clear what they hold first. A full soul ball that is cleared loses its tame.</label>
+              <span class="grow"></span>
+              <button data-do="capture" title="The entries become what this survivor wears and carries now. Nothing is saved until Save.">Fill from survivor</button>
+            </div>
+            <p id="hand-note" class="faint"></p>
+          </div>
+        </section>
+      </div>
+    </div>
+    <input id="file" type="file" accept="application/json,.json" hidden />
+    <script type="module" src="loadouts.js"></script>
+  </body>
+</html>
