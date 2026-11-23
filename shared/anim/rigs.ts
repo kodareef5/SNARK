@@ -9,6 +9,7 @@ import { Pose, type Clip, type ClipSet } from "./clip.ts";
 import { footRadius } from "./gait.ts";
 import type { Socket } from "./human.ts";
 import type { RagdollDef } from "./ragdoll.ts";
+import { liveRagdoll, rigSections, type RigSections } from "./rig-sections.ts";
 import { Solved, type Skeleton } from "./skeleton.ts";
 
 /**
@@ -58,6 +59,10 @@ export interface Rig extends Skeleton {
   readonly turn: number;
   readonly ragdoll: RagdollDef | null;
   readonly ground: GroundRig | null;
+  /** Its spine, neck, head, jaw, tail and legs, by bone. */
+  readonly sections: RigSections;
+  /** The ragdoll of its living body, for reactions; a corpse lies as `ragdoll`. */
+  readonly live: RagdollDef | null;
   /** Scratch for posing it. */
   readonly a: Pose;
   readonly b: Pose;
@@ -108,6 +113,8 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
   for (const s of r.sockets ?? []) if (s.bone >= 0 && s.bone < bones) sockets.set(s.name, { bone: s.bone, x: s.x, y: s.y, z: s.z });
   const skeleton: Skeleton = { id: r.id, bones, names: r.names, parent: Int8Array.from(r.parent), rest, zoneBones: bones, zone, capA, capB, capR, hitSurfaces: loadHitSurfaces(r.hitSurfaces, r.parent, zone) };
   const feet = (r.feet ?? []).filter((b) => b >= 0 && b < bones);
+  const ground = groundOf(r, skeleton, sockets);
+  const sections = rigSections(skeleton, feet, sockets, ground?.legs.map((l) => [l.upper, l.foot.bone] as const) ?? []);
   const footfalls = new Map<string, readonly PackFootfall[]>();
   for (const [name, rows] of Object.entries(r.footfalls ?? {})) {
     if (!own.get(name)?.loop || !Array.isArray(rows) || rows.length < 2 || rows.length > 8 || rows.length !== feet.length) continue;
@@ -127,7 +134,9 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
     mid: top / 2,
     turn: footRadius(skeleton, feet),
     ragdoll: ragdollOf(r, skeleton),
-    ground: groundOf(r, skeleton, sockets),
+    ground,
+    sections,
+    live: liveRagdoll(skeleton, sections),
     a: new Pose(bones),
     b: new Pose(bones),
     c: new Pose(bones),

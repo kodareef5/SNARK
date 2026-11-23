@@ -267,7 +267,7 @@ export class Occasions {
     const before = b.stepPhase, gap = tick - b.stepTick, previousDomain = b.stepDomain;
     if (!drawn) {
       const size = this.sizeOf(remote, i);
-      const metric = groundSpeedScale(a.rig, st, world, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, size);
+      const metric = groundSpeedScale(a.rig, st, world, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, size, a.turns);
       advanceCreature(a, b.gait, st, tick, remote.x[i]!, remote.z[i]!, remote.yaw[i]!, size, metric);
     }
     const domain = drawn ? drawn.domain : creatureFootfallDomain(a, st, tick);

@@ -49,6 +49,9 @@ export class Director implements FramePart {
   /** The own body as the scene draws it, and the seat a passenger's is drawn in. */
   readonly own: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
   readonly attachment = { host: 0, slot: 0, generation: 0 };
+  /** The turn the own mount shows (AnimState.setTurn), and the predicted tick it was found for, -1 for none. */
+  turnSteps = 0;
+  turnTick = -1;
   /**
    * Scratch, made once: a seat's place, its pose, and the pose of the creature a passenger sits on; a vehicle's frame and
    * pose as the driver has them and as a passenger's host has them; a chase camera's rig and its subject's motion; a

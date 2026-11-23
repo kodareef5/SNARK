@@ -29,7 +29,7 @@ import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { MODE_FLYER, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
-import { CreatureAnim, advanceCreature, creaturePose, creatureFootfallDomain, FOOTFALL_NONE, type FootfallGait } from "../../../shared/anim/creature.ts";
+import { CreatureAnim, advanceCreature, creaturePose, creatureFootfallDomain, FOOTFALL_NONE, speciesAnim, type FootfallGait } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
 import { buildRig, buildRigs } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
@@ -546,7 +546,7 @@ export class Characters {
       });
       const wreck = bind.own(d.id, "wreck");
       const flatColors = d.class === "creature" && d.regions ? Uint8Array.from(d.regions, (r) => r?.colors[0]?.[0] ?? 0) : null;
-      return { flatColors, heat: kindHeat(reg, i), wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
+      return { flatColors, heat: kindHeat(reg, i), wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: speciesAnim(reg, i, rig), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -753,7 +753,7 @@ export class Characters {
     const g = this.gaitOf(id);
     if (g.moved !== this.frame) {
       g.moved = this.frame;
-      advanceCreature(c.anim, g, st, tick, worldX, worldZ, yaw, size, groundSpeedScale(rig, st, this.groundWorld, worldX, worldY, worldZ, yaw, size));
+      advanceCreature(c.anim, g, st, tick, worldX, worldZ, yaw, size, groundSpeedScale(rig, st, this.groundWorld, worldX, worldY, worldZ, yaw, size, c.anim.turns));
     }
     const solved = this.kept(g, rig.bones);
     const aloft = st.mode === MODE_FLYER && !st.grounded;
@@ -1379,7 +1379,7 @@ export class Characters {
         continue;
       }
       const rig = buildRig(this.rigs.find((r) => r.id === c.anim.rig.id)!, set)!;
-      c.anim = this.anims[kind] = new CreatureAnim(rig, this.reg.runAt[kind]!, this.reg.move[kind]?.swimSpeed ?? 0, this.reg.combat[kind]);
+      c.anim = this.anims[kind] = speciesAnim(this.reg, kind, rig);
       c.clips = -1;
       this.standIns[kind * 2] = [];
       this.riderStandIns.clear();

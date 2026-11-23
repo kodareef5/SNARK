@@ -6,7 +6,7 @@ import type { MapDef, MapZone } from "../shared/content/defs.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import type { MapDims } from "../shared/coords.ts";
-import { ENTITY_LIMIT, EntityStore } from "../shared/sim/entities.ts";
+import { ENTITY_LIMIT, EntityStore, carriageRate } from "../shared/sim/entities.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
@@ -74,7 +74,7 @@ export interface WorldOptions {
 /** `entityMax` is the most entities the world may hold. Its store starts at `entityStart`, or at the limit if that is less. */
 export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityMax: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource, zones: ServerWorld["zones"] = [], entityStart = ENTITY_START): ServerWorld {
   const nodeField = nodeSource ? new NodeField(dims, reg, nodeSource) : null;
-  const ents = new EntityStore(dims, Math.min(entityStart, entityMax), entityMax, reg.vehicle);
+  const ents = new EntityStore(dims, Math.min(entityStart, entityMax), entityMax, reg.vehicle, reg.move.map(carriageRate));
   return {
     reg,
     clock: { cycle: 1, day: 1, night: 1 },

@@ -18,12 +18,13 @@ import type { Registry } from "../content/registry.ts";
 import { TICK_RATE } from "../coords.ts";
 import { PI, TAU, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatNlerp, quatRotate } from "../math/quat.ts";
-import { MODE_FLYER, MODE_SWIM } from "../sim/character.ts";
+import { MODE_FLYER, MODE_SWIM, MODE_WALK } from "../sim/character.ts";
 import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_RELOAD, ACT_SWING, HOLD_CARRY } from "../sim/weapon.ts";
 import { blendPose, sampleClip, type Clip, type Pose } from "./clip.ts";
 import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
 import { HUMAN } from "./human.ts";
-import { AnimState, BANK_STEPS, CLIMB_DIVE, CLIMB_DOWN, CUE_LAND, CUE_ROLL, CUE_ROAR, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, DIR_STEPS, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, PITCH_STEPS, SPEED_STEP } from "./pose.ts";
+import { Carriage } from "./carriage.ts";
+import { AnimState, BANK_STEPS, CLIMB_DIVE, CLIMB_DOWN, CUE_LAND, CUE_ROLL, CUE_ROAR, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, PITCH_STEPS, SPEED_STEP, backward } from "./pose.ts";
 import type { Rig, RigClip } from "./rigs.ts";
 import { boneToModel, rayZones, solve, zoneHit, type Solved } from "./skeleton.ts";
 import { conformCreature, groundSpeedScale } from "./ground-conform.ts";
@@ -63,7 +64,7 @@ const LAND_FADE = 2 * FADE;
 const SHARE_EASE = 0.15;
 /** Which contact map actually drives the submitted feet. Zero also suppresses legacy cadence. */
 export const FOOTFALL_NONE = 0;
-const FOOTFALL_FORWARD = 1, FOOTFALL_REVERSE = 2, FOOTFALL_CHARGE = 3;
+export const FOOTFALL_FORWARD = 1, FOOTFALL_REVERSE = 2, FOOTFALL_CHARGE = 3;
 export interface FootfallGait { readonly phase: number; readonly speed: number; readonly domain: number; }
 const single: GaitClip[] = [];
 const q = new Float64Array(4);
@@ -155,6 +156,9 @@ export class CreatureAnim {
   readonly neck: Uint8Array;
 
   readonly combat: CreatureCombatFacet | null;
+  /** Whether it goes only forward or backward, its direction bits carrying its turn (TURN_STEPS); then its carriage in a turn. */
+  readonly turns: boolean;
+  readonly carriage: Carriage | null;
   readonly modeBones: Uint8Array;
   readonly primaryBones: Uint8Array | null;
   readonly secondaryBones: Uint8Array | null;
@@ -162,8 +166,11 @@ export class CreatureAnim {
   /** Nonidentity layer rotations on a foot or its ancestors/descendants, compiled once. */
   readonly footLayers: ReadonlyMap<Clip, Uint8Array>;
 
-  constructor(rig: Rig, runAt: number, swimSpeed: number, combat: CreatureCombatFacet | null = null) {
+  constructor(rig: Rig, runAt: number, swimSpeed: number, combat: CreatureCombatFacet | null = null, turns = false) {
     this.combat = combat;
+    this.turns = turns;
+    // It walks at two thirds of the speed it runs from (Registry.runAt).
+    this.carriage = turns && rig.sections.head >= 0 ? new Carriage(rig, (runAt * 2) / 3) : null;
     this.modeBones = Uint8Array.from({ length: rig.bones }, (_, i) => i);
     const mask = (names: readonly string[] | undefined): Uint8Array | null => names ? Uint8Array.from(names.map(n => rig.names.indexOf(n)).filter(n => n >= 0)) : null;
     this.primaryBones = mask(combat?.primary.bones);
@@ -500,8 +507,7 @@ export function creatureFootfallDomain(a: CreatureAnim, st: AnimState, tick: num
   // A carried load replaces the legs' gait; release may retain that replacement while it fades.
   if ((st.action >>> 3) === HOLD_CARRY && a.carry || act === ACT_EQUIP && s < (a.release ? a.release.frames - 1 : FADE) && (a.carry || a.release)) return FOOTFALL_NONE;
   if (charge) return FOOTFALL_CHARGE;
-  const turn = st.dir <= DIR_STEPS / 2 ? st.dir : DIR_STEPS - st.dir;
-  return turn > DIR_STEPS / 4 ? FOOTFALL_REVERSE : FOOTFALL_FORWARD;
+  return backward(st.dir) ? FOOTFALL_REVERSE : FOOTFALL_FORWARD;
 }
 
 /** Actual authored contact moments in the captured domain, as bone/phase pairs. No metadata retains legacy cadence. */
@@ -623,13 +629,12 @@ function onFoot(a: CreatureAnim, st: AnimState, t: number, out: Pose, gait: Gait
     }
   }
   // Moving away from where it faces, it plays its gait in reverse.
-  const turn = st.dir <= DIR_STEPS / 2 ? st.dir : DIR_STEPS - st.dir;
-  const backward = turn > DIR_STEPS / 4;
-  if (moves) playGaits(moves, rig.w, gait ? gait.phase : tickPhase(t, speed, stride), backward, out, rig.b, rig.c);
+  const back = backward(st.dir);
+  if (moves) playGaits(moves, rig.w, gait ? gait.phase : tickPhase(t, speed, stride), back, out, rig.b, rig.c);
   else if (clip && speed < EASE_IN && a.idle && clip === a.walk) {
-    sampleClip(clip, backward ? -t : t, rig.b);
+    sampleClip(clip, back ? -t : t, rig.b);
     blendPose(out, out, rig.b, speed / EASE_IN);
-  } else if (clip) sampleClip(clip, backward ? -t : t, out);
+  } else if (clip) sampleClip(clip, back ? -t : t, out);
 }
 
 function clamp01(x: number): number {
@@ -910,6 +915,8 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
     talons(a, st, tick, out);
   }
   if (a.combat && !st.out && !st.held) plateMode(a, st, tick, out);
+  // Turning on its feet, it bends, leads and leans into the turn.
+  if (a.carriage && !st.out && !st.held && !st.dead && st.grounded && st.mode === MODE_WALK) a.carriage.apply(st, out);
   if (st.layer === LAYER_NONE) return;
   // A flinch or a gulp, over whatever the rest of it does.
   const clip = st.layer === LAYER_FLINCH ? a.flinch : st.layer === LAYER_EAT ? a.torporEat : null;
@@ -1023,11 +1030,16 @@ export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: nu
 /** Authored pose, slope-aware stride rate and spatial support shared by drawing, seats and authoritative contacts. */
 export function poseCreatureOn(a: CreatureAnim, st: AnimState, tick: number, world: CollisionWorld | null | undefined, x: number, y: number, z: number, yaw: number, size = 1, gait: Gait | null = null, solved: Solved = a.rig.solved, adjust: ((pose: Pose) => void) | null = null): void {
   const rig = a.rig;
-  creaturePose(a, st, tick, rig.a, gait, groundSpeedScale(rig, st, world, x, y, z, yaw, size) / size);
+  creaturePose(a, st, tick, rig.a, gait, groundSpeedScale(rig, st, world, x, y, z, yaw, size, a.turns) / size);
   // A drawing's own turns before the pose is solved (client/core/render/impact-springs.ts); the server passes none.
   adjust?.(rig.a);
   solve(rig, rig.a, solved);
   conformCreature(rig, st, rig.a, solved, world, x, y, z, yaw, size);
+}
+
+/** What species `i` of `reg` plays on `rig`: one way for the server and every client. */
+export function speciesAnim(reg: Registry, i: number, rig: Rig): CreatureAnim {
+  return new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i], reg.move[i]?.strafe === false);
 }
 
 /** What each species of `reg` drawn on a rig of its own plays, by content index. `rigOf` finds a species' rig. */
@@ -1035,6 +1047,6 @@ export function creatureAnims(reg: Registry, rigOf: (d: SpeciesDef) => Rig | nul
   return reg.defs.map((d, i) => {
     if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
     const rig = rigOf(d);
-    return rig ? new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]) : null;
+    return rig ? speciesAnim(reg, i, rig) : null;
   });
 }

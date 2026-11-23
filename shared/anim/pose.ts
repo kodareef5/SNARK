@@ -30,6 +30,12 @@ export const SPEED_STEP = 0.6;
 export const SPEED_MAX = 15;
 /** Steps in a full turn of `AnimState.dir`. */
 export const DIR_STEPS = 16;
+/**
+ * A body that does not strafe goes only forward or backward, so its direction bits carry that and how fast it turns:
+ * DIR_STEPS / 2 or none, plus its turn in steps toward its left, -TURN_STEPS to TURN_STEPS. Read as a direction, its bits
+ * still say forward or backward.
+ */
+export const TURN_STEPS = 3;
 /** Steps of `AnimState.pitch` from level to straight up. */
 export const PITCH_STEPS = 31;
 
@@ -123,6 +129,31 @@ export const EMOTE_SYNCED = 1;
 export const EMOTE_LEAD = 2;
 export const EMOTE_PARTNER = 3;
 
+/** Whether direction bits say backward: more than a quarter turn from the facing. */
+export function backward(dir: number): boolean {
+  const off = dir <= DIR_STEPS / 2 ? dir : DIR_STEPS - dir;
+  return off > DIR_STEPS / 4;
+}
+
+/** The turn in the direction bits of a body that does not strafe, -TURN_STEPS to TURN_STEPS, toward its left. */
+export function turnOf(dir: number): number {
+  const s = backward(dir) ? dir - DIR_STEPS / 2 : dir >= DIR_STEPS / 2 ? dir - DIR_STEPS : dir;
+  return s > TURN_STEPS ? TURN_STEPS : s < -TURN_STEPS ? -TURN_STEPS : s;
+}
+
+/**
+ * The turn a body shows, in steps, from its yaw's change over a tick (1/65536 turns) against the most it turns a tick:
+ * at most `most` steps from `was`, the turn it showed a tick before, so each tick moves it a step. A change past twice
+ * its rate was no turn but a jump.
+ */
+export function turnSteps(change: number, rate: number, was: number, most = 1): number {
+  const d = ((change + 32768) & 0xffff) - 32768;
+  let s = rate > 0 && d <= 2 * rate && d >= -2 * rate ? Math.floor((d * TURN_STEPS) / rate + 0.5) : 0;
+  if (s > TURN_STEPS) s = TURN_STEPS;
+  else if (s < -TURN_STEPS) s = -TURN_STEPS;
+  return s > was + most ? was + most : s < was - most ? was - most : s;
+}
+
 /** The worst hurt and decay stage. 0 is unhurt, or fresh. */
 export const STAGE_WORST = 3;
 /** The last step of a pair's mating: 1 as it begins, rising to this as it ends, 0 when not mating. */
@@ -143,7 +174,7 @@ export class AnimState {
   grounded = true;
   /** Horizontal speed in SPEED_STEP units, 0..SPEED_MAX. */
   speed = 0;
-  /** Direction of travel relative to facing, in sixteenths of a turn toward the body's left. */
+  /** Direction of travel relative to facing, in sixteenths of a turn toward the body's left; with a turn, as TURN_STEPS says. */
   dir = 0;
   /** -PITCH_STEPS (down) to PITCH_STEPS (up). */
   pitch = 0;
@@ -329,6 +360,13 @@ export class AnimState {
     this.dir = this.speed === 0 ? 0 : (Math.floor(turn * DIR_STEPS + 0.5) + DIR_STEPS) % DIR_STEPS;
     this.bank = 0;
     this.climb = CLIMB_LEVEL;
+  }
+
+  /** For a body that does not strafe, after setMotion: its direction bits keep forward or backward and take `steps` of turn. */
+  setTurn(steps: number): void {
+    if (this.mode === MODE_FLYER) return;
+    const s = steps > TURN_STEPS ? TURN_STEPS : steps < -TURN_STEPS ? -TURN_STEPS : steps;
+    this.dir = ((backward(this.dir) ? DIR_STEPS / 2 : 0) + s + DIR_STEPS) % DIR_STEPS;
   }
 }
 
