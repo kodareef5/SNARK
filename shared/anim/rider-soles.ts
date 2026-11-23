@@ -40,7 +40,7 @@ export class RiderSoles {
     if (same) return this.valid ? this.offsets : null;
     this.ready = true; this.points = points; this.rest = rest; this.revision++;
     for (let i = 0; i < LOOK_BYTES; i++) this.look[i] = view[from + i]!;
-    lookScales(this.look, this.scale);
+    lookScales(this.look, this.scale, rest);
     this.valid = points !== null && soleOffsets(points, rest, this.scale, this.offsets);
     return this.valid ? this.offsets : null;
   }

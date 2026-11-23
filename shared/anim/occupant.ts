@@ -13,7 +13,7 @@ import { createMountMotion, mountOrigin, mountPose, type MountMotionProfile } fr
 import { AnimState, humanPose, PITCH_STEPS, type HumanAnim } from "./pose.ts";
 import { fitRiderControls } from "./rider-controls.ts";
 import { fitSeatControls } from "./seat-controls.ts";
-import { fitSeated } from "./seat-fit.ts";
+import { fitSeated, seatFit } from "./seat-fit.ts";
 import { SEAT_DROP, SEAT_FLOATS } from "./seat.ts";
 import { boneToModel, rayZones, Solved, solve } from "./skeleton.ts";
 
@@ -60,16 +60,17 @@ export function poseSeated(anim: HumanAnim, st: AnimState, tick: number, seat: O
   solve(HUMAN, pose, solved, rest, scale);
   if (!seat.definition) return 0;
   const drop = fitSeated(pose, solved, rest, scale, seat.definition, standard);
-  fitSeatControls(pose, solved, rest, scale, seat.definition, seat.steering ?? 0, drop);
+  fitSeatControls(pose, solved, rest, scale, seat.definition, seat.steering ?? 0, drop, seatFit.side, seatFit.ahead);
   return drop;
 }
 
 /**
- * Writes to `out` the body origin that pins a seated pose's hips `drop` below its seat's anchor, the vehicle turned by
- * `rotation` (vehicleRotation). A skater stands on its rest pelvis, `rest`, so its board stays under it as it crouches.
+ * Writes to `out` the body origin that pins a seated pose's hips `drop` below its seat's anchor, and `aside` and `ahead`
+ * off it along the body's side and forward axes (shared/anim/seat-fit.ts), the vehicle turned by `rotation`
+ * (vehicleRotation). A skater stands on its rest pelvis, `rest`, so its board stays under it as it crouches.
  */
-export function seatOrigin(solved: Solved, seat: OccupantSeat, drop: number, rotation: Float64Array, out: Float64Array | number[], rest: Float32Array): void {
-  quatRotate(rotation, 0, 0, -drop, 0, sunk, 0);
+export function seatOrigin(solved: Solved, seat: OccupantSeat, drop: number, rotation: Float64Array, out: Float64Array | number[], rest: Float32Array, aside = 0, ahead = 0): void {
+  quatRotate(rotation, 0, aside, -drop, ahead, sunk, 0);
   sunk[0]! += seat.x; sunk[1]! += seat.y; sunk[2]! += seat.z;
   mountOrigin(solved, sunk, rotation, out, seat.role === "skate" ? rest : undefined);
 }

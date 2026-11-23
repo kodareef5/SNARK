@@ -1,13 +1,14 @@
-// A look is the 28 bytes the character creator makes. It picks meshes, colours and bone stretches only.
-// On foot, hit zones, collision and eye retain the common skeleton. Seated eyes and capsule centres follow the
-// rendered body binding/proportions; capsule radii and movement collision stay canonical.
+// A look is the 28 bytes the character creator makes. It picks meshes, colours and bone stretches only. Hit zones,
+// collision and eyes keep the common skeleton in every pose, so no look is harder to hit than another. The stretches
+// that move the head are bounded instead: a drawn head stays within about 2 cm of the head shots are judged on as it
+// stands, a seat puts it right on it (shared/anim/seat-fit.ts), and it never grows past HEAD_GROW.
 
 import { REGION_BASE, EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../pack/palette.ts";
 import type { Rng } from "../rng.ts";
 import {
   B_CHEST, B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R,
   B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_THUMB_L, B_THUMB_R, B_TOE_L, B_TOE_R, B_UPPER_ARM_L, B_UPPER_ARM_R,
-  B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN_BONES,
+  B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
 } from "./human.ts";
 
 export const LOOK_BYTES = 28;
@@ -155,8 +156,21 @@ export function lookColors(look: Uint8Array, out: Uint8Array, at = 0): void {
   out[at + 5] = 0;
 }
 
-/** Writes `HUMAN_BONES * 3` stretch factors around 1, one per bone axis. Regions that touch the same bone multiply. */
-export function lookScales(look: Uint8Array, out: Float32Array): void {
+/** How far a drawn head's middle may sit from the hit head's standing straight, in metres: posed, about 2 cm. */
+export const HEAD_SLACK = 0.015;
+/** The most a look stretches a head along any axis. Past it a shot through the drawn head's edge would miss its zone. */
+export const HEAD_GROW = 1.04;
+/** The bones whose lengths lift the head over the hips, hips first. */
+const OVER_HIPS = [B_HIPS, B_SPINE, B_CHEST, B_UPPER_CHEST, B_NECK, B_HEAD];
+const LEG_BONES = [B_UPPER_LEG_L, B_UPPER_LEG_R, B_LOWER_LEG_L, B_LOWER_LEG_R];
+const HEAD_MIDDLE = (HUMAN.capA[B_HEAD * 3 + 1]! + HUMAN.capB[B_HEAD * 3 + 1]!) / 2;
+
+/**
+ * Writes `HUMAN_BONES * 3` stretch factors around 1, one per bone axis. Regions that touch the same bone multiply. The
+ * body is `rest`'s rig: the lengths that move the head are eased back toward 1 as far as keeps its head within
+ * HEAD_SLACK of HUMAN's, first over the hips, as it sits, then over the ground with the legs, as it stands.
+ */
+export function lookScales(look: Uint8Array, out: Float32Array, rest: ArrayLike<number> = HUMAN.rest): void {
   out.fill(1, 0, HUMAN_BONES * 3);
   for (let r = 0; r < REGION_COUNT; r++) {
     const v = regionOf(look, r);
@@ -168,6 +182,37 @@ export function lookScales(look: Uint8Array, out: Float32Array): void {
       if ((axes & Z) !== 0) out[bone * 3 + 2]! *= k;
     }
   }
+  for (let a = 0; a < 3; a++) out[B_HEAD * 3 + a] = Math.min(out[B_HEAD * 3 + a]!, HEAD_GROW);
+  const hit = headOverHips(HUMAN.rest, null), hips = rest[B_HIPS * 3 + 1]! - HUMAN.rest[B_HIPS * 3 + 1]!;
+  // Over the hips, as it sits, and over its own rig's hips, as it stands: each is linear in the lengths' stretch.
+  const sat = headOverHips(rest, out) - hit, plain = headOverHips(rest, null) - hit;
+  easeBack(out, OVER_HIPS.slice(1), Math.min(share(sat, plain), share(hips + sat, hips + plain)));
+  // Then the legs, which lift the hips as it stands.
+  const stood = hips + headOverHips(rest, out) - hit;
+  easeBack(out, LEG_BONES, share(stood + lookLift(out, rest), stood));
+}
+
+/** The height of the head's middle over the hips' joint, standing straight, on `rest` stretched by `scales`. */
+function headOverHips(rest: ArrayLike<number>, scales: Float32Array | null): number {
+  let up = 0;
+  for (let k = 1; k < OVER_HIPS.length; k++) {
+    const b = OVER_HIPS[k]!, p = OVER_HIPS[k - 1]!;
+    up += (rest[b * 3 + 1]! - rest[p * 3 + 1]!) * (scales ? scales[p * 3 + 1]! : 1);
+  }
+  return up + HEAD_MIDDLE * (scales ? scales[B_HEAD * 3 + 1]! : 1);
+}
+
+/** The share of their stretch some lengths keep, for a head `off` from the hit head with them and `without` them. */
+function share(off: number, without: number): number {
+  if (Math.abs(off) <= HEAD_SLACK || Math.abs(off - without) < 1e-9) return 1;
+  const k = ((off < 0 ? -HEAD_SLACK : HEAD_SLACK) - without) / (off - without);
+  return k < 0 ? 0 : k > 1 ? 1 : k;
+}
+
+/** Keeps `share` of each bone's stretch along its length (Y). */
+function easeBack(scales: Float32Array, bones: readonly number[], share: number): void {
+  if (share === 1) return;
+  for (const b of bones) scales[b * 3 + 1] = 1 + (scales[b * 3 + 1]! - 1) * share;
 }
 
 /** Returns what the stretch adds to a straight leg, so that raising the hips by it keeps the feet on the ground. `rest` holds the rest joints. */

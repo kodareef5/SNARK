@@ -10,9 +10,10 @@ const rotation = new Float64Array(4), point = new Float64Array(3);
 
 /**
  * Convert authored host-local grip points to the seated pelvis frame, for both authority and presentation. `drop` is how
- * far the seat fit sank the pelvis below the anchor (shared/anim/seat-fit.ts); the grips stay where they are.
+ * far the seat fit sank the pelvis below the anchor, and `aside` and `ahead` how far it shifted it along the body's side
+ * and forward axes (shared/anim/seat-fit.ts); the grips stay where they are.
  */
-export function fitSeatControls(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, seat: Seat, steering = 0, drop = 0): number {
+export function fitSeatControls(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, seat: Seat, steering = 0, drop = 0, aside = 0, ahead = 0): number {
   if (!seat.controls) return 0;
   const turn = seat.controls.turn;
   if (turn) quatAxis(rotation, 0, ...turn.axis, steering * turn.ratio);
@@ -25,6 +26,6 @@ export function fitSeatControls(pose: Pose, solved: Solved, rest: Float32Array, 
     quatRotate(rotation, 0, grip[0] - turn.pivot[0], grip[1] - turn.pivot[1], grip[2] - turn.pivot[2], point, 0);
     for (let i = 0; i < 3; i++) control.position[i] = point[i]! + turn.pivot[i]! - seat.anchor[i]!;
   }
-  if (drop) { left.position[1]! += drop; right.position[1]! += drop; }
+  for (const control of [left, right]) { control.position[0]! -= aside; control.position[1]! += drop; control.position[2]! -= ahead; }
   return fitPilotControls(pose, solved, rest, scale, left, right, seat.controls.style);
 }

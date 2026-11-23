@@ -13,6 +13,7 @@ import { Pose, blendPose, sampleClip, type Clip } from "../../../shared/anim/cli
 import { conformCreature } from "../../../shared/anim/ground-conform.ts";
 import { createMountMotion, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
 import { occupantPose, poseSeated, seatBody, seatOrigin, type OccupantSeat } from "../../../shared/anim/occupant.ts";
+import { seatFit } from "../../../shared/anim/seat-fit.ts";
 import { lyingWay, packReact, REACT_DIRS, REACT_FALL, REACT_HIPS, TOPPLED } from "../../../shared/anim/reactions.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
@@ -271,8 +272,10 @@ class Stride extends Gait {
   form = -1;
   kind = 0;
   riderProfile = 0;
-  /** Metres a seated pose's hips sink below its seat's anchor (shared/anim/seat-fit.ts). */
+  /** Metres a seated pose's hips sink below its seat's anchor, and shift along its side and forward (shared/anim/seat-fit.ts). */
   seatDrop = 0;
+  seatSide = 0;
+  seatAhead = 0;
   readonly soles = new RiderSoles();
   readonly posedGait = { phase: 0, speed: 0, domain: FOOTFALL_NONE };
   shown: Solved | null = null;
@@ -1479,7 +1482,7 @@ export class Characters {
       const g = this.gaitOf(id);
       advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
       const solved = this.kept(g, HUMAN_BONES);
-      const scales = view ? scalesOf(g, view) : null;
+      const scales = view ? scalesOf(g, view, set.rest) : null;
       const revision = g.soles.revision;
       const soles = rider?.profile ? g.soles.update(set.soles.get(foot) ?? null, set.rest, view) : null;
       if (revision !== g.soles.revision) g.form = -1;
@@ -1512,7 +1515,7 @@ export class Characters {
         inFrame(p.bones, first * BONE_FLOATS, HUMAN_BONES, seat, seatAt, x, y, z);
       } else if (vehicleSeat) {
         vehicleRotation(vehicleSeat, this.rotation);
-        seatOrigin(solved, vehicleSeat, g.seatDrop, this.rotation, this.origin, set.rest);
+        seatOrigin(solved, vehicleSeat, g.seatDrop, this.rotation, this.origin, set.rest, g.seatSide, g.seatAhead);
         orientSolved(solved, this.rotation, this.mounted);
         x = this.origin[0]!; y = this.origin[1]!; z = this.origin[2]!; yaw = 0;
         writeBones(p.bones, first * BONE_FLOATS, this.mounted, set.rest, scales, x, y, z, 0);
@@ -1678,9 +1681,10 @@ export class Characters {
    * (humanPose).
    */
   private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved, impaled = false, rider?: RiderFit, soles: Float64Array | null = null, grips: Float64Array | null = null, over: { clip: Clip; frame: number } | null = null, upright = false): void {
-    g.seatDrop = 0;
+    g.seatDrop = g.seatSide = g.seatAhead = 0;
     if (vehicleSeat && !over && !impaled) {
       g.seatDrop = poseSeated(this.anim, st, tick, vehicleSeat, set.rest, scales, this.pose, solved, this.mount, this.spring, this.standard);
+      g.seatSide = seatFit.side; g.seatAhead = seatFit.ahead;
       return;
     }
     if (over) sampleClip(over.clip, over.frame, this.pose);
@@ -1858,15 +1862,18 @@ export class Characters {
   }
 }
 
-/** The bone scales of the look `view` (lookScales), worked out again only when the body's look is not the one it last had. */
-function scalesOf(g: Stride, view: Uint8Array): Float32Array {
+/**
+ * The bone scales of the look `view` (lookScales) on the body set with rest joints `rest`, worked out again only when
+ * the body's look is not the one it last had: the look picks the set.
+ */
+function scalesOf(g: Stride, view: Uint8Array, rest: Float32Array): Float32Array {
   let same = g.look !== null;
   for (let q = 0; q < LOOK_BYTES && same; q++) same = g.look![q] === view[q];
   if (same) return g.scales!;
   g.look ??= new Uint8Array(LOOK_BYTES);
   g.scales ??= new Float32Array(HUMAN_BONES * 3);
   for (let q = 0; q < LOOK_BYTES; q++) g.look[q] = view[q]!;
-  lookScales(g.look, g.scales);
+  lookScales(g.look, g.scales, rest);
   return g.scales;
 }
 

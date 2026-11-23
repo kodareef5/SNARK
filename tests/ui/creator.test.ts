@@ -15,7 +15,7 @@ import { K_BAR, K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/nod
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_HAND_L, B_HEAD, B_LOWER_ARM_L, B_UPPER_ARM_L, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import {
-  LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, defaultLook, lookColors, lookLift, lookScales, randomLook, regionOf,
+  HEAD_SLACK, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, defaultLook, lookColors, lookLift, lookScales, randomLook, regionOf,
   setRegion, validLook,
 } from "../../shared/anim/look.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
@@ -330,12 +330,13 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   expect(long.pos[B_HAND_L * 3 + 2]).toBeCloseTo(rest.pos[B_HAND_L * 3 + 2]!, 5);
   expect([scales[B_LOWER_ARM_L * 3 + 1], scales[B_LOWER_ARM_L * 3 + 2]]).toEqual([1, 1]);
   expect(long.pos[B_HEAD * 3 + 1]).toBe(rest.pos[B_HEAD * 3 + 1]!);
-  // Region 12 is leg length. The lift raises the root so a standing body's feet stay on the ground.
+  // Region 12 is leg length. The lift raises the root so a standing body's feet stay on the ground. It lifts the head
+  // with it, so it stops where the head is as far from the head shots are judged on as a look may put it.
   defaultLook(look);
   setRegion(look, 12, 1);
   lookScales(look, scales);
   const lift = lookLift(scales, HUMAN.rest);
-  expect(lift).toBeGreaterThan(0.05);
+  expect(lift).toBeCloseTo(HEAD_SLACK, 6);
   pose.root[1] = lift;
   solve(HUMAN, pose, long, HUMAN.rest, scales);
   expect(long.pos[B_FOOT_L * 3 + 1]).toBeCloseTo(rest.pos[B_FOOT_L * 3 + 1]!, 4);

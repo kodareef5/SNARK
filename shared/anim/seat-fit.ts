@@ -22,8 +22,6 @@ import { Solved, solve } from "./skeleton.ts";
 
 /** The head's top stays this far under the roof. */
 export const HEAD_MARGIN = .02;
-/** The most a body of its own proportions sinks beyond the fit of the body hits are judged on, in metres. */
-export const SHAPE_SINK = 0.1;
 /** How far the hips sink into the cushion before the back reclines. */
 export const HIPS_DROP = .06;
 /** The feet stay this far over the floor. */
@@ -48,13 +46,13 @@ const UNIT = new Float32Array(HUMAN_BONES * 3).fill(1);
  * hips sank below the anchor, and the residuals, metres the head's top came within its margin under the roof (or past
  * it) and the lowest foot lay below the floor; 0 where the body fits.
  */
-export const seatFit = { recline: 0, level: 0, drop: 0, head: 0, feet: 0 };
+export const seatFit = { recline: 0, level: 0, drop: 0, head: 0, feet: 0, side: 0, ahead: 0 };
 
 const turn = new Float64Array(4), axis = new Float64Array(3), point = new Float64Array(3);
-/** How much of the level turn the last headFit kept, 0 to 1: the head tips back with the back as far as it must. */
-let fitShare = 1;
 /** The body hits are judged on, fitted to find how far another body of the same pose leans. */
 const standardSolved = new Solved(HUMAN_BONES);
+/** The standard body's head middle from its hips, then the drawn body's. */
+const pin = new Float64Array(6);
 const targets = new Float64Array(6), ends = new Float64Array(8), reached = new Float64Array(12), hands = new Float64Array(14);
 /** The spine, chest, upper chest, neck and head joints, then the head capsule's two ends: as solved, and turned. */
 const chain = new Float64Array(21), moved = new Float64Array(21);
@@ -94,25 +92,34 @@ function capEnd(solved: Solved, scale: Float32Array, bone: number, end: Float32A
   for (let k = 0; k < 3; k++) out[o + k] = solved.pos[at + k]! + point[k]!;
 }
 
-/** The least clearance of a bone's capsule from a plane over the anchor, which is `drop` over the hips' joint. */
-function clearance(solved: Solved, scale: Float32Array, bone: number, drop: number, h: number, sx: number, sz: number, side: number): number {
+/**
+ * The least clearance of a bone's capsule from a plane over the anchor. The hips' joint is `drop` under the anchor and
+ * `aside` and `ahead` off it along the body's side and forward axes.
+ */
+function clearance(solved: Solved, scale: Float32Array, bone: number, drop: number, h: number, sx: number, sz: number, side: number, aside = 0, ahead = 0): number {
   const r = radius(scale, bone);
   let least = Infinity;
   for (const end of [HUMAN.capA, HUMAN.capB]) {
     capEnd(solved, scale, bone, end, moved, 0);
-    least = Math.min(least, ball(moved[0]! - solved.pos[0]!, moved[1]! - solved.pos[1]! - drop, moved[2]! - solved.pos[2]!, r, h, sx, sz, side));
+    least = Math.min(least, ball(moved[0]! - solved.pos[0]! + aside, moved[1]! - solved.pos[1]! - drop, moved[2]! - solved.pos[2]! + ahead, r, h, sx, sz, side));
   }
   return least;
 }
 
-/** How far a body's head clears its seat's roof, solved in `solved`, its hips `drop` below the anchor. */
-export function headClearance(solved: Solved, scale: Float32Array | null, room: SeatRoom, drop: number): number {
-  return clearance(solved, scale ?? UNIT, B_HEAD, drop, room.roof[0], room.roof[1], room.roof[2], 1);
+/** How far a body's head clears its seat's roof, solved in `solved`, its hips `drop` below the anchor and shifted so. */
+export function headClearance(solved: Solved, scale: Float32Array | null, room: SeatRoom, drop: number, aside = 0, ahead = 0): number {
+  return clearance(solved, scale ?? UNIT, B_HEAD, drop, room.roof[0], room.roof[1], room.roof[2], 1, aside, ahead);
 }
 
 /** How far a foot clears its seat's floor. */
-export function footClearance(solved: Solved, scale: Float32Array | null, foot: number, room: SeatRoom, drop: number): number {
-  return clearance(solved, scale ?? UNIT, foot, drop, room.floor[0], 0, room.floor[1], -1);
+export function footClearance(solved: Solved, scale: Float32Array | null, foot: number, room: SeatRoom, drop: number, aside = 0, ahead = 0): number {
+  return clearance(solved, scale ?? UNIT, foot, drop, room.floor[0], 0, room.floor[1], -1, aside, ahead);
+}
+
+/** Writes to `out` at `o` where the middle of a body's head is from its hips' joint. */
+function headMiddle(solved: Solved, scale: Float32Array, out: Float64Array, o: number): void {
+  capEnd(solved, scale, B_HEAD, HUMAN.capA, moved, 0); capEnd(solved, scale, B_HEAD, HUMAN.capB, moved, 3);
+  for (let k = 0; k < 3; k++) out[o + k] = (moved[k]! + moved[3 + k]!) / 2 - solved.pos[k]!;
 }
 
 /** Turns the points of `moved` from index `from` about the side axis through point `about` by `angle`. */
@@ -190,42 +197,20 @@ function headFit(solved: Solved, scale: Float32Array, room: SeatRoom): void {
   }
   seatFit.recline = recline; seatFit.level = levelFor(recline) * level; seatFit.drop = drop;
   seatFit.head = Math.max(0, HEAD_MARGIN - head - drop / norm);
-  fitShare = level;
 }
 
-/**
- * Takes another body's fit, `recline` and `share` of its level turn with its hips `drop` down, and sinks this body's hips
- * on only as far as its own head needs, at most SHAPE_SINK more: it never leans further, so its head stays near the
- * head the fit was found for. Into `seatFit`.
- */
-function followFit(solved: Solved, scale: Float32Array, room: SeatRoom, recline: number, share: number, drop: number): void {
-  quatRotate(solved.rot, B_HIPS * 4, 1, 0, 0, axis, 0);
-  [B_SPINE, B_CHEST, B_UPPER_CHEST, B_NECK, B_HEAD].forEach((bone, k) => { for (let a = 0; a < 3; a++) chain[k * 3 + a] = solved.pos[bone * 3 + a]!; });
-  capEnd(solved, scale, B_HEAD, HUMAN.capA, chain, 15); capEnd(solved, scale, B_HEAD, HUMAN.capB, chain, 18);
-  const r = radius(scale, B_HEAD), norm = Math.sqrt(1 + room.roof[1] * room.roof[1] + room.roof[2] * room.roof[2]);
-  const deepest = Math.max(0, clearance(solved, scale, B_HIPS, 0, room.floor[0], 0, room.floor[1], -1) - FOOT_MARGIN);
-  const head = headAt(solved, r, room, recline, share);
-  let sunk = drop;
-  if (head + sunk / norm < HEAD_MARGIN) {
-    const need = (HEAD_MARGIN - head) * norm, most = Math.max(drop, Math.min(deepest, drop + SHAPE_SINK));
-    sunk = -Math.floor(-Math.min(need, most) * 1e4) / 1e4;
-    if (sunk < drop) sunk = drop;
-  }
-  seatFit.recline = recline; seatFit.level = levelFor(recline) * share; seatFit.drop = sunk;
-  seatFit.head = Math.max(0, HEAD_MARGIN - head - sunk / norm);
-}
 
 /**
  * Sets each foot that is through the floor back on it, and returns the legs' turns, or null where neither was. The leg
  * turns up about the hip keeping its knee's fold, and straightens as little as keeps the thigh within its swing.
  */
-function placeFeet(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, room: SeatRoom, drop: number): Float32Array | null {
+function placeFeet(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, room: SeatRoom, drop: number, aside: number, ahead: number): Float32Array | null {
   let any = false;
   for (let side = 0; side < 2; side++) {
     const [upper, lower, foot] = LEGS[side]!, at = side * 3;
     quatCopy(ends, side * 4, solved.rot, foot * 4);
     targets[at] = NaN;
-    const least = footClearance(solved, scale, foot, room, drop);
+    const least = footClearance(solved, scale, foot, room, drop, aside, ahead);
     if (least >= FOOT_MARGIN) continue;
     const hx = solved.pos[upper * 3]!, hy = solved.pos[upper * 3 + 1]!, hz = solved.pos[upper * 3 + 2]!;
     const kx = solved.pos[lower * 3]! - hx, ky = solved.pos[lower * 3 + 1]! - hy, kz = solved.pos[lower * 3 + 2]! - hz;
@@ -301,55 +286,76 @@ function reachChains(pose: Pose, solved: Solved, rest: Float32Array, scale: Floa
 const legCache = new WeakMap<Seat, Map<string, Float32Array | null>>(), ids = new WeakMap<Float32Array, number>();
 let idCount = 0;
 
-/** The key a body's fitted legs are kept under in a seat: its rest joints, its stretch and how far its hips sank. */
-function legKey(rest: Float32Array, scale: Float32Array | null, drop: number): string {
+/** The key a body's fitted legs are kept under in a seat: its rest joints, its stretch and where its hips went. */
+function legKey(rest: Float32Array, scale: Float32Array | null, drop: number, aside: number, ahead: number): string {
   let id = ids.get(rest);
   if (id === undefined) ids.set(rest, id = idCount++);
-  return `${id}:${drop}${scale ? ":" + new Uint32Array(scale.buffer, scale.byteOffset, HUMAN_BONES * 3).join(",") : ""}`;
+  return `${id}:${drop}:${aside}:${ahead}${scale ? ":" + new Uint32Array(scale.buffer, scale.byteOffset, HUMAN_BONES * 3).join(",") : ""}`;
 }
 
 /**
  * Fits a seated pose, already solved on `rest` and `scale`, inside its seat's room, writes what it did to `seatFit`, and
  * returns the metres its hips sink below the seat's anchor. A seat without a room, or a body that fits it as posed, is
  * left untouched. A driver's hands stay where the pose put them in the seat; a passenger's where they were by its hips.
- * The lean is the one found for the `standard` body hits are judged on, so a body drawn with other proportions keeps its
- * head near the head that is shot; it only sinks a little more where its own head would clip the roof.
+ * The fit is the one found for the `standard` body shots are judged on. A body drawn with other proportions leans the
+ * same way and its hips shift, `seatFit.side` and `ahead` along its side and forward axes, so the middle of its head is
+ * where the standard body's is: a shot through the drawn head is a head shot. Looks keep that shift to a few
+ * centimetres (shared/anim/look.ts HEAD_SLACK).
  */
 export function fitSeated(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, seat: Seat, standard: Float32Array = rest): number {
-  seatFit.recline = seatFit.level = seatFit.drop = seatFit.head = seatFit.feet = 0;
+  seatFit.recline = seatFit.level = seatFit.drop = seatFit.head = seatFit.feet = seatFit.side = seatFit.ahead = 0;
   const room = seat.room;
   if (!room) return 0;
-  if (standard === rest && !scale) headFit(solved, UNIT, room);
+  const own = standard === rest && !scale;
+  if (own) headFit(solved, UNIT, room);
   else {
     solve(HUMAN, pose, standardSolved, standard, null);
     headFit(standardSolved, UNIT, room);
-    followFit(solved, scale ?? UNIT, room, seatFit.recline, fitShare, seatFit.drop);
   }
-  const { recline, level, drop } = seatFit, turned = recline !== 0 || drop !== 0;
+  const { recline, level } = seatFit;
+  // A body drawn with other proportions always moves, to put its head on the standard one's.
+  const turned = recline !== 0 || seatFit.drop !== 0 || !own;
+  if (turned) {
+    // The hands as the pose put them, before the lean moves them.
+    for (let side = 0; side < 2; side++) {
+      const hand = ARMS[side]![2];
+      for (let k = 0; k < 3; k++) hands[side * 3 + k] = solved.pos[hand * 3 + k]!;
+      quatCopy(hands, 6 + side * 4, solved.rot, hand * 4);
+    }
+    lean(pose, solved, recline, level);
+  }
+  if (!own) {
+    // Each head's middle from its own hips, once leaned.
+    solve(HUMAN, pose, standardSolved, standard, null);
+    solve(HUMAN, pose, solved, rest, scale);
+    headMiddle(standardSolved, UNIT, pin, 0); headMiddle(solved, scale ?? UNIT, pin, 3);
+    seatFit.side = pin[0]! - pin[3]!; seatFit.ahead = pin[2]! - pin[5]!; seatFit.drop -= pin[1]! - pin[4]!;
+  }
+  const { drop, side: aside, ahead } = seatFit;
   let bodies = legCache.get(seat);
   if (!bodies) legCache.set(seat, bodies = new Map());
-  const key = legKey(rest, scale, drop);
+  const key = legKey(rest, scale, drop, aside, ahead);
   let legs = bodies.get(key);
   if (!turned && legs === null) return 0;
-  const lift = seat.driver ? drop : 0;
-  for (let side = 0; side < 2 && turned; side++) {
-    const hand = ARMS[side]![2];
-    hands[side * 3] = solved.pos[hand * 3]!; hands[side * 3 + 1] = solved.pos[hand * 3 + 1]! + lift; hands[side * 3 + 2] = solved.pos[hand * 3 + 2]!;
-    quatCopy(hands, 6 + side * 4, solved.rot, hand * 4);
-  }
-  if (turned) lean(pose, solved, recline, level);
-  // The seat's own legs, the same every frame, are fitted once for each body and drop.
+  // The seat's own legs, the same every frame, are fitted once for each body and where its hips went.
   if (legs === undefined) {
-    if (turned) solve(HUMAN, pose, solved, rest, scale);
-    legs = placeFeet(pose, solved, rest, scale, room, drop);
+    if (turned && own) solve(HUMAN, pose, solved, rest, scale);
+    legs = placeFeet(pose, solved, rest, scale, room, drop, aside, ahead);
     if (bodies.size >= 64) bodies.clear();
     bodies.set(key, legs);
   } else if (legs) for (let side = 0; side < 2; side++) for (let k = 0; k < 3; k++) quatCopy(pose.rot, LEGS[side]![k]! * 4, legs, side * 12 + k * 4);
   solve(HUMAN, pose, solved, rest, scale);
   if (turned) {
+    // A driver's hands stay put in the seat as the hips move under them.
+    for (let side = 0; side < 2 && seat.driver; side++) {
+      hands[side * 3] -= aside; hands[side * 3 + 1] += drop; hands[side * 3 + 2] -= ahead;
+    }
     targets.set(hands.subarray(0, 6)); ends.set(hands.subarray(6));
     reachChains(pose, solved, rest, scale, ARMS, ELBOW_COS);
   }
-  for (const [, , foot] of LEGS) seatFit.feet = Math.max(seatFit.feet, -footClearance(solved, scale, foot, room, drop));
+  if (!own) seatFit.head = Math.max(0, HEAD_MARGIN - headClearance(solved, scale, room, drop, aside, ahead));
+  for (const [, , foot] of LEGS) seatFit.feet = Math.max(seatFit.feet, -footClearance(solved, scale, foot, room, drop, aside, ahead));
   return drop;
 }
+
+

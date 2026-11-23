@@ -3,12 +3,15 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { Characters, type VehicleSeatPose } from "../../client/core/render/characters.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_FOOT_R, B_PROP_L, B_PROP_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
-import { B_HEAD } from "../../shared/anim/human.ts";
+import { B_HEAD, ZONE_HEAD, ZONE_TORSO } from "../../shared/anim/human.ts";
 import { defaultLook, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
-import { createOccupantSeat, OccupantBody, occupantSeat, poseSeated } from "../../shared/anim/occupant.ts";
+import { createOccupantSeat, OccupantBody, occupantSeat, poseSeated, seatOrigin } from "../../shared/anim/occupant.ts";
 import { AnimState, HumanAnim } from "../../shared/anim/pose.ts";
 import { footClearance, HEAD_MARGIN, headClearance, HIPS_DROP, RECLINE_MOST, seatFit } from "../../shared/anim/seat-fit.ts";
-import { Solved } from "../../shared/anim/skeleton.ts";
+import { boneToModel, rayZones, Solved } from "../../shared/anim/skeleton.ts";
+import { quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
+import { Rng } from "../../shared/rng.ts";
+import { vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
 import type { Seat, SeatRoom } from "../../shared/sim/seats.ts";
 import type { VehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { STANCE_CROUCH } from "../../shared/sim/character.ts";
@@ -19,15 +22,26 @@ import { coreRegistry } from "../fixtures/world.ts";
 const pack = frozenPack(), anim = new HumanAnim(pack.clips), reg = coreRegistry();
 const frame = { x: 40, y: 3, z: 60, yaw: .7, pitch: .12, roll: -.2, steering: 0 };
 /** Every look slider at one end: the largest body the client draws, or the smallest. */
-function stretched(value: number): Float32Array {
+function stretched(value: number | ((region: number) => number), rest: Float32Array): Float32Array {
   const look = defaultLook(), scale = new Float32Array(HUMAN_BONES * 3);
-  for (let region = 0; region < REGION_COUNT; region++) setRegion(look, region, value);
-  lookScales(look, scale);
+  for (let region = 0; region < REGION_COUNT; region++) setRegion(look, region, typeof value === "number" ? value : value(region));
+  lookScales(look, scale, rest);
   return scale;
 }
 const bodies: { name: string; rest: Float32Array; scale: Float32Array | null }[] = [{ name: "default", rest: HUMAN.rest, scale: null }];
 for (const rig of pack.header.rigs.filter((r) => r.id === "human_m" || r.id === "human_f")) {
-  for (const value of [1, -1]) bodies.push({ name: `${rig.id} ${value > 0 ? "largest" : "smallest"}`, rest: Float32Array.from(rig.rest), scale: stretched(value) });
+  const rest = Float32Array.from(rig.rest);
+  for (const value of [1, -1]) bodies.push({ name: `${rig.id} ${value > 0 ? "largest" : "smallest"}`, rest, scale: stretched(value, rest) });
+}
+/** The bodies, the rigs' own looks and some looks between the ends. */
+const looks = [...bodies];
+for (const rig of pack.header.rigs.filter((r) => r.id === "human_m" || r.id === "human_f")) {
+  const rest = Float32Array.from(rig.rest), rng = new Rng(rig.id.length);
+  looks.push({ name: `${rig.id} default`, rest, scale: null });
+  for (let k = 0; k < 2; k++) {
+    const values = Array.from({ length: REGION_COUNT }, () => rng.range(-1, 1));
+    looks.push({ name: `${rig.id} look ${k}`, rest, scale: stretched((r) => values[r]!, rest) });
+  }
 }
 const holds = [0, (HOLD_PISTOL << 3) | ACT_HOLD, (HOLD_RIFLE << 3) | ACT_HOLD];
 const enclosed = (): { id: string; def: VehicleDefinition; seat: Seat & { room: SeatRoom } }[] => reg.vehicle.flatMap((def, kind) =>
@@ -63,23 +77,95 @@ test("every enclosed seat keeps a judged body under its roof and on its floor", 
   }
 });
 
-test("a body drawn with any look keeps its head within 9 cm of the head that is shot", () => {
-  let worst = 0, deepest = 0;
-  for (const { seat } of enclosed()) for (const body of bodies.slice(1)) for (const action of holds) {
-    const host = reg.vehicle.find((d) => d?.seats.includes(seat))!;
-    const shot = new Pose(HUMAN_BONES), shotSolved = new Solved(HUMAN_BONES), drawn = new Pose(HUMAN_BONES), drawnSolved = new Solved(HUMAN_BONES);
-    const d1 = poseSeated(anim, state(action), 30, seated(host, seat), judged, null, shot, shotSolved);
-    const d2 = poseSeated(anim, state(action), 30, seated(host, seat), body.rest, body.scale, drawn, drawnSolved, undefined, undefined, judged);
-    // Each head from its hips' joint, which the seat pins at its anchor less the drop.
-    const at = (s: Solved, d: number) => [s.pos[B_HEAD * 3]! - s.pos[0]!, s.pos[B_HEAD * 3 + 1]! - s.pos[1]! - d, s.pos[B_HEAD * 3 + 2]! - s.pos[2]!];
-    const a = at(shotSolved, d1), b = at(drawnSolved, d2);
-    worst = Math.max(worst, Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!));
-    // It sinks a little more where its own head would clip the roof, but never leans further: the largest look may
-    // still touch the lowest roofs, whose seats sit high in the art.
-    deepest = Math.min(deepest, headClearance(drawnSolved, body.scale, seat.room, d2));
+/** A seated body drawn on `rest` stretched by `scale`, placed in the world as the client places it. */
+function drawnSeated(sp: VehicleSeatPose, st: AnimState, rest: Float32Array, scale: Float32Array | null) {
+  const pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES), rotation = new Float64Array(4), origin = new Float64Array(3);
+  const drop = poseSeated(anim, st, 30, sp, rest, scale, pose, solved, undefined, undefined, judged);
+  const { side, ahead } = seatFit;
+  vehicleRotation(sp, rotation);
+  seatOrigin(solved, sp, drop, rotation, origin, rest, side, ahead);
+  return { solved, drop, side, ahead, rotation, origin };
+}
+/** The middle of a solved head stretched by `scale`, in its body's frame. */
+function middle(s: Solved, scale: Float32Array | null): number[] {
+  const k = (a: number): number => (scale ? scale[B_HEAD * 3 + a]! : 1), out = [0, 0, 0];
+  boneToModel(s, B_HEAD, ((HUMAN.capA[B_HEAD * 3]! + HUMAN.capB[B_HEAD * 3]!) / 2) * k(0), ((HUMAN.capA[B_HEAD * 3 + 1]! + HUMAN.capB[B_HEAD * 3 + 1]!) / 2) * k(1), ((HUMAN.capA[B_HEAD * 3 + 2]! + HUMAN.capB[B_HEAD * 3 + 2]!) / 2) * k(2), out);
+  return out;
+}
+/** A point of a body's frame in the world: turned by `rotation` and moved to `origin`. */
+function world(p: number[], rotation: Float64Array, origin: Float64Array): number[] {
+  const out = new Float64Array(3);
+  quatRotate(rotation, 0, p[0]!, p[1]!, p[2]!, out, 0);
+  return [0, 1, 2].map((a) => out[a]! + origin[a]!);
+}
+const server = new OccupantBody(pack.header.rigs);
+/** Where the server's body has the middle of its head in the world, as it judges a shot. */
+function judgedHead(sp: VehicleSeatPose, st: AnimState): number[] {
+  server.vehicle(anim, st, 30, sp, judged);
+  const m = middle(server.solved, null), f = server.frame;
+  return [0, 1, 2].map((a) => f[a]! + f[3 + a * 3]! * m[0]! + f[4 + a * 3]! * m[1]! + f[5 + a * 3]! * m[2]!);
+}
+const gazes = [-90, -66, 0, 66, 90].map((d) => (d * Math.PI) / 180);
+
+test("a seated look's drawn head sits on the head that is shot, under its roof", () => {
+  let tried = 0;
+  for (const { def, seat } of enclosed()) for (const body of looks) for (const gaze of gazes) for (const action of [0, holds[2]!]) {
+    const sp = seated(def, seat, frame.yaw + gaze), st = state(action), at = `${def.id} ${seat.id} ${body.name} ${gaze} ${action}`;
+    const shot = judgedHead(sp, st), drawn = drawnSeated(sp, st, body.rest, body.scale);
+    const head = world(middle(drawn.solved, body.scale), drawn.rotation, drawn.origin);
+    expect(Math.hypot(head[0]! - shot[0]!, head[1]! - shot[1]!, head[2]! - shot[2]!), at).toBeLessThan(1e-6);
+    expect(headClearance(drawn.solved, body.scale, seat.room, drawn.drop, drawn.side, drawn.ahead), at).toBeGreaterThanOrEqual(0);
+    for (const foot of [B_FOOT_L, B_FOOT_R]) expect(footClearance(drawn.solved, body.scale, foot, seat.room, drawn.drop, drawn.side, drawn.ahead), at).toBeGreaterThanOrEqual(-1e-4);
+    // The hips move only as far as a look moves a head.
+    expect(Math.hypot(drawn.side, drawn.ahead), at).toBeLessThan(0.04);
+    tried++;
   }
-  expect(worst).toBeLessThan(0.09);
-  expect(deepest).toBeGreaterThan(-0.04);
+  expect(tried).toBeGreaterThan(1000);
+});
+
+test("a shot through the core of a seated look's drawn head is a head shot on the server", () => {
+  /** Side rays through the drawn head within `share` of its reach: how many the drawn body takes on its head and the server on its torso. */
+  const lost = (def: VehicleDefinition, seat: Seat, body: (typeof looks)[number], gaze: number, action: number, share: number): { rays: number; lost: number } => {
+    const sp = seated(def, seat, frame.yaw + gaze), st = state(action);
+    server.vehicle(anim, st, 30, sp, judged);
+    const drawn = drawnSeated(sp, st, body.rest, body.scale), c = world(middle(drawn.solved, body.scale), drawn.rotation, drawn.origin);
+    const s = (a: number): number => (body.scale ? body.scale[B_HEAD * 3 + a]! : 1), r = HUMAN.capR[B_HEAD]! * Math.max(s(0), s(1), s(2)) * share;
+    const axis = (x: number, y: number, z: number): number[] => { const o = new Float64Array(3); quatRotate(drawn.rotation, 0, x, y, z, o, 0); return [...o]; };
+    const across = axis(1, 0, 0), up = axis(0, 1, 0), fore = axis(0, 0, 1), local = new Float64Array(3), dir = new Float64Array(3);
+    let rays = 0, count = 0;
+    for (const way of [1, -1]) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
+      if (a * a + b * b > 4) continue;
+      const p = [0, 1, 2].map((k) => c[k]! + (up[k]! * a + fore[k]! * b) * (r / 2) - across[k]! * way * 3);
+      const d = across.map((v) => v * way);
+      const atServer = server.ray(p[0]!, p[1]!, p[2]!, d[0]!, d[1]!, d[2]!, 10);
+      quatUnrotate(drawn.rotation, 0, p[0]! - drawn.origin[0]!, p[1]! - drawn.origin[1]!, p[2]! - drawn.origin[2]!, local, 0);
+      quatUnrotate(drawn.rotation, 0, d[0]!, d[1]!, d[2]!, dir, 0);
+      const atDrawn = rayZones(HUMAN, drawn.solved, local[0]!, local[1]!, local[2]!, dir[0]!, dir[1]!, dir[2]!, 10);
+      rays++;
+      if (atDrawn === ZONE_HEAD && atServer === ZONE_TORSO) count++;
+    }
+    return { rays, lost: count };
+  };
+  // The case a review found: the smallest woman in the Berlinetta's passenger seat, looking far aside either way.
+  const berlinetta = enclosed().find((e) => e.id === "core:berlinetta" && e.seat.id === "passenger")!;
+  const smallest = looks.find((b) => b.name === "human_f smallest")!;
+  for (const gaze of [-66, 66]) {
+    const sp = seated(berlinetta.def, berlinetta.seat, frame.yaw + (gaze * Math.PI) / 180);
+    server.vehicle(anim, state(), 30, sp, judged);
+    const drawn = drawnSeated(sp, state(), smallest.rest, smallest.scale), c = world(middle(drawn.solved, smallest.scale), drawn.rotation, drawn.origin);
+    const side = new Float64Array(3);
+    quatRotate(drawn.rotation, 0, 1, 0, 0, side, 0);
+    for (const way of [1, -1]) expect(server.ray(c[0]! - side[0]! * way * 3, c[1]! - side[1]! * way * 3, c[2]! - side[2]! * way * 3, side[0]! * way, side[1]! * way, side[2]! * way, 10), `${gaze} ${way}`).toBe(ZONE_HEAD);
+    expect(lost(berlinetta.def, berlinetta.seat, smallest, (gaze * Math.PI) / 180, 0, 0.3).lost).toBe(0);
+  }
+  // Over every seat, look, gaze and hold: none for a rig's own look, and next to none for any.
+  let rays = 0, count = 0;
+  for (const { def, seat } of enclosed()) for (const body of looks) for (const gaze of gazes) for (const action of [0, holds[2]!]) {
+    const got = lost(def, seat, body, gaze, action, 0.3);
+    if (body.scale === null) expect(got.lost, `${def.id} ${seat.id} ${body.name}`).toBe(0);
+    rays += got.rays; count += got.lost;
+  }
+  expect(count / rays).toBeLessThan(0.001);
 });
 
 test("Zephyr and Veloce seats fit a default body under the roof and on the floor", () => {
