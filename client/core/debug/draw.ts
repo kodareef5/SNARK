@@ -100,6 +100,24 @@ export class Draw {
     r.label = label || text;
   }
 
+  /**
+   * A row of buttons from `x`, each `widths[i]` wide, wrapping onto a new row where the next would pass `x + w`. Each is
+   * `on[i]` chosen or not, and pressing it gives `act` and its index in `args`. Returns the room the rows take.
+   */
+  buttons(x: number, y: number, w: number, labels: readonly string[], widths: readonly number[], on: readonly boolean[], act: number, args: readonly number[], chosen: number, plain: number): number {
+    let bx = x, by = y;
+    for (let i = 0; i < labels.length; i++) {
+      const bw = Math.min(widths[i]!, w);
+      if (bx > x && bx + bw > x + w) {
+        bx = x;
+        by += 22;
+      }
+      this.button(bx, by - 2, bw, 18, on[i] ? chosen : plain, labels[i]!, act, args[i]!);
+      bx += bw + 4;
+    }
+    return by - y + 22;
+  }
+
   /** A picture from the interface's image table, stretched to the box. */
   picture(x: number, y: number, w: number, h: number, image: number, act = 0, arg = 0): void {
     const r = this.rec(K_IMAGE, x, y, w, h, 0, act, arg);

@@ -58,33 +58,35 @@ export class NetworkTab implements Tab {
       lx += lw + 6;
     }
 
-    // The messages, busiest first over the last ten seconds.
-    const tableY = ly + LINE + 6, tableW = Math.round(w * 0.62);
+    // The messages, busiest first over the last ten seconds; on a narrow screen, the table alone.
+    const narrow = w < 620, tableY = ly + LINE + 6, tableW = narrow ? w : Math.round(w * 0.62);
     const n = net.rows(this.rows), shown: NetRow[] = [];
     for (let i = 0; i < n; i++) if (dir < 0 || this.rows[i]!.dir === dir) shown.push(this.rows[i]!);
     shown.sort((a, b) => b.bytes10 - a.bytes10 || b.bytesAll - a.bytesAll);
-    const cols = [0, 34, 190, 270, 350, 420];
+    // Columns from the left as far as the table's width allows: way, message, then the rest at a fixed width each.
+    const cols = [0, 34, 190, 270, 350, 420], fits = (c: number, cw: number): boolean => cols[c]! + cw <= tableW;
     draw.text(x + cols[0]!, tableY, 30, D_FAINT, "way");
-    draw.text(x + cols[1]!, tableY, 150, D_FAINT, "message");
-    draw.text(x + cols[2]!, tableY, 76, D_FAINT, "category");
-    draw.text(x + cols[3]!, tableY, 76, D_FAINT, "last second");
-    draw.text(x + cols[4]!, tableY, 66, D_FAINT, "a message");
-    draw.text(x + cols[5]!, tableY, tableW - cols[5]!, D_FAINT, "ten seconds · all");
+    draw.text(x + cols[1]!, tableY, Math.min(150, tableW - cols[1]!), D_FAINT, "message");
+    if (fits(2, 76)) draw.text(x + cols[2]!, tableY, 76, D_FAINT, "category");
+    if (fits(3, 76)) draw.text(x + cols[3]!, tableY, 76, D_FAINT, "last second");
+    if (fits(4, 66)) draw.text(x + cols[4]!, tableY, 66, D_FAINT, "a message");
+    if (fits(5, 60)) draw.text(x + cols[5]!, tableY, tableW - cols[5]!, D_FAINT, "ten seconds · all");
     let at = tableY + LINE;
     if (shown.length === 0) draw.text(x, at, tableW, D_FAINT, "Nothing yet: the socket is counted from when the bar came on.");
     for (const r of shown) {
       if (at + LINE > y + h) break;
       const name = r.subName ? `${r.kindName} ${r.subName}` : r.kindName;
       draw.text(x + cols[0]!, at, 30, D_MONO_DIM, r.dir === NET_IN ? "in" : "out");
-      draw.text(x + cols[1]!, at, 154, D_MONO, name);
-      draw.text(x + cols[2]!, at, 78, D_MONO_DIM, CATEGORIES[r.category]!);
-      draw.text(x + cols[3]!, at, 78, D_MONO, rate(r.bytes));
-      draw.text(x + cols[4]!, at, 68, D_MONO_DIM, r.messages10 > 0 ? `${Math.round(r.bytes10 / r.messages10)} B` : "–");
-      draw.text(x + cols[5]!, at, tableW - cols[5]!, D_MONO_DIM, `${rate(r.bytes10)} · ${count(r.bytesAll / 1024)} KB`);
+      draw.text(x + cols[1]!, at, Math.min(154, tableW - cols[1]!), D_MONO, name);
+      if (fits(2, 76)) draw.text(x + cols[2]!, at, 76, D_MONO_DIM, CATEGORIES[r.category]!);
+      if (fits(3, 76)) draw.text(x + cols[3]!, at, 76, D_MONO, rate(r.bytes));
+      if (fits(4, 66)) draw.text(x + cols[4]!, at, 66, D_MONO_DIM, r.messages10 > 0 ? `${Math.round(r.bytes10 / r.messages10)} B` : "–");
+      if (fits(5, 60)) draw.text(x + cols[5]!, at, tableW - cols[5]!, D_MONO_DIM, `${rate(r.bytes10)} · ${count(r.bytesAll / 1024)} KB`);
       at += LINE;
     }
 
     // Beside it: a snapshot's parts, the bodies in it, and the assets over HTTP.
+    if (narrow) return;
     const rx = x + tableW + 16, rw = w - tableW - 16, snapBits = p.sections.reduce((a, b) => a + b, 0);
     at = tableY + draw.heading(rx, tableY, rw, "A SECOND OF SNAPSHOTS");
     for (let i = 0; i < SECTIONS.length; i++) if (at + LINE <= y + h) at += draw.pair(rx, at, rw, SECTIONS[i]!, `${rate(p.sections[i]! / 8)} · ${share(p.sections[i]!, snapBits)}`);

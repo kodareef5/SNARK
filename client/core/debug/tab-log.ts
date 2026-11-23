@@ -35,24 +35,23 @@ export class LogTab implements Tab {
 
   lay(d: DebugBar, draw: Draw, x: number, y: number, w: number, h: number): void {
     d.log.mark();
-    let bx = x;
-    for (let s = -1; s < SOURCE_NAMES.length; s++) {
-      if (s === SOURCE_SERVER && !d.app.session.admin) continue;
-      const on = s < 0 ? this.sources === ALL_SOURCES : this.sources === 1 << s, label = s < 0 ? "Everything" : SOURCE_NAMES[s]!;
-      const bw = s < 0 ? 84 : 64;
-      draw.button(bx, y - 2, bw, 18, on ? D_TAB_ON : D_BUTTON, label[0]!.toUpperCase() + label.slice(1), ACT_SOURCE, s);
-      bx += bw + 4;
-    }
-    bx += 12;
-    for (let l = 0; l < LEAST.length; l++) {
-      draw.button(bx, y - 2, 104, 18, this.least === l ? D_TAB_ON : D_BUTTON, LEAST_NAMES[l]!, ACT_LEVEL, l);
-      bx += 108;
-    }
-    const detail = this.open ? Math.min(6, Math.max(2, Math.floor(h / LINE / 3))) : 0, listTop = y + 22, listH = h - 22 - (detail ? detail * LINE + 8 : 0);
+    // The filters: the sources, then the levels, on one row where the drawer is wide enough and wrapped where not.
+    const sources = [-1, 0, 1, 2].filter((s) => s !== SOURCE_SERVER || d.app.session.admin);
+    const srcLabels = sources.map((s) => (s < 0 ? "Everything" : SOURCE_NAMES[s]![0]!.toUpperCase() + SOURCE_NAMES[s]!.slice(1)));
+    const srcWidths = sources.map((s) => (s < 0 ? 84 : 64)), srcOn = sources.map((s) => (s < 0 ? this.sources === ALL_SOURCES : this.sources === 1 << s));
+    const lvlWidths = LEAST.map(() => 104), lvlOn = LEAST.map((_, l) => this.least === l);
+    const srcW = srcWidths.reduce((a, b) => a + b + 4, 0), lvlW = lvlWidths.reduce((a, b) => a + b + 4, 0), oneRow = srcW + 12 + lvlW + 150 <= w;
+    const srcH = draw.buttons(x, y, w, srcLabels, srcWidths, srcOn, ACT_SOURCE, sources, D_TAB_ON, D_BUTTON);
+    const lx = oneRow ? x + srcW + 12 : x, ly = oneRow ? y : y + srcH;
+    const lvlH = draw.buttons(lx, ly, w - (lx - x), LEAST_NAMES, lvlWidths, lvlOn, ACT_LEVEL, LEAST.map((_, l) => l), D_TAB_ON, D_BUTTON);
+    const head = oneRow ? Math.max(srcH, lvlH) : srcH + lvlH;
+    const detail = this.open ? Math.min(6, Math.max(2, Math.floor(h / LINE / 3))) : 0, listTop = y + head + (oneRow ? 0 : 18), listH = Math.max(LINE, y + h - listTop - (detail ? detail * LINE + 8 : 0));
     const rows = Math.max(1, Math.floor(listH / LINE));
     const total = d.log.read(this.lines, this.sources, LEAST[this.least]!, rows, this.back);
     if (this.back > 0 && this.back >= total) this.back = Math.max(0, total - rows);
-    draw.text(bx + 8, y, x + w - bx - 8, D_DIM, `${total} line${total === 1 ? "" : "s"}${this.back > 0 ? ` · ${this.back} newer below` : ""}`);
+    const said = `${total} line${total === 1 ? "" : "s"}${this.back > 0 ? ` · ${this.back} newer below` : ""}`;
+    if (oneRow) draw.text(lx + lvlW + 8, y, Math.max(0, x + w - lx - lvlW - 8), D_DIM, said);
+    else draw.text(x, listTop - 18, w, D_DIM, said);
     draw.box(x, listTop, w, listH, D_WELL, -1, 1, ACT_MORE);
     let at = listTop + listH - rows * LINE;
     if (total === 0) draw.text(x + 6, listTop + 4, w - 12, D_FAINT, d.port ? "Nothing logged yet." : "The page's own lines need the browser.");

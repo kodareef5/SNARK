@@ -48,7 +48,8 @@ export class DebugBar {
   /** The browser's part, once the shell has fetched it; null in a test without one. */
   port: DebugPort | null = null;
   readonly spans = new SpanRing();
-  readonly net: NetLog;
+  /** The socket's counts, made again each time the bar comes on, so the time it was off is not a gap. */
+  net: NetLog;
   readonly log = new LogRing();
   /** The pictures, once there is a port to take them. */
   shots: ShotRing | null = null;
@@ -77,6 +78,7 @@ export class DebugBar {
   clientBuild: ReportBuild = {};
 
   private hooked = false;
+  private hookedOnce = false;
   private readonly sampler = new FrameSampler();
   private readonly extra: FrameExtra = { build: 0, scene: 0, gpu: -1, glDraws: 0, longMs: 0, longTasks: 0, shotMs: 0, flags: 0, heap: 0 };
   private readonly rises = new Rises();
@@ -111,7 +113,7 @@ export class DebugBar {
 
   constructor(app: App) {
     this.app = app;
-    this.net = new NetLog(this.spans, bodyClass(app.session.registry));
+    this.net = this.netLog();
     this.tabs = [new TimelineTab(), new FrameTab(), new NetworkTab(), new LogTab(), new ShotsTab(), new AssetsTab(), new ServerTab()];
     void app.debugPort?.().then((port) => this.attach(port), () => {});
   }
@@ -128,9 +130,17 @@ export class DebugBar {
     });
   }
 
+  /** A socket's count on the frame's clock, which is the page's in a browser and the harness's in a test. */
+  private netLog(): NetLog {
+    const app = this.app;
+    return new NetLog({ now: () => app.nowMs }, bodyClass(app.session.registry));
+  }
+
   /** Hands the frame's code the bar's hooks, or takes them back. */
   private hook(on: boolean): void {
     const app = this.app;
+    if (on && this.hookedOnce) this.net = this.netLog();
+    this.hookedOnce ||= on;
     this.hooked = on;
     app.probe = on ? this.spans : null;
     app.session.tap = on ? this.net : null;
