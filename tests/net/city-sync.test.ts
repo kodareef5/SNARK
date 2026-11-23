@@ -54,7 +54,7 @@ function settled(c: City, s: ClientSession): number[] {
 const huge = (c: City) => ({ ...rocket(c.h.reg), base: 1e7 });
 const sum = (sizes: number[]): number => sizes.reduce((a, b) => a + b, 0);
 
-test("a grenade's wear reaches no client, and a stage crossing reaches it as health alone", () => {
+test("a grenade's wear reaches no client, and a stage crossing is health alone", () => {
   const c = city([{ shape: "wall8", finish: "concrete", x: 120, z: 120 }]);
   const wall = c.refs[0]!;
   const { h } = c;
@@ -99,7 +99,7 @@ test("a form swap is sent in place and is under 20 bytes", () => {
   expect(ada.rubble.length).toBe(0);
 });
 
-test("a blast reaches a client as one batch a chunk with its centre and radius, and its store ends as the server's", () => {
+test("a blast reaches a client as one batch a chunk with its centre and radius", () => {
   // Either side of the border between two chunks at x = 128: a wall each on the ground, and one over the first.
   const c = city([{ shape: "wall4", finish: "limestucco", x: 125, z: 120 }, { shape: "wall4", finish: "limestucco", x: 131, z: 120 }, { shape: "wall4", finish: "limestucco", x: 125, z: 120, up: 2.8 }, { shape: "wall8", finish: "concrete", x: 128, z: 126 }]);
   const [west, east, over, back] = c.refs as [number, number, number, number];
@@ -135,7 +135,7 @@ test("a blast reaches a client as one batch a chunk with its centre and radius, 
   expect(heard).toEqual([0, GONE_BLAST, 0, GONE_BLAST, 0, GONE_BLAST]);
 });
 
-test("a client that arrives a minute later holds the same kinds, with or without the map", () => {
+test("a client that arrives a minute later holds the same kinds", () => {
   const c = city([
     { shape: "wall8", finish: "limestucco", x: 100, z: 100 }, { shape: "wall8", finish: "limestucco", x: 120, z: 100 }, { shape: "wall8", finish: "limestucco", x: 140, z: 100 },
     { shape: "wall8", finish: "limestucco", x: 160, z: 100, up: 9 }, { shape: "wall8", finish: "concrete", x: 100, z: 140 }, { shape: "zwin", finish: "limestucco", x: 140, z: 140 },

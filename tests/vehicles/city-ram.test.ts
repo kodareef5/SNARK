@@ -30,7 +30,7 @@ function camp(shape: RuinShape, finish: RuinFinish, speed: number, aside = 0) {
   return { c, h, piece, car, a, run, kind, panes: (): boolean => paned(h.reg, kind, c.hp(piece)) };
 }
 
-test("a car at speed goes through a sheet bay and a storefront's glass and not through a concrete pier", () => {
+test("a car goes through a sheet bay and a shop's glass, not a concrete pier", () => {
   // Sheet, 40 kJ a half: the west half is torn where the car met it, and what speed is left carries the car on.
   const sheet = camp("wall8", "rustsheet", 22, -2);
   try {
@@ -63,7 +63,7 @@ test("a car at speed goes through a sheet bay and a storefront's glass and not t
   } finally { pier.h.host.shutdown(); }
 });
 
-test("a rammed wall is breached in the half the car met, and with CityRamming off it stands", () => {
+test("a rammed wall is breached in the half the car met, unless CityRamming is off", () => {
   const west = camp("wall8", "rustsheet", 16, -2);
   const east = camp("wall8", "rustsheet", 16, 2);
   const off = camp("wall8", "rustsheet", 22, -2);

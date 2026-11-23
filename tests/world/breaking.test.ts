@@ -8,7 +8,7 @@ import { city } from "../fixtures/city.ts";
 
 const walls = (n: number, z = 100) => Array.from({ length: n }, (_, k) => ({ shape: "wall4" as const, finish: "limestucco" as const, x: 100 + k * 10, z }));
 
-test("wear changes health and what differs from the map, and neither the chunk's version nor its log", () => {
+test("wear changes health and what differs, not the chunk's version or its log", () => {
   const c = city(walls(3));
   const structs = c.h.world.structs;
   const [a, b] = c.refs as [number, number];
@@ -35,7 +35,7 @@ test("wear changes health and what differs from the map, and neither the chunk's
   expect(structs.wear(chunk * 65536 + 900, 1)).toBe(false);
 });
 
-test("a swap may set health, changes version once, and is logged as a kind changed in place", () => {
+test("a swap may set health, and is logged as a kind changed in place", () => {
   const c = city(walls(1));
   const structs = c.h.world.structs, reg = c.h.reg;
   const a = c.refs[0]!;
@@ -50,7 +50,7 @@ test("a swap may set health, changes version once, and is logged as a kind chang
   expect(t.hp[a & 0xffff]).toBe(1875);
 });
 
-test("pieces broken together are one version, one batch and one shape signal a chunk, heaps left in place", () => {
+test("pieces broken together are one version, one batch and one shape signal a chunk", () => {
   // Three walls in one chunk and one in the next, across x = 128.
   const c = city([...walls(3), { shape: "wall4", finish: "limestucco", x: 132, z: 100 }]);
   const structs = c.h.world.structs, reg = c.h.reg;

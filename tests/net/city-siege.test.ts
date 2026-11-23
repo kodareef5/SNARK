@@ -32,7 +32,7 @@ function watched(c: City): () => number[] {
   return watch(c);
 }
 
-test("the bytes of a bullet into glass, and of a rocket that breaches two pieces and destroys one", () => {
+test("a bullet into glass and a rocket through three pieces cost these bytes", () => {
   const c = city([
     { shape: "zwin", finish: "limestucco", x: 100, z: 100 },
     { shape: "wall8", finish: "limestucco", x: 100, z: 140 }, { shape: "wall8", finish: "limestucco", x: 100, z: 142 }, { shape: "wall4", finish: "limestucco", x: 100, z: 141, up: 3.5 },
@@ -60,7 +60,7 @@ test("the bytes of a bullet into glass, and of a rocket that breaches two pieces
   expect(blast[0]!).toBeLessThanOrEqual(48);
 });
 
-test("a siege of 50 hits a tick sends a client a few rows a piece's life, and costs the tick little", () => {
+test("a siege of 50 hits a tick sends a client little and costs the tick little", () => {
   // Fifty concrete walls in the chunks round the spawn, each hit once a tick for 100 health.
   const pieces: CityPiece[] = [];
   for (let k = 0; k < 50; k++) pieces.push({ shape: "wall8", finish: "concrete", x: 88 + (k % 10) * 9, z: 100 + Math.floor(k / 10) * 12 });
@@ -88,8 +88,8 @@ test("a siege of 50 hits a tick sends a client a few rows a piece's life, and co
   const bytes = sizes.reduce((a, b) => a + b, 0);
   const city_ = h.host.combat.city;
   console.log(`city siege: ${hits} hits in ${TICKS} ticks (${(hits / TICKS).toFixed(1)} a tick), ${city_.silent} told to nobody, ${city_.breaks} changes of form; ${sizes.length} messages, ${bytes} bytes, ${(bytes / (TICKS / TICK_RATE)).toFixed(0)} bytes a second to a client; the hits ${(inHits / TICKS).toFixed(3)} ms a tick, a tick with client ${busy.toFixed(3)} ms against ${idle.toFixed(3)} ms idle`);
-  // Each wall lives 294 hits: worn, breached, opened, a heap, then gone, six ticks before the end.
-  expect([hits, city_.breaks]).toEqual([50 * 294, 200]);
+  // Each wall lives 295 hits: worn, breached, opened, a heap, then gone, five ticks before the end.
+  expect([hits, city_.breaks]).toEqual([50 * 295, 200]);
   // As every hit was once a row: 50 in-place rows a tick were 9.45 KB a second.
   expect(bytes / (TICKS / TICK_RATE)).toBeLessThan(600);
   expect(city_.silent).toBeGreaterThan(hits * 0.95);

@@ -24,6 +24,8 @@ const REST_GAP = 0.5;
 const REST_INSET = 0.25;
 /** Bodies are looked for this far past a new heap's reach, and one in it is raised by this much until it has room. */
 const LIFT_REACH = 2, LIFT_STEP = 0.125;
+/** Past this many allowances, those full again are forgotten. */
+const ALLOWANCES_KEPT = 1024;
 /** A breached piece is left at least this much health by the hit that breached it. */
 const BREACH_LEAST = 1;
 /** Experience for a swing at a heap, as a tree's blow gives. */
@@ -146,7 +148,11 @@ export class CityBreaks {
     const tick = this.ctx.world.tick;
     const pid = this.payer(by);
     let a = this.allowances.get(pid);
-    if (!a) this.allowances.set(pid, (a = { left: most, at: tick }));
+    if (!a) {
+      // An allowance a minute old is full again, and need not be kept.
+      if (this.allowances.size >= ALLOWANCES_KEPT) for (const [who, old] of this.allowances) if (tick - old.at >= 60 * TICK_RATE) this.allowances.delete(who);
+      this.allowances.set(pid, (a = { left: most, at: tick }));
+    }
     a.left = Math.min(most, a.left + ((tick - a.at) * most) / (60 * TICK_RATE));
     a.at = tick;
     return a.left < 1;
@@ -171,7 +177,7 @@ export class CityBreaks {
     const hp = t.hp[slot]!;
     this.left = hp;
     this.broke = false;
-    if (by && item === 0 && by.kind === this.ctx.survivor) raw *= FISTS;
+    if (by && item === 0 && type === DMG_MELEE && by.kind === this.ctx.survivor) raw *= FISTS;
     const takes = reg.structTakes[mapKind];
     const body = takes ? raw * takes[type]! : 0;
     const form = formOf(reg, t.kind[slot]!);
@@ -226,7 +232,7 @@ export class CityBreaks {
     return was - left;
   }
 
-  /** The piece takes `form` in its place's variant, with `health`. */
+  /** The piece takes `form` in its place's variant, with `health`. Returns the health it lost: all it had, where it is given more. */
   private reform(by: EntityRecord | null, ref: number, mapKind: number, form: number, health: number, was: number): number {
     const world = this.ctx.world;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
@@ -234,7 +240,7 @@ export class CityBreaks {
     world.structs.swap(ref, kind, health);
     this.spend(by);
     this.left = health;
-    return Math.max(0, was - health);
+    return health < was ? was - health : was;
   }
 
   /** The piece is out of health. It falls to its heap or to nothing if `heaps`, else it is gone: now, or with the blast being gathered. */

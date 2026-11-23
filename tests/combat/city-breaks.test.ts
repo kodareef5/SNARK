@@ -45,7 +45,7 @@ test("a bullet takes a window's glass and no more", () => {
   expect([host.combat.hitStructure(rifle(reg), wall, 100, 1, 120), c.hp(wall)]).toEqual([0, c.full(wall)]);
 });
 
-test("a grenade wears a concrete wall, and its chunk says nothing until a stage is crossed", () => {
+test("a grenade wears a concrete wall and tells nothing until a stage is crossed", () => {
   const c = city([{ shape: "wall8", finish: "concrete", x: 100, z: 100 }]);
   const wall = c.refs[0]!;
   const { reg, world } = c.h;
@@ -65,7 +65,7 @@ test("a grenade wears a concrete wall, and its chunk says nothing until a stage 
   expect([version(c, wall) - v, stageOf(reg, mapKind(c, wall), c.hp(wall)), c.form(wall)]).toEqual([1, STAGE_WORN, FORM_WHOLE]);
 });
 
-test("a stage is its body's health over two thirds, one third and one sixth of the map kind's, in any form", () => {
+test("a stage is the body's health over 2/3, 1/3 and 1/6 of the map kind's", () => {
   const c = city([{ shape: "zwin", finish: "limestucco", x: 100, z: 100 }]);
   const reg = c.h.reg, kind = mapKind(c, c.refs[0]!);
   const body = bodyHealth(reg, kind);
@@ -97,7 +97,7 @@ test("a rocket into one half of a wall leaves the other half's form whole", () =
   expect(c.form(turned)).toBe(FORM_BREACH_A);
 });
 
-test("one huge hit makes one breach, not an open piece, and each hit after moves it one form", () => {
+test("one huge hit makes one breach, not an open piece", () => {
   const c = city([{ shape: "wall8", finish: "limestucco", x: 100, z: 100 }]);
   const wall = c.refs[0]!;
   const body = bodyHealth(c.h.reg, mapKind(c, wall));
@@ -148,7 +148,7 @@ test("a piece on the ground ends as its heap and one in the air is removed", () 
   expect([both.left, both.runs, both.count]).toEqual([[low & 0xffff, 1], [high & 0xffff, 1], 2]);
 });
 
-test("a piece with no breach goes whole to open, a shell stops at open, and a piece with no family is removed", () => {
+test("a piece with no breach opens, a shell stops at open, a plain piece is removed", () => {
   const c = city([{ shape: "beam8", finish: "concrete", x: 100, z: 100, up: 3 }, { shape: "zshaft8", finish: "concrete", x: 100, z: 140 }, { shape: "flight", finish: "concrete", x: 150, z: 100 }]);
   const [beam, shell, ramp] = c.refs as [number, number, number];
   fire(c, beam, 0, huge(c));
@@ -178,7 +178,7 @@ test("a piece behind two storeys of a blast is hurt less than one beside it", ()
   expect(lost(above)).toBeLessThan(lost(beside) * 0.6);
 });
 
-test("a heap is mined for its material's yield and its slot is never given to a player's piece", () => {
+test("a heap is mined for its yield, and its slot is never given to a built piece", () => {
   const c = city([{ shape: "wall8", finish: "limestucco", x: 100, z: 100 }, { shape: "wall8", finish: "limestucco", x: 100, z: 140 }]);
   const [wall, other] = c.refs as [number, number];
   const { h } = c;
@@ -214,7 +214,7 @@ test("a heap is mined for its material's yield and its slot is never given to a 
   expect(h.host.items.audit()).toEqual([]);
 });
 
-test("RubbleYieldMultiplier scales what a heap gives, and with CityToolSalvage off a blow does nothing to it", () => {
+test("RubbleYieldMultiplier scales a heap's yield, and CityToolSalvage off stops it", () => {
   const c = city([{ shape: "wall4", finish: "concrete", x: 100, z: 100 }, { shape: "zpartition", finish: "concrete", x: 100, z: 140 }]);
   const [wall, partition] = c.refs as [number, number];
   const { h } = c;
@@ -260,7 +260,7 @@ test("a body standing where a heap appears ends on top of it, not inside", () =>
   [ents.x[e], ents.y[e], ents.z[e]] = [x, y, z];
 });
 
-test("with AllowCityDamage off nothing changes form: explosives alone harm a piece, and it is gone at once", () => {
+test("with AllowCityDamage off nothing changes form", () => {
   const c = city([{ shape: "zwin", finish: "limestucco", x: 100, z: 100 }, { shape: "wall4", finish: "limestucco", x: 100, z: 140 }, { shape: "zpartition", finish: "concrete", x: 150, z: 100 }]);
   const [win, wall, partition] = c.refs as [number, number, number];
   const { h } = c;
@@ -335,7 +335,7 @@ test("CityResistanceMultiplier divides what a city piece takes", () => {
   expect(stageOf(c.h.reg, mapKind(c, wall), c.hp(wall))).not.toBe(STAGE_CRACKED);
 });
 
-test("a client says a city piece's stage, never its health, and hears a stage or a form at one loudness", () => {
+test("a client says a city piece's stage, never its health", () => {
   const c = city([{ shape: "wall8", finish: "concrete", x: 100, z: 100 }]);
   const reg = c.h.reg, wall = mapKind(c, c.refs[0]!);
   const [breach, open, heap] = [FORM_BREACH_A, FORM_OPEN, FORM_HEAP].map((form) => formKind(reg, wall, form, 0)) as [number, number, number];
