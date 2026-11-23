@@ -290,7 +290,7 @@ export class Sounds {
       this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
       this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true), view.turned ?? false, view.body && view.body.glide !== 0 ? Math.hypot(view.body.vx, view.body.vy, view.body.vz) : 0);
     }
-    if (view?.airSupport) this.airSounds.update(view.airSupport, this.helicopter, this.capsule, this.hear, this.airLoop);
+    if (view?.airSupport) this.airSounds.update(view.airSupport, this.helicopter, this.capsule, this.hear, this.airLoop, ear);
     if (view?.supply) this.supply.update(view.supply.list, view.supply.tick, TICK_RATE, ear.x, ear.y, ear.z, this.capsule, this.hear, (id, key, x, y, z, level, on) => this.loop(id, this.capsule, key, x, y, z, level, on, false));
     this.actions.nowMs = nowMs;
     this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);
