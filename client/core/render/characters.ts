@@ -9,7 +9,7 @@ import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
 
 import type { SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { Pose, blendPose, sampleClip, type Clip } from "../../../shared/anim/clip.ts";
+import { Pose, sampleClip, type Clip } from "../../../shared/anim/clip.ts";
 import { conformCreature } from "../../../shared/anim/ground-conform.ts";
 import { createMountMotion, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
 import { occupantPose, poseSeated, seatBody, seatOrigin, type OccupantSeat } from "../../../shared/anim/occupant.ts";
@@ -21,7 +21,7 @@ import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import { isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
-import { quatAxis, quatMul, quatMulConj, quatRotate } from "../../../shared/math/quat.ts";
+import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
 import { TAU } from "../../../shared/math/scalar.ts";
 import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
@@ -36,6 +36,7 @@ import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose, creatureFootfallDomain, FOOTFALL_NONE, speciesAnim, type FootfallGait } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
 import { buildRig, buildRigs } from "../../../shared/anim/rigs.ts";
+import { fallenPose, blendFromFall } from "../../../shared/anim/human-fall.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import type { Pack, PackRig, PackGrip } from "../../../shared/pack/pack.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
@@ -358,8 +359,6 @@ export class Characters {
   private readonly saddle: Uint8Array;
   private readonly wornColor = new Uint8Array(6);
   private readonly pose = new Pose(HUMAN_BONES);
-  /** The pose a survivor getting up rises from. */
-  private readonly lying = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
   private readonly mounted = new Solved(HUMAN_BONES);
   private readonly mount = createMountMotion();
@@ -1600,13 +1599,9 @@ export class Characters {
         this.posingId = id;
         // The proportions hits are judged on, which a seat's fit is worked out for (shared/anim/seat-fit.ts).
         this.standard = k.sets[0]!.rest;
-        if (fallen?.down) this.lain(fallen, fallen.x, fallen.y, fallen.z, fallen.yaw, set.rest, this.pose);
+        if (fallen?.down) fallenPose(fallen, fallen.x, fallen.y, fallen.z, fallen.yaw, set.rest, this.pose);
         else this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
-        if (fallen && !fallen.down) {
-          const t = fallen.risen;
-          this.lain(fallen, x + p.camX, y + p.camY, z + p.camZ, yaw, set.rest, this.lying);
-          blendPose(this.pose, this.lying, this.pose, t * t * (3 - 2 * t));
-        }
+        if (fallen && !fallen.down) blendFromFall(fallen, x + p.camX, y + p.camY, z + p.camZ, yaw, set.rest, fallen.risen, this.pose);
         if (fallen) {
           lookJoints(set.rest, scales, this.joints);
           solve(HUMAN, this.pose, solved, set.rest, scales, this.joints);
@@ -1754,33 +1749,6 @@ export class Characters {
   }
 
   /**
-   * Fills `out` with the pose fall `h` lies in, held by a body at world (x, y, z) facing `yaw` radians and solved on `rest`:
-   * the root turned by the difference in facing, every other bone as turned against its parent.
-   */
-  private lain(h: HumanFall, x: number, y: number, z: number, yaw: number, rest: Float32Array, out: Pose): void {
-    const src = h.solved, d = (h.yaw - yaw) / 2, sd = Math.sin(d), cd = Math.cos(d);
-    const s = Math.sin(h.yaw), c = Math.cos(h.yaw), s1 = Math.sin(yaw), c1 = Math.cos(yaw);
-    for (let b = 0; b < HUMAN.bones; b++) {
-      const p = HUMAN.parent[b]!, r = b * 4;
-      if (p >= 0) {
-        quatMulConj(out.rot, r, src.rot, p * 4, src.rot, r);
-        continue;
-      }
-      const ax = src.rot[r]!, ay = src.rot[r + 1]!, az = src.rot[r + 2]!, aw = src.rot[r + 3]!;
-      out.rot[r] = cd * ax + sd * az;
-      out.rot[r + 1] = cd * ay + sd * aw;
-      out.rot[r + 2] = cd * az - sd * ax;
-      out.rot[r + 3] = cd * aw - sd * ay;
-      const mx = src.pos[b * 3]!, mz = src.pos[b * 3 + 2]!;
-      const dx = h.x + c * mx + s * mz - x, dz = h.z - s * mx + c * mz - z;
-      out.root[0] = c1 * dx - s1 * dz - rest[b * 3]!;
-      out.root[1] = h.y + src.pos[b * 3 + 1]! - y - rest[b * 3 + 1]!;
-    if (onFoot && scales) plantLookFeet(this.pose, solved, scales, set.rest);
-      out.root[2] = s1 * dx + c1 * dz - rest[b * 3 + 2]!;
-    }
-  }
-
-  /**
    * Works out a survivor's pose into `solved`: from its state at `tick` and its gait, seated in a saddle `seat` or a
    * vehicle's, aiming from there, and stretched by its look's `scales`. On foot, `upright` keeps its back out of its look
    * (humanPose).
@@ -1806,6 +1774,7 @@ export class Characters {
     const onFoot = !seat && !vehicleSeat && !impaled;
     if (onFoot) lookJoints(set.rest, scales, this.joints);
     solve(HUMAN, this.pose, solved, set.rest, scales, onFoot ? this.joints : undefined);
+    if (onFoot && scales) plantLookFeet(this.pose, solved, scales, set.rest);
     if (rider?.profile && seat) fitRiderControls(this.pose, solved, set.rest, scales, rider.targets, steers, undefined, soles, grips);
     if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
   }
