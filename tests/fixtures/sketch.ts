@@ -75,29 +75,40 @@ export class Sketch {
 }
 
 export interface Built {
-  /** The pieces in the map's order, the place among them of each piece put, and the rest of a map that holds them. */
+  /** The pieces in the map's order, and the rest of a map that holds them. */
   readonly statics: MapStatic[];
-  readonly at: number[];
-  readonly more: Partial<MapData> & { buildings: Buildings };
   readonly ordered: CityPiece[];
+  readonly more: Partial<MapData> & { buildings: Buildings };
+  /** For each sketch, the place among `ordered` of each piece put. */
+  readonly at: number[][];
 }
 
-/** The sketch's pieces in a map's order (a building's are together, storeys ascending) and the map's buildings. */
-export function builtSketch(s: Sketch, chunks = 4): Built {
+/** The id of the `k`-th sketch's building. */
+export const sketchId = (k: number): number => 1000 + k;
+
+/** The sketches' pieces in a map's order (a building's are together, storeys ascending) and the map's buildings. */
+export function builtSketch(sketches: readonly Sketch[], chunks = 4): Built {
   const reg = coreRegistry();
   const feet = new StructureStore({ chunksX: 1, chunksZ: 1 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts).low;
   const storey = (p: CityPiece): number => Math.max(0, Math.floor(((p.up ?? 0) + 1 / 16) / STOREY));
-  const order = s.pieces.map((_, k) => k).sort((a, b) => storey(s.pieces[a]!) - storey(s.pieces[b]!) || a - b);
-  const at: number[] = [];
-  order.forEach((k, n) => (at[k] = n));
-  const ordered = order.map((k) => s.pieces[k]!);
+  const ordered: CityPiece[] = [], of: number[] = [], at: number[][] = [];
+  sketches.forEach((s, b) => {
+    const order = s.pieces.map((_, k) => k).sort((x, y) => storey(s.pieces[x]!) - storey(s.pieces[y]!) || x - y);
+    const places: number[] = [];
+    order.forEach((k, n) => (places[k] = ordered.length + n));
+    at.push(places);
+    for (const k of order) {
+      ordered.push(s.pieces[k]!);
+      of.push(b);
+    }
+  });
   const statics = ordered.map((p): MapStatic => {
     const kind = ruinKind(p.shape, p.finish);
     if (!reg.index.has(kind)) throw new Error(`the kit has no ${p.shape} in ${p.finish}`);
     return { kind, x: p.x, y: (p.up ?? 0) - feet[reg.index.get(kind)!]!, z: p.z, yaw: p.yaw ?? 0 };
   });
   const dims = { chunksX: chunks, chunksZ: chunks };
-  const buildings = Buildings.of(dims, [s.row()], statics, new Int32Array(statics.length), Uint8Array.from(ordered, storey));
+  const buildings = Buildings.of(dims, sketches.map((s, b) => s.row(sketchId(b))), statics, Int32Array.from(of), Uint8Array.from(ordered, storey));
   return { statics, at, ordered, more: { buildings } };
 }
 
@@ -107,27 +118,27 @@ export interface Stood {
   readonly buildings: Buildings;
   readonly handle: number;
   readonly refs: number[];
-  /** The verdict of each piece put, as `judge` gives it with the building's pins, for the store as it stands. */
+  /** The answer for each piece put, as `judge` gives it with the building's pins, for the store as it stands. */
   judge(): number[];
-  /** The pins of each piece put. */
+  /** The pin of each piece put. */
   pins(): number[];
 }
 
 export function stood(s: Sketch, chunks = 4): Stood {
   const reg = coreRegistry();
-  const built = builtSketch(s, chunks);
+  const built = builtSketch([s], chunks);
   const map = flatMap(chunks, { statics: built.statics, ...built.more });
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   placeStatics(map, structs, reg);
   const buildings = built.more.buildings;
-  const handle = buildings.byId(1000);
+  const handle = buildings.byId(sketchId(0));
   const placed = gather(buildings, [handle], structs, reg, true);
   const pin = new Uint8Array(placed.n);
   pins(placed, pin, new Uint8Array(placed.n));
   const where = new Map<number, number>();
   for (let k = 0; k < placed.n; k++) where.set(placed.ref[k]!, k);
   const refs = s.pieces.map((p, k) => {
-    const st = built.statics[built.at[k]!]!;
+    const st = built.statics[built.at[0]![k]!]!;
     const chunk = Math.floor(st.z / CHUNK_SIZE) * chunks + Math.floor(st.x / CHUNK_SIZE);
     const t = structs.chunks[chunk]!;
     for (let slot = 0; slot < t.mapped; slot++) if (Math.abs(t.x[slot]! - st.x) < 0.01 && Math.abs(t.z[slot]! - st.z) < 0.01 && Math.abs(t.y[slot]! - st.y) < 0.01 && reg.ids[structs.mapKind(chunk, slot)] === st.kind) return chunk * 65536 + slot;
@@ -146,9 +157,16 @@ export function stood(s: Sketch, chunks = 4): Stood {
   };
 }
 
-/** A server on a flat map that holds the sketch as a building. `refs` are in the order the pieces were put. */
-export function sketchCity(s: Sketch, chunks = 4, host: HostOptions = {}, game: Partial<GameOptions> = {}): City {
-  const built = builtSketch(s, chunks);
+/** A city of sketches: `refs` are the first's pieces in the order they were put, `all` every sketch's. */
+export interface SketchCity extends City {
+  readonly all: number[][];
+}
+
+/** A server on a flat map that holds the sketches as buildings. */
+export function sketchCity(sketches: Sketch | readonly Sketch[], chunks = 4, host: HostOptions = {}, game: Partial<GameOptions> = {}): SketchCity {
+  const list = sketches instanceof Sketch ? [sketches] : sketches;
+  const built = builtSketch(list, chunks);
   const c = city(built.ordered, chunks, host, game, built.more);
-  return { ...c, refs: s.pieces.map((_, k) => c.refs[built.at[k]!]!) };
+  const all = built.at.map((places) => places.map((n) => c.refs[n]!));
+  return { ...c, refs: all[0]!, all };
 }

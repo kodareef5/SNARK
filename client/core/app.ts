@@ -23,7 +23,7 @@ import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { HIT_NONE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
-import { BreakEffects, hearStructures } from "./break-effects.ts";
+import { BreakEffects, HEARD_RUMBLE, hearStructures } from "./break-effects.ts";
 import { Controls } from "./controls.ts";
 import { pressKey } from "./key-row.ts";
 import { KEY_ROWS } from "./keys.ts";
@@ -807,6 +807,9 @@ export class App {
     this.supply.list = session.supply;
     this.supply.tick = session.tickClock;
     this.breaks.take(session.rubble);
+    // A building about to come down is heard where it gave, as a collapse's rumble is.
+    for (const gave of session.groans) this.sounds?.build.breaking(HEARD_RUMBLE, 0, gave.x, gave.y, gave.z, 0.5);
+    session.groans.length = 0;
     this.breaks.flush(scene.details, scene.assets.tier, session.renderClock - session.remoteDelay, cam.x, cam.y, cam.z, this.sounds?.build ?? null, this.sight);
     // Fragments count from their break's tick by the clock this client hears the server's ticks on.
     this.falling!.absorb(session.rubble, sceneMs, cam.x, cam.y, cam.z, session.renderClock);

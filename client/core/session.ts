@@ -87,6 +87,7 @@ import {
   EVENT_SHOT,
   EVENT_BLAST,
   EVENT_COLLAPSE,
+  EVENT_GROAN,
   EVENT_IMPACT,
   EVENT_BALL,
   OWN_KEPT,
@@ -555,6 +556,8 @@ export class ClientSession {
    * fell, its foot, and how far across and how tall it stood, in metres. The oldest goes when a ninth comes.
    */
   readonly collapses: { x: number; z: number; foot: number; across: number; tall: number }[] = [];
+  /** Buildings heard to give since they were last taken (EVENT_GROAN): where each gave. The oldest goes when a ninth comes. */
+  readonly groans: { x: number; y: number; z: number }[] = [];
   /** Creatures just tamed, waiting for the naming prompt. te is in percent. */
   readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
   /** The creature whose inventory is open, or null when the open container is not a creature. Shares are 0 to 1. */
@@ -1987,6 +1990,13 @@ export class ClientSession {
       if (r.overflow) return;
       if (this.collapses.length >= 8) this.collapses.shift();
       this.collapses.push(fell);
+      return;
+    } else if (kind === EVENT_GROAN) {
+      // Not a combat event: a building near is about to come down.
+      const gave = { x: r.f32(), y: r.f32(), z: r.f32() };
+      if (r.overflow) return;
+      if (this.groans.length >= 8) this.groans.shift();
+      this.groans.push(gave);
       return;
     } else if (kind === EVENT_IMPACT) {
       // Not a combat event: where a blow landed on a body, for its draw to snap back from it (render/impact-springs.ts).

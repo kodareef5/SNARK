@@ -120,6 +120,19 @@ export class Pieces {
 
 const frame = blankFrame();
 
+/** Whether a piece the map placed as `mapKind` carries what stands on it while whole: a wall, a pier, a slab, a tall fin. */
+export function carrier(reg: Registry, structs: StructureStore, mapKind: number): boolean {
+  const fam = reg.breakFamily[mapKind]!;
+  return CARRIES[fam] === 1 || fam === SLAB || (fam === BAR && structs.top[mapKind]! - structs.low[mapKind]! >= POST);
+}
+
+/** Whether a carrier's row of `kind` still carries: whole or breached, or opened where its family bears when open. */
+export function carrying(reg: Registry, kind: number): boolean {
+  if (kind === 0) return false;
+  const form = reg.breakSet[kind] !== 0 ? reg.breakForm[kind]! : 0;
+  return form < FORM_OPEN || (form === FORM_OPEN && reg.breakBears[kind] === 1);
+}
+
 /**
  * Gathers the pieces of the building under `handles` (every sector's handle of it) from `structs` into `out`. With
  * `placed`, each is taken whole as the map set it down; else as its row stands now, those of `going` as being taken
@@ -179,10 +192,10 @@ export function gather(buildings: Buildings, handles: readonly number[], structs
         out.tall[k] = height < 1 ? 1 : height > 255 ? 255 : height;
         const form = kind === 0 ? 0 : reg.breakSet[kind] !== 0 ? reg.breakForm[kind]! : 0;
         let bits = out.bits[k]!;
-        const carries = CARRIES[fam] === 1 || fam === SLAB || (fam === BAR && structs.top[mapKind]! - structs.low[mapKind]! >= POST);
+        const carries = carrier(reg, structs, mapKind);
         const ghost = going !== null && going.has(out.ref[k]!);
         if (ghost) bits |= BIT_GHOST;
-        else if (kind !== 0 && (form < FORM_OPEN ? carries : form === FORM_OPEN && reg.breakBears[kind] === 1)) bits |= BIT_CARRIES;
+        else if (carries && carrying(reg, kind)) bits |= BIT_CARRIES;
         if (!ghost && carries && fam !== SLAB && form <= FORM_OPEN) bits |= BIT_UNDER;
         if (fam === SLAB || y + structs.low[mapKind]! - foot * STOREY <= FOOT) bits |= BIT_FOOTED;
         // A pier with no foot falls: only a slab and what is fixed to one hang.
@@ -397,14 +410,14 @@ function level(p: Pieces, out: Uint8Array, pin: Uint8Array | null, f: number, fr
     const k = order[q]!;
     if (p.part[k] !== PART_PLATE) continue;
     const ghost = (p.bits[k]! & BIT_GHOST) !== 0;
-    let all = 0, fell = 0, hung = 0, rests = 0;
+    // A slab over the ground's level has a storey of air under it, and fallen it leaves nothing.
+    let all = 0, fell = 0, hung = 0;
     for (let v = p.v0[k]! | 1; v <= p.v1[k]!; v += 2) {
       for (let u = p.u0[k]! | 1; u <= p.u1[k]!; u += 2) {
         const st = ghost ? FALLS : state[(v >> 1) * cols + (u >> 1)]!;
         all++;
         if (st === FALLS) fell++;
         else if (st === HANGS) hung++;
-        if (rests === 0 && over(restTop, u, v, f, W, H, 1)) rests = RESTS;
       }
     }
     let verdict = fell * 2 > all ? FALLS : (fell + hung) * 2 >= all ? ((p.bits[k]! & (BIT_CAN_HANG | BIT_HUNG)) !== 0 ? HANGS : FALLS) : STANDS;
@@ -412,7 +425,7 @@ function level(p: Pieces, out: Uint8Array, pin: Uint8Array | null, f: number, fr
       if (pin[k] === PIN_ALWAYS) verdict = STANDS;
       else waits++;
     }
-    out[k] = verdict | rests;
+    out[k] = verdict;
   }
   // A pinned slab stands while a cell of its own or one beside them does not fall, or something stands under it or them.
   for (let moved = waits > 0; moved; ) {
@@ -429,7 +442,7 @@ function level(p: Pieces, out: Uint8Array, pin: Uint8Array | null, f: number, fr
       }
       cost.ops += 25;
       if (!on) continue;
-      out[k] = STANDS | (out[k]! & RESTS);
+      out[k] = STANDS;
       moved = true;
       for (let v = p.v0[k]! | 1; v <= p.v1[k]!; v += 2) for (let u = p.u0[k]! | 1; u <= p.u1[k]!; u += 2) state[(v >> 1) * cols + (u >> 1)] = STANDS;
     }

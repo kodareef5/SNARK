@@ -1,7 +1,8 @@
 // How a city piece takes harm. A city piece is a row in a map slot owned by nobody: its material and full health are those
 // of the kind the map placed, its form is its row's kind, and its stage is worked out from its health. Harm that changes
 // neither form nor stage is kept and told to no client. A piece is breached at a third of its body's health, opened at
-// none, and at none again falls: to its heap where it rests on something, else to nothing.
+// none, and at none again falls: to its heap where it rests on something, else to nothing. What a building's piece rests
+// on, and what comes down once it carries no more, is its building's to say (`support`, server/city-collapse.ts).
 
 import { BREAK_FAMILIES, FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_HUNG, FORM_OPEN, FORM_WHOLE, formKind } from "../shared/content/breaks.ts";
 import type { ItemDef, MaterialDef } from "../shared/content/defs.ts";
@@ -50,6 +51,17 @@ export interface CityContext {
   readonly rider: (by: EntityRecord) => EntityRecord | null;
 }
 
+/** What judges a building's support (server/city-collapse.ts). */
+export interface CitySupport {
+  /** The city piece `ref` took another form, or with `going` is about to go. */
+  changed(ref: number, going: boolean): void;
+  /**
+   * Which of `falls` rest on something that stands once all of `going` are gone, added to `into`. Returns false where it
+   * judges nothing, and the look straight down is used.
+   */
+  resting(falls: readonly number[], going: ReadonlySet<number> | null, into: Set<number>): boolean;
+}
+
 /** A survivor's allowance of city pieces broken: what is left of it, and the tick it was last counted at. */
 interface Allowance {
   left: number;
@@ -69,6 +81,8 @@ export class CityBreaks {
   private readonly falls: number[] = [];
   private readonly gone: number[] = [];
   private refs = new Uint32Array(64);
+  /** Set by the host where buildings are judged for support. */
+  support: CitySupport | null = null;
   /** Of the last hit: the health left (0 for a piece gone), and whether the piece changed form, fell or was emptied. */
   left = 0;
   broke = false;
@@ -238,6 +252,7 @@ export class CityBreaks {
     const t = world.structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
     const kind = formKind(world.reg, mapKind, form, variantAt(t.x[slot]!, t.y[slot]!, t.z[slot]!));
     world.structs.swap(ref, kind, health);
+    this.support?.changed(ref, false);
     this.spend(by);
     this.left = health;
     return health < was ? was - health : was;
@@ -285,7 +300,9 @@ export class CityBreaks {
     const refs = this.refs;
     const going = n > 1 ? new Set<number>([...falls, ...gone]) : null;
     const heaps = new Set<number>();
-    for (const ref of falls) if (this.rests(ref, going)) heaps.add(ref);
+    if (!this.support?.resting(falls, going, heaps)) for (const ref of falls) if (this.rests(ref, going)) heaps.add(ref);
+    for (const ref of falls) this.support?.changed(ref, true);
+    for (const ref of gone) this.support?.changed(ref, true);
     refs.set(falls);
     refs.set(gone, falls.length);
     falls.length = gone.length = 0;
@@ -303,7 +320,7 @@ export class CityBreaks {
    * Stands each living body the new heap `ref` is solid round on top of what it is in. A body in something that became
    * solid is not pushed out by its own step, and stays stuck there.
    */
-  private lift(ref: number): void {
+  lift(ref: number): void {
     const world = this.ctx.world, reg = world.reg, structs = world.structs, ents = world.ents, dims = world.dims;
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
     const heap = t.kind[slot]!;
@@ -333,7 +350,8 @@ export class CityBreaks {
 
   /**
    * Whether the piece `ref` rests on the ground or on a piece that stands under its foot and is not `going` too: a look
-   * straight down through its footprint. The one rule of what holds a piece up, until buildings are judged for support.
+   * straight down through its footprint. What holds up a piece of no building, and every piece where buildings are not
+   * judged for support (CityCollapse off, or a map without its buildings).
    */
   rests(ref: number, going: ReadonlySet<number> | null): boolean {
     const world = this.ctx.world, reg = world.reg, structs = world.structs;

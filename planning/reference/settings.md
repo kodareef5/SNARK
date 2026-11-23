@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 567 of them: 201 take effect,
+is listed here, 570 of them: 204 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -158,6 +158,9 @@ the admin's settings page may change a setting without a restart.
 | `CityRamming` | True | A car that hits a piece of the map with its material's energy for one half breaks through that half, panes first, and loses that energy. Concrete that holds a building up is never rammed through. *Ours. Creatures do not ram.* | yes |
 | `CityToolSalvage` | True | Tools and blows cut the map's sheet, timber, tile, plaster and glass, and mine a heap for what its material gives. Off, a blow does nothing to a piece of the map or to a heap. *Ours.* | yes |
 | `CityProtectRadius` | 12 | Metres. A piece of the map within this of something a tribe built is spared as that tribe's own would be: from other tribes on a PvE server, and from its own tribe by the friendly-fire rules. A heap may still be mined. 0 spares none. *Ours. Measured from the piece's box to the middle of what was built.* | yes |
+| `CityCollapse` | True | A building of the map comes down when what carried it is broken: a second after the loss, the pieces left standing on nothing fall two storeys every quarter second, lowest first, slabs beside what still stands hang, and what lands on something standing is left as a heap. Stairs never fall. Off, pieces break and nothing falls: what was over them stays where it was. A map built without its buildings acts as off. *Ours. ARK's maps do not break.* | yes |
+| `CityCollapseMostAtOnce` | 8 | The most buildings of the map that come down at once. Past it a building that has lost what carried it waits as it stands, and falls when another has finished. *Ours.* | yes |
+| `CityCollapseDamage` | 1 | What a storey of the map coming down does to a body under it: 35 health for each quarter second it is under one, times this. 0 harms none. *Ours. Dealt as a fall is, so a module is asked of it as of a fall.* | yes |
 | `CityBreaksPerMinute` | 600 | The most pieces of the map one survivor may break in a minute: each change of form, fall or emptied slot counts one, a mount's against its rider. Past it, that survivor's hits on the map do nothing until it refills, evenly through the minute. *Ours.* | yes |
 | `RubbleYieldMultiplier` | 1 | What a heap gives when mined. Higher is more. HarvestAmountMultiplier does not apply to a heap. *Ours.* | yes |
 

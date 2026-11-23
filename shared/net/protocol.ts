@@ -708,6 +708,8 @@ export const IMPACTS_PER_TICK = 16;
  */
 export const EVENT_COLLAPSE = eventKind();
 export const COLLAPSE_PIECES = 16;
+/** GROAN, to clients within 150 m: a building of the map has lost what carried it and is about to come down. Where it gave (3 x f32). */
+export const EVENT_GROAN = eventKind();
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;
