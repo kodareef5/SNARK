@@ -1,6 +1,7 @@
 // Every action is a command, and the grids show what the server last said, so nothing here can get out of step with it.
 // A click picks a stack up or puts it down, a middle click picks up half, and a right click eats, uses or puts on.
 
+import { isSkateboard } from "../../../shared/sim/vehicle.ts";
 import { ballInfo } from "../balls.ts";
 import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
 import { makeHandle } from "../../../shared/ids.ts";
@@ -361,12 +362,14 @@ export class InventoryScreen {
     // An open creature has a status line under its name.
     const subject = other ? session.subject : null;
     this.service = null;
+    let boardHealth = "";
     if (subject && typeof session.sampleRemote === "function") {
       session.sampleRemote(this.vehicleSample);
       const r = this.vehicleSample, index = r.id.subarray(0, r.count).indexOf(subject.id);
       const def = index >= 0 ? reg.vehicle[r.kind[index]!] : null;
-      if (def && index >= 0) {
-        const health = session.looked?.id === subject.id && session.looked.health >= 0 ? `${Math.round(session.looked.health * 100)}%` : ["75–100%", "50–75%", "25–50%", "under 25%"][(r.cue[index]! >>> CUE_HURT_SHIFT) & 3]!;
+      const health = index < 0 ? "" : session.looked?.id === subject.id && session.looked.health >= 0 ? `${Math.round(session.looked.health * 100)}%` : ["75–100%", "50–75%", "25–50%", "under 25%"][(r.cue[index]! >>> CUE_HURT_SHIFT) & 3]!;
+      if (isSkateboard(def)) boardHealth = "Deck condition  " + health;
+      else if (def && index >= 0) {
         const fuel = r.vehicleFuel[index]!, engine = r.vehicleEngineCondition[index]!, rotor = r.vehicleRotorCondition[index]!;
         const boat = def.movement === "boat", car = def.movement === undefined || def.movement === "wheeled";
         const stopped = boat ? !r.vehicleEngineOn[index] && r.vehicleRpm[index]! <= 30 : r.vehicleGrounded[index] !== 0 && (def.movement !== "rotor" || (!r.vehicleEngineOn[index] && r.vehicleRotorRpm[index]! <= 30));
@@ -394,7 +397,7 @@ export class InventoryScreen {
       }
     }
     // An owned one has a row of buttons under that, and a second row when it has levels to spend.
-    const orderH = !this.service && subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
+    const orderH = !boardHealth && !this.service && subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
     const subjectH = this.service ? this.service.lines.length * infoH + (this.service.boat || this.service.car ? 58 : 30) : subject ? infoH + 2 + orderH : 0;
     if (this.service && other) {
       const roomRows = Math.max(1, Math.min(OPEN_ROWS, Math.floor((f.height - titleH - subjectH - PAD * 2 - 48) / (CELL + GAP))));
@@ -498,6 +501,8 @@ export class InventoryScreen {
           const b = f.add(KEY_VEHICLE_RECOVER, K_BUTTON, x0 + PAD, sy + service.lines.length * infoH + 31, w - PAD * 2, 24, S_BUTTON);
           b.text = "Push toward water"; b.interactive = service.recover; b.alpha = service.recover ? 1 : .45;
         }
+      } else if (boardHealth) {
+        f.text(KEY_OPEN_SUBJECT, x0 + PAD, y + PAD + titleH, w - PAD * 2, S_LABEL, boardHealth);
       } else if (subject) {
         const pct = (v: number): string => `${Math.round(v * 100)}%`;
         const grown = subject.stage >= STAGE_WORDS.length;

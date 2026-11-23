@@ -89,3 +89,7 @@ __pycache__/
 /planning/**/*.txt
 /planning/**/*.zip
 !/assets/source/maps/*/art/map.png
+
+# The compact CC0 skateboard travels with the playable vehicle in a source-only build.
+!/assets/raw/innerscene-board/deck.glb
+!/assets/raw/innerscene-board/*.png

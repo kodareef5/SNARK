@@ -12,6 +12,7 @@ import { lodVertices, VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { ACT_EQUIP, ACT_NONE, ACT_SWING, HOLD_CARRY, HOLD_HANDS } from "../../shared/sim/weapon.ts";
 import { ZONES } from "../../tools/art/spec.ts";
+import { skateboardRig } from "../../tools/pack/skateboard.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { clipTurns, flyerAnim, turnBetween } from "../fixtures/flyer/flyer.ts";
 import { fromArt, test } from "../fixtures/needs-art.ts";
@@ -24,7 +25,8 @@ const reg = coreRegistry();
 
 test("the pack carries each creature as its asset describes it: a rig that is a whole skeleton, one mesh on it with every vertex on one bone, and its clips", () => {
   expect(CREATURE_ASSETS.length).toBeGreaterThan(0);
-  expect([...rigs.keys()].sort()).toEqual(CREATURE_ASSETS.map((a) => a.id).sort());
+  // The skateboard's one-bone rig is the pack builder's own (tools/pack/skateboard.ts), not an asset's.
+  expect([...rigs.keys()].sort()).toEqual([...CREATURE_ASSETS.map((a) => a.id), skateboardRig.id].sort());
   for (const { id, spec } of CREATURE_ASSETS) {
     const raw = pack.header.rigs.find((r) => r.id === id)!;
     const rig = rigs.get(id)!;

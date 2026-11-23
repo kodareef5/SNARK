@@ -100,7 +100,7 @@ export function rayVehicleCover(def: VehicleDefinition, x: number, y: number, z:
   return t;
 }
 
-export interface VehicleFrame { x: number; y: number; z: number; yaw: number; pitch: number; roll: number; qx?: number; qy?: number; qz?: number; qw?: number; steering?: number }
+export interface VehicleFrame { skateMove?: number; wheelAngle?: number; x: number; y: number; z: number; yaw: number; pitch: number; roll: number; qx?: number; qy?: number; qz?: number; qw?: number; steering?: number }
 const rayRotation = new Float64Array(4), rayOrigin = new Float64Array(3), rayDirection = new Float64Array(3);
 const yaw = new Float64Array(4), roll = new Float64Array(4), pitch = new Float64Array(4), rotation = new Float64Array(4);
 

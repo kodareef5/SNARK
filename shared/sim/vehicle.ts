@@ -132,7 +132,7 @@ export const PATROL_LIGHT_MODES = ["Off", "Patrol", "Response", "Pursuit"] as co
 export interface WheelVehicleDefinition extends VehicleDefinitionBase {
   readonly movement?: "wheeled";
   /** Road chassis family shown in the catalogue. Older wheel definitions use the car family. */
-  readonly frame?: "car" | "sports_car" | "van" | "off_road";
+  readonly frame?: "car" | "sports_car" | "van" | "off_road" | "skateboard";
   readonly emergencyLights?: readonly EmergencyLamp[];
   /** Where a thruster car's gas leaves it, for its plumes and sound (shared/sim/vehicle-thrusters.ts); none on another car. */
   readonly nozzles?: readonly ThrusterNozzle[];
@@ -267,6 +267,8 @@ export const isRotorVehicle = (d: VehicleDefinition): d is RotorVehicleDefinitio
 export const isBoatVehicle = (d: VehicleDefinition): d is BoatVehicleDefinition => d.movement === "boat";
 export const isWheelVehicle = (d: VehicleDefinition): d is WheelVehicleDefinition => d.movement === undefined || d.movement === "wheeled";
 
+export const isSkateboard = (d: VehicleDefinition | null | undefined): d is WheelVehicleDefinition & { frame: "skateboard" } => !!d && isWheelVehicle(d) && d.frame === "skateboard";
+
 export function validateBoatSpec(s: BoatSpec): void {
   if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid boat specification");
   for (const key of ["halfWidth", "halfLength", "height", "mass", "maxForward", "maxReverse", "fuelCapacity", "fuelPerSecond", "displacement", "draft", "buoyancyHeight", "buoyancyDamping", "thrust", "reverseThrust", "idleRpm", "maxRpm", "rpmRate", "shiftDelay", "maxSteer", "steerRate", "planingSpeed", "planingLift", "planingTrim", "forwardDrag", "sideDrag", "angularDrag", "gravity"] as const) {
@@ -322,8 +324,8 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   }
   else {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
-    if (d.frame !== undefined && !["car", "sports_car", "van", "off_road"].includes(d.frame)) throw new Error("invalid road vehicle frame");
-    validateVehicleSpec(d.spec);
+    if (d.frame !== undefined && !["car", "sports_car", "van", "off_road", "skateboard"].includes(d.frame)) throw new Error("invalid road vehicle frame");
+    validateVehicleSpec(d.spec, isSkateboard(d));
     if (d.passengerAisle !== undefined && (!Number.isFinite(d.passengerAisle) || Math.abs(d.passengerAisle) >= d.spec.halfWidth)) throw new Error("passenger aisle outside cabin");
   }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
@@ -380,6 +382,7 @@ export interface VehicleSurface {
 }
 
 export interface VehicleState extends VehicleDrivetrainState {
+  skateMove?: number;
   x: number;
   y: number;
   z: number;
@@ -451,12 +454,12 @@ export interface VehicleStep {
   immersion?: number;
 }
 
-export function validateVehicleSpec(s: VehicleSpec): void {
+export function validateVehicleSpec(s: VehicleSpec, skateboard = false): void {
   if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid vehicle specification");
   for (const key of ["halfWidth", "halfLength", "height", "clearance", "wheelbase", "track", "wheelRadius", "acceleration", "brake", "maxForward", "maxReverse", "maxSteer", "steerRate", "maxRise", "maxDrop", "minGroundNormal", "fuelCapacity", "fuelPerSecond"] as const) {
-    if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid vehicle ${key}`);
+    if (!Number.isFinite(s[key])) throw new Error(`missing or invalid vehicle ${key}`);
   }
-  const zero = new Set(["yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
+  const zero = new Set([...(skateboard ? ["fuelCapacity", "fuelPerSecond", "maxReverse"] : []), "yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
   for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && key !== "bodyBoxes" && key !== "thrusters" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
   if (s.bodyBoxes !== undefined) {
@@ -470,7 +473,7 @@ export function validateVehicleSpec(s: VehicleSpec): void {
     s.axles.some((a,i) => !Number.isFinite(a.z) || Math.abs(a.z) >= s.halfLength || (i > 0 && a.z >= s.axles![i-1]!.z) ||
       !(a.track > 0 && a.track <= 2*s.halfWidth && a.loadShare > 0 && a.loadShare < 1)) ||
     Math.abs(s.axles.reduce((sum,a) => sum+a.loadShare, 0)-1) > .0001)) throw new Error("invalid vehicle axle geometry or load");
-  if (s.mass !== undefined && (s.mass < 50 || s.mass > 1000000)) throw new Error("invalid vehicle mass");
+  if (s.mass !== undefined && (s.mass < (skateboard ? 1 : 50) || s.mass > 1000000)) throw new Error("invalid vehicle mass");
   if ((s.frontDriveShare ?? 0) > 1 || (s.downforce ?? 0) > 10) throw new Error("invalid vehicle axle split or downforce");
   if (s.drivetrain !== undefined) validateDrivetrainSpec(s.drivetrain);
   if (s.thrusters !== undefined) validateThrusterSpec(s.thrusters);
