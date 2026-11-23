@@ -8,8 +8,9 @@
 //
 // Tiles are made where the far city's levels are made (citymake.ts), a few at a time, those in view before the rest and
 // the nearest first, of 8 m blocks and past COARSER_FROM of 16 m ones, and made again when the ground under their blocks
-// changes (an overview come over the coarse picture). A tile a tile past the view is let go of. What is made goes on the
-// card and is not kept in the page.
+// changes (an overview come over the coarse picture). A tile whose pieces go is made again GONE_EVERY after the first of
+// them went, so one coming down wave by wave is made once. A tile a tile past the view is let go of. What is made goes
+// on the card and is not kept in the page.
 
 import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
@@ -47,6 +48,8 @@ export const COARSEST_FROM = 4800;
 const HYSTERESIS = 1.1;
 /** The block sizes, nearest first, and the distance each after the first starts at. */
 const SIZES = [BLOCK, FAR_BLOCK, FARTHEST_BLOCK];
+/** Milliseconds from a tile's first piece gone to its being made again without those gone since. */
+export const GONE_EVERY = 5000;
 const FROM = [COARSER_FROM, COARSEST_FROM];
 
 /** What the blocks are drawn from: the map's tops as they come, and where tiles are made (here, without a maker that makes them). */
@@ -82,6 +85,8 @@ interface Tile {
   /** What it is made of has changed since it was asked for; the job asked for and not yet taken, or -1. */
   dirty: boolean;
   asked: number;
+  /** When the first piece went that it is not yet made again for, or -1. */
+  goneAt: number;
   /** A hash of the ground it was last asked of, 0 before; and the side of the blocks last asked of it, 0 before. */
   ground: number;
   size: number;
@@ -135,7 +140,7 @@ export class CityBlocks {
     this.colours = colours;
     this.landmark = landmark;
     this.tilesX = Math.ceil(dims.chunksX / BLOCK_TILE);
-    this.tiles = Array.from({ length: this.tilesX * Math.ceil(dims.chunksZ / BLOCK_TILE) }, () => ({ held: null, dirty: true, asked: -1, ground: 0, size: 0 }));
+    this.tiles = Array.from({ length: this.tilesX * Math.ceil(dims.chunksZ / BLOCK_TILE) }, () => ({ held: null, dirty: true, asked: -1, goneAt: -1, ground: 0, size: 0 }));
     this.seenCame = new Uint32Array(chunkCount(dims));
     this.seenGone = new Uint32Array(chunkCount(dims));
     this.landmarks = new Uint8Array(chunkCount(dims));
@@ -155,11 +160,11 @@ export class CityBlocks {
 
   /**
    * Brings the tiles within `view` of the camera up to date and on the card, and lets go of those a tile farther.
-   * `statics` and `standing` are the map's statics and the far city once they have come. Uploads and drops go into the
-   * packet, and what they weigh is spent and reserved in `budget`.
+   * `statics` and `standing` are the map's statics and the far city once they have come, and `now` the frame's time in
+   * milliseconds. Uploads and drops go into the packet, and what they weigh is spent and reserved in `budget`.
    */
-  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, cam: Camera, view: number, statics: CityStatics | null, standing: Standing | null): void {
-    this.changed(statics, standing);
+  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, cam: Camera, view: number, statics: CityStatics | null, standing: Standing | null, now = 0): void {
+    this.changed(statics, standing, now);
     const maker = this.source.maker?.blocks ? this.source.maker : null;
     if (maker) for (let m = maker.built!(); m; m = maker.built!()) this.made.push(m);
     this.stats.made = this.take(p, budget);
@@ -175,6 +180,7 @@ export class CityBlocks {
         continue;
       }
       if (off > view) continue;
+      if (tile.goneAt >= 0 && now - tile.goneAt >= GONE_EVERY) tile.dirty = true;
       if (tile.size !== 0 && this.size(tile, off) !== tile.size) tile.dirty = true;
       if (!tile.dirty) continue;
       if (tile.asked < 0) order.push(t);
@@ -268,7 +274,7 @@ export class CityBlocks {
    * Marks the tiles to make again: those whose chunks' cells have come, those whose chunks' standing pieces have changed or
    * whose statics have come with a landmark's piece or one gone, and those whose ground has changed under their blocks.
    */
-  private changed(statics: CityStatics | null, standing: Standing | null): void {
+  private changed(statics: CityStatics | null, standing: Standing | null, now: number): void {
     const tops = this.source.tops;
     if (statics !== this.statics) {
       this.statics = statics;
@@ -292,9 +298,12 @@ export class CityBlocks {
       for (let c = 0; c < this.seenCame.length; c++) {
         const g = gone?.[c] ?? 0;
         if (tops.came[c] === this.seenCame[c] && g === this.seenGone[c]) continue;
+        const tile = this.tiles[this.tileOf(c)]!;
+        // Cells come are drawn at once. Pieces gone from a tile on the card wait, where tiles are not all made in their frame.
+        if (tops.came[c] !== this.seenCame[c] || !tile.held || this.here === Infinity) tile.dirty = true;
+        else if (tile.goneAt < 0) tile.goneAt = now;
         this.seenCame[c] = tops.came[c]!;
         this.seenGone[c] = g;
-        this.tiles[this.tileOf(c)]!.dirty = true;
       }
     }
     // Ground that came: a tile whose blocks stand on samples that changed, or whose feet reach into them, is made again.
@@ -339,6 +348,7 @@ export class CityBlocks {
   private job(t: number, size: number): BlocksJob | null {
     const tile = this.tiles[t]!;
     tile.dirty = false;
+    tile.goneAt = -1;
     tile.size = size;
     const tops = this.source.tops;
     const { chunksX, chunksZ } = this.dims;

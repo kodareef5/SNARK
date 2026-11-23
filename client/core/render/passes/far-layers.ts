@@ -126,7 +126,7 @@ export class FarLayers {
       {
         update: (f) => {
           this.makeBlocks();
-          this.blocks?.update(this.packet, this.assets.residency, f.cam, this.blocksView(f), this.city ? this.citySource!.statics : null, this.city);
+          this.blocks?.update(this.packet, this.assets.residency, f.cam, this.blocksView(f), this.city ? this.citySource!.statics : null, this.city, f.now);
         },
         draw: (f) => void this.blocks?.draw(f.cam, this.blocksView(f), this.shown, this.drawCity, f.hider),
       },
@@ -179,7 +179,7 @@ export class FarLayers {
     p.frame[FRAME.fade] = tier.fade;
     // Through a sight its tiles in the window reach as far as the view ends (D1088).
     this.city!.view = f.view;
-    this.city!.update(p, this.assets.residency, cam, tier.city.levels, f.alongGround(tier.reach.city), tier.fade, this.world.structs, this.world.far?.cells ?? null, this.world.far?.lists ?? null);
+    this.city!.update(p, this.assets.residency, cam, tier.city.levels, f.alongGround(tier.reach.city), tier.fade, this.world.structs, this.world.far?.cells ?? null, this.world.far?.lists ?? null, f.now);
     // A landmark is drawn to the end of the view, as the city's blocks leave its cells to it.
     this.landmarks?.draw(p, cam, this.assets, f.view, tier.fade, this.drawLandmark);
   }

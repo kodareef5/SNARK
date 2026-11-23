@@ -19,6 +19,9 @@
 // too. Where neither is known, the far feed's cells (farcells.ts), while they count the map's pieces, show a piece gone
 // when its top stands over the top sent for a cell it fills. A piece gone any way is left out of every level of its
 // chunk. What stands is followed for a landmark's pieces too, so the far blocks leave their cells alone.
+//
+// A change to what stands is known at once to whoever asks (goneOf, goneVersion), and a tile's levels are made again for
+// it once the tile has been quiet a moment, so a building that comes down wave by wave is remade once.
 
 import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
@@ -57,6 +60,17 @@ const RESERVE = "far city";
 export const MAKE_MS = 2;
 /** Levels a maker on other threads is asked for ahead of what it has made, if it does not say. */
 const FLIGHTS = 3;
+/**
+ * Milliseconds a tile whose standing pieces changed goes without another change before its levels are made again, and the
+ * longest it waits while they keep changing: within QUIET_WITHIN metres of the eye, and past that.
+ */
+export const QUIET_WITHIN = 700;
+export const QUIET_NEAR = 500;
+export const QUIET_FAR = 2000;
+export const WAIT_NEAR = 3000;
+export const WAIT_FAR = 10000;
+/** Milliseconds a tile come into reach waits for the lists of its chunks' pieces gone before it is first made. */
+export const FIRST_WAIT = 300;
 /** Milliseconds from some fixed moment: the page's clock in a browser and under Bun. */
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
 /** A tile leaves a level for a coarser one this much past where the level ends, and comes back this much short of it. */
@@ -108,7 +122,8 @@ interface Held {
   readonly first: Uint32Array;
   readonly count: Uint32Array;
   slot: number;
-  /** A piece of the tile's chunks has gone since it was made. */
+  /** The tile's count of changes to what stands when it was asked for, and whether it is to be made again for one since. */
+  version: number;
   stale: boolean;
 }
 
@@ -131,6 +146,13 @@ interface Tile {
   /** Counts of its lettings go and of the changes to what stands that its levels show, so a level asked for before one is known. */
   epoch: number;
   version: number;
+  /** When what stands in it last changed, and first changed since its levels were last marked to be made again, or -1. */
+  changedAt: number;
+  changedFrom: number;
+  /** The update in which the near store last let go of a chunk of it: levels that wait then are made again at once. */
+  letGoAt: number;
+  /** When it came into reach with nothing made, or -1. */
+  entered: number;
   /** Where its levels go in this frame's order of making: lower first. */
   rank: number;
   /** The levels it last wanted through a sight, a bit each, and the update until which it keeps them (ZOOM_LINGER). */
@@ -191,6 +213,9 @@ export class FarCity {
   private readonly seenLists: Uint32Array;
   private readonly rowsAt: Uint32Array;
   private listsSeen = 0;
+  /** The tiles whose levels wait to be made again for a change to what stands, and this update's time in milliseconds. */
+  private readonly pending = new Set<number>();
+  private now = 0;
   /** Per chunk, the far feed's top byte of each cell as its standing pieces give it, made when asked for. */
   private readonly tops = new Map<number, Uint8Array>();
   private levels: readonly CityLevel[] = [];
@@ -278,7 +303,7 @@ export class FarCity {
       const base = Math.floor(box[1]!);
       if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
       for (const c of list) this.tileOfChunk[c] = this.tiles.length;
-      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0, zoomed: 0, zoomedUntil: 0, farReach: 0, farUntil: 0, shownReach: 0 });
+      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, changedAt: 0, changedFrom: -1, letGoAt: -1, entered: -1, rank: 0, zoomed: 0, zoomedUntil: 0, farReach: 0, farUntil: 0, shownReach: 0 });
     }
     this.listed = new Uint8Array(this.tiles.length);
     this.shownAt = new Uint32Array(this.tiles.length);
@@ -299,6 +324,8 @@ export class FarCity {
       const was = old.get(tile.t);
       if (!was || was.chunks.length !== tile.chunks.length || was.chunks.some((c, k) => c !== tile.chunks[k])) continue;
       tile.held.push(...was.held);
+      // Made of what stood for the city before: any change this one finds makes them again.
+      for (const h of tile.held) if (h) h.version = -1;
       tile.primary = was.primary;
       old.delete(tile.t);
     }
@@ -332,9 +359,10 @@ export class FarCity {
   /**
    * Brings what stands and the tiles within the tier's reach up to date and on the card, and lets go of those a tile
    * farther. `near` is the near store, `cells` the far feed and `lists` the pieces gone as the server tells them, for
-   * what stands. Uploads and drops go into the packet, and what they weigh is spent and reserved in `budget`.
+   * what stands. `now` is the frame's time in milliseconds, which the waits are counted in. Uploads and drops go into the
+   * packet, and what they weigh is spent and reserved in `budget`.
    */
-  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, cam: Camera, levels: readonly CityLevel[], reach: number, share: number, near: StructureStore | null, cells: FarStore | null, lists: GoneStore | null = null): void {
+  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, cam: Camera, levels: readonly CityLevel[], reach: number, share: number, near: StructureStore | null, cells: FarStore | null, lists: GoneStore | null = null, now = clock()): void {
     if (levels !== this.levels) {
       this.levels = levels;
       this.formOf = levels.map((l) => this.formNumber(l));
@@ -344,7 +372,9 @@ export class FarCity {
     this.updates++;
     for (const slot of this.dropping) p.assetDrops.push(slot);
     this.dropping.length = 0;
+    this.now = now;
     this.standing(near, cells, lists);
+    this.settle(cam, now);
     const stats = this.stats;
     const start = clock();
     this.collect();
@@ -376,13 +406,16 @@ export class FarCity {
       } else if (this.updates < tile.zoomedUntil) bits |= tile.zoomed;
       const needed = (tile.wants = this.formsOf(bits));
       const any = tile.held.some((h) => h !== null);
+      // A tile come into reach waits a moment for the lists of its pieces gone, so it is not made and then made again.
+      if (!any && tile.entered < 0) tile.entered = now;
+      const waits = !any && lists !== null && this.makeMs !== Infinity && now - tile.entered < FIRST_WAIT && !this.told(tile, lists);
       let short = false;
       for (let f = 0; f < this.forms.length; f++) {
         const h = tile.held[f];
         if ((needed & (1 << f)) === 0 || (h && !h.stale)) continue;
         short = true;
         lacking++;
-        if ((tile.making & (1 << f)) === 0) work.push(n * FORMS + f);
+        if ((tile.making & (1 << f)) === 0 && !waits) work.push(n * FORMS + f);
       }
       if (!any) stats.missing++;
       if (short) {
@@ -401,7 +434,9 @@ export class FarCity {
       }
     }
     const tiles = this.tiles;
-    work.sort((a, b) => tiles[Math.floor(a / FORMS)]!.rank - tiles[Math.floor(b / FORMS)]!.rank);
+    // Of one tile's levels, the one its distance asks for first: it is the one drawn.
+    const drawn = (w: number): number => (w % FORMS === this.formOf[tiles[Math.floor(w / FORMS)]!.primary] ? 0 : 1);
+    work.sort((a, b) => tiles[Math.floor(a / FORMS)]!.rank - tiles[Math.floor(b / FORMS)]!.rank || drawn(a) - drawn(b));
     this.fed = 0;
     const asking = clock();
     if (this.maker.run) {
@@ -722,7 +757,31 @@ export class FarCity {
     tile.held.length = 0;
     tile.primary = -1;
     tile.wants = tile.making = 0;
+    tile.entered = -1;
     tile.epoch++;
+  }
+
+  /** Whether the server has told of the pieces gone in any chunk of `tile`. */
+  private told(tile: Tile, lists: GoneStore): boolean {
+    for (const c of tile.chunks) if (lists.lists.has(c)) return true;
+    return false;
+  }
+
+  /**
+   * Marks the levels of each tile whose standing pieces changed to be made again, once the tile has gone quiet or has
+   * waited its longest. Where every level wanted is made in its frame (`makeMs` Infinity) none waits.
+   */
+  private settle(cam: Camera, now: number): void {
+    for (const n of this.pending) {
+      const tile = this.tiles[n]!;
+      if (this.makeMs !== Infinity && tile.letGoAt !== this.updates) {
+        const near = this.off(tile, cam) < QUIET_WITHIN;
+        if (now - tile.changedAt < (near ? QUIET_NEAR : QUIET_FAR) && now - tile.changedFrom < (near ? WAIT_NEAR : WAIT_FAR)) continue;
+      }
+      this.pending.delete(n);
+      tile.changedFrom = -1;
+      for (const h of tile.held) if (h && h.version !== tile.version) h.stale = true;
+    }
   }
 
   /** Asks the maker for this frame's level `w` (a tile times FORMS plus a form). */
@@ -800,7 +859,8 @@ export class FarCity {
         p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: made.data, indexCount: made.first.at(-1)! + made.count.at(-1)!, indexBytes: made.indexBytes, quads: true, bounds: this.bounds });
         budget.spend(made.data.length);
       }
-      tile.held[a.form] = { bytes: made.data.length, first: made.first, count: made.count, slot, stale: a.version !== tile.version };
+      // One asked for before a change the tile still waits on is drawn until the wait ends, and is made again then.
+      tile.held[a.form] = { bytes: made.data.length, first: made.first, count: made.count, slot, version: a.version, stale: a.version !== tile.version && tile.changedFrom < 0 };
       n++;
     }
     this.arrived.length = 0;
@@ -819,6 +879,9 @@ export class FarCity {
       this.whole.delete(c);
       // A list told since its rows were last matched now says more than they do.
       if (lists && (lists.changed[c] ?? 0) !== this.rowsAt[c]) changed.add(c);
+      // It is drawn from its tile's levels from this frame on, so they do not wait to leave out what went while it was near.
+      const n = this.tileOfChunk[c]!;
+      if (n >= 0) this.tiles[n]!.letGoAt = this.updates;
     }
     // The chunks the near store has a table for, not every chunk of the map.
     for (const c of near?.held ?? []) {
@@ -873,7 +936,10 @@ export class FarCity {
     return g;
   }
 
-  /** Says which pieces of `chunk` are gone, and marks what was made of it and its neighbours, whose faces it held, to be made again. */
+  /**
+   * Says which pieces of `chunk` are gone, at once for whoever asks, and notes that what was made of it and its neighbours,
+   * whose faces it held, is to be made again once their tiles have gone quiet (`settle`).
+   */
   private setGone(chunk: number, gone: Uint8Array): void {
     const was = this.gone.get(chunk);
     const none = !gone.includes(1);
@@ -891,7 +957,9 @@ export class FarCity {
         if (n < 0) continue;
         const tile = this.tiles[n]!;
         tile.version++;
-        for (const h of tile.held) if (h) h.stale = true;
+        tile.changedAt = this.now;
+        if (tile.changedFrom < 0) tile.changedFrom = this.now;
+        this.pending.add(n);
       }
     }
   }
