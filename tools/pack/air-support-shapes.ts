@@ -200,7 +200,7 @@ export class Model {
       indices: Uint32Array.from(this.indices),
       uvs: this.level === 0 ? Float32Array.from(this.uv) : undefined,
       normals: this.level === 0 ? Float32Array.from(this.normals) : undefined,
-      error: [0, 0.035, 0.18][this.level],
+      error: [0, 0.035, 0.09][this.level],
     };
   }
 }
