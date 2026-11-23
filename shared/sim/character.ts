@@ -881,6 +881,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     return;
   }
   // The facing follows the look, at once or at turnRate, or in its own flight at flyTurnRate. The body then moves the way it faces.
+  const previousYaw = b.yaw;
   const rate = b.mode === MODE_FLYER ? p.flyTurnRate : p.turnRate;
   if (rate <= 0 || b.mode === MODE_GHOST || b.mode === MODE_FLY) b.yaw = yaw & 0xffff;
   else {
@@ -989,7 +990,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     if (--b.reactTicks === 0) b.react = 0;
   }
   // Laid down by its reaction, how far round it has turned since goes with its facing, alike in prediction.
-  if (b.react !== 0) b.react = withTurn(b.react, b.yaw / YAW_UNITS);
+  if (b.react !== 0) b.react = withTurn(b.react, b.yaw / YAW_UNITS, previousYaw / YAW_UNITS, (REACT_FRAMES[reactClass(b.react)] ?? 0) - b.reactTicks);
   // A body with no hold on where it goes (knocked off its feet, tangled, out cold) does not steer or brake in the air: it
   // flies as it was thrown until it lands.
   if (!b.grounded && !b.jetThrust && (flags & (MF_ROOTED | MF_OUT)) !== 0) maxDv = 0;

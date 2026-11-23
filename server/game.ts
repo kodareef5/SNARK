@@ -360,7 +360,7 @@ export class GameServer {
     this.onStep?.(T);
     parts.mark(PART.save);
     // History records the world as this tick's snapshots show it.
-    this.world.history.record(T);
+    this.world.history.record(T, this.world);
     parts.mark(PART.history);
 
     this.replication.send(T);

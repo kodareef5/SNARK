@@ -1073,7 +1073,7 @@ export class Scene {
     for (let o = n - 1; o >= 0 && need > budget; o--) {
       const k = order[o]! % MAX_VIEW;
       const i = from[k]!;
-      st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!);
+      st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!, remote.stride[i]!);
       const mount = this.bodyMount[k]!, slot = remote.seatSlot[i]!;
       const saddle = mount === MOUNT_OWN ? this.own!.gear[GEAR_WORN]! : mount >= 0 ? remote.gear[mount * GEAR_COUNT + GEAR_WORN]! : 0;
       // Missing authored sockets can only over-reserve; valid seats match add()'s separate fitted stand-in exactly.
@@ -1136,7 +1136,7 @@ export class Scene {
   private addRemote(remote: RemoteSample, i: number, at: Float64Array, k: number, rigid: boolean, unseen: boolean): void {
     const st = this.state;
     const kind = remote.kind[i]!;
-    st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!);
+    st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!, remote.stride[i]!);
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;

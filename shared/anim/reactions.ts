@@ -9,12 +9,7 @@ import { REACT_FRAMES, reactClass } from "../sim/react.ts";
 import type { Pose } from "./clip.ts";
 import { B_HEAD, B_HIPS, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_RAGDOLL } from "./human.ts";
 
-// The word, REACT_BITS long (shared/anim/pose.ts): its class, the low byte of its first tick, the way the body is pushed,
-// the height struck and how hard. A body toppled (REACT_FALL) or getting up from a ragdoll's fall (REACT_RISE) keeps
-// instead how it lies (packLie): the sixteenth its head lies nearest in the way, whether it lies face up in the height's
-// low bit, how far its head lies from that sixteenth in the height's high bit and the strength, the facing it had as it
-// went down or began to get up in the next byte, and in the top four bits the quarter turns it has turned since, which
-// the server keeps up to date (withTurn) so a turn through the way opposite never flips which way round it goes.
+// A topple or rise uses 3 bits for kind, 8 for its start, 8 for its lying pose, 7 for facing and 6 for signed half turns.
 export const REACT_NONE = 0;
 /** Knocked off balance: a shove and a short loss of control. */
 export const REACT_STAGGER = 1;
@@ -31,7 +26,7 @@ const DIR_SHIFT = 11;
 const HEIGHT_SHIFT = 15;
 const STRENGTH_SHIFT = 17;
 const FACING_SHIFT = 19;
-const TURN_SHIFT = 27;
+const TURN_SHIFT = 26;
 /** Sixteenths of a turn, as a body's travel direction is counted: 0 straight ahead, 4 toward its left. */
 export const REACT_DIRS = 16;
 /** Where it was struck: about the legs, the hips, the chest, the head. */
@@ -51,7 +46,7 @@ export function packReact(kind: number, start: number, dir: number, height: numb
 /** The ways a body may lie, its head that many to a turn: eight to each of REACT_DIRS. */
 export const LIE_WAYS = REACT_DIRS * 8;
 /** A facing a body lies against, that many to a turn. */
-export const LIE_FACINGS = 256;
+export const LIE_FACINGS = 128;
 
 /**
  * The word of a body laid down from tick `start` by a topple or a rise (`kind`), face `up` or down, its head `way`
@@ -61,11 +56,11 @@ export function packLie(kind: number, start: number, up: boolean, way: number, f
   const w = ((way % LIE_WAYS) + LIE_WAYS) % LIE_WAYS, dir = Math.round(w / 8) % REACT_DIRS;
   let off = w - dir * 8;
   if (off > LIE_WAYS / 2) off -= LIE_WAYS;
-  return (packReact(kind, start, dir, (up ? 1 : 0) | (((off + 4) & 1) << 1), (off + 4) >> 1) | ((facing & 255) << FACING_SHIFT)) >>> 0;
+  return (packReact(kind, start, dir, (up ? 1 : 0) | (((off + 4) & 1) << 1), (off + 4) >> 1) | ((facing & (LIE_FACINGS - 1)) << FACING_SHIFT)) >>> 0;
 }
 
 /** The facing, LIE_FACINGS to a turn, of a body whose yaw is `yaw` (65536 to a turn). */
-export const facingOf = (yaw: number): number => Math.round(yaw / 256) & (LIE_FACINGS - 1);
+export const facingOf = (yaw: number): number => Math.round(yaw * LIE_FACINGS / 65536) & (LIE_FACINGS - 1);
 
 /** The way, LIE_WAYS to a turn, the unit (dx, dz) lies from `facing` (LIE_FACINGS to a turn). */
 export function wayFrom(facing: number, dx: number, dz: number): number {
@@ -94,27 +89,30 @@ export function lyingOff(word: number, facing: number): number {
   return (off / LIE_WAYS) * 2 * Math.PI + (facing === facing ? turnFrom(word, facing) : 0);
 }
 
-/** Quarter turns a body laid down by `word` has turned since, -8 to 7, as the server last kept them (withTurn). */
-const lieTurns = (word: number): number => (((word >>> TURN_SHIFT) & 15) << 28) >> 28;
+/** Signed half turns over this part of the fall, enough for thirty ticks turning up to half a turn per tick. */
+const lieTurns = (word: number): number => word >> TURN_SHIFT;
 
 /**
  * Radians from facing `facing` (a share of a turn) to the facing a body laid down by `word` lies against: the way round
- * nearest the quarter turns the word keeps, so it goes on round the way it has been going.
+ * nearest the half turns the word keeps, so it goes on round the way it has been going.
  */
 function turnFrom(word: number, facing: number): number {
-  const d = ((word >>> FACING_SHIFT) & (LIE_FACINGS - 1)) / LIE_FACINGS - facing, near = -lieTurns(word) / 4;
+  const d = ((word >>> FACING_SHIFT) & (LIE_FACINGS - 1)) / LIE_FACINGS - facing, near = -lieTurns(word) / 2;
   return (d - Math.round(d - near)) * 2 * Math.PI;
 }
 
 /**
- * Word `word` with the quarter turns a body laid down by it has turned since kept up to date for its facing now,
+ * Word `word` with the half turns a body laid down by it has turned since kept up to date for its facing now,
  * `facing` (a share of a turn): the same word for any other reaction, or while they have not changed.
  */
-export function withTurn(word: number, facing: number): number {
+export function withTurn(word: number, facing: number, before = facing, age = 0): number {
   const kind = reactKind(word);
   if (kind !== REACT_FALL && kind !== REACT_RISE) return word;
-  const turns = Math.max(-8, Math.min(7, Math.round((-turnFrom(word, facing) / (2 * Math.PI)) * 4)));
-  return ((word & ~(15 << TURN_SHIFT)) | ((turns & 15) << TURN_SHIFT)) >>> 0;
+  const delta = facing - before;
+  let turns = -turnFrom(word, before) / (2 * Math.PI) + delta - Math.round(delta);
+  // A body flat on the ground can forget whole revolutions before it gets up.
+  if (kind === REACT_FALL && age >= TOPPLE && age <= RISE) turns -= Math.round(turns);
+  return ((word & ((1 << TURN_SHIFT) - 1)) | (Math.round(turns * 2) << TURN_SHIFT)) >>> 0;
 }
 
 export const reactKind = reactClass;

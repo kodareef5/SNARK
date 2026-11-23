@@ -1,7 +1,9 @@
 // Where every moving entity was over the last half second. A shot is judged against where its target was when the shooter saw it.
 // Only players and awake creatures have rows. A sleeping creature has none, because it has not moved.
 
-import { fallFrameChanged } from "../shared/anim/pose.ts";
+import { ANIM_STRIDE_MASK, AnimState, bodySeed, fallFrameChanged } from "../shared/anim/pose.ts";
+import { HUMAN } from "../shared/anim/human.ts";
+import type { ServerWorld } from "./world.ts";
 import { F_ALIVE, GEAR_WORN, wider, type EntityStore } from "../shared/sim/entities.ts";
 
 /** Ticks kept, a power of two. A tick is recorded after it is stepped, so while it steps these are the ticks before it, past REWIND_TICKS (server/combat.ts). */
@@ -25,6 +27,7 @@ export class Past {
   cue = 0;
   /** A survivor's reaction to a blow (shared/anim/reactions.ts); 0 for none. */
   react = 0;
+  stride = 0;
   /** Mechanical attitude is sparse in History; ordinary creatures do not allocate a second ring. */
   pitch = 0; roll = 0; qx = 0; qy = 0; qz = 0; qw = 1; steering = 0;
   seat = 0; seatGen = 0; seatSlot = 0; saddle = 0; hostKind = 0;
@@ -81,7 +84,7 @@ export class Past {
     this.blendSeat(other, k);
     const turn = ((other.yaw - this.yaw + 32768) & 0xffff) - 32768;
     this.yaw = (this.yaw + Math.round(turn * k)) & 0xffff;
-    if (k >= 0.5) { this.anim = other.anim; this.cue = other.cue; this.react = other.react; }
+    if (k >= 0.5) { this.anim = other.anim; this.cue = other.cue; this.react = other.react; this.stride = other.stride; }
   }
 
   vehicleFrom(ents: EntityStore, e: number): void {
@@ -126,6 +129,8 @@ export class History {
   private readonly cues = new Map<number, Uint32Array>();
   /** The same for reactions to blows, each told of by `reacted`. */
   private readonly reacts = new Map<number, Uint32Array>();
+  private readonly strides = new Map<number, { gen: number; motion: number; rate: number; offset: number; ring: Uint8Array }>();
+  private readonly strideState = new AnimState();
   private readonly vehicles = new Map<number, Float32Array>();
   private readonly seats = new Map<number, Float64Array>();
   /** Tokens exist only for queried/teleported tracked bodies; untrack retires them with the history row. */
@@ -169,7 +174,7 @@ export class History {
 
   get bytes(): number {
     return this.capacity * HISTORY_TICKS * ROW_BYTES + this.rowOf.byteLength + this.travelled.byteLength + this.travelGen.byteLength + this.travel.byteLength
-      + this.vehicles.size * HISTORY_TICKS * VEHICLE_FIELDS.length * 4 + this.seats.size * HISTORY_TICKS * SEAT_FIELDS.length * 8;
+      + this.strides.size * HISTORY_TICKS + this.vehicles.size * HISTORY_TICKS * VEHICLE_FIELDS.length * 4 + this.seats.size * HISTORY_TICKS * SEAT_FIELDS.length * 8;
   }
 
   /** The entity in row `r`, for `r` below `rows`: an awake creature or a player's body. */
@@ -212,6 +217,7 @@ export class History {
     if (r < 0) return;
     this.cues.delete(e);
     this.reacts.delete(e);
+    this.strides.delete(e);
     this.vehicles.delete(e);
     this.seats.delete(e);
     this.motionEpochs.delete(e);
@@ -253,8 +259,30 @@ export class History {
     if (epoch !== 0 && !this.motionEpochs.has(e)) this.motionEpochs.set(e, epoch);
   }
 
+  /** A speed or stance change starts a new clock at the phase the previous clock reached. */
+  strideOf(e: number, tick: number, world: ServerWorld): number {
+    const ents = this.ents, def = world.reg.defs[ents.kind[e]!];
+    if (def?.type !== "species" || def.skeleton !== HUMAN.id || !this.follows(e)) return 0;
+    const gen = ents.gen[e]!, motion = ents.anim[e]! & ANIM_STRIDE_MASK;
+    let clock = this.strides.get(e);
+    if (clock?.gen !== gen) {
+      if (clock) this.strides.delete(e);
+      if (!(motion & 15)) return 0;
+      clock = { gen, motion: -1, rate: 0, offset: 0, ring: new Uint8Array(HISTORY_TICKS) };
+      this.strides.set(e, clock);
+    }
+    if (clock.motion !== motion) {
+      this.strideState.unpack(ents.anim[e]!, ents.cue[e]!);
+      const rate = world.anim.strideRate(this.strideState);
+      clock.offset = (clock.offset + Math.round((tick + bodySeed(e)) * (clock.rate - rate) * 256)) & 255;
+      clock.rate = rate;
+      clock.motion = motion;
+    }
+    return clock.offset;
+  }
+
   /** Call once per tick, after everything has moved. */
-  record(tick: number): void {
+  record(tick: number, world?: ServerWorld): void {
     const flags = this.ents.flags;
     const slot = tick & MASK;
     this.tickOf[slot] = tick;
@@ -265,7 +293,13 @@ export class History {
       const e = this.entOf[r]!;
       // Destroyed without an untrack call. Iterating backward means the row moved into the gap was already written.
       if ((flags[e]! & F_ALIVE) === 0) this.untrack(e);
-      else this.write(r * HISTORY_TICKS + slot, e);
+      else {
+        if (world) {
+          const offset = this.strideOf(e, tick, world), clock = this.strides.get(e);
+          if (clock) clock.ring[slot] = offset;
+        }
+        this.write(r * HISTORY_TICKS + slot, e);
+      }
     }
     // A body's cues are let go once it has had none for the whole window.
     for (const [e, ring] of this.cues) {
@@ -358,6 +392,7 @@ export class History {
       out.anim = ents.anim[e]!;
       out.cue = ents.cue[e]!;
       out.react = ents.react[e]!;
+      out.stride = 0;
       out.vehicleFrom(ents, e);
       out.seatFrom(ents, e);
       if (out.seat) out.hostEpoch = this.motionEpoch(out.seat - 1);
@@ -372,6 +407,7 @@ export class History {
     out.anim = this.anim[i]!;
     out.cue = this.cues.get(e)?.[tick & MASK] ?? 0;
     out.react = this.reacts.get(e)?.[tick & MASK] ?? 0;
+    out.stride = this.strides.get(e)?.ring[tick & MASK] ?? 0;
     const vehicle = this.vehicles.get(e);
     if (vehicle) for (let field = 0; field < VEHICLE_FIELDS.length; field++) out[VEHICLE_FIELDS[field]!] = vehicle[(tick & MASK) * VEHICLE_FIELDS.length + field]!;
     else out.vehicleFrom(ents, e);

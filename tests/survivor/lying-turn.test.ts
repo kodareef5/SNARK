@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_HEAD, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, humanPose } from "../../shared/anim/pose.ts";
-import { facingOf, packLie, REACT_FALL, REACT_RISE, withTurn } from "../../shared/anim/reactions.ts";
+import { facingOf, packLie, REACT_FALL, REACT_RISE, lyingOff, withTurn } from "../../shared/anim/reactions.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { coreAnim } from "../fixtures/pack.ts";
 
@@ -53,5 +53,27 @@ test("one step of the facing across the way opposite barely moves the head", () 
     for (let k = 1; k <= 64; k++) word = withTurn(word, 0.25 + (way * k) / 128);
     const near = 0.25 + way * 0.5, a = head(word, near - way / 65536, 25), b = head(word, near + way / 65536, 25);
     expect(Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!)).toBeLessThan(0.001);
+  }
+});
+
+test("fast turns keep their direction over an entire rise", () => {
+  for (const step of [-.49, .49]) {
+    let word = packLie(REACT_RISE, 0, true, 0, 0), before = 0;
+    for (let tick = 1; tick < 30; tick++) {
+      const facing = tick * step - Math.floor(tick * step);
+      word = withTurn(word, facing, before, tick);
+      expect(lyingOff(word, facing)).toBeCloseTo(-tick * step * 2 * Math.PI, 8);
+      before = facing;
+    }
+  }
+});
+
+test("spinning while flat leaves no extra revolutions to unwind", () => {
+  let word = packLie(REACT_FALL, 0, false, 0, 0), before = 0;
+  for (let tick = 1; tick <= 60; tick++) {
+    const facing = tick * .375 % 1;
+    word = withTurn(word, facing, before, tick);
+    if (tick >= 10) expect(Math.abs(lyingOff(word, facing))).toBeLessThanOrEqual(Math.PI);
+    before = facing;
   }
 });

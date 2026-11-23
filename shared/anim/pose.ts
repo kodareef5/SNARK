@@ -22,6 +22,8 @@ export const ANIM_MOTION_BITS = 12;
 export const ANIM_LOOK_BITS = 6;
 export const ANIM_ACTION_BITS = 14;
 export const ANIM_MOTION_MASK = 0xfff;
+/** The speed, stance and domain bits that determine the stride rate. */
+export const ANIM_STRIDE_MASK = 0xf0f;
 export const ANIM_LOOK_SHIFT = 12;
 export const ANIM_ACTION_SHIFT = 18;
 
@@ -112,6 +114,7 @@ export const ANIM_GLIDE = 5;
 export const CUE_MATING_SHIFT = 28;
 /** On a living survivor, the first mating bit: knocked off its feet, it lies as its ragdoll does (shared/anim/human-fall.ts). */
 export const CUE_DOWN = 1 << CUE_MATING_SHIFT;
+
 /** A living body switches its entity origin from feet to hips for a physical fall. Creatures reuse the survivor cue bit for mating. */
 export function fallFrameChanged(survivor: boolean, cueA: number, reactA: number, cueB: number, reactB: number): boolean {
   return survivor ? ((cueA ^ cueB) & CUE_DOWN) !== 0 : (reactA === REACT_CREATURE_DOWN) !== (reactB === REACT_CREATURE_DOWN);
@@ -124,7 +127,7 @@ export function fallFrameChanged(survivor: boolean, cueA: number, reactA: number
  */
 export const EMOTE_BITS = 29;
 /** A survivor's reaction to a blow, its own word beside the emote: shared/anim/reactions.ts lays it out. */
-export const REACT_BITS = 31;
+export const REACT_BITS = 32;
 export const EMOTE_ID_BITS = 10;
 export const EMOTE_START_SHIFT = 10;
 export const EMOTE_ROLE_SHIFT = 26;
@@ -232,6 +235,8 @@ export class AnimState {
   emoteMirror = false;
   /** A survivor's reaction to a blow, as shared/anim/reactions.ts packs it; 0 for none. Sent beside the pose and the cues. */
   react = 0;
+  /** Offset of the grounded stride clock in 256ths of a turn, or -1 for a locally tracked gait. */
+  stride = -1;
   /**
    * The share of a turn the body faces, as its yaw does. A body a topple or a rise lays down lies against the facing it
    * had then (shared/anim/reactions.ts). Not replicated: whoever poses a body sets it; NaN lays it against its own.
@@ -295,7 +300,8 @@ export class AnimState {
     this.mating = (cue >>> CUE_MATING_SHIFT) & 7;
   }
 
-  unpack(word: number, cue = 0, emote = 0, react = 0): void {
+  unpack(word: number, cue = 0, emote = 0, react = 0, stride = -1): void {
+    this.stride = stride;
     this.unpackCue(cue);
     this.unpackEmote(emote);
     this.react = react;
@@ -423,6 +429,7 @@ export class HumanAnim {
   readonly swimming: readonly GaitClip[];
   /** Shares of the gaits, as gaitShares fills them. */
   readonly w = new Float64Array(3);
+  private readonly strideRates = new Float64Array(3 * (SPEED_MAX + 1));
 
   constructor(set: ClipSet) {
     this.set = set;
@@ -466,6 +473,17 @@ export class HumanAnim {
     // A crawl drags its feet and a swimmer has no ground, so their strides are the speed each plays at its own rate.
     this.crawling = gaits([this.proneCrawl, this.proneCrawl ? (PRONE_SPEED * this.proneCrawl.frames) / TICK_RATE : 0]);
     this.swimming = gaits([this.swim, this.swim ? (SWIM_SPEED * this.swim.frames) / TICK_RATE : 0]);
+    for (const [stance, clips] of [[STANCE_STAND, this.standing], [STANCE_CROUCH, this.crouching], [STANCE_PRONE, this.crawling]] as const) {
+      for (let s = 1; s <= SPEED_MAX; s++) {
+        const speed = s * SPEED_STEP, stride = gaitShares(clips, speed, true, this.w);
+        if (stride > 0) this.strideRates[stance * (SPEED_MAX + 1) + s] = speed / (TICK_RATE * stride);
+      }
+    }
+  }
+
+  /** Turns per tick for this grounded speed and stance. */
+  strideRate(st: AnimState): number {
+    return st.grounded && st.mode === MODE_WALK ? this.strideRates[st.stance * (SPEED_MAX + 1) + st.speed] ?? 0 : 0;
   }
 
   /** Takes in emote clips that came later (a client streams them after the first frame). */
@@ -592,9 +610,18 @@ export function advanceHuman(anim: HumanAnim, g: Gait, st: AnimState, tick: numb
     g.wingOpen = g.wingLean = g.wingHeading = Number.NaN;
     g.wingTurn = 0;
   }
+  if (st.stride >= 0 && st.grounded && st.mode === MODE_WALK) {
+    g.phase = groundedStride(anim, st, tick);
+    return;
+  }
   const stride = gaitShares(gaits, g.speed, true, anim.w);
   if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, stride);
   else g.step(metres, stride);
+}
+
+function groundedStride(anim: HumanAnim, st: AnimState, tick: number): number {
+  const turns = (tick + st.seed) * anim.strideRate(st) + st.stride / 256;
+  return turns - Math.floor(turns);
 }
 
 /** Plays the gaits at `speed` over the idle, in step at `phase`, or at the phase the tick gives where that is NaN. Returns their share. */
@@ -630,8 +657,9 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   // Going down or getting up, its hips turn back from its travel as it lies, by its state alone, so every machine lays it
   // over the same way round; and it goes at the speed its state says, as the server poses it, not a gait's eased speed.
   const lies = lieAt >= 0 ? stepShare(lieAt) : lyingShare(st.react, tick);
-  const speed = gait && lies <= 0 ? gait.speed : st.speed * SPEED_STEP;
-  const phase = gait ? gait.phase : Number.NaN;
+  const clocked = st.stride >= 0 && st.grounded && st.mode === MODE_WALK;
+  const speed = gait && lies <= 0 && !clocked ? gait.speed : st.speed * SPEED_STEP;
+  const phase = clocked ? groundedStride(anim, st, tick) : gait ? gait.phase : Number.NaN;
   // Travelling backward plays the gait in reverse with the hips turned the other way.
   let twist = st.dir <= DIR_STEPS / 2 ? st.dir : st.dir - DIR_STEPS;
   const reverse = twist > DIR_STEPS / 4 || twist < -DIR_STEPS / 4;

@@ -39,7 +39,7 @@ export interface ReactionsContext {
 export class Reactions {
   private readonly ctx: ReactionsContext;
   /** Bodies with a reaction word, and the tick each may be staggered again. */
-  private readonly reeling = new Set<number>();
+  private readonly reeling = new Map<number, { word: number; facing: number }>();
   private readonly calmUntil = new Map<number, number>();
   readonly stats = { staggers: 0, escalated: 0, calmed: 0, toppled: 0 };
 
@@ -84,7 +84,7 @@ export class Reactions {
     // A car's contact has moved it already; a blow moves it here.
     if (!pushed) this.push(e, dv, dx, dz);
     world.history.reacted(e);
-    this.reeling.add(e);
+    this.reeling.set(e, { word: ents.react[e]!, facing: ents.yaw[e]! / 65536 });
     this.calmUntil.set(e, tick + reactFrames(ents.react[e]!) + CALM_SECONDS * TICK_RATE);
     this.stats.staggers++;
     tier = TIER_STAGGER;
@@ -121,7 +121,7 @@ export class Reactions {
     ents.react[e] = packLie(REACT_FALL, tick, toppleUp(Math.round((way * REACT_DIRS) / LIE_WAYS) % REACT_DIRS), way, facing);
     ents.reactTicks[e] = reactFrames(ents.react[e]!);
     world.history.reacted(e);
-    this.reeling.add(e);
+    this.reeling.set(e, { word: ents.react[e]!, facing: ents.yaw[e]! / 65536 });
     this.calmUntil.set(e, tick + reactFrames(ents.react[e]!) + CALM_SECONDS * TICK_RATE);
     this.stats.toppled++;
     return reactFrames(ents.react[e]!) / TICK_RATE;
@@ -143,7 +143,7 @@ export class Reactions {
     ents.react[e] = packLie(REACT_RISE, tick, up, way, facing);
     ents.reactTicks[e] = reactFrames(ents.react[e]!);
     world.history.reacted(e);
-    this.reeling.add(e);
+    this.reeling.set(e, { word: ents.react[e]!, facing: ents.yaw[e]! / 65536 });
     this.calm(e);
   }
 
@@ -163,8 +163,10 @@ export class Reactions {
   step(): void {
     const { world } = this.ctx;
     const ents = world.ents, tick = world.tick;
-    for (const e of this.reeling) {
-      const was = ents.react[e]!, word = withTurn(was, ents.yaw[e]! / 65536);
+    for (const [e, last] of this.reeling) {
+      const was = ents.react[e]!, facing = ents.yaw[e]! / 65536;
+      const word = was ? withTurn(last.word, facing, last.facing, reactAge(was, tick)) : 0;
+      last.word = word; last.facing = facing;
       if (word !== was) {
         ents.react[e] = word;
         world.history.reacted(e);

@@ -290,6 +290,7 @@ export class RemoteSample {
   readonly emote = new Uint32Array(MAX_VIEW);
   /** A survivor's reaction to a blow, as shared/anim/reactions.ts packs it; 0 for none. */
   readonly react = new Uint32Array(MAX_VIEW);
+  readonly stride = new Uint8Array(MAX_VIEW);
   /** LOOK_BYTES each, valid where `hasLook` is 1. */
   readonly look = new Uint8Array(MAX_VIEW * LOOK_BYTES);
   readonly hasLook = new Uint8Array(MAX_VIEW);
@@ -1043,6 +1044,7 @@ export class ClientSession {
       // A fall switches between feet and hips only at the first snapshot in its new frame.
       const switched = both && fallFrameChanged(this.registry.ids[b.kind[j]!] === "core:survivor", a!.cue[i]!, a!.react[i]!, b.cue[j]!, b.react[j]!);
       const attachment = both && (switched || k < .5) ? a! : b, attachmentRow = attachment === a ? i : j;
+      out.stride[n] = attachment.stride[attachmentRow]!;
       out.seat[n] = attachment.seat[attachmentRow]!; out.seatSlot[n] = attachment.seatSlot[attachmentRow]!; out.seatGen[n] = attachment.seatGen[attachmentRow]!;
       const vehicle = this.registry.vehicle[b.kind[j]!];
       if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
