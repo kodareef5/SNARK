@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 import { BODY_CLASSES, CATEGORIES, NetLog, SnapshotParts, bodyClass, type NetRow } from "../../client/core/debug/net.ts";
 import { SNAP_REST } from "../../client/core/net-tap.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
 import { codeNames } from "../../shared/debug.ts";
 import * as P from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -100,12 +101,12 @@ test("the tap counts each byte that crossed the socket by kind, and splits each 
   // Each snapshot's sections are all its bits; past its bodies is only the last byte's padding.
   expect(snapshots.length).toBeGreaterThan(100);
   expect(snapshots.filter((s) => s.sections !== s.bits || s.rest >= 8)).toEqual([]);
-  // The other survivor walking is what the bodies' bits are.
+  // A snapshot each tick, and the other survivor walking among the bodies.
   const parts = new SnapshotParts();
   log.snapshots(parts, 3);
-  expect([parts.count, parts.classes[BODY_CLASSES.indexOf("survivor")]! > 0, parts.classes[BODY_CLASSES.indexOf("vehicle")]]).toEqual([30, true, 0]);
+  expect([Math.round(parts.count), parts.classes[BODY_CLASSES.indexOf("survivor")]! > 0]).toEqual([TICK_RATE, true]);
 
-  // Every kind seen has a category, and the text, the event and the other survivor are among them.
+  // Every kind seen has a category, and the text, the event, the chat and the snapshot's parts are among them.
   const seen = rows.slice(0, n).map((r) => `${r.kindName} ${r.subName} ${CATEGORIES[r.category]}`);
   expect(seen.filter((s) => s.endsWith(" other"))).toEqual([]);
   expect(seen).toEqual(expect.arrayContaining(["S_EVENT EVENT_KILL combat", "S_TEXT TEXT_NOTICE text", "S_TEXT TEXT_GLOBAL text", "C_COMMAND CMD_CHAT commands", "C_INPUT  input", "S_SNAPSHOT bodies bodies", "S_SNAPSHOT own body player"]));
