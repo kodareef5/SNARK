@@ -129,7 +129,7 @@ function open(variant: number): Form {
 export function sheetBay(): Component {
   const finish = RUIN_FINISHES.rustsheet;
   return {
-    name: NAME, family: "sheet cladding", material: "sheet", finish: [finish.color, finish.under], skin: [partBox(WALL, bay)], apart: [0, -0.3, 7.5],
+    name: NAME, family: "clad", material: "sheet", finish: [finish.color, finish.under], skin: [partBox(WALL, bay)], apart: [0, -0.3, 7.5],
     forms: (variant) => [whole(), breach("breach A", -1, variant), breach("breach B", 1, variant), open(variant)],
   };
 }

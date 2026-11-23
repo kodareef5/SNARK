@@ -6,12 +6,13 @@ import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
 import { balcony } from "../../content/breaks/balcony.ts";
 import { chunkVolume, formFaults } from "../../content/breaks/check.ts";
 import type { Chunk } from "../../content/breaks/cut.ts";
-import { VARIANTS, type Form } from "../../content/breaks/forms.ts";
-import { pitchedRoofSample } from "../../content/breaks/roof.ts";
+import { VARIANTS, kitted, type Form } from "../../content/breaks/forms.ts";
+import { pitchedRoof } from "../../content/breaks/roof.ts";
 import { sheetBay } from "../../content/breaks/sheet-bay.ts";
 
-const bay = sheetBay(), roof = pitchedRoofSample(), flats = balcony();
-const all = [bay, roof, flats];
+const bay = sheetBay(), roof = pitchedRoof(), flats = balcony();
+// As content holds them: on the grid, a heap solid as its first variant.
+const all = [bay, roof, flats].map(kitted);
 const variants = Array.from({ length: VARIANTS }, (_, v) => v);
 /** A component's forms by name, in one variant. */
 const formsOf = (c: { forms: (variant: number) => Form[] }, variant: number) => {
@@ -157,12 +158,12 @@ describe("the balcony", () => {
     }
   });
 
-  test("a breach drops the slab's half in four to six shards, its front and return", () => {
+  test("a breach drops the slab's half in four to six shards, its front and return as one", () => {
     for (const v of variants) for (const f of [formsOf(flats, v).a, formsOf(flats, v).b]) {
       const shards = f.fragments.filter((g) => g.every((c) => c.bare));
       expect(shards.length).toBeGreaterThanOrEqual(4);
       expect(shards.length).toBeLessThanOrEqual(6);
-      expect(f.fragments.length - shards.length).toBe(2);
+      expect(f.fragments.length - shards.length).toBe(1);
     }
   });
 

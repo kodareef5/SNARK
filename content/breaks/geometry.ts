@@ -54,6 +54,24 @@ export function tidy(poly: readonly Pt[]): Pt[] {
   return out.length >= 3 && area(out) > SLIVER ? out : [];
 }
 
+/**
+ * A polygon with its points on the grid, as it will be written: a point the grid moved onto a straight run or inside the
+ * outline is left out, so what is left is convex. None if that is a sliver.
+ */
+export function gridded(poly: readonly Pt[]): Pt[] {
+  let out = tidy(poly.map(([u, v]): Pt => [grid(u), grid(v)]));
+  for (let again = true; again && out.length >= 3; ) {
+    again = false;
+    for (let i = 0; i < out.length; i++) {
+      if (cross(out[(i + out.length - 1) % out.length]!, out[i]!, out[(i + 1) % out.length]!) > 1e-9) continue;
+      out = out.filter((_, k) => k !== i);
+      again = true;
+      break;
+    }
+  }
+  return out.length >= 3 && area(out) > SLIVER ? out : [];
+}
+
 /** The part of a convex polygon on the left of the line from `a` to `b`. */
 export function clip(poly: readonly Pt[], a: Pt, b: Pt): Pt[] {
   const out: Pt[] = [];

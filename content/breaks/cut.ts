@@ -3,7 +3,7 @@
 
 import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
 import type { HullDef } from "../../shared/world/convex.ts";
-import { area, asRect, atMost, grid, hyp, meet, prism, rectLess, rectMeet, rectPoly, type Corner, type Pt, type Rect } from "./geometry.ts";
+import { area, asRect, atMost, grid, gridded, hyp, meet, prism, rectLess, rectMeet, rectPoly, type Corner, type Pt, type Rect } from "./geometry.ts";
 import type { Plan } from "./plan.ts";
 
 /** A part of a piece: a box in the piece's plane (`r`) through a thickness, as a facade module's parts are written. */
@@ -59,11 +59,24 @@ export function partChunk(frame: Frame, p: Part, bare = false): Chunk {
   return { corners, ...(p.color !== undefined ? { color: p.color } : {}), ...(bare ? { bare } : {}) };
 }
 
-/** Parts cut in two at `u`, so a cut in one half of a piece leaves the other half's parts alone. */
+/** A fitting is cut in two only where this much of it lies on each side: a rail is, a mullion on the line is not. */
+const EACH_SIDE = 0.5;
+
+/**
+ * Parts cut in two at `u` along the frame's first axis, so a cut in one half of a piece leaves the other half's parts
+ * alone. A bevelled part is cut where it is a prism along that axis, as a coping is.
+ */
 export function splitAt(parts: readonly Part[], u: number): Part[] {
   return parts.flatMap((p): Part[] => {
-    if (p.hull || p.loose || p.r[0] >= u - 1e-5 || p.r[1] <= u + 1e-5) return [p];
-    return [{ ...p, r: [p.r[0], u, p.r[2], p.r[3]] }, { ...p, r: [u, p.r[1], p.r[2], p.r[3]] }];
+    const [u0, u1] = p.r;
+    if (u0 >= u - 1e-5 || u1 <= u + 1e-5 || (p.loose && Math.min(u - u0, u1 - u) < EACH_SIDE - 1e-9)) return [p];
+    const a: Rect = [u0, u, p.r[2], p.r[3]], b: Rect = [u, u1, p.r[2], p.r[3]];
+    if (!p.hull) return [{ ...p, r: a }, { ...p, r: b }];
+    // Its corners are all at one end or the other, and the same at both.
+    const ends = p.hull.every((c) => Math.abs(c[0] - u0) < 1e-9 || Math.abs(c[0] - u1) < 1e-9);
+    if (!ends) return [p];
+    const moved = (from: number, to: number): Corner[] => p.hull!.map((c): Corner => (Math.abs(c[0] - from) < 1e-9 ? [to, c[1], c[2]] : c));
+    return [{ ...p, r: a, hull: moved(u1, u) }, { ...p, r: b, hull: moved(u0, u) }];
   });
 }
 
@@ -75,6 +88,9 @@ export interface Cut {
   /** Panes that go, as boxes: the client drops particles from them. */
   readonly panes: readonly ShapeBox[];
 }
+
+/** A rectangle too thin to be a box once its numbers are on the grid. */
+const sliver = (r: Rect): boolean => r[1] - r[0] < 0.004 || r[3] - r[2] < 0.004;
 
 /** Whether a part's box and the plan's mouth share any area. */
 const mouthed = (plan: Plan, r: Rect): boolean => plan.shards.some((s) => meet(s, rectPoly(r)).length > 0);
@@ -95,23 +111,25 @@ export function cut(frame: Frame, parts: readonly Part[], plans: Plan | readonly
     if (p.glass) { panes.push(partBox(frame, p)); continue; }
     // A bevelled part is not cut either: its bevel would be lost.
     if (p.loose || p.hull) { fragments.push([partChunk(frame, p)]); continue; }
-    for (const r of rectLess(p.r, plan.window)) boxes.push(boxOf(frame, r, p.w0, p.w1, p.color));
+    for (const r of rectLess(p.r, plan.window)) if (!sliver(r)) boxes.push(boxOf(frame, r, p.w0, p.w1, p.color));
     const held = rectPoly(inside);
     const solid = (poly: readonly Pt[]): Chunk => ({ corners: prism(poly, p.w0, p.w1, frame.to), ...(p.color !== undefined ? { color: p.color } : {}), bare: true });
     for (const tooth of plan.teeth) {
       const poly = meet(tooth, held);
       if (poly.length === 0) continue;
       const r = asRect(poly);
-      if (r) boxes.push(boxOf(frame, r, p.w0, p.w1, p.color));
-      else for (const part of atMost(poly, 6)) chunks.push(solid(part));
+      if (r) { if (!sliver(r)) boxes.push(boxOf(frame, r, p.w0, p.w1, p.color)); }
+      else for (const part of atMost(poly, 6).map(gridded)) if (part.length > 0) chunks.push(solid(part));
     }
     // One shard of the plane is one thing that leaves, whatever parts it is made of.
     for (const shard of plan.shards) {
       const poly = meet(shard, held);
       if (poly.length === 0) continue;
+      const parts = atMost(poly, 6).map(gridded).filter((part) => part.length > 0);
+      if (parts.length === 0) continue;
       let group = byShard.get(shard);
       if (!group) { group = []; byShard.set(shard, group); fragments.push(group); }
-      for (const part of atMost(poly, 6)) group.push(solid(part));
+      for (const part of parts) group.push(solid(part));
     }
   }
   return { look: { boxes, chunks }, fragments, panes };
@@ -121,14 +139,14 @@ export function cut(frame: Frame, parts: readonly Part[], plans: Plan | readonly
 export function solidLess(frame: Frame, solid: readonly Part[], passable: readonly Rect[]): ShapeBox[] {
   let rects: { r: Rect; p: Part }[] = solid.map((p) => ({ r: p.r, p }));
   for (const hole of passable) rects = rects.flatMap(({ r, p }) => rectLess(r, hole).map((left) => ({ r: left, p })));
-  return rects.map(({ r, p }) => boxOf(frame, r, p.w0, p.w1));
+  return rects.filter(({ r }) => !sliver(r)).map(({ r, p }) => boxOf(frame, r, p.w0, p.w1));
 }
 
 /**
  * Bars out of a break in reinforced concrete: 7 cm square, rust, each from a point of the mouth toward its middle, some
- * bent down. `down` is the way a bar hangs: along -v in a wall, along -w in a slab.
+ * bent down. A bar hangs along -v in a wall and along -w in a slab. With `foot` false none stands at the window's foot.
  */
-export function bars(frame: Frame, plan: Plan, w0: number, w1: number, most: number, seed: number): ShapeBox[] {
+export function bars(frame: Frame, plan: Plan, w0: number, w1: number, most: number, seed: number, foot = true): ShapeBox[] {
   const RUST = 179, T = 0.035;
   const out: ShapeBox[] = [];
   const mid = (w0 + w1) / 2, cover = Math.min(0.08, (w1 - w0) / 4);
@@ -137,7 +155,7 @@ export function bars(frame: Frame, plan: Plan, w0: number, w1: number, most: num
     const p = plan.mouth[i]!;
     const du = plan.c[0] - p[0], dv = plan.c[1] - p[1];
     const far = hyp(du, dv);
-    if (far < 0.5) continue;
+    if (far < 0.5 || (!foot && p[1] <= plan.window[2] + 1e-6)) continue;
     const length = 0.25 + ((seed >>> (k * 3)) & 7) * 0.06;
     const w = k % 2 ? mid - (w1 - w0) / 2 + cover : mid + (w1 - w0) / 2 - cover;
     // A bar runs along the axis nearer the way to the middle, as a mat's bars lie.

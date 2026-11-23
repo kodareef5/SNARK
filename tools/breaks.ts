@@ -1,12 +1,14 @@
-// Break sets for review. `bun tools/breaks.ts` draws every sample component in every form, with what leaves drawn apart,
-// into artifacts/breaks. `--only wall8` draws one; `--variant 2` picks which of the four cuts.
+// Break sets for review. `bun tools/breaks.ts` draws every breaking shape of the kit in every form, with what leaves
+// drawn apart, into artifacts/breaks: a sheet a family. `--only wall8` draws one shape, `--family slab` one family, and
+// `--variant 2` picks which of the four cuts.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Chunk } from "../content/breaks/cut.ts";
-import { VARIANTS, type Component, type Form } from "../content/breaks/forms.ts";
+import { VARIANTS, kitted, type Component, type Form } from "../content/breaks/forms.ts";
 import type { Corner } from "../content/breaks/geometry.ts";
-import { SAMPLES } from "../content/breaks/samples.ts";
+import { KIT } from "../content/breaks/kit.ts";
+import { sheetBay } from "../content/breaks/sheet-bay.ts";
 import { drawSheet, type Drawn, type Row, type Tile } from "./breaks/sheet.ts";
 import { encodePng } from "./snap/png.ts";
 
@@ -37,20 +39,21 @@ export function rowOf(c: Component, variant: number): Row {
   return { title: `${c.name}: ${c.family}, ${c.material}`, tiles: c.forms(variant).map((f) => tile(c, f)), ...(c.eye ? { eye: c.eye } : {}) };
 }
 
+/** The kit's components and the sheet bay, which is a sample: the kit has no shape of sheet on a frame yet. */
+const SHOWN: readonly Component[] = [...KIT, kitted(sheetBay())];
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const value = (flag: string): string | undefined => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined);
-  const only = value("--only"), variant = Number(value("--variant") ?? 0) % VARIANTS;
+  const only = value("--only"), family = value("--family"), variant = Number(value("--variant") ?? 0) % VARIANTS;
   const out = value("--out") ?? "artifacts/breaks";
   mkdirSync(out, { recursive: true });
-  const shown = SAMPLES.filter((c) => !only || c.name === only);
-  for (const c of shown) {
-    const sheet = drawSheet([rowOf(c, variant)]);
-    writeFileSync(join(out, `${c.name}-${variant}.png`), encodePng(sheet.width, sheet.height, sheet.rgba));
-  }
-  if (!only) {
-    const all = drawSheet(shown.map((c) => rowOf(c, variant)));
-    writeFileSync(join(out, `all-${variant}.png`), encodePng(all.width, all.height, all.rgba));
-  }
+  const shown = SHOWN.filter((c) => (!only || c.name === only) && (!family || c.family === family));
+  const save = (name: string, rows: readonly Row[]): void => {
+    const sheet = drawSheet(rows);
+    writeFileSync(join(out, `${name}-${variant}.png`), encodePng(sheet.width, sheet.height, sheet.rgba));
+  };
+  if (only) for (const c of shown) save(c.name, [rowOf(c, variant)]);
+  else for (const name of new Set(shown.map((c) => c.family))) save(name, shown.filter((c) => c.family === name).map((c) => rowOf(c, variant)));
   console.log(`${shown.length} components drawn to ${out}`);
 }

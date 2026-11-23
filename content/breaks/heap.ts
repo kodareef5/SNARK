@@ -1,5 +1,5 @@
 // Heaps and hung forms that any family may call: what a fallen piece becomes where it lies, and a slab or a precast panel
-// left hanging by one edge or one fixing. Drafts, as the other forms are.
+// left hanging by one edge or one fixing.
 
 import { MAX_SHAPE_BOXES, type ShapeBox } from "../../shared/content/kinds/shapes.ts";
 import { PI, detCos, detSin } from "../../shared/math/scalar.ts";
@@ -197,7 +197,7 @@ export function heapForm(ask: HeapAsk): Form {
   const turned = z1 - z0 > x1 - x0, flip = rng.float() < 0.5;
   const lay: Lay = turned ? { u0: z0, u1: z1, v0: x0, v1: x1 } : { u0: x0, u1: x1, v0: z0, v1: z1 };
   // The heap is laid out along the footprint's long side, and by half the seeds end for end.
-  const put = (u: number, y: number, v: number): Corner => { const w = flip ? lay.u0 + lay.u1 - u : u; return turned ? [v, ask.floor + y, w] : [w, ask.floor + y, v]; };
+  const put = (u: number, y: number, v: number): Corner => { const w = flip ? lay.u0 + lay.u1 - u : u; return turned ? [grid(v), grid(ask.floor + y), grid(w)] : [grid(w), grid(ask.floor + y), grid(v)]; };
   const heap = ask.kind === "wall" ? wallHeap(rng, lay) : ask.kind === "slab" ? slabHeap(rng, lay, ask.volume) : pierHeap(rng, lay);
   // A lump's volume goes as its height, so the height that makes the bulk is found from the lumps a metre tall.
   const unit = heap.mounds.reduce((s, m) => s + chunkVolume(lumpOf(m, 1, put)), 0);
@@ -238,7 +238,7 @@ export function hungSlab(ask: HungSlabAsk): Form {
   const degrees = rng.range(22, 30);
   // The turn's sine and cosine are on the grid, so every engine puts a corner alike and a flat face stays flat.
   const c = grid(detCos((degrees * PI) / 180)), s = grid(detSin((degrees * PI) / 180));
-  const spot = (out: number, y: number, w: number): Corner => (alongX ? [hinge + sign * out, y, w] : [w, y, hinge + sign * out]);
+  const spot = (out: number, y: number, w: number): Corner => (alongX ? [grid(hinge + sign * out), grid(y), grid(w)] : [grid(w), grid(y), grid(hinge + sign * out)]);
   /** A point `d` out from the hinge along the slab, `e` up through it and `w` along the held edge. */
   const at = (d: number, e: number, w: number): Corner => spot(d * c + e * s, ask.y0 - d * s + e * c, w);
   const end = long - TOOTH;
@@ -286,7 +286,7 @@ export function hungPanel(ask: HungPanelAsk): Form {
   // By half the seeds it hangs from its other top corner.
   const left = rng.float() < 0.5, fixing = left ? x0 : x1, way = left ? 1 : -1;
   const drop = grid(rng.range(0.2, 0.4)), off = grid(rng.range(0.1, 0.22)), top = y1 - drop;
-  const corners: Corner[] = [ask.z0 + off, ask.z1 + off].flatMap((z) => ([[0, 0], [x1 - x0, 0], [x1 - x0, y0 - y1], [0, y0 - y1]] as const).map(([d, e]): Corner => [fixing + way * (d * c + e * s), top - d * s + e * c, z]));
+  const corners: Corner[] = [ask.z0 + off, ask.z1 + off].flatMap((z) => ([[0, 0], [x1 - x0, 0], [x1 - x0, y0 - y1], [0, y0 - y1]] as const).map(([d, e]): Corner => [grid(fixing + way * (d * c + e * s)), grid(top - d * s + e * c), grid(z)]));
   const hanger: ShapeBox = { at: [fixing + way * 0.06, y1 - (drop + 0.1) / 2, (ask.z0 + ask.z1) / 2 + off], half: [0.04, (drop + 0.1) / 2, 0.04], color: RUST };
   return { name: "hung", note: `hangs ${Math.round(degrees)} degrees from one fixing`, look: { boxes: [hanger], chunks: [{ corners }] }, walked: { boxes: [], hulls: [{ corners }] }, fragments: [], panes: [], bears: false };
 }
