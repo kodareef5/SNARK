@@ -17,7 +17,11 @@ const text = (c: Cell | Cell[]): string => (Array.isArray(c) ? c.map(text).join(
 function sensible(def: VehicleDefinition, h: Handling): void {
   for (const [k, v] of Object.entries(h)) if (typeof v === "number") expect([def.id, k, Number.isFinite(v) && v >= 0]).toEqual([def.id, k, true]);
   const s = def.spec, length = s.halfLength * 2, within = (n: number, lo: number, hi: number, what: string) => expect([def.id, what, n > lo && n < hi]).toEqual([def.id, what, true]);
-  if (h.movement === "wheeled") {
+  if (h.movement === "skateboard") {
+    within(h.top, 5, s.maxForward + .01, "push speed");
+    within(h.ollie, .6, 1.1, "ollie height");
+    within(h.braking, 2, 10, "foot braking");
+  } else if (h.movement === "wheeled") {
     within(h.top, 5, s.maxForward + 0.01, "top speed under its limiter");
     within(h.reverse, 0.5, s.maxReverse + 0.01, "reverse under its limiter");
     within(h.to100, 0, 120, "to 100");
@@ -57,8 +61,8 @@ test("every vehicle's page says how it drives and its top speed as measured, wit
   const listed = entries.filter((e) => e.kind === "vehicles");
   expect(listed.length).toBeGreaterThan(10);
   for (const e of listed) {
-    const table = e.tables.find((t) => ["How it drives", "How it handles", "How it flies"].includes(t.title))!;
-    expect([e.id, table.rows.length]).toEqual([e.id, e.handling!.movement === "wheeled" ? 11 : e.handling!.movement === "boat" ? 10 : 7]);
+    const table = e.tables.find((t) => ["How it drives", "How it handles", "How it flies", "How it rides"].includes(t.title))!;
+    expect([e.id, table.rows.length]).toEqual([e.id, e.handling!.movement === "wheeled" ? 11 : e.handling!.movement === "boat" ? 10 : e.handling!.movement === "skateboard" ? 3 : 7]);
     for (const [what, value] of table.rows) {
       // Only what drives it is said in words.
       const words = ["Driven wheels", "Drive"].includes(text(what!));

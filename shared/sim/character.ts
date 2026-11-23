@@ -1,6 +1,7 @@
 // One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
+import { copySkate, sameSkate, type SkateState } from "./skate-state.ts";
 import { flags } from "../codes.ts";
 import { BLOCK_SOFT_SPEED, blockOut, pushOut, turnFree } from "./blockers.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
@@ -278,6 +279,7 @@ export class Body {
   yaw = 0;
   /** Full vehicle controller state, copied and replayed with the ordinary body. */
   vehicle = false;
+  skate: SkateState | null = null;
   vehicleYaw = 0;
   vehicleYawRate = 0;
   vehicleGear = 0;
@@ -381,6 +383,7 @@ export class Body {
     this.kind = o.kind;
     this.yaw = o.yaw;
     this.vehicle = o.vehicle;
+    this.skate = copySkate(this.skate, o.skate);
     this.vehicleYaw = o.vehicleYaw;
     this.vehicleYawRate = o.vehicleYawRate;
     this.vehicleGear = o.vehicleGear;
@@ -460,7 +463,7 @@ export class Body {
       this.mflags === o.mflags &&
       this.kind === o.kind &&
       this.yaw === o.yaw &&
-      this.vehicle === o.vehicle &&
+      this.vehicle === o.vehicle && sameSkate(this.skate, o.skate) &&
       this.vehicleYaw === o.vehicleYaw &&
       this.vehicleYawRate === o.vehicleYawRate &&
       this.vehicleGear === o.vehicleGear &&
@@ -897,7 +900,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
 
     // Bodies: pushed level out of any it walks into (shared/sim/blockers.ts), before the structures, which have the last say.
     const bodies = w.blockers;
-    if (bodies && bodies.count > 0 && pushOut(bodies, b.kind, nx, ny, nz, b.yaw, height, (BLOCK_SOFT_SPEED * scale) / n)) {
+    if (bodies && bodies.count > 0 && pushOut(bodies, b.kind, nx, ny, nz, b.yaw, height, (BLOCK_SOFT_SPEED * scale) / n, x, z)) {
       nx = blockOut.x < r ? r : blockOut.x > maxX ? maxX : blockOut.x;
       nz = blockOut.z < r ? r : blockOut.z > maxZ ? maxZ : blockOut.z;
     }

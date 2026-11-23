@@ -170,6 +170,7 @@ const shapeId = (name: string): string => `core:zzstreetshape_${name}`;
 const SHAPES: readonly ShapeDef[] = STREET_PIECES.map((p) => ({ type: "shape", id: shapeId(p.name), role: "thing", boxes: p.boxes, ...(p.hulls ? { hulls: p.hulls } : {}) }));
 const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   type: "structure", class: "static", id: streetKind(p.name), mesh: streetKind(p.name), shape: shapeId(p.name), half: shapeHalf(p.boxes, p.hulls),
+  ...(p.name === "rail" ? { grindLine: [[-2, .85, .1], [2, .85, .1]] as const } : {}),
   color: p.color, hp: p.hp, ...(p.material ? { material: p.material } : {}), ...(p.paint ? { paint: true as const } : {}),
   // Drawn near only: left out of the far city's lattice and mass, where a lamp would take a whole cell. A billboard is seen from afar.
   ...(p.name.startsWith("billboard") ? {} : { near: true as const }),

@@ -6,7 +6,7 @@
 //
 // A body standing still is solid: its stadium is where the snapshot shows it, on the server and in the prediction of
 // every client alike, so walking into a standing rex is predicted to the bit. A body that moves pushes a walker out no
-// faster than BLOCK_SOFT_SPEED, so where a client's guess of it is a little off the correction is small and smoothed.
+// faster than BLOCK_SOFT_SPEED, but the walker's own step never takes it deeper, so walking into a moving rex stops it.
 //
 // Who blocks whom is the caller's to say when it fills the list (server/blocking.ts, client/core/session.ts): the same
 // rules on both sides, from what the snapshot carries.
@@ -23,6 +23,9 @@ export const BLOCK_MOST = 8;
 const HARD_SHARE = 0.45;
 /** Metres a walker must be inside a body at the start of its step for that body to be no wall to it. */
 const INSIDE_SKIN = 0.05;
+/** Kinds of soft body (Blockers.soft). */
+const SOFT_PUSH = 1;
+const SOFT_HOLD = 2;
 /** A body lighter than this share of the walker does not stop it: a survivor walks through a dodo, and a rex through a survivor. */
 export const BLOCK_LIGHT = 0.75;
 const TAU = Math.PI * 2;
@@ -36,15 +39,6 @@ export function pairing(a: number, b: number): boolean {
 export function survivorKind(reg: Registry, kind: number): boolean {
   const d = reg.defs[kind];
   return d?.type === "species" && d.class === "survivor";
-}
-
-/**
- * Whether a body of `kind`, moving or not, blocks a survivor or the mount a session rides: a survivor always, a creature
- * only standing still. A creature that moves gives way to the survivor itself (server/blocking.ts), and one that presses
- * on what it hunts does not shove it.
- */
-export function blocksSession(reg: Registry, kind: number, moving: boolean): boolean {
-  return !moving || survivorKind(reg, kind);
 }
 
 /** Kilograms, for which bodies stop which: its species' mass, or for one with none (a survivor) about 80 kg by its build. */
@@ -125,7 +119,7 @@ export class Blockers {
   readonly r = new Float64Array(BLOCK_MOST);
   readonly y0 = new Float64Array(BLOCK_MOST);
   readonly y1 = new Float64Array(BLOCK_MOST);
-  /** 1 for a body that moves, which pushes softly. */
+  /** 0 for a body standing, solid; SOFT_PUSH for one that pushes softly; SOFT_HOLD for a moving creature, which stops the walker's own step but never shoves it. */
   readonly soft = new Uint8Array(BLOCK_MOST);
   /** How far each is from the walker it is gathered for, to keep the nearest. */
   private readonly far = new Float64Array(BLOCK_MOST);
@@ -137,10 +131,10 @@ export class Blockers {
   /**
    * Adds body `id` of `kind` standing at (x, y, z) facing `yaw` radians (+Z at 0, +X at a quarter turn), moving or not,
    * for a walker of kind `walker` standing at (wx, wy, wz) facing `wyaw` (Body.yaw, 65536ths of a turn). A body lighter
-   * than BLOCK_LIGHT of the walker is not added unless `always`. One the walker already stands in is no wall to it, so
-   * that whatever put it there (a bite, a paired emote, a teleport) it walks out; or, with `untangle` (a creature, which
-   * no client predicts), one that pushes it out softly, so that bodies set down inside one another come apart. Past
-   * BLOCK_MOST the farthest goes. Entries are kept in ascending id, so that both ends push in one order.
+   * than BLOCK_LIGHT of the walker is not added unless `always`. One standing still that the walker already stands in is
+   * no wall to it, so that whatever put it there (a bite, a paired emote, a teleport) it walks out. One moving, or any
+   * with `untangle` (a creature, which no client predicts), pushes it out softly, so bodies inside one another come
+   * apart. Past BLOCK_MOST the farthest goes. Entries are kept in ascending id, so that both ends push in one order.
    */
   add(reg: Registry, id: number, kind: number, x: number, y: number, z: number, yaw: number, moving: boolean, walker: number, wx: number, wy: number, wz: number, wyaw: number, always = false, untangle = false): void {
     this.reg = reg;
@@ -173,11 +167,12 @@ export class Blockers {
     this.far[at] = far;
     this.count = n + 1;
     const inside = depth(this, at, reg, walker, wx, wy, wz, (wyaw * TAU) / 65536, reg.bodyHeight[walker]!) > INSIDE_SKIN;
-    if (inside && !untangle) {
+    // A body that moves keeps pushing even so: met in a snapshot a little behind it, it is often found a little inside.
+    if (inside && !untangle && !moving) {
       this.remove(at);
       return;
     }
-    this.soft[at] = moving || inside ? 1 : 0;
+    this.soft[at] = untangle && inside ? SOFT_PUSH : !moving ? 0 : survivorKind(reg, kind) ? SOFT_PUSH : SOFT_HOLD;
   }
 
   private move(from: number, to: number): void {
@@ -216,7 +211,7 @@ export const blockOut = { x: 0, z: 0 };
  * overlaps, in order: by as much as it is in, at most HARD_SHARE of its radius, or for a soft one by at most `soft`
  * metres. Leaves the place in `blockOut`; whether it moved.
  */
-export function pushOut(bl: Blockers, kind: number, x: number, y: number, z: number, yaw: number, h: number, soft: number): boolean {
+export function pushOut(bl: Blockers, kind: number, x: number, y: number, z: number, yaw: number, h: number, soft: number, fromX = x, fromZ = z): boolean {
   let moved = false;
   const reg = bl.reg!;
   const r = reg.footRadius[kind]!;
@@ -237,7 +232,14 @@ export function pushOut(bl: Blockers, kind: number, x: number, y: number, z: num
       dx /= l;
       dz /= l;
     }
-    const most = bl.soft[k] !== 0 ? soft : hard;
+    let most = hard;
+    if (bl.soft[k] !== 0) {
+      // A body that moves pushes softly, or a creature not at all, but the walker's own step never takes it deeper: it is
+      // stopped as by one standing.
+      const deeper = d - depth(bl, k, reg, kind, fromX, y, fromZ, turn, h);
+      const push = bl.soft[k] === SOFT_PUSH ? soft : 0;
+      most = deeper > push ? deeper : push;
+    }
     if (d > most) d = most;
     x += dx * d;
     z += dz * d;

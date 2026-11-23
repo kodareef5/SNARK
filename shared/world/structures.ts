@@ -11,7 +11,10 @@ export const GRID_CELL = 4;
  * The boxes bodies and rays meet. Kind `k` owns the boxes numbered `start[k]` up to `start[k + 1]`. Each box is six numbers in
  * `box`: its centre, measured from the structure's origin, then its half extents.
  */
+export type GrindLine = readonly (readonly [number, number, number])[];
+
 export interface PartTable {
+  readonly grindLine?: readonly (GrindLine | undefined)[];
   readonly vehicleSurface?: readonly (VehicleSurface | null)[];
   /** The grip a server's settings give a surface, by its id, where they give one (shared/content/tuning.ts `surfaces`). */
   readonly surfaceGrip?: Readonly<Record<string, number>>;

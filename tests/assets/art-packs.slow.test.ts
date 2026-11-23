@@ -7,7 +7,7 @@ import { FRONT } from "../../content/vehicles/windscreens.ts";
 import { GLASS } from "../../content/vehicles/glass.ts";
 import { glassAt, glassSet } from "../../client/core/render/vehicle-glass.ts";
 import { PAINT, streetMaterial } from "../../content/street-finishes.ts";
-import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
+import { isSkateboard, isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -40,7 +40,8 @@ artTest("every asset folder has its pack, named as the folder is, and the pack p
 
 artTest("each road vehicle's exported paint, wheel joints and glass opening fit its declared finish", () => {
   for (const vehicle of coreRegistry().vehicle) {
-    if (!vehicle || !isWheelVehicle(vehicle)) continue;
+    // A skateboard has no paint, glass or wheel joints, and its mesh is the pack builder's own (tools/pack/skateboard.ts).
+    if (!vehicle || !isWheelVehicle(vehicle) || isSkateboard(vehicle)) continue;
     const asset = ASSETS.find(a => a.id === vehicle.id);
     expect(asset, vehicle.id).toBeDefined();
     const pack = parsePack(new Uint8Array(readFileSync(asset!.file)));

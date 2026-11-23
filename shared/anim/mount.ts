@@ -2,7 +2,8 @@
 // Replacing a clip changes presentation, never the duration of entering, exiting or taking a seat.
 
 import { quatNormalize, quatRotate, type Numbers } from "../math/quat.ts";
-import { clamp } from "../math/scalar.ts";
+import { clamp, detCos } from "../math/scalar.ts";
+import { GRIND, KICKFLIP, OLLIE, PUSH, SHOVE } from "../sim/skate-state.ts";
 import { PoseBuilder } from "./authored.ts";
 import { Pose, blendPose, sampleClip, type Clip } from "./clip.ts";
 import {
@@ -13,7 +14,7 @@ import {
 import type { Solved } from "./skeleton.ts";
 
 /** `ride` sits astride a saddle (shared/anim/seat.ts): its rider's hands on the grips, a passenger's upper body its own. */
-export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin", "pwc", "impaled"] as const;
+export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin", "pwc", "impaled", "skate"] as const;
 export type MountMotionRole = typeof MOUNT_MOTION_ROLES[number];
 
 export interface MountMotionProfile {
@@ -32,6 +33,8 @@ export interface MountPoseInput {
   readonly side?: 1 | -1;
   /** -1..1; bends the procedural driver's arms around the wheel. An authored drive clip owns its arms. */
   readonly steering?: number;
+  readonly skateMove?: number;
+  readonly skatePhase?: number;
   /** Existing look/weapon pose for a passenger. Upper body and hand props survive; hips and legs do not. May equal out. */
   readonly upper?: Pose;
 }
@@ -90,6 +93,13 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
   if (!replacement && input.role === "drive") {
     const steering = Number.isFinite(input.steering) ? clamp(input.steering!, -1, 1) : 0;
     blendPose(sampled, sampled, steering < 0 ? fallback.left : fallback.right, Math.abs(steering));
+  }
+  if (input.role === "skate" && !replacement) {
+    const poses = skatePoses(), phase = input.skatePhase ?? 0, move = input.skateMove;
+    const amount = .5 - .5 * detCos(phase);
+    if (move === PUSH) blendPose(sampled, sampled, poses.push, amount);
+    else if (move === OLLIE || move === KICKFLIP || move === SHOVE) blendPose(sampled, sampled, poses.tuck, amount);
+    else if (move === GRIND) blendPose(sampled, sampled, poses.balance, 1);
   }
   // Copy the passenger's local upper pose after seating; the procedural seated hips have identity rotation.
   // Do this before writing out, so callers can pass an existing humanPose as both upper and output.
@@ -203,6 +213,25 @@ function astride(watercraft = false): Pose {
   return b.pose;
 }
 
+// Left foot forward across the front bolts. Only the back leg strokes the ground.
+function skatePose(push: number, tuck: number, balance: number): Pose {
+  const b = new PoseBuilder().turn(B_HIPS, 0, -74).turn(B_SPINE, 9, 14)
+    .turn(B_CHEST, 4, 12).turn(B_NECK, -4, 23).turn(B_HEAD, -4, 22);
+  for (const side of [1, -1] as const) {
+    const left = side === 1, stroke = left ? 0 : push;
+    b.aim(left ? B_UPPER_LEG_L : B_UPPER_LEG_R, -.32 - tuck*.45, -.94 + tuck*.25, side*.27 - stroke*.36);
+    b.aim(left ? B_LOWER_LEG_L : B_LOWER_LEG_R, .32 + tuck*.48 - stroke*.75, -.94 + tuck*.24, side*.08 - stroke*.64);
+    b.level(left ? B_FOOT_L : B_FOOT_R).turn(left ? B_FOOT_L : B_FOOT_R, 0, left ? -57 : -78);
+    b.aim(left ? B_UPPER_ARM_L : B_UPPER_ARM_R, -.18, -.78 + balance*.58 + tuck*.35, side*(.52+balance*.35));
+    b.aim(left ? B_LOWER_ARM_L : B_LOWER_ARM_R, -.25, -.6 + balance*.5, side*.7).level(left ? B_HAND_L : B_HAND_R);
+  }
+  return b.pose;
+}
+let skating: { ride: Pose; push: Pose; tuck: Pose; balance: Pose } | undefined;
+function skatePoses() {
+  return skating ??= { ride: skatePose(0, 0, 0), push: skatePose(1, 0, 0), tuck: skatePose(0, 1, 0), balance: skatePose(0, 0, 1) };
+}
+
 function standing(): PoseBuilder {
   return new PoseBuilder()
     .aim(B_UPPER_ARM_L, 0.1, -1, 0.06).aim(B_LOWER_ARM_L, 0, -1, 0.12)
@@ -241,6 +270,7 @@ function fallbacks(): Fallbacks {
       enter: keyframes("enter", [stand, touch, duck, sit]), exit: keyframes("exit", [sit, duck, touch, stand]),
       carjack: keyframes("carjack", [stand, touch, grab, grab]),
       displaced: keyframes("displaced", [sit, recoil, duck, stand]),
+      skate: keyframes("skate", [skatePoses().ride]),
       ride: keyframes("ride", [astride()]), pwc: keyframes("pwc", [astride(true)]),
       impaled: keyframes("impaled", [impaled()]),
       pilot: keyframes("pilot", [cabinSeat(true)]), cabin: keyframes("cabin", [cabinSeat(false)]),

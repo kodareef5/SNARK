@@ -168,7 +168,12 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
     else shown |= button(f, t, b, ax + out * Math.cos(angle), ay - out * Math.sin(angle), d, P_ROUND, icon, label, lit);
   };
   const corner = (b: number, icon: number, label: string): void => { shown |= button(f, t, b, ax, ay, ATTACK, P_ROUND, icon, label); };
-  if (v?.rotor) {
+  if (v?.board) {
+    corner(T_JUMP, I_JUMP, "Ollie");
+    at(T_RELOAD, 0, BUTTON, I_ROTATE, "Kickflip");
+    at(T_MELEE, 1, BUTTON, I_RIGHT, "360 shove-it");
+    at(T_SHIFT, 2, BUTTON, I_SNAP, "Grind assist", t.shifted);
+  } else if (v?.rotor) {
     // A helicopter: the collective under the thumb, yaw side by side above it, and the rest about them.
     corner(T_JUMP, I_UP, "Collective up");
     at(T_DOWN, 2, BUTTON, I_DOWN, "Collective down");
