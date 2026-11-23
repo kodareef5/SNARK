@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket } from "../../client/core/render/packet.ts";
-import { PIECE_END, PIECE_GLSL, PIECE_PLACE } from "../../client/core/render/pieces.ts";
+import { PIECE_END, PIECE_GLSL, PIECE_PLACE, PIECE_SHADE } from "../../client/core/render/pieces.ts";
 import { hashString } from "../../shared/hash.ts";
 import { BEND_GLSL, BEND_PLACE } from "../../client/core/render/bend.ts";
 import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
@@ -127,14 +127,18 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   expect(FLAT_MESH_VERTEX).toContain(BEND_PLACE);
   // A near chunk's mesh is drawn by its pieces' states on low poly too (client/core/render/pieces.ts): the rule's
   // function, the line that asks it and the line that drops a face not drawn. A vertex of any other mesh has no word and
-  // reads no state. Without those three the text is as it was; with them it is 1090828137.
-  for (const part of [PIECE_GLSL, PIECE_PLACE, PIECE_END]) expect(FLAT_MESH_VERTEX).toContain(part);
-  const unkeyed = FLAT_MESH_VERTEX.replace(PIECE_GLSL, "").replace(PIECE_PLACE, "").replace(PIECE_END, "");
+  // reads no state. Without those three the text is as it was; with them it was 1090828137 until a city piece's wear
+  // was shown: one more line darkens a piece of such a mesh by its stage from the state it already read (PIECE_SHADE),
+  // which is all low poly and a phone show of wear. A vertex with no word never runs it, and a whole piece's is times 1.
+  for (const part of [PIECE_GLSL, PIECE_PLACE, PIECE_SHADE, PIECE_END]) expect(FLAT_MESH_VERTEX).toContain(part);
+  const unshaded = FLAT_MESH_VERTEX.replace(PIECE_SHADE, "");
+  const unkeyed = unshaded.replace(PIECE_GLSL, "").replace(PIECE_PLACE, "").replace(PIECE_END, "");
   const unbent = unkeyed.replace(BEND_GLSL, "").replace(BEND_PLACE, "");
   expect(hashString(FLAT_FRAGMENT + unbent.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(2880639374);
   expect(hashString(FLAT_FRAGMENT + unbent + FLAT_TERRAIN_VERTEX)).toBe(1010688119);
   expect(hashString(FLAT_FRAGMENT + unkeyed + FLAT_TERRAIN_VERTEX)).toBe(3957629961);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(1090828137);
+  expect(hashString(FLAT_FRAGMENT + unshaded + FLAT_TERRAIN_VERTEX)).toBe(1090828137);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(2435062563);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {
