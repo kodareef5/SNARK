@@ -15,14 +15,15 @@ const worlds = new WeakMap<CollisionWorld, StaticVehicleWorld>();
 const state: HelicopterState & BoatState = { qx: 0, qy: 0, qz: 0, qw: 1, collective: 0, rotorRpm: 0, rotorPhase: 0, engineCondition: 1, rotorCondition: 1, engineOn: false, hullCondition: 1, flooding: 0, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0 };
 
 /** The last vehicle step. Authority consumes this immediately for impact/water damage; prediction uses only its movement. */
-export const vehicleStep: HelicopterStep & Pick<BoatStep, "propHit" | "capsized" | "immersion" | "propellerImmersion" | "planing"> = {
-  blocked: null, impactSpeed: 0, rotorHit: false, water: false, landSpeed: 0, fuelUsed: 0, surface: "ground",
+export const vehicleStep: HelicopterStep & { skateHurt: number } & Pick<BoatStep, "propHit" | "capsized" | "immersion" | "propellerImmersion" | "planing"> = {
+  skateHurt: 0, blocked: null, impactSpeed: 0, rotorHit: false, water: false, landSpeed: 0, fuelUsed: 0, surface: "ground",
   propHit: false, capsized: false, immersion: 0, propellerImmersion: 0, planing: 0,
 };
 
 /** Inputs use the ordinary signed bytes/buttons. Wheel and rotor controllers interpret them separately. */
 export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, dt = TICK_DT, _yaw = b.yaw, pilot = true, environment?: VehicleWorld): void {
   if (dt !== TICK_DT) throw new Error("vehicles step at the shared fixed tick");
+  vehicleStep.skateHurt = 0;
   stepOut.landSpeed = 0;
   vehicleStep.blocked = null; vehicleStep.impactSpeed = vehicleStep.landSpeed = vehicleStep.fuelUsed = 0; vehicleStep.rotorHit = vehicleStep.water = false;
   vehicleStep.propHit = vehicleStep.capsized = false; vehicleStep.immersion = vehicleStep.propellerImmersion = vehicleStep.planing = 0;

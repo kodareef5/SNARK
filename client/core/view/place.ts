@@ -59,7 +59,7 @@ function driving(d: Director, f: AppFrame): void {
   if (f.third) {
     // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
     pointIn(d, at, 0, board ? .94 : boat && !car.family ? 1.1 : rotor ? 1.65 : car.spec.height * 2 / 3, rotor || boat ? -.35 : 0);
-    const heading = d.view.placeVehicle(cam, world, spot[0]!, spot[1]!, spot[2]!, c.yaw, c.pitch - (board ? .09 : 0), carYaw + (board ? .24 : 0), Math.hypot(session.own.vx, session.own.vz), f.dt, !rotor && !boat,
+    const heading = d.view.placeVehicle(cam, world, spot[0]!, spot[1]!, spot[2]!, c.yaw, c.pitch - (board ? .09 : 0), carYaw + (board ? .24 - (session.own.skate?.switched ? Math.PI : 0) : 0), Math.hypot(session.own.vx, session.own.vz), f.dt, !rotor && !boat,
       motionOf(d, session.own.vx, session.own.vy, session.own.vz, session.driving, board ? 3.4 : rotor || boat ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3));
     if (!rotor && !boat) c.yaw = heading;
   } else {

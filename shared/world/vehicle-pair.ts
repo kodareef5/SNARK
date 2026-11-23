@@ -2,7 +2,7 @@
 import { quatNlerp } from '../math/quat.ts';
 import { detCos, len3 } from '../math/scalar.ts';
 import { dynamicState, type DynamicBody, type DynamicContact, type DynamicQueries, type DynamicState } from '../sim/vehicle-dynamic.ts';
-import { isBoatVehicle, isWheelVehicle, type VehicleDefinition } from '../sim/vehicle.ts';
+import { isBoatVehicle, isSkateboard, isWheelVehicle, type WheelVehicleDefinition, type VehicleDefinition } from '../sim/vehicle.ts';
 import { carMeetsCapsule, carMeetsVehicle } from './vehicle.ts';
 import { boatMeetsCapsule, boatMeetsVehicle } from './boat.ts';
 import { helicopterMeetsCapsule, helicopterMeetsVehicle } from './helicopter.ts';
@@ -13,6 +13,24 @@ import { StaticVehicleSolids } from './vehicle-solid.ts';
 
 /** Interaction meshes circumscribe an actor's capsule with a twelve-sided tube. */
 export const CAPSULE_EXTENT = 1 / detCos(Math.PI / 12);
+
+export const SKATER_HEIGHT = 1.8;
+const occupiedBoards = new WeakMap<WheelVehicleDefinition, WheelVehicleDefinition>();
+
+/** The rider and deck meet other vehicles as one body about their shared centre of mass. */
+function contactShape(def: VehicleDefinition, height: number): VehicleDefinition {
+  if (!isSkateboard(def) || height < SKATER_HEIGHT) return def;
+  let ridden = occupiedBoards.get(def);
+  if (!ridden) {
+    const deck = def.spec;
+    ridden = { ...def, spec: { ...deck, height: SKATER_HEIGHT, halfWidth: .4, bodyBoxes: [
+      { at: [0, deck.height / 2, 0], half: [deck.halfWidth, deck.height / 2, deck.halfLength] },
+      { at: [0, (SKATER_HEIGHT + deck.height) / 2, 0], half: [.32, (SKATER_HEIGHT - deck.height) / 2, .25] },
+    ] } };
+    occupiedBoards.set(def, ridden);
+  }
+  return ridden;
+}
 
 /** Bound the point speeds of both the rigid hull and its steered propulsion during one interpolated sweep. */
 function rotationTravel(a: DynamicState, b: DynamicState, radius: number, def: VehicleDefinition): number {
@@ -46,7 +64,12 @@ export class VehiclePairQueries implements DynamicQueries {
     this.world = world;
     this.solids = new StaticVehicleSolids(world, omits ? ref => !!this.checking && omits(this.checking, ref) : undefined);
   }
-  configure(a: DynamicBody, b: DynamicBody, defA: VehicleDefinition, defB: VehicleDefinition | undefined, radius: number, height: number, skin = 0): void {
+  configure(a: DynamicBody, b: DynamicBody, defA: VehicleDefinition, defB: VehicleDefinition | undefined, radius: number, height: number, skin = 0, sourceHeight = 0): void {
+    if (defB) {
+      defA = contactShape(defA, sourceHeight);
+      defB = contactShape(defB, height);
+    }
+    a.spec = defA.spec; b.spec = defB?.spec ?? null;
     this.a = a; this.b = b; this.defA = defA; this.defB = defB; this.radiusB = radius; this.heightB = height; this.skin = skin;
     rotation(a.prior, this.qa); rotation(a.state, this.qb);
     rotation(b.prior, this.otherA); rotation(b.state, this.otherB);

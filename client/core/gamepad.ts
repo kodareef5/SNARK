@@ -11,6 +11,7 @@ export interface PadTarget {
   readonly inspecting: boolean;
   readonly flying: boolean;
   readonly patrol: boolean;
+  readonly skating?: boolean;
   /** A sight that zooms is raised (a scope, a glass, a visor): the d-pad's up and down step it (`zoom`), not the hotbar. */
   readonly zooming?: boolean;
   /** With `alt`, a scope's zero in place of its zoom (LB held). */
@@ -29,6 +30,7 @@ export const PAD_TAPS: Readonly<Record<number,string>> = {2:"KeyR",8:"KeyM",11:"
 export const PAD_HOLDS: Readonly<Record<number,string>> = {2:"KeyF",8:"KeyH",11:"KeyX"};
 export const PAD_HOLD_MS=350;
 export const PAD_DEAD_ZONE=.18;
+const SKATE_KEYS: Readonly<Record<number, string>> = { 0: "Space", 2: "KeyQ", 3: "KeyE", 4: "KeyX", 5: "KeyC", 6: "KeyG", 7: "KeyR", 10: "ShiftLeft" };
 const PAD_SLOTS:Readonly<Record<number,number>>={12:0,15:1,13:2,14:3};
 export function padAxis(value: number): number {
   if(!Number.isFinite(value))return 0;
@@ -49,6 +51,7 @@ export class GamepadInput {
   private menu=false;
   private flying=false;
   private patrol=false;
+  private skating=false;
   private selecting=false;
   private reload=false;
 
@@ -62,6 +65,10 @@ export class GamepadInput {
     const touchpad=pad.buttons.length>17 && /054c|DualSense|DualShock|Sony/i.test(pad.id??"");
     const down=(i:number):boolean=>{const b=pad.buttons[i===8 && touchpad?17:i];return !!b && (b.pressed || b.value>.55);};
     if(target.inMenu!==this.menu){this.release(target,target.inspecting);this.menu=target.inMenu;}
+    if (!!target.skating !== this.skating) {
+      this.release(target);
+      this.skating = !!target.skating;
+    }
     if(target.flying!==this.flying || target.patrol!==this.patrol) {
       // Mounted and on-foot right-stick actions start on a fresh press.
       this.pending[11]=0;
@@ -101,6 +108,8 @@ export class GamepadInput {
         else if(i===1)this.pulse("Escape",target);
         continue;
       }
+      const trickKey = target.skating ? SKATE_KEYS[i] : undefined;
+      if (trickKey) { this.hold(i, trickKey, target); continue; }
       const modifier=down(4);
       // A raised sight's zoom on the d-pad's up and down; LB and the right stick's press hold a helmet's visor up, as the
       // middle mouse button does (client/core/visor.ts).

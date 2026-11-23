@@ -1,9 +1,9 @@
 // Shared seat motions for the current HUMAN topology. Action ownership, attachment and commit ticks live in simulation.
 // Replacing a clip changes presentation, never the duration of entering, exiting or taking a seat.
 
-import { quatNormalize, quatRotate, type Numbers } from "../math/quat.ts";
+import { quatMul, quatNormalize, quatRotate, type Numbers } from "../math/quat.ts";
 import { clamp } from "../math/scalar.ts";
-import { GRIND, KICKFLIP, OLLIE, PUSH, SHOVE } from "../sim/skate-state.ts";
+import { skateClips, sampleSkater } from "./skate.ts";
 import { PoseBuilder } from "./authored.ts";
 import { Pose, blendPose, sampleClip, type Clip } from "./clip.ts";
 import {
@@ -35,6 +35,7 @@ export interface MountPoseInput {
   readonly steering?: number;
   readonly skateMove?: number;
   readonly skatePhase?: number;
+  readonly switched?: boolean;
   /** Existing look/weapon pose for a passenger. Upper body and hand props survive; hips and legs do not. May equal out. */
   readonly upper?: Pose;
 }
@@ -77,6 +78,7 @@ function phase(input: MountPoseInput): number {
   return clamp((tick - startTick) / durationTicks, 0, 1);
 }
 
+const halfTurn = new Float64Array([0, 1, 0, 0]);
 const sampled = new Pose(HUMAN_BONES);
 const mirrors = HUMAN.names.map((name, bone) => {
   const other = name.endsWith(".L") ? name.slice(0, -2) + ".R" : name.endsWith(".R") ? name.slice(0, -2) + ".L" : name;
@@ -95,11 +97,7 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
     blendPose(sampled, sampled, steering < 0 ? fallback.left : fallback.right, Math.abs(steering));
   }
   if (input.role === "skate" && !replacement) {
-    const poses = skatePoses(), phase = input.skatePhase ?? 0, move = input.skateMove;
-    const amount = .5 - .5 * Math.cos(phase);
-    if (move === PUSH) blendPose(sampled, sampled, poses.push, amount);
-    else if (move === OLLIE || move === KICKFLIP || move === SHOVE) blendPose(sampled, sampled, poses.tuck, amount);
-    else if (move === GRIND) blendPose(sampled, sampled, poses.balance, 1);
+    sampleSkater(input.skateMove ?? 0, input.skatePhase ?? 0, input.steering ?? 0, sampled, input.switched);
   }
   // Copy the passenger's local upper pose after seating; the procedural seated hips have identity rotation.
   // Do this before writing out, so callers can pass an existing humanPose as both upper and output.
@@ -111,7 +109,8 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
   if ((input.role === "pilot" || input.role === "cabin" || input.role === "pwc") && input.upper) {
     for (const bone of [B_NECK, B_HEAD]) for (let k = 0; k < 4; k++) sampled.rot[bone * 4 + k] = input.upper.rot[bone * 4 + k]!;
   }
-  const mirror = input.side === -1 && (input.role === "enter" || input.role === "exit" || input.role === "carjack" || input.role === "displaced");
+  const switched = input.role === "skate" && input.switched;
+  const mirror = switched || input.side === -1 && (input.role === "enter" || input.role === "exit" || input.role === "carjack" || input.role === "displaced");
   for (let b = 0; b < HUMAN_BONES; b++) {
     const src = (mirror ? mirrors[b]! : b) * 4;
     out.rot[b * 4] = sampled.rot[src]!;
@@ -119,9 +118,10 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
     out.rot[b * 4 + 2] = sampled.rot[src + 2]! * (mirror ? -1 : 1);
     out.rot[b * 4 + 3] = sampled.rot[src + 3]!;
   }
-  out.root[0] = sampled.root[0]! * (mirror ? -1 : 1);
+  if (switched) quatMul(out.rot, B_HIPS*4, halfTurn, 0, out.rot, B_HIPS*4);
+  out.root[0] = sampled.root[0]! * (mirror && !switched ? -1 : 1);
   out.root[1] = sampled.root[1]!;
-  out.root[2] = sampled.root[2]!;
+  out.root[2] = sampled.root[2]! * (switched ? -1 : 1);
 }
 
 /**
@@ -130,9 +130,9 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
  * Use while attached; approach/exit movement and choosing when attachment changes remain the simulation's job.
  * Both renderer and hit capsules must use this same origin and rotation. out may alias seatPosition.
  */
-export function mountOrigin(solved: Solved, seatPosition: Numbers, actorRotation: Numbers, out: Numbers): void {
+export function mountOrigin(solved: Solved, seatPosition: Numbers, actorRotation: Numbers, out: Numbers, pelvis: Numbers = solved.pos): void {
   const x = seatPosition[0]!, y = seatPosition[1]!, z = seatPosition[2]!;
-  quatRotate(actorRotation, 0, solved.pos[B_HIPS * 3]!, solved.pos[B_HIPS * 3 + 1]!, solved.pos[B_HIPS * 3 + 2]!, out, 0);
+  quatRotate(actorRotation, 0, pelvis[B_HIPS * 3]!, pelvis[B_HIPS * 3 + 1]!, pelvis[B_HIPS * 3 + 2]!, out, 0);
   out[0] = x - out[0]!;
   out[1] = y - out[1]!;
   out[2] = z - out[2]!;
@@ -213,25 +213,6 @@ function astride(watercraft = false): Pose {
   return b.pose;
 }
 
-// Left foot forward across the front bolts. Only the back leg strokes the ground.
-function skatePose(push: number, tuck: number, balance: number): Pose {
-  const b = new PoseBuilder().turn(B_HIPS, 0, -74).turn(B_SPINE, 9, 14)
-    .turn(B_CHEST, 4, 12).turn(B_NECK, -4, 23).turn(B_HEAD, -4, 22);
-  for (const side of [1, -1] as const) {
-    const left = side === 1, stroke = left ? 0 : push;
-    b.aim(left ? B_UPPER_LEG_L : B_UPPER_LEG_R, -.32 - tuck*.45, -.94 + tuck*.25, side*.27 - stroke*.36);
-    b.aim(left ? B_LOWER_LEG_L : B_LOWER_LEG_R, .32 + tuck*.48 - stroke*.75, -.94 + tuck*.24, side*.08 - stroke*.64);
-    b.level(left ? B_FOOT_L : B_FOOT_R).turn(left ? B_FOOT_L : B_FOOT_R, 0, left ? -57 : -78);
-    b.aim(left ? B_UPPER_ARM_L : B_UPPER_ARM_R, -.18, -.78 + balance*.58 + tuck*.35, side*(.52+balance*.35));
-    b.aim(left ? B_LOWER_ARM_L : B_LOWER_ARM_R, -.25, -.6 + balance*.5, side*.7).level(left ? B_HAND_L : B_HAND_R);
-  }
-  return b.pose;
-}
-let skating: { ride: Pose; push: Pose; tuck: Pose; balance: Pose } | undefined;
-function skatePoses() {
-  return skating ??= { ride: skatePose(0, 0, 0), push: skatePose(1, 0, 0), tuck: skatePose(0, 1, 0), balance: skatePose(0, 0, 1) };
-}
-
 function standing(): PoseBuilder {
   return new PoseBuilder()
     .aim(B_UPPER_ARM_L, 0.1, -1, 0.06).aim(B_LOWER_ARM_L, 0, -1, 0.12)
@@ -270,7 +251,7 @@ function fallbacks(): Fallbacks {
       enter: keyframes("enter", [stand, touch, duck, sit]), exit: keyframes("exit", [sit, duck, touch, stand]),
       carjack: keyframes("carjack", [stand, touch, grab, grab]),
       displaced: keyframes("displaced", [sit, recoil, duck, stand]),
-      skate: keyframes("skate", [skatePoses().ride]),
+      skate: skateClips().ride,
       ride: keyframes("ride", [astride()]), pwc: keyframes("pwc", [astride(true)]),
       impaled: keyframes("impaled", [impaled()]),
       pilot: keyframes("pilot", [cabinSeat(true)]), cabin: keyframes("cabin", [cabinSeat(false)]),

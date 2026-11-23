@@ -1,4 +1,4 @@
-import { SHOVE, OLLIE, KICKFLIP } from "../../../shared/sim/skate-state.ts";
+import { skateDeckRotation } from "../../../shared/anim/skate.ts";
 import { ImpactSprings } from "./impact-springs.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { blockMass, survivorKind } from "../../../shared/sim/blockers.ts";
@@ -163,6 +163,7 @@ interface VehicleRig {
 
 export interface VehicleRenderPose {
   skateMove?: number;
+  switched?: boolean;
   pitch: number; roll: number; steering: number; wheelAngle: number;
   qx?: number; qy?: number; qz?: number; qw?: number;
   rotorRpm?: number; rotorPhase?: number; engineCondition?: number; rotorCondition?: number;
@@ -651,7 +652,7 @@ export class Characters {
     out.groundPitch = vehicle.groundPitch; out.groundRoll = vehicle.groundRoll; out.rideOffset = vehicle.rideOffset; out.grounded = vehicle.grounded; out.doors = vehicle.doors;
     out.definition = seat; out.x = at[0]!; out.y = at[1]!; out.z = at[2]!; out.yaw = yaw; out.driver = seat.driver === true;
     out.steer = def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer;
-    out.skateMove = vehicle.skateMove; out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
+    out.skateMove = vehicle.skateMove; out.switched = vehicle.switched; out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
     return out;
   }
 
@@ -667,7 +668,7 @@ export class Characters {
     this.seatPlace[0] = seat.x;
     this.seatPlace[1] = seat.y;
     this.seatPlace[2] = seat.z;
-    mountOrigin(this.solved, this.seatPlace, this.rotation, out);
+    mountOrigin(this.solved, this.seatPlace, this.rotation, out, seat.role === "skate" ? set.rest : undefined);
     return true;
   }
 
@@ -1014,10 +1015,7 @@ export class Characters {
       if (v) {
         rig.a.rest();
         if (isSkateboard(v.def)) {
-          const move = vehicle?.skateMove, phase = vehicle?.wheelAngle ?? 0;
-          if (move === KICKFLIP) quatAxis(rig.a.rot, 0, 0, 0, 1, phase);
-          else if (move === SHOVE) quatAxis(rig.a.rot, 0, 0, 1, 0, phase);
-          else if (move === OLLIE) quatAxis(rig.a.rot, 0, 1, 0, 0, -.22 * Math.sin(phase));
+          skateDeckRotation(vehicle?.skateMove ?? 0, vehicle?.wheelAngle ?? 0, rig.a.rot);
         }
         const steering = vehicle?.steering ?? 0, s = v.def.steeringWheel;
         if (s && v.steer >= 0) quatAxis(rig.a.rot, v.steer * 4, s.axis[0], s.axis[1], s.axis[2], steering * s.ratio);
@@ -1485,7 +1483,7 @@ export class Characters {
         this.seatPlace[0] = vehicleSeat.x;
         this.seatPlace[1] = vehicleSeat.y;
         this.seatPlace[2] = vehicleSeat.z;
-        mountOrigin(solved, this.seatPlace, this.rotation, this.origin);
+        mountOrigin(solved, this.seatPlace, this.rotation, this.origin, vehicleSeat.role === "skate" ? set.rest : undefined);
         orientSolved(solved, this.rotation, this.mounted);
         x = this.origin[0]!; y = this.origin[1]!; z = this.origin[2]!; yaw = 0;
         writeBones(p.bones, first * BONE_FLOATS, this.mounted, set.rest, scales, x, y, z, 0);

@@ -165,3 +165,15 @@ test("LB and the right stick's press hold a helmet's visor up as the middle mous
   r.pad.buttons[4]!.pressed=true; r.pad.buttons[12]!.pressed=true; r.step();
   expect(zooms).toEqual(["-1:false","1:false","-1:true"]);
 });
+
+test("a skater can hold a grab and release it for the landing", () => {
+  const r = rig();
+  r.controls.skate(true); Object.assign(r.target, { skating: true });
+  const keys = [[0, "Space"], [7, "KeyR"], [6, "KeyG"], [2, "KeyQ"], [4, "KeyX"], [5, "KeyC"], [10, "ShiftLeft"]] as const;
+  for (const [i, key] of keys) {
+    r.pad.buttons[i]!.pressed = true; r.step();
+    expect(r.controls.buttons).toBe(r.controls.bindings()[key]!);
+    r.pad.buttons[i]!.pressed = false; r.step();
+    expect(r.controls.buttons).toBe(0);
+  }
+});

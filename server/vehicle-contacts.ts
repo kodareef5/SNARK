@@ -10,12 +10,12 @@ import { youngScale } from '../shared/sim/breeding.ts';
 import { Body, MODE_GHOST, MODE_NONE, stanceHeight } from '../shared/sim/character.ts';
 import { DMG_MELEE } from '../shared/sim/damage.ts';
 import { F_ALIVE, F_GROUNDED, F_HELD, F_PROP } from '../shared/sim/entities.ts';
-import { isBoatVehicle, isRotorVehicle, type VehicleDefinition } from '../shared/sim/vehicle.ts';
+import { isSkateboard, isBoatVehicle, isRotorVehicle, type VehicleDefinition } from '../shared/sim/vehicle.ts';
 import { vehicleMassProperties } from '../shared/sim/vehicle-rigid.ts';
 import { dynamicState, DynamicScratch, resolveDynamicContact, type DynamicBody, type DynamicContact, type DynamicResult, type DynamicState } from '../shared/sim/vehicle-dynamic.ts';
 import { vehicleSolidRadius } from '../shared/world/vehicle-shapes.ts';
 import type { Combat, Source } from './combat.ts';
-import { CAPSULE_EXTENT, VehiclePairQueries } from '../shared/world/vehicle-pair.ts';
+import { CAPSULE_EXTENT, SKATER_HEIGHT, VehiclePairQueries } from '../shared/world/vehicle-pair.ts';
 import { Past } from './history.ts';
 import type { EntityRecord, Records } from './records.ts';
 import type { ServerWorld } from './world.ts';
@@ -145,7 +145,7 @@ export class VehicleContacts {
       ents.loadBody(e, this.publicBody);
       publicContactBody(this.publicBody, row.body);
       row.radius = other ? Math.max(move.radius, contactReach(other)) : move.radius * scale;
-      row.height = stanceHeight(move, ents.stance[e]!) * scale;
+      row.height = isSkateboard(other) && this.ctx.driverOf(e) ? SKATER_HEIGHT : stanceHeight(move, ents.stance[e]!) * scale;
       if (!contactRelevant(this.snapshotBody, row, contactReach(def), other ? 1.5 : .5)) continue;
       contactBody(row.body, row.state);
       row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale);
@@ -254,6 +254,25 @@ export class VehicleContacts {
     return this.changed;
   }
 
+  /** A driver and a rider thrown from a board have already met in the vehicle pair. */
+  continueContact(vehicle: number, rider: number): void {
+    const a = Math.min(vehicle, rider), b = Math.max(vehicle, rider);
+    const touch = this.touchBetween(a, b);
+    touch.seen = touch.hazardFirst = touch.hazardSecond = this.ctx.world.tick;
+  }
+
+  private touchBetween(first: number, second: number): Touch {
+    let pairs = this.touches.get(first);
+    if (!pairs) { pairs = new Map(); this.touches.set(first, pairs); }
+    let touch = pairs.get(second);
+    if (!touch) {
+      touch = { seen: -REARM_TICKS - 1, hazardFirst: -REARM_TICKS, hazardSecond: -REARM_TICKS };
+      pairs.set(second, touch);
+      this.pairCount++;
+    }
+    return touch;
+  }
+
   /** Whether `e` is a vehicle nobody drives, settled, that keeps this tick the pose it was captured in. */
   private still(e: number): boolean {
     const { world } = this.ctx, ents = world.ents, frame = this.frames.get(e);
@@ -325,7 +344,9 @@ export class VehicleContacts {
     const mass = this.defB ? vehicleMassProperties(this.defB.spec, this.b.state).mass
       : (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale;
     this.b.spec = this.defB?.spec ?? null; this.b.mass = Math.max(1, mass); this.b.response = 'dynamic';
-    this.queries.configure(this.a, this.b, this.defA, this.defB, this.radiusB, this.heightB);
+    if (isSkateboard(this.defB) && this.ctx.driverOf(e)) this.heightB = SKATER_HEIGHT;
+    const sourceHeight = isSkateboard(this.defA) && this.ctx.driverOf(car) ? SKATER_HEIGHT : 0;
+    this.queries.configure(this.a, this.b, this.defA, this.defB, this.radiusB, this.heightB, 0, sourceHeight);
   }
 
   private upright(s: DynamicState): void { s.qx = s.qy = s.qz = 0; s.qw = 1; s.pitchRate = s.yawRate = s.rollRate = 0; }
@@ -432,13 +453,9 @@ export class VehicleContacts {
     if (anchoredA) a.state.vx = a.state.vy = a.state.vz = a.state.pitchRate = a.state.yawRate = a.state.rollRate = 0;
     if (fixed || anchoredB) b.state.vx = b.state.vy = b.state.vz = b.state.pitchRate = b.state.yawRate = b.state.rollRate = 0;
     const firstHandle = Math.min(frame.handle, c.handle), secondHandle = Math.max(frame.handle, c.handle);
-    let pairs = this.touches.get(firstHandle);
-    const previous = pairs?.get(secondHandle), fresh = !previous || world.tick - previous.seen > REARM_TICKS;
-    if (previous?.seen === world.tick) return false;
-    if (!pairs) { pairs = new Map(); this.touches.set(firstHandle, pairs); }
-    if (!previous) this.pairCount++;
-    const touch = previous ?? { seen: world.tick, hazardFirst: -REARM_TICKS, hazardSecond: -REARM_TICKS };
-    touch.seen = world.tick; if (!previous) pairs.set(secondHandle, touch);
+    const touch = this.touchBetween(firstHandle, secondHandle), fresh = world.tick - touch.seen > REARM_TICKS;
+    if (touch.seen === world.tick) return false;
+    touch.seen = world.tick;
     const aFirst = frame.handle === firstHandle;
     const hazardFreshA = (c.rotor || c.propeller) && world.tick - (aFirst ? touch.hazardFirst : touch.hazardSecond) >= REARM_TICKS;
     const hazardFreshB = (c.otherRotor || c.otherPropeller) && world.tick - (aFirst ? touch.hazardSecond : touch.hazardFirst) >= REARM_TICKS;
@@ -448,7 +465,7 @@ export class VehicleContacts {
     // Track before correction so history keeps the stationary prior pose of an actor first woken by this touch.
     world.history.track(c.entity);
     // Only a car someone drives harms what it meets, run over or struck.
-    if (by && !other && movable && !fixed && fresh && definition?.type === 'species' && definition.class === 'creature' && this.driver(car, frame) === by && this.runOver(car, frame, c, by)) return true;
+    if (!isSkateboard(this.defA) && by && !other && movable && !fixed && fresh && definition?.type === 'species' && definition.class === 'creature' && this.driver(car, frame) === by && this.runOver(car, frame, c, by)) return true;
     resolveDynamicContact(a, b, c, this.queries, this.scratch, result);
     this.store(car, a.state, true); this.store(c.entity, b.state, !!other);
     // The impulse can move either vehicle again, including across a chunk boundary, before the next gather.
@@ -477,7 +494,7 @@ export class VehicleContacts {
     const bladeSpeed = hazardFreshA ? c.hazardSpeed : 0;
     const hullSpeed = fresh && result.pointSpeedA > MIN_HARM_SPEED ? result.signedClosingSpeed : 0;
     const speed = Math.max(hullSpeed, bladeSpeed);
-    if (!other && by && ents.resolve(frame.handle) === car && ents.resolve(c.handle) === c.entity &&
+    if (!isSkateboard(this.defA) && !other && by && ents.resolve(frame.handle) === car && ents.resolve(c.handle) === c.entity &&
         this.driver(car, frame) === by && speed > MIN_HARM_SPEED) {
       const harmful = speed - MIN_HARM_SPEED;
       const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0,

@@ -135,6 +135,7 @@ function writeVehicle(w: BitWriter, b: Body): void {
     if (skate) {
       w.u8(skate.move); w.u8(skate.ticks); w.u16(skate.keys); w.u8(skate.grace); w.u8(skate.buffer);
       w.u8(skate.chain); w.u16(skate.score); w.u16(skate.bank); w.u8(skate.window);
+      w.u16(skate.balance + 1024); w.u16(skate.distance); w.u16(skate.tricks); w.bool(skate.switched); w.bits(skate.brake, 2);
     }
     // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
   }
@@ -182,6 +183,7 @@ function readVehicle(r: BitReader, b: Body): void {
     const skate = b.skate ??= new SkateState();
     skate.move = r.u8(); skate.ticks = r.u8(); skate.keys = r.u16(); skate.grace = r.u8(); skate.buffer = r.u8();
     skate.chain = r.u8(); skate.score = r.u16(); skate.bank = r.u16(); skate.window = r.u8();
+    skate.balance = r.u16() - 1024; skate.distance = r.u16(); skate.tricks = r.u16(); skate.switched = r.bool(); skate.brake = r.bits(2);
   } else b.skate = null;
   b.seat = r.bool() ? r.varint() + 1 : 0;
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;
@@ -475,6 +477,7 @@ export const VEHICLE_LIGHTS = 7;
  * open on a car going 3 m/s or more, it strikes whoever stands where it swings (server/urban.ts doorStrikes).
  */
 export const VEHICLE_DOOR = 8;
+export const VEHICLE_PACK = 9;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
