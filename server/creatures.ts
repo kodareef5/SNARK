@@ -9,7 +9,7 @@ import type { CreatureCombatFacet } from "../shared/content/defs.ts";
 import { AnimState, bodySeed, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
 import { posedSubmerged } from "../shared/anim/breath.ts";
 import { TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SECONDARY, BTN_SPRINT, Body, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, swimDepth, type MoveParams } from "../shared/sim/character.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, swimDepth, type MoveParams } from "../shared/sim/character.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_SWING, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { Behavior } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
@@ -333,7 +333,7 @@ export class Creatures {
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
       // A vehicle's wheels move it (server/urban.ts), and nothing breathes in it.
-      if (world.reg.vehicle[ents.kind[e]!]) continue;
+      if (world.reg.vehicle[ents.kind[e]!] || (ents.mflags[e]! & MF_DOWN) !== 0) continue;
       // A driven creature is stepped with its session's body, and breathes as it goes. A held one moves with whoever holds it.
       if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0 || ents.seatSlot[e] === IMPALE_SLOT) {
         this.tactics.delete(e);

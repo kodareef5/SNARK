@@ -8,10 +8,10 @@
 // the open, as its ragdoll meets more of them each substep.
 
 import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
-import { Fall, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
+import { Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
 import { brace, layHuman } from "../shared/anim/human-fall.ts";
 import { B_HEAD, B_HIPS, HUMAN } from "../shared/anim/human.ts";
-import { facingOf, LIE_FACINGS, LIE_WAYS } from "../shared/anim/reactions.ts";
+import { facingOf, REACT_CREATURE_DOWN, LIE_FACINGS, LIE_WAYS } from "../shared/anim/reactions.ts";
 import { quatRotate } from "../shared/math/quat.ts";
 import { detAtan2, detCos, detSin, TAU } from "../shared/math/scalar.ts";
 import { CUE_DOWN } from "../shared/anim/pose.ts";
@@ -19,8 +19,9 @@ import { Solved } from "../shared/anim/skeleton.ts";
 import { Found } from "../shared/world/structures.ts";
 import { RagdollMovers } from "./ragdoll-movers.ts";
 import { packCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
-import { F_ALIVE } from "../shared/sim/entities.ts";
-import { MF_DOWN, MODE_WALK } from "../shared/sim/character.ts";
+import { youngScale } from "../shared/sim/breeding.ts";
+import { F_ALIVE, F_HELD } from "../shared/sim/entities.ts";
+import { MF_DOWN, MF_OUT, MODE_WALK } from "../shared/sim/character.ts";
 import { HISTORY_TICKS } from "./history.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -44,6 +45,8 @@ interface Down {
   readonly e: number;
   readonly gen: number;
   readonly fall: Fall;
+  readonly creature: boolean;
+  readonly size: number;
   /** The facing it fell with, as the wire has it: hits are judged in that frame. */
   readonly yaw: number;
   ticks: number;
@@ -110,6 +113,15 @@ export class Falls {
     return n;
   }
 
+  /** Dodos can fall while conscious and moving on their own. */
+  creatureMayFall(e: number): boolean {
+    const { ents, reg, anims } = this.world;
+    const kind = ents.kind[e]!;
+    return reg.ids[kind] === "core:dodo" && !!anims[kind]?.rig.ragdoll &&
+      (ents.flags[e]! & (F_ALIVE | F_HELD)) === F_ALIVE && (ents.mflags[e]! & (MF_DOWN | MF_OUT)) === 0 &&
+      ents.driven[e] === 0 && ents.seat[e] === 0 && ents.mode[e] === MODE_WALK;
+  }
+
   /** Whether entity `e` lies knocked down. */
   isDown(e: number): boolean {
     return this.down.has(e);
@@ -124,25 +136,35 @@ export class Falls {
     const ents = this.world.ents;
     if (this.down.has(e)) return true;
     if ((ents.flags[e]! & F_ALIVE) === 0 || ents.seat[e] !== 0 || ents.mode[e] !== MODE_WALK) return false;
+    const kind = ents.kind[e]!, creature = this.world.reg.ids[kind] !== "core:survivor";
+    if (creature && !this.creatureMayFall(e)) return false;
     const units = this.cost(ents.x[e]!, ents.y[e]!, ents.z[e]!);
     if (this.down.size >= FALLS_MOST || this.units + units > FALL_UNITS_MOST) {
       this.stats.refused++;
       return false;
     }
     const yaw = yawOf16(ents.yaw[e]!);
-    const r = layHuman(wireX(ents.x[e]!), wireY(ents.y[e]!), wireX(ents.z[e]!), yaw);
+    const anim = creature ? this.world.anims[kind]! : null;
+    const size = creature && ents.grown[e] ? corpseSize(sizeSpan(youngScale(this.world.reg.birthScale[kind]!, ents.span[e]!, ents.grown[e]!, this.world.tick))) : 1;
+    const pose = new Solved(anim?.rig.bones ?? HUMAN.bones);
+    const x = wireX(ents.x[e]!), y = wireY(ents.y[e]!), z = wireX(ents.z[e]!);
+    const r = anim ? layCorpse(anim, false, false, x, y, z, yaw, size, pose, true) : layHuman(x, y, z, yaw);
+    if (!r) return false;
     r.launch(vx, vy, vz, wx, wy, wz);
     const fall = new Fall(r);
-    fall.reflex = brace;
+    if (!creature) fall.reflex = brace;
     const revision = ++this.serial;
-    const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision, begun: revision, world: 0, motion: null, pose: new Solved(HUMAN.bones),
-      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: false, struck: new Set(), by };
+    const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision, begun: revision, world: 0, motion: null, pose, creature, size,
+      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(anim?.rig.bones ?? HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: false, struck: new Set(), by };
     this.down.set(e, d);
     this.units += units;
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
     // Its facing as it fell, as sent, which its pose is in.
     ents.yaw[e] = ((ents.yaw[e]! >>> 6) << 6) & 0xffff;
-    ents.cue[e] = (ents.cue[e]! | CUE_DOWN) >>> 0;
+    if (creature) {
+      ents.react[e] = REACT_CREATURE_DOWN;
+      this.world.history.reacted(e);
+    } else ents.cue[e] = (ents.cue[e]! | CUE_DOWN) >>> 0;
     // Its own client is told by its body's flags, as its snapshot carries no cue of its own.
     ents.mflags[e]! |= MF_DOWN;
     this.world.history.cued(e);
@@ -216,10 +238,19 @@ export class Falls {
    * fall kept that tick's.
    */
   poseAt(e: number, tick: number): Solved | null {
+    const d = this.fallAt(e, tick), k = tick & (HISTORY_TICKS - 1);
+    return d && d.poseTick[k] === tick ? d.poses[k]! : d?.pose ?? null;
+  }
+
+  sizeAt(e: number, tick: number): number {
+    return this.fallAt(e, tick)?.size ?? 1;
+  }
+
+  private fallAt(e: number, tick: number): Down | undefined {
     const k = tick & (HISTORY_TICKS - 1), now = this.down.get(e), before = this.risen.get(e);
-    if (now && now.poseTick[k] === tick) return now.poses[k]!;
-    if (before) for (let i = before.length - 1; i >= 0; i--) if (before[i]!.poseTick[k] === tick) return before[i]!.poses[k]!;
-    return now?.pose ?? before?.[before.length - 1]?.pose ?? null;
+    if (now?.poseTick[k] === tick) return now;
+    if (before) for (let i = before.length - 1; i >= 0; i--) if (before[i]!.poseTick[k] === tick) return before[i];
+    return now ?? before?.[before.length - 1];
   }
   /** Falls that rose within HISTORY_TICKS, by entity, the last to rise last. */
   private readonly risen = new Map<number, Down[]>();
@@ -273,7 +304,7 @@ export class Falls {
         continue;
       }
       if (was !== d.fall.still) d.revision = ++this.serial;
-      if (!d.fall.still) this.strikeStanding(d);
+      if (!d.creature && !d.fall.still) this.strikeStanding(d);
       // A vehicle pushing it is outside what a client can step alike: it is told again while that lasts, and as it ends.
       if ((r.touched && this.world.tick - d.sent >= DISTURBED_TICKS) || (d.touched && !r.touched)) d.revision = ++this.serial;
       d.touched = r.touched;
@@ -295,7 +326,7 @@ export class Falls {
     if (d.motion?.revision !== d.revision) {
       d.sent = this.world.tick;
       const state = r.checkpoint();
-      const data = packCorpseCheckpoint({ x, y, z, yaw: d.yaw, size: 1, out: false, air: false,
+      const data = packCorpseCheckpoint({ x, y, z, yaw: d.yaw, size: d.size, out: false, air: false,
         awake: r.awake, standing: true, carrier: r.carrier, ticks: d.fall.ticks, state });
       r.restore(state, r.awake);
       // A fall created before this tick's step still holds the previous tick's state.
@@ -318,12 +349,21 @@ export class Falls {
     const kept = this.risen.get(d.e);
     if (kept) kept.push(d);
     else this.risen.set(d.e, [d]);
-    ents.setPosition(d.e, root[0]!, root[1]! - HIPS_UP, root[2]!);
+    const r = d.fall.ragdoll;
+    const feet = d.creature ? Math.max(this.world.hf.heightAt(root[0]!, root[2]!), root[1]! - r.skel.capR[r.def.bone[0]!]! * d.size) : root[1]! - HIPS_UP;
+    ents.setPosition(d.e, root[0]!, feet, root[2]!);
     ents.vx[d.e] = ents.vy[d.e] = ents.vz[d.e] = 0;
-    ents.cue[d.e] = (ents.cue[d.e]! & ~CUE_DOWN) >>> 0;
+    if (d.creature) {
+      ents.react[d.e] = 0;
+      this.world.history.reacted(d.e);
+    } else ents.cue[d.e] = (ents.cue[d.e]! & ~CUE_DOWN) >>> 0;
     ents.mflags[d.e]! &= ~MF_DOWN;
     this.world.history.cued(d.e);
     this.stats.rose++;
+    if (d.creature) {
+      if ((ents.mflags[d.e]! & MF_OUT) === 0) this.onUp(d.e, false, 0, 0);
+      return;
+    }
     lyingOf(d.pose, d.yaw, ents.yaw[d.e]!);
     this.onUp(d.e, lies.up, lies.way, lies.facing);
   }

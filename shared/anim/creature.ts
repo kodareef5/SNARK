@@ -1003,7 +1003,7 @@ function gettingUp(a: CreatureAnim, st: AnimState, tick: number, out: Pose): voi
  * Returns the zone a ray hits, or 0. The creature stands at (bx, by, bz) facing `yaw` (1/65536 turns). The ray starts at
  * (ox, oy, oz) and runs along the unit direction (dx, dy, dz) no farther than `maxT`. `zoneHit` holds the bone and the distance.
  */
-export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, padding = 0, world?: CollisionWorld, size = 1): number {
+export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, padding = 0, world?: CollisionWorld, size = 1, fallen: Solved | null = null): number {
   const rig = a.rig;
   // Most rays miss the bounding sphere, so test that first.
   const cx = bx - ox;
@@ -1011,7 +1011,7 @@ export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: nu
   const cz = bz - oz;
   const along = cx * dx + cy * dy + cz * dz;
   const off2 = cx * cx + cy * cy + cz * cz - along * along;
-  if (off2 > (rig.reach + padding) * (rig.reach + padding) || along < -rig.reach - padding || along > maxT + rig.reach + padding) {
+  if (!fallen && (off2 > (rig.reach + padding) * (rig.reach + padding) || along < -rig.reach - padding || along > maxT + rig.reach + padding)) {
     zoneHit.zone = 0;
     zoneHit.bone = -1;
     zoneHit.t = maxT;
@@ -1019,12 +1019,12 @@ export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: nu
   }
   // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.
   const r = (yaw * TAU) / 65536;
-  poseCreatureOn(a, st, tick, world, bx, by, bz, r, size);
+  if (!fallen) poseCreatureOn(a, st, tick, world, bx, by, bz, r, size);
   const s = detSin(r);
   const c = detCos(r);
   const rx = ox - bx;
   const rz = oz - bz;
-  return rayZones(rig, rig.solved, c * rx - s * rz, oy - by, s * rx + c * rz, c * dx - s * dz, dy, s * dx + c * dz, maxT, padding);
+  return rayZones(rig, fallen ?? rig.solved, c * rx - s * rz, oy - by, s * rx + c * rz, c * dx - s * dz, dy, s * dx + c * dz, maxT, padding);
 }
 
 /** Authored pose, slope-aware stride rate and spatial support shared by drawing, seats and authoritative contacts. */

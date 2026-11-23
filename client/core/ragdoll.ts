@@ -15,7 +15,7 @@
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
 import { brace, layHuman } from "../../shared/anim/human-fall.ts";
-import { packLie, REACT_FALL } from "../../shared/anim/reactions.ts";
+import { packLie, REACT_CREATURE_DOWN, REACT_FALL } from "../../shared/anim/reactions.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { poseCreatureOn, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
@@ -228,6 +228,8 @@ class Seen {
 
 /** A survivor knocked down (CUE_DOWN), lying as its ragdoll, and for RISE_BLEND ticks after it gets up; or a survivor's body (CUE_DEAD). */
 export interface HumanFall {
+  readonly creature?: CreatureAnim | null;
+  size?: number;
   handle: number;
   /** Null until its checkpoint comes, and once it has risen. */
   fall: Fall | null;
@@ -261,6 +263,7 @@ const WAIT_LYING = 40;
 export class HumanFalls {
   private readonly byId = new Map<number, HumanFall>();
   private readonly survivor: (kind: number) => boolean;
+  private readonly mortal: readonly (CreatureAnim | null)[];
   private readonly solid: (kind: number) => Solid | null;
   private updates = 0;
   /** The vehicles and heavy creatures in view, where each is and where it was a tick before, for falls to meet (shared/anim/ragdoll.ts movers). */
@@ -272,8 +275,9 @@ export class HumanFalls {
   private readonly near: { from: Place; to: Place; boxes: Float64Array; aside: boolean; near: number; handle: number }[] = [];
   private readonly nearPool: { from: Place; to: Place; boxes: Float64Array; aside: boolean; near: number; handle: number }[] = [];
 
-  constructor(survivor: (kind: number) => boolean, solid: (kind: number) => Solid | null = () => null) {
+  constructor(survivor: (kind: number) => boolean, solid: (kind: number) => Solid | null = () => null, mortal: readonly (CreatureAnim | null)[] = []) {
     this.survivor = survivor;
+    this.mortal = mortal;
     this.solid = solid;
   }
 
@@ -356,19 +360,22 @@ export class HumanFalls {
     this.seeCars(remote);
     for (let i = 0; i < remote.count; i++) {
       // A survivor's body (CUE_DEAD) lies as its ragdoll for good.
-      if (!this.survivor(remote.kind[i]!)) continue;
-      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, (remote.cue[i]! & (CUE_DOWN | CUE_DEAD)) !== 0, tick, seen, world, motions);
+      const kind = remote.kind[i]!, human = this.survivor(kind);
+      const creature = !human && remote.react[i] === REACT_CREATURE_DOWN ? this.mortal[kind] : null;
+      if (!human && !creature && !this.byId.get(remote.id[i]!)?.creature) continue;
+      const down = !!creature || (human && (remote.cue[i]! & (CUE_DOWN | CUE_DEAD)) !== 0);
+      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, down, tick, seen, world, motions, creature);
     }
     if (own !== 0) this.track(own, handleIndex(own), ownDown, tick, seen, world, motions);
     for (const [id, h] of this.byId) if (h.seen !== seen) this.byId.delete(id);
   }
 
-  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined): void {
+  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, creature?: CreatureAnim | null): void {
     let h = this.byId.get(id);
     if (h && h.handle !== handle) h = undefined;
     if (!h) {
       if (!down) return;
-      h = { handle, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(HUMAN.bones), down: true, downAt: tick, upAt: -1, risen: 0, seen };
+      h = { handle, creature, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(creature?.rig.bones ?? HUMAN.bones), down: true, downAt: tick, upAt: -1, risen: 0, seen };
       this.byId.set(id, h);
     }
     h.seen = seen;
@@ -401,12 +408,13 @@ export class HumanFalls {
   private lay(h: HumanFall, motion: CorpseMotion): void {
     const cp = decodeCorpseCheckpoint(motion.data);
     if (!cp) return;
-    const r = layHuman(cp.x, cp.y, cp.z, cp.yaw, cp.out);
-    if (!r.restore(cp.state, cp.awake)) return;
+    const r = h.creature ? layCorpse(h.creature, false, false, cp.x, cp.y, cp.z, cp.yaw, cp.size, h.solved, true) : layHuman(cp.x, cp.y, cp.z, cp.yaw, cp.out);
+    if (!r || !r.restore(cp.state, cp.awake)) return;
     h.fall = new Fall(r);
     // A living body braces as the server's does.
-    h.fall.reflex = brace;
+    if (!h.creature) h.fall.reflex = brace;
     h.fall.ticks = cp.ticks;
+    h.size = cp.size;
     h.x = cp.x; h.y = cp.y; h.z = cp.z; h.yaw = cp.yaw;
     h.clock = motion.tick; h.motionTick = motion.tick; h.motionRevision = motion.revision;
     r.pose(h.solved);
@@ -447,7 +455,7 @@ export class Corpses {
 
   constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array, survivor: (kind: number) => boolean = () => false, solid: (kind: number) => Solid | null = () => null) {
     this.mortal = mortal;
-    this.humans = new HumanFalls(survivor, solid);
+    this.humans = new HumanFalls(survivor, solid, mortal);
     void birthScale;
   }
 

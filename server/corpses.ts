@@ -244,8 +244,9 @@ export class Corpses {
     const ents = world.ents;
     const tick = world.tick;
     const young = rec.grown !== 0 && growthStep(rec.span, rec.grown, tick) < GROWN;
+    const handed = this.handOff(e);
     const span = sizeSpan(ents.grown[e] !== 0 ? youngScale(reg.birthScale[rec.kind]!, ents.span[e]!, ents.grown[e]!, tick) : 1);
-    const size = corpseSize(span);
+    const size = handed?.size ?? corpseSize(span);
     const name = rec.name !== "" ? rec.name : reg.ids[rec.kind]!.slice(reg.ids[rec.kind]!.indexOf(":") + 1);
     const body = records.create(this.corpse, name);
     body.x = wireX(ents.x[e]!);
@@ -268,8 +269,7 @@ export class Corpses {
     const max = (of.corpse?.health ?? HEALTH) * size * rules.num("HarvestHealthMultiplier");
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
     const survivor = rec.kind === this.survivor;
-    // A survivor that dies knocked down goes on lying as its fall had it; one lying prone or knocked out goes limp lying.
-    const handed = survivor ? this.handOff(e) : null;
+    // A body already in a fall keeps that pose and momentum when it dies.
     const out = handed ? false : rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0 || (survivor && ents.stance[e] === STANCE_PRONE);
     const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
     b.handed = handed;
@@ -279,7 +279,7 @@ export class Corpses {
       b.motionRevision = 1;
     }
     // A survivor has no death clip a client could lay it by, so its body is always sent as its ragdoll lies.
-    if (survivor) b.motionRevision = 1;
+    if (survivor || handed) b.motionRevision = 1;
     if (b.wreck) {
       const v = ents.vrow[e]!;
       Object.assign(b.wreck, { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!,
@@ -291,7 +291,7 @@ export class Corpses {
       }
     }
     // Off the ground with nothing under it, it falls on as it was going.
-    if (!b.launch && (ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
+    if (!handed && !b.launch && (ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
     this.save(b);
     this.laid.set(rec.pid, b);
   }
@@ -448,7 +448,7 @@ export class Corpses {
     const saved = b.rec.extra.get(CORPSE_MOTION_COMPONENT), checkpoint = saved ? decodeCorpseCheckpoint(saved) : null;
     const human = b.kind === this.survivor;
     // A survivor has no death clip: it goes limp standing, as one knocked down does (shared/anim/human-fall.ts).
-    b.motionStanding = human || !!b.launch || checkpoint?.standing === true;
+    b.motionStanding = human || !!b.handed || !!b.launch || checkpoint?.standing === true;
     const r = human && b.pose ? layHuman(b.x, b.y, b.z, b.yaw, b.out) : anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose, b.motionStanding) : null;
     if (r) {
       b.fall = new Fall(r);

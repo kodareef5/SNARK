@@ -14,7 +14,7 @@ import { conformCreature } from "../../../shared/anim/ground-conform.ts";
 import { createMountMotion, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
 import { occupantPose, poseSeated, seatBody, seatOrigin, type OccupantSeat } from "../../../shared/anim/occupant.ts";
 import { seatFit } from "../../../shared/anim/seat-fit.ts";
-import { facingOf, LIE_STEPS, lyingOff, lyingStep, REACT_DIRS, REACT_FALL, reactKind, stepShare } from "../../../shared/anim/reactions.ts";
+import { facingOf, LIE_STEPS, lyingOff, lyingStep, REACT_CREATURE_DOWN, REACT_DIRS, REACT_FALL, reactKind, stepShare } from "../../../shared/anim/reactions.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
@@ -27,7 +27,7 @@ import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, lookLift, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
-import { AnimState, DIR_STEPS, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
+import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { MODE_FLYER, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../../shared/sim/character.ts";
@@ -815,7 +815,7 @@ export class Characters {
    * `st` says it is doing and whether it is `seated` astride: as it is posed doing that, standing still, at tick 0. Made
    * once, the first time it is asked for. A vehicle stands in its rest pose.
    */
-  private standIn(kind: number, set: number, st: AnimState, seated: boolean, impaled = false, rider?: RiderFit, foot = -1, hand = -1): StandIn {
+  private standIn(kind: number, set: number, st: AnimState, seated: boolean, tick = 0, impaled = false, rider?: RiderFit, foot = -1, hand = -1): StandIn {
     const c = this.creatures[kind];
     // A survivor in a whole-body emote (sitting, lying, dancing) stands in at the middle of it.
     const emote = !c && !seated && !impaled ? emoteOf(st.emote) : null;
@@ -837,7 +837,10 @@ export class Characters {
       this.emoteStandIns.set(key, (e = { rows, solved, counted: -1, written: -1, first: 0 }));
       return e;
     }
-    const doing = c?.vehicle ? 0 : this.standState(st, seated, impaled, !c);
+    const age = c && st.cue === CUE_TORPOR && !st.out && st.react !== REACT_CREATURE_DOWN ? (Math.floor(tick) - st.cueStart) & 255 : Infinity;
+    const duration = c?.anim.torporOut?.frames ?? 30;
+    const rising = age < duration ? 1 + Math.floor(age * 8 / duration) : 0;
+    const doing = c?.vehicle ? 0 : this.standState(st, seated, impaled, !c) | (rising << 10);
     const of = (this.standIns[kind * 2 + set] ??= []);
     // Content indices are 16-bit and seats at most 16: this numeric key stays exactly representable and bounded by content.
     const fitKey = this.standKey(kind, set, rider?.profile ?? 0, doing);
@@ -848,15 +851,16 @@ export class Characters {
     like.mode = st.mode;
     like.grounded = st.grounded;
     like.stance = st.stance;
-    like.out = st.out;
+    like.out = st.out || st.react === REACT_CREATURE_DOWN;
     like.held = st.held;
+    if (rising) like.cue = CUE_TORPOR;
     if (!c) moving(like, doing >>> 10);
     let solved: Solved;
     let rest: Float32Array;
     if (c) {
       const rig = c.anim.rig;
       if (c.vehicle) rig.a.rest();
-      else creaturePose(c.anim, like, 0, rig.a, null);
+      else creaturePose(c.anim, like, rising ? (rising - 1) * duration / 8 : 0, rig.a, null);
       solve(rig, rig.a, (solved = new Solved(rig.bones)));
       rest = rig.rest;
     } else {
@@ -998,7 +1002,7 @@ export class Characters {
       counted.add(key);
       return HUMAN_BONES;
     }
-    const s = this.standIn(kind, set, st, seated && k !== null, impaled);
+    const s = this.standIn(kind, set, st, seated && k !== null, tick, impaled);
     if (s.counted === this.frame || s.written === this.frame) return 0;
     s.counted = this.frame;
     return s.rows.length / BONE_FLOATS;
@@ -1006,7 +1010,7 @@ export class Characters {
 
   /** What a body doing as `st` says stands in on one bone, as a number; a survivor on foot `walks`, and goes as standMove says. */
   private standState(st: AnimState, seated: boolean, impaled: boolean, walks: boolean): number {
-    return (st.mode & 7) | (st.grounded ? 8 : 0) | ((st.stance & 3) << 4) | (st.out ? 64 : 0) | (st.held ? 128 : 0) | (seated ? 256 : 0) | (impaled ? 512 : 0) | ((walks && !seated && !impaled ? standMove(st) : STILL) << 10);
+    return (st.mode & 7) | (st.grounded ? 8 : 0) | ((st.stance & 3) << 4) | ((st.out || st.react === REACT_CREATURE_DOWN) ? 64 : 0) | (st.held ? 128 : 0) | (seated ? 256 : 0) | (impaled ? 512 : 0) | ((walks && !seated && !impaled ? standMove(st) : STILL) << 10);
   }
 
   private standKey(kind: number, set: number, profile: number, doing: number): number {
@@ -1087,12 +1091,19 @@ export class Characters {
 
   private addCreature(p: FramePacket, kind: number, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, size: number, rigid: boolean, unseen: boolean, vehicle?: VehicleRenderPose): boolean {
     const rig = c.anim.rig;
+    const down = st.react === REACT_CREATURE_DOWN;
+    const fallen = down ? this.dead.humans.of(id) : undefined;
+    if (fallen) {
+      x = fallen.x - p.camX; y = fallen.y - p.camY; z = fallen.z - p.camZ;
+      yaw = fallen.yaw;
+      size = fallen.size ?? size;
+    }
     // A saddle is drawn as the saddled model in place of the body, or else as its own mesh on the body's bones (D491).
     const saddle = gear ? gear[gearAt + GEAR_WORN]! : 0;
     const saddled = saddle !== 0 && this.saddle[saddle] === 1 && c.saddled >= 0;
     const worn = saddle === 0 || saddled ? -1 : (c.worn.get(saddle) ?? -1);
     this.packet = p;
-    const standing = rigid ? this.standIn(kind, 0, st, false) : null;
+    const standing = rigid ? this.standIn(kind, 0, st, false, tick) : null;
     const stand = standing ? this.standInAt(p, standing) : -1;
     const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : rig.bones, worn >= 0 ? 2 : 1, !unseen);
     if (first < 0) {
@@ -1144,7 +1155,9 @@ export class Characters {
         }
         solve(rig, rig.a, rig.solved, rig.rest, null, v.slideOffsets);
         this.fresh++;
-      } else solved = this.creatureSolved(kind, c, id, x, y, z, yaw, st, tick, size, unseen);
+      } else if (fallen) solved = fallen.solved;
+      else if (down) solved = this.standIn(kind, 0, st, false).solved;
+      else solved = this.creatureSolved(kind, c, id, x, y, z, yaw, st, tick, size, unseen);
       if (v) {
         this.turn(vehicle, yaw, vehicle?.pitch ?? 0, vehicle?.roll ?? 0, this.rotation);
         orientSolved(rig.solved, this.rotation, c.oriented);
@@ -1529,7 +1542,7 @@ export class Characters {
     const hand = rider?.profile && (rider.targets[0]! & RIDER_GRIPS) !== 0 ? this.partOf(set, gear, gearAt, SLOT_HANDS) : -1;
     // A body all the way down, or a ragdoll's, lies alike whatever it was doing; one getting up goes as it does now.
     const all = onOne !== null || stepShare(lying) === 1;
-    const stand = rigid ? this.standInAt(p, lying >= 0 ? this.lyingStandIn(kind, at, lying, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance) : this.standIn(kind, at, st, seat !== null, impaled, rider, foot, hand)) : -1;
+    const stand = rigid ? this.standInAt(p, lying >= 0 ? this.lyingStandIn(kind, at, lying, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance) : this.standIn(kind, at, st, seat !== null, tick, impaled, rider, foot, hand)) : -1;
     const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
     if (first < 0) {
       if (rigid && stand < 0 && !unseen) p.dropped++;

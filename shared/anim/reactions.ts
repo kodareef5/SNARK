@@ -24,6 +24,8 @@ export const REACT_HEAVY = 2;
 export const REACT_FALL = 3;
 /** Getting up from a fall it lay in as a ragdoll: from lying as its ragdoll lay to standing, posed from the word alone. */
 export const REACT_RISE = 4;
+/** A living creature follows its physical checkpoint until its species' get-up cue begins. */
+export const REACT_CREATURE_DOWN = 5;
 const START_SHIFT = 3;
 const DIR_SHIFT = 11;
 const HEIGHT_SHIFT = 15;

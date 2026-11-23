@@ -14,6 +14,7 @@ import { RIDER_TARGET_FLOATS } from "../shared/anim/rider-controls.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
 import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../shared/anim/occupant.ts";
 import { SEAT_FLOATS, riderTargets, saddleSeat, seatOn } from "../shared/anim/seat.ts";
+import { REACT_CREATURE_DOWN } from "../shared/anim/reactions.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { boatDrives } from "../shared/sim/vehicle.ts";
@@ -174,6 +175,7 @@ export class Combat {
   private readonly soles: SeatedSoles;
   private readonly grips: SeatedGrips;
   private readonly survivor: number;
+  private readonly dodo: number;
   /** A second entity the cast in progress skips: the rider of the creature that is biting. -1 for none. */
   private spare = -1;
   private biting = false;
@@ -238,6 +240,7 @@ export class Combat {
   corpses: Corpses | null = null;
   /** The pose a survivor knocked down lay in at a tick, to be hit as it lay (server/falls.ts); null for none. The host sets it. */
   downPose: (e: number, tick: number) => Solved | null = () => null;
+  downSize: (e: number, tick: number) => number = () => 1;
   /**
    * A blow that hurt body `target`: its IMPACT_ kind, the damage taken, the unit way it went (dx, dz), how high it landed
    * above the feet, and who dealt it.
@@ -265,6 +268,7 @@ export class Combat {
     this.occupant = new OccupantBody(ctx.rigs);
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
+    this.dodo = reg.index.get("core:dodo") ?? -1;
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
     this.vehicleReach = Float32Array.from(reg.vehicle, (vehicle, kind) => {
       if (!vehicle) return 0;
@@ -720,9 +724,9 @@ export class Combat {
           const h = reg.bodyHeight[kind]!;
           const rig = this.anims[kind]?.rig;
           const car = reg.vehicle[kind];
-          const bodyReach = car ? this.vehicleReach[kind]! : this.human[kind] ? BODY_REACH + BODY_REACH_Y : rig ? rig.reach : Math.max(BODY_REACH, h * .5 + reg.bodyRadius[kind]!);
+          const bodyReach = car ? this.vehicleReach[kind]! : this.human[kind] ? BODY_REACH + BODY_REACH_Y : rig ? rig.reach + (kind === this.dodo ? Math.abs(rig.mid) : 0) : Math.max(BODY_REACH, h * .5 + reg.bodyRadius[kind]!);
           const px = ents.x[i]! - ox;
-          const py = ents.y[i]! + (car || this.human[kind] ? 0 : rig ? rig.mid : h * .5) - oy;
+          const py = ents.y[i]! + (car || this.human[kind] || kind === this.dodo ? 0 : rig ? rig.mid : h * .5) - oy;
           const pz = ents.z[i]! - oz;
           const t = px * dx + py * dy + pz * dz;
           const off2 = px * px + py * py + pz * pz - t * t;
@@ -969,11 +973,13 @@ export class Combat {
         st.seed = bodySeed(i);
         // A young creature is its kind's shape scaled down about its position. The ray is scaled up about that
         // point instead, and the hit distance is scaled back.
-        const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
+        const fallen = past.react === REACT_CREATURE_DOWN ? this.downPose(i, Math.floor(tick)) : null;
+        const size = fallen ? this.downSize(i, Math.floor(tick)) : world.ents.grown[i] !== 0
+          ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
         const zone =
           size === 1
-            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, world)
-            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size, this.contactPadding / size, world, size);
+            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, world, 1, fallen)
+            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size, this.contactPadding / size, world, size, fallen);
         if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;

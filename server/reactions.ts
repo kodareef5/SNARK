@@ -32,6 +32,7 @@ export interface ReactionsContext {
   readonly rules?: () => ReactRules;
   /** Whether body `e` is a living creature on its feet, which a hard blow shoves though it never reels, and what it weighs. */
   readonly creature?: (e: number) => boolean;
+  readonly creatureMayFall?: (e: number) => boolean;
   readonly mass?: (e: number) => number;
 }
 
@@ -58,6 +59,7 @@ export class Reactions {
     if (!this.ctx.standing(e)) {
       // A creature does not reel, but a blow that would stagger a survivor moves it.
       if (tier >= TIER_STAGGER && !pushed && this.ctx.creature?.(e)) this.push(e, dv, dx, dz);
+      if (tier === TIER_FALL && this.ctx.creatureMayFall?.(e)) return tier;
       return TIER_NONE;
     }
     if (tier !== TIER_STAGGER) return tier;
