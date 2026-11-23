@@ -382,6 +382,11 @@ export class Ui {
       // A finger's zones lie under the whole HUD while the body is being played.
       const play = plan !== null && this.touchPlay !== null && session !== null && controls && this.wantsPointerLock;
       if (play) layer!.touchZones(f);
+      if (session?.airSupport.flight && controls && !this.dead) {
+        if (play) this.touchShown = layer!.touchDrone(this.frame, this.touchPlay!);
+        this.air.hud(f, session, this.inputDevice);
+        return;
+      }
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
       hud.bare = this.map || this.dead;
