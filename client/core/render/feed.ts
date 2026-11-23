@@ -24,7 +24,7 @@ export interface FeedLook {
   blur: number;
   /** Scene texels the colour's red and blue part from its green at the picture's corners. */
   chroma: number;
-  /** Sensor noise, as linear light either way. */
+  /** Sensor noise, as a display value either way. */
   noise: number;
   /** How dark the foot of each scene row is, and the corners. */
   scan: number;
@@ -40,11 +40,11 @@ export interface FeedLook {
 
 const BLUR = 0.32, BLUR_BAD = 0.22;
 const CHROMA = 0.55, CHROMA_BAD = 1.6, CHROMA_BURST = 2.4;
-const NOISE = 0.022, NOISE_BAD = 0.1, NOISE_BURST = 0.05;
+const NOISE = 0.028, NOISE_BAD = 0.07, NOISE_BURST = 0.04;
 const SCAN = 0.16, VIGNETTE = 0.5, VIGNETTE_BAD = 0.15;
-const BLOCK_BAD = 0.55, BLOCK_BURST = 0.45;
-const TEAR_BAD = 0.35, TEAR_BURST = 0.5;
-const DROP_BAD = 0.035, DROP_BURST = 0.05;
+const BLOCK_BAD = 0.35, BLOCK_BURST = 0.3;
+const TEAR_BAD = 0.2, TEAR_BURST = 0.25;
+const DROP_BAD = 0.012, DROP_BURST = 0.02;
 const SLIDE = 5, SLIDE_BAD = 28;
 const FLICKER_BAD = 0.3;
 
@@ -101,8 +101,8 @@ export function feedHash(a: number, b: number, c: number): number {
 const OFF = 65536;
 
 /**
- * The feed in the finish, after FRAME_BLOCK, `hash`, `scene`, `tone`, `graded` and `bright`: the colour of the pixel at
- * `vUv`, as linear light to show, from the scene, its bloom and fOptic and fPhosphor (OPTIC_FEED_AT, OPTIC_BURST_AT).
+ * The feed in the finish, after FRAME_BLOCK, `hash`, `scene`, `tone`, `encoded`, `graded` and `bright`: the colour of the
+ * pixel at `vUv` as a display value, from the scene, its bloom and fOptic and fPhosphor (OPTIC_FEED_AT, OPTIC_BURST_AT).
  */
 export const FEED_GLSL = `${LOOK_GLSL}float feedHash(vec3 v) {
   return hash(uvec3(ivec3(floor(v)) + ${OFF}));
@@ -124,16 +124,17 @@ vec3 feed() {
   vec3 c = vec3(feedTexel(q + fringe).r, feedTexel(q).g, feedTexel(q - fringe).b);
   c = mix(c, scene(p * uPass.xy), l.blur);
   if (fFinish.w > 0.0) c += fFinish.y * (texture(uBloom, min(vUv * uExtent.xy, uExtent.zw)).rgb / fFinish.w - bright(c));
-  vec3 t = graded(tone(c * fGrade.rgb));
-  // Sensor noise on each texel, finer grain on each pixel, and night vision's or heat's own grain.
-  t += (feedHash(vec3(q, seed + 9.0)) - 0.5) * l.noise + (hash(uvec3(gl_FragCoord.xy, uint(seed) + 7u)) - 0.5) * (0.5 * l.noise + fOptic.y);
-  t *= 1.0 - l.scan * smoothstep(0.35, 1.0, fract(p.y));
+  // Night vision's or heat's own grain, as light; then the sensor's noise on each texel and finer on each pixel, as shown.
+  vec3 t = graded(tone(c * fGrade.rgb)) + (hash(uvec3(gl_FragCoord.xy, uint(seed) + 7u)) - 0.5) * fOptic.y;
+  vec3 e = encoded(clamp(t, 0.0, 1.0));
+  e += (feedHash(vec3(q, seed + 9.0)) - 0.5) * l.noise + (hash(uvec3(gl_FragCoord.xy, uint(seed) + 3u)) - 0.5) * 0.5 * l.noise;
+  e *= 1.0 - l.scan * smoothstep(0.35, 1.0, fract(p.y));
   float r = length(d * vec2(size.x / size.y, 1.0)) / 0.95;
-  t *= 1.0 - l.vignette * r * r * r;
+  e *= 1.0 - l.vignette * r * r * r;
   // A row lost to static.
   float row = floor(p.y);
-  if (feedHash(vec3(row, tick, 8.0)) < l.drop) t = mix(t, vec3(feedHash(vec3(floor(p.x / 3.0), row, seed))), 0.85);
-  return t * (1.0 - l.flicker * feedHash(vec3(tick, 1.0, 12.0)));
+  if (feedHash(vec3(row, tick, 8.0)) < l.drop) e = mix(e, vec3(feedHash(vec3(floor(p.x / 3.0), row, seed))), 0.85);
+  return e * (1.0 - l.flicker * feedHash(vec3(tick, 1.0, 12.0)));
 }
 `;
 
@@ -174,8 +175,8 @@ export function feedPicture(color: Uint8ClampedArray, width: number, height: num
     // Rows of `low` run down the picture: a texel up it is one fewer.
     const at = (sx: number, sy: number, c: number): number => texel(sx, sh - sy, c);
     t[0] = at(qx + fx, qy + fy, 0); t[1] = at(qx, qy, 1); t[2] = at(qx - fx, qy - fy, 2);
-    for (let c = 0; c < 3; c++) t[c] = t[c]! + (smooth(px, sh - py, c) - t[c]!) * l.blur;
-    const n = (hash(qx, qy, seed + 9) - 0.5) * l.noise + (feedHash(x, y, (seed >>> 0) + 7) - 0.5) * 0.5 * l.noise;
+    for (let c = 0; c < 3; c++) t[c] = linearToSrgb(Math.min(1, Math.max(0, t[c]! + (smooth(px, sh - py, c) - t[c]!) * l.blur)));
+    const n = (hash(qx, qy, seed + 9) - 0.5) * l.noise + (feedHash(x, y, (seed >>> 0) + 3) - 0.5) * 0.5 * l.noise;
     const scan = 1 - l.scan * smoothstep(0.35, 1, py - Math.floor(py));
     const r = Math.hypot(dx * (sw / sh), dy) / 0.95, shade = 1 - l.vignette * r * r * r;
     const row = Math.floor(py), lost = hash(row, tick, 8) < l.drop ? hash(px / 3, row, seed) : -1;
@@ -183,7 +184,7 @@ export function feedPicture(color: Uint8ClampedArray, width: number, height: num
     for (let c = 0; c < 3; c++) {
       let k = (t[c]! + n) * scan * shade;
       if (lost >= 0) k += (lost - k) * 0.85;
-      color[(y * width + x) * 4 + c] = Math.round(linearToSrgb(Math.min(1, Math.max(0, k * dip))) * 255);
+      color[(y * width + x) * 4 + c] = Math.round(Math.min(1, Math.max(0, k * dip)) * 255);
     }
   }
 }

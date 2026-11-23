@@ -257,6 +257,8 @@ export const BLOOM_UP = `${READ}void main() {
  */
 export const FINISH = `#version 300 es
 precision highp float;
+// The hashes need whole numbers of 32 bits: a fragment shader's are mediump unless asked, which some cards keep to 16.
+precision highp int;
 uniform sampler2D uScene, uBloom;
 uniform vec4 uPass, uExtent;
 in vec2 vUv;
@@ -286,7 +288,7 @@ ${FEED_GLSL}void main() {
   uvec3 at = uvec3(gl_FragCoord.xy, 0u);
   // A drone's feed draws its own picture (feed.ts).
   if (fOptic.w > 0.0) {
-    o = vec4(encoded(clamp(feed(), 0.0, 1.0)) + (hash(at) + hash(at + uvec3(0u, 0u, 1u)) - 1.0) / 255.0, 1.0);
+    o = vec4(clamp(feed(), 0.0, 1.0) + (hash(at) + hash(at + uvec3(0u, 0u, 1u)) - 1.0) / 255.0, 1.0);
     return;
   }
   vec3 cn = scene(uv + vec2(uPass.x, 0.0)), cs = scene(uv - vec2(uPass.x, 0.0)), ce = scene(uv + vec2(0.0, uPass.y)), cw = scene(uv - vec2(0.0, uPass.y)), c, middle;

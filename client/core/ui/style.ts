@@ -142,6 +142,8 @@ export const S_TRACK_NOTE = 85;
 /** The black of a tier with no finishing pass under a feed (hud/air-feed.ts): in scanlines, and toward the corners. */
 export const S_SCANLINES = 86;
 export const S_VIGNETTE = 87;
+/** A feed's small words set to the left. */
+export const S_FEED_SMALL_LEFT = 88;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -232,4 +234,5 @@ export const STYLES: readonly Style[] = [
   /* S_TRACK_NOTE */ mono(0xc4d3d8, 10, 0),
   /* S_SCANLINES */ { ...style(0x000000ff, 0xffffff), lens: LENS_SCAN },
   /* S_VIGNETTE */ { ...style(0x000000ff, 0xffffff), lens: LENS_VIGNETTE },
+  /* S_FEED_SMALL_LEFT */ mono(0xb9cdd4, 11, 0),
 ];
