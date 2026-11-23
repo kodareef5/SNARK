@@ -10,7 +10,7 @@
 
 import type { Mover as RagdollMover } from "../shared/anim/ragdoll.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
-import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type CorpseImpact } from "../shared/anim/corpse.ts";
+import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type CorpseImpact, type FallenState } from "../shared/anim/corpse.ts";
 import { WET_DAMP, WET_GRAVITY, type RagdollDef } from "../shared/anim/ragdoll.ts";
 import { HUMAN, HUMAN_RAGDOLL } from "../shared/anim/human.ts";
 import { layHuman } from "../shared/anim/human-fall.ts";
@@ -143,7 +143,7 @@ export interface Body {
   /** A physical death starts directly in the replicated ragdoll; the capsule never also owns its motion. */
   launch: CorpseImpact | null;
   /** A survivor's fall it died in (server/falls.ts take), which its ragdoll goes on from instead of being laid anew. */
-  handed: { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null;
+  handed: FallenState | null;
   motionRevision: number;
   motionStanding: boolean;
   motionWorld: number;
@@ -153,6 +153,7 @@ export interface Body {
   /** The tick its checkpoint last changed, and whether a vehicle touched it last tick. */
   sent: number;
   touched: boolean;
+  carrier?: number;
 }
 
 /** What one blow gave, for tests and the console. */
@@ -217,7 +218,7 @@ export class Corpses {
   }
 
   /** A survivor's fall that entity `e` dies in, taken from server/falls.ts. The host sets it. */
-  handOff: (e: number) => { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null = () => null;
+  handOff: (e: number) => FallenState | null = () => null;
 
   /** Whether the body that is entity `e` is opened by the use key: every one but a survivor's, which carries nothing. */
   opens(e: number): boolean {
@@ -456,9 +457,14 @@ export class Corpses {
         throw new Error(`corpse ${b.rec.pid}: invalid physical checkpoint`);
       }
       const continuing = !!checkpoint || !!b.handed;
-      if (checkpoint) b.fall.ticks = checkpoint.ticks;
+      if (checkpoint) {
+        b.fall.ticks = checkpoint.ticks;
+        // Runtime vehicle handles can change across a save. Discover support again at the saved world pose.
+        if (checkpoint.carrier) r.awake = true;
+      }
       if (b.handed) {
         r.restore(b.handed.state, b.handed.awake);
+        r.carrier = b.handed.carrier;
         b.fall.ticks = b.handed.ticks;
         b.handed = null;
       }
@@ -483,8 +489,9 @@ export class Corpses {
     const revision = r.worldRevision(world), before = b.motionRevision;
     if (b.motion && (revision !== b.motionWorld || wasMoving === fall.still)) b.motionRevision++;
     // A vehicle pushing it is outside what a client can step alike: it is told again while that lasts, and as it ends.
-    else if (b.motion && ((r.touched && world.tick - b.sent >= DISTURBED_TICKS) || (b.touched && !r.touched))) b.motionRevision++;
+    else if (b.motion && (r.carrier?.handle !== b.carrier || (r.touched && world.tick - b.sent >= DISTURBED_TICKS) || (b.touched && !r.touched))) b.motionRevision++;
     if (b.motionRevision !== before) b.sent = world.tick;
+    b.carrier = r.carrier?.handle;
     b.touched = r.touched;
     b.motionWorld = revision;
     if (b.e >= 0) world.ents.setPosition(b.e, b.x, b.y, b.z);
@@ -707,8 +714,8 @@ export class Corpses {
         continue;
       }
       if (b.moving || !b.fall || b.fall.ragdoll.awake) continue;
-      // Movers wake what they near each tick (wakeNear); this asks only whether the world changed under it.
-      b.fall.ragdoll.movers = NO_MOVERS;
+      // A parked support may have disappeared without moving.
+      b.fall.ragdoll.movers = b.fall.ragdoll.carrier ? this.cars.near(b.fall.ragdoll) : NO_MOVERS;
       if (b.fall.tick(world)) {
         if (b.motionRevision) { this.updateMotion(b, false); this.save(b); }
         b.fall.ragdoll.pose(b.pose!);

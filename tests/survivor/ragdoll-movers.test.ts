@@ -2,12 +2,16 @@
 // one it lies on, is shoved aside by a creature's legs, and wakes when one moving comes near where it sleeps.
 import { expect, test } from "bun:test";
 import { HUMAN, HUMAN_RAGDOLL } from "../../shared/anim/human.ts";
-import { layHuman, standingPose } from "../../shared/anim/human-fall.ts";
+import { brace, layHuman, standingPose } from "../../shared/anim/human-fall.ts";
 import { Ragdoll, type Mover, type MoverPose } from "../../shared/anim/ragdoll.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
+import { Fall, SETTLE_TICKS } from "../../shared/anim/corpse.ts";
+import { makeHandle } from "../../shared/ids.ts";
+import { decodeCorpseCheckpoint, encodeCorpseCheckpoint } from "../../shared/net/corpse.ts";
+import { CUE_DOWN } from "../../shared/anim/pose.ts";
 import { Corpses } from "../../client/core/ragdoll.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
@@ -162,6 +166,104 @@ function carSeen(remote: RemoteSample, id: number, gen: number, x: number, z: nu
   return remote;
 }
 
+test("a roof rider keeps its pose and slip on each watcher's moving car", () => {
+  const world = flat(), r = layHuman(40, 1, 40, 0, true), car = makeHandle(5, 1);
+  const frame = at(40, 0, 40);
+  r.movers = [{ handle: car, from: frame, to: frame, boxes: CAR }];
+  for (let tick = 0; tick < 30; tick++) r.step(world, STEP);
+  expect(r.carrier?.handle).toBe(car);
+  const root = new Float64Array(3);
+  r.rootPosition(root);
+  const motion = { revision: 1, tick: 100, data: encodeCorpseCheckpoint({
+    x: root[0]!, y: root[1]!, z: root[2]!, yaw: 0, size: 1, out: true, air: false,
+    awake: true, standing: false, ticks: 30, state: r.checkpoint(), carrier: r.carrier,
+  }) };
+  const motions = new Map([[makeHandle(3, 1), motion]]);
+  function watch(gen: number, shift: number, yaw: number, speed: number) {
+    const drawn = new Corpses([], undefined, k => survivorKind(reg, k), k => solidOf(reg, k));
+    const remote = new RemoteSample();
+    for (const tick of [99, 100]) {
+      carSeen(remote, 5, gen, 40 + shift, 40 + speed * (tick - 100) * STEP, yaw, tick);
+      remote.count = 2; remote.id[1] = 3; remote.gen[1] = 1;
+      remote.kind[1] = reg.index.get("core:survivor")!; remote.cue[1] = CUE_DOWN;
+      drawn.update(remote, world, 0, 0, new Map(), motions);
+    }
+    return drawn.humans.of(3)!.fall!.ragdoll;
+  }
+  const turned = watch(1, 1, Math.PI / 2, 3);
+  for (let i = 0; i < r.n * 3; i += 3) {
+    expect(turned.x[i]!).toBeCloseTo(41 + r.x[i + 2]! - 40, 7);
+    expect(turned.x[i + 1]!).toBeCloseTo(r.x[i + 1]!, 7);
+    expect(turned.x[i + 2]!).toBeCloseTo(40 - (r.x[i]! - 40), 7);
+    expect(turned.v[i]!).toBeCloseTo(r.v[i + 2]!, 4);
+    expect(turned.v[i + 2]!).toBeCloseTo(3 - r.v[i]!, 4);
+  }
+  expect(watch(2, 1, 0, 3).x).toEqual(r.x);
+  expect(watch(1, 20, 0, 3).x).toEqual(r.x);
+  r.settle(world);
+  expect(r.awake).toBe(false);
+  r.movers = [];
+  r.step(world, STEP);
+  expect(r.awake).toBe(true);
+  expect(r.carrier).toBeUndefined();
+});
+
+test("a rider on a turned car sees its roll about the world axis", () => {
+  const w = flat(), r = layHuman(40, 1, 40, 0, true), handle = makeHandle(5, 1);
+  const yaw = Math.PI / 4, from = { ...at(40, 0, 40), qy: Math.sin(yaw), qw: Math.cos(yaw) };
+  r.movers = [{ handle, from, to: from, boxes: CAR }];
+  for (let i = 0; i < 30; i++) r.step(w, STEP);
+  const roll = .01, s = Math.sin(roll / 2), c = Math.cos(roll / 2);
+  const to = { ...from, qx: -s * from.qy, qy: c * from.qy, qz: s * from.qw, qw: c * from.qw };
+  r.movers = [{ handle, from, to, boxes: CAR }];
+  r.step(w, STEP);
+  expect(r.carrier?.wx).toBeCloseTo(0, 7);
+  expect(r.carrier?.wy).toBeCloseTo(0, 7);
+  expect(r.carrier?.wz).toBeCloseTo(roll / STEP, 4);
+  const fall = new Fall(r);
+  fall.ticks = SETTLE_TICKS - 1;
+  fall.tick(w);
+  expect(fall.still).toBe(false);
+});
+
+test("a watcher rides a moving roof between sparse checkpoints", () => {
+  const w = flat(), solid = solidOf(reg, reg.index.get("core:compact")!)!, car = makeHandle(5, 1);
+  const roof = solid.boxes[7]! + solid.boxes[10]!, r = layHuman(40, roof, 40, 0, true);
+  const fall = new Fall(r), frame = at(40, 0, 40);
+  fall.reflex = brace;
+  r.movers = [{ handle: car, from: frame, to: frame, boxes: solid.boxes }];
+  for (let t = 0; t < 30; t++) fall.tick(w);
+  expect(r.carrier?.handle).toBe(car);
+  const root = new Float64Array(3);
+  r.rootPosition(root);
+  const data = encodeCorpseCheckpoint({ x: root[0]!, y: root[1]!, z: root[2]!, yaw: 0, size: 1, out: true,
+    air: false, awake: true, ticks: fall.ticks, carrier: r.carrier, state: r.checkpoint() });
+  const motions = new Map([[makeHandle(3, 1), { revision: 1, tick: 100, data }]]);
+  const seen = new Corpses([], undefined, k => survivorKind(reg, k), k => solidOf(reg, k));
+  const remote = new RemoteSample();
+  let worst = 0;
+  for (let tick = 99; tick <= 115; tick++) {
+    const travel = 2 * (tick - 100) * STEP;
+    carSeen(remote, 5, 1, 41, 40 + travel, Math.PI / 2, tick);
+    remote.count = 2; remote.id[1] = 3; remote.gen[1] = 1;
+    remote.kind[1] = reg.index.get("core:survivor")!; remote.cue[1] = CUE_DOWN;
+    seen.update(remote, w, 0, 0, new Map(), motions);
+    if (tick < 100) continue;
+    if (tick > 100) fall.tick(w);
+    const drawn = seen.humans.of(3)!.fall!.ragdoll;
+    for (let i = 0; i < r.n * 3; i += 3) worst = Math.max(worst, Math.hypot(
+      drawn.x[i]! - (41 + r.x[i + 2]! - 40), drawn.x[i + 1]! - r.x[i + 1]!,
+      drawn.x[i + 2]! - (40 + travel - (r.x[i]! - 40))));
+  }
+  const body = seen.humans.of(3)!, z = body.drawn![2]!;
+  carSeen(remote, 5, 1, 41, 40 + 31 * STEP, Math.PI / 2, 115.5);
+  remote.count = 2;
+  seen.update(remote, w, 0, 0, new Map(), motions);
+  expect(body.clock).toBe(115);
+  expect(body.drawn![2]! - z).toBeCloseTo(STEP, 5);
+  expect(worst).toBeLessThan(.002);
+});
+
 test("a watcher's step turns a car as it turned and starts a reused slot's car still", () => {
   const w = flat(), drawn = new Corpses(new Map() as never, undefined, () => false, (k) => solidOf(reg, k)), remote = new RemoteSample();
   drawn.update(carSeen(remote, 5, 1, 40, 40, 0, 100), w, 0, 0, new Map(), undefined);
@@ -174,6 +276,9 @@ test("a watcher's step turns a car as it turned and starts a reused slot's car s
   drawn.update(carSeen(remote, 5, 2, 80, 40, 0, 102), w, 0, 0, new Map(), undefined);
   const [fresh] = drawn.humans.carsAround(80, 0, 40, 102);
   expect(Math.hypot(fresh!.to.x - fresh!.from.x, fresh!.to.z - fresh!.from.z)).toBe(0);
+  drawn.update(carSeen(remote, 5, 2, 20, 40, 0, 103), w, 0, 0, new Map(), undefined);
+  const [teleported] = drawn.humans.carsAround(20, 0, 40, 103);
+  expect(teleported!.from.x).toBe(teleported!.to.x);
 });
 
 test("a watcher's step meets a braking car where it was each tick", () => {
@@ -219,7 +324,7 @@ test("among five parked cars a watcher meets the cars the server meets", () => {
     const a = h.world.ents, c = h.client(s)!, seen = h.client(w)!;
     // Four cars about the place first, so the one the body falls on comes last in every list but a ranked one.
     for (const [x, z] of [[97.7, 70], [102.3, 70], [100, 65.6], [100, 74.4]] as const) h.host.spawnVehicle("core:compact", x, z, 0);
-    h.host.spawnVehicle("core:compact", 100, 70, 0);
+    const roof = h.host.spawnVehicle("core:compact", 100, 70, 0);
     h.run(1000);
     a.setPosition(seen.ent, 94, 0, 76);
     h.world.history.discontinuity(seen.ent);
@@ -229,8 +334,13 @@ test("among five parked cars a watcher meets the cars the server meets", () => {
     const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k), (k) => solidOf(h.reg, k));
     // Where the server had the body after each tick, to set the watcher's beside at the tick its fall has reached.
     const was = new Map<number, number[]>();
-    let apart = 0, laid = 0;
+    let apart = 0, laid = 0, supported = 0, revision = -1;
     h.run(3000, () => {
+      const motion = h.host.falls.motion(c.ent);
+      if (motion && motion.revision !== revision) {
+        revision = motion.revision;
+        if (decodeCorpseCheckpoint(motion.data)?.carrier?.handle === makeHandle(roof, a.gen[roof]!)) supported++;
+      }
       if (h.host.falls.isDown(c.ent)) was.set(h.world.tick, [a.x[c.ent]!, a.y[c.ent]!, a.z[c.ent]!]);
       w.sampleRemote(remote);
       drawn.update(remote, w.world!, 0, 0, new Map(), w.corpseMotions);
@@ -240,6 +350,7 @@ test("among five parked cars a watcher meets the cars the server meets", () => {
       apart = Math.max(apart, Math.hypot(f!.x - at[0]!, f!.y - at[1]!, f!.z - at[2]!));
     });
     expect(laid).toBeGreaterThan(30);
+    expect(supported).toBeGreaterThan(0);
     // It lies on the car's roof on both, not on the road.
     expect(a.y[c.ent]!).toBeGreaterThan(0.9);
     expect(apart).toBeLessThan(0.02);

@@ -112,8 +112,9 @@ function bracePoses(parent: Int16Array): { forward: Float64Array; back: Float64A
  * own state, so every client braces exactly as the server does.
  */
 export function brace(r: Ragdoll): void {
-  const { v, q } = r, chest = 1;
-  const vx = v[chest * 3]!, vy = v[chest * 3 + 1]!, vz = v[chest * 3 + 2]!;
+  const { q } = r, chest = 1;
+  r.relativeVelocity(chest, forward);
+  const vx = forward[0]!, vy = forward[1]!, vz = forward[2]!;
   const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
   const w = speed <= BRACE_SLOW ? 0 : speed >= BRACE_FAST ? 1 : (speed - BRACE_SLOW) / (BRACE_FAST - BRACE_SLOW);
   if (w === 0) {

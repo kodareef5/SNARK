@@ -1094,7 +1094,9 @@ export class Characters {
     const down = st.react === REACT_CREATURE_DOWN;
     const fallen = down ? this.dead.humans.of(id) : undefined;
     if (fallen) {
-      x = fallen.x - p.camX; y = fallen.y - p.camY; z = fallen.z - p.camZ;
+      x = (fallen.drawn?.[0] ?? fallen.x) - p.camX;
+      y = (fallen.drawn?.[1] ?? fallen.y) - p.camY;
+      z = (fallen.drawn?.[2] ?? fallen.z) - p.camZ;
       yaw = fallen.yaw;
       size = fallen.size ?? size;
     }
@@ -1347,9 +1349,9 @@ export class Characters {
     const lit = this.assets.tier.lit;
     for (const d of this.dead.list) {
       const c = this.creatures[d.kind]!;
-      const x = d.x - cam.x;
-      const y = d.y - cam.y;
-      const z = d.z - cam.z;
+      const x = (d.drawn?.[0] ?? d.x) - cam.x;
+      const y = (d.drawn?.[1] ?? d.y) - cam.y;
+      const z = (d.drawn?.[2] ?? d.z) - cam.z;
       // A ragdoll may roll from where it died: its root bone says how far.
       const r = (c.anim.rig.reach + Math.abs(d.solved.pos[0]!) + Math.abs(d.solved.pos[2]!)) * d.size;
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
@@ -1528,6 +1530,9 @@ export class Characters {
     // A survivor knocked down lies as its ragdoll, and begins to rise from it.
     const fallen = seat || vehicleSeat ? undefined : this.dead.humans.of(id);
     // A laid fall lying is drawn as its ragdoll on every bone; on one, in the lying pose all share, the way its ragdoll lies.
+    if (fallen?.down && fallen.drawn) {
+      x = fallen.drawn[0]! - p.camX; y = fallen.drawn[1]! - p.camY; z = fallen.drawn[2]! - p.camZ;
+    }
     const onOne = fallen?.down && rigid ? this.fallOnOne(kind, this.setOf(k, look, lookAt), fallen, x + p.camX, y + p.camY, z + p.camZ) : null;
     // Known to be down before its fall's checkpoint has come: it topples meanwhile rather than stand.
     if (!fallen && !seat && !vehicleSeat && st.react === 0) st.react = this.dead.humans.waiting(id, tick, facingOf((yaw / TAU) * 65536));

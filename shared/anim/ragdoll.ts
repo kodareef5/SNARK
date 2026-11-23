@@ -13,7 +13,7 @@
 
 import { chunkAt, mapSizeX, mapSizeZ } from "../coords.ts";
 import { detAtan2, detCos, detSin, len3 } from "../math/scalar.ts";
-import { quatRotate, quatUnrotate } from "../math/quat.ts";
+import { quatMul, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
 import type { CollisionWorld } from "../world/collide.ts";
 import { capsuleHull, hullPush } from "../world/convex.ts";
 import { frame, frameOf } from "../world/frame.ts";
@@ -43,11 +43,23 @@ export interface MoverPose {
   readonly qx: number; readonly qy: number; readonly qz: number; readonly qw: number;
 }
 
+/** Metres of translation within one tick beyond which the vehicle has changed place discontinuously. */
+export const CARRIER_TRAVEL = 5;
+
+/** The supporting vehicle and its frame at the tick a checkpoint describes. */
+export interface CarrierFrame {
+  readonly handle: number;
+  readonly pose: MoverPose;
+  readonly vx: number; readonly vy: number; readonly vz: number;
+  readonly wx: number; readonly wy: number; readonly wz: number;
+}
+
 /**
  * A solid moving through a step, such as a car: its boxes in its own frame (centre and half size, six numbers each), and
  * where that frame is at the step's start and at its end. A body meets it as it meets the world, and rides along with it.
  */
 export interface Mover {
+  readonly handle?: number;
   readonly from: MoverPose;
   readonly to: MoverPose;
   readonly boxes: Float64Array;
@@ -115,6 +127,28 @@ const found = new Found();
 const t3 = new Float64Array(3);
 const u3 = new Float64Array(3);
 const g4 = new Float64Array(4);
+const carrierQ = new Float64Array(4);
+
+/** The vehicle's world velocity and spin through a step, written at vector index m. */
+function moverSpeed(a: MoverPose, b: MoverPose, seconds: number, v: Float64Array, w: Float64Array, m: number): void {
+  set3(v, m, (b.x - a.x) / seconds, (b.y - a.y) / seconds, (b.z - a.z) / seconds);
+  // b * conj(a) turns world points about a world axis.
+  const tx = a.qw * b.qx - a.qx * b.qw + a.qy * b.qz - a.qz * b.qy;
+  const ty = a.qw * b.qy - a.qx * b.qz - a.qy * b.qw + a.qz * b.qx;
+  const tz = a.qw * b.qz + a.qx * b.qy - a.qy * b.qx - a.qz * b.qw;
+  const tw = a.qw * b.qw + a.qx * b.qx + a.qy * b.qy + a.qz * b.qz;
+  const sn = Math.sqrt(tx * tx + ty * ty + tz * tz);
+  const k = sn > 1e-12 ? (tw < 0 ? -2 : 2) * detAtan2(sn, Math.abs(tw)) / (sn * seconds) : 0;
+  set3(w, m, tx * k, ty * k, tz * k);
+}
+
+/** The velocity of a point rigidly attached to a translating, turning vehicle. */
+function surfaceSpeed(frame: CarrierFrame, x: number, y: number, z: number, out: Float64Array): void {
+  const rx = x - frame.pose.x, ry = y - frame.pose.y, rz = z - frame.pose.z;
+  out[0] = frame.vx + frame.wy * rz - frame.wz * ry;
+  out[1] = frame.vy + frame.wz * rx - frame.wx * rz;
+  out[2] = frame.vz + frame.wx * ry - frame.wy * rx;
+}
 
 export class Ragdoll {
   readonly skel: Skeleton;
@@ -192,6 +226,10 @@ export class Ragdoll {
   /** The moving solids the next step meets, set by the caller; and whether the last step met any. */
   movers: readonly Mover[] = [];
   touched = false;
+  /** The vehicle carrying the ragdoll, at the last whole tick. */
+  carrier: CarrierFrame | undefined;
+  private readonly carried = { handle: 0, vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0, pose: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 } };
+  private readonly vehicleLoad = new Float64Array(MOST_MOVERS);
   /** Each mover's speed and spin through the step, and its place and turn at the end of the substep. */
   private readonly moverV = new Float64Array(MOST_MOVERS * 3);
   private readonly moverW = new Float64Array(MOST_MOVERS * 3);
@@ -441,6 +479,7 @@ export class Ragdoll {
     }
     this.ox = x; this.oy = y; this.oz = z;
     this.supported = false;
+    this.carrier = undefined;
     this.awake = true;
     this.hold();
     // Anchors and drives start where the body is, so turning one on changes nothing until it is given a target.
@@ -609,6 +648,63 @@ export class Ragdoll {
   /** Changes only the reference used by pose(); world bodies and momentum do not move. */
   rebase(x: number, y: number, z: number): void { this.ox = x; this.oy = y; this.oz = z; }
 
+  /** A limb's velocity relative to the surface carrying it, or to the world in free fall. */
+  relativeVelocity(i: number, out: Float64Array): void {
+    const o = i * 3;
+    if (this.carrier) surfaceSpeed(this.carrier, this.x[o]!, this.x[o + 1]!, this.x[o + 2]!, out);
+    else out.fill(0);
+    out[0] = this.v[o]! - out[0]!; out[1] = this.v[o + 1]! - out[1]!; out[2] = this.v[o + 2]! - out[2]!;
+  }
+
+  /** Preserves each limb's pose and momentum relative to the observed supporting surface. */
+  followCarrier(to: MoverPose, before: MoverPose | undefined, seconds: number): boolean {
+    const frame = this.carrier;
+    if (!frame) return false;
+    const from = frame.pose, dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+    // A teleported vehicle leaves the body at its world checkpoint.
+    if (dx * dx + dy * dy + dz * dz > CARRIER_TRAVEL * CARRIER_TRAVEL) { this.carrier = undefined; return false; }
+    const v = t3, w = u3;
+    if (before) moverSpeed(before, to, seconds, v, w, 0);
+    const samePose = dx === 0 && dy === 0 && dz === 0 && from.qx === to.qx && from.qy === to.qy && from.qz === to.qz && from.qw === to.qw;
+    if (samePose && (!before || (frame.vx === v[0] && frame.vy === v[1] && frame.vz === v[2] && frame.wx === w[0] && frame.wy === w[1] && frame.wz === w[2]))) return false;
+    g4[0] = -from.qx; g4[1] = -from.qy; g4[2] = -from.qz; g4[3] = from.qw;
+    carrierQ[0] = to.qx; carrierQ[1] = to.qy; carrierQ[2] = to.qz; carrierQ[3] = to.qw;
+    quatMul(g4, 0, carrierQ, 0, g4, 0);
+    quatNormalize(g4, 0);
+    if (!before) {
+      quatRotate(g4, 0, frame.vx, frame.vy, frame.vz, v, 0);
+      quatRotate(g4, 0, frame.wx, frame.wy, frame.wz, w, 0);
+    }
+    const x = this.x, vel = this.v, spin = this.w;
+    for (let i = 0; i < this.n; i++) {
+      const j = i * 3, rx = x[j]! - from.x, ry = x[j + 1]! - from.y, rz = x[j + 2]! - from.z;
+      quatRotate(g4, 0, rx, ry, rz, x, j);
+      const sx = x[j]!, sy = x[j + 1]!, sz = x[j + 2]!;
+      x[j]! += to.x; x[j + 1]! += to.y; x[j + 2]! += to.z;
+      // Each point on a turning surface travels at v + w cross radius.
+      quatRotate(g4, 0, vel[j]! - frame.vx - frame.wy * rz + frame.wz * ry,
+        vel[j + 1]! - frame.vy - frame.wz * rx + frame.wx * rz,
+        vel[j + 2]! - frame.vz - frame.wx * ry + frame.wy * rx, vel, j);
+      vel[j]! += v[0]! + w[1]! * sz - w[2]! * sy;
+      vel[j + 1]! += v[1]! + w[2]! * sx - w[0]! * sz;
+      vel[j + 2]! += v[2]! + w[0]! * sy - w[1]! * sx;
+      quatRotate(g4, 0, spin[j]! - frame.wx, spin[j + 1]! - frame.wy, spin[j + 2]! - frame.wz, spin, j);
+      spin[j]! += w[0]!; spin[j + 1]! += w[1]!; spin[j + 2]! += w[2]!;
+      const rest = this.stillX;
+      quatRotate(g4, 0, rest[j]! - from.x, rest[j + 1]! - from.y, rest[j + 2]! - from.z, rest, j);
+      rest[j]! += to.x; rest[j + 1]! += to.y; rest[j + 2]! += to.z;
+      quatMul(this.q, i * 4, g4, 0, this.q, i * 4);
+      quatMul(this.stillQ, i * 4, g4, 0, this.stillQ, i * 4);
+    }
+    const kept = this.carried;
+    kept.handle = frame.handle;
+    kept.vx = v[0]!; kept.vy = v[1]!; kept.vz = v[2]!;
+    kept.wx = w[0]!; kept.wy = w[1]!; kept.wz = w[2]!;
+    Object.assign(kept.pose, to);
+    this.carrier = kept;
+    return true;
+  }
+
   /** Conservative radius from a supplied anchor to every collision capsule. */
   reach(x: number, y: number, z: number): number {
     let reach = 0;
@@ -714,14 +810,18 @@ export class Ragdoll {
 
   /** Steps `seconds` and returns whether it is still moving. Asleep, it wakes when a structure where it lies changes. */
   step(world: CollisionWorld, seconds: number): boolean {
+    const prior = this.carrier;
+    const lost = prior && !this.movers.some(m => m.handle === prior.handle);
+    if (lost) this.carrier = undefined;
     if (!this.awake) {
-      if (!this.shaken(world) && !this.moverNear()) return false;
+      if (!lost && !this.shaken(world) && !this.moverNear()) return false;
       this.awake = true;
       this.hold();
     }
     if (!(seconds > 0)) return true;
     if (seconds > MOST_STEP) seconds = MOST_STEP;
     this.touched = false;
+    if (this.movers.length) this.vehicleLoad.fill(0);
     this.moversThrough(seconds);
     this.gather(world, seconds);
     this.supported = false;
@@ -738,6 +838,19 @@ export class Ragdoll {
     // A body held by anchors is kept on the map by whatever walks it.
     if (this.nAnchored === 0) this.confine(world);
     this.dq0.set(this.dq1);
+    this.carrier = undefined;
+    let load = 0;
+    for (let i = 0; i < this.movers.length && i < MOST_MOVERS; i++) {
+      const mover = this.movers[i]!;
+      if (this.vehicleLoad[i]! <= load || mover.handle === undefined) continue;
+      load = this.vehicleLoad[i]!;
+      const o = i * 3, v = this.moverV, w = this.moverW;
+      this.carried.vx = v[o]!; this.carried.vy = v[o + 1]!; this.carried.vz = v[o + 2]!;
+      this.carried.wx = w[o]!; this.carried.wy = w[o + 1]!; this.carried.wz = w[o + 2]!;
+      this.carried.handle = mover.handle;
+      Object.assign(this.carried.pose, mover.to);
+      this.carrier = this.carried;
+    }
     const { def, n, x, q, stillX, stillQ } = this;
     let moved = false;
     let relaxing = false;
@@ -907,13 +1020,21 @@ export class Ragdoll {
       const held = this.driveOmega[i]! > 0 && this.lift > 0;
       const damp = 1 - ((held ? 0 : DAMP) + (wet ? WATER_DAMP : 0)) * h;
       const spinDamp = 1 - ((held ? 0 : SPIN_DAMP) + (wet ? WATER_DAMP : 0)) * h;
+      const carrier = !held && !wet && this.carrier;
+      if (carrier) surfaceSpeed(carrier, x[i * 3]!, x[i * 3 + 1]!, x[i * 3 + 2]!, t3);
       const weight = held ? 1 - this.lift : 1;
       v[i * 3 + 1]! -= GRAVITY * (wet ? SINKS : 1) * weight * h;
       for (let k = 0; k < 3; k++) {
         v[i * 3 + k]! *= damp;
+        if (carrier) v[i * 3 + k]! += (1 - damp) * t3[k]!;
         w[i * 3 + k]! *= spinDamp;
         px[i * 3 + k] = x[i * 3 + k]!;
         x[i * 3 + k]! += v[i * 3 + k]! * h;
+      }
+      if (carrier) {
+        w[i * 3]! += (1 - spinDamp) * carrier.wx;
+        w[i * 3 + 1]! += (1 - spinDamp) * carrier.wy;
+        w[i * 3 + 2]! += (1 - spinDamp) * carrier.wz;
       }
       for (let k = 0; k < 4; k++) pq[i * 4 + k] = q[i * 4 + k]!;
       this.spin(i, w[i * 3]! * h, w[i * 3 + 1]! * h, w[i * 3 + 2]! * h);
@@ -1272,16 +1393,7 @@ export class Ragdoll {
   private moversThrough(seconds: number): void {
     for (let m = 0; m < this.movers.length && m < MOST_MOVERS; m++) {
       const { from: a, to: b } = this.movers[m]!;
-      set3(this.moverV, m, (b.x - a.x) / seconds, (b.y - a.y) / seconds, (b.z - a.z) / seconds);
-      // The turn from start to end, b * conj(a), as an axis times its angle, over the step.
-      let tx = a.qw * b.qx - a.qx * b.qw - a.qy * b.qz + a.qz * b.qy;
-      let ty = a.qw * b.qy + a.qx * b.qz - a.qy * b.qw - a.qz * b.qx;
-      let tz = a.qw * b.qz - a.qx * b.qy + a.qy * b.qx - a.qz * b.qw;
-      let tw = a.qw * b.qw + a.qx * b.qx + a.qy * b.qy + a.qz * b.qz;
-      if (tw < 0) { tx = -tx; ty = -ty; tz = -tz; tw = -tw; }
-      const sn = Math.sqrt(tx * tx + ty * ty + tz * tz);
-      const k = sn > 1e-12 ? (2 * detAtan2(sn, tw)) / (sn * seconds) : 0;
-      set3(this.moverW, m, tx * k, ty * k, tz * k);
+      moverSpeed(a, b, seconds, this.moverV, this.moverW, m);
     }
   }
 
@@ -1378,6 +1490,7 @@ export class Ragdoll {
         const svx = sv[o]! + sw[o + 1]! * az2 - sw[o + 2]! * ay2;
         const svy = sv[o + 1]! + sw[o + 2]! * ax2 - sw[o]! * az2;
         const svz = sv[o + 2]! + sw[o]! * ay2 - sw[o + 1]! * ax2;
+        if (!this.probing && !aside && my > 0.5) this.vehicleLoad[m]! += my * deep;
         this.moverContact(i, cx, cy, cz, mx, my, mz, deep, svx, svy, svz, aside);
       }
     }

@@ -66,9 +66,9 @@ export function headEye(h: HumanFall, out: Float64Array, look: Float64Array): vo
   const p = h.solved, s = Math.sin(h.yaw), c = Math.cos(h.yaw);
   boneToModel(p, B_HEAD, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, out);
   const mx = out[0]!, mz = out[2]!;
-  out[0] = h.x + c * mx + s * mz;
-  out[1] = h.y + out[1]!;
-  out[2] = h.z - s * mx + c * mz;
+  out[0] = (h.drawn?.[0] ?? h.x) + c * mx + s * mz;
+  out[1] = (h.drawn?.[1] ?? h.y) + out[1]!;
+  out[2] = (h.drawn?.[2] ?? h.z) - s * mx + c * mz;
   // Where the face points, and the top of the head, which says the way ahead for a face turned up or down.
   quatRotate(p.rot, B_HEAD * 4, 0, 0, 1, look, 0);
   const fx = look[0]!, fy = look[1]!, fz = look[2]!;
@@ -134,7 +134,9 @@ export class FallenView implements FramePart {
     let tx = nx, ty = ny, tz = nz, held = false;
     if (h) {
       headEye(h, this.eye, this.look);
-      if (third) { this.eye[0] = h.x; this.eye[1] = h.y + HIPS_UP; this.eye[2] = h.z; }
+      if (third) {
+        this.eye[0] = h.drawn?.[0] ?? h.x; this.eye[1] = (h.drawn?.[1] ?? h.y) + HIPS_UP; this.eye[2] = h.drawn?.[2] ?? h.z;
+      }
       const k = h.down || dead ? 0 : smooth(h.risen);
       tx = this.eye[0]! + (nx - this.eye[0]!) * k;
       ty = this.eye[1]! + (ny - this.eye[1]!) * k;

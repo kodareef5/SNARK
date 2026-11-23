@@ -8,7 +8,7 @@
 // the open, as its ragdoll meets more of them each substep.
 
 import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
-import { Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
+import { Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type FallenState } from "../shared/anim/corpse.ts";
 import { brace, layHuman } from "../shared/anim/human-fall.ts";
 import { B_HEAD, B_HIPS, HUMAN } from "../shared/anim/human.ts";
 import { facingOf, REACT_CREATURE_DOWN, LIE_FACINGS, LIE_WAYS } from "../shared/anim/reactions.ts";
@@ -66,6 +66,7 @@ interface Down {
   /** The tick its last checkpoint was written, and whether a vehicle touched it last tick. */
   sent: number;
   touched: boolean;
+  carrier?: number;
   /** The bodies it has struck as it flew, each once a fall, and who knocked it down: the blame for what it strikes. */
   readonly struck: Set<number>;
   readonly by: number;
@@ -264,11 +265,11 @@ export class Falls {
    * Takes body `e`'s fall away as it dies lying, for its corpse to lie on as it was (server/corpses.ts): its ragdoll's
    * state, laid standing; null for one not down.
    */
-  take(e: number): { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null {
+  take(e: number): FallenState | null {
     const d = this.down.get(e);
     if (!d) return null;
     this.ended(d);
-    return { state: d.fall.ragdoll.checkpoint(), awake: d.fall.ragdoll.awake, ticks: d.fall.ticks };
+    return { size: d.size, state: d.fall.ragdoll.checkpoint(), awake: d.fall.ragdoll.awake, ticks: d.fall.ticks, carrier: d.fall.ragdoll.carrier };
   }
 
   /** For CorpseReplication: what changed last, and the checkpoint to send. */
@@ -306,7 +307,8 @@ export class Falls {
       if (was !== d.fall.still) d.revision = ++this.serial;
       if (!d.creature && !d.fall.still) this.strikeStanding(d);
       // A vehicle pushing it is outside what a client can step alike: it is told again while that lasts, and as it ends.
-      if ((r.touched && this.world.tick - d.sent >= DISTURBED_TICKS) || (d.touched && !r.touched)) d.revision = ++this.serial;
+      if (r.carrier?.handle !== d.carrier || (r.touched && this.world.tick - d.sent >= DISTURBED_TICKS) || (d.touched && !r.touched)) d.revision = ++this.serial;
+      d.carrier = r.carrier?.handle;
       d.touched = r.touched;
       this.place(d);
     }
