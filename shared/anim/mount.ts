@@ -2,7 +2,7 @@
 // Replacing a clip changes presentation, never the duration of entering, exiting or taking a seat.
 
 import { quatNormalize, quatRotate, type Numbers } from "../math/quat.ts";
-import { clamp } from "../math/scalar.ts";
+import { clamp, detCos } from "../math/scalar.ts";
 import { GRIND, KICKFLIP, OLLIE, PUSH, SHOVE } from "../sim/skate-state.ts";
 import { PoseBuilder } from "./authored.ts";
 import { Pose, blendPose, sampleClip, type Clip } from "./clip.ts";
@@ -96,7 +96,7 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
   }
   if (input.role === "skate" && !replacement) {
     const poses = skatePoses(), phase = input.skatePhase ?? 0, move = input.skateMove;
-    const amount = .5 - .5 * Math.cos(phase);
+    const amount = .5 - .5 * detCos(phase);
     if (move === PUSH) blendPose(sampled, sampled, poses.push, amount);
     else if (move === OLLIE || move === KICKFLIP || move === SHOVE) blendPose(sampled, sampled, poses.tuck, amount);
     else if (move === GRIND) blendPose(sampled, sampled, poses.balance, 1);
