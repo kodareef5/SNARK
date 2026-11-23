@@ -1,5 +1,4 @@
 import { GRATE, UTILITY_ENAMEL as BOX } from "./colours.ts";
-import { roofOf } from "./texgen/materials.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { leaning, pitchedRoof, slopeShape, slopedSlab, stairFlight, staticOf, wedge } from "../shared/content/slopes.ts";
 import type { HullDef } from "../shared/world/convex.ts";
@@ -456,6 +455,9 @@ export const RUIN_FINISHES = {
   steelsheet: { color: 89, under: 87, material: "core:mat_metal", hp: 12000, made: "corrugated" },
   bluesheet: { color: 5, under: 87, material: "core:mat_metal", hp: 9000, made: "corrugated" },
   rustsheet: { color: 179, under: 178, material: "core:mat_metal", hp: 7000, made: "corrugated" },
+  roserender: { color: 81, under: 111, material: "core:mat_stone", hp: 10000, made: "render" },
+  mintrender: { color: 75, under: 142, material: "core:mat_stone", hp: 10000, made: "render" },
+  limestucco: { color: 10, under: 101, material: "core:mat_stone", hp: 12000, made: "stucco" },
   // A pitched roof of standing-seam sheet, in steel's colour: a roof's finish alone (ROOF_FINISHES).
   seam: { color: 89, under: 87, material: "core:mat_metal", hp: 12000, made: "seam" },
   // A flat roof's top plate in tar and gravel, which lies on its top alone, in a colour whose painted finish is
@@ -464,20 +466,51 @@ export const RUIN_FINISHES = {
 } as const;
 /** Finishes only a roof's pieces come in. */
 const ROOF_FINISHES = new Set<string>(["seam", "tar"]);
-/** What a building of `finish` has its flat roof's plates in: tar and gravel where its material's roof is (MaterialRecipe `roof`). */
-export const flatRoof = (finish: keyof typeof RUIN_FINISHES): keyof typeof RUIN_FINISHES => {
-  const made = (RUIN_FINISHES[finish] as { made?: string }).made;
-  return made && roofOf(made) === "gravel" ? "tar" : "concrete";
-};
+
 /**
- * The finishes made from recipes that a building of a painted finish may wear in its place, by its id (ruin-vocabulary.ts
- * `ruleFor`): MADE_SHARE of them do, each of the list alike.
+ * The finishes made from recipes that a building of a painted finish may wear in its place, each in its colour
+ * (madeFinish chooses among them by what the building is).
  */
 export const MADE_FINISHES: Partial<Record<keyof typeof RUIN_FINISHES, readonly (keyof typeof RUIN_FINISHES)[]>> = {
-  rose: ["rosestucco", "roseblock"], mint: ["mintstucco", "mintblock"], limestone: ["limerender"], concrete: ["greyblock"],
-  steel: ["steelsheet"], blue: ["bluesheet"], rust: ["rustsheet"],
+  rose: ["rosestucco", "roserender", "roseblock"], mint: ["mintstucco", "mintrender", "mintblock"], limestone: ["limestucco", "limerender"],
+  concrete: ["greyblock"], steel: ["steelsheet"], blue: ["bluesheet"], rust: ["rustsheet"],
 };
+/** The share of buildings whose type suits a made finish of their colour that take one, and of houses' pitched roofs that are standing seam and not clay. */
 export const MADE_SHARE = 0.55;
+export const SEAM_SHARE = 0.08;
+/** The map tool's building types (its recipes' names) that are sheds and depots, that are small plain buildings, and that have a commercial roof. */
+const SHEDS = ["shed", "marina"], PLAIN = ["house", "garage", "utility"], COMMERCE = ["shed", "marina", "shop", "mall", "station", "garage", "utility", "hall", "service"];
+/**
+ * How well walls of `material` suit a building of `type` (the map tool's recipe name) `storeys` high; 0 for not at all.
+ * Sheet is for sheds and depots and for other buildings of one or two storeys that are not houses; block for houses,
+ * garages and utility buildings up to three storeys; stucco and render for the rest, stucco likelier on houses and
+ * low blocks and render on taller ones.
+ */
+export function madeSuits(material: string, type: string, storeys: number): number {
+  const shed = SHEDS.includes(type), low = storeys <= 3 || type === "house";
+  if (material === "corrugated") return shed ? 3 : storeys <= 2 && type !== "house" ? 1 : 0;
+  if (shed) return 0;
+  if (material === "block") return PLAIN.includes(type) && storeys <= 3 ? 2 : 0;
+  if (type === "garage" || type === "utility") return 0;
+  return material === "stucco" ? (low ? 3 : 1) : material === "render" ? (low ? 1 : 3) : 0;
+}
+/**
+ * The finish a building of painted finish `painted`, `type` and `storeys` has for its walls: with `share` under
+ * MADE_SHARE, one of its colour's made finishes that suits it, chosen by `pick` and by how well each suits; else
+ * `painted`. `share` and `pick` are the building's own draws, from 0 to 1, so a city builds the same twice.
+ */
+export function madeFinish(painted: keyof typeof RUIN_FINISHES, type: string, storeys: number, share: number, pick: number): keyof typeof RUIN_FINISHES {
+  const made = MADE_FINISHES[painted];
+  if (!made || share >= MADE_SHARE) return painted;
+  const weights = made.map((f) => madeSuits((RUIN_FINISHES[f] as { made: string }).made, type, storeys));
+  let at = pick * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < made.length; i++) if (weights[i]! > 0 && (at -= weights[i]!) < 0) return made[i]!;
+  return painted;
+}
+/** What a building of `type` has its flat roof's top plates in: tar and gravel, but a garage's top deck, which is driven on. */
+export const flatRoof = (type: string): keyof typeof RUIN_FINISHES => (type === "garage" ? "concrete" : "tar");
+/** What a building of `type` has its pitched roof in: standing seam on sheds, depots and commerce; clay on houses and the rest, but SEAM_SHARE of them by the building's own `draw`. */
+export const pitchFinish = (type: string, draw: number): "seam" | "clay" => (COMMERCE.includes(type) || draw < SEAM_SHARE ? "seam" : "clay");
 
 export type RuinShape = keyof typeof RUIN_SHAPES;
 export type RuinFinish = keyof typeof RUIN_FINISHES;

@@ -2,7 +2,7 @@
 // fits its tile, tiles and keeps its ranges and pinned means; one job makes any by its version; the nearest take the slots.
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { MADE_FINISHES, RUIN_FINISHES, finished, flatRoof } from "../../content/ruins.ts";
+import { MADE_FINISHES, MADE_SHARE, RUIN_FINISHES, SEAM_SHARE, finished, flatRoof, madeFinish, pitchFinish } from "../../content/ruins.ts";
 import { MATERIAL_RECIPES, MOST_MATERIALS, materialIndex, roofOf } from "../../content/texgen/materials.ts";
 import { jobFragment, jobPixels } from "../../client/core/texgen/engine.ts";
 import { MADE_LAYER, MADE_SLOTS, TEXGEN_BUDGET, TEXGEN_LAYERS, texgenBytes } from "../../client/core/texgen/layers.ts";
@@ -22,7 +22,7 @@ test("every material a piece names is a recipe, a made finish keeps its painted 
   for (const [painted, made] of Object.entries(MADE_FINISHES)) {
     for (const name of made!) expect(RUIN_FINISHES[name].color).toBe(RUIN_FINISHES[painted as keyof typeof RUIN_FINISHES].color);
   }
-  expect([materialIndex(undefined), materialIndex("stucco"), roofOf("stucco"), roofOf("seam"), flatRoof("rosestucco"), flatRoof("rose"), flatRoof("steelsheet")]).toEqual([0, 1, "gravel", "seam", "tar", "concrete", "concrete"]);
+  expect([materialIndex(undefined), materialIndex("stucco"), roofOf("stucco"), roofOf("seam")]).toEqual([0, 1, "gravel", "seam"]);
   // A roof's finishes come on a roof's pieces alone.
   expect([finished("floor8", "tar"), finished("zpitch8", "seam"), finished("wall8", "tar"), finished("wall8", "seam"), finished("wall8", "rosestucco")]).toEqual([true, true, false, false, true]);
 });
@@ -156,4 +156,32 @@ test("the frame is told where the eye is in each material's tiles, less whole ti
       expect(Math.abs(((v / r.metres - phase + 0.5) % 1 + 1) % 1 - 0.5)).toBeLessThan(1e-3);
     }
   });
+});
+
+test("a building's made finish is by its type and storeys, in its colour, the same at each draw", () => {
+  const count = (painted: Parameters<typeof madeFinish>[0], type: string, storeys: number): Record<string, number> => {
+    const n: Record<string, number> = {};
+    for (let i = 0; i < 1000; i++) {
+      const f = madeFinish(painted, type, storeys, (i * 0.6180339) % 1, (i * 0.7548776) % 1);
+      n[f] = (n[f] ?? 0) + 1;
+      expect(RUIN_FINISHES[f].color).toBe(RUIN_FINISHES[painted].color);
+    }
+    return n;
+  };
+  // Sheet on a shed and on a low shop, never on an office block or a house.
+  expect(count("steel", "apartment", 10)).toEqual({ steel: 1000 });
+  expect(count("blue", "house", 2)).toEqual({ blue: 1000 });
+  expect(count("steel", "shed", 4).steelsheet).toBeGreaterThan(450);
+  expect(count("rust", "shop", 2).rustsheet).toBeGreaterThan(450);
+  // Block on houses and garages up to three storeys; stucco likelier than render on a house, render on a tower.
+  const house = count("rose", "house", 2), tower = count("rose", "tower", 20);
+  expect(house.roseblock! > 100 && house.rosestucco! > house.roserender! * 2).toBe(true);
+  expect(tower.roseblock).toBeUndefined();
+  expect(tower.roserender! > tower.rosestucco! * 2).toBe(true);
+  expect(count("concrete", "garage", 3).greyblock).toBeGreaterThan(450);
+  expect(count("concrete", "garage", 5)).toEqual({ concrete: 1000 });
+  expect(Math.abs(house.rose! / 1000 - (1 - MADE_SHARE))).toBeLessThan(0.05);
+  expect(madeFinish("rose", "house", 2, 0.2, 0.3)).toBe(madeFinish("rose", "house", 2, 0.2, 0.3));
+  // Roofs: tar on a flat roof but a garage's deck; seam on sheds and commerce, clay on houses but a few.
+  expect([flatRoof("apartment"), flatRoof("garage"), pitchFinish("shed", 0.9), pitchFinish("shop", 0.9), pitchFinish("house", 0.9), pitchFinish("house", SEAM_SHARE / 2)]).toEqual(["tar", "concrete", "seam", "seam", "clay", "seam"]);
 });

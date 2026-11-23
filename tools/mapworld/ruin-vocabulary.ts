@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MADE_FINISHES, MADE_SHARE, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { madeFinish, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import type { Footprint } from "./statics.ts";
 import type { Cars } from "./street-cars.ts";
 import type { ReturnRules } from "./corners.ts";
@@ -72,7 +72,7 @@ export interface Rule {
   event?: { travel: [number, number]; exposure: number; shelter: number };
   party?: number[];
   roofGrowth?: number;
-  recipe: string; height: number; finish: RuinFinish; feature: string; holes: number; wall: number; bay: number;
+  recipe: string; /** The building's own draw for its roof (content/ruins.ts pitchFinish). */ roofDraw?: number; height: number; finish: RuinFinish; feature: string; holes: number; wall: number; bay: number;
   compositions?: Record<string, Composition>;
   interiors?: Vocabulary["interiors"];
   damage?: Damage;
@@ -148,13 +148,12 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { w
     matched.push(choice.id);
   }
   // Some buildings of a painted finish wear one the page makes from a recipe in its colour (content/ruins.ts MADE_FINISHES).
-  const made = MADE_FINISHES[finish as RuinFinish];
-  if (made && rand3(f.building.id, v.seed, 77) < MADE_SHARE) {
-    finish = made[Math.floor(rand3(f.building.id, v.seed, 78) * made.length)]!;
-    matched.push(`made: ${finish}`);
-  }
+  // What the tool knows of a building is its use (the recipe's name, from its label or its size) and its real height.
+  const painted = finish;
+  finish = madeFinish(finish as RuinFinish, name, Math.max(1, Math.round(facts.height / 4)), rand3(f.building.id, v.seed, 77), rand3(f.building.id, v.seed, 78));
+  if (finish !== painted) matched.push(`made: ${finish}`);
   // A shop's storeys are rounded, not cut short: a 7 m frontage is a shop with rooms above.
   if (v.forms?.[formName]?.facade?.ground === "zstore") height = Math.min(v.budgets.maxHeight, Math.max(4, Math.round(facts.height * retain / 4) * 4));
-  return { recipe: name, height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, interiors: v.interiors, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
+  return { recipe: name, roofDraw: rand3(f.building.id, v.seed, 79), height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, interiors: v.interiors, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
     provisional: facts.kindFrom !== "label" || !["osm", "usa_structures", "reviewed_source"].includes(facts.heightFrom) || !!p?.estimated?.length };
 }
