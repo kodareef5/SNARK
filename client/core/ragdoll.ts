@@ -53,8 +53,9 @@ const FALL_CATCH_UP = 30;
 /** The most vehicles one ragdoll meets in a step, as on the server (server/ragdoll-movers.ts). */
 const NEAR_MOST = 4;
 const NO_MOVERS: readonly Mover[] = [];
-/** Places a client keeps of each vehicle in view, at least half a tick apart: a few ticks of its way. */
-const CAR_PLACES = 16;
+/** Places a client keeps of each vehicle in view, at least half a tick apart: at least sixteen ticks of its way, as far
+ * back as a fall's catch-up steps a few ticks at once. */
+const CAR_PLACES = 32;
 
 /** A place and turn, as MoverPose, that can be written. */
 interface Place { x: number; y: number; z: number; qx: number; qy: number; qz: number; qw: number }
@@ -62,13 +63,16 @@ interface Place { x: number; y: number; z: number; qx: number; qy: number; qz: n
 /** Where a vehicle in view was seen: at `ticks`, oldest first, each place in `places` as x, y, z and its turn. */
 interface CarSeen { readonly ticks: Float64Array; readonly places: Float64Array; n: number; update: number }
 
-/** Keeps where a vehicle was seen at render tick `tick`, newest last. Seen again within half a tick, the newest moves. */
+/**
+ * Keeps where a vehicle was seen at render tick `tick`, newest last. The newest place moves with each frame until it is
+ * half a tick past the one kept before it; then it stays, and the next frame begins another. However high the frame
+ * rate, the places kept stay half a tick apart.
+ */
 function keepPlace(seen: CarSeen, tick: number, at: MoverPose): void {
-  const last = seen.n > 0 ? seen.ticks[seen.n - 1]! : -Infinity;
-  // The render clock stepped back: what was kept is of another time.
-  if (tick < last) seen.n = 0;
+  // The render clock stepped back: what was kept after it is of another time.
+  while (seen.n > 0 && seen.ticks[seen.n - 1]! > tick) seen.n--;
   let k = seen.n;
-  if (k > 0 && tick - last < 0.5) k--;
+  if (k >= 2 && seen.ticks[k - 1]! - seen.ticks[k - 2]! < 0.5) k--;
   else if (k === CAR_PLACES) {
     seen.ticks.copyWithin(0, 1); seen.places.copyWithin(0, 7);
     k--;
@@ -310,11 +314,13 @@ export class HumanFalls {
   carsAround(x: number, z: number, tick: number): readonly Mover[] {
     this.near.length = 0;
     for (const c of this.cars) {
-      const dx = c.at.x - x, dz = c.at.z - z, reach = c.reach + 2;
-      if (dx * dx + dz * dz > reach * reach || this.near.length >= NEAR_MOST) continue;
-      const m = this.nearPool[this.near.length]!;
-      placeAt(c.seen, tick - 1, m.from);
+      if (this.near.length >= NEAR_MOST) break;
+      const m = this.nearPool[this.near.length]!, reach = c.reach + 2;
+      // Near where it was at the step, not where it is drawn: a catch-up steps ticks it has since driven on from.
       placeAt(c.seen, tick, m.to);
+      const dx = m.to.x - x, dz = m.to.z - z;
+      if (dx * dx + dz * dz > reach * reach) continue;
+      placeAt(c.seen, tick - 1, m.from);
       const wx = m.to.x - m.from.x, wz = m.to.z - m.from.z;
       if (!c.vehicle && wx * wx + wz * wz < WALKING * WALKING) continue;
       m.boxes = c.boxes;

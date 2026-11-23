@@ -187,3 +187,25 @@ test("a watcher's step meets a braking car where it was each tick", () => {
   [m] = drawn.humans.carsAround(40, 41, 103);
   expect(m!.to.z - m!.from.z).toBeCloseTo(0, 9);
 });
+
+test("at any frame rate a watcher's step meets a moving, turning car as it went", () => {
+  const w = flat(), turn = (1.15 * Math.PI) / 180;
+  for (const fps of [30, 60, 75, 90, 120, 144]) {
+    const drawn = new Corpses(new Map() as never, undefined, () => false, (k) => solidOf(reg, k)), remote = new RemoteSample();
+    // 40 cm and 1.15 degrees a tick, seen once a frame.
+    for (let r = 100; r <= 112; r += 30 / fps) drawn.update(carSeen(remote, 7, 1, 40, 40 + 0.4 * (r - 100), turn * (r - 100), r), w, 0, 0, new Map(), undefined);
+    const [m] = drawn.humans.carsAround(40, 43.2, 108);
+    expect(m!.to.z - m!.from.z, `${fps}`).toBeCloseTo(0.4, 4);
+    const dot = m!.from.qx * m!.to.qx + m!.from.qy * m!.to.qy + m!.from.qz * m!.to.qz + m!.from.qw * m!.to.qw;
+    expect(2 * Math.acos(Math.min(1, Math.abs(dot))), `${fps}`).toBeCloseTo(turn, 4);
+  }
+});
+
+test("a catch-up step meets a car where it was then, though it has driven on", () => {
+  const w = flat(), drawn = new Corpses(new Map() as never, undefined, () => false, (k) => solidOf(reg, k)), remote = new RemoteSample();
+  // A metre a tick from tick 0; drawn now at tick 15, nine metres past where it was at tick 6.
+  for (let r = 0; r <= 15; r += 0.5) drawn.update(carSeen(remote, 3, 1, 40, 40 + r, 0, r), w, 0, 0, new Map(), undefined);
+  const [m] = drawn.humans.carsAround(40, 46, 6);
+  expect(m).toBeDefined();
+  expect([m!.from.z, m!.to.z]).toEqual([45, 46]);
+});
