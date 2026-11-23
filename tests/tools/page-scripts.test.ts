@@ -49,8 +49,8 @@ test("every field of the app a tool's page script names is one the app has", () 
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("owner", { latencyMs: 20 }, { manual: true }), h.reg, parsePack(corePackBytes()));
   const named = appFields(join(ROOT, "tools"));
-  // The scan finds the scripts it is for: the film's clock, the lamp tool's turn, the report trip's mode, the map trip's scene.
-  expect([...named.keys()]).toEqual(expect.arrayContaining(["holdEye", "eyeHeld", "holdLook", "notes", "scene", "session"]));
+  // The scan finds the scripts it is for: the film's clock, the lamp tool's turn, the report trip's bar, the map trip's scene.
+  expect([...named.keys()]).toEqual(expect.arrayContaining(["holdEye", "eyeHeld", "holdLook", "ui", "scene", "session"]));
   const missing = [...named].filter(([field]) => !(field in app)).map(([field, files]) => `${field} in ${[...files].join(", ")}`);
   expect(missing).toEqual([]);
 });

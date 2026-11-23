@@ -101,7 +101,7 @@ test("a world that keeps notes takes one from an admin's session through the fro
       const r = await fetch(at, { method: "POST", headers: tunnel, body });
       return [r.status, await r.text()];
     };
-    expect(await post(form())).toEqual([403, "notes are an admin's: enablecheats first"]);
+    expect(await post(form())).toEqual([403, "saving is an admin's: enablecheats first"]);
     expect((await post(form({ token: `${session.voice.slot}:${"00".repeat(8)}` })))[0]).toBe(403);
     session.text("enablecheats");
     for (let k = 0; k < 300 && !session.admin; k++) {
