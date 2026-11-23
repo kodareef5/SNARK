@@ -82,6 +82,8 @@ export class CityCollapse implements CitySupport {
   private under = new Uint8Array(0);
   private readonly rest = new Set<number>();
   private coming = 0;
+  /** Pieces judged since the last step ended: this tick's, a blast's askings before its step among them. */
+  private used = 0;
   /** Pieces judged in the last tick, and since the start; waves, pieces fallen and hung, bodies harmed, buildings settled. */
   spent = 0;
   judged = 0;
@@ -220,12 +222,13 @@ export class CityCollapse implements CitySupport {
   }
 
   private count(n: number): void {
-    this.spent += n;
+    this.used += n;
     this.judged += n;
   }
 
   resting(falls: readonly number[], going: ReadonlySet<number> | null, into: Set<number>): boolean {
-    if (!this.on) return false;
+    // Past the tick's judgements (a siege on one great building), the look straight down answers.
+    if (!this.on || this.used >= JUDGEMENTS) return false;
     const { world, city } = this.ctx;
     const buildings = world.buildings!;
     const gone = going ?? new Set(falls);
@@ -256,8 +259,13 @@ export class CityCollapse implements CitySupport {
   }
 
   step(tick: number): void {
-    this.spent = 0;
-    if (this.doubts.size === 0) return;
+    if (this.doubts.size > 0) this.walk(tick);
+    this.spent = this.used;
+    this.used = 0;
+  }
+
+  /** A tick of the buildings in doubt: those due are judged within the budget, and those coming down take a wave. */
+  private walk(tick: number): void {
     if (!this.on) {
       this.doubts.clear();
       this.coming = 0;
@@ -268,7 +276,7 @@ export class CityCollapse implements CitySupport {
       if (d.due > tick) continue;
       if (!d.verdict || d.stale) {
         // Out of judgements, it waits a tick as it stands.
-        if (this.spent >= JUDGEMENTS) continue;
+        if (this.used >= JUDGEMENTS) continue;
         this.plan(d);
       }
       if (this.lowest(d) < 0) {

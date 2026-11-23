@@ -314,6 +314,28 @@ test("a destroyed piece of a building is left as its heap where the rule says it
   expect(walls.map((k) => c.form(c.refs[k]!))).toEqual([FORM_WHOLE, FORM_HEAP, -1]);
 });
 
+test("past a tick's judgements a destroyed piece is answered by the look straight down", () => {
+  // 1,120 pieces: its pins and one judgement are 3,360, and a second judgement passes the 4,000 of a tick.
+  const { s, slabs } = mast(224, 96, 96);
+  const c = sketchCity(s);
+  const collapse = c.h.host.cityCollapse;
+  const destroy = (k: number): void => {
+    for (let n = 0; n < 3; n++) strike(c, c.refs[k]!);
+    expect(c.form(c.refs[k]!)).toBe(-1);
+  };
+  destroy(slabs[223]![0]!);
+  expect(collapse.judged).toBe(3 * c.refs.length);
+  destroy(slabs[223]![1]!);
+  expect(collapse.judged).toBe(4 * c.refs.length);
+  expect(collapse.judged).toBeGreaterThan(JUDGEMENTS);
+  destroy(slabs[223]![2]!);
+  expect(collapse.judged).toBe(4 * c.refs.length);
+  // The next tick has its own.
+  until(c, c.h.world.tick + 1);
+  destroy(slabs[223]![3]!);
+  expect(collapse.judged).toBe(5 * c.refs.length);
+});
+
 test("a body under a falling storey is harmed once a wave, by CityCollapseDamage", () => {
   const harm = (scale: string): number => {
     const { s, piers } = mast(4, 96, 96);
