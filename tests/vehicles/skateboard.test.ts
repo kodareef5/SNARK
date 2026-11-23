@@ -1,16 +1,19 @@
 import { expect, test } from "bun:test";
 import { BOARD_ID, BOARD_KIT } from "../../content/vehicles/skateboard.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
-import { CMD_CRAFT, CMD_LEARN, RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_JUMP, BTN_MELEE } from "../../shared/sim/character.ts";
-import { SHOVE } from "../../shared/sim/skate-state.ts";
+import { makeHandle } from "../../shared/ids.ts";
+import { CMD_CRAFT, CMD_LEARN, CMD_VEHICLE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, VEHICLE_PACK } from "../../shared/net/protocol.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_MOD } from "../../shared/sim/character.ts";
+import { SHOVE, SPIN } from "../../shared/sim/skate-state.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
+import { listener } from "../fixtures/module.ts";
 import { Harness } from "../fixtures/net.ts";
+import { remoteVehiclePose } from "../../client/core/vehicle-view.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 
-test("a level-two survivor crafts, places and rides a board, lands a predicted shove-it, then bails on a hard drop", () => {
+test("a crafted board predicts a shove-it and throws its rider on a hard drop", () => {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(3)) });
   try {
     const s = h.join("skater", { latencyMs: 45 }), watcher = h.join("watcher");
@@ -41,6 +44,15 @@ test("a level-two survivor crafts, places and rides a board, lands a predicted s
     expect(s.own.skate!.bank).toBe(95);
     expect(s.stats.corrections).toBe(corrections);
     expect(s.vitals.at(V_HEALTH, s.serverTick)).toBe(health);
+    keys.buttons = BTN_JUMP | BTN_MOD; h.run(250);
+    watcher.sampleRemote(remote);
+    const spin = remoteVehiclePose(remote, remote.id.subarray(0, remote.count).indexOf(e));
+    expect(spin.skateMove).toBe(SPIN); expect(spin.switched).toBe(false);
+    keys.buttons = 0; h.run(800);
+    watcher.sampleRemote(remote);
+    expect(s.own.skate!.switched).toBe(true);
+    expect(remoteVehiclePose(remote, remote.id.subarray(0, remote.count).indexOf(e)).switched).toBe(true);
+    expect(s.stats.corrections).toBe(corrections);
     keys.moveZ = -1; h.run(1300); keys.moveZ = 0;
     h.host.urban.dismount(c); h.run(550);
     expect(s.driving).toBe(-1);
@@ -48,10 +60,65 @@ test("a level-two survivor crafts, places and rides a board, lands a predicted s
     expect(s.driving).toBe(e);
     ents.setPosition(e, ents.x[e]!, 7, ents.z[e]!); c.ownDirty = true;
     h.run(1800);
+    expect(h.host.falls.stats.fell).toBe(1);
     expect(s.driving).toBe(-1);
     expect(h.host.urban.occupancy.seatOf(me.pid)).toBeNull();
     const lost = (health - s.vitals.at(V_HEALTH, s.serverTick)) / 1e6;
     expect(lost).toBeGreaterThan(0); expect(lost).toBeLessThanOrEqual(8);
+    h.run(5000);
+    expect(h.host.falls.stats.rose).toBe(1);
+    expect(h.host.items.audit()).toEqual([]);
+  } finally { h.host.shutdown(); }
+});
+
+test("packing returns one kit, protects cargo and restores the deck's condition", () => {
+  const mod = listener("bonus", ["item.gain"]);
+  mod.heard.each = event => {
+    if (event.data.why === "pack skateboard") event.data.n = 2;
+  };
+  const h = new Harness({}, 1, 60, { dev: true, modules: [mod.def], clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(3)) });
+  try {
+    const s = h.join("skater");
+    h.run(600);
+    const c = h.client(s)!, me = h.host.records.byPid.get(c.pid)!, items = h.host.items;
+    const inv = items.inv(me), ents = h.world.ents, kit = h.reg.index.get(BOARD_KIT)!;
+    ents.setPosition(c.ent, 82, 0, 84);
+    const board = h.host.spawnVehicle(BOARD_ID, 83, 84, me.team, 0, { hull: .65 });
+    const handle = makeHandle(board, ents.gen[board]!), rec = h.host.records.byPid.get(ents.pid[board]!)!;
+    expect(h.host.urban.mount(c, board)).toBe(RESULT_OK);
+    h.run(700);
+    expect(h.host.vehicles.packBoard(c, handle)).toBe(RESULT_DENIED);
+    expect(inv.total(kit)).toBe(0);
+    h.host.urban.dismount(c);
+    h.run(500);
+    const wood = h.reg.index.get("core:wood")!;
+    items.mint(rec, wood, 1);
+    expect(h.host.vehicles.packBoard(c, handle)).toBe(RESULT_OK);
+    expect(c.open).toBe(rec.pid);
+    expect(inv.total(kit)).toBe(0);
+    items.burn(rec, items.inv(rec).item.indexOf(wood), 1);
+    const stone = h.reg.index.get("core:stone")!;
+    items.mint(me, stone, 65535);
+    expect(h.host.vehicles.packBoard(c, handle)).toBe(RESULT_FULL);
+    expect(ents.resolve(handle)).toBe(board);
+    for (let i = 0; i < 2; i++) {
+      const slot = inv.item.indexOf(stone);
+      items.burn(me, slot, inv.count[slot]!);
+    }
+    const condition = rec.vitals!.at(V_HEALTH, h.world.tick) / rec.vitals!.max[V_HEALTH]!;
+    s.command(CMD_VEHICLE, w => { w.u8(VEHICLE_PACK); w.u32(handle); });
+    h.run(250);
+    expect(inv.total(kit)).toBe(1);
+    const slot = inv.item.indexOf(kit);
+    expect(inv.dur[slot]! / 1000).toBeCloseTo(condition, 3);
+    const packedCondition = inv.dur[slot]! / 1000;
+    expect(h.host.records.byPid.has(rec.pid)).toBe(false);
+    expect(h.host.vehicles.packBoard(c, handle)).toBe(RESULT_INVALID);
+    expect(h.host.vehicles.deploy(c, slot, 84, 0, 84, 0)).toBe(RESULT_OK);
+    expect(inv.total(kit)).toBe(0);
+    const placed = [...h.host.records.byPid.values()].find(r => r.kind === rec.kind)!;
+    expect(placed.pid).not.toBe(rec.pid);
+    expect(placed.vitals!.at(V_HEALTH, h.world.tick) / placed.vitals!.max[V_HEALTH]!).toBeCloseTo(packedCondition, 3);
     expect(h.host.items.audit()).toEqual([]);
   } finally { h.host.shutdown(); }
 });

@@ -27,7 +27,7 @@ on, as a server does unless told not to, so everyone who joins has cheats; under
 asks the password in `var/admin-password.txt`, which `up` makes the first time.
 
 The world runs the checkout it is in, as built. After pulling or changing branch, `test.sh build` again, then
-`down` and `up`.
+`down` and `up`. Players' pages wait the restart out and come back by themselves.
 
 ## Before the first build
 

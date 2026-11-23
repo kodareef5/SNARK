@@ -18,7 +18,7 @@ function target(): TouchTarget & { log: string[]; x: number; z: number; dx: numb
     look: (dx: number, dy: number) => { t.dx += dx; t.dy += dy; } };
   return t;
 }
-const ALL = (1 << T_COUNT) - 1;
+const ALL = 2 ** T_COUNT - 1;
 
 test("the canvas follows the window: 720 units high, shorter for a short window, taller for a narrow one, and never wider than its screen", () => {
   const f = new UiFrame();

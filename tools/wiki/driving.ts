@@ -34,8 +34,12 @@ export function topSpeed(h: Handling, short = false): string {
 export function drivingTable(h: Handling): Table {
   const head: Cell[] = ["", "Measured"];
   if (h.movement === "skateboard") return {
-    title: "How it rides", head, rows: [["Top speed", kmh(h.top)], ["Foot braking from top speed", metres(h.braking)], ["Ollie height", metres(h.ollie)]],
-    note: ["Measured by pushing, foot braking and popping an ollie on level ground."],
+    title: "How it rides", head, rows: [["Top speed", kmh(h.top)], ["Foot braking from top speed", metres(h.braking)], ["Ollie height", metres(h.ollie)],
+      ["Push / foot brake", "W / S. Press S again from rest to step backwards."], ["Carve / balance", "A / D"], ["Ollie", "Space"],
+      ["50-50 grind", "Ollie toward a kerb and hold Shift on descent"], ["Manual", "Hold X while rolling"],
+      ["Kickflip / shove-it / 180", "R / G / Q in the air"], ["Melon grab", "Hold C in the air and release before landing"],
+      ["Carry the deck", "Step off with E, then look at the stopped board and press F"]],
+    note: ["Measured on level ground. Different tricks grow the multiplier. Manuals and grinds earn points by distance. Coast out to bank the line."],
   };
   if (h.movement === "wheeled") {
     return {

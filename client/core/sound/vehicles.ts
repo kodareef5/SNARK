@@ -7,7 +7,7 @@
 import { CUE_DEAD } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
-import { BAIL, GRIND, KICKFLIP, OLLIE, PUSH, SHOVE } from "../../../shared/sim/skate-state.ts";
+import { BAIL, GRAB, GRIND, KICKFLIP, OLLIE, PUSH, SHOVE, SPIN } from "../../../shared/sim/skate-state.ts";
 import { isBoatVehicle, isRotorVehicle } from "../../../shared/sim/vehicle.ts";
 import { DEFAULT_DRIVETRAIN } from "../../../shared/sim/vehicle-drivetrain.ts";
 import { FIRED_BOOST, thrustBurstTick, thrustersOf } from "../../../shared/sim/vehicle-thrusters.ts";
@@ -116,7 +116,7 @@ export class VehicleSounds {
           if (move === BAIL && was.move !== BAIL) event = skateCrash;
           else if (move === GRIND && was.move !== GRIND) event = skateGrind;
           else if (!was.ground && ground) event = skateLand;
-          else if (was.ground && !ground && (move === OLLIE || move === KICKFLIP || move === SHOVE)) event = skatePop;
+          else if (was.ground && !ground && (move === OLLIE || move === KICKFLIP || move === SHOVE || move === GRAB || move === SPIN)) event = skatePop;
           else if (move === PUSH && (was.move !== PUSH || phase + 1 < was.phase)) event = skatePush;
         }
         if (event) hear(owner, event, id, x, y, z, 1, .8, id === inside);

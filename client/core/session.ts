@@ -95,6 +95,9 @@ import {
   S_RESULT,
   S_SNAPSHOT,
   S_TEXT,
+  RESTART_GO,
+  RESTART_OFF,
+  S_RESTART,
   S_TRAVEL,
   S_TUNING,
   S_MOTION,
@@ -122,7 +125,8 @@ import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequant
 import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
-import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
+import { SPIN } from "../../shared/sim/skate-state.ts";
+import { isSkateboard, MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
@@ -343,7 +347,7 @@ const ASK_AGAIN_MS = 1000;
  * itself. The server reads against an acknowledged view only while it is younger than VIEW_RING, and sends it whole after.
  */
 const QUIET_TICKS = 8;
-const CLOSED_BY_PEER = -1;
+export const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
 /** The content this client derives from the server's tuning does not hash to the server's. */
 export const CLOSED_BAD_CONTENT = -3;
@@ -433,6 +437,19 @@ export class ClientSession {
   closeText = "";
   /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
   travelled: { ticket: Uint8Array; world: number } | null = null;
+  /**
+   * The server said it is stopping (S_RESTART): when, in ms since 1970, or 0 for no stop said. `leaving` is its "go":
+   * the page is on its way to its waiting page. `lost` is a session that was in the world and whose connection
+   * closed with no word, which the page waits out in place (client/core/waiting.ts).
+   */
+  restartAt = 0;
+  leaving = false;
+  lost = false;
+  /** What the page waiting in place has to say, shown as the status; "" until it waits. */
+  waiting = "";
+  /** Told as each arrives, not at the next frame: a hidden tab draws no frames, and must leave all the same. */
+  onRestart: ((go: boolean) => void) | null = null;
+  onLost: (() => void) | null = null;
 
   /** The supply drops live on the map as the server last told them (S_SUPPLY), whole, and a count raised each time it does. */
   supply: SupplyList = { tiers: [], classes: [], rows: [] };
@@ -732,9 +749,15 @@ export class ClientSession {
     conn.onMessage = (channel, data) => this.receive(channel, data);
     conn.onClose = () => {
       if (this.state !== "closed") {
-        if (this.state === "active") this.prediction.closed(this, "the socket closed");
+        const was = this.state;
+        if (was === "active") this.prediction.closed(this, "the socket closed");
         this.state = "closed";
         this.closeReason = CLOSED_BY_PEER;
+        // One that was in the world and was told nothing has lost its server: a stop, a crash or the line between.
+        if (was === "active" && !this.leaving && !this.travelled) {
+          this.lost = true;
+          this.onLost?.();
+        }
       }
       this.welcomedNow();
     };
@@ -1026,7 +1049,7 @@ export class ClientSession {
       out.seat[n] = attachment.seat[attachmentRow]!; out.seatSlot[n] = attachment.seatSlot[attachmentRow]!; out.seatGen[n] = attachment.seatGen[attachmentRow]!;
       const vehicle = this.registry.vehicle[b.kind[j]!];
       if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
-        this.vehicleColumns(out, n, b, j, both ? a : null, i, k, vehicle?.movement);
+        this.vehicleColumns(out, n, b, j, both ? a : null, i, k, isSkateboard(vehicle) ? "skateboard" : vehicle?.movement);
         out.bare[n] = 0;
       } else if (out.bare[n] === 0) {
         noVehicle(out, n);
@@ -1086,10 +1109,13 @@ export class ClientSession {
     out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
     out.vehicleLightMode[n] = unpackVehicleLightMode(drive);
     if (a) {
+      const oldDrive = a.vehicleDrive[i]!;
+      const newTrick = movement === "skateboard" && unpackVehicleGear(oldDrive) !== unpackVehicleGear(drive);
       if (b.vehicleAttitudeA[j] || b.vehicleAttitudeB[j]) {
         unpackVehicleQuaternion(a.vehicleAttitudeA[i]!, a.vehicleAttitudeB[i]!, this.rotorQuatA);
         this.rotorQuatB.set(this.rotorQuat);
-        quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
+        const turn = newTrick && unpackVehicleGear(oldDrive) === SPIN ? (k < .5 ? 0 : 1) : k;
+        quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, turn);
       }
       if (out.vehicleRotorcraft[n]) {
         const oldRotor = a.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);
@@ -1111,7 +1137,6 @@ export class ClientSession {
         doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
       }
       out.vehicleDoors[n] = doors;
-      const oldDrive = a.vehicleDrive[i]!;
       out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
       out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;
       out.vehicleShifting[n] = vehicleShifting(k < .5 ? oldDrive : drive) ? 1 : 0;
@@ -1120,7 +1145,7 @@ export class ClientSession {
       wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
       out.wheelAngle[n] = out.vehicleBoat[n]
         ? interpolateRotorPhase(oldWheel, out.wheelAngle[n]!, unpackVehicleRpm(oldDrive) * unpackVehicleGear(oldDrive), unpackVehicleRpm(drive) * unpackVehicleGear(drive), (b.tick - a.tick) / TICK_RATE, k)
-        : oldWheel + wheelTurn * k;
+        : newTrick ? (k < .5 ? oldWheel : out.wheelAngle[n]!) : oldWheel + wheelTurn * k;
     }
     out.vehicleQx[n] = this.rotorQuat[0]!; out.vehicleQy[n] = this.rotorQuat[1]!;
     out.vehicleQz[n] = this.rotorQuat[2]!; out.vehicleQw[n] = this.rotorQuat[3]!;
@@ -1476,6 +1501,18 @@ export class ClientSession {
         for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
         const world = r.u16();
         if (!r.overflow) s.travelled = { ticket, world };
+      },
+    });
+    messages.add({
+      kind: S_RESTART,
+      read(s, r) {
+        const seconds = r.u16();
+        // One who joins during the countdown is told before its welcome.
+        if (r.overflow || s.state === "closed") return;
+        if (seconds === RESTART_OFF) s.restartAt = 0;
+        else if (seconds === RESTART_GO) s.leaving = true;
+        else s.restartAt = Date.now() + seconds * 1000;
+        if (seconds !== RESTART_OFF) s.onRestart?.(seconds === RESTART_GO);
       },
     });
     messages.add({

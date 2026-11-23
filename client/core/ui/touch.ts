@@ -7,7 +7,7 @@
 // sheet's stand-in (D871). Import its types freely; import a value from here and every page pays for it.
 
 import type { HudModel } from "../hud.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CANCEL, T_CHARACTER, T_CHAT, T_CLOSE, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CANCEL, T_CHARACTER, T_CHAT, T_CLOSE, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_PACK, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
 import { VITAL_PITCH } from "./hud.ts";
 import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
@@ -172,7 +172,10 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
     corner(T_JUMP, I_JUMP, "Ollie");
     at(T_RELOAD, 0, BUTTON, I_ROTATE, "Kickflip");
     at(T_MELEE, 1, BUTTON, I_RIGHT, "360 shove-it");
-    at(T_SHIFT, 2, BUTTON, I_SNAP, "Grind assist", t.shifted);
+    at(T_SHIFT, 2, BUTTON, I_SNAP, "Catch an edge on descent", t.shifted);
+    at(T_HOLD, 3, SMALL, I_ANCHOR, "Hold for manual");
+    at(T_ROLL, 4, SMALL, I_CROUCH, "Hold grab, release to land");
+    at(T_SNAP, 5, SMALL, I_LEFT, "180");
   } else if (v?.rotor) {
     // A helicopter: the collective under the thumb, yaw side by side above it, and the rest about them.
     corner(T_JUMP, I_UP, "Collective up");
@@ -244,11 +247,13 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
     // Above the cluster, or on a canvas too short for that, to its left.
     // Clear of the far arc's top, which is a little above the near one's.
     const above = bottom - CLUSTER_H - GAP - PILL, beside = right - CLUSTER_W - ALONG * 2 - GAP, high = above >= mapFoot + GAP;
-    const w = Math.max(96, Math.min((high ? right : beside) - left, Math.ceil(textWidth(offer, S_PROMPT)) + 44)), x = (high ? right : beside) - w, y = high ? above : bottom - PILL;
+    const pack = m.prompt.includes("   F  pick up"), packWidth = pack ? SMALL + GAP : 0;
+    const w = Math.max(96, Math.min((high ? right : beside) - left, Math.ceil(textWidth(offer, S_PROMPT)) + 44)), x = (high ? right : beside) - w - packWidth, y = high ? above : bottom - PILL;
     pill(f, KEY_TOUCH_ART + T_USE * 4, x, y, w, PILL, t.held(T_USE));
     const n = f.add(KEY_TOUCH_BUTTON + T_USE, K_HOLD, x, y, w, PILL, S_PROMPT);
     n.text = fitText(offer, w - 16, S_PROMPT); n.label = offer; n.interactive = true;
     shown |= 1 << T_USE;
+    if (pack) shown |= button(f, t, T_PACK, x + w + GAP + SMALL/2, y + PILL/2, SMALL, P_ROUND, I_BAG, "Pick up skateboard");
   }
   return shown;
 }
@@ -256,5 +261,5 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
 /** What the use key would do, from a prompt that names it ("E  ride raptor" gives "Ride raptor"); "" for any other line. */
 export function usePrompt(prompt: string): string {
   if (!prompt.startsWith("E  ")) return "";
-  return prompt.charAt(3).toUpperCase() + prompt.slice(4);
+  return prompt.charAt(3).toUpperCase() + prompt.slice(4).split("   F  ")[0]!;
 }

@@ -40,7 +40,6 @@ artTest("every asset folder has its pack, named as the folder is, and the pack p
 
 artTest("each road vehicle's exported paint, wheel joints and glass opening fit its declared finish", () => {
   for (const vehicle of coreRegistry().vehicle) {
-    // A skateboard has no paint, glass or wheel joints, and its mesh is the pack builder's own (tools/pack/skateboard.ts).
     if (!vehicle || !isWheelVehicle(vehicle) || isSkateboard(vehicle)) continue;
     const asset = ASSETS.find(a => a.id === vehicle.id);
     expect(asset, vehicle.id).toBeDefined();

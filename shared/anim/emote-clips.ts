@@ -96,7 +96,7 @@ export function fist(b: PoseBuilder, s: Side, k = 1, thumb = k): void {
 }
 
 /** The foot's ankle at `at` (x outward), flat, the knee toward `knee` (x outward). */
-function foot(b: PoseBuilder, s: Side, at: V, knee: V = [0.12, 0, 1], flat = true): void {
+export function foot(b: PoseBuilder, s: Side, at: V, knee: V = [0.12, 0, 1], flat = true): void {
   const m = leg(s);
   reach(b, m.upper, m.lower, THIGH, SHIN, [at[0] * s, at[1], at[2]], [knee[0] * s, knee[1], knee[2]]);
   if (flat) b.level(m.foot);

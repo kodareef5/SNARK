@@ -1,5 +1,7 @@
 import { logTo } from "./early-log.ts";
 import { launchKey,readLaunch } from "../core/entry-state.ts";
+import { SETTLED_MS, backAddress, readComeback, readReady, waitKey, waitOut, type Comeback } from "../core/waiting.ts";
+import type { Ready } from "../../shared/ready.ts";
 import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 // Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
 
@@ -106,6 +108,43 @@ async function boot(): Promise<void> {
     tideEyes: head.tideEyes,
     ...(land ? { landmarks: land.landmarks } : {}),
   });
+  // Riding out a restart (client/core/waiting.ts). The page learns which start of the server it is on, and when the
+  // server says "go", or the connection closes with no word, it notes who to bring back, for this tab alone.
+  const tooled = selfcheck || bench !== null || device !== null || params.has("look") || params.has("trip");
+  const waitAt = waitKey(location.pathname);
+  let was: Comeback | null = null;
+  try { was = readComeback(sessionStorage.getItem(waitAt)); } catch {}
+  let ready: Ready | null = null;
+  const askReady = (): Promise<Ready | null> => fetch("ready.json", { cache: "no-store", signal: AbortSignal.timeout(4000) }).then((r) => (r.ok ? r.json() : null)).then(readReady, () => null);
+  const comeback = (why: Comeback["why"]): Comeback => ({ name: session.name, password: launch?.password ?? params.get("password") ?? "", spectate: params.has("spectate"), started: ready?.started ?? 0, map: ready?.map ?? "", why, at: Date.now(), tries: was?.why === "lost" ? was.tries : 0 });
+  const keep = (c: Comeback): void => { try { sessionStorage.setItem(waitAt, JSON.stringify(c)); } catch {} };
+  /** Back into the game as the same survivor: the launch the game page reads, and a count of the tries in a row. */
+  const comeIn = (c: Comeback): void => {
+    try { sessionStorage.setItem(launchKey(new URL("play.html", location.href).pathname), JSON.stringify({ intent: "resume", name: c.name, password: c.password })); } catch {}
+    keep({ ...c, tries: c.tries + 1 });
+    location.replace(backAddress(c));
+  };
+  /** The connection closed with no word: the page waits where it is, and comes back when the server answers. */
+  const waitHere = (why: Comeback["why"] = "lost"): void => {
+    if (tooled || session.sessionState === SESSION_CREATING) return;
+    const c = comeback(why);
+    waitOut(c, { now: () => Date.now(), ask: askReady, later: (run, ms) => void setTimeout(run, ms), random: () => Math.random(), say: (line) => void (session.waiting = line), enter: () => comeIn(c) });
+  };
+  void session.welcomed.then(async () => {
+    if (session.state !== "active" || tooled) return;
+    ready = await askReady();
+    // A session that has lasted is no longer one of a row that keeps dropping.
+    setTimeout(() => { if (session.state === "active") { was = null; try { sessionStorage.removeItem(waitAt); } catch {} } }, SETTLED_MS);
+  });
+  session.onLost = () => waitHere();
+  session.onRestart = (go) => {
+    if (!go || tooled) return;
+    // A survivor still being made has nothing to come back to: the title makes it again.
+    if (session.sessionState === SESSION_CREATING) return void location.replace("./");
+    keep({ ...comeback("restart"), tries: 0 });
+    // The waiting page must be fetched while the server still answers. If it cannot be, the page waits where it is.
+    fetch("wait.html", { cache: "no-store", signal: AbortSignal.timeout(1500) }).then((r) => (r.ok ? location.replace("wait.html") : waitHere("restart")), () => waitHere("restart"));
+  };
   let createSeq=0, createFailed=false;
   if(launch){
     const chosen=launch;

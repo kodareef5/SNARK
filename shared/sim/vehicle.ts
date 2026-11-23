@@ -383,6 +383,7 @@ export interface VehicleSurface {
 
 export interface VehicleState extends VehicleDrivetrainState {
   skateMove?: number;
+  switched?: boolean;
   x: number;
   y: number;
   z: number;
@@ -444,6 +445,7 @@ export interface WheelRayContact { distance: number; nx: number; ny: number; nz:
 export interface VehicleContact { restitution?: number; reason: string; nx: number; ny: number; nz: number; x?: number; y?: number; z?: number; depth?: number; balanced?: boolean; geometryNx?: number; geometryNy?: number; geometryNz?: number; points?: readonly { x: number; y: number; z: number }[] }
 
 export interface VehicleStep {
+  skateHurt?: number;
   blocked: string | null;
   impactSpeed: number;
   /** First wheel contact closing speed, separate from hull/wall impacts. */

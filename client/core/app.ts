@@ -45,6 +45,7 @@ import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
 import { Falling } from "./rubble.ts";
+import { isSkateboard } from "../../shared/sim/vehicle.ts";
 import { thrustersOf } from "../../shared/sim/vehicle-thrusters.ts";
 import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD } from "../../shared/sim/character.ts";
 import { CUE_HELD } from "../../shared/anim/pose.ts";
@@ -227,6 +228,7 @@ export class App {
       get inMenu() { return !app.ui.wantsPointerLock; },
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
+      get skating() { return app.controls.onBoard; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
       zoom: (notches, alt) => void this.zoomBy(notches, alt),
@@ -465,6 +467,7 @@ export class App {
     if (flyer !== this.flying) c.fly(flyer, flyer && s.own.mode === MODE_FLYER);
     this.flying = flyer;
     c.heli(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "rotor");
+    c.skate(s.sessionState === SESSION_ALIVE && s.driving >= 0 && isSkateboard(this.reg.vehicle[s.own.kind]));
     c.thrusterCar(s.sessionState === SESSION_ALIVE && s.driving >= 0 && thrustersOf(this.reg.vehicle[s.own.kind]) !== undefined);
     if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
     this.wingWas = c.wing;
@@ -728,7 +731,8 @@ export class App {
     if (session.state === "closed") {
       this.dash.none(hud);
       // Only the reasons a player can act on are spelled out.
-      hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
+      // A page the server sent to wait, or one that lost it, says so: it comes back by itself (waiting.ts).
+      hud.status = session.waiting !== "" ? session.waiting : session.leaving ? "The server is restarting. One moment." : session.lost ? "The server went away. Waiting for it to come back." : session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(f.aspect, hud, session);
       if (this.sound) this.sounds?.hush(this.sound);
       return false;

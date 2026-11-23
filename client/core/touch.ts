@@ -28,8 +28,9 @@ export const T_DOWN = 23, T_ROLL = 24, T_HOLD = 25, T_SHIFT = 26;
 export const T_CHAT = 27, T_MIC = 28;
 /** The whistles to the one creature looked at, where the second page's would otherwise call every creature that hears. */
 export const T_FOLLOW_ONE = 29, T_STAY_ONE = 30;
-/** Buttons have a bit each in what a frame showed, so there are at most 31. */
-export const T_COUNT = 31;
+/** Buttons have a bit each in what a frame showed, so there are at most 32. */
+export const T_PACK = 31;
+export const T_COUNT = 32;
 
 /** Units from the stick's middle to its rim, the still middle, and the share of the way out at which it sprints. */
 export const STICK_REACH = 60;
@@ -46,7 +47,7 @@ const TAPS: Readonly<Record<number, string>> = {
   [T_VIEW]: "KeyV", [T_ORBIT]: "KeyK", [T_FOLLOW]: "KeyJ", [T_STAY]: "KeyU", [T_FOLLOW_ONE]: "KeyT", [T_STAY_ONE]: "KeyY", [T_SIC]: "Period", [T_ROTATE]: "KeyE", [T_RAISE]: "ArrowUp", [T_LOWER]: "ArrowDown",
 };
 /** What a button holds down while a finger is on it. The same key means what the body's state makes of it: R reloads on foot and yaws a helicopter. */
-const HELD: Readonly<Record<number, string>> = { [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE", [T_MELEE]: "KeyG", [T_SNAP]: "KeyQ", [T_DOWN]: "ControlLeft", [T_ROLL]: "KeyC", [T_HOLD]: "KeyX", [T_MIC]: "KeyB" };
+const HELD: Readonly<Record<number, string>> = { [T_PACK]: "KeyF", [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE", [T_MELEE]: "KeyG", [T_SNAP]: "KeyQ", [T_DOWN]: "ControlLeft", [T_ROLL]: "KeyC", [T_HOLD]: "KeyX", [T_MIC]: "KeyB" };
 
 /** The key a button stands for, held or tapped; undefined for one that is no key's (the attack, the aim, the pages). */
 export function touchKey(button: number): string | undefined {

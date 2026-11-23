@@ -62,10 +62,10 @@ test("every vehicle's page says how it drives and its top speed as measured, wit
   expect(listed.length).toBeGreaterThan(10);
   for (const e of listed) {
     const table = e.tables.find((t) => ["How it drives", "How it handles", "How it flies", "How it rides"].includes(t.title))!;
-    expect([e.id, table.rows.length]).toEqual([e.id, e.handling!.movement === "wheeled" ? 11 : e.handling!.movement === "boat" ? 10 : e.handling!.movement === "skateboard" ? 3 : 7]);
-    for (const [what, value] of table.rows) {
-      // Only what drives it is said in words.
-      const words = ["Driven wheels", "Drive"].includes(text(what!));
+    expect([e.id, table.rows.length]).toEqual([e.id, e.handling!.movement === "wheeled" ? 11 : e.handling!.movement === "boat" ? 10 : e.handling!.movement === "skateboard" ? 11 : 7]);
+    for (const [row, [what, value]] of table.rows.entries()) {
+      // Only what drives it is said in words, and a skateboard's keys, which follow its three measured figures.
+      const words = ["Driven wheels", "Drive"].includes(text(what!)) || (e.handling!.movement === "skateboard" && row >= 3);
       expect([e.id, text(what!), words ? text(value!).length > 2 : /\d/.test(text(value!))]).toEqual([e.id, text(what!), true]);
       expect(text(value!)).not.toMatch(/NaN|Infinity|undefined|null/);
     }

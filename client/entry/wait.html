@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>SNARK: waiting for the server</title>
+<style>
+  /* The game page's own boot screen (client/index.html), so the handoff looks like the game loading. */
+  html, body { margin: 0; height: 100%; background: #122e3e; color: #f5f2e6; font: 500 16px Arial, sans-serif; }
+  #wait { position: fixed; inset: 0; display: flex; justify-content: flex-end; align-items: flex-start; flex-direction: column; padding: 5vh max(6vw, env(safe-area-inset-left)) max(8vh, env(safe-area-inset-bottom)); background: linear-gradient(0deg, #08151df5, transparent 75%), url("title/red-tide.webp") center / cover no-repeat, #122e3e; }
+  @media (orientation: portrait) { #wait { background-image: linear-gradient(0deg, #08151df5, transparent 75%), url("title/red-tide-portrait.webp"); } }
+  #wait img { width: clamp(96px, min(20vw, 25vh), 208px); height: auto; }
+  #line { border-left: 3px solid #74cebc; margin-top: clamp(1.5rem, 4vh, 3rem); padding: .2rem .8rem; font-size: clamp(.95rem, 1.6vw, 1.1rem); max-width: 38em; overflow-wrap: anywhere; }
+  #out { margin-top: 1rem; padding: .2rem .8rem; color: #a7d8ff; font-size: .9rem; }
+</style>
+</head>
+<body>
+<div id="wait">
+  <img src="title/snark-emblem.webp" width="480" height="480" alt="SNARK">
+  <span id="line" role="status">The server is restarting. Stay here: you will be brought back.</span>
+  <a id="out" href="./">Leave for the title</a>
+</div>
+<script type="module">/* WAIT_SCRIPT */</script>
+</body>
+</html>

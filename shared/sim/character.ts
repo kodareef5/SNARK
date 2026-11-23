@@ -1,7 +1,7 @@
+import { copySkate, sameSkate, type SkateState } from "./skate-state.ts";
 // One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
-import { copySkate, sameSkate, type SkateState } from "./skate-state.ts";
 import { flags } from "../codes.ts";
 import { BLOCK_SOFT_SPEED, blockOut, pushOut, turnFree } from "./blockers.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";

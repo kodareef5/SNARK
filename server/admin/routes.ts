@@ -17,6 +17,7 @@
 //                           an admin's action on it (cast.ts)
 //   /admin/settings.html    the settings page (client/admin/settings.ts), /admin/settings.json every setting, POST
 //                           /admin/settings an admin's change to one (settings.ts)
+//   POST /admin/stop        the server stops for an update after a countdown, or a stop is taken back (stop.ts)
 //   /admin/first-frame.html what the client's first frame downloads (client/admin/first-frame.ts), and
 //                           /admin/first-frame.json the build's weighing of it, beside the client (tools/first-frame.ts)
 
@@ -31,6 +32,7 @@ import { boardAsked } from "../sound-board.ts";
 import { basesOf, basesVersion } from "./bases.ts";
 import { castAct, castState } from "./cast.ts";
 import { settingsAnswer } from "./settings.ts";
+import { stopAnswer } from "./stop.ts";
 import { originAllowed } from "../origin.ts";
 import { adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
 import { SupplyRoutes } from "./supply-routes.ts";
@@ -192,7 +194,7 @@ export class AdminPages {
       if (!(level >= 0 && level <= 3 && Number.isInteger(level))) return new Response("level is 0 to 3", { status: 400 });
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
-    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? new Response("not found", { status: 404 });
+    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? new Response("not found", { status: 404 });
   }
 
   private terrainImage(req: Request): Response {

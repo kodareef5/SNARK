@@ -5,7 +5,6 @@ import { DAMAGE_TYPES } from "../../sim/damage.ts";
 import type { VehicleSurface } from "../../sim/vehicle.ts";
 import { validVehicleSurface } from "../../world/vehicle-surface.ts";
 import { hullTable, type HullDef } from "../../world/convex.ts";
-import type { GrindLine } from "../../world/structures.ts";
 import type { Def } from "../defs.ts";
 import { ID, drawnFaults, f, f32, i8, list, mesh, row, u16, u8, type Fields, type Kind, type Named } from "../kind.ts";
 import { materialsById } from "./materials.ts";
@@ -44,8 +43,8 @@ export interface StructureDef extends Named, StationFields {
   /** A static whose parts move between two placements when it is used. */
   readonly motion?: MotionFacet;
   /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
-  /** Grindable edge as consecutive points in the local frame, in metres. */
-  readonly grindLine?: GrindLine;
+  /** Consecutive points along a skateable edge, in local metres. */
+  readonly grindLine?: import("../../world/structures.ts").GrindLine;
   readonly vehicleSurface?: VehicleSurface;
   readonly type: "structure";
   readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
@@ -213,7 +212,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.coarse !== undefined && !(d.coarse >= 1 && d.coarse <= 16)) errors.push(`${d.id}: coarse is from 1 to 16`);
     if (d.colors !== undefined && !(Array.isArray(d.colors) && d.colors.length <= 5 && d.colors.every((c) => Number.isInteger(c) && c > 0 && c < REGION_BASE))) errors.push(`${d.id}: colors are up to five fixed palette colours`);
     if (d.motion !== undefined) errors.push(...motionFaults(d));
-    if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.length < 2 || d.grindLine.length > 64 || !d.grindLine.every((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)))) errors.push(`${d.id}: invalid grindLine`);
+if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.length < 2 || d.grindLine.length > 64 || !d.grindLine.every(p => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)))) errors.push(`${d.id}: invalid grindLine`);
     if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
     positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
     positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
@@ -251,8 +250,8 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
       if (shape.doorway) reg.doorway[i] = 1;
       for (const b of shape.boxes) boxes.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
     } else boxes.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
+    reg.parts.grindLine[i] = d.grindLine;
     if (d.vehicleSurface) reg.parts.vehicleSurface[i] = Object.freeze({ ...d.vehicleSurface });
-    if (d.grindLine) reg.parts.grindLine[i] = d.grindLine;
     reg.maxHp[i] = d.hp;
     reg.structSlots[i] = d.slots ?? 0;
     if (d.locked) reg.lockedAtFirst[i] = 1;

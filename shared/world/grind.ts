@@ -26,7 +26,8 @@ export function grindAt(store: StructureStore, x: number, y: number, z: number, 
       const t = ((x-ax)*dx + (z-az)*dz) / (length*length);
       if (t < 0 || t > 1) continue;
       const px = ax+t*dx, pz = az+t*dz, py = row.y[slot]! + a[1]+t*(b[1]-a[1]);
-      const lateral = (x-px)*(x-px) + (z-pz)*(z-pz), dy = y-py;
+      const sideX = x - px, sideZ = z - pz, dy = y - py;
+      const lateral = sideX*sideX + sideZ*sideZ;
       const distance = lateral + dy*dy;
       if (lateral > reach*reach || dy < -.21 || dy > .34 || distance > best || (distance === best && ref >= bestRef)) continue;
       best = distance; bestRef = ref;
