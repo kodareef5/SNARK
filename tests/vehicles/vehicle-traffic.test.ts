@@ -9,6 +9,14 @@ for (const rtt of [150, 300, 320, 330]) test(`native five-car traffic does not f
   if (rtt >= 300) { expect(r.jumpsOver30cm).toBe(0); expect(r.stillFrames).toBe(0); }
 });
 
+test('five oncoming Concept 003 cars stay in motion at 320 ms RTT', () => {
+  const result = trafficTrial({ kind: 'fixed', seed: 61, rtt: 320, species: 'core:concept003' });
+  expect(result.samples).toEqual([540, 540, 540, 540, 540]);
+  expect(result.stillFrames).toBe(0);
+  expect(result.jumpsOver30cm).toBe(0);
+  expect(result.undecodable).toBe(0);
+});
+
 for (const [kind, rtt] of [['changing', 320], ['burst', 320], ['burst', 80]] as const) test(`native ${kind} ${rtt} ms link preserves bounded proxy transitions and exposes ordinary transport stalls`, () => {
   const on = trafficTrial({ kind, seed: 61, rtt }), off = trafficTrial({ kind, seed: 61, rtt, prediction: false });
   expect(on.movingSamples).toBeGreaterThan(1800); expect(on.undecodable).toBe(0);
