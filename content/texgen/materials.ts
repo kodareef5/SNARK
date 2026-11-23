@@ -45,6 +45,8 @@ export interface MaterialRecipe {
   readonly roof?: string;
   /** It lies on faces that look up alone, a roof's: its piece's other faces are their painted finish. */
   readonly lies?: true;
+  /** It is a coat over its wall: where the weathering finds the plaster lost, its relief lies down with it. A block's joints stay. */
+  readonly coat?: true;
   /** The means over a tile of its light, its dye and its roughness, pinned: the read draws them far off, and a test says when they are stale. */
   readonly means: readonly [number, number, number];
 }
@@ -55,14 +57,15 @@ export const MOST_MATERIALS = 12;
 export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
   // A dash coat: grit thrown on in small hard peaks over the trowel's sag, as Miami's low-rise walls are.
   {
-    name: "stucco", metres: 2, seed: 11, level: 0.25, relief: 8, rough: 0.92, hollow: 0.1, dye: 1, shade: 0.3, mottle: 0.07, roof: "gravel", means: [0.97, 1, 0.93],
-    noise: [{ cell: [0.1, 0.1], height: 0.2, light: 0 }, { cell: [0.04, 0.04], height: 0.15, light: 0.02 }],
-    grain: { size: 0.02, core: 0.08, radius: 0.55, height: 0.6, tone: 0.08, gap: 1, bare: 1, warm: 0 },
+    name: "stucco", metres: 2, seed: 11, level: 0.3, relief: 10, rough: 0.92, hollow: 0.1, dye: 1, shade: 0.3, mottle: 0.07, roof: "gravel", coat: true, means: [0.97, 1, 0.93],
+    // The trowel's lumps a hand across carry the grit, so no two grains stand alike and the wall shows its lie from across a street.
+    noise: [{ cell: [0.25, 0.25], height: 0.3, light: 0.02 }, { cell: [0.08, 0.08], height: 0.3, light: 0 }, { cell: [0.04, 0.04], height: 0.15, light: 0.02 }],
+    grain: { size: 0.02, core: 0.02, radius: 0.6, height: 0.4, tone: 0.1, gap: 1, bare: 1, warm: 0 },
   },
   // Sand-float render: fine and even, the float's sweeps across it.
   {
-    name: "render", metres: 2, seed: 23, level: 0.5, relief: 2.5, rough: 0.8, hollow: 0.08, dye: 1, shade: 0.1, mottle: 0.05, roof: "gravel", means: [1, 1, 0.8],
-    noise: [{ cell: [0.5, 0.5], height: 0.1, light: 0 }, { cell: [0.4, 0.1], height: 0.45, light: 0.02, warp: 0.6 }, { cell: [0.0125, 0.0125], height: 0.2, light: 0.03 }],
+    name: "render", metres: 2, seed: 23, level: 0.5, relief: 4, rough: 0.8, hollow: 0.08, dye: 1, shade: 0.12, mottle: 0.05, roof: "gravel", coat: true, means: [1, 1, 0.8],
+    noise: [{ cell: [0.5, 0.5], height: 0.15, light: 0 }, { cell: [0.5, 0.125], height: 0.6, light: 0.03, warp: 0.8 }, { cell: [0.0125, 0.0125], height: 0.15, light: 0.03 }],
   },
   // Painted concrete block, 400 by 200 mm in running bond, its joints struck back and its faces pitted.
   {

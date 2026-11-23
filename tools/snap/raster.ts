@@ -18,7 +18,7 @@ import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFa
 import { texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherTwin } from "../../client/core/texgen/weather.ts";
 import { TWIN_SLOTS, madeTwin } from "../../client/core/texgen/materials.ts";
-import { MADE_MARK, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { MADE_MARK, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -416,6 +416,14 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       risenFrom(albedo, worldOrm, normal);
       weathered(albedo, worldOrm, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, over, open, footprint, p.surfaceCity, sample, 1, weatherTwin(texgenSide(p.tier, p.tier.finishes)));
       risenTo(albedo, worldOrm, null, risen);
+      // A coat's relief lies down where its plaster is lost, as LIT has it.
+      const flat = coatLost.lost * coatLost.coat * risen;
+      if (flat > 0) {
+        const fx = normal[0]! + (nx - normal[0]!) * flat, fy = normal[1]! + (ny - normal[1]!) * flat, fz = normal[2]! + (nz - normal[2]!) * flat, l = Math.hypot(fx, fy, fz);
+        normal[0] = fx / l;
+        normal[1] = fy / l;
+        normal[2] = fz / l;
+      }
       if (edge && edge[0]! >= 0) {
         risenFrom(albedo, worldOrm, normal);
         edged(albedo, worldOrm, normal, index, edge[0]!, edge[1]!, edge[2]!, edge[3]!, h, rx + p.camX, ry + p.camY, rz + p.camZ, footprint, p.surfaceCity, p.tier.finishes < 1024);

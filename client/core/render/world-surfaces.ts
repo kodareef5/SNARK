@@ -298,6 +298,12 @@ function relief(id: number, u: number, v: number, spread: number, view: Numbers,
 const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Float64Array(2), patch: 0 };
 /** What a material made from a recipe has in place of its finish's roughness, bump and height scales, by how far it shows. */
 const scales = { rough: 1, bump: 1, height: 1 };
+/**
+ * What the last surface and the last weathering left for the one who lights the pixel: how much of a coat that goes
+ * with its wall's plaster the surface wears (MaterialRecipe `coat`), and how much of the plaster is lost there. The
+ * relief of a coat lies down by their product, as LIT has it.
+ */
+export const coatLost = { coat: 0, lost: 0 };
 const madeBase = new Float64Array(4), madeRelief = new Float64Array(4), madeBase2 = new Float64Array(4), madeRelief2 = new Float64Array(4);
 
 /** Metres across the cells of the noise that says where a made material's second copy shows, in its tiles; and of its mottle's two noises. */
@@ -368,6 +374,7 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   scales.rough += (1 - scales.rough) * t;
   scales.bump += (1 - scales.bump) * t;
   scales.height += (r.relief - scales.height) * t;
+  coatLost.coat = r.coat ? t : 0;
 }
 
 /**
@@ -466,6 +473,7 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     tangent[2] = axis === 1 ? eye[1]! * Math.sign(ny) : axis === 0 ? eye[0]! * Math.sign(nx) : eye[2]! * Math.sign(nz);
     if (tangent[2] > 0.1) depth = (f.height / 1000 / metres) * clamp(2 - 2 ** spread * RELIEF_TEXELS);
   }
+  coatLost.coat = coatLost.lost = 0;
   scales.rough = f.rough;
   scales.bump = f.bump;
   scales.height = f.height;
@@ -619,6 +627,7 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   if (w.peel > 0) {
     // The plaster's losses and the rim about each, as the field packs them.
     const l2 = 2 * field[3]!, lost = clamp(l2 - 1) * w.peel * fade, rim = (Math.min(l2, 1) - clamp(l2 - 1)) * w.peel * fade;
+    coatLost.lost = lost;
     const metres = finishMetres(CONCRETE, city);
     // The concrete is projected as worldSurface projects a wall: along z where the face looks along x.
     if (lost > 0) sample(0, CONCRETE, (side < 2 ? z : x) / metres, -y / metres, Math.log2(Math.max(footprint / metres, 1e-9)), bare);
@@ -1168,6 +1177,9 @@ bool worldSharp = false;
 uniform highp sampler2DArray uTexgen;
 uniform float uTexgenReady;
 int worldMade = 0;
+// How much of a coat the pixel wears (made), and how much of its plaster is lost (weathered): a coat's relief goes with it.
+float worldCoat = 0.0, worldLost = 0.0;
+const float MK[${MATERIAL_RECIPES.length + 1}] = float[${MATERIAL_RECIPES.length + 1}](0.0, ${MATERIAL_RECIPES.map((r) => (r.coat ? "1.0" : "0.0")).join(", ")});
 const vec4 MD[${MATERIAL_RECIPES.length + 1}] = vec4[${MATERIAL_RECIPES.length + 1}](vec4(1.0), ${MATERIAL_RECIPES.map((r) => `vec4(${fl(r.metres)}, ${fl(r.relief)}, ${fl(madeFar(r))}, ${fl(r.mottle)})`).join(", ")});
 const vec2 MS[${MATERIAL_RECIPES.length + 1}] = vec2[${MATERIAL_RECIPES.length + 1}](vec2(0.0), ${MATERIAL_RECIPES.map((r) => `vec2(${madeShift(r).map(fl).join(", ")})`).join(", ")});
 const bool ML[${MATERIAL_RECIPES.length + 1}] = bool[${MATERIAL_RECIPES.length + 1}](false, ${MATERIAL_RECIPES.map((r) => String(r.lies === true)).join(", ")});
@@ -1211,6 +1223,7 @@ void made(int k, int id, int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy, vec2
   bump = (r.rg - 0.5) * 2.0 * t;
   if (turn) bump = -bump.yx;
   scales = mix(scales, vec3(1.0, 1.0, MD[k].y), t);
+  worldCoat = MK[k] * t;
 }
 #endif
 // Returns the height in millimetres with the finish's lift.
@@ -1308,6 +1321,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   albedo = (albedo + (vec3(dot(albedo, vec3(1.0 / 3.0)) * 1.15) + albedo * 0.08 - albedo) * bleach) * (1.0 + (vec3(${ALGAE.map(fl).join(", ")}) - 1.0) * algae);
   if (x.z > 0.0) {
     float l2 = 2.0 * fm.a, lost = clamp(l2 - 1.0, 0.0, 1.0) * x.z * fade, rim = (min(l2, 1.0) - clamp(l2 - 1.0, 0.0, 1.0)) * x.z * fade;
+    worldLost = lost;
     vec3 bare = vec3(0.0);
     if (lost > 0.0) {
       float mc = WF[${CONCRETE}].x * uSurfaceCity[0].w;

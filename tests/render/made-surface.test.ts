@@ -7,7 +7,7 @@ import { MATERIAL_RECIPES, materialIndex } from "../../content/texgen/materials.
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { NearMaking } from "../../client/core/render/nearcity.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
-import { MADE_MARK, madeFar, madeShift, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { MADE_MARK, coatLost, madeFar, madeShift, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TWIN_SLOTS, madeTwin, materialHeight, materialRows } from "../../client/core/texgen/materials.ts";
 import { MADE_FLOATS } from "../../client/core/texgen/slots.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
@@ -96,6 +96,21 @@ test("a second copy, moved by whole courses and ribs, shows in patches of the wo
   const sheet = materialIndex("corrugated"), means = wall(0, 3.3, 1.7, 0.002, null, 2);
   expect(wall(sheet, 3.3, 1.7, 0.04, TWIN_SLOTS)).toEqual(means);
   expect(wall(sheet, 3.3, 1.7, 0.01, TWIN_SLOTS)).not.toEqual(means);
+});
+
+test("a coat's relief is marked to lie down with lost plaster; a block's joints are not", () => {
+  wall(materialIndex("stucco"), 3.3, 1.7, 0.002, TWIN_SLOTS);
+  expect([coatLost.coat, coatLost.lost]).toEqual([1, 0]);
+  wall(materialIndex("render"), 3.3, 1.7, 0.002, TWIN_SLOTS);
+  expect(coatLost.coat).toBe(1);
+  // Far off, where it is its means, there is no relief to lay down.
+  wall(materialIndex("stucco"), 3.3, 1.7, 1, TWIN_SLOTS);
+  expect(coatLost.coat).toBe(0);
+  for (const name of ["block", "corrugated", "seam"]) {
+    wall(materialIndex(name), 3.3, 1.7, 0.002, TWIN_SLOTS);
+    expect(coatLost.coat).toBe(0);
+  }
+  expect(PROGRAMS.flat!(tierOf("high"), "bc").fragment).toContain("n = normalize(mix(n, geometric, worldLost * worldCoat * risen));");
 });
 
 test("the lit program of a near static reads the made array and the vertex's material; a phone's and low poly's do not", () => {

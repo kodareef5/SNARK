@@ -103,6 +103,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
     weathered(albedo, orm, vSurface, over, open, vRel, geometric, dx, dy);
     albedo = mix(a0, albedo, risen);
     orm = mix(o0, orm, risen);
+    n = normalize(mix(n, geometric, worldLost * worldCoat * risen));
   }
 #endif
 #if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
