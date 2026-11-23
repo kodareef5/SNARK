@@ -242,18 +242,49 @@ test("what does not fit is left out and said, and the ledger balances", () => {
   const many = give(Array.from({ length: 11 }, () => item("spear", 1, "hotbar")));
   expect([many.given.length, many.missed, hotbar(inv()).length, inv().total(id("spear"))]).toEqual([11, [], 10, 11]);
 
-  // With one place left in the bag, the rifle goes to hand through it and its rounds follow; then the rest finds no room.
+  // With one place left in the bag, the rounds take it and the darts find none. The rifle and the flak need no bag.
   items.burnAll(me);
   expect(items.mint(me, id("pistol"), inv().bag - 1)).toBe(inv().bag - 1);
   const full = give(named(builtinLoadouts(), "rifleman").entries);
-  expect(full).toEqual({ given: ["rifle", "30 round_rifle"], missed: ["20 dart_tranq", "flak_hat", "flak_shirt", "flak_gloves", "flak_pants", "flak_boots"] });
-  expect([inv().loaded[inv().hotbar], inv().attach[inv().hotbar], inv().total(id("round_rifle")), inv().free()]).toEqual([1, id("scope"), 30, -1]);
+  expect(full).toEqual({ given: ["rifle", "30 round_rifle", "flak_hat", "flak_shirt", "flak_gloves", "flak_pants", "flak_boots"], missed: ["20 dart_tranq"] });
+  expect([inv().loaded[inv().hotbar], inv().attach[inv().hotbar], inv().total(id("round_rifle")), inv().free(), worn(inv())]).toEqual([1, id("scope"), 30, -1, ["flak_hat", "flak_shirt", "flak_gloves", "flak_pants", "flak_boots"]]);
   // A whole bag and hotbar leave nothing a place.
   items.burnAll(me);
   for (let s = inv().hotbar; s < inv().hotbar + HOTBAR_SLOTS; s++) expect([items.mint(me, id("pistol"), 1), items.move(me, 0, me, s, 0)]).toEqual([1, 1]);
   expect(items.mint(me, id("pistol"), inv().bag)).toBe(inv().bag);
   const none = give([item("stone", 5, "bag"), item("hatchet", 1, "hotbar", { ammo: "core:round_rifle" })]);
   expect(none).toEqual({ given: [], missed: ["5 stone", "hatchet"] });
+  expect(items.audit()).toEqual([]);
+  h.host.shutdown();
+});
+
+test("a full bag keeps nothing off an empty head, hand or weapon", () => {
+  const h = server();
+  const { me, inv } = enter(h, "ada");
+  const items = h.host.items;
+  const give = (entries: Loadout["entries"]) => h.host.loadouts.give(me, loadout("top-up", entries), { tames: true });
+  expect(items.mint(me, id("pistol"), inv().bag)).toBe(inv().bag);
+  const out = give([item("meridian_hat", 1, "wear"), item("hatchet", 1, "hotbar"), item("rifle", 1, "hotbar", { ammo: "core:round_rifle", attach: "core:scope" }), item("stone", 5, "bag")]);
+  expect(out).toEqual({ given: ["meridian_hat", "hatchet", "rifle"], missed: ["5 stone"] });
+  const own = inv();
+  expect([worn(own)[0], hotbar(own), own.loaded[own.hotbar + 1], own.attach[own.hotbar + 1], own.total(id("pistol"))]).toEqual(["meridian_hat", ["hatchet", "rifle"], 1, id("scope"), own.bag]);
+  expect(items.audit()).toEqual([]);
+  h.host.shutdown();
+});
+
+test("a hotbar entry lies on the hotbar, not on a stack of its kind in the bag", () => {
+  const h = server();
+  const { me, inv } = enter(h, "ada");
+  const items = h.host.items;
+  expect(items.mint(me, id("wood"), 12)).toBe(12);
+  const out = h.host.loadouts.give(me, loadout("top-up", [item("wood", 5, "hotbar"), item("wood", 3, "bag")]), {});
+  const own = inv();
+  expect([out, own.item[own.hotbar], own.count[own.hotbar], own.count[0], own.used()]).toEqual([{ given: ["5 wood", "3 wood"], missed: [] }, id("wood"), 5, 15, 2]);
+  // More than one slot holds takes the next hotbar slots, and the bag when those are full.
+  const stack = h.reg.stack[id("wood")]!;
+  items.burnAll(me);
+  const many = h.host.loadouts.give(me, loadout("top-up", [item("wood", stack * 11, "hotbar")]), {});
+  expect([many.missed, hotbar(inv()).length, inv().total(id("wood")), inv().used()]).toEqual([[], HOTBAR_SLOTS, stack * 11, 11]);
   expect(items.audit()).toEqual([]);
   h.host.shutdown();
 });
@@ -303,28 +334,41 @@ test("the loadout command dresses its caller or another survivor, or clears firs
   h.host.items.mint(bo.me, id("stone"), 7);
   expect(say('loadout stone "bo peep"')[0]).toStartWith("stone for bo peep: gave hatchet, pick, spear");
   expect([hotbar(bo.inv()), bo.inv().total(id("stone"))]).toEqual([STONE_KIT, 7]);
-  expect(say('loadout rifleman "Bo Peep" clear')[0]).toStartWith("rifleman for bo peep, cleared first: gave rifle, 30 round_rifle, 20 dart_tranq, flak_hat");
+  expect(say('loadout rifleman "Bo Peep" -clear')[0]).toStartWith("rifleman for bo peep, cleared first: gave rifle, 30 round_rifle, 20 dart_tranq, flak_hat");
   expect([hotbar(bo.inv()), bo.inv().total(id("stone")), bo.inv().total(id("hatchet")), bo.inv().used()]).toEqual([["rifle"], 0, 0, 8]);
-  expect(say("loadout clear")).toEqual(["hunter for ada, cleared first: gave bow, 40 arrow_stone, 20 arrow_tranq, 20 arrow_flame, hide_hat, hide_shirt, hide_gloves, hide_pants, hide_boots"]);
+  expect(say("loadout -clear")).toEqual(["hunter for ada, cleared first: gave bow, 40 arrow_stone, 20 arrow_tranq, 20 arrow_flame, hide_hat, hide_shirt, hide_gloves, hide_pants, hide_boots"]);
   expect([hotbar(ada.inv()), ada.inv().used()]).toEqual([["bow"], 9]);
   // A full bag: what is left out is said, in a line a session is sent whole.
   h.host.items.burnAll(ada.me);
   h.host.items.mint(ada.me, id("pistol"), ada.inv().bag - 1);
+  say("armor hide");
   expect(say("loadout rifleman")).toEqual(["rifleman for ada: gave rifle, 30 round_rifle; left out 20 dart_tranq, flak_hat, flak_shirt, flak_gloves, 2 more"]);
-  expect(say("loadout naked ada clear")).toEqual(["naked for ada, cleared first: nothing given"]);
+  expect(say("loadout naked ada -clear")).toEqual(["naked for ada, cleared first: nothing given"]);
+  // Only the dashed word clears. A loadout called clear is handed out as any, and what she holds stays.
+  edit(h, (book) => void book.loadouts.push(loadout("clear", [item("spear", 1, "hotbar")])));
+  h.host.items.mint(ada.me, id("stone"), 10);
+  expect(say("loadout clear")).toEqual(["clear for ada: gave spear"]);
+  expect([hotbar(ada.inv()), ada.inv().total(id("stone"))]).toEqual([["spear"], 10]);
+  expect([say("loadout clear -clear"), ada.inv().total(id("stone")), hotbar(ada.inv())]).toEqual([["clear for ada, cleared first: gave spear"], 0, ["spear"]]);
+  // A survivor called clear is named as any, and by her number she alone is meant.
+  const cl = enter(h, "clear");
+  h.host.items.mint(cl.me, id("stone"), 4);
+  expect([say("loadout stone clear")[0]!.startsWith("stone for clear: gave hatchet"), cl.inv().total(id("stone")), ada.inv().used()]).toEqual([true, 4, 1]);
+  expect([say(`loadout naked #${cl.me.pid} -clear`), cl.inv().used(), ada.inv().used()]).toEqual([["naked for clear, cleared first: nothing given"], 0, 1]);
+  h.host.items.burnAll(ada.me);
   // What it says when it cannot.
   expect([say("loadout nonesuch"), say("loadout stone cy"), say("loadout stone bo")]).toEqual([['no loadout "nonesuch"; "loadouts" lists them'], ['nobody called "cy" is here'], ['nobody called "bo" is here']]);
   h.host.death.die(bo.me, 1);
   h.run(300);
   expect(say('loadout stone "bo peep"')).toEqual(["bo peep has no body right now"]);
   // The operator, and so the admin page, names the survivor.
-  expect(h.host.exec("loadout stone")).toBe("name a survivor; usage: loadout [id] [survivor] [clear]");
-  said.push(h.host.exec("loadout scout ada clear"));
+  expect(h.host.exec("loadout stone")).toBe("name a survivor; usage: loadout [id] [survivor | #number] [-clear]");
+  said.push(h.host.exec("loadout scout ada -clear"));
   expect(said.at(-1)).toBe("scout for ada, cleared first: gave meridian_hat, meridian_shirt, meridian_gloves, meridian_pants, meridian_boots, pteranodon 240");
   expect(said.every((line) => new TextEncoder().encode(line).length < 200)).toBe(true);
-  expect(say("loadouts")).toEqual(["naked: Naked (given to players)", "stone: Stone tools", "hunter: Hunter (given to admins)", "rifleman: Rifleman", "scout: Scout"]);
+  expect(say("loadouts")).toEqual(["naked: Naked (given to players)", "stone: Stone tools", "hunter: Hunter (given to admins)", "rifleman: Rifleman", "scout: Scout", "clear: clear"]);
   edit(h, (book) => void ((named(book, "scout").respawn = true), (book.assign.player = "scout"), (book.assign.admin = "scout")));
-  expect(say("loadouts").at(-1)).toBe("scout: Scout, at each respawn (given to players and admins)");
+  expect(say("loadouts").at(-2)).toBe("scout: Scout, at each respawn (given to players and admins)");
   expect(h.host.items.audit()).toEqual([]);
   h.host.shutdown();
 });
@@ -336,7 +380,7 @@ test("loadout is refused without cheats, and an admin's is in the journal", () =
   const bo = enter(h, "bo");
   h.say(ada.s, "enablecheats");
   expect([h.say(bo.s, "loadout stone"), h.say(bo.s, "loadouts"), bo.inv().used()]).toEqual([["denied: cheats are not enabled for you"], ["denied: cheats are not enabled for you"], 0]);
-  expect(h.say(ada.s, "loadout stone bo clear")[0]).toStartWith("stone for bo, cleared first: gave hatchet");
+  expect(h.say(ada.s, "loadout stone bo -clear")[0]).toStartWith("stone for bo, cleared first: gave hatchet");
   expect(h.host.exec('loadout hunter "ada"')).toStartWith("hunter for ada: gave bow");
   h.run(200);
   h.host.shutdown();
@@ -346,7 +390,7 @@ test("loadout is refused without cheats, and an admin's is in the journal", () =
     .filter((j) => j.op === OP_ADMIN)
     .map((j) => new TextDecoder().decode(j.data));
   store.close();
-  expect(lines).toEqual(["ada\tloadout stone bo clear", '(operator)\tloadout hunter "ada"']);
+  expect(lines).toEqual(["ada\tloadout stone bo -clear", '(operator)\tloadout hunter "ada"']);
 });
 
 test("every built-in loadout applies whole to a bare survivor (nothing missed)", () => {

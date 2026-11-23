@@ -3,6 +3,7 @@
 
 import { expect, test } from "bun:test";
 import {
+  cannotHand, fill,
   addEntry, addLoadout, asShown, assignOptions, barHtml, changeEntry, copyLoadout, differs, draftFaults, draftOf, faultAt, fieldChange, knownOf, listHtml, loadoutHtml, moveEntry, parseBook,
   picked, pickerMatches, placesFor, qualityFor, removeEntry, removeLoadout, renameLoadout, replaceEntries, savable, setAssign, setLoadout, survivorOptions, withServer,
 } from "../../client/core/admin/loadouts.ts";
@@ -128,7 +129,7 @@ test("a loadout a role is given cannot be removed, and renamed it keeps the role
   expect([setAssign(d, "player", "stone"), setAssign(d, "player", "nothing"), removeLoadout(d, "naked")]).toEqual([true, false, "New admins get this loadout. Choose another for them first."]);
   setAssign(d, "admin", "scout");
   expect([removeLoadout(d, "naked"), removeLoadout(d, "naked"), d.loadouts.map((l) => l.id)]).toEqual(["", "There is no such loadout.", ["stone", "hunter", "rifleman", "scout"]]);
-  expect([renameLoadout(d, "scout", "Scout!"), renameLoadout(d, "scout", "stone"), renameLoadout(d, "scout", "flyer"), d.assign, loadoutFaults(d, reg)]).toEqual(["An id is 1 to 32 of a to z, 0 to 9 and -.", "Another loadout is stone already.", "", { player: "stone", admin: "flyer" }, []]);
+  expect([renameLoadout(d, "scout", "Scout!"), renameLoadout(d, "scout", "stone"), renameLoadout(d, "scout", "flyer"), d.assign, loadoutFaults(d, reg)]).toEqual(["An id is 1 to 32 of a to z, 0 to 9 and -, and begins with no -.", "Another loadout is stone already.", "", { player: "stone", admin: "flyer" }, []]);
   expect(assignOptions(d, "admin")).toContain('<option value="flyer" selected>Scout (flyer)</option>');
   // An assignment to a loadout the book lacks is shown as it is, to be put right.
   d.assign.player = "gone";
@@ -170,13 +171,36 @@ test("a file is read as a draft only if it is a book without faults", () => {
   expect(parseBook(JSON.stringify(book))).toEqual({ error: "loadouts[1].entries[0].count: a whole number from 1 to 10000, and 1 more" });
 });
 
+test("only a survivor in the world may be handed a loadout, and that as saved", () => {
+  const ada = { pid: 7, name: "Ada", online: false };
+  expect(cannotHand(undefined, true)).toBe("No survivor has joined this world yet.");
+  expect(cannotHand(ada, true)).toStartWith("Ada is away.");
+  expect([cannotHand({ ...ada, online: true }, true), cannotHand({ ...ada, online: true }, false)]).toEqual(["", "Save first: a survivor is handed the loadout as it is in force, not the draft."]);
+  // Two whose names differ by a capital are two options, each by its number.
+  expect(survivorOptions([ada, { pid: 9, name: "ada", online: true }], "7")).toBe('<option value="9">ada (online)</option><option value="7" selected>Ada (away)</option>');
+});
+
+test("a fill goes to the loadout it was asked for, whatever is shown when it comes", () => {
+  const d = draftOf(builtinLoadouts());
+  const carried: ItemEntry[] = [{ item: "core:spear", count: 1, place: "hotbar" }];
+  const stone = d.loadouts.find((l) => l.id === "stone")!.entries.length;
+  // Asked for scout, and stone picked before the answer: scout is filled and stone is as it was.
+  expect(fill(d, d, "scout", carried)).toBe("");
+  expect([d.loadouts.find((l) => l.id === "scout")!.entries, d.loadouts.find((l) => l.id === "stone")!.entries.length]).toEqual([carried, stone]);
+  // A loadout removed meanwhile, or a draft replaced, takes nothing.
+  expect(removeLoadout(d, "hunter")).toBe("");
+  expect(fill(d, d, "hunter", carried)).toBe("Nothing was filled: hunter was removed while the survivor was read.");
+  const other = draftOf(builtinLoadouts());
+  expect([fill(d, other, "scout", carried), other.loadouts.find((l) => l.id === "scout")!.entries.length]).toEqual(["Nothing was filled: the draft was replaced while the survivor was read.", 6]);
+});
+
 test("what an admin wrote is escaped wherever the page shows it", () => {
   const d = draftOf(builtinLoadouts());
   const sharp = '<img src=x onerror="alert(1)">';
   setLoadout(d, "naked", { label: sharp, note: sharp });
   replaceEntries(d, "naked", [{ item: sharp, count: 1, place: "bag", ammo: sharp }, { tame: sharp, level: 1, saddled: false, place: "bag" }]);
   const faults = draftFaults(d, known);
-  const all = [listHtml(d, "naked", faults), loadoutHtml(d, 0, known, faults), assignOptions(d, "player"), barHtml(0, [`${sharp}: new`], [{ path: sharp, message: sharp }], -1), survivorOptions([{ name: sharp, online: true }, { name: "ada", online: false }], "ada")];
+  const all = [listHtml(d, "naked", faults), loadoutHtml(d, 0, known, faults), assignOptions(d, "player"), barHtml(0, [`${sharp}: new`], [{ path: sharp, message: sharp }], -1), survivorOptions([{ pid: 7, name: sharp, online: true }, { pid: 9, name: "ada", online: false }], "9")];
   for (const html of all) expect([html.includes("<img"), html.includes('onerror="')]).toEqual([false, false]);
-  expect(all[4]).toBe(`<option value="&#60;img src=x onerror=&#34;alert(1)&#34;&#62;">&#60;img src=x onerror=&#34;alert(1)&#34;&#62; (online)</option><option value="ada" selected>ada</option>`);
+  expect(all[4]).toBe(`<option value="7">&#60;img src=x onerror=&#34;alert(1)&#34;&#62; (online)</option><option value="9" selected>ada (away)</option>`);
 });

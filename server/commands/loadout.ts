@@ -5,7 +5,11 @@ import type { ConsoleCommand } from "../console.ts";
 import { NAME_UNCLEAR } from "../names.ts";
 import { sessionNamed } from "./social.ts";
 
-const USAGE = "usage: loadout [id] [survivor] [clear]";
+const USAGE = "usage: loadout [id] [survivor | #number] [-clear]";
+/** The word that clears first. No loadout's id begins with a dash (LOADOUT_ID), so it is never one. */
+const CLEAR = "-clear";
+/** A survivor by its number, which names one survivor whatever the others are called. */
+const NUMBERED = /^#(\d{1,15})$/;
 /** A reply is one line of at most this many bytes. */
 const REPLY_BYTES = 199;
 /** Bytes of a reply kept for what was left out. */
@@ -32,28 +36,35 @@ export function loadoutCommands(): ConsoleCommand[] {
   return [
     {
       name: "loadout",
-      usage: "[id] [survivor] [clear]",
-      examples: ["loadout", "loadout scout", 'loadout rifleman "Ada Byron" clear'],
-      help: 'Hand a loadout out now, its tames too: the one your role is given, or the one named; to yourself, or to a survivor who is in the world. With `clear` as the last word everything they hold is destroyed first, and a full soul ball destroyed so loses its tame. "loadouts" lists them.',
+      usage: "[id] [survivor | #number] [-clear]",
+      examples: ["loadout", "loadout scout", "loadout scout -clear", 'loadout rifleman "Ada Byron" -clear'],
+      help: 'Hand a loadout out now, its tames too: the one your role is given, or the one named; to yourself, or to a survivor who is in the world, by name or by its number as the admin page shows it (#12). With `-clear` everything they hold is destroyed first, and a full soul ball destroyed so loses its tame. "loadouts" lists them.',
       admin: true,
       run(ctx, args) {
         const host = ctx.host;
         const c = ctx.client;
-        const words = [...args];
-        const clear = words.at(-1)?.toLowerCase() === "clear";
-        if (clear) words.pop();
+        // Only the dashed word clears: a loadout or a survivor called "clear" is named as any other.
+        const words = args.filter((w) => w.toLowerCase() !== CLEAR);
+        const clear = words.length < args.length;
         const id = words[0];
         const name = words.slice(1).join(" ");
         if (!c && name === "") return `name a survivor; ${USAGE}`;
         let to = c;
-        if (name !== "") {
+        const numbered = NUMBERED.exec(name);
+        if (numbered) {
+          const pid = Number(numbered[1]);
+          const who = [...host.survivorIds()].includes(pid) ? host.records.byPid.get(pid) : undefined;
+          if (!who) return `no survivor has the number ${pid}`;
+          to = host.game.clients.find((s) => !!s?.active && !s.closed && s.pid === pid) ?? null;
+          if (!to) return `${who.name} is not in the world`;
+        } else if (name !== "") {
           const found = sessionNamed(host, name);
           if (found === NAME_UNCLEAR) return `more than one survivor here could be "${name}"; give the name exactly`;
           if (!found) return `nobody called "${name}" is here`;
           to = found;
         }
         const rec = to ? host.records.byPid.get(to.pid) : undefined;
-        if (!to || !rec || to.ent < 0 || rec.dead) return name === "" ? "this needs a body; you have none right now" : `${name} has no body right now`;
+        if (!to || !rec || to.ent < 0 || rec.dead) return name === "" ? "this needs a body; you have none right now" : `${rec?.name ?? name} has no body right now`;
         const loadout = id === undefined ? host.loadouts.of(c!) : host.loadouts.store.find(id);
         if (!loadout) return id === undefined ? "the book gives your role no loadout" : `no loadout "${id}"; "loadouts" lists them`;
         const out = host.loadouts.give(rec, loadout, { clear, tames: true });

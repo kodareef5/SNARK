@@ -1,4 +1,4 @@
-// The only code that edits inventories. Items enter only through `mint` (or `mintRef`) and leave only through
+// The only code that edits inventories. Items enter only through `mint` (or `mintRef`, or the mints into one slot or weapon) and leave only through
 // `burn` (spoilage is a burn, and what spoils into something mints it), so stacks sum to minted minus burned for every item.
 // An edit marks each record it touches in one tick, so a move lands in one commit.
 
@@ -264,6 +264,69 @@ export class Items {
       this.changed(rec);
     }
     return made;
+  }
+
+  /**
+   * Mints `n` of `item` into the empty slot `slot` of `rec`, where `mint` fills only the bag: a piece onto the body or the
+   * hotbar while the bag is full. A module is asked about it as `mint` asks, and may refuse it or make it smaller. Returns
+   * how many it made: 0 if the slot is taken or does not take the item, or `n` is more than one slot holds.
+   */
+  mintAt(rec: EntityRecord, slot: number, item: number, n: number, quality = 0, why = ""): number {
+    const inv = this.inv(rec);
+    if (!this.isItem(item) || !Number.isInteger(n) || !(n > 0) || n > stackOf(item, 0, this.table)) return 0;
+    if (slot < 0 || slot >= inv.cap || inv.item[slot] !== 0 || !fitsSlot(inv, slot, item, this.table)) return 0;
+    n = this.asked(rec, item, n, why);
+    if (n === 0) return 0;
+    const spoil = this.table.spoilTicks[item]!;
+    const clock = spoil === 0 ? 0 : this.table.charge?.[item] === 1 ? inv.chargeFrom(0, this.world.tick, spoil) : Math.min(0xffffffff, this.world.tick + Math.round(spoil * inv.keep));
+    inv.set(slot, item, n, quality, this.maxDur(item, quality), clock);
+    this.minted[item] = this.minted[item]! + n;
+    this.dirty = true;
+    this.changed(rec);
+    return n;
+  }
+
+  /**
+   * Mints `n` rounds of `ammo` into the empty weapon in `slot` of `rec`, none passing through the bag. The caller knows
+   * the weapon fires them and holds that many. A module is asked as `mint` asks. Returns how many were loaded.
+   */
+  mintLoaded(rec: EntityRecord, slot: number, ammo: number, n: number, why = ""): number {
+    const inv = this.inv(rec);
+    if (slot < 0 || slot >= inv.cap || inv.item[slot] === 0 || inv.flags[slot] !== 0 || inv.loaded[slot] !== 0 || !this.isItem(ammo) || !Number.isInteger(n) || !(n > 0)) return 0;
+    // Rounds fired bare go into no weapon that has something fitted.
+    if (this.bare(ammo) && inv.attach[slot] !== 0) return 0;
+    n = this.asked(rec, ammo, n, why);
+    if (n === 0) return 0;
+    inv.setGear(slot, ammo, n, inv.attach[slot]!);
+    this.minted[ammo] = this.minted[ammo]! + n;
+    this.dirty = true;
+    this.changed(rec);
+    return n;
+  }
+
+  /**
+   * Mints one `part` fitted to the weapon in `slot` of `rec`, which has nothing fitted, not passing through the bag. The
+   * caller knows the weapon takes it. A module is asked as `mint` asks. False, changing nothing, if it cannot be.
+   */
+  mintFitted(rec: EntityRecord, slot: number, part: number, why = ""): boolean {
+    const inv = this.inv(rec);
+    if (slot < 0 || slot >= inv.cap || inv.item[slot] === 0 || inv.flags[slot] !== 0 || inv.attach[slot] !== 0 || !this.isItem(part)) return false;
+    if (inv.loaded[slot]! > 0 && this.bare(inv.ammo[slot]!)) return false;
+    if (this.asked(rec, part, 1, why) !== 1) return false;
+    inv.setGear(slot, inv.ammo[slot]!, inv.loaded[slot]!, part);
+    this.minted[part] = this.minted[part]! + 1;
+    this.dirty = true;
+    this.changed(rec);
+    return true;
+  }
+
+  /** How many of `n` new `item` a module lets `rec` have, which is never more than `n`: all of them where none listens. */
+  private asked(rec: EntityRecord, item: number, n: number, why: string): number {
+    if (this.bus.n[ITEM_GAIN] === 0) return n;
+    const asked = { pid: rec.pid, item: this.reg.ids[item]!, why, n };
+    if (this.bus.before(ITEM_GAIN, asked) !== "") return 0;
+    const most = Math.floor(Math.min(Number(asked.n), n));
+    return most > 0 ? most : 0;
   }
 
   /**

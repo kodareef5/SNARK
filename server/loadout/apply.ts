@@ -1,4 +1,4 @@
-// Hands a loadout to a survivor: each entry is minted as any item is, then put where the entry says. What is handed over
+// Hands a loadout to a survivor: each entry is minted where the entry says, or in the bag where that is taken. What is handed over
 // is ordinary from then on. Every stack is asked of a module with the reason "loadout" (item.gain).
 
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -40,42 +40,28 @@ function freeHotbar(inv: Inventory): number {
   return -1;
 }
 
-/** Loads the new weapon in `slot` with a clip of `id`, minted for it. False, with nothing left behind, if that cannot be. */
+/** The slot `item` is worn in, if nothing is worn there, or -1. */
+function freeWorn(inv: Inventory, wearSlot: number): number {
+  const slot = inv.armor >= 0 && wearSlot >= 0 ? inv.armor + wearSlot : -1;
+  return slot >= 0 && inv.item[slot] === 0 ? slot : -1;
+}
+
+/** Loads the new weapon in `slot` with a clip of `id`, minted into it. False, with nothing made, if that cannot be. */
 function loadWith(ctx: TameContext, rec: EntityRecord, slot: number, weapon: ItemDef, id: string): boolean {
   const { world, items } = ctx;
   const reg = world.reg;
   const ammo = reg.index.get(id);
   const clip = reg.weapon[items.inv(rec).item[slot]!]?.clip ?? 0;
   if (ammo === undefined || !weapon.weapon?.ammo?.includes(id) || !(clip > 0)) return false;
-  // No more than the clip, whatever a module makes of it: the rounds go into the weapon.
-  const made = items.mint(rec, ammo, clip, 0, 0, -1, WHY_LOADOUT, 0, clip);
-  const held = made > 0 ? Math.max(0, items.load(rec, slot, ammo, made)) : 0;
-  if (held < made) items.burnItem(rec, ammo, made - held);
-  return held === clip;
+  return items.mintLoaded(rec, slot, ammo, clip, WHY_LOADOUT) === clip;
 }
 
-/** Fits one `id`, minted for it, to the new weapon in `slot`. False, with nothing left behind, if that cannot be. */
+/** Fits one `id`, minted onto it, to the new weapon in `slot`. False, with nothing made, if that cannot be. */
 function fitWith(ctx: TameContext, rec: EntityRecord, slot: number, weapon: ItemDef, id: string): boolean {
   const { world, items } = ctx;
-  const reg = world.reg;
-  const part = reg.index.get(id);
-  const inv = items.inv(rec);
-  // Loaded with rounds fired bare, a weapon takes no attachment.
-  if (part === undefined || !weapon.weapon?.fits?.includes(id) || (inv.loaded[slot]! > 0 && items.bare(inv.ammo[slot]!))) return false;
-  const before = inv.version;
-  if (items.mint(rec, part, 1, 0, 0, -1, WHY_LOADOUT, 0, 1) !== 1) return false;
-  let from = -1;
-  for (let s = 0; s < inv.bag && from < 0; s++) if (inv.mod[s]! > before && inv.item[s] === part) from = s;
-  if (from < 0) return false;
-  // One that joined a stack is set apart, since only a slot holding one is fitted.
-  if (inv.count[from] !== 1) {
-    const apart = inv.free();
-    if (apart < 0 || items.move(rec, from, rec, apart, 1) !== 1) return (items.burn(rec, from, 1), false);
-    from = apart;
-  }
-  if (items.attach(rec, slot, from)) return true;
-  items.burn(rec, from, 1);
-  return false;
+  const part = world.reg.index.get(id);
+  if (part === undefined || !weapon.weapon?.fits?.includes(id)) return false;
+  return items.mintFitted(rec, slot, part, WHY_LOADOUT);
 }
 
 function giveItem(ctx: TameContext, rec: EntityRecord, e: ItemEntry, out: Applied): void {
@@ -85,28 +71,34 @@ function giveItem(ctx: TameContext, rec: EntityRecord, e: ItemEntry, out: Applie
   const item = reg.index.get(e.item);
   const def = item === undefined ? undefined : reg.defs[item];
   if (item === undefined || def?.type !== "item") return void out.missed.push(counted(e.count, name));
-  // Settled here, so that only the mint changes a slot until the new stacks are found.
   const inv = items.inv(rec);
-  const empty = emptySlots(inv);
-  const before = inv.version;
   const flags = e.blueprint === true ? FLAG_BLUEPRINT : 0;
-  const made = items.mint(rec, item, e.count, e.quality ?? 0, 0, -1, WHY_LOADOUT, flags);
-  if (made < e.count) out.missed.push(counted(e.count - made, name));
-  if (made === 0) return;
-  out.given.push(counted(made, name));
-  // The slots it filled. What joined a stack that was there stays with that stack, in the bag.
-  const fresh = empty.filter((s) => inv.mod[s]! > before && inv.item[s] === item);
-  if (flags === 0 && e.place === "wear" && fresh.length > 0) {
-    const worn = inv.armor >= 0 && reg.wearSlot[item]! >= 0 ? inv.armor + reg.wearSlot[item]! : -1;
-    if (worn >= 0 && inv.item[worn] === 0 && items.move(rec, fresh[0]!, rec, worn, 0) > 0) fresh[0] = worn;
+  const quality = e.quality ?? 0;
+  const stack = Math.max(1, reg.stack[item]!);
+  const fresh: number[] = [];
+  let left = e.count;
+  // Straight into its place while that is empty: a full bag keeps nothing off the body or the hotbar, and a hotbar
+  // entry does not join a stack lying in the bag. A module that makes one smaller has had its say on the rest.
+  let refused = false;
+  while (flags === 0 && e.place !== "bag" && left > 0 && !refused) {
+    const to = e.place === "wear" ? freeWorn(inv, reg.wearSlot[item]!) : freeHotbar(inv);
+    if (to < 0) break;
+    const want = Math.min(left, stack);
+    const made = items.mintAt(rec, to, item, want, quality, WHY_LOADOUT);
+    if (made > 0) fresh.push(to);
+    left -= made;
+    refused = made < want;
   }
-  if (flags === 0 && e.place === "hotbar") {
-    for (let k = 0; k < fresh.length; k++) {
-      const to = freeHotbar(inv);
-      if (to < 0) break;
-      if (items.move(rec, fresh[k]!, rec, to, 0) > 0) fresh[k] = to;
-    }
+  // The rest lies in the bag, as does what found its place taken.
+  if (left > 0 && !refused) {
+    const empty = emptySlots(inv);
+    const before = inv.version;
+    left -= items.mint(rec, item, left, quality, 0, -1, WHY_LOADOUT, flags);
+    for (const s of empty) if (inv.mod[s]! > before && inv.item[s] === item) fresh.push(s);
   }
+  if (left > 0) out.missed.push(counted(left, name));
+  if (left === e.count) return;
+  out.given.push(counted(e.count - left, name));
   // A weapon lies alone in its slot, so each one made is loaded and fitted.
   if (flags !== 0 || reg.stack[item] !== 1 || (e.ammo === undefined && e.attach === undefined)) return;
   for (const slot of fresh) {
@@ -117,8 +109,8 @@ function giveItem(ctx: TameContext, rec: EntityRecord, e: ItemEntry, out: Applie
 
 /**
  * Hands `loadout` to `rec`, entry by entry in the book's order. Worn pieces go on where nothing is worn there, hotbar
- * entries take the first empty hotbar slots, and the rest lies in the bag, as does what found its place taken. What did
- * not fit, the game lacks, or a module refused is in `missed`. The caller refreshes the body (Host.refreshBody).
+ * entries take the first empty hotbar slots, each made in its place, and the rest lies in the bag, as does what found
+ * its place taken. What did not fit, the game lacks, or a module refused is in `missed`. The caller refreshes the body (Host.refreshBody).
  */
 export function apply(ctx: TameContext, rec: EntityRecord, loadout: Loadout, opts: ApplyOptions = {}): Applied {
   const { world, items } = ctx;

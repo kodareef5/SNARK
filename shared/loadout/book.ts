@@ -7,8 +7,8 @@ import { QUALITY_NAMES } from "../sim/items.ts";
 
 /** The most of each a book may hold, so a mistaken document costs a bounded amount to check and hand out. */
 export const MOST = { loadouts: 64, entries: 64, bytes: 256 * 1024, label: 40, note: 200, level: 1000, count: 10000 } as const;
-/** A loadout's id: what a console line and a URL carry unescaped. */
-export const LOADOUT_ID = /^[a-z0-9-]{1,32}$/;
+/** A loadout's id: what a console line and a URL carry unescaped. It begins with no dash, as a command's option does. */
+export const LOADOUT_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 export type Place = "wear" | "hotbar" | "bag";
 
@@ -168,7 +168,7 @@ export function loadoutFaults(book: unknown, reg?: Registry): LoadoutFault[] {
     b.loadouts.slice(0, MOST.loadouts).forEach((l: unknown, i) => {
       const path = `loadouts[${i}]`;
       if (!isObject(l)) return bad(path, "a loadout is { id, label, note, respawn, entries }");
-      if (typeof l.id !== "string" || !LOADOUT_ID.test(l.id)) bad(`${path}.id`, "an id is 1 to 32 of a to z, 0 to 9 and -");
+      if (typeof l.id !== "string" || !LOADOUT_ID.test(l.id)) bad(`${path}.id`, "an id is 1 to 32 of a to z, 0 to 9 and -, and begins with no -");
       else if (ids.has(l.id)) bad(`${path}.id`, "a loadout's id is its own");
       else ids.add(l.id);
       if (!text(l.label, 1, MOST.label)) bad(`${path}.label`, `a label of 1 to ${MOST.label} characters`);

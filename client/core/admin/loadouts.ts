@@ -67,7 +67,7 @@ export function renameLoadout(book: LoadoutBook, id: string, next: string): stri
   const l = find(book, id);
   if (!l) return "There is no such loadout.";
   if (next === id) return "";
-  if (!LOADOUT_ID.test(next)) return "An id is 1 to 32 of a to z, 0 to 9 and -.";
+  if (!LOADOUT_ID.test(next)) return "An id is 1 to 32 of a to z, 0 to 9 and -, and begins with no -.";
   if (find(book, next)) return `Another loadout is ${next} already.`;
   l.id = next;
   for (const role of ROLES) if (book.assign[role] === id) book.assign[role] = next;
@@ -416,10 +416,33 @@ export function datalistsHtml(known: Known): string {
   return `<datalist id="things">${options(known.catalog.items)}</datalist><datalist id="creatures">${options(known.catalog.species)}</datalist>`;
 }
 
-/** The survivors as a picker's options: those online first, then by name. */
-export function survivorOptions(survivors: readonly { name: string; online: boolean }[], chosen: string): string {
-  const sorted = [...survivors].sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
-  return sorted.map((s) => option(s.name, s.online ? `${s.name} (online)` : s.name, s.name === chosen)).join("");
+/** A survivor as the picker knows it: its number is what names it, since two names may differ by a capital alone. */
+export interface Pickable {
+  pid: number;
+  name: string;
+  online: boolean;
+}
+
+/** The survivors as a picker's options, each by its number: those online first, then by name. */
+export function survivorOptions(survivors: readonly Pickable[], chosen: string): string {
+  const sorted = [...survivors].sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name) || a.pid - b.pid);
+  return sorted.map((s) => option(String(s.pid), s.online ? `${s.name} (online)` : `${s.name} (away)`, String(s.pid) === chosen)).join("");
+}
+
+/** Why the loadout shown cannot be handed to `who` now, or "" if it can: only one in the world is handed anything. */
+export function cannotHand(who: Pickable | undefined, shown: boolean): string {
+  if (!who) return "No survivor has joined this world yet.";
+  if (!who.online) return `${who.name} is away. A loadout is handed to a survivor who is in the world; a fill reads one who is away too.`;
+  return shown ? "" : "Save first: a survivor is handed the loadout as it is in force, not the draft.";
+}
+
+/**
+ * Puts what a survivor carried in loadout `id` of `draft`, the loadout the fill was asked for, whatever is shown by the
+ * time the answer comes. Returns "" if it did, or why not: the draft was replaced meanwhile, or the loadout is gone.
+ */
+export function fill(asked: LoadoutBook, draft: LoadoutBook, id: string, entries: readonly Entry[]): string {
+  if (asked !== draft) return "Nothing was filled: the draft was replaced while the survivor was read.";
+  return replaceEntries(draft, id, entries) ? "" : `Nothing was filled: ${id} was removed while the survivor was read.`;
 }
 
 /** Whether loadout `id` is in force as the draft has it: only then does handing it out give what the page shows. */

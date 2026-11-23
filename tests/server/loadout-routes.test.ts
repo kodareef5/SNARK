@@ -26,8 +26,8 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 const AT = "http://localhost";
 interface BookWire { revision: number; builtin: boolean; kept: boolean; book: LoadoutBook; warnings: LoadoutFault[] }
 
-function world(host: ConstructorParameters<typeof Harness>[3] = {}) {
-  const h = new Harness({}, 1, 30, { dev: true, log: () => {}, ...host });
+function world(host: ConstructorParameters<typeof Harness>[3] = {}, game: ConstructorParameters<typeof Harness>[0] = {}) {
+  const h = new Harness(game, 1, 30, { dev: true, log: () => {}, ...host });
   const routes = new LoadoutRoutes(h.host);
   const ask = (what: string, init?: RequestInit) => routes.answer(new Request(`${AT}/admin/loadouts/${what}`, init), `/admin/loadouts/${what.split("?")[0]}`, new URL(`${AT}/admin/loadouts/${what}`))!;
   const get = async <T>(what: string): Promise<{ status: number; answer: T }> => {
@@ -111,7 +111,7 @@ test("a stale save is 409, a faulty one 422 with its paths, and another site's 4
   expect([refused.status, (refused.answer.faults as LoadoutFault[]).map((f) => f.path).sort(), h.host.loadoutBook.book.revision]).toEqual([422, ["assign.player", "loadouts[1].entries[0].count", "loadouts[1].entries[0].place", "loadouts[4].entries[6].level"], 1]);
   // A page of another site cannot make a signed-in browser change the book; a request that is not from a page may.
   const elsewhere = await post("book", { book: draft, expected: 1, note: "" }, { origin: "https://elsewhere.example" });
-  expect([elsewhere.status, (await post("reset", {}, { origin: "https://elsewhere.example" })).status, (await post("apply", { loadout: "stone", survivor: "ada" }, { origin: "https://elsewhere.example" })).status, h.host.loadoutBook.book.revision]).toEqual([403, 403, 403, 1]);
+  expect([elsewhere.status, (await post("reset", {}, { origin: "https://elsewhere.example" })).status, (await post("apply", { loadout: "stone", pid: 1 }, { origin: "https://elsewhere.example" })).status, h.host.loadoutBook.book.revision]).toEqual([403, 403, 403, 1]);
   expect([(await post("book", { book: draft }, {})).status, (await post("book", { expected: 1 })).status, (await post("book", { book: draft, expected: 1 }, { "content-type": "text/plain" })).status, (await post("nothing", {})).status]).toEqual([400, 400, 400, 404]);
   h.host.shutdown();
 });
@@ -158,6 +158,10 @@ test("capture reads what a survivor wears and carries, blueprint and loaded gun 
   const book = builtinLoadouts();
   book.loadouts[0]!.entries = captureLoadout(h.host, ada);
   expect([loadoutFaults(book, reg), h.host.loadoutBook.book.revision]).toEqual([[], 0]);
+  // By its number too, as the page asks.
+  const numbered = await get<{ survivor: string; entries: Entry[] }>(`capture.json?pid=${ada.pid}`);
+  expect([numbered.status, numbered.answer.survivor, numbered.answer.entries]).toEqual([200, "Ada", got.answer.entries]);
+  expect((await get<{ error: string }>("capture.json?pid=999999")).answer.error).toBe("No survivor has the number 999999.");
   expect([(await get<{ error: string }>("capture.json?survivor=Grace")).status, (await get<{ error: string }>("capture.json?survivor=Grace")).answer.error, (await get("capture.json")).status]).toEqual([404, "No survivor is called Grace.", 404]);
   h.host.shutdown();
 });
@@ -183,11 +187,12 @@ test("capture reads a full soul ball as the tame it keeps, with its level and sa
   h.host.shutdown();
 });
 
-test("apply writes one console line, and refuses an id or a name no line can carry", async () => {
-  expect([applyLine("scout", "Ada Lovelace", false), applyLine("stone-2", "ada", true)]).toEqual(['loadout scout "Ada Lovelace"', 'loadout stone-2 "ada" clear']);
-  for (const [id, name] of [["Scout", "ada"], ["scout clear", "ada"], ["", "ada"], ["scout", 'ada" clear'], ["scout", "ada\nkick bob"], ["scout", ""], ["scout", "  "], ["scout", 7], [undefined, "ada"]] as const) expect([id, name, applyLine(id, name, false)]).toEqual([id, name, null]);
+test("apply writes one console line, and refuses an id or a number no line can carry", async () => {
+  expect([applyLine("scout", 12, false), applyLine("stone-2", 7, true)]).toEqual(["loadout scout #12", "loadout stone-2 #7 -clear"]);
+  for (const [id, pid] of [["Scout", 7], ["scout clear", 7], ["-clear", 7], ["", 7], ["scout", "7"], ["scout", 0], ["scout", -3], ["scout", 1.5], ["scout", "ada"], [undefined, 7]] as const) expect([id, pid, applyLine(id, pid, false)]).toEqual([id, pid, null]);
   const { h, post } = world();
-  for (const body of [{ loadout: "scout", survivor: 'ada" clear' }, { loadout: "no such", survivor: "ada" }, { loadout: "scout" }]) expect((await post("apply", body)).status).toBe(400);
+  for (const body of [{ loadout: "scout", survivor: "ada" }, { loadout: "no such", pid: 7 }, { loadout: "scout" }]) expect((await post("apply", body)).status).toBe(400);
+  expect((await post("apply", { loadout: "scout", pid: 999999 })).status).toBe(404);
   h.host.shutdown();
 });
 
@@ -201,13 +206,38 @@ test("apply dresses an online survivor through the console's own command", async
     return [...inv.item.slice(inv.armor, inv.armor + 5)].filter((k) => k !== 0).length;
   };
   expect(worn()).toBe(0);
-  const done = await post("apply", { loadout: "stone", survivor: "Ada Lovelace" });
-  expect([done.status, done.answer.line, worn()]).toEqual([200, 'loadout stone "Ada Lovelace"', 5]);
+  const done = await post("apply", { loadout: "stone", pid: rec.pid });
+  expect([done.status, done.answer.line, done.answer.survivor, worn()]).toEqual([200, `loadout stone #${rec.pid}`, "Ada Lovelace", 5]);
   expect(String(done.answer.said)).toStartWith("stone for Ada Lovelace: gave");
-  const cleared = await post("apply", { loadout: "naked", survivor: "Ada Lovelace", clear: true });
-  expect([cleared.status, h.host.items.inv(rec).used()]).toEqual([200, 0]);
-  const nobody = await post("apply", { loadout: "stone", survivor: "Grace" });
-  expect([nobody.status, String(nobody.answer.said)]).toEqual([200, 'nobody called "Grace" is here']);
+  const cleared = await post("apply", { loadout: "naked", pid: rec.pid, clear: true });
+  expect([cleared.status, cleared.answer.line, h.host.items.inv(rec).used()]).toEqual([200, `loadout naked #${rec.pid} -clear`, 0]);
+  h.host.shutdown();
+});
+
+test("apply reaches only the survivor picked, never one whose name is like it", async () => {
+  const { h, post } = world({}, { lingerTicks: 0 });
+  const away = h.join("Ada");
+  h.run(500);
+  const Ada = h.host.survivorRecord("Ada")!;
+  away.close();
+  h.run(300);
+  expect(h.host.online(Ada.pid)).toBe(false);
+  h.join("ada");
+  h.run(500);
+  const ada = h.host.survivorRecord("ada")!;
+  h.host.items.mint(ada, h.host.world.reg.index.get("core:stone")!, 10);
+  expect(Ada.pid).not.toBe(ada.pid);
+  // Ada is away: she is handed nothing, and ada, who is here, is neither dressed nor cleared in her place.
+  for (const clear of [false, true]) {
+    const refused = await post("apply", { loadout: "stone", pid: Ada.pid, clear });
+    expect([refused.status, refused.answer.error]).toEqual([409, "Ada is not in the world. A loadout is handed to a survivor who is."]);
+  }
+  expect([h.host.items.inv(Ada).used(), h.host.items.inv(ada).used()]).toEqual([0, 1]);
+  expect(h.host.exec(`loadout stone #${Ada.pid}`)).toBe("Ada is not in the world");
+  expect([h.host.exec("loadout stone #999999"), h.host.items.inv(ada).used()]).toEqual(["no survivor has the number 999999", 1]);
+  // By its number, ada is the one dressed.
+  expect((await post("apply", { loadout: "stone", pid: ada.pid })).answer.survivor).toBe("ada");
+  expect(h.host.items.inv(ada).used()).toBe(9);
   h.host.shutdown();
 });
 

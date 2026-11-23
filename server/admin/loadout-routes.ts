@@ -3,7 +3,8 @@
 // page's is (supply-routes.ts): 403 from another site, 400 for a body the route does not take, 409 for a book saved
 // over another editor's, 422 for a book with faults, each with its path. The store checks and keeps the book
 // (server/loadout/store.ts). A loadout is handed to a survivor by the console's own `loadout` command, so the page and
-// an operator at the console do one thing and both are in the admin journal.
+// an operator at the console do one thing and both are in the admin journal. The page names a survivor by its number,
+// never by a name another survivor's could be taken for.
 
 import { LOADOUT_ID, MOST } from "../../shared/loadout/book.ts";
 import { loadoutCatalog } from "../../shared/loadout/catalog.ts";
@@ -19,14 +20,12 @@ const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-
 const json = (answer: unknown, status = 200): Response => new Response(JSON.stringify(answer), { status, headers: JSON_HEADERS });
 /** The largest body a change may be: a book at its largest, and its note. */
 export const LOADOUT_BODY_MOST = MOST.bytes + 4096;
-/** A survivor's name as a console line may quote it: the console's quotes have no escape. */
-const QUOTABLE = /^[^"\u0000-\u001f\u007f]{1,64}$/;
 const STALE = "The book was saved by another editor since this page read it.";
 
-/** The console line that hands loadout `id` to the survivor called `name`, or null where either cannot be written in one. */
-export function applyLine(id: unknown, name: unknown, clear: boolean): string | null {
-  if (typeof id !== "string" || !LOADOUT_ID.test(id) || typeof name !== "string" || !QUOTABLE.test(name) || name.trim() === "") return null;
-  return `loadout ${id} "${name}"${clear ? " clear" : ""}`;
+/** The console line that hands loadout `id` to the survivor numbered `pid`, or null where either is not what it must be. */
+export function applyLine(id: unknown, pid: unknown, clear: boolean): string | null {
+  if (typeof id !== "string" || !LOADOUT_ID.test(id) || typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0) return null;
+  return `loadout ${id} #${pid}${clear ? " -clear" : ""}`;
 }
 
 export class LoadoutRoutes {
@@ -59,14 +58,20 @@ export class LoadoutRoutes {
       return new Response(this.catalog, { headers: JSON_HEADERS });
     }
     if (what === "capture") {
-      const name = url.searchParams.get("survivor") ?? "";
-      const rec = this.survivor(name);
+      const pid = url.searchParams.get("pid");
+      const rec = pid !== null ? this.numbered(Number(pid)) : this.survivor(url.searchParams.get("survivor") ?? "");
       if (typeof rec === "string") return json({ error: rec }, 404);
       const all = carried(this.host, rec);
       // `cut` is how many more entries the survivor carries than a loadout holds.
       return json({ survivor: rec.name, entries: all.slice(0, MOST.entries), cut: Math.max(0, all.length - MOST.entries) });
     }
     return json({ error: "No such page." }, 404);
+  }
+
+  /** The survivor with the number `pid`, online or saved, or why there is none. */
+  private numbered(pid: number): EntityRecord | string {
+    for (const known of this.host.survivorIds()) if (known === pid) return this.host.records.byPid.get(pid) ?? `No survivor has the number ${pid}.`;
+    return `No survivor has the number ${pid}.`;
   }
 
   /** The survivor a name means, online or saved, or why there is none. */
@@ -107,10 +112,14 @@ export class LoadoutRoutes {
       return saved(store.save(b.book, expected, PAGE, note), `loadouts saved${note === "" ? "" : ` (${note})`}`);
     }
     if (what === "apply") {
-      const line = applyLine(b.loadout, b.survivor, b.clear === true);
-      if (line === null) return json({ error: "Name a loadout by its id, and a survivor whose name has no quotes." }, 400);
+      const line = applyLine(b.loadout, b.pid, b.clear === true);
+      if (line === null) return json({ error: "Name a loadout by its id, and a survivor by its number." }, 400);
+      const rec = this.numbered(b.pid as number);
+      if (typeof rec === "string") return json({ error: rec }, 404);
+      // Only that survivor, and only while it is here: nobody else is dressed, or cleared, in its place.
+      if (!this.host.online(rec.pid)) return json({ error: `${rec.name} is not in the world. A loadout is handed to a survivor who is.` }, 409);
       // Run as the operator would type it: the console checks it and writes it in the journal.
-      return json({ line, said: this.host.console.exec({ host: this.host, client: null }, line) });
+      return json({ line, survivor: rec.name, said: this.host.console.exec({ host: this.host, client: null }, line) });
     }
     return json({ error: "No such act." }, 404);
   }

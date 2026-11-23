@@ -8,7 +8,7 @@ import type { LoadoutCatalog } from "../../shared/loadout/catalog.ts";
 import { $, ask } from "./dom.ts";
 import {
   ROLES, addEntry, addLoadout, asShown, assignOptions, barHtml, changeEntry, copyLoadout, datalistsHtml, differs, draftFaults, draftOf, faultAt, fieldChange, knownOf, listHtml, loadoutHtml,
-  moveEntry, parseBook, picked, removeEntry, removeLoadout, renameLoadout, replaceEntries, setAssign, setLoadout, survivorOptions, withServer, type Known, type Role,
+  cannotHand, fill, moveEntry, parseBook, picked, removeEntry, removeLoadout, renameLoadout, setAssign, setLoadout, survivorOptions, withServer, type Known, type Pickable, type Role,
 } from "../core/admin/loadouts.ts";
 
 interface BookWire {
@@ -27,7 +27,7 @@ const S = {
   faults: [] as LoadoutFault[],
   selected: "",
   conflict: -1,
-  survivors: [] as { name: string; online: boolean }[],
+  survivors: [] as Pickable[],
 };
 
 const say = (text: string, kind = "dim"): void => {
@@ -54,11 +54,11 @@ function fieldInHand(): string {
 function hand(): void {
   const { wire, draft } = S;
   if (!wire || !draft) return;
-  const shown = asShown(wire.book, draft, S.selected);
-  const none = S.survivors.length === 0 || S.selected === "";
-  $<HTMLButtonElement>("apply").disabled = none || !shown;
-  document.querySelector<HTMLButtonElement>('[data-do="capture"]')!.disabled = none;
-  $("hand-note").textContent = S.survivors.length === 0 ? "No survivor has joined this world yet." : shown ? "" : "Save first: a survivor is handed the loadout as it is in force, not the draft.";
+  const who = survivor();
+  const why = cannotHand(who, asShown(wire.book, draft, S.selected));
+  $<HTMLButtonElement>("apply").disabled = why !== "" || S.selected === "";
+  document.querySelector<HTMLButtonElement>('[data-do="capture"]')!.disabled = !who || S.selected === "";
+  $("hand-note").textContent = why;
 }
 
 function draw(): void {
@@ -147,7 +147,8 @@ async function save(what: "book" | "reset", expected: number): Promise<void> {
   } else say(`Not saved: ${String(answer.error ?? status)}`, "bad");
 }
 
-const survivor = (): string => $<HTMLSelectElement>("survivor").value;
+/** The survivor the picker shows, by its number. */
+const survivor = (): Pickable | undefined => S.survivors.find((s) => String(s.pid) === $<HTMLSelectElement>("survivor").value);
 
 /** A button of the page. */
 async function act(at: HTMLElement): Promise<void> {
@@ -180,18 +181,25 @@ async function act(at: HTMLElement): Promise<void> {
     return;
   } else if (what === "apply") {
     // Done to the world now, by the book in force, as the console's `loadout` does it.
+    const who = survivor();
+    if (!who) return;
     const clear = $<HTMLInputElement>("clear").checked;
-    if (clear && !confirm(`Clear everything ${survivor()} holds, then hand out ${S.selected}?`)) return;
-    const { status, answer } = await post("apply", { loadout: S.selected, survivor: survivor(), clear });
+    if (clear && !confirm(`Clear everything ${who.name} holds, then hand out ${S.selected}?`)) return;
+    const { status, answer } = await post("apply", { loadout: S.selected, pid: who.pid, clear });
     return say(String(answer.said ?? answer.error ?? status), status === 200 ? "dim" : "bad");
   } else if (what === "capture") {
-    const now = d.loadouts.find((l) => l.id === S.selected)?.entries.length ?? 0;
-    if (now > 0 && !confirm(`Put what ${survivor()} wears and carries in place of the ${now === 1 ? "entry" : `${now} entries`} of ${S.selected}?`)) return;
-    const r = await fetch(`loadouts/capture.json?survivor=${encodeURIComponent(survivor())}`, { cache: "no-store" });
+    const who = survivor();
+    if (!who) return;
+    // The loadout asked about is the one filled, though another is picked before the answer comes.
+    const into = S.selected;
+    const now = d.loadouts.find((l) => l.id === into)?.entries.length ?? 0;
+    if (now > 0 && !confirm(`Put what ${who.name} wears and carries in place of the ${now === 1 ? "entry" : `${now} entries`} of ${into}?`)) return;
+    const r = await fetch(`loadouts/capture.json?pid=${who.pid}`, { cache: "no-store" });
     const got = (await r.json().catch(() => ({}))) as { survivor?: string; entries?: Entry[]; cut?: number; error?: string };
     if (r.status !== 200 || !got.entries) return say(got.error ?? `The server answered ${r.status}.`, "warn");
-    replaceEntries(d, S.selected, got.entries);
-    say(`Filled from ${got.survivor ?? survivor()}: ${got.entries.length === 1 ? "1 entry" : `${got.entries.length} entries`}${got.cut ? `, and ${got.cut} more that a loadout has no room for are left out` : ""}. Not saved yet.`);
+    const why = fill(d, S.draft!, into, got.entries);
+    if (why !== "") return say(why, "warn");
+    say(`Filled ${into} from ${got.survivor ?? who.name}: ${got.entries.length === 1 ? "1 entry" : `${got.entries.length} entries`}${got.cut ? `, and ${got.cut} more that a loadout has no room for are left out` : ""}. Not saved yet.`);
   } else return;
   changed(true);
 }
@@ -226,6 +234,8 @@ document.addEventListener("change", (e) => {
     }, failed);
     return;
   }
+  // Who is picked decides what may be handed out.
+  if (at.id === "survivor") return hand();
   if (at.id === "assign-player" || at.id === "assign-admin") setAssign(d, at.id.slice("assign-".length) as Role, at.value);
   else if (at.dataset.head === "id") {
     const why = renameLoadout(d, S.selected, at.value.trim());
@@ -246,7 +256,7 @@ document.addEventListener("change", (e) => {
 /** The survivors of the world, for the picker: read again now and then, as they come and go. */
 async function people(): Promise<void> {
   const got = (await (await ask("survivors.json")).json()) as Survivors;
-  S.survivors = got.survivors.map((s) => ({ name: s.name, online: s.online }));
+  S.survivors = got.survivors.map((s) => ({ pid: s.pid, name: s.name, online: s.online }));
   const box = $<HTMLSelectElement>("survivor");
   if (document.activeElement !== box) box.innerHTML = survivorOptions(S.survivors, box.value);
   hand();

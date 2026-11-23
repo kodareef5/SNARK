@@ -54,8 +54,9 @@ test("a book that assigns a loadout it does not hold is refused, with the path",
 
 test("a loadout's id is its own, of lower-case letters, digits and dashes", () => {
   expect(paths((b) => void (b.loadouts[2]!.id = "stone"))).toEqual(["loadouts[2].id"]);
-  for (const id of ["", "Stone", "stone age", "a".repeat(33)]) expect(paths((b) => void (b.loadouts[1]!.id = id))).toEqual(["loadouts[1].id"]);
-  expect(paths((b) => void (b.loadouts[1]!.id = "stone-2"))).toEqual([]);
+  // None begins with a dash, so a command's `-clear` is never a loadout.
+  for (const id of ["", "Stone", "stone age", "a".repeat(33), "-clear", "-"]) expect(paths((b) => void (b.loadouts[1]!.id = id))).toEqual(["loadouts[1].id"]);
+  for (const id of ["stone-2", "clear", "2-"]) expect(paths((b) => void (b.loadouts[1]!.id = id))).toEqual([]);
 });
 
 test("an entry with a bad count, place or level is refused, with its path", () => {
