@@ -241,11 +241,16 @@ export class HumanFalls {
 
   /** The vehicles in view near ragdoll `fall`'s hips. */
   private carsNear(h: HumanFall): readonly Mover[] {
-    this.near.length = 0;
     const r = h.fall!.ragdoll;
     r.rootPosition(fallRoot);
+    return this.carsAround(fallRoot[0]!, fallRoot[2]!);
+  }
+
+  /** The vehicles in view within reach of (x, z), reused by the next call. */
+  carsAround(x: number, z: number): readonly Mover[] {
+    this.near.length = 0;
     for (const c of this.cars) {
-      const dx = c.mover.to.x - fallRoot[0]!, dz = c.mover.to.z - fallRoot[2]!, reach = c.reach + 2;
+      const dx = c.mover.to.x - x, dz = c.mover.to.z - z, reach = c.reach + 2;
       if (dx * dx + dz * dz <= reach * reach && this.near.length < 4) this.near.push(c.mover);
     }
     return this.near;
@@ -639,6 +644,8 @@ export class Corpses {
     if (!fall) return;
     const to = Math.floor(tick);
     if (c.motionRevision && !fall.still && to - c.clock > CHECKPOINT_AGE) { this.needsCheckpoint.add(c.handle); return; }
+    // The vehicles it may meet, as the server's body meets them.
+    fall.ragdoll.movers = this.humans.carsAround(c.x, c.z);
     let moved = false;
     for (let n = 0; c.clock < to && n < CATCH_UP; n++) {
       if (fall.still) {

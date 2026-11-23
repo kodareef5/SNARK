@@ -14,14 +14,11 @@ import { HUMAN } from "../shared/anim/human.ts";
 import { CUE_DOWN } from "../shared/anim/pose.ts";
 import { Solved } from "../shared/anim/skeleton.ts";
 import { Found } from "../shared/world/structures.ts";
-import type { Mover, MoverPose, Ragdoll } from "../shared/anim/ragdoll.ts";
-import { moverBoxes, moverReach } from "../shared/sim/vehicle-movers.ts";
-import { CHUNK_SIZE } from "../shared/coords.ts";
-import { F_PROP } from "../shared/sim/entities.ts";
+import { RagdollMovers } from "./ragdoll-movers.ts";
 import { encodeCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { MF_DOWN, MODE_WALK } from "../shared/sim/character.ts";
-import { HISTORY_TICKS, Past } from "./history.ts";
+import { HISTORY_TICKS } from "./history.ts";
 import type { ServerWorld } from "./world.ts";
 
 /** The most survivors lying at once, and the most their falls may cost together, in units (fallCost). */
@@ -29,10 +26,6 @@ export const FALLS_MOST = 48;
 export const FALL_UNITS_MOST = 64;
 /** Ticks between the checkpoints of a fall a vehicle is pushing. */
 const DISTURBED_TICKS = 6;
-/** The most vehicles one fallen body meets in a step. */
-const MOVERS_MOST = 4;
-/** Metres beyond a vehicle's reach within which a fallen body meets it. */
-const MOVER_MARGIN = 2;
 /** Metres round a body, and up from its feet, within which structures count toward its fall's cost. */
 const COST_REACH = 2.5;
 const COST_HEIGHT = 2.2;
@@ -76,11 +69,13 @@ export class Falls {
   /** The units the falls under way cost together. */
   units = 0;
   private readonly near = new Found(32);
+  private readonly cars: RagdollMovers;
   /** What every fall's revisions are drawn from, so a body's next fall is newer than its last to a client. */
   private serial = 0;
 
   constructor(world: ServerWorld) {
     this.world = world;
+    this.cars = new RagdollMovers(world);
   }
 
   get count(): number {
@@ -147,38 +142,6 @@ export class Falls {
     return Math.min(6, 1 + Math.floor(count / 4));
   }
 
-  /**
-   * The vehicles near ragdoll `r`, as movers its next step meets: each where it is now and where history had it a tick
-   * ago. Parked ones too, so a body lands on a car rather than through it.
-   */
-  private movers(r: Ragdoll): readonly Mover[] {
-    const { ents, reg, dims, history, tick } = this.world;
-    r.rootPosition(root);
-    const x = root[0]!, z = root[2]!, found: Mover[] = this.nearCars;
-    found.length = 0;
-    const cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
-    for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
-      const kx = cx + ox, kz = cz + oz;
-      if (kx < 0 || kz < 0 || kx >= dims.chunksX || kz >= dims.chunksZ) continue;
-      for (let e = ents.chunkHead[kz * dims.chunksX + kx]!; e >= 0 && found.length < MOVERS_MOST; e = ents.next[e]!) {
-        const def = reg.vehicle[ents.kind[e]!];
-        if (!def || (ents.flags[e]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
-        const reach = moverReach(def) + MOVER_MARGIN, dx = ents.x[e]! - x, dz = ents.z[e]! - z;
-        if (dx * dx + dz * dz > reach * reach) continue;
-        const m = this.pool[found.length]!, v = ents.vrow[e]!;
-        Object.assign(m.to, { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]! });
-        if (history.at(tick - 1, e, this.past)) Object.assign(m.from, { x: this.past.x, y: this.past.y, z: this.past.z, qx: this.past.qx, qy: this.past.qy, qz: this.past.qz, qw: this.past.qw });
-        else Object.assign(m.from, m.to);
-        m.boxes = moverBoxes(def);
-        found.push(m);
-      }
-    }
-    return found;
-  }
-  private readonly nearCars: Mover[] = [];
-  private readonly pool: { from: MoverPose; to: MoverPose; boxes: Float64Array }[] = Array.from({ length: MOVERS_MOST }, () => ({ from: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, to: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, boxes: new Float64Array(0) }));
-  private readonly past = new Past();
-
   /** Lets go of a fall's cost as it ends. */
   private ended(d: Down): void {
     this.down.delete(d.e);
@@ -237,7 +200,7 @@ export class Falls {
         continue;
       }
       const was = d.fall.still, r = d.fall.ragdoll;
-      r.movers = this.movers(r);
+      r.movers = this.cars.near(r);
       d.fall.tick(this.world);
       d.ticks++;
       if ((d.fall.still && d.ticks >= DOWN_LEAST) || d.ticks >= DOWN_MOST) {

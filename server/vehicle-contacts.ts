@@ -202,6 +202,11 @@ export class VehicleContacts {
   }
 
   /** After creatures.step, before attachment repinning/history/replication. */
+  /** The vehicles that moved in the last step, by entity. */
+  get moved(): readonly number[] {
+    return this.ordered;
+  }
+
   step(): readonly number[] {
     const { world } = this.ctx, ents = world.ents;
     this.changed.length = 0;

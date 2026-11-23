@@ -15,7 +15,7 @@ import { HUMAN, HUMAN_RAGDOLL } from "../shared/anim/human.ts";
 import { layHuman } from "../shared/anim/human-fall.ts";
 import { Solved, rayZones, zoneHit, type Skeleton } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
-import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
+import { CHUNK_SIZE, TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { POS_UNITS } from "../shared/net/view.ts";
 import { CORPSE_BODIES_MAX, CORPSE_MOTION_COMPONENT, decodeCorpseCheckpoint, encodeCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
 import { makeHandle } from "../shared/ids.ts";
@@ -48,6 +48,8 @@ import { saved } from "./saved.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
+import { RagdollMovers } from "./ragdoll-movers.ts";
+import { moverReach } from "../shared/sim/vehicle-movers.ts";
 
 /** Ticks a body lies at 1x. ARK publishes none: fifteen minutes, as a cache lies (D244). */
 export const CORPSE_TICKS = 15 * 60 * TICK_RATE;
@@ -80,6 +82,9 @@ const BOAT_WRECK_FIELDS = ["flooding", "steering", "payloadMass"] as const;
 const wreckRotation = new Float64Array(4), wreckPoint = new Float64Array(3);
 const corpseRoot = new Float64Array(3);
 
+/** Ticks between the checkpoints of a body a vehicle is pushing. */
+const DISTURBED_TICKS = 6;
+
 export interface CorpsesContext {
   readonly world: ServerWorld;
   readonly game: GameServer;
@@ -91,6 +96,8 @@ export interface CorpsesContext {
   readonly progression?: Progression;
   readonly death?: Death;
   readonly containers?: Containers;
+  /** The vehicles that moved this tick, whose bodies near them wake to meet them. */
+  readonly moved?: () => readonly number[];
 }
 
 /** One body. Its place, facing and size are as the wire carries them. */
@@ -141,6 +148,9 @@ export interface Body {
   motionWorld: number;
   motion: CorpseMotion | null;
   reach: number;
+  /** The tick its checkpoint last changed, and whether a vehicle touched it last tick. */
+  sent: number;
+  touched: boolean;
 }
 
 /** What one blow gave, for tests and the console. */
@@ -160,6 +170,7 @@ export class Corpses {
   /** By record id, and by entity. */
   readonly bodies = new Map<number, Body>();
   private readonly byEnt = new Map<number, Body>();
+  private readonly cars: RagdollMovers;
   /** Bodies whose ragdolls are still moving. */
   private readonly moving: Body[] = [];
   /** Bodies falling or sinking to where they will lie. */
@@ -185,6 +196,7 @@ export class Corpses {
 
   constructor(ctx: CorpsesContext, seed: number) {
     this.ctx = ctx;
+    this.cars = new RagdollMovers(ctx.world);
     this.deadline = ctx.deadlines.kind("corpse", (a, stamp) => this.due(a, stamp));
     this.seed = seed;
     this.rng = new Rng(seed);
@@ -362,7 +374,7 @@ export class Corpses {
       rec, kind, e: -1, max, left, young, size, move, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
       fall: null, pose: !wreck && rig ? new Solved(rig.skel.bones) : null, moving: false, drop: null, dropped: 0, wreck,
-      launch: null, handed: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD,
+      launch: null, handed: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD, sent: 0, touched: false,
     };
     this.bodies.set(rec.pid, b);
     return b;
@@ -462,8 +474,12 @@ export class Corpses {
     r.rebase(b.x, b.y, b.z);
     b.reach = Math.max(PAD, r.reach(b.x, b.y, b.z));
     this.reach = Math.max(this.reach, b.reach);
-    const revision = r.worldRevision(world);
+    const revision = r.worldRevision(world), before = b.motionRevision;
     if (b.motion && (revision !== b.motionWorld || wasMoving === fall.still)) b.motionRevision++;
+    // A vehicle pushing it is outside what a client can step alike: it is told again while that lasts, and as it ends.
+    else if (b.motion && ((r.touched && world.tick - b.sent >= DISTURBED_TICKS) || (b.touched && !r.touched))) b.motionRevision++;
+    if (b.motionRevision !== before) b.sent = world.tick;
+    b.touched = r.touched;
     b.motionWorld = revision;
     if (b.e >= 0) world.ents.setPosition(b.e, b.x, b.y, b.z);
     const data = encodeCorpseCheckpoint({ x: b.x, y: b.y, z: b.z, yaw: b.yaw, size: b.size, out: b.out, air: b.air,
@@ -562,6 +578,24 @@ export class Corpses {
     b.moving = true;
   }
 
+  /** Wakes the bodies lying within reach of vehicle `e`, so their next step meets it. */
+  private wakeNear(e: number): void {
+    const { ents, reg, dims } = this.ctx.world;
+    const def = reg.vehicle[ents.kind[e]!];
+    if (!def) return;
+    const x = ents.x[e]!, z = ents.z[e]!, cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE), reach = moverReach(def) + PAD;
+    for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
+      const kx = cx + ox, kz = cz + oz;
+      if (kx < 0 || kz < 0 || kx >= dims.chunksX || kz >= dims.chunksZ) continue;
+      for (let t = ents.chunkHead[kz * dims.chunksX + kx]!; t >= 0; t = ents.next[t]!) {
+        const b = this.byEnt.get(t);
+        if (!b || b.moving || !b.fall || this.held(b)) continue;
+        const dx = b.x - x, dz = b.z - z, far = reach + b.reach;
+        if (dx * dx + dz * dz <= far * far) this.wake(b);
+      }
+    }
+  }
+
   /** The decay stage: by what time has left of it or what harvesting has, whichever is further gone. */
   private cue(b: Body): void {
     const tick = this.ctx.world.tick;
@@ -631,6 +665,8 @@ export class Corpses {
       if (b.drop) dropping[still++] = b;
     }
     dropping.length = still;
+    // Bodies a vehicle drives at wake to meet it.
+    for (const e of this.ctx.moved?.() ?? []) this.wakeNear(e);
     const moving = this.moving;
     let kept = 0;
     for (const b of moving) {
@@ -639,6 +675,7 @@ export class Corpses {
         b.moving = false;
         continue;
       }
+      fall.ragdoll.movers = this.cars.near(fall.ragdoll);
       if (fall.tick(world)) {
         if (b.motionRevision) { this.updateMotion(b, true); this.save(b); }
         fall.ragdoll.pose(b.pose!);
