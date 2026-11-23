@@ -811,7 +811,7 @@ let siegeChunk = -1;
   // About 6.5 bytes a damaged piece, its health alone. 1,500 pieces a second is far more than a raid does.
   record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 30);
   store.saveChunk = saveChunk;
-  // The chunk is saved whole, 570 KB of it, but a chunk in which only health changes is written a second apart at most.
+  // All that differs in the chunk is written together, and a chunk in which only health changes a second apart at most.
   record("times its chunk was written in those ten seconds", chunkWrites, "", 11);
   record("commit time under it, median", percentile(commitTimes, 0.5), "ms", 4);
   record("commit time under it, 99th percentile (a commit that writes the chunk)", percentile(commitTimes, 0.99), "ms", 10);
