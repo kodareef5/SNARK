@@ -215,3 +215,19 @@ test("a body thrown into a bystander staggers them, and a harder throw fells the
     } finally { h.host.shutdown(); }
   }
 });
+
+test("a heavy blow shoves a raptor a little and a rex hardly at all", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    const a = h.world.ents;
+    const raptor = h.host.spawnCreature("core:raptor", 90, 90, 0), rex = h.host.spawnCreature("core:rex", 110, 90, 0);
+    h.run(300);
+    const moved = (e: number) => {
+      const before = a.vx[e]!;
+      h.host.reactions.blow(e, false, 80, 1, 0, 1);
+      return a.vx[e]! - before;
+    };
+    expect(moved(raptor)).toBeGreaterThan(0.5);
+    expect(moved(rex)).toBeLessThan(0.05);
+  } finally { h.host.shutdown(); }
+});

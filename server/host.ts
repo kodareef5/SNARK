@@ -120,6 +120,7 @@ import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { CUE_HELD, CUE_OUT, HumanAnim } from "../shared/anim/pose.ts";
 import { REACT_RULES, TIER_FALL } from "../shared/sim/react.ts";
 import { Reactions, SHOVE_MOST } from "./reactions.ts";
+import { bodyMass } from "../shared/sim/body-mass.ts";
 import { Cluster } from "./cluster/cluster.ts";
 import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
@@ -703,7 +704,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
     // A car that strikes a survivor staggers them, or knocks them off their feet (Knockdowns) as a door does.
     struck: (body, dv, dx, dz, y, wx, wy, wz) => {
-      if (reactions.shove(body, dv, dx, dz, y - world.ents.y[body]!, true) === TIER_FALL) knockDown(body, wx, wy, wz);
+      if (reactions.shove(body, dv, dx, dz, y - world.ents.y[body]!, true, true) === TIER_FALL) knockDown(body, wx, wy, wz);
     },
     // A body lying as its ragdoll is not struck again where its entity stands in for it.
     down: (e) => falls.isDown(e),
@@ -924,6 +925,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         (ents.cue[e]! & (CUE_HELD | CUE_OUT)) === 0 && ents.mode[e] === MODE_WALK && rules.on("Staggers");
     },
     rules: () => ({ bump: REACT_RULES.bump, stagger: rules.num("StaggerSpeed"), fall: rules.on("Knockdowns") ? rules.num("KnockdownSpeed") : Infinity }),
+    creature: (e) => {
+      const ents = world.ents;
+      return (ents.flags[e]! & F_ALIVE) !== 0 && ents.kind[e] !== survivor && !reg.vehicle[ents.kind[e]!] && ents.seat[e] === 0 &&
+        (ents.cue[e]! & (CUE_HELD | CUE_OUT)) === 0 && rules.on("Staggers");
+    },
+    mass: (e) => bodyMass(reg, world.ents.kind[e]!),
   });
   game.players.isDown = (e) => falls.isDown(e);
   combat.downPose = (e, tick) => falls.poseAt(e, tick);

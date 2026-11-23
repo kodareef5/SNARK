@@ -16,6 +16,8 @@ export const SHOVE_MOST = 1.5;
 const CALM_SECONDS = 3;
 /** Points of damage worth one metre a second of a body's speed: a blow or bite, and a blast. A shot is worth none. */
 const MELEE_DAMAGE_PER_DV = 16;
+/** Kilograms the damage of a blow is reckoned against. */
+const SURVIVOR_MASS = 80;
 const BLAST_DAMAGE_PER_DV = 12;
 
 export interface ReactionsContext {
@@ -24,6 +26,9 @@ export interface ReactionsContext {
   readonly standing: (e: number) => boolean;
   /** The thresholds, from settings. */
   readonly rules?: () => ReactRules;
+  /** Whether body `e` is a living creature on its feet, which a hard blow shoves though it never reels, and what it weighs. */
+  readonly creature?: (e: number) => boolean;
+  readonly mass?: (e: number) => number;
 }
 
 export class Reactions {
@@ -41,12 +46,16 @@ export class Reactions {
    * Body `e` takes a change of speed of `dv` m/s along the unit (dx, dz), struck `up` metres above its feet, by someone to
    * blame or not. Returns the tier it took: a fall is the caller's to start (server/falls.ts).
    */
-  shove(e: number, dv: number, dx: number, dz: number, up: number, attributed: boolean): number {
+  shove(e: number, dv: number, dx: number, dz: number, up: number, attributed: boolean, pushed = false): number {
     const { world } = this.ctx;
     const ents = world.ents, tick = world.tick;
-    if (!this.ctx.standing(e)) return TIER_NONE;
     const rules = this.ctx.rules?.() ?? REACT_RULES;
     let tier = tierOf(dv, attributed, rules);
+    if (!this.ctx.standing(e)) {
+      // A creature does not reel, but a blow that would stagger a survivor moves it.
+      if (tier >= TIER_STAGGER && !pushed && this.ctx.creature?.(e)) this.push(e, dv, dx, dz);
+      return TIER_NONE;
+    }
     if (tier !== TIER_STAGGER) return tier;
     const word = ents.react[e]!;
     if (word !== 0 && reactAge(word, tick) < reactFrames(word)) {
@@ -63,9 +72,8 @@ export class Reactions {
     const kind = strength >= 2 ? REACT_HEAVY : REACT_STAGGER;
     ents.react[e] = packReact(kind, tick, dirOf(ents.yaw[e]!, dx, dz), reactBand(up), strength);
     ents.reactTicks[e] = reactFrames(ents.react[e]!);
-    const shove = Math.min(SHOVE_MOST, dv * 0.4);
-    ents.vx[e] = ents.vx[e]! + dx * shove;
-    ents.vz[e] = ents.vz[e]! + dz * shove;
+    // A car's contact has moved it already; a blow moves it here.
+    if (!pushed) this.push(e, dv, dx, dz);
     world.history.reacted(e);
     this.reeling.add(e);
     this.calmUntil.set(e, tick + reactFrames(ents.react[e]!) + CALM_SECONDS * TICK_RATE);
@@ -79,7 +87,17 @@ export class Reactions {
    * going the unit way (dx, dz), landing `up` metres above its feet. Its change of speed grows with the damage.
    */
   blow(e: number, blast: boolean, taken: number, dx: number, dz: number, up: number): number {
-    return this.shove(e, taken / (blast ? BLAST_DAMAGE_PER_DV : MELEE_DAMAGE_PER_DV), dx, dz, up, true);
+    // The damage is reckoned against a survivor's weight; a heavier body is moved less by it.
+    const weighs = this.ctx.mass?.(e) ?? SURVIVOR_MASS;
+    const dv = (taken / (blast ? BLAST_DAMAGE_PER_DV : MELEE_DAMAGE_PER_DV)) * (SURVIVOR_MASS / Math.max(1, weighs));
+    return this.shove(e, dv, dx, dz, up, true);
+  }
+
+  /** Adds a blow's shove to body `e`'s speed, at most SHOVE_MOST. */
+  private push(e: number, dv: number, dx: number, dz: number): void {
+    const ents = this.ctx.world.ents, shove = Math.min(SHOVE_MOST, dv * 0.4);
+    ents.vx[e] = ents.vx[e]! + dx * shove;
+    ents.vz[e] = ents.vz[e]! + dz * shove;
   }
 
   /**
