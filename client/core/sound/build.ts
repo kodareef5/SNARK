@@ -3,11 +3,13 @@
 // opening or shutting and a fire lit or put out (each a swap of kinds in the same slot); a tree felled, a rock broken,
 // a bush stripped. Lit fires near the ear crackle while they burn, found in the rows as they are now, so a fire lit
 // before the player came is heard and one put out while they were away is not. Each piece is heard by its own sounds
-// where it has them, else by its material's (the `{tier}` of shared/sound/cues.ts).
+// where it has them, else by its material's (the `{tier}` of shared/sound/cues.ts). Pieces that break are heard a cell
+// of them at a time (`breaking`, fed by break-effects.ts), so a street falling is a few sounds and not a thousand.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
 import { GONE_BLAST, GONE_DESTROYED, GONE_FELL, GONE_TAKEN } from "../../../shared/world/structures.ts";
+import { HEARD_CRACK, HEARD_GLASS, HEARD_IMPACT, type BreakSounds } from "../break-effects.ts";
 import type { Hear } from "./bodies.ts";
 
 const TIERS = ["thatch", "wood", "stone", "metal"];
@@ -29,6 +31,7 @@ const K = {
   felled: cueKey("felled"),
   crumble: cueKey("crumble"),
   picked: cueKey("picked"),
+  glass: cueKey("impact/glass"),
 };
 /** How loud a city piece's stage crossing or change of form is heard. Its health is not told within a stage, so a blow's own size is not known. */
 const CITY_GAIN = 0.9;
@@ -40,7 +43,7 @@ const FIRE_FRAMES = 8;
 /** Fills `out` with x, y, z and kind of each structure within about `r` metres of (x, z) that burns. */
 export type Lit = (x: number, z: number, r: number, out: number[]) => void;
 
-export class BuildSounds {
+export class BuildSounds implements BreakSounds {
   private readonly reg: Registry;
   /** By structure kind: its tier (an index of TIERS), its owner number, and whether it is a door (1) or a fire (2). */
   private readonly tier: Int8Array;
@@ -86,6 +89,26 @@ export class BuildSounds {
   /** A structure row changed (ClientSession.onStructure). Heard on the next frame. */
   structure(was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause: number): void {
     this.queue.push(() => this.heardStructure(was, kind, x, y, z, hpWas, hp, cause));
+  }
+
+  /**
+   * Whether a row's change is heard through `breaking` and so not by its row: a piece destroyed, fallen or blown apart,
+   * and a city piece taking a form or losing health.
+   */
+  merged(was: number, kind: number, cause: number): boolean {
+    if (kind === 0) return cause === GONE_DESTROYED || cause === GONE_FELL || cause === GONE_BLAST;
+    return was !== 0 && this.reg.breakSet[was] !== 0 && (was === kind || this.reg.breakSet[kind] === this.reg.breakSet[was]);
+  }
+
+  /**
+   * One sound for a cell of pieces breaking at a place: `what` a HEARD_, `kind` one of the pieces, whose own sounds or
+   * material's are heard, `level` 0 to 1. Every city material is heard as stone until the tiers know them.
+   */
+  breaking(what: number, kind: number, x: number, y: number, z: number, level: number): void {
+    this.queue.push(() => {
+      const o = this.owner[kind] ?? -1, t = this.tier[kind] ?? 2;
+      this.hear!(o, what === HEARD_IMPACT ? DESTROY[t]! : what === HEARD_CRACK ? HIT[t]! : what === HEARD_GLASS ? K.glass : K.collapse, -1, x, y, z, 0.5, level, false);
+    });
   }
 
   /** A node used up (ClientSession.onNode), of `kind` at (x, y, z). */
