@@ -83,9 +83,10 @@ test("a remote flight streams the far scene and leaves its driver parked", () =>
     expect(c.chunk).toBe(homeChunk);
     expect(c.known[farChunk]).toBeGreaterThan(0);
     expect(pilot.world!.structs.chunks[farChunk]!.live).toBeGreaterThan(0);
-    expect(release[0]!.side).toBeCloseTo(0, 3);
-    expect(release[0]!.along).toBeCloseTo(airBayZ(0), 3);
-    expect(release[0]!.up).toBeCloseTo(AIR_FRAME.deck + AIR_FRAME.bayY, 2);
+    // The trailer leans a little on its springs, so the cradle is measured to the centimetres.
+    expect(Math.abs(release[0]!.side)).toBeLessThan(.1);
+    expect(Math.abs(release[0]!.along - airBayZ(0))).toBeLessThan(.1);
+    expect(Math.abs(release[0]!.up - AIR_FRAME.deck - AIR_FRAME.bayY)).toBeLessThan(.1);
     expect(release[0]!.pitch).toBe(0);
     expect(release[15]!.side).toBeCloseTo(1.45, 1);
     expect(release[15]!.up - release[0]!.up).toBeCloseTo(1.27, 1);
@@ -153,13 +154,11 @@ test("a rack owner steers through the camera and returns to the same body", () =
     const run = (ms: number) => h.run(ms, now => app.frame(now, 480, 300));
     run(800);
     const c = h.client(pilot)!, actor = h.host.records.byPid.get(c.pid)!;
-    const { ents, structs } = h.world;
-    const x = ents.x[c.ent]! + 5, y = 0, z = ents.z[c.ent]!;
-    const kind = h.reg.index.get("core:air_pod_ground_open")!;
-    const ref = structs.add(kind, x, y, z, 0, actor.team, 4800);
+    const { ents } = h.world;
+    const x = ents.x[c.ent]! + 5, z = ents.z[c.ent]!;
+    const trailer = h.host.spawnVehicle("core:air_trailer", x, z, actor.team, 0);
     h.host.airSupport.begin(JSON.stringify({ next: 2, calls: [], cooldown: [], racks: [{
-      id: 1, x, y, z, yaw: 0, ref, trailer: false, hitched: false, open: 1, opening: true, slots: 63,
-      selected: 0, owner: c.pid, team: actor.team, rig: 0, tractor: null,
+      id: 1, pid: ents.pid[trailer]!, open: 1, opening: true, slots: 63, selected: 0, owner: c.pid, team: actor.team,
     }] }));
     app.controls.yaw = 1.05; app.controls.pitch = -.12;
     run(300);

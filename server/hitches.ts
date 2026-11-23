@@ -22,6 +22,8 @@ export class Hitches {
   private readonly byTractor = new Map<number, number>();
   private readonly byTrailer = new Map<number, number>();
   private readonly body = new Body();
+  /** Trailers let go of that do not latch again until their kingpin is clear of the fifth wheel. */
+  private readonly parted = new Set<number>();
   private readonly ctx: HitchesContext;
   readonly saved = { dirty: false, serialize: () => JSON.stringify({ pairs: [...this.byTractor] } satisfies SavedHitches) };
   /** A pair was joined or parted: tractor record, trailer record, joined. */
@@ -68,6 +70,7 @@ export class Hitches {
     const tractor = this.byTrailer.get(trailerPid);
     if (tractor === undefined) return false;
     this.byTrailer.delete(trailerPid); this.byTractor.delete(tractor);
+    this.parted.add(trailerPid);
     this.saved.dirty = true;
     for (const e of [this.entity(tractor), this.entity(trailerPid)]) if (e >= 0) this.ctx.urban.rouse(e);
     this.onChange?.(tractor, trailerPid, false);
@@ -109,6 +112,8 @@ export class Hitches {
       ents.loadBody(t, this.body);
       hitchPoint(pose(this.body), def.spec.fifthWheel, fifth);
       const yaw = this.body.vehicleYaw, driver = records.byPid.get(c.pid);
+      // Only a tractor backing up couples: one standing under a kingpin it let go of does not take it again.
+      const backing = this.body.vx * Math.sin(yaw) + this.body.vz * Math.cos(yaw) < -.05;
       const chunkX = Math.floor(ents.x[t]! / 64), chunkZ = Math.floor(ents.z[t]! / 64);
       for (let z = Math.max(0, chunkZ - 1); z <= Math.min(world.dims.chunksZ - 1, chunkZ + 1); z++) {
         for (let x = Math.max(0, chunkX - 1); x <= Math.min(world.dims.chunksX - 1, chunkX + 1); x++) {
@@ -121,7 +126,9 @@ export class Hitches {
             const turned = Math.abs(Math.atan2(Math.sin(ents.vehicleYaw[d]! - yaw), Math.cos(ents.vehicleYaw[d]! - yaw)));
             if (turned > LATCH_YAW) continue;
             hitchPoint({ x: ents.x[r]!, y: ents.y[r]!, z: ents.z[r]!, qx: ents.vehicleQx[d]!, qy: ents.vehicleQy[d]!, qz: ents.vehicleQz[d]!, qw: ents.vehicleQw[d]! } as never, rDef.spec.kingpin, pin);
-            if (Math.hypot(fifth[0]! - pin[0]!, fifth[2]! - pin[2]!) > LATCH_ACROSS || Math.abs(fifth[1]! - pin[1]!) > LATCH_UP) continue;
+            const across = Math.hypot(fifth[0]! - pin[0]!, fifth[2]! - pin[2]!);
+            if (this.parted.has(ents.pid[r]!)) { if (across > LATCH_ACROSS * 3) this.parted.delete(ents.pid[r]!); continue; }
+            if (!backing || across > LATCH_ACROSS || Math.abs(fifth[1]! - pin[1]!) > LATCH_UP) continue;
             if (this.couple(ents.pid[t]!, ents.pid[r]!)) { this.tell(c, "Kingpin locked. The trailer is coupled."); return; }
           }
         }

@@ -113,7 +113,7 @@ export class AirRadio {
       if (key === PANELS) action = AIR_ACTION.panels;
       else if (key === LAUNCH && pod.open === 1 && (pod.slots & (1 << bay))) action = AIR_ACTION.launch;
       else if (key >= BAY && key < BAY + AIR_BAYS && pod.open === 1 && (pod.slots & (1 << (key - BAY)))) { action = AIR_ACTION.select; bay = key - BAY; }
-      else if (key === HITCH) action = pod.hitched ? AIR_ACTION.unhitch : pod.trailer ? AIR_ACTION.hitch : AIR_ACTION.mount;
+      else if (key === HITCH) action = pod.hitched ? AIR_ACTION.unhitch : AIR_ACTION.dismiss;
       else return false;
     } else return false;
     this.refusal = "";
@@ -199,7 +199,7 @@ export class AirRadio {
       }
       button(f, PANELS, left, y + 133, half, pod.open === 1 ? "Close rack" : pod.open === 0 ? "Open rack" : "Panels moving…", pod.open === 0 || pod.open === 1);
       button(f, LAUNCH, left + half + 8, y + 133, half, `Launch bay ${pod.selected + 1}`, pod.open === 1 && !!(pod.slots & (1 << pod.selected)));
-      button(f, HITCH, left, y + 181, wide, pod.hitched ? "Unhitch trailer" : pod.trailer ? "Hitch trailer" : "Mount on chassis");
+      button(f, HITCH, left, y + 181, wide, pod.hitched ? "Unhitch trailer" : pod.slots ? "Recall trailer" : "Recall empty trailer");
     }
     const row = y + (pod ? 240 : 103);
     if (v.order) button(f, CANCEL, left, row, wide, "Cancel delivery");

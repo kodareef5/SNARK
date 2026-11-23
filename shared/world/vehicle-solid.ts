@@ -183,10 +183,7 @@ export class StaticVehicleSolids {
   private skin = .008;
   readonly world: CollisionWorld;
   private readonly ignoreNode: ((ref: number) => boolean) | undefined;
-  private readonly ignoreStructure: ((ref: number) => boolean) | undefined;
-  constructor(world: CollisionWorld, ignoreNode?: (ref: number) => boolean, ignoreStructure?: (ref: number) => boolean) {
-    this.world = world; this.ignoreNode = ignoreNode; this.ignoreStructure = ignoreStructure;
-  }
+  constructor(world: CollisionWorld, ignoreNode?: (ref: number) => boolean) { this.world = world; this.ignoreNode = ignoreNode; }
   blocked(from: Readonly<SolidFrame>, to: Readonly<SolidFrame>, shapes: readonly Shape[], joints?: readonly SolidJoint[], allowSeparating = false, skin = .008, center?: ArrayLike<number>, manifold = false): SolidContact | null {
     this.skin = skin; this.center = center; this.manifold = manifold; this.hit.balanced = false; this.hit.points = undefined; this.contactPoints.length = 0;
     let contacts = 0, weight = 0, blockedTerrain = false, blockedHazard = false, supportX = 0, supportY = 0, supportZ = 0, supportNX = 0, supportNY = 1, supportNZ = 0;
@@ -420,7 +417,7 @@ export class StaticVehicleSolids {
     };
     for (let i = 0; i < n; i++) {
       const ref = this.found.refs[i]!, row = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535, kind = row.kind[slot]!;
-      if (store.isSoft(kind) || (name === "node" ? this.ignoreNode?.(ref) : this.ignoreStructure?.(ref))) continue;
+      if (store.isSoft(kind) || name === "node" && this.ignoreNode?.(ref)) continue;
       const x = row.x[slot]!, y = row.y[slot]!, z = row.z[slot]!, yaw = row.yaw[slot]!;
       frameOf(yaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch, boxes = store.parts.box;
       for (let j = store.parts.start[kind]! * 6, end = store.parts.start[kind + 1]! * 6; j < end; j += 6) {

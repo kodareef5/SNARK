@@ -13,7 +13,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { AIR_PHASE, emptyAirSupport, type AirCarrier } from "../../shared/sim/air-support.ts";
 import { cueKey } from "../../shared/sound/cues.ts";
-import { AIR_FRAME, airMesh, type AirPiece } from "../../shared/world/air-support-art.ts";
+import { airMesh, type AirPiece } from "../../shared/world/air-support-art.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
 const meshes = airSupportMeshes();
@@ -75,7 +75,7 @@ test("the carrier shows four grips, wheel gear and two rotor discs", () => {
 
 test("a late observer sees occupied bays and the pilot sees through their drone", () => {
   const { view, draw, count } = stage();
-  view.pods.push({ ...carrier, hitched: true, open: 1, slots: 0b110101, selected: 2 });
+  view.pods.push({ ...carrier, ent: 0, hitched: true, open: 1, slots: 0b110101, selected: 2 });
   view.drones.push({ ...carrier, id: 24, pitch: 0.1, fuel: 0.8, bay: 3 });
   draw();
   expect(count("drone")).toBe(4);
@@ -100,19 +100,6 @@ test("the ground marker shows its footprint and a distant carrier clears the vie
   draw();
   expect(count("marker")).toBe(1);
   expect(count("carrier")).toBe(0);
-});
-
-test("the open collision panels follow the roof hinge and clear the fifth wheel", () => {
-  const w = flatWorld();
-  const shape = w.reg.defs[w.kind("core:air_pod_chassis_open_shape")]!;
-  if (shape.type !== "shape") throw new Error("Missing open trailer shape");
-  expect(shape.hulls?.length).toBe(2);
-  const roof = shape.hulls![0]!.corners;
-  expect(Math.min(...roof.map((p) => p[0]))).toBeLessThan(-3);
-  expect(Math.max(...roof.map((p) => p[1]))).toBeGreaterThan(AIR_FRAME.deck + 2.9);
-  for (const b of shape.boxes.filter((b) => b.at[2] + b.half[2] > 2.5)) {
-    expect(b.at[1] - b.half[1]).toBeGreaterThanOrEqual(1.28);
-  }
 });
 
 test("touchdown sounds once and late observers hear the running rotors", () => {

@@ -3,7 +3,7 @@ import type { BitReader, BitWriter } from "../net/codec.ts";
 export const AIR_BAYS = 6;
 export const AIR_ACTION = {
   trailer: 0, ground: 1, cancel: 2, panels: 3, launch: 4,
-  payload: 5, leave: 6, unhitch: 7, hitch: 8, select: 9, mount: 10,
+  payload: 5, leave: 6, unhitch: 7, dismiss: 8, select: 9,
 } as const;
 export const AIR_PHASE = { inbound: 0, follow: 1, lower: 2, release: 3, outbound: 4 } as const;
 
@@ -11,8 +11,9 @@ export interface AirPose { x: number; y: number; z: number; yaw: number }
 export interface AirCarrier extends AirPose {
   id: number; phase: number; loaded: boolean; trailer: boolean; jaws: number;
 }
+/** A drone rack: `id` is its trailer's record, `ent` the trailer's entity handle, drawn where that entity is. */
 export interface AirPod extends AirPose {
-  id: number; trailer: boolean; hitched: boolean; open: number; slots: number; selected: number;
+  id: number; ent: number; hitched: boolean; open: number; slots: number; selected: number;
 }
 export interface AirDrone extends AirPose {
   id: number; pitch: number; fuel: number; bay: number;
@@ -60,7 +61,7 @@ export function writeAirSupport(w: BitWriter, v: AirSupportView): void {
   w.u8(v.pods.length);
   for (const row of v.pods) {
     writePose(w, row);
-    w.bool(row.trailer);
+    w.u32(row.ent);
     w.bool(row.hitched);
     w.u8(share(row.open));
     w.bits(row.slots, AIR_BAYS);
@@ -92,7 +93,7 @@ export function readAirSupport(r: BitReader): AirSupportView | null {
   const pods = r.u8();
   if (pods > AIR_VIEW_LIMIT) return null;
   for (let i = 0; i < pods; i++) {
-    const row = { ...readPose(r), trailer: r.bool(), hitched: r.bool(), open: r.u8() / 255, slots: r.bits(AIR_BAYS), selected: r.u8() };
+    const row = { ...readPose(r), ent: r.u32(), hitched: r.bool(), open: r.u8() / 255, slots: r.bits(AIR_BAYS), selected: r.u8() };
     if (row.selected >= AIR_BAYS) return null;
     view.pods.push(row);
   }

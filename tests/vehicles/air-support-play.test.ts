@@ -93,7 +93,6 @@ test("the cab radio rotates and places a ground pod from the yard spawn", () => 
     expect(s.airSupport.order).toBeGreaterThan(0);
     for (let i = 0; i < 120 && !s.airSupport.pods.length; i++) h.run(400);
     const rack = s.airSupport.pods[0];
-    expect(rack?.trailer).toBe(false);
     expect(rack?.hitched).toBe(false);
     expect(rack!.x).toBeCloseTo(start.x, 1);
     expect(rack!.z).toBeCloseTo(start.z, 1);

@@ -1,4 +1,3 @@
-import { AIR_PODS } from "./vehicles/air-pods.ts";
 import { AIR_TRAILER } from "./vehicles/air-freight.ts";
 import { BOX_TRAILER } from "./vehicles/box-trailer.ts";
 import { TANKER_WRECKS } from "./vehicles/tanker-wrecks.ts";
@@ -434,7 +433,6 @@ const ALL: readonly Def[] = [
   ...WRECKS,
   ...TANKER_WRECKS,
   ...BOX_TRAILER,
-  ...AIR_PODS,
   AIR_TRAILER,
   ...HARBOUR_WRECKS,
   ...DOCKS,

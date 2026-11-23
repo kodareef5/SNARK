@@ -11,7 +11,7 @@ test("a cut delivery feed leaves the last complete view in place", () => {
   view.pod = 18;
   view.notice = "Stop to receive the trailer.";
   view.carriers.push({ ...pose, phase: AIR_PHASE.follow, loaded: true, trailer: true, jaws: 0 });
-  view.pods.push({ ...pose, id: 18, trailer: true, hitched: true, open: 1, slots: 35, selected: 5 });
+  view.pods.push({ ...pose, id: 18, ent: 77, hitched: true, open: 1, slots: 35, selected: 5 });
   view.drones.push({ ...pose, id: 21, fuel: 0.6, pitch: 0.5, bay: 3 });
   const w = new BitWriter(512);
   writeAirSupport(w, view);

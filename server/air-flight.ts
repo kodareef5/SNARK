@@ -20,6 +20,8 @@ export interface AirFlightContext {
   rules: Rules;
   records: Records;
   valid(c: Client, rack: number): boolean;
+  /** The trailer entity of rack `rack`, which its own drones fly out of, or -1. */
+  spare?(rack: number): number;
   wake?(chunk: number, delta: number): void;
 }
 
@@ -136,7 +138,7 @@ export class AirFlights {
       const solidAt = solid ? rayHit.t : Infinity;
       const waterAt = bodyAlong(world.hf.water, f.x, f.y, f.z, dx, dy, dz, length);
       const stop = Math.min(length, solidAt, waterAt);
-      const body = combat.castBodies(c.ent, f.x, f.y, f.z, dx, dy, dz, stop);
+      const body = combat.castBodiesBesides(this.ctx.spare?.(f.rack) ?? -1, c.ent, f.x, f.y, f.z, dx, dy, dz, stop);
       const hit = body >= 0 || solidAt <= length || waterAt <= length;
       const distance = hit ? Math.max(0, (body >= 0 ? combat.t : stop) - 0.05) : length;
       f.x += dx * distance;

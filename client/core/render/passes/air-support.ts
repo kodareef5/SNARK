@@ -1,4 +1,5 @@
 import { TICK_RATE } from "../../../../shared/coords.ts";
+import { makeHandle } from "../../../../shared/ids.ts";
 import { AIR_BAYS, type AirCarrier, type AirDrone, type AirPod, type AirPose, type AirSupportView } from "../../../../shared/sim/air-support.ts";
 import type { VehicleRotor } from "../../../../shared/sim/vehicle.ts";
 import { AIR_FRAME as A, AIR_IMPELLERS, AIR_PIECES, airBayZ, airMesh, type AirPiece } from "../../../../shared/world/air-support-art.ts";
@@ -121,6 +122,10 @@ export class AirSupport implements Pass {
   private c = 1;
   private s = 0;
   private readonly meshes: Record<AirPiece, number>;
+  /** The origin's full turn, row-major, while `tilted`; otherwise pieces turn by `yaw` alone. */
+  private readonly basis = new Float64Array(9);
+  private readonly local = new Float32Array(12);
+  private tilted = false;
 
   private readonly blur: RotorBlur;
   private readonly details: Details;
@@ -163,9 +168,9 @@ export class AirSupport implements Pass {
     }
     for (const row of view.pods) {
       const prev = this.pods.get(row.id);
-      if (!this.origin(row, prev, 8)) continue;
+      if (!this.entityOrigin(row.ent) && !this.origin(row, prev, 8)) continue;
       let wheel = 0, lift = 0;
-      if (row.trailer) {
+      {
         const wx = this.x + f.cam.x,
           wz = this.z + f.cam.z;
         let was = this.gear.get(row.id);
@@ -183,7 +188,8 @@ export class AirSupport implements Pass {
         was.z = wz;
         was.angle = wheel % (Math.PI * 2);
       }
-      drawAirPod(this.piece, row.trailer, row.hitched, lerp(prev?.open ?? row.open, row.open, this.share), row.slots, row.selected, wheel, lift);
+      drawAirPod(this.piece, true, row.hitched, lerp(prev?.open ?? row.open, row.open, this.share), row.slots, row.selected, wheel, lift);
+      this.flat();
     }
     for (const row of view.drones) {
       if (row.id === view.flight) continue;
@@ -236,14 +242,37 @@ export class AirSupport implements Pass {
     return !radius || Math.hypot(this.x, this.y, this.z) - radius <= this.f.view;
   }
 
+  /** Places what follows at a remote entity as it is drawn, tilted as it is tilted. False if it is not in view. */
+  private entityOrigin(handle: number): boolean {
+    const r = this.f.remote;
+    if (!r || !handle) return false;
+    for (let i = 0; i < r.count; i++) {
+      if (makeHandle(r.id[i]!, r.gen[i]!) !== handle) continue;
+      const cam = this.f.cam, x = r.vehicleQx[i]!, y = r.vehicleQy[i]!, z = r.vehicleQz[i]!, w = r.vehicleQw[i]!, m = this.basis;
+      this.scale = 1;
+      this.x = r.x[i]! - cam.x; this.y = r.y[i]! - cam.y; this.z = r.z[i]! - cam.z;
+      m[0] = 1 - 2 * (y * y + z * z); m[1] = 2 * (x * y - w * z); m[2] = 2 * (x * z + w * y);
+      m[3] = 2 * (x * y + w * z); m[4] = 1 - 2 * (x * x + z * z); m[5] = 2 * (y * z - w * x);
+      m[6] = 2 * (x * z - w * y); m[7] = 2 * (y * z + w * x); m[8] = 1 - 2 * (x * x + y * y);
+      this.tilted = true;
+      this.yaw = Math.atan2(m[2], m[8]); this.c = Math.cos(this.yaw); this.s = Math.sin(this.yaw);
+      return Math.hypot(this.x, this.y, this.z) - 8 <= this.f.view;
+    }
+    return false;
+  }
+
+  /** Back to turning by yaw alone. */
+  private flat(): void { this.tilted = false; }
+
   private readonly piece: Piece = (name, x, y, z, yaw = 0, pitch = 0, roll = 0, dye = 0, rotor = -1, localSpin = 0) => {
     const f = this.f,
       p = f.packet,
       mesh = this.meshes[name];
     if (mesh < 0) return;
-    const cx = this.x + this.scale * (this.c * x + this.s * z),
-      cy = this.y + this.scale * y,
-      cz = this.z + this.scale * (this.c * z - this.s * x);
+    const m = this.basis, tilt = this.tilted;
+    const cx = this.x + this.scale * (tilt ? m[0]! * x + m[1]! * y + m[2]! * z : this.c * x + this.s * z),
+      cy = this.y + this.scale * (tilt ? m[3]! * x + m[4]! * y + m[5]! * z : y),
+      cz = this.z + this.scale * (tilt ? m[6]! * x + m[7]! * y + m[8]! * z : this.c * z - this.s * x);
     const r = Math.max(0.15, f.assets.table.radius[mesh]!);
     const far = Math.max(0.01, Math.hypot(cx, cy, cz) - r);
     if (far > f.view || (name === "indicator" && far > 110)) return;
@@ -269,13 +298,20 @@ export class AirSupport implements Pass {
     f.assets.wantTextured(mesh, level, far);
     const bone = p.boneCount++,
       b = bone * BONE_FLOATS;
-    airBasis(p.bones, b, this.yaw + yaw, pitch, roll);
+    const out = tilt ? this.local : p.bones, at = tilt ? 0 : b;
+    airBasis(out, at, tilt ? yaw : this.yaw + yaw, pitch, roll);
     if (localSpin !== 0) {
       const c = Math.cos(localSpin), s = Math.sin(localSpin);
-      for (let j = b; j < b + 12; j += 4) {
-        const x = p.bones[j]!, z = p.bones[j + 2]!;
-        p.bones[j] = c * x - s * z;
-        p.bones[j + 2] = s * x + c * z;
+      for (let j = at; j < at + 12; j += 4) {
+        const x = out[j]!, z = out[j + 2]!;
+        out[j] = c * x - s * z;
+        out[j + 2] = s * x + c * z;
+      }
+    }
+    if (tilt) {
+      const l = this.local;
+      for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
+        p.bones[b + row * 4 + col] = m[row * 3]! * l[col]! + m[row * 3 + 1]! * l[4 + col]! + m[row * 3 + 2]! * l[8 + col]!;
       }
     }
     if (this.scale !== 1) for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) p.bones[b + row * 4 + col]! *= this.scale;

@@ -1287,7 +1287,22 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   persistence?.sidecar("supply", supply.saved);
   hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
   persistence?.sidecar("hitches", hitches.saved);
-  const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, wake: wakeView });
+  const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, wake: wakeView,
+    spawn: (id, at, team) => {
+      const e = parkVehicle(id, at.x, at.z, team, at.yaw, "air freight", { y: at.y });
+      if (e < 0) return e;
+      const ents = world.ents, v = ents.vrow[e]!;
+      ents.vehicleQx[v] = Math.fround(at.qx); ents.vehicleQy[v] = Math.fround(at.qy); ents.vehicleQz[v] = Math.fround(at.qz); ents.vehicleQw[v] = Math.fround(at.qw);
+      ents.setPosition(e, at.x, at.y, at.z);
+      urban.syncAfterContact(e);
+      return e;
+    },
+    discard: e => {
+      const pid = world.ents.pid[e]!;
+      hitches.release(pid);
+      persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid);
+    },
+  });
   game.handle(CMD_AIR_SUPPORT, (c, r) => airSupport.command(c, r));
   airSupport.begin(persistence && !loaded!.fresh ? persistence.store.meta("air-support") as string | null : null);
   persistence?.sidecar("air-support", airSupport.saved);

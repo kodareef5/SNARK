@@ -474,28 +474,6 @@ export class StructureStore {
     return removed;
   }
 
-  /** Moves one solid with its health and owner. The new chunk supplies its own slot. */
-  relocate(ref: number, kind: number, x: number, y: number, z: number, yaw: number): number {
-    const chunk = Math.floor(ref / 65536), slot = ref & 0xffff, t = this.chunks[chunk];
-    if (!t || !t.kind[slot] || !this.halfX[kind]) return -1;
-    x = Math.round(x * STRUCT_UNITS) / STRUCT_UNITS;
-    y = Math.round(y * STRUCT_UNITS) / STRUCT_UNITS;
-    z = Math.round(z * STRUCT_UNITS) / STRUCT_UNITS;
-    yaw &= 0xffff;
-    if (chunkAt(this.dims, x, z) !== chunk) {
-      const next = this.add(kind, x, y, z, yaw, t.owner[slot]!, t.hp[slot]!);
-      if (next >= 0) this.remove(ref);
-      return next;
-    }
-    if (t.x[slot] === x && t.y[slot] === y && t.z[slot] === z && t.yaw[slot] === yaw && t.kind[slot] === kind) return ref;
-    const owner = t.owner[slot]!, hp = t.hp[slot]!;
-    this.erase(chunk, t, slot, ++t.version);
-    this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, t.version);
-    t.touch(slot, 1);
-    this.onChunkChanged?.(chunk, false);
-    return ref;
-  }
-
   /** Changes a structure's kind in place and keeps the rest of its row (a door opening). False if there is no such structure. Authority only. */
   swap(ref: number, kind: number): boolean {
     const chunk = Math.floor(ref / 65536);
