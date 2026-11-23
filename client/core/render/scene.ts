@@ -473,8 +473,8 @@ export class Scene {
   private readonly looseEntities: LooseEntities;
   get falling(): Falling | null { return this.looseEntities.falling; }
   set falling(f: Falling | null) { this.looseEntities.falling = f; }
-  /** The supply drops live on the map (passes/supply-drops.ts). */
   readonly airSupport: AirSupport;
+  /** The supply drops live on the map (passes/supply-drops.ts). */
   private readonly supplyDrops: SupplyDrops;
   get supply(): SupplyView | null { return this.supplyDrops.view; }
   set supply(view: SupplyView | null) { this.supplyDrops.view = view; }
@@ -599,7 +599,7 @@ export class Scene {
     this.marks = new Beams(this.assets);
     this.placing = new Ghost(this.assets, this.meshOfKind);
     this.loose = new Things(this.assets);
-    this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur);
+    this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);

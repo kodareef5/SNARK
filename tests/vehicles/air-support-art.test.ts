@@ -3,6 +3,8 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import { Mixer, KIND_VEHICLE, LOOP } from "../../client/core/sound/mixer.ts";
+import { SoundPacket } from "../../client/core/sound/packet.ts";
 import { AirSounds } from "../../client/core/sound/air-support.ts";
 import { readMaps } from "../../tools/art/materials.ts";
 import { airMaterial, airSupportMeshes } from "../../tools/pack/air-support.ts";
@@ -30,7 +32,9 @@ function stage() {
   scene.airSupport.view = view;
   const draw = () => scene.build(cam, null);
   const count = (id: AirPiece) =>
-    Array.from(scene.packet.drawMesh.subarray(0, scene.packet.drawCount)).filter((n, i) => n === pack.meshIndex.get(airMesh(id)) && (scene.packet.drawFlags[i]! & DRAW_SKINNED) !== 0).length;
+    Array.from(scene.packet.drawMesh.subarray(0, scene.packet.drawCount)).filter(
+      (n, i) => n === pack.meshIndex.get(airMesh(id)) && (scene.packet.drawFlags[i]! & DRAW_SKINNED) !== 0,
+    ).length;
   return { scene, cam, view, draw, count };
 }
 
@@ -128,4 +132,16 @@ test("touchdown sounds once and late observers hear the running rotors", () => {
   play(settled);
   play(settled);
   expect(shots).toEqual([cueKey("supply/land")]);
+});
+
+test("a moving carrier's loop follows it across the listener", () => {
+  const mixer = new Mixer(),
+    p = new SoundPacket(),
+    ear = { x: 0, y: 0, z: 0 };
+  const voice = mixer.play(p, ear, 0, 0, 0, 3, 200, KIND_VEHICLE, 1, -1, -8, 4, 0, 0, 1, 1, 0, LOOP);
+  expect(voice).toBeGreaterThan(0);
+  p.clear();
+  expect(mixer.gain(voice, 1, { x: 8, y: 4, z: 0 })).toBe(true);
+  mixer.follow(p, ear, () => false);
+  expect(p.moves.slice(2, 5)).toEqual([8, 4, 0]);
 });

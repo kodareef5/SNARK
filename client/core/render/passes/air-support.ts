@@ -2,6 +2,7 @@ import { TICK_RATE } from "../../../../shared/coords.ts";
 import { AIR_BAYS, type AirCarrier, type AirDrone, type AirPod, type AirPose, type AirSupportView } from "../../../../shared/sim/air-support.ts";
 import type { VehicleRotor } from "../../../../shared/sim/vehicle.ts";
 import { AIR_FRAME as A, AIR_PIECES, airBayZ, airMesh, type AirPiece } from "../../../../shared/world/air-support-art.ts";
+import type { Details } from "../../details/details.ts";
 import type { Assets } from "../../assets/assets.ts";
 import { BONE_FLOATS, DRAW_EMISSIVE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_DRAWS, TRANSIENT_BUFFER } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
@@ -118,8 +119,11 @@ export class AirSupport implements Pass {
   private readonly meshes: Record<AirPiece, number>;
 
   private readonly blur: RotorBlur;
+  private readonly details: Details;
+  private readonly wash = new Map<number, number>();
 
-  constructor(assets: Assets, blur: RotorBlur) {
+  constructor(assets: Assets, blur: RotorBlur, details: Details) {
+    this.details = details;
     this.blur = blur;
     this.meshes = Object.fromEntries(AIR_PIECES.map((k) => [k, assets.table.find(airMesh(k))])) as Record<AirPiece, number>;
   }
@@ -140,6 +144,7 @@ export class AirSupport implements Pass {
       this.duration = Math.max(1, Math.min(260, ((view.tick - (prior?.tick ?? view.tick)) * 1000) / TICK_RATE));
       this.received = view;
       this.began = f.now;
+      for (const id of this.wash.keys()) if (!this.carriers.has(id)) this.wash.delete(id);
       for (const id of this.wheels.keys()) if (!this.pods.has(id)) this.wheels.delete(id);
     }
     this.share = Math.min(1, Math.max(0, (f.now - this.began) / this.duration));
@@ -149,6 +154,7 @@ export class AirSupport implements Pass {
       if (!this.origin(row, prev, 12)) continue;
       this.scale = ease(Math.min(1, Math.max(0, (540 - Math.hypot(this.x, this.y, this.z)) / 70)));
       if (this.scale < 0.002) continue;
+      this.downwash(row);
       drawAirCarrier(this.piece, row, lerp(prev?.jaws ?? row.jaws, row.jaws, this.share), this.tick * 0.73 + row.id);
     }
     for (const row of view.pods) {
@@ -171,6 +177,24 @@ export class AirSupport implements Pass {
       if (row.id === view.flight) continue;
       const prev = this.drones.get(row.id);
       if (this.origin(row, prev, 1)) this.piece("drone", 0, 0, 0, 0, lerp(prev?.pitch ?? row.pitch, row.pitch, this.share));
+    }
+  }
+
+  private downwash(row: AirCarrier): void {
+    if (Math.hypot(this.x, this.y, this.z) > 85 || this.tick - (this.wash.get(row.id) ?? -Infinity) < 13) return;
+    const cam = this.f.cam,
+      hf = this.f.world.hf;
+    const x = cam.x + this.x,
+      y = cam.y + this.y,
+      z = cam.z + this.z;
+    const ground = hf.heightAt(x, z),
+      above = y + A.carrierY - ground;
+    if (above > 11 || above < 0 || hf.waterAt(x, z) > ground + 0.02) return;
+    this.wash.set(row.id, this.tick);
+    for (const s of SIDES) {
+      const wx = x + this.s * s * A.rotorZ,
+        wz = z + this.c * s * A.rotorZ;
+      this.details.groundDust(row.id * 2 + (s > 0 ? 1 : 0), wx, hf.heightAt(wx, wz), wz, this.tick, 1.15 + (11 - above) * 0.08, 2, 4);
     }
   }
 

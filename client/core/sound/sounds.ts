@@ -160,6 +160,7 @@ export class Sounds {
   private readonly crowd = new Map<number, number>();
   private readonly loops = new Map<number, Looping>();
   /** What the supply drops are heard by, and the capsule's number among the owners. */
+  private readonly airLoop = (id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean): void => this.loop(id, owner, key, x, y, z, level, on, flat);
   private readonly airSounds = new AirSounds();
   private readonly helicopter: number;
   private readonly supply = new SupplySounds();
@@ -318,8 +319,6 @@ export class Sounds {
    * Keeps a looping sound `id` playing while it is asked for each frame with `on`, fading in to `level`; one not asked
    * for, or asked for with `on` false, fades out and stops.
    */
-  private readonly airLoop = (id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean): void => this.loop(id, owner, key, x, y, z, level, on, flat);
-
   loop(id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean): void {
     let l = this.loops.get(id);
     if (!on) {
@@ -357,7 +356,7 @@ export class Sounds {
         if (l.serial !== 0) this.library.played(l.sound);
       } else if (l.serial !== 0) {
         this.library.played(l.sound);
-        if (!this.mixer.gain(l.serial, l.level)) l.serial = 0;
+        if (!this.mixer.gain(l.serial, l.level, l)) l.serial = 0;
       }
       if (l.target === 0 && l.level <= 0.001) {
         if (l.serial !== 0) this.mixer.end(l.serial, this.packet);

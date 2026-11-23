@@ -219,10 +219,11 @@ export class Mixer {
   }
 
   /** Changes a playing voice's gain before distance, as a bed fades in or out. False if the voice is gone. */
-  gain(serial: number, level: number): boolean {
+  gain(serial: number, level: number, at?: Ear): boolean {
     for (let v = 0; v < VOICES; v++) {
       if (this.serial[v] !== serial) continue;
       this.level[v] = level;
+      if (at) { this.x[v] = at.x; this.y[v] = at.y; this.z[v] = at.z; }
       return true;
     }
     return false;
