@@ -28,8 +28,9 @@ test("Concept 003 sheds close detail at street distances and keeps it under zoom
     });
     return [...drawn];
   };
-  expect([20, 55, 57, 123, 125, 93, 90, 42, 40].map(d => at(d))).toEqual([[0], [0], [1], [1], [2], [2], [1], [1], [0]]);
-  expect(at(80, 35)).toEqual([0]);
+  expect([10, 22, 23, 123, 125, 93, 90, 17, 16].map(d => at(d))).toEqual([[0], [0], [1], [1], [2], [2], [1], [1], [0]]);
+  expect(at(80)).toEqual([1]);
+  expect(at(80, 15)).toEqual([0]);
   expect(at(80)).toEqual([1]);
   expect([150, 285, 420, 555].map(d => at(d))).toEqual([[2], [3], [4], [5]]);
   const physical = pack.header.meshes[mesh]!.lods.map(l => l.error);
