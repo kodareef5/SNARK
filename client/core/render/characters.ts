@@ -24,7 +24,7 @@ import { quatAxis, quatMul, quatMulConj, quatRotate } from "../../../shared/math
 import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
-import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
+import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, lookLift, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
@@ -319,6 +319,8 @@ export class Characters {
   seatedHeadTurn = 0;
   /** The rest joints of the body hits are judged on, for the body being posed. */
   private standard: Float32Array = HUMAN.rest;
+  /** The joint offsets a body on foot is posed with (look.ts lookJoints). */
+  private readonly joints = new Float32Array(HUMAN_BONES * 3);
   readonly tireContacts = new TireContacts();
   readonly windscreens = new Windscreens();
   readonly rotorBlur = new RotorBlur();
@@ -1530,7 +1532,10 @@ export class Characters {
           this.lain(fallen, x + p.camX, y + p.camY, z + p.camZ, yaw, set.rest, this.lying);
           blendPose(this.pose, this.lying, this.pose, t * t * (3 - 2 * t));
         }
-        if (fallen) solve(HUMAN, this.pose, solved, set.rest, scales);
+        if (fallen) {
+          lookJoints(set.rest, scales, this.joints);
+          solve(HUMAN, this.pose, solved, set.rest, scales, this.joints);
+        }
         this.posingId = -1;
       }
       if (seat) {
@@ -1723,7 +1728,10 @@ export class Characters {
     // Longer legs lift the hips, so the feet stay on the ground.
     if (scales && !seat && !vehicleSeat && !impaled) this.pose.root[1]! += lookLift(scales, set.rest);
     this.spring(this.pose, solved);
-    solve(HUMAN, this.pose, solved, set.rest, scales);
+    // On foot its joints over the hips are the hit body's, so its head goes where shots are judged (look.ts).
+    const onFoot = !seat && !vehicleSeat && !impaled;
+    if (onFoot) lookJoints(set.rest, scales, this.joints);
+    solve(HUMAN, this.pose, solved, set.rest, scales, onFoot ? this.joints : undefined);
     if (rider?.profile && seat) fitRiderControls(this.pose, solved, set.rest, scales, rider.targets, steers, undefined, soles, grips);
     if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
   }
