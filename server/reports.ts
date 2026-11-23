@@ -43,6 +43,12 @@ const NUMBERED = /^\d{4,}$/;
 /** A multipart form as a request reads it. */
 type Form = Awaited<ReturnType<Request["formData"]>>;
 
+/** The session a page's voice token names, as `sender` finds it, given as its speaker slot and its bytes in hex ("3:0a1b…"); else null. */
+export function tokenSender<S>(text: string, sender: (slot: number, token: Uint8Array) => S | null): S | null {
+  const token = /^(\d{1,5}):([0-9a-f]+)$/.exec(text);
+  return token && token[2]!.length === TOKEN_BYTES * 2 ? sender(Number(token[1]), Uint8Array.from(token[2]!.match(/../g)!, (h) => parseInt(h, 16))) : null;
+}
+
 /** The reports in `dir`, by id, lowest first. */
 export function reportIds(dir: string): number[] {
   return existsSync(dir) ? readdirSync(dir).filter((n) => NUMBERED.test(n)).map(Number).sort((a, b) => a - b) : [];
@@ -153,8 +159,7 @@ export class ReportStore {
     } catch {
       return text(400, "not a multipart form");
     }
-    const token = /^(\d{1,5}):([0-9a-f]+)$/.exec(String(form.get("token") ?? ""));
-    const sender = token && token[2]!.length === TOKEN_BYTES * 2 ? server.sender(Number(token[1]), Uint8Array.from(token[2]!.match(/../g)!, (h) => parseInt(h, 16))) : null;
+    const sender = tokenSender(String(form.get("token") ?? ""), (slot, token) => server.sender(slot, token));
     if (!sender) return text(403, "this session is not one the server knows: reload the page");
     if (!sender.admin) return text(403, "notes are an admin's: enablecheats first");
     return this.take(form, sender, server);
