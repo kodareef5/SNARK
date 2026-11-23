@@ -62,7 +62,7 @@ export function partChunk(frame: Frame, p: Part, bare = false): Chunk {
 /** Parts cut in two at `u`, so a cut in one half of a piece leaves the other half's parts alone. */
 export function splitAt(parts: readonly Part[], u: number): Part[] {
   return parts.flatMap((p): Part[] => {
-    if (p.hull || p.r[0] >= u - 1e-5 || p.r[1] <= u + 1e-5) return [p];
+    if (p.hull || p.loose || p.r[0] >= u - 1e-5 || p.r[1] <= u + 1e-5) return [p];
     return [{ ...p, r: [p.r[0], u, p.r[2], p.r[3]] }, { ...p, r: [u, p.r[1], p.r[2], p.r[3]] }];
   });
 }
@@ -79,18 +79,22 @@ export interface Cut {
 /** Whether a part's box and the plan's mouth share any area. */
 const mouthed = (plan: Plan, r: Rect): boolean => plan.shards.some((s) => meet(s, rectPoly(r)).length > 0);
 
-/** Cuts `parts` by `plan`. */
-export function cut(frame: Frame, parts: readonly Part[], plan: Plan): Cut {
+/** Cuts `parts` by a plan, or by several whose windows do not overlap: a part is cut by the one whose mouth reaches it. */
+export function cut(frame: Frame, parts: readonly Part[], plans: Plan | readonly Plan[]): Cut {
   const boxes: ShapeBox[] = [], chunks: Chunk[] = [], fragments: Chunk[][] = [], panes: ShapeBox[] = [];
+  const list: readonly Plan[] = Array.isArray(plans) ? plans : [plans as Plan];
+  const byShard = new Map<readonly Pt[], Chunk[]>();
   for (const p of parts) {
-    const inside = rectMeet(p.r, plan.window);
-    if (!inside || !mouthed(plan, inside)) {
+    const plan = list.find((q) => { const r = rectMeet(p.r, q.window); return r !== null && mouthed(q, r); });
+    const inside = plan ? rectMeet(p.r, plan.window) : null;
+    if (!plan || !inside) {
       if (p.hull) chunks.push(partChunk(frame, p));
       else boxes.push(partBox(frame, p));
       continue;
     }
     if (p.glass) { panes.push(partBox(frame, p)); continue; }
-    if (p.loose) { fragments.push([partChunk(frame, p)]); continue; }
+    // A bevelled part is not cut either: its bevel would be lost.
+    if (p.loose || p.hull) { fragments.push([partChunk(frame, p)]); continue; }
     for (const r of rectLess(p.r, plan.window)) boxes.push(boxOf(frame, r, p.w0, p.w1, p.color));
     const held = rectPoly(inside);
     const solid = (poly: readonly Pt[]): Chunk => ({ corners: prism(poly, p.w0, p.w1, frame.to), ...(p.color !== undefined ? { color: p.color } : {}), bare: true });
@@ -101,9 +105,13 @@ export function cut(frame: Frame, parts: readonly Part[], plan: Plan): Cut {
       if (r) boxes.push(boxOf(frame, r, p.w0, p.w1, p.color));
       else for (const part of atMost(poly, 6)) chunks.push(solid(part));
     }
+    // One shard of the plane is one thing that leaves, whatever parts it is made of.
     for (const shard of plan.shards) {
       const poly = meet(shard, held);
-      if (poly.length > 0) for (const part of atMost(poly, 6)) fragments.push([solid(part)]);
+      if (poly.length === 0) continue;
+      let group = byShard.get(shard);
+      if (!group) { group = []; byShard.set(shard, group); fragments.push(group); }
+      for (const part of atMost(poly, 6)) group.push(solid(part));
     }
   }
   return { look: { boxes, chunks }, fragments, panes };
