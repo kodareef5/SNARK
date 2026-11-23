@@ -21,8 +21,9 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
-import { lookDirection } from "../../shared/world/ray.ts";
+import { HIT_NONE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
+import { BreakEffects, hearStructures } from "./break-effects.ts";
 import { Controls } from "./controls.ts";
 import { pressKey } from "./key-row.ts";
 import { KEY_ROWS } from "./keys.ts";
@@ -111,8 +112,11 @@ export class App {
   private readonly shotSample = new RemoteSample();
   readonly shots: Shots;
   readonly supply: SupplyView;
+  /** Dust, chips and sounds for what breaks, a cell of pieces at a time (break-effects.ts). */
+  readonly breaks: BreakEffects;
   /** Null until the world arrives. */
   falling: Falling | null = null;
+  private swapsHeard = false;
   /** The aim and any sight raised: a scope, the spyglass, a helmet's visor (sight.ts). What the keys' rows and the tests read of it is forwarded. */
   readonly sight = new Sight();
   get visor(): Visor { return this.sight.visor; }
@@ -256,6 +260,9 @@ export class App {
     void import("./ui/storage.ts").then((m) => (this.ui.storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
     this.shots = new Shots(reg, pack);
     this.supply = new SupplyView(reg, pack);
+    this.breaks = new BreakEffects(reg, pack.palette);
+    // Whoever else follows structure rows adds itself the same way; each is told in the order it was added.
+    hearStructures(session, (was, kind, x, y, z, hpWas, hp) => this.breaks.row(this.reg, session.serverTick, was, kind, x, y, z, hpWas, hp));
     const nodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
     session.onNode = (chunk, index, used, crushed, priorForm) => {
       const field = session.nodeField;
@@ -739,7 +746,15 @@ export class App {
       this.scene.supply = this.supply;
       this.ui.emotes.has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
-      this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
+      this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z), {
+        reg: this.reg,
+        floorUnder: (x, y, z) => (castWorld(world, x, y, z, 0, -1, 0, 512, true) === HIT_NONE ? world.hf.heightAt(x, z) : y - rayHit.t),
+        structs: world.structs,
+        mapKind: (chunk, slot) => session.mapKind(chunk, slot),
+      });
+      // A city piece taking a form in place throws what leaves it.
+      if (!this.swapsHeard) hearStructures(session, (was, kind, x, y, z, _hpWas, _hp, cause) => this.falling?.swap(was, kind, x, y, z, cause));
+      this.swapsHeard = true;
       const chart = (hud.chart = new Chart(world.hf, this.pack.palette));
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
@@ -791,11 +806,14 @@ export class App {
     }
     this.supply.list = session.supply;
     this.supply.tick = session.tickClock;
-    this.falling!.absorb(session.rubble, sceneMs, cam.x, cam.y, cam.z);
+    this.breaks.take(session.rubble);
+    this.breaks.flush(scene.details, scene.assets.tier, session.renderClock - session.remoteDelay, cam.x, cam.y, cam.z, this.sounds?.build ?? null, this.sight);
+    // Fragments count from their break's tick by the clock this client hears the server's ticks on.
+    this.falling!.absorb(session.rubble, sceneMs, cam.x, cam.y, cam.z, session.renderClock);
     // Collapses told from afar: a column of dust over each (render/dust-columns.ts).
     for (const fell of session.collapses) scene.dust.add(fell, sceneMs);
     session.collapses.length = 0;
-    this.falling!.step(sceneMs);
+    this.falling!.step(sceneMs, session.renderClock);
     const beams = scene.beams;
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);

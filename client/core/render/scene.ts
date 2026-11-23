@@ -604,7 +604,7 @@ export class Scene {
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dust.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
-    this.looseEntities = new LooseEntities(reg, this.assets, this.packet, this.put, this.transient, this.hiding, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, pitched: this.pitched, capsuleKind: this.supplyDrops.kind, characters: this.characters, clouds: this.clouds, dropped: this.dropped });
+    this.looseEntities = new LooseEntities(reg, this.assets, this.packet, this.put, this.transient, this.hiding, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, regionsOfKind: this.regionsOfKind, pitched: this.pitched, capsuleKind: this.supplyDrops.kind, characters: this.characters, clouds: this.clouds, dropped: this.dropped });
     let reach = 0;
     for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
     this.bodySlack = reach * 2;
@@ -678,6 +678,7 @@ export class Scene {
     this.layers.landmarks?.reset();
     this.waters.reset();
     this.layers.blocks?.reset();
+    this.looseEntities.reset();
     this.casting.cascades.clear();
     this.layers.farShadow?.reset();
   }
