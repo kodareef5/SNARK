@@ -105,6 +105,13 @@ export class CityCollapse implements CitySupport {
     return this.doubts.size;
   }
 
+  /** Buildings in doubt that have not been judged yet. */
+  get unjudged(): number {
+    let n = 0;
+    for (const d of this.doubts.values()) if (!d.verdict) n++;
+    return n;
+  }
+
   /** Whether the building of this id is in doubt. */
   doubted(id: number): boolean {
     return this.doubts.has(id);
