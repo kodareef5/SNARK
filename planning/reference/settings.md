@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 570 of them: 204 take effect,
+is listed here, 572 of them: 206 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -161,6 +161,8 @@ the admin's settings page may change a setting without a restart.
 | `CityCollapse` | True | A building of the map comes down when what carried it is broken: a second after the loss, the pieces left standing on nothing fall two storeys every quarter second, lowest first, slabs beside what still stands hang, and what lands on something standing is left as a heap. Stairs never fall. Off, pieces break and nothing falls: what was over them stays where it was. A map built without its buildings acts as off. *Ours. ARK's maps do not break.* | yes |
 | `CityCollapseMostAtOnce` | 8 | The most buildings of the map that come down at once. Past it a building that has lost what carried it waits as it stands, and falls when another has finished. *Ours.* | yes |
 | `CityCollapseDamage` | 1 | What a storey of the map coming down does to a body under it: 35 health for each quarter second it is under one, times this. 0 harms none. *Ours. Dealt as a fall is, so a module is asked of it as of a fall.* | yes |
+| `CityRegrowDays` | 7 | Days of the game's clock after a building of the map was last harmed before it returns whole, as the map placed it. It returns only while no survivor is within CityRegrowClearDistance, nothing a tribe built stands in it, no body is where a piece would return and it is not coming down. Broken pieces of no building return the same way. 0 brings nothing back. *Ours. A building is the unit, so a tower never returns half.* | yes |
+| `CityRegrowClearDistance` | 256 | Metres. Nothing of the map returns while a survivor is this near it. *Ours. Past the 192 m a client is sent pieces within, so none sees one return.* | yes |
 | `CityBreaksPerMinute` | 600 | The most pieces of the map one survivor may break in a minute: each change of form, fall or emptied slot counts one, a mount's against its rider. Past it, that survivor's hits on the map do nothing until it refills, evenly through the minute. *Ours.* | yes |
 | `RubbleYieldMultiplier` | 1 | What a heap gives when mined. Higher is more. HarvestAmountMultiplier does not apply to a heap. *Ours.* | yes |
 

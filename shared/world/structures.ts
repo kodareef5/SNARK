@@ -648,6 +648,43 @@ export class StructureStore {
     return true;
   }
 
+  /**
+   * Sets the first `n` map slots of `slots` in `chunk` back as the map set them down: each its piece, owned by nobody, at
+   * its kind's health. The chunk changes version once and tells its shape listeners once; a slot that is as the map has
+   * it is passed over. What differs is counted again, so the list of changed slots, the far lists made from it and the
+   * save all follow, and a chunk wholly healed stands as placed. Returns how many were set back. Authority only.
+   */
+  heal(chunk: number, slots: ArrayLike<number>, n = slots.length): number {
+    const t = this.chunks[chunk];
+    if (!t || !this.placedKinds) return 0;
+    let healed = 0, shaped = false;
+    this.hold();
+    for (let i = 0; i < n; i++) {
+      const slot = slots[i]!;
+      if (slot >= t.mapped || !this.differsAt(t, slot)) continue;
+      if (healed++ === 0) t.version++;
+      const kind = this.placedKinds[t.map![slot]!]!, hp = this.placedHp![kind]!;
+      const was = t.kind[slot]!;
+      if (was === kind) {
+        // Its health or its owner alone: the grid and what is drawn stand.
+        t.owner[slot] = 0;
+        t.hp[slot] = hp;
+        this.tally(t, slot, true);
+        t.mod[slot] = t.version;
+        t.touch(slot, 0);
+        continue;
+      }
+      // An emptied slot is set down again; a form or a heap is changed where it stands.
+      if (was !== 0) this.erase(chunk, t, slot, t.version, true);
+      this.write(chunk, t, slot, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, 0, hp, t.version, was !== 0);
+      t.touch(slot, was !== 0 ? TOUCH_KIND : TOUCH_MOVED);
+      shaped = true;
+    }
+    if (healed > 0) this.onChunkChanged?.(chunk, !shaped);
+    this.release();
+    return healed;
+  }
+
   /** Removes the structure at 0 health. Returns the health left (0 if it is gone), or -1 if there is no such structure. Authority only. */
   damage(ref: number, points: number, stamp = 0): number {
     const chunk = Math.floor(ref / 65536);

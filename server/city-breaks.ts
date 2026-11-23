@@ -83,6 +83,8 @@ export class CityBreaks {
   private refs = new Uint32Array(64);
   /** Set by the host where buildings are judged for support. */
   support: CitySupport | null = null;
+  /** Told of each city piece harmed, for the clock its return is counted by (server/city-regrow.ts). */
+  onHarm: ((ref: number) => void) | null = null;
   /** Of the last hit: the health left (0 for a piece gone), and whether the piece changed form, fell or was emptied. */
   left = 0;
   broke = false;
@@ -237,6 +239,7 @@ export class CityBreaks {
   /** The piece keeps its form with `left` health: told to clients only where its stage or its panes change. */
   private keep(ref: number, mapKind: number, was: number, left: number): number {
     const reg = this.ctx.world.reg, structs = this.ctx.world.structs;
+    this.onHarm?.(ref);
     if (shows(reg, mapKind, was) !== shows(reg, mapKind, left)) structs.mend(ref, left);
     else {
       structs.wear(ref, left);
@@ -252,6 +255,7 @@ export class CityBreaks {
     const t = world.structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
     const kind = formKind(world.reg, mapKind, form, variantAt(t.x[slot]!, t.y[slot]!, t.z[slot]!));
     world.structs.swap(ref, kind, health);
+    this.onHarm?.(ref);
     this.support?.changed(ref, false);
     this.spend(by);
     this.left = health;
@@ -261,6 +265,7 @@ export class CityBreaks {
   /** The piece is out of health. It falls to its heap or to nothing if `heaps`, else it is gone: now, or with the blast being gathered. */
   private fell(by: EntityRecord | null, ref: number, heaps: boolean, x: number, y: number, z: number, was: number): number {
     this.spend(by);
+    this.onHarm?.(ref);
     this.left = 0;
     (heaps ? this.falls : this.gone).push(ref);
     if (!this.gathering) this.drop(GONE_DESTROYED, x, y, z, 0);
@@ -407,6 +412,7 @@ export class CityBreaks {
       if (n > 0) items?.mint(by, y.item, n, 0, 0, -1, "harvest");
     }
     progression?.addXp(by, HEAP_XP * force, XP_HARVEST);
+    this.onHarm?.(ref);
     if (left > 0) {
       structs.wear(ref, left);
       this.silent++;
@@ -448,6 +454,7 @@ export class CityBreaks {
     }
     const half = reg.ramEnergy[material]! * tough;
     const through = half > 0 && energy - spent >= half && !(material === this.concrete && BEARING.has(reg.breakFamily[mapKind]!));
+    if (spent > 0) this.onHarm?.(ref);
     if (!through) {
       // The panes alone: news, as their going is seen.
       if (spent > 0) structs.mend(ref, left);

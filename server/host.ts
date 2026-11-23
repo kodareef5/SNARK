@@ -61,6 +61,7 @@ import { Console, OP_ADMIN } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs } from "./buffs.ts";
 import { CityCollapse } from "./city-collapse.ts";
+import { CityRegrow } from "./city-regrow.ts";
 import { Combat, type Source } from "./combat.ts";
 import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { Creatures } from "./creatures.ts";
@@ -249,6 +250,8 @@ export interface Host {
   readonly carReturn: CarReturn | null;
   /** The map's buildings coming down where what carried them broke (server/city-collapse.ts). */
   readonly cityCollapse: CityCollapse;
+  /** The map's buildings returning whole when nobody is near (server/city-regrow.ts). */
+  readonly cityRegrow: CityRegrow;
   /** Supply drops, and the drop book they are rolled from (server/supply.ts). */
   readonly supply: Supply;
   readonly supplyBook: BookStore;
@@ -679,9 +682,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
   };
   // A building's support is judged where its pieces break, and after a load where a save holds them broken.
-  const cityCollapse = new CityCollapse({ world, rules, game, records, survival, city: combat.city });
+  const cityCollapse: CityCollapse = new CityCollapse({ world, rules, game, records, survival, city: combat.city, harmed: (ref) => cityRegrow.harmed(ref) });
   combat.city.support = cityCollapse;
   cityCollapse.begin();
+  // What was harmed returns when nobody is near, by the game's clock from its last harm.
+  const cityRegrow = new CityRegrow({ world, rules, game, busy: (id) => cityCollapse.doubted(id) });
+  combat.city.onHarm = (ref) => cityRegrow.harmed(ref);
+  cityRegrow.begin(persistence && !loaded!.fresh ? (persistence.store.meta("cityRegrow") as string | null) : null);
+  persistence?.sidecar("cityRegrow", cityRegrow.saved);
   const trees = harvest ? new VehicleTrees(world, harvest, combat.city, () => records.byPid.get(game.players.driving) ?? null) : null;
   if (trees) game.players.vehicleStep = trees.step;
   const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.players.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by),
@@ -1819,6 +1827,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     mark(PART.spawner),
     build,
     cityCollapse,
+    cityRegrow,
     mark(PART.build),
     taming,
     breeding,
@@ -1895,6 +1904,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     spawner,
     carReturn,
     cityCollapse,
+    cityRegrow,
     supply,
     supplyBook,
     beds,

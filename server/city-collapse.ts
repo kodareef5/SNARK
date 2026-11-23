@@ -44,6 +44,8 @@ export interface CollapseContext {
   readonly records: Records;
   readonly survival: Survival;
   readonly city: CityBreaks;
+  /** Told of a piece of each building a wave took from, for the clock its return is counted by. */
+  readonly harmed?: (ref: number) => void;
 }
 
 /** A building in doubt. */
@@ -101,6 +103,11 @@ export class CityCollapse implements CitySupport {
   /** Buildings in doubt, and of them those coming down. */
   get waiting(): number {
     return this.doubts.size;
+  }
+
+  /** Whether the building of this id is in doubt. */
+  doubted(id: number): boolean {
+    return this.doubts.has(id);
   }
 
   get falling(): number {
@@ -356,6 +363,7 @@ export class CityCollapse implements CitySupport {
     rest.clear();
     structs.release();
     if (n > 0) this.crush(d, lo, hi);
+    this.ctx.harmed?.(p.ref[0]!);
     this.waves++;
     d.due = tick + WAVE_TICKS;
     if (this.lowest(d) < 0) this.settle(d);

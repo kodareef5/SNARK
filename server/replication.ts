@@ -535,6 +535,18 @@ export class Replication {
     }
   }
 
+  /**
+   * Makes each session that holds `chunk` take it again from nothing: with the map's statics, the slots still as the map
+   * has them from its own copy and the rest as rows. For a chunk set back wholesale (an admin's reset of the city).
+   */
+  refill(chunk: number): void {
+    for (const c of this.clients) {
+      if (!c || c.known[chunk] === 0) continue;
+      c.known[chunk] = 0;
+      if (c.syncChunk === chunk) c.syncChunk = -1;
+    }
+  }
+
   /** Returns the budget left, or 0 if the chunk is unfinished. */
   private sendChunk(c: Client, chunk: number, t: ChunkTable, budget: number): number {
     // One unfinished chunk keeps its place across ticks. A chunk that finishes within the tick leaves that
