@@ -107,6 +107,8 @@ import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
+import { builtinLoadouts } from "../content/loadouts.ts";
+import { LoadoutStore } from "./loadout/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
@@ -245,6 +247,8 @@ export interface Host {
   /** Supply drops, and the drop book they are rolled from (server/supply.ts). */
   readonly supply: Supply;
   readonly supplyBook: BookStore;
+  /** The loadouts new survivors are given, kept beside the save (server/loadout/store.ts). */
+  readonly loadoutBook: LoadoutStore;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -1242,6 +1246,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // drops that are live are the save's, written in the commit that writes their capsules.
   // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
   const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
+  const loadoutBook = new LoadoutStore(opts.dbPath ? `${opts.dbPath}.loadouts.json` : null, builtinLoadouts, reg, say);
   const supply = new Supply({ world, game, records, items, death, containers, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
   /** ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects. */
   const recrate = (): void => {
@@ -1859,6 +1864,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     carReturn,
     supply,
     supplyBook,
+    loadoutBook,
     beds,
     cluster,
     settled,
