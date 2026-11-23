@@ -1,5 +1,5 @@
 import { hash3 } from "./raster.ts";
-import { BREAK_AT, FACADE_AT, RUIN_SHAPES, flatRoof, pitchFinish, type FacadeModule, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { BREAK_AT, FACADE_AT, MONITOR_ROOF, RUIN_SHAPES, flatRoof, pitchFinish, type FacadeModule, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { crownOf } from "./ruin-crowns.ts";
 import { inside, Mason, SIDES, tileKey, tilesOf, type Tile } from "./ruin-geometry.ts";
 import type { Composition, Round, Rule, Vocabulary } from "./ruin-vocabulary.ts";
@@ -106,7 +106,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     }
   }
   for (const [level, row] of plates) mergeFloors(m, row, bay, base + level * 4);
-  for (const [level, row] of roofs) mergeFloors(m, row, bay, base + level * 4, ["flat", "service", "stepped"].includes(form.roof) ? flatRoof(rule.recipe) : "concrete");
+  for (const [level, row] of roofs) mergeFloors(m, row, bay, base + level * 4, flatRoof(rule.recipe, form.roof));
   const posts = new Map<string, { u: number; v: number; top: number }>();
   // Where a tower's top was torn, the storeys standing over the gap are open: their slabs, broken at the edge, and the
   // columns at the bay's ends, each once.
@@ -377,7 +377,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       for (const e of escape.slice(0, 1)) if ((tops.get(tileKey(e.i, e.j)) ?? 0) === floors) m.put("zcore", e.u + 1.5, base + height + 2, e.v, rule.finish);
     }
     if (form.roof === "hip" || form.roof === "pitched") pitched(m, cap, bay, base + height, pitchFinish(rule.recipe, rule.roofDraw ?? 1));
-    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zpitch8", r.u, base + height + 5.4, r.v, form.roof === "nave" ? "clay" : "rust"); }
+    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zpitch8", r.u, base + height + 5.4, r.v, form.roof === "nave" ? "clay" : MONITOR_ROOF); }
     if (form.front === "belfry") { m.put("zcore", t.u, base + height + 2, t.v, rule.finish); m.put("fin8", t.u, base + height + 8, t.v, rule.finish); m.put("trim4", t.u, base + height + 10, t.v, rule.finish); }
     if (height <= 20 && !["hip", "pitched", "nave"].includes(form.roof) && hash3(opts.seed, 32, 1) / 4294967296 < (rule.roofGrowth ?? 0)) {
       m.put("zcover", t.u, base + height + .55, t.v, "clay");

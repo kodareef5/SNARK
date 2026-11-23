@@ -41,8 +41,6 @@ export interface MaterialRecipe {
   readonly course?: { readonly size: readonly [number, number]; readonly bond: number; readonly joint: number; readonly depth: number; readonly tone: number; readonly dark: number };
   /** Ribs up the tile every `pitch`, `height` of the relief: a wave where `width` is 0, else a seam that wide either side. */
   readonly rib?: { readonly pitch: number; readonly width: number; readonly height: number };
-  /** What a building of it has on its flat roof's plates (content/ruins.ts): another's name. Its own without one. */
-  readonly roof?: string;
   /** It lies on faces that look up alone, a roof's: its piece's other faces are their painted finish. */
   readonly lies?: true;
   /** It is a coat over its wall: where the weathering finds the plaster lost, its relief lies down with it. A block's joints stay. */
@@ -57,19 +55,19 @@ export const MOST_MATERIALS = 12;
 export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
   // A dash coat: grit thrown on in small hard peaks over the trowel's sag, as Miami's low-rise walls are.
   {
-    name: "stucco", metres: 2, seed: 11, level: 0.3, relief: 12, rough: 0.92, hollow: 0.1, dye: 1, shade: 0.3, mottle: 0.07, roof: "gravel", coat: true, means: [0.97, 1, 0.93],
+    name: "stucco", metres: 2, seed: 11, level: 0.3, relief: 12, rough: 0.92, hollow: 0.1, dye: 1, shade: 0.3, mottle: 0.07, coat: true, means: [0.97, 1, 0.93],
     // The trowel's lumps a hand across carry the grit, so no two grains stand alike and the wall shows its lie from across a street.
     noise: [{ cell: [0.25, 0.25], height: 0.4, light: 0.1 }, { cell: [0.08, 0.08], height: 0.3, light: 0.04 }, { cell: [0.04, 0.04], height: 0.15, light: 0.02 }],
     grain: { size: 0.02, core: 0.02, radius: 0.6, height: 0.4, tone: 0.1, gap: 1, bare: 1, warm: 0 },
   },
   // Sand-float render: fine and even, the float's sweeps across it.
   {
-    name: "render", metres: 2, seed: 23, level: 0.5, relief: 4, rough: 0.8, hollow: 0.08, dye: 1, shade: 0.12, mottle: 0.05, roof: "gravel", coat: true, means: [1, 1, 0.8],
+    name: "render", metres: 2, seed: 23, level: 0.5, relief: 4, rough: 0.8, hollow: 0.08, dye: 1, shade: 0.12, mottle: 0.05, coat: true, means: [1, 1, 0.8],
     noise: [{ cell: [0.5, 0.5], height: 0.15, light: 0 }, { cell: [0.5, 0.125], height: 0.6, light: 0.06, warp: 0.8 }, { cell: [0.0125, 0.0125], height: 0.15, light: 0.03 }],
   },
   // Painted concrete block, 400 by 200 mm in running bond, its joints struck back and its faces pitted.
   {
-    name: "block", metres: 1.6, seed: 37, level: 0.85, relief: 8, rough: 0.86, hollow: 0.1, dye: 1, shade: 0.1, mottle: 0.05, roof: "gravel", means: [1.05, 1, 0.82],
+    name: "block", metres: 1.6, seed: 37, level: 0.85, relief: 8, rough: 0.86, hollow: 0.1, dye: 1, shade: 0.1, mottle: 0.05, means: [1.05, 1, 0.82],
     noise: [{ cell: [0.0125, 0.0125], height: 0.2, light: 0.03 }, { cell: [0.1, 0.1], height: 0.06, light: 0.03 }],
     course: { size: [0.4, 0.2], bond: 0.5, joint: 0.006, depth: 0.9, tone: 0.1, dark: 0.22 },
   },
@@ -95,5 +93,3 @@ export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
 
 /** A material's number in a face's key and on the card: its place in MATERIAL_RECIPES and one; 0 for none. */
 export const materialIndex = (name: string | undefined): number => (name ? MATERIAL_RECIPES.findIndex((r) => r.name === name) + 1 : 0);
-/** What a flat roof's piece of a finish made of `name` is made of (MaterialRecipe `roof`). */
-export const roofOf = (name: string): string => MATERIAL_RECIPES.find((r) => r.name === name)?.roof ?? name;
