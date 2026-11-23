@@ -21,6 +21,12 @@ export const AIR_FRAME = {
   wheel: 0.51,
 } as const;
 export const airBayZ = (bay: number): number => (bay - 2.5) * 1.1;
+export const AIR_IMPELLERS = [
+  { x: -0.36, y: 0.023, z: -0.36, turn: 1 },
+  { x: -0.36, y: 0.023, z: 0.235, turn: -1 },
+  { x: 0.36, y: 0.023, z: -0.36, turn: -1 },
+  { x: 0.36, y: 0.023, z: 0.235, turn: 1 },
+] as const;
 export const AIR_PIECES = [
   "carrier",
   "rotor",
@@ -29,6 +35,8 @@ export const AIR_PIECES = [
   "roof",
   "side",
   "drone",
+  "droneFrame",
+  "impeller",
   "chassis",
   "wheel",
   "feet",

@@ -1,7 +1,7 @@
 import { TICK_RATE } from "../../../../shared/coords.ts";
 import { AIR_BAYS, type AirCarrier, type AirDrone, type AirPod, type AirPose, type AirSupportView } from "../../../../shared/sim/air-support.ts";
 import type { VehicleRotor } from "../../../../shared/sim/vehicle.ts";
-import { AIR_FRAME as A, AIR_PIECES, airBayZ, airMesh, type AirPiece } from "../../../../shared/world/air-support-art.ts";
+import { AIR_FRAME as A, AIR_IMPELLERS, AIR_PIECES, airBayZ, airMesh, type AirPiece } from "../../../../shared/world/air-support-art.ts";
 import type { Details } from "../../details/details.ts";
 import type { Assets } from "../../assets/assets.ts";
 import { BONE_FLOATS, DRAW_EMISSIVE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_DRAWS, TRANSIENT_BUFFER } from "../packet.ts";
@@ -9,6 +9,8 @@ import type { Frame, Pass } from "../pass.ts";
 import type { RotorBlur } from "../rotor-blur.ts";
 
 const ROTOR: VehicleRotor = { bone: "rotor", ratio: 1, at: [0, 0, 0], axis: [0, 1, 0], radius: A.rotorRadius, blur: { blades: 3, chord: 0.23 } };
+const CARRIER_RPM = 210;
+const ROTOR_TURN_PER_TICK = CARRIER_RPM * Math.PI * 2 / (60 * TICK_RATE);
 const IDENTITY = new Float64Array([0, 0, 0, 1]);
 const SIDES = [-1, 1] as const;
 const JAWS = [-A.jawZ, A.jawZ] as const;
@@ -26,6 +28,7 @@ type Piece = (
   roll?: number,
   dye?: number,
   rotor?: number,
+  localSpin?: number,
 ) => void;
 
 /** A positive roll lifts the right edge of the pod; positive pitch raises a drone's nose. */
@@ -55,11 +58,12 @@ export function drawAirPod(
   slots: number,
   selected: number,
   wheels: number,
+  legLift = hitched ? 0.42 : 0,
 ): void {
   const floor = trailer ? A.deck : 0;
   if (trailer) {
     piece("chassis", 0, 0, 0);
-    if (!hitched) piece("feet", 0, 0, 2.3);
+    piece("feet", 0, legLift, 2.3);
     for (const z of A.axle) for (const s of SIDES) piece("wheel", s * 1.07, A.wheel, z, s > 0 ? 0 : Math.PI, wheels * s);
   }
   piece("pod", 0, floor, 0);
@@ -103,7 +107,7 @@ export class AirSupport implements Pass {
   private readonly carriers = new Map<number, AirCarrier>();
   private readonly pods = new Map<number, AirPod>();
   private readonly drones = new Map<number, AirDrone>();
-  private readonly wheels = new Map<number, { x: number; z: number; angle: number }>();
+  private readonly gear = new Map<number, { x: number; z: number; angle: number; lift: number; at: number }>();
   private began = 0;
   private duration = 1;
   private share = 1;
@@ -145,7 +149,7 @@ export class AirSupport implements Pass {
       this.received = view;
       this.began = f.now;
       for (const id of this.wash.keys()) if (!this.carriers.has(id)) this.wash.delete(id);
-      for (const id of this.wheels.keys()) if (!this.pods.has(id)) this.wheels.delete(id);
+      for (const id of this.gear.keys()) if (!this.pods.has(id)) this.gear.delete(id);
     }
     this.share = Math.min(1, Math.max(0, (f.now - this.began) / this.duration));
     for (const row of view.carriers) {
@@ -155,28 +159,49 @@ export class AirSupport implements Pass {
       this.scale = ease(Math.min(1, Math.max(0, (540 - Math.hypot(this.x, this.y, this.z)) / 70)));
       if (this.scale < 0.002) continue;
       this.downwash(row);
-      drawAirCarrier(this.piece, row, lerp(prev?.jaws ?? row.jaws, row.jaws, this.share), this.tick * 0.73 + row.id);
+      drawAirCarrier(this.piece, row, lerp(prev?.jaws ?? row.jaws, row.jaws, this.share), this.tick * ROTOR_TURN_PER_TICK + row.id);
     }
     for (const row of view.pods) {
       const prev = this.pods.get(row.id);
       if (!this.origin(row, prev, 8)) continue;
-      let wheel = 0;
+      let wheel = 0, lift = 0;
       if (row.trailer) {
         const wx = this.x + f.cam.x,
           wz = this.z + f.cam.z;
-        let was = this.wheels.get(row.id);
-        if (!was) this.wheels.set(row.id, (was = { x: wx, z: wz, angle: 0 }));
+        let was = this.gear.get(row.id);
+        const targetLift = row.hitched ? 0.42 : 0;
+        if (!was) {
+          was = { x: wx, z: wz, angle: 0, lift: this.carriers.get(row.id)?.loaded ? 0 : targetLift, at: f.now };
+          this.gear.set(row.id, was);
+        }
+        const travel = Math.max(0, f.now - was.at) * 0.00033;
+        lift = was.lift + Math.max(-travel, Math.min(travel, targetLift - was.lift));
+        was.lift = lift;
+        was.at = f.now;
         wheel = was.angle + ((wx - was.x) * this.s + (wz - was.z) * this.c) / A.wheel;
         was.x = wx;
         was.z = wz;
         was.angle = wheel % (Math.PI * 2);
       }
-      drawAirPod(this.piece, row.trailer, row.hitched, lerp(prev?.open ?? row.open, row.open, this.share), row.slots, row.selected, wheel);
+      drawAirPod(this.piece, row.trailer, row.hitched, lerp(prev?.open ?? row.open, row.open, this.share), row.slots, row.selected, wheel, lift);
     }
     for (const row of view.drones) {
       if (row.id === view.flight) continue;
       const prev = this.drones.get(row.id);
-      if (this.origin(row, prev, 1)) this.piece("drone", 0, 0, 0, 0, lerp(prev?.pitch ?? row.pitch, row.pitch, this.share));
+      if (!this.origin(row, prev, 1)) continue;
+      const pitch = lerp(prev?.pitch ?? row.pitch, row.pitch, this.share);
+      const close = Math.hypot(this.x, this.y, this.z) < 32;
+      if (close && (f.tier.name === "high" || f.tier.name === "ultra")) this.drawFlyingDrone(row.id, pitch);
+      else this.piece("drone", 0, 0, 0, 0, pitch);
+    }
+  }
+
+  private drawFlyingDrone(id: number, pitch: number): void {
+    this.piece("droneFrame", 0, 0, 0, 0, pitch);
+    const c = Math.cos(pitch), s = Math.sin(pitch);
+    for (const hub of AIR_IMPELLERS) {
+      const spin = hub.turn * (this.tick * 1.31 + id);
+      this.piece("impeller", hub.x, c * hub.y + s * hub.z, c * hub.z - s * hub.y, 0, pitch, 0, 0, -1, spin);
     }
   }
 
@@ -211,7 +236,7 @@ export class AirSupport implements Pass {
     return !radius || Math.hypot(this.x, this.y, this.z) - radius <= this.f.view;
   }
 
-  private readonly piece: Piece = (name, x, y, z, yaw = 0, pitch = 0, roll = 0, dye = 0, rotor = -1) => {
+  private readonly piece: Piece = (name, x, y, z, yaw = 0, pitch = 0, roll = 0, dye = 0, rotor = -1, localSpin = 0) => {
     const f = this.f,
       p = f.packet,
       mesh = this.meshes[name];
@@ -245,11 +270,19 @@ export class AirSupport implements Pass {
     const bone = p.boneCount++,
       b = bone * BONE_FLOATS;
     airBasis(p.bones, b, this.yaw + yaw, pitch, roll);
+    if (localSpin !== 0) {
+      const c = Math.cos(localSpin), s = Math.sin(localSpin);
+      for (let j = b; j < b + 12; j += 4) {
+        const x = p.bones[j]!, z = p.bones[j + 2]!;
+        p.bones[j] = c * x - s * z;
+        p.bones[j + 2] = s * x + c * z;
+      }
+    }
     if (this.scale !== 1) for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) p.bones[b + row * 4 + col]! *= this.scale;
     p.bones[b + 3] = cx;
     p.bones[b + 7] = cy;
     p.bones[b + 11] = cz;
-    if (rotor >= 0 && f.tier.lit && this.blur.add(p, bone, -1 - this.id * 2 - rotor, ROTOR, 390, IDENTITY, cx, cy, cz, this.scale)) return;
+    if (rotor >= 0 && f.tier.lit && this.blur.add(p, bone, -1 - this.id * 2 - rotor, ROTOR, CARRIER_RPM, IDENTITY, cx, cy, cz, this.scale)) return;
     const first = p.transientCount++;
     f.transient.setSkinned(first, bone, dye);
     p.transientIds[first] = 0;

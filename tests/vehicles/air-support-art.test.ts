@@ -40,7 +40,7 @@ function stage() {
 
 test("the freight models keep their silhouettes and share one finish atlas", () => {
   const maps = readMaps(airMaterial);
-  expect([maps.base?.width, maps.normal?.width, maps.mro?.width]).toEqual([256, 256, 256]);
+  expect([maps.base?.width, maps.normal?.width, maps.mro?.width]).toEqual([512, 512, 512]);
   for (const mesh of meshes)
     for (const lod of mesh.lods) {
       expect(lod.positions.every(Number.isFinite)).toBe(true);
@@ -63,6 +63,7 @@ test("the carrier shows four grips, wheel gear and two rotor discs", () => {
   expect(count("wheel")).toBe(4);
   expect(count("roof")).toBe(1);
   expect(scene.characters.rotorBlur.count).toBe(2);
+  expect(count("rotor")).toBe(2);
   scene.assets.tier = tierOf("lowpoly");
   draw();
   expect(count("rotor")).toBe(2);
@@ -77,11 +78,15 @@ test("a late observer sees occupied bays and the pilot sees through their drone"
   view.pods.push({ ...carrier, hitched: true, open: 1, slots: 0b110101, selected: 2 });
   view.drones.push({ ...carrier, id: 24, pitch: 0.1, fuel: 0.8, bay: 3 });
   draw();
-  expect(count("drone")).toBe(5);
+  expect(count("drone")).toBe(4);
+  expect(count("droneFrame")).toBe(1);
+  expect(count("impeller")).toBe(4);
   expect(count("indicator")).toBe(6);
-  expect(count("feet")).toBe(0);
+  expect(count("feet")).toBe(1);
   view.flight = 24;
   draw();
+  expect(count("droneFrame")).toBe(0);
+  expect(count("impeller")).toBe(0);
   expect(count("drone")).toBe(4);
   view.pods[0]!.open = 0;
   draw();

@@ -1,206 +1,25 @@
-import { fileURLToPath } from "node:url";
-import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { AIR_FRAME as A, AIR_PIECES, airBayZ, airMesh, type AirPiece } from "../../shared/world/air-support-art.ts";
-import { defaultPalette, nearestColour, REGION_BASE } from "../../shared/pack/palette.ts";
-import { type SourceLod, type SourceMesh } from "./write.ts";
-
-type Point = [number, number, number];
-type Ring = [z: number, halfWidth: number, bottom: number, top: number];
-const palette = defaultPalette();
-const coat = (r: number, g: number, b: number) => nearestColour(palette, r, g, b);
-const IRON = coat(44, 53, 59),
-  SLATE = coat(68, 80, 84),
-  STEEL = coat(117, 127, 127);
-const SHELL = coat(208, 207, 185),
-  EDGE = coat(229, 225, 209),
-  GLASS = coat(36, 73, 78);
-const ORANGE = coat(212, 105, 42),
-  GOLD = coat(240, 176, 74),
-  TEAL = coat(123, 204, 207);
-const RUBBER = coat(35, 36, 38),
-  RED = coat(192, 57, 50);
-
-const swatches = [IRON, SLATE, STEEL, SHELL, EDGE, GLASS, ORANGE, GOLD, TEAL, RUBBER, RED];
-export const airMaterial = {
-  id: "core:air_support/finish",
-  name: "finish",
-  dir: fileURLToPath(new URL("../../assets/raw/air-support/", import.meta.url)),
-  spec: { base: "base.png", normal: "normal.png", packed: "finish.png" },
-};
-export const airTextures = (["base", "normal", "mro"] as const).map((role) => ({ id: airMaterial.id + "/" + role, role, top: 256 }));
-const finish: PackMaterial = {
-  id: airMaterial.id,
-  base: 0,
-  normal: 1,
-  mro: 2,
-  mask: -1,
-  mask2: -1,
-  tint: [1, 1, 1],
-  grey: 1,
-  emissive: 0,
-  flags: 0,
-  cutoff: 0,
-  span: 1,
-};
-
-class Model {
-  private readonly uv: number[] = [];
-  private readonly normals: number[] = [];
-  private readonly verts: number[] = [];
-  private readonly indices: number[] = [];
-  private readonly colors: number[] = [];
-
-  readonly level: number;
-  constructor(level: number) {
-    this.level = level;
-  }
-
-  face(points: Point[], color: number): void {
-    const start = this.verts.length / 3;
-    for (const point of points) {
-      this.verts.push(...point);
-      this.colors.push(color);
-    }
-    if (this.level === 0) this.surface(points, color);
-    for (let i = 2; i < points.length; i++) this.indices.push(start, start + i - 1, start + i);
-  }
-
-  private surface(points: Point[], color: number): void {
-    const [a, b, c] = points as [Point, Point, Point, ...Point[]];
-    const ux = b[0] - a[0],
-      uy = b[1] - a[1],
-      uz = b[2] - a[2],
-      vx = c[0] - a[0],
-      vy = c[1] - a[1],
-      vz = c[2] - a[2];
-    const nx = uy * vz - uz * vy,
-      ny = uz * vx - ux * vz,
-      nz = ux * vy - uy * vx;
-    const n = Math.hypot(nx, ny, nz) || 1,
-      u = Math.hypot(ux, uy, uz) || 1;
-    const s = points.map((p) => (p[0] * ux + p[1] * uy + p[2] * uz) / u);
-    const t = points.map((p) => (p[0] * (ny * uz - nz * uy) + p[1] * (nz * ux - nx * uz) + p[2] * (nx * uy - ny * ux)) / (n * u));
-    const left = Math.min(...s),
-      bottom = Math.min(...t),
-      width = Math.max(...s) - left || 1,
-      height = Math.max(...t) - bottom || 1;
-    const tile = Math.max(0, swatches.indexOf(color));
-    for (let i = 0; i < points.length; i++) {
-      this.uv.push(
-        ((tile % 4) + 0.06 + (0.88 * (s[i]! - left)) / width) / 4,
-        (Math.floor(tile / 4) + 0.06 + (0.88 * (t[i]! - bottom)) / height) / 4,
-      );
-      this.normals.push(nx / n, ny / n, nz / n);
-    }
-  }
-
-  /** Each section is a clockwise ring looking from its first end toward its last. */
-  solid(rings: Point[][], color: number): void {
-    this.face([...rings[0]!].reverse(), color);
-    for (let i = 1; i < rings.length; i++) {
-      const prev = rings[i - 1]!,
-        next = rings[i]!;
-      for (let j = 0; j < prev.length; j++) {
-        const k = (j + 1) % prev.length;
-        this.face([prev[j]!, prev[k]!, next[k]!, next[j]!], color);
-      }
-    }
-    this.face(rings[rings.length - 1]!, color);
-  }
-
-  box(x: number, y: number, z: number, w: number, h: number, d: number, color: number): void {
-    const a = w / 2,
-      b = h / 2;
-    this.solid(
-      [z - d / 2, z + d / 2].map((c) => [
-        [x - a, y - b, c],
-        [x + a, y - b, c],
-        [x + a, y + b, c],
-        [x - a, y + b, c],
-      ]),
-      color,
-    );
-  }
-
-  shell(x: number, rings: Ring[], color: number): void {
-    this.solid(
-      rings.map(([z, w, lo, hi]) => {
-        const bevel = Math.min(w * 0.32, (hi - lo) * 0.3);
-        return [
-          [x - w + bevel, lo, z],
-          [x + w - bevel, lo, z],
-          [x + w, lo + bevel, z],
-          [x + w, hi - bevel, z],
-          [x + w - bevel, hi, z],
-          [x - w + bevel, hi, z],
-          [x - w, hi - bevel, z],
-          [x - w, lo + bevel, z],
-        ];
-      }),
-      color,
-    );
-  }
-
-  rod(start: Point, end: Point, r: number, color: number, sides = 8, endRadius = r): void {
-    const dx = end[0] - start[0],
-      dy = end[1] - start[1],
-      dz = end[2] - start[2];
-    const length = Math.hypot(dx, dy, dz),
-      nx = dx / length,
-      ny = dy / length,
-      nz = dz / length;
-    const ax = Math.abs(ny) < 0.9 ? nz : ny,
-      ay = Math.abs(ny) < 0.9 ? 0 : -nx,
-      az = Math.abs(ny) < 0.9 ? -nx : 0;
-    const norm = Math.hypot(ax, ay, az),
-      ux = ax / norm,
-      uy = ay / norm,
-      uz = az / norm;
-    const vx = ny * uz - nz * uy,
-      vy = nz * ux - nx * uz,
-      vz = nx * uy - ny * ux;
-    this.solid(
-      [start, end].map((point, k) =>
-        Array.from({ length: sides }, (_, j): Point => {
-          const angle = ((j + 0.5) * Math.PI * 2) / sides,
-            a = Math.cos(angle) * (k ? endRadius : r),
-            b = Math.sin(angle) * (k ? endRadius : r);
-          return [point[0] + ux * a + vx * b, point[1] + uy * a + vy * b, point[2] + uz * a + vz * b];
-        }),
-      ),
-      color,
-    );
-  }
-
-  duct(x: number, y: number, z: number, radius: number): void {
-    const n = this.level === 0 ? 16 : 8;
-    const vertex = (a: number, r: number, h: number): Point => [x + Math.cos(a) * r, y + h, z + Math.sin(a) * r];
-    for (let i = 0; i < n; i++) {
-      const a = (i * Math.PI * 2) / n,
-        b = ((i + 1) * Math.PI * 2) / n;
-      const outer = radius,
-        inner = radius * 0.76,
-        h = radius * 0.27;
-      this.face([vertex(b, outer, h), vertex(a, outer, h), vertex(a, inner, h), vertex(b, inner, h)], SHELL);
-      this.face([vertex(a, outer, -h), vertex(a, outer, h), vertex(b, outer, h), vertex(b, outer, -h)], IRON);
-      this.face([vertex(b, inner, -h), vertex(b, inner, h), vertex(a, inner, h), vertex(a, inner, -h)], STEEL);
-      this.face([vertex(a, inner, -h), vertex(a, outer, -h), vertex(b, outer, -h), vertex(b, inner, -h)], SLATE);
-    }
-    this.rod([x - radius * 0.78, y, z], [x + radius * 0.78, y, z], 0.021, IRON, 4);
-    this.rod([x, y, z - radius * 0.78], [x, y, z + radius * 0.78], 0.021, IRON, 4);
-  }
-
-  finish(): SourceLod {
-    return {
-      positions: Float32Array.from(this.verts),
-      colors: Uint8Array.from(this.colors),
-      indices: Uint32Array.from(this.indices),
-      uvs: this.level === 0 ? Float32Array.from(this.uv) : undefined,
-      normals: this.level === 0 ? Float32Array.from(this.normals) : undefined,
-      error: [0, 0.035, 0.18][this.level],
-    };
-  }
-}
+import { REGION_BASE } from "../../shared/pack/palette.ts";
+import type { SourceMesh } from "./write.ts";
+import {
+  Model,
+  IRON,
+  SLATE,
+  STEEL,
+  SHELL,
+  EDGE,
+  GLASS,
+  ORANGE,
+  GOLD,
+  TEAL,
+  RUBBER,
+  RED,
+  finish,
+  airTextures,
+  type Point,
+} from "./air-support-shapes.ts";
+import { liftStation, liftRails, detailedClamp, lug, surveyDrone, cradle, backboard, impeller } from "./air-support-machines.ts";
+export { airMaterial, airTextures } from "./air-support-shapes.ts";
 
 function carrier(m: Model): void {
   for (const s of [-1, 1]) {
@@ -231,9 +50,14 @@ function carrier(m: Model): void {
       m.rod([s * 0.61, 0.52, -2.2], [s * 0.61, 0.52, 2.2], 0.08, SHELL);
     }
   }
+  if (m.level === 0) liftRails(m);
   for (const sign of [-1, 1]) {
     const c = sign * A.rotorZ,
       rise = sign < 0 ? 0.4 : 0;
+    if (m.level === 0) {
+      liftStation(m, c, sign, rise);
+      continue;
+    }
     m.shell(
       0,
       [
@@ -270,6 +94,7 @@ function carrier(m: Model): void {
     m.box(0, -0.1, c, 1.99, 0.23, 0.36, SLATE);
     m.rod([-0.83, 0.02, c - sign * 0.8], [0.83, 0.02, c - sign * 0.8], 0.1, STEEL);
   }
+  if (m.level === 0) return;
   m.shell(
     0,
     [
@@ -316,6 +141,10 @@ function rotor(m: Model): void {
 }
 
 function clamp(m: Model): void {
+  if (m.level === 0) {
+    detailedClamp(m);
+    return;
+  }
   m.rod([0, 0, 0], [0.12, -0.32, 0], 0.18, SLATE, 8);
   m.box(0.13, -0.76, 0, 0.22, 0.92, 0.28, ORANGE);
   m.box(0.13, -0.81, 0.15, 0.1, 0.63, 0.035, IRON);
@@ -334,7 +163,8 @@ function pod(m: Model): void {
     m.box(x, 0.27, 0, 0.12, 0.19, 7.72, SHELL);
     for (const z of [-A.jawZ, A.jawZ]) {
       m.box(x, 0.97, z, 0.14, 1.88, 0.18, SLATE);
-      m.box(x, 1.65, z, 0.2, 0.25, 0.32, ORANGE);
+      if (m.level === 0) lug(m, x, z);
+      else m.box(x, 1.65, z, 0.2, 0.25, 0.32, ORANGE);
     }
   }
   for (const z of [-3.82, 3.82]) {
@@ -343,6 +173,7 @@ function pod(m: Model): void {
     m.box(0, 0.49, z + (z < 0 ? -0.08 : 0.08), 1.76, 0.08, 0.035, ORANGE);
     if (m.level < 2) for (const x of [-0.63, 0, 0.63]) m.box(x, 1.05, z + (z < 0 ? -0.08 : 0.08), 0.085, 1.16, 0.04, STEEL);
   }
+  if (m.level === 0) backboard(m);
   m.box(-1.12, 1, 0, 0.11, 1.53, 7.55, SLATE);
   m.box(-1.19, 1, 0, 0.035, 1.4, 7.34, SHELL);
   if (m.level < 2)
@@ -350,6 +181,7 @@ function pod(m: Model): void {
       const z = airBayZ(i);
       m.box(-1.21, 1, z, 0.045, 1.24, 0.073, STEEL);
       m.box(0, 0.44, z, 1.67, 0.16, 0.7, IRON);
+      if (m.level === 0) cradle(m, z);
       m.box(0.86, 0.53, z, 0.07, 0.3, 0.69, SLATE);
       if (m.level === 0) digit(m, i + 1, 0.903, 0.54, z + 0.17, 0.125);
       for (const x of [-0.65, 0.65]) {
@@ -409,7 +241,11 @@ function side(m: Model): void {
     }
 }
 
-function drone(m: Model): void {
+function drone(m: Model, parked = true): void {
+  if (m.level === 0) {
+    surveyDrone(m, parked);
+    return;
+  }
   m.shell(
     0,
     [
@@ -447,7 +283,7 @@ function drone(m: Model): void {
   for (const x of [-0.37, 0.37])
     for (const z of [-0.4, 0.22]) {
       m.rod([0, 0.02, z + 0.08], [x, 0.04, z], 0.049, SLATE, 6);
-      m.duct(x, 0.045, z, 0.17);
+      m.duct(x, 0.045, z, 0.17, parked);
     }
   m.rod([0, -0.045, 0.47], [0, -0.175, 0.47], 0.095, IRON, 10);
   m.rod([0, -0.147, 0.45], [0, -0.147, 0.57], 0.064, TEAL, 10);
@@ -465,6 +301,15 @@ function chassis(m: Model): void {
   for (const x of [-1.03, 1.03]) {
     m.box(x, 0.89, -4.58, 0.37, 0.17, 0.13, RED);
     m.box(x, 0.78, -4.0, 0.35, 0.4, 0.065, RUBBER);
+  }
+  for (const x of [-0.86, 0.86]) {
+    m.box(x, 0.901, 2.3, 0.185, 0.56, 0.204, SLATE);
+    if (m.level === 0) {
+      m.box(x, 0.666, 2.3, 0.198, 0.061, 0.214, GOLD);
+      m.rod([x, 1.04, 2.25], [x * 0.75, 1.13, 1.89], 0.049, IRON);
+      m.rod([x, 0.98, 2.3], [x * 1.23, 0.98, 2.3], 0.053, STEEL);
+      m.rod([x * 1.23, 0.98, 2.3], [x * 1.23, 0.82, 2.3], 0.024, IRON);
+    }
   }
   for (const z of A.axle) m.rod([-1.1, A.wheel, z], [1.1, A.wheel, z], 0.13, SLATE);
   m.rod([0, 0.81, 3.75], [0, 1.24, 3.75], 0.11, STEEL, 10);
@@ -484,8 +329,8 @@ function marker(m: Model): void {
 
 function feet(m: Model): void {
   for (const x of [-0.86, 0.86]) {
-    m.box(x, 0.66, 0, 0.16, 0.95, 0.18, SLATE);
-    m.box(x, 0.18, 0, 0.11, 0.32, 0.12, STEEL);
+    m.box(x, 0.379, 0, 0.129, 0.69, 0.147, STEEL);
+    if (m.level === 0) m.rod([x - 0.111, 0.107, 0], [x + 0.111, 0.107, 0], 0.043, IRON, 8);
     m.box(x, 0.053, 0, 0.37, 0.1, 0.4, IRON);
   }
 }
@@ -515,6 +360,8 @@ const builders: Record<AirPiece, (m: Model) => void> = {
   roof,
   side,
   drone,
+  droneFrame: (m) => drone(m, false),
+  impeller,
   chassis,
   wheel,
   feet,

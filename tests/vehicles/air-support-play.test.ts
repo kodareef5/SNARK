@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import * as touchLayout from "../../client/core/ui/touch.ts";
+import { KEY_TOUCH_BUTTON, T_SHIFT } from "../../client/core/touch.ts";
 import { AIR_PHASE } from "../../shared/sim/air-support.ts";
 import { airYard } from "../../tools/urban/air-yard.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
@@ -50,6 +52,18 @@ test("the cab calls a trailer and launches its fourth bay through the radio", ()
     expect(captions.some(t => t.includes("exit vehicle") || t.includes("Unmute sound"))).toBe(false);
     expect(s.driving).toBe(e);
     expect(s.airSupport.pods.find(p => p.id === pod!.id)!.slots).toBe(0b110111);
+    view.app.ui.layer = touchLayout;
+    view.app.ui.inputDevice = 2;
+    h.run(100);
+    const boost = feed.find(KEY_TOUCH_BUTTON + T_SHIFT)!;
+    expect(boost.label).toBe("Boost");
+    view.app.pointer(0, boost.key, boost.x, boost.y, 0, 1);
+    h.run(100);
+    view.app.pointer(1, boost.key, boost.x, boost.y, 0, 1);
+    expect(view.app.touch.shifted).toBe(true);
+    expect(feed.nodes.slice(0, feed.count).some(n => n.text === "Fire payload" && n.interactive)).toBe(true);
+    view.app.ui.inputDevice = 0;
+
     tap(h, view, "KeyE");
     expect(s.airSupport.flight).toBe(0);
     expect(s.airCamera.id).toBe(0);
