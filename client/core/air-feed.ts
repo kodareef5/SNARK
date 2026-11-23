@@ -1,5 +1,5 @@
 // A launched drone's camera, as its operator sees it: a feed over a radio link from the rack (planning/workstreams/
-// air-feed.md). A part of the app's frame after the camera is placed at the drone: it chooses the feed's view (V: the
+// air-support.md). A part of the app's frame after the camera is placed at the drone: it chooses the feed's view (V: the
 // feed's own, night or heat), its zoom (the wheel), its bursts of interference and the frames it freezes on as the
 // signal weakens, and writes what the picture is to take (render/feed.ts) into the scene's optic. N marks what the
 // reticle holds for the tribe (hud/tracks.ts finds it).

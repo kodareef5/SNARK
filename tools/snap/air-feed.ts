@@ -1,7 +1,7 @@
 // bun tools/snap/air-feed.ts <miami.snmap> <built assets directory> <output directory> [--gpu] [--tier=high] [--only=name]
 //   [--size=1920x1080]
 //
-// A drone's camera feed (planning/workstreams/air-feed.md) over a Miami street with creatures and survivors on it: the
+// A drone's camera feed (planning/workstreams/air-support.md) over a Miami street with creatures and survivors on it: the
 // feed's own view and heat by day, night vision by night, each at a good signal and a bad one, with the feed's HUD and
 // its tracking boxes drawn over (hud/air-feed.ts, hud/tracks.ts). It writes `<case>-software.png`, the rasterizer's
 // picture with the feed's finish done in software (render/feed.ts feedPicture), and with --gpu `<case>.png` drawn by the
