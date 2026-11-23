@@ -187,3 +187,31 @@ test("a knockdown past the fall budget topples the survivor, who gets up again",
     expect(a.mflags[c.ent]! & MF_ROOTED).toBe(0);
   } finally { h.host.shutdown(); }
 });
+
+/** Two survivors on open ground, the second standing 1.2 m ahead of the first along +Z. */
+function pair() {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  h.host.setSetting("Knockdowns", "true");
+  const s = h.join("thrown"), t = h.join("bystander");
+  h.run(600);
+  const a = h.world.ents, c = h.client(s)!, d = h.client(t)!;
+  a.setPosition(c.ent, 100, 0, 80);
+  h.world.history.discontinuity(c.ent);
+  a.setPosition(d.ent, 100, 0, 81.2);
+  h.world.history.discontinuity(d.ent);
+  h.run(500);
+  return { h, a, c, d };
+}
+
+test("a body thrown into a bystander staggers them, and a harder throw fells them too", () => {
+  for (const [speed, falls] of [[8, 1], [15, 2]] as const) {
+    const { h, a, c, d } = pair();
+    try {
+      let word = 0;
+      expect(h.host.falls.knock(c.ent, 0, 1, speed, 4, 0, 0)).toBe(true);
+      h.run(1500, () => { if (word === 0 && a.react[d.ent] !== 0) word = a.react[d.ent]!; });
+      expect(h.host.falls.stats.fell).toBe(falls);
+      if (falls === 1) expect([REACT_STAGGER, REACT_HEAVY]).toContain(reactKind(word));
+    } finally { h.host.shutdown(); }
+  }
+});

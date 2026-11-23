@@ -1465,6 +1465,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     world.ents.vx[actor] = dx * 1.1; world.ents.vz[actor] = dz * 1.1;
     knockDown(actor, dz * 2, .35, -dx * 2);
   };
+  // A body thrown into a survivor standing in its way may stagger them, or knock them down too.
+  falls.onStrike = (e, dv, dx, dz, up) => {
+    if (reactions.shove(e, dv, dx, dz, up, true) !== TIER_FALL) return;
+    const ents = world.ents;
+    ents.vx[e] = ents.vx[e]! + dx * dv * 0.6;
+    ents.vz[e] = ents.vz[e]! + dz * dv * 0.6;
+    knockDown(e, dz * 2, 0.3, -dx * 2);
+  };
   falls.onUp = (body) => {
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (rec && stunned >= 0) buffs.give(rec, stunned, 0, GET_UP_SECONDS);

@@ -7,7 +7,7 @@
 // topples the body by its reaction instead (server/reactions.ts). A fall among structures costs more units than one in
 // the open, as its ragdoll meets more of them each substep.
 
-import { TICK_RATE } from "../shared/coords.ts";
+import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
 import { Fall, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
 import { brace, layHuman } from "../shared/anim/human-fall.ts";
 import { HUMAN } from "../shared/anim/human.ts";
@@ -24,6 +24,8 @@ import type { ServerWorld } from "./world.ts";
 /** The most survivors lying at once, and the most their falls may cost together, in units (fallCost). */
 export const FALLS_MOST = 48;
 export const FALL_UNITS_MOST = 64;
+/** Metres a second a thrown body must fly to strike a survivor standing in its way. */
+const THROWN_STRIKE = 3;
 /** Ticks between the checkpoints of a fall a vehicle is pushing. */
 const DISTURBED_TICKS = 6;
 /** Metres round a body, and up from its feet, within which structures count toward its fall's cost. */
@@ -56,6 +58,8 @@ interface Down {
   /** The tick its last checkpoint was written, and whether a vehicle touched it last tick. */
   sent: number;
   touched: boolean;
+  /** The bodies it has struck as it flew, each once a fall. */
+  readonly struck: Set<number>;
 }
 
 const root = new Float64Array(3);
@@ -65,6 +69,11 @@ export class Falls {
   private readonly down = new Map<number, Down>();
   /** Raised as a body gets up, standing at the ragdoll's hips. */
   onUp: (e: number) => void = () => {};
+  /**
+   * Raised as a thrown body strikes survivor `e` standing in its way: a change of speed of `dv` m/s along the unit (dx,
+   * dz), `up` metres above its feet. Whoever threw the first body is to blame.
+   */
+  onStrike: (e: number, dv: number, dx: number, dz: number, up: number) => void = () => {};
   readonly stats = { fell: 0, refused: 0, rose: 0 };
   /** The units the falls under way cost together. */
   units = 0;
@@ -114,7 +123,7 @@ export class Falls {
     const fall = new Fall(r);
     fall.reflex = brace;
     const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision: ++this.serial, world: 0, motion: null, pose: new Solved(HUMAN.bones),
-      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: false };
+      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: false, struck: new Set() };
     this.down.set(e, d);
     this.units += units;
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
@@ -140,6 +149,41 @@ export class Falls {
       count += store.query(x - COST_REACH, z - COST_REACH, x + COST_REACH, z + COST_REACH, this.near, y - 0.5, y + COST_HEIGHT);
     }
     return Math.min(6, 1 + Math.floor(count / 4));
+  }
+
+  /**
+   * A body flying fast enough strikes the survivors standing where its capsules pass, once each: half its speed goes
+   * into them, as two bodies of a weight meet.
+   */
+  private strikeStanding(d: Down): void {
+    const r = d.fall.ragdoll, { ents, reg, dims } = this.world;
+    // The whole body's velocity, by each part's share of its mass.
+    let vx = 0, vz = 0, mass = 0;
+    for (let i = 0; i < r.n; i++) {
+      const m = r.def.mass[i]!;
+      vx += r.v[i * 3]! * m; vz += r.v[i * 3 + 2]! * m; mass += m;
+    }
+    vx /= mass; vz /= mass;
+    const speed = Math.sqrt(vx * vx + vz * vz);
+    if (speed < THROWN_STRIKE) return;
+    r.rootPosition(root);
+    const x = root[0]!, z = root[2]!, cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
+    for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
+      const kx = cx + ox, kz = cz + oz;
+      if (kx < 0 || kz < 0 || kx >= dims.chunksX || kz >= dims.chunksZ) continue;
+      for (let e = ents.chunkHead[kz * dims.chunksX + kx]!; e >= 0; e = ents.next[e]!) {
+        if (e === d.e || d.struck.has(e) || this.down.has(e) || (ents.flags[e]! & F_ALIVE) === 0 || reg.vehicle[ents.kind[e]!]) continue;
+        const ex = ents.x[e]!, ey = ents.y[e]!, ez = ents.z[e]!, radius = reg.bodyRadius[ents.kind[e]!]!, height = reg.bodyHeight[ents.kind[e]!]!;
+        if ((ex - x) * (ex - x) + (ez - z) * (ez - z) > 9) continue;
+        for (let i = 0; i < r.n; i++) {
+          const px = r.x[i * 3]! - ex, py = r.x[i * 3 + 1]! - ey, pz = r.x[i * 3 + 2]! - ez;
+          if (py < 0 || py > height || px * px + pz * pz > (radius + 0.15) * (radius + 0.15)) continue;
+          d.struck.add(e);
+          this.onStrike(e, speed / 2, vx / speed, vz / speed, py);
+          break;
+        }
+      }
+    }
   }
 
   /** Lets go of a fall's cost as it ends. */
@@ -208,6 +252,7 @@ export class Falls {
         continue;
       }
       if (was !== d.fall.still) d.revision = ++this.serial;
+      if (!d.fall.still) this.strikeStanding(d);
       // A vehicle pushing it is outside what a client can step alike: it is told again while that lasts, and as it ends.
       if ((r.touched && this.world.tick - d.sent >= DISTURBED_TICKS) || (d.touched && !r.touched)) d.revision = ++this.serial;
       d.touched = r.touched;
