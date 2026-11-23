@@ -139,7 +139,10 @@ export class History {
   private currentTravel = 0;
   private travelDirty = false;
 
-  constructor(ents: EntityStore, capacity = 256, private readonly kinds?: Registry["vehicle"]) {
+  private readonly kinds?: Registry["vehicle"];
+
+  constructor(ents: EntityStore, capacity = 256, kinds?: Registry["vehicle"]) {
+    this.kinds = kinds;
     this.ents = ents;
     this.rowOf = new Int32Array(ents.cap).fill(-1);
     this.travelled = new Float64Array(capacity);

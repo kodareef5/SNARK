@@ -1,4 +1,4 @@
-import { clamp } from "../math/scalar.ts";
+import { clamp, len3 } from "../math/scalar.ts";
 import type { VehicleDefinition } from "./vehicle.ts";
 
 /** How far open each door is, door d (VehicleDefinition.doors) in bits 8d to 8d + 7: up to MAX_VEHICLE_DOORS. */
@@ -28,7 +28,7 @@ export function panelBounds(def: VehicleDefinition): Float64Array {
     Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
   for (const panel of def.breakablePanels ?? []) for (const face of panel.faces) for (const p of face) {
     const hinge = panel.hinge, door = panel.door === undefined ? undefined : def.doors[panel.door];
-    const radius = hinge ? Math.hypot(p[0] - hinge[0], p[1] - hinge[1], p[2] - hinge[2]) : 0;
+    const radius = hinge ? len3(p[0] - hinge[0], p[1] - hinge[1], p[2] - hinge[2]) : 0;
     for (let i = 0; i < 3; i++) {
       let low = p[i]!, high = low;
       bounds[i] = Math.min(bounds[i]!, low);

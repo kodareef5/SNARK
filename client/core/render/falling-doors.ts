@@ -27,8 +27,8 @@ export class FallingDoors {
   private readonly pool: DoorTrail[] = [];
 
   begin(frame: number): void {
-    for (const [id, car] of this.cars) if (frame - car.frame > 2) {
-      this.cars.delete(id);
+    for (const car of this.cars.values()) if (frame - car.frame > 2) {
+      this.cars.delete(car.id);
       this.pool.push(car);
     }
   }
