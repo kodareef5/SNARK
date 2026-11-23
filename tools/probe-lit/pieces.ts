@@ -3,11 +3,13 @@
 // states alone: the meshes the card holds are those made with them. The plate that goes held the edge of the plate
 // beside it, which is the next chunk's, so that edge shows by a row of the states that is not its mesh's own. Held to
 // the software rasterizer pixel by pixel over what the building covered while whole, so a face the vertex text failed
-// to drop, or one it kept and failed to show, is a patch of wrong colour.
+// to drop, or one it kept and failed to show, is a patch of wrong colour. Then two of what stands are worn, which the
+// vertex text darkens by their states (PIECE_SHADE) and the lit text marks.
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { nearMeshSlot } from "../../client/core/render/nearcity.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
+import { bodyHealth } from "../../shared/world/breaking.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { FLOOR, PIER, WALL, building, cityWorld } from "../../tests/fixtures/cityworld.ts";
 import { buildCorePack } from "../pack/build.ts";
@@ -95,6 +97,22 @@ export const piecesCheck: LitCheck = {
     gone(FLOOR, x + 4);
     gone(PIER, x - 4);
     gone(WALL, x - 4);
+    // What stands wears: a wall cracked and a pier failing are darker by their stage in the vertex text, by their
+    // states alone, and the wall beside neither.
+    let step = 0;
+    const worn = (id: string, px: number, share: number): void => {
+      const chunk = w.chunkOf(px, z), t = w.structs.chunks[chunk]!, first = w.statics.first[chunk]!;
+      let best = -1;
+      for (let s = 0; s < w.statics.in(chunk); s++) {
+        if (w.reg.defs[w.statics.kind[first + s]!]!.id === id && t.kind[s] !== 0 && (best < 0 || w.statics.y[first + s]! >= w.statics.y[first + best]!)) best = s;
+      }
+      const version = t.version + made.gone + ++step;
+      w.structs.put(chunk, best, t.kind[best]!, t.x[best]!, t.y[best]!, t.z[best]!, t.yaw[best]!, 0, Math.fround(bodyHealth(w.reg, t.kind[best]!) * share), version);
+      w.structs.setVersion(chunk, version);
+      hold(`a ${id.split("_")[1]} of chunk ${chunk} at ${share} of its health`, false);
+    };
+    worn(WALL, x - 4, 0.25);
+    worn(PIER, x + 4, 0.1);
     made.uploads -= meshes;
     return [shot];
   },

@@ -11,10 +11,13 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { QUIET_MS, REMAKE_MS } from "../../client/core/render/nearcity.ts";
+import { Falling } from "../../client/core/rubble.ts";
+import type { Rubble } from "../../client/core/session.ts";
 import { ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_OPEN, formKind } from "../../shared/content/breaks.ts";
-import { CHUNK_SIZE } from "../../shared/coords.ts";
-import { bodyHealth, variantAt } from "../../shared/world/breaking.ts";
+import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
+import { bodyHealth, heapAt, variantAt } from "../../shared/world/breaking.ts";
+import { GONE_BLAST } from "../../shared/world/structures.ts";
 import { parseMap, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
@@ -44,7 +47,7 @@ export interface Piece extends Broken {
 const CHUNK = 1 * 4 + 1, X0 = CHUNK_SIZE, Z0 = CHUNK_SIZE;
 
 /** A view of `pieces` standing whole, and each slot's place: slot `i` holds piece `i`. */
-export function breakScene(pieces: readonly Piece[], width: number, height: number, tier: string, files?: GameFiles): ProvingView & { set(slot: number, to: Broken): void; look(x: number, z: number, back: number, up: number, at?: number): void; frames(ms: number): void } {
+export function breakScene(pieces: readonly Piece[], width: number, height: number, tier: string, files?: GameFiles): ProvingView & { set(slot: number, to: Broken): void; blast(slot: number, x: number, up: number, z: number): void; look(x: number, z: number, back: number, up: number, at?: number): void; frames(ms: number): void; build(): ReturnType<ProvingView["scene"]["build"]> } {
   const reg = coreRegistry();
   const feet = new StructureStore({ chunksX: 1, chunksZ: 1 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts).low;
   const statics: MapStatic[] = pieces.map((p) => {
@@ -61,12 +64,34 @@ export function breakScene(pieces: readonly Piece[], width: number, height: numb
   if (v.scene.near) v.scene.near.pieces = Infinity;
   let version = 1000;
   const t = v.structs.chunks[CHUNK]!;
+  // What breaks is thrown as its fragments, by the scene's clock as ticks.
+  const falling = (v.scene.falling = new Falling(reg.halfY, (x, z) => v.hf.heightAt(x, z), { reg, structs: v.structs, mapKind: (c, s) => v.structs.mapKind(c, s) }));
+  const rubble: Rubble[] = [];
+  const ticks = (): number => (v.scene.now / 1000) * TICK_RATE;
   const view = {
     ...v,
+    /** A frame on: what broke since the last is taken in, and the frame built. */
+    build() {
+      v.scene.now += 1000 / 60;
+      v.port?.advance(v.scene.now);
+      falling.absorb(rubble, v.scene.now, v.cam.x, v.cam.y, v.cam.z, ticks());
+      falling.step(v.scene.now, ticks());
+      return v.scene.build(v.cam, v.remote);
+    },
+    /** A blast at (x, up, z) of the chunk takes `slot`'s piece to its heap, or to nothing where it has none. */
+    blast(slot: number, x: number, up: number, z: number): void {
+      const kind = t.kind[slot]!, [px, py, pz, yaw] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!];
+      const into = heapAt(reg, kind, px, py, pz);
+      rubble.push({ kind, x: px, y: py, z: pz, yaw, cause: GONE_BLAST, ox: X0 + x, oy: up, oz: Z0 + z, tick: Math.floor(ticks()), radius: 7.5, into, map: v.structs.mapKind(CHUNK, slot) });
+      if (into !== 0) v.structs.put(CHUNK, slot, into, px, py, pz, yaw, 0, 24, ++version);
+      else v.structs.put(CHUNK, slot, 0, 0, 0, 0, 0, 0, 0, ++version);
+      v.structs.setVersion(CHUNK, version);
+    },
     set(slot: number, to: Broken): void {
       const placed = v.structs.mapKind(CHUNK, slot), body = bodyHealth(reg, placed);
       const kind = to.form ? formKind(reg, placed, to.form, variantAt(t.x[slot]!, t.y[slot]!, t.z[slot]!)) : placed;
       if (kind === 0) throw new Error(`${reg.ids[placed]} has no form ${to.form}`);
+      if (kind !== t.kind[slot]) falling.swap(t.kind[slot]!, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, -1);
       const hp = Math.fround((to.left ?? 1) * body + (to.panes === false || to.form || (to.left ?? 1) < 1 ? 0 : reg.glassHp[placed]!));
       v.structs.put(CHUNK, slot, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, 0, hp, ++version);
       v.structs.setVersion(CHUNK, version);
@@ -78,9 +103,7 @@ export function breakScene(pieces: readonly Piece[], width: number, height: numb
     /** Runs the scene on by `ms`: each frame's uploads go to the card and nothing is drawn. */
     frames(ms: number): void {
       for (let f = 0; f < ms / (1000 / 60); f++) {
-        v.scene.now += 1000 / 60;
-        v.port?.advance(v.scene.now);
-        const p = v.scene.build(v.cam, v.remote);
+        const p = view.build();
         p.drawCount = p.tileCount = 0;
         v.raster.render(p);
       }
@@ -92,13 +115,11 @@ export function breakScene(pieces: readonly Piece[], width: number, height: numb
   return view;
 }
 
-/** Draws the view as it stands once the card holds what it asks for. */
-function shot(v: ReturnType<typeof breakScene>, out: string, name: string): void {
-  v.frames(1500);
+/** Draws the view as it stands once the card holds what it asks for, `wait` milliseconds on at the least. */
+function shot(v: ReturnType<typeof breakScene>, out: string, name: string, wait = 1500): void {
+  v.frames(wait);
   for (let f = 0; f < 600; f++) {
-    v.scene.now += 1000 / 60;
-    v.port?.advance(v.scene.now);
-    const p = v.scene.build(v.cam, v.remote), r = v.scene.assets.residency;
+    const p = v.build(), r = v.scene.assets.residency;
     const done = p.uploads.length + p.assetUploads.length + p.texUploads.length === 0 && r.flying === 0 && r.waiting === 0;
     if (!done) p.drawCount = p.tileCount = 0;
     v.raster.render(p);
@@ -152,6 +173,20 @@ if (import.meta.main) {
     shot(v, out, `slab-${tier}`);
     v.frames(QUIET_MS + REMAKE_MS + 500);
     shot(v, out, `slab-${tier}-meshed`);
+  }
+  // A rocket at the foot of a row of walls: the nearest goes to its heap and the two beside it are breached, at four moments.
+  if (wants("blast")) {
+    const v = breakScene([0, 1, 2].map((i): Piece => ({ shape: "wall8", finish: "rosestucco", x: 14 + i * 8, z: 40 })), width, height, tier, files);
+    v.look(22, 40, 15, 3.2);
+    shot(v, out, `blast-${tier}-0-before`);
+    v.blast(1, 22, 1, 41.5);
+    v.set(0, { form: FORM_BREACH_B, left: 0.3 });
+    v.set(2, { form: FORM_BREACH_A, left: 0.3 });
+    let at = 0;
+    for (const ms of [120, 400, 900, 2500]) {
+      shot(v, out, `blast-${tier}-${ms}ms`, ms - at - 17);
+      at = ms;
+    }
   }
   if (wants("heap")) {
     const v = breakScene([{ shape: "wall8", finish: "rosestucco", x: 12, z: 40 }, { shape: "wall8", finish: "rosestucco", x: 22, z: 40, form: FORM_HEAP }, { shape: "wall8", finish: "limestone", x: 32, z: 40, form: FORM_HEAP }, { shape: "floor8", finish: "concrete", x: 42, z: 40, form: FORM_HEAP }], width, height, tier, files);
