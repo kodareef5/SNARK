@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { Fall, wireX, wireY, yawOf16 } from "../../shared/anim/corpse.ts";
-import { layHuman } from "../../shared/anim/human-fall.ts";
+import { brace, layHuman } from "../../shared/anim/human-fall.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { Solved } from "../../shared/anim/skeleton.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -24,7 +24,12 @@ export function humanFallTrace(down: boolean): string {
   world.structs.add(wall, 42, hf.heightAt(42, 40) + reg.halfY[wall]!, 40, 16384, 1, 10000);
   // As a car strikes it from the side: thrown toward the wall, lifted, and turning.
   const [x, z, yaw16, vx, vy, vz, wx, wy, wz] = down ? [40.9, 39.6, 23000, 10, 1.5, -0.6, 0.5, 3, -2.5] : [39.2, 40.3, 4100, 9, 2.5, 1.2, 1.5, -0.8, -6];
-  const lay = (px: number, py: number, pz: number) => new Fall(layHuman(wireX(px), wireY(py), wireX(pz), yawOf16(yaw16), down));
+  // Bracing as a living survivor does (server/falls.ts).
+  const lay = (px: number, py: number, pz: number) => {
+    const fall = new Fall(layHuman(wireX(px), wireY(py), wireX(pz), yawOf16(yaw16), down));
+    fall.reflex = brace;
+    return fall;
+  };
   const a = lay(x, hf.heightAt(x, z), z), root = new Float64Array(3), pose = new Solved(HUMAN.bones);
   a.ragdoll.launch(vx, vy, vz, wx, wy, wz);
   let b: Fall | null = null;
