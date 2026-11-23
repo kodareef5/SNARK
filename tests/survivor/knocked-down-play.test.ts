@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 import { Corpses } from "../../client/core/ragdoll.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
+import { CUE_DOWN } from "../../shared/anim/pose.ts";
 import { survivorKind } from "../../shared/sim/blockers.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -94,5 +95,38 @@ test("a watching client lays a dead survivor's body where the server's lies", ()
     // It lies where the server's lies, near where it died.
     expect([f.x, f.y, f.z]).toEqual([a.x[body]!, a.y[body]!, a.z[body]!]);
     expect(Math.hypot(f.x - x, f.z - z)).toBeLessThan(1.5);
+  } finally { h.host.shutdown(); }
+});
+
+test("a watcher draws every survivor it sees knocked down as down, by its fall or by a topple until the fall comes", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    h.host.setSetting("Knockdowns", "true");
+    const w = h.join("watcher"), fallers = Array.from({ length: 8 }, (_, k) => h.join(`faller${k}`));
+    h.run(800);
+    const a = h.world.ents, seen = h.client(w)!;
+    a.setPosition(seen.ent, 100, 0, 70);
+    h.world.history.discontinuity(seen.ent);
+    const ids = fallers.map((s, k) => {
+      const c = h.client(s)!;
+      a.setPosition(c.ent, 96 + (k % 4) * 2, 0, 76 + Math.floor(k / 4) * 2);
+      h.world.history.discontinuity(c.ent);
+      return c.ent;
+    });
+    h.run(800);
+    for (const e of ids) expect(h.host.falls.knock(e, 0, 1, 3, 2, 0, 0)).toBe(true);
+    const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k));
+    let standing = 0;
+    h.run(1500, () => {
+      w.sampleRemote(remote);
+      drawn.update(remote, w.world!, 0, 0, new Map(), w.corpseMotions);
+      for (let i = 0; i < remote.count; i++) {
+        if (!ids.includes(remote.id[i]!) || (remote.cue[i]! & CUE_DOWN) === 0) continue;
+        if (drawn.humans.of(remote.id[i]!)) continue;
+        if (drawn.humans.waiting(remote.id[i]!, remote.tick) === 0) standing++;
+      }
+    });
+    expect(standing).toBe(0);
+    expect(h.host.falls.stats.fell).toBe(8);
   } finally { h.host.shutdown(); }
 });

@@ -1417,6 +1417,11 @@ export class Characters {
     // A survivor knocked down lies as its ragdoll, and rises from it.
     const fallen = seat || vehicleSeat ? undefined : this.dead.humans.of(id);
     if (fallen) rigid = false;
+    // Known to be down before its fall's checkpoint has come: it topples meanwhile rather than stand.
+    else if (!seat && !vehicleSeat && st.react === 0) {
+      const waiting = this.dead.humans.waiting(id, tick);
+      if (waiting !== 0) { st.react = waiting; rigid = false; }
+    }
     this.packet = p;
     const at = this.setOf(k, look, lookAt);
     const set = k.sets[at]!;

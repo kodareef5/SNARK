@@ -15,6 +15,7 @@
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
 import { brace, layHuman } from "../../shared/anim/human-fall.ts";
+import { packReact, REACT_FALL, REACT_HIPS } from "../../shared/anim/reactions.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { poseCreatureOn, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
@@ -193,12 +194,16 @@ export interface HumanFall {
   readonly solved: Solved;
   /** Lying. Once up, the render tick it got up at, and how far it has risen, 0 to 1. */
   down: boolean;
+  /** The render tick it was first seen down this fall. */
+  downAt: number;
   upAt: number;
   risen: number;
   seen: number;
 }
 
 const fallRoot = new Float64Array(3);
+/** Ticks into a stand-in topple at which it is held lying until the fall it stands in for comes. */
+const WAIT_LYING = 40;
 
 /** Survivors knocked down among the remote entities and the viewer's own body, each lying as the server's ragdoll. */
 export class HumanFalls {
@@ -257,6 +262,17 @@ export class HumanFalls {
     return this.near;
   }
 
+  /**
+   * For a body known to be down whose fall's checkpoint has not come yet, the reaction it is drawn with meanwhile at
+   * render tick `tick`: a topple (REACT_FALL) begun as it went down and held lying. 0 for any other body.
+   */
+  waiting(id: number, tick: number): number {
+    const h = this.byId.get(id);
+    if (!h || !h.down || h.fall) return 0;
+    const age = Math.min(Math.max(0, tick - h.downAt), WAIT_LYING);
+    return packReact(REACT_FALL, Math.floor(tick - age), 0, REACT_HIPS, 0);
+  }
+
   /** The fall to draw entity `id` by, lying or getting up, or undefined to draw it as it moves. */
   of(id: number): HumanFall | undefined {
     const h = this.byId.get(id);
@@ -281,7 +297,7 @@ export class HumanFalls {
     if (h && h.handle !== handle) h = undefined;
     if (!h) {
       if (!down) return;
-      h = { handle, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(HUMAN.bones), down: true, upAt: -1, risen: 0, seen };
+      h = { handle, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(HUMAN.bones), down: true, downAt: tick, upAt: -1, risen: 0, seen };
       this.byId.set(id, h);
     }
     h.seen = seen;
@@ -294,7 +310,7 @@ export class HumanFalls {
     }
     if (!h.down) {
       // Knocked down again: what was sent of the last fall is spent.
-      h.down = true; h.upAt = -1; h.fall = null; h.spent = Math.max(h.spent, h.motionTick);
+      h.down = true; h.downAt = tick; h.upAt = -1; h.fall = null; h.spent = Math.max(h.spent, h.motionTick);
       h.motionRevision = 0; h.motionTick = -1;
     }
     const motion = motions?.get(handle), to = Math.floor(tick);
