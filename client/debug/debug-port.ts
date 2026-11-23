@@ -45,9 +45,9 @@ export function debugPort(canvas: HTMLCanvasElement, renderer: DebugRenderer, Cl
   // Long tasks and long animation frames as the browser reports them, a little after each, where it does.
   const long = [0, 0];
   const frames: LongFrame[] = [];
-  const observe = (type: string, each: (e: PerformanceEntry) => void): void => {
+  const observe = (type: string, heard: (e: PerformanceEntry) => void): void => {
     try {
-      if (PerformanceObserver.supportedEntryTypes.includes(type)) new PerformanceObserver((list) => list.getEntries().forEach(each)).observe({ type, buffered: false });
+      if (PerformanceObserver.supportedEntryTypes.includes(type)) new PerformanceObserver((list) => list.getEntries().forEach(heard)).observe({ type, buffered: false });
     } catch {}
   };
   observe("longtask", (t) => {
@@ -159,7 +159,7 @@ export function debugPort(canvas: HTMLCanvasElement, renderer: DebugRenderer, Cl
     },
     lines(out) {
       const met = renderer.errors - glErrors;
-      if (met > 0) say(LEVEL_ERROR, `the renderer met ${met} more GL errors, ${renderer.errors} in all`);
+      if (met > 0) say(LEVEL_ERROR, `GL errors: ${met} more, ${renderer.errors} in all`);
       glErrors = renderer.errors;
       for (const line of lines) out.push(line);
       lines.length = 0;

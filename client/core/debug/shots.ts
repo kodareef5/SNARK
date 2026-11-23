@@ -6,15 +6,15 @@ import type { DebugPort, Picture } from "./port.ts";
 
 export interface ShotLimits {
   /** The regular picture's interval and the least gap before one asked for, in ms, and the pictures kept. */
-  every: number;
-  gap: number;
-  most: number;
+  readonly every: number;
+  readonly gap: number;
+  readonly most: number;
   /** The most pixels across a picture has, and its JPEG quality. */
-  wide: number;
-  quality: number;
+  readonly wide: number;
+  readonly quality: number;
 }
 
-/** Three minutes of pictures in about 5 MB. */
+/** Ninety pictures, one every 2 s: three minutes. */
 export const SHOT_LIMITS: ShotLimits = { every: 2000, gap: 1000, most: 90, wide: 640, quality: 0.8 };
 
 export interface Shot {
