@@ -2,7 +2,7 @@
 // stands out from the frames around it, so a game that runs steadily at half the display's rate is not one long event.
 // Events that follow each other within MERGE_MS join into one, which keeps its worst frame.
 
-import { LATE } from "../notes/ring.ts";
+import { LATE } from "./ring.ts";
 
 export const EV_HITCH = 0, EV_LONG = 1, EV_STALL = 2, EV_TASK = 3, EV_UPLOAD = 4, EV_GAP = 5, EV_CORRECTION = 6, EV_JUMP = 7, EV_GOVERNOR = 8, EV_ASSET = 9, EV_ERROR = 10, EV_TICK = 11;
 export const EVENT_NAMES = ["hitch", "long frame", "stall", "long task", "upload spike", "snapshot gap", "correction", "clock jump", "governor", "asset failed", "error", "server tick"] as const;

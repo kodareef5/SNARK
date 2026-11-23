@@ -12,10 +12,7 @@ import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
 import type { FrameRing } from "./assets/frames.ts";
 import type { Effect } from "./passes.ts";
 import { RESOLUTIONS, sceneShare } from "./render/post.ts";
-import { toggleBudget, toggleMonitor, toggleNotes } from "./settings.ts";
-import { MONITOR_KIT } from "./ui/monitor-kit.ts";
-import { NOTES_KIT } from "./notes-kit.ts";
-import type { NotePort } from "./notes/port.ts";
+import { toggleDebug } from "./settings.ts";
 import type { DebugPort } from "./debug/port.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -157,23 +154,16 @@ export class App {
   private tools: ToolHooks | null = null;
   /** Keeps the frame steady under the tier chosen (governor.ts). The shell tells it what each frame took. */
   readonly governor = new Governor();
-  /** What each frame took and what came in it, for the data utility's monitor (assets/frames.ts), once the shell has fetched it. */
+  /** What each frame took and what came in it (assets/frames.ts), once the shell has fetched it. */
   frames: FrameRing | null = null;
   /** The textures the card makes (texgen/engine.ts), once their file has come: how far they have come up, which the shell draws them by. */
   texgen: import("./texgen/engine.ts").Texgen | null = null;
-  private monitorAsked = false;
   /** The world's sounds' code (sound-late.ts), which comes after the first frame, as the sounds' rows do (D1107). */
   static late: SoundCode | null = null;
   private soundAsked = false;
-  /**
-   * Bug report mode (notes/notes.ts), fetched once Settings.notes is first on, as the monitor is; null until then. And
-   * what fetches the browser's part of it, which the shell sets (client/notes/port.ts).
-   */
-  notes: import("./notes/notes.ts").Notes | null = null;
-  notePort: (() => Promise<NotePort>) | null = null;
   /** What fetches the debug bar's part that needs the browser, which the shell sets (client/debug/debug-port.ts). */
   debugPort: (() => Promise<DebugPort>) | null = null;
-  private notesAsked = false;
+  private debugAsked = false;
   /**
    * Whether the card has linked every program a tier draws with, beginning those it has not (the shell's `ready`). A
    * tier chosen or stepped to is drawn once it has, and the one before until then; null draws it at once.
@@ -250,8 +240,8 @@ export class App {
     };
     // Within the press that chose it, which is when a browser lets a page open another.
     this.ui.openLink = (url) => this.page?.open?.(url);
-    this.ui.local = (line) => (line === "monitor" ? toggleMonitor(this.ui.settings) : this.notesWord(line) ?? (this.sounds ? App.late!.soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null));
-    this.ui.chat.local = (line) => this.notesWord(line);
+    this.ui.local = (line) => this.debugWord(line) ?? (this.sounds ? App.late!.soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
+    this.ui.chat.local = (line) => this.debugWord(line);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
@@ -322,7 +312,7 @@ export class App {
   set eggKept(on: boolean) { this.prompts.eggKept = on; }
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
   seatPress(): Ridden | null { return this.prompts.seatPress(this.session, this.remote); }
-  /** The look as the prompts last cast it, and how far along it body `i` is met: the monitor's and the notes' (assets/look.ts). */
+  /** The look as the prompts last cast it, and how far along it body `i` is met: the debug bar's (assets/look.ts). */
   protected get aim(): readonly number[] { return this.prompts.aim; }
   protected lookHit(i: number, ox: number, oy: number, oz: number, use = false): number { return this.prompts.lookHit(this.f, i, ox, oy, oz, use); }
 
@@ -529,8 +519,8 @@ export class App {
    */
   drawn(packet: FramePacket, ours: number, width = 0, height = 0, uploadMs = 0, buildMs = 0): void {
     this.frames?.record(this.nowMs, this.interval, ours, uploadMs, this.scene?.assets.residency ?? null, this.sounds?.library ?? null);
-    // A note's picture is the canvas as just drawn, and its record takes the row above (notes/notes.ts).
-    this.notes?.drawn(packet, ours, width, height, uploadMs, buildMs);
+    // The debug bar's picture is the canvas as just drawn, and its record takes the row above (debug/debug.ts).
+    this.ui.debug?.drawn(packet, ours, width, height, uploadMs, buildMs);
     const budget = this.scene?.budget;
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
@@ -712,15 +702,10 @@ export class App {
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
     ui.storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
     this.nowMs = nowMs;
-    // The resource monitor is a file of its own, fetched once Diagnostics is first "monitor".
-    if (ui.settings.monitor && !this.monitorAsked) {
-      this.monitorAsked = true;
-      void import("./ui/monitor.ts").then((m) => (ui.monitor = new m.Monitor(this, MONITOR_KIT)), () => (this.monitorAsked = false));
-    }
-    // Bug report mode likewise, once Settings.notes or the budget's panel is first on (D1091, D1095).
-    if ((ui.settings.notes || ui.settings.budget) && !this.notesAsked) {
-      this.notesAsked = true;
-      void import("./notes/notes.ts").then((m) => (this.notes = new m.Notes(this, NOTES_KIT)), () => (this.notesAsked = false));
+    // The debug bar is a file of its own, fetched once Settings.debug is first on.
+    if (ui.settings.debug && !this.debugAsked) {
+      this.debugAsked = true;
+      void import("./debug/debug.ts").then((m) => (ui.debug = new m.DebugBar(this)), () => (this.debugAsked = false));
     }
   }
 
@@ -967,15 +952,15 @@ export class App {
   /** The interface is built over the HUD. */
   private interface(f: AppFrame): void {
     this.ui.build(f.aspect, this.hud, this.session);
-    // Over the interface: an open note's line, its bar and a picture's flash (notes/notes.ts).
-    this.notes?.frame(f.nowMs, f.width, f.height);
   }
 
-  /** The console's and chat's words of bug report mode: `notes` turns it on and off, `perf [seconds]` keeps a record. Null for any other line. */
-  private notesWord(line: string): string | null {
-    if (line === "notes") return toggleNotes(this.ui.settings);
-    if (line === "budget") return toggleBudget(this.ui.settings);
-    if (!/^perf(\s|$)/.test(line)) return null;
-    return this.notes ? this.notes.perf(line) : "a performance record is kept in bug report mode: /notes turns it on";
+  /** The console's and chat's `debug`: the bar on or off; `debug save [words]` saves what it holds. Null for any other line. */
+  private debugWord(line: string): string | null {
+    if (line === "debug") return toggleDebug(this.ui.settings);
+    const save = /^debug\s+save(?:\s+(.*))?$/s.exec(line);
+    if (!save) return null;
+    if (!this.ui.debug || !this.ui.settings.debug) return "the debug bar is off: /debug turns it on";
+    return this.ui.debug.save(save[1] ?? "");
   }
+
 }

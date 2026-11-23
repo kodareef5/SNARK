@@ -34,7 +34,6 @@ export class FrameTab implements Tab {
   private hovered = -1;
   /** What the chart was laid out at: its total ms, its rows, the depth each row is. */
   private total = 1;
-  private readonly kids: number[] = [];
   private stores: Count[] = [];
   private countedAt = -Infinity;
 

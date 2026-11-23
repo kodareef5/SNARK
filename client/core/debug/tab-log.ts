@@ -27,7 +27,6 @@ export class LogTab implements Tab {
   private open: LogLine | null = null;
   private readonly lines: LogLine[] = [];
   private readonly wrapped: string[] = [];
-  private shownRows = 10;
 
   badge(d: DebugBar): string {
     const n = d.log.since(ALL_SOURCES, LEVEL_ERROR);
@@ -50,7 +49,7 @@ export class LogTab implements Tab {
       bx += 108;
     }
     const detail = this.open ? Math.min(6, Math.max(2, Math.floor(h / LINE / 3))) : 0, listTop = y + 22, listH = h - 22 - (detail ? detail * LINE + 8 : 0);
-    const rows = (this.shownRows = Math.max(1, Math.floor(listH / LINE)));
+    const rows = Math.max(1, Math.floor(listH / LINE));
     const total = d.log.read(this.lines, this.sources, LEAST[this.least]!, rows, this.back);
     if (this.back > 0 && this.back >= total) this.back = Math.max(0, total - rows);
     draw.text(bx + 8, y, x + w - bx - 8, D_DIM, `${total} line${total === 1 ? "" : "s"}${this.back > 0 ? ` · ${this.back} newer below` : ""}`);
