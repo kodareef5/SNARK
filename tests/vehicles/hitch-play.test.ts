@@ -104,3 +104,34 @@ test("the driver sees the trailer on the fifth wheel under latency", () => {
     } finally { h.host.shutdown(); }
   }
 });
+
+test("a trailer left by a destroyed tractor couples to the next one, also after a restart", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-hitch-lost-")), path = join(dir, "world.db");
+  const { h: first, a, semi, trailer } = yard(0, {}, path);
+  let h = first;
+  try {
+    const trailerPid = a.pid[trailer]!;
+    h.host.hitches.couple(a.pid[semi]!, trailerPid);
+    h.run(500);
+    h.host.survival.hurt(h.host.records.byPid.get(a.pid[semi]!)!, 1e9, 0);
+    h.run(1000);
+    expect(h.host.hitches.tractorPid(trailerPid)).toBe(0);
+    h.host.shutdown();
+    h = new Harness({}, 1, 30, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(hill(0)), dbPath: path });
+    h.run(500);
+    expect(h.host.hitches.tractorPid(trailerPid)).toBe(0);
+    const left = h.host.records.entOf.get(trailerPid)!, ents = h.world.ents;
+    const fresh = h.host.spawnVehicle("core:semi", ents.x[left]!, ents.z[left]! + 6.35 + 1.2, 0, 0);
+    expect(fresh).toBeGreaterThanOrEqual(0);
+    expect(h.host.hitches.couple(ents.pid[fresh]!, trailerPid)).toBe(true);
+  } finally { h.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a saved hitch naming a vehicle that is gone is not restored", () => {
+  const { h, a, semi, trailer } = yard();
+  try {
+    h.host.hitches.begin(JSON.stringify({ pairs: [[123456789, a.pid[trailer]!], [a.pid[semi]!, 987654321]] }));
+    expect(h.host.hitches.tractorPid(a.pid[trailer]!)).toBe(0);
+    expect(h.host.hitches.trailerPid(a.pid[semi]!)).toBe(0);
+  } finally { h.host.shutdown(); }
+});

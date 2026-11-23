@@ -1299,6 +1299,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       if (opts.health !== undefined && rec.vitals) {
         const have = rec.vitals.at(V_HEALTH, world.tick) / 1e6;
         if (opts.health < have) survival.add(rec, V_HEALTH, opts.health - have);
+        // What it is built with is its baseline, not a blow: its engine and rotors stay whole.
+        urban.initialized(e);
       }
       const ents = world.ents, v = ents.vrow[e]!;
       ents.vehicleQx[v] = Math.fround(at.qx); ents.vehicleQy[v] = Math.fround(at.qy); ents.vehicleQz[v] = Math.fround(at.qz); ents.vehicleQw[v] = Math.fround(at.qw);

@@ -210,3 +210,30 @@ test("a restart before release returns the unclaimed freight", () => {
     expect(restored.racks.size).toBe(0);
   } finally { h.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("on a small map a carrier leaves after delivering and after a cancel", () => {
+  const h = yard();
+  try {
+    const { c } = board(h), service = h.host.airSupport;
+    h.host.setSetting("AirSupportCooldown", "0");
+    h.host.setSetting("AirSupportTrailers", "0");
+    expect(service.call(c, null)).toBe(RESULT_OK);
+    const delivered = [...service.calls.values()][0]!;
+    for (let i = 0; i < 900 && !service.racks.size; i++) h.run(100);
+    expect(service.racks.size).toBe(1);
+    for (let i = 0; i < 1800 && service.calls.has(delivered.id); i++) h.run(100);
+    expect(service.calls.has(delivered.id)).toBe(false);
+    expect(h.host.records.byPid.has(delivered.carrier)).toBe(false);
+    const ground = { x: h.world.ents.x[c.ent]! + 14, y: 0, z: h.world.ents.z[c.ent]!, yaw: 0 };
+    h.host.hitches.release(service.racks.values().next().value!.pid);
+    expect(service.call(c, ground)).toBe(RESULT_OK);
+    const canceled = [...service.calls.values()][0]!;
+    h.run(3000);
+    let r = -1; const s = h.sessions[0]!; s.onResult = (_, code) => { r = code; };
+    s.airCommand(AIR_ACTION.cancel, canceled.id); h.run(300);
+    expect(r).toBe(RESULT_OK);
+    for (let i = 0; i < 1800 && service.calls.has(canceled.id); i++) h.run(100);
+    expect(service.calls.has(canceled.id)).toBe(false);
+    expect(h.host.records.byPid.has(canceled.cargo)).toBe(false);
+  } finally { h.host.shutdown(); }
+});

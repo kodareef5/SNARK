@@ -2,7 +2,7 @@ import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { BitWriter, type BitReader } from "../shared/net/codec.ts";
 import { makeHandle } from "../shared/ids.ts";
 import {
-  RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS,
+  RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS,
   RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE, S_AIR_SUPPORT, TEXT_NOTICE,
 } from "../shared/net/protocol.ts";
 import { AIR_ACTION, AIR_BAYS, AIR_PHASE, AIR_VIEW_LIMIT, emptyAirSupport, writeAirSupport,
@@ -44,6 +44,8 @@ interface SavedAir { next: number; racks: Rack[]; calls: Order[]; cooldown: [num
 const P = AIR_PHASE, A = AIR_ACTION, AIR_CARRIER_ID = AIR_CARRIER_ART.id;
 /** Carriers are told of to a viewer this far away, for the far view; racks to a tenth of it. */
 const FAR_VIEW = 4000;
+/** The longest a carrier circles near its exit, beyond the flight there, waiting to be out of sight. */
+const OUTBOUND_SECONDS = 30;
 /** Faster than this, metres a second, a trailer closes its rack for the road. */
 const ROLLING = .6;
 const distance = (a: AirPose, b: AirPose) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -218,6 +220,10 @@ export class AirSupport {
     if ([...this.calls.values()].some(o => o.phase < P.release && (o.rig === rig || o.owner === c.pid))) return this.tell(c, "A freight carrier is already on call.", RESULT_BUSY);
     if ((this.cooldown.get(rig) ?? 0) > world.tick) return this.tell(c, "Freight dispatch is cooling down.", RESULT_WAIT);
     if (!ground && hitches.trailerPid(rig)) return this.tell(c, "Unhitch the current trailer first.", RESULT_BUSY);
+    const most = rules.num("AirSupportTrailers"), caller = records.byPid.get(c.pid)!;
+    if (most > 0 && this.trailersOf(caller.team, c.pid) >= most) {
+      return this.tell(c, most === 1 ? "Your tribe already has a drone trailer. Recall it from its rack first." : `Your tribe already has ${most} drone trailers. Recall one from its rack first.`, RESULT_FULL);
+    }
     if (ground) {
       if (!finite(ground) || Math.hypot(at.x - ground.x, at.z - ground.z) > 24) return this.tell(c, "Choose a delivery spot within 24 m of the semi.", RESULT_FAR);
       ground = { ...ground, yaw: angle(ground.yaw), y: at.y };
@@ -289,6 +295,15 @@ export class AirSupport {
   private aim(o: Order, at: AirPose, speed: number, precise: boolean, vx = 0, vz = 0): void {
     const g = o.goal;
     g.x = at.x; g.y = at.y; g.z = at.z; g.yaw = at.yaw; g.vx = vx; g.vz = vz; g.speed = speed; g.precise = precise;
+  }
+
+  /** Drone trailers a tribe has in the world or on their way: by tribe, or by the survivor alone without one. */
+  private trailersOf(team: number, pid: number): number {
+    const mine = (o: { team: number; owner: number }) => team ? o.team === team : o.owner === pid;
+    let n = 0;
+    for (const rack of this.racks.values()) if (mine(rack) && this.ctx.records.byPid.has(rack.pid) && !this.ctx.records.byPid.get(rack.pid)!.dead) n++;
+    for (const o of this.calls.values()) if (o.loaded && mine(o)) n++;
+    return n;
   }
 
   /** The carrier came down. A load it still held falls where it was, as a trailer, and the order ends. */
@@ -375,7 +390,12 @@ export class AirSupport {
       const climbed = o.y > o.goal.y - 3 || now - o.since > 6 * TICK_RATE;
       if (climbed) this.aim(o, o.edge, o.speed, Math.hypot(o.edge.x - o.x, o.edge.z - o.z) < 80);
       const away = Math.hypot(o.edge.x - o.x, o.edge.z - o.z) < 60;
-      if (away && !this.watched(o.x, o.z, 450)) {
+      // Where no place is out of everyone's sight (a small map, survivors all round), it goes at its exit's edge of the
+      // map, or once it has flown as long as the farthest exit could take.
+      const { sizeX, sizeZ } = world.hf, margin = 80;
+      const edge = o.edge.x < margin || o.edge.z < margin || o.edge.x > sizeX - margin || o.edge.z > sizeZ - margin;
+      const spent = now - o.since > (OUTBOUND_SECONDS + 3000 / Math.max(10, o.speed)) * TICK_RATE;
+      if (away && (edge || !this.watched(o.x, o.z, 450)) || spent) {
         this.calls.delete(o.id); this.ctx.discard(aircraft);
         if (o.loaded) { const cargo = this.entity(o.cargo); this.carried.delete(o.cargo); if (cargo >= 0) this.ctx.discard(cargo); }
       }
@@ -453,9 +473,13 @@ export class AirSupport {
   /** A safe height for the carrier's origin on the way to `dest`, its hanging load clear of what stands below. */
   private cruise(at: AirPose, dest: AirPose): number {
     const { world } = this.ctx;
-    const dx = dest.x - at.x, dz = dest.z - at.z, f = Math.min(1, 60 / Math.max(1, Math.hypot(dx, dz)));
+    // Only the next four seconds of the way (60 m at least) are looked over, and the drop site once it is that near:
+    // the clearance check at the delivery is separate.
+    const o = at as Partial<Order>, ahead = Math.max(60, Math.hypot(o.vx ?? 0, o.vz ?? 0) * 4);
+    const dx = dest.x - at.x, dz = dest.z - at.z, far = Math.hypot(dx, dz), f = Math.min(1, ahead / Math.max(1, far));
     const x = at.x + dx * f, z = at.z + dz * f;
-    const top = world.structs.topIn(Math.min(at.x, x, dest.x) - 8, Math.min(at.z, z, dest.z) - 8, Math.max(at.x, x, dest.x) + 8, Math.max(at.z, z, dest.z) + 8);
+    let top = world.structs.topIn(Math.min(at.x, x) - 8, Math.min(at.z, z) - 8, Math.max(at.x, x) + 8, Math.max(at.z, z) + 8);
+    if (far < ahead) top = Math.max(top, world.structs.topIn(dest.x - 12, dest.z - 12, dest.x + 12, dest.z + 12));
     return Math.max(world.hf.heightAt(x, z) + 30, top + 14 + AIR_CARRIER_LOAD + T.container.max[1], dest.y + 14 + AIR_CARRIER_LOAD);
   }
 

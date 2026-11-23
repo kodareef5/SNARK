@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 578 of them: 212 take effect,
+is listed here, 579 of them: 213 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -144,6 +144,7 @@ the admin's settings page may change a setting without a restart.
 | `FarRadius` | 2048 | Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none. *Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published.* | yes |
 | `AirSupportEnabled` | True | Allow new freight carrier calls from a semi. | yes |
 | `AirSupportOrderRequired` | True | Each freight call spends one Air freight order from the caller's inventory. False makes calls free. Its recipe and level are set with ConfigOverrideItemCraftingCosts and OverrideNamedEngramEntries (core:freight_order). | yes |
+| `AirSupportTrailers` | 1 | Drone trailers a tribe may have at once, delivered or on their way; a survivor with no tribe counts alone. Recalling one frees its place. 0 is no limit. | yes |
 | `AirSupportCooldown` | 90 | Seconds between accepted freight calls from the same rig. | yes |
 | `AirCarrierSpeed` | 70 | Metres a second the freight carrier cruises at; above 60 it flies nose down at full cruise. | yes |
 | `AirCarrierHealth` | 900 | Health a freight carrier takes off with. Gunfire and blasts bring it down; a load it holds falls with it. | yes |

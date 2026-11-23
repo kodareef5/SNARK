@@ -33,7 +33,22 @@ export class Hitches {
 
   begin(data: string | null): void {
     if (!data) return;
-    for (const [tractor, trailer] of (JSON.parse(data) as SavedHitches).pairs) { this.byTractor.set(tractor, trailer); this.byTrailer.set(trailer, tractor); }
+    for (const [tractor, trailer] of (JSON.parse(data) as SavedHitches).pairs) {
+      // A pair whose vehicle is gone from the save is not restored.
+      if (!this.standing(tractor) || !this.standing(trailer)) { this.saved.dirty = true; continue; }
+      this.byTractor.set(tractor, trailer); this.byTrailer.set(trailer, tractor);
+    }
+  }
+
+  /** Whether vehicle record `pid` is still in the world: neither gone nor destroyed. */
+  private standing(pid: number): boolean {
+    const rec = this.ctx.records.byPid.get(pid);
+    return !!rec && !rec.dead;
+  }
+
+  /** Parts every pair one of whose vehicles was destroyed or taken away, so what is left can couple again. */
+  private sweep(): void {
+    for (const [tractor, trailer] of this.byTractor) if (!this.standing(tractor) || !this.standing(trailer)) this.release(trailer);
   }
 
   private entity(pid: number | undefined): number {
@@ -81,12 +96,7 @@ export class Hitches {
   step(e: number, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, pilot: boolean): boolean {
     if (!this.byTractor.size || !isWheelVehicle(def) || !def.spec.fifthWheel) return false;
     const r = this.trailerOf(e);
-    if (r < 0) {
-      const pid = this.ctx.world.ents.pid[e]!, trailer = this.byTractor.get(pid);
-      // A trailer whose record is gone is let go; one only out of reach keeps its hitch for when it is back.
-      if (trailer !== undefined && !this.ctx.records.byPid.has(trailer)) this.release(trailer);
-      return false;
-    }
+    if (r < 0) return false;
     const { world, urban } = this.ctx, ents = world.ents, rDef = world.reg.vehicle[ents.kind[r]!];
     if (!rDef || !isWheelVehicle(rDef) || !rDef.spec.kingpin) return false;
     ents.loadBody(r, this.body);
@@ -104,6 +114,7 @@ export class Hitches {
 
   /** Driven tractors with an empty fifth wheel couple to a trailer whose kingpin is over it. */
   latch(): void {
+    if (this.byTractor.size) this.sweep();
     const { world, game, records } = this.ctx, ents = world.ents;
     for (const c of game.clients) {
       if (!c?.active || c.drive < 0) continue;
