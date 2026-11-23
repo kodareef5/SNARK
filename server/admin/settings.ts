@@ -10,7 +10,7 @@
 
 import type { SettingRow, SettingsPage } from "../../shared/admin.ts";
 import type { Host } from "../host.ts";
-import { CATALOG, fixedWhy } from "../settings/catalog.ts";
+import { AT_START, CATALOG, fixedWhy } from "../settings/catalog.ts";
 import type { Row } from "../settings/row.ts";
 import { slotOf, wordsOf } from "../settings/rules.ts";
 import { body, refusedWrite } from "./supply-routes.ts";
@@ -31,7 +31,7 @@ export function settingsPage(host: Host, ok = true, why = "", note = ""): Settin
     rows.push({
       name, group: row.group, kind: row.kind, doc: row.doc, note: row.note, min: row.min, max: row.max,
       def: row.secret ? "" : defaultWords(row), value: row.secret ? "" : value, has: value !== "",
-      source: rules.sourceOf(row), secret: row.secret, fixed: fixedWhy(row), kept: kept.words.has(name),
+      source: rules.sourceOf(row), secret: row.secret, fixed: fixedWhy(row) === "" ? "" : `Set at start. ${AT_START[name] ?? ""}`.trim(), kept: kept.words.has(name),
     });
   }
   return { ok, why, note, keeps: host.persistence !== null, rows };

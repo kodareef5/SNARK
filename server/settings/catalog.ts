@@ -16,6 +16,23 @@ export function rowOf(name: string, flag = false): Row | undefined {
   return byKey.get(keyOf(name, flag));
 }
 
+/**
+ * The settings that take effect and stay read at a start only, each with why, by name (a flag's with its dash). Every
+ * other setting that takes effect may change while the server runs: a row added without `live` must be named here.
+ */
+export const AT_START: Readonly<Record<string, string>> = {
+  Port: "It is the address survivors and the cluster hold for this server.",
+  "-port": "It is the address survivors and the cluster hold for this server.",
+  "-clusterid": "It fixes which cluster the world belongs to, and its number there.",
+  "-ClusterDirOverride": "It is where the cluster keeps its travellers.",
+  "-AllowNetworkSave": "It is asked once, as the save is opened.",
+  "-ForceRespawnDinos": "It acts once, as the server starts.",
+  ServerAutoForceRespawnWildDinosInterval: "It is looked at once, as the server starts.",
+  "-WinLiveMaxPlayers": "It gives the seats at a start. MaxPlayers changes them while the server runs.",
+  bUseSingleplayerSettings: "It multiplies other settings once, as the files are read.",
+  ServerAdminPassword: "It is the lock this page stands behind.",
+};
+
 /** Why a setting may not change while the server runs, or "" if it may. */
 export function fixedWhy(row: Row): string {
   if (row.status !== "live") return "does not take effect yet";
@@ -55,6 +72,7 @@ export function catalogFaults(): string[] {
     // A speed setting divides a time, so its least value must be above 0.
     if (r.retime === "speed" && !(r.min > 0)) out.push(`${r.name}: what time is divided by has a least value above 0`);
     if (r.at === "mode" && r.kind === "flag") out.push(`${r.name}: Game.ini has no flags`);
+    if (r.status === "live" && !r.live && AT_START[key.startsWith("-") ? `-${r.name}` : r.name] === undefined) out.push(`${r.name}: a setting that takes effect may change while the server runs, or AT_START says why not`);
   }
   return out;
 }

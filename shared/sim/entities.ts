@@ -47,8 +47,8 @@ export class EntityStore {
   readonly dims: MapDims;
   /** Slots the columns have room for. It doubles when every one is taken, up to `max`. */
   cap: number;
-  /** The most slots it may grow to. */
-  readonly max: number;
+  /** The most slots it may grow to. A server's setting may change it while it runs (setMax). */
+  max: number;
   count = 0;
   /** Slots kept for players' bodies. Once only these are left, a create for anything else is refused. */
   reserve = 0;
@@ -329,6 +329,15 @@ export class EntityStore {
     this.freeHead = first;
     this.freeTail = this.cap - 1;
     this.freeCount = this.cap - first;
+  }
+
+  /**
+   * Sets the most slots it may grow to. One below what it already holds takes nothing away: nothing but a player's body
+   * is made until there is room again.
+   */
+  setMax(max: number): void {
+    if (max > ENTITY_LIMIT) throw new Error("entity capacity exceeds handle index range");
+    this.max = Math.max(1, Math.floor(max));
   }
 
   /** Slots left for anything but a player's body. */

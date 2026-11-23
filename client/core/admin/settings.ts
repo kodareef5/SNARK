@@ -50,7 +50,7 @@ function rowHtml(r: SettingRow): string {
     `<div class="row${r.fixed === "" ? "" : " fixed"}" id="r-${esc(r.name)}">` +
     `<div class="what"><b>${esc(r.name)}</b><span class="dim">${esc(r.doc)}${r.note === "" ? "" : ` <span class="faint">${esc(r.note)}</span>`}</span></div>` +
     `<div class="box">${boxHtml(r)}<span class="faint">${esc(about)}</span></div>` +
-    `<div class="from"><span id="s-${esc(r.name)}"></span>${r.fixed === "" ? `<button id="b-${esc(r.name)}" hidden>Reset</button>` : `<span class="faint">set at start</span>`}</div>` +
+    `<div class="from"><span id="s-${esc(r.name)}"></span>${r.fixed === "" ? `<button id="b-${esc(r.name)}" hidden>Reset</button>` : `<span class="faint">${esc(r.fixed)}</span>`}</div>` +
     `</div>`
   );
 }

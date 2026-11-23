@@ -127,7 +127,7 @@ test("each source is stronger than the one before it: default, files, command li
   const game = "[/script/shootergame.shootergamemode]\nEggHatchSpeedMultiplier=4\nPreventDinoTameClassNames=\"core:raptor\"\n";
   // ARK's command-line forms are `Map?Key=Value?Key=Value`, `-Flag` and `-Flag=value`. SNARK's own two-dash arguments are handed back in `ours`.
   const argv = ["--dev", "TheIsland?TamingSpeedMultiplier=5?StructureResistanceMultiplier=0.5?EggHatchSpeedMultiplier=9?Nonsense=1", "-UseDynamicConfig", "-port=9100", "-NoBattlEye", "-Bogus", "--port", "8800", "--db", "var/x.db"];
-  const live = "TamingSpeedMultiplier=8\nEggHatchSpeedMultiplier=2.0\nServerPassword=nope\nPreventDinoTameClassNames=\"core:parasaur\"\n";
+  const live = "TamingSpeedMultiplier=8\nEggHatchSpeedMultiplier=2.0\nServerAdminPassword=nope\nPreventDinoTameClassNames=\"core:parasaur\"\n";
   const { rules, report, ours } = loadConfig({ gus, game, live }, argv);
   expect(ours).toEqual(["--dev", "--port", "8800", "--db", "var/x.db"]);
   expect([rules.num("TamingSpeedMultiplier"), rules.num("StructureResistanceMultiplier"), rules.num("EggHatchSpeedMultiplier"), rules.on("globalVoiceChat"), rules.num("PvEStructureDecayPeriodMultiplier")]).toEqual([8, 0.5, 2, true, 2]);
@@ -135,10 +135,11 @@ test("each source is stronger than the one before it: default, files, command li
   expect([rules.flag("UseDynamicConfig"), rules.flag("port"), rules.flag("NoDinos"), rules.flag("NoBattlEye")]).toEqual([true, "9100", false, true]);
   const why = (key: string): string[] => report.refused.filter((r) => r.key === key).map((r) => `${r.where}: ${r.why}`);
   expect(why("EggHatchSpeedMultiplier")).toEqual(["command line: is a Game.ini setting, which the command line cannot give"]);
-  expect(why("PreventDinoTameClassNames")).toEqual(["DynamicConfig.ini:4: is read at start only"]);
-  expect(rules.list("PreventDinoTameClassNames")).toEqual(["core:raptor"]);
+  // A list the live file gives replaces the files', as any stronger source's does.
+  expect(why("PreventDinoTameClassNames")).toEqual([]);
+  expect(rules.list("PreventDinoTameClassNames")).toEqual(["core:parasaur"]);
   expect(report.unknown.map((u) => u.key)).toEqual(["?Nonsense", "-Bogus"]);
-  expect(why("ServerPassword")).toEqual(["DynamicConfig.ini:3: is read at start only"]);
+  expect(why("ServerAdminPassword")).toEqual(["DynamicConfig.ini:3: is read at start only"]);
   // Without -UseDynamicConfig the live file is not read.
   expect(loadConfig({ gus, game, live }, []).rules.num("TamingSpeedMultiplier")).toBe(3);
   // A later read of the live file does not override the console.
@@ -185,8 +186,8 @@ test("a folder is read from disk, any of its files missing; a server started on 
   expect(h.say(ada, "setting EggHatchSpeedMultiplier 80")).toEqual(["EggHatchSpeedMultiplier=80  (until the server is started again)"]);
   expect(h.say(ada, "setting EggHatchSpeedMultiplier 0")[0]).toMatch(/wants a number from 0.001/);
   expect(h.say(ada, "setting CropGrowthSpeedMultiplier 2")).toEqual(["CropGrowthSpeedMultiplier does not take effect yet"]);
-  expect(h.say(ada, "setting DinoCountMultiplier 2")).toEqual(["DinoCountMultiplier is read when the server starts: set it in its file and start again"]);
-  expect(h.say(ada, "setting DinoCountMultiplier")[0]).toBe("DinoCountMultiplier=1  (default; read when the server starts)");
+  expect(h.say(ada, "setting Port 9000")).toEqual(["Port is read when the server starts: set it in its file and start again"]);
+  expect(h.say(ada, "setting Port")[0]).toBe("Port=8787  (default; read when the server starts)");
   expect(h.say(ada, "setting CropGrowthSpeedMultiplier")[0]).toBe("CropGrowthSpeedMultiplier=1  (default; waits for: farming, irrigation, and upkeep of the body)");
   expect(h.say(ada, "setting Gravity 2")).toEqual(["there is no setting called Gravity"]);
   expect(h.say(ada, "setting ServerAdminPassword hunter2")[0]).toMatch(/ServerAdminPassword does not take effect yet|read when the server starts/);

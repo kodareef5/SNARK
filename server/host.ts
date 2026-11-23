@@ -87,7 +87,7 @@ import { workerKeeper } from "./persist/keeper.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, hashKey, type EntityRecord } from "./records.ts";
 import { Use } from "./use.ts";
-import { Rules, timersOf } from "./settings/rules.ts";
+import { Rules, timersOf, wordsOf } from "./settings/rules.ts";
 import { CATALOG, fixedWhy, rowOf } from "./settings/catalog.ts";
 import { KeptSettings, rowNamed } from "./settings/kept.ts";
 import { Lists } from "./settings/lists.ts";
@@ -239,7 +239,7 @@ export interface Host {
   readonly overhead: Overhead;
   readonly gaze: Gaze;
   readonly hurt: Hurt;
-  /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
+  /** Null unless the host was asked to keep the wild stocked and the map has spawn regions. Under a -NoDinos flag it makes nothing. */
   readonly spawner: Spawner | null;
   /** Null for a map that parks no car. */
   readonly carReturn: CarReturn | null;
@@ -575,9 +575,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const buffs = new Buffs(world, records, survival, deadlines);
   const spawns = spawnTables(reg, rules, lists);
   // No spawn region here is forced, streamed, put by hand or in water, so each -NoDinosExcept flag is -NoDinos.
-  const quiet = ["NoDinos", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"].some((f) => rules.flag(f) === true);
-  const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
+  const quiet = (): boolean => ["NoDinos", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"].some((f) => rules.flag(f) === true);
+  const stocked = opts.wild ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
   const spawner = stocked && stocked.regions.length > 0 ? stocked : null;
+  // A flag may be set and taken away while the server runs, so the spawner is there either way and is told.
+  if (spawner) spawner.quiet = quiet();
   // The save keeps the setting values its timers were computed under, so they can be re-timed under other rules.
   const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at")) : null;
   if (persistence) {
@@ -1002,13 +1004,25 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       items.table = reg;
     }
     timed = reg;
-    if (atLoad) harvest?.retime(wasAt("ResourcesRespawnPeriodMultiplier"));
-    else if (RATES.some((name) => wasAt(name) !== now[name])) {
-      // The young's hunger is a rate that can change while the server runs. Each young creature is rated again and its meal rescheduled.
-      for (const rec of records.byPid.values()) {
-        if (rec.grown === 0 || rec.egg !== null || !rec.vitals) continue;
+    harvest?.retime(wasAt("ResourcesRespawnPeriodMultiplier"));
+    if (!atLoad && RATES.some((name) => wasAt(name) !== now[name])) {
+      // A body keeps the rates it was last given until something touches it, so each body in the world is rated again and
+      // its next meal set. One kept in a soul ball is left: its time stands still, and it is rated when it is let out.
+      for (const pid of [...records.entOf.keys()]) {
+        const rec = records.byPid.get(pid);
+        if (!rec || rec.dead || rec.egg !== null || rec.stored !== 0 || !rec.vitals) continue;
         survival.touch(rec);
-        taming.meal(rec);
+        taming.rerate(rec);
+      }
+    }
+    if (!atLoad) {
+      // The hour of day survives a change of the clock's pace, as at a load. Every session is told the pace with the offset.
+      const pace = { cycle: wasAt("DayCycleSpeedScale"), day: wasAt("DayTimeSpeedScale"), night: wasAt("NightTimeSpeedScale") };
+      const is = { cycle: now.DayCycleSpeedScale!, day: now.DayTimeSpeedScale!, night: now.NightTimeSpeedScale! };
+      if (pace.cycle !== is.cycle || pace.day !== is.day || pace.night !== is.night) {
+        world.dayOffset = offsetForHour(world.tick, hourOfDay(world.tick, world.dayOffset, pace), is);
+        Object.assign(world.clock, is);
+        game.replication.markAllOwn();
       }
     }
     under = now;
@@ -1033,6 +1047,54 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     return contentMade;
   };
+  /** What the host gave a copy of at start, by setting, as it last gave it. */
+  const lastGiven = new Map<string, string>();
+  /** Whether a setting has another value than when it was last asked of here. The first asking only notes it. */
+  const turned = (...names: string[]): boolean => {
+    let any = false;
+    for (const name of names) {
+      const row = name.startsWith("-") ? rowOf(name.slice(1), true)! : rowOf(name)!;
+      const words = wordsOf(row, rules.valueOf(row));
+      if (lastGiven.has(name) && lastGiven.get(name) !== words) any = true;
+      lastGiven.set(name, words);
+    }
+    return any;
+  };
+  /**
+   * Gives again what was copied out of the settings at start, where a setting has changed: the game's options, the
+   * sizes, the spawn tables. What is already made is left as it is, and a size made smaller only stops more being added.
+   */
+  const reoption = (): void => {
+    const o = game.opts;
+    if (turned("ServerPassword")) o.password = rules.text("ServerPassword");
+    if (turned("Duration")) o.motdSeconds = rules.num("Duration");
+    if (turned("PendingPerAddress")) o.pendingPerAddress = rules.num("PendingPerAddress");
+    if (turned("SnapshotBytesMax")) o.snapshotBytesMax = rules.num("SnapshotBytesMax");
+    if (turned("ViewCap")) {
+      o.viewCap = rules.num("ViewCap");
+      game.replication.recap();
+    }
+    if (turned("MaxPlayers")) {
+      game.setSeats(rules.num("MaxPlayers"));
+      tactical.seats(game.clients.length);
+      world.ents.reserve = game.clients.length;
+    }
+    if (turned("MaxEntities")) world.ents.setMax(rules.num("MaxEntities"));
+    if (turned("AutoSavePeriodMinutes")) liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
+    if (turned("OxygenSwimSpeedStatMultiplier")) creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
+    if (turned(ARK_CRATES)) recrate();
+    if (spawner) {
+      spawner.quiet = quiet();
+      if (turned("DinoCountMultiplier", "DinoSpawnWeightMultipliers", "NPCReplacements", "ConfigAddNPCSpawnEntriesContainer", "ConfigSubtractNPCSpawnEntriesContainer", "ConfigOverrideNPCSpawnEntriesContainer")) {
+        const next = spawnTables(reg, rules, lists);
+        spawnsPassed = next.passed;
+        spawner.retable(next.tables);
+      }
+    }
+  };
+  let spawnsPassed: readonly string[] = spawns.passed;
+  // The first asking notes each setting as it stands at the start.
+  reoption();
   /**
    * Puts the content the settings now give in force, if it is another: the registry is replaced, what kept a table of
    * the old one takes the new, and every session is told the tuning, to derive the same. Indices never change under a
@@ -1064,7 +1126,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     game.sendTuning();
   };
   /** In ticks. ARK reads its live file at every world save. */
-  const liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
+  let liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
   const readLive = (): string[] => {
     if (!opts.live || rules.flag("UseDynamicConfig") !== true) return ["the live file is not in use: the server was not started with -UseDynamicConfig"];
     const text = opts.live();
@@ -1155,9 +1217,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (spawner) {
     const fresh = !loaded || loaded.fresh;
     // -ForceRespawnDinos, or ServerAutoForceRespawnWildDinosInterval come round, replaces the wild of a saved world at its start.
-    const forced = spawner.forced(persistence && !fresh ? persistence.store.meta("spawner") : null, Date.now() / 1000);
+    const forced = !spawner.quiet && spawner.forced(persistence && !fresh ? persistence.store.meta("spawner") : null, Date.now() / 1000);
     const wiped = forced && !fresh ? spawner.wipe() : -1;
-    spawner.begin(fresh || wiped >= 0);
+    // Under a -NoDinos flag nothing is put in: what a save holds is counted, and the regions wait for the flag to go.
+    spawner.begin(!spawner.quiet && (fresh || wiped >= 0));
     if (wiped >= 0) say(`destroyed ${wiped} wild creatures at the start, to be replaced`);
     persistence?.sidecar("spawner", spawner.saved);
   }
@@ -1174,13 +1237,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
   const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
   const supply = new Supply({ world, game, records, items, death, containers, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
-  {
-    // ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects.
+  /** ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects. */
+  const recrate = (): void => {
     const loot = catalogOf(reg);
     const ark = arkCrates(rules.list(ARK_CRATES), supplyBook.book.tiers, (name) => lists.ids(ARK_CRATES, name, "item"), (id) => loot.byId.get(id)?.never !== true);
     supply.overrides = ark.tables;
     for (const line of ark.passed) say(line);
-  }
+  };
+  recrate();
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
   build.keepClear = (x, z) => supply.buildFault(x, z);
@@ -1399,6 +1463,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       retimedAt = rules.version;
       // Before the re-time, which settles what spoils and burns by the registry this replaces.
       recontent();
+      reoption();
       retime(false);
     }
     // The next commit saves the values the timers now run under.
@@ -1815,7 +1880,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
     lists,
     get passed() {
-      return [...contentPassed, ...spawns.passed];
+      return [...contentPassed, ...spawnsPassed];
     },
     dev: opts.dev ?? false,
     spawnCreature,

@@ -1569,7 +1569,11 @@ export class ClientSession {
         const admin = r.bool();
         const handle = r.u32();
         const dayOffset = r.u32();
+        const cycle = r.f64(), day = r.f64(), night = r.f64();
         if (r.overflow) return;
+        s.clock.cycle = cycle;
+        s.clock.day = day;
+        s.clock.night = night;
         s.sessionState = state;
         // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
         if (state !== SESSION_DEAD) {

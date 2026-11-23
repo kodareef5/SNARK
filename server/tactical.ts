@@ -159,8 +159,8 @@ export class Tactical {
   private readonly marksOf = new Map<number, TeamMarks>();
   private readonly spare: TeamMarks[] = [];
   /** Per client: its team this second, and its own place among that team's marks, or -1. */
-  private readonly teamOf: Uint32Array;
-  private readonly selfAt: Int32Array;
+  private teamOf: Uint32Array;
+  private selfAt: Int32Array;
   /** Scratch for a tribe with more marks than a message holds: each mark's distance from the reader, and those sorted. */
   private far = new Float64Array(0);
   private sorted = new Float64Array(0);
@@ -168,6 +168,17 @@ export class Tactical {
   private readonly farChunks: number[] = [];
   /** Scratch: the chunks a session is due, as distance squared times 65536 plus the chunk, so they sort nearest first. */
   private farOrder = new Float64Array(256);
+
+  /** Makes room for more sessions, when MaxPlayers is raised while the server runs. */
+  seats(n: number): void {
+    if (n <= this.held.length) return;
+    while (this.held.length < n) this.held.push(null);
+    const teamOf = new Uint32Array(n), selfAt = new Int32Array(n);
+    teamOf.set(this.teamOf);
+    selfAt.set(this.selfAt);
+    this.teamOf = teamOf;
+    this.selfAt = selfAt;
+  }
 
   constructor(world: ServerWorld, game: GameServer, records: Records, rules: Rules) {
     this.world = world;

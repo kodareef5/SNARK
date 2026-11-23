@@ -24,14 +24,14 @@ the admin's settings page may change a setting without a restart.
 | `TamingSpeedMultiplier` | 1 | What each piece of food is worth to a creature being tamed. Higher is faster. | yes |
 | `HarvestAmountMultiplier` | 1 | What each harvesting blow yields. Higher is more. | yes |
 | `HarvestHealthMultiplier` | 1 | Health of trees, rocks, bushes and bodies. Higher takes more blows and gives more in all. | yes |
-| `ResourcesRespawnPeriodMultiplier` | 1 | Time before a harvested node grows back. Lower is sooner. | no |
+| `ResourcesRespawnPeriodMultiplier` | 1 | Time before a harvested node grows back. Lower is sooner. | yes |
 | `ItemStackSizeMultiplier` | 1 | Stack sizes. What stacks to 1 is left alone. | yes; clients are told |
-| `DayCycleSpeedScale` | 1 | Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one. | no; clients are told |
-| `DayTimeSpeedScale` | 1 | Speed of the clock by day. Higher is a shorter day. | no; clients are told |
-| `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | no; clients are told |
-| `DifficultyOffset` | 1 | Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set. *One host gives the default as 0.2.* | no |
-| `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | no |
-| `DinoCountMultiplier` | 1 | How many wild creatures each spawn region keeps. Higher is more. *Each region holds its number times this, rounded. A region already over it is not thinned.* | no |
+| `DayCycleSpeedScale` | 1 | Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one. | yes; clients are told |
+| `DayTimeSpeedScale` | 1 | Speed of the clock by day. Higher is a shorter day. | yes; clients are told |
+| `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | yes; clients are told |
+| `DifficultyOffset` | 1 | Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set. *One host gives the default as 0.2.* | yes |
+| `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | yes |
+| `DinoCountMultiplier` | 1 | How many wild creatures each spawn region keeps. Higher is more. *Each region holds its number times this, rounded. A region already over it is not thinned.* | yes |
 | `ServerAutoForceRespawnWildDinosInterval` | 0 | At a start, every wild creature is replaced if this many seconds have passed since a start last did so. 0 is never. *Seconds of the wall clock, as official servers use it for weekly respawns. The reference does not say what it counts from; here, from the last start that replaced them, or the first start that kept the count.* | no |
 | `RandomSupplyCratePoints` | False | Supply drops land on open ground drawn at random, and not at the drop book's sites. | yes |
 | `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | yes |
@@ -43,14 +43,14 @@ the admin's settings page may change a setting without a restart.
 | `StructureResistanceMultiplier` | 1 | Damage things built take. Higher takes more. | yes |
 | `ShowFloatingDamageText` | False | The damage of a hit is shown as a number where it landed. | yes; clients are told |
 | `AllowHitMarkers` | True | A mark is shown at the crosshair when a hit lands. | yes; clients are told |
-| `PlayerCharacterFoodDrainMultiplier` | 1 | How fast survivors hunger. Higher is faster. | no |
-| `PlayerCharacterWaterDrainMultiplier` | 1 | How fast survivors thirst. Higher is faster. | no |
+| `PlayerCharacterFoodDrainMultiplier` | 1 | How fast survivors hunger. Higher is faster. | yes |
+| `PlayerCharacterWaterDrainMultiplier` | 1 | How fast survivors thirst. Higher is faster. | yes |
 | `PlayerCharacterStaminaDrainMultiplier` | 1 | How fast survivors tire. Higher is faster. | yes; clients are told |
-| `PlayerCharacterHealthRecoveryMultiplier` | 1 | How fast survivors mend. Higher is faster. | no |
-| `DinoCharacterFoodDrainMultiplier` | 1 | How fast creatures hunger, wild and tamed. Higher is faster, and one being tamed eats sooner. | no |
+| `PlayerCharacterHealthRecoveryMultiplier` | 1 | How fast survivors mend. Higher is faster. | yes |
+| `DinoCharacterFoodDrainMultiplier` | 1 | How fast creatures hunger, wild and tamed. Higher is faster, and one being tamed eats sooner. | yes |
 | `DinoCharacterStaminaDrainMultiplier` | 1 | How fast creatures tire. Higher is faster. | yes; clients are told |
-| `DinoCharacterHealthRecoveryMultiplier` | 1 | How fast creatures mend. Higher is faster. | no |
-| `OxygenSwimSpeedStatMultiplier` | 1 | Swimming speed gained by each level of oxygen. Higher is more. | no |
+| `DinoCharacterHealthRecoveryMultiplier` | 1 | How fast creatures mend. Higher is faster. | yes |
+| `OxygenSwimSpeedStatMultiplier` | 1 | Swimming speed gained by each level of oxygen. Higher is more. | yes |
 | `StructurePreventResourceRadiusMultiplier` | 1 | How far from a foundation or pillar nodes will not grow back. Higher is further. | yes |
 | `MaxTamedDinos` | 5000 | Tamed creatures the whole server may hold. | yes |
 | `MaxPersonalTamedDinos` | 0 | Tamed creatures one tribe may hold. 0 is no limit. *Official servers use 500 in PvE and 300 in PvP.* | yes |
@@ -72,46 +72,46 @@ the admin's settings page may change a setting without a restart.
 | `AllowThirdPersonPlayer` | True | The body may be looked at from outside: over the shoulder (V) and in the orbit camera (K). | yes; clients are told |
 | `ServerCrosshair` | True | A crosshair is shown. | yes; clients are told |
 | `ShowMapPlayerLocation` | True | The map shows where its reader is. | yes; clients are told |
-| `PreventUploadSurvivors` | False | No survivor may leave this server for another of its cluster. | no |
-| `PreventDownloadSurvivors` | False | No survivor may come to this server from another of its cluster. | no |
-| `PreventUploadItems` | False | Nothing may leave this server: a survivor carrying anything may not travel. *Uploading things on their own waits for terminals; what a survivor carries is refused now, as ARK refuses it.* | no |
-| `PreventDownloadItems` | False | Nothing may come to this server: a survivor carrying anything may not come. *Downloading things on their own waits for terminals; a survivor carrying anything is refused now, as ARK refuses it.* | no |
-| `noTributeDownloads` | False | Nothing may come to this server from another: no survivor, creature or thing. | no |
+| `PreventUploadSurvivors` | False | No survivor may leave this server for another of its cluster. | yes |
+| `PreventDownloadSurvivors` | False | No survivor may come to this server from another of its cluster. | yes |
+| `PreventUploadItems` | False | Nothing may leave this server: a survivor carrying anything may not travel. *Uploading things on their own waits for terminals; what a survivor carries is refused now, as ARK refuses it.* | yes |
+| `PreventDownloadItems` | False | Nothing may come to this server: a survivor carrying anything may not come. *Downloading things on their own waits for terminals; a survivor carrying anything is refused now, as ARK refuses it.* | yes |
+| `noTributeDownloads` | False | Nothing may come to this server from another: no survivor, creature or thing. | yes |
 | `globalVoiceChat` | False | A voice is heard by everyone, wherever they are. | yes |
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
-| `ServerPassword` | none | Asked of everyone who joins. *A browser gives it in the address it opens: `?password=...`.* | no |
+| `ServerPassword` | none | Asked of everyone who joins. *A browser gives it in the address it opens: `?password=...`.* | yes |
 | `ServerAdminPassword` | none | Asked of whoever would use cheats, and of a browser that opens the admin pages. | no |
 | `KickIdlePlayersPeriod` | 3600 | Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick. | yes |
-| `AutoSavePeriodMinutes` | 15 | Minutes between saves. Here the world is saved continuously; this is how often the live file is read again. | no |
+| `AutoSavePeriodMinutes` | 15 | Minutes between saves. Here the world is saved continuously; this is how often the live file is read again. | yes |
 
 ### GameUserSettings.ini `[SessionSettings]`
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
-| `SessionName` | none | The server's name, as those who join are told it. | no |
+| `SessionName` | none | The server's name, as those who join are told it. | yes |
 | `Port` | 8787 | The port the server listens on. *ARK's default is 7777.* | no |
 
 ### GameUserSettings.ini `[MessageOfTheDay]`
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
-| `Message` | `Welcome to SNARK. Type /help` | Said in the chat box to each survivor who joins, from when it is in the world. \n begins a new line. | no |
-| `Duration` | 20 | Seconds it is shown. | no; clients are told |
+| `Message` | `Welcome to SNARK. Type /help` | Said in the chat box to each survivor who joins, from when it is in the world. \n begins a new line. | yes |
+| `Duration` | 20 | Seconds it is shown. | yes; clients are told |
 
 ### GameUserSettings.ini `[/Script/Engine.GameSession]`
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
-| `MaxPlayers` | 70 | The most survivors at once. | no |
+| `MaxPlayers` | 70 | The most survivors at once. | yes |
 
 ### GameUserSettings.ini `[SnarkSettings]`
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
-| `ViewCap` | 1024 | The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this. *Ours. ARK has no key.* | no |
-| `SnapshotBytesMax` | 1100 | The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor. *Ours. ARK has no key.* | no |
-| `MaxEntities` | 524288 | The most bodies the world holds at once: creatures wild and tamed, survivors, eggs, bags, caches, arrows left standing and things thrown. Memory is taken as the world fills, 188 bytes a body: 0.8 MB to start with and 94 MB for all 524288. A place is kept for each of MaxPlayers. *Ours. ARK has no key.* | no |
-| `PendingPerAddress` | 8 | The most connections from one network address that may be waiting to join at once. One more closes the one that has waited longest, or is itself turned away if none has waited half a second. 0 is no limit: set it behind a proxy on another machine, where every survivor comes from the proxy's address. *Ours. ARK has no key.* | no |
+| `ViewCap` | 1024 | The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this. *Ours. ARK has no key.* | yes |
+| `SnapshotBytesMax` | 1100 | The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor. *Ours. ARK has no key.* | yes |
+| `MaxEntities` | 524288 | The most bodies the world holds at once: creatures wild and tamed, survivors, eggs, bags, caches, arrows left standing and things thrown. Memory is taken as the world fills, 188 bytes a body: 0.8 MB to start with and 94 MB for all 524288. A place is kept for each of MaxPlayers. *Ours. ARK has no key.* | yes |
+| `PendingPerAddress` | 8 | The most connections from one network address that may be waiting to join at once. One more closes the one that has waited longest, or is itself turned away if none has waited half a second. 0 is no limit: set it behind a proxy on another machine, where every survivor comes from the proxy's address. *Ours. ARK has no key.* | yes |
 | `AllowedOrigins` | none | The web sites whose pages may connect besides the server's own, as origins such as https://play.example.com, separated by commas or spaces. * is any site. A server whose page is served from elsewhere, or behind a proxy that does not pass the Host on, names that site here. A program that is not a browser is not asked. *Ours. ARK has no key.* | yes |
 | `WikiUrl` | `/wiki/` | Where the wiki link of the game's menu and of the start screen goes: an http or https address, or a path of the site the page came from. /wiki/ is the wiki `bun run wiki` builds, which the server serves. Empty hides the link. *Ours. ARK has no key.* | yes |
 | `RepositoryUrl` | `/source/` | Where the source code link of the game's menu and of the start screen goes: an http or https address, or a path of the site the page came from. /source/ is a page the server writes, saying the code is coming. Empty hides the link. *Ours. ARK has no key.* | yes |
@@ -136,7 +136,7 @@ the admin's settings page may change a setting without a restart.
 | `CastHostility` | 2 | 0: Cast's people never fight. 1: they fight back. 2: some scenes may start a fight with a survivor (a gang standoff), never within ten minutes of its rise nor near its own buildings. *Ours.* | yes |
 | `CastHostileCooldown` | 1200 | Seconds between hostile scenes for the same survivor. *Ours.* | yes |
 | `CastModel` | `anthropic/claude-haiku-5.5` | The OpenRouter model Cast's planner asks; empty runs Cast on its rules alone. *Ours. Needs CastModelKey or OPENROUTER_API_KEY.* | yes |
-| `CastModelKey` | none | The OpenRouter key Cast's planner uses; empty takes OPENROUTER_API_KEY from the environment. *Ours.* | no |
+| `CastModelKey` | none | The OpenRouter key Cast's planner uses; empty takes OPENROUTER_API_KEY from the environment. *Ours.* | yes |
 | `CastCallsPerHour` | 90 | Calls Cast's planner may make an hour at most. *Ours. About $0.0006 a call with Claude Haiku 5.5.* | yes |
 | `CastHourlyBatch` | 50 | Featured people the planner's hourly pass looks in on. *Ours.* | yes |
 | `TacticalRadius` | 512 | Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's. *Ours. ARK's map shows no structures.* | yes |
@@ -163,7 +163,7 @@ the admin's settings page may change a setting without a restart.
 | `BabyMatureSpeedMultiplier` | 1 | How fast the young grow up. Higher is faster. Their hunger each second is as it was. | yes |
 | `BabyFoodConsumptionSpeedMultiplier` | 1 | How fast the young hunger. Lower eats less. | yes |
 | `bDisableDinoBreeding` | False | Nothing breeds. | yes |
-| `PreventBreedingForClassNames` | none | Species that do not breed. | no |
+| `PreventBreedingForClassNames` | none | Species that do not breed. | yes |
 | `KillXPMultiplier` | 1 | Experience from kills. Higher is more. | yes |
 | `HarvestXPMultiplier` | 1 | Experience from harvesting. Higher is more. | yes |
 | `CraftXPMultiplier` | 1 | Experience from making things. Higher is more. | yes |
@@ -189,23 +189,23 @@ the admin's settings page may change a setting without a restart.
 | `ConfigOverrideItemMaxQuantity` | none | One thing's stack size: `(ItemClassString="core:arrow_stone",Quantity=(MaxItemQuantity=543,bIgnoreMultiplier=True))`. | yes; clients are told |
 | `SupplyCrateLootQualityMultiplier` | 1 | Quality of what supply drops hold, from 1 to 5: every quality band of the drop book, and of ConfigOverrideSupplyCrateItems, is multiplied by it. | yes |
 | `bDisableLootCrates` | False | No supply drops: the drop book's circuits call none. One called from the console or the admin page still comes. | yes |
-| `ConfigOverrideSupplyCrateItems` | none | What a supply drop holds, in ARK's own form, a crate to an entry: `(SupplyCrateClassString="SupplyCrate_Level25_C",MinItemSets=1,MaxItemSets=2,ItemSets=((MinNumItems=1,MaxNumItems=2,ItemEntries=((EntryWeight=1,ItemClassStrings=("core:bow"),ItemsWeights=(1),MinQuantity=1,MaxQuantity=1,MinQuality=1,MaxQuality=2,ChanceToBeBlueprintOverride=0.25))))))`. The crate's level picks the tier (the highest that opens at or under it), `_Double` its ringed drops, and the table replaces the drop book's for every class of that tier. *Read at start. The admin page shows such a tier's tables locked, and can copy them into the drop book.* | no |
-| `WildDinoCharacterFoodDrainMultiplier` | 1 | How fast wild creatures hunger. Higher is faster. | no |
-| `TamedDinoCharacterFoodDrainMultiplier` | 1 | How fast tamed creatures hunger. Higher is faster. *How it combines with DinoCharacterFoodDrainMultiplier is not documented; they are multiplied.* | no |
-| `WildDinoTorporDrainMultiplier` | 1 | How fast wild creatures shake off torpor. Higher is faster. | no |
-| `TamedDinoTorporDrainMultiplier` | 1 | How fast tamed creatures shake off torpor. Higher is faster. | no |
+| `ConfigOverrideSupplyCrateItems` | none | What a supply drop holds, in ARK's own form, a crate to an entry: `(SupplyCrateClassString="SupplyCrate_Level25_C",MinItemSets=1,MaxItemSets=2,ItemSets=((MinNumItems=1,MaxNumItems=2,ItemEntries=((EntryWeight=1,ItemClassStrings=("core:bow"),ItemsWeights=(1),MinQuantity=1,MaxQuantity=1,MinQuality=1,MaxQuality=2,ChanceToBeBlueprintOverride=0.25))))))`. The crate's level picks the tier (the highest that opens at or under it), `_Double` its ringed drops, and the table replaces the drop book's for every class of that tier. *The admin page shows such a tier's tables locked, and can copy them into the drop book.* | yes |
+| `WildDinoCharacterFoodDrainMultiplier` | 1 | How fast wild creatures hunger. Higher is faster. | yes |
+| `TamedDinoCharacterFoodDrainMultiplier` | 1 | How fast tamed creatures hunger. Higher is faster. *How it combines with DinoCharacterFoodDrainMultiplier is not documented; they are multiplied.* | yes |
+| `WildDinoTorporDrainMultiplier` | 1 | How fast wild creatures shake off torpor. Higher is faster. | yes |
+| `TamedDinoTorporDrainMultiplier` | 1 | How fast tamed creatures shake off torpor. Higher is faster. | yes |
 | `DinoClassDamageMultipliers` | none | Damage one wild species deals: `(ClassName="core:raptor",Multiplier=2.0)`. | yes |
 | `TamedDinoClassDamageMultipliers` | none | Damage one tamed species deals. | yes |
 | `DinoClassResistanceMultipliers` | none | How well one wild species resists damage. Higher takes less: 2.0 halves it. *The reverse of the settings for a whole class, where higher takes more: ARK's reference and its operators both say so.* | yes |
 | `TamedDinoClassResistanceMultipliers` | none | How well one tamed species resists damage. Higher takes less. *As above.* | yes |
-| `PreventDinoTameClassNames` | none | Species that cannot be tamed. | no |
+| `PreventDinoTameClassNames` | none | Species that cannot be tamed. | yes |
 | `bDisableDinoTaming` | False | Nothing can be tamed. | yes |
 | `bDisableDinoRiding` | False | Nothing can be ridden. | yes |
-| `DinoSpawnWeightMultipliers` | none | How often a species is drawn where it spawns, by its tag: `(DinoNameTag=dodo,SpawnWeightMultiplier=2,OverrideSpawnLimitPercentage=True,SpawnLimitPercentage=0.3)`. The limit is a share of each region's number. | no |
-| `NPCReplacements` | none | One species spawned in place of another: `(FromClassName="core:dodo",ToClassName="core:parasaur")`. An empty ToClassName spawns none of it. *What is already in the world stays.* | no |
-| `ConfigAddNPCSpawnEntriesContainer` | none | Groups added to a spawns table: `(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((AnEntryName="Raptors",EntryWeight=0.1,NPCsToSpawnStrings=("core:raptor","core:raptor"))),NPCSpawnLimits=((NPCClassString="core:raptor",MaxPercentageOfDesiredNumToAllow=0.1)))`. NPCsToSpawnPercentageChance and NPCsSpawnOffsets are read too. | no |
-| `ConfigSubtractNPCSpawnEntriesContainer` | none | Species taken out of every group of a spawns table, and their limits: `(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((NPCsToSpawnStrings=("core:parasaur"))),NPCSpawnLimits=((NPCClassString="core:parasaur")))`. | no |
-| `ConfigOverrideNPCSpawnEntriesContainer` | none | A spawns table's groups and limits, whole, in the form ConfigAddNPCSpawnEntriesContainer takes. *Applied first, then what is added, then what is taken out.* | no |
+| `DinoSpawnWeightMultipliers` | none | How often a species is drawn where it spawns, by its tag: `(DinoNameTag=dodo,SpawnWeightMultiplier=2,OverrideSpawnLimitPercentage=True,SpawnLimitPercentage=0.3)`. The limit is a share of each region's number. | yes |
+| `NPCReplacements` | none | One species spawned in place of another: `(FromClassName="core:dodo",ToClassName="core:parasaur")`. An empty ToClassName spawns none of it. *What is already in the world stays.* | yes |
+| `ConfigAddNPCSpawnEntriesContainer` | none | Groups added to a spawns table: `(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((AnEntryName="Raptors",EntryWeight=0.1,NPCsToSpawnStrings=("core:raptor","core:raptor"))),NPCSpawnLimits=((NPCClassString="core:raptor",MaxPercentageOfDesiredNumToAllow=0.1)))`. NPCsToSpawnPercentageChance and NPCsSpawnOffsets are read too. | yes |
+| `ConfigSubtractNPCSpawnEntriesContainer` | none | Species taken out of every group of a spawns table, and their limits: `(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((NPCsToSpawnStrings=("core:parasaur"))),NPCSpawnLimits=((NPCClassString="core:parasaur")))`. | yes |
+| `ConfigOverrideNPCSpawnEntriesContainer` | none | A spawns table's groups and limits, whole, in the form ConfigAddNPCSpawnEntriesContainer takes. *Applied first, then what is added, then what is taken out.* | yes |
 | `PerLevelStatsMultiplier_Player[n]` | 1 each | What a survivor gains from each level put in a stat. ARK's index: 0 health, 1 stamina, 2 torpidity, 3 oxygen, 4 food, 5 water, 6 temperature, 7 weight, 8 melee, 9 speed, 10 fortitude, 11 crafting. A 0 is read as 1. | yes |
 | `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | yes |
 | `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | yes |
@@ -229,18 +229,18 @@ the admin's settings page may change a setting without a restart.
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
-| `-UseDynamicConfig` | not given | The live file is read, and read again while the server runs. | no |
+| `-UseDynamicConfig` | not given | The live file is read, and read again while the server runs. | yes |
 | `-AllowNetworkSave` | not given | The save may be on a network disk, where it can be corrupted. *Ours. ARK has no such flag.* | no |
-| `-AutoDestroyStructures` | not given | What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier). | no |
-| `-EnableIdlePlayerKick` | not given | The idle are put off the server (see KickIdlePlayersPeriod). | no |
+| `-AutoDestroyStructures` | not given | What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier). | yes |
+| `-EnableIdlePlayerKick` | not given | The idle are put off the server (see KickIdlePlayersPeriod). | yes |
 | `-port=` | none | The port the server listens on. | no |
 | `-WinLiveMaxPlayers=` | none | The most survivors at once. | no |
-| `-NoDinos` | not given | No wild creatures are put in the world. Those a save holds stay. | no |
+| `-NoDinos` | not given | No wild creatures are put in the world. Those a save holds stay. | yes |
 | `-ForceRespawnDinos` | not given | At the start, every wild creature is destroyed, with what it carries, and the regions fill again. | no |
-| `-NoDinosExceptForcedSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
-| `-NoDinosExceptStreamingSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
-| `-NoDinosExceptManualSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
-| `-NoDinosExceptWaterSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
+| `-NoDinosExceptForcedSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | yes |
+| `-NoDinosExceptStreamingSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | yes |
+| `-NoDinosExceptManualSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | yes |
+| `-NoDinosExceptWaterSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | yes |
 | `-clusterid=` | none | The cluster the server is part of: servers with one cluster id and one folder list each other, and survivors travel between them. *Each needs a save of its own (--db); a new save takes the lowest world id the cluster has not given out.* | no |
 | `-ClusterDirOverride=` | none | The folder the cluster's servers share, on a local disk of this machine. The cluster's files go in a folder of the cluster id inside it. Without it, a folder named clusters beside the save. | no |
 

@@ -387,6 +387,15 @@ export class GameServer {
     }
   }
 
+  /**
+   * Sets the most sessions at once (MaxPlayers). More seats are added. Fewer only turn newcomers away: nobody seated is
+   * put out, and the seats stay for whoever holds them.
+   */
+  setSeats(n: number): void {
+    this.opts.maxClients = n;
+    while (this.clients.length < n) this.clients.push(null);
+  }
+
   /** Tells every session the content the server's settings now make, which each derives as at its welcome (S_TUNING). */
   sendTuning(): void {
     const reg = this.world.reg;

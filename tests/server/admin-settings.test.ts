@@ -9,7 +9,7 @@ import type { SettingRow, SettingsPage } from "../../shared/admin.ts";
 import { settingsAnswer } from "../../server/admin/settings.ts";
 import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
-import { CATALOG, rowOf } from "../../server/settings/catalog.ts";
+import { AT_START, CATALOG, catalogFaults, rowOf } from "../../server/settings/catalog.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { Rules } from "../../server/settings/rules.ts";
 import { boxLines, boxValue, countText, isSwitch, matches, rangeText, sentValue, settingsHtml, sourceText } from "../../client/core/admin/settings.ts";
@@ -37,8 +37,13 @@ test("the page lists every setting that takes effect, says which may change now,
   const p = await page(h).get();
   expect(p.rows.map((r) => r.name).sort()).toEqual(CATALOG.filter((r) => r.status === "live").map((r) => (r.kind === "flag" ? "-" : "") + r.name).sort());
   expect(row(p, "XPMultiplier")).toMatchObject({ value: "2", def: "1", source: "file", fixed: "", kept: false, kind: "float" });
-  expect(row(p, "Port").fixed).toMatch(/read when the server starts/);
+  // The few that stay read at a start say why, each of them.
+  expect(row(p, "Port").fixed).toBe("Set at start. It is the address survivors and the cluster hold for this server.");
+  const fixed = p.rows.filter((r) => r.fixed !== "");
+  expect(fixed.map((r) => r.name).sort()).toEqual(Object.keys(AT_START).sort());
+  for (const r of fixed) expect([r.name, r.fixed.length > "Set at start. ".length]).toEqual([r.name, true]);
   expect(row(p, "ServerPassword")).toMatchObject({ value: "", def: "", has: true, secret: true });
+  expect(catalogFaults()).toEqual([]);
   expect(JSON.stringify(p)).not.toMatch(/opensesame|hunter2/);
   expect([p.ok, p.keeps]).toEqual([true, false]);
   h.host.shutdown();
@@ -152,7 +157,8 @@ test("the page's rows: a box of its kind for each, found by a search's words, an
   expect(html).toContain('<input id="v-XPMultiplier" type="number" min="0" max="100000" step="any" aria-label="XPMultiplier">');
   expect(html).toContain('<input id="v-serverPVE" type="checkbox" aria-label="serverPVE">');
   expect(html).toContain('<textarea id="v-HarvestResourceItemAmountClassMultipliers" rows="2" spellcheck="false"');
-  expect(html).toContain('<input id="v-ServerPassword" type="password" autocomplete="new-password" aria-label="ServerPassword" disabled>');
+  expect(html).toContain('<input id="v-ServerPassword" type="password" autocomplete="new-password" aria-label="ServerPassword">');
+  expect(html).toContain('<input id="v-ServerAdminPassword" type="password" autocomplete="new-password" aria-label="ServerAdminPassword" disabled>');
   expect(html).toMatch(/<input id="v-Port" type="number" min="1" max="65535" step="1" aria-label="Port" disabled>/);
   expect(html).not.toContain("opensesame");
   expect(html.split('<section class="glass group">').length - 1).toBe(new Set(p.rows.map((r) => r.group)).size);

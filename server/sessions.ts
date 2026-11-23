@@ -329,7 +329,10 @@ export class Sessions {
     // Every new name leaves a survivor record for good, so one machine may make only so many an hour.
     if (conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null && !this.newNames.take(conn.address, world.tick)) return this.refuse(conn, REJECT_DENIED);
     const slot = this.clients.indexOf(null);
-    if (slot < 0) return this.refuse(conn, REJECT_FULL);
+    // Seats may outnumber MaxPlayers, where it was lowered while the server runs.
+    let seated = 0;
+    for (const other of this.clients) if (other) seated++;
+    if (slot < 0 || seated >= this.opts.maxClients) return this.refuse(conn, REJECT_FULL);
     // Nothing was kept for the connection until here. A session's memory is given only to a hello that is let in.
     const c = new Client(slot, conn, chunkCount(world.dims));
     this.clients[slot] = c;
