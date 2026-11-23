@@ -7,7 +7,12 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { Characters } from "../../client/core/render/characters.ts";
 import { BONE_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { B_HEAD, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { layHuman } from "../../shared/anim/human-fall.ts";
+import type { Ragdoll } from "../../shared/anim/ragdoll.ts";
+import { wireX, wireY } from "../../shared/anim/corpse.ts";
+import { makeHandle } from "../../shared/ids.ts";
+import { encodeCorpseCheckpoint, type CorpseMotion } from "../../shared/net/corpse.ts";
+import { B_HEAD, B_HIPS, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, CUE_DOWN } from "../../shared/anim/pose.ts";
 import { packReact, REACT_FALL, REACT_HIPS } from "../../shared/anim/reactions.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -72,4 +77,63 @@ test("bodies toppled the same way share one lying pose on one bone each", () => 
   oneBone(characters, p, new AnimState(), 100, 14);
   // One lying pose and one standing pose, and a bone for each body.
   expect(p.boneCount).toBe(2 * HUMAN_BONES + 4);
+});
+
+test("laid falls short of bones share one lying pose, each where its ragdoll lies", () => {
+  const characters = new Characters(reg, pack, new Assets(reg, pack)), world = flat(), root = new Float64Array(3);
+  const motions = new Map<number, CorpseMotion>(), remote = new RemoteSample(), falls: Ragdoll[] = [];
+  remote.count = 5; remote.tick = 105;
+  for (let k = 0; k < 5; k++) {
+    // A ragdoll fall as the server lays and sends it: knocked down, stepped, its place carried to its hips.
+    const r = layHuman(40 + k * 3, 0, 40, k * 1.3);
+    r.launch(Math.sin(k) * 4, 1.5, Math.cos(k) * 4, 0, 0, 0);
+    for (let f = 0; f < 45; f++) r.step(world, 1 / 30);
+    r.rootPosition(root);
+    const x = wireX(root[0]!), y = wireY(root[1]!), z = wireX(root[2]!);
+    r.rebase(x, y, z);
+    motions.set(makeHandle(20 + k, 1), { revision: 1, tick: 100, data: encodeCorpseCheckpoint({ x, y, z, yaw: k * 1.3, size: 1, out: false, air: false, awake: r.awake, standing: true, ticks: 45, state: r.checkpoint() }) });
+    remote.id[k] = 20 + k; remote.gen[k] = 1; remote.kind[k] = survivor; remote.cue[k] = CUE_DOWN;
+    remote.x[k] = x; remote.y[k] = y; remote.z[k] = z;
+    falls.push(r);
+  }
+  characters.corpseMotions = motions;
+  characters.begin();
+  characters.corpses(new FramePacket(), new Camera(), remote, world);
+  for (let k = 0; k < 5; k++) expect(characters.humanFall(20 + k)?.down).toBe(true);
+  // The scene's plan for a frame short of bones: each on one bone, beside the poses they stand in.
+  characters.begin();
+  const st = new AnimState();
+  st.cue = CUE_DOWN;
+  let planned = 0;
+  for (let k = 0; k < 5; k++) planned += 1 + characters.standInBones(survivor, null, 0, st, false, false, 0, null, 0, 20 + k, 105);
+  const p = new FramePacket();
+  p.tier = { ...p.tier, bones: planned };
+  for (let k = 0; k < 5; k++) oneBone(characters, p, st, 105, 20 + k);
+  expect([p.boneCount, p.dropped]).toEqual([planned, 0]);
+  expect(planned).toBeLessThanOrEqual(2 * HUMAN_BONES + 5);
+  // Each lies with its hips on its ragdoll's and its head the way its ragdoll's lies: a shared pose's joints, carried by
+  // the body's own bone, the last five in the packet after the shared poses.
+  const shared = (planned - 5) / HUMAN_BONES, b = p.bones;
+  /** Where joint `bone` of the shared pose at `block`, carried by the body bone at `own`, is in the world. */
+  const joint = (block: number, bone: number, own: number): number[] => {
+    const o = (block * HUMAN_BONES + bone) * BONE_FLOATS, r = bone * 3, m = own * BONE_FLOATS;
+    const q = [0, 1, 2].map((row) => b[o + row * 4]! * rest[r]! + b[o + row * 4 + 1]! * rest[r + 1]! + b[o + row * 4 + 2]! * rest[r + 2]! + b[o + row * 4 + 3]!);
+    return [0, 1, 2].map((row) => b[m + row * 4]! * q[0]! + b[m + row * 4 + 1]! * q[1]! + b[m + row * 4 + 2]! * q[2]! + b[m + row * 4 + 3]!);
+  };
+  for (let k = 0; k < 5; k++) {
+    const h = characters.humanFall(20 + k)!, s = h.solved, c = Math.cos(h.yaw), sn = Math.sin(h.yaw);
+    const at = (bone: number): number[] => [h.x + c * s.pos[bone * 3]! + sn * s.pos[bone * 3 + 2]!, h.y + s.pos[bone * 3 + 1]!, h.z - sn * s.pos[bone * 3]! + c * s.pos[bone * 3 + 2]!];
+    const hips = at(B_HIPS), head = at(B_HEAD), way = [head[0]! - hips[0]!, head[2]! - hips[2]!];
+    let best = Infinity, along = -1;
+    for (let block = 0; block < shared; block++) {
+      const dh = joint(block, B_HIPS, shared * HUMAN_BONES + k), dd = joint(block, B_HEAD, shared * HUMAN_BONES + k);
+      const off = Math.hypot(dh[0]! - hips[0]!, dh[1]! - hips[1]!, dh[2]! - hips[2]!);
+      if (off >= best) continue;
+      best = off;
+      const w = [dd[0]! - dh[0]!, dd[2]! - dh[2]!];
+      along = (w[0]! * way[0]! + w[1]! * way[1]!) / (Math.hypot(w[0]!, w[1]!) * Math.hypot(way[0]!, way[1]!));
+    }
+    expect(best, `${k}`).toBeLessThan(0.02);
+    expect(along, `${k}`).toBeGreaterThan(0.95);
+  }
 });

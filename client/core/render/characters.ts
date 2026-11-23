@@ -21,7 +21,7 @@ import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import { isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatMulConj, quatRotate } from "../../../shared/math/quat.ts";
-import { B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
+import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
@@ -879,6 +879,27 @@ export class Characters {
     return s;
   }
 
+  /**
+   * A laid fall drawn on one bone: the topple's way it lies in, 0 face down or 8 face up as its hips face, turned so its
+   * head lies the way its ragdoll's does from its hips, and placed so its hips' joint is on its ragdoll's.
+   */
+  private fallOnOne(kind: number, set: number, h: HumanFall): { way: number; yaw: number; x: number; y: number; z: number } {
+    const s = h.solved, o = this.onOne, c = Math.cos(h.yaw), sn = Math.sin(h.yaw);
+    quatRotate(s.rot, B_HIPS * 4, 0, 0, 1, this.ahead3, 0);
+    const up = this.ahead3[1]! > 0, hx = s.pos[B_HIPS * 3]!, hz = s.pos[B_HIPS * 3 + 2]!;
+    // The ragdoll lies about (h.x, h.y, h.z) facing h.yaw, as lain() places it.
+    const mx = s.pos[B_HEAD * 3]! - hx, mz = s.pos[B_HEAD * 3 + 2]! - hz, wx = c * mx + sn * mz, wz = c * mz - sn * mx;
+    o.way = up ? 8 : 0;
+    o.yaw = up ? Math.atan2(-wx, -wz) : Math.atan2(wx, wz);
+    const hips = this.lyingStandIn(kind, set, o.way).solved.pos, cy = Math.cos(o.yaw), sy = Math.sin(o.yaw);
+    o.x = h.x + c * hx + sn * hz - (cy * hips[B_HIPS * 3]! + sy * hips[B_HIPS * 3 + 2]!);
+    o.y = h.y + s.pos[B_HIPS * 3 + 1]! - hips[B_HIPS * 3 + 1]!;
+    o.z = h.z + c * hz - sn * hx - (cy * hips[B_HIPS * 3 + 2]! - sy * hips[B_HIPS * 3]!);
+    return o;
+  }
+  private readonly onOne = { way: 0, yaw: 0, x: 0, y: 0, z: 0 };
+  private readonly ahead3 = new Float64Array(3);
+
   /** The pose a survivor of `kind` drawn as body set `set` lies in once toppled the way `way` (reactions.ts topple). */
   private lyingStandIn(kind: number, set: number, way: number): StandIn {
     const key = (kind * 2 + set) * REACT_DIRS + way;
@@ -911,8 +932,9 @@ export class Characters {
     const k = this.kinds[kind];
     if (!k && !this.creatures[kind]) return 0;
     const set = k ? this.setOf(k, look, lookAt) : 0;
-    // As add() draws it: a body toppled down, or down before its fall's checkpoint, on the shared lying pose.
-    const way = k && !seated && !impaled && !this.dead.humans.of(id) ? lyingWay(st.react !== 0 ? st.react : this.dead.humans.waiting(id, tick), tick) : -1;
+    // As add() draws it: a laid fall, a body toppled down, or one down before its fall's checkpoint, on a shared lying pose.
+    const fall = k && !seated && !impaled ? this.dead.humans.of(id) : undefined;
+    const way = fall ? this.fallOnOne(kind, set, fall).way : k && !seated && !impaled ? lyingWay(st.react !== 0 ? st.react : this.dead.humans.waiting(id, tick), tick) : -1;
     if (way >= 0) {
       const s = this.lyingStandIn(kind, set, way);
       if (s.counted === this.frame || s.written === this.frame) return 0;
@@ -1447,11 +1469,12 @@ export class Characters {
     if (vehicleSeat) rigid = false;
     // A survivor knocked down lies as its ragdoll, and rises from it.
     const fallen = seat || vehicleSeat ? undefined : this.dead.humans.of(id);
-    if (fallen) rigid = false;
+    // A laid fall lies as its ragdoll on every bone; on one, in the lying pose all share, along the way its ragdoll lies.
+    const onOne = fallen && rigid ? this.fallOnOne(kind, this.setOf(k, look, lookAt), fallen) : null;
     // Known to be down before its fall's checkpoint has come: it topples meanwhile rather than stand.
-    else if (!seat && !vehicleSeat && st.react === 0) st.react = this.dead.humans.waiting(id, tick);
+    if (!fallen && !seat && !vehicleSeat && st.react === 0) st.react = this.dead.humans.waiting(id, tick);
     // On one bone, a body toppled down lies in the pose every body toppled that way shares.
-    const lying = rigid && !seat && !vehicleSeat && !impaled ? lyingWay(st.react, tick) : -1;
+    const lying = onOne ? onOne.way : rigid && !fallen && !seat && !vehicleSeat && !impaled ? lyingWay(st.react, tick) : -1;
     this.packet = p;
     const at = this.setOf(k, look, lookAt);
     const set = k.sets[at]!;
@@ -1474,7 +1497,8 @@ export class Characters {
       if (seat) {
         writeRigid(p.bones, first * BONE_FLOATS, 0, 0, 0, 0, 1);
         inFrame(p.bones, first * BONE_FLOATS, 1, seat, seatAt, x, y, z);
-      } else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
+      } else if (onOne) writeRigid(p.bones, first * BONE_FLOATS, onOne.x - p.camX, onOne.y - p.camY, onOne.z - p.camZ, onOne.yaw, 1);
+      else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
     } else {
       if (fallen?.down) {
         x = fallen.x - p.camX; y = fallen.y - p.camY; z = fallen.z - p.camZ; yaw = fallen.yaw;
