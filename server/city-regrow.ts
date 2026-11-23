@@ -215,9 +215,10 @@ export class CityRegrow {
 
   /**
    * Sets back the changed map slots of `chunk` that are no building's and nobody's, where no survivor is within
-   * CityRegrowClearDistance of the chunk and no body is in the piece's room. With `force`, whoever is near. Returns how many.
+   * CityRegrowClearDistance of the chunk and no body is in the piece's room. With `force`, whoever is near, and only
+   * the pieces within `radius` metres of (x, z). Returns how many.
    */
-  healLoose(chunk: number, force = false): number {
+  healLoose(chunk: number, force = false, x = 0, z = 0, radius = Infinity): number {
     const { world, rules, game } = this.ctx;
     const { dims, structs, ents } = world;
     const t = structs.chunks[chunk];
@@ -231,6 +232,11 @@ export class CityRegrow {
       if (t.owner[slot] !== 0 || (world.buildings?.buildingOf(chunk, slot) ?? -1) >= 0) continue;
       // Only what breaks in forms: a lamp a car felled and a door left open are others' to set back.
       if (world.reg.breakFamily[structs.mapKind(chunk, slot)] === 0) continue;
+      // Past an admin's circle it is left, and keeps its clock.
+      if ((t.x[slot]! - x) * (t.x[slot]! - x) + (t.z[slot]! - z) * (t.z[slot]! - z) > radius * radius) {
+        left++;
+        continue;
+      }
       // A body where the piece would stand keeps it away this time.
       const reach = structs.spread[structs.mapKind(chunk, slot)]! + ROOM;
       let taken = false;
@@ -254,8 +260,8 @@ export class CityRegrow {
   }
 
   /**
-   * An admin's reset: every changed building with a piece within `radius` metres of (x, z), and the loose pieces of the
-   * chunks there, set back now whoever is near; with no radius, the whole city. A building coming down is left to
+   * An admin's reset: every changed building with a piece within `radius` metres of (x, z), and the loose pieces
+   * there, set back now whoever is near; with no radius, the whole city. A building coming down is left to
    * finish. Returns the buildings and the slots set back.
    */
   reset(x = 0, z = 0, radius = Infinity): { buildings: number; slots: number } {
@@ -276,7 +282,7 @@ export class CityRegrow {
         done.add(key);
         if (!busy(key)) slots += this.heal(key, true);
       }
-      slots += this.healLoose(chunk, true);
+      slots += this.healLoose(chunk, true, x, z, radius);
     }
     return { buildings: done.size, slots };
   }

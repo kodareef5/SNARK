@@ -233,14 +233,17 @@ export class CityCollapse implements CitySupport {
     const buildings = world.buildings!;
     const gone = going ?? new Set(falls);
     const done = new Set<number>();
+    let late: Set<number> | null = null;
     for (const ref of falls) {
       const handle = buildings.buildingOf(Math.floor(ref / 65536), ref & 0xffff);
-      if (handle < 0) {
+      const id = handle < 0 ? -1 : buildings.id(handle);
+      if (done.has(id)) continue;
+      // One blast may reach many buildings: each one past the tick's judgements is answered by the look straight down.
+      if (handle >= 0 && !late?.has(id) && this.used >= JUDGEMENTS) (late ??= new Set()).add(id);
+      if (handle < 0 || late?.has(id)) {
         if (city.rests(ref, going)) into.add(ref);
         continue;
       }
-      const id = buildings.id(handle);
-      if (done.has(id)) continue;
       done.add(id);
       const handles: number[] = [];
       if ((buildings.flags(handle) & BUILDING_SPANS) !== 0) buildings.byId(id, handles);

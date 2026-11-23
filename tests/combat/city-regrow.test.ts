@@ -146,6 +146,21 @@ test("an admin resets the building near, and a client that holds its chunk takes
   expect([h.say(ada, "city reset all")[0], h.say(ada, "city reset radius 100")[0]]).toEqual(["0 pieces set back, of 0 buildings", "0 pieces set back, of 0 buildings"]);
 });
 
+test("a reset by radius sets back only the loose pieces inside its circle", () => {
+  // Two walls of no building, 33 m apart in one chunk.
+  const c = city([{ shape: "wall8", finish: "concrete", x: 70, z: 70 }, { shape: "wall8", finish: "concrete", x: 70, z: 103 }]);
+  const { h } = c;
+  expect(h.host.rules.assign("CityRegrowDays", "0", "console")).toBe("");
+  expect(Math.floor(c.refs[0]! / 65536)).toBe(Math.floor(c.refs[1]! / 65536));
+  for (const ref of c.refs) strike(c, ref);
+  expect(c.refs.map((ref) => whole(c, [ref]))).toEqual([false, false]);
+  expect(h.host.cityRegrow.reset(70, 70, 1)).toEqual({ buildings: 0, slots: 1 });
+  // The far wall is left broken, and its chunk keeps its clock.
+  expect([c.refs.map((ref) => whole(c, [ref])), h.host.cityRegrow.kept]).toEqual([[true, false], 1]);
+  expect(h.host.cityRegrow.reset(70, 70, 40)).toEqual({ buildings: 0, slots: 1 });
+  expect([whole(c, c.refs), h.host.cityRegrow.kept]).toEqual([true, 0]);
+});
+
 test("a broken piece of no building returns by the same clock, and a healed chunk leaves the save", () => {
   const db = join(dir, "regrow.db");
   const c = city([{ shape: "wall8", finish: "concrete", x: 100, z: 100 }, { shape: "wall8", finish: "concrete", x: 100, z: 110 }], 4, { dbPath: db });

@@ -336,6 +336,24 @@ test("past a tick's judgements a destroyed piece is answered by the look straigh
   expect(collapse.judged).toBe(5 * c.refs.length);
 });
 
+test("one blast across eight buildings is judged within a tick's judgements, a building over at most", () => {
+  // 400 pieces each: a building's pins and one judgement are 1,200, so eight asked of at once would be 9,600.
+  const masts = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => mast(80, 40 + 60 * (k % 4), 60 + 120 * (k >> 2)));
+  const c = sketchCity(masts.map((m) => m.s));
+  const collapse = c.h.host.cityCollapse;
+  const each = c.all[0]!.length;
+  const falls = masts.map((m, k) => c.all[k]![m.slabs[79]![0]!]!);
+  expect(collapse.resting(falls, null, new Set())).toBe(true);
+  // The fourth passes 4,000 and is the last judged: the other four are answered by the look straight down.
+  expect([each, collapse.judged]).toEqual([400, 4 * 3 * each]);
+  expect(collapse.judged).toBeLessThanOrEqual(JUDGEMENTS + 3 * each);
+  // The next tick has its own, and the pins made are kept.
+  until(c, c.h.world.tick + 1);
+  expect(collapse.resting(falls, null, new Set())).toBe(true);
+  expect(collapse.judged - 4 * 3 * each).toBeLessThanOrEqual(JUDGEMENTS + 3 * each);
+  expect(collapse.judged).toBeGreaterThan(4 * 3 * each);
+});
+
 test("a body under a falling storey is harmed once a wave, by CityCollapseDamage", () => {
   const harm = (scale: string): number => {
     const { s, piers } = mast(4, 96, 96);
