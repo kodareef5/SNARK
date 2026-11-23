@@ -1,9 +1,8 @@
-// The performance record of bug report mode (planning/workstreams/bug-notes.md): about forty numbers for each of the last
-// FRAME_SLOTS frames, about a minute, and a row for each of the last SECOND_SLOTS seconds with where the survivor was, so
-// a slow second maps to a place. The sampler (notes/sample.ts) fills `sample`, `place`, `totals` and `heap` after each
-// frame is drawn and `record` writes them in place: nothing is made a frame, as tests/ui/notes.test.ts holds. A frame's
-// place among these rows is its place among the data utility's (assets/frames.ts FrameRing): both write a row after the
-// same draw, so `row(back)` names the same frame in each. Only a page in bug report mode keeps it.
+// The debug bar's record of performance: about forty numbers for each of the last FRAME_SLOTS frames, about a minute,
+// and a row for each of the last SECOND_SLOTS seconds with where the survivor was, so a slow second maps to a place. The
+// sampler (sample.ts) fills `sample`, `place`, `totals` and `heap` after each frame is drawn and `record` writes them in
+// place: nothing is made a frame. A frame's place among these rows is its place among the frame ring's
+// (assets/frames.ts): both write a row after the same draw, so `row(back)` names the same frame in each.
 
 import type { PerfSummary } from "../../../shared/report.ts";
 
@@ -55,9 +54,11 @@ export const T = Object.fromEntries(TOTAL_FIELDS.map((f, i) => [f, i])) as { rea
  * change of each TOTAL_FIELDS over it.
  */
 export const SECOND_FIELDS: readonly string[] = ["second", "frames", "meanMs", "worstMs", "late", "over33", "over50", "targetMs", "gpuMs", "x", "y", "z", "heapMB", "longTasks", "longMs", ...TOTAL_FIELDS];
-const S_SECOND = 0, S_FRAMES = 1, S_SUM = 2, S_WORST = 3, S_LATE = 4, S_OVER33 = 5, S_OVER50 = 6, S_TARGET = 7, S_GPU = 8, S_X = 9, S_Y = 10, S_Z = 11, S_HEAP = 12, S_LONG = 13, S_LONG_MS = 14, S_TOTALS = 15;
+/** Where each column is in a second's row (`seconds`, SECOND_COLS a row). A mean is held as a sum, over S_FRAMES. */
+export const S_SECOND = 0, S_FRAMES = 1, S_SUM = 2, S_WORST = 3, S_LATE = 4, S_OVER33 = 5, S_OVER50 = 6, S_TARGET = 7, S_GPU = 8, S_X = 9, S_Y = 10, S_Z = 11, S_HEAP = 12, S_LONG = 13, S_LONG_MS = 14, S_TOTALS = 15;
 /** Plus the frames the GPU was timed in, which the mean is of; not exported. */
-const SCOLS = SECOND_FIELDS.length + 1, S_GPU_FRAMES = SCOLS - 1;
+const SCOLS = SECOND_FIELDS.length + 1;
+export const SECOND_COLS = SCOLS, S_GPU_FRAMES = SCOLS - 1;
 
 export class PerfRing {
   /** Rows written, ever: the latest is at `(rows - 1) % FRAME_SLOTS`. */
@@ -76,6 +77,13 @@ export class PerfRing {
   private readonly began = new Float64Array(TOTAL_FIELDS.length);
   /** The display's interval in ms, as the data utility's target has it for the frame about to be recorded (sample.ts). */
   target = 1000 / 60;
+
+  /** Where second `t`'s row starts in `seconds`, or -1 where it is not held. */
+  secondAt(t: number): number {
+    if (t < 0 || t > this.second || this.second - t >= SECOND_SLOTS) return -1;
+    const r = (t % SECOND_SLOTS) * SCOLS;
+    return this.seconds[r + S_SECOND] === t ? r : -1;
+  }
 
   /** The row of the frame `back` frames before the latest, or -1 where it is not kept. */
   row(back: number): number {

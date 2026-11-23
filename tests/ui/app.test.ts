@@ -13,8 +13,6 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
-import { glassBox } from "../fixtures/monitor.ts";
-import { KEY_MONITOR } from "../../client/core/ui/monitor.ts";
 
 const pack = parsePack(corePackBytes());
 
@@ -87,21 +85,6 @@ test("a headless client boots, draws, walks, and its interface says where it is"
   expect(app.cam.z).toBe(app.session.own.z);
   expect(app.cam.y).toBeCloseTo(app.session.own.y + 1.62, 5);
   expect(app.ui.frame.find(KEY_READOUT + 1)!.text).toContain(`z ${app.session.own.z.toFixed(1)}`);
-});
-
-test("at first start the resource monitor is on: its file comes after the first frame, which does not wait for it, and its strip stands under the readout", async () => {
-  const h = new Harness();
-  const app = client(h, "ada");
-  expect([app.ui.settings.diagnostics, app.ui.settings.monitor]).toEqual([true, true]);
-  app.frame(0, 1280, 720);
-  // The first frame is built without it. It is asked for then, and arrives a moment later.
-  expect(app.ui.monitor).toBeNull();
-  for (let i = 0; i < 200 && !app.ui.monitor; i++) await Bun.sleep(5);
-  expect(app.ui.monitor).not.toBeNull();
-  h.run(500, (now) => app.frame(now, 1280, 720));
-  const strip = glassBox(app.ui.frame, KEY_MONITOR), readout = app.ui.frame.find(KEY_READOUT + 2)!;
-  expect(strip).not.toBeNull();
-  expect(strip!.y).toBeGreaterThanOrEqual(readout.y + readout.h);
 });
 
 test("the console is typed into, answered by the server, and holds the keyboard while it is open", () => {

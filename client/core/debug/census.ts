@@ -1,9 +1,15 @@
-// What a frame drew, counted at each of a note's pictures (perf.json `census`): its draws, triangles and instances by
-// the step they are drawn in and by the store that made them, and the twenty draws with the most triangles. A loop over
-// the frame's draws, a few thousand at most, made only when a picture is taken.
+// What a frame drew: its draws, triangles and instances by the step they are drawn in and by the store that made them,
+// and the twenty draws with the most triangles. A loop over the frame's draws, a few thousand at most, made a few times
+// a second while the Frame tab shows and once for a save.
 
 import type { FramePacket } from "../render/packet.ts";
-import { BEND_BUFFERS, DRAW_BLEND, DRAW_NEAR, FAR_BUFFER, FAR_NODE_BUFFERS, NODE_BUFFERS, STEP_NAMES, TRANSIENT_BUFFER } from "./copies.ts";
+import { BEND_BUFFERS, DRAW_BLEND, DRAW_NEAR, TRANSIENT_BUFFER } from "../render/packet.ts";
+import { FAR_BUFFER } from "../render/far.ts";
+import { FAR_NODE_BUFFERS } from "../render/farnodes.ts";
+import { NODE_BUFFERS } from "../render/scene.ts";
+
+/** The steps a draw is drawn in, by render/packet.ts STEP_. */
+export const STEP_NAMES = ["near", "far", "far see-through", "near see-through", "body"] as const;
 
 export interface Count { name: string; draws: number; triangles: number; instances: number }
 export interface Census {

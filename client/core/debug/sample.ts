@@ -1,10 +1,10 @@
-// What the performance record (notes/ring.ts) takes of each frame, read after it is drawn from what the page already
-// keeps: the data utility's row of the frame and its display's interval (assets/frames.ts), the frame's packet, the
-// scene's budget, the governor and the session's counters. It reads the app's private fields by name, as the inspectors do (D900), and makes nothing.
+// What the performance record (ring.ts) takes of each frame, read after it is drawn from what the page already keeps:
+// the frame ring's row of the frame and its display's interval (assets/frames.ts), the frame's packet, the scene's
+// budget, the governor and the session's counters. It reads the app's private fields by name, and makes nothing.
 
 import type { App } from "../app.ts";
 import type { FramePacket } from "../render/packet.ts";
-import { TICK_RATE } from "./copies.ts";
+import { TICK_RATE } from "../../../shared/coords.ts";
 import { C, FLAG_GPU, T, type PerfRing } from "./ring.ts";
 
 /** What the shell and the note know of a frame that the app does not: the GPU's time (-1 for none), the GL calls, long tasks and a picture's cost. */

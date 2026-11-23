@@ -1,19 +1,25 @@
-// Where, what and how, as a bug report says them (shared/report.ts): the survivor's place and the street under its feet,
+// Where, what and how, as a saved capture says them (shared/report.ts): the survivor's place and the street under its feet,
 // the view, what the crosshair is on (assets/look.ts), the hour and the sun, the page and its settings. Read from the
-// app's fields by name, as the inspectors do (D900), and from the kit for the first frame's code (notes-kit.ts).
+// app's fields by name.
 
 import type { App } from "../app.ts";
 import { emptyPick, pickLook } from "../assets/look.ts";
-import type { NotesKit } from "../notes-kit.ts";
 import type { FramePacket } from "../render/packet.ts";
 import type { Point, Report } from "../../../shared/report.ts";
-import { CHUNK_SIZE, FRAME_SUN, KERBS, MODE_NAMES, SECTOR_CHUNKS, SESSION_ALIVE, STREET_ONE_WAY, STREET_PAIRED, VERGES, WALKS } from "./copies.ts";
+import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../../shared/coords.ts";
+import { SESSION_ALIVE } from "../../../shared/net/protocol.ts";
+import { KERBS, STREET_ONE_WAY, STREET_PAIRED, StreetPoint, VERGES, WALKS, streetAt } from "../../../shared/world/streets.ts";
+import { FRAME } from "../render/packet.ts";
+
+/** The movement modes, by shared/sim/character.ts MODE_. */
+const MODE_NAMES = ["none", "walk", "swim", "ghost", "fly", "flyer"] as const;
+const FRAME_SUN = FRAME.sun;
 
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 const point = (x: number, y: number, z: number): Point => [r2(x), r2(y), r2(z)];
 
 /** The survivor's feet, its chunk and sector, the ground and water there, and the street nearest, if any is held near. */
-export function placeOf(app: App, kit: NotesKit): Report["place"] {
+export function placeOf(app: App): Report["place"] {
   const s = app.session, own = s.own, world = s.world;
   const cx = Math.floor(own.x / CHUNK_SIZE), cz = Math.floor(own.z / CHUNK_SIZE);
   const dims = world?.dims;
@@ -25,8 +31,8 @@ export function placeOf(app: App, kit: NotesKit): Report["place"] {
   if (!hf) return out;
   out.ground = r2(hf.heightAt(own.x, own.z));
   out.water = r2(hf.waterAt(own.x, own.z));
-  const p = new kit.StreetPoint();
-  if (hf.streets && kit.streetAt(hf.streets, own.x, own.z, p) && p.near) {
+  const p = new StreetPoint();
+  if (hf.streets && streetAt(hf.streets, own.x, own.z, p) && p.near) {
     // A side's kinds in a byte (streets.ts kindsByte): its verge in bits 0 to 2, its walk in 3 and 4, its kerb in 5 and 6.
     const kinds = p.kinds;
     out.street = {
@@ -56,8 +62,8 @@ export function viewOf(app: App): Report["view"] {
 }
 
 /** What the crosshair is on, by the ray the app cast this frame, and where the ray met it. */
-export function aimOf(app: App, kit: NotesKit): Report["aim"] {
-  const pick = pickLook(app, kit, emptyPick()), out: NonNullable<Report["aim"]> = { what: pick.what };
+export function aimOf(app: App): Report["aim"] {
+  const pick = pickLook(app, emptyPick()), out: NonNullable<Report["aim"]> = { what: pick.what };
   if (pick.what === "none") return out;
   const s = app.session, d = app["aim"], eye = app["eye"] < 0 ? 0 : app["eye"], own = s.own, manifest = app.scene?.assets.manifest;
   Object.assign(out, {

@@ -1,32 +1,13 @@
-// Bug report mode's page side (client/core/notes): the performance record, written in place with nothing made a frame,
-// its rows by the frame and by the second, its summary that leaves a picture's frames out, and the copies of the first
-// frame's numbers it keeps.
+// The debug bar's performance record: written in place with nothing made a frame, its rows by the frame and by the
+// second, and its summary that leaves a picture's frames out.
 
 import { expect, test } from "bun:test";
 import type { App } from "../../client/core/app.ts";
 import { FrameRing } from "../../client/core/assets/frames.ts";
-import * as copies from "../../client/core/notes/copies.ts";
-import { C, CELLS, FLAG_AFTER_SHOT, FLAG_GPU, FLAG_SHOT, FRAME_FIELDS, FRAME_SLOTS, PerfRing, SECOND_FIELDS, T } from "../../client/core/notes/ring.ts";
-import { FrameSampler, type FrameExtra } from "../../client/core/notes/sample.ts";
-import { DRAW_BLEND, DRAW_NEAR, FRAME, FramePacket, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TRANSIENT_BUFFER, BEND_BUFFERS } from "../../client/core/render/packet.ts";
-import { FAR_BUFFER } from "../../client/core/render/far.ts";
-import { FAR_NODE_BUFFERS } from "../../client/core/render/farnodes.ts";
-import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
-import { CHUNK_SIZE, SECTOR_CHUNKS, TICK_RATE } from "../../shared/coords.ts";
-import * as character from "../../shared/sim/character.ts";
-import * as streets from "../../shared/world/streets.ts";
+import { C, CELLS, FLAG_AFTER_SHOT, FLAG_GPU, FLAG_SHOT, FRAME_FIELDS, FRAME_SLOTS, PerfRing, SECOND_FIELDS, T } from "../../client/core/debug/ring.ts";
+import { FrameSampler, type FrameExtra } from "../../client/core/debug/sample.ts";
+import { FramePacket } from "../../client/core/render/packet.ts";
 import { stripComments } from "../../tools/policy.ts";
-
-test("the notes' copies of the first frame's numbers are the numbers", () => {
-  expect([copies.TICK_RATE, copies.CHUNK_SIZE, copies.SECTOR_CHUNKS, copies.FRAME_SUN]).toEqual([TICK_RATE, CHUNK_SIZE, SECTOR_CHUNKS, FRAME.sun]);
-  expect([copies.VERGES, copies.WALKS, copies.KERBS, copies.STREET_ONE_WAY, copies.STREET_PAIRED]).toEqual([streets.VERGES, streets.WALKS, streets.KERBS, streets.STREET_ONE_WAY, streets.STREET_PAIRED]);
-  const modes = [character.MODE_NONE, character.MODE_WALK, character.MODE_SWIM, character.MODE_GHOST, character.MODE_FLY, character.MODE_FLYER];
-  expect(modes).toEqual([0, 1, 2, 3, 4, 5]);
-  expect(copies.MODE_NAMES.length as number).toBe(modes.length);
-  expect([copies.DRAW_BLEND, copies.DRAW_NEAR]).toEqual([DRAW_BLEND, DRAW_NEAR]);
-  expect([STEP_NEAR, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, STEP_BODY].map((s) => copies.STEP_NAMES[s])).toEqual(["near", "far", "far see-through", "near see-through", "body"]);
-  expect([copies.NODE_BUFFERS, copies.FAR_BUFFER, copies.FAR_NODE_BUFFERS, copies.BEND_BUFFERS, copies.TRANSIENT_BUFFER]).toEqual([NODE_BUFFERS, FAR_BUFFER, FAR_NODE_BUFFERS, BEND_BUFFERS, TRANSIENT_BUFFER]);
-});
 
 /**
  * Where a function's code would make something each time it runs: an array or record written out, `new`, a closure, a
