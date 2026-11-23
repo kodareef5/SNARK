@@ -10,8 +10,10 @@
 
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
 import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type CorpseImpact } from "../shared/anim/corpse.ts";
-import { WET_DAMP, WET_GRAVITY } from "../shared/anim/ragdoll.ts";
-import { Solved, rayZones, zoneHit } from "../shared/anim/skeleton.ts";
+import { WET_DAMP, WET_GRAVITY, type RagdollDef } from "../shared/anim/ragdoll.ts";
+import { HUMAN, HUMAN_RAGDOLL } from "../shared/anim/human.ts";
+import { layHuman } from "../shared/anim/human-fall.ts";
+import { Solved, rayZones, zoneHit, type Skeleton } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { POS_UNITS } from "../shared/net/view.ts";
@@ -21,7 +23,7 @@ import { detCos, detSin } from "../shared/math/scalar.ts";
 import { quatNormalize } from "../shared/math/quat.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
-import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
+import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_PRONE, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
 import { copyMoveSize } from "../shared/sim/move-size.ts";
 import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
@@ -132,6 +134,8 @@ export interface Body {
   readonly wreck: HelicopterState | BoatState | null;
   /** A physical death starts directly in the replicated ragdoll; the capsule never also owns its motion. */
   launch: CorpseImpact | null;
+  /** A survivor's fall it died in (server/falls.ts take), which its ragdoll goes on from instead of being laid anew. */
+  handed: { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null;
   motionRevision: number;
   motionStanding: boolean;
   motionWorld: number;
@@ -147,6 +151,8 @@ export interface Take {
   readonly items: number[];
   readonly bagged: number[];
 }
+
+const HUMAN_SHAPE = { skel: HUMAN, ragdoll: HUMAN_RAGDOLL };
 
 export class Corpses {
   readonly ctx: CorpsesContext;
@@ -171,6 +177,8 @@ export class Corpses {
   t = 0;
   private readonly rng: Rng;
   private readonly corpse: number;
+  /** The survivor's kind, whose body lies as HUMAN_RAGDOLL. */
+  private readonly survivor: number;
   private reach = PAD;
   /** Its kind in the deadline heap. */
   private readonly deadline: number;
@@ -181,6 +189,7 @@ export class Corpses {
     this.seed = seed;
     this.rng = new Rng(seed);
     this.corpse = ctx.world.reg.index.get("core:corpse") ?? 0;
+    this.survivor = ctx.world.reg.index.get("core:survivor") ?? -1;
   }
 
   get count(): number {
@@ -190,6 +199,14 @@ export class Corpses {
   /** The body whose entity is `e`, or undefined. */
   at(e: number): Body | undefined {
     return this.byEnt.get(e);
+  }
+
+  /** A survivor's fall that entity `e` dies in, taken from server/falls.ts. The host sets it. */
+  handOff: (e: number) => { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null = () => null;
+
+  /** Whether the body that is entity `e` is opened by the use key: every one but a survivor's, which carries nothing. */
+  opens(e: number): boolean {
+    return this.byEnt.get(e)?.kind !== this.survivor;
   }
 
   /** In ticks, under the rules now. */
@@ -208,7 +225,7 @@ export class Corpses {
     const reg = world.reg;
     const def = reg.defs[rec.kind];
     const e = records.entOf.get(rec.pid);
-    if (this.corpse === 0 || def?.type !== "species" || (def.class !== "creature" && !(def.class === "vehicle" && def.corpse)) || e === undefined) return;
+    if (this.corpse === 0 || def?.type !== "species" || (def.class !== "creature" && def.class !== "survivor" && !(def.class === "vehicle" && def.corpse)) || e === undefined) return;
     const ents = world.ents;
     const tick = world.tick;
     const young = rec.grown !== 0 && growthStep(rec.span, rec.grown, tick) < GROWN;
@@ -222,8 +239,9 @@ export class Corpses {
     body.yaw = ents.yaw[e]! & 0xffc0;
     body.genome = rec.genome;
     // A slot for each of the creature's and one for its saddle. Items.move sets each stack's spoil clock for where it now lies.
-    const inv = rec.inv ? items.inv(rec) : null;
-    if ((inv && inv.used() > 0) || rec.saddle !== 0) {
+    // A survivor's things go to the cache Death leaves (server/death.ts), so its body carries none.
+    const inv = rec.inv && def.class !== "survivor" ? items.inv(rec) : null;
+    if ((inv && inv.used() > 0) || (rec.saddle !== 0 && def.class !== "survivor")) {
       body.inv = new Inventory((inv ? inv.cap : 0) + 1);
       for (let s = 0; inv && s < inv.cap; s++) if (inv.item[s] !== 0) items.move(rec, s, body, s, 0);
       // A saddle was taken out of the ledger when it was put on, and comes back as it does when it is taken off.
@@ -234,13 +252,19 @@ export class Corpses {
     const of = def as SpeciesDef;
     const max = (of.corpse?.health ?? HEALTH) * size * rules.num("HarvestHealthMultiplier");
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
-    const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
+    const survivor = rec.kind === this.survivor;
+    // A survivor that dies knocked down goes on lying as its fall had it; one lying prone or knocked out goes limp lying.
+    const handed = survivor ? this.handOff(e) : null;
+    const out = handed ? false : rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0 || (survivor && ents.stance[e] === STANCE_PRONE);
     const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
-    const rig = world.anims[rec.kind]?.rig;
-    if (impact && impact.victimPid === rec.pid && impact.victimHandle === makeHandle(e, ents.gen[e]!) && rig?.ragdoll && rig.ragdoll.bone.length <= CORPSE_BODIES_MAX) {
+    b.handed = handed;
+    const rig = this.rigOf(rec.kind);
+    if (!handed && impact && impact.victimPid === rec.pid && impact.victimHandle === makeHandle(e, ents.gen[e]!) && rig && rig.ragdoll.bone.length <= CORPSE_BODIES_MAX) {
       b.launch = impact;
       b.motionRevision = 1;
     }
+    // A survivor has no death clip a client could lay it by, so its body is always sent as its ragdoll lies.
+    if (survivor) b.motionRevision = 1;
     if (b.wreck) {
       const v = ents.vrow[e]!;
       Object.assign(b.wreck, { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!,
@@ -297,8 +321,15 @@ export class Corpses {
     if (!b.motionRevision) this.loaded.push(b);
   }
 
+  /** The skeleton and ragdoll a body of `kind` lies as: its rig's, or a survivor's (shared/anim/human.ts); null for none. */
+  private rigOf(kind: number): { readonly skel: Skeleton; readonly ragdoll: RagdollDef } | null {
+    if (kind === this.survivor) return HUMAN_SHAPE;
+    const rig = this.ctx.world.anims[kind]?.rig;
+    return rig?.ragdoll ? { skel: rig, ragdoll: rig.ragdoll } : null;
+  }
+
   private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, air: boolean, life: number): Body {
-    const anim = this.ctx.world.anims[kind];
+    const rig = this.rigOf(kind);
     const def = this.ctx.world.reg.vehicle[kind];
     const wreck = def?.movement === "rotor" ? createHelicopter(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : def?.movement === "boat" ? createBoat(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : null;
     if (wreck && "flooding" in wreck) { wreck.hullCondition = 0; wreck.engineCondition = 0; }
@@ -330,8 +361,8 @@ export class Corpses {
     const b: Body = {
       rec, kind, e: -1, max, left, young, size, move, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
-      fall: null, pose: !wreck && anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false, drop: null, dropped: 0, wreck,
-      launch: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD,
+      fall: null, pose: !wreck && rig ? new Solved(rig.skel.bones) : null, moving: false, drop: null, dropped: 0, wreck,
+      launch: null, handed: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD,
     };
     this.bodies.set(rec.pid, b);
     return b;
@@ -398,14 +429,21 @@ export class Corpses {
     if (b.wreck) return;
     const anim = this.ctx.world.anims[b.kind];
     const saved = b.rec.extra.get(CORPSE_MOTION_COMPONENT), checkpoint = saved ? decodeCorpseCheckpoint(saved) : null;
-    b.motionStanding = !!b.launch || checkpoint?.standing === true;
-    const r = anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose, b.motionStanding) : null;
+    const human = b.kind === this.survivor;
+    // A survivor has no death clip: it goes limp standing, as one knocked down does (shared/anim/human-fall.ts).
+    b.motionStanding = human || !!b.launch || checkpoint?.standing === true;
+    const r = human && b.pose ? layHuman(b.x, b.y, b.z, b.yaw, b.out) : anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose, b.motionStanding) : null;
     if (r) {
       b.fall = new Fall(r);
       if (saved && (!checkpoint || checkpoint.x !== b.x || checkpoint.y !== b.y || checkpoint.z !== b.z || checkpoint.yaw !== b.yaw || checkpoint.size !== b.size || checkpoint.out !== b.out || checkpoint.air !== b.air || !r.restore(checkpoint.state, checkpoint.awake))) {
         throw new Error(`corpse ${b.rec.pid}: invalid physical checkpoint`);
       }
       if (checkpoint) b.fall.ticks = checkpoint.ticks;
+      if (b.handed) {
+        r.restore(b.handed.state, b.handed.awake);
+        b.fall.ticks = b.handed.ticks;
+        b.handed = null;
+      }
       if (b.launch) {
         const launch = b.launch;
         r.launch(launch.vx, launch.vy, launch.vz, launch.wx, launch.wy, launch.wz);
@@ -668,8 +706,7 @@ export class Corpses {
       vehiclePoint(b.wreck, [0, this.ctx.world.reg.bodyHeight[b.kind]! / 2, 0], wreckPoint);
       return { x: wreckPoint[0]!, y: wreckPoint[1]!, z: wreckPoint[2]! };
     }
-    const anim = this.ctx.world.anims[b.kind];
-    const bone = anim?.rig.ragdoll?.bone[0];
+    const bone = this.rigOf(b.kind)?.ragdoll.bone[0];
     if (!b.pose || !b.fall || bone === undefined) return { x: b.x, y: b.y + this.ctx.world.reg.bodyHeight[b.kind]! * b.size * 0.33, z: b.z };
     const s = detSin(b.yaw);
     const c = detCos(b.yaw);
@@ -691,8 +728,8 @@ export class Corpses {
       const def = reg.vehicle[b.kind]!;
       return Math.min(maxT, rayVehicle(def, b.x, b.y, b.z, b.wreck.yaw, ox, oy, oz, dx, dy, dz, def.spec.height, b.wreck));
     }
-    const anim = this.ctx.world.anims[b.kind];
-    if (!anim || !b.pose || !b.fall) {
+    const rig = this.rigOf(b.kind);
+    if (!rig || !b.pose || !b.fall) {
       const r = reg.bodyRadius[b.kind]! * b.size;
       const t = rayBox(ox, oy, oz, dx, dy, dz, b.x - r, b.y, b.z - r, b.x + r, b.y + reg.bodyHeight[b.kind]! * b.size, b.z + r);
       return t < maxT ? t : maxT;
@@ -703,7 +740,7 @@ export class Corpses {
     const rx = ox - b.x;
     const rz = oz - b.z;
     const k = 1 / b.size;
-    const zone = rayZones(anim.rig, b.pose, (c * rx - s * rz) * k, (oy - b.y) * k, (s * rx + c * rz) * k, c * dx - s * dz, dy, s * dx + c * dz, maxT * k);
+    const zone = rayZones(rig.skel, b.pose, (c * rx - s * rz) * k, (oy - b.y) * k, (s * rx + c * rz) * k, c * dx - s * dz, dy, s * dx + c * dz, maxT * k);
     return zone !== 0 && zoneHit.t * b.size < maxT ? zoneHit.t * b.size : maxT;
   }
 

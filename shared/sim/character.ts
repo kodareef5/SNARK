@@ -144,6 +144,8 @@ export const MF_ROOTED = 4;
 export const MF_WINDED = 8;
 /** Unconscious. */
 export const MF_OUT = 16;
+/** Knocked down, lying as its ragdoll: its client follows the server and does not predict it. */
+export const MF_DOWN = 32;
 
 /** A walker starts swimming when this fraction of its height is under water. */
 const SWIM_ENTER = 0.7;

@@ -787,7 +787,7 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u16(b.staminaMax);
   w.bits(b.speedQ, 12);
   w.bits(b.swimQ, 12);
-  w.bits(b.mflags, 5);
+  w.bits(b.mflags, 6);
   w.u16(b.kind);
   w.u16(b.yaw);
   w.u16(b.held);
@@ -838,7 +838,7 @@ export function readBody(r: BitReader, b: Body): void {
   b.staminaMax = r.u16();
   b.speedQ = r.bits(12);
   b.swimQ = r.bits(12);
-  b.mflags = r.bits(5);
+  b.mflags = r.bits(6);
   b.kind = r.u16();
   b.yaw = r.u16();
   b.held = r.u16();

@@ -8,15 +8,20 @@
 // A body that died in the air or in the water is sent falling (FALLING) where the server has it as it falls or sinks.
 // It is drawn there limp, as it goes limp or as it lay, and goes limp as a ragdoll only once it is sent lying still, at
 // the place the wire then carries. One that died in its own flight plays its death in the air (CUE_FELL).
+//
+// A survivor knocked down (CUE_DOWN) lies as the server's ragdoll (shared/anim/human-fall.ts), sent and stepped as a
+// moving corpse's is (HumanFalls), and is drawn rising from it once it gets up.
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
+import { layHuman } from "../../shared/anim/human-fall.ts";
+import { HUMAN } from "../../shared/anim/human.ts";
 import { poseCreatureOn, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
-import { AnimState, CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, FLY_SPEED_STEP, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_DECAY_SHIFT, CUE_DOWN, CUE_OUT, FLY_SPEED_STEP, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { makeHandle } from "../../shared/ids.ts";
+import { handleIndex, makeHandle } from "../../shared/ids.ts";
 import { decodeCorpseCheckpoint, type CorpseMotion } from "../../shared/net/corpse.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -39,6 +44,10 @@ const BUDGET = 60;
 const CATCH_UP = 6;
 /** A newly visible moving body asks for current authority rather than replaying an old world for minutes. */
 const CHECKPOINT_AGE = TICK_RATE;
+/** Ticks a survivor's fall is stepped in one frame. Its ragdoll lies four seconds at most, so a late one soon catches up. */
+const FALL_CATCH_UP = 30;
+/** Ticks a survivor takes to rise from where it lay into what it does now. */
+export const GET_UP = 30;
 const impactRoot = new Float64Array(3);
 
 export interface Corpse {
@@ -161,6 +170,117 @@ class Seen {
   }
 }
 
+/** A survivor knocked down (CUE_DOWN), lying as its ragdoll, and for GET_UP ticks after it gets up; or a survivor's body (CUE_DEAD). */
+export interface HumanFall {
+  handle: number;
+  /** Null until its checkpoint comes, and once it has risen. */
+  fall: Fall | null;
+  /** The whole tick the fall has been stepped to. */
+  clock: number;
+  motionRevision: number;
+  motionTick: number;
+  /** Checkpoints up to this tick are of an earlier fall. */
+  spent: number;
+  /** Where its pose is about, as the wire has it, and its facing in radians. */
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  /** Its pose, solved on HUMAN's rest, about (x, y, z) facing `yaw`. */
+  readonly solved: Solved;
+  /** Lying. Once up, the render tick it got up at, and how far it has risen, 0 to 1. */
+  down: boolean;
+  upAt: number;
+  risen: number;
+  seen: number;
+}
+
+const fallRoot = new Float64Array(3);
+
+/** Survivors knocked down among the remote entities and the viewer's own body, each lying as the server's ragdoll. */
+export class HumanFalls {
+  private readonly byId = new Map<number, HumanFall>();
+  private readonly survivor: (kind: number) => boolean;
+  private updates = 0;
+
+  constructor(survivor: (kind: number) => boolean) {
+    this.survivor = survivor;
+  }
+
+  /** The fall to draw entity `id` by, lying or getting up, or undefined to draw it as it moves. */
+  of(id: number): HumanFall | undefined {
+    const h = this.byId.get(id);
+    return h && (h.down || h.upAt >= 0) && h.fall ? h : undefined;
+  }
+
+  /** `own` is the handle of the viewer's own body (0 for none), which is not in `remote`, and `ownDown` whether it lies knocked down. */
+  update(remote: RemoteSample, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, own: number, ownDown: boolean): void {
+    const tick = remote.tick, seen = ++this.updates;
+    for (let i = 0; i < remote.count; i++) {
+      // A survivor's body (CUE_DEAD) lies as its ragdoll for good.
+      if (!this.survivor(remote.kind[i]!)) continue;
+      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, (remote.cue[i]! & (CUE_DOWN | CUE_DEAD)) !== 0, tick, seen, world, motions);
+    }
+    if (own !== 0) this.track(own, handleIndex(own), ownDown, tick, seen, world, motions);
+    for (const [id, h] of this.byId) if (h.seen !== seen) this.byId.delete(id);
+  }
+
+  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined): void {
+    let h = this.byId.get(id);
+    if (h && h.handle !== handle) h = undefined;
+    if (!h) {
+      if (!down) return;
+      h = { handle, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(HUMAN.bones), down: true, upAt: -1, risen: 0, seen };
+      this.byId.set(id, h);
+    }
+    h.seen = seen;
+    if (!down) {
+      if (h.down) { h.down = false; h.upAt = tick; h.spent = Math.max(h.spent, h.motionTick); }
+      if (h.upAt < 0) return;
+      h.risen = Math.min(1, (tick - h.upAt) / GET_UP);
+      if (h.risen >= 1) { h.upAt = -1; h.fall = null; }
+      return;
+    }
+    if (!h.down) {
+      // Knocked down again: what was sent of the last fall is spent.
+      h.down = true; h.upAt = -1; h.fall = null; h.spent = Math.max(h.spent, h.motionTick);
+      h.motionRevision = 0; h.motionTick = -1;
+    }
+    const motion = motions?.get(handle), to = Math.floor(tick);
+    if (motion && motion.tick > h.spent && motion.tick <= to && (motion.revision > h.motionRevision || (motion.revision === h.motionRevision && motion.tick > h.motionTick))) this.lay(h, motion);
+    const fall = h.fall;
+    if (!fall) return;
+    let moved = false;
+    for (let n = 0; h.clock < to && n < FALL_CATCH_UP; n++) {
+      h.clock++;
+      moved = fall.tick(world) || moved;
+    }
+    if (moved) this.place(h);
+  }
+
+  /** Lays the ragdoll from its checkpoint, as the server laid it. */
+  private lay(h: HumanFall, motion: CorpseMotion): void {
+    const cp = decodeCorpseCheckpoint(motion.data);
+    if (!cp) return;
+    const r = layHuman(cp.x, cp.y, cp.z, cp.yaw, cp.out);
+    if (!r.restore(cp.state, cp.awake)) return;
+    h.fall = new Fall(r);
+    h.fall.ticks = cp.ticks;
+    h.x = cp.x; h.y = cp.y; h.z = cp.z; h.yaw = cp.yaw;
+    h.clock = motion.tick; h.motionTick = motion.tick; h.motionRevision = motion.revision;
+    r.pose(h.solved);
+  }
+
+  /** Carries its place to the ragdoll's hips, as the server carries its entity, and poses it there. */
+  private place(h: HumanFall): void {
+    const r = h.fall!.ragdoll;
+    r.rootPosition(fallRoot);
+    h.x = wireX(fallRoot[0]!); h.y = wireY(fallRoot[1]!); h.z = wireX(fallRoot[2]!);
+    r.rebase(h.x, h.y, h.z);
+    r.pose(h.solved);
+  }
+}
+
 export class Corpses {
   readonly list: Corpse[] = [];
   private readonly byId = new Map<number, Corpse>();
@@ -181,17 +301,22 @@ export class Corpses {
    * `mortal` is what each kind plays, indexed by content kind, null for a kind whose body is not drawn here. A body carries
    * its own size, so the registry's `birthScale` is not needed.
    */
-  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array) {
+  /** Survivors knocked down, lying as their ragdolls. */
+  readonly humans: HumanFalls;
+
+  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array, survivor: (kind: number) => boolean = () => false) {
     this.mortal = mortal;
+    this.humans = new HumanFalls(survivor);
     void birthScale;
   }
 
   /**
    * Takes up the bodies among the remote entities as sampled now, forgets those no longer sent, and moves every body on to
    * `remote.tick`. (cx, cz) is where the viewer is: bodies come upon nearer it are laid to rest first. `gaits` holds the
-   * gait of each body drawn, by id.
+   * gait of each body drawn, by id. `own` is the viewer's own handle (0 for none), and `ownDown` whether it lies knocked down.
    */
-  update(remote: RemoteSample, world: CollisionWorld, cx: number, cz: number, gaits: ReadonlyMap<number, Gait>, motions?: ReadonlyMap<number, CorpseMotion>): void {
+  update(remote: RemoteSample, world: CollisionWorld, cx: number, cz: number, gaits: ReadonlyMap<number, Gait>, motions?: ReadonlyMap<number, CorpseMotion>, own = 0, ownDown = false): void {
+    this.humans.update(remote, world, motions, own, ownDown);
     const tick = remote.tick;
     const seen = ++this.updates;
     const now = this.now;

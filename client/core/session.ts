@@ -115,7 +115,7 @@ import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { BTN_JUMP, BTN_SECONDARY, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
@@ -920,7 +920,8 @@ export class ClientSession {
    */
   private holdGround(): void {
     this.recenterNodes();
-    const held = this.groundHeld();
+    // Knocked down, the body lies where the server's ragdoll has it, and is predicted again once it gets up.
+    const held = this.groundHeld() && (this.own.mflags & MF_DOWN) === 0;
     if (held && !this.predicting && this.latestSnapshot > 0 && this.latestSnapshot < this.simTick) {
       this.predicting = true;
       this.told.copy(this.own);
@@ -2219,6 +2220,7 @@ export class ClientSession {
       this.bodyTick[slot] = tick;
       return;
     }
+    if ((sb.mflags & MF_DOWN) !== 0) this.predicting = false;
     if (!this.predicting) {
       // Drawn from snapshots, as nothing is predicted.
       this.own.copy(sb);

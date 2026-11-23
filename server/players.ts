@@ -114,6 +114,8 @@ export class Players {
   readonly feet: ServerFootContacts;
   /** Bodies a walker cannot walk through (server/blocking.ts). */
   readonly blocking: BodyBlocking;
+  /** Whether a survivor's body lies knocked down, which its session's step leaves be. The host sets it. */
+  isDown: (e: number) => boolean = () => false;
   /** The bodies besides the sessions' that may block a walker this tick: the awake creatures (server/creatures.ts). */
   blockBodies: (() => readonly [ArrayLike<number>, number]) | null = null;
   private sessionBodies = new Int32Array(64);
@@ -207,7 +209,10 @@ export class Players {
       if (c.drive >= 0 && ((ents.flags[c.drive]! & F_ALIVE) === 0 || ents.gen[c.drive] !== c.driveGen)) this.release(c);
       const driving = c.drive >= 0;
       const e = driving ? c.drive : c.ent;
-      if (e >= 0) {
+      if (e >= 0 && !driving && this.isDown(e)) {
+        // Lying as its ragdoll, it is moved where the ragdoll goes (server/falls.ts).
+        c.chunk = chunkAt(world.dims, ents.x[e]!, ents.z[e]!);
+      } else if (e >= 0) {
         ents.loadBody(e, b);
         const vehicle = world.reg.vehicle[b.kind];
         const combat = world.reg.combat[b.kind];

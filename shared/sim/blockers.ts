@@ -137,11 +137,12 @@ export class Blockers {
   /**
    * Adds body `id` of `kind` standing at (x, y, z) facing `yaw` radians (+Z at 0, +X at a quarter turn), moving or not,
    * for a walker of kind `walker` standing at (wx, wy, wz) facing `wyaw` (Body.yaw, 65536ths of a turn). A body lighter
-   * than BLOCK_LIGHT of the walker is not added unless `always`, nor one the walker already stands in, so that whatever
-   * put it there it walks out. Past BLOCK_MOST the farthest goes. Entries are kept in ascending id, so that both
-   * ends push in one order.
+   * than BLOCK_LIGHT of the walker is not added unless `always`. One the walker already stands in is no wall to it, so
+   * that whatever put it there (a bite, a paired emote, a teleport) it walks out; or, with `untangle` (a creature, which
+   * no client predicts), one that pushes it out softly, so that bodies set down inside one another come apart. Past
+   * BLOCK_MOST the farthest goes. Entries are kept in ascending id, so that both ends push in one order.
    */
-  add(reg: Registry, id: number, kind: number, x: number, y: number, z: number, yaw: number, moving: boolean, walker: number, wx: number, wy: number, wz: number, wyaw: number, always = false): void {
+  add(reg: Registry, id: number, kind: number, x: number, y: number, z: number, yaw: number, moving: boolean, walker: number, wx: number, wy: number, wz: number, wyaw: number, always = false, untangle = false): void {
     this.reg = reg;
     const r = reg.footRadius[kind]!;
     if (!(r > 0) || (!always && blockMass(reg, kind) < blockMass(reg, walker) * BLOCK_LIGHT)) return;
@@ -171,13 +172,12 @@ export class Blockers {
     this.y1[at] = y + reg.bodyHeight[kind]!;
     this.far[at] = far;
     this.count = n + 1;
-    // One the walker already stands in is no wall to it: it is let walk out, and is not shoved, as one teleported or set
-    // down among others is not.
-    if (depth(this, at, reg, walker, wx, wy, wz, (wyaw * TAU) / 65536, reg.bodyHeight[walker]!) > INSIDE_SKIN) {
+    const inside = depth(this, at, reg, walker, wx, wy, wz, (wyaw * TAU) / 65536, reg.bodyHeight[walker]!) > INSIDE_SKIN;
+    if (inside && !untangle) {
       this.remove(at);
       return;
     }
-    this.soft[at] = moving ? 1 : 0;
+    this.soft[at] = moving || inside ? 1 : 0;
   }
 
   private move(from: number, to: number): void {

@@ -42,6 +42,8 @@ function mapOf(kind = "core:tree", chunk = 6, width = 4, form?: number) {
 }
 function camp(kind = "core:tree", chunk = 6, heavy = false, options = {}) {
   const h = new Harness({}, 19, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: mapOf(kind, chunk), ...options }, registry);
+  // The car is set down beside the survivor, which would knock it off its feet.
+  h.host.setSetting("Knockdowns", "false");
   const s = h.join("tree-driver"); h.run(400); const c = h.client(s)!, a = h.world.ents, tree = nodesOf(h, kind, 0, 0)[0]!;
   const car = h.host.spawnVehicle(heavy ? "test:heavy-car" : "core:compact", tree.x, tree.z - 8, 0);
   expect(car).toBeGreaterThanOrEqual(0);

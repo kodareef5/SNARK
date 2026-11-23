@@ -89,7 +89,7 @@ export class BuildSounds {
 
   /** A nearby physical tree break layers a short hull thud under its existing wood crack. */
   treeImpact(kind: number, x: number, y: number, z: number): void {
-    this.queue.push(() => { this.heardNode(kind, x, y, z); this.hear!(-1, HIT[3]!, -1, x, y, z, .3, .7, false); });
+    this.queue.push(() => { this.heardNode(kind, x, y, z); this.hear!(this.nodeOwner[kind] ?? -1, HIT[3]!, -1, x, y, z, .3, .7, false); });
   }
 
   private hear: Hear | null = null;

@@ -78,6 +78,7 @@ import { COMMAND_FAMILIES } from "./commands/families.ts";
 import { addOwnCommands, addOwnState, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Loose } from "./loose.ts";
+import { Falls } from "./falls.ts";
 import { Projectiles } from "./projectiles.ts";
 import { Clouds } from "./clouds.ts";
 import type { ModuleDef } from "./api/module.ts";
@@ -233,6 +234,8 @@ export interface Host {
   readonly eggs: Eggs;
   /** Things thrown from the hand, in flight (server/loose.ts). */
   readonly loose: Loose;
+  /** Survivors knocked off their feet, lying as ragdolls (server/falls.ts). */
+  readonly falls: Falls;
   readonly balls: Balls;
   /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
   readonly mounts: Mounts;
@@ -314,8 +317,10 @@ export function contentFor(content: Registry, rules: Rules): Registry {
 
 /** A host that fails to start lets go of its save, so the next try can open it. */
 
-/** Seconds a survivor knocked off their feet has no hold on where they go. */
+/** Seconds a survivor knocked off their feet has no hold on where they go, where it cannot fall as a ragdoll. */
 const KNOCKDOWN_SECONDS = 1.2;
+/** Seconds a survivor getting up from a fall is held still. */
+const GET_UP_SECONDS = 0.5;
 /** A car door's blow: so much and so much a metre a second the car goes, at most so much. */
 const DOOR_HARM_BASE = 8;
 const DOOR_HARM_PER = 1.5;
@@ -886,6 +891,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
   const loose = new Loose({ world, game, records, items, combat, death });
+  const falls = new Falls(world);
+  game.players.isDown = (e) => falls.isDown(e);
+  combat.downPose = (e, tick) => falls.poseAt(e, tick);
+  corpses.handOff = (e) => falls.take(e);
   // A sight's zero lifts its flying rounds (D1083).
   projectiles.zero = (c) => gaze.zeroOf(c);
   // Every shot and blast, hit or miss, is heard by Cast's people near it.
@@ -1388,15 +1397,22 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const lane = game.lane;
   // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
   // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
-  // A survivor knocked off their feet (Knockdowns): stunned a moment, the body has no hold on where it goes, so a throw
-  // carries it as it would carry anything (shared/sim/character.ts, MF_ROOTED), and their client predicts it so.
+  // A survivor knocked off their feet (Knockdowns) goes limp as its ragdoll, thrown as the blow left it moving, and gets
+  // up where it comes to rest (server/falls.ts), stunned a moment more as it does. Where no ragdoll may fall it is stunned
+  // standing: the body has no hold on where it goes (shared/sim/character.ts, MF_ROOTED), and its client predicts it so.
   const stunned = reg.index.get("core:stunned") ?? -1;
-  const knockDown = (body: number): void => {
+  const knockDown = (body: number, wx = 0, wy = 0, wz = 0): void => {
     if (stunned < 0 || !rules.on("Knockdowns")) return;
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (!rec || rec.kind !== survivor) return;
-    buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
+    const ents = world.ents;
+    if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz)) buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
     refreshBody(rec);
+  };
+  falls.onUp = (body) => {
+    const rec = records.byPid.get(world.ents.pid[body]!);
+    if (rec && stunned >= 0) buffs.give(rec, stunned, 0, GET_UP_SECONDS);
+    if (rec) refreshBody(rec);
   };
   const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
   urban.onDoorStrike = (vehicle, body, speed, dx, dz) => {
@@ -1406,7 +1422,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     doorBlow.z = ents.z[vehicle]!;
     doorBlow.base = Math.min(DOOR_HARM_MOST, DOOR_HARM_BASE + speed * DOOR_HARM_PER);
     const impact = { victimHandle: ents.handleOf(body), victimPid: ents.pid[body]!, vx: ents.vx[body]!, vy: ents.vy[body]!, vz: ents.vz[body]!, wx: dz * 3, wy: 0, wz: -dx * 3 };
-    knockDown(body);
+    knockDown(body, impact.wx, impact.wy, impact.wz);
     combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
   };
   game.players.blockBodies = () => [creatures.awake, creatures.awakeCount];
@@ -1582,7 +1598,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   const tactical = new Tactical(world, game, records, rules);
   game.replication.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
-  const corpseReplication = new CorpseReplication(game, corpses);
+  const corpseReplication = new CorpseReplication(game, [corpses, falls]);
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
@@ -1764,6 +1780,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     feces,
     overhead,
     physics(corpses),
+    physics({ step: () => falls.step() }),
     voice,
     mark(PART.world),
     { step: keepHouse },
@@ -1824,6 +1841,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     feces,
     eggs,
     loose,
+    falls,
     balls,
     mounts,
     overhead,

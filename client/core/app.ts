@@ -32,6 +32,7 @@ import { AppFrame, type FramePart } from "./frame.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Sight } from "./sight.ts";
 import { Director } from "./view/director.ts";
+import { FallenView } from "./view/fallen.ts";
 import { ToolHooks, autopilot, type ToolOrders } from "./tool-hooks.ts";
 import type { Mark } from "./stress.ts";
 
@@ -133,6 +134,8 @@ export class App {
    * the notes read of them are forwarded.
    */
   readonly director = new Director();
+  /** The view of the own survivor knocked down or dying, and the red and black over it. */
+  readonly fallen = new FallenView();
   get view(): Viewpoint { return this.director.view; }
   get orbit(): Orbit { return this.director.orbit; }
   get orbitFree(): boolean { return this.director.orbitFree; }
@@ -606,18 +609,19 @@ export class App {
       this.sight,
       // With the view decided: the own body as it is drawn, then the camera placed.
       this.director.body,
+      this.fallen,
       this.director.place,
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       { step: (f) => this.absorb(f) },
       ...(tools ? [tools.stage] : []),
       { step: (f) => this.build(f) },
       ...(tools ? [tools.finish] : []),
-      { step: (f) => this.hear(f) },
+      this.guarded("sound", { step: (f) => this.hear(f) }),
       { step: (f) => this.ghost(f) },
       // What the use key is on, and the voice port told where speakers are. Then the HUD, which reads all of the above.
-      this.prompts,
-      this.heard,
-      { step: (f) => this.fillHud(f) },
+      this.guarded("prompts", this.prompts),
+      this.guarded("voice", this.heard),
+      this.guarded("hud", { step: (f) => this.fillHud(f) }),
       { step: (f) => this.interface(f) },
     ];
   }
@@ -853,6 +857,26 @@ export class App {
     const set = this.volumes;
     set.master = vol.muted ? 0 : vol.masterVolume; set.effects = vol.soundVolume; set.ambience = vol.ambienceVolume; set.music = vol.musicVolume; set.interface = vol.interfaceVolume;
     this.sounds.frame(this.sound, f.nowMs, this.remote, f.world.hf, this.cam, set, App.late!.soundView(this.session, this.sky), scene.characters.fallen);
+  }
+
+  /** The first fault each guarded part met, by its name. */
+  readonly faults = new Map<string, string>();
+
+  /**
+   * A part that never changes what happens (sound, prompts, the HUD's fill): a fault in it is kept once by `name` and the
+   * frame goes on without it, so it cannot stop the game being drawn.
+   */
+  private guarded(name: string, part: FramePart): FramePart & { readonly part: FramePart } {
+    return {
+      part,
+      step: (f) => {
+        try {
+          part.step(f);
+        } catch (e) {
+          if (!this.faults.has(name)) this.faults.set(name, (e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e)).slice(0, 2000));
+        }
+      },
+    };
   }
 
   /** A piece in hand, or a vehicle to set down, is tried where the look is on, and drawn there from the next frame. */

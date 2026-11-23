@@ -89,7 +89,8 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   expect(h.host.death.count).toBe(1);
   const seen = new RemoteSample();
   bo.sampleRemote(seen);
-  expect(seen.count).toBe(1);
+  // The cache, and the body lying beside it.
+  expect(seen.count).toBe(2);
   expect(seen.name[0]).toBe("ada's cache");
 
   // Dead, it cannot move or eat, and its food does not fall.
@@ -140,7 +141,8 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   expect(contents(s.inventory!)).toEqual(had);
   expect(caches(h).length).toBe(0);
   expect(h.host.records.byPid.has(cache!.pid)).toBe(false);
-  expect(ents.count).toBe(2);
+  // The survivor, and its old body.
+  expect(ents.count).toBe(3);
   expect(s.open).toBeNull();
   expect(items.audit()).toEqual([]);
   bo.sampleRemote(seen);
@@ -251,13 +253,13 @@ test("drowning kills, the death is journalled, and a restart keeps the dead dead
   expect(rec2.markers).toEqual([marker]);
   expect(cache2.inv!.total(id("core:stone"))).toBe(77);
   expect(cache2.expiresAt).toBe(expires);
-  expect(h2.world.ents.count).toBe(1); // the cache has its body back
+  expect(h2.world.ents.count).toBe(2); // the cache and the survivor's body are back
   const again = h2.join("ada");
   h2.run(500);
   expect(again.sessionState).toBe(SESSION_DEAD);
   expect(again.markers).toEqual([marker]);
   expect(again.respawnPoints.length).toBe(3);
-  expect(h2.world.ents.count).toBe(1);
+  expect(h2.world.ents.count).toBe(2);
   again.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(again.placesList)));
   h2.run(500);
   expect(again.sessionState).toBe(SESSION_ALIVE);

@@ -161,9 +161,11 @@ function seated(d: Director, f: AppFrame): void {
 
 /** On foot, and with no living body: at the eye, over the shoulder, or round the body in the orbit. */
 function onFoot(d: Director, f: AppFrame): void {
+  // Knocked down or dying, the view rides the ragdoll (fallen.ts).
+  const k = f.fallen, x = k.on ? k.x : f.bx, y = k.on ? k.y : f.by + f.eye, z = k.on ? k.z : f.bz;
   const orbit = d.orbit.place(d.view.own(d.viewRig, f.lookYaw, f.lookPitch), ORBIT_BACK, f.dt);
-  if (orbit) d.view.placeRig(f.cam, f.world, f.bx, f.by + f.eye, f.bz, orbit, f.dt);
-  else d.view.place(f.cam, f.world, f.bx, f.by + f.eye, f.bz, f.lookYaw, f.lookPitch, f.dt);
+  if (orbit) d.view.placeRig(f.cam, f.world, x, y, z, orbit, f.dt);
+  else d.view.place(f.cam, f.world, x, y, z, f.lookYaw, f.lookPitch, f.dt);
 }
 
 /** The creator's view. The camera faces the new survivor from the front, off to one side so the panel does not cover it. */

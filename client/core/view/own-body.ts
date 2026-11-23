@@ -5,7 +5,7 @@
 import { creatureHold } from "../../../shared/sim/creature-actions.ts";
 import { handleGen, handleIndex } from "../../../shared/ids.ts";
 import { PI, TAU } from "../../../shared/math/scalar.ts";
-import { glidePhase } from "../../../shared/sim/character.ts";
+import { MF_DOWN, glidePhase } from "../../../shared/sim/character.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../../../shared/sim/items.ts";
 import { FISTS, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
@@ -82,6 +82,7 @@ export function ownBody(d: Director, f: AppFrame): void {
       body.state.unpackCue(r.cue[i]!);
     }
   }
+  body.down = !riding && (session.own.mflags & MF_DOWN) !== 0;
   f.scene.skip = riding ? session.driving : -1;
   f.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
 }
