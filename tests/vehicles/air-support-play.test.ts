@@ -94,7 +94,7 @@ test("the cab radio rotates and places a ground pod from the yard spawn", () => 
     for (let i = 0; i < 120 && !s.airSupport.pods.length; i++) h.run(400);
     const rack = s.airSupport.pods[0];
     expect(rack?.hitched).toBe(false);
-    expect(rack!.x).toBeCloseTo(start.x, 1);
-    expect(rack!.z).toBeCloseTo(start.z, 1);
+    // It settles on its legs and springs within a hand's width of the mark.
+    expect(Math.hypot(rack!.x - start.x, rack!.z - start.z)).toBeLessThan(.3);
   } finally { h.host.shutdown(); }
 });

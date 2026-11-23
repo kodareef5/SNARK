@@ -1,5 +1,5 @@
 import { TICK_RATE } from "../../../../shared/coords.ts";
-import { makeHandle } from "../../../../shared/ids.ts";
+import { handleIndex, makeHandle } from "../../../../shared/ids.ts";
 import { AIR_BAYS, type AirCarrier, type AirDrone, type AirPod, type AirPose, type AirSupportView } from "../../../../shared/sim/air-support.ts";
 import type { VehicleRotor } from "../../../../shared/sim/vehicle.ts";
 import { AIR_FRAME as A, AIR_IMPELLERS, AIR_PIECES, airBayZ, airMesh, type AirPiece } from "../../../../shared/world/air-support-art.ts";
@@ -164,18 +164,20 @@ export class AirSupport implements Pass {
     for (const row of view.carriers) {
       const prev = this.carriers.get(row.id);
       this.id = row.id;
-      // Near, the aircraft is an entity drawn where it is predicted to be; far, the feed's own pose and attitude.
-      if (!this.entityOrigin(row.ent)) {
-        if (!this.origin(row, prev, 16)) continue;
-        this.attitude(lerp(prev?.pitch ?? row.pitch, row.pitch, this.share), lerp(prev?.roll ?? row.roll, row.roll, this.share));
-      }
+      // Near, the aircraft and its load are entities the bodies pass draws from their art: here only their wash.
+      if (this.entityOrigin(row.ent)) { this.downwash(row); this.flat(); continue; }
+      // Far, beyond the entities sent, the feed's own pose and attitude draw a stand-in.
+      if (!this.origin(row, prev, 16)) continue;
+      this.attitude(lerp(prev?.pitch ?? row.pitch, row.pitch, this.share), lerp(prev?.roll ?? row.roll, row.roll, this.share));
       this.downwash(row);
       drawAirCarrier(this.piece, row, lerp(prev?.jaws ?? row.jaws, row.jaws, this.share), this.tick * ROTOR_TURN_PER_TICK + row.id);
       this.flat();
     }
     for (const row of view.pods) {
       const prev = this.pods.get(row.id);
-      if (!this.entityOrigin(row.ent) && !this.origin(row, prev, 8)) continue;
+      // A trailer in view is drawn from its art by the bodies pass; this is the stand-in beyond it.
+      if (this.entityOrigin(row.ent)) { this.flat(); continue; }
+      if (!this.origin(row, prev, 8)) continue;
       let wheel = 0, lift = 0;
       {
         const wx = this.x + f.cam.x,
@@ -200,6 +202,7 @@ export class AirSupport implements Pass {
     }
     for (const row of view.drones) {
       if (row.id === view.flight) continue;
+      if (this.entityOrigin(row.ent)) { this.flat(); continue; }
       const prev = this.drones.get(row.id);
       if (!this.origin(row, prev, 1)) continue;
       const pitch = lerp(prev?.pitch ?? row.pitch, row.pitch, this.share);
@@ -277,6 +280,12 @@ export class AirSupport implements Pass {
     m[3] = 2 * (x * y + w * z); m[4] = 1 - 2 * (x * x + z * z); m[5] = 2 * (y * z - w * x);
     m[6] = 2 * (x * z - w * y); m[7] = 2 * (y * z + w * x); m[8] = 1 - 2 * (x * x + y * y);
     this.tilted = true;
+  }
+
+  /** The `hides` bones of trailer entity `id` to hide: the bays whose drones have launched. */
+  hidden(id: number): number {
+    for (const row of this.view?.pods ?? []) if (handleIndex(row.ent) === id) return ~row.slots & 63;
+    return 0;
   }
 
   /** Back to turning by yaw alone. */

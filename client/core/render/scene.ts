@@ -600,6 +600,7 @@ export class Scene {
     this.placing = new Ghost(this.assets, this.meshOfKind);
     this.loose = new Things(this.assets);
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
+    this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);

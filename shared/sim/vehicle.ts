@@ -86,8 +86,8 @@ export type VehicleDoor = {
   readonly open: number;
   readonly slide?: never;
 } | {
-  /** Signed local X and Z travel in metres. */
-  readonly slide: { readonly outward: number; readonly along: number };
+  /** Signed local X, Z and (optionally) Y travel in metres: a door slides, a landing leg cranks up. */
+  readonly slide: { readonly outward: number; readonly along: number; readonly up?: number };
   readonly axis?: never;
   readonly open?: never;
 });
@@ -116,6 +116,8 @@ interface VehicleDefinitionBase {
   readonly steeringWheel?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
   /** Ticks a door action takes: getting in, getting out, pulling a driver out. */
   readonly actionTicks: number;
+  /** Bones the game may hide for a while, by state the vehicle does not carry itself: a rack's launched drones. */
+  readonly hides?: readonly string[];
   /** Metres up from the ground to where the body shell ends and the open cabin begins: a shot above it reaches whoever sits inside. */
   readonly beltline: number;
   /** Solid cabin panels above the belt in vehicle-local metres. Openings between them admit shots. */
@@ -346,7 +348,8 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   for (const door of d.doors) {
     const validMotion = door.slide
       ? door.axis === undefined && door.open === undefined && Number.isFinite(door.slide.outward) && Math.abs(door.slide.outward) <= .5 &&
-        Number.isFinite(door.slide.along) && Math.abs(door.slide.along) > 0 && Math.abs(door.slide.along) <= 3
+        Number.isFinite(door.slide.along) && Math.abs(door.slide.along) <= 3 && (door.slide.up === undefined || Number.isFinite(door.slide.up) && Math.abs(door.slide.up) <= 2) &&
+        (Math.abs(door.slide.along) > 0 || Math.abs(door.slide.up ?? 0) > 0)
       : vec(door.axis) && Number.isFinite(door.open) && Math.abs(door.open!) <= Math.PI;
     if (!bone(door.bone) || !validMotion ||
       !Number.isInteger(door.openTicks) || door.openTicks < 1 || door.openTicks > 255 ||

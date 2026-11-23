@@ -53,7 +53,13 @@ export const AIR_TRAILER_VEHICLE: WheelVehicleDefinition = {
   id: T.id,
   frame: "van",
   seats: [],
-  doors: [],
+  // The rack's roof and side panel, and the landing legs cranked up for the road (server/air-support.ts holds them).
+  doors: [
+    { bone: "roof", axis: [0, 0, 1], open: T.roof.open, openTicks: 48, closeTicks: 48 },
+    { bone: "side", axis: [0, 0, 1], open: T.side.open, openTicks: 48, closeTicks: 48 },
+    { bone: "legs", slide: { outward: 0, along: 0, up: T.legs.lift }, openTicks: 30, closeTicks: 30 },
+  ],
+  hides: ["bay_1", "bay_2", "bay_3", "bay_4", "bay_5", "bay_6"],
   wheels: [
     { bone: "wheel_front_left" }, { bone: "wheel_front_right" },
     { bone: "wheel_rear_left" }, { bone: "wheel_rear_right" },
@@ -68,7 +74,7 @@ export const AIR_TRAILER: SpeciesDef = {
   ...vehicleSpecies,
   id: T.id,
   aliases: ["air_trailer", "drone_trailer"],
-  mesh: T.id,
+  mesh: T.id, skeleton: T.id,
   vehicle: AIR_TRAILER_VEHICLE,
   color: 230,
   regions: [null, null, null, null, null, null],
@@ -101,7 +107,11 @@ export const AIR_CARRIER_SPEC: HelicopterSpec = {
 };
 export const AIR_CARRIER_VEHICLE: RotorVehicleDefinition = {
   id: C.id, movement: "rotor", spec: AIR_CARRIER_SPEC, wreck: C.id,
-  seats: [], doors: [], wheels: [],
+  seats: [], wheels: [],
+  // The four clamps, held shut on a load and opened to let it go (server/air-support.ts).
+  doors: (["front_left", "front_right", "rear_left", "rear_right"] as const).map((at) => ({
+    bone: "clamp_" + at, axis: [0, 0, 1] as const, open: at.endsWith("left") ? C.clampOpen : -C.clampOpen, openTicks: 33, closeTicks: 33,
+  })),
   rotors: C.rotors.map((r, i) => ({ bone: r.bone, at: r.center, axis: [0, 1, 0] as const, radius: C.rotorRadius, ratio: i === 0 ? 1 : -1, blur: { blades: 3, chord: 0.32 } })),
   actionTicks: 24, beltline: 1.2,
 };
@@ -109,7 +119,7 @@ export const AIR_CARRIER_VEHICLE: RotorVehicleDefinition = {
 export const AIR_CARRIER_LOAD = LOAD_TOP;
 export const AIR_CARRIER: SpeciesDef = {
   type: "species", class: "vehicle", id: C.id, aliases: ["air_carrier", "freight_carrier"],
-  mesh: C.id, color: 230,
+  mesh: C.id, skeleton: C.id, color: 230,
   radius: AIR_CARRIER_SPEC.halfWidth, height: AIR_CARRIER_SPEC.height, eyeHeight: 2,
   walkSpeed: 0.01, sprintMul: 1, jumpSpeed: 0.01, still: true,
   mass: AIR_CARRIER_SPEC.mass, slots: 1, keeps: 1, fists: 0,
@@ -141,7 +151,7 @@ export const SURVEY_DRONE_VEHICLE: RotorVehicleDefinition = {
 };
 export const SURVEY_DRONE: SpeciesDef = {
   type: "species", class: "vehicle", id: D.id, aliases: ["survey_drone", "camera_drone"],
-  mesh: D.id, color: 230,
+  mesh: D.id, skeleton: D.id, color: 230,
   radius: 0.55, height: 0.32, eyeHeight: 0.1,
   walkSpeed: 0.01, sprintMul: 1, jumpSpeed: 0.01, still: true,
   mass: 60, slots: 1, keeps: 1, fists: 0,

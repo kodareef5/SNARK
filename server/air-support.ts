@@ -35,6 +35,8 @@ interface Order extends AirCarrier {
   mark: AirPose | null; edge: AirPose; speed: number; stop: number; stock: number;
   /** The carrier aircraft's record, and where its autopilot is taking it. */
   carrier: number; goal: CarrierGoal; vx: number; vy: number; vz: number;
+  /** The trailer it carries, a vehicle hanging in its clamps until it is set down. */
+  cargo: number;
 }
 interface SavedAir { next: number; racks: Rack[]; calls: Order[]; cooldown: [number, number][] }
 const P = AIR_PHASE, A = AIR_ACTION, AIR_CARRIER_ID = AIR_CARRIER_ART.id;
@@ -53,6 +55,8 @@ export class AirSupport {
     next: this.next, racks: [...this.racks.values()], calls: [...this.calls.values()], cooldown: [...this.cooldown],
   } satisfies SavedAir) };
   private readonly cooldown = new Map<number, number>();
+  /** Trailers hanging in carriers' clamps, by record. */
+  private readonly carried = new Set<number>();
   /** Ticks each rack's trailer has been rolling. */
   private readonly rolling = new Map<number, number>();
   private readonly notices = new WeakMap<Client, { text: string; until: number }>();
@@ -83,7 +87,7 @@ export class AirSupport {
     const state = JSON.parse(data) as SavedAir;
     this.next = state.next;
     for (const rack of state.racks) this.racks.set(rack.id, rack);
-    for (const order of state.calls) this.calls.set(order.id, order);
+    for (const order of state.calls) { this.calls.set(order.id, order); if (order.loaded && order.cargo) this.carried.add(order.cargo); }
     for (const [rig, until] of state.cooldown) this.cooldown.set(rig, until);
   }
 
@@ -214,10 +218,15 @@ export class AirSupport {
     const owner = records.byPid.get(c.pid)!, entry = this.faraway(at);
     const aircraft = this.launchCarrier(entry, at, owner.team);
     if (aircraft < 0) return this.tell(c, "No carrier can reach this rig.", RESULT_DENIED);
+    const cargo = this.ctx.spawn(T.id, this.hanging(aircraft), owner.team);
+    if (cargo < 0) { this.ctx.discard(aircraft); return this.tell(c, "No carrier can reach this rig.", RESULT_DENIED); }
+    this.carried.add(world.ents.pid[cargo]!);
     const order: Order = { ...entry, id: this.next++, ent: 0, pitch: 0, roll: 0, phase: P.inbound, loaded: true, trailer: !ground, jaws: 0, owner: c.pid, team: owner.team,
       rig, ground, since: world.tick, wait: Math.ceil(rules.num("AirSupportWait") * TICK_RATE), still: 0, mark: null, edge: entry,
       speed: rules.num("AirCarrierSpeed"), stop: Math.ceil(rules.num("AirSupportStop") * TICK_RATE), stock: rules.num("AirSupportStock"),
-      carrier: world.ents.pid[aircraft]!, goal: { ...entry, vx: 0, vz: 0, speed: rules.num("AirCarrierSpeed"), precise: false }, vx: 0, vy: 0, vz: 0 };
+      carrier: world.ents.pid[aircraft]!, goal: { ...entry, vx: 0, vz: 0, speed: rules.num("AirCarrierSpeed"), precise: false }, vx: 0, vy: 0, vz: 0,
+      cargo: world.ents.pid[cargo]! };
+    this.hang(order, aircraft);
     this.calls.set(order.id, order);
     this.cooldown.set(rig, world.tick + Math.round(rules.num("AirSupportCooldown") * TICK_RATE));
     this.saved.dirty = true;
@@ -273,16 +282,61 @@ export class AirSupport {
   /** The carrier came down. A load it still held falls where it was, as a trailer, and the order ends. */
   private downed(o: Order, c: Client | undefined): void {
     this.calls.delete(o.id); this.saved.dirty = true;
-    if (!o.loaded || o.phase >= P.release) return;
-    const drop = { x: o.x, y: o.y - AIR_CARRIER_LOAD, z: o.z, yaw: o.yaw, qx: 0, qy: Math.sin(o.yaw / 2), qz: 0, qw: Math.cos(o.yaw / 2) };
-    const trailer = this.ctx.spawn(T.id, drop, o.team);
+    if (!o.loaded) return;
+    // Let go of, the trailer falls as any vehicle does, its drones still in it.
+    this.carried.delete(o.cargo);
+    const trailer = this.entity(o.cargo);
     if (trailer >= 0) {
-      const ents = this.ctx.world.ents;
-      ents.vx[trailer] = o.vx; ents.vy[trailer] = o.vy; ents.vz[trailer] = o.vz;
-      ents.flags[trailer] = ents.flags[trailer]! & ~F_GROUNDED;
-      this.racks.set(o.id, { id: o.id, pid: ents.pid[trailer]!, owner: o.owner, team: o.team, open: 0, opening: false, slots: (1 << o.stock) - 1, selected: 0 });
+      this.ctx.urban.rouse(trailer);
+      this.racks.set(o.id, { id: o.id, pid: o.cargo, owner: o.owner, team: o.team, open: 0, opening: false, slots: (1 << o.stock) - 1, selected: 0 });
     }
     this.tell(c, "The carrier was shot down. Its trailer fell with it.");
+  }
+
+  /** Where the load hangs in carrier entity `e`'s clamps, turned with it. */
+  private hanging(e: number): Frame {
+    const at = this.frameOf(e), hung = framePoint(at, 0, -AIR_CARRIER_LOAD, 0);
+    return { ...at, x: hung.x, y: hung.y, z: hung.z };
+  }
+
+  /** Carries order `o`'s trailer with its carrier for this tick: where it hangs, moving as it moves. */
+  private hang(o: Order, aircraft: number): void {
+    const trailer = this.entity(o.cargo);
+    if (trailer < 0) return;
+    const ents = this.ctx.world.ents, at = this.hanging(aircraft), v = ents.vrow[trailer]!;
+    ents.setPosition(trailer, at.x, at.y, at.z);
+    ents.vehicleQx[v] = at.qx; ents.vehicleQy[v] = at.qy; ents.vehicleQz[v] = at.qz; ents.vehicleQw[v] = at.qw;
+    ents.vehicleYaw[v] = at.yaw; ents.vehiclePitch[v] = ents.vehiclePitch[ents.vrow[aircraft]!]!; ents.vehicleRoll[v] = ents.vehicleRoll[ents.vrow[aircraft]!]!;
+    ents.vx[trailer] = ents.vx[aircraft]!; ents.vy[trailer] = ents.vy[aircraft]!; ents.vz[trailer] = ents.vz[aircraft]!;
+    ents.flags[trailer] = ents.flags[trailer]! & ~F_GROUNDED;
+    this.ctx.urban.syncAfterContact(trailer);
+  }
+
+  /** Whether records `a` and `b` are a carried trailer and its own carrier or the rig it is being set onto: they never collide. */
+  joined(a: number, b: number): boolean {
+    if (!this.carried.size || (!this.carried.has(a) && !this.carried.has(b))) return false;
+    for (const o of this.calls.values()) {
+      if (!o.loaded) continue;
+      const other = o.cargo === a ? b : o.cargo === b ? a : 0;
+      if (other && (other === o.carrier || other === o.rig)) return true;
+    }
+    return false;
+  }
+
+  /** Records moved by this service rather than stepped by the vehicle system: trailers in a carrier's clamps. */
+  carries(pid: number): boolean { return this.carried.has(pid); }
+
+  /** Doors this service holds open: rack panels, landing legs up on a fifth wheel, and an empty carrier's clamps. */
+  *doors(): Iterable<[number, number]> {
+    for (const rack of this.racks.values()) {
+      const e = this.entity(rack.pid);
+      const mask = (rack.opening ? 3 : 0) | (e >= 0 && this.ctx.hitches.tractorOf(e) >= 0 ? 4 : 0);
+      if (mask) yield [rack.pid, mask];
+    }
+    for (const o of this.calls.values()) {
+      if (o.loaded) yield [o.cargo, 4];
+      else if (o.jaws > 0 || o.phase === P.outbound) yield [o.carrier, 15];
+    }
   }
 
   /** The order's carrier as it flies: for the wire and the far view. */
@@ -299,6 +353,7 @@ export class AirSupport {
     const aircraft = this.entity(o.carrier);
     if (aircraft < 0) { this.downed(o, c); return; }
     this.mirror(o, aircraft);
+    if (o.loaded) this.hang(o, aircraft);
     if (o.phase === P.release) {
       o.jaws = Math.min(1, (now - o.since) / (1.1 * TICK_RATE));
       if (o.jaws === 1) { this.aim(o, { ...o.goal, y: o.goal.y + 25 }, 8, true); this.depart(o); }
@@ -308,7 +363,10 @@ export class AirSupport {
       const climbed = o.y > o.goal.y - 3 || now - o.since > 6 * TICK_RATE;
       if (climbed) this.aim(o, o.edge, o.speed, Math.hypot(o.edge.x - o.x, o.edge.z - o.z) < 80);
       const away = Math.hypot(o.edge.x - o.x, o.edge.z - o.z) < 60;
-      if (away && !this.watched(o.x, o.z, 450)) { this.calls.delete(o.id); this.ctx.discard(aircraft); }
+      if (away && !this.watched(o.x, o.z, 450)) {
+        this.calls.delete(o.id); this.ctx.discard(aircraft);
+        if (o.loaded) { const cargo = this.entity(o.cargo); this.carried.delete(o.cargo); if (cargo >= 0) this.ctx.discard(cargo); }
+      }
       else if (away) o.edge = this.faraway(o);
       return;
     }
@@ -353,7 +411,7 @@ export class AirSupport {
       }
       target.y = ground;
     }
-    if (!this.space!.clear(target, "land", [e, aircraft])) {
+    if (!this.space!.clear(target, "land", [e, aircraft, this.entity(o.cargo)])) {
       if (o.phase === P.lower || o.still === o.stop) this.tell(c, "The delivery path is blocked. Move to an open area.");
       o.phase = P.follow; return;
     }
@@ -362,9 +420,17 @@ export class AirSupport {
     this.aim(o, seat, 5, true);
     const off = Math.hypot(seat.x - o.x, seat.z - o.z), low = Math.abs(seat.y - o.y);
     if (off > .35 || low > .3 || Math.hypot(o.vx, o.vy, o.vz) > .5 || Math.abs(angle(seat.yaw - o.yaw)) > .06) return;
-    const trailer = this.ctx.spawn(T.id, target, o.team);
-    if (trailer < 0) { this.depart(o, c, "This area cannot accept delivery. The carrier is taking its cargo home."); return; }
-    const pid = world.ents.pid[trailer]!;
+    const trailer = this.entity(o.cargo);
+    if (trailer < 0) { this.depart(o, c, "The load was lost on the way. The carrier is leaving."); return; }
+    const pid = o.cargo, v = ents.vrow[trailer]!;
+    // Set down exactly: on the fifth wheel or the marked ground, still, as the carrier lets go.
+    this.carried.delete(pid);
+    ents.setPosition(trailer, target.x, target.y, target.z);
+    ents.vehicleQx[v] = target.qx; ents.vehicleQy[v] = target.qy; ents.vehicleQz[v] = target.qz; ents.vehicleQw[v] = target.qw;
+    ents.vehicleYaw[v] = target.yaw;
+    ents.vx[trailer] = ents.vy[trailer] = ents.vz[trailer] = 0;
+    ents.vehiclePitchRate[v] = ents.vehicleYawRate[v] = ents.vehicleRollRate[v] = 0;
+    this.ctx.urban.syncAfterContact(trailer);
     if (o.trailer) hitches.couple(o.rig, pid);
     this.racks.set(o.id, { id: o.id, pid, owner: o.owner, team: o.team, open: 0, opening: false, slots: (1 << o.stock) - 1, selected: 0 });
     o.loaded = false; o.phase = P.release; o.since = now;

@@ -67,17 +67,19 @@ export class AirFlights {
 
   constructor(ctx: AirFlightContext) {
     this.ctx = ctx;
-    const { game, urban } = ctx;
+    const { game } = ctx;
     game.players.remoteInput = (c, tick) => this.input(c, tick);
     game.replication.cameraChunk = (c) => this.flights.get(c)?.chunk;
     game.players.allows.on((c, op) => !this.active(c) || op === CMD_AIR_SUPPORT || op === CMD_CHAT);
     game.sessions.onPresence.on(c => { if (c.closed) this.abort(c); });
     game.sessions.onExit.on(c => { this.forget(c); });
     game.sessions.onBodyGone.on(c => { this.abort(c); });
-    urban.external = e => this.flown.has(ctx.world.ents.pid[e]!);
   }
 
   active(c: Client): boolean { return this.flights.has(c); }
+
+  /** Whether record `pid` is a drone in flight, moved here rather than by the vehicle system. */
+  flies(pid: number): boolean { return this.flown.has(pid); }
 
   camera(c: Client): Readonly<AirDrone> | undefined { return this.flights.get(c); }
 

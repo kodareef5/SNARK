@@ -163,6 +163,8 @@ export class Urban {
   pairStep: ((e: number, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, pilot: boolean) => boolean) | null = null;
   /** The tractor entity towing trailer entity `e`, or -1. */
   towedBy: ((e: number) => number) | null = null;
+  /** Doors held open by another system, by vehicle record: each a bit mask of the vehicle's doors. */
+  doorsHeld: (() => Iterable<[number, number]>) | null = null;
   /** A vehicle another system moves every tick, such as a flying drone (server/air-flight.ts): never stepped here. */
   external: ((e: number) => boolean) | null = null;
   /** Commands for an aircraft nobody sits in that flies itself (server/air-carrier.ts), or null to leave it unflown. */
@@ -1144,6 +1146,8 @@ export class Urban {
       const door = host?.definition.seats.find(seat => seat.id === action!.seat)?.door;
       if (door !== undefined) this.opening.set(action!.host, (this.opening.get(action!.host) ?? 0) | (1 << door));
     }
+    // Doors another system holds open: a drone rack's panels and legs, a carrier's clamps (server/air-support.ts).
+    if (this.doorsHeld) for (const [pid, mask] of this.doorsHeld()) this.opening.set(pid, (this.opening.get(pid) ?? 0) | mask);
     this.drivers.clear();
     for (const c of game.clients) {
       if (!c?.active) continue;
