@@ -18,7 +18,8 @@
 
 import { GRADE, type GradeKey } from "../../../content/grade.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { FRAME, FRAME_BLOCK, OPTIC_AT, OPTIC_NIGHT } from "./packet.ts";
+import { FEED_GLSL } from "./feed.ts";
+import { FRAME, FRAME_BLOCK, OPTIC_AT, OPTIC_BURST_AT, OPTIC_FEED, OPTIC_FEED_AT, OPTIC_NIGHT } from "./packet.ts";
 import { sunHeight } from "./sky.ts";
 import { GRADED, TONE } from "./surface.ts";
 
@@ -144,11 +145,20 @@ export function postFrame(frame: Float32Array, tier: Tier, hour: number, height:
   frame[FRAME.levels] = bloomLevels(height, tier.post.bloom);
 }
 
-/** What a visor does to the picture (D1080): its mode (packet.ts OPTIC_), how many times night vision amplifies the light, and the grain the finish adds. */
+/**
+ * What a visor does to the picture (D1080): its mode (packet.ts OPTIC_), how many times night vision amplifies the light,
+ * and the grain the finish adds. A drone's feed (air-feed.ts) is `feed`, with its signal and its burst of interference,
+ * each 0 to 1; its mode is OPTIC_FEED, or night or heat inside the feed.
+ */
 export interface Optic {
   mode: number;
   gain: number;
   grain: number;
+  feed?: boolean;
+  signal?: number;
+  burst?: number;
+  /** The grain's seed held while a feed's picture is frozen; else the frame's. */
+  seed?: number;
 }
 /** Night vision's phosphor, a green one's (P43), as linear light at its brightest. */
 export const PHOSPHOR: readonly number[] = [0.42, 1, 0.5];
@@ -160,10 +170,15 @@ export const PHOSPHOR: readonly number[] = [0.42, 1, 0.5];
  */
 export function opticFrame(frame: Float32Array, tier: Tier, optic: Optic, seed: number): void {
   frame.fill(0, OPTIC_AT, OPTIC_AT + 8);
-  if (!tier.lit || (optic.mode === 0 && optic.grain === 0)) return;
-  frame[OPTIC_AT] = optic.mode;
+  if (!tier.lit || (optic.mode === 0 && optic.grain === 0 && !optic.feed)) return;
+  // The feed's own view is plain light to every shader; its grade and finish read fOptic.w.
+  frame[OPTIC_AT] = optic.mode === OPTIC_FEED ? 0 : optic.mode;
   frame[OPTIC_AT + 1] = tier.post ? optic.grain : 0;
   frame[OPTIC_AT + 2] = seed % 4096;
+  if (optic.feed) {
+    frame[OPTIC_FEED_AT] = 1 + Math.min(1, Math.max(0, optic.signal ?? 1));
+    frame[OPTIC_BURST_AT] = tier.post ? Math.min(1, Math.max(0, optic.burst ?? 0)) : 0;
+  }
   // The heat view's palette is the grade's (surface.ts ironbow); night vision's light is amplified and its phosphor told.
   if (optic.mode !== OPTIC_NIGHT) return;
   for (let c = 0; c < 3; c++) {
@@ -266,8 +281,14 @@ float hash(uvec3 v) {
   h = (h ^ (h >> 13u)) * 3266489917u;
   return float(h ^ (h >> 16u)) / 4294967295.0;
 }
-void main() {
+${FEED_GLSL}void main() {
   vec2 uv = vUv * uExtent.xy;
+  uvec3 at = uvec3(gl_FragCoord.xy, 0u);
+  // A drone's feed draws its own picture (feed.ts).
+  if (fOptic.w > 0.0) {
+    o = vec4(encoded(clamp(feed(), 0.0, 1.0)) + (hash(at) + hash(at + uvec3(0u, 0u, 1u)) - 1.0) / 255.0, 1.0);
+    return;
+  }
   vec3 cn = scene(uv + vec2(uPass.x, 0.0)), cs = scene(uv - vec2(uPass.x, 0.0)), ce = scene(uv + vec2(0.0, uPass.y)), cw = scene(uv - vec2(0.0, uPass.y)), c, middle;
   if (uPass.w > 0.5) c = clamp(upscaled(uv, middle), min(middle, min(min(cn, cs), min(ce, cw))), max(middle, max(max(cn, cs), max(ce, cw))));
   else c = scene(uv);
@@ -278,6 +299,5 @@ void main() {
   t = graded(t * (l > 0.0 ? sharp / l : 1.0));
   // A visor's grain (opticFrame), heavier in the dark as an amplified picture's is.
   if (fOptic.y > 0.0) t += (hash(uvec3(gl_FragCoord.xy, uint(fOptic.z) + 7u)) - 0.5) * fOptic.y / sqrt(max(dot(t, vec3(0.2126, 0.7152, 0.0722)), 0.04));
-  uvec3 at = uvec3(gl_FragCoord.xy, 0u);
   o = vec4(encoded(clamp(t, 0.0, 1.0)) + (hash(at) + hash(at + uvec3(0u, 0u, 1u)) - 1.0) / 255.0, 1.0);
 }`;

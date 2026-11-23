@@ -1,7 +1,7 @@
 // Draws an interface frame over a picture with the browser binder's rectangles and colours, and a bitmap font in place of a real one.
 
 import { K_BAR, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, glyphAdvance, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
-import { LENS_ROUND, LENS_TWIN, STYLES } from "../../client/core/ui/style.ts";
+import { LENS_ROUND, LENS_SCAN, LENS_TWIN, LENS_VIGNETTE, STYLES } from "../../client/core/ui/style.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./font.ts";
 
 /** `color` is RGBA, `width` by `height`. */
@@ -16,13 +16,17 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
     const y1 = Math.min(height, Math.round((y + h) * scale));
     const rad = (h * scale) / 2, cy = (y + h / 2) * scale;
     const holes = lens === LENS_TWIN ? [x * scale + rad, (x + w) * scale - rad] : lens === LENS_ROUND ? [(x + w / 2) * scale] : [];
+    // Scanlines on every third of the interface's pixels; a vignette deepening from 45% of the way to the farthest corner.
+    const cx = (x + w / 2) * scale, corner = Math.hypot(w * scale, h * scale) / 2;
     for (let py = y0; py < y1; py++) {
+      if (lens === LENS_SCAN && Math.floor(py / scale) % 3 !== 2) continue;
       for (let px = x0; px < x1; px++) {
         if (holes.some((hx) => Math.hypot(px + 0.5 - hx, py + 0.5 - cy) < rad)) continue;
+        const k = lens === LENS_VIGNETTE ? a * Math.min(1, Math.max(0, (Math.hypot(px + 0.5 - cx, py + 0.5 - cy) / corner - 0.45) / 0.55)) : a;
         const o = (py * width + px) * 4;
-        color[o] = color[o]! + (r - color[o]!) * a;
-        color[o + 1] = color[o + 1]! + (g - color[o + 1]!) * a;
-        color[o + 2] = color[o + 2]! + (b - color[o + 2]!) * a;
+        color[o] = color[o]! + (r - color[o]!) * k;
+        color[o + 1] = color[o + 1]! + (g - color[o + 1]!) * k;
+        color[o + 2] = color[o + 2]! + (b - color[o + 2]!) * k;
         color[o + 3] = 255;
       }
     }

@@ -48,7 +48,7 @@ test("the cab calls a trailer and launches its fourth bay through the radio", ()
     expect(s.airCamera.id).toBe(s.airSupport.flight);
     const feed = view.app.ui.frame;
     const captions = feed.nodes.slice(0, feed.count).map(n => n.text);
-    expect(captions.some(t => t.includes("BAY 4") && t.includes("HDG"))).toBe(true);
+    expect([captions.some(t => t.startsWith("BAY 4 · SRV-")), captions.includes("REC")]).toEqual([true, true]);
     expect(captions.some(t => t.includes("exit vehicle") || t.includes("Unmute sound"))).toBe(false);
     expect(s.driving).toBe(e);
     expect(s.airSupport.pods.find(p => p.id === pod!.id)!.slots).toBe(0b110111);

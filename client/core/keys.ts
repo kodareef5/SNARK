@@ -7,6 +7,7 @@ import { CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, CMD_THROW, CMD_VEHICLE, ORDE
 import { isSkateboard, isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { BUILD_KEYS } from "./build.ts";
 import { GLASS_KEYS } from "./glass.ts";
+import { FEED_KEYS } from "./air-feed.ts";
 import { ANY_KEY, G_WORLD, type KeyRow } from "./key-row.ts";
 import { SIGHT_KEYS } from "./optics.ts";
 import { ORBIT_KEYS } from "./orbit.ts";
@@ -246,6 +247,7 @@ export const KEY_ROWS: readonly KeyRow[] = [
   INTERFACE,
   INSPECT_ZOOM,
   TYPING,
+  ...FEED_KEYS,
   ...SIGHT_KEYS,
   ...GLASS_KEYS,
   ...VISOR_KEYS,

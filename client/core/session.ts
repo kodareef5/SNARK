@@ -14,6 +14,7 @@ import { PI, TAU } from "../../shared/math/scalar.ts";
 import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
 import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { AirCamera } from "./air-camera.ts";
+import { airFeedView, feedSignal, type AirFeedView } from "./air-feed.ts";
 import { VehiclePrediction } from "./vehicle-prediction.ts";
 import { VehicleCorrection } from "./vehicle-correction.ts";
 import { newerCorpseMotion, readCorpseMotion, type CorpseMotion } from "../../shared/net/corpse.ts";
@@ -456,6 +457,34 @@ export class ClientSession {
   supplyVersion = 0;
   airSupport = emptyAirSupport();
   readonly airCamera = new AirCamera();
+  private readonly feedView = airFeedView();
+  /** Where the drone flown now was first seen, which its signal is from where no rack is told; its id. */
+  private readonly feedFrom = { id: 0, x: 0, y: 0, z: 0 };
+
+  /**
+   * The drone this page flies, as its feed shows it (air-feed.ts): its bay, fuel and signal, its camera and its speed.
+   * The signal falls with the distance from the rack it flies from, or from where it was launched.
+   */
+  get airFeed(): AirFeedView {
+    const v = this.feedView, air = this.airSupport, pose = this.airCamera.sample(this.renderClock);
+    let drone = null;
+    for (let i = 0; pose && air.flight && i < air.drones.length; i++) if (air.drones[i]!.id === air.flight) drone = air.drones[i]!;
+    v.active = pose !== null && drone !== null;
+    if (!pose || !drone) return v;
+    const from = this.feedFrom;
+    if (from.id !== drone.id) {
+      from.id = drone.id;
+      from.x = pose.x; from.y = pose.y; from.z = pose.z;
+    }
+    let rack: { x: number; y: number; z: number } = from;
+    for (let i = 0; air.pod && i < air.pods.length; i++) if (air.pods[i]!.id === air.pod) rack = air.pods[i]!;
+    v.bay = drone.bay;
+    v.fuel = drone.fuel;
+    v.signal = feedSignal(Math.hypot(pose.x - rack.x, pose.y - rack.y, pose.z - rack.z));
+    v.x = pose.x; v.y = pose.y; v.z = pose.z; v.yaw = pose.yaw; v.pitch = pose.pitch;
+    v.speed = Math.hypot(pose.vx, pose.vz);
+    return v;
+  }
 
   airCommand(action: number, target = 0, bay = 0, ground?: { x: number; z: number; yaw: number }): number {
     if (action === AIR_ACTION.ground && !ground) return 0;

@@ -82,6 +82,15 @@ export interface PlayersContext {
   readonly replication: { askView(c: Client, r: BitReader): number; takeStatics(c: Client): number };
 }
 
+/** A camera a session looks through from away from its body: a drone it flies (server/air-flight.ts). */
+export interface RemoteEye {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly pitch: number;
+}
+
 export class Players {
   private readonly world: ServerWorld;
   private readonly clients: readonly (Client | null)[];
@@ -112,6 +121,8 @@ export class Players {
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
   /** A remote operator's input belongs to its aircraft while the survivor stays in place. */
   remoteInput: ((c: Client, tick: number) => boolean) | null = null;
+  /** Where a remote operator's camera is while it flies, radians for its turn and tilt: what its look and its marks start from. */
+  remoteEye: ((c: Client) => RemoteEye | null) | null = null;
   /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
   readonly feet: ServerFootContacts;
   /** Bodies a walker cannot walk through (server/blocking.ts). */

@@ -8,7 +8,7 @@
 
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { CMD_GAZE, CMD_MARK, GAZE_FARTHEST, GAZE_REACH, GAZE_TICKS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SPOT_TICKS } from "../shared/net/protocol.ts";
+import { CMD_GAZE, CMD_MARK, DRONE_LOOK, GAZE_FARTHEST, GAZE_REACH, GAZE_TICKS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SPOT_TICKS } from "../shared/net/protocol.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import { BTN_SECONDARY, BTN_VISOR, stanceEye } from "../shared/sim/character.ts";
 import { HIT_NONE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
@@ -16,6 +16,7 @@ import { CUE_SCOPED } from "../shared/anim/pose.ts";
 import type { ItemDef, OpticFacet } from "../shared/content/defs.ts";
 import { ARMOR_SLOTS } from "../shared/sim/items.ts";
 import type { Client, GameServer } from "./game.ts";
+import type { RemoteEye } from "./players.ts";
 import type { Items } from "./items.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -207,6 +208,14 @@ export class Gaze {
     return false;
   }
 
+  /** Whether creature `e` stands within DRONE_LOOK of a drone's camera `eye`, in the view round the chunk the camera is over. */
+  droneSees(eye: RemoteEye, e: number): boolean {
+    const dims = this.ctx.world.dims, ents = this.ctx.world.ents;
+    if (Math.hypot(ents.x[e]! - eye.x, ents.y[e]! - eye.y, ents.z[e]! - eye.z) > DRONE_LOOK) return false;
+    const chunk = chunkAt(dims, ents.x[e]!, ents.z[e]!), home = chunkAt(dims, eye.x, eye.z), r = this.ctx.game.opts.entityRadius;
+    return Math.abs(chunkCx(dims, chunk) - chunkCx(dims, home)) <= r && Math.abs(chunkCz(dims, chunk) - chunkCz(dims, home)) <= r;
+  }
+
   /** CMD_MARK: the creature looked at through a sight, marked for the tribe (D1082). */
   private mark(c: Client, r: BitReader): number {
     const e = r.u32();
@@ -215,8 +224,11 @@ export class Gaze {
     const { world, records } = this.ctx;
     const ents = world.ents;
     const team = records.byPid.get(c.pid)?.team ?? 0;
-    if (c.ent < 0 || team === 0 || !this.looks.has(c)) return RESULT_DENIED;
-    if (e >= ents.gen.length || ents.gen[e] !== gen || (ents.flags[e]! & (F_ALIVE | F_PROP | F_PLAYER)) !== F_ALIVE || !this.inView(c, e)) return RESULT_INVALID;
+    // A drone flown marks what its camera sees: near it, in the chunks round its own (D1082's mark from the air).
+    const eye = this.ctx.game.players.remoteEye?.(c) ?? null;
+    if (c.ent < 0 || team === 0 || (!eye && !this.looks.has(c))) return RESULT_DENIED;
+    if (e >= ents.gen.length || ents.gen[e] !== gen || (ents.flags[e]! & (F_ALIVE | F_PROP | F_PLAYER)) !== F_ALIVE) return RESULT_INVALID;
+    if (eye ? !this.droneSees(eye, e) : !this.inView(c, e)) return RESULT_INVALID;
     this.ctx.spot(team, e, world.tick + SPOT_TICKS);
     return RESULT_OK;
   }

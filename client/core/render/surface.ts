@@ -20,7 +20,8 @@ import { VEHICLE_GLASS_GLSL } from "./vehicle-glass.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
-import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, OPTIC_AT, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, OPTIC_AT, OPTIC_FEED_AT, type FramePacket } from "./packet.ts";
+import { FEED_FLOOR, FEED_SATURATION, FEED_TINT } from "./feed.ts";
 import { LAMP_SEES, LAMP_WASH, lampAlbedo, lampLight } from "./lamp.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
@@ -345,8 +346,8 @@ export function untone(out: Out, t: Numbers): void {
 
 /**
  * The grade after the tone curve (content/grade.ts), from the frame block's finish: each colour kept `saturation` as far
- * from its grey, then raised to `gamma`; through night vision, that grey in its phosphor's colour (D1080). The twin of
- * the GLSL `graded`.
+ * from its grey, then raised to `gamma`; through night vision, that grey in its phosphor's colour (D1080); through a
+ * drone's feed, its own cool grade (feed.ts). The twin of the GLSL `graded`.
  */
 export function graded(out: Out, frame: Numbers): void {
   const grey = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
@@ -356,6 +357,10 @@ export function graded(out: Out, frame: Numbers): void {
   else if (frame[OPTIC_AT]! > 0.5) {
     const shown = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
     for (let c = 0; c < 3; c++) out[c] = shown * frame[OPTIC_AT + 4 + c]!;
+  } else if (frame[OPTIC_FEED_AT]! > 0) {
+    // A drone's feed: little colour, cool, its blacks lifted (render/feed.ts).
+    const grey = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
+    for (let c = 0; c < 3; c++) out[c] = FEED_FLOOR + (grey + (out[c]! - grey) * FEED_SATURATION) * FEED_TINT[c]! * (1 - FEED_FLOOR);
   }
 }
 
@@ -613,7 +618,12 @@ export const GRADED = `${IRONBOW}vec3 graded(vec3 c) {
   float grey = dot(c, vec3(${LUMA.map(f).join(", ")}));
   vec3 g = pow(max(mix(vec3(grey), c, fGrade.a), 0.0), vec3(fFinish.x));
   if (fOptic.x > 1.5) return ironbow(dot(g, vec3(${LUMA.map(f).join(", ")})));
-  return fOptic.x > 0.5 ? dot(g, vec3(${LUMA.map(f).join(", ")})) * fPhosphor.rgb : g;
+  if (fOptic.x > 0.5) return dot(g, vec3(${LUMA.map(f).join(", ")})) * fPhosphor.rgb;
+  if (fOptic.w > 0.0) {
+    float l = dot(g, vec3(${LUMA.map(f).join(", ")}));
+    return ${f(FEED_FLOOR)} + mix(vec3(l), g, ${f(FEED_SATURATION)}) * vec3(${FEED_TINT.map(f).join(", ")}) * ${f(1 - FEED_FLOOR)};
+  }
+  return g;
 }
 `;
 

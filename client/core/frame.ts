@@ -16,6 +16,7 @@ import type { HudModel, VehicleTelemetry } from "./hud.ts";
 import { sightShown, type SightAt, type SightShown } from "./hud/sight.ts";
 import { fallenShown, type FallenShown } from "./view/fallen.ts";
 import type { HudFrame } from "./hud/widget.ts";
+import type { FeedShown } from "./air-feed.ts";
 import type { Lasers } from "./render/laser.ts";
 import type { SeatedAim } from "./seated-aim.ts";
 import type { VoicePort } from "./voice/port.ts";
@@ -113,6 +114,8 @@ export class AppFrame implements HudFrame {
   readonly sight: SightShown = sightShown();
   /** The own survivor knocked down or dying: where the camera rides it, and the red and black over the view (view/fallen.ts). */
   readonly fallen: FallenShown = fallenShown();
+  /** What a drone's feed shows (air-feed.ts), which the app sets once. */
+  feed: FeedShown | undefined = undefined;
   /** The own body as the scene draws it, and whether it is a mount or a vehicle the body steers. */
   body!: OwnBody;
   riding = false;
