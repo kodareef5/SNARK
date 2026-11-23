@@ -7,6 +7,7 @@
 | `net.ts` | `Harness`: a host, a lossy virtual-time network, and client sessions with scripted pilots |
 | `arena.ts` | Level, dry, empty ground of a given size near the spawn point |
 | `city.ts` | A flat map whose statics are city pieces of the ruin kit, a server on it, and a rocket, a grenade and a rifle round from nobody |
+| `sketch.ts` | A building set down by hand on its frame's tiles, with the map's buildings made for it: in a bare store for the support rule, or under a server for a collapse |
 | `build.ts` | Survivors set up to build: cheats, strength, and sixty of every wooden piece in the hotbar |
 | `gather.ts` | Finding a resource node and standing a survivor in reach of it |
 | `agent.ts` | An agent that plays on the harness: its tools called over the protocol while virtual time runs |
