@@ -84,7 +84,7 @@ export function validateSeats(seats: readonly Seat[], doors: number, what: strin
       (seat.socket !== undefined && !(typeof seat.socket === "string" && seat.socket.length > 0 && seat.socket.length <= 64))) throw new Error(`invalid ${what} seat`);
     if ((seat.pose !== undefined && !["drive", "passenger", "pilot", "cabin", "pwc", "skate"].includes(seat.pose)) ||
       (seat.weapons !== undefined && typeof seat.weapons !== "boolean")) throw new Error(`invalid ${what} seat profile`);
-    if (seat.controls && ((seat.pose !== "pilot" && seat.pose !== "pwc") || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
+    if (seat.controls && ((seat.pose !== "pilot" && seat.pose !== "pwc" && seat.pose !== "drive") || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
     if (seat.controls?.style !== undefined && seat.controls.style !== "helicopter" && seat.controls.style !== "helm" && seat.controls.style !== "handlebar") throw new Error(`invalid ${what} control style`);
     if (seat.rider && (what !== "saddle" || !seat.socket || !pair(seat.rider.hands) || !pair(seat.rider.feet) || (seat.rider.knees !== undefined && !pair(seat.rider.knees)))) throw new Error(`invalid ${what} rider sockets`);
     const soles = seat.rider?.soles;

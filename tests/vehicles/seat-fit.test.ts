@@ -7,7 +7,7 @@ import { B_HAND_L, B_HEAD, B_LOWER_ARM_L, B_UPPER_ARM_L, ZONE_HEAD } from "../..
 import { defaultLook, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
 import { createOccupantSeat, OccupantBody, occupantSeat, poseSeated, seatOrigin } from "../../shared/anim/occupant.ts";
 import { AnimState, HumanAnim, PITCH_STEPS } from "../../shared/anim/pose.ts";
-import { footClearance, HEAD_MARGIN, headClearance, HIPS_DROP, RECLINE_MOST, seatFit } from "../../shared/anim/seat-fit.ts";
+import { footClearance, HEAD_MARGIN, headClearance, HIPS_DROP, seatFit } from "../../shared/anim/seat-fit.ts";
 import { boneToModel, rayCapsule, rayZones, Solved } from "../../shared/anim/skeleton.ts";
 import { quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -224,18 +224,18 @@ test("Zephyr and Veloce seats fit a default body under the roof and on the floor
       const before = room(seat, HUMAN.rest, null, action, def, false), after = room(seat, HUMAN.rest, null, action, def);
       // As posed, the soles hang through the footwell floor; the Zephyr's roof also cuts the head.
       expect(before.feet).toBeLessThan(-.05);
-      if (vehicle === "core:zephyr" && seat.driver) expect(before.head).toBeLessThan(-.1);
+      if (vehicle === "core:zephyr" && seat.driver) expect(before.head).toBeLessThan(0);
       expect(after.head, `${vehicle} ${seat.id} ${action}`).toBeGreaterThanOrEqual(Math.min(before.head, HEAD_MARGIN) - 1e-4);
       expect(after.head).toBeGreaterThanOrEqual(0);
       expect(after.feet).toBeGreaterThanOrEqual(-1e-4);
       expect(after.feet).toBeLessThan(.01);
     }
   }
-  // The Zephyr's low canopy sinks its driver's hips, takes the back to the chest's limit, and sinks them on.
+  // The lower buckets leave enough headroom to sit upright at the wheel.
   const zephyr = enclosed().find((e) => e.id === "core:zephyr" && e.seat.driver)!;
   room(zephyr.seat, HUMAN.rest, null, 0, zephyr.def);
-  expect(seatFit.recline).toBeCloseTo(RECLINE_MOST, 6);
-  expect(seatFit.drop).toBeGreaterThan(HIPS_DROP);
+  expect(seatFit.recline).toBe(0);
+  expect(seatFit.drop).toBeLessThanOrEqual(HIPS_DROP);
   expect(seatFit.head).toBe(0);
   // The Veloce's roof wants only a few centimetres, which the cushion gives without a recline.
   const veloce = enclosed().find((e) => e.id === "core:veloce" && e.seat.driver)!;
@@ -256,6 +256,24 @@ test("the server's and the client's seated eye agree to a nanometre in every sea
     server.eye(authority);
     // The same pose; the client turns the eye by a quaternion and the server by its rows, which differ in the last bits.
     expect(Math.max(...[0, 1, 2].map((k) => Math.abs(client[k]! - authority[k]!))), `${def.id} ${seat.id}`).toBeLessThan(1e-9);
+  }
+});
+
+test("the Zephyr driver reaches the rim as the steering crosses full lock", () => {
+  const { def, seat } = enclosed().find((v) => v.id === "core:zephyr" && v.seat.driver)!;
+  if (def.movement === "rotor" || def.movement === "boat") throw new Error("expected the Zephyr road chassis");
+  const { left, right, turn } = seat.controls!, pivot = turn!.pivot;
+  for (const steering of [-1, -.5, 0, .5, 1]) {
+    const occupant = seated(def, seat), solved = new Solved(HUMAN_BONES);
+    occupant.steer = steering; occupant.steering = steering * def.spec.maxSteer;
+    const drop = poseSeated(anim, state(), 30, occupant, judged, null, new Pose(HUMAN_BONES), solved);
+    const angle = turn!.ratio * occupant.steering;
+    for (const [bone, grip] of [[B_PROP_L, left], [B_PROP_R, right]] as const) {
+      const dx = grip[0] - pivot[0];
+      const rim = [pivot[0] + dx * Math.cos(angle), pivot[1] + dx * Math.sin(angle), pivot[2]];
+      const gap = Math.hypot(...rim.map((v, k) => solved.pos[bone * 3 + k]! - solved.pos[k]! - (v - seat.anchor[k]! + (k === 1 ? drop : 0))));
+      expect(gap).toBeLessThan(.005);
+    }
   }
 });
 
