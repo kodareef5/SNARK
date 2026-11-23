@@ -829,11 +829,11 @@ function metWall(most: number, nx: number, nz: number, at: number): void {
 }
 
 /**
- * Metres above its feet at `ny` that a capsule `r` wide and `h` tall touches what `push` puts it out of: on a sphere where
- * the way out leans up or down, else halfway up what it shares with the piece `ref` of `store` (none for the ground).
+ * Metres above its feet at `ny` that a capsule `r` wide and `h` tall touches what puts it out along a way whose upward
+ * share is `uy`: on a sphere where the way leans up or down, else halfway up what it shares with the piece `ref` of
+ * `store` (none for the ground).
  */
-function touchAt(store: StructureStore | null, ref: number, ny: number, r: number, h: number): number {
-  const uy = push.y / push.depth;
+function touchAt(uy: number, store: StructureStore | null, ref: number, ny: number, r: number, h: number): number {
   if (uy > LEVEL) return r * (1 - uy);
   if (uy < -LEVEL) return h - r * (1 + uy);
   if (!store) return h * 0.5;
@@ -1194,6 +1194,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
             // edge to where the sphere is as wide as it is there. Nor is a falling body lifted higher than it was going by what
             // is too steep to stand on and it went into this substep, as Unreal keeps a slide from boosting it up a slope.
             const gap = r - push.depth;
+            const lean = push.y / push.depth;
             const down = (push.y * gap) / push.depth;
             const side = Math.sqrt(push.x * push.x + push.z * push.z);
             const rimY = ny + r - down;
@@ -1221,7 +1222,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
               nx += px * out;
               nz += pz * out;
               blocked = true;
-              if (side > wallMost) metWall(side, px / side, pz / side, touchAt(pass >= 0 ? store! : null, found.refs[k]!, ny, r, height));
+              if (side > wallMost) metWall(side, px / side, pz / side, touchAt(lean, pass >= 0 ? store! : null, found.refs[k]!, ny, r, height));
               if (walking) continue;
               level = true;
             }
@@ -1245,7 +1246,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
             }
             blocked = true;
             const side = Math.sqrt(push.x * push.x + push.z * push.z);
-            if (side > wallMost) metWall(side, push.x / side, push.z / side, touchAt(pass >= 0 ? store! : null, found.refs[k]!, at, r, height));
+            if (side > wallMost) metWall(side, push.x / side, push.z / side, touchAt(push.y / push.depth, pass >= 0 ? store! : null, found.refs[k]!, at, r, height));
           }
           if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
           else if (push.y > 0 && !walking) {
