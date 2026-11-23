@@ -62,7 +62,9 @@ export interface VehicleContactsContext {
    * A body other than a vehicle was struck by a driven vehicle hard enough to harm: its speed changed by `dv` m/s along the
    * unit (dx, dz), at `y`. It may stagger or be knocked down (server/reactions.ts).
    */
-  struck?(body: number, dv: number, dx: number, dz: number, y: number): void;
+  struck?(body: number, dv: number, dx: number, dz: number, y: number, wx: number, wy: number, wz: number): void;
+  /** Whether body `e` lies knocked down as a ragdoll, which a car passes over rather than strikes again. */
+  down?(e: number): boolean;
 }
 /** `settled`: it starts this tick in the pose it was captured in last tick, and nothing placed it since. */
 interface Frame { body: Body; handle: number; pid: number; tick: number; motionEpoch: number; consumed: boolean; by: number; byHandle: number; settled: boolean }
@@ -324,6 +326,7 @@ export class VehicleContacts {
     // Any valid seat is protected from a second impact on its attached visual body.
     if (seat >= 0 && ents.gen[seat] === ents.seatGen[e] && (ents.flags[seat]! & F_ALIVE) !== 0) return false;
     if (this.ctx.boarding?.(e, car)) return false;
+    if (this.ctx.down?.(e)) return false;
     const rec = records.byPid.get(ents.pid[e]!);
     return !!rec && !rec.dead && records.entOf.get(rec.pid) === e;
   }
@@ -503,7 +506,7 @@ export class VehicleContacts {
         quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
       // The way the blow sent it: its velocity now less what it had, flat.
       const px = b.state.vx - b.prior.vx, pz = b.state.vz - b.prior.vz, flat = Math.sqrt(px * px + pz * pz);
-      if (flat > 1e-6) this.ctx.struck?.(c.entity, Math.abs(result.deltaSpeedB), px / flat, pz / flat, c.y);
+      if (flat > 1e-6) this.ctx.struck?.(c.entity, Math.abs(result.deltaSpeedB), px / flat, pz / flat, c.y, impact?.wx ?? 0, impact?.wy ?? 0, impact?.wz ?? 0);
       combat.land(src, c.entity, ZONE_NONE, c.x, c.y, c.z, 0, impact);
     }
     // Either callback can destroy or replace a slot.

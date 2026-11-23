@@ -7,7 +7,7 @@
 import { detCos, detSin } from "../math/scalar.ts";
 import { REACT_FRAMES, reactClass } from "../sim/react.ts";
 import type { Pose } from "./clip.ts";
-import { B_HEAD, HUMAN, HUMAN_RAGDOLL } from "./human.ts";
+import { B_HEAD, B_HIPS, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_RAGDOLL } from "./human.ts";
 import { standingPose } from "./human-fall.ts";
 import { Ragdoll } from "./ragdoll.ts";
 import { Heightfield } from "../world/heightfield.ts";
@@ -21,6 +21,8 @@ export const REACT_NONE = 0;
 export const REACT_STAGGER = 1;
 /** Knocked badly off balance: a bigger shove and a longer loss of control. */
 export const REACT_HEAVY = 2;
+/** Knocked down where no ragdoll may fall: it topples, lies a while and gets up, posed from the word alone. */
+export const REACT_FALL = 3;
 const START_SHIFT = 2;
 const DIR_SHIFT = 10;
 const HEIGHT_SHIFT = 14;
@@ -83,7 +85,7 @@ function nowhere(): CollisionWorld {
  */
 export function reactCurve(word: number): Float64Array | null {
   const kind = reactKind(word);
-  if (kind === REACT_NONE || kind >= REACT_FRAMES.length) return null;
+  if (kind === REACT_NONE || kind === REACT_FALL || kind >= REACT_FRAMES.length) return null;
   const key = word & ~(255 << START_SHIFT);
   const known = curves.get(key);
   if (known) return known;
@@ -119,6 +121,10 @@ export function react(pose: Pose, word: number, tick: number): void {
   if (word === 0) return;
   const age = reactAge(word, tick), frames = reactFrames(word);
   if (!(age >= 0) || age >= frames) return;
+  if (reactKind(word) === REACT_FALL) {
+    topple(pose, word, age);
+    return;
+  }
   const curve = reactCurve(word);
   if (!curve) return;
   // Frame 0 is the body one tick after the blow; before it the body turns in from standing.
@@ -152,4 +158,55 @@ export function react(pose: Pose, word: number, tick: number): void {
 export function reactBand(up: number): number {
   const head = HUMAN.rest[B_HEAD * 3 + 1]!;
   return up >= head ? REACT_HEAD : up >= head * 0.72 ? REACT_CHEST : up >= head * 0.5 ? REACT_HIPS : REACT_LOW;
+}
+
+/** Ticks a cheap fall takes to go down, and the tick it starts to get up. */
+const TOPPLE = 10;
+const RISE = 60;
+const lying = new Float64Array(HUMAN.bones * 4);
+const tilt = new Float64Array(4);
+
+/**
+ * A body knocked down where no ragdoll may fall (REACT_FALL): it tips over the way it was pushed, face down when pushed
+ * forward or to a side and face up when pushed back, arms at its sides, lies there, and gets up again.
+ */
+function topple(pose: Pose, word: number, age: number): void {
+  const k = age < TOPPLE ? smooth(age / TOPPLE) : age < RISE ? 1 : 1 - smooth((age - RISE) / (REACT_FRAMES[REACT_FALL]! - RISE));
+  if (k <= 0) return;
+  const d = reactDir(word), back = d >= 6 && d <= 10;
+  // Lying is a quarter turn of the hips about the body's side, forward or back, then turned to the way it fell.
+  const face = ((back ? d - 8 : d) / REACT_DIRS) * 2 * Math.PI, pitch = back ? -Math.PI / 4 : Math.PI / 4;
+  const sp = detSin(pitch), cp = detCos(pitch), sy = detSin(face / 2), cy = detCos(face / 2);
+  // turn about +Y by `face`, times turn about +X by `pitch`
+  tilt[0] = cy * sp; tilt[1] = sy * cp; tilt[2] = -sy * sp; tilt[3] = cy * cp;
+  lying.fill(0);
+  for (let b = 0; b < HUMAN.bones; b++) lying[b * 4 + 3] = 1;
+  lying.set(tilt, B_HIPS * 4);
+  const arm = detSin(0.65), armW = detCos(0.65);
+  lying[B_UPPER_ARM_L * 4 + 2] = -arm; lying[B_UPPER_ARM_L * 4 + 3] = armW;
+  lying[B_UPPER_ARM_R * 4 + 2] = arm; lying[B_UPPER_ARM_R * 4 + 3] = armW;
+  const rot = pose.rot;
+  for (let b = 0; b < HUMAN.bones; b++) {
+    const o = b * 4;
+    const dot = rot[o]! * lying[o]! + rot[o + 1]! * lying[o + 1]! + rot[o + 2]! * lying[o + 2]! + rot[o + 3]! * lying[o + 3]!, s = dot < 0 ? -1 : 1;
+    let l = 0;
+    for (let c = 0; c < 4; c++) {
+      const v = rot[o + c]! + (lying[o + c]! * s - rot[o + c]!) * k;
+      turn[c] = v;
+      l += v * v;
+    }
+    l = 1 / Math.sqrt(l);
+    for (let c = 0; c < 4; c++) rot[o + c] = turn[c]! * l;
+  }
+  // Its hips sink to lie on the ground.
+  const down = LYING_HIPS - HUMAN.rest[B_HIPS * 3 + 1]!;
+  pose.root[1] = pose.root[1]! + (down - pose.root[1]!) * k;
+}
+
+/** Metres the hips' joint lies above the ground, as a laid body's does (shared/anim/human-fall.ts). */
+const LYING_HIPS = 0.13;
+
+function smooth(t: number): number {
+  const u = t < 0 ? 0 : t > 1 ? 1 : t;
+  return u * u * (3 - 2 * u);
 }

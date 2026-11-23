@@ -802,10 +802,10 @@ export class Ragdoll {
     return false;
   }
 
-  /** The least x and z and the most x and z its capsules reach, widened by `pad`, into `box`. */
+  /** The least x and z and the most x and z its capsules reach, widened by `pad`, into `box`, then the least and most y. */
   private bounds(pad: number): void {
-    box[0] = box[1] = Infinity;
-    box[2] = box[3] = -Infinity;
+    box[0] = box[1] = box[4] = Infinity;
+    box[2] = box[3] = box[5] = -Infinity;
     for (let i = 0; i < this.n; i++) {
       const s = this.seg, offset = this.primaryOffset, o = i * 3;
       const extra = offset ? Math.sqrt(offset[o]! * offset[o]! + offset[o + 1]! * offset[o + 1]! + offset[o + 2]! * offset[o + 2]!) : 0;
@@ -814,6 +814,8 @@ export class Ragdoll {
       box[1] = Math.min(box[1]!, this.x[i * 3 + 2]! - r);
       box[2] = Math.max(box[2]!, this.x[i * 3]! + r);
       box[3] = Math.max(box[3]!, this.x[i * 3 + 2]! + r);
+      box[4] = Math.min(box[4]!, this.x[i * 3 + 1]! - r);
+      box[5] = Math.max(box[5]!, this.x[i * 3 + 1]! + r);
     }
     for (let c = 0; c < this.contactBone.length; c++) {
       const i = this.contactOwner[c]!, o = c * 3, centre = this.contactCentre, segment = this.contactSegment;
@@ -822,27 +824,26 @@ export class Ragdoll {
       box[1] = Math.min(box[1]!, this.x[i * 3 + 2]! - r);
       box[2] = Math.max(box[2]!, this.x[i * 3]! + r);
       box[3] = Math.max(box[3]!, this.x[i * 3 + 2]! + r);
+      box[4] = Math.min(box[4]!, this.x[i * 3 + 1]! - r);
+      box[5] = Math.max(box[5]!, this.x[i * 3 + 1]! + r);
     }
   }
 
   /** Gathers the structures and nodes it may meet in the next `seconds`. */
   private gather(world: CollisionWorld, seconds: number): void {
     let fast = 0;
-    let y0 = Infinity;
-    let y1 = -Infinity;
     for (let i = 0; i < this.n; i++) {
       const v = this.v;
       fast = Math.max(fast, Math.abs(v[i * 3]!) + Math.abs(v[i * 3 + 1]!) + Math.abs(v[i * 3 + 2]!));
-      y0 = Math.min(y0, this.x[i * 3 + 1]!);
-      y1 = Math.max(y1, this.x[i * 3 + 1]!);
     }
+    // Up and down only as far as its capsules can reach this step, as across: a body on a floor does not gather the ceiling.
     this.bounds(MARGIN + fast * seconds);
-    const reach = box[2]! - box[0]!;
+    const y0 = box[4]!, y1 = box[5]!;
     this.nRefs = 0;
     for (let store = 0; store < 2; store++) {
       const structs = store === 0 ? world.structs : world.nodes;
       if (!structs) continue;
-      const m = structs.query(box[0]!, box[1]!, box[2]!, box[3]!, found, y0 - reach, y1 + reach);
+      const m = structs.query(box[0]!, box[1]!, box[2]!, box[3]!, found, y0, y1);
       for (let k = 0; k < m && this.nRefs < MOST_REFS; k++) {
         const ref = found.refs[k]!;
         const t = structs.chunks[Math.floor(ref / 65536)]!;
@@ -1523,8 +1524,8 @@ export class Ragdoll {
   }
 }
 
-/** least x, least z, most x, most z. */
-const box = new Float64Array(4);
+/** least x, least z, most x, most z, least y, most y. */
+const box = new Float64Array(6);
 /** Two capsules: centre, half segment and radius of each. */
 const caps = new Float64Array(14);
 /** The nearest points of the last two segments measured, the first's then the second's. */

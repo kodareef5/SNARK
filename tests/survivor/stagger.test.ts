@@ -5,7 +5,9 @@ import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS, Pose } from "../../shared/anim/clip.ts";
 import { B_CHEST, B_HEAD, HUMAN } from "../../shared/anim/human.ts";
 import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
-import { packReact, react, reactAge, reactDir, reactFrames, reactHeight, reactKind, reactStart, reactStrength, REACT_CHEST, REACT_HEAD, REACT_HEAVY, REACT_STAGGER } from "../../shared/anim/reactions.ts";
+import { packReact, react, reactAge, reactDir, reactFrames, reactHeight, reactKind, reactStart, reactStrength, REACT_CHEST, REACT_FALL, REACT_HEAD, REACT_HEAVY, REACT_STAGGER } from "../../shared/anim/reactions.ts";
+import { FALL_UNITS_MOST } from "../../server/falls.ts";
+import { MF_ROOTED } from "../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
 import { rayBody } from "../../shared/anim/zones.ts";
 import { REACT_RULES, TIER_BUMP, TIER_FALL, TIER_NONE, TIER_STAGGER, deltaV, dirOf, tierOf } from "../../shared/sim/react.ts";
@@ -145,5 +147,43 @@ test("a second heavy blow while still reeling knocks the survivor down, and a ca
       h2.run(1500);
       expect(r2.shove(c2.ent, 4, 0, -1, 1.3, true)).toBe(TIER_BUMP);
     } finally { h2.host.shutdown(); }
+  } finally { h.host.shutdown(); }
+});
+
+test("a toppled pose lies the body down the way it was pushed, then stands it up", () => {
+  const anim = new HumanAnim(NO_CLIPS), st = new AnimState(), plain = new Pose(HUMAN.bones), pose = new Pose(HUMAN.bones);
+  humanPose(anim, st, 0, plain);
+  st.react = packReact(REACT_FALL, 0, 0, 1, 0);
+  humanPose(anim, st, 30, pose);
+  const solved = new Solved(HUMAN.bones), head = new Float64Array(3);
+  solve(HUMAN, pose, solved);
+  boneToModel(solved, B_HEAD, 0, 0, 0, head);
+  // Lying: the head near the ground, out ahead the way it was pushed.
+  expect(head[1]!).toBeLessThan(0.4);
+  expect(head[2]!).toBeGreaterThan(0.45);
+  humanPose(anim, st, reactFrames(st.react), pose);
+  expect([...pose.rot]).toEqual([...plain.rot]);
+  expect([...pose.root]).toEqual([...plain.root]);
+});
+
+test("a knockdown past the fall budget topples the survivor, who gets up again", () => {
+  const { h, a, c, car } = road();
+  try {
+    // Every unit of fall already spent elsewhere.
+    h.host.falls.units = FALL_UNITS_MOST;
+    let word = 0, rooted = false;
+    h.run(4000, () => {
+      if (a.z[car]! < 90 && word === 0) { a.vz[car] = 9; a.vx[car] = 0; }
+      else a.vz[car] = 0;
+      if (word === 0 && reactKind(a.react[c.ent]!) === REACT_FALL) word = a.react[c.ent]!;
+      if (word !== 0 && (a.mflags[c.ent]! & MF_ROOTED) !== 0) rooted = true;
+    });
+    expect(h.host.falls.stats.fell).toBe(0);
+    expect(h.host.falls.stats.refused).toBeGreaterThanOrEqual(1);
+    expect(word).not.toBe(0);
+    expect(rooted).toBe(true);
+    // Up again and free to walk.
+    expect(a.react[c.ent]).toBe(0);
+    expect(a.mflags[c.ent]! & MF_ROOTED).toBe(0);
   } finally { h.host.shutdown(); }
 });

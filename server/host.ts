@@ -702,9 +702,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
     // A car that strikes a survivor staggers them, or knocks them off their feet (Knockdowns) as a door does.
-    struck: (body, dv, dx, dz, y) => {
-      if (reactions.shove(body, dv, dx, dz, y - world.ents.y[body]!, true) === TIER_FALL) knockDown(body);
+    struck: (body, dv, dx, dz, y, wx, wy, wz) => {
+      if (reactions.shove(body, dv, dx, dz, y - world.ents.y[body]!, true) === TIER_FALL) knockDown(body, wx, wy, wz);
     },
+    // A body lying as its ragdoll is not struck again where its entity stands in for it.
+    down: (e) => falls.isDown(e),
     parkingBrake: e => urban.parkingBrake(e),
     resting: e => urban.resting(e),
     asleep: e => urban.asleep(e),
@@ -1454,7 +1456,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (!rec || rec.kind !== survivor) return;
     const ents = world.ents;
-    if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz)) buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
+    // Where no ragdoll may fall for it, it topples by its reaction, held where it is until it gets up.
+    if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz)) buffs.give(rec, stunned, 0, reactions.standing(body) ? reactions.topple(body) : KNOCKDOWN_SECONDS);
     refreshBody(rec);
   };
   urban.onSkateFall = (actor, yaw) => {

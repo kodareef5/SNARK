@@ -3,7 +3,9 @@
 // its session's own step leaves it be (server/players.ts). It gets up where it comes to rest once it has lain DOWN_LEAST,
 // or after DOWN_MOST however it lies. Its state goes to every client that sees it as a corpse's does (server/corpse-motion.ts).
 //
-// Admission is at the fall: past FALLS_MOST at once a knock is refused, and the caller stuns the body standing instead.
+// Admission is at the fall: past FALLS_MOST at once, or past FALL_UNITS_MOST of cost, a knock is refused and the caller
+// topples the body by its reaction instead (server/reactions.ts). A fall among structures costs more units than one in
+// the open, as its ragdoll meets more of them each substep.
 
 import { TICK_RATE } from "../shared/coords.ts";
 import { Fall, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
@@ -11,14 +13,19 @@ import { brace, layHuman } from "../shared/anim/human-fall.ts";
 import { HUMAN } from "../shared/anim/human.ts";
 import { CUE_DOWN } from "../shared/anim/pose.ts";
 import { Solved } from "../shared/anim/skeleton.ts";
+import { Found } from "../shared/world/structures.ts";
 import { encodeCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { MF_DOWN, MODE_WALK } from "../shared/sim/character.ts";
 import { HISTORY_TICKS } from "./history.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** The most survivors lying at once. */
+/** The most survivors lying at once, and the most their falls may cost together, in units (fallCost). */
 export const FALLS_MOST = 48;
+export const FALL_UNITS_MOST = 64;
+/** Metres round a body, and up from its feet, within which structures count toward its fall's cost. */
+const COST_REACH = 2.5;
+const COST_HEIGHT = 2.2;
 /** Ticks a fallen body lies at least, and at most. */
 const DOWN_LEAST = Math.round(1.2 * TICK_RATE);
 const DOWN_MOST = 4 * TICK_RATE;
@@ -41,6 +48,8 @@ interface Down {
   readonly poseTick: Int32Array;
   /** Once risen, the tick it rose; its past poses are kept until no shot can reach back to them. */
   rose: number;
+  /** What its fall costs, in units. */
+  readonly units: number;
 }
 
 const root = new Float64Array(3);
@@ -51,6 +60,9 @@ export class Falls {
   /** Raised as a body gets up, standing at the ragdoll's hips. */
   onUp: (e: number) => void = () => {};
   readonly stats = { fell: 0, refused: 0, rose: 0 };
+  /** The units the falls under way cost together. */
+  units = 0;
+  private readonly near = new Found(32);
   /** What every fall's revisions are drawn from, so a body's next fall is newer than its last to a client. */
   private serial = 0;
 
@@ -76,13 +88,15 @@ export class Falls {
 
   /**
    * Knocks survivor `e` off its feet, moving at (vx, vy, vz) and turning at (wx, wy, wz) radians a second. False where it
-   * cannot fall here (seated, swimming, already down) or FALLS_MOST already lie: the caller stuns it standing instead.
+   * cannot fall here (seated, swimming, already down), FALLS_MOST already lie, or its fall would cost more units than are
+   * left: the caller topples it instead.
    */
   knock(e: number, vx: number, vy: number, vz: number, wx: number, wy: number, wz: number): boolean {
     const ents = this.world.ents;
     if (this.down.has(e)) return true;
     if ((ents.flags[e]! & F_ALIVE) === 0 || ents.seat[e] !== 0 || ents.mode[e] !== MODE_WALK) return false;
-    if (this.down.size >= FALLS_MOST) {
+    const units = this.cost(ents.x[e]!, ents.y[e]!, ents.z[e]!);
+    if (this.down.size >= FALLS_MOST || this.units + units > FALL_UNITS_MOST) {
       this.stats.refused++;
       return false;
     }
@@ -92,8 +106,9 @@ export class Falls {
     const fall = new Fall(r);
     fall.reflex = brace;
     const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision: ++this.serial, world: 0, motion: null, pose: new Solved(HUMAN.bones),
-      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1 };
+      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units };
     this.down.set(e, d);
+    this.units += units;
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
     // Its facing as it fell, as sent, which its pose is in.
     ents.yaw[e] = ((ents.yaw[e]! >>> 6) << 6) & 0xffff;
@@ -104,6 +119,25 @@ export class Falls {
     this.place(d);
     this.stats.fell++;
     return true;
+  }
+
+  /**
+   * What a fall at (x, y, z) costs, in units: one in the open, and one more for every four structures or nodes it may meet,
+   * up to six. Measured where it stands as it falls, never again.
+   */
+  cost(x: number, y: number, z: number): number {
+    let count = 0;
+    for (const store of [this.world.structs, this.world.nodes]) {
+      if (!store) continue;
+      count += store.query(x - COST_REACH, z - COST_REACH, x + COST_REACH, z + COST_REACH, this.near, y - 0.5, y + COST_HEIGHT);
+    }
+    return Math.min(6, 1 + Math.floor(count / 4));
+  }
+
+  /** Lets go of a fall's cost as it ends. */
+  private ended(d: Down): void {
+    this.down.delete(d.e);
+    this.units -= d.units;
   }
 
   /** The pose of a body lying down, about its entity's place and in the frame of `yawOf`; null for one standing. */
@@ -136,7 +170,7 @@ export class Falls {
   take(e: number): { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null {
     const d = this.down.get(e);
     if (!d) return null;
-    this.down.delete(e);
+    this.ended(d);
     return { state: d.fall.ragdoll.checkpoint(), awake: d.fall.ragdoll.awake, ticks: d.fall.ticks };
   }
 
@@ -154,7 +188,7 @@ export class Falls {
     for (const d of this.risen.values()) if (this.world.tick - d.rose > HISTORY_TICKS) this.risen.delete(d.e);
     for (const d of this.down.values()) {
       if ((ents.flags[d.e]! & F_ALIVE) === 0 || ents.gen[d.e] !== d.gen) {
-        this.down.delete(d.e);
+        this.ended(d);
         continue;
       }
       const was = d.fall.still;
@@ -194,7 +228,7 @@ export class Falls {
   private rise(d: Down): void {
     const ents = this.world.ents;
     d.fall.ragdoll.rootPosition(root);
-    this.down.delete(d.e);
+    this.ended(d);
     d.rose = this.world.tick;
     this.risen.set(d.e, d);
     ents.setPosition(d.e, root[0]!, root[1]! - HIPS_UP, root[2]!);

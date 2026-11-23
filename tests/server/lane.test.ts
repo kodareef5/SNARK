@@ -107,8 +107,7 @@ test("a host's tick keeps each physics system's time in its own row", () => {
     h.server.lane.setClock(() => ++ms);
     h.server.tick();
     const lane = h.server.lane;
-    for (const row of ["players", "creatures", "loose", "contacts", "corpses", "falls"] as const) expect(lane.rowMs[LANE_ROW[row]]).toBeGreaterThan(0);
-    expect(lane.rowMs[LANE_ROW.react]).toBe(0);
+    for (const row of ["players", "creatures", "loose", "contacts", "corpses", "falls", "react"] as const) expect(lane.rowMs[LANE_ROW[row]]).toBeGreaterThan(0);
     let sum = 0;
     for (const v of lane.rowMs) sum += v;
     expect(sum).toBe(lane.physicsMs);

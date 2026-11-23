@@ -15,8 +15,8 @@ export const TIER_FALL = 3;
 /** A reaction word's class is its low two bits (shared/anim/reactions.ts lays out the rest). */
 export const reactClass = (word: number): number => word & 3;
 /** Ticks each class of reaction lasts, and how many of its first ticks the body has little hold on its speed. */
-export const REACT_FRAMES: readonly number[] = [0, 20, 30];
-export const REACT_CONTROL_TICKS: readonly number[] = [0, 12, 18];
+export const REACT_FRAMES: readonly number[] = [0, 20, 30, 75];
+export const REACT_CONTROL_TICKS: readonly number[] = [0, 12, 18, 75];
 
 /** Delta-v in metres a second at which each tier starts. Settings may change them. */
 export interface ReactRules {

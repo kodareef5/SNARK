@@ -4,7 +4,7 @@
 // knocks it down. Once a reaction ends the body cannot be staggered again for a few seconds, so blows cannot chain it.
 
 import { TICK_RATE } from "../shared/coords.ts";
-import { packReact, reactAge, reactFrames, reactBand, REACT_HEAVY, REACT_STAGGER } from "../shared/anim/reactions.ts";
+import { packReact, reactAge, reactFrames, reactBand, reactKind, REACT_FALL, REACT_HEAVY, REACT_HIPS, REACT_STAGGER } from "../shared/anim/reactions.ts";
 import { REACT_RULES, TIER_BUMP, TIER_FALL, TIER_NONE, TIER_STAGGER, dirOf, strengthOf, tierOf, type ReactRules } from "../shared/sim/react.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { MODE_WALK } from "../shared/sim/character.ts";
@@ -31,7 +31,7 @@ export class Reactions {
   /** Bodies with a reaction word, and the tick each may be staggered again. */
   private readonly reeling = new Set<number>();
   private readonly calmUntil = new Map<number, number>();
-  readonly stats = { staggers: 0, escalated: 0, calmed: 0 };
+  readonly stats = { staggers: 0, escalated: 0, calmed: 0, toppled: 0 };
 
   constructor(ctx: ReactionsContext) {
     this.ctx = ctx;
@@ -50,6 +50,8 @@ export class Reactions {
     if (tier !== TIER_STAGGER) return tier;
     const word = ents.react[e]!;
     if (word !== 0 && reactAge(word, tick) < reactFrames(word)) {
+      // Already down by its reaction, it stays down; still reeling, it goes down.
+      if (reactKind(word) === REACT_FALL) return TIER_NONE;
       this.stats.escalated++;
       return TIER_FALL;
     }
@@ -80,6 +82,24 @@ export class Reactions {
     return this.shove(e, taken / (blast ? BLAST_DAMAGE_PER_DV : MELEE_DAMAGE_PER_DV), dx, dz, up, true);
   }
 
+  /**
+   * Knocks body `e` down where no ragdoll may fall for it (server/falls.ts refused): it topples the way it moves, lies a
+   * while and gets up, posed from its reaction word alone (REACT_FALL). Returns the seconds it lasts.
+   */
+  topple(e: number): number {
+    const { world } = this.ctx;
+    const ents = world.ents, tick = world.tick;
+    const vx = ents.vx[e]!, vz = ents.vz[e]!, flat = Math.sqrt(vx * vx + vz * vz);
+    const dir = flat > 1e-6 ? dirOf(ents.yaw[e]!, vx / flat, vz / flat) : 0;
+    ents.react[e] = packReact(REACT_FALL, tick, dir, REACT_HIPS, 0);
+    ents.reactTicks[e] = reactFrames(ents.react[e]!);
+    world.history.reacted(e);
+    this.reeling.add(e);
+    this.calmUntil.set(e, tick + reactFrames(ents.react[e]!) + CALM_SECONDS * TICK_RATE);
+    this.stats.toppled++;
+    return reactFrames(ents.react[e]!) / TICK_RATE;
+  }
+
   /** Ends body `e`'s reaction now: it died, sat, swam or fell. */
   end(e: number): void {
     const ents = this.ctx.world.ents;
@@ -103,6 +123,11 @@ export class Reactions {
       }
     }
     for (const [e, until] of this.calmUntil) if (tick >= until || (ents.flags[e]! & F_ALIVE) === 0) this.calmUntil.delete(e);
+  }
+
+  /** Whether body `e` may take a reaction now. */
+  standing(e: number): boolean {
+    return this.ctx.standing(e);
   }
 
   /** How many bodies reel now. */
