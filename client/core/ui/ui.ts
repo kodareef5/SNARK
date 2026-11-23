@@ -301,6 +301,7 @@ export class Ui {
 
   /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
   pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null): void {
+    if (this.debug?.pointer(kind, key, x, y, button)) return;
     if (key === KEY_UNMUTE) { if (kind === 0 && button === 0) { this.settings.muted = false; this.settings.changed(); } return; }
     if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
     if (this.menu) {
@@ -329,7 +330,6 @@ export class Ui {
       this.openMenu();
       return;
     }
-    if (this.debug?.pointer(kind, key, x, y)) return;
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_TAG) {
       this.chat.cycle(session);
