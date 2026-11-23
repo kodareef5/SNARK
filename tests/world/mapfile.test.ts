@@ -9,7 +9,7 @@ import { SEA_DRY, SEA_UNDER, formOf, mix, nodeForms, scatterNodes, type NodeForm
 import { MapWater, seaHere } from "../../shared/world/water.ts";
 import { Rng } from "../../shared/rng.ts";
 import { ROAD_PLANES, RoadSectors, roadSamples } from "../../shared/world/roadframe.ts";
-import { GONE_FELL, StructureStore } from "../../shared/world/structures.ts";
+import { Found, GONE_FELL, StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -715,4 +715,43 @@ test("a map slot emptied is never given to a player's piece", () => {
   expect([build(), build()]).toEqual([40, 43]);
   expect([3, 9, 20, 21, 39].map((s) => t.kind[s])).toEqual([0, 0, 0, 0, 0]);
   expect([t.mapped, t.live]).toEqual([40, 39]);
+});
+
+test("one map slot swapped or removed copies no columns", () => {
+  const pieces = Array.from({ length: 60 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:crate", x: 4 + (i % 10) * 5.5, y: 1 + Math.floor(i / 10) * 3, z: 12 + (i % 4) * 9, yaw: (i * 8191) & 0xffff }));
+  const file = writeMap(flatMap(4, { statics: pieces }));
+  const map = parseMap(file);
+  const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(map, structs, reg);
+  // The same pieces built one by one, whose table owns its columns, and the same changes made to both.
+  const twin = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  for (let i = 0; i < 60; i++) twin.add(reg.index.get(map.statics.kinds[map.statics.kind[i]!]!)!, map.statics.x[i]!, map.statics.y[i]!, map.statics.z[i]!, map.statics.yaw[i]!, 0, 1);
+  const [wall, crate] = [reg.index.get("core:wall")!, reg.index.get("core:crate")!];
+  const t = structs.chunks[0]!;
+  const lent = (): boolean[] => [t.x.buffer === map.statics.x.buffer, t.y.buffer === map.statics.y.buffer, t.z.buffer === map.statics.z.buffer, t.yaw.buffer === map.statics.yaw.buffer];
+  const found = (s: StructureStore): number[][] => {
+    const out = new Found();
+    return [[0, 0, 63, 63], [10, 10, 30, 30], [20, 0, 21, 63]].map(([x0, z0, x1, z1]) => [...out.refs.subarray(0, s.query(x0!, z0!, x1!, z1!, out))]);
+  };
+  for (const s of [structs, twin]) {
+    expect(s.swap(7, wall)).toBe(true);
+    expect(s.remove(12)).toBe(true);
+    expect(s.damage(13, 1e9)).toBe(0);
+    expect(s.removeMany(Uint32Array.of(30, 31, 45), 3, GONE_FELL, 0, 0, 0, 0)).toBe(3);
+    expect(s.swap(7, crate)).toBe(true);
+    expect(s.swap(8, wall)).toBe(true);
+  }
+  expect(lent()).toEqual([true, true, true, true]);
+  // Bodies and rays meet the same pieces, listed in the same order.
+  expect(found(structs)).toEqual(found(twin));
+  expect([t.kind[12], t.x[12], t.yaw[12], t.owner[12], t.hp[12], t.live, structs.count]).toEqual([0, map.statics.x[12], map.statics.yaw[12], 0, 0, 55, 55]);
+  // A loaded row that empties a map slot, and one that sets a piece back where the map has it, copy nothing either.
+  structs.put(0, 20, 0, 0, 0, 0, 0, 0, 0, t.version);
+  structs.put(0, 12, wall, t.x[12]!, t.y[12]!, t.z[12]!, t.yaw[12]!, 0, 50, t.version);
+  expect([lent(), t.kind[12], t.kind[20], t.live]).toEqual([[true, true, true, true], wall, 0, 55]);
+  const again = parseMap(file).statics;
+  expect([map.statics.x, map.statics.y, map.statics.z, map.statics.yaw]).toEqual([again.x, again.y, again.z, again.yaw]);
+  // A piece built in the chunk grows its table, which takes its own columns then.
+  expect(structs.add(wall, 40, 30, 40, 0, 9, 100)).toBe(60);
+  expect(lent()).toEqual([false, false, false, false]);
 });

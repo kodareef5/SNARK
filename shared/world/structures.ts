@@ -127,7 +127,10 @@ export class ChunkTable {
   /** Table version at which the slot last changed. */
   mod: Uint32Array;
   free: number[] = [];
-  /** `x`, `y`, `z` and `yaw` are the map's own columns, lent by placeMap, until the first write to a slot's place or turn copies them. */
+  /**
+   * `x`, `y`, `z` and `yaw` are the map's own columns, lent by placeMap, until a piece is built in the chunk or a map slot is
+   * given another place. A map's piece swapped, emptied or set back where the map has it leaves them lent.
+   */
   private lent: boolean;
 
   constructor(cap = 16, lent: Pick<PlacedRows, "x" | "y" | "z" | "yaw"> | null = null) {
@@ -708,13 +711,16 @@ export class StructureStore {
   private write(chunk: number, t: ChunkTable, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number, inPlace = false): void {
     if (!inPlace) t.placed++;
     t.ensure(slot);
-    t.own();
     if (slot >= t.high) t.high = slot + 1;
     t.kind[slot] = kind;
-    t.x[slot] = x;
-    t.y[slot] = y;
-    t.z[slot] = z;
-    t.yaw[slot] = yaw;
+    // A map's slot holds its place and turn already, so a piece set there writes neither and the lent columns stay lent.
+    if (slot >= t.mapped || t.x[slot] !== Math.fround(x) || t.y[slot] !== Math.fround(y) || t.z[slot] !== Math.fround(z) || t.yaw[slot] !== yaw) {
+      t.own();
+      t.x[slot] = x;
+      t.y[slot] = y;
+      t.z[slot] = z;
+      t.yaw[slot] = yaw;
+    }
     t.owner[slot] = owner;
     t.hp[slot] = hp;
     t.mod[slot] = mod;
@@ -766,13 +772,14 @@ export class StructureStore {
         this.nodeFree = node;
       }
     }
-    // Empty slots hold zeros, so equal tables are equal byte for byte.
-    t.own();
+    // Empty slots hold zeros, so equal tables are equal byte for byte. A map's slot keeps its place and turn, which are the map's.
     t.kind[slot] = 0;
-    t.x[slot] = 0;
-    t.y[slot] = 0;
-    t.z[slot] = 0;
-    t.yaw[slot] = 0;
+    if (slot >= t.mapped) {
+      t.x[slot] = 0;
+      t.y[slot] = 0;
+      t.z[slot] = 0;
+      t.yaw[slot] = 0;
+    }
     t.owner[slot] = 0;
     t.hp[slot] = 0;
     t.mod[slot] = mod;
