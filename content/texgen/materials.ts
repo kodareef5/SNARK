@@ -53,23 +53,24 @@ export interface MaterialRecipe {
 export const MOST_MATERIALS = 12;
 
 export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
-  // A dash coat: grit thrown on in small hard peaks over the trowel's sag, as Miami's low-rise walls are.
+  // Knockdown stucco: the coat thrown on in lumps and trowelled flat, so flat islands a hand across stand over rough hollows.
   {
-    name: "stucco", metres: 2, seed: 11, level: 0.3, relief: 12, rough: 0.92, hollow: 0.1, dye: 1, shade: 0.3, mottle: 0.07, coat: true, means: [0.97, 1, 0.93],
-    // The trowel's lumps a hand across carry the grit, so no two grains stand alike and the wall shows its lie from across a street.
-    noise: [{ cell: [0.25, 0.25], height: 0.4, light: 0.1 }, { cell: [0.08, 0.08], height: 0.3, light: 0.04 }, { cell: [0.04, 0.04], height: 0.15, light: 0.02 }],
-    grain: { size: 0.02, core: 0.02, radius: 0.6, height: 0.4, tone: 0.1, gap: 1, bare: 1, warm: 0 },
+    name: "stucco", metres: 2, seed: 11, level: 1.05, relief: 7, rough: 0.92, hollow: 0.1, dye: 1, shade: 0.5, mottle: 0.05, coat: true, means: [1.16, 1, 0.89],
+    // The lumps' noise is three times the relief, so the trowel's flat is where it passes the top; the grit shows in the hollows alone.
+    noise: [{ cell: [0.25, 0.25], height: 0.25, light: 0.03 }, { cell: [0.05, 0.05], height: 3, light: 0.02, warp: 0.1 }, { cell: [0.02, 0.02], height: 0.5, light: 0.02 }, { cell: [0.008, 0.008], height: 0.25, light: 0.03 }],
   },
-  // Sand-float render: fine and even, the float's sweeps across it.
+  // Sand-float render: flat and even, a sand's tooth on it and the wall's slow lie under it.
   {
-    name: "render", metres: 2, seed: 23, level: 0.5, relief: 4, rough: 0.8, hollow: 0.08, dye: 1, shade: 0.12, mottle: 0.05, coat: true, means: [1, 1, 0.8],
-    noise: [{ cell: [0.5, 0.5], height: 0.15, light: 0 }, { cell: [0.5, 0.125], height: 0.6, light: 0.06, warp: 0.8 }, { cell: [0.0125, 0.0125], height: 0.15, light: 0.03 }],
+    name: "render", metres: 2, seed: 23, level: 0.5, relief: 3, rough: 0.8, hollow: 0.08, dye: 1, shade: 0.3, mottle: 0.04, coat: true, means: [1, 1, 0.8],
+    noise: [{ cell: [0.5, 0.5], height: 0.25, light: 0.03 }, { cell: [0.125, 0.125], height: 0.15, light: 0.05, warp: 0.2 }, { cell: [0.008, 0.008], height: 0.45, light: 0.1 }, { cell: [0.025, 0.025], height: 0.2, light: 0.04 }],
   },
-  // Painted concrete block, 400 by 200 mm in running bond, its joints struck back and its faces pitted.
+  // Painted concrete block, 400 by 200 mm in running bond, its joints tooled back and its faces open-pored under the paint.
   {
-    name: "block", metres: 1.6, seed: 37, level: 0.85, relief: 8, rough: 0.86, hollow: 0.1, dye: 1, shade: 0.1, mottle: 0.05, means: [1.05, 1, 0.82],
-    noise: [{ cell: [0.0125, 0.0125], height: 0.2, light: 0.03 }, { cell: [0.1, 0.1], height: 0.06, light: 0.03 }],
-    course: { size: [0.4, 0.2], bond: 0.5, joint: 0.006, depth: 0.9, tone: 0.1, dark: 0.22 },
+    name: "block", metres: 1.6, seed: 37, level: 0.85, relief: 9, rough: 0.86, hollow: 0.1, dye: 1, shade: 0.3, mottle: 0.05, means: [1.09, 1, 0.83],
+    noise: [{ cell: [0.008, 0.008], height: 0.2, light: 0.03 }, { cell: [0.2, 0.1], height: 0.15, light: 0.04 }, { cell: [0.02, 0.02], height: 0.3, light: 0.02 }],
+    // The pores are grains let into the face.
+    grain: { size: 0.016, core: 0.05, radius: 0.35, height: -0.5, tone: 0, gap: 1, bare: 1, warm: 0 },
+    course: { size: [0.4, 0.2], bond: 0.5, joint: 0.007, depth: 0.9, tone: 0.14, dark: 0.35 },
   },
   // Corrugated sheet, its waves 76 mm apart, the paint streaked down them.
   {
