@@ -138,6 +138,7 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
+import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
 import { GONE_BLAST, GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
@@ -187,6 +188,8 @@ export interface SessionOptions {
   tideEyes?: readonly TideEyeSite[];
   /** That map's tops as they come (mapload.ts StagedMap), of which the scene draws the city past the far city as blocks, where its levels are made. */
   tops?: HeldTops;
+  /** That map's buildings, each sector's set in as it comes (mapload.ts StagedMap), or as a file read whole has them. */
+  buildings?: Buildings | null;
 }
 
 /** Null if the tuning does not parse or the derived content does not compile. */
@@ -2383,6 +2386,11 @@ export class ClientSession {
       this.smoothZ = dz;
     } else this.smoothX = this.smoothY = this.smoothZ = 0;
     this.vehicleCorrection.reconcile(this.own, vehicle && predicted && dx * dx + dy * dy + dz * dz < smoothLimit * smoothLimit, this.ownPrev, alpha);
+  }
+
+  /** The map's buildings, of the sectors come so far, or null where the map has none or the page was given none. */
+  get buildings(): Buildings | null {
+    return this.opts.buildings ?? null;
   }
 
   /**

@@ -6,6 +6,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Get } from "../../client/core/fetched.ts";
+import { MapLoader, StagedMap, handOverParts } from "../../client/core/mapload.ts";
 import { YAW_UNITS, chunkAt } from "../../shared/coords.ts";
 import { BUILDING_NAMED, BUILDING_ROOF, BUILDING_SPANS, BUILDING_STAIRS, Buildings, SectorBuildings, addressParts, blankFrame, kindWords, place, placeOf, storeyAt, tileOf, type BuildingRow } from "../../shared/world/buildings.ts";
 import { parseMap, partsOf, readHead, readPart, writeMap, type BuildingsPiece, type MapFile } from "../../shared/world/mapfile.ts";
@@ -36,6 +38,11 @@ function slotsOf(m: MapFile): [chunk: number, slot: number][] {
 }
 const slots = slotsOf(map);
 const slotOf = (_: MapFile, i: number): [chunk: number, slot: number] => slots[i]!;
+
+/** Holds `a` to the file's own table at every slot of the city. */
+function same(a: Buildings, slots = 300): void {
+  for (let chunk = 0; chunk < 18; chunk++) for (let slot = 0; slot < slots; slot++) expect([chunk, slot, a.buildingOf(chunk, slot), a.storeyOf(chunk, slot)]).toEqual([chunk, slot, built.buildingOf(chunk, slot), built.storeyOf(chunk, slot)]);
+}
 
 test("a map with buildings gives each piece its building and its storey", () => {
   expect(city.statics.length).toBeGreaterThan(400);
@@ -167,9 +174,6 @@ test("the buildings survive the file: written again the same, read a part at a t
   // Each sector's alone, in any order: the same table.
   const alone = new Buildings(head.dims, head.buildings!);
   for (const p of [...parts].reverse()) alone.set((readPart(head, p, file.subarray(p.at, p.at + p.length)) as BuildingsPiece).table);
-  const same = (a: Buildings, slots = 300): void => {
-    for (let chunk = 0; chunk < 18; chunk++) for (let slot = 0; slot < slots; slot++) expect([chunk, slot, a.buildingOf(chunk, slot), a.storeyOf(chunk, slot)]).toEqual([chunk, slot, built.buildingOf(chunk, slot), built.storeyOf(chunk, slot)]);
-  };
   same(alone);
   // A folder of layers builds the same file.
   const folder = mkdtempSync(join(tmpdir(), "snark-buildings-"));
@@ -182,6 +186,26 @@ test("the buildings survive the file: written again the same, read a part at a t
   expect(() => SectorBuildings.decode(head.dims, head.buildings!, new Uint16Array(head.counts.length), part.col, part.row, bytes)).toThrow("do not lie in their chunks' statics");
   expect(() => SectorBuildings.decode(head.dims, { ...head.buildings!, kinds: [] }, head.counts, part.col, part.row, bytes)).toThrow("its head does not name");
   expect(() => writeMap({ ...city.map, statics: city.statics.slice(0, 50) })).toThrow("do not lie in their chunks' statics");
+});
+
+test("a page takes a sector's buildings after its statics, and nothing waits for them", async () => {
+  const head = readHead(file);
+  const parts = head.parts.filter((p) => p.kind === "buildings");
+  // A sector not yet come answers -1.
+  expect(handOverParts(head).some((p) => p.kind === "buildings")).toBe(false);
+  const files = new Map(partsOf(file).map((p) => [`map/${p.name}`, p.bytes]));
+  const asked: string[] = [];
+  const get: Get = (url) => (asked.push(url), Promise.resolve(new Response(files.get(url)!.slice())));
+  const loader = await MapLoader.start(get, `map/${head.name}`, { wait: () => Promise.resolve() });
+  const staged = loader.staged.buildings!;
+  expect([staged.count, staged.buildingOf(chunkAt(head.dims, 128, 96), 0)]).toEqual([0, -1]);
+  await loader.follow(() => null);
+  for (let k = 0; k < 200 && loader.progress().left > 0; k++) await new Promise((go) => setTimeout(go, 0));
+  expect(loader.progress().left).toBe(0);
+  same(staged);
+  for (const p of parts) expect(asked.indexOf(`map/${p.name}`)).toBeGreaterThan(asked.indexOf(`map/${head.parts.find((q) => q.kind === "statics" && q.col === p.col && q.row === p.row)!.name}`));
+  // A map without them holds no table.
+  expect(new StagedMap(readHead(writeMap(flatMap(2)))).buildings).toBeNull();
 });
 
 test("a map without buildings is read as before, and buildings with no piece write no section", () => {
