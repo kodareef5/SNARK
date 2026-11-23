@@ -168,7 +168,7 @@ export class NetLog implements NetTap {
   private readonly countBits = new Uint32Array(RING);
   private readonly gaps = new Float64Array(RING);
   private readonly sectionAll = new Float64Array(SECTIONS.length);
-  /** Messages counted, and the newest's key and time; then the message that was the newest snapshot, its key and time. */
+  /** Messages received, and the newest's key and time; then the message that was the newest snapshot, its key and time. */
   private seq = 0;
   private last: Key | null = null;
   private at = 0;
@@ -247,8 +247,8 @@ export class NetLog implements NetTap {
     this.roll(this.clock.now());
     let n = 0;
     for (const key of this.keys) {
-      if (key !== this.snap) this.fill(rowAt(out, n++), key, -1);
-      else for (let s = 0; s < SECTIONS.length; s++) this.fill(rowAt(out, n++), key, s);
+      if (key !== this.snap) this.fillRow(rowAt(out, n++), key, -1);
+      else for (let s = 0; s < SECTIONS.length; s++) this.fillRow(rowAt(out, n++), key, s);
     }
     return n;
   }
@@ -309,13 +309,14 @@ export class NetLog implements NetTap {
     key.bytes[this.slot]! += bytes;
     key.msgsAll++;
     key.bytesAll += bytes;
-    if (dir === NET_IN) {
-      this.bytesIn += bytes;
-      this.messagesIn++;
-    } else {
+    if (dir === NET_OUT) {
       this.bytesOut += bytes;
       this.messagesOut++;
+      return;
     }
+    this.bytesIn += bytes;
+    this.messagesIn++;
+    // Sections told from now are this message's, though the session may send an input while it reads a snapshot.
     this.seq++;
     this.last = key;
     this.at = at;
@@ -383,7 +384,7 @@ export class NetLog implements NetTap {
   }
 
   /** Fills `row` as `key`, or as section `section` of the snapshots, which `key` is the kind of (-1 for none). */
-  private fill(row: NetRow, key: Key, section: number): void {
+  private fillRow(row: NetRow, key: Key, section: number): void {
     const one = this.whole(1);
     const ten = this.whole(10);
     const mean = 1 / Math.max(1, ten);

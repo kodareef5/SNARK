@@ -1,7 +1,7 @@
 // The debug bar's count of the socket (client/core/debug/net.ts), and the view delta's reader telling each op's bits.
 
 import { expect, test } from "bun:test";
-import { BODY_CLASSES, CATEGORIES, NetLog, OPS, SECONDS, SECTIONS, SnapshotParts, bodyClass, categoryOf, type NetRow } from "../../client/core/debug/net.ts";
+import { BODY_CLASSES, CATEGORIES, NET_OUT, NetLog, OPS, SECONDS, SnapshotParts, bodyClass, categoryOf, type NetRow } from "../../client/core/debug/net.ts";
 import { SNAP_BODIES, SNAP_CONTACTS, SNAP_HEAD, SNAP_OWN, SNAP_REST } from "../../client/core/net-tap.ts";
 import { codeNames } from "../../shared/debug.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
@@ -194,15 +194,17 @@ test("a snapshot's bytes go by its sections, its message by its bodies, and its 
   t.t = 800;
   log.received(P.S_SNAPSHOT, -1, 10);
   log.snapshot(SNAP_HEAD, -1, -1, 80);
+  // A session quiet for a while sends its inputs again as it reads a snapshot, before the snapshot's last section.
+  log.sent(P.C_INPUT, -1, 20);
   log.snapshot(SNAP_REST, -1, -1, 0);
   t.t = 1200;
 
   const bytes = new Float64Array(CATEGORIES.length);
   const msgs = new Float64Array(CATEGORIES.length);
   log.series(1, bytes, msgs);
-  expect([bytes[cat("player")], bytes[cat("bodies")], msgs[cat("player")], msgs[cat("bodies")]]).toEqual([(120 + 300 + 80) / 8 + 30, (20 + 8 + 100 + 200 + 48 + 4) / 8, 1, 2]);
-  log.series(1, bytes, msgs, 1);
-  expect(bytes.every((b) => b === 0)).toBe(true);
+  expect([bytes[cat("player")], bytes[cat("bodies")], bytes[cat("input")], msgs[cat("player")], msgs[cat("bodies")], msgs[cat("input")]]).toEqual([(120 + 300 + 80) / 8 + 30, (20 + 8 + 100 + 200 + 48 + 4) / 8, 20, 1, 2, 1]);
+  log.series(1, bytes, msgs, NET_OUT);
+  expect([...bytes].map((b, c) => (b === 0 ? "" : `${CATEGORIES[c]} ${b}`)).join("")).toBe("input 20");
 
   // The snapshots are a row a section, their messages on the bodies'.
   const rows: NetRow[] = [];
@@ -214,6 +216,7 @@ test("a snapshot's bytes go by its sections, its message by its bodies, and its 
     ["S_SNAPSHOT", "bodies", "bodies", 44.5, 2, true],
     ["S_SNAPSHOT", "rest", "bodies", 0.5, 0, true],
     ["S_OWN", "OWN_VITALS", "player", 30, 1, false],
+    ["C_INPUT", "", "input", 20, 1, false],
   ]);
   expect(rows.slice(0, 5).map((r) => r.sub)).toEqual([SNAP_HEAD, SNAP_OWN, SNAP_CONTACTS, SNAP_BODIES, SNAP_REST]);
   expect(rows.slice(0, 5).reduce((a, r) => a + r.bytesAll, 0)).toBe(110);
@@ -223,7 +226,6 @@ test("a snapshot's bytes go by its sections, its message by its bodies, and its 
   const cell = (op: number, body: string): number => op * BODY_CLASSES.length + BODY_CLASSES.indexOf(body as (typeof BODY_CLASSES)[number]);
   expect([parts.count, parts.gap, parts.since, parts.countBits, [...parts.sections], [...parts.classes]]).toEqual([2, 300, 400, 8, [200, 300, 20, 356, 4], [100, 248, 0, 0]]);
   expect([parts.opBits[cell(0, "survivor")], parts.opBits[cell(1, "creature")], parts.opBits[cell(2, "creature")], parts.ops[cell(1, "creature")], parts.ops.reduce((a, b) => a + b)]).toEqual([100, 200, 48, 1, 3]);
-  expect(SECTIONS.length).toBe(5);
 });
 
 test("a body's class is its kind's: survivor, creature, vehicle or other", () => {
