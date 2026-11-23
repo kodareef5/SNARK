@@ -129,19 +129,24 @@ test("laid falls short of bones share one lying pose, each where its ragdoll lie
   };
   for (let k = 0; k < 5; k++) {
     const h = characters.humanFall(20 + k)!, s = h.solved, c = Math.cos(h.yaw), sn = Math.sin(h.yaw);
-    const at = (bone: number): number[] => [h.x + c * s.pos[bone * 3]! + sn * s.pos[bone * 3 + 2]!, h.y + s.pos[bone * 3 + 1]!, h.z - sn * s.pos[bone * 3]! + c * s.pos[bone * 3 + 2]!];
-    const hips = at(B_HIPS), head = at(B_HEAD), way = [head[0]! - hips[0]!, head[2]! - hips[2]!];
+    const at = (bone: number): number[] => [remote.x[k]! + c * s.pos[bone * 3]! + sn * s.pos[bone * 3 + 2]!, remote.y[k]! + s.pos[bone * 3 + 1]!, remote.z[k]! - sn * s.pos[bone * 3]! + c * s.pos[bone * 3 + 2]!];
+    const hips = at(B_HIPS), head = at(B_HEAD), way = head.map((v, axis) => v - hips[axis]!);
+    const m = own[k]! * BONE_FLOATS;
+    for (let axis = 0; axis < 3; axis++) {
+      const o = m + 4 * axis;
+      expect(Math.hypot(b[o]!, b[o + 1]!, b[o + 2]!)).toBeCloseTo(1, 5);
+    }
     let best = Infinity, along = -1;
     for (const block of blocks) {
       const dh = joint(block, B_HIPS, own[k]!), dd = joint(block, B_HEAD, own[k]!);
       const off = Math.hypot(dh[0]! - hips[0]!, dh[1]! - hips[1]!, dh[2]! - hips[2]!);
       if (off >= best) continue;
       best = off;
-      const w = [dd[0]! - dh[0]!, dd[2]! - dh[2]!];
-      along = (w[0]! * way[0]! + w[1]! * way[1]!) / (Math.hypot(w[0]!, w[1]!) * Math.hypot(way[0]!, way[1]!));
+      const w = dd.map((v, axis) => v - dh[axis]!);
+      along = (w[0]! * way[0]! + w[1]! * way[1]! + w[2]! * way[2]!) / (Math.hypot(...w) * Math.hypot(...way));
     }
-    expect(best, `${k}`).toBeLessThan(0.02);
-    expect(along, `${k}`).toBeGreaterThan(0.95);
+    expect(best, `${k}`).toBeLessThan(0.001);
+    expect(along, `${k}`).toBeGreaterThan(0.99999);
   }
 });
 

@@ -275,7 +275,7 @@ test("a ragdoll fall's rise is alike on the server, two watchers and its own eye
   expect(most(r.whole.rising), why).toBeLessThan(0.02);
   expect(most(r.whole.risingOff), why).toBeLessThan(0.2);
   // On one bone: in shared poses, laid as far down as the ragdoll is and getting up step by step.
-  expect(most(r.one.lying), why).toBeLessThan(0.25);
+  expect(most(r.one.lying), why).toBeLessThan(0.04);
   expect(most(r.one.handOff), why).toBeLessThan(0.12);
   expect(most(r.one.rising), why).toBeLessThan(0.12);
   expect(most(r.one.risingOff), why).toBeLessThan(0.15);

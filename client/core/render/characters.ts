@@ -13,6 +13,7 @@ import { Pose, blendPose, sampleClip, type Clip } from "../../../shared/anim/cli
 import { conformCreature } from "../../../shared/anim/ground-conform.ts";
 import { createMountMotion, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
 import { occupantPose, poseSeated, seatBody, seatOrigin, type OccupantSeat } from "../../../shared/anim/occupant.ts";
+import { toward } from "../../../shared/anim/ik.ts";
 import { seatFit } from "../../../shared/anim/seat-fit.ts";
 import { facingOf, LIE_STEPS, lyingOff, lyingStep, REACT_CREATURE_DOWN, REACT_DIRS, REACT_FALL, reactKind, stepShare } from "../../../shared/anim/reactions.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
@@ -887,31 +888,36 @@ export class Characters {
     return s;
   }
 
-  /**
-   * A laid fall, drawn on one bone: the shared lying pose as far down as its ragdoll's head has come (reactions.ts
-   * lyingStep), face up or down as its hips face, its head ahead or behind; turned to face where its ragdoll's hips
-   * faced while it stood and to lie its head the way its ragdoll's lies as it comes down; placed so its hips' joint is
-   * on its ragdoll's, about where its body is, (atX, atY, atZ).
-   */
-  private fallOnOne(kind: number, set: number, h: HumanFall, atX = h.x, atY = h.y, atZ = h.z): { step: number; yaw: number; x: number; y: number; z: number } {
-    const s = h.solved, o = this.onOne, c = Math.cos(h.yaw), sn = Math.sin(h.yaw);
-    quatRotate(s.rot, B_HIPS * 4, 0, 0, 1, this.ahead3, 0);
-    const up = this.ahead3[1]! > 0, hx = s.pos[B_HIPS * 3]!, hy = s.pos[B_HIPS * 3 + 1]!, hz = s.pos[B_HIPS * 3 + 2]!;
-    // The ragdoll lies about where its body is, (atX, atY, atZ), facing h.yaw.
-    const mx = s.pos[B_HEAD * 3]! - hx, mz = s.pos[B_HEAD * 3 + 2]! - hz, wx = c * mx + sn * mz, wz = c * mz - sn * mx;
-    const fx = this.ahead3[0]!, fz = this.ahead3[2]!, ax = c * fx + sn * fz, az = c * fz - sn * fx;
-    // Down by how far its head has come toward its hips; within LAID of them it lies, as the lying pose all share.
-    const reach = HUMAN.rest[B_HEAD * 3 + 1]! - HUMAN.rest[B_HIPS * 3 + 1]!, down = (reach - (s.pos[B_HEAD * 3 + 1]! - hy)) / (reach - LAID);
-    const k = down < 0 ? 0 : down > 1 ? 1 : down, ahead = (up ? -k : k) / reach;
-    o.step = (up ? REACT_DIRS + REACT_DIRS / 2 : 0) * (LIE_STEPS + 1) + Math.round(k * LIE_STEPS);
-    o.yaw = Math.atan2((1 - k) * ax + ahead * wx, (1 - k) * az + ahead * wz);
-    const hips = this.lyingStandIn(kind, set, o.step).solved.pos, cy = Math.cos(o.yaw), sy = Math.sin(o.yaw);
-    o.x = atX + c * hx + sn * hz - (cy * hips[B_HIPS * 3]! + sy * hips[B_HIPS * 3 + 2]!);
-    o.y = atY + s.pos[B_HIPS * 3 + 1]! - hips[B_HIPS * 3 + 1]!;
-    o.z = atZ + c * hz - sn * hx - (cy * hips[B_HIPS * 3 + 2]! - sy * hips[B_HIPS * 3]!);
-    return o;
+  private readonly fallVector = new Float64Array(3);
+  private readonly hipTurn = new Float64Array(4);
+  private readonly fallTurn = new Float64Array(4);
+
+  /** The shared pose follows the height of the head above the hips. */
+  private fallStep(h: HumanFall): number {
+    const s = h.solved;
+    quatRotate(s.rot, B_HIPS * 4, 0, 0, 1, this.fallVector, 0);
+    const up = this.fallVector[1]! > 0;
+    const reach = HUMAN.rest[B_HEAD * 3 + 1]! - HUMAN.rest[B_HIPS * 3 + 1]!;
+    const down = (reach - (s.pos[B_HEAD * 3 + 1]! - s.pos[B_HIPS * 3 + 1]!)) / (reach - LAID);
+    return (up ? REACT_DIRS + REACT_DIRS / 2 : 0) * (LIE_STEPS + 1) + Math.round(Math.max(0, Math.min(1, down)) * LIE_STEPS);
   }
-  private readonly onOne = { step: 0, yaw: 0, x: 0, y: 0, z: 0 };
+
+  /** The instance rotates with the hips, then swings its head toward the ragdoll's head without stretching the body. */
+  private writeFallen(p: FramePacket, first: number, pose: Solved, h: HumanFall, x: number, y: number, z: number): void {
+    const src = pose.pos, dst = h.solved.pos, hips = B_HIPS * 3, head = B_HEAD * 3, q = B_HIPS * 4;
+    const hip = this.hipTurn, turn = this.fallTurn, v = this.fallVector;
+    hip[0] = -pose.rot[q]!; hip[1] = -pose.rot[q + 1]!; hip[2] = -pose.rot[q + 2]!; hip[3] = pose.rot[q + 3]!;
+    quatMul(hip, 0, h.solved.rot, q, hip, 0);
+    quatRotate(hip, 0, src[head]! - src[hips]!, src[head + 1]! - src[hips + 1]!, src[head + 2]! - src[hips + 2]!, v, 0);
+    toward(turn, 0, v[0]!, v[1]!, v[2]!, dst[head]! - dst[hips]!, dst[head + 1]! - dst[hips + 1]!, dst[head + 2]! - dst[hips + 2]!);
+    quatMul(turn, 0, turn, 0, hip, 0);
+    quatRotate(turn, 0, src[hips]!, src[hips + 1]!, src[hips + 2]!, v, 0);
+    const dx = dst[hips]! - v[0]!, dy = dst[hips + 1]! - v[1]!, dz = dst[hips + 2]! - v[2]!;
+    quatAxis(hip, 0, 0, 1, 0, h.yaw);
+    quatRotate(hip, 0, dx, dy, dz, v, 0);
+    quatMul(turn, 0, hip, 0, turn, 0);
+    writeRigid(p.bones, first * BONE_FLOATS, x + v[0]!, y + v[1]!, z + v[2]!, 0, 1, turn);
+  }
 
   /**
    * A step all the way down (reactions.ts lyingStep) as one of two shared poses, face up or down, so every body lying
@@ -926,7 +932,6 @@ export class Characters {
     return ((up ? REACT_DIRS : 0) + w0) * (LIE_STEPS + 1) + LIE_STEPS;
   }
   private turnBy = 0;
-  private readonly ahead3 = new Float64Array(3);
 
   /**
    * The pose a survivor of `kind` drawn as body set `set` stands in, in `stance`, going as `move` says (standMove), laid
@@ -981,7 +986,7 @@ export class Characters {
     // As add() draws it: a laid fall lying, a body toppled or getting up, or one down before its fall's checkpoint, on a
     // shared lying pose.
     const fall = k && !seated && !impaled ? this.dead.humans.of(id) : undefined;
-    const step = this.sharedStep(fall?.down ? this.fallOnOne(kind, set, fall).step : k && !seated && !impaled ? lyingStep(st.react !== 0 || fall ? st.react : this.dead.humans.waiting(id, tick), tick) : -1);
+    const step = this.sharedStep(fall?.down ? this.fallStep(fall) : k && !seated && !impaled ? lyingStep(st.react !== 0 || fall ? st.react : this.dead.humans.waiting(id, tick), tick) : -1);
     if (step >= 0) {
       const all = fall?.down || stepShare(step) === 1;
       const s = this.lyingStandIn(kind, set, step, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance);
@@ -1533,13 +1538,13 @@ export class Characters {
     if (fallen?.down && fallen.drawn) {
       x = fallen.drawn[0]! - p.camX; y = fallen.drawn[1]! - p.camY; z = fallen.drawn[2]! - p.camZ;
     }
-    const onOne = fallen?.down && rigid ? this.fallOnOne(kind, this.setOf(k, look, lookAt), fallen, x + p.camX, y + p.camY, z + p.camZ) : null;
+    const onOne = fallen?.down && rigid ? fallen : null;
     // Known to be down before its fall's checkpoint has come: it topples meanwhile rather than stand.
     if (!fallen && !seat && !vehicleSeat && st.react === 0) st.react = this.dead.humans.waiting(id, tick, facingOf((yaw / TAU) * 65536));
     // A body toppled or getting up lies against the facing it had then (shared/anim/reactions.ts).
     st.facing = yaw / TAU;
     // On one bone, a body toppled, getting up or waiting for its fall is drawn in the shared pose of the step it is at.
-    const lying = this.sharedStep(onOne ? onOne.step : rigid && !fallen?.down && !seat && !vehicleSeat && !impaled ? lyingStep(st.react, tick) : -1), turnBy = this.turnBy;
+    const lying = this.sharedStep(onOne ? this.fallStep(onOne) : rigid && !fallen?.down && !seat && !vehicleSeat && !impaled ? lyingStep(st.react, tick) : -1), turnBy = this.turnBy;
     this.packet = p;
     const at = this.setOf(k, look, lookAt);
     const set = k.sets[at]!;
@@ -1547,7 +1552,8 @@ export class Characters {
     const hand = rider?.profile && (rider.targets[0]! & RIDER_GRIPS) !== 0 ? this.partOf(set, gear, gearAt, SLOT_HANDS) : -1;
     // A body all the way down, or a ragdoll's, lies alike whatever it was doing; one getting up goes as it does now.
     const all = onOne !== null || stepShare(lying) === 1;
-    const stand = rigid ? this.standInAt(p, lying >= 0 ? this.lyingStandIn(kind, at, lying, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance) : this.standIn(kind, at, st, seat !== null, tick, impaled, rider, foot, hand)) : -1;
+    const standing = !rigid ? null : lying >= 0 ? this.lyingStandIn(kind, at, lying, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance) : this.standIn(kind, at, st, seat !== null, tick, impaled, rider, foot, hand);
+    const stand = standing ? this.standInAt(p, standing) : -1;
     const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
     if (first < 0) {
       if (rigid && stand < 0 && !unseen) p.dropped++;
@@ -1564,7 +1570,7 @@ export class Characters {
       if (seat) {
         writeRigid(p.bones, first * BONE_FLOATS, 0, 0, 0, 0, 1);
         inFrame(p.bones, first * BONE_FLOATS, 1, seat, seatAt, x, y, z);
-      } else if (onOne) writeRigid(p.bones, first * BONE_FLOATS, onOne.x - p.camX, onOne.y - p.camY, onOne.z - p.camZ, onOne.yaw, 1);
+      } else if (onOne) this.writeFallen(p, first, standing!.solved, onOne, x, y, z);
       // Down by its reaction, its shared pose lies the nearest sixteenth its head does; it is turned the rest of its way,
       // and to the facing it lies against, as far as it lies.
       else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, lying >= 0 ? yaw + turnBy + lyingOff(st.react, st.facing) * stepShare(lying) : yaw, 1);
