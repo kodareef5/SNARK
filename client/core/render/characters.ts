@@ -26,7 +26,7 @@ import { TAU } from "../../../shared/math/scalar.ts";
 import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
-import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, lookLift, lookScales } from "../../../shared/anim/look.ts";
+import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
@@ -1775,6 +1775,7 @@ export class Characters {
       const dx = h.x + c * mx + s * mz - x, dz = h.z - s * mx + c * mz - z;
       out.root[0] = c1 * dx - s1 * dz - rest[b * 3]!;
       out.root[1] = h.y + src.pos[b * 3 + 1]! - y - rest[b * 3 + 1]!;
+    if (onFoot && scales) plantLookFeet(this.pose, solved, scales, set.rest);
       out.root[2] = s1 * dx + c1 * dz - rest[b * 3 + 2]!;
     }
   }
@@ -1800,8 +1801,6 @@ export class Characters {
       if (st.emote !== 0 && !this.anim.emotes[st.emote]) this.wantEmotes();
       humanPose(this.anim, st, tick, this.pose, g, upright);
     }
-    // Longer legs lift the hips, so the feet stay on the ground.
-    if (scales && !seat && !vehicleSeat && !impaled) this.pose.root[1]! += lookLift(scales, set.rest);
     this.spring(this.pose, solved);
     // On foot its joints over the hips are the hit body's, so its head goes where shots are judged (look.ts).
     const onFoot = !seat && !vehicleSeat && !impaled;

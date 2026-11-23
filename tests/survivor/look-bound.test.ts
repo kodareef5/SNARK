@@ -3,8 +3,8 @@
 // head shots are judged on and never outgrows it.
 import { expect, test } from "bun:test";
 import { Pose } from "../../shared/anim/clip.ts";
-import { B_HEAD, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
-import { defaultLook, HEAD_GROW, HEAD_SLACK, LOOK_SEX, lookJoints, lookLift, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
+import { B_FOOT_L, B_FOOT_R, B_HEAD, B_LOWER_LEG_L, B_LOWER_LEG_R, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { defaultLook, HEAD_GROW, HEAD_SLACK, LOOK_SEX, lookJoints, plantLookFeet, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
 import { AnimState, HumanAnim, humanPose, PITCH_STEPS, SPEED_MAX } from "../../shared/anim/pose.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -47,8 +47,8 @@ test("a look's head stays within 2 cm of the hit head in any pose on foot", () =
     const at = headMiddle(hit, null), root = pose.root[1]!;
     for (const { rest, scale, joints } of bodies) {
       // Drawn as the renderer draws it: its legs lift its hips so its feet stay on the ground.
-      pose.root[1] = root + lookLift(scale, rest);
       solve(HUMAN, pose, drawn, rest, scale, joints);
+      plantLookFeet(pose, drawn, scale, rest);
       pose.root[1] = root;
       const m = headMiddle(drawn, scale);
       worst = Math.max(worst, Math.hypot(m[0]! - at[0]!, m[1]! - at[1]!, m[2]! - at[2]!));
@@ -68,5 +68,20 @@ test("a rig whose own hips sit past the slack keeps no head-moving stretch, and 
     lookScales(look, scale, rest);
     expect(scale.every((v) => Number.isFinite(v))).toBe(true);
     expect(scale[B_HEAD * 3 + 1]).toBe(1);
+  }
+});
+
+test("long and short legs keep the planted ankle on the crouching gait", () => {
+  const st = new AnimState(), pose = new Pose(HUMAN_BONES), base = new Solved(HUMAN_BONES), drawn = new Solved(HUMAN_BONES);
+  st.stance = STANCE_CROUCH; st.speed = 4;
+  for (const length of [.85, 1.15]) for (let tick = 0; tick < 30; tick++) {
+    humanPose(anim, st, tick, pose);
+    solve(HUMAN, pose, base);
+    const scales = new Float32Array(HUMAN_BONES * 3).fill(1);
+    for (const bone of [B_UPPER_LEG_L, B_UPPER_LEG_R, B_LOWER_LEG_L, B_LOWER_LEG_R]) scales[bone * 3 + 1] = length;
+    solve(HUMAN, pose, drawn, HUMAN.rest, scales);
+    const ankle = drawn.pos[B_FOOT_L * 3 + 1]! <= drawn.pos[B_FOOT_R * 3 + 1]! ? B_FOOT_L : B_FOOT_R;
+    plantLookFeet(pose, drawn, scales, HUMAN.rest);
+    expect(drawn.pos[ankle * 3 + 1]).toBeCloseTo(base.pos[ankle * 3 + 1]!, 5);
   }
 });

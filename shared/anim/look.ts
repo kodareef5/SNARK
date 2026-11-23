@@ -4,6 +4,8 @@
 // stands, a seat puts it right on it (shared/anim/seat-fit.ts), and it never grows past HEAD_GROW.
 
 import { REGION_BASE, EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../pack/palette.ts";
+import type { Pose } from "./clip.ts";
+import type { Solved } from "./skeleton.ts";
 import type { Rng } from "../rng.ts";
 import {
   B_CHEST, B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R,
@@ -225,4 +227,21 @@ export function lookLift(scales: Float32Array, rest: ArrayLike<number>): number 
   const upper = rest[B_UPPER_LEG_L * 3 + 1]! - rest[B_LOWER_LEG_L * 3 + 1]!;
   const lower = rest[B_LOWER_LEG_L * 3 + 1]! - rest[B_FOOT_L * 3 + 1]!;
   return upper * (scales[B_UPPER_LEG_L * 3 + 1]! - 1) + lower * (scales[B_LOWER_LEG_L * 3 + 1]! - 1);
+}
+
+/** The lower ankle stays at the height its bent leg would reach without its length slider. */
+export function plantLookFeet(pose: Pose, solved: Solved, scales: Float32Array, rest: Float32Array): void {
+  const left = solved.pos[B_FOOT_L * 3 + 1]! <= solved.pos[B_FOOT_R * 3 + 1]!;
+  const upper = left ? B_UPPER_LEG_L : B_UPPER_LEG_R, lower = left ? B_LOWER_LEG_L : B_LOWER_LEG_R;
+  const foot = left ? B_FOOT_L : B_FOOT_R;
+  let lift = 0;
+  for (let i = 0; i < 2; i++) {
+    const bone = i === 0 ? upper : lower, end = i === 0 ? lower : foot;
+    const x = solved.rot[bone * 4]!, z = solved.rot[bone * 4 + 2]!;
+    const extra = (rest[bone * 3 + 1]! - rest[end * 3 + 1]!) * (scales[bone * 3 + 1]! - 1);
+    lift += extra * (1 - 2 * (x * x + z * z));
+  }
+  if (!lift) return;
+  pose.root[1]! += lift;
+  for (let i = 1; i < solved.pos.length; i += 3) solved.pos[i]! += lift;
 }
