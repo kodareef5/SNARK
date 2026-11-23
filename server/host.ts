@@ -102,6 +102,7 @@ import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { settle, settleNear } from "./place.ts";
 import { Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
+import { LANE_ROW } from "./lane.ts";
 import { CarReturn } from "./car-return.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
@@ -1794,8 +1795,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     opts.modules ?? [],
   );
   const mark = (part: number): System => ({ step: () => parts.mark(part) });
-  /** Physics: its time is the lane's (server/lane.ts). */
-  const physics = (s: System): System => ({ step: (tick) => { lane.enter(); s.step!(tick); lane.leave(); } });
+  /** Physics: its time is the lane's, kept in row `row` (server/lane.ts). */
+  const physics = (s: System, row: number): System => ({ step: (tick) => { lane.enter(row); s.step!(tick); lane.leave(); } });
   // The tick. Each hook walks this list from the top, so a row's place here is its place in every hook it has: a new
   // system is a row where its work belongs. The simulation is the same on every run only while the order is.
   const systems: System[] = [
@@ -1825,12 +1826,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat,
     projectiles,
-    physics(loose),
+    physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
     creatures,
     mark(PART.creatures),
-    physics({ step: contacts }),
+    physics({ step: contacts }, LANE_ROW.contacts),
     mark(PART.contacts),
     impale,
     ...(spawner ? [spawner] : []),
@@ -1842,9 +1843,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     breeding,
     feces,
     overhead,
-    physics(corpses),
-    physics({ step: () => falls.step() }),
-    physics({ step: () => reactions.step() }),
+    physics(corpses, LANE_ROW.corpses),
+    physics({ step: () => falls.step() }, LANE_ROW.falls),
+    physics({ step: () => reactions.step() }, LANE_ROW.react),
     voice,
     mark(PART.world),
     { step: keepHouse },

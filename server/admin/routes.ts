@@ -5,7 +5,8 @@
 //   /admin/                 the page (client/admin), and /admin/admin.js its script
 //   /admin/stats.json       stats.ts Stats: the loop's last two minutes by the second, and the state of the server now
 //   /admin/minutes.json     the meter's minutes, from=<n> those from the n-th on, and `next` to ask from after them
-//   /admin/ticks.json       parts.ts TickReport: where the ticks' time went by part, and the long ticks part by part
+//   /admin/ticks.json       parts.ts TickReport: where the ticks' time went by part, the long ticks part by part, and
+//                           the physics lane's time by row (server/lane.ts)
 //   /admin/survivors.json   survivors.ts Survivors: every survivor, where each is, and its recent deaths
 //   /admin/bases.bin        bases.ts: the tribes' bases at level=<0 to 3> of the players' map cells
 //   /admin/overview.json   stats, online positions and recent chat for the cluster dashboard
@@ -143,7 +144,7 @@ export class AdminPages {
       chat: o.host.chat.recentLines(),
     } satisfies AdminOverview));
     this.chat = new EverySecond(() => JSON.stringify(o.host.chat.recentLines()));
-    this.ticks = new EverySecond(() => JSON.stringify(o.host.game.parts.report()));
+    this.ticks = new EverySecond(() => JSON.stringify({ ...o.host.game.parts.report(), physics: o.host.game.lane.report() }));
     // A list that failed is not the second's answer: the next request makes it again.
     this.survivors = new EverySecond(() => {
       const made = this.survivorsJson();

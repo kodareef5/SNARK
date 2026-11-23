@@ -1,7 +1,8 @@
 import { skateDeckRotation } from "../../../shared/anim/skate.ts";
 import { ImpactSprings } from "./impact-springs.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
-import { blockMass, survivorKind } from "../../../shared/sim/blockers.ts";
+import { survivorKind } from "../../../shared/sim/blockers.ts";
+import { bodyMass } from "../../../shared/sim/body-mass.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
 // A body is one skeleton and several meshes, one per body slot, so a worn piece can replace the part under it.
 // Its bones go into the packet once, and each of its meshes is one instance that names the body's first bone.
@@ -1298,7 +1299,7 @@ export class Characters {
   /** A blow landed on body `id` of `kind`, drawn facing `yaw` radians: at `bone` (-1 for none), the unit way (dx, dy, dz), `strength` 0 to 1. */
   impact(kind: number, id: number, yaw: number, bone: number, dx: number, dy: number, dz: number, strength: number): void {
     const skel = this.kinds[kind] != null ? HUMAN : this.creatures[kind]?.anim.rig;
-    if (skel) this.springs.hit(id, skel, yaw, bone, dx, dy, dz, strength, blockMass(this.reg, kind));
+    if (skel) this.springs.hit(id, skel, yaw, bone, dx, dy, dz, strength, bodyMass(this.reg, kind));
   }
 
   begin(p: FramePacket | null = null, world: CollisionWorld | null = null): void {

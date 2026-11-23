@@ -14,6 +14,7 @@
 import { detCos, detSin } from "../math/scalar.ts";
 import { EMOTE_LEAD, EMOTE_ROLE_SHIFT } from "../anim/pose.ts";
 import type { Registry } from "../content/registry.ts";
+import { bodyMass } from "./body-mass.ts";
 
 /** Metres a second at which a moving body pushes a walker out of it. */
 export const BLOCK_SOFT_SPEED = 2.5;
@@ -39,12 +40,6 @@ export function pairing(a: number, b: number): boolean {
 export function survivorKind(reg: Registry, kind: number): boolean {
   const d = reg.defs[kind];
   return d?.type === "species" && d.class === "survivor";
-}
-
-/** Kilograms, for which bodies stop which: its species' mass, or for one with none (a survivor) about 80 kg by its build. */
-export function blockMass(reg: Registry, kind: number): number {
-  const m = reg.mass[kind]!;
-  return m > 0 ? m : 110 * reg.bodyRadius[kind]! * reg.bodyHeight[kind]!;
 }
 
 /** The two ends in plan of the segment of a body of `kind` at (x, z) facing `yaw` radians, into `out` as ax, az, bx, bz. */
@@ -139,7 +134,7 @@ export class Blockers {
   add(reg: Registry, id: number, kind: number, x: number, y: number, z: number, yaw: number, moving: boolean, walker: number, wx: number, wy: number, wz: number, wyaw: number, always = false, untangle = false): void {
     this.reg = reg;
     const r = reg.footRadius[kind]!;
-    if (!(r > 0) || (!always && blockMass(reg, kind) < blockMass(reg, walker) * BLOCK_LIGHT)) return;
+    if (!(r > 0) || (!always && bodyMass(reg, kind) < bodyMass(reg, walker) * BLOCK_LIGHT)) return;
     const far = (x - wx) * (x - wx) + (z - wz) * (z - wz);
     let n = this.count;
     if (n === BLOCK_MOST) {
