@@ -10,6 +10,9 @@ import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
+import { RemoteSample } from "../../client/core/session.ts";
+import { hitchPoint } from "../../shared/sim/vehicle-hitch.ts";
+import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 
 /** Flat to z = 110, then a straight grade for 140 m. */
 function hill(rise: number) {
@@ -73,4 +76,31 @@ test("a parked pair keeps its hitch through a restart", () => {
     expect(h.host.hitches.trailerPid(tractorPid)).toBe(trailerPid);
     expect(h.host.hitches.trailerOf(h.host.records.entOf.get(tractorPid)!)).toBe(h.host.records.entOf.get(trailerPid)!);
   } finally { h.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("the driver sees the trailer on the fifth wheel under latency", () => {
+  for (const latencyMs of [0, 60, 120]) {
+    const { h, s, a, semi, trailer } = yard(0, { latencyMs, jitterMs: 4 });
+    try {
+      h.host.hitches.couple(a.pid[semi]!, a.pid[trailer]!);
+      h.pilots[0]!.moveZ = 1;
+      const seen = new RemoteSample(), trailerDef = h.reg.vehicle[a.kind[trailer]!] as WheelVehicleDefinition, semiDef = h.reg.vehicle[a.kind[semi]!] as WheelVehicleDefinition;
+      let worst = 0, samples = 0;
+      for (let i = 0; i < 80; i++) {
+        h.run(100);
+        if (i < 30) continue;
+        s.sampleRemote(seen);
+        const k = [...Array(seen.count).keys()].find(j => seen.id[j] === trailer);
+        if (k === undefined) continue;
+        // The driver's semi is drawn between its last two predicted ticks.
+        const own = s.own, was = s.ownPrev, t = s.alpha, at = (from: number, to: number) => from + (to - from) * t;
+        const plate = [0, 0, 0], pin = [0, 0, 0];
+        hitchPoint({ x: at(was.x, own.x), y: at(was.y, own.y), z: at(was.z, own.z), qx: own.vehicleQx, qy: own.vehicleQy, qz: own.vehicleQz, qw: own.vehicleQw } as never, semiDef.spec.fifthWheel!, plate);
+        hitchPoint({ x: seen.x[k]!, y: seen.y[k]!, z: seen.z[k]!, qx: seen.vehicleQx[k]!, qy: seen.vehicleQy[k]!, qz: seen.vehicleQz[k]!, qw: seen.vehicleQw[k]! } as never, trailerDef.spec.kingpin!, pin);
+        worst = Math.max(worst, Math.hypot(plate[0]! - pin[0]!, plate[2]! - pin[2]!)); samples++;
+      }
+      expect(samples).toBeGreaterThan(20);
+      expect(worst).toBeLessThan(.05);
+    } finally { h.host.shutdown(); }
+  }
 });

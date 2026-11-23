@@ -704,7 +704,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   survival.onRated.on((rec) => { if (reg.vehicle[rec.kind]) urban.rated(rec.pid); });
   game.players.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
-    world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair), linked: (a, b) => hitches.linked(a, b),
+    world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair), linked: (a, b) => hitches.linked(a, b), towing: e => hitches.trailerOf(e),
     // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
     struck: (body) => knockDown(body),
     parkingBrake: e => urban.parkingBrake(e),

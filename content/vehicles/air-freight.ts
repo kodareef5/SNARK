@@ -5,11 +5,15 @@ import { COMPACT_SPECIES } from "./compact.ts";
 import { TANKER_VEHICLE } from "./tanker.ts";
 
 const SHARE = 0.3;
+// Keys left undefined would not survive the content file's JSON, and its hash would differ from the server's.
+const { frontDriveShare: _drive, ...towing } = TANKER_VEHICLE.spec;
+const { wreck: _wreck, steeringWheel: _wheel, shotPanels: _panels, ...rig } = TANKER_VEHICLE;
+const { skeleton: _skeleton, ...vehicleSpecies } = COMPACT_SPECIES;
 const rear = T.axles.map((a) => ({ z: a.z, track: a.track }));
 
 /** Parked: the landing legs stand on the ground ahead of the axles. */
 const PARKED: VehicleSpec = {
-  ...TANKER_VEHICLE.spec,
+  ...towing,
   mass: 4200,
   halfWidth: 1.3,
   halfLength: 4.45,
@@ -23,7 +27,6 @@ const PARKED: VehicleSpec = {
   maxSteer: 0.01,
   fuelCapacity: 1,
   fuelPerSecond: 0.0001,
-  frontDriveShare: undefined,
   kingpin: T.kingpin,
   axles: [
     { z: T.legs.z, track: T.legs.halfWidth * 2, loadShare: 0.4 },
@@ -46,30 +49,26 @@ const TOWED: VehicleSpec = {
 };
 
 export const AIR_TRAILER_VEHICLE: WheelVehicleDefinition = {
-  ...TANKER_VEHICLE,
+  ...rig,
   id: T.id,
   frame: "van",
-  wreck: undefined,
   seats: [],
   doors: [],
-  steeringWheel: undefined,
   wheels: [
     { bone: "wheel_front_left" }, { bone: "wheel_front_right" },
     { bone: "wheel_rear_left" }, { bone: "wheel_rear_right" },
   ],
   beltline: T.container.max[1],
-  shotPanels: undefined,
   spec: PARKED,
   towed: TOWED,
 };
 
 /** The towed six-bay drone rack. It is a vehicle so it rolls, tilts and is hit as one. */
 export const AIR_TRAILER: SpeciesDef = {
-  ...COMPACT_SPECIES,
+  ...vehicleSpecies,
   id: T.id,
   aliases: ["air_trailer", "drone_trailer"],
-  mesh: "box",
-  skeleton: undefined,
+  mesh: T.id,
   vehicle: AIR_TRAILER_VEHICLE,
   color: 230,
   regions: [null, null, null, null, null, null],

@@ -1215,7 +1215,9 @@ export class ClientSession {
     if (vehicle) {
       this.contactBefore.copy(this.own);
       this.vehicleTrees?.begin(t, this.treeDriver);
-      stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined);
+      if (!this.vehicleContacts?.stepTowing(t, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, pilot, this.vehicleTrees ?? undefined)) {
+        stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined);
+      }
       this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
     }
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).

@@ -56,6 +56,8 @@ export interface VehicleContactsContext {
   anchored?(vehicle: number, opposing: EntityRecord): boolean;
   /** A tractor and the trailer on its fifth wheel are joined, not in contact (server/hitches.ts). */
   linked?(a: number, b: number): boolean;
+  /** The trailer entity on vehicle `car`'s fifth wheel, or -1: its driver predicts it with the tractor. */
+  towing?(car: number): number;
   /** At rest: stepped only on its heartbeat, at under a millimetre a second (server/urban.ts). */
   resting?(vehicle: number): boolean;
   /** Off the active list: it keeps its pose with no capture, until something wakes it (server/urban.ts). */
@@ -135,6 +137,8 @@ export class VehicleContacts {
       return (x + vx * t) ** 2 + (z + vz * t) ** 2;
     };
     this.candidates.sort((a, b) => distance(a) - distance(b) || a - b);
+    const towed = this.ctx.towing?.(car) ?? -1;
+    if (towed >= 0) this.candidates.unshift(towed);
     out.truncated = false;
     for (const e of this.candidates) {
       if (out.count === MAX_CONTACT_PROXIES) { out.truncated = true; break; }
@@ -148,12 +152,13 @@ export class VehicleContacts {
       publicContactBody(this.publicBody, row.body);
       row.radius = other ? Math.max(move.radius, contactReach(other)) : move.radius * scale;
       row.height = isSkateboard(other) && this.ctx.driverOf(e) ? SKATER_HEIGHT : stanceHeight(move, ents.stance[e]!) * scale;
-      if (!contactRelevant(this.snapshotBody, row, contactReach(def), other ? 1.5 : .5)) continue;
+      row.hitched = e === towed;
+      if (!row.hitched && !contactRelevant(this.snapshotBody, row, contactReach(def), other ? 1.5 : .5)) continue;
       contactBody(row.body, row.state);
       row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale);
       const fixed = !other && definition?.type === 'species' && definition.still === true && row.grounded;
       const anchored = !!other && (this.ctx.anchored?.(e, by ?? vehicle) ?? false);
-      row.response = fixed || anchored ? 'fixed' : combat.vehicleDisplaces(by, vehicle, victim) ? 'dynamic' : 'protected';
+      row.response = row.hitched ? 'dynamic' : fixed || anchored ? 'fixed' : combat.vehicleDisplaces(by, vehicle, victim) ? 'dynamic' : 'protected';
       if (!contactHorizon(row)) continue;
       out.count++;
       if (row.response === 'fixed') {
