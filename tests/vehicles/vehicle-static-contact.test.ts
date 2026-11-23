@@ -6,7 +6,7 @@ import { createVehicle, stepVehicle } from '../../shared/sim/vehicle.ts';
 import { Heightfield } from '../../shared/world/heightfield.ts';
 import { StructureStore } from '../../shared/world/structures.ts';
 import { StaticVehicleWorld } from '../../shared/world/vehicle.ts';
-import { box, StaticVehicleSolids } from '../../shared/world/vehicle-solid.ts';
+import { bounds, box, makeSolid, StaticVehicleSolids, sweep, type Swept } from '../../shared/world/vehicle-solid.ts';
 
 function world(height: (x: number, z: number) => number, half: [number, number, number] = [.1, 2, .1]) {
   const dims = { chunksX: 4, chunksZ: 4 }, hf = new Heightfield(dims, 1, -16, 1 / 256);
@@ -15,6 +15,22 @@ function world(height: (x: number, z: number) => number, half: [number, number, 
   return { world: new StaticVehicleWorld({ hf, structs }, () => ASPHALT), structs };
 }
 const coast = { throttle: 0, steer: 0, brake: 0, handbrake: false, neutral: true };
+
+test('a stationary hull keeps the same two endpoint sets and separating axes', () => {
+  const part = box([.1, .6, -.3], [1.2, .5, 2]);
+  const frame = { x: 16, y: 2, z: 25, qx: .32, qy: -.27, qz: .53, qw: .72 };
+  const opposite = { ...frame, qx: -frame.qx, qy: -frame.qy, qz: -frame.qz, qw: -frame.qw };
+  const result = (): Swept => ({ solid: makeSolid(), bounds: bounds(), hazard: false, radius: 0, pad: 0 });
+  const fixed = result(), two = result();
+  sweep(part, frame, { ...frame }, fixed);
+  sweep(part, frame, opposite, two);
+  expect(fixed.solid).toEqual(two.solid);
+  expect(fixed.realFaces).toBe(two.realFaces);
+  expect(fixed.realEdges).toBe(two.realEdges);
+  const n = part.solid.corners * 3;
+  expect(fixed.solid.at.subarray(0, n)).toEqual(fixed.solid.at.subarray(n, n * 2));
+  expect(fixed.pad).toBeCloseTo(.001, 10);
+});
 
 test('a swept bounding-box corner outside the chamfered car is clear', () => {
   const { world: w, structs } = world(() => 0);

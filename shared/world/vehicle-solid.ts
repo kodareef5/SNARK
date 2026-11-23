@@ -63,41 +63,49 @@ export function tube(a: readonly number[], b: readonly number[], u: readonly num
 const q0 = new Float64Array(4), q1 = new Float64Array(4), temp = new Float64Array(3);
 export function sweep(source: Shape, from: Readonly<SolidFrame>, to: Readonly<SolidFrame>, out: Swept): void {
   const a = source.solid, b = out.solid;
-  q0.set([from.qx, from.qy, from.qz, from.qw]); q1.set([to.qx, to.qy, to.qz, to.qw]); quatNormalize(q0, 0); quatNormalize(q1, 0);
   const norms = Math.sqrt((square(from.qx) + square(from.qy) + square(from.qz) + square(from.qw)) * (square(to.qx) + square(to.qy) + square(to.qz) + square(to.qw)));
   const dot = Math.min(1, Math.abs(from.qx * to.qx + from.qy * to.qy + from.qz * to.qz + from.qw * to.qw) / Math.max(1e-12, norms));
   // The hull of the actual endpoint vertices covers their chords. The rotation arc bows outside each chord by
   // at most r*(1-cos(angle/2)); a midpoint-orientation extrusion needed first-order padding and trapped tilted cars.
   const moving = from.x !== to.x || from.y !== to.y || from.z !== to.z || from.qx !== to.qx || from.qy !== to.qy || from.qz !== to.qz || from.qw !== to.qw;
+  const ends = moving ? 2 : 1;
+  q0[0] = from.qx; q0[1] = from.qy; q0[2] = from.qz; q0[3] = from.qw;
+  quatNormalize(q0, 0);
+  if (moving) {
+    q1[0] = to.qx; q1[1] = to.qy; q1[2] = to.qz; q1[3] = to.qw;
+    quatNormalize(q1, 0);
+  }
   // Moving sweeps reserve a millimetre beyond the stationary query, including the final f32 persistence rounding.
   out.pad = source.radius * (1 - dot) + (moving ? .002 : .001);
   const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
   const box = out.bounds; box.minX = box.minY = box.minZ = Infinity; box.maxX = box.maxY = box.maxZ = -Infinity;
   for (let i = 0; i < a.corners * 3; i += 3) {
-    for (let end = 0; end < 2; end++) {
+    for (let end = 0; end < ends; end++) {
       quatRotate(end ? q1 : q0, 0, a.at[i]!, a.at[i + 1]!, a.at[i + 2]!, temp, 0);
       const at = i + end * a.corners * 3, p = end ? to : from;
       b.at[at] = p.x + temp[0]!; b.at[at + 1] = p.y + temp[1]!; b.at[at + 2] = p.z + temp[2]!;
       include(box, b.at[at]!, b.at[at + 1]!, b.at[at + 2]!);
     }
   }
+  // Terrain support reads both endpoint vertex sets, even for a stationary pose.
+  if (!moving) b.at.copyWithin(a.corners * 3, 0, a.corners * 3);
   b.corners = a.corners * 2; b.faces = b.edges = 0;
-  for (const rotation of [q0, q1]) for (let i = 0; i < a.faces * 3; i += 3) {
-    quatRotate(rotation, 0, a.face[i]!, a.face[i + 1]!, a.face[i + 2]!, temp, 0);
+  for (let end = 0; end < ends; end++) for (let i = 0; i < a.faces * 3; i += 3) {
+    quatRotate(end ? q1 : q0, 0, a.face[i]!, a.face[i + 1]!, a.face[i + 2]!, temp, 0);
     b.faces = direction(b.face, b.faces, temp[0]!, temp[1]!, temp[2]!);
   }
   out.realFaces = b.faces;
-  for (const rotation of [q0, q1]) for (let i = 0; i < a.edges * 3; i += 3) {
-    quatRotate(rotation, 0, a.edge[i]!, a.edge[i + 1]!, a.edge[i + 2]!, temp, 0);
+  for (let end = 0; end < ends; end++) for (let i = 0; i < a.edges * 3; i += 3) {
+    quatRotate(end ? q1 : q0, 0, a.edge[i]!, a.edge[i + 1]!, a.edge[i + 2]!, temp, 0);
     b.edges = direction(b.edge, b.edges, temp[0]!, temp[1]!, temp[2]!);
-    b.faces = direction(b.face, b.faces, temp[1]! * dz - temp[2]! * dy, temp[2]! * dx - temp[0]! * dz, temp[0]! * dy - temp[1]! * dx);
+    if (moving) b.faces = direction(b.face, b.faces, temp[1]! * dz - temp[2]! * dy, temp[2]! * dx - temp[0]! * dz, temp[0]! * dy - temp[1]! * dx);
   }
   out.realEdges = b.edges;
-  for (let i = 0; i < a.corners * 3; i += 3) {
+  for (let i = 0; moving && i < a.corners * 3; i += 3) {
     const end = i + a.corners * 3;
     b.edges = direction(b.edge, b.edges, b.at[end]! - b.at[i]!, b.at[end + 1]! - b.at[i + 1]!, b.at[end + 2]! - b.at[i + 2]!);
   }
-  b.edges = direction(b.edge, b.edges, dx, dy, dz);
+  if (moving) b.edges = direction(b.edge, b.edges, dx, dy, dz);
   box.minX -= out.pad; box.minY -= out.pad; box.minZ -= out.pad; box.maxX += out.pad; box.maxY += out.pad; box.maxZ += out.pad;
 }
 function triangle(a: readonly number[], b: readonly number[], c: readonly number[], bottom: number, out: Solid): void {
