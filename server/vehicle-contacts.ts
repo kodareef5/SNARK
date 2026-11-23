@@ -6,6 +6,7 @@ import { CHUNK_SIZE, TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { MAX_CONTACT_PROXIES, contactBody, contactRelevant, contactHorizon, contactReach, publicContactBody, type ContactSnapshot } from '../shared/net/contact.ts';
 import { clamp, len3, TAU } from '../shared/math/scalar.ts';
+import { bodyMass } from '../shared/sim/body-mass.ts';
 import { youngScale } from '../shared/sim/breeding.ts';
 import { Body, MODE_GHOST, MODE_NONE, stanceHeight } from '../shared/sim/character.ts';
 import { DMG_MELEE } from '../shared/sim/damage.ts';
@@ -148,7 +149,7 @@ export class VehicleContacts {
       row.height = isSkateboard(other) && this.ctx.driverOf(e) ? SKATER_HEIGHT : stanceHeight(move, ents.stance[e]!) * scale;
       if (!contactRelevant(this.snapshotBody, row, contactReach(def), other ? 1.5 : .5)) continue;
       contactBody(row.body, row.state);
-      row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale);
+      row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, bodyMass(world.reg, kind, scale));
       const fixed = !other && definition?.type === 'species' && definition.still === true && row.grounded;
       const anchored = !!other && (this.ctx.anchored?.(e, by ?? vehicle) ?? false);
       row.response = fixed || anchored ? 'fixed' : combat.vehicleDisplaces(by, vehicle, victim) ? 'dynamic' : 'protected';
@@ -341,8 +342,7 @@ export class VehicleContacts {
     }
     if (!this.defB) { this.upright(this.b.prior); this.upright(this.b.state); }
     this.a.spec = this.defA.spec; this.a.mass = vehicleMassProperties(this.defA.spec, this.a.state).mass; this.a.response = 'dynamic';
-    const mass = this.defB ? vehicleMassProperties(this.defB.spec, this.b.state).mass
-      : (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale;
+    const mass = this.defB ? vehicleMassProperties(this.defB.spec, this.b.state).mass : bodyMass(world.reg, kind, scale);
     this.b.spec = this.defB?.spec ?? null; this.b.mass = Math.max(1, mass); this.b.response = 'dynamic';
     if (isSkateboard(this.defB) && this.ctx.driverOf(e)) this.heightB = SKATER_HEIGHT;
     const sourceHeight = isSkateboard(this.defA) && this.ctx.driverOf(car) ? SKATER_HEIGHT : 0;

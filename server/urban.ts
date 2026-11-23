@@ -14,6 +14,7 @@ import { makeHandle } from '../shared/ids.ts';
 import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { quatRotate } from '../shared/math/quat.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
+import { bodyMass } from '../shared/sim/body-mass.ts';
 import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
@@ -656,7 +657,7 @@ export class Urban {
     if (host) for (const seat of host.definition.seats) {
       const actor = this.occupancy.occupant(pid, seat.id), ae = this.entity(actor), occupant = records.byPid.get(actor);
       if (!occupant || ae < 0 || makeHandle(ae, ents.gen[ae]!) !== this.occupancy.occupantHandle(pid, seat.id)) continue;
-      mass += world.reg.mass[occupant.kind]! || 80;
+      mass += bodyMass(world.reg, occupant.kind);
       if (occupant.inv) mass += items.inv(occupant).weight(items.table);
     }
     return Math.max(0, Math.min(1e6, mass));
@@ -1259,7 +1260,7 @@ export class Urban {
           this.struckAt.set(key, world.tick);
           if (this.struckAt.size > 4096) this.struckAt.clear();
           // Thrown out the way the door stands and on with the car, the lighter the farther.
-          const share = DOOR_MASS / (DOOR_MASS + (reg.mass[k]! > 0 ? reg.mass[k]! : 80));
+          const share = DOOR_MASS / (DOOR_MASS + bodyMass(reg, k));
           ents.vx[j] = ents.vx[j]! + (ents.vx[e]! * 0.6 + nx * speed * DOOR_OUT) * share;
           ents.vz[j] = ents.vz[j]! + (ents.vz[e]! * 0.6 + nz * speed * DOOR_OUT) * share;
           ents.vy[j] = Math.max(ents.vy[j]!, speed * DOOR_UP * share);
