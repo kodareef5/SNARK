@@ -171,7 +171,7 @@ test("on one stream as Linux runs it, 400 base chunks in reach hold a join's nea
   expect(r.farBytes).toBeLessThanOrEqual(7 * 8192);
 });
 
-test("a session that holds the map's statics is sent no far cells of chunks as the map placed them, and a chunk's from the moment it changes, emptied or set back too; one that does not is sent them all", () => {
+test("a session that holds the map's statics is sent no far cells of chunks as the map placed them, and a chunk's from the moment it changes, emptied too; one that does not is sent them all", () => {
   // A tower of three pillars in each chunk of the map's second row from 64 m to 2.5 km east.
   const towers: MapStatic[] = [];
   for (let cx = 1; cx < 40; cx++) for (let i = 0; i < 3; i++) towers.push({ kind: "core:pillar", x: cx * 64 + 20, y: 3.3 + i * 6, z: 96, yaw: 0 });

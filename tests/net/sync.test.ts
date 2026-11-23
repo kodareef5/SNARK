@@ -165,7 +165,7 @@ test("a near window of the map's statics is whole within a tick of the body's ar
   expect([differ(structs, ada.world!.structs, window), differ(structs, bob.world!.structs, window)]).toEqual([0, 0]);
 });
 
-test("a changed chunk cut over several messages lands whole on a client that holds the map", () => {
+test("a changed chunk cut over several messages lands whole on a map-holding client", () => {
   // 600 crates in one chunk: every fifth gone, every seventh hurt, every eleventh another kind, and 40 pieces built over them.
   const crates: MapStatic[] = [];
   for (let k = 0; k < 600; k++) crates.push({ kind: "core:crate", x: 4 * CHUNK_SIZE + 4 + (k % 8) * 7, y: 40 + Math.floor(k / 64) * 3, z: 4 * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 7, yaw: 0 });
@@ -195,7 +195,7 @@ test("a changed chunk cut over several messages lands whole on a client that hol
   expect([h.client(ada)!.known[chunk], differ(structs, ada.world!.structs, [chunk]), ada.world!.structs.chunks[chunk]!.live]).toEqual([t.version, 0, t.live]);
 });
 
-test("a client that holds the map and enters a damaged chunk is sent no full row for a map slot", () => {
+test("a client holding the map is sent no full row for a damaged map slot", () => {
   const crates: MapStatic[] = [];
   for (let k = 0; k < 600; k++) crates.push({ kind: k % 2 === 0 ? "core:crate" : "core:wall", x: 4 * CHUNK_SIZE + 4 + (k % 8) * 7, y: 40 + Math.floor(k / 64) * 3, z: 4 * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 7, yaw: (k * 4096) & 0xffff });
   const chunk = 4 * 9 + 4;

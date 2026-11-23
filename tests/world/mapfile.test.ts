@@ -809,7 +809,7 @@ test("a chunk mended, swapped or set back to the map stands as placed again", ()
   expect(structs.asPlaced(Math.floor(far / 65536))).toBe(true);
 });
 
-test("a chunk's changed map slots are listed in order, and the list is kept until one more or fewer differs", () => {
+test("a chunk's changed map slots are listed once, until one more or fewer differs", () => {
   const pieces = Array.from({ length: 200 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:crate", x: 66 + (i % 20) * 3, y: 1 + Math.floor(i / 20) * 3, z: 10, yaw: 0 }));
   const map = parseMap(writeMap(flatMap(4, { statics: pieces })));
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
