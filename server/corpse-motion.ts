@@ -28,7 +28,7 @@ const CORRECTION = 1e12;
 /** What lies as a ragdoll and is sent so: corpses (server/corpses.ts) and survivors knocked down (server/falls.ts). */
 export interface MotionSource {
   motionRevision(e: number): number;
-  motion(e: number): CorpseMotion | null;
+  motion(e: number, forView?: boolean): CorpseMotion | null;
   /** The revision its lying began at, where one entity lies more than once; what a client has older is of before. */
   motionBegun?(e: number): number;
 }
@@ -76,7 +76,7 @@ export class CorpseReplication {
     for (const k of order) {
       const correction = keys[k]! >= CORRECTION;
       if (correction && corrections === 0) { this.stats.deferred++; continue; }
-      const id = this.ids[k]!, motion = this.from[k]!.motion(this.ents[k]!);
+      const id = this.ids[k]!, motion = this.from[k]!.motion(this.ents[k]!, true);
       if (!motion) continue;
       const bytes = motion.data.length + 16;
       if (bytes > left || !this.game.replication.spendChunkWindow(c, bytes)) { this.stats.deferred++; continue; }

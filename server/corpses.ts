@@ -18,7 +18,7 @@ import { Solved, rayZones, zoneHit, type Skeleton } from "../shared/anim/skeleto
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import { CHUNK_SIZE, TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { POS_UNITS } from "../shared/net/view.ts";
-import { CORPSE_BODIES_MAX, CORPSE_MOTION_COMPONENT, decodeCorpseCheckpoint, encodeCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
+import { CORPSE_BODIES_MAX, CORPSE_MOTION_COMPONENT, decodeCorpseCheckpoint, encodeCorpseCheckpoint, packCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
 import { makeHandle } from "../shared/ids.ts";
 import { detCos, detSin } from "../shared/math/scalar.ts";
 import { quatNormalize } from "../shared/math/quat.ts";
@@ -148,6 +148,7 @@ export interface Body {
   motionStanding: boolean;
   motionWorld: number;
   motion: CorpseMotion | null;
+  published: CorpseMotion | null;
   reach: number;
   /** The tick its checkpoint last changed, and whether a vehicle touched it last tick. */
   sent: number;
@@ -304,8 +305,10 @@ export class Corpses {
   motionRevision(e: number): number { return this.byEnt.get(e)?.motionRevision ?? 0; }
 
   /** Current whole-tick checkpoint, including one first seen long after its original impact. */
-  motion(e: number): CorpseMotion | null {
-    const motion = this.byEnt.get(e)?.motion;
+  motion(e: number, forView = false): CorpseMotion | null {
+    const b = this.byEnt.get(e), motion = b?.motion;
+    // A recent keyframe costs less to send. Older arrivals start from the current tick.
+    if (forView && b?.published && b.moving && this.ctx.world.tick - b.published.tick < DISTURBED_TICKS) return b.published;
     return motion ? { revision: motion.revision, tick: this.ctx.world.tick, data: motion.data } : null;
   }
 
@@ -376,7 +379,7 @@ export class Corpses {
       rec, kind, e: -1, max, left, young, size, move, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
       fall: null, pose: !wreck && rig ? new Solved(rig.skel.bones) : null, moving: false, drop: null, dropped: 0, wreck,
-      launch: null, handed: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD, sent: 0, touched: false,
+      launch: null, handed: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, published: null, reach: PAD, sent: 0, touched: false,
     };
     this.bodies.set(rec.pid, b);
     return b;
@@ -452,6 +455,7 @@ export class Corpses {
       if (saved && (!checkpoint || checkpoint.x !== b.x || checkpoint.y !== b.y || checkpoint.z !== b.z || checkpoint.yaw !== b.yaw || checkpoint.size !== b.size || checkpoint.out !== b.out || checkpoint.air !== b.air || !r.restore(checkpoint.state, checkpoint.awake))) {
         throw new Error(`corpse ${b.rec.pid}: invalid physical checkpoint`);
       }
+      const continuing = !!checkpoint || !!b.handed;
       if (checkpoint) b.fall.ticks = checkpoint.ticks;
       if (b.handed) {
         r.restore(b.handed.state, b.handed.awake);
@@ -463,13 +467,13 @@ export class Corpses {
         r.launch(launch.vx, launch.vy, launch.vz, launch.wx, launch.wy, launch.wz);
         b.launch = null;
       }
-      if (b.motionRevision) { this.updateMotion(b, false); r.pose(b.pose!); this.save(b); }
+      if (b.motionRevision) { this.updateMotion(b, false, continuing); r.pose(b.pose!); this.save(b); }
       if (!b.fall.still) this.wake(b);
     }
   }
 
   /** Move spatial interest and harvesting with the simulated root; publish topology/sleep transitions once. */
-  private updateMotion(b: Body, wasMoving: boolean): void {
+  private updateMotion(b: Body, wasMoving: boolean, continuing = false): void {
     const fall = b.fall!, r = fall.ragdoll, world = this.ctx.world;
     r.rootPosition(corpseRoot);
     b.x = b.rec.x = wireX(corpseRoot[0]!); b.y = b.rec.y = wireY(corpseRoot[1]!); b.z = b.rec.z = wireX(corpseRoot[2]!);
@@ -484,9 +488,15 @@ export class Corpses {
     b.touched = r.touched;
     b.motionWorld = revision;
     if (b.e >= 0) world.ents.setPosition(b.e, b.x, b.y, b.z);
-    const data = encodeCorpseCheckpoint({ x: b.x, y: b.y, z: b.z, yaw: b.yaw, size: b.size, out: b.out, air: b.air,
-      awake: r.awake, standing: b.motionStanding, ticks: fall.ticks, state: r.checkpoint() });
+    const publish = b.motion?.revision !== b.motionRevision;
+    const checkpoint = { x: b.x, y: b.y, z: b.z, yaw: b.yaw, size: b.size, out: b.out, air: b.air,
+      awake: r.awake, standing: b.motionStanding, carrier: r.carrier, ticks: fall.ticks, state: r.checkpoint() };
+    // Unobserved terrain and sleep transitions must still replay exactly from an earlier revision.
+    const round = publish && !continuing && (!b.motion || r.touched);
+    const data = round ? packCorpseCheckpoint(checkpoint) : encodeCorpseCheckpoint(checkpoint);
+    if (round) r.restore(checkpoint.state, r.awake);
     b.motion = { revision: b.motionRevision, tick: world.tick, data };
+    if (publish) b.published = b.motion;
     b.rec.extra.set(CORPSE_MOTION_COMPONENT, data);
   }
 

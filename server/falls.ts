@@ -18,7 +18,7 @@ import { CUE_DOWN } from "../shared/anim/pose.ts";
 import { Solved } from "../shared/anim/skeleton.ts";
 import { Found } from "../shared/world/structures.ts";
 import { RagdollMovers } from "./ragdoll-movers.ts";
-import { encodeCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
+import { packCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { MF_DOWN, MODE_WALK } from "../shared/sim/character.ts";
 import { HISTORY_TICKS } from "./history.ts";
@@ -289,20 +289,24 @@ export class Falls {
     const x = wireX(root[0]!), y = wireY(root[1]!), z = wireX(root[2]!);
     r.rebase(x, y, z);
     ents.setPosition(d.e, x, y, z);
+    const world = r.worldRevision(this.world);
+    if (d.motion && world !== d.world) d.revision = ++this.serial;
+    d.world = world;
+    if (d.motion?.revision !== d.revision) {
+      d.sent = this.world.tick;
+      const state = r.checkpoint();
+      const data = packCorpseCheckpoint({ x, y, z, yaw: d.yaw, size: 1, out: false, air: false,
+        awake: r.awake, standing: true, carrier: r.carrier, ticks: d.fall.ticks, state });
+      r.restore(state, r.awake);
+      // A fall created before this tick's step still holds the previous tick's state.
+      const tick = d.ticks === 0 && this.stepped !== this.world.tick ? this.world.tick - 1 : this.world.tick;
+      d.motion = { revision: d.revision, tick, data };
+    }
     r.pose(d.pose);
     const k = this.world.tick & (HISTORY_TICKS - 1);
     d.poses[k]!.rot.set(d.pose.rot);
     d.poses[k]!.pos.set(d.pose.pos);
     d.poseTick[k] = this.world.tick;
-    const world = r.worldRevision(this.world);
-    if (d.motion && world !== d.world) d.revision = ++this.serial;
-    d.world = world;
-    if (d.motion && d.motion.revision === d.revision) return;
-    d.sent = this.world.tick;
-    const data = encodeCorpseCheckpoint({ x, y, z, yaw: d.yaw, size: 1, out: false, air: false, awake: r.awake, standing: true, ticks: d.fall.ticks, state: r.checkpoint() });
-    // The state after the last tick it was stepped. A fall knocked before this tick's step, or during it, is stepped this
-    // tick: its state is the one before. One knocked after the step, or between ticks, is first stepped next tick.
-    d.motion = { revision: d.revision, tick: d.ticks === 0 && this.stepped !== this.world.tick ? this.world.tick - 1 : this.world.tick, data };
   }
 
   /** Stands the body up where its hips lie. */
