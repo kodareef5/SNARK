@@ -15,9 +15,10 @@
 // distances in, makes only the forms a tile comes to; and until they are made it draws what it holds.
 //
 // What stands: a chunk the near store holds whole says exactly which of the map's pieces stand, and that is kept when it
-// is let go. Past that, the far feed's cells (farcells.ts) show a piece gone when its top stands over the top sent for a
-// cell it fills. A piece gone either way is left out of every level of its chunk. What stands is followed for a
-// landmark's pieces too, so the far blocks leave their cells alone.
+// is let go. Past that, the server's list of a chunk's pieces gone (gonelists.ts) says it, a hole under a standing top
+// too. Where neither is known, the far feed's cells (farcells.ts), while they count the map's pieces, show a piece gone
+// when its top stands over the top sent for a cell it fills. A piece gone any way is left out of every level of its
+// chunk. What stands is followed for a landmark's pieces too, so the far blocks leave their cells alone.
 
 import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
@@ -25,6 +26,7 @@ import { cityReach, cityTops, goneByCells, goneByRows, type CityStatics, type Go
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { FarStore } from "../farcells.ts";
+import type { GoneStore } from "../gonelists.ts";
 import type { Camera } from "./camera.ts";
 import { WORTH, type Hider } from "./hide.ts";
 import { InlineCityMaker, cityJob, cityKinds, type CityMade, type CityMaker } from "./citymake.ts";
@@ -185,6 +187,10 @@ export class FarCity {
   private readonly whole = new Set<number>();
   private cellsSeen = 0;
   private readonly changed = new Set<number>();
+  /** Per chunk: its list's count of changes when last looked at, and when its rows were last matched; and the lists' count of messages. */
+  private readonly seenLists: Uint32Array;
+  private readonly rowsAt: Uint32Array;
+  private listsSeen = 0;
   /** Per chunk, the far feed's top byte of each cell as its standing pieces give it, made when asked for. */
   private readonly tops = new Map<number, Uint8Array>();
   private levels: readonly CityLevel[] = [];
@@ -249,6 +255,8 @@ export class FarCity {
     this.tileOfChunk = new Int32Array(chunks).fill(-1);
     this.seenShape = new Int32Array(chunks).fill(-1);
     this.seenCells = new Uint32Array(chunks);
+    this.seenLists = new Uint32Array(chunks);
+    this.rowsAt = new Uint32Array(chunks);
     this.goneVersion = new Uint32Array(chunks);
     ({ reach: this.chunkBox, landmarks: this.left } = cityReach(source.statics, landmark));
     const cb = this.chunkBox;
@@ -323,10 +331,10 @@ export class FarCity {
 
   /**
    * Brings what stands and the tiles within the tier's reach up to date and on the card, and lets go of those a tile
-   * farther. `near` is the near store and `cells` the far feed, for what stands. Uploads and drops go into the packet,
-   * and what they weigh is spent and reserved in `budget`.
+   * farther. `near` is the near store, `cells` the far feed and `lists` the pieces gone as the server tells them, for
+   * what stands. Uploads and drops go into the packet, and what they weigh is spent and reserved in `budget`.
    */
-  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, cam: Camera, levels: readonly CityLevel[], reach: number, share: number, near: StructureStore | null, cells: FarStore | null): void {
+  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, cam: Camera, levels: readonly CityLevel[], reach: number, share: number, near: StructureStore | null, cells: FarStore | null, lists: GoneStore | null = null): void {
     if (levels !== this.levels) {
       this.levels = levels;
       this.formOf = levels.map((l) => this.formNumber(l));
@@ -336,7 +344,7 @@ export class FarCity {
     this.updates++;
     for (const slot of this.dropping) p.assetDrops.push(slot);
     this.dropping.length = 0;
-    this.standing(near, cells);
+    this.standing(near, cells, lists);
     const stats = this.stats;
     const start = clock();
     this.collect();
@@ -799,8 +807,8 @@ export class FarCity {
     return n;
   }
 
-  /** Brings what stands up to date: chunks the near store holds whole, and the far feed's cells of the rest. */
-  private standing(near: StructureStore | null, cells: FarStore | null): void {
+  /** Brings what stands up to date: chunks the near store holds whole, and of the rest the lists of pieces gone and the far feed's cells. */
+  private standing(near: StructureStore | null, cells: FarStore | null, lists: GoneStore | null): void {
     const city = this.source.statics;
     const changed = this.changed;
     changed.clear();
@@ -809,6 +817,8 @@ export class FarCity {
       if (this.source.complete(c)) continue;
       this.seenShape[c] = -1;
       this.whole.delete(c);
+      // A list told since its rows were last matched now says more than they do.
+      if (lists && (lists.changed[c] ?? 0) !== this.rowsAt[c]) changed.add(c);
     }
     // The chunks the near store has a table for, not every chunk of the map.
     for (const c of near?.held ?? []) {
@@ -819,6 +829,7 @@ export class FarCity {
       const g = new Uint8Array(city.in(c));
       goneByRows(city, c, table, g);
       this.seenNear.set(c, g);
+      this.rowsAt[c] = lists?.changed[c] ?? 0;
       changed.add(c);
     }
     if (cells && cells.version !== this.cellsSeen) {
@@ -829,12 +840,37 @@ export class FarCity {
         changed.add(c);
       }
     }
-    for (const c of changed) {
-      const g = this.seenNear.get(c)?.slice() ?? new Uint8Array(city.in(c));
-      // Cells told since the chunk was last held whole say more; a chunk sent empty has none of its pieces left.
-      if (cells && this.seenCells[c]! > 0 && !this.source.complete(c)) goneByCells(city, c, this.hf, cells.chunks.get(c)?.top ?? new Uint8Array(256), g);
-      this.setGone(c, g);
+    if (lists && lists.version !== this.listsSeen) {
+      this.listsSeen = lists.version;
+      // A list of a chunk whose statics have not come is looked at again when a city is made of them.
+      for (const c of lists.lists.keys()) {
+        if (lists.changed[c] === this.seenLists[c] || city.in(c) === 0) continue;
+        this.seenLists[c] = lists.changed[c]!;
+        changed.add(c);
+      }
     }
+    for (const c of changed) this.setGone(c, this.goneNow(c, cells, lists));
+  }
+
+  /**
+   * Which pieces of `chunk` are gone by what is known of it, the most trusted first: its rows, while the near store holds
+   * it whole and after that until a list is told; then its list, whose slot `s` is the chunk's `s`-th piece; then, with
+   * no list, the far feed's tops where they count the map's pieces.
+   */
+  private goneNow(chunk: number, cells: FarStore | null, lists: GoneStore | null): Uint8Array {
+    const city = this.source.statics;
+    const rows = this.seenNear.get(chunk);
+    const list = lists?.lists.get(chunk);
+    const held = this.source.complete(chunk);
+    if (rows && (held || (list && this.rowsAt[chunk] === lists!.changed[chunk]))) return rows.slice();
+    const g = (!list && rows?.slice()) || new Uint8Array(city.in(chunk));
+    if (list) {
+      for (let i = 0; i < list.length && list[i]! < g.length; i++) g[list[i]!] = 1;
+      return g;
+    }
+    // Cells told since the chunk was last held whole say more; a chunk sent empty has none of its pieces left.
+    if (!held && cells && cells.full[chunk] === 1) goneByCells(city, chunk, this.hf, cells.chunks.get(chunk)?.top ?? new Uint8Array(256), g);
+    return g;
   }
 
   /** Says which pieces of `chunk` are gone, and marks what was made of it and its neighbours, whose faces it held, to be made again. */

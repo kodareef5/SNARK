@@ -2,15 +2,20 @@
 // with no owner, kept apart from the map.
 
 import { expect, test } from "bun:test";
+import { Camera } from "../../client/core/render/camera.ts";
+import "../../client/core/render/city-late.ts";
+import { Scene } from "../../client/core/render/scene.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
 import { CMD_FAR, CMD_MAP_ZOOM, CMD_VIEW, S_FAR, S_GONE } from "../../shared/net/protocol.ts";
+import { CityStatics, goneByRows } from "../../shared/world/city.ts";
 import { GoneList, readGone } from "../../shared/world/gone.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { parseMap, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { FarCells, farTopMetres, readFar } from "../../shared/world/tactical.ts";
 import { farJoin } from "../../tools/bench/far.ts";
+import { farPack } from "../fixtures/farworld.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const DIMS = { chunksX: 128, chunksZ: 4 };
@@ -300,4 +305,47 @@ test("cells sent before the map's statics came are sent again without the map's 
   expect([sa.length, ga.length, a.far.full[bare], a.far.full[based], a.far.chunks.has(bare), a.far.chunks.has(based)]).toEqual([4, 1, 0, 0, false, true]);
   expect([...a.gone.lists.get(bare)!]).toEqual([4]);
   expect(farTopMetres(a.far.cellAt(16 * 64 + 20, 96) & 255)).toBe(0);
+});
+
+test("the list a far client holds is what a near client's rows give, and its far city leaves those pieces out", () => {
+  const towers: MapStatic[] = [];
+  for (let i = 0; i < 8; i++) towers.push({ kind: "core:pillar", x: 2 * 64 + 20, y: 3.3 + i * 6, z: 96, yaw: 0 }, { kind: "core:pillar", x: 2 * 64 + 26, y: 3.3 + i * 6, z: 96, yaw: 0 });
+  const map = writeMap({ ...parseMap(WIDE), id: "test:wide-near", statics: towers });
+  const { h, world } = wide(map);
+  const chunk = DIMS.chunksX + 2;
+  const a = h.join("ada");
+  const b = h.join("bob");
+  const run = (ms: number): void =>
+    h.run(ms, () => {
+      a.askFar(2048, 8192);
+      b.askFar(2048, 8192);
+    });
+  run(500);
+  h.client(b)!.admin = true;
+  h.say(b, "tp 3100 100");
+  run(1500);
+  expect([a.world!.far.complete(chunk), b.world!.structs.chunks[chunk]]).toEqual([true, null]);
+  // Pieces go low and high over a second, a few a tick.
+  const doomed = [1, 4, 5, 6, 11, 14, 15];
+  for (const s of doomed) {
+    world.structs.remove(chunk * 65536 + s);
+    run(150);
+  }
+  run(2500);
+  // Near, the rows say which of the map's pieces are not as they were set down. Far, the list says the same.
+  const city = new CityStatics(DIMS, parseMap(map).statics, h.reg);
+  const g = new Uint8Array(city.in(chunk));
+  expect(goneByRows(city, chunk, a.world!.structs.chunks[chunk]!, g)).toBe(doomed.length);
+  const byRows = [...g.keys()].filter((i) => g[i] === 1);
+  expect([byRows, [...b.gone.lists.get(chunk)!], [...a.gone.lists.get(chunk)!]]).toEqual([doomed, doomed, doomed]);
+  expect([...h.host.tactical.goneOf(chunk).slots]).toEqual(doomed);
+  // Bob's scene, 3 km off, draws the far city of the map without them.
+  b.staticsArrived(parseMap(map).statics);
+  const scene = new Scene(b.world!, h.reg, farPack());
+  scene.city!.makeMs = Infinity;
+  const cam = new Camera();
+  [cam.x, cam.y, cam.z, cam.yaw] = [b.own.x, 40, b.own.z, -Math.PI / 2];
+  scene.build(cam, null);
+  const far = scene.city!.goneOf(chunk)!;
+  expect([...far.keys()].filter((i) => far[i] === 1)).toEqual(doomed);
 });
