@@ -53,9 +53,11 @@ for (const rise of [0, .06, .1, .14, .2, -.1, -.2]) test("the pair drives a grad
     if (ticks > 30) worst = Math.max(worst, gap(tractor, trailer));
   }
   for (let i = 0; i < ticks; i++) stepVehicleBody(world, solo, 0, 127, 0, TRACTOR);
-  const ground = Math.atan(rise);
-    "trailer pitch", (-trailer.vehiclePitch).toFixed(3), "speed", Math.hypot(tractor.vx, tractor.vz).toFixed(1));
   expect(worst).toBeLessThan(.06);
+  // On the grade the trailer leans with it, as the solo tractor does.
+  if (tractor.z > 120 && tractor.z < 200) expect(Math.abs(trailer.vehiclePitch - solo.vehiclePitch)).toBeLessThan(.03);
+  // The pair is heavier, so it is slower, but it is not stopped where the tractor alone is not.
+  if (solo.z > 190) expect(tractor.z).toBeGreaterThan(150);
 });
 
 const relativeYaw = (t: Body, r: Body) => { const d = r.vehicleYaw - t.vehicleYaw; return Math.atan2(Math.sin(d), Math.cos(d)); };

@@ -4,6 +4,7 @@ import { AIR_TRAILER_ART as T } from "./air-freight-art.ts";
 import { COMPACT_SPECIES } from "./compact.ts";
 import { TANKER_VEHICLE } from "./tanker.ts";
 
+const SHARE = 0.3;
 const rear = T.axles.map((a) => ({ z: a.z, track: a.track }));
 
 /** Parked: the landing legs stand on the ground ahead of the axles. */
@@ -39,8 +40,8 @@ const PARKED: VehicleSpec = {
 const TOWED: VehicleSpec = {
   ...PARKED,
   axles: [
-    { z: rear[0]!.z, track: rear[0]!.track, loadShare: 0.3 },
-    { z: rear[1]!.z, track: rear[1]!.track, loadShare: 0.3 },
+    { z: rear[0]!.z, track: rear[0]!.track, loadShare: SHARE },
+    { z: rear[1]!.z, track: rear[1]!.track, loadShare: SHARE },
   ],
 };
 
