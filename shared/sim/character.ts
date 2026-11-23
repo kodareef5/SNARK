@@ -8,9 +8,9 @@ import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
 import { REACT_CONTROL_TICKS, REACT_FRAMES, reactClass } from "./react.ts";
-import { SKIN, wallDepth, wallOut, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
+import { PAD, SKIN, wallDepth, wallOut, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
-import { Found } from "../world/structures.ts";
+import { Found, type StructureStore } from "../world/structures.ts";
 
 // Bit positions match the five slots in worn inventory order. Only serviceable pieces count.
 export const JET_HELMET = 1 << 0;
@@ -173,6 +173,14 @@ export const stepOut = {
   /** A glider opened this tick, or folded: by its keys, on landing, in water, or with its stamina spent. */
   glideOpened: false,
   glideFolded: false,
+  /**
+   * The wall a walking body met hardest this tick, all 0 where it met none: the level unit way out of it, the speed in
+   * metres a second it was moving into it before it slid, at least 0, and how high above its feet it touched.
+   */
+  wallNx: 0,
+  wallNz: 0,
+  wallInto: 0,
+  wallY: 0,
 };
 
 export interface MoveParams {
@@ -225,6 +233,14 @@ export interface MoveParams {
   readonly headAhead?: number;
   readonly headUp?: number;
   readonly headRadius?: number;
+  /**
+   * The ends of its footprint (SpeciesDef.footprint) held clear of walls as its head is: spheres of radius `endRadius`
+   * centred `endFront` and `endBack` metres along the facing (behind is negative), hung from its belly (endUp). An end is
+   * tested only where it reaches past the capsule. Omitted for a body whose footprint is within its capsule.
+   */
+  readonly endFront?: number;
+  readonly endBack?: number;
+  readonly endRadius?: number;
   /** False for a body that moves only the way it faces. */
   readonly strafe: boolean;
   // A creature's own flight (MODE_FLYER), from SpeciesDef.fly. For a body that does not fly, `flies` is false and every
@@ -614,11 +630,234 @@ export function headClear(w: CollisionWorld, p: MoveParams, x: number, y: number
   return headDepth(w, p, x, y, z, yaw) === 0;
 }
 
+/** A footprint's ends hang from the belly: this share of the body's height above its feet. */
+const BELLY = 0.4;
+
+/**
+ * How high above the feet the bottom of a footprint's end stands: at its belly, and never lower than a step up. Walls
+ * meet it; blocks and kerbs, which its legs stop at or step onto, pass under it.
+ */
+export function endUp(p: MoveParams): number {
+  return p.height * BELLY > p.stepUp ? p.height * BELLY : p.stepUp;
+}
+
+/** How deep in a wall the front end of the footprint of a body of `p` at (x, y, z) facing `yaw` is, or its back end (MoveParams.endRadius). */
+export function endDepth(w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number, front: boolean): number {
+  const r = p.endRadius!, a = (yaw * TAU) / 65536, at = front ? p.endFront! : p.endBack!;
+  return wallDepth(w, x + detSin(a) * at, y + endUp(p), z + detCos(a) * at, r, y + p.height);
+}
+
 /** Metres deeper into a wall a head may go in a step: rounding, not a graze. */
 const HEAD_SKIN = 0.002;
 
+// The limbs a walker holds clear of walls: its head, and its footprint's ends where they reach past its capsule, hung from
+// its belly (endUp). No step or turn takes one deeper into a wall than it is, and none is pushed out, so a body put in a
+// wall is never thrown from it.
+const HEAD = 0, FRONT = 1, BACK = 2;
+/** Per limb: 1 if it is held clear, metres ahead along the facing, its radius, the height of its middle above the feet. */
+const limbOn = new Uint8Array(3);
+const limbAhead = new Float64Array(3);
+const limbR = new Float64Array(3);
+const limbMid = new Float64Array(3);
+/** Per limb, its level offset from the origin at the facing `limbsFace` was given. */
+const limbX = new Float64Array(3);
+const limbZ = new Float64Array(3);
+/** Where a move tried starts, as limbsWere noted it: the body's place, each limb's offset, and its depth, NaN until asked. */
+let wasX = 0;
+let wasY = 0;
+let wasZ = 0;
+const wasOffX = new Float64Array(3);
+const wasOffZ = new Float64Array(3);
+const limbWas = new Float64Array(3);
+/** The height of the body whose limbs they are, and how far above its feet the bottom of an end stands (endUp). */
+let limbOver = 0;
+let endBottom = 0;
+/** How much deeper the limb `limbDeeper` named would go. */
+let limbGain = 0;
+
+/** Sets the limbs of a body moving by `p`. False when it holds none clear. */
+function limbsFor(p: MoveParams): boolean {
+  const er = p.endRadius ?? 0;
+  limbOn[HEAD] = p.headRadius ? 1 : 0;
+  limbOn[FRONT] = er > 0 && p.endFront! + er > p.radius ? 1 : 0;
+  limbOn[BACK] = er > 0 && er - p.endBack! > p.radius ? 1 : 0;
+  if (limbOn[HEAD] === 0 && limbOn[FRONT] === 0 && limbOn[BACK] === 0) return false;
+  limbOver = p.height;
+  endBottom = er > 0 ? endUp(p) : 0;
+  for (let k = HEAD; k <= BACK; k++) {
+    if (limbOn[k] === 0) continue;
+    const r = k === HEAD ? p.headRadius! : er;
+    limbAhead[k] = k === HEAD ? p.headAhead! : k === FRONT ? p.endFront! : p.endBack!;
+    limbR[k] = r;
+    limbMid[k] = k === HEAD ? p.headUp! : endBottom + r;
+  }
+  return true;
+}
+
+/** Turns the limbs to facing `yaw`, in 65536ths of a turn. */
+function limbsFace(yaw: number): void {
+  const a = (yaw * TAU) / 65536, s = detSin(a), c = detCos(a);
+  for (let k = HEAD; k <= BACK; k++) {
+    limbX[k] = s * limbAhead[k]!;
+    limbZ[k] = c * limbAhead[k]!;
+  }
+}
+
+/** How deep limb `k`, offset (ox, oz), of a body at (x, y, z) is in a wall (collide.ts wallDepth), leaving its way out in wallOut. */
+function limbDepth(w: CollisionWorld, k: number, x: number, y: number, z: number, ox: number, oz: number): number {
+  const r = limbR[k]!;
+  return wallDepth(w, x + ox, k === HEAD ? y + limbMid[HEAD]! - r : y + endBottom, z + oz, r, y + limbOver);
+}
+
+/** Notes a body at (x, y, z), its limbs as they now face, as where the moves `limbDeeper` tries start. */
+function limbsWere(x: number, y: number, z: number): void {
+  wasX = x;
+  wasY = y;
+  wasZ = z;
+  for (let k = HEAD; k <= BACK; k++) {
+    wasOffX[k] = limbX[k]!;
+    wasOffZ[k] = limbZ[k]!;
+    limbWas[k] = Number.NaN;
+  }
+}
+
+/**
+ * The first limb, plus one, that a body at (x, y, z) has more than `skin` deeper in a wall than where limbsWere noted, or 0.
+ * Sets limbGain and wallOut. A limb clear of every wall is no deeper, so where it started is measured only for one in a wall.
+ */
+function limbDeeper(w: CollisionWorld, x: number, y: number, z: number, skin = HEAD_SKIN, ends = true): number {
+  for (let k = HEAD; k <= (ends ? BACK : HEAD); k++) {
+    if (limbOn[k] === 0) continue;
+    const d = limbDepth(w, k, x, y, z, limbX[k]!, limbZ[k]!);
+    if (!(d > skin)) continue;
+    let was = limbWas[k]!;
+    if (was !== was) {
+      const ox = wallOut.x, oz = wallOut.z;
+      was = limbWas[k] = limbDepth(w, k, wasX, wasY, wasZ, wasOffX[k]!, wasOffZ[k]!);
+      wallOut.x = ox;
+      wallOut.z = oz;
+    }
+    if (d > was + skin) {
+      limbGain = d - was;
+      return k + 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Lets go each limb of a body at (x, y, z) that no structure stands within `more` metres of, where it is as it faces now
+ * or, `turning`, anywhere it may swing to. Whether one is left.
+ */
+function limbsNear(w: CollisionWorld, x: number, y: number, z: number, more: number, turning: boolean): boolean {
+  // Each limb's box, and first the box round them all: in the open one look finds nothing.
+  let x0 = Infinity, z0 = Infinity, y0 = Infinity, x1 = -Infinity, z1 = -Infinity, y1 = -Infinity;
+  for (let k = HEAD; k <= BACK; k++) {
+    if (limbOn[k] === 0) continue;
+    const reach = (turning ? Math.abs(limbAhead[k]!) : 0) + limbR[k]! + more;
+    const cx = turning ? x : x + limbX[k]!, cz = turning ? z : z + limbZ[k]!;
+    const low = y + limbMid[k]! - limbR[k]! - more - PAD;
+    nearBox[k * 6] = cx - reach;
+    nearBox[k * 6 + 1] = cz - reach;
+    nearBox[k * 6 + 2] = low;
+    nearBox[k * 6 + 3] = cx + reach;
+    nearBox[k * 6 + 4] = cz + reach;
+    nearBox[k * 6 + 5] = low + 2 * (limbR[k]! + more + PAD);
+    x0 = Math.min(x0, cx - reach); z0 = Math.min(z0, cz - reach); y0 = Math.min(y0, nearBox[k * 6 + 2]!);
+    x1 = Math.max(x1, cx + reach); z1 = Math.max(z1, cz + reach); y1 = Math.max(y1, nearBox[k * 6 + 5]!);
+  }
+  const s = w.structs;
+  if (!s.any(x0, z0, x1, z1, y0, y1)) return false;
+  let near = false;
+  for (let k = HEAD; k <= BACK; k++) {
+    if (limbOn[k] === 0) continue;
+    const o = k * 6;
+    if (s.any(nearBox[o]!, nearBox[o + 1]!, nearBox[o + 3]!, nearBox[o + 4]!, nearBox[o + 2]!, nearBox[o + 5]!)) near = true;
+    else limbOn[k] = 0;
+  }
+  return near;
+}
+/** Per limb, the box limbsNear looks in: its least x, z and y, then its most. */
+const nearBox = new Float64Array(18);
+
+/**
+ * Facings a turn's way round is tried at: each whole SWEEP of 65536 for the head, and each fourth of those for the ends,
+ * whose circles are small. Tried at the same facings every tick, a way's facings only grow or shrink as the body turns.
+ */
+const SWEEP = 2048;
+const SWEEP_ENDS = 4 * SWEEP;
+/** Metres deeper a limb must go somewhere on a way round for it to be blocked: a graze between two facings tried is not. */
+const SWEEP_SKIN = 0.05;
+
+/** Whether no limb of a body at (x, y, z) facing `yaw` is more than `skin` deeper than limbsWere found; with `ends` false, the head alone. */
+function faceClear(w: CollisionWorld, x: number, y: number, z: number, yaw: number, skin: number, ends = true): boolean {
+  limbsFace(yaw);
+  return limbDeeper(w, x, y, z, skin, ends) === 0;
+}
+
+/** Whether a body at (x, y, z) turning `arc` from `from` keeps its limbs clear (faceClear) at the facings tried on the way, short of its end. */
+function sweepClear(w: CollisionWorld, x: number, y: number, z: number, from: number, arc: number): boolean {
+  const way = arc > 0 ? 1 : -1;
+  for (let k = way > 0 ? SWEEP - (from % SWEEP) : -(from % SWEEP || SWEEP); k * way < arc * way; k += way * SWEEP) {
+    const yaw = (from + k) & 0xffff;
+    if (!faceClear(w, x, y, z, yaw, SWEEP_SKIN, yaw % SWEEP_ENDS === 0)) return false;
+  }
+  return true;
+}
+
+/**
+ * The turn this tick of a walker that holds limbs clear, `want` from its facing to its look and `turn` the first step of
+ * it. Where a limb would go into a wall on the short way round and not on the long, it turns the long way, if its first
+ * step there is clear and the bodies about it let it, and else not at all; otherwise the short way while its step is
+ * clear. The ways round are tried at the same facings every tick, so once it has chosen a way it keeps to it. A look that
+ * would itself put a limb in a wall is the end of both ways, so it is tried first.
+ */
+function turnClear(w: CollisionWorld, b: Body, p: MoveParams, want: number, turn: number, rate: number): number {
+  const x = b.x, y = b.y, z = b.z, from = b.yaw;
+  limbsFace(from);
+  limbsWere(x, y, z);
+  const step = faceClear(w, x, y, z, (from + turn) & 0xffff, HEAD_SKIN);
+  const other = want > 0 ? want - 65536 : want + 65536;
+  if (turn === want || !faceClear(w, x, y, z, (from + want) & 0xffff, SWEEP_SKIN)) return step ? turn : 0;
+  if (sweepClear(w, x, y, z, from, want) || !sweepClear(w, x, y, z, from, other)) return step ? turn : 0;
+  const back = other > 0 ? rate : -rate;
+  const bodies = w.blockers;
+  return faceClear(w, x, y, z, (from + back) & 0xffff, HEAD_SKIN)
+    && (!bodies || bodies.count === 0 || turnFree(bodies, b.kind, x, y, z, from, (from + back) & 0xffff, stanceHeight(p, b.stance))) ? back : 0;
+}
+
+/** How hard the strongest wall this step pushed, or a limb would have gone into, as stepOut has it. */
+let wallMost = 0;
+
+/** A wall met with strength `most`, its level unit way out (nx, nz), touched `at` metres above the feet: kept if the strongest yet. */
+function metWall(most: number, nx: number, nz: number, at: number): void {
+  if (most <= wallMost) return;
+  wallMost = most;
+  stepOut.wallNx = nx;
+  stepOut.wallNz = nz;
+  stepOut.wallY = at;
+}
+
+/**
+ * Metres above its feet at `ny` that a capsule `r` wide and `h` tall touches what puts it out along a way whose upward
+ * share is `uy`: on a sphere where the way leans up or down, else halfway up what it shares with the piece `ref` of
+ * `store` (none for the ground).
+ */
+function touchAt(uy: number, store: StructureStore | null, ref: number, ny: number, r: number, h: number): number {
+  if (uy > LEVEL) return r * (1 - uy);
+  if (uy < -LEVEL) return h - r * (1 + uy);
+  if (!store) return h * 0.5;
+  const t = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff, kind = t.kind[slot]!;
+  const low = Math.max(0, t.y[slot]! + store.low[kind]! - ny), high = Math.min(h, t.y[slot]! + store.high[kind]! - ny);
+  return high > low ? (low + high) * 0.5 : h * 0.5;
+}
+/** The upward share of a way out under which it is level, through a capsule's side. */
+const LEVEL = 0.05;
+
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   stepOut.landSpeed = 0;
+  stepOut.wallNx = stepOut.wallNz = stepOut.wallInto = stepOut.wallY = 0;
+  wallMost = 0;
   const priorThrust = b.jetThrust;
   b.jetThrust = 0;
   if (b.jetRecovery > 0) b.jetRecovery--;
@@ -644,13 +883,12 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const rate = b.mode === MODE_FLYER ? p.flyTurnRate : p.turnRate;
   if (rate <= 0 || b.mode === MODE_GHOST || b.mode === MODE_FLY) b.yaw = yaw & 0xffff;
   else {
-    let turn = ((yaw - b.yaw + 32768) & 0xffff) - 32768;
-    if (turn > rate) turn = rate;
-    else if (turn < -rate) turn = -rate;
-    // A long body does not swing itself into a body standing still (shared/sim/blockers.ts), nor its head into a wall.
+    const want = ((yaw - b.yaw + 32768) & 0xffff) - 32768;
+    let turn = want > rate ? rate : want < -rate ? -rate : want;
+    // A long body does not swing itself into a body standing still (shared/sim/blockers.ts), nor its head or ends into a wall.
     const bodies = w.blockers;
     if (bodies && bodies.count > 0 && b.mode === MODE_WALK && !turnFree(bodies, b.kind, b.x, b.y, b.z, b.yaw, (b.yaw + turn) & 0xffff, stanceHeight(p, b.stance))) turn = 0;
-    if (turn !== 0 && p.headRadius && b.mode === MODE_WALK && headDepth(w, p, b.x, b.y, b.z, (b.yaw + turn) & 0xffff) > headDepth(w, p, b.x, b.y, b.z, b.yaw) + HEAD_SKIN) turn = 0;
+    else if (turn !== 0 && b.mode === MODE_WALK && limbsFor(p) && limbsNear(w, b.x, b.y, b.z, 0, true)) turn = turnClear(w, b, p, want, turn, rate);
     b.yaw = (b.yaw + turn) & 0xffff;
   }
   yaw = b.yaw;
@@ -868,6 +1106,16 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   let slideX = 0;
   let slideY = 0;
   let slideZ = 0;
+  // Its limbs are held clear only where a structure stands near enough for one to reach this tick: a substep goes at most a
+  // radius sideways and maxRise up or down.
+  let limbs = limbsFor(p);
+  if (limbs) {
+    limbsFace(b.yaw);
+    limbs = limbsNear(w, b.x, b.y, b.z, n * (r > maxRise ? r : maxRise), false);
+  }
+  /** Its velocity as it set out, for how fast it went into the wall it met. */
+  const wishX = vx;
+  const wishZ = vz;
 
   let x = b.x;
   let y = b.y;
@@ -963,6 +1211,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
             // edge to where the sphere is as wide as it is there. Nor is a falling body lifted higher than it was going by what
             // is too steep to stand on and it went into this substep, as Unreal keeps a slide from boosting it up a slope.
             const gap = r - push.depth;
+            const lean = push.y / push.depth;
             const down = (push.y * gap) / push.depth;
             const side = Math.sqrt(push.x * push.x + push.z * push.z);
             const rimY = ny + r - down;
@@ -990,11 +1239,13 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
               nx += px * out;
               nz += pz * out;
               blocked = true;
+              if (side > wallMost) metWall(side, px / side, pz / side, touchAt(lean, pass >= 0 ? store! : null, found.refs[k]!, ny, r, height));
               if (walking) continue;
               level = true;
             }
           }
           if (!level) {
+            const at = ny;
             if ((push.hull || joined) && stands) {
               // A sloped part it can stand on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
               ny += (push.depth * push.depth) / push.y;
@@ -1011,6 +1262,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
               continue;
             }
             blocked = true;
+            const side = Math.sqrt(push.x * push.x + push.z * push.z);
+            if (side > wallMost) metWall(side, push.x / side, push.z / side, touchAt(push.y / push.depth, pass >= 0 ? store! : null, found.refs[k]!, at, r, height));
           }
           if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
           else if (push.y > 0 && !walking) {
@@ -1065,14 +1318,17 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       clear = false;
     }
 
-    // A head held clear of walls: no step takes it deeper into one than it is, at any angle. A step that would slides along
-    // the wall it met, as the body slides along what it meets, or is not taken; a head already in one (turned there by
-    // something else) is let back out, and one past a wall's end walks on. Only the level step is held, at the height it
-    // began: a body walking down a slope beside a wall may dip its head toward the wall's top.
-    if (p.headRadius) {
-      const was = headDepth(w, p, x, y, z, b.yaw);
-      if (headDepth(w, p, nx, y, nz, b.yaw) > was + HEAD_SKIN) {
+    // A head and footprint ends held clear of walls: no step takes one deeper into a wall than it is, at any angle. A step
+    // that would slides along the wall it met, as the body slides along what it meets, or is not taken; a limb already in
+    // one (turned there by something else, or put there) is let back out, and one past a wall's end walks on. Only the
+    // level step is held, at the height it began: a body walking down a slope beside a wall may dip its head toward the
+    // wall's top.
+    if (limbs) {
+      limbsWere(x, y, z);
+      const k = limbDeeper(w, nx, y, nz);
+      if (k !== 0) {
         const ox = wallOut.x, oz = wallOut.z;
+        metWall(limbGain, ox, oz, limbMid[k - 1]!);
         let dx = nx - x, dz = nz - z;
         const into = dx * ox + dz * oz;
         if (into < 0) {
@@ -1080,11 +1336,11 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
           dz -= oz * into;
         }
         // Along the wall; failing that (at a corner the deepest wall turns), the step's one way or its other.
-        if (headDepth(w, p, x + dx, y, z + dz, b.yaw) <= was + HEAD_SKIN) {
+        if (limbDeeper(w, x + dx, y, z + dz) === 0) {
           nx = x + dx;
           nz = z + dz;
-        } else if (headDepth(w, p, x, y, nz, b.yaw) <= was + HEAD_SKIN) nx = x;
-        else if (headDepth(w, p, nx, y, z, b.yaw) <= was + HEAD_SKIN) nz = z;
+        } else if (limbDeeper(w, x, y, nz) === 0) nx = x;
+        else if (limbDeeper(w, nx, y, z) === 0) nz = z;
         else {
           nx = x;
           nz = z;
@@ -1093,7 +1349,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       }
     }
 
-    // Step up: a grounded body blocked by something no higher than a step climbs onto it.
+    // Step up: a grounded body blocked by something no higher than a step climbs onto it, unless that takes a limb, where
+    // it rises to, into a wall.
     if (blocked && walking) {
       let tx = x + sx;
       let tz = z + sz;
@@ -1103,7 +1360,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       else if (tz > maxZ) tz = maxZ;
       if (capsuleFree(w, x, top, z, r, height) && capsuleFree(w, tx, top, tz, r, height)) {
         const on = stepOnto(w, tx, tz, y, top, r, height, slope);
-        if (!Number.isNaN(on)) {
+        if (!Number.isNaN(on) && !(limbs && limbDeeper(w, tx, on, tz) !== 0)) {
           nx = tx;
           ny = on;
           nz = tz;
@@ -1127,6 +1384,10 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     x = nx;
     y = ny;
     z = nz;
+  }
+  if (wallMost > 0) {
+    const into = -(wishX * stepOut.wallNx + wishZ * stepOut.wallNz);
+    stepOut.wallInto = into > 0 ? into : 0;
   }
 
   // Grounded means resting on terrain or on a structure it can stand on, held where it has no way down, or close enough above

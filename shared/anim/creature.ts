@@ -555,7 +555,7 @@ export function creatureFootfalls(a: CreatureAnim, domain: number, speed: number
  */
 export function advanceCreature(a: CreatureAnim, g: Gait, st: AnimState, tick: number, x: number, z: number, yaw: number, size: number, distanceScale = 1): void {
   const before = g.tick;
-  const metres = g.track(x, z, yaw, tick, st.speed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP), a.turn ? 0 : a.rig.turn, size, distanceScale);
+  const metres = g.track(x, z, yaw, tick, st.speed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP), a.turn ? 0 : a.rig.turn, size, distanceScale, !aloft(a, st));
   if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, creatureStride(a, st, g.speed));
   else g.step(metres, creatureStride(a, st, g.speed));
   // Out of the air they are kept as it last flew, for a landing to come in from.

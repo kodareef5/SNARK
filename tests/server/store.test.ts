@@ -180,8 +180,8 @@ test("a store that grows in the middle of a game, with clients connected, leaves
   expect(plain.caps).toEqual([4096, 4096, 4096, 4096]);
   // The mount and the late survivor's body are in slots the store did not have when the first two joined.
   expect([grown.made, grown.rode, grown.dropped, grown.drive === grown.mount, grown.mount >= 8, grown.late >= 32]).toEqual([30, RESULT_OK, true, true, true, true]);
-  // Twenty-eight of the creatures in those slots fell asleep and woke again.
-  expect(grown.awake).toEqual([36, 8, 36]);
+  // Twenty-nine of the creatures in those slots fell asleep and woke again.
+  expect(grown.awake).toEqual([36, 7, 36]);
   expect(grown.digest.length).toBeGreaterThan(40);
   expect(grown.digest).toEqual(plain.digest);
 });

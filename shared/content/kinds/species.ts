@@ -502,8 +502,18 @@ function moveParams(d: SpeciesDef): MoveParams {
     turnRate: d.turn === undefined ? 0 : turnUnits(d.turn),
     strafe: d.strafe !== false,
     ...(d.footprint?.head ? { headAhead: d.footprint.head.ahead, headUp: d.footprint.head.up, headRadius: d.footprint.head.radius } : {}),
+    ...footEnds(d),
     ...flight(d.fly),
   };
+}
+
+/** The footprint's end spheres as the blockers make its stadium, where one reaches past the capsule (MoveParams.endFront). */
+function footEnds(d: SpeciesDef): { endFront?: number; endBack?: number; endRadius?: number } {
+  const f = d.footprint;
+  if (!f) return {};
+  let back = f.back + f.radius, front = f.front - f.radius;
+  if (back > front) back = front = (back + front) / 2;
+  return front + f.radius > d.radius || f.radius - back > d.radius ? { endFront: front, endBack: back, endRadius: f.radius } : {};
 }
 
 /** Degrees a second as whole 1/65536 turns a tick, at least one. */

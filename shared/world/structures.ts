@@ -252,7 +252,7 @@ export class StructureStore {
   private readonly soft: Uint8Array | null;
   /** Per kind, in metres from a structure's origin: the bottom and top of its boxes, and how far they reach sideways at any yaw. */
   readonly low: Float32Array;
-  private readonly high: Float32Array;
+  readonly high: Float32Array;
   readonly spread: Float32Array;
   /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. */
   private readonly pad: Float32Array;
@@ -684,6 +684,23 @@ export class StructureStore {
     }
     this.passed = passed;
     return n;
+  }
+
+  /** Whether `query` would find any structure there: the same test, stopped at the first. */
+  any(minX: number, minZ: number, maxX: number, maxZ: number, minY = -Infinity, maxY = Infinity): boolean {
+    const cx0 = Math.max(0, Math.floor(minX / GRID_CELL)), cx1 = Math.min(this.gridX - 1, Math.floor(maxX / GRID_CELL));
+    const cz0 = Math.max(0, Math.floor(minZ / GRID_CELL)), cz1 = Math.min(this.gridZ - 1, Math.floor(maxZ / GRID_CELL));
+    const chunksX = this.dims.chunksX;
+    for (let cz = cz0; cz <= cz1; cz++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const cells = this.heads[(cz >> 4) * chunksX + (cx >> 4)];
+        if (!cells) continue;
+        for (let node = cells[(cz & 15) * CELLS + (cx & 15)]!; node !== 0; node = this.nodeNext[node - 1]!) {
+          if (this.nodeTop[node - 1]! >= minY && this.nodeBottom[node - 1]! <= maxY) return true;
+        }
+      }
+    }
+    return false;
   }
 
   isSoft(kind: number): boolean {
