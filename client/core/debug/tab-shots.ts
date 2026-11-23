@@ -66,23 +66,27 @@ export class ShotsTab implements Tab {
     const top = y + 20;
     draw.box(x, top, pw, ph, D_WELL);
     draw.picture(x, top, pw, ph, d.imageOf(OPENED, this.imageOf(s)), ACT_BACK);
-    const rx = x + pw + 14, rw = w - pw - 14;
-    let at = top + draw.heading(rx, top, rw, `PICTURE ${k + 1} OF ${shots.length}`);
-    at += draw.pair(rx, at, rw, "taken", ago(nowMs - s.at));
-    at += draw.pair(rx, at, rw, "why", s.why || "the regular one");
-    at += draw.pair(rx, at, rw, "size", `${s.picture.w} × ${s.picture.h}, ${bytes(s.picture.bytes)}`);
+    const rx = x + pw + 14, rw = w - pw - 14, bottom = y + h;
+    // Each line only where the drawer has room for it.
+    const room = (): boolean => at + 17 <= bottom;
+    let at = top;
+    if (room()) at += draw.heading(rx, at, rw, `PICTURE ${k + 1} OF ${shots.length}`);
+    if (room()) at += draw.pair(rx, at, rw, "taken", ago(nowMs - s.at));
+    if (room()) at += draw.pair(rx, at, rw, "why", s.why || "the regular one");
+    if (room()) at += draw.pair(rx, at, rw, "size", `${s.picture.w} × ${s.picture.h}, ${bytes(s.picture.bytes)}`);
     const t = Math.floor(s.at / 1000), r = d.perf.secondAt(t), q = d.perf.seconds;
     if (r >= 0) {
       const n = q[r + S_FRAMES]!;
-      at += draw.pair(rx, at, rw, "its second", `${n} frames, usual ${ms(q[r + S_SUM]! / Math.max(1, n))}`);
-      at += draw.pair(rx, at, rw, "worst, late", `${ms(q[r + S_WORST]!)}, ${q[r + S_LATE]!} late`);
+      if (room()) at += draw.pair(rx, at, rw, "its second", `${n} frames, usual ${ms(q[r + S_SUM]! / Math.max(1, n))}`);
+      if (room()) at += draw.pair(rx, at, rw, "worst, late", `${ms(q[r + S_WORST]!)}, ${q[r + S_LATE]!} late`);
     }
     at += 6;
+    if (!room()) return;
     at += draw.heading(rx, at, rw, "EVENTS WITHIN A SECOND");
     const near = d.events.between(s.at - 1000, s.at + 1000, this.near);
-    if (near.length === 0) draw.text(rx, at, rw, D_FAINT, "None.");
+    if (near.length === 0 && room()) draw.text(rx, at, rw, D_FAINT, "None.");
     for (const e of near) {
-      if (at + 17 > top + ph) break;
+      if (!room()) break;
       draw.text(rx, at, 120, D_MONO, `${EVENT_NAMES[e.kind]}${e.count > 1 ? ` ×${e.count}` : ""}`);
       at += draw.text(rx + 122, at, rw - 122, D_MONO_DIM, e.cause || "");
     }

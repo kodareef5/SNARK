@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { BAR_H, type DebugBar } from "../../client/core/debug/debug.ts";
+import { SpanFrame } from "../../client/core/debug/spans.ts";
 import { KEY_DEBUG } from "../../client/core/debug/draw.ts";
 import { SOURCE_PAGE } from "../../client/core/debug/log.ts";
 import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
@@ -92,12 +93,26 @@ test("each tab lays out inside the drawer and the bar at the windows players hav
   app.ui.settings.debug = true;
   const bar = await barOf(app, run);
   run(2500);
-  for (const [w, ht] of [[1280, 720], [1920, 1080], [2560, 1080], [1024, 768], [844, 390], [390, 844]] as const) {
+  await Bun.sleep(5);
+  // Each tab's chosen state too: a second on the timeline, an event's frame, a log line read whole, a picture opened.
+  const chosen = (on: boolean): void => {
+    const [timeline, , , log, shots] = bar.tabs as unknown as Record<string, unknown>[];
+    timeline!["chosen"] = on ? Math.floor(app.nowMs / 1000) - 1 : -1;
+    bar.chosenSpans = on ? bar.spans.read(bar.spans.row(0), new SpanFrame()) : null;
+    bar.chosenAt = on ? app.nowMs : -1;
+    const lines: unknown[] = [];
+    bar.log.read(lines as never, 7, 0, 1);
+    log!["open"] = on ? (lines[0] ?? null) : null;
+    shots!["opened"] = on ? (bar.shots!.shots[0]?.at ?? -1) : -1;
+  };
+  bar.line(0, 3, "a long line, as an error that comes with its stack: ".repeat(8));
+  for (const [w, ht, on] of [[1280, 720, false], [1920, 1080, false], [2560, 1080, false], [1024, 768, false], [844, 390, false], [390, 844, false], [1280, 720, true], [844, 390, true], [390, 844, true]] as const) {
     size(w, ht);
+    chosen(on);
     for (let t = 0; t < bar.tabs.length; t++) {
       bar.show(t);
       run(40);
-      const f = app.ui.frame, where = `${bar.tabs[t]!.name} at ${w}x${ht}`;
+      const f = app.ui.frame, where = `${bar.tabs[t]!.name} at ${w}x${ht}${on ? ", chosen" : ""}`;
       const ours = f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_DEBUG && n.key < KEY_DEBUG + 4000);
       expect(ours.length, where).toBeGreaterThan(10);
       for (const n of ours) {

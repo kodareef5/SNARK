@@ -60,18 +60,16 @@ export class FrameTab implements Tab {
       spans.read(spans.row(0), f);
       what = "the latest frame";
     }
-    let bx = x;
-    for (let m = 0; m < MODES.length; m++) {
-      if (m === CHOSEN && !d.chosenSpans) continue;
-      const bw = m === CHOSEN ? 70 : 104;
-      draw.button(bx, y - 2, bw, 18, this.mode === m ? D_TAB_ON : D_BUTTON, MODES[m]!, ACT_MODE, m);
-      bx += bw + 4;
-    }
+    const modes = MODES.map((_, m) => m).filter((m) => m !== CHOSEN || d.chosenSpans !== null), widths = modes.map((m) => (m === CHOSEN ? 70 : 104));
+    const used = widths.reduce((a, b) => a + b + 4, 0), beside = used + 240 <= w;
+    const head = draw.buttons(x, y, w, modes.map((m) => MODES[m]!), widths, modes.map((m) => this.mode === m), ACT_MODE, modes, D_TAB_ON, D_BUTTON);
     const frameMs = f.ms[LANE_FRAME]!, cardMs = f.ms[LANE_CARD]!, target = d.perf.target;
-    draw.text(bx + 8, y, w - (bx - x) - 8, D_DIM, `${what}: page ${ms(frameMs)}${cardMs > 0 ? ` · card ${ms(cardMs)}` : " · card not timed"} · the display ${ms(target)}`);
+    const said = `${what}: page ${ms(frameMs)}${cardMs > 0 ? ` · card ${ms(cardMs)}` : " · card not timed"} · the display ${ms(target)}`;
+    if (beside) draw.text(x + used + 4, y, w - used - 4, D_DIM, said);
+    else draw.text(x, y + head - 2, w, D_DIM, said);
 
     // The chart: the page's lane, a row a depth, then the card's band.
-    const left = x, chartY = y + 22, chartW = Math.round(w * 0.64), rows = this.depthOf(d, f), chartH = rows * ROW_H + 6 + CARD_H;
+    const left = x, chartY = y + (beside ? 22 : head + 18), chartW = Math.round(w * 0.64), rows = this.depthOf(d, f), chartH = rows * ROW_H + 6 + CARD_H;
     this.total = Math.max(frameMs, cardMs, target, 1);
     this.paint(d, f, Math.round(chartW * d.unit), Math.round(chartH * d.unit), rows);
     draw.box(left, chartY, chartW, chartH, D_WELL);
