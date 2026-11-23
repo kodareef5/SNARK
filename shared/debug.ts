@@ -21,3 +21,20 @@ export interface CodeNames {
   EVENT: Record<number, string>;
   TEXT: Record<number, string>;
 }
+
+export const CODE_FAMILIES = ["C", "S", "CMD", "OWN", "EVENT", "TEXT"] as const;
+
+/**
+ * The codes of `protocol` (shared/net/protocol.ts as a module) by family. The server builds it and sends it: the page's
+ * late files do not import the whole protocol, which would make the first frame's script export every name of it.
+ */
+export function codeNames(protocol: Readonly<Record<string, unknown>>): CodeNames {
+  const out = { C: {}, S: {}, CMD: {}, OWN: {}, EVENT: {}, TEXT: {} } as CodeNames;
+  for (const [name, value] of Object.entries(protocol)) {
+    // A size beside the codes (EVENT_NAME_BYTES) is not one.
+    if (typeof value !== "number" || /_(BYTES|BITS)$/.test(name)) continue;
+    const family = CODE_FAMILIES.find((f) => name.startsWith(`${f}_`));
+    if (family) out[family][value] = name;
+  }
+  return out;
+}
