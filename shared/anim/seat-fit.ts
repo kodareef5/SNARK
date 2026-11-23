@@ -15,10 +15,33 @@ import type { Seat, SeatRoom } from "../sim/seats.ts";
 import type { Pose } from "./clip.ts";
 import {
   B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R,
-  B_NECK, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES, HUMAN_RAGDOLL,
+  B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES, HUMAN_RAGDOLL,
 } from "./human.ts";
 import { aimBone, twoBone } from "./ik.ts";
 import { Solved, solve } from "./skeleton.ts";
+
+const seatBindings = new WeakMap<Float32Array, WeakMap<Float32Array, Float32Array>>();
+
+/** The hit rig supplies the spine and shoulder heights. The drawn rig supplies shoulder width and limb lengths. */
+export function passengerRest(rest: Float32Array, standard: Float32Array): Float32Array {
+  if (rest === standard) return rest;
+  let rigs = seatBindings.get(standard);
+  if (!rigs) seatBindings.set(standard, rigs = new WeakMap());
+  const cached = rigs.get(rest);
+  if (cached) return cached;
+  const fit = rest.slice();
+  for (let b = 1; b < HUMAN_BONES; b++) {
+    const p = HUMAN.parent[b]!;
+    const spine = b === B_SPINE || b === B_CHEST || b === B_UPPER_CHEST || b === B_NECK || b === B_HEAD;
+    const shoulder = b === B_SHOULDER_L || b === B_SHOULDER_R || b === B_UPPER_ARM_L || b === B_UPPER_ARM_R;
+    for (let k = 0; k < 3; k++) {
+      const source = spine || (shoulder && k !== 0) ? standard : rest;
+      fit[b * 3 + k] = fit[p * 3 + k]! + (source[b * 3 + k]! - source[p * 3 + k]!);
+    }
+  }
+  rigs.set(rest, fit);
+  return fit;
+}
 
 /** The head's top stays this far under the roof. */
 export const HEAD_MARGIN = .02;
@@ -53,7 +76,7 @@ const turn = new Float64Array(4), axis = new Float64Array(3), point = new Float6
 const standardSolved = new Solved(HUMAN_BONES);
 /** The standard body's head middle from its hips, then the drawn body's. */
 const pin = new Float64Array(6);
-const targets = new Float64Array(6), ends = new Float64Array(8), reached = new Float64Array(12), hands = new Float64Array(14);
+const elbows = new Float64Array(6), targets = new Float64Array(6), ends = new Float64Array(8), reached = new Float64Array(12), hands = new Float64Array(14);
 /** The spine, chest, upper chest, neck and head joints, then the head capsule's two ends: as solved, and turned. */
 const chain = new Float64Array(21), moved = new Float64Array(21);
 
@@ -255,7 +278,7 @@ function placeFeet(pose: Pose, solved: Solved, rest: Float32Array, scale: Float3
  * Reaches each chain of a pair for its target in `targets` (NaN for none): its middle joint bends the way it does now,
  * and its end keeps the model turn in `ends`. Bones keep their lengths.
  */
-function reachChains(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, chains: readonly Chain[], foldCos: number): void {
+function reachChains(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, chains: readonly Chain[], foldCos: number, poles?: Float64Array): void {
   for (let side = 0; side < 2; side++) {
     if (Number.isNaN(targets[side * 3]!)) continue;
     const [upper, lower, end] = chains[side]!, at = side * 6;
@@ -263,7 +286,9 @@ function reachChains(pose: Pose, solved: Solved, rest: Float32Array, scale: Floa
     const kx = solved.pos[lower * 3]! - hx, ky = solved.pos[lower * 3 + 1]! - hy, kz = solved.pos[lower * 3 + 2]! - hz;
     const ex = solved.pos[end * 3]! - hx - kx, ey = solved.pos[end * 3 + 1]! - hy - ky, ez = solved.pos[end * 3 + 2]! - hz - kz;
     const a = Math.sqrt(kx * kx + ky * ky + kz * kz), b = Math.sqrt(ex * ex + ey * ey + ez * ez);
-    if (twoBone(reached, at, hx, hy, hz, targets[side * 3]!, targets[side * 3 + 1]!, targets[side * 3 + 2]!, a, b, kx, ky, kz, .002, 1, foldCos) < 0) { targets[side * 3] = NaN; continue; }
+    const p = side * 3;
+    const px = poles ? poles[p]! - hx : kx, py = poles ? poles[p + 1]! - hy : ky, pz = poles ? poles[p + 2]! - hz : kz;
+    if (twoBone(reached, at, hx, hy, hz, targets[side * 3]!, targets[side * 3 + 1]!, targets[side * 3 + 2]!, a, b, px, py, pz, .002, 1, foldCos) < 0) { targets[side * 3] = NaN; continue; }
     aimBone(HUMAN, pose, solved, upper, kx, ky, kz, reached[at + 3]! - hx, reached[at + 4]! - hy, reached[at + 5]! - hz);
   }
   solve(HUMAN, pose, solved, rest, scale);
@@ -312,14 +337,16 @@ export function fitSeated(pose: Pose, solved: Solved, rest: Float32Array, scale:
     solve(HUMAN, pose, standardSolved, standard, null);
     headFit(standardSolved, UNIT, room);
   }
-  const { recline, level } = seatFit;
+  const { recline, level, drop: standardDrop } = seatFit;
+  const matchHands = !own && !seat.driver;
   // A body drawn with other proportions always moves, to put its head on the standard one's.
   const turned = recline !== 0 || seatFit.drop !== 0 || !own;
   if (turned) {
     // The hands as the pose put them, before the lean moves them.
+    const from = matchHands ? standardSolved : solved;
     for (let side = 0; side < 2; side++) {
       const hand = ARMS[side]![2];
-      for (let k = 0; k < 3; k++) hands[side * 3 + k] = solved.pos[hand * 3 + k]!;
+      for (let k = 0; k < 3; k++) hands[side * 3 + k] = from.pos[hand * 3 + k]! + (solved.pos[k]! - from.pos[k]!);
       quatCopy(hands, 6 + side * 4, solved.rot, hand * 4);
     }
     lean(pose, solved, recline, level);
@@ -346,12 +373,24 @@ export function fitSeated(pose: Pose, solved: Solved, rest: Float32Array, scale:
   } else if (legs) for (let side = 0; side < 2; side++) for (let k = 0; k < 3; k++) quatCopy(pose.rot, LEGS[side]![k]! * 4, legs, side * 12 + k * 4);
   solve(HUMAN, pose, solved, rest, scale);
   if (turned) {
-    // A driver's hands stay put in the seat as the hips move under them.
-    for (let side = 0; side < 2 && seat.driver; side++) {
-      hands[side * 3] -= aside; hands[side * 3 + 1] += drop; hands[side * 3 + 2] -= ahead;
+    // A passenger's wrist and elbow reach for the hit rig's pose relative to the face.
+    for (let side = 0; side < 2; side++) {
+      const at = side * 3;
+      if (seat.driver || matchHands) {
+        hands[at] -= aside;
+        hands[at + 1] += matchHands ? drop - standardDrop : drop;
+        hands[at + 2] -= ahead;
+      }
+      if (matchHands) {
+        const b = ARMS[side]![1];
+        for (let k = 0; k < 3; k++) elbows[at + k] = standardSolved.pos[b * 3 + k]! - standardSolved.pos[k]! + solved.pos[k]!;
+        elbows[at] -= aside;
+        elbows[at + 1] += drop - standardDrop;
+        elbows[at + 2] -= ahead;
+      }
     }
     targets.set(hands.subarray(0, 6)); ends.set(hands.subarray(6));
-    reachChains(pose, solved, rest, scale, ARMS, ELBOW_COS);
+    reachChains(pose, solved, rest, scale, ARMS, ELBOW_COS, matchHands ? elbows : undefined);
   }
   if (!own) seatFit.head = Math.max(0, HEAD_MARGIN - headClearance(solved, scale, room, drop, aside, ahead));
   for (const [, , foot] of LEGS) seatFit.feet = Math.max(seatFit.feet, -footClearance(solved, scale, foot, room, drop, aside, ahead));

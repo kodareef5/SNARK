@@ -3,12 +3,12 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { Characters, type VehicleSeatPose } from "../../client/core/render/characters.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_FOOT_R, B_PROP_L, B_PROP_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
-import { B_HEAD, ZONE_HEAD } from "../../shared/anim/human.ts";
+import { B_HAND_L, B_HEAD, B_LOWER_ARM_L, B_UPPER_ARM_L, ZONE_HEAD } from "../../shared/anim/human.ts";
 import { defaultLook, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
 import { createOccupantSeat, OccupantBody, occupantSeat, poseSeated, seatOrigin } from "../../shared/anim/occupant.ts";
 import { AnimState, HumanAnim, PITCH_STEPS } from "../../shared/anim/pose.ts";
 import { footClearance, HEAD_MARGIN, headClearance, HIPS_DROP, RECLINE_MOST, seatFit } from "../../shared/anim/seat-fit.ts";
-import { boneToModel, rayZones, Solved } from "../../shared/anim/skeleton.ts";
+import { boneToModel, rayCapsule, rayZones, Solved } from "../../shared/anim/skeleton.ts";
 import { quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
 import { Rng } from "../../shared/rng.ts";
 import { vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
@@ -123,16 +123,58 @@ test("a seated look's drawn head sits on the head that is shot, under its roof",
   expect(tried).toBeGreaterThan(1000);
 });
 
-test("a ray through a seated drawn head's middle picks the zone on the server it picks drawn", () => {
+test("a seated passenger keeps its own arm lengths when it aims", () => {
+  const { def, seat } = enclosed().find(e => !e.seat.driver)!;
+  const sp = seated(def, seat, frame.yaw + Math.PI / 3);
+  const lengths = new Map<string, number>();
+  for (const body of bodies) {
+    const { solved } = drawnSeated(sp, state(holds[2]!), body.rest, body.scale);
+    let reach = 0;
+    for (const [parent, child] of [[B_UPPER_ARM_L, B_LOWER_ARM_L], [B_LOWER_ARM_L, B_HAND_L]] as const) {
+      const distance = Math.hypot(...[0, 1, 2].map(k => solved.pos[child * 3 + k]! - solved.pos[parent * 3 + k]!));
+      const authored = Math.hypot(...[0, 1, 2].map(k => (body.rest[child * 3 + k]! - body.rest[parent * 3 + k]!) * (body.scale?.[parent * 3 + k] ?? 1)));
+      expect(distance, body.name).toBeCloseTo(authored, 6);
+      reach += distance;
+    }
+    lengths.set(body.name, reach);
+  }
+  for (const rig of ["human_f", "human_m"]) expect(lengths.get(rig + " largest")!).toBeGreaterThan(lengths.get(rig + " smallest")! * 1.1);
+});
+
+const boneOrigin = new Float64Array(3), boneDirection = new Float64Array(3);
+
+/** Intersect each drawn capsule in its own unstretched space, then compare distances in world metres. */
+function drawnZone(solved: Solved, scale: Float32Array | null, origin: Float64Array, direction: Float64Array): number {
+  if (!scale) return rayZones(HUMAN, solved, origin[0]!, origin[1]!, origin[2]!, direction[0]!, direction[1]!, direction[2]!, 10);
+  let nearest = 10, zone = 0;
+  for (let b = 0; b < HUMAN.zoneBones; b++) {
+    if (!HUMAN.zone[b]) continue;
+    const i = b * 3, a = HUMAN.capA, end = HUMAN.capB;
+    quatUnrotate(solved.rot, b * 4, origin[0]! - solved.pos[i]!, origin[1]! - solved.pos[i + 1]!, origin[2]! - solved.pos[i + 2]!, boneOrigin, 0);
+    quatUnrotate(solved.rot, b * 4, direction[0]!, direction[1]!, direction[2]!, boneDirection, 0);
+    for (let k = 0; k < 3; k++) {
+      boneOrigin[k] = boneOrigin[k]! / scale[i + k]!;
+      boneDirection[k] = boneDirection[k]! / scale[i + k]!;
+    }
+    const dx = boneDirection[0]!, dy = boneDirection[1]!, dz = boneDirection[2]!;
+    const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const distance = rayCapsule(boneOrigin[0]!, boneOrigin[1]!, boneOrigin[2]!, dx / length, dy / length, dz / length,
+      a[i]!, a[i + 1]!, a[i + 2]!, end[i]!, end[i + 1]!, end[i + 2]!, HUMAN.capR[b]!) / length;
+    if (distance >= 0 && distance < nearest) { nearest = distance; zone = HUMAN.zone[b]!; }
+  }
+  return zone;
+}
+
+test("shots through a seated face agree across looks from the side and diagonally", () => {
   /** Side rays through the drawn head within `share` of its reach: how many the drawn body and the server differ on, head or not. */
-  const differ = (def: VehicleDefinition, seat: Seat, body: (typeof looks)[number], gaze: number, pitch: number, action: number, share: number): { rays: number; differ: number; lost: number } => {
+  const differ = (def: VehicleDefinition, seat: Seat, body: (typeof looks)[number], gaze: number, pitch: number, action: number, share: number, angle = 0): { rays: number; differ: number; lost: number } => {
     const sp = seated(def, seat, frame.yaw + gaze), st = state(action);
     st.pitch = Math.round((pitch / 90) * PITCH_STEPS);
     server.vehicle(anim, st, 30, sp, judged);
     const drawn = drawnSeated(sp, st, body.rest, body.scale), c = world(middle(drawn.solved, body.scale), drawn.rotation, drawn.origin);
     const s = (a: number): number => (body.scale ? body.scale[B_HEAD * 3 + a]! : 1), r = HUMAN.capR[B_HEAD]! * Math.max(s(0), s(1), s(2)) * share;
     const axis = (x: number, y: number, z: number): number[] => { const o = new Float64Array(3); quatRotate(drawn.rotation, 0, x, y, z, o, 0); return [...o]; };
-    const across = axis(1, 0, 0), up = axis(0, 1, 0), fore = axis(0, 0, 1), local = new Float64Array(3), dir = new Float64Array(3);
+    const across = axis(Math.cos(angle), 0, Math.sin(angle)), up = axis(0, 1, 0), fore = axis(-Math.sin(angle), 0, Math.cos(angle)), local = new Float64Array(3), dir = new Float64Array(3);
     let rays = 0, count = 0, lost = 0;
     for (const way of [1, -1]) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
       if (a * a + b * b > 4) continue;
@@ -141,7 +183,7 @@ test("a ray through a seated drawn head's middle picks the zone on the server it
       const atServer = server.ray(p[0]!, p[1]!, p[2]!, d[0]!, d[1]!, d[2]!, 10);
       quatUnrotate(drawn.rotation, 0, p[0]! - drawn.origin[0]!, p[1]! - drawn.origin[1]!, p[2]! - drawn.origin[2]!, local, 0);
       quatUnrotate(drawn.rotation, 0, d[0]!, d[1]!, d[2]!, dir, 0);
-      const atDrawn = rayZones(HUMAN, drawn.solved, local[0]!, local[1]!, local[2]!, dir[0]!, dir[1]!, dir[2]!, 10);
+      const atDrawn = drawnZone(drawn.solved, body.scale, local, dir);
       rays++;
       if ((atDrawn === ZONE_HEAD) !== (atServer === ZONE_HEAD)) count++;
       if (atDrawn === ZONE_HEAD && atServer !== ZONE_HEAD) lost++;
@@ -161,18 +203,17 @@ test("a ray through a seated drawn head's middle picks the zone on the server it
     const got = differ(berlinetta.def, berlinetta.seat, smallest, (gaze * Math.PI) / 180, 0, 0, 0.3);
     expect(got.lost).toBe(0);
   }
-  // Over every seat, look, gaze, look up or down and hold: none for the hit body's own look. For others, an arm raised
-  // to aim crosses the face where its own arms put it.
-  let rays = 0, count = 0, lost = 0;
-  for (const { def, seat } of enclosed()) for (const body of looks) for (const gaze of gazes) for (const pitch of [-60, 0, 60]) for (const action of holds) {
-    const got = differ(def, seat, body, gaze, pitch, action, 0.3);
-    if (body.name === "human_m default") expect(got.differ, `${def.id} ${seat.id} ${gaze} ${pitch} ${action}`).toBe(0);
-    rays += got.rays; count += got.differ; lost += got.lost;
+  for (const angle of [0, Math.PI / 4]) {
+    let rays = 0, count = 0, lost = 0;
+    for (const { def, seat } of enclosed()) for (const body of looks) for (const gaze of gazes) for (const pitch of [-60, 0, 60]) for (const action of holds) {
+      const got = differ(def, seat, body, gaze, pitch, action, 0.3, angle);
+      if (body.name === "human_m default") expect(got.differ, `${def.id} ${seat.id} ${gaze} ${pitch} ${action}`).toBe(0);
+      rays += got.rays; count += got.differ; lost += got.lost;
+    }
+    expect(rays).toBeGreaterThan(600000);
+    expect(count / rays).toBeLessThan(0.011);
+    expect(lost / rays).toBeLessThan(angle === 0 ? 0.002 : 0.0032);
   }
-  expect(rays).toBeGreaterThan(300000);
-  expect(count / rays).toBeLessThan(0.02);
-  // A head shot through what is drawn lost on the server: rarer still.
-  expect(lost / rays).toBeLessThan(0.01);
 });
 
 test("Zephyr and Veloce seats fit a default body under the roof and on the floor", () => {

@@ -13,7 +13,7 @@ import { createMountMotion, mountOrigin, mountPose, type MountMotionProfile } fr
 import { AnimState, humanPose, PITCH_STEPS, type HumanAnim } from "./pose.ts";
 import { fitRiderControls } from "./rider-controls.ts";
 import { fitSeatControls } from "./seat-controls.ts";
-import { fitSeated, seatFit } from "./seat-fit.ts";
+import { fitSeated, passengerRest, seatFit } from "./seat-fit.ts";
 import { SEAT_DROP, SEAT_FLOATS } from "./seat.ts";
 import { boneToModel, rayZones, Solved, solve } from "./skeleton.ts";
 
@@ -57,6 +57,7 @@ export function poseSeated(anim: HumanAnim, st: AnimState, tick: number, seat: O
   pose: Pose, solved: Solved, profile: MountMotionProfile = motion, perturb?: (pose: Pose, solved: Solved) => void, standard: Float32Array = rest): number {
   occupantPose(anim, st, tick, pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver, profile);
   perturb?.(pose, solved);
+  if (seat.definition?.room && !seat.driver) rest = passengerRest(rest, standard);
   solve(HUMAN, pose, solved, rest, scale);
   if (!seat.definition) return 0;
   const drop = fitSeated(pose, solved, rest, scale, seat.definition, standard);
