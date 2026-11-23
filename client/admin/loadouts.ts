@@ -66,6 +66,8 @@ function draw(): void {
   if (!wire || !draft || !known) return;
   due = false;
   if (!draft.loadouts.some((l) => l.id === S.selected)) S.selected = draft.loadouts[0]?.id ?? "";
+  // The loadout shown is in the address, so it can be linked to.
+  if (location.hash !== `#${S.selected}`) history.replaceState(null, "", `#${S.selected}`);
   $("world").textContent = `revision ${wire.revision}${wire.builtin ? ", the built-in loadouts" : ""}${wire.kept ? "" : " · this world has no save, so an edit lasts until it stops"}`;
   // What is typed in the note, and the field in hand, outlive the drawing.
   const note = (document.getElementById("note") as HTMLInputElement | null)?.value ?? "";
@@ -253,5 +255,6 @@ async function people(): Promise<void> {
 addEventListener("beforeunload", (e) => {
   if (S.wire && S.draft && differs(S.wire.book, S.draft).length > 0) e.preventDefault();
 });
+S.selected = decodeURIComponent(location.hash.slice(1));
 start().then(people).catch(failed);
 setInterval(() => void people().catch(() => {}), 10000);

@@ -25,7 +25,7 @@
       input[type=checkbox] { width: 18px; height: 18px; margin: 2px 0; padding: 0; accent-color: var(--ice); vertical-align: middle; }
       input.wrong, select.wrong { border-color: var(--bad); }
       input.odd, select.odd { border-color: var(--warn); }
-      .page { max-width: 1380px; margin: 0 auto; padding: 14px 16px 40px; display: grid; gap: 12px; }
+      .page { max-width: 1480px; margin: 0 auto; padding: 14px 16px 40px; display: grid; gap: 12px; }
       header { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
       header nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
       .glass { background: rgba(20, 36, 56, 0.78); border: 1px solid var(--edge); padding: 12px 14px; min-width: 0; }
@@ -50,10 +50,12 @@
       th { text-align: left; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); padding: 4px 6px; }
       td { padding: 3px 6px; border-top: 1px solid rgba(168, 204, 234, 0.08); vertical-align: middle; white-space: nowrap; }
       td.n { text-align: right; width: 2em; }
-      td input[data-field=item], td input[data-field=tame] { width: 15em; margin-right: 8px; }
-      td input[type=number] { width: 5.5em; }
+      td input[data-field=item], td input[data-field=tame] { width: 14em; display: block; }
+      td input + .dim { display: block; font-size: 12px; }
+      td input[type=number] { width: 5em; }
+      td select { max-width: 11em; }
       tr.said td { border-top: none; padding-top: 0; font-size: 13px; white-space: normal; }
-      .tools { text-align: right; } .tools button { margin-left: 3px; padding: 1px 8px; }
+      .tools { text-align: right; } .tools button { margin-left: 3px; padding: 1px 7px; }
       .hand { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--edge); }
       .dim { color: var(--dim); } .faint { color: var(--faint); } .warn { color: var(--warn); } .bad { color: var(--bad); } .well { color: var(--well); }
       [hidden] { display: none !important; }
