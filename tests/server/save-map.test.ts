@@ -9,7 +9,7 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { listBackups, restoreBackup } from "../../server/persist/backup.ts";
 import { SCHEMA_VERSION, WorldStore } from "../../server/persist/store.ts";
 import type { ServerWorld } from "../../server/world.ts";
-import { S_FAR } from "../../shared/net/protocol.ts";
+import { S_FAR, S_GONE } from "../../shared/net/protocol.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { Found, GONE_DESTROYED, type StructureStore } from "../../shared/world/structures.ts";
@@ -158,8 +158,9 @@ for (let cx = 1; cx < 40; cx++) for (let i = 0; i < 3; i++) towers.push({ kind: 
 const CITY = writeMap({ id: "test:towers", dims: DIMS, minY: -32, stepY: 1 / 256, seaLevel: -Infinity, heights: new Uint16Array(SAMPLES).fill(32 * 256), tint: new Uint8Array(SAMPLES).fill(1), statics: towers, nodes: [], spawns: [{ name: "West", x: 100, z: 100, yaw: 0 }] });
 
 /**
- * Each S_FAR message, in order, sent in four seconds to a session that holds the statics and to one that does not. Someone is
- * there a second and a half before they join: the map's chunks are baked again only while a session is connected.
+ * Each message of the far feed, cells and lists of pieces gone, in order, sent in four seconds to a session that holds the
+ * statics and to one that does not. Someone is there a second and a half before they join: the map's chunks are baked again
+ * only while a session is connected.
  */
 function feed(h: Harness): Uint8Array[][] {
   h.join("cy");
@@ -171,13 +172,13 @@ function feed(h: Harness): Uint8Array[][] {
     const end = h.ends[h.sessions.indexOf(s)]!;
     const read = end.onMessage!;
     end.onMessage = (channel, data) => {
-      if (data[0] === S_FAR) got[i]!.push(data.slice());
+      if (data[0] === S_FAR || data[0] === S_GONE) got[i]!.push(data.slice());
       read(channel, data);
     };
   });
   h.run(4000, () => {
-    a.askFar(2048);
-    b.askFar(2048);
+    a.askFar(2048, 2048);
+    b.askFar(2048, 2048);
   });
   return got;
 }
@@ -192,8 +193,8 @@ test("a join after a restart is sent the far feed's bytes a fresh world sends, a
   const fresh = new Harness({}, 1, 60, { map: CITY });
   change(fresh.world);
   const want = feed(fresh);
-  // Ada is sent the two chunks changed and nothing of the other 31 in reach. Bob is sent every tower standing in reach.
-  expect([want[0]!.length, want[1]!.length]).toEqual([2, 32]);
+  // Ada is sent the lists of the two chunks changed, no cells, and nothing of the other 31 in reach. Bob is sent the cells of every tower standing in reach.
+  expect([want[0]!.map((m) => m[0]), want[0]!.reduce((n, m) => n + m.length, 0), want[1]!.length, want[1]!.every((m) => m[0] === S_FAR)]).toEqual([[S_GONE, S_GONE], 12, 32, true]);
 
   const db = join(dir, "towers.db");
   const first = new Harness({}, 1, 60, { map: CITY, dbPath: db });

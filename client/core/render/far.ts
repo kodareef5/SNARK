@@ -12,6 +12,7 @@ import { REGION_BASE, nearestColour } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres, pieceShapes, type FarCells } from "../../../shared/world/tactical.ts";
 import type { FarStore } from "../farcells.ts";
+import type { GoneStore } from "../gonelists.ts";
 import type { Camera } from "./camera.ts";
 import { columnFaces, type Columns } from "./blocks.ts";
 import { FADE_ORDER } from "./hand.ts";
@@ -64,9 +65,13 @@ export function fadeKeeps(dist: number, gone: number, share: number, x: number, 
   return (g - dist) * 16 > (FADE_ORDER[(y & 3) * 4 + (x & 3)]! + 0.5) * g * share === gone > 0;
 }
 
-/** What the scene draws far bases from: the far feed's cells, and which chunks the near store holds whole. */
+/**
+ * What the scene draws far bases from: the far feed's cells, and which chunks the near store holds whole. `lists` are the
+ * map's own pieces gone, which the far city leaves out.
+ */
 export interface FarSource {
   readonly cells: FarStore;
+  readonly lists?: GoneStore;
   /** Whether the near store holds `chunk` whole: its last row has come since it was last dropped. */
   complete(chunk: number): boolean;
 }

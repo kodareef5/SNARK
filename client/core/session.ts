@@ -141,6 +141,7 @@ import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
+import { GoneStore } from "./gonelists.ts";
 import type { FarSource } from "./render/far.ts";
 import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
@@ -568,6 +569,8 @@ export class ClientSession {
   sightZero = 0;
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
   readonly far = new FarStore();
+  /** Which of the map's own pieces no longer stand in the chunks within the reach `askFar` names for them. */
+  readonly gone = new GoneStore();
   /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
   private whole = new Uint8Array(0);
   /** The map's statics, come after the session began (staticsArrived). */
@@ -724,6 +727,7 @@ export class ClientSession {
   private viewBytes = 0;
   private viewSeq = 0;
   private farAsked = -1;
+  private goneAsked = -1;
   private farSeq = 0;
   private askAt = -Infinity;
 
@@ -794,13 +798,18 @@ export class ClientSession {
     this.viewSeq = seq;
   }
 
-  /** Asks for far cells within `metres`. Sent when it changes, and again when the server was too busy to take it. The server holds it to its FarRadius. */
-  askFar(metres: number): void {
+  /**
+   * Asks for far cells within `metres`, and for the lists of the map's pieces gone within `lists`. Sent when either changes,
+   * and again when the server was too busy to take it. The server holds them to its FarRadius and GoneRadius.
+   */
+  askFar(metres: number, lists = 0): void {
     const m = Math.max(0, Math.min(0xffff, Math.round(metres)));
-    if (m === this.farAsked || this.lastNow < this.askAt) return;
-    const seq = this.command(CMD_FAR, (w) => w.u16(m));
+    const g = Math.max(0, Math.min(0xffff, Math.round(lists)));
+    if ((m === this.farAsked && g === this.goneAsked) || this.lastNow < this.askAt) return;
+    const seq = this.command(CMD_FAR, (w) => (w.u16(m), w.u16(g)));
     if (seq === 0) return;
     this.farAsked = m;
+    this.goneAsked = g;
     this.farSeq = seq;
   }
 
@@ -2016,7 +2025,7 @@ export class ClientSession {
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
-    const far: FarSource = { cells: this.far, complete: (chunk) => this.whole[chunk] === 1 };
+    const far: FarSource = { cells: this.far, lists: this.gone, complete: (chunk) => this.whole[chunk] === 1 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges!, city: () => this.world?.city?.statics ?? this.nodeCity(), ground: hf } } : {};

@@ -5,7 +5,8 @@ import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
-import { CMD_FAR, CMD_MAP_ZOOM, CMD_VIEW, S_FAR } from "../../shared/net/protocol.ts";
+import { CMD_FAR, CMD_MAP_ZOOM, CMD_VIEW, S_FAR, S_GONE } from "../../shared/net/protocol.ts";
+import { GoneList, readGone } from "../../shared/world/gone.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { parseMap, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { FarCells, farTopMetres, readFar } from "../../shared/world/tactical.ts";
@@ -29,13 +30,13 @@ function wide(map = WIDE) {
     for (let i = 0; i < 5; i++) refs.push(world.structs.add(k("pillar"), x + 10, 3.3 + i * 6, z + 2, 0, team, 100));
     return refs;
   };
-  /** Every S_FAR message `s` is sent from here on. */
-  const tap = (s: ClientSession): Uint8Array[] => {
+  /** Every S_FAR message `s` is sent from here on, or every message of another `kind`. */
+  const tap = (s: ClientSession, kind = S_FAR): Uint8Array[] => {
     const got: Uint8Array[] = [];
     const end = h.ends[h.sessions.indexOf(s)]!;
     const read = end.onMessage!;
     end.onMessage = (channel, data) => {
-      if (data[0] === S_FAR) got.push(data.slice());
+      if (data[0] === kind) got.push(data.slice());
       read(channel, data);
     };
     return got;
@@ -171,7 +172,7 @@ test("on one stream as Linux runs it, 400 base chunks in reach hold a join's nea
   expect(r.farBytes).toBeLessThanOrEqual(7 * 8192);
 });
 
-test("a session that holds the map's statics is sent no far cells of chunks as the map placed them, and a chunk's from the moment it changes, emptied too; one that does not is sent them all", () => {
+test("a session that holds the map is sent lists of pieces gone and no cells; one that does not, cells", () => {
   // A tower of three pillars in each chunk of the map's second row from 64 m to 2.5 km east.
   const towers: MapStatic[] = [];
   for (let cx = 1; cx < 40; cx++) for (let i = 0; i < 3; i++) towers.push({ kind: "core:pillar", x: cx * 64 + 20, y: 3.3 + i * 6, z: 96, yaw: 0 });
@@ -179,40 +180,124 @@ test("a session that holds the map's statics is sent no far cells of chunks as t
   const { h, world, tap } = wide(city);
   const a = h.join("ada");
   const b = h.join("bob", {}, { statics: false });
-  const [sa, sb] = [tap(a), tap(b)];
+  const [sa, sb, ga, gb] = [tap(a), tap(b), tap(a, S_GONE), tap(b, S_GONE)];
   const run = (ms: number): void =>
     h.run(ms, () => {
-      a.askFar(2048);
-      b.askFar(2048);
+      a.askFar(2048, 8192);
+      b.askFar(2048, 8192);
     });
   const chunkOf = (cx: number): number => DIMS.chunksX + cx;
   const inReach = [...Array(39).keys()].map((i) => i + 1).filter((cx) => Math.hypot(cx * 64 + 32 - 100, 96 - 100) <= 2048);
   run(4000);
   const bytes = (m: Uint8Array[]): number => m.reduce((n, d) => n + d.length, 0);
   // The join costs Ada's far feed nothing. Bob is sent every tower in reach, 33 of them, 9 bytes each.
-  expect([sa.length, bytes(sa), sb.length, inReach.length, bytes(sb)]).toEqual([0, 0, inReach.length, 33, 297]);
-  // The top of the tower 1 km off is shot away: each is sent that chunk once, Ada its cells for the first time.
+  expect([sa.length, ga.length, sb.length, inReach.length, bytes(sb)]).toEqual([0, 0, inReach.length, 33, 297]);
+  // The top of the tower 1 km off is shot away: Ada is sent its list, six bytes, and no cells. Bob is sent its cells.
   const shot = chunkOf(16);
-  expect(world.structs.asPlaced(shot)).toBe(true);
   world.structs.remove(shot * 65536 + 2);
-  expect(world.structs.asPlaced(shot)).toBe(false);
   run(3000);
   const chunksOf = (m: Uint8Array[]): number[] => m.map((d) => readFar(new BitReader(d.subarray(1)), new FarCells()));
-  expect([chunksOf(sa), chunksOf(sb.slice(inReach.length))]).toEqual([[shot], [shot]]);
-  expect(Math.abs(farTopMetres(a.far.cellAt(16 * 64 + 20, 96) & 255) - 9.3 - 3)).toBeLessThanOrEqual(0.5);
-  // The tower beside it is taken down whole: Ada, who was sent none of it, is sent it empty, and her far store hears of it.
+  const listsOf = (m: Uint8Array[]): [number, number[]][] =>
+    m.map((d) => {
+      const list = new GoneList();
+      return [readGone(new BitReader(d.subarray(1)), list), [...list.slots]];
+    });
+  expect([listsOf(ga), bytes(ga), sa.length, chunksOf(sb.slice(inReach.length))]).toEqual([[[shot, [2]]], 6, 0, [shot]]);
+  expect([...a.gone.lists.get(shot)!]).toEqual([2]);
+  // The tower beside it is taken down whole: its list is one run. Bob, who holds its cells, is sent it empty.
   const razed = chunkOf(17);
   for (let s = 0; s < 3; s++) world.structs.remove(razed * 65536 + s);
   run(3000);
-  expect([chunksOf(sa), a.far.chunks.has(razed), a.far.changed[razed]! > 0]).toEqual([[shot, razed], false, true]);
+  expect([listsOf(ga), sa.length, bytes(ga)]).toEqual([[[shot, [2]], [razed, [0, 1, 2]]], 0, 12]);
   expect(chunksOf(sb.slice(inReach.length))).toEqual([shot, razed]);
-  // The top shot away is set back as the map has it. The chunk stands as placed again, and Ada, who holds it changed, is sent it standing.
+  // A tower hurt and not felled sends nobody anything: no list, and no cells, since none changed.
+  const hurt = chunkOf(18);
+  expect(world.structs.damage(hurt * 65536 + 1, 10)).toBeGreaterThan(0);
+  expect(world.structs.asPlaced(hurt)).toBe(false);
+  run(8000);
+  expect([ga.length, sa.length, sb.length - inReach.length]).toEqual([2, 0, 2]);
+  // The top shot away is set back as the map has it. Ada, who holds it gone, is sent an empty list and holds it standing.
   const t = world.structs.chunks[shot]!;
   const pillar = world.structs.mapKind(shot, 2);
   world.structs.putMapped(shot, 2, pillar, 0, h.reg.maxHp[pillar]!, t.version + 1);
   world.structs.setVersion(shot, t.version + 1);
   expect(world.structs.asPlaced(shot)).toBe(true);
   run(8000);
-  expect(chunksOf(sa)).toEqual([shot, razed, shot]);
-  expect(Math.abs(farTopMetres(a.far.cellAt(16 * 64 + 20, 96) & 255) - 15.3 - 3)).toBeLessThanOrEqual(0.5);
+  expect([listsOf(ga).slice(2), ga[2]!.length, sa.length, gb.length]).toEqual([[[shot, []]], 6, 0, 0]);
+  expect(a.gone.lists.get(shot)!.length).toBe(0);
+  expect(chunksOf(sb.slice(inReach.length))).toEqual([shot, razed, shot]);
+});
+
+test("the lists reach as far as GoneRadius and what the session asks, past the far cells' reach", () => {
+  const towers: MapStatic[] = [];
+  for (const cx of [20, 50, 100]) for (let i = 0; i < 3; i++) towers.push({ kind: "core:pillar", x: cx * 64 + 20, y: 3.3 + i * 6, z: 96, yaw: 0 });
+  const { h, world, tap } = wide(writeMap({ ...parseMap(WIDE), id: "test:wide-three", statics: towers }));
+  const a = h.join("ada");
+  const got = tap(a, S_GONE);
+  const chunkOf = (cx: number): number => DIMS.chunksX + cx;
+  // Towers 1.2, 3.1 and 6.3 km off each lose their top. Asking for 4 km brings the first two.
+  for (const cx of [20, 50, 100]) world.structs.remove(chunkOf(cx) * 65536 + 2);
+  h.run(3000, () => a.askFar(2048, 4000));
+  expect([...a.gone.lists.keys()].sort((p, q) => p - q)).toEqual([chunkOf(20), chunkOf(50)]);
+  // Asking for all of it brings the third, and a server that sends none within 2 km stops there.
+  h.run(3000, () => a.askFar(2048, 16000));
+  expect(a.gone.lists.has(chunkOf(100))).toBe(true);
+  expect(h.host.setSetting("GoneRadius", "2000")).toBe("");
+  world.structs.remove(chunkOf(20) * 65536 + 1);
+  world.structs.remove(chunkOf(50) * 65536 + 1);
+  h.run(3000, () => a.askFar(2048, 16000));
+  expect([[...a.gone.lists.get(chunkOf(20))!], [...a.gone.lists.get(chunkOf(50))!], got.length]).toEqual([[1, 2], [2], 4]);
+  expect(h.host.tactical.stats.gone).toBe(4);
+});
+
+test("a base built among the map's pieces sends a map holder the cells of the base alone", () => {
+  const towers: MapStatic[] = [];
+  for (let i = 0; i < 5; i++) towers.push({ kind: "core:pillar", x: 16 * 64 + 20, y: 3.3 + i * 6, z: 96, yaw: 0 });
+  const { h, world, k, tap } = wide(writeMap({ ...parseMap(WIDE), id: "test:wide-base", statics: towers }));
+  const chunk = DIMS.chunksX + 16;
+  const a = h.join("ada");
+  const b = h.join("bob", {}, { statics: false });
+  const [sa, sb, ga] = [tap(a), tap(b), tap(a, S_GONE)];
+  const run = (ms: number): void =>
+    h.run(ms, () => {
+      a.askFar(2048, 8192);
+      b.askFar(2048, 8192);
+    });
+  // A wall 8 m from the tower, in its chunk.
+  world.structs.add(k("wall_stone"), 16 * 64 + 28, 1.88, 96, 0, 7, 100);
+  run(7000);
+  const top = (s: ClientSession, x: number): number => farTopMetres(s.far.cellAt(x, 96) & 255);
+  // Bob's cells hold the tower and the wall. Ada's hold the wall alone, and say that they leave the map's pieces out.
+  expect([sa.length, sb.length, a.far.full[chunk], b.far.full[chunk]]).toEqual([1, 2, 0, 1]);
+  expect([top(a, 16 * 64 + 20), top(b, 16 * 64 + 20) > 25, top(a, 16 * 64 + 28) > 2, top(b, 16 * 64 + 28) > 2]).toEqual([0, true, true, true]);
+  // The tower's top falls: Ada's cells do not change, so she is sent its list alone. Bob's cells do.
+  world.structs.remove(chunk * 65536 + 4);
+  run(7000);
+  expect([sa.length, ga.length, sb.length]).toEqual([1, 1, 3]);
+  // The wall is taken down: both are sent the chunk's cells again, Ada's empty.
+  world.structs.remove(chunk * 65536 + 5);
+  run(7000);
+  expect([sa.length, ga.length, sb.length, a.far.chunks.has(chunk), b.far.chunks.has(chunk)]).toEqual([2, 1, 4, false, true]);
+});
+
+test("cells sent before the map's statics came are sent again without the map's pieces once they have", () => {
+  const towers: MapStatic[] = [];
+  for (const cx of [10, 16]) for (let i = 0; i < 5; i++) towers.push({ kind: "core:pillar", x: cx * 64 + 20, y: 3.3 + i * 6, z: 96, yaw: 0 });
+  const map = writeMap({ ...parseMap(WIDE), id: "test:wide-late", statics: towers });
+  const { h, world, k, tap } = wide(map);
+  const [bare, based] = [DIMS.chunksX + 10, DIMS.chunksX + 16];
+  world.structs.add(k("wall_stone"), 16 * 64 + 28, 1.88, 96, 0, 7, 100);
+  world.structs.remove(bare * 65536 + 4);
+  const a = h.join("ada", {}, { statics: false });
+  const [sa, ga] = [tap(a), tap(a, S_GONE)];
+  const run = (ms: number): void => h.run(ms, () => a.askFar(2048, 8192));
+  run(4000);
+  // Without the map she holds both chunks' cells whole, and no list.
+  expect([sa.length, ga.length, a.far.full[bare], a.far.full[based]]).toEqual([2, 0, 1, 1]);
+  a.staticsArrived(parseMap(map).statics);
+  run(4000);
+  // With it: the list of the tower that lost its top, then each chunk's cells again, one empty and one the wall alone.
+  expect([sa.length, ga.length, a.far.full[bare], a.far.full[based], a.far.chunks.has(bare), a.far.chunks.has(based)]).toEqual([4, 1, 0, 0, false, true]);
+  expect([...a.gone.lists.get(bare)!]).toEqual([4]);
+  expect(farTopMetres(a.far.cellAt(16 * 64 + 20, 96) & 255)).toBe(0);
 });

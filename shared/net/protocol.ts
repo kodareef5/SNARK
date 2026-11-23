@@ -223,7 +223,8 @@ export const S_TACTICAL = serverKind();
  */
 export const S_MARKS = serverKind();
 /**
- * Every tribe's structures beyond the view, to draw on the horizon (shared/world/tactical.ts). Reliable. chunk u16, then runs
+ * Every tribe's structures beyond the view, to draw on the horizon (shared/world/tactical.ts). Reliable. chunk u16, 1 bit
+ * set where the map's own pieces are left out (to a session that holds the map's statics and draws those itself), then runs
  * until its 256 cells of 4 m are covered, row by row: length-1 u8, filled 1 bit, and if filled: palette colour u8, top u8
  * (half metres above the ground at the cell's middle to 64 m, then 2 m steps to 318 m). No owner or team. A chunk is sent
  * whole, and an emptied one is sent empty. Protocol 9.
@@ -263,6 +264,14 @@ export const RESTART_GO = 0;
 export const RESTART_OFF = 0xffff;
 /** The longest a stop may be said ahead, in seconds: a day. */
 export const RESTART_MOST = 86400;
+/**
+ * Which of the map's own pieces no longer stand in one chunk, to a session that holds the map's statics, within GoneRadius
+ * and what it asked (shared/world/gone.ts). Reliable. chunk u16, the list's version varint, then 1 bit for its form. Runs
+ * (0): count varint, then per run the slots it starts past the last run's end varint, 1 bit for more than one slot, and if so
+ * its length less 2 varint. Bits (1): count varint, then a bit a slot from slot 0, set for one gone. A list with no slot
+ * says every piece of the chunk stands again.
+ */
+export const S_GONE = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -387,7 +396,10 @@ export const CMD_OPEN = command();
 export const CMD_VIEW = command();
 /** The finest map zoom the client is showing, 2 bits. Structure cells are sent at the size that suits it (S_TACTICAL). */
 export const CMD_MAP_ZOOM = command();
-/** Metres u16: how far off the client wants far cells (S_FAR). The server holds it to FarRadius and reads it once a second. 0, or never asking, is none. */
+/**
+ * Metres u16: how far off the client wants far cells (S_FAR), then metres u16: how far off it wants the lists of its map's
+ * pieces gone (S_GONE). The server holds them to FarRadius and GoneRadius and reads them once a second. 0, or never asking, is none.
+ */
 export const CMD_FAR = command();
 /**
  * Protocol 11. A creature in a survivor's arms: a CARRY_ action u8, and for CARRY_PICK_UP the creature's entity index u32.

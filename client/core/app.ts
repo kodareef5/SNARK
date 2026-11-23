@@ -827,7 +827,8 @@ export class App {
     scene.share = sceneShare(chosen, (tools ? tools.shareAsked : 0) || (RESOLUTIONS[this.ui.settings.resolution]?.share ?? 0), own);
     this.ui.settings.autoShare = sceneShare(chosen, 0, own);
     session.view(scene.assets.tier.view, this.ui.settings.snapshotBytes);
-    session.askFar(scene.assets.tier.reach.bases);
+    // The map's own city is drawn to the end of the view, as blocks past the far city, so that is how far its pieces gone are asked for.
+    session.askFar(scene.assets.tier.reach.bases, scene.assets.tier.reach.city > 0 ? scene.assets.tier.viewDistance : 0);
     session.holdNodes(scene.assets.tier.nodes.chunks);
     scene.characters.corpseMotions = session.corpseMotions;
     // Damage numbers are drawn with the world, where the server's rule and the reader's setting let them.

@@ -1,18 +1,21 @@
 // The server's part of the map. Each chunk's structures are baked to cells (shared/world/tactical.ts) and sent to the clients
 // that may see them, so a base shows far beyond the view without a piece of it being sent. Once a second each tribe's members
 // and creatures are sent to it as marks, wherever they are. The same bake keeps far cells, every tribe's alike and with no
-// owner, which are sent within FarRadius for drawing on the horizon and never reach the map. What each client holds is kept
-// here by client id.
+// owner, which are sent within FarRadius for drawing on the horizon and never reach the map. A client that holds the map's
+// statics draws the map's own pieces itself: it is sent the cells of what was built alone, and, within GoneRadius, which of
+// the map's pieces no longer stand in each chunk (shared/world/gone.ts), so damage alone sends it nothing. What each client
+// holds is kept here by client id.
 
 import { SPOTS_MOST } from "../shared/net/protocol.ts";
 import { CHUNK_SIZE, TICK_RATE, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitWriter } from "../shared/net/codec.ts";
-import { CMD_FAR, CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../shared/net/protocol.ts";
+import { CMD_FAR, CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_FAR, S_GONE, S_MARKS, S_TACTICAL } from "../shared/net/protocol.ts";
 import { CH_UNRELIABLE, type Connection } from "../shared/net/transport.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import type { MapExtent } from "../shared/world/coords.ts";
-import { MARK_MATE, MARK_OTHER, MARK_SPOT, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, pieceShapes, writeCells, writeFar, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
+import { NONE_GONE, goneSlots, writeGone } from "../shared/world/gone.ts";
+import { FarCells, MARK_MATE, MARK_OTHER, MARK_SPOT, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, pieceShapes, writeCells, writeFar, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -30,6 +33,7 @@ const CELL_BYTES = 1024;
 /**
  * Bytes of far cells sent to one client in a second: 2 KB of chunks it holds older, and 8 KB in all while some in its reach
  * it holds not at all. A second's go out over its ticks, a kilobyte or one message a tick, so they never come as one burst.
+ * The lists of pieces gone are counted in the 8 KB and the tick's kilobyte, and go before the cells.
  */
 const FAR_BYTES = 2048;
 const FAR_NEW_BYTES = 8192;
@@ -43,6 +47,9 @@ const MARK_BITS = 36;
 const HOW_LEVEL = 3;
 const HOW_FULL = 4;
 const HOW_NEAR = 8;
+/** Held.farSent of a chunk whose cells it was sent before it held the map's statics, which it is sent again without the map's pieces. */
+const FAR_WITH_MAP = 0xffffffff;
+const NO_CELLS = new FarCells();
 
 /** What one connection holds of the map. */
 class Held {
@@ -58,10 +65,21 @@ class Held {
   marksKey = 0;
   marksHead = -1;
   marksAt = 0;
-  /** Per chunk: the far version it was sent, 0 for none. What was sent is never taken back. */
+  /**
+   * Per chunk: the far version it was sent, 0 for none. What was sent is never taken back. While it holds the map's statics
+   * that is the version of the cells of what was built (Summary.builtVersion).
+   */
   readonly farSent: Uint32Array;
-  /** The metres of far cells it asked for. */
+  /** Whether it held the map's statics when last looked at. */
+  statics = false;
+  /** The metres of far cells it asked for, and of lists of pieces gone. */
   farAsk = 0;
+  goneAsk = 0;
+  /** Per chunk: the version of the list of pieces gone it was sent, 0 for none. */
+  readonly goneSent: Uint32Array;
+  /** The chunks whose lists are due this second, nearest first, and how many of them have been seen to. */
+  readonly goneDue: number[] = [];
+  goneNext = 0;
   /** The chunks due this second, nearest first, how many of them have been seen to, and the bytes sent of them, in all and of chunks it held older. */
   readonly farDue: number[] = [];
   farNext = 0;
@@ -72,6 +90,7 @@ class Held {
     this.sent = new Uint32Array(chunks);
     this.how = new Uint8Array(chunks);
     this.farSent = new Uint32Array(chunks);
+    this.goneSent = new Uint32Array(chunks);
   }
 }
 
@@ -109,16 +128,16 @@ class TeamMarks {
 export class Tactical {
   /**
    * Chunks baked, S_TACTICAL messages and bytes sent, S_MARKS messages and bytes sent, the marks left out of those
-   * messages because a tribe had more than one holds, and S_FAR messages and bytes sent.
+   * messages because a tribe had more than one holds, S_FAR messages and bytes sent, and S_GONE messages and bytes sent.
    */
-  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0, marksLeftOut: 0, far: 0, farBytes: 0 };
+  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0, marksLeftOut: 0, far: 0, farBytes: 0, gone: 0, goneBytes: 0 };
   /** Per chunk, or null for one that has never held a structure. */
   readonly summaries: (Summary | null)[];
 
   private readonly world: ServerWorld;
   private readonly game: GameServer;
   private readonly records: Records;
-  /** TacticalRadius, MapPlayers and FarRadius are read where they are used, so a change takes effect within a second. */
+  /** TacticalRadius, MapPlayers, FarRadius and GoneRadius are read where they are used, so a change takes effect within a second. */
   private readonly rules: Rules;
   private readonly shapes: PieceShapes;
   private readonly held: (Held | null)[];
@@ -168,6 +187,16 @@ export class Tactical {
   private readonly farChunks: number[] = [];
   /** Scratch: the chunks a session is due, as distance squared times 65536 plus the chunk, so they sort nearest first. */
   private farOrder = new Float64Array(256);
+  /**
+   * Per chunk: its map slots that no longer stand, ascending, or null while all stand; and a count of the changes to that
+   * list, 0 for a chunk that never had one. `goneChunks` are those that have had one, which are all the lists' sender looks at.
+   */
+  private readonly gone: (Uint16Array | null)[];
+  private readonly goneVersion: Uint32Array;
+  private readonly goneChunks: number[] = [];
+  /** The chunks a piece was set down in or taken from since their lists were last made, and a 1 for each. */
+  private readonly shaped: number[] = [];
+  private readonly isShaped: Uint8Array;
 
   /** Makes room for more sessions, when MaxPlayers is raised while the server runs. */
   seats(n: number): void {
@@ -194,9 +223,16 @@ export class Tactical {
     this.seen = new Uint32Array(chunks);
     this.bakedAt = new Uint32Array(chunks);
     this.queued = new Uint8Array(chunks);
+    this.gone = new Array<Uint16Array | null>(chunks).fill(null);
+    this.goneVersion = new Uint32Array(chunks);
+    this.isShaped = new Uint8Array(chunks);
     // What stands at the start is baked at once, so every tribe's chunks are known before anyone joins.
     this.sweep();
     while (this.queue.length > 0) this.bake(this.queue.pop()!, 0);
+    // A save's chunks are laid over the map before this is made: their lists are made once, and after that only a chunk the store says changed its form.
+    for (const chunk of world.structs.held) if (world.structs.chunks[chunk]!.changed > 0) this.shapedIn(chunk);
+    world.structs.onShape.push((chunk) => this.shapedIn(chunk));
+    this.settle();
     game.handle(CMD_MAP_ZOOM, (c, r) => {
       const zoom = r.bits(2);
       if (r.overflow) return RESULT_INVALID;
@@ -205,10 +241,37 @@ export class Tactical {
     });
     game.handle(CMD_FAR, (c, r) => {
       const metres = r.u16();
+      const lists = r.u16();
       if (r.overflow) return RESULT_INVALID;
-      this.ask(c, metres);
+      this.ask(c, metres, lists);
       return RESULT_OK;
     });
+  }
+
+  private shapedIn(chunk: number): void {
+    if (this.isShaped[chunk] === 1) return;
+    this.isShaped[chunk] = 1;
+    this.shaped.push(chunk);
+  }
+
+  /** Makes the list of pieces gone of each chunk whose form changed. A list's version moves only when the list does. */
+  private settle(): void {
+    const { reg, structs } = this.world;
+    for (const chunk of this.shaped) {
+      this.isShaped[chunk] = 0;
+      const was = this.gone[chunk] ?? NONE_GONE;
+      const list = goneSlots(reg, structs, chunk, was);
+      if (list === was) continue;
+      this.gone[chunk] = list.length > 0 ? list : null;
+      if (this.goneVersion[chunk]!++ === 0) this.goneChunks.push(chunk);
+    }
+    this.shaped.length = 0;
+  }
+
+  /** The map slots of `chunk` that no longer stand as sessions are told, and the version of that list, for tests. */
+  goneOf(chunk: number): { version: number; slots: Uint16Array } {
+    this.settle();
+    return { version: this.goneVersion[chunk]!, slots: this.gone[chunk] ?? NONE_GONE };
   }
 
   /** Call for each connected session once a tick, beside its other replication. */
@@ -221,13 +284,18 @@ export class Tactical {
       this.sendCells(c, h);
       this.listFar(c, h);
     }
-    if (h.farNext < h.farDue.length) this.sendFar(c, h);
+    if (h.goneNext < h.goneDue.length || h.farNext < h.farDue.length) this.sendFar(c, h);
     if (T % TICK_RATE === 0) this.sendMarks(c, h, T);
   }
 
-  /** How far off a session wants far cells, in metres. It is sent them within the smaller of this and FarRadius. */
-  ask(c: Client, metres: number): void {
-    this.of(c).farAsk = metres;
+  /**
+   * How far off a session wants far cells, and the lists of pieces gone, in metres. It is sent them within the smaller of
+   * these and FarRadius, and GoneRadius.
+   */
+  ask(c: Client, metres: number, lists = 0): void {
+    const h = this.of(c);
+    h.farAsk = metres;
+    h.goneAsk = lists;
   }
 
   private of(c: Client): Held {
@@ -242,8 +310,15 @@ export class Tactical {
       h.cursor = 0;
       h.marksHead = -1;
       h.farSent.fill(0);
-      h.farAsk = 0;
-      h.farDue.length = 0;
+      h.statics = false;
+      h.farAsk = h.goneAsk = 0;
+      h.goneSent.fill(0);
+      h.farDue.length = h.goneDue.length = 0;
+    }
+    if (h.statics !== c.statics) {
+      // The map's statics came to it: the cells it was sent with the map's pieces in them are sent again without.
+      h.statics = c.statics;
+      for (let k = 0; k < h.farSent.length; k++) if (h.farSent[k] !== 0) h.farSent[k] = FAR_WITH_MAP;
     }
     return h;
   }
@@ -291,16 +366,22 @@ export class Tactical {
     this.stats.bakes++;
     let s = this.summaries[chunk];
     // A bake that changes nothing a map shows (health, a piece under another) gives no new version, so nothing is sent for it.
-    // The far cells have a version of their own, so a change to one is never sent as the other.
+    // The far cells have a version of their own, so a change to one is never sent as the other; and so have the cells of
+    // what was built alone, which a map's piece going leaves as they were.
     const mapSame = s ? s.same(fresh) : fresh.filled === 0;
-    // A chunk already changed and empty at its first bake (razed before a restart) is news to a session that draws the statics.
-    const farSame = s ? s.far.same(fresh.far) : fresh.far.filled === 0 && this.world.structs.asPlaced(chunk);
-    if (mapSame && farSame) return;
+    const farSame = s ? s.far.same(fresh.far) : fresh.far.filled === 0;
+    const built = fresh.built!;
+    const builtSame = s?.built ? s.built.same(built) : built.filled === 0;
+    if (mapSame && farSame && builtSame) return;
     s ??= this.summaries[chunk] = new Summary();
     if (!farSame) {
       if (s.farVersion === 0) this.farChunks.push(chunk);
       s.far.copy(fresh.far);
       s.farVersion++;
+    }
+    if (!builtSame) {
+      (s.built ??= new FarCells()).copy(built);
+      s.builtVersion++;
     }
     if (mapSame) return;
     for (let i = 0; i < s.teamCount; i++) {
@@ -384,18 +465,30 @@ export class Tactical {
     return budget - w.byteLength;
   }
 
-  /** Once a second for each session: the chunks within its reach whose far cells it holds older, nearest first. */
+  /**
+   * Once a second for each session: the chunks within its reach whose far cells it holds older, nearest first; and, for one
+   * that holds the map's statics, those whose lists of pieces gone it holds older.
+   */
   private listFar(c: Client, h: Held): void {
     h.farDue.length = h.farNext = h.farAll = h.farOlder = 0;
+    h.goneDue.length = h.goneNext = 0;
+    const lists = h.statics ? Math.min(this.rules.num("GoneRadius"), h.goneAsk) : 0;
+    if (lists > 0) {
+      this.settle();
+      this.listDue(c, this.goneChunks, lists, h.goneDue, (chunk) => this.goneDue(h, chunk));
+    }
     const reach = Math.min(this.rules.num("FarRadius"), h.farAsk);
-    if (reach <= 0) return;
+    if (reach > 0) this.listDue(c, this.farChunks, reach, h.farDue, (chunk) => this.farDue(h, chunk));
+  }
+
+  /** Puts in `out` those of `list` that are `due` and within `reach` metres of the session's body, nearest first. */
+  private listDue(c: Client, list: readonly number[], reach: number, out: number[], due: (chunk: number) => boolean): void {
     const dims = this.world.dims;
-    const list = this.farChunks;
     let order = this.farOrder;
     let n = 0;
     for (let i = 0; i < list.length; i++) {
       const chunk = list[i]!;
-      if (!this.farDue(c, h, chunk)) continue;
+      if (!due(chunk)) continue;
       const dx = (chunkCx(dims, chunk) + 0.5) * CHUNK_SIZE - c.body.x;
       const dz = (chunkCz(dims, chunk) + 0.5) * CHUNK_SIZE - c.body.z;
       const d2 = dx * dx + dz * dz;
@@ -408,37 +501,61 @@ export class Tactical {
       order[n++] = Math.floor(d2) * 65536 + chunk;
     }
     order.subarray(0, n).sort();
-    for (let i = 0; i < n; i++) h.farDue.push(order[i]! % 65536);
+    for (let i = 0; i < n; i++) out.push(order[i]! % 65536);
+  }
+
+  /** Whether the session is due the list of `chunk`: it holds another version, and a list with nothing gone is news only to one sent it with something. */
+  private goneDue(h: Held, chunk: number): boolean {
+    const had = h.goneSent[chunk]!;
+    return had !== this.goneVersion[chunk] && (had !== 0 || this.gone[chunk] !== null);
   }
 
   /**
-   * Whether the session is due the far cells of `chunk`. One that holds the map's statics draws a chunk as the map placed it
-   * from them, and is due its cells once it has changed, even emptied, and again when a chunk it was sent stands as placed
-   * once more. To any other an empty chunk is news only if it was sent it filled.
+   * Whether the session is due the far cells of `chunk`: it holds another version, and an empty chunk is news only if it was
+   * sent it filled. One that holds the map's statics draws the map's own pieces from them, and is told which are gone by
+   * their lists, so its cells are those of what was built alone: a chunk whose map pieces are hurt or gone sends it none.
    */
-  private farDue(c: Client, h: Held, chunk: number): boolean {
+  private farDue(h: Held, chunk: number): boolean {
     const s = this.summaries[chunk]!;
     const had = h.farSent[chunk]!;
-    if (had === s.farVersion) return false;
-    const statics = c.statics ? this.world.statics : null;
-    if (statics && had === 0 && this.world.structs.asPlaced(chunk)) return false;
-    return had !== 0 || s.far.filled > 0 || (statics !== null && statics.first[chunk + 1]! > statics.first[chunk]!);
+    if (h.statics) return had !== s.builtVersion && (had !== 0 || (s.built !== null && s.built.filled > 0));
+    return had !== s.farVersion && (had !== 0 || s.far.filled > 0);
   }
 
   /**
-   * Sends what is due of the far cells, each chunk whole in one message, within the second's bytes and this tick's. They go in
-   * what the chunk rows leave of the window, so a join's near chunks come first.
+   * Sends what is due of the lists of pieces gone and then of the far cells, each chunk whole in one message, within the
+   * second's bytes and this tick's. They go in what the chunk rows leave of the window, so a join's near chunks come first.
    */
   private sendFar(c: Client, h: Held): void {
     let tick = 0;
+    for (; h.goneNext < h.goneDue.length; h.goneNext++) {
+      const chunk = h.goneDue[h.goneNext]!;
+      if (!this.goneDue(h, chunk)) continue;
+      const version = this.goneVersion[chunk]!;
+      const w = this.game.begin(S_GONE);
+      writeGone(w, chunk, version, this.gone[chunk] ?? NONE_GONE);
+      const bytes = w.byteLength;
+      // Only the first message of a second may pass its bytes: a chunk of 65,535 pieces with every other one gone is 8 KB.
+      if (h.farAll > 0 && h.farAll + bytes > FAR_NEW_BYTES) {
+        h.goneDue.length = h.farDue.length = 0;
+        return;
+      }
+      if ((tick > 0 && tick + bytes > FAR_TICK_BYTES) || !this.game.replication.spendChunkWindow(c, bytes)) return;
+      this.game.endOwn(c);
+      h.goneSent[chunk] = version;
+      tick += bytes;
+      h.farAll += bytes;
+      this.stats.gone++;
+      this.stats.goneBytes += bytes;
+    }
     for (; h.farNext < h.farDue.length; h.farNext++) {
       const chunk = h.farDue[h.farNext]!;
       const s = this.summaries[chunk]!;
       const had = h.farSent[chunk]!;
-      if (!this.farDue(c, h, chunk) || (had !== 0 && h.farOlder >= FAR_BYTES)) continue;
+      if (!this.farDue(h, chunk) || (had !== 0 && h.farOlder >= FAR_BYTES)) continue;
       // Open decision 2 (F5): a terrain check would test a chunk here, before its first send, since a send cannot be taken back.
       const w = this.game.begin(S_FAR);
-      writeFar(w, chunk, s.far);
+      writeFar(w, chunk, h.statics ? (s.built ?? NO_CELLS) : s.far, h.statics);
       const bytes = w.byteLength;
       if (h.farAll + bytes > FAR_NEW_BYTES) {
         h.farDue.length = 0;
@@ -450,7 +567,7 @@ export class Tactical {
       }
       if ((tick > 0 && tick + bytes > FAR_TICK_BYTES) || !this.game.replication.spendChunkWindow(c, bytes)) return;
       this.game.endOwn(c);
-      h.farSent[chunk] = s.farVersion;
+      h.farSent[chunk] = h.statics ? s.builtVersion : s.farVersion;
       tick += bytes;
       h.farAll += bytes;
       if (had !== 0) h.farOlder += bytes;
