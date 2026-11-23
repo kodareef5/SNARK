@@ -1,0 +1,35 @@
+{
+  "pivots": {
+    "chassis": [0, 0, 0],
+    "wheel_front_left": [0.906, 0.4385, 1.536],
+    "wheel_front_right": [-0.906, 0.4385, 1.536],
+    "wheel_rear_left": [0.906, 0.4385, -1.536],
+    "wheel_rear_right": [-0.906, 0.4385, -1.536],
+    "door_left": [1.037145, 0.757752, 1.011679],
+    "door_right": [-1.03714, 0.757752, 1.011679],
+    "door_rear_left": [1.045825, 0.824904, -0.063769],
+    "door_rear_right": [-1.04583, 0.824904, -0.063769],
+    "steering_wheel": [0.2724, 0.8962, 0.918],
+    "glass_front": [0, 0, 0],
+    "glass_rear": [0, 0, 0],
+    "glass_left": [1.037145, 0.757752, 1.011679],
+    "glass_right": [-1.03714, 0.757752, 1.011679],
+    "glass_rear_left": [1.045825, 0.824904, -0.063769],
+    "glass_rear_right": [-1.04583, 0.824904, -0.063769]
+  },
+  "anchors": {
+    "seat_driver": [0.278, 0.313, 0.25],
+    "seat_front_passenger": [-0.278, 0.313, 0.25],
+    "seat_rear_left": [0.552, 0.313, -0.75],
+    "seat_rear_right": [-0.552, 0.313, -0.75],
+    "seat_rear_center": [0, 0.313, -0.75],
+    "approach_left": [1.62, 0, 0.4],
+    "approach_right": [-1.62, 0, 0.4],
+    "approach_rear_left": [1.62, 0, -0.57],
+    "approach_rear_right": [-1.62, 0, -0.57],
+    "camera_driver": [0.278, 1.02, 0.33],
+    "camera_front_passenger": [-0.278, 1.02, 0.33],
+    "camera_chase": [0, 0.88, 0]
+  },
+  "envelope": { "min": [-1.195, 0, -2.11], "max": [1.195, 1.43, 2.6] }
+}

@@ -44,14 +44,15 @@ for (const [check, packed] of [[test, frozenPack], [artTest, corePack]] as const
         expect(minimumCrew, species.id).toBe(0);
         expect(h.host.survival.value(vehicle, V_HEALTH), species.id).toBeLessThan(hp);
         for (const { c } of occupants) expect(a.seat[c.ent], species.id).toBe(car + 1);
-        // Projectiles retain the real openings: neither front nor rear passengers become invulnerable.
+        // A closed pane intercepts a shot at the occupant behind it.
         const eye = new Float64Array(3);
         for (const { c } of occupants) {
           expect(h.host.urban.eye(c.ent, eye)).toBe(true);
           const sign = def.seats[a.seatSlot[c.ent]! - 1]!.anchor[0] < 0 ? -1 : 1;
           // This coupe's forward-leaning passenger lies behind its swept A-pillar from the side.
           const front = species.id === "core:berlinetta" && a.seatSlot[c.ent] === 2;
-          expect(h.host.combat.castBodies(-1, eye[0]! + (front ? 0 : sign * 3), eye[1]!, eye[2]! + (front ? 3 : 0), front ? 0 : -sign, 0, front ? -1 : 0, 3.1), `${species.id} ${a.seatSlot[c.ent]} window`).toBe(c.ent);
+          const target = def.breakablePanels ? car : c.ent;
+          expect(h.host.combat.castBodies(-1, eye[0]! + (front ? 0 : sign * 3), eye[1]!, eye[2]! + (front ? 3 : 0), front ? 0 : -sign, 0, front ? -1 : 0, 3.1), `${species.id} ${a.seatSlot[c.ent]} window`).toBe(target);
         }
         if ("passengerAisle" in def) {
           const last = occupants.at(-1)!.c, bench = def.seats.at(-1)!;

@@ -19,4 +19,5 @@ export const GLASS: readonly GlassCells[] = [
   { materials: ["core:fastback/detail"], cells: [[0.125, 0.25, 0.25, 0.375]], card: true },
   { materials: ["core:patrol_jeep/patrol"], cells: [[0.25, 0.125, 0.375, 0.25]], card: true },
   { materials: ["core:compact_abandoned/cabin"], cells: [[0.3, 0.731, 0.398, 0.797], [0.22, 0.809, 0.335, 0.851]] },
+  { materials: ["core:concept003/coachwork"], cells: [[0, 0.5, 0.125, 0.75]] },
 ];
