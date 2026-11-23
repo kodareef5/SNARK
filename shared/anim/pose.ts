@@ -24,6 +24,18 @@ export const ANIM_ACTION_BITS = 14;
 export const ANIM_MOTION_MASK = 0xfff;
 /** The speed, stance and domain bits that determine the stride rate. */
 export const ANIM_STRIDE_MASK = 0xf0f;
+export const OWN_STRIDE_BITS = 14;
+
+/** Zero marks a body without a grounded walking sample. */
+export function ownStrideWord(speed: number, stance: number, offset: number): number {
+  return 1 + (((stance * 16 + speed) << 8) | offset);
+}
+
+/** Prediction follows this sample only while it uses the same grounded stride rate. */
+export function predictedStride(word: number, state: AnimState): number {
+  const offset = (word - 1) & 255;
+  return state.mode === MODE_WALK && state.grounded && ownStrideWord(state.speed, state.stance, offset) === word ? offset : -1;
+}
 export const ANIM_LOOK_SHIFT = 12;
 export const ANIM_ACTION_SHIFT = 18;
 

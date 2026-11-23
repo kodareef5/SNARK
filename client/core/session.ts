@@ -1,5 +1,5 @@
 import { Blockers, survivorKind } from "../../shared/sim/blockers.ts";
-import { CUE_DEAD, CUE_HELD, CUE_OUT, fallFrameChanged } from "../../shared/anim/pose.ts";
+import { CUE_DEAD, CUE_HELD, CUE_OUT, OWN_STRIDE_BITS, fallFrameChanged } from "../../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
@@ -465,6 +465,7 @@ export class ClientSession {
   world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; tideEyes?: readonly TideEyeSite[]; landmarks?: readonly MapLandmark[]; tops?: BlocksSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
+  ownStride = 0;
   ownKind = 0;
   /** Index of the entity its inputs drive in place of its own body, or -1. */
   driving = -1;
@@ -1652,6 +1653,7 @@ export class ClientSession {
           s.choosing = CHOOSE_DIED;
         }
         s.admin = admin;
+        if (handle !== s.ownHandle) s.ownStride = 0;
         s.ownHandle = handle;
         s.dayOffset = dayOffset;
       },
@@ -2006,6 +2008,7 @@ export class ClientSession {
     const version = r.u32();
     const tick = r.u32();
     this.ownHandle = r.u32();
+    this.ownStride = 0;
     this.ownKind = r.u16();
     this.sessionState = r.bits(2);
     this.admin = r.bool();
@@ -2118,6 +2121,7 @@ export class ClientSession {
     const carried = r.bool() ? r.bits(BUTTON_BITS) : 0;
     const state = r.bits(2);
     const driving = r.varint() - 1;
+    const stride = r.bool() ? r.bits(OWN_STRIDE_BITS) : null;
     const sb = this.serverBody;
     readBody(r, sb);
     if (r.overflow || tick <= this.latestSnapshot) return;
@@ -2146,6 +2150,7 @@ export class ClientSession {
     for (const id of dying) if (!this.died.has(id)) this.died.set(id, tick);
     for (const [id, at] of this.died) if (tick - at > DIED_KEPT) this.died.delete(id);
     if (this.latestSnapshot > 0) this.noteGap(tick);
+    this.ownStride = next.ownStride = stride ?? base?.ownStride ?? 0;
     this.previousSnapshot = this.latestSnapshot;
     this.latestSnapshot = tick;
     this.needFull = false;

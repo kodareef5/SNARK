@@ -22,7 +22,8 @@
 //     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8, ticks given up since the welcome
 //                            1 bit and if set u16 (wrapping), buttons carried into this tick from an input that came
 //                            after its own 1 bit and if set BUTTON_BITS bits, session state 2 bits, driven entity index + 1
-//                            varint (0 = its own body), that body, entity delta (see view.ts)
+//                            varint (0 = its own body), own stride change bit and if changed 14 bits, that body,
+//                            vehicle contact proxies, entity delta (see view.ts)
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits; to a client that takes statics, for
 //                            a chunk that holds map statics, from the map 1 bit, and if set first slot u16 and count
 //                            u16 of the slots it takes as the map has them; rows, in ascending slots; then removals:

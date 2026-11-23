@@ -171,6 +171,7 @@ export function dequantY(q: number): number {
 export class SentView {
   /** Server tick of this view. 0 marks an unused or invalid view. */
   tick = 0;
+  ownStride = 0;
   count = 0;
   /** Entries the columns have room for. */
   protected cap = VIEW_START;

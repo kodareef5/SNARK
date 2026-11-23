@@ -7,7 +7,7 @@ import { handleGen, handleIndex } from "../../../shared/ids.ts";
 import { PI, TAU } from "../../../shared/math/scalar.ts";
 import { MF_DOWN, glidePhase } from "../../../shared/sim/character.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, carriageRate } from "../../../shared/sim/entities.ts";
-import { ANIM_STRIDE_MASK, TURN_STEPS, turnSteps } from "../../../shared/anim/pose.ts";
+import { TURN_STEPS, predictedStride, turnSteps } from "../../../shared/anim/pose.ts";
 import { ARMOR_SLOTS } from "../../../shared/sim/items.ts";
 import { FISTS, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import type { AppFrame } from "../frame.ts";
@@ -48,13 +48,11 @@ export function ownBody(d: Director, f: AppFrame): void {
   // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.
   body.state.setAction(session.own.act, f.holding >= 0 ? HOLD_CARRY : (reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
   body.state.seed = bodySeed(body.id);
+  body.state.stride = session.driving < 0 && !session.own.seat ? predictedStride(session.ownStride, body.state) : -1;
   // An emote is the server's to say: the one it plays for this body, as the view has it.
   body.state.unpackEmote(0);
-  body.state.stride = -1;
   for (let i = 0; i < r.count; i++) if (r.id[i] === body.id && r.gen[i] === body.generation) {
     body.state.unpackEmote(r.emote[i]!);
-    // A predicted change keeps stepping locally until its matching speed and stance arrive.
-    if ((r.anim[i]! & ANIM_STRIDE_MASK) === (body.state.pack() & ANIM_STRIDE_MASK)) body.state.stride = r.stride[i]!;
     break;
   }
   // A blow it reels from is in its predicted body, as the server last set it.

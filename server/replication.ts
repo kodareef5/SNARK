@@ -2,9 +2,11 @@
 // entities in its interest as a delta against one it acknowledged, and the rows of the chunks round it. A sight's cone
 // (server/gaze.ts) widens both. The order within a session's turn is the order of `send`.
 
+import { OWN_STRIDE_BITS, ownStrideWord } from "../shared/anim/pose.ts";
+import { MODE_WALK } from "../shared/sim/character.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { type BitReader, type BitWriter, Named } from "../shared/net/codec.ts";
-import { BUTTON_BITS, MARGIN_UNKNOWN, OWN_SESSION, REMOVAL_NEWS_TICKS, RESULT_INVALID, RESULT_OK, S_CHUNK, S_CHUNK_DROP, S_OWN, S_SNAPSHOT, writeBody } from "../shared/net/protocol.ts";
+import { BUTTON_BITS, MARGIN_UNKNOWN, OWN_SESSION, REMOVAL_NEWS_TICKS, RESULT_INVALID, RESULT_OK, SESSION_ALIVE, S_CHUNK, S_CHUNK_DROP, S_OWN, S_SNAPSHOT, writeBody } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
@@ -366,6 +368,14 @@ export class Replication {
     w.bits(c.state, 2);
     // 0 for its own body, else the index of the entity it drives plus one.
     w.varint(c.drive + 1);
+    next.ownStride = 0;
+    if (self >= 0 && c.state === SESSION_ALIVE && !ents.seat[self] && ents.mode[self] === MODE_WALK && (ents.flags[self]! & F_GROUNDED)) {
+      const anim = ents.anim[self]!;
+      next.ownStride = ownStrideWord(anim & 15, (anim >>> 8) & 3, this.world.history.strideOf(self, T, this.world));
+    }
+    const strideChanged = next.ownStride !== (base?.ownStride ?? 0);
+    w.bool(strideChanged);
+    if (strideChanged) w.bits(next.ownStride, OWN_STRIDE_BITS);
     writeBody(w, c.body);
     const bytes = c.snapshotBytes !== 0 ? c.snapshotBytes : this.opts.snapshotBytes;
     const contacts = this.contactSnapshot;
