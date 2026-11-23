@@ -30,7 +30,10 @@ const S = {
   survivors: [] as Pickable[],
 };
 
+// What a field's change says is written as the page is next drawn: a line come or gone sooner moves the button pressed.
+let toSay: [text: string, kind: string] | null = null;
 const say = (text: string, kind = "dim"): void => {
+  toSay = null;
   $("msg").textContent = text;
   $("msg").className = kind;
 };
@@ -65,6 +68,7 @@ function draw(): void {
   const { wire, draft, known } = S;
   if (!wire || !draft || !known) return;
   due = false;
+  if (toSay) say(...toSay);
   if (!draft.loadouts.some((l) => l.id === S.selected)) S.selected = draft.loadouts[0]?.id ?? "";
   // The loadout shown is in the address, so it can be linked to.
   if (location.hash !== `#${S.selected}`) history.replaceState(null, "", `#${S.selected}`);
@@ -100,8 +104,9 @@ const released = (): void => {
   pressed = false;
   if (due) later();
 };
-// Only a button waits for its click: a select's list takes the mouse's release for itself.
-addEventListener("mousedown", (e) => void (pressed = e.target instanceof Element && e.target.closest("button") !== null), true);
+// A button, a tick and a label wait for their click. A select does not: its list takes the mouse's release for itself.
+const waits = (at: EventTarget | null): boolean => at instanceof Element && at.closest("select") === null && at.closest("button, label, input[type=checkbox]") !== null;
+addEventListener("mousedown", (e) => void (pressed = waits(e.target)), true);
 addEventListener("mouseup", released, true);
 addEventListener("blur", released);
 
@@ -183,6 +188,9 @@ async function act(at: HTMLElement): Promise<void> {
     // Done to the world now, by the book in force, as the console's `loadout` does it.
     const who = survivor();
     if (!who) return;
+    // A press straight from a field just changed comes before the button is drawn disabled.
+    const why = cannotHand(who, asShown(wire.book, d, S.selected));
+    if (why !== "") return say(why, "warn"), hand();
     const clear = $<HTMLInputElement>("clear").checked;
     if (clear && !confirm(`Clear everything ${who.name} holds, then hand out ${S.selected}?`)) return;
     const { status, answer } = await post("apply", { loadout: S.selected, pid: who.pid, clear });
@@ -240,7 +248,7 @@ document.addEventListener("change", (e) => {
   else if (at.dataset.head === "id") {
     const why = renameLoadout(d, S.selected, at.value.trim());
     if (why === "") S.selected = at.value.trim();
-    say(why, "warn");
+    toSay = [why, "warn"];
   } else if (at.dataset.head === "respawn") setLoadout(d, S.selected, { respawn: (at as HTMLInputElement).checked });
   else if (at.dataset.head === "label" || at.dataset.head === "note") setLoadout(d, S.selected, { [at.dataset.head]: at.value.trim() });
   else if (at.dataset.field) {
@@ -248,7 +256,7 @@ document.addEventListener("change", (e) => {
     const raw = ticked ? (at as HTMLInputElement).checked : field === "item" || field === "tame" ? picked(known, at.value, field) || at.value : at.value;
     const change = fieldChange(field, raw);
     if (change) changeEntry(d, S.selected, Number(at.closest<HTMLElement>("tr")?.dataset.entry), change, known);
-    say(change ? "" : "That is not what this field takes.", "warn");
+    toSay = [change ? "" : "That is not what this field takes.", "warn"];
   } else return;
   changed();
 });
