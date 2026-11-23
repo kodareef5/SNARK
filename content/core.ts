@@ -13,6 +13,8 @@ import { ITEMS } from "./items/index.ts";
 import { KNOCKOUT } from "./knockout.ts";
 import { MAPS } from "./maps.ts";
 import { RUIN_BLOCKS } from "./miami-ruins.ts";
+import { BREAK_BLOCKS } from "./breaks/kinds.ts";
+import { CITY_MATERIALS } from "./breaks/materials.ts";
 import { SLOPE_BLOCKS } from "./slopes.ts";
 import { LETTER_BLOCKS } from "./lettering.ts";
 import { TERMINALS } from "./terminals.ts";
@@ -410,6 +412,7 @@ const ALL: readonly Def[] = [
   { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1 }, decayDays: 8 },
   { type: "material", id: "core:mat_stone", takes: { explosive: 2.3325 }, decayDays: 12 },
   { type: "material", id: "core:mat_metal", takes: { explosive: 0.3008 }, decayDays: 16 },
+  ...CITY_MATERIALS,
   { type: "structure", class: "static", id: "core:block", mesh: "box", color: 2, half: [1, 1, 1], hp: 1000, material: "core:mat_stone" },
   { type: "structure", class: "static", id: "core:crate", mesh: "box", color: 3, half: [0.5, 0.5, 0.5], hp: 200, material: "core:mat_wood" },
   { type: "structure", class: "static", id: "core:foundation", mesh: "box", color: 4, half: [1.5, 0.15, 1.5], hp: 15000, material: "core:mat_stone" },
@@ -495,7 +498,7 @@ const ALL: readonly Def[] = [
   LEVELS,
 ];
 
-export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS]);
+export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...BREAK_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS]);
 
 /** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

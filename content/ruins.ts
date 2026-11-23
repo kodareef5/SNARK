@@ -2,6 +2,8 @@ import { GRATE, UTILITY_ENAMEL as BOX } from "./colours.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { leaning, pitchedRoof, slopeShape, slopedSlab, stairFlight, staticOf, wedge } from "../shared/content/slopes.ts";
 import type { HullDef } from "../shared/world/convex.ts";
+import { familyOf, shapeBreaks } from "./breaks/families.ts";
+import { PANE_HEALTH, cityMaterial, materialOf, pieceHealth, type CityMaterial } from "./breaks/materials.ts";
 
 const shaped = (name: string): string => `core:${name.startsWith("floorroad") ? "zzruinshape" : "zruinshape"}_${name}`;
 const fallenFrame = [[0, -3.5, 4, .5], [0, 3.5, 4, .5], [-3.5, 0, .5, 3], [3.5, 0, .5, 3]].map(([x, z, w, d]) => ({
@@ -433,41 +435,42 @@ export const RUIN_SHAPES = {
 } as const;
 
 // Each finish's soffit, the colour its faces looking down are drawn in, is a darker one of its own. `fracture` is a break's
-// bared core and is no building's finish.
+// bared core and is no building's finish. `metal` is a metal's colour, which a low building's walls may be sheet in. What
+// a piece in a finish is built of, and its health, are its shape's to say with it (ruinMaterial).
 export const RUIN_FINISHES = {
-  concrete: { color: 100, under: 97, material: "core:mat_stone", hp: 16000 },
-  limestone: { color: 10, under: 101, material: "core:mat_stone", hp: 12000 },
-  rose: { color: 81, under: 111, material: "core:mat_stone", hp: 10000 },
-  mint: { color: 75, under: 142, material: "core:mat_stone", hp: 10000 },
-  clay: { color: 183, under: 111, material: "core:mat_stone", hp: 9000 },
-  steel: { color: 89, under: 87, material: "core:mat_metal", hp: 20000 },
-  rust: { color: 179, under: 178, material: "core:mat_metal", hp: 8000 },
-  blue: { color: 5, under: 87, material: "core:mat_metal", hp: 9000 },
-  fracture: { color: 102, under: 97, material: "core:mat_stone", hp: 12000 },
+  concrete: { color: 100, under: 97 },
+  limestone: { color: 10, under: 101 },
+  rose: { color: 81, under: 111 },
+  mint: { color: 75, under: 142 },
+  clay: { color: 183, under: 111 },
+  steel: { color: 89, under: 87, metal: true },
+  rust: { color: 179, under: 178, metal: true },
+  blue: { color: 5, under: 87, metal: true },
+  fracture: { color: 102, under: 97 },
   // Finishes of materials made from recipes (content/texgen/materials.ts), each in a painted one's colour, which dyes it
   // and whose weathering it keeps: stucco, render and painted block in the pastels, block in grey, sheet in the metals'
   // and, for a shed, in limestone, mint and clay.
-  rosestucco: { color: 81, under: 111, material: "core:mat_stone", hp: 10000, made: "stucco" },
-  mintstucco: { color: 75, under: 142, material: "core:mat_stone", hp: 10000, made: "stucco" },
-  roseblock: { color: 81, under: 111, material: "core:mat_stone", hp: 11000, made: "block" },
-  mintblock: { color: 75, under: 142, material: "core:mat_stone", hp: 11000, made: "block" },
-  limerender: { color: 10, under: 101, material: "core:mat_stone", hp: 12000, made: "render" },
-  greyblock: { color: 100, under: 97, material: "core:mat_stone", hp: 14000, made: "block" },
-  steelsheet: { color: 89, under: 87, material: "core:mat_metal", hp: 12000, made: "corrugated" },
-  bluesheet: { color: 5, under: 87, material: "core:mat_metal", hp: 9000, made: "corrugated" },
-  rustsheet: { color: 179, under: 178, material: "core:mat_metal", hp: 7000, made: "corrugated" },
-  roserender: { color: 81, under: 111, material: "core:mat_stone", hp: 10000, made: "render" },
-  mintrender: { color: 75, under: 142, material: "core:mat_stone", hp: 10000, made: "render" },
-  limestucco: { color: 10, under: 101, material: "core:mat_stone", hp: 12000, made: "stucco" },
-  limesheet: { color: 10, under: 101, material: "core:mat_metal", hp: 9000, made: "corrugated" },
-  mintsheet: { color: 75, under: 142, material: "core:mat_metal", hp: 9000, made: "corrugated" },
-  claysheet: { color: 183, under: 111, material: "core:mat_metal", hp: 9000, made: "corrugated" },
+  rosestucco: { color: 81, under: 111, made: "stucco" },
+  mintstucco: { color: 75, under: 142, made: "stucco" },
+  roseblock: { color: 81, under: 111, made: "block" },
+  mintblock: { color: 75, under: 142, made: "block" },
+  limerender: { color: 10, under: 101, made: "render" },
+  greyblock: { color: 100, under: 97, made: "block" },
+  steelsheet: { color: 89, under: 87, metal: true, made: "corrugated" },
+  bluesheet: { color: 5, under: 87, metal: true, made: "corrugated" },
+  rustsheet: { color: 179, under: 178, metal: true, made: "corrugated" },
+  roserender: { color: 81, under: 111, made: "render" },
+  mintrender: { color: 75, under: 142, made: "render" },
+  limestucco: { color: 10, under: 101, made: "stucco" },
+  limesheet: { color: 10, under: 101, metal: true, made: "corrugated" },
+  mintsheet: { color: 75, under: 142, metal: true, made: "corrugated" },
+  claysheet: { color: 183, under: 111, metal: true, made: "corrugated" },
   // A pitched roof of standing-seam sheet, in steel's colour, and a shed's monitor of it in rust's: a roof's finishes alone (ROOF_FINISHES).
-  seam: { color: 89, under: 87, material: "core:mat_metal", hp: 12000, made: "seam" },
-  rustseam: { color: 179, under: 178, material: "core:mat_metal", hp: 8000, made: "seam" },
+  seam: { color: 89, under: 87, metal: true, made: "seam" },
+  rustseam: { color: 179, under: 178, metal: true, made: "seam" },
   // A flat roof's top plate in tar and gravel, which lies on its top alone, in a colour whose painted finish is
   // asphalt: what the far city and a phone draw it as, and the mean the gravel is made about.
-  tar: { color: 85, under: 97, material: "core:mat_stone", hp: 16000, made: "gravel" },
+  tar: { color: 85, under: 97, made: "gravel" },
 } as const;
 /** Finishes only a roof's pieces come in. */
 const ROOF_FINISHES = new Set<string>(["seam", "rustseam", "tar"]);
@@ -507,7 +510,7 @@ export function madeSuits(material: string, type: string, storeys: number, metal
 export function madeFinish(painted: keyof typeof RUIN_FINISHES, type: string, storeys: number, share: number, pick: number): keyof typeof RUIN_FINISHES {
   const made = MADE_FINISHES[painted];
   if (!made || share >= MADE_SHARE) return painted;
-  const metal = RUIN_FINISHES[painted].material === "core:mat_metal";
+  const metal = "metal" in RUIN_FINISHES[painted];
   const weights = made.map((f) => madeSuits((RUIN_FINISHES[f] as { made: string }).made, type, storeys, metal));
   let at = pick * weights.reduce((a, b) => a + b, 0);
   for (let i = 0; i < made.length; i++) if (weights[i]! > 0 && (at -= weights[i]!) < 0) return made[i]!;
@@ -549,20 +552,44 @@ const FOOTED_SHAPES = new Map([...FOOTED].map((name): [string, ShapeDef] => {
 }));
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && !ROOF_FINISHES.has(finish) && !GROWN[name] && (PAINTED.has(name) || name.startsWith("z"))));
 const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zvine2", "zvine3", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub", "zivy1", "zivy2", "zivy3", "zmoss"]);
-const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
-  (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name as RuinShape, finish)).map((finish) => ({
-    type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: GROWN[name] ?? "box",
-    half: [size[0] / 2, size[1] / 2, size[2] / 2] as const,
-    ...RUIN_FINISHES[finish],
-    ...(name === "zwalk8" || name === "zwalk8g" ? { grindLine: [[-4, .075, -BREAK_AT[name]![2]!], [4, .075, -BREAK_AT[name]![2]!]] as const } : {}),
-    ...(name in RUIN_SLOPES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_SLOPES[name as keyof typeof RUIN_SLOPES], RUIN_FINISHES[finish]) : {}),
-    ...(name in RUIN_FACADES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_FACADES[name as FacadeModule], RUIN_FINISHES[finish]) : {}),
-    ...(name in RUIN_BREAKS ? staticOf(ruinKind(name as RuinShape, finish), RUIN_BREAKS[name as BreakPiece], RUIN_FINISHES[finish]) : {}),
-    // The street's pieces and a building's small kit are drawn near only, left out of the far city's lattice and mass.
-    ...(NEAR_ONLY.has(name) ? { near: true as const } : {}),
-    ...(FOOTED_SHAPES.has(name) ? { shape: FOOTED_SHAPES.get(name)!.id, half: shapeHalf(FOOTED_SHAPES.get(name)!.boxes) } : {}),
-    // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
-    ...(GROWN[name] ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
-  })),
+/** What a ruin piece of `shape` in `finish` is built of: one of the city's eight materials. A plant is timber. */
+export function ruinMaterial(shape: RuinShape, finish: RuinFinish): CityMaterial {
+  return GROWN[shape] ? "timber" : materialOf(familyOf(shape), finish, (RUIN_FINISHES[finish] as { made?: string }).made);
+}
+/** A finish as a kind of `shape` wears it: its colours and recipe, and the material and health they and the shape's size give. */
+function worn(shape: RuinShape, finish: RuinFinish, size: readonly [number, number, number]): Pick<StructureDef, "color" | "under" | "made" | "material" | "hp"> {
+  const f: { readonly color: number; readonly under: number; readonly made?: string } = RUIN_FINISHES[finish], material = ruinMaterial(shape, finish);
+  return { color: f.color, under: f.under, ...(f.made !== undefined ? { made: f.made } : {}), material: cityMaterial(material), hp: pieceHealth(material, shape, size) };
+}
+/** How many halves of a facade module have a pane: a dark opening or glass on that side of the bay's middle. */
+function glazedHalves(name: string): number {
+  const panes = (MODULES as Record<string, { look: readonly Part[] }>)[name]?.look.filter((p) => p[6] === DARK || p[6] === PANE) ?? [];
+  return (panes.some((p) => p[0] < -0.05) ? 1 : 0) + (panes.some((p) => p[1] > 0.05) ? 1 : 0);
+}
+/** What a whole kind of a shape that breaks says of it (content/breaks has its broken forms). */
+function wholeBreaks(name: string, size: readonly [number, number, number]): Pick<StructureDef, "breaks"> {
+  const { family, halves, bears } = shapeBreaks(name, size), glazed = glazedHalves(name);
+  return family === "none" ? {} : { breaks: { set: name, form: "whole", family, halves, bears: bears[0], ...(glazed > 0 ? { glass: PANE_HEALTH * glazed } : {}) } };
+}
+const BLOCKS: readonly StructureDef[] = (Object.entries(RUIN_SHAPES) as [RuinShape, readonly [number, number, number]][]).flatMap(([name, size]) =>
+  (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name, finish)).map((finish): StructureDef => {
+    const wear = worn(name, finish, size), id = ruinKind(name, finish);
+    return {
+      type: "structure", class: "static", id, mesh: GROWN[name] ?? "box",
+      half: [size[0] / 2, size[1] / 2, size[2] / 2] as const,
+      ...wear,
+      ...(name === "zwalk8" || name === "zwalk8g" ? { grindLine: [[-4, .075, -BREAK_AT[name]![2]!], [4, .075, -BREAK_AT[name]![2]!]] as const } : {}),
+      ...(name in RUIN_SLOPES ? staticOf(id, RUIN_SLOPES[name as keyof typeof RUIN_SLOPES], wear) : {}),
+      ...(name in RUIN_FACADES ? staticOf(id, RUIN_FACADES[name as FacadeModule], wear) : {}),
+      ...(name in RUIN_BREAKS ? staticOf(id, RUIN_BREAKS[name as BreakPiece], wear) : {}),
+      // The street's pieces and a building's small kit are drawn near only, left out of the far city's lattice and mass.
+      ...(NEAR_ONLY.has(name) ? { near: true as const } : {}),
+      ...(FOOTED_SHAPES.has(name) ? { shape: FOOTED_SHAPES.get(name)!.id, half: shapeHalf(FOOTED_SHAPES.get(name)!.boxes) } : {}),
+      // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood. A plant is
+      // no part of a building, and keeps the little health it had.
+      ...(GROWN[name] ? { color: 196, hp: 500 } : {}),
+      ...wholeBreaks(name, size),
+    };
+  }),
 );
 export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES), ...Object.values(RUIN_FACADES), ...Object.values(RUIN_BREAKS), ...FOOTED_SHAPES.values()];

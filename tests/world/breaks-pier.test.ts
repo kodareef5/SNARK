@@ -1,11 +1,11 @@
-// The pier's break set, and the heaps and hung forms other families call (tools/breaks).
+// The pier's break set, and the heaps and hung forms other families call (content/breaks).
 
 import { expect, test } from "bun:test";
-import { chunkVolume, formFaults, leftVolume, lookVolume } from "../../tools/breaks/check.ts";
-import type { Chunk } from "../../tools/breaks/cut.ts";
-import { VARIANTS, type Form } from "../../tools/breaks/forms.ts";
-import { heapForm, hungPanel, hungSlab, type HeapAsk } from "../../tools/breaks/heap.ts";
-import { pier } from "../../tools/breaks/pier.ts";
+import { chunkVolume, formFaults, leftVolume, lookVolume } from "../../content/breaks/check.ts";
+import type { Chunk } from "../../content/breaks/cut.ts";
+import { VARIANTS, type Form } from "../../content/breaks/forms.ts";
+import { heapForm, hungPanel, hungSlab, type HeapAsk } from "../../content/breaks/heap.ts";
+import { pier } from "../../content/breaks/pier.ts";
 
 const WHOLE = 0.9 * 0.9 * 8;
 const variants = Array.from({ length: VARIANTS }, (_, v) => v);
@@ -132,8 +132,8 @@ test("an 8 m slab hung by each edge has no fault and turns 22 to 30 degrees abou
     expect([f.name, f.bears, f.walked.hulls.length]).toEqual(["hung", false, 1]);
     const axis = held.startsWith("x") ? 0 : 2, edge = held.endsWith("0") ? -4 : 4;
     const body = f.walked.hulls[0]!.corners;
-    // The held edge's lower line has not moved, and nothing is past the slab's bounds or over its top.
-    expect(body.filter((p) => p[axis] === edge && p[1] === 3.6).length).toBe(2);
+    // The held edge's lower line has not moved from its place on the grid, and nothing is past the slab's bounds or over its top.
+    expect(body.filter((p) => p[axis] === edge && p[1] === Math.round(3.6 * 4096) / 4096).length).toBe(2);
     for (const p of points(f)) expect(Math.abs(p[0]) <= 4.001 && Math.abs(p[2]) <= 4.001).toBe(true);
     for (const c of f.look.chunks) for (const p of c.corners) expect(p[1]).toBeLessThanOrEqual(4);
     // The body is 0.32 m short of the slab's 8 m, for its teeth.

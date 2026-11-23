@@ -2,7 +2,7 @@
 // stand round it (teeth) and the cells that leave (shards). Teeth and shards share the mouth's points, so they match.
 
 import { Rng } from "../../shared/rng.ts";
-import { atMost, cornersBetween, cross, leaves, rectPoly, tidy, type Pt, type Rect } from "./geometry.ts";
+import { atMost, cornersBetween, cross, hyp, leaves, rectPoly, tidy, type Pt, type Rect } from "./geometry.ts";
 
 export interface PlanAsk {
   /** Where the cut happens. Outside it a piece is left as it was. */
@@ -52,7 +52,7 @@ export function plan(ask: PlanAsk): Plan {
     along.push(a);
     if (!ask.closed && i === corners.length - 1) break;
     const b = corners[(i + 1) % corners.length]!;
-    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const length = hyp(b[0] - a[0], b[1] - a[1]);
     const more = Math.max(length > 0.3 ? 1 : 0, Math.ceil(length / run) - 1);
     for (let k = 1; k <= more; k++) {
       const t = (k + rng.range(-0.3, 0.3)) / (more + 1);
@@ -61,7 +61,7 @@ export function plan(ask: PlanAsk): Plan {
   }
   const mouth: Pt[] = [], edge: Pt[] = [];
   for (const p of along) {
-    const far = Math.hypot(p[0] - ask.c[0], p[1] - ask.c[1]);
+    const far = hyp(p[0] - ask.c[0], p[1] - ask.c[1]);
     const d: Pt = [(p[0] - ask.c[0]) / far, (p[1] - ask.c[1]) / far];
     const out = leaves(frame, ask.c, d);
     const room = out - MARGIN - far;

@@ -12,6 +12,9 @@ const EPS = 1e-7;
 /** Content keeps its numbers on a 1/4096 m grid, as content/ruins.ts does. */
 export const grid = (v: number): number => Math.round(v * 4096) / 4096;
 
+/** The length of (x, y), by exact steps alone: the same on every engine, as Math.hypot is not. */
+export const hyp = (x: number, y: number): number => Math.sqrt(x * x + y * y);
+
 export const cross = (o: Pt, a: Pt, b: Pt): number => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
 
 export function area(poly: readonly Pt[]): number {
@@ -47,6 +50,24 @@ export function tidy(poly: readonly Pt[]): Pt[] {
   for (let i = 0; i < apart.length; i++) {
     const a = apart[(i + apart.length - 1) % apart.length]!, b = apart[i]!, c = apart[(i + 1) % apart.length]!;
     if (Math.abs(cross(a, b, c)) > 1e-6) out.push(b);
+  }
+  return out.length >= 3 && area(out) > SLIVER ? out : [];
+}
+
+/**
+ * A polygon with its points on the grid, as it will be written: a point the grid moved onto a straight run or inside the
+ * outline is left out, so what is left is convex. None if that is a sliver.
+ */
+export function gridded(poly: readonly Pt[]): Pt[] {
+  let out = tidy(poly.map(([u, v]): Pt => [grid(u), grid(v)]));
+  for (let again = true; again && out.length >= 3; ) {
+    again = false;
+    for (let i = 0; i < out.length; i++) {
+      if (cross(out[(i + out.length - 1) % out.length]!, out[i]!, out[(i + 1) % out.length]!) > 1e-9) continue;
+      out = out.filter((_, k) => k !== i);
+      again = true;
+      break;
+    }
   }
   return out.length >= 3 && area(out) > SLIVER ? out : [];
 }

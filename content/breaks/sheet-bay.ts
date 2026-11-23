@@ -1,7 +1,7 @@
 // A shed's wall bay in corrugated sheet: steel posts and girts with a skin of eight strips. The kit has no such module yet.
 // Sheet does not shatter. A strip tears along its corrugation and folds, so what leaves is whole sheets and few of them.
 
-import { RUIN_FINISHES } from "../../content/ruins.ts";
+import { RUIN_FINISHES } from "../ruins.ts";
 import { PI, detCos, detSin } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
 import { WALL, boxOf, partBox, partChunk, solidLess, type Chunk, type Part } from "./cut.ts";
@@ -129,7 +129,7 @@ function open(variant: number): Form {
 export function sheetBay(): Component {
   const finish = RUIN_FINISHES.rustsheet;
   return {
-    name: NAME, family: "sheet cladding", material: "sheet", finish: [finish.color, finish.under], skin: [partBox(WALL, bay)], apart: [0, -0.3, 7.5],
+    name: NAME, family: "clad", material: "sheet", finish: [finish.color, finish.under], skin: [partBox(WALL, bay)], apart: [0, -0.3, 7.5],
     forms: (variant) => [whole(), breach("breach A", -1, variant), breach("breach B", 1, variant), open(variant)],
   };
 }

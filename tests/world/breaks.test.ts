@@ -1,14 +1,19 @@
-// Break sets cut from the city kit's shapes (tools/breaks): what every form must hold to before it could be content.
+// Break sets cut from the city kit's shapes (content/breaks): what every form must hold to before it is content.
 
 import { describe, expect, test } from "bun:test";
-import { boxVolume, formFaults, leftVolume, lookVolume } from "../../tools/breaks/check.ts";
-import { VARIANTS, wallBreach } from "../../tools/breaks/forms.ts";
-import { area, rectPoly } from "../../tools/breaks/geometry.ts";
-import { plan, profilePlan } from "../../tools/breaks/plan.ts";
-import { SAMPLES } from "../../tools/breaks/samples.ts";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { boxVolume, formFaults, leftVolume, lookVolume } from "../../content/breaks/check.ts";
+import { VARIANTS, kitted, wallBreach } from "../../content/breaks/forms.ts";
+import { area, rectPoly } from "../../content/breaks/geometry.ts";
+import { plan, profilePlan } from "../../content/breaks/plan.ts";
+import { KIT, kitOf } from "../../content/breaks/kit.ts";
+import { sheetBay } from "../../content/breaks/sheet-bay.ts";
 
 const RUST = 179;
-const sample = (name: string) => SAMPLES.find((c) => c.name === name)!;
+/** The kit, and the sheet bay, which is a sample: no shape of the kit is sheet on a frame. */
+const SAMPLES = [...KIT, kitted(sheetBay())];
+const sample = (name: string) => kitOf(name)!;
 const variants = Array.from({ length: VARIANTS }, (_, v) => v);
 
 describe("a cut plan", () => {
@@ -40,7 +45,7 @@ describe("a cut plan", () => {
   });
 });
 
-describe("the sample components", () => {
+describe("the kit's components", () => {
   test("every form of every component could be written as a shape", () => {
     for (const c of SAMPLES) for (const v of variants) for (const f of c.forms(v)) expect({ form: `${c.name} ${f.name} ${v}`, faults: formFaults(f) }).toEqual({ form: `${c.name} ${f.name} ${v}`, faults: [] });
   });
@@ -77,8 +82,28 @@ describe("the sample components", () => {
     expect(a!.panes[0]!.at[0]).toBeLessThan(0);
   });
 
-  test("a hollow shell opened is still solid", () => {
-    const forms = sample("zshaft16").forms(0);
-    for (const f of forms) expect(f.walked).toEqual(forms[0]!.walked);
+  test("every number of every form is on the 1/4096 m grid", () => {
+    const off = (v: number): boolean => v * 4096 !== Math.round(v * 4096);
+    for (const c of SAMPLES) for (const v of variants) for (const f of c.forms(v)) {
+      const boxes = [...f.look.boxes, ...f.walked.boxes, ...f.panes].flatMap((b) => [...b.at, ...b.half]);
+      const corners = [...f.look.chunks, ...f.fragments.flat(), ...f.walked.hulls].flatMap((h) => h.corners.flat());
+      expect([c.name, f.name, v, [...boxes, ...corners].filter(off)]).toEqual([c.name, f.name, v, []]);
+    }
   });
+
+  test("a hollow shell opened is still solid", () => {
+    for (const name of ["zshaft16", "zwin4", "zbalc4top"]) {
+      const forms = sample(name).forms(0);
+      for (const f of forms.filter((f) => f.name !== "heap")) expect(f.walked).toEqual(forms[0]!.walked);
+    }
+  });
+});
+
+test("nothing that makes a form uses arithmetic an engine may round its own way", () => {
+  const dir = join(import.meta.dir, "../../content/breaks");
+  const inexact = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|exp|expm1|log|log2|log10|log1p|pow|hypot|cbrt|random)\b|\*\*(?!\/)|\bDate\.now\b/;
+  for (const file of readdirSync(dir)) {
+    const code = readFileSync(join(dir, file), "utf8").split("\n").filter((line) => !/^\s*(\/\/|\/\*\*|\*)/.test(line));
+    expect([file, code.filter((line) => inexact.test(line))]).toEqual([file, []]);
+  }
 });

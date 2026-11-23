@@ -5,8 +5,8 @@ import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { hullOf } from "../../shared/world/convex.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "../snap/font.ts";
-import type { Chunk, Look } from "./cut.ts";
-import type { Corner } from "./geometry.ts";
+import type { Chunk, Look } from "../../content/breaks/cut.ts";
+import type { Corner } from "../../content/breaks/geometry.ts";
 
 /** One thing in a tile: a look in a finish, moved by `shift` after its bared faces are told from its skin by `skin`. */
 export interface Drawn {

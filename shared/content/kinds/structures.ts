@@ -5,6 +5,7 @@ import { DAMAGE_TYPES } from "../../sim/damage.ts";
 import type { VehicleSurface } from "../../sim/vehicle.ts";
 import { validVehicleSurface } from "../../world/vehicle-surface.ts";
 import { hullTable, type HullDef } from "../../world/convex.ts";
+import { BREAK_FAMILIES, BREAK_FORMS, BREAK_VARIANTS, type BreakFamily, type BreakForm } from "../breaks.ts";
 import type { Def } from "../defs.ts";
 import { ID, drawnFaults, f, f32, i8, list, mesh, row, u16, u8, type Fields, type Kind, type Named } from "../kind.ts";
 import { materialsById } from "./materials.ts";
@@ -37,6 +38,24 @@ export interface MotionFacet {
   readonly seconds: number;
   readonly parts: readonly { readonly mesh: string; readonly from: PartPlacement; readonly to: PartPlacement }[];
   readonly say: readonly [string, string];
+}
+
+/**
+ * How a city piece breaks. Every kind of one shape, whole in any finish or in any broken form, names one `set`. A kind
+ * a map places is "whole"; each other form in each variant is a kind of its own, which a piece's row is swapped to.
+ */
+export interface BreaksFacet {
+  readonly set: string;
+  readonly form: BreakForm;
+  /** Which of a broken form's cuts it is. A whole kind has none. */
+  readonly variant?: number;
+  readonly family: BreakFamily;
+  /** Its halves along its length, each breached alone: 1 or 2. */
+  readonly halves: number;
+  /** Whether a piece in this form holds up what rests on it. */
+  readonly bears: boolean;
+  /** On a whole kind with panes: their health, the top slice of the piece's, which goes first. */
+  readonly glass?: number;
 }
 
 export interface StructureDef extends Named, StationFields {
@@ -113,6 +132,8 @@ export interface StructureDef extends Named, StationFields {
   readonly floor?: boolean;
   /** Where a survivor rises from a bed, from its middle and turned with it. On top of it unless given. */
   readonly rise?: readonly [number, number, number];
+  /** A city piece that breaks, or one of its broken forms. */
+  readonly breaks?: BreaksFacet;
 }
 
 const FIELDS = {
@@ -144,6 +165,7 @@ const FIELDS = {
   once: f("switch"),
   floor: f("switch"),
   rise: f("vec3"),
+  breaks: f("facet"),
   ...STATION_FIELDS,
 } satisfies Fields<StructureDef>;
 
@@ -165,6 +187,8 @@ function motionFaults(d: StructureDef): string[] {
 const columns = (n: number) => ({
   /** Per structure: the multiplier on each DMG_ type, from its material. Null for everything else, and for a structure nothing harms. */
   structTakes: list<Float32Array>(n),
+  /** Per structure: its material's index, 0 for none. The material's own columns are read by it. */
+  structMaterial: u16(n),
   /** Per structure with a shape: an index into PIECE_ROLES. -1 for everything else. */
   role: i8(n, -1),
   /** Per structure: 1 if it is a wall with a doorway. */
@@ -184,7 +208,34 @@ const columns = (n: number) => ({
   lights: u16(n),
   burning: u8(n),
   isBed: u8(n),
+  /**
+   * Per structure that breaks (StructureDef.breaks): its break set's number, 0 for one that never breaks; its family
+   * (BREAK_FAMILIES), halves, form (BREAK_FORMS) and variant; whether it bears in that form; and its panes' health.
+   */
+  breakSet: u16(n),
+  breakFamily: u8(n),
+  breakHalves: u8(n),
+  breakForm: u8(n),
+  breakVariant: u8(n),
+  breakBears: u8(n),
+  glassHp: f32(n),
+  /** Per structure that breaks: its break set's name, which is the shape it is a form of. Null for everything else. */
+  breakShape: list<string>(n),
+  /**
+   * Per structure that breaks: its set's kinds by form and variant, the kind at form * BREAK_VARIANTS + variant, 0 for
+   * none. Every kind of a set holds the one table. Read it with `formKind`.
+   */
+  formKinds: list<Uint16Array>(n),
 });
+
+/** The break set each name is, numbered from 1 in the order of the names. */
+const breakSets = (input: readonly Def[]): Map<string, number> => {
+  const names = new Set(input.flatMap((d) => (d.type === "structure" && d.breaks ? [d.breaks.set] : [])));
+  return new Map([...names].sort().map((name, at) => [name, at + 1]));
+};
+
+/** The box that holds each shape asked of it so far, by the shape's id. */
+const heldBoxes = (): Map<string, [number, number, number] | null> => new Map();
 
 /** The convex parts of the structure at `k`. A bent piece has none: it is walked as the pieces laid under it. */
 const hullsOf = (defs: readonly (Def | null)[], shapes: ReadonlyMap<string, ShapeDef>) => (k: number): readonly HullDef[] => {
@@ -201,7 +252,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     row("structure/container", "structure", FIELDS, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." }),
     row("structure/station", "structure", FIELDS, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "charges", "powered", "dry"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." }),
     row("structure/bed", "structure", FIELDS, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." }),
-    row("structure/static", "structure", FIELDS, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "grindLine", "vehicleSurface", "opens", "motion", "under", "made", "near", "paint", "coarse", "colors", "bent"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." }),
+    row("structure/static", "structure", FIELDS, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "grindLine", "vehicleSurface", "opens", "motion", "under", "made", "near", "paint", "coarse", "colors", "bent", "breaks"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A city piece that breaks names its break set, which its broken forms, each a kind of its own, name too. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." }),
     row("structure/defence", "structure", FIELDS, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." }),
   ],
   check(d, cx) {
@@ -224,13 +275,35 @@ if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.len
     if (d.mesh === "none" && (d.class !== "static" || d.shape === undefined)) errors.push(`${d.id}: only a static with a shape is drawn as nothing`);
     if (d.bent !== undefined && (d.bent !== true || d.class !== "static" || d.shape === undefined || ["box", "shape", "none"].includes(d.mesh))) errors.push(`${d.id}: only a static of a pack's mesh with a shape is drawn bent`);
     fuelFaults(d, cx);
+    if (d.breaks !== undefined) {
+      const b = d.breaks, form = BREAK_FORMS.indexOf(b.form);
+      if (typeof b.set !== "string" || b.set === "" || form < 0 || !BREAK_FAMILIES.includes(b.family) || b.family === "none" || (b.halves !== 1 && b.halves !== 2) || typeof b.bears !== "boolean") errors.push(`${d.id}: breaks names a set, a form, a family that breaks, 1 or 2 halves and whether it bears`);
+      else if (form === 0 ? b.variant !== undefined : !(Number.isInteger(b.variant) && b.variant! >= 0 && b.variant! < BREAK_VARIANTS)) errors.push(`${d.id}: a broken form says which of its ${BREAK_VARIANTS} variants it is, and a whole kind says none`);
+      else if (b.glass !== undefined && !(form === 0 && b.glass > 0)) errors.push(`${d.id}: only a whole kind has panes, and their health is more than 0`);
+    }
     if (d.keeps !== undefined) positive(d, "keeps", d.keeps, 1000);
     drawnFaults(d, cx);
   },
+  survey({ input, errors }) {
+    // One kind to a set's form and variant, and one family and one count of halves to a set.
+    const taken = new Set<string>(), said = new Map<string, string>();
+    for (const d of input) {
+      if (d.type !== "structure" || !d.breaks) continue;
+      const b = d.breaks, row = `${b.family} ${b.halves}`;
+      if ((said.get(b.set) ?? row) !== row) errors.push(`${d.id}: break set ${b.set} is given two families or counts of halves`);
+      said.set(b.set, row);
+      if (b.form === "whole") continue;
+      const key = `${b.set} ${b.form} ${b.variant}`;
+      if (taken.has(key)) errors.push(`${d.id}: break set ${b.set} has ${b.form} variant ${b.variant} twice`);
+      taken.add(key);
+    }
+  },
   among(d, { errors, once }) {
     if (d.shape === undefined) return;
-    const shape = once(shapesById).get(d.shape);
-    const holds = shape ? shapeHalf(shape.boxes, shape.hulls, shape.look) : null;
+    // Many kinds share a shape, as a ruin's finishes do: the box that holds one is worked out once.
+    const held = once(heldBoxes);
+    if (!held.has(d.shape)) { const shape = once(shapesById).get(d.shape); held.set(d.shape, shape ? shapeHalf(shape.boxes, shape.hulls, shape.look) : null); }
+    const holds = held.get(d.shape)!;
     if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
   },
   columns,
@@ -262,13 +335,30 @@ if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.len
     const m = d.material !== undefined ? once(materialsById).get(d.material)! : null;
     if (m) reg.structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
     reg.decayDays[i] = d.decayDays ?? m?.decayDays ?? 0;
+    if (d.breaks) {
+      reg.breakSet[i] = once(breakSets).get(d.breaks.set)!;
+      reg.breakShape[i] = d.breaks.set;
+      reg.breakFamily[i] = BREAK_FAMILIES.indexOf(d.breaks.family);
+      reg.breakHalves[i] = d.breaks.halves;
+      reg.breakForm[i] = BREAK_FORMS.indexOf(d.breaks.form);
+      reg.breakVariant[i] = d.breaks.variant ?? 0;
+      reg.breakBears[i] = d.breaks.bears ? 1 : 0;
+      reg.glassHp[i] = d.breaks.glass ?? 0;
+    }
   },
   link(d, i, reg) {
+    if (d.material !== undefined) reg.structMaterial[i] = reg.index.get(d.material)!;
     if (d.opens !== undefined) reg.opens[i] = reg.index.get(d.opens)!;
     if (d.lights !== undefined) reg.lights[i] = reg.index.get(d.lights)!;
   },
   finish(reg, { once }) {
     const n = reg.defs.length;
+    const tables = Array.from({ length: once(breakSets).size + 1 }, () => new Uint16Array(BREAK_FORMS.length * BREAK_VARIANTS));
+    for (let i = 1; i < n; i++) {
+      if (reg.breakSet[i] === 0) continue;
+      const table = (reg.formKinds[i] = tables[reg.breakSet[i]!]!);
+      if (reg.breakForm[i] !== 0) table[reg.breakForm[i]! * BREAK_VARIANTS + reg.breakVariant[i]!] = i;
+    }
     // Convex parts, only if some shape has them, so content without them is compiled as it always was.
     const hulls = hullsOf(reg.defs, once(shapesById));
     if (reg.defs.some((_, k) => hulls(k).length > 0)) reg.parts.hulls = hullTable(n, hulls);

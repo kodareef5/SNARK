@@ -191,9 +191,10 @@ test("every piece content means to be walked onto still is, and every piece mean
   const joined = [ROLE_CEILING, ROLE_STAIRS, ROLE_WALL, ROLE_PILLAR, ROLE_DOOR];
   for (let k = 1; k < reg.defs.length; k++) {
     const d = reg.defs[k];
-    // Sloped pieces are walked by tests/build/slopes.test.ts.
+    // Sloped pieces are walked by tests/build/slopes.test.ts. A city piece's broken form is neither kind: it has a way
+    // through it and remnants a survivor steps onto, which tests/world/breaks*.test.ts hold.
     const hulls = reg.parts.hulls;
-    if (d?.type !== "structure" || d.id.startsWith("test:") || (hulls && hulls.start[k + 1]! > hulls.start[k]!)) continue;
+    if (d?.type !== "structure" || d.id.startsWith("test:") || reg.breakForm[k] !== 0 || (hulls && hulls.start[k + 1]! > hulls.start[k]!)) continue;
     const role = reg.role[k]!;
     const w = world();
     if (!joined.includes(role)) {
