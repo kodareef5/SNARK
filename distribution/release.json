@@ -206,7 +206,7 @@
       {"name": "core-vehicles-van_common", "file": "core-vehicles-van_common.640e10b0500b.tar.zst", "bytes": 2543236, "sha256": "640e10b0500b2bf915451275a536a7c1fcd91dcdda9d20f8404ec79ca5e30c35"},
       {"name": "core-vehicles-veloce", "file": "core-vehicles-veloce.995e77b63b20.tar.zst", "bytes": 604108, "sha256": "995e77b63b20232858244760b1085a9997ae36e6d369ec55b929850348561b42"},
       {"name": "core-vehicles-veloce_abandoned", "file": "core-vehicles-veloce_abandoned.b6f636ec666d.tar.zst", "bytes": 650282, "sha256": "b6f636ec666da1a55ff0c8be700000785ed7b22d3ad52cde3b56af859d123e12"},
-      {"name": "core-vehicles-zephyr", "file": "core-vehicles-zephyr.c076fd490b08.tar.zst", "bytes": 608618, "sha256": "c076fd490b08cb6d127986749e3f3cd2018a3791cb0a7fa4843f2a3010908dda", "repository": "kodareef5/snark_private"},
+      {"name": "core-vehicles-zephyr", "file": "core-vehicles-zephyr.c076fd490b08.tar.zst", "bytes": 608618, "sha256": "c076fd490b08cb6d127986749e3f3cd2018a3791cb0a7fa4843f2a3010908dda"},
       {"name": "core-water", "file": "core-water.dc08af5e16cd.tar.zst", "bytes": 485936, "sha256": "dc08af5e16cdddfd6e8ae413f113906607973b6ce7b7d858992b943e32860e55"},
       {"name": "core-water-pictures", "file": "core-water-pictures.1a233564f712.tar.zst", "bytes": 1481380, "sha256": "1a233564f712fae380d9c2872bb4bb639f998fb4314c13abfdb8b6f882b06968"},
       {"name": "core-world-asphalt", "file": "core-world-asphalt.6993862c04bd.tar.zst", "bytes": 27029484, "sha256": "6993862c04bd14a5d01c401ffb84b285db766d99a115b9520a64a4654c27c327"},
