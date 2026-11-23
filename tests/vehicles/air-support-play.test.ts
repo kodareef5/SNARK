@@ -16,6 +16,7 @@ function click(view: Screen, label: string): void {
 
 test("the cab calls a trailer and launches its fourth bay through the radio", () => {
   const h = new ScreenHarness({}, 19, 20, { dev: true, map: Uint8Array.from(airYard()), clips: NO_CLIPS, rigs: [] });
+  h.host.setSetting("AirSupportOrderRequired", "False");
   try {
     const s = h.open("freight-driver");
     const view = screen(h, s);
@@ -73,6 +74,7 @@ test("the cab calls a trailer and launches its fourth bay through the radio", ()
 
 test("the cab radio rotates and places a ground pod from the yard spawn", () => {
   const h = new ScreenHarness({}, 19, 20, { dev: true, map: Uint8Array.from(airYard()), clips: NO_CLIPS, rigs: [] });
+  h.host.setSetting("AirSupportOrderRequired", "False");
   try {
     const s = h.open("ground-freight-driver");
     const view = screen(h, s);

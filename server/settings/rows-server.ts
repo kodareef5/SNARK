@@ -304,6 +304,7 @@ new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
 
 new Sheet(SERVER_ROWS, "snark", "Vehicles")
   .b("AirSupportEnabled", true, "Allow new freight carrier calls from a semi.", live({ live: true, public: true }))
+  .b("AirSupportOrderRequired", true, "Each freight call spends one Air freight order from the caller's inventory. False makes calls free. Its recipe and level are set with ConfigOverrideItemCraftingCosts and OverrideNamedEngramEntries (core:freight_order).", live({ live: true, public: true }))
   .f("AirSupportCooldown", 90, "Seconds between accepted freight calls from the same rig.", live({ live: true, min: 0, max: 86400 }))
   .f("AirCarrierSpeed", 70, "Metres a second the freight carrier cruises at; above 60 it flies nose down at full cruise.", live({ live: true, min: 10, max: 90 }))
   .f("AirCarrierHealth", 900, "Health a freight carrier takes off with. Gunfire and blasts bring it down; a load it holds falls with it.", live({ live: true, min: 1, max: 20000 }))

@@ -69,6 +69,8 @@ if(import.meta.main){
         throw new Error("Could not park the tanker beside the yard entrance");
     } else if (fleet) console.log(`Parked ${seedRoadFleet(server.host)} fleet models near spawn.`);
     else if (!air) seedUrbanVehicles(server.host);
+    // The freight yard is for trying the feature: its calls are free.
+    if (air) server.host.setSetting("AirSupportOrderRequired", "False");
     const roads = seedUrbanRoads(server.host);
     if (roads) console.log(`Added ${roads} native paving pieces southeast of spawn.`);
   } catch (error) {

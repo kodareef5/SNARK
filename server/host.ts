@@ -1289,7 +1289,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   persistence?.sidecar("supply", supply.saved);
   hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
   persistence?.sidecar("hitches", hitches.saved);
-  const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, wake: wakeView,
+  const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, items, wake: wakeView,
     spawn: (id, at, team, opts = {}) => {
       const def = reg.vehicle[reg.index.get(id) ?? 0];
       const e = parkVehicle(id, at.x, at.z, team, at.yaw, "air freight", { y: at.y, airborne: !!def && isRotorVehicle(def) });

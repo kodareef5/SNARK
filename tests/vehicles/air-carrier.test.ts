@@ -9,6 +9,7 @@ import { Harness } from "../fixtures/net.ts";
 /** Two kilometres of flat ground and a driver in a semi in the middle of it. */
 function rig() {
   const h = new Harness({}, 1, 30, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(32)) });
+  h.host.setSetting("AirSupportOrderRequired", "False");
   const s = h.join("driver"); h.run(500);
   const c = h.client(s)!, a = h.world.ents, e = h.host.spawnVehicle("core:semi", 1024, 1024, 0, 0);
   const def = h.reg.vehicle[a.kind[e]!]!, door = [0, 0, 0];
@@ -62,5 +63,17 @@ test("a carrier shot down drops its trailer, which falls to the ground", () => {
     h.run(8000);
     expect(a.y[trailer]!).toBeLessThan(1);
     expect(Math.hypot(a.vx[trailer]!, a.vy[trailer]!, a.vz[trailer]!)).toBeLessThan(.5);
+  } finally { h.host.shutdown(); }
+});
+
+test("a call spends one air freight order, and none when calls are free", () => {
+  const { h, c } = rig();
+  try {
+    const service = h.host.airSupport, me = h.host.records.byPid.get(c.pid)!, paper = h.reg.index.get("core:freight_order")!;
+    expect(h.host.setSetting("AirSupportOrderRequired", "True")).toBe("");
+    expect(service.call(c, null)).not.toBe(RESULT_OK);
+    h.host.items.mint(me, paper, 2);
+    expect(service.call(c, null)).toBe(RESULT_OK);
+    expect(h.host.items.inv(me).total(paper)).toBe(1);
   } finally { h.host.shutdown(); }
 });

@@ -13,7 +13,9 @@ import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
 function yard(dbPath?: string) {
-  return new Harness({}, 1, 30, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(3)), ...(dbPath ? { dbPath } : {}) });
+  const h = new Harness({}, 1, 30, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(3)), ...(dbPath ? { dbPath } : {}) });
+  h.host.setSetting("AirSupportOrderRequired", "False");
+  return h;
 }
 
 function board(h: Harness) {

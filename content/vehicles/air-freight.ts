@@ -1,4 +1,4 @@
-import type { SpeciesDef } from "../../shared/content/defs.ts";
+import type { Def, SpeciesDef } from "../../shared/content/defs.ts";
 import type { HelicopterSpec, RotorVehicleDefinition, VehicleSpec, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { AIR_CARRIER_ART as C, AIR_TRAILER_ART as T, SURVEY_DRONE_ART } from "./air-freight-art.ts";
 import { COMPACT_SPECIES } from "./compact.ts";
@@ -160,3 +160,16 @@ export const SURVEY_DRONE: SpeciesDef = {
   regions: [null, null, null, null, null, null],
   vehicle: SURVEY_DRONE_VEHICLE,
 };
+
+/** A signed requisition for one air freight delivery: a call from a semi's cab spends one (AirSupportOrderRequired). */
+export const FREIGHT_ORDER: readonly Def[] = [
+  {
+    type: "item", class: "resource", id: "core:freight_order", aliases: ["freight_order", "air_freight_order"],
+    label: "Air freight order", stack: 5, weight: 0.1, color: 230,
+    craft: { at: "core:fabricator", seconds: 30, xp: 400, level: 60, needs: [
+      { item: "core:electronics", count: 40 }, { item: "core:polymer", count: 60 },
+      { item: "core:ingot", count: 120 }, { item: "core:crystal", count: 20 },
+    ] },
+  },
+  { type: "engram", id: "core:engram-freight_order", label: "Air freight order", level: 60, cost: 30, item: "core:freight_order" },
+];

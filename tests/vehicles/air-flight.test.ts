@@ -44,6 +44,7 @@ function waitFor(h: Harness, done: () => boolean, seconds = 45): void {
 
 function setup() {
   const h = new Harness({ entityRadius: 1, structRadius: 1 }, 35, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(12)) });
+  h.host.setSetting("AirSupportOrderRequired", "False");
   const pilot = h.join("driver", { latencyMs: 45, jitterMs: 4 }), observer = h.join("observer");
   h.run(800);
   const c = h.client(pilot)!, ents = h.world.ents;

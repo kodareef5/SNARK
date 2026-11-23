@@ -19,9 +19,11 @@ import { AirFlights, type AirFlightContext } from "./air-flight.ts";
 import type { Client } from "./game.ts";
 import type { Hitches } from "./hitches.ts";
 import type { Urban } from "./urban.ts";
+import type { Items } from "./items.ts";
 
 export interface AirSupportContext extends Omit<AirFlightContext, "valid" | "spawn"> {
   urban: Urban;
+  items: Items;
   hitches: Hitches;
   /** Parks a vehicle of kind `id`, owned by `team`, at this frame; returns its entity or -1. `transient` ones are never saved. */
   spawn(id: string, at: Frame, team: number, opts?: { health?: number; transient?: boolean }): number;
@@ -215,12 +217,16 @@ export class AirSupport {
       ground = { ...ground, yaw: angle(ground.yaw), y: at.y };
       if (!this.stationary(e)) return this.tell(c, "Park the semi before marking a ground delivery.", RESULT_BUSY);
     }
-    const owner = records.byPid.get(c.pid)!, entry = this.faraway(at);
+    const owner = records.byPid.get(c.pid)!, paper = world.reg.index.get("core:freight_order") ?? 0;
+    const pays = rules.on("AirSupportOrderRequired") && paper > 0;
+    if (pays && this.ctx.items.inv(owner).total(paper) < 1) return this.tell(c, "Craft an Air freight order to call a delivery.", RESULT_SHORT);
+    const entry = this.faraway(at);
     const aircraft = this.launchCarrier(entry, at, owner.team);
     if (aircraft < 0) return this.tell(c, "No carrier can reach this rig.", RESULT_DENIED);
     const cargo = this.ctx.spawn(T.id, this.hanging(aircraft), owner.team);
     if (cargo < 0) { this.ctx.discard(aircraft); return this.tell(c, "No carrier can reach this rig.", RESULT_DENIED); }
     this.carried.add(world.ents.pid[cargo]!);
+    if (pays) this.ctx.items.burnItem(owner, paper, 1);
     const order: Order = { ...entry, id: this.next++, ent: 0, pitch: 0, roll: 0, phase: P.inbound, loaded: true, trailer: !ground, jaws: 0, owner: c.pid, team: owner.team,
       rig, ground, since: world.tick, wait: Math.ceil(rules.num("AirSupportWait") * TICK_RATE), still: 0, mark: null, edge: entry,
       speed: rules.num("AirCarrierSpeed"), stop: Math.ceil(rules.num("AirSupportStop") * TICK_RATE), stock: rules.num("AirSupportStock"),
