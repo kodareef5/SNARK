@@ -57,18 +57,24 @@ const CELLS = 16;
 const NO_SLOTS = new Uint16Array(0);
 export const MAX_SLOTS_PER_CHUNK = 65535;
 
-/** Why a structure was removed: taken (picked up or demolished), out of health, or left with no support. */
+/** Why a structure was removed: taken (picked up or demolished), out of health, left with no support, or blown apart. */
 export const GONE_TAKEN = 0;
 export const GONE_DESTROYED = 1;
 export const GONE_FELL = 2;
+export const GONE_BLAST = 3;
+/** What a logged change did to its slot: moved, made or emptied it; gave it another kind where it stood; and whether a batch that leaves heaps says so. */
+export const TOUCH_MOVED = 1;
+export const TOUCH_KIND = 2;
+export const TOUCH_LEFT = 4;
 /** Removals a chunk remembers, so a client can be sent each as one batch. */
 export const GONE_KEPT = 8;
 /** Changed slots a chunk remembers, so a client a few changes behind is sent those without a scan of every slot. */
 export const RECENT = 256;
 
 /**
- * Structures of one chunk removed together. `version` is the chunk's version, (x, y, z) is where it began in metres (for a fall,
- * where support was lost), `stamp` is the caller's clock, and `runs` holds pairs of first slot and count.
+ * Structures of one chunk broken together. `version` is the chunk's version, (x, y, z) is where it began in metres (for a fall,
+ * where support was lost; for a blast, its centre), `radius` is a blast's reach in metres, `stamp` is the caller's clock,
+ * and `runs` holds pairs of first slot and count for the slots emptied, `left` for those that took a heap's kind in place.
  */
 export interface GoneBatch {
   version: number;
@@ -77,8 +83,16 @@ export interface GoneBatch {
   readonly y: number;
   readonly z: number;
   readonly stamp: number;
+  readonly radius: number;
   readonly runs: number[];
+  readonly left: number[];
   count: number;
+}
+
+/** What a broken slot takes in place of emptying: a kind and its health. Kind 0 empties it. */
+export interface Leaves {
+  kind: number;
+  hp: number;
 }
 
 export class ChunkTable {
@@ -94,9 +108,9 @@ export class ChunkTable {
   readonly gone: GoneBatch[] = [];
   goneFloor = 0;
   /**
-   * A ring of the last RECENT changes the authority made: the slot, the version the change gave it, and 1 where it changed
-   * the slot's kind, place or yaw (0 for health or owner alone). Versions ascend. A client at `recentFloor` or later finds
-   * every slot it lacks here. Null until the first change.
+   * A ring of the last RECENT changes the authority made: the slot, the version the change gave it, and what the change
+   * did as TOUCH_ bits (0 for health or owner alone). Versions ascend. A client at `recentFloor` or later finds every slot
+   * it lacks here. Null until the first change.
    */
   recentSlot: Uint16Array | null = null;
   recentVer: Uint32Array | null = null;
@@ -212,8 +226,12 @@ export class StructureStore {
   count = 0;
   /** Bumped with any chunk's `shape`. */
   shapes = 0;
-  /** Each is called with the chunk whose `shape` a piece set down or taken away has just bumped. */
+  /** Each is called with the chunk whose `shape` a piece set down or taken away has just bumped: once a chunk for pieces broken together. */
   readonly onShape: ((chunk: number) => void)[] = [];
+  /** While above 0, shape listeners wait. `waiting` holds the chunks they are then told of. */
+  private holding = 0;
+  private readonly waiting: number[] = [];
+  private readonly leaves: Leaves = { kind: 0, hp: 0 };
   /** Entries the last query passed over for lying outside its height band. */
   passed = 0;
   /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
@@ -254,7 +272,7 @@ export class StructureStore {
   private readonly soft: Uint8Array | null;
   /** Per kind, in metres from a structure's origin: the bottom and top of its boxes, and how far they reach sideways at any yaw. */
   readonly low: Float32Array;
-  private readonly high: Float32Array;
+  readonly top: Float32Array;
   readonly spread: Float32Array;
   /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. */
   private readonly pad: Float32Array;
@@ -276,7 +294,7 @@ export class StructureStore {
     this.nodeTop = new Float32Array(1024);
     const kinds = halfX.length;
     this.low = new Float32Array(kinds);
-    this.high = new Float32Array(kinds);
+    this.top = new Float32Array(kinds);
     this.spread = new Float32Array(kinds);
     this.pad = new Float32Array(kinds);
     const box = this.parts.box;
@@ -306,7 +324,7 @@ export class StructureStore {
         }
       }
       this.low[k] = low;
-      this.high[k] = high;
+      this.top[k] = high;
       this.spread[k] = spread * STRETCH_MOST;
     }
   }
@@ -333,7 +351,7 @@ export class StructureStore {
     }
     t.version++;
     this.write(chunk, t, slot, kind, x, y, z, yaw & 0xffff, owner, hp, t.version);
-    t.touch(slot, 1);
+    t.touch(slot, TOUCH_MOVED);
     this.onChunkChanged?.(chunk, false);
     return chunk * 65536 + slot;
   }
@@ -425,6 +443,16 @@ export class StructureStore {
     return t && slot < t.mapped ? this.placedKinds![t.map![slot]!]! : 0;
   }
 
+  /**
+   * The kind whose material and full health the piece in `slot` of `chunk` has: the kind the map placed, for a map's piece
+   * owned by nobody, whatever form its row has taken; else its row's own. Authority only.
+   */
+  bodyKind(chunk: number, slot: number): number {
+    const t = this.chunks[chunk];
+    if (!t || slot >= t.high) return 0;
+    return slot < t.mapped && t.owner[slot] === 0 && t.kind[slot] !== 0 ? this.placedKinds![t.map![slot]!]! : t.kind[slot]!;
+  }
+
   /** Whether `slot` counts in its chunk's `differs`: a map slot not as the map set it down, or a live slot past the map's. */
   private differsAt(t: ChunkTable, slot: number): boolean {
     if (slot >= t.mapped) return t.kind[slot] !== 0;
@@ -469,7 +497,7 @@ export class StructureStore {
     // Removals in a row with the same cause and stamp and no other change between (a blast through a wall)
     // join one batch, which began at the first.
     const last = t.gone[t.gone.length - 1];
-    const joins = last !== undefined && last.version === t.version && last.cause === cause && last.stamp === stamp;
+    const joins = last !== undefined && last.version === t.version && last.cause === cause && last.stamp === stamp && last.left.length === 0 && last.radius === 0;
     t.version++;
     if (joins) {
       const runs = last.runs;
@@ -477,9 +505,9 @@ export class StructureStore {
       else runs.push(slot, 1);
       last.version = t.version;
       last.count++;
-    } else t.log({ version: t.version, cause, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, stamp, runs: [slot, 1], count: 1 });
+    } else t.log({ version: t.version, cause, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, stamp, radius: 0, runs: [slot, 1], left: [], count: 1 });
     this.erase(chunk, t, slot, t.version);
-    t.touch(slot, 1);
+    t.touch(slot, TOUCH_MOVED);
     if (slot >= t.mapped) t.free.push(slot);
     this.onChunkChanged?.(chunk, false);
     return true;
@@ -490,8 +518,19 @@ export class StructureStore {
    * (x, y, z). Returns how many were removed. Authority only.
    */
   removeMany(refs: Uint32Array, n: number, cause: number, x: number, y: number, z: number, stamp: number): number {
+    return this.breakMany(refs, n, cause, null, x, y, z, stamp);
+  }
+
+  /**
+   * Breaks the first `n` of `refs`, which it sorts in place. Each is emptied, or takes in place the kind and health `leaves`
+   * gives it (its heap). Each chunk changes version once, logs one batch that began at (x, y, z) and tells its shape
+   * listeners once. `radius` is a blast's reach. Returns how many were broken. Authority only.
+   */
+  breakMany(refs: Uint32Array, n: number, cause: number, leaves: ((ref: number, out: Leaves) => void) | null, x: number, y: number, z: number, stamp: number, radius = 0): number {
     const sorted = refs.subarray(0, n).sort();
-    let removed = 0;
+    const out = this.leaves;
+    let broken = 0;
+    this.hold();
     for (let i = 0; i < n; ) {
       const chunk = Math.floor(sorted[i]! / 65536);
       const t = this.chunks[chunk];
@@ -499,33 +538,70 @@ export class StructureStore {
       while (end < n && Math.floor(sorted[end]! / 65536) === chunk) end++;
       if (t) {
         const runs: number[] = [];
+        const left: number[] = [];
         let count = 0;
         for (let k = i; k < end; k++) {
           const slot = sorted[k]! & 0xffff;
           if (slot >= t.high || t.kind[slot] === 0 || (k > i && sorted[k] === sorted[k - 1])) continue;
-          this.onRemove?.(sorted[k]!, cause);
+          out.kind = 0;
+          leaves?.(sorted[k]!, out);
+          const heap = out.kind !== 0;
+          if (!heap) this.onRemove?.(sorted[k]!, cause);
           if (count === 0) t.version++;
-          this.erase(chunk, t, slot, t.version);
-          t.touch(slot, 1);
-          if (slot >= t.mapped) t.free.push(slot);
+          if (heap) {
+            const [px, py, pz, yaw, owner] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.owner[slot]!];
+            this.erase(chunk, t, slot, t.version, true);
+            this.write(chunk, t, slot, out.kind, px, py, pz, yaw, owner, out.hp, t.version, true);
+            t.touch(slot, TOUCH_KIND | TOUCH_LEFT);
+          } else {
+            this.erase(chunk, t, slot, t.version);
+            t.touch(slot, TOUCH_MOVED);
+            if (slot >= t.mapped) t.free.push(slot);
+          }
           // Slots come in ascending order, so an adjacent slot extends the last run.
-          if (runs.length > 0 && runs[runs.length - 2]! + runs[runs.length - 1]! === slot) runs[runs.length - 1]!++;
-          else runs.push(slot, 1);
+          const list = heap ? left : runs;
+          if (list.length > 0 && list[list.length - 2]! + list[list.length - 1]! === slot) list[list.length - 1]!++;
+          else list.push(slot, 1);
           count++;
         }
         if (count > 0) {
-          t.log({ version: t.version, cause, x, y, z, stamp, runs, count });
+          t.log({ version: t.version, cause, x, y, z, stamp, radius, runs, left, count });
           this.onChunkChanged?.(chunk, false);
-          removed += count;
+          broken += count;
         }
       }
       i = end;
     }
-    return removed;
+    this.release();
+    return broken;
   }
 
-  /** Changes a structure's kind in place and keeps the rest of its row (a door opening). False if there is no such structure. Authority only. */
-  swap(ref: number, kind: number): boolean {
+  /** Until `release`, shape listeners wait, and are then told once of each chunk whose shape changed. Authority only. */
+  hold(): void {
+    this.holding++;
+  }
+
+  release(): void {
+    if (--this.holding > 0) return;
+    const waiting = this.waiting;
+    for (let k = 0; k < waiting.length; k++) for (let i = 0; i < this.onShape.length; i++) this.onShape[i]!(waiting[k]!);
+    waiting.length = 0;
+  }
+
+  /** Tells the shape listeners of `chunk`, or keeps it for `release`. */
+  private shaped(chunk: number): void {
+    if (this.holding === 0) {
+      for (let i = 0; i < this.onShape.length; i++) this.onShape[i]!(chunk);
+      return;
+    }
+    if (!this.waiting.includes(chunk)) this.waiting.push(chunk);
+  }
+
+  /**
+   * Changes a structure's kind in place and keeps the rest of its row (a door opening), but its health where `health` is
+   * given (a city piece taking a broken form). False if there is no such structure. Authority only.
+   */
+  swap(ref: number, kind: number, health = -1): boolean {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
     const t = this.chunks[chunk];
@@ -533,9 +609,26 @@ export class StructureStore {
     const [x, y, z, yaw, owner, hp] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.owner[slot]!, t.hp[slot]!];
     t.version++;
     this.erase(chunk, t, slot, t.version, true);
-    this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, t.version, true);
-    t.touch(slot, 1);
+    this.write(chunk, t, slot, kind, x, y, z, yaw, owner, health >= 0 ? health : hp, t.version, true);
+    t.touch(slot, TOUCH_KIND);
     this.onChunkChanged?.(chunk, false);
+    return true;
+  }
+
+  /**
+   * Sets a structure's health and tells nobody: the chunk's version and its log of changes stand, so no client is sent it
+   * and nothing drawn far off is made again. What differs from the map is still counted, so the chunk is saved, and a
+   * client that comes later is sent the health. For wear that shows no change. False if there is no such structure. Authority only.
+   */
+  wear(ref: number, hp: number): boolean {
+    const chunk = Math.floor(ref / 65536);
+    const slot = ref & 0xffff;
+    const t = this.chunks[chunk];
+    if (!t || slot >= t.high || t.kind[slot] === 0) return false;
+    const was = this.differsAt(t, slot);
+    t.hp[slot] = hp;
+    this.tally(t, slot, was);
+    this.onChunkChanged?.(chunk, true);
     return true;
   }
 
@@ -791,7 +884,7 @@ export class StructureStore {
     t.mod[slot] = mod;
     t.shape++;
     this.shapes++;
-    for (let i = 0; i < this.onShape.length; i++) this.onShape[i]!(chunk);
+    this.shaped(chunk);
     t.live++;
     this.count++;
     this.footprint(kind, x, z, yaw);
@@ -807,7 +900,7 @@ export class StructureStore {
         const node = this.allocNode();
         this.nodeRef[node] = ref;
         this.nodeBottom[node] = y + this.low[kind]!;
-        this.nodeTop[node] = y + this.high[kind]!;
+        this.nodeTop[node] = y + this.top[kind]!;
         this.nodeNext[node] = cells[cell]!;
         cells[cell] = node + 1;
       }
@@ -852,7 +945,7 @@ export class StructureStore {
     t.mod[slot] = mod;
     t.shape++;
     this.shapes++;
-    for (let i = 0; i < this.onShape.length; i++) this.onShape[i]!(chunk);
+    this.shaped(chunk);
     t.live--;
     this.count--;
   }
