@@ -10,7 +10,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG, type Connection } from "../shared/net/transport.ts";
-import { stampWire } from "../shared/net/protocol.ts";
+import { RESTART_GO, stampWire } from "../shared/net/protocol.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
@@ -39,7 +39,8 @@ import { partHash, partsFolder, readHead, type MapFile } from "../shared/world/m
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
 import { PlayLog, REPORT_BYTES_MAX } from "./playlog.ts";
 import { ReportStore } from "./reports.ts";
-import { serverWire } from "./wire.ts";
+import { builtWire, serverWire } from "./wire.ts";
+import type { Ready } from "../shared/ready.ts";
 import type { Client } from "./game.ts";
 import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
 
@@ -116,6 +117,11 @@ export interface RunningServer {
   /** Unreliable messages skipped since the start because too much was waiting to go to their client. The device probe reports it. */
   readonly skipped: number;
   stop(): void;
+  /**
+   * Stops as `stop` does, after telling every page to leave for its waiting page and giving them `graceMs` to go: the
+   * waiting page must be fetched while the server still answers. With nobody connected it stops at once.
+   */
+  stopGently(graceMs?: number): Promise<void>;
 }
 
 interface Socket {
@@ -488,6 +494,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         if (!local || !originAllowed(req.headers.get("origin"),req.headers.get("host"),"")) return entryReply({error:"Use this world’s own address"},403);
         return access.answer(req,who);
       }
+      // What a waiting page asks to know the server is back (client/core/waiting.ts): this start, the version it speaks,
+      // and the version of the page on disk now, which is another until the client is built.
+      if (path === "/ready.json") return new Response(JSON.stringify({ started: meter.startedAt, wire, page: builtWire(clientDir), map: host.world.mapId } satisfies Ready), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
       if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, players:host.game.playerCount, max:host.game.opts.maxClients, listed, pve:host.rules.on("serverPVE"), about:plain(host.rules.text("ServerDescription")).slice(0,ABOUT_MAX), discord:discordOf(host.rules.text("DiscordUrl")), tags:tagsOf(host.rules.text("ServerTags")), spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
       if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
       if (path === "/ws" || path === "/voice") {
@@ -638,6 +647,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     },
   });
 
+  let stopped = false;
+  const stop = (): void => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(heartbeat); listings?.close(); titleScenes.close();
+    stopTicks();
+    server.stop(true);
+    host.shutdown();
+    mapRoute.close();
+  };
+
   if (opts.terminal) {
     void (async () => {
       for await (const line of console) {
@@ -656,15 +676,25 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     get skipped() {
       return skipped;
     },
-    stop() {
-      clearInterval(heartbeat); listings?.close(); titleScenes.close();
-      stopTicks();
-      server.stop(true);
-      host.shutdown();
-      mapRoute.close();
+    stop,
+    async stopGently(graceMs = STOP_GRACE_MS) {
+      if (stopped) return;
+      const some = host.game.playerCount > 0;
+      host.game.sendRestart(RESTART_GO);
+      // The ticks go on meanwhile, so each socket that closes is seen to.
+      const until = performance.now() + graceMs;
+      while (!stopped && host.game.playerCount > 0 && performance.now() < until) await new Promise((r) => setTimeout(r, 25));
+      // A page that has just left is still fetching its waiting page's pictures.
+      if (some && !stopped) await new Promise((r) => setTimeout(r, STOP_LINGER_MS));
+      stop();
     },
   };
 }
+
+/** The longest a stop waits for its pages to leave for their waiting page, in milliseconds. */
+export const STOP_GRACE_MS = 2000;
+/** How long it goes on answering once the last page has left, in milliseconds. */
+export const STOP_LINGER_MS = 300;
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
@@ -718,7 +748,9 @@ if (import.meta.main) {
     terminal: process.stdin.isTTY,
   });
   console.log(`SNARK listening on ${value("--cert") && value("--key") ? "https" : "http"}://localhost:${running.port}${pathOf(value("--public-url") ?? "")}/`);
-  stopOnSignals(() => running.stop());
+  stopOnSignals((hurry) => (hurry ? running.stop() : running.stopGently()));
+  // A stop asked for in the game or on the admin page (doexit): the pages leave, the world is saved, the process ends.
+  running.host.onStop = () => void running.stopGently().then(() => process.exit(0), (err) => (console.error(err), process.exit(1)));
   // The tick that threw is torn, so nothing of it is saved. The last commit is whole.
   process.on("uncaughtException", (err) => {
     console.error(err);

@@ -94,6 +94,9 @@ import {
   S_RESULT,
   S_SNAPSHOT,
   S_TEXT,
+  RESTART_GO,
+  RESTART_OFF,
+  S_RESTART,
   S_TRAVEL,
   S_TUNING,
   S_MOTION,
@@ -340,7 +343,7 @@ const ASK_AGAIN_MS = 1000;
  * itself. The server reads against an acknowledged view only while it is younger than VIEW_RING, and sends it whole after.
  */
 const QUIET_TICKS = 8;
-const CLOSED_BY_PEER = -1;
+export const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
 /** The content this client derives from the server's tuning does not hash to the server's. */
 export const CLOSED_BAD_CONTENT = -3;
@@ -430,6 +433,19 @@ export class ClientSession {
   closeText = "";
   /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
   travelled: { ticket: Uint8Array; world: number } | null = null;
+  /**
+   * The server said it is stopping (S_RESTART): when, in ms since 1970, or 0 for no stop said. `leaving` is its "go":
+   * the page is on its way to its waiting page. `lost` is a session that was in the world and whose connection
+   * closed with no word, which the page waits out in place (client/core/waiting.ts).
+   */
+  restartAt = 0;
+  leaving = false;
+  lost = false;
+  /** What the page waiting in place has to say, shown as the status; "" until it waits. */
+  waiting = "";
+  /** Told as each arrives, not at the next frame: a hidden tab draws no frames, and must leave all the same. */
+  onRestart: ((go: boolean) => void) | null = null;
+  onLost: (() => void) | null = null;
 
   /** The supply drops live on the map as the server last told them (S_SUPPLY), whole, and a count raised each time it does. */
   supply: SupplyList = { tiers: [], classes: [], rows: [] };
@@ -721,9 +737,15 @@ export class ClientSession {
     conn.onMessage = (channel, data) => this.receive(channel, data);
     conn.onClose = () => {
       if (this.state !== "closed") {
-        if (this.state === "active") this.prediction.closed(this, "the socket closed");
+        const was = this.state;
+        if (was === "active") this.prediction.closed(this, "the socket closed");
         this.state = "closed";
         this.closeReason = CLOSED_BY_PEER;
+        // One that was in the world and was told nothing has lost its server: a stop, a crash or the line between.
+        if (was === "active" && !this.leaving && !this.travelled) {
+          this.lost = true;
+          this.onLost?.();
+        }
       }
       this.welcomedNow();
     };
@@ -1443,6 +1465,18 @@ export class ClientSession {
         for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
         const world = r.u16();
         if (!r.overflow) s.travelled = { ticket, world };
+      },
+    });
+    messages.add({
+      kind: S_RESTART,
+      read(s, r) {
+        const seconds = r.u16();
+        // One who joins during the countdown is told before its welcome.
+        if (r.overflow || s.state === "closed") return;
+        if (seconds === RESTART_OFF) s.restartAt = 0;
+        else if (seconds === RESTART_GO) s.leaving = true;
+        else s.restartAt = Date.now() + seconds * 1000;
+        if (seconds !== RESTART_OFF) s.onRestart?.(seconds === RESTART_GO);
       },
     });
     messages.add({

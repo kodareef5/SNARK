@@ -221,6 +221,21 @@ export function addCoreCommands(con: Console): void {
       },
     },
     {
+      // ARK's name for a shutdown. Whatever started the server starts it again.
+      name: "doexit",
+      usage: "[seconds | cancel]",
+      examples: ["doexit 60", "doexit cancel"],
+      help: "Stop the server for an update: every page is told, waits by itself and comes back when the server is up again. With seconds, after a countdown.",
+      admin: true,
+      run(ctx, args) {
+        if (args[0] === "cancel") return ctx.host.stopCancel() ? "the server will not stop" : "no stop was set";
+        const seconds = args[0] === undefined ? 0 : parseNumber(args[0]);
+        if (Number.isNaN(seconds)) return "usage: doexit [seconds | cancel]";
+        const why = ctx.host.stopIn(seconds);
+        return why !== "" ? why : seconds > 0 ? `the server stops in ${seconds} s` : "the server is stopping";
+      },
+    },
+    {
       name: "kick",
       usage: "<name>",
       help: "Disconnect a survivor.",

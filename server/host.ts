@@ -8,7 +8,7 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
@@ -302,6 +302,17 @@ export interface Host {
   idle(): void;
   /** Commit and close the store. */
   shutdown(): void;
+  /**
+   * Says the server stops in `seconds`, to every session and to whoever joins meanwhile, and stops it then by
+   * `onStop`. Returns "" if the stop is set, or why not. A stop already set is set again at the new time.
+   */
+  stopIn(seconds: number): string;
+  /** Takes back a stop that was said. Returns whether there was one. */
+  stopCancel(): boolean;
+  /** Seconds until the stop that was said, or -1. */
+  readonly stopLeft: number;
+  /** Stops the process the host runs in, once it has said "go" to its pages. Whoever starts the server gives it. */
+  onStop: (() => void) | null;
 }
 
 /** One minute, in ticks. */
@@ -1139,6 +1150,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   /** In ticks. ARK reads its live file at every world save. */
   let liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
+  /** The tick at which a stop that was said comes, or -1 (Host.stopIn). */
+  let stopAt = -1;
+  const tellAll = (text: string): void => {
+    for (const c of game.clients) if (c?.active && !c.closed) game.sendText(c, TEXT_NOTICE, text);
+  };
   const readLive = (): string[] => {
     if (!opts.live || rules.flag("UseDynamicConfig") !== true) return ["the live file is not in use: the server was not started with -UseDynamicConfig"];
     const text = opts.live();
@@ -1377,6 +1393,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const name = rules.text("SessionName");
     if (name !== "") game.sendText(c, TEXT_MOTD, name);
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
+    // One who joins during the countdown to a stop is told of it too.
+    if (stopAt >= 0) game.sendRestart(Math.max(1, Math.ceil((stopAt - world.tick) / TICK_RATE)), c);
   });
   game.sessions.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
@@ -1482,6 +1500,17 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const before = rules.version;
       const said = readLive();
       if (rules.version !== before) for (const line of said) console.log(line);
+    }
+    // A stop that was said: the chat counts it down, and at its tick the process is stopped (main.ts stopGently).
+    if (stopAt >= 0) {
+      const left = stopAt - tick;
+      if (left <= 0) {
+        stopAt = -1;
+        host.onStop?.();
+      } else if (left % TICK_RATE === 0) {
+        const seconds = left / TICK_RATE;
+        if (seconds % 60 === 0 || seconds === 30 || seconds <= 10) tellAll(`The server restarts in ${seconds >= 60 ? `${seconds / 60} min` : `${seconds} s`}. Stay on this page and you will be brought back.`);
+      }
     }
     if (retimedAt !== rules.version) {
       retimedAt = rules.version;
@@ -1891,6 +1920,26 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       return did;
     },
     kept,
+    onStop: null,
+    get stopLeft() {
+      return stopAt < 0 ? -1 : Math.max(0, Math.ceil((stopAt - world.tick) / TICK_RATE));
+    },
+    stopIn(seconds) {
+      if (!host.onStop) return "this server was not started in a way that can stop itself";
+      if (!Number.isFinite(seconds) || seconds < 0 || seconds > RESTART_MOST) return `a stop is from 0 to ${RESTART_MOST} seconds ahead`;
+      const ticks = Math.max(1, Math.round(seconds * TICK_RATE));
+      stopAt = world.tick + ticks;
+      game.sendRestart(Math.max(1, Math.ceil(ticks / TICK_RATE)));
+      tellAll(`The server restarts in ${seconds >= 60 ? `${Math.round(seconds / 60)} min` : `${Math.round(seconds)} s`} for an update. Stay on this page and you will be brought back.`);
+      return "";
+    },
+    stopCancel() {
+      if (stopAt < 0) return false;
+      stopAt = -1;
+      game.sendRestart(RESTART_OFF);
+      tellAll("The server will not restart after all.");
+      return true;
+    },
     readLive,
     loadedUnder,
     projectiles,

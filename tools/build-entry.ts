@@ -1,6 +1,6 @@
 import { titlePoster } from "./title/poster.ts";
 import { buildMapGallery } from "./title/maps.ts";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import { parseManifest } from "../shared/pack/manifest.ts";
@@ -35,7 +35,7 @@ export async function buildEntry(dist: string): Promise<void> {
   const named = (prefix: string) => "assets/" + files.find((n) => n.startsWith(prefix) && !n.endsWith(".br"));
   const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
   const result = await Bun.build({
-    entrypoints: [join(source, "entry.ts"), join(source, "flight.ts"), join(source, "studio.ts"), join(source, "scene-studio.ts")],
+    entrypoints: [join(source, "entry.ts"), join(source, "flight.ts"), join(source, "studio.ts"), join(source, "scene-studio.ts"), join(source, "wait.ts")],
     outdir: dist,
     target: "browser",
     minify: true,
@@ -44,6 +44,10 @@ export async function buildEntry(dist: string): Promise<void> {
   });
   if (!result.success) throw Error(result.logs.map(String).join("\n"));
   for (const name of ["entry.css", "flight.html", "studio.html", "scene-studio.css"]) cpSync(join(source, name), join(dist, name));
+  // The waiting page carries its script in its HTML: once it is fetched, it asks nothing more of a server that is stopping.
+  const waiting = readFileSync(join(dist, "wait.js"), "utf8").replaceAll("</script", "<\\/script");
+  writeFileSync(join(dist, "wait.html"), readFileSync(join(source, "wait.html"), "utf8").replace("/* WAIT_SCRIPT */", () => waiting));
+  rmSync(join(dist, "wait.js"));
   mkdirSync(join(dist, "admin"), { recursive: true });
   cpSync(join(source, "scene-studio.html"), join(dist, "admin/scene-studio.html"));
   const media = join(source, "media");

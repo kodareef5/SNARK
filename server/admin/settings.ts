@@ -34,7 +34,7 @@ export function settingsPage(host: Host, ok = true, why = "", note = ""): Settin
       source: rules.sourceOf(row), secret: row.secret, fixed: fixedWhy(row) === "" ? "" : `Set at start. ${AT_START[name] ?? ""}`.trim(), kept: kept.words.has(name),
     });
   }
-  return { ok, why, note, keeps: host.persistence !== null, rows };
+  return { ok, why, note, keeps: host.persistence !== null, stopLeft: host.stopLeft, rows };
 }
 
 function act(host: Host, b: Record<string, unknown>): SettingsPage {

@@ -692,7 +692,8 @@ export class App {
     if (session.state === "closed") {
       this.dash.none(hud);
       // Only the reasons a player can act on are spelled out.
-      hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
+      // A page the server sent to wait, or one that lost it, says so: it comes back by itself (waiting.ts).
+      hud.status = session.waiting !== "" ? session.waiting : session.leaving ? "The server is restarting. One moment." : session.lost ? "The server went away. Waiting for it to come back." : session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(f.aspect, hud, session);
       if (this.sound) this.sounds?.hush(this.sound);
       return false;

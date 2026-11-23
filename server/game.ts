@@ -17,6 +17,7 @@ import {
   CHOOSE_DIED,
   S_OWN,
   S_RESULT,
+  S_RESTART,
   S_TEXT,
   S_TUNING,
 } from "../shared/net/protocol.ts";
@@ -394,6 +395,18 @@ export class GameServer {
   setSeats(n: number): void {
     this.opts.maxClients = n;
     while (this.clients.length < n) this.clients.push(null);
+  }
+
+  /**
+   * Tells a session, or every one, that the server stops in `seconds` (S_RESTART): RESTART_GO to leave for the
+   * waiting page now, RESTART_OFF that it will not stop after all.
+   */
+  sendRestart(seconds: number, to?: Client): void {
+    const w = new BitWriter(8);
+    w.u8(S_RESTART);
+    w.u16(Math.min(0xffff, Math.max(0, Math.round(seconds))));
+    const bytes = w.bytes();
+    for (const c of to ? [to] : this.clients) if (c?.active && !c.closed) c.conn.send(CH_RELIABLE, bytes);
   }
 
   /** Tells every session the content the server's settings now make, which each derives as at its welcome (S_TUNING). */

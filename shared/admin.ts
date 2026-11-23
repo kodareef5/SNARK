@@ -103,6 +103,8 @@ export interface SettingsPage {
   note: string;
   /** Whether what the page sets outlives a restart: the world has a save to keep it beside. */
   keeps: boolean;
+  /** Seconds until a stop that was said (POST /admin/stop, `doexit`), or -1. */
+  stopLeft: number;
   rows: SettingRow[];
 }
 
