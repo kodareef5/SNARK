@@ -74,6 +74,7 @@ export function ownBody(d: Director, f: AppFrame): void {
       if (r.id[i] !== session.driving) continue;
       if (body.vehicle) {
         body.vehicle.doors = r.vehicleDoors[i]!;
+        body.vehicle.missingPanels = r.vehicleMissingPanels[i]!;
         body.vehicle.lightMode = r.vehicleLightMode[i]!;
       }
       body.generation = r.gen[i]!;

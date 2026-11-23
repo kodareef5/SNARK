@@ -261,7 +261,7 @@ export class Replication {
       vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
       vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
       vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
-      ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(skate?.move ?? ents.vehicleGear[v]!, skate ? Math.hypot(ents.vx[i]!, ents.vz[i]!) * 100 : ents.vehicleRpm[v]!, skate ? skate.switched : vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0) : 0,
+      ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(skate?.move ?? ents.vehicleGear[v]!, skate ? Math.hypot(ents.vx[i]!, ents.vz[i]!) * 100 : ents.vehicleRpm[v]!, skate ? skate.switched : vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0, ents.vehicleMissingPanels[v]!) : 0,
       // A car's rotor word is its thrusters' state, what fired on its last tick among it (shared/sim/vehicle-thrusters.ts).
       rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : vehicle?.movement !== "boat" && vehicle?.spec.thrusters ? ents.vehicleThrust[v]! : 0,
       vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,

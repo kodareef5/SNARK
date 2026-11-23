@@ -42,6 +42,7 @@ export function remoteVehiclePose(r: RemoteSample, i: number, out?: VehicleRende
   pose.groundPitch = r.vehicleGroundPitch[i]!; pose.groundRoll = r.vehicleGroundRoll[i]!; pose.rideOffset = r.vehicleRideOffset[i]!; pose.grounded = r.vehicleGrounded[i] !== 0;
   pose.skateMove = r.vehicleGear[i]!; pose.switched = !!r.vehicleShifting[i];
   pose.doors = r.vehicleDoors[i]!;
+  pose.missingPanels = r.vehicleMissingPanels[i]!;
   pose.lightMode = r.vehicleLightMode[i]!;
   pose.thrust = r.vehicleThrust[i]!;
   if (r.vehicleQx[i] || r.vehicleQy[i] || r.vehicleQz[i] || r.vehicleQw[i]) {

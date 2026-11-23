@@ -18,7 +18,7 @@ export class SeatedAim {
   private readonly creatures;
   private readonly body: OccupantBody;
   private readonly seat = createOccupantSeat();
-  private readonly frame = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, qx: 0, qy: 0, qz: 0, qw: 1, steering: 0 };
+  private readonly frame = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, qx: 0, qy: 0, qz: 0, qw: 1, steering: 0, doors: 0, missingPanels: 0 };
   private readonly saddle = new Float64Array(SEAT_FLOATS);
   private readonly st = new AnimState();
   private readonly hostState = new AnimState();
@@ -34,6 +34,7 @@ export class SeatedAim {
   private carrier(r: RemoteSample, i: number): void {
     const f = this.frame;
     f.x = r.x[i]!; f.y = r.y[i]!; f.z = r.z[i]!; f.yaw = r.yaw[i]!;
+    f.doors = r.vehicleDoors[i]!; f.missingPanels = r.vehicleMissingPanels[i]!;
     f.pitch = r.vehiclePitch[i]!; f.roll = r.vehicleRoll[i]!; f.steering = r.steering[i]!;
     f.qx = r.vehicleQx[i]!; f.qy = r.vehicleQy[i]!; f.qz = r.vehicleQz[i]!; f.qw = r.vehicleQw[i]!;
   }

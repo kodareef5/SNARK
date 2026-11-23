@@ -75,7 +75,7 @@ export class Lasers {
     let t = castWorld(world, ox, oy, oz, dx, dy, dz, LASER_REACH) === HIT_NONE ? Infinity : rayHit.t;
     for (let i = 0; carrier < 0 && remote && i < remote.count; i++) if (remote.id[i] === skip) { carrier = remote.seat[i]! - 1; carrierGen = remote.seatGen[i]!; break; }
     for (let i = 0; remote && i < remote.count; i++) {
-      if (remote.id[i] === skip || (remote.id[i] === carrier && remote.gen[i] === carrierGen)) continue;
+      if (remote.id[i] === skip || (remote.id[i] === carrier && remote.gen[i] === carrierGen && !reg.vehicle[remote.kind[i]!]?.breakablePanels)) continue;
       const kind = remote.kind[i]!;
       const r = reg.bodyRadius[kind]!;
       if (reg.move[kind] === null || !(r > 0)) continue;

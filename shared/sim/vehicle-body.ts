@@ -121,18 +121,14 @@ export const unpackVehicleGroundPitch = (n: number): number => unpack(n);
 export const unpackVehicleGroundRoll = (n: number): number => unpack(n >>> 10);
 export const unpackVehicleRideOffset = (n: number): number => { const v = (n >>> 20) & 1023; return (v & 512 ? v - 1024 : v) / 1022; };
 export const vehicleRideGrounded = (n: number): boolean => (n & 0x40000000) !== 0;
-/** How far open each door is, door d (VehicleDefinition.doors) in bits 8d to 8d + 7: up to MAX_VEHICLE_DOORS. */
-export const vehicleDoor = (packed: number, door: number): number => ((packed >>> (door * 8)) & 255) / 255;
-export function withVehicleDoor(packed: number, door: number, open: number): number {
-  const shift = door * 8;
-  return ((packed & ~(255 << shift)) | (Math.round(clamp(open, 0, 1) * 255) << shift)) >>> 0;
-}
+export { vehicleDoor, withVehicleDoor } from "./vehicle-panels.ts";
 
 /** Observer engine state is presentation data; the driver's prediction receives the full mechanical Body. */
-export function packVehicleDrive(gear: number, rpm: number, shifting: boolean, lightMode = 0): number {
-  return ((Math.round(clamp(gear, -1, 12)) + 1) | (Math.round(clamp(rpm, 0, 32767)) << 4) | (shifting ? 1 << 19 : 0) | ((lightMode & 3) << 20)) >>> 0;
+export function packVehicleDrive(gear: number, rpm: number, shifting: boolean, lightMode = 0, missingPanels = 0): number {
+  return ((Math.round(clamp(gear, -1, 12)) + 1) | (Math.round(clamp(rpm, 0, 32767)) << 4) | (shifting ? 1 << 19 : 0) | ((lightMode & 3) << 20) | (missingPanels << 22)) >>> 0;
 }
 export const unpackVehicleGear = (n: number): number => (n & 15) - 1;
 export const unpackVehicleRpm = (n: number): number => (n >>> 4) & 32767;
+export const unpackVehicleMissingPanels = (n: number): number => n >>> 22;
 export const unpackVehicleLightMode = (n: number): number => (n >>> 20) & 3;
 export const vehicleShifting = (n: number): boolean => (n & (1 << 19)) !== 0;

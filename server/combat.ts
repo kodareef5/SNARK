@@ -17,6 +17,7 @@ import { SEAT_FLOATS, riderTargets, saddleSeat, seatOn } from "../shared/anim/se
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { boatDrives } from "../shared/sim/vehicle.ts";
+import { panelBounds } from "../shared/sim/vehicle-panels.ts";
 import { rayVehicle, rayVehicleCover } from "../shared/sim/vehicle-frame.ts";
 import { quatRotate } from "../shared/math/quat.ts";
 import { TAU } from "../shared/math/scalar.ts";
@@ -214,6 +215,8 @@ export class Combat {
    * `land` that follows tells every watcher of it (EVENT_IMPACT), so the place struck snaps back from the blow.
    */
   private aimedAt = -1;
+  panel = -1;
+  private readonly panelHit = { panel: -1 };
   private aimedBone = -1;
   private readonly ray = new Float64Array(3);
   /** A shot left `c`'s weapon. `draw` is 0 to 1. */
@@ -229,6 +232,7 @@ export class Combat {
   /** The rider of a mount, or null. A rider also gets half the XP its mount earns by a kill. */
   riderOf: ((mount: EntityRecord) => EntityRecord | null) | null = null;
   /** `points` is the health taken. Not called for a blow that kills. */
+  readonly onPanelHit = new Signal<[target: number, panel: number, damage: number]>();
   readonly onHarm = new Signal<[victim: EntityRecord, points: number]>();
   /** Called for a structure that was harmed and still stands. */
   readonly onStructureHurt = new Signal<[ref: number]>();
@@ -262,7 +266,12 @@ export class Combat {
     this.vehicleReach = Float32Array.from(reg.vehicle, (vehicle, kind) => {
       if (!vehicle) return 0;
       const spec = vehicle.spec, h = reg.bodyHeight[kind]!;
-      if (vehicle.movement !== "boat") return Math.hypot(spec.halfWidth, spec.halfLength, h);
+      if (vehicle.movement !== "boat") {
+        if (!vehicle.breakablePanels) return Math.hypot(spec.halfWidth, spec.halfLength, h);
+        const box = panelBounds(vehicle);
+        return Math.hypot(Math.max(spec.halfWidth, -box[6]!, box[9]!), Math.max(h, -box[7]!, box[10]!),
+          Math.max(spec.halfLength, -box[8]!, box[11]!));
+      }
       const marine = vehicle.spec;
       const reach = Math.max(marine.halfLength, ...boatDrives(marine).flatMap(drive => [
         Math.abs(drive.propeller.at[2]) + drive.propeller.radius, ...(drive.outboard?.boxes ?? []).map(box => Math.abs(box.at[2]) + box.half[2]),
@@ -509,7 +518,7 @@ export class Combat {
       if (wears) items.wear(rec, slot, 1);
     } else if (target >= 0) {
       const t = this.t;
-      this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
+      this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t, undefined, true, this.panel);
       if (wears) items.wear(rec, slot, 1);
     } else if (what === HIT_NODE && harvest) {
       if (c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
@@ -675,6 +684,7 @@ export class Combat {
     const dims = world.dims;
     this.at = at >= world.tick ? -1 : at;
     this.aimedAt = -1;
+    this.panel = -1;
     this.ray[0] = dx; this.ray[1] = dy; this.ray[2] = dz;
     this.sweep = sweep;
     this.span = maxT;
@@ -708,7 +718,7 @@ export class Combat {
         const fz = mz - dz * along;
         if (fx * fx + fz * fz > (CHUNK_REACH + pad) * (CHUNK_REACH + pad)) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
-          if (i === self || i === this.spare || i === carrier || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
+          if (i === self || i === this.spare || (i === carrier && !reg.vehicle[ents.kind[i]!]?.breakablePanels) || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
           const kind = ents.kind[i]!;
           const h = reg.bodyHeight[kind]!;
           const rig = this.anims[kind]?.rig;
@@ -953,6 +963,7 @@ export class Combat {
           this.zone = zone;
           best = i;
           this.aimedAt = i;
+          this.panel = -1;
           this.aimedBone = seated ? -1 : zoneHit.bone;
         }
       } else if (this.anims[kind] && !reg.vehicle[kind]) {
@@ -970,6 +981,7 @@ export class Combat {
           this.zone = zone;
           best = i;
           this.aimedAt = i;
+          this.panel = -1;
           this.aimedBone = zoneHit.bone;
         }
       } else if (reg.vehicle[kind]) {
@@ -978,12 +990,13 @@ export class Combat {
         const yaw = past.yaw * TAU / 65536;
         const t = this.biting && def.shotPanels
           ? rayVehicle(def, past.x, past.y, past.z, yaw, rx, ry, rz, ux, uy, uz, def.spec.height, past)
-          : rayVehicleCover(def, past.x, past.y, past.z, yaw, rx, ry, rz, ux, uy, uz, past);
+          : rayVehicleCover(def, past.x, past.y, past.z, yaw, rx, ry, rz, ux, uy, uz, past, this.panelHit);
         if (t < reach) {
           this.t = t * scale;
           this.zone = ZONE_TORSO;
           best = i;
           this.aimedAt = i;
+          this.panel = this.biting ? -1 : this.panelHit.panel;
           this.aimedBone = -1;
         }
       } else {
@@ -995,6 +1008,7 @@ export class Combat {
           this.zone = ZONE_TORSO;
           best = i;
           this.aimedAt = i;
+          this.panel = -1;
           this.aimedBone = -1;
         }
       }
@@ -1063,7 +1077,7 @@ export class Combat {
   }
 
   /** `far` is metres from where `src` came. The harm applies to the body as it is now, even when the hit was judged at an earlier tick. */
-  land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number, impact?: CorpseImpact, present = true): void {
+  land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number, impact?: CorpseImpact, present = true, panel = -1): void {
     const { world, records, items, survival, creatures, buffs } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
@@ -1130,7 +1144,10 @@ export class Combat {
     if (bus.n[DAMAGED] !== 0) {
       bus.after(DAMAGED, { target: "body", victim: victim.pid, kind: reg.ids[vkind]!, team: victim.team, byPid: by ? by.pid : 0, byTeam: by ? by.team : 0, item: item !== 0 ? reg.ids[item]! : "", type: TYPE_WORDS[hit.type]!, zone, taken, blocked: harm.blocked, killed, left: killed ? 0 : survival.value(victim, V_HEALTH) });
     }
-    if (taken > 0 && !killed) this.onHarm.emit(victim, taken);
+    if (taken > 0 && !killed) {
+      if (panel >= 0) this.onPanelHit.emit(target, panel, taken);
+      this.onHarm.emit(victim, taken);
+    }
     this.hits++;
     const last = this.last;
     last.by = by ? by.pid : 0;

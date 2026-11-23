@@ -145,7 +145,7 @@ export class Projectiles {
   /** A round's own, filled by `bring`, so the share its distance leaves it never reaches a blast. */
   private readonly round: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, far: 1 };
   /** Where the last ray `cast` ended: the point, metres from its origin, the body it hit (-1 for none), its zone, the structure it met (-1 for none) and `on` as lastEnd's. */
-  private readonly at = { x: 0, y: 0, z: 0, t: 0, target: -1, zone: 0, built: -1, on: -1 };
+  private readonly at = { x: 0, y: 0, z: 0, t: 0, target: -1, zone: 0, panel: -1, built: -1, on: -1 };
   /** Rays the last shot sent, and how many of them hit a body: for tests and measurement. */
   readonly lastShot = { rays: 0, hits: 0 };
 
@@ -326,6 +326,7 @@ export class Projectiles {
     a.t = t;
     a.target = target;
     a.zone = combat.zone;
+    a.panel = combat.panel;
     a.built = built;
     a.on = on;
     return a;
@@ -345,7 +346,7 @@ export class Projectiles {
     }
     if (a.target >= 0) {
       this.lastShot.hits++;
-      this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, a.target, a.zone, a.x, a.y, a.z, this.silencedShot);
+      this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, a.target, a.zone, a.x, a.y, a.z, this.silencedShot, a.panel);
       return;
     }
     this.ended(a.x, a.y, a.z, a.on);
@@ -467,7 +468,7 @@ export class Projectiles {
       if (blast) {
         this.ended(x + dx * at, y + dy * at, z + dz * at, target);
         this.explode(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, x + dx * at, y + dy * at, z + dz * at, target);
-      } else this.hit(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oy, f.oz, target, combat.zone, x + dx * at, y + dy * at, z + dz * at, f.silenced);
+      } else this.hit(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oy, f.oz, target, combat.zone, x + dx * at, y + dy * at, z + dz * at, f.silenced, combat.panel);
       return false;
     }
     if (ends) {
@@ -497,14 +498,14 @@ export class Projectiles {
     return f.x >= 0 && f.z >= 0 && f.x <= world.hf.sizeX && f.z <= world.hf.sizeZ && f.y > -1000;
   }
 
-  private hit(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, target: number, zone: number, x: number, y: number, z: number, silenced = false): void {
+  private hit(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, target: number, zone: number, x: number, y: number, z: number, silenced = false, panel = -1): void {
     const far = Math.sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy) + (z - oz) * (z - oz));
     const src = this.bring(by, weapon, quality, ammo, draw, ox, oz, far);
     src.silenced = silenced;
     this.struck++;
     this.ended(x, y, z, target);
     this.ctx.bus.after(PROJECTILE_HIT, { byPid: by ? by.pid : 0, ammo: this.ctx.world.reg.ids[ammo]!, target: this.ctx.world.ents.pid[target]! });
-    this.ctx.combat.land(src, target, zone, x, y, z, far);
+    this.ctx.combat.land(src, target, zone, x, y, z, far, undefined, true, panel);
   }
 
   /** Returns the round's shared Source, filled for a round of `ammo` from `weapon` that came `far` metres (none given: no falloff). */

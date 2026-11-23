@@ -1,6 +1,7 @@
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate, type Numbers } from "../math/quat.ts";
 import { detCos, detSin } from "../math/scalar.ts";
 import { rayBox } from "../world/ray.ts";
+import { panelBounds, vehicleDoor } from "./vehicle-panels.ts";
 import { boatDrives, isWheelVehicle, type VehicleDefinition } from "./vehicle.ts";
 
 /**
@@ -83,9 +84,10 @@ function panelTriangle(a: ArrayLike<number>, b: ArrayLike<number>, c: ArrayLike<
 
 /** Projectiles and aiming beams share the same cabin openings and historical attitude. */
 export function rayVehicleCover(def: VehicleDefinition, x: number, y: number, z: number, yaw: number,
-  ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, attitude: Omit<VehicleFrame, "x" | "y" | "z" | "yaw">): number {
+  ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, attitude: Omit<VehicleFrame, "x" | "y" | "z" | "yaw">, hit?: { panel: number }): number {
+  if (hit) hit.panel = -1;
   let t = rayVehicle(def, x, y, z, yaw, ox, oy, oz, dx, dy, dz, def.beltline, attitude);
-  if (!def.shotPanels || t === 0) return t;
+  if ((!def.shotPanels && !def.breakablePanels) || t === 0) return t;
   // The hull just prepared the local ray when given a quaternion. Also support callers with Euler attitude only.
   if (attitude.qx === undefined || attitude.qy === undefined || attitude.qz === undefined || attitude.qw === undefined) {
     vehicleRotation({ x, y, z, yaw, pitch: attitude.pitch, roll: attitude.roll }, rayRotation);
@@ -95,12 +97,52 @@ export function rayVehicleCover(def: VehicleDefinition, x: number, y: number, z:
   const s = def.spec;
   const near = rayBox(rayOrigin[0]!, rayOrigin[1]!, rayOrigin[2]!, rayDirection[0]!, rayDirection[1]!, rayDirection[2]!,
     -s.halfWidth, def.beltline, -s.halfLength, s.halfWidth, s.height, s.halfLength);
-  if (near >= t) return t;
-  for (const [a,b,c,d] of def.shotPanels) t = Math.min(t, panelTriangle(a,b,c), panelTriangle(a,c,d));
+  if (def.shotPanels && near < t) {
+    for (const [a,b,c,d] of def.shotPanels) t = Math.min(t, panelTriangle(a,b,c), panelTriangle(a,c,d));
+  }
+  if (def.breakablePanels) {
+    const box = panelBounds(def), at = attitude.doors ? 6 : 0;
+    const entry = rayBox(rayOrigin[0]!, rayOrigin[1]!, rayOrigin[2]!, rayDirection[0]!, rayDirection[1]!, rayDirection[2]!,
+      box[at]!, box[at+1]!, box[at+2]!, box[at+3]!, box[at+4]!, box[at+5]!);
+    if (entry >= t) return t;
+    panelOrigin.set(rayOrigin);
+    panelDirection.set(rayDirection);
+    const missing = attitude.missingPanels ?? 0;
+    for (let i = 0; i < def.breakablePanels.length; i++) {
+      if (missing & (1 << i)) continue;
+      const panel = def.breakablePanels[i]!, index = panel.door;
+      const fraction = index === undefined ? 0 : vehicleDoor(attitude.doors ?? 0, index);
+      if (fraction && index !== undefined) {
+        const door = def.doors[index]!, pivot = panel.hinge!;
+        if (door.slide) {
+          rayOrigin[0]! -= door.slide.outward * Math.min(1, fraction * 5);
+          rayOrigin[2]! -= door.slide.along * Math.max(0, (fraction - .2) / .8);
+        } else {
+          quatAxis(panelRotation, 0, ...door.axis, door.open * fraction);
+          quatUnrotate(panelRotation, 0, panelOrigin[0]! - pivot[0], panelOrigin[1]! - pivot[1], panelOrigin[2]! - pivot[2], rayOrigin, 0);
+          for (let k = 0; k < 3; k++) rayOrigin[k]! += pivot[k]!;
+          quatUnrotate(panelRotation, 0, panelDirection[0]!, panelDirection[1]!, panelDirection[2]!, rayDirection, 0);
+        }
+      }
+      for (const [a,b,c,d] of panel.faces) {
+        const distance = Math.min(panelTriangle(a,b,c), panelTriangle(a,c,d));
+        if (distance < t) {
+          t = distance;
+          if (hit) hit.panel = i;
+        }
+      }
+      if (fraction) {
+        rayOrigin.set(panelOrigin);
+        rayDirection.set(panelDirection);
+      }
+    }
+  }
   return t;
 }
 
-export interface VehicleFrame { skateMove?: number; switched?: boolean; wheelAngle?: number; x: number; y: number; z: number; yaw: number; pitch: number; roll: number; qx?: number; qy?: number; qz?: number; qw?: number; steering?: number }
+const panelRotation = new Float64Array(4), panelOrigin = new Float64Array(3), panelDirection = new Float64Array(3);
+
+export interface VehicleFrame { doors?: number; missingPanels?: number; skateMove?: number; switched?: boolean; wheelAngle?: number; x: number; y: number; z: number; yaw: number; pitch: number; roll: number; qx?: number; qy?: number; qz?: number; qw?: number; steering?: number }
 const rayRotation = new Float64Array(4), rayOrigin = new Float64Array(3), rayDirection = new Float64Array(3);
 const yaw = new Float64Array(4), roll = new Float64Array(4), pitch = new Float64Array(4), rotation = new Float64Array(4);
 

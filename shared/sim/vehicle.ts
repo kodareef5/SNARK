@@ -99,6 +99,12 @@ export const MAX_VEHICLE_DOORS = 4;
 
 /** One kind of vehicle: its mechanics, its seats and the parts of its rig that move. Content, never code, says each. */
 type VehiclePoint3 = readonly [number, number, number];
+export interface VehiclePanel {
+  readonly bone: string;
+  readonly faces: readonly (readonly [VehiclePoint3, VehiclePoint3, VehiclePoint3, VehiclePoint3])[];
+  readonly door?: number;
+  readonly hinge?: VehiclePoint3;
+}
 interface VehicleDefinitionBase {
   readonly id: string;
   /** Mesh used by the native persistent corpse for an opted-in mechanical wreck. */
@@ -114,6 +120,8 @@ interface VehicleDefinitionBase {
   readonly actionTicks: number;
   /** Metres up from the ground to where the body shell ends and the open cabin begins: a shot above it reaches whoever sits inside. */
   readonly beltline: number;
+  /** Each entry has one bit in the replicated missing-panel mask. */
+  readonly breakablePanels?: readonly VehiclePanel[];
   /** Solid cabin panels above the belt in vehicle-local metres. Openings between them admit shots. */
   readonly shotPanels?: readonly (readonly [VehiclePoint3, VehiclePoint3, VehiclePoint3, VehiclePoint3])[];
 }
@@ -366,6 +374,16 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   const s = d.steeringWheel;
   if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
   if (!Number.isInteger(d.actionTicks) || d.actionTicks < 1 || d.actionTicks > 300) throw new Error("invalid vehicle action ticks");
+  if (d.breakablePanels) {
+    const names = new Set<string>();
+    if (!isWheelVehicle(d) || d.breakablePanels.length < 1 || d.breakablePanels.length > 10) throw new Error("invalid breakable vehicle panels");
+    for (const panel of d.breakablePanels) {
+      if (!bone(panel.bone) || names.has(panel.bone) || !panel.faces.length || !panel.faces.every(face => face.length === 4 && face.every(vec)) ||
+        (panel.door === undefined ? panel.hinge !== undefined : !Number.isInteger(panel.door) ||
+        !d.doors[panel.door] || !vec(panel.hinge))) throw new Error("invalid breakable vehicle panel");
+      names.add(panel.bone);
+    }
+  }
   for (const panel of d.shotPanels ?? []) {
     if (panel.length !== 4 || panel.some(point => point.length !== 3 || !point.every(Number.isFinite))) throw new Error("invalid vehicle cabin panel");
   }
