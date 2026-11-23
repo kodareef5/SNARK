@@ -31,9 +31,11 @@ import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
 import { adminAsked, refused as refuseAdmin, type AdminGate } from "./admin/gate.ts";
 import { TickMeter } from "./admin/meter.ts";
-import { PART, measure, partsText, type TickParts } from "./admin/parts.ts";
+import { PART, type TickParts } from "./admin/parts.ts";
 import { AdminPages, adminTerrain } from "./admin/routes.ts";
-import { bodiesOf, gaugesOf } from "./admin/stats.ts";
+import { gaugesOf } from "./admin/stats.ts";
+import { debugAnswer, serverState, type DebugServer } from "./debug.ts";
+import { ServerLog, teeConsole } from "./log.ts";
 import { CUES } from "../shared/sound/cues.ts";
 import { partHash, partsFolder, readHead, type MapFile } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
@@ -102,6 +104,11 @@ export interface ServerOptions {
    * line, a development server keeps them in var/reports; any other keeps none unless started with --reports <folder>.
    */
   reports?: string;
+  /**
+   * The log the console's lines are kept in for the debug bar (server/log.ts), made before the server to keep what came
+   * first. Without one the server makes its own.
+   */
+  log?: ServerLog;
 }
 
 export interface RunningServer {
@@ -115,6 +122,8 @@ export interface RunningServer {
   readonly bench: Promise<unknown>;
   /** Unreliable messages skipped since the start because too much was waiting to go to their client. The device probe reports it. */
   readonly skipped: number;
+  /** The console's recent lines, which `__debug` gives an admin. */
+  readonly log: ServerLog;
   stop(): void;
 }
 
@@ -290,6 +299,9 @@ function timed<A extends unknown[], R>(parts: TickParts, part: number, fn: (...a
 }
 
 export function startServer(opts: ServerOptions = {}): RunningServer {
+  // First, so that the lines of the start are kept.
+  const log = opts.log ?? new ServerLog();
+  const untee = teeConsole(log);
   const base = pathOf(opts.publicUrl ?? "");
   const named = /^https?:\/\//i.test(opts.publicUrl ?? "") ? new URL(opts.publicUrl!).hostname.toLowerCase() : "";
   const { registry, errors } = compileContent(CORE_CONTENT);
@@ -310,6 +322,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const onMapLoaded = (map: MapFile): void => void (terrain = adminTerrain(map));
   const roles = { onMapLoaded, dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, survivorLog: { mode: "worker" as const }, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
+  log.tick = () => host.world.tick;
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
   for (const m of host.lists.renamed) console.log(`settings: ${m.setting} names ${m.name}, which is now ${m.to.join(", ")}`);
@@ -344,24 +357,12 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const admin = new AdminPages({ host, meter, dir: join(clientDir, "admin"), terrain, start: { tick: host.world.tick, wall: meter.startedAt } });
   const checkout = resolve(import.meta.dir, "..");
   const notes = opts.reports ? new ReportStore({ dir: opts.reports, root: checkout, clientDir, map: { id: host.world.mapId, city: mapLabel(registry, host.world.mapId), ...(opts.map ? { file: relative(checkout, resolve(opts.map)) } : {}), version: mapRoute.version, hash: host.world.mapHash } }) : null;
+  /** The session a page's voice token names, which a bug report and the debug bar are sent with. */
+  const sender = (slot: number, token: Uint8Array): Client | null => host.voice.sessionOf(slot, token);
   /** What a bug report is told of this server: the session a token names, and the server's state for its server.json. */
-  const reportServer = {
-    sender: (slot: number, token: Uint8Array): Client | null => host.voice.sessionOf(slot, token),
-    facts: (sender: unknown): Record<string, unknown> => {
-      const c = sender as Client, conn = c.conn as Connection & { bytesSent?: number; skipped?: number; buffered?: number };
-      const since = Date.now() - 120_000, e = c.ent, ents = host.world.ents;
-      return {
-        at: new Date().toISOString(),
-        world: { name: host.rules.text("SessionName") || mapLabel(registry, host.world.mapId), map: host.world.mapId, hash: host.world.mapHash, tick: host.world.tick, dev: opts.dev ?? false, startedAt: new Date(meter.startedAt).toISOString(), online: host.game.playerCount },
-        ticks: { rate: TICK_RATE, ran: meter.ticks, dropped: meter.dropped, seconds: meter.secondColumns() },
-        long: host.game.parts.recent().filter((t) => t.at >= since).slice(-64).map((t) => ({ ...t, whose: measure(host.game.parts.limit, t).whose, text: partsText(t) })),
-        bodies: bodiesOf(host),
-        memory: process.memoryUsage(),
-        connection: { sent: conn.bytesSent ?? 0, skipped: conn.skipped ?? 0, waiting: conn.buffered ?? 0 },
-        survivor: e >= 0 ? { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, tick: host.world.tick } : null,
-      };
-    },
-  };
+  const reportServer = { sender, facts: (c: unknown): Record<string, unknown> => ({ ...serverState(host, meter, c as Client) }) };
+  /** What the debug bar is told of this server: its log, the session a token names, and the server's state. */
+  const debugServer: DebugServer = { log, sender, state: (c) => serverState(host, meter, c) };
   if (opts.probeScene) {
     const ents = host.world.ents;
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
@@ -526,6 +527,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       }
       // Not for this machine alone either, and taken from an admin's session only (server/reports.ts).
       if (path === "/__report") return notes ? notes.answer(req, reportServer) : new Response("This server keeps no notes: a development server keeps them, and any other only when started with --reports <folder>.", { status: 404 });
+      // Every server's, for the debug bar: the protocol's names for anyone, the log and the server's state for an admin's session.
+      if (path === "/__debug") return debugAnswer(req, debugServer);
       if (path === "/__bench" && req.method === "POST" && opts.dev && local) {
         const result = await req.json();
         console.log(`frame times from a browser:\n${JSON.stringify(result, null, 2)}`);
@@ -656,17 +659,22 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     get skipped() {
       return skipped;
     },
+    log,
     stop() {
       clearInterval(heartbeat); listings?.close(); titleScenes.close();
       stopTicks();
       server.stop(true);
       host.shutdown();
       mapRoute.close();
+      untee();
     },
   };
 }
 
 if (import.meta.main) {
+  // Before the settings are read, so that what they say is kept with the rest.
+  const log = new ServerLog();
+  teeConsole(log);
   const args = process.argv.slice(2);
   const value = (name: string): string | undefined => {
     const i = args.indexOf(name);
@@ -716,6 +724,7 @@ if (import.meta.main) {
     key: value("--key"),
     adminPassword: process.env.SNARK_ADMIN_PASSWORD,
     terminal: process.stdin.isTTY,
+    log,
   });
   console.log(`SNARK listening on ${value("--cert") && value("--key") ? "https" : "http"}://localhost:${running.port}${pathOf(value("--public-url") ?? "")}/`);
   stopOnSignals(() => running.stop());
