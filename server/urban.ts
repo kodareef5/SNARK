@@ -996,6 +996,19 @@ export class Urban {
     return this.begin(pid, place.host, place.seat, 'exit');
   }
 
+  /** Whether a body of `kind` set down on the ground at (x, z) would stand clear of the world, every body and every car. */
+  roomFor(kind: number, x: number, z: number): boolean {
+    const { world } = this.ctx, move = world.reg.move[kind];
+    if (!move) return false;
+    const y = groundUnder(world.hf, x, z, move.radius);
+    return Number.isFinite(y) && this.seating.free({ x, y, z }, 0, [], 0, undefined, kind);
+  }
+
+  /** Whether `actor` is getting in or out of a seat now. */
+  boardingNpc(actor: number): boolean {
+    return !!this.occupancy.pending(this.ctx.world.ents.pid[actor]!);
+  }
+
   /** Whether `actor` sits in a seat now (not getting in or out). */
   seatedNpc(actor: number): boolean {
     const pid = this.ctx.world.ents.pid[actor]!;

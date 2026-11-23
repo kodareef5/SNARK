@@ -43,11 +43,12 @@ export class Seating {
   /**
    * Whether `actor`'s body, `height` tall (its standing height when omitted), fits at `p`: clear of the world and of every
    * other live body and car but those `ignored`, `ignoredHost` and the bodies still sitting on it. One who has just got
-   * out keeps its seat's place until its leaving is applied, after every seat action of the tick is settled.
+   * out keeps its seat's place until its leaving is applied, after every seat action of the tick is settled. With no
+   * actor, a body of `kind` that is not there yet.
    */
-  free(p: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number): boolean {
+  free(p: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number, kind = -1): boolean {
     const { world, records } = this, ents = world.ents;
-    const ae = this.entity(actor), move = ae >= 0 ? world.reg.move[ents.kind[ae]!] : null;
+    const ae = this.entity(actor), move = ae >= 0 ? world.reg.move[ents.kind[ae]!] : kind >= 0 ? world.reg.move[kind] : null;
     if (!move || !capsuleFree(world, p.x, p.y, p.z, move.radius, height ?? move.height)) return false;
     const on = ignoredHost ? this.entity(ignoredHost) + 1 : 0;
     const pad = move.radius + this.reach;

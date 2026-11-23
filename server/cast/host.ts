@@ -328,6 +328,8 @@ export class CastHost {
     const ent = (pid: number): number => records.entOf.get(pid) ?? -1;
     return {
       spawn: (c: Character, a: Archetype, x: number, z: number, yaw: number): number => {
+        // Not inside a parked car or another body.
+        if (!this.ctx.urban.roomFor(this.kind, x, z)) return -1;
         const e = creatures.spawn(this.kind, x, z, 1, "cast");
         if (e < 0) return -1;
         const rec = records.byPid.get(ents.pid[e]!)!;
@@ -442,6 +444,10 @@ export class CastHost {
       seated: (pid) => {
         const e = ent(pid);
         return e >= 0 && this.ctx.urban.seatedNpc(e);
+      },
+      boarding: (pid) => {
+        const e = ent(pid);
+        return e >= 0 && this.ctx.urban.boardingNpc(e);
       },
       alight: (pid) => {
         const e = ent(pid);
