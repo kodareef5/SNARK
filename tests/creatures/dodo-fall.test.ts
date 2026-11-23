@@ -44,7 +44,7 @@ test("a struck dodo falls on its own rig for a watcher and gets up alive", () =>
     blow(65);
     expect(a.react[bird]).toBe(REACT_CREATURE_DOWN);
     const positions = new Map<number, number[]>();
-    let rendered = 0, up = false, watchedRise = false;
+    let rendered = 0, risingHits = 0, up = false, watchedRise = false;
     h.run(6000, () => {
       const pose = h.host.falls.poseOf(bird);
       if (pose) {
@@ -59,19 +59,23 @@ test("a struck dodo falls on its own rig for a watcher and gets up alive", () =>
         st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!);
         watchedRise ||= st.cue === CUE_TORPOR && !st.out && !remote.react[i];
         const tick = Math.floor(remote.tick), at = positions.get(tick);
-        if (!at || st.react !== REACT_CREATURE_DOWN || !w.corpseMotions.has(a.handleOf(bird))) continue;
-        const server = h.host.falls.poseAt(bird, tick)!;
+        const down = !!at && st.react === REACT_CREATURE_DOWN && w.corpseMotions.has(a.handleOf(bird));
+        const rising = st.cue === CUE_TORPOR && !st.out && !st.react && ((tick - st.cueStart) & 255) < 30;
+        if (!down && !rising) continue;
         const p = new FramePacket();
         characters.begin();
         expect(characters.add(p, remote.kind[i]!, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, st, remote.tick, null, 0, colors, 0, null, 0, bird, false, false)).toBe(true);
-        const row = head * BONE_FLOATS, atBone = head * 3, pose = server.pos;
+        const row = head * BONE_FLOATS, atBone = head * 3;
         const skull = [0, 1, 2].map(axis => {
           const m = row + 4 * axis;
           return p.bones[m]! * rig.rest[atBone]! + p.bones[m + 1]! * rig.rest[atBone + 1]! + p.bones[m + 2]! * rig.rest[atBone + 2]! + p.bones[m + 3]!;
         });
-        expect(skull[1]!).toBeCloseTo(at[1]! + pose[atBone + 1]!, 4);
+        if (down) {
+          const pose = h.host.falls.poseAt(bird, tick)!;
+          expect(skull[1]!).toBeCloseTo(at[1]! + pose.pos[atBone + 1]!, 4);
+          rendered++;
+        } else risingHits++;
         expect(h.host.combat.castBodies(h.ent(w), skull[0]!, skull[1]! + 1, skull[2]!, 0, -1, 0, 1.3, 0, tick)).toBe(bird);
-        rendered++;
       }
       if (h.host.falls.stats.rose && !up) {
         expect(a.x[bird]! - start).toBeGreaterThan(0.4);
@@ -79,6 +83,7 @@ test("a struck dodo falls on its own rig for a watcher and gets up alive", () =>
       }
     });
     expect(rendered).toBeGreaterThan(20);
+    expect(risingHits).toBeGreaterThan(20);
     expect([up, watchedRise, a.react[bird], a.mflags[bird]! & MF_DOWN]).toEqual([true, true, 0, 0]);
   } finally { h.host.shutdown(); }
 });

@@ -30,6 +30,7 @@ import { MODE_FLYER } from "../../shared/sim/character.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { CARRIER_TRAVEL, type Mover, type MoverPose, type Ragdoll } from "../../shared/anim/ragdoll.ts";
 import { MOVER_MARGIN, WALKING, moverNear, nearestMovers, type Solid } from "../../shared/sim/vehicle-movers.ts";
+import { checkpointAt } from "./fall-checkpoints.ts";
 import type { RemoteSample } from "./session.ts";
 
 /** Ticks over which the last pose alive blends into the death clip. */
@@ -243,6 +244,7 @@ class Seen {
 /** A survivor knocked down (CUE_DOWN), lying as its ragdoll, and for RISE_BLEND ticks after it gets up; or a survivor's body (CUE_DEAD). */
 export interface HumanFall extends CarriedBody {
   readonly creature?: CreatureAnim | null;
+  readonly dead?: boolean;
   size?: number;
   handle: number;
   /** Null until its checkpoint comes, and once it has risen. */
@@ -410,24 +412,24 @@ export class HumanFalls {
       const creature = !human && remote.react[i] === REACT_CREATURE_DOWN ? this.mortal[kind] : null;
       if (!human && !creature && !this.byId.get(remote.id[i]!)?.creature) continue;
       const down = !!creature || (human && (remote.cue[i]! & (CUE_DOWN | CUE_DEAD)) !== 0);
-      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, down, tick, seen, world, motions, creature);
+      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, down, tick, seen, world, motions, creature, (remote.cue[i]! & CUE_DEAD) !== 0);
     }
     if (own !== 0) this.track(own, handleIndex(own), ownDown, tick, seen, world, motions);
     for (const [id, h] of this.byId) if (h.seen !== seen) this.byId.delete(id);
   }
 
-  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, creature?: CreatureAnim | null): void {
+  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, creature?: CreatureAnim | null, dead = false): void {
     let h = this.byId.get(id);
     if (h && h.handle !== handle) h = undefined;
     if (!h) {
       if (!down) return;
-      h = { handle, creature, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(creature?.rig.bones ?? HUMAN.bones), down: true, downAt: tick, upAt: -1, risen: 0, seen };
+      h = { handle, creature, dead, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(creature?.rig.bones ?? HUMAN.bones), down: true, downAt: tick, upAt: -1, risen: 0, seen };
       this.byId.set(id, h);
     }
     h.seen = seen;
     if (!down) {
       h.drawn = undefined;
-      if (h.down) { h.down = false; h.upAt = tick; h.spent = Math.max(h.spent, h.motionTick); }
+      if (h.down) { h.down = false; h.upAt = tick; h.spent = Math.max(h.spent, h.motionTick, Math.floor(tick) - 1); }
       if (h.upAt < 0) return;
       h.risen = Math.min(1, (tick - h.upAt) / RISE_BLEND);
       if (h.risen >= 1) { h.upAt = -1; h.fall = null; }
@@ -438,7 +440,7 @@ export class HumanFalls {
       h.down = true; h.downAt = tick; h.upAt = -1; h.fall = null; h.spent = Math.max(h.spent, h.motionTick);
       h.motionRevision = 0; h.motionTick = -1;
     }
-    const motion = motions?.get(handle), to = Math.floor(tick);
+    const to = Math.floor(tick), motion = checkpointAt(motions, handle, to);
     if (motion && motion.tick > h.spent && motion.tick <= to && (motion.revision > h.motionRevision || (motion.revision === h.motionRevision && motion.tick > h.motionTick))) this.lay(h, motion);
     const fall = h.fall;
     if (!fall) return;
@@ -461,7 +463,7 @@ export class HumanFalls {
     if (!r || !r.restore(cp.state, cp.awake)) return;
     h.fall = new Fall(r);
     // A living body braces as the server's does.
-    if (!h.creature) h.fall.reflex = brace;
+    if (!h.creature && !h.dead) h.fall.reflex = brace;
     h.fall.ticks = cp.ticks;
     h.size = cp.size;
     h.x = cp.x; h.y = cp.y; h.z = cp.z; h.yaw = cp.yaw;
@@ -541,7 +543,7 @@ export class Corpses {
       if (!this.mortal[kind] || (remote.cue[i]! & CUE_DEAD) === 0) continue;
       let c = this.byId.get(remote.id[i]!);
       const handle = makeHandle(remote.id[i]!, remote.gen[i]!);
-      const motion = motions?.get(handle);
+      const motion = checkpointAt(motions, handle, Math.floor(tick));
       // A body whose entity's place another has taken is a new one. A body that lies never moves, so one elsewhere is another.
       if (c && (c.handle !== handle || c.kind !== kind || (!c.falling && !c.motionRevision && !motion && (c.x !== wireX(remote.x[i]!) || c.z !== wireX(remote.z[i]!))))) {
         this.forget(c);

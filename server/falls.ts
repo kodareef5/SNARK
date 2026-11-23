@@ -18,7 +18,7 @@ import { CUE_DOWN } from "../shared/anim/pose.ts";
 import { Solved } from "../shared/anim/skeleton.ts";
 import { Found } from "../shared/world/structures.ts";
 import { RagdollMovers } from "./ragdoll-movers.ts";
-import { packCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
+import { encodeCorpseCheckpoint, packCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { F_ALIVE, F_HELD } from "../shared/sim/entities.ts";
 import { MF_DOWN, MF_OUT, MODE_WALK } from "../shared/sim/character.ts";
@@ -55,6 +55,7 @@ interface Down {
   readonly begun: number;
   world: number;
   motion: CorpseMotion | null;
+  firstView?: CorpseMotion;
   readonly pose: Solved;
   /** Its pose at each of the last HISTORY_TICKS ticks, and the tick each is of, for a shot judged in the past. */
   readonly poses: Solved[];
@@ -281,8 +282,19 @@ export class Falls {
     return this.down.get(e)?.begun ?? 0;
   }
 
-  motion(e: number): CorpseMotion | null {
-    return this.down.get(e)?.motion ?? null;
+  motion(e: number, delivery?: "first" | "correction"): CorpseMotion | null {
+    const d = this.down.get(e), motion = d?.motion;
+    if (!d || !motion) return null;
+    const tick = this.world.tick;
+    if (delivery !== "first" || tick - motion.tick < DISTURBED_TICKS) return motion;
+    if (d.firstView?.tick === tick) return d.firstView;
+    const r = d.fall.ragdoll, ents = this.world.ents;
+    // A late viewer has no vehicle history for the launch. Share the exact current state with everyone arriving this tick.
+    const data = d.fall.still && !r.carrier ? motion.data : encodeCorpseCheckpoint({
+      x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: d.yaw, size: d.size, out: false, air: false,
+      awake: r.awake, standing: true, carrier: r.carrier, ticks: d.fall.ticks, state: r.checkpoint(),
+    });
+    return d.firstView = { revision: d.revision, tick, data };
   }
 
   step(): void {

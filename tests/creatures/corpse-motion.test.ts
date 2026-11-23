@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { FallCheckpoints } from "../../client/core/fall-checkpoints.ts";
+import { REACT_CREATURE_DOWN } from "../../shared/anim/reactions.ts";
 import { Corpses } from "../../client/core/ragdoll.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -49,4 +51,23 @@ test("future checkpoints wait for the render tick and old moving checkpoints req
   const old = c.list[0]!.fall!.ragdoll.checkpoint();
   motions.set(makeHandle(7, 3), motion); frame();
   expect(c.list[0]!.fall!.ragdoll.checkpoint()).toEqual(old);
+});
+
+test("a stream of future corrections lets a watcher draw each due checkpoint", () => {
+  for (const living of [true, false]) {
+    const { c, r, world, motion } = fixture(), id = makeHandle(r.id[0]!, r.gen[0]!);
+    const motions = new FallCheckpoints();
+    if (living) { r.cue[0] = 0; r.react[0] = REACT_CREATURE_DOWN; }
+    for (let tick = 100; tick < 124; tick++) {
+      motions.set(id, { ...motion, revision: tick - 99, tick });
+      r.tick = tick - 4;
+      c.update(r, world, 40, 40, new Map(), motions);
+      const drawn = living ? c.humans.of(r.id[0]!) : c.list[0];
+      if (r.tick < 100) expect(drawn).toBeUndefined();
+      else expect(drawn?.motionTick).toBe(r.tick);
+    }
+    motions.delete(id);
+    motions.set(id, { ...motion, tick: 140 });
+    expect(motions.atTick(id, 110)?.tick).toBe(140);
+  }
 });

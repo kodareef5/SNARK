@@ -306,10 +306,10 @@ export class Corpses {
   motionRevision(e: number): number { return this.byEnt.get(e)?.motionRevision ?? 0; }
 
   /** Current whole-tick checkpoint, including one first seen long after its original impact. */
-  motion(e: number, forView = false): CorpseMotion | null {
+  motion(e: number, delivery?: "first" | "correction"): CorpseMotion | null {
     const b = this.byEnt.get(e), motion = b?.motion;
     // A recent keyframe costs less to send. Older arrivals start from the current tick.
-    if (forView && b?.published && b.moving && this.ctx.world.tick - b.published.tick < DISTURBED_TICKS) return b.published;
+    if (delivery && b?.published && b.moving && this.ctx.world.tick - b.published.tick < DISTURBED_TICKS) return b.published;
     return motion ? { revision: motion.revision, tick: this.ctx.world.tick, data: motion.data } : null;
   }
 

@@ -96,6 +96,7 @@ test("a watching client lays a dead survivor's body where the server's lies", ()
     for (let j = 0; j < a.flags.length; j++) if (h.host.corpses.at(j) && survivorKind(h.reg, a.kind[j]!)) body = j;
     const f = drawn.humans.of(body)!;
     expect(f.down).toBe(true);
+    expect(f.fall!.reflex).toBeNull();
     // It lies where the server's lies, near where it died.
     expect([f.x, f.y, f.z]).toEqual([a.x[body]!, a.y[body]!, a.z[body]!]);
     expect(Math.hypot(f.x - x, f.z - z)).toBeLessThan(1.5);
@@ -161,5 +162,36 @@ test("a fall knocked between ticks lays on a watcher exactly where the server's 
     });
     expect(compared).toBeGreaterThan(20);
     expect(most).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("a late watcher starts a living fall at its current airborne pose", () => {
+  const h = new Harness({}, 9, 60, { clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    const faller = h.join("faller");
+    h.run(700);
+    const a = h.world.ents, e = h.ent(faller);
+    a.setPosition(e, 100, 50, 100);
+    h.world.history.discontinuity(e);
+    expect(h.host.falls.knock(e, 1, 1, 3, 2, 0, 0)).toBe(true);
+    const launch = h.host.falls.motion(e)!.tick;
+    h.run(800);
+    const joined = h.world.tick, watcher = h.join("late-watcher");
+    const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, k => survivorKind(h.reg, k));
+    const heights = new Map<number, number>();
+    let seen = 0;
+    h.run(1000, () => {
+      heights.set(h.world.tick, a.y[e]!);
+      if (!watcher.world) return;
+      watcher.sampleRemote(remote);
+      drawn.update(remote, watcher.world, 0, 0, new Map(), watcher.corpseMotions);
+      const f = drawn.humans.of(e);
+      if (!f || !heights.has(f.clock)) return;
+      expect(f.motionTick).toBeGreaterThanOrEqual(joined);
+      expect(f.y).toBe(heights.get(f.clock)!);
+      seen++;
+    });
+    expect(joined - launch).toBeGreaterThan(20);
+    expect(seen).toBeGreaterThan(10);
   } finally { h.host.shutdown(); }
 });

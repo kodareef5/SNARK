@@ -15,7 +15,8 @@ import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
 import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { VehiclePrediction } from "./vehicle-prediction.ts";
 import { VehicleCorrection } from "./vehicle-correction.ts";
-import { newerCorpseMotion, readCorpseMotion, type CorpseMotion } from "../../shared/net/corpse.ts";
+import { FallCheckpoints } from "./fall-checkpoints.ts";
+import { readCorpseMotion } from "../../shared/net/corpse.ts";
 import { CMD_CORPSE, IMPACT_MELEE, S_CORPSE } from "../../shared/net/protocol.ts";
 import {
   CMD_TEXT,
@@ -457,7 +458,7 @@ export class ClientSession {
   /** Every moving static's state as the server last told it (S_MOTION), by ref: all after a welcome, then each as it is thrown. */
   readonly motions = new Map<number, MotionState>();
   /** Sparse exact launch/resume state, keyed by generation-qualified entity handle. Kept across packet/snapshot ordering. */
-  readonly corpseMotions = new Map<number, CorpseMotion>();
+  readonly corpseMotions = new FallCheckpoints();
   private corpseRetryAt = -TICK_RATE;
   private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
   world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; tideEyes?: readonly TideEyeSite[]; landmarks?: readonly MapLandmark[]; tops?: BlocksSource }) | null = null;
@@ -1472,11 +1473,7 @@ export class ClientSession {
       kind: S_CORPSE,
       read(s, r) {
         const motion = readCorpseMotion(r);
-        if (motion && newerCorpseMotion(motion, s.corpseMotions.get(motion.id))) {
-          s.corpseMotions.delete(motion.id);
-          while (s.corpseMotions.size >= MAX_VIEW) s.corpseMotions.delete(s.corpseMotions.keys().next().value!);
-          s.corpseMotions.set(motion.id, motion);
-        }
+        if (motion) s.corpseMotions.set(motion.id, motion);
       },
     });
     messages.add({
