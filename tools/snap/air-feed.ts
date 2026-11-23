@@ -187,9 +187,10 @@ pictures((p, keep) => {
     return;
   }
   raster.render(p);
-  const color = Uint8ClampedArray.from(raster.color);
-  feedPicture(color, width, height, p.share, keep.signal, keep.burst, Math.floor(scene.now / 16));
-  hud(color, keep, true);
+  const color = Uint8ClampedArray.from(raster.color), post = p.tier.post !== null;
+  // A tier with no finishing pass has the grade alone, and the HUD's scanlines and vignette.
+  if (post && !plain) feedPicture(color, width, height, p.share, keep.signal, keep.burst, Math.floor(scene.now / 16));
+  hud(color, keep, post);
   writeFileSync(join(out, `${keep.name}-software.png`), encodePng(width, height, color));
   console.log(`${keep.name}: share ${p.share.toFixed(2)}, ${p.drawCount} draws`);
 });
@@ -217,7 +218,7 @@ const passed = await litProbe(chrome, [{
     taken.forEach((c, k) => {
       const picture = back.pixels(shot.key, shot.read[k]!)!;
       stage(c);
-      hud(picture, c, true);
+      hud(picture, c, scene.assets.tier.post !== null);
       writeFileSync(join(out, `${c.name}.png`), encodePng(width, height, picture));
       lines.push(`${c.name}: written`);
     });

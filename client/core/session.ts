@@ -458,7 +458,7 @@ export class ClientSession {
   airSupport = emptyAirSupport();
   readonly airCamera = new AirCamera();
   private readonly feedView = airFeedView();
-  /** Where the drone flown now was first seen, which its signal is from where no rack is told; its id. */
+  /** The drone flown now and where it was first seen: its signal is counted from there when no rack is told. */
   private readonly feedFrom = { id: 0, x: 0, y: 0, z: 0 };
 
   /**

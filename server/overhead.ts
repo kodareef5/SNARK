@@ -166,7 +166,7 @@ export class Overhead {
     const reg = world.reg;
     const from = c.drive >= 0 ? c.drive : c.ent;
     const d = this.dir;
-    // A drone flown looks from its camera along its middle, as far as DRONE_LOOK, and the chunks round it are searched.
+    // A drone flown looks from its camera along its middle, as far as DRONE_LOOK.
     const eye = game.players.remoteEye?.(c) ?? null;
     let ox: number, oy: number, oz: number;
     if (eye) {
@@ -188,7 +188,8 @@ export class Overhead {
     const hz = chunkCz(dims, home);
     const near = range + 4;
     const cone = !eye && range > LOOK_RANGE && game.replication.cone ? game.replication.cone(c) : null;
-    const ring = eye ? Math.ceil(near / CHUNK_SIZE) : 1;
+    // A drone's ring is as far as it looks, and no wider than the view its page is sent.
+    const ring = eye ? Math.min(Math.ceil(near / CHUNK_SIZE), Math.max(1, game.opts.entityRadius)) : 1;
     const test = (chunk: number): void => {
       for (let i = ents.chunkHead[chunk]!; i >= 0; i = ents.next[i]!) {
         if (i === c.ent || i === from || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;

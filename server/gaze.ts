@@ -224,7 +224,7 @@ export class Gaze {
     const { world, records } = this.ctx;
     const ents = world.ents;
     const team = records.byPid.get(c.pid)?.team ?? 0;
-    // A drone flown marks what its camera sees: near it, in the chunks round its own (D1082's mark from the air).
+    // A drone flown marks what its camera sees: near it, in the chunks round its own.
     const eye = this.ctx.game.players.remoteEye?.(c) ?? null;
     if (c.ent < 0 || team === 0 || (!eye && !this.looks.has(c))) return RESULT_DENIED;
     if (e >= ents.gen.length || ents.gen[e] !== gen || (ents.flags[e]! & (F_ALIVE | F_PROP | F_PLAYER)) !== F_ALIVE) return RESULT_INVALID;
