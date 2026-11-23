@@ -1,8 +1,10 @@
 // A vehicle's glass where its own mesh holds the pane, seen through by half of each pixel (client/core/render/vehicle-glass.ts).
 import { expect, test } from "bun:test";
+import { CONCEPT003_ART } from "../../content/vehicles/concept003-art.ts";
+import { Windscreens, paneOptics } from "../../client/core/render/windscreens.ts";
 import { GLASS } from "../../content/vehicles/glass.ts";
 import { effectsOff, packetWithout } from "../../client/core/passes.ts";
-import { DRAW_CUTOUT, DRAW_TEXTURED, FramePacket } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, DETAIL, DRAW_CUTOUT, DRAW_TEXTURED, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { StreetDraws } from "../../client/core/render/street-draws.ts";
 import { TIERS } from "../../client/core/assets/tiers.ts";
@@ -81,4 +83,56 @@ test("only the cut-out surface programs read the glass, and every set's cells ar
   const cells = GLASS.reduce((n, g) => n + g.cells.length, 0);
   expect(VEHICLE_GLASS_GLSL).toContain(`const vec4 GLASS_CELLS[${cells}]`);
   expect(VEHICLE_GLASS_GLSL).toContain(`const vec3 GLASS_SETS[${GLASS.length}]`);
+});
+
+test("the Concept driver's road ray passes through its intact windscreen", () => {
+  const p = new FramePacket(), glass = new Windscreens(), car = CONCEPT003_ART;
+  p.lit = true;
+  p.tier = TIERS[0]!;
+  p.bones[0] = p.bones[5] = p.bones[10] = 1;
+  glass.add(p, 0, car.id, 12, 3);
+  glass.write(p);
+  expect(p.detailCount).toBe(1);
+  const d = p.details, eye = car.anchors.camera_driver, slope = Math.tan(-.07);
+  const t = (eye[1] + (d[2]! - eye[2]) * slope - d[1]!) / (d[DETAIL.along+1]! - slope * d[DETAIL.along+2]!);
+  expect(Math.abs(t)).toBeLessThan(1);
+  const width = d[DETAIL.across]! * (1 + (d[DETAIL.floor]! - 1) * (1 + t) / 2);
+  expect(Math.abs(eye[0] - d[0]!)).toBeLessThan(width);
+  const dy = d[DETAIL.along+1]!, dz = d[DETAIL.along+2]!, optics = new Float64Array(2);
+  paneOptics((dz * slope - dy) / (Math.hypot(dz, dy) * Math.hypot(1, slope)), t, .5, .35, optics);
+  expect(optics[0]).toBeGreaterThan(0);
+  expect(optics[0]).toBeLessThan(.25);
+  glass.begin();
+  glass.add(p, 0, car.id, 12, 0, 1 << car.breakablePanels.findIndex(v => v.bone === "glass_front"));
+  expect(glass.count).toBe(0);
+});
+
+test("six Concept glass sheets follow their own bones and vanish independently", () => {
+  const p = new FramePacket(), sheets = new Windscreens(), car = CONCEPT003_ART;
+  p.lit = true;
+  p.tier = TIERS[2]!;
+  const bones = Int16Array.from(car.breakablePanels, panel => car.bones.indexOf(panel.bone));
+  for (let bone = 0; bone < car.bones.length; bone++) {
+    const o = bone * BONE_FLOATS;
+    p.bones[o] = p.bones[o+5] = p.bones[o+10] = 1;
+  }
+  const panes = car.breakablePanels.map((panel, i) => panel.bone.startsWith("glass_") ? i : -1).filter(i => i >= 0);
+  const mask = panes.reduce((mask, i) => mask | (1 << i), 0);
+  sheets.add(p, 0, car.id, 5, 0, 0, bones);
+  expect(sheets.count).toBe(6);
+  for (const i of panes) {
+    sheets.begin();
+    p.detailCount = 0;
+    sheets.add(p, 0, car.id, 5, 1, mask ^ (1 << i), bones);
+    sheets.write(p);
+    expect(p.detailCount).toBe(1);
+    const x = p.details[0]!, offset = bones[i]! * BONE_FLOATS + 3;
+    p.bones[offset] = .36;
+    sheets.begin();
+    p.detailCount = 0;
+    sheets.add(p, 0, car.id, 5, 1, mask ^ (1 << i), bones);
+    sheets.write(p);
+    expect(p.details[0]).toBeCloseTo(x + .36);
+    p.bones[offset] = 0;
+  }
 });

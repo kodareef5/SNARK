@@ -3,7 +3,7 @@
 import { expect } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { FRONT } from "../../content/vehicles/windscreens.ts";
+import { FRONT, SHEETS } from "../../content/vehicles/windscreens.ts";
 import { GLASS } from "../../content/vehicles/glass.ts";
 import { glassAt, glassSet } from "../../client/core/render/vehicle-glass.ts";
 import { PAINT, streetMaterial } from "../../content/street-finishes.ts";
@@ -54,7 +54,7 @@ artTest("each road vehicle's exported paint, wheel joints and glass opening fit 
       const bone = rig!.names!.indexOf(windscreen.bone);
       expect(bone, vehicle.id).toBeGreaterThan(0);
       expect(mesh.lods[0]!.bones?.includes(bone), vehicle.id).toBe(true);
-      expect(FRONT[vehicle.id], vehicle.id).toBeUndefined();
+      expect(SHEETS[vehicle.id]?.[0]?.panel, vehicle.id).toBe(vehicle.breakablePanels!.indexOf(windscreen));
       continue;
     }
     const pane = FRONT[vehicle.id];

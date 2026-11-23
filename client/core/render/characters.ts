@@ -1093,7 +1093,7 @@ export class Characters {
       if (!unseen) this.keepHead(c, solved, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
     }
     const def = c.vehicle?.def;
-    if (def && !unseen && !st.dead) this.windscreens.add(p, first, def.id, id, st.hurt);
+    if (def && !unseen && !st.dead) this.windscreens.add(p, first, def.id, id, st.hurt, vehicle?.missingPanels, rigid ? undefined : c.vehicle?.panels);
     if (!unseen && vehicle?.lightMode && def && isWheelVehicle(def) && def.emergencyLights) {
       this.patrolLights.add(p, first, def.emergencyLights, vehicle.lightMode, tick, id, size);
     }
