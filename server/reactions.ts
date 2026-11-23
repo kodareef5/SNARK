@@ -118,6 +118,11 @@ export class Reactions {
     return reactFrames(ents.react[e]!) / TICK_RATE;
   }
 
+  /** Body `e` got up from a fall: it cannot be staggered again for a while, as after a stagger. */
+  calm(e: number): void {
+    this.calmUntil.set(e, this.ctx.world.tick + CALM_SECONDS * TICK_RATE);
+  }
+
   /** Ends body `e`'s reaction now: it died, sat, swam or fell. */
   end(e: number): void {
     const ents = this.ctx.world.ents;

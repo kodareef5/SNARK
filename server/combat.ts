@@ -238,8 +238,11 @@ export class Combat {
   corpses: Corpses | null = null;
   /** The pose a survivor knocked down lay in at a tick, to be hit as it lay (server/falls.ts); null for none. The host sets it. */
   downPose: (e: number, tick: number) => Solved | null = () => null;
-  /** A blow that hurt body `target`: its IMPACT_ kind, the damage taken, the unit way it went (dx, dz), and how high it landed above the feet. */
-  onBlow: (target: number, kind: number, taken: number, dx: number, dz: number, up: number) => void = () => {};
+  /**
+   * A blow that hurt body `target`: its IMPACT_ kind, the damage taken, the unit way it went (dx, dz), how high it landed
+   * above the feet, and who dealt it.
+   */
+  onBlow: (target: number, kind: number, taken: number, dx: number, dz: number, up: number, by: EntityRecord | null) => void = () => {};
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
   private readonly inBlast = new Found(256);
   private readonly found: number[] = [];
@@ -1037,6 +1040,11 @@ export class Combat {
     return by !== victim && (by.team === 0 || victim.team !== by.team) && !this.spared(by, victim.team, DMG_MELEE, false);
   }
 
+  /** Whether a blow from `by` may knock body `victim` off its feet: wherever a blow of theirs would land on it. */
+  mayShove(by: EntityRecord | null, victim: EntityRecord): boolean {
+    return !this.spared(by, victim.team, DMG_MELEE, by === victim);
+  }
+
   private spared(by: EntityRecord | null, team: number, type: number, self: boolean): boolean {
     if (!by || self || by.team === 0 || team === 0) return false;
     const rules = this.ctx.rules;
@@ -1224,7 +1232,7 @@ export class Combat {
     dx /= l; dy /= l; dz /= l;
     // A car's own contact sorts its blow (server/vehicle-contacts.ts struck); every other may stagger or fell the body.
     const flat = Math.sqrt(dx * dx + dz * dz);
-    if (kind !== IMPACT_VEHICLE && flat > 1e-6) this.onBlow(target, kind, taken, dx / flat, dz / flat, y - ents.y[target]!);
+    if (kind !== IMPACT_VEHICLE && flat > 1e-6) this.onBlow(target, kind, taken, dx / flat, dz / flat, y - ents.y[target]!, src.by);
     // How hard, 0 to 255: a blow of IMPACT_FULL damage or more is the hardest. How far that moves a body is its client's to say by its weight.
     const strength = Math.min(255, Math.max(1, Math.round((taken / IMPACT_FULL) * 255)));
     const bone = aimed ? this.aimedBone : -1;

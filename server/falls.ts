@@ -58,8 +58,9 @@ interface Down {
   /** The tick its last checkpoint was written, and whether a vehicle touched it last tick. */
   sent: number;
   touched: boolean;
-  /** The bodies it has struck as it flew, each once a fall. */
+  /** The bodies it has struck as it flew, each once a fall, and who knocked it down: the blame for what it strikes. */
   readonly struck: Set<number>;
+  readonly by: number;
 }
 
 const root = new Float64Array(3);
@@ -71,9 +72,9 @@ export class Falls {
   onUp: (e: number) => void = () => {};
   /**
    * Raised as a thrown body strikes survivor `e` standing in its way: a change of speed of `dv` m/s along the unit (dx,
-   * dz), `up` metres above its feet. Whoever threw the first body is to blame.
+   * dz), `up` metres above its feet. `by` (a pid, 0 for none) knocked the first body down, and is to blame.
    */
-  onStrike: (e: number, dv: number, dx: number, dz: number, up: number) => void = () => {};
+  onStrike: (e: number, dv: number, dx: number, dz: number, up: number, by: number) => void = () => {};
   readonly stats = { fell: 0, refused: 0, rose: 0 };
   /** The units the falls under way cost together. */
   units = 0;
@@ -108,7 +109,7 @@ export class Falls {
    * cannot fall here (seated, swimming, already down), FALLS_MOST already lie, or its fall would cost more units than are
    * left: the caller topples it instead.
    */
-  knock(e: number, vx: number, vy: number, vz: number, wx: number, wy: number, wz: number): boolean {
+  knock(e: number, vx: number, vy: number, vz: number, wx: number, wy: number, wz: number, by = 0): boolean {
     const ents = this.world.ents;
     if (this.down.has(e)) return true;
     if ((ents.flags[e]! & F_ALIVE) === 0 || ents.seat[e] !== 0 || ents.mode[e] !== MODE_WALK) return false;
@@ -123,7 +124,7 @@ export class Falls {
     const fall = new Fall(r);
     fall.reflex = brace;
     const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision: ++this.serial, world: 0, motion: null, pose: new Solved(HUMAN.bones),
-      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: false, struck: new Set() };
+      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: false, struck: new Set(), by };
     this.down.set(e, d);
     this.units += units;
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
@@ -179,7 +180,7 @@ export class Falls {
           const px = r.x[i * 3]! - ex, py = r.x[i * 3 + 1]! - ey, pz = r.x[i * 3 + 2]! - ez;
           if (py < 0 || py > height || px * px + pz * pz > (radius + 0.15) * (radius + 0.15)) continue;
           d.struck.add(e);
-          this.onStrike(e, speed / 2, vx / speed, vz / speed, py);
+          this.onStrike(e, speed / 2, vx / speed, vz / speed, py, d.by);
           break;
         }
       }

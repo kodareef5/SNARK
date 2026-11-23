@@ -704,8 +704,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
     // A car that strikes a survivor staggers them, or knocks them off their feet (Knockdowns) as a door does.
-    struck: (body, dv, dx, dz, y, wx, wy, wz) => {
-      if (reactions.shove(body, dv, dx, dz, y - world.ents.y[body]!, true, true) === TIER_FALL) knockDown(body, wx, wy, wz);
+    struck: (body, dv, dx, dz, y, wx, wy, wz, by) => {
+      if (reactions.shove(body, dv, dx, dz, y - world.ents.y[body]!, true, true) === TIER_FALL) knockDown(body, wx, wy, wz, by);
     },
     // A body lying as its ragdoll is not struck again where its entity stands in for it.
     down: (e) => falls.isDown(e),
@@ -948,13 +948,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.players.isDown = (e) => falls.isDown(e);
   combat.downPose = (e, tick) => falls.poseAt(e, tick);
   // A blow or a blast may stagger a survivor, or fell them; a shot never does.
-  combat.onBlow = (target, kind, taken, dx, dz, up) => {
+  combat.onBlow = (target, kind, taken, dx, dz, up, by) => {
     if (kind === IMPACT_SHOT) return;
     if (reactions.blow(target, kind === IMPACT_BLAST, taken, dx, dz, up) === TIER_FALL) {
       const ents = world.ents, push = Math.min(SHOVE_MOST * 2, taken / 20);
       ents.vx[target] = ents.vx[target]! + dx * push;
       ents.vz[target] = ents.vz[target]! + dz * push;
-      knockDown(target, dz * 2, 0.3, -dx * 2);
+      knockDown(target, dz * 2, 0.3, -dx * 2, by);
     }
   };
   corpses.handOff = (e) => falls.take(e);
@@ -1471,32 +1471,37 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // up where it comes to rest (server/falls.ts), stunned a moment more as it does. Where no ragdoll may fall it is stunned
   // standing: the body has no hold on where it goes (shared/sim/character.ts, MF_ROOTED), and its client predicts it so.
   const stunned = reg.index.get("core:stunned") ?? -1;
-  const knockDown = (body: number, wx = 0, wy = 0, wz = 0): void => {
+  // `by` is who knocked it down, carried with its fall as the blame for whatever it strikes as it flies.
+  const knockDown = (body: number, wx = 0, wy = 0, wz = 0, by: EntityRecord | null = null): void => {
     if (stunned < 0 || !rules.on("Knockdowns")) return;
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (!rec || rec.kind !== survivor) return;
     const ents = world.ents;
     // Where no ragdoll may fall for it, it topples by its reaction, held where it is until it gets up.
-    if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz)) buffs.give(rec, stunned, 0, reactions.standing(body) ? reactions.topple(body) : KNOCKDOWN_SECONDS);
+    if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz, by?.pid ?? 0)) buffs.give(rec, stunned, 0, reactions.standing(body) ? reactions.topple(body) : KNOCKDOWN_SECONDS);
     refreshBody(rec);
   };
   urban.onSkateFall = (actor, yaw) => {
     const dx = Math.sin(yaw), dz = Math.cos(yaw);
     world.ents.vx[actor] = dx * 1.1; world.ents.vz[actor] = dz * 1.1;
-    knockDown(actor, dz * 2, .35, -dx * 2);
+    knockDown(actor, dz * 2, .35, -dx * 2, records.byPid.get(world.ents.pid[actor]!) ?? null);
   };
-  // A body thrown into a survivor standing in its way may stagger them, or knock them down too.
-  falls.onStrike = (e, dv, dx, dz, up) => {
-    if (reactions.shove(e, dv, dx, dz, up, true) !== TIER_FALL) return;
+  // A body thrown into a survivor standing in its way may stagger them, or knock them down too, as whoever threw it may.
+  falls.onStrike = (e, dv, dx, dz, up, byPid) => {
+    const by = byPid ? records.byPid.get(byPid) ?? null : null, victim = records.byPid.get(world.ents.pid[e]!);
+    if (!victim || !combat.mayShove(by, victim)) return;
+    if (reactions.shove(e, dv, dx, dz, up, by !== null) !== TIER_FALL) return;
     const ents = world.ents;
     ents.vx[e] = ents.vx[e]! + dx * dv * 0.6;
     ents.vz[e] = ents.vz[e]! + dz * dv * 0.6;
-    knockDown(e, dz * 2, 0.3, -dx * 2);
+    knockDown(e, dz * 2, 0.3, -dx * 2, by);
   };
   falls.onUp = (body) => {
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (rec && stunned >= 0) buffs.give(rec, stunned, 0, GET_UP_SECONDS);
     if (rec) refreshBody(rec);
+    // Back on its feet, it is calm a while, as after a stagger.
+    reactions.calm(body);
   };
   const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, vehicle: true };
   urban.onDoorStrike = (vehicle, body, speed, dx, dz) => {
@@ -1506,7 +1511,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     doorBlow.z = ents.z[vehicle]!;
     doorBlow.base = Math.min(DOOR_HARM_MOST, DOOR_HARM_BASE + speed * DOOR_HARM_PER);
     const impact = { victimHandle: ents.handleOf(body), victimPid: ents.pid[body]!, vx: ents.vx[body]!, vy: ents.vy[body]!, vz: ents.vz[body]!, wx: dz * 3, wy: 0, wz: -dx * 3 };
-    knockDown(body, impact.wx, impact.wy, impact.wz);
+    // A door knocks down only those its blow may land on.
+    const victim = records.byPid.get(ents.pid[body]!);
+    if (victim && combat.mayShove(doorBlow.by, victim)) knockDown(body, impact.wx, impact.wy, impact.wz, doorBlow.by);
     combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
   };
   game.players.blockBodies = () => [creatures.awake, creatures.awakeCount];

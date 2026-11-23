@@ -208,7 +208,8 @@ test("a body thrown into a bystander staggers them, and a harder throw fells the
     const { h, a, c, d } = pair();
     try {
       let word = 0;
-      expect(h.host.falls.knock(c.ent, 0, 1, speed, 4, 0, 0)).toBe(true);
+      // Knocked flying by another survivor, who may harm the bystander.
+      expect(h.host.falls.knock(c.ent, 0, 1, speed, 4, 0, 0, a.pid[c.ent]!)).toBe(true);
       h.run(1500, () => { if (word === 0 && a.react[d.ent] !== 0) word = a.react[d.ent]!; });
       expect(h.host.falls.stats.fell).toBe(falls);
       if (falls === 1) expect([REACT_STAGGER, REACT_HEAVY]).toContain(reactKind(word));
@@ -268,5 +269,31 @@ test("walking into a wall is felt once by its own client, as a soft blow drawn a
     // One bump on reaching it, none while it keeps pressing, and the server never staggered it.
     expect(bumps).toBe(1);
     expect(a.react[c.ent]).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("a body thrown at a survivor its thrower may not harm leaves them standing", () => {
+  for (const pve of [true, false]) {
+    const { h, a, c, d } = pair();
+    try {
+      h.host.setSetting("serverPVE", pve ? "true" : "false");
+      const thrower = h.host.records.byPid.get(a.pid[c.ent]!)!, bystander = h.host.records.byPid.get(a.pid[d.ent]!)!;
+      expect(thrower.team).not.toBe(bystander.team);
+      // The thrown body was knocked down by its own tribe's member, whom the bystander's tribe is safe from in PvE.
+      expect(h.host.falls.knock(c.ent, 0, 1, 15, 4, 0, 0, thrower.pid)).toBe(true);
+      h.run(1500);
+      expect(h.host.falls.stats.fell).toBe(pve ? 1 : 2);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+test("a survivor just up from a fall is calm: the next blow only bumps", () => {
+  const { h, c } = road();
+  try {
+    expect(h.host.falls.knock(c.ent, 0, 0.5, 0, 0, 0, 0)).toBe(true);
+    for (let k = 0; k < 200 && h.host.falls.isDown(c.ent); k++) h.run(50);
+    expect(h.host.falls.isDown(c.ent)).toBe(false);
+    h.run(300);
+    expect(h.host.reactions.shove(c.ent, 4, 0, -1, 1.3, true)).toBe(TIER_BUMP);
   } finally { h.host.shutdown(); }
 });
