@@ -562,7 +562,7 @@ if (import.meta.main) {
     const reports = await measure([run], 1, console.log, { species, cars, image });
     const report = reports.get(nameOf(run))?.[0];
     if (!report) throw new Error("The fleet page did not report a measured frame");
-    console.log(JSON.stringify({ species, cars, tier, effectiveTier: report.tier, canvas: report.canvas, renderer: report.renderer,
+    console.log(JSON.stringify({ species, cars, tier, effectiveTier: report.tier?.name, canvas: report.canvas, renderer: report.renderer,
       frames: report.frames, frameMs: report.frameMs, buildAndSubmitMs: report.buildAndSubmitMs, gpuMs: report.gpuMs,
       draws: report.drawCalls, triangles: report.triangles, sceneScale: report.share, casts: report.turn?.castTriangles,
       card: report.card, waited: report.waited }));
