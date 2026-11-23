@@ -43,11 +43,10 @@ export class AirCamera {
     this.tune.speed = drone.speed; this.tune.turn = drone.turn;
     const p = this.ring[i]!;
     p.x = drone.x; p.y = drone.y; p.z = drone.z; p.yaw = drone.yaw; p.pitch = drone.pitch; this.ringTick[i] = view.tick;
-    // Every tick predicted past the server's is flown again from it, with the inputs that were sent for them.
-    const last = Math.max(this.top, view.tick);
+    // Every tick up to the page's newest is flown again from the server's, with the inputs that were sent for them.
     this.top = view.tick;
     let yaw = 0, pitch = 0, buttons = 0, known = false;
-    for (let t = view.tick + 1; t <= Math.min(last, newest); t++) {
+    for (let t = view.tick + 1; t <= newest; t++) {
       const k = t & inputs.mask;
       if (inputs.has(t)) { yaw = inputs.yaw[k]!; pitch = inputs.pitch[k]!; buttons = inputs.buttons[k]!; known = true; }
       if (!known) break;

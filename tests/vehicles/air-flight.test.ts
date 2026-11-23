@@ -232,6 +232,9 @@ test("the operator's camera agrees with the server through a steering turn", () 
     const seen = pilot.airCamera.sample()!;
     expect(pilot.airCamera.stats.error).toBeLessThan(.01);
     expect(pilot.airCamera.stats.replays - replays).toBeLessThan(40);
+    // Its speed reads as it flies, for the feed's scale.
+    expect(Math.hypot(seen.vx, seen.vz)).toBeGreaterThan(flown.speed * .5);
+    expect(pilot.airFeed.speed).toBeGreaterThan(flown.speed * .5);
     // The camera runs ahead of the server by the latency, along the same path.
     expect(Math.hypot(seen.x - flown.x, seen.z - flown.z)).toBeLessThan(flown.speed * .3);
   } finally { h.host.shutdown(); }
