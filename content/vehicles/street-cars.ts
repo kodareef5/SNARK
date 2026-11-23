@@ -5,6 +5,7 @@ import type {
   WheelVehicleDefinition,
 } from "../../shared/sim/vehicle.ts";
 import { COMPACT, COMPACT_SPECIES, COMPACT_VEHICLE } from "./compact.ts";
+import { withRooms } from "./cabin-room.ts";
 
 type Point = readonly [number, number, number];
 interface RoadFit {
@@ -177,7 +178,7 @@ export function streetCar(name: StreetCar) {
     id,
     frame: name === "monster_truck" ? "off_road" : "car",
     doors,
-    seats,
+    seats: withRooms(id, seats),
     spec: {
       ...COMPACT,
       ...fit.tuning,
