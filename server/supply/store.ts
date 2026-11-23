@@ -8,8 +8,9 @@
 // world, and whatever fails is answered as a save that was not made. From it on the book is saved, in force and
 // answered so, all three alike; its history is written after, and if that cannot be, the save stands and says so.
 
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync, openSync, fsyncSync, closeSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { MOST, bookFaults, type BookFault, type SupplyBook } from "../../shared/supply/book.ts";
+import { put, why } from "../doc-file.ts";
 
 /** Revisions kept in the history file. */
 const HISTORY = 50;
@@ -28,30 +29,6 @@ export interface BookRevision {
  * says why a book was not written at all: nothing has changed.
  */
 export type SaveResult = { ok: true; revision: number; unkept?: string } | { ok: false; conflict: number } | { ok: false; faults: BookFault[] } | { ok: false; failed: string };
-
-/** Writes a file whole beside its place and renames it there, so a kill leaves the old file or the new and never half of one. */
-function put(path: string, text: string): void {
-  const tmp = `${path}.tmp`;
-  try {
-    writeFileSync(tmp, text);
-    const fd = openSync(tmp, "r");
-    try {
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-    renameSync(tmp, path);
-  } catch (err) {
-    try {
-      rmSync(tmp, { force: true });
-    } catch {
-      // What could not be written may not be there to take away.
-    }
-    throw err;
-  }
-}
-
-const why = (err: unknown): string => (err instanceof Error ? ((err as NodeJS.ErrnoException).code ?? err.message) : String(err));
 
 export class BookStore {
   /** The book in force. */
