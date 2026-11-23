@@ -14,6 +14,7 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Controls } from "./controls.ts";
 import type { HudModel, VehicleTelemetry } from "./hud.ts";
 import { sightShown, type SightAt, type SightShown } from "./hud/sight.ts";
+import { fallenShown, type FallenShown } from "./view/fallen.ts";
 import type { HudFrame } from "./hud/widget.ts";
 import type { Lasers } from "./render/laser.ts";
 import type { SeatedAim } from "./seated-aim.ts";
@@ -110,6 +111,8 @@ export class AppFrame implements HudFrame {
   /** Where the sight's look starts and how it points, and what the sight shows on the HUD (hud/sight.ts). */
   readonly sightAt: SightAt = { yaw: 0, pitch: 0, laser: false, x: 0, y: 0, z: 0 };
   readonly sight: SightShown = sightShown();
+  /** The own survivor knocked down or dying: where the camera rides it, and the red and black over the view (view/fallen.ts). */
+  readonly fallen: FallenShown = fallenShown();
   /** The own body as the scene draws it, and whether it is a mount or a vehicle the body steers. */
   body!: OwnBody;
   riding = false;

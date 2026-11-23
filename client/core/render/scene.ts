@@ -365,6 +365,8 @@ export class Scene {
   own: OwnBody | null = null;
   /** Index of an entity to leave out of the remote bodies, because `own` is that body as the viewer predicts it (a mount). -1 for none. */
   skip = -1;
+  /** A remote body drawn without its head: the viewer's own corpse, which the camera rides (view/fallen.ts). */
+  headless = -1;
   private readonly seatAt = new Float64Array(SEAT_FLOATS);
   /** By remote entity this frame: whether it rides in a seat, and the rows of that seat's turn (Characters.seat). */
   /** Per body this frame: 1 for one astride the seat that steers its creature, 2 for a passenger astride, else 0. */
@@ -932,7 +934,7 @@ export class Scene {
         const lies = flying ? this.dropped.item(kind, remote.gear, i * GEAR_COUNT) : 0;
         ch.loose(p, lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!, x, y, z, Math.sin(remote.yaw[i]!) * level, Math.sin(pitch), Math.cos(remote.yaw[i]!) * level, 1);
       }
-      ch.corpses(p, cam, remote, this.world, own?.down ? makeHandle(own.id, own.generation ?? 0) : 0);
+      ch.corpses(p, cam, remote, this.world, own ? makeHandle(own.id, own.generation ?? 0) : 0, own?.down === true);
     }
     // Then the shots in the air, and the supply drops' shafts and capsules.
     this.shots?.draw(ch, p, cam, this.shotTick);
@@ -1124,7 +1126,7 @@ export class Scene {
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2, remote.seatSlot[i] === IMPALE_SLOT, this.seated[i] ? this.riderFits[i] : undefined);
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]! || this.headless === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2, remote.seatSlot[i] === IMPALE_SLOT, this.seated[i] ? this.riderFits[i] : undefined);
   }
 
   /**

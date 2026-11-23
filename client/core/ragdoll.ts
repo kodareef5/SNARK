@@ -213,15 +213,15 @@ export class HumanFalls {
     return h && (h.down || h.upAt >= 0) && h.fall ? h : undefined;
   }
 
-  /** `own` is the handle of the viewer's own body while it is knocked down, else 0; its own body is not in `remote`. */
-  update(remote: RemoteSample, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, own: number): void {
+  /** `own` is the handle of the viewer's own body (0 for none), which is not in `remote`, and `ownDown` whether it lies knocked down. */
+  update(remote: RemoteSample, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, own: number, ownDown: boolean): void {
     const tick = remote.tick, seen = ++this.updates;
     for (let i = 0; i < remote.count; i++) {
       // A survivor's body (CUE_DEAD) lies as its ragdoll for good.
       if (!this.survivor(remote.kind[i]!)) continue;
       this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, (remote.cue[i]! & (CUE_DOWN | CUE_DEAD)) !== 0, tick, seen, world, motions);
     }
-    if (own !== 0) this.track(own, handleIndex(own), true, tick, seen, world, motions);
+    if (own !== 0) this.track(own, handleIndex(own), ownDown, tick, seen, world, motions);
     for (const [id, h] of this.byId) if (h.seen !== seen) this.byId.delete(id);
   }
 
@@ -313,10 +313,10 @@ export class Corpses {
   /**
    * Takes up the bodies among the remote entities as sampled now, forgets those no longer sent, and moves every body on to
    * `remote.tick`. (cx, cz) is where the viewer is: bodies come upon nearer it are laid to rest first. `gaits` holds the
-   * gait of each body drawn, by id. `ownDown` is the viewer's own handle while it is knocked down, else 0.
+   * gait of each body drawn, by id. `own` is the viewer's own handle (0 for none), and `ownDown` whether it lies knocked down.
    */
-  update(remote: RemoteSample, world: CollisionWorld, cx: number, cz: number, gaits: ReadonlyMap<number, Gait>, motions?: ReadonlyMap<number, CorpseMotion>, ownDown = 0): void {
-    this.humans.update(remote, world, motions, ownDown);
+  update(remote: RemoteSample, world: CollisionWorld, cx: number, cz: number, gaits: ReadonlyMap<number, Gait>, motions?: ReadonlyMap<number, CorpseMotion>, own = 0, ownDown = false): void {
+    this.humans.update(remote, world, motions, own, ownDown);
     const tick = remote.tick;
     const seen = ++this.updates;
     const now = this.now;

@@ -6,6 +6,7 @@ import { BUFFS } from "./buffs.ts";
 import { COMPASS } from "./compass.ts";
 import { CROSSHAIR } from "./crosshair.ts";
 import { DOTS } from "./dots.ts";
+import { FALLEN } from "./fallen.ts";
 import { HOTBAR } from "./hotbar.ts";
 import { JET } from "./jet.ts";
 import { MARKS } from "./marks.ts";
@@ -22,6 +23,7 @@ import type { HudWidget } from "./widget.ts";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const HUD_WIDGETS: readonly HudWidget<any>[] = [
   STATE,
+  FALLEN,
   HOLO_TINT,
   DOTS,
   SIGHT,

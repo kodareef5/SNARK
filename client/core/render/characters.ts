@@ -620,12 +620,17 @@ export class Characters {
   corpseMotions: ReadonlyMap<number, CorpseMotion> | undefined;
   get corpseCheckpointRequests(): ReadonlySet<number> { return this.dead.needsCheckpoint; }
 
-  /** Whether this kind is on the humanoid skeleton. */
   /** Whether entity `id` is a survivor's body lying as its ragdoll, drawn as a survivor (client/core/ragdoll.ts HumanFalls). */
   lyingHuman(id: number): boolean {
     return this.dead.humans.of(id) !== undefined;
   }
 
+  /** The fall survivor `id` is drawn by, lying or getting up, as the last frame left it. */
+  humanFall(id: number): HumanFall | undefined {
+    return this.dead.humans.of(id);
+  }
+
+  /** Whether this kind is on the humanoid skeleton. */
   human(kind: number): boolean {
     return this.kinds[kind] != null;
   }
@@ -1221,8 +1226,8 @@ export class Characters {
    * Finds the creatures that have died among the remote entities, moves the dead on through their death clips and
    * ragdolls, and draws those in view where they lie. `world` is what a ragdoll falls on.
    */
-  corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld, ownDown = 0): void {
-    this.dead.update(remote, world, cam.x, cam.z, this.gaits, this.corpseMotions, ownDown);
+  corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld, own = 0, ownDown = false): void {
+    this.dead.update(remote, world, cam.x, cam.z, this.gaits, this.corpseMotions, own, ownDown);
     const lit = this.assets.tier.lit;
     for (const d of this.dead.list) {
       const c = this.creatures[d.kind]!;

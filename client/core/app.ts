@@ -32,6 +32,7 @@ import { AppFrame, type FramePart } from "./frame.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Sight } from "./sight.ts";
 import { Director } from "./view/director.ts";
+import { FallenView } from "./view/fallen.ts";
 import { ToolHooks, autopilot, type ToolOrders } from "./tool-hooks.ts";
 import type { Mark } from "./stress.ts";
 
@@ -133,6 +134,8 @@ export class App {
    * the notes read of them are forwarded.
    */
   readonly director = new Director();
+  /** The view of the own survivor knocked down or dying, and the red and black over it. */
+  readonly fallen = new FallenView();
   get view(): Viewpoint { return this.director.view; }
   get orbit(): Orbit { return this.director.orbit; }
   get orbitFree(): boolean { return this.director.orbitFree; }
@@ -606,6 +609,7 @@ export class App {
       this.sight,
       // With the view decided: the own body as it is drawn, then the camera placed.
       this.director.body,
+      this.fallen,
       this.director.place,
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       { step: (f) => this.absorb(f) },
