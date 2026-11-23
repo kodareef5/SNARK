@@ -11,6 +11,8 @@ export interface FakePort extends DebugPort {
   readonly taken: Picture[];
   readonly dropped: Picture[];
   readonly queued: PageLine[];
+  /** The browser's long tasks the next frames hand the bar, one frame each: how many and their ms. */
+  readonly tasks: [number, number][];
   readonly posted: { path: string; fields: Map<string, string>; files: number }[];
 }
 
@@ -19,13 +21,13 @@ export const FAKE_CANVAS = [1280, 720] as const;
 
 /** A port whose `post` goes to `answer`, a Request in and a Response out; without one every post is refused. */
 export function fakePort(answer: ((req: Request) => Promise<Response>) | null = null): FakePort {
-  const taken: Picture[] = [], dropped: Picture[] = [], queued: PageLine[] = [], posted: FakePort["posted"] = [];
+  const taken: Picture[] = [], dropped: Picture[] = [], queued: PageLine[] = [], tasks: [number, number][] = [], posted: FakePort["posted"] = [];
   const reply = async (r: Promise<Response>): Promise<Answer> => {
     const res = await r;
     return { status: res.status, text: await res.text() };
   };
   return {
-    taken, dropped, queued, posted,
+    taken, dropped, queued, tasks, posted,
     now: () => performance.now(),
     origin: Date.now() - performance.now(),
     shot(wide) {
@@ -37,7 +39,9 @@ export function fakePort(answer: ((req: Request) => Promise<Response>) | null = 
     drop: (p) => void dropped.push(p),
     heap: () => 120,
     longTasks(out) {
-      out[0] = out[1] = 0;
+      const t = tasks.shift();
+      out[0] = t ? t[0] : 0;
+      out[1] = t ? t[1] : 0;
     },
     longFrames(_out: LongFrame[]) {},
     gpu: () => false,

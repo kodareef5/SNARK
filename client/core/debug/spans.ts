@@ -23,7 +23,7 @@ const PAGE: { now(): number } = (globalThis as { performance?: { now(): number }
 export class SpanFrame {
   readonly start = new Float32Array(MOST_SLOTS).fill(NaN);
   readonly ms = new Float32Array(MOST_SLOTS);
-  /** The frame's start on the page's clock, for a mean the latest frame's; and the frames it holds. */
+  /** The frame's time on the frame clock, for a mean the latest frame's; and the frames it holds. */
   at = 0;
   frames = 0;
 }
@@ -37,6 +37,8 @@ export class SpanRing implements Probe {
   rows = 0;
   /** By row, the frame's start on the page's clock; then by row and slot, MOST_SLOTS a row, what a SpanFrame holds. */
   readonly at = new Float64Array(FRAME_ROWS);
+  /** By row, the frame's time on the game's frame clock, which the rest of the bar keeps its times on. */
+  readonly when = new Float64Array(FRAME_ROWS);
   readonly start = new Float32Array(FRAME_ROWS * MOST_SLOTS).fill(NaN);
   readonly ms = new Float32Array(FRAME_ROWS * MOST_SLOTS);
   private readonly clock: { now(): number };
@@ -135,10 +137,12 @@ export class SpanRing implements Probe {
   /**
    * The frame drawn. The shell's spans from App.shellMarks: its input before the app's frame, the interface applied after
    * it and the draw, with the renderer's own time in each pass of it where `cpu` has this draw's; and the frame over them
-   * all. Without the shell's marks the frame runs from its begin until now. Then the row is committed.
+   * all. Without the shell's marks the frame runs from its begin until now. Then the row is committed, at `when` on the
+   * frame clock (its begin, without one).
    */
-  close(marks: Float64Array, cpu: PassCpu | null): void {
+  close(marks: Float64Array, cpu: PassCpu | null, when = this.from): void {
     if (this.base < 0) return;
+    this.when[this.base / MOST_SLOTS] = when;
     const from = marks[0]!, applied = marks[3]!, to = marks[4]!;
     if (from > 0 && to >= from) {
       this.add(INPUT, from, marks[1]!);
@@ -175,6 +179,17 @@ export class SpanRing implements Probe {
     if (at > this.from) this.add(LANE_CARD, this.from, at);
   }
 
+  /** How many of the latest frames were at `from` or after on the frame clock. */
+  since(from: number): number {
+    let n = 0;
+    while (n < FRAME_ROWS) {
+      const row = this.row(n);
+      if (row < 0 || this.when[row]! < from) break;
+      n++;
+    }
+    return n;
+  }
+
   /** The row of the frame `back` frames before the latest, or -1 where it is not kept. */
   row(back: number): number {
     return back >= 0 && back < this.rows && back < FRAME_ROWS ? (this.rows - 1 - back) % FRAME_ROWS : -1;
@@ -184,7 +199,7 @@ export class SpanRing implements Probe {
   read(row: number, out: SpanFrame): SpanFrame {
     out.start.fill(NaN);
     out.ms.fill(0);
-    out.at = row < 0 ? 0 : this.at[row]!;
+    out.at = row < 0 ? 0 : this.when[row]!;
     out.frames = row < 0 ? 0 : 1;
     if (row < 0) return out;
     const base = row * MOST_SLOTS;
@@ -208,7 +223,7 @@ export class SpanRing implements Probe {
     for (; n < count; n++) {
       const row = this.row(back + n);
       if (row < 0) break;
-      if (n === 0) out.at = this.at[row]!;
+      if (n === 0) out.at = this.when[row]!;
       const base = row * MOST_SLOTS;
       for (let s = 0; s < slots; s++) {
         const start = this.start[base + s]!;

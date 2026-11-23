@@ -17,6 +17,18 @@ export interface ShotLimits {
 /** Ninety pictures, one every 2 s: three minutes. */
 export const SHOT_LIMITS: ShotLimits = { every: 2000, gap: 1000, most: 90, wide: 640, quality: 0.8 };
 
+/** Where the picture was taken from, as a capture keeps it beside the picture (shared/report.ts ReportShot). */
+export interface ShotPose {
+  place: [number, number, number];
+  camera: [number, number, number];
+  yaw: number;
+  pitch: number;
+  hour: number;
+  frameMs: number;
+  draws: number;
+  triangles: number;
+}
+
 export interface Shot {
   /** When it was taken on the page's clock, in ms, and the number of the frame it shows. */
   at: number;
@@ -24,6 +36,8 @@ export interface Shot {
   /** What asked for it, or "" for the regular one. */
   why: string;
   picture: Picture;
+  /** Where it was taken from, where the bar said. */
+  pose: ShotPose | null;
 }
 
 export class ShotRing {
@@ -64,8 +78,11 @@ export class ShotRing {
     return since >= this.limits.every || (this.asked !== "" && since >= this.limits.gap);
   }
 
-  /** Takes a picture of frame `frame` at `now`: call it straight after the draw. Returns the ms it took on this thread. */
-  take(now: number, frame: number): number {
+  /**
+   * Takes a picture of frame `frame` at `now`, seen from `pose`: call it straight after the draw. Returns the ms it took on
+   * this thread.
+   */
+  take(now: number, frame: number, pose: ShotPose | null = null): number {
     const why = this.asked, round = this.round;
     this.asked = "";
     this.last = now;
@@ -74,7 +91,7 @@ export class ShotRing {
     void picture.then(
       (p) => {
         this.making--;
-        if (round === this.round) this.keep({ at: now, frame, why, picture: p });
+        if (round === this.round) this.keep({ at: now, frame, why, picture: p, pose });
         else this.port.drop(p);
       },
       () => {

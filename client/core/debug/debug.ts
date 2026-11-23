@@ -11,14 +11,14 @@ import type { FramePacket } from "../render/packet.ts";
 import type { ReportBuild } from "../../../shared/report.ts";
 import type { UiFrame, UiImage } from "../ui/nodes.ts";
 import { Draw, KEY_DEBUG } from "./draw.ts";
-import { EV_ASSET, EV_CORRECTION, EV_ERROR, EV_GAP, EV_GOVERNOR, EV_JUMP, EV_TASK, EV_TICK, GAP_MS, LagEvents, Rises } from "./events.ts";
+import { EV_ASSET, EV_CORRECTION, EV_ERROR, EV_GAP, EV_GOVERNOR, EV_JUMP, EV_TASK, EV_TICK, GAP_MS, LagEvents, Rises, type LagEvent } from "./events.ts";
 import { LogRing, SOURCE_GAME, SOURCE_PAGE, SOURCE_SERVER } from "./log.ts";
 import { NetLog, bodyClass } from "./net.ts";
 import type { DebugPort, LongFrame, PageLine } from "./port.ts";
 import { C, CELLS, FLAG_AFTER_SHOT, FLAG_SHOT, PerfRing } from "./ring.ts";
 import { FrameSampler, type FrameExtra } from "./sample.ts";
-import { FULL_QUALITY, FULL_WIDE, captureHead, saveCapture } from "./save.ts";
-import { ShotRing } from "./shots.ts";
+import { CAPTURE_MS, FULL_QUALITY, FULL_WIDE, captureHead, saveCapture } from "./save.ts";
+import { ShotRing, type ShotPose } from "./shots.ts";
 import { LANE_FRAME, MOST_SLOTS, SpanFrame, SpanRing } from "./spans.ts";
 import { D_BAR, D_BADGE, D_BAD, D_DRAWER, D_FAINT, D_GOOD, D_NUM, D_NUM_DIM, D_TAB, D_TAB_ON, D_WARN, FILL_RULE } from "./styles.ts";
 import { ACT_CLOSE, ACT_DRAWER, ACT_OPEN, ACT_SAVE, ACT_TAB, TAB_ACT, type Tab } from "./tab.ts";
@@ -69,9 +69,15 @@ export class DebugBar {
   serverAt = -Infinity;
   /** The protocol's names, once the server has said them. */
   names: CodeNames | null = null;
-  /** A frame or an event the timeline chose, which the Frame tab shows: the page clock's ms, or -1. */
+  /**
+   * The moment chosen on the timeline, on the frame's clock, or -1; the event chosen with it, if one was; and the frame the
+   * Frame tab shows for it, while the span ring held one.
+   */
   chosenAt = -1;
+  chosenEvent: LagEvent | null = null;
   chosenSpans: SpanFrame | null = null;
+  /** When the bar last began to record, on the frame's clock: a capture reaches back no further. */
+  recordingFrom = Infinity;
   /** What the last save said, for the bar; words waiting for the next frame's picture to save with; the client's build. */
   saved = "";
   private saving: string | null = null;
@@ -143,6 +149,7 @@ export class DebugBar {
       this.net = this.netLog();
       if (this.names) this.net.setNames(this.names);
     }
+    if (on) this.recordingFrom = app.nowMs;
     this.hookedOnce ||= on;
     this.hooked = on;
     app.probe = on ? this.spans : null;
@@ -192,7 +199,7 @@ export class DebugBar {
     e.shotMs = 0;
     const shots = this.shots;
     if (shots && shots.due(nowMs)) {
-      e.shotMs = shots.take(nowMs, this.spans.rows);
+      e.shotMs = shots.take(nowMs, this.spans.rows, this.pose(p));
       e.flags |= FLAG_SHOT;
       this.afterShot = true;
     }
@@ -203,7 +210,7 @@ export class DebugBar {
       e.shotMs += full.ms;
       e.flags |= FLAG_SHOT;
       this.afterShot = true;
-      const head = captureHead(this, p, [width, height], [Math.round(f.width * f.unit), Math.round(f.height * f.unit)]);
+      const head = captureHead(this, p, [width, height], [Math.round(f.width * f.unit), Math.round(f.height * f.unit)], this.pose(p));
       void saveCapture(this, words, full.picture, head).then(
         (said) => this.said(said),
         (err) => this.said(`not saved: ${err instanceof Error ? err.message : String(err)}`),
@@ -225,7 +232,7 @@ export class DebugBar {
         this.heapIn = 60;
       }
     }
-    this.spans.close(app.shellMarks, this.cpu);
+    this.spans.close(app.shellMarks, this.cpu, nowMs);
     const row = this.spans.row(0);
     e.build = build;
     e.scene = row >= 0 ? this.sceneMs(row) : 0;
@@ -237,6 +244,15 @@ export class DebugBar {
     this.watch(nowMs);
     this.cost += this.spans.now() - t0;
     this.costFrames++;
+  }
+
+  /** Where a picture of the frame `p` is taken from: the survivor's feet, the camera and its turn, the hour, what it drew. */
+  private pose(p: FramePacket): ShotPose {
+    const app = this.app, own = app.session.own, cam = app.cam, r2 = (v: number): number => Math.round(v * 100) / 100;
+    return {
+      place: [r2(own.x), r2(own.y), r2(own.z)], camera: [r2(cam.x), r2(cam.y), r2(cam.z)], yaw: Math.round(cam.yaw * 1000) / 1000, pitch: Math.round(cam.pitch * 1000) / 1000,
+      hour: Math.round(app.sky.hour * 1000) / 1000, frameMs: r2(app["interval"]), draws: p.drawCount, triangles: Math.round(p.triangles),
+    };
   }
 
   /** The scene's build in the row, where the app timed it. */
@@ -391,6 +407,37 @@ export class DebugBar {
   }
 
   // ---- The interface ---------------------------------------------------------------------------------------------------
+
+  /**
+   * Chooses the moment `at` on the frame's clock (-1 lets it go), with the event `event` or none. The Frame tab shows the
+   * event's frame, or the slowest frame of the second about `at` while the span ring holds it; a save names the moment
+   * and the picture nearest it.
+   */
+  choose(at: number, event: LagEvent | null): void {
+    this.chosenAt = at;
+    this.chosenEvent = event;
+    this.dirty = true;
+    if (at < 0) return void (this.chosenSpans = null);
+    const f = (this.chosenSpans ??= new SpanFrame()), spans = this.spans;
+    if (event?.spans) {
+      for (let s = 0; s < MOST_SLOTS; s++) {
+        f.start[s] = event.spans[s]!;
+        f.ms[s] = event.spans[MOST_SLOTS + s]!;
+      }
+      f.at = event.at;
+      f.frames = 1;
+      return;
+    }
+    // The slowest frame of the second about `at`, while the ring still holds it.
+    let best = -1;
+    for (let back = 0; ; back++) {
+      const row = spans.row(back);
+      if (row < 0 || spans.when[row]! < at - 500) break;
+      if (spans.when[row]! < at + 500 && (best < 0 || spans.ms[row * MOST_SLOTS + LANE_FRAME]! > spans.ms[best * MOST_SLOTS + LANE_FRAME]!)) best = row;
+    }
+    if (best < 0) this.chosenSpans = null;
+    else spans.read(best, f);
+  }
 
   /** The pointer is the drawer's, not the game's. */
   get holdsPointer(): boolean {
@@ -591,7 +638,8 @@ export class DebugBar {
     this.saving = words;
     this.saved = "saving…";
     this.dirty = true;
-    return "saving the last three minutes";
+    const held = Math.max(0, Math.min(CAPTURE_MS, this.app.nowMs - this.recordingFrom));
+    return held >= CAPTURE_MS ? "saving the last three minutes" : `saving the ${Math.round(held / 1000)} s since the bar was turned on`;
   }
 
   /** What a save came to: on the bar, and in the log and the chat. */

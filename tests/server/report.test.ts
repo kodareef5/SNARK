@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { goBack, hourText, reportIds, reportText, takeId, type KeptReport } from "../../server/reports.ts";
+import { captureText, goBack, hourText, reportIds, reportText, takeId, type KeptReport } from "../../server/reports.ts";
 import { REPORT_SHAPE, clean, cleanPerf, cleanReport, clockText, jpegSize, readableJson, reportFolder, shotFile } from "../../shared/report.ts";
 import { jpegHead } from "../fixtures/jpeg.ts";
 
@@ -102,4 +102,43 @@ test("report.md says where, what and how on one screen, quotes the owner's words
   // A record that knows the display's interval says it apart from the game's rate, and its late frames against it.
   const halved = reportText(r, { frames: 900, left: 0, target: 8.33, middle: 16.67, p95: 16.8, p99: 17, worst: 33.4, worstIntervals: 4, late: 0.998, over33: 0.001, over50: 0 }, {}, []);
   expect(halved).toContain("- Frames: 900 timed. The display shows a frame every 8.3 ms (120 Hz, the fastest the page kept up) and the game drew 60 a second of them: middle 16.7 ms, 95th 16.8, 99th 17.0, worst 33.4. Late, past 1.25 display intervals: 99.8%; the worst took 4 display intervals. Over 33 ms 0.1%, over 50 0.0%.");
+});
+
+test("a capture's summary ranks the page's own work, never the card's passes", () => {
+  // The page: frame > app > build; the card: its passes, far longer than anything of the page's.
+  const names = ["frame", "card", "browser", "app", "build", "gl", "near", "near"];
+  const parents = [-1, -1, -1, 0, 3, 0, 5, 1];
+  const ms = [9, 12, 0, 6, 5, 3, 2.5, 12], start = [0, 0, -1, 0, 0.5, 6, 6.2, 0];
+  const lines = captureText("0001", { perf: { spans: { names, parents, mean: { frames: 60, start, ms } } }, records: {} });
+  const went = lines.find((l) => l.startsWith("- Where a frame went"))!;
+  expect(went).toContain("the card 12.00 ms");
+  expect(went).toContain("most by itself: app > build 5.00, gl > near 2.50");
+  expect(went).not.toMatch(/most by itself:[^(]*\bnear 12/);
+});
+
+test("a capture with a moment chosen goes back to that moment's picture, not to where it was saved", () => {
+  const r: KeptReport = {
+    id: 3, at: "2026-11-23T10:00:00.000Z", who: "Owner", kind: "capture", ms: 40_000, files: [],
+    server: { commit: "abcdef1234567890", clean: true }, client: { page: { commit: "abcdef1234567890", clean: true }, served: { commit: "abcdef1234567890" } },
+    map: { id: "miami" }, place: { x: 900, y: 4, z: 900 }, view: { camera: [900, 6, 897], yaw: 0, pitch: 0 }, sky: { hour: 12 },
+    shots: [{ at: 4100, w: 640, h: 342, place: [700, 3, 650], camera: [700.5, 5, 647], yaw: Math.PI / 2, pitch: -0.1, hour: 11.5 }, { at: 40_000, w: 2560, h: 1368, place: [900, 4, 900] }],
+    chosen: { at: 4050, shot: 0, what: "long frame, 86.7 ms: app › dash 60.1 ms" },
+    text: [], voice: { file: null, text: null, segments: [] }, go: { run: [], view: null },
+  };
+  r.go = goBack(3, r);
+  expect(r.go.run).toEqual(["enablecheats", "settime 11:30", "tp 700.00 3.00 650.00"]);
+  expect(r.go.view).toEqual({ name: "report-0003", x: 700.5, y: 5, z: 647, yaw: 90, pitch: -5.7, hour: 11.5 });
+  const md = reportText(r, null, {}, []);
+  expect(md).toContain("## Chosen in the bar");
+  expect(md).toContain("- At 0:04 of the capture: long frame, 86.7 ms: app › dash 60.1 ms.");
+  expect(md).toContain("0003/shot-01.jpg, the feet at 700.0, 3.0, 650.0");
+});
+
+test("a capture's summary says what part of it each record holds", () => {
+  const lines = captureText("0003", {
+    perf: { window: { from: 0, to: 40_000 }, spans: { from: 6_000, names: ["frame"], parents: [-1], mean: { frames: 60, start: [0], ms: [9] } } },
+    records: { "events.json": { window: { from: 0, to: 40_000 }, events: [] }, "net.json": { seconds: 39, window: { from: 1000, to: 40_000 }, categories: [{ name: "bodies", bytes: Array(39).fill(4530) }] } },
+  });
+  expect(lines).toContain("- What each record holds of the capture: frames one by one 0:00–0:40, their slots 0:06–0:40, events 0:00–0:40, socket 0:01–0:40. A rate is over the record's own seconds.");
+  expect(lines.find((l) => l.startsWith("- Socket"))).toContain("bodies 4530");
 });

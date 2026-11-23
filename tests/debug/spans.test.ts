@@ -215,3 +215,22 @@ test("a frame of 100 slots makes nothing and costs a few microseconds", () => {
   expect(each).toBeLessThan(60);
   expect(ring.rows).toBe(n);
 });
+
+test("a frame keeps its time on the frame clock, and the frames since a time are counted by it", () => {
+  const ring = new SpanRing(clock()), out = new SpanFrame();
+  // The page's clock runs on its own; the frame clock steps 16 ms, then 100 ms for one frame, then 16 again.
+  let when = 5000;
+  for (let k = 0; k < 20; k++) {
+    when += k === 10 ? 100 : 16;
+    ring.begin(k * 3);
+    ring.close(Float64Array.of(k * 3, k * 3, k * 3, k * 3, k * 3 + 1), null, when);
+  }
+  expect(ring.when[ring.row(0)]).toBe(when);
+  expect(ring.read(ring.row(0), out).at).toBe(when);
+  // A second back holds all twenty, the last 100 ms seven, and none is after the latest.
+  expect([ring.since(when - 1000), ring.since(when - 100), ring.since(when + 1)]).toEqual([20, 7, 0]);
+  // Without a frame time, a frame is at its begin.
+  ring.begin(77);
+  ring.close(new Float64Array(5), null);
+  expect(ring.when[ring.row(0)]).toBe(77);
+});

@@ -3,13 +3,25 @@
 // Events that follow each other within MERGE_MS join into one, which keeps its worst frame.
 
 import { LATE } from "./ring.ts";
+import { ms } from "./words.ts";
 
 export const EV_HITCH = 0, EV_LONG = 1, EV_STALL = 2, EV_TASK = 3, EV_UPLOAD = 4, EV_GAP = 5, EV_CORRECTION = 6, EV_JUMP = 7, EV_GOVERNOR = 8, EV_ASSET = 9, EV_ERROR = 10, EV_TICK = 11;
 export const EVENT_NAMES = ["hitch", "long frame", "stall", "long task", "upload spike", "snapshot gap", "correction", "clock jump", "governor", "asset failed", "error", "server tick"] as const;
+
+/** An event's size in words: ms for the kinds timed, else its count or level. */
+export function eventSize(e: LagEvent): string {
+  return e.kind <= EV_GAP || e.kind === EV_TICK ? ms(e.size) : String(e.size);
+}
+
+/** An event in a line: its kind, how many joined, its size and its cause. */
+export function eventWords(e: LagEvent): string {
+  return `${EVENT_NAMES[e.kind]}${e.count > 1 ? ` ×${e.count}` : ""}, ${eventSize(e)}${e.cause ? `: ${e.cause}` : ""}`;
+}
+
 /** Each kind's colour on the timeline, 0xRRGGBB. */
 export const EVENT_COLOURS = [0xf2c46b, 0xf2a477, 0xe0605a, 0xc89be8, 0x7fd0e6, 0xe68ab4, 0xa6e3f4, 0xb4c8ff, 0x9fd39b, 0xe0605a, 0xff5a5a, 0xf2a477];
-/** Frame kinds are the worst of these first three. */
-const FRAME_KINDS = 3;
+/** Frame kinds are the worst of these first three; ANY_FRAME asks for an event of any of them. */
+const FRAME_KINDS = 3, ANY_FRAME = -1;
 
 /** A frame past this is long, and past STALL_MS a stall, whatever the frames round it took. */
 export const LONG_MS = 50;
@@ -100,7 +112,7 @@ export class LagEvents {
   }
 
   private frameEvent(f: FrameFacts, kind: number, cause: () => string): LagEvent | null {
-    const last = this.lastOf(FRAME_KINDS, f.at);
+    const last = this.lastOf(ANY_FRAME, f.at);
     if (last) {
       last.end = f.at;
       last.count++;
@@ -132,12 +144,12 @@ export class LagEvents {
     return this.push({ at, end: at, kind, size, count: 1, frame: -1, cause, spans: null });
   }
 
-  /** The newest event of `kind` (or of any frame kind, for FRAME_KINDS) that ended within MERGE_MS of `at`. */
+  /** The newest event of `kind` (or of any frame kind, for ANY_FRAME) that ended within MERGE_MS of `at`. */
   private lastOf(kind: number, at: number): LagEvent | null {
+    // An event that began earlier may have ended later than one after it in the list, so each is looked at.
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i]!;
-      if (at - e.end > MERGE_MS) return null;
-      if (kind === FRAME_KINDS ? e.kind < FRAME_KINDS : e.kind === kind) return e;
+      if (at - e.end <= MERGE_MS && (kind === ANY_FRAME ? e.kind < FRAME_KINDS : e.kind === kind)) return e;
     }
     return null;
   }

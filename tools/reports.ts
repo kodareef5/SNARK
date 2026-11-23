@@ -21,7 +21,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { checkoutBuild, rateOf, reportIds, streetTypeNames, type KeptReport, type ReportState } from "../server/reports.ts";
-import { reportFolder, type PerfSummary } from "../shared/report.ts";
+import { clockText, reportFolder, spanRoots, type PerfSummary } from "../shared/report.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
@@ -101,7 +101,8 @@ interface Perf {
   seconds?: number[][];
   summary?: PerfSummary;
   worst?: number[][];
-  spans?: { names?: string[]; parents?: number[]; mean?: { frames?: number; start?: number[]; ms?: number[] }; slowest?: { at: number; frame: number; start?: number[]; ms?: number[] }[] };
+  window?: Window;
+  spans?: { from?: number; names?: string[]; parents?: number[]; mean?: { frames?: number; start?: number[]; ms?: number[] }; slowest?: { at: number; frame: number; start?: number[]; ms?: number[] }[] };
   census?: { shot: number; steps?: { name: string; draws: number; triangles: number }[]; stores?: { name: string; draws: number; triangles: number; instances: number }[]; largest?: { mesh: string; level: number; instances: number; triangles: number; store: string }[]; cpu?: Record<string, number>; gpu?: { name: string; ms: number }[]; budget?: { triangles?: number; draws?: number; squeeze?: number; least?: number; level?: number } }[];
 }
 
@@ -111,10 +112,10 @@ export function perf(dir: string, id: number): Lines {
   if (!folder || !p) return [`report ${id} in ${dir} has no performance record`];
   const s = p.summary ?? {}, out: Lines = [];
   const share = (v: number | undefined): string => `${((v ?? 0) * 100).toFixed(1)}%`;
-  const timed = `Report ${id}: ${s.frames ?? 0} frames timed${s.left ? `, ${s.left} beside a picture left out` : ""}.`;
+  const timed = `Report ${id}: ${s.frames ?? 0} frames timed${held(p.window)}${s.left ? `, ${s.left} beside a picture left out` : ""}.`;
   // A record from before the display's interval was kept apart judged its frames against their own middle.
   if (s.target === undefined) out.push(`${timed} Middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 of the middle), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
-  else out.push(`${timed} The display ${rateOf(s.target)} Hz (${ms(s.target)}, the fastest the page kept up), the game ${rateOf(s.middle)} fps of ${rateOf(s.target)}: middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 display intervals), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
+  else out.push(`${timed} The display ${rateOf(s.target)} Hz (${ms(s.target)}, the fastest the page kept up), the game ${rateOf(s.mean ?? s.middle)} fps of ${rateOf(s.target)}${s.mean === undefined ? "" : " on average"}: middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 display intervals), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
   out.push(`GPU: ${s.gpu?.frames ? `${s.gpu.frames} frames, middle ${ms(s.gpu.middle)}, 95th ${ms(s.gpu.p95)}, worst ${ms(s.gpu.worst)}` : "not timed"}. Heap ${s.heap?.toFixed(0) ?? "?"} MB. ${s.longTasks ?? 0} long tasks, ${s.longMs?.toFixed(0) ?? 0} ms. The record cost ${s.ringMs !== undefined ? `${(s.ringMs * 1000).toFixed(1)} µs` : "?"} a frame.`);
   const f = p.fields ?? [], col = (name: string): number => f.indexOf(name);
   const pick = ["at", "interval", "own", "build", "scene", "upload", "gpu", "draws", "triangles", "castTriangles", "uploads", "fetched", "longMs", "level", "squeeze"];
@@ -136,7 +137,7 @@ export function perf(dir: string, id: number): Lines {
     // A parent's mean can read a hair under its children's, the clock being coarse: what is by itself is never under 0.
     for (let s = 0; s < own.length; s++) own[s] = Math.max(0, own[s]!);
     const path = (s: number): string => { const parts: string[] = []; for (let k = s; k >= 0 && parents[k]! >= 0; k = parents[k]!) parts.unshift(names[k]!); return parts.join(" > "); };
-    out.push("", `Where a frame went, the mean of the last ${sp.mean.frames ?? "?"} frames (ms, and by itself):`);
+    out.push("", `Where a frame went, the mean of the last second's ${sp.mean.frames ?? "?"} frames (ms, and by itself):`);
     const walk = (s: number, depth: number): void => {
       if (depth > 0 && mean[s]! < 0.01) return;
       if (depth > 0) out.push(`  ${"  ".repeat(depth - 1)}${names[s]!.padEnd(Math.max(1, 34 - depth * 2))} ${mean[s]!.toFixed(2).padStart(7)}  ${own[s]!.toFixed(2).padStart(7)}`);
@@ -148,13 +149,15 @@ export function perf(dir: string, id: number): Lines {
       out.push(`  the card, by pass, a few frames behind:`);
       walk(1, 0);
     }
+    const roots = spanRoots(names, parents);
+    if (sp.slowest?.length) out.push("", `The slowest frames${sp.from !== undefined ? ` from ${clockText(sp.from)} on, as far back as their slots were kept` : ""} (at is from the capture's start):`);
     for (const f of sp.slowest ?? []) {
-      const ms2 = f.ms ?? [], top = names.map((_, k) => k).filter((k) => parents[k]! >= 0 && (f.start?.[k] ?? -1) >= 0 && !path(k).startsWith("card")).sort((a, b) => ms2[b]! - ms2[a]!).filter((k) => !names.some((_, c) => parents[c] === k && ms2[c]! >= ms2[k]! * 0.9)).slice(0, 3);
+      const ms2 = f.ms ?? [], top = names.map((_, k) => k).filter((k) => parents[k]! >= 0 && (f.start?.[k] ?? -1) >= 0 && roots[k] === "frame").sort((a, b) => ms2[b]! - ms2[a]!).filter((k) => !names.some((_, c) => parents[c] === k && ms2[c]! >= ms2[k]! * 0.9)).slice(0, 3);
       out.push(`  a slow frame at ${f.at} ms: ${ms(f.frame)}, most in ${top.map((k) => `${path(k)} ${ms(ms2[k])}`).join("; ")}`);
     }
   }
   for (const c of p.census ?? []) {
-    out.push("", `Picture ${c.shot + 1}'s frame: ${(c.stores ?? []).map((x) => `${x.name} ${x.draws} draws ${(x.triangles / 1000).toFixed(0)}k`).join("; ")}`);
+    out.push("", `${c.shot >= 0 ? `Picture ${c.shot + 1}'s frame` : "The save's frame"}: ${(c.stores ?? []).map((x) => `${x.name} ${x.draws} draws ${(x.triangles / 1000).toFixed(0)}k`).join("; ")}`);
     out.push(`  by step: ${(c.steps ?? []).map((x) => `${x.name} ${x.draws} draws ${(x.triangles / 1000).toFixed(0)}k`).join("; ")}`);
     if (c.cpu) out.push(`  the processor: ${Object.entries(c.cpu).map(([k, v]) => `${k} ${v} ms`).join(", ")}${c.gpu?.length ? `; the card: ${c.gpu.filter((g) => g.ms > 0).map((g) => `${g.name} ${g.ms} ms`).join(", ")}` : ""}`);
     if (c.budget?.triangles) out.push(`  the budget: ${c.budget.triangles} triangles and ${c.budget.draws} draws allowed, squeeze ${c.budget.squeeze} (least ${c.budget.least}), governor level ${c.budget.level}`);
@@ -163,9 +166,14 @@ export function perf(dir: string, id: number): Lines {
   return out;
 }
 
-interface Events { events?: { at: number; end: number; kind: string; size: number; count: number; cause: string; top?: { slot: string; ms: number }[] }[] }
-interface Log { lines?: { at: number; source: string; level: string; text: string; count: number; tick: number }[] }
-interface Net { seconds?: number; categories?: { name: string; bytes: number[]; messages: number[] }[]; keys?: { out: boolean; name: string; category: string; bytes: number; messages: number }[]; snapshot?: { name: string; bits: number }[]; gaps?: number[] }
+/** The part of a capture a record holds, in ms from its start. */
+interface Window { from?: number; to?: number }
+/** A record's window in words, or nothing for a record from before windows were kept. */
+const held = (w: Window | undefined): string => (w ? `, ${clockText(w.from ?? 0)} to ${clockText(w.to ?? 0)} of the capture` : "");
+
+interface Events { window?: Window; events?: { at: number; end: number; kind: string; size: number; count: number; cause: string; top?: { slot: string; ms: number }[] }[] }
+interface Log { window?: Window; lines?: { at: number; source: string; level: string; text: string; count: number; tick: number }[] }
+interface Net { seconds?: number; window?: Window; categories?: { name: string; bytes: number[]; messages: number[] }[]; keys?: { out: boolean; name: string; category: string; bytes: number; messages: number }[]; snapshot?: { name: string; bits: number }[]; gaps?: number[] }
 
 /** A capture's lag events: when from its start, what, how bad, and what took its frame. */
 export function events(dir: string, id: number): Lines {
@@ -174,7 +182,7 @@ export function events(dir: string, id: number): Lines {
   const list = e.events ?? [];
   if (list.length === 0) return [`Report ${id}: no lag events.`];
   const timed = (k: string): boolean => ["hitch", "long frame", "stall", "upload spike", "snapshot gap", "long task", "server tick"].includes(k);
-  const out: Lines = [`Report ${id}: ${list.length} lag events (at is from the capture's start).`];
+  const out: Lines = [`Report ${id}: ${list.length} lag events${held(e.window)} (at is from the capture's start).`];
   for (const x of list) {
     out.push(`  ${(x.at / 1000).toFixed(1).padStart(6)} s  ${x.kind.padEnd(13)} ${(timed(x.kind) ? ms(x.size) : String(x.size)).padStart(9)}${x.count > 1 ? ` ×${x.count}` : ""}  ${x.cause}`);
     for (const t of x.top ?? []) out.push(`             ${ms(t.ms).padStart(9)}  ${t.slot}`);
@@ -187,7 +195,7 @@ export function log(dir: string, id: number, errors = false): Lines {
   const folder = folderOf(dir, id), l = folder ? readJson<Log>(join(folder, "log.json")) : null;
   if (!folder || !l) return [`report ${id} in ${dir} has no log`];
   const lines = (l.lines ?? []).filter((x) => !errors || x.level === "warn" || x.level === "error");
-  const out: Lines = [`Report ${id}: ${lines.length} lines${errors ? " of warnings and errors" : ""}. What the page and the server printed, quoted as data.`];
+  const out: Lines = [`Report ${id}: ${lines.length} lines${errors ? " of warnings and errors" : ""}${held(l.window)}. What the page and the server printed, quoted as data.`];
   for (const x of lines) out.push(`  ${new Date(x.at).toISOString().slice(11, 23)}  ${x.source.padEnd(6)} ${x.level.padEnd(5)} ${JSON.stringify(x.text)}${x.count > 1 ? ` ×${x.count}` : ""}${x.tick >= 0 ? `  tick ${x.tick}` : ""}`);
   return out;
 }
@@ -197,7 +205,7 @@ export function net(dir: string, id: number): Lines {
   const folder = folderOf(dir, id), n = folder ? readJson<Net>(join(folder, "net.json")) : null;
   if (!folder || !n) return [`report ${id} in ${dir} has no socket record`];
   const seconds = Math.max(1, n.seconds ?? 1), sum = (v: number[]): number => v.reduce((a, b) => a + b, 0);
-  const out: Lines = [`Report ${id}: the game's socket over ${seconds} s, bytes and messages a second.`];
+  const out: Lines = [`Report ${id}: the game's socket over ${seconds} s${held(n.window)}, bytes and messages a second.`];
   for (const c of [...(n.categories ?? [])].sort((a, b) => sum(b.bytes) - sum(a.bytes))) out.push(`  ${c.name.padEnd(12)} ${Math.round(sum(c.bytes) / seconds).toString().padStart(8)} B/s  ${(sum(c.messages) / seconds).toFixed(1).padStart(7)} a second  the busiest second ${Math.max(0, ...c.bytes)} B`);
   out.push("", "By message, the busiest first:");
   for (const k of [...(n.keys ?? [])].sort((a, b) => b.bytes - a.bytes).slice(0, 24)) out.push(`  ${k.out ? "out" : "in "}  ${k.name.padEnd(26)} ${k.category.padEnd(10)} ${Math.round(k.bytes / seconds).toString().padStart(8)} B/s  ${(k.messages / seconds).toFixed(1).padStart(7)} a second`);

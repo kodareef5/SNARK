@@ -158,7 +158,8 @@ export class NetLog implements NetTap {
   private names: CodeNames | null = null;
   private readonly keys: Key[] = [];
   private readonly byCode = new Map<number, Key>();
-  /** The second the log began in, the second under way, and its slot. */
+  /** When the log began, in ms; the second it began in, the second under way, and its slot. */
+  private readonly startMs: number;
   private readonly first: number;
   private second: number;
   private slot: number;
@@ -181,7 +182,8 @@ export class NetLog implements NetTap {
   constructor(clock: { now(): number }, classify: (kind: number) => number) {
     this.clock = clock;
     this.classify = classify;
-    this.second = this.first = Math.floor(clock.now() / 1000);
+    this.startMs = clock.now();
+    this.second = this.first = Math.floor(this.startMs / 1000);
     this.slot = slotOf(this.second);
   }
 
@@ -302,20 +304,21 @@ export class NetLog implements NetTap {
   }
 
   /**
-   * What a capture keeps (shared/report.ts NET_SHAPE) of the last `seconds` whole seconds: bytes and messages a second by
+   * What a capture keeps (shared/report.ts NET_SHAPE) of the whole seconds the log saw from `from` (ms, its clock) to the
+   * second under way: how many (`seconds`), where they fall (`window`, ms from `origin`), bytes and messages a second by
    * category, each key's and each snapshot section's totals over them, and the longest gap between snapshots each second.
+   * A rate is a total over `seconds`.
    */
-  record(seconds: number): Record<string, unknown> {
+  record(from: number, origin = 0): Record<string, unknown> {
     this.roll(this.clock.now());
-    const n = Math.max(1, Math.min(seconds, SECONDS)), bytes = new Float64Array(CATEGORIES.length * n), msgs = new Float64Array(CATEGORIES.length * n);
-    this.series(n, bytes, msgs);
-    const categories = CATEGORIES.map((name, c) => ({ name, bytes: Array.from(bytes.subarray(c * n, c * n + n)), messages: Array.from(msgs.subarray(c * n, c * n + n)) })).filter((k) => k.messages.some((v) => v > 0));
-    const held = this.whole(n);
-    const keys = this.keys.map((key) => ({ out: key.dir === NET_OUT, name: key.subName && key.sub >= 0 ? `${key.kindName} ${key.subName}` : key.kindName, category: CATEGORIES[key.category]!, bytes: this.sum(key.bytes, held), messages: this.sum(key.msgs, held) })).filter((k) => k.messages > 0);
-    const snapshot = SECTIONS.map((name, s) => ({ name, bits: this.sum(this.sectionBits, held, SECTIONS.length, s) }));
+    const n = Math.max(0, Math.min(SECONDS, this.second - Math.ceil(Math.max(from, this.startMs) / 1000))), bytes = new Float64Array(CATEGORIES.length * Math.max(1, n)), msgs = new Float64Array(CATEGORIES.length * Math.max(1, n));
+    if (n > 0) this.series(n, bytes, msgs);
+    const categories = n === 0 ? [] : CATEGORIES.map((name, c) => ({ name, bytes: Array.from(bytes.subarray(c * n, c * n + n)), messages: Array.from(msgs.subarray(c * n, c * n + n)) })).filter((k) => k.bytes.some((v) => v > 0) || k.messages.some((v) => v > 0));
+    const keys = this.keys.map((key) => ({ out: key.dir === NET_OUT, name: key.subName && key.sub >= 0 ? `${key.kindName} ${key.subName}` : key.kindName, category: CATEGORIES[key.category]!, bytes: this.sum(key.bytes, n), messages: this.sum(key.msgs, n) })).filter((k) => k.messages > 0);
+    const snapshot = SECTIONS.map((name, s) => ({ name, bits: this.sum(this.sectionBits, n, SECTIONS.length, s) }));
     const gaps: number[] = [];
-    for (let i = held; i >= 1; i--) gaps.push(Math.round(this.gaps[slotOf(this.second - i)]!));
-    return { seconds: n, categories, keys, snapshot, gaps };
+    for (let i = n; i >= 1; i--) gaps.push(Math.round(this.gaps[slotOf(this.second - i)]!));
+    return { seconds: n, window: { from: (this.second - n) * 1000 - origin, to: this.second * 1000 - origin }, categories, keys, snapshot, gaps };
   }
 
   private note(dir: number, kind: number, sub: number, bytes: number): void {

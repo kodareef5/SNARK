@@ -5,10 +5,9 @@
 import type { UiImage } from "../ui/nodes.ts";
 import type { DebugBar } from "./debug.ts";
 import type { Draw } from "./draw.ts";
-import { EVENT_COLOURS, EVENT_NAMES, EV_ERROR, EV_GAP, EV_STALL, EV_TICK, type LagEvent } from "./events.ts";
+import { EVENT_COLOURS, EVENT_NAMES, EV_ERROR, EV_STALL, eventSize, type LagEvent } from "./events.ts";
 import { Paint } from "./paint.ts";
-import { C, CELLS, FLAG_AFTER_SHOT, FLAG_SHOT, LATE, S_FRAMES, S_LATE, S_SUM, S_WORST } from "./ring.ts";
-import { SpanFrame } from "./spans.ts";
+import { C, CELLS, FLAG_AFTER_SHOT, FLAG_SHOT, FRAME_SLOTS, LATE, S_FRAMES, S_LATE, S_SUM, S_WORST } from "./ring.ts";
 import { ACCENT, BAD, D_BUTTON, D_DIM, D_FAINT, D_MONO, D_MONO_BAD, D_MONO_DIM, D_TEXT, D_WELL, FILL_RULE, INK_FAINT, WARN, opaque, WELL } from "./styles.ts";
 import { TAB_ACT, type Press, type Tab } from "./tab.ts";
 import { ago, ms, share } from "./words.ts";
@@ -41,18 +40,19 @@ export class TimelineTab implements Tab {
     d.events.fresh = 0;
     const perf = d.perf, target = perf.target, newest = (this.newest = Math.floor(nowMs / 1000));
     // The summary over the window, or the second under the pointer.
-    let frames = 0, sum = 0, late = 0, worst = 0;
+    let frames = 0, sum = 0, late = 0, worst = 0, seconds = 0;
     for (let t = newest - SECONDS + 1; t <= newest; t++) {
       const r = perf.secondAt(t);
       if (r < 0) continue;
       const q = perf.seconds;
+      seconds++;
       frames += q[r + S_FRAMES]!;
       sum += q[r + S_SUM]!;
       late += q[r + S_LATE]!;
       worst = Math.max(worst, q[r + S_WORST]!);
     }
     const hz = Math.round(1000 / target), shown = d.events.between((newest - SECONDS + 1) * 1000, nowMs, this.listed).length;
-    const over = this.hovered >= 0 ? this.secondWords(d, this.hovered, nowMs) : frames > 0 ? `Last 3 min: ${Math.round((frames * 1000) / sum)} fps of ${hz} · ${late} late (${share(late, frames)}) · worst ${ms(worst)} · ${shown} event${shown === 1 ? "" : "s"}` : "No frames kept yet.";
+    const over = this.hovered >= 0 ? this.secondWords(d, this.hovered, nowMs) : frames > 0 ? `${seconds >= SECONDS ? "Last 3 min" : `Last ${seconds} s`}: ${Math.round((frames * 1000) / sum)} fps of ${hz} · ${late} late (${share(late, frames)}) · worst ${ms(worst)} · ${shown} event${shown === 1 ? "" : "s"}` : "No frames kept yet.";
     draw.text(x, y, w - 210, this.hovered >= 0 ? D_TEXT : D_DIM, over);
     const paused = d.shots?.paused ?? true;
     draw.button(x + w - 200, y - 2, 96, 18, D_BUTTON, d.shots ? (paused ? "Pictures off" : "Pictures on") : "No pictures", ACT_PICTURES, 0, "Pictures every two seconds and at each event");
@@ -72,20 +72,20 @@ export class TimelineTab implements Tab {
     // The second chosen, or the last few: its frames, its events, its picture.
     const at = this.chosen >= 0 ? this.chosen : newest, below = chartY + chartH + 18, room = y + h - below;
     const picW = Math.min(Math.round(w * 0.36), Math.round(room * 16 / 9)), listW = w - picW - 14;
-    this.paintFrames(d, at, Math.round(listW * d.unit), Math.round(36 * d.unit));
+    const held = this.paintFrames(d, at, Math.round(listW * d.unit), Math.round(36 * d.unit));
     draw.box(x, below, listW, 36, D_WELL);
     draw.picture(x, below, listW, 36, d.imageOf(FRAMES, this.frames.image), 0, 0, true);
-    draw.text(x + 4, below + 1, listW - 8, D_FAINT, this.chosen >= 0 ? `the frames of ${ago(nowMs - at * 1000)}` : "the frames of the last second");
+    const of = this.chosen >= 0 ? `the frames of ${ago(nowMs - at * 1000)}` : "the frames of the last second";
+    draw.text(x + 4, below + 1, listW - 8, D_FAINT, held > 0 || this.chosen < 0 ? of : `${of}: no longer kept one by one, only the second's numbers over the chart`);
     let line = below + 42;
     const from = this.chosen >= 0 ? at * 1000 - 1000 : nowMs - SECONDS * 1000, to = this.chosen >= 0 ? at * 1000 + 2000 : nowMs;
     const list = d.events.between(from, to, this.listed);
     if (list.length === 0) draw.text(x, line, listW, D_FAINT, this.chosen >= 0 ? "No events near this second." : "No lag events in the last three minutes.");
     for (let i = list.length - 1, n = 0; i >= 0 && line + 17 <= y + h; i--, n++) {
       const e = list[i]!;
-      const size = e.kind <= EV_GAP || e.kind === EV_TICK ? ms(e.size) : String(e.size);
       draw.text(x, line, 70, D_MONO_DIM, ago(nowMs - e.at), ACT_EVENT, i);
       draw.text(x + 72, line, 110, e.kind === EV_STALL || e.kind === EV_ERROR ? D_MONO_BAD : D_MONO, `${EVENT_NAMES[e.kind]}${e.count > 1 ? ` ×${e.count}` : ""}`, ACT_EVENT, i);
-      draw.text(x + 186, line, 64, D_MONO_DIM, size, ACT_EVENT, i);
+      draw.text(x + 186, line, 64, D_MONO_DIM, eventSize(e), ACT_EVENT, i);
       draw.text(x + 254, line, listW - 254, D_MONO_DIM, e.cause, ACT_EVENT, i, e.frame >= 0 ? "Show this frame in the Frame tab" : "");
       line += 17;
     }
@@ -143,21 +143,22 @@ export class TimelineTab implements Tab {
     p.done();
   }
 
-  /** The frames of second `t`, a column each, against the display's interval. */
-  private paintFrames(d: DebugBar, t: number, w: number, h: number): void {
+  /** The frames of second `t`, a column each, against the display's interval. Returns how many the record held. */
+  private paintFrames(d: DebugBar, t: number, w: number, h: number): number {
     const p = this.frames, perf = d.perf, target = perf.target, top = Math.max(this.top, 34);
     p.size(w, h);
     p.clear(WELL);
     const from = t * 1000, to = from + 1000;
+    // Every frame the record still holds, back to the second chosen.
     let n = 0;
-    for (let back = 0; back < 400; back++) {
+    for (let back = 0; back < FRAME_SLOTS; back++) {
       const k = perf.row(back);
       if (k < 0 || perf.at[k]! < from) break;
       if (perf.at[k]! < to) n++;
     }
     const colW = n > 0 ? Math.min(12, w / n) : 1, room = h - 4;
     let c = n - 1;
-    for (let back = 0; back < 400 && c >= 0; back++) {
+    for (let back = 0; back < FRAME_SLOTS && c >= 0; back++) {
       const k = perf.row(back);
       if (k < 0 || perf.at[k]! < from) break;
       if (perf.at[k]! >= to) continue;
@@ -168,26 +169,24 @@ export class TimelineTab implements Tab {
     }
     p.rect(0, h - Math.min(room, (target / top) * room), w, 1, opaque(FILL_RULE));
     p.done();
+    return n;
   }
 
   press(d: DebugBar, p: Press): void {
     if (p.act === ACT_CHART) {
       const t = this.newest - SECONDS + 1 + Math.min(SECONDS - 1, Math.floor(p.fx * SECONDS));
       this.chosen = this.chosen === t ? -1 : t;
-    } else if (p.act === ACT_NOW) this.chosen = -1;
-    else if (p.act === ACT_PICTURES && d.shots) d.shots.paused = !d.shots.paused;
+      d.choose(this.chosen < 0 ? -1 : this.chosen * 1000 + 500, null);
+    } else if (p.act === ACT_NOW) {
+      this.chosen = -1;
+      d.choose(-1, null);
+    } else if (p.act === ACT_PICTURES && d.shots) d.shots.paused = !d.shots.paused;
     else if (p.act === ACT_EVENT) {
       const e = this.listed[p.arg];
-      if (!e || !e.spans) return;
-      const f = (d.chosenSpans ??= new SpanFrame());
-      for (let s = 0; s < f.start.length; s++) {
-        f.start[s] = e.spans[s]!;
-        f.ms[s] = e.spans[f.start.length + s]!;
-      }
-      f.at = e.at;
-      f.frames = 1;
-      d.chosenAt = e.at;
-      d.show(d.tabs.findIndex((t) => t.name === "Frame"));
+      if (!e) return;
+      this.chosen = Math.floor(e.at / 1000);
+      d.choose(e.at, e);
+      if (e.spans) d.show(d.tabs.findIndex((t) => t.name === "Frame"));
     }
   }
 

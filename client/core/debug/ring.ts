@@ -143,13 +143,16 @@ export class PerfRing {
     return out;
   }
 
-  /** The seconds held, oldest first, as rows of SECOND_FIELDS: a mean in place of the sums, and `second` from `start` (ms) on. */
-  secondRows(start: number): number[][] {
+  /**
+   * The seconds held that fall from `from` to `to` (ms, the frame clock; every second held without them), oldest first,
+   * as rows of SECOND_FIELDS: a mean in place of the sums, and `second` from `start` (ms) on.
+   */
+  secondRows(start: number, from = -Infinity, to = Infinity): number[][] {
     const out: number[][] = [];
     if (this.second < 0) return out;
     for (let t = Math.max(0, this.second - SECOND_SLOTS + 1); t <= this.second; t++) {
       const r = (t % SECOND_SLOTS) * SCOLS, q = this.seconds;
-      if (q[r + S_SECOND] !== t || q[r + S_FRAMES] === 0) continue;
+      if (q[r + S_SECOND] !== t || q[r + S_FRAMES] === 0 || (t + 1) * 1000 <= from || t * 1000 >= to) continue;
       const row: number[] = [];
       for (let c = 0; c < SECOND_FIELDS.length; c++) row.push(q[r + c]!);
       row[S_SECOND] = round(t - start / 1000);
@@ -168,11 +171,16 @@ export class PerfRing {
    */
   summary(from: number, to: number): PerfSummary {
     const times: number[] = [], gpu: number[] = [];
-    let left = 0, longTasks = 0, longMs = 0;
+    let left = 0, longTasks = 0, longMs = 0, every = 0, all = 0;
     for (let back = 0; back < Math.min(this.rows, FRAME_SLOTS); back++) {
       const k = this.row(back), at = this.at[k]!, base = k * CELLS;
       if (at < from || at > to) continue;
       const flags = this.cells[base + C.flags]!;
+      // Every frame the player saw, a picture's too, for the rate the game drew at.
+      if (this.cells[base + C.interval]! > 0) {
+        every += this.cells[base + C.interval]!;
+        all++;
+      }
       longMs += this.cells[base + C.longMs]!;
       if (this.cells[base + C.longMs]! > 0) longTasks++;
       if ((flags & (FLAG_SHOT | FLAG_AFTER_SHOT)) !== 0) {
@@ -189,7 +197,7 @@ export class PerfRing {
     const over = (ms: number): number => (times.length === 0 ? 0 : Math.round((times.filter((t) => t > ms).length / times.length) * 10000) / 10000);
     const target = this.target, worst = times.at(-1) ?? 0;
     return {
-      frames: times.length, left, target: round(target), middle: at(times, 0.5), p95: at(times, 0.95), p99: at(times, 0.99), worst: round(worst), worstIntervals: Math.round((worst / target) * 10) / 10,
+      frames: times.length, left, target: round(target), mean: all > 0 ? round(every / all) : 0, middle: at(times, 0.5), p95: at(times, 0.95), p99: at(times, 0.99), worst: round(worst), worstIntervals: Math.round((worst / target) * 10) / 10,
       late: over(LATE * target), over33: over(33.4), over50: over(50),
       gpu: { frames: gpu.length, middle: at(gpu, 0.5), p95: at(gpu, 0.95), worst: round(gpu.at(-1) ?? 0) },
       heap: round(this.heap), longTasks, longMs: round(longMs),

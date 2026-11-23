@@ -251,3 +251,51 @@ test("counting a message makes nothing, and takes under two microseconds", () =>
   expect(each).toBeLessThan(2);
   expect(log.messagesIn).toBe(n);
 });
+
+test("a capture's socket says the seconds it saw, and its rates are over those", () => {
+  const t = clock(10_000), log = new NetLog(t, () => 3);
+  log.setNames(codeNames(P));
+  // 34 seconds of 4,500 bytes of snapshots a second, then the capture asks for three minutes.
+  for (let s = 0; s < 34; s++) {
+    for (let k = 0; k < 30; k++) {
+      t.t = 10_000 + s * 1000 + k * 33;
+      log.received(P.S_CHUNK, -1, 150);
+    }
+  }
+  t.t = 10_000 + 34 * 1000 + 10;
+  const r = log.record(t.t - 180_000, 10_000) as { seconds: number; window: { from: number; to: number }; categories: { name: string; bytes: number[] }[]; keys: { name: string; bytes: number }[] };
+  expect([r.seconds, r.window.from, r.window.to]).toEqual([34, 0, 34_000]);
+  const world = r.categories.find((c) => c.name === "world")!;
+  expect(world.bytes.length).toBe(34);
+  expect(world.bytes.reduce((a, b) => a + b, 0) / r.seconds).toBe(4500);
+  expect(r.keys.find((k) => k.name === "S_CHUNK")!.bytes / r.seconds).toBe(4500);
+});
+
+test("a capture's socket leaves out the second the log began part way through", () => {
+  const t = clock(10_400), log = new NetLog(t, () => 3);
+  log.setNames(codeNames(P));
+  log.received(P.S_CHUNK, -1, 1000);
+  t.t = 11_200;
+  log.received(P.S_CHUNK, -1, 500);
+  t.t = 13_050;
+  const r = log.record(0) as { seconds: number; window: { from: number; to: number }; keys: { name: string; bytes: number }[] };
+  expect([r.seconds, r.window.from, r.window.to]).toEqual([2, 11_000, 13_000]);
+  expect(r.keys.find((k) => k.name === "S_CHUNK")!.bytes).toBe(500);
+});
+
+test("a capture keeps a category that has bytes and no messages of its own, as the player's share of snapshots", () => {
+  const t = clock(10_000), log = new NetLog(t, () => 3);
+  log.setNames(codeNames(P));
+  for (let s = 0; s < 3; s++) {
+    t.t = 10_000 + s * 1000 + 100;
+    log.received(P.S_SNAPSHOT, -1, 60);
+    log.snapshot(SNAP_HEAD, -1, -1, 80);
+    log.snapshot(SNAP_BODIES, -1, -1, 400);
+  }
+  t.t = 13_200;
+  const r = log.record(0) as { categories: { name: string; bytes: number[]; messages: number[] }[] };
+  expect(r.categories.map((c) => [c.name, c.bytes, c.messages])).toEqual([
+    ["player", [10, 10, 10], [0, 0, 0]],
+    ["bodies", [50, 50, 50], [1, 1, 1]],
+  ]);
+});

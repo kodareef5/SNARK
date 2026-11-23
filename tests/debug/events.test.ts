@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { EV_HITCH, EV_LONG, EV_STALL, EV_UPLOAD, EV_CORRECTION, EVENTS_KEPT, LagEvents, MERGE_MS, Rises, type FrameFacts } from "../../client/core/debug/events.ts";
+import { EV_HITCH, EV_LONG, EV_STALL, EV_TASK, EV_UPLOAD, EV_CORRECTION, EVENTS_KEPT, LagEvents, MERGE_MS, Rises, type FrameFacts } from "../../client/core/debug/events.ts";
 
 const TARGET = 1000 / 60;
 
@@ -46,6 +46,18 @@ test("frames late in a burst join one event that keeps its worst", () => {
   const burst = e.list[0]!;
   expect([burst.kind, burst.size, burst.count]).toEqual([EV_LONG, 70, 3]);
   expect(burst.cause).toBe("frame 65");
+});
+
+test("a long task beside a long frame is its own event and leaves the frame's cause", () => {
+  const e = new LagEvents();
+  let at = run(e, Array(60).fill(TARGET));
+  at = run(e, [70], at);
+  e.note(at + 100, EV_TASK, 90, "script 90 ms");
+  expect(e.list.map((x) => x.kind)).toEqual([EV_LONG, EV_TASK]);
+  expect([e.list[0]!.count, e.list[0]!.size, e.list[0]!.cause]).toEqual([1, 70, "frame 61"]);
+  // And a frame after the task joins the frame's event, not the task's.
+  run(e, [80], at + 200);
+  expect(e.list.map((x) => [x.kind, x.count])).toEqual([[EV_LONG, 2], [EV_TASK, 1]]);
 });
 
 test("a frame with a picture being taken is not an event", () => {

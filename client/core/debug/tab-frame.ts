@@ -43,11 +43,12 @@ export class FrameTab implements Tab {
     if (d.chosenAt >= 0 && d.chosenSpans && this.mode !== CHOSEN && d.chosenAt !== this.chosenSeen) this.mode = CHOSEN;
     this.chosenSeen = d.chosenAt;
     let what: string;
+    // A second and five seconds by the clock, however many frames they held.
     if (this.mode === MEAN) {
-      const n = spans.mean(0, 60, f);
-      what = `mean of ${n} frames`;
+      const n = spans.mean(0, Math.max(1, spans.since(nowMs - 1000)), f);
+      what = `mean of the ${n} frames of the last second`;
     } else if (this.mode === SLOWEST) {
-      spans.read(spans.slowest(300), f);
+      spans.read(spans.slowest(Math.max(1, spans.since(nowMs - 5000))), f);
       what = f.frames > 0 ? `the slowest of the last 5 s, ${ago(nowMs - f.at)}` : "no frames yet";
     } else if (this.mode === CHOSEN && d.chosenSpans) {
       const c = d.chosenSpans;
@@ -55,7 +56,7 @@ export class FrameTab implements Tab {
       f.ms.set(c.ms);
       f.at = c.at;
       f.frames = 1;
-      what = `the frame before the event ${ago(nowMs - d.chosenAt)}`;
+      what = d.chosenEvent?.spans ? `the frame before the event ${ago(nowMs - d.chosenAt)}` : `the slowest frame of the second ${ago(nowMs - d.chosenAt)}`;
     } else {
       spans.read(spans.row(0), f);
       what = "the latest frame";

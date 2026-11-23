@@ -101,3 +101,16 @@ test("the ring holds its last frames and seconds, and a second no frame was draw
   expect(seconds[1]![0]).toBe(6);
   expect(seconds[0]![SECOND_FIELDS.indexOf("requests")]).toBe(99);
 });
+
+test("the seconds a capture takes are those of its window, not every second held", () => {
+  const ring = new PerfRing();
+  // Ten minutes at 10 frames a second.
+  for (let f = 0; f < 6000; f++) {
+    ring.sample[C.interval] = 100;
+    ring.record(f * 100);
+  }
+  const to = 600_000, from = to - 180_000;
+  const rows = ring.secondRows(from, from, to), second = SECOND_FIELDS.indexOf("second");
+  expect(rows.length).toBe(180);
+  expect([rows[0]![second], rows.at(-1)![second]]).toEqual([0, 179]);
+});

@@ -74,6 +74,8 @@ const PAGE: Shape = {
   fields: { browser: { text: 300 }, card: { text: 200 }, dpr: N, canvas: PAIR, css: PAIR, tier: WORD, governor: { fields: { level: I, name: WORD } }, share: N, format: WORD, fps: N },
 };
 const BUILD: Shape = { fields: { commit: { text: 40 }, clean: B, at: { text: 40 } } };
+/** The part of a capture a record holds, in ms from the capture's start: a ring may hold less than the capture. */
+const WINDOW: Shape = { fields: { from: N, to: N } };
 const SHOT: Shape = { fields: { at: N, w: I, h: I, place: POINT, camera: POINT, yaw: N, pitch: N, hour: N, frameMs: N, draws: I, triangles: I, shotMs: N } };
 
 /** A report as a page sends it, in the field `report`. Times are ms from the report's start unless named otherwise. */
@@ -94,6 +96,8 @@ export const REPORT_SHAPE: Shape = {
     settings: { fields: { fov: N, resolution: I, steady: B, finishGloss: N, roadFinish: I, thirdPerson: B, snapshotBytes: I } },
     survivor: { fields: { alive: B, kind: WORD, mode: I, held: WORD, driving: WORD } },
     shots: { list: SHOT, most: SHOTS_MOST },
+    // A capture's moment chosen on the timeline: when, the picture nearest it, and what happened there.
+    chosen: { fields: { at: N, shot: I, what: { text: 300 } } },
     text: { list: { fields: { at: N, line: { text: TEXT_CHARS_MOST } } }, most: TEXT_LINES_MOST },
     // Phase 2: the recording as it was made (voice.webm) is the record, and these are when the owner spoke, on the
     // report's clock. A transcript is the reader tool's to add beside it, never in its place.
@@ -122,13 +126,15 @@ export const PERF_SHAPE: Shape = {
     version: I,
     /** The page's clock in ms at the report's start, which `at` in the rows counts on. */
     start: N,
+    // A capture's: the part of it the frames one by one cover, in ms from its start; its seconds cover it all.
+    window: WINDOW,
     fields: { list: WORD, most: 64 },
     frames: { list: { list: N, most: 64 }, most: FRAME_ROWS_MOST },
     secondFields: { list: WORD, most: 64 },
     seconds: { list: { list: N, most: 64 }, most: SECOND_ROWS_MOST },
     summary: {
       fields: {
-        frames: I, left: I, target: N, middle: N, p95: N, p99: N, worst: N, worstIntervals: N, late: N, over33: N, over50: N,
+        frames: I, left: I, target: N, mean: N, middle: N, p95: N, p99: N, worst: N, worstIntervals: N, late: N, over33: N, over50: N,
         gpu: { fields: { frames: I, middle: N, p95: N, worst: N } }, heap: N, longTasks: I, longMs: N, ringMs: N,
       },
     },
@@ -138,6 +144,8 @@ export const PERF_SHAPE: Shape = {
     // slot, the mean over the last second and the slowest frames of the capture; -1 where a slot did not run.
     spans: {
       fields: {
+        // How far into the capture the slowest frames were looked for from, in ms: the ring holds fewer frames than a capture.
+        from: N,
         names: { list: WORD, most: SLOTS_MOST }, parents: { list: I, most: SLOTS_MOST },
         mean: { fields: { frames: I, start: { list: N, most: SLOTS_MOST }, ms: { list: N, most: SLOTS_MOST } } },
         slowest: { list: { fields: { at: N, frame: N, start: { list: N, most: SLOTS_MOST }, ms: { list: N, most: SLOTS_MOST } } }, most: 8 },
@@ -149,9 +157,22 @@ export const PERF_SHAPE: Shape = {
   },
 };
 
+/**
+ * The root each of a capture's slots stands under, by its index: "frame" for the page's own work, "card" for the GPU's
+ * passes, "browser" for the browser's own. A slot's path leaves its root out, so the root is found by its parents.
+ */
+export function spanRoots(names: readonly string[], parents: readonly number[]): string[] {
+  return parents.map((_, s) => {
+    let k = s;
+    for (let hops = 0; parents[k]! >= 0 && hops < parents.length; hops++) k = parents[k]!;
+    return names[k] ?? "";
+  });
+}
+
 /** A capture's log (log.json): the page's, the game's and the server's lines, ms since 1970, oldest first. */
 export const LOG_SHAPE: Shape = {
   fields: {
+    window: WINDOW,
     lines: {
       list: { fields: { at: N, source: { oneOf: ["page", "game", "server"] }, level: { oneOf: ["debug", "info", "warn", "error"] }, text: { text: 2000 }, count: I, tick: I } },
       most: 2000,
@@ -162,6 +183,7 @@ export const LOG_SHAPE: Shape = {
 /** A capture's lag events (events.json): ms from the capture's start, the kind, its worst, how many joined, its cause and the slots that took most of its frame. */
 export const EVENTS_SHAPE: Shape = {
   fields: {
+    window: WINDOW,
     events: {
       list: { fields: { at: N, end: N, kind: WORD, size: N, count: I, cause: { text: 300 }, top: { list: { fields: { slot: { text: 200 }, ms: N } }, most: 8 } } },
       most: 400,
@@ -173,6 +195,7 @@ export const EVENTS_SHAPE: Shape = {
 export const NET_SHAPE: Shape = {
   fields: {
     seconds: I,
+    window: WINDOW,
     categories: { list: { fields: { name: WORD, bytes: { list: N, most: 600 }, messages: { list: N, most: 600 } } }, most: 32 },
     keys: { list: { fields: { out: B, name: WORD, category: WORD, bytes: N, messages: N } }, most: 256 },
     snapshot: { list: { fields: { name: WORD, bits: N } }, most: 32 },
@@ -242,6 +265,7 @@ export interface Report {
   settings?: Record<string, number | boolean>;
   survivor?: { alive?: boolean; kind?: string; mode?: number; held?: string; driving?: string };
   shots: ReportShot[];
+  chosen?: { at?: number; shot?: number; what?: string };
   text: { at?: number; line?: string }[];
   voice?: { segments?: { from?: number; to?: number }[] };
 }
@@ -258,6 +282,8 @@ export interface PerfSummary {
   frames?: number;
   left?: number;
   target?: number;
+  /** The mean interval of every frame, a picture's too: 1000 / mean is the rate the game drew at. */
+  mean?: number;
   middle?: number;
   p95?: number;
   p99?: number;

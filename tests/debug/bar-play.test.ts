@@ -10,6 +10,7 @@ import { App } from "../../client/core/app.ts";
 import { BAR_H, type DebugBar } from "../../client/core/debug/debug.ts";
 import { SpanFrame } from "../../client/core/debug/spans.ts";
 import { KEY_DEBUG } from "../../client/core/debug/draw.ts";
+import { EV_LONG, EV_TASK } from "../../client/core/debug/events.ts";
 import { SOURCE_PAGE } from "../../client/core/debug/log.ts";
 import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
 import { textWidth } from "../../client/core/ui/nodes.ts";
@@ -23,16 +24,27 @@ import { corePackBytes } from "../fixtures/pack.ts";
 const pack = parsePack(corePackBytes());
 const ROOT = join(import.meta.dir, "../..");
 
-/** A client on the harness whose frames are drawn as the shell draws them, at `w` by `h` points. */
-function client(h: Harness, port: FakePort, w = 1280, ht = 720): { app: App; run: (ms: number) => void; size: (w: number, h: number) => void } {
+/**
+ * A client on the harness whose frames are drawn as the shell draws them, at `w` by `h` points. `late` puts the frames
+ * after it that many ms later, as a frame that took them would.
+ */
+function client(h: Harness, port: FakePort, w = 1280, ht = 720): { app: App; run: (ms: number) => void; size: (w: number, h: number) => void; late: (ms: number) => void } {
   const app = new App(h.join("dee", { latencyMs: 20 }, { manual: true }), h.reg, pack);
   app.debugPort = async () => port;
-  let W = w, H = ht;
+  let W = w, H = ht, lead = 0;
   const run = (ms: number): void => h.run(ms, (now) => {
-    const p = app.frame(now, W, H);
+    const p = app.frame(now + lead, W, H);
     if (p) app.drawn(p, 2, W, H, 0, 1);
   });
-  return { app, run, size: (a, b) => void ((W = a), (H = b)) };
+  return { app, run, size: (a, b) => void ((W = a), (H = b)), late: (ms) => void (lead += ms) };
+}
+
+/** Runs `ms` of frames a tenth of a second at a time, letting what the port answers come in between, as a browser does. */
+async function play(run: (ms: number) => void, ms: number): Promise<void> {
+  for (let t = 0; t < ms; t += 100) {
+    run(Math.min(100, ms - t));
+    await Bun.sleep(0);
+  }
 }
 
 /** Frames until the bar has come and its port with it. */
@@ -189,7 +201,7 @@ test("a save arrives in a report store as a capture an agent can read", async ()
     app.session.text("enablecheats");
     app.ui.settings.debug = true;
     const bar = await barOf(app, run);
-    run(5000);
+    await play(run, 5000);
     expect(app.session.admin).toBe(true);
     app.ui.chat.local!("debug save the kerb floats here");
     for (let i = 0; i < 400 && !bar.saved.startsWith("saved") && !bar.saved.startsWith("not"); i++) {
@@ -210,6 +222,106 @@ test("a save arrives in a report store as a capture an agent can read", async ()
     expect(readFileSync(join(folder, "report.md"), "utf8")).toContain("## What happened");
     // The chat says it, as the owner sees it.
     expect(app.ui.chat.lines.some((l) => l.text.startsWith("Debug bar: saved capture 1"))).toBe(true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("one hitch tells one story: on the timeline, in the Frame tab, in its picture and in the capture", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-capture-"));
+  try {
+    const store = new ReportStore({ dir, root: ROOT, clientDir: dir, map: { id: "proving" } });
+    const h = new Harness({}, 1, 60, { dev: true }), port = fakePort((req) => store.answer(req, { sender: () => ({ name: "dee", admin: true }), facts: () => ({}) }));
+    const { app, run, late } = client(h, port);
+    run(600);
+    app.session.text("enablecheats");
+    app.ui.settings.debug = true;
+    const bar = await barOf(app, run);
+    await play(run, 5000);
+    // A known delay: the dash's part of one frame takes 60 ms, so the next frame comes 70 ms late.
+    const dash = app["dash"], step = dash.step.bind(dash);
+    let slow = true;
+    dash.step = (f: Parameters<typeof step>[0]) => {
+      if (slow) {
+        slow = false;
+        const until = performance.now() + 60;
+        while (performance.now() < until);
+        late(70);
+      }
+      step(f);
+    };
+    run(50);
+    // Then a browser's long task, apart from it, close behind.
+    port.tasks.push([1, 90]);
+    await play(run, 100);
+    const own = app.session.own, there = [own.x, own.y, own.z];
+    const hitch = bar.events.list.find((e) => e.kind === EV_LONG)!;
+    expect(hitch.cause).toMatch(/\bdash\b/);
+    expect(bar.events.list.filter((e) => e.kind === EV_TASK).map((e) => [e.size, e.cause])).toEqual([[90, "the main thread was busy"]]);
+    // A block on, and half a minute later the moment is chosen on the timeline.
+    app.session.text(`tp ${Math.round(own.x + 150)} ${Math.round(own.z)}`);
+    await play(run, 30_000);
+    expect(Math.hypot(own.x - there[0]!, own.z - there[2]!)).toBeGreaterThan(100);
+    bar.show(0);
+    await play(run, 50);
+    const shown = () => app.ui.frame.nodes.slice(0, app.ui.frame.count).filter((n) => n.key >= KEY_DEBUG);
+    const row = shown().find((n) => n.text === "long frame")!;
+    app.pointer(0, row.key, 0, 0, 0);
+    await play(run, 50);
+    // The Frame tab shows the frame before it, where the dash took the time.
+    expect([bar.tabs[bar.tab]!.name, bar.chosenAt, bar.chosenEvent]).toEqual(["Frame", hitch.at, hitch]);
+    const slot = bar.spans.names.indexOf("dash");
+    expect(bar.chosenSpans!.ms[slot]).toBeGreaterThan(55);
+    expect(shown().some((n) => /the frame before the event 3\d s ago/.test(n.text))).toBe(true);
+    // Back on the timeline, the chosen second still has its frames one by one, 1,800 frames back.
+    bar.show(0);
+    await play(run, 50);
+    expect(shown().map((n) => n.text).filter((t) => t.startsWith("the frames of"))).toEqual([expect.stringMatching(/^the frames of 3\d s ago$/)]);
+    bar.show(bar.tabs.findIndex((t) => t.name === "Frame"));
+    await play(run, 50);
+    app.key("F8", true);
+    app.key("F8", false);
+    for (let i = 0; i < 400 && !bar.saved.startsWith("saved") && !bar.saved.startsWith("not"); i++) {
+      run(20);
+      await Bun.sleep(2);
+    }
+    expect(bar.saved).toMatch(/^saved capture 1/);
+    const folder = join(dir, "0001"), read = (name: string) => JSON.parse(readFileSync(join(folder, name), "utf8"));
+    const report = read("report.json"), perf = read("perf.json"), events = read("events.json"), net = read("net.json");
+    // When: the capture began when the bar did, not three minutes back, and the chosen moment is the hitch's.
+    const start = perf.start as number;
+    expect(start).toBe(Math.round(bar.recordingFrom));
+    expect(app.nowMs - start - report.ms).toBeGreaterThanOrEqual(0);
+    expect(app.nowMs - start - report.ms).toBeLessThan(2000);
+    expect(report.chosen.at).toBe(Math.round(hitch.at - start));
+    const saved = events.events.find((e: { kind: string }) => e.kind === "long frame");
+    expect([saved.at, saved.cause]).toEqual([report.chosen.at, hitch.cause]);
+    expect(events.events.filter((e: { kind: string }) => e.kind === "long task").map((e: { size: number }) => e.size)).toEqual([90]);
+    expect(report.chosen.what).toContain("long frame");
+    expect(report.chosen.what).toContain("dash");
+    // Where: the chosen picture was taken where the hitch was, not where the save was.
+    const picture = report.shots[report.chosen.shot];
+    expect(Math.abs(picture.at - report.chosen.at)).toBeLessThan(1000);
+    expect(Math.hypot(picture.place[0] - there[0]!, picture.place[2] - there[2]!)).toBeLessThan(2);
+    expect(Math.hypot(report.place.x - there[0]!, report.place.z - there[2]!)).toBeGreaterThan(100);
+    const md = readFileSync(join(folder, "report.md"), "utf8");
+    expect(md).toContain("## Chosen in the bar");
+    expect(md).toContain(`tp ${picture.place[0].toFixed(2)}`);
+    // What: the dash, in the event, in the slowest frame the record kept, and nowhere the card's passes.
+    expect(saved.top[0].slot).toMatch(/\bdash$/);
+    const names = perf.spans.names as string[], slowest = perf.spans.slowest[0];
+    expect(slowest.ms[names.indexOf("dash")]).toBeGreaterThan(55);
+    expect(Math.abs(slowest.at - report.chosen.at)).toBeLessThan(100);
+    // Each record says what part of the capture it holds; the slots' ring holds less than the capture.
+    expect(perf.window).toEqual({ from: expect.any(Number), to: report.ms });
+    expect(perf.window.from).toBeLessThan(100);
+    expect(perf.spans.from).toBeGreaterThan(0);
+    expect(events.window).toEqual({ from: 0, to: report.ms });
+    // The socket's whole seconds lie inside the capture, and its rates are over them.
+    expect(net.window.to - net.window.from).toBe(net.seconds * 1000);
+    expect(net.window.from).toBeGreaterThanOrEqual(0);
+    expect(net.window.to).toBeLessThanOrEqual(report.ms);
+    expect(net.seconds).toBeGreaterThanOrEqual(Math.floor(report.ms / 1000) - 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
