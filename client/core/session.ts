@@ -1,4 +1,4 @@
-import { Blockers, blocksSession, survivorKind } from "../../shared/sim/blockers.ts";
+import { Blockers, survivorKind } from "../../shared/sim/blockers.ts";
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
@@ -1293,7 +1293,7 @@ export class ClientSession {
       const id = v.id[j]!, kind = v.kind[j]!;
       if (id === own || !(reg.footRadius[kind]! > 0) || reg.vehicle[kind] || (v.flags[j]! & (F_PROP >>> 1)) !== 0) continue;
       if ((v.cue[j]! & (CUE_OUT | CUE_HELD | CUE_DEAD)) !== 0 || v.seat[j] !== 0 || v.grown[j] !== 0) continue;
-      if ((team !== 0 && v.team[j] === team) || !blocksSession(reg, kind, (v.anim[j]! & 15) !== 0)) continue;
+      if (team !== 0 && v.team[j] === team) continue;
       if (this.survivorsPass && survivorKind(reg, kind) && survivorKind(reg, this.own.kind)) continue;
       const bx = dequantX(v.qx[j]!), bz = dequantX(v.qz[j]!);
       if (Math.abs(bx - x) > far || Math.abs(bz - z) > far) continue;

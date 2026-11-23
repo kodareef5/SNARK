@@ -207,3 +207,25 @@ test("a young body turning beside a survivor is not pushed or held: only a grown
     expect([a.x[e], a.z[e], a.yaw[e]]).toEqual([...at, mind.look[e]]);
   } finally { h.host.shutdown(); }
 });
+
+test("a survivor walking into a parasaur that walks toward it is held off its body, predicted with no correction", () => {
+  const { h, s, c, a, place } = yard(150);
+  try {
+    const e = h.host.spawnCreature("core:parasaur", 100, 112, 1);
+    place(c.ent, 100, 96);
+    h.run(600);
+    const before = s.stats.corrections;
+    let least = Infinity, moving = 0;
+    h.pilots[0]!.moveZ = 127;
+    h.run(5000, () => {
+      // It walks on toward where the survivor came from, through where the survivor walks.
+      h.host.creatures.mind.goTo(e, 100, 80, 1);
+      if ((a.anim[e]! & 15) !== 0) moving++;
+      least = Math.min(least, gap(h, c.ent, e));
+    });
+    expect(moving).toBeGreaterThan(30);
+    // It is pushed out softly, so it may be a little inside as they meet, but never through.
+    expect(least).toBeGreaterThan(-0.3);
+    expect(s.stats.corrections - before).toBe(0);
+  } finally { h.host.shutdown(); }
+});
