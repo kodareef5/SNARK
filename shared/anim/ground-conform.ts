@@ -7,7 +7,7 @@ import type { CollisionWorld } from '../world/collide.ts';
 import { castWorld, HIT_NONE, rayHit } from '../world/ray.ts';
 import type { Pose } from './clip.ts';
 import type { AnimState } from './pose.ts';
-import { CUE_TORPOR, DIR_STEPS } from './pose.ts';
+import { CUE_TORPOR, DIR_STEPS, backward } from './pose.ts';
 import type { Rig } from './rigs.ts';
 import { boneToModel, solve, type Solved } from './skeleton.ts';
 
@@ -43,15 +43,18 @@ function sample(world: CollisionWorld, x: number, y: number, z: number, probe: n
   return distance<1e-8 || castWorld(world,originX,up,originZ,dx/distance,0,dz/distance,distance)===HIT_NONE;
 }
 
-/** Metres along a walkable support plane per horizontal metre, also used by the server's stateless gait phase. */
-export function groundSpeedScale(rig: Rig, st: AnimState, world: CollisionWorld | null | undefined, x: number, y: number, z: number, yaw: number, size = 1): number {
+/**
+ * Metres along a walkable support plane per horizontal metre, also used by the server's stateless gait phase. A body that
+ * `turns` goes only forward or backward (CreatureAnim.turns).
+ */
+export function groundSpeedScale(rig: Rig, st: AnimState, world: CollisionWorld | null | undefined, x: number, y: number, z: number, yaw: number, size = 1, turns = false): number {
   const g = rig.ground;
   if (!g || !world || st.mode !== MODE_WALK || !st.grounded || st.out || st.dead || st.held || st.cue === CUE_TORPOR || !(size > 0)) return 1;
   const probe = g.probe * size, clearance = .02 * size;
   castTop = y + probe;
   if (castWorld(world, x, y + clearance, z, 0, 1, 0, probe - clearance) !== HIT_NONE) castTop = y + rayHit.t;
   if (!sample(world, x, y, z, probe, detCos(yaw), detSin(yaw), x, z, clearance)) return 1;
-  const direction = st.dir * TAU / DIR_STEPS;
+  const direction = (turns ? (backward(st.dir) ? DIR_STEPS / 2 : 0) : st.dir) * TAU / DIR_STEPS;
   const rise = Math.max(-1, Math.min(1, -(nx * detSin(direction) + nz * detCos(direction)) / ny));
   return Math.sqrt(1 + rise * rise);
 }

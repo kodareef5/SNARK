@@ -936,6 +936,13 @@ export class ClientSession {
     return this.state === "active" && this.sessionState === SESSION_ALIVE && this.ownHandle !== 0 ? this.own : null;
   }
 
+  /** How far the predicted body turned over its last tick, in 1/65536 turns; 0 where that tick's body is not kept. */
+  get ownTurn(): number {
+    const t = this.simTick - 1, slot = t & (HISTORY - 1);
+    if (t < 0 || this.bodyTick[slot] !== t) return 0;
+    return ((this.own.yaw - this.bodies[slot]!.yaw + 32768) & 0xffff) - 32768;
+  }
+
   /**
    * Whether the body is predicted from here on: the near node field takes the chunks whose ground has come, and the body
    * is predicted while all within PREDICTED_REACH hold the map's own ground. Where they do not it is drawn as the server

@@ -6,7 +6,8 @@ import { creatureHold } from "../../../shared/sim/creature-actions.ts";
 import { handleGen, handleIndex } from "../../../shared/ids.ts";
 import { PI, TAU } from "../../../shared/math/scalar.ts";
 import { MF_DOWN, glidePhase } from "../../../shared/sim/character.ts";
-import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, carriageRate } from "../../../shared/sim/entities.ts";
+import { TURN_STEPS, turnSteps } from "../../../shared/anim/pose.ts";
 import { ARMOR_SLOTS } from "../../../shared/sim/items.ts";
 import { FISTS, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import type { AppFrame } from "../frame.ts";
@@ -65,6 +66,17 @@ export function ownBody(d: Director, f: AppFrame): void {
     body.state.stance = 0;
     // Posed from what the server poses it from: the look as the input carries it, and a flyer's climb.
     body.state.setMotion(session.own.vx, session.own.vz, body.yaw, (Math.round((c.pitch / (PI / 2)) * 16384) * (PI / 2)) / 16384, session.own.vy);
+    // A mount that does not strafe shows its turn as the server packs it: a step a tick toward how fast it turned.
+    const rate = carriageRate(reg.move[session.bodyKind]);
+    if (rate > 0) {
+      const ticks = session.simTick - d.turnTick;
+      if (ticks !== 0) {
+        const kept = d.turnTick >= 0 && ticks > 0 && ticks <= 2 * TURN_STEPS;
+        d.turnSteps = turnSteps(session.ownTurn, rate, kept ? d.turnSteps : 0, kept ? ticks : 1);
+        d.turnTick = session.simTick;
+      }
+      body.state.setTurn(d.turnSteps);
+    } else d.turnTick = -1;
     body.state.setAction(session.own.act, reg.combat[session.bodyKind] ? creatureHold(session.own) : 0, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
     // The mount's colours, its saddle and its cues come from its remote copy.
@@ -82,6 +94,7 @@ export function ownBody(d: Director, f: AppFrame): void {
       body.state.unpackCue(r.cue[i]!);
     }
   }
+  if (!riding) d.turnTick = -1;
   body.down = !riding && (session.own.mflags & MF_DOWN) !== 0;
   f.scene.skip = riding ? session.driving : -1;
   f.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;

@@ -64,7 +64,7 @@ function named(rig: Rig) {
   return { spine: n(s.spine), neck: n(s.neck), head: s.head < 0 ? "" : rig.names[s.head]!, jaw: s.jaw < 0 ? "" : rig.names[s.jaw]!, tail: n(s.tail), legs: s.legs.map(n) };
 }
 
-test("every creature rig in the core pack names its spine, neck, head, jaw, tail and legs", () => {
+test("every creature rig names its spine, neck, head, jaw, tail and legs", () => {
   const all = rigs();
   const creatures = CREATURE_ASSETS.filter((a) => a.spec.kind === "creature").map((a) => a.id).filter((id) => all.has(id) && all.get(id)!.sections.head >= 0);
   expect(creatures.sort()).toEqual(Object.keys(PARTS).sort());
@@ -85,7 +85,7 @@ test("a rig with no head, as a vehicle's, has no parts and no live ragdoll", () 
   for (const rig of vehicles) expect([rig.id, rig.sections.head, rig.sections.tail.length, rig.sections.legs.length, rig.live]).toEqual([rig.id, -1, 0, 0, null]);
 });
 
-test("a live ragdoll has the trunk, neck, head, tail and leg tops with capsules, and masses that sum to one", () => {
+test("a live ragdoll holds trunk, neck, head, tail and leg tops; masses sum to 1", () => {
   const all = rigs();
   for (const rig of [...Object.keys(PARTS).map((id) => all.get(id)!), strider()]) {
     const live = rig.live!, s = rig.sections, capped = (b: number): boolean => rig.capR[b]! > 0;
@@ -105,7 +105,7 @@ test("a live ragdoll has the trunk, neck, head, tail and leg tops with capsules,
   }
 });
 
-test("a whole neck turns about 70 degrees and a whole tail about 80, by their live limits", () => {
+test("a whole neck turns about 70 degrees and a whole tail about 80", () => {
   const all = rigs();
   for (const id of Object.keys(PARTS)) {
     const rig = all.get(id)!, live = rig.live!, s = rig.sections;
@@ -117,7 +117,7 @@ test("a whole neck turns about 70 degrees and a whole tail about 80, by their li
   }
 });
 
-test("each live ragdoll goes limp for 2 s on flat ground with no NaN and its limits holding", () => {
+test("each live ragdoll goes limp 2 s on flat ground: no NaN, limits hold", () => {
   const all = rigs(), w = flatWorld();
   for (const id of Object.keys(PARTS)) {
     const rig = all.get(id)!;
