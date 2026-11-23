@@ -191,6 +191,39 @@ test("apply writes one console line, and refuses an id or a name no line can car
   h.host.shutdown();
 });
 
+test("apply dresses an online survivor through the console's own command", async () => {
+  const { h, post } = world();
+  h.join("Ada Lovelace");
+  h.run(500);
+  const rec = h.host.survivorRecord("Ada Lovelace")!;
+  const worn = (): number => {
+    const inv = h.host.items.inv(rec);
+    return [...inv.item.slice(inv.armor, inv.armor + 5)].filter((k) => k !== 0).length;
+  };
+  expect(worn()).toBe(0);
+  const done = await post("apply", { loadout: "stone", survivor: "Ada Lovelace" });
+  expect([done.status, done.answer.line, worn()]).toEqual([200, 'loadout stone "Ada Lovelace"', 5]);
+  expect(String(done.answer.said)).toStartWith("stone for Ada Lovelace: gave");
+  const cleared = await post("apply", { loadout: "naked", survivor: "Ada Lovelace", clear: true });
+  expect([cleared.status, h.host.items.inv(rec).used()]).toEqual([200, 0]);
+  const nobody = await post("apply", { loadout: "stone", survivor: "Grace" });
+  expect([nobody.status, String(nobody.answer.said)]).toEqual([200, 'nobody called "Grace" is here']);
+  h.host.shutdown();
+});
+
+test("a saved book dresses the next new survivor", async () => {
+  const { h, get, post } = world();
+  const book = (await get<BookWire>("book.json")).answer.book;
+  book.assign.admin = "stone";
+  book.assign.player = "stone";
+  expect((await post("book", { book, expected: 0, note: "stone for all" })).status).toBe(200);
+  h.join("ada");
+  h.run(500);
+  const inv = h.host.items.inv(h.host.survivorRecord("ada")!);
+  expect([...inv.item.slice(inv.armor, inv.armor + 5)].every((k) => k !== 0)).toBe(true);
+  h.host.shutdown();
+});
+
 test("the admin pages serve the loadouts page and its routes past their gate", async () => {
   const h = new Harness({}, 1, 30, { log: () => {} });
   const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir, start: { tick: 0, wall: Date.now() } });
