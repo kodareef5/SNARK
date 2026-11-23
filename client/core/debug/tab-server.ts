@@ -41,7 +41,7 @@ export class ServerTab implements Tab {
     const chartY = y + 22, chartH = Math.round(Math.max(50, Math.min(90, h * 0.32))), half = Math.floor((w - 16) / 2);
     this.paint(sec.p50, sec.worst, Math.round(w * d.unit), Math.round(chartH * d.unit));
     draw.box(x, chartY, w, chartH, D_WELL);
-    draw.picture(x, chartY, w, chartH, d.imageOf(CHART, this.chart.image), 0, true);
+    draw.picture(x, chartY, w, chartH, d.imageOf(CHART, this.chart.image), 0, 0, true);
     draw.text(x + 4, chartY + 2, w - 8, D_FAINT, `ticks a second over ${n} s: the usual and the worst, against a tick's ${ms(TICK_MS)}`);
 
     // Where the ticks went since the answer before: each part's ms a tick.

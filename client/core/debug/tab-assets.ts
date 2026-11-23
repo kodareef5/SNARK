@@ -85,7 +85,7 @@ export class AssetsTab implements Tab {
     const top = y + 5 * line + 10, chartH = 56;
     this.paintChart(d, frames, Math.round(w * d.unit), Math.round(chartH * d.unit));
     draw.box(x, top, w, chartH, D_WELL);
-    draw.picture(x, top, w, chartH, d.imageOf(CHART, this.chart.image), 0, true);
+    draw.picture(x, top, w, chartH, d.imageOf(CHART, this.chart.image), 0, 0, true);
     draw.text(x + 6, top + 2, w / 2, D_FAINT, `network, disk and to the card, a second each over ${SECONDS} s`);
     draw.text(x + w - 160, top + 2, 154, D_FAINT, `top ${rate(this.chartTop)}`);
 

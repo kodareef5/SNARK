@@ -74,7 +74,7 @@ export class TimelineTab implements Tab {
     const picW = Math.min(Math.round(w * 0.36), Math.round(room * 16 / 9)), listW = w - picW - 14;
     this.paintFrames(d, at, Math.round(listW * d.unit), Math.round(36 * d.unit));
     draw.box(x, below, listW, 36, D_WELL);
-    draw.picture(x, below, listW, 36, d.imageOf(FRAMES, this.frames.image), 0, true);
+    draw.picture(x, below, listW, 36, d.imageOf(FRAMES, this.frames.image), 0, 0, true);
     draw.text(x + 4, below + 1, listW - 8, D_FAINT, this.chosen >= 0 ? `the frames of ${ago(nowMs - at * 1000)}` : "the frames of the last second");
     let line = below + 42;
     const from = this.chosen >= 0 ? at * 1000 - 1000 : nowMs - SECONDS * 1000, to = this.chosen >= 0 ? at * 1000 + 2000 : nowMs;
