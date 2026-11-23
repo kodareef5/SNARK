@@ -6,6 +6,7 @@
 import { BREAK_FORMS, type BreakForm } from "../../shared/content/breaks.ts";
 import type { ShapeBox } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
+import { hullOf } from "../../shared/world/convex.ts";
 import type { Chunk } from "./cut.ts";
 import type { Form } from "./forms.ts";
 import { kitOf } from "./kit.ts";
@@ -63,4 +64,49 @@ export function leavesOf(reg: Registry, kind: number): Leaves | null {
 export function lookOf(reg: Registry, kind: number): readonly PartLook[] | null {
   const at = formAt(reg, kind);
   return at && breakLook(...at);
+}
+
+/** The whole piece's solid boxes of `shape`, in its own frame, by which a bared face is told from skin; null for a shape that does not break. */
+export const skinOf = (shape: string): readonly ShapeBox[] | null => kitOf(shape)?.skin ?? null;
+
+/** How near a box's surface a point is taken to be on it, in metres. */
+const ON_SKIN = 0.003;
+
+/** Whether (x, y, z) is on the surface of one of the whole piece's boxes `skin`. */
+export function onSkin(x: number, y: number, z: number, skin: readonly ShapeBox[]): boolean {
+  for (const b of skin) {
+    const dx = Math.abs(x - b.at[0]) - b.half[0], dy = Math.abs(y - b.at[1]) - b.half[1], dz = Math.abs(z - b.at[2]) - b.half[2];
+    if (dx <= ON_SKIN && dy <= ON_SKIN && dz <= ON_SKIN && (Math.abs(dx) <= ON_SKIN || Math.abs(dy) <= ON_SKIN || Math.abs(dz) <= ON_SKIN)) return true;
+  }
+  return false;
+}
+
+/**
+ * Which faces of `chunk` show the bared core, a bit a face in the order hullOf gives its rings: those of a bared chunk
+ * whose middle is not on the whole piece's surface `skin`. 0 for a chunk that is not bared.
+ */
+export function coreFaces(chunk: Chunk, skin: readonly ShapeBox[]): number {
+  if (!chunk.bare) return 0;
+  const hull = hullOf({ corners: chunk.corners });
+  if (typeof hull === "string") return 0;
+  let bits = 0;
+  hull.rings.forEach((ring, f) => {
+    let x = 0, y = 0, z = 0;
+    for (const c of ring) {
+      const p = chunk.corners[c]!;
+      x += p[0] / ring.length;
+      y += p[1] / ring.length;
+      z += p[2] / ring.length;
+    }
+    if (!onSkin(x, y, z, skin)) bits |= 1 << f;
+  });
+  return bits >>> 0;
+}
+
+/** Per convex part of form kind `kind`'s look, in the order of its shape's `look.hulls`: a colour of its own or 0, and its faces that show the core (coreFaces). Null for a kind that is no broken form. */
+export function paintOf(reg: Registry, kind: number): { readonly color: Uint8Array; readonly core: Uint32Array } | null {
+  const at = formAt(reg, kind);
+  const f = at && formOf(...at), skin = at && skinOf(at[0]);
+  if (!f || !skin) return null;
+  return { color: Uint8Array.from(f.look.chunks, (c) => c.color ?? 0), core: Uint32Array.from(f.look.chunks, (c) => coreFaces(c, skin)) };
 }
