@@ -67,7 +67,7 @@ test("one static destroyed is one chunk in the save, still gone after a restart,
 
   const again = new Harness({}, 1, 60, { dbPath: db });
   const t = again.world.structs.chunks[chunk]!;
-  expect([again.world.structs.count, t.kind[3], t.version, t.placedVersion]).toEqual([count, 0, version, structs.chunks[chunk]!.placedVersion]);
+  expect([again.world.structs.count, t.kind[3], t.version, t.mapped]).toEqual([count, 0, version, structs.chunks[chunk]!.mapped]);
   expect([changed(again.world), lent(again.world)]).toEqual([[chunk], true]);
   again.run(1000);
   expect(saved(again.host.persistence!.store).chunks).toEqual([chunk]);
@@ -118,7 +118,7 @@ test("a base built, damaged and half pulled down, with a static hurt and one tak
   expect([after.count, after.held]).toEqual([before.count, before.held]);
   for (const c of before.held) {
     const [t, u] = [before.chunks[c]!, after.chunks[c]!];
-    expect([c, u.version, u.placedVersion, u.high, u.live, after.asPlaced(c)]).toEqual([c, t.version, t.placedVersion, t.high, t.live, before.asPlaced(c)]);
+    expect([c, u.version, u.mapped, u.high, u.live, after.asPlaced(c)]).toEqual([c, t.version, t.mapped, t.high, t.live, before.asPlaced(c)]);
     for (const col of ["kind", "x", "y", "z", "yaw", "owner", "hp", "mod"] as const) expect([c, col, [...u[col].subarray(0, u.high)]]).toEqual([c, col, [...t[col].subarray(0, t.high)]]);
   }
   // The collision grid holds the same pieces over the whole map.

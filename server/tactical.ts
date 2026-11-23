@@ -412,16 +412,16 @@ export class Tactical {
   }
 
   /**
-   * Whether the session is due the far cells of `chunk`. One that holds the map's statics draws a chunk still as the map
-   * placed it from them, and is due its cells once it has changed, even emptied. To any other an empty chunk is news only
-   * if it was sent it filled.
+   * Whether the session is due the far cells of `chunk`. One that holds the map's statics draws a chunk as the map placed it
+   * from them, and is due its cells once it has changed, even emptied, and again when a chunk it was sent stands as placed
+   * once more. To any other an empty chunk is news only if it was sent it filled.
    */
   private farDue(c: Client, h: Held, chunk: number): boolean {
     const s = this.summaries[chunk]!;
     const had = h.farSent[chunk]!;
     if (had === s.farVersion) return false;
     const statics = c.statics ? this.world.statics : null;
-    if (statics && this.world.structs.asPlaced(chunk)) return false;
+    if (statics && had === 0 && this.world.structs.asPlaced(chunk)) return false;
     return had !== 0 || s.far.filled > 0 || (statics !== null && statics.first[chunk + 1]! > statics.first[chunk]!);
   }
 

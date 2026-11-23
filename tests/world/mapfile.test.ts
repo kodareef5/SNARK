@@ -755,3 +755,56 @@ test("one map slot swapped or removed copies no columns", () => {
   expect(structs.add(wall, 40, 30, 40, 0, 9, 100)).toBe(60);
   expect(lent()).toEqual([false, false, false, false]);
 });
+
+test("a chunk mended, swapped or set back to the map stands as placed again", () => {
+  const pieces = Array.from({ length: 30 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:crate", x: 70 + (i % 6) * 8, y: 1 + Math.floor(i / 6) * 3, z: 10, yaw: 0 }));
+  const map = parseMap(writeMap(flatMap(4, { statics: pieces })));
+  const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(map, structs, reg);
+  const t = structs.chunks[1]!;
+  const [wall, crate] = [reg.index.get("core:wall")!, reg.index.get("core:crate")!];
+  const ref = (s: number): number => 65536 + s;
+  const state = (): unknown[] => [structs.asPlaced(1), t.changed, t.differs];
+  expect([state(), structs.mapKind(1, 0), structs.mapKind(1, 1), structs.mapKind(1, 30), structs.asMap(1, 4), structs.asMap(1, 30)]).toEqual([[true, 0, 0], wall, crate, 0, true, false]);
+  // Hurt and mended to its kind's health.
+  structs.damage(ref(4), 1);
+  structs.damage(ref(4), 1);
+  expect([state(), structs.asMap(1, 4), structs.asMap(1, 5)]).toEqual([[false, 1, 1], false, true]);
+  structs.mend(ref(4), reg.maxHp[crate]!);
+  expect(state()).toEqual([true, 0, 0]);
+  // Swapped to another kind and back.
+  structs.swap(ref(4), wall);
+  structs.swap(ref(5), wall);
+  expect(state()).toEqual([false, 2, 2]);
+  structs.swap(ref(4), crate);
+  structs.swap(ref(5), crate);
+  expect(state()).toEqual([true, 0, 0]);
+  // Given to an owner with every piece nobody owns, and given back.
+  expect(structs.reown(0, 5)).toBe(30);
+  expect(state()).toEqual([false, 30, 30]);
+  expect(structs.reown(5, 0)).toBe(30);
+  expect(state()).toEqual([true, 0, 0]);
+  // Taken away and set back as a load sets a map slot.
+  structs.remove(ref(7));
+  structs.removeMany(Uint32Array.of(ref(8), ref(9)), 2, GONE_FELL, 0, 0, 0, 0);
+  expect(state()).toEqual([false, 3, 3]);
+  for (const s of [7, 8, 9]) structs.putMapped(1, s, structs.mapKind(1, s), 0, reg.maxHp[structs.mapKind(1, s)]!, t.version);
+  expect([state(), t.live, t.x.buffer === map.statics.x.buffer]).toEqual([[true, 0, 0], 30, true]);
+  // Built in and cleared, with a map slot hurt meanwhile.
+  const built = structs.add(wall, 100, 20, 40, 0, 9, 100);
+  structs.damage(ref(2), 3);
+  expect(state()).toEqual([false, 1, 2]);
+  structs.remove(built);
+  expect(state()).toEqual([false, 1, 1]);
+  structs.mend(ref(2), reg.maxHp[crate]!);
+  expect(state()).toEqual([true, 0, 0]);
+  // The version has only gone up, as replication needs.
+  expect(t.version).toBeGreaterThan(t.mapped);
+  // A map slot is never given another place.
+  expect(() => structs.put(1, 3, wall, 1, 2, 3, 0, 0, 100, t.version)).toThrow("chunk 1: slot 3 is the map's and keeps its place");
+  // A chunk the map set nothing down in stands as placed while nothing stands in it.
+  const far = structs.add(wall, 200, 2, 200, 0, 9, 100);
+  expect(structs.asPlaced(Math.floor(far / 65536))).toBe(false);
+  structs.remove(far);
+  expect(structs.asPlaced(Math.floor(far / 65536))).toBe(true);
+});

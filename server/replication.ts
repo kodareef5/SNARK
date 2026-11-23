@@ -15,7 +15,6 @@ import { F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
 import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
-import { staticKinds, type MapStatics } from "../shared/world/mapfile.ts";
 import type { Client, GameOptions, GameStats } from "./game.ts";
 import type { ServerWorld } from "./world.ts";
 import { PART, type TickParts } from "./admin/parts.ts";
@@ -90,8 +89,6 @@ export class Replication {
   private readonly aroundAt: Uint16Array;
   /** A slot changed, times 2, plus 1 where it was moved, made or emptied. */
   private readonly changed = new Uint32Array(RECENT);
-  /** The map's statics' kinds as content indices. */
-  private readonly staticKinds: Uint16Array | null;
   /** Kept through the rows of one chunk message: the last row's slot and height, and the values it has named. */
   private rowSlot = -1;
   private rowY = 0;
@@ -116,7 +113,6 @@ export class Replication {
     this.aroundAt = new Uint16Array(chunkCount(world.dims));
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
     this.structOffsets = nearestFirst(this.opts.structRadius);
-    this.staticKinds = world.statics ? staticKinds(world.statics, world.reg) : null;
   }
 
   /** Ticks the loop gave up: every page is told, and moves its clock back as many. */
@@ -494,12 +490,6 @@ export class Replication {
     return m;
   }
 
-  /** Whether slot `s` of `t` holds the map's static `m` as placeStatics set it down. */
-  private asMap(t: ChunkTable, s: number, statics: MapStatics, m: number): boolean {
-    const kind = this.staticKinds![statics.kind[m]!]!;
-    return s < t.high && t.kind[s] === kind && t.x[s] === statics.x[m] && t.y[s] === statics.y[m] && t.z[s] === statics.z[m] && t.yaw[s] === statics.yaw[m] && t.owner[s] === 0 && t.hp[s] === this.world.reg.maxHp[kind];
-  }
-
   /** A row of a chunk message (CHUNK in shared/net/protocol.ts). In place, only its owner and health. */
   private row(w: BitWriter, t: ChunkTable, s: number, x0: number, z0: number, inPlace: boolean): void {
     const gap = s - this.rowSlot - 1;
@@ -552,9 +542,9 @@ export class Replication {
     w.bits(0, 1 + 16);
     // A client with the map's statics that holds none of this chunk takes the slots still as the map has them from its own copy.
     const statics = c.statics ? this.world.statics : null;
-    const first = statics ? statics.first[chunk]! : 0;
-    const mapped = statics ? statics.first[chunk + 1]! - first : 0;
-    const filling = mapped > 0 && from === 0;
+    const mapped = statics ? statics.first[chunk + 1]! - statics.first[chunk]! : 0;
+    // The table's map slots are the map's rows one for one, but in a chunk where the map holds a row that took no slot.
+    const filling = mapped > 0 && from === 0 && t.mapped === mapped;
     if (mapped > 0) w.bool(filling);
     const fill = w.pos;
     if (filling) w.bits(0, 32);
@@ -581,7 +571,7 @@ export class Replication {
       if (filling && t.high === mapped && this.world.structs.asPlaced(chunk)) s = end;
       for (; s < end && count < budget && w.pos <= room; s++) {
         if (filling && s < mapped) {
-          if (this.asMap(t, s, statics!, first + s)) continue;
+          if (this.world.structs.asMap(chunk, s)) continue;
         } else if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
         count++;
         this.row(w, t, s, x0, z0, false);
