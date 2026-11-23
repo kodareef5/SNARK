@@ -43,15 +43,15 @@ export interface Component {
   readonly eye?: readonly [number, number];
   /** Which way the sheet draws what leaves apart from what stands, in metres. Out toward the eye unless given. */
   readonly apart?: readonly [number, number, number];
-  /** Its forms in one of the four variants. */
-  readonly forms: (variant: number) => Form[];
+  /** Its forms in one of the four variants. With `standing`, what leaves need not be made: a kind is written from what stands. */
+  readonly forms: (variant: number, standing?: boolean) => Form[];
 }
 
 /** A component as content holds it: in the whole piece's own frame, on the grid, each form solid alike in every variant. */
 export interface Kit extends Component {
   readonly origin: Corner;
-  /** Every variant's forms, made once. */
-  readonly all: () => Form[][];
+  /** Every variant's forms. */
+  readonly all: (standing?: boolean) => Form[][];
 }
 
 /** A seed for one form of one component in one variant. */
@@ -80,9 +80,9 @@ export function placed(f: Form, origin: Corner = [0, 0, 0]): Form {
  */
 export function kitted(c: Component): Kit {
   const o = c.origin ?? [0, 0, 0], origin: Corner = [grid(o[0]), grid(o[1]), grid(o[2])];
-  const all = (): Form[][] => {
-    const first = c.forms(0).map((f) => placed(f, origin));
-    return Array.from({ length: VARIANTS }, (_, v) => (v === 0 ? first : c.forms(v).map((f, i) => ({ ...placed(f, origin), walked: first[i]!.walked }))));
+  const all = (standing = false): Form[][] => {
+    const first = c.forms(0, standing).map((f) => placed(f, origin));
+    return Array.from({ length: VARIANTS }, (_, v) => (v === 0 ? first : c.forms(v, standing).map((f, i) => ({ ...placed(f, origin), walked: first[i]!.walked }))));
   };
   const skin = c.skin.map((b): ShapeBox => ({ ...b, at: [b.at[0] - origin[0], b.at[1] - origin[1], b.at[2] - origin[2]] }));
   return { ...c, origin, skin, all, forms: (variant) => (variant === 0 ? c.forms(0).map((f) => placed(f, origin)) : all()[variant]!) };
@@ -134,7 +134,7 @@ export interface Plate {
 const lookOf = (frame: Frame, parts: readonly Part[]): Look => ({ boxes: parts.filter((p) => !p.hull).map((p) => partBox(frame, p)), chunks: parts.filter((p) => p.hull).map((p) => partChunk(frame, p)) });
 
 /** The whole form and the forms an opening makes, of a piece that is flat in its plane. */
-export function plateForms(p: Plate, variant: number): Form[] {
+export function plateForms(p: Plate, variant: number, standing = false): Form[] {
   const mid = p.split !== undefined ? p.split : p.cells.length > 1 ? p.cells[0]![1] : null;
   const halved = mid === null ? p.parts : splitAt(p.parts, mid);
   const solid = p.solid.map((s) => partBox(p.frame, s));
@@ -145,10 +145,10 @@ export function plateForms(p: Plate, variant: number): Form[] {
       return o.profile ? profilePlan({ window: o.window, profile: o.profile(seed), seed, ...(o.piece !== undefined ? { piece: o.piece } : {}) }) : plan({ window: o.window, c: o.c, opening: o.opening, closed: o.closed, seed, ...(o.rings ? { rings: o.rings } : {}), ...(o.tooth !== undefined ? { tooth: o.tooth } : {}), ...(o.run !== undefined ? { run: o.run } : {}) });
     });
     // One opening across both halves cuts the parts as they are, so a rail or a band leaves in fewer pieces.
-    const c = cut(p.frame, p.cutting ? p.cutting(name) : name === "open" && openings.length === 1 ? p.parts : halved, plans);
+    const c = cut(p.frame, p.cutting ? p.cutting(name) : name === "open" && openings.length === 1 ? p.parts : halved, plans, !standing);
     const extra = p.barsIn ? plans.flatMap((q, i) => bars(p.frame, q, p.barsIn![0], p.barsIn![1], 4, seedOf(p.name, `${name}/bars${i}`, variant), p.barsAtFoot !== false)) : [];
     const behind = lookOf(p.frame, p.behind?.(name) ?? []);
-    const panes = (p.panes?.(name) ?? []).map((pane) => partBox(p.frame, pane));
+    const panes = standing ? [] : (p.panes?.(name) ?? []).map((pane) => partBox(p.frame, pane));
     return {
       name, note, look: { boxes: [...c.look.boxes, ...extra, ...behind.boxes], chunks: [...c.look.chunks, ...behind.chunks] },
       walked: { boxes: solidLess(p.frame, p.solid, openings.flatMap((o) => o.passable)), hulls: [] }, fragments: c.fragments, panes: [...c.panes, ...panes], bears,

@@ -105,10 +105,12 @@ export const shapes: Kind<ShapeDef> = {
         if (!(Math.abs(b.at[a]!) + b.half[a]! <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: a box reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
       }
     }
-    for (const h of [...(d.hulls ?? []), ...(d.look?.hulls ?? [])]) {
+    const hulls = d.look?.hulls ? [...(d.hulls ?? []), ...d.look.hulls] : (d.hulls ?? []);
+    for (const h of hulls) {
       const fault = hullFault(h);
       if (fault !== "") errors.push(`${d.id}: ${fault}`);
-      if (shapeHalf([], [h]).some((v) => !(v <= MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a convex part reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
     }
+    // One box about them all says whether any reaches too far; then each is asked, so each that does is listed.
+    if (shapeHalf([], hulls).some((v) => !(v <= MAX_STRUCTURE_HALF))) for (const h of hulls) if (shapeHalf([], [h]).some((v) => !(v <= MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a convex part reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
   },
 };

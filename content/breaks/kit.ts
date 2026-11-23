@@ -91,8 +91,8 @@ function plated(name: RuinShape, p: Omit<Plate, "name" | "bears">, shown: Shown)
   return {
     name, family, material, finish: [RUIN_FINISHES[finish].color, RUIN_FINISHES[finish].under], skin: p.solid.map((s) => partBox(p.frame, s)), origin: shown.origin,
     ...(shown.eye ? { eye: shown.eye } : {}), ...(shown.apart ? { apart: shown.apart } : p.frame === FLOOR ? { apart: [0, 2.2, 0] as const } : {}),
-    forms: (variant) => [
-      ...plateForms(plate, variant).map((f, i) => (i > 0 && shown.notes?.[i - 1] ? { ...f, note: shown.notes[i - 1]! } : f)),
+    forms: (variant, standing) => [
+      ...plateForms(plate, variant, standing).map((f, i) => (i > 0 && shown.notes?.[i - 1] ? { ...f, note: shown.notes[i - 1]! } : f)),
       ...(shown.more?.(variant) ?? []),
       heapOf(name, p.frame === FLOOR ? "slab" : "wall", p.frame, p.solid, variant, shown.floor),
     ],

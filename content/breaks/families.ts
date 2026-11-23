@@ -1,21 +1,12 @@
 // What each shape of the ruin kit does in a building, and so how it breaks: its family, its halves, how tough it is and
 // which of its forms still bear. This file reads no shape, so content/ruins.ts may read it.
 
+import { BREAK_VARIANTS, type BreakFamily, type BreakForm } from "../../shared/content/breaks.ts";
 import type { RuinShape } from "../ruins.ts";
 
-export type Family =
-  | "slab" | "pier" | "beam" | "bar" | "wall" | "panel" | "parapet" | "window" | "store" | "curtain" | "clad" | "balcony"
-  | "deck" | "roof" | "shell" | "interior" | "none";
-
-/** A family's number in a registry column. 0 is "none". */
-export const FAMILIES: readonly Family[] = ["none", "slab", "pier", "beam", "bar", "wall", "panel", "parapet", "window", "store", "curtain", "clad", "balcony", "deck", "roof", "shell", "interior"];
-
-export type FormName = "whole" | "breach A" | "breach B" | "open" | "hung" | "heap";
-/** A form's number in a registry column, and its word in an id. */
-export const FORMS: readonly FormName[] = ["whole", "breach A", "breach B", "open", "hung", "heap"];
-export const FORM_WORDS: readonly string[] = ["whole", "a", "b", "open", "hung", "heap"];
-/** Variants of a form a shape is cut in. A piece's place in its wall and building picks one. */
-export const VARIANTS = 4;
+export type Family = BreakFamily;
+export type FormName = BreakForm;
+export const VARIANTS = BREAK_VARIANTS;
 
 interface Rule {
   /** Health is a material's for one half, times the halves, times this. */

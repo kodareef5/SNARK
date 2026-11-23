@@ -95,8 +95,11 @@ const sliver = (r: Rect): boolean => r[1] - r[0] < 0.004 || r[3] - r[2] < 0.004;
 /** Whether a part's box and the plan's mouth share any area. */
 const mouthed = (plan: Plan, r: Rect): boolean => plan.shards.some((s) => meet(s, rectPoly(r)).length > 0);
 
-/** Cuts `parts` by a plan, or by several whose windows do not overlap: a part is cut by the one whose mouth reaches it. */
-export function cut(frame: Frame, parts: readonly Part[], plans: Plan | readonly Plan[]): Cut {
+/**
+ * Cuts `parts` by a plan, or by several whose windows do not overlap: a part is cut by the one whose mouth reaches it.
+ * With `leaving` false only what stands is made, which is all a kind is written from.
+ */
+export function cut(frame: Frame, parts: readonly Part[], plans: Plan | readonly Plan[], leaving = true): Cut {
   const boxes: ShapeBox[] = [], chunks: Chunk[] = [], fragments: Chunk[][] = [], panes: ShapeBox[] = [];
   const list: readonly Plan[] = Array.isArray(plans) ? plans : [plans as Plan];
   const byShard = new Map<readonly Pt[], Chunk[]>();
@@ -108,9 +111,9 @@ export function cut(frame: Frame, parts: readonly Part[], plans: Plan | readonly
       else boxes.push(partBox(frame, p));
       continue;
     }
-    if (p.glass) { panes.push(partBox(frame, p)); continue; }
+    if (p.glass) { if (leaving) panes.push(partBox(frame, p)); continue; }
     // A bevelled part is not cut either: its bevel would be lost.
-    if (p.loose || p.hull) { fragments.push([partChunk(frame, p)]); continue; }
+    if (p.loose || p.hull) { if (leaving) fragments.push([partChunk(frame, p)]); continue; }
     for (const r of rectLess(p.r, plan.window)) if (!sliver(r)) boxes.push(boxOf(frame, r, p.w0, p.w1, p.color));
     const held = rectPoly(inside);
     const solid = (poly: readonly Pt[]): Chunk => ({ corners: prism(poly, p.w0, p.w1, frame.to), ...(p.color !== undefined ? { color: p.color } : {}), bare: true });
@@ -122,7 +125,7 @@ export function cut(frame: Frame, parts: readonly Part[], plans: Plan | readonly
       else for (const part of atMost(poly, 6).map(gridded)) if (part.length > 0) chunks.push(solid(part));
     }
     // One shard of the plane is one thing that leaves, whatever parts it is made of.
-    for (const shard of plan.shards) {
+    for (const shard of leaving ? plan.shards : []) {
       const poly = meet(shard, held);
       if (poly.length === 0) continue;
       const parts = atMost(poly, 6).map(gridded).filter((part) => part.length > 0);

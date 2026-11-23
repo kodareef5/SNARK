@@ -2,6 +2,7 @@ import { GRATE, UTILITY_ENAMEL as BOX } from "./colours.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { leaning, pitchedRoof, slopeShape, slopedSlab, stairFlight, staticOf, wedge } from "../shared/content/slopes.ts";
 import type { HullDef } from "../shared/world/convex.ts";
+import { shapeBreaks } from "./breaks/families.ts";
 
 const shaped = (name: string): string => `core:${name.startsWith("floorroad") ? "zzruinshape" : "zruinshape"}_${name}`;
 const fallenFrame = [[0, -3.5, 4, .5], [0, 3.5, 4, .5], [-3.5, 0, .5, 3], [3.5, 0, .5, 3]].map(([x, z, w, d]) => ({
@@ -549,6 +550,11 @@ const FOOTED_SHAPES = new Map([...FOOTED].map((name): [string, ShapeDef] => {
 }));
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && !ROOF_FINISHES.has(finish) && !GROWN[name] && (PAINTED.has(name) || name.startsWith("z"))));
 const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zvine2", "zvine3", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub", "zivy1", "zivy2", "zivy3", "zmoss"]);
+/** What a whole kind of a shape that breaks says of it (content/breaks has its broken forms). */
+function wholeBreaks(name: string, size: readonly [number, number, number]): Pick<StructureDef, "breaks"> {
+  const { family, halves, bears } = shapeBreaks(name, size);
+  return family === "none" ? {} : { breaks: { set: name, form: "whole", family, halves, bears: bears[0] } };
+}
 const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
   (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name as RuinShape, finish)).map((finish) => ({
     type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: GROWN[name] ?? "box",
@@ -563,6 +569,7 @@ const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([na
     ...(FOOTED_SHAPES.has(name) ? { shape: FOOTED_SHAPES.get(name)!.id, half: shapeHalf(FOOTED_SHAPES.get(name)!.boxes) } : {}),
     // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
     ...(GROWN[name] ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
+    ...wholeBreaks(name, size),
   })),
 );
 export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES), ...Object.values(RUIN_FACADES), ...Object.values(RUIN_BREAKS), ...FOOTED_SHAPES.values()];
