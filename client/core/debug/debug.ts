@@ -397,7 +397,7 @@ export class DebugBar {
     if (!box || key < KEY_DEBUG) return false;
     const hit = this.draw.hit(key);
     if (kind === 2) {
-      if (hit && hit[0] >= TAB_ACT && this.tabs[this.tab]!.hover?.(this, { act: hit[0], arg: hit[1], fx: (x - box.x) / box.w, fy: (y - box.y) / box.h })) this.dirty = true;
+      if (this.open && this.tabs[this.tab]!.hover?.(this, { act: hit ? hit[0] : 0, arg: hit ? hit[1] : 0, fx: (x - box.x) / box.w, fy: (y - box.y) / box.h })) this.dirty = true;
       return true;
     }
     if (kind !== 0 || button !== 0) return true;
