@@ -13,7 +13,8 @@ const parts = (app: App): readonly FramePart[] => app["parts"];
 test("the frame's parts stand in the order the view needs", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("order", {}, { manual: true }), h.reg, pack);
-  const at = (part: FramePart): number => parts(app).indexOf(part);
+  // A guarded part (App.guarded) stands in its wrapper's place.
+  const at = (part: FramePart): number => parts(app).findIndex((p) => p === part || (p as { part?: FramePart }).part === part);
   const order = [app.director, app["dash"], app.sight, app.director.body, app.director.place, app.prompts, app["heard"]].map(at);
   expect(order.every((n) => n >= 0)).toBe(true);
   expect(order).toEqual([...order].sort((a, b) => a - b));
