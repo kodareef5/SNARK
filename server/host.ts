@@ -108,6 +108,7 @@ import { starterBook } from "../content/supply/starter.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { AirSupport } from "./air-support.ts";
+import { Hitches } from "./hitches.ts";
 import { Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
@@ -250,6 +251,8 @@ export interface Host {
   /** Supply drops, and the drop book they are rolled from (server/supply.ts). */
   readonly supply: Supply;
   readonly airSupport: AirSupport;
+  /** Trailers on fifth wheels (server/hitches.ts). */
+  readonly hitches: Hitches;
   readonly supplyBook: BookStore;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
@@ -693,11 +696,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   });
   containers.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
+  const hitches = new Hitches({ world, game, records, urban });
+  game.players.pairStep = (e, b, x, z, buttons, def, pilot) => hitches.step(e, b, x, z, buttons, def, pilot);
+  urban.pairStep = game.players.pairStep;
+  urban.towedBy = e => hitches.tractorOf(e);
   game.players.onVehicleStep.on(e => urban.impact(e));
   survival.onRated.on((rec) => { if (reg.vehicle[rec.kind]) urban.rated(rec.pid); });
   game.players.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
-    world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
+    world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair), linked: (a, b) => hitches.linked(a, b),
     // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
     struck: (body) => knockDown(body),
     parkingBrake: e => urban.parkingBrake(e),
@@ -1278,6 +1285,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   recrate();
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
+  hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
+  persistence?.sidecar("hitches", hitches.saved);
   const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, wake: wakeView });
   game.handle(CMD_AIR_SUPPORT, (c, r) => airSupport.command(c, r));
   airSupport.begin(persistence && !loaded!.fresh ? persistence.store.meta("air-support") as string | null : null);
@@ -1798,6 +1807,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     mark(PART.life),
     // Riders move with their mounts before combat aims at either.
     urban,
+    { step: () => hitches.latch() },
     { step: (tick) => airSupport.step(tick) },
     riding,
     { beforeStep: () => void (game.players.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
@@ -1897,6 +1907,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     carReturn,
     supply,
     airSupport,
+    hitches,
     supplyBook,
     beds,
     cluster,

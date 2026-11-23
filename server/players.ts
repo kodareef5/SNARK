@@ -28,6 +28,7 @@ import {
 import { CH_RELIABLE } from "../shared/net/transport.ts";
 import { BTN_AIR_REMOTE, BTN_JUMP, BTN_SECONDARY, Body, stepBody, stepOut } from "../shared/sim/character.ts";
 import { stepVehicleBody } from "../shared/sim/vehicle-body.ts";
+import type { VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { cancelCreatureAction, creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../shared/sim/weapon.ts";
 import { stepAim } from "../shared/sim/aim.ts";
@@ -110,6 +111,8 @@ export class Players {
   readonly onVehicleStep = new Signal<[e: number]>();
   /** The host adds resource contacts around this same shared vehicle step. */
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
+  /** Steps a tractor with the trailer on its fifth wheel (server/hitches.ts); false leaves the single step. */
+  pairStep: ((e: number, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, pilot: boolean) => boolean) | null = null;
   /** A remote operator's input belongs to its aircraft while the survivor stays in place. */
   remoteInput: ((c: Client, tick: number) => boolean) | null = null;
   /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
@@ -230,7 +233,8 @@ export class Players {
         const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 && ents.gen[parent] === ents.seatGen[e];
         if (vehicle) {
           const quiet = remote || c.closed || T - c.inputAt > VEHICLE_HOLD_TICKS;
-          this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
+          const moveX = quiet ? 0 : c.heldX, moveZ = quiet ? 0 : c.heldZ, buttons = quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons;
+          if (!this.pairStep?.(e, b, moveX, moveZ, buttons, vehicle, !quiet)) this.vehicleStep(world, b, moveX, moveZ, buttons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
           this.footBefore.copy(b);

@@ -158,6 +158,10 @@ export class Urban {
   private readonly walkPids: number[] = [];
   /** The entities sessions drive this tick. */
   private readonly drivers = new Set<number>();
+  /** Steps a tractor with its trailer (server/hitches.ts); false leaves the single step. */
+  pairStep: ((e: number, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, pilot: boolean) => boolean) | null = null;
+  /** The tractor entity towing trailer entity `e`, or -1. */
+  towedBy: ((e: number) => number) | null = null;
   /** Drive intents of the world's people (Cast's drivers, server/cast/drive.ts): a vehicle's steer, throttle and buttons
    * as a driver's keys would give them, and the tick they were given; a stale one stops the car on its handbrake. */
   private readonly npcDrive = new Map<number, { x: number; z: number; buttons: number; t: number }>();
@@ -444,6 +448,9 @@ export class Urban {
   private maySleep(host: HostSeat): boolean {
     const { world, records, creatures } = this.ctx, ents = world.ents, e = host.entity, pid = host.pid, dims = world.dims;
     if (!this.contacts || this.drivers.has(e) || this.npcDrive.has(e) || this.pushes.has(pid) || this.held.has(pid)) return false;
+    // A towed trailer sleeps only behind a sleeping tractor.
+    const tractor = this.towedBy?.(e) ?? -1;
+    if (tractor >= 0 && this.dozing[tractor] === 0) return false;
     const vitals = records.byPid.get(pid)?.vitals, hp = vitals?.at(V_HEALTH, world.tick) ?? 0;
     if (this.health.get(pid) !== hp || (vitals && vitals.at(V_HEALTH, world.tick + 1) !== hp)) return false;
     const ring = this.reach(), chunk = ents.chunk[e]!, cx = chunk % dims.chunksX, cz = (chunk - cx) / dims.chunksX;
@@ -917,6 +924,7 @@ export class Urban {
       }
       return RESULT_BUSY;
     }
+    if (!host.definition.seats.length) return RESULT_INVALID;
     let nearest = host.definition.seats[0]!, best = Infinity;
     for (const seat of host.definition.seats) {
       const entry = [0, 0, 0]; vehiclePoint(state, seat.entry, entry);
@@ -1154,7 +1162,9 @@ export class Urban {
       // Whether it has nothing to do this tick: at rest on its brake, and below with its doors shut and nobody in it.
       let idle = !driven && !npc && resting && !pushed;
       if (driven) host.movedAt = world.tick;
-      if (!driven && (npc || !resting || (world.tick + e) % REST_TICKS === 0)) {
+      // A trailer on a fifth wheel is stepped with its tractor.
+      const towed = (this.towedBy?.(e) ?? -1) >= 0;
+      if (!driven && !towed && (npc || !resting || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
         const b = this.body, x = b.x, y = b.y, z = b.z, qx = b.vehicleQx, qy = b.vehicleQy, qz = b.vehicleQz, qw = b.vehicleQw, steering = b.steering;
         this.stepped++;
@@ -1162,8 +1172,12 @@ export class Urban {
         if (beat?.holds(world, this.body)) this.restingKept++;
         else {
           beat?.begin(this.body);
-          if (npc) (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, npc.x, npc.z, npc.buttons, host.definition, TICK_DT, this.body.yaw, true);
-          else (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
+          if (npc) {
+            if (!this.pairStep?.(e, this.body, npc.x, npc.z, npc.buttons, host.definition, true)) (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, npc.x, npc.z, npc.buttons, host.definition, TICK_DT, this.body.yaw, true);
+          } else {
+            const brake = isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0;
+            if (!this.pairStep?.(e, this.body, 0, 0, brake, host.definition, false)) (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, brake, host.definition, TICK_DT, this.body.yaw, false);
+          }
           beat?.end(world, this.body);
         }
         if (beat?.kept) host.beatAt = world.tick;

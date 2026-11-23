@@ -76,7 +76,7 @@ export const AIR_TRAILER: SpeciesDef = {
   radius: 1.3,
   height: 3.25,
   eyeHeight: 2,
-  slots: 0,
+  slots: 1,
   mass: 4200,
-  stats: { health: [3000, 0, 0], stamina: [1, 0, 0], weight: [0, 0, 0] },
+  stats: { health: [3000, 0, 0], stamina: [1, 0, 0], weight: [100, 0, 0] },
 };

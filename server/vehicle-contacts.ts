@@ -54,6 +54,8 @@ export interface VehicleContactsContext {
   boarding?(actor: number, vehicle: number): boolean;
   /** Only an empty, parked protected foreign vehicle is anchored against an unauthorized opposing actor. */
   anchored?(vehicle: number, opposing: EntityRecord): boolean;
+  /** A tractor and the trailer on its fifth wheel are joined, not in contact (server/hitches.ts). */
+  linked?(a: number, b: number): boolean;
   /** At rest: stepped only on its heartbeat, at under a millimetre a second (server/urban.ts). */
   resting?(vehicle: number): boolean;
   /** Off the active list: it keeps its pose with no capture, until something wakes it (server/urban.ts). */
@@ -305,7 +307,7 @@ export class VehicleContacts {
     this.candidates.length = 0;
     for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
       for (let target = ents.chunkHead[z * world.dims.chunksX + x]!; target >= 0; target = ents.next[target]!) {
-        if (!this.target(e, target)) continue;
+        if (!this.target(e, target) || this.ctx.linked?.(e, target)) continue;
         if (Math.abs(ents.x[target]! - from.x) > pad + Math.abs(ents.x[e]! - from.x) ||
           Math.abs(ents.z[target]! - from.z) > pad + Math.abs(ents.z[e]! - from.z)) continue;
         this.candidates.push(target);
