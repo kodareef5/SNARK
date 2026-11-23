@@ -4,6 +4,9 @@
 // was when the body went limp. A joint keeps a body within the swing and twist its asset allows from the rest pose, then
 // holds its joint to its parent body. Bodies meet the terrain and the boxes and convex parts of structures and nodes, with
 // friction and rolling resistance.
+// A living body uses the same solver. An anchor follows a target pose instead of moving, a drive turns a body toward its
+// target turn against its parent like a damped spring, a strike knocks a limb and the chain above it, and listed capsule
+// pairs keep limbs out of each other.
 // The server lays it as every client does, to judge blows on a body as it is drawn (shared/anim/corpse.ts), so it uses
 // only exactly rounded arithmetic and shared/math/scalar.ts's trigonometry: tools/simhash.ts's creature hash lays each
 // rig's, and JavaScriptCore and V8 must agree on it (tests/server/determinism.test.ts).
@@ -30,6 +33,8 @@ export interface RagdollDef {
   readonly twist: Float64Array;
   /** Additional capsule bones rigidly attached to their nearest articulated ancestor. */
   readonly contacts?: Int16Array;
+  /** Body index pairs, flat, whose capsules may not pass through each other. */
+  readonly pairs?: Int16Array;
 }
 
 const GRAVITY = 9.81;
@@ -66,13 +71,24 @@ export const WET_DAMP = DAMP + WATER_DAMP;
 const SLEEP_MOVE = 0.1;
 const SLEEP_TURN = 0.99863;
 const SLEEP_AFTER = 0.5;
+/** Metres a second below which every part of a supported body counts as creeping, not moving. */
+const CREEP = 0.06;
 /** Radians a second at which a limit the handover pose was past closes to the asset's. */
 const RELAX = 2;
 /** Metres between the points of a capsule tested against the terrain. */
 const SPACING = 0.75;
 /** Metres around its bodies within which structures are gathered for a call. */
 const MARGIN = 0.4;
+/** Metres two paired capsules may overlap beyond what they did at rest or at the start: hit capsules are fuller than the body. */
+const PAIR_SLACK = 0.02;
+/** A struck chain moves at most this fast, metres a second, however light it is. */
+const STRIKE_MOST = 25;
 const MOST_CONTACTS = 128;
+const MOST_PAIRS = 16;
+/** Numbers kept for each pair pushed apart in a substep. */
+const PRESSED = 11;
+/** Radians short of its limit at which a body counts as held there. */
+const HELD = 0.02;
 const MOST_REFS = 64;
 
 const found = new Found();
@@ -156,6 +172,32 @@ export class Ragdoll {
   private h = SUBSTEP;
   private probing = false;
   private worst = 0;
+  /** Per body, 1 where it is an anchor: it follows its target and nothing moves it. */
+  readonly anchored: Uint8Array;
+  private nAnchored = 0;
+  /** Each body's own inverse mass and inertia; invM and invI hold 0 for an anchor. */
+  private readonly ownInvM: Float64Array;
+  private readonly ownInvI: Float64Array;
+  /** Each anchor's centre and turn at the start of the step and at its end. */
+  private readonly ax0: Float64Array;
+  private readonly aq0: Float64Array;
+  private readonly ax1: Float64Array;
+  private readonly aq1: Float64Array;
+  /** Each drive's target turn against its parent body at the start and the end of the step. */
+  private readonly dq0: Float64Array;
+  private readonly dq1: Float64Array;
+  /** Each drive's natural frequency in radians a second (0 for none) and its damping ratio. */
+  readonly driveOmega: Float64Array;
+  readonly driveZeta: Float64Array;
+  /** The share of gravity a driven body does not feel: 1 holds a standing body up against its own weight. */
+  lift = 0;
+  /** Paired bodies, and how far each pair may overlap. */
+  private readonly pairA: Int16Array;
+  private readonly pairB: Int16Array;
+  private readonly pairAllow: Float64Array;
+  /** The pairs pushed apart this substep: the pair, its normal, each point in its own body's frame, and the push. */
+  private readonly pressed = new Float64Array(MOST_PAIRS * PRESSED);
+  private np = 0;
 
   constructor(skel: Skeleton, def: RagdollDef) {
     this.skel = skel;
@@ -209,6 +251,26 @@ export class Ragdoll {
     this.contactCentre = new Float64Array(contacts.length * 3);
     this.contactSegment = new Float64Array(contacts.length * 3);
     this.contactRadius = new Float64Array(contacts.length);
+    this.anchored = new Uint8Array(n);
+    this.ownInvM = new Float64Array(n);
+    this.ownInvI = new Float64Array(n);
+    this.ax0 = new Float64Array(n * 3);
+    this.ax1 = new Float64Array(n * 3);
+    this.aq0 = new Float64Array(n * 4);
+    this.aq1 = new Float64Array(n * 4);
+    this.dq0 = new Float64Array(n * 4);
+    this.dq1 = new Float64Array(n * 4);
+    this.driveOmega = new Float64Array(n);
+    this.driveZeta = new Float64Array(n);
+    const pairs: number[] = [];
+    const listed = def.pairs ?? new Int16Array(0);
+    for (let k = 0; k + 1 < listed.length; k += 2) {
+      const a = listed[k]!, b = listed[k + 1]!;
+      if (a >= 0 && b >= 0 && a < n && b < n && a !== b && this.parent[a] !== b && this.parent[b] !== a && pairs.length < MOST_PAIRS * 2) pairs.push(a, b);
+    }
+    this.pairA = Int16Array.from(pairs.filter((_, k) => (k & 1) === 0));
+    this.pairB = Int16Array.from(pairs.filter((_, k) => (k & 1) === 1));
+    this.pairAllow = new Float64Array(this.pairA.length);
   }
 
   /** Where the joint of bone `b` of a pose of the model is in the world, into t3. */
@@ -318,6 +380,13 @@ export class Ragdoll {
       }
       for (let i = 0; i < n; i++) if (changed[i] && moment[i]! > 0) this.invI[i] = this.invM[i]! * volume[i]! / moment[i]!;
     }
+    this.ownInvM.set(this.invM);
+    this.ownInvI.set(this.invI);
+    this.anchored.fill(0);
+    this.nAnchored = 0;
+    this.driveOmega.fill(0);
+    this.driveZeta.fill(0);
+    this.lift = 0;
     this.velocities(1 / 30);
     // Each bone's turn from its body, the root's joint in its body, and each joint in its parent body.
     for (let b = 0; b < skel.bones; b++) conjMulInto(this.rel, b * 4, now.rot, def.bone[this.owner[b]!]! * 4, now.rot, b * 4);
@@ -345,6 +414,139 @@ export class Ragdoll {
     this.supported = false;
     this.awake = true;
     this.hold();
+    // Anchors and drives start where the body is, so turning one on changes nothing until it is given a target.
+    this.ax0.set(this.x); this.ax1.set(this.x);
+    this.aq0.set(this.q); this.aq1.set(this.q);
+    for (let i = 0; i < n; i++) {
+      const p = this.parent[i]!;
+      if (p >= 0) conjMulInto(this.dq1, i * 4, this.q, p * 4, this.q, i * 4);
+      else this.dq1.set(IDENTITY, i * 4);
+    }
+    this.dq0.set(this.dq1);
+    this.allowPairs();
+  }
+
+  /** Each pair may overlap as much as its capsules do at rest or did at the start, and a little more. */
+  private allowPairs(): void {
+    const { skel, def, size } = this;
+    const rest = skel.rest;
+    for (let k = 0; k < this.pairA.length; k++) {
+      let most = 0;
+      for (let at = 0; at < 2; at++) {
+        for (let side = 0; side < 2; side++) {
+          const i = side === 0 ? this.pairA[k]! : this.pairB[k]!, b = def.bone[i]!, o = side * 7;
+          if (at === 0) {
+            // At rest no bone is turned, so a capsule lies at its joint plus its ends.
+            for (let a = 0; a < 3; a++) {
+              caps[o + a] = (rest[b * 3 + a]! + (skel.capA[b * 3 + a]! + skel.capB[b * 3 + a]!) / 2) * size;
+              caps[o + 3 + a] = ((skel.capB[b * 3 + a]! - skel.capA[b * 3 + a]!) / 2) * size;
+            }
+            caps[o + 6] = skel.capR[b]! * size;
+          } else {
+            caps[o + 6] = this.shape(i, -1);
+            for (let a = 0; a < 3; a++) { caps[o + a] = this.x[i * 3 + a]! + t3[a]!; caps[o + 3 + a] = u3[a]!; }
+          }
+        }
+        const deep = caps[6]! + caps[13]! - closest(caps);
+        if (deep > most) most = deep;
+      }
+      this.pairAllow[k] = most + PAIR_SLACK;
+    }
+  }
+
+  /** Makes body `i` an anchor, which follows its target and is moved by nothing else, or frees it with the speed it has. */
+  anchor(i: number, on: boolean): void {
+    if ((this.anchored[i] === 1) === on) return;
+    this.anchored[i] = on ? 1 : 0;
+    this.nAnchored += on ? 1 : -1;
+    this.invM[i] = on ? 0 : this.ownInvM[i]!;
+    this.invI[i] = on ? 0 : this.ownInvI[i]!;
+    if (!on) return;
+    for (let a = 0; a < 3; a++) this.ax0[i * 3 + a] = this.ax1[i * 3 + a] = this.x[i * 3 + a]!;
+    for (let a = 0; a < 4; a++) this.aq0[i * 4 + a] = this.aq1[i * 4 + a] = this.q[i * 4 + a]!;
+  }
+
+  /**
+   * Sets what the next step follows from `target`, a pose of the model solved at the size it was made, standing at (x, y,
+   * z) facing `yaw` radians: where each anchor ends the step, and each drive's target turn against its parent. With
+   * `snap` the drives start the step at their targets instead of turning toward them across it.
+   */
+  follow(target: Solved, x: number, y: number, z: number, yaw: number, snap = false): void {
+    const { def, n, size } = this;
+    face[1] = detSin(yaw / 2);
+    face[3] = detCos(yaw / 2);
+    for (let i = 0; i < n; i++) {
+      const b = def.bone[i]!, p = this.parent[i]!;
+      if (p >= 0) conjMulInto(this.dq1, i * 4, target.rot, def.bone[p]! * 4, target.rot, b * 4);
+      if (!this.anchored[i]) continue;
+      mulInto(this.aq1, i * 4, face, 0, target.rot, b * 4);
+      quatRotate(face, 0, target.pos[b * 3]! * size, target.pos[b * 3 + 1]! * size, target.pos[b * 3 + 2]! * size, t3, 0);
+      const jx = t3[0]! + x, jy = t3[1]! + y, jz = t3[2]! + z;
+      quatRotate(this.aq1, i * 4, this.jc[i * 3]!, this.jc[i * 3 + 1]!, this.jc[i * 3 + 2]!, t3, 0);
+      set3(this.ax1, i, jx - t3[0]!, jy - t3[1]!, jz - t3[2]!);
+    }
+    if (snap) this.dq0.set(this.dq1);
+  }
+
+  /**
+   * Strikes body `i` with (dvx, dvy, dvz): the change of speed the whole body would take from the blow were it rigid. The
+   * struck body and every free body above it take the blow together, as one piece, and the joints share it out.
+   */
+  strike(i: number, dvx: number, dvy: number, dvz: number): void {
+    let share = 0;
+    for (let k = i; k >= 0; k = this.parent[k]!) if (!this.anchored[k]) share += 1 / this.ownInvM[k]!;
+    if (share <= 0) return;
+    let sx = dvx / share, sy = dvy / share, sz = dvz / share;
+    const fast = Math.sqrt(sx * sx + sy * sy + sz * sz);
+    if (fast > STRIKE_MOST) {
+      const k = STRIKE_MOST / fast;
+      sx *= k; sy *= k; sz *= k;
+    }
+    for (let k = i; k >= 0; k = this.parent[k]!) {
+      if (this.anchored[k]) continue;
+      this.v[k * 3]! += sx; this.v[k * 3 + 1]! += sy; this.v[k * 3 + 2]! += sz;
+    }
+    this.awake = true;
+    this.hold();
+  }
+
+  /** Turns the whole body by `yaw` radians about the upright line through (cx, cz): a walker's turn, which no limb feels. */
+  turnAbout(cx: number, cz: number, yaw: number): void {
+    if (yaw === 0) return;
+    const s = detSin(yaw), c = detCos(yaw);
+    face[1] = detSin(yaw / 2);
+    face[3] = detCos(yaw / 2);
+    for (const xs of [this.x, this.px, this.stillX, this.ax0, this.ax1]) {
+      for (let i = 0; i < this.n; i++) {
+        const dx = xs[i * 3]! - cx, dz = xs[i * 3 + 2]! - cz;
+        xs[i * 3] = cx + c * dx + s * dz;
+        xs[i * 3 + 2] = cz - s * dx + c * dz;
+      }
+    }
+    for (const vs of [this.v, this.w]) {
+      for (let i = 0; i < this.n; i++) {
+        const dx = vs[i * 3]!, dz = vs[i * 3 + 2]!;
+        vs[i * 3] = c * dx + s * dz;
+        vs[i * 3 + 2] = -s * dx + c * dz;
+      }
+    }
+    for (const qs of [this.q, this.pq, this.stillQ, this.aq0, this.aq1]) for (let i = 0; i < this.n; i++) mulInto(qs, i * 4, face, 0, qs, i * 4);
+    const dx = this.ox - cx, dz = this.oz - cz;
+    this.ox = cx + c * dx + s * dz;
+    this.oz = cz - s * dx + c * dz;
+    mulInto(this.yawQ, 0, face, 0, this.yawQ, 0);
+  }
+
+  /** Body `i`'s turn against its parent body, measured from its drive's target, into `out` at `o`. None for an anchor or a root. */
+  offset(i: number, out: Float64Array | Float32Array, o: number): void {
+    const p = this.parent[i]!;
+    if (p < 0 || this.anchored[i]) {
+      out[o] = out[o + 1] = out[o + 2] = 0;
+      out[o + 3] = 1;
+      return;
+    }
+    conjMulInto(g4, 0, this.q, p * 4, this.q, i * 4);
+    conjMulInto(out, o, this.dq1, i * 4, g4, 0);
   }
 
   /** Adds one inherited root velocity/spin to the canonical limp pose, at its root joint. */
@@ -488,8 +690,16 @@ export class Ragdoll {
     this.supported = false;
     const steps = Math.ceil(seconds / SUBSTEP);
     const h = seconds / steps;
-    for (let k = 0; k < steps; k++) this.substep(world, h);
+    if (this.nAnchored > 0) {
+      for (let i = 0; i < this.n; i++) {
+        if (!this.anchored[i]) continue;
+        for (let a = 0; a < 3; a++) this.ax0[i * 3 + a] = this.x[i * 3 + a]!;
+        for (let a = 0; a < 4; a++) this.aq0[i * 4 + a] = this.q[i * 4 + a]!;
+      }
+    }
+    for (let k = 0; k < steps; k++) this.substep(world, h, (k + 1) / steps, this.pairA.length > 0);
     this.confine(world);
+    this.dq0.set(this.dq1);
     const { def, n, x, q, stillX, stillQ } = this;
     let moved = false;
     let relaxing = false;
@@ -501,11 +711,26 @@ export class Ragdoll {
       const dot = q[i * 4]! * stillQ[i * 4]! + q[i * 4 + 1]! * stillQ[i * 4 + 1]! + q[i * 4 + 2]! * stillQ[i * 4 + 2]! + q[i * 4 + 3]! * stillQ[i * 4 + 3]!;
       if (dx * dx + dy * dy + dz * dz > this.stillMove * this.stillMove || (dot < 0 ? -dot : dot) < SLEEP_TURN) moved = true;
     }
-    if (moved) this.hold();
+    // A supported body that only creeps keeps counting toward sleep: limbs pressed between their limits and the ground drift slowly forever.
+    if (moved && !this.creeping()) this.hold();
     else this.still += seconds;
-    if (!this.supported || this.still < SLEEP_AFTER || relaxing) return true;
+    // A body held by anchors lives as long as its owner keeps it, and never sleeps.
+    if (this.nAnchored > 0 || !this.supported || this.still < SLEEP_AFTER || relaxing) return true;
     this.sleep(world);
     return false;
+  }
+
+  /** Whether it lies supported with every part moving slower than CREEP. */
+  private creeping(): boolean {
+    if (!this.supported) return false;
+    const { n, v, w, rad } = this;
+    for (let i = 0; i < n; i++) {
+      const vx = v[i * 3]!, vy = v[i * 3 + 1]!, vz = v[i * 3 + 2]!;
+      const wx = w[i * 3]!, wy = w[i * 3 + 1]!, wz = w[i * 3 + 2]!;
+      const r = rad[i]!;
+      if (vx * vx + vy * vy + vz * vz > CREEP * CREEP || (wx * wx + wy * wy + wz * wz) * r * r > CREEP * CREEP) return false;
+    }
+    return true;
   }
 
   /** Counts stillness from where the bodies are now. */
@@ -623,15 +848,28 @@ export class Ragdoll {
     }
   }
 
-  private substep(world: CollisionWorld, h: number): void {
-    const { n, x, v, w, q, px, pq } = this;
+  /** One substep of `h` seconds, ending `t` of the way through the step; `pairs` keeps limbs apart this time. */
+  private substep(world: CollisionWorld, h: number, t: number, pairs: boolean): void {
+    const { n, x, v, w, q, px, pq, anchored } = this;
     this.h = h;
     const hf = world.hf;
     for (let i = 0; i < n; i++) {
+      if (anchored[i]) {
+        for (let k = 0; k < 3; k++) {
+          px[i * 3 + k] = x[i * 3 + k]!;
+          x[i * 3 + k] = this.ax0[i * 3 + k]! + (this.ax1[i * 3 + k]! - this.ax0[i * 3 + k]!) * t;
+        }
+        for (let k = 0; k < 4; k++) pq[i * 4 + k] = q[i * 4 + k]!;
+        nlerp(q, i * 4, this.aq0, this.aq1, i * 4, t);
+        continue;
+      }
       const wet = x[i * 3 + 1]! < hf.waterAt(x[i * 3]!, x[i * 3 + 2]!);
-      const damp = 1 - (DAMP + (wet ? WATER_DAMP : 0)) * h;
-      const spinDamp = 1 - (SPIN_DAMP + (wet ? WATER_DAMP : 0)) * h;
-      v[i * 3 + 1]! -= GRAVITY * (wet ? SINKS : 1) * h;
+      // A body held up by its drives is carried by its anchors, so the air does not slow it against the ground.
+      const held = this.driveOmega[i]! > 0 && this.lift > 0;
+      const damp = 1 - ((held ? 0 : DAMP) + (wet ? WATER_DAMP : 0)) * h;
+      const spinDamp = 1 - ((held ? 0 : SPIN_DAMP) + (wet ? WATER_DAMP : 0)) * h;
+      const weight = held ? 1 - this.lift : 1;
+      v[i * 3 + 1]! -= GRAVITY * (wet ? SINKS : 1) * weight * h;
       for (let k = 0; k < 3; k++) {
         v[i * 3 + k]! *= damp;
         w[i * 3 + k]! *= spinDamp;
@@ -641,22 +879,31 @@ export class Ragdoll {
       for (let k = 0; k < 4; k++) pq[i * 4 + k] = q[i * 4 + k]!;
       this.spin(i, w[i * 3]! * h, w[i * 3 + 1]! * h, w[i * 3 + 2]! * h);
     }
-    for (let i = 0; i < n; i++) if (this.parent[i]! >= 0) this.joint(i);
+    for (let i = 0; i < n; i++) {
+      if (this.parent[i]! < 0) continue;
+      if (this.driveOmega[i]! > 0) this.drive(i, t);
+      this.joint(i);
+    }
+    if (pairs) this.apart();
     this.nc = 0;
-    for (let i = 0; i < n; i++) this.collide(world, i);
-    for (let c = 0; c < this.contactBone.length; c++) this.collide(world, this.contactOwner[c]!, c);
+    for (let i = 0; i < n; i++) if (!anchored[i]) this.collide(world, i);
+    for (let c = 0; c < this.contactBone.length; c++) if (!anchored[this.contactOwner[c]!]) this.collide(world, this.contactOwner[c]!, c);
     this.velocities(h);
+    if (pairs) this.stopPairs();
     for (let c = 0; c < this.nc; c++) this.slide(c, h);
-    // Each joint's spin against its parent damped, and stopped when slow.
-    const k = JOINT_DAMP * h < 1 ? JOINT_DAMP * h : 1;
+    // Each joint's spin against its parent damped, and stopped when slow. A drive damps its own joint besides.
     for (let i = 0; i < n; i++) {
       const p = this.parent[i]!;
       if (p < 0) continue;
+      const weights = this.invI[i]! + this.invI[p]!;
+      if (weights <= 0) continue;
+      const damping = (JOINT_DAMP + 2 * this.driveZeta[i]! * this.driveOmega[i]!) * h;
+      const k = damping < 1 ? damping : 1;
       const rx = w[p * 3]! - w[i * 3]!, ry = w[p * 3 + 1]! - w[i * 3 + 1]!, rz = w[p * 3 + 2]! - w[i * 3 + 2]!;
       const rel = Math.sqrt(rx * rx + ry * ry + rz * rz);
       if (rel < 1e-12) continue;
       const less = rel * k + JOINT_FRICTION * h;
-      const share = (less < rel ? less / rel : 1) / (this.invI[i]! + this.invI[p]!);
+      const share = (less < rel ? less / rel : 1) / weights;
       const ci = share * this.invI[i]!;
       const cp = share * this.invI[p]!;
       w[i * 3]! += rx * ci;
@@ -716,9 +963,10 @@ export class Ragdoll {
 
   /** Keeps body `i` within its swing and twist against its parent, then holds its joint to the parent's. */
   private joint(i: number): void {
-    this.limits(i, true);
     const p = this.parent[i]!;
     const { x, q, invM, invI } = this;
+    if (invM[i]! + invM[p]! <= 0) return;
+    this.limits(i, true);
     quatRotate(q, i * 4, this.jc[i * 3]!, this.jc[i * 3 + 1]!, this.jc[i * 3 + 2]!, t3, 0);
     const rcx = t3[0]!, rcy = t3[1]!, rcz = t3[2]!;
     quatRotate(q, p * 4, this.jp[i * 3]!, this.jp[i * 3 + 1]!, this.jp[i * 3 + 2]!, t3, 0);
@@ -745,6 +993,165 @@ export class Ragdoll {
   }
 
   /**
+   * Turns body `i` and its parent toward the drive's target turn between them, `t` of the way from the step's first
+   * target to its last. As a spring of the drive's frequency would, whatever the bodies weigh.
+   */
+  private drive(i: number, t: number): void {
+    const p = this.parent[i]!;
+    const { q, invI } = this;
+    const weights = invI[i]! + invI[p]!;
+    if (weights <= 0) return;
+    nlerp(aim, 0, this.dq0, this.dq1, i * 4, t);
+    // Where the child should be turned, then the turn from where it is to there.
+    mulInto(aim, 0, q, p * 4, aim, 0);
+    const bx = -q[i * 4]!, by = -q[i * 4 + 1]!, bz = -q[i * 4 + 2]!, bw = q[i * 4 + 3]!;
+    const ax = aim[0]!, ay = aim[1]!, az = aim[2]!, aw = aim[3]!;
+    let ex = aw * bx + ax * bw + ay * bz - az * by;
+    let ey = aw * by - ax * bz + ay * bw + az * bx;
+    let ez = aw * bz + ax * by - ay * bx + az * bw;
+    let ew = aw * bw - ax * bx - ay * by - az * bz;
+    if (ew < 0) { ex = -ex; ey = -ey; ez = -ez; ew = -ew; }
+    const s = Math.sqrt(ex * ex + ey * ey + ez * ez);
+    if (s < 1e-9) return;
+    const wh = this.driveOmega[i]! * this.h;
+    const turn = ((2 * detAtan2(s, ew)) / s) * ((wh * wh) / (wh * wh + 1)) / weights;
+    this.spin(i, ex * turn * invI[i]!, ey * turn * invI[i]!, ez * turn * invI[i]!);
+    this.spin(p, -ex * turn * invI[p]!, -ey * turn * invI[p]!, -ez * turn * invI[p]!);
+  }
+
+  /**
+   * Pushes apart each pair of capsules overlapping more than it may, by their shares, and holds the two points together
+   * where they would slide less than their share of the push, as a contact with the world is held.
+   */
+  private apart(): void {
+    this.np = 0;
+    const pairs = this.pairA.length;
+    // Every pair's overlap first: a limb pressed into two bodies at once answers only the deeper.
+    for (let k = 0; k < pairs; k++) {
+      const a = this.pairA[k]!, b = this.pairB[k]!;
+      overlap[k] = 0;
+      if (this.invM[a]! + this.invM[b]! <= 0) continue;
+      caps[6] = this.shape(a, -1);
+      for (let c = 0; c < 3; c++) { caps[c] = this.x[a * 3 + c]! + t3[c]!; caps[3 + c] = u3[c]!; }
+      caps[13] = this.shape(b, -1);
+      for (let c = 0; c < 3; c++) { caps[7 + c] = this.x[b * 3 + c]! + t3[c]!; caps[10 + c] = u3[c]!; }
+      const gap = closest(caps);
+      const deep = caps[6]! + caps[13]! - gap - this.pairAllow[k]!;
+      if (deep <= 0 || gap < 1e-9) continue;
+      overlap[k] = deep;
+      for (let c = 0; c < 6; c++) nearest[k * 6 + c] = near[c]!;
+    }
+    for (let k = 0; k < pairs; k++) {
+      let deep = overlap[k]!;
+      if (deep <= 0) continue;
+      const a = this.pairA[k]!, b = this.pairB[k]!;
+      let deepest = true;
+      for (let m = 0; m < pairs && deepest; m++) if (m !== k && this.pairA[m] === a && (overlap[m]! > deep || (overlap[m] === deep && m < k))) deepest = false;
+      // Two limbs both held at their limits cannot part, and pushing them would only make them creep.
+      if (!deepest || (this.held(a) && this.held(b))) continue;
+      if (deep > PUSH_OUT * this.h) deep = PUSH_OUT * this.h;
+      const p = k * 6;
+      let nx = nearest[p + 3]! - nearest[p]!, ny = nearest[p + 4]! - nearest[p + 1]!, nz = nearest[p + 5]! - nearest[p + 2]!;
+      const gap = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      nx /= gap; ny /= gap; nz /= gap;
+      // Each point in its own body's frame, then a's pushed from b's.
+      const ps = this.pressed, o = this.np * PRESSED;
+      quatUnrotate(this.q, a * 4, nearest[p]! - this.x[a * 3]!, nearest[p + 1]! - this.x[a * 3 + 1]!, nearest[p + 2]! - this.x[a * 3 + 2]!, ps, o + 4);
+      quatUnrotate(this.q, b * 4, nearest[p + 3]! - this.x[b * 3]!, nearest[p + 4]! - this.x[b * 3 + 1]!, nearest[p + 5]! - this.x[b * 3 + 2]!, ps, o + 7);
+      this.part(a, b, o, nx, ny, nz, deep);
+      // Where each point went this substep; a slide smaller than the push is undone.
+      this.travel(a, ps, o + 4, 0);
+      this.travel(b, ps, o + 7, 3);
+      let dx = near[3]! - near[0]!, dy = near[4]! - near[1]!, dz = near[5]! - near[2]!;
+      const along = dx * nx + dy * ny + dz * nz;
+      dx -= along * nx; dy -= along * ny; dz -= along * nz;
+      const slid = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (slid > 1e-12 && slid < STATIC * deep) this.part(a, b, o, -dx / slid, -dy / slid, -dz / slid, slid);
+      if (this.np >= MOST_PAIRS) continue;
+      ps[o] = k;
+      ps[o + 1] = nx; ps[o + 2] = ny; ps[o + 3] = nz;
+      ps[o + 10] = deep;
+      this.np++;
+    }
+  }
+
+  /** Moves the two points of pressed pair `o` apart by `d` along the unit line (nx, ny, nz), each by its share. */
+  private part(a: number, b: number, o: number, nx: number, ny: number, nz: number, d: number): void {
+    const ps = this.pressed;
+    quatRotate(this.q, a * 4, ps[o + 4]!, ps[o + 5]!, ps[o + 6]!, t3, 0);
+    const rax = t3[0]!, ray = t3[1]!, raz = t3[2]!;
+    quatRotate(this.q, b * 4, ps[o + 7]!, ps[o + 8]!, ps[o + 9]!, t3, 0);
+    const rbx = t3[0]!, rby = t3[1]!, rbz = t3[2]!;
+    const cax = ray * nz - raz * ny, cay = raz * nx - rax * nz, caz = rax * ny - ray * nx;
+    const cbx = rby * nz - rbz * ny, cby = rbz * nx - rbx * nz, cbz = rbx * ny - rby * nx;
+    const wa = this.invM[a]! + this.invI[a]! * (cax * cax + cay * cay + caz * caz);
+    const wb = this.invM[b]! + this.invI[b]! * (cbx * cbx + cby * cby + cbz * cbz);
+    const l = d / (wa + wb);
+    if (wa > 0) this.push(a, rax, ray, raz, -nx * l * wa, -ny * l * wa, -nz * l * wa);
+    if (wb > 0) this.push(b, rbx, rby, rbz, nx * l * wb, ny * l * wb, nz * l * wb);
+  }
+
+  /** How far body `i`'s point (in its frame at `at`) moved this substep, into near at `to`. */
+  private travel(i: number, local: Float64Array, at: number, to: number): void {
+    quatRotate(this.q, i * 4, local[at]!, local[at + 1]!, local[at + 2]!, t3, 0);
+    quatRotate(this.pq, i * 4, local[at]!, local[at + 1]!, local[at + 2]!, u3, 0);
+    for (let c = 0; c < 3; c++) near[to + c] = this.x[i * 3 + c]! + t3[c]! - this.px[i * 3 + c]! - u3[c]!;
+  }
+
+  /** Whether body `i` cannot turn further: an anchor, or one at its swing or twist limit against its parent. */
+  private held(i: number): boolean {
+    if (this.anchored[i]) return true;
+    if (this.parent[i]! < 0) return false;
+    this.limits(i, false);
+    return t3[0]! >= this.swingNow[i]! - HELD || t3[1]! >= this.twistNow[i]! - HELD;
+  }
+
+  /**
+   * Stops the two points of each pair pushed apart this substep moving across the pair, as a contact with the world is
+   * stopped, and slows their sliding along it by friction as strong as the push.
+   */
+  private stopPairs(): void {
+    const { q, pressed: ps } = this;
+    for (let c = 0; c < this.np; c++) {
+      const o = c * PRESSED, k = ps[o]!, a = this.pairA[k]!, b = this.pairB[k]!;
+      quatRotate(q, a * 4, ps[o + 4]!, ps[o + 5]!, ps[o + 6]!, t3, 0);
+      const rax = t3[0]!, ray = t3[1]!, raz = t3[2]!;
+      quatRotate(q, b * 4, ps[o + 7]!, ps[o + 8]!, ps[o + 9]!, t3, 0);
+      const rbx = t3[0]!, rby = t3[1]!, rbz = t3[2]!;
+      this.stopAlong(a, b, rax, ray, raz, rbx, rby, rbz, ps[o + 1]!, ps[o + 2]!, ps[o + 3]!, 1);
+      this.relative(a, b, rax, ray, raz, rbx, rby, rbz);
+      const sx = u3[0]!, sy = u3[1]!, sz = u3[2]!, slide = Math.sqrt(sx * sx + sy * sy + sz * sz);
+      if (slide < 1e-9) continue;
+      const most = (DYNAMIC * ps[o + 10]!) / this.h;
+      this.stopAlong(a, b, rax, ray, raz, rbx, rby, rbz, sx / slide, sy / slide, sz / slide, most < slide ? most / slide : 1);
+    }
+  }
+
+  /** How fast b's point (rb from its centre) moves against a's point (ra from its centre), into u3. */
+  private relative(a: number, b: number, rax: number, ray: number, raz: number, rbx: number, rby: number, rbz: number): void {
+    const { v, w } = this;
+    u3[0] = v[b * 3]! + w[b * 3 + 1]! * rbz - w[b * 3 + 2]! * rby - (v[a * 3]! + w[a * 3 + 1]! * raz - w[a * 3 + 2]! * ray);
+    u3[1] = v[b * 3 + 1]! + w[b * 3 + 2]! * rbx - w[b * 3]! * rbz - (v[a * 3 + 1]! + w[a * 3 + 2]! * rax - w[a * 3]! * raz);
+    u3[2] = v[b * 3 + 2]! + w[b * 3]! * rby - w[b * 3 + 1]! * rbx - (v[a * 3 + 2]! + w[a * 3]! * ray - w[a * 3 + 1]! * rax);
+  }
+
+  /** Takes `share` of the two points' speed against each other along the unit line (nx, ny, nz), by an impulse each takes its share of. */
+  private stopAlong(a: number, b: number, rax: number, ray: number, raz: number, rbx: number, rby: number, rbz: number, nx: number, ny: number, nz: number, share: number): void {
+    const { v, w, invM, invI } = this;
+    this.relative(a, b, rax, ray, raz, rbx, rby, rbz);
+    const vn = u3[0]! * nx + u3[1]! * ny + u3[2]! * nz;
+    const cax = ray * nz - raz * ny, cay = raz * nx - rax * nz, caz = rax * ny - ray * nx;
+    const cbx = rby * nz - rbz * ny, cby = rbz * nx - rbx * nz, cbz = rbx * ny - rby * nx;
+    const weights = invM[a]! + invI[a]! * (cax * cax + cay * cay + caz * caz) + invM[b]! + invI[b]! * (cbx * cbx + cby * cby + cbz * cbz);
+    if (weights <= 0) return;
+    const j = (vn * share) / weights;
+    v[a * 3]! += nx * j * invM[a]!; v[a * 3 + 1]! += ny * j * invM[a]!; v[a * 3 + 2]! += nz * j * invM[a]!;
+    w[a * 3]! += cax * j * invI[a]!; w[a * 3 + 1]! += cay * j * invI[a]!; w[a * 3 + 2]! += caz * j * invI[a]!;
+    v[b * 3]! -= nx * j * invM[b]!; v[b * 3 + 1]! -= ny * j * invM[b]!; v[b * 3 + 2]! -= nz * j * invM[b]!;
+    w[b * 3]! -= cbx * j * invI[b]!; w[b * 3 + 1]! -= cby * j * invI[b]!; w[b * 3 + 2]! -= cbz * j * invI[b]!;
+  }
+
+  /**
    * Measures body `i`'s swing and twist against its parent into t3[0] and t3[1]. With `hold`, first turns the two bodies
    * back within the limits now, each by its share.
    */
@@ -763,6 +1170,7 @@ export class Ragdoll {
     const nx = apy * acz - apz * acy, ny = apz * acx - apx * acz, nz = apx * acy - apy * acx;
     const s = Math.sqrt(nx * nx + ny * ny + nz * nz);
     const swing = detAtan2(s, apx * acx + apy * acy + apz * acz);
+    if (hold && wsum <= 0) hold = false;
     if (hold && swing > this.swingNow[i]! && s > 1e-9) {
       // Turning the parent about a_p x a_c brings a_p toward a_c, and the child the other way brings a_c back.
       const turn = (swing - this.swingNow[i]!) / (s * wsum);
@@ -1110,6 +1518,62 @@ export class Ragdoll {
 
 /** least x, least z, most x, most z. */
 const box = new Float64Array(4);
+/** Two capsules: centre, half segment and radius of each. */
+const caps = new Float64Array(14);
+/** The nearest points of the last two segments measured, the first's then the second's. */
+const near = new Float64Array(6);
+/** Each pair's overlap past what it may, and its two nearest points, in one substep. */
+const overlap = new Float64Array(MOST_PAIRS);
+const nearest = new Float64Array(MOST_PAIRS * 6);
+/** A turn about +Y, and a drive's aim. */
+const face = new Float64Array([0, 0, 0, 1]);
+const aim = new Float64Array(4);
+const IDENTITY = [0, 0, 0, 1];
+
+/** out at o = a and b at i blended `t` of the way, the shorter way round, made whole again. */
+function nlerp(out: Float64Array, o: number, a: Float64Array, b: Float64Array, i: number, t: number): void {
+  const sign = a[i]! * b[i]! + a[i + 1]! * b[i + 1]! + a[i + 2]! * b[i + 2]! + a[i + 3]! * b[i + 3]! < 0 ? -1 : 1;
+  let l = 0;
+  for (let k = 0; k < 4; k++) {
+    const v = a[i + k]! + (b[i + k]! * sign - a[i + k]!) * t;
+    out[o + k] = v;
+    l += v * v;
+  }
+  l = 1 / Math.sqrt(l);
+  for (let k = 0; k < 4; k++) out[o + k]! *= l;
+}
+
+/** How far apart the two segments in `caps` come, with their nearest points into `near`. */
+function closest(c: Float64Array): number {
+  const d1x = 2 * c[3]!, d1y = 2 * c[4]!, d1z = 2 * c[5]!, d2x = 2 * c[10]!, d2y = 2 * c[11]!, d2z = 2 * c[12]!;
+  const p1x = c[0]! - c[3]!, p1y = c[1]! - c[4]!, p1z = c[2]! - c[5]!;
+  const p2x = c[7]! - c[10]!, p2y = c[8]! - c[11]!, p2z = c[9]! - c[12]!;
+  const rx = p1x - p2x, ry = p1y - p2y, rz = p1z - p2z;
+  const a = d1x * d1x + d1y * d1y + d1z * d1z, e = d2x * d2x + d2y * d2y + d2z * d2z, f = d2x * rx + d2y * ry + d2z * rz;
+  let s = 0, t = 0;
+  if (a > 1e-12 || e > 1e-12) {
+    if (a <= 1e-12) t = unit(f / e);
+    else {
+      const cc = d1x * rx + d1y * ry + d1z * rz;
+      if (e <= 1e-12) s = unit(-cc / a);
+      else {
+        const b = d1x * d2x + d1y * d2y + d1z * d2z, denom = a * e - b * b;
+        s = denom > 1e-12 ? unit((b * f - cc * e) / denom) : 0;
+        t = (b * s + f) / e;
+        if (t < 0) { t = 0; s = unit(-cc / a); }
+        else if (t > 1) { t = 1; s = unit((b - cc) / a); }
+      }
+    }
+  }
+  near[0] = p1x + d1x * s; near[1] = p1y + d1y * s; near[2] = p1z + d1z * s;
+  near[3] = p2x + d2x * t; near[4] = p2y + d2y * t; near[5] = p2z + d2z * t;
+  const dx = near[3]! - near[0]!, dy = near[4]! - near[1]!, dz = near[5]! - near[2]!;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function unit(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
 
 function set3(a: Float64Array, i: number, x: number, y: number, z: number): void {
   a[i * 3] = x;
