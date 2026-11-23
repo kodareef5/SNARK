@@ -243,6 +243,13 @@ export interface Host {
   readonly falls: Falls;
   /** Survivors reeling from blows (server/reactions.ts). */
   readonly reactions: Reactions;
+  /**
+   * Knocks survivor `e` off its feet as a blow does, moving as it moves now and turning at (wx, wy, wz): a ragdoll where
+   * the fall budget has room, a topple by its reaction where it has not (server/falls.ts, server/reactions.ts).
+   */
+  knock(e: number, wx?: number, wy?: number, wz?: number): void;
+  /** What the ragdoll checkpoints sent to clients have cost (server/corpse-motion.ts). */
+  readonly corpseMotion: { readonly stats: { readonly bytes: number; readonly checkpoints: number; readonly corrections: number; readonly deferred: number } };
   readonly balls: Balls;
   /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
   readonly mounts: Mounts;
@@ -1946,6 +1953,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     loose,
     falls,
     reactions,
+    knock: (e, wx = 0, wy = 0, wz = 0) => knockDown(e, wx, wy, wz),
+    corpseMotion: corpseReplication,
     balls,
     mounts,
     overhead,
