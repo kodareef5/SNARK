@@ -64,7 +64,19 @@ function bracedAtRest(s: VehicleState, p: VehicleSpec, w: VehicleWorld): boolean
 }
 
 
-export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCondition" | "engineOn" | "hullCondition" | "flooding">>, input: VehicleInput, p: VehicleSpec, w: VehicleWorld): VehicleStep {
+type ChassisState = VehicleState & Partial<Pick<CarState, "engineCondition" | "engineOn" | "hullCondition" | "flooding">>;
+
+type TickState = VehicleState & Required<Pick<CarState, "engineCondition" | "engineOn" | "hullCondition" | "flooding">>;
+
+/** One body's tick, split so a tractor and its trailer can take their substeps in turn (vehicle-hitch.ts). */
+export interface VehicleTick {
+  s: TickState; input: VehicleInput; p: VehicleSpec; w: VehicleWorld; result: VehicleStep; contacts: VehicleContactQueries<VehicleState>;
+  throttle: number; steer: number; brake: number; gravity: number; mass: number; ix: number; iy: number; iz: number; massRatio: number;
+  drivetrain: NonNullable<VehicleSpec["drivetrain"]>; thrusters: VehicleSpec["thrusters"]; restingContact: boolean; beforeFuel: number;
+  startX: number; startY: number; startZ: number; startQx: number; startQy: number; startQz: number; startQw: number;
+}
+
+export function beginVehicleTick(s: ChassisState, input: VehicleInput, p: VehicleSpec, w: VehicleWorld): VehicleTick {
   const result: VehicleStep = { blocked: null, impactSpeed: 0, landSpeed: 0, fuelUsed: 0, surface: "air", water: false, immersion: 0 };
   const contacts: VehicleContactQueries<VehicleState> = {
     contact: (from, to) => w.contact(from, to, p),
@@ -72,7 +84,7 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
     breakContact: w.breakContact ? (state, hit) => w.breakContact!(state, p, hit) : undefined,
   };
   const throttle = command(input.throttle, -1, 1), steer = command(input.steer, -1, 1), brake = command(input.brake, 0, 1);
-  const dt = TICK_DT / 4, beforeFuel = s.fuel, gravity = p.gravity ?? 18;
+  const beforeFuel = s.fuel, gravity = p.gravity ?? 18;
   const { mass, ix, iy, iz } = vehicleMassProperties(p, s), massRatio = (p.mass ?? 1100) / mass;
   const drivetrain = p.drivetrain ?? DEFAULT_DRIVETRAIN;
   s.engineCondition ??= 1; s.hullCondition ??= 1; s.flooding ??= 0; s.engineOn ??= s.fuel > 0;
@@ -80,121 +92,128 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
   else if (Math.abs(throttle) > .01) s.engineOn = true;
   const thrusters = p.thrusters;
   if (thrusters) beginThrusterTick(s, input.pilot === false ? { throttle: 0, steer: 0 } : { boost: input.boost, burst: input.burst, throttle, steer }, thrusters);
-  let restingContact = false;
-  const startX = s.x, startY = s.y, startZ = s.z;
-  vehicleRotation(s, q); const startQx = q[0]!, startQy = q[1]!, startQz = q[2]!, startQw = q[3]!;
-  for (let substep = 0; substep < 4; substep++) {
-    integrateVehiclePose(s, p, 0); vehicleRotation(s, q);
-    if (substep === 0) separateVehicleOverlap(s, contacts);
-    quatRotate(q, 0, 0, 1, 0, up, 0); quatRotate(q, 0, 0, 0, 1, ahead, 0);
-    const prior = { ...s }, wasGrounded = s.grounded;
-    const water = applyCarWater(s, p, w, dt);
-    result.water ||= water.immersion > .001; result.immersion = Math.max(result.immersion ?? 0, water.immersion);
-    const forward = s.vx * ahead[0]! + s.vy * ahead[1]! + s.vz * ahead[2]!;
-    const limit = p.maxSteer / (1 + square(Math.abs(forward) / (p.steerSpeed ?? 18)));
-    s.steering = approach(s.steering, steer * limit, p.steerRate * (steer === 0 ? 1.35 : 1) * dt);
-    wheelSupports(s, p, w, mass);
-    s.grounded = wheels.some(wheel => wheel.load > mass * gravity * .01);
-    const mechanical = stepDrivetrain(s, { throttle, forward, wheelRadius: p.wheelRadius, running: s.engineOn,
-      disengaged: brake > 0 || input.handbrake || !s.grounded || water.immersion > .75, neutral: input.neutral === true }, drivetrain, dt);
-    const spent = Math.min(s.fuel, s.engineOn ? Math.abs(throttle) * p.fuelPerSecond * dt : 0); s.fuel -= spent;
-    if (!(thrusters && thrustActive(s.thrust ?? 0)) && wheels.length === 0 && prior.grounded && (water.immersion === 0 || s.flooding >= .999) && len3(s.vx, s.vy, s.vz) < .001 && len3(s.pitchRate, s.yawRate, s.rollRate) < .001) {
-      const support = restingContact ? null : w.contact(s, { ...s, y: s.y - .01 }, p);
-      if (restingContact || support?.balanced && len3(support.nx, 0, support.nz) < support.ny * .45 || bracedAtRest(s, p, w)) {
-        restingContact = true;
-        s.grounded = true; result.surface = "ground"; s.rideVelocity = 0; continue;
-      }
+  vehicleRotation(s, q);
+  return { s: s as TickState, input, p, w, result, contacts, throttle, steer, brake, gravity, mass, ix, iy, iz, massRatio, drivetrain, thrusters, restingContact: false, beforeFuel,
+    startX: s.x, startY: s.y, startZ: s.z, startQx: q[0]!, startQy: q[1]!, startQz: q[2]!, startQw: q[3]! };
+}
+
+/** Substep `substep` of four. */
+export function vehicleSubstep(t: VehicleTick, substep: number): void {
+  const { s, input, p, w, result, contacts, throttle, steer, brake, gravity, mass, ix, iy, iz, massRatio, drivetrain, thrusters } = t, dt = TICK_DT / 4;
+  integrateVehiclePose(s, p, 0); vehicleRotation(s, q);
+  if (substep === 0) separateVehicleOverlap(s, contacts);
+  quatRotate(q, 0, 0, 1, 0, up, 0); quatRotate(q, 0, 0, 0, 1, ahead, 0);
+  const prior = { ...s }, wasGrounded = s.grounded;
+  const water = applyCarWater(s, p, w, dt);
+  result.water ||= water.immersion > .001; result.immersion = Math.max(result.immersion ?? 0, water.immersion);
+  const forward = s.vx * ahead[0]! + s.vy * ahead[1]! + s.vz * ahead[2]!;
+  const limit = p.maxSteer / (1 + square(Math.abs(forward) / (p.steerSpeed ?? 18)));
+  s.steering = approach(s.steering, steer * limit, p.steerRate * (steer === 0 ? 1.35 : 1) * dt);
+  wheelSupports(s, p, w, mass);
+  s.grounded = wheels.some(wheel => wheel.load > mass * gravity * .01);
+  const mechanical = stepDrivetrain(s, { throttle, forward, wheelRadius: p.wheelRadius, running: s.engineOn,
+    disengaged: brake > 0 || input.handbrake || !s.grounded || water.immersion > .75, neutral: input.neutral === true }, drivetrain, dt);
+  const spent = Math.min(s.fuel, s.engineOn ? Math.abs(throttle) * p.fuelPerSecond * dt : 0); s.fuel -= spent;
+  if (!(thrusters && thrustActive(s.thrust ?? 0)) && wheels.length === 0 && prior.grounded && (water.immersion === 0 || s.flooding >= .999) && len3(s.vx, s.vy, s.vz) < .001 && len3(s.pitchRate, s.yawRate, s.rollRate) < .001) {
+    const support = t.restingContact ? null : w.contact(s, { ...s, y: s.y - .01 }, p);
+    if (t.restingContact || support?.balanced && len3(support.nx, 0, support.nz) < support.ny * .45 || bracedAtRest(s, p, w)) {
+      t.restingContact = true;
+      s.grounded = true; result.surface = "ground"; s.rideVelocity = 0; return;
     }
-    s.vy -= gravity * dt;
-    if (thrusters) applyThrusters(s, p, thrusters, ahead, w, dt);
-    if (p.downforce && forward > 0 && water.immersion === 0) {
-      // Acting at the centre of mass loads the suspension naturally. Do not create a levelling torque in flight.
-      const impulse = p.downforce * forward * forward * dt / mass;
-      s.vx -= up[0]! * impulse; s.vy -= up[1]! * impulse; s.vz -= up[2]! * impulse;
-    }
-    let totalLoad = 0, averageOffset = 0, normalX = 0, normalY = 0, normalZ = 0;
-    for (const wheel of wheels) {
-      totalLoad += wheel.load; averageOffset += wheel.offset;
-      normalX += wheel.nx; normalY += wheel.ny; normalZ += wheel.nz;
-      applyVehicleImpulse(s, p, wheel.x, wheel.y, wheel.z, wheel.nx * wheel.load * dt, wheel.ny * wheel.load * dt, wheel.nz * wheel.load * dt);
-      if (!wasGrounded) result.landSpeed = Math.max(result.landSpeed, wheel.closing);
-    }
-    const previousOffset = s.rideOffset;
-    s.rideOffset = wheels.length ? clamp(averageOffset / wheels.length, -(p.suspensionTravel ?? .18), p.suspensionTravel ?? .18) : p.suspensionTravel ?? .18;
-    s.rideVelocity = (s.rideOffset - previousOffset) / dt;
-    if (wheels.length) {
-      const sn = detSin(s.yaw), cs = detCos(s.yaw);
-      s.groundPitch = detAtan2(-(normalX * sn + normalZ * cs), normalY);
-      s.groundRoll = detAtan2(normalX * cs - normalZ * sn, normalY);
-      result.surface = wheels.reduce((least, wheel) => wheel.surface.grip < least.grip ? wheel.surface : least, wheels[0]!.surface).id;
-    }
-    const pedal = brake * (.25 + .75 * brake);
-    const serviceBrake = p.brake * massRatio * Math.max(pedal, mechanical.opposingBrake);
-    const tyreState = { ...s };
-    // A parking brake still has finite grip while a parked car is sliding. Speed must not switch that grip off.
-    // At driving speed a piloted handbrake retains the authored rear-wheel drift behaviour.
-    const staticParking = serviceBrake > 0 && len3(s.vx, s.vy, s.vz) < 8 || input.handbrake && (input.pilot === false || Math.abs(forward) < 4) ||
-      Math.abs(mechanical.drive) < .01 && len3(s.vx, s.vy, s.vz) < .01;
-    if (!staticParking) for (const wheel of wheels) {
-      if (wheel.load <= 0) continue;
-      const steering = wheel.front ? s.steering : 0;
-      quatRotate(q, 0, detSin(steering), 0, detCos(steering), local, 0);
-      const dot = local[0]! * wheel.nx + local[1]! * wheel.ny + local[2]! * wheel.nz;
-      let fx = local[0]! - dot * wheel.nx, fy = local[1]! - dot * wheel.ny, fz = local[2]! - dot * wheel.nz;
-      const length = len3(fx, fy, fz); if (length < .01) continue;
-      fx /= length; fy /= length; fz /= length;
-      const sx = wheel.ny * fz - wheel.nz * fy, sy = wheel.nz * fx - wheel.nx * fz, sz = wheel.nx * fy - wheel.ny * fx;
-      vehiclePointVelocity(tyreState, p, wheel.x, wheel.y, wheel.z, pointV);
-      let along = pointV[0]! * fx + pointV[1]! * fy + pointV[2]! * fz;
-      const side = pointV[0]! * sx + pointV[1]! * sy + pointV[2]! * sz;
-      const share = wheel.load / Math.max(totalLoad, 1), grip = wheel.load / gravity * wheel.surface.grip * (wheel.front ? p.frontGrip ?? 1.08 : p.rearGrip ?? 1.05);
-      const resistance = wheel.surface.rolling * mass + wheel.surface.drag * along * along * mass * (p.dragScale ?? 1) + mechanical.engineDrag;
-      let torqueShare = share;
-      if (p.frontDriveShare !== undefined) {
-        const rearWheels = 2 * ((p.axles?.length ?? 2) - 1);
-        torqueShare = wheel.front ? p.frontDriveShare / 2 : (1 - p.frontDriveShare) / rearWheels;
-      }
-      let drive = s.engineOn ? mechanical.drive * (p.drivetrain ? 1 : p.acceleration / 8) * torqueShare : 0;
-      drive = clamp(drive, -grip * .95, grip * .95);
-      if (drive > 0) drive = Math.min(drive, Math.max(0, resistance * share + (p.maxForward - forward) / dt * mass * share));
-      else if (drive < 0) drive = Math.max(drive, Math.min(0, -resistance * share + (-p.maxReverse - forward) / dt * mass * share));
-      const braking = Math.max(serviceBrake, input.handbrake && !wheel.front ? p.brake * massRatio * 1.6 : 0);
-      let stoppingMass = mass * share;
-      if (braking > 0 && Math.abs(along) < .5) {
-        vehiclePointVelocity(s, p, wheel.x, wheel.y, wheel.z, pointV);
-        along = pointV[0]! * fx + pointV[1]! * fy + pointV[2]! * fz;
-        stoppingMass = 1 / vehiclePointInverseMass(s, p, wheel.x, wheel.y, wheel.z, fx, fy, fz);
-      }
-      const slowing = Math.min(Math.abs(along) * stoppingMass / dt, (braking * mass + resistance) * share);
-      const longBudget = input.handbrake && Math.abs(along) < .5 ? Math.max(grip, wheel.load * 1.3 * clamp(wheel.surface.grip / 7, 0, 1)) : grip * (braking > 0 ? 1.6 : 1);
-      const longitudinal = clamp(drive - Math.sign(along) * slowing, -longBudget, longBudget);
-      const use = Math.min(.98, Math.abs(longitudinal) / Math.max(longBudget, 1));
-      const lateralBudget = grip * Math.sqrt(1 - use * use) * (!wheel.front && input.handbrake ? p.handbrakeGrip ?? .18 : 1);
-      const sideForce = clamp(-side * (p.corneringStiffness ?? 7) * mass * share, -lateralBudget, lateralBudget);
-      applyVehicleImpulse(s, p, wheel.x, wheel.y, wheel.z, (fx * longitudinal + sx * sideForce) * dt, (fy * longitudinal + sy * sideForce) * dt, (fz * longitudinal + sz * sideForce) * dt);
-    }
-    const supportedRest = staticParking && holdParkedTyres(s, p, wheels, serviceBrake > 0, input.handbrake, dt);
-    // Body-axis angular momentum transport, plus finite damping; no target upright attitude or air control.
-    const wx = -s.pitchRate, wy = s.yawRate, wz = s.rollRate;
-    s.pitchRate += (iz - iy) * wy * wz / ix * dt;
-    s.yawRate += (iz - ix) * wz * wx / iy * dt;
-    s.rollRate += (ix - iy) * wx * wy / iz * dt;
-    s.yawRate *= Math.max(0, 1 - (s.grounded ? p.yawDamping ?? .8 : .08) * dt);
-    const air = Math.max(0, 1 - (p.airDrag ?? .04) * dt);
-    if (!s.grounded) { s.vx *= air; s.vz *= air; }
-    dragCarInWater(s, water.immersion, dt);
-    if (supportedRest && water.immersion === 0 && len3(s.vx, s.vy, s.vz) < .002 && len3(s.pitchRate, s.yawRate, s.rollRate) < .002 && Math.abs(s.rideVelocity) < .002) {
-      s.vx = s.vy = s.vz = s.pitchRate = s.yawRate = s.rollRate = s.rideVelocity = 0;
-    }
-    s.vx = clamp(s.vx, -120, 120); s.vy = clamp(s.vy, -100, 100); s.vz = clamp(s.vz, -120, 120);
-    s.pitchRate = clamp(s.pitchRate, -12, 12); s.yawRate = clamp(s.yawRate, -12, 12); s.rollRate = clamp(s.rollRate, -12, 12);
-    integrateVehiclePose(s, p, dt); resolveVehicleContacts(s, prior, p, contacts, dt, result); integrateVehiclePose(s, p, 0);
-    s.vx = clamp(s.vx, -120, 120); s.vy = clamp(s.vy, -100, 100); s.vz = clamp(s.vz, -120, 120);
-    s.pitchRate = clamp(s.pitchRate, -12, 12); s.yawRate = clamp(s.yawRate, -12, 12); s.rollRate = clamp(s.rollRate, -12, 12);
-    s.wheelAngle = wrap(s.wheelAngle + forward * dt / p.wheelRadius);
   }
+  s.vy -= gravity * dt;
+  if (thrusters) applyThrusters(s, p, thrusters, ahead, w, dt);
+  if (p.downforce && forward > 0 && water.immersion === 0) {
+    // Acting at the centre of mass loads the suspension naturally. Do not create a levelling torque in flight.
+    const impulse = p.downforce * forward * forward * dt / mass;
+    s.vx -= up[0]! * impulse; s.vy -= up[1]! * impulse; s.vz -= up[2]! * impulse;
+  }
+  let totalLoad = 0, averageOffset = 0, normalX = 0, normalY = 0, normalZ = 0;
+  for (const wheel of wheels) {
+    totalLoad += wheel.load; averageOffset += wheel.offset;
+    normalX += wheel.nx; normalY += wheel.ny; normalZ += wheel.nz;
+    applyVehicleImpulse(s, p, wheel.x, wheel.y, wheel.z, wheel.nx * wheel.load * dt, wheel.ny * wheel.load * dt, wheel.nz * wheel.load * dt);
+    if (!wasGrounded) result.landSpeed = Math.max(result.landSpeed, wheel.closing);
+  }
+  const previousOffset = s.rideOffset;
+  s.rideOffset = wheels.length ? clamp(averageOffset / wheels.length, -(p.suspensionTravel ?? .18), p.suspensionTravel ?? .18) : p.suspensionTravel ?? .18;
+  s.rideVelocity = (s.rideOffset - previousOffset) / dt;
+  if (wheels.length) {
+    const sn = detSin(s.yaw), cs = detCos(s.yaw);
+    s.groundPitch = detAtan2(-(normalX * sn + normalZ * cs), normalY);
+    s.groundRoll = detAtan2(normalX * cs - normalZ * sn, normalY);
+    result.surface = wheels.reduce((least, wheel) => wheel.surface.grip < least.grip ? wheel.surface : least, wheels[0]!.surface).id;
+  }
+  const pedal = brake * (.25 + .75 * brake);
+  const serviceBrake = p.brake * massRatio * Math.max(pedal, mechanical.opposingBrake);
+  const tyreState = { ...s };
+  // A parking brake still has finite grip while a parked car is sliding. Speed must not switch that grip off.
+  // At driving speed a piloted handbrake retains the authored rear-wheel drift behaviour.
+  const staticParking = serviceBrake > 0 && len3(s.vx, s.vy, s.vz) < 8 || input.handbrake && (input.pilot === false || Math.abs(forward) < 4) ||
+    Math.abs(mechanical.drive) < .01 && len3(s.vx, s.vy, s.vz) < .01;
+  if (!staticParking) for (const wheel of wheels) {
+    if (wheel.load <= 0) continue;
+    const steering = wheel.front ? s.steering : 0;
+    quatRotate(q, 0, detSin(steering), 0, detCos(steering), local, 0);
+    const dot = local[0]! * wheel.nx + local[1]! * wheel.ny + local[2]! * wheel.nz;
+    let fx = local[0]! - dot * wheel.nx, fy = local[1]! - dot * wheel.ny, fz = local[2]! - dot * wheel.nz;
+    const length = len3(fx, fy, fz); if (length < .01) continue;
+    fx /= length; fy /= length; fz /= length;
+    const sx = wheel.ny * fz - wheel.nz * fy, sy = wheel.nz * fx - wheel.nx * fz, sz = wheel.nx * fy - wheel.ny * fx;
+    vehiclePointVelocity(tyreState, p, wheel.x, wheel.y, wheel.z, pointV);
+    let along = pointV[0]! * fx + pointV[1]! * fy + pointV[2]! * fz;
+    const side = pointV[0]! * sx + pointV[1]! * sy + pointV[2]! * sz;
+    const share = wheel.load / Math.max(totalLoad, 1), grip = wheel.load / gravity * wheel.surface.grip * (wheel.front ? p.frontGrip ?? 1.08 : p.rearGrip ?? 1.05);
+    const resistance = wheel.surface.rolling * mass + wheel.surface.drag * along * along * mass * (p.dragScale ?? 1) + mechanical.engineDrag;
+    let torqueShare = share;
+    if (p.frontDriveShare !== undefined) {
+      const rearWheels = 2 * ((p.axles?.length ?? 2) - 1);
+      torqueShare = wheel.front ? p.frontDriveShare / 2 : (1 - p.frontDriveShare) / rearWheels;
+    }
+    let drive = s.engineOn ? mechanical.drive * (p.drivetrain ? 1 : p.acceleration / 8) * torqueShare : 0;
+    drive = clamp(drive, -grip * .95, grip * .95);
+    if (drive > 0) drive = Math.min(drive, Math.max(0, resistance * share + (p.maxForward - forward) / dt * mass * share));
+    else if (drive < 0) drive = Math.max(drive, Math.min(0, -resistance * share + (-p.maxReverse - forward) / dt * mass * share));
+    const braking = Math.max(serviceBrake, input.handbrake && !wheel.front ? p.brake * massRatio * 1.6 : 0);
+    let stoppingMass = mass * share;
+    if (braking > 0 && Math.abs(along) < .5) {
+      vehiclePointVelocity(s, p, wheel.x, wheel.y, wheel.z, pointV);
+      along = pointV[0]! * fx + pointV[1]! * fy + pointV[2]! * fz;
+      stoppingMass = 1 / vehiclePointInverseMass(s, p, wheel.x, wheel.y, wheel.z, fx, fy, fz);
+    }
+    const slowing = Math.min(Math.abs(along) * stoppingMass / dt, (braking * mass + resistance) * share);
+    const longBudget = input.handbrake && Math.abs(along) < .5 ? Math.max(grip, wheel.load * 1.3 * clamp(wheel.surface.grip / 7, 0, 1)) : grip * (braking > 0 ? 1.6 : 1);
+    const longitudinal = clamp(drive - Math.sign(along) * slowing, -longBudget, longBudget);
+    const use = Math.min(.98, Math.abs(longitudinal) / Math.max(longBudget, 1));
+    const lateralBudget = grip * Math.sqrt(1 - use * use) * (!wheel.front && input.handbrake ? p.handbrakeGrip ?? .18 : 1);
+    const sideForce = clamp(-side * (p.corneringStiffness ?? 7) * mass * share, -lateralBudget, lateralBudget);
+    applyVehicleImpulse(s, p, wheel.x, wheel.y, wheel.z, (fx * longitudinal + sx * sideForce) * dt, (fy * longitudinal + sy * sideForce) * dt, (fz * longitudinal + sz * sideForce) * dt);
+  }
+  const supportedRest = staticParking && holdParkedTyres(s, p, wheels, serviceBrake > 0, input.handbrake, dt);
+  // Body-axis angular momentum transport, plus finite damping; no target upright attitude or air control.
+  const wx = -s.pitchRate, wy = s.yawRate, wz = s.rollRate;
+  s.pitchRate += (iz - iy) * wy * wz / ix * dt;
+  s.yawRate += (iz - ix) * wz * wx / iy * dt;
+  s.rollRate += (ix - iy) * wx * wy / iz * dt;
+  s.yawRate *= Math.max(0, 1 - (s.grounded ? p.yawDamping ?? .8 : .08) * dt);
+  const air = Math.max(0, 1 - (p.airDrag ?? .04) * dt);
+  if (!s.grounded) { s.vx *= air; s.vz *= air; }
+  dragCarInWater(s, water.immersion, dt);
+  if (supportedRest && water.immersion === 0 && len3(s.vx, s.vy, s.vz) < .002 && len3(s.pitchRate, s.yawRate, s.rollRate) < .002 && Math.abs(s.rideVelocity) < .002) {
+    s.vx = s.vy = s.vz = s.pitchRate = s.yawRate = s.rollRate = s.rideVelocity = 0;
+  }
+  s.vx = clamp(s.vx, -120, 120); s.vy = clamp(s.vy, -100, 100); s.vz = clamp(s.vz, -120, 120);
+  s.pitchRate = clamp(s.pitchRate, -12, 12); s.yawRate = clamp(s.yawRate, -12, 12); s.rollRate = clamp(s.rollRate, -12, 12);
+  integrateVehiclePose(s, p, dt); resolveVehicleContacts(s, prior, p, contacts, dt, result); integrateVehiclePose(s, p, 0);
+  s.vx = clamp(s.vx, -120, 120); s.vy = clamp(s.vy, -100, 100); s.vz = clamp(s.vz, -120, 120);
+  s.pitchRate = clamp(s.pitchRate, -12, 12); s.yawRate = clamp(s.yawRate, -12, 12); s.rollRate = clamp(s.rollRate, -12, 12);
+  s.wheelAngle = wrap(s.wheelAngle + forward * dt / p.wheelRadius);
+}
+
+export function endVehicleTick(t: VehicleTick): VehicleStep {
+  const { s, p, w, result, contacts, thrusters, beforeFuel, startX, startY, startZ, startQx, startQy, startQz, startQw } = t;
   if (thrusters) endThrusterTick(s, thrusters);
-  if (!restingContact && wheels.length === 0 && len3(s.vx, s.vy, s.vz) < .4 && len3(s.pitchRate, s.yawRate, s.rollRate) < .4) {
+  if (!t.restingContact && wheels.length === 0 && len3(s.vx, s.vy, s.vz) < .4 && len3(s.pitchRate, s.yawRate, s.rollRate) < .4) {
     separateVehicleOverlap(s, contacts);
     const support = w.contact(s, { ...s, y: s.y - .01 }, p);
     const balanced = support?.balanced && len3(support.nx, 0, support.nz) < support.ny * .45;
@@ -210,4 +229,10 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
   if (result.water) result.surface = "water";
   if (!s.engineOn && s.engineRpm < .01) s.engineRpm = 0;
   return result;
+}
+
+export function stepVehicle(s: ChassisState, input: VehicleInput, p: VehicleSpec, w: VehicleWorld): VehicleStep {
+  const t = beginVehicleTick(s, input, p, w);
+  for (let substep = 0; substep < 4; substep++) vehicleSubstep(t, substep);
+  return endVehicleTick(t);
 }
