@@ -2,15 +2,18 @@
 // and the rules nearcity.test.ts holds on a small city, walked here through a real downtown's 28,000 pieces.
 
 import { expect, test } from "bun:test";
-import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, pieceWeight } from "../../client/core/render/nearcity.ts";
+import { tierOf } from "../../client/core/assets/tiers.ts";
+import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, nearMeshSlot, pieceWeight } from "../../client/core/render/nearcity.ts";
+import { PIECE_KEYS } from "../../client/core/render/pieces.ts";
 import { DRAW_RANGED, DRAW_TEXTURED } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
-import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
+import { CHUNK_SIZE } from "../../shared/coords.ts";
+import { Rng } from "../../shared/rng.ts";
 import { compareShot, nearShots } from "../../tools/snap/nearcity.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { miamiSlice } from "../fixtures/cityslice.ts";
 import { farPack } from "../fixtures/farworld.ts";
-import { alike, nearClient } from "../fixtures/nearclient.ts";
+import { alike, nearClient, shareAlike, shotOf } from "../fixtures/nearclient.ts";
 
 test("a downtown chunk and those round it rasterize the same as a mesh a chunk as an instance a piece, at its border with a neighbour drawn as instances and against a player's wall and foundation, on high and low poly", () => {
   const shots = nearShots();
@@ -60,57 +63,88 @@ test("across the Miami slice each standing piece has one owner every frame", () 
   expect(w.scene.near!.stats.waiting).toBe(0);
 });
 
-test("a static of the slice shot away is gone that frame, a mesh again in a second", () => {
+test("a static of the slice shot away is gone that frame, with no mesh let go and nothing laid out", () => {
   const w = nearClient(miamiSlice().map);
   const { cam, city, dims, structs, scene } = w;
+  const near = scene.near!;
   // The tallest piece of the slice's busiest chunk, seen from 20 m over its top.
   const chunk = 3 * dims.chunksX + 1;
   let top = -Infinity, slot = -1;
   for (let s = 0; s < city.in(chunk); s++) {
     const i = city.first[chunk]! + s, k = city.kind[i]!;
-    if (scene.near!.kinds[k] === 1 && city.y[i]! + city.halfY[k]! > top) [top, slot] = [city.y[i]! + city.halfY[k]!, s];
+    if (near.kinds[k] === 1 && city.y[i]! + city.halfY[k]! > top) [top, slot] = [city.y[i]! + city.halfY[k]!, s];
   }
   const i = city.first[chunk]! + slot;
   [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [city.x[i]!, top + 20, city.z[i]! - 0.01, 0, -Math.PI / 2 + 0.01];
   w.follow(cam.x, cam.z);
-  scene.near!.pieces = Infinity;
+  near.pieces = Infinity;
   const raster = new Rasterizer(64, 36, farPack(), w.hf);
   for (let f = 0; f < 10; f++) raster.render(w.frame());
-  scene.near!.pieces = FRAME_PIECES;
+  near.pieces = FRAME_PIECES;
   let p = w.frame();
   raster.render(p);
   // The pixel at the middle of the picture shows the piece's top, from its chunk's mesh.
   const middle = 18 * 64 + 32;
   expect(raster.pickId[middle]).toBe(chunk * 65536 + MESH_SLOT);
   const before = raster.depth[middle]!;
-  const old = new Map([...structs.held].map((c) => [c, scene.near!.chunk(c)?.mesh?.slot]));
-  structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, 2);
+  const old = new Map([...structs.held].map((c) => [c, near.chunk(c)!.mesh]));
+  w.remove(chunk, slot);
   p = w.frame();
   raster.render(p);
   expect(raster.depth[middle]).toBeGreaterThan(before);
   expect(w.owners(p)).toEqual([]);
-  // Its chunk and each round it is drawn as instances, the meshes made with the piece let go of.
-  const cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk);
-  for (const [c, was] of old) {
-    if (Math.abs(chunkCx(dims, c) - cx) > 1 || Math.abs(chunkCz(dims, c) - cz) > 1 || was === undefined || was < 0) continue;
-    expect({ chunk: c, dropped: p.assetDrops.includes(was), mesh: scene.near!.chunk(c)?.mesh ?? null }).toEqual({ chunk: c, dropped: true, mesh: null });
+  // Nothing went on or came off the card but the piece's state, and every chunk draws the mesh it had.
+  expect([p.assetDrops.filter(nearMeshSlot).length, p.assetUploads.filter((u) => nearMeshSlot(u.slot)).length, p.uploads.length, near.stats.laid, near.stats.waiting]).toEqual([0, 0, 0, 0, 0]);
+  for (const [c, was] of old) expect(near.chunk(c)!.mesh).toBe(was);
+  expect(near.stats.states).toBeGreaterThan(0);
+  expect(near.stats.states).toBeLessThanOrEqual(PIECE_KEYS * 4);
+  // Quiet, its chunk's mesh alone is made again, a band a frame, the old one drawn until the new is on the card.
+  let remade = 0;
+  for (let f = 0; f < 720; f++) {
+    raster.render((p = w.frame()));
+    expect(near.chunk(chunk)!.mesh).not.toBeNull();
+    expect(near.stats.laid).toBe(0);
+    remade += near.stats.remade;
+    for (const [c, was] of old) if (c !== chunk) expect(near.chunk(c)!.mesh).toBe(was);
   }
-  // Its chunk, the nearest, is made first and drawn as its mesh again within a second, the floor under the piece in the
-  // middle; the rest follow a frame's pieces at a time.
-  let frames = 1, again = -1;
-  while (frames < 600 && [...structs.held].some((c) => !scene.near!.chunk(c)?.mesh)) {
-    p = w.frame();
-    raster.render(p);
-    expect(w.owners(p)).toEqual([]);
-    if (again < 0 && [...p.drawBuffer.subarray(0, p.drawCount)].some((b, d) => b === chunk && (p.drawFlags[d]! & DRAW_RANGED) !== 0)) {
-      again = frames;
-      expect([raster.pickId[middle], raster.depth[middle]! > before]).toEqual([chunk * 65536 + MESH_SLOT, true]);
+  expect([remade, near.chunk(chunk)!.stale, near.chunk(chunk)!.mesh === old.get(chunk), w.owners(p)]).toEqual([1, false, false, []]);
+  expect(raster.depth[middle]).toBeGreaterThan(before);
+});
+
+test("the slice's old meshes and their pieces' states draw what meshes made of what stands do, for removals at random", () => {
+  const map = miamiSlice().map, split = tierOf("high").split;
+  const rng = new Rng(5);
+  const views: [number, number, number, number, number][] = [[290, 290, 1.7, 0.6, 0.05], [300, 300, 90, 2.2, -0.7], [226, 226, 30, 0.8, -0.25]];
+  const shares: number[] = [];
+  for (let trial = 0; trial < 3; trial++) {
+    const [x, z, up, yaw, pitch] = views[trial]!;
+    // One client loses pieces after its meshes are made; the other never had them.
+    const [old, fresh] = [nearClient(map), nearClient(map)];
+    const gone: [number, number][] = [];
+    const cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
+    for (let n = 0; n < 60 + trial * 300; n++) {
+      const chunk = (cz + rng.int(3) - 1) * map.dims.chunksX + cx + rng.int(3) - 1;
+      gone.push([chunk, rng.int(old.city.in(chunk))]);
     }
-    frames++;
+    const shots = [old, fresh].map((w, k) => {
+      [w.cam.x, w.cam.z, w.cam.y, w.cam.yaw, w.cam.pitch] = [x, z, w.hf.heightAt(x, z) + up, yaw, pitch];
+      w.scene.near!.pieces = Infinity;
+      w.follow(x, z);
+      if (k === 1) for (const [chunk, slot] of gone) w.remove(chunk, slot);
+      const raster = new Rasterizer(240, 135, farPack(), w.hf);
+      raster.depthBits = 24;
+      for (let f = 0; f < 4; f++) raster.render(w.frame());
+      const meshes = [...w.structs.held].map((c) => w.scene.near!.chunk(c)!.mesh);
+      if (k === 0) for (const [chunk, slot] of gone) w.remove(chunk, slot);
+      const p = w.frame();
+      raster.render(p);
+      expect(w.owners(p)).toEqual([]);
+      if (k === 0) expect([...w.structs.held].map((c) => w.scene.near!.chunk(c)!.mesh)).toEqual(meshes);
+      return shotOf(raster);
+    });
+    shares.push(shareAlike(shots[0]!, shots[1]!, old.cam, split));
   }
-  expect(again).toBeGreaterThan(0);
-  expect(again).toBeLessThan(60);
-  expect(frames).toBeLessThan(600);
+  expect(Math.min(...shares)).toBeGreaterThanOrEqual(0.995);
 });
 
 test("the slice's densest border crossed makes no more a frame than its pieces", () => {

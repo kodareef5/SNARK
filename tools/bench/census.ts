@@ -224,41 +224,42 @@ export function census(section: Section, record: Row, w: CensusWorld, views: rea
   }
 }
 
-/** Bytes a vertex of a near mesh takes with its piece and its holder beside it (render/nearcity.ts). */
-const KEYED_VERTEX = 12;
+/** Bytes a vertex of a near mesh took before each face carried its piece and its holder, a byte more where a chunk wore a material made from a recipe. */
+const PLAIN_VERTEX = 8;
 
 /**
- * What the near meshes of `w`'s chunks hold and what they would keep for a piece to leave one without a remake: per chunk
- * of the busiest and over them all, the faces drawn, those of merged boxes, the merged boxes and their pieces, the faces
- * another piece hid, the faces a merged box's members would show, and the bytes today and with all of those kept.
+ * What the near meshes of `w`'s chunks hold for a piece to leave one without a remake (render/nearcity.ts): of the
+ * busiest chunk, of the one that grew most and over them all, the faces shown, those of merged boxes, the merged boxes and
+ * their pieces, the faces kept that another piece hid and that a merged box's members would show, and the bytes on the
+ * card against those of the faces shown alone, as they were before.
  */
 export function reserve(section: Section, record: Row, w: CensusWorld, what: string): void {
   const near = w.scene(SETUPS[3]!).near!;
   const { dims } = w.map;
-  const sum = { pieces: 0, shown: 0, merged: 0, groups: 0, members: 0, hidden: 0, fallback: 0, own: 0, buried: 0, bytes: 0, keyed: 0 };
+  const sum = { pieces: 0, shown: 0, merged: 0, groups: 0, members: 0, hidden: 0, fallback: 0, own: 0, buried: 0, bytes: 0 };
   type Counts = ReturnType<typeof near.census>;
   let busiest: (Counts & { chunk: number }) | null = null, worst: (Counts & { chunk: number }) | null = null;
-  const keyed = (c: Counts): number => (c.shown + c.hidden + c.fallback) * 4 * KEYED_VERTEX;
+  const before = (c: Pick<Counts, "shown">): number => c.shown * 4 * PLAIN_VERTEX;
   for (let chunk = 0; chunk < chunkCount(dims); chunk++) {
     if (w.statics.in(chunk) === 0) continue;
     const c = near.census(w.statics, chunk, w.hf, 4);
-    for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += k === "keyed" ? keyed(c) : c[k];
+    for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += c[k];
     if (!busiest || c.bytes > busiest.bytes) busiest = { ...c, chunk };
-    if (c.bytes > 100_000 && (!worst || keyed(c) / c.bytes > keyed(worst) / worst.bytes)) worst = { ...c, chunk };
+    if (before(c) > 100_000 && (!worst || c.bytes / before(c) > worst.bytes / before(worst))) worst = { ...c, chunk };
   }
-  const rows = (name: string, c: Omit<Counts, "stream">): void => {
-    const kept = keyed(c as Counts);
+  const rows = (name: string, c: Counts): void => {
+    const faces = c.shown + c.hidden + c.fallback;
     record(`${name}: pieces in the mesh`, c.pieces, "");
-    record(`${name}: faces drawn`, c.shown, `(${c.shown * 4} vertices), ${c.merged} of them a merged box's`);
+    record(`${name}: faces shown`, c.shown, `(${c.shown * 4} vertices), ${c.merged} of them a merged box's`);
     record(`${name}: merged boxes`, c.groups, `of ${c.members} pieces, ${(c.members / Math.max(1, c.groups)).toFixed(1)} a box`);
-    record(`${name}: faces another piece hid`, c.hidden, `; ${c.own} its own piece hid and ${c.buried} the ground, never kept`);
-    record(`${name}: faces a merged box's members would show`, c.fallback, "");
-    record(`${name}: bytes today`, c.bytes, `(${(c.bytes / (c.shown * 4)).toFixed(1)} a vertex)`);
-    record(`${name}: bytes with every such face kept`, kept, `(${(c.shown + c.hidden + c.fallback) * 4} vertices at ${KEYED_VERTEX}), ${(kept / c.bytes).toFixed(2)} times today's`);
+    record(`${name}: faces kept that another piece hid`, c.hidden, `; ${c.own} its own piece hid and ${c.buried} the ground, never kept`);
+    record(`${name}: faces kept that a merged box's members would show`, c.fallback, "");
+    record(`${name}: bytes of the faces shown alone, ${PLAIN_VERTEX} a vertex, as before`, before(c), "");
+    record(`${name}: bytes on the card`, c.bytes, `(${faces * 4} vertices at ${c.bytes / (faces * 4)}), ${(c.bytes / before(c)).toFixed(2)} times those`);
   };
-  section(`What the near meshes of ${what} hold, and what a piece leaving without a remake would have them keep`);
+  section(`What the near meshes of ${what} hold, and keep for a piece to leave one without a remake`);
   if (busiest) rows(`busiest chunk ${busiest.chunk}`, busiest);
-  if (worst && worst.chunk !== busiest?.chunk) rows(`chunk ${worst.chunk}, which grows most`, worst);
+  if (worst && worst.chunk !== busiest?.chunk) rows(`chunk ${worst.chunk}, which grew most`, worst);
   rows("every chunk", sum);
 }
 

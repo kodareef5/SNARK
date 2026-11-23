@@ -7,6 +7,7 @@ import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_BLEND, MATERIAL_EXHAUST, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
+import { PIECE_KEYS, PIECE_ROWS } from "./pieces.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
 import { STREET_TILE_BYTES, STREET_TILES_FRAME } from "./streets.ts";
 // What the shell puts the streets' tiles on the card by.
@@ -813,6 +814,21 @@ export class FramePacket {
   /** The share of the screen the blended details cover, counted once a quad. */
   detailFill = 0;
 
+  /**
+   * The states of the near chunks' pieces (pieces.ts), PIECE_KEYS texels a row and four bytes a texel, which the card
+   * keeps: `pieceUploads` runs of texels to put on it before this frame's draws, each a row, its first texel and how many.
+   */
+  readonly pieces = new Uint8Array(PIECE_KEYS * PIECE_ROWS * 4);
+  pieceUploads = 0;
+  readonly pieceRuns = new Int32Array(PIECE_ROWS * 2 * 3);
+  /** The row of each chunk whose mesh is drawn by its pieces' states, by its number, which is its draws' buffer. */
+  readonly pieceRowOf = new Map<number, number>();
+  /** Per row, the nine rows a mesh of its chunk is drawn with: those of the chunks round it, a row of three then the next, its own the fifth. */
+  readonly pieceRows = new Float32Array(PIECE_ROWS * 9);
+  readonly pieceRowsOf: readonly Float32Array[] = Array.from({ length: PIECE_ROWS }, (_, r) => this.pieceRows.subarray(r * 9, r * 9 + 9));
+  /** Per row, a count of the changes to its nine. */
+  readonly pieceStamp = new Uint32Array(PIECE_ROWS);
+
   /** Rows of `atlas` to put on the card before this frame's draws, from the first; 0 for none. The card keeps them. */
   atlasRows = 0;
   readonly atlas = new Float32Array(ATLAS_WIDTH * ATLAS_ROWS * 4);
@@ -851,6 +867,7 @@ export class FramePacket {
     this.drawCount = 0;
     this.groundAt.fill(0);
     this.atlasRows = 0;
+    this.pieceUploads = 0;
     this.tileCount = 0;
     this.groundWindow[3] = -1;
     this.streetTiles = 0;

@@ -8,6 +8,7 @@ import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
+import { PIECE_END, PIECE_GLSL, PIECE_PLACE } from "./pieces.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONES_PER_ROW, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
 import { AIR } from "./atmosphere.ts";
@@ -220,10 +221,10 @@ uniform sampler2D uPalette;
 uniform highp sampler2D uBones;
 out vec3 vRel;
 flat out vec3 vColor;
-${BONE}${BEND_GLSL}void main() {
+${BONE}${BEND_GLSL}${PIECE_GLSL}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p;
-  if (uSkin > 0.5) {
+${PIECE_PLACE}  if (uSkin > 0.5) {
     // A body with bones: the instance names its first bone where a rigid one has its yaw. With uSkin 2 each vertex follows
     // its bone of the pose the body stands in, whose first bone is uOffset.x, and then the instance's first bone.
     vec4 v = vec4(l + iPos, 1.0);
@@ -241,7 +242,7 @@ ${BEND_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uO
   vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;
   vRel = p;
   gl_Position = uViewProj * vec4(p, 1.0);
-}`;
+${PIECE_END}}`;
 
 export const FLAT_TERRAIN_VERTEX = `#version 300 es
 layout(location=0) in uvec4 aGrid;

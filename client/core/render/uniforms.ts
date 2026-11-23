@@ -9,6 +9,7 @@ import type { ManifestMesh } from "../../../shared/pack/manifest.ts";
 import type { Pack, PackMaterial } from "../../../shared/pack/pack.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_HEAT_SHIFT, DRAW_PLAIN, DRAW_PULLED, DRAW_SIZED, DRAW_TEXTURED, SOURCE_MAP, type FramePacket } from "./packet.ts";
+import { PIECE_ROWS } from "./pieces.ts";
 import { WATER_ALPHA } from "./shading.ts";
 import { LAYER_LEVELS, materialEmission, skinMode } from "./surface.ts";
 import type { GroundSize } from "./terrain.ts";
@@ -143,6 +144,20 @@ function field(c: Drawn, out: Float64Array, source: number): void {
 
 const heat = one("uHeat", AT_DRAW, (c) => (c.flags >>> DRAW_HEAT_SHIFT) & 3);
 
+/**
+ * The nine rows of the pieces' states a near chunk's mesh is drawn with (pieces.ts), by the buffer `of` names, which is
+ * its chunk: sent when the chunk or its nine change. Any other draw sends nothing, and its vertices read none.
+ */
+function pieceRows(of: (c: Drawn) => number): UniformRow {
+  return array("uPieceRows", SEND_3FV, AT_DRAW, (c) => {
+    const row = c.p.pieceRowOf.get(of(c));
+    return row === undefined ? null : c.p.pieceRowsOf[row]!;
+  }, (c) => {
+    const row = c.p.pieceRowOf.get(of(c));
+    return row === undefined ? -1 : row + c.p.pieceStamp[row]! * PIECE_ROWS;
+  });
+}
+
 /** What a draw of a mesh gives its program, flat or with a material: its columns of the packet. */
 export const MESH_ROWS: readonly UniformRow[] = [
   // A level's skin entries are read only by a draw with a material.
@@ -158,6 +173,7 @@ export const MESH_ROWS: readonly UniformRow[] = [
     out[3] = fx[e + 3]!;
   }, null),
   heat,
+  pieceRows((c) => c.p.drawBuffer[c.d]!),
 ];
 
 const cutoff = one("uCutoff", AT_DRAW, (c) => ((c.flags & DRAW_CUTOUT) !== 0 ? c.material!.cutoff : 0));
@@ -202,7 +218,7 @@ export const FLAT_ROWS: readonly UniformRow[] = [
 ];
 
 /** What a caster gives the depth programs: how its vertices are placed, and cut out, what cuts it. */
-export const CASTER_ROWS: readonly UniformRow[] = [one("uSkin", AT_DRAW, (c) => skinMode(c.flags, c.skinned))];
+export const CASTER_ROWS: readonly UniformRow[] = [one("uSkin", AT_DRAW, (c) => skinMode(c.flags, c.skinned)), pieceRows((c) => c.p.casterBuffer[c.d]!)];
 export const CUTOUT_CASTER_ROWS: readonly UniformRow[] = [...CASTER_ROWS, cutoff, uv];
 
 /** What a draw of small details gives theirs: whether it is see-through, and the cells its atlas has a side. */

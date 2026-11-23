@@ -12,6 +12,7 @@ import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/text
 import type { Tier } from "../assets/tiers.ts";
 import { WEIGHT } from "../assets/residency.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
+import { PIECE_MADE } from "./pieces.ts";
 import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
 import { CHUNK_SIDE, PAVED_VERGE, PLANE_MOST, PLANE_STEP, STREET_TINT, VERGE_TINTS, WALK_TINT } from "../../../shared/world/streets.ts";
@@ -1026,8 +1027,8 @@ export function worldVertex(vertex: string): string {
  *   of aBone); 0 where none or unknown.
  *
  * - vMade (flat int): the material made from a recipe the face wears (content/texgen/materials.ts, from 1), or 0: a near
- *   chunk's from its stream of them (attribute 15, render/nearcity.ts), an instance's from its last two regions, the
- *   mark MADE_MARK, which is no colour, and then the number (scene.ts).
+ *   chunk's from its piece's state (render/pieces.ts), an instance's from its last two regions, the mark MADE_MARK,
+ *   which is no colour, and then the number (scene.ts).
  *
  * A face's size and its nearest outer border come from vFace's and vRel's steps between pixels (edgeOf); its weathering
  * from its world point and normal (wallFrame).
@@ -1035,9 +1036,9 @@ export function worldVertex(vertex: string): string {
 export const MADE_MARK = 255;
 export function ownVertex(vertex: string): string {
   if (!vertex.includes("out vec3 vRel;") || !vertex.includes("  vRel = p;")) throw new Error("ownVertex: not a flat mesh vertex text");
-  // A near chunk's material is its stream's; an instance's its last two regions (MADE_MARK), where its mesh's colour is the instance's.
-  return vertex.replace("out vec3 vRel;", "out vec3 vRel;\nout vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nlayout(location=15) in uint aMade;\nflat out int vMade;\nuniform vec3 uWorldEye;")
-    .replace("  vRel = p;", `  vMade = aMade > 0u ? int(aMade) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n  vRel = p;`)
+  // A near chunk's material is its piece's state's (pieces.ts); an instance's its last two regions (MADE_MARK), where its mesh's colour is the instance's.
+  return vertex.replace("out vec3 vRel;", "out vec3 vRel;\nout vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nflat out int vMade;\nuniform vec3 uWorldEye;")
+    .replace("  vRel = p;", `  vMade = aPiece != 0u ? int(piece.a & ${PIECE_MADE}u) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n  vRel = p;`)
     .replace("  vRel = p;", "  vOwn = l;\n  vPlace = floor((iPos + uOffset + uWorldEye).xz * 4.0 + 0.5);\n  vFace = vec2(float(aBone & 1u), float((aBone >> 1u) & 1u));\n  vEdges = uSkin > 0.5 ? 0u : (aBone >> 2u) & 15u;\n  vRel = p;");
 }
 

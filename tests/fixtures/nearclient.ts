@@ -3,8 +3,9 @@
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
-import { Camera } from "../../client/core/render/camera.ts";
+import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
 import { MESH_SLOT } from "../../client/core/render/nearcity.ts";
+import { PIECE_IN_MESH, PIECE_KEYS } from "../../client/core/render/pieces.ts";
 import { DRAW_CUTOUT, DRAW_RANGED, DRAW_TEXTURED, MAX_CASTERS, MAX_DRAWS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
@@ -12,6 +13,7 @@ import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
+import { PICK_FAR, type Rasterizer } from "../../tools/snap/raster.ts";
 import { FLOOR, building } from "./cityworld.ts";
 import { farPack } from "./farworld.ts";
 import { flatMap } from "./map.ts";
@@ -56,7 +58,7 @@ export function nearClient(map: MapData) {
   // What the card holds: each chunk's instances as last sent, and the levels of meshes on it.
   const slots = new Map<number, Uint16Array>();
   const onCard = new Set<number>();
-  let now = 0;
+  let now = 0, version = 1;
   return {
     dims, hf, city, structs, scene, cam,
     /** Holds the chunks round (x, z) whole and lets go of the rest, as the server sends and drops them. */
@@ -77,6 +79,15 @@ export function nearClient(map: MapData) {
         }
       }
     },
+    /** Takes the piece out of `slot` of `chunk`, as a removal the server sends does. */
+    remove(chunk: number, slot: number): void {
+      structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, ++version);
+    },
+    /** Sets the map's piece down in `slot` of `chunk` again. */
+    restore(chunk: number, slot: number): void {
+      const i = city.first[chunk]! + slot;
+      structs.put(chunk, slot, city.kind[i]!, city.x[i]!, city.y[i]!, city.z[i]!, city.yaw[i]!, 0, reg.maxHp[city.kind[i]!]!, ++version);
+    },
     frame(): FramePacket {
       scene.now = now += 1000 / 60;
       const p = scene.build(cam, null);
@@ -86,7 +97,7 @@ export function nearClient(map: MapData) {
       for (const u of p.assetUploads) onCard.add(u.slot);
       return p;
     },
-    /** Where a frame breaks the rule of one owner a piece: a standing piece of a chunk it draws near that is in neither its instances nor its mesh, or in both; a mesh drawn that is not its chunk's or not on the card; a chunk drawn both near and far. */
+    /** Where a frame breaks the rule of one owner a piece: a standing piece of a chunk it draws near that is in neither its instances nor its mesh, or in both; a piece its mesh draws whose state says it does not, or a slot with none whose state says it does; a mesh drawn that is not its chunk's or not on the card; a chunk drawn both near and far. */
     owners(p: FramePacket): string[] {
       const out: string[] = [];
       const drawn = new Set<number>();
@@ -100,19 +111,50 @@ export function nearClient(map: MapData) {
       for (let e = 0; e < p.casterCount; e++) ranged(p.casterBuffer[e]!, p.casterSlot[e]!, p.casterFlags[e]!);
       for (const c of drawn) {
         if (scene.city!.isFar(c)) out.push(`chunk ${c} is drawn near and far`);
-        const t = structs.chunks[c]!, given = slots.get(c)!, mine = scene.near!.chunk(c)?.mine;
+        const t = structs.chunks[c]!, given = slots.get(c)!, drawn = scene.near!.chunk(c)?.drawn;
         const meshed = given.includes(MESH_SLOT);
         const count = new Uint8Array(t.high);
         for (const s of given) if (s !== MESH_SLOT) count[s]!++;
         for (let s = 0; s < t.high; s++) {
           if (t.kind[s] === 0) continue;
-          const n = count[s]! + (meshed && mine?.[s] === 1 ? 1 : 0);
+          const n = count[s]! + (meshed && drawn?.[s] === 1 ? 1 : 0);
           if (n !== 1) out.push(`chunk ${c} slot ${s} has ${n} owners`);
         }
+        // The state the mesh is drawn by says of each slot what the mesh draws.
+        const row = p.pieceRowOf.get(c);
+        for (let s = 0; meshed && drawn && s < drawn.length; s++) if (row === undefined || (p.pieces[(row * PIECE_KEYS + s) * 4]! & PIECE_IN_MESH) !== drawn[s]) out.push(`chunk ${c} slot ${s} is drawn ${drawn[s]} and its state says otherwise`);
       }
       return out;
     },
   };
+}
+
+/** Metres from the eye along the view to what a pixel of depth `depth` holds, kept as 24 bits, or Infinity for none. */
+export function metresOf(depth: number, cam: Camera, split: number): number {
+  if (depth === Infinity) return Infinity;
+  const d = depth / ((2 ** 24 - 1) / 2) - 1;
+  const nearRange = split <= 0 || d <= 0;
+  const z = split <= 0 ? d : nearRange ? (d + 0.5) / 0.5 : (d - 0.5) / 0.5;
+  const n = split <= 0 || nearRange ? cam.near : split * FAR_FROM, f = split <= 0 ? cam.far : nearRange ? split : cam.far;
+  return (2 * f * n) / (f + n - z * (f - n));
+}
+
+/** A picture's depth and pick as a rasterizer of 24 bits of depth drew them. */
+export type Shot = Pick<Rasterizer, "depth" | "pickId" | "pickKind">;
+export const shotOf = (r: Rasterizer): Shot => ({ depth: r.depth.slice(), pickId: r.pickId.slice(), pickKind: r.pickKind.slice() });
+
+/**
+ * The share of two pictures' pixels that hold the same thing at the same place: the same pick, and depths within a step
+ * of a mesh's lattice and of the depth buffer there. A far level's pick is its slot on the card, which is its scene's own.
+ */
+export function shareAlike(a: Shot, b: Shot, cam: Camera, split: number): number {
+  let alike = 0;
+  for (let i = 0; i < a.depth.length; i++) {
+    const wa = metresOf(a.depth[i]!, cam, split), wb = metresOf(b.depth[i]!, cam, split);
+    const near = wa === wb || Math.abs(wa - wb) <= 0.0025 + ((wa * wa) / (cam.near * 2 ** 23)) * (split > 0 ? 2 : 1);
+    if (near && a.pickKind[i] === b.pickKind[i] && (a.pickId[i] === b.pickId[i] || a.pickKind[i] === PICK_FAR)) alike++;
+  }
+  return alike / a.depth.length;
 }
 
 /** Whether rows `a` and `b` agree in every column of the packet named for `kind` but their runs of indices, the marks, a caster's cascades, and the material a row does not read. */
