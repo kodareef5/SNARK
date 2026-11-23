@@ -2,7 +2,7 @@
 // bench page fetches this file, so a player's first frame does not wait for it (D873).
 
 import type { MapProgress } from "./mapload.ts";
-import { storeOf } from "./notes/census.ts";
+import { storeOf } from "./debug/census.ts";
 import { BENCH_FRAMES, PASSES } from "./passes.ts";
 import { DRAW_PULLED, DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "./render/packet.ts";
 import { NODE_BUFFERS } from "./render/scene.ts";
@@ -74,7 +74,7 @@ export class BenchRun {
   private readonly other: boolean[] = [];
   /** Each measured frame's counts, for their medians over the turn. */
   private readonly counts: Record<"triangles" | "draws" | "castTriangles" | "castDraws" | "nearNodes" | "farNodes", number[]> = { triangles: [], draws: [], castTriangles: [], castDraws: [], nearNodes: [], farNodes: [] };
-  /** Each measured frame's draws by the store that made them (notes/census.ts storeOf), for where two runs differ. */
+  /** Each measured frame's draws by the store that made them (debug/census.ts storeOf), for where two runs differ. */
   private readonly byStore: Map<string, number>[] = [];
   private first = -1;
   private draws = -1;

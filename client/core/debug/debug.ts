@@ -74,7 +74,7 @@ export class DebugBar {
   /** What the last save said, for the bar; words waiting for the next frame's picture to save with; the client's build. */
   saved = "";
   private saving: string | null = null;
-  build: ReportBuild = {};
+  clientBuild: ReportBuild = {};
 
   private hooked = false;
   private readonly sampler = new FrameSampler();
@@ -123,7 +123,7 @@ export class DebugBar {
     this.hooked = false;
     void port.get("build.json").then((a) => {
       try {
-        if (a.status === 200) this.build = JSON.parse(a.text) as ReportBuild;
+        if (a.status === 200) this.clientBuild = JSON.parse(a.text) as ReportBuild;
       } catch {}
     });
   }

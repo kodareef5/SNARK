@@ -81,7 +81,7 @@ export async function saveCapture(d: DebugBar, words: string, full: Promise<Pict
   const s = app.session;
   const report: Report = {
     version: REPORT_VERSION, kind: "capture", began: Math.round(head.wall - CAPTURE_MS), ms: CAPTURE_MS, ...head.head,
-    map: { id: s.world?.mapId ?? "" }, build: d.build, shots, text: words ? [{ at: CAPTURE_MS, line: words }] : [], voice: { segments: [] },
+    map: { id: s.world?.mapId ?? "" }, build: d.clientBuild, shots, text: words ? [{ at: CAPTURE_MS, line: words }] : [], voice: { segments: [] },
   };
   const summary = perf.summary(from, head.at);
   const perfRecord = {
