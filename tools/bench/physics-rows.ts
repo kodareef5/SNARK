@@ -338,10 +338,10 @@ class Watching {
     record("watchers: toppling or getting up, drawn whole, the most a head pops between draws", at(this.steps, 1) * 100, "cm", null);
     record("watchers: poses kept of bodies down or getting up, the most", this.lyingKept, "", null);
     record("watchers: toppling or getting up, on one bone, the most a head pops between draws", at(this.stepsOne, 1) * 100, "cm", null);
-    record("watchers: a body drawn down from where the server has it, median", at(apart, 0.5) * 100, "cm", null);
-    record("watchers: a body drawn down from where the server has it, 90th percentile", at(apart, 0.9) * 100, "cm", null);
-    record("watchers: a body drawn down from where the server has it, 99th percentile", at(apart, 0.99) * 100, "cm", null);
-    record("watchers: a body drawn down from where the server has it, the most", at(apart, 1) * 100, "cm", null);
+    record("watchers: simulated hips from the server's hips, median", at(apart, 0.5) * 100, "cm", null);
+    record("watchers: simulated hips from the server's hips, 90th percentile", at(apart, 0.9) * 100, "cm", null);
+    record("watchers: simulated hips from the server's hips, 99th percentile", at(apart, 0.99) * 100, "cm", null);
+    record("watchers: simulated hips from the server's hips, the most", at(apart, 1) * 100, "cm", null);
   }
 }
 

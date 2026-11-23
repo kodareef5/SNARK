@@ -23,7 +23,7 @@ test("48 knocked down in a room and in the open topple past the budget and all r
     expect(f.get("watchers: bodies down but drawn standing, body-ticks")).toBe(0);
     expect(f.get("watchers: of them not drawn, for want of room")).toBe(0);
     expect(f.get("watchers: toppled or waiting, drawn upright")).toBe(0);
-    expect(f.get("watchers: a body drawn down from where the server has it, the most")).toBeLessThan(1);
+    expect(f.get("watchers: simulated hips from the server's hips, the most")).toBeLessThan(1);
     expect(f.get("watchers: a laid fall drawn whole, head or hips from the server's, the most")).toBeLessThan(1);
     expect(f.get("watchers: a laid fall on one bone, hips from the server's, the most")).toBeLessThan(1);
     expect(f.get("ticks until every one had risen")).toBeLessThanOrEqual(121);
@@ -41,10 +41,11 @@ test("a car knocks a crowd down, and two watchers draw each body where it lies",
     expect(f.get("watchers: of them not drawn, for want of room"), drive).toBe(0);
     expect(f.get("watchers: toppled or waiting, drawn upright"), drive).toBe(0);
     expect(f.get("watchers: a laid fall drawn whole, head or hips from the server's, median"), drive).toBeLessThan(1);
-    expect(f.get("watchers: longest wait for a fall's checkpoint, ticks"), drive).toBeLessThanOrEqual(6);
-    // Most bodies are drawn where the server has them; those the car carries drift until their next correction.
-    expect(f.get("watchers: a body drawn down from where the server has it, median"), drive).toBeLessThan(1);
-    expect(f.get("watchers: a body drawn down from where the server has it, 90th percentile"), drive).toBeLessThan(10);
+    expect(f.get("watchers: a laid fall drawn whole, head or hips from the server's, the most"), drive).toBeLessThan(35);
+    expect(f.get("watchers: longest wait for a fall's checkpoint, ticks"), drive).toBe(0);
+    // Side contacts can diverge between corrections even when the drawn root follows its snapshot.
+    expect(f.get("watchers: simulated hips from the server's hips, median"), drive).toBeLessThan(1);
+    expect(f.get("watchers: simulated hips from the server's hips, 90th percentile"), drive).toBeLessThan(10);
     if (drive === "straight") expect(f.get("dodos run over")).toBeGreaterThan(0);
   }
 });
