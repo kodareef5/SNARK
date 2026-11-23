@@ -23,6 +23,8 @@ export function describe(r: TickReport, all = false): string[] {
   out.push("by kind: " + ([...kinds] as [keyof typeof names, { n: number; ms: number }][]).map(([k, v]) => `${names[k]} ${v.n} ticks, ${v.ms.toFixed(0)} ms (${((100 * v.ms) / Math.max(1, total)).toFixed(0)}%)`).join("; "));
   const ownTotal = own.reduce((a, b) => a + b, 0);
   if (ownTotal > 0) out.push("the server's own, by part: " + r.parts.map((p, i) => [p, own[i]!] as const).filter(([, v]) => v >= 0.005 * ownTotal).sort((a, b) => b[1] - a[1]).map(([p, v]) => `${p} ${((100 * v) / ownTotal).toFixed(0)}%`).join(", "));
+  const lane = r.physics;
+  if (lane) out.push("physics by row, ms last tick / most lately / most since the start: " + lane.rows.map((row, i) => `${row} ${lane.last[i]!.toFixed(2)}/${lane.peak[i]!.toFixed(2)}/${lane.worst[i]!.toFixed(2)}`).join(", "));
   for (const t of all ? r.recent : r.recent.slice(-20)) {
     const m = measure(r.limit, t);
     out.push(`  ${new Date(t.at).toISOString().slice(11, 23)} tick ${t.tick}: ${t.ms.toFixed(0)} ms, late ${t.late.toFixed(0)}; ${names[m.whose]}, CPU ${m.cpu.toFixed(0)} ms, page-ins ${m.pageIns}, preempted ${m.preempted}; ${partsText(t)}`);

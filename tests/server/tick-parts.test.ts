@@ -11,6 +11,7 @@ import { TickMeter } from "../../server/admin/meter.ts";
 import { AdminPages } from "../../server/admin/routes.ts";
 import { gaugesOf } from "../../server/admin/stats.ts";
 import { Guesses } from "../../server/guesses.ts";
+import { LANE_ROWS } from "../../server/lane.ts";
 import { Harness } from "../fixtures/net.ts";
 import { describe as describeTicks } from "../../tools/ticks.ts";
 
@@ -88,6 +89,8 @@ test("the admin page reads the parts past its gate", async () => {
     expect(report.parts).toEqual([...PARTS]);
     expect(report.ticks).toBe(h.world.tick);
     expect(report.recent.length).toBe(h.world.tick);
+    expect(report.physics?.rows).toEqual([...LANE_ROWS]);
+    expect(describeTicks(report)).toContain(`physics by row, ms last tick / most lately / most since the start: ${LANE_ROWS.map((r) => `${r} 0.00/0.00/0.00`).join(", ")}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

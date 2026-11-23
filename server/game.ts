@@ -33,7 +33,7 @@ import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Place } from "./beds.ts";
 import { PART, TickParts } from "./admin/parts.ts";
-import { Lane } from "./lane.ts";
+import { LANE_ROW, Lane } from "./lane.ts";
 
 export interface GameOptions {
   /** In ticks. */
@@ -348,7 +348,7 @@ export class GameServer {
     this.onBeforeStep?.();
     parts.mark(PART.before);
     // The sessions' own bodies step first, as physics: what they predict is never put off.
-    this.lane.enter();
+    this.lane.enter(LANE_ROW.players);
     this.players.step(T);
     this.lane.leave();
     parts.mark(PART.bodies);

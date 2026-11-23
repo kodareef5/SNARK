@@ -1,5 +1,5 @@
 import type { BodyBlocking } from "./blocking.ts";
-import type { Lane } from "./lane.ts";
+import { LANE_ROW, type Lane } from "./lane.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
 import type { CreatureCombatFacet } from "../shared/content/defs.ts";
@@ -329,7 +329,7 @@ export class Creatures {
     // Ways asked for are searched before anyone steers, within the tick's budget.
     mind.plan(tick);
     let stepped = 0;
-    this.lane.enter();
+    this.lane.enter(LANE_ROW.creatures);
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
       // A vehicle's wheels move it (server/urban.ts), and nothing breathes in it.

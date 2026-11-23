@@ -14,6 +14,20 @@ export const LANE_RESERVE_MS = 6;
 /** How fast the remembered most a tick's physics took falls back, a share a tick: about two seconds to halve. */
 const PEAK_FALL = 1 - 1 / (2 * TICK_RATE);
 
+/** The systems whose time is the lane's, each a row its time is kept in. `react` is kept for bodies that answer a blow. */
+export const LANE_ROWS = ["players", "creatures", "loose", "contacts", "corpses", "falls", "react"] as const;
+export type LaneRowName = (typeof LANE_ROWS)[number];
+export const LANE_ROW = Object.fromEntries(LANE_ROWS.map((name, i) => [name, i])) as { readonly [K in LaneRowName]: number };
+
+/** What /admin/ticks.json says of the lane: ms of each row in the last tick, the most lately, and the most since the start. */
+export interface LaneReport {
+  rows: readonly string[];
+  last: number[];
+  peak: number[];
+  worst: number[];
+  yielded: number;
+}
+
 export class Lane {
   /** Ms of the tick fitted into; a test sets it lower to see the work that can wait give way. */
   target = LANE_TARGET_MS;
@@ -26,8 +40,14 @@ export class Lane {
   /** Ticks in which some work that can wait gave way, and the most physics took in any tick since the start. */
   yielded = 0;
   worst = 0;
+  /** By row of LANE_ROWS: ms this tick so far, in the last tick, the most lately (falling back as `peak` does), and the most since the start. */
+  readonly rowMs = new Float64Array(LANE_ROWS.length);
+  readonly rowLast = new Float64Array(LANE_ROWS.length);
+  readonly rowPeak = new Float64Array(LANE_ROWS.length);
+  readonly rowWorst = new Float64Array(LANE_ROWS.length);
   private began = 0;
   private entered = -1;
+  private row = 0;
   private yieldedNow = false;
   private now: () => number;
 
@@ -50,20 +70,35 @@ export class Lane {
     if (this.physicsMs > this.worst) this.worst = this.physicsMs;
     this.peak = Math.max(this.physicsMs, this.peak * PEAK_FALL);
     this.physicsMs = 0;
+    for (let k = 0; k < LANE_ROWS.length; k++) {
+      const ms = this.rowMs[k]!;
+      this.rowLast[k] = ms;
+      if (ms > this.rowWorst[k]!) this.rowWorst[k] = ms;
+      this.rowPeak[k] = Math.max(ms, this.rowPeak[k]! * PEAK_FALL);
+      this.rowMs[k] = 0;
+    }
     this.entered = -1;
     this.yieldedNow = false;
     this.began = this.now();
   }
 
-  /** Physics begins: its time is the lane's until `leave`. Nested calls count once. */
-  enter(): void {
-    if (this.entered < 0) this.entered = this.now();
+  /** Physics of row `row` (LANE_ROW) begins: its time is the lane's and the row's until `leave`. Nested calls count once, to the outer row. */
+  enter(row: number): void {
+    if (this.entered >= 0) return;
+    this.entered = this.now();
+    this.row = row;
   }
 
   leave(): void {
     if (this.entered < 0) return;
-    this.physicsMs += this.now() - this.entered;
+    const ms = this.now() - this.entered;
+    this.physicsMs += ms;
+    this.rowMs[this.row]! += ms;
     this.entered = -1;
+  }
+
+  report(): LaneReport {
+    return { rows: LANE_ROWS, last: Array.from(this.rowLast, round), peak: Array.from(this.rowPeak, round), worst: Array.from(this.rowWorst, round), yielded: this.yielded };
   }
 
   /**
@@ -84,4 +119,8 @@ export class Lane {
     }
     return false;
   }
+}
+
+function round(v: number): number {
+  return Math.round(v * 1000) / 1000;
 }
