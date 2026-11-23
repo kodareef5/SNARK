@@ -170,8 +170,22 @@ const tilt = new Float64Array(4);
  * A body knocked down where no ragdoll may fall (REACT_FALL): it tips over the way it was pushed, face down when pushed
  * forward or to a side and face up when pushed back, arms at its sides, lies there, and gets up again.
  */
+/** How far down a topple has a body `age` ticks in: 0 standing, 1 lying. */
+function toppleShare(age: number): number {
+  return age < TOPPLE ? smooth(age / TOPPLE) : age < RISE ? 1 : 1 - smooth((age - RISE) / (REACT_FRAMES[REACT_FALL]! - RISE));
+}
+
+/** An age at which a topple lies all the way down. */
+export const TOPPLED = (TOPPLE + RISE) / 2;
+
+/** The way, 0 to 15, a body toppling by reaction `word` lies at `tick` while it is more than half down; -1 otherwise. */
+export function lyingWay(word: number, tick: number): number {
+  if (reactKind(word) !== REACT_FALL) return -1;
+  return toppleShare(reactAge(word, tick)) >= 0.5 ? reactDir(word) : -1;
+}
+
 function topple(pose: Pose, word: number, age: number): void {
-  const k = age < TOPPLE ? smooth(age / TOPPLE) : age < RISE ? 1 : 1 - smooth((age - RISE) / (REACT_FRAMES[REACT_FALL]! - RISE));
+  const k = toppleShare(age);
   if (k <= 0) return;
   const d = reactDir(word), back = d >= 6 && d <= 10;
   // Lying is a quarter turn of the hips about the body's side, forward or back, then turned to the way it fell.

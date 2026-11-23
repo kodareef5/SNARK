@@ -1078,7 +1078,7 @@ export class Scene {
       const saddle = mount === MOUNT_OWN ? this.own!.gear[GEAR_WORN]! : mount >= 0 ? remote.gear[mount * GEAR_COUNT + GEAR_WORN]! : 0;
       // Missing authored sockets can only over-reserve; valid seats match add()'s separate fitted stand-in exactly.
       const profile = this.bodyRides[k] && this.saddleSeats[saddle]?.[slot - 1]?.rider ? saddle * (MAX_SEATS + 1) + slot : 0;
-      need -= ch.bones(remote.kind[i]!) - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0, slot === IMPALE_SLOT, profile, remote.gear, i * GEAR_COUNT);
+      need -= ch.bones(remote.kind[i]!) - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0, slot === IMPALE_SLOT, profile, remote.gear, i * GEAR_COUNT, remote.id[i]!, remote.tick);
       this.bodyRigid[k] = 1;
     }
   }

@@ -13,6 +13,7 @@ import { Pose, blendPose, sampleClip, type Clip } from "../../../shared/anim/cli
 import { conformCreature } from "../../../shared/anim/ground-conform.ts";
 import { createMountMotion, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
 import { occupantPose, poseSeated, seatBody, seatOrigin, type OccupantSeat } from "../../../shared/anim/occupant.ts";
+import { lyingWay, packReact, REACT_DIRS, REACT_FALL, REACT_HIPS, TOPPLED } from "../../../shared/anim/reactions.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
@@ -387,6 +388,8 @@ export class Characters {
   private readonly standIns: (StandIn | undefined)[][] = [];
   /** Stand-ins of survivors in whole-body emotes, by body kind and set and the emote. */
   private readonly emoteStandIns = new Map<number, StandIn>();
+  /** Bodies toppled down, by kind, body set and the way they lie. */
+  private readonly lyingStandIns = new Map<number, StandIn>();
   /** The manifest's slot of the emotes' clips while they are still to come, else -1; and whether they are wanted. */
   private emoteSlot = -1;
   private emotesWanted = false;
@@ -873,6 +876,23 @@ export class Characters {
     return s;
   }
 
+  /** The pose a survivor of `kind` drawn as body set `set` lies in once toppled the way `way` (reactions.ts topple). */
+  private lyingStandIn(kind: number, set: number, way: number): StandIn {
+    const key = (kind * 2 + set) * REACT_DIRS + way;
+    let s = this.lyingStandIns.get(key);
+    if (s) return s;
+    const like = new AnimState();
+    like.react = packReact(REACT_FALL, 0, way, REACT_HIPS, 0);
+    humanPose(this.anim, like, TOPPLED, this.pose, null);
+    const body = this.kinds[kind]!.sets[set]!;
+    const solved = new Solved(HUMAN_BONES);
+    solve(HUMAN, this.pose, solved, body.rest, null);
+    const rows = new Float32Array(HUMAN_BONES * BONE_FLOATS);
+    writeBones(rows, 0, solved, body.rest, null, 0, 0, 0, 0);
+    this.lyingStandIns.set(key, (s = { rows, solved, counted: -1, written: -1, first: 0 }));
+    return s;
+  }
+
   /** The body set a survivor of this kind with `look` at `lookAt` (null for none) is drawn as. */
   private setOf(k: BodyKind, look: Uint8Array | null, lookAt: number): number {
     if (k.sets.length < 2) return 0;
@@ -884,10 +904,18 @@ export class Characters {
    * The bones the pose a body would stand in takes, the first time this frame it is asked for, and 0 after: what a frame
    * short of bones keeps for those it leaves unposed (Scene). `seated` as add() is given a saddle seat.
    */
-  standInBones(kind: number, look: Uint8Array | null, lookAt: number, st: AnimState, seated: boolean, impaled = false, profile = 0, gear: Uint16Array | null = null, gearAt = 0): number {
+  standInBones(kind: number, look: Uint8Array | null, lookAt: number, st: AnimState, seated: boolean, impaled = false, profile = 0, gear: Uint16Array | null = null, gearAt = 0, id = -1, tick = 0): number {
     const k = this.kinds[kind];
     if (!k && !this.creatures[kind]) return 0;
     const set = k ? this.setOf(k, look, lookAt) : 0;
+    // As add() draws it: a body toppled down, or down before its fall's checkpoint, on the shared lying pose.
+    const way = k && !seated && !impaled && !this.dead.humans.of(id) ? lyingWay(st.react !== 0 ? st.react : this.dead.humans.waiting(id, tick), tick) : -1;
+    if (way >= 0) {
+      const s = this.lyingStandIn(kind, set, way);
+      if (s.counted === this.frame || s.written === this.frame) return 0;
+      s.counted = this.frame;
+      return HUMAN_BONES;
+    }
     if (profile && k) {
       // Thinning precedes the host's final pose. Reserve the exact profile key without caching an unfitted pose.
       const key = this.standKey(kind, set, profile, this.standState(st, seated, impaled));
@@ -1418,16 +1446,15 @@ export class Characters {
     const fallen = seat || vehicleSeat ? undefined : this.dead.humans.of(id);
     if (fallen) rigid = false;
     // Known to be down before its fall's checkpoint has come: it topples meanwhile rather than stand.
-    else if (!seat && !vehicleSeat && st.react === 0) {
-      const waiting = this.dead.humans.waiting(id, tick);
-      if (waiting !== 0) { st.react = waiting; rigid = false; }
-    }
+    else if (!seat && !vehicleSeat && st.react === 0) st.react = this.dead.humans.waiting(id, tick);
+    // On one bone, a body toppled down lies in the pose every body toppled that way shares.
+    const lying = rigid && !seat && !vehicleSeat && !impaled ? lyingWay(st.react, tick) : -1;
     this.packet = p;
     const at = this.setOf(k, look, lookAt);
     const set = k.sets[at]!;
     const foot = rider?.profile && (rider.targets[0]! & RIDER_SOLES) !== 0 ? this.partOf(set, gear, gearAt, SLOT_FEET) : -1;
     const hand = rider?.profile && (rider.targets[0]! & RIDER_GRIPS) !== 0 ? this.partOf(set, gear, gearAt, SLOT_HANDS) : -1;
-    const stand = rigid ? this.standInAt(p, this.standIn(kind, at, st, seat !== null, impaled, rider, foot, hand)) : -1;
+    const stand = rigid ? this.standInAt(p, lying >= 0 ? this.lyingStandIn(kind, at, lying) : this.standIn(kind, at, st, seat !== null, impaled, rider, foot, hand)) : -1;
     const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
     if (first < 0) {
       if (rigid && stand < 0 && !unseen) p.dropped++;
