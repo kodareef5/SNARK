@@ -41,6 +41,9 @@ const MONITOR_FILES = ["client/core/ui/monitor.ts", "client/core/ui/monitor-styl
 /** Bug report mode's files, which the app fetches once the mode is first on (D1091), and the shell's part of it. */
 const NOTES_FILES = ["client/core/notes/notes.ts", "client/core/notes/budget.ts", "client/core/notes/ring.ts", "client/core/notes/sample.ts", "client/core/notes/place.ts", "client/core/notes/census.ts", "client/core/notes/copies.ts", "shared/report.ts", "shared/listing.ts", "client/notes/port.ts"];
 
+/** The debug bar's files, which the app fetches once the bar is first on, and the shell's part of it. */
+const DEBUG_FILES = [...readdirSync(join(CLIENT, "core/debug")).filter((f) => f.endsWith(".ts")).map((f) => `client/core/debug/${f}`), "client/debug/debug-port.ts"];
+
 /**
  * First-frame modules the late files above may import, each a name page.js exports (D1106): the pass clock's list of
  * passes, which the budget's panel and a note's census name the GPU's passes by in its order (D1121).
@@ -74,8 +77,10 @@ test("code a page needs only after its first frame is not in the script the firs
     ...MONITOR_FILES,
     ...NOTES_FILES,
     ...SOUND_FILES,
+    ...DEBUG_FILES,
   ];
   expect(SOUND_FILES).toContain("client/core/sound/sounds.ts");
+  expect(DEBUG_FILES).toEqual(expect.arrayContaining(["client/core/debug/log.ts", "client/core/debug/shots.ts"]));
   for (const file of late) expect(files.includes(file), file).toBe(false);
   // The resource monitor's files and bug report mode's import nothing the first frame holds but what TAKEN_FIRST names:
   // what they use of it comes to them in a kit (client/core/ui/monitor-kit.ts, client/core/notes-kit.ts). They were
@@ -85,8 +90,22 @@ test("code a page needs only after its first frame is not in the script the firs
   for (const file of TAKEN_FIRST) expect(files, file).toContain(file);
   // The shell fetches them itself, and the app the Storage tab's page and the resource monitor.
   const fetchedBy = (file: string): string[] => [...readFileSync(join(CLIENT, file), "utf8").matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]!);
-  expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts", "../notes/port.ts"]));
+  expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts", "../notes/port.ts", "../debug/debug-port.ts"]));
   expect(fetchedBy("core/app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./ui/monitor.ts", "./notes/notes.ts", "./sound-late.ts"]));
+});
+
+test("the page's log is the first module the page runs, and takes only the levels", () => {
+  const main = readFileSync(join(CLIENT, "shell/main.ts"), "utf8");
+  expect(main.match(/^import\s+(?:[^;"']*?\sfrom\s+)?["']([^"']+)["']/m)?.[1]).toBe("./early-log.ts");
+  expect([...firstFrameFiles()].map((f) => relative(ROOT, f))).toContain("client/shell/early-log.ts");
+  expect(valueImports(join(CLIENT, "shell/early-log.ts")).map((f) => relative(ROOT, f))).toEqual(["shared/debug.ts"]);
+});
+
+test("the pictures' worker is built from client/debug under the name the ports load", () => {
+  expect(readFileSync(join(ROOT, "tools/build-client.ts"), "utf8")).toContain('"client/debug/shot-worker.ts"');
+  expect(existsSync(join(CLIENT, "debug/shot-worker.ts"))).toBe(true);
+  expect(existsSync(join(CLIENT, "notes/shot-worker.ts"))).toBe(false);
+  for (const port of ["debug/debug-port.ts", "notes/port.ts"]) expect(readFileSync(join(CLIENT, port), "utf8"), port).toContain('new Worker("shot-worker.js"');
 });
 
 test("the first frame holds the made textures' read; their engine comes later", () => {

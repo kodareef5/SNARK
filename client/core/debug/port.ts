@@ -1,4 +1,4 @@
-// What the debug bar asks of the page that only a browser has. client/debug/port.ts makes it; tests use a fake.
+// What the debug bar asks of the page that only a browser has. client/debug/debug-port.ts makes it; tests use a fake.
 
 import type { PassCpu } from "../passes.ts";
 
