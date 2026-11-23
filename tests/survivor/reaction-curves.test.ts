@@ -7,7 +7,9 @@ import { dirname, join, relative } from "node:path";
 import { bakeCurve } from "../../shared/anim/reaction-bake.ts";
 import { packReact, reactCurve, REACT_FALL, REACT_HEAVY, REACT_NONE, REACT_STAGGER } from "../../shared/anim/reactions.ts";
 import "../../shared/anim/reaction-late.ts";
+import { brotliCompressSync } from "node:zlib";
 import { bakedCurves } from "../../tools/page-script.ts";
+import { REACTION_CURVES_BUDGET } from "../../tools/sizes.ts";
 import { REACT_CURVES } from "../../shared/anim/reaction-curves.ts";
 
 const ROOT = join(import.meta.dir, "../..");
@@ -34,6 +36,8 @@ test("a page's build puts the baked text in its curves file, and no solver", asy
   expect(text.includes(JSON.stringify(REACT_CURVES))).toBe(true);
   // The text and its reader: the solver would bring a heightfield and the ragdoll with it.
   expect(text.length).toBeLessThan(REACT_CURVES.length + 20000);
+  // A page waits for it before it joins a world, within its budget (tools/sizes.ts).
+  expect(brotliCompressSync(text).length).toBeLessThanOrEqual(REACTION_CURVES_BUDGET);
 });
 
 test("packed ways decode near the solver's turns, and ways past 8 near its own", () => {
