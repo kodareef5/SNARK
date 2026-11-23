@@ -1,16 +1,21 @@
 // The view of the own survivor knocked down or dying. Knocked down, the eye rides the ragdoll's head, the look held within
-// LOOK_REACH of where the head faces, and blends back to the standing eye as the body gets up; behind, the camera follows
-// the hips. Dying, the eye stays with the head of the body it leaves as that falls, or where it last was if that body is
-// not in view, while the edges go red and close in and then all goes black (DYING_MS). A part of the app's frame between
-// the own body and the camera's place (place.ts); the HUD draws its red and black (hud/fallen.ts).
+// LOOK_REACH of where the head faces. Getting up, or toppled, the eye goes with the head as the body's reaction poses it,
+// as every machine poses it (shared/anim/reactions.ts), from the ragdoll's as the body is handed over to the standing
+// eye as it stands; the look stays the player's. Behind, the camera follows the hips. Dying, the eye stays with the head
+// of the body it leaves as that falls, or where it last was if that body is not in view, while the edges go red and
+// close in and then all goes black (DYING_MS). A part of the app's frame between the own body and the camera's place
+// (place.ts); the HUD draws its red and black (hud/fallen.ts).
 
-import { B_HEAD, SOCKET_EYE } from "../../../shared/anim/human.ts";
-import { CUE_DEAD } from "../../../shared/anim/pose.ts";
-import { boneToModel } from "../../../shared/anim/skeleton.ts";
+import { Pose } from "../../../shared/anim/clip.ts";
+import { B_HEAD, B_HIPS, HUMAN, SOCKET_EYE } from "../../../shared/anim/human.ts";
+import { CUE_DEAD, humanPose } from "../../../shared/anim/pose.ts";
+import { lyingShare } from "../../../shared/anim/reactions.ts";
+import { boneToModel, Solved, solve } from "../../../shared/anim/skeleton.ts";
 import { SESSION_ALIVE, SESSION_DEAD } from "../../../shared/net/protocol.ts";
 import { survivorKind } from "../../../shared/sim/blockers.ts";
 import { MF_DOWN } from "../../../shared/sim/character.ts";
 import { quatRotate } from "../../../shared/math/quat.ts";
+import { TAU } from "../../../shared/math/scalar.ts";
 import type { AppFrame, FramePart } from "../frame.ts";
 import type { HumanFall } from "../ragdoll.ts";
 
@@ -90,6 +95,13 @@ export class FallenView implements FramePart {
   private readonly look = new Float64Array(2);
   /** Last frame held the look to the head. */
   private wasHeld = false;
+  /** Where the own body was last frame, while it lived, which the eye goes along with on its feet. */
+  private readonly was = new Float64Array(3);
+  private wasKnown = false;
+  /** The own body as its reaction poses it, and where that puts the eye. */
+  private readonly pose = new Pose(HUMAN.bones);
+  private readonly solved = new Solved(HUMAN.bones);
+  private readonly posed = new Float64Array(3);
 
   step(f: AppFrame): void {
     const out = f.fallen, s = f.session, ch = f.scene.characters, c = f.controls;
@@ -110,8 +122,15 @@ export class FallenView implements FramePart {
       if (this.corpse >= 0) h = this.corpseFall(f);
     }
     const third = !dead && (f.third || f.orbiting);
-    // Where the camera would be standing, which a knock starts from and getting up goes back to.
-    const nx = f.bx, ny = f.by + f.eye, nz = f.bz;
+    // Where the camera would be standing, which a knock starts from and getting up goes back to; toppled or getting up,
+    // where the body's reaction has its eye, toward the standing eye as it stands.
+    let nx = f.bx, ny = f.by + f.eye, nz = f.bz;
+    const lies = alive ? this.reacted(f, third) : 0;
+    if (lies > 0) {
+      nx += (this.posed[0]! - nx) * lies;
+      ny += (this.posed[1]! - ny) * lies;
+      nz += (this.posed[2]! - nz) * lies;
+    }
     let tx = nx, ty = ny, tz = nz, held = false;
     if (h) {
       headEye(h, this.eye, this.look);
@@ -125,17 +144,26 @@ export class FallenView implements FramePart {
       // Its fall not come yet, or its body not in view: the eye stays where it was.
       tx = this.at[0]!; ty = this.at[1]!; tz = this.at[2]!;
     }
-    const following = h !== undefined || dead || down;
+    const following = h !== undefined || dead || down || lies > 0;
     if (!this.placed || !following) {
       // Standing, it keeps to the standing eye, so a fall eases from there.
       this.at[0] = tx; this.at[1] = ty; this.at[2] = tz;
       this.speed.fill(0);
       this.placed = true;
     } else {
+      // On its feet again, the eye goes along with the body as it moves and follows only what its pose does, so walking
+      // off as it gets up leaves the eye no way behind.
+      if (alive && !down && !h?.down && this.wasKnown) {
+        this.at[0] = this.at[0]! + f.bx - this.was[0]!;
+        this.at[1] = this.at[1]! + f.by - this.was[1]!;
+        this.at[2] = this.at[2]! + f.bz - this.was[2]!;
+      }
       follow(this.at, this.speed, 0, tx, f.dt);
       follow(this.at, this.speed, 1, ty, f.dt);
       follow(this.at, this.speed, 2, tz, f.dt);
     }
+    this.was[0] = f.bx; this.was[1] = f.by; this.was[2] = f.bz;
+    this.wasKnown = alive;
     if (h && held) {
       // The head's facing is followed as the eye is; the look is kept within reach of it.
       if (!this.wasHeld) { this.head[0] = this.look[0]!; this.head[1] = this.look[1]!; this.headSpeed.fill(0); }
@@ -162,6 +190,27 @@ export class FallenView implements FramePart {
       out.red = DOWN_RED * (down ? 1 : h && !h.down ? 1 - smooth(h.risen) : 0);
       out.reach = DOWN_REACH;
     }
+  }
+
+  /**
+   * How far down the own body's reaction lays it now, 0 standing; and into `posed` where that puts its eye, or its hips
+   * from behind, as every machine poses it.
+   */
+  private reacted(f: AppFrame, third: boolean): number {
+    const body = f.body, st = body.state, lies = lyingShare(st.react, body.tick);
+    if (lies <= 0) return 0;
+    st.facing = body.yaw / TAU;
+    humanPose(f.scene.characters.anim, st, body.tick, this.pose);
+    solve(HUMAN, this.pose, this.solved);
+    if (third) {
+      boneToModel(this.solved, B_HIPS, 0, 0, 0, this.posed);
+      this.posed[1] = this.posed[1]! + HIPS_UP;
+    } else boneToModel(this.solved, B_HEAD, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, this.posed);
+    const s = Math.sin(body.yaw), c = Math.cos(body.yaw), mx = this.posed[0]!, mz = this.posed[2]!;
+    this.posed[0] = body.x + c * mx + s * mz;
+    this.posed[1] = body.y + this.posed[1]!;
+    this.posed[2] = body.z - s * mx + c * mz;
+    return lies;
   }
 
   /** The own body's body: a survivor's, dead, come in the view near where it died, its own name's first. */

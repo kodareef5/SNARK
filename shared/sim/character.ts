@@ -8,6 +8,7 @@ import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
 import { REACT_CONTROL_TICKS, REACT_FRAMES, reactClass } from "./react.ts";
+import { withTurn } from "../anim/reactions.ts";
 import { PAD, SKIN, wallDepth, wallOut, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
 import { Found, type StructureStore } from "../world/structures.ts";
@@ -987,6 +988,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     if ((REACT_FRAMES[kind] ?? 0) - b.reactTicks < (REACT_CONTROL_TICKS[kind] ?? 0)) maxDv *= STAGGER_HOLD;
     if (--b.reactTicks === 0) b.react = 0;
   }
+  // Laid down by its reaction, how far round it has turned since goes with its facing, alike in prediction.
+  if (b.react !== 0) b.react = withTurn(b.react, b.yaw / YAW_UNITS);
   // A body with no hold on where it goes (knocked off its feet, tangled, out cold) does not steer or brake in the air: it
   // flies as it was thrown until it lands.
   if (!b.grounded && !b.jetThrust && (flags & (MF_ROOTED | MF_OUT)) !== 0) maxDv = 0;

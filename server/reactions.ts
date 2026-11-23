@@ -4,7 +4,7 @@
 // knocks it down. Once a reaction ends the body cannot be staggered again for a few seconds, so blows cannot chain it.
 
 import { TICK_RATE } from "../shared/coords.ts";
-import { facingOf, LIE_WAYS, packLie, packReact, reactAge, reactFrames, reactBand, reactKind, REACT_DIRS, REACT_FALL, REACT_HEAVY, REACT_RISE, REACT_STAGGER, toppleUp, wayFrom } from "../shared/anim/reactions.ts";
+import { facingOf, LIE_WAYS, packLie, packReact, reactAge, reactFrames, reactBand, reactKind, REACT_DIRS, REACT_FALL, REACT_HEAVY, REACT_RISE, REACT_STAGGER, toppleUp, wayFrom, withTurn } from "../shared/anim/reactions.ts";
 import { REACT_RULES, TIER_BUMP, TIER_FALL, TIER_NONE, TIER_STAGGER, dirOf, strengthOf, tierOf, type ReactRules } from "../shared/sim/react.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { MODE_WALK } from "../shared/sim/character.ts";
@@ -154,12 +154,19 @@ export class Reactions {
     this.reeling.delete(e);
   }
 
-  /** Once a tick: clears every reaction that is over or whose body can no longer reel. */
+  /**
+   * Once a tick: clears every reaction that is over or whose body can no longer reel, and keeps up to date how far round
+   * a body laid down by one has turned, so every machine turns it the same way round (shared/anim/reactions.ts withTurn).
+   */
   step(): void {
     const { world } = this.ctx;
     const ents = world.ents, tick = world.tick;
     for (const e of this.reeling) {
-      const word = ents.react[e]!;
+      const was = ents.react[e]!, word = withTurn(was, ents.yaw[e]! / 65536);
+      if (word !== was) {
+        ents.react[e] = word;
+        world.history.reacted(e);
+      }
       const gone = (ents.flags[e]! & F_ALIVE) === 0 || word === 0;
       // Getting up from a ragdoll's fall goes with knockdowns, not staggers.
       const on = reactKind(word) === REACT_RISE ? (this.ctx.upright ?? this.ctx.standing)(e) : this.ctx.standing(e);

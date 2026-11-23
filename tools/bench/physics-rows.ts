@@ -174,6 +174,8 @@ class Watching {
   private readonly lastHead = new Map<string, number[]>();
   private readonly steps: number[] = [];
   private readonly stepsOne: number[] = [];
+  /** The most poses a watcher kept of bodies down or getting up, which bodies on one bone share. */
+  private lyingKept = 0;
 
   constructor(h: Harness, sessions: readonly ClientSession[], bodies: readonly number[]) {
     this.h = h; this.sessions = sessions; this.bodies = bodies;
@@ -230,6 +232,7 @@ class Watching {
       characters.corpseMotions = s.corpseMotions;
       characters.begin();
       characters.corpses(packet, this.cam, remote, s.world!);
+      this.lyingKept = Math.max(this.lyingKept, characters.lyingKept);
       // Each tick, each body toppling or getting up, drawn whole and on one bone, set beside the server's at the tick drawn.
       for (let i = 0; i < remote.count; i++) {
         const id = remote.id[i]!, word = remote.react[i]!, ring = this.posed.get(id);
@@ -330,6 +333,7 @@ class Watching {
     record("watchers: toppling or getting up, on one bone, head from the server's, 99th percentile", at(this.risingOne, 0.99) * 100, "cm", null);
     record("watchers: toppling or getting up, on one bone, head from the server's, the most", at(this.risingOne, 1) * 100, "cm", null);
     record("watchers: toppling or getting up, drawn whole, the most a head pops between draws", at(this.steps, 1) * 100, "cm", null);
+    record("watchers: poses kept of bodies down or getting up, the most", this.lyingKept, "", null);
     record("watchers: toppling or getting up, on one bone, the most a head pops between draws", at(this.stepsOne, 1) * 100, "cm", null);
     record("watchers: a body drawn down from where the server has it, median", at(apart, 0.5) * 100, "cm", null);
     record("watchers: a body drawn down from where the server has it, 90th percentile", at(apart, 0.9) * 100, "cm", null);

@@ -119,7 +119,7 @@ export const CUE_DOWN = 1 << CUE_MATING_SHIFT;
  */
 export const EMOTE_BITS = 29;
 /** A survivor's reaction to a blow, its own word beside the emote: shared/anim/reactions.ts lays it out. */
-export const REACT_BITS = 27;
+export const REACT_BITS = 31;
 export const EMOTE_ID_BITS = 10;
 export const EMOTE_START_SHIFT = 10;
 export const EMOTE_ROLE_SHIFT = 26;

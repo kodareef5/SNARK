@@ -1,7 +1,9 @@
 // A survivor knocked down and getting up is posed alike on the server, where shots are judged, by a watcher that draws
-// it whole and by one short of bones that draws it on one bone: one start, timed by the server, and one way of rising.
-// Each watcher's drawn head is set beside the server's hit head from the knock until the survivor walks away.
+// it whole, by one short of bones that draws it on one bone, by one that changes from the one to the other halfway up,
+// and from its own eye: one start, timed by the server, and one way of rising. Each drawn head, and the own camera, is
+// set beside the server's from the knock until the survivor walks away, standing, crouched or prone, turning or not.
 import { expect, test } from "bun:test";
+import { App } from "../../client/core/app.ts";
 import { Assets } from "../../client/core/assets/assets.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Characters } from "../../client/core/render/characters.ts";
@@ -9,10 +11,11 @@ import { BONE_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { RISE_BLEND } from "../../client/core/ragdoll.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { Pose } from "../../shared/anim/clip.ts";
-import { B_HEAD, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_HEAD, HUMAN, HUMAN_BONES, SOCKET_EYE } from "../../shared/anim/human.ts";
 import { AnimState, bodySeed, humanPose } from "../../shared/anim/pose.ts";
-import { REACT_FALL, REACT_RISE, reactAge, reactKind } from "../../shared/anim/reactions.ts";
-import { Solved, solve } from "../../shared/anim/skeleton.ts";
+import { MF_DOWN } from "../../shared/sim/character.ts";
+import { lyingShare, REACT_FALL, REACT_RISE, reactAge, reactKind } from "../../shared/anim/reactions.ts";
+import { boneToModel, Solved, solve } from "../../shared/anim/skeleton.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -22,12 +25,12 @@ import { corePack } from "../fixtures/pack.ts";
 // The server poses with the pack it serves, so the watchers draw with it too.
 const pack = corePack(), rest = Float32Array.from(pack.header.rigs.find((r) => r.id === "human_m")!.rest), colors = new Uint8Array(64);
 
-/**
- * Where the server has `e` and its hit head now, as a shot is judged against it: its place, and its head from there,
- * posed as its ragdoll lies while it lies as one.
- */
-function serverHead(h: Harness, e: number, st: AnimState, pose: Pose, solved: Solved): { at: number[]; head: number[]; laid: boolean; moving: boolean } {
-  const ents = h.world.ents, laid = h.host.falls.poseOf(e);
+/** What the server had of the survivor at a tick: its place, and from there its hit head and its eye. */
+interface Had { at: number[]; head: number[]; eye: number[]; laid: boolean; moving: boolean }
+
+/** What the server has of `e` now, as a shot is judged against it: posed as its ragdoll lies while it lies as one. */
+function serverHad(h: Harness, e: number, st: AnimState, pose: Pose, solved: Solved): Had {
+  const ents = h.world.ents, laid = h.host.falls.poseOf(e), eye = new Float64Array(3);
   let s = solved, a = (ents.yaw[e]! * TAU) / 65536;
   if (laid) {
     s = laid;
@@ -39,19 +42,20 @@ function serverHead(h: Harness, e: number, st: AnimState, pose: Pose, solved: So
     humanPose(h.world.anim!, st, h.world.tick, pose);
     solve(HUMAN, pose, solved);
   }
-  const c = Math.cos(a), sn = Math.sin(a), lx = s.pos[B_HEAD * 3]!, lz = s.pos[B_HEAD * 3 + 2]!;
-  return { at: [ents.x[e]!, ents.y[e]!, ents.z[e]!], head: [c * lx + sn * lz, s.pos[B_HEAD * 3 + 1]!, -sn * lx + c * lz], laid: laid !== null, moving: !laid && st.speed > 0 };
+  boneToModel(s, B_HEAD, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, eye);
+  const c = Math.cos(a), sn = Math.sin(a), turn = (x: number, y: number, z: number): number[] => [c * x + sn * z, y, -sn * x + c * z];
+  return { at: [ents.x[e]!, ents.y[e]!, ents.z[e]!], head: turn(s.pos[B_HEAD * 3]!, s.pos[B_HEAD * 3 + 1]!, s.pos[B_HEAD * 3 + 2]!), eye: turn(eye[0]!, eye[1]!, eye[2]!), laid: laid !== null, moving: !laid && st.speed > 0 };
 }
 
 /**
- * The server's hit head at `tick`, which may fall between ticks, from what it had at each: its place between them, and
- * its head from there between them too, or, lying as a ragdoll, as at the tick it had reached (server/combat.ts).
+ * The server's hit head, or eye, at `tick`, which may fall between ticks, from what it had at each: its place between
+ * them, and the rest from there between them too, or, lying as a ragdoll, as at the tick it had reached (server/combat.ts).
  */
-function judged(heads: Map<number, { at: number[]; head: number[]; laid: boolean; moving: boolean }>, tick: number): number[] | null {
-  const t0 = Math.floor(tick), a = heads.get(t0), b = heads.get(t0 + 1);
+function judged(had: Map<number, Had>, tick: number, eye = false): number[] | null {
+  const t0 = Math.floor(tick), a = had.get(t0), b = had.get(t0 + 1);
   if (!a || !b) return null;
-  const k = tick - t0, laid = a.laid;
-  return [0, 1, 2].map((j) => a.at[j]! + (b.at[j]! - a.at[j]!) * k + (laid ? a.head[j]! : a.head[j]! + (b.head[j]! - a.head[j]!) * k));
+  const k = tick - t0, from = eye ? a.eye : a.head, to = eye ? b.eye : b.head;
+  return [0, 1, 2].map((j) => a.at[j]! + (b.at[j]! - a.at[j]!) * k + (a.laid ? from[j]! : from[j]! + (to[j]! - from[j]!) * k));
 }
 
 /** Where a watcher draws `e`'s head now, whole or on one bone, and its reaction word; null where it does not. */
@@ -94,65 +98,115 @@ interface Seen {
   frames: number;
 }
 
+/** What the survivor saw from its own eye. */
+interface Eye {
+  /**
+   * The most its camera moved in a frame going down, from the knock on, and getting up; and the highest it was while
+   * getting up with its reaction having it three quarters down or more, of how many frames. Its reaction comes to it from
+   * the server a round trip late, as any blow's does, so going down it catches up.
+   */
+  stepDown: number;
+  stepUp: number;
+  downHigh: number;
+  down: number;
+  /** Its camera's height over the ground before the knock, at its lowest, and at the end. */
+  before: number;
+  lowest: number;
+  after: number;
+}
+
+interface Scene {
+  /** Down as a body past the fall budget goes down, else as a ragdoll. */
+  topple?: boolean;
+  /** Radians its player looks aside as it is told to get up, or as its topple lies all the way down. */
+  turn?: number;
+  /** A key its player presses as it is told to get up, for the stance it gets up in. */
+  stance?: "KeyC" | "KeyX";
+}
+
 /**
- * Knocks a survivor down before two watchers, one drawing it whole and one on one bone, and watches until it has got up
- * and walked away from them: `topple` as a body past the fall budget goes down, else as a ragdoll. Its player looks
- * `turn` radians aside as it is told to get up, or as its topple lies all the way down. Also returns how far the server's
- * head moved about its body's place while a topple lay all the way down.
+ * Knocks a survivor down, seen from its own eye and by three watchers, and watches until it has got up and walked away.
+ * Also returns how far the server's head moved about its body's place while a topple lay all the way down.
  */
-function watch(topple: boolean, turn = 0): { whole: Seen; one: Seen; still: number } {
+function scene(o: Scene = {}): { whole: Seen; one: Seen; both: Seen; eye: Eye; still: number } {
   const h = new Harness({}, 5, 60, { dev: true, clips: pack.clips, rigs: pack.header.rigs, wild: false, map: writeMap(flatMap(4)) });
   try {
     h.host.setSetting("Knockdowns", "true");
-    const w1 = h.join("whole"), w2 = h.join("short"), f = h.join("faller");
-    h.run(300);
-    const ents = h.world.ents, e = h.client(f)!.ent;
-    for (const [s, x, z] of [[w1, 98, 70], [w2, 102, 70], [f, 100, 76]] as const) {
+    const w1 = h.join("whole"), w2 = h.join("short"), w3 = h.join("both"), own = h.join("faller", {}, { manual: true });
+    const app = new App(own, h.reg, pack), run = (ms: number, each?: () => void): void => h.run(ms, (now) => { app.frame(now, 1280, 720); each?.(); });
+    run(300);
+    const ents = h.world.ents, e = h.client(own)!.ent, ground = 0;
+    for (const [s, x, z] of [[w1, 98, 70], [w2, 102, 70], [w3, 100, 66], [own, 100, 76]] as const) {
       ents.setPosition(h.client(s)!.ent, x, 0, z);
       h.world.history.discontinuity(h.client(s)!.ent);
     }
-    h.run(600);
-    if (topple) {
+    run(600);
+    if (app.view.thirdPerson) { app.key("KeyV", true); run(50); app.key("KeyV", false); run(300); }
+    expect(app.view.thirdPerson).toBe(false);
+    const before = app.cam.y - ground;
+    if (o.topple) {
       // As the game topples a body no ragdoll may fall for: by its reaction, held where it lies until it is up.
       ents.vx[e] = 1.2; ents.vz[e] = 1.6;
       h.host.reactions.topple(e);
     } else expect(h.host.falls.knock(e, 1.5, 1, 2, 2, 0, 1)).toBe(true);
     const knocked = h.world.tick;
-    const watchers = [
-      { session: w1, rigid: false, characters: new Characters(h.reg, pack, new Assets(h.reg, pack)), remote: new RemoteSample(), seen: seen(), last: null as number[] | null, lastServer: null as number[] | null, lastTick: -1 },
-      { session: w2, rigid: true, characters: new Characters(h.reg, pack, new Assets(h.reg, pack)), remote: new RemoteSample(), seen: seen(), last: null as number[] | null, lastServer: null as number[] | null, lastTick: -1 },
-    ];
-    const heads = new Map<number, { at: number[]; head: number[]; laid: boolean; moving: boolean }>(), st = new AnimState(), sst = new AnimState(), pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES);
-    let last = -1, worded = false, walked = false, turned = false, still = 0, first: number[] | null = null;
-    h.run(topple ? 4500 : 7000, () => {
+    const watcher = (session: ClientSession, rigid: (tick: number) => boolean) => ({ session, rigid, characters: new Characters(h.reg, pack, new Assets(h.reg, pack)), remote: new RemoteSample(), seen: seen(), last: null as number[] | null, lastServer: null as number[] | null, lastTick: -1 });
+    // The third draws it whole until it is halfway up, then on one bone.
+    let halfway = Infinity;
+    const watchers = [watcher(w1, () => false), watcher(w2, () => true), watcher(w3, (t) => t >= halfway)];
+    const had = new Map<number, Had>(), st = new AnimState(), sst = new AnimState(), pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES);
+    let downHigh = -Infinity, down = 0, stepDown = 0, stepUp = 0, getting = false, was = false;
+    let last = -1, worded = false, walked = false, acted = 0, still = 0, first: number[] | null = null, lowest = Infinity, cam: number[] | null = null;
+    run(o.topple ? 4500 : 7000, () => {
       if (h.world.tick !== last) {
         last = h.world.tick;
-        const now = serverHead(h, e, sst, pose, solved);
-        heads.set(last, now);
-        // It walks away as soon as it is told to get up, and moves once the game lets it: when its rise's stun has
-        // passed, or once its topple is over.
+        const now = serverHad(h, e, sst, pose, solved);
+        had.set(last, now);
         const word = ents.react[e]!, kind = reactKind(word), age = reactAge(word, last);
-        worded ||= kind === (topple ? REACT_FALL : REACT_RISE);
-        if (!turned && worded && (!topple || age >= 15)) { turned = true; h.pilots[2]!.yaw += turn; }
-        if (!walked && worded && (!topple || kind === 0)) { walked = true; h.pilots[2]!.moveZ = 1; }
-        if (topple && kind === REACT_FALL && age >= 12 && age <= 58) {
+        if (!worded && kind === (o.topple ? REACT_FALL : REACT_RISE)) { worded = true; halfway = last + (o.topple ? 67 : 15); }
+        // Told to get up, or lying all the way down from a topple, its player looks aside and takes its stance; it walks
+        // away once the game lets it: when its rise's stun has passed, or once its topple is over.
+        if (acted === 0 && worded && (!o.topple || age >= 15)) {
+          acted = 1;
+          app.controls.yaw += o.turn ?? 0;
+          if (o.stance) app.key(o.stance, true);
+        } else if (acted === 1) {
+          acted = 2;
+          if (o.stance) app.key(o.stance, false);
+        }
+        if (!walked && worded && (!o.topple || kind === 0)) { walked = true; app.key("KeyW", true); }
+        if (o.topple && kind === REACT_FALL && age >= 12 && age <= 58) {
           first ??= now.head;
           still = Math.max(still, Math.hypot(now.head[0]! - first[0]!, now.head[1]! - first[1]!, now.head[2]! - first[2]!));
         }
       }
+      // Its own eye: from the knock on, how far the camera moves a frame, and where it is as it gets up: once its own
+      // body is up from its ragdoll, or its topple begins to get up.
+      const at = [app.cam.x, app.cam.y, app.cam.z], word = app.session.own.react, clock = app.session.tickClock;
+      const lying = (app.session.own.mflags & MF_DOWN) !== 0 || reactKind(word) === REACT_FALL;
+      getting ||= was && (!lying || (reactKind(word) === REACT_FALL && reactAge(word, clock) >= 60));
+      was ||= lying;
+      if (cam) {
+        const moved = Math.hypot(at[0]! - cam[0]!, at[1]! - cam[1]!, at[2]! - cam[2]!);
+        if (getting) stepUp = Math.max(stepUp, moved);
+        else stepDown = Math.max(stepDown, moved);
+      }
+      cam = at;
+      lowest = Math.min(lowest, at[1]! - ground);
+      if (getting && lyingShare(word, clock) >= 0.75) { downHigh = Math.max(downHigh, at[1]! - ground); down++; }
       for (const w of watchers) {
-        const d = drawnHead(w.characters, w.session, w.remote, e, w.rigid, st);
+        const rigid = w.rigid(w.remote.tick), d = drawnHead(w.characters, w.session, w.remote, e, rigid, st);
         if (!d) continue;
-        const server = judged(heads, d.tick), t0 = Math.floor(d.tick);
+        const server = judged(had, d.tick), t0 = Math.floor(d.tick);
         if (!server || d.tick < knocked) continue;
         const off = Math.hypot(d.head[0]! - server[0]!, d.head[1]! - server[1]!, d.head[2]! - server[2]!);
-        const s = w.seen, ragdoll = heads.get(t0)!.laid && heads.get(t0 + 1)!.laid;
+        const s = w.seen, ragdoll = had.get(t0)!.laid && had.get(t0 + 1)!.laid;
         const kind = reactKind(d.word), handing = kind === REACT_RISE && reactAge(d.word, d.tick) <= RISE_BLEND + 1;
         s.frames++;
         // Its fall's checkpoint takes a few ticks to come; laid, the watcher draws its ragdoll.
         if (ragdoll) { if (d.tick > knocked + 10) s.lying.push(off); }
         else if (handing) s.handOff.push(off);
-        else if (kind === REACT_FALL || kind === REACT_RISE) (heads.get(t0)!.moving || heads.get(t0 + 1)!.moving ? s.risingOff : s.rising).push(off);
+        else if (kind === REACT_FALL || kind === REACT_RISE) (had.get(t0)!.moving || had.get(t0 + 1)!.moving ? s.risingOff : s.rising).push(off);
         else if (d.tick >= knocked + 10) s.walking.push(off);
         // Standing on one screen and lying on the other: a head under 0.6 m against one over 1.2 m, or the other way.
         if ((server[1]! < 0.6 && d.head[1]! > 1.2) || (server[1]! > 1.2 && d.head[1]! < 0.6)) s.wrong++;
@@ -162,10 +216,10 @@ function watch(topple: boolean, turn = 0): { whole: Seen; one: Seen; still: numb
         w.last = d.head; w.lastServer = server; w.lastTick = d.tick;
       }
     });
-    h.pilots[2]!.moveZ = 0;
-    // It got up and walked well away.
-    expect([worded, walked, turned, ents.z[e]! > 79 || turn !== 0]).toEqual([true, true, true, true]);
-    return { whole: watchers[0]!.seen, one: watchers[1]!.seen, still };
+    app.key("KeyW", false);
+    // It got up and walked away.
+    expect([worded, walked, acted === 2, Math.hypot(ents.x[e]! - 100, ents.z[e]! - 76) > 2]).toEqual([true, true, true, true]);
+    return { whole: watchers[0]!.seen, one: watchers[1]!.seen, both: watchers[2]!.seen, eye: { stepDown, stepUp, downHigh, down, before, lowest, after: app.cam.y - ground }, still };
   } finally {
     h.host.shutdown();
   }
@@ -177,59 +231,85 @@ function seen(): Seen {
 
 const most = (v: number[]): number => v.reduce((a, b) => Math.max(a, b), 0);
 const share = (v: number[], p: number): number => [...v].sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(p * v.length))] ?? 0;
+const cm = (v: number): string => (v * 100).toFixed(1);
 
 function report(what: string, s: Seen): string {
-  const cm = (v: number): string => (v * 100).toFixed(1);
   return `${what}: ${s.frames} frames; lying ${s.lying.length} worst ${cm(most(s.lying))}; hand-off ${s.handOff.length} worst ${cm(most(s.handOff))}; rising ${s.rising.length} worst ${cm(most(s.rising))}; moving off ${s.risingOff.length} worst ${cm(most(s.risingOff))}; walking ${s.walking.length} p99 ${cm(share(s.walking, 0.99))} worst ${cm(most(s.walking))}; pop worst ${cm(most(s.pops))}; wrong ${s.wrong}`;
 }
 
-/** What both watchers must see: never one standing where the other lies, and no head popping between frames. */
-function steady(whole: Seen, one: Seen): void {
-  const why = `${report("whole", whole)}\n${report("one bone", one)}`;
-  for (const s of [whole, one]) expect(s.wrong, why).toBe(0);
-  expect(most(whole.pops), why).toBeLessThan(0.1);
-  expect(most(one.pops), why).toBeLessThan(0.2);
-  // Walking away, a stride's phase is the watcher's own, by how far the body has gone, and the server's by the tick:
-  // a running head bobs out of step by as much as its bob.
-  expect(most(whole.walking), why).toBeLessThan(0.25);
-  expect(most(one.walking), why).toBeLessThan(0.2);
+function reports(r: ReturnType<typeof scene>): string {
+  const e = r.eye;
+  return [report("whole", r.whole), report("one bone", r.one), report("whole then one bone", r.both), `own eye: most a frame going down ${cm(e.stepDown)}, getting up ${cm(e.stepUp)}; getting up three quarters down ${e.down} frames, at most ${cm(e.downHigh)} high; height ${cm(e.before)}, lowest ${cm(e.lowest)}, after ${cm(e.after)}`].join("\n");
 }
 
-test("a ragdoll fall's rise is drawn as the server poses it, whole and on one bone", () => {
-  const { whole, one } = watch(false), why = `${report("whole", whole)}\n${report("one bone", one)}`;
-  for (const s of [whole, one]) expect([s.lying.length > 40, s.handOff.length > 0, s.rising.length > 10, s.risingOff.length > 10], why).toEqual([true, true, true, true]);
+/**
+ * What every scene must show: no screen standing where another lies, no head popping between frames, and the own eye
+ * going down and getting up with its body, smoothly, standing at the end at the height it stood at.
+ */
+function steady(r: ReturnType<typeof scene>, ends: readonly [number, number] = [1.5, 1.75]): void {
+  const why = reports(r);
+  for (const s of [r.whole, r.one, r.both]) expect(s.wrong, why).toBe(0);
+  expect(most(r.whole.pops), why).toBeLessThan(0.1);
+  expect(most(r.one.pops), why).toBeLessThan(0.2);
+  // Changing from whole to one bone halfway up moves the head no more than one bone's own steps.
+  expect(most(r.both.pops), why).toBeLessThan(0.2);
+  // Walking away, a stride's phase is the watcher's own, by how far the body has gone, and the server's by the tick:
+  // a running head bobs out of step by as much as its bob.
+  expect(most(r.whole.walking), why).toBeLessThan(0.25);
+  expect(most(r.one.walking), why).toBeLessThan(0.2);
+  // Its own eye goes down with it, and gets up with it, never standing while its reaction still has it down.
+  expect(r.eye.down, why).toBeGreaterThan(3);
+  expect(r.eye.downHigh, why).toBeLessThan(0.8);
+  // A topple stands up in half a second, and walking off moves the eye 7.4 cm a frame: a pop would be several times it.
+  expect(r.eye.stepUp, why).toBeLessThan(0.12);
+  expect(r.eye.stepDown, why).toBeLessThan(0.25);
+  expect([r.eye.before > 1.5, r.eye.lowest < 0.6, r.eye.after > ends[0] && r.eye.after < ends[1]], why).toEqual([true, true, true]);
+}
+
+test("a ragdoll fall's rise is alike on the server, two watchers and its own eye", () => {
+  const r = scene(), why = reports(r);
+  for (const s of [r.whole, r.one]) expect([s.lying.length > 40, s.handOff.length > 0, s.rising.length > 10, s.risingOff.length > 10], why).toEqual([true, true, true, true]);
   // Whole: lying as the ragdoll does, eased from it into the rise over a few ticks, then rising as the server poses it.
-  expect(most(whole.lying), why).toBeLessThan(0.01);
-  expect(most(whole.handOff), why).toBeLessThan(0.12);
-  expect(most(whole.rising), why).toBeLessThan(0.02);
-  expect(most(whole.risingOff), why).toBeLessThan(0.2);
+  expect(most(r.whole.lying), why).toBeLessThan(0.01);
+  expect(most(r.whole.handOff), why).toBeLessThan(0.12);
+  expect(most(r.whole.rising), why).toBeLessThan(0.02);
+  expect(most(r.whole.risingOff), why).toBeLessThan(0.2);
   // On one bone: in shared poses, laid as far down as the ragdoll is and getting up step by step.
-  expect(most(one.lying), why).toBeLessThan(0.25);
-  expect(most(one.handOff), why).toBeLessThan(0.12);
-  expect(most(one.rising), why).toBeLessThan(0.12);
-  expect(most(one.risingOff), why).toBeLessThan(0.15);
-  steady(whole, one);
+  expect(most(r.one.lying), why).toBeLessThan(0.25);
+  expect(most(r.one.handOff), why).toBeLessThan(0.12);
+  expect(most(r.one.rising), why).toBeLessThan(0.12);
+  expect(most(r.one.risingOff), why).toBeLessThan(0.15);
+  steady(r);
 });
 
-test("a topple is drawn as the server poses it, whole and on one bone", () => {
-  const { whole, one } = watch(true), why = `${report("whole", whole)}\n${report("one bone", one)}`;
-  for (const s of [whole, one]) expect([s.rising.length > 60, s.walking.length > 30], why).toEqual([true, true]);
-  expect(most(whole.rising), why).toBeLessThan(0.02);
-  expect(most(whole.risingOff), why).toBeLessThan(0.1);
-  expect(most(one.rising), why).toBeLessThan(0.12);
-  expect(most(one.risingOff), why).toBeLessThan(0.15);
-  steady(whole, one);
+test("a topple is alike on the server, two watchers and its own eye", () => {
+  const r = scene({ topple: true }), why = reports(r);
+  for (const s of [r.whole, r.one]) expect([s.rising.length > 60, s.walking.length > 30], why).toEqual([true, true]);
+  expect(most(r.whole.rising), why).toBeLessThan(0.02);
+  expect(most(r.whole.risingOff), why).toBeLessThan(0.1);
+  expect(most(r.one.rising), why).toBeLessThan(0.12);
+  expect(most(r.one.risingOff), why).toBeLessThan(0.15);
+  steady(r);
+});
+
+test("getting up crouched or prone is alike at every detail and from its own eye", () => {
+  for (const [stance, ends] of [["KeyC", [0.9, 1.4]], ["KeyX", [0.15, 0.7]]] as const) {
+    const r = scene({ stance }), why = `${stance}\n${reports(r)}`;
+    expect(most(r.whole.rising), why).toBeLessThan(0.02);
+    expect(most(r.one.rising), why).toBeLessThan(0.15);
+    steady(r, ends);
+  }
 });
 
 test("a body lying by its reaction stays put while its player looks around", () => {
   // Lying all the way down, a topple lies against the facing it had as it went down, however its player turns.
-  const topple = watch(true, Math.PI / 2);
+  const topple = scene({ topple: true, turn: Math.PI / 2 });
   expect(topple.still).toBeLessThan(0.01);
-  // Turning as it gets up, it turns with its player as it stands, alike on every screen.
-  for (const { whole, one } of [topple, watch(false, Math.PI / 2)]) {
-    const why = `${report("whole", whole)}\n${report("one bone", one)}`;
-    expect(most(whole.rising), why).toBeLessThan(0.02);
-    expect(most(one.rising), why).toBeLessThan(0.15);
-    steady(whole, one);
+  // Turning as it gets up, it turns with its player as it stands, alike on every screen and from its own eye.
+  for (const r of [topple, scene({ turn: Math.PI / 2 }), scene({ turn: -2.5 })]) {
+    const why = reports(r);
+    expect(most(r.whole.rising), why).toBeLessThan(0.02);
+    expect(most(r.one.rising), why).toBeLessThan(0.15);
+    steady(r);
   }
 });

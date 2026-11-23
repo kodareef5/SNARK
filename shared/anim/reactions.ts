@@ -12,8 +12,9 @@ import { B_HEAD, B_HIPS, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_RAGDOLL } fr
 // The word, REACT_BITS long (shared/anim/pose.ts): its class, the low byte of its first tick, the way the body is pushed,
 // the height struck and how hard. A body toppled (REACT_FALL) or getting up from a ragdoll's fall (REACT_RISE) keeps
 // instead how it lies (packLie): the sixteenth its head lies nearest in the way, whether it lies face up in the height's
-// low bit, how far its head lies from that sixteenth in the height's high bit and the strength, and in the top byte the
-// facing it had as it went down or began to get up.
+// low bit, how far its head lies from that sixteenth in the height's high bit and the strength, the facing it had as it
+// went down or began to get up in the next byte, and in the top four bits the quarter turns it has turned since, which
+// the server keeps up to date (withTurn) so a turn through the way opposite never flips which way round it goes.
 export const REACT_NONE = 0;
 /** Knocked off balance: a shove and a short loss of control. */
 export const REACT_STAGGER = 1;
@@ -28,6 +29,7 @@ const DIR_SHIFT = 11;
 const HEIGHT_SHIFT = 15;
 const STRENGTH_SHIFT = 17;
 const FACING_SHIFT = 19;
+const TURN_SHIFT = 27;
 /** Sixteenths of a turn, as a body's travel direction is counted: 0 straight ahead, 4 toward its left. */
 export const REACT_DIRS = 16;
 /** Where it was struck: about the legs, the hips, the chest, the head. */
@@ -90,11 +92,27 @@ export function lyingOff(word: number, facing: number): number {
   return (off / LIE_WAYS) * 2 * Math.PI + (facing === facing ? turnFrom(word, facing) : 0);
 }
 
-/** Radians from facing `facing` (a share of a turn) to the facing a body laid down by `word` lies against, the shorter way. */
+/** Quarter turns a body laid down by `word` has turned since, -8 to 7, as the server last kept them (withTurn). */
+const lieTurns = (word: number): number => (((word >>> TURN_SHIFT) & 15) << 28) >> 28;
+
+/**
+ * Radians from facing `facing` (a share of a turn) to the facing a body laid down by `word` lies against: the way round
+ * nearest the quarter turns the word keeps, so it goes on round the way it has been going.
+ */
 function turnFrom(word: number, facing: number): number {
-  let d = ((word >>> FACING_SHIFT) & (LIE_FACINGS - 1)) / LIE_FACINGS - facing;
-  d -= Math.floor(d + 0.5);
-  return d * 2 * Math.PI;
+  const d = ((word >>> FACING_SHIFT) & (LIE_FACINGS - 1)) / LIE_FACINGS - facing, near = -lieTurns(word) / 4;
+  return (d - Math.round(d - near)) * 2 * Math.PI;
+}
+
+/**
+ * Word `word` with the quarter turns a body laid down by it has turned since kept up to date for its facing now,
+ * `facing` (a share of a turn): the same word for any other reaction, or while they have not changed.
+ */
+export function withTurn(word: number, facing: number): number {
+  const kind = reactKind(word);
+  if (kind !== REACT_FALL && kind !== REACT_RISE) return word;
+  const turns = Math.max(-8, Math.min(7, Math.round((-turnFrom(word, facing) / (2 * Math.PI)) * 4)));
+  return ((word & ~(15 << TURN_SHIFT)) | ((turns & 15) << TURN_SHIFT)) >>> 0;
 }
 
 export const reactKind = reactClass;

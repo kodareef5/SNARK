@@ -14,7 +14,7 @@ import { makeHandle } from "../../shared/ids.ts";
 import { encodeCorpseCheckpoint, type CorpseMotion } from "../../shared/net/corpse.ts";
 import { B_HEAD, B_HIPS, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, CUE_DOWN } from "../../shared/anim/pose.ts";
-import { packReact, REACT_FALL, REACT_HIPS } from "../../shared/anim/reactions.ts";
+import { packLie, packReact, REACT_FALL, REACT_HIPS, REACT_RISE } from "../../shared/anim/reactions.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { frozenPack } from "../fixtures/pack.ts";
@@ -143,4 +143,32 @@ test("laid falls short of bones share one lying pose, each where its ragdoll lie
     expect(best, `${k}`).toBeLessThan(0.02);
     expect(along, `${k}`).toBeGreaterThan(0.95);
   }
+});
+
+test("poses kept for bodies going down or getting up stay few however they lie and go", () => {
+  const characters = new Characters(reg, pack, new Assets(reg, pack)), st = new AnimState();
+  // Every way a body can lie and every step, going at every speed and turn, standing, crouched and prone: a frame of
+  // forty bodies at a time, as a crowd short of bones would be drawn.
+  let drawn = 0, frames = 0;
+  const words: number[] = [];
+  for (let dir = 0; dir < 16; dir++) for (const up of [false, true]) for (let age = 0; age < 30; age += 2) words.push(packLie(REACT_RISE, 100 - age, up, dir * 8 + 3, 0));
+  for (let k = 0; k < words.length; k += 40) {
+    characters.begin();
+    const p = new FramePacket();
+    p.tier = { ...p.tier, bones: 1 << 20 };
+    frames++;
+    for (let j = k; j < Math.min(words.length, k + 40); j++) {
+      st.unpack(0);
+      st.react = words[j]!;
+      st.speed = (j * 7) % 16;
+      st.dir = (j * 5) % 16;
+      st.stance = j % 3;
+      oneBone(characters, p, st, 100, 1000 + j);
+      drawn++;
+      expect(characters.lyingKept).toBeLessThanOrEqual(256 + 40);
+    }
+  }
+  expect(drawn).toBe(words.length);
+  expect(frames).toBeGreaterThan(10);
+  expect(characters.lyingKept).toBeLessThanOrEqual(256 + 40);
 });

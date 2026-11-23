@@ -394,7 +394,7 @@ export class Characters {
   private readonly standIns: (StandIn | undefined)[][] = [];
   /** Stand-ins of survivors in whole-body emotes, by body kind and set and the emote. */
   private readonly emoteStandIns = new Map<number, StandIn>();
-  /** Bodies toppled down, by kind, body set and the way they lie. */
+  /** Bodies down or getting up, by kind, body set, stance, way of going and how they lie: LYING_KEPT, the last used last. */
   private readonly lyingStandIns = new Map<number, StandIn>();
   /** The manifest's slot of the emotes' clips while they are still to come, else -1; and whether they are wanted. */
   private emoteSlot = -1;
@@ -925,21 +925,38 @@ export class Characters {
   private readonly ahead3 = new Float64Array(3);
 
   /**
-   * The pose a survivor of `kind` drawn as body set `set` stands in, going as `move` says (standMove), laid toward lying
-   * as `step` says (reactions.ts lyingStep).
+   * The pose a survivor of `kind` drawn as body set `set` stands in, in `stance`, going as `move` says (standMove), laid
+   * toward lying as `step` says (reactions.ts lyingStep).
    */
-  private lyingStandIn(kind: number, set: number, step: number, move = STILL): StandIn {
-    const key = ((kind * 2 + set) * MOVES + move) * (2 * REACT_DIRS * (LIE_STEPS + 1)) + step;
+  private lyingStandIn(kind: number, set: number, step: number, move = STILL, stance = STANCE_STAND): StandIn {
+    const key = (((kind * 2 + set) * 4 + (stance & 3)) * MOVES + move) * (2 * REACT_DIRS * (LIE_STEPS + 1)) + step;
     let s = this.lyingStandIns.get(key);
-    if (s) return s;
-    humanPose(this.anim, moving(new AnimState(), move), 0, this.pose, null, false, step);
+    if (s) {
+      this.lyingStandIns.delete(key);
+      this.lyingStandIns.set(key, s);
+      return s;
+    }
+    const like = moving(new AnimState(), move);
+    like.stance = stance;
+    humanPose(this.anim, like, 0, this.pose, null, false, step);
     const body = this.kinds[kind]!.sets[set]!;
     const solved = new Solved(HUMAN_BONES);
     solve(HUMAN, this.pose, solved, body.rest, null);
     const rows = new Float32Array(HUMAN_BONES * BONE_FLOATS);
     writeBones(rows, 0, solved, body.rest, null, 0, 0, 0, 0);
     this.lyingStandIns.set(key, (s = { rows, solved, counted: -1, written: -1, first: 0 }));
+    // The ones used longest ago go, but none this frame has used.
+    for (const old of this.lyingStandIns.keys()) {
+      if (this.lyingStandIns.size <= LYING_KEPT) break;
+      const kept = this.lyingStandIns.get(old)!;
+      if (kept.written !== this.frame && kept.counted !== this.frame) this.lyingStandIns.delete(old);
+    }
     return s;
+  }
+
+  /** How many poses of bodies down or getting up are kept. */
+  get lyingKept(): number {
+    return this.lyingStandIns.size;
   }
 
   /** The body set a survivor of this kind with `look` at `lookAt` (null for none) is drawn as. */
@@ -962,7 +979,8 @@ export class Characters {
     const fall = k && !seated && !impaled ? this.dead.humans.of(id) : undefined;
     const step = this.sharedStep(fall?.down ? this.fallOnOne(kind, set, fall).step : k && !seated && !impaled ? lyingStep(st.react !== 0 || fall ? st.react : this.dead.humans.waiting(id, tick), tick) : -1);
     if (step >= 0) {
-      const s = this.lyingStandIn(kind, set, step, fall?.down || stepShare(step) === 1 ? STILL : standMove(st));
+      const all = fall?.down || stepShare(step) === 1;
+      const s = this.lyingStandIn(kind, set, step, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance);
       if (s.counted === this.frame || s.written === this.frame) return 0;
       s.counted = this.frame;
       return HUMAN_BONES;
@@ -1509,7 +1527,9 @@ export class Characters {
     const set = k.sets[at]!;
     const foot = rider?.profile && (rider.targets[0]! & RIDER_SOLES) !== 0 ? this.partOf(set, gear, gearAt, SLOT_FEET) : -1;
     const hand = rider?.profile && (rider.targets[0]! & RIDER_GRIPS) !== 0 ? this.partOf(set, gear, gearAt, SLOT_HANDS) : -1;
-    const stand = rigid ? this.standInAt(p, lying >= 0 ? this.lyingStandIn(kind, at, lying, onOne || stepShare(lying) === 1 ? STILL : standMove(st)) : this.standIn(kind, at, st, seat !== null, impaled, rider, foot, hand)) : -1;
+    // A body all the way down, or a ragdoll's, lies alike whatever it was doing; one getting up goes as it does now.
+    const all = onOne !== null || stepShare(lying) === 1;
+    const stand = rigid ? this.standInAt(p, lying >= 0 ? this.lyingStandIn(kind, at, lying, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance) : this.standIn(kind, at, st, seat !== null, impaled, rider, foot, hand)) : -1;
     const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
     if (first < 0) {
       if (rigid && stand < 0 && !unseen) p.dropped++;
@@ -1927,6 +1947,8 @@ export class Characters {
 
 /** Metres a second a body with a reaction word is posed as moving at, at least, for how often it is posed. */
 const REACTING_SPEED = 2;
+/** The most poses of bodies down or getting up kept, which bodies drawn on one bone share. */
+const LYING_KEPT = 256;
 /** Metres a ragdoll's head may lie above its hips' joint and be drawn on one bone lying all the way down. */
 const LAID = 0.15;
 /** The speeds (SPEED_STEP units) a survivor drawn on one bone is shown going at: still, walking, running and sprinting. */
