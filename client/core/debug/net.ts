@@ -24,10 +24,11 @@ const BODIES = 1;
 const OTHER = CATEGORIES.length - 1;
 
 /**
- * The codes in each category, by name. A sub-kind's row comes before its kind's, and a code in no row is "other". A
- * snapshot's message counts as "bodies"; its bytes go by its sections (SECTION_CATEGORY).
+ * The codes in each category, by name. A sub-kind's row comes before its kind's, and a code in no row is "other": a new
+ * code shows there until a line here files it. A snapshot's message counts as "bodies"; its bytes go by its sections
+ * (SECTION_CATEGORY).
  */
-const ROWS: Readonly<Record<Category, readonly string[]>> = {
+export const CATEGORY_ROWS: Readonly<Record<Category, readonly string[]>> = {
   player: ["S_OWN"],
   bodies: ["S_SNAPSHOT"],
   world: ["S_CHUNK", "S_CHUNK_DROP", "S_NODES", "S_TACTICAL", "S_MARKS", "S_FAR", "S_MOTION", "S_SUPPLY", "EVENT_TAMED", "EVENT_BALL"],
@@ -39,7 +40,7 @@ const ROWS: Readonly<Record<Category, readonly string[]>> = {
   commands: ["C_COMMAND"],
   other: [],
 };
-const CATEGORY_OF = new Map(CATEGORIES.flatMap((c, i) => ROWS[c].map((name) => [name, i] as const)));
+const CATEGORY_OF = new Map(CATEGORIES.flatMap((c, i) => CATEGORY_ROWS[c].map((name) => [name, i] as const)));
 /** The family a kind's sub-kind is named from, by the kind's name. */
 const SUB_FAMILY = new Map<string, keyof CodeNames>([["S_OWN", "OWN"], ["S_EVENT", "EVENT"], ["S_TEXT", "TEXT"], ["C_COMMAND", "CMD"]]);
 
@@ -298,6 +299,23 @@ export class NetLog implements NetTap {
       }
     }
     if (n > 0) for (let j = 0; j < 4; j++) out[j]! /= n;
+  }
+
+  /**
+   * What a capture keeps (shared/report.ts NET_SHAPE) of the last `seconds` whole seconds: bytes and messages a second by
+   * category, each key's and each snapshot section's totals over them, and the longest gap between snapshots each second.
+   */
+  record(seconds: number): Record<string, unknown> {
+    this.roll(this.clock.now());
+    const n = Math.max(1, Math.min(seconds, SECONDS)), bytes = new Float64Array(CATEGORIES.length * n), msgs = new Float64Array(CATEGORIES.length * n);
+    this.series(n, bytes, msgs);
+    const categories = CATEGORIES.map((name, c) => ({ name, bytes: Array.from(bytes.subarray(c * n, c * n + n)), messages: Array.from(msgs.subarray(c * n, c * n + n)) })).filter((k) => k.messages.some((v) => v > 0));
+    const held = this.whole(n);
+    const keys = this.keys.map((key) => ({ out: key.dir === NET_OUT, name: key.subName && key.sub >= 0 ? `${key.kindName} ${key.subName}` : key.kindName, category: CATEGORIES[key.category]!, bytes: this.sum(key.bytes, held), messages: this.sum(key.msgs, held) })).filter((k) => k.messages > 0);
+    const snapshot = SECTIONS.map((name, s) => ({ name, bits: this.sum(this.sectionBits, held, SECTIONS.length, s) }));
+    const gaps: number[] = [];
+    for (let i = held; i >= 1; i--) gaps.push(Math.round(this.gaps[slotOf(this.second - i)]!));
+    return { seconds: n, categories, keys, snapshot, gaps };
   }
 
   private note(dir: number, kind: number, sub: number, bytes: number): void {

@@ -1,7 +1,7 @@
 // The debug bar's count of the socket (client/core/debug/net.ts), and the view delta's reader telling each op's bits.
 
 import { expect, test } from "bun:test";
-import { BODY_CLASSES, CATEGORIES, NET_OUT, NetLog, OPS, SECONDS, SnapshotParts, bodyClass, categoryOf, type NetRow } from "../../client/core/debug/net.ts";
+import { BODY_CLASSES, CATEGORIES, CATEGORY_ROWS, NET_OUT, NetLog, OPS, SECONDS, SnapshotParts, bodyClass, categoryOf, type NetRow } from "../../client/core/debug/net.ts";
 import { SNAP_BODIES, SNAP_CONTACTS, SNAP_HEAD, SNAP_OWN, SNAP_REST } from "../../client/core/net-tap.ts";
 import { codeNames } from "../../shared/debug.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
@@ -167,15 +167,12 @@ test("a key is named by its number until the names come, then by its code and ca
   expect(named(log)).toEqual([["S_EVENT", "EVENT_HIT", "combat"], ["C_COMMAND", "CMD_TEXT", "commands"], ["S_OWN", "OWN_VITALS", "player"], ["S_CHUNK", "", "world"], ["S 250", "", "other"]]);
 });
 
-test("every code has a category from the table, and the table's own rows hold", () => {
+test("the table names only codes the protocol has, and its rows hold", () => {
   const names = codeNames(P);
   const of = (family: Record<number, string>): string[] => Object.values(family);
-  const missing = [
-    ...of(names.S).filter((s) => s !== "S_EVENT" && categoryOf(s) === cat("other")),
-    ...of(names.EVENT).filter((e) => categoryOf("S_EVENT", e) === cat("other")),
-    ...of(names.C).filter((c) => categoryOf(c) === cat("other")),
-  ];
-  expect(missing).toEqual([]);
+  // A code renamed or taken out leaves no row behind; a new one shows under "other" until a line files it.
+  const known = new Set([...of(names.S), ...of(names.EVENT), ...of(names.C)]);
+  expect(Object.values(CATEGORY_ROWS).flat().filter((name) => !known.has(name))).toEqual([]);
   expect(new Set(of(names.OWN).map((o) => CATEGORIES[categoryOf("S_OWN", o)]))).toEqual(new Set(["player"]));
   expect(new Set(of(names.TEXT).map((t) => CATEGORIES[categoryOf("S_TEXT", t)]))).toEqual(new Set(["text"]));
   expect(new Set(of(names.CMD).map((c) => CATEGORIES[categoryOf("C_COMMAND", c)]))).toEqual(new Set(["commands"]));

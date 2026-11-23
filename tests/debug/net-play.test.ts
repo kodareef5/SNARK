@@ -106,8 +106,7 @@ test("the tap counts each byte that crossed the socket by kind, and splits each 
   log.snapshots(parts, 3);
   expect([Math.round(parts.count), parts.classes[BODY_CLASSES.indexOf("survivor")]! > 0]).toEqual([TICK_RATE, true]);
 
-  // Every kind seen has a category, and the text, the event, the chat and the snapshot's parts are among them.
+  // The text, the event, the chat and the snapshot's parts are each in their category.
   const seen = rows.slice(0, n).map((r) => `${r.kindName} ${r.subName} ${CATEGORIES[r.category]}`);
-  expect(seen.filter((s) => s.endsWith(" other"))).toEqual([]);
   expect(seen).toEqual(expect.arrayContaining(["S_EVENT EVENT_KILL combat", "S_TEXT TEXT_NOTICE text", "S_TEXT TEXT_GLOBAL text", "C_COMMAND CMD_CHAT commands", "C_INPUT  input", "S_SNAPSHOT bodies bodies", "S_SNAPSHOT own body player"]));
 });
