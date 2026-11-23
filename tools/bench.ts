@@ -41,6 +41,7 @@ import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
 import { storeRows } from "./bench/store.ts";
 import { benchTactical } from "./bench/tactical.ts";
+import { benchBreaking } from "./bench/breaking.ts";
 import { benchCensus } from "./bench/census.ts";
 import { benchCity } from "./bench/city.ts";
 import { benchFar } from "./bench/far.ts";
@@ -1276,6 +1277,7 @@ benchDamageNumbers(section, record);
 benchShadow(section, record);
 benchTextured(section, record);
 benchDepth(section, record);
+benchBreaking(section, record);
 benchTerrain(section, record, hf);
 await benchTextures(section, record);
 // Brotli at 11 over every part is minutes of work on a set of 2 GB and holds no budget, so it runs only when asked for.
