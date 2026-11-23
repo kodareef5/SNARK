@@ -84,7 +84,7 @@ def build(kit, bones, full=True):
                 kit.lathe((x, 0.157, z), (x, 0.165, z), [(0, 0.14), (0, 0.148), (0.008, 0.148), (0.008, 0.14)], "steel", 22, loop=True)
             # Navigation light on the duct's outer rim: red to the left, green to the right.
             nz = z + (0.0 if z > 0 else 0.0)
-            kit.cbox((x + s * (DUCT_OUT + 0.004), 0.14, nz), (0.012, 0.018, 0.03), "lamp_red" if s > 0 else "lamp_green", bevel=0.003)
+            kit.cbox((x + s * (DUCT_OUT - 0.003), 0.14, nz), (0.012, 0.018, 0.03), "lamp_red" if s > 0 else "lamp_green", bevel=0.003)
         # Skids on raked struts, clear of the payload pod.
         for s in (1, -1):
             x = s * 0.17

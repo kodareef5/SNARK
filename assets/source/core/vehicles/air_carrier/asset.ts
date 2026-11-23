@@ -9,5 +9,5 @@ export default {
   regions: [], clips: [], feet: [], gaits: {},
   materials: airMaterials(2048),
   flat: 1, holdParts: true, preserveBones: ["rotor_front", "rotor_rear"],
-  budgets: { triangles: [40000, 12000, 5000, 2000, 800, 360], texture: { top: 2048, megabytes: 40 } },
+  budgets: { triangles: [40000, 9000, 4000, 1600, 700, 320], texture: { top: 2048, megabytes: 40 } },
 } satisfies CreatureAsset;

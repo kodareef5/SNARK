@@ -34,7 +34,7 @@ box, cbox, beam, cyl = kit.box, kit.cbox, kit.beam, kit.cylinder
 BAND = (0.5, 0.58)
 
 
-def section(w, low, top, corner=0.32, n=3):
+def section(w, low, top, corner=0.32, n=5):
     """A rounded box section, as points (x, y), counter-clockwise from the bottom right, with the livery band's edges on each side."""
     c = min(w, (top - low) / 2) * corner
     h = top - low
@@ -66,19 +66,21 @@ def fuselage(stations, tag, tags=None, caps=True, cap=None):
 
 # ---------------------------------------------------------------- nose
 def nose():
-    st = [(7.32, 0.3, 1.32, 1.72, 0.9), (7.12, 0.56, 1.06, 2.0, 0.8), (6.7, 0.74, 0.95, 2.24, 0.55), (6.1, 0.8, 0.92, 2.36, 0.4),
-          (5.4, 0.8, 0.93, 2.42, 0.35), (4.85, 0.78, 1.0, 2.5, 0.35)]
-    n = len(section(1, 0, 1))
+    st = [(7.32, 0.3, 1.3, 1.7, 0.9), (7.15, 0.58, 1.04, 2.0, 0.75), (6.75, 0.76, 0.95, 2.3, 0.5), (6.15, 0.8, 0.92, 2.42, 0.4),
+          (5.4, 0.8, 0.93, 2.45, 0.35), (4.85, 0.78, 1.0, 2.5, 0.35)]
+    pts = [section(w, lo, hi, k) for _, w, lo, hi, k in st]
 
     def tag(r, i):
-        # Glazing wraps the upper front: the windscreen, the side windows and the chin windows by the pedals.
-        up = n // 4 <= i <= 3 * n // 4 - 1
-        side = i in (n // 4 - 2, n // 4 - 1, 3 * n // 4, 3 * n // 4 + 1)
-        if r == 1 and (up or side):
+        # A wraparound greenhouse: windscreen and side windows above the band, a solid roof, chin windows below.
+        p, q = pts[r][i], pts[r][(i + 1) % len(pts[r])]
+        lo, hi = st[r][2], st[r][3]
+        f = ((p[1] + q[1]) / 2 - lo) / (hi - lo)
+        x = abs(p[0] + q[0]) / 2
+        if r <= 1 and f > 0.6:
             return "glass"
-        if r == 2 and (side or i in (n // 4, 3 * n // 4 - 1)):
+        if r == 2 and 0.62 < f < 0.93:
             return "glass"
-        if r == 0 and i in (n - 2, n - 1, 0, 1):
+        if r == 1 and f < 0.2 and x < 0.36:
             return "glass"
         return paint(r, i)
 
@@ -86,12 +88,15 @@ def nose():
     fuselage(st, "panel_b", tags=tag, cap="panel_d")
     # Window frames and the wiper, a sensor turret under the chin, steps and handholds, nav and landing lamps.
     for s in (1, -1):
-        beam((s * 0.3, 2.02, 7.08), (s * 0.18, 2.3, 6.55), 0.04, 0.04, "dark")
+        beam((s * 0.3, 2.0, 7.1), (s * 0.22, 2.3, 6.72), 0.04, 0.04, "dark")
+        # Pitot tube and a blade antenna.
+        kit.tube([(s * 0.42, 1.25, 7.0), (s * 0.5, 1.25, 7.25), (s * 0.5, 1.25, 7.38)], 0.012, "steel", 6)
         cbox((s * 0.81, 1.75, 5.7), (0.03, 0.06, 0.16), "lamp_red" if s > 0 else "lamp_green", bevel=0.01)
         kit.decal((s * 0.805, 1.35, 5.4), (s, 0, 0), (0, 0, -s), 0.9, 0.22, "text_carrier", lift=0.003)
         for y in (0.65, 0.4):
             box((min(s * 0.72, s * 0.85), y - 0.02, 5.9), (max(s * 0.72, s * 0.85), y + 0.02, 6.2), "grip")
         beam((s * 0.78, 0.4, 6.05), (s * 0.78, 0.92, 6.05), 0.04, 0.04, "steel")
+    kit.prism([(5.3, 2.43), (5.55, 2.43), (5.42, 2.62), (5.34, 2.62)], "x", -0.008, 0.008, "dark")
     cyl((0, 0.98, 6.9), (0, 0.84, 6.9), 0.14, "panel_d", 16, bevel=0.03)
     kit.lathe((0, 0.84, 6.9), (0, 0.66, 6.9), [(0, 0.13), (0.06, 0.13), (0.14, 0.09), (0.18, 0.0)], "dark", 16)
     cyl((0, 0.74, 6.99), (0, 0.74, 7.04), 0.05, "dark", 12, cap="lens")
@@ -116,8 +121,8 @@ def pylon(e):
     if e > 0:
         st = [(4.9, 0.78, 1.0, 2.5, 0.35), (4.5, 0.76, 1.02, 2.56, 0.3), (3.3, 0.74, 1.05, 2.56, 0.3), (2.85, 0.66, 1.15, 2.42, 0.35)]
     else:
-        st = [(-2.85, 0.66, 1.15, 2.6, 0.35), (-3.2, 0.78, 1.05, 2.92, 0.3), (-4.5, 0.8, 1.02, 2.95, 0.3), (-5.3, 0.74, 1.08, 2.8, 0.35),
-              (-6.4, 0.5, 1.35, 2.62, 0.45), (-7.15, 0.26, 1.7, 2.45, 0.7)]
+        st = [(-2.85, 0.66, 1.15, 2.6, 0.35), (-3.2, 0.76, 1.05, 2.9, 0.3), (-4.5, 0.78, 1.02, 2.92, 0.3), (-5.3, 0.68, 1.12, 2.8, 0.35),
+              (-6.2, 0.42, 1.5, 2.62, 0.45), (-7.0, 0.2, 1.9, 2.44, 0.7)]
     fuselage(st, "panel_b", tags=livery(st), cap="panel_d")
     top = max(h for _, _, _, h, _ in st)
     # Transmission fairing on top: intakes, the mast, the swashplate and its three servos.
@@ -126,6 +131,13 @@ def pylon(e):
     for s in (1, -1):
         box((min(s * 0.46, s * 0.52), top + 0.02, z0 - 0.45), (max(s * 0.46, s * 0.52), top + 0.18, z0 + 0.1), "mesh")
         kit.decal((s * 0.765, top - 0.35, z0 - 0.9 * e), (s, 0, 0), (0, 0, -s), 0.7, 0.17, "text_rotor", lift=0.003)
+    # Access panels and a step ladder up the pylon's flank to the transmission deck.
+    for s in (1, -1):
+        w = st[1][1] + 0.003
+        for dz, dy, ww, hh in ((-0.35, 0.95, 0.6, 0.42), (0.45, 0.95, 0.5, 0.42)):
+            kit.plate((s * w, 1.05 + dy, z0 + dz * e), (s, 0, 0), (0, 0, -s), ww, hh, "panel_seamed", depth=0.012)
+        for k in range(4):
+            box((min(s * w, s * (w + 0.05)), 1.25 + k * 0.28, z0 - 0.95 * e - 0.12), (max(s * w, s * (w + 0.05)), 1.28 + k * 0.28, z0 - 0.95 * e + 0.12), "steel")
     mast_lo = top + 0.24
     cyl((0, mast_lo - 0.05, z0), (0, hub - 0.12, z0), 0.13, "steel", 16)
     cyl((0, mast_lo, z0), (0, mast_lo + 0.06, z0), 0.36, "frame", 20, bevel=0.015)
@@ -189,7 +201,7 @@ def engines():
     for s in (1, -1):
         x, y = s * 1.18, 2.42
         prof = [(0.0, 0.26), (0.0, 0.32), (0.08, 0.37), (0.4, 0.38), (1.6, 0.38), (2.15, 0.34), (2.45, 0.27), (2.5, 0.22)]
-        kit.lathe((x, y, -2.55), (x, y, -5.05), prof, "panel_b", 22, tags=["dark", "steel", "panel_b", "panel_seamed", "panel_b", "panel_d", "frame"])
+        kit.lathe((x, y, -2.55), (x, y, -5.05), prof, "panel_b", 28, tags=["dark", "steel", "panel_b", "panel_seamed", "panel_b", "panel_d", "frame"])
         kit.lathe((x, y, -2.56), (x, y, -2.62), [(0, 0.26), (0.06, 0.24)], "mesh", 20)
         cyl((x, y, -2.6), (x, y, -2.75), 0.1, "dark", 12, r2=0.05)
         cyl((x, y, -5.0), (x, y, -5.32), 0.23, "steel", 18, r2=0.21)
@@ -208,7 +220,7 @@ def engines():
             kit.lathe((foot[0] + s * dx, 0.22, -5.6), (foot[0] + s * (dx + 0.12), 0.22, -5.6), [(0, 0.12), (0.01, 0.21), (0.03, 0.22), (0.09, 0.22), (0.11, 0.21), (0.12, 0.12)], "tread", 16,
                       tags=["tyre_wall", "tread", "tread", "tread", "tyre_wall"])
     # Tail: strobe and the cooling exhaust.
-    cyl((0, 2.1, -7.15), (0, 2.1, -7.22), 0.06, "lamp_white", 10)
+    cyl((0, 2.17, -6.98), (0, 2.17, -7.05), 0.06, "lamp_white", 10)
 
 
 # ---------------------------------------------------------------- clamps
@@ -243,7 +255,7 @@ def rotor(bone):
     with kit.on(bone):
         # Hub: a three-arm head with lag dampers, pitch horns and links down to the rotating swashplate ring.
         cyl((cx, cy - 0.12, cz), (cx, cy + 0.1, cz), 0.2, "frame", 18, bevel=0.02)
-        kit.lathe((cx, cy + 0.1, cz), (cx, cy + 0.2, cz), [(0, 0.16), (0.05, 0.12), (0.1, 0.0)], "panel_d", 16)
+        kit.lathe((cx, cy + 0.1, cz), (cx, cy + 0.145, cz), [(0, 0.16), (0.025, 0.12), (0.045, 0.0)], "panel_d", 16)
         ring_y = cy - 0.24
         cyl((cx, ring_y - 0.02, cz), (cx, ring_y + 0.02, cz), 0.32, "steel", 20)
         for k in range(3):

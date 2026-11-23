@@ -341,10 +341,9 @@ def roof():
             z = -DOOR + k * 1.11
             box((rx + 0.02, ry + 0.04, z - 0.03), (WALL, TOP + 0.015, z + 0.03), "panel_b", bevel=0.01)
         box((-0.32, TOP, -DOOR + 0.1), (0.12, TOP + 0.012, DOOR - 0.1), "grip", bevel=0.004)
-        # Sensor mast blister and a whip antenna on the lid's front corner.
-        box((-0.95, TOP, 2.6), (-0.6, TOP + 0.08, 3.1), "panel_b", bevel=0.03)
-        cyl((-0.78, TOP + 0.08, 2.85), (-0.78, TOP + 0.13, 2.85), 0.07, "dark", 14, bevel=0.015)
-        kit.tube([(-0.78, TOP + 0.13, 2.85), (-0.78, TOP + 0.45, 2.85)], 0.006, "dark", 5)
+        # A flush sensor window on the lid's front corner, kept inside the rack's height.
+        box((-0.95, TOP, 2.6), (-0.6, TOP + 0.022, 3.1), "panel_b", bevel=0.01)
+        box((-0.88, TOP + 0.022, 2.7), (-0.67, TOP + 0.026, 3.0), "glass")
         for k in range(7):
             z = -3.0 + k * 1.0 + 0.5
             if abs(z) < DOOR - 0.15:
