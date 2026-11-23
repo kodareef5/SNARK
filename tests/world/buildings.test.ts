@@ -161,10 +161,13 @@ test("a building comes back as it was written: its strings, its frame, its stair
   const back = parseMap(writeMap(flatMap(1, { statics: pieces.map((p) => ({ ...p, y: 0, yaw: 0 })), buildings: Buildings.of({ chunksX: 1, chunksZ: 1 }, rows, pieces, rows.map((_, k) => k), rows.map(() => 0)) }))).buildings!;
   expect([...back.handles()].map((h) => [back.name(h), back.address(h)])).toEqual([...names.slice(0, 4).map((name, k) => [name, k % 2 ? "12B Calle Ocho" : "Calle Ocho"]), ["é".repeat(127), "Calle Ocho"], [null, "1 Açaí Way"], [null, null]]);
   // A sector of many buildings, each of one piece on a storey of its own.
-  const many = Array.from({ length: 400 }, (_, k) => row(100 + k, `Block ${k}`, `${k + 1} Flagler Street`));
+  // One of them a garage of 527 stairs, as Miami has.
+  const garage = Array.from({ length: 527 }, (_, k) => ({ i: k % 60, j: Math.floor(k / 60), floors: 3 + (k % 2), escape: k % 2 === 1 }));
+  const many = Array.from({ length: 400 }, (_, k) => ({ ...row(100 + k, `Block ${k}`, `${k + 1} Flagler Street`), stairs: k === 7 ? garage : [] }));
   const spots = many.map((_, k) => ({ kind: "core:crate", x: 2 + (k % 20) * 3, z: 2 + Math.floor(k / 20) * 3 }));
   const big = parseMap(writeMap(flatMap(1, { statics: spots.map((p) => ({ ...p, y: 0, yaw: 0 })), buildings: Buildings.of({ chunksX: 1, chunksZ: 1 }, many, spots, many.map((_, k) => k), many.map((_, k) => k % 5)) }))).buildings!;
   expect([big.count, big.name(big.byId(499)), big.address(big.byId(100)), big.storeyOf(0, 399), big.id(big.buildingOf(0, 123))]).toEqual([400, "Block 399", "1 Flagler Street", 4, 223]);
+  expect([big.stairs(big.byId(107)), big.stairs(big.byId(108)), big.stairAt(big.byId(107), 46, 8), big.stairAt(big.byId(107), 47, 8)]).toEqual([garage, [], true, false]);
   expect([addressParts("5700 Northwest 10th Avenue"), addressParts("Ocean Drive"), addressParts("77"), addressParts(null)]).toEqual([["5700", "Northwest 10th Avenue"], [null, "Ocean Drive"], [null, "77"], [null, null]]);
   expect([kindWords("apartment_block"), kindWords("house")]).toEqual(["Apartment block", "House"]);
 });

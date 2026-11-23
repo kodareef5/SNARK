@@ -111,7 +111,7 @@
 //               roof, 4 a place the city names by hand, 8 it has a row in another sector too); u8 storeys, u8 storeys
 //               walked, u8 metres a bay; u16 name, u16 address number and u16 street, each a string's number counting from
 //               1 or 0 for none; its frame's middle as i32 x and z in 1/512 m from the square's corner, u16 turn, i16 base
-//               and u16 width and depth in 1/16 m, u16 tiles across and deep; and a u8 count of stairs. Then every stair,
+//               and u16 width and depth in 1/16 m, u16 tiles across and deep; and a u16 count of stairs. Then every stair,
 //               a building's after another's, in planes: u16 tile i, u16 tile j, u8 storeys it climbs, u8 flags (1 an
 //               escape). Then a u16 count of strings, a u8 byte length each, and their UTF-8 one after another. Then the
 //               runs: a u16 count for each of the square's chunks row by row, and every run, a chunk's after another's and

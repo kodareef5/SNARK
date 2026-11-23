@@ -36,13 +36,15 @@ export const BUILDING_SPANS = 8;
 export const STAIR_ESCAPE = 1;
 /** Buildings a sector may hold, strings its buildings may name, and stairs a building may have. */
 const MOST = 65535;
-const MOST_STAIRS = 255;
+const MOST_STAIRS = MOST;
+/** The most an id may be: 48 bits. */
+const MOST_ID = 281474976710655;
 /** A base is told in sixteenths of a metre, as a maker rounds it, and a frame's width and depth too. */
 const BASE_UNITS = 16;
 /** Bytes of a name or a part of an address. */
 const TEXT_BYTES = 255;
 /** A building's bytes in a part's columns. */
-const ROW_BYTES = 6 + 9 + 3 * 2 + 2 * 4 + 6 * 2 + 1;
+const ROW_BYTES = 6 + 9 + 3 * 2 + 2 * 4 + 6 * 2 + 2;
 
 /** What the numbers of a building's columns stand for: a map's head holds them once (BLDG). */
 export interface BuildingNames {
@@ -229,7 +231,7 @@ class Read {
   varint(): number {
     let v = 0;
     for (let scale = 1; ; scale *= 128) {
-      if (scale > 2 ** 35) throw new RangeError();
+      if (scale > 34359738368) throw new RangeError();
       const b = this.take(1)[0]!;
       v += (b & 127) * scale;
       if (b < 128) return v;
@@ -389,7 +391,7 @@ export class SectorBuildings {
     for (const column of [this.name, this.number, this.street]) o.planes(n, 2, (k) => column[k]!);
     for (const column of [this.ux, this.uz]) o.planes(n, 4, (k) => column[k]! >>> 0);
     for (const column of [this.yaw, this.base, this.width, this.depth, this.cols, this.rows]) o.planes(n, 2, (k) => column[k]! & 0xffff);
-    o.planes(n, 1, (k) => this.stairAt[k + 1]! - this.stairAt[k]!);
+    o.planes(n, 2, (k) => this.stairAt[k + 1]! - this.stairAt[k]!);
     const stairs = this.stairI.length;
     o.planes(stairs, 2, (k) => this.stairI[k]!);
     o.planes(stairs, 2, (k) => this.stairJ[k]!);
@@ -421,9 +423,10 @@ export class SectorBuildings {
     if (s.take(1)[0] !== BUILDINGS_VERSION) fail("its buildings are of a version this build does not read: build the map again");
     const n = s.planes(new Uint16Array(1), 2)[0]!;
     const head = s.take(n * ROW_BYTES);
-    const at = (plane: number, k: number): number => head[plane * n + k]!;
+    // A building's count of stairs is the last of its columns, two bytes.
+    const stairsOf = (k: number): number => head[(ROW_BYTES - 2) * n + k]! | (head[(ROW_BYTES - 1) * n + k]! << 8);
     let stairs = 0;
-    for (let k = 0; k < n; k++) stairs += at(ROW_BYTES - 1, k);
+    for (let k = 0; k < n; k++) stairs += stairsOf(k);
     const tail = new Read(bytes.subarray(s.at));
     const stair = tail.take(stairs * 6);
     const strings = tail.planes(new Uint16Array(1), 2)[0]!;
@@ -448,7 +451,7 @@ export class SectorBuildings {
     const base = columns.planes(new Uint16Array(n), 2);
     for (let k = 0; k < n; k++) t.base[k] = (base[k]! << 16) >> 16;
     for (const column of [t.width, t.depth, t.cols, t.rows]) columns.planes(column, 2);
-    for (let k = 0; k < n; k++) t.stairAt[k + 1] = t.stairAt[k]! + at(ROW_BYTES - 1, k);
+    for (let k = 0; k < n; k++) t.stairAt[k + 1] = t.stairAt[k]! + stairsOf(k);
     const stairRead = new Read(stair);
     stairRead.planes(t.stairI, 2);
     stairRead.planes(t.stairJ, 2);
@@ -773,7 +776,7 @@ export class Buildings {
       const whole = (v: number, lo: number, hi: number, what: string): number => (Number.isInteger(v) && v >= lo && v <= hi ? v : fail(`a building's ${what} is ${v}, and a map holds ${lo} to ${hi}`));
       m.rows.forEach((b, k) => {
         const r = rows[b]!;
-        t.id[k] = whole(r.id, 0, 2 ** 48 - 1, "id");
+        t.id[k] = whole(r.id, 0, MOST_ID, "id");
         [t.kind[k], t.recipe[k], t.form[k], t.district[k], t.collapse[k]] = [names.kinds.indexOf(r.kind), names.recipes.indexOf(r.recipe), names.forms.indexOf(r.form), names.districts.indexOf(r.district), names.collapses.indexOf(r.collapse)];
         t.flags[k] = (r.stairs.length > 0 ? BUILDING_STAIRS : 0) | (r.roof ? BUILDING_ROOF : 0) | (r.named ? BUILDING_NAMED : 0) | (sectorsOf.get(b)! > 1 ? BUILDING_SPANS : 0);
         t.storeys[k] = Math.max(0, Math.min(255, Math.round(r.storeys)));

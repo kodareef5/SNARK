@@ -46,7 +46,7 @@ test("the prompt names the building of the piece looked at, and under it how the
   const placed = world.structs.mapKind(chunk, slot);
   for (let k = 0; k < 40 && stageOf(reg, placed, t.hp[slot]!) === 0; k++) h.host.combat.hitStructure(rocket(reg), chunk * 65536 + slot, wall.x, wall.y, wall.z - 0.3);
   const stands = cityWord(reg, placed, t.kind[slot]!, t.hp[slot]!);
-  expect(STAGES.includes(stands)).toBe(true);
+  expect((STAGES as readonly string[]).includes(stands) && stands !== "whole").toBe(true);
   expect(until(h, () => shown(view, KEY_PROMPT_UNDER) !== null, 5)).toBe(true);
   expect([shown(view, KEY_PROMPT), shown(view, KEY_PROMPT_UNDER)]).toEqual(["Bâoli Tower", stands]);
   // Out of reach it says nothing.
