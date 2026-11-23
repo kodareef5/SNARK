@@ -16,6 +16,7 @@ import { toggleBudget, toggleMonitor, toggleNotes } from "./settings.ts";
 import { MONITOR_KIT } from "./ui/monitor-kit.ts";
 import { NOTES_KIT } from "./notes-kit.ts";
 import type { NotePort } from "./notes/port.ts";
+import type { DebugPort } from "./debug/port.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
@@ -169,6 +170,8 @@ export class App {
    */
   notes: import("./notes/notes.ts").Notes | null = null;
   notePort: (() => Promise<NotePort>) | null = null;
+  /** What fetches the debug bar's part that needs the browser, which the shell sets (client/debug/debug-port.ts). */
+  debugPort: (() => Promise<DebugPort>) | null = null;
   private notesAsked = false;
   /**
    * Whether the card has linked every program a tier draws with, beginning those it has not (the shell's `ready`). A

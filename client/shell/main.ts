@@ -1,3 +1,4 @@
+import { logTo } from "./early-log.ts";
 import { launchKey,readLaunch } from "../core/entry-state.ts";
 import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 // Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
@@ -119,6 +120,8 @@ async function boot(): Promise<void> {
   void import("../core/assets/frames.ts").then((m) => (app.frames = new m.FrameRing()));
   // Bug report mode's part that needs the browser, fetched once the mode is first on (D1091).
   app.notePort = () => import("../notes/port.ts").then((m) => m.notePort(canvas, renderer, PassClock));
+  // The debug bar's part that needs the browser, fetched once the bar is first on; it takes the page's log from then.
+  app.debugPort = () => import("../debug/debug-port.ts").then((m) => m.debugPort(canvas, renderer, PassClock, logTo));
   const previous=session.onResult;
   session.onResult=(seq,result)=>{previous?.(seq,result);if(createSeq && seq===createSeq && result!==RESULT_OK)createFailed=true;};
   if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));

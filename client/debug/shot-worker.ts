@@ -1,7 +1,8 @@
-// Encodes bug report mode's pictures off the game's thread (port.ts): each a bitmap of the canvas, scaled to its size
-// and to its thumbnail's on a canvas of this worker's own and written as JPEG.
+// Encodes the pictures of the debug bar's port (port.ts) off the game's thread: each a bitmap of the canvas, drawn at its
+// size on a canvas of this worker's own and written as JPEG. Bug report mode's port (client/notes/port.ts) loads this
+// worker too, and asks a thumbnail with its first picture.
 
-interface Asked { id: number; bitmap: ImageBitmap; w: number; h: number; thumb: [number, number] | null; quality: number }
+interface Asked { id: number; bitmap: ImageBitmap; w: number; h: number; quality: number; thumb?: [number, number] | null }
 
 const answer = (message: unknown): void => (self as unknown as { postMessage(m: unknown): void }).postMessage(message);
 
@@ -14,7 +15,7 @@ async function encode(bitmap: ImageBitmap, w: number, h: number, quality: number
 }
 
 self.onmessage = async (e: MessageEvent<Asked>) => {
-  const { id, bitmap, w, h, thumb, quality } = e.data;
+  const { id, bitmap, w, h, quality, thumb } = e.data;
   try {
     const jpeg = await encode(bitmap, w, h, quality);
     const small = thumb ? await encode(bitmap, thumb[0], thumb[1], quality) : null;
