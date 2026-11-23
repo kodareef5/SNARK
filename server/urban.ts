@@ -18,8 +18,7 @@ import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STAN
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
-import { skateBail } from "../shared/sim/skateboard.ts";
-import { isSkateboard, isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
+import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { Found } from '../shared/world/structures.ts';
 import { capsuleBox, capsuleFree, groundUnder, push, stepOnto } from '../shared/world/collide.ts';
@@ -810,22 +809,6 @@ export class Urban {
     if (!report) return true;
     const rec = records.byPid.get(pid);
     if (!rec || rec.dead) return false;
-    if (isSkateboard(host.definition)) {
-      const hurt = skateBail(report.speed, report.landing), rider = this.riderOf(e);
-      if ((hurt || report.water) && rider) {
-        const actor = this.entity(rider.pid);
-        for (const effect of this.occupancy.remove(rider.pid, world.tick)) this.apply(effect);
-        if (actor >= 0) {
-          if (!this.standBeside(actor, host)) this.recover(actor);
-          ents.vx[actor] = ents.vy[actor] = ents.vz[actor] = 0;
-          ents.pose(actor, world.tick); records.dirty.add(rider.pid);
-        }
-        const client = this.client(rider.pid);
-        if (client) { client.ownDirty = true; this.ctx.game.sendText(client, TEXT_NOTICE, hurt ? `Bail · ${hurt} damage` : "Stepped off in water"); }
-        if (hurt) this.ctx.damage?.(rider, hurt, 0);
-      }
-      return true;
-    }
     const boat = isBoatVehicle(host.definition), rotor = isRotorVehicle(host.definition);
     const speed = Math.max(0, report.speed - (boat ? 3 : 5), report.landing - (isWheelVehicle(host.definition) ? 12 : 6));
     const fresh = world.tick - (this.hurtAt.get(pid) ?? -1000) >= 12;
@@ -893,10 +876,8 @@ export class Urban {
       const d = Math.hypot(ents.x[c.ent]! - entry[0]!, ents.z[c.ent]! - entry[2]!);
       if (d < best) { best = d; nearest = seat; }
     }
-    if (isSkateboard(host.definition)) best = Math.hypot(ents.x[c.ent]! - state.x, ents.z[c.ent]! - state.z);
     if (best > 2) return RESULT_FAR;
     const occupant = this.occupancy.occupant(pid, nearest.id);
-    if (isSkateboard(host.definition) && occupant) return RESULT_BUSY;
     if (!nearest.driver) {
       if (!this.allowed(c.pid, pid, 0)) return RESULT_NOT_YOURS;
       // Passenger benches may share one boarding door. Try the available seats at
@@ -1291,7 +1272,7 @@ export class Urban {
   private state(e: number): VehicleState & { qx?: number; qy?: number; qz?: number; qw?: number } {
     const ents = this.ctx.world.ents, v = ents.vrow[e]!;
     return { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
-      vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[v]!, pitchRate: ents.vehiclePitchRate[v]!, rollRate: ents.vehicleRollRate[v]!, groundPitch: ents.vehicleGroundPitch[v]!, groundRoll: ents.vehicleGroundRoll[v]!, rideOffset: ents.vehicleRideOffset[v]!, rideVelocity: ents.vehicleRideVelocity[v]!, steering: ents.steering[v]!, skateMove: ents.skate.get(v)?.move, wheelAngle: ents.wheelAngle[v]!, fuel: ents.fuel[v]!, gear: ents.vehicleGear[v]!, engineRpm: ents.vehicleRpm[v]!, shiftTime: ents.vehicleShiftTime[v]!, payloadMass: ents.vehiclePayloadMass[v]! };
+      vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[v]!, pitchRate: ents.vehiclePitchRate[v]!, rollRate: ents.vehicleRollRate[v]!, groundPitch: ents.vehicleGroundPitch[v]!, groundRoll: ents.vehicleGroundRoll[v]!, rideOffset: ents.vehicleRideOffset[v]!, rideVelocity: ents.vehicleRideVelocity[v]!, steering: ents.steering[v]!, wheelAngle: ents.wheelAngle[v]!, fuel: ents.fuel[v]!, gear: ents.vehicleGear[v]!, engineRpm: ents.vehicleRpm[v]!, shiftTime: ents.vehicleShiftTime[v]!, payloadMass: ents.vehiclePayloadMass[v]! };
   }
   /** An action's check, and at its commit the place it sets a body down taken for the rest of the tick. */
   private checked(action: Readonly<OccupancyAction>, phase: 'begin' | 'commit'): OccupancyApproval {
@@ -1325,14 +1306,6 @@ export class Urban {
     }
     const state = this.state(host.entity), out = [0, 0, 0];
     if (isBoatVehicle(host.definition)) return this.boatAction(action, host, ae);
-    if (isSkateboard(host.definition) && action.kind === "enter") {
-      const start = { x: ents.x[ae]!, y: ents.y[ae]!, z: ents.z[ae]! };
-      const deck = { x: state.x, y: state.y + host.definition.spec.height, z: state.z };
-      if (Math.hypot(deck.x-start.x, deck.z-start.z) > 2 || Math.abs(deck.y-start.y) > 1.2) return { ok: false, reason: "too-far" };
-      const over = { ...start, y: Math.max(deck.y, start.y) };
-      const clear = (a: Point, b: Point) => this.seating.corridor(a, b, action.actor, [action.actor], action.host);
-      return clear(start, over) && clear(over, deck) ? { ok: true } : { ok: false, reason: "corridor-blocked" };
-    }
     const rolledCar = isWheelVehicle(host.definition) && 1 - 2 * ((state.qx ?? 0) ** 2 + (state.qz ?? 0) ** 2) < .7;
     if (action.kind === 'exit' && (rolledCar || state.y + host.definition.spec.clearance < world.hf.waterAt(state.x, state.z))) return this.vehicleEscape(action, host, ae);
     // Ordinary door actions are grounded. Forced loss of a seat uses standDown/evict and inherits aircraft velocity.

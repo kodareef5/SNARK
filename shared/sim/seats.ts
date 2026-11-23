@@ -9,7 +9,7 @@ export interface Seat {
   /** The one seat whose occupant drives or steers the host. */
   readonly driver?: boolean;
   /** Interior-specific seated profile. Omitted uses the host's ordinary driver/passenger pose. */
-  readonly pose?: "drive" | "passenger" | "pilot" | "cabin" | "pwc" | "skate";
+  readonly pose?: "drive" | "passenger" | "pilot" | "cabin" | "pwc";
   /** False stows hand weapons and disables their actions while seated in an enclosed cabin. */
   readonly weapons?: boolean;
   /** Pilot hand grips in the host's frame. Actual body proportions reach these without stretching. */
@@ -67,7 +67,7 @@ export function validateSeats(seats: readonly Seat[], doors: number, what: strin
     if (!SEAT_ID.test(seat.id) || names.has(seat.id) || !vec(seat.anchor) || !vec(seat.entry) ||
       (seat.door !== undefined && !(Number.isInteger(seat.door) && seat.door >= 0 && seat.door < doors)) ||
       (seat.socket !== undefined && !(typeof seat.socket === "string" && seat.socket.length > 0 && seat.socket.length <= 64))) throw new Error(`invalid ${what} seat`);
-    if ((seat.pose !== undefined && !["drive", "passenger", "pilot", "cabin", "pwc", "skate"].includes(seat.pose)) ||
+    if ((seat.pose !== undefined && !["drive", "passenger", "pilot", "cabin", "pwc"].includes(seat.pose)) ||
       (seat.weapons !== undefined && typeof seat.weapons !== "boolean")) throw new Error(`invalid ${what} seat profile`);
     if (seat.controls && ((seat.pose !== "pilot" && seat.pose !== "pwc") || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
     if (seat.controls?.style !== undefined && seat.controls.style !== "helicopter" && seat.controls.style !== "helm" && seat.controls.style !== "handlebar") throw new Error(`invalid ${what} control style`);

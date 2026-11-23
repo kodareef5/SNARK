@@ -20,8 +20,6 @@ import { boneToModel, rayZones, Solved, solve } from "./skeleton.ts";
 export interface OccupantSeat extends VehicleFrame {
   driver: boolean;
   steer: number;
-  skateMove?: number;
-  wheelAngle?: number;
   steering: number;
   role?: Seat["pose"];
   definition?: Seat;
@@ -43,7 +41,6 @@ export function occupantSeat(def: VehicleDefinition, seat: Seat, carrier: Vehicl
   out.qx = carrier.qx; out.qy = carrier.qy; out.qz = carrier.qz; out.qw = carrier.qw;
   out.steering = carrier.steering ?? 0;
   out.steer = def.movement === "rotor" ? 0 : out.steering / def.spec.maxSteer;
-  out.skateMove = carrier.skateMove; out.wheelAngle = carrier.wheelAngle;
   out.driver = seat.driver === true; out.role = seat.pose; out.definition = seat; out.aimYaw = aimYaw;
 }
 
@@ -82,7 +79,7 @@ export function occupantPose(anim: HumanAnim, st: AnimState, tick: number, out: 
   }
   humanPose(anim, state, tick, out);
   mountPose(profile, { role, tick: vehicle ? tick : 0, startTick: 0, durationTicks: 1,
-    skateMove: vehicle?.skateMove, skatePhase: vehicle?.wheelAngle, steering: vehicle?.steer, upper: !fixedTorso && !steers ? out : undefined }, out);
+    steering: vehicle?.steer, upper: !fixedTorso && !steers ? out : undefined }, out);
   if (saddle && headTurn) {
     quatAxis(turn, 0, 0, 1, 0, headTurn * .35); quatMul(out.rot, B_NECK * 4, turn, 0, out.rot, B_NECK * 4);
     quatAxis(turn, 0, 0, 1, 0, headTurn * .65); quatMul(out.rot, B_HEAD * 4, turn, 0, out.rot, B_HEAD * 4);

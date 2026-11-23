@@ -10,7 +10,6 @@ import { LETTER_BLOCKS } from "../../content/lettering.ts";
 import { TERMINALS } from "../../content/terminals.ts";
 import { MARINE_FLEET } from "../../content/vehicles/marine-fleet.ts";
 import { HARBOUR_WRECKS } from "../../content/vehicles/harbour-wrecks.ts";
-import { SKATEBOARDS } from "../../content/vehicles/skateboard.ts";
 import { STREET } from "../../content/street.ts";
 import { DOCKS } from "../../content/docks.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
@@ -57,13 +56,13 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "item/weapon": 3,
     "item/armor": 25,
     "item/structure": 29,
-    "item/vehicle": 3,
-    engram: 61,
+    "item/vehicle": 2,
+    engram: 60,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
     // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts).
-    "species/vehicle": ROAD_FLEET.length + MARINE_FLEET.length + 7,
+    "species/vehicle": ROAD_FLEET.length + MARINE_FLEET.length + 6,
     "species/civilian": 1,
     // And three road surfaces to drive on, on a paving shape of their own.
     "structure/piece": 36,
@@ -86,7 +85,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     map: 5, // miami-coast became Miami (D810)
   });
   // 253 with the supply drop's capsule (content/core.ts).
-  expect(rest.length).toBe(253 + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length);
+  expect(rest.length).toBe(253 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

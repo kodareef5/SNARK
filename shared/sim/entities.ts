@@ -2,7 +2,6 @@
 // allocates nothing. Each entity is linked into the list of the chunk it stands in. The columns double
 // when every slot is taken, up to the store's limit.
 
-import { copySkate, SkateState } from "./skate-state.ts";
 import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
 import { AnimState, CUE_DEAD, CUE_JET } from "../anim/pose.ts";
@@ -88,7 +87,6 @@ export class EntityStore {
   vehicleYawRate: Float32Array;
   vehicleGear: Float32Array;
   vehicleRpm: Float32Array;
-  readonly skate = new Map<number, SkateState>();
   vehicleShiftTime: Float32Array;
   vehiclePayloadMass: Float32Array;
   vehicleRotorRpm: Float32Array;
@@ -540,7 +538,6 @@ export class EntityStore {
 
   /** What a slot's vehicle columns held when it was made: a parked, sound vehicle that is no vehicle yet. */
   private clearVehicle(v: number): void {
-    this.skate.delete(v);
     this.vehicle[v] = 0;
     this.vehicleYaw[v] = 0;
     this.vehicleYawRate[v] = 0;
@@ -675,7 +672,6 @@ export class EntityStore {
     b.yaw = this.yaw[i]!;
     const v = this.vrow[i]!;
     b.vehicle = this.vehicle[v] !== 0;
-    b.skate = copySkate(b.skate, this.skate.get(v) ?? null);
     b.vehicleYaw = this.vehicleYaw[v]!;
     b.vehicleYawRate = this.vehicleYawRate[v]!;
     b.vehicleGear = this.vehicleGear[v]!;
@@ -777,8 +773,6 @@ export class EntityStore {
   }
 
   private storeVehicle(v: number, b: Body): void {
-    if (b.skate) this.skate.set(v, Object.assign(this.skate.get(v) ?? new SkateState(), b.skate));
-    else this.skate.delete(v);
     this.vehicle[v] = b.vehicle ? 1 : 0;
     this.vehicleYaw[v] = b.vehicleYaw;
     this.vehicleYawRate[v] = b.vehicleYawRate;

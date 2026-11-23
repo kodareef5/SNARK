@@ -8,8 +8,7 @@ import { stepBoat, type BoatState, type BoatStep } from "./boat.ts";
 import { stepHelicopter, type HelicopterState, type HelicopterStep } from "./helicopter.ts";
 import { StaticVehicleWorld } from "../world/vehicle.ts";
 import { BTN_BURST, BTN_CROUCH, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, BTN_JUMP, MODE_NONE, MODE_WALK, type Body, stepOut } from "./character.ts";
-import { stepSkateboard } from "./skateboard.ts";
-import { isSkateboard, stepVehicle, type VehicleDefinition, type VehicleWorld } from "./vehicle.ts";
+import { stepVehicle, type VehicleDefinition, type VehicleWorld } from "./vehicle.ts";
 
 const worlds = new WeakMap<CollisionWorld, StaticVehicleWorld>();
 const state: HelicopterState & BoatState = { qx: 0, qy: 0, qz: 0, qw: 1, collective: 0, rotorRpm: 0, rotorPhase: 0, engineCondition: 1, rotorCondition: 1, engineOn: false, hullCondition: 1, flooding: 0, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0 };
@@ -27,11 +26,6 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   vehicleStep.blocked = null; vehicleStep.impactSpeed = vehicleStep.landSpeed = vehicleStep.fuelUsed = 0; vehicleStep.rotorHit = vehicleStep.water = false;
   vehicleStep.propHit = vehicleStep.capsized = false; vehicleStep.immersion = vehicleStep.propellerImmersion = vehicleStep.planing = 0;
   if (b.mode === MODE_NONE) { b.vx = b.vy = b.vz = 0; return; }
-  if (isSkateboard(def)) {
-    vehicleStep.surface = "ground";
-    stepSkateboard(w, b, moveX, moveZ, buttons, def.spec, pilot, vehicleStep);
-    return;
-  }
   let world = worlds.get(w);
   if (!world) { world = new StaticVehicleWorld(w); worlds.set(w, world); }
   state.x = b.x; state.y = b.y; state.z = b.z;

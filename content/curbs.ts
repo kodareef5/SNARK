@@ -100,10 +100,6 @@ const STATICS: readonly StructureDef[] = RETURN_RADII.map((radius, i) => ({
   type: "structure", class: "static", id: curbReturnKind(radius), mesh: "shape", shape: shapeId(radius),
   half: shapeHalf(SHAPES[i]!.boxes, SHAPES[i]!.hulls, SHAPES[i]!.look),
   // As the walk kit's concrete (content/ruins.ts RUIN_FINISHES), drawn near only.
-  grindLine: Array.from({ length: WEDGES + 1 }, (_, i) => {
-    const phi = i * HALF_PI / WEDGES, [mx, my, mz] = returnMiddle(radius);
-    return [radius - radius * detSin(phi) - mx, returnTop(radius, phi, radius) - my, radius - radius * detCos(phi) - mz] as const;
-  }),
   color: 100, hp: 16000, material: "core:mat_stone", near: true,
 }));
 

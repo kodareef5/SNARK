@@ -225,7 +225,7 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     const group = vehicle?.movement === "boat" && vehicle.family ? marineGroups[vehicle.family]
       : vehicle ? sentence(vehicle.movement === "rotor" || vehicle.movement === "boat" ? vehicle.movement : (vehicle.frame ?? "car").replace("_", " "))
       : creature ? (d.fly ? "Flyer" : "Creature") : "Human";
-    const e = entry(d.id, kind, group === "Skateboard" ? "Street skateboard" : labelOf(d), group, picture, [d.id]);
+    const e = entry(d.id, kind, labelOf(d), group, picture, [d.id]);
     const fact = facts(e);
     if (kind === "vehicles") {
       const v = d.vehicle!;
@@ -238,7 +238,7 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
       }
       fact("Seats", String(v.seats.length));
       if (v.doors.length) fact("Doors", String(v.doors.length));
-      if (v.spec.fuelCapacity > 0) fact("Fuel tank", `${num(v.spec.fuelCapacity)} units`);
+      fact("Fuel tank", `${num(v.spec.fuelCapacity)} units`);
       fact("Health", num(d.stats?.health?.[0] ?? 0));
       if (d.slots) fact("Inventory", `${d.slots} slots`);
       if (d.stats?.weight) fact("Carries", `${num(d.stats.weight[0])} kg`);

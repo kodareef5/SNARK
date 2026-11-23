@@ -1,7 +1,6 @@
 // One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
-import { copySkate, sameSkate, type SkateState } from "./skate-state.ts";
 import { flags } from "../codes.ts";
 import { BLOCK_SOFT_SPEED, blockOut, pushOut, turnFree } from "./blockers.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
@@ -279,7 +278,6 @@ export class Body {
   yaw = 0;
   /** Full vehicle controller state, copied and replayed with the ordinary body. */
   vehicle = false;
-  skate: SkateState | null = null;
   vehicleYaw = 0;
   vehicleYawRate = 0;
   vehicleGear = 0;
@@ -383,7 +381,6 @@ export class Body {
     this.kind = o.kind;
     this.yaw = o.yaw;
     this.vehicle = o.vehicle;
-    this.skate = copySkate(this.skate, o.skate);
     this.vehicleYaw = o.vehicleYaw;
     this.vehicleYawRate = o.vehicleYawRate;
     this.vehicleGear = o.vehicleGear;
@@ -463,7 +460,7 @@ export class Body {
       this.mflags === o.mflags &&
       this.kind === o.kind &&
       this.yaw === o.yaw &&
-      this.vehicle === o.vehicle && sameSkate(this.skate, o.skate) &&
+      this.vehicle === o.vehicle &&
       this.vehicleYaw === o.vehicleYaw &&
       this.vehicleYawRate === o.vehicleYawRate &&
       this.vehicleGear === o.vehicleGear &&

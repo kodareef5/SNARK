@@ -24,7 +24,7 @@ import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type Ve
 import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
 import { carShapes } from "../shared/world/vehicle-shapes.ts";
 import { StaticVehicleSolids } from "../shared/world/vehicle-solid.ts";
-import { isBoatVehicle, isSkateboard, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { isBoatVehicle, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
@@ -519,7 +519,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
-    if (isSkateboard(def)) rec.name = "Street skateboard";
     rec.team = ownerTeam; rec.yaw = Math.round(yaw / (2 * Math.PI) * 65536) & 65535;
     world.ents.yaw[e] = rec.yaw;
     // Registered once turned, so the parked state it saves at once has its yaw.

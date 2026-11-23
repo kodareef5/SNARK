@@ -10,7 +10,7 @@ import { hashString } from "../hash.ts";
 import type { VehicleSurface } from "../sim/vehicle.ts";
 import type { WeaponParams } from "../sim/weapon.ts";
 import type { HullTable } from "../world/convex.ts";
-import type { GrindLine, PartTable } from "../world/structures.ts";
+import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
 import type { Content, Def, RenameDef } from "./defs.ts";
 import { ID, f32, list, type Checking, type Kind, type Making } from "./kind.ts";
@@ -99,7 +99,6 @@ export interface Registry extends Core, Frozen<Made> {}
 
 /** The part table while it is filled: structures and nodes add their boxes (Making.boxes), and structures the rest. */
 interface FillingParts {
-  grindLine: (GrindLine | undefined)[];
   vehicleSurface: (VehicleSurface | null)[];
   start: Uint32Array;
   box: Float32Array;
@@ -216,7 +215,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
   });
   const boxes: number[] = [];
-  const parts: FillingParts = { grindLine: new Array<GrindLine | undefined>(n).fill(undefined), vehicleSurface: new Array<VehicleSurface | null>(n).fill(null), start: new Uint32Array(n + 1), box: NO_BOXES };
+  const parts: FillingParts = { vehicleSurface: new Array<VehicleSurface | null>(n).fill(null), start: new Uint32Array(n + 1), box: NO_BOXES };
   const core: Omit<Thawed<Core>, "parts"> & { parts: FillingParts } = {
     defs, ids, index, hash, redirects, renames, aliases, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE,
     halfX: f32(n), halfY: f32(n), halfZ: f32(n), parts, keeps: f32(n, 1), bodyRadius: f32(n), bodyHeight: f32(n),

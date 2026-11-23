@@ -33,10 +33,6 @@ export function topSpeed(h: Handling, short = false): string {
 /** A vehicle's own page: how it drives, in a row a figure. */
 export function drivingTable(h: Handling): Table {
   const head: Cell[] = ["", "Measured"];
-  if (h.movement === "skateboard") return {
-    title: "How it rides", head, rows: [["Top speed", kmh(h.top)], ["Foot braking from top speed", metres(h.braking)], ["Ollie height", metres(h.ollie)]],
-    note: ["Measured by pushing, foot braking and popping an ollie on level ground."],
-  };
   if (h.movement === "wheeled") {
     return {
       title: "How it drives",

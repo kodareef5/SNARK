@@ -16,7 +16,6 @@ export function predictedVehiclePose(a: Body, b: Body, t: number, rotor: boolean
     groundPitch: mix(a.vehicleGroundPitch, b.vehicleGroundPitch, t), groundRoll: mix(a.vehicleGroundRoll, b.vehicleGroundRoll, t),
     rideOffset: mix(a.vehicleRideOffset, b.vehicleRideOffset, t), grounded: b.grounded, thrust: b.vehicleThrust,
   };
-  pose.skateMove = b.skate?.move;
   if (boat) pose.wheelAngle = interpolateRotorPhase(a.wheelAngle, b.wheelAngle, a.vehicleRpm * a.vehicleGear, b.vehicleRpm * b.vehicleGear, TICK_DT, t);
   if (a.vehicleQx || a.vehicleQy || a.vehicleQz || a.vehicleQw || b.vehicleQx || b.vehicleQy || b.vehicleQz || b.vehicleQw) {
     qa.set([a.vehicleQx, a.vehicleQy, a.vehicleQz, a.vehicleQw]); qb.set([b.vehicleQx, b.vehicleQy, b.vehicleQz, b.vehicleQw]);
@@ -37,7 +36,6 @@ export function remoteVehiclePose(r: RemoteSample, i: number, out?: VehicleRende
   const pose: VehicleRenderPose = out ?? { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   pose.pitch = r.vehiclePitch[i]!; pose.roll = r.vehicleRoll[i]!; pose.steering = r.steering[i]!; pose.wheelAngle = r.wheelAngle[i]!;
   pose.groundPitch = r.vehicleGroundPitch[i]!; pose.groundRoll = r.vehicleGroundRoll[i]!; pose.rideOffset = r.vehicleRideOffset[i]!; pose.grounded = r.vehicleGrounded[i] !== 0;
-  pose.skateMove = r.vehicleGear[i]!;
   pose.doors = r.vehicleDoors[i]!;
   pose.lightMode = r.vehicleLightMode[i]!;
   pose.thrust = r.vehicleThrust[i]!;

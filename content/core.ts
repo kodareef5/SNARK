@@ -26,7 +26,6 @@ import { HARBOUR_WRECKS } from "./vehicles/harbour-wrecks.ts";
 import { DOCKS } from "./docks.ts";
 import { BOATS } from "./vehicles/boat.ts";
 import { BOAT_ITEMS } from "./vehicles/boat-items.ts";
-import { SKATEBOARDS } from "./vehicles/skateboard.ts";
 import { HELICOPTERS } from "./vehicles/helicopter.ts";
 import { HELICOPTER_ITEMS } from "./vehicles/helicopter-items.ts";
 import { CIVILIAN } from "./civilians.ts";
@@ -423,7 +422,6 @@ const ALL: readonly Def[] = [
   ...CREATURES,
   ...ROAD_FLEET,
   ...HELICOPTERS,
-  ...SKATEBOARDS,
   ...BOATS,
   ...MARINE_FLEET,
   ...BOAT_ITEMS,

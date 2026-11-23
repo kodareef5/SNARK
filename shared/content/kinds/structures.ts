@@ -5,7 +5,6 @@ import { DAMAGE_TYPES } from "../../sim/damage.ts";
 import type { VehicleSurface } from "../../sim/vehicle.ts";
 import { validVehicleSurface } from "../../world/vehicle-surface.ts";
 import { hullTable, type HullDef } from "../../world/convex.ts";
-import type { GrindLine } from "../../world/structures.ts";
 import type { Def } from "../defs.ts";
 import { ID, drawnFaults, f, f32, i8, list, mesh, row, u16, u8, type Fields, type Kind, type Named } from "../kind.ts";
 import { materialsById } from "./materials.ts";
@@ -44,8 +43,6 @@ export interface StructureDef extends Named, StationFields {
   /** A static whose parts move between two placements when it is used. */
   readonly motion?: MotionFacet;
   /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
-  /** Grindable edge as consecutive points in the local frame, in metres. */
-  readonly grindLine?: GrindLine;
   readonly vehicleSurface?: VehicleSurface;
   readonly type: "structure";
   readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
@@ -118,7 +115,6 @@ export interface StructureDef extends Named, StationFields {
 
 const FIELDS = {
   motion: f("facet", "a door's swing, with a travel time"),
-  grindLine: f("list"),
   vehicleSurface: f("facet"),
   mesh: f("text"),
   color: f("number"),
@@ -198,11 +194,11 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
   fields: FIELDS,
   rows: [
     row("structure", "structure", FIELDS, { abstract: true, ark: "APrimalStructure", shelf: "structures", doc: "Anything built or standing in the world that is not alive." }),
-    row("structure/piece", "structure", FIELDS, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "grindLine", "vehicleSurface"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." }),
+    row("structure/piece", "structure", FIELDS, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "vehicleSurface"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." }),
     row("structure/container", "structure", FIELDS, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." }),
     row("structure/station", "structure", FIELDS, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "charges", "powered", "dry"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." }),
     row("structure/bed", "structure", FIELDS, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." }),
-    row("structure/static", "structure", FIELDS, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "grindLine", "vehicleSurface", "opens", "motion", "under", "made", "near", "paint", "coarse", "colors", "bent"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." }),
+    row("structure/static", "structure", FIELDS, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "vehicleSurface", "opens", "motion", "under", "made", "near", "paint", "coarse", "colors", "bent"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." }),
     row("structure/defence", "structure", FIELDS, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." }),
   ],
   check(d, cx) {
@@ -213,7 +209,6 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.coarse !== undefined && !(d.coarse >= 1 && d.coarse <= 16)) errors.push(`${d.id}: coarse is from 1 to 16`);
     if (d.colors !== undefined && !(Array.isArray(d.colors) && d.colors.length <= 5 && d.colors.every((c) => Number.isInteger(c) && c > 0 && c < REGION_BASE))) errors.push(`${d.id}: colors are up to five fixed palette colours`);
     if (d.motion !== undefined) errors.push(...motionFaults(d));
-    if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.length < 2 || d.grindLine.length > 64 || !d.grindLine.every((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)))) errors.push(`${d.id}: invalid grindLine`);
     if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
     positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
     positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
@@ -252,7 +247,6 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
       for (const b of shape.boxes) boxes.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
     } else boxes.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
     if (d.vehicleSurface) reg.parts.vehicleSurface[i] = Object.freeze({ ...d.vehicleSurface });
-    if (d.grindLine) reg.parts.grindLine[i] = d.grindLine;
     reg.maxHp[i] = d.hp;
     reg.structSlots[i] = d.slots ?? 0;
     if (d.locked) reg.lockedAtFirst[i] = 1;

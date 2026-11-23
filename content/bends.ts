@@ -43,7 +43,7 @@ function hit(ramp: boolean, width: number, length: number): { shape: ShapeDef; d
   const look = width <= KERB_BACK + 0.01 || ramp ? undefined : { boxes: [{ at: [0, 0, KERB_BACK / 2 - z], half: [x, h, KERB_BACK / 2], color: CURB }, { at: [0, 0, KERB_BACK / 2], half: [x, h, z - KERB_BACK / 2], color: WALK }] as ShapeBox[] };
   const id = hitKind(ramp, width, length);
   const shape: ShapeDef = ramp ? { type: "shape", id: `${id}_shape`, role: "thing", boxes: [], hulls } : { type: "shape", id: `${id}_shape`, role: "thing", boxes: box, ...(look ? { look } : {}) };
-  return { shape, def: { type: "structure", class: "static", id, mesh: "none", shape: shape.id, half: shapeHalf(shape.boxes, shape.hulls, shape.look), grindLine: [[-x, ramp ? FLUSH_FACE - h : h, -z], [x, ramp ? FLUSH_FACE - h : h, -z]], color: CONCRETE, hp: 16000, near: true, vehicleSurface: PAVING } };
+  return { shape, def: { type: "structure", class: "static", id, mesh: "none", shape: shape.id, half: shapeHalf(shape.boxes, shape.hulls, shape.look), color: CONCRETE, hp: 16000, near: true, vehicleSurface: PAVING } };
 }
 
 /**
