@@ -133,6 +133,8 @@ export function perf(dir: string, id: number): Lines {
     const names = sp.names, parents = sp.parents ?? [], mean = sp.mean.ms ?? [], start = sp.mean.start ?? [];
     const own = mean.map((v, s) => (start[s]! < 0 ? 0 : v));
     for (let s = 0; s < names.length; s++) if (start[s]! >= 0 && parents[s]! >= 0) own[parents[s]!]! -= mean[s]!;
+    // A parent's mean can read a hair under its children's, the clock being coarse: what is by itself is never under 0.
+    for (let s = 0; s < own.length; s++) own[s] = Math.max(0, own[s]!);
     const path = (s: number): string => { const parts: string[] = []; for (let k = s; k >= 0 && parents[k]! >= 0; k = parents[k]!) parts.unshift(names[k]!); return parts.join(" > "); };
     out.push("", `Where a frame went, the mean of the last ${sp.mean.frames ?? "?"} frames (ms, and by itself):`);
     const walk = (s: number, depth: number): void => {
