@@ -62,7 +62,7 @@ export class Falls {
     return this.down.size;
   }
 
-  /** How many of those lying still move: the rest lie still until they rise. */
+  /** How many of the bodies down are moving; the others lie at rest until they rise. */
   get moving(): number {
     let n = 0;
     for (const d of this.down.values()) if (!d.fall.still) n++;

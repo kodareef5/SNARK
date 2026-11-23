@@ -6,7 +6,7 @@
 // a body (server/vehicle-contacts.ts).
 //
 // `bun tools/bench/physics-rows.ts [--runs n] [--cpu] [falls|crowd|corpses]` runs these alone, n times each, and gives
-// each figure's median over the runs and its spread. With --cpu the lane is timed by this thread's CPU time, which a
+// each figure's median over the runs and its spread. With --cpu the lane is timed by the process's CPU time, which a
 // machine busy with other work does not stretch; without, by the wall clock, as the server times it.
 
 import { readFileSync } from "node:fs";
@@ -30,9 +30,9 @@ export interface PhysicsRun {
   seed?: number;
 }
 
-/** This thread's CPU time in ms. */
+/** The process's CPU time in ms, to the microsecond: a thread's own is counted only in whole milliseconds. */
 export const cpuMs = (): number => {
-  const u = process.threadCpuUsage();
+  const u = process.cpuUsage();
   return (u.user + u.system) / 1000;
 };
 const wallMs = (): number => performance.now();
@@ -286,7 +286,7 @@ if (import.meta.main) {
     kept.set(key, row);
   };
   const load = (): string => readFileSync("/proc/loadavg", "utf8").split(" ")[0]!;
-  console.log(`timed by ${clock === cpuMs ? "this thread's CPU time" : "the wall clock"}, ${runs} runs`);
+  console.log(`timed by ${clock === cpuMs ? "the process's CPU time" : "the wall clock"}, ${runs} runs`);
   for (let r = 1; r <= runs; r++) {
     const from = load(), run = { clock, seed: r };
     if (want("falls")) {
