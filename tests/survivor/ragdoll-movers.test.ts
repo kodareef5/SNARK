@@ -166,13 +166,13 @@ test("a watcher's step turns a car as it turned and starts a reused slot's car s
   const w = flat(), drawn = new Corpses(new Map() as never, undefined, () => false, (k) => solidOf(reg, k)), remote = new RemoteSample();
   drawn.update(carSeen(remote, 5, 1, 40, 40, 0, 100), w, 0, 0, new Map(), undefined);
   drawn.update(carSeen(remote, 5, 1, 40, 40, Math.PI / 4, 101), w, 0, 0, new Map(), undefined);
-  const [turned] = drawn.humans.carsAround(40, 40, 101);
+  const [turned] = drawn.humans.carsAround(40, 0, 40, 101);
   // The step to tick 101 turns it from its turn at 100 to its turn at 101: a quarter of a half turn.
   const dot = turned!.from.qx * turned!.to.qx + turned!.from.qy * turned!.to.qy + turned!.from.qz * turned!.to.qz + turned!.from.qw * turned!.to.qw;
   expect(2 * Math.acos(Math.min(1, Math.abs(dot)))).toBeCloseTo(Math.PI / 4, 6);
   // The slot's next generation, a car 40 m off: it has no way yet, so it moves nothing it meets.
   drawn.update(carSeen(remote, 5, 2, 80, 40, 0, 102), w, 0, 0, new Map(), undefined);
-  const [fresh] = drawn.humans.carsAround(80, 40, 102);
+  const [fresh] = drawn.humans.carsAround(80, 0, 40, 102);
   expect(Math.hypot(fresh!.to.x - fresh!.from.x, fresh!.to.z - fresh!.from.z)).toBe(0);
 });
 
@@ -182,9 +182,9 @@ test("a watcher's step meets a braking car where it was each tick", () => {
   const z = [40, 40.25, 40.5, 40.75, 41, 41, 41, 41];
   z.forEach((at, k) => drawn.update(carSeen(remote, 9, 1, 40, at, 0, 100 + k / 2), w, 0, 0, new Map(), undefined));
   // The step to 102 meets it as it went from 101 to 102: 0.5 m, then nothing after.
-  let [m] = drawn.humans.carsAround(40, 41, 102);
+  let [m] = drawn.humans.carsAround(40, 0, 41, 102);
   expect(m!.to.z - m!.from.z).toBeCloseTo(0.5, 9);
-  [m] = drawn.humans.carsAround(40, 41, 103);
+  [m] = drawn.humans.carsAround(40, 0, 41, 103);
   expect(m!.to.z - m!.from.z).toBeCloseTo(0, 9);
 });
 
@@ -194,7 +194,7 @@ test("at any frame rate a watcher's step meets a moving, turning car as it went"
     const drawn = new Corpses(new Map() as never, undefined, () => false, (k) => solidOf(reg, k)), remote = new RemoteSample();
     // 40 cm and 1.15 degrees a tick, seen once a frame.
     for (let r = 100; r <= 112; r += 30 / fps) drawn.update(carSeen(remote, 7, 1, 40, 40 + 0.4 * (r - 100), turn * (r - 100), r), w, 0, 0, new Map(), undefined);
-    const [m] = drawn.humans.carsAround(40, 43.2, 108);
+    const [m] = drawn.humans.carsAround(40, 0, 43.2, 108);
     expect(m!.to.z - m!.from.z, `${fps}`).toBeCloseTo(0.4, 4);
     const dot = m!.from.qx * m!.to.qx + m!.from.qy * m!.to.qy + m!.from.qz * m!.to.qz + m!.from.qw * m!.to.qw;
     expect(2 * Math.acos(Math.min(1, Math.abs(dot))), `${fps}`).toBeCloseTo(turn, 4);
@@ -205,7 +205,43 @@ test("a catch-up step meets a car where it was then, though it has driven on", (
   const w = flat(), drawn = new Corpses(new Map() as never, undefined, () => false, (k) => solidOf(reg, k)), remote = new RemoteSample();
   // A metre a tick from tick 0; drawn now at tick 15, nine metres past where it was at tick 6.
   for (let r = 0; r <= 15; r += 0.5) drawn.update(carSeen(remote, 3, 1, 40, 40 + r, 0, r), w, 0, 0, new Map(), undefined);
-  const [m] = drawn.humans.carsAround(40, 46, 6);
+  const [m] = drawn.humans.carsAround(40, 0, 46, 6);
   expect(m).toBeDefined();
   expect([m!.from.z, m!.to.z]).toEqual([45, 46]);
+});
+
+test("among five parked cars a watcher meets the cars the server meets", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    h.host.setSetting("Knockdowns", "true");
+    const s = h.join("faller"), w = h.join("watcher");
+    h.run(600);
+    const a = h.world.ents, c = h.client(s)!, seen = h.client(w)!;
+    // Four cars about the place first, so the one the body falls on comes last in every list but a ranked one.
+    for (const [x, z] of [[97.7, 70], [102.3, 70], [100, 65.6], [100, 74.4]] as const) h.host.spawnVehicle("core:compact", x, z, 0);
+    h.host.spawnVehicle("core:compact", 100, 70, 0);
+    h.run(1000);
+    a.setPosition(seen.ent, 94, 0, 76);
+    h.world.history.discontinuity(seen.ent);
+    a.setPosition(c.ent, 100, 2.2, 70);
+    h.world.history.discontinuity(c.ent);
+    expect(h.host.falls.knock(c.ent, 0, 0, 0, 0, 0, 1)).toBe(true);
+    const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k), (k) => solidOf(h.reg, k));
+    // Where the server had the body after each tick, to set the watcher's beside at the tick its fall has reached.
+    const was = new Map<number, number[]>();
+    let apart = 0, laid = 0;
+    h.run(3000, () => {
+      if (h.host.falls.isDown(c.ent)) was.set(h.world.tick, [a.x[c.ent]!, a.y[c.ent]!, a.z[c.ent]!]);
+      w.sampleRemote(remote);
+      drawn.update(remote, w.world!, 0, 0, new Map(), w.corpseMotions);
+      const f = drawn.humans.of(c.ent), at = f?.down ? was.get(f.clock) : undefined;
+      if (!at) return;
+      laid++;
+      apart = Math.max(apart, Math.hypot(f!.x - at[0]!, f!.y - at[1]!, f!.z - at[2]!));
+    });
+    expect(laid).toBeGreaterThan(30);
+    // It lies on the car's roof on both, not on the road.
+    expect(a.y[c.ent]!).toBeGreaterThan(0.9);
+    expect(apart).toBeLessThan(0.02);
+  } finally { h.host.shutdown(); }
 });

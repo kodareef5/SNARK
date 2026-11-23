@@ -4,6 +4,8 @@
 
 import type { VehicleDefinition } from "./vehicle.ts";
 import type { Registry } from "../content/registry.ts";
+import type { MoverPose } from "../anim/ragdoll.ts";
+import { quatUnrotate } from "../math/quat.ts";
 import { bodyMass } from "./body-mass.ts";
 
 const known = new WeakMap<VehicleDefinition, Float64Array>();
@@ -35,6 +37,42 @@ export function moverReach(def: VehicleDefinition): number {
     if (reach > most) most = reach;
   }
   return most;
+}
+
+/**
+ * The most solids one ragdoll meets in a step, and metres beyond a solid's reach within which it is met. Past the most,
+ * every machine meets the same ones (nearestMovers).
+ */
+export const MOVERS_MOST = 4;
+export const MOVER_MARGIN = 2;
+
+const local = new Float64Array(4);
+
+/**
+ * How near a solid's `boxes` come to the point (x, y, z) with its frame at `pose`: the distance to its nearest box, 0
+ * inside one, in whole centimetres, so that two machines' places a hair apart rank it alike.
+ */
+export function moverNear(boxes: Float64Array, pose: MoverPose, x: number, y: number, z: number): number {
+  local[0] = pose.qx; local[1] = pose.qy; local[2] = pose.qz; local[3] = pose.qw;
+  quatUnrotate(local, 0, x - pose.x, y - pose.y, z - pose.z, local, 0);
+  let best = Infinity;
+  for (let k = 0; k < boxes.length; k += 6) {
+    const dx = Math.max(0, Math.abs(local[0]! - boxes[k]!) - boxes[k + 3]!);
+    const dy = Math.max(0, Math.abs(local[1]! - boxes[k + 1]!) - boxes[k + 4]!);
+    const dz = Math.max(0, Math.abs(local[2]! - boxes[k + 2]!) - boxes[k + 5]!);
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (d < best) best = d;
+  }
+  return Math.floor(best * 100);
+}
+
+/**
+ * Orders the solids a ragdoll may meet as every machine does, and keeps the MOVERS_MOST first: the nearest (`near`,
+ * moverNear) first, so those it can touch come before those it cannot, then the lower handle.
+ */
+export function nearestMovers<T extends { near: number; handle: number }>(found: T[]): void {
+  found.sort((a, b) => a.near - b.near || a.handle - b.handle);
+  if (found.length > MOVERS_MOST) found.length = MOVERS_MOST;
 }
 
 /** Kilograms at which a creature walking into a ragdoll moves it, rather than passing through as a lighter one does. */
