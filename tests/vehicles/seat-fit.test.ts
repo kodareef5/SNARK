@@ -3,6 +3,7 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { Characters, type VehicleSeatPose } from "../../client/core/render/characters.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_FOOT_R, B_PROP_L, B_PROP_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_HEAD } from "../../shared/anim/human.ts";
 import { defaultLook, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
 import { createOccupantSeat, OccupantBody, occupantSeat, poseSeated } from "../../shared/anim/occupant.ts";
 import { AnimState, HumanAnim } from "../../shared/anim/pose.ts";
@@ -49,22 +50,36 @@ function room(seat: Seat & { room: SeatRoom }, rest: Float32Array, scale: Float3
   return { drop, solved, head: headClearance(solved, scale, seat.room, drop), feet: Math.min(...[B_FOOT_L, B_FOOT_R].map((f) => footClearance(solved, scale, f, seat.room, drop))) };
 }
 
-test("every enclosed seat holds the default and the most extreme bodies, or names the seat and its residual", () => {
-  const misfits: string[] = [];
+/** The rest joints hits are judged on for a body of a rig: the male rig's, unstretched (server/combat.ts occupant.rest). */
+const judged = Float32Array.from(pack.header.rigs.find((r) => r.id === "human_m")!.rest);
+
+test("every enclosed seat holds the bodies hits are judged on: head under the roof, feet on the floor", () => {
   const all = enclosed();
   expect(all.length).toBeGreaterThan(30);
-  for (const { id, seat } of all) for (const body of bodies) for (const action of holds) {
-    const { head, feet } = room(seat, body.rest, body.scale, action);
-    expect(feet, `${id} ${seat.id} ${body.name} hold ${action}`).toBeGreaterThanOrEqual(-1e-4);
-    if (head >= 0) continue;
-    // The fit reports how far the head's top stays within its margin under the roof.
-    expect(seatFit.head).toBeCloseTo(HEAD_MARGIN - head, 3);
-    expect(seatFit.head).toBeLessThan(HEAD_MARGIN + .05);
-    misfits.push(`${id} ${seat.id} ${body.name} hold ${action}`);
+  for (const { id, seat } of all) for (const rest of [HUMAN.rest, judged]) for (const action of holds) {
+    const { head, feet } = room(seat, rest, null, action);
+    expect(head, `${id} ${seat.id} hold ${action}`).toBeGreaterThanOrEqual(-1e-4);
+    expect(feet, `${id} ${seat.id} hold ${action}`).toBeGreaterThanOrEqual(-1e-4);
   }
-  // The largest look, slumped forward as a passenger's idle has it, still rises into the Zephyr's canopy by a few
-  // centimetres with its back at its limit and its hips down at the floor.
-  expect(misfits.sort()).toEqual(["core:zephyr passenger human_f largest hold 0", "core:zephyr passenger human_m largest hold 0"]);
+});
+
+test("a body drawn with any look keeps its head within 9 cm of the head that is shot", () => {
+  let worst = 0, deepest = 0;
+  for (const { seat } of enclosed()) for (const body of bodies.slice(1)) for (const action of holds) {
+    const host = reg.vehicle.find((d) => d?.seats.includes(seat))!;
+    const shot = new Pose(HUMAN_BONES), shotSolved = new Solved(HUMAN_BONES), drawn = new Pose(HUMAN_BONES), drawnSolved = new Solved(HUMAN_BONES);
+    const d1 = poseSeated(anim, state(action), 30, seated(host, seat), judged, null, shot, shotSolved);
+    const d2 = poseSeated(anim, state(action), 30, seated(host, seat), body.rest, body.scale, drawn, drawnSolved, undefined, undefined, judged);
+    // Each head from its hips' joint, which the seat pins at its anchor less the drop.
+    const at = (s: Solved, d: number) => [s.pos[B_HEAD * 3]! - s.pos[0]!, s.pos[B_HEAD * 3 + 1]! - s.pos[1]! - d, s.pos[B_HEAD * 3 + 2]! - s.pos[2]!];
+    const a = at(shotSolved, d1), b = at(drawnSolved, d2);
+    worst = Math.max(worst, Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!));
+    // It sinks a little more where its own head would clip the roof, but never leans further: the largest look may
+    // still touch the lowest roofs, whose seats sit high in the art.
+    deepest = Math.min(deepest, headClearance(drawnSolved, body.scale, seat.room, d2));
+  }
+  expect(worst).toBeLessThan(0.09);
+  expect(deepest).toBeGreaterThan(-0.04);
 });
 
 test("the Zephyr's and the Veloce's seats put a default head under the roof with its margin and the feet on the floor", () => {

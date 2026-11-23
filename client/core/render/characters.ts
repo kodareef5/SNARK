@@ -313,6 +313,8 @@ const POSE_EVERY = 8;
 export class Characters {
   /** Directed gaze on a mounted actor, in radians relative to the saddle. */
   seatedHeadTurn = 0;
+  /** The rest joints of the body hits are judged on, for the body being posed. */
+  private standard: Float32Array = HUMAN.rest;
   readonly tireContacts = new TireContacts();
   readonly windscreens = new Windscreens();
   readonly rotorBlur = new RotorBlur();
@@ -1460,6 +1462,8 @@ export class Characters {
       const eyeOwn = own && headless && !seat && !vehicleSeat && !impaled && st.stance !== STANCE_PRONE && !st.out && !st.dead && !fallen;
       if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null || fallen !== undefined || this.springs.active(id))) {
         this.posingId = id;
+        // The proportions hits are judged on, which a seat's fit is worked out for (shared/anim/seat-fit.ts).
+        this.standard = k.sets[0]!.rest;
         if (fallen?.down) this.lain(fallen, fallen.x, fallen.y, fallen.z, fallen.yaw, set.rest, this.pose);
         else this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
         if (fallen && !fallen.down) {
@@ -1644,7 +1648,7 @@ export class Characters {
   private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved, impaled = false, rider?: RiderFit, soles: Float64Array | null = null, grips: Float64Array | null = null, over: { clip: Clip; frame: number } | null = null, upright = false): void {
     g.seatDrop = 0;
     if (vehicleSeat && !over && !impaled) {
-      g.seatDrop = poseSeated(this.anim, st, tick, vehicleSeat, set.rest, scales, this.pose, solved, this.mount, this.spring);
+      g.seatDrop = poseSeated(this.anim, st, tick, vehicleSeat, set.rest, scales, this.pose, solved, this.mount, this.spring, this.standard);
       return;
     }
     if (over) sampleClip(over.clip, over.frame, this.pose);

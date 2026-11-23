@@ -18,10 +18,12 @@ import {
   B_NECK, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES, HUMAN_RAGDOLL,
 } from "./human.ts";
 import { aimBone, twoBone } from "./ik.ts";
-import { type Solved, solve } from "./skeleton.ts";
+import { Solved, solve } from "./skeleton.ts";
 
 /** The head's top stays this far under the roof. */
 export const HEAD_MARGIN = .02;
+/** The most a body of its own proportions sinks beyond the fit of the body hits are judged on, in metres. */
+export const SHAPE_SINK = 0.1;
 /** How far the hips sink into the cushion before the back reclines. */
 export const HIPS_DROP = .06;
 /** The feet stay this far over the floor. */
@@ -49,6 +51,10 @@ const UNIT = new Float32Array(HUMAN_BONES * 3).fill(1);
 export const seatFit = { recline: 0, level: 0, drop: 0, head: 0, feet: 0 };
 
 const turn = new Float64Array(4), axis = new Float64Array(3), point = new Float64Array(3);
+/** How much of the level turn the last headFit kept, 0 to 1: the head tips back with the back as far as it must. */
+let fitShare = 1;
+/** The body hits are judged on, fitted to find how far another body of the same pose leans. */
+const standardSolved = new Solved(HUMAN_BONES);
 const targets = new Float64Array(6), ends = new Float64Array(8), reached = new Float64Array(12), hands = new Float64Array(14);
 /** The spine, chest, upper chest, neck and head joints, then the head capsule's two ends: as solved, and turned. */
 const chain = new Float64Array(21), moved = new Float64Array(21);
@@ -184,6 +190,29 @@ function headFit(solved: Solved, scale: Float32Array, room: SeatRoom): void {
   }
   seatFit.recline = recline; seatFit.level = levelFor(recline) * level; seatFit.drop = drop;
   seatFit.head = Math.max(0, HEAD_MARGIN - head - drop / norm);
+  fitShare = level;
+}
+
+/**
+ * Takes another body's fit, `recline` and `share` of its level turn with its hips `drop` down, and sinks this body's hips
+ * on only as far as its own head needs, at most SHAPE_SINK more: it never leans further, so its head stays near the
+ * head the fit was found for. Into `seatFit`.
+ */
+function followFit(solved: Solved, scale: Float32Array, room: SeatRoom, recline: number, share: number, drop: number): void {
+  quatRotate(solved.rot, B_HIPS * 4, 1, 0, 0, axis, 0);
+  [B_SPINE, B_CHEST, B_UPPER_CHEST, B_NECK, B_HEAD].forEach((bone, k) => { for (let a = 0; a < 3; a++) chain[k * 3 + a] = solved.pos[bone * 3 + a]!; });
+  capEnd(solved, scale, B_HEAD, HUMAN.capA, chain, 15); capEnd(solved, scale, B_HEAD, HUMAN.capB, chain, 18);
+  const r = radius(scale, B_HEAD), norm = Math.sqrt(1 + room.roof[1] * room.roof[1] + room.roof[2] * room.roof[2]);
+  const deepest = Math.max(0, clearance(solved, scale, B_HIPS, 0, room.floor[0], 0, room.floor[1], -1) - FOOT_MARGIN);
+  const head = headAt(solved, r, room, recline, share);
+  let sunk = drop;
+  if (head + sunk / norm < HEAD_MARGIN) {
+    const need = (HEAD_MARGIN - head) * norm, most = Math.max(drop, Math.min(deepest, drop + SHAPE_SINK));
+    sunk = -Math.floor(-Math.min(need, most) * 1e4) / 1e4;
+    if (sunk < drop) sunk = drop;
+  }
+  seatFit.recline = recline; seatFit.level = levelFor(recline) * share; seatFit.drop = sunk;
+  seatFit.head = Math.max(0, HEAD_MARGIN - head - sunk / norm);
 }
 
 /**
@@ -283,12 +312,19 @@ function legKey(rest: Float32Array, scale: Float32Array | null, drop: number): s
  * Fits a seated pose, already solved on `rest` and `scale`, inside its seat's room, writes what it did to `seatFit`, and
  * returns the metres its hips sink below the seat's anchor. A seat without a room, or a body that fits it as posed, is
  * left untouched. A driver's hands stay where the pose put them in the seat; a passenger's where they were by its hips.
+ * The lean is the one found for the `standard` body hits are judged on, so a body drawn with other proportions keeps its
+ * head near the head that is shot; it only sinks a little more where its own head would clip the roof.
  */
-export function fitSeated(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, seat: Seat): number {
+export function fitSeated(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, seat: Seat, standard: Float32Array = rest): number {
   seatFit.recline = seatFit.level = seatFit.drop = seatFit.head = seatFit.feet = 0;
   const room = seat.room;
   if (!room) return 0;
-  headFit(solved, scale ?? UNIT, room);
+  if (standard === rest && !scale) headFit(solved, UNIT, room);
+  else {
+    solve(HUMAN, pose, standardSolved, standard, null);
+    headFit(standardSolved, UNIT, room);
+    followFit(solved, scale ?? UNIT, room, seatFit.recline, fitShare, seatFit.drop);
+  }
   const { recline, level, drop } = seatFit, turned = recline !== 0 || drop !== 0;
   let bodies = legCache.get(seat);
   if (!bodies) legCache.set(seat, bodies = new Map());

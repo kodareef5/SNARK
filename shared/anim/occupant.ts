@@ -54,12 +54,12 @@ export function occupantSeat(def: VehicleDefinition, seat: Seat, carrier: Vehicl
  * metres its hips sink below the seat's anchor, which seatOrigin takes. Server and client pose seated bodies only here.
  */
 export function poseSeated(anim: HumanAnim, st: AnimState, tick: number, seat: OccupantSeat, rest: Float32Array, scale: Float32Array | null,
-  pose: Pose, solved: Solved, profile: MountMotionProfile = motion, perturb?: (pose: Pose, solved: Solved) => void): number {
+  pose: Pose, solved: Solved, profile: MountMotionProfile = motion, perturb?: (pose: Pose, solved: Solved) => void, standard: Float32Array = rest): number {
   occupantPose(anim, st, tick, pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver, profile);
   perturb?.(pose, solved);
   solve(HUMAN, pose, solved, rest, scale);
   if (!seat.definition) return 0;
-  const drop = fitSeated(pose, solved, rest, scale, seat.definition);
+  const drop = fitSeated(pose, solved, rest, scale, seat.definition, standard);
   fitSeatControls(pose, solved, rest, scale, seat.definition, seat.steering ?? 0, drop);
   return drop;
 }
