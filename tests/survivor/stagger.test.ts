@@ -6,6 +6,7 @@ import { NO_CLIPS, Pose } from "../../shared/anim/clip.ts";
 import { B_CHEST, B_HEAD, HUMAN } from "../../shared/anim/human.ts";
 import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
 import { packReact, react, reactAge, reactDir, reactFrames, reactHeight, reactKind, reactStart, reactStrength, REACT_CHEST, REACT_FALL, REACT_HEAD, REACT_HEAVY, REACT_STAGGER } from "../../shared/anim/reactions.ts";
+import "../../shared/anim/reaction-late.ts";
 import { FALL_UNITS_MOST } from "../../server/falls.ts";
 import { MF_ROOTED } from "../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";

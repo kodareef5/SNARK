@@ -9,6 +9,8 @@ import { REACT_RULES, TIER_BUMP, TIER_FALL, TIER_NONE, TIER_STAGGER, dirOf, stre
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { MODE_WALK } from "../shared/sim/character.ts";
 import type { ServerWorld } from "./world.ts";
+// The curves a reeling body is posed with, held before any shot is judged against one.
+import "../shared/anim/reaction-late.ts";
 
 /** The most a stagger adds to a body's speed, metres a second, so a late client's correction stays small. */
 export const SHOVE_MOST = 1.5;

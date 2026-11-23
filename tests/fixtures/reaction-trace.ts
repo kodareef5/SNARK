@@ -5,6 +5,7 @@ import { NO_CLIPS, Pose } from "../../shared/anim/clip.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
 import { packReact, reactCurve, reactFrames, REACT_FALL, REACT_HEAVY, REACT_STAGGER } from "../../shared/anim/reactions.ts";
+import "../../shared/anim/reaction-late.ts";
 
 /** The hash of reaction curves and the poses they make. */
 export function reactionTrace(): string {

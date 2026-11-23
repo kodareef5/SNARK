@@ -1,18 +1,13 @@
 // How a standing survivor reels from a shove: a reaction word, sent with the body, says what struck it, from where and
 // when, and every machine lays the same curve over whatever the body is doing. Each curve is the ragdoll solver's own
-// answer (shared/anim/ragdoll.ts): a body standing still with its hips and legs anchored and the rest driven back toward
-// standing, struck once. It is worked out the first time it is needed, the same on the server and every client, so a
-// shot is judged against the pose that is drawn.
+// answer, baked ahead of time (shared/anim/reaction-bake.ts) and packed into shared/anim/reaction-curves.ts. Every
+// machine decodes the same numbers from that file, so a shot is judged against the pose that is drawn, and no solver
+// runs while a frame is drawn or a tick judged.
 
 import { detCos, detSin } from "../math/scalar.ts";
 import { REACT_FRAMES, reactClass } from "../sim/react.ts";
 import type { Pose } from "./clip.ts";
 import { B_HEAD, B_HIPS, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_RAGDOLL } from "./human.ts";
-import { standingPose } from "./human-fall.ts";
-import { Ragdoll } from "./ragdoll.ts";
-import { Heightfield } from "../world/heightfield.ts";
-import { StructureStore } from "../world/structures.ts";
-import type { CollisionWorld } from "../world/collide.ts";
 
 // The word, REACT_BITS long (shared/anim/pose.ts): its class, the low byte of its first tick, the way the body is pushed,
 // the height struck and how hard.
@@ -35,11 +30,6 @@ export const REACT_HIPS = 1;
 export const REACT_CHEST = 2;
 export const REACT_HEAD = 3;
 
-/** The whole body's change of speed, in metres a second, for each strength. */
-const STRENGTHS = [0.6, 1, 1.5, 2.2];
-/** Each class's drives: how fast the body springs back, and how little it overshoots. */
-const OMEGA = [0, 12, 9];
-const ZETA = [0, 0.6, 0.5];
 /** The share of a curve's last frames over which it fades out, so it ends on nothing. */
 const FADE = 4;
 
@@ -65,47 +55,92 @@ export function reactAge(word: number, tick: number): number {
   return ((whole - reactStart(word)) & 255) + (tick - whole);
 }
 
-/** The bodies a curve turns: the chest, the head and the arms. Each turns against its parent body in the ragdoll. */
-const TURNED = [1, 2, 3, 4, 5, 6];
-const curves = new Map<number, Float64Array>();
-let still: CollisionWorld | null = null;
+/** The ragdoll bodies a curve turns: the chest, the head, the left arm's two and the right arm's two. */
+export const TURNED: readonly number[] = [1, 2, 3, 4, 5, 6];
+/** Ways 0 to 8 are packed. A way past 8 is the mirror of 16 less it: the arms trade sides and every turn is mirrored. */
+const KEPT_DIRS = REACT_DIRS / 2 + 1;
+/** The packed body a mirrored curve takes each of its bodies from. */
+const MIRROR = [0, 1, 4, 5, 2, 3];
+/** A packed number is a quaternion's x, y or z times this, rounded. */
+export const CURVE_SCALE = 32767;
+/** The packed text's digits, as URL-safe base64 has them. */
+export const CURVE_DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const DIGIT = new Uint8Array(128);
+for (let i = 0; i < 64; i++) DIGIT[CURVE_DIGITS.charCodeAt(i)] = i;
 
-/** Ground far below, so a curve's body meets nothing. */
-function nowhere(): CollisionWorld {
-  if (still) return still;
-  const dims = { chunksX: 1, chunksZ: 1 };
-  const hf = new Heightfield(dims, 64, -1000, 1);
-  still = { hf, structs: new StructureStore(dims, new Float32Array(0), new Float32Array(0), new Float32Array(0)) };
-  return still;
+/** The words whose curves are packed, at start 0, in the packed text's order: by class, way, height and strength. */
+export function keptCurves(): number[] {
+  const out: number[] = [];
+  for (const kind of [REACT_STAGGER, REACT_HEAVY]) for (let dir = 0; dir < KEPT_DIRS; dir++) for (let height = 0; height < 4; height++) for (let strength = 0; strength < 4; strength++) out.push(packReact(kind, 0, dir, height, strength));
+  return out;
+}
+
+/** The packed numbers once held, a frame's turned bodies' x, y and z at a time, and where each kept curve starts. */
+let kept: Int16Array | null = null;
+const starts = new Map<number, number>();
+const curves = new Map<number, Float64Array>();
+
+/**
+ * Decodes and holds the packed curves (shared/anim/reaction-curves.ts). Each kept word's curve follows the one before.
+ * A curve is its turned bodies' x, y and z in turn, each a run over its frames. The text holds each number less twice
+ * the one before it plus the one before that (0 before the first), zigzagged to be positive, in five-bit digits; a
+ * sixth bit marks every digit of a number but its last.
+ */
+export function holdReactCurves(packed: string): void {
+  const words = keptCurves(), n = TURNED.length * 3;
+  let total = 0;
+  for (const word of words) total += reactFrames(word) * n;
+  const out = new Int16Array(total);
+  starts.clear();
+  curves.clear();
+  let at = 0, o = 0;
+  for (const word of words) {
+    starts.set(word, o);
+    const frames = reactFrames(word);
+    for (let run = 0; run < n; run++) {
+      let a = 0, b = 0;
+      for (let f = 0; f < frames; f++) {
+        let z = 0, shift = 0, digit = 0;
+        do {
+          digit = DIGIT[packed.charCodeAt(at++)]!;
+          z |= (digit & 31) << shift;
+          shift += 5;
+        } while (digit & 32);
+        const v = ((z >>> 1) ^ -(z & 1)) + 2 * a - b;
+        out[o + f * n + run] = v;
+        b = a;
+        a = v;
+      }
+    }
+    o += frames * n;
+  }
+  if (at !== packed.length) throw new Error(`the packed reaction curves are ${packed.length} characters, but their curves end at ${at}`);
+  kept = out;
 }
 
 /**
  * The curve for `word`, frames by turned bodies by a quaternion each: every turned body's turn against its parent, as a
- * turn from where the standing pose has it. Worked out once a word, without its start.
+ * turn from where the standing pose has it. Decoded once a word, without its start. None until the curves are held.
  */
 export function reactCurve(word: number): Float64Array | null {
   const kind = reactKind(word);
-  if (kind === REACT_NONE || kind === REACT_FALL || kind >= REACT_FRAMES.length) return null;
+  if (kind === REACT_NONE || kind === REACT_FALL || kind >= REACT_FRAMES.length || !kept) return null;
   const key = word & ~(255 << START_SHIFT);
   const known = curves.get(key);
   if (known) return known;
-  const frames = REACT_FRAMES[kind]!, stand = standingPose(), world = nowhere();
-  const r = new Ragdoll(HUMAN, HUMAN_RAGDOLL);
-  r.start(stand, stand, 32, 0, 32, 0, 1);
-  for (const i of [0, 7, 8, 9, 10]) r.anchor(i, true);
-  for (const i of TURNED) { r.driveOmega[i] = OMEGA[kind]!; r.driveZeta[i] = ZETA[kind]!; }
-  r.lift = 1;
-  // Pushed toward `dir`: a blow high on the body throws what it hits that way, one low on it moves the hips and leaves
-  // the chest behind.
-  const angle = (reactDir(word) / REACT_DIRS) * 2 * Math.PI, dv = STRENGTHS[reactStrength(word)]!;
-  const height = reactHeight(word), toward = height >= REACT_CHEST ? 1 : -0.7;
-  const dx = detSin(angle) * dv * toward, dz = detCos(angle) * dv * toward;
-  r.strike(height === REACT_HEAD ? 2 : 1, dx, height === REACT_HEAD ? 0 : -0.15 * dv, dz);
-  const curve = new Float64Array(frames * TURNED.length * 4);
+  const dir = reactDir(word), mirrored = dir >= KEPT_DIRS;
+  const from = starts.get(mirrored ? (key & ~(15 << DIR_SHIFT)) | ((REACT_DIRS - dir) << DIR_SHIFT) : key)!;
+  const frames = REACT_FRAMES[kind]!, n = TURNED.length, curve = new Float64Array(frames * n * 4);
   for (let f = 0; f < frames; f++) {
-    r.follow(stand, 32, 0, 32, 0);
-    r.step(world, 1 / 30);
-    for (let k = 0; k < TURNED.length; k++) r.offset(TURNED[k]!, curve, (f * TURNED.length + k) * 4);
+    for (let k = 0; k < n; k++) {
+      const i = from + (f * n + (mirrored ? MIRROR[k]! : k)) * 3, o = (f * n + k) * 4;
+      const x = kept[i]! / CURVE_SCALE, y = kept[i + 1]! / CURVE_SCALE, z = kept[i + 2]! / CURVE_SCALE;
+      // Mirrored across the body's middle, where x is its left: x stays, y and z change sign.
+      curve[o] = x;
+      curve[o + 1] = mirrored ? -y : y;
+      curve[o + 2] = mirrored ? -z : z;
+      curve[o + 3] = Math.sqrt(Math.max(0, 1 - x * x - y * y - z * z));
+    }
   }
   curves.set(key, curve);
   return curve;
