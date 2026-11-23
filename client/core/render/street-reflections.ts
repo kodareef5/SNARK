@@ -73,7 +73,8 @@ export class StreetReflections {
     if (t.high <= ROWS_PER_CHUNK || cam.x < x0-REACH || cam.z < z0-REACH || cam.x > x0+CHUNK_SIZE+REACH || cam.z > z0+CHUNK_SIZE+REACH) return;
     if (this.dense.get(t)?.shape !== t.shape) this.dense.set(t, new ReceiverIndex(t,this.priority));
   }
-  private readonly visorItem: number;
+  /** Per item: 1 for a head piece with a visor, which takes the shared picture. */
+  private readonly visor: Uint8Array;
   private readonly priority: Float32Array;
   private readonly proxies = Array.from({ length: MAX_PROXIES }, emptyProxy);
   private candidate = emptyProxy();
@@ -108,7 +109,7 @@ export class StreetReflections {
   private readonly forms: NodeForms;
   private readonly bounds?: ResidentBounds;
   constructor(reg: Registry, palette: Uint8Array, forms: NodeForms, bounds?: ResidentBounds) {
-    this.visorItem = reg.index.get("core:meridian_hat") ?? -1;
+    this.visor = Uint8Array.from(reg.defs, (d) => (d?.type === "item" && d.wear?.slot === "head" && d.optic?.shape === "visor" ? 1 : 0));
     this.bounds = bounds;
     this.reg = reg;
     this.palette = Float32Array.from(palette, channel => (channel / 255) ** 2.2);
@@ -156,7 +157,7 @@ export class StreetReflections {
           const k = remote.kind[i]!,
             v = this.reg.vehicle[k];
           if (!v || !isWheelVehicle(v)) {
-            if (remote.gear[i * GEAR_COUNT + GEAR_WORN] === this.visorItem && remote.id[i] !== own?.cockpitActor)
+            if (this.visor[remote.gear[i * GEAR_COUNT + GEAR_WORN]!] === 1 && remote.id[i] !== own?.cockpitActor)
               this.helmet(cam, remote.id[i]!, k, remote.x[i]!, remote.y[i]!, remote.z[i]!, (remote.anim[i]! >>> 8) & 3);
             continue;
           }
@@ -181,7 +182,7 @@ export class StreetReflections {
           );
         }
       }
-      if (own && !own.firstPerson && own.gear[GEAR_WORN] === this.visorItem)
+      if (own && !own.firstPerson && this.visor[own.gear[GEAR_WORN]!] === 1)
         this.helmet(cam, own.id, own.kind, own.x, own.y, own.z, own.state.stance);
       this.gather(world.structs, cam, false, hidden);
       if (this.winner) {

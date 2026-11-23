@@ -1669,8 +1669,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       for (let k = 0; k < ARMOR_SLOTS; k++) {
         const slot = inv.armor + k, id = inv.item[slot]!;
         gear[GEAR_WORN + k] = id;
-        const piece = reg.defs[id];
-        if (piece?.type === "item" && piece.wear?.set === "meridian" && inv.dur[slot]! > 0) suit |= 1 << k;
+        // A piece that flies (WearFacet.jet) and is not worn out lends its slot's bit.
+        if (inv.dur[slot]! > 0) suit |= reg.wearJet[id]! << k;
       }
       const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
       ents.jetGear[e] = suit;

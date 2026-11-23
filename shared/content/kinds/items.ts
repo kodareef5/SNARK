@@ -195,6 +195,8 @@ export interface WearFacet {
   readonly set: string;
   /** Palette colours of its three colour regions: main, second, trim. */
   readonly colors: readonly [number, number, number];
+  /** A piece of a flight suit: worn and not worn out, it lends its slot's part of flight (shared/sim/character.ts). */
+  readonly jet?: boolean;
 }
 
 const FIELDS = {
@@ -260,6 +262,8 @@ const columns = (n: number) => ({
   ballEmpty: u16(n),
   /** The armor slot an item is worn in (0 head, 1 torso, 2 hands, 3 legs, 4 feet), or -1. */
   wearSlot: i8(n, -1),
+  /** Per item: 1 for a worn piece that flies (WearFacet.jet). */
+  wearJet: u8(n),
   /** Per item: a glider's grade, 0 for anything else, and the ticks in the air that cost it one use (GlideFacet). */
   glide: u8(n),
   glideTicks: u32(n),
@@ -418,6 +422,7 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
     reg.decomposeTicks[i] = d.decomposeHours !== undefined ? Math.max(1, Math.round(d.decomposeHours * GAME_HOUR_TICKS)) : 0;
     if (d.charge) reg.charge[i] = 1;
     if (d.wear) reg.wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
+    if (d.wear?.jet) reg.wearJet[i] = 1;
     reg.uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? d.glide?.uses ?? 0;
     if (d.glide) {
       reg.glide[i] = d.glide.grade;

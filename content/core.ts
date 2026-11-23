@@ -81,7 +81,7 @@ const GEAR: Def[] = [
     // was first a refit of flak at flak's own 100 and 120.
     return [
       { type: "item", class: "armor", id: item, label, stack: 1, color: 93, weight: [4, 6, 3, 6, 3][i]!,
-        wear: { slot: piece.slot, set: "meridian", armor: 180, uses: 300, colors: [93, 82, 41], ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : piece.slot === "feet" ? { vents: "boot_jets" } : {}) },
+        wear: { slot: piece.slot, set: "meridian", armor: 180, uses: 300, colors: [93, 82, 41], jet: true, ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : piece.slot === "feet" ? { vents: "boot_jets" } : {}) },
         // The helmet's visor (D1080): its glass to 25 times, and past it a picture made larger as far as 1,000, its window
         // a slit at the most. ARK's Tek helmet zooms and has night vision; the heat view is ours (DEV211).
         ...(piece.slot === "head" ? { optic: { min: 2, max: 1000, window: [0.86, 0.22], shape: "visor" } as const } : {}),
