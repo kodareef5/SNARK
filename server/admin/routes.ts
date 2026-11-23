@@ -15,6 +15,8 @@
 //   /admin/log/...          the survivor log's reads (log-routes.ts)
 //   /admin/cast.html        Cast's page (client/admin/cast.ts), /admin/cast.json what Cast is doing, POST /admin/cast
 //                           an admin's action on it (cast.ts)
+//   /admin/settings.html    the settings page (client/admin/settings.ts), /admin/settings.json every setting, POST
+//                           /admin/settings an admin's change to one (settings.ts)
 //   /admin/first-frame.html what the client's first frame downloads (client/admin/first-frame.ts), and
 //                           /admin/first-frame.json the build's weighing of it, beside the client (tools/first-frame.ts)
 
@@ -28,6 +30,7 @@ import type { Host } from "../host.ts";
 import { boardAsked } from "../sound-board.ts";
 import { basesOf, basesVersion } from "./bases.ts";
 import { castAct, castState } from "./cast.ts";
+import { settingsAnswer } from "./settings.ts";
 import { originAllowed } from "../origin.ts";
 import { adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
 import { SupplyRoutes } from "./supply-routes.ts";
@@ -51,6 +54,9 @@ const FILES: Readonly<Record<string, [string, string]>> = {
   "/admin/cast.html": ["cast.html", "text/html; charset=utf-8"],
   "/admin/cast.js": ["cast.js", "text/javascript"],
   "/admin/cast.js.map": ["cast.js.map", "application/json"],
+  "/admin/settings.html": ["settings.html", "text/html; charset=utf-8"],
+  "/admin/settings.js": ["settings.js", "text/javascript"],
+  "/admin/settings.js.map": ["settings.js.map", "application/json"],
   "/admin/first-frame.html": ["first-frame.html", "text/html; charset=utf-8"],
   "/admin/first-frame.js": ["first-frame.js", "text/javascript"],
   "/admin/first-frame.js.map": ["first-frame.js.map", "application/json"],
@@ -186,7 +192,7 @@ export class AdminPages {
       if (!(level >= 0 && level <= 3 && Number.isInteger(level))) return new Response("level is 0 to 3", { status: 400 });
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
-    return this.log.answer(at, url) ?? this.supply.answer(req, at, url) ?? new Response("not found", { status: 404 });
+    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? new Response("not found", { status: 404 });
   }
 
   private terrainImage(req: Request): Response {

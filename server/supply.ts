@@ -162,7 +162,7 @@ export class Supply {
   /** The book's sites by the chunk each is in. */
   private readonly siteGrid = new Map<number, SiteDoc[]>();
   private readonly scaled = new WeakMap<LootDef, { quality: number; def: LootDef }>();
-  private readonly catalog: Catalog;
+  private catalog: Catalog;
   private readonly pose = newPose();
   /** Its kind in the deadline heap. An entry's first number is a drop's id. */
   private readonly deadline: number;
@@ -175,6 +175,12 @@ export class Supply {
     ctx.containers.gate.on((c, box) => this.gate(c, box));
     ctx.containers.onOpened.on((c, box) => this.opened(c, box));
     ctx.containers.onRemoved.on((box) => this.removed(box));
+  }
+
+  /** Reads the game's items from the world's content again, which its settings may have changed. */
+  retable(): void {
+    this.catalog = catalogOf(this.ctx.world.reg);
+    this.compiledOf = null;
   }
 
   /** The book in force, compiled against the game's items: again whenever the book or the quality setting changes. */

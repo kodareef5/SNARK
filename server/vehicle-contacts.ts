@@ -33,6 +33,16 @@ export interface VehicleCollisionPair {
 }
 /** Metres a second a car closes at, at least, to knock a body off its feet (server/host.ts, Knockdowns). */
 export const KNOCK_SPEED = 6;
+/**
+ * A creature at most this share of the car's mass and this tall is run over: the car rolls on over it with a thump of
+ * THUMP m/s upward, and it is crushed, from RUN_OVER_SPEED m/s.
+ */
+const RUN_OVER_SHARE = 0.05;
+const RUN_OVER_HEIGHT = 1;
+const RUN_OVER_SPEED = 3;
+const THUMP = 0.35;
+/** Harm a creature run over takes: more than any small one has. */
+const RUN_OVER_HARM = 100000;
 
 export interface VehicleContactsContext {
   world: ServerWorld;
@@ -88,6 +98,8 @@ export class VehicleContacts {
   private targetPadding = 0;
   /** Diagnostics, not replicated gameplay state: contacts resolved, and pairs swept. */
   contacts = 0;
+  /** Small creatures run over (runOver). */
+  runOvers = 0;
   sweeps = 0;
 
   constructor(ctx: VehicleContactsContext) {
@@ -380,6 +392,28 @@ export class VehicleContacts {
     return driver && current?.pid === frame.by && frame.byHandle !== 0 && world.ents.resolve(frame.byHandle) === records.entOf.get(frame.by) ? driver : null;
   }
 
+  /**
+   * A small creature under a car going RUN_OVER_SPEED or more, as a speed bump: the car keeps its way with a thump, and the
+   * creature is crushed and tumbles out behind. False where it is too big or the car too slow, to meet it as a body.
+   */
+  private runOver(car: number, frame: Frame, c: Contact, by: EntityRecord): boolean {
+    const a = this.a, b = this.b, combat = this.ctx.combat;
+    const speed = Math.sqrt(a.state.vx * a.state.vx + a.state.vz * a.state.vz);
+    if (b.mass > a.mass * RUN_OVER_SHARE || this.heightB > RUN_OVER_HEIGHT || speed < RUN_OVER_SPEED) return false;
+    a.state.vy += THUMP;
+    this.store(car, a.state, true);
+    this.runOvers++;
+    const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0, base: RUN_OVER_HARM, type: DMG_MELEE,
+      quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+    // Thrown along under the car at half its speed, tumbling end over end about the car's right.
+    const impact: CorpseImpact = { victimHandle: c.handle, victimPid: c.pid, vx: a.state.vx * 0.5, vy: 0.5, vz: a.state.vz * 0.5,
+      wx: clamp(a.state.vz * 2, -8, 8), wy: 0, wz: clamp(-a.state.vx * 2, -8, 8) };
+    combat.land(src, c.entity, ZONE_NONE, c.x, c.y, c.z, 0, impact);
+    const ents = this.ctx.world.ents;
+    if (ents.resolve(frame.handle) === car && ents.pid[car] === frame.pid) ents.pose(car, this.ctx.world.tick);
+    return true;
+  }
+
   private resolve(car: number, frame: Frame, c: Contact): boolean {
     const { world, records, combat } = this.ctx, ents = world.ents;
     if (ents.resolve(c.handle) !== c.entity || ents.pid[c.entity] !== c.pid || !this.target(car, c.entity)) return false;
@@ -413,6 +447,8 @@ export class VehicleContacts {
     this.contacts++;
     // Track before correction so history keeps the stationary prior pose of an actor first woken by this touch.
     world.history.track(c.entity);
+    // Only a car someone drives harms what it meets, run over or struck.
+    if (by && !other && movable && !fixed && fresh && definition?.type === 'species' && definition.class === 'creature' && this.driver(car, frame) === by && this.runOver(car, frame, c, by)) return true;
     resolveDynamicContact(a, b, c, this.queries, this.scratch, result);
     this.store(car, a.state, true); this.store(c.entity, b.state, !!other);
     // The impulse can move either vehicle again, including across a chunk boundary, before the next gather.

@@ -1,13 +1,13 @@
 import { ImpactSprings } from "./impact-springs.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
-import { blockMass } from "../../../shared/sim/blockers.ts";
+import { blockMass, survivorKind } from "../../../shared/sim/blockers.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
 // A body is one skeleton and several meshes, one per body slot, so a worn piece can replace the part under it.
 // Its bones go into the packet once, and each of its meshes is one instance that names the body's first bone.
 
 import type { SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { Pose, sampleClip, type Clip } from "../../../shared/anim/clip.ts";
+import { Pose, blendPose, sampleClip, type Clip } from "../../../shared/anim/clip.ts";
 import { conformCreature } from "../../../shared/anim/ground-conform.ts";
 import { createMountMotion, mountOrigin, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
 import { occupantPose, type OccupantSeat } from "../../../shared/anim/occupant.ts";
@@ -16,7 +16,7 @@ import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import { isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
-import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
+import { quatAxis, quatMul, quatMulConj, quatRotate } from "../../../shared/math/quat.ts";
 import { B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
@@ -36,7 +36,7 @@ import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import { groundSpeedScale } from "../../../shared/anim/ground-conform.ts";
 import { poseCreatureOn } from "../../../shared/anim/creature.ts";
 import type { Assets } from "../assets/assets.ts";
-import { Corpses, type Corpse } from "../ragdoll.ts";
+import { Corpses, type Corpse, type HumanFall } from "../ragdoll.ts";
 import type { CorpseMotion } from "../../../shared/net/corpse.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
@@ -340,6 +340,8 @@ export class Characters {
   private readonly saddle: Uint8Array;
   private readonly wornColor = new Uint8Array(6);
   private readonly pose = new Pose(HUMAN_BONES);
+  /** The pose a survivor getting up rises from. */
+  private readonly lying = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
   private readonly mounted = new Solved(HUMAN_BONES);
   private readonly mount = createMountMotion();
@@ -553,7 +555,7 @@ export class Characters {
     });
     this.anims = this.creatures.map((c) => c?.anim ?? null);
     this.waiting = this.creatures.flatMap((c, kind) => (c && c.clips >= 0 ? [kind] : []));
-    this.dead = new Corpses(this.anims, reg.birthScale);
+    this.dead = new Corpses(this.anims, reg.birthScale, (kind) => survivorKind(reg, kind));
     const st = new AnimState();
     for (const stance of [STANCE_STAND, STANCE_CROUCH]) {
       st.stance = stance;
@@ -617,6 +619,16 @@ export class Characters {
   }
   corpseMotions: ReadonlyMap<number, CorpseMotion> | undefined;
   get corpseCheckpointRequests(): ReadonlySet<number> { return this.dead.needsCheckpoint; }
+
+  /** Whether entity `id` is a survivor's body lying as its ragdoll, drawn as a survivor (client/core/ragdoll.ts HumanFalls). */
+  lyingHuman(id: number): boolean {
+    return this.dead.humans.of(id) !== undefined;
+  }
+
+  /** The fall survivor `id` is drawn by, lying or getting up, as the last frame left it. */
+  humanFall(id: number): HumanFall | undefined {
+    return this.dead.humans.of(id);
+  }
 
   /** Whether this kind is on the humanoid skeleton. */
   human(kind: number): boolean {
@@ -1214,8 +1226,8 @@ export class Characters {
    * Finds the creatures that have died among the remote entities, moves the dead on through their death clips and
    * ragdolls, and draws those in view where they lie. `world` is what a ragdoll falls on.
    */
-  corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld): void {
-    this.dead.update(remote, world, cam.x, cam.z, this.gaits, this.corpseMotions);
+  corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld, own = 0, ownDown = false): void {
+    this.dead.update(remote, world, cam.x, cam.z, this.gaits, this.corpseMotions, own, ownDown);
     const lit = this.assets.tier.lit;
     for (const d of this.dead.list) {
       const c = this.creatures[d.kind]!;
@@ -1397,6 +1409,9 @@ export class Characters {
     if (!k) return false;
     // An enclosed passenger must retain a seated pose even under the distant-body budget.
     if (vehicleSeat) rigid = false;
+    // A survivor knocked down lies as its ragdoll, and rises from it.
+    const fallen = seat || vehicleSeat ? undefined : this.dead.humans.of(id);
+    if (fallen) rigid = false;
     this.packet = p;
     const at = this.setOf(k, look, lookAt);
     const set = k.sets[at]!;
@@ -1421,6 +1436,9 @@ export class Characters {
         inFrame(p.bones, first * BONE_FLOATS, 1, seat, seatAt, x, y, z);
       } else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
     } else {
+      if (fallen?.down) {
+        x = fallen.x - p.camX; y = fallen.y - p.camY; z = fallen.z - p.camZ; yaw = fallen.yaw;
+      }
       const g = this.gaitOf(id);
       advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
       const solved = this.kept(g, HUMAN_BONES);
@@ -1436,10 +1454,17 @@ export class Characters {
       const form = kind * 8 + at * 4 + (seat ? 1 : 0) + (impaled ? 2 : 0);
       const over = this.override !== null && this.override.id === id ? this.override : null;
       // The viewer's own body in first person, up on its feet or swimming: its eye does not bend over with its back.
-      const eyeOwn = own && headless && !seat && !vehicleSeat && !impaled && st.stance !== STANCE_PRONE && !st.out && !st.dead;
-      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null || this.springs.active(id))) {
+      const eyeOwn = own && headless && !seat && !vehicleSeat && !impaled && st.stance !== STANCE_PRONE && !st.out && !st.dead && !fallen;
+      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null || fallen !== undefined || this.springs.active(id))) {
         this.posingId = id;
-        this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
+        if (fallen?.down) this.lain(fallen, fallen.x, fallen.y, fallen.z, fallen.yaw, set.rest, this.pose);
+        else this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
+        if (fallen && !fallen.down) {
+          const t = fallen.risen;
+          this.lain(fallen, x + p.camX, y + p.camY, z + p.camZ, yaw, set.rest, this.lying);
+          blendPose(this.pose, this.lying, this.pose, t * t * (3 - 2 * t));
+        }
+        if (fallen) solve(HUMAN, this.pose, solved, set.rest, scales);
         this.posingId = -1;
       }
       if (seat) {
@@ -1583,6 +1608,32 @@ export class Characters {
       back = Math.max(back, pastEdge(at, y, lean));
     }
     return back;
+  }
+
+  /**
+   * Fills `out` with the pose fall `h` lies in, held by a body at world (x, y, z) facing `yaw` radians and solved on `rest`:
+   * the root turned by the difference in facing, every other bone as turned against its parent.
+   */
+  private lain(h: HumanFall, x: number, y: number, z: number, yaw: number, rest: Float32Array, out: Pose): void {
+    const src = h.solved, d = (h.yaw - yaw) / 2, sd = Math.sin(d), cd = Math.cos(d);
+    const s = Math.sin(h.yaw), c = Math.cos(h.yaw), s1 = Math.sin(yaw), c1 = Math.cos(yaw);
+    for (let b = 0; b < HUMAN.bones; b++) {
+      const p = HUMAN.parent[b]!, r = b * 4;
+      if (p >= 0) {
+        quatMulConj(out.rot, r, src.rot, p * 4, src.rot, r);
+        continue;
+      }
+      const ax = src.rot[r]!, ay = src.rot[r + 1]!, az = src.rot[r + 2]!, aw = src.rot[r + 3]!;
+      out.rot[r] = cd * ax + sd * az;
+      out.rot[r + 1] = cd * ay + sd * aw;
+      out.rot[r + 2] = cd * az - sd * ax;
+      out.rot[r + 3] = cd * aw - sd * ay;
+      const mx = src.pos[b * 3]!, mz = src.pos[b * 3 + 2]!;
+      const dx = h.x + c * mx + s * mz - x, dz = h.z - s * mx + c * mz - z;
+      out.root[0] = c1 * dx - s1 * dz - rest[b * 3]!;
+      out.root[1] = h.y + src.pos[b * 3 + 1]! - y - rest[b * 3 + 1]!;
+      out.root[2] = s1 * dx + c1 * dz - rest[b * 3 + 2]!;
+    }
   }
 
   /**

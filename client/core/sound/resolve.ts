@@ -5,6 +5,9 @@
 
 import { KEYS, candidates } from "../../../shared/sound/cues.ts";
 
+/** What `entry` gives for an owner or key that names nothing. */
+const NONE = -1;
+
 export class Resolver {
   readonly owners: string[] = [];
   /** By owner: the shared families its `{family}` fallbacks stand for (a vehicle's, from vehicleFamilies). */
@@ -42,7 +45,9 @@ export class Resolver {
     return o;
   }
 
+  /** An owner number never made, or a key outside the catalogue, finds nothing: a sound must not stop the frame. */
   private entry(owner: number, key: number): number {
+    if (!(owner >= 0 && owner < this.owners.length && key >= 0 && key < KEYS.length)) return NONE;
     const at = owner * KEYS.length + key;
     let e = this.found.get(at);
     if (e === undefined) {
@@ -65,19 +70,24 @@ export class Resolver {
 
   /** The sound `owner` makes for cue key `key`, or -1 for none. Counts the asking. */
   find(owner: number, key: number): number {
-    const s = this.sound[this.entry(owner, key)]!;
-    this.asked[key]!++;
-    if (s < 0) this.missed[key]!++;
+    const e = this.entry(owner, key);
+    const s = e === NONE ? -1 : this.sound[e]!;
+    if (key >= 0 && key < KEYS.length) {
+      this.asked[key]!++;
+      if (s < 0) this.missed[key]!++;
+    }
     return s;
   }
 
   /** As `find` without counting: for code that looks ahead to what it may need. */
   peek(owner: number, key: number): number {
-    return this.sound[this.entry(owner, key)]!;
+    const e = this.entry(owner, key);
+    return e === NONE ? -1 : this.sound[e]!;
   }
 
   /** The playback rate of what `find` gave: below 1 where a stand-in plays lower. */
   rate(owner: number, key: number): number {
-    return this.rates[this.entry(owner, key)]!;
+    const e = this.entry(owner, key);
+    return e === NONE ? 1 : this.rates[e]!;
   }
 }

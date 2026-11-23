@@ -4,6 +4,7 @@
 import type { CraftFacet, Def, EngramDef, ItemDef, LevelsDef, NodeDef, SpeciesDef, StructureDef } from "./defs.ts";
 import { MAX_BURN_SECONDS, MAX_LEVELS, MAX_NODE_HITS, MAX_SPOIL_HOURS, STAMINA_DEFAULT, compileContent, type Registry } from "./registry.ts";
 import { cooldownTicks } from "../sim/vehicle-thrusters.ts";
+import { hashString } from "../hash.ts";
 
 export interface Tuning {
   /** Multiplies every stack larger than one. */
@@ -41,6 +42,23 @@ export interface Tuning {
   readonly nodeHits?: number;
   /** Seconds between a thruster car's boosts and between its flips (shared/sim/vehicle-thrusters.ts); 0 is none. */
   readonly thrusters?: { readonly boost?: number; readonly flip?: number };
+  /**
+   * The grip a wheel finds on a surface, by the surface's id ("asphalt", "mud"): the ground's own surfaces
+   * (shared/world/vehicle-surface.ts) and every road piece of that surface.
+   */
+  readonly surfaces?: Readonly<Record<string, number>>;
+}
+
+/** The least and the most grip a surface may be tuned to, as a surface's own check has them (validVehicleSurface). */
+export const GRIP_LEAST = 0.05, GRIP_MOST = 30;
+
+/** The grips of a tuning's surfaces that are numbers, each within its range. Null if there are none. */
+function surfaceGrips(t: Tuning): Record<string, number> | null {
+  const of = t.surfaces;
+  if (of === null || typeof of !== "object" || Array.isArray(of)) return null;
+  const out: Record<string, number> = {};
+  for (const id of Object.keys(of).sort()) if (isNumber(of[id])) out[id] = within(of[id]!, GRIP_LEAST, GRIP_MOST);
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 export interface Gains {
@@ -145,6 +163,7 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
   };
   const xp = levelTable(t.xp);
   const tameXp = levelTable(t.tameXp);
+  const grips = surfaceGrips(t);
 
   return defs.map((d): Def => {
     if (d.type === "item") {
@@ -219,9 +238,13 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
       const out: SpeciesDef = { ...sp, ...(stats ? { stats } : {}), ...(m !== 1 ? { stamina: { ...s, sprint: s.sprint * m, jump: s.jump * m } } : {}) };
       return out;
     }
-    if (d.type === "structure" && d.burns && fuel !== 1) {
+    if (d.type === "structure") {
+      // A road piece grips as its surface is tuned to.
+      const grip = d.vehicleSurface && grips ? grips[d.vehicleSurface.id] : undefined;
+      const surfaced: StructureDef = grip !== undefined && grip !== d.vehicleSurface!.grip ? { ...d, vehicleSurface: { ...d.vehicleSurface!, grip } } : d;
+      if (!surfaced.burns || fuel === 1) return surfaced;
       // A station's own fuel burns as much longer as every item's fuel does.
-      const out: StructureDef = { ...d, burns: d.burns.map((b) => ({ ...b, seconds: within(b.seconds * fuel, 0.05, MAX_BURN_SECONDS) })) };
+      const out: StructureDef = { ...surfaced, burns: surfaced.burns.map((b) => ({ ...b, seconds: within(b.seconds * fuel, 0.05, MAX_BURN_SECONDS) })) };
       return out;
     }
     if (d.type === "node") {
@@ -244,5 +267,8 @@ export function deriveRegistry(reg: Registry, tuning: Tuning): Registry {
   if (text === "") return base;
   const made = compileContent([...applyTuning(base.defs.filter((d): d is Def => d !== null), tuning), ...base.renames]);
   if (!made.registry) throw new Error("content does not compile as tuned:\n" + made.errors.join("\n"));
-  return { ...made.registry, baseHash: base.hash, coreHash: base.coreHash, own: base.own, tuning: text, source: base };
+  // The ground's surfaces are no definitions, so their grips ride in the parts a wheel's ray reads, and in the hash.
+  const grips = surfaceGrips(tuning);
+  const tuned = grips ? { parts: { ...made.registry.parts, surfaceGrip: grips }, hash: hashString(JSON.stringify(grips), made.registry.hash) } : {};
+  return { ...made.registry, ...tuned, baseHash: base.hash, coreHash: base.coreHash, own: base.own, tuning: text, source: base };
 }

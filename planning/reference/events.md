@@ -37,7 +37,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 - **`server.saveFailed`.** A commit failed. The world runs on and it will be tried again.
 - **`server.saved`.** Commits succeed again after failing.
 - **`server.stop`.** The server is stopping. The last commit follows.
-- **`server.settings`.** Settings changed while running, from the console or the live file.
+- **`server.settings`.** Settings changed while running, from the console, the live file or the admin's settings page.
 - **`server.broadcast`.** An admin spoke to everyone.
 
 ## Commands

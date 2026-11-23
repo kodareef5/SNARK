@@ -1,6 +1,7 @@
 // Thirty bones resting in a T-pose: standing on the origin, facing +Z, arms out along X (the body's left is +X), palms down.
 // The first twenty carry hit capsules. Appended distal fingers preserve the original indices and default hand poses.
 
+import type { RagdollDef } from "./ragdoll.ts";
 import type { Skeleton } from "./skeleton.ts";
 
 export const B_HIPS = 0;
@@ -167,3 +168,35 @@ export const SOCKET_CROWN: Socket = { bone: B_HEAD, x: 0, y: 0.215, z: 0.01 };
 export const SOCKET_BACK: Socket = { bone: B_UPPER_CHEST, x: 0, y: 0.08, z: -0.15 };
 export const SOCKET_GRIP_L: Socket = { bone: B_PROP_L, x: 0, y: 0, z: 0 };
 export const SOCKET_GRIP_R: Socket = { bone: B_PROP_R, x: 0, y: 0, z: 0 };
+
+/**
+ * A survivor's ragdoll, for a fall and a body left lying: the hips, chest and head, and each arm and leg in two. The
+ * spine, upper chest, neck, shoulders, hands and feet ride rigidly on the body above them and meet the world with their
+ * own capsules. Each limit is how far a body swings and twists from the T-pose against its parent: an arm hangs at its
+ * side at 90 degrees, a knee and an elbow fold most of the way.
+ */
+export const HUMAN_RAGDOLL: RagdollDef = (() => {
+  const deg = Math.PI / 180;
+  // bone, share of the mass, swing and twist in degrees
+  const bodies: readonly (readonly [number, number, number, number])[] = [
+    [B_HIPS, 0.17, 0, 0],
+    [B_CHEST, 0.3, 35, 30],
+    [B_HEAD, 0.08, 50, 60],
+    [B_UPPER_ARM_L, 0.03, 120, 70],
+    [B_LOWER_ARM_L, 0.025, 140, 30],
+    [B_UPPER_ARM_R, 0.03, 120, 70],
+    [B_LOWER_ARM_R, 0.025, 140, 30],
+    [B_UPPER_LEG_L, 0.11, 100, 35],
+    [B_LOWER_LEG_L, 0.06, 140, 10],
+    [B_UPPER_LEG_R, 0.11, 100, 35],
+    [B_LOWER_LEG_R, 0.06, 140, 10],
+  ];
+  return {
+    limp: 0,
+    bone: Int16Array.from(bodies, (b) => b[0]),
+    mass: Float64Array.from(bodies, (b) => b[1]),
+    swing: Float64Array.from(bodies, (b) => b[2] * deg),
+    twist: Float64Array.from(bodies, (b) => b[3] * deg),
+    contacts: Int16Array.of(B_SPINE, B_UPPER_CHEST, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_HAND_L, B_HAND_R, B_FOOT_L, B_FOOT_R),
+  };
+})();

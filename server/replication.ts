@@ -84,7 +84,7 @@ export class Replication {
   /** The tick due when snapshots last went out. While the loop catches up they go out at the clock's pace, not each tick's. */
   private dueSent = 0;
   /** `opts.viewCap`, held to what a view can hold. */
-  private readonly cap: number;
+  private cap: number;
   /** Per chunk: the tick `around[aroundAt]` was gathered for it. */
   private readonly aroundTick: Uint32Array;
   private readonly aroundAt: Uint16Array;
@@ -154,6 +154,11 @@ export class Replication {
   }
 
   /** Every session is told its state again (OWN_SESSION), at its next turn. */
+  /** Takes the most bodies a session may be shown from the options again (ViewCap). A session has it at its next ask. */
+  recap(): void {
+    this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
+  }
+
   markAllOwn(): void {
     for (const c of this.clients) if (c?.active) c.ownDirty = true;
   }
@@ -168,6 +173,10 @@ export class Replication {
     w.bool(c.admin);
     w.u32(c.ent >= 0 ? this.world.ents.handleOf(c.ent) : 0);
     w.u32(this.world.dayOffset);
+    // The clock's pace with its offset, so a pace changed while the server runs never shows another hour.
+    w.f64(this.world.clock.cycle);
+    w.f64(this.world.clock.day);
+    w.f64(this.world.clock.night);
     c.conn.send(CH_RELIABLE, w.bytes());
     c.ownDirty = false;
   }

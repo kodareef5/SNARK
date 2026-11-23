@@ -95,6 +95,7 @@ import {
   S_SNAPSHOT,
   S_TEXT,
   S_TRAVEL,
+  S_TUNING,
   S_MOTION,
   S_SUPPLY,
   S_WELCOME,
@@ -114,7 +115,7 @@ import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { BTN_JUMP, BTN_SECONDARY, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
@@ -133,7 +134,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
-import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
+import { GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
@@ -919,7 +920,8 @@ export class ClientSession {
    */
   private holdGround(): void {
     this.recenterNodes();
-    const held = this.groundHeld();
+    // Knocked down, the body lies where the server's ragdoll has it, and is predicted again once it gets up.
+    const held = this.groundHeld() && (this.own.mflags & MF_DOWN) === 0;
     if (held && !this.predicting && this.latestSnapshot > 0 && this.latestSnapshot < this.simTick) {
       this.predicting = true;
       this.told.copy(this.own);
@@ -1440,6 +1442,14 @@ export class ClientSession {
         if (!r.overflow) s.travelled = { ticket, world };
       },
     });
+    messages.add({
+      kind: S_TUNING,
+      read(s, r) {
+        const hash = r.u32();
+        const tuning = r.string(MAX_TUNING_BYTES);
+        if (!r.overflow && s.state === "active") s.retune(hash, tuning);
+      },
+    });
     return messages;
   }
 
@@ -1522,6 +1532,31 @@ export class ClientSession {
   }
 
   /** One kind of owner state per message. A kind with no reader is ignored. */
+  /**
+   * The server's settings changed its content while it runs (S_TUNING). The content is derived as at the welcome, and
+   * a session whose content hashes otherwise would predict other numbers, so it leaves. What was predicted under the
+   * old content is corrected by the server's next snapshot.
+   */
+  private retune(hash: number, tuning: string): void {
+    const reg = derive(this.registry, tuning);
+    if (!reg || reg.hash !== hash) {
+      this.state = "closed";
+      this.closeReason = CLOSED_BAD_CONTENT;
+      this.prediction.closed(this, "its content is not the server's after a change of settings");
+      this.conn.close();
+      return;
+    }
+    if (reg === this.registry) return;
+    this.registry = reg;
+    this.move = reg.move[this.ownKind] ?? this.move;
+    this.nodeField?.retable(reg);
+    this.vehicleContacts?.retable(reg);
+    // A wheel's ray reads each road piece's surface, and the ground's grips, from the parts.
+    if (this.world) this.world.structs.parts = withSurfaces(this.world.structs.parts, reg.parts);
+    // The foot contacts are made again from the content in force.
+    this.feetWorld = null;
+  }
+
   private ownState(r: BitReader): void {
     ClientSession.ownKinds.read(r.u8(), this, r);
   }
@@ -1535,7 +1570,11 @@ export class ClientSession {
         const admin = r.bool();
         const handle = r.u32();
         const dayOffset = r.u32();
+        const cycle = r.f64(), day = r.f64(), night = r.f64();
         if (r.overflow) return;
+        s.clock.cycle = cycle;
+        s.clock.day = day;
+        s.clock.night = night;
         s.sessionState = state;
         // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
         if (state !== SESSION_DEAD) {
@@ -2181,6 +2220,7 @@ export class ClientSession {
       this.bodyTick[slot] = tick;
       return;
     }
+    if ((sb.mflags & MF_DOWN) !== 0) this.predicting = false;
     if (!this.predicting) {
       // Drawn from snapshots, as nothing is predicted.
       this.own.copy(sb);

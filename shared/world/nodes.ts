@@ -397,7 +397,12 @@ export class NodeField {
   private readonly spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   private readonly dims: MapDims;
   /** Each kind's starting hit count. */
-  private readonly hits: Float32Array;
+  private hits: Float32Array;
+
+  /** Takes the starting hit counts from content a server's settings have changed. Nodes already loaded keep what they have left. */
+  retable(reg: Registry): void {
+    this.hits = reg.nodeHits;
+  }
 
   constructor(dims: MapDims, reg: Registry, source: NodeSource) {
     this.dims = dims;

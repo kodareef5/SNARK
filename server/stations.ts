@@ -228,6 +228,12 @@ export class Stations {
     }
   }
 
+  /** Takes the fuel tables from the world's content again, which its settings may have changed. */
+  retable(): void {
+    this.fuelTicks = this.world.reg.fuelTicks;
+    this.stationFuel = this.world.reg.stationFuel;
+  }
+
   /** Call after a load. Every burning fire gets its deadline again. */
   resume(): void {
     for (const rec of this.records.byPid.values()) if (rec.fire && rec.at >= 0) this.schedule(rec);

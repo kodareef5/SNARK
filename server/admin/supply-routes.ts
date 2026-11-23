@@ -44,7 +44,7 @@ export interface SupplyAct {
 }
 
 /** What is wrong with a POST before its body is read, or null. */
-function refusedWrite(req: Request): Response | null {
+export function refusedWrite(req: Request): Response | null {
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
   if (!sameOrigin(req)) return json({ error: "A change comes from this server's own admin page." }, 403);
   const type = (req.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
@@ -52,12 +52,13 @@ function refusedWrite(req: Request): Response | null {
   return null;
 }
 
-async function body(req: Request): Promise<Record<string, unknown> | null> {
+/** A change's body, a JSON object of `most` characters at the most, or null. */
+export async function body(req: Request, most = SUPPLY_BODY_MOST): Promise<Record<string, unknown> | null> {
   try {
     const length = Number(req.headers.get("content-length") ?? 0);
-    if (length > SUPPLY_BODY_MOST) return null;
+    if (length > most) return null;
     const text = await req.text();
-    if (text.length > SUPPLY_BODY_MOST) return null;
+    if (text.length > most) return null;
     const made: unknown = JSON.parse(text);
     return typeof made === "object" && made !== null && !Array.isArray(made) ? (made as Record<string, unknown>) : null;
   } catch {

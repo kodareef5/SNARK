@@ -78,6 +78,7 @@ import { COMMAND_FAMILIES } from "./commands/families.ts";
 import { addOwnCommands, addOwnState, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Loose } from "./loose.ts";
+import { Falls } from "./falls.ts";
 import { Projectiles } from "./projectiles.ts";
 import { Clouds } from "./clouds.ts";
 import type { ModuleDef } from "./api/module.ts";
@@ -87,12 +88,14 @@ import { workerKeeper } from "./persist/keeper.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, hashKey, type EntityRecord } from "./records.ts";
 import { Use } from "./use.ts";
-import { Rules, timersOf } from "./settings/rules.ts";
-import { CATALOG, rowOf } from "./settings/catalog.ts";
+import { Rules, timersOf, wordsOf } from "./settings/rules.ts";
+import { CATALOG, fixedWhy, rowOf } from "./settings/catalog.ts";
+import { KeptSettings, rowNamed } from "./settings/kept.ts";
 import { Lists } from "./settings/lists.ts";
 import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/config.ts";
 import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
-import { deriveRegistry } from "../shared/content/tuning.ts";
+import { deriveRegistry, tuningText, type Tuning } from "../shared/content/tuning.ts";
+import { withSurfaces } from "../shared/world/structures.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import { CAUSE_WORDS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
@@ -231,13 +234,15 @@ export interface Host {
   readonly eggs: Eggs;
   /** Things thrown from the hand, in flight (server/loose.ts). */
   readonly loose: Loose;
+  /** Survivors knocked off their feet, lying as ragdolls (server/falls.ts). */
+  readonly falls: Falls;
   readonly balls: Balls;
   /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
   readonly mounts: Mounts;
   readonly overhead: Overhead;
   readonly gaze: Gaze;
   readonly hurt: Hurt;
-  /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
+  /** Null unless the host was asked to keep the wild stocked and the map has spawn regions. Under a -NoDinos flag it makes nothing. */
   readonly spawner: Spawner | null;
   /** Null for a map that parks no car. */
   readonly carReturn: CarReturn | null;
@@ -258,6 +263,14 @@ export interface Host {
   online(pid: number): boolean;
   /** Sets a live setting by ARK's name. Returns "" if it was set, or the reason it was not. It lasts until the server restarts. */
   setSetting(name: string, words: string): string;
+  /**
+   * Sets a live setting from the admin page, a list or a command-line flag too (`-Name`), and keeps it across restarts
+   * (settings/kept.ts). Null words take the page's value away. `why` is "" if it was done; `unkept` says why the
+   * change, though made, was not written beside the save.
+   */
+  pageSetting(name: string, words: string | null): { why: string; unkept?: string };
+  /** What the admin page set. */
+  readonly kept: KeptSettings;
   /** Reads the live file again now. Returns the report lines. */
   readLive(): string[];
   /** The setting values a loaded save's timers were computed under. Null for a new world. */
@@ -304,8 +317,10 @@ export function contentFor(content: Registry, rules: Rules): Registry {
 
 /** A host that fails to start lets go of its save, so the next try can open it. */
 
-/** Seconds a survivor knocked off their feet has no hold on where they go. */
+/** Seconds a survivor knocked off their feet has no hold on where they go, where it cannot fall as a ragdoll. */
 const KNOCKDOWN_SECONDS = 1.2;
+/** Seconds a survivor getting up from a fall is held still. */
+const GET_UP_SECONDS = 0.5;
 /** A car door's blow: so much and so much a metre a second the car goes, at most so much. */
 const DOOR_HARM_BASE = 8;
 const DOOR_HARM_PER = 1.5;
@@ -363,13 +378,18 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const content = withContent(core, given?.content?.defs ?? []);
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
+  // The admin page's values are laid over them, from their own file beside the save.
+  const kept = new KeptSettings(opts.dbPath ? `${opts.dbPath}.settings.json` : null, rules);
+  const keptSaid = kept.load();
+  kept.check = () => (contentNow().reg === null ? `gives content that does not compile: ${contentNow().fault}` : "");
   const lists = new Lists(rules, content);
   // Settings that change content are applied to the definitions once, before anything reads them (D90). From here on `reg` is the only registry.
   const tuned = tuningOf(rules, lists, content);
   lists.warm();
   const derived = deriveRegistry(content, tuned.tuning);
   if (opts.world && opts.world.reg.hash !== derived.hash) throw new Error("a world made before its host must be made of the content the host's settings give: contentFor(content, rules)");
-  const reg = opts.world ? opts.world.reg : derived;
+  // The registry in force. A setting that changes content replaces it while the server runs (recontent, below).
+  let reg = opts.world ? opts.world.reg : derived;
   const storeOptions = { ...opts.store, allowNetworkDisk: opts.store?.allowNetworkDisk ?? rules.flag("AllowNetworkSave") === true };
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, storeOptions) : null;
   if (store) opened.push(store);
@@ -400,6 +420,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const records = new Records(opts.worldId ?? cluster?.world ?? (store && !store.fresh ? Number(store.meta("world_id") ?? 1) : 1));
   const activity = new SurvivorActivity(records);
   const say = opts.log ?? ((line: string) => console.log(line));
+  for (const line of keptSaid) say(line);
   // Carries events to modules. Made before the systems, so that each can raise its own.
   const bus = new Bus();
   bus.log = say;
@@ -559,9 +580,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const buffs = new Buffs(world, records, survival, deadlines);
   const spawns = spawnTables(reg, rules, lists);
   // No spawn region here is forced, streamed, put by hand or in water, so each -NoDinosExcept flag is -NoDinos.
-  const quiet = ["NoDinos", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"].some((f) => rules.flag(f) === true);
-  const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
+  const quiet = (): boolean => ["NoDinos", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"].some((f) => rules.flag(f) === true);
+  const stocked = opts.wild ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
   const spawner = stocked && stocked.regions.length > 0 ? stocked : null;
+  // A flag may be set and taken away while the server runs, so the spawner is there either way and is told.
+  if (spawner) spawner.quiet = quiet();
   // The save keeps the setting values its timers were computed under, so they can be re-timed under other rules.
   const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at")) : null;
   if (persistence) {
@@ -584,7 +607,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
     {
-      reg,
+      get reg() {
+        return reg;
+      },
       world,
       records,
       items,
@@ -866,6 +891,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
   const loose = new Loose({ world, game, records, items, combat, death });
+  const falls = new Falls(world);
+  game.players.isDown = (e) => falls.isDown(e);
+  combat.downPose = (e, tick) => falls.poseAt(e, tick);
+  corpses.handOff = (e) => falls.take(e);
   // A sight's zero lifts its flying rounds (D1083).
   projectiles.zero = (c) => gaze.zeroOf(c);
   // Every shot and blast, hit or miss, is heard by Cast's people near it.
@@ -960,8 +989,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const RATES = CATALOG.filter((row) => row.retime === "rate").map((row) => row.name);
   /**
    * Re-times everything in progress from the values it was computed under to the server's current ones (D91). It runs once at a
-   * load, for a save made under other settings, and whenever a live rule changes. Spoilage and fires are computed only when read.
-   * Their rules cannot change while the server runs, so they are re-timed only at a load, after being settled at the old values.
+   * load, for a save made under other settings, and whenever a live rule changes. Spoilage and fires are computed only when
+   * read, so they are first settled by the table they ran under: at a load the save's, made again from its values, and
+   * while running the registry that was in force until the change (`timed`).
    */
   const retime = (atLoad: boolean): void => {
     const now = rules.timers();
@@ -973,32 +1003,139 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     breeding.retime({ hatch: wasAt("EggHatchSpeedMultiplier"), mature: wasAt("BabyMatureSpeedMultiplier"), interval: wasAt("MatingIntervalMultiplier"), mating: wasAt("MatingSpeedMultiplier") });
     death.retime(wasAt("GlobalItemDecompositionTimeMultiplier"), wasAt("GlobalCorpseDecompositionTimeMultiplier") * wasAt("UseCorpseLifeSpanMultiplier"));
-    if (atLoad) {
-      harvest?.retime(wasAt("ResourcesRespawnPeriodMultiplier"));
-      const spoilWas = wasAt("GlobalSpoilingTimeMultiplier");
-      const fuelWas = wasAt("FuelConsumptionIntervalMultiplier");
-      if (spoilWas !== now.GlobalSpoilingTimeMultiplier || fuelWas !== now.FuelConsumptionIntervalMultiplier) {
-        // The registry as the save had it, for the spoil and fuel timings.
-        const old = deriveRegistry(content, { ...tuned.tuning, spoil: spoilWas, fuel: fuelWas });
-        items.table = old;
-        stations.refuel(old, fuelWas, now.FuelConsumptionIntervalMultiplier!);
-        items.respoil(old, spoilWas, now.GlobalSpoilingTimeMultiplier!);
-        items.table = reg;
-      }
-    } else if (RATES.some((name) => wasAt(name) !== now[name])) {
-      // The young's hunger is a rate that can change while the server runs. Each young creature is rated again and its meal rescheduled.
-      for (const rec of records.byPid.values()) {
-        if (rec.grown === 0 || rec.egg !== null || !rec.vitals) continue;
+    const spoilWas = wasAt("GlobalSpoilingTimeMultiplier");
+    const fuelWas = wasAt("FuelConsumptionIntervalMultiplier");
+    if (spoilWas !== now.GlobalSpoilingTimeMultiplier || fuelWas !== now.FuelConsumptionIntervalMultiplier) {
+      const old = atLoad ? deriveRegistry(content, { ...tuning, spoil: spoilWas, fuel: fuelWas }) : timed;
+      items.table = old;
+      stations.refuel(old, fuelWas, now.FuelConsumptionIntervalMultiplier!);
+      items.respoil(old, spoilWas, now.GlobalSpoilingTimeMultiplier!);
+      items.table = reg;
+    }
+    timed = reg;
+    harvest?.retime(wasAt("ResourcesRespawnPeriodMultiplier"));
+    if (!atLoad && RATES.some((name) => wasAt(name) !== now[name])) {
+      // A body keeps the rates it was last given until something touches it, so each body in the world is rated again and
+      // its next meal set. One kept in a soul ball is left: its time stands still, and it is rated when it is let out.
+      for (const pid of [...records.entOf.keys()]) {
+        const rec = records.byPid.get(pid);
+        if (!rec || rec.dead || rec.egg !== null || rec.stored !== 0 || !rec.vitals) continue;
         survival.touch(rec);
-        taming.meal(rec);
+        taming.rerate(rec);
+      }
+    }
+    if (!atLoad) {
+      // The hour of day survives a change of the clock's pace, as at a load. Every session is told the pace with the offset.
+      const pace = { cycle: wasAt("DayCycleSpeedScale"), day: wasAt("DayTimeSpeedScale"), night: wasAt("NightTimeSpeedScale") };
+      const is = { cycle: now.DayCycleSpeedScale!, day: now.DayTimeSpeedScale!, night: now.NightTimeSpeedScale! };
+      if (pace.cycle !== is.cycle || pace.day !== is.day || pace.night !== is.night) {
+        world.dayOffset = offsetForHour(world.tick, hourOfDay(world.tick, world.dayOffset, pace), is);
+        Object.assign(world.clock, is);
+        game.replication.markAllOwn();
       }
     }
     under = now;
     if (settingsAt) settingsAt.dirty = true;
   };
   let retimedAt = rules.version;
+  /** The tuning the registry in force was made from, and what of the content settings was skipped in making it. */
+  let tuning: Tuning = tuned.tuning;
+  let contentPassed: readonly string[] = tuned.passed;
+  /** The registry the spoiling and burning now under way were timed by. */
+  let timed = reg;
+  /** The content the settings now give, made once for each change of them, or why it does not compile. */
+  let contentMade: { version: number; tuning: Tuning; passed: readonly string[]; reg: Registry | null; fault: string } | null = null;
+  const contentNow = (): NonNullable<typeof contentMade> => {
+    if (contentMade?.version === rules.version) return contentMade;
+    const next = tuningOf(rules, lists, content);
+    contentMade = { version: rules.version, tuning: next.tuning, passed: next.passed, reg: null, fault: "" };
+    try {
+      contentMade.reg = tuningText(next.tuning) === reg.tuning ? reg : deriveRegistry(content, next.tuning);
+    } catch (err) {
+      contentMade.fault = (err instanceof Error ? err.message : String(err)).split("\n").slice(0, 3).join("; ");
+    }
+    return contentMade;
+  };
+  /** What the host gave a copy of at start, by setting, as it last gave it. */
+  const lastGiven = new Map<string, string>();
+  /** Whether a setting has another value than when it was last asked of here. The first asking only notes it. */
+  const turned = (...names: string[]): boolean => {
+    let any = false;
+    for (const name of names) {
+      const row = name.startsWith("-") ? rowOf(name.slice(1), true)! : rowOf(name)!;
+      const words = wordsOf(row, rules.valueOf(row));
+      if (lastGiven.has(name) && lastGiven.get(name) !== words) any = true;
+      lastGiven.set(name, words);
+    }
+    return any;
+  };
+  /**
+   * Gives again what was copied out of the settings at start, where a setting has changed: the game's options, the
+   * sizes, the spawn tables. What is already made is left as it is, and a size made smaller only stops more being added.
+   */
+  const reoption = (): void => {
+    const o = game.opts;
+    if (turned("ServerPassword")) o.password = rules.text("ServerPassword");
+    if (turned("Duration")) o.motdSeconds = rules.num("Duration");
+    if (turned("PendingPerAddress")) o.pendingPerAddress = rules.num("PendingPerAddress");
+    if (turned("SnapshotBytesMax")) o.snapshotBytesMax = rules.num("SnapshotBytesMax");
+    if (turned("ViewCap")) {
+      o.viewCap = rules.num("ViewCap");
+      game.replication.recap();
+    }
+    if (turned("MaxPlayers")) {
+      game.setSeats(rules.num("MaxPlayers"));
+      tactical.seats(game.clients.length);
+      world.ents.reserve = game.clients.length;
+    }
+    if (turned("MaxEntities")) world.ents.setMax(rules.num("MaxEntities"));
+    if (turned("AutoSavePeriodMinutes")) liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
+    if (turned("OxygenSwimSpeedStatMultiplier")) creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
+    if (turned(ARK_CRATES)) recrate();
+    if (spawner) {
+      spawner.quiet = quiet();
+      if (turned("DinoCountMultiplier", "DinoSpawnWeightMultipliers", "NPCReplacements", "ConfigAddNPCSpawnEntriesContainer", "ConfigSubtractNPCSpawnEntriesContainer", "ConfigOverrideNPCSpawnEntriesContainer")) {
+        const next = spawnTables(reg, rules, lists);
+        spawnsPassed = next.passed;
+        spawner.retable(next.tables);
+      }
+    }
+  };
+  let spawnsPassed: readonly string[] = spawns.passed;
+  // The first asking notes each setting as it stands at the start.
+  reoption();
+  /**
+   * Puts the content the settings now give in force, if it is another: the registry is replaced, what kept a table of
+   * the old one takes the new, and every session is told the tuning, to derive the same. Indices never change under a
+   * tuning, so whatever names content by index is as it was. What is already contentMade is left as it is.
+   */
+  const recontent = (): void => {
+    const next = contentNow();
+    if (next.reg === null) return void say(`the content settings give content that does not compile, so the content stays as it was: ${next.fault}`);
+    contentPassed = next.passed;
+    if (next.reg === reg) return;
+    reg = world.reg = next.reg;
+    tuning = next.tuning;
+    // Unless the spoiling or burning times changed, which the re-time settles by the old registry, the new one times them.
+    if (wasAt("GlobalSpoilingTimeMultiplier") === rules.num("GlobalSpoilingTimeMultiplier") && wasAt("FuelConsumptionIntervalMultiplier") === rules.num("FuelConsumptionIntervalMultiplier")) timed = reg;
+    items.table = reg;
+    stations.retable();
+    world.nodeField?.retable(reg);
+    // A wheel's ray reads each road piece's surface, and the ground's grips, from the parts.
+    world.structs.parts = withSurfaces(world.structs.parts, reg.parts);
+    progression.rebuild();
+    supply.retable();
+    urban.retable();
+    game.players.feet.retable();
+    // A body's limits are worked out from its species' numbers, so each body in the world is worked out again.
+    for (const pid of [...records.entOf.keys()]) {
+      const rec = records.byPid.get(pid);
+      if (rec) refreshBody(rec);
+    }
+    game.sendTuning();
+  };
   /** In ticks. ARK reads its live file at every world save. */
-  const liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
+  let liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
   const readLive = (): string[] => {
     if (!opts.live || rules.flag("UseDynamicConfig") !== true) return ["the live file is not in use: the server was not started with -UseDynamicConfig"];
     const text = opts.live();
@@ -1089,9 +1226,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (spawner) {
     const fresh = !loaded || loaded.fresh;
     // -ForceRespawnDinos, or ServerAutoForceRespawnWildDinosInterval come round, replaces the wild of a saved world at its start.
-    const forced = spawner.forced(persistence && !fresh ? persistence.store.meta("spawner") : null, Date.now() / 1000);
+    const forced = !spawner.quiet && spawner.forced(persistence && !fresh ? persistence.store.meta("spawner") : null, Date.now() / 1000);
     const wiped = forced && !fresh ? spawner.wipe() : -1;
-    spawner.begin(fresh || wiped >= 0);
+    // Under a -NoDinos flag nothing is put in: what a save holds is counted, and the regions wait for the flag to go.
+    spawner.begin(!spawner.quiet && (fresh || wiped >= 0));
     if (wiped >= 0) say(`destroyed ${wiped} wild creatures at the start, to be replaced`);
     persistence?.sidecar("spawner", spawner.saved);
   }
@@ -1108,13 +1246,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
   const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
   const supply = new Supply({ world, game, records, items, death, containers, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
-  {
-    // ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects.
+  /** ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects. */
+  const recrate = (): void => {
     const loot = catalogOf(reg);
     const ark = arkCrates(rules.list(ARK_CRATES), supplyBook.book.tiers, (name) => lists.ids(ARK_CRATES, name, "item"), (id) => loot.byId.get(id)?.never !== true);
     supply.overrides = ark.tables;
     for (const line of ark.passed) say(line);
-  }
+  };
+  recrate();
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
   build.keepClear = (x, z) => supply.buildFault(x, z);
@@ -1258,15 +1397,22 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const lane = game.lane;
   // A car door held open strikes whoever stands where it swings (server/urban.ts doorStrikes): a blow by the car's
   // driver, by its speed, told to everyone near as a car's (EVENT_IMPACT), and a creature it kills tumbles.
-  // A survivor knocked off their feet (Knockdowns): stunned a moment, the body has no hold on where it goes, so a throw
-  // carries it as it would carry anything (shared/sim/character.ts, MF_ROOTED), and their client predicts it so.
+  // A survivor knocked off their feet (Knockdowns) goes limp as its ragdoll, thrown as the blow left it moving, and gets
+  // up where it comes to rest (server/falls.ts), stunned a moment more as it does. Where no ragdoll may fall it is stunned
+  // standing: the body has no hold on where it goes (shared/sim/character.ts, MF_ROOTED), and its client predicts it so.
   const stunned = reg.index.get("core:stunned") ?? -1;
-  const knockDown = (body: number): void => {
+  const knockDown = (body: number, wx = 0, wy = 0, wz = 0): void => {
     if (stunned < 0 || !rules.on("Knockdowns")) return;
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (!rec || rec.kind !== survivor) return;
-    buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
+    const ents = world.ents;
+    if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz)) buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
     refreshBody(rec);
+  };
+  falls.onUp = (body) => {
+    const rec = records.byPid.get(world.ents.pid[body]!);
+    if (rec && stunned >= 0) buffs.give(rec, stunned, 0, GET_UP_SECONDS);
+    if (rec) refreshBody(rec);
   };
   const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
   urban.onDoorStrike = (vehicle, body, speed, dx, dz) => {
@@ -1276,7 +1422,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     doorBlow.z = ents.z[vehicle]!;
     doorBlow.base = Math.min(DOOR_HARM_MOST, DOOR_HARM_BASE + speed * DOOR_HARM_PER);
     const impact = { victimHandle: ents.handleOf(body), victimPid: ents.pid[body]!, vx: ents.vx[body]!, vy: ents.vy[body]!, vz: ents.vz[body]!, wx: dz * 3, wy: 0, wz: -dx * 3 };
-    knockDown(body);
+    knockDown(body, impact.wx, impact.wy, impact.wz);
     combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
   };
   game.players.blockBodies = () => [creatures.awake, creatures.awakeCount];
@@ -1331,6 +1477,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     if (retimedAt !== rules.version) {
       retimedAt = rules.version;
+      // Before the re-time, which settles what spoils and burns by the registry this replaces.
+      recontent();
+      reoption();
       retime(false);
     }
     // The next commit saves the values the timers now run under.
@@ -1449,7 +1598,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   const tactical = new Tactical(world, game, records, rules);
   game.replication.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
-  const corpseReplication = new CorpseReplication(game, corpses);
+  const corpseReplication = new CorpseReplication(game, [corpses, falls]);
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
@@ -1631,6 +1780,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     feces,
     overhead,
     physics(corpses),
+    physics({ step: () => falls.step() }),
     voice,
     mark(PART.world),
     { step: keepHouse },
@@ -1691,6 +1841,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     feces,
     eggs,
     loose,
+    falls,
     balls,
     mounts,
     overhead,
@@ -1709,10 +1860,29 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     setSetting(name, words) {
       const row = rowOf(name);
       if (!row) return `there is no setting called ${name}`;
-      if (row.status !== "live") return `${row.name} does not take effect yet`;
-      if (!row.live) return `${row.name} is read when the server starts: set it in its file and start again`;
-      return rules.assign(row.name, words, "console");
+      const fixed = fixedWhy(row);
+      if (fixed !== "") return `${row.name} ${fixed}`;
+      const was = { value: rules.valueOf(row), source: rules.sourceOf(row) };
+      const no = rules.assign(row.name, words, "console");
+      if (no !== "" || contentNow().reg !== null) return no;
+      // A value the content cannot be made with is not taken.
+      const fault = contentNow().fault;
+      rules.put(row, was.value, was.source);
+      return `${row.name} gives content that does not compile: ${fault}`;
     },
+    pageSetting(name, words) {
+      const row = rowNamed(name);
+      if (!row) return { why: `there is no setting called ${name}` };
+      const fixed = fixedWhy(row);
+      if (fixed !== "") return { why: `${row.name} ${fixed}` };
+      const did = words === null ? kept.reset(row) : kept.set(row, words);
+      if (did.why !== "") return { why: words === null ? did.why : `${row.name} ${did.why}` };
+      // In the admin journal as the console's `setting` is, a list by its size and a secret not at all.
+      const shown = words === null ? "(as before the page set it)" : row.secret ? "****" : words.includes("\n") ? `(${words.split("\n").length} lines)` : words;
+      persistence?.journal(OP_ADMIN, new TextEncoder().encode(`(admin page)\tsetting ${name} ${shown}`));
+      return did;
+    },
+    kept,
     readLive,
     loadedUnder,
     projectiles,
@@ -1727,7 +1897,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     modules,
     adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
     lists,
-    passed: [...tuned.passed, ...spawns.passed],
+    get passed() {
+      return [...contentPassed, ...spawnsPassed];
+    },
     dev: opts.dev ?? false,
     spawnCreature,
     spawnVehicle,

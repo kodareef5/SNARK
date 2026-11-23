@@ -138,6 +138,12 @@ export class Taming {
     }
   }
 
+  /** Sets a body's next meal again once its hunger's rate has changed: a creature being tamed, or an owned one. */
+  rerate(rec: EntityRecord): void {
+    if (rec.tame && !rec.dead) this.schedule(rec);
+    else this.meal(rec);
+  }
+
   /** Sets the tick an owned creature next eats from what it carries. Call it when its inventory may have changed, and after each meal. */
   meal(rec: EntityRecord): void {
     const { world, survival, deadlines } = this.ctx;

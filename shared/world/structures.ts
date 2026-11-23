@@ -13,6 +13,8 @@ export const GRID_CELL = 4;
  */
 export interface PartTable {
   readonly vehicleSurface?: readonly (VehicleSurface | null)[];
+  /** The grip a server's settings give a surface, by its id, where they give one (shared/content/tuning.ts `surfaces`). */
+  readonly surfaceGrip?: Readonly<Record<string, number>>;
   readonly start: Uint32Array;
   readonly box: Float32Array;
   /** Convex parts, for kinds with sloped or three-sided forms. */
@@ -195,6 +197,12 @@ export class Found {
   }
 }
 
+/** A store's parts with the surfaces of content a server's settings have changed: the boxes are as they were. */
+export function withSurfaces(parts: PartTable, of: PartTable): PartTable {
+  const { vehicleSurface: _was, surfaceGrip: _grip, ...boxes } = parts;
+  return { ...boxes, ...(of.vehicleSurface ? { vehicleSurface: of.vehicleSurface } : {}), ...(of.surfaceGrip ? { surfaceGrip: of.surfaceGrip } : {}) };
+}
+
 export class StructureStore {
   readonly dims: MapDims;
   readonly chunks: (ChunkTable | null)[];
@@ -214,7 +222,8 @@ export class StructureStore {
   private readonly halfX: Float32Array;
   readonly halfY: Float32Array;
   private readonly halfZ: Float32Array;
-  readonly parts: PartTable;
+  /** The host and the session give it content's parts again when a server's settings change them. */
+  parts: PartTable;
 
   private readonly gridX: number;
   private readonly gridZ: number;

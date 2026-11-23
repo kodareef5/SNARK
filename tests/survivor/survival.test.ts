@@ -109,7 +109,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   expect(s.sessionState).toBe(SESSION_DEAD);
   expect(s.log.at(-1)!.text).toBe("You drowned.");
 
-  const cache = [...h.host.records.byPid.values()].find((r) => r.expiresAt > 0)!;
+  const cache = [...h.host.records.byPid.values()].find((r) => r.expiresAt > 0 && r.inv)!;
   expect(contents(cache.inv!)).toEqual(carried);
   expect(h.host.items.inv(rec()).used()).toBe(0);
   expect(s.markers.length).toBe(1);
@@ -145,7 +145,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   }
   h.run(600);
   expect(contents(h.host.items.inv(rec()))).toEqual(carried);
-  expect([...h.host.records.byPid.values()].some((r) => r.expiresAt > 0)).toBe(false);
+  expect([...h.host.records.byPid.values()].some((r) => r.expiresAt > 0 && r.inv)).toBe(false);
   expect(s.open).toBeNull();
   pilot.pitch = 0;
   pilot.buttons = BTN_JUMP;
@@ -188,6 +188,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   expect(h2.host.harvest!.goneCount).toBe(before.gone);
   expect(h2.host.items.serialize()).toBe(before.ledger);
   expect(h2.host.items.audit()).toEqual([]);
-  expect(h2.host.records.byPid.size).toBe(1);
+  // The survivor, and its old body until it decays.
+  expect(h2.host.records.byPid.size).toBe(2);
   h2.host.shutdown();
 });

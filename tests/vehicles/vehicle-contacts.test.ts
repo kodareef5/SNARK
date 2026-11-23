@@ -185,10 +185,11 @@ test('an impact corpse restores the exact moving checkpoint and continues from i
   } finally { if (!closed) s.h.host.shutdown(); restored?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('dinosaur mass changes car deceleration; fatal road impacts use native death and driver credit', () => {
+test('dinosaur mass changes car deceleration; a fatal hit is a native death with driver credit', () => {
   const s = setup(), { h, ents, car, x, z, tick, health } = s;
   try {
-    const bird = s.victim('core:dodo', x - 5, z + 2.42);
+    // A raptor is light beside a parasaur but too tall to be run over: both are met as bodies.
+    const bird = s.victim('core:raptor', x - 5, z + 2.7);
     const birdPid = ents.pid[bird]!, birdBefore = health(bird);
     s.placeCar(x - 5); tick();
     expect(health(bird)).toBeLessThan(birdBefore);

@@ -274,7 +274,7 @@ test("the settings: DinoCountMultiplier scales what each region holds, a species
   expect([of(none, "core:dodo").length, none.spawner!.regions[1]!.count]).toEqual([0, 12]);
   for (const flag of ["-NoDinos", "-NoDinosExceptForcedSpawn", "-NoDinosExceptStreamingSpawn", "-NoDinosExceptManualSpawn", "-NoDinosExceptWaterSpawn"]) {
     const quiet = counted([], [], [flag]);
-    expect([quiet.spawner, quiet.world.ents.count]).toEqual([null, 0]);
+    expect([quiet.spawner!.quiet, quiet.world.ents.count]).toEqual([true, 0]);
     // An admin's spawn still works.
     expect(quiet.spawnCreature("core:dodo", PROVING_POOL.x - 40, PROVING_POOL.z, 5, "admin")).toBeGreaterThanOrEqual(0);
   }

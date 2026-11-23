@@ -18,6 +18,20 @@ export const MUD: VehicleSurface = { id: "mud", grip: 1.8, rolling: 1.1, drag: 0
 export const GROUND_CLASS = { GROUND: 0, ASPHALT: 1, PAVING: 2, GRAVEL: 3, SAND: 4, MUD: 5 } as const;
 const GROUND_SURFACES: readonly VehicleSurface[] = [OFFROAD, ASPHALT, PAVING, GRAVEL, SAND, MUD];
 
+/** The ground's surfaces as a server's settings tuned their grip, made once for each tuning. */
+const tuned = new WeakMap<object, readonly VehicleSurface[]>();
+
+/** The ground's surfaces by class, with the grips the content's parts carry, if any. Untuned, they are the constants above. */
+function groundOf(grip: Readonly<Record<string, number>> | undefined): readonly VehicleSurface[] {
+  if (!grip) return GROUND_SURFACES;
+  let made = tuned.get(grip);
+  if (!made) {
+    made = GROUND_SURFACES.map((s) => (grip[s.id] !== undefined && grip[s.id] !== s.grip ? Object.freeze({ ...s, grip: grip[s.id]! }) : s));
+    tuned.set(grip, made);
+  }
+  return made;
+}
+
 export function validVehicleSurface(value: unknown): value is VehicleSurface {
   if (!value || typeof value !== "object") return false;
   const s = value as VehicleSurface;
@@ -29,8 +43,10 @@ export function validVehicleSurface(value: unknown): value is VehicleSurface {
 
 /** Called for the actual supporting face; a road overhead or beside the wheel supplies no bonus. */
 export function vehicleSurfaceAt(world: CollisionWorld, hit: number, ref: number, x = NaN, z = NaN): VehicleSurface {
-  if (hit !== HIT_STRUCTURE) return Number.isNaN(x) ? OFFROAD : GROUND_SURFACES[world.hf.groundClassAt(x, z)] ?? OFFROAD;
+  // A world of ground alone, as a map's own tools make, has no structures and so no tuning.
+  const ground = groundOf((world.structs as CollisionWorld["structs"] | undefined)?.parts.surfaceGrip);
+  if (hit !== HIT_STRUCTURE) return Number.isNaN(x) ? ground[0]! : ground[world.hf.groundClassAt(x, z)] ?? ground[0]!;
   const chunk = world.structs.chunks[Math.floor(ref / 65536)], slot = ref & 65535;
   const kind = chunk?.kind[slot] ?? 0;
-  return world.structs.parts.vehicleSurface?.[kind] ?? OFFROAD;
+  return world.structs.parts.vehicleSurface?.[kind] ?? ground[0]!;
 }

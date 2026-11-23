@@ -17,6 +17,7 @@ import type { BuffsModel } from "./hud/buffs.ts";
 import type { CompassModel } from "./hud/compass.ts";
 import type { CrosshairModel } from "./hud/crosshair.ts";
 import type { DotsModel } from "./hud/dots.ts";
+import type { FallenModel } from "./hud/fallen.ts";
 import type { HotbarModel } from "./hud/hotbar.ts";
 import type { JetModel } from "./hud/jet.ts";
 import type { MarksModel } from "./hud/marks.ts";
@@ -100,7 +101,7 @@ export interface Heads {
  * Every widget's slice of the model, on one object: `hud.prompt` is the prompt widget's field. A widget added to the
  * list has its fields here once the model is made; to have them typed here too, add its model to this line.
  */
-export interface HudModel extends ActionModel, BuffsModel, CompassModel, CrosshairModel, DotsModel, HotbarModel, JetModel, MarksModel, MinimapModel, PromptModel, ReadoutModel, SightModel, StateModel, VehicleModel, VitalsModel, VoiceModel {}
+export interface HudModel extends ActionModel, BuffsModel, CompassModel, CrosshairModel, DotsModel, FallenModel, HotbarModel, JetModel, MarksModel, MinimapModel, PromptModel, ReadoutModel, SightModel, StateModel, VehicleModel, VitalsModel, VoiceModel {}
 
 export class HudModel {
   /** Hit marks and marks over creatures have models and builds of their own (feedback.ts, ui/tame.ts). */

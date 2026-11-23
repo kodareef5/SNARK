@@ -485,16 +485,16 @@ test("the live file is read again as often as the server says, and at once when 
   const egg = eggOf(h, 9000, 6000);
   h.host.breeding.resume();
   // Nothing changes until the server reads the file again, within half a minute.
-  text = "EggHatchSpeedMultiplier=8\nServerPassword=nope\nGravity=2\n";
+  text = "EggHatchSpeedMultiplier=8\nServerAdminPassword=nope\nGravity=2\n";
   h.run(5000);
   expect([rules.num("EggHatchSpeedMultiplier"), egg.egg!.span]).toEqual([4, 9000]);
   const left = egg.egg!.hatchAt - h.world.tick;
   h.run(26000);
-  expect([rules.num("EggHatchSpeedMultiplier"), rules.sourceOf({ name: "EggHatchSpeedMultiplier" } as never), egg.egg!.span, rules.text("ServerPassword")]).toEqual([8, "live file", 4500, ""]);
+  expect([rules.num("EggHatchSpeedMultiplier"), rules.sourceOf({ name: "EggHatchSpeedMultiplier" } as never), egg.egg!.span, rules.text("ServerAdminPassword")]).toEqual([8, "live file", 4500, ""]);
   expect(Math.abs(egg.egg!.hatchAt - h.world.tick - (left - 26 * TICK_RATE) / 2)).toBeLessThanOrEqual(15 * TICK_RATE);
   // ARK's command reads the file at once.
-  text = "EggHatchSpeedMultiplier=16\nServerPassword=nope\n";
-  expect(h.say(ada, "ForceUpdateDynamicConfig")).toEqual(["DynamicConfig.ini read again: 1 applied, 0 not yet effective, 0 of no meaning here, 0 unknown, 1 refused", "  applied   EggHatchSpeedMultiplier=16  (DynamicConfig.ini:1)", "  refused   ServerPassword  (DynamicConfig.ini:2): is read at start only"]);
+  text = "EggHatchSpeedMultiplier=16\nServerAdminPassword=nope\n";
+  expect(h.say(ada, "ForceUpdateDynamicConfig")).toEqual(["DynamicConfig.ini read again: 1 applied, 0 not yet effective, 0 of no meaning here, 0 unknown, 1 refused", "  applied   EggHatchSpeedMultiplier=16  (DynamicConfig.ini:1)", "  refused   ServerAdminPassword  (DynamicConfig.ini:2): is read at start only"]);
   expect([rules.num("EggHatchSpeedMultiplier"), egg.egg!.span]).toEqual([16, 2250]);
   // A console setting overrides the live file and survives a reread.
   h.say(ada, "setting EggHatchSpeedMultiplier 32");

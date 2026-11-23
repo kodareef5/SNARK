@@ -18,6 +18,7 @@ import {
   S_OWN,
   S_RESULT,
   S_TEXT,
+  S_TUNING,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
 import { PassengerView } from "./passenger-view.ts";
@@ -384,6 +385,26 @@ export class GameServer {
       w.string(line.length > 330 ? line.slice(0, 330) : line);
       c.conn.send(CH_RELIABLE, w.bytes());
     }
+  }
+
+  /**
+   * Sets the most sessions at once (MaxPlayers). More seats are added. Fewer only turn newcomers away: nobody seated is
+   * put out, and the seats stay for whoever holds them.
+   */
+  setSeats(n: number): void {
+    this.opts.maxClients = n;
+    while (this.clients.length < n) this.clients.push(null);
+  }
+
+  /** Tells every session the content the server's settings now make, which each derives as at its welcome (S_TUNING). */
+  sendTuning(): void {
+    const reg = this.world.reg;
+    const w = new BitWriter(64 + reg.tuning.length * 4);
+    w.u8(S_TUNING);
+    w.u32(reg.hash);
+    w.string(reg.tuning);
+    const bytes = w.bytes();
+    for (const c of this.clients) if (c?.active && !c.closed) c.conn.send(CH_RELIABLE, bytes);
   }
 
   /** Start an OWN message. Write its fields to the returned writer, then call endOwn. */

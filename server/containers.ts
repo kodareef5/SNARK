@@ -178,6 +178,8 @@ export class Containers {
           const r = reg.bodyRadius[ents.kind[i]!]! * size;
           // A creature's body is met where it lies, as a blow meets it.
           const body = this.corpses?.at(i);
+          // A survivor's body carries nothing (its cache does), so the use key passes over it.
+          if (body && !this.corpses!.opens(i)) continue;
           const car = reg.vehicle[ents.kind[i]!], v = ents.vrow[i]!;
           // A vehicle is looked at by its hull, nose to tail and up to its roof; a boat's open cockpit too.
           const t = car && !body ? useVehicle(car, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[v]!, ox, oy, oz, d[0]!, d[1]!, d[2]!, {

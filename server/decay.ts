@@ -19,7 +19,6 @@ export class Decay {
   /** Whether a root piece has nothing joined to it. */
   lone: ((ref: number) => boolean) | null = null;
   private readonly world: ServerWorld;
-  private readonly reg: Registry;
   private readonly rules: Rules;
   /** Team, then chunk, to the tick a member was last near. */
   private readonly clocks = new Map<number, Map<number, number>>();
@@ -27,9 +26,12 @@ export class Decay {
   private readonly teams: (number[] | undefined)[] = [];
   private readonly teamsAt: number[] = [];
 
+  private get reg(): Registry {
+    return this.world.reg;
+  }
+
   constructor(world: ServerWorld, rules: Rules) {
     this.world = world;
-    this.reg = world.reg;
     this.rules = rules;
   }
 

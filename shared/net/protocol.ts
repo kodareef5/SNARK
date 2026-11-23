@@ -234,6 +234,11 @@ export const S_CORPSE = serverKind();
  * (shared/sim/supply.ts writeSupply). A session works out where each is from its ticks, so nothing more is sent as it flies.
  */
 export const S_SUPPLY = serverKind();
+/**
+ * The server's settings changed its content while it runs: the tuned content's hash u32 and the tuning as a string, as the
+ * welcome carries them. A session derives the content again and leaves if its hash is another (shared/content/tuning.ts).
+ */
+export const S_TUNING = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -782,7 +787,7 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u16(b.staminaMax);
   w.bits(b.speedQ, 12);
   w.bits(b.swimQ, 12);
-  w.bits(b.mflags, 5);
+  w.bits(b.mflags, 6);
   w.u16(b.kind);
   w.u16(b.yaw);
   w.u16(b.held);
@@ -833,7 +838,7 @@ export function readBody(r: BitReader, b: Body): void {
   b.staminaMax = r.u16();
   b.speedQ = r.bits(12);
   b.swimQ = r.bits(12);
-  b.mflags = r.bits(5);
+  b.mflags = r.bits(6);
   b.kind = r.u16();
   b.yaw = r.u16();
   b.held = r.u16();

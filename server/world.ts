@@ -20,8 +20,8 @@ import { History } from "./history.ts";
 import { UnloadedNodes } from "./place.ts";
 
 export interface ServerWorld extends CollisionWorld {
-  /** Content after this server's settings are applied (shared/content/tuning.ts). */
-  readonly reg: Registry;
+  /** Content after this server's settings are applied (shared/content/tuning.ts). The host replaces it when they change. */
+  reg: Registry;
   /** The server's three clock-speed rules (shared/sim/clock.ts). */
   readonly clock: { cycle: number; day: number; night: number };
   readonly dims: MapDims;
