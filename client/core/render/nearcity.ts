@@ -12,7 +12,7 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { cornerByte, mergedPart, type CityPart, type CityStatics, type Gone, type Ground } from "../../../shared/world/city.ts";
+import { NEIGHBOUR_HOLDER, PIECE_SLOTS, cornerByte, mergedPart, type CityPart, type CityStatics, type Gone, type Ground } from "../../../shared/world/city.ts";
 import type { ChunkTable } from "../../../shared/world/structures.ts";
 import { KindPlates, chunkOccluders } from "./hide.ts";
 import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
@@ -86,9 +86,12 @@ export class NearMaking {
   /** The chunk whose list carries the chunk's pieces of other bands, which hold faces as a neighbour's do. */
   private readonly beside: number;
   private readonly parts: CityPart[] = [];
+  /** Whether each face is made with its piece and its holder, and the faces a piece going would show are kept (city.ts KeyedFaces). */
+  private readonly keyed: boolean;
 
-  constructor(city: CityStatics, chunk: number, ground: Ground, mine: Uint8Array, holds: (c: number) => Uint8Array | null, side: number, labels?: Uint8Array) {
+  constructor(city: CityStatics, chunk: number, ground: Ground, mine: Uint8Array, holds: (c: number) => Uint8Array | null, side: number, labels?: Uint8Array, keyed = false) {
     this.labels = labels;
+    this.keyed = keyed;
     this.city = city;
     this.chunk = chunk;
     this.ground = { heightAt: (x, z) => ground.heightAt(x, z) - BURIED };
@@ -144,23 +147,47 @@ export class NearMaking {
     const b = this.parts.length;
     const others: number[] = [];
     for (let k = 0; k < this.bands; k++) if (k !== b) others.push(...this.own[k]!);
-    this.parts.push(mergedPart(view(this.city, this.chunk, this.own[b]!, this.beside, others, this.around), this.chunk, this.ground, none, 0.01, 0, this.labels));
+    const seen = view(this.city, this.chunk, this.own[b]!, this.beside, others, this.around, this.keyed);
+    this.parts.push(mergedPart(seen.city, this.chunk, this.ground, none, 0.01, 0, this.labels, seen.keys));
+  }
+
+  /**
+   * What the bands made hold, made with keys: faces drawn while every piece stands, those of them a merged box's, the
+   * merged boxes and the pieces they are made of, and the faces kept: hidden by another piece, and a merged box's members'.
+   */
+  census(): { shown: number; merged: number; groups: number; members: number; hidden: number; fallback: number; own: number; buried: number } {
+    const c = { shown: 0, merged: 0, groups: 0, members: 0, hidden: 0, fallback: 0, own: 0, buried: 0 };
+    for (const part of this.parts) {
+      const k = part.keyed;
+      if (!k) continue;
+      c.shown += k.shown;
+      for (let f = 0; f < k.shown; f++) if ((k.piece[f]! & (2 * PIECE_SLOTS - 1)) >= PIECE_SLOTS) c.merged++;
+      c.groups += k.first.length - 1;
+      c.members += k.slots.length;
+      c.hidden += part.faces - k.shown - k.fallback;
+      c.fallback += k.fallback;
+      c.own += k.own;
+      c.buried += k.buried;
+    }
+    return c;
   }
 
   /** The mesh, once every band is made: its faces in cell order, stored on the lattice. */
   finish(): NearMade {
+    const shown = (part: CityPart): number => part.keyed?.shown ?? part.faces;
     let faces = 0;
-    for (const part of this.parts) faces += part.faces;
+    for (const part of this.parts) faces += shown(part);
     // Every band's faces in one list, then each axis's box.
     const pos = new Float32Array(faces * 12), colour = new Uint8Array(faces), edges = new Uint8Array(faces), made = new Uint8Array(faces);
     let n = 0, anyMade = false;
     for (const part of this.parts) {
-      pos.set(part.pos.subarray(0, part.faces * 12), n * 12);
-      colour.set(part.color.subarray(0, part.faces), n);
-      edges.set(part.edges.subarray(0, part.faces), n);
-      made.set(part.made.subarray(0, part.faces), n);
-      for (let f = 0; f < part.faces && !anyMade; f++) anyMade = part.made[f]! > 0;
-      n += part.faces;
+      const count = shown(part);
+      pos.set(part.pos.subarray(0, count * 12), n * 12);
+      colour.set(part.color.subarray(0, count), n);
+      edges.set(part.edges.subarray(0, count), n);
+      made.set(part.made.subarray(0, count), n);
+      for (let f = 0; f < count && !anyMade; f++) anyMade = part.made[f]! > 0;
+      n += count;
     }
     const box = boxOf(pos, faces * 4);
     const lo = box.subarray(0, 3), hi = box.subarray(3, 6);
@@ -248,11 +275,31 @@ function store(pos: Float32Array, colour: Uint8Array, edges: Uint8Array, made: U
   return data;
 }
 
+/** A neighbour's number among the eight round a chunk, by its place (dx, dz) from it, each -1 to 1: a row, then the next. */
+export const neighbourOf = (dx: number, dz: number): number => ((dz + 1) * 3 + dx + 1 > 4 ? (dz + 1) * 3 + dx : (dz + 1) * 3 + dx + 1);
+
+/** Row `i` of the city as a holder of `chunk`'s faces (city.ts KeyedFaces): 0 for one past the slots a key may name. */
+function holderKey(city: CityStatics, chunk: number, i: number): number {
+  const dims = city.dims;
+  // The row's chunk, found among the nine.
+  const cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk);
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (cx + dx < 0 || cz + dz < 0 || cx + dx >= dims.chunksX || cz + dz >= dims.chunksZ) continue;
+      const c = (cz + dz) * dims.chunksX + cx + dx, slot = i - city.first[c]!;
+      if (slot < 0 || i >= city.first[c + 1]!) continue;
+      if (slot >= PIECE_SLOTS) return 0;
+      return dx === 0 && dz === 0 ? slot + 1 : NEIGHBOUR_HOLDER + neighbourOf(dx, dz) * PIECE_SLOTS + slot;
+    }
+  }
+  return 0;
+}
+
 /**
  * The city as one step of a making sees it: `chunk` holding the rows `own`, the chunk `beside` holding `others` and its
- * share of `around`, and every other chunk round it its share of `around`.
+ * share of `around`, and every other chunk round it its share of `around`. With `keyed`, each of its rows' key as a holder.
  */
-function view(city: CityStatics, chunk: number, own: readonly number[], beside: number, others: readonly number[], around: ReadonlyMap<number, readonly number[]>): CityStatics {
+function view(city: CityStatics, chunk: number, own: readonly number[], beside: number, others: readonly number[], around: ReadonlyMap<number, readonly number[]>, keyed = false): { city: CityStatics; keys?: Uint32Array } {
   const dims: MapDims = city.dims;
   const lists = new Map<number, readonly number[]>(around);
   lists.set(chunk, own);
@@ -261,10 +308,12 @@ function view(city: CityStatics, chunk: number, own: readonly number[], beside: 
   const n = order.reduce((s, c) => s + lists.get(c)!.length, 0);
   const first = new Uint32Array(chunkCount(dims) + 1);
   const kind = new Uint16Array(n), yaw = new Uint16Array(n), x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n);
+  const keys = keyed ? new Uint32Array(n) : undefined;
   let at = 0, c = 0;
   for (const k of order) {
     for (; c <= k; c++) first[c] = at;
     for (const i of lists.get(k)!) {
+      if (keys) keys[at] = holderKey(city, chunk, i);
       kind[at] = city.kind[i]!;
       yaw[at] = city.yaw[i]!;
       x[at] = city.x[i]!;
@@ -275,7 +324,7 @@ function view(city: CityStatics, chunk: number, own: readonly number[], beside: 
   }
   first.fill(at, c);
   const { halfX, halfY, halfZ, color, under, plain, walked, look } = city;
-  return { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, under, plain, walked, look, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics;
+  return { city: { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, under, plain, walked, look, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics, keys };
 }
 
 /** Slots of meshes on the card start here, past the lakes' (lakes.ts). */
@@ -363,6 +412,20 @@ export class NearCity {
     const turns = new Set<number>();
     for (let k = 1; k < reg.defs.length; k++) for (const other of [reg.opens[k]!, reg.lights[k]!]) if (other !== 0) turns.add(k).add(other);
     this.kinds = Uint8Array.from(reg.defs, (d, k) => (d?.type === "structure" && d.class === "static" && (d.mesh === "box" || d.mesh === "shape") && !turns.has(k) && reg.motion[k] === null && landmark[k] !== 1 && reg.halfX[k]! > 0 && (d ? fixtureKind(d.id) : 0) <= 3 && flat(k) ? 1 : 0));
+  }
+
+  /**
+   * What the mesh of `chunk` holds with every piece of the map standing, and what it would keep were each face made with
+   * its piece and its holder (NearMaking.census): its pieces, its bytes on the card today, and whether it has a stream of
+   * materials.
+   */
+  census(city: CityStatics, chunk: number, ground: Ground, side: number): ReturnType<NearMaking["census"]> & { pieces: number; bytes: number; stream: boolean } {
+    const standing = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => (i < PIECE_SLOTS && this.kinds[city.kind[city.first[c]! + i]!] === 1 ? 1 : 0));
+    const mine = standing(chunk);
+    const m = new NearMaking(city, chunk, ground, mine, standing, side, this.labels, true);
+    while (!m.done) m.step();
+    const made = m.finish();
+    return { ...m.census(), pieces: mine.reduce((n, v) => n + v, 0), bytes: made.data.length + (made.made?.length ?? 0), stream: made.made !== null };
   }
 
   /** Chunk `chunk` as followed here, while it is drawn near. */

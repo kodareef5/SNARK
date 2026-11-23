@@ -40,6 +40,35 @@ test("a batched cabinet, drain and sign retain their finishes and their concrete
   expect(finishes).toEqual([new Set([0]), new Set([0, FIXTURE_PAINT]), new Set([0, FIXTURE_IRON]), new Set([SIGN_ENAMEL])]);
 });
 
+test("a mesh made with each face's piece draws the faces one made without does", () => {
+  const map = smallCity();
+  const reg = coreRegistry();
+  const city = new CityStatics(map.dims, map.statics, reg);
+  const near = new NearCity(reg, 0, new Uint8Array(reg.defs.length), () => true);
+  const ground = { heightAt: () => 0 };
+  const standing = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => near.kinds[city.kind[city.first[c]! + i]!]!);
+  let kept = 0, groups = 0;
+  for (const chunk of [0, 30, 40, 74]) {
+    const [plain, keyed] = [false, true].map((keys) => {
+      const m = new NearMaking(city, chunk, ground, standing(chunk), standing, 4, undefined, keys);
+      while (!m.done) m.step();
+      return { made: m.finish(), census: m.census() };
+    });
+    expect(keyed!.made.faces).toBe(plain!.made.faces);
+    expect(Buffer.from(keyed!.made.data).equals(Buffer.from(plain!.made.data))).toBe(true);
+    expect(keyed!.made.cellFirst).toEqual(plain!.made.cellFirst);
+    const c = keyed!.census;
+    expect(c.shown).toBe(plain!.made.faces);
+    // A merged box is of two pieces or more, and each member keeps the faces it would show alone.
+    expect(c.members).toBeGreaterThanOrEqual(c.groups * 2);
+    expect(c.fallback).toBeGreaterThan(c.members);
+    kept += c.hidden + c.fallback;
+    groups += c.groups;
+  }
+  expect(kept).toBeGreaterThan(0);
+  expect(groups).toBeGreaterThan(0);
+});
+
 test("across chunk borders each standing piece has one owner every frame", () => {
   const w = nearClient(smallCity());
   const { cam, hf } = w;
