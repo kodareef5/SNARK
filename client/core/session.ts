@@ -1,5 +1,5 @@
 import { Blockers, survivorKind } from "../../shared/sim/blockers.ts";
-import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
+import { CUE_DEAD, CUE_HELD, CUE_OUT, fallFrameChanged } from "../../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
@@ -1040,7 +1040,9 @@ export class ClientSession {
       out.grown[n] = b.grown[j]!;
       const both = a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j];
       const sameSeat = both && a!.seat[i] === b.seat[j] && a!.seatGen[i] === b.seatGen[j] && a!.seatSlot[i] === b.seatSlot[j];
-      const attachment = both && k < .5 ? a! : b, attachmentRow = attachment === a ? i : j;
+      // A fall switches between feet and hips only at the first snapshot in its new frame.
+      const switched = both && fallFrameChanged(this.registry.ids[b.kind[j]!] === "core:survivor", a!.cue[i]!, a!.react[i]!, b.cue[j]!, b.react[j]!);
+      const attachment = both && (switched || k < .5) ? a! : b, attachmentRow = attachment === a ? i : j;
       out.seat[n] = attachment.seat[attachmentRow]!; out.seatSlot[n] = attachment.seatSlot[attachmentRow]!; out.seatGen[n] = attachment.seatGen[attachmentRow]!;
       const vehicle = this.registry.vehicle[b.kind[j]!];
       if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
@@ -1050,7 +1052,7 @@ export class ClientSession {
         noVehicle(out, n);
         out.bare[n] = 1;
       }
-      if (both && sameSeat) {
+      if (sameSeat && !switched) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
         out.z[n] = dequantX(a!.qz[i]! + (b.qz[j]! - a!.qz[i]!) * k);

@@ -8,7 +8,7 @@ import type { PackRig } from "../shared/pack/pack.ts";
 import { SeatedSoles } from "./rider-soles.ts";
 import { SeatedGrips } from "./rider-grips.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
-import { AnimState, CUE_DOWN, bodySeed } from "../shared/anim/pose.ts";
+import { AnimState, CUE_DOWN, bodySeed, fallFrameChanged } from "../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { RIDER_TARGET_FLOATS } from "../shared/anim/rider-controls.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
@@ -838,7 +838,7 @@ export class Combat {
     current.yaw = ents.yaw[i]!; current.anim = ents.anim[i]!; current.cue = ents.cue[i]!; current.react = ents.react[i]!;
     current.vehicleFrom(ents, i); current.seatFrom(ents, i);
     if (current.seat) current.hostEpoch = world.history.motionEpoch(current.seat - 1);
-    out.blend(current, k);
+    out.blend(current, k, ents.kind[i] === this.survivor);
     return true;
   }
 
@@ -930,7 +930,8 @@ export class Combat {
       // further back by as much as the body moved. Tested this way, nothing slips between ticks.
       let rx = ox, ry = oy, rz = oz, ux = dx, uy = dy, uz = dz;
       let scale = 1;
-      if (this.sweep > 0 && this.where(i, tick - this.sweep, before) && past.sameSeat(before)) {
+      if (this.sweep > 0 && this.where(i, tick - this.sweep, before) && past.sameSeat(before) &&
+        !fallFrameChanged(kind === this.survivor, past.cue, past.react, before.cue, before.react)) {
         const mx = past.x - before.x;
         const my = past.y - before.y;
         const mz = past.z - before.z;

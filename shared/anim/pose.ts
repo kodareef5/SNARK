@@ -15,7 +15,7 @@ import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWIN
 import { cradle } from "./hold.ts";
 import { emotePose } from "./emote.ts";
 import { EMOTES, emoteClipId } from "./emotes.ts";
-import { lieStep, lyingShare, react as reactPose, stepShare } from "./reactions.ts";
+import { lieStep, lyingShare, react as reactPose, REACT_CREATURE_DOWN, stepShare } from "./reactions.ts";
 
 /** The three parts of a packed AnimState. Replication sends each part only when it changes. */
 export const ANIM_MOTION_BITS = 12;
@@ -112,6 +112,11 @@ export const ANIM_GLIDE = 5;
 export const CUE_MATING_SHIFT = 28;
 /** On a living survivor, the first mating bit: knocked off its feet, it lies as its ragdoll does (shared/anim/human-fall.ts). */
 export const CUE_DOWN = 1 << CUE_MATING_SHIFT;
+/** A living body switches its entity origin from feet to hips for a physical fall. Creatures reuse the survivor cue bit for mating. */
+export function fallFrameChanged(survivor: boolean, cueA: number, reactA: number, cueB: number, reactB: number): boolean {
+  return survivor ? ((cueA ^ cueB) & CUE_DOWN) !== 0 : (reactA === REACT_CREATURE_DOWN) !== (reactB === REACT_CREATURE_DOWN);
+}
+
 /**
  * A survivor's emote (protocol 37), its own word beside the pose and the cues: the emote's number in shared/anim/emotes.ts
  * (0 for none) in the low EMOTE_ID_BITS, the low 16 bits of its first tick, its role (EMOTE_SOLO, EMOTE_SYNCED: in step

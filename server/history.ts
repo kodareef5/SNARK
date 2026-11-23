@@ -1,6 +1,7 @@
 // Where every moving entity was over the last half second. A shot is judged against where its target was when the shooter saw it.
 // Only players and awake creatures have rows. A sleeping creature has none, because it has not moved.
 
+import { fallFrameChanged } from "../shared/anim/pose.ts";
 import { F_ALIVE, GEAR_WORN, wider, type EntityStore } from "../shared/sim/entities.ts";
 
 /** Ticks kept, a power of two. A tick is recorded after it is stepped, so while it steps these are the ticks before it, past REWIND_TICKS (server/combat.ts). */
@@ -71,9 +72,10 @@ export class Past {
     return this.seat === other.seat && this.seatGen === other.seatGen && this.seatSlot === other.seatSlot && this.saddle === other.saddle && this.hostEpoch === other.hostEpoch;
   }
 
-  /** Seat attachment changes are discrete, never a travelled segment between two different seat origins. */
-  blend(other: Past, k: number): void {
-    if (!this.sameSeat(other)) k = k < 0.5 ? 0 : 1;
+  /** Feet and hips switch at the recorded tick. Seat attachments switch at the nearer sample. */
+  blend(other: Past, k: number, survivor = false): void {
+    if (fallFrameChanged(survivor, this.cue, this.react, other.cue, other.react)) k = k < 1 ? 0 : 1;
+    else if (!this.sameSeat(other)) k = k < 0.5 ? 0 : 1;
     this.x += (other.x - this.x) * k; this.y += (other.y - this.y) * k; this.z += (other.z - this.z) * k;
     this.blendVehicle(other, k);
     this.blendSeat(other, k);
@@ -136,7 +138,7 @@ export class History {
   private currentTravel = 0;
   private travelDirty = false;
 
-  constructor(ents: EntityStore, capacity = 256) {
+  constructor(ents: EntityStore, capacity = 256, private readonly survivor = -1) {
     this.ents = ents;
     this.rowOf = new Int32Array(ents.cap).fill(-1);
     this.travelled = new Float64Array(capacity);
@@ -382,7 +384,7 @@ export class History {
     const k = tick - t0;
     if (k === 0) return this.at(t0, e, out);
     if (!this.at(t0 + 1, e, later) || !this.at(t0, e, out)) return false;
-    out.blend(later, k);
+    out.blend(later, k, this.ents.kind[e] === this.survivor);
     return true;
   }
 
