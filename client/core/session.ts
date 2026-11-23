@@ -138,7 +138,8 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
-import { GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
+import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
+import { GONE_BLAST, GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
@@ -197,20 +198,28 @@ function derive(reg: Registry, tuning: string): Registry | null {
   }
 }
 
-/** A structure that was just destroyed or fell. */
+/** A structure that was just destroyed, fell or was blown apart. */
 export interface Rubble {
+  /** The kind it was as it went: a city piece's form. */
   kind: number;
   x: number;
   y: number;
   z: number;
   yaw: number;
-  /** GONE_DESTROYED or GONE_FELL. */
+  /** GONE_DESTROYED, GONE_FELL or GONE_BLAST. */
   cause: number;
-  /** Where the removal began. For a fall, where support was lost. */
+  /** Where the removal began. For a fall, where support was lost; for a blast, its centre. */
   ox: number;
   oy: number;
   oz: number;
+  /** The server's tick it went at. */
   tick: number;
+  /** A blast's reach in metres, 0 for any other cause. */
+  radius: number;
+  /** The heap's kind its slot took in its place, or 0 where the slot was emptied. */
+  into: number;
+  /** The kind the map placed there, whose finish a city piece and its heap are drawn in, or 0 for a piece that is not the map's. */
+  map: number;
 }
 
 /** Beyond this the oldest queued rubble is dropped. */
@@ -2354,6 +2363,17 @@ export class ClientSession {
     this.vehicleCorrection.reconcile(this.own, vehicle && predicted && dx * dx + dy * dy + dz * dz < smoothLimit * smoothLimit, this.ownPrev, alpha);
   }
 
+  /**
+   * The kind the map placed in `slot` of `chunk`, whatever stands there now. A city piece (owned by nobody, in a map slot)
+   * has that kind's finish, material and full health in any form. 0 for a slot past the map's, or without the map's statics.
+   */
+  mapKind(chunk: number, slot: number): number {
+    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics) : null;
+    if (!statics || chunk + 1 >= statics.first.length) return 0;
+    const at = statics.first[chunk]! + slot;
+    return at < statics.first[chunk + 1]! ? this.staticKinds![statics.kind[at]!]! : 0;
+  }
+
   private chunk(r: BitReader): void {
     const world = this.world;
     if (!world) return;
@@ -2389,17 +2409,19 @@ export class ClientSession {
     for (let i = 0; i < count; i++) {
       slot += r.bool() ? 1 : r.varint() + 2;
       const inPlace = r.bool();
-      const kind = inPlace ? 0 : this.kinds.read(r, 16);
+      // A row in place may still say another kind: a door opened, a city piece in a broken form.
+      const kind = inPlace && !r.bool() ? 0 : this.kinds.read(r, 16);
       if (r.overflow || slot > 0xffff || kind >= kinds) return;
       const was = rows && slot < rows.high ? rows.kind[slot]! : 0;
       const hpWas = was !== 0 ? rows!.hp[slot]! : 0;
       if (inPlace) {
+        const now = kind !== 0 ? kind : was;
         const owner = this.owners.read(r, 0);
-        const hp = r.bool() ? maxHp[was]! : r.f32();
+        const hp = r.bool() ? maxHp[now]! : r.f32();
         if (r.overflow) return;
         if (was === 0) continue;
-        if (told && hpWas !== Math.fround(hp)) told(was, was, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
-        structs.put(chunk, slot, was, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, owner, hp, version);
+        if (told && (was !== now || hpWas !== Math.fround(hp))) told(was, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
+        structs.put(chunk, slot, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, owner, hp, version);
         continue;
       }
       if (kind === 0) {
@@ -2420,6 +2442,7 @@ export class ClientSession {
     }
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
     const t = world.structs.chunks[chunk];
+    const reg = this.registry;
     for (let b = r.u8(); b > 0 && !r.overflow; b--) {
       const at = version - r.varint();
       const cause = r.bits(2);
@@ -2428,20 +2451,31 @@ export class ClientSession {
       const oy = told ? r.f32() : 0;
       const oz = told ? r.f32() : 0;
       const tick = told ? r.u32() : 0;
-      let last = 0;
-      for (let runs = r.varint(); runs > 0 && !r.overflow; runs--) {
-        const first = last + r.svarint();
-        const more = r.varint();
-        last = first + more + 1;
-        if (r.overflow || !t || first < 0) break;
-        for (let slot = first; slot <= first + more && slot < t.high; slot++) {
-          if (t.kind[slot] === 0 || t.mod[slot]! >= at) continue;
-          this.onStructure?.(t.kind[slot]!, 0, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.hp[slot]!, 0, cause);
-          if (told) {
-            if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
-            this.rubble.push({ kind: t.kind[slot]!, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, cause, ox, oy, oz, tick });
+      const radius = cause === GONE_BLAST ? r.u8() / 4 : 0;
+      // Slots that take their heap where they stood come first where there are any, then those emptied.
+      const leaves = r.bool();
+      for (let list = leaves ? 1 : 0; list >= 0 && !r.overflow; list--) {
+        if (leaves && list === 0 && !r.bool()) break;
+        let last = 0;
+        for (let runs = r.varint(); runs > 0 && !r.overflow; runs--) {
+          const first = last + r.svarint();
+          const more = r.varint();
+          last = first + more + 1;
+          if (r.overflow || !t || first < 0) break;
+          for (let slot = first; slot <= first + more && slot < t.high; slot++) {
+            const kind = t.kind[slot]!;
+            if (kind === 0 || t.mod[slot]! >= at) continue;
+            const [x, y, z, yaw] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!];
+            const into = list === 1 ? heapAt(reg, kind, x, y, z) : 0;
+            this.onStructure?.(kind, 0, x, y, z, t.hp[slot]!, 0, cause);
+            if (told) {
+              if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
+              this.rubble.push({ kind, x, y, z, yaw, cause, ox, oy, oz, tick, radius, into, map: t.owner[slot] === 0 ? this.mapKind(chunk, slot) : 0 });
+            }
+            // A heap is as old as its batch, so a later batch of the same message may still take it.
+            if (into !== 0) world.structs.put(chunk, slot, into, x, y, z, yaw, t.owner[slot]!, heapHealth(reg, into), at);
+            else world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
           }
-          world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
         }
       }
     }
