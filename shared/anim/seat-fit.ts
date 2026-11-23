@@ -396,5 +396,3 @@ export function fitSeated(pose: Pose, solved: Solved, rest: Float32Array, scale:
   for (const [, , foot] of LEGS) seatFit.feet = Math.max(seatFit.feet, -footClearance(solved, scale, foot, room, drop, aside, ahead));
   return drop;
 }
-
-
