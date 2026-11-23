@@ -5,7 +5,7 @@ import { JET_CAPACITY } from "../../shared/sim/character.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { COLOR_REGIONS, Genome, STAT_COUNT } from "../../shared/sim/genome.ts";
-import { Inventory } from "../../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, FLAG_ON, Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { validLook } from "../../shared/anim/look.ts";
 import { EntityRecord } from "../records.ts";
@@ -379,7 +379,8 @@ saved({
       const savedAttach = holds ? r.varint() : 0;
       const ammo = savedAmmo === 0 ? 0 : from.item(savedAmmo, rec.pid, loaded);
       const attach = savedAttach === 0 ? 0 : from.item(savedAttach, rec.pid, 1);
-      const flags = r.u8();
+      // A bit this build has no flag for is dropped: an older save marked issued pieces with one.
+      const flags = r.u8() & (FLAG_BLUEPRINT | FLAG_ON);
       if (item === 0) {
         // The rounds in a weapon that is gone, and what was fixed to it, go with it.
         if (ammo !== 0 && loaded > 0) from.burn(ammo, loaded);

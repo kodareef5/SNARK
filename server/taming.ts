@@ -18,7 +18,6 @@ import { V_FOOD, V_HEALTH, V_TORPOR } from "../shared/sim/vitals.ts";
 import type { Buffs } from "./buffs.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
-import { issuedTo } from "./mount.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -35,8 +34,6 @@ const CREATURE_ORDER = event("creature.order");
 const NAME_SET = event("name.set");
 /** Metres. The furthest a survivor may set her creatures on what she looks at. Chosen: ARK's whistle reach is not published. */
 const ATTACK_REACH = 100;
-/** Why a starter mount's saddle stays on (server/mount.ts). */
-export const ISSUED_SADDLE = "Its saddle was issued with it, and stays on.";
 
 export interface TamingContext {
   readonly world: ServerWorld;
@@ -368,9 +365,8 @@ export class Taming {
     let all = 0;
     let ours = 0;
     for (const r of this.ctx.records.byPid.values()) {
-      // One kept in a soul ball is not counted until it is loosed, as ARK counts none in a cryopod (server/balls.ts), and a
-      // starter mount is not counted at all: it is issued, one to a survivor, not tamed (server/mount.ts).
-      if (r.team === 0 || r.keyHash !== null || r.egg !== null || r.dead || r.stored !== 0 || issuedTo(r) !== 0 || reg.defs[r.kind]?.type !== "species" || !r.vitals) continue;
+      // One kept in a soul ball is not counted until it is loosed, as ARK counts none in a cryopod (server/balls.ts).
+      if (r.team === 0 || r.keyHash !== null || r.egg !== null || r.dead || r.stored !== 0 || reg.defs[r.kind]?.type !== "species" || !r.vitals) continue;
       all++;
       if (r.team === team) ours++;
     }
@@ -531,12 +527,8 @@ export class Taming {
         return RESULT_DENIED;
       }
       if (what === ORDER_UNSADDLE) {
-        // The saddle comes off into its inventory, but for a starter mount's, which was issued with it (server/mount.ts).
+        // The saddle comes off into its inventory.
         if (rec.saddle === 0) return RESULT_INVALID;
-        if (issuedTo(rec) !== 0) {
-          this.ctx.onNotice?.(me.pid, ISSUED_SADDLE);
-          return RESULT_DENIED;
-        }
         if (ents.driven[e] !== 0 || this.ridden?.(e)) return RESULT_BUSY;
         if (this.ctx.items.mint(rec, rec.saddle, 1) === 0) return RESULT_FULL;
         rec.saddle = 0;
@@ -648,8 +640,7 @@ export class Taming {
     const e = this.ctx.records.entOf.get(rec.pid);
     return {
       ...(this.bred ? this.bred(rec) : NO_BREEDING),
-      // A starter mount never mates, so its panel offers it no mating (server/mount.ts).
-      breeds: world.reg.breedEgg[rec.kind] !== 0xffff && issuedTo(rec) === 0,
+      breeds: world.reg.breedEgg[rec.kind] !== 0xffff,
       saddled: rec.saddle !== 0,
       id: e ?? -1,
       points: rec.team !== 0 ? Math.min(255, this.ctx.progression.statPoints(rec)) : 0,

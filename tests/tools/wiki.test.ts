@@ -171,11 +171,7 @@ test("the controls page is the controls screen's own tables, and says how to get
 
 test("the settings the wiki lists are the rows marked public, and every command family is registered", () => {
   expect(publicSettings().map((s) => s.name)).toContain("TamingSpeedMultiplier");
-  // The suit at spawn is one a player may know: whether it comes to life dressed.
-  expect(publicSettings().find((s) => s.name === "bDisableDefaultMapItemSets")?.def).toBe("False");
-  // And whether it comes with a pteranodon of its own.
-  expect(publicSettings().find((s) => s.name === "StarterMount")?.def).toBe("True");
-  // And whether supply drops come, and how fine what they hold is.
+  // Whether supply drops come, and how fine what they hold is.
   expect(publicSettings().filter((s) => /LootCrates|SupplyCrateLoot/.test(s.name)).map((s) => [s.name, s.def])).toEqual([["SupplyCrateLootQualityMultiplier", "1"], ["bDisableLootCrates", "False"]]);
   // And how long a thruster car's boost and flip wait (the Zephyr, D1112).
   expect(publicSettings().filter((s) => s.name.startsWith("Thruster")).map((s) => [s.name, s.def])).toEqual([["ThrusterBoostCooldown", "4"], ["ThrusterFlipCooldown", "3"]]);

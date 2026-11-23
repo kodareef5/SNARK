@@ -6,11 +6,11 @@ import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { RecordCodec, idMap, rebaseTicks } from "../../server/persist/codec.ts";
 import { BREEDING, mateReadyAt } from "../../server/breeding.ts";
-import { ISSUED, issuedTo } from "../../server/mount.ts";
 import { EntityRecord, part } from "../../server/records.ts";
 import { SAVED, moved, saved, savedAs, savedId } from "../../server/saved.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { BitReader } from "../../shared/net/codec.ts";
+import { FLAG_BLUEPRINT, FLAG_ON, Inventory } from "../../shared/sim/items.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const codec = new RecordCodec(Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, reg.ids.map((name, i) => [name, i]), reg.ids.length), false);
@@ -115,22 +115,40 @@ test("a feature's state on a record is none until it is made, then one object fo
   expect([a.part(COUNT)!.n, a.part(NAME)!.text, b.part(COUNT)!.n]).toEqual([7, "seven", 1]);
 });
 
-test("state kept in a part is saved by its feature's component: a starter's mark, and when a female may mate again", () => {
+test("state kept in a part is saved by its feature's component: when a female may mate again", () => {
   const rec = new EntityRecord(47, reg.index.get("core:pteranodon")!);
   const plain = row(rec);
-  rec.own(ISSUED).to = 2 ** 40 + 5;
   rec.own(BREEDING).mateReadyAt = 9000;
   const saved = row(rec);
   expect(saved.data.length).toBeGreaterThan(plain.data.length);
   const back = codec.decode(saved)!;
-  expect([issuedTo(back), mateReadyAt(back)]).toEqual([2 ** 40 + 5, 9000]);
+  expect(mateReadyAt(back)).toBe(9000);
   expect(codec.encode(back)).toEqual(saved.data);
   rebaseTicks(back, 500);
-  expect([issuedTo(back), mateReadyAt(back)]).toEqual([2 ** 40 + 5, 9500]);
-  // One that has neither is given no state by a read, and is saved as it was.
+  expect(mateReadyAt(back)).toBe(9500);
+  // One that has none is given no state by a read, and is saved as it was.
   const bare = codec.decode(plain)!;
-  expect([bare.part(ISSUED), bare.part(BREEDING), issuedTo(bare), mateReadyAt(bare)]).toEqual([undefined, undefined, 0, 0]);
+  expect([bare.part(BREEDING), mateReadyAt(bare)]).toEqual([undefined, 0]);
   // Made and left at nothing, it costs no bytes.
   bare.own(BREEDING);
   expect(codec.encode(bare)).toEqual(plain.data);
+});
+
+test("a slot flag this build does not know is dropped as a save is read", () => {
+  const rec = new EntityRecord(48, reg.index.get("core:survivor")!);
+  const hat = reg.index.get("core:meridian_hat")!, pistol = reg.index.get("core:pistol")!, ball = reg.index.get("core:soul_ball")!;
+  const inv = (rec.inv = new Inventory(4));
+  // Bit 4 marked an issued piece in older saves, alone or beside a flag that is still read.
+  inv.set(0, hat, 1, 0, 300, 0, 4);
+  inv.set(1, hat, 1, 0, 0, 0, FLAG_BLUEPRINT | 4);
+  inv.set(2, pistol, 1, 0, 60, 0, FLAG_ON | 4);
+  inv.set(3, ball, 1, 0, 0, 0, 0x80);
+  // A starter mount's mark from such a save is a component nobody declares now.
+  const mark = savedId("issued");
+  expect(savedAs(mark)).toBeUndefined();
+  rec.extra.set(mark, Uint8Array.of(5));
+  const back = codec.decode(row(rec))!;
+  expect([...back.inv!.item]).toEqual([hat, hat, pistol, ball]);
+  expect([...back.inv!.flags]).toEqual([0, FLAG_BLUEPRINT, FLAG_ON, 0]);
+  expect([...back.extra]).toEqual([[mark, Uint8Array.of(5)]]);
 });

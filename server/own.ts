@@ -6,7 +6,7 @@ import { fitBytes, type BitReader } from "../shared/net/codec.ts";
 import { TEXT_NOTICE, MAX_OPEN_NAME_BYTES, OPEN_TAKE_ONLY, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_SURVIVORS_PASS, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
-import { FLAG_BLUEPRINT, FLAG_ISSUED, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_WATER } from "../shared/sim/vitals.ts";
 import { sendKept } from "./balls.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -32,17 +32,6 @@ function asked(ctx: OwnContext, c: Client, ev: number, data: Record<string, numb
   const refused = ctx.game.bus.before(ev, data);
   if (refused !== "") ctx.game.sendText(c, TEXT_NOTICE, refused);
   return refused === "";
-}
-
-/** What a survivor is told when it would part with a piece of the suit it was issued (server/suit.ts). */
-export const ISSUED_STAYS = "Your Meridian suit was issued to you: it stays with you, and cannot be dropped, stored or given away.";
-/** And when it would part with the soul ball of its starter mount (server/mount.ts). */
-export const ISSUED_BALL_STAYS = "This soul ball was issued to you with your pteranodon: it stays with you, and cannot be dropped, stored or given away.";
-
-/** What a survivor is told when it would part with the issued `item`. */
-function issuedStays(ctx: OwnContext, item: number): string {
-  const reg = ctx.world.reg;
-  return reg.ballFull[item] !== 0 || reg.ballEmpty[item] !== 0 ? ISSUED_BALL_STAYS : ISSUED_STAYS;
 }
 
 /** What a survivor is told when it would put something into a supply drop's capsule. */
@@ -95,8 +84,8 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
     if (inv.item[s] !== 0) {
       w.u16(inv.count[s]!);
       w.u8(inv.quality[s]!);
-      // Flags (SLOT_ bits): a blueprint, an attachment switched on. Whether a piece was issued is the server's alone.
-      w.u8(inv.flags[s]! & ~FLAG_ISSUED);
+      // Flags (SLOT_ bits): a blueprint, an attachment switched on.
+      w.u8(inv.flags[s]!);
       w.u16(inv.dur[s]!);
       w.u32(inv.spoilAt[s]!);
       const holds = inv.ammo[s] !== 0 || inv.attach[s] !== 0;
@@ -371,11 +360,6 @@ export function addOwnCommands(ctx: OwnContext): void {
     const src = ctx.items.inv(a);
     if (fromSlot >= src.cap || toSlot >= ctx.items.inv(b).cap) return RESULT_INVALID;
     if (src.item[fromSlot] !== expect || expect === 0) return RESULT_STALE;
-    // An issued piece moves about its survivor's own inventory only, and is not swapped out of it either.
-    if (a !== b && (ctx.items.issued(a, fromSlot) || ctx.items.issued(b, toSlot))) {
-      ctx.game.sendText(c, TEXT_NOTICE, issuedStays(ctx, ctx.items.issued(a, fromSlot) ? expect : ctx.items.inv(b).item[toSlot]!));
-      return RESULT_DENIED;
-    }
     // Nothing is put into a supply capsule, nor swapped into one.
     if (a !== b && !ctx.items.takes(a, fromSlot, b, toSlot)) {
       ctx.game.sendText(c, TEXT_NOTICE, TAKE_ONLY);
@@ -550,10 +534,6 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (!own) return RESULT_DENIED;
     if (slot >= own.inv.cap) return RESULT_INVALID;
     if (own.inv.item[slot] !== expect || expect === 0) return RESULT_STALE;
-    if (ctx.items.issued(own.rec, slot)) {
-      ctx.game.sendText(c, TEXT_NOTICE, issuedStays(ctx, expect));
-      return RESULT_DENIED;
-    }
     if (!asked(ctx, c, ITEM_DROP, { byPid: c.pid, item: ctx.world.reg.ids[expect]!, n: count === 0 ? own.inv.count[slot]! : count })) return RESULT_DENIED;
     return ctx.drop(own.rec, slot, count) ? RESULT_OK : RESULT_FULL;
   });

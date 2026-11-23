@@ -14,7 +14,6 @@ import type { Creatures } from "./creatures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import { placeFree } from "./place.ts";
-import { issuedTo } from "./mount.ts";
 import { part, type EntityRecord, type Records } from "./records.ts";
 import { moved, saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -133,9 +132,8 @@ export class Breeding {
     const { world } = this.ctx;
     const ents = world.ents;
     if (this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind)) return false;
-    // It must be owned, enabled for mating, grown, conscious, not following, not ridden, and not heavy or rooted; and no
-    // starter mount mates (server/mount.ts).
-    return rec.mating && issuedTo(rec) === 0 && rec.team !== 0 && rec.grown === 0 && rec.egg === null && !rec.out && !rec.dead && rec.follow === 0 && rec.genome !== null && world.reg.breedEgg[rec.kind] !== 0xffff && ents.driven[e] === 0 && (ents.mflags[e]! & MF_NO_SPRINT) === 0;
+    // It must be owned, enabled for mating, grown, conscious, not following, not ridden, and not heavy or rooted.
+    return rec.mating && rec.team !== 0 && rec.grown === 0 && rec.egg === null && !rec.out && !rec.dead && rec.follow === 0 && rec.genome !== null && world.reg.breedEgg[rec.kind] !== 0xffff && ents.driven[e] === 0 && (ents.mflags[e]! & MF_NO_SPRINT) === 0;
   }
 
   private together(a: number, b: number): boolean {
@@ -515,8 +513,7 @@ export class Breeding {
     const { world, records } = this.ctx;
     if (world.reg.breedEgg[rec.kind] === 0xffff || rec.grown !== 0 || rec.team === 0) return RESULT_INVALID;
     const on = what === ORDER_MATE;
-    // A starter mount never mates: it is issued, and its young would be a way to make more (server/mount.ts).
-    if (on && (issuedTo(rec) !== 0 || this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind))) return RESULT_DENIED;
+    if (on && (this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind))) return RESULT_DENIED;
     if (rec.mating === on) return RESULT_OK;
     rec.mating = on;
     records.dirty.add(rec.pid);

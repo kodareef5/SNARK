@@ -62,17 +62,16 @@ export function forcedLink(spec: string): LinkOptions {
 const FORCED = forcedLink(process.env.SNARK_NET ?? "");
 
 /**
- * What a server gives every survivor unless its host says not: the menu's Creative entry with the admin role for all (D956),
- * the Meridian set at every spawn (D957), and a starter pteranodon in a soul ball (D992); and its drop book's circuits call
- * supply drops near whoever is in the world. The tests of everything else were written for a world with none of them, so
- * a Harness leaves them out: each of these settings its rules still hold at
- * the default is put as here. `asShipped` keeps them. The welcome said to each who joins is left out the same way: the
- * tests count the lines a survivor is sent.
+ * What a server gives every survivor unless its host says not: the menu's Creative entry with the admin role for all (D956);
+ * and its drop book's circuits call supply drops near whoever is in the world. The tests of everything else were written
+ * for a world with neither, so a Harness leaves them out: each of these settings its rules still hold at the default is
+ * put as here. `asShipped` keeps them. The welcome said to each who joins is left out the same way: the tests count the
+ * lines a survivor is sent.
  */
-const PLAIN: readonly (readonly [name: string, value: boolean | string])[] = [["bShowCreativeMode", false], ["CreativeForAll", false], ["bDisableDefaultMapItemSets", true], ["StarterMount", false], ["bDisableLootCrates", true], ["Message", ""]];
+const PLAIN: readonly (readonly [name: string, value: boolean | string])[] = [["bShowCreativeMode", false], ["CreativeForAll", false], ["bDisableLootCrates", true], ["Message", ""]];
 const SHIPPED = new WeakSet<Rules>();
 
-/** Rules a Harness leaves as the server ships them: everyone's cheats, the suit at spawn and the starter mount on. */
+/** Rules a Harness leaves as the server ships them: everyone's cheats, supply drops and the welcome on. */
 export function asShipped(rules = new Rules()): Rules {
   SHIPPED.add(rules);
   return rules;

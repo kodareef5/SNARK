@@ -36,9 +36,7 @@ import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
 import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
-import { issueSuit } from "./suit.ts";
 import { Balls } from "./balls.ts";
-import { Mounts, issuedTo } from "./mount.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
 import { Feces } from "./feces.ts";
@@ -237,8 +235,6 @@ export interface Host {
   /** Survivors knocked off their feet, lying as ragdolls (server/falls.ts). */
   readonly falls: Falls;
   readonly balls: Balls;
-  /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
-  readonly mounts: Mounts;
   readonly overhead: Overhead;
   readonly gaze: Gaze;
   readonly hurt: Hurt;
@@ -613,9 +609,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
   opened.push({ close: () => survivorLog.stop() });
-  // The starter mounts are made below, after the soul balls; a survivor the folder hands back as the save loads gets its
-  // mount at its next rise.
-  let starter: Mounts | null = null;
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
     {
@@ -642,8 +635,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         survival.forget(rec.pid);
         inHand.delete(rec.pid);
       },
-      issueMount: (rec) => starter?.issue(rec),
-      dropMount: (rec) => starter?.left(rec),
       say,
     },
     loaded!.fresh,
@@ -748,8 +739,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // What a slot stood for goes with its item: an egg's young (server/eggs.ts), or a soul ball's tame.
   items.onRefGone.on((ref) => balls.gone(ref));
   combat.onBall.on((c, rec, slot) => balls.click(c, rec, slot));
-  const mounts = new Mounts({ world, records, items, rules, balls, buffs, survival }, (opts.seed ?? 1) + 113);
-  starter = mounts;
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, woke: creatures.onWake, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
   game.players.onMountSecondary.on(e => roars.use(e));
@@ -867,16 +856,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   const beds = new Beds({
     world, game, records, tribes, fixtures, rules, bus,
-    // Whyever it rises, it comes to life in the Meridian set, with its starter mount.
-    rise: (c, p, why) => {
-      const code = rise(c, p, why);
-      const rec = records.byPid.get(c.pid);
-      if (code === RESULT_OK && rec) {
-        issueSuit(items, reg, rules, rec);
-        mounts.issue(rec);
-      }
-      return code;
-    },
+    rise,
     mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : urban.riding(c) ? "get out of the vehicle first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
     drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
   });
@@ -948,9 +928,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     buffs.died(rec);
     spawner?.left(rec);
     if (reg.vehicle[rec.kind]?.movement === "boat") urban.releaseHost(rec.pid);
-    // A starter mount leaves no body to harvest and no saddle: they were issued with it. What it carried lies in a cache.
-    if (issuedTo(rec) !== 0) rec.saddle = 0;
-    else corpses.fell(rec, cause, by, impact);
+    corpses.fell(rec, cause, by, impact);
     if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);
   };
@@ -1336,12 +1314,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     else {
       records.entOf.set(rec.pid, c.ent);
       world.ents.pid[c.ent] = rec.pid;
-    }
-    // A new survivor comes to life in the Meridian set, with its starter mount, as it does at each rise after (the beds'
-    // rise above). One that logs back in, or stops spectating, has what it had.
-    if (first) {
-      issueSuit(items, reg, rules, rec);
-      mounts.issue(rec);
     }
     refreshBody(rec);
     survival.suspend(rec, false);
@@ -1880,7 +1852,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     loose,
     falls,
     balls,
-    mounts,
     overhead,
     gaze,
     hurt,

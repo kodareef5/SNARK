@@ -220,13 +220,11 @@ export class Death {
 
   /**
    * Leaves everything `rec` carries, worn things too, in one bag at a point: what a survivor that travels from a bed drops
-   * there. The bag takes the inventory object, so nothing is copied. The suit it was issued is not left: it goes, and a new
-   * one is issued where it rises (server/suit.ts). Null if it carried nothing else.
+   * there. The bag takes the inventory object, so nothing is copied. Null if it carried nothing.
    */
   dropAll(rec: EntityRecord, x: number, y: number, z: number): EntityRecord | null {
     const { records, items } = this.ctx;
     const inv = items.inv(rec);
-    items.burnIssued(rec);
     if (inv.used() === 0) return null;
     const bag = records.create(this.bag, "bag");
     bag.inv = inv;
@@ -323,11 +321,9 @@ export class Death {
       rec.z = ents.z[e]!;
     }
 
-    // The cache takes the survivor's inventory object. Nothing is copied. The suit it was issued goes with its life, so the
-    // cache holds none of it, and a new one is issued as it rises (server/suit.ts).
+    // The cache takes the survivor's inventory object. Nothing is copied.
     let cachePid = 0;
     const inv = items.inv(rec);
-    items.burnIssued(rec);
     // A module may have the dead keep what they carried, by refusing the cache or saying so.
     const asked = { pid: rec.pid, keep: false };
     const kept = this.ctx.bus.before(DEATH_CACHE, asked) !== "" || asked.keep === true;

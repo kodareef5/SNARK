@@ -6,18 +6,26 @@ import { zoomed } from "../../client/core/optics.ts";
 import { DRAW_HEAT_SHIFT, DRAW_SKINNED, HEAT_COLD, HEAT_HOT, HEAT_WARM, HEAT_WORLD, OPTIC_AT, OPTIC_HEAT, OPTIC_NIGHT } from "../../client/core/render/packet.ts";
 import { kindHeat } from "../../client/core/render/characters.ts";
 import { VISOR_FIRST } from "../../client/core/visor.ts";
-import { Harness, asShipped } from "../fixtures/net.ts";
+import { Harness } from "../fixtures/net.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { FLAG_ON } from "../../shared/sim/items.ts";
 import { corePack } from "../fixtures/pack.ts";
 
-test("in the whole client: the issued helmet's visor held up zooms from the eye, its window a wide box, the server told; N turns night vision on; let go, all as it was", () => {
-  // As the server ships, every survivor comes to life in the Meridian set (D957).
-  const h = new Harness({}, 1, 60, { dev: true, config: asShipped() });
+/** Puts the Meridian set on the app's survivor by the console, as nobody is dressed at spawn. */
+function dress(app: App, run: (ms: number) => void): void {
+  for (const line of ["enablecheats", "armor meridian"]) {
+    app.session.text(line);
+    run(300);
+  }
+}
+
+test("in the whole client: the worn helmet's visor zooms from the eye, and N turns on night vision", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
   app.ui.settings.thirdPerson = true;
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(1500);
+  dress(app, run);
   const base = (app.ui.settings.fov * Math.PI) / 180;
   expect([app.hud.visor, app.hud.behind]).toEqual([false, true]);
   app.visor.held = true;
@@ -54,12 +62,13 @@ test("in the whole client: the issued helmet's visor held up zooms from the eye,
 });
 
 test("in the whole client: through the visor's heat view the survivors' draws say they are warm; out of it no draw says how hot it is; a turtle is cold-blooded, a dodo warm, a car as the world", () => {
-  const h = new Harness({}, 1, 60, { dev: true, config: asShipped() });
+  const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
   h.join("bob");
   app.ui.settings.thirdPerson = false;
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(1500);
+  dress(app, run);
   app.controls.yaw = 0;
   app.controls.pitch = -0.1;
   run(500);
@@ -86,11 +95,12 @@ test("in the whole client: through the visor's heat view the survivors' draws sa
 });
 
 test("in the whole client: N held raises the visor and held again lowers it; a tap while it is up turns its view, and G is melee again", () => {
-  const h = new Harness({}, 1, 60, { dev: true, config: asShipped() });
+  const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
   app.ui.settings.thirdPerson = false;
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(1500);
+  dress(app, run);
   // A tap does not raise it.
   app.key("KeyN", true);
   run(100);
@@ -122,10 +132,11 @@ test("in the whole client: N held raises the visor and held again lowers it; a t
 });
 
 test("in the whole client: with the helmet worn a tap of N still switches the held weapon's laser, sent as the tap ends", () => {
-  const h = new Harness({}, 1, 60, { dev: true, config: asShipped() });
+  const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(1500);
+  dress(app, run);
   const s = app.session;
   const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
   const items = h.host.items, at = (name: string): number => h.reg.index.get(name)!;
