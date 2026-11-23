@@ -131,7 +131,7 @@ export class App {
   readonly remote = new RemoteSample();
   /**
    * Who the camera follows and from where (view/director.ts). The view, the orbit camera on K and what the tests and
-   * the notes read of them are forwarded.
+   * the debug bar read of them are forwarded.
    */
   readonly director = new Director();
   /** The view of the own survivor knocked down or dying, and the red and black over it. */

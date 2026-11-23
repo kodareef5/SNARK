@@ -535,7 +535,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         return why === "" ? new Response(null, { status: 204 }) : new Response(why, { status: 422 });
       }
       // Not for this machine alone either, and taken from an admin's session only (server/reports.ts).
-      if (path === "/__report") return notes ? notes.answer(req, reportServer) : new Response("This server keeps no notes: a development server keeps them, and any other only when started with --reports <folder>.", { status: 404 });
+      if (path === "/__report") return notes ? notes.answer(req, reportServer) : new Response("this server keeps no reports: a development server keeps them, and any other only when started with --reports <folder>", { status: 404 });
       // Every server's, for the debug bar: the protocol's names for anyone, the log and the server's state for an admin's session.
       if (path === "/__debug") return debugAnswer(req, debugServer);
       if (path === "/__bench" && req.method === "POST" && opts.dev && local) {
