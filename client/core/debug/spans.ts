@@ -144,7 +144,7 @@ export class SpanRing implements Probe {
       this.add(INPUT, from, marks[1]!);
       this.add(UI, marks[2]!, applied);
       this.add(GL, applied, to);
-      if (cpu && cpu.began >= applied && cpu.ended <= to) {
+      if (cpu && cpu.began >= applied && cpu.ended >= cpu.began && cpu.ended <= to) {
         for (let k = 0; k < PASSES.length; k++) {
           const at = cpu.began + cpu.start[k]!;
           if (!Number.isNaN(at)) this.add(this.drawn[k]!, at, at + cpu.ms[k]!);

@@ -87,7 +87,6 @@ const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
 /** No effect turned off: the game's own frame. */
 const NO_EFFECTS: ReadonlySet<Effect> = new Set();
 
-
 export class App {
   readonly session: ClientSession;
   readonly controls = new Controls();

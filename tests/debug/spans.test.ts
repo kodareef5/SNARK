@@ -136,10 +136,19 @@ test("a closed frame holds the shell's spans, each pass drawn and the card's", (
   expect([at("near", gl), at("finish", gl), at("far", gl)]).toEqual([[13, 3], [17, 1.5], [NaN, 0]]);
   // The card's passes are laid end to end from the frame's start.
   expect([at("card", -1), at("making", LANE_CARD), at("near", LANE_CARD), at("finish", LANE_CARD), at("far", LANE_CARD)]).toEqual([[0, 3.5], [0, 0.5], [0.5, 2], [2.5, 1], [NaN, 0]]);
-  // A draw of another frame is left out.
+  // A draw of another frame is left out, and so is a draw that did not end.
+  const marks = Float64Array.of(3000, 3001, 3009, 3010, 3020);
   ring.begin(3000);
-  ring.close(Float64Array.of(3000, 3001, 3009, 3010, 3020), cpu);
+  ring.close(marks, cpu);
   expect(at("near", gl)).toEqual([NaN, 0]);
+  cpu.began = 3011;
+  ring.begin(3000);
+  ring.close(marks, cpu);
+  expect(at("near", gl)).toEqual([NaN, 0]);
+  cpu.ended = 3019;
+  ring.begin(3000);
+  ring.close(marks, cpu);
+  expect(at("near", gl)).toEqual([13, 3]);
   // The card's frame timed whole is one span; without the shell's marks the frame runs from its begin until now.
   c.t = 2030;
   ring.begin(2000);
