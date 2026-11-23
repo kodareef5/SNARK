@@ -589,7 +589,7 @@ export class Corpses {
       if (kx < 0 || kz < 0 || kx >= dims.chunksX || kz >= dims.chunksZ) continue;
       for (let t = ents.chunkHead[kz * dims.chunksX + kx]!; t >= 0; t = ents.next[t]!) {
         const b = this.byEnt.get(t);
-        if (!b || b.moving || !b.fall || this.held(b)) continue;
+        if (!b || b.moving || !b.fall) continue;
         const dx = b.x - x, dz = b.z - z, far = reach + b.reach;
         if (dx * dx + dz * dz <= far * far) this.wake(b);
       }
@@ -677,6 +677,8 @@ export class Corpses {
       }
       fall.ragdoll.movers = this.cars.near(fall.ragdoll);
       if (fall.tick(world)) {
+        // A vehicle or a creature moving it is outside what clients lay alike: from now its checkpoint is sent.
+        if (!b.motionRevision && fall.ragdoll.touched) b.motionRevision = 1;
         if (b.motionRevision) { this.updateMotion(b, true); this.save(b); }
         fall.ragdoll.pose(b.pose!);
       }
