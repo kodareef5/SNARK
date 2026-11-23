@@ -60,6 +60,15 @@ export class CityStatics {
    */
   readonly bent: MapStatics;
   readonly bentKind: Uint16Array;
+  /**
+   * Per piece, where a near mesh is made of a slot's broken form (render/nearcity.ts): the kind the map placed there, whose
+   * colour and material the form wears, having none of its own; 0 for a piece drawn as its own kind. And how a form
+   * kind's convex parts are painted (PartPaint). `apart` marks the pieces whose boxes merge with no other piece's: a
+   * form, and a piece whose state its own faces must show.
+   */
+  readonly dye?: Uint16Array;
+  readonly apart?: Uint8Array;
+  readonly paint?: (kind: number) => PartPaint | null;
 
   /** `rows`, where given, are what CityStatics.steps made of `statics` with `reg`. */
   constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[], reg: Registry, rows?: CityRows) {
@@ -101,6 +110,16 @@ export const UNBENT: Pick<CityStatics, "bent" | "bentKind"> = { bent: MapStatics
 
 /** Pieces made between two pauses (CityStatics.steps, chunkReach). */
 const SLICE = 1 << 15;
+
+/**
+ * How the convex parts of a broken form's look are painted, in their order: a colour of its own a part or 0 for its
+ * piece's, and the faces of each that show the core a cut bared, a bit a face, drawn in `bare`.
+ */
+export interface PartPaint {
+  readonly color: Uint8Array;
+  readonly core: Uint32Array;
+  readonly bare: number;
+}
 
 /** A city's pieces by chunk. */
 interface CityRows {
@@ -558,9 +577,12 @@ class Hulls {
   under = new Uint16Array(64);
   own = new Uint8Array(64);
   key = new Uint32Array(64);
+  /** Its faces that show a broken form's core, a bit a face, and the colour they are drawn in (PartPaint). */
+  core = new Uint32Array(64);
+  bare = new Uint8Array(64);
 
   /** Part `p` of `t` on a piece whose middle is at (cx, cy, cz), turned by the cosine and sine (c, s) as a box is. */
-  push(t: HullTable, p: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, under = color, key = 0): void {
+  push(t: HullTable, p: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, under = color, key = 0, core = 0, bare = 0): void {
     if (this.n === this.part.length) {
       const grow = <T extends Float64Array | Uint32Array | Uint16Array | Uint8Array>(a: T): T => {
         const b = new (a.constructor as new (n: number) => T)(a.length * 2);
@@ -568,11 +590,13 @@ class Hulls {
         return b;
       };
       [this.at, this.planes, this.box] = [grow(this.at), grow(this.planes), grow(this.box)];
-      [this.part, this.color, this.under, this.own, this.key] = [grow(this.part), grow(this.color), grow(this.under), grow(this.own), grow(this.key)];
+      [this.part, this.color, this.under, this.own, this.key, this.core, this.bare] = [grow(this.part), grow(this.color), grow(this.under), grow(this.own), grow(this.key), grow(this.core), grow(this.bare)];
     }
     const h = this.n++;
     this.table[h] = t;
     this.key[h] = key;
+    this.core[h] = core;
+    this.bare[h] = bare;
     this.part[h] = p;
     this.color[h] = color;
     this.under[h] = under;
@@ -646,11 +670,18 @@ function partLength(t: HullTable, p: number): number {
   return Math.max(hi[0]! - lo[0]!, hi[1]! - lo[1]!, hi[2]! - lo[2]!);
 }
 
-/** Puts kind `k`'s convex parts in `form` longer than `least` on a piece at (cx, cy, cz) turned by (c, s) in `hulls`. */
-function pushHulls(form: CityForm, k: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, least: number, under = color, key = 0): void {
+/**
+ * Puts kind `k`'s convex parts in `form` longer than `least` on a piece at (cx, cy, cz) turned by (c, s) in `hulls`. With
+ * `paint`, a broken form's: a part of a colour of its own is in it, under the bits of `color` over its low eight.
+ */
+function pushHulls(form: CityForm, k: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, least: number, under = color, key = 0, paint: PartPaint | null = null): void {
   const t = form.hulls;
   if (!t) return;
-  for (let p = t.start[k]!; p < t.start[k + 1]!; p++) if (least <= 0 || partLength(t, p) > least) hulls.push(t, p, cx, cy, cz, c, s, color, own, under, key);
+  for (let p = t.start[k]!; p < t.start[k + 1]!; p++) {
+    if (least > 0 && partLength(t, p) <= least) continue;
+    const h = p - t.start[k]!, mine = paint?.color[h] ?? 0;
+    hulls.push(t, p, cx, cy, cz, c, s, mine ? (color & ~255) | mine : color, own, mine ? (under & ~255) | mine : under, key, paint?.core[h] ?? 0, paint?.bare ?? 0);
+  }
 }
 
 const gridCount = new Uint32Array(GRID_SIDE * GRID_SIDE + 1);
@@ -767,6 +798,13 @@ class Keyed {
     }
     this.first.push(this.slots.length);
     return key;
+  }
+
+  /** A new group of `slot` alone, as a holder. */
+  alone(slot: number): number {
+    this.slots.push(slot);
+    this.first.push(this.slots.length);
+    return PIECE_SLOTS + this.groups++ + 1;
   }
 
   private member(m: number, c: number, s: number, slot: number, group: number): void {
@@ -968,7 +1006,8 @@ function faces(dims: MapDims, chunk: number, hf: Ground, keyed: Keyed | null = n
         continue;
       }
       // A face looking more down than across is a soffit.
-      const col = hulls.planes[o + 1]! < -0.7 ? hulls.under[q]! : hulls.color[q]!;
+      // A face a cut bared is the core's colour, and wears no material.
+      const col = ((hulls.core[q]! >>> (f - t.face[p]!)) & 1) === 1 ? hulls.bare[q]! : hulls.planes[o + 1]! < -0.7 ? hulls.under[q]! : hulls.color[q]!;
       const by = heldWhole(n + q, ring, count, mx, mz, gx0, gz0, keyed, own);
       if (by === 0) out.ring(ring, count, col, keyed ? own - 1 : 0);
       else if (keyed && by > 0) keyed.kept.ring(ring, count, col, (own - 1) | (by << PIECE_KEY_BITS));
@@ -1073,14 +1112,16 @@ function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: num
     if ((g && g[i - from] === 1) || yaw[i]! % QUARTER !== f) continue;
     const k = kind[i]!;
     if (far && city.near[k] === 1) continue;
-    const label = (labels?.[k] ?? 0) << 8;
+    // A broken form wears the colour and material of the kind the map placed. A piece set apart merges with no other's.
+    const worn = city.dye?.[i] || k;
+    const label = (labels?.[worn] ?? 0) << 8 | (city.apart?.[i] === 1 ? (i - from + 1) << 16 : 0);
     const quarter = Math.floor(yaw[i]! / QUARTER) % 4;
     const odd = quarter % 2 === 1;
     // The world to the frame: the inverse of the turn a piece's vertices are given.
     const lx = c * x[i]! - s * z[i]!;
     const lz = s * x[i]! + c * z[i]!;
     if (plain[k] === 1) {
-      nb = frameBox(nb, lx, y[i]!, lz, odd ? halfZ[k]! : halfX[k]!, halfY[k]!, odd ? halfX[k]! : halfZ[k]!, label | color[k]!);
+      nb = frameBox(nb, lx, y[i]!, lz, odd ? halfZ[k]! : halfX[k]!, halfY[k]!, odd ? halfX[k]! : halfZ[k]!, label | color[worn]!);
       if (rows) rowOf(nb - 1, i);
       continue;
     }
@@ -1088,10 +1129,10 @@ function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: num
     const [qc, qs] = [QUARTER_COS[quarter]!, QUARTER_SIN[quarter]!];
     const B = form.box;
     for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
-      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, label | (form.color?.[b / 6] || color[k]!));
+      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, label | (form.color?.[b / 6] || color[worn]!));
       if (rows) rowOf(nb - 1, i);
     }
-    if (parts) pushHulls(form, k, lx, y[i]!, lz, qc, qs, color[k]!, true, 0);
+    if (parts) pushHulls(form, k, lx, y[i]!, lz, qc, qs, color[worn]!, true, 0);
   }
   return nb;
 }
@@ -1149,6 +1190,8 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
   if (city.in(chunk) === 0) return EMPTY_PART;
   const form = least > 0 ? city.walked : city.look;
   const keyed = keys && gap >= 0 && least <= 0 ? keying.begin() : null;
+  // A broken form's faces are a group's of its slot alone: its slot's own key says whether the whole piece stands.
+  for (let i = city.first[chunk]!; keyed && city.dye && i < city.first[chunk + 1]!; i++) if (city.dye[i] !== 0 && keys![i] !== 0) keys![i] = keyed.alone(keys![i]! - 1);
   boxes.n = 0;
   hulls.n = 0;
   gather(city, chunk, gone, gap < 0 && least <= 0, form, least > 0, labels, keyed ? keys : undefined);
@@ -1166,7 +1209,7 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
         if (Math.max(hx, hy, hz) * 2 <= least) continue;
         const [fx, fy, fz] = [framed[o]! + hx, framed[o + 1]! + hy, framed[o + 2]! + hz];
         // Back to the world from the frame, as a piece's vertices are turned.
-        boxes.push(c * fx + s * fz, fy, c * fz - s * fx, hx, hy, hz, c, s, framed[o + 6]!, true, undefined, keyed ? keyed.key(b, keys!, c, s) : 0);
+        boxes.push(c * fx + s * fz, fy, c * fz - s * fx, hx, hy, hz, c, s, framed[o + 6]! & 0xffff, true, undefined, keyed ? keyed.key(b, keys!, c, s) : 0);
       }
     }
     const { first, kind, yaw, x, y, z, color, plain } = city;
@@ -1174,8 +1217,9 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
       if ((g && g[i - first[chunk]!] === 1) || plain[kind[i]!] === 1) continue;
       const a = (yaw[i]! / YAW_UNITS) * TAU;
       const k = kind[i]!;
-      const label = (labels?.[k] ?? 0) << 8;
-      pushHulls(form, k, x[i]!, y[i]!, z[i]!, detCos(a), detSin(a), label | color[k]!, true, least, undefined, keyed ? keys![i]! : 0);
+      const worn = city.dye?.[i] || k;
+      const label = (labels?.[worn] ?? 0) << 8;
+      pushHulls(form, k, x[i]!, y[i]!, z[i]!, detCos(a), detSin(a), label | color[worn]!, true, least, undefined, keyed ? keys![i]! : 0, worn !== k ? city.paint?.(k) ?? null : null);
     }
   }
   return faces(city.dims, chunk, hf, keyed);

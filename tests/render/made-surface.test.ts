@@ -8,7 +8,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { NearMaking } from "../../client/core/render/nearcity.ts";
 import { PIECE_KEYS, PIECE_MADE, pieceMade } from "../../client/core/render/pieces.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
-import { MADE_MARK, coatLost, madeFar, madeShift, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { MADE_MARK, SPALL_PALETTE, coatLost, madeFar, madeShift, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TWIN_SLOTS, madeTwin, materialHeight, materialRows } from "../../client/core/texgen/materials.ts";
 import { MADE_FLOATS, materialIndex } from "../../client/core/texgen/layers.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
@@ -119,9 +119,9 @@ test("a coat's relief is marked to lie down with lost plaster; a block's joints 
 test("the lit program of a near static reads the made array and the vertex's material; a phone's and low poly's do not", () => {
   for (const name of ["medium", "high", "ultra"] as const) {
     const p = PROGRAMS.flat!(tierOf(name), "bc");
-    expect(p.vertex).toContain(`vMade = aPiece != 0u ? int(piece.a & ${PIECE_MADE}u)`);
+    expect(p.vertex).toContain(`vMade = aPiece != 0u ? int((aColor == ${SPALL_PALETTE}u ? 0u : piece.a & ${PIECE_MADE}u)`);
     expect(p.vertex).toContain(`iRegB.x == ${MADE_MARK}u ? int(iRegB.y)`);
-    expect(p.fragment).toContain("worldMade = vMade;");
+    expect(p.fragment).toContain("worldMade = vMade & 31;");
     expect(p.fragment).toContain("fMade[k * 2 - 2]");
     expect(p.fragment).toContain("&& over < 1e5");
     expect(p.defines).toContain("WORLD_WEATHER");

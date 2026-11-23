@@ -6,11 +6,12 @@
 // The texture is PIECE_KEYS texels wide, a key each, and a row a chunk. Row 0 is no chunk's: every piece of it stands.
 // A texel, four bytes:
 //   R  bit 0: the chunk's mesh draws the piece (PIECE_IN_MESH), or where the chunk has no mesh, the piece stands as the
-//      map set it down. Bits 1 to 3: its damage stage. Bit 4: scorched. Bits 5 to 7: what broke it.
+//      map set it down. Bits 1 to 3: its wear (PIECE_WEAR): its stage in two bits (shared/world/breaking.ts), then
+//      whether its panes are out. Bit 4: scorched. Bits 5 to 7: what broke it.
 //   G  its damage, 0 to 255.
 //   B  where it was hit across its face in the low four bits, and up it in the high four.
 //   A  bits 0 to 4: the material made from a recipe it wears (PIECE_MADE). Bits 5 to 7: the face that was hit.
-// Only bit 0 and the material are written yet.
+// Bit 0, the wear and the material are written; the rest by no one yet.
 
 import { NEIGHBOUR_HOLDER, PIECE_KEY_BITS, PIECE_SLOTS } from "../../../shared/world/city.ts";
 
@@ -20,6 +21,17 @@ export const PIECE_KEYS = 2 * PIECE_SLOTS;
 export const PIECE_ROWS = 128;
 export const PIECE_IN_MESH = 1;
 export const PIECE_MADE = 31;
+/** A piece's wear in its texel's first byte, over bit 0: WEAR_STAGE its stage, WEAR_PANES_OUT set once its panes are out. */
+export const PIECE_WEAR_SHIFT = 1;
+export const PIECE_WEAR = 7;
+export const WEAR_STAGE = 3;
+export const WEAR_PANES_OUT = 4;
+/** A piece is drawn this much darker a stage, in every program: all that a tier with no marks shows of its wear. */
+export const WEAR_SHADE = 0.07;
+/** How bright a piece of wear `wear` is drawn. */
+export const wearShade = (wear: number): number => 1 - WEAR_SHADE * (wear & WEAR_STAGE);
+/** A face's material and wear as one number, as the lit vertex text hands them on: the material under the wear. */
+export const WEAR_OVER_MADE = 5;
 /** Set in the word of every face of a mesh made with keys: a word of 0 is a vertex of any other mesh. */
 export const PIECE_KEYED = 0x80000000;
 /** The bits of a face's word that hold its holder, over its own key; the four over them are a facade element's, not yet used. */
@@ -48,6 +60,11 @@ export function pieceMade(state: Uint8Array, rows: ArrayLike<number>, at: number
   return state[(rows[at + 4]! * PIECE_KEYS + (word & (PIECE_KEYS - 1))) * 4 + 3]! & PIECE_MADE;
 }
 
+/** The wear of the piece the face of word `word` is of, from its own key's texel. */
+export function pieceWear(state: Uint8Array, rows: ArrayLike<number>, at: number, word: number): number {
+  return (state[(rows[at + 4]! * PIECE_KEYS + (word & (PIECE_KEYS - 1))) * 4]! >> PIECE_WEAR_SHIFT) & PIECE_WEAR;
+}
+
 /** What a vertex text declares to apply the rule: the face's word, the states, the draw's nine rows, and the rule. */
 export const PIECE_GLSL = `layout(location=15) in uint aPiece;
 uniform highp usampler2D uPieces;
@@ -72,4 +89,7 @@ export const PIECE_PLACE = `  uvec4 piece = uvec4(0u);
 `;
 /** After `gl_Position` is set: a face not drawn falls to one point outside the view. */
 export const PIECE_END = `  if (pieceGone) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+`;
+/** After the vertex's colour is read into `vColor`: a near chunk's piece is darker by its stage. */
+export const PIECE_SHADE = `  if (aPiece != 0u) vColor *= 1.0 - ${WEAR_SHADE} * float((piece.r >> ${PIECE_WEAR_SHIFT}u) & ${WEAR_STAGE}u);
 `;

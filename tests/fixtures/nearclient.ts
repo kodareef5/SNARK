@@ -122,7 +122,9 @@ export function nearClient(map: MapData) {
         }
         // The state the mesh is drawn by says of each slot what the mesh draws.
         const row = p.pieceRowOf.get(c);
-        for (let s = 0; meshed && drawn && s < drawn.length; s++) if (row === undefined || (p.pieces[(row * PIECE_KEYS + s) * 4]! & PIECE_IN_MESH) !== drawn[s]) out.push(`chunk ${c} slot ${s} is drawn ${drawn[s]} and its state says otherwise`);
+        // A broken form the mesh draws is its group's: its slot's own state says the whole piece is gone.
+        const forms = scene.near!.chunk(c)?.mesh?.forms;
+        for (let s = 0; meshed && drawn && s < drawn.length; s++) if (row === undefined || (p.pieces[(row * PIECE_KEYS + s) * 4]! & PIECE_IN_MESH) !== (forms && forms[s] !== 0 ? 0 : drawn[s])) out.push(`chunk ${c} slot ${s} is drawn ${drawn[s]} and its state says otherwise`);
       }
       return out;
     },

@@ -11,8 +11,8 @@ import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { WEIGHT } from "../assets/residency.ts";
-import { REGION_BASE } from "../../../shared/pack/palette.ts";
-import { PIECE_MADE } from "./pieces.ts";
+import { REGION_BASE, defaultPalette } from "../../../shared/pack/palette.ts";
+import { PIECE_MADE, PIECE_WEAR, PIECE_WEAR_SHIFT, WEAR_OVER_MADE } from "./pieces.ts";
 import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
 import { CHUNK_SIDE, PAVED_VERGE, PLANE_MOST, PLANE_STEP, STREET_TINT, VERGE_TINTS, WALK_TINT } from "../../../shared/world/streets.ts";
@@ -1027,18 +1027,50 @@ export function worldVertex(vertex: string): string {
  *   of aBone); 0 where none or unknown.
  *
  * - vMade (flat int): the material made from a recipe the face wears (content/texgen/materials.ts, from 1), or 0: a near
- *   chunk's from its piece's state (render/pieces.ts), an instance's from its last two regions, the mark MADE_MARK,
- *   which is no colour, and then the number (scene.ts).
+ *   chunk's from its piece's state (render/pieces.ts), but a face in the core's colour, which a cut bared; an instance's
+ *   from its last two regions, the mark MADE_MARK, which is no colour, and then the number (scene.ts). Over it, from
+ *   bit WEAR_OVER_MADE, a near chunk's piece's wear.
  *
  * A face's size and its nearest outer border come from vFace's and vRel's steps between pixels (edgeOf); its weathering
  * from its world point and normal (wallFrame).
  */
 export const MADE_MARK = 255;
+
+/** The palette colour of a break's bared core (content/ruins.ts RUIN_FINISHES.fracture), which wears no recipe's material, and its finish. */
+export const SPALL_PALETTE = 102;
+export const SPALL_SURFACE = surfaceIndex(SPALL_PALETTE, false);
+/** How dark the core shows where a worn wall is lost to it, of its palette colour, and how much darker the loss's rim is. */
+const SPALL_DIM = 0.6;
+export const SPALL_RIM = 0.45;
+/** The core's colour where a wall is lost to it, as light. */
+export const SPALL_LINEAR: readonly number[] = [0, 1, 2].map((c) => srgbToLinear(defaultPalette()[SPALL_PALETTE * 4 + c]! / 255) * SPALL_DIM);
+/** The mask's level a wall is lost past, by stage (shared/world/breaking.ts): none whole or worn, patches cracked, more failing. */
+const SPALL_EDGE = [2, 2, 0.66, 0.57];
+/** Metres the mask's two grains are across, and their shares. */
+const SPALL_GRAIN = [1.1, 0.21], SPALL_SHARE = [0.56, 0.44];
+/** How far either side of the mask's edge its rim reaches, in the mask's units. */
+const SPALL_LIP = 0.02;
+
+const spallOut = [0, 0];
+/**
+ * Where a wall of a piece at `stage` is lost to its core at the world point (x, y, z) of a face of normal (nx, ny, nz):
+ * `out[0]` is 1 where lost, `out[1]` how much of the loss's rim the point is on. The mask lies in the world's metres,
+ * along the wall and up, or across a floor, so it does not repeat and runs on from a piece to the next. As GLSL `spalled`.
+ */
+export function spalled(x: number, y: number, z: number, nx: number, ny: number, nz: number, stage: number, out: number[] = spallOut): number[] {
+  const u = Math.abs(ny) > 0.5 ? x : x * nz - z * nx, v = Math.abs(ny) > 0.5 ? z : y;
+  const m = surfaceNoise(u / SPALL_GRAIN[0]! + 3.1, v / SPALL_GRAIN[0]! + 7.7) * SPALL_SHARE[0]! + surfaceNoise(u / SPALL_GRAIN[1]! + 11.9, v / SPALL_GRAIN[1]! + 5.3) * SPALL_SHARE[1]!;
+  const d = m - SPALL_EDGE[stage]!;
+  out[0] = d > 0 ? 1 : 0;
+  out[1] = 1 - clamp(Math.abs(d) / SPALL_LIP);
+  return out;
+}
+
 export function ownVertex(vertex: string): string {
   if (!vertex.includes("out vec3 vRel;") || !vertex.includes("  vRel = p;")) throw new Error("ownVertex: not a flat mesh vertex text");
   // A near chunk's material is its piece's state's (pieces.ts); an instance's its last two regions (MADE_MARK), where its mesh's colour is the instance's.
   return vertex.replace("out vec3 vRel;", "out vec3 vRel;\nout vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nflat out int vMade;\nuniform vec3 uWorldEye;")
-    .replace("  vRel = p;", `  vMade = aPiece != 0u ? int(piece.a & ${PIECE_MADE}u) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n  vRel = p;`)
+    .replace("  vRel = p;", `  vMade = aPiece != 0u ? int((aColor == ${SPALL_PALETTE}u ? 0u : piece.a & ${PIECE_MADE}u) | (((piece.r >> ${PIECE_WEAR_SHIFT}u) & ${PIECE_WEAR}u) << ${WEAR_OVER_MADE}u)) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n  vRel = p;`)
     .replace("  vRel = p;", "  vOwn = l;\n  vPlace = floor((iPos + uOffset + uWorldEye).xz * 4.0 + 0.5);\n  vFace = vec2(float(aBone & 1u), float((aBone >> 1u) & 1u));\n  vEdges = uSkin > 0.5 ? 0u : (aBone >> 2u) & 15u;\n  vRel = p;");
 }
 
@@ -1075,6 +1107,14 @@ float surfaceHash(ivec2 p) {
 float surfaceNoise(vec2 p) {
   ivec2 i = ivec2(floor(p)); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(surfaceHash(i), surfaceHash(i + ivec2(1,0)), f.x), mix(surfaceHash(i + ivec2(0,1)), surfaceHash(i + ivec2(1,1)), f.x), f.y);
+}
+const vec3 SPALL_COLOUR = vec3(${SPALL_LINEAR.map(fl).join(", ")});
+const float SPALL_EDGE[4] = float[4](${SPALL_EDGE.map(fl).join(", ")});
+vec2 spalled(vec3 p, vec3 n, int stage) {
+  vec2 q = abs(n.y) > 0.5 ? p.xz : vec2(p.x * n.z - p.z * n.x, p.y);
+  float m = surfaceNoise(q / ${fl(SPALL_GRAIN[0]!)} + vec2(3.1, 7.7)) * ${fl(SPALL_SHARE[0]!)} + surfaceNoise(q / ${fl(SPALL_GRAIN[1]!)} + vec2(11.9, 5.3)) * ${fl(SPALL_SHARE[1]!)};
+  float d = m - SPALL_EDGE[stage];
+  return vec2(d > 0.0 ? 1.0 : 0.0, 1.0 - clamp(abs(d) / ${fl(SPALL_LIP)}, 0.0, 1.0));
 }
 float higher(float a, float b, float t, float scale, float band) {
   float ha = a + 2.0 * scale * (1.0 - t), hb = b + 2.0 * scale * t, top = max(ha, hb) - band;

@@ -14,18 +14,29 @@
 // only for the cells where one has gone. No mesh is let go for it. A mesh is made again of what stands only to tidy up:
 // once its chunk has stood unchanged a while, or it draws too much of what it keeps, one chunk at a time, while the old
 // mesh is drawn.
+//
+// A slot that holds a broken form of its map piece (shared/content/breaks.ts) is an instance until its chunk's mesh is
+// made again, and then the mesh's: the form's shape in the colour and material of the kind the map placed, what a cut
+// bared in the core's colour. Its faces are a group's of its slot alone, so its slot's own state still says whether the
+// whole piece stands, which is what the faces it hid when whole are held by.
+//
+// A city piece's wear, its stage and whether its panes are out (shared/world/breaking.ts), is read from its row's health
+// into its state, where its faces read it (pieces.ts PIECE_WEAR). A merged box's faces read their group's state, which
+// is no one piece's: a worn member breaks its box, so its own faces show its wear, and is made apart at the next making.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { NEIGHBOUR_HOLDER, PIECE_KEY_BITS, PIECE_SLOTS, cornerByte, mergedPart, type CityPart, type CityStatics, type Gone, type Ground } from "../../../shared/world/city.ts";
+import { NEIGHBOUR_HOLDER, PIECE_KEY_BITS, PIECE_SLOTS, cornerByte, mergedPart, type CityPart, type CityStatics, type Gone, type Ground, type PartPaint } from "../../../shared/world/city.ts";
 import type { ChunkTable } from "../../../shared/world/structures.ts";
 import { KindPlates, OCCLUDER, chunkOccluders } from "./hide.ts";
 import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
 import { fixtureKind } from "./street-finish.ts";
 import { materialIndex } from "../texgen/layers.ts";
 import { FramePacket, quadBytes } from "./packet.ts";
-import { PIECE_IN_MESH, PIECE_KEYED, PIECE_KEYS, PIECE_MADE, PIECE_ROWS } from "./pieces.ts";
+import { FORM_HEAP } from "../../../shared/content/breaks.ts";
+import { paned, stageOf } from "../../../shared/world/breaking.ts";
+import { PIECE_IN_MESH, PIECE_KEYED, PIECE_KEYS, PIECE_MADE, PIECE_ROWS, PIECE_WEAR, PIECE_WEAR_SHIFT, WEAR_PANES_OUT } from "./pieces.ts";
 
 /** Strips of a chunk along z, 4 m wide, that bands are made of: a band is 1, 2, 4, 8 or 16 of them in a row. */
 const STRIPS = 16;
@@ -103,10 +114,18 @@ export class NearMaking {
   private readonly parts: CityPart[] = [];
   /** Whether each face is made with its piece and its holder, and the faces a piece going would show are kept (city.ts KeyedFaces). */
   private readonly keyed: boolean;
+  /** Per piece of the chunk, the broken form its slot holds, which it is made as, or 0; and how a form's parts are painted. */
+  private readonly forms: Uint16Array | null;
+  private readonly paint?: (kind: number) => PartPaint | null;
+  /** Per piece of the chunk, 1 for one whose boxes merge with no other piece's. */
+  private readonly apart: Uint8Array | null;
 
-  constructor(city: CityStatics, chunk: number, ground: Ground, mine: Uint8Array, holds: (c: number) => Uint8Array | null, side: number, labels?: Uint8Array, keyed = false) {
+  constructor(city: CityStatics, chunk: number, ground: Ground, mine: Uint8Array, holds: (c: number) => Uint8Array | null, side: number, labels?: Uint8Array, keyed = false, forms: Uint16Array | null = null, paint?: (kind: number) => PartPaint | null, apart: Uint8Array | null = null) {
     this.labels = labels;
     this.keyed = keyed;
+    this.forms = forms;
+    this.paint = paint;
+    this.apart = apart;
     this.city = city;
     this.chunk = chunk;
     this.ground = { heightAt: (x, z) => ground.heightAt(x, z) - BURIED };
@@ -117,7 +136,7 @@ export class NearMaking {
     const from = city.first[chunk]!;
     const strip = (i: number): number => Math.min(STRIPS - 1, Math.max(0, Math.floor(((city.z[from + i]! - z0) * STRIPS) / CHUNK_SIZE)));
     const counts = new Uint32Array(STRIPS);
-    const weight = (i: number): number => pieceWeight(city, city.kind[from + i]!);
+    const weight = (i: number): number => pieceWeight(city, forms?.[i] || city.kind[from + i]!);
     for (let i = 0; i < mine.length; i++) if (mine[i] === 1) counts[strip(i)]! += weight(i);
     this.beside = cx + 1 < dims.chunksX ? chunk + 1 : cx > 0 ? chunk - 1 : cz + 1 < dims.chunksZ ? chunk + dims.chunksX : cz > 0 ? chunk - dims.chunksX : -1;
     // The fewest bands of which none holds more than BAND_PIECES.
@@ -162,7 +181,7 @@ export class NearMaking {
     const b = this.parts.length;
     const others: number[] = [];
     for (let k = 0; k < this.bands; k++) if (k !== b) others.push(...this.own[k]!);
-    const seen = view(this.city, this.chunk, this.own[b]!, this.beside, others, this.around, this.keyed);
+    const seen = view(this.city, this.chunk, this.own[b]!, this.beside, others, this.around, this.keyed, this.forms, this.paint, this.apart);
     this.parts.push(mergedPart(seen.city, this.chunk, this.ground, none, 0.01, 0, this.labels, seen.keys));
   }
 
@@ -345,7 +364,7 @@ function holderKey(city: CityStatics, chunk: number, from: number, i: number): n
  * The city as one step of a making sees it: `chunk` holding the rows `own`, the chunk `beside` holding `others` and its
  * share of `around`, and every other chunk round it its share of `around`. With `keyed`, each of its rows' key as a holder.
  */
-function view(city: CityStatics, chunk: number, own: readonly number[], beside: number, others: readonly number[], around: ReadonlyMap<number, readonly number[]>, keyed = false): { city: CityStatics; keys?: Uint32Array } {
+function view(city: CityStatics, chunk: number, own: readonly number[], beside: number, others: readonly number[], around: ReadonlyMap<number, readonly number[]>, keyed = false, forms: Uint16Array | null = null, paint?: (kind: number) => PartPaint | null, apart: Uint8Array | null = null): { city: CityStatics; keys?: Uint32Array } {
   const dims: MapDims = city.dims;
   const lists = new Map<number, readonly number[]>(around);
   lists.set(chunk, own);
@@ -355,12 +374,19 @@ function view(city: CityStatics, chunk: number, own: readonly number[], beside: 
   const first = new Uint32Array(chunkCount(dims) + 1);
   const kind = new Uint16Array(n), yaw = new Uint16Array(n), x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n);
   const keys = keyed ? new Uint32Array(n) : undefined;
+  const from = city.first[chunk]!, to = city.first[chunk + 1]!;
+  const dye = forms?.some((f) => f !== 0) ? new Uint16Array(n) : undefined;
+  const alone = apart?.some((v) => v !== 0) ? new Uint8Array(n) : undefined;
   let at = 0, c = 0;
   for (const k of order) {
     for (; c <= k; c++) first[c] = at;
     for (const i of lists.get(k)!) {
       if (keys) keys[at] = holderKey(city, chunk, k, i);
-      kind[at] = city.kind[i]!;
+      // A slot of the chunk that holds a broken form is made as the form, in the finish of the kind the map placed.
+      const form = dye && i >= from && i < to ? forms![i - from]! : 0;
+      if (form !== 0) dye![at] = city.kind[i]!;
+      if (alone && i >= from && i < to) alone[at] = apart![i - from]!;
+      kind[at] = form || city.kind[i]!;
       yaw[at] = city.yaw[i]!;
       x[at] = city.x[i]!;
       y[at] = city.y[i]!;
@@ -370,7 +396,7 @@ function view(city: CityStatics, chunk: number, own: readonly number[], beside: 
   }
   first.fill(at, c);
   const { halfX, halfY, halfZ, color, under, plain, walked, look } = city;
-  return { city: { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, under, plain, walked, look, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics, keys };
+  return { city: { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, under, plain, walked, look, dye, paint, apart: alone, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics, keys };
 }
 
 /** Slots of meshes on the card start here, past the lakes' (lakes.ts). */
@@ -411,8 +437,9 @@ export interface NearMesh extends Omit<NearMade, "data" | "piece"> {
   readonly bytes: number;
   /** Its cells a side when it was asked for. */
   readonly side: number;
-  /** Per slot of its chunk, 1 for a piece it was made with. */
+  /** Per slot of its chunk, 1 for a piece it was made with as the map set it down; and the broken form it was made with there, or 0. */
   readonly has: Uint8Array;
+  readonly forms: Uint16Array;
   /** Per slot, the merge groups it is a member of: `slotGroups` from `slotFirst[s]` up to `slotFirst[s + 1]`. */
   readonly slotFirst: Uint32Array;
   readonly slotGroups: Uint16Array;
@@ -432,8 +459,13 @@ export interface NearMesh extends Omit<NearMade, "data" | "piece"> {
 export interface NearChunk {
   /** Per slot of its table, 1 for a piece of the map standing as set down whose kind a mesh draws: a slot holds piece `first + slot` of the map's chunk. */
   readonly mine: Uint8Array;
-  /** Per slot, 1 for a piece its mesh draws: one of `mine` the mesh was made with. Any other standing piece is an instance. */
+  /** Per slot, the broken form of its map piece it holds where a mesh draws that kind, else 0. */
+  readonly form: Uint16Array;
+  /** Per slot, 1 for a piece its mesh draws: one of `mine` the mesh was made with, or a form it was made with. Any other standing piece is an instance. */
   readonly drawn: Uint8Array;
+  /** Per slot, the wear of its piece or its form (pieces.ts PIECE_WEAR), 0 for a heap or none; and its table's version when they were read. */
+  readonly worn: Uint8Array;
+  seen: number;
   /** The mesh to draw them with, or null while there is none. */
   mesh: NearMesh | null;
   /** The table's `shape` when `mine` was last found, and a count of its changes. */
@@ -467,12 +499,13 @@ interface Ring {
 const NEVER = -1;
 const LET_GO = -2;
 
-/** A mesh being made: its chunk and its `mine` when the making began, and which pieces of the chunks round it held faces then. */
+/** A mesh being made: its chunk and its `mine` and `form` when the making began, and which pieces of the chunks round it held faces then. */
 interface Making {
   readonly m: NearMaking;
   readonly chunk: number;
   readonly of: NearChunk;
   readonly has: Uint8Array;
+  readonly forms: Uint16Array;
   readonly held: Map<number, Uint8Array>;
   readonly side: number;
 }
@@ -553,6 +586,15 @@ export class PieceStates {
     this.touch(row, key);
   }
 
+  /** Says the wear of key `key` of `row`: its other bits stay. */
+  wear(row: number, key: number, wear: number): void {
+    const at = (row * PIECE_KEYS + key) * 4, pieces = this.p.pieces;
+    const now = (pieces[at]! & ~(PIECE_WEAR << PIECE_WEAR_SHIFT)) | ((wear & PIECE_WEAR) << PIECE_WEAR_SHIFT);
+    if (now === pieces[at]) return;
+    pieces[at] = now;
+    this.touch(row, key);
+  }
+
   /** Empties `row`, or with `from` its merge groups alone: none of those keys is in a mesh. */
   clear(row: number, from = 0): void {
     for (let half = from; half < 2; half++) {
@@ -609,6 +651,12 @@ export class NearCity {
    */
   readonly kinds: Uint8Array;
   private readonly labels: Uint8Array;
+  /** Per kind, its break set and its form in it, by which a slot's form of its map piece is known. */
+  private readonly breakSet: Uint16Array;
+  private readonly breakForm: Uint8Array;
+  private readonly reg: Registry;
+  /** How a form kind's convex parts are painted (shared/world/city.ts PartPaint), where the scene says: without it a form's every face is its piece's colour. */
+  paint?: (kind: number) => PartPaint | null;
   /** Pieces a frame makes the faces of (FRAME_PIECES); Infinity makes every mesh wanted in the frame it is. */
   pieces = FRAME_PIECES;
   /**
@@ -638,6 +686,9 @@ export class NearCity {
     this.mesh = mesh;
     this.p = packet;
     this.states = new PieceStates(packet);
+    this.breakSet = reg.breakSet;
+    this.breakForm = reg.breakForm;
+    this.reg = reg;
     // A street fixture's material in two bits, and above them a material made from a recipe (shared/world/city.ts mergedPart).
     this.labels = Uint8Array.from(reg.defs, (d) => (d ? fixtureKind(d.id) | (d.type === "structure" ? materialIndex(d.made) << 2 : 0) : 0));
     const turns = new Set<number>();
@@ -696,7 +747,7 @@ export class NearCity {
     }
     if (!c) {
       const n = city.in(chunk);
-      c = { mine: new Uint8Array(n), drawn: new Uint8Array(n), mesh: null, shape: -1, version: 0, frame: 0, far: 0, row: 0, stale: false, changed: this.now, made: -Infinity, standIns: 0, next: null };
+      c = { mine: new Uint8Array(n), form: new Uint16Array(n), drawn: new Uint8Array(n), worn: new Uint8Array(n), seen: -1, mesh: null, shape: -1, version: 0, frame: 0, far: 0, row: 0, stale: false, changed: this.now, made: -Infinity, standIns: 0, next: null };
       this.chunks.set(chunk, c);
       this.ring.delete(chunk);
     }
@@ -704,12 +755,18 @@ export class NearCity {
     c.far = far;
     if (c.row === 0 && (c.row = this.row(chunk)) !== 0) this.write(chunk, c, city);
     if (c.next) this.install(chunk, c, city);
-    if (t.shape !== c.shape) {
+    const shaped = t.shape !== c.shape;
+    if (shaped) {
       c.shape = t.shape;
-      if (this.find(chunk, t, city, c.mine) > 0) {
+      if (this.find(chunk, t, city, c.mine, c.form) > 0) {
         c.version++;
         this.changed(chunk, c, city);
       }
+    }
+    // A row of health alone moves its table's version and not its shape.
+    if (shaped || t.version !== c.seen) {
+      c.seen = t.version;
+      this.wear(chunk, t, city, c);
     }
     if (c.mesh && c.mesh.side !== side) {
       this.letGo(c);
@@ -733,7 +790,7 @@ export class NearCity {
       const c = this.chunks.get(chunk)!;
       if (c.frame !== this.frame) {
         // Round a chunk still drawn near, it is followed on from what its row said: a piece gone since shows what it hid.
-        this.ring.set(chunk, { row: 0, bits: (c.mesh ? c.drawn : c.mine).slice(), stamp: LET_GO, frame: 0 });
+        this.ring.set(chunk, { row: 0, bits: whole(c), stamp: LET_GO, frame: 0 });
         this.letGo(c);
         this.states.release(chunk);
         this.chunks.delete(chunk);
@@ -758,8 +815,12 @@ export class NearCity {
           if (bits) held.set(n, bits);
           return bits;
         };
-        const has = c.mine.slice();
-        this.making = { m: new NearMaking(city, best, ground, has, holds, side, this.labels, true), chunk: best, of: c, has, held, side };
+        const has = c.mine.slice(), forms = c.form.slice();
+        // The making takes each slot with a piece or a form of one: the map's kind, or the form in its place.
+        const all = has.map((v, s) => v | (forms[s] !== 0 ? 1 : 0));
+        // A form, and a piece whose wear its own faces must show, is made apart from the boxes it would merge with.
+        const apart = c.worn.map((w, s) => (w !== 0 || forms[s] !== 0 ? 1 : 0));
+        this.making = { m: new NearMaking(city, best, ground, all, holds, side, this.labels, true, forms, this.paint, apart), chunk: best, of: c, has, forms, held, side };
       }
       const mk = this.making;
       // A chunk with a mesh waits for nothing: its new one is made a band a frame.
@@ -833,17 +894,21 @@ export class NearCity {
   }
 
   /**
-   * Marks in `mine` the pieces of `chunk` a mesh draws, which `t` holds as the map set them down, a slot a key may name.
+   * Marks in `mine` the pieces of `chunk` a mesh draws, which `t` holds as the map set them down, a slot a key may name;
+   * and says in `form` the broken form of its map piece a slot holds instead, nobody's, where a mesh draws both kinds.
    * Lists the slots it changed in `flipped`; how many.
    */
-  private find(chunk: number, t: ChunkTable, city: CityStatics, mine: Uint8Array): number {
-    const first = city.first[chunk]!, flipped = this.flipped;
+  private find(chunk: number, t: ChunkTable, city: CityStatics, mine: Uint8Array, form: Uint16Array): number {
+    const first = city.first[chunk]!, flipped = this.flipped, kinds = this.kinds;
     flipped.length = 0;
     for (let s = 0; s < mine.length; s++) {
-      const i = first + s, k = city.kind[i]!;
-      const is = s < PIECE_SLOTS && s < t.high && t.kind[s] === k && this.kinds[k] === 1 && t.x[s] === city.x[i] && t.y[s] === city.y[i] && t.z[s] === city.z[i] && t.yaw[s] === city.yaw[i] ? 1 : 0;
-      if (is !== mine[s]) flipped.push(s);
+      const i = first + s, k = city.kind[i]!, now = s < t.high ? t.kind[s]! : 0;
+      const placed = s < PIECE_SLOTS && now !== 0 && kinds[k] === 1 && t.x[s] === city.x[i] && t.y[s] === city.y[i] && t.z[s] === city.z[i] && t.yaw[s] === city.yaw[i];
+      const is = placed && now === k ? 1 : 0;
+      const as = placed && now !== k && kinds[now] === 1 && t.owner[s] === 0 && this.breakForm[now] !== 0 && this.breakSet[now] === this.breakSet[k] ? now : 0;
+      if (is !== mine[s] || as !== form[s]) flipped.push(s);
       mine[s] = is;
+      form[s] = as;
     }
     return flipped.length;
   }
@@ -856,17 +921,20 @@ export class NearCity {
     const m = c.mesh, first = city.first[chunk]!;
     c.changed = this.now;
     for (let k = 0; k < this.flipped.length; k++) {
+      // Its slot's state says whether the whole piece stands; a form its mesh was made with is drawn by its group's.
       const s = this.flipped[k]!, on = m ? c.mine[s]! & m.has[s]! : c.mine[s]!;
-      if (m) c.drawn[s] = on;
-      if (c.row === 0 || this.states.bit(c.row, s) === on) continue;
-      this.states.set(c.row, s, on);
-      if (on === 0) {
-        this.left(chunk, city, first + s);
-        if (m) {
-          hideNoMore(m, chunk, city, first + s);
-          this.broke(chunk, c, m, city, s, true);
-        }
-      } else if (m) this.mended(c, m, s);
+      const was = c.drawn[s]!, now = m ? on | (c.form[s] !== 0 && c.form[s] === m.forms[s] ? 1 : 0) : 0;
+      if (m) c.drawn[s] = now;
+      if (c.row === 0) continue;
+      if (this.states.bit(c.row, s) !== on) {
+        this.states.set(c.row, s, on);
+        if (on === 0) this.left(chunk, city, first + s);
+      }
+      if (!m || was === now) continue;
+      if (now === 0) {
+        hideNoMore(m, chunk, city, first + s);
+        this.broke(chunk, c, m, city, s, true);
+      } else this.mended(c, m, s);
     }
     if (!m) return;
     c.stale = true;
@@ -894,9 +962,39 @@ export class NearCity {
   private mended(c: NearChunk, m: NearMesh, s: number): void {
     for (let k = m.slotFirst[s]!; k < m.slotFirst[s + 1]!; k++) {
       const g = m.slotGroups[k]!;
-      let whole = 1;
-      for (let e = m.groupFirst[g]!; e < m.groupFirst[g + 1]! && whole === 1; e++) whole = c.drawn[m.groupSlots[e]!]!;
-      if (whole === 1) this.states.set(c.row, PIECE_SLOTS + g, 1);
+      if (intact(c, m, g) === 1) this.states.set(c.row, PIECE_SLOTS + g, 1);
+    }
+  }
+
+  /**
+   * Reads the wear of each piece of `c` from its row's health in `t`, and says each that changed in its state. A piece
+   * that came to wear breaks each merged box it is in, whose faces read the box's state and not its own; a form's faces
+   * are its group's, which is told its wear too.
+   */
+  private wear(chunk: number, t: ChunkTable, city: CityStatics, c: NearChunk): void {
+    const first = city.first[chunk]!, reg = this.reg, m = c.mesh, worn = c.worn;
+    for (let s = 0; s < worn.length && s < PIECE_SLOTS; s++) {
+      let w = 0;
+      if (c.mine[s] === 1 || (c.form[s] !== 0 && this.breakForm[c.form[s]!] !== FORM_HEAP)) {
+        const k = city.kind[first + s]!, hp = t.hp[s]!;
+        w = stageOf(reg, k, hp) | (reg.glassHp[k]! > 0 && !paned(reg, k, hp) ? WEAR_PANES_OUT : 0);
+      }
+      const was = worn[s]!;
+      if (w === was) continue;
+      worn[s] = w;
+      if (c.row === 0) continue;
+      this.states.wear(c.row, s, w);
+      for (let k = m ? m.slotFirst[s]! : 0, end = m ? m.slotFirst[s + 1]! : 0; k < end; k++) {
+        const g = m!.slotGroups[k]!;
+        if (m!.forms[s] !== 0) this.states.wear(c.row, PIECE_SLOTS + g, w);
+        else if (w === 0) this.mended(c, m!, s);
+        else if (was === 0 && this.states.bit(c.row, PIECE_SLOTS + g) === 1) {
+          this.states.set(c.row, PIECE_SLOTS + g, 0);
+          for (let e = m!.groupFirst[g]!; e < m!.groupFirst[g + 1]!; e++) open(m!, chunk, city, first + m!.groupSlots[e]!);
+          c.stale = true;
+          c.changed = this.now;
+        }
+      }
     }
   }
 
@@ -921,7 +1019,10 @@ export class NearCity {
   private standIns(chunk: number, c: NearChunk, m: NearMesh, city: CityStatics): number {
     const kinds = this.standing, first = city.first[chunk]!;
     kinds.length = 0;
-    for (let s = 0; s < c.mine.length; s++) if (c.mine[s] === 1 && m.has[s] === 0 && !kinds.includes(city.kind[first + s]!)) kinds.push(city.kind[first + s]!);
+    for (let s = 0; s < c.mine.length; s++) {
+      const kind = c.mine[s] === 1 && m.has[s] === 0 ? city.kind[first + s]! : c.form[s] !== m.forms[s] ? c.form[s]! : 0;
+      if (kind !== 0 && !kinds.includes(kind)) kinds.push(kind);
+    }
     return kinds.length;
   }
 
@@ -934,11 +1035,15 @@ export class NearCity {
     const states = this.states, m = c.mesh, first = city.first[chunk]!, labels = this.labels;
     // A slot keeps what else its texel says. A group is another mesh's number: its texel starts again.
     states.clear(c.row, 1);
-    for (let s = 0; s < c.mine.length && s < PIECE_SLOTS; s++) states.put(c.row, s, m ? c.drawn[s]! : c.mine[s]!, labels[city.kind[first + s]!]! >> 2);
+    for (let s = 0; s < c.mine.length && s < PIECE_SLOTS; s++) {
+      states.put(c.row, s, m ? c.mine[s]! & m.has[s]! : c.mine[s]!, labels[city.kind[first + s]!]! >> 2);
+      if (c.worn[s] !== 0) states.wear(c.row, s, c.worn[s]!);
+    }
     for (let g = 0; m && g + 1 < m.groupFirst.length; g++) {
-      let whole = 1;
-      for (let e = m.groupFirst[g]!; e < m.groupFirst[g + 1]! && whole === 1; e++) whole = c.drawn[m.groupSlots[e]!]!;
-      states.put(c.row, PIECE_SLOTS + g, whole, labels[city.kind[first + m.groupSlots[m.groupFirst[g]!]!]!]! >> 2);
+      const head = m.groupSlots[m.groupFirst[g]!]!;
+      states.put(c.row, PIECE_SLOTS + g, intact(c, m, g), labels[city.kind[first + head]!]! >> 2);
+      // A form's faces are its group's: its wear is theirs.
+      if (m.forms[head] !== 0) states.wear(c.row, PIECE_SLOTS + g, c.worn[head]!);
     }
   }
 
@@ -986,7 +1091,7 @@ export class NearCity {
   /** Which pieces of chunk `n` hold faces now, as its row says or would: a copy, or null for a chunk neither drawn near nor round one that is. */
   private bits(n: number): Uint8Array | null {
     const c = this.chunks.get(n);
-    if (c) return (c.mesh ? c.drawn : c.mine).slice();
+    if (c) return whole(c);
     return this.ring.get(n)?.bits.slice() ?? null;
   }
 
@@ -1027,13 +1132,13 @@ export class NearCity {
       budget.spend(kept);
     }
     // Each slot's merged boxes, from each box's members.
-    const has = mk.has, slots = has.length, cells = mk.side * mk.side;
+    const has = mk.has, forms = mk.forms, slots = has.length, cells = mk.side * mk.side;
     const slotFirst = new Uint32Array(slots + 1), groups = done.groupFirst.length - 1;
     for (let e = 0; e < done.groupSlots.length; e++) slotFirst[done.groupSlots[e]! + 1]!++;
     for (let s = 0; s < slots; s++) slotFirst[s + 1]! += slotFirst[s]!;
     const slotGroups = new Uint16Array(done.groupSlots.length), at = slotFirst.slice(0, slots);
     for (let g = 0; g < groups; g++) for (let e = done.groupFirst[g]!; e < done.groupFirst[g + 1]!; e++) slotGroups[at[done.groupSlots[e]!]!++] = g;
-    const mesh: NearMesh = { faces: done.faces, shown: done.shown, indexBytes: done.indexBytes, bounds: done.bounds, cellFirst: done.cellFirst, cellBox: done.cellBox, keptFirst: done.keptFirst, keptBox: done.keptBox, groupFirst: done.groupFirst, groupSlots: done.groupSlots, slot, bytes: kept, side: mk.side, has, slotFirst, slotGroups, occluders: NO_OCCLUDERS, occluderFirst: new Uint32Array(cells + 1), occluderList: new Uint32Array(0), open: new Uint8Array(cells), opened: 0, opens: 0 };
+    const mesh: NearMesh = { faces: done.faces, shown: done.shown, indexBytes: done.indexBytes, bounds: done.bounds, cellFirst: done.cellFirst, cellBox: done.cellBox, keptFirst: done.keptFirst, keptBox: done.keptBox, groupFirst: done.groupFirst, groupSlots: done.groupSlots, slot, bytes: kept, side: mk.side, has, forms, slotFirst, slotGroups, occluders: NO_OCCLUDERS, occluderFirst: new Uint32Array(cells + 1), occluderList: new Uint32Array(0), open: new Uint8Array(cells), opened: 0, opens: 0 };
     c.next = { mesh, held: mk.held };
     return kept;
   }
@@ -1050,16 +1155,23 @@ export class NearCity {
     c.made = this.now;
     let stale = false;
     for (let s = 0; s < has.length; s++) {
-      c.drawn[s] = c.mine[s]! & has[s]!;
-      if (c.mine[s] !== has[s]) stale = true;
+      c.drawn[s] = (c.mine[s]! & has[s]!) | (c.form[s] !== 0 && c.form[s] === m.forms[s] ? 1 : 0);
+      if (c.mine[s] !== has[s] || c.form[s] !== m.forms[s]) stale = true;
     }
     if (this.plates?.city !== city) this.plates = new KindPlates(city);
     const step = m.bounds.half.map((h) => h / 32767);
-    m.occluders = chunkOccluders(city, chunk, c.drawn, this.plates, { x0: chunkCx(city.dims, chunk) * CHUNK_SIZE, z0: chunkCz(city.dims, chunk) * CHUNK_SIZE, center: m.bounds.center, step });
+    // Only a piece drawn whole hides what is behind it: a form is seen through.
+    m.occluders = chunkOccluders(city, chunk, whole(c), this.plates, { x0: chunkCx(city.dims, chunk) * CHUNK_SIZE, z0: chunkCz(city.dims, chunk) * CHUNK_SIZE, center: m.bounds.center, step });
     byCell(m, chunk, city.dims);
     this.write(chunk, c, city);
     // What left while it was made shows what it hid: its own pieces, and those of the chunks round it that held faces.
-    for (let s = 0; s < has.length; s++) if (has[s] === 1 && c.mine[s] === 0) this.broke(chunk, c, m, city, s, false);
+    for (let s = 0; s < has.length; s++) if ((has[s] === 1 || m.forms[s] !== 0) && c.drawn[s] === 0) this.broke(chunk, c, m, city, s, false);
+    // And a merged box one of whose members came to wear since is broken, and its members' own faces are drawn.
+    for (let g = 0; g + 1 < m.groupFirst.length; g++) {
+      if (intact(c, m, g) === 1) continue;
+      for (let e = m.groupFirst[g]!; e < m.groupFirst[g + 1]!; e++) open(m, chunk, city, city.first[chunk]! + m.groupSlots[e]!);
+      stale = true;
+    }
     for (const n of held.keys()) {
       const then = held.get(n)!, now = this.bits(n);
       for (let s = 0; s < then.length; s++) {
@@ -1092,6 +1204,22 @@ export class NearCity {
 }
 
 const NO_OCCLUDERS = new Float32Array(0);
+
+/** Whether merged box `g` of mesh `m` of `c` is drawn as one, 1 or 0: each member is drawn, and none is worn but a form, whose group is its own. */
+function intact(c: NearChunk, m: NearMesh, g: number): number {
+  for (let e = m.groupFirst[g]!; e < m.groupFirst[g + 1]!; e++) {
+    const s = m.groupSlots[e]!;
+    if (c.drawn[s] === 0 || (c.worn[s] !== 0 && m.forms[s] === 0)) return 0;
+  }
+  return 1;
+}
+
+/** Per slot of `c`, 1 for a piece that stands whole as its row says or would: one its mesh draws as the map set it down, or with no mesh one that stands so. */
+function whole(c: NearChunk): Uint8Array {
+  const m = c.mesh, bits = c.mine.slice();
+  for (let s = 0; m && s < bits.length; s++) bits[s]! &= m.has[s]!;
+  return bits;
+}
 
 /** The box round piece `i` of the city across the ground, grown by what a face may stand outside its holder: least x and z, then most. */
 const reach = new Float64Array(4);

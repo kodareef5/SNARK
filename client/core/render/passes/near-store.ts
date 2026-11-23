@@ -20,6 +20,7 @@ import type { Draws } from "../draws.ts";
 import type { FarBlocks } from "../far.ts";
 import type { FarCity } from "../farcity.ts";
 import type { FarLandmarks } from "../farlandmarks.ts";
+import { formPaint } from "../form-paint.ts";
 import { HAND_NEAR } from "../hand.ts";
 import type { Hiding } from "../hide.ts";
 import { LAMP_BIT } from "../lamp.ts";
@@ -266,6 +267,9 @@ export class NearStore implements Pass {
   private readonly trunkTris: number[][];
   private readonly leafTris: number[][];
   private readonly landmarkKinds: Uint8Array;
+  /** Per kind, its break set and its form in it (shared/content/breaks.ts), by which a slot's form of its map piece is known. */
+  private readonly breakSet: Uint16Array;
+  private readonly breakForm: Uint8Array;
   /** How many meshes the pack has, and scratch a mesh for a chunk being laid out. */
   private readonly meshCount: number;
   private readonly cursor: Uint32Array;
@@ -299,6 +303,8 @@ export class NearStore implements Pass {
     this.trunkTris = looks.trunkTris;
     this.leafTris = looks.leafTris;
     this.landmarkKinds = looks.landmarkKinds;
+    this.breakSet = reg.breakSet;
+    this.breakForm = reg.breakForm;
     const table = assets.table;
     this.meshCount = table.count;
     this.cursor = new Uint32Array(table.count);
@@ -312,6 +318,7 @@ export class NearStore implements Pass {
     this.coverLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, treeOf: this.treeOf, side: table.side, low: table.low, high: table.high, hidden: (ref) => this.hiddenNodes.has(ref) };
     const flat = (k: number): boolean => this.meshOfKind[k] !== looks.missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
     this.near = farMesh >= 0 ? new NearCity(reg, farMesh, this.landmarkKinds, flat, packet) : null;
+    if (this.near) this.near.paint = formPaint(reg);
   }
 
   /** Before a frame: a chunk of nodes one of which was hidden or shown is laid out again, and nothing is yet drawn or cast. */
@@ -435,7 +442,7 @@ export class NearStore implements Pass {
       }
       const turned = batch !== undefined && batch.shape !== t.shape && !batch.sized && batch.placed === t.placed;
       const flood = batch !== undefined && ((batch.differ > 0 && this.now - batch.since >= SETTLE) || (batch.holed >= 0 && (this.now - batch.holedLast >= SETTLE || this.now - batch.holed >= FLOOD_MOST)));
-      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics?.bent.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
+      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics?.bent.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, chunk, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
         batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.drawn ?? null);
         laid += t.high;
       }
@@ -489,6 +496,18 @@ export class NearStore implements Pass {
       this.chunkCasts.push(castFrom, p.casterCount, Math.min(ax, ax + sx), Math.min(ay, ay + sy), Math.min(az, az + sz), Math.max(bx, bx + sx), Math.max(by, by + sy), Math.max(bz, bz + sz));
     }
     near?.end(this.assets.residency, statics!, this.city!, world.hf, this.chunkCells, laid);
+  }
+
+  /**
+   * The kind whose colour and regions the piece of `kind` in slot `s` of `chunk`, owned by `owner`, is drawn in: the kind
+   * the map placed there where the slot holds a broken form of it, which has no finish of its own; else its own.
+   */
+  private dye(chunk: number, s: number, kind: number, owner: number): number {
+    if (this.breakForm[kind] === 0 || owner !== 0) return kind;
+    const city = this.world.city?.statics;
+    if (!city || s >= city.in(chunk)) return kind;
+    const placed = city.kind[city.first[chunk]! + s]!;
+    return this.breakSet[placed] === this.breakSet[kind] ? placed : kind;
   }
 
   /** Lets go of a chunk's instances, and the card of its buffer. */
@@ -966,7 +985,7 @@ export class NearStore implements Pass {
    * Counts the doors that now stand other than when the rooms were found, and those of them that open an inside room
    * onto outside air. False where a piece took a kind whose mesh has no range here.
    */
-  private reform(b: ChunkBatch, t: ChunkTable, meshOf: Uint16Array, colorOf: Uint8Array): boolean {
+  private reform(b: ChunkBatch, t: ChunkTable, chunk: number, meshOf: Uint16Array, colorOf: Uint8Array): boolean {
     // Moved in place, the bends would no longer stand by their instances.
     if (b.bends) return false;
     const { slots, kinds, data, ranges, cellFirst } = b;
@@ -1024,8 +1043,9 @@ export class NearStore implements Pass {
         b.maxY = Math.max(b.maxY, y + rad);
         b.maxZ = Math.max(b.maxZ, z + rad);
       }
-      data[at * INSTANCE_BYTES + 14] = colorOf[kind]!;
-      if (colorOf === this.colorOfKind) data.set(this.regionsOfKind.subarray(kind * 5, kind * 5 + 5), at * INSTANCE_BYTES + 15);
+      const dye = colorOf === this.colorOfKind ? this.dye(chunk, slot, kind, t.owner[slot]!) : kind;
+      data[at * INSTANCE_BYTES + 14] = colorOf[dye]!;
+      if (colorOf === this.colorOfKind) data.set(this.regionsOfKind.subarray(dye * 5, dye * 5 + 5), at * INSTANCE_BYTES + 15);
       kinds[at] = kind;
       const open = this.finder.door(kind), opened = this.finder.door(was);
       if (open < 0 || opened < 0) continue;
@@ -1232,9 +1252,10 @@ export class NearStore implements Pass {
       const block = blockAt[s]!;
       const cell = block % cells;
       const i = this.cellCursor[mesh * blocks + block]!++;
-      w.set(i, x - x0, y, z - z0, t.yaw[s]!, colorOf[kind]!);
+      const dye = sizeOf ? kind : this.dye(chunk, s, kind, t.owner[s]!);
+      w.set(i, x - x0, y, z - z0, t.yaw[s]!, colorOf[dye]!);
       if (sizeOf) w.size(i, sizeOf[kind]!);
-      else w.bytes.set(this.regionsOfKind.subarray(kind * 5, kind * 5 + 5), i * INSTANCE_BYTES + 15);
+      else w.bytes.set(this.regionsOfKind.subarray(dye * 5, dye * 5 + 5), i * INSTANCE_BYTES + 15);
       slots[i] = s;
       kinds[i] = kind;
       b.at[s] = i;

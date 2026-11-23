@@ -149,7 +149,8 @@ export function cityWorld(options: CityWorldOptions) {
   const server = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   for (const s of o.statics) {
     const k = reg.index.get(s.kind)!;
-    server.add(k, s.x, s.y, s.z, s.yaw, 0, 1000);
+    // At its kind's full health, as the map sets a piece down: less would be a worn piece, drawn so.
+    server.add(k, s.x, s.y, s.z, s.yaw, 0, reg.maxHp[k]!);
   }
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const cells = new FarStore();

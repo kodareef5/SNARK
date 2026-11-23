@@ -103,10 +103,21 @@ export function coreFaces(chunk: Chunk, skin: readonly ShapeBox[]): number {
   return bits >>> 0;
 }
 
-/** Per convex part of form kind `kind`'s look, in the order of its shape's `look.hulls`: a colour of its own or 0, and its faces that show the core (coreFaces). Null for a kind that is no broken form. */
-export function paintOf(reg: Registry, kind: number): { readonly color: Uint8Array; readonly core: Uint32Array } | null {
-  const at = formAt(reg, kind);
-  const f = at && formOf(...at), skin = at && skinOf(at[0]);
+/** How a form's convex parts are painted, in the order of its shape's `look.hulls`: a colour of its own or 0, and its faces that show the core (coreFaces). */
+export interface Paint {
+  readonly color: Uint8Array;
+  readonly core: Uint32Array;
+}
+
+/** The paint of the look of `shape` in `form` and `variant`, or null where the shape has no such form. */
+export function breakPaint(shape: string, form: BreakForm, variant: number): Paint | null {
+  const f = formOf(shape, form, variant), skin = skinOf(shape);
   if (!f || !skin) return null;
   return { color: Uint8Array.from(f.look.chunks, (c) => c.color ?? 0), core: Uint32Array.from(f.look.chunks, (c) => coreFaces(c, skin)) };
+}
+
+/** The paint of form kind `kind`'s look, or null for a kind that is no broken form. */
+export function paintOf(reg: Registry, kind: number): Paint | null {
+  const at = formAt(reg, kind);
+  return at && breakPaint(...at);
 }
