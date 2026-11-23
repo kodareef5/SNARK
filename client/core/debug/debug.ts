@@ -139,14 +139,19 @@ export class DebugBar {
   /** Hands the frame's code the bar's hooks, or takes them back. */
   private hook(on: boolean): void {
     const app = this.app;
-    if (on && this.hookedOnce) this.net = this.netLog();
+    if (on && this.hookedOnce) {
+      this.net = this.netLog();
+      if (this.names) this.net.setNames(this.names);
+    }
     this.hookedOnce ||= on;
     this.hooked = on;
     app.probe = on ? this.spans : null;
     app.session.tap = on ? this.net : null;
     this.cpu = this.port ? this.port.passCpu(on) : null;
     if (!on && this.port && this.gpuMode !== 0) this.port.gpu((this.gpuMode = 0), this.passMs);
-    if (!on) for (const t of this.tabs) if (t instanceof AssetsTab) t.watch(null);
+    if (on) return;
+    for (const t of this.tabs) if (t instanceof AssetsTab) t.watch(null);
+    this.open = this.focused = false;
   }
 
   /** The drawer's height for a frame `f`: what leaves the HUD its least room, within a share of the screen. */
@@ -389,7 +394,7 @@ export class DebugBar {
 
   /** The pointer is the drawer's, not the game's. */
   get holdsPointer(): boolean {
-    return this.open && this.focused;
+    return this.open && this.focused && this.app.ui.settings.debug;
   }
 
   toggle(): void {
@@ -518,29 +523,29 @@ export class DebugBar {
       d.button(right - 44, y + 2, 44, BAR_H - 4, D_TAB, "Save", ACT_SAVE, 0, "Save the last minutes for a reader (F8)");
       right -= 50;
     }
-    for (const [text, style] of this.stats()) {
-      const w = Math.ceil(textWidth(text, style)) + 4;
-      if (right - w < x + 12) break;
-      d.text(right - w, y + 4, w, style, text);
-      right -= w + 14;
+    // As many numbers as there is room for, the least needed left out first, set from the right in their order.
+    const stats = this.stats(), wide = stats.map(([text, style]) => Math.ceil(textWidth(text, style)) + 4);
+    const room = right - x - 12;
+    let total = wide.reduce((a, b) => a + b + 14, 0);
+    const kept = stats.map(() => true);
+    for (let p = 6; p >= 0 && total > room; p--) for (let i = stats.length - 1; i >= 0 && total > room; i--) if (kept[i] && stats[i]![2] === p) {
+      kept[i] = false;
+      total -= wide[i]! + 14;
+    }
+    for (let i = stats.length - 1; i >= 0; i--) {
+      if (!kept[i]) continue;
+      d.text(right - wide[i]!, y + 4, wide[i]!, stats[i]![1], stats[i]![0]);
+      right -= wide[i]! + 14;
     }
   }
 
-  /** The bar's numbers, right to left: what the bar costs, the server's tick, the card, the socket, the frame. */
-  private stats(): [string, number][] {
-    const out: [string, number][] = [], app = this.app, perf = this.perf, s = app.session;
-    if (this.saved) out.push([this.saved, D_GOOD]);
-    out.push([`bar ${ms(this.costMs)}`, D_FAINT]);
-    const server = this.server;
-    if (server && s.admin) {
-      const p50 = server.ticks.seconds.p50, worst = server.ticks.seconds.worst, last = p50.length - 1;
-      if (last >= 0) out.push([`tick ${ms(p50[last]!)} · worst ${ms(worst[last]!)}`, worst[last]! > 33.3 ? D_WARN : D_NUM_DIM]);
-    }
-    const r = app.scene?.assets.residency;
-    if (r) out.push([`card ${Math.round(r.ledger / 1048576)} of ${Math.round(r.budget / 1048576)} MB`, r.ledger > r.budget ? D_WARN : D_NUM_DIM]);
-    this.net.rates(this.netRates, 1);
-    out.push([`in ${rate(this.netRates[0]!)} · out ${rate(this.netRates[1]!)}`, D_NUM_DIM]);
-    out.push([`ping ${Math.round((s.stats.rttTicks * 1000) / 30)} ms`, D_NUM_DIM]);
+  /**
+   * The bar's numbers in the order they stand, left to right, each with its style and how much it matters (0 most): the
+   * rate against the display, the frame's time, late frames, errors, the ping, the socket, the card, the server's tick,
+   * what the bar costs, and what a save came to.
+   */
+  private stats(): [string, number, number][] {
+    const out: [string, number, number][] = [], app = this.app, perf = this.perf, s = app.session;
     // The last five seconds: frames late against the display, and the rate against it.
     const now = app.nowMs, k0 = perf.row(0);
     let late = 0, frames = 0, sum = 0;
@@ -553,14 +558,26 @@ export class DebugBar {
       sum += v;
       if (v > 1.25 * perf.target) late++;
     }
-    const errors = this.log.since(1 << SOURCE_PAGE | 1 << SOURCE_GAME | 1 << SOURCE_SERVER, LEVEL_ERROR);
-    if (errors > 0) out.push([`${errors} error${errors === 1 ? "" : "s"}`, D_BAD]);
-    out.push([`${late} late`, late > 0 ? D_WARN : D_NUM_DIM]);
+    const fps = frames > 0 && sum > 0 ? Math.round((frames * 1000) / sum) : 0;
+    out.push([`${fps} fps of ${Math.round(1000 / perf.target)}`, late > frames * 0.05 ? D_WARN : D_GOOD, 0]);
     const row = this.spans.row(0), frameMs = row >= 0 ? this.spans.ms[row * MOST_SLOTS + LANE_FRAME]! : 0;
     const gpu = k0 >= 0 ? perf.cells[k0 * CELLS + C.gpu]! : -1;
-    out.push([`page ${ms(frameMs)}${gpu >= 0 ? ` · card ${ms(gpu)}` : ""}`, D_NUM]);
-    const fps = frames > 0 && sum > 0 ? Math.round((frames * 1000) / sum) : 0;
-    out.push([`${fps} fps of ${Math.round(1000 / perf.target)}`, late > frames * 0.05 ? D_WARN : D_GOOD]);
+    out.push([`page ${ms(frameMs)}${gpu >= 0 ? ` · card ${ms(gpu)}` : ""}`, D_NUM, 1]);
+    out.push([`${late} late`, late > 0 ? D_WARN : D_NUM_DIM, 2]);
+    const errors = this.log.since(1 << SOURCE_PAGE | 1 << SOURCE_GAME | 1 << SOURCE_SERVER, LEVEL_ERROR);
+    if (errors > 0) out.push([`${errors} error${errors === 1 ? "" : "s"}`, D_BAD, 0]);
+    out.push([`ping ${Math.round((s.stats.rttTicks * 1000) / 30)} ms`, D_NUM_DIM, 3]);
+    this.net.rates(this.netRates, 1);
+    out.push([`in ${rate(this.netRates[0]!)} · out ${rate(this.netRates[1]!)}`, D_NUM_DIM, 4]);
+    const r = app.scene?.assets.residency;
+    if (r) out.push([`card ${Math.round(r.ledger / 1048576)} of ${Math.round(r.budget / 1048576)} MB`, r.ledger > r.budget ? D_WARN : D_NUM_DIM, 5]);
+    const server = this.server;
+    if (server && s.admin) {
+      const p50 = server.ticks.seconds.p50, worst = server.ticks.seconds.worst, last = p50.length - 1;
+      if (last >= 0) out.push([`tick ${ms(p50[last]!)} · worst ${ms(worst[last]!)}`, worst[last]! > 33.3 ? D_WARN : D_NUM_DIM, 3]);
+    }
+    out.push([`bar ${ms(this.costMs)}`, D_FAINT, 6]);
+    if (this.saved) out.push([this.saved, this.saved.startsWith("not") ? D_WARN : D_GOOD, 1]);
     return out;
   }
 
