@@ -958,6 +958,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   });
   game.players.isDown = (e) => falls.isDown(e);
   combat.downPose = (e, tick) => falls.poseAt(e, tick);
+  combat.riseFrom = (e, tick) => falls.riseFrom(e, tick);
   combat.downSize = (e, tick) => falls.sizeAt(e, tick);
   // A blow or a blast may stagger a survivor, or fell them; a shot never does.
   combat.onBlow = (target, kind, taken, dx, dz, up, by) => {

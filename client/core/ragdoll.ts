@@ -14,8 +14,8 @@
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
-import { brace, layHuman } from "../../shared/anim/human-fall.ts";
-import { packLie, REACT_CREATURE_DOWN, REACT_FALL } from "../../shared/anim/reactions.ts";
+import { brace, layHuman, RISE_BLEND } from "../../shared/anim/human-fall.ts";
+import { packLie, reactAge, reactKind, REACT_CREATURE_DOWN, REACT_FALL, REACT_RISE } from "../../shared/anim/reactions.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { poseCreatureOn, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
@@ -106,11 +106,7 @@ function placeAt(seen: CarSeen, tick: number, out: Place): void {
   const l = 1 / Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
   out.qx = qx * l; out.qy = qy * l; out.qz = qz * l; out.qw = qw * l;
 }
-/**
- * Ticks a survivor drawn whole takes to go from how its ragdoll lay into getting up as its reaction word poses it
- * (shared/anim/reactions.ts REACT_RISE), which is how every machine poses it from then on, the server's hits too.
- */
-export const RISE_BLEND = 4;
+export { RISE_BLEND } from "../../shared/anim/human-fall.ts";
 const impactRoot = new Float64Array(3);
 
 interface CarriedBody {
@@ -412,13 +408,13 @@ export class HumanFalls {
       const creature = !human && remote.react[i] === REACT_CREATURE_DOWN ? this.mortal[kind] : null;
       if (!human && !creature && !this.byId.get(remote.id[i]!)?.creature) continue;
       const down = !!creature || (human && (remote.cue[i]! & (CUE_DOWN | CUE_DEAD)) !== 0);
-      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, down, tick, seen, world, motions, creature, (remote.cue[i]! & CUE_DEAD) !== 0);
+      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, down, tick, seen, world, motions, creature, (remote.cue[i]! & CUE_DEAD) !== 0, remote.react[i]!);
     }
     if (own !== 0) this.track(own, handleIndex(own), ownDown, tick, seen, world, motions);
     for (const [id, h] of this.byId) if (h.seen !== seen) this.byId.delete(id);
   }
 
-  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, creature?: CreatureAnim | null, dead = false): void {
+  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, creature?: CreatureAnim | null, dead = false, reaction = 0): void {
     let h = this.byId.get(id);
     if (h && h.handle !== handle) h = undefined;
     if (!h) {
@@ -429,7 +425,11 @@ export class HumanFalls {
     h.seen = seen;
     if (!down) {
       h.drawn = undefined;
-      if (h.down) { h.down = false; h.upAt = tick; h.spent = Math.max(h.spent, h.motionTick, Math.floor(tick) - 1); }
+      if (h.down) {
+        const rose = reactKind(reaction) === REACT_RISE ? tick - reactAge(reaction, tick) : tick;
+        this.advance(h, Math.ceil(rose) - 1, world, motions);
+        h.down = false; h.upAt = rose; h.spent = Math.max(h.spent, h.motionTick, Math.ceil(rose) - 1);
+      }
       if (h.upAt < 0) return;
       h.risen = Math.min(1, (tick - h.upAt) / RISE_BLEND);
       if (h.risen >= 1) { h.upAt = -1; h.fall = null; }
@@ -440,7 +440,12 @@ export class HumanFalls {
       h.down = true; h.downAt = tick; h.upAt = -1; h.fall = null; h.spent = Math.max(h.spent, h.motionTick);
       h.motionRevision = 0; h.motionTick = -1;
     }
-    const to = Math.floor(tick), motion = checkpointAt(motions, handle, to);
+    this.advance(h, Math.floor(tick), world, motions);
+    this.drawCarrier(h, tick);
+  }
+
+  private advance(h: HumanFall, to: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined): void {
+    const motion = checkpointAt(motions, h.handle, to);
     if (motion && motion.tick > h.spent && motion.tick <= to && (motion.revision > h.motionRevision || (motion.revision === h.motionRevision && motion.tick > h.motionTick))) this.lay(h, motion);
     const fall = h.fall;
     if (!fall) return;
@@ -452,7 +457,6 @@ export class HumanFalls {
       moved = fall.tick(world) || moved;
     }
     if (moved) this.place(h);
-    this.drawCarrier(h, tick);
   }
 
   /** Lays the ragdoll from its checkpoint, as the server laid it. */

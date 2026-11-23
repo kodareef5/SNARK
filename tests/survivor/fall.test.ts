@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { CUE_DOWN } from "../../shared/anim/pose.ts";
-import { HUMAN_RAGDOLL } from "../../shared/anim/human.ts";
+import { HUMAN_RAGDOLL, ZONE_HEAD } from "../../shared/anim/human.ts";
+import { zoneHit } from "../../shared/anim/skeleton.ts";
+import { TAU } from "../../shared/math/scalar.ts";
 import { rayBody } from "../../shared/anim/zones.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { ZONE_NONE } from "../../shared/anim/human.ts";
@@ -124,6 +126,54 @@ test("a shot judged in a fall is judged the same once the survivor is knocked do
   } finally {
     h.host.shutdown();
   }
+});
+
+test("live and rewound shots follow the final fall through a second knockdown", () => {
+  const { h, e } = scene();
+  try {
+    const { falls, combat } = h.host, ents = h.world.ents;
+    expect(falls.knock(e, 2, 2, .8, 4, 1, 6)).toBe(true);
+    for (let i = 0; i < 245 && falls.isDown(e); i++) h.run(1000 / 60);
+    const rose = h.world.tick, from = falls.riseFrom(e, rose)!;
+    expect(from).not.toBeNull();
+    const rays: [number, number, number][] = [], st = new AnimState();
+    const oy = from.y + 2;
+    let heads = 0, changed = 0;
+    st.unpack(ents.anim[e]!, ents.cue[e]!, 0, ents.react[e]!);
+    for (let dz = -1; dz <= 1; dz += .075) for (let dx = -1; dx <= 1; dx += .075) {
+      const x = from.x + dx, z = from.z + dz;
+      const laid = rayBody(h.world.anim, st, rose, from.x, from.y, from.z, from.yaw * 65536 / TAU, x, oy, z, 0, -1, 0, 4, 0, false, from.solved);
+      if (!laid) continue;
+      const distance = zoneHit.t;
+      const snapped = rayBody(h.world.anim, st, rose, ents.x[e]!, ents.y[e]!, ents.z[e]!, ents.yaw[e]!, x, oy, z, 0, -1, 0, 4);
+      if (laid !== snapped) changed++;
+      expect(combat.castBodies(-1, x, oy, z, 0, -1, 0, 4)).toBe(e);
+      expect(combat.zone).toBe(laid);
+      expect(combat.t).toBeCloseTo(distance, 3);
+      if (laid === ZONE_HEAD) { heads++; rays.push([x, z, distance]); }
+    }
+    expect(heads).toBeGreaterThan(2);
+    expect(changed).toBeGreaterThan(4);
+    h.run(100);
+    const middle = rays.map(([x, z]) => [combat.castBodies(-1, x, oy, z, 0, -1, 0, 4, 0, rose + 1.5), combat.zone, combat.t]);
+    const late = rays.map(([x, z]) => [combat.castBodies(-1, x, oy, z, 0, -1, 0, 4, 0, rose + 2.75), combat.zone, combat.t]);
+    expect(falls.knock(e, -2, 2, 1, 3, 0, -4)).toBe(true);
+    h.run(100);
+    expect(falls.riseFrom(e, rose)).toBe(from);
+    expect(falls.riseFrom(e, rose + 4)).toBeNull();
+    for (const [i, [x, z, distance]] of rays.entries()) {
+      expect(combat.castBodies(-1, x, oy, z, 0, -1, 0, 4, 0, rose)).toBe(e);
+      expect(combat.zone).toBe(ZONE_HEAD);
+      expect(combat.t).toBeCloseTo(distance, 3);
+      const hit = combat.castBodies(-1, x, oy, z, 0, -1, 0, 4, 0, rose + 1.5);
+      expect([hit, combat.zone, combat.t]).toEqual(middle[i]!);
+    }
+    while (h.world.tick < rose + 17) h.run(1000 / 60);
+    for (const [i, [x, z]] of rays.entries()) {
+      const hit = combat.castBodies(-1, x, oy, z, 0, -1, 0, 4, 0, rose + 2.75);
+      expect([hit, combat.zone, combat.t]).toEqual(late[i]!);
+    }
+  } finally { h.host.shutdown(); }
 });
 
 test("a survivor who dies knocked down goes on lying as it fell, never standing up", () => {

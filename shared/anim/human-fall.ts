@@ -4,9 +4,9 @@
 // client steps it whole ticks from there exactly as the server does.
 
 import { detCos, detSin } from "../math/scalar.ts";
-import { quatRotate } from "../math/quat.ts";
+import { quatMulConj, quatRotate } from "../math/quat.ts";
 import { PoseBuilder } from "./authored.ts";
-import { Pose } from "./clip.ts";
+import { Pose, blendPose } from "./clip.ts";
 import { B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_RAGDOLL } from "./human.ts";
 import { Ragdoll } from "./ragdoll.ts";
 import { Solved, solve } from "./skeleton.ts";
@@ -143,4 +143,44 @@ export function brace(r: Ragdoll): void {
   }
   r.driveTo(aims);
   r.lift = 0;
+}
+
+/** The last world frame of a physical fall, held through its handoff to the rise. */
+export interface FallenPose {
+  readonly solved: Solved;
+  readonly x: number; readonly y: number; readonly z: number;
+  readonly yaw: number;
+}
+
+/** Ticks spent blending from the final physical pose to the get-up animation. */
+export const RISE_BLEND = 4;
+const lyingLocal = new Pose(HUMAN.bones);
+
+/** Re-expresses a world-space fall about the rising body's origin, facing and rest skeleton. */
+export function fallenPose(h: FallenPose, x: number, y: number, z: number, yaw: number, rest: Float32Array, out: Pose): void {
+  const src = h.solved, d = (h.yaw - yaw) / 2, sd = detSin(d), cd = detCos(d);
+  const s = detSin(h.yaw), c = detCos(h.yaw), s1 = detSin(yaw), c1 = detCos(yaw);
+  for (let b = 0; b < HUMAN.bones; b++) {
+    const p = HUMAN.parent[b]!, r = b * 4;
+    if (p >= 0) {
+      quatMulConj(out.rot, r, src.rot, p * 4, src.rot, r);
+      continue;
+    }
+    const ax = src.rot[r]!, ay = src.rot[r + 1]!, az = src.rot[r + 2]!, aw = src.rot[r + 3]!;
+    out.rot[r] = cd * ax + sd * az;
+    out.rot[r + 1] = cd * ay + sd * aw;
+    out.rot[r + 2] = cd * az - sd * ax;
+    out.rot[r + 3] = cd * aw - sd * ay;
+    const mx = src.pos[b * 3]!, mz = src.pos[b * 3 + 2]!;
+    const dx = h.x + c * mx + s * mz - x, dz = h.z - s * mx + c * mz - z;
+    out.root[0] = c1 * dx - s1 * dz - rest[b * 3]!;
+    out.root[1] = h.y + src.pos[b * 3 + 1]! - y - rest[b * 3 + 1]!;
+    out.root[2] = s1 * dx + c1 * dz - rest[b * 3 + 2]!;
+  }
+}
+
+/** Blends the final physical pose into the animated rise by its elapsed share. */
+export function blendFromFall(h: FallenPose, x: number, y: number, z: number, yaw: number, rest: Float32Array, share: number, out: Pose): void {
+  fallenPose(h, x, y, z, yaw, rest, lyingLocal);
+  blendPose(out, lyingLocal, out, share * share * (3 - 2 * share));
 }

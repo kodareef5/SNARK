@@ -12,10 +12,12 @@ import { RISE_BLEND } from "../../client/core/ragdoll.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_HEAD, HUMAN, HUMAN_BONES, SOCKET_EYE } from "../../shared/anim/human.ts";
-import { AnimState, bodySeed, humanPose } from "../../shared/anim/pose.ts";
+import { humanHitPose } from "../../shared/anim/zones.ts";
+import { AnimState, bodySeed } from "../../shared/anim/pose.ts";
 import { MF_DOWN } from "../../shared/sim/character.ts";
 import { lyingShare, REACT_FALL, REACT_RISE, reactAge, reactKind } from "../../shared/anim/reactions.ts";
 import { boneToModel, Solved, solve } from "../../shared/anim/skeleton.ts";
+import { Past } from "../../server/history.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -36,10 +38,10 @@ function serverHad(h: Harness, e: number, st: AnimState, pose: Pose, solved: Sol
     s = laid;
     a = h.host.falls.yawOf(e);
   } else {
-    st.unpack(ents.anim[e]!, ents.cue[e]!, ents.emote[e]!, ents.react[e]!);
+    st.unpack(ents.anim[e]!, ents.cue[e]!, ents.emote[e]!, ents.react[e]!, h.world.history.strideOf(e, h.world.tick, h.world));
     st.seed = bodySeed(e);
     st.facing = ents.yaw[e]! / 65536;
-    humanPose(h.world.anim!, st, h.world.tick, pose);
+    humanHitPose(h.world.anim!, st, h.world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, ents.yaw[e]!, h.host.falls.riseFrom(e, h.world.tick), pose);
     solve(HUMAN, pose, solved);
   }
   boneToModel(s, B_HEAD, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, eye);
@@ -54,7 +56,8 @@ function serverHad(h: Harness, e: number, st: AnimState, pose: Pose, solved: Sol
 function judged(had: Map<number, Had>, tick: number, eye = false): number[] | null {
   const t0 = Math.floor(tick), a = had.get(t0), b = had.get(t0 + 1);
   if (!a || !b) return null;
-  const k = tick - t0, from = eye ? a.eye : a.head, to = eye ? b.eye : b.head;
+  const k = a.laid === b.laid ? tick - t0 : 0, from = eye ? a.eye : a.head, to = eye ? b.eye : b.head;
+  if (a.laid !== b.laid) return a.at.map((v, j) => v + from[j]!);
   return [0, 1, 2].map((j) => a.at[j]! + (b.at[j]! - a.at[j]!) * k + (a.laid ? from[j]! : from[j]! + (to[j]! - from[j]!) * k));
 }
 
@@ -70,13 +73,16 @@ function drawnHead(characters: Characters, session: ClientSession, remote: Remot
   characters.corpses(new FramePacket(), new Camera(), remote, session.world!);
   characters.begin();
   const p = new FramePacket();
-  st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!);
-  if (!characters.add(p, remote.kind[i]!, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, st, remote.tick, null, 0, colors, 0, null, 0, e, false, false, 1, rigid)) return null;
+  p.camX = session.own.x; p.camY = session.own.y; p.camZ = session.own.z;
+  st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!, remote.stride[i]!);
+  st.seed = bodySeed(e);
+  if (!characters.add(p, remote.kind[i]!, remote.x[i]! - p.camX, remote.y[i]! - p.camY, remote.z[i]! - p.camZ, remote.yaw[i]!, st, remote.tick, null, 0, colors, 0, null, 0, e, false, false, 1, rigid)) return null;
   // Drawn whole its bones come first; on one bone, the shared pose comes first and its own bone carries it.
   const b = p.bones, o = B_HEAD * BONE_FLOATS, r = B_HEAD * 3;
   const q = [0, 1, 2].map((row) => b[o + row * 4]! * rest[r]! + b[o + row * 4 + 1]! * rest[r + 1]! + b[o + row * 4 + 2]! * rest[r + 2]! + b[o + row * 4 + 3]!);
   const m = HUMAN_BONES * BONE_FLOATS;
   const head = rigid ? [0, 1, 2].map((row) => b[m + row * 4]! * q[0]! + b[m + row * 4 + 1]! * q[1]! + b[m + row * 4 + 2]! * q[2]! + b[m + row * 4 + 3]!) : q;
+  head[0]! += p.camX; head[1]! += p.camY; head[2]! += p.camZ;
   return { head, word: remote.react[i]!, tick: remote.tick };
 }
 
@@ -91,6 +97,7 @@ interface Seen {
   rising: number[];
   risingOff: number[];
   walking: number[];
+  freshWalking: number[];
   /** How far its head moved between frames beyond how far the server's did, after the hand-off. */
   pops: number[];
   /** Frames drawn standing while the server's lay, or lying while the server's stood. */
@@ -154,7 +161,7 @@ function scene(o: Scene = {}): { whole: Seen; one: Seen; both: Seen; eye: Eye; s
     // The third draws it whole until it is halfway up, then on one bone.
     let halfway = Infinity;
     const watchers = [watcher(w1, () => false), watcher(w2, () => true), watcher(w3, (t) => t >= halfway)];
-    const had = new Map<number, Had>(), st = new AnimState(), sst = new AnimState(), pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES);
+    const past = new Past(), had = new Map<number, Had>(), st = new AnimState(), sst = new AnimState(), pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES);
     let downHigh = -Infinity, down = 0, stepDown = 0, stepUp = 0, getting = false, was = false;
     let last = -1, worded = false, walked = false, acted = 0, still = 0, first: number[] | null = null, lowest = Infinity, cam: number[] | null = null;
     run(o.topple ? 4500 : 7000, () => {
@@ -199,15 +206,29 @@ function scene(o: Scene = {}): { whole: Seen; one: Seen; both: Seen; eye: Eye; s
         if (!d) continue;
         const server = judged(had, d.tick), t0 = Math.floor(d.tick);
         if (!server || d.tick < knocked) continue;
+        // Rewind takes the nearer motion state and evaluates its pose at the fractional shot tick.
+        if (!had.get(t0)!.laid && !had.get(t0 + 1)!.laid && h.world.history.sample(d.tick, e, past)) {
+          sst.unpack(past.anim, past.cue, ents.emote[e]!, past.react, past.stride);
+          sst.seed = bodySeed(e); sst.facing = past.yaw / 65536;
+          humanHitPose(h.world.anim, sst, d.tick, past.x, past.y, past.z, past.yaw, h.host.falls.riseFrom(e, d.tick), pose);
+          solve(HUMAN, pose, solved);
+          const a = sst.facing * TAU, x = solved.pos[B_HEAD * 3]!, z = solved.pos[B_HEAD * 3 + 2]!;
+          server[0] = past.x + Math.cos(a) * x + Math.sin(a) * z;
+          server[1] = past.y + solved.pos[B_HEAD * 3 + 1]!;
+          server[2] = past.z - Math.sin(a) * x + Math.cos(a) * z;
+        }
         const off = Math.hypot(d.head[0]! - server[0]!, d.head[1]! - server[1]!, d.head[2]! - server[2]!);
-        const s = w.seen, ragdoll = had.get(t0)!.laid && had.get(t0 + 1)!.laid;
+        const s = w.seen, ragdoll = had.get(t0)!.laid;
         const kind = reactKind(d.word), handing = kind === REACT_RISE && reactAge(d.word, d.tick) <= RISE_BLEND + 1;
         s.frames++;
         // Its fall's checkpoint takes a few ticks to come; laid, the watcher draws its ragdoll.
         if (ragdoll) { if (d.tick > knocked + 10) s.lying.push(off); }
         else if (handing) s.handOff.push(off);
         else if (kind === REACT_FALL || kind === REACT_RISE) (had.get(t0)!.moving || had.get(t0 + 1)!.moving ? s.risingOff : s.rising).push(off);
-        else if (d.tick >= knocked + 10) s.walking.push(off);
+        else if (d.tick >= knocked + 10) {
+          s.walking.push(off);
+          if (w.characters.fresh) s.freshWalking.push(off);
+        }
         // Standing on one screen and lying on the other: a head under 0.6 m against one over 1.2 m, or the other way.
         if ((server[1]! < 0.6 && d.head[1]! > 1.2) || (server[1]! > 1.2 && d.head[1]! < 0.6)) s.wrong++;
         if (w.last && w.lastServer && w.lastTick !== d.tick && !handing && d.tick > knocked + 10) {
@@ -226,7 +247,7 @@ function scene(o: Scene = {}): { whole: Seen; one: Seen; both: Seen; eye: Eye; s
 }
 
 function seen(): Seen {
-  return { lying: [], handOff: [], rising: [], risingOff: [], walking: [], pops: [], wrong: 0, frames: 0 };
+  return { lying: [], handOff: [], rising: [], risingOff: [], walking: [], freshWalking: [], pops: [], wrong: 0, frames: 0 };
 }
 
 const most = (v: number[]): number => v.reduce((a, b) => Math.max(a, b), 0);
@@ -234,7 +255,7 @@ const share = (v: number[], p: number): number => [...v].sort((a, b) => a - b)[M
 const cm = (v: number): string => (v * 100).toFixed(1);
 
 function report(what: string, s: Seen): string {
-  return `${what}: ${s.frames} frames; lying ${s.lying.length} worst ${cm(most(s.lying))}; hand-off ${s.handOff.length} worst ${cm(most(s.handOff))}; rising ${s.rising.length} worst ${cm(most(s.rising))}; moving off ${s.risingOff.length} worst ${cm(most(s.risingOff))}; walking ${s.walking.length} p99 ${cm(share(s.walking, 0.99))} worst ${cm(most(s.walking))}; pop worst ${cm(most(s.pops))}; wrong ${s.wrong}`;
+  return `${what}: ${s.frames} frames; lying ${s.lying.length} worst ${cm(most(s.lying))}; hand-off ${s.handOff.length} worst ${cm(most(s.handOff))}; rising ${s.rising.length} worst ${cm(most(s.rising))}; moving off ${s.risingOff.length} worst ${cm(most(s.risingOff))}; walking ${s.walking.length} p99 ${cm(share(s.walking, 0.99))} worst ${cm(most(s.walking))}; freshly posed worst ${cm(most(s.freshWalking))}; pop worst ${cm(most(s.pops))}; wrong ${s.wrong}`;
 }
 
 function reports(r: ReturnType<typeof scene>): string {
@@ -253,9 +274,9 @@ function steady(r: ReturnType<typeof scene>, ends: readonly [number, number] = [
   expect(most(r.one.pops), why).toBeLessThan(0.2);
   // Changing from whole to one bone halfway up moves the head no more than one bone's own steps.
   expect(most(r.both.pops), why).toBeLessThan(0.2);
-  // Walking away, a stride's phase is the watcher's own, by how far the body has gone, and the server's by the tick:
-  // a running head bobs out of step by as much as its bob.
-  expect(most(r.whole.walking), why).toBeLessThan(0.25);
+  expect(r.whole.freshWalking.length, why).toBeGreaterThan(20);
+  expect(most(r.whole.freshWalking), why).toBeLessThan(.025);
+  expect(most(r.whole.walking), why).toBeLessThan(.08);
   expect(most(r.one.walking), why).toBeLessThan(0.2);
   // Its own eye goes down with it, and gets up with it, never standing while its reaction still has it down.
   expect(r.eye.down, why).toBeGreaterThan(3);
@@ -271,7 +292,7 @@ test("a ragdoll fall's rise is alike on the server, two watchers and its own eye
   for (const s of [r.whole, r.one]) expect([s.lying.length > 40, s.handOff.length > 0, s.rising.length > 10, s.risingOff.length > 10], why).toEqual([true, true, true, true]);
   // Whole: lying as the ragdoll does, eased from it into the rise over a few ticks, then rising as the server poses it.
   expect(most(r.whole.lying), why).toBeLessThan(0.01);
-  expect(most(r.whole.handOff), why).toBeLessThan(0.12);
+  expect(most(r.whole.handOff), why).toBeLessThan(.005);
   expect(most(r.whole.rising), why).toBeLessThan(0.02);
   expect(most(r.whole.risingOff), why).toBeLessThan(0.2);
   // On one bone: in shared poses, laid as far down as the ragdoll is and getting up step by step.

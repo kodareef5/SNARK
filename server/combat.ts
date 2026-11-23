@@ -14,7 +14,8 @@ import { RIDER_TARGET_FLOATS } from "../shared/anim/rider-controls.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
 import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../shared/anim/occupant.ts";
 import { SEAT_FLOATS, riderTargets, saddleSeat, seatOn } from "../shared/anim/seat.ts";
-import { REACT_CREATURE_DOWN } from "../shared/anim/reactions.ts";
+import type { FallenPose } from "../shared/anim/human-fall.ts";
+import { REACT_CREATURE_DOWN, REACT_RISE, reactKind } from "../shared/anim/reactions.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { boatDrives } from "../shared/sim/vehicle.ts";
@@ -240,6 +241,7 @@ export class Combat {
   corpses: Corpses | null = null;
   /** The pose a survivor knocked down lay in at a tick, to be hit as it lay (server/falls.ts); null for none. The host sets it. */
   downPose: (e: number, tick: number) => Solved | null = () => null;
+  riseFrom: (e: number, tick: number) => FallenPose | null = () => null;
   downSize: (e: number, tick: number) => number = () => 1;
   /**
    * A blow that hurt body `target`: its IMPACT_ kind, the damage taken, the unit way it went (dx, dz), how high it landed
@@ -825,6 +827,7 @@ export class Combat {
       out.anim = ents.anim[i]!;
       out.cue = ents.cue[i]!;
       out.react = ents.react[i]!;
+      out.stride = world.history.strideOf(i, now, world);
       out.vehicleFrom(ents, i);
       out.seatFrom(ents, i);
       if (out.seat) out.hostEpoch = world.history.motionEpoch(out.seat - 1);
@@ -836,6 +839,7 @@ export class Combat {
     const current = this.vehicleNow;
     current.x = ents.x[i]!; current.y = ents.y[i]!; current.z = ents.z[i]!;
     current.yaw = ents.yaw[i]!; current.anim = ents.anim[i]!; current.cue = ents.cue[i]!; current.react = ents.react[i]!;
+    current.stride = world.history.strideOf(i, now, world);
     current.vehicleFrom(ents, i); current.seatFrom(ents, i);
     if (current.seat) current.hostEpoch = world.history.motionEpoch(current.seat - 1);
     out.blend(current, k, ents.kind[i] === this.survivor);
@@ -956,12 +960,13 @@ export class Combat {
       if (this.human[kind] && world.anim) {
         if (past.seat && !this.seatInRay(past, rx, ry, rz, ux, uy, uz, reach)) continue;
         // A survivor's emote as it is now: emotes change seldom beside the ticks a hit looks back. Its reaction as it was then.
-        st.unpack(past.anim, past.cue, world.ents.emote[i]!, past.react);
+        st.unpack(past.anim, past.cue, world.ents.emote[i]!, past.react, past.stride);
         st.seed = bodySeed(i);
         const seated = this.seated(i, past, tick);
         const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach, this.contactPadding)
           // A ragdoll lies as a watcher draws it: about where the body is now, posed as at the last tick it stepped to.
-          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT, (past.cue & CUE_DOWN) !== 0 ? this.downPose(i, Math.floor(tick)) : null);
+          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT, (past.cue & CUE_DOWN) !== 0 ? this.downPose(i, Math.floor(tick)) : null,
+            reactKind(past.react) === REACT_RISE ? this.riseFrom(i, tick) : null);
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
           this.zone = zone;

@@ -9,7 +9,7 @@
 
 import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
 import { Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type FallenState } from "../shared/anim/corpse.ts";
-import { brace, layHuman } from "../shared/anim/human-fall.ts";
+import { brace, layHuman, RISE_BLEND, type FallenPose } from "../shared/anim/human-fall.ts";
 import { B_HEAD, B_HIPS, HUMAN } from "../shared/anim/human.ts";
 import { facingOf, REACT_CREATURE_DOWN, LIE_FACINGS, LIE_WAYS } from "../shared/anim/reactions.ts";
 import { quatRotate } from "../shared/math/quat.ts";
@@ -62,6 +62,7 @@ interface Down {
   readonly poseTick: Int32Array;
   /** Once risen, the tick it rose; its past poses are kept until no shot can reach back to them. */
   rose: number;
+  from?: FallenPose;
   /** What its fall costs, in units. */
   readonly units: number;
   /** The tick its last checkpoint was written, and whether a vehicle touched it last tick. */
@@ -257,6 +258,16 @@ export class Falls {
   /** Falls that rose within HISTORY_TICKS, by entity, the last to rise last. */
   private readonly risen = new Map<number, Down[]>();
 
+  /** The physical pose that started this rise, including a rise preceding a second knockdown. */
+  riseFrom(e: number, tick: number): FallenPose | null {
+    const falls = this.risen.get(e);
+    if (falls) for (let i = falls.length - 1; i >= 0; i--) {
+      const d = falls[i]!;
+      if (d.gen === this.world.ents.gen[e] && tick >= d.rose && tick < d.rose + RISE_BLEND) return d.from ?? null;
+    }
+    return null;
+  }
+
   /** The facing in radians a lying body's pose is in. */
   yawOf(e: number): number {
     return this.down.get(e)?.yaw ?? 0;
@@ -300,7 +311,7 @@ export class Falls {
   step(): void {
     const ents = this.world.ents;
     for (const [e, falls] of this.risen) {
-      while (falls.length > 0 && this.world.tick - falls[0]!.rose > HISTORY_TICKS) falls.shift();
+      while (falls.length > 0 && this.world.tick - falls[0]!.rose > HISTORY_TICKS + RISE_BLEND) falls.shift();
       if (falls.length === 0) this.risen.delete(e);
     }
     for (const d of this.down.values()) {
@@ -360,6 +371,7 @@ export class Falls {
     d.fall.ragdoll.rootPosition(root);
     this.ended(d);
     d.rose = this.world.tick;
+    if (!d.creature) d.from = { solved: d.pose, x: ents.x[d.e]!, y: ents.y[d.e]!, z: ents.z[d.e]!, yaw: d.yaw };
     const kept = this.risen.get(d.e);
     if (kept) kept.push(d);
     else this.risen.set(d.e, [d]);

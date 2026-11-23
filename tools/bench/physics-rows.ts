@@ -28,10 +28,11 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { Characters } from "../../client/core/render/characters.ts";
 import { BONE_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { B_HEAD, B_HIPS, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
-import { AnimState, bodySeed, CUE_DOWN, humanPose } from "../../shared/anim/pose.ts";
+import { AnimState, bodySeed, CUE_DOWN } from "../../shared/anim/pose.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { TAU } from "../../shared/math/scalar.ts";
+import { humanHitPose } from "../../shared/anim/zones.ts";
 import { Corpses, RISE_BLEND } from "../../client/core/ragdoll.ts";
 import { REACT_FALL, REACT_RISE, reactAge, reactKind, TOPPLED } from "../../shared/anim/reactions.ts";
 import { corePack } from "../../tests/fixtures/pack.ts";
@@ -209,10 +210,10 @@ class Watching {
     // Toppling or getting up, the server judges a shot on the body its reaction word poses (shared/anim/zones.ts rayBody).
     for (const e of this.bodies) {
       if (reactKind(ents.react[e]!) < REACT_FALL || !h.world.anim) continue;
-      st.unpack(ents.anim[e]!, ents.cue[e]!, ents.emote[e]!, ents.react[e]!);
+      st.unpack(ents.anim[e]!, ents.cue[e]!, ents.emote[e]!, ents.react[e]!, h.world.history.strideOf(e, T, h.world));
       st.seed = bodySeed(e);
       st.facing = ents.yaw[e]! / 65536;
-      humanPose(h.world.anim, st, T, this.pose);
+      humanHitPose(h.world.anim, st, T, ents.x[e]!, ents.y[e]!, ents.z[e]!, ents.yaw[e]!, h.host.falls.riseFrom(e, T), this.pose);
       solve(HUMAN, this.pose, this.hit);
       let ring = this.posed.get(e);
       if (!ring) this.posed.set(e, (ring = new Float64Array(64 * 4).fill(-1)));
@@ -242,7 +243,8 @@ class Watching {
         const f = remote.tick - t0, server = [1, 2, 3].map((j) => ring[a + j]! + (ring[b + j]! - ring[a + j]!) * f);
         for (const rigid of [true, false]) {
           characters.begin(); packet.beginFrame();
-          st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, word);
+          st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, word, remote.stride[i]!);
+          st.seed = bodySeed(id);
           if (!characters.add(packet, remote.kind[i]!, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, st, remote.tick, null, 0, NO_COLORS, 0, null, 0, id, false, false, 1, rigid)) continue;
           const head = jointAt(packet.bones, B_HEAD, rigid ? HUMAN_BONES : -1);
           const off = Math.hypot(head[0]! - server[0]!, head[1]! - server[1]!, head[2]! - server[2]!);
@@ -265,7 +267,8 @@ class Watching {
         const fall = characters.humanFall(id), truth = this.joints.get(id);
         for (const rigid of [true, false]) {
           characters.begin(); packet.beginFrame();
-          st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, word);
+          st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, word, remote.stride[i]!);
+          st.seed = bodySeed(id);
           const dropped = packet.dropped;
           this.submitted++;
           if (!characters.add(packet, remote.kind[i]!, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, st, remote.tick, null, 0, NO_COLORS, 0, null, 0, id, false, false, 1, rigid) || packet.dropped !== dropped) {
