@@ -181,7 +181,8 @@ test("before the map's statics the blocks draw all but what the far feed's block
   expect(before.some((d) => p.drawFade[d] === -600)).toBe(true);
   // The statics come, and the far city's levels are made; then the blocks give way to it at its reach.
   w.arrive();
-  for (let f = 0; f < 6; f++) p = w.frame();
+  // A tile waits 300 ms for the lists of its pieces gone before it is first made.
+  for (let f = 0; f < 6; f++) p = w.frame(false, 60);
   expect(cityDraws(p).length).toBeGreaterThan(0);
   for (const d of blockDraws(p)) expect([0, Math.fround(-w.scene.alongGround(700))]).toContain(p.drawFade[d]!);
   const tower = w.chunkOf(14 * CHUNK_SIZE + 32, 14 * CHUNK_SIZE + 32);

@@ -2,6 +2,7 @@
 // configuration reference (planning/reference/round5-settings.md). Where the reference gives no default, the row's note says so.
 
 import { GRIP_MOST } from "../../shared/content/tuning.ts";
+import { GONE_RADIUS } from "../../shared/world/gone.ts";
 import { FAR_RADIUS } from "../../shared/world/tactical.ts";
 import { ASPHALT, GRAVEL, MUD, OFFROAD, PAVING, SAND } from "../../shared/world/vehicle-surface.ts";
 import { Sheet, live, none, plan, type Row } from "./row.ts";
@@ -300,7 +301,8 @@ new Sheet(SERVER_ROWS, "snark", "Cast")
 new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
   .i("TacticalRadius", 512, "Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's.", live({ live: true, max: 16384, note: "Ours. ARK's map shows no structures." }))
   .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }))
-  .i("FarRadius", FAR_RADIUS, "Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none.", live({ live: true, max: 16384, note: "Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published." }));
+  .i("FarRadius", FAR_RADIUS, "Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none.", live({ live: true, max: 16384, note: "Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published." }))
+  .i("GoneRadius", GONE_RADIUS, "Metres. A client that holds the map file draws the map's own buildings from it far past the pieces it is sent. Within this distance of a survivor it is told which of them no longer stand, a few bytes a chunk, so a tower brought down is gone from the skyline for everyone who can see it; a client asks for no more than it draws. 0 sends none, and a far building then stands until it is come near.", live({ live: true, max: 65535, note: "Ours. ARK's buildings do not break." }));
 
 /** A surface's grip: a car on it takes the new value at once, and its driver's page with it. */
 const grip = live({ live: true, public: true, min: 0.1, max: GRIP_MOST, note: "Ours. ARK has no cars." });

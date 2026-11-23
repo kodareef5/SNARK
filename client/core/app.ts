@@ -792,6 +792,9 @@ export class App {
     this.supply.list = session.supply;
     this.supply.tick = session.tickClock;
     this.falling!.absorb(session.rubble, sceneMs, cam.x, cam.y, cam.z);
+    // Collapses told from afar: a column of dust over each (render/dust-columns.ts).
+    for (const fell of session.collapses) scene.dust.add(fell, sceneMs);
+    session.collapses.length = 0;
     this.falling!.step(sceneMs);
     const beams = scene.beams;
     beams.length = 0;
@@ -827,7 +830,8 @@ export class App {
     scene.share = sceneShare(chosen, (tools ? tools.shareAsked : 0) || (RESOLUTIONS[this.ui.settings.resolution]?.share ?? 0), own);
     this.ui.settings.autoShare = sceneShare(chosen, 0, own);
     session.view(scene.assets.tier.view, this.ui.settings.snapshotBytes);
-    session.askFar(scene.assets.tier.reach.bases);
+    // The map's own city is drawn to the end of the view, as blocks past the far city, so that is how far its pieces gone are asked for.
+    session.askFar(scene.assets.tier.reach.bases, scene.assets.tier.reach.city > 0 ? scene.assets.tier.viewDistance : 0);
     session.holdNodes(scene.assets.tier.nodes.chunks);
     scene.characters.corpseMotions = session.corpseMotions;
     // Damage numbers are drawn with the world, where the server's rule and the reader's setting let them.

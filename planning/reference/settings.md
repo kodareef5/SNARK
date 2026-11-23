@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 559 of them: 193 take effect,
+is listed here, 560 of them: 194 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -142,6 +142,7 @@ the admin's settings page may change a setting without a restart.
 | `TacticalRadius` | 512 | Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's. *Ours. ARK's map shows no structures.* | yes |
 | `MapPlayers` | `off` | Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked. *Ours. ARK marks nobody. Any other word is off.* | yes |
 | `FarRadius` | 2048 | Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none. *Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published.* | yes |
+| `GoneRadius` | 8192 | Metres. A client that holds the map file draws the map's own buildings from it far past the pieces it is sent. Within this distance of a survivor it is told which of them no longer stand, a few bytes a chunk, so a tower brought down is gone from the skyline for everyone who can see it; a client asks for no more than it draws. 0 sends none, and a far building then stands until it is come near. *Ours. ARK's buildings do not break.* | yes |
 | `FoundCarReturnDays` | 3 | Days of the game's clock after a place where the map parks a car has lost its car, destroyed or driven off, before another is parked there, owned by nobody, its condition and fuel rolled again. One comes only while no survivor is near enough to see it come, nothing a tribe built stands within 60 m, and no body stands where it would. 0 brings none back. *Ours. ARK has no cars. A place is looked at every ten minutes.* | yes |
 | `ThrusterBoostCooldown` | 4 | Seconds after a thruster car's boost ends before it may boost again (the Zephyr; Shift at the wheel). 0 is none: held, the boost runs on. *Ours. ARK has no cars.* | yes |
 | `ThrusterFlipCooldown` | 3 | Seconds from a thruster car's flip before it may flip again (Q at the wheel, with a direction held or none). 0 is none. *Ours.* | yes |

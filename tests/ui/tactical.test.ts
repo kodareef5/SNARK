@@ -230,7 +230,7 @@ test("far cells keep each cell's tallest piece, defence or static to a quarter m
   expect([farTopByte(64), farTopByte(64.9), farTopByte(65.1), farTopByte(318), farTopByte(1000)]).toEqual([128, 128, 129, 255, 255]);
 });
 
-test("a chunk's far cells travel whole in at most 802 bytes with no owner, an empty one in 4, and bad bytes are refused", () => {
+test("a chunk's far cells travel whole in at most 803 bytes with no owner, an empty one in 4, and bad bytes are refused", () => {
   const w = flatWorld(2);
   const k = (id: string) => w.kind(`core:${id}`);
   // The same house built by two tribes in two chunks.
@@ -263,7 +263,8 @@ test("a chunk's far cells travel whole in at most 802 bytes with no owner, an em
   for (let c = 0; c < 256; c++) worst.structs.add(pieces[c % 2]!, (c % 16) * 4 + 2, 0.19, (c >> 4) * 4 + 2, 0, 1, 100);
   wr.reset();
   writeFar(wr, 0, bake(worst).far);
-  expect(wr.byteLength).toBe(802);
+  // 256 runs of 25 bits after the chunk and the bit that says whether the map's pieces are left out.
+  expect(wr.byteLength).toBe(803);
   const bytes = wr.bytes().slice();
   r.reset(bytes.subarray(0, 300));
   expect(readFar(r, got)).toBe(-1);
@@ -275,6 +276,7 @@ test("a chunk's far cells travel whole in at most 802 bytes with no owner, an em
   // A filled cell whose top is 0.
   wr.reset();
   wr.u16(0);
+  wr.bool(false);
   wr.bits(255, 8);
   wr.bool(true);
   wr.u8(5);
