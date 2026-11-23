@@ -98,7 +98,7 @@ test("a watching client lays a dead survivor's body where the server's lies", ()
   } finally { h.host.shutdown(); }
 });
 
-test("a watcher draws every survivor it sees knocked down as down, by its fall or by a topple until the fall comes", () => {
+test("a watcher draws every survivor it sees knocked down as down, never standing", () => {
   const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
   try {
     h.host.setSetting("Knockdowns", "true");
@@ -128,5 +128,34 @@ test("a watcher draws every survivor it sees knocked down as down, by its fall o
     });
     expect(standing).toBe(0);
     expect(h.host.falls.stats.fell).toBe(8);
+  } finally { h.host.shutdown(); }
+});
+
+test("a fall knocked between ticks lays on a watcher exactly where the server's lies", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    h.host.setSetting("Knockdowns", "true");
+    const w = h.join("watcher"), faller = h.join("faller");
+    h.run(800);
+    const a = h.world.ents, seen = h.client(w)!, c = h.client(faller)!;
+    a.setPosition(seen.ent, 100, 0, 70); h.world.history.discontinuity(seen.ent);
+    a.setPosition(c.ent, 100, 0, 76); h.world.history.discontinuity(c.ent);
+    h.run(800);
+    // Knocked between ticks, after this tick's falls have stepped: its first step is the next tick's.
+    expect(h.host.falls.knock(c.ent, 4, 2, 3, 2, 0, 0)).toBe(true);
+    const at = new Map<number, [number, number, number]>(), remote = new RemoteSample();
+    const drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k));
+    let compared = 0, most = 0;
+    h.run(1500, () => {
+      if (h.host.falls.poseOf(c.ent)) at.set(h.world.tick, [a.x[c.ent]!, a.y[c.ent]!, a.z[c.ent]!]);
+      w.sampleRemote(remote);
+      drawn.update(remote, w.world!, 0, 0, new Map(), w.corpseMotions);
+      const fall = drawn.humans.of(c.ent), was = fall && at.get(fall.clock);
+      if (!fall?.down || !was) return;
+      compared++;
+      most = Math.max(most, Math.hypot(fall.x - was[0], fall.y - was[1], fall.z - was[2]));
+    });
+    expect(compared).toBeGreaterThan(20);
+    expect(most).toBe(0);
   } finally { h.host.shutdown(); }
 });

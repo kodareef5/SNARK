@@ -82,6 +82,8 @@ export class Falls {
   units = 0;
   private readonly near = new Found(32);
   private readonly cars: RagdollMovers;
+  /** The tick the falls were last stepped at: set as the step ends, so a fall knocked during it is stepped with it. */
+  private stepped = -1;
   /** What every fall's revisions are drawn from, so a body's next fall is newer than its last to a client. */
   private serial = 0;
 
@@ -266,6 +268,7 @@ export class Falls {
       d.touched = r.touched;
       this.place(d);
     }
+    this.stepped = this.world.tick;
   }
 
   /** Carries the entity to the ragdoll's hips, poses it there, and writes the checkpoint a client lays it from. */
@@ -286,8 +289,9 @@ export class Falls {
     if (d.motion && d.motion.revision === d.revision) return;
     d.sent = this.world.tick;
     const data = encodeCorpseCheckpoint({ x, y, z, yaw: d.yaw, size: 1, out: false, air: false, awake: r.awake, standing: true, ticks: d.fall.ticks, state: r.checkpoint() });
-    // The state after the last tick it was stepped: at the fall, the one before.
-    d.motion = { revision: d.revision, tick: d.ticks === 0 ? this.world.tick - 1 : this.world.tick, data };
+    // The state after the last tick it was stepped. A fall knocked before this tick's step, or during it, is stepped this
+    // tick: its state is the one before. One knocked after the step, or between ticks, is first stepped next tick.
+    d.motion = { revision: d.revision, tick: d.ticks === 0 && this.stepped !== this.world.tick ? this.world.tick - 1 : this.world.tick, data };
   }
 
   /** Stands the body up where its hips lie. */
