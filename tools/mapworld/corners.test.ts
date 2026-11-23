@@ -74,8 +74,8 @@ test("a return's walked parts are its walk's top round the arc, the ramp falling
   }
   // Every return sorts after every core id there was before it, so no index moves; only kinds added since sort after it:
   // the moored hulls and the docks (content/docks.ts), the street cars (content/vehicles/wrecks.ts) and the bent sections
-  // (content/bends.ts).
-  const later = (id: string): boolean => /^core:(zzzzhull|zzzzdock|zzzzroad_|zzzzzbend)/.test(id);
+  // (content/bends.ts), the skateboard, and a city piece's broken forms and materials (content/breaks).
+  const later = (id: string): boolean => /^core:(zzzzhull|zzzzdock|zzzzroad_|zzzzzbend|zzzzzskateboard|zzzzzzbreak|zzzzzzmat_)/.test(id);
   const ids = CORE_CONTENT.map((d) => d.id).sort().filter((id) => !later(id));
   expect(ids.slice(-6).every((id) => id.startsWith("core:zzzcurb"))).toBe(true);
   expect(CORE_CONTENT.map((d) => d.id).sort().slice(ids.length).every(later)).toBe(true);
