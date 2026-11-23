@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 559 of them: 193 take effect,
+is listed here, 566 of them: 200 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -152,6 +152,13 @@ the admin's settings page may change a setting without a restart.
 | `SurfaceGripSand` | 2.6 | Grip a wheel finds on sand: beaches and dunes. *Ours. ARK has no cars.* | yes |
 | `SurfaceGripMud` | 1.8 | Grip a wheel finds on mud: marsh, pools, fords, and road pieces of mud. *Ours. ARK has no cars.* | yes |
 | `FoundBoatReturnDays` | 3 | Days of the game's clock after a berth where the map moors a vessel has lost it, sunk or sailed off, before another of its kind is moored there, owned by nobody, its condition and fuel rolled again. One comes as a car does, and only while the berth still has water enough under its keel. 0 brings none back. *Ours. ARK's rafts and boats are only built. Its own setting, so the yachts can be made rarer than the cars.* | yes |
+| `AllowCityDamage` | True | The map's buildings break: a piece is worn, breached in the half that was hit, opened, and falls to a heap or to nothing; tools, bullets, fire and ramming harm what its material takes. Off, only explosives harm a piece of the map, heaps included, and one out of health is gone at once: none takes a broken form, none leaves a heap, and nothing is rammed through or mined. What already stands broken stays as it is. *Ours. ARK's maps do not break.* | yes |
+| `CityResistanceMultiplier` | 1 | How much the map's pieces stand. Higher takes more: at 2 every hit on one does half, and ramming through one takes twice the energy. *Ours. It divides, where StructureResistanceMultiplier multiplies; both apply to a piece of the map.* | yes |
+| `CityRamming` | True | A car that hits a piece of the map with its material's energy for one half breaks through that half, panes first, and loses that energy. Concrete that holds a building up is never rammed through. *Ours. Creatures do not ram.* | yes |
+| `CityToolSalvage` | True | Tools and blows cut the map's sheet, timber, tile, plaster and glass, and mine a heap for what its material gives. Off, a blow does nothing to a piece of the map or to a heap. *Ours.* | yes |
+| `CityProtectRadius` | 12 | Metres. A piece of the map within this of something a tribe built is spared as that tribe's own would be: from other tribes on a PvE server, and from its own tribe by the friendly-fire rules. A heap may still be mined. 0 spares none. *Ours. Measured from the piece's box to the middle of what was built.* | yes |
+| `CityBreaksPerMinute` | 600 | The most pieces of the map one survivor may break in a minute: each change of form, fall or emptied slot counts one, a mount's against its rider. Past it, that survivor's hits on the map do nothing until it refills, evenly through the minute. *Ours.* | yes |
+| `RubbleYieldMultiplier` | 1 | What a heap gives when mined. Higher is more. HarvestAmountMultiplier does not apply to a heap. *Ours.* | yes |
 
 ### Game.ini `[/script/shootergame.shootergamemode]`
 
