@@ -6,6 +6,7 @@ import { MODE_WALK } from '../sim/character.ts';
 import type { CollisionWorld } from '../world/collide.ts';
 import { castWorld, HIT_NONE, rayHit } from '../world/ray.ts';
 import type { Pose } from './clip.ts';
+import { bend, square, toward, within } from './ik.ts';
 import type { AnimState } from './pose.ts';
 import { CUE_TORPOR, DIR_STEPS } from './pose.ts';
 import type { Rig } from './rigs.ts';
@@ -15,19 +16,10 @@ const point = new Float64Array(3), rotated = new Float64Array(3);
 const q = new Float64Array(4), normal = new Float64Array(4), targetRot = new Float64Array(32);
 const originalFoot = new Float64Array(24), originalEnd = new Float64Array(32), terrain = new Float64Array(8);
 const goals = new Float64Array(24), bends = new Float64Array(24), active = new Uint8Array(8);
-const support = new Float64Array(8);
+const support = new Float64Array(8), pole = new Float64Array(3);
 const originalLeg = new Float32Array(96), influence = new Float64Array(8);
 let surface = 0, nx = 0, ny = 1, nz = 0, castTop = 0;
 const length = (x: number, y: number, z: number): number => Math.sqrt(x*x+y*y+z*z);
-
-function toward(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
-  const a=length(ax,ay,az), b=length(bx,by,bz);
-  ax/=a; ay/=a; az/=a; bx/=b; by/=b; bz/=b;
-  const dot=ax*bx+ay*by+az*bz;
-  if(dot<-.999999) { const x=Math.abs(ax)<.9?1:0,y=1-x; q[0]=-az*y; q[1]=az*x; q[2]=ax*y-ay*x; q[3]=0; }
-  else { q[0]=ay*bz-az*by; q[1]=az*bx-ax*bz; q[2]=ax*by-ay*bx; q[3]=1+dot; }
-  quatNormalize(q,0);
-}
 
 /** Downward casts only accept walkable outward faces. Their normals are returned in the body's yaw frame. */
 function sample(world: CollisionWorld, x: number, y: number, z: number, probe: number, co: number, sn: number, originX: number, originZ: number, clearance: number): boolean {
@@ -148,18 +140,14 @@ export function conformCreature(rig: Rig, st: AnimState, pose: Pose, solved: Sol
     let dx=gx-sx,dy=gy-sy,dz=gz-sz,reach=length(dx,dy,dz);
     if(!(first>1e-6 && second>1e-6 && reach>1e-8))continue;
     dx/=reach;dy/=reach;dz/=reach;
-    reach=Math.max(Math.abs(first-second)+.0001,Math.min(first+second-.0001,reach));
+    reach=within(reach,Math.abs(first-second)+.0001,first+second-.0001);
     goals[at]=sx+dx*reach;goals[at+1]=sy+dy*reach;goals[at+2]=sz+dz*reach;
-    let px=solved.pos[lower]!-sx,py=solved.pos[lower+1]!-sy,pz=solved.pos[lower+2]!-sz;
-    const along=px*dx+py*dy+pz*dz;
-    px-=dx*along;py-=dy*along;pz-=dz*along;
-    let plen=length(px,py,pz);
-    if(plen<1e-6) {px=0;py=-dz;pz=dy;plen=length(px,py,pz);}
+    let plen=square(pole,0,solved.pos[lower]!-sx,solved.pos[lower+1]!-sy,solved.pos[lower+2]!-sz,dx,dy,dz);
+    if(plen<1e-6) {pole[0]=0;pole[1]=-dz;pole[2]=dy;plen=length(0,-dz,dy);}
     if(plen<1e-6)continue;
-    const forward=(first*first-second*second+reach*reach)/(2*reach),bend=Math.sqrt(Math.max(0,first*first-forward*forward));
-    bends[at]=sx+dx*forward+px/plen*bend;bends[at+1]=sy+dy*forward+py/plen*bend;bends[at+2]=sz+dz*forward+pz/plen*bend;
+    bend(bends,at,sx,sy,sz,dx,dy,dz,reach,first,second,pole[0]!,pole[1]!,pole[2]!,plen);
     // Turn the authored segment toward its target, retaining its existing axial twist.
-    toward(solved.pos[lower]!-sx,solved.pos[lower+1]!-sy,solved.pos[lower+2]!-sz,bends[at]!-sx,bends[at+1]!-sy,bends[at+2]!-sz);
+    toward(q,0,solved.pos[lower]!-sx,solved.pos[lower+1]!-sy,solved.pos[lower+2]!-sz,bends[at]!-sx,bends[at+1]!-sy,bends[at+2]!-sz);
     quatMul(q,0,q,0,solved.rot,leg.upper*4);
     quatMulConj(pose.rot,leg.upper*4,solved.rot,rig.parent[leg.upper]!*4,q,0);
     active[i]=1;
@@ -167,7 +155,7 @@ export function conformCreature(rig: Rig, st: AnimState, pose: Pose, solved: Sol
   solve(rig,pose,solved);
   for(let i=0;i<n;i++)if(active[i]) {
     const leg=g.legs[i]!,at=i*3,lower=leg.lower*3,end=leg.end*3;
-    toward(solved.pos[end]!-solved.pos[lower]!,solved.pos[end+1]!-solved.pos[lower+1]!,solved.pos[end+2]!-solved.pos[lower+2]!,goals[at]!-bends[at]!,goals[at+1]!-bends[at+1]!,goals[at+2]!-bends[at+2]!);
+    toward(q,0,solved.pos[end]!-solved.pos[lower]!,solved.pos[end+1]!-solved.pos[lower+1]!,solved.pos[end+2]!-solved.pos[lower+2]!,goals[at]!-bends[at]!,goals[at+1]!-bends[at+1]!,goals[at+2]!-bends[at+2]!);
     quatMul(q,0,q,0,solved.rot,leg.lower*4);
     quatMulConj(pose.rot,leg.lower*4,solved.rot,leg.upper*4,q,0);
   }
