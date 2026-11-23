@@ -65,6 +65,7 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/assets/inspect.ts",
     "client/core/ui/storage.ts",
     "client/core/assets/keeping.ts",
+    "client/core/light-capture.ts",
     ...SOUND_FILES,
     ...DEBUG_FILES,
   ];
@@ -73,7 +74,7 @@ test("code a page needs only after its first frame is not in the script the firs
   for (const file of late) expect(files.includes(file), file).toBe(false);
   // The shell fetches them itself, and the app the Storage tab's page and the debug bar.
   const fetchedBy = (file: string): string[] => [...readFileSync(join(CLIENT, file), "utf8").matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]!);
-  expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts", "../debug/debug-port.ts"]));
+  expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts", "../debug/debug-port.ts", "../core/light-capture.ts"]));
   expect(fetchedBy("core/app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./debug/debug.ts", "./sound-late.ts"]));
 });
 

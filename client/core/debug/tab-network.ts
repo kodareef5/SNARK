@@ -6,11 +6,13 @@ import type { DebugBar } from "./debug.ts";
 import type { Draw } from "./draw.ts";
 import { BODY_CLASSES, CATEGORIES, NET_IN, NET_OUT, OPS, SECTIONS, SnapshotParts, type NetRow } from "./net.ts";
 import { Paint } from "./paint.ts";
-import { D_BUTTON, D_DIM, D_FAINT, D_MONO, D_MONO_DIM, D_TAB_ON, D_TEXT, D_WARN, D_WELL, FILL_RULE, colourOf, opaque } from "./styles.ts";
+import { D_BUTTON, D_DIM, D_FAINT, D_MONO, D_MONO_DIM, D_TAB_ON, D_TEXT, D_WARN, D_WELL, FILL_RULE, PALETTE, opaque, WELL } from "./styles.ts";
 import { TAB_ACT, type Press, type Tab } from "./tab.ts";
 import { count, ms, rate, share } from "./words.ts";
 
 const CHART = 5;
+/** Each category's colour, by its place in CATEGORIES, so no two are alike. */
+const colourOf = (c: number): number => PALETTE[c % PALETTE.length]!;
 /** Seconds the chart shows. */
 const SHOWN = 60;
 const ACT_DIR = TAB_ACT;
@@ -53,7 +55,7 @@ export class NetworkTab implements Tab {
       if (last <= 0 && !this.seen(c)) continue;
       const label = `${CATEGORIES[c]} ${rate(last)}`, lw = Math.ceil(textWidth(label, D_TEXT)) + 18;
       if (lx + lw > x + w) break;
-      draw.box(lx, ly + 4, 8, 8, D_WELL, colourOf(CATEGORIES[c]!));
+      draw.box(lx, ly + 4, 8, 8, D_WELL, colourOf(c));
       draw.text(lx + 12, ly, lw - 12, D_TEXT, label);
       lx += lw + 6;
     }
@@ -129,7 +131,7 @@ export class NetworkTab implements Tab {
     }
     this.top = top;
     p.size(w, h);
-    p.clear(0);
+    p.clear(WELL);
     const room = h - 14;
     for (const guide of [0.25, 0.5, 0.75]) p.rect(0, h - room * guide, w, 1, opaque(FILL_RULE, 120));
     for (let i = 0; i < SHOWN; i++) {
@@ -138,7 +140,7 @@ export class NetworkTab implements Tab {
         const v = this.bytes[c * SHOWN + i]!;
         if (v <= 0) continue;
         const bh = (v / top) * room;
-        p.rect(i * colW + 0.5, foot - bh, Math.max(1, colW - 1), bh, opaque(colourOf(CATEGORIES[c]!)));
+        p.rect(i * colW + 0.5, foot - bh, Math.max(1, colW - 1), bh, opaque(colourOf(c)));
         foot -= bh;
       }
     }

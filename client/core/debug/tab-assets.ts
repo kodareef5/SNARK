@@ -8,7 +8,7 @@ import type { Residency } from "../assets/residency.ts";
 import type { DebugBar } from "./debug.ts";
 import type { Draw } from "./draw.ts";
 import { Paint } from "./paint.ts";
-import { D_DIM, D_FAINT, D_MONO, D_MONO_DIM, D_NUM, D_TEXT, D_WARN, D_WELL, FILL_RULE, PALETTE, opaque } from "./styles.ts";
+import { D_DIM, D_FAINT, D_MONO, D_MONO_DIM, D_NUM, D_TEXT, D_WARN, D_WELL, FILL_RULE, PALETTE, opaque, WELL } from "./styles.ts";
 import type { Tab } from "./tab.ts";
 import { bytes, count, rate } from "./words.ts";
 
@@ -112,7 +112,7 @@ export class AssetsTab implements Tab {
   private paintChart(d: DebugBar, frames: NonNullable<DebugBar["app"]["frames"]>, w: number, h: number): void {
     const p = this.chart;
     p.size(w, h);
-    p.clear(0);
+    p.clear(WELL);
     let top = 64 * 1024;
     for (let back = 0; back < SECONDS; back++) {
       const b = frames.bucket(back);

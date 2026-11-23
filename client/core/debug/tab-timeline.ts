@@ -9,7 +9,7 @@ import { EVENT_COLOURS, EVENT_NAMES, EV_ERROR, EV_GAP, EV_STALL, EV_TICK, type L
 import { Paint } from "./paint.ts";
 import { C, CELLS, FLAG_AFTER_SHOT, FLAG_SHOT, LATE, S_FRAMES, S_LATE, S_SUM, S_WORST } from "./ring.ts";
 import { SpanFrame } from "./spans.ts";
-import { ACCENT, BAD, D_BUTTON, D_DIM, D_FAINT, D_MONO, D_MONO_BAD, D_MONO_DIM, D_TEXT, D_WELL, FILL_RULE, INK_FAINT, WARN, opaque } from "./styles.ts";
+import { ACCENT, BAD, D_BUTTON, D_DIM, D_FAINT, D_MONO, D_MONO_BAD, D_MONO_DIM, D_TEXT, D_WELL, FILL_RULE, INK_FAINT, WARN, opaque, WELL } from "./styles.ts";
 import { TAB_ACT, type Press, type Tab } from "./tab.ts";
 import { ago, ms, share } from "./words.ts";
 
@@ -119,7 +119,7 @@ export class TimelineTab implements Tab {
   private paintChart(d: DebugBar, nowMs: number, w: number, h: number): void {
     const p = this.chart, perf = d.perf, q = perf.seconds, target = perf.target, top = this.top, colW = w / SECONDS, room = h - 6, first = this.newest - SECONDS + 1;
     p.size(w, h);
-    p.clear(0);
+    p.clear(WELL);
     const y = (v: number): number => h - Math.min(room, (v / top) * room);
     for (const guide of [target, 33.3, 50]) if (guide < top) p.rect(0, y(guide), w, 1, opaque(FILL_RULE));
     for (let c = 0; c < SECONDS; c++) {
@@ -147,7 +147,7 @@ export class TimelineTab implements Tab {
   private paintFrames(d: DebugBar, t: number, w: number, h: number): void {
     const p = this.frames, perf = d.perf, target = perf.target, top = Math.max(this.top, 34);
     p.size(w, h);
-    p.clear(0);
+    p.clear(WELL);
     const from = t * 1000, to = from + 1000;
     let n = 0;
     for (let back = 0; back < 400; back++) {

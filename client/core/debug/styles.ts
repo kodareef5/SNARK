@@ -58,5 +58,14 @@ export function colourOf(name: string): number {
   return PALETTE[(h >>> 0) % PALETTE.length]!;
 }
 
-/** 0xRRGGBB to the painter's 0xRRGGBBAA. */
-export const opaque = (rgb: number, alpha = 255): number => ((rgb << 8) | alpha) >>> 0;
+/**
+ * 0xRRGGBB to the painter's 0xRRGGBBAA, laid over the well by `alpha` (0 to 255) and opaque: a chart's every fill is
+ * then a plain fill, which is many times quicker than laying one colour over another pixel by pixel.
+ */
+export function opaque(rgb: number, alpha = 255): number {
+  const k = alpha / 255, mix = (shift: number): number => Math.round(((rgb >>> shift) & 255) * k + ((FILL_WELL >>> shift) & 255) * (1 - k));
+  return ((mix(16) << 24) | (mix(8) << 16) | (mix(0) << 8) | 255) >>> 0;
+}
+
+/** The well a chart is painted on, as the painter takes it. */
+export const WELL = opaque(FILL_WELL);
