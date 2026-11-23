@@ -20,6 +20,11 @@ import { HIT_PREFIX } from "./bends.ts";
 
 /** Metres a storey. */
 export const STOREY = 4;
+/**
+ * Metres under a storey's floor that still count as that storey: more than a place's rounding, less than the 0.2 m a
+ * slab's middle lies under its top, so a slab is the lid of the storey below it.
+ */
+export const STOREY_SLACK = 1 / 16;
 /** The version of a sector's buildings as a part holds them, and of the head's names. */
 export const BUILDINGS_VERSION = 1;
 /** A building's flags: a stair climbs in it, one reaches its roof, it is a place its city names by hand, it has a row in another sector. */
@@ -125,9 +130,9 @@ export function tileOf(f: BuildingFrame, x: number, z: number): number {
   return (j < 0 ? 0 : j > most(f.rows) ? most(f.rows) : j) * (f.cols > 0 ? f.cols : 1) + (i < 0 ? 0 : i > most(f.cols) ? most(f.cols) : i);
 }
 
-/** The storey a height `y` is in, the ground storey 0: a slab's top 0.25 m under a storey's floor is still the storey's below. */
+/** The storey a height `y` is in, the ground storey 0, and no storey below it. */
 export function storeyAt(f: BuildingFrame, y: number): number {
-  const n = Math.floor((y - f.base + 0.25) / STOREY);
+  const n = Math.floor((y - f.base + STOREY_SLACK) / STOREY);
   return n < 0 ? 0 : n > 255 ? 255 : n;
 }
 

@@ -82,7 +82,8 @@ test("a piece's tile comes from its place in its building's frame: its tile's mi
     placeOf(f, ...at(u, v));
     expect([u, v, place.hi, place.hj, tileOf(f, ...at(u, v))]).toEqual([u, v, hi, hj, tile]);
   }
-  expect([storeyAt(f, 0.5), storeyAt(f, 4.2), storeyAt(f, 4.3), storeyAt(f, 8.5), storeyAt(f, -3)]).toEqual([0, 0, 1, 2, 0]);
+  // Its base is at 0.5: a slab's middle 0.2 m under the first floor is the ground storey's lid, and a hair under a floor is on it.
+  expect([storeyAt(f, 0.5), storeyAt(f, 4.3), storeyAt(f, 4.45), storeyAt(f, 8.5), storeyAt(f, -3)]).toEqual([0, 0, 1, 2, 0]);
 });
 
 test("one building's storey in one chunk is one run of slots", () => {

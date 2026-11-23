@@ -1,4 +1,5 @@
 import { finished, pieceMiddle, RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { STOREY, STOREY_SLACK } from "../../shared/world/buildings.ts";
 import { carry, know } from "./known.ts";
 import type { Footprint, Site, StaticPiece } from "./statics.ts";
 
@@ -89,7 +90,7 @@ export class Mason {
   private keep(piece: StaticPiece, foot: number): void {
     this.pieces.push(piece);
     // A slab's foot is under a storey's floor, so it is the lid of the storey below.
-    know(piece, this.ti, this.tj, this.ts >= 0 ? this.ts : Math.min(254, Math.max(0, Math.floor((foot + .25) / 4))));
+    know(piece, this.ti, this.tj, this.ts >= 0 ? this.ts : Math.min(254, Math.max(0, Math.floor((foot + STOREY_SLACK) / STOREY))));
   }
   put(shape: RuinShape, u: number, y: number, v: number, finish: RuinFinish = "concrete", turn = 0): void {
     const [x, z] = worldPoint(this.frame, u, v);

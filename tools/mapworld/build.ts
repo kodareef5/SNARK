@@ -40,7 +40,7 @@ import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
 import { workFolder } from "../maps/work.ts";
-import { mapBuildings, orderPieces } from "./buildings.ts";
+import { encodeKnown, knownPlaces, mapBuildings, orderPieces, type KnownPlaces } from "./buildings.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -186,10 +186,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
   lap(`${vehicles.length} parked vehicles`);
   // Each building's pieces by storey, which only reorders them among themselves, and the runs of slots they will take.
   let buildings: Buildings | null = null;
+  let known: KnownPlaces | null = null;
   {
     const ordered = orderPieces(statics, site.buildings);
     for (let i = 0; i < statics.length; i++) statics[i] = ordered.pieces[i]!;
     if (site.buildings.length > 0) buildings = mapBuildings({ chunksX, chunksZ, frameX: base.info.frame[0], frameZ: base.info.frame[1] }, site.buildings, ordered, x0, z0);
+    if (buildings) known = knownPlaces({ chunksX, chunksZ }, ordered, x0, z0);
   }
   if (buildings) lap(`${site.buildings.length} buildings, ${buildings.count} rows of them in ${buildings.sectors.filter((t) => t).length} sectors`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
@@ -331,6 +333,8 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const file = join(output, `${name}.snmap`);
   const built = (performance.now() - t0) / 1000;
   const packed = await writeMapFile(file, bytes, release);
+  // The tile and storey each piece was placed at, which the map does not hold, for the check of its buildings (building-places.ts).
+  if (known) writeFileSync(join(output, name, "known.bin"), encodeKnown(known));
   lap(`map file ${file} and its parts' files with their copies for the wire`);
   for (const line of [...describe(bytes), ...partsTable(packed)]) console.log(`        ${line}`);
 

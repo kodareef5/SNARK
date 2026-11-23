@@ -2,7 +2,7 @@ import { CHUNK_SIZE, YAW_UNITS } from "../../shared/coords.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 import type { MapData, MapStatic } from "../../shared/world/mapfile.ts";
-import { mapBuildings, orderPieces, type SiteBuilding } from "../../tools/mapworld/buildings.ts";
+import { knownPlaces, mapBuildings, orderPieces, type KnownPlaces, type SiteBuilding } from "../../tools/mapworld/buildings.ts";
 import { knownOf, own, type Known } from "../../tools/mapworld/known.ts";
 import { Mason, compactWalls, reserveRoutes, type Frame } from "../../tools/mapworld/ruin-geometry.ts";
 import { layout } from "../../tools/mapworld/ruin-layouts.ts";
@@ -18,6 +18,8 @@ export interface BuiltCity {
   readonly of: Int32Array;
   readonly storey: Uint8Array;
   readonly known: readonly (Known | null)[];
+  /** The same by chunk and slot, as the build keeps it beside a map. */
+  readonly places: KnownPlaces;
 }
 
 const frame = (x: number, z: number, degrees: number, width: number, depth: number): Frame => ({
@@ -70,5 +72,5 @@ export function builtCity(): BuiltCity {
     spawns: [{ name: "Middle", x: 190, z: 20, yaw: 0 }],
     buildings: mapBuildings(dims, buildings, ordered, 0, 0),
   };
-  return { map, buildings, statics, of: ordered.of, storey: ordered.storey, known: ordered.pieces.map((p) => knownOf(p)) };
+  return { map, buildings, statics, of: ordered.of, storey: ordered.storey, known: ordered.pieces.map((p) => knownOf(p)), places: knownPlaces(dims, ordered, 0, 0) };
 }
