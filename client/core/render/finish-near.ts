@@ -7,7 +7,7 @@
 // which is never more than it can be; a jump starts afresh.
 
 import { SURFACE_NAMES, surfaceIndex } from "../../../content/surfaces.ts";
-import { MOST_MATERIALS, materialIndex } from "../../../content/texgen/materials.ts";
+import { MOST_MATERIALS, materialIndex } from "../texgen/layers.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, YAW_UNITS } from "../../../shared/coords.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";

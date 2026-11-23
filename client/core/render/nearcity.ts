@@ -17,7 +17,7 @@ import type { ChunkTable } from "../../../shared/world/structures.ts";
 import { KindPlates, chunkOccluders } from "./hide.ts";
 import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
 import { fixtureKind } from "./street-finish.ts";
-import { materialIndex } from "../../../content/texgen/materials.ts";
+import { materialIndex } from "../texgen/layers.ts";
 import { quadBytes, type FramePacket } from "./packet.ts";
 
 /** Strips of a chunk along z, 4 m wide, that bands are made of: a band is 1, 2, 4, 8 or 16 of them in a row. */

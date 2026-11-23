@@ -3,11 +3,13 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { MADE_FINISHES, MADE_SHARE, RUIN_FINISHES, SEAM_SHARE, finished, flatRoof, madeFinish, pitchFinish } from "../../content/ruins.ts";
-import { MATERIAL_RECIPES, MOST_MATERIALS, materialIndex } from "../../content/texgen/materials.ts";
+import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
+import { madeFar, madeShift } from "../../client/core/render/world-surfaces.ts";
 import { jobFragment, jobPixels } from "../../client/core/texgen/engine.ts";
-import { MADE_LAYER, MADE_SLOTS, TEXGEN_BUDGET, TEXGEN_LAYERS, texgenBytes } from "../../client/core/texgen/layers.ts";
+import { MADE_FLOATS, MADE_LAYER, MADE_READS, MADE_SLOTS, MOST_MATERIALS, TEXGEN_BUDGET, TEXGEN_LAYERS, madePhase, materialIndex, noMade, texgenBytes } from "../../client/core/texgen/layers.ts";
 import { MATERIAL_ROWS, materialHeight, materialJob, materialRows, materialTexel } from "../../client/core/texgen/materials.ts";
-import { MADE_FLOATS, MADE_RISE, MadeSlots, madePhase } from "../../client/core/texgen/slots.ts";
+import { MADE_RISE, MadeSlots } from "../../client/core/texgen/slots.ts";
+import { texgen } from "../../client/core/texgen/late.ts";
 
 const whole = (n: number): boolean => Math.abs(n - Math.round(n)) < 1e-4 && Math.round(n) >= 1;
 
@@ -189,4 +191,19 @@ test("a building's made finish is by its type and storeys, in its colour, the sa
   // Roofs: tar on a flat roof but a garage's deck and under a pitch; seam on sheds and commerce, clay on houses but a few.
   expect([flatRoof("apartment", "service"), flatRoof("hotel", "terrace"), flatRoof("shed", "monitor"), flatRoof("garage", "service"), flatRoof("house", "hip"), flatRoof("station", "canopy")]).toEqual(["tar", "tar", "tar", "concrete", "concrete", "concrete"]);
   expect([pitchFinish("shed", 0.9), pitchFinish("shop", 0.9), pitchFinish("house", 0.9), pitchFinish("house", SEAM_SHARE / 2)]).toEqual(["seam", "seam", "clay", "seam"]);
+});
+
+test("what the first frame holds of each material is its recipe's, and no slot is held until the keeper comes", () => {
+  // The read's rows are pinned apart from the recipes (layers.ts MADE_READS): this says when one is stale.
+  expect(MADE_READS.map((r) => r.name)).toEqual(MATERIAL_RECIPES.map((r) => r.name));
+  MATERIAL_RECIPES.forEach((r, k) => {
+    const read = MADE_READS[k]!, shift = madeShift(r);
+    expect([r.name, read.metres, read.relief, read.mottle, read.lies, read.coat]).toEqual([r.name, r.metres, r.relief, r.mottle, r.lies === true, r.coat === true]);
+    expect([r.name, Math.abs(read.far - madeFar(r)) < 1e-6, Math.abs(read.shift[0] - shift[0]) < 1e-6, Math.abs(read.shift[1] - shift[1]) < 1e-6]).toEqual([r.name, true, true, true]);
+  });
+  // A frame before the engine's file has come says no material has a slot; the keeper comes with the engine.
+  const out = new Float32Array(MADE_READS.length * MADE_FLOATS);
+  noMade(out, 0);
+  for (let k = 0; k < MADE_READS.length; k++) expect([out[k * MADE_FLOATS], out[k * MADE_FLOATS + 1]]).toEqual([-1, 0]);
+  expect(texgen(null as never).wants).toBeInstanceOf(MadeSlots);
 });

@@ -2,26 +2,14 @@
 // materials nearest the eye take them. A material with no slot, or whose slot is not yet made, is drawn as its
 // finish's means, which every material is far off, so a slot changing hands is never seen. The frame is told each
 // material's layer and how far it has come up (packet.ts fMade); the engine is told the version wanted of each layer.
+// It comes with the engine (late.ts): until then a frame says no material holds a slot (layers.ts noMade).
 
-import { MATERIAL_RECIPES } from "../../../content/texgen/materials.ts";
-import { MADE_LAYER, MADE_SLOTS, TEXGEN_LAYERS } from "./layers.ts";
+import { MADE_FLOATS, MADE_LAYER, MADE_READS, MADE_SLOTS, TEXGEN_LAYERS } from "./layers.ts";
 
-/** Floats a material has in the frame's block: its slot's first layer (-1 for none), how far it has come up, two spare; then where the eye is in its tiles along x, y and z, less whole tiles. */
-export const MADE_FLOATS = 8;
 /** Frames over which a slot's material comes up once it is made. */
 export const MADE_RISE = 20;
 /** A material in a slot is taken as this much nearer than it is, so that two a like distance off do not trade a slot. */
 const KEEP = 0.8;
-
-/** Each material's place in its tiles for an eye at (x, y, z), into `out` from `at` as fMade has it. */
-export function madePhase(out: Float32Array, at: number, x: number, y: number, z: number): void {
-  for (let k = 0; k < MATERIAL_RECIPES.length; k++) {
-    const m = MATERIAL_RECIPES[k]!.metres, o = at + k * MADE_FLOATS + 4;
-    out[o] = x / m - Math.floor(x / m);
-    out[o + 1] = y / m - Math.floor(y / m);
-    out[o + 2] = z / m - Math.floor(z / m);
-  }
-}
 
 export class MadeSlots {
   /** The version wanted of each layer of the array (engine.ts Texgen.frame): 1 for the weathering's, a slot's material's number for its two, 0 for an empty slot's. */
@@ -29,7 +17,7 @@ export class MadeSlots {
   /** The material in each slot, from 1; 0 for none. Frames since each was made. */
   private readonly slot = new Uint8Array(MADE_SLOTS);
   private readonly risen = new Uint8Array(MADE_SLOTS);
-  private readonly rank = new Float32Array(MATERIAL_RECIPES.length);
+  private readonly rank = new Float32Array(MADE_READS.length);
 
   /**
    * A frame: `near` is metres from the eye to the nearest piece of each material (Infinity for none in reach), `holds`
@@ -37,7 +25,7 @@ export class MadeSlots {
    * `out` from `at`.
    */
   frame(near: ArrayLike<number>, holds: ArrayLike<number> | null, out: Float32Array, at: number): void {
-    const K = MATERIAL_RECIPES.length, rank = this.rank;
+    const K = MADE_READS.length, rank = this.rank;
     for (let k = 0; k < K; k++) rank[k] = near[k]!;
     for (let s = 0; s < MADE_SLOTS; s++) if (this.slot[s]! > 0) rank[this.slot[s]! - 1]! *= KEEP;
     // The nearest material without a slot takes an empty one, or that of the farthest one farther than it.

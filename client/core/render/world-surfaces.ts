@@ -3,10 +3,9 @@ import { fixtureShader } from "./street-finish.ts";
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, MASK_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
-import { MATERIAL_RECIPES, type MaterialRecipe } from "../../../content/texgen/materials.ts";
+import type { MaterialRecipe } from "../../../content/texgen/materials.ts";
 import { hash32 } from "../texgen/hash.ts";
-import { MADE_FLOATS } from "../texgen/slots.ts";
-import { FIELD_LAYER, FORMWORK, FORMWORK_LAYER, GROWTH_TOP, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELD_UP, WEATHER_GROUND, WEATHER_PAD, WEATHER_STOREY, texgenSide } from "../texgen/layers.ts";
+import { MADE_FLOATS, MADE_READS, FIELD_LAYER, FORMWORK, FORMWORK_LAYER, GROWTH_TOP, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELD_UP, WEATHER_GROUND, WEATHER_PAD, WEATHER_STOREY, texgenSide } from "../texgen/layers.ts";
 import { ROAD_ACROSS, ROAD_ALONG, ROAD_CELL, ROAD_HALF, ROAD_ONE_WAY, ROAD_PLANES, ROAD_STEP, ROAD_WEAR_SHIFT, ROAD_WRAP, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
@@ -309,7 +308,7 @@ const madeBase = new Float64Array(4), madeRelief = new Float64Array(4), madeBase
 /** Metres across the cells of the noise that says where a made material's second copy shows, in its tiles; and of its mottle's two noises. */
 const MOTTLE = [2.3, 0.9] as const;
 /**
- * How far a made material's second copy is moved, in its tiles: by whole units of its courses and ribs, so that its
+ * How far a made material's second copy is moved, in its tiles (pinned in texgen/layers.ts MADE_READS): by whole units of its courses and ribs, so that its
  * joints and ribs meet themselves, and any way where it has none.
  */
 export function madeShift(r: MaterialRecipe): [number, number] {
@@ -321,7 +320,6 @@ export function madeShift(r: MaterialRecipe): [number, number] {
  * least course or rib, so that these are gone before a pixel is as wide as half of one.
  */
 export const madeFar = (r: MaterialRecipe): number => Math.min(r.metres, 4 * Math.min(r.course ? r.course.size[1] : Infinity, r.rib ? r.rib.pitch : Infinity));
-const shifts = MATERIAL_RECIPES.map(madeShift);
 
 /**
  * Material `k` made from a recipe (content/texgen/materials.ts, from 1) on finish `id` at world point (x, y, z) of a
@@ -333,18 +331,18 @@ const shifts = MATERIAL_RECIPES.map(madeShift);
  * down its fall.
  */
 function made(k: number, id: number, axis: number, x: number, y: number, z: number, nx: number, nz: number, footprint: number, slots: Numbers, masks: WorldSample, patch: number): void {
-  const f = finishes[id]!, r = MATERIAL_RECIPES[k - 1]!, m = r.metres, turn = axis === 1 && Math.abs(nx) > Math.abs(nz);
+  const f = finishes[id]!, r = MADE_READS[k - 1]!, m = r.metres, turn = axis === 1 && Math.abs(nx) > Math.abs(nz);
   const wu = axis === 0 ? z : x, wv = axis === 1 ? z : -y;
   const u = (turn ? wv : wu) / m, v = (turn ? wu : wv) / m;
   const spread = Math.log2(Math.max(footprint / m, 1e-9));
-  const t = slots[(k - 1) * MADE_FLOATS + 1]! * (1 - clamp((Math.log2(Math.max(footprint / madeFar(r), 1e-9)) - WORLD_FAR) / WORLD_FAR_BAND));
+  const t = slots[(k - 1) * MADE_FLOATS + 1]! * (1 - clamp((Math.log2(Math.max(footprint / r.far, 1e-9)) - WORLD_FAR) / WORLD_FAR_BAND));
   for (let c = 0; c < 4; c++) maps.base[c] = f.base[c]!;
   for (let c = 0; c < 3; c++) maps.mro[c] = f.mean[c]!;
   maps.mro[3] = 0.5;
   maps.lean[0] = maps.lean[1] = 0;
   maps.patch = patch;
   if (t <= 0) return;
-  const layer = slots[(k - 1) * MADE_FLOATS]!, shift = shifts[k - 1]!;
+  const layer = slots[(k - 1) * MADE_FLOATS]!, shift = r.shift;
   const second = clamp((surfaceNoise((wu * WORLD_PATCH) / m + 5.3, (wv * WORLD_PATCH) / m + 1.7) - 0.35) / 0.3), share = second * second * (3 - 2 * second);
   madeBase.fill(0);
   madeRelief.fill(0);
@@ -477,7 +475,7 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   scales.rough = f.rough;
   scales.bump = f.bump;
   scales.height = f.height;
-  if (wears > 0 && slots && masks && !light && (!MATERIAL_RECIPES[wears - 1]!.lies || (axis === 1 && ny > 0))) made(wears, index, axis, x, y, z, nx, nz, footprint, slots, masks, secondShare(u, v));
+  if (wears > 0 && slots && masks && !light && (!MADE_READS[wears - 1]!.lies || (axis === 1 && ny > 0))) made(wears, index, axis, x, y, z, nx, nz, footprint, slots, masks, secondShare(u, v));
   else finishMaps(index, u, v, spread, sample, light, tangent, depth, early);
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
   const stain = light ? 0 : 0.75 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.25 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
@@ -1180,10 +1178,10 @@ uniform float uTexgenReady;
 int worldMade = 0;
 // How much of a coat the pixel wears (made), and how much of its plaster is lost (weathered): a coat's relief goes with it.
 float worldCoat = 0.0, worldLost = 0.0;
-const float MK[${MATERIAL_RECIPES.length + 1}] = float[${MATERIAL_RECIPES.length + 1}](0.0, ${MATERIAL_RECIPES.map((r) => (r.coat ? "1.0" : "0.0")).join(", ")});
-const vec4 MD[${MATERIAL_RECIPES.length + 1}] = vec4[${MATERIAL_RECIPES.length + 1}](vec4(1.0), ${MATERIAL_RECIPES.map((r) => `vec4(${fl(r.metres)}, ${fl(r.relief)}, ${fl(madeFar(r))}, ${fl(r.mottle)})`).join(", ")});
-const vec2 MS[${MATERIAL_RECIPES.length + 1}] = vec2[${MATERIAL_RECIPES.length + 1}](vec2(0.0), ${MATERIAL_RECIPES.map((r) => `vec2(${madeShift(r).map(fl).join(", ")})`).join(", ")});
-const bool ML[${MATERIAL_RECIPES.length + 1}] = bool[${MATERIAL_RECIPES.length + 1}](false, ${MATERIAL_RECIPES.map((r) => String(r.lies === true)).join(", ")});
+const float MK[${MADE_READS.length + 1}] = float[${MADE_READS.length + 1}](0.0, ${MADE_READS.map((r) => (r.coat ? "1.0" : "0.0")).join(", ")});
+const vec4 MD[${MADE_READS.length + 1}] = vec4[${MADE_READS.length + 1}](vec4(1.0), ${MADE_READS.map((r) => `vec4(${fl(r.metres)}, ${fl(r.relief)}, ${fl(r.far)}, ${fl(r.mottle)})`).join(", ")});
+const vec2 MS[${MADE_READS.length + 1}] = vec2[${MADE_READS.length + 1}](vec2(0.0), ${MADE_READS.map((r) => `vec2(${r.shift.map(fl).join(", ")})`).join(", ")});
+const bool ML[${MADE_READS.length + 1}] = bool[${MADE_READS.length + 1}](false, ${MADE_READS.map((r) => String(r.lies)).join(", ")});
 void made(int k, int id, int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy, vec2 qf, out vec4 base, out vec4 mro, out vec2 bump, out float tone, inout vec3 scales) {
   float m = MD[k].x;
   vec4 s = fMade[k * 2 - 2];

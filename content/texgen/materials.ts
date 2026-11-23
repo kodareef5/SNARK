@@ -3,7 +3,8 @@
  * (shared/content/kinds/structures.ts) in place of their colour's painted finish. A recipe is numbers alone: a square
  * tile, and on it up to four noises, grains scattered one to a cell, courses of laid units and ribs up the tile, each
  * with what it adds to the height and to the light. One program reads them all, so a new material is one entry here and
- * a finish that names it (content/ruins.ts); nothing else is written. Lengths are metres. A material's mean is its
+ * a finish that names it (content/ruins.ts), and its row of what a wall's read needs of it (client/core/texgen/layers.ts
+ * MADE_READS), which a test checks against it. Lengths are metres. A material's mean is its
  * piece's painted finish's, which it is far off, in the far city and on a phone; keep a tile's own light even, and
  * give what varies over metres to `mottle`, since what a tile holds comes round again every tile.
  */
@@ -49,9 +50,6 @@ export interface MaterialRecipe {
   readonly means: readonly [number, number, number];
 }
 
-/** The most there may be: a face's key and a look's bits keep room for these (shared/world/city.ts, render/finish-near.ts). */
-export const MOST_MATERIALS = 12;
-
 export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
   // Knockdown stucco: the coat thrown on in lumps and trowelled flat, so flat islands a hand across stand over rough hollows.
   {
@@ -91,6 +89,3 @@ export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
     grain: { size: 0.016, core: 0.42, radius: 0.6, height: 0.8, tone: 0.5, gap: 0.12, bare: 0, warm: 0.15 },
   },
 ];
-
-/** A material's number in a face's key and on the card: its place in MATERIAL_RECIPES and one; 0 for none. */
-export const materialIndex = (name: string | undefined): number => (name ? MATERIAL_RECIPES.findIndex((r) => r.name === name) + 1 : 0);

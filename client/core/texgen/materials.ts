@@ -8,8 +8,7 @@ import { MATERIAL_RECIPES, type MaterialRecipe } from "../../../content/texgen/m
 import { sample, type Texture } from "../render/cpu-texture.ts";
 import { jobPixels, type Job } from "./engine.ts";
 import type { WorldSample } from "../render/world-surfaces.ts";
-import { MADE_SLOTS, TEXGEN_LAYERS } from "./layers.ts";
-import { MADE_FLOATS } from "./slots.ts";
+import { MADE_FLOATS, MADE_SLOTS, TEXGEN_LAYERS } from "./layers.ts";
 import { cells, fbm, hash3, smoothstep } from "./noise.ts";
 import { mipmapped } from "./weather.ts";
 

@@ -169,6 +169,12 @@ export class Orders {
 }
 
 /** The jobs' layers on the card, made as a frame's share of its time allows. */
+/**
+ * Who says the version wanted of each layer from frame to frame, where a job's layers change what they hold (slots.ts):
+ * `near` is what it chooses by, `holds` what the card holds (Texgen `holds`), and it writes what a frame says of its choice into `out` from `at`.
+ */
+export interface Wants { readonly want: Int32Array; frame(near: ArrayLike<number>, holds: ArrayLike<number> | null, out: Float32Array, at: number): void }
+
 export class Texgen {
   readonly orders: Orders;
   /** Each job's first layer. */
@@ -200,8 +206,11 @@ export class Texgen {
   private ends = false;
 
   private readonly jobs: readonly Job[];
-  constructor(jobs: readonly Job[], gl: QueryGl | null = null) {
+  /** Who says the versions wanted of the layers that change what they hold, where a job has such. */
+  readonly wants: Wants | null;
+  constructor(jobs: readonly Job[], gl: QueryGl | null = null, wants: Wants | null = null) {
     this.jobs = jobs;
+    this.wants = wants;
     let at = 0;
     this.first = jobs.map((job, j) => {
       for (let layer = 0; layer < job.layers; layer++) for (let band = 0; band < job.bands; band++) this.items.push({ job: j, layer, band });

@@ -3,13 +3,13 @@
 import { expect, test } from "bun:test";
 import { SURFACE_NAMES, surfaceIndex } from "../../content/surfaces.ts";
 import { RUIN_FINISHES, ruinKind } from "../../content/ruins.ts";
-import { MATERIAL_RECIPES, materialIndex } from "../../content/texgen/materials.ts";
+import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { NearMaking } from "../../client/core/render/nearcity.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { MADE_MARK, coatLost, madeFar, madeShift, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TWIN_SLOTS, madeTwin, materialHeight, materialRows } from "../../client/core/texgen/materials.ts";
-import { MADE_FLOATS } from "../../client/core/texgen/slots.ts";
+import { MADE_FLOATS, materialIndex } from "../../client/core/texgen/layers.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { CityStatics, mergedPart } from "../../shared/world/city.ts";
 import { coreRegistry } from "../fixtures/world.ts";
