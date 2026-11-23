@@ -94,12 +94,14 @@ export class CityBreaks {
 
   /**
    * Whether a tribe's structure stands within CityProtectRadius of the city piece `ref`, and the rules would spare that
-   * tribe's own from `by`: then the piece is spared too. Only chunks that hold something built are looked at.
+   * tribe's own from `by`: then the piece is spared too. With `rolling`, nobody's doing (a car that rolls by itself) is
+   * spared on a PvE server, as another tribe's would be. Only chunks that hold something built are looked at.
    */
-  spares(by: EntityRecord | null, ref: number, mapKind: number, type: number): boolean {
+  spares(by: EntityRecord | null, ref: number, mapKind: number, type: number, rolling = false): boolean {
     const { world, rules, spared } = this.ctx;
     const reach = rules.num("CityProtectRadius");
-    if (!(reach > 0)) return false;
+    const nobody = rolling && !by;
+    if (!(reach > 0) || (nobody && !rules.on("serverPVE"))) return false;
     const structs = world.structs, dims = world.dims;
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
     const [x, y, z] = [t.x[slot]!, t.y[slot]!, t.z[slot]!];
@@ -123,7 +125,7 @@ export class CityBreaks {
           const lx = Math.abs(dx * cos - dz * sin) - hx, ly = Math.abs(u.y[s]! - y) - hy, lz = Math.abs(dx * sin + dz * cos) - hz;
           const [ex, ey, ez] = [lx > 0 ? lx : 0, ly > 0 ? ly : 0, lz > 0 ? lz : 0];
           if (ex * ex + ey * ey + ez * ez > reach * reach) continue;
-          if (spared(by, team, type)) return true;
+          if (nobody || spared(by, team, type)) return true;
           // The same tribe's next piece would say the same.
           last = team;
         }
@@ -408,7 +410,7 @@ export class CityBreaks {
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
     const form = formOf(reg, t.kind[slot]!);
     if (form !== FORM_WHOLE && form !== FORM_BREACH_A && form !== FORM_BREACH_B) return 0;
-    if (this.capped(by) || this.spares(by, ref, mapKind, DMG_MELEE)) return 0;
+    if (this.capped(by) || this.spares(by, ref, mapKind, DMG_MELEE, true)) return 0;
     const tough = rules.num("CityResistanceMultiplier");
     const material = reg.structMaterial[mapKind]!;
     const hp = t.hp[slot]!;
