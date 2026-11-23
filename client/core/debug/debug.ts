@@ -13,7 +13,7 @@ import type { UiFrame, UiImage } from "../ui/nodes.ts";
 import { Draw, KEY_DEBUG } from "./draw.ts";
 import { EV_ASSET, EV_CORRECTION, EV_ERROR, EV_GAP, EV_GOVERNOR, EV_JUMP, EV_TASK, EV_TICK, GAP_MS, LagEvents, Rises } from "./events.ts";
 import { LogRing, SOURCE_GAME, SOURCE_PAGE, SOURCE_SERVER } from "./log.ts";
-import { NetLog, bodyClassifier } from "./net.ts";
+import { NetLog, bodyClass } from "./net.ts";
 import type { DebugPort, LongFrame, PageLine } from "./port.ts";
 import { C, CELLS, FLAG_AFTER_SHOT, FLAG_SHOT, PerfRing } from "./ring.ts";
 import { FrameSampler, type FrameExtra } from "./sample.ts";
@@ -111,7 +111,7 @@ export class DebugBar {
 
   constructor(app: App) {
     this.app = app;
-    this.net = new NetLog(this.spans, bodyClassifier(app.session.registry));
+    this.net = new NetLog(this.spans, bodyClass(app.session.registry));
     this.tabs = [new TimelineTab(), new FrameTab(), new NetworkTab(), new LogTab(), new ShotsTab(), new AssetsTab(), new ServerTab()];
     void app.debugPort?.().then((port) => this.attach(port), () => {});
   }
@@ -318,6 +318,7 @@ export class DebugBar {
   };
 
   private readonly selfMs = new Float64Array(MOST_SLOTS);
+  private readonly netRates = new Float64Array(4);
 
   /** A slot's name with its parents', from the frame down: "app › build › draw › near store". */
   pathOf(slot: number): string {
@@ -527,8 +528,8 @@ export class DebugBar {
     }
     const r = app.scene?.assets.residency;
     if (r) out.push([`card ${Math.round(r.ledger / 1048576)} of ${Math.round(r.budget / 1048576)} MB`, r.ledger > r.budget ? D_WARN : D_NUM_DIM]);
-    const net = this.net.totals();
-    out.push([`in ${rate(net.inBytes)} · out ${rate(net.outBytes)}`, D_NUM_DIM]);
+    this.net.rates(this.netRates, 1);
+    out.push([`in ${rate(this.netRates[0]!)} · out ${rate(this.netRates[1]!)}`, D_NUM_DIM]);
     out.push([`ping ${Math.round((s.stats.rttTicks * 1000) / 30)} ms`, D_NUM_DIM]);
     // The last five seconds: frames late against the display, and the rate against it.
     const now = app.nowMs, k0 = perf.row(0);
