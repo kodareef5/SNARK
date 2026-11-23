@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { CUE_DOWN } from "../../shared/anim/pose.ts";
 import { HUMAN_RAGDOLL, ZONE_HEAD } from "../../shared/anim/human.ts";
 import { zoneHit } from "../../shared/anim/skeleton.ts";
+import { decodeCorpseCheckpoint } from "../../shared/net/corpse.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { rayBody } from "../../shared/anim/zones.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
@@ -126,6 +127,29 @@ test("a shot judged in a fall is judged the same once the survivor is knocked do
   } finally {
     h.host.shutdown();
   }
+});
+
+test("a second knock during a rise leaves the previous tick to the first fall", () => {
+  const { h, e } = scene();
+  try {
+    const falls = h.host.falls, up = falls.onUp;
+    let rose = -1;
+    falls.onUp = (id, face, way, facing) => {
+      up(id, face, way, facing);
+      rose = h.world.tick;
+      expect(falls.knock(id, 0, 1, 3, 0, 2, 0)).toBe(true);
+    };
+    expect(falls.knock(e, 2, 2, 1, 4, 0, 6)).toBe(true);
+    for (let t = 0; t < 245 && rose < 0; t++) h.run(1000 / 60);
+    expect(rose).toBeGreaterThan(0);
+    const seed = falls.motion(e)!;
+    expect(seed.tick).toBe(rose);
+    expect(decodeCorpseCheckpoint(seed.data)!.ticks).toBe(0);
+    const last = falls.riseFrom(e, rose)!;
+    expect(falls.poseAt(e, rose - 1)!.pos).toEqual(last.solved.pos);
+    expect(Math.abs(h.world.ents.y[e]! - last.y)).toBeLessThan(.15);
+    expect(falls.poseAt(e, rose)!.pos).not.toEqual(falls.poseAt(e, rose - 1)!.pos);
+  } finally { h.host.shutdown(); }
 });
 
 test("live and rewound shots follow the final fall through a second knockdown", () => {

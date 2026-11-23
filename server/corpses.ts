@@ -303,6 +303,8 @@ export class Corpses {
   }
 
   /** Cheap send decision for an already-visible corpse. Zero means the ordinary stationary/falling path. */
+  motionCarrier(e: number): number { return this.byEnt.get(e)?.carrier ?? 0; }
+
   motionRevision(e: number): number { return this.byEnt.get(e)?.motionRevision ?? 0; }
 
   /** Current whole-tick checkpoint, including one first seen long after its original impact. */

@@ -146,24 +146,27 @@ export class Falls {
       this.stats.refused++;
       return false;
     }
-    const yaw = yawOf16(ents.yaw[e]!);
+    const previous = this.risen.get(e)?.at(-1);
+    const continuing = previous?.rose === this.world.tick && previous.gen === ents.gen[e] ? previous : undefined;
+    const yaw = continuing?.yaw ?? yawOf16(ents.yaw[e]!);
     const anim = creature ? this.world.anims[kind]! : null;
-    const size = creature && ents.grown[e] ? corpseSize(sizeSpan(youngScale(this.world.reg.birthScale[kind]!, ents.span[e]!, ents.grown[e]!, this.world.tick))) : 1;
+    const size = continuing?.size ?? (creature && ents.grown[e] ? corpseSize(sizeSpan(youngScale(this.world.reg.birthScale[kind]!, ents.span[e]!, ents.grown[e]!, this.world.tick))) : 1);
     const pose = new Solved(anim?.rig.bones ?? HUMAN.bones);
     const x = wireX(ents.x[e]!), y = wireY(ents.y[e]!), z = wireX(ents.z[e]!);
-    const r = anim ? layCorpse(anim, false, false, x, y, z, yaw, size, pose, true) : layHuman(x, y, z, yaw);
+    // A second impact before a single upright tick strikes the same limbs with their existing momentum.
+    const r = continuing?.fall.ragdoll ?? (anim ? layCorpse(anim, false, false, x, y, z, yaw, size, pose, true) : layHuman(x, y, z, yaw));
     if (!r) return false;
     r.launch(vx, vy, vz, wx, wy, wz);
     const fall = new Fall(r);
     if (!creature) fall.reflex = brace;
     const revision = ++this.serial;
     const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision, begun: revision, world: 0, motion: null, pose, creature, size,
-      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(anim?.rig.bones ?? HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: false, struck: new Set(), by };
+      poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(anim?.rig.bones ?? HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: r.touched, carrier: r.carrier?.handle, struck: new Set(), by };
     this.down.set(e, d);
     this.units += units;
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
     // Its facing as it fell, as sent, which its pose is in.
-    ents.yaw[e] = ((ents.yaw[e]! >>> 6) << 6) & 0xffff;
+    ents.yaw[e] = Math.round(yaw / TAU * 65536) & 0xffff;
     if (creature) {
       ents.react[e] = REACT_CREATURE_DOWN;
       this.world.history.reacted(e);
@@ -171,7 +174,8 @@ export class Falls {
     // Its own client is told by its body's flags, as its snapshot carries no cue of its own.
     ents.mflags[e]! |= MF_DOWN;
     this.world.history.cued(e);
-    this.place(d);
+    const tick = continuing || this.stepped === this.world.tick ? this.world.tick : this.world.tick - 1;
+    this.place(d, tick);
     this.stats.fell++;
     return true;
   }
@@ -289,6 +293,8 @@ export class Falls {
     return this.down.get(e)?.revision ?? 0;
   }
 
+  motionCarrier(e: number): number { return this.down.get(e)?.carrier ?? 0; }
+
   motionBegun(e: number): number {
     return this.down.get(e)?.begun ?? 0;
   }
@@ -319,6 +325,8 @@ export class Falls {
         this.ended(d);
         continue;
       }
+      // An immediate second knock starts from the limbs the previous fall already advanced for this tick.
+      if (d.ticks === 0 && d.motion?.tick === this.world.tick) continue;
       const was = d.fall.still, r = d.fall.ragdoll;
       r.movers = this.cars.near(r);
       d.fall.tick(this.world);
@@ -339,7 +347,7 @@ export class Falls {
   }
 
   /** Carries the entity to the ragdoll's hips, poses it there, and writes the checkpoint a client lays it from. */
-  private place(d: Down): void {
+  private place(d: Down, tick = this.world.tick): void {
     const r = d.fall.ragdoll, ents = this.world.ents;
     r.rootPosition(root);
     const x = wireX(root[0]!), y = wireY(root[1]!), z = wireX(root[2]!);
@@ -354,8 +362,6 @@ export class Falls {
       const data = packCorpseCheckpoint({ x, y, z, yaw: d.yaw, size: d.size, out: false, air: false,
         awake: r.awake, standing: true, carrier: r.carrier, ticks: d.fall.ticks, state });
       r.restore(state, r.awake);
-      // A fall created before this tick's step still holds the previous tick's state.
-      const tick = d.ticks === 0 && this.stepped !== this.world.tick ? this.world.tick - 1 : this.world.tick;
       d.motion = { revision: d.revision, tick, data };
     }
     r.pose(d.pose);

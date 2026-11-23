@@ -13,9 +13,7 @@ import type { Client, GameServer } from "./game.ts";
 
 interface Told {
   readonly visible: Set<number>;
-  readonly sent: Map<number, number>;
-  /** The tick each body in `sent` was last sent at. */
-  readonly sentAt: Map<number, number>;
+  readonly sent: Map<number, { revision: number; tick: number; carrier: number }>;
   readonly retry: Set<number>;
   retryAt: number;
 }
@@ -31,6 +29,8 @@ export interface MotionSource {
   motion(e: number, delivery?: "first" | "correction"): CorpseMotion | null;
   /** The revision its lying began at, where one entity lies more than once; what a client has older is of before. */
   motionBegun?(e: number): number;
+  /** The generation-qualified vehicle currently supporting the body. */
+  motionCarrier?(e: number): number;
 }
 
 export class CorpseReplication {
@@ -50,7 +50,7 @@ export class CorpseReplication {
 
   sync(c: Client, view: SentView): void {
     let state = this.told.get(c.conn);
-    if (!state) { state = { visible: new Set(), sent: new Map(), sentAt: new Map(), retry: new Set(), retryAt: -TICK_RATE }; this.told.set(c.conn, state); }
+    if (!state) { state = { visible: new Set(), sent: new Map(), retry: new Set(), retryAt: -TICK_RATE }; this.told.set(c.conn, state); }
     state.visible.clear();
     const ents = this.game.world.ents, tick = this.game.world.tick, { order, keys } = this;
     const ox = c.ent >= 0 ? ents.x[c.ent]! : 0, oz = c.ent >= 0 ? ents.z[c.ent]! : 0;
@@ -64,11 +64,13 @@ export class CorpseReplication {
       if (!source) continue;
       const id = makeHandle(e, gen); state.visible.add(id);
       const had = state.sent.get(id);
-      if (had === revision && !state.retry.has(id)) continue;
-      const fresh = had === undefined || had < (source.motionBegun?.(e) ?? 0) || state.retry.has(id);
+      if (had?.revision === revision && !state.retry.has(id)) continue;
+      const fresh = had === undefined || had.revision < (source.motionBegun?.(e) ?? 0) || state.retry.has(id);
       const dx = ents.x[e]! - ox, dz = ents.z[e]! - oz, k = order.length, far = Math.sqrt(dx * dx + dz * dz);
       this.ents[k] = e; this.ids[k] = id; this.from[k] = source; this.revisions[k] = revision;
-      keys[k] = fresh ? far : CORRECTION + far / Math.max(1, tick - (state.sentAt.get(id) ?? 0));
+      const age = Math.max(1, tick - (had?.tick ?? 0));
+      const release = had?.carrier && had.carrier !== (source.motionCarrier?.(e) ?? 0);
+      keys[k] = fresh ? far : CORRECTION + far / (age * (release ? 4 : 1));
       order.push(k);
     }
     order.sort(this.byKey);
@@ -86,10 +88,14 @@ export class CorpseReplication {
       this.game.endOwn(c);
       left -= sent; this.stats.bytes += sent; this.stats.checkpoints++;
       if (correction) { corrections--; this.stats.corrections++; }
-      state.sent.set(id, this.revisions[k]!); state.sentAt.set(id, tick); state.retry.delete(id);
+      const carrier = this.from[k]!.motionCarrier?.(this.ents[k]!) ?? 0;
+      const last = state.sent.get(id);
+      if (last) { last.revision = this.revisions[k]!; last.tick = tick; last.carrier = carrier; }
+      else state.sent.set(id, { revision: this.revisions[k]!, tick, carrier });
+      state.retry.delete(id);
     }
     this.from.length = 0;
-    for (const id of state.sent.keys()) if (!state.visible.has(id)) { state.sent.delete(id); state.sentAt.delete(id); }
+    for (const id of state.sent.keys()) if (!state.visible.has(id)) state.sent.delete(id);
     for (const id of state.retry) if (!state.visible.has(id)) state.retry.delete(id);
   }
 
