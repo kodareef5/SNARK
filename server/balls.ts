@@ -7,7 +7,7 @@
 import { rebaseTicks } from "./persist/codec.ts";
 import { EVENT_BALL, OWN_KEPT, S_EVENT } from "../shared/net/protocol.ts";
 import { KEEP_REACH, LOOSE_REACH } from "../shared/sim/balls.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { STAMINA_UNITS, stanceEye } from "../shared/sim/character.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
@@ -279,6 +279,8 @@ export class Balls {
     rec.y = freeAt.y;
     rec.z = freeAt.z;
     rec.yaw = yaw;
+    // One with no vitals has never had a body: it was made kept (server/loadout/tame.ts).
+    const unborn = !rec.vitals;
     const e = creatures.adopt(rec);
     if (e < 0) {
       // No body after all: it stays kept, as it was.
@@ -305,6 +307,8 @@ export class Balls {
     breeding.loosed(rec);
     taming.meal(rec);
     this.ctx.refresh(rec);
+    // Its first body comes out rested: a new body has 100 stamina whatever its most.
+    if (unborn) ents.stamina[e] = ents.staminaMax[e]! * STAMINA_UNITS;
     this.loosed++;
     // ARK's cryo sickness: loosed within the survivor's wait after the last, it is knocked out and takes ten times the harm.
     // It is always so on PvP, and on PvE only where the server says (EnableCryoSicknessPVE).

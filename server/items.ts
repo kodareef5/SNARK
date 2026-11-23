@@ -269,13 +269,17 @@ export class Items {
   /**
    * Creates one of a kind standing for record `ref` in a free bag slot of `rec`, or in its empty slot `at` where that is
    * given. Returns the slot, or -1 if there is none, `at` is taken or does not take the item, or the item stacks: only an
-   * item that stacks to 1 may stand for a record.
+   * item that stacks to 1 may stand for a record. With `why`, a module is asked about it as `mint` asks, and may refuse it.
    */
-  mintRef(rec: EntityRecord, item: number, ref: number, at = -1): number {
+  mintRef(rec: EntityRecord, item: number, ref: number, at = -1, why?: string): number {
     if (this.table.stack[item] !== 1 || ref === 0) return -1;
     const inv = this.inv(rec);
     const slot = at < 0 ? inv.free() : at < inv.cap && inv.item[at] === 0 && fitsSlot(inv, at, item, this.table) ? at : -1;
     if (slot < 0) return -1;
+    if (why !== undefined && this.bus.n[ITEM_GAIN] !== 0) {
+      const asked = { pid: rec.pid, item: this.reg.ids[item]!, why, n: 1 };
+      if (this.bus.before(ITEM_GAIN, asked) !== "" || !(Number(asked.n) >= 1)) return -1;
+    }
     inv.set(slot, item, 1, 0, this.maxDur(item, 0), 0);
     inv.setRef(slot, ref);
     // Its spoil clock starts as any new item's does, and a charge's full.
