@@ -33,6 +33,8 @@ export const FAR_HEIGHT = 1024;
  */
 export const FAR_SLOTS = 1 << 30;
 export const FAR_SPAN = 1 << 29;
+/** The last of that span is the fragments' meshes' (fragment-meshes.ts): a tile's slot wraps short of them. */
+export const FAR_TILE_SPAN = FAR_SPAN - 4096;
 /** The instance buffer every tile is drawn with: one instance at the origin. Clear of chunk indices and the node store's. */
 export const FAR_BUFFER = 2 << 20;
 /** The far city's tiles and the city's blocks are drawn with the next one (farcity.ts, cityblocks.ts). */
@@ -348,7 +350,7 @@ export class FarBlocks {
       if (!tile.data) continue;
       if (tile.slot < 0 && this.off(t, x, z) <= reach) {
         tile.slot = FAR_SLOTS + this.next;
-        this.next = (this.next + 1) % FAR_SPAN;
+        this.next = (this.next + 1) % FAR_TILE_SPAN;
         p.assetUploads.push({ slot: tile.slot, mesh: this.mesh, level: 0, data: tile.data, indexCount: tile.indexCount, indexBytes: tile.indexBytes, quads: true });
         budget.spend(tile.data.length);
       }

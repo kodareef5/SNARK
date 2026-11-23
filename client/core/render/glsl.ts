@@ -94,7 +94,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   worldMade = vMade & ${(1 << WEAR_OVER_MADE) - 1};
   int wear = vMade >> ${WEAR_OVER_MADE};
   float rim = 0.0;
-  if ((wear & ${WEAR_STAGE}) >= 2 && uSolid < 1.5 && uSkin < 0.5) {
+  if ((wear & ${WEAR_STAGE}) >= 2 && uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) {
     vec2 lost = spalled(vRel + uWorldEye, geometric, wear & ${WEAR_STAGE});
     rim = lost.y;
     if (lost.x > 0.5) {
