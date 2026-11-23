@@ -54,18 +54,18 @@ test("a client with the map's statics is sent only the slots that differ from th
   const statics = h.world.statics!;
   const held = (c: number): number => statics.first[c + 1]! - statics.first[c]!;
   // The proving ground's busiest chunk of statics, within sight of the spawn: one taken away, one hurt, another taken
-  // and a wall set down in its slot.
+  // and a wall set down, in a slot past the map's.
   let chunk = 0;
   for (let c = 0; c < structs.chunks.length; c++) if (held(c) > held(chunk)) chunk = c;
   const t = structs.chunks[chunk]!;
   const hurt = [...Array(held(chunk)).keys()].find((s) => h.reg.maxHp[t.kind[s]!]! > 100)!;
   const gone = (hurt + 1) % held(chunk);
-  const reused = (hurt + 2) % held(chunk);
+  const other = (hurt + 2) % held(chunk);
   expect(structs.damage(chunk * 65536 + hurt, 50)).toBeGreaterThan(0);
   structs.remove(chunk * 65536 + gone);
-  structs.remove(chunk * 65536 + reused);
+  structs.remove(chunk * 65536 + other);
   const wall = h.reg.index.get("core:wall")!;
-  expect(structs.add(wall, chunkCx(h.world.dims, chunk) * CHUNK_SIZE + 9, 300, chunkCz(h.world.dims, chunk) * CHUNK_SIZE + 9, 0, 7, 100)).toBe(chunk * 65536 + reused);
+  expect(structs.add(wall, chunkCx(h.world.dims, chunk) * CHUNK_SIZE + 9, 300, chunkCz(h.world.dims, chunk) * CHUNK_SIZE + 9, 0, 7, 100)).toBe(chunk * 65536 + held(chunk));
   const ada = h.join("ada");
   const bob = h.join("bob", {}, { statics: false });
   const bytes = [0, 0];
@@ -82,7 +82,7 @@ test("a client with the map's statics is sent only the slots that differ from th
   const chunks = whole(ada);
   expect(chunks.includes(chunk) && chunks.filter((c) => held(c) > 0).length > 1).toBe(true);
   expect([differ(structs, ada.world!.structs, chunks), differ(structs, bob.world!.structs, whole(bob))]).toEqual([0, 0]);
-  // Bob is sent every static as a row; Ada the chunks' headers, about 15 bytes each, and the three slots that changed.
+  // Bob is sent every static as a row; Ada the chunks' headers, about 15 bytes each, and the four slots that changed.
   expect(bytes[0]! * 5).toBeLessThan(bytes[1]!);
   // A blow lands on the hurt one: its health alone, with the message's header, is a dozen bytes or so.
   const was = bytes[0]!;

@@ -9,7 +9,7 @@ import { SEA_DRY, SEA_UNDER, formOf, mix, nodeForms, scatterNodes, type NodeForm
 import { MapWater, seaHere } from "../../shared/world/water.ts";
 import { Rng } from "../../shared/rng.ts";
 import { ROAD_PLANES, RoadSectors, roadSamples } from "../../shared/world/roadframe.ts";
-import { StructureStore } from "../../shared/world/structures.ts";
+import { GONE_FELL, StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -684,11 +684,35 @@ test("set down, a map's statics take just the slots they fill and no log of chan
   structs.remove(65536 + 3);
   expect(structs.add(wall, 150, 2, 20, 0, 9, 100)).toBe(2 * 65536);
   expect([0, 1, 2, 4, 5].map((k) => structs.asPlaced(k))).toEqual([true, false, false, false, true]);
-  // The slot freed is built in again. The map's columns stay the map's, and the table's are its own from the first write.
-  expect(structs.add(wall, 70, 3, 30, 100, 9, 100)).toBe(65536 + 3);
-  expect([b!.x.buffer === map.statics.x.buffer, b!.x[3], b!.yaw[3], c!.x.buffer === map.statics.x.buffer]).toEqual([false, 70, 100, true]);
+  // A piece built there takes a slot past the map's. The map's columns stay the map's, and the table's are its own from the first write.
+  expect(structs.add(wall, 70, 3, 30, 100, 9, 100)).toBe(65536 + 64);
+  expect([b!.x.buffer === map.statics.x.buffer, b!.x[64], b!.yaw[64], c!.x.buffer === map.statics.x.buffer]).toEqual([false, 70, 100, true]);
   const again = parseMap(file).statics;
   expect([map.statics.x, map.statics.y, map.statics.z, map.statics.yaw]).toEqual([again.x, again.y, again.z, again.yaw]);
   // Kept by the server, the statics need not keep the map's order.
   expect([map.statics.unordered().row.length, map.statics.unordered().x === map.statics.x, map.statics.row.length]).toEqual([0, true, 300]);
+});
+
+test("a map slot emptied is never given to a player's piece", () => {
+  const pieces = Array.from({ length: 40 }, (_, i) => ({ kind: "core:crate", x: 70 + (i % 8) * 6, y: 1 + Math.floor(i / 8) * 3, z: 10, yaw: 0 }));
+  const map = parseMap(writeMap(flatMap(4, { statics: pieces })));
+  const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(map, structs, reg);
+  const t = structs.chunks[1]!;
+  const wall = reg.index.get("core:wall")!;
+  const build = (): number => structs.add(wall, 100, 20, 40, 0, 9, 100) - 65536;
+  expect([t.mapped, t.high]).toEqual([40, 40]);
+  // One taken, one destroyed, three fallen together.
+  structs.remove(65536 + 3);
+  structs.damage(65536 + 9, 1e9);
+  expect(structs.removeMany(Uint32Array.of(65536 + 20, 65536 + 21, 65536 + 39), 3, GONE_FELL, 0, 0, 0, 0)).toBe(3);
+  expect([build(), build(), build()]).toEqual([40, 41, 42]);
+  // A player's own slot is given again, before and after the free list is made again as a load makes it.
+  structs.remove(65536 + 41);
+  expect(build()).toBe(41);
+  structs.remove(65536 + 40);
+  structs.setVersion(1, t.version);
+  expect([build(), build()]).toEqual([40, 43]);
+  expect([3, 9, 20, 21, 39].map((s) => t.kind[s])).toEqual([0, 0, 0, 0, 0]);
+  expect([t.mapped, t.live]).toEqual([40, 39]);
 });

@@ -1,4 +1,5 @@
 // A structure is a row in its chunk's table, not an entity, with no per-tick cost. ref = chunk * 65536 + slot, stable until removed.
+// A slot the map set a piece down in stays that piece's when it is emptied, so its ref means that piece for good.
 // Each slot records the table version that last changed it, so a client is brought up to date by a scan, without an op log.
 
 import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
@@ -108,6 +109,8 @@ export class ChunkTable {
   recentFloor = 0;
   /** Per slot, the id of the query that last counted it. Scratch for queries that cover several cells. */
   stamp: Uint32Array;
+  /** Slots [0, mapped) are the map's, each its piece's for good: one emptied is never given to another piece. */
+  mapped = 0;
   /** Slots [0, high) have been used at some point. */
   high = 0;
   live = 0;
@@ -321,7 +324,7 @@ export class StructureStore {
     if (t.freeStale) {
       // Rows were loaded or applied since the list was kept. A client applies rows every tick and never adds, so it never pays for this.
       t.free.length = 0;
-      for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] === 0) t.free.push(s);
+      for (let s = t.high - 1; s >= t.mapped; s--) if (t.kind[s] === 0) t.free.push(s);
       t.freeStale = false;
     }
     if (t.free.length > 0) slot = t.free.pop()!;
@@ -376,7 +379,7 @@ export class StructureStore {
         t.mod[s] = s + 1;
       }
       // What was set down is not in the log of changes.
-      t.high = t.live = t.version = t.placedVersion = t.recentFloor = t.shape = t.placed = n;
+      t.mapped = t.high = t.live = t.version = t.placedVersion = t.recentFloor = t.shape = t.placed = n;
       this.count += n;
       this.shapes += n;
     }
@@ -430,7 +433,7 @@ export class StructureStore {
     } else t.log({ version: t.version, cause, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, stamp, runs: [slot, 1], count: 1 });
     this.erase(chunk, t, slot, t.version);
     t.touch(slot, 1);
-    t.free.push(slot);
+    if (slot >= t.mapped) t.free.push(slot);
     this.onChunkChanged?.(chunk, false);
     return true;
   }
@@ -457,7 +460,7 @@ export class StructureStore {
           if (count === 0) t.version++;
           this.erase(chunk, t, slot, t.version);
           t.touch(slot, 1);
-          t.free.push(slot);
+          if (slot >= t.mapped) t.free.push(slot);
           // Slots come in ascending order, so an adjacent slot extends the last run.
           if (runs.length > 0 && runs[runs.length - 2]! + runs[runs.length - 1]! === slot) runs[runs.length - 1]!++;
           else runs.push(slot, 1);
