@@ -1,7 +1,8 @@
 // The map's city comes back. A building that was harmed returns whole, as the map placed it, CityRegrowDays of the game's
 // clock after its last harm, once nobody is near enough to see it come: no survivor within CityRegrowClearDistance,
 // nothing a tribe built in its frame, no body where a piece would return, and it is not coming down. The unit is the building, so a tower
-// never returns half. Broken pieces of no building return by the same clock, a chunk at a time.
+// never returns half. Broken pieces of no building return by the same clock, a chunk at a time, where their kind is
+// one that breaks in forms.
 //
 // A cursor walks the chunks that hold changed map slots, a few a tick. What is kept is each harmed building's last harm,
 // by its id, and each such chunk's, saved with the world as a sidecar. An admin resets a building, a circle or the whole
@@ -68,9 +69,12 @@ export class CityRegrow {
 
   /** The city piece `ref` was harmed now. */
   harmed(ref: number): void {
+    const { world } = this.ctx;
     const key = this.key(Math.floor(ref / 65536), ref & 0xffff);
-    if (this.last.get(key) === this.ctx.world.tick) return;
-    this.last.set(key, this.ctx.world.tick);
+    // A piece of no building that does not break in forms is not this clock's to bring back.
+    if (key < 0 && world.reg.breakFamily[world.structs.mapKind(Math.floor(ref / 65536), ref & 0xffff)] === 0) return;
+    if (this.last.get(key) === world.tick) return;
+    this.last.set(key, world.tick);
     this.saved.dirty = true;
   }
 
@@ -97,7 +101,7 @@ export class CityRegrow {
     for (const slot of structs.changedSlots(chunk)) {
       if (t.owner[slot] !== 0) continue;
       const key = this.key(chunk, slot);
-      if (seen.has(key)) continue;
+      if (seen.has(key) || (key < 0 && world.reg.breakFamily[structs.mapKind(chunk, slot)] === 0)) continue;
       seen.add(key);
       let at = this.last.get(key);
       if (at === undefined) {
@@ -225,6 +229,8 @@ export class CityRegrow {
     let left = 0;
     for (const slot of structs.changedSlots(chunk)) {
       if (t.owner[slot] !== 0 || (world.buildings?.buildingOf(chunk, slot) ?? -1) >= 0) continue;
+      // Only what breaks in forms: a lamp a car felled and a door left open are others' to set back.
+      if (world.reg.breakFamily[structs.mapKind(chunk, slot)] === 0) continue;
       // A body where the piece would stand keeps it away this time.
       const reach = structs.spread[structs.mapKind(chunk, slot)]! + ROOM;
       let taken = false;
