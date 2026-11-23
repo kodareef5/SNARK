@@ -3,7 +3,7 @@
 // order from KEY_DEBUG, and a pressed key finds its action and argument in two tables.
 
 import { K_BUTTON, K_IMAGE, K_PANEL, K_TEXT, fitText, lineHeight, textWidth, type UiFrame } from "../ui/nodes.ts";
-import { D_DIM, D_HEAD, D_NUM } from "./styles.ts";
+import { D_DIM, D_HEAD, D_NUM, D_WELL } from "./styles.ts";
 
 /** The debug bar's keys, clear of every other screen's. */
 export const KEY_DEBUG = 600000;
@@ -118,9 +118,12 @@ export class Draw {
     return by - y + 22;
   }
 
-  /** A picture from the interface's image table, stretched to the box. */
-  picture(x: number, y: number, w: number, h: number, image: number, act = 0, arg = 0): void {
-    const r = this.rec(K_IMAGE, x, y, w, h, 0, act, arg);
+  /**
+   * A picture from the interface's image table, stretched to the box. A chart the bar paints takes `chart`: a node that
+   * changes between a painted chart and a picture fetched by its URL changes style too, so the interface clears it.
+   */
+  picture(x: number, y: number, w: number, h: number, image: number, act = 0, arg = 0, chart = false): void {
+    const r = this.rec(K_IMAGE, x, y, w, h, chart ? D_WELL : 0, act, arg);
     if (r) r.image = image;
   }
 

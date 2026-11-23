@@ -75,7 +75,7 @@ export class FrameTab implements Tab {
     this.total = Math.max(frameMs, cardMs, target, 1);
     this.paint(d, f, Math.round(chartW * d.unit), Math.round(chartH * d.unit), rows);
     draw.box(left, chartY, chartW, chartH, D_WELL);
-    draw.picture(left, chartY, chartW, chartH, d.imageOf(CHART, this.chart.image), ACT_CHART);
+    draw.picture(left, chartY, chartW, chartH, d.imageOf(CHART, this.chart.image), ACT_CHART, 0, true);
     // The bars wide enough to name, and the card's passes.
     const names = spans.names;
     let named = 0;

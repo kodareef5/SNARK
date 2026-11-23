@@ -45,7 +45,7 @@ export class NetworkTab implements Tab {
     net.series(SHOWN, this.bytes, this.msgs, dir);
     this.paint(Math.round(w * d.unit), Math.round(chartH * d.unit));
     draw.box(x, chartY, w, chartH, D_WELL);
-    draw.picture(x, chartY, w, chartH, d.imageOf(CHART, this.chart.image));
+    draw.picture(x, chartY, w, chartH, d.imageOf(CHART, this.chart.image), 0, true);
     draw.text(x + 4, chartY + 2, 300, D_FAINT, `bytes a second over ${SHOWN} s, top ${rate(this.top)}`);
     let lx = x, ly = chartY + chartH + 4;
     for (let c = 0; c < CATEGORIES.length; c++) {

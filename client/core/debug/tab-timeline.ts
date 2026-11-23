@@ -63,7 +63,7 @@ export class TimelineTab implements Tab {
     this.top = Math.min(250, Math.max(50, target * 2.5, worst * 1.1));
     this.paintChart(d, nowMs, Math.round(w * d.unit), Math.round(chartH * d.unit));
     draw.box(x, chartY, w, chartH, D_WELL);
-    draw.picture(x, chartY, w, chartH, d.imageOf(CHART, this.chart.image), ACT_CHART);
+    draw.picture(x, chartY, w, chartH, d.imageOf(CHART, this.chart.image), ACT_CHART, 0, true);
     draw.text(x + 4, chartY + chartH + 1, 80, D_FAINT, "3 min ago");
     draw.text(x + w / 2 - 30, chartY + chartH + 1, 80, D_FAINT, "1:30 ago");
     draw.text(x + w - 26, chartY + chartH + 1, 30, D_FAINT, "now");
@@ -74,7 +74,7 @@ export class TimelineTab implements Tab {
     const picW = Math.min(Math.round(w * 0.36), Math.round(room * 16 / 9)), listW = w - picW - 14;
     this.paintFrames(d, at, Math.round(listW * d.unit), Math.round(36 * d.unit));
     draw.box(x, below, listW, 36, D_WELL);
-    draw.picture(x, below, listW, 36, d.imageOf(FRAMES, this.frames.image));
+    draw.picture(x, below, listW, 36, d.imageOf(FRAMES, this.frames.image), 0, true);
     draw.text(x + 4, below + 1, listW - 8, D_FAINT, this.chosen >= 0 ? `the frames of ${ago(nowMs - at * 1000)}` : "the frames of the last second");
     let line = below + 42;
     const from = this.chosen >= 0 ? at * 1000 - 1000 : nowMs - SECONDS * 1000, to = this.chosen >= 0 ? at * 1000 + 2000 : nowMs;
