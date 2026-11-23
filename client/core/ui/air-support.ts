@@ -160,7 +160,9 @@ export class AirRadio {
     return s.airSupport.notice || (this.refusal && s.tickClock < this.refusalUntil ? this.refusal : "");
   }
 
-  build(f: UiFrame, s: ClientSession): void {
+  ownsButton(key: number): boolean { return key > BASE && key <= LEAVE; }
+
+  build(f: UiFrame, s: ClientSession, focus: number): void {
     const v = s.airSupport, pod = v.pods.find(row => row.id === v.pod);
     const w = Math.min(430, f.width - f.left - f.right - 24);
     const h = pod ? 295 : 195;
@@ -187,5 +189,7 @@ export class AirRadio {
       button(f, TRAILER, left, row, half, "Request trailer");
       button(f, GROUND, left + half + 8, row, half, "Mark ground drop");
     }
+    const focused = this.ownsButton(focus) ? f.find(focus) : null;
+    if (focused?.interactive) focused.style = S_MENU_FOCUS;
   }
 }

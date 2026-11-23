@@ -141,7 +141,7 @@ export class Ui {
   private focusTo(key: number): void { this.menuFocus = this.focusNext = key; }
 
   private moveFocus(by: number): void {
-    const keys = this.frame.nodes.slice(0, this.frame.count).filter((n) => n.interactive).map((n) => n.key);
+    const keys = this.frame.nodes.slice(0, this.frame.count).filter((n) => n.interactive && (!this.air.open || this.air.ownsButton(n.key))).map((n) => n.key);
     const at = keys.indexOf(this.menuFocus);
     if (keys.length) this.focusTo(keys[at < 0 ? (by > 0 ? 0 : keys.length - 1) : (at + by + keys.length) % keys.length]!);
   }
@@ -199,14 +199,15 @@ export class Ui {
       else chat.submit(session);
       return true;
     }
-    if (code === "Backquote" || (code === "Tab" && !con.open)) {
+    if (code === "Backquote" || (code === "Tab" && !con.open && !this.air.open)) {
       // A held key opens or closes once, not once per repeat.
       if (down && !repeat) con.open = !con.open;
       return true;
     }
     if (!con.open) {
-      if (this.air.open && down && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) {
-        this.moveFocus(code === "ArrowUp" ? -1 : 1);
+      if (this.air.open && (code === "ShiftLeft" || code === "ShiftRight")) this.menuShift = down;
+      if (this.air.open && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) {
+        if (down) this.moveFocus(code === "ArrowUp" || (code === "Tab" && this.menuShift) ? -1 : 1);
         return true;
       }
       if (this.air.open && down && !repeat && (code === "Enter" || code === "Space") && this.frame.find(this.menuFocus)?.interactive && session) {
@@ -431,7 +432,7 @@ export class Ui {
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
-      else if (this.air.open && session) this.air.build(f, session);
+      else if (this.air.open && session) this.air.build(f, session, this.menuFocus);
       else if (this.travel.open && session) this.travel.build(f, session);
       else if (this.monitorOpen && !this.inventory.open) this.monitor!.panel(f, plan, hud, this.settings.muted);
       else {

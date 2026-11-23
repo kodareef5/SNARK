@@ -52,3 +52,32 @@ test("the cab calls a trailer and launches its fourth bay through the radio", ()
     expect(s.driving).toBe(e);
   } finally { h.host.shutdown(); }
 });
+
+test("the cab radio rotates and places a ground pod from the yard spawn", () => {
+  const h = new ScreenHarness({}, 19, 20, { dev: true, map: Uint8Array.from(airYard()), clips: NO_CLIPS, rigs: [] });
+  try {
+    const s = h.open("ground-freight-driver");
+    const view = screen(h, s);
+    h.run(1000);
+    tap(h, view, "KeyE");
+    h.run(1600);
+    tap(h, view, "KeyJ");
+    tap(h, view, "Tab");
+    expect(view.app.ui.console.open).toBe(false);
+    expect(view.app.ui.frame.find(view.app.ui.menuFocus)?.text).toBe("Close");
+    click(view, "Mark ground drop");
+    h.run(100);
+    const start = { ...view.app.ui.air.spot };
+    tap(h, view, "KeyQ");
+    expect(view.app.ui.air.marking).toBe(true);
+    expect(view.app.ui.air.spot.yaw).not.toBe(start.yaw);
+    tap(h, view, "KeyE");
+    expect(s.airSupport.order).toBeGreaterThan(0);
+    for (let i = 0; i < 120 && !s.airSupport.pods.length; i++) h.run(400);
+    const rack = s.airSupport.pods[0];
+    expect(rack?.trailer).toBe(false);
+    expect(rack?.hitched).toBe(false);
+    expect(rack!.x).toBeCloseTo(start.x, 1);
+    expect(rack!.z).toBeCloseTo(start.z, 1);
+  } finally { h.host.shutdown(); }
+});
