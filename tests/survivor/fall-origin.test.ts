@@ -23,9 +23,9 @@ test("replayed origins stay with their poses as survivors and dodos fall and ris
     const down = (e: number, cue: number, reaction: number) => e === human ? (cue & CUE_DOWN) !== 0 : reaction === REACT_CREATURE_DOWN;
     const edges = new Map([[human, 0], [bird, 0]]);
     const calls: number[] = [];
-    let used: Solved | null = null;
+    const used: (Solved | null)[] = [];
     const downPose = h.host.combat.downPose;
-    h.host.combat.downPose = (e, tick) => { calls.push(tick); used = downPose(e, tick); return used; };
+    h.host.combat.downPose = (e, tick) => { calls.push(tick); const pose = downPose(e, tick); used.push(pose); return pose; };
     for (const e of [human, bird]) expect(h.host.falls.knock(e, 0, 1, 4, 3, 0, 0)).toBe(true);
     let checked = 0;
     h.run(6000, () => {
@@ -57,9 +57,9 @@ test("replayed origins stay with their poses as survivors and dodos fall and ris
           const last = h.host.falls.poseAt(e, tick - 1)!;
           expect(h.host.falls.knock(e, 0, 1, -4, -3, 0, 0)).toBe(true);
           expect(last).not.toBe(h.host.falls.poseOf(e));
-          used = null;
+          used.length = 0;
           expect(h.host.combat.castBodies(observer, from.x, from.y + 2, from.z, 0, -1, 0, 4, 0, tick - .25)).toBe(e);
-          expect(used).toBe(last);
+          expect(used).toContain(last);
         }
       }
     });

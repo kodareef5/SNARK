@@ -138,7 +138,10 @@ export class History {
   private currentTravel = 0;
   private travelDirty = false;
 
-  constructor(ents: EntityStore, capacity = 256, private readonly survivor = -1) {
+  private readonly survivor: number;
+
+  constructor(ents: EntityStore, capacity = 256, survivor = -1) {
+    this.survivor = survivor;
     this.ents = ents;
     this.rowOf = new Int32Array(ents.cap).fill(-1);
     this.travelled = new Float64Array(capacity);
