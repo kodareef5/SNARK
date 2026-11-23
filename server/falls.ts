@@ -45,6 +45,8 @@ interface Down {
   readonly yaw: number;
   ticks: number;
   revision: number;
+  /** The revision it went down at: what a client was sent before it is of an earlier fall. */
+  readonly begun: number;
   world: number;
   motion: CorpseMotion | null;
   readonly pose: Solved;
@@ -123,7 +125,8 @@ export class Falls {
     r.launch(vx, vy, vz, wx, wy, wz);
     const fall = new Fall(r);
     fall.reflex = brace;
-    const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision: ++this.serial, world: 0, motion: null, pose: new Solved(HUMAN.bones),
+    const revision = ++this.serial;
+    const d: Down = { e, gen: ents.gen[e]!, fall, yaw, ticks: 0, revision, begun: revision, world: 0, motion: null, pose: new Solved(HUMAN.bones),
       poses: Array.from({ length: HISTORY_TICKS }, () => new Solved(HUMAN.bones)), poseTick: new Int32Array(HISTORY_TICKS).fill(-1), rose: -1, units, sent: this.world.tick, touched: false, struck: new Set(), by };
     this.down.set(e, d);
     this.units += units;
@@ -230,6 +233,10 @@ export class Falls {
   /** For CorpseReplication: what changed last, and the checkpoint to send. */
   motionRevision(e: number): number {
     return this.down.get(e)?.revision ?? 0;
+  }
+
+  motionBegun(e: number): number {
+    return this.down.get(e)?.begun ?? 0;
   }
 
   motion(e: number): CorpseMotion | null {
