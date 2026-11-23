@@ -4,13 +4,16 @@
 // machine decodes the same numbers from that file, so a shot is judged against the pose that is drawn, and no solver
 // runs while a frame is drawn or a tick judged.
 
-import { detCos, detSin } from "../math/scalar.ts";
+import { detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { REACT_FRAMES, reactClass } from "../sim/react.ts";
 import type { Pose } from "./clip.ts";
 import { B_HEAD, B_HIPS, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_RAGDOLL } from "./human.ts";
 
 // The word, REACT_BITS long (shared/anim/pose.ts): its class, the low byte of its first tick, the way the body is pushed,
-// the height struck and how hard.
+// the height struck and how hard. A body toppled (REACT_FALL) or getting up from a ragdoll's fall (REACT_RISE) keeps
+// instead how it lies (packLie): the sixteenth its head lies nearest in the way, whether it lies face up in the height's
+// low bit, how far its head lies from that sixteenth in the height's high bit and the strength, and in the top byte the
+// facing it had as it went down or began to get up.
 export const REACT_NONE = 0;
 /** Knocked off balance: a shove and a short loss of control. */
 export const REACT_STAGGER = 1;
@@ -18,10 +21,13 @@ export const REACT_STAGGER = 1;
 export const REACT_HEAVY = 2;
 /** Knocked down where no ragdoll may fall: it topples, lies a while and gets up, posed from the word alone. */
 export const REACT_FALL = 3;
-const START_SHIFT = 2;
-const DIR_SHIFT = 10;
-const HEIGHT_SHIFT = 14;
-const STRENGTH_SHIFT = 16;
+/** Getting up from a fall it lay in as a ragdoll: from lying as its ragdoll lay to standing, posed from the word alone. */
+export const REACT_RISE = 4;
+const START_SHIFT = 3;
+const DIR_SHIFT = 11;
+const HEIGHT_SHIFT = 15;
+const STRENGTH_SHIFT = 17;
+const FACING_SHIFT = 19;
 /** Sixteenths of a turn, as a body's travel direction is counted: 0 straight ahead, 4 toward its left. */
 export const REACT_DIRS = 16;
 /** Where it was struck: about the legs, the hips, the chest, the head. */
@@ -35,7 +41,60 @@ const FADE = 4;
 
 export function packReact(kind: number, start: number, dir: number, height: number, strength: number): number {
   if (kind === REACT_NONE) return 0;
-  return ((kind & 3) | ((start & 255) << START_SHIFT) | ((dir & 15) << DIR_SHIFT) | ((height & 3) << HEIGHT_SHIFT) | ((strength & 3) << STRENGTH_SHIFT)) >>> 0;
+  return ((kind & 7) | ((start & 255) << START_SHIFT) | ((dir & 15) << DIR_SHIFT) | ((height & 3) << HEIGHT_SHIFT) | ((strength & 3) << STRENGTH_SHIFT)) >>> 0;
+}
+
+/** The ways a body may lie, its head that many to a turn: eight to each of REACT_DIRS. */
+export const LIE_WAYS = REACT_DIRS * 8;
+/** A facing a body lies against, that many to a turn. */
+export const LIE_FACINGS = 256;
+
+/**
+ * The word of a body laid down from tick `start` by a topple or a rise (`kind`), face `up` or down, its head `way`
+ * (LIE_WAYS to a turn) from `facing` (LIE_FACINGS to a turn), the facing it had then.
+ */
+export function packLie(kind: number, start: number, up: boolean, way: number, facing: number): number {
+  const w = ((way % LIE_WAYS) + LIE_WAYS) % LIE_WAYS, dir = Math.round(w / 8) % REACT_DIRS;
+  let off = w - dir * 8;
+  if (off > LIE_WAYS / 2) off -= LIE_WAYS;
+  return (packReact(kind, start, dir, (up ? 1 : 0) | (((off + 4) & 1) << 1), (off + 4) >> 1) | ((facing & 255) << FACING_SHIFT)) >>> 0;
+}
+
+/** The facing, LIE_FACINGS to a turn, of a body whose yaw is `yaw` (65536 to a turn). */
+export const facingOf = (yaw: number): number => Math.round(yaw / 256) & (LIE_FACINGS - 1);
+
+/** The way, LIE_WAYS to a turn, the unit (dx, dz) lies from `facing` (LIE_FACINGS to a turn). */
+export function wayFrom(facing: number, dx: number, dz: number): number {
+  const turn = detAtan2(dx, dz) / (2 * Math.PI) - facing / LIE_FACINGS;
+  return ((Math.round(turn * LIE_WAYS) % LIE_WAYS) + LIE_WAYS) % LIE_WAYS;
+}
+
+/** The way a body laid down by `word` lies (packLie), its head LIE_WAYS to a turn from the facing it lies against. */
+export function lieWay(word: number): number {
+  const off = ((reactHeight(word) >> 1) | (reactStrength(word) << 1)) - 4;
+  return (reactDir(word) * 8 + off + LIE_WAYS) % LIE_WAYS;
+}
+
+/** Whether a body laid down by `word` lies face up. */
+export const lieUp = (word: number): boolean => (reactHeight(word) & 1) === 1;
+
+/**
+ * Radians a body laid down by `word`, facing `facing` (a share of a turn) now, lies turned from the sixteenth its head
+ * lies nearest: the rest of its way, and the facing it lies against from its own. 0 for any other reaction, and NaN
+ * `facing` leaves out the facing.
+ */
+export function lyingOff(word: number, facing: number): number {
+  const kind = reactKind(word);
+  if (kind !== REACT_FALL && kind !== REACT_RISE) return 0;
+  const off = ((reactHeight(word) >> 1) | (reactStrength(word) << 1)) - 4;
+  return (off / LIE_WAYS) * 2 * Math.PI + (facing === facing ? turnFrom(word, facing) : 0);
+}
+
+/** Radians from facing `facing` (a share of a turn) to the facing a body laid down by `word` lies against, the shorter way. */
+function turnFrom(word: number, facing: number): number {
+  let d = ((word >>> FACING_SHIFT) & (LIE_FACINGS - 1)) / LIE_FACINGS - facing;
+  d -= Math.floor(d + 0.5);
+  return d * 2 * Math.PI;
 }
 
 export const reactKind = reactClass;
@@ -49,11 +108,16 @@ export function reactFrames(word: number): number {
   return REACT_FRAMES[reactKind(word)] ?? 0;
 }
 
-/** Ticks since the reaction began, from the low byte of its start; at or past its frames when it is over. */
+/**
+ * Ticks since the reaction began, from the low byte of its start; at or past its frames when it is over. A tick a moment
+ * before its start, which a watcher may draw a word at, counts as its start: no reaction lasts long enough to be mistaken.
+ */
 export function reactAge(word: number, tick: number): number {
-  const whole = Math.floor(tick);
-  return ((whole - reactStart(word)) & 255) + (tick - whole);
+  const whole = Math.floor(tick), age = ((whole - reactStart(word)) & 255) + (tick - whole);
+  return age > EARLY ? 0 : age;
 }
+/** Ages past which a tick is taken to come before a reaction's start. */
+const EARLY = 250;
 
 /** The ragdoll bodies a curve turns: the chest, the head, the left arm's two and the right arm's two. */
 export const TURNED: readonly number[] = [1, 2, 3, 4, 5, 6];
@@ -124,7 +188,7 @@ export function holdReactCurves(packed: string): void {
  */
 export function reactCurve(word: number): Float64Array | null {
   const kind = reactKind(word);
-  if (kind === REACT_NONE || kind === REACT_FALL || kind >= REACT_FRAMES.length || !kept) return null;
+  if (kind !== REACT_STAGGER && kind !== REACT_HEAVY || !kept) return null;
   const key = word & ~(255 << START_SHIFT);
   const known = curves.get(key);
   if (known) return known;
@@ -151,13 +215,22 @@ const turn = new Float64Array(4);
 /**
  * Lays the reaction `word` over `pose` at `tick`: each turned body's bone turned further by the curve, between its frames
  * where the tick falls between them, and faded out over its last frames. Nothing where there is no reaction or it is over.
+ * `twist` is how far the body's hips turn toward where it travels when it stands, radians (shared/anim/pose.ts humanPose),
+ * and `facing` the share of a turn it faces now, or NaN.
  */
-export function react(pose: Pose, word: number, tick: number): void {
+export function react(pose: Pose, word: number, tick: number, twist = 0, facing = Number.NaN): void {
   if (word === 0) return;
   const age = reactAge(word, tick), frames = reactFrames(word);
   if (!(age >= 0) || age >= frames) return;
-  if (reactKind(word) === REACT_FALL) {
-    topple(pose, word, age);
+  const kind = reactKind(word);
+  if (kind === REACT_FALL || kind === REACT_RISE) {
+    const k = kind === REACT_FALL ? toppleShare(age) : riseShare(age);
+    if (k <= 0) return;
+    lieTurn(lieUp(word), lieWay(word) / LIE_WAYS, reactDir(word) / REACT_DIRS);
+    lie(pose, k, twist);
+    // It lies against the facing it had as it went down or began to get up, so turning then does not turn it on the
+    // ground, and it turns to its facing as it stands.
+    if (facing === facing) turnAbout(pose, k * turnFrom(word, facing));
     return;
   }
   const curve = reactCurve(word);
@@ -195,61 +268,140 @@ export function reactBand(up: number): number {
   return up >= head ? REACT_HEAD : up >= head * 0.72 ? REACT_CHEST : up >= head * 0.5 ? REACT_HIPS : REACT_LOW;
 }
 
+// A body knocked down where no ragdoll may fall (REACT_FALL) tips over the way it was pushed, its head that way, lies
+// there, and gets up again. One getting up from a ragdoll's fall (REACT_RISE) starts lying as the ragdoll lay, face up or
+// down with its head its way, and stands as it is posed over REACT_FRAMES[REACT_RISE] ticks.
+
 /** Ticks a cheap fall takes to go down, and the tick it starts to get up. */
 const TOPPLE = 10;
 const RISE = 60;
 const lying = new Float64Array(HUMAN.bones * 4);
 const tilt = new Float64Array(4);
+/** The hips' turn lying the nearest sixteenth `tilt`'s way, which decides which way round the hips go. */
+const toward = new Float64Array(4);
 
-/**
- * A body knocked down where no ragdoll may fall (REACT_FALL): it tips over the way it was pushed, face down when pushed
- * forward or to a side and face up when pushed back, arms at its sides, lies there, and gets up again.
- */
 /** How far down a topple has a body `age` ticks in: 0 standing, 1 lying. */
 function toppleShare(age: number): number {
   return age < TOPPLE ? smooth(age / TOPPLE) : age < RISE ? 1 : 1 - smooth((age - RISE) / (REACT_FRAMES[REACT_FALL]! - RISE));
 }
 
+/** How far down a body getting up from a ragdoll's fall still is `age` ticks in: 1 lying, 0 standing. */
+function riseShare(age: number): number {
+  return 1 - smooth(age / REACT_FRAMES[REACT_RISE]!);
+}
+
 /** An age at which a topple lies all the way down. */
 export const TOPPLED = (TOPPLE + RISE) / 2;
 
-/** The way, 0 to 15, a body toppling by reaction `word` lies at `tick` while it is more than half down; -1 otherwise. */
-export function lyingWay(word: number, tick: number): number {
-  if (reactKind(word) !== REACT_FALL) return -1;
-  return toppleShare(reactAge(word, tick)) >= 0.5 ? reactDir(word) : -1;
+/** How far down reaction `word` lays a body at `tick`: 1 lying, 0 standing, and 0 for any other reaction. */
+export function lyingShare(word: number, tick: number): number {
+  const kind = reactKind(word);
+  if (kind !== REACT_FALL && kind !== REACT_RISE) return 0;
+  const age = reactAge(word, tick);
+  if (!(age >= 0) || !(age < reactFrames(word))) return 0;
+  return kind === REACT_FALL ? toppleShare(age) : riseShare(age);
 }
 
-function topple(pose: Pose, word: number, age: number): void {
-  const k = toppleShare(age);
-  if (k <= 0) return;
-  const d = reactDir(word), back = d >= 6 && d <= 10;
-  // Lying is a quarter turn of the hips about the body's side, forward or back, then turned to the way it fell.
-  const face = ((back ? d - 8 : d) / REACT_DIRS) * 2 * Math.PI, pitch = back ? -Math.PI / 4 : Math.PI / 4;
+/**
+ * Whether a body toppled the way `d` (sixteenths of a turn from its facing) lands face up: pushed more back than forward,
+ * so its hips turn the least to lie. Straight to a side it lands face down.
+ */
+export function toppleUp(d: number): boolean {
+  return d >= 5 && d <= 11;
+}
+
+/**
+ * How a body down by reaction `word` lies at `tick`, as the one-bone pose it may be drawn in (shared by every body that
+ * lies so): face up (1) or down (0), times REACT_DIRS, plus the way its head lies, times LIE_STEPS + 1, plus how far
+ * down it is in LIE_STEPS steps. -1 for a body standing, or near enough.
+ */
+export function lyingStep(word: number, tick: number): number {
+  const kind = reactKind(word);
+  if (kind !== REACT_FALL && kind !== REACT_RISE) return -1;
+  const age = reactAge(word, tick), k = kind === REACT_FALL ? toppleShare(age) : riseShare(age), step = Math.round(k * LIE_STEPS);
+  if (!(age < reactFrames(word)) || step <= 0) return -1;
+  return ((lieUp(word) ? 1 : 0) * REACT_DIRS + reactDir(word)) * (LIE_STEPS + 1) + step;
+}
+/** Steps between standing and lying that bodies drawn on one bone are shown in. */
+export const LIE_STEPS = 12;
+
+/** How far down `step` (lyingStep) lays a body: 1 lying, 0 standing. */
+export function stepShare(step: number): number {
+  return (step % (LIE_STEPS + 1)) / LIE_STEPS;
+}
+
+/** Lays standing pose `pose`, whose hips turn `twist` toward its travel standing, toward lying as `lyingStep` says. */
+export function lieStep(pose: Pose, step: number, twist = 0): void {
+  const at = Math.floor(step / (LIE_STEPS + 1));
+  lieTurn(at >= REACT_DIRS, (at % REACT_DIRS) / REACT_DIRS);
+  lie(pose, stepShare(step), twist);
+}
+
+/**
+ * The hips' turn of a body lying `up` (face up) or down with its head the way `way` (a share of a turn from its facing),
+ * into `tilt`, and lying the way `near` into `toward`.
+ */
+function lieTurn(up: boolean, way: number, near = way): void {
+  hipsLying(up, way, tilt);
+  hipsLying(up, near, toward);
+}
+
+/** The hips' turn of a body lying `up` or down its head the way `way`: a quarter turn about its side, then about up. */
+function hipsLying(up: boolean, way: number, out: Float64Array): void {
+  const head = way * 2 * Math.PI, face = up ? head + Math.PI : head, pitch = up ? -Math.PI / 4 : Math.PI / 4;
   const sp = detSin(pitch), cp = detCos(pitch), sy = detSin(face / 2), cy = detCos(face / 2);
-  // turn about +Y by `face`, times turn about +X by `pitch`
-  tilt[0] = cy * sp; tilt[1] = sy * cp; tilt[2] = -sy * sp; tilt[3] = cy * cp;
+  // turn about +Y by `face`, times turn about +X by twice `pitch`
+  out[0] = cy * sp; out[1] = sy * cp; out[2] = -sy * sp; out[3] = cy * cp;
+}
+
+/**
+ * Lays `pose` toward lying as `tilt` turns the hips, `k` of the way: arms at its sides, hips sunk to the ground. Its hips,
+ * which standing turn `twist` toward its travel, go the shorter way round from there to `toward`: the way they go is
+ * decided by the reaction's nearest sixteenth and the body's state, never by a gait's sway or the finer way, and every
+ * machine and every shared pose lays a body over the same way.
+ */
+function lie(pose: Pose, k: number, twist: number): void {
   lying.fill(0);
   for (let b = 0; b < HUMAN.bones; b++) lying[b * 4 + 3] = 1;
   lying.set(tilt, B_HIPS * 4);
   const arm = detSin(0.65), armW = detCos(0.65);
   lying[B_UPPER_ARM_L * 4 + 2] = -arm; lying[B_UPPER_ARM_L * 4 + 3] = armW;
   lying[B_UPPER_ARM_R * 4 + 2] = arm; lying[B_UPPER_ARM_R * 4 + 3] = armW;
-  const rot = pose.rot;
+  const rot = pose.rot, ry = detSin(twist / 2), rw = detCos(twist / 2);
   for (let b = 0; b < HUMAN.bones; b++) {
     const o = b * 4;
-    const dot = rot[o]! * lying[o]! + rot[o + 1]! * lying[o + 1]! + rot[o + 2]! * lying[o + 2]! + rot[o + 3]! * lying[o + 3]!, s = dot < 0 ? -1 : 1;
+    let s0 = 1, s = 1;
+    if (b === B_HIPS) {
+      // The hips are near the turn about up by `twist`; which way round they go is that turn's.
+      s0 = rot[o + 1]! * ry + rot[o + 3]! * rw < 0 ? -1 : 1;
+      s = (toward[1]! * ry + toward[3]! * rw < 0 ? -1 : 1) * (toward[0]! * lying[o]! + toward[1]! * lying[o + 1]! + toward[2]! * lying[o + 2]! + toward[3]! * lying[o + 3]! < 0 ? -1 : 1);
+    } else s = rot[o]! * lying[o]! + rot[o + 1]! * lying[o + 1]! + rot[o + 2]! * lying[o + 2]! + rot[o + 3]! * lying[o + 3]! < 0 ? -1 : 1;
     let l = 0;
     for (let c = 0; c < 4; c++) {
-      const v = rot[o + c]! + (lying[o + c]! * s - rot[o + c]!) * k;
+      const from = rot[o + c]! * s0, v = from + (lying[o + c]! * s - from) * k;
       turn[c] = v;
       l += v * v;
     }
     l = 1 / Math.sqrt(l);
     for (let c = 0; c < 4; c++) rot[o + c] = turn[c]! * l;
   }
-  // Its hips sink to lie on the ground.
-  const down = LYING_HIPS - HUMAN.rest[B_HIPS * 3 + 1]!;
-  pose.root[1] = pose.root[1]! + (down - pose.root[1]!) * k;
+  // Lying, its hips are on its place: where a fall's ragdoll had them, for one getting up (server/falls.ts rise).
+  const root = pose.root, rest = HUMAN.rest, down = LYING_HIPS - rest[B_HIPS * 3 + 1]!;
+  root[0] = root[0]! + (-rest[B_HIPS * 3]! - root[0]!) * k;
+  root[1] = root[1]! + (down - root[1]!) * k;
+  root[2] = root[2]! + (-rest[B_HIPS * 3 + 2]! - root[2]!) * k;
+}
+
+/** Turns `pose` about up through its place by `angle` radians: its hips, and where they are. */
+function turnAbout(pose: Pose, angle: number): void {
+  if (angle === 0) return;
+  const s = detSin(angle / 2), c = detCos(angle / 2), rot = pose.rot, o = B_HIPS * 4;
+  const x = rot[o]!, y = rot[o + 1]!, z = rot[o + 2]!, w = rot[o + 3]!;
+  rot[o] = c * x + s * z; rot[o + 1] = c * y + s * w; rot[o + 2] = c * z - s * x; rot[o + 3] = c * w - s * y;
+  const rest = HUMAN.rest, root = pose.root, sa = detSin(angle), ca = detCos(angle);
+  const hx = rest[B_HIPS * 3]! + root[0]!, hz = rest[B_HIPS * 3 + 2]! + root[2]!;
+  root[0] = ca * hx + sa * hz - rest[B_HIPS * 3]!;
+  root[2] = ca * hz - sa * hx - rest[B_HIPS * 3 + 2]!;
 }
 
 /** Metres the hips' joint lies above the ground, as a laid body's does (shared/anim/human-fall.ts). */

@@ -15,7 +15,7 @@
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
 import { brace, layHuman } from "../../shared/anim/human-fall.ts";
-import { packReact, REACT_FALL, REACT_HIPS } from "../../shared/anim/reactions.ts";
+import { packLie, REACT_FALL } from "../../shared/anim/reactions.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { poseCreatureOn, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
@@ -101,8 +101,11 @@ function placeAt(seen: CarSeen, tick: number, out: Place): void {
   const l = 1 / Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
   out.qx = qx * l; out.qy = qy * l; out.qz = qz * l; out.qw = qw * l;
 }
-/** Ticks a survivor takes to rise from where it lay into what it does now. */
-export const GET_UP = 30;
+/**
+ * Ticks a survivor drawn whole takes to go from how its ragdoll lay into getting up as its reaction word poses it
+ * (shared/anim/reactions.ts REACT_RISE), which is how every machine poses it from then on, the server's hits too.
+ */
+export const RISE_BLEND = 4;
 const impactRoot = new Float64Array(3);
 
 export interface Corpse {
@@ -225,7 +228,7 @@ class Seen {
   }
 }
 
-/** A survivor knocked down (CUE_DOWN), lying as its ragdoll, and for GET_UP ticks after it gets up; or a survivor's body (CUE_DEAD). */
+/** A survivor knocked down (CUE_DOWN), lying as its ragdoll, and for RISE_BLEND ticks after it gets up; or a survivor's body (CUE_DEAD). */
 export interface HumanFall {
   handle: number;
   /** Null until its checkpoint comes, and once it has risen. */
@@ -332,13 +335,14 @@ export class HumanFalls {
 
   /**
    * For a body known to be down whose fall's checkpoint has not come yet, the reaction it is drawn with meanwhile at
-   * render tick `tick`: a topple (REACT_FALL) begun as it went down and held lying. 0 for any other body.
+   * render tick `tick`: a topple (REACT_FALL) begun as it went down and held lying, against `facing` (LIE_FACINGS to a
+   * turn). 0 for any other body.
    */
-  waiting(id: number, tick: number): number {
+  waiting(id: number, tick: number, facing = 0): number {
     const h = this.byId.get(id);
     if (!h || !h.down || h.fall) return 0;
     const age = Math.min(Math.max(0, tick - h.downAt), WAIT_LYING);
-    return packReact(REACT_FALL, Math.floor(tick - age), 0, REACT_HIPS, 0);
+    return packLie(REACT_FALL, Math.floor(tick - age), false, 0, facing);
   }
 
   /** The fall to draw entity `id` by, lying or getting up, or undefined to draw it as it moves. */
@@ -372,7 +376,7 @@ export class HumanFalls {
     if (!down) {
       if (h.down) { h.down = false; h.upAt = tick; h.spent = Math.max(h.spent, h.motionTick); }
       if (h.upAt < 0) return;
-      h.risen = Math.min(1, (tick - h.upAt) / GET_UP);
+      h.risen = Math.min(1, (tick - h.upAt) / RISE_BLEND);
       if (h.risen >= 1) { h.upAt = -1; h.fall = null; }
       return;
     }

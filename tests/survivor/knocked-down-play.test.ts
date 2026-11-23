@@ -5,6 +5,7 @@ import { Corpses } from "../../client/core/ragdoll.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { CUE_DOWN } from "../../shared/anim/pose.ts";
+import { REACT_RISE, reactKind } from "../../shared/anim/reactions.ts";
 import { survivorKind } from "../../shared/sim/blockers.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -55,8 +56,9 @@ test("a watching client lays and steps the fall as the server does, tick for tic
   try {
     const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k));
     const poses = new Map<number, { rot: Float32Array; pos: Float32Array; x: number; y: number; z: number }>();
-    let compared = 0, rising = 0;
+    let compared = 0, rising = 0, risen = false;
     drive(h, a, car, 6000, () => {
+      risen ||= reactKind(a.react[c.ent]!) === REACT_RISE;
       const pose = h.host.falls.poseOf(c.ent);
       if (pose) poses.set(h.world.tick, { rot: pose.rot.slice(), pos: pose.pos.slice(), x: a.x[c.ent]!, y: a.y[c.ent]!, z: a.z[c.ent]! });
       w.sampleRemote(remote);
@@ -73,7 +75,9 @@ test("a watching client lays and steps the fall as the server does, tick for tic
     });
     expect(h.host.falls.stats.rose).toBe(1);
     expect(compared).toBeGreaterThan(30);
-    expect(rising).toBeGreaterThan(10);
+    // Up, it gets up as its reaction word poses it everywhere; the client hands its ragdoll over to that in a few ticks.
+    expect(risen).toBe(true);
+    expect(rising).toBeGreaterThan(4);
     expect(drawn.humans.of(c.ent)).toBeUndefined();
   } finally { h.host.shutdown(); }
 });

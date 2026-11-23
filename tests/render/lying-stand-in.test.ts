@@ -31,9 +31,9 @@ function flat() {
   return { hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts) };
 }
 
-/** Draws survivor `id` on one bone at the origin into `p`. */
-function oneBone(characters: Characters, p: FramePacket, st: AnimState, tick: number, id: number): void {
-  expect(characters.add(p, survivor, 0, 0, 0, 0, st, tick, null, 0, colors, 0, null, 0, id, false, false, 1, true)).toBe(true);
+/** Draws survivor `id` on one bone into `p`, where its body is, at the origin unless said. */
+function oneBone(characters: Characters, p: FramePacket, st: AnimState, tick: number, id: number, x = 0, y = 0, z = 0): void {
+  expect(characters.add(p, survivor, x, y, z, 0, st, tick, null, 0, colors, 0, null, 0, id, false, false, 1, true)).toBe(true);
 }
 
 /** The height of the head's joint in the pose at bone `first` of `p`: where the head's bone carries its rest point. */
@@ -108,15 +108,22 @@ test("laid falls short of bones share one lying pose, each where its ragdoll lie
   for (let k = 0; k < 5; k++) planned += 1 + characters.standInBones(survivor, null, 0, st, false, false, 0, null, 0, 20 + k, 105);
   const p = new FramePacket();
   p.tier = { ...p.tier, bones: planned };
-  for (let k = 0; k < 5; k++) oneBone(characters, p, st, 105, 20 + k);
+  // A shared pose is written where the first body that lies in it is, before that body's own bone.
+  const own: number[] = [], blocks: number[] = [];
+  for (let k = 0; k < 5; k++) {
+    const before = p.boneCount;
+    oneBone(characters, p, st, 105, 20 + k, remote.x[k]!, remote.y[k]!, remote.z[k]!);
+    if (p.boneCount - before > 1) blocks.push(before);
+    own.push(p.boneCount - 1);
+  }
   expect([p.boneCount, p.dropped]).toEqual([planned, 0]);
   expect(planned).toBeLessThanOrEqual(2 * HUMAN_BONES + 5);
   // Each lies with its hips on its ragdoll's and its head the way its ragdoll's lies: a shared pose's joints, carried by
-  // the body's own bone, the last five in the packet after the shared poses.
-  const shared = (planned - 5) / HUMAN_BONES, b = p.bones;
-  /** Where joint `bone` of the shared pose at `block`, carried by the body bone at `own`, is in the world. */
+  // the body's own bone.
+  const b = p.bones;
+  /** Where joint `bone` of the shared pose at bone `block`, carried by the body bone at `own`, is in the world. */
   const joint = (block: number, bone: number, own: number): number[] => {
-    const o = (block * HUMAN_BONES + bone) * BONE_FLOATS, r = bone * 3, m = own * BONE_FLOATS;
+    const o = (block + bone) * BONE_FLOATS, r = bone * 3, m = own * BONE_FLOATS;
     const q = [0, 1, 2].map((row) => b[o + row * 4]! * rest[r]! + b[o + row * 4 + 1]! * rest[r + 1]! + b[o + row * 4 + 2]! * rest[r + 2]! + b[o + row * 4 + 3]!);
     return [0, 1, 2].map((row) => b[m + row * 4]! * q[0]! + b[m + row * 4 + 1]! * q[1]! + b[m + row * 4 + 2]! * q[2]! + b[m + row * 4 + 3]!);
   };
@@ -125,8 +132,8 @@ test("laid falls short of bones share one lying pose, each where its ragdoll lie
     const at = (bone: number): number[] => [h.x + c * s.pos[bone * 3]! + sn * s.pos[bone * 3 + 2]!, h.y + s.pos[bone * 3 + 1]!, h.z - sn * s.pos[bone * 3]! + c * s.pos[bone * 3 + 2]!];
     const hips = at(B_HIPS), head = at(B_HEAD), way = [head[0]! - hips[0]!, head[2]! - hips[2]!];
     let best = Infinity, along = -1;
-    for (let block = 0; block < shared; block++) {
-      const dh = joint(block, B_HIPS, shared * HUMAN_BONES + k), dd = joint(block, B_HEAD, shared * HUMAN_BONES + k);
+    for (const block of blocks) {
+      const dh = joint(block, B_HIPS, own[k]!), dd = joint(block, B_HEAD, own[k]!);
       const off = Math.hypot(dh[0]! - hips[0]!, dh[1]! - hips[1]!, dh[2]! - hips[2]!);
       if (off >= best) continue;
       best = off;

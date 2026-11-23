@@ -14,19 +14,20 @@ import { conformCreature } from "../../../shared/anim/ground-conform.ts";
 import { createMountMotion, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
 import { occupantPose, poseSeated, seatBody, seatOrigin, type OccupantSeat } from "../../../shared/anim/occupant.ts";
 import { seatFit } from "../../../shared/anim/seat-fit.ts";
-import { lyingWay, packReact, REACT_DIRS, REACT_FALL, REACT_HIPS, TOPPLED } from "../../../shared/anim/reactions.ts";
+import { facingOf, LIE_STEPS, lyingOff, lyingStep, REACT_DIRS, REACT_FALL, reactKind, stepShare } from "../../../shared/anim/reactions.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import { isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatMulConj, quatRotate } from "../../../shared/math/quat.ts";
+import { TAU } from "../../../shared/math/scalar.ts";
 import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, lookLift, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
-import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
+import { AnimState, DIR_STEPS, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { MODE_FLYER, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../../shared/sim/character.ts";
@@ -836,7 +837,7 @@ export class Characters {
       this.emoteStandIns.set(key, (e = { rows, solved, counted: -1, written: -1, first: 0 }));
       return e;
     }
-    const doing = c?.vehicle ? 0 : this.standState(st, seated, impaled);
+    const doing = c?.vehicle ? 0 : this.standState(st, seated, impaled, !c);
     const of = (this.standIns[kind * 2 + set] ??= []);
     // Content indices are 16-bit and seats at most 16: this numeric key stays exactly representable and bounded by content.
     const fitKey = this.standKey(kind, set, rider?.profile ?? 0, doing);
@@ -849,6 +850,7 @@ export class Characters {
     like.stance = st.stance;
     like.out = st.out;
     like.held = st.held;
+    if (!c) moving(like, doing >>> 10);
     let solved: Solved;
     let rest: Float32Array;
     if (c) {
@@ -882,34 +884,55 @@ export class Characters {
   }
 
   /**
-   * A laid fall drawn on one bone: the topple's way it lies in, 0 face down or 8 face up as its hips face, turned so its
-   * head lies the way its ragdoll's does from its hips, and placed so its hips' joint is on its ragdoll's.
+   * A laid fall, drawn on one bone: the shared lying pose as far down as its ragdoll's head has come (reactions.ts
+   * lyingStep), face up or down as its hips face, its head ahead or behind; turned to face where its ragdoll's hips
+   * faced while it stood and to lie its head the way its ragdoll's lies as it comes down; placed so its hips' joint is
+   * on its ragdoll's, about where its body is, (atX, atY, atZ).
    */
-  private fallOnOne(kind: number, set: number, h: HumanFall): { way: number; yaw: number; x: number; y: number; z: number } {
+  private fallOnOne(kind: number, set: number, h: HumanFall, atX = h.x, atY = h.y, atZ = h.z): { step: number; yaw: number; x: number; y: number; z: number } {
     const s = h.solved, o = this.onOne, c = Math.cos(h.yaw), sn = Math.sin(h.yaw);
     quatRotate(s.rot, B_HIPS * 4, 0, 0, 1, this.ahead3, 0);
-    const up = this.ahead3[1]! > 0, hx = s.pos[B_HIPS * 3]!, hz = s.pos[B_HIPS * 3 + 2]!;
-    // The ragdoll lies about (h.x, h.y, h.z) facing h.yaw, as lain() places it.
+    const up = this.ahead3[1]! > 0, hx = s.pos[B_HIPS * 3]!, hy = s.pos[B_HIPS * 3 + 1]!, hz = s.pos[B_HIPS * 3 + 2]!;
+    // The ragdoll lies about where its body is, (atX, atY, atZ), facing h.yaw.
     const mx = s.pos[B_HEAD * 3]! - hx, mz = s.pos[B_HEAD * 3 + 2]! - hz, wx = c * mx + sn * mz, wz = c * mz - sn * mx;
-    o.way = up ? 8 : 0;
-    o.yaw = up ? Math.atan2(-wx, -wz) : Math.atan2(wx, wz);
-    const hips = this.lyingStandIn(kind, set, o.way).solved.pos, cy = Math.cos(o.yaw), sy = Math.sin(o.yaw);
-    o.x = h.x + c * hx + sn * hz - (cy * hips[B_HIPS * 3]! + sy * hips[B_HIPS * 3 + 2]!);
-    o.y = h.y + s.pos[B_HIPS * 3 + 1]! - hips[B_HIPS * 3 + 1]!;
-    o.z = h.z + c * hz - sn * hx - (cy * hips[B_HIPS * 3 + 2]! - sy * hips[B_HIPS * 3]!);
+    const fx = this.ahead3[0]!, fz = this.ahead3[2]!, ax = c * fx + sn * fz, az = c * fz - sn * fx;
+    // Down by how far its head has come toward its hips; within LAID of them it lies, as the lying pose all share.
+    const reach = HUMAN.rest[B_HEAD * 3 + 1]! - HUMAN.rest[B_HIPS * 3 + 1]!, down = (reach - (s.pos[B_HEAD * 3 + 1]! - hy)) / (reach - LAID);
+    const k = down < 0 ? 0 : down > 1 ? 1 : down, ahead = (up ? -k : k) / reach;
+    o.step = (up ? REACT_DIRS + REACT_DIRS / 2 : 0) * (LIE_STEPS + 1) + Math.round(k * LIE_STEPS);
+    o.yaw = Math.atan2((1 - k) * ax + ahead * wx, (1 - k) * az + ahead * wz);
+    const hips = this.lyingStandIn(kind, set, o.step).solved.pos, cy = Math.cos(o.yaw), sy = Math.sin(o.yaw);
+    o.x = atX + c * hx + sn * hz - (cy * hips[B_HIPS * 3]! + sy * hips[B_HIPS * 3 + 2]!);
+    o.y = atY + s.pos[B_HIPS * 3 + 1]! - hips[B_HIPS * 3 + 1]!;
+    o.z = atZ + c * hz - sn * hx - (cy * hips[B_HIPS * 3 + 2]! - sy * hips[B_HIPS * 3]!);
     return o;
   }
-  private readonly onOne = { way: 0, yaw: 0, x: 0, y: 0, z: 0 };
+  private readonly onOne = { step: 0, yaw: 0, x: 0, y: 0, z: 0 };
+
+  /**
+   * A step all the way down (reactions.ts lyingStep) as one of two shared poses, face up or down, so every body lying
+   * shares one of them: that pose's step, with how far to turn it for the way its head lies in `turnBy`. Lying, its hips
+   * are on its place, so it turns about them. Any other step is its own.
+   */
+  private sharedStep(step: number): number {
+    this.turnBy = 0;
+    if (step < 0 || stepShare(step) < 1) return step;
+    const at = Math.floor(step / (LIE_STEPS + 1)), up = at >= REACT_DIRS, w0 = up ? REACT_DIRS / 2 : 0;
+    this.turnBy = (((at % REACT_DIRS) - w0) / REACT_DIRS) * 2 * Math.PI;
+    return ((up ? REACT_DIRS : 0) + w0) * (LIE_STEPS + 1) + LIE_STEPS;
+  }
+  private turnBy = 0;
   private readonly ahead3 = new Float64Array(3);
 
-  /** The pose a survivor of `kind` drawn as body set `set` lies in once toppled the way `way` (reactions.ts topple). */
-  private lyingStandIn(kind: number, set: number, way: number): StandIn {
-    const key = (kind * 2 + set) * REACT_DIRS + way;
+  /**
+   * The pose a survivor of `kind` drawn as body set `set` stands in, going as `move` says (standMove), laid toward lying
+   * as `step` says (reactions.ts lyingStep).
+   */
+  private lyingStandIn(kind: number, set: number, step: number, move = STILL): StandIn {
+    const key = ((kind * 2 + set) * MOVES + move) * (2 * REACT_DIRS * (LIE_STEPS + 1)) + step;
     let s = this.lyingStandIns.get(key);
     if (s) return s;
-    const like = new AnimState();
-    like.react = packReact(REACT_FALL, 0, way, REACT_HIPS, 0);
-    humanPose(this.anim, like, TOPPLED, this.pose, null);
+    humanPose(this.anim, moving(new AnimState(), move), 0, this.pose, null, false, step);
     const body = this.kinds[kind]!.sets[set]!;
     const solved = new Solved(HUMAN_BONES);
     solve(HUMAN, this.pose, solved, body.rest, null);
@@ -934,18 +957,19 @@ export class Characters {
     const k = this.kinds[kind];
     if (!k && !this.creatures[kind]) return 0;
     const set = k ? this.setOf(k, look, lookAt) : 0;
-    // As add() draws it: a laid fall, a body toppled down, or one down before its fall's checkpoint, on a shared lying pose.
+    // As add() draws it: a laid fall lying, a body toppled or getting up, or one down before its fall's checkpoint, on a
+    // shared lying pose.
     const fall = k && !seated && !impaled ? this.dead.humans.of(id) : undefined;
-    const way = fall ? this.fallOnOne(kind, set, fall).way : k && !seated && !impaled ? lyingWay(st.react !== 0 ? st.react : this.dead.humans.waiting(id, tick), tick) : -1;
-    if (way >= 0) {
-      const s = this.lyingStandIn(kind, set, way);
+    const step = this.sharedStep(fall?.down ? this.fallOnOne(kind, set, fall).step : k && !seated && !impaled ? lyingStep(st.react !== 0 || fall ? st.react : this.dead.humans.waiting(id, tick), tick) : -1);
+    if (step >= 0) {
+      const s = this.lyingStandIn(kind, set, step, fall?.down || stepShare(step) === 1 ? STILL : standMove(st));
       if (s.counted === this.frame || s.written === this.frame) return 0;
       s.counted = this.frame;
       return HUMAN_BONES;
     }
     if (profile && k) {
       // Thinning precedes the host's final pose. Reserve the exact profile key without caching an unfitted pose.
-      const key = this.standKey(kind, set, profile, this.standState(st, seated, impaled));
+      const key = this.standKey(kind, set, profile, this.standState(st, seated, impaled, true));
       const controls = this.reg.saddleSeats[Math.floor(profile / (MAX_SEATS + 1))]?.[profile % (MAX_SEATS + 1) - 1]?.rider;
       const foot = controls?.soles ? this.partOf(k.sets[set]!, gear, gearAt, SLOT_FEET) : -1;
       const hand = controls?.grips ? this.partOf(k.sets[set]!, gear, gearAt, SLOT_HANDS) : -1;
@@ -962,12 +986,13 @@ export class Characters {
     return s.rows.length / BONE_FLOATS;
   }
 
-  private standState(st: AnimState, seated: boolean, impaled: boolean): number {
-    return (st.mode & 7) | (st.grounded ? 8 : 0) | ((st.stance & 3) << 4) | (st.out ? 64 : 0) | (st.held ? 128 : 0) | (seated ? 256 : 0) | (impaled ? 512 : 0);
+  /** What a body doing as `st` says stands in on one bone, as a number; a survivor on foot `walks`, and goes as standMove says. */
+  private standState(st: AnimState, seated: boolean, impaled: boolean, walks: boolean): number {
+    return (st.mode & 7) | (st.grounded ? 8 : 0) | ((st.stance & 3) << 4) | (st.out ? 64 : 0) | (st.held ? 128 : 0) | (seated ? 256 : 0) | (impaled ? 512 : 0) | ((walks && !seated && !impaled ? standMove(st) : STILL) << 10);
   }
 
   private standKey(kind: number, set: number, profile: number, doing: number): number {
-    return ((kind * 2 + set) * (65536 * (MAX_SEATS + 1)) + profile) * 1024 + doing;
+    return ((kind * 2 + set) * (65536 * (MAX_SEATS + 1)) + profile) * 65536 + doing;
   }
 
   /** Match the actually displayed footwear/glove mesh, including the bare fallback while a worn mesh is unavailable. */
@@ -1469,20 +1494,22 @@ export class Characters {
     if (!k) return false;
     // An enclosed passenger must retain a seated pose even under the distant-body budget.
     if (vehicleSeat) rigid = false;
-    // A survivor knocked down lies as its ragdoll, and rises from it.
+    // A survivor knocked down lies as its ragdoll, and begins to rise from it.
     const fallen = seat || vehicleSeat ? undefined : this.dead.humans.of(id);
-    // A laid fall lies as its ragdoll on every bone; on one, in the lying pose all share, along the way its ragdoll lies.
-    const onOne = fallen && rigid ? this.fallOnOne(kind, this.setOf(k, look, lookAt), fallen) : null;
+    // A laid fall lying is drawn as its ragdoll on every bone; on one, in the lying pose all share, the way its ragdoll lies.
+    const onOne = fallen?.down && rigid ? this.fallOnOne(kind, this.setOf(k, look, lookAt), fallen, x + p.camX, y + p.camY, z + p.camZ) : null;
     // Known to be down before its fall's checkpoint has come: it topples meanwhile rather than stand.
-    if (!fallen && !seat && !vehicleSeat && st.react === 0) st.react = this.dead.humans.waiting(id, tick);
-    // On one bone, a body toppled down lies in the pose every body toppled that way shares.
-    const lying = onOne ? onOne.way : rigid && !fallen && !seat && !vehicleSeat && !impaled ? lyingWay(st.react, tick) : -1;
+    if (!fallen && !seat && !vehicleSeat && st.react === 0) st.react = this.dead.humans.waiting(id, tick, facingOf((yaw / TAU) * 65536));
+    // A body toppled or getting up lies against the facing it had then (shared/anim/reactions.ts).
+    st.facing = yaw / TAU;
+    // On one bone, a body toppled, getting up or waiting for its fall is drawn in the shared pose of the step it is at.
+    const lying = this.sharedStep(onOne ? onOne.step : rigid && !fallen?.down && !seat && !vehicleSeat && !impaled ? lyingStep(st.react, tick) : -1), turnBy = this.turnBy;
     this.packet = p;
     const at = this.setOf(k, look, lookAt);
     const set = k.sets[at]!;
     const foot = rider?.profile && (rider.targets[0]! & RIDER_SOLES) !== 0 ? this.partOf(set, gear, gearAt, SLOT_FEET) : -1;
     const hand = rider?.profile && (rider.targets[0]! & RIDER_GRIPS) !== 0 ? this.partOf(set, gear, gearAt, SLOT_HANDS) : -1;
-    const stand = rigid ? this.standInAt(p, lying >= 0 ? this.lyingStandIn(kind, at, lying) : this.standIn(kind, at, st, seat !== null, impaled, rider, foot, hand)) : -1;
+    const stand = rigid ? this.standInAt(p, lying >= 0 ? this.lyingStandIn(kind, at, lying, onOne || stepShare(lying) === 1 ? STILL : standMove(st)) : this.standIn(kind, at, st, seat !== null, impaled, rider, foot, hand)) : -1;
     const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
     if (first < 0) {
       if (rigid && stand < 0 && !unseen) p.dropped++;
@@ -1500,11 +1527,13 @@ export class Characters {
         writeRigid(p.bones, first * BONE_FLOATS, 0, 0, 0, 0, 1);
         inFrame(p.bones, first * BONE_FLOATS, 1, seat, seatAt, x, y, z);
       } else if (onOne) writeRigid(p.bones, first * BONE_FLOATS, onOne.x - p.camX, onOne.y - p.camY, onOne.z - p.camZ, onOne.yaw, 1);
-      else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
+      // Down by its reaction, its shared pose lies the nearest sixteenth its head does; it is turned the rest of its way,
+      // and to the facing it lies against, as far as it lies.
+      else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, lying >= 0 ? yaw + turnBy + lyingOff(st.react, st.facing) * stepShare(lying) : yaw, 1);
     } else {
-      if (fallen?.down) {
-        x = fallen.x - p.camX; y = fallen.y - p.camY; z = fallen.z - p.camZ; yaw = fallen.yaw;
-      }
+      // A laid fall lies posed as its ragdoll stepped to the tick it has reached, about where its body is now: as the
+      // server judges a shot at it (server/combat.ts).
+      if (fallen?.down) yaw = fallen.yaw;
       const g = this.gaitOf(id);
       advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
       const solved = this.kept(g, HUMAN_BONES);
@@ -1521,7 +1550,9 @@ export class Characters {
       const over = this.override !== null && this.override.id === id ? this.override : null;
       // The viewer's own body in first person, up on its feet or swimming: its eye does not bend over with its back.
       const eyeOwn = own && headless && !seat && !vehicleSeat && !impaled && st.stance !== STANCE_PRONE && !st.out && !st.dead && !fallen;
-      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null || fallen !== undefined || this.springs.active(id))) {
+      // A body reeling moves at least as fast as one walking; one toppling or getting up moves whole, so is posed each frame.
+      const moving = seat || !st.grounded ? 0 : st.react !== 0 ? Math.max(g.speed, REACTING_SPEED) : g.speed, whole = reactKind(st.react) >= REACT_FALL;
+      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, moving, own || vehicleSeat !== undefined || over !== null || fallen !== undefined || whole || this.springs.active(id))) {
         this.posingId = id;
         // The proportions hits are judged on, which a seat's fit is worked out for (shared/anim/seat-fit.ts).
         this.standard = k.sets[0]!.rest;
@@ -1892,6 +1923,36 @@ export class Characters {
     }
     p.transientCount = total;
   }
+}
+
+/** Metres a second a body with a reaction word is posed as moving at, at least, for how often it is posed. */
+const REACTING_SPEED = 2;
+/** Metres a ragdoll's head may lie above its hips' joint and be drawn on one bone lying all the way down. */
+const LAID = 0.15;
+/** The speeds (SPEED_STEP units) a survivor drawn on one bone is shown going at: still, walking, running and sprinting. */
+const STAND_SPEEDS = [0, 2, 8, 12];
+/** The turns of its hips toward where it goes it is shown with, sixteenths of a turn either way: as humanPose turns them. */
+const TWISTS = DIR_STEPS / 4;
+/** How many ways a survivor on one bone may be shown going (standMove), and the way of one standing still. */
+const MOVES = STAND_SPEEDS.length * (2 * TWISTS + 1);
+const STILL = TWISTS;
+
+/** How a survivor going as `st` says is shown going on one bone: its speed's band, and its hips' turn toward its travel. */
+function standMove(st: AnimState): number {
+  const band = st.speed <= 0 ? 0 : st.speed <= 4 ? 1 : st.speed <= 9 ? 2 : 3;
+  if (band === 0) return STILL;
+  let twist = st.dir <= DIR_STEPS / 2 ? st.dir : st.dir - DIR_STEPS;
+  // Going backward it plays its gait in reverse, its hips turned the other way (shared/anim/pose.ts humanPose).
+  if (twist > TWISTS || twist < -TWISTS) twist = twist > 0 ? twist - DIR_STEPS / 2 : twist + DIR_STEPS / 2;
+  return band * (2 * TWISTS + 1) + twist + TWISTS;
+}
+
+/** Sets `st` going as `move` (standMove) says. */
+function moving(st: AnimState, move: number): AnimState {
+  const twist = (move % (2 * TWISTS + 1)) - TWISTS;
+  st.speed = STAND_SPEEDS[Math.floor(move / (2 * TWISTS + 1))]!;
+  st.dir = twist >= 0 ? twist : twist + DIR_STEPS;
+  return st;
 }
 
 /**

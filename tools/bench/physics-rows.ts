@@ -20,7 +20,6 @@ import { F_ALIVE } from "../../shared/sim/entities.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
-import { Corpses } from "../../client/core/ragdoll.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { survivorKind } from "../../shared/sim/blockers.ts";
 import { solidOf } from "../../shared/sim/vehicle-movers.ts";
@@ -29,9 +28,13 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { Characters } from "../../client/core/render/characters.ts";
 import { BONE_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { B_HEAD, B_HIPS, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
-import { AnimState, CUE_DOWN } from "../../shared/anim/pose.ts";
-import { REACT_FALL, reactAge, reactKind, TOPPLED } from "../../shared/anim/reactions.ts";
-import { frozenPack } from "../../tests/fixtures/pack.ts";
+import { AnimState, bodySeed, CUE_DOWN, humanPose } from "../../shared/anim/pose.ts";
+import { Pose } from "../../shared/anim/clip.ts";
+import { Solved, solve } from "../../shared/anim/skeleton.ts";
+import { TAU } from "../../shared/math/scalar.ts";
+import { Corpses, RISE_BLEND } from "../../client/core/ragdoll.ts";
+import { REACT_FALL, REACT_RISE, reactAge, reactKind, TOPPLED } from "../../shared/anim/reactions.ts";
+import { corePack } from "../../tests/fixtures/pack.ts";
 import { boxBase } from "./base.ts";
 
 type Section = (title: string) => void;
@@ -134,7 +137,8 @@ class Watching {
   private readonly sessions: readonly ClientSession[];
   private readonly bodies: readonly number[];
   private readonly heard: number[];
-  private readonly pack = frozenPack();
+  /** The pack the server poses with (tests/fixtures/net.ts), so a watcher's poses are the server's. */
+  private readonly pack = corePack();
   private readonly cam = new Camera();
   private readonly st = new AnimState();
   private readonly views: { remote: RemoteSample; drawn: Corpses; waits: Map<number, number>; characters: Characters; packet: FramePacket; downAt: Map<number, number> }[];
@@ -153,6 +157,23 @@ class Watching {
   private readonly oneBoneHips: number[] = [];
   /** By body and tick, where the server has a laid fall's head and hips: tick, head, hips. */
   private readonly joints = new Map<number, Float64Array>();
+  /** By body and tick, where the server's hit body has its head while a topple or a rise poses it: tick, head. */
+  private readonly posed = new Map<number, Float64Array>();
+  private readonly pose = new Pose(HUMAN_BONES);
+  private readonly hit = new Solved(HUMAN_BONES);
+  /** Toppling or getting up: how far a drawn head is from the server's, whole (after a rise's hand-off) and on one bone. */
+  private readonly risingWhole: number[] = [];
+  private readonly handOff: number[] = [];
+  private readonly risingOne: number[] = [];
+  /** At each rise, how far the server's hit head moves from the ragdoll's the tick before. */
+  private readonly snaps: number[] = [];
+  /**
+   * And how far a drawn head pops between draws, by watcher, body and whether drawn whole: how far it moves beyond how far
+   * the server's moved between the same ticks, for a watcher's clock may step several ticks at once.
+   */
+  private readonly lastHead = new Map<string, number[]>();
+  private readonly steps: number[] = [];
+  private readonly stepsOne: number[] = [];
 
   constructor(h: Harness, sessions: readonly ClientSession[], bodies: readonly number[]) {
     this.h = h; this.sessions = sessions; this.bodies = bodies;
@@ -183,6 +204,24 @@ class Watching {
         joints![j + 1 + k * 3] = ents.x[e]! + c * mx + sn * mz; joints![j + 2 + k * 3] = ents.y[e]! + my; joints![j + 3 + k * 3] = ents.z[e]! - sn * mx + c * mz;
       });
     }
+    // Toppling or getting up, the server judges a shot on the body its reaction word poses (shared/anim/zones.ts rayBody).
+    for (const e of this.bodies) {
+      if (reactKind(ents.react[e]!) < REACT_FALL || !h.world.anim) continue;
+      st.unpack(ents.anim[e]!, ents.cue[e]!, ents.emote[e]!, ents.react[e]!);
+      st.seed = bodySeed(e);
+      st.facing = ents.yaw[e]! / 65536;
+      humanPose(h.world.anim, st, T, this.pose);
+      solve(HUMAN, this.pose, this.hit);
+      let ring = this.posed.get(e);
+      if (!ring) this.posed.set(e, (ring = new Float64Array(64 * 4).fill(-1)));
+      const o = (T & 63) * 4, a = (ents.yaw[e]! * TAU) / 65536, c = Math.cos(a), sn = Math.sin(a);
+      const lx = this.hit.pos[B_HEAD * 3]!, lz = this.hit.pos[B_HEAD * 3 + 2]!;
+      ring[o] = T; ring[o + 1] = ents.x[e]! + c * lx + sn * lz; ring[o + 2] = ents.y[e]! + this.hit.pos[B_HEAD * 3 + 1]!; ring[o + 3] = ents.z[e]! - sn * lx + c * lz;
+      const laid = this.joints.get(e), was = ((T - 1) & 63) * 7;
+      if (reactKind(ents.react[e]!) === REACT_RISE && reactAge(ents.react[e]!, T) === 0 && laid && laid[was] === T - 1) {
+        this.snaps.push(Math.hypot(ring[o + 1]! - laid[was + 1]!, ring[o + 2]! - laid[was + 2]!, ring[o + 3]! - laid[was + 3]!));
+      }
+    }
     this.sessions.forEach((s, k) => {
       const { remote, drawn, waits, characters, packet, downAt } = this.views[k]!;
       s.sampleRemote(remote);
@@ -191,6 +230,29 @@ class Watching {
       characters.corpseMotions = s.corpseMotions;
       characters.begin();
       characters.corpses(packet, this.cam, remote, s.world!);
+      // Each tick, each body toppling or getting up, drawn whole and on one bone, set beside the server's at the tick drawn.
+      for (let i = 0; i < remote.count; i++) {
+        const id = remote.id[i]!, word = remote.react[i]!, ring = this.posed.get(id);
+        if (reactKind(word) < REACT_FALL || !ring) continue;
+        const t0 = Math.floor(remote.tick), a = (t0 & 63) * 4, b = ((t0 + 1) & 63) * 4;
+        if (ring[a] !== t0 || ring[b] !== t0 + 1) continue;
+        const f = remote.tick - t0, server = [1, 2, 3].map((j) => ring[a + j]! + (ring[b + j]! - ring[a + j]!) * f);
+        for (const rigid of [true, false]) {
+          characters.begin(); packet.beginFrame();
+          st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, word);
+          if (!characters.add(packet, remote.kind[i]!, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, st, remote.tick, null, 0, NO_COLORS, 0, null, 0, id, false, false, 1, rigid)) continue;
+          const head = jointAt(packet.bones, B_HEAD, rigid ? HUMAN_BONES : -1);
+          const off = Math.hypot(head[0]! - server[0]!, head[1]! - server[1]!, head[2]! - server[2]!);
+          // A rise's first ticks hand the body over from how its ragdoll lay, drawn whole, as the server's head moves from
+          // its ragdoll's to its rise's.
+          const handing = reactKind(word) === REACT_RISE && reactAge(word, remote.tick) <= RISE_BLEND + 1;
+          if (rigid) this.risingOne.push(off);
+          else (handing ? this.handOff : this.risingWhole).push(off);
+          const key = `${k} ${id} ${rigid}`, last = this.lastHead.get(key);
+          if (last && last[6] !== remote.tick && !handing) (rigid ? this.stepsOne : this.steps).push(Math.hypot(head[0]! - last[0]! - server[0]! + last[3]!, head[1]! - last[1]! - server[1]! + last[4]!, head[2]! - last[2]! - server[2]! + last[5]!));
+          this.lastHead.set(key, [...head, ...server, remote.tick]);
+        }
+      }
       // Every third tick, each body down a half second, drawn as the renderer would draw it, on one bone and on all. A
       // topple counts while it lies all the way down, before it rises.
       for (let i = 0; i < remote.count && T % 3 === 0; i++) {
@@ -209,12 +271,13 @@ class Watching {
           }
           // On one bone the body rides its own bone after the shared pose; on all, its bones come first.
           const own = rigid ? HUMAN_BONES : -1, head = jointAt(packet.bones, B_HEAD, own), hips = jointAt(packet.bones, B_HIPS, own);
-          const at = fall?.down && truth ? (fall.clock & 63) * 7 : -1;
-          if (at >= 0 && truth![at] === fall!.clock) {
-            // A laid fall: whole, its head and hips where the server's are at the tick it is drawn at; on one bone, its hips.
-            const off = Math.hypot(hips[0]! - truth![at + 4]!, hips[1]! - truth![at + 5]!, hips[2]! - truth![at + 6]!);
+          const at = fall?.down && truth ? (fall.clock & 63) * 7 : -1, shift = fall?.down ? this.shift(id, fall.clock, remote.tick) : null;
+          if (at >= 0 && truth![at] === fall!.clock && shift) {
+            // A laid fall: whole, its head and hips where a shot is judged against them (server/combat.ts): about where
+            // the body is at the tick drawn, posed as at the tick its ragdoll has reached; on one bone, its hips.
+            const off = Math.hypot(hips[0]! - truth![at + 4]! - shift[0]!, hips[1]! - truth![at + 5]! - shift[1]!, hips[2]! - truth![at + 6]! - shift[2]!);
             if (rigid) this.oneBoneHips.push(off);
-            else this.wholeOff.push(Math.max(off, Math.hypot(head[0]! - truth![at + 1]!, head[1]! - truth![at + 2]!, head[2]! - truth![at + 3]!)));
+            else this.wholeOff.push(Math.max(off, Math.hypot(head[0]! - truth![at + 1]! - shift[0]!, head[1]! - truth![at + 2]! - shift[1]!, head[2]! - truth![at + 3]! - shift[2]!)));
           } else if (!fall && head[1]! - hips[1]! > 0.45) this.upright++;
         }
       }
@@ -238,6 +301,14 @@ class Watching {
     });
   }
 
+  /** How far the server had body `e` move from tick `clock` to `tick`, which may fall between ticks; null where not kept. */
+  private shift(e: number, clock: number, tick: number): number[] | null {
+    const ring = this.truth.get(e), t0 = Math.floor(tick), a = (clock & 63) * 4, b = (t0 & 63) * 4, c = ((t0 + 1) & 63) * 4;
+    if (!ring || ring[a] !== clock || ring[b] !== t0 || ring[c] !== t0 + 1) return null;
+    const k = tick - t0;
+    return [1, 2, 3].map((j) => ring[b + j]! + (ring[c + j]! - ring[b + j]!) * k - ring[a + j]!);
+  }
+
   /** Records what the watchers saw over `seconds`. */
   record(record: Row, seconds: number): void {
     const apart = this.apart;
@@ -251,6 +322,15 @@ class Watching {
     record("watchers: a laid fall on one bone, hips from the server's, the most", at(this.oneBoneHips, 1) * 100, "cm", null);
     record("watchers: bodies drawn toppling while their fall came, body-ticks", this.toppled, "", null);
     record("watchers: longest wait for a fall's checkpoint, ticks", this.longest, "", null);
+    record("watchers: toppling or getting up, drawn whole, head from the server's, 99th percentile", at(this.risingWhole, 0.99) * 100, "cm", null);
+    record("watchers: toppling or getting up, drawn whole, head from the server's, the most", at(this.risingWhole, 1) * 100, "cm", null);
+    record("server: getting up, the hit head's move from the ragdoll's, median", at(this.snaps, 0.5) * 100, "cm", null);
+    record("server: getting up, the hit head's move from the ragdoll's, the most", at(this.snaps, 1) * 100, "cm", null);
+    record("watchers: getting up, the hand-off from the ragdoll, head from the server's, the most", at(this.handOff, 1) * 100, "cm", null);
+    record("watchers: toppling or getting up, on one bone, head from the server's, 99th percentile", at(this.risingOne, 0.99) * 100, "cm", null);
+    record("watchers: toppling or getting up, on one bone, head from the server's, the most", at(this.risingOne, 1) * 100, "cm", null);
+    record("watchers: toppling or getting up, drawn whole, the most a head pops between draws", at(this.steps, 1) * 100, "cm", null);
+    record("watchers: toppling or getting up, on one bone, the most a head pops between draws", at(this.stepsOne, 1) * 100, "cm", null);
     record("watchers: a body drawn down from where the server has it, median", at(apart, 0.5) * 100, "cm", null);
     record("watchers: a body drawn down from where the server has it, 90th percentile", at(apart, 0.9) * 100, "cm", null);
     record("watchers: a body drawn down from where the server has it, 99th percentile", at(apart, 0.99) * 100, "cm", null);

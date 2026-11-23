@@ -10,7 +10,10 @@
 import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
 import { Fall, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
 import { brace, layHuman } from "../shared/anim/human-fall.ts";
-import { HUMAN } from "../shared/anim/human.ts";
+import { B_HEAD, B_HIPS, HUMAN } from "../shared/anim/human.ts";
+import { facingOf, LIE_FACINGS, LIE_WAYS } from "../shared/anim/reactions.ts";
+import { quatRotate } from "../shared/math/quat.ts";
+import { detAtan2, detCos, detSin, TAU } from "../shared/math/scalar.ts";
 import { CUE_DOWN } from "../shared/anim/pose.ts";
 import { Solved } from "../shared/anim/skeleton.ts";
 import { Found } from "../shared/world/structures.ts";
@@ -70,8 +73,12 @@ const root = new Float64Array(3);
 export class Falls {
   private readonly world: ServerWorld;
   private readonly down = new Map<number, Down>();
-  /** Raised as a body gets up, standing at the ragdoll's hips. */
-  onUp: (e: number) => void = () => {};
+  /**
+   * Raised as a body gets up, standing at the ragdoll's hips: it lay face `up` or down, its head `way` (LIE_WAYS to a
+   * turn) from `facing` (LIE_FACINGS to a turn), its facing as it gets up (shared/anim/reactions.ts REACT_RISE), which
+   * every machine poses it rising from.
+   */
+  onUp: (e: number, up: boolean, way: number, facing: number) => void = () => {};
   /**
    * Raised as a thrown body strikes survivor `e` standing in its way: a change of speed of `dv` m/s along the unit (dx,
    * dz), `up` metres above its feet. `by` (a pid, 0 for none) knocked the first body down, and is to blame.
@@ -307,6 +314,22 @@ export class Falls {
     ents.mflags[d.e]! &= ~MF_DOWN;
     this.world.history.cued(d.e);
     this.stats.rose++;
-    this.onUp(d.e);
+    lyingOf(d.pose, d.yaw, ents.yaw[d.e]!);
+    this.onUp(d.e, lies.up, lies.way, lies.facing);
   }
+}
+
+/** How the last pose lay: face up, and the way its head lay from its hips, LIE_WAYS to a turn from `facing`. */
+const lies = { up: false, way: 0, facing: 0 };
+const ahead = new Float64Array(3);
+
+/** Writes to `lies` how pose `s` lies, about its place facing `yaw` radians, for a body whose yaw is now `bodyYaw`. */
+function lyingOf(s: Solved, yaw: number, bodyYaw: number): void {
+  quatRotate(s.rot, B_HIPS * 4, 0, 0, 1, ahead, 0);
+  const mx = s.pos[B_HEAD * 3]! - s.pos[B_HIPS * 3]!, mz = s.pos[B_HEAD * 3 + 2]! - s.pos[B_HIPS * 3 + 2]!;
+  const c = detCos(yaw), sn = detSin(yaw), wx = c * mx + sn * mz, wz = c * mz - sn * mx;
+  lies.facing = facingOf(bodyYaw);
+  const turn = detAtan2(wx, wz) / TAU - lies.facing / LIE_FACINGS;
+  lies.up = ahead[1]! > 0;
+  lies.way = ((Math.round(turn * LIE_WAYS) % LIE_WAYS) + LIE_WAYS) % LIE_WAYS;
 }

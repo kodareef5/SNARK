@@ -4,7 +4,7 @@
 // knocks it down. Once a reaction ends the body cannot be staggered again for a few seconds, so blows cannot chain it.
 
 import { TICK_RATE } from "../shared/coords.ts";
-import { packReact, reactAge, reactFrames, reactBand, reactKind, REACT_FALL, REACT_HEAVY, REACT_HIPS, REACT_STAGGER } from "../shared/anim/reactions.ts";
+import { facingOf, LIE_WAYS, packLie, packReact, reactAge, reactFrames, reactBand, reactKind, REACT_DIRS, REACT_FALL, REACT_HEAVY, REACT_RISE, REACT_STAGGER, toppleUp, wayFrom } from "../shared/anim/reactions.ts";
 import { REACT_RULES, TIER_BUMP, TIER_FALL, TIER_NONE, TIER_STAGGER, dirOf, strengthOf, tierOf, type ReactRules } from "../shared/sim/react.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { MODE_WALK } from "../shared/sim/character.ts";
@@ -26,6 +26,8 @@ export interface ReactionsContext {
   readonly world: ServerWorld;
   /** Whether body `e` may take a reaction now: a living survivor on its feet, not seated, carried or lying. */
   readonly standing: (e: number) => boolean;
+  /** Whether body `e` is on its feet as `standing` says, whether or not staggers are on: what keeps it getting up. */
+  readonly upright?: (e: number) => boolean;
   /** The thresholds, from settings. */
   readonly rules?: () => ReactRules;
   /** Whether body `e` is a living creature on its feet, which a hard blow shoves though it never reels, and what it weighs. */
@@ -61,10 +63,13 @@ export class Reactions {
     if (tier !== TIER_STAGGER) return tier;
     const word = ents.react[e]!;
     if (word !== 0 && reactAge(word, tick) < reactFrames(word)) {
-      // Already down by its reaction, it stays down; still reeling, it goes down.
-      if (reactKind(word) === REACT_FALL) return TIER_NONE;
-      this.stats.escalated++;
-      return TIER_FALL;
+      // Already down by its reaction, it stays down; still reeling, it goes down; getting up, it is calm.
+      const kind = reactKind(word);
+      if (kind === REACT_FALL) return TIER_NONE;
+      if (kind !== REACT_RISE) {
+        this.stats.escalated++;
+        return TIER_FALL;
+      }
     }
     if (tick < (this.calmUntil.get(e) ?? 0)) {
       this.stats.calmed++;
@@ -109,9 +114,9 @@ export class Reactions {
   topple(e: number): number {
     const { world } = this.ctx;
     const ents = world.ents, tick = world.tick;
-    const vx = ents.vx[e]!, vz = ents.vz[e]!, flat = Math.sqrt(vx * vx + vz * vz);
-    const dir = flat > 1e-6 ? dirOf(ents.yaw[e]!, vx / flat, vz / flat) : 0;
-    ents.react[e] = packReact(REACT_FALL, tick, dir, REACT_HIPS, 0);
+    const vx = ents.vx[e]!, vz = ents.vz[e]!, flat = Math.sqrt(vx * vx + vz * vz), facing = facingOf(ents.yaw[e]!);
+    const way = flat > 1e-6 ? wayFrom(facing, vx / flat, vz / flat) : 0;
+    ents.react[e] = packLie(REACT_FALL, tick, toppleUp(Math.round((way * REACT_DIRS) / LIE_WAYS) % REACT_DIRS), way, facing);
     ents.reactTicks[e] = reactFrames(ents.react[e]!);
     world.history.reacted(e);
     this.reeling.add(e);
@@ -123,6 +128,21 @@ export class Reactions {
   /** Body `e` got up from a fall: it cannot be staggered again for a while, as after a stagger. */
   calm(e: number): void {
     this.calmUntil.set(e, this.ctx.world.tick + CALM_SECONDS * TICK_RATE);
+  }
+
+  /**
+   * Body `e` gets up from a fall it lay in as a ragdoll, face `up` or down with its head `way` (LIE_WAYS to a turn) from
+   * `facing` (LIE_FACINGS to a turn), its facing now: every machine, and every shot judged, poses it rising from that
+   * (shared/anim/reactions.ts REACT_RISE). It is calm a while, as after a stagger.
+   */
+  rise(e: number, up: boolean, way: number, facing: number): void {
+    const { world } = this.ctx;
+    const ents = world.ents, tick = world.tick;
+    ents.react[e] = packLie(REACT_RISE, tick, up, way, facing);
+    ents.reactTicks[e] = reactFrames(ents.react[e]!);
+    world.history.reacted(e);
+    this.reeling.add(e);
+    this.calm(e);
   }
 
   /** Ends body `e`'s reaction now: it died, sat, swam or fell. */
@@ -141,7 +161,9 @@ export class Reactions {
     for (const e of this.reeling) {
       const word = ents.react[e]!;
       const gone = (ents.flags[e]! & F_ALIVE) === 0 || word === 0;
-      if (gone || reactAge(word, tick) >= reactFrames(word) || !this.ctx.standing(e) || ents.mode[e] !== MODE_WALK) {
+      // Getting up from a ragdoll's fall goes with knockdowns, not staggers.
+      const on = reactKind(word) === REACT_RISE ? (this.ctx.upright ?? this.ctx.standing)(e) : this.ctx.standing(e);
+      if (gone || reactAge(word, tick) >= reactFrames(word) || !on || ents.mode[e] !== MODE_WALK) {
         if (!gone) ents.react[e] = 0;
         ents.reactTicks[e] = 0;
         this.reeling.delete(e);

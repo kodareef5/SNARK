@@ -15,7 +15,7 @@ import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWIN
 import { cradle } from "./hold.ts";
 import { emotePose } from "./emote.ts";
 import { EMOTES, emoteClipId } from "./emotes.ts";
-import { react as reactPose } from "./reactions.ts";
+import { lieStep, lyingShare, react as reactPose, stepShare } from "./reactions.ts";
 
 /** The three parts of a packed AnimState. Replication sends each part only when it changes. */
 export const ANIM_MOTION_BITS = 12;
@@ -119,7 +119,7 @@ export const CUE_DOWN = 1 << CUE_MATING_SHIFT;
  */
 export const EMOTE_BITS = 29;
 /** A survivor's reaction to a blow, its own word beside the emote: shared/anim/reactions.ts lays it out. */
-export const REACT_BITS = 18;
+export const REACT_BITS = 27;
 export const EMOTE_ID_BITS = 10;
 export const EMOTE_START_SHIFT = 10;
 export const EMOTE_ROLE_SHIFT = 26;
@@ -227,6 +227,11 @@ export class AnimState {
   emoteMirror = false;
   /** A survivor's reaction to a blow, as shared/anim/reactions.ts packs it; 0 for none. Sent beside the pose and the cues. */
   react = 0;
+  /**
+   * The share of a turn the body faces, as its yaw does. A body a topple or a rise lays down lies against the facing it
+   * had then (shared/anim/reactions.ts). Not replicated: whoever poses a body sets it; NaN lays it against its own.
+   */
+  facing = Number.NaN;
 
   /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
@@ -613,10 +618,14 @@ function turn(pose: Pose, bone: number, ax: number, ay: number, az: number, angl
  * `tick` may fall between ticks, for drawing. With `gait` the legs are where that says, and without it where the tick puts them.
  * `upright` keeps the back as its clip has it, and only the neck and head and raised arms follow the look, as a prone body's
  * do: the viewer's own body in first person, whose eye does not bend over with its back (client/core/render/characters.ts).
+ * `lieAt`, a reactions.ts lyingStep, lays it down that far in place of its reaction, for a pose many bodies share.
  */
-export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null = null, upright = false): void {
+export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null = null, upright = false, lieAt = -1): void {
   const t = tick + st.seed;
-  const speed = gait ? gait.speed : st.speed * SPEED_STEP;
+  // Going down or getting up, its hips turn back from its travel as it lies, by its state alone, so every machine lays it
+  // over the same way round; and it goes at the speed its state says, as the server poses it, not a gait's eased speed.
+  const lies = lieAt >= 0 ? stepShare(lieAt) : lyingShare(st.react, tick);
+  const speed = gait && lies <= 0 ? gait.speed : st.speed * SPEED_STEP;
   const phase = gait ? gait.phase : Number.NaN;
   // Travelling backward plays the gait in reverse with the hips turned the other way.
   let twist = st.dir <= DIR_STEPS / 2 ? st.dir : st.dir - DIR_STEPS;
@@ -711,7 +720,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     locomote(anim, anim.crouchIdle, anim.crouching, t, speed, phase, reverse, out);
   } else {
     locomote(anim, anim.idle, anim.standing, t, speed, phase, reverse, out);
-    if (speed <= 0) twistAngle = 0;
+    if ((lies > 0 ? st.speed : speed) <= 0) twistAngle = 0;
   }
 
   const act = st.action & 7;
@@ -766,6 +775,8 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     kick = 0;
   }
   if (upright) spineShare = 0;
+  const travel = twistAngle;
+  if (lies > 0) twistAngle *= 1 - lies;
 
   if (twistAngle !== 0) {
     // The hips turn toward the direction of travel and the spine turns back to where the body faces.
@@ -794,7 +805,8 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   if (hold === HOLD_CARRY) cradle(out, st.stance);
   if (st.jet && st.jetMode === JET_FIST && hold === HOLD_HANDS) jetPunch(out, st, e, pitch);
   // Reeling from a blow, last, over whatever it was doing.
-  if (st.react !== 0) reactPose(out, st.react, tick);
+  if (lieAt >= 0) lieStep(out, lieAt, travel);
+  else if (st.react !== 0) reactPose(out, st.react, tick, travel, st.facing);
 }
 
 const fistParent = new Float64Array(4);

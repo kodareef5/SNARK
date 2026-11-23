@@ -955,7 +955,8 @@ export class Combat {
         st.seed = bodySeed(i);
         const seated = this.seated(i, past, tick);
         const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach, this.contactPadding)
-          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT, (past.cue & CUE_DOWN) !== 0 ? this.downPose(i, Math.round(tick)) : null);
+          // A ragdoll lies as a watcher draws it: about where the body is now, posed as at the last tick it stepped to.
+          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT, (past.cue & CUE_DOWN) !== 0 ? this.downPose(i, Math.floor(tick)) : null);
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
           this.zone = zone;

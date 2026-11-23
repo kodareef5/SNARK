@@ -38,7 +38,10 @@ export function rayBody(anim: HumanAnim, st: AnimState, tick: number, bx: number
     solved.pos.set(lying.pos);
   } else {
     if (impaled) mountPose(motion, { role: "impaled", tick: 0, startTick: 0, durationTicks: 1 }, pose);
-    else humanPose(anim, st, tick, pose);
+    else {
+      st.facing = yaw / 65536;
+      humanPose(anim, st, tick, pose);
+    }
     solve(HUMAN, pose, solved);
   }
   // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.

@@ -937,13 +937,16 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const loose = new Loose({ world, game, records, items, combat, death });
   const falls = new Falls(world);
   // Staggers (server/reactions.ts): only a living survivor on its own feet reels.
+  /** Whether body `e` is a living survivor on its feet, not seated, lying, held or out. */
+  const upright = (e: number): boolean => {
+    const ents = world.ents;
+    return (ents.flags[e]! & F_ALIVE) !== 0 && ents.kind[e] === survivor && ents.seat[e] === 0 && !falls.isDown(e) &&
+      (ents.cue[e]! & (CUE_HELD | CUE_OUT)) === 0 && ents.mode[e] === MODE_WALK;
+  };
   const reactions = new Reactions({
     world,
-    standing: (e) => {
-      const ents = world.ents;
-      return (ents.flags[e]! & F_ALIVE) !== 0 && ents.kind[e] === survivor && ents.seat[e] === 0 && !falls.isDown(e) &&
-        (ents.cue[e]! & (CUE_HELD | CUE_OUT)) === 0 && ents.mode[e] === MODE_WALK && rules.on("Staggers");
-    },
+    standing: (e) => upright(e) && rules.on("Staggers"),
+    upright: (e) => upright(e),
     rules: () => ({ bump: REACT_RULES.bump, stagger: rules.num("StaggerSpeed"), fall: rules.on("Knockdowns") ? rules.num("KnockdownSpeed") : Infinity }),
     creature: (e) => {
       const ents = world.ents;
@@ -1503,12 +1506,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ents.vz[e] = ents.vz[e]! + dz * dv * 0.6;
     knockDown(e, dz * 2, 0.3, -dx * 2, by);
   };
-  falls.onUp = (body) => {
+  falls.onUp = (body, up, way, facing) => {
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (rec && stunned >= 0) buffs.give(rec, stunned, 0, GET_UP_SECONDS);
     if (rec) refreshBody(rec);
-    // Back on its feet, it is calm a while, as after a stagger.
-    reactions.calm(body);
+    // It gets up as every machine poses it, and is calm a while, as after a stagger.
+    reactions.rise(body, up, way, facing);
   };
   const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, vehicle: true };
   urban.onDoorStrike = (vehicle, body, speed, dx, dz) => {
