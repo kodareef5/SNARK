@@ -175,7 +175,9 @@ export class FrameTab implements Tab {
     at = y + draw.heading(dx, y, half, `DRAWS ${count(draws)}${budget.draws > 0 ? ` of ${count(budget.draws)}` : ""}`);
     for (const s of byDraws.slice(0, Math.floor((h - 38) / 17))) at += draw.pair(dx, at, half, s.name, count(s.draws));
     const g = d.app.governor;
-    if (at + 17 <= y + h) draw.text(dx, at, half, budget.squeeze < 1 || g.level > 0 ? D_WARN : D_DIM, `squeeze ${budget.squeeze.toFixed(2)} · governor level ${g.level}${g.level > 0 ? ` (${g.name})` : ""}`);
+    // Over 0 the squeeze thins the crowns near to stay in the budget; under 0 the frame has room and draws them finer.
+    const squeeze = budget.squeeze, said = squeeze > 0.005 ? `crowns thinned, squeeze ${squeeze.toFixed(2)}` : squeeze < -0.005 ? `room to spare, drawn finer (squeeze ${squeeze.toFixed(2)})` : "no squeeze";
+    if (at + 17 <= y + h) draw.text(dx, at, half, squeeze > 0.005 || g.level > 0 ? D_WARN : D_DIM, `${said} · governor level ${g.level}${g.level > 0 ? ` (${g.name})` : ""}`);
   }
 
   press(_d: DebugBar, p: Press): void {
