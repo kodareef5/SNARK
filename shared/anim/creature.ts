@@ -17,7 +17,7 @@ import type { CreatureCombatFacet, SpeciesDef } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { TICK_RATE } from "../coords.ts";
 import { PI, TAU, detCos, detSin } from "../math/scalar.ts";
-import { quatAxis, quatMul, quatNlerp, quatRotate } from "../math/quat.ts";
+import { quatAxis, quatMul, quatNlerp, quatRotate, quatUnrotate } from "../math/quat.ts";
 import { MODE_FLYER, MODE_SWIM, MODE_WALK } from "../sim/character.ts";
 import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_RELOAD, ACT_SWING, HOLD_CARRY } from "../sim/weapon.ts";
 import { blendPose, sampleClip, type Clip, type Pose } from "./clip.ts";
@@ -28,7 +28,7 @@ import { AnimState, BANK_STEPS, CLIMB_DIVE, CLIMB_DOWN, CUE_LAND, CUE_ROLL, CUE_
 import type { Rig, RigClip } from "./rigs.ts";
 import { boneToModel, rayZones, solve, zoneHit, type Solved } from "./skeleton.ts";
 import { conformCreature, groundSpeedScale } from "./ground-conform.ts";
-import type { CollisionWorld } from "../world/collide.ts";
+import { nothingBuilt, wallDepth, wallOut, type CollisionWorld } from "../world/collide.ts";
 
 /** Below this speed, in metres per second, a walk with no stride is blended with the idle so that starting off is not a jump. */
 const EASE_IN = 1.2;
@@ -1035,6 +1035,45 @@ export function poseCreatureOn(a: CreatureAnim, st: AnimState, tick: number, wor
   adjust?.(rig.a);
   solve(rig, rig.a, solved);
   conformCreature(rig, st, rig.a, solved, world, x, y, z, yaw, size);
+  if (world && !st.dead && !st.out) turnAside(rig, rig.a, solved, world, x, y, z, yaw, size);
+}
+
+/** Metres short of a wall at which a head begins to turn from it, and the most its neck turns, in radians. */
+const ASIDE_SLACK = 0.3;
+const ASIDE_MOST = 0.6;
+const asidePoint = new Float64Array(3);
+const asideTurn = new Float64Array(4);
+const asideAxis = new Float64Array(3);
+
+/**
+ * A head come up to a wall turns aside from it, the turn shared along the neck and most near the head: from the pose
+ * and the walls alone, so the server's bites and hits find the head where every client draws it.
+ */
+function turnAside(rig: Rig, pose: Pose, solved: Solved, world: CollisionWorld, x: number, y: number, z: number, yaw: number, size: number): void {
+  const { neck, head } = rig.sections;
+  if (head < 0 || neck.length === 0 || !(rig.capR[head]! > 0)) return;
+  const h = head * 3;
+  boneToModel(solved, head, (rig.capA[h]! + rig.capB[h]!) / 2, (rig.capA[h + 1]! + rig.capB[h + 1]!) / 2, (rig.capA[h + 2]! + rig.capB[h + 2]!) / 2, asidePoint);
+  const co = detCos(yaw), sn = detSin(yaw), r = rig.capR[head]! * size, reach = r + ASIDE_SLACK;
+  const hx = x + size * (co * asidePoint[0]! + sn * asidePoint[2]!), hy = y + size * asidePoint[1]!, hz = z + size * (co * asidePoint[2]! - sn * asidePoint[0]!);
+  if (nothingBuilt(world, hx, hz, reach, hy - reach, hy + reach)) return;
+  const depth = wallDepth(world, hx, hy - reach, hz, reach);
+  if (!(depth > 0)) return;
+  // The way out of the wall in its own frame: toward its left is +X. Straight on, it turns the way its head already leans.
+  const out = co * wallOut.x - sn * wallOut.z;
+  const side = out > 0.05 ? 1 : out < -0.05 ? -1 : asidePoint[0]! >= 0 ? 1 : -1;
+  const amount = (depth < reach ? depth / reach : 1) * ASIDE_MOST * side;
+  let total = 0;
+  for (let k = 0; k < neck.length; k++) total += k + 1;
+  for (let k = 0; k < neck.length; k++) {
+    const b = neck[k]!, p = rig.parent[b]!;
+    // Up, in the bone's parent's frame, so it turns about the upright line whatever its parent's turn.
+    if (p >= 0) quatUnrotate(solved.rot, p * 4, 0, 1, 0, asideAxis, 0);
+    else { asideAxis[0] = 0; asideAxis[1] = 1; asideAxis[2] = 0; }
+    quatAxis(asideTurn, 0, asideAxis[0]!, asideAxis[1]!, asideAxis[2]!, (amount * (k + 1)) / total);
+    quatMul(pose.rot, b * 4, asideTurn, 0, pose.rot, b * 4);
+  }
+  solve(rig, pose, solved);
 }
 
 /** What species `i` of `reg` plays on `rig`: one way for the server and every client. */

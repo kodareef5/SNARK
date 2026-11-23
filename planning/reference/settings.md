@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 559 of them: 193 take effect,
+is listed here, 562 of them: 196 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -68,6 +68,9 @@ the admin's settings page may change a setting without a restart.
 | `AllowCrateSpawnsOnTopOfStructures` | False | Supply drops may land on what a tribe built, and near it: a floor there counts as ground, and the drop book's distance from a base is not asked. | yes |
 | `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away. | yes |
 | `Knockdowns` | True | A hard blow from a car or a car's door knocks a survivor off their feet for a moment: thrown, with no hold on where they go. Off, they are thrown as far but keep their footing. *Ours. ARK has no key.* | yes |
+| `Staggers` | True | A hard blow from a car, a weapon, a creature or a blast staggers a survivor: shoved a little, with little hold on where they go for a moment, and every player sees them reel. Off, blows only hurt. *Ours. ARK has no key.* | yes |
+| `StaggerSpeed` | 2.5 | The change of speed, in metres a second, that staggers a survivor. Gunfire alone stays below it. *Ours. ARK has no key.* | yes |
+| `KnockdownSpeed` | 6 | The change of speed, in metres a second, that knocks a survivor off their feet (with Knockdowns on). A second stagger while still reeling knocks them down too. *Ours. ARK has no key.* | yes |
 | `SurvivorsBlock` | True | Survivors cannot walk through one another, as they cannot through creatures. Members of one tribe always pass through each other. Off, survivors of different tribes pass through one another too. *Ours. ARK has no key.* | yes; clients are told |
 | `AllowThirdPersonPlayer` | True | The body may be looked at from outside: over the shoulder (V) and in the orbit camera (K). | yes; clients are told |
 | `ServerCrosshair` | True | A crosshair is shown. | yes; clients are told |

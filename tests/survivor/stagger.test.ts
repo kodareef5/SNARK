@@ -231,3 +231,18 @@ test("a heavy blow shoves a raptor a little and a rex hardly at all", () => {
     expect(moved(rex)).toBeLessThan(0.05);
   } finally { h.host.shutdown(); }
 });
+
+test("the Staggers, StaggerSpeed and KnockdownSpeed settings decide what a blow does", () => {
+  const { h, c } = road();
+  try {
+    const r = h.host.reactions;
+    h.host.setSetting("Staggers", "false");
+    expect(r.shove(c.ent, 4, 0, -1, 1.3, true)).toBe(TIER_NONE);
+    h.host.setSetting("Staggers", "true");
+    h.host.setSetting("StaggerSpeed", "5");
+    expect(r.shove(c.ent, 4, 0, -1, 1.3, true)).toBe(TIER_BUMP);
+    h.host.setSetting("StaggerSpeed", "2.5");
+    h.host.setSetting("KnockdownSpeed", "20");
+    expect(r.shove(c.ent, 8, 0, -1, 1.3, true)).toBe(TIER_STAGGER);
+  } finally { h.host.shutdown(); }
+});
