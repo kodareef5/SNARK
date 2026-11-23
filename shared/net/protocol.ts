@@ -51,6 +51,7 @@
 // body or the identity of something to hit. Commands are applied at most once and never resent after a reconnect. The
 // client learns the outcome from the state it is sent, and RESULT only tells the interface why something was refused.
 
+import { SkateState } from "../sim/skate-state.ts";
 import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { counter, flags } from "../codes.ts";
@@ -129,6 +130,12 @@ function writeVehicle(w: BitWriter, b: Body): void {
     const thrust = b.vehicleThrust !== 0 || b.vehicleThrustCool !== 0;
     w.bool(thrust);
     if (thrust) { w.u32(b.vehicleThrust); w.u32(b.vehicleThrustCool); }
+    const skate = b.skate;
+    w.bool(!!skate);
+    if (skate) {
+      w.u8(skate.move); w.u8(skate.ticks); w.u16(skate.keys); w.u8(skate.grace); w.u8(skate.buffer);
+      w.u8(skate.chain); w.u16(skate.score); w.u16(skate.bank); w.u8(skate.window);
+    }
     // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
   }
   // A seat costs a body one bit when it has none: the entity it sits on, the seat's place in it from 1, and the entity's generation.
@@ -171,6 +178,11 @@ function readVehicle(r: BitReader, b: Body): void {
   const thrust = b.vehicle && r.bool();
   b.vehicleThrust = thrust ? r.u32() : 0;
   b.vehicleThrustCool = thrust ? r.u32() : 0;
+  if (b.vehicle && r.bool()) {
+    const skate = b.skate ??= new SkateState();
+    skate.move = r.u8(); skate.ticks = r.u8(); skate.keys = r.u16(); skate.grace = r.u8(); skate.buffer = r.u8();
+    skate.chain = r.u8(); skate.score = r.u16(); skate.bank = r.u16(); skate.window = r.u8();
+  } else b.skate = null;
   b.seat = r.bool() ? r.varint() + 1 : 0;
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;
   b.seatGen = b.seat !== 0 ? r.bits(12) : 0;

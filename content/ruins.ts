@@ -478,6 +478,7 @@ const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([na
     type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: GROWN[name] ?? "box",
     half: [size[0] / 2, size[1] / 2, size[2] / 2] as const,
     ...RUIN_FINISHES[finish],
+    ...(name === "zwalk8" || name === "zwalk8g" ? { grindLine: [[-4, .075, -BREAK_AT[name]![2]!], [4, .075, -BREAK_AT[name]![2]!]] as const } : {}),
     ...(name in RUIN_SLOPES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_SLOPES[name as keyof typeof RUIN_SLOPES], RUIN_FINISHES[finish]) : {}),
     ...(name in RUIN_FACADES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_FACADES[name as FacadeModule], RUIN_FINISHES[finish]) : {}),
     ...(name in RUIN_BREAKS ? staticOf(ruinKind(name as RuinShape, finish), RUIN_BREAKS[name as BreakPiece], RUIN_FINISHES[finish]) : {}),

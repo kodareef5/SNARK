@@ -40,7 +40,7 @@ test("the wiki is of what a player meets: no scenery, no target, no creature wit
     "core:belvedere", "core:berlinetta", "core:boat", "core:boat_police", "core:boat_rescue", "core:brachio", "core:bus", "core:caravan", "core:carbonemys", "core:civilian", "core:compact", "core:dodo", "core:fastback", "core:helicopter",
     "core:helicopter_police", "core:helicopter_rescue", "core:jon_boat", "core:lagoon", "core:manta", "core:meridian", "core:monster_truck", "core:muscle_car", "core:needle",
     "core:panel_van", "core:parasaur", "core:patrol_jeep", "core:patrol_sedan", "core:pteranodon", "core:raptor", "core:rex", "core:riptide", "core:semi", "core:solstice", "core:sovereign", "core:spino", "core:stego", "core:survivor", "core:tanker", "core:taxi", "core:thunderbolt",
-    "core:trike", "core:veloce", "core:zephyr",
+    "core:trike", "core:veloce", "core:zephyr", "core:zzzzzskateboard",
   ]);
   expect(entries.filter((e) => e.kind === "landmarks").map((e) => e.id).sort()).toEqual(LANDMARKS.map((l) => l.name).sort());
   const foundation = byId("core:piece_foundation_wood");

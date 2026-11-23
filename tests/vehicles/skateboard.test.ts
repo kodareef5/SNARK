@@ -1,0 +1,57 @@
+import { expect, test } from "bun:test";
+import { BOARD_ID, BOARD_KIT } from "../../content/vehicles/skateboard.ts";
+import { NO_CLIPS } from "../../shared/anim/clip.ts";
+import { CMD_CRAFT, CMD_LEARN, RESULT_OK } from "../../shared/net/protocol.ts";
+import { BTN_JUMP, BTN_MELEE } from "../../shared/sim/character.ts";
+import { SHOVE } from "../../shared/sim/skate-state.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
+import { flatMap } from "../fixtures/map.ts";
+import { Harness } from "../fixtures/net.ts";
+import { RemoteSample } from "../../client/core/session.ts";
+
+test("a level-two survivor crafts, places and rides a board, lands a predicted shove-it, then bails on a hard drop", () => {
+  const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(3)) });
+  try {
+    const s = h.join("skater", { latencyMs: 45 }), watcher = h.join("watcher");
+    h.run(600); h.say(s, "enablecheats"); h.say(s, "addxp 5");
+    const c = h.client(s)!, me = h.host.records.byPid.get(c.pid)!, inv = h.host.items.inv(me), ents = h.world.ents;
+    const item = h.reg.index.get(BOARD_KIT)!;
+    for (const [name, count] of [["wood", 8], ["fiber", 6], ["stone", 4]] as const) h.say(s, `give ${name} ${count}`);
+    s.command(CMD_LEARN, w => w.u16(h.reg.index.get("core:zzzzzskateboard_engram")!)); h.run(300);
+    s.command(CMD_CRAFT, w => { w.u16(item); w.u8(1); }); h.run(5400);
+    expect(inv.total(item)).toBe(1);
+    h.say(s, "tp 82 84"); h.run(400);
+    expect(h.host.vehicles.deploy(c, inv.item.indexOf(item), 83, 0, 84, 0)).toBe(RESULT_OK);
+    expect(inv.total(item)).toBe(0);
+    const rec = [...h.host.records.byPid.values()].find(r => r.kind === h.reg.index.get(BOARD_ID))!;
+    const e = h.host.records.entOf.get(rec.pid)!;
+    expect(h.host.urban.mount(c,e)).toBe(RESULT_OK); h.run(700);
+    expect(s.driving).toBe(e);
+    const keys = h.pilots[0]!;
+    keys.moveZ = 1; h.run(1500);
+    expect(s.own.vz).toBeGreaterThan(3);
+    const corrections = s.stats.corrections, health = s.vitals.at(V_HEALTH, s.serverTick);
+    keys.buttons = BTN_JUMP | BTN_MELEE; h.run(250);
+    expect(s.own.skate!.move).toBe(SHOVE);
+    const remote = new RemoteSample(); watcher.sampleRemote(remote);
+    const i = remote.id.subarray(0, remote.count).indexOf(e);
+    expect(i).toBeGreaterThanOrEqual(0); expect(remote.vehicleGear[i]).toBe(SHOVE);
+    keys.buttons = 0; keys.moveZ = 0; h.run(1850);
+    expect(s.own.skate!.bank).toBe(95);
+    expect(s.stats.corrections).toBe(corrections);
+    expect(s.vitals.at(V_HEALTH, s.serverTick)).toBe(health);
+    keys.moveZ = -1; h.run(1300); keys.moveZ = 0;
+    h.host.urban.dismount(c); h.run(550);
+    expect(s.driving).toBe(-1);
+    expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(650);
+    expect(s.driving).toBe(e);
+    ents.setPosition(e, ents.x[e]!, 7, ents.z[e]!); c.ownDirty = true;
+    h.run(1800);
+    expect(s.driving).toBe(-1);
+    expect(h.host.urban.occupancy.seatOf(me.pid)).toBeNull();
+    const lost = (health - s.vitals.at(V_HEALTH, s.serverTick)) / 1e6;
+    expect(lost).toBeGreaterThan(0); expect(lost).toBeLessThanOrEqual(8);
+    expect(h.host.items.audit()).toEqual([]);
+  } finally { h.host.shutdown(); }
+});

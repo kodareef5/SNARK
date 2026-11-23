@@ -1,3 +1,4 @@
+import { SHOVE, OLLIE, KICKFLIP } from "../../../shared/sim/skate-state.ts";
 import { ImpactSprings } from "./impact-springs.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { blockMass, survivorKind } from "../../../shared/sim/blockers.ts";
@@ -15,7 +16,7 @@ import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
-import { isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
+import { isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatMulConj, quatRotate } from "../../../shared/math/quat.ts";
 import { B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
@@ -161,6 +162,7 @@ interface VehicleRig {
 }
 
 export interface VehicleRenderPose {
+  skateMove?: number;
   pitch: number; roll: number; steering: number; wheelAngle: number;
   qx?: number; qy?: number; qz?: number; qw?: number;
   rotorRpm?: number; rotorPhase?: number; engineCondition?: number; rotorCondition?: number;
@@ -174,6 +176,7 @@ export interface VehicleRenderPose {
 }
 /** The pelvis target in camera-relative world space; the character's own rest proportions determine its origin. */
 export interface VehicleSeatPose extends VehicleRenderPose, OccupantSeat {
+  wheelAngle: number;
   x: number; y: number; z: number; yaw: number; driver: boolean; aimYaw?: number;
   /** The road wheels' steering as a share of the vehicle's most, -1 to 1, for the driver's arms. */
   steer: number;
@@ -648,7 +651,7 @@ export class Characters {
     out.groundPitch = vehicle.groundPitch; out.groundRoll = vehicle.groundRoll; out.rideOffset = vehicle.rideOffset; out.grounded = vehicle.grounded; out.doors = vehicle.doors;
     out.definition = seat; out.x = at[0]!; out.y = at[1]!; out.z = at[2]!; out.yaw = yaw; out.driver = seat.driver === true;
     out.steer = def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer;
-    out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
+    out.skateMove = vehicle.skateMove; out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
     return out;
   }
 
@@ -1010,6 +1013,12 @@ export class Characters {
       const v = c.vehicle;
       if (v) {
         rig.a.rest();
+        if (isSkateboard(v.def)) {
+          const move = vehicle?.skateMove, phase = vehicle?.wheelAngle ?? 0;
+          if (move === KICKFLIP) quatAxis(rig.a.rot, 0, 0, 0, 1, phase);
+          else if (move === SHOVE) quatAxis(rig.a.rot, 0, 0, 1, 0, phase);
+          else if (move === OLLIE) quatAxis(rig.a.rot, 0, 1, 0, 0, -.22 * Math.sin(phase));
+        }
         const steering = vehicle?.steering ?? 0, s = v.def.steeringWheel;
         if (s && v.steer >= 0) quatAxis(rig.a.rot, v.steer * 4, s.axis[0], s.axis[1], s.axis[2], steering * s.ratio);
         for (let d = 0; d < v.def.doors.length; d++) {
