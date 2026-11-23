@@ -8,6 +8,7 @@ import type { Lasers } from "../render/laser.ts";
 import type { SeatedAim } from "../seated-aim.ts";
 import type { VoicePort } from "../voice/port.ts";
 import type { SightAt, SightShown } from "./sight.ts";
+import type { FeedShown } from "../air-feed.ts";
 import type { FallenShown } from "../view/fallen.ts";
 import type { Camera } from "../render/camera.ts";
 import type { Scene } from "../render/scene.ts";
@@ -67,6 +68,8 @@ export interface HudFrame {
   /** What a sight looked through shows this frame, and where its look starts and how it points (hud/sight.ts). */
   sight: SightShown;
   sightAt: SightAt;
+  /** What a drone's feed shows this frame (air-feed.ts), where the app has one. */
+  feed?: FeedShown;
   /** The red and black over the view of a survivor knocked down or dying. */
   fallen?: FallenShown;
   /** What casts the lasers' beams, and what poses a seated body's aim. */

@@ -1,6 +1,6 @@
 import { CHUNK_SIZE, TICK_DT, TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { makeHandle } from "../shared/ids.ts";
-import { CMD_AIR_SUPPORT, CMD_CHAT, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { CMD_AIR_SUPPORT, CMD_CHAT, CMD_MARK, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { AIR_BAYS, AIR_VIEW_LIMIT, type AirDrone, type AirPose, type AirSupportView } from "../shared/sim/air-support.ts";
 import { droneLookPitch, droneLookYaw, droneMove, droneStep, type DroneTravel } from "../shared/sim/air-drone.ts";
 import { BTN_AIR_REMOTE, BTN_SPRINT } from "../shared/sim/character.ts";
@@ -70,7 +70,8 @@ export class AirFlights {
     const { game } = ctx;
     game.players.remoteInput = (c, tick) => this.input(c, tick);
     game.replication.cameraChunk = (c) => this.flights.get(c)?.chunk;
-    game.players.allows.on((c, op) => !this.active(c) || op === CMD_AIR_SUPPORT || op === CMD_CHAT);
+    game.players.remoteEye = (c) => this.flights.get(c) ?? null;
+    game.players.allows.on((c, op) => !this.active(c) || op === CMD_AIR_SUPPORT || op === CMD_CHAT || op === CMD_MARK);
     game.sessions.onPresence.on(c => { if (c.closed) this.abort(c); });
     game.sessions.onExit.on(c => { this.forget(c); });
     game.sessions.onBodyGone.on(c => { this.abort(c); });

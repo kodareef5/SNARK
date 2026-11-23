@@ -5,6 +5,7 @@ import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { AirRadio } from "./air-support.ts";
+import { buildFeed } from "../hud/air-feed.ts";
 import { CharacterScreen } from "./character.ts";
 import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.ts";
 import { CreatorScreen } from "./creator.ts";
@@ -383,6 +384,8 @@ export class Ui {
       const play = plan !== null && this.touchPlay !== null && session !== null && controls && this.wantsPointerLock;
       if (play) layer!.touchZones(f);
       if (session?.airSupport.flight && controls && !this.dead) {
+        // The drone's feed and its tracking boxes stand in for the HUD (hud/air-feed.ts).
+        buildFeed(f, hud, this.inputDevice);
         if (play) this.touchShown = layer!.touchDrone(this.frame, this.touchPlay!);
         this.air.hud(f, session, this.inputDevice);
         return;

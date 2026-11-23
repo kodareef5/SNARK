@@ -459,7 +459,8 @@ export const GAZE_REACH = 200;
 export const GAZE_FARTHEST = 8000;
 /**
  * Marks for the tribe the creature the session looks at through a glass or a visor (D1082), its entity index u32 and
- * generation u16: it must be in the session's view or its cone, alive, and no survivor. Its tribe's marks hold it as
+ * generation u16: it must be in the session's view or its cone, or within DRONE_LOOK of a drone it flies, alive, and no
+ * survivor. Its tribe's marks hold it as
  * MARK_SPOT where it is for SPOT_TICKS, SPOTS_MOST a tribe, the oldest let go first. A survivor with no tribe is denied.
  */
 export const CMD_MARK = command();
@@ -471,6 +472,8 @@ export const CMD_THROW = command();
 export const CMD_AIR_SUPPORT = command();
 export const SPOT_TICKS = 1800;
 export const SPOTS_MOST = 8;
+/** Metres a flown drone's camera looks along its middle: what its operator is told of, and may mark (CMD_MARK). */
+export const DRONE_LOOK = 400;
 export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;

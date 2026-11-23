@@ -4,8 +4,9 @@ import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../../shared/world/ray.ts";
 import type { Camera } from "../render/camera.ts";
 import type { ClientSession, RemoteSample } from "../session.ts";
-import { fitText, K_BAR, K_BUTTON, K_PANEL, type UiFrame } from "./nodes.ts";
-import { S_CROSS, S_BUTTON, S_HUD_COUNT, S_LABEL, S_MENU_FOCUS, S_MENU_NOTE, S_OXYGEN, S_PANEL, S_TITLE, S_WARNING } from "./style.ts";
+import { fitText, K_BUTTON, K_PANEL, type UiFrame } from "./nodes.ts";
+import { feedButtons } from "../hud/air-feed.ts";
+import { S_BUTTON, S_HUD_COUNT, S_LABEL, S_MENU_FOCUS, S_PANEL, S_TITLE, S_WARNING } from "./style.ts";
 
 const BASE = 43100;
 export const AIR_RADIO_KEY = BASE + 1;
@@ -143,26 +144,13 @@ export class AirRadio {
     const w = Math.min(310, f.width - f.left - f.right - 24);
     const x = (f.width - w) / 2, y = f.top + (touch ? 66 : 49);
     if (drone) {
-      const top = f.top + 18;
-      const heading = String((Math.round(drone.yaw * 180 / Math.PI) % 360 + 360) % 360).padStart(3, "0");
-      f.add(BASE + 35, K_PANEL, x, top, w, touch ? 126 : 100, S_PANEL);
-      f.text(BASE + 40, x + 12, top + 8, w - 24, S_LABEL, `BAY ${drone.bay + 1}     HDG ${heading}°     AGL ${this.altitude} m`);
-      const fuel = Math.round(drone.fuel * 100);
-      f.text(BASE + 36, x + 12, top + 34, w - 24, S_HUD_COUNT, `FUEL ${fuel}%`);
-      f.add(BASE + 37, K_BAR, x + 12, top + 55, w - 24, 4, fuel < 20 ? S_WARNING : S_OXYGEN).value = drone.fuel;
-      const cx = f.width / 2, cy = f.height / 2;
-      for (const side of [-1, 1]) {
-        const edge = side < 0 ? -14 : 6;
-        f.add(BASE + 42 + side, K_PANEL, cx + edge, cy - 1, 8, 2, S_CROSS);
-        f.add(BASE + 46 + side, K_PANEL, cx - 1, cy + edge, 2, 8, S_CROSS);
-      }
+      // The feed's frame and readouts are the HUD's (hud/air-feed.ts). The radio adds its buttons by touch, and a warning low over the ground.
       if (touch) {
-        button(f, PAYLOAD, x + 10, top + 73, w / 2 - 15, "Fire payload");
-        button(f, LEAVE, x + w / 2 + 4, top + 73, w / 2 - 15, "Leave feed");
-      } else {
-        const keys = pad ? "L3 boost    Y payload    R3 leave" : "Shift boost    E payload    J leave";
-        f.text(BASE + 38, x + 12, top + 71, w - 24, S_MENU_NOTE, keys);
+        const row = feedButtons(f);
+        button(f, PAYLOAD, row.x, row.y, row.w, "Fire payload");
+        button(f, LEAVE, row.x + row.w + 8, row.y, row.w, "Leave feed");
       }
+      if (this.altitude < 2.5 && s.tickClock % 20 < 13) f.text(BASE + 40, x, f.height / 2 + 84, w, S_WARNING, "TERRAIN");
       return;
     }
     if (this.marking) {

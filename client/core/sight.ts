@@ -239,7 +239,8 @@ export class Sight implements FramePart {
     shown.visorMode = this.visor.mode;
     shown.visorDigital = visorUp && this.visor.digital;
     shown.visorRange = this.visor.range;
-    this.visor.frame(f.scene.optic, daylight(f.sky.hour));
+    // A drone's feed fills the optic while one is flown (air-feed.ts).
+    if (!session.airCamera.id) this.visor.frame(f.scene.optic, daylight(f.sky.hour));
     if (shown.scope && gun) {
       const pace = Math.hypot(session.own.vx, session.own.vz) / Math.max(1, move?.walkSpeed ?? 1);
       const kick = gun.recoilKick ? (session.own.kick * KICK_UNIT * UNIT_RADIANS) / ((gun.recoilKick * PI) / 180) : 0;

@@ -72,6 +72,7 @@ import { Cascades } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { LampView } from "./lamp.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
+import { feedShare } from "./feed.ts";
 import { lightBytes, lightSamples, opticFrame, postFrame, sceneSize, type Optic } from "./post.ts";
 import { lampsOn, skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
@@ -225,7 +226,7 @@ export class Scene {
   /** The near trees' hand-over band's scale this frame: a sight's zoom, else 1 (D1090). */
   private handScale = 1;
   /** What a visor does to the picture this frame (post.ts opticFrame, D1080), which the app sets. */
-  readonly optic: Optic = { mode: 0, gain: 1, grain: 0 };
+  readonly optic: Optic = { mode: 0, gain: 1, grain: 0, feed: false, signal: 1, burst: 0 };
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
   viewHeight = 720;
   /** The canvas in its own pixels, which the light target takes and bloom's levels are counted from, and whether it draws more than the screen's own (post.ts). */
@@ -732,6 +733,8 @@ export class Scene {
     p.tier = this.assets.tier;
     p.lit = p.tier.lit;
     p.room = p.tier.post ? this.share : 1; p.share = p.tier.post ? this.share * (p.tier.post.scale ?? 1) : 1;
+    // A drone's feed is drawn from fewer pixels, which its finish takes up by the nearest (feed.ts).
+    if (this.optic.feed && p.tier.post) p.share = feedShare(p.share, this.canvasHeight);
     p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
     const win = cam.window, windowed = cam.windowed;
     for (let k = 0; k < 4; k++) p.window[k] = windowed ? win[k]! * 0.5 + 0.5 : 0;
@@ -765,7 +768,7 @@ export class Scene {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky, this.fadeFrom);
       postFrame(p.frame, p.tier, this.hour, Math.round(this.canvasHeight * p.room), p.share);
-      opticFrame(p.frame, p.tier, this.optic, Math.floor(this.now / 16));
+      opticFrame(p.frame, p.tier, this.optic, this.optic.seed ?? Math.floor(this.now / 16));
       this.characters.heatView = p.frame[OPTIC_AT] === OPTIC_HEAT;
       p.lightSamples = lightSamples(this.supersampled);
       // A vehicle's glass covers a share of a pixel's samples where the frame has them: a canvas is drawn antialiased, a

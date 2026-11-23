@@ -494,10 +494,13 @@ export const SHORE_AT = SECTION.shore;
 export const DROPS_AT = SECTION.drops;
 /**
  * fOptic and fPhosphor, what a visor does to the picture (D1080): fOptic's mode (OPTIC_NONE, OPTIC_NIGHT), the grain the
- * finish adds where it draws (0 for none), a seed that moves it each frame, and 0; fPhosphor the colour night vision
- * shows its grey in. All zero for none.
+ * finish adds where it draws (0 for none), a seed that moves it each frame, and a drone's feed (OPTIC_FEED_AT); fPhosphor
+ * the colour night vision shows its grey in, and the feed's burst of interference. All zero for none.
  */
 export const OPTIC_AT = SECTION.optic;
+/** fOptic.w: 0 with no drone feed, else 1 plus its signal, 0 to 1 (air-feed.ts). fPhosphor.a: its burst, 0 to 1. */
+export const OPTIC_FEED_AT = SECTION.optic + 3;
+export const OPTIC_BURST_AT = SECTION.optic + 7;
 /**
  * fMade: for each material made from a recipe (content/texgen/materials.ts), two lanes: its slot's first layer of the
  * made array (-1 for none) and how far it has come up, 0 to 1; then where the eye is in its tiles (texgen/slots.ts).
@@ -506,6 +509,8 @@ export const MADE_AT = SECTION.made;
 export const OPTIC_NONE = 0;
 export const OPTIC_NIGHT = 1;
 export const OPTIC_HEAT = 2;
+/** A drone's camera feed (air-feed.ts): its own view, a cool grade over plain light; night and heat go inside it. */
+export const OPTIC_FEED = 3;
 export const FRAME_FLOATS = SECTION.end;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {

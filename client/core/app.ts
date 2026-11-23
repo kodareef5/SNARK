@@ -31,6 +31,7 @@ import { HudFill } from "./hud/widget.ts";
 import { AppFrame, type FramePart } from "./frame.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Sight } from "./sight.ts";
+import { AirFeed } from "./air-feed.ts";
 import { Director } from "./view/director.ts";
 import { FallenView } from "./view/fallen.ts";
 import { ToolHooks, autopilot, type ToolOrders } from "./tool-hooks.ts";
@@ -115,6 +116,8 @@ export class App {
   falling: Falling | null = null;
   /** The aim and any sight raised: a scope, the spyglass, a helmet's visor (sight.ts). What the keys' rows and the tests read of it is forwarded. */
   readonly sight = new Sight();
+  /** A launched drone's camera feed while it is flown (air-feed.ts). */
+  readonly feed = new AirFeed();
   get visor(): Visor { return this.sight.visor; }
   get glass(): Glass { return this.sight.glass; }
   get visorOptic(): OpticFacet | null { return this.sight.visorOptic; }
@@ -220,6 +223,7 @@ export class App {
     this.shown = reg;
     this.pack = pack;
     this.f = new AppFrame(session, this.controls, this.ui, this.hud, this.cam, this.remote, pack, this.sky, this.director.view, this.lasers, new SeatedAim(reg, pack));
+    this.f.feed = this.feed.shown;
     this.prompts = new Prompts(reg, this.builder, this.vehiclePlacement);
     session.shotOrigin = (out, tick, yaw, pitch) => {
       if (!session.world || session.driving >= 0 || !session.own.seat) return false;
@@ -393,7 +397,7 @@ export class App {
 
   /** Whether a raised sight takes zoom steps: a scope that zooms, a glass, a visor. */
   get zooming(): boolean {
-    return this.sight.zooming;
+    return this.sight.zooming || this.session.airFeed.active;
   }
 
   /** The mouse wheel's `deltaY` in pixels, lines or pages (`mode` 0, 1 or 2), as a browser gives it. True when it was used. */
@@ -405,6 +409,10 @@ export class App {
 
   /** `notches` of zoom to the raised sight, down (positive) to widen: the wheel's, a pad's d-pad's, a finger's. True when one took them. */
   zoomBy(notches: number, alt = this.alt): boolean {
+    if (this.session.airFeed.active) {
+      this.feed.wheel(notches);
+      return true;
+    }
     return this.sight.zoomBy(notches, alt);
   }
 
@@ -617,6 +625,8 @@ export class App {
       this.director.body,
       this.fallen,
       this.director.place,
+      // A drone flown: its feed's zoom, view and interference, over the camera placed at it.
+      this.feed,
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       { step: (f) => this.absorb(f) },
       ...(tools ? [tools.stage] : []),
@@ -858,7 +868,7 @@ export class App {
     fillHud(hud, fill);
     this.feedback.absorb(session, this.reg, f.sceneMs, f.scene.damage);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, f.sceneMs, session.hitMarkers);
-    fillOverhead(hud.overhead, session, this.remote, cam, f.scene.characters, alive && !hud.out ? f.eyeNow : -1, c.yaw, c.pitch, f.lookReach);
+    fillOverhead(hud.overhead, session, this.remote, cam, f.scene.characters, alive && !hud.out && !hud.feed ? f.eyeNow : -1, c.yaw, c.pitch, f.lookReach);
   }
 
   /** The sound device is told what to play. */
