@@ -378,7 +378,7 @@ export interface PieceSpec {
 
 export interface PiecesAsset {
   readonly kind: "pieces";
-  readonly source: { readonly scripts: readonly string[] };
+  readonly source: { readonly scripts: readonly string[] } | { readonly bake: () => SourceMesh[] };
   /**
    * `object` is the Blender mesh object the scripts leave for the piece, modelled about the origin as the structure
    * stands: +Y up, metres. "<object>_LOD<n>" is its level n. A material named region0 to region5 is a colour region,

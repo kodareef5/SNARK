@@ -51,6 +51,7 @@ const BURNT = 230;
  * listed in a colour in the one mean of them all (far.ts farColours), and two yellow liveries moved far wood.
  */
 const BODIES: readonly { body: string; looks: readonly string[]; paints?: readonly string[]; color?: number }[] = [
+  { body: "concept003", looks: ["", "_stripped"], paints: ["silver"] },
   { body: "fastback", looks: ["", "_stripped", "_roof"], paints: STREET },
   { body: "caravan", looks: ["", "_stripped"], paints: STREET },
   { body: "panel_van", looks: ["", "_stripped"], paints: ["white", "silver", "grey", "charcoal", "red", "navy", "beige", "faded_blue"] },
