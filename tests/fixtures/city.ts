@@ -7,7 +7,7 @@ import type { HostOptions } from "../../server/host.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { DMG_BULLET, DMG_EXPLOSIVE } from "../../shared/sim/damage.ts";
 import { formOf } from "../../shared/world/breaking.ts";
-import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
+import { writeMap, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { flatMap } from "./map.ts";
 import { Harness } from "./net.ts";
@@ -25,6 +25,8 @@ export interface CityPiece {
 
 export interface City {
   readonly h: Harness;
+  /** The map's file, for another server started on it. */
+  readonly map: Uint8Array<ArrayBuffer>;
   /** The ref of each piece, in the order given. */
   readonly refs: number[];
   /** The id of the kind `ref` now holds, "" for an emptied slot. */
@@ -38,8 +40,8 @@ export interface City {
   at(ref: number): { x: number; y: number; z: number };
 }
 
-/** The ground of a flat map is at 0. `chunks` is the map's side; the spawn is in its middle. */
-export function city(pieces: readonly CityPiece[], chunks = 4, host: HostOptions = {}, game: Partial<GameOptions> = {}, more: readonly MapStatic[] = []): City {
+/** The ground of a flat map is at 0. `chunks` is the map's side; the spawn is in its middle. `more` is what else the map holds. */
+export function city(pieces: readonly CityPiece[], chunks = 4, host: HostOptions = {}, game: Partial<GameOptions> = {}, more: Partial<MapData> = {}): City {
   const reg = coreRegistry();
   // A store only to ask how far under its place each kind's foot is.
   const feet = new StructureStore({ chunksX: 1, chunksZ: 1 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts).low;
@@ -48,7 +50,8 @@ export function city(pieces: readonly CityPiece[], chunks = 4, host: HostOptions
     if (!reg.index.has(kind)) throw new Error(`the kit has no ${p.shape} in ${p.finish}`);
     return { kind, x: p.x, y: (p.up ?? 0) - feet[reg.index.get(kind)!]!, z: p.z, yaw: p.yaw ?? 0 };
   });
-  const h = new Harness(game, 1, 30, { dev: true, ...host, map: writeMap(flatMap(chunks, { statics: [...statics, ...more] })) });
+  const map = writeMap(flatMap(chunks, { ...more, statics: [...statics, ...((more.statics as readonly MapStatic[] | undefined) ?? [])] }));
+  const h = new Harness(game, 1, 30, { dev: true, ...host, map });
   const structs = h.world.structs;
   const refs = statics.map((s) => {
     for (const chunk of structs.held) {
@@ -59,7 +62,7 @@ export function city(pieces: readonly CityPiece[], chunks = 4, host: HostOptions
   });
   const row = (ref: number) => [structs.chunks[Math.floor(ref / 65536)]!, ref & 0xffff] as const;
   return {
-    h, refs,
+    h, refs, map,
     id: (ref) => { const [t, s] = row(ref); return t.kind[s] === 0 ? "" : h.reg.ids[t.kind[s]!]!; },
     form: (ref) => { const [t, s] = row(ref); return t.kind[s] === 0 ? -1 : formOf(h.reg, t.kind[s]!); },
     hp: (ref) => { const [t, s] = row(ref); return t.hp[s]!; },

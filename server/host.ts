@@ -675,7 +675,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (victim && car.team !== 0 && !tribes.may(victim, car.team)) return true;
     return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
   };
-  const trees = harvest ? new VehicleTrees(world, harvest) : null;
+  const trees = harvest ? new VehicleTrees(world, harvest, combat.city, () => records.byPid.get(game.players.driving) ?? null) : null;
   if (trees) game.players.vehicleStep = trees.step;
   const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.players.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by),
     mayDisplaceRider: (by, vehicle, rider) => combat.vehicleDisplaces(by, vehicle, rider),
