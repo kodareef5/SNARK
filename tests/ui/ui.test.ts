@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { emptyAirSupport } from "../../shared/sim/air-support.ts";
 import { Controls, LOOK_SPEED } from "../../client/core/controls.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { Chart } from "../../client/core/tactical.ts";
@@ -81,6 +82,7 @@ function fakeSession(inv: Inventory) {
   const sent: { op: number; bytes: Uint8Array }[] = [];
   const said: { channel: number; words: string }[] = [];
   const session = {
+    airSupport: emptyAirSupport(),
     inventory: inv,
     serverTick: 1000,
     logVersion: 0,
