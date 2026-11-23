@@ -10,11 +10,11 @@ import { SPOTS_MOST } from "../shared/net/protocol.ts";
 import { CHUNK_SIZE, TICK_RATE, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitWriter } from "../shared/net/codec.ts";
-import { CMD_FAR, CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_FAR, S_GONE, S_MARKS, S_TACTICAL } from "../shared/net/protocol.ts";
+import { CMD_FAR, CMD_MAP_ZOOM, COLLAPSE_PIECES, EVENT_COLLAPSE, RESULT_INVALID, RESULT_OK, S_EVENT, S_FAR, S_GONE, S_MARKS, S_TACTICAL } from "../shared/net/protocol.ts";
 import { CH_UNRELIABLE, type Connection } from "../shared/net/transport.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import type { MapExtent } from "../shared/world/coords.ts";
-import { NONE_GONE, goneSlots, writeGone } from "../shared/world/gone.ts";
+import { NONE_GONE, fellIn, goneSlots, writeGone, type Fell } from "../shared/world/gone.ts";
 import { FarCells, MARK_MATE, MARK_OTHER, MARK_SPOT, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, pieceShapes, writeCells, writeFar, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
@@ -128,9 +128,10 @@ class TeamMarks {
 export class Tactical {
   /**
    * Chunks baked, S_TACTICAL messages and bytes sent, S_MARKS messages and bytes sent, the marks left out of those
-   * messages because a tribe had more than one holds, S_FAR messages and bytes sent, and S_GONE messages and bytes sent.
+   * messages because a tribe had more than one holds, S_FAR messages and bytes sent, S_GONE messages and bytes sent, and
+   * collapses told (EVENT_COLLAPSE), one a session.
    */
-  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0, marksLeftOut: 0, far: 0, farBytes: 0, gone: 0, goneBytes: 0 };
+  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0, marksLeftOut: 0, far: 0, farBytes: 0, gone: 0, goneBytes: 0, collapses: 0 };
   /** Per chunk, or null for one that has never held a structure. */
   readonly summaries: (Summary | null)[];
 
@@ -197,6 +198,15 @@ export class Tactical {
   /** The chunks a piece was set down in or taken from since their lists were last made, and a 1 for each. */
   private readonly shaped: number[] = [];
   private readonly isShaped: Uint8Array;
+  /**
+   * The chunks a piece was set down in or taken from since their removals were last looked at for a collapse, a 1 for each,
+   * each one's table version then, and the tick of that look.
+   */
+  private readonly broke: number[] = [];
+  private readonly isBroke: Uint8Array;
+  private readonly brokeSeen: Uint32Array;
+  private brokeAt = -1;
+  private readonly fell: Fell = { count: 0, x: 0, z: 0, foot: 0, across: 0, tall: 0 };
 
   /** Makes room for more sessions, when MaxPlayers is raised while the server runs. */
   seats(n: number): void {
@@ -226,6 +236,8 @@ export class Tactical {
     this.gone = new Array<Uint16Array | null>(chunks).fill(null);
     this.goneVersion = new Uint32Array(chunks);
     this.isShaped = new Uint8Array(chunks);
+    this.isBroke = new Uint8Array(chunks);
+    this.brokeSeen = new Uint32Array(chunks);
     // What stands at the start is baked at once, so every tribe's chunks are known before anyone joins.
     this.sweep();
     while (this.queue.length > 0) this.bake(this.queue.pop()!, 0);
@@ -249,9 +261,55 @@ export class Tactical {
   }
 
   private shapedIn(chunk: number): void {
+    if (this.isBroke[chunk] === 0) {
+      this.isBroke[chunk] = 1;
+      this.broke.push(chunk);
+    }
     if (this.isShaped[chunk] === 1) return;
     this.isShaped[chunk] = 1;
     this.shaped.push(chunk);
+  }
+
+  /**
+   * Once a tick: tells sessions of each removal since the last tick that took more than COLLAPSE_PIECES of the map's
+   * pieces from one chunk at once. What went while no session was here to step this is not news.
+   */
+  private collapses(T: number): void {
+    const news = T - this.brokeAt <= 1;
+    this.brokeAt = T;
+    const structs = this.world.structs;
+    for (const chunk of this.broke) {
+      this.isBroke[chunk] = 0;
+      const t = structs.chunks[chunk];
+      if (!t) continue;
+      const seen = this.brokeSeen[chunk]!;
+      this.brokeSeen[chunk] = t.version;
+      for (let i = t.gone.length - 1; news && i >= 0 && t.gone[i]!.version > seen; i--) {
+        if (fellIn(structs, chunk, t.gone[i]!.runs, this.fell).count > COLLAPSE_PIECES) this.tellCollapse(this.fell);
+      }
+    }
+    this.broke.length = 0;
+  }
+
+  /** EVENT_COLLAPSE to each session within the reach of its lists of pieces gone. */
+  private tellCollapse(f: Fell): void {
+    const most = this.rules.num("GoneRadius");
+    for (const c of this.game.clients) {
+      if (!c?.active || c.closed) continue;
+      const reach = Math.min(most, this.held[c.id]?.conn === c.conn ? this.held[c.id]!.goneAsk : 0);
+      const dx = c.body.x - f.x;
+      const dz = c.body.z - f.z;
+      if (dx * dx + dz * dz > reach * reach) continue;
+      const w = this.game.begin(S_EVENT);
+      w.u8(EVENT_COLLAPSE);
+      w.f32(f.x);
+      w.f32(f.z);
+      w.sbits(Math.max(-32768, Math.min(32767, Math.round(f.foot * 2))), 16);
+      w.u8(Math.min(255, Math.round(f.across)));
+      w.u8(Math.min(255, Math.round(f.tall / 2)));
+      this.game.endOwn(c);
+      this.stats.collapses++;
+    }
   }
 
   /** Makes the list of pieces gone of each chunk whose form changed. A list's version moves only when the list does. */
@@ -326,6 +384,7 @@ export class Tactical {
   /** Once a tick: every second notice changed chunks and make the marks, and bake a few of the chunks waiting. */
   private step(T: number): void {
     this.steppedAt = T;
+    this.collapses(T);
     if (T % TICK_RATE === 0) {
       this.sweep();
       if (T - this.tamesAt >= TAMES_EVERY) this.listTames(T);

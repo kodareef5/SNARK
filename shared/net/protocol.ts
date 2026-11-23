@@ -697,6 +697,13 @@ export const IMPACT_VEHICLE = 3;
 export const IMPACT_FULL = 40;
 export const IMPACT_HEARD = 150;
 export const IMPACTS_PER_TICK = 16;
+/**
+ * COLLAPSE, to clients within the reach of the lists of pieces gone (S_GONE): one break took more than COLLAPSE_PIECES of
+ * the map's pieces from a chunk in a tick. The middle of what fell, x and z (2 x f32), its foot s16 in half metres, how
+ * far across it stood u8 in metres, and how tall u8 in steps of 2 m. A client far off draws a column of dust there.
+ */
+export const EVENT_COLLAPSE = eventKind();
+export const COLLAPSE_PIECES = 16;
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

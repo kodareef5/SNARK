@@ -42,6 +42,44 @@ export function goneSlots(reg: Registry, structs: StructureStore, chunk: number,
   return list;
 }
 
+/** What one removal took of a chunk's map pieces: how many, the middle of the box they stood in, its foot, and how far across and how tall it was. */
+export interface Fell {
+  count: number;
+  x: number;
+  z: number;
+  foot: number;
+  across: number;
+  tall: number;
+}
+
+/**
+ * Measures the map pieces among the slots of `chunk` that `runs` names (pairs of first slot and count, as a removal logs
+ * them), into `out`. A map's slot keeps its place when it is emptied, so this holds after the removal. Authority only.
+ */
+export function fellIn(structs: StructureStore, chunk: number, runs: readonly number[], out: Fell): Fell {
+  const t = structs.chunks[chunk];
+  let [x0, y0, z0, x1, y1, z1] = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  out.count = 0;
+  for (let r = 0; t && r < runs.length; r += 2) {
+    for (let s = runs[r]!, end = Math.min(t.mapped, s + runs[r + 1]!); s < end; s++) {
+      const half = structs.halfYOf(structs.mapKind(chunk, s));
+      x0 = Math.min(x0, t.x[s]!);
+      x1 = Math.max(x1, t.x[s]!);
+      z0 = Math.min(z0, t.z[s]!);
+      z1 = Math.max(z1, t.z[s]!);
+      y0 = Math.min(y0, t.y[s]! - half);
+      y1 = Math.max(y1, t.y[s]! + half);
+      out.count++;
+    }
+  }
+  out.x = (x0 + x1) / 2;
+  out.z = (z0 + z1) / 2;
+  out.foot = y0;
+  out.across = Math.max(x1 - x0, z1 - z0);
+  out.tall = y1 - y0;
+  return out;
+}
+
 /** Bits a varint of `v` takes. */
 function varintBits(v: number): number {
   return v < 0x80 ? 8 : v < 0x4000 ? 16 : 24;

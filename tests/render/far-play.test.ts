@@ -8,11 +8,12 @@ import { Scene } from "../../client/core/render/scene.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
-import { CMD_FAR, CMD_MAP_ZOOM, CMD_VIEW, S_FAR, S_GONE } from "../../shared/net/protocol.ts";
+import { CMD_FAR, CMD_MAP_ZOOM, CMD_VIEW, EVENT_COLLAPSE, S_EVENT, S_FAR, S_GONE } from "../../shared/net/protocol.ts";
 import { CityStatics, goneByRows } from "../../shared/world/city.ts";
 import { GoneList, readGone } from "../../shared/world/gone.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { parseMap, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
+import { GONE_DESTROYED } from "../../shared/world/structures.ts";
 import { FarCells, farTopMetres, readFar } from "../../shared/world/tactical.ts";
 import { farJoin } from "../../tools/bench/far.ts";
 import { farPack } from "../fixtures/farworld.ts";
@@ -348,4 +349,42 @@ test("the list a far client holds is what a near client's rows give, and its far
   scene.build(cam, null);
   const far = scene.city!.goneOf(chunk)!;
   expect([...far.keys()].filter((i) => far[i] === 1)).toEqual(doomed);
+});
+
+test("a break of more than 16 map pieces in a chunk sends one collapse event, and a smaller one sends none", () => {
+  // A block of 60 pillars, 10 to a storey, 1.2 km east, and others like it 1.9 km and 6 km east.
+  const towers: MapStatic[] = [];
+  for (const cx of [20, 30, 95]) for (let i = 0; i < 60; i++) towers.push({ kind: "core:pillar", x: cx * 64 + 10 + (i % 10) * 4, y: 3.3 + Math.floor(i / 10) * 6, z: 96, yaw: 0 });
+  const { h, world, tap } = wide(writeMap({ ...parseMap(WIDE), id: "test:wide-falls", statics: towers }));
+  const a = h.join("ada");
+  const events = tap(a, S_EVENT);
+  const told = (): Uint8Array[] => events.filter((m) => m[1] === EVENT_COLLAPSE);
+  const run = (ms: number): void => h.run(ms, () => a.askFar(2048, 4000));
+  run(500);
+  const [near, mid, far] = [DIMS.chunksX + 20, DIMS.chunksX + 30, DIMS.chunksX + 95];
+  const refs = (chunk: number, from: number, n: number): Uint32Array => Uint32Array.from({ length: n }, (_, i) => chunk * 65536 + from + i);
+  // Sixteen pieces at once: no event. Its list goes all the same.
+  world.structs.removeMany(refs(near, 44, 16), 16, GONE_DESTROYED, 1300, 30, 96, world.tick);
+  run(1500);
+  expect([told().length, a.collapses.length, a.gone.lists.get(near)!.length]).toEqual([0, 0, 16]);
+  // Thirty pieces under them in one blast, over four storeys: one event of 14 bytes, with where they stood and how large.
+  world.structs.removeMany(refs(near, 14, 30), 30, GONE_DESTROYED, 1300, 12, 96, world.tick);
+  run(200);
+  expect([told().length, told()[0]!.length, a.collapses.length]).toEqual([1, 14, 1]);
+  const fell = a.collapses[0]!;
+  expect([fell.x, fell.z, fell.across, fell.tall]).toEqual([20 * 64 + 28, 96, 36, 24]);
+  expect(Math.abs(fell.foot - 6.3)).toBeLessThanOrEqual(0.5);
+  // Seventeen taken one after another in one tick by one blast are one break. The same number over two ticks are not.
+  for (let s = 0; s < 17; s++) world.structs.damage(mid * 65536 + s, 1e9, world.tick);
+  run(100);
+  expect(told().length).toBe(2);
+  for (let s = 20; s < 29; s++) world.structs.damage(mid * 65536 + s, 1e9, world.tick);
+  run(100);
+  for (let s = 30; s < 38; s++) world.structs.damage(mid * 65536 + s, 1e9, world.tick);
+  run(100);
+  expect(told().length).toBe(2);
+  // A collapse past what she asked the lists for, 6 km off, is not told.
+  world.structs.removeMany(refs(far, 20, 40), 40, GONE_DESTROYED, 6100, 20, 96, world.tick);
+  run(300);
+  expect([told().length, a.collapses.length, h.host.tactical.stats.collapses]).toEqual([2, 2, 2]);
 });

@@ -86,6 +86,7 @@ import {
   EVENT_NAME_BYTES,
   EVENT_SHOT,
   EVENT_BLAST,
+  EVENT_COLLAPSE,
   EVENT_IMPACT,
   EVENT_BALL,
   OWN_KEPT,
@@ -537,6 +538,11 @@ export class ClientSession {
   readonly events: CombatEvent[] = [];
   /** Blows that landed on bodies near, oldest first (EVENT_IMPACT). The scene takes them each frame. */
   readonly impacts: Impact[] = [];
+  /**
+   * Collapses told since they were last taken (EVENT_COLLAPSE), for the dust drawn over them from afar: the middle of what
+   * fell, its foot, and how far across and how tall it stood, in metres. The oldest goes when a ninth comes.
+   */
+  readonly collapses: { x: number; z: number; foot: number; across: number; tall: number }[] = [];
   /** Creatures just tamed, waiting for the naming prompt. te is in percent. */
   readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
   /** The creature whose inventory is open, or null when the open container is not a creature. Shares are 0 to 1. */
@@ -1962,6 +1968,13 @@ export class ClientSession {
       // Not a combat event. It is queued for the naming prompt.
       const won = { handle: r.u32(), kind: r.u16(), level: r.u16(), te: r.u8() };
       if (!r.overflow && this.tamed.length < 8) this.tamed.push(won);
+      return;
+    } else if (kind === EVENT_COLLAPSE) {
+      // Not a combat event: where much of a building came down at once, far enough off to be drawn as a column of dust.
+      const fell = { x: r.f32(), z: r.f32(), foot: r.sbits(16) / 2, across: r.u8(), tall: r.u8() * 2 };
+      if (r.overflow) return;
+      if (this.collapses.length >= 8) this.collapses.shift();
+      this.collapses.push(fell);
       return;
     } else if (kind === EVENT_IMPACT) {
       // Not a combat event: where a blow landed on a body, for its draw to snap back from it (render/impact-springs.ts).
