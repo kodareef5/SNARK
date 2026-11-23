@@ -27,11 +27,11 @@ import { WATER_FRAGMENT } from "./water.ts";
  * 15 holds the details atlas for the details draws alone, and is free outside them: a program that does not read it may
  * bind something else there. 16, the first past the sixteen a program may read at most, holds the sky's openness
  * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection, 24 what stands
- * overhead (roof.ts), 25 and 26 the streets' distances and kinds round the camera (streets.ts), and 27 the textures the
- * card makes (client/core/texgen). WebGL2 has 32 units
- * at the least, and no program reads more than sixteen.
+ * overhead (roof.ts), 25 and 26 the streets' distances and kinds round the camera (streets.ts), 27 the textures the
+ * card makes (client/core/texgen), and 28 the states of the near chunks' pieces (pieces.ts), which only vertex texts
+ * read. WebGL2 has 32 units at the least, and no program's fragment text reads more than sixteen.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -49,7 +49,7 @@ export const withDefines = (source: string, defines: string): string => source.r
 const streetText = (fragment: string, on: boolean): string => on ? fragment : fragment.replace("uniform highp sampler2DArray uStreetEnv;", "");
 // The textures the card makes (texgen/layers.ts) are read only where a program weathers.
 const texgenText = (fragment: string, on: boolean): string => on ? fragment : fragment.replace("uniform highp sampler2DArray uTexgen;", "");
-const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
+const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones, uPieces: UNIT.pieces };
 const GROUND = { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint };
 const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
 
@@ -147,8 +147,8 @@ const MAKE = {
       ? { vertex: DETAIL_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
       : { vertex: DETAIL_VERTEX, fragment: DETAIL_FLAT_FRAGMENT, defines: "", samplers: {} },
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
-  depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones } }),
-  depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps } }),
+  depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uPieces: UNIT.pieces } }),
+  depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps, uPieces: UNIT.pieces } }),
   depthTerrain: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: GROUND }),
   skyline: () => ({ vertex: FLAT_MESH_VERTEX, fragment: FLAT_FRAGMENT.replace("fog * fog", `min(fog * fog, ${SKYLINE_MAX_FOG})`), defines: "", samplers: MESH }),
   // An instrument's own lights (packet.ts DRAW_EMISSIVE) where they are drawn flat: energy in a channel by the site's

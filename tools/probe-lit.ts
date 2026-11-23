@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { depthCheck } from "./probe-lit/depth.ts";
 import { cityCheck } from "./probe-lit/city.ts";
+import { piecesCheck } from "./probe-lit/pieces.ts";
 import { detailsCheck } from "./probe-lit/details.ts";
 import { damageCheck } from "./probe-lit/damage.ts";
 import { rotorCheck } from "./probe-lit/rotor.ts";
@@ -36,7 +37,7 @@ import { CHROME_FLAGS } from "./chrome.ts";
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, damageCheck, rotorCheck, facadeCheck, streetFinishCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, piecesCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, damageCheck, rotorCheck, facadeCheck, streetFinishCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
@@ -86,7 +87,9 @@ function unpack(p, f, blob) {
     p[key] = previous.find(img => img && img.pixels.buffer === pixels.buffer && img.pixels.byteOffset === pixels.byteOffset) ?? { revision: f[key].revision, pixels };
   }
   for (const [buffer, at, n] of f.uploads) p.uploads.push({ buffer, data: data([at, n]), slots: new Uint16Array(0) });
-  for (const u of f.assetUploads) p.assetUploads.push({ ...u, data: data(u.data) });
+  for (const u of f.assetUploads) p.assetUploads.push({ ...u, data: data(u.data), ...(u.piece ? { piece: data(u.piece) } : {}) });
+  p.pieceRowOf.clear();
+  for (const [chunk, row] of f.pieceRowOf) p.pieceRowOf.set(chunk, row);
   for (const u of f.texUploads) p.texUploads.push({ ...u, data: data(u.data) });
   p.drops.push(...f.drops);
   p.assetDrops.push(...f.assetDrops);

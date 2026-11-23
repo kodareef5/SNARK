@@ -2,6 +2,7 @@
 // the pixels the page read of them.
 
 import { ATLAS_WIDTH, BONE_FLOATS, DETAIL_FLOATS, LAMP_AT, MAX_CASTERS, MAX_DRAWS, MAX_TILES, type FramePacket } from "../../client/core/render/packet.ts";
+import { PIECE_KEYS, PIECE_ROWS } from "../../client/core/render/pieces.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -69,6 +70,8 @@ export interface Frame {
   drops: number[];
   assetUploads: unknown[];
   assetDrops: number[];
+  /** Each chunk drawn by its pieces' states and its row of them (packet.ts pieceRowOf). */
+  pieceRowOf: [number, number][];
   texUploads: unknown[];
   texDrops: number[];
 }
@@ -83,6 +86,14 @@ function used(p: FramePacket, name: string, length: number): number {
   if (name === "bones") return p.boneCount * BONE_FLOATS;
   if (name === "atlas") return p.atlasRows * ATLAS_WIDTH * 4;
   if (name === "details" || name === "detailWords") return p.detailCount * DETAIL_FLOATS;
+  // The pieces' states: the rows this frame puts on the card, and of the tables the rows in use.
+  if (name === "pieceRuns") return p.pieceUploads * 3;
+  if (name === "pieces") {
+    let rows = 0;
+    for (let k = 0; k < p.pieceUploads * 3; k += 3) rows = Math.max(rows, p.pieceRuns[k]! + 1);
+    return rows * PIECE_KEYS * 4;
+  }
+  if (name === "pieceRows" || name === "pieceStamp") return (Math.max(-1, ...p.pieceRowOf.values()) + 1) * (length / PIECE_ROWS);
   return length;
 }
 
@@ -148,8 +159,9 @@ export class Shot {
       arrays,
       uploads: p.uploads.map((u) => [u.buffer, ...ref(u.data)]),
       drops: [...p.drops],
-      assetUploads: p.assetUploads.map(({ data, ...u }) => ({ ...u, data: ref(data) })),
+      assetUploads: p.assetUploads.map(({ data, piece, ...u }) => ({ ...u, data: ref(data), ...(piece ? { piece: ref(piece) } : {}) })),
       assetDrops: [...p.assetDrops],
+      pieceRowOf: [...p.pieceRowOf],
       texUploads: p.texUploads.map(({ data, ...u }) => ({ ...u, data: ref(data) })),
       texDrops: [...p.texDrops],
     });

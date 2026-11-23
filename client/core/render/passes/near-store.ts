@@ -59,6 +59,8 @@ const COVER_MOVE = 1;
 const INSTANCES = "chunk instances";
 /** Milliseconds a chunk's doors stand other than its rooms were found with before they are found again. */
 const SETTLE = 2000;
+/** Milliseconds at most that a chunk whose pieces keep leaving its mesh goes with its rooms as they were found before. */
+const FLOOD_MOST = 10000;
 /** A node form with nothing to draw: what is left of a used-up node whose mesh no pack has. */
 export const HIDDEN = 0xffff;
 /** Numbers a run of cells takes in `runs` (ranges), and in `castRuns` (castChunk). */
@@ -144,8 +146,18 @@ export interface ChunkBatch {
   /** The mesh its statics of kinds drawn flat as their form are drawn with in place of their instances (nearcity.ts), or null; and its one instance, after the pieces', which is every instance's count. */
   mesh: NearMesh | null;
   meshAt: number;
-  /** Per cell, 1 where its mesh has faces in view this frame (meshCells). */
+  /** Per cell, what of its mesh is in view this frame (meshCells): 1 for faces it shows, 2 for faces it kept and now draws. */
   inView: Uint8Array;
+  /** Per slot of the table when it was built, its instance, or -1; and the instances' places as floats, five an instance. */
+  at: Int32Array;
+  places: Float32Array;
+  /** `zone` and the box round it all before its mesh's cells were added, and the mesh's count of cells opened that they were added at. */
+  ownZone: Float32Array;
+  ownBox: Float64Array;
+  opens: number;
+  /** When the first and the last piece left its mesh since its rooms were found, in the scene's milliseconds; -1 for none. */
+  holed: number;
+  holedLast: number;
   /**
    * Per instance, its bend where its kind is bent (bend.ts), eight numbers each, which go up as the buffer BEND_BUFFERS past
    * the instances'; null where none is. `unbent`: built before its chunk's bends were to hand (before its sector's statics
@@ -299,7 +311,7 @@ export class NearStore implements Pass {
     this.cover = new CrownCover(world.dims);
     this.coverLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, treeOf: this.treeOf, side: table.side, low: table.low, high: table.high, hidden: (ref) => this.hiddenNodes.has(ref) };
     const flat = (k: number): boolean => this.meshOfKind[k] !== looks.missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
-    this.near = farMesh >= 0 ? new NearCity(reg, farMesh, this.landmarkKinds, flat) : null;
+    this.near = farMesh >= 0 ? new NearCity(reg, farMesh, this.landmarkKinds, flat, packet) : null;
   }
 
   /** Before a frame: a chunk of nodes one of which was hidden or shown is laid out again, and nothing is yet drawn or cast. */
@@ -366,8 +378,8 @@ export class NearStore implements Pass {
     // The map's statics drawn flat as their form are a mesh a chunk where the far city follows what of them stands.
     const statics = world.city?.statics;
     const near = base === 0 && this.nearMesh && this.city && statics ? this.near : null;
-    if (base === 0 && !near) this.near?.clear(p, this.assets.residency);
-    near?.begin();
+    if (base === 0 && !near) this.near?.clear(this.assets.residency);
+    near?.begin(this.now);
     // Instances laid out this frame, which take of what the near city may make in it.
     let laid = 0;
 
@@ -375,6 +387,18 @@ export class NearStore implements Pass {
     for (const id of this.batches.keys()) if (id >= base && id < base + NODE_BUFFERS && !chunks[id - base]) this.drop(id);
 
     const held = store.held;
+    // Each chunk's pieces are found before any chunk is drawn, so that one that left shows what it hid in the chunks
+    // round its own in this frame, whichever of them comes first. Its near mesh is made nearest first, a chunk in a
+    // sight's window as if its zoom times nearer (D1087).
+    for (let h = 0; near && h < held.length; h++) {
+      const chunk = held[h]!;
+      // A chunk emptied of the map's pieces is followed still: the last of them to go held faces too.
+      if ((chunks[chunk]!.live === 0 && statics!.in(chunk) === 0) || this.far?.isFar(chunk) || this.city?.isFar(chunk) || this.landmarks?.isFar(chunk)) continue;
+      const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE, z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
+      const across = Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z);
+      const sooner = cam.zoom > 1 && cam.boxVisible(x0 - cam.x, -CHUNK_COLUMN - cam.y, z0 - cam.z, x0 + CHUNK_SIZE - cam.x, CHUNK_COLUMN - cam.y, z0 + CHUNK_SIZE - cam.z) ? cam.zoom : 1;
+      near.of(chunk, chunks[chunk]!, statics!, this.chunkCells, across / sooner);
+    }
     for (let h = 0; h < held.length; h++) {
       const chunk = held[h]!;
       const t = chunks[chunk]!;
@@ -388,22 +412,35 @@ export class NearStore implements Pass {
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       if (base === 0 && p.tier.reflectionHz) this.street.indexChunk(t,x0,z0,cam);
-      // Its near mesh is made nearest first, a chunk in a sight's window as if its zoom times nearer (D1087).
-      const across = Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z);
-      const sooner = cam.zoom > 1 && cam.boxVisible(x0 - cam.x, -CHUNK_COLUMN - cam.y, z0 - cam.z, x0 + CHUNK_SIZE - cam.x, CHUNK_COLUMN - cam.y, z0 + CHUNK_SIZE - cam.z) ? cam.zoom : 1;
-      const own = near ? near.of(chunk, t, statics!, this.city!, this.chunkCells, across / sooner, p) : null;
+      const own = near?.chunk(chunk) ?? null;
       const mesh = own?.mesh ?? null;
       let batch = this.batches.get(id);
       // A piece that took another kind in place is moved in place; a chunk whose doors have stood a while other than its
       // rooms were found with has them found again. A mesh not yet known has its page asked for while it is near. A chunk
-      // whose mesh came, or went with a change to what stands, is laid out again the same frame.
+      // whose mesh came, or whose instances are no longer what its table and its mesh ask for, is laid out again the same
+      // frame. One whose pieces only left its mesh, or whose mesh was made again of the same pieces, keeps its instances.
       let learnt = false;
       if (batch) for (const m of batch.unknown) learnt = this.assets.known(m) || learnt;
+      if (batch && own && mesh && batch.mesh && (batch.shape !== t.shape || batch.mesh !== mesh) && this.keeps(batch, t, meshOf, own.drawn, x0, z0)) {
+        if (batch.shape !== t.shape && batch.blocks !== batch.cells) {
+          if (batch.holed < 0) batch.holed = this.now;
+          batch.holedLast = this.now;
+        }
+        batch.shape = t.shape;
+        batch.placed = t.placed;
+        if (batch.mesh !== mesh) {
+          batch.mesh = mesh;
+          this.meshIn(batch, x0, z0);
+        }
+      }
       const turned = batch !== undefined && batch.shape !== t.shape && !batch.sized && batch.placed === t.placed;
-      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics?.bent.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) {
-        batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.mine ?? null);
+      const flood = batch !== undefined && ((batch.differ > 0 && this.now - batch.since >= SETTLE) || (batch.holed >= 0 && (this.now - batch.holedLast >= SETTLE || this.now - batch.holed >= FLOOD_MOST)));
+      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics?.bent.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
+        batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.drawn ?? null);
         laid += t.high;
       }
+      // A cell of its mesh opened since draws what the mesh kept there, which may reach past what it showed.
+      if (batch.mesh && batch.mesh.opens !== batch.opens) this.meshIn(batch, x0, z0);
       const ax = batch.minX - cam.x;
       const ay = batch.minY - cam.y;
       const az = batch.minZ - cam.z;
@@ -434,7 +471,7 @@ export class NearStore implements Pass {
       }
       this.zones(cam, batch, seen, casts);
       // From outside air a chunk's interior is neither seen nor seen to cast: only its shell is drawn and cast.
-      const all = batch.blocks === batch.cells || batch.exposing > 0 || batch.rooms!.near(cam.x, cam.y, cam.z, reach);
+      const all = batch.blocks === batch.cells || batch.exposing > 0 || batch.holed >= 0 || batch.rooms!.near(cam.x, cam.y, cam.z, reach);
       const ox = x0 - cam.x, oy = -cam.y, oz = z0 - cam.z;
       if (seen) this.ranges(cam, batch, id, dist, ox, oy, oz, cam.passes(ax, ay, az, bx, by, bz), all);
       // A chunk's mesh is drawn once the frame knows what hides what, by its cells in view that are not hidden.
@@ -451,7 +488,7 @@ export class NearStore implements Pass {
       const sx = -this.casting.sunAt[0]! * this.zoneStretch, sy = -this.casting.sunAt[1]! * this.zoneStretch, sz = -this.casting.sunAt[2]! * this.zoneStretch;
       this.chunkCasts.push(castFrom, p.casterCount, Math.min(ax, ax + sx), Math.min(ay, ay + sy), Math.min(az, az + sz), Math.max(bx, bx + sx), Math.max(by, by + sy), Math.max(bz, bz + sz));
     }
-    near?.end(p, this.assets.residency, statics!, this.city!, world.hf, this.chunkCells, laid);
+    near?.end(this.assets.residency, statics!, this.city!, world.hf, this.chunkCells, laid);
   }
 
   /** Lets go of a chunk's instances, and the card of its buffer. */
@@ -661,13 +698,15 @@ export class NearStore implements Pass {
 
   /** Marks in `b.inView` the cells of a chunk's mesh with faces in view (`zones`), its corner (ox, oy, oz) from the camera; how many. */
   private meshCells(cam: Camera, b: ChunkBatch, ox: number, oy: number, oz: number): number {
-    const m = b.mesh!, first = m.cellFirst, box = m.cellBox;
+    const m = b.mesh!, first = m.cellFirst, box = m.cellBox, kept = m.keptFirst, more = m.keptBox;
     if (m.slot < 0) return 0;
     let n = 0;
     for (let c = 0; c < b.cells; c++) {
       const k = c * 6, seen = this.cellSeen[c]!;
-      b.inView[c] = first[c + 1]! > first[c]! && (seen === 2 || (seen === 1 && cam.boxVisible(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz))) ? 1 : 0;
-      n += b.inView[c]!;
+      let v = first[c + 1]! > first[c]! && (seen === 2 || (seen === 1 && cam.boxVisible(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz))) ? 1 : 0;
+      if (m.open[c] === 1 && kept[c + 1]! > kept[c]! && (seen === 2 || (seen === 1 && cam.boxVisible(more[k]! + ox, more[k + 1]! + oy, more[k + 2]! + oz, more[k + 3]! + ox, more[k + 4]! + oy, more[k + 5]! + oz)))) v |= 2;
+      b.inView[c] = v;
+      n += v === 0 ? 0 : 1;
     }
     return n;
   }
@@ -678,33 +717,37 @@ export class NearStore implements Pass {
    * less than a draw.
    */
   private meshRuns(b: ChunkBatch, id: number, ox: number, oy: number, oz: number, passes: number): void {
-    const m = b.mesh!, first = m.cellFirst, box = m.cellBox;
-    let from = -1, to = 0, gap = 0, c0 = 0, c1 = 0;
-    for (let c = 0; c < b.cells; c++) {
-      const n = first[c + 1]! - first[c]!;
-      if (n === 0) continue;
-      const k = c * 6;
-      if (b.inView[c] === 0 || this.hiding.hidesOver(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz)) {
-        gap += n;
-        continue;
+    const m = b.mesh!;
+    // The faces it shows, then where a cell is opened the faces it kept, which lie after them.
+    for (let bit = 1; bit <= (m.opened > 0 ? 2 : 1); bit++) {
+      const first = bit === 1 ? m.cellFirst : m.keptFirst, box = bit === 1 ? m.cellBox : m.keptBox;
+      let from = -1, to = 0, gap = 0, c0 = 0, c1 = 0;
+      for (let c = 0; c < b.cells; c++) {
+        const n = first[c + 1]! - first[c]!;
+        if (n === 0) continue;
+        const k = c * 6;
+        if ((b.inView[c]! & bit) === 0 || this.hiding.hidesOver(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz)) {
+          gap += n;
+          continue;
+        }
+        if (from >= 0 && gap * 2 > RUN_TRIANGLES) {
+          this.drawMesh(b, id, from, to, ox, oy, oz, passes, box, c0, c1);
+          from = -1;
+        }
+        if (from < 0) {
+          from = first[c]!;
+          c0 = c;
+        }
+        to = first[c + 1]!;
+        c1 = c + 1;
+        gap = 0;
       }
-      if (from >= 0 && gap * 2 > RUN_TRIANGLES) {
-        this.drawMesh(b, id, from, to, ox, oy, oz, passes, c0, c1);
-        from = -1;
-      }
-      if (from < 0) {
-        from = first[c]!;
-        c0 = c;
-      }
-      to = first[c + 1]!;
-      c1 = c + 1;
-      gap = 0;
+      if (from >= 0) this.drawMesh(b, id, from, to, ox, oy, oz, passes, box, c0, c1);
     }
-    if (from >= 0) this.drawMesh(b, id, from, to, ox, oy, oz, passes, c0, c1);
   }
 
-  /** Faces `from` up to `to` of a chunk's mesh, which lie in cells `c0` up to `c1`: one instance of its level, at the chunk's corner. */
-  private drawMesh(b: ChunkBatch, id: number, from: number, to: number, ox: number, oy: number, oz: number, passes: number, c0: number, c1: number): void {
+  /** Faces `from` up to `to` of a chunk's mesh, which lie in cells `c0` up to `c1` of the boxes `box`: one instance of its level, at the chunk's corner. */
+  private drawMesh(b: ChunkBatch, id: number, from: number, to: number, ox: number, oy: number, oz: number, passes: number, box: Float32Array, c0: number, c1: number): void {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -712,7 +755,7 @@ export class NearStore implements Pass {
       p.dropped++;
       return;
     }
-    this.put.boxCells(d, d + 1, b.mesh!.cellBox, c0, c1, ox, oy, oz);
+    this.put.boxCells(d, d + 1, box, c0, c1, ox, oy, oz);
     p.drawMesh[d] = this.near!.mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = b.mesh!.slot;
@@ -736,26 +779,30 @@ export class NearStore implements Pass {
    * cell between that does not going in when it weighs less than a draw. Runs alike but for their cascades are one caster.
    */
   private castMesh(b: ChunkBatch, id: number, ox: number, oy: number, oz: number): void {
-    const m = b.mesh!, first = m.cellFirst;
+    const m = b.mesh!;
     if (m.slot < 0) return;
     const runs = this.castRuns;
     runs.length = 0;
-    for (let i = 0; i <= MAX_CASCADES; i++) {
-      const bit = 1 << i;
-      let open = -1, gap = 0;
-      for (let c = 0; c < b.cells; c++) {
-        const n = first[c + 1]! - first[c]!;
-        if (n === 0) continue;
-        if ((this.cellCasts[c]! & bit) === 0) {
-          gap += n;
-          continue;
+    // The faces it shows, then where a cell is opened the faces it kept.
+    for (let part = 0; part < (m.opened > 0 ? 2 : 1); part++) {
+      const first = part === 0 ? m.cellFirst : m.keptFirst;
+      for (let i = 0; i <= MAX_CASCADES; i++) {
+        const bit = 1 << i;
+        let open = -1, gap = 0;
+        for (let c = 0; c < b.cells; c++) {
+          const n = first[c + 1]! - first[c]!;
+          if (n === 0) continue;
+          if ((this.cellCasts[c]! & bit) === 0 || (part === 1 && m.open[c] === 0)) {
+            gap += n;
+            continue;
+          }
+          if (open >= 0 && gap * 2 <= RUN_TRIANGLES) runs[open + 1] = first[c + 1]!;
+          else {
+            open = runs.length;
+            runs.push(first[c]!, first[c + 1]!, bit);
+          }
+          gap = 0;
         }
-        if (open >= 0 && gap * 2 <= RUN_TRIANGLES) runs[open + 1] = first[c + 1]!;
-        else {
-          open = runs.length;
-          runs.push(first[c]!, first[c + 1]!, bit);
-        }
-        gap = 0;
       }
     }
     for (let k = 0; k < runs.length; k += 3) {
@@ -992,16 +1039,66 @@ export class NearStore implements Pass {
     }
     b.shape = t.shape;
     b.uploaded = false;
+    for (let i = 0; i < b.meshAt; i++) b.at[slots[i]!] = i;
     return true;
+  }
+
+  /**
+   * Whether every instance of `b` is still what its chunk's table `t` and its mesh ask for, the mesh drawing the slots
+   * `drawn` marks: each standing piece not the mesh's has its instance of its kind where it stands, and nothing else has one.
+   */
+  private keeps(b: ChunkBatch, t: ChunkTable, meshOf: Uint16Array, drawn: Uint8Array, x0: number, z0: number): boolean {
+    const at = b.at, kinds = b.kinds, places = b.places, data = b.data;
+    for (let s = 0; s < t.high; s++) {
+      const kind = t.kind[s]!, i = s < at.length ? at[s]! : -1;
+      if (kind === 0 || meshOf[kind] === HIDDEN || (s < drawn.length && drawn[s] === 1)) {
+        if (i >= 0) return false;
+        continue;
+      }
+      if (i < 0 || kinds[i] !== kind || places[i * 5] !== Math.fround(t.x[s]! - x0) || places[i * 5 + 1] !== t.y[s] || places[i * 5 + 2] !== Math.fround(t.z[s]! - z0)) return false;
+      if ((data[i * INSTANCE_BYTES + 12]! | (data[i * INSTANCE_BYTES + 13]! << 8)) !== t.yaw[s]) return false;
+    }
+    for (let s = t.high; s < at.length; s++) if (at[s]! >= 0) return false;
+    return true;
+  }
+
+  /**
+   * Sets what `b` draws and casts by to its instances' boxes and its mesh's cells, x and z from the chunk's corner
+   * (x0, z0): the faces a cell shows, and where it is opened those it kept.
+   */
+  private meshIn(b: ChunkBatch, x0: number, z0: number): void {
+    const m = b.mesh!, zone = b.zone, own = b.ownBox;
+    zone.set(b.ownZone);
+    b.minX = own[0]!;
+    b.minY = own[1]!;
+    b.minZ = own[2]!;
+    b.maxX = own[3]!;
+    b.maxY = own[4]!;
+    b.maxZ = own[5]!;
+    b.opens = m.opens;
+    for (let part = 0; part < 2; part++) {
+      const mb = part === 0 ? m.cellBox : m.keptBox;
+      for (let c = 0; c < b.cells; c++) {
+        const k = c * 6;
+        if (mb[k]! > mb[k + 3]! || (part === 1 && m.open[c] === 0)) continue;
+        grow(zone, k, mb[k]! + x0, mb[k + 1]!, mb[k + 2]! + z0, mb[k + 3]! + x0, mb[k + 4]!, mb[k + 5]! + z0);
+        b.minX = Math.min(b.minX, mb[k]! + x0);
+        b.minY = Math.min(b.minY, mb[k + 1]!);
+        b.minZ = Math.min(b.minZ, mb[k + 2]! + z0);
+        b.maxX = Math.max(b.maxX, mb[k + 3]! + x0);
+        b.maxY = Math.max(b.maxY, mb[k + 4]!);
+        b.maxZ = Math.max(b.maxZ, mb[k + 5]! + z0);
+      }
+    }
   }
 
   /**
    * The instances of a chunk of the store, each mesh's together, shell before interior (rooms.ts), then by cell
    * (ChunkBatch.cells), and in a cell by slot. A mesh whose kinds turn into another's in place (a door and its open form)
    * has that mesh's range beside it, empty or not, so the turn can be made in place (`reform`). Given the chunk's `mesh`,
-   * the pieces `mine` marks by slot are its and have no instance, and one instance at the chunk's corner draws it.
+   * the pieces `drawn` marks by slot are its and have no instance, and one instance at the chunk's corner draws it.
    */
-  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null, mesh: NearMesh | null, mine: Uint8Array | null): ChunkBatch {
+  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null, mesh: NearMesh | null, drawn: Uint8Array | null): ChunkBatch {
     const world = this.world;
     const t = store.chunks[chunk]!;
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
@@ -1022,7 +1119,7 @@ export class NearStore implements Pass {
     const blocks = inside ? cells * 2 : cells;
     const shell = rooms?.shell, blockAt = this.blockAt;
     const counts = this.cellCounts.fill(0, 0, this.meshCount * blocks);
-    const skip = mesh ? mine! : null;
+    const skip = mesh ? drawn! : null;
     let bent = 0;
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
@@ -1107,6 +1204,13 @@ export class NearStore implements Pass {
       mesh,
       meshAt: total,
       inView: new Uint8Array(cells),
+      at: new Int32Array(t.high).fill(-1),
+      places: new Float32Array(data.buffer, data.byteOffset, data.byteLength >> 2),
+      ownZone: new Float32Array(cells * 6),
+      ownBox: new Float64Array(6),
+      opens: 0,
+      holed: -1,
+      holedLast: 0,
     };
     emptyBoxes(b.cellBox);
     emptyBoxes(b.zone);
@@ -1133,6 +1237,7 @@ export class NearStore implements Pass {
       else w.bytes.set(this.regionsOfKind.subarray(kind * 5, kind * 5 + 5), i * INSTANCE_BYTES + 15);
       slots[i] = s;
       kinds[i] = kind;
+      b.at[s] = i;
       // A node is held by its mesh's own bounds at its size, which for a tall tree are far tighter sideways than a sphere;
       // a bent piece by half its chord and its walk.
       const k = sizeOf ? sizeOf[kind]! / SIZE_UNITS : 1;
@@ -1173,23 +1278,19 @@ export class NearStore implements Pass {
       b.reach[this.cursor[mesh]!] = Math.max(b.reach[this.cursor[mesh]!]!, most);
       b.cellReach[this.cursor[mesh]! * cells + cell] = Math.max(b.cellReach[this.cursor[mesh]! * cells + cell]!, most);
     }
+    b.ownZone.set(zone);
+    b.ownBox[0] = b.minX;
+    b.ownBox[1] = b.minY;
+    b.ownBox[2] = b.minZ;
+    b.ownBox[3] = b.maxX;
+    b.ownBox[4] = b.maxY;
+    b.ownBox[5] = b.maxZ;
     if (mesh) {
       // The mesh's cells, x and z from the chunk's corner, in the chunk's.
       w.set(total, 0, 0, 0, 0, 0);
       slots[total] = MESH_SLOT;
       kinds[total] = 0;
-      const mb = mesh.cellBox;
-      for (let c = 0; c < cells; c++) {
-        const k = c * 6;
-        if (mb[k]! > mb[k + 3]!) continue;
-        grow(zone, k, mb[k]! + x0, mb[k + 1]!, mb[k + 2]! + z0, mb[k + 3]! + x0, mb[k + 4]!, mb[k + 5]! + z0);
-        b.minX = Math.min(b.minX, mb[k]! + x0);
-        b.minY = Math.min(b.minY, mb[k + 1]!);
-        b.minZ = Math.min(b.minZ, mb[k + 2]! + z0);
-        b.maxX = Math.max(b.maxX, mb[k + 3]! + x0);
-        b.maxY = Math.max(b.maxY, mb[k + 4]!);
-        b.maxZ = Math.max(b.maxZ, mb[k + 5]! + z0);
-      }
+      this.meshIn(b, x0, z0);
     }
     this.batches.set(id, b);
     return b;

@@ -674,7 +674,7 @@ export class Scene {
     this.layers.far?.reset();
     this.layers.nodesFar?.reset();
     this.layers.city?.reset();
-    this.nearStore.near?.reset();
+    this.nearStore.near?.reset(this.world.city?.statics);
     this.layers.landmarks?.reset();
     this.waters.reset();
     this.layers.blocks?.reset();

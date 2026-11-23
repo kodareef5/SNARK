@@ -35,6 +35,7 @@ import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyope
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
+import { pieceMade, pieceShown } from "../../client/core/render/pieces.ts";
 import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
@@ -69,8 +70,8 @@ interface DecodedLod {
   indices: Uint32Array;
   /** Read from the pack, where the level is drawn with materials. A manifest's rasterizer has it from an upload of its own. */
   surface?: DecodedSurface;
-  /** A near chunk's material made from a recipe, a byte a vertex (AssetUpload `made`), where any face wears one. */
-  made?: Uint8Array;
+  /** A near chunk's mesh's word a vertex, its face's piece and holder (AssetUpload `piece`, render/pieces.ts). */
+  piece?: Uint32Array;
 }
 
 /** What a level drawn with materials has for each vertex besides, and on a body the skin entries. */
@@ -1241,10 +1242,14 @@ export class Rasterizer {
       const ranged = (p.drawFlags[d]! & DRAW_RANGED) !== 0;
       const [from, end] = ranged ? [p.drawFirstIndex[d]!, p.drawFirstIndex[d]! + p.drawIndexCount[d]!] : [0, lod.indices.length];
       if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
+      // A near chunk's mesh is drawn by its pieces' states: the nine rows its chunk is given (pieces.ts).
+      const rows = (p.pieceRowOf.get(p.drawBuffer[d]!) ?? 0) * 9;
       for (let t = from; t < end; t += 3) {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
-        this.made = lod.made ? lod.made[last]! : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
+        const word = lod.piece ? lod.piece[last]! : 0;
+        if (word !== 0 && !pieceShown(p.pieces, p.pieceRows, rows, word)) continue;
+        this.made = word !== 0 ? pieceMade(p.pieces, p.pieceRows, rows, word) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.edgeFlags = this.onStatic ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
@@ -1532,7 +1537,7 @@ export class Rasterizer {
     const indices = u.quads ? Uint32Array.from(quadIndices(u.indexCount, 4).subarray(0, u.indexCount)) : new Uint32Array(u.indexCount);
     for (let i = 0; !u.quads && i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
     const verts = u.data.subarray(u.quads ? 0 : (u.indexCount * u.indexBytes + 3) & ~3);
-    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices, ...(u.made ? { made: u.made } : {}) };
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices, ...(u.piece ? { piece: new Uint32Array(u.piece.buffer, u.piece.byteOffset, u.piece.byteLength >> 2) } : {}) };
   }
 
   /**
@@ -2361,7 +2366,11 @@ export class Rasterizer {
             place.set([co * lx + s * lz + ix, ly + iy, -s * lx + co * lz + iz], v * 3);
           }
         }
-        for (let t = from; t < to; t += 3) this.castTriangle(out, size, m, place, lod.indices[t]!, lod.indices[t + 1]!, lod.indices[t + 2]!, (flags & DRAW_TWO_SIDED) !== 0);
+        const rows = (p.pieceRowOf.get(p.casterBuffer[e]!) ?? 0) * 9;
+        for (let t = from; t < to; t += 3) {
+          const word = lod.piece ? lod.piece[lod.indices[t + 2]!]! : 0;
+          if (word === 0 || pieceShown(p.pieces, p.pieceRows, rows, word)) this.castTriangle(out, size, m, place, lod.indices[t]!, lod.indices[t + 1]!, lod.indices[t + 2]!, (flags & DRAW_TWO_SIDED) !== 0);
+        }
       }
     }
     return out;

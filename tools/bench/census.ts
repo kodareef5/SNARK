@@ -11,6 +11,8 @@
 //   bun tools/bench/census.ts [file.snmap]         each view on a built map (var/maps/miami.snmap), with the core pack
 //        [--views a,b] [--tiers high,ultra]        only those views, and only those setups
 //   bun tools/bench/census.ts --slice              the slice's views as the test counts them
+//   bun tools/bench/census.ts --slice --reserve    what the slice's near meshes hold and would keep for pieces to leave them
+//   bun tools/bench/census.ts --small              the same of the small test city (tests/fixtures/nearclient.ts)
 //   bun tools/bench/census.ts <file.snmap> --cut   the slice cut again from that map
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -31,6 +33,7 @@ import { mapHeightfield, parseMap, type MapData } from "../../shared/world/mapfi
 import { StructureStore } from "../../shared/world/structures.ts";
 import { MIAMI_CUT, MIAMI_SLICE, cutSlice, miamiSlice } from "../../tests/fixtures/cityslice.ts";
 import { farPack } from "../../tests/fixtures/farworld.ts";
+import { smallCity } from "../../tests/fixtures/nearclient.ts";
 import { corePackBytes } from "../../tests/fixtures/pack.ts";
 import { coreRegistry } from "../../tests/fixtures/world.ts";
 import { asTextured } from "./base.ts";
@@ -221,6 +224,45 @@ export function census(section: Section, record: Row, w: CensusWorld, views: rea
   }
 }
 
+/** Bytes a vertex of a near mesh took before each face carried its piece and its holder, a byte more where a chunk wore a material made from a recipe. */
+const PLAIN_VERTEX = 8;
+
+/**
+ * What the near meshes of `w`'s chunks hold for a piece to leave one without a remake (render/nearcity.ts): of the
+ * busiest chunk, of the one that grew most and over them all, the faces shown, those of merged boxes, the merged boxes and
+ * their pieces, the faces kept that another piece hid and that a merged box's members would show, and the bytes on the
+ * card against those of the faces shown alone, as they were before.
+ */
+export function reserve(section: Section, record: Row, w: CensusWorld, what: string): void {
+  const near = w.scene(SETUPS[3]!).near!;
+  const { dims } = w.map;
+  const sum = { pieces: 0, shown: 0, merged: 0, groups: 0, members: 0, hidden: 0, fallback: 0, own: 0, buried: 0, bytes: 0 };
+  type Counts = ReturnType<typeof near.census>;
+  let busiest: (Counts & { chunk: number }) | null = null, worst: (Counts & { chunk: number }) | null = null;
+  const before = (c: Pick<Counts, "shown">): number => c.shown * 4 * PLAIN_VERTEX;
+  for (let chunk = 0; chunk < chunkCount(dims); chunk++) {
+    if (w.statics.in(chunk) === 0) continue;
+    const c = near.census(w.statics, chunk, w.hf, 4);
+    for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += c[k];
+    if (!busiest || c.bytes > busiest.bytes) busiest = { ...c, chunk };
+    if (before(c) > 100_000 && (!worst || c.bytes / before(c) > worst.bytes / before(worst))) worst = { ...c, chunk };
+  }
+  const rows = (name: string, c: Counts): void => {
+    const faces = c.shown + c.hidden + c.fallback;
+    record(`${name}: pieces in the mesh`, c.pieces, "");
+    record(`${name}: faces shown`, c.shown, `(${c.shown * 4} vertices), ${c.merged} of them a merged box's`);
+    record(`${name}: merged boxes`, c.groups, `of ${c.members} pieces, ${(c.members / Math.max(1, c.groups)).toFixed(1)} a box`);
+    record(`${name}: faces kept that another piece hid`, c.hidden, `; ${c.own} its own piece hid and ${c.buried} the ground, never kept`);
+    record(`${name}: faces kept that a merged box's members would show`, c.fallback, "");
+    record(`${name}: bytes of the faces shown alone, ${PLAIN_VERTEX} a vertex, as before`, before(c), "");
+    record(`${name}: bytes on the card`, c.bytes, `(${faces * 4} vertices at ${c.bytes / (faces * 4)}), ${(c.bytes / before(c)).toFixed(2)} times those`);
+  };
+  section(`What the near meshes of ${what} hold, and keep for a piece to leave one without a remake`);
+  if (busiest) rows(`busiest chunk ${busiest.chunk}`, busiest);
+  if (worst && worst.chunk !== busiest?.chunk) rows(`chunk ${worst.chunk}, which grew most`, worst);
+  rows("every chunk", sum);
+}
+
 /** The census on a built map, as the game draws it with the core pack: `views` and `setups` by name, every one if not given. */
 export function benchCensus(section: Section, record: Row, path: string, views?: readonly string[], named?: readonly string[]): void {
   const map = parseMap(new Uint8Array(readFileSync(path)), false);
@@ -236,7 +278,12 @@ if (import.meta.main) {
   const path = args.find((a, i) => !a.startsWith("--") && !["--views", "--tiers"].includes(args[i - 1] ?? "")) ?? "var/maps/miami.snmap";
   if (args.includes("--slice")) {
     const slice = miamiSlice();
-    census(section, record, censusWorld(slice.map, slice.centre, coreRegistry(), farPack()), SLICE_VIEWS, `the Miami slice (${slice.map.statics.length} statics, grey boxes)`);
+    const world = censusWorld(slice.map, slice.centre, coreRegistry(), farPack());
+    if (args.includes("--reserve")) reserve(section, record, world, `the Miami slice (${slice.map.statics.length} statics)`);
+    else census(section, record, world, SLICE_VIEWS, `the Miami slice (${slice.map.statics.length} statics, grey boxes)`);
+  } else if (args.includes("--small")) {
+    const map = smallCity();
+    reserve(section, record, censusWorld(map, centreOf(map), coreRegistry(), farPack()), `the small test city (${map.statics.length} statics)`);
   } else if (args.includes("--cut")) {
     const map = parseMap(new Uint8Array(readFileSync(path)), false);
     const reg = coreRegistry();

@@ -17,6 +17,7 @@ import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./farshadow.t
 import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
+import { PIECE_END, PIECE_GLSL, PIECE_PLACE } from "./pieces.ts";
 
 /** Texels of the receiver's cascade the lookup is moved along its normal, at most, where the surface runs along the light. */
 export const NORMAL_OFFSET = 0.5;
@@ -312,10 +313,10 @@ mat3x4 bone(int i) {
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
-${BEND_GLSL}void main() {
+${BEND_GLSL}${PIECE_GLSL}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p;
-  if (uSkin > 0.5) {
+${PIECE_PLACE}  if (uSkin > 0.5) {
     int first = int(iYaw * 65535.0 + 0.5);
     mat3x4 m;
     if (uSkin > 2.5) m = bone(first + int(aBones.x)) * aWeights.x + bone(first + int(aBones.y)) * aWeights.y + bone(first + int(aBones.z)) * aWeights.z + bone(first + int(aBones.w)) * aWeights.w;
@@ -332,7 +333,7 @@ ${BEND_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uO
   }
   vUv = uUv.xy + aUv * uUv.zw;
   gl_Position = uViewProj * vec4(p, 1.0);
-}`);
+${PIECE_END}}`);
 
 /** What a depth pass writes beside depth: nothing. */
 export const DEPTH_FRAGMENT = `#version 300 es
