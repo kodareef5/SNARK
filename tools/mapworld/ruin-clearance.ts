@@ -3,6 +3,7 @@ import { binKey } from "./raster.ts";
 import type { RuinRecord } from "./ruins.ts";
 import type { StaticPiece } from "./statics.ts";
 import type { RoadEntrance } from "./bridge-earthwork.ts";
+import { carry } from "./known.ts";
 
 interface Point { x: number; y: number; z: number; }
 interface Segment { a: Point; b: Point; street: boolean; }
@@ -69,7 +70,7 @@ export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], i
     const shape = p.kind.split("_")[1] as RuinShape;
     if (shape !== "floor8" && shape !== "floor16") return [];
     const side = RUIN_SHAPES[shape][0] / 2; const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
-    return [-side / 2, side / 2].flatMap((u) => [-side / 2, side / 2].flatMap((v) => cutFloor({ ...p, kind: p.kind.replace(shape, side === 8 ? "floor8" : "floor4"), x: p.x + u * c + v * s, z: p.z - u * s + v * c })));
+    return [-side / 2, side / 2].flatMap((u) => [-side / 2, side / 2].flatMap((v) => cutFloor(carry({ ...p, kind: p.kind.replace(shape, side === 8 ? "floor8" : "floor4"), x: p.x + u * c + v * s, z: p.z - u * s + v * c }, p))));
   };
   for (let i = 0; i < pieces.length; i++) {
     const p = pieces[i]!; const shape = p.kind.split("_")[1] as RuinShape;

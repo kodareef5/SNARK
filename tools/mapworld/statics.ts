@@ -10,6 +10,7 @@
 
 import type { Building, Ruin } from "./heaps.ts";
 import type { District, Ground, World } from "./ground.ts";
+import type { SiteBuilding } from "./buildings.ts";
 import { RUINS } from "./ruins.ts";
 import { ROOF_PLANT } from "./roof-plant.ts";
 import { STREET_FURNITURE } from "./street-furniture.ts";
@@ -39,6 +40,8 @@ export interface Site {
   readonly growthRoutes: { points: { x: number; y: number; z: number }[]; width: number }[];
   /** Drivable vehicles a new world parks, as the layers folder's vehicles.json takes them: yaw in degrees as a piece's. */
   readonly vehicles: { kind: string; x: number; z: number; yaw: number; condition?: readonly [number, number]; fuel?: readonly [number, number] }[];
+  /** The buildings the ruins made, in the order of their records: a piece's owner (known.ts) is its place here. */
+  readonly buildings: SiteBuilding[];
   readonly source: string;
   readonly world: World;
   readonly ground: Ground;
@@ -72,6 +75,7 @@ export function siteOf(world: World, ground: Ground, source: string): Site {
     ground,
     growthRoutes: [],
     vehicles: [],
+    buildings: [],
     clearPlants: new Uint8Array(((nx - 1) / 2) * ((nz - 1) / 2)),
     lowPlants: new Uint8Array(((nx - 1) / 2) * ((nz - 1) / 2)),
     footprints: ground.heaps.ruins.map((ruin) => ({ building: ruin.building, ruin, district: world.districts[ruin.district - 1] ?? null })),

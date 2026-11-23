@@ -1,4 +1,5 @@
 import { finished, pieceMiddle, RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { carry, know } from "./known.ts";
 import type { Footprint, Site, StaticPiece } from "./statics.ts";
 
 export type Point = readonly [number, number];
@@ -67,20 +68,39 @@ export class Mason {
   readonly wings: { tiles: number; height: number; u: number; v: number }[] = [];
   readonly frame: Frame;
   readonly base: number;
+  /** The grid its storeys were stacked on: metres a bay (0 where nothing was stacked) and tiles across and deep. */
+  bay = 0; cols = 0; rows = 0;
+  /** The most storeys a stack of it has, and the most of them walked; whether a stair reaches a roof. */
+  floors = 0; walked = 0; roof = false;
+  /** Its stairs' tiles: a core's, or the escape's beside one. */
+  readonly stairsAt: { i: number; j: number; floors: number; escape: boolean }[] = [];
+  /** The tile and storey of what is put next, as the layout has them in hand: -1 for none, and for a storey told by the piece's foot. */
+  private ti = -1; private tj = -1; private ts = -1;
   /** The kind of a car of a family (street.cars.looks) standing at x, z; set by the pass that sets cars down. */
   pick?: (x: number, z: number, family: string) => string;
   constructor(frame: Frame, base: number) { this.frame = frame; this.base = base; }
   point(u: number, v: number): Point { return worldPoint(this.frame, u, v); }
+  /** The grid a stack is laid on. */
+  grid(bay: number): void { this.bay = bay; this.cols = Math.floor(this.frame.width / bay); this.rows = Math.floor(this.frame.depth / bay); }
+  /** What is put from now on is tile `t`'s, or no tile's, at `storey` or at the storey its foot is in. */
+  at(t: { i: number; j: number } | null, storey = -1): void { this.ti = t ? t.i : -1; this.tj = t ? t.j : -1; this.ts = storey; }
+  /** What is put from now on is at `storey`, or with -1 at the storey its foot is in. */
+  level(storey: number): void { this.ts = storey; }
+  private keep(piece: StaticPiece, foot: number): void {
+    this.pieces.push(piece);
+    // A slab's foot is under a storey's floor, so it is the lid of the storey below.
+    know(piece, this.ti, this.tj, this.ts >= 0 ? this.ts : Math.min(254, Math.max(0, Math.floor((foot + .25) / 4))));
+  }
   put(shape: RuinShape, u: number, y: number, v: number, finish: RuinFinish = "concrete", turn = 0): void {
     const [x, z] = worldPoint(this.frame, u, v);
     // A shape the kit has in no such finish (a floor plate is concrete) is concrete.
-    this.pieces.push({ kind: ruinKind(shape, finished(shape, finish) ? finish : "concrete"), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
+    this.keep({ kind: ruinKind(shape, finished(shape, finish) ? finish : "concrete"), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 }, pieceMiddle(shape, y) - RUIN_SHAPES[shape][1] / 2);
   }
   /** A car standing on y, nose along v turned by `turn`, so 90 puts it along +u; its kind is `pick`'s for the family there. */
   car(family: string, u: number, y: number, v: number, turn = 0): void {
     if (!this.pick) throw new Error(`a car of "${family}" where no pass picks cars`);
     const [x, z] = worldPoint(this.frame, u, v);
-    this.pieces.push({ kind: this.pick(x, z, family), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
+    this.keep({ kind: this.pick(x, z, family), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 }, y);
   }
   /** An assembly's part: a box of the kit in a finish, or a car of the family its finish names. */
   part(shape: RuinShape | "car", u: number, y: number, v: number, finish: string, turn = 0): void {
@@ -100,6 +120,8 @@ export class Mason {
   stairs(t: Tile, floors: number): void {
     // Banyan prop roots reach beyond their planting cell into the stair approach.
     this.cover(t.u, t.v, 20);
+    this.at(t);
+    this.stairsAt.push({ i: t.i, j: t.j, floors, escape: false });
     this.floor([t.u, t.v], 0, 8);
     for (let f = 0; f < floors; f++) {
       const dir = f % 2 === 0 ? 1 : -1;
@@ -112,6 +134,7 @@ export class Mason {
   }
   stairExit(t: Tile, floors: number, core: Tile): void {
     this.stairs(t, floors);
+    this.stairsAt[this.stairsAt.length - 1]!.escape = true;
     const dir = floors % 2 === 0 ? -1 : 1; const lane = floors % 2 === 0 ? -1.5 : 1.5;
     const points = [[core.u + lane, floors * 4, core.v + dir * 5.5], [t.u + lane, floors * 4, t.v + dir * 5.5], [t.u + lane, floors * 4, t.v + dir * 3.25]];
     for (let f = floors - 1; f >= 0; f--) {
@@ -140,7 +163,7 @@ export function compactWalls(m: Mason): void {
     const previous = candidates.get(key(u - 8)) ?? candidates.get(key(u + 8));
     if (previous !== undefined && !removed.has(previous)) {
       const q = output[previous]!;
-      output[i] = { ...p, kind: p.kind.replace(shape, shape === "zpanel8" ? "zpanel16" : "zshaft16"), x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
+      output[i] = carry({ ...p, kind: p.kind.replace(shape, shape === "zpanel8" ? "zpanel16" : "zshaft16"), x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 }, p);
       removed.add(previous);
     } else candidates.set(key(u), i);
   }

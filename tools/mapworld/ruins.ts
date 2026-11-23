@@ -22,6 +22,9 @@ import { compactWalls, reserveRoutes, frameOf, inRing, Mason, tilesOf, worldPoin
 import { assembly, layout } from "./ruin-layouts.ts";
 import { ruleFor, vocabulary, type Rule, type Vocabulary, type Walks } from "./ruin-vocabulary.ts";
 import { binKey, hash3 } from "./raster.ts";
+import { buildingIds } from "./building-id.ts";
+import type { SiteBuilding } from "./buildings.ts";
+import { own } from "./known.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 import { makeSigns, nearSign } from "./signs.ts";
 import type { Footprint, Site, StaticLayer, StaticPiece } from "./statics.ts";
@@ -31,6 +34,8 @@ interface NamedPlace { id: string; name: string; footprint: number; layout: stri
 interface Planned { f: Footprint; frame: Frame; rule: Rule; named?: NamedPlace; square: string; facts: Facts; }
 export interface RuinRecord {
   exposure?: number; shelter?: number; party?: number[];
+  /** Its id in the map's buildings section, from its footprint's place and shape (building-id.ts). */
+  id: number;
   firstPiece: number;
   footprint: number; part: number; name: string | null; district: string; square: string; recipe: string; special: string | null;
   x: number; y: number; z: number; yaw: number; width: number; depth: number; height: number; blocks: number; detail: number;
@@ -52,6 +57,9 @@ export function makeRuins(site: Site): StaticPiece[] {
   const grid = site.ground.grid; const { nx, nz, x0, z0, x1, z1 } = grid; const chunksX = grid.sizeX / 64;
   const frames = new Map(site.footprints.map((f) => [f.building.id, frameOf(f, site)]));
   const ownerIndex = new Map(site.footprints.map((f, i) => [f.building.id, i]));
+  // A footprint's id in the data is its row's number there, which seeds its building as it always has. What the map
+  // knows it by is this one, which another download of the data does not change.
+  const stableIds = buildingIds(site.footprints.map((f) => f.building), site.toLattice);
   const primary = new Map<number, Footprint>();
   for (const f of site.footprints) {
     const id = Math.floor(f.building.id / 4);
@@ -85,6 +93,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   const pieces: StaticPiece[] = [];
   const counts = new Uint32Array(chunksX * (grid.sizeZ / 64));
   const records: RuinRecord[] = [];
+  const made: SiteBuilding[] = [];
   const assemblies: StaticPiece[][] = [];
   const rejected: { part: number; reason: string }[] = [];
   const usedKinds: Record<string, number> = {};
@@ -169,7 +178,11 @@ export function makeRuins(site: Site): StaticPiece[] {
     planAccess.reserve(approaches);
     levelFloor(site, frame, ownerIndex.get(f.building.id)!, base, roadGround);
     gradeApproaches(site, approaches, ownerIndex.get(f.building.id)!, roadGround);
-    records.push({ firstPiece: pieces.length - built.pieces.length, footprint: Math.floor(f.building.id / 4), part: f.building.id, name: p.named?.name ?? p.facts.label.name ?? null,
+    const bay = built.bay || rule.bay;
+    made.push({ id: stableIds[ownerIndex.get(f.building.id)!]!, kind: p.facts.kind, recipe: rule.recipe, form: rule.formName ?? rule.recipe, district: f.district?.name ?? "Unzoned", collapse: rule.collapse ?? "shear",
+      storeys: built.floors, playable: built.walked, roof: built.roof, named: !!p.named, name: (p.named?.name ?? p.facts.label.name) || null, address: p.facts.label.address || null,
+      x: frame.x, z: frame.z, yaw: frame.yaw, bay, cols: built.bay ? built.cols : Math.floor(frame.width / bay), rows: built.bay ? built.rows : Math.floor(frame.depth / bay), width: frame.width, depth: frame.depth, base, stairs: built.stairsAt });
+    records.push({ id: stableIds[ownerIndex.get(f.building.id)!]!, firstPiece: pieces.length - built.pieces.length, footprint: Math.floor(f.building.id / 4), part: f.building.id, name: p.named?.name ?? p.facts.label.name ?? null,
       district: f.district?.name ?? "Unzoned", square: p.square, recipe: rule.recipe, special: p.named?.layout ?? null,
       x: frame.x, y: base, z: frame.z, yaw: frame.yaw, width: frame.width, depth: frame.depth,
       height: Math.max(...built.pieces.map((s) => { const name = s.kind.split("_")[1] as RuinShape; return pieceMiddle(name, s.y) + RUIN_SHAPES[name][1] / 2; })) - base,
@@ -324,6 +337,13 @@ export function makeRuins(site: Site): StaticPiece[] {
     const [x, z] = site.toLattice(p.e, p.n);
     for (let row = Math.max(0, Math.floor((z1 - z - radius) / 4)); row <= Math.min(down - 1, Math.ceil((z1 - z + radius) / 4)); row++) for (let col = Math.max(0, Math.floor((x1 - x - radius) / 4)); col <= Math.min(across - 1, Math.ceil((x1 - x + radius) / 4)); col++) if ((x1 - col * 4 - x) ** 2 + (z1 - row * 4 - z) ** 2 <= radius * radius) site.lowPlants[row * across + col] = 1;
   }
+  // Whose each piece is, for the map's buildings section: a record's pieces are its building's. A building nothing was
+  // stacked for is as many storeys as its pieces stand high.
+  records.forEach((r, k) => {
+    for (let i = r.firstPiece; i < r.firstPiece + r.blocks; i++) own(pieces[i]!, site.buildings.length + k);
+    if (made[k]!.storeys === 0) made[k] = { ...made[k]!, storeys: Math.max(1, Math.ceil(r.height / 4)) };
+  });
+  for (const b of made) site.buildings.push(b);
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
   const put = (name: string, value: unknown): void => writeFileSync(join(folder, name), `${JSON.stringify(value, null, 2)}\n`);
   // A long list written a row at a time, the same bytes as put's: as one string a big city's buildings were 0.3 to 0.55 GB.

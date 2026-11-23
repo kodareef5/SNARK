@@ -51,6 +51,9 @@
 //   STAT  u16 count and that many content ids in the order of their characters, which a sector's statics name by their
 //         place here. Then how many statics each of the map's chunks holds, row by row, as u16 planes, so a reader lays out
 //         every chunk's rows before any sector's statics come.
+//   BLDG  Optional. What its sectors' buildings name by number (shared/world/buildings.ts BuildingNames): u8 version 1, then
+//         five tables, each a u8 count and that many strings: kinds, recipes, forms, ways of falling, districts. A map
+//         without it has no buildings part and no buildings.
 //   PART  u16 count, then each part's u8 kind, u8 column and u8 row of its square, u32 byte length, and its hash
 //         (partHash) as two u32s.
 //
@@ -102,6 +105,20 @@
 //               stretch's centre line, its kerbs, verges and walks on both sides, and the corners round its junctions,
 //               its places from the square's corner. A page asks for those round its body, for the ground's edges and its
 //               own car's grip; a server reads them all, for what a wheel meets at a street's and a walk's edge.
+//   8 buildings a sector's buildings (shared/world/buildings.ts SectorBuildings), where a building has a piece in it. u8
+//               version 1 and a u16 count n. Then columns of n as byte planes: a 6-byte id; u8 kind, recipe, form, district
+//               and way of falling, each its place in BLDG's table; u8 flags (1 a stair climbs in it, 2 one reaches its
+//               roof, 4 a place the city names by hand, 8 it has a row in another sector too); u8 storeys, u8 storeys
+//               walked, u8 metres a bay; u16 name, u16 address number and u16 street, each a string's number counting from
+//               1 or 0 for none; its frame's middle as i32 x and z in 1/512 m from the square's corner, u16 turn, i16 base
+//               and u16 width and depth in 1/16 m, u16 tiles across and deep; and a u8 count of stairs. Then every stair,
+//               a building's after another's, in planes: u16 tile i, u16 tile j, u8 storeys it climbs, u8 flags (1 an
+//               escape). Then a u16 count of strings, a u8 byte length each, and their UTF-8 one after another. Then the
+//               runs: a u16 count for each of the square's chunks row by row, and every run, a chunk's after another's and
+//               ascending by slot, in planes: u16 first slot, u16 building, u8 first storey, u8 count of storeys; then for
+//               each run, each of its storeys' count of slots as a varint. A chunk's statics are in the order building,
+//               then storey, then as the maker placed them, so a run is one building's pieces in a chunk and a storey's
+//               are next to each other in it. A piece in no run is no building's. Before the tops.
 //
 // A part's file is `<kind>.<column>-<row>.<hash>.part` (partName); the land's and the head's have no square.
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
@@ -121,6 +138,7 @@ import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 import { ROAD_PLANES, RoadSectors, type MapRoad } from "./roadframe.ts";
 import { StreetSectors, decodeStreets } from "./streets.ts";
 import { HIT_PREFIX, bentNext, madeHits, walkedFlush } from "./bends.ts";
+import { BUILDINGS_VERSION, Buildings, SectorBuildings, type BuildingNames } from "./buildings.ts";
 
 export const MAP_VERSION = 14;
 /** Read too, until the city maps in var/maps are built again: they are 11, which is 14 with no streets part and no bent piece. */
@@ -142,7 +160,7 @@ const FAR_CELLS = (CHUNK_SIZE / TACTICAL_CELL) * (CHUNK_SIZE / TACTICAL_CELL);
 /** Statics read between yields when read a step at a time: about a millisecond's work here, a few on a phone. */
 const SLICE = 1 << 15;
 /** A part's kinds, by their number in the file less one. */
-const PART_KINDS = ["land", "overview", "ground", "statics", "tops", "road", "streets"] as const;
+const PART_KINDS = ["land", "overview", "ground", "statics", "tops", "road", "streets", "buildings"] as const;
 export type PartKind = (typeof PART_KINDS)[number];
 
 /** What `steps` comes to, run without a pause. */
@@ -512,6 +530,8 @@ export interface MapData {
   readonly content?: MapContent;
   /** The far feed's cells of its chunks as it places its statics, where its maker baked them (mapTops). */
   readonly tops?: MapTops;
+  /** Its buildings and the runs of its statics' slots that are theirs (shared/world/buildings.ts): left out, it has none. */
+  readonly buildings?: Buildings;
 }
 
 /** A sector's streets: its square's column and row on the lattice, and its part's bytes (encodeStreets). */
@@ -1421,6 +1441,16 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], st
       putU16s(o, statics.chunks);
     });
   }
+  const names = m.buildings?.sectors.some((t) => t) ? m.buildings.names : null;
+  if (names) {
+    o.section("BLDG", () => {
+      o.u8(BUILDINGS_VERSION);
+      for (const table of [names.kinds, names.recipes, names.forms, names.collapses, names.districts]) {
+        o.u8(table.length);
+        for (const name of table) o.text(name);
+      }
+    });
+  }
   o.section("PART", () => {
     o.u16(parts.length);
     for (const p of parts) {
@@ -1469,6 +1499,14 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   for (const sq of m.streets ? sectors : []) {
     const held = m.streets!.find((p) => p.col === sq.col && p.row === sq.row);
     if (held) parts.push({ kind: "streets", sq, bytes: held.bytes });
+  }
+  // Each sector's buildings, their runs within the slots its statics take.
+  const built = m.buildings;
+  if (built && (built.dims.chunksX !== dims.chunksX || built.dims.chunksZ !== dims.chunksZ || built.dims.frameX !== dims.frameX || built.dims.frameZ !== dims.frameZ)) throw new Error("map: its buildings are laid out for another map");
+  for (const t of built?.sectors ?? []) {
+    if (!t) continue;
+    t.check(dims, built!.names, statics.chunks);
+    parts.push({ kind: "buildings", sq: squareOf(dims, SECTOR_CHUNKS, t.col, t.row)!, bytes: t.encode() });
   }
   const tops = m.tops;
   if (tops) {
@@ -1538,6 +1576,8 @@ export interface MapHead {
   readonly kinds: readonly string[];
   /** How many statics each chunk holds, row by row: a chunk's rows of MapStatics, laid out before any sector's come (blankStatics). */
   readonly counts: Uint16Array;
+  /** What its buildings name by number, or null where it has none. */
+  readonly buildings: BuildingNames | null;
   readonly parts: readonly MapPart[];
 }
 
@@ -1605,6 +1645,7 @@ function readHeadSections(r: In, hash: number, version: number): MapHead {
   let kinds: string[] = [];
   let counts: Uint16Array = new Uint16Array(chunkCount(dims));
   let parts: MapPart[] | null = null;
+  let buildings: BuildingNames | null = null;
   let coarse: In | null = null;
   while (r.at < r.bytes.length) {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
@@ -1674,6 +1715,11 @@ function readHeadSections(r: In, hash: number, version: number): MapHead {
     } else if (tag === "STAT") {
       kinds = Array.from({ length: s.u16() }, () => s.text());
       counts = getU16s(s, counts.length);
+    } else if (tag === "BLDG") {
+      if (buildings) throw new Error("map: it has two BLDG sections");
+      if (s.u8() !== BUILDINGS_VERSION) throw new Error("map: its buildings are of a version this build does not read: build the map again");
+      const table = (): string[] => Array.from({ length: s.u8() }, () => s.text());
+      buildings = { kinds: table(), recipes: table(), forms: table(), collapses: table(), districts: table() };
     } else if (tag === "PART") {
       if (parts) throw new Error("map: it has two PART sections");
       parts = [];
@@ -1692,7 +1738,7 @@ function readHeadSections(r: In, hash: number, version: number): MapHead {
     if (!vehicles[index]) throw new Error("map: parked vehicle extension names a missing vehicle");
     vehicles[index] = { ...vehicles[index]!, ...extra };
   }
-  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), version, id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, ...(tideEyes ? { tideEyes } : {}), layers, water, coarse: readCoarse(coarse, dims, water), kinds, counts, parts: parts ?? [] };
+  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), version, id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, ...(tideEyes ? { tideEyes } : {}), layers, water, coarse: readCoarse(coarse, dims, water), kinds, counts, buildings, parts: parts ?? [] };
   checkParts(head);
   return head;
 }
@@ -1722,6 +1768,7 @@ function checkParts(head: MapHead): void {
     if (seen.has(key)) throw new Error(`map: it has two parts ${p.kind} ${p.col}, ${p.row}`);
     seen.add(key);
     if (p.kind === "land" ? p.col !== 0 || p.row !== 0 : !squareOf(head.dims, sizeOf(p.kind), p.col, p.row)) throw new Error(`map: its part ${p.name} lies off the map`);
+    if (p.kind === "buildings" && !head.buildings) throw new Error("map: it has a sector's buildings and no names for them (BLDG)");
   }
   for (const [kind, size] of [["overview", OVERVIEW_CHUNKS], ["ground", SECTOR_CHUNKS]] as const) {
     for (const sq of squaresOf(head.dims, size)) if (!seen.has(`${kind} ${sq.col} ${sq.row}`)) throw new Error(`map: it has no ${kind} part of square ${sq.col}, ${sq.row}`);
@@ -1804,7 +1851,14 @@ export interface StreetsPiece {
   readonly bytes: Uint8Array;
 }
 
-export type MapPiece = LandPiece | OverviewPiece | GroundPiece | StaticsPiece | TopsPiece | RoadPiece | StreetsPiece;
+/** A sector's buildings and the runs of its chunks' slots that are theirs. */
+export interface BuildingsPiece {
+  readonly kind: "buildings";
+  readonly sq: Square;
+  readonly table: SectorBuildings;
+}
+
+export type MapPiece = LandPiece | OverviewPiece | GroundPiece | StaticsPiece | TopsPiece | RoadPiece | StreetsPiece | BuildingsPiece;
 
 /**
  * A part read a step at a time, given its head: a sector's statics yield every SLICE pieces, so a page reads a city's
@@ -1819,6 +1873,11 @@ export function* partSteps(head: MapHead, part: MapPart, bytes: Uint8Array, veri
     if (part.kind === "statics") return yield* readStatics(head, sq!, s);
     if (part.kind === "tops") return readTops(head, sq!, s);
     if (part.kind === "road") return readRoad(sq!, s);
+    if (part.kind === "buildings") {
+      const table = SectorBuildings.decode(head.dims, head.buildings!, head.counts, part.col, part.row, bytes);
+      s.take(bytes.length);
+      return { kind: "buildings", sq: sq!, table };
+    }
     if (part.kind === "streets") {
       decodeStreets(bytes, sq!.ox * CHUNK_SIZE, sq!.oz * CHUNK_SIZE);
       s.take(bytes.length);
@@ -2246,6 +2305,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const water: { chunks: Uint32Array; squares: Uint16Array }[] = [];
   const tops: TopsPiece[] = [];
   const streets: MapStreets[] = [];
+  const buildings = head.buildings ? new Buildings(dims, head.buildings) : null;
   let defs: readonly Def[] = [];
   for (const p of pieces) {
     if (p.kind === "land") defs = p.defs;
@@ -2263,6 +2323,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
       });
     } else if (p.kind === "tops") tops.push(p);
     else if (p.kind === "streets") streets.push({ col: p.sq.col, row: p.sq.row, bytes: p.bytes });
+    else if (p.kind === "buildings") buildings!.set(p.table);
     else statics.push(p);
   }
   head.layers.forEach((rule, k) => rule.type === 1 && (nodes[k] = listedRows(dims, rule.kinds, k, grounds)));
@@ -2270,7 +2331,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const content = head.landmarks ? { content: { landmarks: head.landmarks, defs } } : {};
   const { id, minY, stepY, seaLevel, spawns, regions, vehicles, hash } = head;
   // A map whose ground is plain everywhere reads back with no classes, as it was written: the same map, and no grid held.
-  return { id, dims, minY, stepY, seaLevel, heights, tint, ...(ground.some((v) => v !== 0) ? { ground } : {}), ...(road && road.across.some((v) => v !== 0) ? { road } : {}), ...(streets.length > 0 ? { streets } : {}), statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(head.tideEyes ? { tideEyes: head.tideEyes } : {}), ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
+  return { id, dims, minY, stepY, seaLevel, heights, tint, ...(ground.some((v) => v !== 0) ? { ground } : {}), ...(road && road.across.some((v) => v !== 0) ? { road } : {}), ...(streets.length > 0 ? { streets } : {}), statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(head.tideEyes ? { tideEyes: head.tideEyes } : {}), ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), ...(buildings ? { buildings } : {}), hash };
 }
 
 /** The water of a map's overviews (OverviewPiece.water) as the map's, every overview's given, or null where its head has no WATR. */

@@ -40,6 +40,8 @@ import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
 import { workFolder } from "../maps/work.ts";
+import { mapBuildings, orderPieces } from "./buildings.ts";
+import type { Buildings } from "../../shared/world/buildings.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
@@ -182,6 +184,14 @@ export async function buildMap(named: string, release = false, output = join(ROO
   }
   const vehicles = [...site.vehicles.filter((c) => !nearArrival(c)), ...brought.vehicles.map((v) => ({ ...v, yaw: (v.yaw * 360) / 65536 }))];
   lap(`${vehicles.length} parked vehicles`);
+  // Each building's pieces by storey, which only reorders them among themselves, and the runs of slots they will take.
+  let buildings: Buildings | null = null;
+  {
+    const ordered = orderPieces(statics, site.buildings);
+    for (let i = 0; i < statics.length; i++) statics[i] = ordered.pieces[i]!;
+    if (site.buildings.length > 0) buildings = mapBuildings({ chunksX, chunksZ, frameX: base.info.frame[0], frameZ: base.info.frame[1] }, site.buildings, ordered, x0, z0);
+  }
+  if (buildings) lap(`${site.buildings.length} buildings, ${buildings.count} rows of them in ${buildings.sectors.filter((t) => t).length} sectors`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
   // so none stands in it or before its terminal, nor within 6 m of a parked car.
   const clearings = [...spawns.map((s) => [(x1 - s.x) / 2, (z1 - s.z) / 2, 16] as const), ...obelisks.map((o) => [(x1 - o.x) / 2, (z1 - o.z) / 2, o.color ? (o.radius! / 2 + 2) ** 2 : 49] as const), ...vehicles.map((c) => [(x1 - c.x) / 2, (z1 - c.z) / 2, 9] as const)];
@@ -248,7 +258,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
 
   // The statics from memory as statics.json says them (readLayers), not read back from it.
   let map = readLayers(layers, statics.map((p) => ({ kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw), ...(p.bend ? { bend: p.bend } : {}) })));
-  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
+  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(buildings ? { buildings } : {}), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
   // The map holds the statics in columns now; the pieces as objects, 7 to 13 M of them, are let go for the rest of the
   // build, and only their count is kept for the numbers.
   const staticTotal = statics.length;
@@ -401,6 +411,8 @@ export async function buildMap(named: string, release = false, output = join(ROO
     totalSeconds: Number(((performance.now() - t0) / 1000).toFixed(2)),
     peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)),
     staticTotal,
+    // The buildings section: its rows (a building in two sectors has two), its parts' bytes raw and on the wire, and the table a server holds.
+    ...(parsed.buildings ? { buildings: { made: site.buildings.length, rows: parsed.buildings.count, bytes: packed.parts.filter((p) => p.kind === "buildings").reduce((n, p) => n + p.bytes.length, 0), brotli: packed.parts.filter((p) => p.kind === "buildings").reduce((n, p) => n + p.br.length, 0), memory: parsed.buildings.bytes } } : {}),
     staticMaxChunk: packedMax,
     staticMaxChunkBeforePacking: maxChunk,
     vehicles: vehicles.length,
