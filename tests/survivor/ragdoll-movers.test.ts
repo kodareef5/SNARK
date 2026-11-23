@@ -81,7 +81,7 @@ test("a sleeping body wakes as a mover comes near, and sleeps on once it is gone
   expect(r.awake).toBe(true);
 });
 
-test("a car rolled into a fallen survivor shoves the body, and a watching client ends where the server's lies", () => {
+test("a car shoves a fallen survivor, and a watcher ends where the server's body lies", () => {
   const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
   try {
     h.host.setSetting("Knockdowns", "true");
@@ -138,7 +138,7 @@ test("a rex's legs shove a lying body aside and walk on; a dodo is no solid", ()
   }
 });
 
-test("a parked car beside a sleeping body, or one driving past a metre off, leaves it asleep", () => {
+test("a parked car, or one passing a metre off, leaves a sleeping body asleep", () => {
   for (const yaw of [0, Math.PI / 2]) {
     const w = flat(), r = layHuman(40, 0, 40, yaw, true);
     for (let f = 0; f < 90 && r.awake; f++) r.step(w, STEP);
@@ -151,4 +151,39 @@ test("a parked car beside a sleeping body, or one driving past a metre off, leav
       expect(r.step(w, STEP), `yaw ${yaw} at ${z}`).toBe(false);
     }
   }
+});
+
+/** A watcher's sample of one compact car: entity `id` of generation `gen` at (x, 0, z), turned `yaw` about up, at `tick`. */
+function carSeen(remote: RemoteSample, id: number, gen: number, x: number, z: number, yaw: number, tick: number): RemoteSample {
+  remote.count = 1; remote.tick = tick;
+  remote.id[0] = id; remote.gen[0] = gen; remote.kind[0] = reg.index.get("core:compact")!;
+  remote.x[0] = x; remote.y[0] = 0; remote.z[0] = z; remote.yaw[0] = yaw;
+  remote.vehicleQx[0] = 0; remote.vehicleQy[0] = Math.sin(yaw / 2); remote.vehicleQz[0] = 0; remote.vehicleQw[0] = Math.cos(yaw / 2);
+  return remote;
+}
+
+test("a watcher's step turns a car as it turned and starts a reused slot's car still", () => {
+  const w = flat(), drawn = new Corpses(new Map() as never, undefined, () => false, (k) => solidOf(reg, k)), remote = new RemoteSample();
+  drawn.update(carSeen(remote, 5, 1, 40, 40, 0, 100), w, 0, 0, new Map(), undefined);
+  drawn.update(carSeen(remote, 5, 1, 40, 40, Math.PI / 4, 101), w, 0, 0, new Map(), undefined);
+  const [turned] = drawn.humans.carsAround(40, 40, 101);
+  // The step to tick 101 turns it from its turn at 100 to its turn at 101: a quarter of a half turn.
+  const dot = turned!.from.qx * turned!.to.qx + turned!.from.qy * turned!.to.qy + turned!.from.qz * turned!.to.qz + turned!.from.qw * turned!.to.qw;
+  expect(2 * Math.acos(Math.min(1, Math.abs(dot)))).toBeCloseTo(Math.PI / 4, 6);
+  // The slot's next generation, a car 40 m off: it has no way yet, so it moves nothing it meets.
+  drawn.update(carSeen(remote, 5, 2, 80, 40, 0, 102), w, 0, 0, new Map(), undefined);
+  const [fresh] = drawn.humans.carsAround(80, 40, 102);
+  expect(Math.hypot(fresh!.to.x - fresh!.from.x, fresh!.to.z - fresh!.from.z)).toBe(0);
+});
+
+test("a watcher's step meets a braking car where it was each tick", () => {
+  const w = flat(), drawn = new Corpses(new Map() as never, undefined, () => false, (k) => solidOf(reg, k)), remote = new RemoteSample();
+  // Seen twice a tick: 15 m/s for two ticks, then stopped dead.
+  const z = [40, 40.25, 40.5, 40.75, 41, 41, 41, 41];
+  z.forEach((at, k) => drawn.update(carSeen(remote, 9, 1, 40, at, 0, 100 + k / 2), w, 0, 0, new Map(), undefined));
+  // The step to 102 meets it as it went from 101 to 102: 0.5 m, then nothing after.
+  let [m] = drawn.humans.carsAround(40, 41, 102);
+  expect(m!.to.z - m!.from.z).toBeCloseTo(0.5, 9);
+  [m] = drawn.humans.carsAround(40, 41, 103);
+  expect(m!.to.z - m!.from.z).toBeCloseTo(0, 9);
 });

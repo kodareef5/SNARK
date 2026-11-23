@@ -53,6 +53,50 @@ const FALL_CATCH_UP = 30;
 /** The most vehicles one ragdoll meets in a step, as on the server (server/ragdoll-movers.ts). */
 const NEAR_MOST = 4;
 const NO_MOVERS: readonly Mover[] = [];
+/** Places a client keeps of each vehicle in view, at least half a tick apart: a few ticks of its way. */
+const CAR_PLACES = 16;
+
+/** A place and turn, as MoverPose, that can be written. */
+interface Place { x: number; y: number; z: number; qx: number; qy: number; qz: number; qw: number }
+
+/** Where a vehicle in view was seen: at `ticks`, oldest first, each place in `places` as x, y, z and its turn. */
+interface CarSeen { readonly ticks: Float64Array; readonly places: Float64Array; n: number; update: number }
+
+/** Keeps where a vehicle was seen at render tick `tick`, newest last. Seen again within half a tick, the newest moves. */
+function keepPlace(seen: CarSeen, tick: number, at: MoverPose): void {
+  const last = seen.n > 0 ? seen.ticks[seen.n - 1]! : -Infinity;
+  // The render clock stepped back: what was kept is of another time.
+  if (tick < last) seen.n = 0;
+  let k = seen.n;
+  if (k > 0 && tick - last < 0.5) k--;
+  else if (k === CAR_PLACES) {
+    seen.ticks.copyWithin(0, 1); seen.places.copyWithin(0, 7);
+    k--;
+  }
+  seen.ticks[k] = tick;
+  seen.places.set([at.x, at.y, at.z, at.qx, at.qy, at.qz, at.qw], k * 7);
+  seen.n = k + 1;
+}
+
+/** Writes to `out` where a vehicle was at `tick`, between the places it was seen at, and at the nearest end outside them. */
+function placeAt(seen: CarSeen, tick: number, out: Place): void {
+  const t = seen.ticks, p = seen.places, n = seen.n;
+  let a = 0, b = 0, k = 0;
+  if (tick >= t[n - 1]!) a = b = n - 1;
+  else if (tick > t[0]!) {
+    while (t[a + 1]! <= tick) a++;
+    b = a + 1;
+    k = (tick - t[a]!) / (t[b]! - t[a]!);
+  }
+  const ao = a * 7, bo = b * 7;
+  out.x = p[ao]! + (p[bo]! - p[ao]!) * k; out.y = p[ao + 1]! + (p[bo + 1]! - p[ao + 1]!) * k; out.z = p[ao + 2]! + (p[bo + 2]! - p[ao + 2]!) * k;
+  // The turn between the two, the shorter way round.
+  const sign = p[ao + 3]! * p[bo + 3]! + p[ao + 4]! * p[bo + 4]! + p[ao + 5]! * p[bo + 5]! + p[ao + 6]! * p[bo + 6]! < 0 ? -1 : 1;
+  const qx = p[ao + 3]! + (p[bo + 3]! * sign - p[ao + 3]!) * k, qy = p[ao + 4]! + (p[bo + 4]! * sign - p[ao + 4]!) * k;
+  const qz = p[ao + 5]! + (p[bo + 5]! * sign - p[ao + 5]!) * k, qw = p[ao + 6]! + (p[bo + 6]! * sign - p[ao + 6]!) * k;
+  const l = 1 / Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+  out.qx = qx * l; out.qy = qy * l; out.qz = qz * l; out.qw = qw * l;
+}
 /** Ticks a survivor takes to rise from where it lay into what it does now. */
 export const GET_UP = 30;
 const impactRoot = new Float64Array(3);
@@ -215,12 +259,13 @@ export class HumanFalls {
   private readonly solid: (kind: number) => Solid | null;
   private updates = 0;
   /** The vehicles and heavy creatures in view, where each is and where it was a tick before, for falls to meet (shared/anim/ragdoll.ts movers). */
-  /** The vehicles and walking creatures in view: where each is at render tick `carsTick`, and its way a tick. */
-  private readonly cars: { id: number; reach: number; boxes: Float64Array; aside: boolean; at: MoverPose; vx: number; vy: number; vz: number }[] = [];
-  private carsTick = 0;
-  private readonly lastCar = new Map<number, { pose: MoverPose; tick: number; vx: number; vy: number; vz: number }>();
+  /** The vehicles and walking creatures in view, each by its handle: where it is drawn now, and where it was seen. */
+  private readonly cars: { handle: number; reach: number; boxes: Float64Array; vehicle: boolean; at: MoverPose; seen: CarSeen }[] = [];
+  /** By handle, so a slot taken by a new vehicle starts its own places. */
+  private readonly carSeen = new Map<number, CarSeen>();
+  private carUpdates = 0;
   private readonly near: Mover[] = [];
-  private readonly nearPool: { from: MoverPose; to: MoverPose; boxes: Float64Array; aside: boolean }[] = Array.from({ length: NEAR_MOST }, () => ({
+  private readonly nearPool: { from: Place; to: Place; boxes: Float64Array; aside: boolean }[] = Array.from({ length: NEAR_MOST }, () => ({
     from: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, to: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, boxes: new Float64Array(0), aside: false,
   }));
 
@@ -232,28 +277,22 @@ export class HumanFalls {
   /** Takes up the vehicles in view: each where it is now, and a tick back along its way from where it was last seen. */
   private seeCars(remote: RemoteSample): void {
     this.cars.length = 0;
-    const tick = this.carsTick = remote.tick;
+    const tick = remote.tick, update = ++this.carUpdates;
     for (let i = 0; i < remote.count; i++) {
       const solid = this.solid(remote.kind[i]!);
       if (!solid) continue;
-      const id = remote.id[i]!, half = remote.yaw[i]! / 2;
+      const handle = makeHandle(remote.id[i]!, remote.gen[i]!), half = remote.yaw[i]! / 2;
       const quat = solid.vehicle && (remote.vehicleQx[i] || remote.vehicleQy[i] || remote.vehicleQz[i] || remote.vehicleQw[i]);
-      const to: MoverPose = quat
+      const at: MoverPose = quat
         ? { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: remote.vehicleQx[i]!, qy: remote.vehicleQy[i]!, qz: remote.vehicleQz[i]!, qw: remote.vehicleQw[i]! }
         : { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: 0, qy: detSin(half), qz: 0, qw: detCos(half) };
-      const last = this.lastCar.get(id), span = last ? tick - last.tick : 0;
-      // Its way over one tick, from how far it went since it was last seen; seen again at the same tick, as it was.
-      let vx = 0, vy = 0, vz = 0;
-      if (last && span > 1e-6) {
-        vx = (to.x - last.pose.x) / span; vy = (to.y - last.pose.y) / span; vz = (to.z - last.pose.z) / span;
-        this.lastCar.set(id, { pose: to, tick, vx, vy, vz });
-      } else if (last) ({ vx, vy, vz } = last);
-      else this.lastCar.set(id, { pose: to, tick, vx, vy, vz });
-      // A creature meets what lies at its feet only as it walks, as on the server.
-      if (!solid.vehicle && vx * vx + vz * vz < WALKING * WALKING) continue;
-      this.cars.push({ id, reach: solid.reach, boxes: solid.boxes, aside: !solid.vehicle, at: to, vx, vy, vz });
+      let seen = this.carSeen.get(handle);
+      if (!seen) this.carSeen.set(handle, (seen = { ticks: new Float64Array(CAR_PLACES), places: new Float64Array(CAR_PLACES * 7), n: 0, update }));
+      seen.update = update;
+      keepPlace(seen, tick, at);
+      this.cars.push({ handle, reach: solid.reach, boxes: solid.boxes, vehicle: solid.vehicle, at, seen });
     }
-    if (this.lastCar.size > this.cars.length * 2 + 16) for (const id of this.lastCar.keys()) if (!this.cars.some(c => c.id === id)) this.lastCar.delete(id);
+    for (const [handle, seen] of this.carSeen) if (seen.update !== update) this.carSeen.delete(handle);
   }
 
   /** The vehicles in view near ragdoll `fall`'s hips, as they move over the step to `tick`. */
@@ -265,20 +304,21 @@ export class HumanFalls {
 
   /**
    * The vehicles in view within reach of (x, z), each moving from where it was at `tick` - 1 to where it was at `tick`,
-   * as the server's step to `tick` meets them (server/ragdoll-movers.ts); reused by the next call.
+   * as the server's step to `tick` meets them (server/ragdoll-movers.ts); reused by the next call. A creature meets what
+   * lies at its feet only as it walks, as on the server.
    */
   carsAround(x: number, z: number, tick: number): readonly Mover[] {
     this.near.length = 0;
     for (const c of this.cars) {
       const dx = c.at.x - x, dz = c.at.z - z, reach = c.reach + 2;
       if (dx * dx + dz * dz > reach * reach || this.near.length >= NEAR_MOST) continue;
-      const m = this.nearPool[this.near.length]!, back = this.carsTick - tick, a = c.at;
-      Object.assign(m, {
-        to: { ...a, x: a.x - c.vx * back, y: a.y - c.vy * back, z: a.z - c.vz * back },
-        from: { ...a, x: a.x - c.vx * (back + 1), y: a.y - c.vy * (back + 1), z: a.z - c.vz * (back + 1) },
-        boxes: c.boxes,
-        aside: c.aside,
-      });
+      const m = this.nearPool[this.near.length]!;
+      placeAt(c.seen, tick - 1, m.from);
+      placeAt(c.seen, tick, m.to);
+      const wx = m.to.x - m.from.x, wz = m.to.z - m.from.z;
+      if (!c.vehicle && wx * wx + wz * wz < WALKING * WALKING) continue;
+      m.boxes = c.boxes;
+      m.aside = !c.vehicle;
       this.near.push(m);
     }
     return this.near;
