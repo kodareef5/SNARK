@@ -55,7 +55,8 @@ export class Creative {
     return this.rules.on("bShowCreativeMode");
   }
 
-  private get forAll(): boolean {
+  /** Whether everyone who enters is given the admin role. */
+  get forAll(): boolean {
     return this.shown && this.rules.on("CreativeForAll");
   }
 

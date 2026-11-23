@@ -108,6 +108,7 @@ import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
 import { builtinLoadouts } from "../content/loadouts.ts";
+import { Loadouts } from "./loadout/loadouts.ts";
 import { LoadoutStore } from "./loadout/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
@@ -249,6 +250,8 @@ export interface Host {
   readonly supplyBook: BookStore;
   /** The loadouts new survivors are given, kept beside the save (server/loadout/store.ts). */
   readonly loadoutBook: LoadoutStore;
+  /** Hands loadouts out: to a new survivor, after a death, and when an admin asks (server/loadout/loadouts.ts). */
+  readonly loadouts: Loadouts;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -860,7 +863,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   const beds = new Beds({
     world, game, records, tribes, fixtures, rules, bus,
-    rise,
+    rise: (c, p, why) => {
+      const code = rise(c, p, why);
+      const rec = code === RESULT_OK ? records.byPid.get(c.pid) : undefined;
+      if (rec) loadouts.risen(c, rec, why);
+      return code;
+    },
     mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : urban.riding(c) ? "get out of the vehicle first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
     drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
   });
@@ -1320,6 +1328,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       records.entOf.set(rec.pid, c.ent);
       world.ents.pid[c.ent] = rec.pid;
     }
+    if (first) loadouts.first(c, rec);
     refreshBody(rec);
     survival.suspend(rec, false);
     // A save from a server that stopped without standing its drivers down has them inside their cars.
@@ -1353,6 +1362,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
   });
   const creative = new Creative(world, game, rules, bus, persistence);
+  const loadouts = new Loadouts({ world, records, items, creative, store: loadoutBook, refresh: (rec) => refreshBody(rec) }, (opts.seed ?? 1) + 113);
   game.sessions.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
@@ -1865,6 +1875,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     supply,
     supplyBook,
     loadoutBook,
+    loadouts,
     beds,
     cluster,
     settled,
