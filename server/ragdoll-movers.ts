@@ -4,7 +4,7 @@
 import { CHUNK_SIZE } from "../shared/coords.ts";
 import type { Mover, MoverPose, Ragdoll } from "../shared/anim/ragdoll.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
-import { solidOf } from "../shared/sim/vehicle-movers.ts";
+import { WALKING, solidOf } from "../shared/sim/vehicle-movers.ts";
 import { detCos, detSin } from "../shared/math/scalar.ts";
 import { Past } from "./history.ts";
 import type { ServerWorld } from "./world.ts";
@@ -53,6 +53,8 @@ export class RagdollMovers {
         if (!history.at(tick - 1, e, p)) Object.assign(m.from, m.to);
         else if (solid.vehicle) Object.assign(m.from, { x: p.x, y: p.y, z: p.z, qx: p.qx, qy: p.qy, qz: p.qz, qw: p.qw });
         else facing(m.from, p.x, p.y, p.z, p.yaw);
+        // A creature meets what lies at its feet only as it walks.
+        if (!solid.vehicle && (m.to.x - m.from.x) * (m.to.x - m.from.x) + (m.to.z - m.from.z) * (m.to.z - m.from.z) < WALKING * WALKING) continue;
         m.boxes = solid.boxes;
         found.push(m);
       }

@@ -434,7 +434,7 @@ export class VehicleContacts {
     this.store(car, a.state, true);
     this.runOvers++;
     const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0, base: RUN_OVER_HARM, type: DMG_MELEE,
-      quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+      quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, vehicle: true };
     // Thrown along under the car at half its speed, tumbling end over end about the car's right.
     const impact: CorpseImpact = { victimHandle: c.handle, victimPid: c.pid, vx: a.state.vx * 0.5, vy: 0.5, vz: a.state.vz * 0.5,
       wx: clamp(a.state.vz * 2, -8, 8), wy: 0, wz: clamp(-a.state.vx * 2, -8, 8) };
@@ -508,7 +508,7 @@ export class VehicleContacts {
       const harmful = speed - MIN_HARM_SPEED;
       const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0,
         base: Math.min(300, .5 * harmful * harmful * a.mass / (a.mass + b.mass)), type: DMG_MELEE,
-        quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+        quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, vehicle: true };
       // The way the blow sent it: its velocity now less what it had, flat.
       const px = b.state.vx - b.prior.vx, pz = b.state.vz - b.prior.vz, flat = Math.sqrt(px * px + pz * pz);
       if (flat > 1e-6) this.ctx.struck?.(c.entity, Math.abs(result.deltaSpeedB), px / flat, pz / flat, c.y, impact?.wx ?? 0, impact?.wy ?? 0, impact?.wz ?? 0);

@@ -1498,7 +1498,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (rec && stunned >= 0) buffs.give(rec, stunned, 0, GET_UP_SECONDS);
     if (rec) refreshBody(rec);
   };
-  const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, vehicle: true };
   urban.onDoorStrike = (vehicle, body, speed, dx, dz) => {
     const ents = world.ents, driver = game.clients.find((c) => c?.active && c.drive === vehicle);
     doorBlow.by = driver ? records.byPid.get(driver.pid) ?? null : null;

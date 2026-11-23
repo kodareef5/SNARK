@@ -124,7 +124,7 @@ test("a rex is a solid a ragdoll meets, a dodo is not, and a rex walking into a 
   const w = flat(), r = layHuman(40, 0, 40, Math.PI / 2, true);
   for (let f = 0; f < 30; f++) r.step(w, STEP);
   let z = 32;
-  for (let f = 0; f < 60; f++) {
+  for (let f = 0; f < 90; f++) {
     const next = z + 3 * STEP;
     r.movers = [{ from: at(40, 0, z), to: at(40, 0, next), boxes: rex!.boxes }];
     r.step(w, STEP);

@@ -39,6 +39,8 @@ export function moverReach(def: VehicleDefinition): number {
 
 /** Kilograms at which a creature walking into a ragdoll moves it, rather than passing through as a lighter one does. */
 export const HEAVY_MOVER = 300;
+/** Metres a tick a creature must cover to move a ragdoll: one standing still leaves what lies at its feet alone. */
+export const WALKING = 0.5 / 30;
 
 /** What a body of some kind is to a ragdoll it meets: its boxes in its own frame and how far they reach. */
 export interface Solid {
@@ -59,11 +61,10 @@ export function solidOf(reg: Registry, kind: number): Solid | null {
   const def = reg.vehicle[kind];
   if (def) solid = { boxes: moverBoxes(def), reach: moverReach(def), vehicle: true };
   else if (reg.move[kind] && reg.defs[kind]?.type === "species" && bodyMass(reg, kind) >= HEAVY_MOVER) {
-    // Its footprint (shared/sim/blockers.ts stadium) from back to front and side to side, up to its body's height.
-    const r = reg.footRadius[kind]!, back = reg.footBack[kind]!, front = reg.footFront[kind]!, height = reg.bodyHeight[kind]!;
-    const half = (front - back) / 2 > r ? (front - back) / 2 : r;
-    const boxes = Float64Array.of(0, height / 2, (front + back) / 2, r, height / 2, half);
-    solid = { boxes, reach: Math.sqrt(boxes[2]! * boxes[2]! + boxes[1]! * boxes[1]!) + Math.sqrt(r * r + half * half + (height / 2) * (height / 2)), vehicle: false };
+    // Where its legs sweep: its body's round about its middle, up to its belly. Under its head and tail lies open ground.
+    const r = reg.bodyRadius[kind]!, belly = reg.bodyHeight[kind]! * 0.4;
+    const boxes = Float64Array.of(0, belly / 2, 0, r, belly / 2, r);
+    solid = { boxes, reach: belly / 2 + Math.sqrt(2 * r * r + (belly / 2) * (belly / 2)), vehicle: false };
   }
   list[kind] = solid;
   return solid;

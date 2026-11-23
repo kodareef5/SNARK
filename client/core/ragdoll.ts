@@ -27,7 +27,7 @@ import { decodeCorpseCheckpoint, type CorpseMotion } from "../../shared/net/corp
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Mover, MoverPose } from "../../shared/anim/ragdoll.ts";
-import type { Solid } from "../../shared/sim/vehicle-movers.ts";
+import { WALKING, type Solid } from "../../shared/sim/vehicle-movers.ts";
 import type { RemoteSample } from "./session.ts";
 
 /** Ticks over which the last pose alive blends into the death clip. */
@@ -233,6 +233,8 @@ export class HumanFalls {
       const k = span > 1e-6 ? 1 / span : 0;
       const from: MoverPose = last && k > 0 ? { ...to, x: to.x - (to.x - last.pose.x) * k, y: to.y - (to.y - last.pose.y) * k, z: to.z - (to.z - last.pose.z) * k } : to;
       this.lastCar.set(id, { pose: to, tick });
+      // A creature meets what lies at its feet only as it walks, as on the server.
+      if (!solid.vehicle && (to.x - from.x) * (to.x - from.x) + (to.z - from.z) * (to.z - from.z) < WALKING * WALKING) continue;
       this.cars.push({ id, reach: solid.reach, mover: { from, to, boxes: solid.boxes } });
     }
     if (this.lastCar.size > this.cars.length * 2 + 16) for (const id of this.lastCar.keys()) if (!this.cars.some(c => c.id === id)) this.lastCar.delete(id);

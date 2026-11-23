@@ -146,6 +146,8 @@ export interface Source {
   silenced?: boolean;
   /** The share of its damage a round keeps at the distance it hit from (`falloff`, shared/sim/damage.ts). 1 where not given. */
   far?: number;
+  /** A vehicle's blow, which its own contact has already sorted (server/vehicle-contacts.ts struck). */
+  vehicle?: boolean;
   /** The share of armor the round goes through, 0 to 1 (weapons-plan.md, M12). Omitted, none. */
   pierce?: number;
 }
@@ -1206,6 +1208,9 @@ export class Combat {
     let dx: number, dy: number, dz: number, kind: number;
     if (crash) {
       dx = crash.vx; dy = crash.vy; dz = crash.vz;
+      kind = IMPACT_VEHICLE;
+    } else if (src.vehicle) {
+      dx = ents.x[target]! - src.x; dy = 0; dz = ents.z[target]! - src.z;
       kind = IMPACT_VEHICLE;
     } else if (aimed) {
       dx = this.ray[0]!; dy = this.ray[1]!; dz = this.ray[2]!;
