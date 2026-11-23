@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { ClientSession } from "../../client/core/session.ts";
 import { PARTS } from "../../server/admin/parts.ts";
+import type { ModuleContext } from "../../server/api/module.ts";
 import { frontPasses, startFront } from "../../server/front.ts";
 import { startServer } from "../../server/main.ts";
 import { loadConfig } from "../../server/settings/config.ts";
@@ -65,7 +66,9 @@ test("__debug names the codes for anyone and gives only an admin the log and sta
   const [log, warn] = [console.log, console.warn];
   console.log = console.warn = () => {};
   const config = loadConfig({}, ["-clusterid=debug", `-ClusterDirOverride=${saves}`, "?SessionName=Miami?CreativeForAll=False"]).rules;
-  const world = startServer({ port: 0, clientDir: dir, dev: true, publicUrl: "/miami", dbPath: join(saves, "miami.db"), noBackups: true, config });
+  // A module's line goes out through the host's own `say`.
+  const modules = [{ name: "probe", api: 1 as const, setup: (m: ModuleContext) => m.log("a module's line") }];
+  const world = startServer({ port: 0, clientDir: dir, dev: true, publicUrl: "/miami", dbPath: join(saves, "miami.db"), noBackups: true, config, modules });
   const front = startFront(join(saves, "debug"), 0, "127.0.0.1");
   const tunnel = { host: "ensure-please.trycloudflare.com", "x-forwarded-for": "203.0.113.7" };
   const at = `http://127.0.0.1:${front.port}/miami/__debug`;
@@ -104,9 +107,10 @@ test("__debug names the codes for anyone and gives only an admin the log and sta
     s.text("enablecheats");
     await settle(() => s.admin);
     expect(s.admin).toBe(true);
-    // The line of the start was kept from before there was a world.
+    // The lines of the start were kept, the first from before there was a world.
     const all = JSON.parse((await ask({ token }))[1]) as DebugAnswer;
     expect(all.lines.find((l) => l.text.includes("was built from other source"))).toMatchObject({ tick: 0, level: LEVEL_INFO });
+    expect(all.lines.find((l) => l.text === "[probe] a module's line")).toMatchObject({ level: LEVEL_INFO });
 
     const cursor = world.log.last;
     console.log("a line after the cursor");

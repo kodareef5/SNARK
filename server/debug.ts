@@ -1,7 +1,7 @@
-// The debug bar's route, `__debug` (client/core/debug/), and the server's state it and a bug report's server.json show.
-// GET gives anyone the protocol's codes by name. POST gives an admin's session the server's log lines since a cursor and
-// the server's state. The bar asks once a second while its drawer is open, over HTTP rather than the game's socket, so
-// that it adds nothing to the stream it measures.
+// The debug bar's route, `__debug` (client/core/debug/), and the server's state, which a bug report's server.json holds
+// too. GET gives anyone the protocol's codes by name. POST gives an admin's session the server's log lines since a cursor
+// and the server's state. The bar asks once a second while its drawer is open, over HTTP rather than the game's socket,
+// so that it adds nothing to the stream it measures.
 
 import { TICK_RATE } from "../shared/coords.ts";
 import { codeNames, type DebugAnswer, type ServerState } from "../shared/debug.ts";

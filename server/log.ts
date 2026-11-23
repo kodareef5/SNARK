@@ -9,6 +9,7 @@ export const LOG_LINES = 1000;
 /** Characters a line keeps of its text; a longer one ends in an ellipsis. */
 export const LINE_CHARS = 4000;
 
+/** The latest `most` lines the server logged. Lines are numbered from 1, and no number is given twice. */
 export class ServerLog {
   readonly most: number;
   /** The world's tick, stamped on each line; 0 until there is a world. */
@@ -20,7 +21,7 @@ export class ServerLog {
     this.most = most;
   }
 
-  /** The latest line's number: lines are numbered from 1 and no number is given twice. 0 before the first. */
+  /** The latest line's number, 0 before the first. */
   get last(): number {
     return this.seq;
   }
