@@ -23,7 +23,7 @@ export class TimelineTab implements Tab {
   readonly name = "Timeline";
   private readonly chart = new Paint();
   private readonly frames = new Paint();
-  /** The second chosen on the page's clock, or -1 for the latest; and the one under the pointer. */
+  /** The second chosen, as the bar holds it (DebugBar.chosenAt), or -1 for the latest; and the one under the pointer. */
   private chosen = -1;
   private hovered = -1;
   /** The chart's newest second as last laid out, so a press is read against what was shown. */
@@ -38,6 +38,8 @@ export class TimelineTab implements Tab {
 
   lay(d: DebugBar, draw: Draw, x: number, y: number, w: number, h: number, nowMs: number): void {
     d.events.fresh = 0;
+    // Whatever chose the moment, here or elsewhere, the timeline shows its second.
+    this.chosen = d.chosenAt >= 0 ? Math.floor(d.chosenAt / 1000) : -1;
     const perf = d.perf, target = perf.target, newest = (this.newest = Math.floor(nowMs / 1000));
     // The summary over the window, or the second under the pointer.
     let frames = 0, sum = 0, late = 0, worst = 0, seconds = 0;
@@ -175,16 +177,12 @@ export class TimelineTab implements Tab {
   press(d: DebugBar, p: Press): void {
     if (p.act === ACT_CHART) {
       const t = this.newest - SECONDS + 1 + Math.min(SECONDS - 1, Math.floor(p.fx * SECONDS));
-      this.chosen = this.chosen === t ? -1 : t;
-      d.choose(this.chosen < 0 ? -1 : this.chosen * 1000 + 500, null);
-    } else if (p.act === ACT_NOW) {
-      this.chosen = -1;
-      d.choose(-1, null);
-    } else if (p.act === ACT_PICTURES && d.shots) d.shots.paused = !d.shots.paused;
+      d.choose(this.chosen === t ? -1 : t * 1000 + 500, null);
+    } else if (p.act === ACT_NOW) d.choose(-1, null);
+    else if (p.act === ACT_PICTURES && d.shots) d.shots.paused = !d.shots.paused;
     else if (p.act === ACT_EVENT) {
       const e = this.listed[p.arg];
       if (!e) return;
-      this.chosen = Math.floor(e.at / 1000);
       d.choose(e.at, e);
       if (e.spans) d.show(d.tabs.findIndex((t) => t.name === "Frame"));
     }

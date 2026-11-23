@@ -61,6 +61,8 @@ try {
   await p.send("Emulation.setDeviceMetricsOverride", { width: cssW, height: cssH, deviceScaleFactor: dpr, mobile: false });
   // The tier chosen, as the settings keep it (client/core/settings.ts); the bar is off until F3 below.
   await p.send("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem("snark.interface", ${JSON.stringify(JSON.stringify({ version: 2, tier, debug: false, muted: true }))})` });
+  // The ms each frame's callbacks take, summed, for the bar's cost below: the game's frame is its one callback.
+  await p.send("Page.addScriptToEvaluateOnNewDocument", { source: "globalThis.tripRafMs = 0; { const raf = requestAnimationFrame.bind(globalThis); globalThis.requestAnimationFrame = (cb) => raf((t) => { const t0 = performance.now(); try { cb(t); } finally { globalThis.tripRafMs += performance.now() - t0; } }); }" });
   await p.send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick=1&name=debug-trip&trip` });
   const until = async <T>(what: string, expression: string, ms: number): Promise<T> => {
     const t0 = performance.now();
@@ -156,16 +158,25 @@ try {
   const plain = rows.filter((r) => (flags(r) & 3) === 0).map((r) => r[f("interval")]!);
   const isLate = (v: number): boolean => v > 1.25 * perf.summary.target, share = (v: number[]): string => `${((v.filter(isLate).length / Math.max(1, v.length)) * 100).toFixed(0)}%`;
   console.log(`\na picture at a ${canvas[0]}×${canvas[1]} canvas (${cssW}×${cssH} at ${dpr}, ${tier}): its call took ${median(shotCalls).toFixed(2)} ms at the middle, ${Math.max(0, ...shotCalls).toFixed(2)} at most, on the game's thread; of the ${after.length} frames from a picture until it was encoded ${share(after)} were late, against ${share(plain)} of the other ${plain.length} (middle ${median(plain).toFixed(1)} ms)`);
-  console.log(`the bar's own clock had it at ${(await p.value<number>(`${bar}.costMs`)).toFixed(3)} ms a frame (its record, its events and its layout, not the interface applied); the GPU was ${perf.summary.gpu.frames > 0 ? `timed in ${perf.summary.gpu.frames} frames, middle ${perf.summary.gpu.middle} ms` : "not timed"}`);
+  console.log(`the GPU was ${perf.summary.gpu.frames > 0 ? `timed in ${perf.summary.gpu.frames} frames, middle ${perf.summary.gpu.middle} ms` : "not timed"}`);
   console.log(`the capture is ${kb(bytesUnder(folder))} in ${readdirSync(folder).length} files`);
   const ff = firstFrame(dist), late = (await scripts()).filter((s) => !before.has(s.name));
   console.log(`the first frame waits for ${kb(ff.first)} of this client (Brotli${dist.endsWith("client/dist") ? "" : "; a quick build's runs about a tenth over a real build's"}); once on, the bar fetched ${late.map((l) => `${l.name} ${kb(l.bytes)}`).join(", ") || "nothing"}, ${kb(late.reduce((n, l) => n + l.bytes, 0))} in all`);
 
-  // One hitch, one story. The dash's part of one frame takes 60 ms; two seconds on, a task of the page's own takes 90 ms
-  // between frames. The survivor goes a block on, and half a minute later the hitch is chosen and F8 saves.
+  // One hitch, one story. The dash's part of one frame takes 70 ms; two seconds on, a task of the page's own takes 90 ms
+  // between frames. The survivor goes a block on, and half a minute later the hitch is chosen and F8 saves. The browser
+  // stamps a frame when it was due, so a frame held back can read short of its wait: the hitch is any frame kind.
   console.log("\none hitch, one story:");
-  await p.value(`(() => { const a = ${app}, d = a.dash, step = d.step.bind(d); let once = true; d.step = (f) => { if (once) { once = false; const t = performance.now() + 60; while (performance.now() < t); } step(f); }; return true; })()`);
-  await until("the hitch an event", `${bar}.events.list.some((e) => e.kind === 1 && /\\bdash\\b/.test(e.cause))`, 5000);
+  const isHitch = `(e) => e.kind <= 2 && /\\bdash\\b/.test(e.cause)`;
+  await p.value(`(() => { const d = ${app}.dash, step = d.step.bind(d); globalThis.tripHitch = 1; d.step = (f) => { if (globalThis.tripHitch > 0) { globalThis.tripHitch--; const t = performance.now() + 70; while (performance.now() < t); } step(f); }; return true; })()`);
+  // A frame left out of events while a picture is made could take the hitch: it is made again, at most twice.
+  for (let again = 0; again < 3; again++) {
+    await Bun.sleep(1500);
+    if (await p.value<boolean>(`${bar}.events.list.some(${isHitch})`)) break;
+    if (again < 2) await p.value(`globalThis.tripHitch = 1`);
+    else console.log(`no hitch event; the latest events: ${JSON.stringify(await p.value(`${bar}.events.list.slice(-6).map((e) => [e.kind, Math.round(e.at), Math.round(e.size), e.cause])`))}`);
+  }
+  await until("the hitch an event", `${bar}.events.list.some(${isHitch})`, 2000);
   const there = await p.value<[number, number, number]>(`[${app}.session.own.x, ${app}.session.own.y, ${app}.session.own.z]`);
   await Bun.sleep(2000);
   await p.send("Runtime.evaluate", { expression: `setTimeout(() => { const t = performance.now() + 90; while (performance.now() < t); })` });
@@ -173,14 +184,17 @@ try {
   await chat(`/tp ${Math.round(there[0] + 150)} ${Math.round(there[2])}`);
   await until("the survivor a block on", `Math.hypot(${app}.session.own.x - ${there[0]}, ${app}.session.own.z - ${there[2]}) > 100`, 10_000);
   await Bun.sleep(30_000);
-  const hitchAt = await p.value<number>(`(() => { const d = ${bar}, e = d.events.list.find((e) => e.kind === 1 && /\\bdash\\b/.test(e.cause)); d.show(0); d.choose(e.at, e); d.show(d.tabs.findIndex((t) => t.name === "Frame")); return e.at; })()`);
+  const hitchAt = await p.value<number>(`(() => { const d = ${bar}, e = d.events.list.find(${isHitch}); d.show(0); d.choose(e.at, e); d.show(d.tabs.findIndex((t) => t.name === "Frame")); return e.at; })()`);
   await Bun.sleep(1500);
-  const frameShot = join(reports, "hitch-frame.png");
+  const frameShot = join(reports, "hitch-frame.png"), words = (): Promise<string> => p.value<string>("document.body.innerText");
   await Bun.write(frameShot, Buffer.from((await p.send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+  const frameSays = /the frame before the event \d+ s ago/.exec(await words())?.[0] ?? "";
   await p.value(`${bar}.show(0)`);
   await Bun.sleep(1500);
   const timelineShot = join(reports, "hitch-timeline.png");
   await Bun.write(timelineShot, Buffer.from((await p.send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+  const timelineSays = /the frames of \d+ s ago/.exec(await words())?.[0] ?? "";
+  hold("the Frame tab shows the hitch's frame and the timeline its second", frameSays !== "" && timelineSays !== "", `"${frameSays}", "${timelineSays}"`);
   console.log(`the chosen hitch in the Frame tab: ${frameShot}; on the timeline: ${timelineShot}`);
   await key("F8", 119);
   const saved2 = await until<string>("the hitch saved", `${app}.ui.chat.lines.map((l) => l.text).find((t) => (t.startsWith("Debug bar: saved") && t !== ${JSON.stringify(saved)}) || t.startsWith("Debug bar: not saved")) ?? ""`, 60_000);
@@ -190,46 +204,65 @@ try {
   const folder2 = tool("path", String(id2)).trim(), read = (name: string) => JSON.parse(readFileSync(join(folder2, name), "utf8"));
   const report2 = read("report.json"), perf2 = read("perf.json"), events2 = read("events.json").events as { at: number; kind: string; size: number; cause: string; top: { slot: string }[] }[];
   const chosen = report2.chosen, saw = report2.shots[chosen?.shot ?? -1];
-  hold("the capture's chosen moment is the hitch", chosen !== undefined && Math.abs(chosen.at - (hitchAt - perf2.start)) < 50 && /\bdash\b/.test(chosen.what), JSON.stringify(chosen));
-  const hitch = events2.find((e) => e.kind === "long frame" && /\bdash\b/.test(e.cause)), task = events2.find((e) => e.kind === "long task" && e.size >= 85 && e.at > (hitch?.at ?? 0) + 1000);
+  hold("the capture's chosen moment is the hitch", chosen !== undefined && Math.abs(chosen.at - (hitchAt - perf2.start)) < 2 && /\bdash\b/.test(chosen.what), JSON.stringify(chosen));
+  const hitch = events2.find((e) => ["hitch", "long frame", "stall"].includes(e.kind) && /\bdash\b/.test(e.cause)), task = events2.find((e) => e.kind === "long task" && e.size >= 85 && e.at > (hitch?.at ?? 0) + 1000);
   hold("the hitch and the long task are two events, each with its own cause", hitch !== undefined && task !== undefined && !/\bdash\b/.test(task.cause) && /\bdash$/.test(hitch.top[0]?.slot ?? ""), `${JSON.stringify(hitch && [hitch.at, hitch.size, hitch.cause])}, ${JSON.stringify(task && [task.at, task.size, task.cause])}`);
   const near = saw?.place ? Math.hypot(saw.place[0] - there[0], saw.place[2] - there[2]) : Infinity, away = Math.hypot(report2.place.x - there[0], report2.place.z - there[2]);
   hold("its picture was taken where the hitch was, and the save a block on", near < 2 && away > 100, `${near.toFixed(1)} m from the hitch, the save ${away.toFixed(0)} m from it`);
-  const names2 = perf2.spans.names as string[], slow2 = perf2.spans.slowest?.[0];
-  hold("the slowest frame kept is the hitch's, the dash's 60 ms in it", slow2 !== undefined && slow2.ms[names2.indexOf("dash")] > 55 && Math.abs(slow2.at - chosen.at) < 100, slow2 ? `${slow2.ms[names2.indexOf("dash")]} ms at ${slow2.at}` : "none");
+  // The slots of every frame are kept for about half a minute, an event's own for as long as the event: where the ring
+  // still holds the hitch's frame it is the slowest, and where it does not the record says it reaches back no further.
+  const names2 = perf2.spans.names as string[], slow2 = perf2.spans.slowest?.[0], held2 = perf2.spans.from <= chosen.at;
+  hold(
+    "the hitch's frame is the slowest kept, or the slots' record says it begins after it",
+    held2 ? slow2 !== undefined && slow2.ms[names2.indexOf("dash")] > 65 && Math.abs(slow2.at - chosen.at) < 100 : perf2.spans.from > chosen.at,
+    held2 ? `${slow2?.ms[names2.indexOf("dash")]} ms at ${slow2?.at}` : `the slots kept from ${perf2.spans.from} ms, the hitch at ${chosen.at}`,
+  );
   const md2 = readFileSync(join(folder2, "report.md"), "utf8");
   hold("report.md says the moment and goes back to its picture", md2.includes("## Chosen in the bar") && saw?.place !== undefined && md2.includes(`tp ${saw.place[0].toFixed(2)}`), "");
-  hold("each record says what part of the capture it holds", [perf2.window, read("events.json").window, read("log.json").window, read("net.json").window].every((w) => w && w.to === report2.ms), JSON.stringify(perf2.window));
+  const net2 = read("net.json"), windows = { perf: perf2.window, events: read("events.json").window, log: read("log.json").window, net: net2.window };
+  hold(
+    "each record says what part of the capture it holds, the socket in whole seconds",
+    [windows.perf, windows.events, windows.log].every((w) => w && w.from >= 0 && w.to === report2.ms) && net2.window.to <= report2.ms && net2.window.to > report2.ms - 1000 && net2.window.to - net2.window.from === net2.seconds * 1000,
+    `${report2.ms} ms: ${JSON.stringify(windows)}`,
+  );
 
-  // What the bar costs the page whole, by the browser's own count of its main thread's work: with the bar off, on with
-  // its drawer shut, and open at a tab, five seconds each, twice over.
+  // What the bar costs the page whole, by the browser's own count of its main thread's work: the interface applied, the
+  // probes and the bar's own. The world settles first; then each way of having the bar on is set against the bar off,
+  // two seconds each, six times in turn, so what drifts in the page between them falls out of the difference.
   console.log("\nwhat the bar costs the page's main thread a frame, by the browser's count:");
+  await Bun.sleep(8000);
   await p.send("Performance.enable");
   await p.value(`(() => { globalThis.tripFrames = 0; const f = () => { globalThis.tripFrames++; requestAnimationFrame(f); }; requestAnimationFrame(f); return true; })()`);
-  const modes: [string, string][] = [
-    ["off", `${app}.ui.settings.debug = false`],
-    ["on, drawer shut", `(${app}.ui.settings.debug = true, ${bar}?.close(), true)`],
-    ["on, Timeline open", `(${bar}.show(0), true)`],
-    ["on, Frame open", `(${bar}.show(${bar}.tabs.findIndex((t) => t.name === "Frame")), true)`],
-    ["on, Network open", `(${bar}.show(${bar}.tabs.findIndex((t) => t.name === "Network")), true)`],
-  ];
+  const OFF = "(() => { globalThis.snarkTrip.app.ui.settings.debug = false; return true; })()";
+  const on = (tab: string): string => `(() => { const a = globalThis.snarkTrip.app; a.ui.settings.debug = true; const d = a.ui.debug; ${tab ? `d.show(d.tabs.findIndex((t) => t.name === ${JSON.stringify(tab)}))` : "d.close()"}; return true; })()`;
   const metric = async (): Promise<Record<string, number>> => Object.fromEntries(((await p.send("Performance.getMetrics")).metrics as { name: string; value: number }[]).map((m) => [m.name, m.value]));
-  const costs = new Map<string, number[]>();
-  for (let round = 0; round < 2; round++) {
-    for (const [name, set] of modes) {
-      await p.value(set);
-      await Bun.sleep(1500);
-      const a = await metric(), fa = await p.value<number>("globalThis.tripFrames");
-      await Bun.sleep(5000);
-      const b = await metric(), fb = await p.value<number>("globalThis.tripFrames"), frames = Math.max(1, fb - fa);
-      const per = (k: string): number => ((b[k]! - a[k]!) * 1000) / frames;
-      const task = per("TaskDuration");
-      costs.set(name, [...(costs.get(name) ?? []), task]);
-      console.log(`  ${name.padEnd(18)} ${task.toFixed(2)} ms of tasks a frame (script ${per("ScriptDuration").toFixed(2)}, style and layout ${(per("RecalcStyleDuration") + per("LayoutDuration")).toFixed(2)}) over ${frames} frames, ${((frames * 1000) / 5000).toFixed(0)} fps`);
+  /** Main-thread ms a frame over two seconds with `set` done: all tasks, style and layout, and the frame's callback. */
+  const spell = async (set: string): Promise<[number, number, number]> => {
+    await p.value(set);
+    await Bun.sleep(600);
+    const a = await metric(), [fa, ra] = await p.value<[number, number]>("[globalThis.tripFrames, globalThis.tripRafMs]");
+    await Bun.sleep(2000);
+    const b = await metric(), [fb, rb] = await p.value<[number, number]>("[globalThis.tripFrames, globalThis.tripRafMs]"), frames = Math.max(1, fb - fa);
+    const per = (k: string): number => ((b[k]! - a[k]!) * 1000) / frames;
+    return [per("TaskDuration"), per("RecalcStyleDuration") + per("LayoutDuration"), (rb - ra) / frames];
+  };
+  const middle = (v: number[]): number => [...v].sort((a, b) => a - b)[v.length >> 1]!;
+  const offs: number[] = [], offFrames: number[] = [];
+  for (const [name, tab] of [["drawer shut", ""], ["Timeline open", "Timeline"], ["Frame open", "Frame"], ["Network open", "Network"], ["Log open", "Log"]] as const) {
+    const more: number[] = [], styled: number[] = [], framed: number[] = [], own: number[] = [];
+    for (let k = 0; k < 6; k++) {
+      const off = await spell(OFF), with_ = await spell(on(tab));
+      own.push(await p.value<number>(`${bar}.costMs`));
+      offs.push(off[0]);
+      offFrames.push(off[2]);
+      more.push(with_[0] - off[0]);
+      styled.push(with_[1] - off[1]);
+      framed.push(with_[2] - off[2]);
     }
+    const signed = (v: number): string => `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
+    console.log(`  on, ${name.padEnd(14)} the frame's callback ${signed(middle(framed))} ms at the middle of six pairs (${signed(Math.min(...framed))} to ${signed(Math.max(...framed))}); all tasks ${signed(middle(more))} (${signed(Math.min(...more))} to ${signed(Math.max(...more))}); style and layout ${signed(middle(styled))}; the bar's own clock ${middle(own).toFixed(3)}`);
   }
-  const mean = (name: string): number => (costs.get(name) ?? [0]).reduce((s, v) => s + v, 0) / Math.max(1, costs.get(name)?.length ?? 1);
-  console.log(`  the bar's cost against off: ${modes.slice(1).map(([n]) => `${n} ${(mean(n) - mean("off")).toFixed(2)} ms`).join(", ")}`);
+  console.log(`  with the bar off a frame's callback took ${middle(offFrames).toFixed(2)} ms at the middle (${Math.min(...offFrames).toFixed(2)} to ${Math.max(...offFrames).toFixed(2)}), and all tasks ${middle(offs).toFixed(2)} (${Math.min(...offs).toFixed(2)} to ${Math.max(...offs).toFixed(2)})`);
 } catch (err) {
   hold("the trip ran to its end", false, err instanceof Error ? err.message : String(err));
 } finally {

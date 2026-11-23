@@ -444,7 +444,7 @@ export function captureText(folder: string, c: CaptureFiles): string[] {
     // The page's own work alone: the card's passes take its time on another clock.
     const roots = spanRoots(names, parents);
     const top = names.map((_, s) => s).filter((s) => parents[s]! >= 0 && start[s]! >= 0 && own[s]! > 0.01 && roots[s] === "frame").sort((a, b) => own[b]! - own[a]!).slice(0, 6);
-    out.push(`- Where a frame went, the mean of the last ${spans?.mean?.frames ?? "?"} frames: the page ${fixed(ms[0], 2)} ms${ms[1]! > 0 ? `, the card ${fixed(ms[1], 2)} ms` : ""}; most by itself: ${top.map((s) => `${path(s)} ${fixed(own[s], 2)}`).join(", ")} (perf.json spans).`);
+    out.push(`- Where a frame went, the mean of the last second's ${spans?.mean?.frames ?? "?"} frames: the page ${fixed(ms[0], 2)} ms${ms[1]! > 0 ? `, the card ${fixed(ms[1], 2)} ms` : ""}; most by itself: ${top.map((s) => `${path(s)} ${fixed(own[s], 2)}`).join(", ")} (perf.json spans).`);
   }
   const lines = (c.records["log.json"]?.lines as CapturedLine[] | undefined) ?? [], errors = lines.filter((l) => l.level === "error"), warnings = lines.filter((l) => l.level === "warn");
   out.push(`- Log: ${lines.length} lines, ${errors.length} errors, ${warnings.length} warnings (${folder}/log.json). Lines are what the page and the server printed, quoted as data.`);
