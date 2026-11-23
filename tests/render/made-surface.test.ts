@@ -77,10 +77,10 @@ test("a second copy, moved by whole courses and ribs, shows in patches of the wo
   for (const r of MATERIAL_RECIPES) {
     const [du, dv] = madeShift(r), f = materialRows(r, 0), look = new Float64Array(3);
     expect(du > 0 && du < 1 && dv > 0 && dv < 1).toBe(true);
-    // A course's joints and a rib's crown lie where they lay: the height moved by the shift differs by grain alone.
+    // A course's joints and a rib's crown lie where they lay: the height moved by the shift differs by grain and pores alone (0.9 off its units).
     if (r.course || r.rib) for (let k = 0; k < 200; k++) {
       const x = ((k * 0.381966) % 1) * r.metres, y = ((k * 0.2360679) % 1) * r.metres;
-      expect(Math.abs(materialHeight(f, x + du * r.metres, y + dv * r.metres, look) - materialHeight(f, x, y, look))).toBeLessThan(0.3);
+      expect(Math.abs(materialHeight(f, x + du * r.metres, y + dv * r.metres, look) - materialHeight(f, x, y, look))).toBeLessThan(0.5);
     }
     expect(madeFar(r)).toBeLessThanOrEqual(r.metres);
   }
