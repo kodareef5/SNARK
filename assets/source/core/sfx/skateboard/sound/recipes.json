@@ -1199,6 +1199,906 @@
         "stored_as": "mono PCM_24",
         "margin_seconds": 0.05
       }
+    },
+    "takes/flip/moss-pt-10671-03265.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "flip",
+      "prompt_id": "v4-10670",
+      "prompt": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10671,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10671.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2bab8a541a324461d2c3a27cbeb1189b0d6ad698824e09e6c2f91fd889f820f3",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 90.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6b64e7eb70eb48a0267203eb6becc6144be7657ff1fa8f9989d79fc7b813d2af",
+      "cut": {
+        "source_file": "moss-pt-10671.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          154320,
+          169104
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/flip/moss-pt-10670-05055.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "flip",
+      "prompt_id": "v4-10670",
+      "prompt": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 52.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "44e0cca07deec34772581a26b4cb02396e1c51e20b9dfa17b1a7b84c23d5d587",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 90.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7b83d8e4ef02d5c0f6f47961bd9031cc1cec23bbb408a5c9956f40bc8a680e7e",
+      "cut": {
+        "source_file": "moss-pt-10670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          240240,
+          292320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/flip/moss-pt-10670-03260.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "flip",
+      "prompt_id": "v4-10670",
+      "prompt": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 52.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "127aabaec4fb359c8fa11805976eadd0f7d8b4918bc2cf9d0c53461a734e9178",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 90.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7b83d8e4ef02d5c0f6f47961bd9031cc1cec23bbb408a5c9956f40bc8a680e7e",
+      "cut": {
+        "source_file": "moss-pt-10670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          154080,
+          208080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/flip/moss-pt-10671-04205.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "flip",
+      "prompt_id": "v4-10670",
+      "prompt": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10671,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10671.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3e39d60588142b20eb9dfded50c38369dabb4e64e71c629ebb9b4a6e842a0b0d",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 90.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6b64e7eb70eb48a0267203eb6becc6144be7657ff1fa8f9989d79fc7b813d2af",
+      "cut": {
+        "source_file": "moss-pt-10671.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          199440,
+          230400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/catch/moss-pt-10680-00120.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "catch",
+      "prompt_id": "v4-10680",
+      "prompt": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10680,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10680.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 52.4,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "46682d7cfa32aba326f80675dc7d5b016301c00e658d669bba1c492fdb7d4fea",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 85.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5ba5ca995a4965d171527a80142cbecabdd9c07bf54c25f0bfc86aa470b91c86",
+      "cut": {
+        "source_file": "moss-pt-10680.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          3359,
+          15600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/catch/moss-pt-10681-07870.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "catch",
+      "prompt_id": "v4-10680",
+      "prompt": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10681,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10681.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4fea056872fc1937461326b831ac3106b033e4d5c7762d1998a5932e3dae83ee",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 85.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "17110fcecc420aa39866b24a43056562374fd86cd5dab345a58f9a11b87a0b6e",
+      "cut": {
+        "source_file": "moss-pt-10681.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          375360,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/catch/moss-pt-10680-05125.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "catch",
+      "prompt_id": "v4-10680",
+      "prompt": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10680,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10680.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 52.4,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "beeeadda66f7dde24d3245f236effa250fbe5007ede3b9b5dd14619717464ff5",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 85.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5ba5ca995a4965d171527a80142cbecabdd9c07bf54c25f0bfc86aa470b91c86",
+      "cut": {
+        "source_file": "moss-pt-10680.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          243600,
+          261840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/catch/moss-pt-10681-00540.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "catch",
+      "prompt_id": "v4-10680",
+      "prompt": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10681,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10681.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f4be4e14f92adf2fb0b9d8028b51d1c3e4aa09ddffb61ff010ad1c666e5ed125",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 85.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "17110fcecc420aa39866b24a43056562374fd86cd5dab345a58f9a11b87a0b6e",
+      "cut": {
+        "source_file": "moss-pt-10681.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          23520,
+          42864
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/revert/moss-pt-10690-04050.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "revert",
+      "prompt_id": "v4-10690",
+      "prompt": "A skateboard's wheels slide sideways and scrape round on smooth concrete as it turns half a circle: a short rubbery hiss, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10690,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10690.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboard's wheels slide sideways and scrape round on smooth concrete as it turns half a circle: a short rubbery hiss, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 59.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "824a1bf217e767c0a637fe2c2555b6c518268b3f73614a34005e6f4d287ab504",
+      "worker": {
+        "takes": 1,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 62.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 14.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "4a2bab648b61d9f40cf11ce4ee49a410076ded102135ed02f61910aefc3d3e1f",
+      "cut": {
+        "source_file": "moss-pt-10690.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          192000,
+          228000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/revert/moss-pt-10690-00100.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "revert",
+      "prompt_id": "v4-10690",
+      "prompt": "A skateboard's wheels slide sideways and scrape round on smooth concrete as it turns half a circle: a short rubbery hiss, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10690,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10690.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboard's wheels slide sideways and scrape round on smooth concrete as it turns half a circle: a short rubbery hiss, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 59.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e5f399a96bd2fe2bfad6de5e0c7436c11ae9b996f860bb787fd16127023d00f7",
+      "worker": {
+        "takes": 1,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 62.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 14.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "4a2bab648b61d9f40cf11ce4ee49a410076ded102135ed02f61910aefc3d3e1f",
+      "cut": {
+        "source_file": "moss-pt-10690.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          2400,
+          38400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/grind/loop/moss-pt-10700-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "grind/loop",
+      "prompt_id": "v4-10700",
+      "prompt": "A skateboard's metal trucks grind steadily along a long concrete ledge: a constant rough metallic scraping and rumble, without pause. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10700,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10700.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboard's metal trucks grind steadily along a long concrete ledge: a constant rough metallic scraping and rumble, without pause. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 52.5,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "64083144b6f5862889a5a492ce65f1f4bd953ad9e1a71e0b672ccc09a96c13ca",
+      "worker": {
+        "takes": 1,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 54.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "79b94972331df1895bbf455b7efd72ff1f39c2fe63baa47b3d130b9f467c11ae",
+      "cut": {
+        "source_file": "moss-pt-10700.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/slide/loop/moss-pt-10710-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "slide/loop",
+      "prompt_id": "v4-10710",
+      "prompt": "A skateboard slides sideways along a ledge on the wood of its deck: a constant dry wooden hiss and scrape, without pause. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10710,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-23",
+      "file": "moss-pt-10710.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A skateboard slides sideways along a ledge on the wood of its deck: a constant dry wooden hiss and scrape, without pause. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 58.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "58175d7524731e2cab7ddf861278590374de8cf9730baef38b0c9a9f98814acb",
+      "worker": {
+        "takes": 1,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 61.5,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 17.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1f0202512d644e63511e36f428ee0ff1643718857bcf56136c6c5eb625b374ba",
+      "cut": {
+        "source_file": "moss-pt-10710.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
     }
   }
 }

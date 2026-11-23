@@ -2,7 +2,7 @@
   "asset": "core/sfx/skateboard",
   "review": "../ref/sound",
   "about": "Skateboards: rolling on rough and smooth ground, pushing, the ollie's pop, landing, grinding a rail and the board clattering away.",
-  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest. v4: flip, catch, revert and the held grind and slide for the trick overhaul.",
   "slots": {
     "roll/rough": {
       "kind": "impact",
@@ -148,6 +148,111 @@
           "text": "A skateboard flies away from its rider and clatters across concrete, tumbling and banging, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
+    },
+    "flip": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the deck flicked into a spin",
+      "prompts": [
+        {
+          "id": "v4-10670",
+          "models": [
+            "moss"
+          ],
+          "seed": 10670,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A skateboarder kicks a skateboard into a flip: a quick wooden flick and the whirr of the deck spinning in the air, five separate flips with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 5
+    },
+    "catch": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the feet catching the deck",
+      "prompts": [
+        {
+          "id": "v4-10680",
+          "models": [
+            "moss"
+          ],
+          "seed": 10680,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A skateboarder's shoes slap down onto the grip tape of a spinning board: a sharp double clap of rubber soles on wood, five separate catches with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 5
+    },
+    "revert": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the wheels scraping round",
+      "prompts": [
+        {
+          "id": "v4-10690",
+          "models": [
+            "moss"
+          ],
+          "seed": 10690,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A skateboard's wheels slide sideways and scrape round on smooth concrete as it turns half a circle: a short rubbery hiss, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "grind/loop": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.0,
+      "want": "grinding along an edge, held",
+      "prompts": [
+        {
+          "id": "v4-10700",
+          "models": [
+            "moss"
+          ],
+          "seed": 10700,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A skateboard's metal trucks grind steadily along a long concrete ledge: a constant rough metallic scraping and rumble, without pause. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "slide/loop": {
+      "kind": "impact",
+      "range": 30,
+      "level": -17,
+      "vary": 0.0,
+      "want": "sliding across an edge, held",
+      "prompts": [
+        {
+          "id": "v4-10710",
+          "models": [
+            "moss"
+          ],
+          "seed": 10710,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A skateboard slides sideways along a ledge on the wood of its deck: a constant dry wooden hiss and scrape, without pause. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
     }
   }
 }

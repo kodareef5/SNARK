@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "91cd7750e130ee9e",
+    "id": "c965968022b60167",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -106,7 +106,7 @@
       {"name": "core-sfx-reward", "file": "core-sfx-reward.543f96611918.tar.zst", "bytes": 2237580, "sha256": "543f96611918271e5792d37b25032af1faa0220cf1c680c4f23d3913a6159877"},
       {"name": "core-sfx-ruins", "file": "core-sfx-ruins.0ca23a5afce4.tar.zst", "bytes": 9154440, "sha256": "0ca23a5afce4d1f988b436cefaa405db786a4a5df9b698bfd1ef51dbea7f2f7c"},
       {"name": "core-sfx-ship", "file": "core-sfx-ship.d06dea7d4d56.tar.zst", "bytes": 16017404, "sha256": "d06dea7d4d5686bc3be6ad38e1531b5446180bf1076721748a3d11c90df7ad58"},
-      {"name": "core-sfx-skateboard", "file": "core-sfx-skateboard.701b8a370aa2.tar.zst", "bytes": 4344304, "sha256": "701b8a370aa23b789a0f6de3b3ca74ca7fb5e57575975d459615c82a70b50749"},
+      {"name": "core-sfx-skateboard", "file": "core-sfx-skateboard.a04458f1418e.tar.zst", "bytes": 8055913, "sha256": "a04458f1418e47c4d1aafe06e4ae68526995c012da1847d35926ab397feb174a"},
       {"name": "core-sfx-speedboat", "file": "core-sfx-speedboat.237c1856bbcb.tar.zst", "bytes": 12206290, "sha256": "237c1856bbcb4789d248f3c6c4d89bd71fcc21c63033f8ad59b984c083769a30"},
       {"name": "core-sfx-status", "file": "core-sfx-status.cccf5d8a0d6d.tar.zst", "bytes": 8186466, "sha256": "cccf5d8a0d6dace1108a1387b419065ed6cf7650e378fd9729996bea6945f611"},
       {"name": "core-sfx-structure", "file": "core-sfx-structure.05c70786c78d.tar.zst", "bytes": 6023514, "sha256": "05c70786c78da15161c48d97b2ff579d84823a60e92451240ded760b2b7f5ec2"},
