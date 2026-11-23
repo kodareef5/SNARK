@@ -93,6 +93,83 @@ test("a breached ground bay drops nothing, and two opened side by side peel the 
   expect(forms().filter((f, k) => f !== placed[k]).length).toBe(2 + 8 + 10);
 });
 
+test("a house, a shop row, a shed and a garage broken as the design's table has them lose nothing", () => {
+  // A house on the 4 m kit: a beam, a sill and a fin a bay, a slab and a pitched roof a tile.
+  const house = new Sketch(3, 2, 4, 80, 80);
+  const bay: number[] = [];
+  for (let i = 0; i < 3; i++) for (const [j, side] of [[0, SIDE_FRONT], [1, SIDE_BACK]] as const) {
+    const pieces = [house.edge("beam4", "concrete", i, j, side, 0, 3.4), house.edge("sill4", "concrete", i, j, side, 0), house.edge("fin4", "concrete", i, j, side, 0)];
+    if (i === 1 && j === 0) bay.push(...pieces);
+  }
+  for (let j = 0; j < 2; j++) {
+    house.edge("beam4", "concrete", 0, j, SIDE_LEFT, 0, 3.4);
+    house.edge("beam4", "concrete", 2, j, SIDE_RIGHT, 0, 3.4);
+  }
+  for (let j = 0; j < 2; j++) for (let i = 0; i < 3; i++) {
+    house.slab(i, j, 1);
+    house.put("zpitch4", "clay", i, j, 4);
+  }
+  // A shop row: a storefront a bay under a parapet, panels behind, a roof.
+  const shops = new Sketch(4, 1, 8, 150, 80);
+  const store = shops.edge("zstore", "concrete", 1, 0, SIDE_FRONT, 0);
+  for (let i = 0; i < 4; i++) {
+    if (i !== 1) shops.edge("zstore", "concrete", i, 0, SIDE_FRONT, 0);
+    shops.edge("zpanel8", "concrete", i, 0, SIDE_BACK, 0);
+    shops.edge("zparapet8", "concrete", i, 0, SIDE_FRONT, 1);
+    shops.slab(i, 0, 1, "floor8", "tar");
+  }
+  // A shed: three storeys of cladding on a frame of beams, one roof and no floors between.
+  const shed = new Sketch(3, 1, 8, 80, 150);
+  shed.storeys = shed.playable = 3;
+  let clad = -1;
+  for (let storey = 0; storey < 3; storey++) for (let i = 0; i < 3; i++) for (const side of [SIDE_FRONT, SIDE_BACK]) {
+    shed.edge("beam8", "concrete", i, 0, side, storey, 3.4);
+    const k = shed.edge("zclad", "concrete", i, 0, side, storey);
+    if (storey === 0 && i === 1 && side === SIDE_FRONT) clad = k;
+  }
+  for (let i = 0; i < 3; i++) shed.slab(i, 0, 3, "floor8", "tar");
+  // A garage: decks on piers every 16 m inside a ring of deck walls.
+  const garage = new Sketch(4, 4, 8, 170, 170);
+  garage.storeys = garage.playable = 2;
+  let deck = -1;
+  for (let storey = 0; storey < 2; storey++) {
+    garage.pier(1, 1, storey);
+    for (let k = 0; k < 4; k++) {
+      garage.edge("zdeck", "concrete", k, 0, SIDE_FRONT, storey);
+      garage.edge("zdeck", "concrete", k, 3, SIDE_BACK, storey);
+      garage.edge("zdeck", "concrete", 0, k, SIDE_LEFT, storey);
+      garage.edge("zdeck", "concrete", 3, k, SIDE_RIGHT, storey);
+    }
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+      const k = garage.slab(i, j, storey + 1);
+      if (storey === 0 && i === 1 && j === 1) deck = k;
+    }
+  }
+  const c = sketchCity([house, shops, shed, garage]);
+  const collapse = c.h.host.cityCollapse;
+  const placed = c.all.map((refs) => refs.map((ref) => c.form(ref)));
+  // The house's front bay is opened; the storefront is breached and then opened; the shed's bay is cut open; the deck is holed.
+  for (const k of bay) openUp(c, c.all[0]![k]!);
+  strike(c, c.all[1]![store]!);
+  expect(collapse.waiting).toBe(1);
+  openUp(c, c.all[1]![store]!);
+  // A shop's half piers bear when it is opened, so its building was never in doubt.
+  expect(collapse.waiting).toBe(1);
+  openUp(c, c.all[2]![clad]!);
+  strike(c, c.all[3]![deck]!);
+  expect([FORM_BREACH_A, FORM_BREACH_B]).toContain(c.form(c.all[3]![deck]!));
+  expect(collapse.waiting).toBe(2);
+  settle(c);
+  // Nothing fell or hung in any of them: only the pieces struck changed.
+  expect([collapse.fallen, collapse.hung, collapse.waves]).toEqual([0, 0, 0]);
+  const changed = c.all.map((refs, b) => refs.filter((ref, k) => c.form(ref) !== placed[b]![k]).length);
+  expect(changed).toEqual([3, 1, 1, 1]);
+  // The deck opened whole stands as its teeth, and nothing rode it.
+  openUp(c, c.all[3]![deck]!);
+  settle(c);
+  expect([collapse.fallen, collapse.hung]).toEqual([0, 0]);
+});
+
 /** A mast: `storeys` of one pier with four slabs round its head, on 2 by 2 tiles round (x, z). */
 function mast(storeys: number, x: number, z: number): { s: Sketch; piers: number[]; slabs: number[][] } {
   const s = new Sketch(2, 2, 8, x, z);
@@ -181,7 +258,7 @@ test("two buildings falling in one chunk share its waves, and no batch still new
   expect([most, spent <= JUDGEMENTS + 2 * 3 * c.all[0]!.length]).toEqual([2, true]);
   h.run(500);
   // The client was sent each wave as its batch: its rows are the server's, and the whole of both falls cost it this.
-  const mine = s.world.structs.chunks[chunk]!;
+  const mine = s.world!.structs.chunks[chunk]!;
   expect(Array.from(mine.kind.subarray(0, t.high))).toEqual(Array.from(t.kind.subarray(0, t.high)));
   console.log(`city collapse wire: two masts of 80 pieces each falling in one chunk, ${messages} chunk messages, ${bytes} bytes; ${s.rubble.length} pieces seen to fall`);
   expect(bytes).toBeLessThan(16 * 64);

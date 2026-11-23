@@ -26,7 +26,7 @@
 import { BREAK_FAMILIES, FORM_HEAP, FORM_HUNG, FORM_OPEN, formKind } from "../content/breaks.ts";
 import type { Registry } from "../content/registry.ts";
 import { YAW_UNITS } from "../coords.ts";
-import { STOREY, STOREY_SLACK, blankFrame, type Buildings } from "./buildings.ts";
+import { STOREY, blankFrame, type Buildings } from "./buildings.ts";
 import type { StructureStore } from "./structures.ts";
 
 /** What the rule says of a piece, in the low two bits of its answer. */
@@ -153,10 +153,15 @@ export function gather(buildings: Buildings, handles: readonly number[], structs
   for (let q = t.stairAt[b]!; q < t.stairAt[b + 1]!; q++) if (t.stairI[q]! < cols && t.stairJ[q]! < rows) out.stairs[t.stairJ[q]! * cols + t.stairI[q]!] = 1;
   const [mostU, mostV] = [2 * cols, 2 * rows];
   for (const handle of handles) {
-    buildings.eachRun(handle, (chunk, slot0, count) => {
+    const runs = buildings.table(handle);
+    buildings.eachRun(handle, (chunk, slot0, count, run) => {
       const rowsOf = structs.chunks[chunk];
       if (!rowsOf) return;
+      // The storey its layout placed each piece on: the run's slots are in storeys ascending.
+      let step = runs.stepAt[run]!;
       for (let slot = slot0; slot < slot0 + count; slot++) {
+        while (slot - slot0 >= runs.steps[step]!) step++;
+        const storey = runs.runStorey[run]! + step - runs.stepAt[run]!;
         const k = out.next();
         out.ref[k] = chunk * 65536 + slot;
         const mapKind = structs.mapKind(chunk, slot);
@@ -187,7 +192,6 @@ export function gather(buildings: Buildings, handles: readonly number[], structs
         out.v0[k] = v0 < 0 ? 0 : v0;
         out.v1[k] = v1 > mostV ? mostV : v1;
         const y = rowsOf.y[slot]! - frame.base;
-        const foot = Math.floor((y + structs.low[mapKind]! + STOREY_SLACK) / STOREY);
         const height = Math.round((structs.top[mapKind]! - structs.low[mapKind]!) / STOREY);
         out.tall[k] = height < 1 ? 1 : height > 255 ? 255 : height;
         const form = kind === 0 ? 0 : reg.breakSet[kind] !== 0 ? reg.breakForm[kind]! : 0;
@@ -197,14 +201,16 @@ export function gather(buildings: Buildings, handles: readonly number[], structs
         if (ghost) bits |= BIT_GHOST;
         else if (carries && carrying(reg, kind)) bits |= BIT_CARRIES;
         if (!ghost && carries && fam !== SLAB && form <= FORM_OPEN) bits |= BIT_UNDER;
-        if (fam === SLAB || y + structs.low[mapKind]! - foot * STOREY <= FOOT) bits |= BIT_FOOTED;
+        if (fam === SLAB || y + structs.low[mapKind]! - storey * STOREY <= FOOT) bits |= BIT_FOOTED;
         // A pier with no foot falls: only a slab and what is fixed to one hang.
         if (fam !== PIER && formKind(reg, mapKind, FORM_HUNG, 0) !== 0) bits |= BIT_CAN_HANG;
         if (form === FORM_HUNG) bits |= BIT_HUNG;
         if (form === FORM_HEAP) bits |= BIT_HEAP;
         out.bits[k] = bits;
-        // A slab lies at the level its top is at. One that lies over no tile's middle rides as a wall does.
-        const level = fam === SLAB ? Math.round((y + structs.top[mapKind]!) / STOREY) : foot;
+        // A slab lies at the level its top is at. Any other piece stands on its storey's floor, as its layout had it: a
+        // balcony's module hangs below its floor, and its foot would say the storey under. A slab that lies over no
+        // tile's middle rides as a wall does.
+        const level = fam === SLAB ? Math.round((y + structs.top[mapKind]!) / STOREY) : storey;
         out.level[k] = level < 0 ? 0 : level > 255 ? 255 : level;
         const plate = fam === SLAB && odd(out.u0[k]!, out.u1[k]!) && odd(out.v0[k]!, out.v1[k]!);
         out.part[k] = plate ? PART_PLATE : PART_RIDER;
@@ -280,6 +286,8 @@ export function judge(p: Pieces, out: Uint8Array, pin: Uint8Array | null = null)
       if ((bits & BIT_UNDER) !== 0) for (let v = p.v0[k]!; v <= p.v1[k]!; v++) for (let u = p.u0[k]!; u <= p.u1[k]!; u++) if (restTop[v * W + u]! < upTo) restTop[v * W + u] = upTo;
       if ((bits & BIT_CARRIES) === 0 || p.family[k] === SLAB) continue;
       for (let v = p.v0[k]!; v <= p.v1[k]!; v++) for (let u = p.u0[k]!; u <= p.u1[k]!; u++) if (rideTop[v * W + u]! < upTo) rideTop[v * W + u] = upTo;
+      // A fin is a post for what stands on it, and holds up no floor.
+      if (p.family[k] === BAR) continue;
       const [a0, a1, b0, b1] = [inner0(p.u0[k]!, p.u1[k]!), inner1(p.u0[k]!, p.u1[k]!), inner0(p.v0[k]!, p.v1[k]!), inner1(p.v0[k]!, p.v1[k]!)];
       for (let v = b0; v <= b1; v++) for (let u = a0; u <= a1; u++) if (holdTop[v * W + u]! < upTo) holdTop[v * W + u] = upTo;
     }
