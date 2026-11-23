@@ -246,3 +246,27 @@ test("the Staggers, StaggerSpeed and KnockdownSpeed settings decide what a blow 
     expect(r.shove(c.ent, 8, 0, -1, 1.3, true)).toBe(TIER_STAGGER);
   } finally { h.host.shutdown(); }
 });
+
+test("walking into a wall is felt once by its own client, as a soft blow drawn at the chest", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    const s = h.join("walker", { latencyMs: 60 });
+    h.run(600);
+    const a = h.world.ents, c = h.client(s)!, pilot = h.pilots[0]!;
+    // A stone wall across +Z, two metres ahead.
+    const wall = h.reg.index.get("core:wall_stone")!;
+    h.world.structs.add(wall, 100, h.reg.halfY[wall]!, 82, 0, 1, 10000);
+    a.setPosition(c.ent, 100, 0, 80);
+    h.world.history.discontinuity(c.ent);
+    h.run(600);
+    let bumps = 0;
+    pilot.yaw = 0; pilot.moveZ = 1;
+    h.run(3000, () => {
+      for (const im of s.impacts) if (im.id === c.ent) bumps++;
+      s.impacts.length = 0;
+    });
+    // One bump on reaching it, none while it keeps pressing, and the server never staggered it.
+    expect(bumps).toBe(1);
+    expect(a.react[c.ent]).toBe(0);
+  } finally { h.host.shutdown(); }
+});

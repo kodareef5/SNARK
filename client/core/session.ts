@@ -16,7 +16,7 @@ import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { VehiclePrediction } from "./vehicle-prediction.ts";
 import { VehicleCorrection } from "./vehicle-correction.ts";
 import { newerCorpseMotion, readCorpseMotion, type CorpseMotion } from "../../shared/net/corpse.ts";
-import { CMD_CORPSE, S_CORPSE } from "../../shared/net/protocol.ts";
+import { CMD_CORPSE, IMPACT_MELEE, S_CORPSE } from "../../shared/net/protocol.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
@@ -118,7 +118,9 @@ import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
+import { REACT_RULES } from "../../shared/sim/react.ts";
+import { B_CHEST } from "../../shared/anim/human.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { SPIN } from "../../shared/sim/skate-state.ts";
@@ -534,6 +536,9 @@ export class ClientSession {
   shotOrigin: ((out: Float64Array, tick: number, yaw: number, pitch: number) => boolean) | null = null;
   private readonly shotEye = new Float64Array(3);
   private firedTick = 0;
+  /** The last tick its own body was felt bumping a wall, and the last it touched one at all. */
+  private bumpTick = 0;
+  private wallTick = -2;
   /** Oldest first. Shots.absorb takes the shots and blasts, then Feedback.absorb empties it. */
   readonly events: CombatEvent[] = [];
   /** Blows that landed on bodies near, oldest first (EVENT_IMPACT). The scene takes them each frame. */
@@ -1181,6 +1186,21 @@ export class ClientSession {
     this.remoteDelay = want > d ? Math.min(want, d + ticks * 0.1) : Math.max(want, d - ticks * 0.01);
   }
 
+  /**
+   * Its own body coming up against a wall hard enough to feel it, on the tick's first step only: drawn as a soft blow at
+   * the chest, back off the wall (render/impact-springs.ts). Drawn only; nothing else changes.
+   */
+  private bumped(t: number): void {
+    const into = stepOut.wallInto;
+    if (into <= 0) return;
+    const fresh = t - this.wallTick > 1;
+    this.wallTick = t;
+    if (!fresh || t <= this.bumpTick || into < REACT_RULES.bump) return;
+    this.bumpTick = t;
+    if (this.impacts.length >= MAX_IMPACTS) this.impacts.shift();
+    this.impacts.push({ id: handleIndex(this.ownHandle), bone: B_CHEST, dx: stepOut.wallNx, dy: 0, dz: stepOut.wallNz, strength: Math.min(0.4, into / 8), kind: IMPACT_MELEE });
+  }
+
   private step(t: number, pilot = true): void {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
@@ -1203,6 +1223,7 @@ export class ClientSession {
       if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, p, combat, TICK_DT, true, !pilot);
       else stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, p, TICK_DT);
       this.world!.blockers = null;
+      this.bumped(t);
       this.meetVehicles(t, p);
     } else {
       this.own.yaw = inp.yaw[i]!;
