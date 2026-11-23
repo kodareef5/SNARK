@@ -17,7 +17,7 @@ import {
 } from "../core/render/uniforms.ts";
 import { made, type Made } from "./texgen.ts";
 import type { Orders, Texgen } from "../core/texgen/engine.ts";
-import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_MAKING, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
+import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_MAKING, PASS_OF_STEP, PASS_UPLOADS, type PassClock, type PassCpu } from "../core/passes.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import {
   BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift,
@@ -171,6 +171,11 @@ export class GlRenderer {
   private parallel = false;
   /** Where the frame's GPU time goes (passes.ts), if anything times it. */
   passes: PassClock | null = null;
+  /** The page's own time in each pass, which each draw fills while the debug bar reads it (passes.ts PassCpu). */
+  cpu: PassCpu | null = null;
+  /** The pass the page's clock is in for `cpu`, -1 for none, and since when. */
+  private cpuPass = -1;
+  private cpuFrom = 0;
   /** A pixel for each map a material lacks or has not been sent, made the first time a frame draws with materials. */
   private neutral: WebGLTexture[] = [];
   private current: Program | null = null;
@@ -908,7 +913,13 @@ export class GlRenderer {
   }
 
   draw(p: FramePacket): void {
-    const gl = this.gl;
+    const gl = this.gl, cpu = this.cpu;
+    if (cpu) {
+      cpu.began = performance.now();
+      cpu.start.fill(NaN);
+      cpu.ms.fill(0);
+      this.cpuPass = -1;
+    }
     this.streetEnvironment(p);
     this.drawCalls = 0;
     this.serial++;
@@ -939,7 +950,7 @@ export class GlRenderer {
     // What the card makes is drawn before anything of the frame; a clock timing the frame times it as its first pass,
     // and it is not timed apart.
     this.set(false, false, false);
-    this.passes?.mark(PASS_MAKING);
+    this.mark(PASS_MAKING);
     if (this.texgen && this.gen.draw(this.texgen.frame(p.texgenSide, p.tier, !this.passes?.on, (p.texgenHolds = this.texgen.holds, p.texgenWant)), this.job, this.anisotropyOf)) {
       this.current = null;
       this.vao = this.gen.vao;
@@ -950,7 +961,7 @@ export class GlRenderer {
       this.worldSide[r] = p.worldSide[r]!;
       this.worldBase[r] = -2;
     }
-    this.passes?.mark(PASS_UPLOADS);
+    this.mark(PASS_UPLOADS);
     // Running out of memory shows as an error after the fact, and asking makes the page wait for the card to have done all
     // it was given, which on a busy card is frames of work. So it is asked before this frame's uploads, where the card
     // had finished the last frame by the time this one began, or after ASK_MOST_MS; a want of memory fails everything
@@ -1187,7 +1198,22 @@ export class GlRenderer {
       this.asking = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
       this.askFrame = this.serial;
     }
-    this.passes?.end();
+    this.mark(-1);
+  }
+
+  /** Pass `pass` begins, or for -1 the frame's draws end: on the card's clock, and on the page's while the bar reads it. */
+  private mark(pass: number): void {
+    const cpu = this.cpu;
+    if (cpu) {
+      const now = performance.now(), open = this.cpuPass;
+      if (open >= 0) cpu.ms[open]! += now - this.cpuFrom;
+      if (pass >= 0 && Number.isNaN(cpu.start[pass]!)) cpu.start[pass] = now - cpu.began;
+      if (pass < 0) cpu.ended = now;
+      this.cpuPass = pass;
+      this.cpuFrom = now;
+    }
+    if (pass < 0) this.passes?.end();
+    else this.passes?.mark(pass);
   }
 
   /**
@@ -1291,7 +1317,7 @@ export class GlRenderer {
     const gl = this.gl;
     const map = this.shadow;
     const cascades = p.lit ? p.tier.shadows.cascades : 0, size = p.lit ? p.tier.shadows.size : 0, layers = p.lit ? shadowLayers(p.tier.shadows) : 0;
-    this.passes?.mark(PASS_CASTERS);
+    this.mark(PASS_CASTERS);
     if (map.size !== size || map.targets.length !== layers) {
       gl.deleteTexture(map.texture);
       for (const t of map.targets.splice(0)) gl.deleteFramebuffer(t);
@@ -1404,7 +1430,7 @@ export class GlRenderer {
   /** The finish (post.ts): the scene resolved, bloom's chain down and then up, adding, and the finish into the canvas. */
   private toCanvas(p: FramePacket): void {
     const gl = this.gl, t = this.post, levels = Math.min(p.frame[FRAME.levels]!, t.tex.length - 1), [w, h] = this.post.drawn;
-    this.passes?.mark(PASS_FINISH);
+    this.mark(PASS_FINISH);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0]!);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbs[1]!);
     if (t.fbs[0] !== t.fbs[1]) gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
@@ -1455,7 +1481,7 @@ export class GlRenderer {
     const far = s === STEP_FAR || s === STEP_FAR_SEE;
     const half = p.split > 0 && s !== STEP_BODY;
     this.view = this.serial * 16 + s;
-    this.passes?.mark(s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes + 3]! > 0) ? PASS_DOME : PASS_OF_STEP[s]!);
+    this.mark(s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes + 3]! > 0) ? PASS_DOME : PASS_OF_STEP[s]!);
     this.matrix = s === STEP_BODY ? p.nearViewProj : far && half ? p.farViewProj : p.viewProj;
     this.matrixAt = 0;
     this.from = s === STEP_FAR_SEE ? p.split : 0;
@@ -1474,7 +1500,7 @@ export class GlRenderer {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.depthFunc(gl.LESS);
       this.drawCalls++;
-      this.passes?.mark(PASS_FAR_SEE);
+      this.mark(PASS_FAR_SEE);
     }
     this.groundLeft = s <= STEP_FAR;
   }

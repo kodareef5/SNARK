@@ -29,7 +29,8 @@ import { pressKey } from "./key-row.ts";
 import { KEY_ROWS } from "./keys.ts";
 import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
 import { HudFill } from "./hud/widget.ts";
-import { AppFrame, type FramePart } from "./frame.ts";
+import { AppFrame, type FramePart, type PartRow } from "./frame.ts";
+import type { Probe } from "./probe.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Sight } from "./sight.ts";
 import { Director } from "./view/director.ts";
@@ -281,7 +282,7 @@ export class App {
       this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
-    this.parts = this.rows();
+    this.parts = this.listed();
   }
 
   readonly builder = new Builder();
@@ -499,7 +500,7 @@ export class App {
   private tooled(): ToolHooks {
     if (!this.tools) {
       this.tools = new ToolHooks(this.supply);
-      this.parts = this.rows();
+      this.parts = this.listed();
     }
     return this.tools;
   }
@@ -587,45 +588,95 @@ export class App {
     page.go(trip ? arrivalAddress(serverAddress(list, to, page), session.name, trip.ticket) : joinAddress(serverAddress(list, to, page), session.name));
   }
 
+  /**
+   * Where the shell's frame was on the page's clock, which the shell writes each frame for the debug bar (debug/spans.ts
+   * SpanRing.close): its start, just before frame(), just after it, once the interface is applied, and once it is drawn.
+   */
+  readonly shellMarks = new Float64Array(5);
+  /** What times the frame while the debug bar is on, and the slots of the app's own spans. */
+  private timer: Probe | null = null;
+  private readonly spans = { app: -1, measure: -1, turn: -1, update: -1, sample: -1, build: -1 };
+
+  /**
+   * What times the frame while the debug bar is on (debug/spans.ts): measure, turn and each part under "app", and the
+   * scene's build under the part "build". Null, as in the game, runs the parts as rows() has them, with no wrappers.
+   */
+  get probe(): Probe | null {
+    return this.timer;
+  }
+  set probe(probe: Probe | null) {
+    this.timer = probe;
+    const s = this.spans;
+    if (probe) {
+      s.app = probe.slot("app", probe.slot("frame", -1));
+      s.measure = probe.slot("measure", s.app);
+      s.turn = probe.slot("turn", s.app);
+      s.update = probe.slot("update", s.turn);
+      s.sample = probe.slot("sample", s.turn);
+      s.build = probe.slot("build", s.app);
+    }
+    this.parts = this.listed();
+    this.scene?.time(probe, s.build);
+  }
+
+  /** While the frame is timed: `slot` ran from `from` until now. Returns now, or 0 untimed. */
+  private lap(slot: number, from: number): number {
+    const probe = this.timer;
+    if (!probe) return 0;
+    const now = probe.now();
+    probe.add(slot, from, now);
+    return now;
+  }
+
   /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
-    const f = this.f;
+    const f = this.f, probe = this.timer, from = probe ? probe.now() : 0;
+    probe?.begin(this.shellMarks[0] || from);
     this.measure(f, nowMs, width, height);
-    if (!this.turn(f)) return null;
+    const measured = this.lap(this.spans.measure, from), turned = this.turn(f);
+    this.lap(this.spans.turn, measured);
     const parts = this.parts;
-    for (let i = 0; i < parts.length; i++) parts[i]!.step(f);
-    return f.packet;
+    if (turned) for (let i = 0; i < parts.length; i++) parts[i]!.step(f);
+    this.lap(this.spans.app, from);
+    return turned ? f.packet : null;
+  }
+
+  /** The frame's parts in rows()'s order, each timed by its name while the debug bar's probe is on. */
+  private listed(): FramePart[] {
+    const rows = this.rows();
+    return this.timer ? this.timer.parts(rows, this.spans.app) : rows.map((r) => r[1]);
   }
 
   /**
-   * The frame's parts, once the session has had its turn and there is a world. A part's place here is its place in the
-   * frame. A new part is a file of its own and a line here. The rows written out here are the app's own still.
+   * The frame's parts, once the session has had its turn and there is a world, each by the name the debug bar times it
+   * by. A part's place here is its place in the frame. A new part is a file of its own and a line here. The rows written
+   * out here are the app's own still.
    */
-  private rows(): FramePart[] {
+  private rows(): PartRow[] {
     const tools = this.tools;
     return [
       // A tool's lines are typed and its look held before anything reads the look.
-      ...(tools ? [tools.lines] : []),
+      ...(tools ? [["tool lines", tools.lines] as const] : []),
       // The camera's subject and its view; the instruments of a vehicle driven, whose speed widens the view; the aim and any sight.
-      this.director,
-      this.dash,
-      this.sight,
+      ["director", this.director],
+      ["dash", this.dash],
+      ["sight", this.sight],
       // With the view decided: the own body as it is drawn, then the camera placed.
-      this.director.body,
-      this.fallen,
-      this.director.place,
+      ["body", this.director.body],
+      ["fallen", this.fallen],
+      ["place", this.director.place],
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
-      { step: (f) => this.absorb(f) },
-      ...(tools ? [tools.stage] : []),
-      { step: (f) => this.build(f) },
-      ...(tools ? [tools.finish] : []),
-      this.guarded("sound", { step: (f) => this.hear(f) }),
-      { step: (f) => this.ghost(f) },
+      ["absorb", { step: (f) => this.absorb(f) }],
+      ...(tools ? [["tool stage", tools.stage] as const] : []),
+      ["build", { step: (f) => this.build(f) }],
+      ...(tools ? [["tool finish", tools.finish] as const] : []),
+      ["sound", this.guarded("sound", { step: (f) => this.hear(f) })],
+      ["ghost", { step: (f) => this.ghost(f) }],
       // What the use key is on, and the voice port told where speakers are. Then the HUD, which reads all of the above.
-      this.guarded("prompts", this.prompts),
-      this.guarded("voice", this.heard),
-      this.guarded("hud", { step: (f) => this.fillHud(f) }),
-      { step: (f) => this.interface(f) },
+      ["prompts", this.guarded("prompts", this.prompts)],
+      ["voice", this.guarded("voice", this.heard)],
+      ["hud", this.guarded("hud", { step: (f) => this.fillHud(f) })],
+      ["interface", { step: (f) => this.interface(f) }],
     ];
   }
 
@@ -704,8 +755,10 @@ export class App {
     const flyer = this.flyerKeys();
     f.airFrom = this.airFrom;
     this.director.cockpitNow(f);
+    const updating = this.timer ? this.timer.now() : 0;
     if (f.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.sight.buttons(this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons));
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
+    this.lap(this.spans.update, updating);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
     const world = session.world;
@@ -738,6 +791,7 @@ export class App {
       this.scene.supply = this.supply;
       this.ui.emotes.has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
+      if (this.timer) this.scene.time(this.timer, this.spans.build);
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
       const chart = (hud.chart = new Chart(world.hf, this.pack.palette));
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
@@ -767,7 +821,9 @@ export class App {
     }
     hud.status = this.debug ? `${scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
     // Sampled before the camera, which puts a passenger in its seat on the vehicle as it is drawn.
+    const sampling = this.timer ? this.timer.now() : 0;
     session.sampleRemote(this.remote);
+    this.lap(this.spans.sample, sampling);
   }
 
   /** What the session brought this frame is handed to what draws it, and the scene is told the time. */

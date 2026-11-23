@@ -78,6 +78,9 @@ export class Frame {
   }
 }
 
+/** A row of the frame's list: the name the debug bar shows the pass's time by, and the pass. */
+export type PassRow = readonly [name: string, pass: Pass];
+
 /** One function for each hook, which calls the passes that have it in the list's order. */
 export function walk(passes: readonly Pass[]): Required<Pass> {
   const updates = passes.filter((s) => s.update !== undefined);
