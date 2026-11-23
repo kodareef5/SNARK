@@ -132,5 +132,6 @@ is none. `-Config` names another, and `install` keeps the name it is given.
   `FrontHost = '0.0.0.0'`, players on the network reach the front directly, and
   the firewall must allow `FrontPort`.
 - **Updating.** `cluster.ps1 stop`, then `git pull`, `bun run build`, the maps
-  that changed and `bun run wiki`, then `cluster.ps1 start`. A change to the
+  that changed and `bun run wiki`, then `cluster.ps1 start`. Players' pages wait
+  the update out and come back by themselves. A change to the
   client alone needs no restart: the worlds read `client/dist` on every request.

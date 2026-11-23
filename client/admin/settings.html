@@ -23,7 +23,8 @@
       header { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
       header nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
       .glass { background: rgba(20, 36, 56, 0.78); border: 1px solid var(--edge); padding: 12px 14px; }
-      .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 1; }
+      .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .bar.find { position: sticky; top: 0; z-index: 1; }
       .bar input[type=search] { flex: 1 1 220px; min-width: 0; }
       #msg { flex: 1 1 100%; margin: 0; } #msg:empty { display: none; }
       .row { display: grid; grid-template-columns: minmax(0, 1fr) 300px 150px; gap: 4px 16px; padding: 8px 0; border-top: 1px solid rgba(168, 204, 234, 0.08); align-items: start; }
@@ -49,10 +50,17 @@
         <h1>Settings</h1><span class="dim">changed here, in force at once</span><span id="count" class="dim"></span>
         <nav><a href="./">Admin</a><a href="../">Play</a></nav>
       </header>
-      <section class="glass bar">
+      <section class="glass bar find">
         <input id="search" type="search" placeholder="Find a setting" aria-label="Find a setting" />
         <select id="show" aria-label="Which settings"></select>
         <p id="msg" class="dim"></p>
+      </section>
+      <section class="glass bar">
+        <span class="dim">Update</span>
+        <input id="stop-seconds" type="number" min="0" max="86400" step="1" value="60" aria-label="Seconds until the stop" style="width: 6em" />
+        <button id="stop">Stop the server</button>
+        <button id="stop-cancel" hidden>Cancel the stop</button>
+        <span id="stop-line" class="dim">Every page waits by itself and comes back when the server is up again.</span>
       </section>
       <div id="groups" class="page" style="padding: 0"></div>
     </div>

@@ -13,6 +13,7 @@ import { MARKS } from "./marks.ts";
 import { MINIMAP, MINIMAP_TOGGLE } from "./minimap.ts";
 import { PROMPT } from "./prompt.ts";
 import { READOUT } from "./readout.ts";
+import { RESTART } from "./restart.ts";
 import { HOLO_TINT, SIGHT } from "./sight.ts";
 import { STATE, WORDS } from "./state.ts";
 import { VEHICLE } from "./vehicle.ts";
@@ -41,5 +42,6 @@ export const HUD_WIDGETS: readonly HudWidget<any>[] = [
   CROSSHAIR,
   PROMPT,
   ACTION,
+  RESTART,
   WORDS,
 ];

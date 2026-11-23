@@ -251,6 +251,15 @@ export const S_SUPPLY = serverKind();
  * welcome carries them. A session derives the content again and leaves if its hash is another (shared/content/tuning.ts).
  */
 export const S_TUNING = serverKind();
+/**
+ * The server is stopping, for an update or a restart: seconds until it does, u16. RESTART_GO is "go now": the page
+ * leaves for its waiting page while the server still answers. RESTART_OFF takes a stop that was said back.
+ */
+export const S_RESTART = serverKind();
+export const RESTART_GO = 0;
+export const RESTART_OFF = 0xffff;
+/** The longest a stop may be said ahead, in seconds: a day. */
+export const RESTART_MOST = 86400;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;

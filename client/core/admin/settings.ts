@@ -77,6 +77,12 @@ export function sourceText(r: SettingRow): string {
   return r.source === "default" ? "" : r.source;
 }
 
+/** What the page says of a stop for an update: how long is left of one that was said, or what a stop does. */
+export function stopText(left: number): string {
+  if (left < 0) return "Every page waits by itself and comes back when the server is up again.";
+  return `The server stops in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}. Players have been told.`;
+}
+
 /** A count of the rows shown, for the page's head. */
 export function countText(shown: number, all: number): string {
   return shown === all ? `${all} settings` : `${shown} of ${all} settings`;
