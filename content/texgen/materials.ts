@@ -55,7 +55,7 @@ export const MOST_MATERIALS = 12;
 export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
   // Knockdown stucco: the coat thrown on in lumps and trowelled flat, so flat islands a hand across stand over rough hollows.
   {
-    name: "stucco", metres: 2, seed: 11, level: 1.05, relief: 7, rough: 0.92, hollow: 0.1, dye: 1, shade: 0.5, mottle: 0.05, coat: true, means: [1.16, 1, 0.89],
+    name: "stucco", metres: 2, seed: 11, level: 1.05, relief: 7, rough: 0.92, hollow: 0.1, dye: 1, shade: 0.32, mottle: 0.05, coat: true, means: [1.1, 1, 0.89],
     // The lumps' noise is three times the relief, so the trowel's flat is where it passes the top; the grit shows in the hollows alone.
     noise: [{ cell: [0.25, 0.25], height: 0.25, light: 0.03 }, { cell: [0.05, 0.05], height: 3, light: 0.02, warp: 0.1 }, { cell: [0.02, 0.02], height: 0.5, light: 0.02 }, { cell: [0.008, 0.008], height: 0.25, light: 0.03 }],
   },
@@ -69,7 +69,7 @@ export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
     name: "block", metres: 1.6, seed: 37, level: 0.85, relief: 9, rough: 0.86, hollow: 0.1, dye: 1, shade: 0.3, mottle: 0.05, means: [1.09, 1, 0.83],
     noise: [{ cell: [0.008, 0.008], height: 0.2, light: 0.03 }, { cell: [0.2, 0.1], height: 0.15, light: 0.04 }, { cell: [0.02, 0.02], height: 0.3, light: 0.02 }],
     // The pores are grains let into the face.
-    grain: { size: 0.016, core: 0.05, radius: 0.35, height: -0.5, tone: 0, gap: 1, bare: 1, warm: 0 },
+    grain: { size: 0.016, core: 0.05, radius: 0.3, height: -0.35, tone: 0, gap: 1, bare: 1, warm: 0 },
     course: { size: [0.4, 0.2], bond: 0.5, joint: 0.007, depth: 0.9, tone: 0.14, dark: 0.35 },
   },
   // Corrugated sheet, its waves 76 mm apart, the paint streaked down them.
