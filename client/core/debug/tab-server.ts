@@ -73,7 +73,9 @@ export class ServerTab implements Tab {
     for (let i = long.length - 1, shown = 0; i >= 0 && shown < 5 && at + 17 <= y + h - 60; i--, shown++) {
       const t = long[i]!;
       draw.text(rx, at, 70, D_MONO_DIM, ago(Date.parse(s.at) - t.at));
-      draw.text(rx + 72, at, 60, t.ms > 100 ? D_WARN : D_MONO, ms(t.ms));
+      // A tick is kept as long for its own time, or for how late the loop came to it.
+      const own = t.ms > parts.limit;
+      draw.text(rx + 72, at, 60, Math.max(t.ms, t.late) > 100 ? D_WARN : D_MONO, own ? ms(t.ms) : `+${ms(t.late)}`, 0, 0, own ? "the tick's own time" : "how late the loop came to it");
       draw.text(rx + 134, at, 40, D_MONO_DIM, t.whose);
       at += draw.text(rx + 176, at, half - 176, D_MONO_DIM, t.text);
     }
