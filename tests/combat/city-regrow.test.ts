@@ -100,6 +100,19 @@ test("a building stays down while a survivor is near, something is built in it, 
   expect([regrow.buildings, whole(c, c.refs)]).toEqual([1, true]);
 });
 
+test("CityRegrowClearDistance is how near a survivor keeps a building from returning", () => {
+  const { c } = fallen(2, 96, 96, 12);
+  const { h } = c;
+  survivor(h, "ada", { cheats: true, at: { x: 296, z: 96 } });
+  period(h, 30);
+  ticks(c, 90);
+  expect(h.host.cityRegrow.buildings).toBe(0);
+  // 200 m off is near at the 256 m it starts with, and not at 150.
+  expect(h.host.rules.assign("CityRegrowClearDistance", "150", "console")).toBe("");
+  ticks(c, 30);
+  expect([h.host.cityRegrow.buildings, whole(c, c.refs)]).toEqual([1, true]);
+});
+
 test("a client that comes later is sent nothing of a building that returned: it fills from its own map", () => {
   const { c } = fallen(2, 96, 96, 12);
   const { h } = c;
