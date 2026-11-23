@@ -644,7 +644,8 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   const light = 1 + (2 * stamp[0]! - 1) * w.runs * sky, stained = stamp[1]! * (low ? w.damp * climate : w.drips) * fade, runs = stamp[2]! * w.runs * sky;
   const formed = w.joints > 0 && footprint < JOINTS_GONE;
   if (formed) masks(3, FORMWORK_LAYER, along / FORMWORK, over / FORMWORK, Math.log2(Math.max(footprint / FORMWORK, 1e-9)), joints);
-  const jointed = formed ? 1 - 0.4 * joints[0]! * w.joints * fade * (1 - smooth(JOINTS_GONE / 2, JOINTS_GONE, footprint)) : 1;
+  // A coat hides the formwork's joints of the concrete it lies on.
+  const jointed = formed ? 1 - 0.4 * joints[0]! * w.joints * (1 - coatLost.coat) * fade * (1 - smooth(JOINTS_GONE / 2, JOINTS_GONE, footprint)) : 1;
   for (let c = 0; c < 3; c++) albedo[c]! *= light * (1 + (stain[c]! - 1) * stained) * (1 + (left[c]! - 1) * runs) * jointed;
   orm[1]! *= 1 - 0.3 * stamp[3]! * w.damp * fade;
 }
@@ -1342,7 +1343,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   float sky = (0.7 + 0.3 * open) * fade;
   bool low = over < ${fl(GROWTH_TOP)};
   albedo *= (1.0 + (2.0 * bm.r - 1.0) * x.x * sky) * (1.0 + ((low ? vec3(${GROWTH.map(fl).join(", ")}) : vec3(${RUST.map(fl).join(", ")})) - 1.0) * bm.g * (low ? x.y * climate : y.x) * fade) * (1.0 + (WL[id] - 1.0) * bm.b * x.x * sky);
-  if (x.w > 0.0 && footprint < ${fl(JOINTS_GONE)}) albedo *= 1.0 - 0.4 * x.w * fade * (1.0 - smoothstep(${fl(JOINTS_GONE / 2)}, ${fl(JOINTS_GONE)}, footprint)) * textureGrad(uTexgen, vec3(along / ${fl(FORMWORK)}, over / ${fl(FORMWORK)}, ${fl(FORMWORK_LAYER)}), vec2(ax, ox) / ${fl(FORMWORK)}, vec2(ay, oy) / ${fl(FORMWORK)}).r;
+  if (x.w > 0.0 && footprint < ${fl(JOINTS_GONE)}) albedo *= 1.0 - 0.4 * x.w * (1.0 - worldCoat) * fade * (1.0 - smoothstep(${fl(JOINTS_GONE / 2)}, ${fl(JOINTS_GONE)}, footprint)) * textureGrad(uTexgen, vec3(along / ${fl(FORMWORK)}, over / ${fl(FORMWORK)}, ${fl(FORMWORK_LAYER)}), vec2(ax, ox) / ${fl(FORMWORK)}, vec2(ay, oy) / ${fl(FORMWORK)}).r;
   orm.y *= 1.0 - 0.3 * bm.a * x.y * fade;
   worldSharp = orm.y < ${fl(WORLD_SHARP)};
 }
