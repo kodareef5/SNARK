@@ -8,6 +8,7 @@
 // that rests on the ground, on something built or on the bottom. In water it weighs and slows as a ragdoll does there, so
 // it sinks. It lies, and its ragdoll is laid, only where it came to rest.
 
+import type { Mover as RagdollMover } from "../shared/anim/ragdoll.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
 import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type CorpseImpact } from "../shared/anim/corpse.ts";
 import { WET_DAMP, WET_GRAVITY, type RagdollDef } from "../shared/anim/ragdoll.ts";
@@ -164,6 +165,7 @@ export interface Take {
 
 const HUMAN_SHAPE = { skel: HUMAN, ragdoll: HUMAN_RAGDOLL };
 
+const NO_MOVERS: readonly RagdollMover[] = [];
 export class Corpses {
   readonly ctx: CorpsesContext;
   readonly seed: number;
@@ -695,6 +697,8 @@ export class Corpses {
         continue;
       }
       if (b.moving || !b.fall || b.fall.ragdoll.awake) continue;
+      // Movers wake what they near each tick (wakeNear); this asks only whether the world changed under it.
+      b.fall.ragdoll.movers = NO_MOVERS;
       if (b.fall.tick(world)) {
         if (b.motionRevision) { this.updateMotion(b, false); this.save(b); }
         b.fall.ragdoll.pose(b.pose!);

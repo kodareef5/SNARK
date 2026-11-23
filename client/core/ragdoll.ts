@@ -50,6 +50,9 @@ const CATCH_UP = 6;
 const CHECKPOINT_AGE = TICK_RATE;
 /** Ticks a survivor's fall is stepped in one frame. Its ragdoll lies four seconds at most, so a late one soon catches up. */
 const FALL_CATCH_UP = 30;
+/** The most vehicles one ragdoll meets in a step, as on the server (server/ragdoll-movers.ts). */
+const NEAR_MOST = 4;
+const NO_MOVERS: readonly Mover[] = [];
 /** Ticks a survivor takes to rise from where it lay into what it does now. */
 export const GET_UP = 30;
 const impactRoot = new Float64Array(3);
@@ -212,9 +215,14 @@ export class HumanFalls {
   private readonly solid: (kind: number) => Solid | null;
   private updates = 0;
   /** The vehicles and heavy creatures in view, where each is and where it was a tick before, for falls to meet (shared/anim/ragdoll.ts movers). */
-  private readonly cars: { id: number; reach: number; mover: { from: MoverPose; to: MoverPose; boxes: Float64Array } }[] = [];
-  private readonly lastCar = new Map<number, { pose: MoverPose; tick: number }>();
+  /** The vehicles and walking creatures in view: where each is at render tick `carsTick`, and its way a tick. */
+  private readonly cars: { id: number; reach: number; boxes: Float64Array; aside: boolean; at: MoverPose; vx: number; vy: number; vz: number }[] = [];
+  private carsTick = 0;
+  private readonly lastCar = new Map<number, { pose: MoverPose; tick: number; vx: number; vy: number; vz: number }>();
   private readonly near: Mover[] = [];
+  private readonly nearPool: { from: MoverPose; to: MoverPose; boxes: Float64Array; aside: boolean }[] = Array.from({ length: NEAR_MOST }, () => ({
+    from: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, to: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, boxes: new Float64Array(0), aside: false,
+  }));
 
   constructor(survivor: (kind: number) => boolean, solid: (kind: number) => Solid | null = () => null) {
     this.survivor = survivor;
@@ -224,7 +232,7 @@ export class HumanFalls {
   /** Takes up the vehicles in view: each where it is now, and a tick back along its way from where it was last seen. */
   private seeCars(remote: RemoteSample): void {
     this.cars.length = 0;
-    const tick = remote.tick;
+    const tick = this.carsTick = remote.tick;
     for (let i = 0; i < remote.count; i++) {
       const solid = this.solid(remote.kind[i]!);
       if (!solid) continue;
@@ -234,30 +242,44 @@ export class HumanFalls {
         ? { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: remote.vehicleQx[i]!, qy: remote.vehicleQy[i]!, qz: remote.vehicleQz[i]!, qw: remote.vehicleQw[i]! }
         : { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: 0, qy: detSin(half), qz: 0, qw: detCos(half) };
       const last = this.lastCar.get(id), span = last ? tick - last.tick : 0;
-      // Its way over one tick, from how far it went since it was last seen.
-      const k = span > 1e-6 ? 1 / span : 0;
-      const from: MoverPose = last && k > 0 ? { ...to, x: to.x - (to.x - last.pose.x) * k, y: to.y - (to.y - last.pose.y) * k, z: to.z - (to.z - last.pose.z) * k } : to;
-      this.lastCar.set(id, { pose: to, tick });
+      // Its way over one tick, from how far it went since it was last seen; seen again at the same tick, as it was.
+      let vx = 0, vy = 0, vz = 0;
+      if (last && span > 1e-6) {
+        vx = (to.x - last.pose.x) / span; vy = (to.y - last.pose.y) / span; vz = (to.z - last.pose.z) / span;
+        this.lastCar.set(id, { pose: to, tick, vx, vy, vz });
+      } else if (last) ({ vx, vy, vz } = last);
+      else this.lastCar.set(id, { pose: to, tick, vx, vy, vz });
       // A creature meets what lies at its feet only as it walks, as on the server.
-      if (!solid.vehicle && (to.x - from.x) * (to.x - from.x) + (to.z - from.z) * (to.z - from.z) < WALKING * WALKING) continue;
-      this.cars.push({ id, reach: solid.reach, mover: { from, to, boxes: solid.boxes } });
+      if (!solid.vehicle && vx * vx + vz * vz < WALKING * WALKING) continue;
+      this.cars.push({ id, reach: solid.reach, boxes: solid.boxes, aside: !solid.vehicle, at: to, vx, vy, vz });
     }
     if (this.lastCar.size > this.cars.length * 2 + 16) for (const id of this.lastCar.keys()) if (!this.cars.some(c => c.id === id)) this.lastCar.delete(id);
   }
 
-  /** The vehicles in view near ragdoll `fall`'s hips. */
-  private carsNear(h: HumanFall): readonly Mover[] {
+  /** The vehicles in view near ragdoll `fall`'s hips, as they move over the step to `tick`. */
+  private carsNear(h: HumanFall, tick: number): readonly Mover[] {
     const r = h.fall!.ragdoll;
     r.rootPosition(fallRoot);
-    return this.carsAround(fallRoot[0]!, fallRoot[2]!);
+    return this.carsAround(fallRoot[0]!, fallRoot[2]!, tick);
   }
 
-  /** The vehicles in view within reach of (x, z), reused by the next call. */
-  carsAround(x: number, z: number): readonly Mover[] {
+  /**
+   * The vehicles in view within reach of (x, z), each moving from where it was at `tick` - 1 to where it was at `tick`,
+   * as the server's step to `tick` meets them (server/ragdoll-movers.ts); reused by the next call.
+   */
+  carsAround(x: number, z: number, tick: number): readonly Mover[] {
     this.near.length = 0;
     for (const c of this.cars) {
-      const dx = c.mover.to.x - x, dz = c.mover.to.z - z, reach = c.reach + 2;
-      if (dx * dx + dz * dz <= reach * reach && this.near.length < 4) this.near.push(c.mover);
+      const dx = c.at.x - x, dz = c.at.z - z, reach = c.reach + 2;
+      if (dx * dx + dz * dz > reach * reach || this.near.length >= NEAR_MOST) continue;
+      const m = this.nearPool[this.near.length]!, back = this.carsTick - tick, a = c.at;
+      Object.assign(m, {
+        to: { ...a, x: a.x - c.vx * back, y: a.y - c.vy * back, z: a.z - c.vz * back },
+        from: { ...a, x: a.x - c.vx * (back + 1), y: a.y - c.vy * (back + 1), z: a.z - c.vz * (back + 1) },
+        boxes: c.boxes,
+        aside: c.aside,
+      });
+      this.near.push(m);
     }
     return this.near;
   }
@@ -318,9 +340,9 @@ export class HumanFalls {
     const fall = h.fall;
     if (!fall) return;
     let moved = false;
-    fall.ragdoll.movers = this.cars.length ? this.carsNear(h) : [];
     for (let n = 0; h.clock < to && n < FALL_CATCH_UP; n++) {
       h.clock++;
+      fall.ragdoll.movers = this.cars.length ? this.carsNear(h, h.clock) : NO_MOVERS;
       moved = fall.tick(world) || moved;
     }
     if (moved) this.place(h);
@@ -661,10 +683,10 @@ export class Corpses {
     if (!fall) return;
     const to = Math.floor(tick);
     if (c.motionRevision && !fall.still && to - c.clock > CHECKPOINT_AGE) { this.needsCheckpoint.add(c.handle); return; }
-    // The vehicles it may meet, as the server's body meets them.
-    fall.ragdoll.movers = this.humans.carsAround(c.x, c.z);
     let moved = false;
     for (let n = 0; c.clock < to && n < CATCH_UP; n++) {
+      // The vehicles it may meet over this step, as the server's body meets them.
+      fall.ragdoll.movers = this.humans.carsAround(c.x, c.z, c.clock + 1);
       if (fall.still) {
         // Nothing moves it now but the world changing under it, which a tick finds out.
         const woke = fall.tick(world);

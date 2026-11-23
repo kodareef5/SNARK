@@ -51,6 +51,8 @@ export interface Mover {
   readonly from: MoverPose;
   readonly to: MoverPose;
   readonly boxes: Float64Array;
+  /** Its boxes shove what they meet aside, across its way, and slide past without carrying it: a creature's legs. */
+  readonly aside?: boolean;
 }
 
 const GRAVITY = 9.81;
@@ -1298,16 +1300,21 @@ export class Ragdoll {
   }
 
   /** Whether any mover's boxes come within reach of where it lies. */
+  /** Whether a mover moving this step comes within MARGIN of the body's bounds, at either end of its step. */
   private moverNear(): boolean {
     if (!this.movers.length) return false;
     this.bounds(MARGIN);
+    const cx = (box[0]! + box[2]!) / 2, cy = (box[4]! + box[5]!) / 2, cz = (box[1]! + box[3]!) / 2;
+    const ex = (box[2]! - box[0]!) / 2, ey = (box[5]! - box[4]!) / 2, ez = (box[3]! - box[1]!) / 2;
     for (const m of this.movers) {
-      const b = m.boxes;
-      for (let k = 0; k < b.length; k += 6) {
-        const reach = Math.sqrt(b[k]! * b[k]! + b[k + 1]! * b[k + 1]! + b[k + 2]! * b[k + 2]!) + Math.sqrt(b[k + 3]! * b[k + 3]! + b[k + 4]! * b[k + 4]! + b[k + 5]! * b[k + 5]!);
-        for (const p of [m.from, m.to]) {
-          if (p.x + reach >= box[0]! && p.x - reach <= box[2]! && p.z + reach >= box[1]! && p.z - reach <= box[3]! && p.y + reach >= box[4]! && p.y - reach <= box[5]!) return true;
-        }
+      const { from: a, to: b } = m, boxes = m.boxes;
+      // One standing still cannot wake what sleeps against it.
+      if (a.x === b.x && a.y === b.y && a.z === b.z && a.qx === b.qx && a.qy === b.qy && a.qz === b.qz && a.qw === b.qw) continue;
+      for (const p of [a, b]) {
+        g4[0] = p.qx; g4[1] = p.qy; g4[2] = p.qz; g4[3] = p.qw;
+        quatRotate(g4, 0, 1, 0, 0, axes, 0); quatRotate(g4, 0, 0, 1, 0, axes, 3); quatRotate(g4, 0, 0, 0, 1, axes, 6);
+        quatUnrotate(g4, 0, cx - p.x, cy - p.y, cz - p.z, local, 0);
+        for (let k = 0; k < boxes.length; k += 6) if (overlaps(boxes, k, p, cx, cy, cz, ex, ey, ez)) return true;
       }
     }
     return false;
@@ -1326,7 +1333,7 @@ export class Ragdoll {
     const gx = local[0]!, gy = local[1]!, gz = local[2]!;
     const reach = Math.sqrt(gx * gx + gy * gy + gz * gz) + r;
     const len = gx * gx + gy * gy + gz * gz;
-    const boxes = this.movers[m]!.boxes;
+    const boxes = this.movers[m]!.boxes, aside = this.movers[m]!.aside === true;
     for (let b = 0; b < boxes.length; b += 6) {
       const hx = boxes[b + 3]!, hy = boxes[b + 4]!, hz = boxes[b + 5]!;
       const lx = fx - boxes[b]!, ly = fy - boxes[b + 1]!, lz = fz - boxes[b + 2]!;
@@ -1346,7 +1353,12 @@ export class Ragdoll {
         let nx = ax - clamp(ax, hx), ny = ay - clamp(ay, hy), nz = az - clamp(az, hz);
         const d = Math.sqrt(nx * nx + ny * ny + nz * nz);
         let deep: number;
-        if (d > 1e-9) {
+        if (aside) {
+          // Out to the side it is on, from in front of the box as from inside it.
+          if (Math.abs(ay) >= hy + r || Math.abs(az) >= hz + r || Math.abs(ax) >= hx + r) continue;
+          nx = ax < 0 ? -1 : 1; ny = 0; nz = 0;
+          deep = hx + r - Math.abs(ax);
+        } else if (d > 1e-9) {
           if (d >= r) continue;
           deep = r - d;
           nx /= d; ny /= d; nz /= d;
@@ -1366,7 +1378,7 @@ export class Ragdoll {
         const svx = sv[o]! + sw[o + 1]! * az2 - sw[o + 2]! * ay2;
         const svy = sv[o + 1]! + sw[o + 2]! * ax2 - sw[o]! * az2;
         const svz = sv[o + 2]! + sw[o]! * ay2 - sw[o + 1]! * ax2;
-        this.moverContact(i, cx, cy, cz, mx, my, mz, deep, svx, svy, svz);
+        this.moverContact(i, cx, cy, cz, mx, my, mz, deep, svx, svy, svz, aside);
       }
     }
   }
@@ -1375,7 +1387,7 @@ export class Ragdoll {
    * Body `i`'s point (rx, ry, rz) from its centre is `deep` into a mover whose surface there moves at (svx, svy, svz): out
    * along the normal, as fast as the surface comes at it besides, and held to the surface where it would slide little.
    */
-  private moverContact(i: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, deep: number, svx: number, svy: number, svz: number): void {
+  private moverContact(i: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, deep: number, svx: number, svy: number, svz: number, slick = false): void {
     if (this.probing) {
       if (deep > this.worst) this.worst = deep;
       return;
@@ -1397,7 +1409,7 @@ export class Ragdoll {
     let dz = this.x[i * 3 + 2]! + az - this.px[i * 3 + 2]! - t3[2]! - svz * this.h;
     const along = dx * nx + dy * ny + dz * nz;
     dx -= along * nx; dy -= along * ny; dz -= along * nz;
-    if (dx * dx + dy * dy + dz * dz < STATIC * STATIC * deep * deep) this.push(i, ax, ay, az, -dx, -dy, -dz);
+    if (!slick && dx * dx + dy * dy + dz * dz < STATIC * STATIC * deep * deep) this.push(i, ax, ay, az, -dx, -dy, -dz);
     const c = this.nc;
     if (c >= MOST_CONTACTS) return;
     this.nc++;
@@ -1405,7 +1417,8 @@ export class Ragdoll {
     set3(this.cn, c, nx, ny, nz);
     quatRotate(this.q, i * 4, lx, ly, lz, u3, 0);
     set3(this.cr, c, u3[0]!, u3[1]!, u3[2]!);
-    this.cd[c] = deep;
+    // A slick surface stops motion into it, and no more: no load, so no friction and no rolling resistance.
+    this.cd[c] = slick ? 0 : deep;
     set3(this.cm, c, svx, svy, svz);
   }
 
@@ -1712,6 +1725,26 @@ const overlap = new Float64Array(MOST_PAIRS);
 const nearest = new Float64Array(MOST_PAIRS * 6);
 /** A point or a line in a mover's frame. */
 const local = new Float64Array(3);
+/** A mover's own axes in the world, three to a row. */
+const axes = new Float64Array(9);
+
+/**
+ * Whether box `k` of `boxes`, on a mover at `p` whose axes are in `axes` and whose frame has the bounds' centre at
+ * `local`, overlaps bounds about (cx, cy, cz) with half extents (ex, ey, ez): tested on the box's axes and the world's.
+ */
+function overlaps(boxes: Float64Array, k: number, p: MoverPose, cx: number, cy: number, cz: number, ex: number, ey: number, ez: number): boolean {
+  for (let a = 0; a < 3; a++) {
+    const half = ex * Math.abs(axes[a * 3]!) + ey * Math.abs(axes[a * 3 + 1]!) + ez * Math.abs(axes[a * 3 + 2]!);
+    if (Math.abs(local[a]! - boxes[k + a]!) > boxes[k + 3 + a]! + half) return false;
+  }
+  const centre = [cx - p.x, cy - p.y, cz - p.z], extent = [ex, ey, ez];
+  for (let j = 0; j < 3; j++) {
+    let at = 0, half = 0;
+    for (let a = 0; a < 3; a++) { at += axes[a * 3 + j]! * boxes[k + a]!; half += Math.abs(axes[a * 3 + j]!) * boxes[k + 3 + a]!; }
+    if (Math.abs(centre[j]! - at) > extent[j]! + half) return false;
+  }
+  return true;
+}
 /** A turn about +Y, and a drive's aim. */
 const face = new Float64Array([0, 0, 0, 1]);
 const aim = new Float64Array(4);

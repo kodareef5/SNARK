@@ -1,5 +1,5 @@
 // A ragdoll meets moving solids, such as cars (shared/anim/ragdoll.ts movers): it is shoved by one driven into it, rides
-// one it lies on, and wakes when one comes near where it sleeps.
+// one it lies on, is shoved aside by a creature's legs, and wakes when one moving comes near where it sleeps.
 import { expect, test } from "bun:test";
 import { HUMAN, HUMAN_RAGDOLL } from "../../shared/anim/human.ts";
 import { layHuman, standingPose } from "../../shared/anim/human-fall.ts";
@@ -115,20 +115,40 @@ test("a car rolled into a fallen survivor shoves the body, and a watching client
   } finally { h.host.shutdown(); }
 });
 
-test("a rex is a solid a ragdoll meets, a dodo is not, and a rex walking into a lying body shoves it", () => {
+test("a rex's legs shove a lying body aside and walk on; a dodo is no solid", () => {
   const rex = solidOf(reg, reg.index.get("core:rex")!), dodo = solidOf(reg, reg.index.get("core:dodo")!);
   expect(rex).not.toBeNull();
   expect(rex!.vehicle).toBe(false);
   expect(dodo).toBeNull();
   expect(solidOf(reg, reg.index.get("core:compact")!)!.vehicle).toBe(true);
-  const w = flat(), r = layHuman(40, 0, 40, Math.PI / 2, true);
-  for (let f = 0; f < 30; f++) r.step(w, STEP);
-  let z = 32;
-  for (let f = 0; f < 90; f++) {
-    const next = z + 3 * STEP;
-    r.movers = [{ from: at(40, 0, z), to: at(40, 0, next), boxes: rex!.boxes }];
-    r.step(w, STEP);
-    z = next;
+  for (const [yaw, off] of [[0, 0], [Math.PI / 2, 0], [0, .4], [Math.PI / 2, .4]] as const) {
+    const w = flat(), r = layHuman(40 + off, 0, 40, yaw, true);
+    for (let f = 0; f < 30; f++) r.step(w, STEP);
+    const x0 = r.x[0]!, z0 = r.x[2]!;
+    let z = 32;
+    for (let f = 0; f < 150; f++) {
+      const next = z + 3 * STEP;
+      r.movers = [{ from: at(40, 0, z), to: at(40, 0, next), boxes: rex!.boxes, aside: !rex!.vehicle }];
+      r.step(w, STEP);
+      z = next;
+    }
+    // Shoved out past the side of its legs, not carried along the 15 m it walked.
+    expect(Math.abs(r.x[0]! - x0), `yaw ${yaw} off ${off}`).toBeGreaterThan(rex!.boxes[3]!);
+    expect(Math.abs(r.x[2]! - z0), `yaw ${yaw} off ${off}`).toBeLessThan(1);
   }
-  expect(r.x[2]!).toBeGreaterThan(41);
+});
+
+test("a parked car beside a sleeping body, or one driving past a metre off, leaves it asleep", () => {
+  for (const yaw of [0, Math.PI / 2]) {
+    const w = flat(), r = layHuman(40, 0, 40, yaw, true);
+    for (let f = 0; f < 90 && r.awake; f++) r.step(w, STEP);
+    expect(r.awake).toBe(false);
+    // Parked with its side touching the bounds the body is woken within.
+    r.movers = [{ from: at(41.2, 0, 40), to: at(41.2, 0, 40), boxes: CAR }];
+    expect(r.step(w, STEP)).toBe(false);
+    for (let z = 30; z < 50; z += .5) {
+      r.movers = [{ from: at(42.6, 0, z), to: at(42.6, 0, z + .5), boxes: CAR }];
+      expect(r.step(w, STEP), `yaw ${yaw} at ${z}`).toBe(false);
+    }
+  }
 });

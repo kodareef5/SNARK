@@ -16,8 +16,8 @@ const MARGIN = 2;
 export class RagdollMovers {
   private readonly world: ServerWorld;
   private readonly found: Mover[] = [];
-  private readonly pool: { from: MoverPose; to: MoverPose; boxes: Float64Array }[] = Array.from({ length: MOST }, () => ({
-    from: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, to: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, boxes: new Float64Array(0),
+  private readonly pool: { from: MoverPose; to: MoverPose; boxes: Float64Array; aside: boolean }[] = Array.from({ length: MOST }, () => ({
+    from: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, to: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, boxes: new Float64Array(0), aside: false,
   }));
   private readonly past = new Past();
   private readonly root = new Float64Array(3);
@@ -56,6 +56,7 @@ export class RagdollMovers {
         // A creature meets what lies at its feet only as it walks.
         if (!solid.vehicle && (m.to.x - m.from.x) * (m.to.x - m.from.x) + (m.to.z - m.from.z) * (m.to.z - m.from.z) < WALKING * WALKING) continue;
         m.boxes = solid.boxes;
+        m.aside = !solid.vehicle;
         found.push(m);
       }
     }
