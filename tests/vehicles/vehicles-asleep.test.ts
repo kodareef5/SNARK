@@ -34,9 +34,8 @@ test("parked cars far from every survivor sleep and are not looked at; one besid
     expect(far.map((e) => urban.asleep(e))).toEqual([true, true, true, true]);
     expect(urban.asleep(near)).toBe(false);
     expect(urban.asleepCount).toBe(4);
-    // Ninety ticks: the car by the survivor is looked at each tick, takes its three heartbeats and is swept against the
-    // survivor beside it. The others cost nothing.
-    expect(looks(90)).toEqual({ observed: 90, stepped: 3, sweeps: 90 });
+    // The survivor stands twelve metres outside the parked car, beyond the reach of either body this tick.
+    expect(looks(90)).toEqual({ observed: 90, stepped: 3, sweeps: 0 });
     // History keeps no row for a sleeper: the survivor's and the near car's are all there are.
     expect(h.world.history.rows).toBe(2);
   } finally {

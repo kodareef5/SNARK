@@ -361,9 +361,21 @@ export class VehicleContacts {
   private upright(s: DynamicState): void { s.qx = s.qy = s.qz = 0; s.qw = 1; s.pitchRate = s.yawRate = s.rollRate = 0; }
   /** Geometry bounds choose samples; they are never used as damage speed. */
   private rigidContact(car: number, frame: Frame, e: number, def: VehicleDefinition): Contact | null {
+    const { world } = this.ctx, ents = world.ents;
+    const other = world.reg.vehicle[ents.kind[e]!], radius = world.reg.move[ents.kind[e]!]!.radius;
+    // A character sweep accepts at most eight radii of travel. Vehicle captures include both ends of their path.
+    if (!other || (!isSkateboard(def) && !isSkateboard(other))) {
+      const prior = other ? this.frames.get(e)?.body : undefined;
+      const reach = vehicleSolidRadius(def) + (other ? vehicleSolidRadius(other) : radius * (8 + CAPSULE_EXTENT) + .05);
+      const x = ents.x[e]!, z = ents.z[e]!, px = prior?.x ?? x, pz = prior?.z ?? z;
+      if (Math.min(x, px) > Math.max(frame.body.x, ents.x[car]!) + reach ||
+          Math.max(x, px) < Math.min(frame.body.x, ents.x[car]!) - reach ||
+          Math.min(z, pz) > Math.max(frame.body.z, ents.z[car]!) + reach ||
+          Math.max(z, pz) < Math.min(frame.body.z, ents.z[car]!) - reach) return null;
+    }
     this.sweeps++;
     this.prepare(car, frame, e);
-    const { world } = this.ctx, ents = world.ents, c = this.b.prior, d = this.b.state;
+    const c = this.b.prior, d = this.b.state;
     // Actors use history and a capped character step. Vehicle captures have already passed their own velocity and epoch checks.
     if (!this.defB && len3(d.x - c.x, d.y - c.y, d.z - c.z) > world.reg.move[ents.kind[e]!]!.radius * 8 + .05) return null;
     const hit = this.queries.sweep();
