@@ -20,6 +20,7 @@ import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { loosePrompt } from "./balls.ts";
 import type { Builder } from "./build.ts";
 import type { Controls } from "./controls.ts";
+import { STAGES, STAGE_WHOLE, isHeap, stageOf } from "../../shared/world/breaking.ts";
 import type { AppFrame, FramePart } from "./frame.ts";
 import { BAG } from "./render/dropped.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
@@ -41,6 +42,16 @@ const VIEW_FLAG_PROP = 8;
 export const GLIDER_KEY_TICKS = 6;
 
 /** Whether seat `k` of the creature at `host` of `r` has someone in it. */
+/**
+ * What a city piece looked at says of itself: "rubble" for a heap, its stage where it is worn, and nothing for one that
+ * stands whole. `placed` is the kind the map set there, which its health is measured by, and `kind` what its row now holds.
+ */
+export function cityWord(reg: Registry, placed: number, kind: number, hp: number): string {
+  if (isHeap(reg, kind)) return "rubble";
+  const stage = stageOf(reg, placed, hp);
+  return stage === STAGE_WHOLE ? "" : STAGES[stage]!;
+}
+
 function taken(r: RemoteSample, host: number, k: number): boolean {
   for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[host]! + 1 && r.seatGen[j] === r.gen[host] && r.seatSlot[j] === k + 1) return true;
   return false;
@@ -203,6 +214,8 @@ export class Prompts implements FramePart {
       this.terminalAimed = ref;
       return "E travel to another server";
     }
+    // A city piece that breaks says how it stands, not a number: its health is not told within a stage.
+    if (t.owner[ref & 0xffff] === 0 && reg.breakSet[kind] !== 0) return cityWord(reg, s.mapKind(Math.floor(ref / 65536), ref & 0xffff) || kind, kind, t.hp[ref & 0xffff]!);
     // Skip structures nobody built.
     if (reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
     this.aimed = ref;

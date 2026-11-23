@@ -1,8 +1,12 @@
 // What harm does to a city piece: its panes, its stages, its forms, its heap, and the rules that govern them.
 
 import { expect, test } from "bun:test";
+import { cityWord } from "../../client/core/prompts.ts";
+import type { Hear } from "../../client/core/sound/bodies.ts";
+import { BuildSounds } from "../../client/core/sound/build.ts";
 import type { Source } from "../../server/combat.ts";
-import { FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_OPEN, FORM_WHOLE } from "../../shared/content/breaks.ts";
+import { FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_OPEN, FORM_WHOLE, formKind } from "../../shared/content/breaks.ts";
+import { KEYS } from "../../shared/sound/cues.ts";
 import { DMG_MELEE } from "../../shared/sim/damage.ts";
 import { STAGE_CRACKED, STAGE_FAILING, STAGE_WHOLE, STAGE_WORN, bodyHealth, heapHealth, paned, stageOf, variantAt } from "../../shared/world/breaking.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
@@ -329,4 +333,23 @@ test("CityResistanceMultiplier divides what a city piece takes", () => {
   fire(c, wall, 0, grenade(c.h.reg), GRENADE_REACH);
   expect(c.full(wall) - c.hp(wall)).toBeCloseTo((788 * 2.33) / 4, 0);
   expect(stageOf(c.h.reg, mapKind(c, wall), c.hp(wall))).not.toBe(STAGE_CRACKED);
+});
+
+test("a client says a city piece's stage, never its health, and hears a stage or a form at one loudness", () => {
+  const c = city([{ shape: "wall8", finish: "concrete", x: 100, z: 100 }]);
+  const reg = c.h.reg, wall = mapKind(c, c.refs[0]!);
+  const [breach, open, heap] = [FORM_BREACH_A, FORM_OPEN, FORM_HEAP].map((form) => formKind(reg, wall, form, 0)) as [number, number, number];
+  // The prompt's words: none for a piece that stands whole, its stage after, and "rubble" for a heap whatever its health.
+  expect([23400, 16000, 15000, 7000, 3000].map((hp) => cityWord(reg, wall, wall, hp))).toEqual(["", "", "worn", "cracked", "failing"]);
+  expect([cityWord(reg, wall, breach, 7000), cityWord(reg, wall, open, 5850), cityWord(reg, wall, heap, 48)]).toEqual(["cracked", "cracked", "rubble"]);
+  const sounds = new BuildSounds(reg, () => 0);
+  const heard: [string, number][] = [];
+  const hear: Hear = (_o, key, _e, _x, _y, _z, _a, gain) => heard.push([KEYS[key]!.key, gain]);
+  // A stage crossed after much silent wear, and one after little: the client's health was stale, so neither is louder.
+  sounds.structure(wall, wall, 100, 1, 100, 23400, 15000, -1);
+  sounds.structure(wall, wall, 100, 1, 100, 15700, 15000, -1);
+  sounds.structure(wall, breach, 100, 1, 100, 15000, 7000, -1);
+  sounds.structure(open, 0, 100, 1, 100, 100, 0, GONE_BLAST);
+  sounds.update(0, 0, 0, hear, () => {});
+  expect(heard).toEqual([["hit/stone", 0.9], ["hit/stone", 0.9], ["hit/stone", 0.9], ["destroy/stone", 1]]);
 });
