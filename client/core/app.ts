@@ -792,6 +792,9 @@ export class App {
     this.supply.list = session.supply;
     this.supply.tick = session.tickClock;
     this.falling!.absorb(session.rubble, sceneMs, cam.x, cam.y, cam.z);
+    // Collapses told from afar: a column of dust over each (render/dust-columns.ts).
+    for (const fell of session.collapses) scene.dust.add(fell, sceneMs);
+    session.collapses.length = 0;
     this.falling!.step(sceneMs);
     const beams = scene.beams;
     beams.length = 0;
