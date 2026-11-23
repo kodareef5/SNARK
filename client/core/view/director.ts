@@ -62,6 +62,9 @@ export class Director implements FramePart {
   readonly hostPose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   readonly viewRig = rig();
   readonly motion: VehicleCameraMotion = { vx: 0, vy: 0, vz: 0 };
+  /** A ridden board's last frame: on the ground, and how fast it was falling. */
+  boardGrounded = true;
+  boardFall = 0;
   readonly mount = { up: 0, boom: 0, forward: 0 };
   readonly local = new Float64Array(3);
   readonly posedEye = new Float64Array(3);

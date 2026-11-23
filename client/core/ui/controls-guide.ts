@@ -2,7 +2,7 @@
 // A key that has a row in the key table is described on its row (keys.ts). Written here are the rest: the keys that
 // move the body and its held buttons (controls.ts), the mouse, the interface's own keys (ui/ui.ts), and the pad.
 import { KEY_ROWS } from "../keys.ts";
-export const CONTROL_GROUPS=["Move","Combat","World","Build","Flight","Menus"] as const;
+export const CONTROL_GROUPS=["Move","Combat","World","Build","Flight","Menus","Skate"] as const;
 export interface Binding { title: string; detail: string; group: number }
 const b=(group:number,title:string,detail=""):Binding=>({group,title,detail});
 const KEYS: Readonly<Record<string,Binding>>={
@@ -15,6 +15,17 @@ const KEYS: Readonly<Record<string,Binding>>={
   KeyZ:b(2,"Emotes","Gestures, dances and moves for two: 1-9 plays one, the arrows turn the pages. A move for two goes to whoever you look at, and begins when they answer with it back."),
 };
 const FLIGHT: Readonly<Record<string,Binding>>={Space:b(4,"Take off / land","A press toggles the flying mount's wing state."),KeyC:b(4,"Roll","Hold while riding a flyer."),KeyX:b(4,"Brake","Hold while riding a flyer."),KeyN:b(4,"Flight modifier"),ShiftLeft:b(4,"Fast flight","Hold while moving."),KeyE:b(4,"Dismount")};
+/** On a skateboard (hud/skate.ts lists every trick while H is held). */
+const SKATE: Readonly<Record<string,Binding>>={
+  KeyW:b(6,"Push","Hold to push. In the air, with a trick key, picks the trick: pressed for it, not held from the push."),KeyS:b(6,"Brake","At rest, press again to step back. In the air, with a trick key, picks the trick."),
+  KeyA:b(6,"Carve / spin","On the ground, turns. In the air, spins: a tap turns 180, holding turns more."),KeyD:b(6,"Carve / spin","On the ground, turns. In the air, spins: a tap turns 180, holding turns more."),
+  Space:b(6,"Crouch / ollie","Hold to crouch and let go to pop: held longer, higher. Tap just before landing for a Perfect."),ShiftLeft:b(6,"Catch an edge","Hold coming down onto an edge: along it grinds, across it slides."),
+  KeyR:b(6,"Flip","In the air. A direction picks it: A kickflip, D heelflip, W impossible, S pop shove-it, the diagonals the varials."),Mouse0:b(6,"Flip","As R."),
+  KeyC:b(6,"Grab","Hold in the air and let go before landing. A direction picks it: A melon, D indy, W nosegrab, S tailgrab."),Mouse2:b(6,"Grab","As C."),
+  KeyX:b(6,"Manual","Hold rolling. W pressed with it puts the weight on the nose."),KeyQ:b(6,"Revert","Just after landing, turns the board half round and keeps the line going."),
+  KeyG:b(6,"Special","In the air with the special meter full: a Christ air, or a 540 McTwist with A or D."),KeyH:b(6,"Trick list","Hold for every trick, its keys and its points."),
+  KeyE:b(6,"Step off"),KeyF:b(6,"Pick up","Slow or stopped, steps off and puts the board in the bag."),
+};
 const MENUS: Readonly<Record<string,Binding>>={Tab:b(5,"Next control","Shift + Tab moves backward."),Enter:b(5,"Select"),Space:b(5,"Select"),ArrowUp:b(5,"Previous control"),ArrowDown:b(5,"Next control"),ArrowLeft:b(5,"Decrease / previous"),ArrowRight:b(5,"Increase / next"),Escape:b(5,"Back","Close one layer at a time.")};
 /** What the key rows say of each key (keys.ts KEY_ROWS), by tab then code: the first row that has words for a key gives them. */
 let rowWords: Map<string, Binding>[] | null = null;
@@ -31,6 +42,7 @@ function fromRows(code:string,sheet:number):Binding|undefined {
 /** The words for `code` on tab `group`: a row's where a row has the key, else those written here. */
 export function keyBinding(code:string,group:number):Binding|undefined {
   if(group===3 || group===4) { const own=fromRows(code,group)??(group===4?FLIGHT[code]:undefined); if(own)return own; }
+  if(group===6)return SKATE[code]??fromRows(code,0)??KEYS[code];
   if(group===5)return fromRows(code,5)??MENUS[code];
   return fromRows(code,0)??KEYS[code];
 }
@@ -41,7 +53,11 @@ const PAD_DEFAULT:Readonly<Record<number,Binding>>={0:b(0,"Jump"),1:b(2,"Invento
     12:b(2,"Hotbar 1 / 5","Hold LB / L1 for slot 5."),15:b(2,"Hotbar 2 / 6","Hold LB / L1 for slot 6."),13:b(2,"Hotbar 3 / 7","Hold LB / L1 for slot 7."),14:b(2,"Hotbar 4 / 8","Hold LB / L1 for slot 8.") };
 const PAD_FLIGHT:Readonly<Record<number,Binding>>={11:b(4,"Look / roll / brake","Look with the right stick. Hold its button to roll; hold LB / L1 first to brake."),0:b(4,"Take off / land")};
 const PAD_BUILD:Readonly<Record<number,Binding>>={7:b(3,"Place preview"),3:b(3,"Rotate preview"),2:b(3,"Next variant","Tap to cycle the building piece variants.")};
+const PAD_SKATE:Readonly<Record<number,Binding>>={0:b(6,"Crouch / ollie","Hold to crouch and let go to pop."),7:b(6,"Flip","In the air; the stick picks it."),5:b(6,"Grab","Hold in the air; the stick picks it."),
+  4:b(6,"Manual","Hold rolling."),2:b(6,"Revert","Just after landing."),6:b(6,"Special","In the air with the meter full."),10:b(6,"Catch an edge","Hold coming down onto an edge."),
+  3:b(6,"Step off"),8:b(6,"Trick list","Hold for every trick.")};
 export function padBinding(button:number,group:number):Binding|undefined {
   if(group===5)return PAD_MENU[button];
+  if(group===6)return PAD_SKATE[button]??PAD_DEFAULT[button];
   return (group===4?PAD_FLIGHT[button]:group===3?PAD_BUILD[button]:undefined)??PAD_DEFAULT[button];
 }

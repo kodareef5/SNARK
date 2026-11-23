@@ -121,7 +121,6 @@ import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequant
 import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
-import { SPIN } from "../../shared/sim/skate-state.ts";
 import { isSkateboard, MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode } from "../../shared/sim/vehicle-body.ts";
@@ -1094,8 +1093,7 @@ export class ClientSession {
       if (b.vehicleAttitudeA[j] || b.vehicleAttitudeB[j]) {
         unpackVehicleQuaternion(a.vehicleAttitudeA[i]!, a.vehicleAttitudeB[i]!, this.rotorQuatA);
         this.rotorQuatB.set(this.rotorQuat);
-        const turn = newTrick && unpackVehicleGear(oldDrive) === SPIN ? (k < .5 ? 0 : 1) : k;
-        quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, turn);
+        quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
       }
       if (out.vehicleRotorcraft[n]) {
         const oldRotor = a.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);

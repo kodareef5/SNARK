@@ -3,7 +3,7 @@ import type { KeyRow } from "./key-row.ts";
 import { T_CANCEL, T_ROTATE, T_SNAP } from "./touch.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { handleIndex } from "../../shared/ids.ts";
-import { CMD_VEHICLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, VEHICLE_DEPLOY } from "../../shared/net/protocol.ts";
+import { CMD_VEHICLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, VEHICLE_DEPLOY, VEHICLE_RIDE } from "../../shared/net/protocol.ts";
 import { stanceHeight } from "../../shared/sim/character.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { boatRestY } from "../../shared/sim/boat.ts";
@@ -43,6 +43,9 @@ export class VehiclePlacement {
   private refusalUntil = 0;
   private boardRequest = false;
   private marineRequest = false;
+  /** The hotbar slot held when last seen, and whether a board picked there is being set down to ride. */
+  private heldSeen: number | null = null;
+  private riding = false;
   private readonly remote = new RemoteSample();
 
   /** An inventory button can start placement directly from any bag slot. */
@@ -56,6 +59,15 @@ export class VehiclePlacement {
     if (item !== this.item) { this.turn = 0; this.suppressed = 0; }
     this.item = item; this.slot = slot; this.kind = reg.vehicleDeploy[item] ?? 0;
     const def = reg.vehicle[this.kind];
+    // A board picked in the hotbar goes down under the feet and is ridden at once. Only if it cannot is it placed by hand.
+    const picked = this.heldSeen !== null && session.held !== this.heldSeen;
+    this.heldSeen = session.held;
+    if (picked && isSkateboard(def) && this.selected < 0 && !this.asked && session.driving < 0 && session.own.seat === 0) {
+      const facing = Math.round(yaw * 65536 / (2 * Math.PI)) & 65535;
+      this.boardRequest = true; this.marineRequest = false; this.riding = true;
+      this.asked = session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_RIDE); w.u8(slot); w.u16(facing); });
+    }
+    if (this.riding) { this.active = false; this.notice = ""; return; }
     this.active = !!def && item !== this.suppressed && session.driving < 0 && session.own.seat === 0;
     if (!this.active || !def) { this.notice = ""; if (!def) this.selected = -1; return; }
     const hit = castWorld(world, ox, oy, oz, dx, dy, dz, REACH);
@@ -113,7 +125,11 @@ export class VehiclePlacement {
   result(seq: number, code: number, nowMs: number): void {
     if (seq === 0 || seq !== this.asked) return;
     this.asked = 0;
+    const rode = this.riding;
+    this.riding = false;
     if (code === RESULT_OK) { this.cancel(); return; }
+    // No room to ride from here: the preview shows where it may go.
+    if (rode) return;
     this.refusal = (this.boardRequest && code === RESULT_NO_SUPPORT ? "Place on a clear, dry surface" : this.marineRequest && code === RESULT_NO_SUPPORT ? "Needs open water with room for the hull and outboard" : VEHICLE_PLACEMENT_REASONS[code]) ?? "The vehicle cannot be assembled here";
     this.refusalUntil = nowMs + 2500;
   }

@@ -53,9 +53,10 @@ export function buildControls(f:UiFrame,device:number,focus:number,group=0,glyph
     return;
   }
   if(device===1)smallButton(f,KEY_CONTROL_GLYPHS,x+w-(compact?156:154),compact?y+20:y+64,compact?60:130,32,glyphs?(compact?"PS":"PlayStation"):"Xbox","Switch Xbox / PlayStation symbols",true);
-  const tw=inner/CONTROL_GROUPS.length;
-  CONTROL_GROUPS.forEach((label,i)=>smallButton(f,KEY_CONTROL_GROUP+i,x+24+i*tw,y+108,tw-4,30,label,`${label} controls`,group===i));
-  const selection=device===0?keyboard(f,x+24,y+166,inner,group,focus):controller(f,x+24,y+166,inner,group,glyphs,focus);
+  // Where the tabs would be too narrow for their names they stand in two rows, and the picture below moves down.
+  const rows=inner/CONTROL_GROUPS.length<62?2:1,across=Math.ceil(CONTROL_GROUPS.length/rows),tw=inner/across,below=y+166+(rows-1)*34;
+  CONTROL_GROUPS.forEach((label,i)=>smallButton(f,KEY_CONTROL_GROUP+i,x+24+(i%across)*tw,y+108+Math.floor(i/across)*34,tw-4,30,label,`${label} controls`,group===i));
+  const selection=device===0?keyboard(f,x+24,below,inner,group,focus):controller(f,x+24,below,inner,group,glyphs,focus);
   f.add(KEY_CONTROL_DETAIL+1,K_PANEL,x+24,y+430,inner,1,S_ICE).alpha=.25;
   f.text(KEY_CONTROL_DETAIL+2,x+24,y+447,inner,S_CONTROL_TITLE,fitText(`${selection.label}  /  ${selection.binding.title}`,inner,S_CONTROL_TITLE));
   lines.length=0;

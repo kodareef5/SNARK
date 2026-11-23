@@ -291,6 +291,16 @@ const VEHICLE_LOOPS: Readonly<Record<string, string>> = {
   "roll/smooth": "a skateboard rolling on smooth ground",
 };
 for (const [n, when] of Object.entries(VEHICLE_LOOPS)) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", vstatus(`vehicle/${n}`), when, { loop: true, falls: vfalls(n, false) });
+// A board's tricks, each standing in for a sound of its own until it has takes: the pop's crack quicker for a flip, the
+// landing's quicker for the feet catching the deck, a slow push for a revert's scrape, and the grind's take held.
+const SKATE_ONCE: Readonly<Record<string, readonly [string, string]>> = {
+  flip: ["a skateboard turning under its rider in a trick", "ollie@1.5"],
+  catch: ["a rider's feet meeting the deck again after a trick", "land@1.3"],
+  revert: ["a skateboard's wheels scraping round in a revert", "push@.75"],
+};
+for (const [n, [when, stand]] of Object.entries(SKATE_ONCE)) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, when, { falls: [...vfalls(n, false), `{family}/${stand}`] });
+cue("vehicle/grind/loop", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a skateboard grinding along an edge, held", { loop: true, falls: [...vfalls("grind/loop", false), "{family}/grind"] });
+cue("vehicle/slide/loop", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a skateboard sliding across an edge, held", { loop: true, falls: [...vfalls("slide/loop", false), "{family}/grind@.8"] });
 // A thruster car's cold gas (shared/sim/vehicle-thrusters.ts), until it has takes of its own: the supply capsule's jets.
 cue("vehicle/thruster/boost", VEHICLE, "vehicle", "body", vstatus("vehicle/thruster/boost"), "a thruster car's boost: compressed air roaring from its tail nozzles", { loop: true, falls: [...vfalls("thruster/boost", false), "core:supply/jet"] });
 cue("vehicle/thruster/burst", VEHICLE, "vehicle", "body", vstatus("vehicle/thruster/burst"), "a thruster car's burst: a sharp blast of compressed air that hops it and turns it over", { falls: [...vfalls("thruster/burst", false), "core:supply/ignite"] });

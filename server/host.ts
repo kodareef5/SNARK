@@ -330,6 +330,8 @@ export function contentFor(content: Registry, rules: Rules): Registry {
 
 /** Seconds a survivor knocked off their feet has no hold on where they go, where it cannot fall as a ragdoll. */
 const KNOCKDOWN_SECONDS = 1.2;
+/** Seconds a skater who missed a landing stumbles before they can walk or ride again. */
+const SKATE_STUMBLE_SECONDS = .6;
 /** Seconds a survivor getting up from a fall is held still. */
 const GET_UP_SECONDS = 0.5;
 /** A car door's blow: so much and so much a metre a second the car goes, at most so much. */
@@ -765,6 +767,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const hurt = new Hurt({ world, records, survival, deadlines });
   creatures.onAdopt.on((_e, rec) => hurt.follow(rec));
   taming.bred = (rec) => breeding.subject(rec);
+  containers.onNearby = (c) => urban.nearbyBoard(c);
   containers.onRide = (c, e) => {
     if (impale.held(c.pid) || world.ents.seatSlot[e] === IMPALE_SLOT) return RESULT_BUSY;
     if (carry.holding(c) < 0) {
@@ -1430,10 +1433,16 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz)) buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
     refreshBody(rec);
   };
-  urban.onSkateFall = (actor, yaw) => {
+  urban.onSkateFall = (actor, yaw, hard) => {
     const dx = Math.sin(yaw), dz = Math.cos(yaw);
-    world.ents.vx[actor] = dx * 1.1; world.ents.vz[actor] = dz * 1.1;
-    knockDown(actor, dz * 2, .35, -dx * 2);
+    if (hard) {
+      world.ents.vx[actor] = dx * 1.1; world.ents.vz[actor] = dz * 1.1;
+      knockDown(actor, dz * 2, .35, -dx * 2);
+      return;
+    }
+    // A missed landing: a stumble, up again within a second.
+    const rec = records.byPid.get(world.ents.pid[actor]!);
+    if (rec && stunned >= 0) { buffs.give(rec, stunned, 0, SKATE_STUMBLE_SECONDS); refreshBody(rec); }
   };
   falls.onUp = (body) => {
     const rec = records.byPid.get(world.ents.pid[body]!);

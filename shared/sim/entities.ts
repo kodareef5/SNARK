@@ -777,7 +777,7 @@ export class EntityStore {
   }
 
   private storeVehicle(v: number, b: Body): void {
-    if (b.skate) this.skate.set(v, Object.assign(this.skate.get(v) ?? new SkateState(), b.skate));
+    if (b.skate) this.skate.set(v, copySkate(this.skate.get(v) ?? null, b.skate)!);
     else this.skate.delete(v);
     this.vehicle[v] = b.vehicle ? 1 : 0;
     this.vehicleYaw[v] = b.vehicleYaw;

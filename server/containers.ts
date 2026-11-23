@@ -44,6 +44,8 @@ export class Containers {
   riding: ((c: Client) => boolean) | null = null;
   offMount: ((c: Client) => void) | null = null;
   onRide: ((c: Client, e: number) => number) | null = null;
+  /** The use button aimed at nothing: a hook may take the press (a board nearby to step onto), returning a code, or -1. */
+  onNearby: ((c: Client) => number) | null = null;
   /** A session shut `rec`, which it had open. */
   readonly onShut = new Signal<[rec: EntityRecord]>();
   /**
@@ -224,6 +226,11 @@ export class Containers {
     // A structure with nothing in front of it, such as a door or a box. A refusal code is sent to the session.
     if (hit < 0 && this.struck >= 0 && this.onUseBuilt) {
       const code = this.onUseBuilt(c, this.struck);
+      if (code > 0) this.ctx.game.notify(c, code);
+      if (code >= 0) return;
+    }
+    if (hit < 0 && this.struck < 0 && c.open === 0 && this.onNearby) {
+      const code = this.onNearby(c);
       if (code > 0) this.ctx.game.notify(c, code);
       if (code >= 0) return;
     }

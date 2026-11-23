@@ -1,4 +1,4 @@
-import { GRIND, MANUAL, SKATE_MOVES } from "../../../shared/sim/skate-state.ts";
+import { SKATE_MOVES } from "../../../shared/sim/skate-state.ts";
 // A vehicle's instruments, under the minimap: a car's dash, a helicopter's and a boat's panels. They are read from the
 // predicted body by a part of the app's frame (Dash), before the view needs the speed.
 
@@ -115,7 +115,7 @@ export class Dash implements FramePart {
         const b = session.own, s = b.skate;
         t.active = true; t.id = session.driving; t.boat = t.rotor = t.thrusters = false;
         t.speed = Math.hypot(b.vx, b.vz); t.trick = s?.move ?? 0;
-        t.points = s?.score ?? 0; t.chain = s?.chain ?? 0; t.bank = s?.bank ?? 0;
+        t.points = s?.points ?? 0; t.chain = s?.chain ?? 0; t.bank = s?.bank ?? 0;
         t.balance = s?.balance ?? 0; t.switched = s?.switched ?? false; t.gamepad = f.ui.inputDevice === 1;
       } else if (car.movement === "rotor") {
         const altitude = castWorld(world, f.bx, f.by + .05, f.bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : f.by - world.hf.heightAt(f.bx, f.bz);
@@ -157,28 +157,13 @@ export const VEHICLE: HudWidget<VehicleModel> = {
     if (dash?.board) {
       const x = dashX + 12, y = dashY, width = at.dashW - 24;
       glass(f, KEY_VEHICLE, dashX, y, at.dashW, dashH);
-      const trick = SKATE_MOVES[dash.trick] ?? "Coasting";
-      f.text(KEY_VEHICLE + 1, x, y + 5, width, S_MENU_MAIN, dash.switched ? `Switch · ${trick}` : trick);
-      const score = dash.chain ? `${dash.points} pts  ×${dash.chain}` : dash.bank ? `Landed ${dash.bank}` : "";
-      f.text(KEY_VEHICLE + 2, x, y + 32, width, S_MENU_NOTE, `${Math.round(dash.speed*3.6)} km/h   ${score}`);
-      if (dash.trick === GRIND || dash.trick === MANUAL) {
-        const marker = x + (dash.balance / 2000 + .5)*(width - 5);
-        f.add(KEY_VEHICLE + 8, K_BAR, x, y + 55, width, 2, S_MENU_NOTE).value = 1;
-        f.add(KEY_VEHICLE + 9, K_BAR, x + width/2, y + 51, 1, 10, S_MENU_NOTE).value = 1;
-        f.add(KEY_VEHICLE + 10, K_BAR, marker, y + 52, 5, 8, Math.abs(dash.balance) > 650 ? S_WARNING : S_MENU_FOCUS).value = 1;
-      } else if (dash.chain) {
-        f.text(KEY_VEHICLE + 8, x, y + 49, width, S_MENU_NOTE, "Link a different trick");
-      } else if (dash.speed < .15) {
-        f.text(KEY_VEHICLE + 8, x, y + 49, width, S_MENU_NOTE, lean || dash.gamepad ? "Pull back to step backwards" : "Press S at rest to step back");
-      }
-      if (!lean) {
-        const pad = dash.gamepad;
-        f.text(KEY_VEHICLE + 3, x, y + 67, width, S_MENU_NOTE, pad ? "Stick push, brake, carve, balance" : "W/S push, brake · A/D carve, balance");
-        f.text(KEY_VEHICLE + 4, x, y + 84, width, S_MENU_NOTE, pad ? "A ollie · L3 catch edge" : "Space ollie · Shift catch edge");
-        f.text(KEY_VEHICLE + 5, x, y + 101, width, S_MENU_NOTE, pad ? "Air  RT flip · LT shove · X 180" : "Air  R kickflip · G shove · Q 180");
-        f.text(KEY_VEHICLE + 6, x, y + 118, width, S_MENU_NOTE, pad ? "Hold RB grab · release to land" : "Hold C grab · release to land");
-        f.text(KEY_VEHICLE + 7, x, y + 135, width, S_MENU_NOTE, pad ? "Hold LB manual · Y step off" : "Hold X manual · E step off");
-      }
+      // The feed in the middle shows the tricks; the panel the stance, the speed and where the trick list is.
+      const move = SKATE_MOVES[dash.trick] ?? "Rolling";
+      f.text(KEY_VEHICLE + 1, x, y + 5, width, S_MENU_MAIN, dash.switched ? `Switch · ${move}` : move);
+      f.text(KEY_VEHICLE + 2, x, y + 32, width, S_MENU_NOTE, `${Math.round(dash.speed*3.6)} km/h`);
+      const hint = dash.speed < .15 ? (lean || dash.gamepad ? "Pull back to step backwards" : "S at rest steps back")
+        : lean ? "" : dash.gamepad ? "Hold Select for the tricks" : "Hold H for the tricks, E to step off";
+      if (hint) f.text(KEY_VEHICLE + 3, x, y + 50, width, S_MENU_NOTE, hint);
     }
     if (dash && !dash.board && !dash.rotor && !dash.boat) {
       const x = dashX, y = dashY;

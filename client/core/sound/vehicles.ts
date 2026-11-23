@@ -7,7 +7,7 @@
 import { CUE_DEAD } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
-import { BAIL, GRAB, GRIND, KICKFLIP, OLLIE, PUSH, SHOVE, SPIN } from "../../../shared/sim/skate-state.ts";
+import { BAIL, FLIP, GRAB, GRIND, OLLIE, PUSH, REVERT, ROLL, SLIDE, SPECIAL } from "../../../shared/sim/skate-state.ts";
 import { isBoatVehicle, isRotorVehicle } from "../../../shared/sim/vehicle.ts";
 import { DEFAULT_DRIVETRAIN } from "../../../shared/sim/vehicle-drivetrain.ts";
 import { FIRED_BOOST, thrustBurstTick, thrustersOf } from "../../../shared/sim/vehicle-thrusters.ts";
@@ -51,6 +51,8 @@ const CAR = 3, BOARD = 4;
 const skateRoll = cueKey("vehicle/roll/smooth"), skateRough = cueKey("vehicle/roll/rough");
 const skateLand = cueKey("vehicle/land"), skatePush = cueKey("vehicle/push"), skatePop = cueKey("vehicle/ollie");
 const skateGrind = cueKey("vehicle/grind"), skateCrash = cueKey("vehicle/crash/light");
+const skateFlip = cueKey("vehicle/flip"), skateCatch = cueKey("vehicle/catch"), skateRevert = cueKey("vehicle/revert");
+const skateGrindLoop = cueKey("vehicle/grind/loop"), skateSlideLoop = cueKey("vehicle/slide/loop");
 
 /** The level of each engine layer at engine speed `share` (0 at rest, 1 at full). */
 export function engineLayers(share: number, out: number[] = [0, 0, 0, 0]): number[] {
@@ -69,7 +71,7 @@ export class VehicleSounds {
   private readonly full: Float32Array;
   private readonly driver: Uint8Array;
   /** By entity: whether its engine ran when last heard, so a start or a stop is heard once. */
-  private readonly skating = new Map<number, { move: number; phase: number; ground: boolean }>();
+  private readonly skating = new Map<number, { move: number; phase: number; ground: boolean; flipped: boolean }>();
   private readonly running = new Map<number, boolean>();
   private readonly seen = new Set<number>();
   /** Seats taken this frame, as host entity * 256 + seat slot. */
@@ -110,19 +112,30 @@ export class VehicleSounds {
       if (d >= REACH) continue;
       if (this.how[kind] === BOARD) {
         const move = remote.vehicleGear[i]!, phase = remote.wheelAngle[i]!, ground = !!remote.vehicleGrounded[i];
-        const was = this.skating.get(id), speed = remote.vehicleRpm[i]! / 100;
-        let event = 0;
+        const was = this.skating.get(id), speed = remote.vehicleRpm[i]! / 100, flat = id === inside;
         if (was) {
+          let event = 0, after = 0;
+          const edge = move === GRIND || move === SLIDE, wasEdge = was.move === GRIND || was.move === SLIDE;
           if (move === BAIL && was.move !== BAIL) event = skateCrash;
-          else if (move === GRIND && was.move !== GRIND) event = skateGrind;
-          else if (!was.ground && ground) event = skateLand;
-          else if (was.ground && !ground && (move === OLLIE || move === KICKFLIP || move === SHOVE || move === GRAB || move === SPIN)) event = skatePop;
+          else if (edge && !wasEdge) event = skateGrind;
+          else if (!was.ground && ground) {
+            // The wheels come down, and after a trick the feet catch the deck.
+            event = skateLand;
+            if (was.flipped) after = skateCatch;
+          } else if (was.ground && !ground && (move === OLLIE || move === FLIP || move === GRAB || move === SPECIAL)) event = skatePop;
+          else if (move === FLIP && was.move !== FLIP) event = skateFlip;
+          else if (move === REVERT && was.move !== REVERT) event = skateRevert;
           else if (move === PUSH && (was.move !== PUSH || phase + 1 < was.phase)) event = skatePush;
+          if (event) hear(owner, event, id, x, y, z, 1, Math.min(1, .55 + speed * .05), flat);
+          if (after) hear(owner, after, id, x, y, z, 1, .7, flat);
         }
-        if (event) hear(owner, event, id, x, y, z, 1, .8, id === inside);
+        // The wheels' roar rises with speed; an edge has a grind or a slide of its own in its place.
         const cls = hf.groundClassAt(x,z), rough = cls !== 1 && cls !== 2;
-        place(VEHICLE_LOOPS + id*8, owner, rough ? skateRough : skateRoll, x, y, z, Math.min(.85, speed/8), ground && move !== GRIND && speed > .3, false);
-        this.skating.set(id, { move, phase, ground }); this.seen.add(id);
+        place(VEHICLE_LOOPS + id*8, owner, rough ? skateRough : skateRoll, x, y, z, Math.min(1, .15 + speed/9), ground && move !== GRIND && move !== SLIDE && speed > .3, flat);
+        place(VEHICLE_LOOPS + id*8 + 1, owner, skateGrindLoop, x, y, z, Math.min(1, .5 + speed/12), move === GRIND, flat);
+        place(VEHICLE_LOOPS + id*8 + 2, owner, skateSlideLoop, x, y, z, Math.min(1, .45 + speed/12), move === SLIDE, flat);
+        const flipped = !ground && (move === FLIP || move === SPECIAL || was?.flipped === true && move !== ROLL);
+        this.skating.set(id, { move, phase, ground, flipped }); this.seen.add(id);
         continue;
       }
       if (d < NEAR) {

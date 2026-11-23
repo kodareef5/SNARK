@@ -14,7 +14,8 @@ export const GRID_CELL = 4;
 export type GrindLine = readonly (readonly [number, number, number])[];
 
 export interface PartTable {
-  readonly grindLine?: readonly (GrindLine | undefined)[];
+  /** The skateable edges of each kind: its own line, or those found along the tops of its low boxes. */
+  readonly grindLine?: readonly (readonly GrindLine[] | undefined)[];
   readonly vehicleSurface?: readonly (VehicleSurface | null)[];
   /** The grip a server's settings give a surface, by its id, where they give one (shared/content/tuning.ts `surfaces`). */
   readonly surfaceGrip?: Readonly<Record<string, number>>;

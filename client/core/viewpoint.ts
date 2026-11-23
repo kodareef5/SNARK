@@ -80,7 +80,13 @@ export const CHASE_UP = 1.15;
 /** The pitch a chase camera shows for the look pitch `pitch`. */
 export function chasePitch(pitch: number): number { return Math.max(CHASE_DOWN, Math.min(CHASE_UP, pitch - CHASE_TILT)); }
 /** The vehicle's own motion, and how far back (metres) the boom holds the camera at rest: its size's, not one number for all. */
-export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number; boom?: number; anticipate?: boolean; safeY?: number; wantedY?: number }
+export interface VehicleCameraMotion {
+  vx: number; vy: number; vz: number; id?: number; boom?: number; anticipate?: boolean; safeY?: number; wantedY?: number;
+  /** Milliseconds of a still mouse before the view turns after the heading, and the turn's time constant: a board's are short. */
+  followAfter?: number; followEase?: number;
+  /** Metres a second pushed down into the view's spring this frame: a landing's dip. */
+  kick?: number;
+}
 
 export class Viewpoint {
   thirdPerson = false;
@@ -130,7 +136,7 @@ export class Viewpoint {
     const reset = switched || Math.hypot(ex - this.target[0]!, ey - this.target[1]!, ez - this.target[2]!) > 10;
     if (reset || Math.abs(angle(yaw - this.lastYaw)) > 0.00001 || Math.abs(pitch - this.lastPitch) > 0.00001) this.lookIdle = 0;
     else this.lookIdle += elapsed;
-    if (follow && speed > 1 && this.lookIdle > 1200) yaw += angle(heading - yaw) * (1 - Math.exp(-elapsed / 1800));
+    if (follow && speed > 1 && this.lookIdle > (motion?.followAfter ?? 1200)) yaw += angle(heading - yaw) * (1 - Math.exp(-elapsed / (motion?.followEase ?? 1800)));
     const orbit = Math.abs(angle(yaw - this.lastYaw)) + Math.abs(pitch - this.lastPitch);
     this.lastYaw = yaw;
     this.lastPitch = pitch;
@@ -141,6 +147,7 @@ export class Viewpoint {
     wanted[1] = ey + Math.max(-.25, Math.min(.25, (motion?.vy ?? 0) * .035));
     wanted[2] = ez + Math.max(-1.8, Math.min(1.8, (motion?.vz ?? 0) * .1));
     const seconds = elapsed / 1000;
+    if (motion?.kick && !reset) this.targetVelocity[1] -= motion.kick;
     for (let i = 0; i < 3; i++) {
       if (reset) { this.target[i] = wanted[i]!; this.targetVelocity[i] = 0; continue; }
       // Exact critically damped spring: stable through variable frame times, with softer vertical suspension response.

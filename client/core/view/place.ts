@@ -41,6 +41,7 @@ function driverSlot(seats: readonly Seat[]): number {
 function motionOf(d: Director, vx: number, vy: number, vz: number, id: number | undefined, boom: number, anticipate?: boolean, safeY?: number, wantedY?: number): VehicleCameraMotion {
   const m = d.motion;
   m.vx = vx; m.vy = vy; m.vz = vz; m.id = id; m.boom = boom; m.anticipate = anticipate; m.safeY = safeY; m.wantedY = wantedY;
+  m.followAfter = m.followEase = m.kick = undefined;
   return m;
 }
 
@@ -55,12 +56,20 @@ function pointIn(d: Director, at: Parameters<typeof vehiclePoint>[0], x: number,
 function driving(d: Director, f: AppFrame): void {
   const session = f.session, c = f.controls, cam = f.cam, world = f.world, car = f.car!, vehiclePose = f.vehiclePose!, carYaw = f.carYaw;
   const rotor = car.movement === "rotor", boat = car.movement === "boat", at = d.carFrame, spot = d.seatSpot;
-  const board = isSkateboard(car);
+  const board = isSkateboard(car), own = session.own, speed = Math.hypot(own.vx, own.vz);
   if (f.third) {
     // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
-    pointIn(d, at, 0, board ? .94 : boat && !car.family ? 1.1 : rotor ? 1.65 : car.spec.height * 2 / 3, rotor || boat ? -.35 : 0);
-    const heading = d.view.placeVehicle(cam, world, spot[0]!, spot[1]!, spot[2]!, c.yaw, c.pitch - (board ? .09 : 0), carYaw + (board ? .24 - (session.own.skate?.switched ? Math.PI : 0) : 0), Math.hypot(session.own.vx, session.own.vz), f.dt, !rotor && !boat,
-      motionOf(d, session.own.vx, session.own.vy, session.own.vz, session.driving, board ? 3.4 : rotor || boat ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3));
+    pointIn(d, at, 0, board ? 1 : boat && !car.family ? 1.1 : rotor ? 1.65 : car.spec.height * 2 / 3, rotor || boat ? -.35 : 0);
+    // A board's view follows where it travels, not the deck, which spins, slides crosswise and rides switch; a little
+    // to the side, to see the rider's stance. It turns after the travel sooner than a car's, and dips as it lands.
+    const travel = board && speed > .5 ? Math.atan2(own.vx, own.vz) : carYaw - (own.skate?.switched ? Math.PI : 0);
+    const motion = motionOf(d, own.vx, own.vy, own.vz, session.driving, board ? 3.6 : rotor || boat ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3);
+    if (board) {
+      motion.followAfter = 350; motion.followEase = 650;
+      if (own.grounded && !d.boardGrounded && d.boardFall > 2) motion.kick = Math.min(2.4, d.boardFall * .35);
+      d.boardGrounded = own.grounded; d.boardFall = -own.vy;
+    }
+    const heading = d.view.placeVehicle(cam, world, spot[0]!, spot[1]!, spot[2]!, c.yaw, c.pitch - (board ? .09 : 0), board ? travel + .24 : carYaw, speed, f.dt, !rotor && !boat, motion);
     if (!rotor && !boat) c.yaw = heading;
   } else {
     const slot = driverSlot(car.seats), ch = f.scene.characters;

@@ -162,7 +162,10 @@ interface VehicleRig {
 }
 
 export interface VehicleRenderPose {
+  /** A skateboard's move, trick and the crouch of a held pop (shared/sim/skate-state.ts). */
   skateMove?: number;
+  skateTrick?: number;
+  crouch?: number;
   switched?: boolean;
   pitch: number; roll: number; steering: number; wheelAngle: number;
   qx?: number; qy?: number; qz?: number; qw?: number;
@@ -275,7 +278,16 @@ class Stride extends Gait {
   shownTick = Number.NaN;
   shownRigid = false;
   readonly grips = new RiderGrips();
+  /** A skater's move, trick and stance last posed, the pose drawn then, and the crossing from it to a new move. */
+  skateKey = -1;
+  skateLast: Pose | null = null;
+  skateFrom: Pose | null = null;
+  skateStart = 0;
+  skateBlending = false;
 }
+
+/** Ticks a skater's pose takes to cross from one move to the next. */
+const SKATE_BLEND_TICKS = 3.6;
 
 const STILL_GAIT = { phase: 0, speed: 0, domain: FOOTFALL_NONE } as const;
 
@@ -652,7 +664,7 @@ export class Characters {
     out.groundPitch = vehicle.groundPitch; out.groundRoll = vehicle.groundRoll; out.rideOffset = vehicle.rideOffset; out.grounded = vehicle.grounded; out.doors = vehicle.doors;
     out.definition = seat; out.x = at[0]!; out.y = at[1]!; out.z = at[2]!; out.yaw = yaw; out.driver = seat.driver === true;
     out.steer = def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer;
-    out.skateMove = vehicle.skateMove; out.switched = vehicle.switched; out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
+    out.skateMove = vehicle.skateMove; out.skateTrick = vehicle.skateTrick; out.crouch = vehicle.crouch; out.switched = vehicle.switched; out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
     return out;
   }
 
@@ -1015,7 +1027,7 @@ export class Characters {
       if (v) {
         rig.a.rest();
         if (isSkateboard(v.def)) {
-          skateDeckRotation(vehicle?.skateMove ?? 0, vehicle?.wheelAngle ?? 0, rig.a.rot);
+          skateDeckRotation(vehicle?.skateMove ?? 0, vehicle?.skateTrick ?? 0, vehicle?.wheelAngle ?? 0, rig.a.rot);
         }
         const steering = vehicle?.steering ?? 0, s = v.def.steeringWheel;
         if (s && v.steer >= 0) quatAxis(rig.a.rot, v.steer * 4, s.axis[0], s.axis[1], s.axis[2], steering * s.ratio);
@@ -1653,7 +1665,10 @@ export class Characters {
     else if (impaled) {
       humanPose(this.anim, st, tick, this.pose, g);
       this.seatedPose("impaled", 0, undefined, undefined);
-    } else if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount, this.seatedHeadTurn);
+    } else if (vehicleSeat || seat) {
+      occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount, this.seatedHeadTurn);
+      if (vehicleSeat?.role === "skate") this.skateBlend(g, vehicleSeat, tick);
+    }
     else {
       if (st.emote !== 0 && !this.anim.emotes[st.emote]) this.wantEmotes();
       humanPose(this.anim, st, tick, this.pose, g, upright);
@@ -1665,6 +1680,25 @@ export class Characters {
     solve(HUMAN, this.pose, solved, set.rest, scales);
     if (rider?.profile && seat) fitRiderControls(this.pose, solved, set.rest, scales, rider.targets, steers, undefined, soles, grips);
     if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
+  }
+
+  /** The sim changes a skater's move at once; the pose crosses to the new one over a few ticks from the pose last drawn. */
+  private skateBlend(g: Stride, seat: VehicleSeatPose, tick: number): void {
+    const key = (seat.skateMove ?? 0) * 256 + (seat.skateTrick ?? 0) + (seat.switched ? 65536 : 0);
+    const last = g.skateLast ??= new Pose(HUMAN_BONES), from = g.skateFrom ??= new Pose(HUMAN_BONES);
+    if (key !== g.skateKey) {
+      if (g.skateKey >= 0 && Number.isFinite(tick)) {
+        from.rot.set(last.rot); from.root.set(last.root);
+        g.skateStart = tick; g.skateBlending = true;
+      }
+      g.skateKey = key;
+    }
+    if (g.skateBlending) {
+      const t = (tick - g.skateStart) / SKATE_BLEND_TICKS;
+      if (t >= 1 || t < 0) g.skateBlending = false;
+      else blendPose(this.pose, from, this.pose, t * t * (3 - 2 * t));
+    }
+    last.rot.set(this.pose.rot); last.root.set(this.pose.root);
   }
 
   /** Queues mesh `m` of the survivor `add` is adding, tinted from `tint` at `tintAt`, hung on `bone` for a held item, and for its shadow `only`. */

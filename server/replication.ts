@@ -9,6 +9,7 @@ import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
 import { packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide } from "../shared/sim/vehicle-body.ts";
+import { packSkateWord } from "../shared/sim/skate-state.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
 import { F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
@@ -263,7 +264,7 @@ export class Replication {
       vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
       ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(skate?.move ?? ents.vehicleGear[v]!, skate ? Math.hypot(ents.vx[i]!, ents.vz[i]!) * 100 : ents.vehicleRpm[v]!, skate ? skate.switched : vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0) : 0,
       // A car's rotor word is its thrusters' state, what fired on its last tick among it (shared/sim/vehicle-thrusters.ts).
-      rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : vehicle?.movement !== "boat" && vehicle?.spec.thrusters ? ents.vehicleThrust[v]! : 0,
+      rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : skate ? packSkateWord(skate) : vehicle?.movement !== "boat" && vehicle?.spec.thrusters ? ents.vehicleThrust[v]! : 0,
       vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,

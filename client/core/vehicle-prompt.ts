@@ -5,6 +5,8 @@
 
 import type { Registry } from "../../shared/content/registry.ts";
 import { BOARD_FAR, BOARD_HIGH, boatBoarding, type BoatBoard } from "../../shared/sim/boat-boarding.ts";
+import { BOARD_REACH } from "../../shared/sim/skate-state.ts";
+import { isSkateboard } from "../../shared/sim/vehicle.ts";
 import { rayVehicle, useVehicle, vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
 import { rayBox } from "../../shared/world/ray.ts";
 import type { VehicleRenderPose } from "./render/characters.ts";
@@ -75,4 +77,15 @@ export function vehiclePrompt(reg: Registry, r: RemoteSample, hit: number, ox: n
     if (!seat.driver && seat.door === door.door && seat.entry.every((n, i) => n === door.entry[i]) && !taken(k)) return "E  enter passenger seat";
   }
   return "Passenger seat occupied";
+}
+
+/** Whether a free board of `team` lies within reach of a survivor standing at (x, y, z): E aimed at nothing rides it. */
+export function nearbyBoard(reg: Registry, r: RemoteSample, team: number, x: number, y: number, z: number): boolean {
+  for (let i = 0; i < r.count; i++) {
+    if (r.team[i] !== team || !isSkateboard(reg.vehicle[r.kind[i]!]) || Math.abs(r.y[i]! - y) > 1.2 || Math.hypot(r.x[i]! - x, r.z[i]! - z) > BOARD_REACH) continue;
+    let taken = false;
+    for (let j = 0; j < r.count && !taken; j++) taken = r.seat[j] === r.id[i]! + 1 && r.seatGen[j] === r.gen[i];
+    if (!taken) return true;
+  }
+  return false;
 }

@@ -143,7 +143,8 @@ const OPEN: KeyRow = {
       const at = ids.indexOf(which);
       const vehicle = at >= 0 ? c.reg.vehicle[r.kind[at]!] : undefined;
       if (vehicle) {
-        const action = s.driving < 0 && isSkateboard(vehicle) ? VEHICLE_PACK : VEHICLE_INSPECT;
+        // A board is picked up: from the ground, or from under the rider when it rolls slowly enough to step off.
+        const action = isSkateboard(vehicle) && (s.driving < 0 || Math.hypot(s.own.vx, s.own.vz) < 1) ? VEHICLE_PACK : VEHICLE_INSPECT;
         s.command(CMD_VEHICLE, w => { w.u8(action); w.u32(makeHandle(which, r.gen[at]!)); });
       } else s.command(CMD_OPEN, (w) => w.u32(which >>> 0));
     }

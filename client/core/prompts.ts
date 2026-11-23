@@ -27,7 +27,7 @@ import type { ClientSession, RemoteSample } from "./session.ts";
 import { itemLabel, waitWords } from "./ui/inventory.ts";
 import { structName } from "./ui/structure.ts";
 import type { VehiclePlacement } from "./vehicle-placement.ts";
-import { lookAt, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
+import { lookAt, nearbyBoard, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
 
 /** Metres. Matches the server's REACH. */
 const REACH = 3.5;
@@ -324,6 +324,8 @@ export class Prompts implements FramePart {
       }
       return "";
     }
+    // Aimed at nothing, E steps onto a free board of the tribe nearby, as after a fall (server/urban.ts nearbyBoard).
+    if (node < 0 && struck !== HIT_STRUCTURE && s.tribe.team !== 0 && nearbyBoard(reg, r, s.tribe.team, ox, s.own.y, oz)) return "E  ride skateboard";
     if (node < 0 || !s.nodeField) return "";
     // A node without a material is a bush, picked with the use key. Trees and rocks are struck. What is left of a used-up one is neither.
     const def = reg.defs[s.nodeField.standing(Math.floor(node / 65536), node & 0xffff)];

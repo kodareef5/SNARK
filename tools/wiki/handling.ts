@@ -5,10 +5,12 @@
 // fuel in the tank's own units.
 
 import { Body, BTN_JUMP } from "../../shared/sim/character.ts";
+import { CHARGE_TICKS } from "../../shared/sim/skate-state.ts";
+import { SPIN_RATE } from "../../shared/sim/skateboard.ts";
 import { stepVehicleBody } from "../../shared/sim/vehicle-body.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
-import { TICK_DT } from "../../shared/coords.ts";
+import { TICK_DT, TICK_RATE } from "../../shared/coords.ts";
 import { clamp, TAU } from "../../shared/math/scalar.ts";
 import { boatRestY, createBoat, stepBoat, type BoatState, type BoatWorld } from "../../shared/sim/boat.ts";
 import { createHelicopter, stepHelicopter, type HelicopterInput, type HelicopterState, type HelicopterWorld } from "../../shared/sim/helicopter.ts";
@@ -100,7 +102,11 @@ interface SkateHandling {
   movement: "skateboard";
   top: number;
   braking: number;
+  /** A tapped pop's height and a fully held one's, metres. */
   ollie: number;
+  ollieHigh: number;
+  /** Degrees a second the rider spins in the air. */
+  spin: number;
 }
 export type Handling = RoadHandling | BoatHandling | RotorHandling | SkateHandling;
 
@@ -114,9 +120,16 @@ function skateHandling(def: WheelVehicleDefinition): SkateHandling {
   const start = body.z;
   run(6, () => { stepVehicleBody(world, body, 0, -127, 0, def); return body.vz < .01; });
   const floor = body.y;
-  stepVehicleBody(world, body, 0, 0, BTN_JUMP, def);
-  run(1, () => { stepVehicleBody(world, body, 0, 0, 0, def); ollie = Math.max(ollie, body.y - floor); });
-  return { movement: "skateboard", top, braking: body.z - start, ollie };
+  // A pop is held to crouch and let go to jump: a tap, then held a full charge.
+  const pop = (hold: number): number => {
+    let high = 0;
+    for (let k = 0; k < hold; k++) stepVehicleBody(world, body, 0, 0, BTN_JUMP, def);
+    run(1.5, () => { stepVehicleBody(world, body, 0, 0, 0, def); high = Math.max(high, body.y - floor); return body.grounded && high > 0; });
+    return high;
+  };
+  ollie = pop(1);
+  const ollieHigh = pop(CHARGE_TICKS);
+  return { movement: "skateboard", top, braking: body.z - start, ollie, ollieHigh, spin: SPIN_RATE * TICK_RATE };
 }
 
 const forwardOf = (s: { vx: number; vz: number; yaw: number }): number => s.vx * Math.sin(s.yaw) + s.vz * Math.cos(s.yaw);

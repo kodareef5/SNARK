@@ -2,6 +2,7 @@
 import { TICK_DT } from "../../shared/coords.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import type { Body } from "../../shared/sim/character.ts";
+import { CHARGE_TICKS, skateWordCrouch, skateWordTrick } from "../../shared/sim/skate-state.ts";
 import { interpolateRotorPhase } from "../../shared/sim/vehicle-presentation.ts";
 import type { VehicleRenderPose } from "./render/characters.ts";
 import type { RemoteSample } from "./session.ts";
@@ -16,14 +17,15 @@ export function predictedVehiclePose(a: Body, b: Body, t: number, rotor: boolean
     groundPitch: mix(a.vehicleGroundPitch, b.vehicleGroundPitch, t), groundRoll: mix(a.vehicleGroundRoll, b.vehicleGroundRoll, t),
     rideOffset: mix(a.vehicleRideOffset, b.vehicleRideOffset, t), grounded: b.grounded, thrust: b.vehicleThrust,
   };
-  pose.skateMove = b.skate?.move; pose.switched = b.skate?.switched;
-  if (b.skate && a.skate?.move !== b.skate.move) pose.wheelAngle = b.wheelAngle;
+  if (b.skate) {
+    pose.skateMove = b.skate.move; pose.skateTrick = b.skate.trick; pose.switched = b.skate.switched;
+    pose.crouch = b.skate.charge / CHARGE_TICKS;
+    if (a.skate?.move !== b.skate.move || a.skate.trick !== b.skate.trick) pose.wheelAngle = b.wheelAngle;
+  }
   if (boat) pose.wheelAngle = interpolateRotorPhase(a.wheelAngle, b.wheelAngle, a.vehicleRpm * a.vehicleGear, b.vehicleRpm * b.vehicleGear, TICK_DT, t);
   if (a.vehicleQx || a.vehicleQy || a.vehicleQz || a.vehicleQw || b.vehicleQx || b.vehicleQy || b.vehicleQz || b.vehicleQw) {
     qa.set([a.vehicleQx, a.vehicleQy, a.vehicleQz, a.vehicleQw]); qb.set([b.vehicleQx, b.vehicleQy, b.vehicleQz, b.vehicleQw]);
-    // The spun board already faces its landing direction at the end of the trick clip.
-    const landedSwitch = a.skate && b.skate && a.skate.switched !== b.skate.switched;
-    quatNlerp(q, 0, qa, 0, qb, 0, landedSwitch ? 1 : t);
+    quatNlerp(q, 0, qa, 0, qb, 0, t);
     correction?.apply(q);
     pose.qx = q[0]!; pose.qy = q[1]!; pose.qz = q[2]!; pose.qw = q[3]!;
     pose.engineRpm = mix(a.vehicleRpm, b.vehicleRpm, t); pose.engineOn = b.vehicleEngineOn;
@@ -41,6 +43,7 @@ export function remoteVehiclePose(r: RemoteSample, i: number, out?: VehicleRende
   pose.pitch = r.vehiclePitch[i]!; pose.roll = r.vehicleRoll[i]!; pose.steering = r.steering[i]!; pose.wheelAngle = r.wheelAngle[i]!;
   pose.groundPitch = r.vehicleGroundPitch[i]!; pose.groundRoll = r.vehicleGroundRoll[i]!; pose.rideOffset = r.vehicleRideOffset[i]!; pose.grounded = r.vehicleGrounded[i] !== 0;
   pose.skateMove = r.vehicleGear[i]!; pose.switched = !!r.vehicleShifting[i];
+  pose.skateTrick = skateWordTrick(r.vehicleThrust[i]!); pose.crouch = skateWordCrouch(r.vehicleThrust[i]!);
   pose.doors = r.vehicleDoors[i]!;
   pose.lightMode = r.vehicleLightMode[i]!;
   pose.thrust = r.vehicleThrust[i]!;

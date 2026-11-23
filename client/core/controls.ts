@@ -18,6 +18,8 @@ const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 const STANCE_KEYS: Record<string, number> = { KeyC: BTN_CROUCH, KeyX: BTN_PRONE };
 /** Ticks a press of the glider's key is held for the step to sample. */
 const GLIDE_PULSE = 2;
+/** On a board, ticks every press is held for at least, so a tap of the pop or a trick key between two ticks is still seen. */
+const SKATE_PULSE = 2;
 const MOUSE: readonly number[] = [BTN_PRIMARY, 0, BTN_SECONDARY];
 
 export class Controls {
@@ -51,7 +53,7 @@ export class Controls {
   get onBoard(): boolean { return this.board; }
   skate(on: boolean): void {
     if (on === this.board) return;
-    this.board = on; this.stance = 0; this.refresh();
+    this.board = on; this.stance = 0; this.pulses.clear(); this.refresh();
   }
   private thrusters = false;
   /**
@@ -62,10 +64,17 @@ export class Controls {
   private gliding = false;
   private glideUntil = -1;
   private tick = 0;
+  /** On a board: each button pressed lately, and the last tick it is held for whatever the key does. */
+  private readonly pulses = new Map<number, number>();
 
   /** Call it each frame with the tick the prediction has reached. */
   glider(on: boolean, tick: number): void {
     this.tick = tick;
+    if (this.pulses.size) {
+      let over = false;
+      for (const [bit, until] of this.pulses) if (until < tick) { this.pulses.delete(bit); over = true; }
+      if (over) this.refresh();
+    }
     const over = this.glideUntil >= 0 && tick > this.glideUntil;
     if (on === this.gliding && !over) return;
     if (over || !on) this.glideUntil = -1;
@@ -134,6 +143,7 @@ export class Controls {
     } else if (this.flyer && code === "Space") {
       if (down && !held.has(code)) this.wing = !this.wing;
     } else if (!MOVE_KEYS.has(code) && this.bindings()[code] === undefined) return false;
+    if (this.board && down && !held.has(code) && BOARD_BINDINGS[code]) this.pulses.set(BOARD_BINDINGS[code]!, this.tick + SKATE_PULSE);
     if (down) held.add(code);
     else held.delete(code);
     // From a stance, jump stands the body up and is not sent as a jump. Sprint stands a crouched body up.
@@ -148,6 +158,7 @@ export class Controls {
   mouseButton(button: number, down: boolean, source = 0): void {
     const bit = this.helicopter ? 0 : MOUSE[button] ?? 0;
     if (bit === 0) return;
+    if (this.board && down) this.pulses.set(bit, this.tick + SKATE_PULSE);
     if (source === 1) this.padMouse = down ? this.padMouse | bit : this.padMouse & ~bit;
     else this.mouse = down ? this.mouse | bit : this.mouse & ~bit;
     this.refresh();
@@ -190,6 +201,7 @@ export class Controls {
     const bindings = this.bindings();
     for (const code of k) buttons |= bindings[code] ?? 0;
     for (const code of this.padHeld) buttons |= bindings[code] ?? 0;
+    if (this.board) for (const [bit, until] of this.pulses) if (until >= this.tick) buttons |= bit;
     this.buttons = buttons;
   }
 }

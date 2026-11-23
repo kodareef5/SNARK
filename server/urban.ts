@@ -19,6 +19,7 @@ import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from '../shared/sim/en
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { skateBail } from "../shared/sim/skateboard.ts";
+import { BOARD_REACH } from "../shared/sim/skate-state.ts";
 import { isSkateboard, isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { Found } from '../shared/world/structures.ts';
@@ -174,7 +175,8 @@ export class Urban {
   /** The tick each body was last struck by a door, by vehicle entity and body: a door strikes a body once a second. */
   private readonly struckAt = new Map<number, number>();
   /** A door struck body `body` from vehicle `vehicle` going `speed` m/s, its blow the unit way (dx, dz): the host hurts it. */
-  onSkateFall: ((actor: number, yaw: number) => void) | null = null;
+  /** A rider thrown from a board: `hard` falls as a ragdoll, otherwise stumbles and is up within a second. */
+  onSkateFall: ((actor: number, yaw: number, hard: boolean) => void) | null = null;
   onDoorStrike: ((vehicle: number, body: number, speed: number, dx: number, dz: number) => void) | null = null;
   /** Diagnostics: bodies struck by doors. */
   doorStruck = 0;
@@ -777,8 +779,10 @@ export class Urban {
         const hurt = pair.fresh && opposing ? skateBail(party.deltaSpeed, 0) : 0;
         const rider = hurt && !pair.protectedA && !pair.protectedB ? this.riderOf(party.entity) : null;
         if (rider && this.ctx.mayDisplaceRider?.(by, other, rider)) {
+          // A car's blow throws the rider down as a crash does.
           const report = this.impactReport(party.pid);
           report.skateHurt = Math.max(report.skateHurt, hurt);
+          report.speed = Math.max(report.speed, party.deltaSpeed);
           const actor = this.entity(rider.pid);
           if (actor >= 0) this.contacts?.continueContact(party === pair.a ? pair.b.handle : pair.a.handle, ents.handleOf(actor));
         }
@@ -837,18 +841,19 @@ export class Urban {
     const rec = records.byPid.get(pid);
     if (!rec || rec.dead) return false;
     if (isSkateboard(host.definition)) {
-      const hurt = Math.max(report.skateHurt, skateBail(report.speed, report.landing)), rider = this.riderOf(e);
+      // A crash or a big drop throws the rider down; a missed trick only knocks them off their feet a moment.
+      const fall = skateBail(report.speed, report.landing), hurt = Math.max(report.skateHurt, fall), rider = this.riderOf(e);
       if ((hurt || report.water) && rider) {
-        const actor = this.entity(rider.pid);
+        const actor = this.entity(rider.pid), hard = fall > 0;
         for (const effect of this.occupancy.remove(rider.pid, world.tick)) this.apply(effect);
         if (actor >= 0) {
-          if (hurt) {
+          if (hard) {
             ents.setPosition(actor, ents.x[e]!, ents.y[e]! + host.definition.spec.height, ents.z[e]!);
             ents.stance[actor] = STANCE_STAND;
           } else if (!this.standBeside(actor, host)) this.recover(actor);
           ents.vx[actor] = ents.vy[actor] = ents.vz[actor] = 0;
           ents.pose(actor, world.tick); records.dirty.add(rider.pid);
-          if (hurt) this.onSkateFall?.(actor, ents.vehicleYaw[v]!);
+          if (hurt) this.onSkateFall?.(actor, ents.vehicleYaw[v]!, hard);
         }
         const client = this.client(rider.pid);
         if (client) { client.ownDirty = true; this.ctx.game.sendText(client, TEXT_NOTICE, hurt ? `Bail · ${hurt} damage` : "Stepped off in water"); }
@@ -884,6 +889,36 @@ export class Urban {
   }
 
   riding(c: Client): boolean { return this.occupancy.seatOf(c.pid) !== null; }
+
+  /** Takes the session off the board it rides at once, standing beside it. False when it rides none. */
+  standOff(c: Client): boolean {
+    const seat = this.occupancy.seatOf(c.pid), host = seat ? this.hosts.get(seat.host) : undefined;
+    if (!host || !isSkateboard(host.definition)) return false;
+    const { world, records } = this.ctx, ents = world.ents, actor = this.entity(c.pid);
+    for (const effect of this.occupancy.remove(c.pid, world.tick)) this.apply(effect);
+    if (actor >= 0) {
+      if (!this.standBeside(actor, host)) this.recover(actor);
+      ents.vx[actor] = ents.vy[actor] = ents.vz[actor] = 0;
+      ents.pose(actor, world.tick); records.dirty.add(c.pid);
+    }
+    c.ownDirty = true;
+    return true;
+  }
+
+  /** The use key aimed at nothing steps onto the nearest free board of the session's tribe in reach. -1 if none. */
+  nearbyBoard(c: Client): number {
+    const { world, records } = this.ctx, ents = world.ents, me = records.byPid.get(c.pid);
+    if (c.ent < 0 || !me || c.drive >= 0 || ents.seat[c.ent] !== 0) return -1;
+    let best = BOARD_REACH, found = -1;
+    for (const [pid, host] of this.hosts) {
+      const e = host.entity, seat = host.definition.seats[0];
+      if (!isSkateboard(host.definition) || !seat || ents.resolve(host.handle) !== e || records.byPid.get(pid)?.team !== me.team) continue;
+      if (this.occupancy.occupant(pid, seat.id) || Math.abs(ents.y[e]! - ents.y[c.ent]!) > 1.2) continue;
+      const d = Math.hypot(ents.x[e]! - ents.x[c.ent]!, ents.z[e]! - ents.z[c.ent]!);
+      if (d < best) { best = d; found = e; }
+    }
+    return found >= 0 ? this.mount(c, found) : -1;
+  }
   riderOf(e: number): EntityRecord | null {
     const { world, records } = this.ctx, ents = world.ents, pid = ents.pid[e]!;
     const host = this.hosts.get(pid), control = this.occupancy.control(pid);
@@ -924,7 +959,7 @@ export class Urban {
       if (d < best) { best = d; nearest = seat; }
     }
     if (isSkateboard(host.definition)) best = Math.hypot(ents.x[c.ent]! - state.x, ents.z[c.ent]! - state.z);
-    if (best > 2) return RESULT_FAR;
+    if (best > (isSkateboard(host.definition) ? BOARD_REACH : 2)) return RESULT_FAR;
     const occupant = this.occupancy.occupant(pid, nearest.id);
     if (isSkateboard(host.definition) && occupant) return RESULT_BUSY;
     if (!nearest.driver) {
@@ -1358,7 +1393,7 @@ export class Urban {
     if (isSkateboard(host.definition) && action.kind === "enter") {
       const start = { x: ents.x[ae]!, y: ents.y[ae]!, z: ents.z[ae]! };
       const deck = { x: state.x, y: state.y + host.definition.spec.height, z: state.z };
-      if (Math.hypot(deck.x-start.x, deck.z-start.z) > 2 || Math.abs(deck.y-start.y) > 1.2) return { ok: false, reason: "too-far" };
+      if (Math.hypot(deck.x-start.x, deck.z-start.z) > BOARD_REACH || Math.abs(deck.y-start.y) > 1.2) return { ok: false, reason: "too-far" };
       const over = { ...start, y: Math.max(deck.y, start.y) };
       const clear = (a: Point, b: Point) => this.seating.corridor(a, b, action.actor, [action.actor], action.host);
       return clear(start, over) && clear(over, deck) ? { ok: true } : { ok: false, reason: "corridor-blocked" };

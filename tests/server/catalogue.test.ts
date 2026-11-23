@@ -29,13 +29,14 @@ import { EGGS } from "../../content/eggs.ts";
 import { FOODS } from "../../content/foods.ts";
 import { KNOCKOUT } from "../../content/knockout.ts";
 import { ITEMS } from "../../content/items/index.ts";
+import { SKATE_PARK } from "../../content/skate-park.ts";
 import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
 // What the creature files bring is counted apart, so a new creature moves no number here, and so is what the files of
 // the creature features and of the item and weapons programs (content/items) bring, so that those built side by side do
 // not each move the same numbers.
-const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS];
+const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS, ...SKATE_PARK];
 const ofCreatures = new Set([...CREATURES, ...FEATURES_CONTENT].map((d) => `${d.type} ${d.id}`));
 const rest = CORE_CONTENT.filter((d) => !ofCreatures.has(`${d.type} ${d.id}`));
 const classes = CORE_CONTENT.map(classOf);

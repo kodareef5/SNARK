@@ -99,7 +99,7 @@ export interface Registry extends Core, Frozen<Made> {}
 
 /** The part table while it is filled: structures and nodes add their boxes (Making.boxes), and structures the rest. */
 interface FillingParts {
-  grindLine: (import("../world/structures.ts").GrindLine | undefined)[];
+  grindLine: (readonly import("../world/structures.ts").GrindLine[] | undefined)[];
   vehicleSurface: (VehicleSurface | null)[];
   start: Uint32Array;
   box: Float32Array;

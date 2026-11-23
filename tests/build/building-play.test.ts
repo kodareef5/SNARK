@@ -6,6 +6,7 @@ import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { BUILDING_CONTENT } from "../../content/building.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { ITEMS } from "../../content/items/index.ts";
+import { SKATE_PARK } from "../../content/skate-park.ts";
 import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -417,8 +418,9 @@ test("what is shown is what is built: over two thousand looks with every piece, 
 });
 
 test("pieces are made as anything is: an engram at the reference's level, at its cost, and the thing in hand to set down", () => {
-  // The pack as assembled, where each piece carries how it is made. The item program's stations are counted apart (content/items).
-  const program = new Set(ITEMS.map((d) => d.id));
+  // The pack as assembled, where each piece carries how it is made. The item program's stations and the skate park's
+  // pieces are counted apart (content/items, content/skate-park.ts).
+  const program = new Set([...ITEMS, ...SKATE_PARK].map((d) => d.id));
   const items = CORE_CONTENT.filter((d): d is ItemDef => d.type === "item" && d.places !== undefined && !program.has(d.id));
   // Four thatch pieces, six each of wood, stone and metal, and seven things: three containers, a campfire, a sleeping bag, a
   // simple bed, and a bunk bed, which is made at a Fabricator from what does not exist yet, so nothing makes it.

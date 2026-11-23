@@ -169,13 +169,14 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
   };
   const corner = (b: number, icon: number, label: string): void => { shown |= button(f, t, b, ax, ay, ATTACK, P_ROUND, icon, label); };
   if (v?.board) {
-    corner(T_JUMP, I_JUMP, "Ollie");
-    at(T_RELOAD, 0, BUTTON, I_ROTATE, "Kickflip");
-    at(T_MELEE, 1, BUTTON, I_RIGHT, "360 shove-it");
+    // The stick picks each trick's variant as it is pressed; in the air it spins the rider.
+    corner(T_JUMP, I_JUMP, "Hold to crouch, let go to ollie");
+    at(T_RELOAD, 0, BUTTON, I_ROTATE, "Flip");
+    at(T_ROLL, 1, BUTTON, I_CROUCH, "Hold to grab, let go to land");
     at(T_SHIFT, 2, BUTTON, I_SNAP, "Catch an edge on descent", t.shifted);
-    at(T_HOLD, 3, SMALL, I_ANCHOR, "Hold for manual");
-    at(T_ROLL, 4, SMALL, I_CROUCH, "Hold grab, release to land");
-    at(T_SNAP, 5, SMALL, I_LEFT, "180");
+    at(T_HOLD, 3, SMALL, I_ANCHOR, "Hold for a manual");
+    at(T_SNAP, 4, SMALL, I_LEFT, "Revert");
+    at(T_MELEE, 5, SMALL, I_RIGHT, "Special");
   } else if (v?.rotor) {
     // A helicopter: the collective under the thumb, yaw side by side above it, and the rest about them.
     corner(T_JUMP, I_UP, "Collective up");

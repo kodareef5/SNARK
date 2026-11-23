@@ -33,9 +33,12 @@ export interface MountPoseInput {
   readonly side?: 1 | -1;
   /** -1..1; bends the procedural driver's arms around the wheel. An authored drive clip owns its arms. */
   readonly steering?: number;
+  /** A skater's move, trick, phase (the board's wheel angle), stance and the crouch of a held pop, 0 to 1. */
   readonly skateMove?: number;
+  readonly skateTrick?: number;
   readonly skatePhase?: number;
   readonly switched?: boolean;
+  readonly crouch?: number;
   /** Existing look/weapon pose for a passenger. Upper body and hand props survive; hips and legs do not. May equal out. */
   readonly upper?: Pose;
 }
@@ -97,7 +100,7 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
     blendPose(sampled, sampled, steering < 0 ? fallback.left : fallback.right, Math.abs(steering));
   }
   if (input.role === "skate" && !replacement) {
-    sampleSkater(input.skateMove ?? 0, input.skatePhase ?? 0, input.steering ?? 0, sampled, input.switched);
+    sampleSkater(input.skateMove ?? 0, input.skateTrick ?? 0, input.skatePhase ?? 0, input.steering ?? 0, sampled, input.crouch ?? 0);
   }
   // Copy the passenger's local upper pose after seating; the procedural seated hips have identity rotation.
   // Do this before writing out, so callers can pass an existing humanPose as both upper and output.

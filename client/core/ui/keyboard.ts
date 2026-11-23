@@ -28,7 +28,7 @@ function cap(f:UiFrame,id:number,label:string,binding:Binding|undefined,x:number
 export function keyboard(f:UiFrame,x:number,y:number,w:number,group:number,focus:number):Selection {
   const compact=w<600, boardW=compact?w:w-146, unit=boardW/15, gap=compact?2:4, h=compact?29:34;
   let id=KEY_CONTROL_KEY;
-  const defaultCode=group===5?"Tab":group===1?"KeyR":group===2?"KeyE":group===3?"KeyQ":group===4?"Space":"KeyW";
+  const defaultCode=group===5?"Tab":group===1?"KeyR":group===2?"KeyE":group===3?"KeyQ":group===4||group===6?"Space":"KeyW";
   let selected:Selection={label:defaultCode.replace("Key",""),binding:keyBinding(defaultCode,group)!};
   for(let row=0;row<KEY_ROWS.length;row++) {
     let left=x;

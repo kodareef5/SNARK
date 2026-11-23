@@ -166,14 +166,18 @@ test("LB and the right stick's press hold a helmet's visor up as the middle mous
   expect(zooms).toEqual(["-1:false","1:false","-1:true"]);
 });
 
-test("a skater can hold a grab and release it for the landing", () => {
+test("a skater's buttons hold while pressed, and a tap lasts long enough for the step to see it", () => {
   const r = rig();
   r.controls.skate(true); Object.assign(r.target, { skating: true });
   const keys = [[0, "Space"], [7, "KeyR"], [6, "KeyG"], [2, "KeyQ"], [4, "KeyX"], [5, "KeyC"], [10, "ShiftLeft"]] as const;
+  let tick = 0;
   for (const [i, key] of keys) {
     r.pad.buttons[i]!.pressed = true; r.step();
     expect(r.controls.buttons).toBe(r.controls.bindings()[key]!);
     r.pad.buttons[i]!.pressed = false; r.step();
+    // A tap let go before two ticks have passed is still held for them.
+    expect(r.controls.buttons).toBe(r.controls.bindings()[key]!);
+    r.controls.glider(false, tick += 3);
     expect(r.controls.buttons).toBe(0);
   }
 });

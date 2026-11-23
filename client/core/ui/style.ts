@@ -121,6 +121,14 @@ export const S_VISOR_LEFT = 72;
 export const S_SPOT_WORD = 73;
 /** The magnification ladder's zoom now, larger than its rungs. */
 export const S_MAGNIFY = 74;
+/** A skater's trick feed (hud/skate.ts): the line, its score, a good word and a bad one, a trick list's heading. */
+export const S_SKATE_LINE = 75;
+export const S_SKATE_SCORE = 76;
+export const S_SKATE_GOOD = 77;
+export const S_SKATE_BAD = 78;
+export const S_SKATE_TRICK = 79;
+/** The special meter's bar. */
+export const S_SKATE_METER = 80;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -198,4 +206,10 @@ export const STYLES: readonly Style[] = [
   /* S_VISOR_LEFT */ style(0, 0x7fe6d4, 13, 0, true),
   /* S_SPOT_WORD */ style(0, 0xff6a3d, 13, 1, true),
   /* S_MAGNIFY */ style(0, 0xb4fff1, 20, 0, true),
+  /* S_SKATE_LINE */ style(0, 0xf4f8fa, 18, 1, true),
+  /* S_SKATE_SCORE */ style(0, 0xffd36a, 24, 1, true),
+  /* S_SKATE_GOOD */ style(0, 0x9cf29a, 24, 1, true),
+  /* S_SKATE_BAD */ style(0, 0xff6f5e, 24, 1, true),
+  /* S_SKATE_TRICK */ style(0, 0xffd36a, 13, 0, true),
+  /* S_SKATE_METER */ style(0x00000066, 0xffd36a),
 ];

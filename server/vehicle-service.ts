@@ -4,7 +4,7 @@ import { handleGen, handleIndex, makeHandle } from "../shared/ids.ts";
 import { CHUNK_SIZE, TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y } from "../shared/coords.ts";
 import { hashString } from "../shared/hash.ts";
 import { Rng } from "../shared/rng.ts";
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_PACK, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL, VEHICLE_LIGHTS, VEHICLE_DOOR } from "../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_PACK, VEHICLE_RIDE, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL, VEHICLE_LIGHTS, VEHICLE_DOOR } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
@@ -64,6 +64,10 @@ export class VehicleService {
     if (action === VEHICLE_DEPLOY) {
       const slot = r.u8(), x = r.f32(), y = r.f32(), z = r.f32(), yaw = r.u16();
       return r.overflow ? RESULT_INVALID : this.deploy(c, slot, x, y, z, yaw * Math.PI * 2 / 65536);
+    }
+    if (action === VEHICLE_RIDE) {
+      const slot = r.u8(), yaw = r.u16();
+      return r.overflow ? RESULT_INVALID : this.dropAndRide(c, slot, yaw * Math.PI * 2 / 65536);
     }
     const handle = r.u32(), count = action === VEHICLE_REFUEL ? r.u8() : 0;
     if (r.overflow) return RESULT_INVALID;
@@ -167,9 +171,12 @@ export class VehicleService {
     const target = this.target(c, handle, false);
     if (typeof target === "number") return target;
     const { actor, rec, def, e } = target, { items, world, urban, game } = this.ctx;
+    // Riding it slowly, the rider steps off and picks it up in one go.
+    const riding = c.drive === e && isSkateboard(def) && Math.hypot(world.ents.vx[e]!, world.ents.vz[e]!) < 1;
+    if (riding && !urban.standOff(c)) return RESULT_DENIED;
     if (!isSkateboard(def) || actor.team !== rec.team || c.drive >= 0 || world.ents.seat[c.ent]) return RESULT_DENIED;
     if (world.ents.flags[e]! & F_PROP) return RESULT_INVALID;
-    if (urban.hasOccupants(e) || Math.hypot(world.ents.vx[e]!, world.ents.vy[e]!, world.ents.vz[e]!) > .4) return RESULT_BUSY;
+    if (urban.hasOccupants(e) || (!riding && Math.hypot(world.ents.vx[e]!, world.ents.vy[e]!, world.ents.vz[e]!) > .4)) return RESULT_BUSY;
     if (items.inv(rec).count.some(n => n > 0)) {
       game.sendText(c, TEXT_NOTICE, "Empty the deck storage before picking it up.");
       return this.inspect(c, handle);
@@ -324,8 +331,23 @@ export class VehicleService {
     return RESULT_OK;
   }
 
-  deploy(c: Client, slot: number, x: number, y: number, z: number, yaw: number): number {
+  /** A board from the bag set down at the survivor's feet and stepped onto at once. */
+  dropAndRide(c: Client, slot: number, yaw: number): number {
+    const { world, items, urban } = this.ctx, actor = this.actor(c), ents = world.ents;
+    if (!actor || c.drive >= 0 || ents.seat[c.ent] !== 0) return RESULT_DENIED;
+    const inv = items.inv(actor);
+    if (!Number.isInteger(slot) || slot < 0 || slot >= inv.cap || inv.count[slot]! < 1) return RESULT_INVALID;
+    if (!isSkateboard(world.reg.vehicle[world.reg.vehicleDeploy[inv.item[slot]!]!])) return RESULT_INVALID;
+    const placed = this.deploy(c, slot, ents.x[c.ent]!, ents.y[c.ent]!, ents.z[c.ent]!, yaw, c.ent);
+    return placed === RESULT_OK && this.placed >= 0 ? urban.mount(c, this.placed) : placed;
+  }
+
+  /** The vehicle the last deploy made, or -1. */
+  private placed = -1;
+
+  deploy(c: Client, slot: number, x: number, y: number, z: number, yaw: number, under = -1): number {
     const { world, items } = this.ctx, actor = this.actor(c), ents = world.ents;
+    this.placed = -1;
     if (!actor || c.drive >= 0 || ents.seat[c.ent] !== 0) return RESULT_DENIED;
     const inv = items.inv(actor);
     if (!Number.isInteger(slot) || slot < 0 || slot >= inv.cap || (inv.flags[slot]! & FLAG_BLUEPRINT) !== 0 || inv.count[slot]! < 1) return RESULT_INVALID;
@@ -333,12 +355,13 @@ export class VehicleService {
     if (!def || ![x, y, z, yaw].every(Number.isFinite)) return RESULT_INVALID;
     if (Math.hypot(x - ents.x[c.ent]!, y - ents.y[c.ent]!, z - ents.z[c.ent]!) > DEPLOY_REACH) return RESULT_FAR;
     if (y < WORLD_MIN_Y || y > WORLD_MAX_Y || !this.visible(c, x, y + 1, z)) return RESULT_OBSTRUCTED;
-    if (!vehiclePlaceFree(world, x, y, z, yaw, def)) return RESULT_NO_SUPPORT;
+    if (!vehiclePlaceFree(world, x, y, z, yaw, def, under)) return RESULT_NO_SUPPORT;
     const hull = isSkateboard(def) && inv.dur[slot] ? Math.min(1, inv.dur[slot]! / 1000) : 1;
     const e = this.ctx.spawn(world.reg.ids[kind]!, x, z, actor.team, yaw, { y, fuel: 0, hull, engine: 1, rotor: 1 });
     if (e < 0) return RESULT_OBSTRUCTED;
     if (inv.item[slot] !== item || !items.burn(actor, slot, 1)) { this.ctx.discard(e); return RESULT_INVALID; }
-    this.ctx.game.sendText(c, TEXT_NOTICE, isSkateboard(def) ? "Skateboard ready. Look at the deck and press E to ride." : `${isBoatVehicle(def) ? "Motorboat" : "Helicopter"} assembled. Add gasoline before starting.`);
+    this.placed = e;
+    if (under < 0) this.ctx.game.sendText(c, TEXT_NOTICE, isSkateboard(def) ? "Skateboard ready. Look at the deck and press E to ride." : `${isBoatVehicle(def) ? "Motorboat" : "Helicopter"} assembled. Add gasoline before starting.`);
     return RESULT_OK;
   }
 }
@@ -429,7 +452,8 @@ function largestParkedRadius(reg: ServerWorld["reg"]): number {
 }
 
 /** Shared by authored parking and deployment: the world itself (vehicleFitsWorld), then the bodies standing there. */
-export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: number, yaw: number, def: VehicleDefinition): boolean {
+/** `under` is a body the vehicle may be set down beneath: a survivor dropping a board at their feet. */
+export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: number, yaw: number, def: VehicleDefinition, under = -1): boolean {
   if (!vehicleFitsWorld(world, x, y, z, yaw, def)) return false;
   const ents = world.ents, parkedRadius = largestParkedRadius(world.reg);
   if (isRotorVehicle(def) || isBoatVehicle(def)) {
@@ -460,7 +484,7 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
       for (let cx = Math.max(0, Math.floor((part.x - pad) / CHUNK_SIZE)); cx <= Math.min(world.dims.chunksX - 1, Math.floor((part.x + pad) / CHUNK_SIZE)); cx++) {
         for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
           const k = ents.kind[e]!;
-          if ((ents.flags[e]! & F_ALIVE) === 0 || part.y >= ents.y[e]! + world.reg.bodyHeight[k]! || part.y + part.height <= ents.y[e]!) continue;
+          if (e === under || (ents.flags[e]! & F_ALIVE) === 0 || part.y >= ents.y[e]! + world.reg.bodyHeight[k]! || part.y + part.height <= ents.y[e]!) continue;
           const other = world.reg.vehicle[k];
           if (other) {
             const a = ents.vehicleYaw[ents.vrow[e]!]!, dx = part.x - ents.x[e]!, dz = part.z - ents.z[e]!;

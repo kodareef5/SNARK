@@ -15,6 +15,7 @@ import { PROMPT } from "./prompt.ts";
 import { READOUT } from "./readout.ts";
 import { RESTART } from "./restart.ts";
 import { HOLO_TINT, SIGHT } from "./sight.ts";
+import { SKATE } from "./skate.ts";
 import { STATE, WORDS } from "./state.ts";
 import { VEHICLE } from "./vehicle.ts";
 import { VITALS } from "./vitals.ts";
@@ -36,6 +37,7 @@ export const HUD_WIDGETS: readonly HudWidget<any>[] = [
   MINIMAP_TOGGLE,
   JET,
   VEHICLE,
+  SKATE,
   VITALS,
   BUFFS,
   HOTBAR,

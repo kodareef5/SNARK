@@ -36,7 +36,8 @@ test("downtown Miami's kerbs carry two ollies over sidewalk seams", async () => 
     }
     expect(Math.hypot(b.vx, b.vz)).toBeGreaterThan(3);
     const street = b.y;
-    stepVehicleBody(world, b, 0, 0, BTN_JUMP | BTN_SPRINT, BOARD);
+    for (let t = 0; t < 4; t++) stepVehicleBody(world, b, 0, 0, BTN_JUMP | BTN_SPRINT, BOARD);
+    stepVehicleBody(world, b, 0, 0, BTN_SPRINT, BOARD);
     expect(b.skate!.move).toBe(OLLIE);
     let caught = false, distance = 0;
     for (let t = 1; t < 100; t++) {

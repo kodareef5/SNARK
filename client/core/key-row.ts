@@ -7,7 +7,7 @@ import type { App } from "./app.ts";
 export type KeyContext = App;
 
 /** The controls guide's tabs (ui/controls-guide.ts CONTROL_GROUPS). */
-export const G_MOVE = 0, G_COMBAT = 1, G_WORLD = 2, G_BUILD = 3, G_FLIGHT = 4, G_MENUS = 5;
+export const G_MOVE = 0, G_COMBAT = 1, G_WORLD = 2, G_BUILD = 3, G_FLIGHT = 4, G_MENUS = 5, G_SKATE = 6;
 
 /**
  * What the controls guide says of `code`. `group` is the tab that lights the key. With `sheet` (G_BUILD, G_FLIGHT or

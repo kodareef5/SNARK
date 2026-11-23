@@ -208,7 +208,8 @@ export class Sight implements FramePart {
       this.glassPressed = press;
     } else this.glassPressed = false;
     shown.behind = alive && f.third && !view.atEye && session.driving < 0 && !passenger;
-    if (f.dash && !aiming) want += Math.min(7 * Math.PI / 180, f.dash.speed / 30 * 7 * Math.PI / 180);
+    // A board opens the view by its own top speed's measure, a car by a car's.
+    if (f.dash && !aiming) want += f.dash.board ? Math.min(8, f.dash.speed / 9 * 8) * Math.PI / 180 : Math.min(7 * Math.PI / 180, f.dash.speed / 30 * 7 * Math.PI / 180);
     if (f.dash?.active && f.dash.boosting && !aiming) {
       // A thruster car's boost opens the view further and shakes it a little while the nozzles fire; the look sent does not.
       want += BOOST_FOV;
