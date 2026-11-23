@@ -4,6 +4,7 @@
 
 import { HYSTERESIS } from "../../client/core/assets/assets.ts";
 import { TIERS, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
+import { BODY_LEVEL_TOLERANCE, bodyLevelError } from "../../content/vehicles/level-tolerance.ts";
 import { BUILDING_CONTENT } from "../../content/building.ts";
 import { Pose, sampleClip, type Clip } from "../../shared/anim/clip.ts";
 import { buildRig, type Rig } from "../../shared/anim/rigs.ts";
@@ -287,12 +288,14 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
  * the tier draws is drawn from 0 m. Null for a level the tier never draws: one finer than its finest, or one no
  * coarser level is worse than.
  */
-export function levelStarts(errors: readonly number[], height: number, tier: Tier): ({ from: number; tall: number } | null)[] {
+export function levelStarts(errors: readonly number[], height: number, tier: Tier, mesh?: string): ({ from: number; tall: number } | null)[] {
   const scale = SCREEN / (2 * Math.tan(FOV_Y / 2));
   const finest = Math.min(tier.finest, errors.length - 1);
-  return errors.map((error, level) => {
+  const tolerance = mesh && BODY_LEVEL_TOLERANCE[mesh];
+  const drawErrors = tolerance ? errors.map((error, l) => bodyLevelError(tolerance, l, error)) : errors;
+  return drawErrors.map((error, level) => {
     if (level === finest) return { from: 0, tall: 0 };
-    if (level < finest || error <= 0 || errors.slice(level + 1).some((e) => e <= error)) return null;
+    if (level < finest || error <= 0 || drawErrors.slice(level + 1).some((e) => e <= error)) return null;
     const from = (error * scale) / tier.threshold;
     return { from, tall: (height * scale) / from };
   });
@@ -302,7 +305,7 @@ function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], f
   const header = pack.header.meshes[pack.meshIndex.get(mesh.id)!]!;
   const tall = header.half[1] * 2;
   const errors = header.lods.map((l, level) => (level === 0 ? 0 : l.error));
-  const starts = TIERS.map((tier) => levelStarts(errors, tall, tier));
+  const starts = TIERS.map((tier) => levelStarts(errors, tall, tier, mesh.id));
   const medium = TIERS.indexOf(tierOf(TIER));
   let strays = 0;
   const levels = mesh.lods.map((lod, l): LevelFacts => {

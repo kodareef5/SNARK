@@ -549,7 +549,7 @@ export class Characters {
       });
       const wreck = bind.own(d.id, "wreck");
       const flatColors = d.class === "creature" && d.regions ? Uint8Array.from(d.regions, (r) => r?.colors[0]?.[0] ?? 0) : null;
-      return { flatColors, heat: kindHeat(reg, i), wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
+      return { flatColors, heat: kindHeat(reg, i), wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.bodyError[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;

@@ -4,6 +4,7 @@
 // known by its id and what it hangs on alone, with as many levels as it has, each of no triangles and no error, and
 // its bounds a point, until `learn`.
 
+import { BODY_LEVEL_TOLERANCE, bodyLevelError } from "../../../content/vehicles/level-tolerance.ts";
 import type { Slot } from "../../../shared/content/classes.ts";
 import { meshKnown, type Manifest } from "../../../shared/pack/manifest.ts";
 import type { Pack, PackMaterial } from "../../../shared/pack/pack.ts";
@@ -17,6 +18,8 @@ export class AssetTable {
   readonly tris: readonly number[][];
   /** How far, in metres, each level's surface lies from the finest level's (see PackLod). Filled in place as `tris`. */
   readonly error: readonly number[][];
+  /** Body selection errors include the model's pixel allowance and share the measured array on ordinary meshes. */
+  readonly bodyError: readonly number[][];
   /** The sections of each level of each mesh: a material, its first index and how many indices, for each. None on a flat level. */
   readonly sections: readonly (readonly number[])[][];
   /** The first level of each mesh that is flat. Every level from it on is drawn in palette colours on any tier. */
@@ -53,6 +56,7 @@ export class AssetTable {
     this.index = new Map(meshes.map((m, i) => [m.id, i]));
     this.tris = meshes.map((m) => m.levels.map(() => 0));
     this.error = meshes.map((m) => m.levels.map(() => 0));
+    this.bodyError = meshes.map((m, i) => BODY_LEVEL_TOLERANCE[m.id] ? m.levels.map(() => 0) : this.error[i]!);
     this.sections = meshes.map((m) => m.levels.map(() => NONE));
     this.flat = new Uint8Array(this.count);
     this.materials = manifest.materials ?? [];
@@ -75,9 +79,11 @@ export class AssetTable {
   /** Takes in what the manifest now says of a mesh whose page has come. */
   learn(mesh: number): void {
     const m = this.manifest.meshes[mesh]!;
+    const tolerance = BODY_LEVEL_TOLERANCE[m.id];
     m.levels.forEach((l, k) => {
       this.tris[mesh]![k] = l.tris;
       this.error[mesh]![k] = l.error;
+      if (tolerance) this.bodyError[mesh]![k] = bodyLevelError(tolerance, k, l.error);
       this.sections[mesh]![k] = l.sections ?? [];
     });
     this.flat[mesh] = m.flat ?? 0;
