@@ -352,6 +352,15 @@ export class SectorBuildings {
     return this.runStorey[r]! + lo - from;
   }
 
+  /**
+   * The slot of its chunk at which run `r`'s pieces of storey `storey` start: the run's first for a storey under its
+   * lowest, and one past its last for a storey over its highest. A storey's slots end where the next storey's start.
+   */
+  storeyStart(r: number, storey: number): number {
+    const q = storey - this.runStorey[r]!, n = this.stepAt[r + 1]! - this.stepAt[r]!;
+    return this.runSlot[r]! + (q <= 0 ? 0 : q >= n ? this.runCount[r]! : this.steps[this.stepAt[r]! + q - 1]!);
+  }
+
   /** The building of id `id`, or -1. */
   find(id: number): number {
     const order = (this.order ??= Uint32Array.from({ length: this.n }, (_, k) => k).sort((a, b) => this.id[a]! - this.id[b]!));

@@ -112,6 +112,9 @@ test("one building's storey in one chunk is one run of slots", () => {
       const t = built.table(h);
       expect(t.steps[t.stepAt[run + 1]! - 1]).toBe(count);
       for (let s = slot; s < slot + count; s++) expect(built.buildingOf(chunk, s)).toBe(h);
+      // A storey's slots in the run, from where it starts to where the next does.
+      for (let storey = 0; storey < 9; storey++) for (let s = t.storeyStart(run, storey); s < t.storeyStart(run, storey + 1); s++) expect([chunk, s, built.storeyOf(chunk, s)]).toEqual([chunk, s, storey]);
+      expect([t.storeyStart(run, 0), t.storeyStart(run, 250)]).toEqual([slot, slot + count]);
     });
     expect(seen.size).toBeGreaterThan(0);
   }
