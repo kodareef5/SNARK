@@ -194,3 +194,40 @@ test("a changed chunk cut over several messages lands whole on a client that hol
   expect([t.changed, structs.changedSlots(chunk).length, messages]).toEqual([226, 226, 17]);
   expect([h.client(ada)!.known[chunk], differ(structs, ada.world!.structs, [chunk]), ada.world!.structs.chunks[chunk]!.live]).toEqual([t.version, 0, t.live]);
 });
+
+test("a client that holds the map and enters a damaged chunk is sent no full row for a map slot", () => {
+  const crates: MapStatic[] = [];
+  for (let k = 0; k < 600; k++) crates.push({ kind: k % 2 === 0 ? "core:crate" : "core:wall", x: 4 * CHUNK_SIZE + 4 + (k % 8) * 7, y: 40 + Math.floor(k / 64) * 3, z: 4 * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 7, yaw: (k * 4096) & 0xffff });
+  const chunk = 4 * 9 + 4;
+  /** The bytes of the chunk's messages to a client that joins after `change`, and what it then holds that the server does not. */
+  const join = (change: (structs: StructureStore) => void): number[] => {
+    const h = new Harness({}, 1, 30, { map: writeMap(flatMap(9, { statics: crates })) });
+    change(h.world.structs);
+    const ada = h.join("ada");
+    let bytes = 0;
+    const end = h.ends[0]!;
+    const on = end.onMessage!;
+    end.onMessage = (ch, d) => {
+      if (d[0] === S_CHUNK && (d[1]! | (d[2]! << 8)) === chunk) bytes += d.length;
+      on(ch, d);
+    };
+    h.run(2000);
+    return [bytes, differ(h.world.structs, ada.world!.structs, [chunk]), h.client(ada)!.known[chunk]! - h.world.structs.chunks[chunk]!.version];
+  };
+  const [header] = join(() => {});
+  // 100 pieces hurt, each to a health of its own: its slot, that it stands where the map has it, nobody's, and the health.
+  const [hurt, wrong, behind] = join((structs) => [...Array(100).keys()].forEach((i) => structs.damage(chunk * 65536 + i * 5, 1 + (i % 7))));
+  expect([wrong, behind]).toEqual([0, 0]);
+  // That is 5.5 bytes a piece. A full row is its kind, place, height and turn besides, over 10.
+  expect((hurt! - header!) / 100).toBeLessThanOrEqual(6);
+  // A piece of another kind in the slot is still told whole, and a slot emptied as a row that says only that.
+  const [mixed, off] = join((structs) => {
+    const wall = structs.mapKind(chunk, 1);
+    for (let i = 0; i < 100; i++) {
+      if (i % 3 === 0) structs.swap(chunk * 65536 + i * 4, wall);
+      else if (i % 3 === 1) structs.remove(chunk * 65536 + i * 4);
+      else structs.damage(chunk * 65536 + i * 4, 2);
+    }
+  });
+  expect([off, mixed! > header!]).toEqual([0, true]);
+});

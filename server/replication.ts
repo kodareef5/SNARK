@@ -579,7 +579,9 @@ export class Replication {
           }
           s = list[k++]!;
           count++;
-          this.row(w, t, s++, x0, z0, false);
+          // The client has just set this slot down from its map, so a piece of the map's kind is told by owner and health alone.
+          this.row(w, t, s, x0, z0, t.kind[s] !== 0 && t.kind[s] === this.world.structs.mapKind(chunk, s));
+          s++;
           rows++;
         }
       }

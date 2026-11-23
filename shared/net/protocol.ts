@@ -30,7 +30,8 @@
 //                            unless taken where it began (3 x f32) and when (tick u32), then runs of slots: count
 //                            varint, and per run: first slot minus the end of the run before svarint, length-1
 //                            varint. Slots from the map are set first, then rows, then removals. A removal leaves
-//                            alone any row newer than itself.
+//                            alone any row newer than itself. A row for a slot just taken from the map is in place
+//                            where the slot still holds the map's kind.
 //                            A row: 1 bit set if its slot follows the last row's, else the gap less one varint; in
 //                            place 1 bit, then owner (named varint) and health; else kind (named u16, 0 for an empty
 //                            slot, which ends the row), x and z 15 bits each (1/512 m from the chunk's corner),
