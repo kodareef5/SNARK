@@ -9,7 +9,7 @@
 
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../shared/anim/pose.ts";
 import { dequantX, dequantY, quantX, quantY, type SentView } from "../shared/net/view.ts";
-import { BLOCK_LIGHT, BLOCK_MOST, Blockers, blockMass, blocksSession, pairing } from "../shared/sim/blockers.ts";
+import { BLOCK_LIGHT, BLOCK_MOST, Blockers, blockMass, pairing } from "../shared/sim/blockers.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { BodyGrid } from "./bodies.ts";
 import { TICK_DT } from "../shared/coords.ts";
@@ -153,8 +153,6 @@ export class BodyBlocking {
       const far = dx * dx + dz * dz;
       if (far > reach * reach) continue;
       if (j === e || j === skip || !blocks(world, j, team) || pairing(ents.emote[e]!, ents.emote[j]!)) continue;
-      const moving = (ents.anim[j]! & 15) !== 0;
-      if (!creature && !blocksSession(world.reg, ents.kind[j]!, moving)) continue;
       if (!creature && this.survivorsPass && this.survivor[ents.kind[j]!] === 1 && this.survivor[ents.kind[e]!] === 1) continue;
       const always = creature && (ents.driven[j] !== 0 || this.survivor[ents.kind[j]!] === 1);
       if (!always && blockMass(world.reg, ents.kind[j]!) < light) continue;
@@ -171,7 +169,8 @@ export class BodyBlocking {
       near[best] = near[k]!;
       nearFar[best] = nearFar[k]!;
       const always = creature && (ents.driven[j] !== 0 || this.survivor[ents.kind[j]!] === 1);
-      list.add(world.reg, j, ents.kind[j]!, dequantX(quantX(ents.x[j]!)), dequantY(quantY(ents.y[j]!)), dequantX(quantX(ents.z[j]!)), ((ents.yaw[j]! >>> 6) * TAU) / 1024, (ents.anim[j]! & 15) !== 0, ents.kind[e]!, x, y, z, ents.yaw[e]!, always, creature);
+      // What a client predicts is solid to a creature even as it moves: the creature gives way to it at once.
+      list.add(world.reg, j, ents.kind[j]!, dequantX(quantX(ents.x[j]!)), dequantY(quantY(ents.y[j]!)), dequantX(quantX(ents.z[j]!)), ((ents.yaw[j]! >>> 6) * TAU) / 1024, !always && (ents.anim[j]! & 15) !== 0, ents.kind[e]!, x, y, z, ents.yaw[e]!, always, creature);
     }
     return this.done();
   }
@@ -193,7 +192,6 @@ export class BodyBlocking {
       this.shownAt(id, view.rev[j]!);
       const shown = this.shown;
       if (shown[1] !== 0 || shown[2] !== 0 || (team !== 0 && shown[0] === team)) continue;
-      if (!blocksSession(reg, kind, (view.anim[j]! & 15) !== 0)) continue;
       if (this.survivorsPass && this.survivor[kind] === 1 && this.survivor[ents.kind[e]!] === 1) continue;
       const bx = dequantX(view.qx[j]!), bz = dequantX(view.qz[j]!);
       if (Math.abs(bx - x) > far || Math.abs(bz - z) > far) continue;

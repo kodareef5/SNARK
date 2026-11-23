@@ -897,7 +897,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
 
     // Bodies: pushed level out of any it walks into (shared/sim/blockers.ts), before the structures, which have the last say.
     const bodies = w.blockers;
-    if (bodies && bodies.count > 0 && pushOut(bodies, b.kind, nx, ny, nz, b.yaw, height, (BLOCK_SOFT_SPEED * scale) / n)) {
+    if (bodies && bodies.count > 0 && pushOut(bodies, b.kind, nx, ny, nz, b.yaw, height, (BLOCK_SOFT_SPEED * scale) / n, x, z)) {
       nx = blockOut.x < r ? r : blockOut.x > maxX ? maxX : blockOut.x;
       nz = blockOut.z < r ? r : blockOut.z > maxZ ? maxZ : blockOut.z;
     }
