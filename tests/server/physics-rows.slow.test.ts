@@ -19,10 +19,13 @@ test("48 knocked down in a room and in the open topple past the budget and all r
     expect(f.get("laid as ragdolls")).toBeGreaterThan(0);
     expect(f.get("laid as ragdolls")! + f.get("toppled past the fall budget")!).toBe(48);
     expect(f.get("ticks every ragdoll moved")).toBeGreaterThan(10);
-    // Two players watching draw every body down lying, on one bone or all, each fall exactly where the server's lies.
+    // Two players watching draw every body down, on one bone or all, each fall where the server's lies.
     expect(f.get("watchers: bodies down but drawn standing, body-ticks")).toBe(0);
-    expect(f.get("watchers: of them drawn upright on one bone or all")).toBe(0);
+    expect(f.get("watchers: of them not drawn, for want of room")).toBe(0);
+    expect(f.get("watchers: toppled or waiting, drawn upright")).toBe(0);
     expect(f.get("watchers: a body drawn down from where the server has it, the most")).toBeLessThan(1);
+    expect(f.get("watchers: a laid fall drawn whole, head or hips from the server's, the most")).toBeLessThan(1);
+    expect(f.get("watchers: a laid fall on one bone, hips from the server's, the most")).toBeLessThan(1);
     expect(f.get("ticks until every one had risen")).toBeLessThanOrEqual(121);
     expect(f.get("falls row a tick, median")).toBeGreaterThan(0);
   }
@@ -35,7 +38,9 @@ test("a car knocks a crowd down, and two watchers draw each body where it lies",
     expect(f.get("contacts row in the strike, median")).toBeGreaterThan(0);
     // Every body down is drawn down, by its fall within a few ticks or by a topple until the fall comes.
     expect(f.get("watchers: bodies down but drawn standing, body-ticks"), drive).toBe(0);
-    expect(f.get("watchers: of them drawn upright on one bone or all"), drive).toBe(0);
+    expect(f.get("watchers: of them not drawn, for want of room"), drive).toBe(0);
+    expect(f.get("watchers: toppled or waiting, drawn upright"), drive).toBe(0);
+    expect(f.get("watchers: a laid fall drawn whole, head or hips from the server's, median"), drive).toBeLessThan(1);
     expect(f.get("watchers: longest wait for a fall's checkpoint, ticks"), drive).toBeLessThanOrEqual(6);
     // Most bodies are drawn where the server has them; those the car carries drift until their next correction.
     expect(f.get("watchers: a body drawn down from where the server has it, median"), drive).toBeLessThan(1);

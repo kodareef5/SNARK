@@ -28,7 +28,7 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Characters } from "../../client/core/render/characters.ts";
 import { BONE_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
-import { B_HEAD, B_HIPS, HUMAN } from "../../shared/anim/human.ts";
+import { B_HEAD, B_HIPS, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, CUE_DOWN } from "../../shared/anim/pose.ts";
 import { REACT_FALL, reactAge, reactKind, TOPPLED } from "../../shared/anim/reactions.ts";
 import { frozenPack } from "../../tests/fixtures/pack.ts";
@@ -106,10 +106,16 @@ const NO_COLORS = new Uint8Array(64);
 /** Ticks the crowd scene holds its car's speed and turn: until a car going straight is through. */
 const DRIVE_TICKS = 200;
 
-/** The height of bone `b`'s joint in bone rows `rows`: where the bone carries its rest point. */
-function jointY(rows: Float32Array, b: number): number {
+/**
+ * Where bone `b`'s joint is in the world in bone rows `rows` (where the bone carries its rest point): in the pose the
+ * rows begin with, carried by the body's own bone at `own` for a body drawn on one, or -1 for one drawn whole.
+ */
+function jointAt(rows: Float32Array, b: number, own: number): number[] {
   const o = b * BONE_FLOATS, r = b * 3;
-  return rows[o + 4]! * HUMAN.rest[r]! + rows[o + 5]! * HUMAN.rest[r + 1]! + rows[o + 6]! * HUMAN.rest[r + 2]! + rows[o + 7]!;
+  const q = [0, 1, 2].map((row) => rows[o + row * 4]! * HUMAN.rest[r]! + rows[o + row * 4 + 1]! * HUMAN.rest[r + 1]! + rows[o + row * 4 + 2]! * HUMAN.rest[r + 2]! + rows[o + row * 4 + 3]!);
+  if (own < 0) return q;
+  const m = own * BONE_FLOATS;
+  return [0, 1, 2].map((row) => rows[m + row * 4]! * q[0]! + rows[m + row * 4 + 1]! * q[1]! + rows[m + row * 4 + 2]! * q[2]! + rows[m + row * 4 + 3]!);
 }
 
 /** Puts body `e` at (x, y, z), as a teleport does. */
@@ -139,7 +145,14 @@ class Watching {
   private toppled = 0;
   private longest = 0;
   private submitted = 0;
+  private undrawn = 0;
+  /** Toppled, or down before their fall came, and drawn with the head well over the hips: 0.62 m standing, 0.3 lying. */
   private upright = 0;
+  /** Laid falls drawn whole: how far the head or hips lie from the server's; drawn on one bone: how far the hips do. */
+  private readonly wholeOff: number[] = [];
+  private readonly oneBoneHips: number[] = [];
+  /** By body and tick, where the server has a laid fall's head and hips: tick, head, hips. */
+  private readonly joints = new Map<number, Float64Array>();
 
   constructor(h: Harness, sessions: readonly ClientSession[], bodies: readonly number[]) {
     this.h = h; this.sessions = sessions; this.bodies = bodies;
@@ -154,31 +167,55 @@ class Watching {
   after(): void {
     const h = this.h, ents = h.world.ents, T = h.world.tick, st = this.st;
     for (const e of this.bodies) {
-      if (!h.host.falls.poseOf(e)) continue;
+      const pose = h.host.falls.poseOf(e);
+      if (!pose) continue;
       let ring = this.truth.get(e);
       if (!ring) this.truth.set(e, (ring = new Float64Array(64 * 4).fill(-1)));
       const o = (T & 63) * 4;
       ring[o] = T; ring[o + 1] = ents.x[e]!; ring[o + 2] = ents.y[e]!; ring[o + 3] = ents.z[e]!;
+      // Its pose lies about its place, facing its fall's way, as a client lays it (client/core/render/characters.ts lain).
+      let joints = this.joints.get(e);
+      if (!joints) this.joints.set(e, (joints = new Float64Array(64 * 7).fill(-1)));
+      const j = (T & 63) * 7, yaw = h.host.falls.yawOf(e), c = Math.cos(yaw), sn = Math.sin(yaw);
+      joints[j] = T;
+      [B_HEAD, B_HIPS].forEach((b, k) => {
+        const mx = pose.pos[b * 3]!, my = pose.pos[b * 3 + 1]!, mz = pose.pos[b * 3 + 2]!;
+        joints![j + 1 + k * 3] = ents.x[e]! + c * mx + sn * mz; joints![j + 2 + k * 3] = ents.y[e]! + my; joints![j + 3 + k * 3] = ents.z[e]! - sn * mx + c * mz;
+      });
     }
     this.sessions.forEach((s, k) => {
       const { remote, drawn, waits, characters, packet, downAt } = this.views[k]!;
       s.sampleRemote(remote);
       drawn.update(remote, s.world!, 0, 0, new Map(), s.corpseMotions);
+      // The renderer is given the checkpoints as the game gives them (client/core/app.ts).
+      characters.corpseMotions = s.corpseMotions;
       characters.begin();
       characters.corpses(packet, this.cam, remote, s.world!);
-      // Every third tick, each body down a half second, drawn as the renderer would draw it: it must not stand. A topple
-      // counts while it lies all the way down, before it rises.
+      // Every third tick, each body down a half second, drawn as the renderer would draw it, on one bone and on all. A
+      // topple counts while it lies all the way down, before it rises.
       for (let i = 0; i < remote.count && T % 3 === 0; i++) {
-        const since = downAt.get(remote.id[i]!), word = remote.react[i]!;
+        const id = remote.id[i]!, since = downAt.get(id), word = remote.react[i]!;
         if (since === undefined || remote.tick - since < 15) continue;
         if (reactKind(word) === REACT_FALL ? Math.abs(reactAge(word, remote.tick) - TOPPLED) > 20 : (remote.cue[i]! & CUE_DOWN) === 0) continue;
+        const fall = characters.humanFall(id), truth = this.joints.get(id);
         for (const rigid of [true, false]) {
           characters.begin(); packet.beginFrame();
           st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, word);
-          characters.add(packet, remote.kind[i]!, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, st, remote.tick, null, 0, NO_COLORS, 0, null, 0, remote.id[i]!, false, false, 1, rigid);
+          const dropped = packet.dropped;
           this.submitted++;
-          // Upright when the head's joint stands well over the hips': 0.62 m standing, under 0.3 lying, on the road or a car.
-          if (jointY(packet.bones, B_HEAD) - jointY(packet.bones, B_HIPS) > 0.45) this.upright++;
+          if (!characters.add(packet, remote.kind[i]!, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, st, remote.tick, null, 0, NO_COLORS, 0, null, 0, id, false, false, 1, rigid) || packet.dropped !== dropped) {
+            this.undrawn++;
+            continue;
+          }
+          // On one bone the body rides its own bone after the shared pose; on all, its bones come first.
+          const own = rigid ? HUMAN_BONES : -1, head = jointAt(packet.bones, B_HEAD, own), hips = jointAt(packet.bones, B_HIPS, own);
+          const at = fall?.down && truth ? (fall.clock & 63) * 7 : -1;
+          if (at >= 0 && truth![at] === fall!.clock) {
+            // A laid fall: whole, its head and hips where the server's are at the tick it is drawn at; on one bone, its hips.
+            const off = Math.hypot(hips[0]! - truth![at + 4]!, hips[1]! - truth![at + 5]!, hips[2]! - truth![at + 6]!);
+            if (rigid) this.oneBoneHips.push(off);
+            else this.wholeOff.push(Math.max(off, Math.hypot(head[0]! - truth![at + 1]!, head[1]! - truth![at + 2]!, head[2]! - truth![at + 3]!)));
+          } else if (!fall && head[1]! - hips[1]! > 0.45) this.upright++;
         }
       }
       for (let i = 0; i < remote.count; i++) {
@@ -207,7 +244,11 @@ class Watching {
     record("watchers: kilobytes a second received, the busier", Math.max(...this.sessions.map((s, k) => (s.stats.bytesIn - this.heard[k]!) / 1024 / seconds)), "", null);
     record("watchers: bodies down but drawn standing, body-ticks", this.standing, "", 0);
     record("watchers: bodies down handed to the renderer, body-draws", this.submitted, "", null);
-    record("watchers: of them drawn upright on one bone or all", this.upright, "", 0);
+    record("watchers: of them not drawn, for want of room", this.undrawn, "", 0);
+    record("watchers: toppled or waiting, drawn upright", this.upright, "", 0);
+    record("watchers: a laid fall drawn whole, head or hips from the server's, median", at(this.wholeOff, 0.5) * 100, "cm", null);
+    record("watchers: a laid fall drawn whole, head or hips from the server's, the most", at(this.wholeOff, 1) * 100, "cm", null);
+    record("watchers: a laid fall on one bone, hips from the server's, the most", at(this.oneBoneHips, 1) * 100, "cm", null);
     record("watchers: bodies drawn toppling while their fall came, body-ticks", this.toppled, "", null);
     record("watchers: longest wait for a fall's checkpoint, ticks", this.longest, "", null);
     record("watchers: a body drawn down from where the server has it, median", at(apart, 0.5) * 100, "cm", null);
