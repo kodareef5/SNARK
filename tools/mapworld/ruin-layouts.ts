@@ -14,6 +14,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   const keys = new Set(tiles.map((t) => tileKey(t.i, t.j))); const byKey = new Map(tiles.map((t) => [tileKey(t.i, t.j), t]));
   if (rule.collapse === "lost-top") height = Math.max(16, Math.floor(height * (rule.damage?.retain ?? .72) / 4) * 4);
   const floors = Math.round(height / 4); let playable = Math.min(floors, opts.playable);
+  m.grid(bay);
   const candidates = bay === 8 ? tiles.filter((t) => has(keys, t, 0, 1) && has(keys, t, 0, -1)).sort((a, b) => (a.u - (opts.coreU ?? 0)) ** 2 + a.v ** 2 - (b.u - (opts.coreU ?? 0)) ** 2 - b.v ** 2) : [];
   const cores: Tile[] = candidates.length ? [candidates[0]!] : [];
   const wanted = Math.min(8, Math.max(1, Math.ceil(tiles.length * bay * bay / 3500)));
@@ -23,6 +24,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   }
   const escape = cores.map((c) => tiles.find((t) => Math.abs(t.u - c.u) === bay && t.v === c.v && has(keys, t, 0, 1) && has(keys, t, 0, -1) && !cores.includes(t))).filter((t): t is Tile => !!t);
   if (escape.length < cores.length) playable = Math.min(playable, 8);
+  m.floors = Math.max(m.floors, floors); m.walked = Math.max(m.walked, playable);
   const entryCores = cores.length ? cores : [[...tiles].sort((a, b) => Math.abs(a.u) - Math.abs(b.u) || Math.abs(a.v) - Math.abs(b.v))[0]!];
   const entryLane = (t: Tile): boolean => entryCores.some((c) => t.i === c.i);
   const safe = (t: Tile): boolean => cores.some((c) => Math.abs(t.u - c.u) <= bay && Math.abs(t.v - c.v) <= bay) || entryLane(t);
@@ -107,7 +109,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   }
   for (const [level, row] of plates) mergeFloors(m, row, bay, base + level * 4);
   for (const [level, row] of roofs) mergeFloors(m, row, bay, base + level * 4, flatRoof(rule.recipe, form.roof));
-  const posts = new Map<string, { u: number; v: number; top: number }>();
+  const posts = new Map<string, { i: number; j: number; u: number; v: number; top: number }>();
   // Where a tower's top was torn, the storeys standing over the gap are open: their slabs, broken at the edge, and the
   // columns at the bay's ends, each once.
   const opened = new Set<string>();
@@ -115,10 +117,11 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   let drapes = 0;
   for (const t of tiles) {
     const top = tops.get(tileKey(t.i, t.j))!; if (!top) continue;
+    m.at(t);
     const burnt = damaged.has(t) && mode === "burnt";
     const edge = SIDES.some(([dx, dz]) => (tops.get(tileKey(t.i + dx, t.j + dz)) ?? 0) < top);
     // Walls carry the perimeter. Interior supports occur at 16 m, never every 4 m.
-    if (burnt || !edge && t.i % 2 === 0 && t.j % 2 === 0) posts.set(tileKey(t.i, t.j), { u: t.u + bay / 2, v: t.v + bay / 2, top: Math.min(top, playable) });
+    if (burnt || !edge && t.i % 2 === 0 && t.j % 2 === 0) posts.set(tileKey(t.i, t.j), { i: t.i, j: t.j, u: t.u + bay / 2, v: t.v + bay / 2, top: Math.min(top, playable) });
     for (let side = 0; side < SIDES.length; side++) {
       const [dx, dz] = SIDES[side]!; const adjacent = tops.get(tileKey(t.i + dx, t.j + dz)) ?? 0;
       if (adjacent >= top || damaged.has(t) && mode === "hanging") continue;
@@ -163,6 +166,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       if (broken && !damaged.has(t) && !burnt && bay === 8 && opts.detail < 2) {
         for (let level = adjacent + 1; level <= Math.min(top, playable); level++) {
           if (!slab(t, level, top)) continue;
+          m.level(level - 1);
           const pick = hash3(opts.seed + 211, t.i * 4 + side, t.j * 64 + level) % 20;
           const end = pick < 8 ? "zendsnap" : pick < 13 ? "zendspall" : pick < 16 ? "zendwhole" : "zendsag";
           facade(m, end, u, base + level * 4, v, side, "fracture");
@@ -170,6 +174,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           if ((end === "zendwhole" || end === "zendspall") && pick % 3 === 0) grow(m, pick, u, base + level * 4 - 0.1, v, side, end === "zendwhole" ? 0.2 : 0.1);
         }
         from = Math.max(adjacent, playable);
+        m.level(-1);
       }
       // What fell lies heaped against the wall it fell from.
       if (broken && adjacent === 0 && !damaged.has(t) && bay === 8 && opts.detail < 2 && mode !== "burnt") facade(m, "zwedge", u, base, v, side, "concrete");
@@ -177,9 +182,10 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       let coped = false;
       for (let level = from; level < top;) {
         const h = base + level * 4;
+        m.level(level);
         if (open && level >= openFrom) {
           // The storey's dark inside, set back from the edge.
-          if (once(`${t.i},${t.j},${level}`)) m.floor([t.u, t.v], h, 8);
+          if (once(`${t.i},${t.j},${level}`)) { m.level(Math.max(0, level - 1)); m.floor([t.u, t.v], h, 8); m.level(level); }
           facade(m, "zgloom", u, h, v, side, "concrete", -3);
           if (level > adjacent) facade(m, edgeOf(hash3(opts.seed + 197, t.i * 4 + side, t.j * 64 + level)), u, h, v, side, "fracture");
           for (const end of [-1, 1]) {
@@ -266,6 +272,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         if (!form.facade && side === 0 && level === 0 && form.front === "shopfront") assembly(m, rule, "shopfront", u, 0, v);
         level++;
       }
+      m.level(-1);
       const party = rule.party?.includes(side) && adjacent === 0;
       if (bay !== 8 || opts.detail >= 2 || burnt || party || top === 0) continue;
       if (open && top > openFrom) {
@@ -319,14 +326,16 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       }
     }
   }
-  for (const p of posts.values()) m.post(p.u, base, p.v, p.top * 4);
+  for (const p of posts.values()) { m.at(p); m.post(p.u, base, p.v, p.top * 4); }
   if (base === 0) for (const core of cores) {
     m.stairs(core, playable);
+    if (playable === floors) m.roof = true;
     const drop = escape.find((t) => Math.abs(t.u - core.u) === bay && t.v === core.v);
     if (drop && playable >= 12) {
       m.stairExit(drop, playable, core);
       const dir = playable % 2 === 0 ? -1 : 1; const y = playable * 4;
       const gallery = tiles.find((t) => t.i === core.i && t.j === core.j + dir)!;
+      m.at(gallery);
       m.put("zbed", gallery.u + 2.8, y + .25, gallery.v + dir * 1.5, rule.finish);
       m.put("zcover", gallery.u + 2.8, y + .55, gallery.v - dir * 1.5, rule.finish, 90);
       m.put("zpartition", gallery.u + 4, y + 1.4, gallery.v, rule.finish, 90);
@@ -345,7 +354,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       const [x, z] = m.point(t.u, t.v + dir * bay / 2); const [coreX, coreZ] = m.point(core.u, core.v);
       m.entries.push({ x, y: m.base, z, yaw: m.frame.yaw, coreX, coreZ }); m.cover(t.u, t.v + dir * bay / 2, 16);
       // A shop's front module is its own way in, sign band and door.
-      if (dir < 0 && bay === 8 && form.facade?.ground !== "zstore") assembly(m, rule, form.front, t.u, 0, t.v - bay / 2);
+      if (dir < 0 && bay === 8 && form.facade?.ground !== "zstore") { m.at(t); assembly(m, rule, form.front, t.u, 0, t.v - bay / 2); }
     }
   }
   if (base === 0) for (const core of cores) for (const row of [-1, 1]) {
@@ -364,20 +373,24 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     const t = cap[Math.floor(cap.length / 2)]!;
     if (form.marker) {
       const front = [...cap].sort((a, b) => a.v - b.v || Math.abs(a.u) - Math.abs(b.u))[0]!;
+      m.at(front);
       assembly(m, rule, form.marker, front.u, base + height, front.v);
     }
+    m.at(t);
     if (form.roof === "service") m.put("zcore", t.u, base + height + 2, t.v, "steel");
     // A flat roof's stair head.
     else if (low && form.roof === "flat" && cap.length >= 4) m.put("zcore", t.u, base + height + 2, t.v, rule.finish);
     // A plant floor's lift overrun stands over its room.
-    for (const c of crown?.kind === "plant" ? cores.slice(0, 1) : []) m.put("zcore", c.u, base + (tops.get(tileKey(c.i, c.j)) ?? floors) * 4 + 2, c.v, rule.finish);
+    for (const c of crown?.kind === "plant" ? cores.slice(0, 1) : []) { m.at(c); m.put("zcore", c.u, base + (tops.get(tileKey(c.i, c.j)) ?? floors) * 4 + 2, c.v, rule.finish); }
     // A lift overrun over the first core and a stair head over its escape.
     if (crowning === 1) {
-      for (const c of cores.slice(0, 1)) if ((tops.get(tileKey(c.i, c.j)) ?? 0) === floors) m.put("zcore", c.u, base + height + 2, c.v, rule.finish);
-      for (const e of escape.slice(0, 1)) if ((tops.get(tileKey(e.i, e.j)) ?? 0) === floors) m.put("zcore", e.u + 1.5, base + height + 2, e.v, rule.finish);
+      for (const c of cores.slice(0, 1)) if ((tops.get(tileKey(c.i, c.j)) ?? 0) === floors) { m.at(c); m.put("zcore", c.u, base + height + 2, c.v, rule.finish); }
+      for (const e of escape.slice(0, 1)) if ((tops.get(tileKey(e.i, e.j)) ?? 0) === floors) { m.at(e); m.put("zcore", e.u + 1.5, base + height + 2, e.v, rule.finish); }
     }
+    m.at(t);
     if (form.roof === "hip" || form.roof === "pitched") pitched(m, cap, bay, base + height, pitchFinish(rule.recipe, rule.roofDraw ?? 1));
-    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zpitch8", r.u, base + height + 5.4, r.v, form.roof === "nave" ? "clay" : MONITOR_ROOF); }
+    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.at(r); m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zpitch8", r.u, base + height + 5.4, r.v, form.roof === "nave" ? "clay" : MONITOR_ROOF); }
+    m.at(t);
     if (form.front === "belfry") { m.put("zcore", t.u, base + height + 2, t.v, rule.finish); m.put("fin8", t.u, base + height + 8, t.v, rule.finish); m.put("trim4", t.u, base + height + 10, t.v, rule.finish); }
     if (height <= 20 && !["hip", "pitched", "nave"].includes(form.roof) && hash3(opts.seed, 32, 1) / 4294967296 < (rule.roofGrowth ?? 0)) {
       m.put("zcover", t.u, base + height + .55, t.v, "clay");
@@ -389,10 +402,12 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   }
   if ((rule.feature === "deco" || form.front === "deco") && opts.detail === 0) {
     const t = [...tiles].sort((a, b) => a.v - b.v || Math.abs(a.u) - Math.abs(b.u))[0]!;
+    m.at(t);
     m.put(height >= 8 ? "fin8" : "fin4", t.u, base + Math.min(8, height) / 2, t.v - bay / 2, rule.finish);
     if (height >= 12) m.put("crown", t.u, base + height - 2, t.v - bay / 2 - 2.5, rule.finish);
   }
   if (mode === "lost-top") for (const t of cap.filter((t) => (t.i + t.j) % 4 === 0).slice(0, 6)) {
+    m.at(t);
     m.put("fin4", t.u, base + height + 2, t.v, "steel"); m.put("rubble4", t.u + 1.5, base + height + .55, t.v, "concrete", 19);
   }
   // A hanging slab hangs from its bay's roof, which is all of the bay that is left and which a tower's top may have
@@ -403,6 +418,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   const corner = [...tiles].sort((a, b) => a.j - b.j || a.i - b.i)[0];
   if (corner && form.facade && bay === 8 && base === 0 && opts.detail < 2 && !has(keys, corner, -1, 0) && !damaged.has(corner) && hash3(opts.seed + 19, 3, 5) % 2 === 0) {
     const top = Math.min(tops.get(tileKey(corner.i, corner.j)) ?? 0, 6);
+    m.at(corner);
     for (let level = 0; level < top; level++) facade(m, level === 0 ? "zpipefoot" : level === top - 1 ? "zpipetop" : "zpipe4", corner.u - bay / 2, level * 4, corner.v - bay / 2 + 0.7, 3, "concrete");
   }
   // One column of the failure stands at its edge with its broken head, the slab it held fallen at its foot.
@@ -415,19 +431,23 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       // The slab lies within its bay, clear of the walls round it, its low end in rubble so it does not read as a ramp.
       const sign = hash3(opts.seed, t.i, t.j) % 2 ? 1 : -1;
       const turn = [180, 90, 0, 270][side]!;
+      m.at(t);
       m.put("zstub", t.u + dx * 3.5 + dz * sign * 2.5, y + RUIN_SHAPES.zstub[1] / 2, t.v + dz * 3.5 + dx * sign * 2.5, "fracture", turn);
       m.put("zfallen", t.u + dx * 0.9 + dz * sign * 1.5, y + RUIN_SHAPES.zfallen[1] / 2, t.v + dz * 0.9 + dx * sign * 1.5, "concrete", turn);
       m.put("rubble", t.u - dx * 1.7 + dz * sign * 1.5, y + RUIN_SHAPES.rubble[1] / 2, t.v - dz * 1.7 + dx * sign * 1.5, "concrete", turn + 90);
       // A panel of the wall beside hangs from one fixing at its top slab's edge over the gap.
       const high = tops.get(tileKey(edge.n!.i, edge.n!.j)) ?? 0;
+      m.at(edge.n!);
       if (hash3(opts.seed, t.j, t.i) % 2 === 0) facade(m, "zhang", t.u + dx * bay / 2, base + high * 4, t.v + dz * bay / 2, (side + 2) % 4, rule.finish);
     }
     // A column of a bay that fell to the ground stands out of plumb in one in three.
     for (const t of damaged) if ((tops.get(tileKey(t.i, t.j)) ?? 0) === 0 && !entryLane(t) && hash3(opts.seed + 7, t.j, t.i) % 3 === 0) {
       const a = hash3(t.i, t.j, opts.seed) % 4;
+      m.at(t);
       m.put("zleancol", t.u + (a & 1 ? 3.3 : -3.3), base + RUIN_SHAPES.zleancol[1] / 2, t.v + (a & 2 ? 3.3 : -3.3), "concrete", a * 90 + 45);
     }
   }
+  m.at(null);
 }
 
 /**
@@ -467,6 +487,7 @@ function pitched(m: Mason, tiles: Tile[], bay: number, y: number, finish: "clay"
     let cells = 1;
     for (const n of bay === 4 ? [4, 2] : [2]) if (Array.from({ length: n * n }, (_, k) => left.has(tileKey(t.i + k % n, t.j + Math.floor(k / n)))).every(Boolean)) { cells = n; break; }
     const shape = bay * cells >= 16 ? "zpitch16" : bay * cells === 8 ? "zpitch8" : "zpitch4";
+    m.at(t);
     m.put(shape, t.u + (cells - 1) * bay / 2, y + RUIN_SHAPES[shape][1] / 2, t.v + (cells - 1) * bay / 2, finish);
     for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) left.delete(tileKey(t.i + i, t.j + j));
   }
@@ -478,6 +499,7 @@ function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number, finish: Ru
     if (!left.has(tileKey(t.i, t.j))) continue;
     let cells = 1;
     for (const n of bay === 4 ? [4, 2] : [2]) if (Array.from({ length: n * n }, (_, k) => left.has(tileKey(t.i + k % n, t.j + Math.floor(k / n)))).every(Boolean)) { cells = n; break; }
+    m.at(t);
     m.floor([t.u + (cells - 1) * bay / 2, t.v + (cells - 1) * bay / 2], y, bay * cells, finish);
     for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) left.delete(tileKey(t.i + i, t.j + j));
   }
@@ -490,12 +512,14 @@ export function assembly(m: Mason, rule: Rule, name: string, u: number, y: numbe
 }
 
 function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, kind: string, rule: Rule): void {
+  m.at(t);
   if (["parking", "nave", "concourse"].includes(kind)) {
     m.put("zcover", t.u, base + .55, t.v + 1.5, kind === "parking" ? "concrete" : rule.finish); return;
   }
-  m.floor([t.u, t.v], base, 8); m.floor([t.u + dir * 8, t.v], base, 8);
+  m.floor([t.u, t.v], base, 8); m.at({ i: t.i + dir, j: t.j }); m.floor([t.u + dir * 8, t.v], base, 8); m.at(t);
   for (let level = 0; level < floors; level++) {
     const y = base + level * 4;
+    m.level(level);
     // Two doors at either end of a four-metre partition open onto the protected corridor.
     const profile: Vocabulary["interiors"][string] = rule.interiors?.[kind] ?? { divider: "wall4", back: "wall8", parts: [["zcounter", 1.5, .5, 1, "finish"]] };
     if (profile.divider) m.put(profile.divider, t.u + dir * 4, y + RUIN_SHAPES[profile.divider][1] / 2, t.v, rule.finish, 90);
@@ -506,9 +530,11 @@ function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, 
       m.rooms.push({ kind, points });
     }
   }
+  m.level(-1);
 }
 
 function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number, bay: number, facadeSide: number, hang: number): void {
+  m.at(t);
   m.falls.push({ mode, u: t.u, v: t.v });
   if (base !== 0 || opts.detail > 1) return;
   if (mode === "facade" && facadeSide) for (let y = 0; y < Math.min(12, height); y += 4) {
@@ -679,7 +705,8 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
   stack(m, tiles, bay, rule.height, rule, opts, 0, hall);
   if (["service", "civic", "school", "hospital", "shop"].includes(rule.recipe) && !rule.form?.facade) {
     const front = tiles.filter((t) => t.j === Math.min(...tiles.map((a) => a.j)));
-    for (const t of front) m.put(bay === 8 ? "trim8" : "trim4", t.u, 3.2, t.v - bay / 2, rule.finish);
+    for (const t of front) { m.at(t); m.put(bay === 8 ? "trim8" : "trim4", t.u, 3.2, t.v - bay / 2, rule.finish); }
+    m.at(null);
   }
 }
 

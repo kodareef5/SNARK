@@ -124,6 +124,11 @@ export function describe(file: Uint8Array): string[] {
     const names = [...new Set(w.bodies.map((b) => b.name).filter((n) => n !== ""))];
     lines.push(`${w.bodies.length} bodies of water in ${squares} squares of ${w.cell} m over ${w.chunks().length} chunks, surfaces ${Math.min(...w.surface.subarray(1)).toFixed(2)} to ${Math.max(...w.surface.subarray(1)).toFixed(2)} m${names.length > 0 ? `: ${names.join(", ")}` : ""}`);
   }
+  const built = map.buildings;
+  if (built) {
+    const named = [...built.handles()].filter((h) => built.name(h) !== null).length;
+    lines.push(`${built.count} buildings in ${built.sectors.filter((t) => t).length} sectors, ${named} of them named: ${built.names.kinds.length} kinds, ${built.names.districts.length} districts; ${built.bytes} bytes held`);
+  }
   if (map.content) lines.push(`landmarks ${map.content.landmarks.map((l) => `${l.name} at ${l.x.toFixed(1)}, ${l.y.toFixed(1)}, ${l.z.toFixed(1)} turned ${l.yaw}`).join(", ")}, ${map.content.defs.length} definitions of their own`);
   const known = withContent(registry(), map.content?.defs ?? []).index;
   const named = new Set([...map.statics.kinds, ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!), ...(map.vehicles ?? []).map((v) => v.kind)]);

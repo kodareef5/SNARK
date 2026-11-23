@@ -174,7 +174,7 @@ export class Harness {
       ...(opts.ticket ? { ticket: opts.ticket } : {}),
       resolveMap: (id, hash) => (id === this.map.id && hash === this.map.hash ? (opts.ground ?? this.hf) : null),
       nodes: (hf, reg) => mapNodes(this.map, hf, reg),
-      ...(opts.statics === false ? {} : { statics: this.map.statics }),
+      ...(opts.statics === false ? {} : { statics: this.map.statics, ...(this.map.buildings ? { buildings: this.map.buildings } : {}) }),
       ...(this.map.content ? { landmarks: this.map.content.landmarks } : {}),
       ...(opts.cityMaker ? { cityMaker: opts.cityMaker } : {}),
     });

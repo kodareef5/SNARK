@@ -104,6 +104,7 @@ async function boot(): Promise<void> {
     nodes: (ground, content) => nodeLayers(head.dims, ground, content, nodes),
     cityMaker: new WorkerCityMaker(),
     tops: loader.staged.tops,
+    buildings: loader.staged.buildings,
     tideEyes: head.tideEyes,
     ...(land ? { landmarks: land.landmarks } : {}),
   });

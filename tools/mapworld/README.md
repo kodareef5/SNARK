@@ -19,6 +19,7 @@ bun tools/mapworld/verify.ts var/maps/<name>.snmap
 bun tools/mapworld/proof-views.ts var/maps/<name>.snmap
 bun tools/mapworld/views.ts var/maps/<name>.snmap <views.json> <output-folder> medium
 bun tools/mapworld/ruin-report.ts var/maps/<name>.snmap
+bun tools/mapworld/building-places.ts var/maps/<name>.snmap
 bun test ./tools/mapworld/ruins.test.ts
 bun run check
 ```

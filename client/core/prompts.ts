@@ -13,6 +13,7 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { IMPALE_SLOT, type Seat } from "../../shared/sim/seats.ts";
 import { supplyName } from "../../shared/sim/supply.ts";
+import { kindWords, type Buildings } from "../../shared/world/buildings.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
@@ -50,6 +51,15 @@ export function cityWord(reg: Registry, placed: number, kind: number, hp: number
   if (isHeap(reg, kind)) return "rubble";
   const stage = stageOf(reg, placed, hp);
   return stage === STAGE_WHOLE ? "" : STAGES[stage]!;
+}
+
+/**
+ * The building the map's piece in `slot` of `chunk` is of, as a player reads it: its name, else its address, else its kind
+ * in words. "" for a piece of no building, or where the map's buildings are not held.
+ */
+export function buildingWord(buildings: Buildings | null, chunk: number, slot: number): string {
+  const b = buildings?.buildingOf(chunk, slot) ?? -1;
+  return b < 0 ? "" : (buildings!.name(b) ?? buildings!.address(b) ?? kindWords(buildings!.kind(b)));
 }
 
 function taken(r: RemoteSample, host: number, k: number): boolean {
@@ -214,10 +224,13 @@ export class Prompts implements FramePart {
       this.terminalAimed = ref;
       return "E travel to another server";
     }
-    // A city piece that breaks says how it stands, not a number: its health is not told within a stage.
-    if (t.owner[ref & 0xffff] === 0 && reg.breakSet[kind] !== 0) return cityWord(reg, s.mapKind(Math.floor(ref / 65536), ref & 0xffff) || kind, kind, t.hp[ref & 0xffff]!);
-    // Skip structures nobody built.
-    if (reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
+    // A piece nobody built says its building, and under it, if it breaks, how it stands: its health is not told within a stage.
+    if (t.owner[ref & 0xffff] === 0) {
+      const of = buildingWord(s.buildings, Math.floor(ref / 65536), ref & 0xffff);
+      const stands = reg.breakSet[kind] !== 0 ? cityWord(reg, s.mapKind(Math.floor(ref / 65536), ref & 0xffff) || kind, kind, t.hp[ref & 0xffff]!) : "";
+      return of !== "" && stands !== "" ? `${of}\n${stands}` : of || stands;
+    }
+    if (reg.pieceItem[kind] === 0) return "";
     this.aimed = ref;
     const mine = s.tribe.team !== 0 && t.owner[ref & 0xffff] === s.tribe.team;
     const usable = (reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) && rayHit.t <= REACH;

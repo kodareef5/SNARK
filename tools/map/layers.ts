@@ -7,6 +7,7 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { Def, MapZone } from "../../shared/content/defs.ts";
 import type { MapData, MapLandmark, MapSpawn, MapStatic, MapVehicle, NodeLayer as Layer } from "../../shared/world/mapfile.ts";
+import { Buildings, SectorBuildings, type BuildingNames } from "../../shared/world/buildings.ts";
 import { roadSamples, type MapRoad } from "../../shared/world/roadframe.ts";
 import { MapWater } from "../../shared/world/water.ts";
 import { readGrey, writeGrey } from "./png.ts";
@@ -130,6 +131,10 @@ export function readLayers(folder: string, statics?: readonly MapStatic[]): MapD
   if (planes.some((p) => p) && !planes.every((p) => p)) throw new Error(`${folder} has some of the roads' frame's pictures (${ROAD_PLANES.map((p) => `road-${p}.png`).join(", ")}) and not all`);
   const road: MapRoad | null = planes[0] ? { across: planes[0], along: planes[1]!, half: planes[2]!, lanes: planes[3]! } : null;
   const marks = json<Landmarks>("landmarks.json");
+  // The buildings' names and each sector's part as the build wrote it; their runs are held to the statics when the map is written.
+  const built = json<{ names: BuildingNames; sectors: { col: number; row: number; file: string }[] }>("buildings.json");
+  const buildings = built ? new Buildings(dims, built.names) : null;
+  for (const s of built?.sectors ?? []) buildings!.set(SectorBuildings.decode(buildings!.dims, built!.names, null, s.col, s.row, need(file(s.file), s.file)));
 
   return {
     id: about.id,
@@ -150,6 +155,7 @@ export function readLayers(folder: string, statics?: readonly MapStatic[]): MapD
     ...(water ? { water } : {}),
     ...(streets?.length ? { streets } : {}),
     ...(road ? { road } : {}),
+    ...(buildings ? { buildings } : {}),
     ...(marks ? { content: { landmarks: marks.landmarks.map((l) => ({ ...l, yaw: toYaw(l.yaw) })), defs: marks.defs } } : {}),
   };
 }
@@ -166,6 +172,11 @@ export function writeAttached(map: MapData, folder: string): void {
     const list: Streets = map.streets.map((s) => ({ col: s.col, row: s.row, file: `streets-${s.col}-${s.row}.bin` }));
     map.streets.forEach((s, k) => put(list[k]!.file, s.bytes));
     put("streets.json", `[\n${list.map((s) => `  ${JSON.stringify(s)}`).join(",\n")}\n]\n`);
+  }
+  if (map.buildings?.sectors.some((t) => t)) {
+    const sectors = map.buildings.sectors.flatMap((t) => (t ? [{ col: t.col, row: t.row, file: `buildings-${t.col}-${t.row}.bin`, bytes: t.encode() }] : []));
+    for (const s of sectors) put(s.file, s.bytes);
+    put("buildings.json", `${JSON.stringify({ names: map.buildings.names, sectors: sectors.map(({ col, row, file }) => ({ col, row, file })) }, null, 1)}\n`);
   }
   if (map.road) for (const p of ROAD_PLANES) put(`road-${p}.png`, writeGrey(roadSamples(nx), roadSamples(nz), map.road[p].slice().reverse()));
   if (map.content) {
