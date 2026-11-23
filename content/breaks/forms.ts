@@ -225,11 +225,25 @@ export const cleared = (window: Rect, passable: readonly Rect[] = [window], piec
   profile: (seed) => [[window[0], window[2]], ...along(new Rng(seed), window[0], window[1], window[2]), [window[1], window[2]]],
 });
 
-/** A stretch lost from the top of an upstand in one cell, down to its foot: a parapet's, a garage deck's spandrel's. */
+/**
+ * A stretch lost from the top of an upstand in one cell, down to its foot: a parapet's, a garage deck's spandrel's. A low
+ * one's shards go out from the middle of its foot. A tall one is broken down in bands between two ragged sides: out
+ * from one point at its foot they were slivers as long as it is tall.
+ */
 export function upstandBreach(cell: Rect): Opening {
   const [u0, u1, v0, v1] = cell;
   const cu = (u0 + u1) / 2, half = Math.min(1.4, (u1 - u0) / 2 - 0.4), reach = Math.min((u1 - u0) / 2 - 0.02, half + 0.4);
-  return { window: [cu - reach, cu + reach, v0, v1], c: [cu, v0], closed: false, opening: [[cu + half, v0], [cu + half, v1], [cu - half, v1], [cu - half, v0]], passable: [[cu - half, cu + half, v0, v1]] };
+  const window: Rect = [cu - reach, cu + reach, v0, v1], passable: Rect[] = [[cu - half, cu + half, v0, v1]];
+  if (v1 - v0 <= 1.5) return { window, c: [cu, v0], closed: false, opening: [[cu + half, v0], [cu + half, v1], [cu - half, v1], [cu - half, v0]], passable };
+  return {
+    window, c: [cu, v1], closed: false, opening: [], passable, piece: Math.max(1.2, (v1 - v0) / 2),
+    profile: (seed): Pt[] => {
+      const rng = new Rng(seed);
+      // A side from the window's edge, where the upstand is whole, down to the stretch's edge at its foot.
+      const side = (from: number, to: number): Pt[] => [[from, v1], [from + (to - from) * rng.range(0.3, 0.7), v0 + (v1 - v0) * rng.range(0.35, 0.7)], [to, v0]];
+      return [...side(window[0], cu - half), ...along(rng, cu - half, cu + half, v0), ...side(window[1], cu + half).reverse()];
+    },
+  };
 }
 
 /** An upstand gone to its foot but for a ragged kerb `high` at most. */

@@ -77,9 +77,9 @@ export function pitchedRoof(name: RoofName = "zpitch8"): Component {
   const plate = (side: number): ShapeBox => ({ at: [0, grid(top(RUN) - THICK + 0.09), side * (PLATE + 0.09)], half: [HALF, 0.09, 0.09] });
   const painted = (b: ShapeBox): ShapeBox => ({ ...b, color: TIMBER });
 
-  /** A slope's rafters, inside the slab the skin was: one at the middle and the rest each side of it. */
-  const each = Math.floor((HALF - 0.3) / APART);
-  const rafters = (side: number): Chunk[] => Array.from({ length: 2 * each + 1 }, (_, k) => (k - each) * APART).map((x) => onSlope(side, [[x - 0.05, BEAM], [x + 0.05, BEAM], [x + 0.05, RUN], [x - 0.05, RUN]], THICK - 0.02, 0.08, TIMBER));
+  /** A slope's rafters, inside the slab the skin was: one at the middle and the rest each side of it, a small roof's closer. */
+  const apart = Math.min(APART, HALF - 0.4), each = Math.floor((HALF - 0.3) / apart);
+  const rafters = (side: number): Chunk[] => Array.from({ length: 2 * each + 1 }, (_, k) => (k - each) * apart).map((x) => onSlope(side, [[x - 0.05, BEAM], [x + 0.05, BEAM], [x + 0.05, RUN], [x - 0.05, RUN]], THICK - 0.02, 0.08, TIMBER));
 
   /** A slope opened: what stands of it and what leaves. */
   function bared(side: number, rng: Rng, left: number): { chunks: Chunk[]; fragments: Chunk[][] } {
