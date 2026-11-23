@@ -4,6 +4,7 @@ import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
+import { AirRadio } from "./air-support.ts";
 import { CharacterScreen } from "./character.ts";
 import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.ts";
 import { CreatorScreen } from "./creator.ts";
@@ -40,6 +41,7 @@ export class Ui {
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
   readonly sheet = new CharacterScreen();
+  readonly air = new AirRadio();
   readonly choosing = new ChoosingScreen();
   readonly structure = new StructMenu();
   readonly emotes = new EmoteMenu();
@@ -110,7 +112,7 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    return this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
+    return this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
   }
 
   /** A text field is wanted: the shell of a touch device raises its keyboard within the press that asked. */
@@ -120,7 +122,7 @@ export class Ui {
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !this.monitorOpen;
+    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !this.monitorOpen;
   }
 
   /** Escape where no screen takes it: an open note's first (notes/notes.ts), else the menu. */
@@ -203,6 +205,14 @@ export class Ui {
       return true;
     }
     if (!con.open) {
+      if (this.air.open && down && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) {
+        this.moveFocus(code === "ArrowUp" ? -1 : 1);
+        return true;
+      }
+      if (this.air.open && down && !repeat && (code === "Enter" || code === "Space") && this.frame.find(this.menuFocus)?.interactive && session) {
+        return this.air.click(this.menuFocus, session);
+      }
+      if (session && (this.wantsPointerLock || this.air.open) && this.air.key(code, down, repeat, session)) return true;
       if (code === "KeyH" && (this.inspect || this.wantsPointerLock)) { this.inspect = down; return true; }
       if (code === "Escape" && this.inspect) { if (down && !repeat) this.inspect = false; return true; }
       if (code === "KeyL" && (this.inspect || this.wantsPointerLock)) { if (down && !repeat) { this.settings.minimap = !this.settings.minimap; this.settings.changed(); } return true; }
@@ -328,6 +338,7 @@ export class Ui {
       return;
     }
     if (kind === 0 && key !== 0) this.hear?.("click");
+    if (kind === 0 && !button && this.air.click(key, session)) return;
     if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.emotes.click(key, session)) return;
@@ -391,7 +402,9 @@ export class Ui {
         const slots = hud.hotbar.length;
         if (play) this.touchShown |= layer!.touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0, this.creatureAhead);
       }
+      if (controls && session) this.air.hud(f, session, this.inputDevice);
     } else if (this.creating) this.chat.close();
+    if (this.dead || this.creating || session?.state === "closed") this.air.open = this.air.marking = false;
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
     if (this.dead || this.creating) this.structure.close();
     // The filter is for one spell of choosing.
@@ -418,6 +431,7 @@ export class Ui {
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
+      else if (this.air.open && session) this.air.build(f, session);
       else if (this.travel.open && session) this.travel.build(f, session);
       else if (this.monitorOpen && !this.inventory.open) this.monitor!.panel(f, plan, hud, this.settings.muted);
       else {

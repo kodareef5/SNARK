@@ -152,7 +152,7 @@ export class Sight implements FramePart {
   step(f: AppFrame): void {
     this.f = f;
     const session = f.session, hud = f.hud, shown = f.sight, c = f.controls, cam = f.cam, reg = f.reg, view = f.view, world = f.world, nowMs = f.nowMs, dt = f.dt;
-    const alive = f.alive, a = session.alpha, passenger = f.passenger, move = f.move;
+    const alive = f.alive && !session.airCamera.id, a = session.alpha, passenger = f.passenger, move = f.move;
     // The view turns with the kick and, through a scope, with the sway, as a shot does (shared/sim/aim.ts), so the middle of
     // the view is where the next shot is pointed. The look the input sends stays the player's own.
     const gun = alive && session.weaponsAllowed ? (reg.weapon[session.own.held] ?? null) : null;

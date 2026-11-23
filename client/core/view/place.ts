@@ -21,6 +21,15 @@ const HEAD_CLEAR = .1;
 
 export function place(d: Director, f: AppFrame): void {
   const session = f.session;
+  const air = session.airCamera.sample(session.renderClock);
+  if (f.alive && air) {
+    const cam = f.cam;
+    cam.x = air.x; cam.y = air.y; cam.z = air.z;
+    cam.yaw = air.yaw; cam.pitch = air.pitch; cam.roll = 0;
+    cam.nearLimit = Infinity;
+    d.own.firstPerson = false;
+    return;
+  }
   if (f.alive && f.car) driving(d, f);
   else if (f.alive && session.driving >= 0) riding(d, f);
   else if (f.passenger) seated(d, f);

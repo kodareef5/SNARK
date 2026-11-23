@@ -235,6 +235,8 @@ export class App {
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
       get skating() { return app.controls.onBoard; },
+      get airRadio() { return app.ui.air.available(app.session); },
+      get airMarking() { return app.ui.air.marking; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
       zoom: (notches, alt) => void this.zoomBy(notches, alt),
@@ -271,6 +273,7 @@ export class App {
     };
     this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
+      this.ui.air.result(seq, code, session.tickClock);
       this.ui.creator.result(seq, code === RESULT_OK);
       this.ui.inventory.result(seq, code, session.tickClock);
       this.builder.result(seq, code, this.nowMs);
@@ -442,7 +445,7 @@ export class App {
       if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
     }
     this.ui.pointer(kind, key, x, y, button, this.session);
-    if (this.ui.menu) this.blur();
+    if (this.ui.menu || this.ui.air.open) this.blur();
   }
 
   zoomMini(turn: number): void {
@@ -704,7 +707,8 @@ export class App {
     f.holding = this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
     f.airFrom = this.airFrom;
-    this.director.cockpitNow(f);
+    this.director.airControls(f);
+    if (!session.airCamera.id) this.director.cockpitNow(f);
     if (f.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.sight.buttons(this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons));
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
@@ -789,6 +793,10 @@ export class App {
       }
       session.impacts.length = 0;
     }
+    this.ui.air.update(session, this.remote, world, cam);
+    scene.airSupport.preview = this.ui.air.marking ? this.ui.air.spot : null;
+    scene.airSupport.view = session.airSupport;
+    scene.airSupport.tick = session.tickClock;
     this.supply.list = session.supply;
     this.supply.tick = session.tickClock;
     this.falling!.absorb(session.rubble, sceneMs, cam.x, cam.y, cam.z);

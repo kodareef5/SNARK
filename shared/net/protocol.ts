@@ -262,6 +262,7 @@ export const RESTART_GO = 0;
 export const RESTART_OFF = 0xffff;
 /** The longest a stop may be said ahead, in seconds: a day. */
 export const RESTART_MOST = 86400;
+export const S_AIR_SUPPORT = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -467,6 +468,7 @@ export const CMD_MARK = command();
  * body it meets while fast, and comes to rest as a bag of one stack, which CMD_TAKE takes up. No arguments.
  */
 export const CMD_THROW = command();
+export const CMD_AIR_SUPPORT = command();
 export const SPOT_TICKS = 1800;
 export const SPOTS_MOST = 8;
 export const VEHICLE_INSPECT = 0;

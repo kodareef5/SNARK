@@ -80,6 +80,7 @@ import type { MapLandmark } from "../../../shared/world/mapfile.ts";
 import type { MotionSource } from "./motion.ts";
 import { Frame, walk, type Pass } from "./pass.ts";
 import { Casting } from "./casting.ts";
+import { AirSupport } from "./passes/air-support.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
 import { Water } from "./passes/water.ts";
@@ -473,6 +474,7 @@ export class Scene {
   get falling(): Falling | null { return this.looseEntities.falling; }
   set falling(f: Falling | null) { this.looseEntities.falling = f; }
   /** The supply drops live on the map (passes/supply-drops.ts). */
+  readonly airSupport: AirSupport;
   private readonly supplyDrops: SupplyDrops;
   get supply(): SupplyView | null { return this.supplyDrops.view; }
   set supply(view: SupplyView | null) { this.supplyDrops.view = view; }
@@ -597,6 +599,7 @@ export class Scene {
     this.marks = new Beams(this.assets);
     this.placing = new Ghost(this.assets, this.meshOfKind);
     this.loose = new Things(this.assets);
+    this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
@@ -851,6 +854,7 @@ export class Scene {
       this.casting.ground,
       this.looseEntities,
       { draw: (f) => this.bodies(f.cam, f.remote) },
+      this.airSupport,
       this.marks,
       this.looseEntities.rubble,
       { draw: () => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, this.fallTree); } },

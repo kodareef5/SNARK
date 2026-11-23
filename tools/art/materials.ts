@@ -1,6 +1,7 @@
 // The materials an asset names in its asset.ts: where their pictures are, what a pack says of each, the colour each is
 // drawn flat in, and the mips of each of their textures for the texture build.
 
+import { airMaterial, airTextures } from "../pack/air-support.ts";
 import { HAS_SURFACES, worldMaterials, worldSurfaceMeshes } from "../surfaces/build.ts";
 import { HAS_FACADES, facadeMaterials, facadeMeshes } from "../facade/build.ts";
 import { resolve } from "node:path";
@@ -208,6 +209,7 @@ export async function gameTextures(source: string = SOURCE, landmark: string | n
       out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(m, t.role, t.top) });
     }
   }
+  if (resolve(source) === resolve(SOURCE) && landmark === null) for (const t of airTextures) out.set(t.id, { ...t, mips: () => mipsOf(airMaterial, t.role, t.top) });
   if (HAS_SURFACES && resolve(source) === resolve(SOURCE) && landmark === null) {
     let materials: Material[] | undefined;
     worldSurfaceMeshes().forEach((mesh, k) => {

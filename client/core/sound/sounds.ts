@@ -29,6 +29,8 @@ import { V_HEALTH } from "../../../shared/sim/vitals.ts";
 import { Resolver } from "./resolve.ts";
 import { VehicleSounds } from "./vehicles.ts";
 import { WorldSounds } from "./world.ts";
+import type { AirSupportView } from "../../../shared/sim/air-support.ts";
+import { AirSounds } from "./air-support.ts";
 import { SupplySounds } from "./supply.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import type { SupplyList } from "../../../shared/sim/supply.ts";
@@ -85,6 +87,7 @@ export interface SoundView {
   /** The vehicle the player sits in, or -1. */
   vehicle?: number;
   /** The supply drops the session is told of, and the tick they are heard at (supply.ts). */
+  airSupport?: AirSupportView;
   supply?: { list: SupplyList; tick: number };
 }
 
@@ -157,6 +160,8 @@ export class Sounds {
   private readonly crowd = new Map<number, number>();
   private readonly loops = new Map<number, Looping>();
   /** What the supply drops are heard by, and the capsule's number among the owners. */
+  private readonly airSounds = new AirSounds();
+  private readonly helicopter: number;
   private readonly supply = new SupplySounds();
   private readonly capsule: number;
   private readonly asked: { sound: number; x: number; y: number; z: number; untilMs: number }[] = [];
@@ -217,6 +222,7 @@ export class Sounds {
     this.build = new BuildSounds(reg, (id) => this.resolver.owner(id));
     this.vehicles = new VehicleSounds(reg, (id) => this.resolver.owner(id));
     this.ui = this.resolver.owner("core:ui");
+    this.helicopter = this.resolver.owner("core:helicopter");
     this.capsule = this.resolver.owner("core:supply_capsule");
     const survivor = reg.defs.find((d) => d?.type === "species" && (d as { class?: string }).class === "survivor");
     this.survivor = this.resolver.owner(survivor?.id ?? "core:survivor");
@@ -283,6 +289,7 @@ export class Sounds {
       this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
       this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true), view.turned ?? false, view.body && view.body.glide !== 0 ? Math.hypot(view.body.vx, view.body.vy, view.body.vz) : 0);
     }
+    if (view?.airSupport) this.airSounds.update(view.airSupport, this.helicopter, this.capsule, this.hear, this.airLoop);
     if (view?.supply) this.supply.update(view.supply.list, view.supply.tick, TICK_RATE, ear.x, ear.y, ear.z, this.capsule, this.hear, (id, key, x, y, z, level, on) => this.loop(id, this.capsule, key, x, y, z, level, on, false));
     this.actions.nowMs = nowMs;
     this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);
@@ -311,6 +318,8 @@ export class Sounds {
    * Keeps a looping sound `id` playing while it is asked for each frame with `on`, fading in to `level`; one not asked
    * for, or asked for with `on` false, fades out and stops.
    */
+  private readonly airLoop = (id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean): void => this.loop(id, owner, key, x, y, z, level, on, flat);
+
   loop(id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean): void {
     let l = this.loops.get(id);
     if (!on) {

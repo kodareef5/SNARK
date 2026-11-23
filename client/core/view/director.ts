@@ -39,6 +39,33 @@ export class Director implements FramePart {
   readonly mountCamera = new MountCameraPivot();
   readonly cockpit = new CockpitLook();
   private helicopterViewHost = -1;
+  private airId = 0;
+  private savedYaw = 0;
+  private savedPitch = 0;
+
+  /** The aircraft and the survivor each keep the direction their operator last faced. */
+  airControls(f: AppFrame): void {
+    const session = f.session, c = f.controls;
+    const id = session.airCamera.id;
+    const pose = session.airCamera.sample(session.renderClock);
+    if (id !== this.airId) {
+      c.release();
+      if (pose) {
+        if (!this.airId) { this.savedYaw = c.yaw; this.savedPitch = c.pitch; }
+        c.yaw = pose.yaw;
+        c.pitch = pose.pitch;
+      } else {
+        c.yaw = this.savedYaw;
+        c.pitch = this.savedPitch;
+      }
+      this.airId = id;
+    }
+    if (pose && f.steer) {
+      const dt = Math.min(100, f.dt) / 1000;
+      c.yaw -= c.moveX * dt * 1.8;
+      c.pitch = Math.max(-1.45, Math.min(1.45, c.pitch + c.moveZ * dt * 1.5));
+    }
+  }
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   eye = -1;
   /** Whether the survivor was on its own feet last frame, to know the frame it rises or gets out of a vehicle, a seat or a saddle. */
@@ -72,6 +99,7 @@ export class Director implements FramePart {
   /** The mouse moved by `dx` and `dy` pixels: it turns the look in a cockpit, the orbit while it is on, and else the body. */
   look(f: AppFrame, dx: number, dy: number): void {
     const c = f.controls;
+    if (f.session.airCamera.id) { c.look(dx, dy); return; }
     this.cockpitNow(f);
     if (this.cockpit.active) this.cockpit.look(-dx * LOOK_SPEED * c.zoom, -dy * LOOK_SPEED * c.zoom);
     else if (this.orbit.on) this.orbit.look(-dx * LOOK_SPEED * c.zoom, -dy * LOOK_SPEED * c.zoom);

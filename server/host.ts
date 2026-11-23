@@ -34,7 +34,7 @@ import { Emotes } from "./emote.ts";
 import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
-import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
+import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
 import { issueSuit } from "./suit.ts";
 import { Balls } from "./balls.ts";
@@ -107,6 +107,7 @@ import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
+import { AirSupport } from "./air-support.ts";
 import { Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
@@ -248,6 +249,7 @@ export interface Host {
   readonly carReturn: CarReturn | null;
   /** Supply drops, and the drop book they are rolled from (server/supply.ts). */
   readonly supply: Supply;
+  readonly airSupport: AirSupport;
   readonly supplyBook: BookStore;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
@@ -757,11 +759,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // A sight's cone widens its session's view and holds what it is on awake (server/gaze.ts, D1079).
   // A look through a sight tells what it is on as far as the sight's gaze reaches (D1082).
   overhead.reach = (c) => gaze.lookReach(c);
-  const gaze = new Gaze({ world, records, items, game, spot: (team, e, until) => tactical.spot(team, e, until), wake: (chunk, delta) => {
+  const wakeView = (chunk: number, delta: number): void => {
     creatures.watch(chunk, delta, woke);
     if (woke.length > 0) settled.bodies += settle(world, woke, relocated);
     woke.length = 0;
-  } });
+  };
+  const gaze = new Gaze({ world, records, items, game, spot: (team, e, until) => tactical.spot(team, e, until), wake: wakeView });
   const hurt = new Hurt({ world, records, survival, deadlines });
   creatures.onAdopt.on((_e, rec) => hurt.follow(rec));
   taming.bred = (rec) => breeding.subject(rec);
@@ -1275,6 +1278,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   recrate();
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
+  const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, wake: wakeView });
+  game.handle(CMD_AIR_SUPPORT, (c, r) => airSupport.command(c, r));
+  airSupport.begin(persistence && !loaded!.fresh ? persistence.store.meta("air-support") as string | null : null);
+  persistence?.sidecar("air-support", airSupport.saved);
   build.keepClear = (x, z) => supply.buildFault(x, z);
   // Cast's people and planned stories are kept a minute at a time; its bodies never are (a start sweeps them).
   castHost.cast.load(persistence && !loaded!.fresh ? (persistence.store.meta("cast") as string | null) : null);
@@ -1791,6 +1798,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     mark(PART.life),
     // Riders move with their mounts before combat aims at either.
     urban,
+    { step: (tick) => airSupport.step(tick) },
     riding,
     { beforeStep: () => void (game.players.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
     carry,
@@ -1836,6 +1844,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ...(harvest ? [{ replicate: (c: Client) => harvest.sync(c) }] : []),
     { replicate: (c) => tactical.sync(c) },
     { replicate: (c) => supply.sync(c) },
+    { replicate: (c) => airSupport.sync(c) },
     { snapshot: (c, view) => corpseReplication.sync(c, view) },
   ];
   const tick = walk(systems);
@@ -1887,6 +1896,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     spawner,
     carReturn,
     supply,
+    airSupport,
     supplyBook,
     beds,
     cluster,

@@ -21,6 +21,7 @@ import { buildCorePack, farMesh, grayboxMeshes, withArt } from "../pack/build.ts
 import { landmarkArt } from "../pack/far.ts";
 import { mannequinMeshes } from "../pack/mannequin.ts";
 import { splitPack } from "../pack/split.ts";
+import { airMaterial, airTextures } from "../pack/air-support.ts";
 import { rgbaTexture, writeTextureFile } from "../pack/texture.ts";
 import { weaponMeshes } from "../pack/weapons.ts";
 import { buildPack, type SourceMesh } from "../pack/write.ts";
@@ -91,6 +92,7 @@ export async function namedTextures(source: string = SOURCE): Promise<Map<string
       out.set(t.id, { material, role: t.role, top: t.top });
     }
   }
+  if (resolve(source) === resolve(SOURCE)) for (const t of airTextures) out.set(t.id, { material: airMaterial, role: t.role, top: t.top });
   if (HAS_SURFACES && resolve(source) === resolve(SOURCE)) {
     const materials = worldMaterials();
     worldSurfaceMeshes().forEach((mesh, k) => {

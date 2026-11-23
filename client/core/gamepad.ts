@@ -12,6 +12,8 @@ export interface PadTarget {
   readonly flying: boolean;
   readonly patrol: boolean;
   readonly skating?: boolean;
+  readonly airRadio?: boolean;
+  readonly airMarking?: boolean;
   /** A sight that zooms is raised (a scope, a glass, a visor): the d-pad's up and down step it (`zoom`), not the hotbar. */
   readonly zooming?: boolean;
   /** With `alt`, a scope's zero in place of its zoom (LB held). */
@@ -120,6 +122,7 @@ export class GamepadInput {
       else if(modifier && (i===2 || i===3))this.pulse(i===2?"Digit9":"Digit0",target);
       else if(modifier && i===5)this.pulse("KeyV",target);
       else if(modifier && i===1)this.pulse("KeyK",target);
+      else if(i===11 && target.airRadio)this.pulse(target.airMarking ? "KeyQ" : "KeyJ", target);
       else if(i===11 && target.patrol)this.pulse("KeyK",target);
       else if(i===11 && target.flying)this.hold(i,modifier?"KeyX":"KeyC",target);
       else if(PAD_TAPS[i]){this.pending[i]=1;this.since[i]=now;}

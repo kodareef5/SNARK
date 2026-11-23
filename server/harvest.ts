@@ -388,8 +388,9 @@ export class Harvest {
   sync(c: Client): void {
     const radius = NODES_TOLD;
     const dims = this.world.dims;
-    const cx = chunkCx(dims, c.chunk);
-    const cz = chunkCz(dims, c.chunk);
+    const focus = this.game.replication.cameraChunk?.(c) ?? c.chunk;
+    const cx = chunkCx(dims, focus);
+    const cz = chunkCz(dims, focus);
     for (let z = Math.max(0, cz - radius); z <= Math.min(dims.chunksZ - 1, cz + radius); z++) {
       for (let x = Math.max(0, cx - radius); x <= Math.min(dims.chunksX - 1, cx + radius); x++) {
         const chunk = z * dims.chunksX + x;

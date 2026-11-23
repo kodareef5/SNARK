@@ -59,6 +59,7 @@ export const BTN_MOD = button();
 export const BTN_VISOR = button();
 /** At the wheel of a car with thrusters (shared/sim/vehicle-thrusters.ts), a flip's burst; its axis from the keys held with it. */
 export const BTN_BURST = button();
+export const BTN_AIR_REMOTE = button();
 /** How many buttons there are. */
 export const buttonCount = button.count;
 

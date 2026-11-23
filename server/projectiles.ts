@@ -544,8 +544,8 @@ export class Projectiles {
     this.ctx.combat.blast(src, x, y, z, radius, direct);
   }
 
-  /** Tells every client within hearing of a blast at (x, y, z). */
-  private boom(x: number, y: number, z: number, radius: number, by: string | null = null): void {
+  /** Nearby listeners and the operator watching through a remote camera receive the blast. */
+  boom(x: number, y: number, z: number, radius: number, by: string | null = null, operator?: Client): void {
     for (const l of this.heard) l("blast", x, z, by, false);
     const { world, game } = this.ctx;
     const ents = world.ents;
@@ -553,7 +553,7 @@ export class Projectiles {
       if (!other?.active || other.closed) continue;
       const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
       const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
-      if ((bx - x) * (bx - x) + (bz - z) * (bz - z) > HEARD * HEARD) continue;
+      if (other !== operator && (bx - x) * (bx - x) + (bz - z) * (bz - z) > HEARD * HEARD) continue;
       const w = game.begin(S_EVENT);
       w.u8(EVENT_BLAST);
       w.f32(x);

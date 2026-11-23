@@ -56,6 +56,8 @@ export class Replication {
   private readonly parts: TickParts;
   /** Called for each connected session just before its snapshot. */
   onReplicate: ((c: Client) => void) | null = null;
+  /** A remote operator sees the chunks around its aircraft while its body stays at its physical chunk. */
+  cameraChunk: ((c: Client) => number | undefined) | null = null;
   /** The complete view actually sent, after budget selection and a successful snapshot write. */
   onSnapshot: ((c: Client, view: SentView) => void) | null = null;
   /** Authority-provided contact neighbourhood for driver prediction, independent of the render view. */
@@ -326,7 +328,7 @@ export class Replication {
     const ents = this.world.ents;
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
-    const at = this.viewAround(c.chunk, T);
+    const at = this.viewAround(this.cameraChunk?.(c) ?? c.chunk, T);
     let cur = this.viewFor ? this.viewFor(c, this.around[at]!) : this.around[at]!;
     let ranks = this.ranks[at]!;
     const cone = this.cone ? this.cone(c) : null;
@@ -416,8 +418,9 @@ export class Replication {
   private syncChunks(c: Client, T: number): void {
     const world = this.world;
     const dims = world.dims;
-    const ccx = chunkCx(dims, c.chunk);
-    const ccz = chunkCz(dims, c.chunk);
+    const focus = this.cameraChunk?.(c) ?? c.chunk;
+    const ccx = chunkCx(dims, focus);
+    const ccz = chunkCz(dims, focus);
     const offsets = this.structOffsets;
     let budget = Math.min(this.opts.chunkSlotsPerTick, Math.floor(this.windowLeft(c, T) / (ROW_BITS / 8)));
     for (let o = 0; o < offsets.length && budget > 0; o += 2) {
