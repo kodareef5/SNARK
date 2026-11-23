@@ -17,7 +17,7 @@ import { FarLandmarks, LANDMARK_BUFFER } from "../farlandmarks.ts";
 import { FarNodes, farLevelOf, type NodeLooks } from "../farnodes.ts";
 import { FarShadow } from "../farshadow.ts";
 import { DRAW_PULLED, DRAW_RANGED, FRAME, MAX_DRAWS, PASS_FAR, PASS_NEAR, type FramePacket } from "../packet.ts";
-import type { Frame, Pass } from "../pass.ts";
+import type { Frame, PassRow } from "../pass.ts";
 import type { RoofMap } from "../roofmap.ts";
 import type { RenderWorld } from "../scene.ts";
 import { HIDDEN } from "./near-store.ts";
@@ -74,8 +74,8 @@ export class FarLayers {
   private readonly landmarkKinds: Uint8Array;
   /** The pack's colours, four bytes each, which the map of what stands overhead takes the ground's colour from (roof.ts). */
   private readonly palette: Uint8Array;
-  /** The layers' rows, in the order they are brought up to date and drawn in. */
-  readonly rows: readonly Pass[];
+  /** The layers' rows by name, in the order they are brought up to date and drawn in. */
+  readonly rows: readonly PassRow[];
 
   constructor(world: RenderWorld, reg: Registry, pack: Pack, assets: Assets, packet: FramePacket, put: Draws, casting: Casting, from: FarLooks) {
     this.world = world;
@@ -102,38 +102,53 @@ export class FarLayers {
     if (world.farNodes) world.farNodes.hidden = from.hidden;
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
     this.rows = [
-      {
-        // The map's statics handed over again: the far city is made of them, taking over what it can of the one before.
-        update: (f) => {
-          if (this.city && this.world.city !== this.citySource) this.startCity(this.city);
-          if (this.city ?? this.startCity()) this.farCity(f);
+      [
+        "far city",
+        {
+          // The map's statics handed over again: the far city is made of them, taking over what it can of the one before.
+          update: (f) => {
+            if (this.city && this.world.city !== this.citySource) this.startCity(this.city);
+            if (this.city ?? this.startCity()) this.farCity(f);
+          },
+          draw: (f) => void this.city?.draw(f.cam, f.alongGround(f.tier.reach.city), this.drawCity, f.hider),
         },
-        draw: (f) => void this.city?.draw(f.cam, f.alongGround(f.tier.reach.city), this.drawCity, f.hider),
-      },
-      {
-        update: (f) => {
-          const cam = f.cam, p = this.packet, sun = p.cascadeCount > 0 ? this.casting.sunAt : null;
-          this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, sun, f.now, this.casting.sunCasts ? sun : null);
+      ],
+      [
+        "far shadow",
+        {
+          update: (f) => {
+            const cam = f.cam, p = this.packet, sun = p.cascadeCount > 0 ? this.casting.sunAt : null;
+            this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, sun, f.now, this.casting.sunCasts ? sun : null);
+          },
         },
-      },
-      {
-        update: (f) => {
-          this.packet.frame[FRAME.fade] = f.tier.fade;
-          this.far?.update(this.packet, this.assets.residency, f.cam.x, f.cam.z, f.tier.reach.bases);
+      ],
+      [
+        "far bases",
+        {
+          update: (f) => {
+            this.packet.frame[FRAME.fade] = f.tier.fade;
+            this.far?.update(this.packet, this.assets.residency, f.cam.x, f.cam.z, f.tier.reach.bases);
+          },
+          draw: (f) => void this.far?.draw(f.cam, f.tier.reach.bases, f.tier.fade, this.drawFar, f.hider),
         },
-        draw: (f) => void this.far?.draw(f.cam, f.tier.reach.bases, f.tier.fade, this.drawFar, f.hider),
-      },
-      {
-        update: (f) => {
-          this.makeBlocks();
-          this.blocks?.update(this.packet, this.assets.residency, f.cam, this.blocksView(f), this.city ? this.citySource!.statics : null, this.city);
+      ],
+      [
+        "city blocks",
+        {
+          update: (f) => {
+            this.makeBlocks();
+            this.blocks?.update(this.packet, this.assets.residency, f.cam, this.blocksView(f), this.city ? this.citySource!.statics : null, this.city);
+          },
+          draw: (f) => void this.blocks?.draw(f.cam, this.blocksView(f), this.shown, this.drawCity, f.hider),
         },
-        draw: (f) => void this.blocks?.draw(f.cam, this.blocksView(f), this.shown, this.drawCity, f.hider),
-      },
-      {
-        update: (f) => void this.nodesFar?.update(this.packet, this.assets.residency, f.cam.x, f.cam.z, f.tier, f.cam.zoom > 1 ? f.focusX : NaN, f.focusZ),
-        draw: (f) => void this.nodesFar?.draw(f.cam, this.drawFarNodes, f.hider),
-      },
+      ],
+      [
+        "far nodes",
+        {
+          update: (f) => void this.nodesFar?.update(this.packet, this.assets.residency, f.cam.x, f.cam.z, f.tier, f.cam.zoom > 1 ? f.focusX : NaN, f.focusZ),
+          draw: (f) => void this.nodesFar?.draw(f.cam, this.drawFarNodes, f.hider),
+        },
+      ],
     ];
   }
 

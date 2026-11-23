@@ -34,6 +34,9 @@ export interface FramePart {
   step(f: AppFrame): void;
 }
 
+/** A row of the frame's list: the name the debug bar shows the part's time by, and the part. */
+export type PartRow = readonly [name: string, part: FramePart];
+
 /**
  * What the parts read of the frame and hand on. The app keeps one and refills it each frame; none is made in a frame.
  * A value is good from the part that sets it to the frame's end.

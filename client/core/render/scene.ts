@@ -78,7 +78,8 @@ import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
 import type { MapLandmark } from "../../../shared/world/mapfile.ts";
 import type { MotionSource } from "./motion.ts";
-import { Frame, walk, type Pass } from "./pass.ts";
+import { Frame, walk, type Pass, type PassRow } from "./pass.ts";
+import type { Probe } from "../probe.ts";
 import { Casting } from "./casting.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
@@ -492,8 +493,11 @@ export class Scene {
   set moonShadows(on: boolean) {
     this.casting.moonShadows = on;
   }
-  readonly passes: readonly Pass[];
-  private readonly hooks: Required<Pass>;
+  readonly passes: readonly PassRow[];
+  private hooks!: Required<Pass>;
+  /** What times the build while the debug bar is on (debug/spans.ts), and its slots: begin, update, draw, order, close. */
+  private probe: Probe | null = null;
+  private readonly spans = new Int16Array(5);
 
   /** With `stream`, `pack` is the boot pack and other levels are asked of the port as they are wanted. */
   /** `opts.farPalms`: the far store draws palms as their frond level, not their solid, for a bench's comparison (farLevelOf). */
@@ -628,7 +632,23 @@ export class Scene {
     }
     this.frame = new Frame(this.packet, world, this.assets, this.budget, this.put, this.casting, this.transient);
     this.passes = this.rows();
-    this.hooks = walk(this.passes);
+    this.time(null, -1);
+  }
+
+  /** Times each build under slot `parent` while the debug bar's probe is on (debug/spans.ts); null builds untimed. */
+  time(probe: Probe | null, parent: number): void {
+    this.probe = probe;
+    if (probe) ["begin", "update", "draw", "order", "close"].forEach((name, k) => (this.spans[k] = probe.slot(name, parent)));
+    this.hooks = probe ? probe.walk(this.passes, this.spans[1]!, this.spans[2]!) : walk(this.passes.map((r) => r[1]));
+  }
+
+  /** While the build is timed: its span `k` ran from `from` until now. Returns now, or 0 untimed. */
+  private lap(k: number, from: number): number {
+    const probe = this.probe;
+    if (!probe) return 0;
+    const now = probe.now();
+    probe.add(this.spans[k]!, from, now);
+    return now;
   }
 
   /** Works out what the scene keeps of the materials, and of each mesh given, whose row is here. */
@@ -695,16 +715,22 @@ export class Scene {
    * draws, in the order of `passes`; the draws are put in the order of their steps, and the frame is closed.
    */
   build(cam: Camera, remote: RemoteSample | null, focus?: readonly number[], loadTime = this.now): FramePacket {
+    let at = this.probe ? this.probe.now() : 0;
     const f = this.begin(cam, remote, focus, loadTime);
+    at = this.lap(0, at);
     this.hooks.update(f);
+    at = this.lap(1, at);
     this.hooks.draw(f);
+    at = this.lap(2, at);
     this.put.order();
+    at = this.lap(3, at);
     const p = this.packet;
     this.streetDraws.write(p);
     markJoins(p);
     // The frame's count, from which the next frame's crowns near take their squeeze.
     this.budget.end(this.now, p.triangles, p.drawCount);
     this.assets.end(p, loadTime);
+    this.lap(4, at);
     return p;
   }
 
@@ -831,49 +857,56 @@ export class Scene {
   }
 
   /**
-   * The frame's passes. A pass's place here is its place in both walks: every `update` runs in this order before anything
-   * draws, then every `draw` in this order, so what is earlier is in the packet first and takes of the budget first. A
-   * new thing drawn is a file under passes/ and a line here. The rows written out here are the scene's own still.
+   * The frame's passes, each by the name the debug bar times it by. A pass's place here is its place in both walks: every
+   * `update` runs in this order before anything draws, then every `draw` in this order, so what is earlier is in the
+   * packet first and takes of the budget first. A new thing drawn is a file under passes/ and a line here. The rows
+   * written out here are the scene's own still.
    */
-  private rows(): Pass[] {
+  private rows(): PassRow[] {
     const p = this.packet;
     return [
-      this.waters,
+      ["waters", this.waters],
       // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
-      this.eyes,
-      this.supplyDrops,
-      this.movingStatics,
-      this.nearStore,
+      ["tide eyes", this.eyes],
+      ["supply drops", this.supplyDrops],
+      ["moving statics", this.movingStatics],
+      ["near store", this.nearStore],
       // What the near store's meshes and the ground hide, of what is drawn so far and from here on: the meshes themselves first.
-      this.occlusion,
-      this.nearStore.meshes,
+      ["occlusion", this.occlusion],
+      ["near meshes", this.nearStore.meshes],
       ...this.layers.rows,
-      this.casting.ground,
-      this.looseEntities,
-      { draw: (f) => this.bodies(f.cam, f.remote) },
-      this.marks,
-      this.looseEntities.rubble,
-      { draw: () => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, this.fallTree); } },
-      this.placing,
-      this.loose,
-      { draw: (f) => this.showDetails(f.cam, f.remote) },
-      {
-        // The viewer's own body goes over everything else, water included.
-        draw: () => {
-          this.quadsOnCard();
-          this.characters.flush(p, this.transient, true, this.drawBody, this.casting.on ? this.casting.castBody : null);
+      ["ground casters", this.casting.ground],
+      ["loose entities", this.looseEntities],
+      ["bodies", { draw: (f) => this.bodies(f.cam, f.remote) }],
+      ["beams", this.marks],
+      ["rubble", this.looseEntities.rubble],
+      ["tree falls", { draw: () => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, this.fallTree); } }],
+      ["ghost", this.placing],
+      ["things", this.loose],
+      ["details", { draw: (f) => this.showDetails(f.cam, f.remote) }],
+      [
+        "own body",
+        {
+          // The viewer's own body goes over everything else, water included.
+          draw: () => {
+            this.quadsOnCard();
+            this.characters.flush(p, this.transient, true, this.drawBody, this.casting.on ? this.casting.castBody : null);
+          },
         },
-      },
-      {
-        draw: (f) => {
-          p.frame[FRAME.exhaustPhase] = exhaustPhase(this.now);
-          p.frame[FRAME.streetLook] = this.finishGloss - 1;
-          p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
-          p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;
-          this.street.frame(p, f.cam, this.world, f.remote, this.nearStore.hiddenNodes, this.now, this.own);
-          this.assets.residency.reserve("street environment", streetTextureBytes(p.tier.reflectionHz));
+      ],
+      [
+        "street",
+        {
+          draw: (f) => {
+            p.frame[FRAME.exhaustPhase] = exhaustPhase(this.now);
+            p.frame[FRAME.streetLook] = this.finishGloss - 1;
+            p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
+            p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;
+            this.street.frame(p, f.cam, this.world, f.remote, this.nearStore.hiddenNodes, this.now, this.own);
+            this.assets.residency.reserve("street environment", streetTextureBytes(p.tier.reflectionHz));
+          },
         },
-      },
+      ],
     ];
   }
 

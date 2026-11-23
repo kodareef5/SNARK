@@ -221,6 +221,8 @@ async function boot(): Promise<void> {
   // The touch layer's layout and its art's stand-in are fetched by a page a finger has used, and by no other.
   let layering = false;
   let savedRevision = app.ui.settings.revision, savedAt = 0;
+  // Where each frame was, for the debug bar's chart of it (App.shellMarks).
+  const marks = app.shellMarks;
   const frame = (now: number): void => {
     if(launch && (session.state==="closed" || createFailed)){showEntryProblem();return;}
     if(launch && session.state==="active" && session.sessionState!==SESSION_CREATING){
@@ -230,7 +232,7 @@ async function boot(): Promise<void> {
     requestAnimationFrame(frame);
     const cssWidth = canvas.clientWidth;
     const cssHeight = canvas.clientHeight;
-    const t0 = performance.now();
+    const t0 = (marks[0] = performance.now());
     app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
     if (app.ui.touch && !app.ui.layer && !layering) { layering = true; void import("../core/ui/touch.ts").then((m) => (app.ui.layer = m), () => (layering = false)); }
     if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
@@ -239,7 +241,9 @@ async function boot(): Promise<void> {
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
     if (app.scene) app.scene.assets.format = renderer.format;
+    marks[1] = performance.now();
     const packet = app.frame(now, cssWidth, cssHeight);
+    marks[2] = performance.now();
     drivingCheck?.observe(app);
     if (savedRevision !== app.ui.settings.revision && now - savedAt > 250) {
       savedRevision = app.ui.settings.revision; savedAt = now;
@@ -247,7 +251,7 @@ async function boot(): Promise<void> {
     }
     view.apply(app.ui.frame, cssHeight);
     if (!packet) {if(session.state==="closed" && splash?.isConnected)splash.remove();return;}
-    const built = performance.now();
+    const built = (marks[3] = performance.now());
     // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
     const ratio = app.scene ? canvasRatio(app.scene.assets.tier, devicePixelRatio, cssWidth, cssHeight) : devicePixelRatio;
     const width = Math.floor(cssWidth * ratio);
@@ -269,7 +273,7 @@ async function boot(): Promise<void> {
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
       app.pressure();
     }
-    const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
+    const ours = (marks[4] = performance.now()) - t0, gpu = clock?.take() ?? UNTIMED;
     app.drawn(packet, ours, width, height, renderer.uploadMs, built - t0);
     device?.frame(now, packet, t0, built);
     if (progress?.frames === 30) loser?.loseContext();
