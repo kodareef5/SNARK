@@ -15,6 +15,7 @@ import { survivorKind } from "../../shared/sim/blockers.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Harness } from "../fixtures/net.ts";
 import { flatMap } from "../fixtures/map.ts";
+import { solidOf } from "../../shared/sim/vehicle-movers.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const STEP = 1 / 30;
@@ -95,7 +96,7 @@ test("a car rolled into a fallen survivor shoves the body, and a watching client
     h.world.history.discontinuity(seen.ent);
     h.run(600);
     expect(h.host.falls.knock(c.ent, 0, 0.5, 0, 0, 0, 1)).toBe(true);
-    const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k), (k) => h.reg.vehicle[k] ?? null);
+    const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k), (k) => solidOf(h.reg, k));
     const lay = [a.x[c.ent]!, a.z[c.ent]!];
     let inside = 0;
     h.run(1200, () => {
@@ -112,4 +113,22 @@ test("a car rolled into a fallen survivor shoves the body, and a watching client
     const f = drawn.humans.of(c.ent);
     if (f && f.down) expect(Math.hypot(f.x - a.x[c.ent]!, f.z - a.z[c.ent]!)).toBeLessThan(0.5);
   } finally { h.host.shutdown(); }
+});
+
+test("a rex is a solid a ragdoll meets, a dodo is not, and a rex walking into a lying body shoves it", () => {
+  const rex = solidOf(reg, reg.index.get("core:rex")!), dodo = solidOf(reg, reg.index.get("core:dodo")!);
+  expect(rex).not.toBeNull();
+  expect(rex!.vehicle).toBe(false);
+  expect(dodo).toBeNull();
+  expect(solidOf(reg, reg.index.get("core:compact")!)!.vehicle).toBe(true);
+  const w = flat(), r = layHuman(40, 0, 40, Math.PI / 2, true);
+  for (let f = 0; f < 30; f++) r.step(w, STEP);
+  let z = 32;
+  for (let f = 0; f < 60; f++) {
+    const next = z + 3 * STEP;
+    r.movers = [{ from: at(40, 0, z), to: at(40, 0, next), boxes: rex!.boxes }];
+    r.step(w, STEP);
+    z = next;
+  }
+  expect(r.x[2]!).toBeGreaterThan(41);
 });

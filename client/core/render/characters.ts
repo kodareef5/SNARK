@@ -55,6 +55,7 @@ import { RotorBlur } from "./rotor-blur.ts";
 import { CameraBody } from "../camera-body.ts";
 import { ThrusterPlumes } from "./thruster-plumes.ts";
 import { PatrolLights } from "./patrol-lights.ts";
+import { solidOf } from "../../../shared/sim/vehicle-movers.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
@@ -560,7 +561,7 @@ export class Characters {
     });
     this.anims = this.creatures.map((c) => c?.anim ?? null);
     this.waiting = this.creatures.flatMap((c, kind) => (c && c.clips >= 0 ? [kind] : []));
-    this.dead = new Corpses(this.anims, reg.birthScale, (kind) => survivorKind(reg, kind), (kind) => reg.vehicle[kind] ?? null);
+    this.dead = new Corpses(this.anims, reg.birthScale, (kind) => survivorKind(reg, kind), (kind) => solidOf(reg, kind));
     const st = new AnimState();
     for (const stance of [STANCE_STAND, STANCE_CROUCH]) {
       st.stance = stance;

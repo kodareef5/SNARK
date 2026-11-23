@@ -49,7 +49,7 @@ import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 import { RagdollMovers } from "./ragdoll-movers.ts";
-import { moverReach } from "../shared/sim/vehicle-movers.ts";
+import { solidOf } from "../shared/sim/vehicle-movers.ts";
 
 /** Ticks a body lies at 1x. ARK publishes none: fifteen minutes, as a cache lies (D244). */
 export const CORPSE_TICKS = 15 * 60 * TICK_RATE;
@@ -96,7 +96,7 @@ export interface CorpsesContext {
   readonly progression?: Progression;
   readonly death?: Death;
   readonly containers?: Containers;
-  /** The vehicles that moved this tick, whose bodies near them wake to meet them. */
+  /** The vehicles and heavy creatures that moved this tick, whose bodies near them wake to meet them. */
   readonly moved?: () => readonly number[];
 }
 
@@ -581,9 +581,9 @@ export class Corpses {
   /** Wakes the bodies lying within reach of vehicle `e`, so their next step meets it. */
   private wakeNear(e: number): void {
     const { ents, reg, dims } = this.ctx.world;
-    const def = reg.vehicle[ents.kind[e]!];
-    if (!def) return;
-    const x = ents.x[e]!, z = ents.z[e]!, cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE), reach = moverReach(def) + PAD;
+    const solid = solidOf(reg, ents.kind[e]!);
+    if (!solid) return;
+    const x = ents.x[e]!, z = ents.z[e]!, cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE), reach = solid.reach + PAD;
     for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
       const kx = cx + ox, kz = cz + oz;
       if (kx < 0 || kz < 0 || kx >= dims.chunksX || kz >= dims.chunksZ) continue;

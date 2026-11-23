@@ -27,8 +27,7 @@ import { decodeCorpseCheckpoint, type CorpseMotion } from "../../shared/net/corp
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Mover, MoverPose } from "../../shared/anim/ragdoll.ts";
-import type { VehicleDefinition } from "../../shared/sim/vehicle.ts";
-import { moverBoxes, moverReach } from "../../shared/sim/vehicle-movers.ts";
+import type { Solid } from "../../shared/sim/vehicle-movers.ts";
 import type { RemoteSample } from "./session.ts";
 
 /** Ticks over which the last pose alive blends into the death clip. */
@@ -205,16 +204,16 @@ const fallRoot = new Float64Array(3);
 export class HumanFalls {
   private readonly byId = new Map<number, HumanFall>();
   private readonly survivor: (kind: number) => boolean;
-  private readonly vehicle: (kind: number) => VehicleDefinition | null;
+  private readonly solid: (kind: number) => Solid | null;
   private updates = 0;
-  /** The vehicles in view this update, where each is and where it was a tick before, for falls to meet (shared/anim/ragdoll.ts movers). */
+  /** The vehicles and heavy creatures in view, where each is and where it was a tick before, for falls to meet (shared/anim/ragdoll.ts movers). */
   private readonly cars: { id: number; reach: number; mover: { from: MoverPose; to: MoverPose; boxes: Float64Array } }[] = [];
   private readonly lastCar = new Map<number, { pose: MoverPose; tick: number }>();
   private readonly near: Mover[] = [];
 
-  constructor(survivor: (kind: number) => boolean, vehicle: (kind: number) => VehicleDefinition | null = () => null) {
+  constructor(survivor: (kind: number) => boolean, solid: (kind: number) => Solid | null = () => null) {
     this.survivor = survivor;
-    this.vehicle = vehicle;
+    this.solid = solid;
   }
 
   /** Takes up the vehicles in view: each where it is now, and a tick back along its way from where it was last seen. */
@@ -222,10 +221,10 @@ export class HumanFalls {
     this.cars.length = 0;
     const tick = remote.tick;
     for (let i = 0; i < remote.count; i++) {
-      const def = this.vehicle(remote.kind[i]!);
-      if (!def) continue;
+      const solid = this.solid(remote.kind[i]!);
+      if (!solid) continue;
       const id = remote.id[i]!, half = remote.yaw[i]! / 2;
-      const quat = remote.vehicleQx[i] || remote.vehicleQy[i] || remote.vehicleQz[i] || remote.vehicleQw[i];
+      const quat = solid.vehicle && (remote.vehicleQx[i] || remote.vehicleQy[i] || remote.vehicleQz[i] || remote.vehicleQw[i]);
       const to: MoverPose = quat
         ? { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: remote.vehicleQx[i]!, qy: remote.vehicleQy[i]!, qz: remote.vehicleQz[i]!, qw: remote.vehicleQw[i]! }
         : { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: 0, qy: detSin(half), qz: 0, qw: detCos(half) };
@@ -234,7 +233,7 @@ export class HumanFalls {
       const k = span > 1e-6 ? 1 / span : 0;
       const from: MoverPose = last && k > 0 ? { ...to, x: to.x - (to.x - last.pose.x) * k, y: to.y - (to.y - last.pose.y) * k, z: to.z - (to.z - last.pose.z) * k } : to;
       this.lastCar.set(id, { pose: to, tick });
-      this.cars.push({ id, reach: moverReach(def), mover: { from, to, boxes: moverBoxes(def) } });
+      this.cars.push({ id, reach: solid.reach, mover: { from, to, boxes: solid.boxes } });
     }
     if (this.lastCar.size > this.cars.length * 2 + 16) for (const id of this.lastCar.keys()) if (!this.cars.some(c => c.id === id)) this.lastCar.delete(id);
   }
@@ -357,9 +356,9 @@ export class Corpses {
   /** Survivors knocked down, lying as their ragdolls. */
   readonly humans: HumanFalls;
 
-  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array, survivor: (kind: number) => boolean = () => false, vehicle: (kind: number) => VehicleDefinition | null = () => null) {
+  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array, survivor: (kind: number) => boolean = () => false, solid: (kind: number) => Solid | null = () => null) {
     this.mortal = mortal;
-    this.humans = new HumanFalls(survivor, vehicle);
+    this.humans = new HumanFalls(survivor, solid);
     void birthScale;
   }
 

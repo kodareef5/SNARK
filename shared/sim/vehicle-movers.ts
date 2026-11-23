@@ -1,8 +1,10 @@
-// A vehicle as a ragdoll meets it (shared/anim/ragdoll.ts movers): a box or two in its frame, its frame on the ground
-// under its middle. A car is its body below the belt line and a narrower cabin above; anything with authored body boxes
-// is those boxes; anything else is its hull's box.
+// A vehicle or a heavy creature as a ragdoll meets it (shared/anim/ragdoll.ts movers): a box or two in its frame, its
+// frame on the ground under its middle. A car is its body below the belt line and a narrower cabin above; anything with
+// authored body boxes is those boxes; any other vehicle its hull's box; a creature its footprint up to its height.
 
 import type { VehicleDefinition } from "./vehicle.ts";
+import type { Registry } from "../content/registry.ts";
+import { bodyMass } from "./body-mass.ts";
 
 const known = new WeakMap<VehicleDefinition, Float64Array>();
 
@@ -33,4 +35,36 @@ export function moverReach(def: VehicleDefinition): number {
     if (reach > most) most = reach;
   }
   return most;
+}
+
+/** Kilograms at which a creature walking into a ragdoll moves it, rather than passing through as a lighter one does. */
+export const HEAVY_MOVER = 300;
+
+/** What a body of some kind is to a ragdoll it meets: its boxes in its own frame and how far they reach. */
+export interface Solid {
+  readonly boxes: Float64Array;
+  readonly reach: number;
+  /** Whether its frame turns by a vehicle's full attitude, or only by the body's yaw. */
+  readonly vehicle: boolean;
+}
+
+const solids = new WeakMap<Registry, (Solid | null)[]>();
+
+/** The solid a body of `kind` is to ragdolls: a vehicle's boxes, a heavy creature's footprint as a box, or none. */
+export function solidOf(reg: Registry, kind: number): Solid | null {
+  let list = solids.get(reg);
+  if (!list) solids.set(reg, (list = []));
+  if (kind in list) return list[kind]!;
+  let solid: Solid | null = null;
+  const def = reg.vehicle[kind];
+  if (def) solid = { boxes: moverBoxes(def), reach: moverReach(def), vehicle: true };
+  else if (reg.move[kind] && reg.defs[kind]?.type === "species" && bodyMass(reg, kind) >= HEAVY_MOVER) {
+    // Its footprint (shared/sim/blockers.ts stadium) from back to front and side to side, up to its body's height.
+    const r = reg.footRadius[kind]!, back = reg.footBack[kind]!, front = reg.footFront[kind]!, height = reg.bodyHeight[kind]!;
+    const half = (front - back) / 2 > r ? (front - back) / 2 : r;
+    const boxes = Float64Array.of(0, height / 2, (front + back) / 2, r, height / 2, half);
+    solid = { boxes, reach: Math.sqrt(boxes[2]! * boxes[2]! + boxes[1]! * boxes[1]!) + Math.sqrt(r * r + half * half + (height / 2) * (height / 2)), vehicle: false };
+  }
+  list[kind] = solid;
+  return solid;
 }

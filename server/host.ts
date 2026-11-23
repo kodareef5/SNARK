@@ -121,6 +121,7 @@ import { CUE_HELD, CUE_OUT, HumanAnim } from "../shared/anim/pose.ts";
 import { REACT_RULES, TIER_FALL } from "../shared/sim/react.ts";
 import { Reactions, SHOVE_MOST } from "./reactions.ts";
 import { bodyMass } from "../shared/sim/body-mass.ts";
+import { solidOf } from "../shared/sim/vehicle-movers.ts";
 import { Cluster } from "./cluster/cluster.ts";
 import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
@@ -723,7 +724,19 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   containers.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c, true) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
-  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death, containers, moved: () => urban.contacts?.moved ?? [] }, (opts.seed ?? 1) + 103);
+  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death, containers, moved: () => movedSolids() }, (opts.seed ?? 1) + 103);
+  // The vehicles that moved this tick and the heavy creatures walking, which wake the bodies near them.
+  const solidsMoved: number[] = [];
+  const movedSolids = (): readonly number[] => {
+    solidsMoved.length = 0;
+    for (const e of urban.contacts?.moved ?? []) solidsMoved.push(e);
+    const ents = world.ents;
+    for (let k = 0; k < creatures.awakeCount; k++) {
+      const e = creatures.awake[k]!;
+      if (ents.vx[e]! * ents.vx[e]! + ents.vz[e]! * ents.vz[e]! > 0.25 && solidOf(reg, ents.kind[e]!)) solidsMoved.push(e);
+    }
+    return solidsMoved;
+  };
   death.corpses = containers.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const emotes = new Emotes({ world, game });
