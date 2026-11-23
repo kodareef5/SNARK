@@ -50,7 +50,7 @@ export function breakLook(shape: string, form: BreakForm, variant: number): read
 /** The shape, form and variant a form kind is, as the functions above take them, or null for a kind that is no broken form. */
 function formAt(reg: Registry, kind: number): readonly [string, BreakForm, number] | null {
   const form = reg.breakForm[kind] ?? 0;
-  return form === 0 ? null : [reg.breakSets[reg.breakSet[kind]!]!, BREAK_FORMS[form]!, reg.breakVariant[kind]!];
+  return form === 0 ? null : [reg.breakShape[kind]!, BREAK_FORMS[form]!, reg.breakVariant[kind]!];
 }
 
 /** What left a piece that is now of form kind `kind`. */

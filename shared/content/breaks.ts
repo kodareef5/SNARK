@@ -21,10 +21,10 @@ export type BreakFamily = (typeof BREAK_FAMILIES)[number];
  * whole is the kind the map placed in the slot.
  */
 export function formKind(reg: Registry, kind: number, form: number, variant: number): number {
-  const set = reg.breakSet[kind]!;
-  if (set === 0) return 0;
+  const table = reg.formKinds[kind];
+  if (!table || !(form >= 0 && form < BREAK_FORMS.length)) return 0;
   if (form === FORM_WHOLE) return reg.breakForm[kind] === FORM_WHOLE ? kind : 0;
-  return reg.formKinds[(set * BREAK_FORMS.length + form) * BREAK_VARIANTS + (variant & (BREAK_VARIANTS - 1))]!;
+  return table[form * BREAK_VARIANTS + (variant & (BREAK_VARIANTS - 1))]!;
 }
 
 /** The heap a fallen piece of `kind` becomes where it stood, or 0 for a piece that leaves none. */

@@ -219,10 +219,13 @@ const columns = (n: number) => ({
   breakVariant: u8(n),
   breakBears: u8(n),
   glassHp: f32(n),
-  /** Each break set's name by its number. Entry 0 is "". */
-  breakSets: [] as string[],
-  /** Per break set, form and variant, in that order: the kind a piece is in that form, 0 for none. Read it with `formKind`. */
-  formKinds: new Uint16Array(0),
+  /** Per structure that breaks: its break set's name, which is the shape it is a form of. Null for everything else. */
+  breakShape: list<string>(n),
+  /**
+   * Per structure that breaks: its set's kinds by form and variant, the kind at form * BREAK_VARIANTS + variant, 0 for
+   * none. Every kind of a set holds the one table. Read it with `formKind`.
+   */
+  formKinds: list<Uint16Array>(n),
 });
 
 /** The break set each name is, numbered from 1 in the order of the names. */
@@ -334,6 +337,7 @@ if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.len
     reg.decayDays[i] = d.decayDays ?? m?.decayDays ?? 0;
     if (d.breaks) {
       reg.breakSet[i] = once(breakSets).get(d.breaks.set)!;
+      reg.breakShape[i] = d.breaks.set;
       reg.breakFamily[i] = BREAK_FAMILIES.indexOf(d.breaks.family);
       reg.breakHalves[i] = d.breaks.halves;
       reg.breakForm[i] = BREAK_FORMS.indexOf(d.breaks.form);
@@ -349,10 +353,12 @@ if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.len
   },
   finish(reg, { once }) {
     const n = reg.defs.length;
-    const sets = once(breakSets);
-    reg.breakSets = ["", ...sets.keys()];
-    reg.formKinds = new Uint16Array((sets.size + 1) * BREAK_FORMS.length * BREAK_VARIANTS);
-    for (let i = 1; i < n; i++) if (reg.breakForm[i] !== 0) reg.formKinds[(reg.breakSet[i]! * BREAK_FORMS.length + reg.breakForm[i]!) * BREAK_VARIANTS + reg.breakVariant[i]!] = i;
+    const tables = Array.from({ length: once(breakSets).size + 1 }, () => new Uint16Array(BREAK_FORMS.length * BREAK_VARIANTS));
+    for (let i = 1; i < n; i++) {
+      if (reg.breakSet[i] === 0) continue;
+      const table = (reg.formKinds[i] = tables[reg.breakSet[i]!]!);
+      if (reg.breakForm[i] !== 0) table[reg.breakForm[i]! * BREAK_VARIANTS + reg.breakVariant[i]!] = i;
+    }
     // Convex parts, only if some shape has them, so content without them is compiled as it always was.
     const hulls = hullsOf(reg.defs, once(shapesById));
     if (reg.defs.some((_, k) => hulls(k).length > 0)) reg.parts.hulls = hullTable(n, hulls);

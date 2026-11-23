@@ -108,7 +108,7 @@ test("the registry finds a piece's form kind from the kind a map placed, in any 
 test("a form kind says back its shape, form and variant, and every kind of a set its family and halves", () => {
   for (const kit of KIT) {
     const whole = reg.index.get(wholeOf(kit.name))!, set = reg.breakSet[whole]!;
-    expect(reg.breakSets[set]).toBe(kit.name);
+    expect(reg.breakShape[whole]).toBe(kit.name);
     expect([reg.breakForm[whole], BREAK_FAMILIES[reg.breakFamily[whole]!]]).toEqual([FORM_WHOLE, kit.family]);
     kit.forms(0).forEach((f) => {
       const form = BREAK_FORMS.indexOf(f.name);
@@ -116,7 +116,7 @@ test("a form kind says back its shape, form and variant, and every kind of a set
         const k = formKind(reg, whole, form, v);
         if (form === FORM_WHOLE) { expect(reg.breakBears[k]).toBe(f.bears ? 1 : 0); continue; }
         expect(reg.ids[k]).toBe(breakKind(kit.name, f.name, v));
-        expect([reg.breakSet[k], reg.breakForm[k], reg.breakVariant[k], reg.breakFamily[k], reg.breakHalves[k], reg.breakBears[k]]).toEqual([set, form, v, reg.breakFamily[whole]!, reg.breakHalves[whole]!, f.bears ? 1 : 0]);
+        expect([reg.breakSet[k], reg.breakShape[k], reg.breakForm[k], reg.breakVariant[k], reg.breakFamily[k], reg.breakHalves[k], reg.breakBears[k]]).toEqual([set, kit.name, form, v, reg.breakFamily[whole]!, reg.breakHalves[whole]!, f.bears ? 1 : 0]);
       }
     });
   }
@@ -124,8 +124,8 @@ test("a form kind says back its shape, form and variant, and every kind of a set
 
 test("every finish of a breaking shape is of its break set, and a shape that never breaks is of none", () => {
   for (const shape of Object.keys(RUIN_SHAPES) as RuinShape[]) for (const finish of (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((f) => finished(shape, f))) {
-    const k = reg.index.get(ruinKind(shape, finish))!, set = reg.breakSets[reg.breakSet[k]!]!;
-    expect([shape, finish, set]).toEqual([shape, finish, KIT.some((kit) => kit.name === shape) ? shape : ""]);
+    const k = reg.index.get(ruinKind(shape, finish))!;
+    expect([shape, finish, reg.breakShape[k], reg.breakSet[k]! > 0]).toEqual(KIT.some((kit) => kit.name === shape) ? [shape, finish, shape, true] : [shape, finish, null, false]);
   }
 });
 
