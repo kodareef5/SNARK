@@ -108,6 +108,7 @@ import { starterBook } from "../content/supply/starter.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { AirSupport } from "./air-support.ts";
+import { helicopterAirspace } from "../shared/world/helicopter.ts";
 import { Hitches } from "./hitches.ts";
 import { Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
@@ -531,7 +532,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const def = reg.vehicle[kind]!;
     const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z)) : groundUnder(world.hf, x, z, def.spec.halfWidth));
     if (!Number.isFinite(y) || [start.hull, start.engine, start.rotor, start.fuel].some(n => n !== undefined && (!Number.isFinite(n) || n < 0 || n > 1))) return -1;
-    if ((isRotorVehicle(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
+    if (start.airborne && isRotorVehicle(def)) { if (!helicopterAirspace(world, x, y, z, yaw, def)) return -1; }
+    else if ((isRotorVehicle(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
     const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
@@ -1289,7 +1291,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   persistence?.sidecar("hitches", hitches.saved);
   const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, wake: wakeView,
     spawn: (id, at, team) => {
-      const e = parkVehicle(id, at.x, at.z, team, at.yaw, "air freight", { y: at.y });
+      const def = reg.vehicle[reg.index.get(id) ?? 0];
+      const e = parkVehicle(id, at.x, at.z, team, at.yaw, "air freight", { y: at.y, airborne: !!def && isRotorVehicle(def) });
       if (e < 0) return e;
       const ents = world.ents, v = ents.vrow[e]!;
       ents.vehicleQx[v] = Math.fround(at.qx); ents.vehicleQy[v] = Math.fround(at.qy); ents.vehicleQz[v] = Math.fround(at.qz); ents.vehicleQw[v] = Math.fround(at.qw);
@@ -1304,6 +1307,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
   });
   game.handle(CMD_AIR_SUPPORT, (c, r) => airSupport.command(c, r));
+  urban.autopilot = (e, b) => airSupport.pilot(e, b);
   airSupport.begin(persistence && !loaded!.fresh ? persistence.store.meta("air-support") as string | null : null);
   persistence?.sidecar("air-support", airSupport.saved);
   build.keepClear = (x, z) => supply.buildFault(x, z);

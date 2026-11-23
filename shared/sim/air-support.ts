@@ -8,8 +8,9 @@ export const AIR_ACTION = {
 export const AIR_PHASE = { inbound: 0, follow: 1, lower: 2, release: 3, outbound: 4 } as const;
 
 export interface AirPose { x: number; y: number; z: number; yaw: number }
+/** A freight carrier: `ent` is its aircraft's entity handle, drawn where that entity is when it is in view. */
 export interface AirCarrier extends AirPose {
-  id: number; phase: number; loaded: boolean; trailer: boolean; jaws: number;
+  id: number; ent: number; pitch: number; roll: number; phase: number; loaded: boolean; trailer: boolean; jaws: number;
 }
 /** A drone rack: `id` is its trailer's record, `ent` the trailer's entity handle, drawn where that entity is. */
 export interface AirPod extends AirPose {
@@ -53,6 +54,9 @@ export function writeAirSupport(w: BitWriter, v: AirSupportView): void {
   w.u8(v.carriers.length);
   for (const row of v.carriers) {
     writePose(w, row);
+    w.u32(row.ent);
+    w.f32(row.pitch);
+    w.f32(row.roll);
     w.u8(row.phase);
     w.bool(row.loaded);
     w.bool(row.trailer);
@@ -86,8 +90,8 @@ export function readAirSupport(r: BitReader): AirSupportView | null {
   const carriers = r.u8();
   if (carriers > AIR_VIEW_LIMIT) return null;
   for (let i = 0; i < carriers; i++) {
-    const row = { ...readPose(r), phase: r.u8(), loaded: r.bool(), trailer: r.bool(), jaws: r.u8() / 255 };
-    if (row.phase > AIR_PHASE.outbound) return null;
+    const row = { ...readPose(r), ent: r.u32(), pitch: r.f32(), roll: r.f32(), phase: r.u8(), loaded: r.bool(), trailer: r.bool(), jaws: r.u8() / 255 };
+    if (row.phase > AIR_PHASE.outbound || !Number.isFinite(row.pitch + row.roll)) return null;
     view.carriers.push(row);
   }
   const pods = r.u8();

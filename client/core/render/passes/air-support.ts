@@ -3,6 +3,8 @@ import { makeHandle } from "../../../../shared/ids.ts";
 import { AIR_BAYS, type AirCarrier, type AirDrone, type AirPod, type AirPose, type AirSupportView } from "../../../../shared/sim/air-support.ts";
 import type { VehicleRotor } from "../../../../shared/sim/vehicle.ts";
 import { AIR_FRAME as A, AIR_IMPELLERS, AIR_PIECES, airBayZ, airMesh, type AirPiece } from "../../../../shared/world/air-support-art.ts";
+import { AIR_CARRIER_LOAD } from "../../../../content/vehicles/air-freight.ts";
+import { vehicleRotation } from "../../../../shared/sim/vehicle-frame.ts";
 import type { Details } from "../../details/details.ts";
 import type { Assets } from "../../assets/assets.ts";
 import { BONE_FLOATS, DRAW_EMISSIVE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_DRAWS, TRANSIENT_BUFFER } from "../packet.ts";
@@ -80,9 +82,10 @@ export function drawAirPod(
   }
 }
 
-export function drawAirCarrier(piece: Piece, row: AirCarrier, jaws: number, spin: number): void {
-  const floor = row.trailer ? A.deck : 0;
-  if (row.loaded) drawAirPod(piece, row.trailer, false, 0, 0, -1, 0);
+/** The carrier about its own origin: the load hangs `drop` metres below it, the airframe above the jaws. */
+export function drawAirCarrier(piece: Piece, row: AirCarrier, jaws: number, spin: number, drop = AIR_CARRIER_LOAD): void {
+  const floor = A.deck - drop;
+  if (row.loaded) drawAirPod((name, x, y, z, ...rest) => piece(name, x, y - drop, z, ...rest), true, false, 0, 0, -1, 0);
   const body = floor + A.carrierY;
   piece("carrier", 0, body, 0);
   for (const s of SIDES) {
@@ -125,6 +128,7 @@ export class AirSupport implements Pass {
   /** The origin's full turn, row-major, while `tilted`; otherwise pieces turn by `yaw` alone. */
   private readonly basis = new Float64Array(9);
   private readonly local = new Float32Array(12);
+  private readonly q = new Float64Array(4);
   private tilted = false;
 
   private readonly blur: RotorBlur;
@@ -160,11 +164,14 @@ export class AirSupport implements Pass {
     for (const row of view.carriers) {
       const prev = this.carriers.get(row.id);
       this.id = row.id;
-      if (!this.origin(row, prev, 12)) continue;
-      this.scale = ease(Math.min(1, Math.max(0, (540 - Math.hypot(this.x, this.y, this.z)) / 70)));
-      if (this.scale < 0.002) continue;
+      // Near, the aircraft is an entity drawn where it is predicted to be; far, the feed's own pose and attitude.
+      if (!this.entityOrigin(row.ent)) {
+        if (!this.origin(row, prev, 16)) continue;
+        this.attitude(lerp(prev?.pitch ?? row.pitch, row.pitch, this.share), lerp(prev?.roll ?? row.roll, row.roll, this.share));
+      }
       this.downwash(row);
       drawAirCarrier(this.piece, row, lerp(prev?.jaws ?? row.jaws, row.jaws, this.share), this.tick * ROTOR_TURN_PER_TICK + row.id);
+      this.flat();
     }
     for (const row of view.pods) {
       const prev = this.pods.get(row.id);
@@ -219,7 +226,7 @@ export class AirSupport implements Pass {
       y = cam.y + this.y,
       z = cam.z + this.z;
     const ground = hf.heightAt(x, z),
-      above = y + A.carrierY - ground;
+      above = y - AIR_CARRIER_LOAD - ground;
     if (above > 11 || above < 0 || hf.waterAt(x, z) > ground + 0.02) return;
     this.wash.set(row.id, this.tick);
     for (const s of SIDES) {
@@ -248,17 +255,28 @@ export class AirSupport implements Pass {
     if (!r || !handle) return false;
     for (let i = 0; i < r.count; i++) {
       if (makeHandle(r.id[i]!, r.gen[i]!) !== handle) continue;
-      const cam = this.f.cam, x = r.vehicleQx[i]!, y = r.vehicleQy[i]!, z = r.vehicleQz[i]!, w = r.vehicleQw[i]!, m = this.basis;
+      const cam = this.f.cam;
       this.scale = 1;
       this.x = r.x[i]! - cam.x; this.y = r.y[i]! - cam.y; this.z = r.z[i]! - cam.z;
-      m[0] = 1 - 2 * (y * y + z * z); m[1] = 2 * (x * y - w * z); m[2] = 2 * (x * z + w * y);
-      m[3] = 2 * (x * y + w * z); m[4] = 1 - 2 * (x * x + z * z); m[5] = 2 * (y * z - w * x);
-      m[6] = 2 * (x * z - w * y); m[7] = 2 * (y * z + w * x); m[8] = 1 - 2 * (x * x + y * y);
-      this.tilted = true;
-      this.yaw = Math.atan2(m[2], m[8]); this.c = Math.cos(this.yaw); this.s = Math.sin(this.yaw);
+      this.rotate(r.vehicleQx[i]!, r.vehicleQy[i]!, r.vehicleQz[i]!, r.vehicleQw[i]!);
+      this.yaw = Math.atan2(this.basis[2]!, this.basis[8]!); this.c = Math.cos(this.yaw); this.s = Math.sin(this.yaw);
       return Math.hypot(this.x, this.y, this.z) - 8 <= this.f.view;
     }
     return false;
+  }
+
+  /** Tilts the origin set by `origin` by a pitch and a roll, as a vehicle's frame is turned (yaw, then roll, then pitch). */
+  private attitude(pitch: number, roll: number): void {
+    vehicleRotation({ x: 0, y: 0, z: 0, yaw: this.yaw, pitch, roll }, this.q);
+    this.rotate(this.q[0]!, this.q[1]!, this.q[2]!, this.q[3]!);
+  }
+
+  private rotate(x: number, y: number, z: number, w: number): void {
+    const m = this.basis;
+    m[0] = 1 - 2 * (y * y + z * z); m[1] = 2 * (x * y - w * z); m[2] = 2 * (x * z + w * y);
+    m[3] = 2 * (x * y + w * z); m[4] = 1 - 2 * (x * x + z * z); m[5] = 2 * (y * z - w * x);
+    m[6] = 2 * (x * z - w * y); m[7] = 2 * (y * z + w * x); m[8] = 1 - 2 * (x * x + y * y);
+    this.tilted = true;
   }
 
   /** Back to turning by yaw alone. */

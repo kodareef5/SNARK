@@ -30,7 +30,9 @@ import { supportedCar, uprightCar } from "./vehicle-recovery.ts";
 
 /** Stable authored origin kept by the normal component codec. It never changes when a found aircraft is repaired. */
 export const VEHICLE_ORIGIN = 0x766f72;
-export interface VehicleStart { y?: number; hull?: number; engine?: number; rotor?: number; fuel?: number; origin?: string }
+export interface VehicleStart { y?: number; hull?: number; engine?: number; rotor?: number; fuel?: number; origin?: string;
+  /** An aircraft placed in flight at `y`: open air is enough, it needs no ground under it. */
+  airborne?: boolean }
 
 /** Placement identity, not array position, seeds a found vehicle's condition. Rolls happen only while creating its record. */
 export function foundVehicle(map: string, placement: MapVehicle, seed: number): VehicleStart {

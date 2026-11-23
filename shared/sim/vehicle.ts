@@ -377,8 +377,8 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
     if (panel.length !== 4 || panel.some(point => point.length !== 3 || !point.every(Number.isFinite))) throw new Error("invalid vehicle cabin panel");
   }
   if (!Number.isFinite(d.beltline) || d.beltline <= d.spec.clearance || d.beltline > d.spec.height) throw new Error("invalid vehicle belt line");
-  // A trailer has nowhere to sit: it is towed, not driven.
-  if (!(isWheelVehicle(d) && d.spec.kingpin && Array.isArray(d.seats) && d.seats.length === 0)) validateSeats(d.seats, d.doors.length, "vehicle");
+  // A vehicle nobody rides has no seats: a trailer is towed, a freight carrier flies itself.
+  if (!(Array.isArray(d.seats) && d.seats.length === 0)) validateSeats(d.seats, d.doors.length, "vehicle");
 }
 
 /** Physical surface values, independent of terrain palette or art material names. */

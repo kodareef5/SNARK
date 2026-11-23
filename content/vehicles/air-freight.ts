@@ -1,6 +1,6 @@
 import type { SpeciesDef } from "../../shared/content/defs.ts";
-import type { VehicleSpec, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
-import { AIR_TRAILER_ART as T } from "./air-freight-art.ts";
+import type { HelicopterSpec, RotorVehicleDefinition, VehicleSpec, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { AIR_CARRIER_ART as C, AIR_TRAILER_ART as T } from "./air-freight-art.ts";
 import { COMPACT_SPECIES } from "./compact.ts";
 import { TANKER_VEHICLE } from "./tanker.ts";
 
@@ -78,4 +78,43 @@ export const AIR_TRAILER: SpeciesDef = {
   slots: 1,
   mass: 4200,
   stats: { health: [3000, 0, 0], stamina: [1, 0, 0], weight: [100, 0, 0] },
+};
+
+const LOAD_TOP = -C.load[1];
+/** The tandem-rotor heavy lifter. An autopilot flies it; nobody sits in it. */
+export const AIR_CARRIER_SPEC: HelicopterSpec = {
+  // The hull starts above the container it carries and stops short of a semi's cab ahead of it.
+  halfWidth: 1.9, halfLength: 4.6, height: 3.4, clearance: 0.6,
+  mass: 7000, liftMass: 17000, fuelCapacity: 1000, fuelPerSecond: 0.01,
+  maxForward: 60, maxReverse: 12, maxSide: 16, cruiseMultiplier: 1.5,
+  climbSpeed: 12, descendSpeed: 9, acceleration: 6, brake: 9,
+  turnRate: 0.7, turnAcceleration: 1.6, pitchRate: 0.8, rollRate: 1.0, bankAngle: 0.42, pitchAngle: 0.3, attitudeResponse: 3,
+  gravity: 18, rotorRpm: 230, spoolUp: 60, spoolDown: 40,
+  skidHalfWidth: 1.2, skidHalfLength: 3.5, minGroundNormal: 0.94,
+  engineBox: { at: [0, 2.2, 0], half: [0.9, 0.5, 2.4] },
+  bodyBoxes: [
+    { at: [0, 1.6, 0], half: [1.0, 0.7, 4.5] },
+    ...C.rotors.map((r) => ({ at: [0, r.center[1] - 0.4, r.center[2]] as const, half: [0.7, 0.6, 0.9] as const })),
+  ],
+  // The rear rotor's pylon stands where a single-rotor aircraft has its tail.
+  tail: { from: [0, 1.8, -3.0], to: [0, 2.9, -3.84], radius: 0.6, tipRadius: 0.4 },
+};
+export const AIR_CARRIER_VEHICLE: RotorVehicleDefinition = {
+  id: C.id, movement: "rotor", spec: AIR_CARRIER_SPEC, wreck: C.id,
+  seats: [], doors: [], wheels: [],
+  rotors: C.rotors.map((r, i) => ({ bone: r.bone, at: r.center, axis: [0, 1, 0] as const, radius: C.rotorRadius, ratio: i === 0 ? 1 : -1, blur: { blades: 3, chord: 0.32 } })),
+  actionTicks: 24, beltline: 1.2,
+};
+/** Where the hanging trailer's origin is, below the carrier's own origin. */
+export const AIR_CARRIER_LOAD = LOAD_TOP;
+export const AIR_CARRIER: SpeciesDef = {
+  type: "species", class: "vehicle", id: C.id, aliases: ["air_carrier", "freight_carrier"],
+  mesh: C.id, color: 230,
+  radius: AIR_CARRIER_SPEC.halfWidth, height: AIR_CARRIER_SPEC.height, eyeHeight: 2,
+  walkSpeed: 0.01, sprintMul: 1, jumpSpeed: 0.01, still: true,
+  mass: AIR_CARRIER_SPEC.mass, slots: 1, keeps: 1, fists: 0,
+  stats: { health: [900, 0, 0], stamina: [1000, 0, 0], weight: [100, 0, 0] },
+  corpse: { health: 300, roll: 40 },
+  regions: [null, null, null, null, null, null],
+  vehicle: AIR_CARRIER_VEHICLE,
 };

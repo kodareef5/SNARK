@@ -16,10 +16,11 @@ import { quatRotate } from '../shared/math/quat.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
 import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from '../shared/sim/entities.ts';
-import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
+import { stepRotorBody, stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
+import type { HelicopterInput } from '../shared/sim/helicopter.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { skateBail } from "../shared/sim/skateboard.ts";
-import { isSkateboard, isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
+import { isSkateboard, isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type RotorVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { Found } from '../shared/world/structures.ts';
 import { capsuleBox, capsuleFree, groundUnder, push, stepOnto } from '../shared/world/collide.ts';
@@ -162,6 +163,8 @@ export class Urban {
   pairStep: ((e: number, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, pilot: boolean) => boolean) | null = null;
   /** The tractor entity towing trailer entity `e`, or -1. */
   towedBy: ((e: number) => number) | null = null;
+  /** Commands for an aircraft nobody sits in that flies itself (server/air-carrier.ts), or null to leave it unflown. */
+  autopilot: ((e: number, b: Body) => HelicopterInput | null) | null = null;
   /** Drive intents of the world's people (Cast's drivers, server/cast/drive.ts): a vehicle's steer, throttle and buttons
    * as a driver's keys would give them, and the tick they were given; a stale one stops the car on its handbrake. */
   private readonly npcDrive = new Map<number, { x: number; z: number; buttons: number; t: number }>();
@@ -1172,7 +1175,9 @@ export class Urban {
         if (beat?.holds(world, this.body)) this.restingKept++;
         else {
           beat?.begin(this.body);
-          if (npc) {
+          const flown = isRotorVehicle(host.definition) ? this.autopilot?.(e, this.body) ?? null : null;
+          if (flown) stepRotorBody(world, this.body, flown, host.definition as RotorVehicleDefinition);
+          else if (npc) {
             if (!this.pairStep?.(e, this.body, npc.x, npc.z, npc.buttons, host.definition, true)) (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, npc.x, npc.z, npc.buttons, host.definition, TICK_DT, this.body.yaw, true);
           } else {
             const brake = isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0;

@@ -51,8 +51,10 @@ export class CargoSpace {
   private readonly dropColumn: VehicleSpec;
   private readonly widest: number;
   private readonly world: ServerWorld;
+  private readonly carrierKind: number;
   constructor(world: ServerWorld, trailer: WheelVehicleDefinition) {
     this.world = world;
+    this.carrierKind = world.reg.index.get(C.id) ?? -1;
     this.solids = new StaticVehicleSolids(world);
     const base = trailer.spec, spec = (boxes: NonNullable<VehicleSpec["bodyBoxes"]>): VehicleSpec => ({ ...base, clearance: .03, halfWidth: 3.6, halfLength: 7.4, height: 40, bodyBoxes: boxes });
     this.chassis = spec([...base.bodyBoxes!,
@@ -103,6 +105,8 @@ export class CargoSpace {
         const seat = ents.seat[e]! - 1;
         if (seat >= 0 && skip.includes(seat) && ents.seatGen[e] === ents.gen[seat]) continue;
         const kind = ents.kind[e]!, def = w.reg.vehicle[kind];
+        // A freight carrier lifting off is on its way: it does not hold the panels shut.
+        if (kind === this.carrierKind && reason === "panels") continue;
         if (Math.hypot(ents.x[e]! - at.x, ents.z[e]! - at.z) > 8 + (def ? Math.hypot(def.spec.halfWidth, def.spec.halfLength, def.spec.height) : w.reg.bodyRadius[kind]!)) continue;
         if (def) {
           const r = ents.vrow[e]!;

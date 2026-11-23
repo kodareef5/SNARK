@@ -18,7 +18,7 @@ import { flatWorld } from "../fixtures/world.ts";
 
 const meshes = airSupportMeshes();
 const pack = parsePack(buildPack(meshes, defaultPalette()));
-const carrier: AirCarrier = { id: 5, phase: AIR_PHASE.lower, loaded: true, trailer: true, jaws: 0, x: 32, y: 0, z: 36, yaw: 0 };
+const carrier: AirCarrier = { id: 5, ent: 0, pitch: 0, roll: 0, phase: AIR_PHASE.lower, loaded: true, trailer: true, jaws: 0, x: 32, y: 0, z: 36, yaw: 0 };
 
 function stage() {
   const world = flatWorld();

@@ -5,11 +5,11 @@ import type { CollisionWorld } from "../world/collide.ts";
 import { helicopterWorld } from "../world/helicopter.ts";
 import { boatWorld } from "../world/boat.ts";
 import { stepBoat, type BoatState, type BoatStep } from "./boat.ts";
-import { stepHelicopter, type HelicopterState, type HelicopterStep } from "./helicopter.ts";
+import { stepHelicopter, type HelicopterInput, type HelicopterState, type HelicopterStep } from "./helicopter.ts";
 import { StaticVehicleWorld } from "../world/vehicle.ts";
 import { BTN_BURST, BTN_CROUCH, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, BTN_JUMP, MODE_NONE, MODE_WALK, type Body, stepOut } from "./character.ts";
 import { stepSkateboard } from "./skateboard.ts";
-import { isSkateboard, stepVehicle, type VehicleDefinition, type VehicleWorld, type WheelVehicleDefinition } from "./vehicle.ts";
+import { isSkateboard, stepVehicle, type RotorVehicleDefinition, type VehicleDefinition, type VehicleWorld, type WheelVehicleDefinition } from "./vehicle.ts";
 import { stepHitched } from "./vehicle-hitch.ts";
 
 const worlds = new WeakMap<CollisionWorld, StaticVehicleWorld>();
@@ -134,6 +134,19 @@ export function stepHitchedBodies(w: CollisionWorld, b: Body, moveX: number, mov
   trailerStep.impactSpeed = towed.impactSpeed; trailerStep.landSpeed = towed.landSpeed; trailerStep.blocked = towed.blocked;
   stepOut.landSpeed = vehicleStep.landSpeed;
   storeState(b, state); storeState(trailer, trailerState);
+}
+
+/** A rotor vehicle flown by analog commands rather than keys: an autopilot (server/air-carrier.ts). */
+export function stepRotorBody(w: CollisionWorld, b: Body, input: HelicopterInput, def: RotorVehicleDefinition): void {
+  vehicleStep.blocked = null; vehicleStep.impactSpeed = vehicleStep.landSpeed = vehicleStep.fuelUsed = 0; vehicleStep.rotorHit = vehicleStep.water = false;
+  if (b.mode === MODE_NONE) { b.vx = b.vy = b.vz = 0; return; }
+  loadState(state, b);
+  state.rotorRpm = b.vehicleRotorRpm; state.rotorPhase = b.vehicleRotorPhase; state.collective = b.vehicleCollective;
+  state.rotorCondition = b.vehicleRotorCondition;
+  Object.assign(vehicleStep, stepHelicopter(state, input, def, helicopterWorld(w)));
+  b.vehicleRotorRpm = state.rotorRpm; b.vehicleRotorPhase = state.rotorPhase; b.vehicleCollective = state.collective;
+  b.vehicleRotorCondition = state.rotorCondition;
+  storeState(b, state);
 }
 
 // Remote presentation: one active bit, three signed 10-bit angles, plus a separate 16-bit wheel angle.
