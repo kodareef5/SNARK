@@ -63,7 +63,7 @@ describe("the sample components", () => {
   test("what stands and what leaves fill a plain piece exactly, bars apart", () => {
     for (const name of ["floor8", "wall8", "zpanel8", "zparapet8"]) {
       const c = sample(name), whole = c.skin.reduce((s, b) => s + boxVolume(b), 0);
-      for (const v of variants) for (const f of c.forms(v).slice(1)) {
+      for (const v of variants) for (const f of c.forms(v).filter((f) => f.name.startsWith("breach") || f.name === "open")) {
         const stands = lookVolume({ boxes: f.look.boxes.filter((b) => b.color !== RUST), chunks: f.look.chunks });
         expect(Math.abs(stands + leftVolume(f) - whole) / whole).toBeLessThan(0.02);
       }

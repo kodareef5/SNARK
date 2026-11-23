@@ -48,7 +48,9 @@ if (import.meta.main) {
     const sheet = drawSheet([rowOf(c, variant)]);
     writeFileSync(join(out, `${c.name}-${variant}.png`), encodePng(sheet.width, sheet.height, sheet.rgba));
   }
-  const all = drawSheet(shown.map((c) => rowOf(c, variant)));
-  writeFileSync(join(out, `all-${variant}.png`), encodePng(all.width, all.height, all.rgba));
+  if (!only) {
+    const all = drawSheet(shown.map((c) => rowOf(c, variant)));
+    writeFileSync(join(out, `all-${variant}.png`), encodePng(all.width, all.height, all.rgba));
+  }
   console.log(`${shown.length} components drawn to ${out}`);
 }

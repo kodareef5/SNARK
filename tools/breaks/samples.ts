@@ -3,8 +3,9 @@
 import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES, RUIN_SHAPES, type FacadeModule } from "../../content/ruins.ts";
 import { Rng } from "../../shared/rng.ts";
 import { FLOOR, WALL, partBox, type Part } from "./cut.ts";
-import { along, halves, plateForms, slabBreach, slabOpen, wallBreach, wallOpen, type Component, type FormName, type Opening, type Plate } from "./forms.ts";
+import { along, halves, plateForms, slabBreach, slabOpen, wallBreach, wallOpen, type Component, type Form, type FormName, type Opening, type Plate } from "./forms.ts";
 import type { Corner, Pt, Rect } from "./geometry.ts";
+import { heapForm, hungPanel, hungSlab } from "./heap.ts";
 import { MORE_A } from "./more-a.ts";
 import { MORE_B } from "./more-b.ts";
 
@@ -48,9 +49,19 @@ function moduleParts(name: FacadeModule): { parts: Part[]; solid: Part[] } {
   return { parts: [...(shape.look?.boxes ?? []).map(boxed), ...(shape.look?.hulls ?? []).map((h) => hulled(h.corners))], solid: shape.boxes.map(boxed).map((p): Part => ({ r: p.r, w0: p.w0, w1: p.w1 })) };
 }
 
-function plate(name: string, family: string, material: string, colours: readonly [number, number], p: Plate, eye?: readonly [number, number], apart?: readonly [number, number, number]): Component {
-  return { name, family, material, finish: colours, skin: p.solid.map((s) => partBox(p.frame, s)), ...(eye ? { eye } : {}), ...(apart ? { apart } : p.frame === FLOOR ? { apart: [0, 2.2, 0] as const } : {}), forms: (variant) => plateForms(p, variant) };
+/** What a plate has besides the forms an opening makes: its hung form, its heap. */
+type More = (variant: number) => Form[];
+
+function plate(name: string, family: string, material: string, colours: readonly [number, number], p: Plate, eye?: readonly [number, number], apart?: readonly [number, number, number], more?: More): Component {
+  return { name, family, material, finish: colours, skin: p.solid.map((s) => partBox(p.frame, s)), ...(eye ? { eye } : {}), ...(apart ? { apart } : p.frame === FLOOR ? { apart: [0, 2.2, 0] as const } : {}), forms: (variant) => [...plateForms(p, variant), ...(more?.(variant) ?? [])] };
 }
+
+/** A wall's heap along its own line, of its own bulk. */
+const wallHeap = (name: string, bounds: Rect, part: Part, variant: number): Form =>
+  heapForm({ name, variant, kind: "wall", footprint: [bounds[0], bounds[1], part.w0, part.w1], floor: bounds[2], volume: (bounds[1] - bounds[0]) * (bounds[3] - bounds[2]) * (part.w1 - part.w0) });
+
+/** A component whose every form is solid as its first variant is, whatever a form's maker did. */
+const oneSolid = (c: Component): Component => ({ ...c, forms: (variant) => { const first = variant === 0 ? null : c.forms(0); return c.forms(variant).map((f, i) => (first ? { ...f, walked: first[i]!.walked } : f)); } });
 
 /** An opening with nothing left standing in its window: broken down to the floor, its shards the bands above. */
 const cleared = (window: Rect, passable: readonly Rect[] = [window], piece?: number): Opening => ({
@@ -63,7 +74,10 @@ function slab(): Component {
   return plate("floor8", "slab", "concrete", finish("concrete"), {
     name: "floor8", frame: FLOOR, parts: [part], solid: [part], cells: halves(bounds),
     breach: slabBreach, open: () => slabOpen(bounds), barsIn: [part.w0, part.w1], bears: { breached: true, open: false },
-  }, [32, 40]);
+  }, [32, 40], undefined, (variant) => [
+    hungSlab({ name: "floor8", variant, bounds, y0: part.w0, y1: part.w1, held: "x0" }),
+    heapForm({ name: "floor8", variant, kind: "slab", footprint: bounds, floor: part.w0, volume: (bounds[1] - bounds[0]) * (bounds[3] - bounds[2]) * (part.w1 - part.w0) }),
+  ]);
 }
 
 function bearingWall(): Component {
@@ -71,7 +85,7 @@ function bearingWall(): Component {
   return plate("wall8", "bearing wall", "block", finish("mintblock"), {
     name: "wall8", frame: WALL, parts: [part], solid: [part], cells: halves(bounds),
     breach: wallBreach, open: () => wallOpen(bounds), barsIn: null, bears: { breached: true, open: false },
-  });
+  }, undefined, undefined, (variant) => [wallHeap("wall8", bounds, part, variant)]);
 }
 
 /** A precast panel: reinforced, so its breaks bare bars. It bears nothing. */
@@ -80,7 +94,7 @@ function panel(): Component {
   return plate("zpanel8", "precast panel", "concrete", finish("concrete"), {
     name: "zpanel8", frame: WALL, parts: [part], solid: [part], cells: halves(bounds),
     breach: wallBreach, open: () => wallOpen(bounds), barsIn: [part.w0, part.w1], bears: { breached: false, open: false },
-  });
+  }, undefined, undefined, (variant) => [hungPanel({ name: "zpanel8", variant, bounds, z0: part.w0, z1: part.w1 }), wallHeap("zpanel8", bounds, part, variant)]);
 }
 
 function windowBay(): Component {
@@ -167,4 +181,4 @@ function partition(): Component {
   });
 }
 
-export const SAMPLES: readonly Component[] = [slab(), bearingWall(), panel(), windowBay(), storefront(), curtain(), parapet(), shell(), partition(), ...MORE_A, ...MORE_B];
+export const SAMPLES: readonly Component[] = [slab(), ...MORE_A, bearingWall(), panel(), windowBay(), storefront(), curtain(), ...MORE_B, parapet(), shell(), partition()].map(oneSolid);
