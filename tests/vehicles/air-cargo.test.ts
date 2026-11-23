@@ -38,7 +38,7 @@ test("a trailer delivery lands on the fifth wheel and couples", () => {
   try {
     const { c, e } = board(h), service = h.host.airSupport;
     expect(service.call(c, null)).toBe(RESULT_OK);
-    for (let i = 0; i < 300 && !service.racks.size; i++) h.run(100);
+    for (let i = 0; i < 900 && !service.racks.size; i++) h.run(100);
     const rack = [...service.racks.values()][0]!;
     expect(rack.slots).toBe(63);
     const trailer = trailerOf(h, rack.id);
@@ -128,7 +128,7 @@ test("a towed trailer stops a backing semi at a wall", () => {
   try {
     const { c, e } = board(h), a = h.world.ents, service = h.host.airSupport;
     expect(service.call(c, null)).toBe(RESULT_OK);
-    for (let i = 0; i < 250 && !service.racks.size; i++) h.run(100);
+    for (let i = 0; i < 900 && !service.racks.size; i++) h.run(100);
     const trailer = trailerOf(h, [...service.racks.values()][0]!.id);
     const wall = h.reg.index.get("core:wall_wood")!, back = a.z[trailer]! - 6.5;
     for (const x of [-2.4, 0, 2.4]) h.world.structs.add(wall, a.x[trailer]! + x, 1.5, back, 0, 0, 1000);
@@ -144,7 +144,7 @@ test("a survivor behind a reversing trailer is pushed aside", () => {
   try {
     const { c, e } = board(h), a = h.world.ents, service = h.host.airSupport;
     expect(service.call(c, null)).toBe(RESULT_OK);
-    for (let i = 0; i < 250 && !service.racks.size; i++) h.run(100);
+    for (let i = 0; i < 900 && !service.racks.size; i++) h.run(100);
     const trailer = trailerOf(h, [...service.racks.values()][0]!.id);
     const other = h.join("visitor"); h.run(500);
     const body = h.client(other)!.ent;
@@ -161,7 +161,7 @@ test("an open rack closes itself when the semi drives off", () => {
   try {
     const { s, c } = board(h), service = h.host.airSupport;
     expect(service.call(c, null)).toBe(RESULT_OK);
-    for (let i = 0; i < 250 && !service.racks.size; i++) h.run(100);
+    for (let i = 0; i < 900 && !service.racks.size; i++) h.run(100);
     const rack = [...service.racks.values()][0]!;
     h.run(1500);
     s.airCommand(AIR_ACTION.panels, rack.id, 0); h.run(2500);
@@ -184,7 +184,7 @@ test("movement during lowering starts a fresh approach", () => {
     expect(order.phase).toBe(AIR_PHASE.follow);
     expect(service.racks.size).toBe(0);
     h.pilots[0]!.moveZ = 0; h.pilots[0]!.buttons = BTN_JUMP;
-    for (let i = 0; i < 250 && !service.racks.size; i++) h.run(100);
+    for (let i = 0; i < 900 && !service.racks.size; i++) h.run(100);
     expect(service.racks.size).toBe(1);
     expect(order.loaded).toBe(false);
   } finally { h.host.shutdown(); }

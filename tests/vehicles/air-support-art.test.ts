@@ -76,7 +76,7 @@ test("the carrier shows four grips, wheel gear and two rotor discs", () => {
 test("a late observer sees occupied bays and the pilot sees through their drone", () => {
   const { view, draw, count } = stage();
   view.pods.push({ ...carrier, ent: 0, hitched: true, open: 1, slots: 0b110101, selected: 2 });
-  view.drones.push({ ...carrier, id: 24, pitch: 0.1, fuel: 0.8, bay: 3 });
+  view.drones.push({ ...carrier, id: 24, pitch: 0.1, fuel: 0.8, bay: 3, signal: 1, launched: 0, speed: 22, turn: 1.5 });
   draw();
   expect(count("drone")).toBe(4);
   expect(count("droneFrame")).toBe(1);
@@ -93,13 +93,13 @@ test("a late observer sees occupied bays and the pilot sees through their drone"
   expect(count("drone")).toBe(0);
 });
 
-test("the ground marker shows its footprint and a distant carrier clears the view", () => {
+test("the ground marker shows its footprint and a distant carrier still shows", () => {
   const { view, scene, cam, draw, count } = stage();
   view.carriers.push({ ...carrier, z: cam.z + 600 });
   scene.airSupport.preview = { x: cam.x, y: 0, z: cam.z + 10, yaw: 0 };
   draw();
   expect(count("marker")).toBe(1);
-  expect(count("carrier")).toBe(0);
+  expect(count("carrier")).toBe(1);
 });
 
 test("touchdown sounds once and late observers hear the running rotors", () => {

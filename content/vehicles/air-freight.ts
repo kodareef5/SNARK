@@ -1,6 +1,6 @@
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import type { HelicopterSpec, RotorVehicleDefinition, VehicleSpec, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
-import { AIR_CARRIER_ART as C, AIR_TRAILER_ART as T } from "./air-freight-art.ts";
+import { AIR_CARRIER_ART as C, AIR_TRAILER_ART as T, SURVEY_DRONE_ART } from "./air-freight-art.ts";
 import { COMPACT_SPECIES } from "./compact.ts";
 import { TANKER_VEHICLE } from "./tanker.ts";
 
@@ -113,8 +113,40 @@ export const AIR_CARRIER: SpeciesDef = {
   radius: AIR_CARRIER_SPEC.halfWidth, height: AIR_CARRIER_SPEC.height, eyeHeight: 2,
   walkSpeed: 0.01, sprintMul: 1, jumpSpeed: 0.01, still: true,
   mass: AIR_CARRIER_SPEC.mass, slots: 1, keeps: 1, fists: 0,
-  stats: { health: [900, 0, 0], stamina: [1000, 0, 0], weight: [100, 0, 0] },
+  // The most an admin may give it; AirCarrierHealth sets what one takes off with.
+  stats: { health: [20000, 0, 0], stamina: [1000, 0, 0], weight: [100, 0, 0] },
   corpse: { health: 300, roll: 40 },
   regions: [null, null, null, null, null, null],
   vehicle: AIR_CARRIER_VEHICLE,
+};
+
+const D = SURVEY_DRONE_ART;
+/** The expendable camera drone. Its flight is its own (shared/sim/air-drone.ts); the rotor spec only shapes and draws it. */
+export const SURVEY_DRONE_SPEC: HelicopterSpec = {
+  halfWidth: 0.55, halfLength: 0.62, height: 0.32, clearance: 0.02,
+  mass: 60, liftMass: 120, fuelCapacity: 1, fuelPerSecond: 0.001,
+  maxForward: 30, maxReverse: 6, maxSide: 8, cruiseMultiplier: 1.5,
+  climbSpeed: 6, descendSpeed: 6, acceleration: 8, brake: 8,
+  turnRate: 2, turnAcceleration: 6, pitchRate: 3, rollRate: 3, bankAngle: 0.4, pitchAngle: 0.4, attitudeResponse: 6,
+  gravity: 18, rotorRpm: 2400, spoolUp: 2000, spoolDown: 1000,
+  skidHalfWidth: 0.4, skidHalfLength: 0.4, minGroundNormal: 0.9,
+  bodyBoxes: [{ at: [0, 0.14, 0], half: [0.22, 0.12, 0.55] }],
+  tail: { from: [0, 0.14, -0.3], to: [0, 0.14, -0.55], radius: 0.08, tipRadius: 0.06 },
+};
+export const SURVEY_DRONE_VEHICLE: RotorVehicleDefinition = {
+  id: D.id, movement: "rotor", spec: SURVEY_DRONE_SPEC,
+  seats: [], doors: [], wheels: [],
+  rotors: D.impellers.map((p) => ({ bone: p.bone, at: p.at, axis: [0, 1, 0] as const, radius: 0.17, ratio: p.turn, blur: { blades: 4, chord: 0.05 } })),
+  actionTicks: 12, beltline: 0.1,
+};
+export const SURVEY_DRONE: SpeciesDef = {
+  type: "species", class: "vehicle", id: D.id, aliases: ["survey_drone", "camera_drone"],
+  mesh: D.id, color: 230,
+  radius: 0.55, height: 0.32, eyeHeight: 0.1,
+  walkSpeed: 0.01, sprintMul: 1, jumpSpeed: 0.01, still: true,
+  mass: 60, slots: 1, keeps: 1, fists: 0,
+  // The most an admin may give it; AirDroneHealth sets what one launches with.
+  stats: { health: [2000, 0, 0], stamina: [1, 0, 0], weight: [10, 0, 0] },
+  regions: [null, null, null, null, null, null],
+  vehicle: SURVEY_DRONE_VEHICLE,
 };

@@ -16,8 +16,9 @@ export interface AirCarrier extends AirPose {
 export interface AirPod extends AirPose {
   id: number; ent: number; hitched: boolean; open: number; slots: number; selected: number;
 }
+/** A flying drone. `ent` is its entity's handle; `launched`, `speed` and `turn` let its operator's page predict it. */
 export interface AirDrone extends AirPose {
-  id: number; pitch: number; fuel: number; bay: number;
+  id: number; ent: number; pitch: number; fuel: number; bay: number; signal: number; launched: number; speed: number; turn: number;
 }
 export interface AirSupportView {
   tick: number; carriers: AirCarrier[]; pods: AirPod[]; drones: AirDrone[];
@@ -74,9 +75,14 @@ export function writeAirSupport(w: BitWriter, v: AirSupportView): void {
   w.u8(v.drones.length);
   for (const row of v.drones) {
     writePose(w, row);
+    w.u32(row.ent);
     w.f32(row.pitch);
     w.u8(share(row.fuel));
     w.u8(row.bay);
+    w.u8(share(row.signal));
+    w.u32(row.launched);
+    w.f32(row.speed);
+    w.f32(row.turn);
   }
 }
 
@@ -104,8 +110,8 @@ export function readAirSupport(r: BitReader): AirSupportView | null {
   const drones = r.u8();
   if (drones > AIR_VIEW_LIMIT) return null;
   for (let i = 0; i < drones; i++) {
-    const row = { ...readPose(r), pitch: r.f32(), fuel: r.u8() / 255, bay: r.u8() };
-    if (!Number.isFinite(row.pitch) || row.bay >= AIR_BAYS) return null;
+    const row = { ...readPose(r), ent: r.u32(), pitch: r.f32(), fuel: r.u8() / 255, bay: r.u8(), signal: r.u8() / 255, launched: r.u32(), speed: r.f32(), turn: r.f32() };
+    if (!Number.isFinite(row.pitch + row.speed + row.turn) || row.bay >= AIR_BAYS) return null;
     view.drones.push(row);
   }
   return r.overflow ? null : view;

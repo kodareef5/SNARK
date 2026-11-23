@@ -163,6 +163,8 @@ export class Urban {
   pairStep: ((e: number, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, pilot: boolean) => boolean) | null = null;
   /** The tractor entity towing trailer entity `e`, or -1. */
   towedBy: ((e: number) => number) | null = null;
+  /** A vehicle another system moves every tick, such as a flying drone (server/air-flight.ts): never stepped here. */
+  external: ((e: number) => boolean) | null = null;
   /** Commands for an aircraft nobody sits in that flies itself (server/air-carrier.ts), or null to leave it unflown. */
   autopilot: ((e: number, b: Body) => HelicopterInput | null) | null = null;
   /** Drive intents of the world's people (Cast's drivers, server/cast/drive.ts): a vehicle's steer, throttle and buttons
@@ -451,6 +453,7 @@ export class Urban {
   private maySleep(host: HostSeat): boolean {
     const { world, records, creatures } = this.ctx, ents = world.ents, e = host.entity, pid = host.pid, dims = world.dims;
     if (!this.contacts || this.drivers.has(e) || this.npcDrive.has(e) || this.pushes.has(pid) || this.held.has(pid)) return false;
+    if (this.external?.(e)) return false;
     // A towed trailer sleeps only behind a sleeping tractor.
     const tractor = this.towedBy?.(e) ?? -1;
     if (tractor >= 0 && this.dozing[tractor] === 0) return false;
@@ -1166,7 +1169,7 @@ export class Urban {
       let idle = !driven && !npc && resting && !pushed;
       if (driven) host.movedAt = world.tick;
       // A trailer on a fifth wheel is stepped with its tractor.
-      const towed = (this.towedBy?.(e) ?? -1) >= 0;
+      const towed = (this.towedBy?.(e) ?? -1) >= 0 || (this.external?.(e) ?? false);
       if (!driven && !towed && (npc || !resting || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
         const b = this.body, x = b.x, y = b.y, z = b.z, qx = b.vehicleQx, qy = b.vehicleQy, qz = b.vehicleQz, qw = b.vehicleQw, steering = b.steering;

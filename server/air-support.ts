@@ -20,11 +20,11 @@ import type { Client } from "./game.ts";
 import type { Hitches } from "./hitches.ts";
 import type { Urban } from "./urban.ts";
 
-export interface AirSupportContext extends Omit<AirFlightContext, "valid"> {
+export interface AirSupportContext extends Omit<AirFlightContext, "valid" | "spawn"> {
   urban: Urban;
   hitches: Hitches;
-  /** Parks a vehicle of kind `id`, owned by `team`, at this frame; returns its entity or -1. */
-  spawn(id: string, at: Frame, team: number): number;
+  /** Parks a vehicle of kind `id`, owned by `team`, at this frame; returns its entity or -1. `transient` ones are never saved. */
+  spawn(id: string, at: Frame, team: number, opts?: { health?: number; transient?: boolean }): number;
   /** Takes a vehicle out of the world for good. */
   discard(e: number): void;
 }
@@ -53,6 +53,8 @@ export class AirSupport {
     next: this.next, racks: [...this.racks.values()], calls: [...this.calls.values()], cooldown: [...this.cooldown],
   } satisfies SavedAir) };
   private readonly cooldown = new Map<number, number>();
+  /** Ticks each rack's trailer has been rolling. */
+  private readonly rolling = new Map<number, number>();
   private readonly notices = new WeakMap<Client, { text: string; until: number }>();
   private readonly feed = new WeakMap<Client, { tick: number; bytes: Uint8Array; conn: Client["conn"] }>();
   private readonly sample = new BitWriter(12288);
@@ -226,9 +228,11 @@ export class AirSupport {
   private launchCarrier(at: AirPose, toward: AirPose, team: number): number {
     const { world, rules } = this.ctx, def = this.carrier!;
     const yaw = Math.atan2(toward.x - at.x, toward.z - at.z);
-    const e = this.ctx.spawn(def.id, { ...at, yaw, qx: 0, qy: Math.sin(yaw / 2), qz: 0, qw: Math.cos(yaw / 2) }, team);
+    const e = this.ctx.spawn(def.id, { ...at, yaw, qx: 0, qy: Math.sin(yaw / 2), qz: 0, qw: Math.cos(yaw / 2) }, team, { health: rules.num("AirCarrierHealth") });
     if (e < 0) return e;
-    const ents = world.ents, v = ents.vrow[e]!, speed = Math.min(rules.num("AirCarrierSpeed"), def.spec.maxForward);
+    // Already flying, but never faster than it can stop from before it reaches the rig.
+    const room = Math.hypot(toward.x - at.x, toward.z - at.z), braking = def.spec.gravity * Math.tan(def.spec.pitchAngle) * .35;
+    const ents = world.ents, v = ents.vrow[e]!, speed = Math.min(rules.num("AirCarrierSpeed"), def.spec.maxForward, Math.sqrt(2 * braking * room));
     ents.vehicleEngineOn[v] = 1; ents.vehicleRotorRpm[v] = def.spec.rotorRpm; ents.vehicleCollective[v] = .7;
     ents.vehicleRotorCondition[v] = 1; ents.vehicleEngineCondition[v] = 1;
     ents.vx[e] = Math.sin(yaw) * speed; ents.vz[e] = Math.cos(yaw) * speed;
@@ -409,7 +413,7 @@ export class AirSupport {
       return this.tell(c, "Trailer recalled.");
     }
     // A rig still settling on its springs may open its rack; one rolling may not.
-    const moving = Math.hypot(world.ents.vx[trailer]!, world.ents.vz[trailer]!) > ROLLING * .5;
+    const moving = Math.hypot(world.ents.vx[trailer]!, world.ents.vz[trailer]!) > ROLLING;
     if (moving) return this.tell(c, "Stop the semi to operate the drone rack.", RESULT_BUSY);
     if (action === A.panels) {
       if (!rack.opening && !this.space!.clear(this.frameOf(trailer), "panels", tractor >= 0 ? [trailer, tractor] : [trailer])) {
@@ -444,8 +448,10 @@ export class AirSupport {
         if (!this.ctx.records.byPid.has(rack.pid)) { this.racks.delete(rack.id); this.saved.dirty = true; }
         continue;
       }
-      // A rack closes for the road.
-      if (rack.opening && Math.hypot(ents.vx[trailer]!, ents.vz[trailer]!) > ROLLING) {
+      // A rack closes for the road: after half a second of rolling, not at a rig's bounce on its springs.
+      const rolling = Math.hypot(ents.vx[trailer]!, ents.vz[trailer]!) > ROLLING;
+      this.rolling.set(rack.id, rolling ? (this.rolling.get(rack.id) ?? 0) + 1 : 0);
+      if (rack.opening && (this.rolling.get(rack.id) ?? 0) > TICK_RATE / 2) {
         rack.opening = false;
         const c = this.ctx.game.clients.find(v => v?.active && v.drive === this.ctx.hitches.tractorOf(trailer)) ?? undefined;
         this.tell(c, "Rack closing for the road.");

@@ -116,7 +116,7 @@ import {
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
-import { AIR_ACTION, emptyAirSupport, readAirSupport } from "../../shared/sim/air-support.ts";
+import { AIR_ACTION, emptyAirSupport, readAirSupport, type AirSupportView } from "../../shared/sim/air-support.ts";
 import { readSupply, type SupplyList } from "../../shared/sim/supply.ts";
 import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
@@ -455,7 +455,7 @@ export class ClientSession {
   supply: SupplyList = { tiers: [], classes: [], rows: [] };
   supplyVersion = 0;
   airSupport = emptyAirSupport();
-  readonly airCamera = new AirCamera();
+  readonly airCamera = Object.assign(new AirCamera(), { alphaOf: () => this.alpha });
 
   airCommand(action: number, target = 0, bay = 0, ground?: { x: number; z: number; yaw: number }): number {
     if (action === AIR_ACTION.ground && !ground) return 0;
@@ -994,6 +994,11 @@ export class ClientSession {
     return { whole: this.whole[chunk] === 1, rows: world.structs.chunks[chunk]?.live ?? 0, statics: this.staticKinds !== null, near };
   }
 
+  /** The server's air support view: the drone camera sets itself right from it. */
+  receiveAir(view: AirSupportView): void {
+    this.airCamera.receive(view, this.inputs, this.simTick);
+  }
+
   get mapFocus(): ClientSession["place"] {
     return this.airCamera.sample(this.renderClock) ?? this.place;
   }
@@ -1203,6 +1208,7 @@ export class ClientSession {
     const inp = this.inputs;
     const remote = (inp.buttons[i]! & BTN_AIR_REMOTE) !== 0;
     if (remote) {
+      this.airCamera.step(t, inp.yaw[i]!, inp.pitch[i]!, inp.buttons[i]!);
       this.bodies[t & (HISTORY - 1)]!.copy(this.own);
       this.bodyTick[t & (HISTORY - 1)] = t;
       return;
@@ -1469,7 +1475,7 @@ export class ClientSession {
         if (view && view.tick >= s.airSupport.tick) {
           if (s.airSupport.flight !== view.flight) s.tapped = 0;
           s.airSupport = view;
-          s.airCamera.receive(view, s.renderClock);
+          s.receiveAir(view);
         }
       },
     });

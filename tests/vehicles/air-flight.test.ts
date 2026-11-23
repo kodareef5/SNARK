@@ -3,30 +3,38 @@ import { App } from "../../client/core/app.ts";
 import { AirCamera } from "../../client/core/air-camera.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
+import { handleIndex } from "../../shared/ids.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { EVENT_BLAST, RESULT_OK } from "../../shared/net/protocol.ts";
 import { AIR_ACTION, emptyAirSupport } from "../../shared/sim/air-support.ts";
-import { BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
+import { BTN_AIR_REMOTE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
+import { InputBuffer } from "../../shared/net/protocol.ts";
 import { AIR_FRAME, airBayZ } from "../../shared/world/air-support-art.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { frozenPack } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
 
-test("the remote camera crosses a yaw wrap and releases its map focus", () => {
-  const camera = new AirCamera(), view = emptyAirSupport();
-  view.flight = 7;
-  view.drones.push({ id: 7, x: 13, y: 6, z: 8, yaw: Math.PI - .1, pitch: 0, fuel: 1, bay: 4 });
-  camera.receive(view, 1);
-  expect(camera.sample(1)!.x).toBe(13);
-  view.tick += 3;
-  view.drones[0] = { ...view.drones[0]!, x: 19, yaw: -Math.PI + .1 };
-  camera.receive(view, 4);
-  expect(camera.sample(5.5)!.x).toBe(16);
-  expect(camera.sample(5.5)!.yaw).toBeCloseTo(Math.PI, 6);
-  expect(camera.sample(20)!.x).toBeLessThan(23);
-  camera.receive(emptyAirSupport(), 21);
-  expect(camera.sample(21)).toBeNull();
+test("the drone camera predicts the look at once and takes the server's word", () => {
+  const camera = new AirCamera(), view = emptyAirSupport(), inputs = new InputBuffer(128);
+  view.tick = 100; view.flight = 7;
+  const row = { id: 7, ent: 3, x: 13, y: 6, z: 8, yaw: 0, pitch: 0, fuel: 1, bay: 4, signal: 1, launched: 40, speed: 20, turn: 2 };
+  view.drones.push(row);
+  camera.receive(view, inputs, 100);
+  expect(camera.sample()!.x).toBe(13);
+  // A look a quarter turn right is followed on the very next tick, before any server row.
+  const right = Math.round(Math.PI / 2 * 32768 / Math.PI);
+  for (let t = 101; t <= 110; t++) { inputs.set(t, 0, 0, right, 0, BTN_AIR_REMOTE); camera.step(t, right, 0, BTN_AIR_REMOTE); }
+  const ahead = camera.sample()!;
+  expect(ahead.yaw).toBeGreaterThan(.3);
+  expect(ahead.z).toBeGreaterThan(8 + 5);
+  // The server, a few ticks behind, agreeing at tick 105 changes nothing; disagreeing replays from it.
+  view.tick = 105; view.drones[0] = { ...row, x: 13 + 100 };
+  camera.receive(view, inputs, 110);
+  expect(camera.sample()!.x).toBeGreaterThan(110);
+  expect(camera.stats.replays).toBe(5);
+  camera.receive(emptyAirSupport(), inputs, 110);
+  expect(camera.sample()).toBeNull();
 });
 
 function waitFor(h: Harness, done: () => boolean, seconds = 45): void {
@@ -201,5 +209,42 @@ test("the flight stops at the ground and its payload applies once", () => {
     h.run(1000);
     expect(hits).toBe(1);
     expect(pilot.airSupport.pods.find(p => p.id === pod)!.slots & (1 << 5)).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("the operator's camera agrees with the server through a steering turn", () => {
+  const { h, pilot, pod } = setup();
+  try {
+    pilot.airCommand(AIR_ACTION.launch, pod, 2);
+    waitFor(h, () => !!pilot.airCamera.id);
+    const controls = h.pilots[0]!;
+    controls.yaw = 0; controls.pitch = .1;
+    h.run(1500);
+    const replays = pilot.airCamera.stats.replays;
+    // A hard turn, at 45 ms of latency: what the operator sees is what the server flies.
+    controls.yaw = 1.4;
+    h.run(2000);
+    const flown = h.host.airSupport.flights.camera(h.client(pilot)!)!;
+    const seen = pilot.airCamera.sample()!;
+    expect(pilot.airCamera.stats.error).toBeLessThan(.01);
+    expect(pilot.airCamera.stats.replays - replays).toBeLessThan(40);
+    // The camera runs ahead of the server by the latency, along the same path.
+    expect(Math.hypot(seen.x - flown.x, seen.z - flown.z)).toBeLessThan(flown.speed * .3);
+  } finally { h.host.shutdown(); }
+});
+
+test("a shot drone goes down and cuts its operator's feed", () => {
+  const { h, pilot, pod, c } = setup();
+  try {
+    pilot.airCommand(AIR_ACTION.launch, pod, 1);
+    waitFor(h, () => !!pilot.airCamera.id);
+    h.run(1000);
+    const flight = h.host.airSupport.flights.camera(c)!;
+    const drone = h.host.records.byPid.get(h.world.ents.pid[handleIndex(flight.ent)]!)!;
+    expect(h.reg.ids[h.world.ents.kind[handleIndex(flight.ent)]!]).toBe("core:survey_drone");
+    h.host.survival.hurt(drone, 1e6, 0);
+    waitFor(h, () => !pilot.airCamera.id, 5);
+    expect(pilot.airSupport.notice).toContain("shot down");
+    expect(pilot.airSupport.pods.find(p => p.id === pod)!.slots & (1 << 1)).toBe(0);
   } finally { h.host.shutdown(); }
 });
