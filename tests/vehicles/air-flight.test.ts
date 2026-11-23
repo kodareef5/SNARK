@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { AirCamera } from "../../client/core/air-camera.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -42,8 +45,8 @@ function waitFor(h: Harness, done: () => boolean, seconds = 45): void {
   expect(done()).toBe(true);
 }
 
-function setup() {
-  const h = new Harness({ entityRadius: 1, structRadius: 1 }, 35, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(12)) });
+function setup(dbPath?: string) {
+  const h = new Harness({ entityRadius: 1, structRadius: 1 }, 35, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(12)), ...(dbPath ? { dbPath } : {}) });
   h.host.setSetting("AirSupportOrderRequired", "False");
   const pilot = h.join("driver", { latencyMs: 45, jitterMs: 4 }), observer = h.join("observer");
   h.run(800);
@@ -248,4 +251,21 @@ test("a shot drone goes down and cuts its operator's feed", () => {
     expect(pilot.airSupport.notice).toContain("shot down");
     expect(pilot.airSupport.pods.find(p => p.id === pod)!.slots & (1 << 1)).toBe(0);
   } finally { h.host.shutdown(); }
+});
+
+test("a drone flies on a saved world, and none is left after a restart", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-air-drone-")), path = join(dir, "world.db");
+  let { h, pilot, pod } = setup(path);
+  try {
+    pilot.airCommand(AIR_ACTION.launch, pod, 0);
+    waitFor(h, () => !!pilot.airCamera.id);
+    h.run(2000);
+    expect(pilot.airCamera.id).toBeGreaterThan(0);
+    const drone = h.reg.index.get("core:survey_drone")!;
+    expect([...h.host.records.byPid.values()].some(r => r.kind === drone)).toBe(true);
+    h.host.shutdown();
+    h = new Harness({ entityRadius: 1, structRadius: 1 }, 35, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(12)), dbPath: path });
+    h.run(500);
+    expect([...h.host.records.byPid.values()].filter(r => r.kind === drone && h.host.records.entOf.has(r.pid))).toEqual([]);
+  } finally { h.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });

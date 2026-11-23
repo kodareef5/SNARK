@@ -30,8 +30,8 @@ export interface AirFlightContext {
   valid(c: Client, rack: number): boolean;
   /** The trailer entity of rack `rack`, which its own drones fly out of, or -1. */
   spare?(rack: number): number;
-  /** Puts a vehicle in the world; `transient` ones are never saved. */
-  spawn(id: string, at: Frame, team: number, opts?: { health?: number; transient?: boolean }): number;
+  /** Puts a vehicle in the world. */
+  spawn(id: string, at: Frame, team: number, opts?: { health?: number }): number;
   discard(e: number): void;
   wake?(chunk: number, delta: number): void;
 }
@@ -102,7 +102,7 @@ export class AirFlights {
     const { rules, world, records } = this.ctx;
     const team = records.byPid.get(c.pid)?.team ?? 0;
     const e = this.ctx.spawn(SURVEY_DRONE_ART.id, { ...origin, qx: 0, qy: Math.sin(origin.yaw / 2), qz: 0, qw: Math.cos(origin.yaw / 2) }, team,
-      { health: rules.num("AirDroneHealth"), transient: true });
+      { health: rules.num("AirDroneHealth") });
     if (e < 0) return RESULT_BUSY;
     const ents = world.ents;
     const f: Flight = {

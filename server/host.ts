@@ -1295,7 +1295,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const e = parkVehicle(id, at.x, at.z, team, at.yaw, "air freight", { y: at.y, airborne: !!def && isRotorVehicle(def) });
       if (e < 0) return e;
       const rec = records.byPid.get(world.ents.pid[e]!)!;
-      if (opts.transient) persistence?.detach(rec.pid);
       // Health is the content's most, cut down to what the settings give it.
       if (opts.health !== undefined && rec.vitals) {
         const have = rec.vitals.at(V_HEALTH, world.tick) / 1e6;

@@ -11,7 +11,7 @@ import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { isRotorVehicle, isWheelVehicle, type RotorVehicleDefinition, type WheelVehicleDefinition } from "../shared/sim/vehicle.ts";
 import type { Body } from "../shared/sim/character.ts";
 import type { HelicopterInput } from "../shared/sim/helicopter.ts";
-import { AIR_CARRIER_ART, AIR_TRAILER_ART as T } from "../content/vehicles/air-freight-art.ts";
+import { AIR_CARRIER_ART, AIR_TRAILER_ART as T, SURVEY_DRONE_ART } from "../content/vehicles/air-freight-art.ts";
 import { AIR_CARRIER_LOAD } from "../content/vehicles/air-freight.ts";
 import { autopilot, type CarrierGoal } from "./air-carrier.ts";
 import { CargoSpace, angle, framePoint, hitchedPose, isTrailer, offset, type Frame } from "./air-cargo-space.ts";
@@ -25,8 +25,8 @@ export interface AirSupportContext extends Omit<AirFlightContext, "valid" | "spa
   urban: Urban;
   items: Items;
   hitches: Hitches;
-  /** Parks a vehicle of kind `id`, owned by `team`, at this frame; returns its entity or -1. `transient` ones are never saved. */
-  spawn(id: string, at: Frame, team: number, opts?: { health?: number; transient?: boolean }): number;
+  /** Parks a vehicle of kind `id`, owned by `team`, at this frame; returns its entity or -1.  */
+  spawn(id: string, at: Frame, team: number, opts?: { health?: number }): number;
   /** Takes a vehicle out of the world for good. */
   discard(e: number): void;
 }
@@ -85,6 +85,12 @@ export class AirSupport {
   }
 
   begin(data: string | null): void {
+    // A drone in flight is not saved with its flight: one left from before a restart is taken away.
+    const drone = this.ctx.world.reg.index.get(SURVEY_DRONE_ART.id);
+    for (const rec of [...this.ctx.records.byPid.values()]) {
+      const e = rec.kind === drone ? this.entity(rec.pid) : -1;
+      if (e >= 0) this.ctx.discard(e);
+    }
     if (!data) return;
     const state = JSON.parse(data) as SavedAir;
     this.next = state.next;
