@@ -185,7 +185,8 @@ function turnedAbout(from: Solved, to: Solved, b: number, axis: number): number 
 
 artTest("a creature at full turn bends, leads, swings its tail and leans, bounded", () => {
   const all = anims();
-  expect(all.filter((a) => a.carriage).length).toBe(10);
+  // Every modelled creature that does not strafe has one.
+  expect(all.every((a) => (a.carriage !== null) === a.turns) && all.some((a) => a.carriage)).toBe(true);
   const near = (x: number, want: number): boolean => Math.abs(x - want) < 0.02 * DEG;
   for (const a of all) {
     if (!a.carriage) continue;

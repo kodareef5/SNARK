@@ -5,14 +5,20 @@ import { sampleClip } from "../../shared/anim/clip.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
 import { buildRigs, type Rig } from "../../shared/anim/rigs.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
-import { CREATURE_ASSETS } from "../fixtures/assets.ts";
+import { HUMAN } from "../../shared/anim/human.ts";
 import { test } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { strider } from "../fixtures/strider.ts";
-import { flatWorld } from "../fixtures/world.ts";
+import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
 const DEG = Math.PI / 180;
+const reg = coreRegistry();
 const rigs = (): Map<string, Rig> => buildRigs(corePack().header.rigs, corePack().clips);
+
+/** The meshes of species drawn on rigs of their own: creatures, and vehicles. */
+function rigged(vehicles: boolean): string[] {
+  return reg.defs.flatMap((d, i) => (d?.type === "species" && d.skeleton !== undefined && d.skeleton !== HUMAN.id && !!reg.vehicle[i] === vehicles ? [d.mesh] : []));
+}
 
 /** The parts of each creature in the core pack, by bone name, root first. */
 const PARTS: Record<string, { spine: string; neck: string; head: string; jaw: string; tail: string; legs: string[] }> = {
@@ -66,21 +72,23 @@ function named(rig: Rig) {
 
 test("every creature rig names its spine, neck, head, jaw, tail and legs", () => {
   const all = rigs();
-  const creatures = CREATURE_ASSETS.filter((a) => a.spec.kind === "creature").map((a) => a.id).filter((id) => all.has(id) && all.get(id)!.sections.head >= 0);
-  expect(creatures.sort()).toEqual(Object.keys(PARTS).sort());
-  for (const id of creatures) expect([id, named(all.get(id)!)]).toEqual([id, PARTS[id]!]);
-  // Each chain runs root to tip, every bone the parent of the next.
+  for (const [id, parts] of Object.entries(PARTS)) expect([id, named(all.get(id)!)]).toEqual([id, parts]);
+  // Any creature's rig, these and those to come: each chain runs root to tip, every bone the parent of the next, and
+  // the spine runs from the root to the neck and the neck to the head.
+  const creatures = [...new Set(rigged(false))].filter((id) => all.has(id));
+  expect(Object.keys(PARTS).every((id) => creatures.includes(id))).toBe(true);
   for (const id of creatures) {
     const rig = all.get(id)!, s = rig.sections;
+    expect([id, s.head > 0, s.spine[0], s.legs.length > 0]).toEqual([id, true, 0, true]);
     for (const chain of [s.spine, s.neck, s.tail, ...s.legs]) for (let k = 1; k < chain.length; k++) expect([id, rig.parent[chain[k]!]]).toEqual([id, chain[k - 1]!]);
-    expect(rig.parent[s.neck[0]!]).toBe(s.spine[s.spine.length - 1]!);
-    expect(rig.parent[s.head]).toBe(s.neck[s.neck.length - 1]!);
+    expect([id, rig.parent[s.neck[0] ?? s.head]]).toEqual([id, s.spine[s.spine.length - 1]!]);
+    if (s.neck.length > 0) expect([id, rig.parent[s.head]]).toEqual([id, s.neck[s.neck.length - 1]!]);
   }
 });
 
 test("a rig with no head, as a vehicle's, has no parts and no live ragdoll", () => {
   const all = rigs();
-  const vehicles = [...all.values()].filter((r) => !PARTS[r.id]);
+  const vehicles = rigged(true).filter((id) => all.has(id)).map((id) => all.get(id)!);
   expect(vehicles.length).toBeGreaterThan(0);
   for (const rig of vehicles) expect([rig.id, rig.sections.head, rig.sections.tail.length, rig.sections.legs.length, rig.live]).toEqual([rig.id, -1, 0, 0, null]);
 });
