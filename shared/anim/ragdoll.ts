@@ -37,6 +37,22 @@ export interface RagdollDef {
   readonly pairs?: Int16Array;
 }
 
+/** Where a moving solid's frame is: a place and a turn. */
+export interface MoverPose {
+  readonly x: number; readonly y: number; readonly z: number;
+  readonly qx: number; readonly qy: number; readonly qz: number; readonly qw: number;
+}
+
+/**
+ * A solid moving through a step, such as a car: its boxes in its own frame (centre and half size, six numbers each), and
+ * where that frame is at the step's start and at its end. A body meets it as it meets the world, and rides along with it.
+ */
+export interface Mover {
+  readonly from: MoverPose;
+  readonly to: MoverPose;
+  readonly boxes: Float64Array;
+}
+
 const GRAVITY = 9.81;
 /** The longest substep, in seconds, and the most time one call steps. */
 const SUBSTEP = 1 / 240;
@@ -84,6 +100,7 @@ const PAIR_SLACK = 0.02;
 /** A struck chain moves at most this fast, metres a second, however light it is. */
 const STRIKE_MOST = 25;
 const MOST_CONTACTS = 128;
+const MOST_MOVERS = 8;
 const MOST_PAIRS = 16;
 /** Numbers kept for each pair pushed apart in a substep. */
 const PRESSED = 11;
@@ -168,6 +185,16 @@ export class Ragdoll {
   private readonly cn = new Float64Array(MOST_CONTACTS * 3);
   private readonly cr = new Float64Array(MOST_CONTACTS * 3);
   private readonly cd = new Float64Array(MOST_CONTACTS);
+  /** Each contact's surface speed: nothing for the world, the mover's at the point for a mover. */
+  private readonly cm = new Float64Array(MOST_CONTACTS * 3);
+  /** The moving solids the next step meets, set by the caller; and whether the last step met any. */
+  movers: readonly Mover[] = [];
+  touched = false;
+  /** Each mover's speed and spin through the step, and its place and turn at the end of the substep. */
+  private readonly moverV = new Float64Array(MOST_MOVERS * 3);
+  private readonly moverW = new Float64Array(MOST_MOVERS * 3);
+  private readonly moverX = new Float64Array(MOST_MOVERS * 3);
+  private readonly moverQ = new Float64Array(MOST_MOVERS * 4);
   /** The substep being taken, in seconds. While `probing`, contacts are measured into `worst` and not acted on. */
   private h = SUBSTEP;
   private probing = false;
@@ -686,12 +713,14 @@ export class Ragdoll {
   /** Steps `seconds` and returns whether it is still moving. Asleep, it wakes when a structure where it lies changes. */
   step(world: CollisionWorld, seconds: number): boolean {
     if (!this.awake) {
-      if (!this.shaken(world)) return false;
+      if (!this.shaken(world) && !this.moverNear()) return false;
       this.awake = true;
       this.hold();
     }
     if (!(seconds > 0)) return true;
     if (seconds > MOST_STEP) seconds = MOST_STEP;
+    this.touched = false;
+    this.moversThrough(seconds);
     this.gather(world, seconds);
     this.supported = false;
     const steps = Math.ceil(seconds / SUBSTEP);
@@ -719,7 +748,7 @@ export class Ragdoll {
       if (dx * dx + dy * dy + dz * dz > this.stillMove * this.stillMove || (dot < 0 ? -dot : dot) < SLEEP_TURN) moved = true;
     }
     // A supported body that only creeps keeps counting toward sleep: limbs pressed between their limits and the ground drift slowly forever.
-    if (moved && !this.creeping()) this.hold();
+    if ((moved && !this.creeping()) || this.touched) this.hold();
     else this.still += seconds;
     // A body held by anchors lives as long as its owner keeps it, and never sleeps.
     if (this.nAnchored > 0 || !this.supported || this.still < SLEEP_AFTER || relaxing) return true;
@@ -893,6 +922,7 @@ export class Ragdoll {
       this.joint(i);
     }
     if (pairs) this.apart();
+    if (this.movers.length) this.placeMovers(t);
     this.nc = 0;
     for (let i = 0; i < n; i++) if (!anchored[i]) this.collide(world, i);
     for (let c = 0; c < this.contactBone.length; c++) if (!anchored[this.contactOwner[c]!]) this.collide(world, this.contactOwner[c]!, c);
@@ -1236,8 +1266,152 @@ export class Ragdoll {
     return this.contactRadius[extra]!;
   }
 
+  /** Each mover's speed and spin through a step of `seconds`, from where it starts to where it ends. */
+  private moversThrough(seconds: number): void {
+    for (let m = 0; m < this.movers.length && m < MOST_MOVERS; m++) {
+      const { from: a, to: b } = this.movers[m]!;
+      set3(this.moverV, m, (b.x - a.x) / seconds, (b.y - a.y) / seconds, (b.z - a.z) / seconds);
+      // The turn from start to end, b * conj(a), as an axis times its angle, over the step.
+      let tx = a.qw * b.qx - a.qx * b.qw - a.qy * b.qz + a.qz * b.qy;
+      let ty = a.qw * b.qy + a.qx * b.qz - a.qy * b.qw - a.qz * b.qx;
+      let tz = a.qw * b.qz - a.qx * b.qy + a.qy * b.qx - a.qz * b.qw;
+      let tw = a.qw * b.qw + a.qx * b.qx + a.qy * b.qy + a.qz * b.qz;
+      if (tw < 0) { tx = -tx; ty = -ty; tz = -tz; tw = -tw; }
+      const sn = Math.sqrt(tx * tx + ty * ty + tz * tz);
+      const k = sn > 1e-12 ? (2 * detAtan2(sn, tw)) / (sn * seconds) : 0;
+      set3(this.moverW, m, tx * k, ty * k, tz * k);
+    }
+  }
+
+  /** Puts each mover where it is `t` of the way through the step. */
+  private placeMovers(t: number): void {
+    for (let m = 0; m < this.movers.length && m < MOST_MOVERS; m++) {
+      const { from: a, to: b } = this.movers[m]!;
+      set3(this.moverX, m, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
+      const sign = a.qx * b.qx + a.qy * b.qy + a.qz * b.qz + a.qw * b.qw < 0 ? -1 : 1;
+      const qx = a.qx + (b.qx * sign - a.qx) * t, qy = a.qy + (b.qy * sign - a.qy) * t;
+      const qz = a.qz + (b.qz * sign - a.qz) * t, qw = a.qw + (b.qw * sign - a.qw) * t;
+      const l = 1 / Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+      const o = m * 4;
+      this.moverQ[o] = qx * l; this.moverQ[o + 1] = qy * l; this.moverQ[o + 2] = qz * l; this.moverQ[o + 3] = qw * l;
+    }
+  }
+
+  /** Whether any mover's boxes come within reach of where it lies. */
+  private moverNear(): boolean {
+    if (!this.movers.length) return false;
+    this.bounds(MARGIN);
+    for (const m of this.movers) {
+      const b = m.boxes;
+      for (let k = 0; k < b.length; k += 6) {
+        const reach = Math.sqrt(b[k]! * b[k]! + b[k + 1]! * b[k + 1]! + b[k + 2]! * b[k + 2]!) + Math.sqrt(b[k + 3]! * b[k + 3]! + b[k + 4]! * b[k + 4]! + b[k + 5]! * b[k + 5]!);
+        for (const p of [m.from, m.to]) {
+          if (p.x + reach >= box[0]! && p.x - reach <= box[2]! && p.z + reach >= box[1]! && p.z - reach <= box[3]! && p.y + reach >= box[4]! && p.y - reach <= box[5]!) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Pushes body `i` (or its extra capsule) out of mover `m`'s boxes, at its capsule's ends and the point nearest each box. */
+  private moverBoxes(m: number, i: number, extra = -1): void {
+    const x = this.x, mq = this.moverQ, mo = m * 4;
+    const r = this.shape(i, extra), ox = t3[0]!, oy = t3[1]!, oz = t3[2]!;
+    const wx = u3[0]!, wy = u3[1]!, wz = u3[2]!;
+    const px = this.moverX[m * 3]!, py = this.moverX[m * 3 + 1]!, pz = this.moverX[m * 3 + 2]!;
+    // The capsule's centre and half segment in the mover's frame.
+    quatUnrotate(mq, mo, x[i * 3]! + ox - px, x[i * 3 + 1]! + oy - py, x[i * 3 + 2]! + oz - pz, local, 0);
+    const fx = local[0]!, fy = local[1]!, fz = local[2]!;
+    quatUnrotate(mq, mo, wx, wy, wz, local, 0);
+    const gx = local[0]!, gy = local[1]!, gz = local[2]!;
+    const reach = Math.sqrt(gx * gx + gy * gy + gz * gz) + r;
+    const len = gx * gx + gy * gy + gz * gz;
+    const boxes = this.movers[m]!.boxes;
+    for (let b = 0; b < boxes.length; b += 6) {
+      const hx = boxes[b + 3]!, hy = boxes[b + 4]!, hz = boxes[b + 5]!;
+      const lx = fx - boxes[b]!, ly = fy - boxes[b + 1]!, lz = fz - boxes[b + 2]!;
+      if (Math.abs(lx) > hx + reach || Math.abs(ly) > hy + reach || Math.abs(lz) > hz + reach) continue;
+      for (let k = 0, points = extra >= 0 && len < 1e-12 ? 1 : 3; k < points; k++) {
+        let tt = k === 0 ? -1 : 1;
+        if (k === 2) {
+          tt = 0;
+          for (let it = 0; it < 3 && len > 1e-12; it++) {
+            const qx = clamp(lx + gx * tt, hx), qy = clamp(ly + gy * tt, hy), qz = clamp(lz + gz * tt, hz);
+            tt = ((qx - lx) * gx + (qy - ly) * gy + (qz - lz) * gz) / len;
+            tt = tt < -1 ? -1 : tt > 1 ? 1 : tt;
+          }
+          if (tt <= -0.95 || tt >= 0.95) continue;
+        }
+        const ax = lx + gx * tt, ay = ly + gy * tt, az = lz + gz * tt;
+        let nx = ax - clamp(ax, hx), ny = ay - clamp(ay, hy), nz = az - clamp(az, hz);
+        const d = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        let deep: number;
+        if (d > 1e-9) {
+          if (d >= r) continue;
+          deep = r - d;
+          nx /= d; ny /= d; nz /= d;
+        } else {
+          const ex = hx - Math.abs(ax), ey = hy - Math.abs(ay), ez = hz - Math.abs(az);
+          nx = ny = nz = 0;
+          if (ey <= ex && ey <= ez) [ny, deep] = [ay < 0 ? -1 : 1, ey + r];
+          else if (ex <= ez) [nx, deep] = [ax < 0 ? -1 : 1, ex + r];
+          else [nz, deep] = [az < 0 ? -1 : 1, ez + r];
+        }
+        // The normal back in the world, and how fast the mover's surface moves at the point.
+        quatRotate(mq, mo, nx, ny, nz, local, 0);
+        const mx = local[0]!, my = local[1]!, mz = local[2]!;
+        const cx = ox + wx * tt - mx * r, cy = oy + wy * tt - my * r, cz = oz + wz * tt - mz * r;
+        const ax2 = x[i * 3]! + cx - px, ay2 = x[i * 3 + 1]! + cy - py, az2 = x[i * 3 + 2]! + cz - pz;
+        const sw = this.moverW, sv = this.moverV, o = m * 3;
+        const svx = sv[o]! + sw[o + 1]! * az2 - sw[o + 2]! * ay2;
+        const svy = sv[o + 1]! + sw[o + 2]! * ax2 - sw[o]! * az2;
+        const svz = sv[o + 2]! + sw[o]! * ay2 - sw[o + 1]! * ax2;
+        this.moverContact(i, cx, cy, cz, mx, my, mz, deep, svx, svy, svz);
+      }
+    }
+  }
+
+  /**
+   * Body `i`'s point (rx, ry, rz) from its centre is `deep` into a mover whose surface there moves at (svx, svy, svz): out
+   * along the normal, as fast as the surface comes at it besides, and held to the surface where it would slide little.
+   */
+  private moverContact(i: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, deep: number, svx: number, svy: number, svz: number): void {
+    if (this.probing) {
+      if (deep > this.worst) this.worst = deep;
+      return;
+    }
+    this.touched = true;
+    if (ny > .35) this.supported = true;
+    const toward = svx * nx + svy * ny + svz * nz;
+    const most = (PUSH_OUT + (toward > 0 ? toward : 0)) * this.h;
+    if (deep > most) deep = most;
+    quatUnrotate(this.q, i * 4, rx, ry, rz, g4, 0);
+    const lx = g4[0]!, ly = g4[1]!, lz = g4[2]!;
+    this.push(i, rx, ry, rz, nx * deep, ny * deep, nz * deep);
+    quatRotate(this.q, i * 4, lx, ly, lz, u3, 0);
+    const ax = u3[0]!, ay = u3[1]!, az = u3[2]!;
+    quatRotate(this.pq, i * 4, lx, ly, lz, t3, 0);
+    // How far the point slid across the surface this substep, the surface's own travel taken away.
+    let dx = this.x[i * 3]! + ax - this.px[i * 3]! - t3[0]! - svx * this.h;
+    let dy = this.x[i * 3 + 1]! + ay - this.px[i * 3 + 1]! - t3[1]! - svy * this.h;
+    let dz = this.x[i * 3 + 2]! + az - this.px[i * 3 + 2]! - t3[2]! - svz * this.h;
+    const along = dx * nx + dy * ny + dz * nz;
+    dx -= along * nx; dy -= along * ny; dz -= along * nz;
+    if (dx * dx + dy * dy + dz * dz < STATIC * STATIC * deep * deep) this.push(i, ax, ay, az, -dx, -dy, -dz);
+    const c = this.nc;
+    if (c >= MOST_CONTACTS) return;
+    this.nc++;
+    this.cb[c] = i;
+    set3(this.cn, c, nx, ny, nz);
+    quatRotate(this.q, i * 4, lx, ly, lz, u3, 0);
+    set3(this.cr, c, u3[0]!, u3[1]!, u3[2]!);
+    this.cd[c] = deep;
+    set3(this.cm, c, svx, svy, svz);
+  }
+
   private collide(world: CollisionWorld, i: number, extra = -1): void {
     this.terrain(world.hf, i, extra);
+    for (let m = 0; m < this.movers.length && m < MOST_MOVERS; m++) this.moverBoxes(m, i, extra);
     for (let k = 0; k < this.nRefs; k++) {
       const store = this.refStore[k]!;
       this.boxes(store === 1 ? world.nodes! : world.structs, this.refs[k]!, i, extra);
@@ -1425,6 +1599,7 @@ export class Ragdoll {
     quatRotate(this.q, i * 4, lx, ly, lz, u3, 0);
     set3(this.cr, c, u3[0]!, u3[1]!, u3[2]!);
     this.cd[c] = deep;
+    set3(this.cm, c, 0, 0, 0);
   }
 
   /**
@@ -1472,9 +1647,11 @@ export class Ragdoll {
     const load = this.cd[c]! / h;
     const nx = this.cn[c * 3]!, ny = this.cn[c * 3 + 1]!, nz = this.cn[c * 3 + 2]!;
     const rx = this.cr[c * 3]!, ry = this.cr[c * 3 + 1]!, rz = this.cr[c * 3 + 2]!;
-    let vx = v[o]! + w[o + 1]! * rz - w[o + 2]! * ry;
-    let vy = v[o + 1]! + w[o + 2]! * rx - w[o]! * rz;
-    let vz = v[o + 2]! + w[o]! * ry - w[o + 1]! * rx;
+    // Against the surface it touches, which moves only where it is a mover's.
+    const sx = this.cm[c * 3]!, sy = this.cm[c * 3 + 1]!, sz = this.cm[c * 3 + 2]!;
+    let vx = v[o]! + w[o + 1]! * rz - w[o + 2]! * ry - sx;
+    let vy = v[o + 1]! + w[o + 2]! * rx - w[o]! * rz - sy;
+    let vz = v[o + 2]! + w[o]! * ry - w[o + 1]! * rx - sz;
     let vn = vx * nx + vy * ny + vz * nz;
     const cx = ry * nz - rz * ny, cy = rz * nx - rx * nz, cz = rx * ny - ry * nx;
     const j = -vn / (invM + invI * (cx * cx + cy * cy + cz * cz));
@@ -1484,9 +1661,9 @@ export class Ragdoll {
     w[o]! += cx * j * invI;
     w[o + 1]! += cy * j * invI;
     w[o + 2]! += cz * j * invI;
-    vx = v[o]! + w[o + 1]! * rz - w[o + 2]! * ry;
-    vy = v[o + 1]! + w[o + 2]! * rx - w[o]! * rz;
-    vz = v[o + 2]! + w[o]! * ry - w[o + 1]! * rx;
+    vx = v[o]! + w[o + 1]! * rz - w[o + 2]! * ry - sx;
+    vy = v[o + 1]! + w[o + 2]! * rx - w[o]! * rz - sy;
+    vz = v[o + 2]! + w[o]! * ry - w[o + 1]! * rx - sz;
     vn = vx * nx + vy * ny + vz * nz;
     const spin = Math.sqrt(w[o]! * w[o]! + w[o + 1]! * w[o + 1]! + w[o + 2]! * w[o + 2]!);
     if (spin > 1e-12) {
@@ -1533,6 +1710,8 @@ const near = new Float64Array(6);
 /** Each pair's overlap past what it may, and its two nearest points, in one substep. */
 const overlap = new Float64Array(MOST_PAIRS);
 const nearest = new Float64Array(MOST_PAIRS * 6);
+/** A point or a line in a mover's frame. */
+const local = new Float64Array(3);
 /** A turn about +Y, and a drive's aim. */
 const face = new Float64Array([0, 0, 0, 1]);
 const aim = new Float64Array(4);

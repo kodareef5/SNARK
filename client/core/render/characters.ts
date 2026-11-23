@@ -560,7 +560,7 @@ export class Characters {
     });
     this.anims = this.creatures.map((c) => c?.anim ?? null);
     this.waiting = this.creatures.flatMap((c, kind) => (c && c.clips >= 0 ? [kind] : []));
-    this.dead = new Corpses(this.anims, reg.birthScale, (kind) => survivorKind(reg, kind));
+    this.dead = new Corpses(this.anims, reg.birthScale, (kind) => survivorKind(reg, kind), (kind) => reg.vehicle[kind] ?? null);
     const st = new AnimState();
     for (const stance of [STANCE_STAND, STANCE_CROUCH]) {
       st.stance = stance;

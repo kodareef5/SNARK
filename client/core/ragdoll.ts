@@ -21,10 +21,14 @@ import type { Gait } from "../../shared/anim/gait.ts";
 import { AnimState, CUE_DEAD, CUE_DECAY_SHIFT, CUE_DOWN, CUE_OUT, FLY_SPEED_STEP, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { detCos, detSin } from "../../shared/math/scalar.ts";
 import { handleIndex, makeHandle } from "../../shared/ids.ts";
 import { decodeCorpseCheckpoint, type CorpseMotion } from "../../shared/net/corpse.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
+import type { Mover, MoverPose } from "../../shared/anim/ragdoll.ts";
+import type { VehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { moverBoxes, moverReach } from "../../shared/sim/vehicle-movers.ts";
 import type { RemoteSample } from "./session.ts";
 
 /** Ticks over which the last pose alive blends into the death clip. */
@@ -201,10 +205,50 @@ const fallRoot = new Float64Array(3);
 export class HumanFalls {
   private readonly byId = new Map<number, HumanFall>();
   private readonly survivor: (kind: number) => boolean;
+  private readonly vehicle: (kind: number) => VehicleDefinition | null;
   private updates = 0;
+  /** The vehicles in view this update, where each is and where it was a tick before, for falls to meet (shared/anim/ragdoll.ts movers). */
+  private readonly cars: { id: number; reach: number; mover: { from: MoverPose; to: MoverPose; boxes: Float64Array } }[] = [];
+  private readonly lastCar = new Map<number, { pose: MoverPose; tick: number }>();
+  private readonly near: Mover[] = [];
 
-  constructor(survivor: (kind: number) => boolean) {
+  constructor(survivor: (kind: number) => boolean, vehicle: (kind: number) => VehicleDefinition | null = () => null) {
     this.survivor = survivor;
+    this.vehicle = vehicle;
+  }
+
+  /** Takes up the vehicles in view: each where it is now, and a tick back along its way from where it was last seen. */
+  private seeCars(remote: RemoteSample): void {
+    this.cars.length = 0;
+    const tick = remote.tick;
+    for (let i = 0; i < remote.count; i++) {
+      const def = this.vehicle(remote.kind[i]!);
+      if (!def) continue;
+      const id = remote.id[i]!, half = remote.yaw[i]! / 2;
+      const quat = remote.vehicleQx[i] || remote.vehicleQy[i] || remote.vehicleQz[i] || remote.vehicleQw[i];
+      const to: MoverPose = quat
+        ? { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: remote.vehicleQx[i]!, qy: remote.vehicleQy[i]!, qz: remote.vehicleQz[i]!, qw: remote.vehicleQw[i]! }
+        : { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: 0, qy: detSin(half), qz: 0, qw: detCos(half) };
+      const last = this.lastCar.get(id), span = last ? tick - last.tick : 0;
+      // Its way over one tick, from how far it went since it was last seen.
+      const k = span > 1e-6 ? 1 / span : 0;
+      const from: MoverPose = last && k > 0 ? { ...to, x: to.x - (to.x - last.pose.x) * k, y: to.y - (to.y - last.pose.y) * k, z: to.z - (to.z - last.pose.z) * k } : to;
+      this.lastCar.set(id, { pose: to, tick });
+      this.cars.push({ id, reach: moverReach(def), mover: { from, to, boxes: moverBoxes(def) } });
+    }
+    if (this.lastCar.size > this.cars.length * 2 + 16) for (const id of this.lastCar.keys()) if (!this.cars.some(c => c.id === id)) this.lastCar.delete(id);
+  }
+
+  /** The vehicles in view near ragdoll `fall`'s hips. */
+  private carsNear(h: HumanFall): readonly Mover[] {
+    this.near.length = 0;
+    const r = h.fall!.ragdoll;
+    r.rootPosition(fallRoot);
+    for (const c of this.cars) {
+      const dx = c.mover.to.x - fallRoot[0]!, dz = c.mover.to.z - fallRoot[2]!, reach = c.reach + 2;
+      if (dx * dx + dz * dz <= reach * reach && this.near.length < 4) this.near.push(c.mover);
+    }
+    return this.near;
   }
 
   /** The fall to draw entity `id` by, lying or getting up, or undefined to draw it as it moves. */
@@ -216,6 +260,7 @@ export class HumanFalls {
   /** `own` is the handle of the viewer's own body (0 for none), which is not in `remote`, and `ownDown` whether it lies knocked down. */
   update(remote: RemoteSample, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, own: number, ownDown: boolean): void {
     const tick = remote.tick, seen = ++this.updates;
+    this.seeCars(remote);
     for (let i = 0; i < remote.count; i++) {
       // A survivor's body (CUE_DEAD) lies as its ragdoll for good.
       if (!this.survivor(remote.kind[i]!)) continue;
@@ -251,6 +296,7 @@ export class HumanFalls {
     const fall = h.fall;
     if (!fall) return;
     let moved = false;
+    fall.ragdoll.movers = this.cars.length ? this.carsNear(h) : [];
     for (let n = 0; h.clock < to && n < FALL_CATCH_UP; n++) {
       h.clock++;
       moved = fall.tick(world) || moved;
@@ -306,9 +352,9 @@ export class Corpses {
   /** Survivors knocked down, lying as their ragdolls. */
   readonly humans: HumanFalls;
 
-  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array, survivor: (kind: number) => boolean = () => false) {
+  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array, survivor: (kind: number) => boolean = () => false, vehicle: (kind: number) => VehicleDefinition | null = () => null) {
     this.mortal = mortal;
-    this.humans = new HumanFalls(survivor);
+    this.humans = new HumanFalls(survivor, vehicle);
     void birthScale;
   }
 
