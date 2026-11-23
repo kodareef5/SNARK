@@ -13,6 +13,7 @@ import { createMountMotion, mountOrigin, mountPose, type MountMotionProfile } fr
 import { AnimState, humanPose, PITCH_STEPS, type HumanAnim } from "./pose.ts";
 import { fitRiderControls } from "./rider-controls.ts";
 import { fitSeatControls } from "./seat-controls.ts";
+import { fitSeated } from "./seat-fit.ts";
 import { SEAT_DROP, SEAT_FLOATS } from "./seat.ts";
 import { boneToModel, rayZones, Solved, solve } from "./skeleton.ts";
 
@@ -29,7 +30,7 @@ export interface OccupantSeat extends VehicleFrame {
 }
 
 const motion = createMountMotion(), state = new AnimState();
-const rotation = new Float64Array(4), turn = new Float64Array(4), direction = new Float64Array(3);
+const rotation = new Float64Array(4), turn = new Float64Array(4), direction = new Float64Array(3), sunk = new Float64Array(3);
 
 export function createOccupantSeat(): OccupantSeat {
   return { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, driver: false, steer: 0, steering: 0 };
@@ -45,6 +46,41 @@ export function occupantSeat(def: VehicleDefinition, seat: Seat, carrier: Vehicl
   out.steer = def.movement === "rotor" ? 0 : out.steering / def.spec.maxSteer;
   out.skateMove = carrier.skateMove; out.switched = carrier.switched; out.wheelAngle = carrier.wheelAngle;
   out.driver = seat.driver === true; out.role = seat.pose; out.definition = seat; out.aimYaw = aimYaw;
+}
+
+/**
+ * Poses a body seated in a vehicle: its seat's motion and look, solved on `rest` and `scale`, fitted inside its seat's
+ * room, its hands on any controls. `perturb` moves the pose before it is solved, as a blow's spring does. Returns the
+ * metres its hips sink below the seat's anchor, which seatOrigin takes. Server and client pose seated bodies only here.
+ */
+export function poseSeated(anim: HumanAnim, st: AnimState, tick: number, seat: OccupantSeat, rest: Float32Array, scale: Float32Array | null,
+  pose: Pose, solved: Solved, profile: MountMotionProfile = motion, perturb?: (pose: Pose, solved: Solved) => void): number {
+  occupantPose(anim, st, tick, pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver, profile);
+  perturb?.(pose, solved);
+  solve(HUMAN, pose, solved, rest, scale);
+  if (!seat.definition) return 0;
+  const drop = fitSeated(pose, solved, rest, scale, seat.definition);
+  fitSeatControls(pose, solved, rest, scale, seat.definition, seat.steering ?? 0, drop);
+  return drop;
+}
+
+/**
+ * Writes to `out` the body origin that pins a seated pose's hips `drop` below its seat's anchor, the vehicle turned by
+ * `rotation` (vehicleRotation). A skater stands on its rest pelvis, `rest`, so its board stays under it as it crouches.
+ */
+export function seatOrigin(solved: Solved, seat: OccupantSeat, drop: number, rotation: Float64Array, out: Float64Array | number[], rest: Float32Array): void {
+  quatRotate(rotation, 0, 0, -drop, 0, sunk, 0);
+  sunk[0]! += seat.x; sunk[1]! += seat.y; sunk[2]! += seat.z;
+  mountOrigin(solved, sunk, rotation, out, seat.role === "skate" ? rest : undefined);
+}
+
+/** poseSeated, then seatOrigin with the vehicle's turn written to `rotation`. Returns the hips' drop. */
+export function seatBody(anim: HumanAnim, st: AnimState, tick: number, seat: OccupantSeat, rest: Float32Array, scale: Float32Array | null,
+  pose: Pose, solved: Solved, rotation: Float64Array, origin: Float64Array | number[], profile: MountMotionProfile = motion): number {
+  const drop = poseSeated(anim, st, tick, seat, rest, scale, pose, solved, profile);
+  vehicleRotation(seat, rotation);
+  seatOrigin(solved, seat, drop, rotation, origin, rest);
+  return drop;
 }
 
 /** Riders may clip a roof, but cannot begin a shot beyond it. Entity hulls are handled by the cast's self/seat rules. */
@@ -125,12 +161,8 @@ export class OccupantBody {
   }
 
   vehicle(anim: HumanAnim, st: AnimState, tick: number, seat: OccupantSeat, rest: Float32Array): void {
-    occupantPose(anim, st, tick, this.pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver);
-    solve(HUMAN, this.pose, this.solved, rest);
-    if (seat.definition) fitSeatControls(this.pose, this.solved, rest, null, seat.definition, seat.steering ?? 0);
-    vehicleRotation(seat, this.rotation);
+    seatBody(anim, st, tick, seat, rest, null, this.pose, this.solved, this.rotation, this.origin);
     this.anchor[0] = seat.x; this.anchor[1] = seat.y; this.anchor[2] = seat.z;
-    mountOrigin(this.solved, this.anchor, this.rotation, this.origin, seat.role === "skate" ? rest : undefined);
     this.frame.set(this.origin);
     for (let col = 0; col < 3; col++) {
       quatRotate(this.rotation, 0, col === 0 ? 1 : 0, col === 1 ? 1 : 0, col === 2 ? 1 : 0, this.point, 0);

@@ -5,6 +5,7 @@
 
 import { quatAxis, quatMul, quatMulConj, quatRotate } from "../math/quat.ts";
 import type { Pose } from "./clip.ts";
+import { rootCosine, square as squareTo, within } from "./ik.ts";
 import { B_CHEST, B_FINGERS_L, B_FINGERS_R, B_HAND_L, B_HAND_R, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_THUMB_L, B_THUMB_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, HUMAN } from "./human.ts";
 import { boneToModel, type Solved } from "./skeleton.ts";
 
@@ -38,10 +39,12 @@ function unit(a: V): V {
   return [a[0] / l, a[1] / l, a[2] / l];
 }
 
+const squared = new Float64Array(3);
+
 /** `up` with its part along unit `along` taken out, made unit. */
 function square(up: V, along: V): V {
-  const k = dot(up, along);
-  return unit([up[0] - along[0] * k, up[1] - along[1] * k, up[2] - along[2] * k]);
+  const l = squareTo(squared, 0, up[0], up[1], up[2], along[0], along[1], along[2]);
+  return [squared[0]! / l, squared[1]! / l, squared[2]! / l];
 }
 
 /** Writes to `q` at `qi` the turn that takes unit `fromAlong` to unit `along`, and `fromUp` as near `up` as it can go. */
@@ -141,9 +144,8 @@ export function cradle(out: Pose, stance: number): void {
     const toWrist: V = [wrist[0] * m - p1[0], wrist[1] - p1[1], wrist[2] - p1[2]];
     let d = Math.sqrt(dot(toWrist, toWrist));
     const u = unit(toWrist);
-    if (d > (L1 + L2) * 0.995) d = (L1 + L2) * 0.995;
-    if (d < Math.abs(L1 - L2) + 0.01) d = Math.abs(L1 - L2) + 0.01;
-    const cosA = (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d);
+    d = within(d, Math.abs(L1 - L2) + 0.01, (L1 + L2) * 0.995);
+    const cosA = rootCosine(L1, L2, d);
     const sinA = Math.sqrt(1 - cosA * cosA);
     const pole = square([POLE[0] * m, POLE[1], POLE[2]], u);
     const a1: V = [u[0] * cosA + pole[0] * sinA, u[1] * cosA + pole[1] * sinA, u[2] * cosA + pole[2] * sinA];

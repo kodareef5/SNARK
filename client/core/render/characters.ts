@@ -11,8 +11,8 @@ import type { SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose, blendPose, sampleClip, type Clip } from "../../../shared/anim/clip.ts";
 import { conformCreature } from "../../../shared/anim/ground-conform.ts";
-import { createMountMotion, mountOrigin, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
-import { occupantPose, type OccupantSeat } from "../../../shared/anim/occupant.ts";
+import { createMountMotion, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
+import { occupantPose, poseSeated, seatBody, seatOrigin, type OccupantSeat } from "../../../shared/anim/occupant.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
@@ -270,6 +270,8 @@ class Stride extends Gait {
   form = -1;
   kind = 0;
   riderProfile = 0;
+  /** Metres a seated pose's hips sink below its seat's anchor (shared/anim/seat-fit.ts). */
+  seatDrop = 0;
   readonly soles = new RiderSoles();
   readonly posedGait = { phase: 0, speed: 0, domain: FOOTFALL_NONE };
   shown: Solved | null = null;
@@ -662,15 +664,7 @@ export class Characters {
   seatedOrigin(kind: number, seat: VehicleSeatPose, out: Float64Array | number[], st = this.seatState, tick = 0): boolean {
     const k = this.kinds[kind];
     if (!k) return false;
-    const set = k.sets[0]!;
-    occupantPose(this.anim, st, tick, this.pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver);
-    solve(HUMAN, this.pose, this.solved, set.rest);
-    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, null, seat.definition, seat.steering);
-    vehicleRotation(seat, this.rotation);
-    this.seatPlace[0] = seat.x;
-    this.seatPlace[1] = seat.y;
-    this.seatPlace[2] = seat.z;
-    mountOrigin(this.solved, this.seatPlace, this.rotation, out, seat.role === "skate" ? set.rest : undefined);
+    seatBody(this.anim, st, tick, seat, k.sets[0]!.rest, null, this.pose, this.solved, this.rotation, out);
     return true;
   }
 
@@ -1482,10 +1476,7 @@ export class Characters {
         inFrame(p.bones, first * BONE_FLOATS, HUMAN_BONES, seat, seatAt, x, y, z);
       } else if (vehicleSeat) {
         vehicleRotation(vehicleSeat, this.rotation);
-        this.seatPlace[0] = vehicleSeat.x;
-        this.seatPlace[1] = vehicleSeat.y;
-        this.seatPlace[2] = vehicleSeat.z;
-        mountOrigin(solved, this.seatPlace, this.rotation, this.origin, vehicleSeat.role === "skate" ? set.rest : undefined);
+        seatOrigin(solved, vehicleSeat, g.seatDrop, this.rotation, this.origin, set.rest);
         orientSolved(solved, this.rotation, this.mounted);
         x = this.origin[0]!; y = this.origin[1]!; z = this.origin[2]!; yaw = 0;
         writeBones(p.bones, first * BONE_FLOATS, this.mounted, set.rest, scales, x, y, z, 0);
@@ -1651,6 +1642,11 @@ export class Characters {
    * (humanPose).
    */
   private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved, impaled = false, rider?: RiderFit, soles: Float64Array | null = null, grips: Float64Array | null = null, over: { clip: Clip; frame: number } | null = null, upright = false): void {
+    g.seatDrop = 0;
+    if (vehicleSeat && !over && !impaled) {
+      g.seatDrop = poseSeated(this.anim, st, tick, vehicleSeat, set.rest, scales, this.pose, solved, this.mount, this.spring);
+      return;
+    }
     if (over) sampleClip(over.clip, over.frame, this.pose);
     else if (impaled) {
       humanPose(this.anim, st, tick, this.pose, g);
@@ -1662,8 +1658,7 @@ export class Characters {
     }
     // Longer legs lift the hips, so the feet stay on the ground.
     if (scales && !seat && !vehicleSeat && !impaled) this.pose.root[1]! += lookLift(scales, set.rest);
-    // Snapped back where a blow landed (impact-springs.ts), from the pose it was last solved in.
-    if (this.posingId >= 0 && this.springs.active(this.posingId)) this.springs.apply(this.posingId, HUMAN, this.pose, solved);
+    this.spring(this.pose, solved);
     solve(HUMAN, this.pose, solved, set.rest, scales);
     if (rider?.profile && seat) fitRiderControls(this.pose, solved, set.rest, scales, rider.targets, steers, undefined, soles, grips);
     if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
@@ -1685,6 +1680,11 @@ export class Characters {
     // A held item is modelled around its grip, so it is offset to where its bone rests on this body.
     for (let a = 0; a < 3; a++) this.offset[n * 3 + a] = bone < 0 ? 0 : part.rest![bone * 3 + a]!;
   }
+
+  /** Snaps the body being posed back where a blow landed (impact-springs.ts), from the pose it was last solved in. */
+  private readonly spring = (pose: Pose, solved: Solved): void => {
+    if (this.posingId >= 0 && this.springs.active(this.posingId)) this.springs.apply(this.posingId, HUMAN, pose, solved);
+  };
 
   /** Poses `this.pose` seated as `role`, its arms on a wheel turned `steering`, its upper body from `upper` where given. */
   private seatedPose(role: MountMotionRole, tick: number, steering: number | undefined, upper: Pose | undefined): void {

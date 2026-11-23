@@ -90,7 +90,8 @@ test("first-person passenger camera uses the rendered host tick, rig proportions
     const frame = { ...remoteVehiclePose(r, index), x: r.x[index]!, y: r.y[index]!, z: r.z[index]!, yaw: r.yaw[index]! };
     const anchor = [0, 0, 0]; vehiclePoint(frame, [-.42, .59, .12], anchor);
     const chars = new Characters(h.reg, pack, new Assets(h.reg, pack)), packet = new FramePacket(), body = app.scene!.own!;
-    const seated: VehicleSeatPose = { ...frame, x: anchor[0]!, y: anchor[1]!, z: anchor[2]!, driver: false, steer: 0, role: "passenger", aimYaw: app.controls.yaw };
+    const seated: VehicleSeatPose = { ...frame, x: anchor[0]!, y: anchor[1]!, z: anchor[2]!, driver: false, steer: 0, role: "passenger", aimYaw: app.controls.yaw,
+      definition: h.reg.vehicle[h.world.ents.kind[car]!]!.seats[1] };
     chars.begin();
     expect(chars.add(packet, body.kind, 0, 0, 0, 0, body.state, body.tick, body.look, 0, body.colors, 0, body.gear, 0, body.id, false, false, 1, false, false, null, 0, undefined, seated)).toBe(true);
     // Read the head matrix actually emitted for the aimed pose with this body's explicit nonstandard binding.

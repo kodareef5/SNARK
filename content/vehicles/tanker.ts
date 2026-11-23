@@ -1,6 +1,7 @@
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { COMPACT, COMPACT_SPECIES, COMPACT_VEHICLE } from "./compact.ts";
+import { withRooms } from "./cabin-room.ts";
 
 export const TANKER_ANCHORS = {
   seat_driver: [0.5, 1.9, 2.01],
@@ -76,10 +77,10 @@ export const TANKER_VEHICLE: WheelVehicleDefinition = {
       engineBrakeNm: 85,
     },
   },
-  seats: [
+  seats: withRooms("core:tanker", [
     { id: "driver", driver: true, anchor: at.seat_driver, entry: at.approach_left, door: 0 },
     { id: "passenger", anchor: at.seat_front_passenger, entry: at.approach_right, door: 1 },
-  ],
+  ]),
   wheels: ["front", "middle", "rear"].flatMap((axle) =>
     ["left", "right"].map((side) => ({ bone: `wheel_${axle}_${side}`, steers: axle === "front" })),
   ),

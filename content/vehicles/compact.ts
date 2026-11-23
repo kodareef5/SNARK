@@ -1,5 +1,6 @@
 // First original vehicle in the actual game's species registry. Presentation lives in its asset source.
 import { COMPACT_ART } from "./compact-art.ts";
+import { withRooms } from "./cabin-room.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import type { WheelVehicleDefinition, VehicleSpec } from "../../shared/sim/vehicle.ts";
 
@@ -29,10 +30,10 @@ export { ASPHALT, GRAVEL, MUD } from "../../shared/world/vehicle-surface.ts";
 // (assets/source/core/vehicles/compact/ref/DESIGN.md), and the anchor is what server and client both use.
 export const COMPACT_VEHICLE: WheelVehicleDefinition = {
   id: "core:compact", frame: "car", spec: COMPACT,
-  seats: [
+  seats: withRooms("core:compact", [
     { id: "driver", driver: true, anchor: [0.42, 0.59, 0.12], entry: [1.25, 0, 0.12], door: 0 },
     { id: "passenger", anchor: [-0.42, 0.59, 0.12], entry: [-1.25, 0, 0.12], door: 1 },
-  ],
+  ]),
   doors: [
     { bone: "door_left", axis: [0, 1, 0], open: -1.1, openTicks: 6, closeTicks: 10 },
     { bone: "door_right", axis: [0, 1, 0], open: 1.1, openTicks: 6, closeTicks: 10 },

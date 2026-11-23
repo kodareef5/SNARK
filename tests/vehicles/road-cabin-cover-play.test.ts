@@ -49,8 +49,8 @@ for (const [check, packed] of [[test, frozenPack], [artTest, corePack]] as const
         for (const { c } of occupants) {
           expect(h.host.urban.eye(c.ent, eye)).toBe(true);
           const sign = def.seats[a.seatSlot[c.ent]! - 1]!.anchor[0] < 0 ? -1 : 1;
-          // This coupe's forward-leaning passenger lies behind its swept A-pillar from the side.
-          const front = species.id === "core:berlinetta" && a.seatSlot[c.ent] === 2;
+          // These coupes' forward-leaning passengers lie behind their swept A-pillars from the side.
+          const front = (species.id === "core:berlinetta" || species.id === "core:zephyr") && a.seatSlot[c.ent] === 2;
           expect(h.host.combat.castBodies(-1, eye[0]! + (front ? 0 : sign * 3), eye[1]!, eye[2]! + (front ? 3 : 0), front ? 0 : -sign, 0, front ? -1 : 0, 3.1), `${species.id} ${a.seatSlot[c.ent]} window`).toBe(c.ent);
         }
         if ("passengerAisle" in def) {

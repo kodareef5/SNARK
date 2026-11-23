@@ -11,6 +11,7 @@ import { FASTBACK_ART } from "./fastback-art.ts";
 import { BERLINETTA_ART, VELOCE_ART, ZEPHYR_ART, ZEPHYR_NOZZLES } from "./sports-art.ts";
 import { ZEPHYR_THRUSTERS } from "../../shared/sim/vehicle-thrusters.ts";
 import { CARAVAN_ART, PANEL_VAN_ART } from "./van-art.ts";
+import { withRooms } from "./cabin-room.ts";
 
 // Each enclosed body supplies its own metal cabin panels; the compact dimensions do not fit the fleet.
 const { shotPanels: _compactPanels, ...roadDefaults } = COMPACT_VEHICLE;
@@ -82,11 +83,11 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
   };
   const vehicle: WheelVehicleDefinition = {
     ...roadDefaults, id: art.id, frame, spec, beltline: trim.beltline, shotPanels: art.shotPanels,
-    seats: [
+    seats: withRooms(art.id, [
       { id: "driver", driver: true, anchor: at.seat_driver, entry: at.approach_left, door: 0 },
       { id: "passenger", anchor: at.seat_front_passenger, entry: at.approach_right, door: 1 },
       ...(trim.extraSeats ?? []),
-    ],
+    ]),
     doors: [...COMPACT_VEHICLE.doors, ...(trim.extraDoors ?? [])],
     ...(trim.shotPanels ? { shotPanels: trim.shotPanels } : {}),
     ...(trim.emergencyLights ? { emergencyLights: trim.emergencyLights } : {}),
