@@ -47,7 +47,6 @@ const UNTESTED: readonly (readonly [dir: string, logic: string])[] = [
   ["client/wiki", "client/core/wiki"],
   ["client/admin", "client/core/admin"],
   ["client/drops", "client/core/drops"],
-  ["client/notes", "client/core/notes"],
   ["client/debug", "client/core/debug"],
 ];
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
@@ -68,12 +67,11 @@ const ZONES: Zone[] = [
   { dir: "client/assets", may: ["shared", "client/core", "client/assets"], builtins: false },
   { dir: "client/sound", may: ["shared", "client/core", "client/sound"], builtins: false },
   { dir: "client/city", may: ["shared", "client/core", "client/city"], builtins: false },
-  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/city", "client/notes", "client/debug", "client/shell"], builtins: false },
+  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/city", "client/debug", "client/shell"], builtins: false },
   { dir: "client/entry", may: ["shared", "client/core", "client/entry", "client/assets", "client/city", "client/shell"], builtins: false },
   { dir: "client/wiki", may: ["shared", "client/core", "client/wiki"], builtins: false },
   { dir: "client/admin", may: ["shared", "client/core", "client/admin"], builtins: false },
   { dir: "client/drops", may: ["shared", "client/core", "client/admin", "client/drops"], builtins: false },
-  { dir: "client/notes", may: ["shared", "client/core", "client/notes"], builtins: false },
   { dir: "client/debug", may: ["shared", "client/core", "client/debug"], builtins: false },
   { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
   // What a module is written against. It names nothing of the server's own.

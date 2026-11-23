@@ -1,18 +1,19 @@
-// A bug report (planning/workstreams/bug-notes.md): what a page in bug report mode sends to `__report`, and what the
-// server keeps of it. A note is pictures every few seconds while the owner points at something, with the place, the
-// view, the hour and how the game ran; a "perf" report is the same record over a set time with a picture at each end.
-// Its reader is a coding agent, so the server writes only the fields named here, each cleaned to its kind (cleanReport):
-// a report is text an agent reads, and nothing a page sends may stand in it as anything but data.
+// A report: what a page sends to `__report`, and what the server keeps of it. The debug bar sends a capture (F8): the last
+// three minutes' pictures and one at full size, with the place, the view, the hour, how the game ran, where its frames'
+// time went, its lag events, its log and its socket's counts. Reports of the kinds "note" and "perf" came from the bug
+// report mode before it, and are still read. The reader is a coding agent, so the server writes only the fields named
+// here, each cleaned to its kind (`clean`): a report is text an agent reads, and nothing a page sends may stand in it as
+// anything but data.
 
 import { plain } from "./listing.ts";
 
 export const REPORT_VERSION = 1;
-export const REPORT_KINDS = ["note", "perf"] as const;
+export const REPORT_KINDS = ["note", "perf", "capture"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 /** The most one upload carries, in bytes; pictures a report holds; and how long a note runs before it saves itself. */
 export const REPORT_BYTES_MOST = 24 * 1024 * 1024;
-export const SHOTS_MOST = 40;
+export const SHOTS_MOST = 100;
 export const NOTE_MS_MOST = 90_000;
 /** The most the reports folder holds, in bytes, before the server takes no more. */
 export const FOLDER_BYTES_MOST = 2 * 1024 * 1024 * 1024;
@@ -29,9 +30,10 @@ export const BEFORE_MS = 30_000;
 /** Lines the owner may type into a note, and characters a line. */
 export const TEXT_LINES_MOST = 100;
 export const TEXT_CHARS_MOST = 500;
-/** Rows of a performance record by the frame and by the second, at most. */
+/** Rows of a performance record by the frame and by the second, at most, and the slots of a frame's times. */
 export const FRAME_ROWS_MOST = 8192;
 export const SECOND_ROWS_MOST = 900;
+const SLOTS_MOST = 256;
 
 /**
  * What a field may hold: a number, a whole number, a truth, text of at most `text` characters, one of some words, a list
@@ -99,7 +101,7 @@ export const REPORT_SHAPE: Shape = {
   },
 };
 
-/** One picture's count of the frame's draws (client/core/notes/census.ts): by step and by store, and the largest draws. */
+/** One picture's count of the frame's draws (client/core/debug/census.ts): by step and by store, and the largest draws. */
 const COUNT: Shape = { fields: { name: WORD, draws: I, triangles: I, instances: I } };
 const CENSUS: Shape = {
   fields: {
@@ -107,8 +109,8 @@ const CENSUS: Shape = {
     steps: { list: COUNT, most: 8 },
     stores: { list: COUNT, most: 16 },
     largest: { list: { fields: { mesh: WORD, level: I, instances: I, triangles: I, store: WORD, step: WORD } }, most: 20 },
-    // Where the frame went as the budget's panel says it (client/core/notes/budget.ts): the processor's stages in ms over
-    // the last frames, the card's passes where timer queries gave them, and the budget the scene squeezes to.
+    // Where the frame went, as the bug report mode's budget panel said it: the processor's stages in ms over the last
+    // frames, the card's passes where timer queries gave them, and the budget the scene squeezes to.
     cpu: { fields: { frame: N, scene: N, draw: N, uploads: N } },
     gpu: { list: { fields: { name: WORD, ms: N } }, most: 12 },
     budget: { fields: { triangles: I, draws: I, squeeze: N, least: N, crowns: I, ambient: I, level: I } },
@@ -132,11 +134,63 @@ export const PERF_SHAPE: Shape = {
     },
     worst: { list: { list: N, most: 64 }, most: 20 },
     census: { list: CENSUS, most: SHOTS_MOST },
+    // Where a frame's time went (client/core/debug/spans.ts): each slot's name and parent, its first start and its ms by
+    // slot, the mean over the last second and the slowest frames of the capture; -1 where a slot did not run.
+    spans: {
+      fields: {
+        names: { list: WORD, most: SLOTS_MOST }, parents: { list: I, most: SLOTS_MOST },
+        mean: { fields: { frames: I, start: { list: N, most: SLOTS_MOST }, ms: { list: N, most: SLOTS_MOST } } },
+        slowest: { list: { fields: { at: N, frame: N, start: { list: N, most: SLOTS_MOST }, ms: { list: N, most: SLOTS_MOST } } }, most: 8 },
+      },
+    },
     // The sound engine's mix (planning/workstreams/sound-engine.md), a place kept for it and written empty until it is
     // built: voices playing and virtual, each bus's level, and the audio thread's load.
     sound: { fields: { voices: I, virtual: I, load: N, buses: { list: { fields: { name: WORD, level: N } }, most: 16 } } },
   },
 };
+
+/** A capture's log (log.json): the page's, the game's and the server's lines, ms since 1970, oldest first. */
+export const LOG_SHAPE: Shape = {
+  fields: {
+    lines: {
+      list: { fields: { at: N, source: { oneOf: ["page", "game", "server"] }, level: { oneOf: ["debug", "info", "warn", "error"] }, text: { text: 2000 }, count: I, tick: I } },
+      most: 2000,
+    },
+  },
+};
+
+/** A capture's lag events (events.json): ms from the capture's start, the kind, its worst, how many joined, its cause and the slots that took most of its frame. */
+export const EVENTS_SHAPE: Shape = {
+  fields: {
+    events: {
+      list: { fields: { at: N, end: N, kind: WORD, size: N, count: I, cause: { text: 300 }, top: { list: { fields: { slot: { text: 200 }, ms: N } }, most: 8 } } },
+      most: 400,
+    },
+  },
+};
+
+/** A capture's socket (net.json): by category and by message kind, bytes and messages a second over its seconds, in and out. */
+export const NET_SHAPE: Shape = {
+  fields: {
+    seconds: I,
+    categories: { list: { fields: { name: WORD, bytes: { list: N, most: 600 }, messages: { list: N, most: 600 } } }, most: 32 },
+    keys: { list: { fields: { out: B, name: WORD, category: WORD, bytes: N, messages: N } }, most: 256 },
+    snapshot: { list: { fields: { name: WORD, bits: N } }, most: 32 },
+    gaps: { list: N, most: 600 },
+  },
+};
+
+/** A record's text, as `shape` keeps it, or why it is not one; `what` names it. */
+export function cleanRecord(text: string, shape: Shape, what: string): { record: Record<string, unknown> } | { fault: string } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { fault: `the ${what} is not JSON` };
+  }
+  const r = clean(raw, shape) as Record<string, unknown> | undefined;
+  return r ? { record: r } : { fault: `the ${what} is not a record` };
+}
 
 const round = (v: number): number => (Math.abs(v) >= 1e6 ? Math.round(v) : Math.round(v * 10000) / 10000);
 

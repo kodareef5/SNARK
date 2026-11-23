@@ -5,8 +5,10 @@
 
 import type { App } from "../app.ts";
 import { LEVEL_ERROR, LEVEL_INFO, LEVEL_WARN, type CodeNames, type DebugAnswer, type ServerState } from "../../../shared/debug.ts";
+import { TEXT_NOTICE } from "../../../shared/net/protocol.ts";
 import { PASSES, type PassCpu } from "../passes.ts";
 import type { FramePacket } from "../render/packet.ts";
+import type { ReportBuild } from "../../../shared/report.ts";
 import type { UiFrame, UiImage } from "../ui/nodes.ts";
 import { Draw, KEY_DEBUG } from "./draw.ts";
 import { EV_ASSET, EV_CORRECTION, EV_ERROR, EV_GAP, EV_GOVERNOR, EV_JUMP, EV_TASK, EV_TICK, GAP_MS, LagEvents, Rises } from "./events.ts";
@@ -15,7 +17,7 @@ import { NetLog, bodyClassifier } from "./net.ts";
 import type { DebugPort, LongFrame, PageLine } from "./port.ts";
 import { C, CELLS, FLAG_AFTER_SHOT, FLAG_SHOT, PerfRing } from "./ring.ts";
 import { FrameSampler, type FrameExtra } from "./sample.ts";
-import { saveCapture } from "./save.ts";
+import { FULL_QUALITY, FULL_WIDE, captureHead, saveCapture } from "./save.ts";
 import { ShotRing } from "./shots.ts";
 import { LANE_FRAME, MOST_SLOTS, SpanFrame, SpanRing } from "./spans.ts";
 import { D_BAR, D_BADGE, D_BAD, D_DRAWER, D_FAINT, D_GOOD, D_NUM, D_NUM_DIM, D_TAB, D_TAB_ON, D_WARN, FILL_RULE } from "./styles.ts";
@@ -69,8 +71,10 @@ export class DebugBar {
   /** A frame or an event the timeline chose, which the Frame tab shows: the page clock's ms, or -1. */
   chosenAt = -1;
   chosenSpans: SpanFrame | null = null;
-  /** What the last save said, for the bar. */
+  /** What the last save said, for the bar; words waiting for the next frame's picture to save with; the client's build. */
   saved = "";
+  private saving: string | null = null;
+  build: ReportBuild = {};
 
   private hooked = false;
   private readonly sampler = new FrameSampler();
@@ -117,6 +121,11 @@ export class DebugBar {
     this.port = port;
     this.shots = new ShotRing(port);
     this.hooked = false;
+    void port.get("build.json").then((a) => {
+      try {
+        if (a.status === 200) this.build = JSON.parse(a.text) as ReportBuild;
+      } catch {}
+    });
   }
 
   /** Hands the frame's code the bar's hooks, or takes them back. */
@@ -151,8 +160,11 @@ export class DebugBar {
 
   // ---- After each frame is drawn -------------------------------------------------------------------------------------
 
-  /** After the frame is drawn: a picture where one is due, the frame's times and record, and what happened since the last. */
-  drawn(p: FramePacket, ours: number, upload: number, build: number): void {
+  /**
+   * After the frame is drawn, on a canvas of `width` by `height` device pixels: a picture where one is due, the frame's
+   * times and record, and what happened since the last.
+   */
+  drawn(p: FramePacket, ours: number, width: number, height: number, upload: number, build: number): void {
     const app = this.app;
     if (!app.ui.settings.debug) {
       if (this.hooked) this.hook(false);
@@ -168,6 +180,19 @@ export class DebugBar {
       e.shotMs = shots.take(nowMs, this.spans.rows);
       e.flags |= FLAG_SHOT;
       this.afterShot = true;
+    }
+    // A save asked for takes its full picture now, while the canvas still holds the frame, and sends the rest after.
+    if (this.saving !== null && port) {
+      const words = this.saving, f = app.ui.frame, full = port.shot(FULL_WIDE, FULL_QUALITY);
+      this.saving = null;
+      e.shotMs += full.ms;
+      e.flags |= FLAG_SHOT;
+      this.afterShot = true;
+      const head = captureHead(this, p, [width, height], [Math.round(f.width * f.unit), Math.round(f.height * f.unit)]);
+      void saveCapture(this, words, full.picture, head).then(
+        (said) => this.said(said),
+        (err) => this.said(`not saved: ${err instanceof Error ? err.message : String(err)}`),
+      );
     }
     // The card by pass, but whole on an Apple GPU, where a query between passes ends Metal's render pass.
     let gpu = -1;
@@ -530,16 +555,23 @@ export class DebugBar {
 
   // ---- Saving ----------------------------------------------------------------------------------------------------------
 
-  /** Sends what the bar holds to the server as a capture, with `words` from whoever saved it. */
-  save(words: string): void {
-    if (!this.port) return void (this.saved = "no browser to save from");
-    if (!this.app.session.admin) return void (this.saved = "saving is an admin's: enablecheats first");
+  /** Sends what the bar holds to the server as a capture, with `words` from whoever saved it, after the next frame. */
+  save(words: string): string {
+    if (!this.port) return this.said("not saved: the browser's part of the bar has not come");
+    if (!this.app.session.admin) return this.said("not saved: saving is an admin's, type enablecheats first");
+    if (this.saving !== null) return "a save is on its way";
+    this.saving = words;
     this.saved = "saving…";
     this.dirty = true;
-    void saveCapture(this, words).then((said) => {
-      this.saved = said;
-      this.line(SOURCE_GAME, LEVEL_INFO, said);
-      this.dirty = true;
-    });
+    return "saving the last three minutes";
+  }
+
+  /** What a save came to: on the bar, and in the log and the chat. */
+  private said(text: string): string {
+    this.saved = text;
+    this.dirty = true;
+    this.line(SOURCE_GAME, text.startsWith("not") ? LEVEL_WARN : LEVEL_INFO, text);
+    this.app.ui.chat.print(TEXT_NOTICE, `Debug bar: ${text}.`, this.app.session.serverTick);
+    return text;
   }
 }
