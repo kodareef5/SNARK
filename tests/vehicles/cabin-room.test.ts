@@ -9,7 +9,7 @@ import { corePack } from "../fixtures/pack.ts";
 
 artTest("cabin-room.json matches each enclosed seat's mesh as built (bun tools/pack/cabin-room.ts)", () => {
   const lods = new Map(unpackMeshes(corePack()).map((m) => [m.id, m.lods[0]!]));
-  expect(measureRooms(lods)).toEqual(measured);
+  expect(measureRooms(lods) as unknown).toEqual(measured);
 });
 
 test("every enclosed road vehicle's seats carry their measured rooms, roof over and floor under the anchor", () => {
