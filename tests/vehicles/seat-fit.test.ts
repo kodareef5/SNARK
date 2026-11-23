@@ -53,7 +53,7 @@ function room(seat: Seat & { room: SeatRoom }, rest: Float32Array, scale: Float3
 /** The rest joints hits are judged on for a body of a rig: the male rig's, unstretched (server/combat.ts occupant.rest). */
 const judged = Float32Array.from(pack.header.rigs.find((r) => r.id === "human_m")!.rest);
 
-test("every enclosed seat holds the bodies hits are judged on: head under the roof, feet on the floor", () => {
+test("every enclosed seat keeps a judged body under its roof and on its floor", () => {
   const all = enclosed();
   expect(all.length).toBeGreaterThan(30);
   for (const { id, seat } of all) for (const rest of [HUMAN.rest, judged]) for (const action of holds) {
@@ -82,7 +82,7 @@ test("a body drawn with any look keeps its head within 9 cm of the head that is 
   expect(deepest).toBeGreaterThan(-0.04);
 });
 
-test("the Zephyr's and the Veloce's seats put a default head under the roof with its margin and the feet on the floor", () => {
+test("Zephyr and Veloce seats fit a default body under the roof and on the floor", () => {
   for (const vehicle of ["core:zephyr", "core:veloce"]) {
     const seats = enclosed().filter((e) => e.id === vehicle);
     expect(seats.map((s) => s.seat.id)).toEqual(["driver", "passenger"]);
@@ -111,7 +111,7 @@ test("the Zephyr's and the Veloce's seats put a default head under the roof with
   expect(seatFit.drop).toBeLessThanOrEqual(HIPS_DROP);
 });
 
-test("the server's seated eye and the client's agree to a nanometre in every enclosed seat", () => {
+test("the server's and the client's seated eye agree to a nanometre in every seat", () => {
   const characters = new Characters(reg, pack, new Assets(reg, pack)), server = new OccupantBody(pack.header.rigs);
   const survivor = reg.index.get("core:survivor")!, mesh = reg.defs[survivor]!.type === "species" ? (reg.defs[survivor] as { mesh: string }).mesh : "";
   const client = new Float64Array(3), authority = new Float64Array(3);
@@ -125,7 +125,7 @@ test("the server's seated eye and the client's agree to a nanometre in every enc
   }
 });
 
-test("pilot, helm and handlebar hands still reach their controls when a low roof reclines the body", () => {
+test("hands still reach their controls when a low roof reclines the body", () => {
   let tried = 0;
   for (const def of reg.vehicle) for (const seat of def?.seats ?? []) {
     if (!seat.controls) continue;

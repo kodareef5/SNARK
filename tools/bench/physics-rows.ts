@@ -22,9 +22,16 @@ import { flatMap } from "../../tests/fixtures/map.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
 import { Corpses } from "../../client/core/ragdoll.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
-import { CUE_DOWN } from "../../shared/anim/pose.ts";
 import { survivorKind } from "../../shared/sim/blockers.ts";
 import { solidOf } from "../../shared/sim/vehicle-movers.ts";
+import { Assets } from "../../client/core/assets/assets.ts";
+import { Camera } from "../../client/core/render/camera.ts";
+import { Characters } from "../../client/core/render/characters.ts";
+import { BONE_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
+import { B_HEAD, B_HIPS, HUMAN } from "../../shared/anim/human.ts";
+import { AnimState, CUE_DOWN } from "../../shared/anim/pose.ts";
+import { REACT_FALL, reactAge, reactKind, TOPPLED } from "../../shared/anim/reactions.ts";
+import { frozenPack } from "../../tests/fixtures/pack.ts";
 import { boxBase } from "./base.ts";
 
 type Section = (title: string) => void;
@@ -95,10 +102,119 @@ function flat(n: number, seed: number): { h: Harness; ents: number[]; sessions: 
   return { h, ents, sessions };
 }
 
+const NO_COLORS = new Uint8Array(64);
+/** Ticks the crowd scene holds its car's speed and turn: until a car going straight is through. */
+const DRIVE_TICKS = 200;
+
+/** The height of bone `b`'s joint in bone rows `rows`: where the bone carries its rest point. */
+function jointY(rows: Float32Array, b: number): number {
+  const o = b * BONE_FLOATS, r = b * 3;
+  return rows[o + 4]! * HUMAN.rest[r]! + rows[o + 5]! * HUMAN.rest[r + 1]! + rows[o + 6]! * HUMAN.rest[r + 2]! + rows[o + 7]!;
+}
+
 /** Puts body `e` at (x, y, z), as a teleport does. */
 function put(h: Harness, e: number, x: number, y: number, z: number): void {
   h.world.ents.setPosition(e, x, y, z);
   h.world.history.discontinuity(e);
+}
+
+/**
+ * Two players watching a scene, and what each draws of the survivors in it that are down: by their falls once their
+ * checkpoints come, toppling meanwhile, and as the renderer draws them on one bone and on all. Each fall is set beside
+ * where the server has its body (one of `bodies`) at the tick the watcher has stepped it to.
+ */
+class Watching {
+  private readonly h: Harness;
+  private readonly sessions: readonly ClientSession[];
+  private readonly bodies: readonly number[];
+  private readonly heard: number[];
+  private readonly pack = frozenPack();
+  private readonly cam = new Camera();
+  private readonly st = new AnimState();
+  private readonly views: { remote: RemoteSample; drawn: Corpses; waits: Map<number, number>; characters: Characters; packet: FramePacket; downAt: Map<number, number> }[];
+  /** Where the server had each body down, by tick. */
+  private readonly truth = new Map<number, Float64Array>();
+  private readonly apart: number[] = [];
+  private standing = 0;
+  private toppled = 0;
+  private longest = 0;
+  private submitted = 0;
+  private upright = 0;
+
+  constructor(h: Harness, sessions: readonly ClientSession[], bodies: readonly number[]) {
+    this.h = h; this.sessions = sessions; this.bodies = bodies;
+    this.heard = sessions.map((s) => s.stats.bytesIn);
+    this.views = sessions.map(() => ({
+      remote: new RemoteSample(), drawn: new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k), (k) => solidOf(h.reg, k)), waits: new Map<number, number>(),
+      characters: new Characters(h.reg, this.pack, new Assets(h.reg, this.pack)), packet: new FramePacket(), downAt: new Map<number, number>(),
+    }));
+  }
+
+  /** After each server tick. */
+  after(): void {
+    const h = this.h, ents = h.world.ents, T = h.world.tick, st = this.st;
+    for (const e of this.bodies) {
+      if (!h.host.falls.poseOf(e)) continue;
+      let ring = this.truth.get(e);
+      if (!ring) this.truth.set(e, (ring = new Float64Array(64 * 4).fill(-1)));
+      const o = (T & 63) * 4;
+      ring[o] = T; ring[o + 1] = ents.x[e]!; ring[o + 2] = ents.y[e]!; ring[o + 3] = ents.z[e]!;
+    }
+    this.sessions.forEach((s, k) => {
+      const { remote, drawn, waits, characters, packet, downAt } = this.views[k]!;
+      s.sampleRemote(remote);
+      drawn.update(remote, s.world!, 0, 0, new Map(), s.corpseMotions);
+      characters.begin();
+      characters.corpses(packet, this.cam, remote, s.world!);
+      // Every third tick, each body down a half second, drawn as the renderer would draw it: it must not stand. A topple
+      // counts while it lies all the way down, before it rises.
+      for (let i = 0; i < remote.count && T % 3 === 0; i++) {
+        const since = downAt.get(remote.id[i]!), word = remote.react[i]!;
+        if (since === undefined || remote.tick - since < 15) continue;
+        if (reactKind(word) === REACT_FALL ? Math.abs(reactAge(word, remote.tick) - TOPPLED) > 20 : (remote.cue[i]! & CUE_DOWN) === 0) continue;
+        for (const rigid of [true, false]) {
+          characters.begin(); packet.beginFrame();
+          st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, word);
+          characters.add(packet, remote.kind[i]!, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, st, remote.tick, null, 0, NO_COLORS, 0, null, 0, remote.id[i]!, false, false, 1, rigid);
+          this.submitted++;
+          // Upright when the head's joint stands well over the hips': 0.62 m standing, under 0.3 lying, on the road or a car.
+          if (jointY(packet.bones, B_HEAD) - jointY(packet.bones, B_HIPS) > 0.45) this.upright++;
+        }
+      }
+      for (let i = 0; i < remote.count; i++) {
+        const id = remote.id[i]!, fall = drawn.humans.of(id), ring = this.truth.get(id);
+        if (fall?.down && ring && ring[(fall.clock & 63) * 4] === fall.clock) {
+          const o = (fall.clock & 63) * 4;
+          this.apart.push(Math.hypot(fall.x - ring[o + 1]!, fall.y - ring[o + 2]!, fall.z - ring[o + 3]!));
+        }
+        // Down as a ragdoll (its cue), or toppled past the fall budget (its reaction alone).
+        const cheap = reactKind(remote.react[i]!) === REACT_FALL;
+        if ((remote.cue[i]! & CUE_DOWN) === 0 && !cheap) { waits.delete(id); downAt.delete(id); continue; }
+        if (!downAt.has(id)) downAt.set(id, remote.tick);
+        if (cheap || fall) { waits.delete(id); continue; }
+        if (drawn.humans.waiting(id, remote.tick) === 0) { this.standing++; continue; }
+        this.toppled++;
+        const ticks = (waits.get(id) ?? 0) + 1;
+        waits.set(id, ticks);
+        if (ticks > this.longest) this.longest = ticks;
+      }
+    });
+  }
+
+  /** Records what the watchers saw over `seconds`. */
+  record(record: Row, seconds: number): void {
+    const apart = this.apart;
+    record("watchers: kilobytes a second received, the busier", Math.max(...this.sessions.map((s, k) => (s.stats.bytesIn - this.heard[k]!) / 1024 / seconds)), "", null);
+    record("watchers: bodies down but drawn standing, body-ticks", this.standing, "", 0);
+    record("watchers: bodies down handed to the renderer, body-draws", this.submitted, "", null);
+    record("watchers: of them drawn upright on one bone or all", this.upright, "", 0);
+    record("watchers: bodies drawn toppling while their fall came, body-ticks", this.toppled, "", null);
+    record("watchers: longest wait for a fall's checkpoint, ticks", this.longest, "", null);
+    record("watchers: a body drawn down from where the server has it, median", at(apart, 0.5) * 100, "cm", null);
+    record("watchers: a body drawn down from where the server has it, 90th percentile", at(apart, 0.9) * 100, "cm", null);
+    record("watchers: a body drawn down from where the server has it, 99th percentile", at(apart, 0.99) * 100, "cm", null);
+    record("watchers: a body drawn down from where the server has it, the most", at(apart, 1) * 100, "cm", null);
+  }
 }
 
 /**
@@ -109,15 +225,20 @@ function put(h: Harness, e: number, x: number, y: number, z: number): void {
  */
 export function benchFalls(section: Section, record: Row, walled: boolean, run: PhysicsRun = {}): void {
   const clock = run.clock ?? wallMs, seed = run.seed ?? 1;
-  section(`${FALLS_MOST} survivors knocked down at once ${walled ? "inside a closed stone room" : "on open flat ground"}`);
-  const { h, ents: bodies } = flat(FALLS_MOST, seed);
+  section(`${FALLS_MOST} survivors knocked down at once ${walled ? "inside a closed stone room" : "on open flat ground"}, two players watching`);
+  const { h, ents: all, sessions } = flat(FALLS_MOST + 2, seed);
   try {
+    const bodies = all.slice(0, FALLS_MOST);
     const reg = h.reg, [x0, z0] = [119, 119];
     const pieces = boxBase(reg, "stone", x0, 0, z0, 6, 6, 97);
     if (walled) for (const [kind, x, y, z, yaw] of pieces) h.world.structs.add(kind, x, y, z, yaw, 1, 100000);
     const floor = walled ? 2 * reg.halfY[pieces[0]![0]]! : 0;
     bodies.forEach((e, k) => put(h, e, x0 + 1.5 + (k % 8) * 2.15, floor, z0 + 2 + Math.floor(k / 8) * 2.8));
+    // Two players outside the room, one each side.
+    put(h, all[FALLS_MOST]!, x0 - 8, 0, z0 + 9);
+    put(h, all[FALLS_MOST + 1]!, x0 + 26, 0, z0 + 9);
     h.run(1000);
+    const watching = new Watching(h, sessions.slice(FALLS_MOST), bodies);
     const falls = h.host.falls, reactions = h.host.reactions, ents = h.world.ents, rng = new Rng(seed);
     const toppledBefore = reactions.stats.toppled;
     const t0 = clock();
@@ -134,7 +255,7 @@ export function benchFalls(section: Section, record: Row, walled: boolean, run: 
     const meter = new Meter(h, clock, () => {
       down.push(falls.count);
       moving.push(falls.moving);
-    });
+    }, () => watching.after());
     while (meter.physics.length < 10 * 30 && falls.count > 0) h.run(TICK_MS);
     meter.stop();
     const fell = meter.row("falls"), physics = meter.physics;
@@ -155,6 +276,7 @@ export function benchFalls(section: Section, record: Row, walled: boolean, run: 
     record("ticks every ragdoll moved", allMoving.length, "", null);
     record("ticks until every one had risen", fell.length, "", null);
     record("risen at the most a fall may last, not at rest", fell.length >= 120 ? down.at(-1) ?? 0 : 0, "", null);
+    watching.record(record, meter.physics.length / TICK_RATE);
   } finally {
     h.host.shutdown();
   }
@@ -164,9 +286,10 @@ export function benchFalls(section: Section, record: Row, walled: boolean, run: 
  * A car someone drives at 15 m/s along +Z through 60 bodies, 4 abreast 0.8 m apart and 15 deep 1.2 m apart, every third
  * a dodo; until every survivor it knocked down has risen.
  */
-export function benchCrowd(section: Section, record: Row, run: PhysicsRun = {}): void {
+export function benchCrowd(section: Section, record: Row, run: PhysicsRun = {}, drive: "straight" | "turning" | "braking" = "straight"): void {
   const clock = run.clock ?? wallMs, seed = run.seed ?? 1;
-  section("A car at 15 m/s through a crowd of 40 survivors and 20 dodos, two players watching");
+  const how = drive === "turning" ? ", turning as it meets it" : drive === "braking" ? ", braking to a stop in it" : "";
+  section(`A car at 15 m/s through a crowd of 40 survivors and 20 dodos${how}, two players watching`);
   const { h, ents: all, sessions } = flat(43, seed);
   try {
     // The last two stand by the road and watch; what they can draw is part of the cost.
@@ -194,48 +317,22 @@ export function benchCrowd(section: Section, record: Row, run: PhysicsRun = {}):
     h.run(1500);
     const falls = h.host.falls, contacts = h.host.urban.contacts!, sent = h.host.corpseMotion.stats;
     const met = contacts.contacts, over = contacts.runOvers, bytes = sent.bytes, checkpoints = sent.checkpoints, corrections = sent.corrections;
-    const heard = lookers.map((s) => s.stats.bytesIn);
-    // Each watcher draws the bodies as a client does: a fall once its checkpoint has come, a topple while it waits.
-    const watchers = lookers.map(() => ({ remote: new RemoteSample(), drawn: new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k), (k) => solidOf(h.reg, k)), waits: new Map<number, number>() }));
-    let standing = 0, toppled = 0, longest = 0;
-    // Where the server had each body down, by tick, to set beside where a watcher draws it at the tick it has stepped to.
-    const truth = new Map<number, Float64Array>(), apart: number[] = [];
-    // Held at 15 m/s before every tick until it is through, then let roll.
-    const carZ: number[] = [];
+    const watching = new Watching(h, lookers, crowd as number[]);
+    // Held before every tick until it would be through, then let roll: at 15 m/s; turning 0.7 rad/s from the crowd's first
+    // rank; or braking at 9 m/s² from its third.
+    const carZ: number[] = [], v = ents.vrow[car]!;
+    let speed = 15, held = 0;
     const meter = new Meter(h, clock, () => {
       carZ.push(ents.z[car]!);
-      if (ents.z[car]! >= 150) return;
-      ents.vz[car] = 15;
-      ents.vx[car] = 0;
-    }, () => {
-      const T = h.world.tick;
-      for (const e of crowd) {
-        if (!falls.poseOf(e!)) continue;
-        let ring = truth.get(e!);
-        if (!ring) truth.set(e!, (ring = new Float64Array(64 * 4).fill(-1)));
-        const o = (T & 63) * 4;
-        ring[o] = T; ring[o + 1] = ents.x[e!]!; ring[o + 2] = ents.y[e!]!; ring[o + 3] = ents.z[e!]!;
-      }
-      lookers.forEach((s, k) => {
-        const { remote, drawn, waits } = watchers[k]!;
-        s.sampleRemote(remote);
-        drawn.update(remote, s.world!, 0, 0, new Map(), s.corpseMotions);
-        for (let i = 0; i < remote.count; i++) {
-          const id = remote.id[i]!, fall = drawn.humans.of(id), ring = truth.get(id);
-          if (fall?.down && ring && ring[(fall.clock & 63) * 4] === fall.clock) {
-            const o = (fall.clock & 63) * 4;
-            apart.push(Math.hypot(fall.x - ring[o + 1]!, fall.y - ring[o + 2]!, fall.z - ring[o + 3]!));
-          }
-          if ((remote.cue[i]! & CUE_DOWN) === 0 || fall) { waits.delete(id); continue; }
-          if (drawn.humans.waiting(id, remote.tick) === 0) { standing++; continue; }
-          toppled++;
-          const ticks = (waits.get(id) ?? 0) + 1;
-          waits.set(id, ticks);
-          if (ticks > longest) longest = ticks;
-        }
-      });
-    });
-    while (meter.physics.length < 12 * 30 && (ents.z[car]! < 150 || falls.count > 0)) h.run(TICK_MS);
+      if (held++ >= DRIVE_TICKS) return;
+      if (drive === "braking" && ents.z[car]! > 92.5) speed = Math.max(0, speed - 9 / TICK_RATE);
+      if (drive === "turning") ents.vehicleYawRate[v] = ents.z[car]! > 86 ? 0.7 : 0;
+      const yaw = drive === "turning" ? ents.vehicleYaw[v]! : 0;
+      ents.vx[car] = Math.sin(yaw) * speed;
+      ents.vz[car] = Math.cos(yaw) * speed;
+    }, () => watching.after());
+    while (meter.physics.length < 12 * 30 && (held < DRIVE_TICKS || falls.count > 0)) h.run(TICK_MS);
+    record("car's turn at the end, degrees", (ents.vehicleYaw[v]! * 180) / Math.PI, "", null);
     meter.stop();
     // The strike: from its front at the crowd's first rank until a second after it is through the last.
     const strike = (row: number[]): number[] => row.filter((_, t) => carZ[t]! > 86 && carZ[t]! < 107 + 15);
@@ -256,14 +353,7 @@ export function benchCrowd(section: Section, record: Row, run: PhysicsRun = {}):
     record("checkpoints sent to all 43 players", sent.checkpoints - checkpoints, "", null);
     record("of them corrections of bodies a player already lays", sent.corrections - corrections, "", null);
     record("checkpoints sent to all 43 players, kilobytes", (sent.bytes - bytes) / 1024, "", null);
-    record("watchers: kilobytes a second received, the busier", Math.max(...lookers.map((s, k) => (s.stats.bytesIn - heard[k]!) / 1024 / seconds)), "", null);
-    record("watchers: bodies down but drawn standing, body-ticks", standing, "", 0);
-    record("watchers: bodies drawn toppling while their fall came, body-ticks", toppled, "", null);
-    record("watchers: longest wait for a fall's checkpoint, ticks", longest, "", null);
-    record("watchers: a body drawn down from where the server has it, median", at(apart, 0.5) * 100, "cm", null);
-    record("watchers: a body drawn down from where the server has it, 90th percentile", at(apart, 0.9) * 100, "cm", null);
-    record("watchers: a body drawn down from where the server has it, 99th percentile", at(apart, 0.99) * 100, "cm", null);
-    record("watchers: a body drawn down from where the server has it, the most", at(apart, 1) * 100, "cm", null);
+    watching.record(record, seconds);
   } finally {
     h.host.shutdown();
   }
@@ -358,7 +448,7 @@ if (import.meta.main) {
       benchFalls(section, record, true, run);
       benchFalls(section, record, false, run);
     }
-    if (want("crowd")) benchCrowd(section, record, run);
+    if (want("crowd")) for (const drive of ["straight", "turning", "braking"] as const) benchCrowd(section, record, run, drive);
     if (want("corpses")) benchRexCorpses(section, record, run);
     console.log(`run ${r}: load ${from} at its start, ${load()} at its end`);
   }
