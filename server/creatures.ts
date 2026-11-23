@@ -404,7 +404,7 @@ export class Creatures {
       else if (landing > 0 && (b.mflags & MF_OUT) !== 0 && world.anims[kind]?.torporFall) this.cue(e, CUE_LAND, false);
       if (p.flies) this.flew(e);
       // Tactical braking/turning is deliberate, not a failed path step. Keep Behavior's cached path input intact.
-      if (!combat?.ai || move !== 0) mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
+      if (!combat?.ai || move !== 0) mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT, stepOut.wallInto, stepOut.wallNx, stepOut.wallNz);
       // A bite goes through the same action step as any blow.
       const jaws = world.reg.weapon[kind];
       let struck = false;

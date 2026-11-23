@@ -122,6 +122,34 @@ test("movement below the replicated speed step still plants feet at adult and ju
   expect(g.speed).toBeLessThan(.001);
 });
 
+test("legs sent walking on a body drawn standing, as against a wall, ease to rest in a fifth of a second and back", () => {
+  const rig = strider();
+  const a = species(rig, 99);
+  const st = new AnimState();
+  st.speed = Math.round(1.5 / SPEED_STEP);
+  const walking = st.speed * SPEED_STEP;
+  const g = new Gait();
+  let [f, z] = [0, 0];
+  const frames = (n: number, moves: boolean): void => {
+    for (const end = f + n; f < end; f++) advanceCreature(a, g, st, 1000 + (f * 30) / FPS, 0, (z += moves ? walking / FPS : 0), 0, 1);
+  };
+  frames(FPS, true);
+  expect(g.speed).toBeCloseTo(walking, 2);
+  // Held where it is: its legs come most of the way to rest and stay there, its gait no further on.
+  frames(FPS / 4, false);
+  expect(g.speed).toBeLessThan(0.3 * walking);
+  const phase = g.phase;
+  frames(FPS, false);
+  expect([g.speed < 0.01, g.phase]).toEqual([true, phase]);
+  // Let go, they walk again.
+  frames(FPS / 4, true);
+  expect(g.speed).toBeGreaterThan(0.7 * walking);
+  // A flyer in the air is not held: its speed may all be up or down.
+  const air = new Gait();
+  for (let tick = 0; tick <= 30; tick++) air.track(0, 0, 0, tick, 6, 0.2, 1, 1, false);
+  expect(air.speed).toBeCloseTo(6, 2);
+});
+
 test("speeding up from a walk to a run blends the two in step: the feet hold and no joint jumps between frames", () => {
   const rig = strider();
   const a = species(rig, 99);

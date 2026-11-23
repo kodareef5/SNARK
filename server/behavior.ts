@@ -69,6 +69,12 @@ const HELP_RANGE = 25;
 /** A creature that means to move and covers less than STUCK_SHARE of its walking pace for STUCK_TICKS ticks in a row is stuck. */
 export const STUCK_TICKS = 6;
 const STUCK_SHARE = 0.3;
+/** One that does so pressing into a wall (stepOut.wallInto) for PINNED_TICKS is pinned: stuck at once, and it stops pressing. */
+export const PINNED_TICKS = 4;
+/** Ticks a wandering creature turning from a wall stands, at most, before it walks on. */
+const LEAVE_TICKS = 4 * TICK_RATE;
+/** In 65536ths of a turn, how near square to a wall a facing that met it is taken as square. */
+const LEAN_SQUARE = 512;
 /**
  * Cells the path searches of all creatures may expand in one tick, and one search in all. A cell costs about a microsecond,
  * two on a busy machine, so this is one or two milliseconds of a 33 ms tick at most. A search may run over several ticks.
@@ -347,6 +353,13 @@ export class Behavior {
   /** Ticks in a row it has been stuck, as `moved` counts them. */
   stuck = new Uint8Array(0);
   /**
+   * Ticks in a row it has pressed into a wall and barely moved (`moved`), kept while it stands; the way out of that wall
+   * as a facing; and 1 while a wandering one turns from it before walking on.
+   */
+  pinned = new Uint8Array(0);
+  wallYaw = new Uint16Array(0);
+  leaving = new Uint8Array(0);
+  /**
    * A point it walks to (Cast's people: server/cast/stage.ts), and how: a GOAL_ pace, GOAL_NONE for none. Hunting and
    * fleeing come first; arrived, it stands until told otherwise.
    */
@@ -448,6 +461,9 @@ export class Behavior {
     this.leader = wider(this.leader, cap, -1);
     this.wanders = wider(this.wanders, cap);
     this.stuck = wider(this.stuck, cap);
+    this.pinned = wider(this.pinned, cap);
+    this.wallYaw = wider(this.wallYaw, cap);
+    this.leaving = wider(this.leaving, cap);
     this.goalX = wider(this.goalX, cap);
     this.goalZ = wider(this.goalZ, cap);
     this.goalPace = wider(this.goalPace, cap);
@@ -737,12 +753,29 @@ export class Behavior {
   }
 
   /**
-   * After a step: `e` went (dx, dz), where a body walking freely goes `pace` metres a tick. Counts the ticks it has meant to
-   * move and barely has.
+   * After a step: `e` went (dx, dz), where a body walking freely goes `pace` metres a tick, going `into` metres a second
+   * into the wall whose way out is (nx, nz) (stepOut). Counts the ticks it has meant to move and barely has, and those it
+   * has pressed into a wall doing so.
    */
-  moved(e: number, dx: number, dz: number, pace: number): void {
-    if (this.move[e] === 0 || dx * dx + dz * dz >= STUCK_SHARE * STUCK_SHARE * pace * pace) this.stuck[e] = 0;
+  moved(e: number, dx: number, dz: number, pace: number, into = 0, nx = 0, nz = 0): void {
+    const barely = dx * dx + dz * dz < STUCK_SHARE * STUCK_SHARE * pace * pace;
+    if (this.move[e] === 0 || !barely) this.stuck[e] = 0;
     else if (this.stuck[e]! < 255) this.stuck[e]!++;
+    if (this.move[e] === 0) return;
+    if (barely && into > 0) {
+      if (this.pinned[e]! < 255) this.pinned[e]!++;
+      this.wallYaw[e] = Math.round((Math.atan2(nx, nz) / (Math.PI * 2)) * 65536) & 0xffff;
+      // Pinned with no way to follow, it stops pressing now; its mind asks for a way, or turns it from the wall.
+      if (this.atWall(e) && this.way[e] !== WAY_ON) {
+        this.move[e] = 0;
+        this.buttons[e] = 0;
+      }
+    } else this.pinned[e] = 0;
+  }
+
+  /** Whether `e` has pressed into a wall long enough to count as pinned. */
+  private atWall(e: number): boolean {
+    return this.pinned[e]! >= PINNED_TICKS;
   }
 
   /** Spends this tick's search budget, on those with no way first and in the order they asked. Call once a tick, before steering. */
@@ -872,6 +905,8 @@ export class Behavior {
     this.asked[e] = 0;
     this.askAfter[e] = 0;
     this.stuck[e] = 0;
+    this.pinned[e] = 0;
+    this.leaving[e] = 0;
     if (this.searching === e) this.searching = -1;
   }
 
@@ -1069,9 +1104,9 @@ export class Behavior {
         }
         // With no way away it stands, rather than run at a wall.
         if (heading || started) {
-          const away = this.head(e, tick, this.homeX[e]!, this.homeZ[e]!, turn && this.blocked(e, -1, tick));
-          this.move[e] = away ? 127 : 0;
-          this.buttons[e] = away ? BTN_SPRINT : 0;
+          this.move[e] = 127;
+          this.buttons[e] = BTN_SPRINT;
+          if (!this.head(e, tick, this.homeX[e]!, this.homeZ[e]!, turn && this.blocked(e, -1, tick))) this.move[e] = this.buttons[e] = 0;
         }
         return;
       }
@@ -1086,7 +1121,7 @@ export class Behavior {
       }
       return this.roam(e, tick, turn, heading);
     }
-    if (!turn && tick < this.until[e]!) return;
+    if (!turn && tick < this.until[e]! && !this.atWall(e) && this.leaving[e] === 0) return;
     if (turn && this.temper(e) === TEMPER_HUNTS && tick >= this.rested[e]!) {
       const prey = this.prey(e);
       if (prey >= 0) return this.hunt(e, prey, tick);
@@ -1120,12 +1155,40 @@ export class Behavior {
   }
 
   private amble(e: number, tick: number): void {
-    if (tick < this.until[e]!) return;
+    if (this.atWall(e)) return this.leave(e, tick);
     const rng = this.rng;
+    if (this.leaving[e] !== 0) {
+      // Turning from a wall, it walks on once it no longer faces into it.
+      if (tick < this.until[e]! && Math.abs(((this.world.ents.yaw[e]! - this.wallYaw[e]! + 32768) & 0xffff) - 32768) > 16384) return;
+      this.leaving[e] = 0;
+      this.move[e] = 127;
+      this.until[e] = tick + 30 + rng.int(150);
+      return;
+    }
+    if (tick < this.until[e]!) return;
     this.move[e] = rng.int(3) === 0 ? 0 : 127;
     this.look[e] = rng.int(65536);
     this.buttons[e] = 0;
     this.until[e] = tick + 30 + rng.int(150);
+  }
+
+  /**
+   * Pinned at a wall, a wandering creature stops pressing into it and turns from the way it faced by 90 to 150 degrees,
+   * further the way it leans along the wall (either way, met square), then walks on (amble).
+   */
+  private leave(e: number, tick: number): void {
+    const rng = this.rng;
+    const yaw = this.world.ents.yaw[e]!;
+    // Its facing from straight into the wall.
+    const lean = ((yaw - this.wallYaw[e]!) & 0xffff) - 32768;
+    const side = lean > LEAN_SQUARE ? 1 : lean < -LEAN_SQUARE ? -1 : rng.int(2) === 0 ? 1 : -1;
+    this.look[e] = (yaw + side * (16384 + rng.int(10923))) & 0xffff;
+    this.move[e] = 0;
+    this.buttons[e] = 0;
+    this.pitch[e] = 0;
+    this.pinned[e] = 0;
+    this.leaving[e] = 1;
+    this.until[e] = tick + LEAVE_TICKS;
   }
 
   /** Whether `e` minds itself as a flyer: of a kind that flies, and grown or somebody's. An unclaimed young one walks after whoever is near. */
@@ -1677,7 +1740,8 @@ export class Behavior {
 
   /**
    * Turns `e` for this tick toward the next point of its way to (gx, gz), if it is on one. Heading straight, its look stays as
-   * the caller set it. A creature stuck, or whose line the caller found `blocked`, asks for a way. False when there is none.
+   * the caller set it. A creature stuck or pinned, or whose line the caller found `blocked`, asks for a way; pinned with no
+   * way yet, it stands rather than press into the wall. False when there is none.
    */
   private head(e: number, tick: number, gx: number, gz: number, blocked: boolean): boolean {
     if (this.way[e] === WAY_NONE) {
@@ -1710,7 +1774,7 @@ export class Behavior {
           this.askAfter[e] = tick + NO_WAY_TICKS;
           return false;
         }
-      } else if (this.stuck[e]! >= STUCK_TICKS) {
+      } else if (this.stuck[e]! >= STUCK_TICKS || this.atWall(e)) {
         // The way did not hold.
         this.way[e] = WAY_STRAIGHT;
       } else {
@@ -1728,7 +1792,13 @@ export class Behavior {
         }
       }
     }
-    if (blocked || this.stuck[e]! >= STUCK_TICKS) this.ask(e, tick, ASK_NOW);
+    // A pin holds while the way it would go is into that wall.
+    if (this.atWall(e) && Math.abs(((this.look[e]! - this.wallYaw[e]! + 32768) & 0xffff) - 32768) <= 16384) this.pinned[e] = 0;
+    if (blocked || this.stuck[e]! >= STUCK_TICKS || this.atWall(e)) this.ask(e, tick, ASK_NOW);
+    if (this.atWall(e)) {
+      this.move[e] = 0;
+      this.buttons[e] = 0;
+    }
     return true;
   }
 
@@ -1867,7 +1937,7 @@ export class Behavior {
       r.maxZ = maxZ + ROUTE_MARGIN;
       r.stamp = shapeStamp(w, r.minX, r.minZ, r.maxX, r.maxZ);
       this.way[e] = WAY_ON;
-      this.stuck[e] = 0;
+      this.stuck[e] = this.pinned[e] = 0;
       return;
     }
     this.way[e] = WAY_NONE;

@@ -92,6 +92,12 @@ const EASE = 0.12;
 const JUMP = 3;
 /** Radians a second under which a turn on the spot has all but stopped, so the next begins anew. */
 const SPIN_ANEW = 0.2;
+/**
+ * A body sent moving but drawn covering less than STAND_SHARE of that, pressed into a wall say, for STAND_AFTER seconds
+ * is standing: its legs ease to rest as they would at a stop.
+ */
+const STAND_SHARE = 0.25;
+const STAND_AFTER = 0.06;
 
 /** Two driven pendulums, forward and lateral. The distal joint follows the loaded joint.
  * Fixed-size substeps, joint stops and a velocity limit keep a reversal or a late frame bounded. */
@@ -141,6 +147,8 @@ export class Gait {
    */
   spin = 0;
   turned = 0;
+  /** Seconds it has been drawn standing while its state says it moves (STAND_AFTER). */
+  stood = 0;
   /**
    * A flyer's shares of its hover, its fast flapping, its glide and its dive, and its roll into a turn
    * (shared/anim/creature.ts), eased so a step of what it is sent is not a jump in how it is drawn. Kept as it last flew
@@ -166,9 +174,9 @@ export class Gait {
    * Moves to the body's place at `tick` and returns the metres its feet covered, at the size it was made, or -1 when it
    * starts afresh: seen for the first time or after a gap. Then its speed is the state's and its phase is the caller's
    * to set. `radius` is how far its feet stand from where it turns, as made, so turning on the spot steps. It is drawn
-   * `size` times as large as it was made.
+   * `size` times as large as it was made. With `holds`, one sent moving that is drawn standing eases its legs to rest.
    */
-  track(x: number, z: number, yaw: number, tick: number, speed: number, radius: number, size: number, distanceScale = 1): number {
+  track(x: number, z: number, yaw: number, tick: number, speed: number, radius: number, size: number, distanceScale = 1, holds = true): number {
     speed *= distanceScale;
     const dt = tick - this.tick;
     const dx = x - this.x;
@@ -181,7 +189,7 @@ export class Gait {
     this.tick = tick;
     if (!(dt > 0 && dt <= GAP)) {
       this.speed = speed / size;
-      this.spin = this.turned = 0;
+      this.spin = this.turned = this.stood = 0;
       return -1;
     }
     turn -= Math.floor((turn + PI) / TAU) * TAU;
@@ -195,6 +203,9 @@ export class Gait {
     }
     this.spin += ((spin - this.spin) * seconds) / (EASE + seconds);
     speed /= size;
+    if (holds && speed > 0 && moved < speed * seconds * STAND_SHARE) this.stood += seconds;
+    else this.stood = 0;
+    if (this.stood >= STAND_AFTER) speed = 0;
     // A very slow body (especially a juvenile) can move below the replicated
     // speed word's first step. Its observed ground displacement still supplies
     // a gait rate. A teleport must not become an enormous one-frame stride.
