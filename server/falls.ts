@@ -62,6 +62,13 @@ export class Falls {
     return this.down.size;
   }
 
+  /** How many of those lying still move: the rest lie still until they rise. */
+  get moving(): number {
+    let n = 0;
+    for (const d of this.down.values()) if (!d.fall.still) n++;
+    return n;
+  }
+
   /** Whether entity `e` lies knocked down. */
   isDown(e: number): boolean {
     return this.down.has(e);

@@ -23,10 +23,12 @@ test("a knocked survivor lies where its ragdoll goes, deaf to its keys, and gets
   try {
     const ents = h.world.ents, x = ents.x[e]!, z = ents.z[e]!;
     expect(h.host.falls.knock(e, 0, 1, 4, 3, 0, 0)).toBe(true);
+    expect([h.host.falls.count, h.host.falls.moving]).toEqual([1, 1]);
     h.pilots[0]!.moveZ = 127;
     h.pilots[0]!.yaw = Math.PI;
     let lay = 0, low = Infinity, rose: number[] = [];
     h.run(5000, () => {
+      expect(h.host.falls.moving).toBeLessThanOrEqual(h.host.falls.count);
       if (h.host.falls.isDown(e)) lay++;
       else if (lay > 0 && rose.length === 0) rose = [ents.x[e]!, ents.z[e]!];
       low = Math.min(low, ents.y[e]! - h.world.hf.heightAt(ents.x[e]!, ents.z[e]!));
