@@ -17,8 +17,6 @@ export const KEY_MENU_BACK = 5404;
 export const KEY_MENU_LEAVE = 5405;
 /** Shown while the server shows creative mode (RULE_CREATIVE). */
 export const KEY_MENU_CREATIVE = 5406;
-/** Shown while bug report mode is armed (notes/notes.ts): "Take note", or "Save note" while one is open. */
-export const KEY_MENU_NOTE = 5407;
 export const KEY_MENU_DETAILS = 5410;
 /** The links the server names (links.json), a button each beneath Controls: +n the nth. */
 export const KEY_MENU_LINK = 5420;
@@ -43,12 +41,6 @@ export function unmuteButton(f: UiFrame, touch: TouchPlan | null, pill: typeof i
   // Under the compass where it stands at the top.
   let y = touch ? touch.stackY - 52 : Math.max(f.top + 12, below);
   let x = touch ? left : Math.max(left, Math.min(Math.round((f.width - w) / 2), room));
-  // Beside the resource monitor's strip, or under it where there is no room beside it.
-  const strip = hud?.stripH ? hud : null;
-  if (!touch && strip && x < left + strip.stripW + 10 && y < strip.stripY + strip.stripH) {
-    if (left + strip.stripW + 10 <= room) x = left + strip.stripW + 10;
-    else y = strip.stripY + strip.stripH + 6;
-  }
   for (let i = 0; i < f.count; i++) {
     const q = f.nodes[i]!;
     if (q.interactive && q.kind !== K_HOLD && x < q.x + q.w && q.x < x + w && y < q.y + q.h && q.y < y + h) return;
@@ -64,19 +56,18 @@ export function menuBackdrop(f: UiFrame, alpha = 1): void {
   f.add(KEY_MENU, K_PANEL, 0, 0, f.width, f.height, S_MENU).alpha = alpha;
 }
 
-/** `note` is bug report mode's row (notes/notes.ts), "" for none. */
-export function buildMenu(f: UiFrame, hud: HudModel, connected: boolean, focus = KEY_MENU_RESUME, links: readonly SiteLink[] = [], creative = false, note = ""): void {
+export function buildMenu(f: UiFrame, hud: HudModel, connected: boolean, focus = KEY_MENU_RESUME, links: readonly SiteLink[] = [], creative = false): void {
   menuBackdrop(f);
   // The wiki and the source, as the server names them, beneath Controls; each opens beside the game.
   const shown = links.slice(0, MAX_LINKS);
   // Its actions step 53 units, or closer where a short canvas has not the room for all of them at that.
-  const rows = 4 + shown.length + (creative ? 1 : 0) + (note ? 1 : 0), room = f.height - f.top - f.bottom - 16;
+  const rows = 4 + shown.length + (creative ? 1 : 0), room = f.height - f.top - f.bottom - 16;
   const pitch = Math.max(32, Math.min(53, Math.floor((room - 144) / rows))), tall = Math.min(44, pitch - 4);
   const w = Math.min(300, f.width - f.left - f.right - 48), h = 144 + rows * pitch;
   const x = f.left + Math.round(Math.max(24, f.width * .065)), y = Math.max(f.top + 8, Math.round((f.height - h) / 2));
   glass(f, KEY_MENU, x, y, w, h);
   f.text(KEY_MENU_DETAILS + 2, x + 22, y + 18, 80, S_MENU_NOTE, "ESC");
-  const actions = [[KEY_MENU_RESUME, connected ? "Resume" : "Reconnect"], [KEY_MENU_SETTINGS, "Settings"], [KEY_MENU_CONTROLS, "Controls"], ...(creative ? [[KEY_MENU_CREATIVE, "Creative"]] : []), ...(note ? [[KEY_MENU_NOTE, note]] : []), ...shown.map((link, n) => [KEY_MENU_LINK + n, link.label]), ...(connected ? [[KEY_MENU_LEAVE, "Leave"]] : [])] as [number, string][];
+  const actions = [[KEY_MENU_RESUME, connected ? "Resume" : "Reconnect"], [KEY_MENU_SETTINGS, "Settings"], [KEY_MENU_CONTROLS, "Controls"], ...(creative ? [[KEY_MENU_CREATIVE, "Creative"]] : []), ...shown.map((link, n) => [KEY_MENU_LINK + n, link.label]), ...(connected ? [[KEY_MENU_LEAVE, "Leave"]] : [])] as [number, string][];
   actions.forEach(([key, label], i) => menuButton(f, key, x + 42, y + 68 + i * pitch, w - 62, label, focus === key, tall));
   f.add(KEY_MENU_DETAILS + 3, K_PANEL, x + 20, y + h - 52, w - 40, 1, S_ICE).alpha = .3;
   f.text(KEY_MENU_DETAILS, x + 22, y + h - 37, w - 44, S_MENU_NOTE, connected ? `${Math.round(hud.pingMs)} ms` : "Disconnected");

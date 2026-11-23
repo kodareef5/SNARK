@@ -29,6 +29,7 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
   canvas.addEventListener("click", (e) => {
     if ((e as PointerEvent).pointerType === "touch") return;
     engaged = true;
+    app.ui.clickWorld();
     sync();
   });
   addEventListener("click", sync);
@@ -46,8 +47,9 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
     if (document.pointerLockElement === canvas) app.look(e.movementX, e.movementY);
   });
   // The orbit camera takes the wheel while it is on; otherwise the browser has it as before.
+  // With the pointer free, the wheel goes to the interface (the debug bar's lists).
   addEventListener("wheel", (e) => {
-    if (document.pointerLockElement === canvas && app.wheel(e.deltaY, e.deltaMode)) e.preventDefault();
+    if (document.pointerLockElement === canvas ? app.wheel(e.deltaY, e.deltaMode) : app.ui.wheel(e.deltaY)) e.preventDefault();
   }, { passive: false });
   canvas.addEventListener("mousedown", (e) => {
     if (document.pointerLockElement === canvas) app.mouseButton(e.button, true);

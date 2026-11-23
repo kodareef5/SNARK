@@ -14,7 +14,7 @@ export { KEY_CONE, KEY_CROSS } from "../hud/crosshair.ts";
 export { KEY_DOT } from "../hud/dots.ts";
 export { KEY_AMMO, KEY_HOTBAR } from "../hud/hotbar.ts";
 export { KEY_JET_FUEL } from "../hud/jet.ts";
-export { HOTBAR_CELL, chatBand, hotbarCell, hotbarLeft, hotbarTop, stripRoom } from "../hud/layout.ts";
+export { HOTBAR_CELL, chatBand, hotbarCell, hotbarLeft, hotbarTop } from "../hud/layout.ts";
 export { KEY_GLINT, KEY_SPOT } from "../hud/marks.ts";
 export { IMAGE_MAP, IMAGE_MINIMAP, KEY_CLOCK, KEY_MARKER, KEY_MINIMAP, KEY_MINIMAP_FRAME, KEY_MINIMAP_IN, KEY_MINIMAP_OUT, KEY_MINIMAP_TOGGLE, KEY_SELF_ARROW, MARKER_STYLE, MARKER_TINT, MINIMAP_SIZE } from "../hud/minimap.ts";
 export { KEY_PROMPT } from "../hud/prompt.ts";

@@ -69,23 +69,13 @@ function columnTop(f: UiFrame, m: HudModel, touch: TouchPlan | null): number {
   return touch ? touch.stackY + (p?.aside ? p.h + 8 : 0) : f.top + MARGIN;
 }
 
-/**
- * What the resource monitor's strip is given (ui/monitor.ts reserve): the top of the HUD's column, the minimap's side
- * (0 while it is hidden), and the room the panel under the minimap takes under the strip, where on a narrow canvas the
- * strip stands across under the minimap and the panel under it.
- */
-export function stripRoom(f: UiFrame, m: HudModel, touch: TouchPlan | null, minimap: boolean): { top: number; map: number; below: number } {
-  const p = panelOf(f, m, touch);
-  return { top: columnTop(f, m, touch), map: minimap ? (touch ? touch.map : MINIMAP_SIZE) : 0, below: p && !p.aside && f.width < NARROW ? p.h + 8 : 0 };
-}
-
 const layout: HudLayout = {
   options: { minimap: true, diagnostics: false, vitalLabels: false, compass: true }, controls: true, inspect: false, touch: null,
   W: 0, H: 0, left: 0, right: 0, foot: 0, MAP: 0, mapX: 0, mapY: 0, mapTools: false, top: 0, lh: 0, readout: false, readW: 0, columnFoot: 0, voiceY: 0,
   dash: null, panel: false, dashX: 0, dashY: 0, dashW: 0, dashH: 0, lean: false, aside: false,
 };
 
-/** The layout of this build. The same object each time. It tells the model where the monitor's strip starts (`stripY`). */
+/** The layout of this build. The same object each time. */
 export function layoutHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minimap" | "diagnostics" | "vitalLabels" | "compass">, controls: boolean, inspect: boolean, touch: TouchPlan | null): HudLayout {
   const at = layout;
   const W = (at.W = f.width);
@@ -101,21 +91,19 @@ export function layoutHud(f: UiFrame, m: HudModel, options: Pick<Settings, "mini
   const aside = (at.aside = panel?.aside ?? false);
   const top = (at.top = columnTop(f, m, touch));
   const lh = (at.lh = lineHeight(S_TEXT));
-  // The readout, and under it the resource monitor's strip (ui/monitor.ts), which on a canvas too short for both stands
-  // in its place; the voice's lines under them.
-  // On a narrow canvas the readout keeps left of the minimap, which keeps its place at the top, and the strip stands across under both.
-  const readout = (at.readout = options.diagnostics && !m.stripAlone);
+  // The readout, and the voice's lines under it. On a narrow canvas the readout keeps left of the minimap.
+  const readout = (at.readout = options.diagnostics);
   at.readW = Math.min(right - left - (W < NARROW && options.minimap ? MAP + 8 : 0), 400);
   const columnFoot = (at.columnFoot = readout ? top + m.readout.length * lh + 4 : top);
-  at.voiceY = Math.max((m.stripY = columnFoot) + (m.stripH && m.stripH + 6), m.stripFoot && m.stripFoot + 6);
+  at.voiceY = columnFoot;
   at.mapX = right - MAP;
   const mapY = (at.mapY = f.top + MARGIN);
   at.mapTools = controls && (inspect || touch !== null);
   // The car's instruments sit under the minimap and its clock, or in the minimap's place while it is hidden. A
   // helicopter's and a boat's are taller, with their state and their keys. The jet fuel stands there too, without a
-  // vehicle. On a narrow canvas they stand under the strip across it, and under the readout where it has the minimap's width.
+  // vehicle. On a narrow canvas they stand under the readout where it has the minimap's width.
   let dashY = aside && touch ? touch.stackY : options.minimap ? mapY + MAP + 28 : mapY;
-  if (W < NARROW && !aside) dashY = Math.max(dashY, m.stripFoot + 8, options.minimap || !readout ? 0 : columnFoot + 8);
+  if (W < NARROW && !aside) dashY = Math.max(dashY, options.minimap || !readout ? 0 : columnFoot + 8);
   at.dashY = dashY;
   at.dashX = aside ? left : right - at.dashW;
   return at;

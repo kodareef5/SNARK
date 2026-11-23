@@ -199,3 +199,10 @@ export const STYLES: readonly Style[] = [
   /* S_SPOT_WORD */ style(0, 0xff6a3d, 13, 1, true),
   /* S_MAGNIFY */ style(0, 0xb4fff1, 20, 0, true),
 ];
+
+/** Adds the styles of a screen the page fetches later, and returns the first one's index. */
+export function addStyles(list: readonly Style[]): number {
+  const at = STYLES.length;
+  (STYLES as Style[]).push(...list);
+  return at;
+}

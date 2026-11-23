@@ -27,7 +27,6 @@ export const COMPASS: HudWidget<CompassModel> = {
       // What holds the top left: by touch the bar, else the readout and the voice's lines where they show.
       let held = touch ? touch.topEnd : left - 8;
       if (readout) held = Math.max(held, left + Math.min(right - left, 400));
-      if (m.stripH) held = Math.max(held, left + m.stripW);
       if (m.voice !== "") held = Math.max(held, left + Math.min(right - left, m.voice === m.voice.toUpperCase() ? 96 : 330));
       if (m.talkers.length > 0) held = Math.max(held, left + 170);
       const at = tapeLayout(f, held, options.minimap || touch ? mapX - 2 : right - (mapTools ? 36 : 0) + 8);

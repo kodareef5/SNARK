@@ -15,8 +15,16 @@ import { T_FOLLOW, T_FOLLOW_ONE, T_MIC, T_SIC, T_STAY, T_STAY_ONE, T_USE, T_VIEW
 import { PLACEMENT_KEYS } from "./vehicle-placement.ts";
 import { VISOR_KEYS } from "./visor.ts";
 
-// F8 takes a note in bug report mode, from any screen (notes/notes.ts).
-const NOTE: KeyRow = { name: "note", keys: ["F8"], when: (c) => c.notes !== null, press: (c, _code, down, repeat) => c.notes!.key(down, repeat) };
+// F3 opens the debug bar's drawer and F8 saves what the bar holds, from any screen (debug/debug.ts).
+const DEBUG: KeyRow = {
+  name: "debug",
+  keys: ["F3", "F8"],
+  press(c, code, down, repeat) {
+    if (code === "F8" && !c.ui.settings.debug) return undefined;
+    if (down && !repeat) c.ui.debugKey(code);
+    return true;
+  },
+};
 
 const INTERFACE: KeyRow = {
   name: "interface",
@@ -238,7 +246,7 @@ const BODY: KeyRow = { name: "body", keys: ANY_KEY, press: (c, code, down, _repe
  * key from and after whatever must win it from the feature.
  */
 export const KEY_ROWS: readonly KeyRow[] = [
-  NOTE,
+  DEBUG,
   ...PLACEMENT_KEYS,
   INTERFACE,
   INSPECT_ZOOM,
