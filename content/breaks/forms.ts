@@ -1,10 +1,9 @@
-// A component's forms: what it is when whole, with one half breached, opened, hung or fallen to a heap. Drafts, made by the
-// tool and looked at as pictures. None of them is a kind yet.
+// A component's forms: what it is when whole, with one half breached, opened, hung or fallen to a heap.
 
 import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
 import type { HullDef } from "../../shared/world/convex.ts";
 import { bars, cut, partBox, partChunk, solidLess, splitAt, type Chunk, type Frame, type Look, type Part } from "./cut.ts";
-import type { Pt, Rect } from "./geometry.ts";
+import { grid, type Corner, type Pt, type Rect } from "./geometry.ts";
 import { Rng } from "../../shared/rng.ts";
 import { plan, profilePlan, type Plan } from "./plan.ts";
 
@@ -50,6 +49,18 @@ export function seedOf(name: string, form: string, variant: number): number {
   let h = 2166136261 ^ variant;
   for (const ch of name + "/" + form) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   return h >>> 0;
+}
+
+/** A form with `origin` as its zero and every number on the grid, so each engine writes the same content. */
+export function placed(f: Form, origin: Corner = [0, 0, 0]): Form {
+  const at = (c: readonly [number, number, number]): Corner => [grid(c[0] - origin[0]), grid(c[1] - origin[1]), grid(c[2] - origin[2])];
+  const box = (b: ShapeBox): ShapeBox => ({ at: at(b.at), half: [grid(b.half[0]), grid(b.half[1]), grid(b.half[2])], ...(b.color !== undefined ? { color: b.color } : {}) });
+  const chunk = (c: Chunk): Chunk => ({ ...c, corners: c.corners.map(at) });
+  return {
+    ...f, look: { boxes: f.look.boxes.map(box), chunks: f.look.chunks.map(chunk) },
+    walked: { boxes: f.walked.boxes.map(box), hulls: f.walked.hulls.map((h): HullDef => ({ corners: h.corners.map(at) })) },
+    fragments: f.fragments.map((group) => group.map(chunk)), panes: f.panes.map(box),
+  };
 }
 
 /** One opening of a piece that is flat in its plane: where it is, what is passable through it. */

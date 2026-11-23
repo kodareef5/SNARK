@@ -12,6 +12,9 @@ const EPS = 1e-7;
 /** Content keeps its numbers on a 1/4096 m grid, as content/ruins.ts does. */
 export const grid = (v: number): number => Math.round(v * 4096) / 4096;
 
+/** The length of (x, y), by exact steps alone: the same on every engine, as Math.hypot is not. */
+export const hyp = (x: number, y: number): number => Math.sqrt(x * x + y * y);
+
 export const cross = (o: Pt, a: Pt, b: Pt): number => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
 
 export function area(poly: readonly Pt[]): number {

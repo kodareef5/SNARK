@@ -2,12 +2,13 @@
 // left hanging by one edge or one fixing. Drafts, as the other forms are.
 
 import { MAX_SHAPE_BOXES, type ShapeBox } from "../../shared/content/kinds/shapes.ts";
+import { PI, detCos, detSin } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
 import { hullFault, type HullDef } from "../../shared/world/convex.ts";
 import { chunkVolume } from "./check.ts";
 import type { Chunk } from "./cut.ts";
 import { seedOf, type Form } from "./forms.ts";
-import { grid, type Corner, type Pt } from "./geometry.ts";
+import { grid, hyp, type Corner, type Pt } from "./geometry.ts";
 
 const RUST = 179, CORE = 102, BAR = 0.035;
 /** Loose blocks' colours and lumps' colours, as the hand-made skirts have them. */
@@ -81,7 +82,7 @@ function lumpOf(m: Mound, high: number, put: (u: number, y: number, v: number) =
  * `thick` off the slope and `wide` across it. `skew` slides its high end sideways.
  */
 function sloped(foot: Corner, way: Pt, run: number, rise: number, long: number, thick: number, wide: number, skew = 0): Corner[] {
-  const l = Math.hypot(run, rise), c = grid(run / l), s = grid(rise / l);
+  const l = hyp(run, rise), c = grid(run / l), s = grid(rise / l);
   const out: Corner[] = [];
   for (const j of [0, 1]) for (const k of [0, 1]) for (const i of [-0.5, 0.5]) {
     const along = j * long * c - k * thick * s, across = i * wide + j * skew;
@@ -110,8 +111,8 @@ function wallHeap(rng: Rng, l: Lay): Heap {
   const run = reach - 0.4;
   return {
     mounds, cap, blocks,
-    rigid: (high) => (plated ? [sloped([where, 0.02, mid + side * (reach - 0.35)], [0, -side], run, high * 0.8, Math.hypot(run, high * 0.8) * share, thick, wide, skew)] : []),
-    rigidVolume: plated ? wide * thick * Math.hypot(run, cap * 0.8) * share : 0,
+    rigid: (high) => (plated ? [sloped([where, 0.02, mid + side * (reach - 0.35)], [0, -side], run, high * 0.8, hyp(run, high * 0.8) * share, thick, wide, skew)] : []),
+    rigidVolume: plated ? wide * thick * hyp(run, cap * 0.8) * share : 0,
   };
 }
 
@@ -134,7 +135,7 @@ function slabHeap(rng: Rng, l: Lay, volume: number): Heap {
   far.forEach((poly, i) => {
     // Turned a little and slid over the first plate's edge: its first and last corners on that plate, its far edge on the floor.
     const slide = rng.range(0.25, 0.55), mu = (c0 + c1 + 2 * l.u1) / 4, mv = l.v0 + dv * (three ? 0.25 + i * 0.5 : 0.5);
-    const s = grid(rng.range(0.4, 1) * (rng.float() < 0.5 ? -1 : 1) * Math.min(0.12, 0.5 / Math.hypot(du, dv))), c = grid(Math.sqrt(1 - s * s));
+    const s = grid(rng.range(0.4, 1) * (rng.float() < 0.5 ? -1 : 1) * Math.min(0.12, 0.5 / hyp(du, dv))), c = grid(Math.sqrt(1 - s * s));
     const moved = poly.map(([u, v]): Pt => [mu + (u - mu) * c - (v - mv) * s - slide, mv + (u - mu) * s + (v - mv) * c]);
     const a = moved[0]!, b = moved[3]!;
     const need = Math.max(under(first, a), under(first, b)) + thick + 0.02 + i * rng.range(0.05, 0.12);
@@ -236,7 +237,7 @@ export function hungSlab(ask: HungSlabAsk): Form {
   const long = alongX ? x1 - x0 : z1 - z0, [s0, s1] = alongX ? [z0, z1] : [x0, x1], thick = ask.y1 - ask.y0;
   const degrees = rng.range(22, 30);
   // The turn's sine and cosine are on the grid, so every engine puts a corner alike and a flat face stays flat.
-  const c = grid(Math.cos((degrees * Math.PI) / 180)), s = grid(Math.sin((degrees * Math.PI) / 180));
+  const c = grid(detCos((degrees * PI) / 180)), s = grid(detSin((degrees * PI) / 180));
   const spot = (out: number, y: number, w: number): Corner => (alongX ? [hinge + sign * out, y, w] : [w, y, hinge + sign * out]);
   /** A point `d` out from the hinge along the slab, `e` up through it and `w` along the held edge. */
   const at = (d: number, e: number, w: number): Corner => spot(d * c + e * s, ask.y0 - d * s + e * c, w);
@@ -281,7 +282,7 @@ export function hungPanel(ask: HungPanelAsk): Form {
   const rng = new Rng(seedOf(ask.name, "hung", ask.variant));
   const [x0, x1, y0, y1] = ask.bounds;
   const degrees = rng.range(31, 37);
-  const c = grid(Math.cos((degrees * Math.PI) / 180)), s = grid(Math.sin((degrees * Math.PI) / 180));
+  const c = grid(detCos((degrees * PI) / 180)), s = grid(detSin((degrees * PI) / 180));
   // By half the seeds it hangs from its other top corner.
   const left = rng.float() < 0.5, fixing = left ? x0 : x1, way = left ? 1 : -1;
   const drop = grid(rng.range(0.2, 0.4)), off = grid(rng.range(0.1, 0.22)), top = y1 - drop;

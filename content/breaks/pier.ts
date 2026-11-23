@@ -1,8 +1,9 @@
 // The pier's break set: necked to its bars in either half, broken to a stub whose head fits the shaft that fell from it,
 // out of plumb, and heaped. It stands with its foot at y = 0.
 
-import { RUIN_FINISHES, RUIN_SHAPES } from "../../content/ruins.ts";
+import { RUIN_FINISHES, RUIN_SHAPES } from "../ruins.ts";
 import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
+import { PI, detCos, detSin } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { Chunk } from "./cut.ts";
 import { seedOf, type Component, type Form } from "./forms.ts";
@@ -18,7 +19,7 @@ const COVER = 0.08;
 /** The stub's lowest head point, and the most its head rises over that: no tooth over the art's 0.32 m. */
 const STUB = 2.44, TOOTH = 0.32;
 /** The leaning pier's solid top, and its lean: 8 degrees, as a slope on the grid. */
-const LEANT = 7.2, LEAN = grid(Math.tan((8 * Math.PI) / 180));
+const LEANT = 7.2, LEAN = grid(detSin((8 * PI) / 180) / detCos((8 * PI) / 180));
 
 const BOX: ShapeBox = { at: [0, TALL / 2, 0], half: [H, TALL / 2, H] };
 const SIGNS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;

@@ -1,7 +1,7 @@
 // The kit's balcony module (zbalc): two flats' balconies on one slab, a divider between them, a recessed wall behind. A
 // flat's balcony breaks off at the wall's face and at the divider. The wall behind it is never touched.
 
-import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES } from "../../content/ruins.ts";
+import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES } from "../ruins.ts";
 import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
 import { Rng } from "../../shared/rng.ts";
 import { FLOOR, boxOf, cut, type Chunk, type Cut, type Part } from "./cut.ts";

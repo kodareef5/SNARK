@@ -3,7 +3,7 @@
 
 import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
 import type { HullDef } from "../../shared/world/convex.ts";
-import { area, asRect, atMost, grid, meet, prism, rectLess, rectMeet, rectPoly, type Corner, type Pt, type Rect } from "./geometry.ts";
+import { area, asRect, atMost, grid, hyp, meet, prism, rectLess, rectMeet, rectPoly, type Corner, type Pt, type Rect } from "./geometry.ts";
 import type { Plan } from "./plan.ts";
 
 /** A part of a piece: a box in the piece's plane (`r`) through a thickness, as a facade module's parts are written. */
@@ -136,7 +136,7 @@ export function bars(frame: Frame, plan: Plan, w0: number, w1: number, most: num
   for (let k = 0, i = seed % Math.max(1, n); k < n && out.length < most * 2; k++, i = (i + 2) % n) {
     const p = plan.mouth[i]!;
     const du = plan.c[0] - p[0], dv = plan.c[1] - p[1];
-    const far = Math.hypot(du, dv);
+    const far = hyp(du, dv);
     if (far < 0.5) continue;
     const length = 0.25 + ((seed >>> (k * 3)) & 7) * 0.06;
     const w = k % 2 ? mid - (w1 - w0) / 2 + cover : mid + (w1 - w0) / 2 - cover;

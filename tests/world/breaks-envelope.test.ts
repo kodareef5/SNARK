@@ -1,14 +1,14 @@
-// A building's envelope as break sets (tools/breaks): the sheet bay, the pitched roof and the balcony, in every variant.
+// A building's envelope as break sets (content/breaks): the sheet bay, the pitched roof and the balcony, in every variant.
 
 import { describe, expect, test } from "bun:test";
 import { RUIN_SLOPES } from "../../content/ruins.ts";
 import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
-import { balcony } from "../../tools/breaks/balcony.ts";
-import { chunkVolume, formFaults } from "../../tools/breaks/check.ts";
-import type { Chunk } from "../../tools/breaks/cut.ts";
-import { VARIANTS, type Form } from "../../tools/breaks/forms.ts";
-import { pitchedRoofSample } from "../../tools/breaks/roof.ts";
-import { sheetBay } from "../../tools/breaks/sheet-bay.ts";
+import { balcony } from "../../content/breaks/balcony.ts";
+import { chunkVolume, formFaults } from "../../content/breaks/check.ts";
+import type { Chunk } from "../../content/breaks/cut.ts";
+import { VARIANTS, type Form } from "../../content/breaks/forms.ts";
+import { pitchedRoofSample } from "../../content/breaks/roof.ts";
+import { sheetBay } from "../../content/breaks/sheet-bay.ts";
 
 const bay = sheetBay(), roof = pitchedRoofSample(), flats = balcony();
 const all = [bay, roof, flats];

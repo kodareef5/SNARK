@@ -1,9 +1,9 @@
 // The components the sheet shows: one of each family, built from the kit's own shapes (content/ruins.ts).
 
-import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES, RUIN_SHAPES, type FacadeModule } from "../../content/ruins.ts";
+import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES, RUIN_SHAPES, type FacadeModule } from "../ruins.ts";
 import { Rng } from "../../shared/rng.ts";
 import { FLOOR, WALL, partBox, type Part } from "./cut.ts";
-import { along, halves, plateForms, slabBreach, slabOpen, wallBreach, wallOpen, type Component, type Form, type FormName, type Opening, type Plate } from "./forms.ts";
+import { along, halves, placed, plateForms, slabBreach, slabOpen, wallBreach, wallOpen, type Component, type Form, type FormName, type Opening, type Plate } from "./forms.ts";
 import type { Corner, Pt, Rect } from "./geometry.ts";
 import { heapForm, hungPanel, hungSlab } from "./heap.ts";
 import { MORE_A } from "./more-a.ts";
@@ -60,8 +60,8 @@ function plate(name: string, family: string, material: string, colours: readonly
 const wallHeap = (name: string, bounds: Rect, part: Part, variant: number): Form =>
   heapForm({ name, variant, kind: "wall", footprint: [bounds[0], bounds[1], part.w0, part.w1], floor: bounds[2], volume: (bounds[1] - bounds[0]) * (bounds[3] - bounds[2]) * (part.w1 - part.w0) });
 
-/** A component whose every form is solid as its first variant is, whatever a form's maker did. */
-const oneSolid = (c: Component): Component => ({ ...c, forms: (variant) => { const first = variant === 0 ? null : c.forms(0); return c.forms(variant).map((f, i) => (first ? { ...f, walked: first[i]!.walked } : f)); } });
+/** A component whose every form is solid as its first variant is, whatever a form's maker did, with its numbers on the grid. */
+const oneSolid = (c: Component): Component => ({ ...c, forms: (variant) => { const first = variant === 0 ? null : c.forms(0); return c.forms(variant).map((f, i) => placed(first ? { ...f, walked: first[i]!.walked } : f)); } });
 
 /** An opening with nothing left standing in its window: broken down to the floor, its shards the bands above. */
 const cleared = (window: Rect, passable: readonly Rect[] = [window], piece?: number): Opening => ({

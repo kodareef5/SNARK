@@ -1,11 +1,11 @@
-// The pier's break set, and the heaps and hung forms other families call (tools/breaks).
+// The pier's break set, and the heaps and hung forms other families call (content/breaks).
 
 import { expect, test } from "bun:test";
-import { chunkVolume, formFaults, leftVolume, lookVolume } from "../../tools/breaks/check.ts";
-import type { Chunk } from "../../tools/breaks/cut.ts";
-import { VARIANTS, type Form } from "../../tools/breaks/forms.ts";
-import { heapForm, hungPanel, hungSlab, type HeapAsk } from "../../tools/breaks/heap.ts";
-import { pier } from "../../tools/breaks/pier.ts";
+import { chunkVolume, formFaults, leftVolume, lookVolume } from "../../content/breaks/check.ts";
+import type { Chunk } from "../../content/breaks/cut.ts";
+import { VARIANTS, type Form } from "../../content/breaks/forms.ts";
+import { heapForm, hungPanel, hungSlab, type HeapAsk } from "../../content/breaks/heap.ts";
+import { pier } from "../../content/breaks/pier.ts";
 
 const WHOLE = 0.9 * 0.9 * 8;
 const variants = Array.from({ length: VARIANTS }, (_, v) => v);

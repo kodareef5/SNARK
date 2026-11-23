@@ -1,7 +1,7 @@
 // The kit's pitched roof (zpitch8) as tile on timber. Whole, a slope is the kit's slab. Broken, its skin slides off as a few
 // panels and bares five rafters between a ridge beam and an eave plate, with a patch or two of tile left on them.
 
-import { RUIN_FINISHES, RUIN_SLOPES } from "../../content/ruins.ts";
+import { RUIN_FINISHES, RUIN_SLOPES } from "../ruins.ts";
 import type { ShapeBox } from "../../shared/content/kinds/shapes.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { HullDef } from "../../shared/world/convex.ts";

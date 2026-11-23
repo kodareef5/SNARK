@@ -1,7 +1,7 @@
 // A shed's wall bay in corrugated sheet: steel posts and girts with a skin of eight strips. The kit has no such module yet.
 // Sheet does not shatter. A strip tears along its corrugation and folds, so what leaves is whole sheets and few of them.
 
-import { RUIN_FINISHES } from "../../content/ruins.ts";
+import { RUIN_FINISHES } from "../ruins.ts";
 import { PI, detCos, detSin } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
 import { WALL, boxOf, partBox, partChunk, solidLess, type Chunk, type Part } from "./cut.ts";

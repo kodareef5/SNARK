@@ -3,10 +3,10 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Chunk } from "./breaks/cut.ts";
-import { VARIANTS, type Component, type Form } from "./breaks/forms.ts";
-import type { Corner } from "./breaks/geometry.ts";
-import { SAMPLES } from "./breaks/samples.ts";
+import type { Chunk } from "../content/breaks/cut.ts";
+import { VARIANTS, type Component, type Form } from "../content/breaks/forms.ts";
+import type { Corner } from "../content/breaks/geometry.ts";
+import { SAMPLES } from "../content/breaks/samples.ts";
 import { drawSheet, type Drawn, type Row, type Tile } from "./breaks/sheet.ts";
 import { encodePng } from "./snap/png.ts";
 
