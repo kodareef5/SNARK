@@ -7,7 +7,7 @@
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
-import { GONE_DESTROYED, GONE_FELL, GONE_TAKEN } from "../../../shared/world/structures.ts";
+import { GONE_BLAST, GONE_DESTROYED, GONE_FELL, GONE_TAKEN } from "../../../shared/world/structures.ts";
 import type { Hear } from "./bodies.ts";
 
 const TIERS = ["thatch", "wood", "stone", "metal"];
@@ -30,6 +30,8 @@ const K = {
   crumble: cueKey("crumble"),
   picked: cueKey("picked"),
 };
+/** How loud a city piece's stage crossing or change of form is heard. Its health is not told within a stage, so a blow's own size is not known. */
+const CITY_GAIN = 0.9;
 /** Metres within which a lit fire is heard burning, and how many at most; the rows are looked through every few frames. */
 const FIRE_REACH = 20;
 const FIRES = 3;
@@ -44,6 +46,8 @@ export class BuildSounds {
   private readonly tier: Int8Array;
   private readonly owner: Int32Array;
   private readonly role: Uint8Array;
+  /** By structure kind: 1 for a static, a piece of the map. */
+  private readonly placed: Uint8Array;
   /** By node kind: its owner number and what using it up sounds like. */
   private readonly nodeOwner: Int32Array;
   private readonly nodeKey: Int32Array;
@@ -59,6 +63,7 @@ export class BuildSounds {
     this.tier = new Int8Array(n).fill(2);
     this.owner = new Int32Array(n).fill(-1);
     this.role = new Uint8Array(n);
+    this.placed = new Uint8Array(n);
     this.nodeOwner = new Int32Array(n).fill(-1);
     this.nodeKey = new Int32Array(n).fill(-1);
     reg.defs.forEach((d, kind) => {
@@ -69,6 +74,7 @@ export class BuildSounds {
         this.tier[kind] = t >= 0 ? t : 2;
         this.owner[kind] = ownerOf(d.id);
         this.role[kind] = reg.opens[kind] !== 0 ? 1 : reg.lights[kind] !== 0 ? 2 : 0;
+        if ((d as { class?: string }).class === "static") this.placed[kind] = 1;
       } else if (d.type === "node") {
         const m = (d as { material?: string }).material;
         this.nodeOwner[kind] = ownerOf(d.id);
@@ -126,7 +132,7 @@ export class BuildSounds {
     if (kind === 0) {
       const o = this.owner[was]!;
       const t = this.tier[was]!;
-      if (cause === GONE_DESTROYED) hear(o, DESTROY[t]!, -1, x, y, z, 0.5, 1, false);
+      if (cause === GONE_DESTROYED || cause === GONE_BLAST) hear(o, DESTROY[t]!, -1, x, y, z, 0.5, 1, false);
       else if (cause === GONE_FELL) hear(o, K.collapse, -1, x, y, z, 0.5, 0.7, false);
       else if (cause === GONE_TAKEN) hear(o, K.demolish, -1, x, y, z, 0.5, 0.9, false);
       return;
@@ -147,10 +153,13 @@ export class BuildSounds {
       } else if (reg.lights[was] === kind) {
         const lit = reg.burning[kind] === 1;
         hear(o, lit ? K.light : K.out, -1, x, y, z, 0.2, 1, false);
+      } else if (reg.breakSet[kind] !== 0 && reg.breakSet[kind] === reg.breakSet[was]) {
+        // A city piece took a broken form.
+        hear(o, HIT[t]!, -1, x, y, z, 0.5, CITY_GAIN, false);
       }
       return;
     }
-    if (hp < hpWas) hear(o, HIT[t]!, -1, x, y, z, 0.5, Math.min(1, 0.5 + (hpWas - hp) / Math.max(1, reg.maxHp[kind]!) * 4), false);
+    if (hp < hpWas) hear(o, HIT[t]!, -1, x, y, z, 0.5, this.placed[kind] === 1 ? CITY_GAIN : Math.min(1, 0.5 + (hpWas - hp) / Math.max(1, reg.maxHp[kind]!) * 4), false);
     else if (hp > hpWas) hear(o, K.repair, -1, x, y, z, 0.5, 0.8, false);
   }
 

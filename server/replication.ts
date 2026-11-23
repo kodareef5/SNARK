@@ -12,7 +12,7 @@ import { packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide }
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
 import { F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
-import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
+import { GONE_BLAST, GONE_TAKEN, RECENT, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import type { Client, GameOptions, GameStats } from "./game.ts";
@@ -461,9 +461,10 @@ export class Replication {
   }
 
   /**
-   * Collects into `changed` the slots of `t` changed since version `from`, from its log, in ascending order, each times 2
-   * plus 1 where one of those changes moved, made or emptied it. Returns how many, or -1 if the log does not reach back
-   * that far or holds more than `most`.
+   * Collects into `changed` the slots of `t` changed since version `from`, from its log, in ascending order, each times 8
+   * plus what those changes did: TOUCH_MOVED where one moved, made or emptied it, TOUCH_KIND where one gave it another
+   * kind in place. With `byRemoval`, a slot is left out that is now empty, or whose every change was a batch leaving its
+   * heap: the batches say those. Returns how many, or -1 if the log does not reach back that far or holds more than `most`.
    */
   private changedSince(t: ChunkTable, from: number, byRemoval: boolean, most: number): number {
     const slots = t.recentSlot;
@@ -477,28 +478,36 @@ export class Replication {
       if (vers[at]! <= from) break;
       const slot = slots[at]!;
       if (byRemoval && t.kind[slot] === 0) continue;
-      changed[n++] = slot * 2 + shaped[at]!;
+      // The third bit is turned over, so that it stays clear only where every change was a batch's.
+      changed[n++] = slot * 8 + (shaped[at]! ^ TOUCH_LEFT);
     }
     changed.subarray(0, n).sort();
     // A slot changed twice is sent once, and in place only if neither change moved it.
     let m = 0;
     for (let i = 0; i < n; i++) {
-      if (m > 0 && changed[m - 1]! >> 1 === changed[i]! >> 1) changed[m - 1] = changed[m - 1]! | changed[i]!;
-      else if (m === most) return -1;
-      else changed[m++] = changed[i]!;
+      if (m > 0 && changed[m - 1]! >> 3 === changed[i]! >> 3) changed[m - 1] = changed[m - 1]! | changed[i]!;
+      else {
+        if (m > 0 && byRemoval && (changed[m - 1]! & TOUCH_LEFT) === 0) m--;
+        if (m === most) return -1;
+        changed[m++] = changed[i]!;
+      }
     }
+    if (m > 0 && byRemoval && (changed[m - 1]! & TOUCH_LEFT) === 0) m--;
     return m;
   }
 
-  /** A row of a chunk message (CHUNK in shared/net/protocol.ts). In place, only its owner and health. */
-  private row(w: BitWriter, t: ChunkTable, s: number, x0: number, z0: number, inPlace: boolean): void {
+  /** A row of a chunk message (CHUNK in shared/net/protocol.ts). In place, only its owner and health, and its kind if `swapped`. */
+  private row(w: BitWriter, t: ChunkTable, s: number, x0: number, z0: number, inPlace: boolean, swapped = false): void {
     const gap = s - this.rowSlot - 1;
     this.rowSlot = s;
     w.bool(gap === 0);
     if (gap !== 0) w.varint(gap - 1);
     w.bool(inPlace);
     const kind = s < t.high ? t.kind[s]! : 0;
-    if (!inPlace) {
+    if (inPlace) {
+      w.bool(swapped);
+      if (swapped) this.kinds.write(w, kind, 16);
+    } else {
       this.kinds.write(w, kind, 16);
       if (kind === 0) return;
       w.bits(Math.round((t.x[s]! - x0) * STRUCT_UNITS), 15);
@@ -513,6 +522,17 @@ export class Replication {
     const full = t.hp[s] === this.world.reg.maxHp[kind];
     w.bool(full);
     if (!full) w.f32(t.hp[s]!);
+  }
+
+  /** Runs of slots, each coded from where the one before ended. */
+  private runs(w: BitWriter, runs: readonly number[]): void {
+    w.varint(runs.length / 2);
+    let last = 0;
+    for (let k = 0; k < runs.length; k += 2) {
+      w.svarint(runs[k]! - last);
+      w.varint(runs[k + 1]! - 1);
+      last = runs[k]! + runs[k + 1]!;
+    }
   }
 
   /** Returns the budget left, or 0 if the chunk is unfinished. */
@@ -561,7 +581,7 @@ export class Replication {
     // A client a few changes behind is sent those from the chunk's log. Otherwise every slot is looked at.
     const logged = cursor === 0 && !filling ? this.changedSince(t, from, byRemoval, budget) : -1;
     if (logged >= 0) {
-      for (; rows < logged; rows++) this.row(w, t, this.changed[rows]! >> 1, x0, z0, (this.changed[rows]! & 1) === 0);
+      for (; rows < logged; rows++) this.row(w, t, this.changed[rows]! >> 3, x0, z0, (this.changed[rows]! & TOUCH_MOVED) === 0, (this.changed[rows]! & TOUCH_KIND) !== 0);
       count = rows;
     } else {
       // Rows stop where another might not fit, with a byte left for the count of removals.
@@ -579,8 +599,9 @@ export class Replication {
           }
           s = list[k++]!;
           count++;
-          // The client has just set this slot down from its map, so a piece of the map's kind is told by owner and health alone.
-          this.row(w, t, s, x0, z0, t.kind[s] !== 0 && t.kind[s] === this.world.structs.mapKind(chunk, s));
+          // The client has just set this slot down from its map, so a piece there is told in place: by owner and health,
+          // and by its kind where that is no longer the map's (a broken form, a heap).
+          this.row(w, t, s, x0, z0, t.kind[s] !== 0, t.kind[s] !== this.world.structs.mapKind(chunk, s));
           s++;
           rows++;
         }
@@ -619,16 +640,17 @@ export class Replication {
           w.f32(g.z);
           w.u32(g.stamp);
         }
-        // Each run is coded from where the one before ended.
-        w.varint(g.runs.length / 2);
-        let last = 0;
-        for (let k = 0; k < g.runs.length; k += 2) {
-          w.svarint(g.runs[k]! - last);
-          w.varint(g.runs[k + 1]! - 1);
-          last = g.runs[k]! + g.runs[k + 1]!;
+        if (cause === GONE_BLAST) w.u8(Math.min(255, Math.round(g.radius * 4)));
+        // The slots that took their heaps come first where there are any, then those emptied if there are those too.
+        const leaves = g.left.length > 0;
+        w.bool(leaves);
+        if (leaves) {
+          this.runs(w, g.left);
+          w.bool(g.runs.length > 0);
         }
+        if (!leaves || g.runs.length > 0) this.runs(w, g.runs);
         removals++;
-        count += g.runs.length / 2;
+        count += (g.runs.length + g.left.length) / 2;
       }
     }
     if (w.overflow) {

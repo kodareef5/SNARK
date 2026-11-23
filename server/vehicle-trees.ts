@@ -1,5 +1,6 @@
 // Native vehicle impacts spend kinetic energy to fracture wood nodes. The resource lifecycle owns every disappearance.
 // A street lamp or pole hit as hard falls the same way: the same account, then its fallen kind swapped in where it stood.
+// A city piece is rammed through by the same account: its panes, then one half, at its material's energy (server/city-breaks.ts).
 import { STREET_TOPPLES } from "../content/street.ts";
 import { CHUNK_SIZE, TICK_DT } from "../shared/coords.ts";
 import { Body } from "../shared/sim/character.ts";
@@ -8,6 +9,8 @@ import { applyVehicleImpulse, vehicleMassProperties, vehiclePointInverseMass, ve
 import { TreeFracture } from "../shared/sim/vehicle-tree.ts";
 import { isWheelVehicle, type VehicleContact, type VehicleSpec, type VehicleState } from "../shared/sim/vehicle.ts";
 import { StaticVehicleWorld } from "../shared/world/vehicle.ts";
+import type { CityBreaks } from "./city-breaks.ts";
+import type { EntityRecord } from "./records.ts";
 import { VehicleNodeCache } from "./vehicle-node-cache.ts";
 import type { Harvest } from "./harvest.ts";
 import type { ServerWorld } from "./world.ts";
@@ -25,8 +28,12 @@ export class VehicleTrees extends StaticVehicleWorld {
   /** A street piece a car can knock down, by its kind: the kind it falls as and the work its foot takes. */
   private readonly topples = new Map<number, { into: number; work: number }>();
   private readonly point = new Float64Array(3);
-  constructor(authority: ServerWorld, harvest: Harvest) {
+  /** What a city piece does when rammed, and who drives the car being stepped (null for one that rolls by itself). */
+  private readonly city: CityBreaks | null;
+  private readonly driver: () => EntityRecord | null;
+  constructor(authority: ServerWorld, harvest: Harvest, city: CityBreaks | null = null, driver: () => EntityRecord | null = () => null) {
     super(authority); this.authority = authority; this.harvest = harvest; this.fracture = new TreeFracture(authority.reg, harvest.field.forms);
+    this.city = city; this.driver = driver;
     this.nodes = new VehicleNodeCache(harvest.field.source);
     for (const [from, t] of Object.entries(STREET_TOPPLES)) {
       const a = authority.reg.index.get(from), b = authority.reg.index.get(t.into);
@@ -70,20 +77,26 @@ export class VehicleTrees extends StaticVehicleWorld {
     return this.fracture.apply(state, spec, hit, form, impulse);
   }
 
-  /** A lamp or a pole hit hard enough falls: its foot's work out of the impact as a trunk's, then its fallen kind in its place. */
+  /**
+   * A lamp or a pole hit hard enough falls: its foot's work out of the impact as a trunk's, then its fallen kind in its
+   * place. A city piece takes what ramming through it takes, if the impact has it, and is breached or opened.
+   */
   private topple(state: VehicleState, spec: VehicleSpec, hit: VehicleContact): number | null {
     if (hit.x === undefined || hit.y === undefined || hit.z === undefined) return null;
     const ref = Number(hit.reason.slice(10)), structs = this.authority.structs;
     const t = this.topples.get(structs.chunks[Math.floor(ref / 65536)]?.kind[ref & 65535] ?? 0);
-    if (!t) return null;
+    const city = t ? null : this.city;
+    if (!t && !city) return null;
     vehiclePointVelocity(state, spec, hit.x, hit.y, hit.z, this.point);
     const closing = -(this.point[0]! * hit.nx + this.point[1]! * hit.ny + this.point[2]! * hit.nz);
     if (!(closing >= TOPPLE_CLOSING)) return null;
     const inverseMass = vehiclePointInverseMass(state, spec, hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz);
     const mass = vehicleMassProperties(spec, state).mass, curb = mass - Math.max(0, state.payloadMass);
     const usable = curb + Math.min(Math.max(0, state.payloadMass), curb * TOPPLE_PAYLOAD);
-    const fraction = t.work / (.5 * closing * closing / (inverseMass * mass / usable));
-    if (!(fraction <= 1) || !structs.swap(ref, t.into)) return null;
+    const energy = .5 * closing * closing / (inverseMass * mass / usable);
+    const work = t ? t.work : city!.ram(this.driver(), ref, energy, hit.x, hit.y, hit.z);
+    const fraction = work / energy;
+    if (!(work > 0) || !(fraction <= 1) || (t && !structs.swap(ref, t.into))) return null;
     const after = closing * Math.sqrt(Math.max(0, (1 - fraction) * (1 - TOPPLE_DEFORMATION)));
     const impulse = (closing - after) / inverseMass;
     applyVehicleImpulse(state, spec, hit.x, hit.y, hit.z, hit.nx * impulse, hit.ny * impulse, hit.nz * impulse);

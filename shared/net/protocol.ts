@@ -26,14 +26,18 @@
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits; to a client that takes statics, for
 //                            a chunk that holds map statics, from the map 1 bit, and if set first slot u16 and count
 //                            u16 of the slots it takes as the map has them; rows, in ascending slots; then removals:
-//                            count u8, and per removal: versions back varint, cause 2 bits (taken, destroyed, fell),
-//                            unless taken where it began (3 x f32) and when (tick u32), then runs of slots: count
-//                            varint, and per run: first slot minus the end of the run before svarint, length-1
-//                            varint. Slots from the map are set first, then rows, then removals. A removal leaves
-//                            alone any row newer than itself. A row for a slot just taken from the map is in place
-//                            where the slot still holds the map's kind.
+//                            count u8, and per removal: versions back varint, cause 2 bits (taken, destroyed, fell,
+//                            blast), unless taken where it began (3 x f32) and when (tick u32), for a blast its
+//                            reach u8 (quarter metres), leaves 1 bit, then runs of slots: count varint, and per
+//                            run: first slot minus the end of the run before svarint, length-1 varint. With leaves
+//                            set those slots take their heap's kind where they stood (heapAt, at heapHealth) in
+//                            place of emptying; 1 bit follows, set if runs of emptied slots follow too. Slots from
+//                            the map are set first, then rows, then removals. A removal leaves alone any row newer
+//                            than itself. A row for a slot just taken from the map is in place where a piece
+//                            still stands in it.
 //                            A row: 1 bit set if its slot follows the last row's, else the gap less one varint; in
-//                            place 1 bit, then owner (named varint) and health; else kind (named u16, 0 for an empty
+//                            place 1 bit, then kind changed 1 bit and if set its kind (named u16), then owner
+//                            (named varint) and health; else kind (named u16, 0 for an empty
 //                            slot, which ends the row), x and z 15 bits each (1/512 m from the chunk's corner),
 //                            height 1 bit set if it is the last full row's, else svarint from it (1/512 m, from 0
 //                            for the first), yaw (named u16), owner (named varint), health. Health is 1 bit set for

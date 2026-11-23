@@ -31,8 +31,10 @@ import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
 import { capsuleHull, hullPush } from "../shared/world/convex.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
+import { isHeap } from "../shared/world/breaking.ts";
 import { Found } from "../shared/world/structures.ts";
 import type { Buffs } from "./buffs.ts";
+import { CityBreaks } from "./city-breaks.ts";
 import type { Corpses } from "./corpses.ts";
 import type { Creatures } from "./creatures.ts";
 import { V_HEALTH, V_TORPOR } from "../shared/sim/vitals.ts";
@@ -54,6 +56,8 @@ import { event, type Bus } from "./events/bus.ts";
 import { Signal } from "./signal.ts";
 
 const CHUNK_METRES = 64;
+/** Metres a structure may stand above or below a blast before the storeys between shield it. */
+const STOREY_CLEAR = 2;
 /** Metres. A swing also casts rays this far off its aim, to each side and above and below. */
 const SWING_WIDTH = 0.14;
 /** At most this many bodies near a ray are posed. */
@@ -237,6 +241,8 @@ export class Combat {
   /** The pose a survivor knocked down lay in at a tick, to be hit as it lay (server/falls.ts); null for none. The host sets it. */
   downPose: (e: number, tick: number) => Solved | null = () => null;
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
+  /** What harm does to a city piece, which this hands every hit on one. */
+  readonly city: CityBreaks;
   private readonly inBlast = new Found(256);
   private readonly found: number[] = [];
   private readonly share: number[] = [];
@@ -258,6 +264,8 @@ export class Combat {
     this.occupant = new OccupantBody(ctx.rigs);
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
+    this.city = new CityBreaks({ world: ctx.world, rules: ctx.rules, items: ctx.items, progression: ctx.progression, survivor: this.survivor,
+      spared: (by, team, type) => this.spared(by, team, type, false), rider: (by) => this.riderOf?.(by) ?? null });
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
     this.vehicleReach = Float32Array.from(reg.vehicle, (vehicle, kind) => {
       if (!vehicle) return 0;
@@ -1240,12 +1248,15 @@ export class Combat {
 
   /** `src`, times `share`, lands on the structure `ref` at (x, y, z). Returns the damage done. */
   hitStructure(src: Source, ref: number, x: number, y: number, z: number, share = 1): number {
-    const { world, buffs, game } = this.ctx;
+    const { world, buffs, game, rules } = this.ctx;
     const structs = world.structs;
     const t = structs.chunks[Math.floor(ref / 65536)];
     const slot = ref & 0xffff;
     if (!t || slot >= t.high || t.kind[slot] === 0) return 0;
-    const takes = world.reg.structTakes[t.kind[slot]!];
+    // A city piece is of the kind the map placed, whatever form it has taken, and the city's own rules judge the hit.
+    const city = this.city;
+    const placed = city.kindOf(ref);
+    const takes = world.reg.structTakes[placed !== 0 ? placed : t.kind[slot]!];
     if (!takes) return 0;
     resetHit();
     hit.base = src.base * share;
@@ -1254,23 +1265,38 @@ export class Combat {
     hit.draw = src.draw;
     hit.far = src.far ?? 1;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) * (this.damageModifier?.(src.by) ?? 1) : 1);
-    hit.takes = takes[src.type]!;
+    hit.takes = placed !== 0 ? 1 : takes[src.type]!;
     // The weapon's own factor against what is built (D435): the grenade's 175 to a body is the Table of explosives' 788 to wood.
     hit.structures = world.reg.structureMul[src.item] ?? 1;
-    // A structure is spared as its owning tribe would be.
-    hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * this.ctx.rules.num("StructureResistanceMultiplier");
+    // A structure is spared as its owning tribe would be, and a city piece as a tribe's that stands near it. A heap is anyone's to mine.
+    const mined = placed !== 0 && src.type === DMG_MELEE && isHeap(world.reg, t.kind[slot]!);
+    if (placed !== 0) hit.rule = city.capped(src.by) || (!mined && city.spares(src.by, ref, placed, src.type)) ? 0 : (this.dealt(src.by) * rules.num("StructureResistanceMultiplier")) / rules.num("CityResistanceMultiplier");
+    else hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * rules.num("StructureResistanceMultiplier");
     const bus = this.ctx.bus;
     const [kind, owner] = [world.reg.ids[t.kind[slot]!]!, t.owner[slot]!];
     if (bus.n[DAMAGE] !== 0 && hit.rule !== 0) hit.rule *= this.asked("structure", ref, kind, owner, src.by, src.item, src.type, ZONE_NONE);
     resolveDamage();
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;
-    const left = structs.damage(ref, harm.health, world.tick);
-    if (bus.n[DAMAGED] !== 0) {
-      bus.after(DAMAGED, { target: "structure", victim: ref, kind, team: owner, byPid: src.by ? src.by.pid : 0, byTeam: src.by ? src.by.team : 0, item: src.item !== 0 ? world.reg.ids[src.item]! : "", type: TYPE_WORDS[src.type]!, zone: ZONE_NONE, taken: left === 0 ? before : harm.health, blocked: 0, killed: left === 0, left });
+    let left: number;
+    let done: number;
+    if (placed !== 0) {
+      done = city.hit(src.by, ref, placed, harm.health, src.type, src.item, x, y, z);
+      if (!(done > 0)) return 0;
+      left = city.left;
+    } else if (city.held && !(before - harm.health > 0)) {
+      // A blast's dead go together, from its centre.
+      city.destroyed(ref);
+      left = 0;
+      done = before;
+    } else {
+      left = structs.damage(ref, harm.health, world.tick);
+      done = left === 0 ? before : harm.health;
     }
-    if (left > 0) this.onStructureHurt.emit(ref);
-    const done = left === 0 ? before : harm.health;
+    if (bus.n[DAMAGED] !== 0) {
+      bus.after(DAMAGED, { target: "structure", victim: ref, kind, team: owner, byPid: src.by ? src.by.pid : 0, byTeam: src.by ? src.by.team : 0, item: src.item !== 0 ? world.reg.ids[src.item]! : "", type: TYPE_WORDS[src.type]!, zone: ZONE_NONE, taken: done, blocked: 0, killed: left === 0, left });
+    }
+    if (left > 0 && placed === 0) this.onStructureHurt.emit(ref);
     this.structureHits++;
     this.lastStructure.ref = ref;
     this.lastStructure.damage = done;
@@ -1294,7 +1320,9 @@ export class Combat {
   /**
    * Every body within `radius` of (x, y, z) that has a clear line to it, and every structure within `radius`, takes
    * `src`, in full within a metre and fading to nothing at the edge. `direct` is a body a round that went off struck straight
-   * on, which takes the blast in full wherever on it the round met it (weapons-plan.md, M8), or -1.
+   * on, which takes the blast in full wherever on it the round met it (weapons-plan.md, M8), or -1. A structure is shielded
+   * by the storeys between: what it stands above or below the blast past STOREY_CLEAR counts twice. What the blast destroys
+   * goes together, as one batch a chunk that began at its centre.
    */
   blast(src: Source, x: number, y: number, z: number, radius: number, direct = -1): void {
     const world = this.ctx.world;
@@ -1369,16 +1397,23 @@ export class Combat {
         // With no radius, a part's push is the way from the blast to its nearest point, and deeper than 0 inside it.
         for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) if (capsuleHull(hulls, p, t.yaw[slot]!, px, pz, ly, ly, 0, far)) far = Math.max(0, -hullPush.depth);
       } else far = fromBox(lx, ly, lz, structs.halfXOf(kind), structs.halfYOf(kind), structs.halfZOf(kind));
+      // Its nearest point's height from the blast, past what one storey clears, is as far again.
+      const up = Math.abs(ly) - structs.halfYOf(kind) - STOREY_CLEAR;
+      if (up > 0) far += up;
       if (far >= radius) continue;
       found.push(ref);
       share.push(fade(far));
     }
+    this.city.gather();
     for (let k = 0; k < found.length; k++) {
       const ref = found[k]!;
       const t = structs.chunks[Math.floor(ref / 65536)]!;
       const slot = ref & 0xffff;
-      this.hitStructure(src, ref, t.x[slot]!, t.y[slot]!, t.z[slot]!, share[k]!);
+      // A city piece is breached in the half the blast's centre is nearest.
+      const city = t.owner[slot] === 0 && slot < t.mapped;
+      this.hitStructure(src, ref, city ? x : t.x[slot]!, city ? y : t.y[slot]!, city ? z : t.z[slot]!, share[k]!);
     }
+    this.city.settle(x, y, z, radius);
   }
 
   /** The blow being landed, for whoever is told of a death it causes. `victim` is 0 when none is. */
