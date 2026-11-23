@@ -3,10 +3,10 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { Characters, type VehicleSeatPose } from "../../client/core/render/characters.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_FOOT_R, B_PROP_L, B_PROP_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
-import { B_HEAD, ZONE_HEAD, ZONE_TORSO } from "../../shared/anim/human.ts";
+import { B_HEAD, ZONE_HEAD } from "../../shared/anim/human.ts";
 import { defaultLook, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
 import { createOccupantSeat, OccupantBody, occupantSeat, poseSeated, seatOrigin } from "../../shared/anim/occupant.ts";
-import { AnimState, HumanAnim } from "../../shared/anim/pose.ts";
+import { AnimState, HumanAnim, PITCH_STEPS } from "../../shared/anim/pose.ts";
 import { footClearance, HEAD_MARGIN, headClearance, HIPS_DROP, RECLINE_MOST, seatFit } from "../../shared/anim/seat-fit.ts";
 import { boneToModel, rayZones, Solved } from "../../shared/anim/skeleton.ts";
 import { quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
@@ -123,16 +123,17 @@ test("a seated look's drawn head sits on the head that is shot, under its roof",
   expect(tried).toBeGreaterThan(1000);
 });
 
-test("a shot through the core of a seated look's drawn head is a head shot on the server", () => {
-  /** Side rays through the drawn head within `share` of its reach: how many the drawn body takes on its head and the server on its torso. */
-  const lost = (def: VehicleDefinition, seat: Seat, body: (typeof looks)[number], gaze: number, action: number, share: number): { rays: number; lost: number } => {
+test("a ray through a seated drawn head's middle picks the zone on the server it picks drawn", () => {
+  /** Side rays through the drawn head within `share` of its reach: how many the drawn body and the server differ on, head or not. */
+  const differ = (def: VehicleDefinition, seat: Seat, body: (typeof looks)[number], gaze: number, pitch: number, action: number, share: number): { rays: number; differ: number; lost: number } => {
     const sp = seated(def, seat, frame.yaw + gaze), st = state(action);
+    st.pitch = Math.round((pitch / 90) * PITCH_STEPS);
     server.vehicle(anim, st, 30, sp, judged);
     const drawn = drawnSeated(sp, st, body.rest, body.scale), c = world(middle(drawn.solved, body.scale), drawn.rotation, drawn.origin);
     const s = (a: number): number => (body.scale ? body.scale[B_HEAD * 3 + a]! : 1), r = HUMAN.capR[B_HEAD]! * Math.max(s(0), s(1), s(2)) * share;
     const axis = (x: number, y: number, z: number): number[] => { const o = new Float64Array(3); quatRotate(drawn.rotation, 0, x, y, z, o, 0); return [...o]; };
     const across = axis(1, 0, 0), up = axis(0, 1, 0), fore = axis(0, 0, 1), local = new Float64Array(3), dir = new Float64Array(3);
-    let rays = 0, count = 0;
+    let rays = 0, count = 0, lost = 0;
     for (const way of [1, -1]) for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
       if (a * a + b * b > 4) continue;
       const p = [0, 1, 2].map((k) => c[k]! + (up[k]! * a + fore[k]! * b) * (r / 2) - across[k]! * way * 3);
@@ -142,9 +143,10 @@ test("a shot through the core of a seated look's drawn head is a head shot on th
       quatUnrotate(drawn.rotation, 0, d[0]!, d[1]!, d[2]!, dir, 0);
       const atDrawn = rayZones(HUMAN, drawn.solved, local[0]!, local[1]!, local[2]!, dir[0]!, dir[1]!, dir[2]!, 10);
       rays++;
-      if (atDrawn === ZONE_HEAD && atServer === ZONE_TORSO) count++;
+      if ((atDrawn === ZONE_HEAD) !== (atServer === ZONE_HEAD)) count++;
+      if (atDrawn === ZONE_HEAD && atServer !== ZONE_HEAD) lost++;
     }
-    return { rays, lost: count };
+    return { rays, differ: count, lost };
   };
   // The case a review found: the smallest woman in the Berlinetta's passenger seat, looking far aside either way.
   const berlinetta = enclosed().find((e) => e.id === "core:berlinetta" && e.seat.id === "passenger")!;
@@ -156,16 +158,21 @@ test("a shot through the core of a seated look's drawn head is a head shot on th
     const side = new Float64Array(3);
     quatRotate(drawn.rotation, 0, 1, 0, 0, side, 0);
     for (const way of [1, -1]) expect(server.ray(c[0]! - side[0]! * way * 3, c[1]! - side[1]! * way * 3, c[2]! - side[2]! * way * 3, side[0]! * way, side[1]! * way, side[2]! * way, 10), `${gaze} ${way}`).toBe(ZONE_HEAD);
-    expect(lost(berlinetta.def, berlinetta.seat, smallest, (gaze * Math.PI) / 180, 0, 0.3).lost).toBe(0);
+    const got = differ(berlinetta.def, berlinetta.seat, smallest, (gaze * Math.PI) / 180, 0, 0, 0.3);
+    expect(got.lost).toBe(0);
   }
-  // Over every seat, look, gaze and hold: none for a rig's own look, and next to none for any.
-  let rays = 0, count = 0;
-  for (const { def, seat } of enclosed()) for (const body of looks) for (const gaze of gazes) for (const action of [0, holds[2]!]) {
-    const got = lost(def, seat, body, gaze, action, 0.3);
-    if (body.scale === null) expect(got.lost, `${def.id} ${seat.id} ${body.name}`).toBe(0);
-    rays += got.rays; count += got.lost;
+  // Over every seat, look, gaze, look up or down and hold: none for the hit body's own look. For others, an arm raised
+  // to aim crosses the face where its own arms put it.
+  let rays = 0, count = 0, lost = 0;
+  for (const { def, seat } of enclosed()) for (const body of looks) for (const gaze of gazes) for (const pitch of [-60, 0, 60]) for (const action of holds) {
+    const got = differ(def, seat, body, gaze, pitch, action, 0.3);
+    if (body.name === "human_m default") expect(got.differ, `${def.id} ${seat.id} ${gaze} ${pitch} ${action}`).toBe(0);
+    rays += got.rays; count += got.differ; lost += got.lost;
   }
-  expect(count / rays).toBeLessThan(0.001);
+  expect(rays).toBeGreaterThan(300000);
+  expect(count / rays).toBeLessThan(0.02);
+  // A head shot through what is drawn lost on the server: rarer still.
+  expect(lost / rays).toBeLessThan(0.01);
 });
 
 test("Zephyr and Veloce seats fit a default body under the roof and on the floor", () => {
