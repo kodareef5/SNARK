@@ -1135,7 +1135,7 @@ export class NearStore implements Pass {
     }
     if (this.blockAt.length < t.high) this.blockAt = new Uint8Array(Math.max(t.high, this.blockAt.length * 2));
     const rooms = sizeOf === null ? (old?.rooms ?? new Rooms()) : null;
-    const inside = rooms !== null && this.finder.find(t, x0, z0, rooms);
+    const inside = rooms !== null && this.finder.find(t, x0, z0, rooms, store.frames);
     const blocks = inside ? cells * 2 : cells;
     const shell = rooms?.shell, blockAt = this.blockAt;
     const counts = this.cellCounts.fill(0, 0, this.meshCount * blocks);
