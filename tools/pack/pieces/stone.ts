@@ -2167,6 +2167,478 @@ function gate(form: FormDef, level: number): Build | null {
   return b;
 }
 
+// Floors on any outline: the floor's flags cut to the piece, and a plinth of battered stones between corner blocks.
+
+/** A flat form's outline about its collider's origin, as (x, z). */
+const planXZ = (form: FormDef): P2[] => form.outline.map(([u, v]): P2 => [u - form.at[0], v - form.at[2]]);
+/** A convex outline's sides for clip2, each moved in by `by`. */
+const sidesIn = (poly: readonly P2[], by: number): Half2[] => sidesOf(poly).map(([a, c, d]) => [a, c, d - by * Math.hypot(a, c)] as const);
+/** Sides given in the piece's (x, z) as sides on a level frame whose u is x and v is z. */
+const onLevel = (frame: Frame, sides: readonly Half2[]): Half2[] => sides.map(([a, c, d]) => [a, c, d - a * frame.o[0] - c * frame.o[2]] as const);
+const middle2 = (poly: readonly P2[]): P2 => [poly.reduce((sum, q) => sum + q[0], 0) / poly.length, poly.reduce((sum, q) => sum + q[1], 0) / poly.length];
+
+/** The frame the floor's flags are laid on over an outline: the pattern from the outline's least corner, and from its middle row for a piece half a side across. */
+function flagFrame(plan: readonly P2[], bed: number): Frame {
+  const [x0, , z0, z1] = box2(plan);
+  return new Frame([x0, bed, z1 - z0 < H + 1e-6 ? z0 - H : z0], [1, 0, 0], [0, 0, 1], [0, 1, 0]);
+}
+
+/**
+ * The floor's flags on a frame, each cut to every region it reaches and to `planes`: a flag at the piece's edge is a
+ * cut flag, and the picture runs on to the cut. `tilesV` lays the pattern again past its far edge.
+ */
+function layFlags(b: Build, frame: Frame, regions: readonly (readonly Half2[])[], planes: readonly Plane[] = [], whole: readonly P2[] = WHOLE, tilesV = 1): void {
+  for (let j = 0; j < tilesV; j++) {
+    const at = new Frame(frame.at(0, j * TILE), frame.u, frame.v, frame.n);
+    for (const s of flagStones()) {
+      const r = rng("flag rise", s.name);
+      const rise = r.uniform(0.009, 0.012);
+      const look: Look = { rise: [0, 1, 2, 3].map(() => rise - r.uniform(0, 0.0015)), bevel: [0, 1, 2, 3].map(() => r.uniform(FLAG_BEVEL[0], FLAG_BEVEL[1])), crown: 0, at: [0.5, 0.5] };
+      const [base, face] = whole === WHOLE ? [WHOLE, WHOLE] : breaksOf(s, FLAG_NOTCH, FLAG_NOTCH);
+      for (const region of regions) {
+        let sides = stoneSides(at, s.footprint, base, face, look);
+        for (const plane of [...planesOn(at, region.map(([a, c, d]) => [a, c, d - c * j * TILE] as const)), ...planes]) sides = clipSolid(sides, plane);
+        // The footprint is the first face: a remnant a hand across is not laid.
+        if (sides.length >= 4 && Math.abs(area2(sides[0]!.pts.map((q) => at.on(q)))) > 0.006) b.convex(sides, "flags", on(at), true);
+      }
+    }
+  }
+}
+
+/** A corner block of a plinth: its outline at its foot and its head, how far it reaches along each of its two sides, and the stone each outer face wears. */
+interface PlinthCorner {
+  foot: P2[];
+  head: P2[];
+  y1: number;
+  /** Along the side that leaves the corner, and along the one that comes to it. */
+  reach: [number, number];
+  uvOf: (n: Vec) => UvMap;
+}
+
+/** A plinth round a convex outline: a block at each corner, a little proud and battered, and stones between them on each side. */
+function plinthRound(plan: readonly P2[], bottomY: number, bed: number, key: string): { corners: PlinthCorner[]; sides: PlinthSide2[] } {
+  const n = plan.length;
+  const mid = middle2(plan);
+  const dir = (a: P2, c: P2): P2 => {
+    const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    return [(c[0] - a[0]) / l, (c[1] - a[1]) / l];
+  };
+  /** The way out of the outline across the side from corner k. */
+  const outOf = (k: number): P2 => {
+    const [a, c] = [plan[k]!, plan[(k + 1) % n]!];
+    const d = dir(a, c);
+    const o: P2 = [d[1], -d[0]];
+    return (a[0] - mid[0]) * o[0] + (a[1] - mid[1]) * o[1] > 0 ? o : [-o[0], -o[1]];
+  };
+  const corners = plan.map((c, k): PlinthCorner => {
+    const g = rng("corner", key, k);
+    const [next, prev] = [plan[(k + 1) % n]!, plan[(k + n - 1) % n]!];
+    const [dn, dp] = [dir(c, next), dir(c, prev)];
+    // No longer than a third of its side.
+    const long = (to: P2): number => Math.min(g.uniform(0.44, 0.62), Math.hypot(to[0] - c[0], to[1] - c[1]) * 0.3);
+    const [a, e, proud, cut] = [long(next), long(prev), g.uniform(0.004, 0.014), g.uniform(0.015, 0.03)];
+    const y1 = bed - g.uniform(0.003, 0.008);
+    const [on, op] = [outOf(k), outOf((k + n - 1) % n)];
+    const deep = 0.16;
+    // The corner, along each side, and in from each: its inner ends are square to the faces the next stones lie on.
+    const ring = (by: number): P2[] => {
+      const at = (along: P2, t: number, out: P2, w: number): P2 => [c[0] + along[0] * t + out[0] * w, c[1] + along[1] * t + out[1] * w];
+      return [at(dn, cut, on, by), at(dn, a, on, by), at(dn, a, on, -deep), at(dp, e, op, -deep), at(dp, e, op, by), at(dp, cut, op, by)];
+    };
+    const [foot, head] = [ring(proud + 0.014), ring(proud - 0.004)];
+    const origin: Vec = [c[0], y1, c[1]];
+    const faces: Faced = [on, op].map((o) => {
+      const [nrm, ua]: [Vec, Vec] = [[o[0], 0, o[1]], [o[1], 0, -o[0]]];
+      const proj = [...foot, ...head].map(([px, pz]) => (px - origin[0]) * ua[0] + (pz - origin[2]) * ua[2]);
+      return [nrm, ua, [0, -1, 0] as Vec, [...span(proj), 0, y1 - bottomY]] as const;
+    });
+    return { foot, head, y1, reach: [a, e], uvOf: stoneFaced(origin, faces, ["corner", key, k]) };
+  });
+  const sides = plan.map((c, k): PlinthSide2 => {
+    const next = plan[(k + 1) % n]!;
+    const o = outOf(k);
+    const [nrm, ua]: [Vec, Vec] = [[o[0], 0, o[1]], [o[1], 0, -o[0]]];
+    // The side's left end as it is seen from outside.
+    const first = (next[0] - c[0]) * ua[0] + (next[1] - c[1]) * ua[2] > 0;
+    const [e0, start, end] = first ? [c, corners[k]!.reach[0], corners[(k + 1) % n]!.reach[1]] : [next, corners[(k + 1) % n]!.reach[1], corners[k]!.reach[0]];
+    const length = Math.hypot(next[0] - c[0], next[1] - c[1]);
+    const frame = new Frame([e0[0] - o[0] * PD, bed, e0[1] - o[1] * PD], ua, [0, -1, 0], nrm, [0, 0.1 + 0.2 * k]);
+    const g = rng("plinth", key, k);
+    const count = Math.max(1, Math.round((length - start - end) / 0.72));
+    const cuts = [start, ...Array.from({ length: count - 1 }, (_, i) => start + ((length - start - end) * (i + 1 + g.uniform(-0.15, 0.15))) / count), length - end];
+    const stones = cuts.slice(1).map((u, i): PlinthStone => {
+      const stone = shaped({ course: 0, name: `plinth ${key} ${k} ${i}`, quad: cell(cuts[i]!, u, 0, bed - bottomY) }, [0.004, 0.012], [0.012, 0.045], [0.04, 0.07], 0.25);
+      const r = rng("plinth face", key, k, i);
+      const out = PD + r.uniform(-0.004, 0.008);
+      const look: Look = { rise: [out - 0.006, out - 0.006 + r.uniform(-0.003, 0.003), out + 0.014, out + 0.014 + r.uniform(-0.003, 0.003)], bevel: [0, 1, 2, 3].map(() => r.uniform(0.016, 0.03)), crown: r.uniform(0.004, 0.01), at: [r.uniform(0.4, 0.6), r.uniform(0.4, 0.6)] };
+      return { stone, look, faced: ontoStone(frame.o, frame.u, frame.v, box2(stone.outline), ["plinth", key, k, i]) };
+    });
+    return { frame, length, cuts, stones, ends: first ? [corners[k]!, corners[(k + 1) % n]!] : [corners[(k + 1) % n]!, corners[k]!] };
+  });
+  return { corners, sides };
+}
+
+interface PlinthSide2 {
+  frame: Frame;
+  length: number;
+  cuts: number[];
+  stones: PlinthStone[];
+  ends: [PlinthCorner, PlinthCorner];
+}
+
+/**
+ * A foundation on any convex outline: a triangle's, or a quarter's. Flags cut to the outline on a core of rubble, in a
+ * plinth of battered stones between corner blocks, as a square's is.
+ */
+function plinthed(name: string, form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const b = new Build();
+  b.free = true;
+  const plan = planXZ(form);
+  const [topY, bottomY] = [form.thick / 2, -form.thick / 2];
+  const flagsOn = flagFrame(plan, topY);
+  const at = (y: number) => (q: P2): Vec => [q[0], y, q[1]];
+  if (level >= 2) {
+    b.convex(loft("y", [[bottomY, plan], [topY, plan]]), flagged, (n) => (n[1] > 0.5 ? flagsOn.uv : straight(n)));
+    return b;
+  }
+  const bed = topY - 0.012;
+  const { corners, sides } = plinthRound(plan, bottomY, bed, name);
+  if (level === 1) {
+    // One block: its top the flags' picture, and round it each corner block and plinth stone a cell.
+    const from = b.shape.faces.length;
+    b.flat(plan.map(at(topY)), [0, 1, 0], "flags", flagsOn.uv);
+    b.flat(plan.map(at(bottomY)), [0, -1, 0], "masonry");
+    for (const { frame, length, cuts, stones, ends } of sides) {
+      const depth = topY - bottomY;
+      const flush = new Frame(add(frame.at(0, bed - topY), scale(frame.n, PD)), frame.u, frame.v, frame.n);
+      const cells: Tile[] = [
+        { poly: cell(0, cuts[0]!, 0, depth), mat: "masonry", uv: ends[0].uvOf(frame.n) },
+        ...stones.map(({ faced }, i): Tile => ({ poly: cell(cuts[i]!, cuts[i + 1]!, 0, depth), mat: "masonry", uv: faced })),
+        { poly: cell(cuts[cuts.length - 1]!, length, 0, depth), mat: "masonry", uv: ends[1].uvOf(frame.n) },
+      ];
+      tiles(b, flush, cells, [within2(0, length, 0, depth)]);
+    }
+    b.shape.weld(from);
+    return b;
+  }
+  const core = shrink(plan, PD);
+  b.convex(loft("y", [[bottomY, core], [bed, core]]), flagged, (n) => straight(n));
+  layFlags(b, new Frame(flagsOn.at(0, 0, bed - topY), flagsOn.u, flagsOn.v, flagsOn.n), [onLevel(flagsOn, sidesIn(plan, 0.005))], [], []);
+  const ch = 0.014;
+  for (const c of corners) b.convex(loft("y", [[bottomY, shrink(c.foot, ch)], [bottomY + ch, c.foot], [c.y1 - ch, c.head], [c.y1, shrink(c.head, ch)]]), "masonry", c.uvOf);
+  for (const { frame, stones } of sides) {
+    for (const { stone, look, faced } of stones) lay(b, frame, stone, look, "masonry", { notch: 0, facet: 0, uvOf: (n) => (dot(n, frame.n) > 0.3 ? faced : straight(n)) });
+  }
+  return b;
+}
+
+/** A straight oak member between two points of a floor's underside, `wide` across and from `low` up to `high`, its ends cut on the upright planes through `ends`, each a point and the way out past it. */
+function joist(b: Build, from: P2, to: P2, wide: number, low: number, high: number, key: string, ends: readonly (readonly [P2, P2])[] = []): void {
+  const g = rng("joist", key);
+  const l = Math.hypot(to[0] - from[0], to[1] - from[1]);
+  const d: P2 = [(to[0] - from[0]) / l, (to[1] - from[1]) / l];
+  const across: P2 = [-d[1], d[0]];
+  // A little out of true, as a hewn beam is, and not the same at both ends.
+  const section = (t: number): Vec[] => {
+    const [a, c, under, cut] = [-wide / 2 + g.uniform(-0.005, 0.005), wide / 2 + g.uniform(-0.005, 0.005), low + g.uniform(-0.004, 0.004), g.uniform(0.012, 0.024)];
+    return ([[a, high], [a, under + cut], [a + cut, under], [c - cut, under], [c, under + cut], [c, high]] as const).map(([w, y]): Vec => [from[0] + d[0] * t + across[0] * w, y, from[1] + d[1] * t + across[1] * w]);
+  };
+  // Built long and cut to its ends.
+  const rings = [section(-0.5), section(l + 0.5)];
+  let sides: Side[] = [{ pts: rings[0]! }, { pts: rings[1]! }, ...rings[0]!.map((q, i) => ({ pts: [q, rings[0]![(i + 1) % 6]!, rings[1]![(i + 1) % 6]!, rings[1]![i]!] }))];
+  const planes: Plane[] = ends.length > 0 ? ends.map(([at, out]) => [[at[0], 0, at[1]], [out[0], 0, out[1]]] as const) : [[[from[0], 0, from[1]], [-d[0], 0, -d[1]]], [[to[0], 0, to[1]], [d[0], 0, d[1]]]];
+  for (const plane of planes) sides = clipSolid(sides, plane);
+  const grain: UvMap = (q) => [(q[0] * d[0] + q[2] * d[1]) / TILE + 0.5, (q[0] * across[0] + q[2] * across[1] + q[1]) / TILE + 0.5];
+  b.convex(sides, "timber", () => grain);
+}
+
+/**
+ * A triangle of ceiling: flags cut to the triangle on a slab, an oak beam inside each side, mitred at the corners,
+ * three joists from the middle to the sides' middles, and rough stone in the three bays between them.
+ */
+function triCeiling(name: string, form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const b = new Build();
+  b.free = true;
+  const plan = planXZ(form);
+  const [topY, bottomY] = [form.thick / 2, -form.thick / 2];
+  const soffit = -0.005;
+  const flagsOn = flagFrame(plan, topY);
+  const at = (y: number) => (q: P2): Vec => [q[0], y, q[1]];
+  const mid = middle2(plan);
+  const n = plan.length;
+  if (level === 3) {
+    b.convex(loft("y", [[bottomY, plan], [topY, plan]]), flagged, (nrm) => straight(nrm));
+    return b;
+  }
+  const side = (y0: number, y1: number, mat: string): void => plan.forEach((a, k) => {
+    const c = plan[(k + 1) % n]!;
+    const out: Vec = unit([-(c[1] - a[1]), 0, c[0] - a[0]]);
+    const way = dot(out, [(a[0] + c[0]) / 2 - mid[0], 0, (a[1] + c[1]) / 2 - mid[1]]) > 0 ? out : scale(out, -1);
+    b.flat([[a[0], y0, a[1]], [c[0], y0, c[1]], [c[0], y1, c[1]], [a[0], y1, a[1]]], way, mat, straight(way, mat === "timber" ? (Math.abs(way[2]) > Math.abs(way[0]) ? "x" : "z") : undefined));
+  });
+  if (level === 2) {
+    // One block as deep as the slab and its beams, the beams' timber round the lower half of its edge.
+    b.flat(plan.map(at(topY)), [0, 1, 0], "flags", flagsOn.uv);
+    b.flat(plan.map(at(bottomY)), [0, -1, 0], "masonry");
+    side(soffit, topY, "masonry");
+    side(bottomY, soffit, "timber");
+    return b;
+  }
+  const rim = 0.08;
+  const inner = shrink(plan, rim);
+  /** The three bays under the slab, each from the middle out to a corner between two joists. */
+  const half = (a: P2, c: P2): P2 => [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+  const bays = plan.map((_, k): P2[] => [mid, half(inner[(k + n - 1) % n]!, inner[k]!), inner[k]!, half(inner[k]!, inner[(k + 1) % n]!)]);
+  const bayUv = (k: number, y: number): UvMap => {
+    const [u0, u1, v0, v1] = box2(bays[k]!);
+    return ontoStone([0, y, 0], [1, 0, 0], [0, 0, -1], [u0, u1, -v1, -v0], ["tri bay", name, k]);
+  };
+  if (level === 1) {
+    const from = b.shape.faces.length;
+    b.flat(plan.map(at(topY)), [0, 1, 0], "flags", flagsOn.uv);
+    side(soffit, topY, "masonry");
+    // The underside: the three bays, and a strip under each rim beam.
+    bays.forEach((bay, k) => b.flat(bay.map(at(soffit)), [0, -1, 0], "masonry", bayUv(k, soffit)));
+    plan.forEach((a, k) => {
+      const j = (k + 1) % n;
+      b.flat([a, plan[j]!, inner[j]!, inner[k]!].map(at(soffit)), [0, -1, 0], "masonry");
+    });
+    b.shape.weld(from);
+  } else {
+    b.convex(loft("y", [[soffit, plan], [topY - 0.012, plan]]), flagged, (nrm) => straight(nrm));
+    layFlags(b, new Frame(flagsOn.at(0, 0, -0.012), flagsOn.u, flagsOn.v, flagsOn.n), [onLevel(flagsOn, sidesIn(plan, 0.004))], [], []);
+    bays.forEach((bay, k) => {
+      const drop = rng("tri bay", name, k).uniform(0.006, 0.014);
+      const faced = bayUv(k, soffit - drop);
+      b.convex(loft("y", [[soffit - drop, shrink(bay, 0.05)], [soffit + 0.003, shrink(bay, 0.05)]]), "masonry", (nrm) => (nrm[1] < -0.5 ? faced : straight(nrm)));
+    });
+  }
+  // A beam inside each side, its ends mitred on the lines to the corners, and a joist from the middle to each side's.
+  plan.forEach((a, k) => {
+    const c = plan[(k + 1) % n]!;
+    const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    const d: P2 = [(c[0] - a[0]) / l, (c[1] - a[1]) / l];
+    const inward: P2 = (mid[0] - a[0]) * -d[1] + (mid[1] - a[1]) * d[0] > 0 ? [-d[1], d[0]] : [d[1], -d[0]];
+    const line = (q: P2): P2 => [q[0] + inward[0] * rim * 0.5, q[1] + inward[1] * rim * 0.5];
+    // Past a corner is the far side of the line from the middle through it.
+    const mitre = (corner: P2, other: P2): readonly [P2, P2] => {
+      const across: P2 = [-(corner[1] - mid[1]), corner[0] - mid[0]];
+      const way = (other[0] - corner[0]) * across[0] + (other[1] - corner[1]) * across[1] > 0 ? -1 : 1;
+      return [corner, [across[0] * way, across[1] * way]];
+    };
+    if (level === 0) joist(b, line(a), line(c), rim - 0.006, bottomY, 0, `${name} rim ${k}`, [mitre(a, c), mitre(c, a)]);
+    else {
+      b.convex(loft("y", [[bottomY, [a, c, inner[(k + 1) % n]!, inner[k]!]], [soffit, [a, c, inner[(k + 1) % n]!, inner[k]!]]]), "timber", (nrm) => straight(nrm, Math.abs(d[0]) > 0.7 ? "x" : "z"));
+    }
+    const to = half(inner[k]!, inner[(k + 1) % n]!);
+    if (level === 0) joist(b, mid, to, 0.13, bottomY + 0.02, 0, `${name} joist ${k}`);
+    else {
+      const reach = Math.hypot(to[0] - mid[0], to[1] - mid[1]);
+      const dj: P2 = [(to[0] - mid[0]) / reach, (to[1] - mid[1]) / reach];
+      const aj: P2 = [-dj[1] * 0.065, dj[0] * 0.065];
+      const quad: P2[] = [[mid[0] + aj[0], mid[1] + aj[1]], [to[0] + aj[0], to[1] + aj[1]], [to[0] - aj[0], to[1] - aj[1]], [mid[0] - aj[0], mid[1] - aj[1]]];
+      b.convex(loft("y", [[bottomY + 0.02, quad], [soffit, quad]]), "timber", (nrm) => straight(nrm, Math.abs(dj[0]) > 0.7 ? "x" : "z"));
+    }
+  });
+  return b;
+}
+
+/** A hatch's leaf stands this far clear of its hole on each side. */
+const HATCH_CLEAR = 0.004;
+
+/**
+ * A ceiling with a hatch through it: flags cut round the hole on a slab, an oak beam inside each side as a ceiling
+ * has, trimmers the whole way across beside the hole and headers between them, and rough stone in the bays.
+ */
+function hatchFrame(name: string, form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const b = new Build();
+  b.free = true;
+  if (level < 3) b.rings = yieldPlanes(form);
+  const o = form.openings?.[0];
+  if (!o || form.outline.length !== 4) throw new Error(`stone ${name}: a square slab with one hole`);
+  const [x0, x1, z0, z1] = [o.x0 - form.at[0], o.x1 - form.at[0], o.y0 - form.at[2], o.y1 - form.at[2]];
+  const [topY, bottomY] = [form.thick / 2, -form.thick / 2];
+  const soffit = -0.005;
+  const flagsOn = topFrame(topY);
+  if (level >= 2) {
+    // One block with the hole through it, the beams' timber round the lower half of its edge.
+    const square: P2[] = [[-H, -H], [H, -H], [H, H], [-H, H]];
+    const hole: P2[] = [[x0, -z1], [x1, -z1], [x1, -z0], [x0, -z0]];
+    const flag = (q: Vec): Uv => [(q[0] + H) / TILE, 1 - (H - q[1]) / TILE];
+    b.shape.extrude(square, "z", level === 2 ? soffit : bottomY, topY, (label) => (label === "+z" ? ["flags", flag] : ["masonry", (q) => [(q[0] + q[1] + H) / TILE, 0.5 + q[2] / TILE]]), [hole]);
+    if (level === 2) b.shape.extrude(square, "z", bottomY, soffit, (label) => (label[1] === "z" ? ["masonry", flag] : ["timber", (q) => [(q[0] + q[1] + H) / TILE, 0.5 + q[2] / TILE]]), [hole]);
+    return b;
+  }
+  const bed = topY - 0.012;
+  const trim = 0.13;
+  /** The slab and its flags are four parts round the hole: two the whole width, and two between them. */
+  const parts: [number, number, number, number][] = [[-H, H, -H, z0], [-H, H, z1, H], [-H, x0, z0, z1], [x1, H, z0, z1]];
+  // The bays between the beams: a row either side of the hole, and one at each of its other two sides.
+  const [a0, a1, c0, c1] = [x0 - trim, x1 + trim, z0 - trim, z1 + trim];
+  const bays: [number, number, number, number][] = [[-H + 0.08, H - 0.08, -H + 0.08, c0], [-H + 0.08, H - 0.08, c1, H - 0.08], [-H + 0.08, a0, c0 + trim, c1 - trim], [a1, H - 0.08, c0 + trim, c1 - trim]];
+  if (level === 1) {
+    const from = b.shape.faces.length;
+    for (const [u0, u1, v0, v1] of parts) b.flat([[u0, topY, v0], [u1, topY, v0], [u1, topY, v1], [u0, topY, v1]], [0, 1, 0], "flags", flagsOn.uv);
+    for (const [u0, u1, v0, v1] of parts) b.flat([[u0, soffit, v0], [u1, soffit, v0], [u1, soffit, v1], [u0, soffit, v1]], [0, -1, 0], "masonry");
+    for (const [out, a, c] of [[[0, 0, 1], [-H, H], [H, H]], [[0, 0, -1], [-H, -H], [H, -H]], [[1, 0, 0], [H, -H], [H, H]], [[-1, 0, 0], [-H, -H], [-H, H]], [[0, 0, -1], [x0, z1], [x1, z1]], [[0, 0, 1], [x0, z0], [x1, z0]], [[-1, 0, 0], [x1, z0], [x1, z1]], [[1, 0, 0], [x0, z0], [x0, z1]]] as const) {
+      // Each side has a corner on each yield ring it crosses.
+      const along = a[0] === c[0] ? 1 : 0;
+      const cuts = [a[along], ...b.rings.filter(([axis]) => axis === along).map(([, v]) => (along === 1 ? -v : v)).filter((v) => v > Math.min(a[along], c[along]) + 1e-9 && v < Math.max(a[along], c[along]) - 1e-9).sort((p0, p1) => p0 - p1), c[along]];
+      for (let i = 0; i + 1 < cuts.length; i++) {
+        const [p0, p1] = [cuts[i]!, cuts[i + 1]!].map((v): P2 => (along === 0 ? [v, a[1]] : [a[0], v])) as [P2, P2];
+        b.flat([[p0[0], soffit, p0[1]], [p1[0], soffit, p1[1]], [p1[0], topY, p1[1]], [p0[0], topY, p0[1]]], out as Vec, "masonry");
+      }
+    }
+    b.shape.weld(from);
+  } else {
+    for (const [u0, u1, v0, v1] of parts) b.box([u0, soffit, v0], [u1, bed, v1], flagged);
+    layFlags(b, new Frame(flagsOn.at(0, 0, bed - topY), flagsOn.u, flagsOn.v, flagsOn.n), parts.map(([u0, u1, v0, v1]) => within2(u0 + H, u1 + H, v0 + H, v1 + H)), [], []);
+    bays.forEach(([u0, u1, v0, v1], k) => {
+      const drop = rng("hatch bay", k).uniform(0.006, 0.014);
+      const faced = ontoStone([0, soffit - drop, 0], [1, 0, 0], [0, 0, -1], [u0, u1, -v1, -v0], ["hatch bay", k]);
+      b.convex(loft("y", [[soffit - drop, cell(u0, u1, v0, v1)], [soffit + 0.003, cell(u0, u1, v0, v1)]]), "masonry", (n) => (n[1] < -0.5 ? faced : straight(n)), true);
+    });
+  }
+  // Half a beam along each edge, as a ceiling has; the trimmers beside the hole run whole, and the headers between them.
+  const edge: readonly (readonly [number, number, string])[] = [[H - 0.04, 0.04, "hi"], [-H + 0.04, 0.04, "lo"]];
+  const square = (axis: string, centre: number, half: number, run: P2, low: number): void => (axis === "x" ? b.box([run[0], low, centre - half], [run[1], soffit, centre + half], "timber", "x", [0, 0], true) : b.box([centre - half, low, run[0]], [centre + half, soffit, run[1]], "timber", "z", [0, 0], true));
+  const member = (axis: string, centre: number, half: number, run: P2, low: number, key: string, keep = ""): void => (level === 0 ? beam(b, axis, centre, half, run, low, 0, key, keep) : square(axis, centre, half, run, low));
+  for (const [centre, half, keep] of edge) {
+    member("x", centre, half, [-H, H], bottomY, `hatch x ${centre}`, keep);
+    member("z", centre, half, [-H + 0.08, H - 0.08], bottomY + 0.02, `hatch z ${centre}`, keep);
+  }
+  for (const [k, centre] of [z0 - trim / 2, z1 + trim / 2].entries()) member("x", centre, trim / 2 - 0.004, [-H + 0.08, H - 0.08], bottomY + 0.01, `hatch trimmer ${k}`);
+  for (const [k, centre] of [x0 - trim / 2, x1 + trim / 2].entries()) member("z", centre, trim / 2 - 0.004, [z0 - 0.004, z1 + 0.004], bottomY + 0.03, `hatch header ${k}`);
+  return b;
+}
+
+/**
+ * The hatch's leaf: five oak planks on two ledges under them, hung on two iron strap hinges along its -z side, with a
+ * ring to lift it by near the other. It lies in its frame's hole, its top a hair under the floor's.
+ */
+function hatch(form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const b = new Build();
+  b.free = true;
+  const [u0, v0, u1, v1] = outlineBox(form);
+  const [x0, x1, z0, z1] = [u0 - form.at[0] + HATCH_CLEAR, u1 - form.at[0] - HATCH_CLEAR, v0 - form.at[2] + HATCH_CLEAR, v1 - form.at[2] - HATCH_CLEAR];
+  const top = form.thick / 2 - 0.004;
+  const bottom = top - 0.045;
+  if (level === 3) {
+    b.box([x0, bottom, z0], [x1, top, z1], "timber", "z");
+    return b;
+  }
+  if (level === 2) b.box([x0, bottom, z0], [x1, top, z1], "timber", "z");
+  else {
+    const g = rng("hatch planks");
+    const shares = [0.21, 0.19, 0.2, 0.19, 0.21].map((w) => w + g.uniform(-0.012, 0.012));
+    const sum = shares.reduce((acc, w) => acc + w, 0);
+    let x = x0;
+    shares.forEach((share, k) => {
+      const [a, c] = [x + (k === 0 ? 0 : 0.002), x + ((x1 - x0) * share) / sum - (k === shares.length - 1 ? 0 : 0.002)];
+      x += ((x1 - x0) * share) / sum;
+      const ty = top - g.uniform(0, 0.003);
+      const cp = level === 0 ? g.uniform(0.005, 0.008) : 0;
+      const profile: P2[] = cp > 0 ? [[a, bottom], [c, bottom], [c, ty - cp], [c - cp, ty], [a + cp, ty], [a, ty - cp]] : [[a, bottom], [c, bottom], [c, ty], [a, ty]];
+      b.convex(loft("z", [[z0, profile], [z1, profile]]), "timber", (n) => straight(n, "z", [((k * 0.31) % 0.5) - 0.25, ((k * 0.17) % 0.4) - 0.2]));
+    });
+  }
+  // Two ledges under the planks, across them.
+  for (const z of [z0 + 0.3, z1 - 0.3]) b.box([x0 + 0.04, bottom - 0.035, z - 0.07], [x1 - 0.04, bottom, z + 0.07], "timber", "x");
+  for (const xc of [x0 + 0.3, x1 - 0.3]) {
+    // A strap hinge from the hung side, narrowing to a spear point past the middle.
+    const section = (half: number): P2[] => [[xc - half, top - 0.002], [xc + half, top - 0.002], [xc + half, top + 0.006], [xc - half, top + 0.006]];
+    if (level === 2) b.box([xc - 0.035, top - 0.002, z0], [xc + 0.035, top + 0.006, z0 + 0.8], "iron", "z");
+    else b.convex(loft("z", [[z0 + 0.002, section(0.035)], [z0 + 0.72, section(0.03)], [z0 + 0.84, section(0.004)]]), "iron", (n) => straight(n, "z"));
+    if (level > 0) continue;
+    for (const zc of [z0 + 0.12, z0 + 0.4, z0 + 0.66]) {
+      const base: Vec[] = [[xc - 0.011, top + 0.006, zc - 0.011], [xc + 0.011, top + 0.006, zc - 0.011], [xc + 0.011, top + 0.006, zc + 0.011], [xc - 0.011, top + 0.006, zc + 0.011]];
+      b.convex([{ pts: base }, ...base.map((q, k) => ({ pts: [q, base[(k + 1) % 4]!, [xc, top + 0.012, zc] as Vec] }))], "iron", (n) => straight(n));
+    }
+  }
+  if (level === 2) return b;
+  // A plate near the far side, and on the finest level the ring that lies on it.
+  const [px, pz] = [(x0 + x1) / 2, z1 - 0.2];
+  b.box([px - 0.06, top - 0.002, pz - 0.045], [px + 0.06, top + 0.005, pz + 0.045], "iron");
+  if (level === 1) return b;
+  const [radius, tube, around, across] = [0.045, 0.007, 8, 4];
+  const at = (i: number, j: number): Vec => {
+    const [a, c] = [(2 * Math.PI * i) / around, (2 * Math.PI * j) / across];
+    const r = radius + tube * Math.cos(c);
+    return [px + r * Math.cos(a), top + 0.012 + tube * Math.sin(c), pz - 0.03 + r * Math.sin(a)];
+  };
+  for (let i = 0; i < around; i++) for (let j = 0; j < across; j++) {
+    const quad = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)];
+    const a = (2 * Math.PI * (i + 0.5)) / around;
+    const out = sub(mean(quad), [px + radius * Math.cos(a), top + 0.012, pz - 0.03 + radius * Math.sin(a)]);
+    const turned = dot(newell(quad), out) < 0 ? [...quad].reverse() : quad;
+    b.face(turned, "iron", straight(newell(turned)));
+  }
+  return b;
+}
+
+/**
+ * A ramp up toward +z: its two cheeks and its back walled as the stairs' are, cut to the slope, and the slope paved
+ * with the floor's flags, the pattern laid again where the slope is longer than it.
+ */
+function ramp(name: string, form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const b = new Build();
+  b.free = true;
+  const tops = form.corner!.map((h) => h - form.at[1]);
+  const [lo, hi] = [Math.min(...tops), Math.max(...tops)];
+  const plan = planXZ(form);
+  const [x0, x1, z0, z1] = box2(plan);
+  if (Math.abs(x1 - x0 - TILE) > 1e-9 || Math.abs(z1 - z0 - TILE) > 1e-9 || hi - lo > TILE || tops.some((t, k) => Math.abs(t - (plan[k]![1] > 0 ? hi : lo)) > 1e-9)) throw new Error(`stone ${name}: a ramp a span square that rises toward +z by no more than a storey`);
+  const rise = hi - lo;
+  const long = Math.hypot(TILE, rise);
+  const [sin, cos] = [rise / long, TILE / long];
+  /** The slope's own height over z, and its plane `by` under it, square to it. */
+  const yAt = (z: number): number => lo + (rise * (z - z0)) / TILE;
+  const under = (by: number): Plane => [[0, yAt(0) - by / cos, 0], [0, cos, -sin]];
+  const paved = new Frame([x0, lo, z0], [1, 0, 0], [0, sin, cos], [0, cos, -sin]);
+  const wedge = (inFrom: number, by: number): P2[] => [[z0 + (by / cos) * (TILE / rise), lo], [z1 - inFrom, lo], [z1 - inFrom, yAt(z1 - inFrom) - by / cos]];
+  if (level >= 2) {
+    b.convex(loft("x", [[x0, wedge(0, 0)], [x1, wedge(0, 0)]]), (n) => (n[1] > 0.5 ? "flags" : "masonry"), (n) => (n[1] > 0.5 ? paved.uv : straight(n)));
+    return b;
+  }
+  const pave = 0.012;
+  const inFrom = level === 0 ? MD : MD - FACE;
+  // The cheeks' walling hangs from a storey over the foot, as the stairs' does, so its courses run on into a wall's.
+  const top = lo + TILE;
+  const right = new Frame([x1 - inFrom, top, z1], [0, 0, -1], [0, -1, 0], [1, 0, 0]);
+  const left = new Frame([x0 + inFrom, top, z0], [0, 0, 1], [0, -1, 0], [-1, 0, 0]);
+  const rear = new Frame([x0, top, z1 - inFrom], [1, 0, 0], [0, -1, 0], [0, 0, 1]);
+  if (level === 0) {
+    b.convex(loft("x", [[x0 + inFrom, wedge(inFrom, pave)], [x1 - inFrom, wedge(inFrom, pave)]]), "masonry", (n) => straight(n));
+    const faces: { frame: Frame; keep: Plane[] }[] = [{ frame: right, keep: [under(pave), keepAbove(right, MD)] }, { frame: left, keep: [under(pave), keepBelow(left, TILE - MD)] }, { frame: rear, keep: [under(pave)] }];
+    for (const { frame, keep } of faces) for (const { stone, look } of walling()) lay(b, frame, stone, look, "masonry", { keep, least: LEAST, cutOnly: true });
+    // The paving: cut level at the foot, and upright at the head, where the floor above begins.
+    layFlags(b, paved.out(-pave), [within2(0, TILE, 0, long + 0.1)], [[[0, lo, 0], [0, -1, 0]], [[0, 0, z1], [0, 0, 1]]], WHOLE, Math.ceil(long / TILE));
+    return b;
+  }
+  // Each cheek and the back one flat sheet, every stone a cell of it, and the slope one sheet, every flag a cell.
+  const from = b.shape.faces.length;
+  const back = z1 - inFrom;
+  const [xa, xb] = [x0 + inFrom, x1 - inFrom];
+  b.flat([[xa, lo, z0], [xb, lo, z0], [xb, lo, back], [xa, lo, back]], [0, -1, 0], "masonry");
+  const flush = paved.out(0);
+  const flagCells: Tile[] = Array.from({ length: Math.ceil(long / TILE) }, (_, j) => flags().map((s): Tile => ({ poly: s.quad.map(([u, v]) => [u, v + j * TILE] as const), mat: "flags" }))).flat();
+  // The slope's own sheet runs from cheek to cheek and from the foot to the back's face.
+  const reach = (back - z0) / cos;
+  tiles(b, flush, flagCells, [within2(inFrom, TILE - inFrom, 0, reach)]);
+  const outline: P2[] = [[z0, lo], [back, lo], [back, yAt(back)]];
+  for (const [frame, k] of [[right, 0], [left, 1], [rear, 2]] as const) {
+    const poly: P2[] = outline.map(([z, y]) => [k === 0 ? z1 - z : z - z0, top - y] as const);
+    tiles(b, frame, wallTiles(frame), [k === 2 ? within2(inFrom, TILE - inFrom, top - yAt(back), TILE) : sidesOf(poly)]);
+  }
+  b.shape.weld(from);
+  return b;
+}
+
 /** The forms past the first nine, by name. */
 const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: number) => Build | null>> = {
   half_wall: lowWall,
@@ -2179,6 +2651,12 @@ const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: numb
   large_wall: tallWall,
   gateway: gatehouse,
   gate: (_, form, level) => gate(form, level),
+  triangle_foundation: plinthed,
+  quarter_foundation: plinthed,
+  triangle_ceiling: triCeiling,
+  trapdoor_frame: hatchFrame,
+  trapdoor: (_, form, level) => hatch(form, level),
+  ramp,
 };
 
 export const STONE: TierRecipe = {
