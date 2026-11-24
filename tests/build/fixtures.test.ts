@@ -17,9 +17,10 @@ import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_WAIT } from "../../shared/net/protocol.ts";
+import { writeNew, writeRest } from "../../shared/net/place.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
-import { ON_TOP, floorFace, floorTop, poseAt, units, type Pose } from "../../shared/world/snap.ts";
+import { floorFace, floorTop, poseAt, units, type Pose } from "../../shared/world/snap.ts";
 import { GONE_FELL } from "../../shared/world/structures.ts";
 import { NO_PIN, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_UNLOCK, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { builder } from "../fixtures/build.ts";
@@ -51,14 +52,8 @@ function setDown(made: Made, s: ClientSession, x: number, z: number, target = NO
   s.onResult = (_seq, c) => void (code = c);
   const before = h.host.build.placed;
   s.command(CMD_PLACE, (w: BitWriter) => {
-    w.u8(0);
-    w.u32(target);
-    if (target !== NO_TARGET) w.u8(ON_TOP);
-    w.sbits(Math.round(x * U), 32);
-    w.sbits(Math.round(z * U), 32);
-    w.u16(0);
-    if (target === NO_TARGET) w.sbits(0, 8);
-    w.u8(0);
+    if (target === NO_TARGET) writeNew(w, 0, Math.round(x * U), Math.round(z * U), 0);
+    else writeRest(w, 0, target, Math.round(x * U), Math.round(z * U), 0);
   });
   h.run(150);
   return { code, ref: h.host.build.placed > before ? h.host.build.last : -1 };

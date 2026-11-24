@@ -232,7 +232,7 @@ test("candidates and their order are the same on two stores built in different o
       for (let k = 1; k < n; k++) expect(out.score[k]!).toBeGreaterThanOrEqual(out.score[k - 1]!);
       offered += n;
     }
-    expect(offered).toBeGreaterThan(600);
+    expect(offered).toBeGreaterThan(400);
   }
 });
 

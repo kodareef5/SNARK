@@ -1,7 +1,7 @@
 // The grunt protocol's build helper for SNARK (grunt/protocol.md "Building"), worked with a player's own place
 // command. A plan's pieces sit on a grid of foundation cells; each is resolved to what a builder would aim at (a piece
 // of the tribe's and one of its snap points, or open ground) by the pose the game itself predicts (shared/world/snap.ts
-// poseAt), so no table of snap points is written here and a piece SNARK adds is built by the same rule. A whole plan is
+// poseAt, which goes through the slot a snap point means), so no table of snap points is written here. A whole plan is
 // checked before anything is sent, on a scratch copy of the structure store, with the server's own checks in the
 // server's order (as client/core/build.ts previews a piece): terrain, room, enemies, support.
 //
@@ -14,8 +14,10 @@ import type { Building, FormSpec, Plan, PlanPiece, PieceVerdict, Side } from "..
 import { STRUCT_UNITS, YAW_UNITS } from "../shared/coords.ts";
 import {
   LIFT_MAX, LIFT_MIN, ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_STAIRS, ROLE_THING, ROLE_WALL, makeSockets,
-  freePose, obstructed, poseAt, restPose, socketsOf, tooHigh, turnsOf, type Pose,
+  freePose, obstructed, poseAt, restPose, slotAt, socketsOf, tooHigh, turnsOf, type Pose,
 } from "../shared/world/snap.ts";
+import { RESULT_OBSTRUCTED } from "../shared/net/protocol.ts";
+import { makeVerdict, validate } from "../shared/world/lattice/place.ts";
 import { Found, StructureStore } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
 import { shortName } from "./observe.ts";
@@ -77,6 +79,8 @@ export class Planner {
   private readonly sockets = makeSockets();
   private readonly found = new Found();
   private readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  private readonly slot = { fr: 0, k0: 0, k1: 0 };
+  private readonly verdict = makeVerdict();
 
   constructor(session: ClientSession) {
     this.session = session;
@@ -429,7 +433,12 @@ export class Planner {
     if (other >= 0) return { verdict: { status: "occupied", by: `s${other}`, fix: "another piece is there: replace swaps it" }, res };
     if (tooHigh(this.heightAt, reg, res.kind, pose)) return { verdict: { status: "too_high", fix: "the ground falls away there: another site, or stand it on pillars" }, res };
     const x = pose.x / STRUCT_UNITS, y = pose.y / STRUCT_UNITS, z = pose.z / STRUCT_UNITS;
-    if (obstructed(store, reg.parts, res.kind, x, y, z, pose.yaw)) return { verdict: { status: "blocked", by: this.nearestRow(store, x, z), fix: "something built is in the way" }, res };
+    // A piece that joins is asked by its slot, as the server asks it: its neighbours are not in its way.
+    const joined = res.how === "socket" && slotAt(store, reg, res.target, res.kind, res.socket, res.turn, this.slot);
+    const taken = joined
+      ? validate({ structs: store, tables: reg, heightAt: this.heightAt }, res.kind, this.team, this.slot.fr, this.slot.k0, this.slot.k1, x, y, z, this.verdict) === RESULT_OBSTRUCTED
+      : obstructed(store, reg.parts, res.kind, x, y, z, pose.yaw);
+    if (taken) return { verdict: { status: "blocked", by: this.nearestRow(store, x, z), fix: "something built is in the way" }, res };
     const body = this.bodyIn(res.kind, x, y, z);
     if (body) return { verdict: { status: "blocked", by: body, fix: body === "you" ? "step out of its way" : "wait for it to move" }, res };
     const enemy = this.enemyNear(res.kind, x, z);

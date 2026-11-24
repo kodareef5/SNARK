@@ -1,10 +1,10 @@
-// Judges every build request. The client names a piece and a socket, and the server works out the pose from its own rows (shared/world/snap.ts).
+// Judges every build request. The client names a frame and a slot's key, and the server works out the pose and every check from its own rows (shared/world/lattice/place.ts).
 // A door opens by becoming another kind in the same place. Locks, PINs and box contents are a record beside the row (server/fixtures.ts).
 
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LIMIT, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_METRES, PLACED_NONE, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_RATE, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -13,8 +13,10 @@ import { carMeetsKind } from "../shared/world/vehicle.ts";
 import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
 import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
 import { boatMeetsKind } from "../shared/world/boat.ts";
-import { makePlaced, writePlaced } from "../shared/net/placed.ts";
-import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, enemyGap, enemyGapFound, floorTop, freePose, obstructed, obstruction, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
+import { PLACE_JOIN, PLACE_NEW, PLACE_REST, makePlaceRequest, readPlace, type PlaceRequest } from "../shared/net/place.ts";
+import { PLACED_MOST, makePlaced, writePlaced } from "../shared/net/placed.ts";
+import { makeVerdict, runKey, startBase, validate, validateFree, type Site, type Verdict } from "../shared/world/lattice/place.ts";
+import { ROLE_FOUNDATION, ROLE_PILLAR, enemyGap, enemyGapFound, floorTop, freePose, restPose, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN, toldHealth } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
@@ -31,10 +33,10 @@ import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
 import { event, type Bus } from "./events/bus.ts";
 
-/** A place command with this target means open ground. */
+/** In a `build.place` event, the target of a piece that rests on nothing built. */
 export const NO_TARGET = 0xffffffff;
-/** Metres from the builder's eye to the piece's middle. The 3 allows for the piece's own size. */
-const REACH = BUILD_REACH + 3;
+/** Pieces a session may set down in a second, and at once. */
+export const PLACE_RATE = 64;
 /** Metres. A body this far into a piece's place is in its way. */
 const BODY_SLACK = 0.1;
 /** Metres. Nothing is built this near another tribe's foundation, or this near its pillar. */
@@ -124,6 +126,16 @@ export class Build {
   private readonly inWay: number[] = [];
   /** What `set` last decided, as its session is told (S_PLACED): the piece placed, or what stood in the way. */
   private readonly answer = makePlaced();
+  private readonly request = makePlaceRequest();
+  private readonly verdict = makeVerdict();
+  private readonly slot = { fr: 0, k0: 0, k1: 0 };
+  /** What the shared checks ask of this server about a place. `team` is the builder's while a request is judged. */
+  private readonly site: Site;
+  private team = 0;
+  /** Whether `set` last found no piece in the builder's hand. */
+  private bare = false;
+  /** Per session, the pieces it may still set down and the tick that was counted at. */
+  private readonly budget = new WeakMap<Client, { left: number; tick: number }>();
 
   constructor(ctx: BuildContext) {
     this.ctx = ctx;
@@ -134,6 +146,21 @@ export class Build {
     this.support = new Support(structs, world.reg, heightAt);
     this.collapse = new Collapse(structs, world.reg, heightAt);
     this.decay = new Decay(world, ctx.rules);
+    this.site = {
+      structs,
+      tables: world.reg,
+      heightAt,
+      body: (kind, x, y, z, yaw) => this.bodyIn(kind, x, y, z, yaw),
+      enemy: (x, z, out) => this.enemyNear(this.team, x, z) && (this.enemyGap(this.team, x, z, out), true),
+      full: (x, z, out) => {
+        const cap = ctx.rules.num("TheMaxStructuresInRange");
+        const have = cap > 0 ? world.claims.near(x, z) : 0;
+        if (!(cap > 0 && have >= cap)) return false;
+        [out.detail, out.a, out.b] = [PLACED_COUNTS, have, cap];
+        return true;
+      },
+      stands: (kind, x, y, z, yaw) => this.support.stands(kind, x, y, z, yaw),
+    };
     this.decay.lone = (ref) => {
       this.support.forget();
       const node = this.support.node(ref);
@@ -581,135 +608,136 @@ export class Build {
   }
 
   /**
-   * The nearest of another tribe's foundations or pillars that `enemyNear` refuses a piece at (x, z) for, into the answer:
+   * The nearest of another tribe's foundations or pillars that `enemyNear` refuses a piece at (x, z) for, into `out`:
    * whole metres to it and the metres its kind needs. A scan of its own, made only for a refusal, so `enemyNear` may be
    * answered any other way.
    */
-  private enemyGap(team: number, x: number, z: number): void {
+  private enemyGap(team: number, x: number, z: number, out: Verdict): void {
     const world = this.ctx.world;
     if (!enemyGap(world.structs, world.reg.role, team, x, z, ENEMY_FOUNDATION, ENEMY_PILLAR)) return;
-    [this.answer.detail, this.answer.a, this.answer.b] = [PLACED_METRES, Math.floor(enemyGapFound.metres), enemyGapFound.needs];
+    [out.detail, out.a, out.b] = [PLACED_METRES, Math.floor(enemyGapFound.metres), enemyGapFound.needs];
   }
 
-  /** Returns a RESULT code. With the command's `seq`, its session is first told what was placed or what stopped it (S_PLACED). */
+  /** Whether the session may set one more piece down now: PLACE_RATE a second, and as many saved up. */
+  private spend(c: Client): boolean {
+    const tick = this.ctx.world.tick;
+    let b = this.budget.get(c);
+    if (!b) this.budget.set(c, (b = { left: PLACE_RATE, tick }));
+    b.left = Math.min(PLACE_RATE, b.left + ((tick - b.tick) * PLACE_RATE) / TICK_RATE);
+    b.tick = tick;
+    if (b.left < 1) return false;
+    b.left--;
+    return true;
+  }
+
+  /**
+   * Returns a RESULT code. With the command's `seq`, its session is first told what was placed and what stopped it
+   * (S_PLACED). A row's pieces are judged in order, each as though sent alone, and the row stops at the first refused.
+   */
   place(c: Client, r: BitReader, seq = 0): number {
-    const variant = r.u8();
-    const target = r.u32();
-    let socket = 0;
-    let x = 0;
-    let z = 0;
-    let yaw = 0;
-    let lift = 0;
-    if (target === NO_TARGET) {
-      x = r.sbits(32);
-      z = r.sbits(32);
-      yaw = r.u16();
-      lift = r.sbits(8);
-    } else {
-      socket = r.u8();
-      if (socket === ON_TOP) {
-        x = r.sbits(32);
-        z = r.sbits(32);
-        yaw = r.u16();
-      }
-    }
-    const turn = r.u8();
+    const req = this.request;
     const answer = this.answer;
-    const code = r.overflow ? ((answer.detail = PLACED_NONE), RESULT_INVALID) : this.set(c, variant, target, socket, turn, x, z, yaw, lift);
-    if (!r.overflow) {
-      if (code === RESULT_OK) this.placed++;
-      else this.refused++;
+    const sound = readPlace(r, req);
+    answer.refs.length = 0;
+    answer.detail = PLACED_NONE;
+    let code = sound ? RESULT_OK : RESULT_INVALID;
+    for (let i = 0; sound && i < req.count && code === RESULT_OK; i++) {
+      if (!this.spend(c)) code = RESULT_RATE;
+      else if (i > 0 && !runKey(req.k0, req.k1, req.step, i, this.slot)) code = RESULT_NO_SNAP;
+      else code = i === 0 ? this.set(c, req) : this.set(c, req, this.slot.k0, this.slot.k1);
+      // The row used the last piece in hand.
+      if (i > 0 && this.bare) code = RESULT_SHORT;
+      if (code === RESULT_OK) {
+        this.placed++;
+        if (answer.refs.length < PLACED_MOST) answer.refs.push(this.last);
+      } else this.refused++;
     }
     if (seq !== 0) {
       answer.seq = seq;
       answer.code = code;
-      answer.refs.length = 0;
-      if (code === RESULT_OK) answer.refs.push(this.last);
       writePlaced(this.ctx.game.begin(S_PLACED), answer);
       this.ctx.game.endOwn(c);
     }
     return code;
   }
 
-  /** Checks a decoded place request. If it passes, builds the piece and takes one from the builder's hand. Returns a RESULT code. */
-  set(c: Client, variant: number, target: number, socket: number, turn: number, x: number, z: number, yaw: number, lift: number): number {
+  /**
+   * Checks a decoded place request, its key (k0, k1) if it joins a base. If it passes, builds the piece and takes one from
+   * the builder's hand. Returns a RESULT code, and leaves what stood in the way in the answer.
+   */
+  set(c: Client, req: PlaceRequest, k0 = req.k0, k1 = req.k1): number {
     const { world, records, items, tribes } = this.ctx;
     const reg = world.reg;
     const ents = world.ents;
     const answer = this.answer;
+    const verdict = this.verdict;
     answer.detail = PLACED_NONE;
     const rec = records.byPid.get(c.pid);
     if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
     const inv = items.inv(rec);
     const slot = rec.held >= 0 ? inv.hotbar + rec.held : -1;
     const forms = slot >= 0 && inv.count[slot]! > 0 ? reg.places[inv.item[slot]!] : null;
-    if (!forms || variant >= forms.length) return RESULT_INVALID;
-    const kind = forms[variant]!;
+    this.bare = !forms;
+    if (!forms || req.variant >= forms.length) return RESULT_INVALID;
+    const kind = forms[req.variant]!;
     const structs = world.structs;
     const pose = this.pose;
-    if (target === NO_TARGET) {
-      // Open ground takes only a piece that stands on the ground by itself, and only inside the map.
-      const px = x / STRUCT_UNITS;
-      const pz = z / STRUCT_UNITS;
-      if (!(px > 2 && pz > 2 && px < world.hf.sizeX - 2 && pz < world.hf.sizeZ - 2)) return RESULT_INVALID;
-      // A bed is set on a foundation or a ceiling, as in ARK. A sleeping bag goes where a campfire does.
-      if ((reg.defs[kind] as StructureDef).floor === true) return RESULT_NO_SNAP;
-      if (!freePose((gx, gz) => world.hf.heightAt(gx, gz), reg, kind, px, pz, yaw, lift, pose)) return RESULT_NO_SNAP;
-    } else {
-      const t = structs.chunks[Math.floor(target / 65536)];
-      const ts = target & 0xffff;
-      if (!t || ts >= t.high || t.kind[ts] === 0) return RESULT_NO_SNAP;
-      // A piece joins or rests on only what the builder's tribe built.
-      if (!tribes.may(rec, t.owner[ts]!)) return RESULT_NOT_YOURS;
-      if (socket === ON_TOP ? !restPose(structs, reg, target, kind, x / STRUCT_UNITS, z / STRUCT_UNITS, yaw, pose) : !poseAt(structs, reg, target, kind, socket, turn, pose)) return RESULT_NO_SNAP;
-    }
-    const px = pose.x / STRUCT_UNITS;
-    const py = pose.y / STRUCT_UNITS;
-    const pz = pose.z / STRUCT_UNITS;
     // Reach is measured from the server's eye position, not the client's.
     const e = c.ent;
-    const ex = ents.x[e]! - px;
-    const ey = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!) - py;
-    const ez = ents.z[e]! - pz;
-    if (ex * ex + ey * ey + ez * ez > REACH * REACH) return RESULT_FAR;
+    const ex = ents.x[e]!;
+    const ey = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
+    const ez = ents.z[e]!;
+    this.team = rec.team;
+    let code: number;
+    if (req.mode === PLACE_JOIN) code = validate(this.site, kind, rec.team, req.fr, k0, k1, ex, ey, ez, verdict);
+    else {
+      if (req.mode === PLACE_NEW) {
+        // Open ground takes only a piece that stands on the ground by itself, and only inside the map.
+        const px = req.x / STRUCT_UNITS;
+        const pz = req.z / STRUCT_UNITS;
+        if (!(px > 2 && pz > 2 && px < world.hf.sizeX - 2 && pz < world.hf.sizeZ - 2)) return RESULT_INVALID;
+        // A bed is set on a foundation or a ceiling, as in ARK. A sleeping bag goes where a campfire does.
+        if ((reg.defs[kind] as StructureDef).floor === true) return RESULT_NO_SNAP;
+        if (!freePose((gx, gz) => world.hf.heightAt(gx, gz), reg, kind, px, pz, req.yaw, req.lift, pose)) return RESULT_NO_SNAP;
+      } else {
+        const t = structs.chunks[Math.floor(req.floor / 65536)];
+        const ts = req.floor & 0xffff;
+        if (!t || ts >= t.high || t.kind[ts] === 0) return RESULT_NO_SNAP;
+        // A thing rests on only what the builder's tribe built.
+        if (!tribes.may(rec, t.owner[ts]!)) return RESULT_NOT_YOURS;
+        if (!restPose(structs, reg, req.floor, kind, req.x / STRUCT_UNITS, req.z / STRUCT_UNITS, req.yaw, pose)) return RESULT_NO_SNAP;
+      }
+      code = validateFree(this.site, kind, pose, ex, ey, ez, verdict);
+    }
+    const at = verdict.pose;
+    const px = at.x / STRUCT_UNITS;
+    const py = at.y / STRUCT_UNITS;
+    const pz = at.z / STRUCT_UNITS;
     // ARK's beds cannot be placed under water (Swimming): the sea's or a lake's.
-    if (reg.isBed[kind] === 1 && py < world.hf.waterAt(px, pz)) {
+    if (code !== RESULT_FAR && code !== RESULT_INVALID && code !== RESULT_NO_SNAP && code !== RESULT_NOT_YOURS && reg.isBed[kind] === 1 && py < world.hf.waterAt(px, pz)) {
       this.ctx.game.sendText(c, TEXT_NOTICE, "A bed cannot be placed under water.");
       return RESULT_DENIED;
     }
-    if (tooHigh((gx, gz) => world.hf.heightAt(gx, gz), reg, kind, pose)) return RESULT_TOO_HIGH;
-    if (obstructed(structs, reg.parts, kind, px, py, pz, pose.yaw)) {
-      [answer.detail, answer.a] = [PLACED_STRUCTURE, obstruction.ref];
-      return RESULT_OBSTRUCTED;
+    if (code !== RESULT_OK) {
+      [answer.detail, answer.a, answer.b] = [verdict.detail, verdict.a, verdict.b];
+      return code;
     }
-    const body = this.bodyIn(kind, px, py, pz, pose.yaw);
-    if (body >= 0) {
-      [answer.detail, answer.a] = [PLACED_ENTITY, body];
-      return RESULT_BODY;
-    }
-    if (this.enemyNear(rec.team, px, pz)) {
-      this.enemyGap(rec.team, px, pz);
-      return RESULT_ENEMY_NEAR;
-    }
-    const cap = this.ctx.rules.num("TheMaxStructuresInRange");
-    const have = cap > 0 ? world.claims.near(px, pz) : 0;
-    if (cap > 0 && have >= cap) {
-      [answer.detail, answer.a, answer.b] = [PLACED_COUNTS, have, cap];
-      return RESULT_LIMIT;
-    }
-    if (!this.support.stands(kind, pose.x, pose.y, pose.z, pose.yaw)) return RESULT_NO_SUPPORT;
     const kept = this.keepClear?.(px, pz) ?? "";
     if (kept !== "") {
       this.ctx.game.sendText(c, TEXT_NOTICE, kept);
       return RESULT_DENIED;
     }
-    const refused = this.ctx.bus.before(BUILD_PLACE, { byPid: rec.pid, team: rec.team, kind: reg.ids[kind]!, x: px, y: py, z: pz, yaw: pose.yaw, target });
+    const target = req.mode === PLACE_REST ? req.floor : NO_TARGET;
+    const refused = this.ctx.bus.before(BUILD_PLACE, { byPid: rec.pid, team: rec.team, kind: reg.ids[kind]!, x: px, y: py, z: pz, yaw: at.yaw, target });
     if (refused !== "") {
       this.ctx.game.sendText(c, TEXT_NOTICE, refused);
       return RESULT_DENIED;
     }
     const def = reg.defs[kind] as StructureDef;
-    const ref = structs.add(kind, px, py, pz, pose.yaw, rec.team, def.hp);
+    // A piece of a base goes down by its key; a base's first makes its frame; a thing has only its pose.
+    const ref = req.mode === PLACE_JOIN ? structs.place(kind, req.fr, k0, k1, rec.team, def.hp)
+      : reg.forms.cls[kind]! >= 0 ? startBase(structs, kind, at, rec.team, def.hp)
+      : structs.add(kind, px, py, pz, at.yaw, rec.team, def.hp);
     if (ref < 0) return RESULT_FULL;
     items.burn(rec, slot, 1);
     this.last = ref;

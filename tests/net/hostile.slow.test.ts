@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import * as P from "../../shared/net/protocol.ts";
+import { writeNew } from "../../shared/net/place.ts";
 import { BOX_OPEN, BOX_SELF } from "../../shared/net/protocol.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -75,7 +76,7 @@ function survivor(seed: number) {
   h.say(s, `tp ${at.x.toFixed(3)} ${(at.z + 4).toFixed(3)}`);
   s.command(P.CMD_SELECT, (w) => w.u8(0));
   h.run(100);
-  s.command(P.CMD_PLACE, (w) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round(at.x * STRUCT_UNITS), 32), w.sbits(Math.round((at.z + 8) * STRUCT_UNITS), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  s.command(P.CMD_PLACE, (w) => writeNew(w, 0, Math.round(at.x * STRUCT_UNITS), Math.round((at.z + 8) * STRUCT_UNITS), 0));
   h.run(200);
   const sw = h.host.build.last;
   const nw = b.join(s, "foundation", sw, 0).ref;

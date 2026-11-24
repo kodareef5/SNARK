@@ -9,6 +9,7 @@ import { compileContent, type Registry } from "../../shared/content/registry.ts"
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_PLACE, CMD_STRUCT, RESULT_OK } from "../../shared/net/protocol.ts";
+import { writeNew } from "../../shared/net/place.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { HullDef } from "../../shared/world/convex.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -22,7 +23,6 @@ import { populateProving, PROVING_DIMS, buildProvingHeightfield } from "../../sh
 import { poseAt, type Pose } from "../../shared/world/snap.ts";
 import { Found, GONE_BLAST, StructureStore } from "../../shared/world/structures.ts";
 import { STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { NO_TARGET } from "../../server/build.ts";
 import { builder } from "../fixtures/build.ts";
 import { SOCKET_SLOTS } from "../fixtures/sockets.ts";
 import { coreRegistry, flatWorld, wrap, type TestWorld } from "../fixtures/world.ts";
@@ -273,7 +273,7 @@ test("pieces the server sets down are keyed there and on a client", () => {
     return code;
   };
   h.say(s, `tp ${at.x.toFixed(3)} ${(at.z + 4).toFixed(3)}`);
-  s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round(at.x * U), 32), w.sbits(Math.round((at.z + 8) * U), 32), w.u16(3000), w.sbits(0, 8), w.u8(0)));
+  s.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round(at.x * U), Math.round((at.z + 8) * U), 3000));
   h.run(200);
   const sw = h.host.build.last;
   const frame = ok("wall", sw, 2, 0, 1);

@@ -15,7 +15,8 @@ import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../shared/sim/vit
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { W_MELEE } from "../shared/sim/weapon.ts";
 import { latOf, lonOf, xOfLon, zOfLat } from "../shared/world/coords.ts";
-import { ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, makeSockets, poseAt, socketsOf, turnsOf, type Pose } from "../shared/world/snap.ts";
+import { writeJoin, writeNew, writeRest } from "../shared/net/place.ts";
+import { ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, makeSockets, poseAt, slotAt, socketsOf, turnsOf, type Pose } from "../shared/world/snap.ts";
 import { Found } from "../shared/world/structures.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK } from "../shared/world/upkeep.ts";
 import { Commands, resultWords } from "./commands.ts";
@@ -38,8 +39,6 @@ const ORDERS: Record<string, number> = { stay: ORDER_STAY, follow: ORDER_FOLLOW,
 const ANSWER_MS = 3000;
 const CHANNELS: Record<string, number> = { global: TEXT_GLOBAL, local: TEXT_LOCAL, tribe: TEXT_TRIBE };
 const CHANNEL_WORDS: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_LOCAL]: "local", [TEXT_TRIBE]: "tribe", [TEXT_NOTICE]: "notice" };
-/** A place command's target for open ground, as server/build.ts reads it. */
-const OPEN_GROUND = 0xffffffff;
 /** How far from the eye a piece is set without walking first: the server's reach (BUILD_REACH 9 + 3) less a margin. */
 const PLACE_REACH = 10.5;
 /** Why a survivor without a body chooses, in words. */
@@ -115,6 +114,7 @@ export class Agent implements ToolHost {
   private readonly found = new Found();
   private readonly sockets = makeSockets();
   private readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  private readonly slot = { fr: 0, k0: 0, k1: 0 };
   private readonly at = [0, 0, 0];
 
   constructor(session: ClientSession, opts: AgentOptions = {}) {
@@ -783,6 +783,8 @@ export class Agent implements ToolHost {
         if (typeof picked === "string") return refused(picked);
         socket = picked;
       }
+      // The server is told the slot the snap point means, in its base.
+      if (!slotAt(world.structs, reg, on.ref, kind, socket, turn, this.slot)) return refused(`${on.id} is in no base a ${this.nameOf(kind)} can join`);
       poseAt(world.structs, reg, on.ref, kind, socket, turn, this.pose);
       [x, y, z] = [this.pose.x / STRUCT_UNITS, this.pose.y / STRUCT_UNITS, this.pose.z / STRUCT_UNITS];
     } else {
@@ -807,23 +809,12 @@ export class Agent implements ToolHost {
     const held = await this.inHand(item);
     if (held.state !== "done") return held;
     const before = new Set(this.builtNear(kind, x, z));
-    const seq = this.commands.send(CMD_PLACE, (w) => {
-      w.u8(Math.max(0, variant));
-      if (socket >= 0) {
-        w.u32(on!.ref);
-        w.u8(socket);
-        w.u8(turn);
-        return;
-      }
-      w.u32(on ? on.ref : OPEN_GROUND);
-      if (on) w.u8(ON_TOP);
-      w.sbits(Math.round(x * STRUCT_UNITS), 32);
-      w.sbits(Math.round(z * STRUCT_UNITS), 32);
-      w.u16(yaw);
-      // Lift in eighths of a metre, for a piece on open ground.
-      if (!on) w.sbits(Math.round(amount(a, "lift", -0.5, 1, 0) * 8), 8);
-      w.u8(0);
-    });
+    const form = Math.max(0, variant);
+    const [px, pz] = [Math.round(x * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
+    const { fr, k0, k1 } = this.slot;
+    // Lift in eighths of a metre, for a piece on open ground.
+    const lift = Math.round(amount(a, "lift", -0.5, 1, 0) * 8);
+    const seq = this.commands.send(CMD_PLACE, (w) => (socket >= 0 ? writeJoin(w, form, fr, k0, k1) : on ? writeRest(w, form, on.ref, px, pz, yaw) : writeNew(w, form, px, pz, yaw, lift)));
     const code = seq === 0 ? 0 : await this.result(seq);
     if (code !== RESULT_OK) return this.outcome(seq, code, {});
     // The new row comes with the chunk's next news.

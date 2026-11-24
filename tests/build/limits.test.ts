@@ -3,11 +3,12 @@
 import { expect, test } from "bun:test";
 import { buildReason } from "../../client/core/build.ts";
 import type { ClientSession } from "../../client/core/session.ts";
-import { ENEMY_FOUNDATION, ENEMY_PILLAR, NO_TARGET } from "../../server/build.ts";
+import { ENEMY_FOUNDATION, ENEMY_PILLAR } from "../../server/build.ts";
 import { CAP_CELLS, CLAIM_CELL, Claims } from "../../server/claims.ts";
 import { STRUCT_UNITS, chunkCount, type MapDims } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_PLACE, CMD_SELECT, RESULT_LIMIT, RESULT_OK } from "../../shared/net/protocol.ts";
+import { writeNew } from "../../shared/net/place.ts";
 import { Rng } from "../../shared/rng.ts";
 import { GONE_BLAST, GONE_FELL, StructureStore, type PlacedRows } from "../../shared/world/structures.ts";
 import { STRUCT_DEMOLISH } from "../../shared/world/upkeep.ts";
@@ -268,7 +269,7 @@ test("a piece over the structure cap is refused with both numbers", () => {
     ada.command(CMD_SELECT, (w: BitWriter) => w.u8(PIECES.indexOf("foundation")));
     h.run(100);
     code = -1;
-    ada.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round((at.x - 8 + row * 4) * U), 32), w.sbits(Math.round((at.z + 5) * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+    ada.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round((at.x - 8 + row * 4) * U), Math.round((at.z + 5) * U), 0));
     h.run(200);
     if (code === RESULT_OK) row++;
     return code;

@@ -290,7 +290,8 @@ test("2,000 seeded placements under loss: the client's rows end as the server's,
   expect(counts.drawn).toBeGreaterThan(600);
   expect(counts.most).toBeGreaterThan(1);
   expect(counts.undone).toBeGreaterThan(10);
-  expect(h.host.build.placed).toBeGreaterThan(500);
+  // A key names its piece's slot, so one sent while the hand was still changing on the server is refused, not built as another piece.
+  expect(h.host.build.placed).toBeGreaterThan(400);
   expect(h.host.build.refused).toBeGreaterThan(100);
   expect(predict.entries).toEqual([]);
   for (const piece of PIECES) expect(predict.pending(id(`piece_${piece}_wood`))).toBe(0);
@@ -384,7 +385,7 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   expect(tap("KeyQ")).toBe(true);
   run(50);
   expect([ghost.x, ghost.z]).not.toEqual(first);
-  b.cycle = 0;
+  b.step(-1);
   run(50);
   click();
   run(300);

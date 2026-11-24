@@ -5,7 +5,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NO_TARGET } from "../../server/build.ts";
+import { PLACE_NEW, makePlaceRequest } from "../../shared/net/place.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import type { Source } from "../../server/combat.ts";
@@ -232,7 +232,7 @@ test("a diagonal bus returns beside a foundation that fit while it stood", () =>
   const rec = record(h, ada), inv = h.host.items.inv(rec);
   h.host.items.mintAt(rec, inv.hotbar, h.reg.index.get("core:piece_foundation_wood")!, 1);
   rec.held = 0;
-  expect(h.host.build.set(h.client(ada)!, 0, NO_TARGET, 0, 0, 44 * STRUCT_UNITS, 36 * STRUCT_UNITS, 0, 0)).toBe(RESULT_OK);
+  expect(h.host.build.set(h.client(ada)!, { ...makePlaceRequest(), mode: PLACE_NEW, x: 44 * STRUCT_UNITS, z: 36 * STRUCT_UNITS })).toBe(RESULT_OK);
   const foundation = h.host.build.last;
   strike(c, bus);
   expect(c.id(bus)).toBe("");

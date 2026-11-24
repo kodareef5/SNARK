@@ -16,10 +16,10 @@ import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertex
 export const PLACE_REACH = BUILD_REACH + 3;
 /** Metres a nearer slot must beat the chosen one by to take its place. */
 export const SWITCH_MARGIN = 0.25;
-/** Pieces one command may set down in a row. */
-export const RUN_MOST = 32;
 /** Metres short of where a look landed that slots are measured from. */
 const END_SHORT = 0.05;
+/** How much of a slot's score is its distance from the look's end. The rest is its distance from the look's whole line. */
+const END_SHARE = 0.75;
 /** Levels either side of its neighbour's that a foundation is offered at, where the ground allows. */
 const TERRACE = 4;
 /** Metres built pieces give way by before a lattice piece is asked against them: those of its own frame, and anything else. */
@@ -413,10 +413,10 @@ function note(n: number, fr: number, k0: number, k1: number, steps: number): num
  * The slots a look offers a piece of `kind`, to `out`, the best first. The look runs from (ox, oy, oz) along the unit
  * direction (dx, dy, dz) for `hitT` metres, to what it landed on or to the end of the builder's reach. Rows near its end,
  * in frames of `team`, each offer what OFFERS gives them, and one slot offered twice is one candidate. A slot is kept if it
- * is free, nothing blocks it, it is within SNAP_SEARCH of the look's end and in reach of the eye, and for a foundation the
- * ground allows it. Its score is the mean of its distance from the look's end and from the look's whole line, so what the
- * builder points at wins and what the look passes on its way is next. A foundation off its neighbour's level comes after
- * every one level with it. Ties go by frame and key. Returns how many.
+ * is free, nothing blocks it, its middle is within SNAP_SEARCH of the look's end and in reach of the eye, and for a foundation the
+ * ground allows it. Its score is its distance from the look's end, three parts in four, and from the look's whole line, so
+ * what the builder points at wins and what the look passes on its way breaks a tie. A foundation off its neighbour's level
+ * comes after every one level with it. Ties go by frame and key. Returns how many.
  */
 export function candidates(site: Site, kind: number, team: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, hitT: number, out: Candidates): number {
   out.n = 0;
@@ -471,9 +471,17 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
     const pz = pose.z / U - oz;
     if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose) || buried(site.heightAt, site.tables, kind, pose)) continue;
     shapeOf(f, forms, kind, k0, k1);
+    // Its middle is in reach of the look's end, as a socket's place was.
+    let mx = 0;
+    let mz = 0;
+    for (let c = 0; c < shape.n; c++) {
+      mx += shape.x[c]! / shape.n;
+      mz += shape.z[c]! / shape.n;
+    }
+    const my = (shape.y0 + shape.y1) / 2;
+    if ((mx - sx) * (mx - sx) + (my - sy) * (my - sy) + (mz - sz) * (mz - sz) > SNAP_SEARCH * SNAP_SEARCH) continue;
     const end = far(sx, sy, sz, sx, sy, sz);
-    if (end > SNAP_SEARCH) continue;
-    scores[i] = (end + far(ox, oy, oz, sx, sy, sz)) / 2 + uSteps[i]! * SNAP_SEARCH;
+    scores[i] = END_SHARE * end + (1 - END_SHARE) * far(ox, oy, oz, sx, sy, sz) + uSteps[i]! * SNAP_SEARCH;
     order[kept++] = i;
   }
   const sorted = order.subarray(0, kept).sort((a, b) => scores[a]! - scores[b]! || uFr[a]! - uFr[b]! || uK0[a]! - uK0[b]! || uK1[a]! - uK1[b]!);

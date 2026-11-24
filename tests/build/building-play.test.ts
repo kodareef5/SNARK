@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { BUILD_REASONS, Builder, GHOST_BAD, GHOST_OK } from "../../client/core/build.ts";
+import { BUILD_REASONS, Builder, GHOST_OK } from "../../client/core/build.ts";
 import { DRAW_BLEND, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { BUILDING_CONTENT } from "../../content/building.ts";
@@ -16,6 +16,7 @@ import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_BODY, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_NO_SUPPORT, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
+import { writeJoin, writeNew } from "../../shared/net/place.ts";
 import { Rng } from "../../shared/rng.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { capsuleKind } from "../../shared/world/collide.ts";
@@ -30,6 +31,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const U = STRUCT_UNITS;
+const taken = { fr: 0, k0: 0, k1: 0 };
 /** Runs the client's build preview as the app would, from the body's eye along the pilot's look. */
 function preview(h: Harness, s: ClientSession, pilot: Pilot, b: Builder, nowMs = 0): void {
   const dir = [0, 0, 0];
@@ -94,12 +96,15 @@ test("a piece in hand is shown where it would go and set down there: on open gro
   expect(Math.abs(b.pose.x - rowOf(first)[1]!)).toBe(3 * U);
   expect(b.pose.z).toBe(rowOf(first)[3]!);
   expect(place()).toBe(RESULT_OK);
-  // The same place is now taken. The preview says so before the server is asked.
-  b.cycle = 1;
+  // The same place is now taken, so the preview no longer offers it, and the server refuses one who asks for it anyway.
+  const side = rowOf(h.host.build.last);
+  s.world!.structs.keyAt(h.host.build.last, taken);
   preview(h, s, pilot, b, 100);
-  expect([b.problem, b.notice]).toEqual([RESULT_OBSTRUCTED, "Blocked by wooden foundation"]);
-  expect(place()).toBe(RESULT_OBSTRUCTED);
-  b.cycle = 0;
+  expect([b.problem, b.pose.x === side[1] && b.pose.z === side[3]]).toEqual([0, false]);
+  answer = -1;
+  s.command(CMD_PLACE, (w: BitWriter) => writeJoin(w, 0, taken.fr, taken.k0, taken.k1));
+  h.run(200);
+  expect(answer).toBe(RESULT_OBSTRUCTED);
 
   // T cycles the wall through doorframe, windowframe and wall. R turns it about.
   hold(s, "wall");
@@ -171,7 +176,7 @@ test("a two-floor house, piece by piece: walked into through its doorway, up its
   h.run(100);
   let code = -1;
   s.onResult = (_seq, c) => void (code = c);
-  s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round(at.x * U), 32), w.sbits(Math.round((at.z + 8) * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  s.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round(at.x * U), Math.round((at.z + 8) * U), 0));
   h.run(200);
   expect(code).toBe(RESULT_OK);
   const sw = h.host.build.last;
@@ -240,20 +245,20 @@ test("what the server will not build: on another tribe's work, out of reach, now
   const [ada, bob] = sessions as [ClientSession, ClientSession];
   ada.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
   h.run(100);
-  ada.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round(at.x * U), 32), w.sbits(Math.round((at.z + 6) * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  ada.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round(at.x * U), Math.round((at.z + 6) * U), 0));
   h.run(200);
   const base = h.host.build.last;
   expect(base).toBeGreaterThanOrEqual(0);
   expect(join(bob, "wall", base, 0).code).toBe(RESULT_NOT_YOURS);
   expect(join(bob, "foundation", base, 1).code).toBe(RESULT_NOT_YOURS);
   expect(count(bob, "wall")).toBe(STOCK);
-  // Nothing joins a structure that has no owner (the map's own).
+  // Nothing joins a structure that has no owner (the map's own): it is in no base.
   let plain = -1;
   for (let c = 0; c < structs.chunks.length && plain < 0; c++) {
     const t = structs.chunks[c];
     if (t) for (let k = 0; k < t.high; k++) if (t.kind[k] === id("foundation") && t.owner[k] === 0) plain = c * 65536 + k;
   }
-  if (plain >= 0) expect(join(ada, "wall", plain, 0).code).toBe(RESULT_NOT_YOURS);
+  if (plain >= 0) expect(join(ada, "wall", plain, 0).code).toBe(RESULT_NO_SNAP);
   h.say(ada, "tribe create Builders");
   h.say(ada, "tribe invite bob");
   h.say(bob, "tribe accept");
@@ -277,7 +282,7 @@ test("what the server will not build: on another tribe's work, out of reach, now
   const free = (piece: string, x: number, z: number): number => {
     ada.command(CMD_SELECT, (w: BitWriter) => w.u8(PIECES.indexOf(piece)));
     h.run(100);
-    ada.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round(x * U), 32), w.sbits(Math.round(z * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+    ada.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round(x * U), Math.round(z * U), 0));
     h.run(150);
     return code;
   };
@@ -383,6 +388,7 @@ test("what is shown is what is built: over two thousand looks with every piece, 
       continue;
     }
     const pose: Pose = { ...b.pose };
+    const inWay = capsuleKind(h.reg.parts, b.kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, s.own.x, s.own.y, s.own.z, p.radius, p.height, 0.1);
     const [kind, predicted] = [b.kind, b.problem];
     const before = h.host.build.placed;
     answer = -1;
@@ -391,7 +397,11 @@ test("what is shown is what is built: over two thousand looks with every piece, 
     expect(answer).not.toBe(-1);
     if (answer === RESULT_OK) {
       counts.built++;
-      expect(predicted).toBe(0);
+      // Shown blocked by the builder's own body where the server's copy of it, a little off, was clear.
+      if (predicted !== 0) {
+        counts.body++;
+        expect([predicted, inWay]).toEqual([RESULT_BODY, true]);
+      }
       expect(h.host.build.placed).toBe(before + 1);
       expect(rowOf(h.host.build.last).slice(0, 5)).toEqual([kind, pose.x, pose.y, pose.z, pose.yaw]);
     } else if (predicted !== 0) {
@@ -542,10 +552,11 @@ test("in the whole client: the piece in hand is drawn where it would go, the but
   app.mouseButton(0, true);
   run(300);
   expect(h.host.build.placed).toBe(2);
-  // The ghost is still on the place just filled.
+  // The place just filled is no longer offered: the ghost has gone on to one that is free.
+  const filled = h.world.structs.chunks[Math.floor(h.host.build.last / 65536)]!;
   packet = run(200)!;
-  expect([ghost.kind, ghost.color]).toEqual([id("doorframe_wood"), GHOST_BAD]);
-  expect(app.ui.frame.find(KEY_PROMPT)!.text).toBe("Blocked by wooden doorframe");
+  expect([ghost.kind, ghost.color]).toEqual([id("doorframe_wood"), GHOST_OK]);
+  expect([ghost.x, ghost.y, ghost.z]).not.toEqual([filled.x[h.host.build.last & 0xffff]!, filled.y[h.host.build.last & 0xffff]!, filled.z[h.host.build.last & 0xffff]!]);
   // Looking at the sky, a wall has nothing to join.
   app.controls.pitch = 1;
   packet = run(200)!;
@@ -576,7 +587,7 @@ test("nothing is built that nothing would hold up; and when what held a piece go
   h.say(s, `tp ${at.x.toFixed(3)} ${(at.z + 3).toFixed(3)}`);
   s.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
   h.run(100);
-  s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round((at.x - 1.5) * U), 32), w.sbits(Math.round((at.z + 8) * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  s.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round((at.x - 1.5) * U), Math.round((at.z + 8) * U), 0));
   h.run(200);
   // Two foundations side by side, west and east, with walls round the outside. On the edge they share stands a doorframe with its door.
   const west = h.host.build.last;
@@ -641,7 +652,7 @@ test("nothing is built that nothing would hold up; and when what held a piece go
   // A tower of sixty walls with its bottom knocked out falls in one tick, as one wave.
   s.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
   h.run(100);
-  s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round((at.x + 4) * U), 32), w.sbits(Math.round((at.z + 8) * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  s.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round((at.x + 4) * U), Math.round((at.z + 8) * U), 0));
   h.run(200);
   const base = h.host.build.last;
   const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
@@ -797,7 +808,7 @@ test("nothing is built near what another tribe has founded: fifty metres from a 
       s.command(CMD_SELECT, (w: BitWriter) => w.u8(PIECES.indexOf(piece)));
       h.run(100);
       code = -1;
-      s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round((at.x - 58 + far + 3) * U), 32), w.sbits(Math.round(at.z * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+      s.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round((at.x - 58 + far + 3) * U), Math.round(at.z * U), 0));
       h.run(200);
       return code;
     };

@@ -11,8 +11,8 @@ import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CHOOSE_DIED, CHOOSE_TRAVEL, CMD_MOVE, CMD_PLACE, CMD_RESPAWN, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK, RESULT_STALE, RESULT_WAIT, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
+import { writeNew, writeRest } from "../../shared/net/place.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
-import { ON_TOP } from "../../shared/world/snap.ts";
 import { STRUCT_NAME, STRUCT_PICKUP, STRUCT_TRAVEL } from "../../shared/world/upkeep.ts";
 import { builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -34,7 +34,7 @@ function foundation(made: Made, s: ClientSession, x: number, z: number): number 
   s.command(CMD_SELECT, (w: BitWriter) => w.u8(6));
   h.run(100);
   const before = h.host.build.placed;
-  s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round(x * U), 32), w.sbits(Math.round(z * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  s.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round(x * U), Math.round(z * U), 0));
   h.run(150);
   expect(h.host.build.placed).toBe(before + 1);
   return h.host.build.last;
@@ -53,14 +53,8 @@ function setDown(made: Made, s: ClientSession, item: string, x: number, z: numbe
   s.onResult = (seq, c) => void (seq !== 0 && (code = c));
   const before = h.host.build.placed;
   s.command(CMD_PLACE, (w: BitWriter) => {
-    w.u8(0);
-    w.u32(on);
-    if (on !== NO_TARGET) w.u8(ON_TOP);
-    w.sbits(Math.round(x * U), 32);
-    w.sbits(Math.round(z * U), 32);
-    w.u16(0);
-    if (on === NO_TARGET) w.sbits(0, 8);
-    w.u8(0);
+    if (on === NO_TARGET) writeNew(w, 0, Math.round(x * U), Math.round(z * U), 0);
+    else writeRest(w, 0, on, Math.round(x * U), Math.round(z * U), 0);
   });
   h.run(150);
   return { code, ref: h.host.build.placed > before ? h.host.build.last : -1 };
