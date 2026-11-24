@@ -7,11 +7,10 @@
 // its item is held back until the slots change after its answer.
 
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { makePlaced, readPlaced, type Placed } from "../../shared/net/placed.ts";
-import { CMD_STRUCT, RESULT_OK, RESULT_WAIT, S_PLACED } from "../../shared/net/protocol.ts";
+import type { Placed } from "../../shared/net/placed.ts";
+import { CMD_STRUCT, RESULT_OK, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import type { Inventory } from "../../shared/sim/items.ts";
 import { STRUCT_PICKUP } from "../../shared/world/upkeep.ts";
-import { messages } from "./readers.ts";
 import { MAX_PREDICTED } from "./render/packet.ts";
 import type { Ghost } from "./render/passes/ghost.ts";
 import type { ClientSession } from "./session.ts";
@@ -49,14 +48,6 @@ export interface Predicted {
   invVersion: number;
   chunkVersion: number;
 }
-
-const scratch = makePlaced();
-messages.add({
-  kind: S_PLACED,
-  read(s, r) {
-    if (readPlaced(r, scratch)) s.onPlaced?.(scratch);
-  },
-});
 
 export class PredictBuild {
   readonly entries: Predicted[] = [];

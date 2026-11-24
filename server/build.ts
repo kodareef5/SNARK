@@ -4,7 +4,7 @@
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { MAX_NAME_BYTES, TEXT_NOTICE, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LIMIT, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -574,31 +574,7 @@ export class Build {
   }
 
   private enemyNear(team: number, x: number, z: number): boolean {
-    const world = this.ctx.world;
-    const structs = world.structs;
-    const role = world.reg.role;
-    const dims = world.dims;
-    const cx0 = Math.max(0, Math.floor((x - ENEMY_FOUNDATION) / 64));
-    const cx1 = Math.min(dims.chunksX - 1, Math.floor((x + ENEMY_FOUNDATION) / 64));
-    const cz0 = Math.max(0, Math.floor((z - ENEMY_FOUNDATION) / 64));
-    const cz1 = Math.min(dims.chunksZ - 1, Math.floor((z + ENEMY_FOUNDATION) / 64));
-    for (let cz = cz0; cz <= cz1; cz++) {
-      for (let cx = cx0; cx <= cx1; cx++) {
-        const t = structs.chunks[cz * dims.chunksX + cx];
-        if (!t) continue;
-        for (let s = 0; s < t.high; s++) {
-          const owner = t.owner[s]!;
-          if (owner === 0 || owner === team) continue;
-          const r = role[t.kind[s]!]!;
-          if (r !== ROLE_FOUNDATION && r !== ROLE_PILLAR) continue;
-          const reach = r === ROLE_FOUNDATION ? ENEMY_FOUNDATION : ENEMY_PILLAR;
-          const dx = t.x[s]! - x;
-          const dz = t.z[s]! - z;
-          if (dx * dx + dz * dz < reach * reach) return true;
-        }
-      }
-    }
-    return false;
+    return this.ctx.world.claims.enemyNear(team, x, z, ENEMY_FOUNDATION, ENEMY_PILLAR);
   }
 
   /**
@@ -711,6 +687,12 @@ export class Build {
     if (this.enemyNear(rec.team, px, pz)) {
       this.enemyGap(rec.team, px, pz);
       return RESULT_ENEMY_NEAR;
+    }
+    const cap = this.ctx.rules.num("TheMaxStructuresInRange");
+    const have = cap > 0 ? world.claims.near(px, pz) : 0;
+    if (cap > 0 && have >= cap) {
+      [answer.detail, answer.a, answer.b] = [PLACED_COUNTS, have, cap];
+      return RESULT_LIMIT;
     }
     if (!this.support.stands(kind, pose.x, pose.y, pose.z, pose.yaw)) return RESULT_NO_SUPPORT;
     const kept = this.keepClear?.(px, pz) ?? "";

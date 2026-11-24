@@ -22,9 +22,6 @@ export class Decay {
   private readonly rules: Rules;
   /** Team, then chunk, to the tick a member was last near. */
   private readonly clocks = new Map<number, Map<number, number>>();
-  /** Per chunk, the teams with anything built in it, cached at chunk version teamsAt. */
-  private readonly teams: (number[] | undefined)[] = [];
-  private readonly teamsAt: number[] = [];
 
   private get reg(): Registry {
     return this.world.reg;
@@ -33,21 +30,6 @@ export class Decay {
   constructor(world: ServerWorld, rules: Rules) {
     this.world = world;
     this.rules = rules;
-  }
-
-  private teamsIn(chunk: number): readonly number[] {
-    const t = this.world.structs.chunks[chunk];
-    if (!t || t.live === 0) return NONE;
-    let list = this.teams[chunk];
-    if (list && this.teamsAt[chunk] === t.version) return list;
-    list = [];
-    for (let s = 0; s < t.high; s++) {
-      const owner = t.owner[s]!;
-      if (t.kind[s] !== 0 && owner !== 0 && !list.includes(owner)) list.push(owner);
-    }
-    this.teams[chunk] = list;
-    this.teamsAt[chunk] = t.version;
-    return list;
   }
 
   /** A member of `team` is in `chunk`. Sets the team's clocks there and in the eight chunks around it. */
@@ -60,7 +42,7 @@ export class Decay {
       for (let dx = -1; dx <= 1; dx++) {
         if (cx + dx < 0 || cz + dz < 0 || cx + dx >= dims.chunksX || cz + dz >= dims.chunksZ) continue;
         const at = (cz + dz) * dims.chunksX + cx + dx;
-        if (this.teamsIn(at).includes(team)) this.set(team, at, tick);
+        if (this.world.claims.has(team, at)) this.set(team, at, tick);
       }
     }
   }
@@ -117,7 +99,8 @@ export class Decay {
     let taken = 0;
     for (const [team, of] of this.clocks) {
       for (const [chunk, last] of of) {
-        const t = structs.chunks[chunk];
+        // A clock outlives the team's last piece in its chunk, and such a chunk's slots are not read.
+        const t = this.world.claims.has(team, chunk) ? structs.chunks[chunk] : null;
         for (let s = 0; t && s < t.high && taken < SWEEP_MAX; s++) {
           if (t.kind[s] === 0 || t.owner[s] !== team) continue;
           const ref = chunk * 65536 + s;
@@ -139,7 +122,7 @@ export class Decay {
     const out: number[] = [];
     for (const [team, of] of this.clocks) {
       for (const [chunk, last] of of) {
-        if (this.teamsIn(chunk).includes(team)) out.push(team, chunk, last);
+        if (this.world.claims.has(team, chunk)) out.push(team, chunk, last);
         else of.delete(chunk);
       }
       if (of.size === 0) this.clocks.delete(team);
@@ -167,5 +150,3 @@ export class Decay {
     this.dirty = false;
   }
 }
-
-const NONE: readonly number[] = [];

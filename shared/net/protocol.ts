@@ -554,8 +554,10 @@ export const RESULT_WAIT = 23;
 export const RESULT_LOCKED = 24;
 export const RESULT_PIN = 25;
 export const RESULT_NOT_EMPTY = 26;
+/** A placement refused because as many pieces stand around the place as the server allows. */
+export const RESULT_LIMIT = 27;
 /** A placement refused because a living body stands in the piece's place. OBSTRUCTED is something built in the way. */
-export const RESULT_BODY = 27;
+export const RESULT_BODY = 28;
 
 const ownKind = counter();
 export const OWN_SESSION = ownKind();

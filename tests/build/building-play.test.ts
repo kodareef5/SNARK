@@ -15,7 +15,7 @@ import { DOOR_WIDTH, FOUNDATION_THICK, RISE, WALL_HEIGHT } from "../../content/b
 import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_NO_SUPPORT, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_BODY, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_NO_SUPPORT, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { capsuleKind } from "../../shared/world/collide.ts";
@@ -97,7 +97,7 @@ test("a piece in hand is shown where it would go and set down there: on open gro
   // The same place is now taken. The preview says so before the server is asked.
   b.cycle = 1;
   preview(h, s, pilot, b, 100);
-  expect([b.problem, b.notice]).toEqual([RESULT_OBSTRUCTED, "Something is in the way"]);
+  expect([b.problem, b.notice]).toEqual([RESULT_OBSTRUCTED, "Blocked by wooden foundation"]);
   expect(place()).toBe(RESULT_OBSTRUCTED);
   b.cycle = 0;
 
@@ -284,8 +284,8 @@ test("what the server will not build: on another tribe's work, out of reach, now
   expect([free("wall", at.x, at.z + 3), free("ceiling", at.x, at.z + 3), free("door", at.x, at.z + 3)]).toEqual([RESULT_NO_SNAP, RESULT_NO_SNAP, RESULT_NO_SNAP]);
   expect(free("foundation", -50, at.z)).toBe(RESULT_INVALID);
   expect(free("foundation", at.x, at.z + 30)).toBe(RESULT_FAR);
-  // Her own body obstructs a foundation where she stands, and not a pillar a step off.
-  expect(free("foundation", at.x, at.z)).toBe(RESULT_OBSTRUCTED);
+  // Her own body is in the way of a foundation where she stands, and not of a pillar a step off.
+  expect(free("foundation", at.x, at.z)).toBe(RESULT_BODY);
   expect(free("pillar", at.x - 1.5, at.z)).toBe(RESULT_OK);
   h.say(ada, "suicide");
   h.run(300);
@@ -401,7 +401,7 @@ test("what is shown is what is built: over two thousand looks with every piece, 
     } else {
       // Refused where the preview found no problem. That happens only when the builder's own body is in the way.
       counts.body++;
-      expect(answer).toBe(RESULT_OBSTRUCTED);
+      expect(answer).toBe(RESULT_BODY);
       expect(capsuleKind(h.reg.parts, kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height, 0.1)).toBe(true);
     }
   }
@@ -545,7 +545,7 @@ test("in the whole client: the piece in hand is drawn where it would go, the but
   // The ghost is still on the place just filled.
   packet = run(200)!;
   expect([ghost.kind, ghost.color]).toEqual([id("doorframe_wood"), GHOST_BAD]);
-  expect(app.ui.frame.find(KEY_PROMPT)!.text).toBe("Something is in the way");
+  expect(app.ui.frame.find(KEY_PROMPT)!.text).toBe("Blocked by wooden doorframe");
   // Looking at the sky, a wall has nothing to join.
   app.controls.pitch = 1;
   packet = run(200)!;

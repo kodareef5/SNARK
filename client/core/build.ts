@@ -8,7 +8,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { handleIndex } from "../../shared/ids.ts";
-import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
@@ -43,6 +43,7 @@ export const BUILD_REASONS: Readonly<Record<number, string>> = {
   [RESULT_FAR]: "Too far away",
   [RESULT_SHORT]: "You have none left",
   [RESULT_FULL]: "This area holds no more pieces",
+  [RESULT_LIMIT]: "No more structures may stand here",
 };
 
 /** What stands in a piece's way, as S_PLACED tells it and the preview finds it: a PLACED_ detail and its numbers. */
@@ -67,6 +68,7 @@ export function buildReason(reg: Registry, session: ClientSession, code: number,
     const name = nameOf?.(by.a) ?? "";
     if (name !== "") return `Blocked by ${name}`;
   }
+  if (code === RESULT_LIMIT && by.detail === PLACED_COUNTS) return `${by.a.toLocaleString("en-US")} of ${by.b.toLocaleString("en-US")} structures here`;
   if (code === RESULT_ENEMY_NEAR && by.detail === PLACED_METRES) return `${by.a} m from another tribe's ${by.b <= ENEMY_PILLAR ? "pillar" : "foundation"}; ${by.b} needed`;
   return BUILD_REASONS[code] ?? "It cannot be built there";
 }
