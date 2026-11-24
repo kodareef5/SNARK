@@ -454,7 +454,7 @@ test("a young tree or an elder stops a body at its trunk alone, which a survivor
     const [lx, lz] = [box[b * 6]!, box[b * 6 + 2]!];
     return [Math.cos(a) * lx + Math.sin(a) * lz + s.x, s.y + box[b * 6 + 1]! - box[b * 6 + 4]!, Math.cos(a) * lz - Math.sin(a) * lx + s.z];
   };
-  const meets = (x: number, y: number, z: number): boolean => capsuleKind(forms.parts, s.form, s.x, s.y, s.z, s.yaw, x, y, z, p.radius, p.height, SKIN);
+  const meets = (x: number, y: number, z: number): boolean => capsuleKind(forms.parts, s.form, s.x, s.y, s.z, s.yaw, 0, x, y, z, p.radius, p.height, SKIN);
   let [young, elders, banyans] = [0, 0, 0];
   for (let chunk = 0; chunk < CHUNKS && (young < 20 || elders < 10 || banyans < 5); chunk++) {
     for (let i = 0; i < f.source.perChunk; i++) {
@@ -676,7 +676,7 @@ test("a used-up rock leaves its broken base, which bodies and rays meet as its o
     const a = (s.yaw / 65536) * TAU;
     const [lx, lz] = [box[b]!, box[b + 2]!];
     const [x, z] = [Math.cos(a) * lx + Math.sin(a) * lz + s.x, Math.cos(a) * lz - Math.sin(a) * lx + s.z];
-    expect(capsuleKind(forms.parts, form, s.x, s.y, s.z, s.yaw, x, s.y, z, p.radius, p.height, SKIN)).toBe(true);
+    expect(capsuleKind(forms.parts, form, s.x, s.y, s.z, s.yaw, 0, x, s.y, z, p.radius, p.height, SKIN)).toBe(true);
     expect([castWorld({ hf, structs, nodes: alone }, x, s.y + 6, z, 0, -1, 0, 6), rayHit.ref]).toEqual([HIT_NODE, chunk * 65536 + i]);
     return 6 - rayHit.t;
   };

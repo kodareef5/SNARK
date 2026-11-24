@@ -136,7 +136,7 @@ export class CreatureContacts {
     const table = store.chunks[Math.floor(ref / 65536)], slot = ref & 65535;
     if (!table || !table.kind[slot]) return null;
     const form = table.kind[slot]!, parts = store.parts;
-    frameOf(table.yaw[slot]!);
+    frameOf(table.yaw[slot]!, table.twAt(slot));
     const sx = from[0] - table.x[slot]!, sy = from[1] - table.y[slot]!, sz = from[2] - table.z[slot]!;
     const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2], length = Math.hypot(dx, dy, dz);
     const vx = length > 0 ? dx / length : 1, vy = length > 0 ? dy / length : 0, vz = length > 0 ? dz / length : 0;
@@ -153,7 +153,7 @@ export class CreatureContacts {
     }
     const hulls = parts.hulls;
     if (hulls) for (let p = hulls.start[form]!; p < hulls.start[form + 1]!; p++) {
-      const broad = rayHull(hulls, p, table.yaw[slot]!, sx, sy, sz, vx, vy, vz, radius);
+      const broad = rayHull(hulls, p, table.yaw[slot]!, table.twAt(slot), sx, sy, sz, vx, vy, vz, radius);
       if (broad > length || broad >= best) continue;
       const hit = this.touch(store, ref, -1, p, from, vx, vy, vz, radius, broad, Math.min(length, best));
       if (hit < best && this.visiblePart(origin, from, ref, kind)) best = hit;
@@ -187,15 +187,15 @@ export class CreatureContacts {
   /** Signed distance to the part and an actual nearest face/edge/corner point, in world coordinates. */
   private closest(store: StructureStore, ref: number, box: number, hull: number): number {
     const table = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535;
-    const sx = table.x[slot]!, sy = table.y[slot]!, sz = table.z[slot]!, yaw = table.yaw[slot]!;
+    const sx = table.x[slot]!, sy = table.y[slot]!, sz = table.z[slot]!, yaw = table.yaw[slot]!, tw = table.twAt(slot);
     const dx = this.centre[0] - sx, dy = this.centre[1] - sy, dz = this.centre[2] - sz;
     if (hull >= 0) {
       // A zero-radius, zero-length capsule asks the existing convex distance solver for the nearest surface.
-      capsuleHull(store.parts.hulls!, hull, yaw, dx, dz, dy, dy, 0, Infinity);
+      capsuleHull(store.parts.hulls!, hull, yaw, tw, dx, dz, dy, dy, 0, Infinity);
       this.witness[0] = this.centre[0] + hullPush.x; this.witness[1] = this.centre[1] + hullPush.y; this.witness[2] = this.centre[2] + hullPush.z;
       return -hullPush.depth;
     }
-    frameOf(yaw);
+    frameOf(yaw, tw);
     const c = frame.cos, s = frame.sin, wide = frame.stretch, b = store.parts.box;
     const x = c * dx - s * dz - b[box]! * wide, y = dy - b[box + 1]!, z = s * dx + c * dz - b[box + 2]! * wide;
     const hx = b[box + 3]! * wide, hy = b[box + 4]!, hz = b[box + 5]! * wide;

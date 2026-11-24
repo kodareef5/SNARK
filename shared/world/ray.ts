@@ -235,7 +235,7 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
         const slot = r & 0xffff;
         const k = t.kind[slot]!;
         if (solidOnly && structs.isSoft(k)) continue;
-        frameOf(t.yaw[slot]!);
+        frameOf(t.yaw[slot]!, t.twAt(slot));
         const s = frame.sin;
         const c = frame.cos;
         // The ray in the structure's frame, in the frame's own lengths, so the boxes are as written.
@@ -268,7 +268,7 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
         // Convex parts are placed in the world's own axes, by the frame's whole-number vectors.
         const hulls = structs.parts.hulls;
         for (let p = hulls ? hulls.start[k]! : 0, end = hulls ? hulls.start[k + 1]! : 0; p < end; p++) {
-          const hit = rayHull(hulls!, p, t.yaw[slot]!, px, ly, pz, dx, dy, dz, SEAL);
+          const hit = rayHull(hulls!, p, t.yaw[slot]!, t.twAt(slot), px, ly, pz, dx, dy, dz, SEAL);
           if (hit >= best) continue;
           best = hit;
           kind = pass === 0 ? HIT_STRUCTURE : HIT_NODE;

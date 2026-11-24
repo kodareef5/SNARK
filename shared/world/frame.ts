@@ -8,8 +8,8 @@ import { TAU, detCos, detSin } from "../math/scalar.ts";
 /** In lattice units. A metre and a half. */
 export const HALF_SIDE = (STRUCT_UNITS * 3) / 2;
 const QUARTER = YAW_UNITS / 4;
-/** No frame makes a box wider than this many times its written size. */
-export const STRETCH_MOST = 1 + 1 / HALF_SIDE;
+/** No frame of any turn class makes a box wider than this many times its written size. */
+export const STRETCH_MOST = 1 + 2 / HALF_SIDE;
 
 /**
  * The world directions of the +X and +Z axes of a frame turned `yaw`, each as a whole-number vector half a side long, written to
@@ -45,18 +45,60 @@ let lastSin = 0;
 
 const HALF_ROOT3 = 0.8660254037844386;
 
-/**
- * The whole-number vector (x, z) turned 60 degrees toward the frame's +Z, as a frame's +X turns toward its +Z, to `out[at]` and
- * `out[at + 1]`. Rounding is the same either side of zero, so turning commutes with quarter turns and with turning half round.
- * A piece whose second axis is its first turned so gives triangles of two whole-number sides, and six of them close a ring.
- */
-export function sixtyOf(x: number, z: number, out: Int32Array, at: number): void {
-  out[at] = roundOut(0.5 * x - HALF_ROOT3 * z);
-  out[at + 1] = roundOut(HALF_ROOT3 * x + 0.5 * z);
-}
-
 function roundOut(v: number): number {
   return v < 0 ? -Math.round(-v) : Math.round(v);
+}
+
+/**
+ * The whole-number vector (x, z) turned 30° toward +Z, to `out[at]` and `out[at + 1]`. Rounding is the same either side
+ * of zero, so this commutes exactly with quarter turns.
+ */
+export function turn30(x: number, z: number, out: Int32Array, at: number): void {
+  out[at] = roundOut(HALF_ROOT3 * x - 0.5 * z);
+  out[at + 1] = roundOut(0.5 * x + HALF_ROOT3 * z);
+}
+
+/**
+ * The vector (x, z) turned 60° toward +Z as the lattice turns it: itself plus the quarter turn of its 30° turn. A triangle
+ * drawn on a vector and this one has two whole-number sides, and six of them close a ring.
+ */
+export function turn60(x: number, z: number, out: Int32Array, at: number): void {
+  turn30(x, z, out, at);
+  const tx = out[at]!;
+  out[at] = x - out[at + 1]!;
+  out[at + 1] = z + tx;
+}
+
+const classAxes = new Int32Array(4);
+
+/**
+ * The +X axis of a piece of yaw `yaw` and turn class `tw`, one half-side long, to `out[at]` and `out[at + 1]`. Its +Z axis
+ * is that turned a quarter toward +Z, (-z, x). Class 0 is frameAxes' own; 1 and 2 are it turned 30° and 60° on the lattice.
+ */
+export function classAxis(yaw: number, tw: number, out: Int32Array, at: number): void {
+  frameAxes(yaw, classAxes);
+  const x = classAxes[0]!;
+  const z = classAxes[1]!;
+  if (tw === 0) {
+    out[at] = x;
+    out[at + 1] = z;
+  } else if (tw === 1) turn30(x, z, out, at);
+  else turn60(x, z, out, at);
+}
+
+/**
+ * The second axis of a triangle of yaw `yaw` and class `tw`: the lattice direction 60° on from its +X. Only for class 0
+ * is that turn60 of its +X.
+ */
+export function classAxis60(yaw: number, tw: number, out: Int32Array, at: number): void {
+  frameAxes(yaw, classAxes);
+  const x = classAxes[0]!;
+  const z = classAxes[1]!;
+  if (tw === 0) turn60(x, z, out, at);
+  else if (tw === 1) {
+    out[at] = -z;
+    out[at + 1] = x;
+  } else turn30(-z, x, out, at);
 }
 
 /**
@@ -67,11 +109,16 @@ export const frame = { cos: 1, sin: 0, stretch: 1 };
 
 const axes = new Int32Array(4);
 let frameYaw = 0;
+let frameTw = 0;
 
-/** Fills `frame` for a piece turned `yaw`. */
-export function frameOf(yaw: number): void {
-  if (yaw === frameYaw) return;
-  frameAxes(yaw, axes);
+/** Fills `frame` for a piece turned `yaw`, of turn class `tw`: 0 for a row that is not on a base's lattice. */
+export function frameOf(yaw: number, tw: number): void {
+  if (yaw === frameYaw && tw === frameTw) return;
+  if (tw === 0) frameAxes(yaw, axes);
+  else {
+    classAxis(yaw, tw, axes, 0);
+    axes[2] = -axes[1]!;
+  }
   const c = axes[0]!;
   const s = axes[2]!;
   const length = Math.sqrt(c * c + s * s);
@@ -79,4 +126,5 @@ export function frameOf(yaw: number): void {
   frame.sin = s / length;
   frame.stretch = length / HALF_SIDE;
   frameYaw = yaw;
+  frameTw = tw;
 }

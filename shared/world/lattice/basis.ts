@@ -5,41 +5,20 @@
 // frame's own axes, so two patches the ideal test calls a hair apart can be centimetres apart or overlapped when far along ζ and ζ².
 
 import { STRUCT_UNITS, YAW_UNITS } from "../../coords.ts";
-import { HALF_SIDE, frameAxes } from "../frame.ts";
+import { STRETCH_MOST, frameAxes, turn30 } from "../frame.ts";
 import type { Tuples } from "./module.ts";
+
+export { classAxis, classAxis60, turn30, turn60 } from "../frame.ts";
 
 /** Yaw units in a quarter turn. A quarter turn of direction, three steps, is this much less yaw. */
 export const QUARTER_YAW = YAW_UNITS / 4;
 /** Lattice units in one level, a quarter storey (0.75 m). */
 export const LEVEL_UNITS = (STRUCT_UNITS * 3) / 4;
-/** No class of frame makes a box wider than this many times its written size: frame.ts's STRETCH_MOST, once it reads classes. */
-export const CLASS_STRETCH_MOST = 1 + 2 / HALF_SIDE;
+/** No class of frame makes a box wider than this many times its written size. */
+export const CLASS_STRETCH_MOST = STRETCH_MOST;
 
 /** Lattice units a place may be from its ideal place, for each half-side its tuple goes along ζ or ζ² (measured: 0.7015). */
 export const DRIFT_MOST = 0.71;
-
-const HALF_ROOT3 = 0.8660254037844386;
-
-function roundOut(v: number): number {
-  return v < 0 ? -Math.round(-v) : Math.round(v);
-}
-
-/**
- * The whole-number vector (x, z) turned 30° toward +Z, to `out[at]` and `out[at + 1]`. Rounding is the same either side
- * of zero, as frame.ts's sixtyOf rounds, so this commutes exactly with quarter turns.
- */
-export function turn30(x: number, z: number, out: Int32Array, at: number): void {
-  out[at] = roundOut(HALF_ROOT3 * x - 0.5 * z);
-  out[at + 1] = roundOut(0.5 * x + HALF_ROOT3 * z);
-}
-
-/** The vector (x, z) turned 60° toward +Z as the lattice turns it: itself plus R of its 30° turn. What sixtyOf is to become. */
-export function turn60(x: number, z: number, out: Int32Array, at: number): void {
-  turn30(x, z, out, at);
-  const tx = out[at]!;
-  out[at] = x - out[at + 1]!;
-  out[at + 1] = z + tx;
-}
 
 const axes = new Int32Array(4);
 
@@ -100,34 +79,4 @@ export function twOf(d: number): number {
 /** The direction of a piece of yaw `yaw` and class `tw` in a frame turned `frameYaw`, a whole number of quarter turns away. */
 export function dirOf(frameYaw: number, yaw: number, tw: number): number {
   return (((frameYaw - yaw) >> 14) & 3) * 3 + tw;
-}
-
-/**
- * The +X axis of a piece of yaw `yaw` and class `tw`, one half-side long, to `out[at]` and `out[at + 1]`. Its +Z axis is
- * R of that. With yawOf and twOf of direction d, this is dirVector of d: what a collider and the renderer orient by.
- */
-export function classAxis(yaw: number, tw: number, out: Int32Array, at: number): void {
-  frameAxes(yaw, axes);
-  const x = axes[0]!;
-  const z = axes[1]!;
-  if (tw === 0) {
-    out[at] = x;
-    out[at + 1] = z;
-  } else if (tw === 1) turn30(x, z, out, at);
-  else turn60(x, z, out, at);
-}
-
-/**
- * The second axis of a triangle of yaw `yaw` and class `tw`: the lattice direction 60° on from its +X, dirVector of d + 2.
- * Only for class 0 is that turn60 of its +X.
- */
-export function classAxis60(yaw: number, tw: number, out: Int32Array, at: number): void {
-  frameAxes(yaw, axes);
-  const x = axes[0]!;
-  const z = axes[1]!;
-  if (tw === 0) turn60(x, z, out, at);
-  else if (tw === 1) {
-    out[at] = -z;
-    out[at + 1] = x;
-  } else turn30(-z, x, out, at);
 }
