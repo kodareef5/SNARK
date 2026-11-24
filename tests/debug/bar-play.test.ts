@@ -237,15 +237,16 @@ test("one hitch tells one story: on the timeline, in the Frame tab, in its pictu
     app.session.text("enablecheats");
     app.ui.settings.debug = true;
     const bar = await barOf(app, run);
+    let pageMs = bar.spans.now();
+    bar.spans.now = () => pageMs;
     await play(run, 5000);
-    // A known delay: the dash's part of one frame takes 60 ms, so the next frame comes 70 ms late.
+    // Advance the span clock inside the dash and the frame clock on the following frame.
     const dash = app["dash"], step = dash.step.bind(dash);
     let slow = true;
     dash.step = (f: Parameters<typeof step>[0]) => {
       if (slow) {
         slow = false;
-        const until = performance.now() + 60;
-        while (performance.now() < until);
+        pageMs += 60;
         late(70);
       }
       step(f);
