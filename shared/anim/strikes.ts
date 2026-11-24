@@ -91,9 +91,6 @@ const LEFT_UP = 0.15;
 const GRIP_ROLL = 90;
 /** Times the left hand is solved onto a haft. */
 const LEFT_PASSES = 4;
-/** Degrees the fingers fold at the knuckles and again at their tips, and the thumb across them, in a fist. */
-const FINGER_FOLD = 105;
-const THUMB_FOLD = 45;
 /** The share of a gripping hand's turn about the forearm that the forearm takes. */
 const FOREARM_SHARE = 0.65;
 
@@ -162,7 +159,6 @@ const between = (r: Float32Array, a: number, b: number): number => {
   return Math.sqrt(x * x + y * y + z * z);
 };
 
-
 const LEFT_HAND = [B_FINGERS_L, B_THUMB_L, B_PROP_L, B_FINGERTIPS_L] as const;
 const RIGHT_HAND = [B_FINGERS_R, B_THUMB_R, B_PROP_R, B_FINGERTIPS_R] as const;
 
@@ -218,9 +214,10 @@ export interface EyeFrame {
 const dir = new Float64Array(9);
 
 /** A direction of the move at `s[i]` into `dir` at `d`: as it is, or pitched with the eye's look. */
-function turned(s: Float64Array, i: number, eye: EyeFrame | null, d: number): void {
-  const y = s[i + 1]! * (d === 3 && eye ? eye.height : 1), z = s[i + 2]!;
-  dir[d] = s[i]! * (d === 3 && eye ? eye.width : 1);
+function turned(s: Float64Array, i: number, eye: EyeFrame | null, d: number, haft = false): void {
+  const height = eye && haft ? eye.height : 1;
+  const y = s[i + 1]! * height, z = s[i + 2]! + (1 - height) * Math.max(0, s[i + 1]!);
+  dir[d] = s[i]! * (eye && haft ? eye.width : 1);
   dir[d + 1] = eye ? y * eye.cos + z * eye.sin : y;
   dir[d + 2] = eye ? z * eye.cos - y * eye.sin : z;
 }
@@ -287,7 +284,7 @@ export function poseArm(b: PoseBuilder, m: Move, s: Float64Array, side: Side, ey
   const roll = s[o + S_ROLL]! * side * (1 - held);
   if (side < 0 || held <= 0) reach(b, upper, lower, armLength, foreLength, [x, y, z], pole, roll);
   if (held > 0) {
-    turned(s, S_RIGHT + (eye ? S_EYE_HAFT : S_HAFT), eye, 3);
+    turned(s, S_RIGHT + (eye ? S_EYE_HAFT : S_HAFT), eye, 3, true);
     turned(s, o + S_EDGE, eye, 6);
     if (side > 0) {
       // The left hand goes to the haft above the right. Where its wrist is depends on how the hand is turned, and that on
@@ -318,12 +315,21 @@ export function poseArm(b: PoseBuilder, m: Move, s: Float64Array, side: Side, ey
     quatNlerp(grip, 0, fore, 0, grip, 0, held);
     b.rotate(hand, grip, 0);
   }
+  if (eye && m.grip === GRIP_NONE) {
+    // Turn the knuckles toward the aim while the wrist still follows the forearm.
+    gripRotation(side, -side, 0, 0, 0, eye.sin + 0.25 * eye.cos, eye.cos - 0.25 * eye.sin, grip);
+    b.rotation(hand, fore, 0);
+    quatNlerp(grip, 0, fore, 0, grip, 0, 0.60);
+    b.rotate(hand, grip, 0);
+  }
   // The fingers and the tool start as they rest, whatever the pose had them at.
   const bones = side < 0 ? RIGHT_HAND : LEFT_HAND;
   for (const bone of bones) b.straighten(bone);
-  // A fist seen from its own eye: the fingers folded right under the palm, the thumb across them.
-  const curl = s[o + S_CURL]!;
-  b.local(bones[0], 0, 0, -side * FINGER_FOLD * curl).local(bones[3], 0, 0, -side * FINGER_FOLD * curl).local(bones[1], 0, -side * THUMB_FOLD * curl, 0);
+  // A fist closes at the knuckles. A gripping hand leaves room for the haft and hooks its fingertips around it.
+  const curl = side * s[o + S_CURL]!;
+  b.local(bones[0], 0, 0, -(75 - 15 * held) * curl);
+  b.local(bones[3], 0, 0, -(95 + 20 * held) * curl);
+  b.local(bones[1], 0, 0, 20 * curl).local(bones[1], 0, (70 - 5 * held) * curl, 0);
   if (side < 0 && m.grip !== GRIP_NONE) b.local(prop, 0, 0, -side * GRIP_ROLL);
 }
 
@@ -349,31 +355,31 @@ const FREE_L: ArmKey = { at: [0.26, 0.97, 0.06], pole: [0.5, -0.3, -1], roll: 30
 const PICK_L: ArmKey = { ...FREE_L, eye: [0.22, -0.24, 0.26] };
 const TUCK: V = [-0.5, -0.4, -1], OUT: V = [-0.9, -0.3, 0.1], DOWN: V = [-0.8, -0.6, 0];
 
-const GUARD_L: ArmKey = { ...ARM_REST[1], eye: [0.20, -0.17, 0.24], curl: 0.9 };
-const GUARD_R: ArmKey = { ...ARM_REST[-1], eye: [-0.21, -0.18, 0.23], curl: 0.9 };
+const GUARD_L: ArmKey = { ...ARM_REST[1], eye: [0.20, -0.15, 0.25], curl: 0.9 };
+const GUARD_R: ArmKey = { ...ARM_REST[-1], eye: [-0.21, -0.15, 0.24], curl: 0.9 };
 
 const MOVES_: readonly Move[] = [
   compile("human/tool_carry", GRIP_RIGHT, [{ t: 0, r: CARRY }]),
   // The lead hand, straight out and back. The other pulls to the ribs, so that hand by hand they do not flap.
   compile("human/jab", GRIP_NONE, [
     { t: 0, l: GUARD_L, r: GUARD_R },
-    { t: 1.6, l: { at: [0.2, 1.16, 0.08], eye: [0.18, -0.13, 0.24], pole: [0.6, -0.8, -0.6], roll: 20, curl: 1 }, r: { at: [-0.24, 1.02, 0.04], eye: [-0.22, -0.18, 0.22], curl: 1 }, twist: 6, lean: 1 },
-    { t: 3.4, l: { at: [0.13, 1.32, 0.3], eye: [0.14, -0.10, 0.25], pole: [0.7, -0.7, -0.3], roll: 8 }, r: { at: [-0.22, 1.1, 0.0], eye: [-0.22, -0.18, 0.22], pole: [-0.6, -0.4, -1] }, twist: -6, lean: 3 },
-    { t: 5, l: { at: [0.05, 1.41, 0.52], eye: [0.05, -0.07, 0.34], pole: [0.8, -0.6, 0], roll: 0 }, r: { at: [-0.2, 1.14, -0.04], eye: [-0.23, -0.19, 0.21] }, twist: -16, lean: 5 },
+    { t: 1.6, l: { at: [0.2, 1.16, 0.08], eye: [0.18, -0.13, 0.24], pole: [0.6, -0.8, -0.6], roll: 20, curl: 1 }, r: { at: [-0.24, 1.02, 0.04], eye: [-0.21, -0.16, 0.24], curl: 1 }, twist: 6, lean: 1 },
+    { t: 3.4, l: { at: [0.13, 1.32, 0.3], eye: [0.14, -0.10, 0.25], pole: [0.7, -0.7, -0.3], roll: 8 }, r: { at: [-0.22, 1.1, 0.0], eye: [-0.21, -0.16, 0.24], pole: [-0.6, -0.4, -1] }, twist: -6, lean: 3 },
+    { t: 5, l: { at: [0.05, 1.41, 0.52], eye: [0.05, -0.07, 0.34], pole: [0.8, -0.6, 0], roll: 0 }, r: { at: [-0.2, 1.14, -0.04], eye: [-0.21, -0.16, 0.23] }, twist: -16, lean: 5 },
     { t: 6.2, l: { at: [0.05, 1.4, 0.5], eye: [0.05, -0.08, 0.33] }, twist: -15, lean: 5 },
-    { t: 8.5, l: { at: [0.14, 1.3, 0.26], eye: [0.14, -0.14, 0.26], pole: [0.7, -0.7, -0.3], roll: 12 }, r: { at: [-0.22, 1.1, 0.0], eye: [-0.22, -0.18, 0.22] }, twist: -6, lean: 3 },
-    { t: 11.5, l: { at: [0.22, 1.1, 0.1], eye: [0.20, -0.16, 0.23], pole: [0.6, -0.6, -0.8], roll: 20, curl: 0.8 }, r: { at: [-0.25, 1.0, 0.03], eye: [-0.21, -0.18, 0.23], curl: 0.8 }, twist: 0, lean: 1 },
+    { t: 8.5, l: { at: [0.14, 1.3, 0.26], eye: [0.14, -0.14, 0.26], pole: [0.7, -0.7, -0.3], roll: 12 }, r: { at: [-0.22, 1.1, 0.0], eye: [-0.21, -0.16, 0.24] }, twist: -6, lean: 3 },
+    { t: 11.5, l: { at: [0.22, 1.1, 0.1], eye: [0.20, -0.15, 0.24], pole: [0.6, -0.6, -0.8], roll: 20, curl: 0.8 }, r: { at: [-0.25, 1.0, 0.03], eye: [-0.21, -0.15, 0.24], curl: 0.8 }, twist: 0, lean: 1 },
     { t: 15, l: GUARD_L, r: GUARD_R, lean: 0 },
   ]),
   // The rear hand, with the chest behind it.
   compile("human/cross", GRIP_NONE, [
     { t: 0, l: GUARD_L, r: GUARD_R },
     { t: 1.6, r: { at: [-0.22, 1.14, 0.02], eye: [-0.19, -0.12, 0.22], pole: [-0.6, -0.8, -0.7], roll: 25, curl: 1 }, l: { at: [0.24, 1.04, 0.06], eye: [0.20, -0.18, 0.24], curl: 1 }, twist: -10, lean: 1 },
-    { t: 3.4, r: { at: [-0.14, 1.3, 0.24], eye: [-0.17, -0.10, 0.23], pole: [-0.7, -0.7, -0.3], roll: 10 }, l: { at: [0.22, 1.12, 0.02], eye: [0.21, -0.18, 0.23], pole: [0.6, -0.4, -1] }, twist: 8, lean: 4 },
-    { t: 5, r: { at: [-0.02, 1.42, 0.54], eye: [-0.03, -0.06, 0.35], pole: [-0.8, -0.5, 0], roll: 0 }, l: { at: [0.2, 1.16, -0.04], eye: [0.22, -0.19, 0.22] }, twist: 26, lean: 7 },
+    { t: 3.4, r: { at: [-0.14, 1.3, 0.24], eye: [-0.17, -0.10, 0.23], pole: [-0.7, -0.7, -0.3], roll: 10 }, l: { at: [0.22, 1.12, 0.02], eye: [0.20, -0.16, 0.24], pole: [0.6, -0.4, -1] }, twist: 8, lean: 4 },
+    { t: 5, r: { at: [-0.02, 1.42, 0.54], eye: [-0.03, -0.06, 0.35], pole: [-0.8, -0.5, 0], roll: 0 }, l: { at: [0.2, 1.16, -0.04], eye: [0.21, -0.16, 0.24] }, twist: 26, lean: 7 },
     { t: 6.2, r: { at: [-0.02, 1.41, 0.52], eye: [-0.03, -0.07, 0.34] }, twist: 25, lean: 7 },
-    { t: 8.5, r: { at: [-0.13, 1.3, 0.26], eye: [-0.15, -0.14, 0.26], pole: [-0.7, -0.7, -0.3], roll: 12 }, l: { at: [0.22, 1.12, 0.02], eye: [0.21, -0.18, 0.23] }, twist: 10, lean: 4 },
-    { t: 11.5, r: { at: [-0.22, 1.1, 0.1], eye: [-0.20, -0.17, 0.22], pole: [-0.6, -0.6, -0.8], roll: 20, curl: 0.8 }, l: { at: [0.25, 1.0, 0.03], eye: [0.20, -0.17, 0.24], curl: 0.8 }, twist: 2, lean: 1 },
+    { t: 8.5, r: { at: [-0.13, 1.3, 0.26], eye: [-0.15, -0.14, 0.26], pole: [-0.7, -0.7, -0.3], roll: 12 }, l: { at: [0.22, 1.12, 0.02], eye: [0.20, -0.16, 0.24] }, twist: 10, lean: 4 },
+    { t: 11.5, r: { at: [-0.22, 1.1, 0.1], eye: [-0.20, -0.15, 0.24], pole: [-0.6, -0.6, -0.8], roll: 20, curl: 0.8 }, l: { at: [0.25, 1.0, 0.03], eye: [0.20, -0.15, 0.25], curl: 0.8 }, twist: 2, lean: 1 },
     { t: 15, r: GUARD_R, l: GUARD_L, twist: 0, lean: 0 },
   ]),
   // A steep chop from over the shoulder: lifted, cocked, driven down, a bite, a short way on, and drawn back.
