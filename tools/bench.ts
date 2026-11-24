@@ -779,7 +779,7 @@ let siegeChunk = -1;
   // A blow of a 200th of a piece's health takes it down a stage, so every blow is a row. None takes 200 in ten seconds.
   const stage = (ref: number): number => reg.maxHp[world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!]! / 200;
   record("pieces in the chunk", world.structs.chunks[siegeChunk]!.live, "");
-  // 256 rows a tick to each client: 80 ticks for the chunk, and the bots' own fists keep changing it meanwhile.
+  // 1,024 rows a tick to each client at most: 20 ticks for the chunk or more, and the bots' own fists keep changing it meanwhile.
   run(200, null);
   const quiet: number[] = [];
   run(150, quiet);

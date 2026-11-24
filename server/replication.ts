@@ -24,12 +24,14 @@ import { PART, type TickParts } from "./admin/parts.ts";
 
 /** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
 const SNAPSHOT_BYTES_MIN = 600;
-/** The most bits one row of a chunk message takes: slot 25, in place 1, kind 17, x and z 30, height 41, yaw 17, owner 41, health 33. */
+/**
+ * The most bits one row of a chunk message takes: slot 25, in place 1, kind 17, x and z 30, height 41, yaw 17, owner 41,
+ * health 33. Rows stop where one more of these might not fit the message. What a client is owed counts the bytes written.
+ */
 const ROW_BITS = 205;
 /**
- * Chunk bytes a client may have on the way, or two ticks of the slot budget if that is more. On one stream everything
- * sent before a snapshot it has read has reached it, so what was sent since its newest acknowledged snapshot is still
- * coming, ahead of the snapshots after it.
+ * Chunk bytes a client may have on the way. On one stream everything sent before a snapshot it has read has reached it,
+ * so what was sent since its newest acknowledged snapshot is still coming, ahead of the snapshots after it.
  */
 const CHUNK_WINDOW = 16 * 1024;
 /** Ticks a chunk a sight's cone had sent is held after the cone leaves it: turning about or lowering it makes no churn (D1087). */
@@ -97,6 +99,8 @@ export class Replication {
   /** Kept through the rows of one chunk message: the last row's slot and height, and the values it has named. */
   private rowSlot = -1;
   private rowY = 0;
+  /** Bytes of its chunk window left to the session whose chunks are being sent. A message's rows stop once they pass it. */
+  private room = 0;
   private readonly kinds = new Named();
   private readonly yaws = new Named();
   private readonly owners = new Named();
@@ -407,7 +411,7 @@ export class Replication {
     }
     let owed = 0;
     for (let i = 0; i < 32; i++) if (c.chunkSentAt[i]! >= c.ackTick && c.chunkSentAt[i]! + 32 > T) owed += c.chunkSent[i]!;
-    return Math.max(CHUNK_WINDOW, (this.opts.chunkSlotsPerTick * ROW_BITS) / 4) - owed;
+    return CHUNK_WINDOW - owed;
   }
 
   /**
@@ -421,7 +425,7 @@ export class Replication {
     return true;
   }
 
-  /** Nearest chunk first, within the per-tick slot budget. */
+  /** Nearest chunk first, within the tick's slot budget and the bytes left of the session's window. */
   private syncChunks(c: Client, T: number): void {
     const world = this.world;
     const dims = world.dims;
@@ -429,8 +433,9 @@ export class Replication {
     const ccx = chunkCx(dims, focus);
     const ccz = chunkCz(dims, focus);
     const offsets = this.structOffsets;
-    let budget = Math.min(this.opts.chunkSlotsPerTick, Math.floor(this.windowLeft(c, T) / (ROW_BITS / 8)));
-    for (let o = 0; o < offsets.length && budget > 0; o += 2) {
+    let budget = this.opts.chunkSlotsPerTick;
+    this.room = this.windowLeft(c, T);
+    for (let o = 0; o < offsets.length && budget > 0 && this.room > 0; o += 2) {
       const cx = ccx + offsets[o]!;
       const cz = ccz + offsets[o + 1]!;
       if (cx < 0 || cz < 0 || cx >= dims.chunksX || cz >= dims.chunksZ) continue;
@@ -438,7 +443,7 @@ export class Replication {
       const t = world.structs.chunks[chunk];
       if (t && t.version > c.known[chunk]!) budget = this.sendChunk(c, chunk, t, budget);
     }
-    c.rowsWaiting = budget <= 0;
+    c.rowsWaiting = budget <= 0 || this.room <= 0;
     // A sight's cone past the square round the body (server/gaze.ts): its chunks as well, nearest what it is on first, with
     // what the square leaves, so that what is far is drawn as near; kept CONE_KEEP after the cone leaves them (D1087). A
     // chunk as the map has it costs a client holding the statics its header alone.
@@ -447,7 +452,7 @@ export class Replication {
       const chunk = cone.chunks[k]!;
       c.coneKept.set(chunk, T + CONE_KEEP);
       const t = world.structs.chunks[chunk];
-      if (budget > 0 && t && t.version > c.known[chunk]!) budget = this.sendChunk(c, chunk, t, budget);
+      if (budget > 0 && this.room > 0 && t && t.version > c.known[chunk]!) budget = this.sendChunk(c, chunk, t, budget);
     }
 
     // Forget chunks the player has left behind.
@@ -609,14 +614,20 @@ export class Replication {
     let rows = 0;
     let s = cursor;
     let final = true;
+    // Rows stop where another might not fit, with a byte left for the count of removals, and once they pass what is left
+    // of the window. The first row always goes, so a chunk begun moves on.
+    const room = Math.min(w.buf.length * 8 - ROW_BITS - 8, Math.max(w.pos, this.room * 8));
     // A client a few changes behind is sent those from the chunk's log. Otherwise every slot is looked at.
     const logged = cursor === 0 && !filling ? this.changedSince(t, from, byRemoval, budget) : -1;
     if (logged >= 0) {
-      for (; rows < logged; rows++) this.row(w, t, this.changed[rows]! >> 3, x0, z0, (this.changed[rows]! & TOUCH_MOVED) === 0, (this.changed[rows]! & TOUCH_KIND) !== 0);
+      for (; rows < logged && w.pos <= room; rows++) this.row(w, t, this.changed[rows]! >> 3, x0, z0, (this.changed[rows]! & TOUCH_MOVED) === 0, (this.changed[rows]! & TOUCH_KIND) !== 0);
       count = rows;
+      // Cut short, the rest go by the scan from the next of them, which ascend.
+      if (rows < logged) {
+        final = false;
+        s = this.changed[rows]! >> 3;
+      }
     } else {
-      // Rows stop where another might not fit, with a byte left for the count of removals.
-      const room = w.buf.length * 8 - ROW_BITS - 8;
       const end = t.high;
       if (filling && s < mapped) {
         // Of the map's slots only those that changed are rows, from the chunk's list of them. The client sets the rest down.
@@ -707,6 +718,7 @@ export class Replication {
     this.stats.chunkBytes += bytes.length;
     const k = this.world.tick & 31;
     c.chunkSent[k] = c.chunkSent[k]! + bytes.length;
+    this.room -= bytes.length;
     c.conn.send(CH_RELIABLE, bytes);
     if (final) {
       if (c.known[chunk] === 0 && !c.subscribed.includes(chunk)) c.subscribed.push(chunk);

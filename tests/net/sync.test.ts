@@ -135,8 +135,8 @@ test("statics handed over a step at a time leave the session and its world as th
   expect(c.statics).toBe(true);
 });
 
-test("a near window of the map's statics is whole within a tick of the body's arrival for a client that holds them, rows still going at 256 slots a tick to one that does not", () => {
-  // The 7 by 7 chunks round the middle of a map 9 chunks wide each hold 640 crates: 31,360 slots, 123 ticks at 256 a tick.
+test("a near window of the map's statics is whole within a tick of the body's arrival for a client that holds them, rows still going at 1,024 slots a tick to one that does not", () => {
+  // The 7 by 7 chunks round the middle of a map 9 chunks wide each hold 640 crates: 31,360 slots, 31 ticks at 1,024 a tick.
   const crates: MapStatic[] = [];
   for (let cz = 1; cz <= 7; cz++) for (let cx = 1; cx <= 7; cx++) for (let k = 0; k < 640; k++) crates.push({ kind: "core:crate", x: cx * CHUNK_SIZE + 4 + (k % 8) * 8, y: 40 + Math.floor(k / 64) * 3, z: cz * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 8, yaw: 0 });
   const h = new Harness({}, 1, 30, { map: writeMap(flatMap(9, { statics: crates })) });
@@ -160,7 +160,7 @@ test("a near window of the map's statics is whole within a tick of the body's ar
   }
   // Ticks from the body's arrival until the server has sent each chunk of the window whole.
   expect(whole[0]).toBeLessThanOrEqual(1);
-  expect(whole[1]).toBeGreaterThanOrEqual(122);
+  expect(whole[1]).toBeGreaterThanOrEqual(30);
   // Once what was sent has landed, each holds the window as the server does.
   h.run(1000);
   expect([differ(structs, ada.world!.structs, window), differ(structs, bob.world!.structs, window)]).toEqual([0, 0]);

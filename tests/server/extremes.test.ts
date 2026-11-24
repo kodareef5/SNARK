@@ -17,7 +17,7 @@ function wallsAbove(h: Harness, chunk: number, count: number): number[] {
   const z0 = chunkCz(dims, chunk) * CHUNK_SIZE;
   const refs: number[] = [];
   for (let n = 0; n < count; n++) {
-    refs.push(h.world.structs.add(wall, x0 + 2 + (n % 20) * 3, 400 + Math.floor(n / 400) * 4, z0 + 2 + (Math.floor(n / 20) % 20) * 3, 0, 1, 1e6));
+    refs.push(h.world.structs.add(wall, x0 + 2 + (n % 20) * 3, 400 + Math.floor(n / 400) * 4, z0 + 2 + (Math.floor(n / 20) % 20) * 3, 0, 1, h.reg.maxHp[wall]!));
   }
   return refs;
 }
@@ -30,13 +30,15 @@ test("a client finishes taking in a large chunk while a nearer chunk changes eve
   const near = h.client(s)!.chunk;
   const far = near + (chunkCx(dims, near) + 1 < dims.chunksX ? 1 : -1);
   const [target] = wallsAbove(h, near, 1);
-  // Five ticks of the default budget of 256 rows.
-  wallsAbove(h, far, 1200);
+  // Twelve ticks of the default budget of 1,024 rows. Each blow takes the near wall a stage down, so it is a row.
+  wallsAbove(h, far, 12000);
   const before = h.server.stats.chunkBytes;
-  h.run(60 * TICK_MS, () => h.world.structs.damage(target!, 1));
+  const [version, blow] = [h.world.structs.chunks[near]!.version, h.reg.maxHp[h.reg.index.get("core:wall")!]! / 200];
+  h.run(60 * TICK_MS, () => h.world.structs.damage(target!, blow));
+  expect(h.world.structs.chunks[near]!.version - version).toBeGreaterThan(60);
   expect(s.world!.structs.chunks[far]?.live).toBe(h.world.structs.chunks[far]!.live);
-  // Each row is sent about once: 1,200 rows of at most 21 bytes, plus the near chunk's one row a tick.
-  expect(h.server.stats.chunkBytes - before).toBeLessThan(1200 * 21 + 60 * 40 + 4096);
+  // Each row is sent about once: 12,000 rows of at most 21 bytes, plus the near chunk's one row a tick.
+  expect(h.server.stats.chunkBytes - before).toBeLessThan(12000 * 21 + 60 * 40 + 4096);
 });
 
 test("a survivor killed by a fire another survivor lit is told it was killed", () => {

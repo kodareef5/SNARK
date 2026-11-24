@@ -66,7 +66,7 @@ const DEFAULTS: GameOptions = {
   viewCap: 1024,
   entityRadius: 3,
   structRadius: 3,
-  chunkSlotsPerTick: 256,
+  chunkSlotsPerTick: 1024,
   maxClients: 128,
   lingerTicks: 150,
   spectators: "admin",
