@@ -1042,16 +1042,26 @@ function wallFar(o: Opening): Build {
   return b;
 }
 
+/**
+ * Sets a level's foot as far under the piece's box as a wall's core reaches at the finest level. A wall's top stands
+ * that far under its box or on it at every level, so no level of a wall leaves a seam over any level of the wall or the
+ * floor under it.
+ */
+function sunk(b: Build, foot: number): Build {
+  for (const f of b.shape.faces) if (f.points.some((p) => Math.abs(p[2] - foot) < 1e-9)) f.points = f.points.map((p): Vec => (Math.abs(p[2] - foot) < 1e-9 ? [p[0], p[1], foot - GAP] : p));
+  return b;
+}
+
 function wallFamily(name: string, form: FormDef, level: number): Build | null {
   const o = openingOf(name, form);
   const rings = yieldPlanes(form);
   if (level === 0) return wallFine(o, rings);
-  if (level === 1) return wallSheet(o, rings);
-  if (level === 2) return wallPlain(o, rings);
-  if (level === 3 && o) return wallFar(o);
+  if (level === 1) return sunk(wallSheet(o, rings), -H);
+  if (level === 2) return sunk(wallPlain(o, rings), -H);
+  if (level === 3 && o) return sunk(wallFar(o), -H);
   if (level > (o ? 4 : 3)) return null;
   const b = new Build();
-  b.box([-H, -H, -T], [H, H, T], "masonry");
+  b.box([-H, -H - GAP, -T], [H, H, T], "masonry");
   // A box lies nearer a window than a doorway, which it shuts: it may be drawn from nearer.
   if (o?.kind === "window") b.shape.error = 0.085;
   return b;
@@ -1078,6 +1088,8 @@ function flagstones(b: Build, bed: number): void {
 const PLINTH: Readonly<Record<string, readonly number[]>> = { "+z": [0.37, 0.71], "-z": [0.29, 0.55, 0.81], "+x": [0.42, 0.78], "-x": [0.33, 0.64] };
 /** How far in from a foundation's box its plinth stones stand on their mortar. */
 const PD = 0.035;
+/** How far in from a foundation's side the bed under a wall is raised to the wall's foot: past the wall's core. */
+const WALL_BAND = 0.11;
 
 /** A foundation's corner block: the signs of its corner, how far it reaches along x and z, its outline at its foot and its head, and the stone each outer face wears. */
 interface CornerBlock {
@@ -1184,6 +1196,8 @@ function foundation(form: FormDef, level: number): Build | null {
     return b;
   }
   b.box([-H + PD, bottomY, -H + PD], [H - PD, bed, H - PD], flagged);
+  // Under where a wall's core stands, the bed is raised to the wall's foot: no line of sight passes along a joint between two flags there.
+  for (const [x0, x1, z0, z1] of [[-H + PD, H - PD, H - WALL_BAND, H - PD], [-H + PD, H - PD, -H + PD, -H + WALL_BAND], [H - WALL_BAND, H - PD, -H + WALL_BAND, H - WALL_BAND], [-H + PD, -H + WALL_BAND, -H + WALL_BAND, H - WALL_BAND]] as const) b.box([x0, bed, z0], [x1, topY - GAP, z1], flagged);
   flagstones(b, bed);
   const ch = 0.014;
   for (const c of corners) b.convex(loft("y", [[bottomY, shrink(c.foot, ch)], [bottomY + ch, c.foot], [c.y1 - ch, c.head], [c.y1, shrink(c.head, ch)]]), "masonry", c.uvOf);
@@ -2324,6 +2338,13 @@ function plinthed(name: string, form: FormDef, level: number): Build | null {
   }
   const core = shrink(plan, PD);
   b.convex(loft("y", [[bottomY, core], [bed, core]]), flagged, (n) => straight(n));
+  // The bed raised to a wall's foot inside each side, as a square's is.
+  const inner = shrink(plan, WALL_BAND);
+  core.forEach((a, k) => {
+    const j = (k + 1) % core.length;
+    const strip = [a, core[j]!, inner[j]!, inner[k]!];
+    b.convex(loft("y", [[bed, strip], [topY - GAP, strip]]), flagged, (n) => straight(n));
+  });
   layFlags(b, new Frame(flagsOn.at(0, 0, bed - topY), flagsOn.u, flagsOn.v, flagsOn.n), [onLevel(flagsOn, sidesIn(plan, 0.005))], [], []);
   const ch = 0.014;
   for (const c of corners) b.convex(loft("y", [[bottomY, shrink(c.foot, ch)], [bottomY + ch, c.foot], [c.y1 - ch, c.head], [c.y1, shrink(c.head, ch)]]), "masonry", c.uvOf);
@@ -3297,17 +3318,24 @@ function stoneTrims(): Record<string, Shape[]> {
   };
 }
 
+type Maker = (name: string, form: FormDef, level: number) => Build | null;
+/** A form that stands as a wall does, each of its levels with its foot sunk under its box as a wall's is. */
+const footed = (make: Maker): Maker => (name, form, level) => {
+  const b = make(name, form, level);
+  return b && sunk(b, wallBox(form).foot);
+};
+
 /** The forms past the first nine, by name. */
-const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: number) => Build | null>> = {
-  half_wall: lowWall,
-  quarter_wall: lowWall,
+const PLANNED: Readonly<Record<string, Maker>> = {
+  half_wall: footed(lowWall),
+  quarter_wall: footed(lowWall),
   fence_foundation: (_, form, level) => footing(form, level),
   beam: (_, form, level) => archBeam(form, level),
-  sloped_wall_left: (_, form, level) => gable(form, level),
-  sloped_wall_right: (_, form, level) => gable(form, level),
-  double_doorway: wideDoorway,
-  large_wall: tallWall,
-  gateway: gatehouse,
+  sloped_wall_left: footed((_, form, level) => gable(form, level)),
+  sloped_wall_right: footed((_, form, level) => gable(form, level)),
+  double_doorway: footed(wideDoorway),
+  large_wall: footed(tallWall),
+  gateway: footed(gatehouse),
   gate: (_, form, level) => gate(form, level),
   triangle_foundation: plinthed,
   quarter_foundation: plinthed,

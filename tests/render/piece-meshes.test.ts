@@ -560,9 +560,9 @@ const STONE_NEW_MOST: Record<string, readonly number[]> = {
   thin_pillar: [360, 52, 52, 12],
   beam: [224, 76, 28, 12],
   ramp: [1580, 520, 8, 8],
-  triangle_foundation: [584, 56, 8, 8],
+  triangle_foundation: [620, 56, 8, 8],
   triangle_ceiling: [636, 238, 62, 8],
-  quarter_foundation: [360, 44, 12, 12],
+  quarter_foundation: [408, 44, 12, 12],
   roof: [702, 284, 60, 12],
   roof_hip: [1380, 524, 60, 12],
   roof_valley: [1062, 394, 60, 12],
@@ -739,4 +739,90 @@ test("a stone skirt hangs 2.4 m from just under a foundation's top, 0.12 m out, 
   expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
   expect(ridge[3]!).toBeLessThanOrEqual(0.13);
   expect(Math.max(-ridge[4]!, ridge[5]!)).toBeLessThanOrEqual(0.22);
+});
+
+// Stone's seams: no line of sight between a wall and the wall or the foundation under it, at any two levels.
+
+import { Rng } from "../../shared/rng.ts";
+import type { SourceLod } from "../../tools/pack/write.ts";
+
+/** A level set down with its origin at a place, in the engine's frame. */
+type Stood = readonly [lod: SourceLod, at: readonly number[]];
+
+/** How far along the ray from `o` along `d` it first meets a triangle of `set` that faces its start, or Infinity. */
+function firstFacing(set: readonly Stood[], o: readonly number[], d: readonly number[]): number {
+  let best = Infinity;
+  for (const [lod, at] of set) {
+    const p = lod.positions, ix = lod.indices;
+    const [ox, oy, oz] = [o[0]! - at[0]!, o[1]! - at[1]!, o[2]! - at[2]!];
+    for (let t = 0; t < ix.length; t += 3) {
+      const [a, b, c] = [ix[t]! * 3, ix[t + 1]! * 3, ix[t + 2]! * 3];
+      const [ux, uy, uz, vx, vy, vz] = [p[b]! - p[a]!, p[b + 1]! - p[a + 1]!, p[b + 2]! - p[a + 2]!, p[c]! - p[a]!, p[c + 1]! - p[a + 1]!, p[c + 2]! - p[a + 2]!];
+      const [nx, ny, nz] = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+      const den = nx * d[0]! + ny * d[1]! + nz * d[2]!;
+      if (den >= -1e-12) continue;
+      const k = (nx * (p[a]! - ox) + ny * (p[a + 1]! - oy) + nz * (p[a + 2]! - oz)) / den;
+      if (k < 0 || k >= best) continue;
+      const [x, y, z] = [ox + d[0]! * k, oy + d[1]! * k, oz + d[2]! * k];
+      let inside = true;
+      for (let e = 0; e < 3 && inside; e++) {
+        const [i, j] = [ix[t + e]! * 3, ix[t + ((e + 1) % 3)]! * 3];
+        const [ex, ey, ez] = [p[j]! - p[i]!, p[j + 1]! - p[i + 1]!, p[j + 2]! - p[i + 2]!];
+        inside = (ey * (z - p[i + 2]!) - ez * (y - p[i + 1]!)) * nx + (ez * (x - p[i]!) - ex * (z - p[i + 2]!)) * ny + (ex * (y - p[i + 1]!) - ey * (x - p[i]!)) * nz >= -1e-9;
+      }
+      if (inside) best = k;
+    }
+  }
+  return best;
+}
+
+/**
+ * Of `rays` lines of sight through the upright sheet z = `z`, at points from -1.4 to 1.4 m along it and between two
+ * heights, from both sides and up to 80 degrees off square: how many reach the sheet with no face turned to them met
+ * first. A face a millimetre behind the sheet is the sheet's.
+ */
+function seenBetween(set: readonly Stood[], rng: Rng, rays: number, z: number, low: number, high: number): number {
+  let through = 0;
+  for (let n = 0; n < rays; n++) {
+    const [x, y, side] = [rng.range(-1.4, 1.4), rng.range(low, high), n & 1 ? 1 : -1];
+    // Half of them nearly level, where a seam between two courses is looked along.
+    const tilt = n % 4 < 2 ? rng.range(0, 0.05) : rng.range(0, 1.4), round = rng.range(0, Math.PI * 2);
+    const dir = [Math.sin(tilt) * Math.cos(round), Math.sin(tilt) * Math.sin(round), -side * Math.cos(tilt)];
+    if (firstFacing(set, [x - dir[0]! * 10, y - dir[1]! * 10, z - dir[2]! * 10], dir) > 10 + 0.001) through++;
+  }
+  return through;
+}
+
+test("no line of sight passes between a stone wall and the wall over it, at any two of their levels", () => {
+  const wall = tierShapes(STONE, { wall: FORMS.wall })[0]!.lods;
+  const rng = new Rng(7);
+  wall.forEach((lower, a) => wall.forEach((upper, b) => {
+    // The upper wall stands a storey up; the seam is looked at 3 cm either side of the height they meet at.
+    const high = FORMS.wall.outline[2]![1] - FORMS.wall.at[1];
+    expect(seenBetween([[lower, [0, 0, 0]], [upper, [0, 2 * high, 0]]], rng, 3000, 0, high - 0.03, high + 0.03), `level ${a} under level ${b}`).toBe(0);
+  }));
+});
+
+test("no line of sight passes between a stone wall and the foundation it stands on, 5 cm in from the foundation's side", () => {
+  const [wall, floors] = [tierShapes(STONE, { wall: FORMS.wall })[0]!.lods, tierShapes(STONE, { foundation: FORMS.foundation, triangle_foundation: PLANNED.triangle_foundation!, quarter_foundation: PLANNED.quarter_foundation! })];
+  const rng = new Rng(8);
+  for (const floor of floors) {
+    const form = floor.id.includes("triangle") ? PLANNED.triangle_foundation! : floor.id.includes("quarter") ? PLANNED.quarter_foundation! : FORMS.foundation;
+    // The side whose way out is -z: a square's south, and a triangle's first. The wall stands on it, its middle over the side.
+    const box = colliderBox(form);
+    const [mid, edge, top] = [(box[0] + box[3]) / 2, box[2], box[4]];
+    floor.lods.forEach((under, a) => wall.forEach((over, b) => {
+      const set: Stood[] = [[under, [-mid, 0, 0]], [over, [0, top + 1.5, edge]]];
+      // Along the middle of the side, clear of the corners, where a quarter is 1.5 m wide.
+      const reach = Math.min(1.4, (box[3] - box[0]) / 2 - 0.2);
+      let through = 0;
+      for (let n = 0; n < 3000; n++) {
+        const [x, y, side] = [rng.range(-reach, reach), rng.range(box[1] + 0.02, top + 0.03), n & 1 ? 1 : -1];
+        const tilt = n % 4 < 2 ? rng.range(0, 0.05) : rng.range(0, 1.4), round = rng.range(0, Math.PI * 2);
+        const dir = [Math.sin(tilt) * Math.cos(round), Math.sin(tilt) * Math.sin(round), -side * Math.cos(tilt)];
+        if (firstFacing(set, [x - dir[0]! * 10, y - dir[1]! * 10, edge + 0.05 - dir[2]! * 10], dir) > 10 + 0.001) through++;
+      }
+      expect(through, `${floor.id} level ${a} under a wall's level ${b}`).toBe(0);
+    }));
+  }
 });
