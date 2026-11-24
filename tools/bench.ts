@@ -24,6 +24,7 @@ import { createWorld, type ServerWorld } from "../server/world.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { STRUCT_UNITS, TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
+import { SURFACE_BUILT } from "../shared/net/rockets.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
 import { KEY_BYTES } from "../shared/net/protocol.ts";
 import { defaultLook } from "../shared/anim/look.ts";
@@ -519,7 +520,8 @@ const pack = parsePack(buildCorePack());
   const ry = hf.heightAt(rx, rz) + 1;
   const shooter = host.game.clients.find((c) => !!c?.active && c.ent >= 0)!;
   const rocket = { ...src, by: host.records.byPid.get(shooter.pid) ?? null, x: rx, z: rz, item: k("rocket_launcher"), base: 250 };
-  const reach = reg.ammoBlast[k("rocket")]!;
+  const rocketAmmo = k("rocket");
+  const reach = reg.ammoBlast[rocketAmmo]!;
   const hitBefore = host.combat.structureHits;
   // Events ended for the shooter alone: each is a message of its own on the reliable line.
   let toldShooter = 0;
@@ -541,6 +543,29 @@ const pack = parsePack(buildCorePack());
   record("messages the shooter was sent for a rocket's blast, mean", toldShooter / 20, "", 1);
   record("one rocket's blast in a 2,000-piece base, median", percentile(rockets, 0.5), "ms", 1);
   record("one rocket's blast in a 2,000-piece base, worst", rockets[rockets.length - 1]!, "ms", 4);
+
+  // Each volley hits a fresh stone base across 36 m of its ground floor.
+  let base = BASE_TIERS.length + BASE_TIERS.indexOf("stone");
+  for (const count of [50, 100]) {
+    const times: number[] = [];
+    const before = host.combat.structureHits;
+    for (let pass = 0; pass < 5; pass++, base += BASE_TIERS.length) {
+      const [cx, cz] = centers[base]!;
+      const y = hf.heightAt(cx, cz) + 1;
+      const start = performance.now();
+      for (let n = 0; n < count; n++) {
+        const x = cx - 18 + (n % 10) * 4;
+        const z = cz - 18 + Math.floor(n / 10) * 4;
+        shots.boom(x, y, z, reach, null, undefined, rocketAmmo, SURFACE_BUILT);
+        host.combat.blast(rocket, x, y, z, reach);
+      }
+      times.push(performance.now() - start);
+    }
+    times.sort((a, b) => a - b);
+    record(`damage and messages for ${count} rocket impacts in one tick, median`, percentile(times, 0.5), "ms");
+    record(`damage and messages for ${count} rocket impacts in one tick, worst`, times[times.length - 1]!, "ms");
+    record(`pieces hit by ${count} rockets, mean`, (host.combat.structureHits - before) / times.length, "");
+  }
   record("items the ledger cannot account for", host.items.audit().length, "", 0);
 }
 
