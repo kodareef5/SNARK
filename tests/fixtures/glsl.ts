@@ -1,9 +1,10 @@
 // What a GLSL ES 3.00 compiler and linker would refuse in a program's texts, as far as the fake context can tell
 // without types. Compiling, after the preprocessor's branches are taken as its defines say: a text whose first line is
 // not #version 300 es; a call to a function no text declares, or with a count of arguments none of its declarations
-// takes; a name nothing declares; a function called and never defined. Linking: a fragment input the vertex text does
-// not write with the same type and qualifier, and a uniform the two declare as different types. It cannot see a wrong
-// type passed or returned, a swizzle a type lacks, precision, a GPU's limits, or what a program draws.
+// takes; a name nothing declares; a function called and never defined. A struct's name is a type, and its fields are
+// names. Linking: a fragment input the vertex text does not write with the same type and qualifier, and a uniform the
+// two declare as different types. It cannot see a wrong type passed or returned, a swizzle a type lacks, precision, a
+// GPU's limits, or what a program draws.
 
 const TYPES = new Set([
   "void", "bool", "int", "uint", "float", "vec2", "vec3", "vec4", "bvec2", "bvec3", "bvec4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4",
@@ -135,7 +136,7 @@ interface Declared {
  * Every name the text declares: after a type (with its array size), after a comma in a declaration's list, a uniform
  * block's name, and each #define. A name after a type and before a bracket is a function.
  */
-function declared(list: Token[], macros: string[]): Declared {
+function declared(list: Token[], macros: string[], types: Set<string>): Declared {
   const names = new Set(macros);
   const functions = new Map<string, { arities: Set<number>; defined: boolean }>();
   const declarations = new Set<number>();
@@ -147,15 +148,15 @@ function declared(list: Token[], macros: string[]): Declared {
     else if (t === ")" || t === "]") depth--;
     if (t === ";" || t === "{" || t === "}" || depth < listing) listing = -1;
     if (t === "uniform" && isName(list[i + 1]?.t ?? "") && list[i + 2]?.t === "{") names.add(list[i + 1]!.t);
-    if (t === "," && depth === listing && isName(list[i + 1]?.t ?? "") && !TYPES.has(list[i + 1]!.t) && !QUALIFIERS.has(list[i + 1]!.t)) {
+    if (t === "," && depth === listing && isName(list[i + 1]?.t ?? "") && !types.has(list[i + 1]!.t) && !QUALIFIERS.has(list[i + 1]!.t)) {
       names.add(list[i + 1]!.t);
       declarations.add(i + 1);
     }
-    if (!TYPES.has(t) || list[i - 1]?.t === ".") continue;
+    if (!types.has(t) || list[i - 1]?.t === "." || list[i - 1]?.t === "struct") continue;
     let at = i + 1;
     if (list[at]?.t === "[") at = closing(list, at);
     const name = list[at]?.t ?? "";
-    if (!isName(name) || TYPES.has(name) || KEYWORDS.has(name) || QUALIFIERS.has(name)) continue;
+    if (!isName(name) || types.has(name) || KEYWORDS.has(name) || QUALIFIERS.has(name)) continue;
     declarations.add(at);
     if (list[at + 1]?.t === "(" && depth === 0) {
       const f = functions.get(name) ?? functions.set(name, { arities: new Set(), defined: false }).get(name)!;
@@ -181,10 +182,13 @@ function compile(text: string): string[] {
   const errors: string[] = [];
   if (!text.startsWith("#version 300 es\n")) errors.push("ERROR: 0:1: '#version' : must be the text's first line, as 300 es");
   const { list, macros } = tokens(text);
-  const { names, functions, declarations } = declared(list, macros);
+  // A struct's name is a type like the built-in ones.
+  const types = new Set(TYPES);
+  list.forEach(({ t }, i) => { if (t === "struct" && isName(list[i + 1]?.t ?? "")) types.add(list[i + 1]!.t); });
+  const { names, functions, declarations } = declared(list, macros, types);
   const called = new Set<string>();
   list.forEach(({ t, line }, i) => {
-    if (!isName(t) || list[i - 1]?.t === "." || declarations.has(i) || TYPES.has(t) || KEYWORDS.has(t) || QUALIFIERS.has(t) || BUILTINS.has(t)) return;
+    if (!isName(t) || list[i - 1]?.t === "." || declarations.has(i) || types.has(t) || KEYWORDS.has(t) || QUALIFIERS.has(t) || BUILTINS.has(t)) return;
     const say = (what: string): number => errors.push(`ERROR: 0:${line}: '${t}' : ${what}`);
     if (list[i + 1]?.t !== "(") {
       if (!names.has(t)) say("undeclared identifier");

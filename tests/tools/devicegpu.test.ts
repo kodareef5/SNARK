@@ -133,6 +133,10 @@ test("the fake context refuses the probe's SURFACE pass as the dome left it, and
   expect(link(worldVertex(FLAT_MESH_VERTEX), LIT_FRAGMENT.replace("sunShadow(vRel, geometric)) + room", "sunShadow(vRel, geometric), 1.0) + room"))).toMatch(/'lit' : no matching overloaded function found$/);
   expect(link(worldVertex(FLAT_MESH_VERTEX), withDefines(LIT_FRAGMENT, "#define SHADOWS 1\n"))).toBe("");
   expect(link(FLAT_MESH_VERTEX, "#define SHADOWS 1\n" + LIT_FRAGMENT)).toMatch(/'#version' : must be the text's first line/);
+  // A struct's name is a type: a value and a function of it are declared, and a type nobody declares is still refused.
+  const struct = (body: string): string => LIT_FRAGMENT.replace("void main() {", `struct Look { float blur, noise; };\nLook look(float s) {\n  Look l;\n  l.blur = s;\n  l.noise = s;\n  return l;\n}\n${body}void main() {`);
+  expect(link(worldVertex(FLAT_MESH_VERTEX), struct("float blurOf(float s) { Look l = look(s); return l.blur; }\n"))).toBe("");
+  expect(link(worldVertex(FLAT_MESH_VERTEX), struct("float blurOf(float s) { Feel l = look(s); return l.blur; }\n"))).toMatch(/'Feel' : undeclared identifier/);
   // Linking: SURFACE's fragment behind FLAT's vertex text, which writes vRel but not the rest, and vColor flat where LIT reads it smooth.
   expect(link(FLAT_MESH_VERTEX, surfaceFragment("rgba", AIR)).split("\n")[0]).toBe("ERROR: 'vNormal' : the fragment reads it as vec3, and the vertex text does not write it");
   expect(link(worldVertex(FLAT_MESH_VERTEX), LIT_FRAGMENT.replace("flat in vec3 vColor;", "in vec3 vColor;"))).toBe("ERROR: 'vColor' : the fragment reads it as vec3, and the vertex text writes it as flat vec3");
