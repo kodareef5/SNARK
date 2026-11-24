@@ -428,9 +428,10 @@ function moon(out: number[], f: ArrayLike<number>, nx: number, ny: number, nz: n
   const m = fbm(nx * 2.3 + 3.1, ny * 2.3 + 3.1, nz * 2.3 + 3.1, 25, 2.3, fp, octaves);
   const ground = mix(0.18, 0.52, sstep(0.42, 0.6, m)) + craters(nx * 2.6 + 1.7, ny * 2.6 + 1.7, nz * 2.6 + 1.7, 29, 2.6, fp) + 0.6 * craters(nx * 7.5 + 4.1, ny * 7.5 + 4.1, nz * 7.5 + 4.1, 31, 7.5, fp);
   const albedo = Math.max(ground, 0.03) * limb, shade = sstep(-0.06, 0.22, lit) * (0.7 + 0.3 * Math.max(lit, 0));
-  out[0] = albedo * (0.98 * shade + 0.035);
-  out[1] = albedo * (0.95 * shade + 0.05);
-  out[2] = albedo * (0.86 * shade + 0.09);
+  // Its night side keeps earthshine enough to read from every side of the city.
+  out[0] = albedo * (0.98 * shade + 0.2);
+  out[1] = albedo * (0.95 * shade + 0.25);
+  out[2] = albedo * (0.86 * shade + 0.36);
 }
 
 const MOON_GLSL = `
@@ -454,7 +455,7 @@ vec3 orbMoon(vec3 n, float t, float fp) {
   }
   float m = orbFbm(n*2.3+3.1,25.,2.3,fp);
   float ground = mix(.18,.52,smoothstep(.42,.6,m))+orbCraters(n*2.6+1.7,29.,2.6,fp)+.6*orbCraters(n*7.5+4.1,31.,7.5,fp);
-  return max(ground,.03)*limb*(vec3(.98,.95,.86)*smoothstep(-.06,.22,lit)*(.7+.3*max(lit,0.))+vec3(.035,.05,.09));
+  return max(ground,.03)*limb*(vec3(.98,.95,.86)*smoothstep(-.06,.22,lit)*(.7+.3*max(lit,0.))+vec3(.2,.25,.36));
 }`;
 
 /**
@@ -522,15 +523,15 @@ function storm(out: number[], f: ArrayLike<number>, nx: number, ny: number, nz: 
   const cl = fbm(turned[0]! * 2.6, turned[1]! * 2.6 + 0.05 * t, turned[2]! * 2.6, 41, 2.6, fp, octaves) + 0.3 * ny - 0.06;
   const thick = sstep(0.42, 0.6, cl), tops = sstep(0.55, 0.85, cl);
   const rain = mix(0.5, orbNoise(nx * 17, ny * 2.5 + 0.9 * t, nz * 17, 47), keepAt(17, fp));
-  out[0] = mix(0.003 + 0.02 * rain * rain, mix(0.016, 0.15, tops), thick);
-  out[1] = mix(0.005 + 0.028 * rain * rain, mix(0.022, 0.18, tops), thick);
-  out[2] = mix(0.012 + 0.045 * rain * rain, mix(0.04, 0.25, tops), thick);
+  out[0] = mix(0.006 + 0.05 * rain * rain, mix(0.04, 0.32, tops), thick);
+  out[1] = mix(0.01 + 0.07 * rain * rain, mix(0.055, 0.38, tops), thick);
+  out[2] = mix(0.024 + 0.11 * rain * rain, mix(0.1, 0.52, tops), thick);
   // Heat lightning of its own between the eye's strikes.
   let glow = 0, bolt = 0;
   const tick = t * 0.9, k = Math.floor(tick);
-  if (orbHash(k, 5, 0, 48) < 0.4) {
+  if (orbHash(k, 5, 0, 48) < 0.7) {
     strikeAt(k + 100);
-    glow = 0.35 * Math.exp(-(tick - k) * 6) * Math.exp(-(1 - (nx * at[0]! + ny * at[1]! + nz * at[2]!)) * 4);
+    glow = 0.9 * Math.exp(-(tick - k) * 5) * Math.exp(-(1 - (nx * at[0]! + ny * at[1]! + nz * at[2]!)) * 2.5);
   }
   const flash = f[FLASH]!;
   if (flash > 0) {
@@ -565,10 +566,10 @@ vec3 orbStorm(vec3 n, float t, float fp) {
   float cl = orbFbm(orbTurn(n,t*.03)*2.6+vec3(0.,.05*t,0.),41.,2.6,fp)+.3*n.y-.06;
   float thick = smoothstep(.42,.6,cl), tops = smoothstep(.55,.85,cl);
   float rain = mix(.5,orbNoise(vec3(n.x*17.,n.y*2.5+.9*t,n.z*17.),47.),orbKeep(17.,fp));
-  vec3 col = mix(vec3(.003,.005,.012)+vec3(.02,.028,.045)*rain*rain,mix(vec3(.016,.022,.04),vec3(.15,.18,.25),tops),thick);
+  vec3 col = mix(vec3(.006,.01,.024)+vec3(.05,.07,.11)*rain*rain,mix(vec3(.04,.055,.1),vec3(.32,.38,.52),tops),thick);
   float glow = 0., bolt = 0.;
   float tick = t*.9, k = floor(tick);
-  if (orbHash(vec3(k,5.,0.),48.) < .4) glow = .35*exp(-(tick-k)*6.)*exp(-(1.-dot(n,orbAt(k+100.)))*4.);
+  if (orbHash(vec3(k,5.,0.),48.) < .7) glow = .9*exp(-(tick-k)*5.)*exp(-(1.-dot(n,orbAt(k+100.)))*2.5);
   float flash = fOrb[5].w;
   if (flash > 0.) {
     float id = fOrb[6].x;
