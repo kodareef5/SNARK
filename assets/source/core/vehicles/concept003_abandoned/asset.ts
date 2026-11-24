@@ -3,7 +3,7 @@ import { parsePack } from "../../../../../shared/pack/pack.ts";
 import type { PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { unpackMeshes, type SourceLod } from "../../../../../tools/pack/write.ts";
 
-const parts = ["abandoned", "abandoned_stripped"] as const;
+const parts = ["abandoned", "abandoned_stripped", "abandoned_shell"] as const;
 const id = (look: string) => `core:concept003_${look}`;
 
 function rigid(lod: SourceLod, omitted: Set<number>): SourceLod {
@@ -32,9 +32,11 @@ function bake() {
   if (!names || !body.flat) throw new Error("The scenery needs the live car's rig and palette levels");
   return parts.map(look => {
     const omitted = new Set<number>();
-    if (look === "abandoned_stripped") {
+    if (look !== "abandoned") {
+      // Stripped it keeps every door but the driver's, and a shell none.
+      const door = look === "abandoned_shell" ? "door_" : "door_left";
       for (const [i, name] of names.entries()) {
-        if (name.startsWith("wheel_") || name.startsWith("glass_") || name === "steering_wheel" || name === "door_left") omitted.add(i);
+        if (name.startsWith("wheel_") || name.startsWith("glass_") || name === "steering_wheel" || name.startsWith(door)) omitted.add(i);
       }
     }
     const lods = body.lods.slice(body.flat).map(lod => rigid(lod, omitted));

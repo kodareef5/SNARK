@@ -110,9 +110,10 @@ def _low(o):
     return min(v.co.z for v in o.data.vertices)
 
 
-def _authored(vehicle, name, levels, pose):
+def _authored(vehicle, name, levels, pose, taken=None):
     """The heavy road vehicle's own coarser levels (../<vehicle>/lod<n>.json.gz, made by hand in its palette) as the
-    abandoned look's `name`_LOD1 and on, posed as its finest is: each face in the palette colour of its tile."""
+    abandoned look's `name`_LOD1 and on, posed as its finest is: each face in the palette colour of its tile. A look
+    is without the parts `taken(bone, points)` says it has lost, at every level."""
     import gzip
     import json
 
@@ -132,7 +133,9 @@ def _authored(vehicle, name, levels, pose):
         with open(os.path.join(folder, f"lod{level}.json.gz"), "rb") as f:
             parts = json.loads(gzip.decompress(f.read()))
         verts, faces, tiles = [], [], []
-        for _bone, tile, v, tris in parts:
+        for bone, tile, v, tris in parts:
+            if taken and taken(bone, v):
+                continue
             n = len(verts)
             verts.extend((v[i], -v[i + 2], v[i + 1]) for i in range(0, len(v), 3))
             faces.extend((n + tris[i], n + tris[i + 1], n + tris[i + 2]) for i in range(0, len(tris), 3))

@@ -2,6 +2,7 @@
 // <vehicle>_abandoned building them from the live vehicle's own model (parked.py) with pictures paint.py prepares from
 // the live vehicle's. `bun run art -- core:<vehicle>_abandoned` builds one.
 
+import { join } from "node:path";
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 
 export type Look = "abandoned" | "stripped" | "roof";
@@ -42,3 +43,22 @@ export function vanMaterials(): Record<string, MaterialSpec> {
 
 /** A heavy road vehicle's livery (heavy_road), a palette atlas with no paint region: the live vehicle's own pictures. */
 export const livery = (vehicle: string): Record<string, MaterialSpec> => ({ livery: { base: `../${vehicle}/livery.png`, packed: `../${vehicle}/orm.png` } });
+
+export type Salvaged = "stripped" | "shell";
+
+/**
+ * The looks a salvaged wreck of `vehicle` goes down to (parked_common/salvaged.py), in a folder <vehicle>_salvaged whose
+ * salvaged.py builds them. They are levelled as `abandoned`, the asset of its street looks, and drawn with those looks'
+ * pictures under materials of their own: the texture build keeps pictures that are the same once. `triangles` are a
+ * look's own budgets, where it has lost so much that its body's would leave it no flat level.
+ */
+export function salvagedAsset(vehicle: string, abandoned: PiecesAsset, looks: readonly Salvaged[] = ["stripped", "shell"], triangles: Partial<Record<Salvaged, readonly number[]>> = {}): PiecesAsset {
+  const dir = join(import.meta.dir, "..", `${vehicle}_abandoned`);
+  const { id: _id, object: _object, ...piece } = abandoned.pieces[0]!;
+  return {
+    ...abandoned,
+    source: { scripts: ["salvaged.py"] },
+    pieces: looks.map((look) => ({ ...piece, id: `core:${vehicle}_abandoned_${look}`, object: `${vehicle}_abandoned_${look}`, ...(triangles[look] ? { triangles: triangles[look] } : {}) })),
+    materials: Object.fromEntries(Object.entries(abandoned.materials ?? {}).map(([name, m]) => [name, { ...m, dir: m.dir ?? dir }])),
+  };
+}
