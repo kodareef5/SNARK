@@ -94,6 +94,9 @@ let afterWorld: Screen = "roster";
 let directoryOffline = false;
 let mapsOpen = false;
 let worldChoice = "";
+let manualWorldChoice = false;
+let listRequest = 0;
+let browserVisit = 0;
 let recoveryName = "";
 let warmers: Promise<typeof import("./preload.ts")> | null = null;
 const loadWarmers = () => (warmers ??= import("./preload.ts"));
@@ -255,8 +258,10 @@ async function selectWorld(w: World, to: Screen = "roster", wanted = ""): Promis
   return v === version && !loadError;
 }
 async function worldsRefresh() {
+  const request = ++listRequest, visit = browserVisit;
   try {
     const rows: World[] = await json(new URL("entry-worlds.json", home).href);
+    if (request !== listRequest) return;
     worlds = rows.flatMap((w) => {
       try {
         return [{ ...w, address: worldUrl(w.address, home) }];
@@ -264,21 +269,27 @@ async function worldsRefresh() {
         return [];
       }
     });
-  } catch {}
-  if (screen !== "servers" || !dirs().length) return;
+  } catch {
+    if (request !== listRequest) return;
+  }
+  if (screen !== "servers" || visit !== browserVisit) return;
+  refreshFilters();
+  const directories = dirs();
+  if (directories.length === 0) return;
   const ask = (url: string) =>
     fetch(url, { signal: AbortSignal.timeout(4000) })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then(listingsOf, () => null);
-  void Promise.all(dirs().map(ask)).then((got) => {
-    const rows = mergeListings(got);
-    directoryOffline = rows === null;
-    if (rows) listed = rows;
-    refreshFilters();
-  });
+  const got = await Promise.all(directories.map(ask));
+  if (request !== listRequest || screen !== "servers" || visit !== browserVisit) return;
+  const rows = mergeListings(got);
+  directoryOffline = rows === null;
+  if (rows) listed = rows;
   refreshFilters();
 }
+
 function nav(next: Screen) {
+  if (screen === "servers" || next === "servers") browserVisit++;
   if (screen === "link" && code && next !== "link") void owner("cancel", { code }).catch(() => {});
   if (next === "title" || next === "servers") {
     fromWorld = false;
@@ -307,13 +318,7 @@ function nav(next: Screen) {
   render();
   topOfPage();
   if (next === "title") warmTitleAfterPaint();
-  if (next === "servers") {
-    void worldsRefresh().then(() => {
-      if (screen !== "servers") return;
-      if (!worldChoice) worldChoice = playWorld(worlds, direct ? home : null, location.origin)?.address ?? "";
-      refreshFilters();
-    });
-  }
+  if (next === "servers") void worldsRefresh();
 }
 function syncScene() {
   const saved = screen === "roster" && fromWorld ? selectedRow()?.look : null;
@@ -367,18 +372,26 @@ function refreshFilters() {
   if (note) note.hidden = !directoryOffline;
   renderList();
 }
+const joinable = (w: World): boolean => w.online !== false && (w.max === 0 || w.players < w.max);
+
 function renderList() {
   const list = root.querySelector("#results");
   if (!list) return;
   const rows = visibleWorlds();
+  let chosen = rows.find((w) => w.address === worldChoice);
+  if (!manualWorldChoice && (!chosen || !joinable(chosen))) {
+    const open = playWorld(rows.filter(joinable), direct ? home : null, location.origin);
+    worldChoice = open?.address ?? "";
+    chosen = open ?? undefined;
+  }
   updateCards(list, rows.map((world) => serverCard(world, world.address === worldChoice)).join("") || "<p>No matching servers.</p>");
   const n = root.querySelector("#result-count");
   if (n) n.textContent = rows.length + " " + (rows.length === 1 ? "world" : "worlds");
-  const chosen = rows.find((w) => w.address === worldChoice);
   const advance = root.querySelector<HTMLButtonElement>('[data-action="choose-world"]');
   if (advance) {
-    advance.disabled = !chosen || chosen.online === false;
-    advance.textContent = chosen ? "Use " + chosen.name : "Select a world";
+    advance.disabled = !chosen || !joinable(chosen);
+    advance.textContent = !chosen ? "Select a world" : chosen.online === false ? chosen.name + " is offline"
+      : !joinable(chosen) ? chosen.name + " is full" : "Use " + chosen.name;
   }
 }
 function survivors(): { content: string; primary: string } {
@@ -628,6 +641,7 @@ async function action(a: string, b: HTMLElement) {
     return;
   }
   if (a === "world") {
+    manualWorldChoice = true;
     worldChoice = b.dataset.world ?? "";
     renderList();
     return;
@@ -638,7 +652,7 @@ async function action(a: string, b: HTMLElement) {
   }
   if (a === "choose-world") {
     const w = visibleWorlds().find((w) => w.address === worldChoice);
-    if (w && w.online !== false) {
+    if (w && joinable(w)) {
       const next = afterWorld;
       if (next === "create") createDraft();
       if (await selectWorld(w, next)) afterWorld = "roster";

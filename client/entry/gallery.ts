@@ -59,6 +59,7 @@ export function imageTile(src: string | undefined, extra = "") {
 export function serverCard(w: WorldCard, selected = false) {
   const art = mapArt(w.mapId, w.map),
     live = w.online !== false,
+    full = w.max > 0 && w.players >= w.max,
     tags = Object.entries(w.tags ?? {}).slice(0, 4),
     access = w.password === true ? "Password required" : w.password === false ? "Open access" : "Server details";
   return (
@@ -74,7 +75,7 @@ export function serverCard(w: WorldCard, selected = false) {
     (w.about ? '<span class="server-about">' + esc(w.about) + "</span>" : "") +
     (tags.length ? '<span class="server-tags">' + tags.map(([k, v]) => "<i>" + esc(k) + " " + esc(v) + "</i>").join("") + "</span>" : "") +
     '<span class="occupancy">' +
-    (live ? "<i></i>" + esc(w.players) + " / " + esc(w.max) + " players" : "Offline") +
+    (live ? "<i></i>" + esc(w.players) + (w.max > 0 ? " / " + esc(w.max) : "") + (full ? " players · Full" : " players") : "Offline") +
     '</span></span><span class="card-foot">' +
     (w.pve === undefined ? access : (w.pve ? "PvE" : "PvP") + " · " + access) +
     '<span aria-hidden="true">' + (selected ? "✓" : "›") + "</span></span></button>" +
