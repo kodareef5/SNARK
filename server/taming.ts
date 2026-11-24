@@ -401,6 +401,8 @@ export class Taming {
       return false;
     }
     rec.tame = null;
+    // Older saves can hold experience from a wild kill.
+    if (rec.team === 0) rec.xp = 0;
     rec.te = te;
     rec.team = owner.team;
     this.lying.delete(rec.pid);

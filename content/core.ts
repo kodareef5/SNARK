@@ -299,7 +299,7 @@ const NODES: NodeDef[] = [
 
 /** Levels are the reference game's. */
 const MAKING: Def[] = [
-  ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
+  ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]], 2.4),
   // ark.wiki.gg, Narcotic, infobox, 2026-11-15: at the mortar and pestle, 5 narcoberries and 1 spoiled meat, in 5 s,
   // craftingxp 2 (our 8, D465's four times); level 6, 6 engram points (moved from the hand and raw meat by S6). The
   // chemistry bench's 20 and 4 for 6 waits for the bench.
@@ -497,8 +497,8 @@ const ALL: readonly Def[] = [
 
   ...NODES,
 
-  ...crafting("core:pick", { needs: [{ item: "core:stone", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
-  ...crafting("core:hatchet", { needs: [{ item: "core:flint", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
+  ...crafting("core:pick", { needs: [{ item: "core:stone", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 1.6 }),
+  ...crafting("core:hatchet", { needs: [{ item: "core:flint", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 1.6 }),
   { type: "engram", id: "core:engram-pick", label: "Stone pick", level: 1, cost: 0, item: "core:pick" },
   { type: "engram", id: "core:engram-hatchet", label: "Stone hatchet", level: 2, cost: 3, item: "core:hatchet" },
   ...MAKING,

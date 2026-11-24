@@ -168,6 +168,8 @@ export class Progression {
     amount = Number(asked.amount);
     // One at its cap still earns for those near it.
     if (share && source >= XP_KILL && source <= XP_CRAFT) this.onShare?.(rec, earned, source);
+    // A wild creature can earn a share for its carrier before it can earn domestic levels.
+    if (rec.team === 0 && rec.genome && rec.kind !== this.survivor && source !== XP_GIVEN) return 0;
     const room = this.most(rec) - rec.xp;
     if (amount > room) amount = room;
     if (!(amount > 0)) return 0;
