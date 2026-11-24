@@ -23,7 +23,6 @@ import { Settings } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
 import type { StoragePage } from "./storage.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
-import { EmoteMenu } from "./emotes.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
 import { SCREENS } from "./screens-list.ts";
@@ -44,7 +43,6 @@ export class Ui {
   readonly air = new AirRadio();
   readonly choosing = new ChoosingScreen();
   readonly structure = new StructMenu();
-  readonly emotes = new EmoteMenu();
   readonly naming = new NamePrompt();
   /** The screens of SCREENS, made for this interface, in its order. */
   readonly screens: readonly Screen[] = SCREENS.map((make) => make());
@@ -128,7 +126,7 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
-    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.options && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !(this.debug?.holdsPointer ?? false);
+    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.options && !this.dead && !this.creating && !this.structure.open && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Whether a screen of `group` is open. */
@@ -143,14 +141,20 @@ export class Ui {
     return "";
   }
 
-  /** The screen of `group` that `code` opens, or null. */
-  private hotkeyed(group: string, code: string): Screen | null {
+  /** The screen of `group` that `code` opens, or null. Undefined asks among the screens of no group. */
+  private hotkeyed(group: string | undefined, code: string): Screen | null {
     for (const s of this.screens) if (s.group === group && s.hotkey === code) return s;
     return null;
   }
 
-  private closeGroup(group: string): void {
-    for (const s of this.screens) if (s.group === group && s.isOpen()) s.close(this.ctx);
+  /** The server's answer to command `seq`, told to each screen of the list. */
+  results(seq: number, code: number): void {
+    for (const s of this.screens) s.result?.(seq, code, this.ctx);
+  }
+
+  /** Shuts every open modal screen of the list, as one of the bag opens over them. */
+  private closeModals(): void {
+    for (const s of this.screens) if (s.layer === "modal" && s.isOpen()) s.close(this.ctx);
   }
 
   /** The ctx with what this call knows. */
@@ -284,11 +288,11 @@ export class Ui {
       if (code === "Escape" && this.debug?.holdsPointer) { if (down && !repeat) this.debug.close(); return true; }
       // The structure menu takes its digits and Escape. Opening any other screen closes it.
       if (this.structure.key(code, down, repeat, session)) return true;
-      // The emote menu likewise, and Z opens it from play.
-      if (this.emotes.key(code, down, repeat, session)) return true;
+      // An open screen of the list has its keys next, and a screen of no group opens by its hotkey from play.
       for (const s of this.screens) if (s.isOpen() && s.key?.(code, down, repeat, this.at(session))) return true;
-      if (code === "KeyZ" && this.wantsPointerLock && !this.creating) {
-        if (down && !repeat) this.emotes.toggle();
+      const own = this.hotkeyed(undefined, code);
+      if (own && this.wantsPointerLock && !this.creating) {
+        if (down && !repeat) own.show?.(this.at(session));
         return true;
       }
       // Chat does not open while the session is in the creator.
@@ -314,7 +318,7 @@ export class Ui {
           this.options = options;
           this.inspect = false;
           if (options) { this.menu = true; this.focusTo(KEY_MENU_BACK); }
-          this.closeGroup("bag");
+          this.closeModals();
           listed?.show?.(this.at(session));
           if (inventory) this.inventory.open = true;
           else this.inventory.close(session);
@@ -409,7 +413,6 @@ export class Ui {
     if (kind === 0 && !button && this.air.click(key, session)) return;
     if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
-    if (kind === 0 && this.emotes.click(key, session)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
@@ -487,6 +490,8 @@ export class Ui {
     if (this.creative && !session?.creative) { this.creative = false; this.focusTo(KEY_MENU_RESUME); }
     const creative = this.menu && this.creative && !this.console.open && !this.chat.open;
     if (session) this.creativeScreen.pump(session, creative);
+    // A container the server opens brings the inventory up over any screen of the list.
+    if (this.inventory.absorb(session)) this.closeModals();
     if (!this.console.open && !this.chat.open) {
       if (this.menu) {
         if (this.options) {
@@ -505,7 +510,6 @@ export class Ui {
       else if (!this.buildModal(f, session, hud)) {
         this.inventory.build(f, session, this.registry, this.palette);
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
-        if (session && !this.inventory.open) this.emotes.build(f);
       }
     }
     // The name prompt goes over every other screen, but under the console.

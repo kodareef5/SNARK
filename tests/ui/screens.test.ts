@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { HudModel } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import type { CharacterScreen } from "../../client/core/ui/character.ts";
+import { KEY_EMOTE_BUTTON, type EmoteMenu } from "../../client/core/ui/emotes.ts";
 import type { Screen } from "../../client/core/ui/screen.ts";
+import { RESULT_DENIED } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -58,6 +60,7 @@ test("each open screen frees the pointer, draws inside its bands and owns what i
   const opens: Record<string, (ui: Ui) => Screen> = {
     travel: openTravel,
     character: (ui) => { const s = ui.screen<CharacterScreen>("character"); s.open = true; return s; },
+    emotes: (ui) => { const s = ui.screen<EmoteMenu>("emotes"); s.open = true; return s; },
   };
   for (const name of new Ui().screens.map((s) => s.name)) {
     expect(opens[name], `a way to open ${name} in this test`).toBeDefined();
@@ -98,4 +101,29 @@ test("a screen's hotkey opens it and shuts the rest of its group, and Escape shu
   ui.key("Escape", true, false, session);
   expect([travel.open, ui.menu]).toEqual([false, false]);
   expect(heard).toEqual(["screen/character/open", "screen/map/open", "screen/character/open", "screen/character/close", "screen/travel/close"]);
+});
+
+test("a screen of no group opens by its hotkey only from play, and the bag opens over it", () => {
+  const ui = new Ui(), { session } = fakeSession();
+  const emotes = ui.screen<EmoteMenu>("emotes");
+  ui.key("KeyZ", true, false, session);
+  expect(emotes.open).toBe(true);
+  drawn(ui, emotes, session);
+  ui.key("KeyI", true, false, session);
+  expect([emotes.open, ui.inventory.open]).toEqual([false, true]);
+  // Z does nothing for the emotes while the inventory has the pointer.
+  ui.key("KeyZ", true, false, session);
+  expect(emotes.open).toBe(false);
+});
+
+test("the server's answer reaches the screen that asked", () => {
+  const ui = new Ui(), { session } = fakeSession();
+  const emotes = ui.screen<EmoteMenu>("emotes");
+  (session as unknown as { emote: () => number }).emote = () => 42;
+  emotes.open = true;
+  drawn(ui, emotes, session);
+  ui.pointer(0, KEY_EMOTE_BUTTON, 0, 0, 0, session);
+  expect(emotes.open).toBe(false);
+  ui.results(42, RESULT_DENIED);
+  expect(emotes.notice).toBe("Not now: stand still, hands free");
 });

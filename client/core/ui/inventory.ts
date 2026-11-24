@@ -328,15 +328,20 @@ export class InventoryScreen {
     this.held = -1;
   }
 
-  build(f: UiFrame, session: ClientSession | null, reg: Registry | null, palette: Uint8Array | null): void {
-    // A container the server has just opened brings the screen up with it.
-    const isOpen = !!session?.open;
-    if (session) this.taking.update(session);
-    if (isOpen && !this.hadOpen) {
+  /** A container the server has just opened brings the screen up with it. True on the frame it does. */
+  absorb(session: ClientSession | null): boolean {
+    const isOpen = !!session?.open, opened = isOpen && !this.hadOpen;
+    if (opened) {
       this.open = true;
       this.page = 0; this.vehicleBag = false;
     }
     this.hadOpen = isOpen;
+    return opened;
+  }
+
+  build(f: UiFrame, session: ClientSession | null, reg: Registry | null, palette: Uint8Array | null): void {
+    this.absorb(session);
+    if (session) this.taking.update(session);
     const own = session?.inventory;
     if (!this.open || !own || !session || !reg) return;
     const other = session.open?.inventory ?? null;

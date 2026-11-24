@@ -30,6 +30,7 @@ import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import { itemLabel, waitWords } from "./ui/inventory.ts";
 import { structName } from "./ui/structure.ts";
+import type { EmoteMenu } from "./ui/emotes.ts";
 import type { VehiclePlacement } from "./vehicle-placement.ts";
 import { lookAt, nearbyBoard, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
 
@@ -145,7 +146,7 @@ export class Prompts implements FramePart {
     const whom = alive ? this.who(f, world, eyeNow) : ((this.aimedBoat = this.lookedAt = this.target = -1), "");
     this.eggAimed = -1;
     // A move for two goes to the survivor the crosshair is on.
-    const emotes = f.ui.emotes, characters = f.scene.characters;
+    const emotes = f.ui.screen<EmoteMenu>("emotes"), characters = f.scene.characters;
     emotes.tick(nowMs);
     emotes.target = -1;
     emotes.targetName = "";

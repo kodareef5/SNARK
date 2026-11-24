@@ -77,6 +77,7 @@ import { SplitPort } from "./sound/split.ts";
 import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
 import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
 import { glass } from "./ui/skin.ts";
+import type { EmoteMenu } from "./ui/emotes.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
@@ -286,7 +287,7 @@ export class App {
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
       if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
-      this.ui.emotes.result(seq, code, this.nowMs);
+      this.ui.results(seq, code);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
     this.parts = this.listed();
@@ -800,7 +801,7 @@ export class App {
       this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.tools?.farPalms ?? false });
       this.scene.shots = this.shots;
       this.scene.supply = this.supply;
-      this.ui.emotes.has = (n) => this.scene!.characters.emoteKnown(n);
+      this.ui.screen<EmoteMenu>("emotes").has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
       if (this.timer) this.scene.time(this.timer, this.spans.build);
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z), {

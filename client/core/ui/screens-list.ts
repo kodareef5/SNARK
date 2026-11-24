@@ -3,9 +3,11 @@
 
 import type { ScreenRow } from "./screen.ts";
 import { CharacterScreen } from "./character.ts";
+import { EmoteMenu } from "./emotes.ts";
 import { TravelScreen } from "./travel.ts";
 
 export const SCREENS: readonly ScreenRow[] = [
   () => new CharacterScreen(),
+  () => new EmoteMenu(),
   () => new TravelScreen(),
 ];

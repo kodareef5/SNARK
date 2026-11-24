@@ -13,6 +13,7 @@ import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../../tests/fixtures/arena.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
 import type { CharacterScreen } from "../../client/core/ui/character.ts";
+import type { EmoteMenu } from "../../client/core/ui/emotes.ts";
 
 export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance", "compass", "compass-map", "damage", "level", "character"] as const;
 export type HudMode = (typeof HUD_MODES)[number];
@@ -118,8 +119,8 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
     s.text("emote robot");
     run(1200);
     if (mode === "emotes") {
-      app.ui.emotes.open = true;
-      app.ui.emotes.page = 2;
+      app.ui.screen<EmoteMenu>("emotes").open = true;
+      app.ui.screen<EmoteMenu>("emotes").page = 2;
     }
   } else if (mode === "station") {
     const fire = h.world.structs.add(id("campfire"), x, g.y + h.reg.halfY[id("campfire")]!, z + 2, 0, me.team, 100);
