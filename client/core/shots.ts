@@ -13,6 +13,7 @@ import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared
 import { bodyAlong, seaHere } from "../../shared/world/water.ts";
 import { shotDir } from "../../shared/sim/aim.ts";
 import { shotRays } from "../../shared/content/registry.ts";
+import type { Blasts } from "./render/blasts.ts";
 import type { Camera } from "./render/camera.ts";
 import type { Characters } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
@@ -108,6 +109,8 @@ export class Shots {
   private readonly tracerMesh: number;
   /** The owner replaces this when the server's tuning arrives. */
   reg: Registry;
+  /** Where what flies and goes off is drawn alight, which the scene gives. */
+  fire: Blasts | null = null;
   private readonly dir = [0, 0, 0];
   /** The whole tick the flights have been flown through. */
   private tick = -1;
