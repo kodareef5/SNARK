@@ -74,6 +74,8 @@ export interface Screen {
   keepsPointer?: boolean;
   /** A press on it makes no click sound, as on a map that is dragged. */
   quiet?: boolean;
+  /** While open the HUD under it is drawn bare, as under the map. */
+  bareHud?: boolean;
   /** While open, a press on what no listed screen drew comes to it too, so a drag can end anywhere. */
   catchAll?: boolean;
   /** A field of it has the keyboard: keys type and do not drive the body. */

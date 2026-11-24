@@ -164,6 +164,12 @@ export class Ui {
     return null;
   }
 
+  /** An open screen wants the HUD under it bare. */
+  private bareUnder(): boolean {
+    for (const s of this.screens) if (s.bareHud && s.isOpen()) return true;
+    return false;
+  }
+
   /** In the creator, or under a screen that hides it, the HUD is not drawn. */
   private hudHidden(): boolean {
     if (this.creating) return true;
@@ -418,7 +424,7 @@ export class Ui {
       }
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
-      hud.bare = this.opened("map") || this.dead;
+      hud.bare = this.dead || this.bareUnder();
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.

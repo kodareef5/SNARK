@@ -29,6 +29,7 @@ export class MapScreen implements Screen {
   readonly group = "bag";
   readonly hotkey = "KeyM";
   readonly quiet = true;
+  readonly bareHud = true;
   readonly bands = [{ from: KEY_MAP_PANEL, count: KEY_MAP_LINE + 17 - KEY_MAP_PANEL }, { from: KEY_MAP_MARK, count: MAX_MARKERS }];
   open = false;
 
