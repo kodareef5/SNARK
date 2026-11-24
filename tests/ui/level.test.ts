@@ -7,7 +7,7 @@ import { GAIN_LEAST, GAIN_MS, KEY_LEVEL, LEVEL, gainText, levelTable } from "../
 import { HudFill } from "../../client/core/hud/widget.ts";
 import { KEY_ZONE_LOOK, KEY_ZONE_MOVE } from "../../client/core/touch.ts";
 import { CharacterScreen, KEY_CHAR_STAT, KEY_CHAR_TITLE, KEY_CHAR_XP } from "../../client/core/ui/character.ts";
-import { K_BAR, K_TEXT, UiFrame, textWidth, type UiNode } from "../../client/core/ui/nodes.ts";
+import { K_BAR, K_TEXT, UiFrame, lineHeight, textWidth, type UiNode } from "../../client/core/ui/nodes.ts";
 import { S_OXYGEN, S_STAMINA } from "../../client/core/ui/style.ts";
 import { CMD_SPEND, RESULT_OK, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
@@ -47,7 +47,11 @@ function clear(f: UiFrame, where: string): void {
     const who = `${where} key=${n.key}`;
     expect(n.x >= 0 && n.y >= 0 && n.x + n.w <= f.width && n.y + n.h <= f.height, who).toBe(true);
     expect(n.w, who).toBeGreaterThan(0);
-    if (n.kind === K_TEXT) expect(textWidth(n.text, n.style), who).toBeLessThanOrEqual(n.w + 0.01);
+    if (n.kind === K_TEXT) {
+      expect(textWidth(n.text, n.style), who).toBeLessThanOrEqual(n.w + 0.01);
+      expect(n.h, who).toBeGreaterThanOrEqual(lineHeight(n.style));
+      expect(n.y + n.h, who).toBeLessThan(f.height - f.bottom);
+    }
     for (const q of all) {
       // A finger's two zones lie under the whole HUD, and the lit bar lies on the bar.
       if (q === n || q.key === KEY_ZONE_MOVE || q.key === KEY_ZONE_LOOK || (own(q) && n.key + q.key === BAR + LIT)) continue;

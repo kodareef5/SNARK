@@ -4,9 +4,9 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { SESSION_ALIVE } from "../../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../../shared/sim/items.ts";
-import { K_BAR, K_TEXT, textWidth } from "../ui/nodes.ts";
+import { K_BAR, textWidth } from "../ui/nodes.ts";
 import { S_HUD_KEY, S_OXYGEN, S_SLOT_TEXT, S_STAMINA } from "../ui/style.ts";
-import { MARGIN, hotbarCell, hotbarLeft } from "./layout.ts";
+import { hotbarBottom, hotbarCell, hotbarLeft } from "./layout.ts";
 import type { HudWidget } from "./widget.ts";
 
 /** The words, the bar, the bar lit for a level just reached, and the gain. */
@@ -133,20 +133,20 @@ export const LEVEL: HudWidget<LevelModel> = {
   build(f, m, at) {
     const v = m.levelBar;
     if (!v.shown) return;
-    // The hotbar's column, in the margin under it: no other widget and no finger's control stands there.
-    const slots = m.hotbar.length || HOTBAR_SLOTS, x = hotbarLeft(f, slots), width = slots * (hotbarCell(f, slots) + 3) - 3, y = at.foot;
+    const slots = m.hotbar.length || HOTBAR_SLOTS;
+    const x = hotbarLeft(f, slots), y = hotbarBottom(f);
+    const width = slots * (hotbarCell(f, slots) + 3) - 3;
     const words = v.points > 0 ? (at.touch ? v.spendTouch : v.spend) : v.label;
     const wordsW = Math.ceil(textWidth(words, S_HUD_KEY)), barX = x + wordsW + GAP, barW = width - wordsW - GAIN_W - GAP * 2;
-    f.add(KEY_LEVEL, K_TEXT, x, y, wordsW, MARGIN, S_HUD_KEY).text = words;
-    f.add(KEY_LEVEL + 1, K_BAR, barX, y + 5, barW, 3, S_OXYGEN).value = v.fraction;
+    f.text(KEY_LEVEL, x, y, wordsW, S_HUD_KEY, words);
+    f.add(KEY_LEVEL + 1, K_BAR, barX, y + 6, barW, 3, S_OXYGEN).value = v.fraction;
     if (v.flash > 0) {
-      const lit = f.add(KEY_LEVEL + 2, K_BAR, barX, y + 5, barW, 3, S_STAMINA);
+      const lit = f.add(KEY_LEVEL + 2, K_BAR, barX, y + 6, barW, 3, S_STAMINA);
       lit.value = v.fraction;
       lit.alpha = v.flash;
     }
     if (v.gainAlpha > 0 && v.gainText !== "") {
-      const gain = f.add(KEY_LEVEL + 3, K_TEXT, x + width - GAIN_W, y, GAIN_W, MARGIN, S_SLOT_TEXT);
-      gain.text = v.gainText;
+      const gain = f.text(KEY_LEVEL + 3, x + width - GAIN_W, y, GAIN_W, S_SLOT_TEXT, v.gainText);
       gain.alpha = v.gainAlpha;
     }
   },
