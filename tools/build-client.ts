@@ -17,6 +17,7 @@ import { FAR_MESH, farColours } from "../client/core/render/far.ts";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
 import { WATER_MATERIAL } from "../client/core/render/water.ts";
 import { BENT_SECTIONS } from "../content/bends.ts";
+import { BREAK_BLOCKS } from "../content/breaks/kinds.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, surfaceMaterial } from "../content/surfaces.ts";
 import { HUMAN } from "../shared/anim/human.ts";
@@ -127,6 +128,12 @@ function wholeFarColours(reg: Registry, pack: Pack): number[] {
   return [...farColours(reg, pack, meshOf)];
 }
 
+/** The content file carries the definitions the page cannot generate from its street and building kits. */
+export function clientContent(): Uint8Array {
+  const generated = new Set([...BENT_SECTIONS, ...BREAK_BLOCKS].map((d) => d.id));
+  return new TextEncoder().encode(JSON.stringify(CORE_CONTENT.filter((d) => !generated.has(d.id))));
+}
+
 /**
  * With `stress`, the stress meshes and cards are built as well, three of the meshes listed wrongly, for the page at ?stress=1
  * to draw. With `quick`, the Brotli copies are made quickly and not as small as they can be. `dist` is where it all goes,
@@ -143,9 +150,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // The sky's table and the content are files of their own, not strings in the script.
   const sky = skyFile(theSky().table), skyName = `assets/sky.${partHash(sky)}.bin`;
   writeFileSync(join(dist, skyName), sky);
-  // The content less the bent sections, which the page makes (client/core/fetched.ts fetchContent).
-  const bent = new Set(BENT_SECTIONS.map((d) => d.id));
-  const content = new TextEncoder().encode(JSON.stringify(CORE_CONTENT.filter((d) => !bent.has(d.id)))), contentName = `assets/content.${partHash(content)}.json`;
+  const content = clientContent(), contentName = `assets/content.${partHash(content)}.json`;
   writeFileSync(join(dist, contentName), content);
   // The page says hello with the wire version of the source it is built from (shared/net/wire.ts), and build.json keeps it.
   const wire = sourceWire(root)!;
