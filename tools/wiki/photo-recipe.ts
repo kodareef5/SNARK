@@ -1,26 +1,7 @@
 import { chunkAt, type MapDims } from "../../shared/coords.ts";
 
-export type Actor = readonly [kind: string, x: number, z: number, yaw: number, pose?: string, altitude?: number, on?: number, saddle?: string, wear?: "hide" | "cloth" | "meridian"];
-export type Prop = readonly [kind: string, x: number, z: number, yaw?: number, lift?: number];
-export type View = readonly [x: number, height: number, z: number, yaw: number, pitch: number, fov: number];
-
-export interface SceneBrief {
-  route: string;
-  caption: string;
-  alt: string;
-  hour: number;
-  view: View;
-  actors: readonly Actor[];
-  props?: readonly Prop[];
-  plants?: readonly Prop[];
-  landmark?: string;
-  absoluteHeight?: boolean;
-  eyeSeconds?: number;
-  time?: number;
-  city?: boolean;
-}
-
-export type Position = readonly [x: number, z: number, yaw: number];
+import type { ScenePosition as Position, SectionComposition as SceneBrief } from "../../shared/player-scenes.ts";
+export type { SceneActor as Actor, ScenePosition as Position, SceneProp as Prop, SceneView as View, SectionComposition as SceneBrief } from "../../shared/player-scenes.ts";
 
 export function photoPoint([x, z, heading]: Position, dx: number, dz: number): [number, number] {
   const a = heading * Math.PI / 180;

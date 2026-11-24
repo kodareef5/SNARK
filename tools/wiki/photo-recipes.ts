@@ -8,6 +8,8 @@ export const CARD_SIZE = [640, 360] as const;
 export const HOME_SIZE = [1600, 900] as const;
 export const PORTRAIT_SIZE = [720, 1280] as const;
 export const FOOTER_SIZE = [1600, 704] as const;
+export const WIKI_HOME_SECONDS = 3;
+export const WIKI_FOOTER_SECONDS = 8;
 
 export const FOOTER_SHOT: TitleShot = {
   ...OPENING_SHOT,

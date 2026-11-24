@@ -24,6 +24,7 @@ import { checkLinks } from "./wiki/links.ts";
 import { itemShots } from "./wiki/item-shots.ts";
 import { preparePhotos } from "./wiki/photo-cache.ts";
 import { buildPlaceShots } from "./wiki/places-shots.ts";
+import { wikiSceneMedia } from "./wiki/studio-catalog.ts";
 import { buildWikiScenes } from "./wiki/scenes.ts";
 import { BASE, slug } from "./wiki/html.ts";
 import { cataloguePortraits, drawPosters } from "./wiki/posters.ts";
@@ -83,6 +84,7 @@ export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(RO
     }
     const atlases = buildAtlases(reg, built.boot.palette, maps, media, `${BASE}media/`);
     const places = buildPlaceShots(photos.places, media, `${BASE}media/`);
+    writeText(join(out, "scene-media.json"), JSON.stringify(wikiSceneMedia(scenes, places)));
     const left = leftOut(coverage({ defs: CORE_CONTENT, landmarks: LANDMARKS, has: (m) => meshes.has(m), maps: new Set(atlases.map((a) => a.id)) }));
     const controls = controlGroups();
 
