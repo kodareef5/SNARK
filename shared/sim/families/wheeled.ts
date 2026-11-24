@@ -9,7 +9,8 @@ import { isSkateboard, stepVehicle, validateVehicleSpec, type VehicleDefinition,
 import { loadState, state, staticWorld, storeState, vehicleStep } from "../vehicle-state.ts";
 import { carMeetsCapsule, carMeetsKind, carMeetsVehicle } from "../../world/vehicle.ts";
 import { carShapes } from "../../world/vehicle-shapes.ts";
-import { SKIN } from "../../world/collide.ts";
+import { SKIN, groundUnder } from "../../world/collide.ts";
+import { skatePlacement } from "../../world/skate-placement.ts";
 
 const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
@@ -46,6 +47,8 @@ export const WHEELED: VehicleFamily<WheelVehicleDefinition> = {
   jointPivot: () => undefined,
   hazard: null,
   clearSlack: SKIN,
+  // A car stands on the ground under its width; a board on any clear dry surface underfoot.
+  supports: (world, x, y, z, _yaw, def) => isSkateboard(def) ? skatePlacement(world, x, y, z) : Math.abs(y - groundUnder(world.hf, x, z, def.spec.halfWidth)) <= .2,
   meetsCapsule: (def, frame, x, y, z, radius, height) => carMeetsCapsule(def.spec, frame, x, y, z, radius, height),
   meetsVehicle: (def, frame, other, otherFrame) => carMeetsVehicle(def.spec, frame, other, otherFrame),
   meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => carMeetsKind(parts, kind, sx, sy, sz, syaw, def.spec, frame, slack),

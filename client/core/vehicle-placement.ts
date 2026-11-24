@@ -7,14 +7,11 @@ import { CMD_VEHICLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RE
 import { stanceHeight } from "../../shared/sim/character.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { boatRestY } from "../../shared/sim/boat.ts";
-import { boatMeetsCapsule, boatMeetsVehicle, boatPlacement } from "../../shared/world/boat.ts";
-import { skatePlacement } from "../../shared/world/skate-placement.ts";
-import { carMeetsCapsule, carMeetsVehicle } from "../../shared/world/vehicle.ts";
 import { isSkateboard, isRotorVehicle, isBoatVehicle } from "../../shared/sim/vehicle.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { helicopterMeetsCapsule, helicopterMeetsVehicle, helicopterPlacement } from "../../shared/world/helicopter.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../shared/world/ray.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
+import { familyOf } from "../../shared/sim/families.ts";
 
 const REACH = 11;
 export const VEHICLE_PLACEMENT_REASONS: Readonly<Record<number, string>> = {
@@ -88,9 +85,10 @@ export class VehiclePlacement {
     }
     const angle = p.yaw * 2 * Math.PI / 65536, frame = { ...p, yaw: angle, pitch: 0, roll: 0 };
     let problem = session.driving >= 0 || session.own.seat > 0 ? RESULT_DENIED : (isBoatVehicle(def) ? !waterHit : hit === HIT_NONE || rayHit.ny < (isSkateboard(def) ? .82 : .94)) ? RESULT_NO_SUPPORT : 0;
-    if (!problem && !(isSkateboard(def) ? skatePlacement(world, p.x, p.y, p.z) : isBoatVehicle(def) ? boatPlacement(world, p.x, p.y, p.z, angle, def) : isRotorVehicle(def) && helicopterPlacement(world, p.x, p.y, p.z, angle, def))) problem = RESULT_NO_SUPPORT;
+    if (!problem && !familyOf(def)!.supports(world, p.x, p.y, p.z, angle, def)) problem = RESULT_NO_SUPPORT;
     if (!problem && (isRotorVehicle(def) || isBoatVehicle(def) || isSkateboard(def))) {
-      const meetsCapsule = isSkateboard(def) ? (x: number, y: number, z: number, r: number, h: number) => carMeetsCapsule(def.spec, frame, x, y, z, r, h) : isBoatVehicle(def) ? (x: number, y: number, z: number, r: number, h: number) => boatMeetsCapsule(def, frame, x, y, z, r, h) : (x: number, y: number, z: number, r: number, h: number) => helicopterMeetsCapsule(def, frame, x, y, z, r, h);
+      const family = familyOf(def)!;
+      const meetsCapsule = (x: number, y: number, z: number, r: number, h: number) => family.meetsCapsule(def, frame, x, y, z, r, h);
       const me = reg.move[session.ownKind];
       if (me && meetsCapsule(session.own.x, session.own.y, session.own.z, me.radius, stanceHeight(me, session.own.stance))) problem = RESULT_OBSTRUCTED;
       session.sampleRemote(this.remote);
@@ -102,7 +100,7 @@ export class VehiclePlacement {
           x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]!, pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, steering: r.steering[i]!,
           ...(other ? { qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! } : {}),
         };
-        if (other ? (isSkateboard(def) ? carMeetsVehicle(def.spec, frame, other, otherFrame) : isBoatVehicle(def) ? boatMeetsVehicle(def, frame, other, otherFrame) : helicopterMeetsVehicle(def, frame, other, otherFrame)) : reg.move[kind] && meetsCapsule(r.x[i]!, r.y[i]!, r.z[i]!, reg.bodyRadius[kind]!, reg.bodyHeight[kind]!)) problem = RESULT_OBSTRUCTED;
+        if (other ? family.meetsVehicle(def, frame, other, otherFrame) : reg.move[kind] && meetsCapsule(r.x[i]!, r.y[i]!, r.z[i]!, reg.bodyRadius[kind]!, reg.bodyHeight[kind]!)) problem = RESULT_OBSTRUCTED;
       }
     }
     this.problem = this.asked ? RESULT_BUSY : problem;

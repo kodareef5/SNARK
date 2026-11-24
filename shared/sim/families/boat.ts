@@ -1,6 +1,6 @@
 // Boats: a hull that floats, driven by one or two propellers (shared/sim/boat.ts).
 
-import { boatMeetsCapsule, boatMeetsKind, boatMeetsVehicle, boatWorld } from "../../world/boat.ts";
+import { boatMeetsCapsule, boatMeetsKind, boatMeetsVehicle, boatPlacement, boatWorld } from "../../world/boat.ts";
 import { boatJoints, boatMounts, boatShapes } from "../../world/vehicle-shapes.ts";
 import { BTN_JUMP, BTN_SPRINT, stepOut } from "../character.ts";
 import { stepBoat } from "../boat.ts";
@@ -40,6 +40,7 @@ export const BOAT: VehicleFamily<BoatVehicleDefinition> = {
   jointPivot: (def, joint) => boatDrives(def.spec)[joint]?.outboard?.pivot,
   hazard: "propeller",
   clearSlack: 0,
+  supports: (world, x, y, z, yaw, def) => boatPlacement(world, x, y, z, yaw, def),
   meetsCapsule: (def, frame, x, y, z, radius, height) => boatMeetsCapsule(def, frame, x, y, z, radius, height),
   meetsVehicle: (def, frame, other, otherFrame) => boatMeetsVehicle(def, frame, other, otherFrame),
   meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => boatMeetsKind(parts, kind, sx, sy, sz, syaw, def, frame, slack),

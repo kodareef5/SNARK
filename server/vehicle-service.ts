@@ -14,9 +14,7 @@ import { skatePlacement } from "../shared/world/skate-placement.ts";
 import { isSkateboard, PATROL_LIGHT_MODES, boatDrives, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
-import { boatPlacement } from "../shared/world/boat.ts";
 import { capsuleFree, groundUnder, type CollisionWorld } from "../shared/world/collide.ts";
-import { helicopterPlacement } from "../shared/world/helicopter.ts";
 import type { MapVehicle } from "../shared/world/mapfile.ts";
 import { castWorld, HIT_NONE, rayHit } from "../shared/world/ray.ts";
 import { vehicleSolidRadius } from "../shared/world/vehicle-shapes.ts";
@@ -415,16 +413,14 @@ function hullParts(x: number, y: number, z: number, yaw: number, def: VehicleDef
 export function vehicleFitsWorld(world: CollisionWorld & { readonly unloaded?: ServerWorld["unloaded"] }, x: number, y: number, z: number, yaw: number, def: VehicleDefinition): boolean {
   if (![x, y, z, yaw].every(Number.isFinite)) return false;
   if (isSkateboard(def)) return skatePlacement(world, x, y, z) && !world.unloaded?.meets(x, y+.04, z, .4, 1.8);
-  if (isRotorVehicle(def)) {
-    if (!helicopterPlacement(world, x, y, z, yaw, def)) return false;
-  } else if (isBoatVehicle(def)) {
-    if (!boatPlacement(world, x, y, z, yaw, def)) return false;
+  if (!familyOf(def)!.supports(world, x, y, z, yaw, def)) return false;
+  if (isBoatVehicle(def)) {
     // The compound hull already cleared terrain and loaded solids, including the waterway between sponsons.
     // Unloaded resource nodes expose only a capsule query.
     const unloaded = world.unloaded;
     return !unloaded || !hullParts(x, y, z, yaw, def).some(part =>
       part.height > .2 && unloaded.meets(part.x, part.y, part.z, part.radius, part.height));
-  } else if (Math.abs(y - groundUnder(world.hf, x, z, def.spec.halfWidth)) > .2) return false;
+  }
   const unloaded = world.unloaded ?? null, sn = Math.sin(yaw), cs = Math.cos(yaw);
   if (isRotorVehicle(def) && unloaded) {
     // The disc is shallow, while a capsule with its radius would be a 9 m tall sphere: unloaded nodes are met by small

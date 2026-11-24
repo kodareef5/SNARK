@@ -46,6 +46,8 @@ export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> 
   meetsKind(def: D, parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, frame: VehicleFrame, slack?: number): boolean;
   /** The slack it is met with when the world clears room for a structure among vehicles (server/wreck-clearance.ts). */
   readonly clearSlack: number;
+  /** Whether the world holds it up at `x`, `y`, `z` facing `yaw`, as it would be set down: ground, a pad, or water. */
+  supports(world: CollisionWorld, x: number, y: number, z: number, yaw: number, def: D): boolean;
 }
 
 /** The one place a row is widened to take any definition: a family only ever gets definitions its `is` accepts. */
