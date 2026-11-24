@@ -45,7 +45,19 @@ const BODY_SLACK = 0.1;
 export const ENEMY_FOUNDATION = 50;
 export const ENEMY_PILLAR = 10;
 /** Work a collapse may do in one tick, in the units shared/world/collapse.ts counts. About a millisecond. A larger collapse takes more ticks. */
-const COLLAPSE_WORK = 16000;
+export const COLLAPSE_WORK = 16000;
+/** Ticks from one removal of a collapse to its next. Fewer, larger removals tell a house's fall in under 2 bytes a piece. */
+export const WAVE_TICKS = 2;
+/** Pieces a collapse's first removal takes, and how many more each next one may: a front moving out, a house down in 0.7 s. */
+export const FALL_FIRST = 32;
+export const FALL_GAIN = 20;
+/** The most one removal takes. Judging finds 165 to 350 a tick; each removed costs the tick 1.5 µs more, a box's contents 3. */
+export const FALL_MOST = 256;
+
+/** The most pieces a collapse's next removal may take, after `made` removals. */
+export function fallMost(made: number): number {
+  return Math.min(FALL_MOST, FALL_FIRST + FALL_GAIN * made);
+}
 
 export interface BuildContext {
   readonly world: ServerWorld;
@@ -119,6 +131,11 @@ export class Build {
   /** Claims on the running collapse, numbered from 1. `claim` is the number the removal in progress is under, or 0. */
   private readonly claims: Claim[] = [];
   private claim = 0;
+  /** The tick of the collapse's last removal. */
+  private fellAt = -WAVE_TICKS;
+  /** Where a running collapse has lost pieces, kept by a save so that a server stopped midway goes on with it (`resume`). */
+  readonly unsettled = { dirty: false, serialize: (): string => JSON.stringify(this.collapse.busy ? { at: this.collapse.origin, chunks: [...this.collapse.chunks] } : null) };
+  private listed = 0;
   /** Pieces that fell whole and are not yet set down where they land. */
   private readonly landing: { rec: EntityRecord | null; kind: number; x: number; y: number; z: number; yaw: number; owner: number; hp: number }[] = [];
   /**
@@ -462,6 +479,12 @@ export class Build {
     for (const [ref, at] of times) if (tick - at >= after) times.delete(ref);
   }
 
+  /** Goes on with the collapse a save caught midway, from what `unsettled` wrote. */
+  resume(saved: string | number | null): void {
+    const was = typeof saved === "string" ? (JSON.parse(saved) as { at: [number, number, number]; chunks: number[] } | null) : null;
+    if (was) this.collapse.resume(was.chunks, was.at[0], was.at[1], was.at[2]);
+  }
+
   /** Pieces whose support is still to be checked. */
   get pending(): number {
     return this.collapse.pending;
@@ -470,12 +493,18 @@ export class Build {
   /** Call once a tick. */
   step(): void {
     const { world } = this.ctx;
-    if (this.collapse.busy) {
-      const before = this.collapse.fallen;
-      this.collapse.step(COLLAPSE_WORK, world.tick);
-      this.fallen += this.collapse.fallen - before;
+    const collapse = this.collapse;
+    if (!collapse.busy) this.claims.length = 0;
+    else if (world.tick - this.fellAt >= WAVE_TICKS) {
+      const before = collapse.fallen;
+      if (collapse.step(COLLAPSE_WORK, world.tick, fallMost(collapse.made)) > 0) this.fellAt = world.tick;
+      this.fallen += collapse.fallen - before;
       if (this.landing.length > 0) this.land();
-    } else if (this.claims.length > 0) this.claims.length = 0;
+    }
+    if (collapse.listed !== this.listed) {
+      this.listed = collapse.listed;
+      this.unsettled.dirty = true;
+    }
     this.decay.step(world.tick, this.visitors);
   }
 
