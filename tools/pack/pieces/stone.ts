@@ -2463,37 +2463,44 @@ function hatchFrame(name: string, form: FormDef, level: number): Build | null {
   const [topY, bottomY] = [form.thick / 2, -form.thick / 2];
   const soffit = -0.005;
   const flagsOn = topFrame(topY);
-  if (level >= 2) {
-    // One block with the hole through it, the beams' timber round the lower half of its edge.
-    const square: P2[] = [[-H, -H], [H, -H], [H, H], [-H, H]];
-    const hole: P2[] = [[x0, -z1], [x1, -z1], [x1, -z0], [x0, -z0]];
-    const flag = (q: Vec): Uv => [(q[0] + H) / TILE, 1 - (H - q[1]) / TILE];
-    b.shape.extrude(square, "z", level === 2 ? soffit : bottomY, topY, (label) => (label === "+z" ? ["flags", flag] : ["masonry", (q) => [(q[0] + q[1] + H) / TILE, 0.5 + q[2] / TILE]]), [hole]);
-    if (level === 2) b.shape.extrude(square, "z", bottomY, soffit, (label) => (label[1] === "z" ? ["masonry", flag] : ["timber", (q) => [(q[0] + q[1] + H) / TILE, 0.5 + q[2] / TILE]]), [hole]);
-    return b;
-  }
-  const bed = topY - 0.012;
-  const trim = 0.13;
   /** The slab and its flags are four parts round the hole: two the whole width, and two between them. */
   const parts: [number, number, number, number][] = [[-H, H, -H, z0], [-H, H, z1, H], [-H, x0, z0, z1], [x1, H, z0, z1]];
-  // The bays between the beams: a row either side of the hole, and one at each of its other two sides.
-  const [a0, a1, c0, c1] = [x0 - trim, x1 + trim, z0 - trim, z1 + trim];
-  const bays: [number, number, number, number][] = [[-H + 0.08, H - 0.08, -H + 0.08, c0], [-H + 0.08, H - 0.08, c1, H - 0.08], [-H + 0.08, a0, c0 + trim, c1 - trim], [a1, H - 0.08, c0 + trim, c1 - trim]];
-  if (level === 1) {
+  if (level === 3) {
+    const square: P2[] = [[-H, -H], [H, -H], [H, H], [-H, H]];
+    const hole: P2[] = [[x0, -z1], [x1, -z1], [x1, -z0], [x0, -z0]];
+    b.shape.extrude(square, "z", bottomY, topY, (label) => [label === "+z" ? "flags" : "masonry", () => [0, 0]], [hole]);
+    return b;
+  }
+  /** The slab as one closed sheet down to `low`, with a corner on each yield ring; with `band`, the beams' timber round its edge under the soffit. */
+  const sheetBlock = (low: number, band: boolean): void => {
     const from = b.shape.faces.length;
-    for (const [u0, u1, v0, v1] of parts) b.flat([[u0, topY, v0], [u1, topY, v0], [u1, topY, v1], [u0, topY, v1]], [0, 1, 0], "flags", flagsOn.uv);
-    for (const [u0, u1, v0, v1] of parts) b.flat([[u0, soffit, v0], [u1, soffit, v0], [u1, soffit, v1], [u0, soffit, v1]], [0, -1, 0], "masonry");
-    for (const [out, a, c] of [[[0, 0, 1], [-H, H], [H, H]], [[0, 0, -1], [-H, -H], [H, -H]], [[1, 0, 0], [H, -H], [H, H]], [[-1, 0, 0], [-H, -H], [-H, H]], [[0, 0, -1], [x0, z1], [x1, z1]], [[0, 0, 1], [x0, z0], [x1, z0]], [[-1, 0, 0], [x1, z0], [x1, z1]], [[1, 0, 0], [x0, z0], [x0, z1]]] as const) {
-      // Each side has a corner on each yield ring it crosses.
+    // Every part runs along x past the rings across it: only the two whole-width ones reach a ring along it.
+    for (const [u0, u1, v0, v1] of parts) {
+      b.flat([[u0, topY, v0], [u1, topY, v0], [u1, topY, v1], [u0, topY, v1]], [0, 1, 0], "flags", flagsOn.uv, undefined, 0);
+      b.flat([[u0, low, v0], [u1, low, v0], [u1, low, v1], [u0, low, v1]], [0, -1, 0], "masonry", undefined, undefined, 0);
+    }
+    const edges: readonly (readonly [Vec, P2, P2, boolean])[] = [[[0, 0, 1], [-H, H], [H, H], band], [[0, 0, -1], [-H, -H], [H, -H], band], [[1, 0, 0], [H, -H], [H, H], band], [[-1, 0, 0], [-H, -H], [-H, H], band], [[0, 0, -1], [x0, z1], [x1, z1], false], [[0, 0, 1], [x0, z0], [x1, z0], false], [[-1, 0, 0], [x1, z0], [x1, z1], false], [[1, 0, 0], [x0, z0], [x0, z1], false]];
+    for (const [out, a, c, banded] of edges) {
       const along = a[0] === c[0] ? 1 : 0;
       const cuts = [a[along], ...b.rings.filter(([axis]) => axis === along).map(([, v]) => (along === 1 ? -v : v)).filter((v) => v > Math.min(a[along], c[along]) + 1e-9 && v < Math.max(a[along], c[along]) - 1e-9).sort((p0, p1) => p0 - p1), c[along]];
       for (let i = 0; i + 1 < cuts.length; i++) {
         const [p0, p1] = [cuts[i]!, cuts[i + 1]!].map((v): P2 => (along === 0 ? [v, a[1]] : [a[0], v])) as [P2, P2];
-        b.flat([[p0[0], soffit, p0[1]], [p1[0], soffit, p1[1]], [p1[0], topY, p1[1]], [p0[0], topY, p0[1]]], out as Vec, "masonry");
+        for (const [y0, y1, mat] of banded ? ([[soffit, topY, "masonry"], [low, soffit, "timber"]] as const) : ([[low, topY, "masonry"]] as const)) b.flat([[p0[0], y0, p0[1]], [p1[0], y0, p1[1]], [p1[0], y1, p1[1]], [p0[0], y1, p0[1]]], out, mat, straight(out, mat === "timber" ? (along === 0 ? "x" : "z") : undefined));
       }
     }
     b.shape.weld(from);
-  } else {
+  };
+  if (level === 2) {
+    sheetBlock(bottomY, true);
+    return b;
+  }
+  const bed = topY - 0.012;
+  const trim = 0.13;
+  // The bays between the beams: a row either side of the hole, and one at each of its other two sides.
+  const [a0, a1, c0, c1] = [x0 - trim, x1 + trim, z0 - trim, z1 + trim];
+  const bays: [number, number, number, number][] = [[-H + 0.08, H - 0.08, -H + 0.08, c0], [-H + 0.08, H - 0.08, c1, H - 0.08], [-H + 0.08, a0, c0 + trim, c1 - trim], [a1, H - 0.08, c0 + trim, c1 - trim]];
+  if (level === 1) sheetBlock(soffit, false);
+  else {
     for (const [u0, u1, v0, v1] of parts) b.box([u0, soffit, v0], [u1, bed, v1], flagged);
     layFlags(b, new Frame(flagsOn.at(0, 0, bed - topY), flagsOn.u, flagsOn.v, flagsOn.n), parts.map(([u0, u1, v0, v1]) => within2(u0 + H, u1 + H, v0 + H, v1 + H)), [], []);
     bays.forEach(([u0, u1, v0, v1], k) => {
