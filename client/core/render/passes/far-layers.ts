@@ -6,6 +6,7 @@
 import type { Registry } from "../../../../shared/content/registry.ts";
 import { landmarkFars } from "../../../../shared/pack/far.ts";
 import type { Pack } from "../../../../shared/pack/pack.ts";
+import { WRECK } from "../../../../shared/world/breaking.ts";
 import { floatingKinds } from "../../../../shared/world/city.ts";
 import type { Assets } from "../../assets/assets.ts";
 import type { Casting } from "../casting.ts";
@@ -74,6 +75,8 @@ export class FarLayers {
   private readonly landmarkKinds: Uint8Array;
   /** The pack's colours, four bytes each, which the map of what stands overhead takes the ground's colour from (roof.ts). */
   private readonly palette: Uint8Array;
+  /** Per kind, a wreck's break set and 0 for any other, for the far city (FarCity.wreckSets). */
+  private readonly wreckSets: Uint16Array;
   /** The layers' rows by name, in the order they are brought up to date and drawn in. */
   readonly rows: readonly PassRow[];
 
@@ -86,6 +89,7 @@ export class FarLayers {
     this.flatFlags = from.flatFlags;
     this.landmarkKinds = from.landmarkKinds;
     this.floatingKinds = floatingKinds(reg);
+    this.wreckSets = Uint16Array.from(reg.breakSet, (set, k) => (reg.breakFamily[k] === WRECK ? set : 0));
     this.palette = pack.palette;
     const table = assets.table;
     const far = (this.farMesh = table.find(FAR_MESH));
@@ -173,6 +177,7 @@ export class FarLayers {
     if (!source || !this.farBounds || !FarLayers.late) return null;
     this.citySource = source;
     this.city = new FarLayers.late.FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
+    this.city.wreckSets = this.wreckSets;
     this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds, this.floatingKinds);
     this.farShadow.roof = new FarLayers.late.RoofMap();
     this.farShadow.roof.palette = this.palette;

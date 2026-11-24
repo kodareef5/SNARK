@@ -92,6 +92,9 @@ export class LooseEntities implements Pass {
   private readonly radiusOfMesh: Float32Array;
   private readonly meshOfKind: Uint16Array;
   private readonly colorOfKind: Uint8Array;
+  /** Per kind, its break set and its form in it, by which a falling form of its map piece is known. */
+  private readonly breakSet: Uint16Array;
+  private readonly breakForm: Uint8Array;
   private readonly pitched: Uint8Array;
   private readonly capsuleKind: number;
   private readonly characters: Characters;
@@ -123,6 +126,8 @@ export class LooseEntities implements Pass {
     this.radiusOfMesh = assets.table.radius;
     this.meshOfKind = looks.meshOfKind;
     this.colorOfKind = looks.colorOfKind;
+    this.breakSet = reg.breakSet;
+    this.breakForm = reg.breakForm;
     this.carrier = Math.max(0, assets.table.find(FAR_MESH));
     this.finishOfKind = new Uint8Array(reg.defs.length * 6);
     reg.defs.forEach((d, k) => {
@@ -195,9 +200,11 @@ export class LooseEntities implements Pass {
       const total = this.drawTallied(cam, p.transientCount, 0, this.fallLevel);
       for (let i = 0; i < fl.count; i++) {
         if (fl.sets[i]) continue;
-        const kind = fl.kind[i]!;
+        const kind = fl.kind[i]!, map = fl.map[i]!;
         const at = this.cursor[this.meshOfKind[kind]!]!++;
-        this.transient.set(at, fl.x[i]! - cam.x, fl.y[i]! - cam.y, fl.z[i]! - cam.z, fl.yaw[i]!, this.colorOfKind[kind]!);
+        // A form that falls whole, a wreck's lesser look, keeps the colour of the kind the map placed.
+        const dye = map !== 0 && this.breakForm[kind] !== 0 && this.breakSet[map] === this.breakSet[kind] ? map : kind;
+        this.transient.set(at, fl.x[i]! - cam.x, fl.y[i]! - cam.y, fl.z[i]! - cam.z, fl.yaw[i]!, this.colorOfKind[dye]!);
         p.transientIds[at] = 0;
       }
       p.transientCount = total;

@@ -205,6 +205,8 @@ export class FarCity {
   private readonly seenShape: Int32Array;
   private readonly seenCells: Uint32Array;
   readonly goneVersion: Uint32Array;
+  /** Per kind, a wreck's break set and 0 for any other, where who made the city says: a wreck's lesser look still stands in its slot. */
+  wreckSets: Uint16Array | null = null;
   /** Chunks matched against the near store's rows and still held whole, and the far feed's count of messages when last looked at. */
   private readonly whole = new Set<number>();
   private cellsSeen = 0;
@@ -891,6 +893,7 @@ export class FarCity {
       this.whole.add(c);
       const g = new Uint8Array(city.in(c));
       goneByRows(city, c, table, g);
+      this.salvaged(c, table, g);
       this.seenNear.set(c, g);
       this.rowsAt[c] = lists?.changed[c] ?? 0;
       changed.add(c);
@@ -913,6 +916,18 @@ export class FarCity {
       }
     }
     for (const c of changed) this.setGone(c, this.goneNow(c, cells, lists));
+  }
+
+  /**
+   * Unmarks in `gone` each wreck of `chunk` whose slot of `table` holds a lesser look of it. Salvaged a rung it stands
+   * where the map set it, so a rung makes no far layer again; cut up, its slot is empty and it is gone.
+   */
+  private salvaged(chunk: number, table: { readonly high: number; readonly kind: Uint16Array; readonly x: Float32Array; readonly z: Float32Array }, gone: Uint8Array): void {
+    const sets = this.wreckSets, city = this.source.statics, first = city.first[chunk]!;
+    for (let s = 0; sets && s < gone.length && s < table.high; s++) {
+      const set = gone[s] === 1 ? sets[city.kind[first + s]!]! : 0;
+      if (set !== 0 && sets[table.kind[s]!] === set && table.x[s] === city.x[first + s] && table.z[s] === city.z[first + s]) gone[s] = 0;
+    }
   }
 
   /**
