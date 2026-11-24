@@ -349,7 +349,7 @@ export class Stations {
     const reg = this.world.reg;
     const hf = this.world.hf;
     const foot = t.y[slot]! - reg.halfY[kind]!;
-    frameOf(t.yaw[slot]!);
+    frameOf(t.yaw[slot]!, t.twAt(slot));
     // The frame's +X is (cos, -sin) in the world and its +Z is (sin, cos).
     const hx = reg.halfX[kind]! * frame.stretch;
     const hz = reg.halfZ[kind]! * frame.stretch;

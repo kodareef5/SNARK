@@ -151,11 +151,11 @@ export class Builder {
       structs,
       tables: this.reg!,
       heightAt,
-      body: (kind, x, y, z, yaw) => {
+      body: (kind, x, y, z, yaw, tw) => {
         const session = this.session!;
         const reg = this.reg!;
         const own = session.own;
-        return capsuleKind(reg.parts, kind, x, y, z, yaw, own.x, own.y, own.z, reg.bodyRadius[session.ownKind]!, reg.bodyHeight[session.ownKind]!, BODY_SLACK) ? handleIndex(session.ownHandle) : -1;
+        return capsuleKind(reg.parts, kind, x, y, z, yaw, tw, own.x, own.y, own.z, reg.bodyRadius[session.ownKind]!, reg.bodyHeight[session.ownKind]!, BODY_SLACK) ? handleIndex(session.ownHandle) : -1;
       },
       enemy: (x, z, out) => {
         if (!this.enemyNear(structs, this.reg!, this.session!.tribe.team, x, z)) return false;

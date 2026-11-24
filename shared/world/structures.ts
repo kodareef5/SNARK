@@ -5,7 +5,7 @@
 import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import type { VehicleSurface } from "../sim/vehicle.ts";
 import { hullPoint, type HullTable } from "./convex.ts";
-import { HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
+import { CLASS_STRETCH_MOST, HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
 import { KEY_BETWEEN, KEY_FOUND, keyOfPose } from "./lattice/adopt.ts";
 import type { FormTable } from "./lattice/forms.ts";
 import { Frames, baseOrigin, keyFits, poseOf, twOfKey, type Frame, type FrameDef, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
@@ -181,6 +181,7 @@ export class ChunkTable {
   /**
    * A lattice row's address: its frame's gid (0 for a row with a free pose), its key's two words, and its direction mod 3.
    * Null until the chunk's first lattice row, then 13 bytes a row. A table detached keeps them, with its frames in `away`.
+   * The grid cells a row lies in go by its `tw`, so only the store's `turn` writes it.
    */
   fr: Uint32Array | null = null;
   k0: Uint32Array | null = null;
@@ -239,6 +240,11 @@ export class ChunkTable {
     this.stamp = grow(this.stamp);
     if (this.fr) [this.fr, this.k0, this.k1, this.tw] = [grow(this.fr), grow(this.k0!), grow(this.k1!), grow(this.tw!)];
     this.cap = cap;
+  }
+
+  /** The turn class of the row in `slot`, which every frame of a row is made by: 0 where the chunk has no lattice row. */
+  twAt(slot: number): number {
+    return this.tw !== null ? this.tw[slot]! : 0;
   }
 
   /** Makes the key columns, for the chunk's first lattice row. */
@@ -327,7 +333,7 @@ export class StructureStore {
   readonly low: Float32Array;
   readonly top: Float32Array;
   readonly spread: Float32Array;
-  /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. */
+  /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. Twice that for a turned row. */
   private readonly pad: Float32Array;
 
   /** The built kinds' forms, or null: then no row has a key. */
@@ -386,14 +392,15 @@ export class StructureStore {
           const [px, py, pz] = hullPoint([at[c * 3]!, at[c * 3 + 1]!, at[c * 3 + 2]!], sixty);
           low = Math.min(low, py);
           high = Math.max(high, py);
-          // A corner along a 60 degree vector is off its true place by up to that vector's rounding, under a unit in a half side.
+          // A corner along a 60 degree vector is off its true place by up to that vector's rounding, under two units in a half side.
           spread = Math.max(spread, Math.sqrt(px * px + pz * pz) * (sixty ? 1 + 2 / HALF_SIDE : 1));
           if (sixty) this.pad[k] = Math.max(this.pad[k]!, Math.abs(at[c * 3 + 2]!) / HALF_SIDE);
         }
       }
       this.low[k] = low;
       this.top[k] = high;
-      this.spread[k] = spread * STRETCH_MOST;
+      // Only a kind with a form is ever a lattice row, of any turn class.
+      this.spread[k] = spread * (this.forms !== null && this.forms.cls[k]! >= 0 ? CLASS_STRETCH_MOST : STRETCH_MOST);
     }
   }
 
@@ -502,6 +509,15 @@ export class StructureStore {
     return n;
   }
 
+  /** Sets the turn class of the row standing in `slot`, and lists it again in the grid cells its turned box covers. */
+  private turn(chunk: number, t: ChunkTable, slot: number, tw: number): void {
+    if (t.tw![slot] === tw) return;
+    this.unlink(chunk, t, slot);
+    t.tw![slot] = tw;
+    this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!, tw);
+    this.link(chunk * 65536 + slot, t.kind[slot]!, t.y[slot]!);
+  }
+
   /** Makes a frame's box the least that holds its rows' origins, if rows that left may have made it more. */
   tighten(f: Frame): void {
     if (!f.loose) return;
@@ -532,7 +548,7 @@ export class StructureStore {
     t.fr![slot] = f.gid;
     t.k0![slot] = k0;
     t.k1![slot] = k1;
-    t.tw![slot] = twOfKey(forms, kind, k1);
+    this.turn(chunk, t, slot, twOfKey(forms, kind, k1));
     // Counted in before its cells are taken, so the frame stands while a row it puts out leaves.
     this.frames.enter(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), forms.def[kind]!.root !== undefined);
     this.cover(chunk, t, slot);
@@ -573,7 +589,9 @@ export class StructureStore {
       return;
     }
     this.frames.leave(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), root);
-    if (!keep) t.fr![slot] = t.k0![slot] = t.k1![slot] = t.tw![slot] = 0;
+    if (keep) return;
+    this.turn(chunk, t, slot, 0);
+    t.fr![slot] = t.k0![slot] = t.k1![slot] = 0;
   }
 
   /** Enters a row changed where it stands in its cells again, if its new kind fills the same slot at the same pose (a door opened). Else the row leaves its frame (a heap). */
@@ -593,7 +611,8 @@ export class StructureStore {
       }
     }
     this.frames.leave(f, chunk, x, z, false);
-    t.fr![slot] = t.k0![slot] = t.k1![slot] = t.tw![slot] = 0;
+    this.turn(chunk, t, slot, 0);
+    t.fr![slot] = t.k0![slot] = t.k1![slot] = 0;
   }
 
   /** Takes every row of a table out of its frame and its cells. The rows keep their keys, and `away` the frames they were in: `detach` does, for `attach`. */
@@ -619,7 +638,10 @@ export class StructureStore {
       let free = f !== undefined && formCells(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, cells);
       for (let i = 0; free && i < cells.n; i++) free = this.occupied.at(fr, cells.k0[i]!, cells.k1[i]!) < 0;
       if (free) this.key(chunk, t, slot, f!, t.k0![slot]!, t.k1![slot]!);
-      else t.fr[slot] = t.k0![slot] = t.k1![slot] = t.tw![slot] = 0;
+      else {
+        this.turn(chunk, t, slot, 0);
+        t.fr[slot] = t.k0![slot] = t.k1![slot] = 0;
+      }
     }
     for (const d of away) this.frames.drop(d.gid);
   }
@@ -769,7 +791,7 @@ export class StructureStore {
       for (let i = 0; i < kind.length; i++) {
         const r = order.length > 0 ? order[i]! : i;
         if (slotOf[r]! < 0) continue;
-        this.footprint(kinds[kind[r]!]!, x[r]!, z[r]!, yaw[r]!);
+        this.footprint(kinds[kind[r]!]!, x[r]!, z[r]!, yaw[r]!, 0);
         put(r);
       }
     };
@@ -1207,7 +1229,7 @@ export class StructureStore {
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
       if (kind === 0) continue;
-      this.footprint(kind, t.x[s]!, t.z[s]!, t.yaw[s]!);
+      this.footprint(kind, t.x[s]!, t.z[s]!, t.yaw[s]!, t.twAt(s));
       this.link(chunk * 65536 + s, kind, t.y[s]!);
     }
     this.count += t.live;
@@ -1372,7 +1394,7 @@ export class StructureStore {
     this.shaped(chunk);
     t.live++;
     this.count++;
-    this.footprint(kind, x, z, yaw);
+    this.footprint(kind, x, z, yaw, t.twAt(slot));
     this.link(chunk * 65536 + slot, kind, y);
     if (inPlace && t.fr !== null && t.fr[slot] !== 0) this.rekey(chunk, t, slot);
   }
@@ -1420,7 +1442,7 @@ export class StructureStore {
 
   /** Takes the structure in `slot` out of every grid cell it lies in. Its row stands. */
   private unlink(chunk: number, t: ChunkTable, slot: number): void {
-    this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!);
+    this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot));
     const ref = chunk * 65536 + slot;
     for (let cz = this.fz0; cz <= this.fz1; cz++) {
       for (let cx = this.fx0; cx <= this.fx1; cx++) {
@@ -1444,14 +1466,15 @@ export class StructureStore {
   }
 
   /** Writes the grid cells a structure's rotated box covers to fx0..fz1. */
-  private footprint(kind: number, x: number, z: number, yaw: number): void {
-    frameOf(yaw);
+  private footprint(kind: number, x: number, z: number, yaw: number, tw: number): void {
+    frameOf(yaw, tw);
     const s = Math.abs(frame.sin);
     const c = Math.abs(frame.cos);
     const hx = this.halfX[kind]! * frame.stretch;
     const hz = this.halfZ[kind]! * frame.stretch;
-    const ex = c * hx + s * hz + this.pad[kind]!;
-    const ez = s * hx + c * hz + this.pad[kind]!;
+    const pad = tw === 0 ? this.pad[kind]! : 2 * this.pad[kind]!;
+    const ex = c * hx + s * hz + pad;
+    const ez = s * hx + c * hz + pad;
     let x0 = Math.floor((x - ex) / GRID_CELL);
     let x1 = Math.floor((x + ex) / GRID_CELL);
     let z0 = Math.floor((z - ez) / GRID_CELL);

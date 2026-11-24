@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { Rng } from "../../shared/rng.ts";
 import { capsuleHull, hullFace, hullPush, rayHull, type HullTable } from "../../shared/world/convex.ts";
-import { HALF_SIDE, frameAxes, sixtyOf } from "../../shared/world/frame.ts";
+import { HALF_SIDE, frameAxes, turn60 } from "../../shared/world/frame.ts";
 import { hullRegistry } from "../fixtures/hulls.ts";
 
 type V = [number, number, number];
@@ -17,7 +17,7 @@ const add = (a: V, b: V, k: number): V => [a[0] + b[0] * k, a[1] + b[1] * k, a[2
 function corners(t: HullTable, p: number, yaw: number): V[] {
   const axes = new Int32Array(4);
   frameAxes(yaw, axes);
-  if (t.sixty[p] === 1) sixtyOf(axes[0]!, axes[1]!, axes, 2);
+  if (t.sixty[p] === 1) turn60(axes[0]!, axes[1]!, axes, 2);
   const out: V[] = [];
   for (let c = t.corner[p]!; c < t.corner[p + 1]!; c++) {
     const [a, y, b] = [t.at[c * 3]!, t.at[c * 3 + 1]!, t.at[c * 3 + 2]!];
@@ -145,11 +145,11 @@ test("six triangles on 60 degree frames close a ring exactly at every facing, by
   for (let yaw = 0; yaw < 65536; yaw += 3) {
     frameAxes(yaw, axes);
     const u = [axes[0]!, axes[1]!];
-    sixtyOf(u[0]!, u[1]!, axes, 2);
+    turn60(u[0]!, u[1]!, axes, 2);
     const w = [axes[2]!, axes[3]!];
     // The 60 degree vector of the frame turned half round is the first one's, reversed.
     frameAxes((yaw + 32768) & 0xffff, axes);
-    sixtyOf(axes[0]!, axes[1]!, axes, 2);
+    turn60(axes[0]!, axes[1]!, axes, 2);
     if (axes[2] !== -w[0]! || axes[3] !== -w[1]!) open.push(yaw);
     // Round the centre: U, W, W - U, -U, -W, U - W. Each triangle is two of them, and the last ends where the first began.
     const ring = [u, w, [w[0]! - u[0]!, w[1]! - u[1]!], [-u[0]!, -u[1]!], [-w[0]!, -w[1]!], [u[0]! - w[0]!, u[1]! - w[1]!]];
@@ -187,7 +187,7 @@ test("a capsule meets a part where an independent closest-point search says, as 
     const y0 = rng.range(-2.5, 2.5);
     const y1 = y0 + rng.range(0, 1.4);
     const d = distance(pts, x, y0, y1, z);
-    const hit = capsuleHull(parts, p, yaw, x, z, y0, y1, r, r);
+    const hit = capsuleHull(parts, p, yaw, 0, x, z, y0, y1, r, r);
     if (d === 0) {
       if (!hit || hullPush.depth < r - 1e-9) wrong.push(`part ${p} yaw ${yaw}: through it, but ${hit ? `depth ${hullPush.depth}` : "free"}`);
       else overlaps++;
@@ -224,7 +224,7 @@ test("a ray meets a part where it first crosses one of its faces, and reports th
     let d: V = n % 2 === 0 ? sub([rng.range(-1.4, 1.4), rng.range(-1.4, 1.4), rng.range(-1.4, 1.4)], o) : [rng.range(-1, 1), rng.range(-1, 1), rng.range(-1, 1)];
     d = add([0, 0, 0], d, 1 / Math.hypot(...d));
     const want = rayReference(pts, o, d);
-    const t = rayHull(parts, p, yaw, o[0], o[1], o[2], d[0], d[1], d[2], 0);
+    const t = rayHull(parts, p, yaw, 0, o[0], o[1], o[2], d[0], d[1], d[2], 0);
     if (want === Infinity ? t !== Infinity : !(Math.abs(t - want) < 1e-9)) wrong.push(`part ${p} yaw ${yaw}: met at ${t}, the faces say ${want}`);
     else if (want > 0 && want !== Infinity) {
       hits++;

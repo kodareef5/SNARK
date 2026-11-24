@@ -68,10 +68,10 @@ export interface Site {
   readonly structs: StructureStore;
   readonly tables: PieceTables;
   heightAt(x: number, z: number): number;
-  /** Slots 30 and 60 degrees from their frame are offered and taken. Off until colliders and the renderer read a row's turn class. */
+  /** Slots 30 and 60 degrees from their frame are offered and taken. Off until a piece of that turn is drawn and held up as it stands. */
   readonly turned?: boolean;
-  /** The entity index of a body or a vehicle in a piece's place (metres), or -1. */
-  body?(kind: number, x: number, y: number, z: number, yaw: number): number;
+  /** The entity index of a body or a vehicle in the place (metres) of a piece of turn class `tw`, or -1. */
+  body?(kind: number, x: number, y: number, z: number, yaw: number, tw: number): number;
   /** Whether another tribe has built too near (x, z). It fills the verdict's detail. */
   enemy?(x: number, z: number, out: Verdict): boolean;
   /** Whether as many pieces stand round (x, z) as may. It fills the verdict's detail. */
@@ -469,7 +469,7 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
     const px = pose.x / U - ox;
     const py = pose.y / U - oy;
     const pz = pose.z / U - oz;
-    if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose) || buried(site.heightAt, site.tables, kind, pose)) continue;
+    if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose, pose.tw) || buried(site.heightAt, site.tables, kind, pose, pose.tw)) continue;
     shapeOf(f, forms, kind, k0, k1);
     // Its middle is in reach of the look's end, as a socket's place was.
     let mx = 0;
@@ -624,14 +624,14 @@ function refuse(out: Verdict, code: number, detail = PLACED_NONE, a = 0): number
 }
 
 /** What is asked of any piece once its pose is known, in the order a builder is told of it: bodies, the ground, other tribes, the cap, support. */
-function rest(site: Site, kind: number, at: Pose, out: Verdict): number {
+function rest(site: Site, kind: number, at: Pose, tw: number, out: Verdict): number {
   const x = at.x / U;
   const y = at.y / U;
   const z = at.z / U;
-  const body = site.body ? site.body(kind, x, y, z, at.yaw) : -1;
+  const body = site.body ? site.body(kind, x, y, z, at.yaw, tw) : -1;
   if (body >= 0) return refuse(out, RESULT_BODY, PLACED_ENTITY, body);
-  if (tooHigh(site.heightAt, site.tables, kind, at)) return refuse(out, RESULT_TOO_HIGH);
-  if (buried(site.heightAt, site.tables, kind, at)) return refuse(out, RESULT_TERRAIN);
+  if (tooHigh(site.heightAt, site.tables, kind, at, tw)) return refuse(out, RESULT_TOO_HIGH);
+  if (buried(site.heightAt, site.tables, kind, at, tw)) return refuse(out, RESULT_TERRAIN);
   out.detail = PLACED_NONE;
   if (site.enemy?.(x, z, out)) return (out.code = RESULT_ENEMY_NEAR);
   if (site.full?.(x, z, out)) return (out.code = RESULT_LIMIT);
@@ -677,7 +677,7 @@ export function validate(site: Site, kind: number, team: number, fr: number, k0:
   }
   if (by < 0) by = crowding(site, forms, kind, f, k0, k1, at);
   if (by >= 0) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, by);
-  return rest(site, kind, at, out);
+  return rest(site, kind, at, at.tw, out);
 }
 
 /**
@@ -698,12 +698,12 @@ export function validateFree(site: Site, kind: number, at: Pose, ex: number, ey:
   if ((x - ex) * (x - ex) + (y - ey) * (y - ey) + (z - ez) * (z - ez) > PLACE_REACH * PLACE_REACH) return refuse(out, RESULT_FAR);
   if (!structs.forms || structs.forms.cls[kind]! < 0) {
     if (obstructed(structs, site.tables.parts, kind, x, y, z, at.yaw)) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, obstruction.ref);
-    return rest(site, kind, at, out);
+    return rest(site, kind, at, 0, out);
   }
   const reach = structs.spread[kind]!;
   const rows = structs.query(x - reach, z - reach, x + reach, z + reach, near);
   for (let r = 0; r < rows; r++) if (crosses(structs, site.tables.parts, kind, x, y, z, at.yaw, 0, near.refs[r]!, 0, 0, GIVE_OTHER, 0)) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, near.refs[r]!);
-  return rest(site, kind, at, out);
+  return rest(site, kind, at, 0, out);
 }
 
 const origin = { ox: 0, oy: 0, oz: 0 };

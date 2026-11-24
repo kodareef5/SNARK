@@ -1570,7 +1570,7 @@ export class Ragdoll {
     const slot = ref & 0xffff;
     const kind = t.kind[slot]!;
     if (kind === 0) return;
-    frameOf(t.yaw[slot]!);
+    frameOf(t.yaw[slot]!, t.twAt(slot));
     const s = frame.sin, c = frame.cos, wide = frame.stretch;
     const x = this.x;
     const r = this.shape(i, extra), ox = t3[0]!, oy = t3[1]!, oz = t3[2]!;
@@ -1637,14 +1637,14 @@ export class Ragdoll {
     if (!t || !hulls) return;
     const slot = ref & 0xffff;
     const kind = t.kind[slot]!;
-    const yaw = t.yaw[slot]!;
+    const yaw = t.yaw[slot]!, tw = t.twAt(slot);
     const r = this.shape(i, extra), ox = t3[0]!, oy = t3[1]!, oz = t3[2]!;
     const wx = u3[0]!, wy = u3[1]!, wz = u3[2]!;
     const ex = this.x[i * 3]! + ox - t.x[slot]!, ey = this.x[i * 3 + 1]! + oy - t.y[slot]!, ez = this.x[i * 3 + 2]! + oz - t.z[slot]!;
     const len = wx * wx + wy * wy + wz * wz;
     const reach = Math.sqrt(len) + r;
     for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
-      if (!capsuleHull(hulls, p, yaw, ex, ez, ey, ey, reach, reach)) continue;
+      if (!capsuleHull(hulls, p, yaw, tw, ex, ez, ey, ey, reach, reach)) continue;
       // An attached sphere has one point, not three coincident constraints.
       // Keep the legacy body path unchanged when this contract is absent.
       for (let k = 0, points = extra >= 0 && len < 1e-12 ? 1 : 3; k < points; k++) {
@@ -1654,7 +1654,7 @@ export class Ragdoll {
           for (let it = 0; it < 3 && len > 1e-12; it++) {
             const ay = ey + wy * tt;
             // With no radius the push reaches from the point to the part's nearest point. A point inside stays where it is.
-            capsuleHull(hulls, p, yaw, ex + wx * tt, ez + wz * tt, ay, ay, 0, Infinity);
+            capsuleHull(hulls, p, yaw, tw, ex + wx * tt, ez + wz * tt, ay, ay, 0, Infinity);
             if (hullPush.depth > 0) break;
             tt += (hullPush.x * wx + hullPush.y * wy + hullPush.z * wz) / len;
             tt = tt < -1 ? -1 : tt > 1 ? 1 : tt;
@@ -1662,7 +1662,7 @@ export class Ragdoll {
           if (tt <= -0.95 || tt >= 0.95) continue;
         }
         const ay = ey + wy * tt;
-        if (!capsuleHull(hulls, p, yaw, ex + wx * tt, ez + wz * tt, ay, ay, r, r)) continue;
+        if (!capsuleHull(hulls, p, yaw, tw, ex + wx * tt, ez + wz * tt, ay, ay, r, r)) continue;
         const deep = hullPush.depth;
         const nx = hullPush.x / deep, ny = hullPush.y / deep, nz = hullPush.z / deep;
         this.contact(i, ox + wx * tt - nx * r, oy + wy * tt - ny * r, oz + wz * tt - nz * r, nx, ny, nz, deep);

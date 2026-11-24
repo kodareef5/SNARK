@@ -388,7 +388,7 @@ test("what is shown is what is built: over two thousand looks with every piece, 
       continue;
     }
     const pose: Pose = { ...b.pose };
-    const inWay = capsuleKind(h.reg.parts, b.kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, s.own.x, s.own.y, s.own.z, p.radius, p.height, 0.1);
+    const inWay = capsuleKind(h.reg.parts, b.kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 0, s.own.x, s.own.y, s.own.z, p.radius, p.height, 0.1);
     const [kind, predicted] = [b.kind, b.problem];
     const before = h.host.build.placed;
     answer = -1;
@@ -412,7 +412,7 @@ test("what is shown is what is built: over two thousand looks with every piece, 
       // Refused where the preview found no problem. That happens only when the builder's own body is in the way.
       counts.body++;
       expect(answer).toBe(RESULT_BODY);
-      expect(capsuleKind(h.reg.parts, kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height, 0.1)).toBe(true);
+      expect(capsuleKind(h.reg.parts, kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 0, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height, 0.1)).toBe(true);
     }
   }
   // Enough of each outcome to mean something.

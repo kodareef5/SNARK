@@ -49,12 +49,12 @@ export function capsuleBox(structs: StructureStore, ref: number, x: number, y: n
   const dz = z - t.z[slot]!;
   const far = structs.spread[kind]! + r + PAD;
   if (dx * dx + dz * dz >= far * far) return false;
-  return capsuleKind(structs.parts, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, x, y, z, r, h, slack);
+  return capsuleKind(structs.parts, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot), x, y, z, r, h, slack);
 }
 
-/** The same test against a structure of `kind` at (sx, sy, sz) facing `syaw`, built or not, to check a piece before it is built. */
-export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, x: number, y: number, z: number, r: number, h: number, slack: number): boolean {
-  frameOf(syaw);
+/** The same test against a structure of `kind` at (sx, sy, sz) facing `syaw`, of turn class `stw`, built or not, to check a piece before it is built. */
+export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, stw: number, x: number, y: number, z: number, r: number, h: number, slack: number): boolean {
+  frameOf(syaw, stw);
   const s = frame.sin;
   const c = frame.cos;
   const wide = frame.stretch;
@@ -155,7 +155,7 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
   let up = 1;
   const hulls = parts.hulls;
   for (let p = hulls ? hulls.start[kind]! : 0, end = hulls ? hulls.start[kind + 1]! : 0; p < end; p++) {
-    if (!capsuleHull(hulls!, p, syaw, dx, dz, fy0, fy1, r, reach) || (found && hullPush.depth <= deepest)) continue;
+    if (!capsuleHull(hulls!, p, syaw, stw, dx, dz, fy0, fy1, r, reach) || (found && hullPush.depth <= deepest)) continue;
     found = true;
     hull = true;
     face = hullPush.face;

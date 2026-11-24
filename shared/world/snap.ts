@@ -2,9 +2,8 @@
 // All positions are whole lattice units (1/512 m) and frame axes are whole-number vectors, so any loop of pieces closes exactly.
 
 import { STRUCT_UNITS, YAW_UNITS } from "../coords.ts";
-import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { Solid, boxSolid, hullFace, partSolid, rayHull, solidsCross } from "./convex.ts";
-import { frame, frameAxes, frameOf } from "./frame.ts";
+import { classAxis, frame, frameAxes, frameOf } from "./frame.ts";
 import { KEY_BETWEEN, KEY_FOUND, keyOfPose } from "./lattice/adopt.ts";
 import { LEVEL_UNITS } from "./lattice/basis.ts";
 import { poseOf, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
@@ -131,7 +130,6 @@ const SHRINK = 0.15;
 const SHRINK_Y = 0.05;
 const THIN = 0.02;
 const SHRINK_OTHER = 0.05;
-const YAW_TO_RAD = TAU / YAW_UNITS;
 const near = new Found();
 /** The new piece's parts and one of a built piece's, as solids. */
 const mine: Solid[] = [];
@@ -174,9 +172,6 @@ export const obstruction = { ref: -1 };
  */
 export function obstructed(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number, restoringMapPiece = false): boolean {
   obstruction.ref = -1;
-  const a = yaw * YAW_TO_RAD;
-  const s = detSin(a);
-  const c = detCos(a);
   // Query every structure whose footprint reaches as far as the piece does from its middle.
   const reach = structs.spread[kind]!;
   const n = structs.query(x - reach, z - reach, x + reach, z + reach, near);
@@ -189,54 +184,55 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
     const ref = refs[k]!;
     // The original map pieces already stood together.
     if (restoringMapPiece && (ref & 0xffff) < structs.chunks[Math.floor(ref / 65536)]!.mapped) continue;
-    if (meets(structs, parts, kind, x, y, z, c, s, yaw, ref, side, vertical, otherSide, otherVertical)) return (obstruction.ref = ref) >= 0;
+    if (meets(structs, parts, kind, x, y, z, yaw, 0, ref, side, vertical, otherSide, otherVertical)) return (obstruction.ref = ref) >= 0;
   }
   return false;
 }
 
-/** A twelfth of a turn: one step of a row's turn class. */
-const TWELFTH = TAU / 12;
-
 /**
  * Whether a piece of `kind` at this pose (metres), of turn class `tw`, overlaps the built row `ref`. Each gives way by its
- * metres, sideways and up, before they are asked. A convex part is turned by its yaw alone.
+ * metres, sideways and up, before they are asked. Both are measured in their own frames (frameOf), as colliders are.
  */
 export function crosses(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number, tw: number, ref: number, side: number, vertical: number, otherSide: number, otherVertical: number): boolean {
-  const a = yaw * YAW_TO_RAD - tw * TWELFTH;
   made = false;
-  return meets(structs, parts, kind, x, y, z, detCos(a), detSin(a), yaw, ref, side, vertical, otherSide, otherVertical);
+  return meets(structs, parts, kind, x, y, z, yaw, tw, ref, side, vertical, otherSide, otherVertical);
 }
 
 /** Whether `mine` holds the new piece's solids for the question being asked. */
 let made = false;
 
-/** The new piece's boxes are turned by (c, s). Box against box by rectangles, and anything against a convex part as solids. */
-function meets(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, c: number, s: number, yaw: number, ref: number, side: number, vertical: number, otherSide: number, otherVertical: number): boolean {
+/** Box against box by rectangles, and anything against a convex part as solids. */
+function meets(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number, tw: number, ref: number, side: number, vertical: number, otherSide: number, otherVertical: number): boolean {
   const box = parts.box;
   const t = structs.chunks[Math.floor(ref / 65536)]!;
   const slot = ref & 0xffff;
   const other = t.kind[slot]!;
-  const oa = t.yaw[slot]! * YAW_TO_RAD - (t.tw ? t.tw[slot]! * TWELFTH : 0);
-  const os = detSin(oa);
-  const oc = detCos(oa);
+  frameOf(t.yaw[slot]!, t.twAt(slot));
+  const os = frame.sin;
+  const oc = frame.cos;
+  const ok = frame.stretch;
+  frameOf(yaw, tw);
+  const s = frame.sin;
+  const c = frame.cos;
+  const k = frame.stretch;
   const tx = t.x[slot]!;
   const ty = t.y[slot]!;
   const tz = t.z[slot]!;
   for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) {
     // This box of the new piece, shrunk, in world space.
-    const hx = Math.max(THIN, box[p + 3]! - side);
+    const hx = Math.max(THIN, box[p + 3]! * k - side);
     const hy = vertical > 0 ? Math.max(THIN, box[p + 4]! - vertical) : box[p + 4]!;
-    const hz = Math.max(THIN, box[p + 5]! - side);
-    const cx = x + c * box[p]! + s * box[p + 2]!;
+    const hz = Math.max(THIN, box[p + 5]! * k - side);
+    const cx = x + (c * box[p]! + s * box[p + 2]!) * k;
     const cy = y + box[p + 1]!;
-    const cz = z - s * box[p]! + c * box[p + 2]!;
+    const cz = z + (c * box[p + 2]! - s * box[p]!) * k;
     for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend; q += 6) {
       const qy = ty + box[q + 1]!;
       const qh = otherVertical > 0 ? Math.max(THIN, box[q + 4]! - otherVertical) : box[q + 4]!;
       if (cy - hy >= qy + qh || cy + hy <= qy - qh) continue;
-      const qx = tx + oc * box[q]! + os * box[q + 2]!;
-      const qz = tz - os * box[q]! + oc * box[q + 2]!;
-      if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! - otherSide), Math.max(THIN, box[q + 5]! - otherSide))) return true;
+      const qx = tx + (oc * box[q]! + os * box[q + 2]!) * ok;
+      const qz = tz + (oc * box[q + 2]! - os * box[q]!) * ok;
+      if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! * ok - otherSide), Math.max(THIN, box[q + 5]! * ok - otherSide))) return true;
     }
   }
   const hulls = parts.hulls;
@@ -252,17 +248,17 @@ function meets(structs: StructureStore, parts: PartTable, kind: number, x: numbe
     for (let i = 0; i < count; i++) {
       if (i < boxes) {
         const p = (parts.start[kind]! + i) * 6;
-        boxSolid(x + c * box[p]! + s * box[p + 2]!, y + box[p + 1]!, z - s * box[p]! + c * box[p + 2]!, c, s, box[p + 3]!, box[p + 4]!, box[p + 5]!, mine[i]!);
-      } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, x, y, z, mine[i]!);
+        boxSolid(x + (c * box[p]! + s * box[p + 2]!) * k, y + box[p + 1]!, z + (c * box[p + 2]! - s * box[p]!) * k, c, s, box[p + 3]! * k, box[p + 4]!, box[p + 5]! * k, mine[i]!);
+      } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, tw, x, y, z, mine[i]!);
     }
   }
   // Their boxes against my convex parts; then their convex parts against all of mine. Box against box was asked above.
   for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend && count > boxes; q += 6) {
-    boxSolid(tx + oc * box[q]! + os * box[q + 2]!, ty + box[q + 1]!, tz - os * box[q]! + oc * box[q + 2]!, oc, os, box[q + 3]!, box[q + 4]!, box[q + 5]!, theirs);
+    boxSolid(tx + (oc * box[q]! + os * box[q + 2]!) * ok, ty + box[q + 1]!, tz + (oc * box[q + 2]! - os * box[q]!) * ok, oc, os, box[q + 3]! * ok, box[q + 4]!, box[q + 5]! * ok, theirs);
     for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return true;
   }
   for (let h = hulls.start[other]!, hend = hulls.start[other + 1]!; h < hend; h++) {
-    partSolid(hulls, h, t.yaw[slot]!, tx, ty, tz, theirs);
+    partSolid(hulls, h, t.yaw[slot]!, t.twAt(slot), tx, ty, tz, theirs);
     for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return true;
   }
   return false;
@@ -464,9 +460,9 @@ export function freePose(heightAt: (x: number, z: number) => number, tables: Pie
   return true;
 }
 
-/** Whether the point (x, z) is over a foundation or a ceiling centred at (ox, oz) and facing `oyaw`. Lattice units. */
-export function overPiece(ox: number, oz: number, oyaw: number, x: number, z: number): boolean {
-  frameAxes(oyaw, axes);
+/** Whether the point (x, z) is over a foundation or a ceiling centred at (ox, oz), facing `oyaw` and of turn class `tw`. Lattice units. */
+export function overPiece(ox: number, oz: number, oyaw: number, x: number, z: number, tw = 0): boolean {
+  squareAxes(oyaw, tw);
   const dx = x - ox;
   const dz = z - oz;
   // Within half a side along each of the piece's two axes.
@@ -495,19 +491,19 @@ export function floorTop(structs: StructureStore, tables: PieceTables, ref: numb
   const parts = tables.parts;
   const hulls = parts.hulls;
   floorFace.level = true;
-  if (!hulls || hulls.start[kind + 1] === hulls.start[kind]) return overPiece(units(t.x[slot]!), units(t.z[slot]!), t.yaw[slot]!, x, z) ? units(t.y[slot]!) + units(tables.halfY[kind]!) : NaN;
+  if (!hulls || hulls.start[kind + 1] === hulls.start[kind]) return overPiece(units(t.x[slot]!), units(t.z[slot]!), t.yaw[slot]!, x, z, t.twAt(slot)) ? units(t.y[slot]!) + units(tables.halfY[kind]!) : NaN;
   // Down from over the holding box's top, measured from the piece's middle.
   const dx = x / STRUCT_UNITS - t.x[slot]!;
   const dz = z / STRUCT_UNITS - t.z[slot]!;
   const from = tables.halfY[kind]! + 1;
   let down = Infinity;
   for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
-    const d = rayHull(hulls, p, t.yaw[slot]!, dx, from, dz, 0, -1, 0, 0);
+    const d = rayHull(hulls, p, t.yaw[slot]!, t.twAt(slot), dx, from, dz, 0, -1, 0, 0);
     if (d >= down) continue;
     down = d;
     floorFace.level = hullFace.ny >= LEVEL;
   }
-  frameOf(t.yaw[slot]!);
+  frameOf(t.yaw[slot]!, t.twAt(slot));
   const fx = frame.cos * dx - frame.sin * dz;
   const fz = frame.sin * dx + frame.cos * dz;
   const box = parts.box;
@@ -535,9 +531,17 @@ export function restPose(structs: StructureStore, tables: PieceTables, target: n
   return true;
 }
 
-/** The highest (or lowest) ground under a piece one side square at `p`, sampled at its middle and four corners. Metres. */
-function groundUnder(heightAt: (x: number, z: number) => number, p: Pose, highest: boolean): number {
-  frameAxes(p.yaw, axes);
+/** The +X and +Z axes of a square of this yaw and turn class, half a side long, to `axes`. */
+function squareAxes(yaw: number, tw: number): void {
+  if (tw === 0) return frameAxes(yaw, axes);
+  classAxis(yaw, tw, axes, 0);
+  axes[2] = -axes[1]!;
+  axes[3] = axes[0]!;
+}
+
+/** The highest (or lowest) ground under a piece one side square at `p`, of turn class `tw`, sampled at its middle and four corners. Metres. */
+function groundUnder(heightAt: (x: number, z: number) => number, p: Pose, highest: boolean, tw = 0): number {
+  squareAxes(p.yaw, tw);
   let h = heightAt(p.x / STRUCT_UNITS, p.z / STRUCT_UNITS);
   for (let k = 0; k < 4; k++) {
     const i = k & 1 ? 1 : -1;
@@ -549,13 +553,13 @@ function groundUnder(heightAt: (x: number, z: number) => number, p: Pose, highes
 }
 
 /** True when a foundation at this pose breaks MAX_ABOVE_GROUND. False for any other role. */
-export function tooHigh(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose): boolean {
+export function tooHigh(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose, tw = 0): boolean {
   if (tables.role[kind] !== ROLE_FOUNDATION) return false;
-  return (p.y - units(tables.halfY[kind]!)) / STRUCT_UNITS - groundUnder(heightAt, p, false) > MAX_ABOVE_GROUND;
+  return (p.y - units(tables.halfY[kind]!)) / STRUCT_UNITS - groundUnder(heightAt, p, false, tw) > MAX_ABOVE_GROUND;
 }
 
 /** True when a foundation at this pose breaks MAX_BURIED: the ground is in its way. False for any other role. */
-export function buried(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose): boolean {
+export function buried(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose, tw = 0): boolean {
   if (tables.role[kind] !== ROLE_FOUNDATION) return false;
-  return groundUnder(heightAt, p, true) - (p.y + units(tables.halfY[kind]!)) / STRUCT_UNITS > MAX_BURIED;
+  return groundUnder(heightAt, p, true, tw) - (p.y + units(tables.halfY[kind]!)) / STRUCT_UNITS > MAX_BURIED;
 }

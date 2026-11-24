@@ -3,7 +3,7 @@
 // capsule meets a part by the separating-axis test, and a ray by clipping it against the part's planes. For placing, a part
 // meets a box or another part by the same test, as two solids.
 
-import { HALF_SIDE, frameAxes, sixtyOf } from "./frame.ts";
+import { HALF_SIDE, classAxis, classAxis60, frameAxes } from "./frame.ts";
 
 /** Most corners a part may have, and so most faces and edges its hull can have. */
 export const MAX_CORNERS = 12;
@@ -14,7 +14,7 @@ const MAX_FACES = 2 * MAX_CORNERS - 4;
  * each three numbers of `at` in metres: along the piece's first axis, up, and along its second. Its faces are face[p] up to
  * face[p + 1], each three of its corners in `faceCorners`, counted from its first, that go round the face counter-clockwise
  * seen from outside. Its edges are edge[p] up to edge[p + 1], each two corners in `edgeCorners`. With `sixty` set the second
- * axis is the first turned 60 degrees, so a triangle of two whole-number sides is drawn on them. Face f, drawn, is every
+ * axis is the lattice direction 60 degrees on from the first, so a triangle of two whole-number sides is drawn on them. Face f, drawn, is every
  * corner on it: ring[f] up to ring[f + 1] of `ringCorners`, round it as its three are.
  */
 export interface HullTable {
@@ -260,31 +260,38 @@ export function* hullSteps(kinds: number, partsOf: (kind: number) => readonly Hu
 }
 
 // A part placed: its corners from the piece's origin in world metres, and per face its outward unit normal and the plane's
-// distance from that origin. Parts placed lately are kept by part and turn, since a body tests the same pieces several times a
-// step and a building has few turns.
+// distance from that origin. Parts placed lately are kept by part, turn and turn class, since a body tests the same pieces
+// several times a step and a building has few turns.
 const KEPT = 16;
 const keptCorners = Array.from({ length: KEPT }, () => new Float64Array(3 * MAX_CORNERS));
 const keptPlanes = Array.from({ length: KEPT }, () => new Float64Array(4 * MAX_FACES));
 const keptTable: (HullTable | null)[] = new Array(KEPT).fill(null);
 const keptPart = new Int32Array(KEPT).fill(-1);
 const keptYaw = new Int32Array(KEPT).fill(-1);
+const keptTw = new Uint8Array(KEPT);
 let placed = keptCorners[0]!;
 let planes = keptPlanes[0]!;
 const axes = new Int32Array(4);
 
-/** Places part `p` of `t` on a piece turned `yaw`. Its corners are whole numbers of the frame's vectors, as the piece's place is. */
-function place(t: HullTable, p: number, yaw: number): void {
-  const slot = (p * 7 + yaw * 13 + (yaw >>> 14)) & (KEPT - 1);
+/** Places part `p` of `t` on a piece turned `yaw`, of turn class `tw`. Its corners are whole numbers of the frame's vectors, as the piece's place is. */
+function place(t: HullTable, p: number, yaw: number, tw: number): void {
+  const slot = (p * 7 + yaw * 13 + (yaw >>> 14) + tw * 5) & (KEPT - 1);
   placed = keptCorners[slot]!;
   planes = keptPlanes[slot]!;
-  if (keptTable[slot] === t && keptPart[slot] === p && keptYaw[slot] === yaw) return;
+  if (keptTable[slot] === t && keptPart[slot] === p && keptYaw[slot] === yaw && keptTw[slot] === tw) return;
   keptTable[slot] = t;
   keptPart[slot] = p;
   keptYaw[slot] = yaw;
-  frameAxes(yaw, axes);
+  keptTw[slot] = tw;
+  if (tw === 0) frameAxes(yaw, axes);
+  else {
+    classAxis(yaw, tw, axes, 0);
+    axes[2] = -axes[1]!;
+    axes[3] = axes[0]!;
+  }
   const ax = axes[0]!;
   const az = axes[1]!;
-  if (t.sixty[p] === 1) sixtyOf(ax, az, axes, 2);
+  if (t.sixty[p] === 1) classAxis60(yaw, tw, axes, 2);
   const bx = axes[2]!;
   const bz = axes[3]!;
   const at = t.at;
@@ -327,12 +334,12 @@ function place(t: HullTable, p: number, yaw: number): void {
 export const hullPush = { x: 0, y: 0, z: 0, depth: 0, face: false, up: 0 };
 
 /**
- * An upright capsule against part `p` of a piece turned `yaw`. (dx, dz) is its axis from the piece's origin, y0 and y1 the
+ * An upright capsule against part `p` of a piece turned `yaw`, of turn class `tw`. (dx, dz) is its axis from the piece's origin, y0 and y1 the
  * heights of its lower and upper sphere's centres from the origin, and r its radius. True, with `hullPush` filled, when it
  * is deeper in the part than r - reach.
  */
-export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz: number, y0: number, y1: number, r: number, reach: number): boolean {
-  place(t, p, yaw);
+export function capsuleHull(t: HullTable, p: number, yaw: number, tw: number, dx: number, dz: number, y0: number, y1: number, r: number, reach: number): boolean {
+  place(t, p, yaw, tw);
   const faces = t.face[p + 1]! - t.face[p]!;
   // Each face's plane is an axis to separate along. Along it the axis segment is nearest at one of its ends, or at every point
   // if the face is upright.
@@ -500,9 +507,9 @@ function keep(to: Float64Array, n: number, x: number, y: number, z: number): num
   return n + 1;
 }
 
-/** Part `p` of `t` on a piece at (x, y, z) metres turned `yaw`, into `out`. */
-export function partSolid(t: HullTable, p: number, yaw: number, x: number, y: number, z: number, out: Solid): void {
-  place(t, p, yaw);
+/** Part `p` of `t` on a piece at (x, y, z) metres turned `yaw`, of turn class `tw`, into `out`. */
+export function partSolid(t: HullTable, p: number, yaw: number, tw: number, x: number, y: number, z: number, out: Solid): void {
+  place(t, p, yaw, tw);
   const corners = t.corner[p + 1]! - t.corner[p]!;
   for (let c = 0; c < corners * 3; c += 3) {
     out.at[c] = x + placed[c]!;
@@ -588,8 +595,8 @@ export const hullFace = { nx: 0, ny: 0, nz: 0 };
  * Distance along the ray, from (ox, oy, oz) measured from the piece's origin, to part `p` of a piece turned `yaw`, or Infinity.
  * Every face is moved out by `grow`. A ray that starts inside meets it at 0. After Cyrus and Beck.
  */
-export function rayHull(t: HullTable, p: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, grow: number): number {
-  place(t, p, yaw);
+export function rayHull(t: HullTable, p: number, yaw: number, tw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, grow: number): number {
+  place(t, p, yaw, tw);
   let t0 = 0;
   let t1 = Infinity;
   let entered = -1;
