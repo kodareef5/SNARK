@@ -17,7 +17,7 @@ import { listBackups } from "./backup.ts";
 import { refuseNetworkDisk } from "./disk.ts";
 import { holdSave, type SaveLock } from "./lock.ts";
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 /**
  * A chunk's structures as what differs from the map. Integers are little-endian, and a varint is 7 bits a byte, low first.
  *   format u8, the chunk's map slots u16
@@ -88,7 +88,8 @@ function readChunk(chunk: number, data: Uint8Array, rows: RowCoder, x0: number, 
 
 // chunk_blobs holds per-chunk state other than structures, keyed by tag. transfers holds what left this world for another
 // of its cluster, and what came (server/cluster/cluster.ts). frames holds each base some saved chunk has a row of: its
-// origin in lattice units, its turn and its team.
+// origin in lattice units, its turn and its team. plans holds each template set down and not yet built (server/plans.ts),
+// with the chunk its anchor is in.
 const SCHEMA = `
   CREATE TABLE content_ids (idx INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE);
   CREATE TABLE chunk_structs (chunk INTEGER PRIMARY KEY, version INTEGER NOT NULL, data BLOB NOT NULL);
@@ -98,6 +99,7 @@ const SCHEMA = `
   CREATE TABLE journal (seq INTEGER PRIMARY KEY, tick INTEGER NOT NULL, op INTEGER NOT NULL, data BLOB NOT NULL);
   CREATE TABLE chunk_blobs (chunk INTEGER NOT NULL, tag INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (chunk, tag)) WITHOUT ROWID;
   CREATE TABLE transfers (id TEXT NOT NULL, dir INTEGER NOT NULL, pid INTEGER NOT NULL, name TEXT NOT NULL, hop INTEGER NOT NULL, peer INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, dir)) WITHOUT ROWID;
+  CREATE TABLE plans (id INTEGER PRIMARY KEY, chunk INTEGER NOT NULL, data BLOB NOT NULL);
 `;
 
 /**
@@ -503,6 +505,16 @@ export class WorldStore {
   saveBlob(chunk: number, tag: number, data: Uint8Array | null): void {
     if (data) this.db.query("INSERT OR REPLACE INTO chunk_blobs (chunk, tag, data) VALUES (?, ?, ?)").run(chunk, tag, data);
     else this.db.query("DELETE FROM chunk_blobs WHERE chunk = ? AND tag = ?").run(chunk, tag);
+  }
+
+  /** A null `data` deletes the plan. */
+  savePlan(id: number, chunk: number, data: Uint8Array | null): void {
+    if (data) this.db.query("INSERT OR REPLACE INTO plans (id, chunk, data) VALUES (?, ?, ?)").run(id, chunk, data);
+    else this.db.query("DELETE FROM plans WHERE id = ?").run(id);
+  }
+
+  loadPlans(): { id: number; chunk: number; data: Uint8Array }[] {
+    return this.db.query("SELECT id, chunk, data FROM plans ORDER BY id").all() as { id: number; chunk: number; data: Uint8Array }[];
   }
 
   loadBlobs(tag: number): { chunk: number; data: Uint8Array }[] {

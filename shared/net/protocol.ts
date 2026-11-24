@@ -283,6 +283,16 @@ export const PLACED_STRUCTURE = 1;
 export const PLACED_ENTITY = 2;
 export const PLACED_COUNTS = 3;
 export const PLACED_METRES = 4;
+/**
+ * A plan, to a member of the tribe it belongs to who is near it (shared/net/plan.ts, server/plans.ts). Reliable, and
+ * counted in the chunk window. The plan's id varint, then 1 bit: set for the whole record (shared/world/plan.ts
+ * writePlan), clear for its filled bits alone, as a blob.
+ */
+export const S_PLAN = serverKind();
+/** A plan the session was told of is gone, or no longer its to see: the plan's id varint. Reliable. */
+export const S_PLAN_GONE = serverKind();
+/** What became of a CMD_PLAN_COMMIT (shared/net/plan.ts PlanReport). Reliable. */
+export const S_PLAN_REPORT = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -501,6 +511,15 @@ export const CMD_AIR_SUPPORT = command();
  */
 export const CMD_HAVE = command();
 export const HAVE_MOST = 16;
+/**
+ * A part of a blueprint to set down as a plan (shared/net/plan.ts): the whole's bytes varint, this part's offset varint,
+ * and its bytes as a blob, PLAN_PART_BYTES at most and every part but the last exactly that. Parts may come in any order.
+ */
+export const CMD_PLAN_PART = command();
+/** Sets the uploaded blueprint down as a plan, or asks only what the limits are (shared/net/plan.ts PlanCommit). S_PLAN_REPORT answers. */
+export const CMD_PLAN_COMMIT = command();
+/** Takes a plan of the survivor's tribe away: its id varint. */
+export const CMD_PLAN_CANCEL = command();
 /** Chunks from its own within which a client says what it kept: the server's structRadius and the one more it lets go at. */
 export const HAVE_REACH = 4;
 export const SPOT_TICKS = 1800;
