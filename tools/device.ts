@@ -236,7 +236,13 @@ export function bases(world: ServerWorld): (n: number, box: boolean) => number {
   const built: [number[], number[]] = [[], []];
   return (n, box) => {
     const mine = built[box ? 1 : 0];
+    // A leftover (planning/workstreams/build-cleanup.md): these bases are draw loads set down by pose with no owner, off
+    // any lattice, so they are rows in no base and nothing holds them up. They are taken away with no collapse asked, or
+    // every wall near one would be judged and fall.
+    const told = world.structs.onRemove;
+    world.structs.onRemove = null;
     while (mine.length > n) world.structs.remove(mine.pop()!);
+    world.structs.onRemove = told;
     const plan = box ? boxBase().slice(0, n) : basePieces(n);
     for (let i = mine.length; i < plan.length; i++) {
       const p = plan[i]!;

@@ -13,7 +13,7 @@ import { Ui } from "../../client/core/ui/ui.ts";
 import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
-import { asTextured, boxBase } from "../../tools/bench/base.ts";
+import { asTextured, boxBase, layBase } from "../../tools/bench/base.ts";
 import { SPOTS, VIEW, count, turn, wood, type Counted } from "../../tools/bench/budget.ts";
 import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { withContent } from "../../shared/content/registry.ts";
@@ -94,7 +94,7 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
 
 artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {
   const reg = coreRegistry();
-  const base = flat((structs) => boxBase(reg, "wood", 64 * 6 + 0.5, 0, 64 * 6 + 0.5, 21, 1, 20000).forEach(([kind, x, y, z, yaw]) => structs.add(kind, x, y, z, yaw, 1, 1000)));
+  const base = flat((structs) => void layBase(structs, boxBase(reg, "wood", 64 * 6 + 0.5, 0, 64 * 6 + 0.5, 21, 1, 20000), 1, 1000));
   const frames = [30, 60].map((off) => {
     [base.cam.x, base.cam.z] = [64 * 7 - 0.5 + off, 64 * 6.5];
     const [f] = headings(base.scene, base.cam, [1.5 * Math.PI]);
