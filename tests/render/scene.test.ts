@@ -571,7 +571,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // sheet in limestone, mint and clay and its monitor's seam. It was 2280214352 until the skate park's kicker, rail and
   // ledge (content/skate-park.ts) added their grey meshes, 3630105137 until the two parked Concept 003 meshes shifted
   // handles, and 1615357347 until the city's broken forms (content/breaks) added theirs.
-  expect(hash).toBe(563689127);
+  // And 563689127 until the launcher's and its round's meshes and the fire's cone and lobe added theirs.
+  expect(hash).toBe(94988361);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -616,7 +617,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 2416789718 until the finishes of materials made from recipes, as above.
   // And 3120527 until the three finishes above, 1760943328 until the shed's, 2591537817 until the skate park's,
   // 1800001343 until the two parked Concept 003 meshes, and 4134447771 until the city's broken forms.
-  expect(saddled.hash).toBe(2206766379);
+  expect(saddled.hash).toBe(792413359);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

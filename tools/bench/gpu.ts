@@ -386,7 +386,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void, 
         const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}${r.view && LOOKS[r.view] ? `&still&look=${r.view}` : ""}${r.blast ? `&blast=${r.blast}` : ""}`;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), (SETTLE_MS + 120000) * (r.cpu ?? 1)))));
-        const pixels = r.view ? [`--window-size=${(r.window ?? [1920, 1080]).join(",")}`, `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
+        const pixels = r.view || r.window ? [`--window-size=${(r.window ?? [1920, 1080]).join(",")}`, `--force-device-scale-factor=${r.scale ?? 1}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
         const held = holdHour(server, r.hour ?? day);
         rmSync(join(profile, "DevToolsActivePort"), { force: true });
@@ -405,6 +405,11 @@ async function measure(runs: Run[], times: number, say: (line: string) => void, 
           await page.send("Profiler.start");
           await Bun.sleep(PROFILE_MS);
           writeFileSync(join(process.env.GPU_PROFILE, `${nameOf(r)}.cpuprofile`), JSON.stringify((await page.send("Profiler.stop")).profile));
+        }
+        // GPU_SHOT names a folder: the page as it stands when a run ends is kept there, to look at.
+        for (let n = 0; result && process.env.GPU_SHOT && n < Number(process.env.GPU_SHOTS ?? 1); n++) {
+          writeFileSync(join(process.env.GPU_SHOT, `${nameOf(r).replaceAll(/[^a-z0-9]+/gi, "-")}-${n}.png`), Buffer.from((await page.send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+          await Bun.sleep(110);
         }
         if (result && fleet?.image) {
           const image = await page.send("Page.captureScreenshot", { format: "png" });
@@ -576,6 +581,15 @@ if (import.meta.main) {
       frames: report.frames, frameMs: report.frameMs, buildAndSubmitMs: report.buildAndSubmitMs, gpuMs: report.gpuMs,
       draws: report.drawCalls, triangles: report.triangles, sceneScale: report.share, casts: report.turn?.castTriangles,
       card: report.card, waited: report.waited }));
+    process.exit(0);
+  }
+  // bun tools/bench/gpu.ts blast medium 8 folder [pictures]: a rocket's blasts that far ahead, looked at on a desktop's canvas.
+  if (process.argv[2] === "blast") {
+    const [, , , tier = "medium", metres = "8", folder = tmpdir(), shots = "16"] = process.argv;
+    process.env.GPU_SHOT = folder;
+    process.env.GPU_SHOTS = shots;
+    // No metres: the same view with nothing set off, to tell a blast's light from the scene's own.
+    await measure([{ scene: "base", tier, ...(Number(metres) > 0 ? { blast: Number(metres) } : {}), window: [1920, 1167] }], 1, console.log);
     process.exit(0);
   }
   const times = Number(process.argv[2] ?? 3);
