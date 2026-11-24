@@ -3,7 +3,7 @@
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
 import {
-  moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS,
+  moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_FIRE,
   DRAW_RANGED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP,
   SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows,
   quadIndices, stepOf, type TextureUpload,
@@ -229,6 +229,8 @@ export class GlRenderer {
   private worldBase = [-1, -1, -1];
   private readonly worldLayer = new Map<number, number>();
   private blending = false;
+  /** Whether what is blended is taken as light already weighed by how much of it shows (`set`). */
+  private weighed = false;
   private culling = false;
   private covering = false;
   private offsetting = false;
@@ -356,7 +358,7 @@ export class GlRenderer {
     this.textures.clear();
     this.making.clear();
     this.surfaces.clear();
-    this.blending = this.culling = this.covering = this.offsetting = false;
+    this.blending = this.culling = this.covering = this.offsetting = this.weighed = false;
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
     // A level without skin entries leaves the SURFACE program's four bones at this, which must be whole numbers.
     gl.vertexAttribI4ui(10, 0, 0, 0, 0);
@@ -477,7 +479,7 @@ export class GlRenderer {
     const gl = this.gl;
     const blend = (p.drawFlags[d]! & DRAW_BLEND) !== 0;
     const prog = this.use(PROGRAM.details, p);
-    this.set(blend, false, !blend);
+    this.set(blend, false, !blend, false, blend);
     this.drawn.flags = p.drawFlags[d]!;
     this.give(prog, prog.draw);
     gl.activeTexture(gl.TEXTURE0 + UNIT.details);
@@ -790,9 +792,13 @@ export class GlRenderer {
     this.gl.uniform1f(prog.at[k]!, v);
   }
 
-  /** Blending, culling, alpha to coverage and polygon offset, each changed only when a draw needs it otherwise. */
-  private set(blend: boolean, cull: boolean, cover: boolean, offset = false): void {
+  /**
+   * Blending, culling, alpha to coverage and polygon offset, each changed only when a draw needs it otherwise. `weighed`
+   * blends a colour that is light already weighed by how much of it shows, as fire and the small details give theirs.
+   */
+  private set(blend: boolean, cull: boolean, cover: boolean, offset = false, weighed = false): void {
     const gl = this.gl;
+    if (blend && weighed !== this.weighed) gl.blendFuncSeparate((this.weighed = weighed) ? gl.ONE : gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
     if (offset !== this.offsetting) {
       if ((this.offsetting = offset)) gl.enable(gl.POLYGON_OFFSET_FILL);
       else gl.disable(gl.POLYGON_OFFSET_FILL);
@@ -1180,7 +1186,8 @@ export class GlRenderer {
       c.material = this.materials[m];
       c.skinned = lod.skin;
       const prog = this.use(drawProgram(p, d, c.material), p);
-      this.set(blend, (textured || !blend) && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
+      const fire = (flags & DRAW_FIRE) !== 0;
+      this.set(blend, (textured || !blend || fire) && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0, false, fire);
       this.give(prog, prog.draw);
       // A material's maps, and with a layer its layer; the sea's waves are a material's.
       if (textured) this.maps(c.material, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length);
@@ -1453,6 +1460,7 @@ export class GlRenderer {
     for (let k = levels - 1; k >= 1; k--) this.pass(p, PROGRAM.bloomUp, k + 1, k);
     gl.disable(gl.BLEND);
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+    this.weighed = false;
     gl.activeTexture(gl.TEXTURE0 + UNIT.layer);
     gl.bindTexture(gl.TEXTURE_2D, t.tex[Math.min(1, levels)]!);
     this.pass(p, PROGRAM.finish, 0, -1);

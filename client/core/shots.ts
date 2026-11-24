@@ -5,9 +5,11 @@ import { Assets } from "./assets/assets.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
-import { EVENT_BALL, EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
+import { HELD_MUZZLE, HELD_VENT } from "../../shared/content/kinds/weapons.ts";
+import { EVENT_BALL, EVENT_BLAST, EVENT_ROCKET, EVENT_SHOT } from "../../shared/net/protocol.ts";
+import { blastSeed } from "../../shared/net/rockets.ts";
 import { HITSCAN_RANGE, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
-import { TICK_DT } from "../../shared/coords.ts";
+import { TICK_DT, TICK_RATE } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { bodyAlong, seaHere } from "../../shared/world/water.ts";
@@ -50,6 +52,21 @@ const AHEAD = 0.7;
 const BELOW = 0.1;
 /** Longest tracer drawn, in metres. */
 const TRACER_REACH = 300;
+/** Milliseconds a round that goes off is kept, once it has met something here, for the blast that ends it. */
+export const AWAIT_MS = 500;
+/** Metres over which a round drawn from its gun's muzzle comes onto its true path, which starts at its shooter's eye. */
+export const LEAVE = 8;
+/**
+ * Another's round told within this many ticks of leaving is seen to leave: its launcher flashes and it starts at the
+ * muzzle. A round just fired is already as old as the server looked back for its shooter (BOLT_BACK_MOST).
+ */
+const LEFT_NOW = 16;
+/** Metres behind the eye a launcher's vent is taken to be, where its body is not drawn. */
+const VENT_BEHIND = 0.5;
+/** Ticks its own round may fly with no number told: past them it was told the old way, and ends by this client's judgement. */
+const UNTOLD_TICKS = 30;
+/** Turns a second a round with a motor rolls as it flies. */
+const ROLL = 0.6;
 
 interface Flying extends Flight {
   gravity: number;
@@ -60,6 +77,22 @@ interface Flying extends Flight {
   age: number;
   /** Metres flown. */
   flown: number;
+  /**
+   * A round that goes off where it ends (EVENT_ROCKET): the server ends it, by its blast. Its number, 0 until it is told;
+   * the name the fire knows it by; and whether it is the viewer's own.
+   */
+  rocket: boolean;
+  id: number;
+  key: number;
+  own: boolean;
+  /** Whether the fire was told of it, which it is if it has a motor. */
+  lit: boolean;
+  /** Where it is drawn from its path as it leaves: its muzzle less its path's start. It closes over LEAVE metres. */
+  ox: number;
+  oy: number;
+  oz: number;
+  /** When a round that met something here is dropped if no blast has come, in milliseconds; 0 while it flies. */
+  waits: number;
 }
 
 interface Tracer {
@@ -111,7 +144,17 @@ export class Shots {
   reg: Registry;
   /** Where what flies and goes off is drawn alight, which the scene gives. */
   fire: Blasts | null = null;
+  /** The bodies as last drawn, for where a gun's muzzle is. `draw` keeps the one it is given. */
+  bodies: Characters | null = null;
   private readonly dir = [0, 0, 0];
+  private readonly muzzle = [0, 0, 0];
+  private readonly vent = [0, 0, 0];
+  /** Rounds kept that have met something and wait for their blast. */
+  private waiting = 0;
+  /** The name of the viewer's last round that goes off, counted down from -1: no told round has one below zero. */
+  private ownKey = 0;
+  /** The rounds in the viewer's own gun as it predicts them, or -1: the bodies' draw is told. */
+  private ownRounds = -1;
   /** The whole tick the flights have been flown through. */
   private tick = -1;
 
@@ -136,6 +179,7 @@ export class Shots {
     const held = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.hotbar + session.held : -1;
     const fitted = held >= 0 ? inv!.attach[held]! : 0;
     const silenced = fitted !== 0 && (reg.defs[fitted] as ItemDef | null)?.attachment === "silencer";
+    this.ownRounds = held >= 0 && session.own ? session.own.rounds : -1;
     for (const s of session.fired) {
       // Its own shot leaves along the server's ray: the same aim, cone and seed (shared/sim/aim.ts).
       const full = reg.ammoSpeed[s.ammo]!;
@@ -156,7 +200,9 @@ export class Shots {
         this.line(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, s.x + d[0]! * reach, s.y + d[1]! * reach, s.z + d[2]! * reach, nowMs);
       } else {
         const speed = launchSpeed(full, s.draw);
-        this.fly(world, s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs);
+        // A round that goes off flies its true path from the eye, and is drawn from the muzzle onto it.
+        if (reg.ammoBlast[s.ammo]! > 0) this.fly(world, s.x, s.y, s.z, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs, true, 0, true);
+        else this.fly(world, s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs);
       }
     }
     session.fired.length = 0;
@@ -165,8 +211,17 @@ export class Shots {
     let kept = 0;
     for (const ev of events) {
       if (ev.kind === EVENT_BLAST) {
-        if (this.blasts.length >= MAX_TRACERS) this.blasts.shift();
-        this.blasts.push({ x: ev.x, y: ev.y, z: ev.z, radius: ev.far, born: nowMs });
+        // Its round ends here, wherever this client had flown it to.
+        if (ev.id !== 0) this.finish(ev.id, nowMs);
+        if (this.fire) this.fire.burst(reg.burstLook[ev.item] ?? 0, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.far, ev.surface, ev.made, blastSeed(ev.id, ev.x, ev.y, ev.z), nowMs);
+        else {
+          if (this.blasts.length >= MAX_TRACERS) this.blasts.shift();
+          this.blasts.push({ x: ev.x, y: ev.y, z: ev.z, radius: ev.far, born: nowMs });
+        }
+        continue;
+      }
+      if (ev.kind === EVENT_ROCKET) {
+        this.told(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.item, ev.back, ev.id, ev.own, nowMs);
         continue;
       }
       if (ev.kind === EVENT_BALL) {
@@ -222,25 +277,106 @@ export class Shots {
   }
 
   /**
+   * The server tells of a round that goes off: number `id`, left (x, y, z) `age` ticks ago. One already kept under that
+   * number is not started again. The viewer's `own` was drawn when it was fired, and takes the number: the newest of
+   * its rounds of that ammunition that has none.
+   */
+  private told(world: CollisionWorld, x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number, age: number, id: number, own: boolean, nowMs: number): void {
+    const flying = this.flying;
+    for (let i = 0; i < flying.length; i++) if (flying[i]!.rocket && flying[i]!.id === id) return;
+    if (own) {
+      for (let i = flying.length - 1; i >= 0; i--) {
+        const f = flying[i]!;
+        if (f.own && f.id === 0 && f.ammo === ammo) {
+          f.id = id;
+          return;
+        }
+      }
+    }
+    this.fly(world, x, y, z, vx, vy, vz, ammo, age, false, nowMs, true, id, own);
+  }
+
+  /** Round `id` went off: it is gone, flying or waiting. */
+  private finish(id: number, nowMs: number): void {
+    const flying = this.flying;
+    for (let i = 0; i < flying.length; i++) {
+      const f = flying[i]!;
+      if (!f.rocket || f.id !== id) continue;
+      if (f.waits !== 0) this.waiting--;
+      else {
+        const speed = Math.sqrt(f.vx * f.vx + f.vy * f.vy + f.vz * f.vz) || 1;
+        this.ended(f.x, f.y, f.z, f.vx / speed, f.vy / speed, f.vz / speed, nowMs);
+        this.out(f, nowMs);
+      }
+      for (let k = i + 1; k < flying.length; k++) flying[k - 1] = flying[k]!;
+      flying.length--;
+      return;
+    }
+  }
+
+  /** The fire is told that `f` flies no more. */
+  private out(f: Flying, nowMs: number): void {
+    if (!f.lit) return;
+    f.lit = false;
+    this.fire?.end(f.key, nowMs);
+  }
+
+  /**
    * A round of `ammo` left (x, y, z) `back` ticks ago, as its shooter saw it. It is flown that far at once, against the world
    * alone, so that it is drawn where the server's is and comes when its harm does. `back` is -1 for its own shooter's,
-   * which leaves now from ahead of the eye.
+   * which leaves now from ahead of the eye. A `rocket` goes off where it ends: it has the number `id`, 0 where none is
+   * told yet, starts at its shooter's eye whoever shot it, and is drawn from the muzzle of the gun that is drawn there.
    */
-  private fly(world: CollisionWorld, x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number, back: number, silenced: boolean, nowMs: number): void {
+  private fly(world: CollisionWorld, x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number, back: number, silenced: boolean, nowMs: number, rocket = false, id = 0, own = false): void {
     const mesh = this.meshOfAmmo[ammo] ?? -1;
     if (mesh < 0) return;
-    const size = this.reg.ammoBoltSize[ammo]!;
+    const reg = this.reg;
+    const size = reg.ammoBoltSize[ammo]!;
     const lit = this.flashOfAmmo[ammo]!;
+    const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
     if (lit >= 0 && !silenced) {
-      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
       // Another's leaves its eye, as the server said, so its flash is put ahead of that as its own shot's start is.
       const ahead = back >= 0 && speed > 0 ? AHEAD / speed : 0;
       this.flash(x + vx * ahead, y + vy * ahead - (back >= 0 ? BELOW : 0), z + vz * ahead, nowMs, lit, BOLT_FLASH * size, BOLT_FLASH_MS);
     }
-    const f: Flying = { x, y, z, vx, vy, vz, gravity: this.reg.ammoGravity[ammo]!, mesh, ammo, left: this.reg.ammoFlightTicks[ammo]!, age: 0, flown: 0 };
-    for (let k = 0; k < back; k++) if (!this.advance(f, world, null, nowMs)) return;
-    if (this.flying.length >= MAX_FLYING) this.flying.shift();
+    const f: Flying = { x, y, z, vx, vy, vz, gravity: reg.ammoGravity[ammo]!, mesh, ammo, left: reg.ammoFlightTicks[ammo]!, age: 0, flown: 0, rocket, id, key: id, own, lit: false, ox: 0, oy: 0, oz: 0, waits: 0 };
+    const flame = reg.ammoFlame[ammo]!;
+    if (rocket && speed > 0) {
+      if (own && id === 0) f.key = --this.ownKey;
+      if (back < LEFT_NOW) {
+        // Seen to leave: from its gun's muzzle where that is drawn, else from ahead of the eye as every shot was.
+        const dx = vx / speed, dy = vy / speed, dz = vz / speed, m = this.muzzle, v = this.vent;
+        const drawn = this.bodies !== null && this.bodies.heldNear(x, y, z, HELD_MUZZLE, m);
+        if (!drawn) {
+          m[0] = x + dx * AHEAD;
+          m[1] = y + dy * AHEAD - BELOW;
+          m[2] = z + dz * AHEAD;
+        }
+        if (!drawn || !this.bodies!.heldNear(x, y, z, HELD_VENT, v)) {
+          v[0] = x - dx * VENT_BEHIND;
+          v[1] = y - dy * VENT_BEHIND - BELOW;
+          v[2] = z - dz * VENT_BEHIND;
+        }
+        f.ox = m[0]! - x;
+        f.oy = m[1]! - y;
+        f.oz = m[2]! - z;
+        // A round with a motor leaves a launcher, which flashes ahead and blows out behind. Every client draws it from one seed.
+        if (flame > 0) this.fire?.launch(m[0]!, m[1]!, m[2]!, v[0]!, v[1]!, v[2]!, dx, dy, dz, blastSeed(0, x, y, z), own, nowMs);
+      }
+    }
+    for (let k = 0; k < back && f.waits === 0; k++) if (!this.advance(f, world, null, nowMs)) return;
+    if (this.flying.length >= MAX_FLYING) {
+      const gone = this.flying.shift()!;
+      if (gone.waits !== 0) this.waiting--;
+      this.out(gone, nowMs);
+    }
     this.flying.push(f);
+    if (rocket && flame > 0 && f.waits === 0 && this.fire) {
+      // Its smoke starts at the muzzle, when it passed there by this client's clock, and lies beside its path from then.
+      f.lit = true;
+      const lead = ((f.ox * vx + f.oy * vy + f.oz * vz) / (speed * speed)) * 1000;
+      this.fire.fly(f.key, x + f.ox, y + f.oy, z + f.oz, vx, vy, vz, f.gravity, flame, nowMs - ((back > 0 ? back : 0) * 1000) / TICK_RATE + lead);
+    }
   }
 
   /** Sorts the bodies of `remote` that a shot can meet into squares, for `advance` to find those near a flight's piece. */
@@ -271,13 +407,19 @@ export class Shots {
 
   /**
    * Flies `f` one tick. False when it ended: out of reach, or on the ground, a wall, water or, where `remote` is given and
-   * sorted, a drawn body. A bolt of light that ended on something bursts there.
+   * sorted, a drawn body. A bolt of light that ended on something bursts there. A round that goes off is not ended here
+   * and meets no body: where it runs out or meets the world it is put there to wait for its blast.
    */
   private advance(f: Flying, world: CollisionWorld, remote: RemoteSample | null, nowMs: number): boolean {
+    if (f.rocket && f.id === 0 && f.age >= UNTOLD_TICKS) f.rocket = false;
     flyStep(f, f.gravity);
     let length = piece.length;
     const { x, y, z, dx, dy, dz } = piece;
-    if (--f.left < 0 || !(length > 0)) return false;
+    if (--f.left < 0 || !(length > 0)) {
+      if (!f.rocket) return false;
+      this.wait(f, nowMs);
+      return true;
+    }
     const sea = world.hf.seaLevel;
     let ends = false;
     if (y > sea && y + dy * length <= sea && seaHere(world.hf.water, x + (dx * (sea - y)) / dy, z + (dz * (sea - y)) / dy)) {
@@ -294,7 +436,7 @@ export class Shots {
       ends = true;
     }
     // The body test skips a flight's first two pieces, because a shot starts inside its shooter's box.
-    if (remote && f.age >= 2) {
+    if (remote && f.age >= 2 && !f.rocket) {
       const reg = this.reg;
       const pad = this.nearWide;
       const ex = x + dx * length;
@@ -321,6 +463,13 @@ export class Shots {
     }
     if (ends) {
       this.ended(x, y, z, dx, dy, dz, nowMs);
+      if (f.rocket) {
+        f.x = x + dx * length;
+        f.y = y + dy * length;
+        f.z = z + dz * length;
+        this.wait(f, nowMs);
+        return true;
+      }
       const burst = this.burstOfAmmo[f.ammo]!;
       if (burst >= 0) {
         if (this.bursts.length >= MAX_BURSTS) this.bursts.shift();
@@ -334,6 +483,13 @@ export class Shots {
     return true;
   }
 
+  /** A round that goes off met something here: its picture and its fire end, and it is kept a while for its blast. */
+  private wait(f: Flying, nowMs: number): void {
+    f.waits = nowMs + AWAIT_MS;
+    this.waiting++;
+    this.out(f, nowMs);
+  }
+
   private line(x: number, y: number, z: number, ex: number, ey: number, ez: number, nowMs: number): void {
     const dx = ex - x;
     const dy = ey - y;
@@ -345,7 +501,10 @@ export class Shots {
     this.tracers.push({ x, y, z, dx: dx / length, dy: dy / length, dz: dz / length, length: length > TRACER_REACH ? TRACER_REACH : length, until: nowMs + TRACER_MS });
   }
 
-  /** Flies each shot up to the whole tick of `tick`. A flight ends at the ground, a wall, water, or a drawn body. */
+  /**
+   * Flies each shot up to the whole tick of `tick`. A flight ends at the ground, a wall, water, or a drawn body; a round
+   * that goes off ends when its blast is told, and waits for it AWAIT_MS where it met the world here.
+   */
   step(world: CollisionWorld, remote: RemoteSample | null, tick: number, nowMs: number): void {
     while (this.tracers.length > 0 && nowMs >= this.tracers[0]!.until) this.tracers.shift();
     while (this.blasts.length > 0 && nowMs >= this.blasts[0]!.born + BLAST_MS) this.blasts.shift();
@@ -360,7 +519,19 @@ export class Shots {
     if (this.tick < whole && remote && this.flying.length > 0) this.sort(remote);
     for (; this.tick < whole; this.tick++) {
       let kept = 0;
-      for (const f of this.flying) if (this.advance(f, world, remote, nowMs)) this.flying[kept++] = f;
+      for (const f of this.flying) {
+        if (f.waits !== 0 || this.advance(f, world, remote, nowMs)) this.flying[kept++] = f;
+        else this.out(f, nowMs);
+      }
+      this.flying.length = kept;
+    }
+    if (this.waiting > 0) {
+      // A round whose blast never came is dropped quietly.
+      let kept = 0;
+      for (const f of this.flying) {
+        if (f.waits !== 0 && nowMs >= f.waits) this.waiting--;
+        else this.flying[kept++] = f;
+      }
       this.flying.length = kept;
     }
   }
@@ -372,18 +543,43 @@ export class Shots {
 
   /** `tick` may be fractional. A flight is drawn that far along its next piece. */
   draw(ch: Characters, p: FramePacket, cam: Camera, tick: number): void {
+    this.bodies = ch;
+    ch.ownRounds = this.ownRounds;
     const ahead = (tick - Math.floor(tick)) * TICK_DT;
+    const fire = this.fire;
+    let room = true;
     for (const f of this.flying) {
-      const x = f.x + f.vx * ahead - cam.x;
-      const y = f.y + f.vy * ahead - cam.y;
-      const z = f.z + f.vz * ahead - cam.z;
+      if (f.waits !== 0) continue;
       const speed = Math.sqrt(f.vx * f.vx + f.vy * f.vy + f.vz * f.vz);
-      if (!(speed > 0) || !cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) continue;
+      if (!(speed > 0)) continue;
+      let x = f.x + f.vx * ahead;
+      let y = f.y + f.vy * ahead;
+      let z = f.z + f.vz * ahead;
+      let roll = 0;
+      if (f.rocket) {
+        // It leaves its muzzle and comes onto its path over its first metres.
+        const k = 1 - (f.flown + speed * ahead) / LEAVE;
+        if (k > 0) {
+          const share = k * k * (3 - 2 * k);
+          x += f.ox * share;
+          y += f.oy * share;
+          z += f.oz * share;
+        }
+        if (f.lit) {
+          fire!.at(f.key, x, y, z, f.vx / speed, f.vy / speed, f.vz / speed);
+          roll = (this.now / 1000) * ROLL * 2 * Math.PI + f.key;
+        }
+      }
+      x -= cam.x;
+      y -= cam.y;
+      z -= cam.z;
+      if (!room || !cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) continue;
       // A bolt of light is its head with a tail behind it, no longer than it has flown.
       const size = this.reg.ammoBoltSize[f.ammo]!;
       const tail = size > 0 ? Math.max(0.2 * size, Math.min(BOLT_TAIL * size, f.flown + speed * ahead)) : 1;
-      if (!ch.loose(p, f.mesh, x, y, z, f.vx / speed, f.vy / speed, f.vz / speed, tail, size > 0 ? size : 1)) return;
+      room = ch.loose(p, f.mesh, x, y, z, f.vx / speed, f.vy / speed, f.vz / speed, tail, size > 0 ? size : 1, 0, roll);
     }
+    if (!room) return;
     // A blast is a flash that swells from a quarter of its reach to most of it.
     for (const b of this.blasts) {
       const size = b.radius * (0.25 + 0.75 * Math.min(1, (this.now - b.born) / BLAST_MS)) * 0.9;

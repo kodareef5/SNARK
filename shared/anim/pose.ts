@@ -11,7 +11,7 @@ import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
 import { bootThrust, GLIDE_DIVING, GLIDE_FLARED, GLIDE_TRIM, JET_DASH, JET_FIST, JET_UP, JET_HOVER, JET_LIFT, MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
-import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, POSE_LAUNCHER, POSE_PLAIN, SWING_TICKS } from "../sim/weapon.ts";
 import { cradle } from "./hold.ts";
 import { emotePose } from "./emote.ts";
 import { EMOTES, emoteClipId } from "./emotes.ts";
@@ -254,6 +254,16 @@ export class AnimState {
    * had then (shared/anim/reactions.ts). Not replicated: whoever poses a body sets it; NaN lays it against its own.
    */
   facing = Number.NaN;
+  /**
+   * How its hold is posed (a POSE_ of shared/sim/weapon.ts), its gun's own kick in radians and the ticks that lasts (0 for
+   * every gun's), and the ticks of its gun's pause after a shot and of its reload. Not replicated: they are the held
+   * item's, which whoever poses a body sets after unpacking it (shared/anim/wield.ts).
+   */
+  wields = POSE_PLAIN;
+  kick = 0;
+  kickTicks = 0;
+  coolTicks = 0;
+  reloadTicks = 0;
 
   /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
@@ -314,6 +324,9 @@ export class AnimState {
 
   unpack(word: number, cue = 0, emote = 0, react = 0, stride = -1): void {
     this.stride = stride;
+    // What is held is not in the word: it poses as a plain hold until its item is given again.
+    this.wields = POSE_PLAIN;
+    this.kick = this.kickTicks = this.coolTicks = this.reloadTicks = 0;
     this.unpackCue(cue);
     this.unpackEmote(emote);
     this.react = react;
@@ -427,6 +440,14 @@ export class HumanAnim {
   readonly gunLowered: Clip | null;
   readonly pistolAimed: Clip | null;
   readonly pistolLowered: Clip | null;
+  /** A tube on the shoulder (POSE_LAUNCHER): aimed, lowered, and its reload's hand at the pouch, round at the muzzle and round home. */
+  readonly launcherAimed: Clip | null;
+  readonly launcherLowered: Clip | null;
+  readonly launcherFetch: Clip | null;
+  readonly launcherLoad: Clip | null;
+  readonly launcherPush: Clip | null;
+  /** The reload's poses in the order LAUNCHER_KEYS names them, or null where a clip is missing. */
+  readonly launcherReload: readonly Clip[] | null;
   /** Under a glider: at its trim, in a dive, flared, and as it is thrown open (shared/anim/glide-clips.ts). */
   readonly glide: Clip | null;
   readonly glideDive: Clip | null;
@@ -471,6 +492,13 @@ export class HumanAnim {
     this.gunLowered = find("human/gun_lowered");
     this.pistolAimed = find("human/pistol_aimed");
     this.pistolLowered = find("human/pistol_lowered");
+    this.launcherAimed = find("human/launcher_aimed");
+    this.launcherLowered = find("human/launcher_lowered");
+    this.launcherFetch = find("human/launcher_fetch");
+    this.launcherLoad = find("human/launcher_load");
+    this.launcherPush = find("human/launcher_push");
+    const reload = [this.launcherAimed, this.launcherLowered, this.launcherFetch, this.launcherLoad, this.launcherPush];
+    this.launcherReload = reload.every((c) => c !== null) ? (reload as Clip[]) : null;
     this.glide = find("human/glide");
     this.glideDive = find("human/glide_dive");
     this.glideFlare = find("human/glide_flare");
@@ -555,6 +583,59 @@ const GUN_LOWER = 5;
 /** A gun kicks up by this many radians when it fires and settles over KICK_TICKS. */
 const KICK = 0.09;
 const KICK_TICKS = 5;
+
+/**
+ * A launcher's reload, as shares of its ticks: at each, the pose it has reached (an index into HumanAnim.launcherReload:
+ * aimed, lowered, fetch, load, push). It lowers the tube, takes a round from the pouch, brings it to the muzzle, pushes it
+ * home and shoulders the tube again, eased from each to the next.
+ */
+const LAUNCHER_KEYS: readonly (readonly [number, number])[] = [[0, 0], [0.12, 1], [0.3, 2], [0.36, 2], [0.58, 3], [0.72, 4], [0.78, 4], [1, 0]];
+/** The shares of a launcher's reload at which the round is in the off hand, at the muzzle, and home in the tube. */
+export const LAUNCHER_FETCHED = 0.3;
+export const LAUNCHER_AT_MUZZLE = 0.58;
+export const LAUNCHER_HOME = 0.72;
+/** Ticks a gun's own kick takes to come up, and how far its shot shoves the right shoulder back and the back over, for each radian of it. */
+const KICK_RISE = 1.5;
+const SHOVE_TURN = 0.9;
+const SHOVE_LEAN = 0.35;
+
+/** The bones that carry each hand from the hips, the left's and the right's. */
+const HAND_CHAINS = [
+  [B_SPINE, B_CHEST, B_UPPER_CHEST, B_SHOULDER_L, B_UPPER_ARM_L, B_LOWER_ARM_L, B_HAND_L],
+  [B_SPINE, B_CHEST, B_UPPER_CHEST, B_SHOULDER_R, B_UPPER_ARM_R, B_LOWER_ARM_R, B_HAND_R],
+] as const;
+const hands = new Float64Array(24);
+
+/** Writes to `hands` at `at` how each hand of `p` is turned from the hips, or with `carried` false how its forearm is. */
+function handTurns(p: Pose, at: number, carried: boolean): void {
+  for (let side = 0; side < 2; side++) {
+    const chain = HAND_CHAINS[side]!, o = at + side * 4;
+    quatIdentity(hands, o);
+    for (let k = 0; k < chain.length - (carried ? 0 : 1); k++) quatMul(hands, o, hands, o, p.rot, chain[k]! * 4);
+  }
+}
+
+/**
+ * Blends the upper body of `from` toward `to` by `t` into `from`, as blendPose does, and then turns each hand the share
+ * `t` of the way between where the two poses have it from the hips. Joints blended one by one swing a hand, and a tube in
+ * it, through ways neither pose has.
+ */
+function blendHeld(from: Pose, to: Pose, t: number): void {
+  handTurns(from, 0, true);
+  handTurns(to, 8, true);
+  blendPose(from, from, to, t, UPPER_FROM, UPPER_TO);
+  handTurns(from, 16, false);
+  for (let side = 0; side < 2; side++) {
+    quatNlerp(hands, side * 4, hands, side * 4, hands, 8 + side * 4, t);
+    quatMulConj(from.rot, HAND_CHAINS[side]![6] * 4, hands, 16 + side * 4, hands, side * 4);
+  }
+}
+
+/** How far through its reload a launcher is at `e` ticks into it, 0 to 1. */
+export function launcherReloadShare(st: AnimState, e: number): number {
+  const ticks = st.reloadTicks > 0 ? st.reloadTicks : 1;
+  return e <= 0 ? 0 : e >= ticks ? 1 : e / ticks;
+}
 
 /** Seconds a glider's wings take to spread once thrown open, and how fast its lean follows its dive or flare, a second. */
 const WING_OPEN_SECONDS = 0.3;
@@ -778,6 +859,8 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   /** How far the arms are up and aimed, 0 to 1. Raised arms follow the whole look pitch, not only the spine's share. */
   let raised = 0;
   let kick = 0;
+  /** Radians a launcher's shot shoves the body back by. */
+  let shove = 0;
   if (hold === HOLD_BOW) {
     // The bow is carried low, comes up as the draw begins, and goes down once the arrow is gone.
     raised = act === ACT_DRAW ? clamp(e / BOW_RAISE, 0, 1) : act === ACT_HOLD ? 1 : act === ACT_COOL ? clamp(1 - e / BOW_LOWER, 0, 1) : 0;
@@ -787,11 +870,47 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
       blendPose(a, a, b, raised, UPPER_FROM, UPPER_TO);
       blendPose(out, out, a, 1, UPPER_FROM, UPPER_TO);
     }
+  } else if (hold === HOLD_RIFLE && st.wields === POSE_LAUNCHER && anim.launcherReload) {
+    // A tube on the shoulder, which its reload takes down, loads at the muzzle and shoulders again.
+    const keys = anim.launcherReload;
+    sampleClip(keys[0]!, 0, a);
+    raised = 1;
+    if (act === ACT_RELOAD) {
+      const u = launcherReloadShare(st, e);
+      let k = 1;
+      while (k < LAUNCHER_KEYS.length - 1 && u >= LAUNCHER_KEYS[k]![0]) k++;
+      const from = LAUNCHER_KEYS[k - 1]!, to = LAUNCHER_KEYS[k]!;
+      const part = clamp((u - from[0]) / (to[0] - from[0]), 0, 1);
+      sampleClip(keys[from[1]]!, 0, a);
+      sampleClip(keys[to[1]]!, 0, b);
+      blendHeld(a, b, part * part * (3 - 2 * part));
+      // The arms follow the look only while the tube is at the shoulder or nearly.
+      const first = LAUNCHER_KEYS[1]![0], last = LAUNCHER_KEYS[LAUNCHER_KEYS.length - 2]![0];
+      raised = u < first ? 1 - u / first : u > last ? (u - last) / (1 - last) : 0;
+    } else if (act === ACT_EQUIP) {
+      const low = clamp(1 - e / EQUIP_TICKS, 0, 1);
+      sampleClip(keys[1]!, 0, b);
+      blendHeld(a, b, low);
+      raised = 1 - low;
+    }
+    // Its kick goes on into the reload that follows the shot's short pause.
+    const since = act === ACT_COOL ? e : act === ACT_RELOAD ? e + st.coolTicks : -1;
+    if (since >= 0 && since < st.kickTicks) {
+      const part = since / st.kickTicks;
+      kick = st.kick * (since < KICK_RISE ? since / KICK_RISE : 1) * (1 - part * part * (3 - 2 * part));
+      shove = kick * raised;
+    }
+    blendPose(out, out, a, 1, UPPER_FROM, UPPER_TO);
+    // The back stands as its clip has it whatever way the gait turns the hips, so the tube points where the body faces.
+    quatMulConj(out.rot, B_SPINE * 4, out.rot, B_HIPS * 4, out.rot, B_SPINE * 4);
   } else if (hold === HOLD_RIFLE || hold === HOLD_PISTOL) {
     // A gun is at the shoulder except during a reload or an equip.
     const low = act === ACT_RELOAD ? clamp(e / GUN_LOWER, 0, 1) : act === ACT_EQUIP ? clamp(1 - e / EQUIP_TICKS, 0, 1) : 0;
     raised = 1 - low;
-    if (act === ACT_COOL && e < KICK_TICKS) kick = KICK * (1 - e / KICK_TICKS);
+    if (act === ACT_COOL && st.kickTicks > 0) {
+      // A gun with a kick of its own.
+      if (e < st.kickTicks) kick = st.kick * (1 - e / st.kickTicks);
+    } else if (act === ACT_COOL && e < KICK_TICKS) kick = KICK * (1 - e / KICK_TICKS);
     const up = hold === HOLD_RIFLE ? anim.gunAimed : anim.pistolAimed;
     const down = hold === HOLD_RIFLE ? anim.gunLowered : anim.pistolLowered;
     if (up && down) {
@@ -818,6 +937,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     spineShare = 0;
     raised = 0;
     kick = 0;
+    shove = 0;
   }
   if (upright) spineShare = 0;
   const travel = twistAngle;
@@ -845,6 +965,11 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   if (lift !== 0) {
     turn(out, B_SHOULDER_L, 1, 0, 0, -lift);
     turn(out, B_SHOULDER_R, 1, 0, 0, -lift);
+  }
+  if (shove !== 0) {
+    // The right shoulder goes back with the tube and the back goes over a little.
+    turn(out, B_UPPER_CHEST, 0, 1, 0, -shove * SHOVE_TURN);
+    turn(out, B_SPINE, 1, 0, 0, -shove * SHOVE_LEAN);
   }
   // Arms round a creature hold it where they hold it, however the back has turned.
   if (hold === HOLD_CARRY) cradle(out, st.stance);

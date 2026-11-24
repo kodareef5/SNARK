@@ -27,7 +27,7 @@ import { Occasions, type DrawnGait, type Happening, type ShotEnd, type Viewer } 
 import { corpseDownAt, type Corpse } from "../ragdoll.ts";
 import { LOW } from "../render/atmosphere.ts";
 import type { Camera } from "../render/camera.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_WAKE, MAX_DETAILS, type FramePacket } from "../render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_LIT, DETAIL_PUFF, DETAIL_SMOKE, DETAIL_TIRE, DETAIL_WAKE, GLOW_STEPS, MAX_DETAILS, type FramePacket } from "../render/packet.ts";
 import type { RemoteSample } from "../session.ts";
 import { BREAK_NEAR, BREAK_SHARE, breakEffects } from "./breaks.ts";
 import { GROUND_WATER, dustColour, groundAt } from "./ground.ts";
@@ -35,6 +35,14 @@ import { Pool } from "./pool.ts";
 
 /** A burst keeps its whole count within this many metres of the eye, and this many over the distance beyond. */
 const NEAR = 10;
+/** A burst with no body (`burst`) keeps its whole count this far: a blast is seen from farther than a feather. */
+const BURST_NEAR = 30;
+/** Metres over the ground within which a burst with no body still throws up the ground's dust. */
+const GROUND_NEAR = 3;
+/** Seconds under which a burst with no body is a flash, gone before it could fill a frame's budget. */
+const FLASH_SECONDS = 0.25;
+/** Seconds over which the fill a bodiless burst was made for stops being held against the next. */
+const PROMISE_SECONDS = 1.5;
 /** The ground wind is the low clouds' turned down to this share, and it gusts by this share of itself. */
 const WIND_SHARE = 0.1;
 const GUST = 0.4;
@@ -105,6 +113,8 @@ export class Details {
   private readonly at = [0, 0, 0];
   private readonly colour = [0, 0, 0];
   private readonly order = new Uint32Array(MAX_DETAILS);
+  /** Per particle as written, 1 where its effect is one a page may leave out (`muted`). */
+  private readonly tagged = new Uint8Array(MAX_DETAILS);
   /** The see-through particles as written, while they are put far to near: words, so that every bit is kept. */
   private readonly unsorted = new Uint32Array(MAX_DETAILS * DETAIL_FLOATS);
   private readonly index = new Map<number, number>();
@@ -127,6 +137,20 @@ export class Details {
   /** The first of the break effects (breaks.ts), which follow the pack's, and how many of their particles are alive. */
   private readonly breakFirst: number;
   breaking = 0;
+  /** 1 for each effect left undrawn while `muting`: a page's before and after of one feature's particles (passes.ts). */
+  readonly muted: Uint8Array;
+  muting = false;
+  /** The last frame's eye, tier, ground and view, which a burst with no body is thinned by (`burst`). */
+  private eyeX = 0;
+  private eyeY = 0;
+  private eyeZ = 0;
+  private tier: Tier | null = null;
+  private hf: Heightfield | null = null;
+  private screen = 1;
+  /** A burst's own random numbers, seeded by `burst`. */
+  private seeded = 0;
+  /** The screen's fill the bodiless bursts of the last seconds were made for, falling away as they do. */
+  private promised = 0;
 
   /** `animOf` gives what a species of a kind plays, or null for one not drawn on a rig of its own. */
   constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array, animOf: (kind: number) => CreatureAnim | null, drawnGait: DrawnGait | null = null, drawnPose: ((id: number, kind: number, tick: number) => Solved | null) | null = null) {
@@ -134,11 +158,13 @@ export class Details {
     this.birth = reg.birthScale;
     this.boatKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "boat" ? 1 : 0);
     this.rotorKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "rotor" ? 1 : 0);
-    const effects = details?.effects ?? [];
+    // A pack made before an effect could glow says nothing of it.
+    const effects = (details?.effects ?? []).map((e) => (e.opacity === undefined ? { ...e, glow: 0, opacity: 1, thick: false, stain: false } : e));
     this.pictures = details?.pictures ?? [];
     this.treeDust = effects.findIndex(e => e.id.includes("dust") && e.colour !== "body" && e.pass === "blend");
     this.breakFirst = effects.length;
     this.effects = this.treeDust < 0 ? effects : effects.concat(breakEffects(this.pictures, effects[this.treeDust]!.pictures));
+    this.muted = new Uint8Array(this.effects.length);
     this.pool = new Pool(MAX_DETAILS);
     this.reg = reg;
     this.animOf = animOf;
@@ -198,6 +224,162 @@ export class Details {
     this.waiting.push({ h, answer: { effect, delay: 0, entry: { effect: index, from: "ground", at: "now", count: [count, count] } }, due, index: part, origin: { x, y, z, floor }, broke: rgb });
   }
 
+  /** The effect "<owner>/<name>" as `burst` takes it, or -1 where the pack has none. */
+  effectOf(id: string): number {
+    return this.effects.findIndex((e) => e.id === id);
+  }
+
+  /** The next of a burst's random numbers, 0 to 1 (mulberry32, as shared/rng.ts has it). */
+  private next(): number {
+    let t = (this.seeded = (this.seeded + 0x6d2b79f5) >>> 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  /**
+   * A burst of `effect` (`effectOf`) at a place, with no body and no occasion: a blast's smoke and dust, a launcher's
+   * backblast (render/blasts.ts). (nx, ny, nz) is the unit way out of what it is on: its particles' up, and the axis of a
+   * ring or a disc. `scale` sizes it: its particles, how far from the place they start, and how fast they go. `count` is
+   * how many are asked for, -1 for the effect's own; the tier's share, the distance and the screen's fill thin them as
+   * any burst's. `tint` is a colour word in place of the effect's own or the ground's, or -1, and `floor` the height
+   * they land on, NaN for the ground. `most` is the most of the screen's fill it may take, in screens, so that one part
+   * of a blast leaves room for the next. Every random number is from `seed`. Returns how many it made, and makes no object.
+   */
+  burst(effect: number, x: number, y: number, z: number, nx: number, ny: number, nz: number, seed: number, scale: number, count = -1, tint = -1, floor = Number.NaN, most = Infinity): number {
+    const e = this.effects[effect], tier = this.tier;
+    if (!e || !tier) return 0;
+    const d = Math.hypot(x - this.eyeX, y - this.eyeY, z - this.eyeZ);
+    if (d > e.reach * tier.details.reach) return 0;
+    this.seeded = (seed ^ Math.imul(effect + 1, 0x9e3779b1)) >>> 0;
+    const colour = this.colour;
+    if (tint >= 0) {
+      colour[0] = tint & 255;
+      colour[1] = (tint >>> 8) & 255;
+      colour[2] = (tint >>> 16) & 255;
+    } else if (e.colour === "ground") {
+      // The ground's own dust is thrown up from the ground, and there is none well over it or on water.
+      if (!this.hf) return 0;
+      const ground = floor === floor ? floor : this.hf.heightAt(x, z);
+      if (y - ground > GROUND_NEAR || !dustColour(this.hf, this.palette, groundAt(this.hf, x, ground, z), x, z, colour)) return 0;
+      y = ground + 0.15;
+    } else if (Array.isArray(e.colour)) {
+      colour[0] = e.colour[0];
+      colour[1] = e.colour[1];
+      colour[2] = e.colour[2];
+    } else colour[0] = colour[1] = colour[2] = 128;
+    let n = count >= 0 ? count : e.count[0] + Math.floor(this.next() * (e.count[1] - e.count[0] + 1));
+    n = n * tier.details.share * Math.min(1, BURST_NEAR / Math.max(d, 0.01));
+    n = n > 0 ? Math.max(1, Math.round(n)) : 0;
+    // A flash is gone in a few frames, and is not held against the screen's fill. The rest is, each particle for what
+    // it will cover where it goes: against what is seen now and what the bursts just made will grow to, whichever is more.
+    const held = e.pass === "blend" && e.life[1] >= FLASH_SECONDS;
+    let room = held ? Math.min(most, tier.details.fill - Math.max(this.fill, this.promised)) : Infinity;
+    const half = Math.min(most, 0.5 * tier.details.fill);
+    // What one covers through its life at a metre: its size as it is midway, not at its largest.
+    const big = e.size[1] * (1 + e.grow) * 0.5 * scale;
+    const area = (big * big * e.aspect * e.opacity) / this.screen;
+    const lies = e.face === "flat" || e.settle > 0;
+    // Seconds it goes before the air has stopped it.
+    const goes = Math.min(e.life[1], 1 / Math.max(e.drag, 0.25));
+    // Two ways across the way out.
+    let ax = nz, ay = 0, az = -nx;
+    if (Math.abs(ny) > 0.9) {
+      ax = 1;
+      az = 0;
+      ay = -nx / ny;
+    }
+    const al = Math.hypot(ax, ay, az);
+    ax /= al;
+    ay /= al;
+    az /= al;
+    const bx = ny * az - nz * ay, by = nz * ax - nx * az, bz = nx * ay - ny * ax;
+    const pool = this.pool;
+    let made = 0, spent = 0;
+    for (let k = 0; k < n; k++) {
+      // Where it starts, and the way across it goes; the rest of its speed is along the way out.
+      let sx = 0, sy = 0, sz = 0, c: number, w: number;
+      if (e.shape === "ring" || e.shape === "disc") {
+        const turn = ((k + this.next() * 0.6) / n) * Math.PI * 2;
+        const r = e.radius * scale * (e.shape === "disc" ? Math.sqrt(this.next()) : 0.85 + this.next() * 0.3);
+        c = Math.cos(turn);
+        w = Math.sin(turn);
+        sx = (ax * c + bx * w) * r;
+        sy = (ay * c + by * w) * r;
+        sz = (az * c + bz * w) * r;
+      } else {
+        const u = this.next() * 2 - 1, a = this.next() * Math.PI * 2, ring = Math.sqrt(1 - u * u);
+        c = Math.cos(a);
+        w = Math.sin(a);
+        if (e.shape === "sphere") {
+          const r = e.radius * scale * Math.cbrt(this.next());
+          sx = (ax * c * ring + nx * Math.abs(u) + bx * w * ring) * r;
+          sy = (ay * c * ring + ny * Math.abs(u) + by * w * ring) * r;
+          sz = (az * c * ring + nz * Math.abs(u) + bz * w * ring) * r;
+        }
+      }
+      const speed = (e.speed[0] + this.next() * (e.speed[1] - e.speed[0])) * scale, across = (1 - e.up) * speed, out = e.up * speed;
+      const vx = (ax * c + bx * w) * across + nx * out, vy = (ay * c + by * w) * across + ny * out, vz = (az * c + bz * w) * across + nz * out;
+      // Every number of it is drawn whether it is made or not, so one left out changes none of the others.
+      const ends = e.life[0] + this.next() * (e.life[1] - e.life[0]);
+      const size = (e.size[0] + this.next() * (e.size[1] - e.size[0])) * scale;
+      const heading = this.next() * Math.PI * 2, pitch = (this.next() - 0.5) * 0.8, phase = this.next() * Math.PI * 2, swayTo = this.next() * Math.PI * 2;
+      const picture = this.pictures[e.pictures[Math.floor(this.next() * e.pictures.length)]!]!;
+      const shade = 1 + e.vary * (this.next() * 2 - 1);
+      const puff = Math.floor(this.next() * 256);
+      let share = 0;
+      if (held) {
+        // The nearest it comes to the eye: where it starts, midway, or where it stops.
+        const fx = x + sx - this.eyeX, fy = y + sy - this.eyeY, fz = z + sz - this.eyeZ;
+        const near = Math.max(1, Math.min(Math.hypot(fx, fy, fz), Math.hypot(fx + vx * goes * 0.5, fy + vy * goes * 0.5, fz + vz * goes * 0.5), Math.hypot(fx + vx * goes, fy + vy * goes, fz + vz * goes)));
+        // What lies flat is seen as thin as the eye is low over it, and no card covers more than the screen.
+        share = Math.min(1, (area * (lies ? Math.max(0.1, Math.abs(fy) / near) : 1)) / (near * near));
+        // What fits, and one at the least while half the screen's fill is free; a screen already full takes none.
+        if (share > room && (made > 0 || room < half)) {
+          this.thinned++;
+          continue;
+        }
+      }
+      const i = pool.count < tier.details.pool ? pool.take() : -1;
+      if (i < 0) break;
+      made++;
+      room -= share;
+      spent += share;
+      pool.x[i] = x + sx;
+      pool.y[i] = y + sy;
+      pool.z[i] = z + sz;
+      pool.vx[i] = vx;
+      pool.vy[i] = vy;
+      pool.vz[i] = vz;
+      pool.age[i] = 0;
+      pool.end[i] = ends;
+      pool.landed[i] = -1;
+      pool.plane[i] = floor;
+      pool.size[i] = size;
+      pool.heading[i] = heading;
+      pool.pitch[i] = pitch;
+      pool.phase[i] = phase;
+      pool.swayTo[i] = swayTo;
+      pool.widthScale[i] = 1;
+      pool.effect[i] = effect;
+      this.looks(i, e, picture);
+      pool.colourA[i] = pool.colourB[i] = (shaded(colour[0]!, shade) | (shaded(colour[1]!, shade) << 8) | (shaded(colour[2]!, shade) << 16) | (255 << 24)) >>> 0;
+      // A thick puff's second colour is its seed.
+      if (e.thick) pool.colourB[i] = puff;
+    }
+    this.fill += spent;
+    this.promised += spent;
+    return made;
+  }
+
+  /** Gives particle `i` of effect `e` its picture's cell, shape and grey, or what light with no surface has in their place. */
+  private looks(i: number, e: DetailEffect, picture: DetailPicture): void {
+    const pool = this.pool;
+    pool.cell[i] = picture.cell;
+    pool.flags[i] = e.glow > 0 ? DETAIL_GLOW : e.thick ? DETAIL_SMOKE : e.stain ? DETAIL_TIRE : picture.flat | (e.lit ? DETAIL_LIT : 0) | (e.face === "camera" ? DETAIL_PUFF : 0);
+    pool.grey[i] = e.thick ? 255 : Math.max(1, Math.min(255, Math.round(e.glow > 0 ? e.glow * GLOW_STEPS : picture.grey * 255)));
+  }
+
   /** What a species of `kind` answers, as it plays `anim`. */
   private bookOf(kind: number, anim: CreatureAnim): Book {
     const sheet = this.sheets[kind]!;
@@ -216,6 +398,13 @@ export class Details {
     const tick = remote ? remote.tick : nowMs * (TICK_RATE / 1000);
     const dt = this.last === this.last ? Math.min(LONGEST_STEP, Math.max(0, (tick - this.last) / TICK_RATE)) : 0;
     this.last = tick;
+    this.promised *= Math.exp(-dt / PROMISE_SECONDS);
+    this.eyeX = cam.x;
+    this.eyeY = cam.y;
+    this.eyeZ = cam.z;
+    this.tier = tier;
+    this.hf = hf;
+    this.screen = 4 * Math.tan(cam.fovY / 2) ** 2 * cam.aspect;
     if (this.effects.length === 0) return 0;
     // A species whose clips have come, on a rig made anew with them, plays them from now, and its moments are read from them.
     for (const kind of this.booked) {
@@ -273,7 +462,7 @@ export class Details {
     }
     let fill = this.fill;
     this.posed = -1;
-    for (const w of due) fill += this.burst(w, remote, hf, tier, cam, tick, fill, world);
+    for (const w of due) fill += this.answer(w, remote, hf, tier, cam, tick, fill, world);
     return this.write(p, cam, hf, reserve);
   }
 
@@ -397,7 +586,7 @@ export class Details {
   }
 
   /** Makes one burst. Returns the share of the screen it is expected to cover, if it is see-through. */
-  private burst(w: Waiting, remote: RemoteSample | null, hf: Heightfield, tier: Tier, cam: Camera, tick: number, fill: number, collision?: CollisionWorld): number {
+  private answer(w: Waiting, remote: RemoteSample | null, hf: Heightfield, tier: Tier, cam: Camera, tick: number, fill: number, collision?: CollisionWorld): number {
     const { h, answer } = w;
     const e = answer.effect;
     const book = this.books[h.kind]!;
@@ -638,9 +827,7 @@ export class Details {
       }
       pool.effect[i] = answer.entry.effect;
       const picture = this.pictures[e.pictures[Math.floor(rng.float() * e.pictures.length)]!]!;
-      pool.cell[i] = picture.cell;
-      pool.flags[i] = picture.flat | (e.lit ? DETAIL_LIT : 0) | (e.face === "camera" ? DETAIL_PUFF : 0);
-      pool.grey[i] = Math.max(1, Math.min(255, Math.round(picture.grey * 255)));
+      this.looks(i, e, picture);
       if (w.wash && h.occasion === "boat_wake" && e.face === "flat") {
         pool.flags[i] = DETAIL_WAKE;
         pool.grey[i] = Math.round(255 * rng.float());
@@ -688,19 +875,20 @@ export class Details {
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < pool.count; i++) {
         const e = this.effects[pool.effect[i]!]!;
-        if ((e.pass === "blend") !== (pass === 1)) continue;
+        if ((e.pass === "blend") !== (pass === 1) || (this.muting && this.muted[pool.effect[i]!] === 1)) continue;
         const half = pool.size[i]! * (e.grow === 1 ? 1 : 1 + (e.grow - 1) * ease(pool.age[i]! / pool.end[i]!)) * 0.5;
         const x = pool.x[i]! - cx;
         const y = pool.y[i]! - cy;
         const z = pool.z[i]! - cz;
         if (!cam.boxVisible(x - half, y - half, z - half, x + half, y + half, z + half)) continue;
         const d = Math.hypot(x, y, z);
-        let shows = pool.shows(i, e);
+        let shows = pool.shows(i, e) * e.opacity;
         if (pass === 1) {
           shows *= Math.min(1, Math.max(0, (d - 0.3) / EYE_FADE));
           if (shows <= 0) continue;
           const area = (4 * half * half * e.aspect * pool.widthScale[i]!) / (Math.max(d, 0.5) ** 2 * 4 * t * t * cam.aspect);
-          fill += area * shows;
+          // What lies flat is seen as thin as the eye is low over it, and no card covers more than the screen.
+          fill += Math.min(1, area * (e.face === "flat" || pool.landed[i]! >= 0 ? Math.max(0.1, Math.abs(y) / Math.max(d, 0.5)) : 1)) * shows;
         }
         const n = cut + blended;
         if (n >= MAX_DETAILS - reserve) {
@@ -713,7 +901,32 @@ export class Details {
         out[o + DETAIL.middle + 2] = z;
         const width = half * e.aspect * pool.widthScale[i]!;
         const lying = pool.landed[i]! >= 0;
-        if (e.face === "camera") {
+        if (e.face === "streak" && !lying) {
+          // Along the way it flies, and across that as the eye sees it.
+          let ax = pool.vx[i]!, ay = pool.vy[i]!, az = pool.vz[i]!;
+          const al = Math.hypot(ax, ay, az);
+          if (al < 1e-3) {
+            ax = 0;
+            ay = 1;
+            az = 0;
+          } else {
+            ax /= al;
+            ay /= al;
+            az /= al;
+          }
+          let bx = y * az - z * ay, by = z * ax - x * az, bz = x * ay - y * ax;
+          const bl = Math.hypot(bx, by, bz);
+          if (bl < 1e-6) {
+            bx = rx;
+            by = 0;
+            bz = rz;
+          } else {
+            bx /= bl;
+            by /= bl;
+            bz /= bl;
+          }
+          sides(out, o, ax * half, ay * half, az * half, bx * width, by * width, bz * width);
+        } else if (e.face === "camera") {
           const a = pool.heading[i]! + e.turn * pool.age[i]!;
           const ca = Math.cos(a), sa = Math.sin(a);
           sides(out, o, (ux * ca - rx * sa) * half, uy * ca * half, (uz * ca - rz * sa) * half, (rx * ca + ux * sa) * width, uy * sa * width, (rz * ca + uz * sa) * width);
@@ -746,6 +959,7 @@ export class Details {
         words[o + DETAIL.colourA] = pool.colourA[i]!;
         words[o + DETAIL.colourB] = pool.colourB[i]!;
         words[o + DETAIL.misc] = (pool.cell[i]! | (pool.flags[i]! << 8) | (Math.round(shows * 255) << 16) | (pool.grey[i]! << 24)) >>> 0;
+        this.tagged[n] = p.detailTag[n] = this.muted[pool.effect[i]!]!;
         if (pass === 0) cut++;
         else {
           order[blended] = (0x7ffff - Math.min(0x7ffff, Math.floor(d * 64))) * MAX_DETAILS + n;
@@ -762,9 +976,10 @@ export class Details {
         const src = ((order[k]! % MAX_DETAILS) - cut) * DETAIL_FLOATS;
         const dst = (cut + k) * DETAIL_FLOATS;
         for (let f = 0; f < DETAIL_FLOATS; f++) words[dst + f] = from[src + f]!;
+        p.detailTag[cut + k] = this.tagged[order[k]! % MAX_DETAILS]!;
       }
     }
-    p.detailCount = cut + blended;
+    p.detailCount = p.detailOwn = cut + blended;
     p.detailFill = this.fill = fill;
     return cut;
   }
@@ -778,6 +993,11 @@ function sides(out: Float32Array, o: number, ax: number, ay: number, az: number,
   out[o + DETAIL.across] = bx;
   out[o + DETAIL.across + 1] = by;
   out[o + DETAIL.across + 2] = bz;
+}
+
+/** A colour's byte `v`, shaded. */
+function shaded(v: number, shade: number): number {
+  return Math.max(0, Math.min(255, Math.round(v * shade)));
 }
 
 /** Fast at first and slower as it ends, 0 to 1. */

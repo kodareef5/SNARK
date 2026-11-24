@@ -34,9 +34,10 @@ const eyeBehind = [0, 0, 0], energy = [0, 0, 0];
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
-import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
+import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
+import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
-import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SMOKE, GLOW_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -1179,6 +1180,7 @@ export class Rasterizer {
     [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
     this.swap = p.drawSwap[d]!;
     if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) return this.details(p, d);
+    if ((p.drawFlags[d]! & DRAW_FIRE) !== 0) return this.fire(p, d);
     if ((p.drawFlags[d]! & DRAW_PULLED) !== 0) return this.pulled(p, d);
     if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) return this.textured(p, d);
     const meshIndex = p.drawMesh[d]!;
@@ -1276,6 +1278,15 @@ export class Rasterizer {
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0, fixture);
       }
     }
+  }
+
+  /** A DRAW_FIRE draw: each instance as the fire program draws it (client/core/render/fire-light.ts), as a display shows its light. */
+  private fire(p: FramePacket, d: number): void {
+    const lod = this.decode(p.drawMesh[d]!, p.drawLod[d]!, p.drawSlot[d]!);
+    const target: FireTarget = { width: this.width, height: this.height, color: this.color, depth: this.depth, matrix: this.matrix, near: this.nearClip, far: this.farClip, from: this.from, stored: (z) => this.stored(z) };
+    const look: FireLook = { noise: p.tier.bursts.noise, target: false, env: { lit: p.lit, frame: p.frame, sun: p.sun, light: p.light } };
+    const fx = p.drawEffect, o = d * 4;
+    for (let k = 0; k < p.drawInstances[d]!; k++) this.fragments += drawFire(target, lod.positions, lod.colors, lod.indices, fx[o]!, p.transient, (p.drawFirst[d]! + k) * INSTANCE_BYTES, fx[o + 1]!, look);
   }
 
   /**
@@ -1378,6 +1389,16 @@ export class Rasterizer {
               for (let c = 0; c < 3; c++) this.color[at * 4 + c]! += (rgb[c]! - this.color[at * 4 + c]!) * alpha;
               continue;
             }
+            if (flags === DETAIL_GLOW) {
+              // Light with no surface: added over what is there, and hiding none of it.
+              poolOf(cx, cy, shape);
+              const alpha = shape[0]! * shows;
+              for (let c = 0; c < 3; c++) {
+                const tint = ((a >>> (c * 8)) & 255) / 255;
+                this.color[at * 4 + c]! += 255 * (1 - Math.exp(-(p.lit ? srgbToLinear(tint) : tint) * grey * (255 / GLOW_STEPS))) * alpha;
+              }
+              continue;
+            }
             if (flags === DETAIL_TIRE) {
               const transmission = 1 - tireShadow(cx,cy)*shows;
               for (let c=0; c<3; c++) this.color[at*4+c]! *= transmission;
@@ -1400,6 +1421,7 @@ export class Rasterizer {
             }
             if ((flags & (DETAIL_ROTOR | DETAIL_LAMP | DETAIL_POOL)) !== 0) {
               if (flags === DETAIL_WAKE) wakeFoam(cx, cy, grey, shape);
+              else if (flags === DETAIL_SMOKE) smokeOf(cx, cy, (b & 255) / 255, shape);
               else if ((flags & DETAIL_POOL) !== 0) (flags & 7) === (DETAIL_WIRE & 7) ? wireOf(cy, shape) : poolOf(cx, cy, shape);
               else if ((flags & DETAIL_LAMP) !== 0) lampOf(cx, cy, shape);
               else rotorOf(cx, cy, grey, shape);

@@ -190,10 +190,10 @@ export class Pool {
     lying[o + 5] = nx * ay - ny * ax;
   }
 
-  /** How much of particle `i` shows, 0 to 1: coming in when it is see-through, and going over its effect's fade. */
+  /** How much of particle `i` shows, 0 to 1: coming in when it is see-through and no light, and going over its effect's fade. */
   shows(i: number, e: DetailEffect): number {
     const age = this.age[i]!;
     const out = e.fade > 0 ? Math.min(1, (this.end[i]! - age) / e.fade) : 1;
-    return e.pass === "blend" ? Math.min(out, age / FADE_IN) : out;
+    return e.pass === "blend" && !(e.glow > 0) ? Math.min(out, age / FADE_IN) : out;
   }
 }

@@ -8,6 +8,7 @@ import { DMG_EXPLOSIVE } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
 import { HIT_NONE, castWorld, rayHit } from "../shared/world/ray.ts";
+import { SURFACE_AIR, SURFACE_BODY, SURFACE_GROUND, SURFACE_VEHICLE, SURFACE_WATER } from "../shared/net/rockets.ts";
 import { bodyAlong } from "../shared/world/water.ts";
 import { SURVEY_DRONE_ART } from "../content/vehicles/air-freight-art.ts";
 import type { Frame } from "./air-cargo-space.ts";
@@ -177,7 +178,11 @@ export class AirFlights {
       droneMove(f, travel, distance);
       if (f.x < 0 || f.z < 0 || f.x >= world.hf.sizeX || f.z >= world.hf.sizeZ) { this.finish(c, "Drone left the map"); continue; }
       this.place(f, e, dx * distance / TICK_DT, dy * distance / TICK_DT, dz * distance / TICK_DT);
-      if (hit) { this.payload(c, f, body); continue; }
+      if (hit) {
+        const vehicle = body >= 0 && !!world.reg.vehicle[world.ents.kind[body]!];
+        this.payload(c, f, body, body >= 0 ? (vehicle ? SURFACE_VEHICLE : SURFACE_BODY) : solidAt <= waterAt ? SURFACE_GROUND : SURFACE_WATER);
+        continue;
+      }
       const chunk = chunkAt(world.dims, f.x, f.z);
       if (chunk !== f.chunk) {
         this.watch(chunk, 1);
@@ -194,11 +199,12 @@ export class AirFlights {
     return RESULT_OK;
   }
 
-  private payload(c: Client, f: Flight, direct: number): void {
+  /** The drone goes off where it is: on `direct`, the body it flew into, or -1, and on `surface` (SURFACE_), the air when set off by hand. */
+  private payload(c: Client, f: Flight, direct: number, surface = SURFACE_AIR): void {
     const { combat, records, projectiles, world } = this.ctx;
     this.finish(c, "Drone payload spent");
     const by = records.byPid.get(c.pid) ?? null;
-    projectiles.boom(f.x, f.y, f.z, f.radius, by?.name, c);
+    projectiles.boom(f.x, f.y, f.z, f.radius, by?.name, c, 0, surface);
     combat.blast({
       by, item: world.reg.index.get("core:grenade") ?? 0, base: f.damage, type: DMG_EXPLOSIVE,
       x: f.x, z: f.z, attack: 1, draw: 1, quality: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0,

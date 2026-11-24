@@ -356,7 +356,7 @@ test("a survivor riding is carried, not walking: no steps, jumps or landings of 
 
 /** A combat event as the session reads one off the wire. */
 function combatEvent(kind: number, more: Partial<CombatEvent> = {}): CombatEvent {
-  return { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0, ...more };
+  return { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0, id: 0, own: false, surface: 0, made: 0, ...more };
 }
 
 /** The player's state as view.ts makes it, standing at (380, 380) with full vitals. */

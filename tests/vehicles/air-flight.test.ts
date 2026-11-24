@@ -9,6 +9,7 @@ import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { EVENT_BLAST, RESULT_OK } from "../../shared/net/protocol.ts";
+import { SURFACE_GROUND } from "../../shared/net/rockets.ts";
 import { AIR_ACTION, emptyAirSupport } from "../../shared/sim/air-support.ts";
 import { BTN_AIR_REMOTE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { InputBuffer } from "../../shared/net/protocol.ts";
@@ -209,7 +210,9 @@ test("the flight stops at the ground and its payload applies once", () => {
     expect(pilot.airSupport.notice).toContain("payload");
     expect(hits).toBe(1);
     const burst = pilot.events.find(event => event.kind === EVENT_BLAST)!;
-    expect(Math.abs(burst.y - h.world.hf.heightAt(burst.x, burst.z))).toBeLessThan(.06);
+    // Its place is told to a 32nd of a metre up. It went off on the ground, with no item and no round of its own.
+    expect(Math.abs(burst.y - h.world.hf.heightAt(burst.x, burst.z))).toBeLessThan(.08);
+    expect([burst.surface, burst.item, burst.id]).toEqual([SURFACE_GROUND, 0, 0]);
     h.run(1000);
     expect(hits).toBe(1);
     expect(pilot.airSupport.pods.find(p => p.id === pod)!.slots & (1 << 5)).toBe(0);

@@ -11,6 +11,7 @@ import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { AnimState, CUE_DOWN, bodySeed, fallFrameChanged } from "../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { RIDER_TARGET_FLOATS } from "../shared/anim/rider-controls.ts";
+import { wield } from "../shared/anim/wield.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
 import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../shared/anim/occupant.ts";
 import { SEAT_FLOATS, riderTargets, saddleSeat, seatOn } from "../shared/anim/seat.ts";
@@ -28,7 +29,7 @@ import type { CreatureAttackDef, CreatureModeDef, SpeciesDef } from "../shared/c
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_IMPACT, EVENT_KILL, IMPACTS_PER_TICK, IMPACT_BLAST, IMPACT_FULL, IMPACT_HEARD, IMPACT_MELEE, IMPACT_SHOT, IMPACT_VEHICLE, PASSENGER_VIEW_DELAY, SESSION_ALIVE, S_EVENT } from "../shared/net/protocol.ts";
 import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DAMAGE_TYPES, DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
-import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_HELD, F_PROP, GEAR_HELD } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, QUALITY_MUL } from "../shared/sim/items.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
@@ -261,6 +262,11 @@ export class Combat {
   private readonly inBlast = new Found(256);
   private readonly found: number[] = [];
   private readonly share: number[] = [];
+  /** While a blast lands on what is built, its attacker's hit reports are held to go as one: how many, their damage, and whether any piece is gone. */
+  private blasting = false;
+  private blastHits = 0;
+  private blastDamage = 0;
+  private blastKilled = false;
   /** Set by `killed`, which the hurt in progress may call. */
   private died = false;
   /**
@@ -986,6 +992,8 @@ export class Combat {
         // A survivor's emote as it is now: emotes change seldom beside the ticks a hit looks back. Its reaction as it was then.
         st.unpack(past.anim, past.cue, world.ents.emote[i]!, past.react, past.stride);
         st.seed = bodySeed(i);
+        // What it holds as it is now, as a watcher draws it: a launcher is on the shoulder.
+        wield(st, reg, world.ents.gears.get(i)?.[GEAR_HELD] ?? 0);
         const seated = this.seated(i, past, tick);
         const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach, this.contactPadding)
           // A ragdoll lies as a watcher draws it: about where the body is now, posed as at the last tick it stepped to.
@@ -1303,7 +1311,7 @@ export class Combat {
 
   /** `src`, times `share`, lands on the structure `ref` at (x, y, z). Returns the damage done. */
   hitStructure(src: Source, ref: number, x: number, y: number, z: number, share = 1): number {
-    const { world, buffs, game, rules } = this.ctx;
+    const { world, buffs, rules } = this.ctx;
     const structs = world.structs;
     const t = structs.chunks[Math.floor(ref / 65536)];
     const slot = ref & 0xffff;
@@ -1356,20 +1364,28 @@ export class Combat {
     this.lastStructure.ref = ref;
     this.lastStructure.damage = done;
     this.lastStructure.left = left;
-    const ac = src.by ? this.clientOf(src.by.pid) ?? this.controllingRider(src.by) : null;
-    if (ac) {
-      const w = game.begin(S_EVENT);
-      w.u8(EVENT_HIT);
-      w.f32(x);
-      w.f32(y);
-      w.f32(z);
-      w.bits(ZONE_NONE, 4);
-      w.u16(Math.min(65535, Math.max(1, Math.round(done))));
-      w.bool(left === 0);
-      w.bool(false);
-      game.endOwn(ac);
-    }
+    if (this.blasting) {
+      this.blastHits++;
+      this.blastDamage += done;
+      if (left === 0) this.blastKilled = true;
+    } else this.builtHit(src.by, x, y, z, done, left === 0);
     return done;
+  }
+
+  /** Tells `by`'s client that it did `done` to what is built at (x, y, z), and whether that destroyed any of it (EVENT_HIT). */
+  private builtHit(by: EntityRecord | null, x: number, y: number, z: number, done: number, gone: boolean): void {
+    const ac = by ? this.clientOf(by.pid) ?? this.controllingRider(by) : null;
+    if (!ac) return;
+    const w = this.ctx.game.begin(S_EVENT);
+    w.u8(EVENT_HIT);
+    w.f32(x);
+    w.f32(y);
+    w.f32(z);
+    w.bits(ZONE_NONE, 4);
+    w.u16(Math.min(65535, Math.max(1, Math.round(done))));
+    w.bool(gone);
+    w.bool(false);
+    this.ctx.game.endOwn(ac);
   }
 
   /**
@@ -1377,7 +1393,8 @@ export class Combat {
    * `src`, in full within a metre and fading to nothing at the edge. `direct` is a body a round that went off struck straight
    * on, which takes the blast in full wherever on it the round met it (weapons-plan.md, M8), or -1. A structure is shielded
    * by the storeys between: what it stands above or below the blast past STOREY_CLEAR counts twice. What the blast destroys
-   * goes together, as one batch a chunk that began at its centre.
+   * goes together, as one batch a chunk that began at its centre. Its attacker is sent one hit report for all that is built:
+   * at its centre, the damage summed.
    */
   blast(src: Source, x: number, y: number, z: number, radius: number, direct = -1): void {
     const world = this.ctx.world;
@@ -1460,6 +1477,9 @@ export class Combat {
       share.push(fade(far));
     }
     this.city.gather();
+    this.blasting = true;
+    this.blastHits = this.blastDamage = 0;
+    this.blastKilled = false;
     for (let k = 0; k < found.length; k++) {
       const ref = found[k]!;
       const t = structs.chunks[Math.floor(ref / 65536)]!;
@@ -1468,7 +1488,9 @@ export class Combat {
       const city = t.owner[slot] === 0 && slot < t.mapped;
       this.hitStructure(src, ref, city ? x : t.x[slot]!, city ? y : t.y[slot]!, city ? z : t.z[slot]!, share[k]!);
     }
+    this.blasting = false;
     this.city.settle(x, y, z, radius);
+    if (this.blastHits > 0) this.builtHit(src.by, x, y, z, this.blastDamage, this.blastKilled);
   }
 
   /** The blow being landed, for whoever is told of a death it causes. `victim` is 0 when none is. */

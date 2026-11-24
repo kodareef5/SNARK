@@ -3,14 +3,16 @@
 // its picture comes from the details atlas on unit 15, which is bound for these draws alone, and is lit as a rough card
 // two-sided toward the eye, or as a puff of something, in the sun's shadow and the air. Low poly reads no picture: it
 // draws each particle's flat shape, lit as FLAT lights and fogged. A cut-out draw takes coverage from alpha and drops
-// pixels by the far fade's ordered pattern as a particle goes; a see-through one fades near the ground under it.
+// pixels by the far fade's ordered pattern as a particle goes; a see-through one fades near the ground under it. What a
+// see-through draw gives is its colour weighed by how much of it shows, which is how the card blends it (gl.ts `set`):
+// so light with no surface (DETAIL_GLOW) is added over what is behind it, in the same draw as the dust that hides it.
 
 import { STREET_GLSL } from "./street-finish.ts";
 import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
 import { DIGITS_GLSL } from "./digits.ts";
-import { DETAIL_DIGITS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
+import { DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SMOKE, GLOW_STEPS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
 import { POOL_ACROSS, POOL_UP, poolShadeGlsl } from "./lamp.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
@@ -102,6 +104,9 @@ vec3 facing(vec3 v) {
   if ((vFlags & ${DETAIL_PUFF}u) != 0u) return normalize(vec3(0.0, 1.0, 0.0) + 0.6 * v);
   return dot(vNormal, v) < 0.0 ? -vNormal : vNormal;
 }
+vec4 weighed(vec3 c, float a) {
+  return vec4(uBlend > 0.5 ? c * a : c, a);
+}
 `;
 
 const INS = `in vec3 vRel;
@@ -149,8 +154,15 @@ vec3 wakeOf(vec2 c, float seed) {
   float fringe=(1.-smoothstep(.02,.18,abs(spine-.34)))*smoothstep(-.5,.7,sin(7.*c.y-phase));
   return vec3(edge*(veil*(.12+.73*holes)+.36*fringe),0.,.90+.10*holes);
 }
+vec3 smokeOf(vec2 c, float seed) {
+  float s = 6.2831853 * seed;
+  float r = length(c + 0.17 * vec2(sin(3.9 * c.y + s), sin(3.3 * c.x + 1.7 * s)));
+  float lump = 0.5 + 0.5 * sin(5.3 * c.x + 2.1 * s) * sin(4.7 * c.y - 1.3 * s);
+  return vec3(1.0 - smoothstep(0.25 + 0.2 * lump, 0.82, r), 0.0, 0.72 + 0.28 * lump);
+}
 vec3 pooled(vec2 c) {
   if (vFlags == ${DETAIL_WAKE}u) return wakeOf(c,vGrey);
+  if (vFlags == ${DETAIL_SMOKE}u) return smokeOf(c,vB.r);
   return (vFlags & 7u) == ${DETAIL_WIRE & 7}u ? wireOf(c) : poolOf(c);
 }
 `;
@@ -165,7 +177,11 @@ ${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}void main
   if (vFlags == ${DETAIL_DIGITS}u) {
     vec3 g = digitsOf(vCorner);
     if (g.x * vShows < 0.004) discard;
-    o = vec4(mix(DIGITS_OUTLINE, vA * g.z, g.y), g.x * vShows);
+    o = weighed(mix(DIGITS_OUTLINE, vA * g.z, g.y), g.x * vShows);
+    return;
+  }
+  if (vFlags == ${DETAIL_GLOW}u) {
+    o = vec4((1.0 - exp(-vA * (vGrey * ${f(255 / GLOW_STEPS)}))) * covers(poolOf(vCorner).x), 0.0);
     return;
   }
   vec3 s = (vFlags & ${DETAIL_POOL}u) != 0u ? pooled(vCorner) : (vFlags & ${DETAIL_LAMP}u) != 0u ? lampOf(vCorner)
@@ -176,7 +192,7 @@ ${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}void main
   float light = (vFlags & ${DETAIL_LIT}u) != 0u ? (${f(AMBIENT)} + ${f(DIFFUSE)} * max(dot(n, uSun), 0.0)) * uLight : 1.0;
   float d = length(vRel);
   float fog = clamp((d - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-  o = vec4(mix(mix(vA, vB, s.y) * s.z * light, uSky, fog * fog), a);
+  o = weighed(mix(mix(vA, vB, s.y) * s.z * light, uSky, fog * fog), a);
 }`;
 
 export const DETAIL_LIT_FRAGMENT = `#version 300 es
@@ -192,7 +208,17 @@ void main() {
   if (vFlags == ${DETAIL_DIGITS}u) {
     vec3 g = digitsOf(vCorner);
     if (g.x * vShows < 0.004) discard;
-    o = vec4(shown(mix(linear(DIGITS_OUTLINE), linear(vA) * g.z, g.y) / fSunColor.w, vRel), g.x * vShows);
+    o = weighed(shown(mix(linear(DIGITS_OUTLINE), linear(vA) * g.z, g.y) / fSunColor.w, vRel), g.x * vShows);
+    return;
+  }
+  if (vFlags == ${DETAIL_GLOW}u) {
+    // Light with no surface, as bright as its grey says, as the finish takes it or as a display shows it.
+    vec3 e = linear(vA) * (vGrey * ${f(255 / GLOW_STEPS)});
+#ifdef LIGHT_TARGET
+    o = vec4(e * covers(poolOf(vCorner).x), 0.0);
+#else
+    o = vec4((1.0 - exp(-e)) * covers(poolOf(vCorner).x), 0.0);
+#endif
     return;
   }
   if (vFlags == ${DETAIL_TIRE}u) {
@@ -210,7 +236,7 @@ void main() {
     vec3 ray = reflect(-eye,vNormal);
     vec3 mirror = streetMirror(skyFrom(ray),ray,vRel,0.12+0.06*vGrey,1.0);
     vec3 smoked = vec3(0.033,0.066,0.071)*skyLight(vec3(0.0,1.0,0.0));
-    o = vec4(shown(mix(smoked,mirror,reflected/alpha),vRel),alpha*vShows);
+    o = weighed(shown(mix(smoked,mirror,reflected/alpha),vRel),alpha*vShows);
     return;
   }
   bool rotor = (vFlags & ${DETAIL_ROTOR}u) != 0u;
@@ -227,7 +253,7 @@ void main() {
   vec3 n = facing(v);
   vec3 albedo = linear(vec3(t.r)) * mix(mix(linear(vA), linear(vB), t.g) / (rotor || vFlags == ${DETAIL_WAKE}u ? 1.0 : vGrey), vec3(1.0), t.b);
   vec3 light = (vFlags & ${DETAIL_LIT}u) != 0u ? lit(albedo, vec3(1.0, 1.0, 0.0), n, v, vec3(0.0), sunShadow(vRel, n)) : albedo / fSunColor.w;
-  o = vec4(shown(light, vRel), a);
+  o = weighed(shown(light, vRel), a);
 }`;
 
 /** Twin of the street lamp's soft disc in both shader tiers. */
@@ -253,6 +279,20 @@ export function wakeFoam(x: number, y: number, seed: number, out: Float64Array |
   const fringe=(1-smooth(.02,.18,Math.abs(spine-.34)))*smooth(-.5,.7,Math.sin(7*y-phase));
   out[0] = edge*(veil*(.12+.73*holes)+.36*fringe);
   out[1] = 0; out[2] = .90+.10*holes;
+}
+
+/**
+ * A thick puff of smoke with no picture, at corner (x, y) of its card: a soft disc whose outline is bent by its seed, so
+ * no two are alike and none shows its card, mottled darker in its creases. Twin of smokeOf in the detail shaders.
+ */
+export function smokeOf(x: number, y: number, seed: number, out: Float64Array | number[]): void {
+  const s = 6.2831853 * seed;
+  const r = Math.hypot(x + 0.17 * Math.sin(3.9 * y + s), y + 0.17 * Math.sin(3.3 * x + 1.7 * s));
+  const lump = 0.5 + 0.5 * Math.sin(5.3 * x + 2.1 * s) * Math.sin(4.7 * y - 1.3 * s);
+  const from = 0.25 + 0.2 * lump, t = Math.min(1, Math.max(0, (r - from) / (0.82 - from)));
+  out[0] = 1 - t * t * (3 - 2 * t);
+  out[1] = 0;
+  out[2] = 0.72 + 0.28 * lump;
 }
 
 /** Twin of a wire's width in both shader tiers: `y` across it. */

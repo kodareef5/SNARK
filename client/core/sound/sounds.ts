@@ -125,6 +125,8 @@ interface Looping {
   y: number;
   z: number;
   flat: boolean;
+  /** Milliseconds it takes to fade in or out. */
+  fade: number;
 }
 
 export class Sounds {
@@ -160,7 +162,7 @@ export class Sounds {
   private readonly crowd = new Map<number, number>();
   private readonly loops = new Map<number, Looping>();
   /** What the supply drops are heard by, and the capsule's number among the owners. */
-  private readonly airLoop = (id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean): void => this.loop(id, owner, key, x, y, z, level, on, flat);
+  private readonly airLoop = (id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean, fadeMs?: number): void => this.loop(id, owner, key, x, y, z, level, on, flat, fadeMs);
   private readonly airSounds = new AirSounds();
   private readonly helicopter: number;
   private readonly supply = new SupplySounds();
@@ -287,7 +289,7 @@ export class Sounds {
       if (!this.early) this.pinVoice(view.own.female);
       if (view.own.alive) this.actions.ahead(view.own, this.ui, this.survivor, this.ahead);
       this.bodies.update(dt, remote, hf, ear.x, ear.y, ear.z, view.ownId, view.body, view.own.female, this.survivor, this.isSurvivor, this.hear);
-      this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
+      this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true), this.airLoop);
       this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true), view.turned ?? false, view.body && view.body.glide !== 0 ? Math.hypot(view.body.vx, view.body.vy, view.body.vz) : 0);
     }
     if (view?.airSupport) this.airSounds.update(view.airSupport, this.helicopter, this.capsule, this.hear, this.airLoop, ear);
@@ -317,9 +319,9 @@ export class Sounds {
 
   /**
    * Keeps a looping sound `id` playing while it is asked for each frame with `on`, fading in to `level`; one not asked
-   * for, or asked for with `on` false, fades out and stops.
+   * for, or asked for with `on` false, fades out and stops. `fadeMs` is how long its fades take, for one that must be quick.
    */
-  loop(id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean): void {
+  loop(id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean, fadeMs = FADE_MS): void {
     let l = this.loops.get(id);
     if (!on) {
       if (l) l.target = 0;
@@ -336,7 +338,7 @@ export class Sounds {
     this.library.want(s, flat ? 5 : this.library.sounds[s]!.range / Math.max(1, d));
     if (!l || l.sound !== s) {
       if (l && l.serial !== 0) this.mixer.end(l.serial, this.packet);
-      this.loops.set(id, (l = { owner, key, sound: s, serial: 0, level: 0, target: level, x, y, z, flat }));
+      this.loops.set(id, (l = { owner, key, sound: s, serial: 0, level: 0, target: level, x, y, z, flat, fade: fadeMs }));
     }
     l.target = Math.max(0.001, level);
     l.x = x;
@@ -345,14 +347,14 @@ export class Sounds {
   }
 
   private fade(dt: number, running: boolean, nowMs: number): void {
-    const step = (dt * 1000) / FADE_MS;
     for (const [id, l] of this.loops) {
+      const step = (dt * 1000) / l.fade;
       l.level += Math.max(-step, Math.min(step, l.target - l.level));
       if (l.serial === 0 && l.target > 0 && running && this.library.ready(l.sound)) {
         const sound = this.library.sounds[l.sound]!;
         const take = this.library.first[l.sound]! + this.rng.int(this.library.takes(l.sound));
         const kind = KIND_NAMES.indexOf(KEYS[l.key]!.cue.kind);
-        l.serial = this.mixer.play(this.packet, this.ear, nowMs, l.sound, take, this.library.seconds[take]!, sound.range, kind, 1, -1, l.x, l.y, l.z, 0, Math.max(0.001, l.level), 1, 0, LOOP | (l.flat ? FLAT : 0));
+        l.serial = this.mixer.play(this.packet, this.ear, nowMs, l.sound, take, this.library.seconds[take]!, sound.range, kind, 1, -1, l.x, l.y, l.z, 0, Math.max(0.001, l.level), this.resolver.rate(l.owner, l.key), 0, LOOP | (l.flat ? FLAT : 0));
         if (l.serial !== 0) this.library.played(l.sound);
       } else if (l.serial !== 0) {
         this.library.played(l.sound);

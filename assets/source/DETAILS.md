@@ -44,7 +44,9 @@ or seconds. `count` changes the effect's count for this entry, and `on` lists th
 
 **`effects`**: the creature's own. An effect named in `cues` is looked for here first, then in the shared library,
 [`core/details/effects.json`](core/details/effects.json): `dust_ring`, `scuff`, `sand_kick`, `grit`,
-`splash_drops`, `splash_ring`. Use those for dust and water; make your own for what comes off your creature.
+`splash_drops`, `splash_ring`. Use those for dust and water; make your own for what comes off your creature. The
+library also holds what burns (`blast_*`, `scorch`, `launch_flash`, `backblast*`), which
+[blasts.ts](../../client/core/render/blasts.ts) asks for by name with no creature and no cue.
 
 | Field | Meaning |
 | --- | --- |
@@ -57,9 +59,15 @@ or seconds. `count` changes the effect's count for this entry, and `on` lists th
 | `flutter` | `{ "sway", "hz", "rock", "turn" }`: a falling feather's sway, rocking and turning |
 | `settle` | seconds it lies where it lands; without it, it never lands |
 | `colour` | `"body"` (the picture's regions take the body's dyes), `"ground"`, or `[r, g, b]`; `vary` shades each |
-| `face` | `free` (a card that tumbles), `camera` (a puff), `flat` (lying on the ground or water) |
+| `face` | `free` (a card that tumbles), `camera` (a puff), `flat` (lying on the ground or water), `streak` (drawn out along the way it flies) |
 | `pass` | `cutout` (solid: feathers, scales, chips) or `blend` (soft: dust, spray) |
 | `lit`, `reach` | lit by the sun and sky, and the metres from the eye past which it is not made (40) |
+| `opacity` | the most of it that shows, 0 to 1 (1): smoke that must never hide what is behind it whole |
+| `glow` | above 0 it is light with no surface: a soft disc of its colour, that many times as bright, added over what is behind it; over 2 it blooms on high and ultra |
+| `thick` | a thick puff of smoke worked out with no picture, lit as any puff, for smoke a wisp of dust is too thin for |
+| `stain` | a dark soft disc on the ground that takes light and gives none: a scorch |
+
+An effect with `glow`, `thick` or `stain` reads no picture, and still names one.
 
 **`pictures`**: each `file` and its `regions`, and the `flat` shape low poly draws in its place: `feather`, `puff`,
 `drop`, `ring` or `grain`.

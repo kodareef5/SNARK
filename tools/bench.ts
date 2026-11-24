@@ -72,6 +72,7 @@ import { benchPoses } from "./bench/poses.ts";
 import { benchRagdoll } from "./bench/ragdoll.ts";
 import { benchSound } from "./bench/sound.ts";
 import { benchCorpses } from "./bench/corpses.ts";
+import { benchBursts } from "./bench/bursts.ts";
 import { benchDetails } from "./bench/details.ts";
 import { benchDamageNumbers } from "./bench/damage-numbers.ts";
 import { benchShadow } from "./bench/shadow.ts";
@@ -1072,6 +1073,7 @@ section("Client frame build (headless): 300 survivors in view, posed every frame
 }
 
 benchShots(section, record, scene, cam, { hf, structs: restored }, reg, pack, SHOT_ROUNDS);
+benchBursts(section, record, scene, cam, hf);
 
 section("Client frame build (headless): a breeding base in view, the 512 bodies a client is shown until it asks for more");
 {

@@ -71,12 +71,27 @@ export interface DetailEffect {
   colour: "body" | "ground" | [number, number, number];
   /** How far each particle's colour is shaded from it, as a share. */
   vary: number;
-  face: "free" | "camera" | "flat";
+  /** A card that tumbles, one that faces the eye, one lying flat, or one drawn out along the way it flies. */
+  face: "free" | "camera" | "flat" | "streak";
   pass: "cutout" | "blend";
   lit: boolean;
   /** Metres from the camera beyond which it is not made. */
   reach: number;
+  /**
+   * Above 0 it is light with no surface: a soft disc of its colour, this many times as bright, added over what is behind
+   * it and hiding none of it. Its picture is not read. Over 2 it blooms where the frame has a light target.
+   */
+  glow: number;
+  /** The most of it that shows, 0 to 1: smoke that must never hide what is behind it whole. */
+  opacity: number;
+  /** A thick puff worked out with no picture, for smoke that a wisp of dust is too thin for. Its picture is not read. */
+  thick: boolean;
+  /** A dark stain on what it lies on, which takes light from it and gives none: a soft disc, a scorch. Its picture is not read. */
+  stain: boolean;
 }
+
+/** The most an effect may glow, which a particle's byte holds in sixteenths. */
+export const GLOW_MOST = 15.9;
 
 /** Where an effect of a cue starts: the torso, the hit point, the ground under the body, the foot that came down, or a socket by name. */
 export type DetailFrom = "body" | "hit" | "ground" | string;
@@ -139,7 +154,7 @@ export interface SheetSource {
 
 const DEFAULTS: Omit<DetailEffect, "id" | "pictures"> = {
   count: [1, 1], shape: "point", radius: 0, speed: [0, 0], up: 0.5, size: [0.1, 0.1], aspect: 1, grow: 1, life: [1, 1], fade: 0.3,
-  drag: 2, gravity: 1, fall: 0, wind: 0, sway: 0, swayHz: 1, rock: 0, turn: 0, settle: 0, colour: "body", vary: 0, face: "camera", pass: "blend", lit: true, reach: 40,
+  drag: 2, gravity: 1, fall: 0, wind: 0, sway: 0, swayHz: 1, rock: 0, turn: 0, settle: 0, colour: "body", vary: 0, face: "camera", pass: "blend", lit: true, reach: 40, glow: 0, opacity: 1, thick: false, stain: false,
 };
 
 const pair = (v: unknown): v is [number, number] => Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && Number.isFinite(n)) && v[0] <= v[1];
@@ -181,14 +196,14 @@ export function effectOf(id: string, raw: Record<string, unknown>, pictureOf: (n
       else if (Array.isArray(value) && value.length === 3 && value.every((n) => typeof n === "number" && n >= 0 && n <= 255)) out.colour = value as [number, number, number];
       else fail("colour is \"body\", \"ground\" or [r, g, b] of 255");
     } else if (key === "face") {
-      if (value !== "free" && value !== "camera" && value !== "flat") return fail("face is free, camera or flat");
+      if (value !== "free" && value !== "camera" && value !== "flat" && value !== "streak") return fail("face is free, camera, flat or streak");
       out.face = value;
     } else if (key === "pass") {
       if (value !== "cutout" && value !== "blend") return fail("pass is cutout or blend");
       out.pass = value;
-    } else if (key === "lit") {
-      if (typeof value !== "boolean") return fail("lit is true or false");
-      out.lit = value;
+    } else if (key === "lit" || key === "thick" || key === "stain") {
+      if (typeof value !== "boolean") return fail(`${key} is true or false`);
+      out[key] = value;
     } else if (key in DEFAULTS) {
       const was = DEFAULTS[key as keyof typeof DEFAULTS];
       if (Array.isArray(was)) {
@@ -204,6 +219,11 @@ export function effectOf(id: string, raw: Record<string, unknown>, pictureOf: (n
   if (out.pictures.length === 0) fail("it names no pictures");
   if (out.count[0] < 0 || out.life[0] <= 0 || out.size[0] <= 0 || out.aspect <= 0) fail("count, life, size and aspect are more than 0");
   if (out.fade < 0 || out.fade > out.life[0]) fail("its fade is longer than its shortest life");
+  if (out.glow < 0 || out.glow > GLOW_MOST) fail(`glow is from 0 to ${GLOW_MOST}`);
+  if (out.glow > 0 && out.pass !== "blend") fail("what glows is see-through: its pass is blend");
+  if (!(out.opacity > 0 && out.opacity <= 1)) fail("opacity is above 0 and at most 1");
+  if (out.thick && (out.pass !== "blend" || out.face !== "camera" || out.glow > 0)) fail("a thick puff is see-through, faces the eye and does not glow");
+  if (out.stain && (out.pass !== "blend" || out.face !== "flat" || out.glow > 0 || out.thick)) fail("a stain is see-through, lies flat, and neither glows nor is thick");
   return out;
 }
 

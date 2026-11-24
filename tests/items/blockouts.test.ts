@@ -29,7 +29,6 @@ const ROWS: readonly (readonly [string, string, number, number, number | null, n
   ["round_advanced_rifle", "ammo", 100, 0.1, 58, 8, "fabricator", 1, 2, "1 ingot, 9 gunpowder"],
   ["round_advanced_sniper", "ammo", 100, 0.2, 83, 16, "fabricator", 1, 2, "2 ingot, 12 gunpowder"],
   ["arrow_metal", "ammo", 100, 0.4, 79, 35, "fabricator", 5, 1, "3 thatch, 3 fiber, 3 ingot, 1 paste, 1 polymer"],
-  ["rocket", "ammo", 100, 0.1, 87, 8, "fabricator", 1, 1, "40 gunpowder, 10 crystal, 20 paste, 10 polymer, 12 ingot"],
   ["grappling_hook", "ammo", 10, 1, 47, 40, "smithy", 1, 1, "3 arrow_stone, 1 paste, 9 ingot, 2 thatch, 35 fiber"],
   ["c4", "ammo", 100, 0.1, 65, 12, "fabricator", 5, 1, "60 gunpowder, 10 crystal, 5 paste, 50 fiber, 5 hide, 5 polymer, 5 electronics"],
   ["torch", "weapon", 1, 1, 1, 0, "hand", 5, 1, "1 flint, 1 wood, 1 stone"],
@@ -44,7 +43,6 @@ const ROWS: readonly (readonly [string, string, number, number, number | null, n
   ["shotgun_pump", "weapon", 1, 15, 55, 18, "fabricator", 15, 1, "30 ingot, 55 polymer, 45 paste"],
   ["rifle_assault", "weapon", 1, 10, 58, 24, "fabricator", 5, 1, "60 polymer, 35 ingot, 50 paste"],
   ["rifle_sniper", "weapon", 1, 25, 83, 36, "fabricator", 15, 1, "115 polymer, 80 ingot, 110 paste"],
-  ["rocket_launcher", "weapon", 1, 20, 87, 32, "fabricator", 15, 1, "80 polymer, 50 ingot, 60 paste"],
   ["spyglass", "instrument", 1, 0.5, 7, 2, "hand", 5, 1, "5 wood, 10 hide, 10 fiber, 2 crystal"],
   ["compass", "instrument", 1, 0.5, 8, 5, "hand", 5, 1, "5 ore, 5 flint, 30 fiber"],
   ["magnifying_glass", "instrument", 1, 0.5, 25, 16, "hand", 5, 1, "15 wood, 20 hide, 20 fiber, 30 crystal, 15 obsidian, 8 ingot"],
@@ -95,17 +93,18 @@ test("every blocked-out thing is the item ARK has: its stack, weight, level, poi
     for (const r of e?.requires ?? []) expect([name, r, byId.get(r)?.type]).toEqual([name, r, "engram"]);
     expect([name, (d.label ?? name).length > 0, e === undefined || e.label.length > 0]).toEqual([name, true, true]);
   }
-  // Sixty-one: fifty-three of the fifty-four the starter drop book once waited for (the raft is a vehicle that is built
-  // on), four things they are made of, and four that the blocked-out bow and guns fire.
-  expect(ROWS.length).toBe(61);
+  // Fifty-nine: fifty-two of the fifty-four the starter drop book once waited for (the raft is a vehicle that is built
+  // on, and the rocket launcher has a model now), four things they are made of, and three that the blocked-out bow and
+  // guns fire.
+  expect(ROWS.length).toBe(59);
   expect(Object.keys(starterBook().future)).toEqual(["core:raft_assembly"]);
 });
 
 test("a blocked-out thing is a plain box in the hand and a swatch in the bag, and what is set down is a box of its own", () => {
   const blocked = new Set(BLOCKED_OUT);
   const held = BLOCKED_OUT.map((id) => byId.get(id) as ItemDef).filter((d) => d.weapon);
-  // Thirteen are held: each as the box, and none borrows another thing's model.
-  expect([held.length, held.every((d) => d.weapon!.mesh === BLOCKOUT_MESH)]).toEqual([13, true]);
+  // Twelve are held: each as the box, and none borrows another thing's model.
+  expect([held.length, held.every((d) => d.weapon!.mesh === BLOCKOUT_MESH)]).toEqual([12, true]);
   // The box is no picture: with it in the pack, no thing that is held as it has an icon drawn, so each keeps its swatch.
   expect(iconSubjects(reg.defs, (mesh) => mesh === BLOCKOUT_MESH).filter((s) => blocked.has(s.owner)).map((s) => s.owner)).toEqual([]);
   // Ten are set down, each a structure of one box, with ARK's health, slots and days to decay.
@@ -142,20 +141,19 @@ test("what they do today: the arms strike and fire by ARK's numbers, the armour 
     const round = item(w(name).ammo![0]!.slice(5)).ammo!;
     return [name, Math.round(round.damage * (w(name).power ?? 1) * 100) / 100, w(name).pellets ?? round.pellets ?? 1, w(name).clip ?? 1, w(name).reload ?? 0, Math.round((1 / (w(name).interval ?? Infinity)) * 100) / 100, w(name).auto === true, w(name).uses];
   };
-  expect(["pistol_fabricated", "shotgun_pump", "rifle_assault", "rifle_sniper", "rocket_launcher"].map(shot)).toEqual([
+  expect(["pistol_fabricated", "shotgun_pump", "rifle_assault", "rifle_sniper"].map(shot)).toEqual([
     ["pistol_fabricated", 50, 1, 13, 1.45, 5, false, 2100],
     ["shotgun_pump", 46, 14, 6, 4.3, 0.91, false, 300],
     ["rifle_assault", 47, 1, 40, 2.18, 10, true, 800],
     ["rifle_sniper", 165, 1, 8, 4.24, 3.3, false, 70],
-    ["rocket_launcher", 250, 1, 1, 4, 0, false, 20],
   ]);
   // The compound bow is 1.35 times an arrow: 74.25 with a stone one (ARK shows 75), 175.5 with a metal one, which it alone takes.
   const bow = w("bow_compound");
   expect([bow.kind, bow.power, 130 * bow.power!, bow.ammo!.includes("core:arrow_metal"), item("bow").weapon!.ammo!.includes("core:arrow_metal"), bow.uses]).toEqual(["bow", 1.35, 175.5, true, false, 550]);
   // Every round a blocked-out gun fires is made; the hook and the charge are taken by nothing yet.
   const fired = new Set(CORE_CONTENT.flatMap((d) => (d.type === "item" && d.weapon?.ammo ? d.weapon.ammo : [])));
-  expect(["round_advanced", "round_advanced_rifle", "round_advanced_sniper", "arrow_metal", "rocket", "grappling_hook", "c4"].map((n) => [n, fired.has(`core:${n}`), item(n).craft !== undefined])).toEqual([
-    ["round_advanced", true, true], ["round_advanced_rifle", true, true], ["round_advanced_sniper", true, true], ["arrow_metal", true, true], ["rocket", true, true], ["grappling_hook", false, true], ["c4", false, true],
+  expect(["round_advanced", "round_advanced_rifle", "round_advanced_sniper", "arrow_metal", "grappling_hook", "c4"].map((n) => [n, fired.has(`core:${n}`), item(n).craft !== undefined])).toEqual([
+    ["round_advanced", true, true], ["round_advanced_rifle", true, true], ["round_advanced_sniper", true, true], ["arrow_metal", true, true], ["grappling_hook", false, true], ["c4", false, true],
   ]);
   // Armour: ARK's rating and durability, drawn as hide is.
   const worn = (name: string) => item(name).wear!;

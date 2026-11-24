@@ -16,6 +16,7 @@ import { fitSeatControls } from "./seat-controls.ts";
 import { fitSeated, passengerRest, seatFit } from "./seat-fit.ts";
 import { SEAT_DROP, SEAT_FLOATS } from "./seat.ts";
 import { boneToModel, rayZones, Solved, solve } from "./skeleton.ts";
+import { wieldAs } from "./wield.ts";
 
 /** Vehicle x/y/z are the world pelvis target, not the chassis origin. */
 export interface OccupantSeat extends VehicleFrame {
@@ -100,7 +101,7 @@ export function occupantPose(anim: HumanAnim, st: AnimState, tick: number, out: 
   // Cabins and a personal watercraft's saddle hold the torso still; only the neck and head follow a look.
   const fixedTorso = role === "pilot" || role === "cabin" || role === "pwc", steers = vehicle?.driver ?? driver;
   const aim = vehicle ? vehicle.aimYaw : yaw, looks = !steers || role === "pilot" || !!vehicle?.definition?.controls;
-  state.unpack(st.pack(), st.packCue()); state.seed = st.seed;
+  state.unpack(st.pack(), st.packCue()); state.seed = st.seed; wieldAs(state, st);
   let localYaw = 0, localPitch = 0;
   if (looks && aim !== undefined) {
     const pitch = st.pitch / PITCH_STEPS * Math.PI / 2, cp = detCos(pitch);

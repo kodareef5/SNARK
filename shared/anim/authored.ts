@@ -8,7 +8,7 @@ import { emoteClips } from "./emote-clips.ts";
 import { glideClips } from "./glide-clips.ts";
 import {
   B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK,
-  B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
+  B_PROP_L, B_PROP_R, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
 } from "./human.ts";
 
 const DEG = TAU / 360;
@@ -129,6 +129,70 @@ export class PoseBuilder {
     return at;
   }
 
+  /** The model-space place of a point given from `bone`'s joint in its rest frame, for the pose so far. */
+  point(bone: number, x: number, y: number, z: number): [number, number, number] {
+    const at = this.joint(bone);
+    quatRotate(this.world, bone * 4, x, y, z, this.v, 0);
+    return [at[0] + this.v[0]!, at[1] + this.v[1]!, at[2] + this.v[2]!];
+  }
+
+  /**
+   * Bends the arm from `upper` so that its wrist is at (x, y, z) in model space, its elbow out toward (px, py, pz). A wrist
+   * out of reach is reached for as far as the arm goes. Set the back and shoulders first.
+   */
+  reach(upper: number, x: number, y: number, z: number, px: number, py: number, pz: number): this {
+    const lower = TOWARD[upper]!, hand = TOWARD[lower]!;
+    const rest = HUMAN.rest;
+    const span = (from: number, to: number): number => {
+      const sx = rest[to * 3]! - rest[from * 3]!, sy = rest[to * 3 + 1]! - rest[from * 3 + 1]!, sz = rest[to * 3 + 2]! - rest[from * 3 + 2]!;
+      return Math.sqrt(sx * sx + sy * sy + sz * sz);
+    };
+    const l1 = span(upper, lower), l2 = span(lower, hand);
+    const from = this.joint(upper);
+    let ux = x - from[0], uy = y - from[1], uz = z - from[2];
+    const far = Math.sqrt(ux * ux + uy * uy + uz * uz);
+    ux /= far;
+    uy /= far;
+    uz /= far;
+    const d = Math.min((l1 + l2) * 0.998, Math.max(Math.abs(l1 - l2) + 0.01, far));
+    const cos = (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d);
+    const sin = Math.sqrt(1 - cos * cos);
+    // The elbow's way, square to the reach.
+    const along = px * ux + py * uy + pz * uz;
+    let ex = px - along * ux, ey = py - along * uy, ez = pz - along * uz;
+    const el = Math.sqrt(ex * ex + ey * ey + ez * ez);
+    ex /= el;
+    ey /= el;
+    ez /= el;
+    const ax = ux * cos + ex * sin, ay = uy * cos + ey * sin, az = uz * cos + ez * sin;
+    this.aim(upper, ax, ay, az);
+    return this.aim(lower, ux * d - ax * l1, uy * d - ay * l1, uz * d - az * l1);
+  }
+
+  /**
+   * Puts the right hand's grip at (x, y, z) in model space with what it holds pointing ahead, tipped `tip` degrees down
+   * and turned `swing` degrees to the body's left, the elbow out toward (px, py, pz).
+   */
+  grip(x: number, y: number, z: number, tip: number, swing: number, px: number, py: number, pz: number): this {
+    this.level(B_HAND_R).turn(B_HAND_R, tip, swing);
+    // The grip lies the same way from the wrist wherever the arm puts the wrist.
+    const w = this.joint(B_HAND_R), g = this.joint(B_PROP_R);
+    this.reach(B_UPPER_ARM_R, x - (g[0] - w[0]), y - (g[1] - w[1]), z - (g[2] - w[2]), px, py, pz);
+    return this.level(B_HAND_R).turn(B_HAND_R, tip, swing);
+  }
+
+  /**
+   * Puts the left hand's grip at (x, y, z) in model space, the hand turned from level as `turned` turns it, the elbow out
+   * toward (px, py, pz). What it holds lies along its +Z.
+   */
+  palm(x: number, y: number, z: number, turned: (b: PoseBuilder) => void, px: number, py: number, pz: number): this {
+    turned(this.level(B_HAND_L));
+    const w = this.joint(B_HAND_L), g = this.joint(B_PROP_L);
+    this.reach(B_UPPER_ARM_L, x - (g[0] - w[0]), y - (g[1] - w[1]), z - (g[2] - w[2]), px, py, pz);
+    turned(this.level(B_HAND_L));
+    return this;
+  }
+
   /** Stores the model-space rotation of `bone` relative to its parent and carries its children with it. */
   private store(bone: number): this {
     const p = HUMAN.parent[bone]!;
@@ -228,6 +292,55 @@ function pistolLowered(b: PoseBuilder): void {
   b.turn(B_NECK, 10).turn(B_HEAD, 10);
 }
 
+// A launcher is a tube a metre long whose axis is 9 cm over its grip, from 52 cm behind it to 50 cm ahead, with a fore grip
+// 22 cm ahead and a pad for the shoulder 25 cm behind (content: core:rocket_launcher). Its round goes in at the muzzle.
+const TUBE_UP = 0.09;
+const FORE_GRIP = 0.22;
+/**
+ * Where along the tube from the grip the off hand holds a round whose tail is at the muzzle, and one pushed home: the hand
+ * has it ROUND_HELD from its tail, and home its tail is 30 cm ahead of the grip (the launcher's `round`).
+ */
+export const ROUND_HELD = 0.28;
+export const ROUND_SLIDE = 0.2;
+const ROUND_HOME = 0.3 + ROUND_HELD;
+const ROUND_AT_MUZZLE = ROUND_HOME + ROUND_SLIDE;
+
+/** The left hand closed on the fore grip from the body's left: fingers ahead, palm to the right. */
+const onForeGrip = (tip: number, swing: number) => (b: PoseBuilder): void => void b.turn(B_HAND_L, 0, -90, -90).turn(B_HAND_L, tip, swing);
+/** The left hand under a round that lies along a tube tipped and swung so, palm up. */
+const underRound = (tip: number, swing: number) => (b: PoseBuilder): void => void b.turn(B_HAND_L, tip, swing).local(B_HAND_L, 0, 0, 180);
+
+/** The tube on the right shoulder: the right hand on its grip ahead of the shoulder, the left on the fore grip, the head down to the sight. */
+function launcherAimed(b: PoseBuilder): void {
+  b.turn(B_SPINE, 0, -12).turn(B_CHEST, 0, -12).turn(B_UPPER_CHEST, 0, -6).turn(B_NECK, 0, 14, 6).turn(B_HEAD, 4, 14, 8);
+  b.grip(-0.16, 1.44, 0.2, 0, 0, -0.5, -1, -0.1);
+  const fore = b.point(B_PROP_R, 0, -0.02, FORE_GRIP);
+  b.palm(fore[0], fore[1], fore[2], onForeGrip(0, 0), 0.6, -1, 0);
+}
+
+/** The tube off the shoulder and across the body, muzzle up and to the left, both hands still on it. */
+function launcherLowered(b: PoseBuilder): void {
+  b.turn(B_SPINE, 0, -6).turn(B_CHEST, 0, -6).turn(B_NECK, 10).turn(B_HEAD, 8);
+  b.grip(-0.19, 1.04, 0.04, -22, 22, -0.6, -0.5, -0.6);
+  const fore = b.point(B_PROP_R, 0, -0.02, FORE_GRIP);
+  b.palm(fore[0], fore[1], fore[2], onForeGrip(-22, 22), 0.6, -1, 0);
+}
+
+/** The tube held in the right hand alone, and the left at the pouch on the left hip. */
+function launcherFetch(b: PoseBuilder): void {
+  b.turn(B_SPINE, 0, -4).turn(B_CHEST, 0, -4).turn(B_NECK, 16, -18).turn(B_HEAD, 12, -14);
+  b.grip(-0.24, 1.02, 0, -18, 16, -0.6, -0.5, -0.6);
+  b.palm(0.24, 0.98, 0.02, underRound(-60, 10), 0.8, 0.1, -0.6);
+}
+
+/** The left hand has a round along the tube at its muzzle. `along` is how far up the tube from the grip it holds. */
+function launcherLoading(b: PoseBuilder, along: number): void {
+  b.turn(B_SPINE, 6, -18).turn(B_CHEST, 6, -14).turn(B_UPPER_CHEST, 0, -8).turn(B_NECK, 8, 18).turn(B_HEAD, 6, 14);
+  b.grip(-0.26, 1.0, -0.06, -16, 16, -0.6, -0.5, -0.6);
+  const at = b.point(B_PROP_R, 0, TUBE_UP, along);
+  b.palm(at[0], at[1], at[2], underRound(-16, 16), 0.7, -0.7, -0.2);
+}
+
 let authored: readonly Clip[] | null = null;
 
 export function authoredClips(): readonly Clip[] {
@@ -240,6 +353,11 @@ export function authoredClips(): readonly Clip[] {
     clip("human/gun_lowered", 1, true, gunLowered),
     clip("human/pistol_aimed", 1, true, pistolAimed),
     clip("human/pistol_lowered", 1, true, pistolLowered),
+    clip("human/launcher_aimed", 1, true, launcherAimed),
+    clip("human/launcher_lowered", 1, true, launcherLowered),
+    clip("human/launcher_fetch", 1, true, launcherFetch),
+    clip("human/launcher_load", 1, true, (b) => launcherLoading(b, ROUND_AT_MUZZLE)),
+    clip("human/launcher_push", 1, true, (b) => launcherLoading(b, ROUND_HOME)),
     ...emoteClips(),
     ...glideClips(),
   ]);
