@@ -44,9 +44,8 @@ or seconds. `count` changes the effect's count for this entry, and `on` lists th
 
 **`effects`**: the creature's own. An effect named in `cues` is looked for here first, then in the shared library,
 [`core/details/effects.json`](core/details/effects.json): `dust_ring`, `scuff`, `sand_kick`, `grit`,
-`splash_drops`, `splash_ring`. Use those for dust and water; make your own for what comes off your creature. The
-library also holds what burns (`blast_*`, `scorch`, `launch_flash`, `backblast*`), which
-[blasts.ts](../../client/core/render/blasts.ts) asks for by name with no creature and no cue.
+`splash_drops`, `splash_ring`. Use those for dust and water; make your own for what comes off your creature. The game build adds the
+[blast recipes](core/details/blasts.json) to the installed atlas. Fire and smoke use the existing dust and grit pictures.
 
 | Field | Meaning |
 | --- | --- |

@@ -1,6 +1,6 @@
 // The art tool: the asset folders it finds, what its check counts as a fault, and the sheet it draws. Blender is never run here.
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Clip } from "../../shared/anim/clip.ts";
@@ -18,6 +18,26 @@ import { readPng } from "../../tools/pack/png-read.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
 import { ASSETS } from "../fixtures/assets.ts";
 import { artTest } from "../fixtures/needs-art.ts";
+
+artTest("blast recipes use the installed atlas and keep creature cue indices", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-blast-art-"));
+  try {
+    copyFileSync(join(SOURCE, "core/details/details.snpk"), join(dir, "details.snpk"));
+    const before = readPacks(dir).details!;
+    const recipe = { pictures: ["dust_1"], opacity: 0.5 };
+    writeFileSync(join(dir, "blasts.json"), JSON.stringify({ dust_ring: recipe, new_flash: recipe }));
+    const after = readPacks(dir).details!;
+    const index = before.header.effects.findIndex((e) => e.id === "core:details/dust_ring");
+    const picture = before.header.pictures.findIndex((p) => p.id === "core:details/dust_1");
+    expect(after.header.effects[index]).toMatchObject({ pictures: [picture], opacity: 0.5 });
+    expect(after.header.effects.at(-1)?.id).toBe("core:details/new_flash");
+    expect(after.header.effects.length).toBe(before.header.effects.length + 1);
+    expect(after.header.sheets).toEqual(before.header.sheets);
+    expect(Buffer.compare(after.atlas, before.atlas)).toBe(0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 // A first flat level may carry more triangles than the textured level before it: it builds in geometry what that level
 // cuts out of a picture (a palmetto's fingers, a fern's leaflets). From there on they never rise, and end under the first.
