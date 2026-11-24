@@ -545,3 +545,213 @@ test("the kit cuts a solid on a slant and closes it, and a ring on a slant loses
 });
 
 void planOf;
+
+// Thatch's share of the forms past the first nine, its trims, and the switch that takes a wall's own post away.
+
+import { THATCH_JOINTED, THATCH_PLANNED } from "../../tools/pack/pieces/thatch.ts";
+
+const THATCH_NEW: Record<string, FormDef> = Object.fromEntries(THATCH_PLANNED.map((name) => [name, PLANNED[name]!]));
+const thatchNew = Object.entries(THATCH_NEW).map(([name, form]) => ({ name, form, shapes: levelsOf(THATCH, name, form) }));
+/** What each new thatch form's levels cost on 2026-11-24. A change may lower a number and may not raise one. */
+const THATCH_NEW_MOST: Record<string, readonly number[]> = {
+  roof: [694, 104, 60, 12],
+  roof_hip: [1020, 148, 60, 12],
+  roof_valley: [592, 108, 60, 12],
+  sloped_wall_left: [636, 162, 72, 8],
+  sloped_wall_right: [636, 162, 72, 8],
+  half_wall: [820, 112, 72, 12],
+  railing: [380, 108, 68, 24],
+};
+/** A thatch roof's tips reach 0.30 m past a low side and hang 0.10 m under its slab; its top course swells 0.045 m over its plane at its highest contour, and its eave course stands 0.08 m over it. */
+const THATCH_EAVE = 0.3;
+const THATCH_ROOF_OVER = 0.08;
+const THATCH_ROOF_UNDER = 0.1;
+/** A fence's rails lie on the front of its posts, and their lashings 0.045 m past its collider's face. */
+const THATCH_FENCE = 0.05;
+
+/** A roof's top over a point of its plan, about its collider's origin: the top of its box at each corner, whether its slab hangs under its corner heights or stands on them. */
+function thatchRoofTop(form: FormDef, x: number, z: number): number {
+  const lift = colliderBox(form)[4] - (Math.max(...form.corner!) - form.at[1]);
+  return roofHeight(form, x, z) + lift;
+}
+
+test("every level of every new thatch form lies in its form's box and the margin its kind is given", () => {
+  for (const { name, form, shapes } of thatchNew) {
+    const box = colliderBox(form);
+    shapes.forEach((shape, level) => {
+      const over = [0, 0, 0, 0, 0, 0];
+      for (const p of shape.corners()) {
+        const at = [p[0], p[2], -p[1]];
+        for (let a = 0; a < 3; a++) {
+          over[a] = Math.max(over[a]!, box[a]! - at[a]!);
+          over[a + 3] = Math.max(over[a + 3]!, at[a]! - box[a + 3]!);
+        }
+        // Over the plan itself a roof stands no further over its top than its eave course is thick.
+        if (isRoof(form) && Math.abs(at[0]!) <= 1.5 && Math.abs(at[2]!) <= 1.5) expect(at[1]! - thatchRoofTop(form, at[0]!, at[2]!), `${name} level ${level} over its plane`).toBeLessThanOrEqual(THATCH_ROOF_OVER);
+      }
+      // A roof by its eaves; a fence by its lashings; a low wall as a wall, by its post, its tips and its rails.
+      const proud = isRoof(form) ? [THATCH_EAVE, THATCH_ROOF_UNDER, THATCH_EAVE, THATCH_EAVE, 0.05, THATCH_EAVE] : name === "railing" ? [0, 0, THATCH_FENCE, 0, 0, THATCH_FENCE] : THATCH_PROUD.wall!;
+      over.forEach((most, k) => expect(most, `${name} level ${level} past its ${k < 3 ? "least" : "most"} ${"xyz"[k % 3]}`).toBeLessThanOrEqual(proud[k]! + 1e-9));
+    });
+  }
+});
+
+test("a textured level of a new thatch form that yields has a ring on each plane it yields at, crossed only by what runs along it", () => {
+  for (const { name, form, shapes } of thatchNew) {
+    const planes = yieldPlanes(form);
+    expect(planes.length, name).toBe(form.plane === "upright" ? 2 : 4);
+    for (const [axis, at] of planes) {
+      shapes.slice(0, TEXTURED).forEach((shape, level) => {
+        let on = 0;
+        for (const f of shape.faces) {
+          const side = f.points.map((p) => p[axis]! - at);
+          on += side.filter((d) => Math.abs(d) < 1e-7).length;
+          if (side.some((d) => d > 1e-6) && side.some((d) => d < -1e-6)) expect(f.along, `${name} level ${level}: a ${f.mat} face crosses ${"xyz"[axis]} = ${at}`).toBe(axis);
+        }
+        // A gable has nothing at its low end's ring but its foot: its top comes down to its foot there.
+        expect(on, `${name} level ${level}: vertices on ${"xyz"[axis]} = ${at}`).toBeGreaterThanOrEqual(4);
+      });
+    }
+  }
+});
+
+test("every new thatch level is closed, looks outward and costs no more than it did, a roof no more than a flat ceiling and a tenth", () => {
+  const meshes = tierShapes(THATCH, THATCH_NEW);
+  const flat = thatch.find((p) => p.name === "ceiling")!.shapes.map((shape) => shape.triangles);
+  expect(flat).toEqual([1032, 204, 68, 12]);
+  for (const mesh of meshes) {
+    const name = mesh.id.slice(5, -7);
+    const most = THATCH_NEW_MOST[name]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(Math.min(most[level]!, MADE_PIECE_TRIANGLES[level]![1]));
+      if (isRoof(THATCH_NEW[name]!)) expect(lod.indices.length / 3, `${mesh.id} level ${level} beside a ceiling`).toBeLessThanOrEqual(flat[level]! * 1.1);
+    });
+  }
+  const again = tierShapes(THATCH, THATCH_NEW);
+  expect(meshes.map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(again.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
+});
+
+test("a new thatch form is cut out only in its tips: under 15 triangles in 100 at the finest, none from across a yard, and a level wears three materials at most", () => {
+  const cut = (shape: Shape): number => shape.faces.reduce((n, f) => n + (f.mat === "thatch" || f.mat === "door" ? f.points.length - 2 : 0), 0);
+  for (const { name, shapes } of thatchNew) {
+    expect(cut(shapes[0]!) / shapes[0]!.triangles, name).toBeLessThanOrEqual(0.15);
+    for (const shape of shapes.slice(2)) expect(cut(shape), name).toBe(0);
+    expect(new Set(shapes.slice(0, TEXTURED).flatMap((shape) => shape.faces.map((f) => f.mat))).size, name).toBeLessThanOrEqual(3);
+  }
+  // Only an eave has tips: a valley, which has no low side, has none.
+  expect(cut(thatchNew.find((p) => p.name === "roof")!.shapes[0]!)).toBeGreaterThan(0);
+  expect(cut(thatchNew.find((p) => p.name === "roof_valley")!.shapes[0]!)).toBe(0);
+});
+
+test("a thatch gable's two hands are each other in a mirror, point for point", () => {
+  for (const recipe of [THATCH, THATCH_JOINTED]) {
+    const [left, right] = ["sloped_wall_left", "sloped_wall_right"].map((name) => levelsOf(recipe, name, THATCH_NEW[name]!));
+    left!.forEach((shape, level) => {
+      const name = (p: Vec, flip: number): string => [flip * p[0], p[1], p[2]].map((c) => (Math.round(c * 1e6) / 1e6 || 0).toFixed(6)).join();
+      expect([...new Set(shape.corners().map((p) => name(p, -1)))].sort()).toEqual([...new Set(right![level]!.corners().map((p) => name(p, 1)))].sort());
+      expect(shape.triangles).toBe(right![level]!.triangles);
+    });
+  }
+});
+
+test("a thatch roof reads its row: raised by its slab's thickness, it is the same roof that much higher", () => {
+  // What the row may become if a roof is made to stand on its level: its top and its origin a slab's thickness up, and nothing under the level.
+  const row = THATCH_NEW.roof_hip!;
+  const stood: FormDef = { ...row, span: 2, corner: row.corner!.map((h) => h + row.thick), at: [row.at[0], row.at[1] + row.thick, row.at[2]] };
+  expect(colliderBox(stood)).toEqual(colliderBox(row));
+  const [as, raised] = [levelsOf(THATCH, "roof_hip", row), levelsOf(THATCH, "roof_hip", stood)];
+  as.forEach((shape, level) => expect(Bun.hash(Float64Array.from(raised[level]!.corners().flat())), `level ${level}`).toBe(Bun.hash(Float64Array.from(shape.corners().flat()))));
+});
+
+test("with no post of its own, every thatch wall ends on its collider's ends, and with one it stands past its left", () => {
+  // What THATCH becomes when its one switch is turned (tools/pack/pieces/thatch.ts): the corner's pole stands where the post did.
+  const walls: Record<string, FormDef> = { wall: FORMS.wall, doorframe: FORMS.doorframe, half_wall: THATCH_NEW.half_wall!, sloped_wall_left: THATCH_NEW.sloped_wall_left!, sloped_wall_right: THATCH_NEW.sloped_wall_right! };
+  for (const [name, form] of Object.entries(walls)) {
+    const box = colliderBox(form);
+    levelsOf(THATCH_JOINTED, name, form).forEach((shape, level) => {
+      const xs = shape.corners().map((p) => p[0]);
+      // To the 2 cm a rod's axe-cut end runs past its length on the finest level, a millimetre on the next, and to the last bit past it.
+      const slack = level === 0 ? 0.02 : level === 1 ? 1e-3 : 1e-9;
+      expect(Math.abs(Math.min(...xs) - box[0]), `${name} level ${level}, its -x end`).toBeLessThanOrEqual(slack);
+      expect(Math.abs(Math.max(...xs) - box[3]), `${name} level ${level}, its +x end`).toBeLessThanOrEqual(slack);
+    });
+    // With its post a wall stands 0.11 m and more past its left end on every level drawn with materials, and a gable has half a post on its high end.
+    if (!name.startsWith("sloped")) levelsOf(THATCH, name, form).slice(0, TEXTURED).forEach((shape, level) => expect(box[0] - Math.min(...shape.corners().map((p) => p[0])), `${name} level ${level}`).toBeGreaterThan(0.11));
+    else expect(levelsOf(THATCH, name, form)[0]!.triangles, name).toBeGreaterThan(levelsOf(THATCH_JOINTED, name, form)[0]!.triangles);
+  }
+  // Nothing else of the tier changes with the switch.
+  for (const name of ["foundation", "ceiling", "door", "door_open", "roof", "roof_hip", "roof_valley", "railing"]) {
+    const form = (name in FORMS ? (FORMS as Record<string, FormDef>)[name] : THATCH_NEW[name])!;
+    expect(levelsOf(THATCH_JOINTED, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))), name).toEqual(levelsOf(THATCH, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))));
+  }
+});
+
+test("thatch's trims are the five the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
+  const trims = trimShapes(THATCH);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_thatch", "core:joint_r15_thatch", "core:joint_r21_thatch", "core:skirt_thatch", "core:ridge_thatch"]);
+  for (const mesh of trims) {
+    const most = TRIM_TRIANGLES[mesh.id.slice(5, -7)]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(most[level]!);
+      expect([mesh.id, level, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0]);
+      if (lod.indices.length / 3 > 2) expect([mesh.id, level, s.holes]).toEqual([mesh.id, level, 0]);
+    });
+  }
+  // The pole of a square corner is the pole of a wide one: one mesh under two names.
+  const [sq, r15] = [trims[0]!, trims[1]!];
+  expect(sq.lods.map((l) => Bun.hash(l.positions))).toEqual(r15.lods.map((l) => Bun.hash(l.positions)));
+  expect(trimShapes(THATCH_JOINTED).map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(trims.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
+});
+
+test("a thatch joint is a pole that thins upward, with a ring at each height it may be cut to and its lashing in its own skin", () => {
+  const reach: Record<string, number> = { joint_sq: 0.112, joint_r15: 0.112, joint_r21: 0.18 };
+  for (const [name, shapes] of Object.entries(THATCH.trims!())) {
+    if (!(name in reach)) continue;
+    const finest = shapes[0]!.corners();
+    expect([name, Math.min(...finest.map((p) => p[2])), Math.max(...finest.map((p) => p[2]))]).toEqual([name, 0, 3.01]);
+    const far = (z: number): number => Math.max(...finest.filter((p) => Math.abs(p[2] - z) < 1e-9).map((p) => Math.hypot(p[0], p[1])));
+    for (const cut of [0.76, 1.51, 2.26]) {
+      // A ring of its eight sides at each height the client clamps it to (client/core/render/piece-fit.ts): n quarter storeys and a centimetre.
+      expect(new Set(finest.filter((p) => Math.abs(p[2] - cut) < 1e-9).map((p) => p.join())).size, `${name} at ${cut}`).toBe(8);
+      // Clamped there, what was over the ring lies inside the ring's own outline but for its cord, which is left a band round its top.
+      for (const p of finest) if (p[2] > cut) expect(Math.hypot(p[0], p[1]), `${name} over ${cut}`).toBeLessThanOrEqual(far(cut) + (cut < 1 ? 0.0135 : 1e-9));
+    }
+    // It covers the 0.1 m square two walls leave at a corner out to its diagonal, on every level, whichever way it is turned by quarters.
+    for (const shape of shapes.slice(0, 3)) {
+      const ring = shape.corners().filter((p) => p[2] === 0).map((p) => [p[0], p[1]] as const);
+      for (let d = 0; d < 4; d++) {
+        const [dx, dy] = [Math.cos(Math.PI / 4 + (d * Math.PI) / 2), Math.sin(Math.PI / 4 + (d * Math.PI) / 2)];
+        expect(Math.max(...ring.map((q) => q[0] * dx + q[1] * dy)), `${name}: its reach along a diagonal`).toBeGreaterThanOrEqual(name === "joint_r21" ? 0.14 : 0.099);
+      }
+    }
+    for (const p of finest) expect(Math.hypot(p[0], p[1]), name).toBeLessThanOrEqual(reach[name]! + 0.014);
+    // Its head is drawn in, so the head folds flat onto the shaft.
+    for (const p of finest) if (p[2] > 3) expect(Math.hypot(p[0], p[1]), name).toBeLessThan(reach[name]! * 0.76);
+  }
+});
+
+test("a thatch skirt is a bank under the crib, 2.4 m down from the foundation's top and 0.12 m out, and a ridge lies along its line", () => {
+  const box = (name: string, level = 0): number[] => {
+    const p = trimShapes(THATCH).find((m) => m.id === `core:${name}_thatch`)!.lods[level]!.positions;
+    return [0, 1, 2].flatMap((a) => [Math.min(...Array.from({ length: p.length / 3 }, (_, v) => p[v * 3 + a]!)), Math.max(...Array.from({ length: p.length / 3 }, (_, v) => p[v * 3 + a]!))]);
+  };
+  for (let level = 0; level < 4; level++) {
+    const skirt = box("skirt", level);
+    // In the engine's frame: +X along the side, +Y up from the foundation's top, +Z outward. Its top is the foundation's foot, a hand over it.
+    expect([skirt[0], skirt[1], skirt[2]]).toEqual([-1.5, 1.5, -2.4000000953674316]);
+    expect(skirt[3]!, `level ${level}`).toBeLessThanOrEqual(-0.375 + 0.035);
+    expect(skirt[3]!, `level ${level}`).toBeGreaterThanOrEqual(-0.375);
+    expect(skirt[4]!, `level ${level}`).toBeGreaterThanOrEqual(level < 3 ? 0 : 0.049);
+    expect(skirt[5]!, `level ${level}`).toBeLessThanOrEqual(0.12);
+    const ridge = box("ridge", level);
+    expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
+    // It stands no higher than 0.11 m over the ridge's line and lies 0.27 m down each roof.
+    expect(ridge[3]!, `level ${level}`).toBeLessThanOrEqual(0.111);
+    expect(Math.max(-ridge[4]!, ridge[5]!), `level ${level}`).toBeLessThanOrEqual(0.2701);
+  }
+});

@@ -4,6 +4,8 @@
 //   bun tools/pieces/forms.ts --only roof,ramp      those alone, large and from four sides: look-<names>.png
 //   bun tools/pieces/forms.ts --only roof --level 1 at another level
 //   bun tools/pieces/forms.ts --village             the village alone; --shots 1,7 those of its views
+//   bun tools/pieces/forms.ts --tier thatch         thatch's share of them, and its hamlet for a village
+//   bun tools/pieces/forms.ts --village --look 1.5,3,1.5,4,200,10   one view of it: the point looked at, the radius, round and above
 //
 // The pieces are baked from the recipe as it stands, not read from a pack, so a change is seen at once.
 
@@ -14,17 +16,23 @@ import type { FormDef } from "../../shared/world/lattice/forms.ts";
 import type { PiecesAsset } from "../art/spec.ts";
 import { SOURCE } from "../art/source.ts";
 import { colliderBox } from "../pack/pieces/lod.ts";
+import { THATCH_FORMS, THATCH_PLANNED } from "../pack/pieces/thatch.ts";
 import { bakeTier } from "../pack/pieces/tier.ts";
 import { WOOD } from "../pack/pieces/wood.ts";
 import type { SourceMesh } from "../pack/write.ts";
 import { piecesPack, tierMeshes } from "./joints.ts";
 import type { Placed } from "./layout.ts";
 import { Canvas, Studio } from "./sheet.ts";
-import { VILLAGE_SHOTS, village } from "./village.ts";
+import { HAMLET_SHOTS, VILLAGE_SHOTS, hamlet, village } from "./village.ts";
 
 const SMOOTH = 2;
-const TIER = "wood";
+/** The tier drawn: wood unless `--tier` names another. */
+let TIER = "wood";
 const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
+/** The forms a tier is made in where that is not all of them, the first nine and the rest. */
+const MADE: Readonly<Record<string, readonly [readonly string[], readonly string[]]>> = { thatch: [THATCH_FORMS, THATCH_PLANNED] };
+const firstOf = (): string[] => MADE[TIER]?.[0].slice() ?? Object.keys(FORMS);
+const plannedOf = (): string[] => MADE[TIER]?.[1].slice() ?? Object.keys(PLANNED_FORMS);
 /** Metres on medium at which a made piece's levels begin, and pixels a metre is a metre off at 1,080 rows. */
 const LEVEL_FROM = [0, 19, 60, 147, 386] as const;
 const PIXELS = 935;
@@ -32,9 +40,15 @@ const PIXELS = 935;
 /** The tier's pieces and trims baked with their pictures: every form, or those named. */
 export async function baked(names?: readonly string[]): Promise<SourceMesh[]> {
   const dir = join(SOURCE, "core/structures", TIER);
-  const asset = (await import(join(dir, "asset.ts"))).default as PiecesAsset;
-  const forms = Object.fromEntries(Object.entries(ALL).filter(([name]) => !names || names.includes(name)));
-  return bakeTier(WOOD, forms, dir, asset.materials!, 2048, !names || names.some((n) => !(n in ALL)));
+  const source = await import(join(dir, "asset.ts"));
+  const asset = source.default as PiecesAsset;
+  const made = [...firstOf(), ...plannedOf()];
+  const forms = Object.fromEntries(Object.entries(ALL).filter(([name]) => made.includes(name) && (!names || names.includes(name))));
+  const trims = !names || names.some((n) => !(n in ALL));
+  // Thatch bakes its own: two of its materials are a picture drawn whole, which the tier's bake has no word for. It
+  // bakes every piece each time, since a picture that says nothing of tiling takes its span from all that wear it.
+  if (TIER === "thatch") return source.bakeThatch(Object.fromEntries(made.map((name) => [name, ALL[name]!])), true);
+  return bakeTier(WOOD, forms, dir, asset.materials!, 2048, trims);
 }
 
 /** A ball round a piece's box: its middle and its radius. */
@@ -57,9 +71,12 @@ export async function main(args: readonly string[], say: (line: string) => void 
   const value = (name: string): string | undefined => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : undefined);
   const out = resolve(value("out") ?? "var/pieces");
   mkdirSync(out, { recursive: true });
+  TIER = value("tier") ?? "wood";
   const only = value("only")?.split(",");
   const meshes = await baked(only);
-  const pack = piecesPack([...tierMeshes(["thatch", "stone"]), ...meshes]);
+  // The other tiers as installed, and this one's installed pieces under those the recipe makes now.
+  const mine = new Set(meshes.map((m) => m.id));
+  const pack = piecesPack([...tierMeshes().filter((m) => !mine.has(m.id)), ...meshes]);
   const studio = await Studio.of(pack);
   const made = new Map(meshes.map((m) => [m.id, m] as const));
   const id = (name: string): string => `core:${name}_${TIER}`;
@@ -84,7 +101,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
     return write(`look-${only.join("-").slice(0, 60)}.png`, canvas);
   }
   if (!args.includes("--village")) {
-    const names = Object.keys(PLANNED_FORMS);
+    const names = plannedOf();
     // Every new form from its front left and its back right.
     const [cw, ch, across] = [250, 230, 7];
     const close = new Canvas(8 + across * (cw + 4), 30 + Math.ceil(names.length / across) * 2 * (ch + 4));
@@ -125,10 +142,18 @@ export async function main(args: readonly string[], say: (line: string) => void 
       write(`trims-${TIER}.png`, sheet);
     }
   }
-  const built: Placed[] = village(TIER);
+  const built: Placed[] = TIER === "wood" ? village(TIER) : hamlet(TIER, value("joints") !== undefined);
+  const shots = TIER === "wood" ? VILLAGE_SHOTS : HAMLET_SHOTS;
   const [vw, vh] = [1000, 720];
   const wanted = value("shots")?.split(",").map(Number);
-  VILLAGE_SHOTS.forEach(([name, centre, radius, around, above, only], k) => {
+  // One view of one's own: --look x,y,z,radius,around,above.
+  const look = value("look")?.split(",").map(Number);
+  if (look) {
+    const canvas = new Canvas(vw, vh);
+    canvas.shrink(studio.shoot(built, vw * SMOOTH, vh * SMOOTH, [look[0]!, look[1]!, look[2]!], look[3]!, look[4]!, look[5]!, Number(value("level") ?? 0), 0), vw * SMOOTH, vh * SMOOTH, SMOOTH, 0, 0);
+    return write(`village-${TIER}-look${value("name") ? `-${value("name")}` : ""}.png`, canvas);
+  }
+  shots.forEach(([name, centre, radius, around, above, only], k) => {
     if (wanted && !wanted.includes(k + 1)) return;
     const canvas = new Canvas(vw, vh);
     const drawn = only ? built.filter((q) => only.test(q.id)) : built;
