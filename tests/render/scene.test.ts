@@ -570,8 +570,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 927678146 until render in rose and mint and stucco in limestone added theirs, and 1143400506 until a shed's
   // sheet in limestone, mint and clay and its monitor's seam. It was 2280214352 until the skate park's kicker, rail and
   // ledge (content/skate-park.ts) added their grey meshes, 3630105137 until the two parked Concept 003 meshes shifted
-  // handles, and 1615357347 until the city's broken forms (content/breaks) added theirs.
-  expect(hash).toBe(563689127);
+  // handles, 1615357347 until the city's broken forms (content/breaks) added theirs, and 563689127 until the wrecks'
+  // stripped forms (content/vehicles/salvage.ts) added theirs.
+  expect(hash).toBe(3091927605);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
