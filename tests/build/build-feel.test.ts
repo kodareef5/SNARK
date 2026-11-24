@@ -802,3 +802,39 @@ test("marks of one piece, colour and fade go as one draw of many, each by its ow
   for (let d = 0; d < next.drawCount; d++) if (next.drawMesh[d] === mesh && next.drawBuffer[d] === TRANSIENT_BUFFER && next.drawInstances[d]! > 1) left++;
   expect(left).toBe(0);
 });
+
+test("past four fifths of the structure cap in range, the line over the hotbar says how many stand there, before a piece is refused for it", () => {
+  const { h, app, s, run, aim, click, text, b } = client(["piece_foundation_wood"], 0, 20);
+  const ox = s.own.x, oy = s.own.y, oz = s.own.z;
+  s.text("setting TheMaxStructuresInRange 5");
+  app.key("Digit1", true);
+  aim(ox, oy, oz + 4);
+  run(1200);
+  // With nothing built, the line says only how the piece would stand.
+  expect([s.structuresNear, s.structuresCap, text(KEY_BUILD_SAYS)]).toEqual([0, 5, "Stability 4 of 4"]);
+  click();
+  run(300);
+  aim(ox + 2, oy, oz + 4);
+  run(100);
+  app.mouseButton(0, true);
+  aim(ox + 7, oy, oz + 4);
+  run(100);
+  app.mouseButton(0, false);
+  // Three of five: still under four fifths. The count comes within a second of the pieces.
+  run(1200);
+  expect([h.host.build.placed, s.structuresNear, text(KEY_BUILD_SAYS)]).toEqual([3, 3, "Stability 4 of 4"]);
+  click();
+  run(1200);
+  expect([h.host.build.placed, s.structuresNear, b.problem, text(KEY_BUILD_SAYS)]).toEqual([4, 4, 0, "4 of 5 structures here   Stability 4 of 4"]);
+  // The last one that may stand, and then the refusal the line foretold, in the same words.
+  click();
+  run(1200);
+  expect([h.host.build.placed, text(KEY_BUILD_SAYS)]).toEqual([5, "5 of 5 structures here   Stability 4 of 4"]);
+  click();
+  run(300);
+  expect([h.host.build.placed, h.host.build.refused, text(KEY_PROMPT)]).toEqual([5, 1, "5 of 5 structures here"]);
+  // The cap lifted, the line says nothing of it. The piece put away, nothing is sent of it.
+  s.text("setting TheMaxStructuresInRange 0");
+  run(1200);
+  expect([s.structuresCap, text(KEY_BUILD_SAYS)]).toEqual([0, "Stability 4 of 4"]);
+});

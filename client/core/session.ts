@@ -70,6 +70,7 @@ import {
   OWN_STATION,
   OWN_PROGRESSION,
   OWN_XP,
+  OWN_STRUCTURES,
   OWN_RESPAWN,
   CHOOSE_ARRIVED,
   CHOOSE_DIED,
@@ -588,6 +589,9 @@ export class ClientSession {
   /** Cheats enabled. */
   admin = false;
   ownLook: Uint8Array | null = null;
+  /** With a piece in hand: the structures of every tribe counted round the survivor, and the most that may stand there, 0 for no cap (OWN_STRUCTURES). */
+  structuresNear = 0;
+  structuresCap = 0;
   /** Hotbar slot in hand, 0 to 9, or -1. */
   held = -1;
   /** The last CMD_SELECT not yet answered, and until when its answer's slot may still be on its way. */
@@ -2103,6 +2107,16 @@ export class ClientSession {
         p.engrams = engrams;
         p.jobs = jobs;
         p.version++;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_STRUCTURES,
+      read(s, r) {
+        const have = r.varint();
+        const cap = r.varint();
+        if (r.overflow) return;
+        s.structuresNear = have;
+        s.structuresCap = cap;
       },
     });
     ownKinds.add({

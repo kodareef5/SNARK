@@ -4,7 +4,7 @@
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_METRES, PLACED_NONE, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_RATE, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { OWN_STRUCTURES, MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_METRES, PLACED_NONE, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_RATE, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -81,6 +81,9 @@ interface Claim {
   action: number;
   cache: EntityRecord | null;
 }
+
+/** One more than the greatest cap a builder is told of: its count and cap go as one number, to tell a change of either. */
+const STRUCTURES_CAP_SPAN = 1 << 21;
 
 export class Build {
   /** Counters. `fallen` counts pieces that fell when their support went. */
@@ -172,6 +175,28 @@ export class Build {
         return stability >= 0 && stability >= (form.need ?? 0);
       },
     };
+    // A builder is told how near the cap it stands, so the preview can say so before a piece is refused for it.
+    const told = new WeakMap<Client, { at: number; count: number }>();
+    ctx.game.own.add<number>({
+      kind: OWN_STRUCTURES,
+      version: (c, rec) => {
+        const inv = ctx.items.inv(rec);
+        if (c.ent < 0 || rec.held < 0 || !world.reg.places[inv.item[inv.hotbar + rec.held]!]) return undefined;
+        let t = told.get(c);
+        if (!t) told.set(c, (t = { at: -TICK_RATE, count: 0 }));
+        // Counted once a second.
+        if (world.tick - t.at >= TICK_RATE) {
+          t.at = world.tick;
+          t.count = world.claims.near(world.ents.x[c.ent]!, world.ents.z[c.ent]!) * STRUCTURES_CAP_SPAN + Math.max(0, Math.min(STRUCTURES_CAP_SPAN - 1, ctx.rules.num("TheMaxStructuresInRange")));
+        }
+        return t.count;
+      },
+      write: (w, c) => {
+        const count = told.get(c)!.count;
+        w.varint(Math.floor(count / STRUCTURES_CAP_SPAN));
+        w.varint(count % STRUCTURES_CAP_SPAN);
+      },
+    });
     this.decay.lone = (ref) => {
       this.support.forget();
       const node = this.support.node(ref);

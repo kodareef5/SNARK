@@ -704,6 +704,11 @@ export const OWN_STATION = ownKind();
 export const OWN_KEPT = ownKind();
 /** experience f64, level u16, unspent stat points u16. Sent at each gain, so it carries nothing that a gain leaves as it was. */
 export const OWN_XP = ownKind();
+/**
+ * structures of every tribe counted round the survivor varint, the most that may stand there varint (0 for no cap). Sent
+ * while a building piece is in hand, when either has changed, at most once a second.
+ */
+export const OWN_STRUCTURES = ownKind();
 
 export const MARKER_DEATH = 1;
 

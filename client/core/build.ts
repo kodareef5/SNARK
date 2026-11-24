@@ -56,6 +56,8 @@ const OTHERS_SEEN = 16;
 const OTHERS_A_FRAME = 1;
 /** How see-through the other slots' marks are, 0 to 1. */
 export const OTHERS_FADE = 0.55;
+/** The share of the structure cap past which the preview says how many structures stand in range. */
+export const CAP_SAID_FROM = 0.8;
 /** A piece that would fall is drawn over itself this see-through, this many metres toward the eye so it is not hidden by itself. */
 export const FALL_FADE = 0.3;
 export const FALL_NEAR = 0.04;
@@ -770,12 +772,16 @@ export class Builder {
   /** What the hotbar's line says of the piece shown: how well it would stand. "" with nothing to say. */
   says(): string {
     const r = this.row;
+    const s = this.session;
+    // Past four fifths of the most structures that may stand here, how many do: first, so a narrow line keeps it.
+    const room = s !== null && s.structuresCap > 0 && s.structuresNear >= s.structuresCap * CAP_SAID_FROM ? `${s.structuresNear.toLocaleString("en-US")} of ${s.structuresCap.toLocaleString("en-US")} structures here` : "";
+    let stands = this.problem === 0 && this.stability >= 0 ? `Stability ${this.stability} of ${this.stabilityMost}` : "";
     if (r.on && r.ok > 0) {
       let least = this.stabilityMost;
       for (let i = 0; i < r.ok; i++) least = Math.min(least, r.stab[i]!);
-      return `Row of ${r.ok}, of ${r.have} carried   Stability ${least} of ${this.stabilityMost} at least`;
+      stands = `Row of ${r.ok}, of ${r.have} carried   Stability ${least} of ${this.stabilityMost} at least`;
     }
-    return this.problem === 0 && this.stability >= 0 ? `Stability ${this.stability} of ${this.stabilityMost}` : "";
+    return room !== "" && stands !== "" ? `${room}   ${stands}` : room || stands;
   }
 
   /** The palette colour a piece of stability `stab` that stands is shown in. */
