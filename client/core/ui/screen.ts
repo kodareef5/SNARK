@@ -44,6 +44,8 @@ export interface Screen {
   readonly bands: readonly { readonly from: number; readonly count: number }[];
   /** Whether it is up this frame. */
   isOpen(): boolean;
+  /** Each frame, open or not, before any screen builds: a screen the session opens reads the session here. */
+  absorb?(c: ScreenCtx): void;
   /** Brings it up by its hotkey. Without one only its own file opens it. */
   show?(c: ScreenCtx): void;
   close(c: ScreenCtx): void;

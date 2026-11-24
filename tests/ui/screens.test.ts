@@ -3,8 +3,9 @@ import { HudModel } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import type { CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_EMOTE_BUTTON, type EmoteMenu } from "../../client/core/ui/emotes.ts";
-import type { Screen, ScreenCtx } from "../../client/core/ui/screen.ts";
-import { RESULT_DENIED } from "../../shared/net/protocol.ts";
+import type { Screen } from "../../client/core/ui/screen.ts";
+import type { ChoosingScreen } from "../../client/core/ui/choosing.ts";
+import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { Chart } from "../../client/core/tactical.ts";
@@ -63,20 +64,27 @@ test("screens have names of their own and key bands that do not meet", () => {
   for (let i = 1; i < bands.length; i++) expect(bands[i]!.from, `${bands[i]!.name} meets ${bands[i - 1]!.name}`).toBeGreaterThanOrEqual(bands[i - 1]!.from + bands[i - 1]!.count);
 });
 
-/** How this test opens each listed screen. A screen added to the list needs a line here. */
-const opens: Record<string, (ui: Ui) => Screen> = {
-  travel: openTravel,
-  character: (ui) => { const s = ui.screen<CharacterScreen>("character"); s.open = true; return s; },
-  emotes: (ui) => { const s = ui.screen<EmoteMenu>("emotes"); s.open = true; return s; },
-  map: (ui) => { const s = ui.screen<MapScreen>("map"); s.open = true; return s; },
+/**
+ * How this test opens each listed screen, and closes it as the game would: by its own file, or by the session where the
+ * session decides. A screen added to the list needs a line here.
+ */
+const opens: Record<string, (ui: Ui, session: ClientSession) => { s: Screen; shut(): void }> = {
+  travel: (ui) => { const s = openTravel(ui); return { s, shut: () => s.close() }; },
+  character: (ui) => { const s = ui.screen<CharacterScreen>("character"); s.open = true; return { s, shut: () => s.close() }; },
+  emotes: (ui) => { const s = ui.screen<EmoteMenu>("emotes"); s.open = true; return { s, shut: () => s.close() }; },
+  map: (ui) => { const s = ui.screen<MapScreen>("map"); s.open = true; return { s, shut: () => s.close() }; },
+  choosing: (ui, session) => {
+    Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 0, respawnPoints: [{ kind: 0, name: "Beach", x: 10, z: 10, readyAt: 0 }, { kind: 1, name: "Bed", x: 40, z: 30, readyAt: 0 }] });
+    return { s: ui.screen<ChoosingScreen>("choosing"), shut: () => (session.sessionState = SESSION_ALIVE) };
+  },
 };
 
 test("each open screen frees the pointer, draws inside its bands and owns what it drew", () => {
-  const { session } = fakeSession();
   for (const name of new Ui().screens.map((s) => s.name)) {
     expect(opens[name], `a way to open ${name} in this test`).toBeDefined();
+    const { session } = fakeSession();
     const ui = new Ui();
-    const s = opens[name]!(ui);
+    const { s } = opens[name]!(ui, session);
     const nodes = drawn(ui, s, session);
     expect(ui.wantsPointerLock, name).toBe(false);
     expect(nodes.length, name).toBeGreaterThan(0);
@@ -97,11 +105,10 @@ test("a press on a screen's node goes to that screen", () => {
 test("a press that comes after its screen closed, before the next frame, does nothing", () => {
   for (const name of new Ui().screens.map((s) => s.name)) {
     const ui = new Ui(), { session, sent } = fakeSession();
-    const s = opens[name]!(ui);
+    const { s, shut } = opens[name]!(ui, session);
     const keys = drawn(ui, s, session).filter((n) => n.interactive).map((n) => n.key);
     expect(keys.length, name).toBeGreaterThan(0);
-    // Closed by its own file, as a server answer or another key would.
-    s.close({} as ScreenCtx);
+    shut();
     for (const key of keys) ui.pointer(0, key, 0, 0, 0, session);
     expect([s.isOpen(), sent], name).toEqual([false, []]);
   }

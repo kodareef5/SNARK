@@ -13,7 +13,7 @@ import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../cli
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN } from "../../client/core/ui/screens.ts";
-import { KEY_CHOOSE_FILTER, KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE } from "../../client/core/ui/choosing.ts";
+import { KEY_CHOOSE_FILTER, KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE, type ChoosingScreen } from "../../client/core/ui/choosing.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder, type CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_NAME_INPUT, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
@@ -599,9 +599,9 @@ test("the choosing and map screens fit every window shape, and a place picked in
         ui.input(KEY_CHOOSE_FILTER, "POOL");
         ui.build(aspect, fullHud(), session);
         expect([f.find(KEY_CHOOSE_ROW)!.text, f.find(KEY_CHOOSE_ROW + 1)]).toEqual(["> Poolside", null]);
-        expect([ui.key("Enter", true, false, session), ui.captureKeyboard, ui.choosing.filter]).toEqual([true, false, "POOL"]);
+        expect([ui.key("Enter", true, false, session), ui.captureKeyboard, ui.screen<ChoosingScreen>("choosing").filter]).toEqual([true, false, "POOL"]);
         ui.pointer(0, KEY_CHOOSE_ROW, 0, 0, 0, session);
-        expect(ui.choosing.picked).toBe(2);
+        expect(ui.screen<ChoosingScreen>("choosing").picked).toBe(2);
       } else {
         // The map has the picture, a pin for each death and one for the survivor, and a line for each death.
         expect(f.find(KEY_CHOOSE_PANEL)).toBeNull();

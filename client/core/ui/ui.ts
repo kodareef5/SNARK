@@ -17,7 +17,6 @@ import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_M
 import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
-import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
 import type { StoragePage } from "./storage.ts";
@@ -40,7 +39,6 @@ export class Ui {
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
   readonly air = new AirRadio();
-  readonly choosing = new ChoosingScreen();
   readonly structure = new StructMenu();
   readonly naming = new NamePrompt();
   /** The screens of SCREENS, made for this interface, in its order. */
@@ -114,14 +112,14 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    if (this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering) return true;
+    if (this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming) return true;
     for (const s of this.screens) if (s.isOpen() && s.keyboard?.()) return true;
     return false;
   }
 
   /** A text field is wanted: the shell of a touch device raises its keyboard within the press that asked. */
   get typing(): boolean {
-    if (this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering) return true;
+    if (this.console.open || this.chat.open || this.naming.open || this.structure.naming) return true;
     for (const s of this.screens) if (s.isOpen() && s.typing?.()) return true;
     return false;
   }
@@ -260,7 +258,8 @@ export class Ui {
     // The name prompt has the keyboard until it is answered.
     if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
     if (this.structure.naming && !con.open) return this.structure.key(code, down, repeat, session);
-    if (this.choosing.filtering && !con.open) return this.choosing.key(code, down, repeat);
+    // A listed screen whose field has the keyboard takes every key, and a key it does not use is typing.
+    if (!con.open) for (const s of this.screens) if (s.isOpen() && s.keyboard?.()) return s.key?.(code, down, repeat, this.at(session)) ?? false;
     if (chat.open && !con.open) {
       // The chat box has the keyboard. It handles Enter, Escape and Tab, and every other key is typing.
       if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape" && code !== "Tab") return false;
@@ -420,7 +419,6 @@ export class Ui {
       return;
     }
     if (kind === 0 && !button && this.air.click(key, session)) return;
-    if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
@@ -437,7 +435,6 @@ export class Ui {
     if (key === KEY_CREATIVE_PASSWORD) this.creativeScreen.edit(value);
     else if (key === KEY_NAME_INPUT) this.naming.edit(value);
     else if (key === KEY_STRUCT_NAME_INPUT) this.structure.edit(value);
-    else if (key === KEY_CHOOSE_FILTER) this.choosing.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
     else for (const s of this.screens) if (s.text?.(key, value)) return;
@@ -454,6 +451,7 @@ export class Ui {
     this.touchShown = 0;
     this.creating = session?.sessionState === SESSION_CREATING;
     this.dead = session?.sessionState === SESSION_DEAD;
+    for (const s of this.screens) s.absorb?.(this.at(session, hud));
     // A survivor still in the creator has no vitals, no position and nothing to aim at.
     if (session) this.chat.absorb(session);
     if (session && (this.creating || this.dead)) this.chat.wait(session.serverTick);
@@ -490,11 +488,6 @@ export class Ui {
     if (this.dead || this.creating || session?.state === "closed") this.air.open = this.air.marking = false;
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
     if (this.dead || this.creating) this.structure.close();
-    // The filter is for one spell of choosing.
-    if (!this.dead && (this.choosing.filtering || this.choosing.filter !== "")) {
-      this.choosing.filtering = false;
-      this.choosing.edit("");
-    }
     // The Creative entry follows the server's rule, and so does the screen if it was open.
     if (this.creative && !session?.creative) { this.creative = false; this.focusTo(KEY_MENU_RESUME); }
     const creative = this.menu && this.creative && !this.console.open && !this.chat.open;
@@ -512,7 +505,6 @@ export class Ui {
           if (!f.find(this.menuFocus)?.interactive && !this.focusNext) this.focusTo(this.creativeScreen.first(session));
         } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);
       } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
-      else if (this.dead && session) this.choosing.build(f, session, hud);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
       else if (this.air.open && session) this.air.build(f, session, this.menuFocus);
       else if (!this.buildModal(f, session, hud)) {
