@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { EntrySurvivor } from "../../client/core/entry-state.ts";
-import { defaultEntrySpawn, playSurvivor, playWorld } from "../../client/core/player-flow.ts";
+import { defaultEntrySpawn, playSurvivor, playWorld, titlePreloadWorld } from "../../client/core/player-flow.ts";
 
 const origin = "https://play.example.com";
 const world = (address: string, changes: Partial<{ password: boolean; online: boolean; players: number }> = {}) =>
@@ -28,4 +28,13 @@ test("spawn defaults follow usable places by name through changes to map order",
   expect(defaultEntrySpawn([bad, shore, road], "Road")).toBe(2);
   expect(defaultEntrySpawn([bad, shore], "Old place")).toBe(1);
   expect(defaultEntrySpawn([bad], "Old place")).toBe(-1);
+});
+
+
+test("only a known same-origin world can warm before the player chooses", () => {
+  expect(titlePreloadWorld(null, null, origin)).toBeNull();
+  expect(titlePreloadWorld(origin + "/direct/", null, origin)).toBe(origin + "/direct/");
+  expect(titlePreloadWorld(null, origin + "/recent/", origin)).toBe(origin + "/recent/");
+  expect(titlePreloadWorld(origin + "/direct/", "https://another.example.com/recent/", origin)).toBeNull();
+  expect(titlePreloadWorld(null, origin + ".another.example.com/recent/", origin)).toBeNull();
 });

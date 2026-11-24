@@ -6,7 +6,7 @@ import { Rng } from "../../shared/rng.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { readLaunch, launchKey, savedName, validName, type EntrySurvivor, type Launch, type Remembered } from "../core/entry-state.ts";
 import { appearanceFields, bodyFields, identityFields, button, esc, field } from "./forms.ts";
-import { defaultEntrySpawn, playSurvivor, playWorld } from "../core/player-flow.ts";
+import { defaultEntrySpawn, playSurvivor, playWorld, titlePreloadWorld } from "../core/player-flow.ts";
 import { sceneFor } from "./scenery.ts";
 import { listingsOf, mergeListings, type Listing } from "../core/directories.ts";
 
@@ -84,6 +84,7 @@ let draft = "",
   fromWorld = false;
 let prep: AbortController | null = null,
   selectionPrep: AbortController | null = null,
+  titlePrep: { address: string; job: AbortController } | null = null,
   version = 0,
   loadingWorld = false,
   loadError = false,
@@ -151,6 +152,24 @@ function remember(world: World, rows: EntrySurvivor[]) {
   }
   write(rosterStore, JSON.stringify(next));
 }
+function launchWarm(address: string): AbortController {
+  const job = new AbortController();
+  void loadWarmers().then(({ preloadLaunch }) => {
+    if (!job.signal.aborted) return preloadLaunch(address, job.signal);
+  }).catch(() => {});
+  return job;
+}
+
+function warmTitleAfterPaint(): void {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (screen !== "title" || document.hidden) return;
+    const address = titlePreloadWorld(direct ? home : null, lastPlayed()?.world ?? null, location.origin);
+    if (titlePrep?.address === address) return;
+    titlePrep?.job.abort();
+    titlePrep = address ? { address, job: launchWarm(address) } : null;
+  }));
+}
+
 function warm() {
   prep?.abort();
   const job = new AbortController();
@@ -180,6 +199,9 @@ function createDraft(): void {
 
 async function selectWorld(w: World, to: Screen = "roster", wanted = ""): Promise<boolean> {
   const address = worldUrl(w.address, home);
+  const alreadyWarming = titlePrep?.address === address ? titlePrep.job : null;
+  if (!alreadyWarming) titlePrep?.job.abort();
+  titlePrep = null;
   if (new URL(address).origin !== location.origin) {
     const dest = new URL(address);
     dest.searchParams.set("screen", to);
@@ -190,11 +212,7 @@ async function selectWorld(w: World, to: Screen = "roster", wanted = ""): Promis
   prep?.abort();
   prep = null;
   selectionPrep?.abort();
-  const selection = new AbortController();
-  selectionPrep = selection;
-  void loadWarmers().then(({ preloadLaunch }) => {
-    if (!selection.signal.aborted) return preloadLaunch(address, selection.signal);
-  }).catch(() => {});
+  selectionPrep = alreadyWarming ?? launchWarm(address);
   lastWorldRequest = { screen: to, wanted };
   status.textContent = "";
   const v = ++version;
@@ -265,12 +283,14 @@ function nav(next: Screen) {
   if (next === "title" || next === "servers") {
     fromWorld = false;
     loadError = false;
+    titlePrep?.job.abort();
+    titlePrep = null;
     prep?.abort();
     prep = null;
     selectionPrep?.abort();
     selectionPrep = null;
     void warmers?.then(({ stopPreloading }) => {
-      if (!selectionPrep) stopPreloading();
+      if (!selectionPrep && !titlePrep) stopPreloading();
     }).catch(() => {});
     status.textContent = "";
   }
@@ -286,6 +306,7 @@ function nav(next: Screen) {
   screen = next;
   render();
   topOfPage();
+  if (next === "title") warmTitleAfterPaint();
   if (next === "servers") {
     void worldsRefresh().then(() => {
       if (screen !== "servers") return;
@@ -856,7 +877,7 @@ async function start() {
   mountChangelog();
   firstWorlds = worldsRefresh();
   void loadGallery().then(() => {
-    if (screen !== "title") render();
+    if (["servers", "roster", "spawn"].includes(screen)) render();
   }).catch(() => {});
   if (directScreen) {
     if (route === "create") {
@@ -873,11 +894,21 @@ async function start() {
     await selectWorld(directWorld()!, route as Screen, wanted);
   } else {
     render();
+    warmTitleAfterPaint();
     if (titleAction) root.querySelector<HTMLButtonElement>(`[data-action="${titleAction}"]`)?.click();
     await firstWorlds;
-    if (screen === "title") render();
+    if (screen === "title") {
+      render();
+      warmTitleAfterPaint();
+    }
   }
 }
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    titlePrep?.job.abort();
+    titlePrep = null;
+  } else if (screen === "title") warmTitleAfterPaint();
+});
 setInterval(() => {
   if (screen === "servers" && !document.hidden) void worldsRefresh();
 }, 15000);

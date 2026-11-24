@@ -8,9 +8,17 @@ interface PlayableWorld {
   password?: boolean;
 }
 
+const localAddress = (address: string, origin: string): boolean => address.startsWith(origin + "/");
+
+/** A title may speculate only when Play already has a local destination. */
+export function titlePreloadWorld(here: string | null, recent: string | null, origin: string): string | null {
+  const address = recent ?? here;
+  return address && localAddress(address, origin) ? address : null;
+}
+
 /** Opens the world hosting the page, or the first open local world with room. */
 export function playWorld<W extends PlayableWorld>(worlds: readonly W[], here: string | null, origin: string): W | null {
-  const local = worlds.filter((w) => w.online !== false && w.address.startsWith(origin + "/"));
+  const local = worlds.filter((w) => w.online !== false && localAddress(w.address, origin));
   return (here ? local.find((w) => w.address === here) : null)
     ?? local.find((w) => w.password !== true && (w.max === 0 || w.players < w.max))
     ?? null;
