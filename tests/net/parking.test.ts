@@ -115,7 +115,8 @@ test("coming back after ten changes costs at most 200 bytes, and the client hold
   go(0);
   h.run(1000);
   expect([differ(structs, s), s.world!.structs.count]).toEqual([0, structs.count]);
-  expect(bytes()).toBeGreaterThan(64);
+  // More than the 26 bytes an unchanged base costs. Keyed rows brought ten changes under 64.
+  expect(bytes()).toBeGreaterThan(26);
   expect(bytes()).toBeLessThanOrEqual(200);
   // What changed while it was away is not heard as it comes. The next change is.
   expect(told).toBe(0);
