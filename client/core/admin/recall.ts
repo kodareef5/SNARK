@@ -41,6 +41,17 @@ export class Recall {
   private readonly get: Get;
   /** The newest ask of each kind; an answer to an older one is dropped. */
   private asks = { window: 0, chosen: 0, holders: 0 };
+  private pending = { window: "", chosen: "", holders: "" };
+
+  private begin(kind: keyof Recall["asks"], key: string): number {
+    if (this.pending[kind] === key) return 0;
+    this.pending[kind] = key;
+    return ++this.asks[kind];
+  }
+
+  private done(kind: keyof Recall["asks"], ask: number): void {
+    if (ask === this.asks[kind]) this.pending[kind] = "";
+  }
 
   constructor(get: Get) {
     this.get = get;
@@ -57,17 +68,25 @@ export class Recall {
    * points among them, then everyone's places, the marks and the items. True if a new window came.
    */
   async fetchWindow(t: Timeline): Promise<boolean> {
-    if (this.servesWindow(t)) return false;
-    const ask = ++this.asks.window;
+    if (this.servesWindow(t)) {
+      this.begin("window", "");
+      return false;
+    }
     const [from, to] = fetchSpan(t);
     const range = `from=${from}&to=${to}`;
-    const survivors = (await this.get(`log/survivors.json?${range}`)) as LogSurvivor[];
-    if (ask !== this.asks.window) return false;
-    const step = stepFor(to - from, survivors.length);
-    const [positions, marks, items] = (await Promise.all([this.get(`log/positions.json?${range}&step=${step}`), this.get(`log/marks.json?${range}`), this.get(`log/items.json?${range}`)])) as [LogPositions, { marks: LogMark[]; more: boolean }, LogItem[]];
-    if (ask !== this.asks.window) return false;
-    this.window = { from, to, step: positions.step, survivors, positions, marks: marks.marks, moreMarks: marks.more, items };
-    return true;
+    const ask = this.begin("window", range);
+    if (!ask) return false;
+    try {
+      const survivors = (await this.get(`log/survivors.json?${range}`)) as LogSurvivor[];
+      if (ask !== this.asks.window) return false;
+      const step = stepFor(to - from, survivors.length);
+      const [positions, marks, items] = (await Promise.all([this.get(`log/positions.json?${range}&step=${step}`), this.get(`log/marks.json?${range}`), this.get(`log/items.json?${range}`)])) as [LogPositions, { marks: LogMark[]; more: boolean }, LogItem[]];
+      if (ask !== this.asks.window) return false;
+      this.window = { from, to, step: positions.step, survivors, positions, marks: marks.marks, moreMarks: marks.more, items };
+      return true;
+    } finally {
+      this.done("window", ask);
+    }
   }
 
   /** Whether what is held of `pid` serves the window. */
@@ -76,31 +95,69 @@ export class Recall {
     return this.chosen !== null && this.chosen.pid === pid && serves(this.chosen, t.start, t.end, stepFor(to - from, 1, TRACK_POINTS));
   }
 
+  windowFor(t: Timeline): WindowData | null {
+    return this.servesWindow(t) ? this.window : null;
+  }
+
+  chosenFor(pid: number, t: Timeline): ChosenData | null {
+    return this.servesChosen(pid, t) ? this.chosen : null;
+  }
+
+  holdersFor(item: string, quality: number | null, blueprint: boolean | null, t: Timeline): HoldersData | null {
+    const h = this.holders;
+    return h && h.item === item && h.quality === quality && h.blueprint === blueprint
+      && serves({ ...h, step: 0 }, t.start, t.end, 0) ? h : null;
+  }
+
+  forgetHolders(): void {
+    this.holders = null;
+    this.begin("holders", "");
+  }
+
   /** Asks for `pid`'s track and changes over the window's stretch if what is held does not serve it. True if they came. */
   async fetchChosen(pid: number, t: Timeline): Promise<boolean> {
-    if (this.servesChosen(pid, t)) return false;
-    const ask = ++this.asks.chosen;
+    if (this.servesChosen(pid, t)) {
+      this.begin("chosen", "");
+      return false;
+    }
     const [from, to] = fetchSpan(t);
-    const step = stepFor(to - from, 1, TRACK_POINTS);
-    const [track, changes] = (await Promise.all([this.get(`log/track.json?pid=${pid}&from=${from}&to=${to}&step=${step}`), this.get(`log/changes.json?pid=${pid}&from=${from}&to=${to}`)])) as [LogPositions, LogChanges];
-    if (ask !== this.asks.chosen) return false;
-    this.chosen = { pid, from, to, step: track.step, track, changes };
-    return true;
+    const query = `pid=${pid}&from=${from}&to=${to}`;
+    const ask = this.begin("chosen", query);
+    if (!ask) return false;
+    try {
+      const step = stepFor(to - from, 1, TRACK_POINTS);
+      const [track, changes] = (await Promise.all([this.get(`log/track.json?${query}&step=${step}`), this.get(`log/changes.json?${query}`)])) as [LogPositions, LogChanges];
+      if (ask !== this.asks.chosen) return false;
+      this.chosen = { pid, from, to, step: track.step, track, changes };
+      return true;
+    } finally {
+      this.done("chosen", ask);
+    }
   }
 
   forget(): void {
     this.chosen = null;
-    this.asks.chosen++;
+    this.begin("chosen", "");
   }
 
   /** Who held `item`, of a quality and blueprint or of any (null), over the window's stretch. */
   async fetchHolders(item: string, quality: number | null, blueprint: boolean | null, t: Timeline): Promise<boolean> {
-    const ask = ++this.asks.holders;
+    if (this.holdersFor(item, quality, blueprint, t)) {
+      this.begin("holders", "");
+      return false;
+    }
     const [from, to] = fetchSpan(t);
-    const holders = (await this.get(`log/holders.json?item=${encodeURIComponent(item)}&from=${from}&to=${to}${quality === null ? "" : `&quality=${quality}`}${blueprint === null ? "" : `&blueprint=${blueprint ? 1 : 0}`}`)) as LogHolder[];
-    if (ask !== this.asks.holders) return false;
-    this.holders = { item, quality, blueprint, from, to, holders };
-    return true;
+    const query = `item=${encodeURIComponent(item)}&from=${from}&to=${to}${quality === null ? "" : `&quality=${quality}`}${blueprint === null ? "" : `&blueprint=${blueprint ? 1 : 0}`}`;
+    const ask = this.begin("holders", query);
+    if (!ask) return false;
+    try {
+      const holders = (await this.get(`log/holders.json?${query}`)) as LogHolder[];
+      if (ask !== this.asks.holders) return false;
+      this.holders = { item, quality, blueprint, from, to, holders };
+      return true;
+    } finally {
+      this.done("holders", ask);
+    }
   }
 }
 

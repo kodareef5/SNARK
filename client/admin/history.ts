@@ -7,13 +7,14 @@ import type { LogMark, LogSurvivor } from "../../shared/survivor-log.ts";
 import { bytesText, counted, idWords, spanText } from "../core/admin/format.ts";
 import { clockText, dayText, momentText, tickText, timeStep, timeTicks } from "../core/admin/chart.ts";
 import { DOT_AWAY, DOT_DEAD, DOT_OUT, DOT_SPECTATING } from "../core/admin/frame.ts";
+import { itemKey, nextEvent, readItem, windowEvents, type EventFilter } from "../core/admin/investigation.ts";
 import { changeText, heldAt, heldText, itemName, nearestChange } from "../core/admin/holding.ts";
 import { figures, frameAt, onlineCounts, playIn, rowsAt, sessionAt } from "../core/admin/past.ts";
 import { holdingAt } from "../core/admin/recall.ts";
 import { findSurvivors, placeText } from "../core/admin/table.ts";
 import { LaneList } from "../core/admin/lanes.ts";
 import { PRESETS, SPEEDS, localMoment, localText } from "../core/admin/timeline.ts";
-import { $, BAD, DIM, FACE, ICE, S, WARN, WELL, esc, fit, hooks, offset } from "./dom.ts";
+import { $, BAD, DIM, FACE, ICE, S, WARN, WELL, esc, fit, hooks, offset, paintHtml } from "./dom.ts";
 import { drawMap, lookAt } from "./map.ts";
 
 const canvas = $<HTMLCanvasElement>("tlcanvas"), tip = $("tltip");
@@ -29,12 +30,13 @@ const t = S.timeline;
 const lanes = new LaneList();
 
 /** Takes the log's state from the server's stats: its span, and what to say of it. */
-export function syncLog(): void {
+export function syncLog(restore?: () => void): void {
   const log = S.stats?.log;
   if (!log) return;
   const note = $("lognote");
   const has = log.from !== null && log.to !== null;
   $("timeline").classList.toggle("empty", !has);
+  for (const id of ["play", "speed", "goto", "scrub"]) $<HTMLButtonElement>(id).disabled = !has;
   if (!has) {
     note.textContent = log.on ? "The survivor log is on and holds nothing yet: it begins as survivors play." : `No survivor log: ${log.why}.`;
     refresh();
@@ -42,28 +44,32 @@ export function syncLog(): void {
   }
   const end = log.on ? Math.max(log.to!, S.stats!.at) : log.to!;
   t.setSpan(log.from!, end);
+  restore?.();
   note.textContent = `${log.on ? "The survivor log holds" : `The survivor log is off (${log.why}); it holds`} ${spanText(end - log.from!)} from ${momentText(log.from!, offset)}, ${bytesText(log.bytes)} of its ${bytesText(log.cap)}.`;
   refresh();
   ensure();
 }
 
 let asking: ReturnType<typeof setTimeout> | undefined;
-/** Asks for what the window and the chosen survivor need, once the timeline has kept still a moment. */
+let desired = 0;
 export function ensure(): void {
   clearTimeout(asking);
-  asking = setTimeout(() => void fetchAll(), 200);
+  const request = ++desired;
+  asking = setTimeout(() => void fetchAll(request), 140);
 }
 
-async function fetchAll(): Promise<void> {
-  if (!t.known) return;
+async function fetchAll(request: number): Promise<void> {
+  if (!t.known || !["map", "survivors", "items"].includes(S.page)) return;
+  const pid = S.chosen, item = S.item;
   try {
-    const got = await S.recall.fetchWindow(t);
-    const chose = S.chosen !== 0 && (await S.recall.fetchChosen(S.chosen, t));
-    if (S.item && got) await S.recall.fetchHolders(S.item.item, S.item.quality, S.item.blueprint, t);
-    if (got) showItems();
-    if (got || chose) refresh();
+    const answers = await Promise.all([
+      S.recall.fetchWindow(t),
+      pid ? S.recall.fetchChosen(pid, t) : false,
+      item ? S.recall.fetchHolders(item.item, item.quality, item.blueprint, t) : false,
+    ]);
+    if (answers.some(Boolean)) refresh();
   } catch (e) {
-    $("lognote").textContent = `The survivor log could not be read: ${String(e)}`;
+    if (request === desired) $("lognote").textContent = `The survivor log could not be read. ${String(e)}`;
   }
 }
 
@@ -80,56 +86,68 @@ export function refresh(): void {
 
 /** Set by an entry that moves the playhead: the map then looks at the chosen survivor where it was. */
 let lookChosen = false;
+export function centerReplaySelection(): void {
+  lookChosen = true;
+}
 
 /** The map, the table, the timeline and the panels at the playhead; live, the map and table are the server's now. */
 function showPast(): void {
-  const w = S.recall.window;
+  const w = S.recall.windowFor(t);
   if (!t.live) {
-    const tail = Math.min(900_000, Math.max(15_000, (w?.step ?? 1000) * 30));
+    const tail = $<HTMLInputElement>("trails").checked ? Math.min(900_000, Math.max(15_000, (w?.step ?? 1000) * 30)) : 0;
     S.frame = w ? frameAt(t.at, w.survivors, w.positions, t.to, tail) : { at: t.at, live: false, dots: [] };
     const d = lookChosen ? S.frame.dots.find((x) => x.pid === S.chosen) : undefined;
     if (d) lookAt(d.x, d.z);
-    if (w) lookChosen = false;
+    if (d && S.view) lookChosen = false;
   }
   if (!t.live) hooks.showPeople();
   drawTimeline();
-  showChosen();
-  showFigures();
-  if (!S.recall.window && $<HTMLSelectElement>("itempick").options.length === 0) showItems();
-  else showHolders();
+  if (S.page === "survivors" || S.page === "map") showChosen();
+  if (S.page === "map") showFigures();
+  showEvents();
+  if (S.page === "items") showItems();
   const g = $<HTMLInputElement>("goto");
-  if (document.activeElement !== g) g.value = localText(t.at, offset);
-  $("live").classList.toggle("on", t.live);
+  if (t.known && document.activeElement !== g) g.value = localText(t.at, offset);
+  $("live").setAttribute("aria-pressed", String(t.live));
+  $<HTMLInputElement>("bases").disabled = !t.live;
   $("play").textContent = t.playing ? "❚❚" : "▶";
+  $("play").setAttribute("aria-label", t.playing ? "Pause" : "Play");
+  const scrub = $<HTMLInputElement>("scrub");
+  scrub.value = String(Math.round(t.x(t.at, 1000)));
+  scrub.setAttribute("aria-valuetext", t.known ? momentText(t.at, offset) : "No recorded history");
+  $("playhead").textContent = t.live ? "Live" : momentText(t.at, offset);
   drawMap();
+  if (!scrubbing && !t.playing) hooks.stateChanged();
 }
 
 /** The table at the playhead, in place of now's; false while live. */
 export function showPastPeople(): boolean {
   if (t.live) return false;
-  const w = S.recall.window;
-  const rows = w ? findSurvivors(rowsAt(t.at, w.survivors, w.positions, w.marks, t.start, t.end, t.to), $<HTMLInputElement>("find").value) : [];
+  const w = S.recall.windowFor(t);
+  const found = w ? findSurvivors(rowsAt(t.at, w.survivors, w.positions, w.marks, t.start, t.end, t.to), $<HTMLInputElement>("find").value) : [];
+  const presence = $<HTMLSelectElement>("presence").value;
+  const rows = found.filter((r) => presence === "all" || r.online === (presence === "online"));
   const d = S.head?.dims;
   if ($("heads").dataset.mode !== "past") {
     $("heads").innerHTML = '<th>Name</th><th class="wide">Tribe</th><th>At the playhead</th><th class="num wide">Played</th><th class="wide">Where</th><th class="wide">Deaths</th>';
     $("heads").dataset.mode = "past";
   }
-  $("rows").innerHTML = rows
+  paintHtml($("rows"), rows
     .map((r) => {
       const state = r.online ? (STATE_WORDS[r.state] ?? "online") + (r.riding ? `, on a ${esc(S.labels[r.riding] ?? idWords(r.riding))}` : "") : "offline";
       const where = d && Number.isFinite(r.x) ? placeText(d, r.x, r.z) : "";
-      return `<tr data-pid="${r.pid}"${r.pid === S.chosen ? ' class="chosen"' : ""}><td><span class="dot ${r.online ? (r.state === DOT_DEAD ? "dead" : "on") : ""}"></span>${esc(r.name)}</td><td class="wide">${esc(r.tribe)}</td><td>${state}</td><td class="num wide">${r.playMs > 0 ? spanText(r.playMs) : ""}</td><td class="wide">${where}</td><td class="wide">${r.deaths || ""}</td></tr>`;
+      return `<tr data-pid="${r.pid}"${r.pid === S.chosen ? ' class="chosen"' : ""}><td><button type="button" class="row-button" data-focus="survivor-${r.pid}" aria-pressed="${r.pid === S.chosen}"><span class="dot ${r.online ? (r.state === DOT_DEAD ? "dead" : "on") : ""}"></span>${esc(r.name)}</button></td><td class="wide">${esc(r.tribe)}</td><td>${state}</td><td class="num wide">${r.playMs > 0 ? spanText(r.playMs) : ""}</td><td class="wide">${where}</td><td class="wide">${r.deaths || ""}</td></tr>`;
     })
-    .join("");
+    .join(""));
   const online = rows.filter((r) => r.online).length;
   $("count").textContent = w ? `${online} online at ${clockText(t.at, offset)} of ${counted(w.survivors.length, "survivor")} in the window` : "reading the log";
   $("none").hidden = rows.length > 0;
-  $("none").textContent = w ? "Nobody was online in this window." : "Reading the log.";
+  $("none").textContent = w ? "No survivors match these filters in this window." : "Loading the selected history…";
   return true;
 }
 
 function drawTimeline(): void {
-  const w = S.recall.window;
+  const w = S.recall.windowFor(t);
   lanes.set(w?.survivors ?? [], t.start, t.end, t.to, S.chosen);
   const view = lanes.view();
   const rows = lanes.pinned ? [lanes.pinned, ...view.shown] : view.shown;
@@ -225,38 +243,36 @@ function mark(g: CanvasRenderingContext2D, x: number, y: number, colour: string,
 }
 
 /** A list item that moves the playhead to `at` when chosen. */
-const goes = (at: number, html: string, cls = ""): string => `<li data-at="${at}"${cls ? ` class="${cls}"` : ""}>${html}</li>`;
+const goes = (at: number, html: string, cls = ""): string => `<li${cls ? ` class="${cls}"` : ""}><button type="button" data-at="${at}" data-focus="at-${at}">${html}</button></li>`;
 
 function showChosen(): void {
   const box = $("chosenlog");
-  const w = S.recall.window;
-  const c = S.recall.chosen?.pid === S.chosen ? S.recall.chosen : null;
+  const w = S.recall.windowFor(t);
+  const c = S.recall.chosenFor(S.chosen, t);
   const s = w?.survivors.find((x) => x.pid === S.chosen) ?? null;
-  const now = S.people?.survivors.find((x) => x.pid === S.chosen);
   if (S.chosen === 0 || !t.known) {
-    box.innerHTML = `<h2>A survivor's log</h2><p class="dim pad">${t.known ? "Choose a survivor on the map, in the table or on the timeline: what it held at the playhead, what it gained and lost, its sessions and deaths." : "With no survivor log there is no past to read."}</p>`;
+    box.innerHTML = `<h2>Survivor log</h2><p class="dim pad">${t.known ? "Choose a survivor on the map, in the table or on the timeline: what it held at the playhead, what it gained and lost, its sessions and deaths." : "With no survivor log there is no past to read."}</p>`;
     return;
   }
-  const name = s?.name ?? c?.changes.name ?? now?.name ?? "";
   const on = s ? sessionAt(s, t.at, t.to) : null;
   const held = c ? heldAt(c.changes, t.at) : [];
   const near = c ? nearestChange(c.changes.entries, t.at) : -1;
   const entries = c ? c.changes.entries.slice(Math.max(0, near - 20), near + 21) : [];
   const deaths = (w?.marks ?? []).filter((m) => m.kind === "death" && m.pid === S.chosen);
-  box.innerHTML =
-    `<h2>${esc(name)} <span class="dim">${esc(on?.tribe ?? s?.sessions.at(-1)?.tribe ?? "")}</span></h2>` +
+  paintHtml(box,
+    `<h2>Recorded activity</h2>` +
     `<p class="dim pad">${on ? "online" : "offline"} at ${clockText(t.at, offset, true)}${s ? `, ${spanText(playIn(s, t.start, t.end, t.to))} played in the window` : ""}</p>` +
     `<h3>Held at the playhead</h3>${!c ? '<p class="dim pad">Reading its log.</p>' : held.length === 0 ? '<p class="dim pad">Nothing the log holds.</p>' : `<ul class="held">${held.map((h) => `<li>${esc(heldText(h, S.labels))}</li>`).join("")}</ul>`}` +
     (c?.changes.more ? '<p class="dim pad">More changes than one read lists: narrow the window for every one.</p>' : "") +
     `<h3>Gained and lost${c ? ` <span class="dim">${clockText(c.from, offset)} to ${clockText(c.to, offset)}: ${esc(changeText(c.changes, S.labels)) || "nothing"}</span>` : ""}</h3>` +
     `<ol class="goes">${entries.map((e, i) => goes(e.wall, `<time>${clockText(e.wall, offset, true)}</time> ${esc(changeText(e, S.labels))}`, i + Math.max(0, near - 20) === near ? "near" : "")).join("")}</ol>` +
     `<h3>Sessions</h3><ol class="goes">${(s?.sessions ?? []).map((x) => goes(x.from, `<time>${dayText(x.from, offset)} ${clockText(x.from, offset)}</time> to ${x.to === null ? "now" : clockText(x.to, offset)}, ${spanText((x.to ?? t.to) - x.from)}${x.why ? `, ${esc(x.why)}` : ""}`)).join("") || '<li class="dim">none in the window</li>'}</ol>` +
-    `<h3>Deaths</h3><ol class="goes">${deaths.map((m) => goes(m.wall, `<time>${clockText(m.wall, offset, true)}</time> ${esc(m.text || "died")}`)).join("") || '<li class="dim">none in the window</li>'}</ol>`;
+    `<h3>Deaths</h3><ol class="goes">${deaths.map((m) => goes(m.wall, `<time>${clockText(m.wall, offset, true)}</time> ${esc(m.text || "died")}`)).join("") || '<li class="dim">None in this window</li>'}</ol>`);
 }
 
 let figuresKey = "";
 function showFigures(): void {
-  const w = S.recall.window;
+  const w = S.recall.windowFor(t);
   const key = `${t.start}|${t.end}|${w?.from}|${w?.to}|${S.chosen}`;
   if (key === figuresKey) return;
   figuresKey = key;
@@ -267,45 +283,75 @@ function showFigures(): void {
   }
   const f = figures(w.survivors, w.marks, t.start, t.end, t.to);
   const most = f.players[0]?.playMs ?? 1;
-  const marks = w.marks.filter((m) => m.wall >= t.start && m.wall <= t.end).slice(-60).reverse();
   const cell = (k: string, v: string): string => `<div><span class="label">${k}</span><b>${v}</b></div>`;
   box.innerHTML =
     `<h2>In the window <span class="dim">${momentText(t.start, offset)} to ${clockText(t.end, offset)}</span></h2>` +
     `<div class="figs">${cell("Survivors", String(f.survivors))}${cell("Sessions", String(f.sessions))}${cell("Played", spanText(f.playMs))}${cell("Most at once", f.peak > 0 ? `${f.peak}, ${clockText(f.peakAt, offset)}` : "0")}${cell("Deaths", String(f.deaths))}${cell("Admin commands", String(f.commands))}</div>` +
     (f.causes.length > 0 ? `<p class="dim pad">Deaths by cause: ${f.causes.map(([c, n]) => `${esc(c)} ${n}`).join(", ")}</p>` : "") +
-    `<h3>Played most</h3><table class="players">${f.players.slice(0, 12).map((p) => `<tr data-pid="${p.pid}"${p.pid === S.chosen ? ' class="chosen"' : ""}><td>${esc(p.name)} <span class="faint">${esc(p.tribe)}</span><div class="barline"><i style="width:${(100 * p.playMs) / most}%"></i></div></td><td class="num">${spanText(p.playMs)}</td><td class="num">${counted(p.sessions, "session")}</td></tr>`).join("")}</table>` +
-    `<h3>Deaths and commands${w.moreMarks ? ' <span class="dim">(more than one read lists)</span>' : ""}</h3><ol class="goes">${marks.map((m) => goes(m.wall, markText(m))).join("") || '<li class="dim">none in the window</li>'}</ol>`;
+    `<h3>Played most</h3><table class="players">${f.players.slice(0, 12).map((p) => `<tr data-pid="${p.pid}"${p.pid === S.chosen ? ' class="chosen"' : ""}><td><button type="button" class="row-button" data-focus="activity-${p.pid}">${esc(p.name)}</button> <span class="faint">${esc(p.tribe)}</span><div class="barline"><i style="width:${(100 * p.playMs) / most}%"></i></div></td><td class="num">${spanText(p.playMs)}</td><td class="num">${counted(p.sessions, "session")}</td></tr>`).join("")}</table>`;
 }
 
 function markText(m: LogMark): string {
   return m.kind === "death" ? `<time>${clockText(m.wall, offset, true)}</time> <b class="bad">${esc(m.name || "someone")}</b> died${m.text ? `: ${esc(m.text)}` : ""}` : `<time>${clockText(m.wall, offset, true)}</time> ${esc(m.name || "the operator")}: <code>${esc(m.text)}</code>`;
 }
 
-/** The items held in the window, most widely held first, to ask who held one. */
+function visibleEvents(): LogMark[] {
+  const w = S.recall.windowFor(t);
+  return windowEvents(w?.marks ?? [], t.start, t.end, $<HTMLSelectElement>("event-filter").value as EventFilter);
+}
+
+function showEvents(): void {
+  const events = visibleEvents();
+  const has = S.recall.windowFor(t);
+  $("event-note").textContent = !t.known ? "No history is available." : !has ? "Loading the selected history…" : events.length ? has.moreMarks ? "These are the most recent events. Narrow the time window to see earlier events." : "" : "No matching events in this window.";
+  paintHtml($("event-list"), events.slice(-100).reverse().map((m) =>
+    `<li><button type="button" data-at="${m.wall}" data-pid="${m.pid}" data-focus="event-${m.kind}-${m.tick}-${m.pid}"${m.wall === Math.floor(t.at) ? ' aria-current="time"' : ""}>${markText(m)}</button></li>`).join(""));
+  $<HTMLButtonElement>("previous-event").disabled = nextEvent(events, t.at, -1) === null;
+  $<HTMLButtonElement>("next-event").disabled = nextEvent(events, t.at, 1) === null;
+}
+
 function showItems(): void {
-  const w = S.recall.window;
+  const w = S.recall.windowFor(t);
   const pick = $<HTMLSelectElement>("itempick");
-  const items = [...(w?.items ?? [])].sort((a, b) => b.survivors - a.survivors || itemName(a, S.labels).localeCompare(itemName(b, S.labels)));
-  const keep = pick.value;
-  pick.innerHTML = `<option value="">${items.length > 0 ? "Choose an item held in the window" : "Nothing was held in the window"}</option>${items.map((i) => `<option value="${esc(`${i.item}|${i.quality}|${i.blueprint ? 1 : 0}`)}">${esc(itemName(i, S.labels))}, ${counted(i.survivors, "survivor")}, ${i.most.toLocaleString("en")} at most</option>`).join("")}`;
-  pick.value = keep;
+  const query = $<HTMLInputElement>("item-search").value.trim().toLowerCase();
+  const items = [...(w?.items ?? [])].filter((i) => itemName(i, S.labels).toLowerCase().includes(query) || itemKey(i) === (S.item && itemKey(S.item)))
+    .sort((a, b) => b.survivors - a.survivors || itemName(a, S.labels).localeCompare(itemName(b, S.labels)));
+  const missing = S.item && !items.some((i) => itemKey(i) === itemKey(S.item!)) ? S.item : null;
+  paintHtml(pick, `<option value="">${items.length > 0 ? "Choose an item" : query ? "No matching items" : w ? "Nothing held in this window" : "Waiting for item history"}</option>`
+    + (missing ? `<option value="${esc(itemKey(missing))}">${esc(itemName(missing, S.labels))}</option>` : "")
+    + items.map((i) => `<option value="${esc(itemKey(i))}">${esc(itemName(i, S.labels))} · ${counted(i.survivors, "survivor")}</option>`).join(""));
+  pick.value = S.item ? itemKey(S.item) : "";
+  $("item-map").setAttribute("href", hooks.mapUrl());
   showHolders();
 }
 
 function showHolders(): void {
-  const h = S.recall.holders;
-  const rows = S.item && h ? h.holders : [];
-  const now = h ? holdingAt(rows, t.at, t.to) : new Set<number>();
-  $("holders").innerHTML = rows.length === 0 ? `<tr><td class="dim">${S.item ? "Nobody held it in the window." : "Choose an item to see who held it, and when."}</td></tr>` : rows
-    .map((x) => `<tr data-pid="${x.pid}" data-at="${Math.max(x.from, t.start)}"${now.has(x.pid) ? ' class="chosen"' : ""}><td>${esc(x.name)}</td><td>${esc(itemName({ item: h!.item, quality: x.quality, blueprint: x.blueprint }, S.labels))}</td><td>${dayText(x.from, offset)} ${clockText(x.from, offset)} to ${x.to === null ? "now" : clockText(x.to, offset)}</td><td class="num">${x.most.toLocaleString("en")} at most</td></tr>`)
-    .join("");
+  const item = S.item;
+  const h = item ? S.recall.holdersFor(item.item, item.quality, item.blueprint, t) : null;
+  const rows = h?.holders.filter((x) => x.from <= t.end && (x.to ?? t.to) >= t.start) ?? [];
+  const now = holdingAt(rows, t.at, t.to);
+  const empty = !item ? "Select an item to see who held it and when." : !h ? "Loading holding intervals…" : "Nobody held this item in the selected window.";
+  paintHtml($("holders"), rows.length === 0 ? `<tbody><tr><td class="dim">${empty}</td></tr></tbody>` :
+    '<thead><tr><th scope="col">Survivor</th><th scope="col">Holding interval</th><th scope="col">Peak</th><th scope="col">Map</th></tr></thead><tbody>' + rows.map((x) => {
+      const at = Math.max(x.from, t.start), active = now.has(x.pid);
+      return `<tr${active ? ' class="chosen"' : ""}><td><button type="button" class="row-button" data-pid="${x.pid}" data-at="${at}" data-focus="holder-${x.pid}-${x.from}">${esc(x.name)}</button>${active ? ' <span class="holding-now">At playhead</span>' : ""}</td><td>${dayText(x.from, offset)} ${clockText(x.from, offset)} to ${x.to === null ? "ongoing" : clockText(x.to, offset)}</td><td class="num">${x.most.toLocaleString("en")}</td><td><a href="${esc(hooks.mapUrl(x.pid, at))}">Show on map</a></td></tr>`;
+    }).join("") + "</tbody>");
 }
 
-/** The playhead to `at`, out of live; the window and the chosen survivor's log follow. */
-function seek(at: number): void {
+export function seek(at: number): void {
+  if (!t.known || !Number.isFinite(at)) return;
+  t.playing = false;
   t.seek(at);
   refresh();
   ensure();
+}
+
+function selectEvent(direction: -1 | 1): void {
+  const event = nextEvent(visibleEvents(), t.at, direction);
+  if (!event) return;
+  if (event.pid && S.page !== "items") hooks.chooseSurvivor(event.pid, false);
+  lookChosen = true;
+  seek(event.wall);
 }
 
 // ------------------------------------------------------------------ the timeline under the pointer
@@ -344,6 +390,7 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   canvas.setPointerCapture(e.pointerId);
   scrubbing = true;
+  t.playing = false;
   t.seek(t.time(x - NAMES, sw));
   refresh();
 });
@@ -363,7 +410,7 @@ canvas.addEventListener("pointermove", (e) => {
   }
   // What is under the pointer: a mark, or a survivor's lane at that moment.
   const at = t.time(x - NAMES, sw);
-  const w = S.recall.window;
+  const w = S.recall.windowFor(t);
   let says = "";
   if (w && x > NAMES && y >= AXIS + ONLINE && y < AXIS + ONLINE + MARKS) {
     const near = w.marks.filter((m) => Math.abs(NAMES + t.x(m.wall, sw) - x) <= 5);
@@ -425,22 +472,46 @@ $("live").addEventListener("click", () => {
   refresh();
   ensure();
 });
-let last = 0;
+let last = 0, looked = 0;
 function play(now: number): void {
   if (!t.playing) return;
   t.advance(last ? Math.min(200, now - last) : 0);
   last = now;
   refresh();
-  if (!S.recall.servesWindow(t)) ensure();
+  if (now - looked >= 350 && !S.recall.servesWindow(t)) {
+    looked = now;
+    ensure();
+  }
   requestAnimationFrame(play);
 }
-$("play").addEventListener("click", () => {
+function togglePlay(): void {
   if (!t.known) return;
-  if (t.live) t.seek(t.start);
+  if (t.live || t.at >= t.to) t.seek(t.start);
   t.playing = !t.playing;
-  last = 0;
+  last = looked = 0;
   if (t.playing) requestAnimationFrame(play);
   refresh();
+  ensure();
+}
+$("play").addEventListener("click", togglePlay);
+$("previous-event").addEventListener("click", () => selectEvent(-1));
+$("next-event").addEventListener("click", () => selectEvent(1));
+$("event-filter").addEventListener("change", showEvents);
+$("scrub").addEventListener("input", () => seek(t.time(Number($<HTMLInputElement>("scrub").value), 1000)));
+$("tl").addEventListener("keydown", (e) => {
+  if (!t.known || e.altKey || e.ctrlKey || e.metaKey) return;
+  const step = e.shiftKey ? 60_000 : 5000;
+  switch (e.key) {
+    case " ": togglePlay(); break;
+    case "ArrowLeft": seek(t.at - step); break;
+    case "ArrowRight": seek(t.at + step); break;
+    case "[": selectEvent(-1); break;
+    case "]": selectEvent(1); break;
+    case "Home": seek(t.start); break;
+    case "End": $("live").click(); break;
+    default: return;
+  }
+  e.preventDefault();
 });
 $("speed").innerHTML = SPEEDS.map((s) => `<option value="${s}"${s === t.speed ? " selected" : ""}>${s}×</option>`).join("");
 $("speed").addEventListener("change", () => (t.speed = Number($<HTMLSelectElement>("speed").value)));
@@ -457,29 +528,25 @@ $("presets").addEventListener("click", (e) => {
 $("goto").addEventListener("change", () => {
   const at = localMoment($<HTMLInputElement>("goto").value, offset);
   if (at === null || !t.known) return;
-  t.seek(at);
-  t.show(at - 1_800_000, at + 1_800_000);
-  refresh();
-  ensure();
+  seek(at);
 });
 // A row or a list entry that names a moment moves the playhead there, and one naming a survivor chooses it.
-for (const id of ["chosenlog", "figures", "holders"]) {
+for (const id of ["chosenlog", "figures", "holders", "event-list"]) {
   $(id).addEventListener("click", (e) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-at], [data-pid]");
     if (!el) return;
-    if (el.dataset.pid) hooks.chooseSurvivor(Number(el.dataset.pid), false);
+    if (el.dataset.pid && S.page !== "items") hooks.chooseSurvivor(Number(el.dataset.pid), false);
     if (!el.dataset.at) return;
     lookChosen = true;
     seek(Number(el.dataset.at));
   });
 }
 $("itempick").addEventListener("change", () => {
-  const [item, q, bp] = $<HTMLSelectElement>("itempick").value.split("|");
-  S.item = item ? { item, quality: Number(q), blueprint: bp === "1" } : null;
-  if (!S.item) return void showHolders();
-  void S.recall.fetchHolders(S.item.item, S.item.quality, S.item.blueprint, t).then(() => {
-    showHolders();
-    drawMap();
-  });
+  S.item = readItem($<HTMLSelectElement>("itempick").value);
+  S.recall.forgetHolders();
+  refresh();
+  ensure();
+  hooks.stateChanged();
 });
-addEventListener("resize", () => drawTimeline());
+$("item-search").addEventListener("input", showItems);
+addEventListener("resize", () => { if (t.known) drawTimeline(); });
