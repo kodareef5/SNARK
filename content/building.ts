@@ -43,8 +43,8 @@ const TIERS: readonly Tier[] = [
   { name: "thatch", color: 18, hp: { foundation: 2400, wall: 1600, doorframe: 1600, ceiling: 1600, door: 1000 } },
   { name: "wood", color: 3, hp: FULL },
   { name: "stone", color: 5, hp: FULL },
-  // A steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
-  { name: "metal", color: 89, hp: FULL, made: "plate" },
+  // A light steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
+  { name: "metal", color: 90, hp: FULL, made: "plate" },
 ];
 
 function piece(tier: Tier, name: string, shapeName = name): StructureDef {

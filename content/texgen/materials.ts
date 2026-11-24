@@ -46,9 +46,11 @@ export interface MaterialRecipe {
   /**
    * Rivets along the courses' joints, `inset` in from a unit's edge and `pitch` apart, each a head `radius` wide and
    * `height` of the relief high. Under some of a unit's top row a streak runs `run` down it, darker by `streak` and
-   * rustier by `rust`; and the paint within 3 cm of a unit's edge is worn lighter by `wear` in patches.
+   * rustier by `rust`; and the paint within 3 cm of a unit's edge is worn lighter by `wear` in patches. With `bare`, the
+   * dye falls by that much where paint lets go first: under a streak's head, round a rivet, along a joint and over the
+   * `foot` metres above a unit's lower edge. A built piece's read turns that to rust, each sheet by its own measure.
    */
-  readonly rivet?: { readonly pitch: number; readonly inset: number; readonly radius: number; readonly height: number; readonly streak: number; readonly run: number; readonly rust: number; readonly wear: number };
+  readonly rivet?: { readonly pitch: number; readonly inset: number; readonly radius: number; readonly height: number; readonly streak: number; readonly run: number; readonly rust: number; readonly wear: number; readonly foot?: number; readonly bare?: number };
   /** It lies on faces that look up alone, a roof's: its piece's other faces are their painted finish. */
   readonly lies?: true;
   /** It is a coat over its wall: where the weathering finds the plaster lost, its relief lies down with it. A block's joints stay. */
@@ -95,12 +97,13 @@ export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
     noise: [{ cell: [0.25, 0.25], height: 0.1, light: 0.04 }],
     grain: { size: 0.016, core: 0.42, radius: 0.6, height: 0.8, tone: 0.5, gap: 0.12, bare: 0, warm: 0.15 },
   },
-  // Riveted steel plate, painted: sheets 750 mm square butted in a grid, a row of rivets inside every edge, rain streaks down it and rust under some rivets.
+  // Riveted steel plate, painted: one sheet 750 mm square to the tile, a row of rivets inside every edge, rain streaks down it and
+  // the paint let go under some rivets and up from its foot. A piece reads it in its own frame, each sheet turned and worn its own way.
   {
-    name: "plate", metres: 1.5, seed: 79, level: 0.45, relief: 8, rough: 0.5, hollow: 0.12, dye: 1, shade: 0.1, mottle: 0.05, means: [1, 1, 0.51],
+    name: "plate", metres: 0.75, seed: 79, level: 0.45, relief: 8, rough: 0.64, hollow: 0.12, dye: 1, shade: 0.1, mottle: 0.05, means: [1, 1, 0.51],
     // Oil-canning a hand deep in a thousand, streaks a finger wide down the sheet, the paint's orange peel, and its slow blotches.
-    noise: [{ cell: [0.375, 0.375], height: 0.1, light: 0.03 }, { cell: [0.03, 0.75], height: 0, light: 0.09, warp: 0.02 }, { cell: [0.006, 0.006], height: 0.05, light: 0.025 }, { cell: [0.125, 0.125], height: 0.03, light: 0.06 }],
-    course: { size: [0.75, 0.75], bond: 0, joint: 0.004, depth: 0.85, tone: 0.1, dark: 0.4, pillow: 0.3 },
-    rivet: { pitch: 0.09375, inset: 0.035, radius: 0.012, height: 0.5, streak: 0.35, run: 0.35, rust: 0.3, wear: 0.14 },
+    noise: [{ cell: [0.375, 0.375], height: 0.14, light: 0.04 }, { cell: [0.03, 0.75], height: 0, light: 0.13, warp: 0.02 }, { cell: [0.006, 0.006], height: 0.05, light: 0.03 }, { cell: [0.125, 0.125], height: 0.04, light: 0.09 }],
+    course: { size: [0.75, 0.75], bond: 0, joint: 0.004, depth: 0.85, tone: 0, dark: 0.4, pillow: 0.3 },
+    rivet: { pitch: 0.108, inset: 0.052, radius: 0.012, height: 0.5, streak: 0.35, run: 0.35, rust: 0.3, wear: 0.3, foot: 0.12, bare: 1 },
   },
 ];
