@@ -1405,8 +1405,10 @@ function gable(form: FormDef, level: number, posts: boolean): Shape | null {
   // A rod outside and a rail inside, each as far as the cut lets it run.
   const rise = rng.uniform(-0.006, 0.006);
   const far = (y: number): number => hx - ((y + 0.09) * 2 * hx) / high;
-  drawPole(hut, poleOf(rng, [-hx, 0.62, ROD_Z], [far(0.62), 0.62 + rise, ROD_Z + 0.004], ROD_R, ROD_R * 0.85, { band: "stick", bow: 0.008, bowDir: [0, -1, 0.15], segments: 3, sides: 6 }), look.rail);
-  drawCord(hut, cordOf(rng, [(far(0.62) - hx) / 2, 0.62 - 0.007, ROD_Z], [1, 0.02, 0], ROD_R + 0.009, 0.045), look.cord ? ROD_R : null);
+  // The rod lies over the bundles' bellies, which stand further out here than at a wall's tie.
+  const over = LOWER_ROWS.belly[1] + LOWER_ROWS.belly[2] + ROD_R + 0.016;
+  drawPole(hut, poleOf(rng, [-hx, 0.62, over], [far(0.62), 0.62 + rise, over + 0.004], ROD_R, ROD_R * 0.85, { band: "stick", bow: 0.008, bowDir: [0, -1, 0.15], segments: 3, sides: 6 }), look.rail);
+  drawCord(hut, cordOf(rng, [(far(0.62) - hx) / 2, 0.62 - 0.007, over], [1, 0.02, 0], ROD_R + 0.009, 0.045), look.cord ? ROD_R : null);
   drawPole(hut, poleOf(rng, [-hx, RAILS[0], RAIL_Z], [far(RAILS[0]), RAILS[0], RAIL_Z], RAIL_R, RAIL_R * 0.9, { band: "peeled", caps: ["flat", "axe"], segments: 3, sides: 6 }), look.rail);
   return done();
 }
@@ -1433,7 +1435,7 @@ function halfWall(form: FormDef, level: number, posts: boolean): Shape | null {
   drawPole(hut, poleOf(rng, [POST_X, -0.02, POST_Z], [POST_X + 0.005, high - 0.07, POST_Z - 0.004], POST_R[0], POST_R[1] + 0.004, { band: "bark", bow: 0.008, bowDir: [0.3, 0, 1], caps: ["flat", "axe"], segments: 4 }), post);
   drawCord(hut, cordOf(rng, [POST_X + 0.003, LOWER_ROD + 0.012, POST_Z], [0.06, 1, 0], POST_R[1] + 0.016, 0.09), cord ? (POST_R[0] + POST_R[1]) / 2 : null);
   const lookAs: FrameLook = { post: null, inner: null, rod: look.rail && (level === 0 ? { sides: 6, along: 0 } : look.rail), rail: look.rail && (level === 0 ? { along: 0 } : look.rail), sill: look.rail && (level === 0 ? { along: 0 } : null), jamb: null, stick: null, cord: look.cord, tie: look.cord };
-  rods(hut, rng, lookAs, -hx, hx, [high - 0.09, LOWER_ROD - 0.3]);
+  rods(hut, rng, lookAs, -hx, hx, [high - 0.09, LOWER_ROD]);
   rails(hut, rng, lookAs, -hx, hx, [RAILS[0], LOWER_ROD]);
   return hut.shape;
 }
