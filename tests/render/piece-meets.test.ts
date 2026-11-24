@@ -436,7 +436,8 @@ test("a stone gable's top lies in the plane its row gives it to 2 mm, under the 
         const px = x - Math.sign(x) * inward;
         const [w, r] = [over(wall, px, z), over(over0, px, z)!];
         if (!w) continue;
-        expect(w[1], `${hand} level ${level} at ${z}: no gap under the roof`).toBeGreaterThanOrEqual(r[0] - 1e-6);
+        // The roof stands on its corner heights since 2026-11-24. Stone's slates then run out over a gable as wood's boards do.
+        expect(r[0] - w[1], `${hand} level ${level} at ${z}: the gap under the slates`).toBeLessThanOrEqual(GABLE_GAP);
         expect(w[1], `${hand} level ${level} at ${z}: nothing through the roof`).toBeLessThanOrEqual(r[1] + 1e-6);
       }
     }
