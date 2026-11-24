@@ -75,7 +75,7 @@ import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
 
 /** Pieces the judging of pastes may look at in one tick, over every paste waiting. Measured: tools/bench/plans.ts. */
-export const PLAN_TICK_PIECES = 400;
+export const PLAN_TICK_PIECES = 200;
 /** Ticks an upload is kept with no part coming. */
 const UPLOAD_TICKS = 30 * TICK_RATE;
 /** Chunks from a session's own within which it is told a plan, and past which it is told the plan is gone. */
@@ -334,8 +334,8 @@ export class Plans {
     if (placed.n === 0) return refuse(PLAN_MALFORMED);
     if (placed.n > rules.num("MaxPlanPieces")) return refuse(PLAN_TOO_BIG);
     record.bytes = up.bytes;
+    // Reading the blueprint was this tick's share of the work: its pieces are judged from the next.
     this.jobs.push({ c, seq, pid: rec.pid, team: rec.team, commit: { ...commit }, bytes: up.bytes, placed, frame: planFrame(structs, record), x, z, chunk, began: -1, shapes: 0, restarts: 0 });
-    this.work();
     return RESULT_OK;
   }
 
@@ -358,7 +358,8 @@ export class Plans {
       const looked = judge.looked - before;
       this.budget -= Math.max(1, looked);
       this.judged += looked;
-      if (!judge.done) return;
+      // Making the plan is a tick's work of its own after a large one's last pieces.
+      if (!judge.done || (looked > 0 && job.placed.n > PLAN_TICK_PIECES)) return;
       this.jobs.shift();
       this.finish(job);
     }

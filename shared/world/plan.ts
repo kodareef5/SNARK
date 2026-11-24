@@ -26,7 +26,7 @@ export const PLAN_PART_BYTES = 480;
 /** The gid of a plan's frame while no piece of it stands. No frame is ever made under it. */
 export const GID_UNMADE = 0xfffffffe;
 /** Metres from a builder's eye that a plan's piece may be filled, and from the builder that a plan's anchor may be set. */
-export const PLAN_FILL_REACH = 40;
+export const PLAN_FILL_REACH = 48;
 export const PLAN_SET_REACH = 32;
 
 /** What the judge says of a piece. */
