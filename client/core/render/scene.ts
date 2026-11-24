@@ -953,7 +953,7 @@ export class Scene {
     this.damage.build(cam, this.now);
     this.dust.build(cam, this.now);
     this.blasts.viewHeight = this.viewHeight;
-    this.blasts.cards(cam, this.now);
+    this.blasts.cards(cam, this.now, this.own?.firstPerson);
     const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count);
     const particles = p.detailCount;
     rotorBlur.write(p);

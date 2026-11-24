@@ -458,7 +458,7 @@ export class Shots {
       // Its smoke starts at the muzzle, when it passed there by this client's clock, and lies beside its path from then.
       f.lit = true;
       const lead = ((f.ox * vx + f.oy * vy + f.oz * vz) / (speed * speed)) * 1000;
-      this.fire.fly(f.key, x + f.ox, y + f.oy, z + f.oz, vx, vy, vz, f.gravity, flame, nowMs - ((back > 0 ? back : 0) * 1000) / TICK_RATE + lead);
+      this.fire.fly(f.key, x + f.ox, y + f.oy, z + f.oz, vx, vy, vz, f.gravity, flame, nowMs - ((back > 0 ? back : 0) * 1000) / TICK_RATE + lead, mine);
     }
   }
 

@@ -260,6 +260,31 @@ test("nothing of a blast's fire is drawn past its life, and the eye inside a lob
   expect(scene.blasts.alight).toBe(MAX_BURSTS);
 });
 
+test("only a first-person shooter's end-on rocket smoke thins at the sight", () => {
+  const read = (own: boolean, firstPerson: boolean, across = false) => {
+    const { p, cam, blasts } = alone(tierOf("medium"));
+    const dx = across ? 1 : 0, dz = across ? 0 : 1;
+    const z = cam.z + (across ? 20 : 2);
+    blasts.fly(7, cam.x, cam.y, z, dx * 60, 0, dz * 60, 0, 0.9, 0, own);
+    blasts.at(7, cam.x + dx * 18, cam.y, z + dz * 18, dx, 0, dz);
+    blasts.cards(cam, 300, firstPerson);
+    p.beginFrame();
+    blasts.write(p);
+    const smoke: number[] = [], glow: number[] = [];
+    for (let i = 0; i < p.detailCount; i++) {
+      const word = p.detailWords[i * DETAIL_FLOATS + DETAIL.misc]!;
+      ((word >>> 8 & 255) === DETAIL_SMOKE ? smoke : glow).push(word >>> 16 & 255);
+    }
+    return { smoke, glow };
+  };
+  const full = read(false, true), eye = read(true, true);
+  expect(Math.max(...full.smoke)).toBeGreaterThan(150);
+  expect(Math.max(...eye.smoke)).toBeLessThan(Math.max(...full.smoke) / 8);
+  expect(eye.glow).toEqual(full.glow);
+  expect(read(true, false)).toEqual(full);
+  expect(read(true, true, true)).toEqual(read(false, true, true));
+});
+
 test("a rocket is a flame, a glow and smoke along its path: no more than its cards, fewer seen down the path, thinning away after it ends", () => {
   const { scene, cam } = view;
   clock += 60000;

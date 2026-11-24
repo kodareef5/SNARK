@@ -134,6 +134,7 @@ export class Blasts {
   // Rounds with a motor: 0 free, 1 flying, 2 gone and its smoke thinning.
   private readonly tLive = new Uint8Array(MAX_TRAILS);
   private readonly tKey = new Float64Array(MAX_TRAILS);
+  private readonly tOwn = new Uint8Array(MAX_TRAILS);
   private readonly tFrom = new Float64Array(MAX_TRAILS * 3);
   private readonly tWay = new Float32Array(MAX_TRAILS * 3);
   private readonly tFall = new Float32Array(MAX_TRAILS);
@@ -216,7 +217,7 @@ export class Blasts {
    * `gravity`, with `flame` metres of fire behind it. `key` names it until `end`: any whole number no other flying round has.
    * Its smoke is laid along that path from then on.
    */
-  fly(key: number, ox: number, oy: number, oz: number, vx: number, vy: number, vz: number, gravity: number, flame: number, bornMs: number): void {
+  fly(key: number, ox: number, oy: number, oz: number, vx: number, vy: number, vz: number, gravity: number, flame: number, bornMs: number, own = false): void {
     let t = this.trail(key);
     if (t < 0) {
       // A free row, else the one whose smoke is oldest, else the round longest in the air.
@@ -233,6 +234,7 @@ export class Blasts {
     }
     this.tLive[t] = 1;
     this.tKey[t] = key;
+    this.tOwn[t] = own ? 1 : 0;
     this.tFrom[t * 3] = ox;
     this.tFrom[t * 3 + 1] = oy;
     this.tFrom[t * 3 + 2] = oz;
@@ -422,7 +424,7 @@ export class Blasts {
    * This frame's cards, before the details are written, so that room is kept for them (`count`): each rocket's smoke
    * along its path, its glow, and the glow that is all of a blast too far off for its fire.
    */
-  cards(cam: Camera, nowMs: number): void {
+  cards(cam: Camera, nowMs: number, firstPerson = false): void {
     this.count = 0;
     this.nearest = Infinity;
     this.farthest = -Infinity;
@@ -511,6 +513,8 @@ export class Blasts {
         ty /= tl;
         tz /= tl;
         const ex = x / d, ey = y / d, ez = z / d, dot = tx * ex + ty * ey + tz * ez;
+        // The shooter's own lengths overlap the sight when viewed along the departing rocket.
+        if (firstPerson && this.tOwn[t]) shows *= 1 - 0.92 * smooth(0.9, 0.99, dot);
         let ax = tx - ex * dot, ay = ty - ey * dot, az = tz - ez * dot;
         const seen = Math.hypot(ax, ay, az);
         if (seen < 1e-3) {
