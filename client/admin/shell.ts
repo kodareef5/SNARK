@@ -61,7 +61,10 @@ function install(ctx: Context): void {
 function mount(): void {
   if (document.querySelector("#admin-rail")) return;
   const main = document.querySelector("main");
-  if (main && !main.id) main.id = "admin-content";
+  if (main) {
+    if (!main.id) main.id = "admin-content";
+    main.tabIndex = -1;
+  }
   document.body.insertAdjacentHTML("afterbegin", `<a class="admin-skip" href="#${esc(main?.id ?? "admin-content")}">Skip to content</a>
     <aside id="admin-rail"><a class="admin-brand" href="/admin/"><img src="/title/snark-emblem.webp" alt="" width="44" height="44"><span><strong>SNARK</strong><small>ADMIN CONSOLE</small></span></a>
     <nav aria-label="Admin navigation"></nav><a class="admin-exit" href="/">Game home <span aria-hidden="true">↗</span></a></aside>
