@@ -27,6 +27,7 @@ import { Harness, type Pilot } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { PANEL, sceneWorld } from "../fixtures/sceneworld.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { REPAIR_WAIT_TICKS } from "../../shared/world/upkeep.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -406,6 +407,8 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   const harmed = app.aimed;
   expect([b.active, harmed === base || harmed === door]).toEqual([true, true]);
   h.world.structs.damage(harmed, 4000);
+  // Harm with no record of when counts from the server's start, so it is dated past the repair wait.
+  h.host.build.hurt(harmed, h.world.tick - REPAIR_WAIT_TICKS);
   for (const [item, n] of [["wood", 200], ["thatch", 200], ["fiber", 200]] as const) h.host.items.mint(rec, id(item), n);
   run(300);
   expect(text(KEY_PROMPT) + text(KEY_PROMPT_UNDER)).toContain("hold E");
