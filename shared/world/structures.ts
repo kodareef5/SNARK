@@ -508,7 +508,7 @@ export class StructureStore {
     t.fr![slot] = f.gid;
     t.k0![slot] = k0;
     t.k1![slot] = k1;
-    t.tw![slot] = twOfKey(k0, k1);
+    t.tw![slot] = twOfKey(forms, kind, k1);
     this.cover(chunk, t, slot);
     this.frames.enter(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), forms.def[kind]!.root !== undefined);
   }

@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
-import { PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
+import { FORMS, PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -12,8 +12,10 @@ import { CMD_PLACE, CMD_STRUCT, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { HullDef } from "../../shared/world/convex.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { formHalf, type FormDef } from "../../shared/world/lattice/forms.ts";
-import { CLS_ROTS, poseOf, twOfKey, type Frame, type LatticeKey, type LatticePose } from "../../shared/world/lattice/frames.ts";
+import { formHalf, formPose, type FormDef } from "../../shared/world/lattice/forms.ts";
+import { makeBlueprint, turnBlueprint, type BlueprintForms } from "../../shared/world/blueprint.ts";
+import { classAxis, dirVector, yawOf } from "../../shared/world/lattice/basis.ts";
+import { CLS_ROTS, ownDir, poseOf, rotsOf, twOfKey, type Frame, type LatticeKey, type LatticePose } from "../../shared/world/lattice/frames.ts";
 import { CLS_DIRS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, DIRS, cellOf, key0, key1, keyAnchor, keyCls, keyDir, keyLayer, keyLvl, keyRot } from "../../shared/world/lattice/module.ts";
 import { Cells, NO_REF, Occupancy, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "../../shared/world/lattice/occupancy.ts";
 import { populateProving, PROVING_DIMS, buildProvingHeightfield } from "../../shared/world/proving.ts";
@@ -106,7 +108,7 @@ function house(w: TestWorld, yaw: number, x = 100, z = 100, owner = 7): number[]
   return refs;
 }
 
-test("each piece set down in a socket is keyed, and its key's pose is the socket's pose", () => {
+test("a piece set down in a socket is keyed, and its key gives the socket's pose", () => {
   const sockets: string[] = [];
   let pairs = 0;
   for (const yaw of [0, 8048, 21384, 40000, 65535]) {
@@ -157,7 +159,7 @@ test("each piece set down in a socket is keyed, and its key's pose is the socket
   expect(new Set(sockets).size).toBeGreaterThan(20);
 });
 
-test("a two-storey house is one frame at any yaw: every piece keyed, every cell its piece's, all released as it is taken down", () => {
+test("a two-storey house is one frame at any yaw, and is released as it comes down", () => {
   for (const yaw of [0, 7000, 16384, 30001, 54321]) {
     const w = flatWorld(4);
     const { structs, reg } = w;
@@ -193,7 +195,7 @@ test("a two-storey house is one frame at any yaw: every piece keyed, every cell 
   }
 });
 
-test("two bases side by side at other yaws are two frames, and a base over a chunk border is one frame listed in both chunks", () => {
+test("two bases at other yaws are two frames; one over a chunk border is one", () => {
   const w = flatWorld(4);
   const { structs, reg } = w;
   // The first base's foundations run east from x = 61 over the border at 64.
@@ -219,7 +221,7 @@ test("two bases side by side at other yaws are two frames, and a base over a chu
   recount(structs, reg, fa);
 });
 
-test("a door opened and shut keeps its key, a piece picked up frees its cell, and a tribe taking a base keeps every key", () => {
+test("a door opened keeps its key, a piece taken frees its cell, a re-own keeps keys", () => {
   const w = flatWorld(4);
   const { structs, reg } = w;
   const refs = house(w, 12345);
@@ -254,7 +256,7 @@ test("a door opened and shut keeps its key, a piece picked up frees its cell, an
   recount(structs, reg, f);
 });
 
-test("pieces set down by the server are keyed there and on a client, through an open door, a pick-up and a new tribe", () => {
+test("pieces the server sets down are keyed there and on a client", () => {
   const { h, sessions, at, hold, join: send, structs } = builder();
   const s = sessions[0]!;
   const reg = h.reg;
@@ -309,7 +311,7 @@ test("pieces set down by the server are keyed there and on a client, through an 
   shared();
 });
 
-test("a map's statics and things set down free have no key, and a chunk has key columns only once a lattice row lives in it", () => {
+test("statics and free things have no key, and their chunks no key columns", () => {
   const reg = coreRegistry();
   const w = wrap(PROVING_DIMS, buildProvingHeightfield(), reg);
   populateProving(w.structs, w.hf, reg);
@@ -340,7 +342,7 @@ test("a map's statics and things set down free have no key, and a chunk has key 
   expect(structs.held.filter((c) => structs.chunks[c]!.fr !== null)).toEqual([empty]);
 });
 
-test("rows put in slot order are keyed as they come, and those that come before their base once it has", () => {
+test("rows put before their base's first piece are keyed once it has come", () => {
   const server = flatWorld(4);
   const refs = house(server, 9000, 61, 100);
   // The first foundation is taken up and a wall set down beside the base takes its slot, so a wall's row now comes first.
@@ -384,16 +386,18 @@ test("rows put in slot order are keyed as they come, and those that come before 
 
 const T = FOUNDATION_THICK / 2;
 const TRIANGLE: HullDef = { sixty: true, corners: [[0, -T, 0], [0, T, 0], [3, -T, 0], [3, T, 0], [0, -T, 3], [0, T, 3]] };
-const PLANNED = ["half_wall", "quarter_wall", "large_wall", "double_doorway", "gateway", "gate", "quarter_foundation", "thin_pillar", "fence_foundation", "triangle_foundation"] as const;
+/** A triangle that may be turned, as a triangle roof may. */
+const TURNED: FormDef = { ...PLANNED_FORMS.triangle_foundation, turns: 3 };
+const PLANNED = ["half_wall", "quarter_wall", "large_wall", "double_doorway", "gateway", "gate", "quarter_foundation", "thin_pillar", "fence_foundation", "triangle_foundation", "triangle_turned"] as const;
 let wide: Registry | null = null;
 
-/** The core content and ten of the rows to come as kinds `test:<row>`, each with a collider its row makes. */
+/** The core content, ten of the rows to come and the turned triangle as kinds `test:<row>`, each with a collider its row makes. */
 function plannedRegistry(): Registry {
   if (wide) return wide;
   const defs = PLANNED.flatMap((name): Def[] => {
-    const form: FormDef = PLANNED_FORMS[name];
+    const form: FormDef = name === "triangle_turned" ? TURNED : PLANNED_FORMS[name];
     return [
-      { type: "shape", id: `test:shape_${name}`, role: "thing", boxes: name === "triangle_foundation" ? [] : formBoxes(form), ...(name === "triangle_foundation" ? { hulls: [TRIANGLE] } : {}), form },
+      { type: "shape", id: `test:shape_${name}`, role: "thing", boxes: form.cls === "triangle" ? [] : formBoxes(form), ...(form.cls === "triangle" ? { hulls: [TRIANGLE] } : {}), form },
       { type: "structure", class: "piece", id: `test:${name}`, mesh: "shape", shape: `test:shape_${name}`, half: formHalf(form), color: 5, hp: 100, material: "core:mat_stone" },
     ];
   });
@@ -407,7 +411,7 @@ function plannedWorld(): TestWorld {
   return wrap(flat.dims, flat.hf as Heightfield, plannedRegistry());
 }
 
-test("a tall piece and a piece over two edges fill every cell they cover, and what would stand in one is refused", () => {
+test("a tall piece and one over two edges fill every cell they cover", () => {
   const w = plannedWorld();
   const { structs, reg } = w;
   const f = structs.frames.make(100 * U, 2 * U, 100 * U, 4321, 7);
@@ -434,20 +438,20 @@ test("a tall piece and a piece over two edges fill every cell they cover, and wh
   // Half walls stack by two levels, and a quarter wall fits only over them.
   const halves = [structs.place(k("half_wall"), f.gid, ...edge(8, 0), 7, 1), structs.place(k("half_wall"), f.gid, ...edge(8, 2), 7, 1)];
   expect([halves.every((ref) => sound(structs, reg, ref) === f.gid), structs.fits(k("quarter_wall"), f.gid, ...edge(8, 1)), structs.fits(k("quarter_wall"), f.gid, ...edge(8, 3)), structs.fits(k("quarter_wall"), f.gid, ...edge(8, 4)), structs.fits(wall, f.gid, ...edge(8, -3)), structs.fits(wall, f.gid, ...edge(8, -4))]).toEqual([true, false, false, true, false, true]);
-  // A key of another class or layer, a turn the class has not, a flip, a level or a cell off the lattice, a frame not made.
+  // A key of another class or layer, a turn the form has not, a level or a cell off the lattice, a frame not made. A flip is taken.
   const [e0, e1] = edge(20, 0);
   expect([
     structs.fits(wall, f.gid, key0(CLS_SQUARE, 20, 0, 0), e1), structs.fits(wall, f.gid, e0, key1(0, 0, 0, 3, 0, 0)), structs.fits(wall, f.gid, e0, key1(0, 0, 0, 2, 2, 0)),
     structs.fits(wall, f.gid, e0, key1(0, 0, 0, 2, 0, 1)), structs.fits(wall, f.gid, e0, key1(0, 253, 0, 2, 0, 0)), structs.fits(wall, f.gid, e0, key1(0, 252, 0, 2, 0, 0)),
     structs.fits(wall, f.gid, e0, key1(0, 0, 6, 2, 0, 0)), structs.fits(k("double_doorway"), f.gid, ...edge(510, 0)), structs.fits(k("double_doorway"), f.gid, ...edge(509, 0)),
     structs.fits(wall, f.gid + 1, e0, e1), structs.fits(k("core:storage_box"), f.gid, e0, e1), structs.fits(wall, f.gid, e0, e1),
-  ]).toEqual([false, false, false, false, false, true, false, false, true, false, false, true]);
+  ]).toEqual([false, false, false, true, false, true, false, false, true, false, false, true]);
   // Each goes, and its cells with it.
   for (const ref of [large, doorway, gateway, gate, ...halves]) structs.remove(ref);
   expect([structs.occupied.size, structs.frames.count]).toEqual([0, 0]);
 });
 
-test("a square, a triangle and an edge turned 30 and 60 degrees from their frame take their poses from the frame's four vectors", () => {
+test("pieces 30 and 60 degrees from their frame take their poses from its vectors", () => {
   const w = plannedWorld();
   const { structs, reg } = w;
   const yaw = 2222;
@@ -481,17 +485,17 @@ test("a square, a triangle and an edge turned 30 and 60 degrees from their frame
     }
   }
   for (let dir = 0; dir < 4; dir++) {
-    // A triangle turned is the same cell named from its next corner: its origin is that corner, and its +X the side from it.
+    // A triangle turned is the same cell named from another corner: its origin is the corner its +X leaves along a side.
     const corners = [[0, 0, 0, 0], dirs(dir).map((v) => 2 * v), dirs(dir + 2).map((v) => 2 * v)];
     const spots = new Set<string>();
     for (let rot = 0; rot < 3; rot++) {
       const k0 = key0(CLS_TRIANGLE, 4, 0, 2);
       const k1 = key1(-2, 0, dir, 0, rot, 0);
       const ref = structs.place(triangle, f.gid, k0, k1, 7, 1);
-      const corner = world(sum([4, 0, 2, -2], corners[rot]!));
-      const facing = dir + 4 * rot;
-      expect(at(ref)).toEqual([corner[0], U - FOUNDATION_THICK * U / 2, corner[1], (yaw - Math.floor((facing % 12) / 3) * Q) & 0xffff]);
-      expect([sound(structs, reg, ref), twOfKey(k0, k1), structs.refAt(f.gid, k0, key1(-2, 0, dir, 0, 0, 0))]).toEqual([f.gid, facing % 3, ref]);
+      const corner = world(sum([4, 0, 2, -2], corners[(3 - rot) % 3]!));
+      const facing = (dir + 8 * rot) % 12;
+      expect(at(ref)).toEqual([corner[0], U - FOUNDATION_THICK * U / 2, corner[1], (yaw - Math.floor(facing / 3) * Q) & 0xffff]);
+      expect([sound(structs, reg, ref), twOfKey(reg.forms, triangle, k1), structs.refAt(f.gid, k0, key1(-2, 0, dir, 0, 0, 0))]).toEqual([f.gid, facing % 3, ref]);
       spots.add(at(ref).join());
       // Turned another way it is the same cell, and taken.
       expect(structs.fits(triangle, f.gid, k0, key1(-2, 0, dir, 0, (rot + 1) % 3, 0))).toBe(false);
@@ -506,7 +510,117 @@ test("a square, a triangle and an edge turned 30 and 60 degrees from their frame
   expect([bare.gid, structs.frames.drop(bare.gid), structs.frames.count]).toEqual([f.gid + 1, true, 0]);
 });
 
-test("the cells next to an element are its neighbours: a face's sides, an edge's faces, and what is round a vertex", () => {
+test("a key's turn is formPose's: own +X is direction dir - rot * (12 / turns)", () => {
+  const { reg } = plannedWorld();
+  const forms = reg.forms;
+  const axis = new Int32Array(4);
+  const want: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const turned: [string, number, number, number][] = [["core:wall_wood", CLS_EDGE, 2, 2], ["core:stairs_wood", CLS_SQUARE, 4, 1], ["test:triangle_turned", CLS_TRIANGLE, 3, 0]];
+  const anchor = [3, -1, 2, -4];
+  let poses = 0;
+  for (const yaw of [0, 3333, 20000, 61000]) {
+    const f = new StructureStore({ chunksX: 4, chunksZ: 4 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts).frames.make(130 * U, 3 * U, 130 * U, yaw, 7);
+    const b = f.basis;
+    const world = (m: readonly number[]): [number, number] => [f.ox + m[0]! * b[0]! + m[1]! * b[2]! + m[2]! * b[4]! + m[3]! * b[6]!, f.oz + m[0]! * b[1]! + m[1]! * b[3]! + m[2]! * b[5]! + m[3]! * b[7]!];
+    const along = (d: number, n: number): number[] => [...DIRS.subarray(((d + 12) % 12) * 4, ((d + 12) % 12) * 4 + 4)].map((v) => n * v);
+    const sum = (...ms: number[][]): number[] => [0, 1, 2, 3].map((i) => ms.reduce((t, m) => t + m[i]!, 0));
+    for (const [name, cls, turns, layer] of turned) {
+      const kind = reg.index.get(name)!;
+      expect([name, forms.turns[kind], rotsOf(forms, kind)]).toEqual([name, turns, turns]);
+      for (let dir = 0; dir < CLS_DIRS[cls]!; dir++) {
+        const origins = new Set<string>();
+        for (let rot = 0; rot < turns; rot++) {
+          const k0 = key0(cls, anchor[0]!, anchor[1]!, anchor[2]!);
+          const k1 = key1(anchor[3]!, 5, dir, layer, rot, 0);
+          const own = (((dir - rot * (12 / turns)) % 12) + 12) % 12;
+          poseOf(f, k0, k1, forms, kind, made);
+          // Its yaw and its class are that direction's, so the axis its collider is turned by is the frame's vector along it.
+          expect([ownDir(forms, kind, k1), made.yaw, made.tw, twOfKey(forms, kind, k1)]).toEqual([own, yawOf(yaw, own), own % 3, own % 3]);
+          classAxis(made.yaw, made.tw, axis, 0);
+          dirVector(b, own, axis, 2);
+          expect([axis[0], axis[1]]).toEqual([axis[2], axis[3]]);
+          // A wall and stairs turn about their slot's middle. A triangle turned is named from the corner its +X leaves:
+          // its sides run along dir, dir + 4 and dir + 8 from its first, second and third corners.
+          const corner = [[0, 0, 0, 0], along(dir, 2), along(dir + 2, 2)][((own - dir + 12) % 12) / 4]!;
+          const point = world(cls === CLS_EDGE ? sum(anchor, along(dir, 1)) : cls === CLS_SQUARE ? sum(anchor, along(dir, 1), along(dir + 3, 1)) : sum(anchor, corner));
+          // formPose, given the slot's reference point and facing, turns it the same way turn for turn.
+          formPose(forms.def[kind]!, point[0], f.oy + 5 * 384, point[1], yawOf(yaw, cls === CLS_TRIANGLE ? own : dir), rot, want);
+          expect([name, dir, rot, made.x, made.y, made.z, made.yaw]).toEqual([name, dir, rot, want.x, want.y, want.z, want.yaw]);
+          origins.add(`${made.x} ${made.z}`);
+          poses++;
+        }
+        expect(origins.size).toBe(cls === CLS_TRIANGLE ? 3 : 1);
+      }
+    }
+  }
+  expect(poses).toBe(4 * (6 * 2 + 3 * 4 + 4 * 3));
+});
+
+test("a key a blueprint turns has the pose its piece had in a frame turned back", () => {
+  const { reg } = plannedWorld();
+  const forms = reg.forms;
+  const rows: BlueprintForms = { wall: FORMS.wall, stairs: FORMS.stairs, triangle: TURNED, ceiling: FORMS.ceiling, pillar: FORMS.pillar, double_doorway: PLANNED_FORMS.double_doorway };
+  const kinds: Record<string, number> = { wall: reg.index.get("core:wall_wood")!, stairs: reg.index.get("core:stairs_wood")!, triangle: reg.index.get("test:triangle_turned")!, ceiling: reg.index.get("core:ceiling_wood")!, pillar: reg.index.get("core:pillar_wood")!, double_doorway: reg.index.get("test:double_doorway")! };
+  const frames = new StructureStore({ chunksX: 4, chunksZ: 4 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts).frames;
+  const rng = new Rng(5);
+  const there: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
+  let turnedKeys = 0;
+  for (let n = 0; n < 600; n++) {
+    const name = Object.keys(rows)[n % 6]!;
+    const kind = kinds[name]!;
+    const cls = forms.cls[kind]!;
+    const piece = { form: name, tier: 1, k0: key0(cls, rng.int(21) - 10, rng.int(21) - 10, rng.int(21) - 10), k1: key1(rng.int(21) - 10, rng.int(9), rng.int(CLS_DIRS[cls]!), forms.layer[kind]!, rng.int(forms.turns[kind]!), 0) };
+    const quarters = 1 + rng.int(3);
+    const yaw = rng.int(65536);
+    // The blueprint's anchor is the frame's origin, and a quarter turn toward +Z is a quarter less yaw.
+    const f = frames.make(100 * U, 0, 100 * U, yaw, 7);
+    const back = frames.make(100 * U, 0, 100 * U, yaw - quarters * Q, 7);
+    const moved = turnBlueprint(makeBlueprint("", "", "", [piece]), rows, 3 * quarters);
+    if (!moved.ok) throw new Error(`${name} could not be turned`);
+    const now = moved.blueprint.pieces[0]!;
+    poseOf(back, piece.k0, piece.k1, forms, kind, made);
+    poseOf(f, now.k0, now.k1, forms, kind, there);
+    // A form of one turn has one yaw in a cell, so its yaw is the cell's and not the piece's it was: the same solid.
+    if (forms.turns[kind] === 1) expect([name, there.x, there.y, there.z, (there.yaw - made.yaw) & (Q - 1), there.tw]).toEqual([name, made.x, made.y, made.z, 0, made.tw]);
+    else expect([name, there]).toEqual([name, made]);
+    if (now.k0 !== piece.k0 || now.k1 !== piece.k1) turnedKeys++;
+    frames.drop(f.gid);
+    frames.drop(back.gid);
+  }
+  expect(turnedKeys).toBeGreaterThan(590);
+});
+
+test("a flipped piece fills its cell, its origin mirrored in the slot's middle", () => {
+  const w = plannedWorld();
+  const { structs, reg } = w;
+  const forms = reg.forms;
+  const f = structs.frames.make(120 * U, U, 120 * U, 7777, 7);
+  const b = f.basis;
+  const world = (m: readonly number[]): [number, number] => [f.ox + m[0]! * b[0]! + m[1]! * b[2]! + m[2]! * b[4]! + m[3]! * b[6]!, f.oz + m[0]! * b[1]! + m[1]! * b[3]! + m[2]! * b[5]! + m[3]! * b[7]!];
+  const origin = (name: string, k0: number, k1: number): number[] => (poseOf(f, k0, k1, forms, reg.index.get(name)!, made), [made.x, made.z, made.yaw]);
+  // A quarter foundation's origin is its low corner: flipped it is the next corner along its own +X, which a turn moves round.
+  const quarter = (rot: number, flip: number): number[] => origin("test:quarter_foundation", key0(CLS_SQUARE, 2, 0, 0), key1(2, 0, 0, 0, rot, flip));
+  expect(quarter(0, 0)).toEqual([...world([2, 0, 0, 2]), 7777]);
+  expect(quarter(0, 1)).toEqual([...world([3, 0, 0, 2]), 7777]);
+  expect(quarter(1, 1)).toEqual([...world([2, 0, 0, 3]), 7777 + Q]);
+  expect(quarter(2, 1)).toEqual([...world([3, 0, 0, 2]), 7777 + 2 * Q]);
+  // A triangle's origin is the corner its +X leaves: flipped it is the corner its +X comes to.
+  const triangle = (rot: number, flip: number): number[] => origin("test:triangle_turned", key0(CLS_TRIANGLE, 0, 0, 0), key1(0, 0, 0, 0, rot, flip));
+  expect([triangle(0, 0), triangle(0, 1)]).toEqual([[...world([0, 0, 0, 0]), 7777], [...world([2, 0, 0, 0]), 7777]]);
+  expect(triangle(1, 1).slice(0, 2)).toEqual(triangle(0, 0).slice(0, 2));
+  // A piece whose origin is its slot's middle stays where it is: a wall, stairs, a doorway over two edges.
+  for (const [name, cls, layer] of [["core:wall_wood", CLS_EDGE, 2], ["core:stairs_wood", CLS_SQUARE, 1], ["test:double_doorway", CLS_EDGE, 2], ["core:pillar_wood", CLS_VERTEX, 4]] as const) {
+    for (let rot = 0; rot < rotsOf(forms, reg.index.get(name)!); rot++) expect([name, rot, origin(name, key0(cls, 4, 0, 0), key1(-4, 0, 0, layer, rot, 1))]).toEqual([name, rot, origin(name, key0(cls, 4, 0, 0), key1(-4, 0, 0, layer, rot, 0))]);
+  }
+  // In the store a flipped piece keeps its flip, and its cell is taken whichever way the next would lie.
+  const kind = reg.index.get("test:quarter_foundation")!;
+  const [k0, k1] = [key0(CLS_SQUARE, 2, 0, 0), key1(2, 0, 0, 0, 3, 1)];
+  const ref = structs.place(kind, f.gid, k0, k1, 7, 1);
+  expect([sound(structs, reg, ref), key.k1, structs.refAt(f.gid, k0, cellOf(k1)), structs.fits(kind, f.gid, k0, cellOf(k1))]).toEqual([f.gid, k1, ref, false]);
+  structs.remove(ref);
+});
+
+test("the cells next to an element are its sides, its faces and what is round it", () => {
   const rng = new Rng(77);
   const [sides, faces, round, ends] = [new Cells(), new Cells(), new Cells(), new Cells()];
   const has = (list: Cells, k0: number, k1: number): boolean => Array.from({ length: list.n }, (_, i) => list.k0[i] === k0 && list.k1[i] === k1).includes(true);
@@ -556,7 +670,7 @@ test("the cells next to an element are its neighbours: a face's sides, an edge's
   expect(cellAt(key1(7, 3, 4, 2, 1, 0), 7, 0)).toBe(key1(7, 7, 4, 0, 0, 0));
 });
 
-test("the occupancy table agrees with a plain map through 300,000 entries put and taken, whole runs of them at once", () => {
+test("the occupancy table agrees with a plain map through 300,000 puts and takes", () => {
   const rng = new Rng(4242);
   const table = new Occupancy();
   /** Per cell: its ref and reach. A cell's name is its frame, first word and second word. */
@@ -618,7 +732,7 @@ test("the occupancy table agrees with a plain map through 300,000 entries put an
   expect(table.size).toBe(0);
 });
 
-test("pieces set down and taken up at random by key in five frames over four chunks agree with a plain map, their frames with their rows", () => {
+test("pieces placed and removed at random by key agree with a plain map", () => {
   const w = plannedWorld();
   const { structs, reg } = w;
   const rng = new Rng(99);
@@ -696,7 +810,7 @@ test("pieces set down and taken up at random by key in five frames over four chu
       // Mostly on the frame's own squares, where a base grows, and sometimes along the other two vectors.
       const skew = rng.int(3) === 0 ? 3 : 1;
       const k0 = key0(cls, rng.int(5) - 2, rng.int(skew) - (skew >> 1), rng.int(skew) - (skew >> 1));
-      const k1 = key1(rng.int(5) - 2, rng.int(9) - 2, rng.int(CLS_DIRS[cls]!), reg.forms.layer[kind]!, rng.int(CLS_ROTS[cls]!), 0);
+      const k1 = key1(rng.int(5) - 2, rng.int(9) - 2, rng.int(CLS_DIRS[cls]!), reg.forms.layer[kind]!, rng.int(rotsOf(reg.forms, kind)), rng.int(2));
       const { levels, entries } = levelsOf(f.gid, kind, k0, k1);
       const free = levels.every((l) => !taken.has(l));
       expect(structs.fits(kind, f.gid, k0, k1)).toBe(free);

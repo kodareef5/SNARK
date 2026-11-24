@@ -25,8 +25,12 @@ export class Cells {
   readonly reach = new Uint8Array(CELLS_MOST);
 }
 
+/** A cell with the low two bits of its level cleared: the four levels of a storey start their search at one slot. */
+const STOREY = ~(3 << 10);
+
+/** Where the search for a cell starts. A storey's levels share it, so asking who covers a level reads one or two runs of slots. */
 function mix(fr: number, k0: number, cell: number): number {
-  let h = Math.imul(fr, 0x9e3779b1) ^ Math.imul(k0, 0x85ebca6b) ^ Math.imul(cell, 0xc2b2ae35);
+  let h = Math.imul(fr, 0x9e3779b1) ^ Math.imul(k0, 0x85ebca6b) ^ Math.imul(cell & STOREY, 0xc2b2ae35);
   h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
   h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
   return (h ^ (h >>> 15)) >>> 0;
@@ -61,31 +65,32 @@ export class Occupancy {
   /** Enters `ref` in a cell, reaching `reach` levels up from its own (1 to 64). False, and nothing changes, if the cell has an entry. */
   put(fr: number, k0: number, k1: number, ref: number, reach = 1): boolean {
     const cell = k1 & CELL;
-    if (this.find(fr, k0, cell) >= 0) return false;
     if ((this.size + 1) * 10 > this.cap * 7) this.grow();
-    this.set(fr, k0, (cell | ((reach - 1) << 26)) >>> 0, ref);
+    const slots = this.slots;
+    const mask = this.cap - 1;
+    let i = mix(fr, k0, cell) & mask;
+    for (; slots[i * WORDS] !== 0; i = (i + 1) & mask) if (slots[i * WORDS] === fr && slots[i * WORDS + 1] === k0 && (slots[i * WORDS + 2]! & CELL) === cell) return false;
+    slots[i * WORDS] = fr;
+    slots[i * WORDS + 1] = k0;
+    slots[i * WORDS + 2] = (cell | ((reach - 1) << 26)) >>> 0;
+    slots[i * WORDS + 3] = ref;
     this.size++;
     const layer = cell >>> 23;
     if (reach - 1 > this.deep[layer]!) this.deep[layer] = reach - 1;
     return true;
   }
 
-  private set(fr: number, k0: number, word: number, ref: number): void {
-    const slots = this.slots;
-    const mask = this.cap - 1;
-    let i = mix(fr, k0, word & CELL) & mask;
-    while (slots[i * WORDS] !== 0) i = (i + 1) & mask;
-    slots[i * WORDS] = fr;
-    slots[i * WORDS + 1] = k0;
-    slots[i * WORDS + 2] = word;
-    slots[i * WORDS + 3] = ref;
-  }
-
   private grow(): void {
     const old = this.slots;
     this.cap *= 2;
-    this.slots = new Uint32Array(this.cap * WORDS);
-    for (let at = 0; at < old.length; at += WORDS) if (old[at] !== 0) this.set(old[at]!, old[at + 1]!, old[at + 2]!, old[at + 3]!);
+    const slots = (this.slots = new Uint32Array(this.cap * WORDS));
+    const mask = this.cap - 1;
+    for (let at = 0; at < old.length; at += WORDS) {
+      if (old[at] === 0) continue;
+      let i = mix(old[at]!, old[at + 1]!, old[at + 2]! & CELL) & mask;
+      while (slots[i * WORDS] !== 0) i = (i + 1) & mask;
+      slots.set(old.subarray(at, at + WORDS), i * WORDS);
+    }
   }
 
   /** Takes a cell's entry out. False if it had none. */

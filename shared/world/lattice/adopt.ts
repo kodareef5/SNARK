@@ -4,8 +4,8 @@
 import { YAW_UNITS } from "../../coords.ts";
 import { LEVEL_UNITS, QUARTER_YAW, dirVector } from "./basis.ts";
 import type { FormTable } from "./forms.ts";
-import type { Frame, LatticeKey } from "./frames.ts";
-import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, LVL_MOST, M_MOST, SIDE, canon, canonical, dirTurn, key0, key1, tupleSet, tupleStep, tupleWithin } from "./module.ts";
+import { rotsOf, type Frame, type LatticeKey } from "./frames.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, DIRECTIONS, LVL_MOST, M_MOST, SIDE, canon, canonical, dirTurn, key0, key1, tupleSet, tupleStep, tupleWithin } from "./module.ts";
 
 const m = new Int32Array(4);
 const v = new Int32Array(2);
@@ -24,18 +24,18 @@ export function keyOfPose(f: Frame, forms: FormTable, kind: number, x: number, y
   if ((away & (QUARTER_YAW - 1)) !== 0) return KEY_NONE;
   // The piece's +X is direction 3·quarters.
   const quarters = away / QUARTER_YAW;
+  const own = 3 * quarters;
   const cls = forms.cls[kind]!;
   const side = forms.size[kind]!;
-  let dir = 0;
-  let rot = (4 - quarters) & 3;
-  if (cls === CLS_EDGE) {
-    dir = (3 * quarters) % 6;
-    rot = quarters >> 1;
-  }
+  // An edge along the piece's +X is named along it or against it. A square or a vertex of a frame's own is named along 0.
+  let dir = cls === CLS_EDGE ? own % 6 : 0;
+  const step = DIRECTIONS / rotsOf(forms, kind);
+  if (cls !== CLS_TRIANGLE && dirTurn(dir, -own) % step !== 0) return KEY_NONE;
+  let rot = dirTurn(dir, -own) / step;
   const lvl = (y - forms.atY[kind]! - f.oy) / LEVEL_UNITS;
   if (Math.abs(lvl) > LVL_MOST) return KEY_NONE;
   // The slot's reference point, which is m0·a0 + m3·a3 from the origin: two vectors square to each other and as long.
-  dirVector(f.basis, cls === CLS_TRIANGLE ? 3 * quarters : dir, v, 0);
+  dirVector(f.basis, cls === CLS_TRIANGLE ? own : dir, v, 0);
   const i = forms.atI[kind]!;
   const j = forms.atJ[kind]!;
   const dx = x - i * v[0]! + j * v[1]! - f.ox;
@@ -47,9 +47,10 @@ export function keyOfPose(f: Frame, forms: FormTable, kind: number, x: number, y
   if (!Number.isInteger(m0) || !Number.isInteger(m3)) return KEY_NONE;
   tupleSet(m, 0, m0, 0, 0, m3);
   if (cls === CLS_TRIANGLE) {
-    canonical(cls, m, 0, 3 * quarters, m, 0, side);
+    // Named from its corner `turn`, its own +X is 4·turn on from its cell's direction.
+    canonical(cls, m, 0, own, m, 0, side);
     dir = canon.dir;
-    rot = canon.turn;
+    rot = (3 - canon.turn) % 3;
   } else if (cls === CLS_EDGE) tupleStep(m, 0, dir, -SIDE / 2, m, 0);
   else if (cls === CLS_SQUARE && side === SIDE) {
     tupleStep(m, 0, dir, -SIDE / 2, m, 0);

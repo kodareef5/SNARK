@@ -1,11 +1,18 @@
 // The bases of a world. A frame is one base: where its lattice's origin is, on the 1/512 m lattice, and how it is turned.
 // A piece's key says where it is in its frame and holds nothing of the world, so poseOf is the one place a pose is made
 // from one: a frame that moves later changes its own four numbers and no row.
+//
+// What a key's turn and flip mean, here and in blueprint.ts. A piece's own +X is direction dir − rot·(12 / turns), turns
+// being its form's: as formPose adds a turn to yaw. A square, an edge and a vertex turn where they stand. A triangle's
+// turn names the same cell from the corner its own +X leaves, and that corner is then its reference point. A flipped
+// piece is mirrored in its own X about the middle of its slot, so it fills the same cells: its origin is mirrored here,
+// and its solid is its collider's to mirror. A form of one turn may be turned too, by its class's turns (CLS_ROTS): it
+// is the same solid, and so a ceiling set off a side wall keeps the yaw it has today.
 
 import { YAW_UNITS } from "../../coords.ts";
-import { QUARTER_YAW, basisOf, dirVector, levelY, twOf, worldOf, yawOf } from "./basis.ts";
+import { basisOf, dirVector, levelY, twOf, worldOf, yawOf } from "./basis.ts";
 import type { FormTable } from "./forms.ts";
-import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, SIDE, dirTurn, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyRot, keyValid, tupleStep } from "./module.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, DIRECTIONS, SIDE, dirTurn, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyRot, keyValid, tupleStep } from "./module.ts";
 
 /** A piece's address: its frame's gid and the two words of its key. */
 export interface LatticeKey {
@@ -146,21 +153,28 @@ export class Frames {
   }
 }
 
-/** How many turns a piece may be given in a slot of each class: quarter turns of a vertex or a square, half turns of an edge, a triangle's three corners. */
+/** The turns of a slot of each class: quarter turns of a vertex or a square, half turns of an edge, a triangle's three corners. */
 export const CLS_ROTS: readonly number[] = [4, 2, 4, 3];
 
-/**
- * Whether a key names a slot a piece of `kind` may fill: a sound key of its form's class and layer, turned no more than
- * its class turns. A key's flip must be 0 until some form is mirrored.
- */
-export function keyFits(forms: FormTable, kind: number, k0: number, k1: number): boolean {
-  const cls = keyCls(k0);
-  return keyValid(k0, k1) && cls === forms.cls[kind] && keyLayer(k1) === forms.layer[kind] && keyFlip(k1) === 0 && keyRot(k1) < CLS_ROTS[cls]!;
+/** How many turns a key of a piece of `kind` may have: its form's, or its class's for a form of one turn. */
+export function rotsOf(forms: FormTable, kind: number): number {
+  const turns = forms.turns[kind]!;
+  return turns === 1 ? CLS_ROTS[forms.cls[kind]!]! : turns;
 }
 
-/** The direction mod 3 of a keyed piece's +X: what its row's `tw` holds. */
-export function twOfKey(k0: number, k1: number): number {
-  return twOf(keyCls(k0) === CLS_TRIANGLE ? keyDir(k1) + 4 * keyRot(k1) : keyDir(k1));
+/** The direction of a keyed piece's own +X: dir − rot·(12 / turns). */
+export function ownDir(forms: FormTable, kind: number, k1: number): number {
+  return dirTurn(keyDir(k1), (-keyRot(k1) * DIRECTIONS) / rotsOf(forms, kind));
+}
+
+/** The direction mod 3 of a keyed piece's own +X: what its row's `tw` holds. */
+export function twOfKey(forms: FormTable, kind: number, k1: number): number {
+  return twOf(ownDir(forms, kind, k1));
+}
+
+/** Whether a key names a slot a piece of `kind` may fill: a sound key of its form's class and layer, with a turn it may have. */
+export function keyFits(forms: FormTable, kind: number, k0: number, k1: number): boolean {
+  return keyValid(k0, k1) && keyCls(k0) === forms.cls[kind] && keyLayer(k1) === forms.layer[kind] && keyRot(k1) < rotsOf(forms, kind);
 }
 
 const m = new Int32Array(4);
@@ -168,44 +182,46 @@ const v = new Int32Array(4);
 const basis = new Int32Array(8);
 
 /**
- * The pose of a piece of `kind` whose key is (k0, k1) in frame `f`, to `out`. The slot's reference point and facing come
- * from the cell: a square, an edge and a vertex face along the key's direction, and the key's turn turns the piece where
- * it stands, by quarters for a square or a vertex and by halves for an edge. A triangle's turn names it from its next
- * corner instead. The form's `at` runs along the slot's axes whatever the turn.
+ * The pose of a piece of `kind` whose key is (k0, k1) in frame `f`, to `out`, by the rule at the head of this file. The
+ * form's `at` runs along the slot's axes whatever the turn: for a triangle, along the side its own +X is.
  */
 export function poseOf(f: Frame, k0: number, k1: number, forms: FormTable, kind: number, out: LatticePose): void {
   const cls = keyCls(k0);
-  const rot = keyRot(k1);
   const side = forms.size[kind]!;
-  let dir = keyDir(k1);
-  let turned = 0;
+  const dir = keyDir(k1);
+  const own = ownDir(forms, kind, k1);
+  const small = cls === CLS_SQUARE && side !== SIDE;
+  let slot = dir;
   keyAnchor(k0, k1, m, 0);
   if (cls === CLS_TRIANGLE) {
-    if (rot !== 0) tupleStep(m, 0, dirTurn(dir, rot === 1 ? 0 : 2), side, m, 0);
-    dir = dirTurn(dir, 4 * rot);
-  } else if (cls === CLS_EDGE) {
+    // Its sides run along dir, dir + 4 and dir + 8 from its first, second and third corners.
+    const corner = dirTurn(own, -dir) / 4;
+    if (corner !== 0) tupleStep(m, 0, dirTurn(dir, corner === 1 ? 0 : 2), side, m, 0);
+    slot = own;
+  } else if (cls === CLS_EDGE) tupleStep(m, 0, dir, SIDE / 2, m, 0);
+  else if (cls === CLS_SQUARE && !small) {
     tupleStep(m, 0, dir, SIDE / 2, m, 0);
-    turned = rot * 2 * QUARTER_YAW;
-  } else {
-    if (cls === CLS_SQUARE && side === SIDE) {
-      tupleStep(m, 0, dir, SIDE / 2, m, 0);
-      tupleStep(m, 0, dirTurn(dir, 3), SIDE / 2, m, 0);
-    }
-    turned = rot * QUARTER_YAW;
+    tupleStep(m, 0, dirTurn(dir, 3), SIDE / 2, m, 0);
+  }
+  let i = forms.atI[kind]!;
+  let j = forms.atJ[kind]!;
+  if (keyFlip(k1) === 1) {
+    // Along the slot's +X or +Z, whichever its own X lies on: `at` taken from twice the middle's place past the reference point.
+    let wide = 1;
+    for (const c of forms.def[kind]!.cells ?? []) wide = Math.max(wide, c[0] + 1);
+    if (((dirTurn(slot, -own) / 3) & 1) === 1) j = (small ? 1 : 0) - j;
+    else i = (cls === CLS_EDGE ? (wide - 1) * SIDE : cls === CLS_TRIANGLE ? side : small ? 1 : 0) - i;
   }
   worldOf(f.basis, f.ox, f.oz, m, 0, v, 0);
-  dirVector(f.basis, dir, v, 2);
-  const i = forms.atI[kind]!;
-  const j = forms.atJ[kind]!;
+  dirVector(f.basis, slot, v, 2);
   // The slot's +Z is its +X a quarter turn on.
   out.x = v[0]! + i * v[2]! - j * v[3]!;
   out.z = v[1]! + i * v[3]! + j * v[2]!;
   // By this a pillar under a foundation ends at its top plane; one hung from its underside today is on no level (structures.ts adopt).
   out.y = levelY(f.oy, keyLvl(k1)) + forms.atY[kind]!;
-  out.yaw = (yawOf(f.yaw, dir) + turned) & (YAW_UNITS - 1);
-  out.tw = twOf(dir);
+  out.yaw = yawOf(f.yaw, own);
+  out.tw = twOf(own);
 }
-
 /**
  * The origin of a new base whose first piece is of `kind` with its collider origin at (x, y, z) lattice units, turned
  * `yaw`: where the piece's key is the corner (0, 0, 0, 0) along direction 0 at level 0, unturned. A foundation's top is
