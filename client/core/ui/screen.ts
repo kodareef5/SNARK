@@ -66,6 +66,8 @@ export interface Screen {
   pointer?(kind: number, key: number, x: number, y: number, button: number, c: ScreenCtx): boolean;
   /** A field's new text. True if the field was this screen's. */
   text?(key: number, value: string): boolean;
+  /** A slider's new value, 0 to 1. True if the slider was this screen's. */
+  value?(key: number, value: number): boolean;
   /** The server's answer to command `seq`. */
   result?(seq: number, code: number, c: ScreenCtx): void;
   /** The session died or went to the creator. */

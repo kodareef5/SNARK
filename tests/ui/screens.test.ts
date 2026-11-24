@@ -5,9 +5,10 @@ import type { CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_EMOTE_BUTTON, type EmoteMenu } from "../../client/core/ui/emotes.ts";
 import type { Screen } from "../../client/core/ui/screen.ts";
 import type { ChoosingScreen } from "../../client/core/ui/choosing.ts";
+import type { CreatorScreen } from "../../client/core/ui/creator.ts";
 import type { StructMenu } from "../../client/core/ui/structure.ts";
 import { flatWorld } from "../fixtures/world.ts";
-import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
+import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { Chart } from "../../client/core/tactical.ts";
@@ -35,9 +36,9 @@ function fakeSession(): { session: ClientSession; sent: number[] } {
   return { session, sent };
 }
 
-/** Whether `key` is in one of the screen's bands, or is a piece of a glass panel keyed in one (skin.ts glass). */
+/** Whether `key` is in one of the screen's bands, or is a piece of a glass panel or a slider keyed in one (skin.ts, slider.ts). */
 function inBands(s: Screen, key: number): boolean {
-  const base = key >= 2000000 ? Math.floor((key - 2000000) / 16) : key;
+  const base = key >= 4000000 ? Math.floor((key - 4000000) / 4) : key >= 2000000 ? Math.floor((key - 2000000) / 16) : key;
   return s.bands.some((b) => base >= b.from && base < b.from + b.count);
 }
 
@@ -82,6 +83,10 @@ const opens: Record<string, (ui: Ui, session: ClientSession) => { s: Screen; shu
     const s = ui.screen<StructMenu>("structure");
     s.begin(ref);
     return { s, shut: () => s.close() };
+  },
+  creator: (ui, session) => {
+    Object.assign(session, { sessionState: SESSION_CREATING, name: "Ada" });
+    return { s: ui.screen<CreatorScreen>("creator"), shut: () => (session.sessionState = SESSION_ALIVE) };
   },
   choosing: (ui, session) => {
     Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 0, respawnPoints: [{ kind: 0, name: "Beach", x: 10, z: 10, readyAt: 0 }, { kind: 1, name: "Bed", x: 40, z: 30, readyAt: 0 }] });

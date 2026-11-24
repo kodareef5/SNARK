@@ -281,7 +281,6 @@ export class App {
     this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
       this.ui.air.result(seq, code, session.tickClock);
-      this.ui.creator.result(seq, code === RESULT_OK);
       this.ui.inventory.result(seq, code, session.tickClock);
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);

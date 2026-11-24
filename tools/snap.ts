@@ -15,6 +15,7 @@ import { zoomed } from "../client/core/optics.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { App } from "../client/core/app.ts";
+import type { CreatorScreen } from "../client/core/ui/creator.ts";
 import { Camera } from "../client/core/render/camera.ts";
 import { FakeNet, type NetOptions } from "../tests/fixtures/assetnet.ts";
 import { Harness } from "../tests/fixtures/net.ts";
@@ -1116,9 +1117,9 @@ if (import.meta.main) {
   if (args.includes("--creator")) {
     const tab = Number(arg("creator") ?? 0) || 0;
     const pixels = clientPicture(w!, h!, null, (app) => {
-      app.ui.creator.tab = tab;
+      app.ui.screen<CreatorScreen>("creator").tab = tab;
       // A random look, so the controls show what they do.
-      randomLook(new Rng(5), app.ui.creator.look);
+      randomLook(new Rng(5), app.ui.screen<CreatorScreen>("creator").look);
     });
     const out = resolve(arg("out") ?? "artifacts/creator.png");
     mkdirSync(dirname(out), { recursive: true });

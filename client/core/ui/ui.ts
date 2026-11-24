@@ -7,7 +7,6 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { AirRadio } from "./air-support.ts";
 import { buildFeed } from "../hud/air-feed.ts";
 import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.ts";
-import { CreatorScreen } from "./creator.ts";
 import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand, hotbarCell, hotbarLeft, hotbarTop } from "./hud.ts";
 import type { TouchPlay } from "../touch.ts";
@@ -36,7 +35,6 @@ export class Ui {
   readonly console = new ConsoleState();
   readonly chat = new ChatState();
   readonly inventory = new InventoryScreen();
-  readonly creator = new CreatorScreen();
   readonly air = new AirRadio();
   readonly naming = new NamePrompt();
   /** The screens of SCREENS, made for this interface, in its order. */
@@ -144,6 +142,12 @@ export class Ui {
   private hotkeyed(group: string | undefined, code: string): Screen | null {
     for (const s of this.screens) if (s.group === group && s.hotkey === code) return s;
     return null;
+  }
+
+  /** A slider's new value, for the open screens of the list. */
+  private slid(key: number, value: number): boolean {
+    for (const s of this.screens) if (s.isOpen() && s.value?.(key, value)) return true;
+    return false;
   }
 
   /** The server's answer to command `seq`, told to each screen of the list. */
@@ -396,15 +400,13 @@ export class Ui {
       this.chat.submit(session);
       return;
     }
-    if (this.creating) {
-      this.creator.pointer(kind, key, session);
-      return;
-    }
     // A node a screen of the list drew goes to that screen alone, and only while it is still open: a press can come
     // between a close and the next frame.
     const owner = this.frame.find(key)?.owner ?? -1;
     const listed = owner >= 0 ? this.screens[owner]! : null;
     if (kind === 0 && key !== 0 && !listed?.quiet) this.hear?.("click");
+    // While in the creator, nothing but the creator takes a press.
+    if (this.creating && !listed) return;
     if (listed) {
       const c = this.at(session);
       c.finger = finger;
@@ -422,7 +424,7 @@ export class Ui {
     if(n?.kind===K_SLIDER) {
       if(value.trim()==="" || !Number.isFinite(Number(value)))return;
       const v=Math.max(0,Math.min(1,Math.round(Number(value)/n.step)*n.step));
-      if(this.options?settingsValue(key,v,this.settings):this.creating && this.creator.value(key,v))n.value=v;
+      if(this.options?settingsValue(key,v,this.settings):this.slid(key,v))n.value=v;
       return;
     }
     if (key === KEY_CREATIVE_PASSWORD) this.creativeScreen.edit(value);
@@ -495,8 +497,7 @@ export class Ui {
           // The password's field gives way to the tools once the server has given the role.
           if (!f.find(this.menuFocus)?.interactive && !this.focusNext) this.focusTo(this.creativeScreen.first(session));
         } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);
-      } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
-      else if (this.options) buildSettings(f, this.settings, hud.micLevel);
+      } else if (this.options) buildSettings(f, this.settings, hud.micLevel);
       else if (this.air.open && session) this.air.build(f, session, this.menuFocus);
       else if (!this.buildModal(f, session, hud)) {
         this.inventory.build(f, session, this.registry, this.palette);
