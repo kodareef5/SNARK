@@ -8,7 +8,7 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { fireMeshes } from "../../tools/pack/fire.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
-import { lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
+import { GRIP_POSE_UNITS, lodIndices, lodVertices, parsePack, type PackHeader, type PackRig } from "../../shared/pack/pack.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -38,6 +38,31 @@ test("rocket flames and blast lobes can draw before the first streamed page", ()
   }
 });
 
+test("boot grip tables fit signed fixed point and otherwise keep their full values", () => {
+  const min = -0x80000000 / GRIP_POSE_UNITS, max = 0x7fffffff / GRIP_POSE_UNITS;
+  const inside = [min, -0.006123456789, 1.999999999997, max];
+  const outside = [min - 1e-9, max + 1e-9, 1e20];
+  const rig: PackRig = {
+    id: "rig", skeleton: "human", rest: [],
+    grips: [inside, outside].map((poses, i) => ({ mesh: `grip${i}`, start: 0.014, step: 0.001, span: [-0.07, 0.07], poses })),
+  };
+  const whole = buildPack([], defaultPalette(), [], [rig]);
+  expect(parsePack(whole).header.rigs).toEqual([rig]);
+  const { files } = splitPack(whole, "grips");
+  const file = files[0]!.bytes;
+  const headerBytes = new DataView(file.buffer, file.byteOffset, file.byteLength).getUint32(8, true);
+  const header: PackHeader = JSON.parse(new TextDecoder().decode(file.subarray(12, 12 + headerBytes)));
+  const [fixed, full] = header.rigs[0]!.grips!;
+  expect(fixed!.poses).toEqual([inside.length]);
+  expect(fixed!.poseOffset).toBeGreaterThanOrEqual(0);
+  expect(full).toEqual(rig.grips![1]!);
+  expect(parsePack(file).header.rigs[0]!.grips).toEqual([
+    { ...rig.grips![0]!, poses: [min, -0.006123457, 2, max] },
+    rig.grips![1]!,
+  ]);
+  expect(() => parsePack(file.subarray(0, file.length - 1))).toThrow("pack: grip grip0 points outside the file");
+});
+
 artTest("a split pack holds every level once, byte for byte, with the coarsest of each mesh in the boot file", () => {
   const whole = corePackBytes();
   const pack = parsePack(whole);
@@ -46,7 +71,8 @@ artTest("a split pack holds every level once, byte for byte, with the coarsest o
   expect(parseManifest(JSON.stringify(manifest))).toEqual(manifest);
   const [boot, rest] = files.slice(0, 2).map((f) => parsePack(f.bytes));
   // The boot file is a pack with the palette, every rig, and some level of every mesh.
-  expect([boot!.header.meshes.length, boot!.header.rigs, [...boot!.palette]]).toEqual([pack.header.meshes.length, pack.header.rigs, [...pack.palette]]);
+  const rigs = (from: typeof pack) => from.header.rigs.map((rig) => ({ ...rig, grips: undefined }));
+  expect([boot!.header.meshes.length, rigs(boot!), [...boot!.palette]]).toEqual([pack.header.meshes.length, rigs(pack), [...pack.palette]]);
   expect(rest!.header.clips.length + rest!.header.rigs.length).toBe(0);
   let streamed = 0;
   manifest.meshes.forEach((m, i) => {

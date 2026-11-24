@@ -4,7 +4,7 @@
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
 import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
 import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
-import { CLIP_ROOT_BYTES, HIT_PLANE_UNITS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshReach, parsePack, setTexture, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, GRIP_POSE_UNITS, HIT_PLANE_UNITS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshReach, parsePack, setTexture, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
 import { PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION } from "../../shared/pack/stored.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
@@ -189,6 +189,19 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
     boot.hitPlaneOffset ??= blob.size;
     blob.append(bytes);
     piece.planes = [values.length];
+  }
+
+  // Fixed point holds corrections to a billionth of a metre or radian and keeps the source tables at full precision.
+  for (const rig of boot.rigs) for (const grip of rig.grips ?? []) {
+    const { poses } = grip;
+    if (poses.length === 0 || !poses.every(Number.isFinite)) continue;
+    const words = poses.map((n) => Math.round(n * GRIP_POSE_UNITS));
+    if (!words.every((n) => Number.isInteger(n) && n >= -0x80000000 && n <= 0x7fffffff)) continue;
+    const bytes = new Uint8Array(poses.length * 4);
+    const view = new DataView(bytes.buffer);
+    words.forEach((n, k) => view.setInt32(k * 4, n, true));
+    grip.poseOffset = blob.append(bytes);
+    grip.poses = [poses.length];
   }
 
   const files: SplitFile[] = [
