@@ -7,6 +7,7 @@ import { CHUNK_SIZE, YAW_UNITS } from "../../../shared/coords.ts";
 import { isWheelVehicle } from "../../../shared/sim/vehicle.ts";
 import { type NodeForms, SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
+import { orbCollider } from "../../../shared/world/orb.ts";
 import { ReceiverIndex } from "./receiver-index.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import type { RemoteSample } from "../session.ts";
@@ -14,8 +15,7 @@ import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { stanceEye } from "../../../shared/sim/character.ts";
 import type { Camera } from "./camera.ts";
 import type { OwnBody, RenderWorld } from "./scene.ts";
-import { FRAME, ORB_AT, type FramePacket } from "./packet.ts";
-import { ORB_OVER } from "./orb-light.ts";
+import { FRAME, type FramePacket } from "./packet.ts";
 
 import { GLASS, RUST, STEEL, FINE_STREET_WIDTH, STREET_WIDTH, captureByte, streetWidth, type StreetImage, streetPriority } from "./street-finish.ts";
 const TAU = 2 * Math.PI, REACH = 36, MAX_PROXIES = 128, ROWS_PER_CHUNK = 192;
@@ -67,24 +67,7 @@ export function placedPriority(d: Registry["defs"][number]): number {
   return surface === GLASS ? 0.7 : surface === STEEL ? 0.35 : surface === RUST ? 0.12 : 0;
 }
 
-/**
- * An orb in the street's picture (orb.ts `orbInStreet`), the picture taken (x, y, z) from the camera. `over` says
- * whether the ball is in it, and sets how many times the sky's light the picture must hold for it, less one, a channel;
- * `paint` then draws its disc over what is not nearer.
- */
-export interface StreetOrb {
-  over(frame: Float32Array, x: number, y: number, z: number, over: Float32Array): boolean;
-  paint(pixels: Uint8Array, depth: Float32Array, width: number, frame: Float32Array, x: number, y: number, z: number, over: Float32Array): void;
-}
-
 export class StreetReflections {
-  /** The orb's part (orb-late.ts), which comes after the first frame. */
-  static orb: StreetOrb | null = null;
-  /** Whether the picture holds an orb (passes.ts `orbmirror`), and what this picture, the one before and the one being made hold for it (orb-light.ts ORB_OVER). */
-  orb = true;
-  private readonly over = new Float32Array(3);
-  private readonly overWas = new Float32Array(3);
-  private readonly overNext = new Float32Array(3);
   private readonly dense = new WeakMap<ChunkTable, ReceiverIndex>();
   private readonly nearby = new Int32Array(3);
   indexChunk(t: ChunkTable, x0: number, z0: number, cam: Camera): void {
@@ -220,7 +203,7 @@ export class StreetReflections {
         this.y = winner.y;
         this.z = winner.z;
         this.ground = world.hf.heightAt(this.x, this.z);
-        if (this.capture(world.hf, travel > 0.01, grid, p.frame, cam) && !cut) {
+        if (this.capture(world.hf, travel > 0.01, grid, p.frame) && !cut) {
           this.previousX = oldX;
           this.previousY = oldY;
           this.previousZ = oldZ;
@@ -240,8 +223,6 @@ export class StreetReflections {
       p.frame[history + 2] = this.previousZ - cam.z;
       p.frame[history + 3] = 1 - t * t * (3 - 2 * t);
     }
-    // What the pictures hold for an orb goes from the one before's to this one's as they blend.
-    for (let c = 0; c < 3; c++) p.frame[ORB_OVER + c] = this.over[c]! + (this.overWas[c]! - this.over[c]!) * p.frame[history + 3]!;
     p.frame[offset] = this.x - cam.x;
     p.frame[offset + 1] = this.y - cam.y;
     p.frame[offset + 2] = this.z - cam.z;
@@ -274,7 +255,8 @@ export class StreetReflections {
           if (!form || (nodes && (this.forms.depleted[form] || hidden.has(ref)))) continue;
           const k = nodes ? this.forms.kind[form]! : form;
           const d = this.reg.defs[k];
-          if (!d || !("color" in d) || d.color === undefined) continue;
+          // A piece of an orb's collision is drawn as nothing, so it is not in the picture: a mirror shows the ball itself there (orb-light.ts orbMirror).
+          if (!d || !("color" in d) || d.color === undefined || orbCollider(d.id)) continue;
           const size = nodes ? this.forms.size[form]! / SIZE_UNITS : 1;
           const bounds = this.bounds;
           const mesh = bounds?.meshes[(nodes ? bounds.forms : bounds.kinds)[form]!];
@@ -376,14 +358,10 @@ export class StreetReflections {
     this.proxies[slot] = data;
   }
 
-  private capture(hf: Heightfield, moved: boolean, grid: typeof standardGrid, frame: Float32Array, cam: Camera): boolean {
+  private capture(hf: Heightfield, moved: boolean, grid: typeof standardGrid, frame: Float32Array): boolean {
     const { width, height, columns, elevations } = grid;
     const pixels = (this.scratch ??= new Uint8Array(width * height * 4));
     pixels.fill(0);
-    // With an orb in it the picture is a share of more light than the sky's, and all else in it is that much darker.
-    const over = this.overNext, ox = this.x - cam.x, oy = this.y - cam.y, oz = this.z - cam.z;
-    const ball = this.orb && frame[ORB_AT + 3]! > 0 && StreetReflections.orb !== null && StreetReflections.orb.over(frame, ox, oy, oz, over);
-    if (!ball) over.fill(0);
     if (this.depth.length !== width * height) this.depth = new Float32Array(width * height);
     this.depth.fill(Infinity);
     for (let j = 0; j < height / 2; j++) {
@@ -395,7 +373,7 @@ export class StreetReflections {
         const gx = Math.max(0, Math.min(hf.nx - 1, Math.round((this.x + distance * sx) / hf.cell)));
         const gz = Math.max(0, Math.min(hf.nz - 1, Math.round((this.z + distance * sz) / hf.cell)));
         const tint = hf.tint[gz * hf.nx + gx];
-        for (let ch = 0; ch < 3; ch++) pixels[at * 4 + ch] = ball ? captureByte((tint ? this.palette[tint * 4 + ch]! : 39/255) / (1 + over[ch]!)) : !tint ? captureByte(39/255) : this.groundColor[tint * 4 + ch]!;
+        for (let ch = 0; ch < 3; ch++) pixels[at * 4 + ch] = !tint ? captureByte(39/255) : this.groundColor[tint * 4 + ch]!;
         pixels[at * 4 + 3] = 255;
       }
     }
@@ -450,15 +428,12 @@ export class StreetReflections {
         this.drawPart(grid, pixels, c, s, x, y, z, b.hx, b.hy, b.hz, b.color, b.tree, sunX, sunY, sunZ);
       }
     }
-    if (ball) StreetReflections.orb!.paint(pixels, this.depth, width, frame, ox, oy, oz, over);
-    if (this.image && !moved && over[0] === this.over[0] && over[1] === this.over[1] && over[2] === this.over[2]) {
+    if (this.image && !moved) {
       const current = this.image.pixels;
       let i = 0;
       while (i < pixels.length && current[i] === pixels[i]) i++;
       if (i === pixels.length) return false;
     }
-    this.overWas.set(this.over);
-    this.over.set(over);
     const next = this.previous ?? { pixels: new Uint8Array(pixels.length), revision: 0 };
     this.previous = this.image;
     this.image = next;
@@ -527,7 +502,7 @@ export class StreetReflections {
         }
         this.depth[at] = t;
         const shade = fine ? 0.34 + 0.66 * Math.max(0, Math.min(1, diffuse)) : tx > tz ? 0.76 : 0.94;
-        for (let ch = 0; ch < 3; ch++) pixels[4 * at + ch] = captureByte((this.palette[color * 4 + ch]! * shade) / (1 + this.overNext[ch]!));
+        for (let ch = 0; ch < 3; ch++) pixels[4 * at + ch] = captureByte(this.palette[color * 4 + ch]! * shade);
         pixels[4 * at + 3] = 255;
       }
     }

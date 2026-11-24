@@ -2,8 +2,9 @@
 // it is drawn at any distance, whatever chunks a client holds. What the screen shows is the frame block's (../orb.ts
 // writeOrb), which holds one orb, the nearest: its shell is the screen, and any other's is drawn as plain steel.
 //
-// By night the nearest lights what is round it (../orb.ts OrbCast): a halo in the haze about it, and on the ground at
-// its foot a pool, where the tier's lit programs do not take its light themselves (../orb-light.ts).
+// By night the nearest lights what is round it (../orb.ts OrbCast): a halo in the haze about it here, and the ground
+// and what stands on it in the lit programs (../orb-light.ts). Low poly, which lights nothing, has the halo alone: a
+// flat sheet of light on the ground, as this drew once, lay under the ground on one side of a ball and over it on the other.
 
 import type { OrbSite } from "../../../../shared/world/orb.ts";
 import { SIZE_UNITS } from "../../../../shared/world/nodes.ts";
@@ -22,16 +23,11 @@ import { VehicleCards } from "../vehicle-cards.ts";
  */
 export const HALO_SIZE = 2.2, HALO_GROWS = 4;
 export const HALO_SHOWS = 5, HALO_NEAR = 0.08;
-/** The pool: a sheet on the ground about the ball's axis, gone POOL_REACH metres out, showing POOL_SHOWS of the light's brightness at its middle. */
-export const POOL_REACH = 300;
-export const POOL_SHOWS = 1.6;
-/** Metres the sheet lies over the ground under the axis. */
-const POOL_LIFT = 0.3;
 
-/** The cards of the light the nearest orb casts: light with no surface, added over what is behind them (packet.ts DETAIL_GLOW). */
+/** The card of the light the nearest orb casts: light with no surface, added over what is behind it (packet.ts DETAIL_GLOW). */
 class OrbCards extends VehicleCards {
   constructor() {
-    super(2);
+    super(1);
   }
 
   /** A card at (x, y, z) from the camera with half axes along and across it, in the colour `tint` (RGBA bytes), `shows` of 255 at its middle. */
@@ -51,10 +47,10 @@ export class Orbs implements Pass {
   /** The shell, made ORB_SHELL in radius about the ball's centre, and the plinth, made about the ground under its axis. Under 0 while the art has none. */
   private readonly shell: number;
   private readonly plinth: number;
-  /** The colour of the light the nearest orb casts, and its halo and pool, which the scene draws among its details. */
+  /** The colour of the light the nearest orb casts, and its halo, which the scene draws among its details. */
   readonly cast = new OrbCast();
   readonly cards = new OrbCards();
-  /** Whether the halo and the pool are drawn (passes.ts `orbglow`). */
+  /** Whether the halo is drawn (passes.ts `orbglow`). */
   glow = true;
 
   constructor(assets: Assets) {
@@ -68,7 +64,7 @@ export class Orbs implements Pass {
     cards.begin();
     const bright = Math.max(shown[0]!, shown[1]!, shown[2]!), radius = frame[ORB_AT + 3]!;
     if (!this.glow || bright <= 0) return;
-    // The light's hue as the cards' colour, and its brightness as how much of them shows.
+    // The light's hue as the card's colour, and its brightness as how much of it shows.
     const tint = (Math.round(255 * linearToSrgb(shown[0]! / bright)) | (Math.round(255 * linearToSrgb(shown[1]! / bright)) << 8) | (Math.round(255 * linearToSrgb(shown[2]! / bright)) << 16) | (255 << 24)) >>> 0;
     const x = frame[ORB_AT]!, y = frame[ORB_AT + 1]!, z = frame[ORB_AT + 2]!, far = Math.hypot(x, y, z);
     if (far <= radius) return;
@@ -77,10 +73,6 @@ export class Orbs implements Pass {
     const cam = f.cam, sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw), sp = Math.sin(cam.pitch), cp = Math.cos(cam.pitch);
     const size = radius * (HALO_SIZE + HALO_GROWS * haze);
     cards.card(x, y, z, -sy * sp * size, cp * size, -cy * sp * size, -cy * size, 0, sy * size, tint, 255 * Math.min(1, HALO_SHOWS * bright * (HALO_NEAR + haze)));
-    // A tier that lights by the ball lights the ground too; on the rest the pool stands for that.
-    if (f.packet.tier.orb.light && f.packet.lit) return;
-    const site = f.world.orbs![nearestOrb(f.world.orbs!, cam.x, cam.y, cam.z)]!;
-    cards.card(x, site.y + POOL_LIFT - cam.y, z, POOL_REACH, 0, 0, 0, 0, POOL_REACH, tint, 255 * Math.min(1, POOL_SHOWS * bright) * (1 - haze));
   }
 
   draw(f: Frame): void {

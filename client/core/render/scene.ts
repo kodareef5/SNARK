@@ -443,7 +443,7 @@ export class Scene {
   /** The scene every orb is held on, its place in ORB_SCENES, or -1 for the programme; and what its level is scaled by, 0 for dark. */
   orbOnly = -1;
   orbGain = 1;
-  /** Whether the nearest orb's halo and pool are drawn (passes.ts `orbglow`). */
+  /** Whether the nearest orb's halo is drawn (passes.ts `orbglow`). */
   orbGlow = true;
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
   private readonly unseenFrom = new Uint16Array(MAX_VIEW);
@@ -981,7 +981,7 @@ export class Scene {
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
     const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0));
     const particles = p.detailCount;
-    // An orb's halo and pool first of the cards, so what is nearer is drawn over them.
+    // An orb's halo first of the cards, so what is nearer is drawn over it.
     orbCards?.write(p);
     const blurs = p.detailCount;
     rotorBlur.write(p);

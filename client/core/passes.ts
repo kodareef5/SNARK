@@ -9,6 +9,7 @@
 
 import type { Tier } from "./assets/tiers.ts";
 import { HAND_NEAR } from "./render/hand.ts";
+import { ORB_SEEN } from "./render/orb-light.ts";
 import { DETAIL, DETAIL_FLOATS, DRAW_DETAILS, DRAW_FIRE, DRAW_WATER, FRAME, ROOF_AT, type FramePacket } from "./render/packet.ts";
 import { withoutGlass } from "./render/vehicle-glass.ts";
 
@@ -166,10 +167,10 @@ export const BENCH_TURN_MS = 15000;
  * (render/streets.ts). "kerbs" draws the bent kerbs with none of their wear (render/bend.ts `bentWear`). "weather" draws
  * the walls with none of their weathering (world-surfaces.ts `weathered`), its masks made as ever. "bursts" draws nothing
  * that burns (render/blasts.ts): no rocket's flame, smoke or glow, no blast's fire, and none of what a blast or a
- * launcher threw up among the small details. An orb's light by night comes off in its three parts: "orbglow" draws no
- * halo and no pool (render/passes/orb.ts), "orbmirror" leaves the ball out of the street's picture
- * (render/street-reflections.ts), and "orblight" draws the lit programs without its light, and the pool for it
- * (render/orb-light.ts); "orbshade" draws them without the shadow the ball casts (`orbShade` there).
+ * launcher threw up among the small details. An orb's light comes off in its parts: "orbglow" draws no halo
+ * (render/passes/orb.ts), "orbmirror" shows no ball in what mirrors, "orblight" draws the lit programs without its
+ * light, the ground's too, and "orbshade" without the shadow the ball casts (render/orb-light.ts `orbMirror`, `orbSees`,
+ * `orbShade`).
  */
 export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather", "bursts", "orbglow", "orbmirror", "orblight", "orbshade"] as const;
 export type Effect = (typeof EFFECTS)[number];
@@ -196,7 +197,7 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
     if (off.has("farcity")) copy = { ...copy, reach: { ...copy.reach, city: 0 } };
     if (off.has("light")) copy = { ...copy, post: null };
     if (off.has("bloom") && copy.post) copy = { ...copy, post: { ...copy.post, bloom: 0 } };
-    if (off.has("orblight")) copy = { ...copy, orb: { ...copy.orb, light: false } };
+    if (off.has("orblight")) copy = { ...copy, orb: { ...copy.orb, light: false, ground: false } };
     if (off.has("orbshade")) copy = { ...copy, shadows: { ...copy.shadows, orb: false } };
     mine.set(key, copy);
   }
@@ -211,13 +212,14 @@ export function sceneWithout(scene: { hide: boolean; nearFirst: boolean; nearMes
   if (scene.bursts !== undefined) scene.bursts = !off.has("bursts");
 }
 
-/** The effects that live in a built frame: the haze, bodies' contact, what stands overhead, the facades, the edges and the road's wear in its block, the sea's detail, the hand-over's discard, bodies' layers and vehicles' glass in its draws. */
+/** The effects that live in a built frame: the haze, the ball in what mirrors, bodies' contact, what stands overhead, the facades, the edges and the road's wear in its block, the sea's detail, the hand-over's discard, bodies' layers and vehicles' glass in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
   if (off.has("contact")) p.frame.fill(0, FRAME.contact, FRAME.eyes);
   if (off.has("roofs")) p.frame[ROOF_AT + 3] = 0;
   if (off.has("bounce")) p.frame[ROOF_AT + 3] = Math.min(1, p.frame[ROOF_AT + 3]!);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
+  if (off.has("orbmirror")) p.frame.fill(0, ORB_SEEN, ORB_SEEN + 4);
   p.frame[FRAME.edgesOff] = (off.has("edges") ? 1 : 0) + (off.has("weather") ? 2 : 0);
   p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0) + (off.has("streets") ? 4 : 0) + (off.has("kerbs") ? 8 : 0);
   const bursts = off.has("bursts");

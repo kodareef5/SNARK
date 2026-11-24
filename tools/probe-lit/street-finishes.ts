@@ -1,4 +1,7 @@
 // Evaluate the actual production finish functions with identical inputs on the GPU and software paths.
+// With them, the ball an orb shows in what mirrors (client/core/render/orb-light.ts orbMirror), which streetMirror calls.
+import { ORB_MIRROR_GLSL, ORB_SEEN, orbMirror } from "../../client/core/render/orb-light.ts";
+import { FRAME_FLOATS, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
 import { STREET_GLSL, WHEEL_FINISH_GLSL, fixtureFace, fixtureShader, rubberShare, tireRelief, weatherVehicle, wheelFinish } from "../../client/core/render/street-finish.ts";
 import { VEHICLE_SHADE_GLSL, bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
 import { RawShot, type LitCheck } from "./shot.ts";
@@ -33,7 +36,21 @@ const colors = [11,41,82,86,102,140,214,83];
 const faces = [0,1,2,3,4].flatMap(kind => colors.flatMap(color => [-5.054,-3.754,0].map(z => ({kind,color,z}))));
 const key = "street-finish-pairs";
 const wheelPixels = cases.length * 3, facesAt = wheelPixels, shadesAt = facesAt + faces.length;
-const width = shadesAt + bodies.length + tyres.length;
+// An orb 200 m off and 30 m up, its screen's light a colour a pixel can hold, and mirrors looking at it and past it:
+// where the mirror is, how far its ray is turned off the way to the ball's middle (radians), its roughness and its share.
+const orb = [0, 30, 200, 78], seen = [0.9, 0.5, 0.2], behind = [0.1, 0.2, 0.3];
+const mirrors = [[0, 0, 0], [20, 5, 60], [-300, 80, -900]].flatMap(([x, y, z]) =>
+  [0, 0.2, 0.33, 0.36, 0.39, 0.45, 0.8, 3.1].flatMap((turn) => [[0.05, 1], [0.4, 1], [0.9, 0.6]].map(([rough, share]) => {
+    const d = [orb[0]! - x!, orb[1]! - y!, orb[2]! - z!], far = Math.hypot(...d), to = d.map((v) => v / far), flat = Math.hypot(to[1]!, to[2]!), across = [0, -to[2]! / flat, to[1]! / flat];
+    // Turned by a share of the angle the ball's outline is seen at there, so each place has rays in it, on it and past it.
+    const angle = turn > 3 ? turn : (turn / 0.36) * Math.asin(orb[3]! / far);
+    return { at: [x!, y!, z!], ray: to.map((v, c) => v * Math.cos(angle) + across[c]! * Math.sin(angle)), rough: rough!, share: share! };
+  })));
+const orbFrame = new Float32Array(FRAME_FLOATS);
+orbFrame.set(orb, ORB_AT);
+orbFrame.set([...seen, 1], ORB_SEEN);
+const mirrorsAt = shadesAt + bodies.length + tyres.length;
+const width = mirrorsAt + mirrors.length;
 
 export const streetFinishCheck: LitCheck = {
   name: "Street material parity",
@@ -49,6 +66,8 @@ export const streetFinishCheck: LitCheck = {
 precision highp float;
 precision highp int;
 const vec4 fStreetLook = vec4(0.0);
+const vec4 fOrb[${ORB_LANES}] = vec4[${ORB_LANES}](${Array.from({ length: ORB_LANES }, (_, lane) => `vec4(${[0, 1, 2, 3].map((k) => num(orbFrame[ORB_AT + lane * 4 + k]!)).join(",")})`).join(",")});
+${ORB_MIRROR_GLSL}
 const vec3 uWheelCenters[32] = vec3[32](${Array.from({ length: 32 }, (_, i) => vec(i < 5 ? rest.slice(i*3, i*3+3) : [0,0,0])).join(",")});
 const highp uint uWheelBones = ${wheels}u;
 const vec3 uCenter = ${vec(center)}, uHalf = ${vec(half)};
@@ -74,11 +93,16 @@ void main() {
     const float zs[3] = float[3](-5.054,-3.754,0.0);
     int face = fixtureFace(sampleId / 24,pigments[(sampleId / 3) % 8],vec3(0,0.7,zs[sampleId % 3]));
     color = vec4(vec3(float(face)/8.0),1.0);
-  } else {
+  } else if (at < ${mirrorsAt}) {
     int k = at - ${shadesAt};
     float own = 0.0;
     ${shades.join("\n    ")}
     color = vec4(vec3(own),1.0);
+  } else {
+    int k = at - ${mirrorsAt};
+    vec3 shows = vec3(0.0);
+    ${mirrors.map((m, i) => `if (k == ${i}) shows = orbMirror(${vec(behind)},${vec(m.ray)},${vec(m.at)},${num(m.rough)},${num(m.share)});`).join("\n    ")}
+    color = vec4(shows,1.0);
   }
 }`;
     return [new RawShot(key,width,1,vertex,fragment,[["point",2]],Float32Array.of(-1,-1,3,-1,-1,3),{},[])];
@@ -101,6 +125,13 @@ void main() {
     faces.forEach(({kind,color,z}, i) => check((facesAt+i)*4,fixtureFace(kind,color,0.7,z)/8));
     bodies.forEach((b, i) => check((shadesAt+i)*4,bodyOpen(b[0]!,b[1]!,b[2]!,b[3]!,b[4]!,b[5]!,b[6]!,rest,wheels,center,half)));
     tyres.forEach(([up, out, rubber], i) => check((shadesAt+bodies.length+i)*4,tyreOpen(up!,out!,rubber!)));
-    return {ok: peak <= 1, lines: [`${cases.length} wheel and weather samples, ${faces.length} fixture faces, ${bodies.length + tyres.length} vehicle shades, maximum channel difference ${peak}/255 (limit 1).`]};
+    let balls = 0;
+    mirrors.forEach((m, i) => {
+      const shows = [...behind];
+      orbMirror(shows, orbFrame, m.ray, m.at[0]!, m.at[1]!, m.at[2]!, m.rough, m.share);
+      if (shows[0]! > behind[0]! + 0.01) balls++;
+      for (let c = 0; c < 3; c++) check((mirrorsAt + i) * 4 + c, shows[c]!);
+    });
+    return {ok: peak <= 1 && balls > mirrors.length / 4 && balls < mirrors.length, lines: [`${cases.length} wheel and weather samples, ${faces.length} fixture faces, ${bodies.length + tyres.length} vehicle shades, ${mirrors.length} mirrors by an orb (${balls} showing it), maximum channel difference ${peak}/255 (limit 1).`]};
   },
 };

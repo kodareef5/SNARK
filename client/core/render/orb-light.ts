@@ -6,6 +6,9 @@
 // And the shadow the ball casts in the light the cascades are cast from, the sun's by day and the moon's by night
 // (`orbShade`): worked out, not looked up, since no shadow map reaches as far as a ball this size throws its shadow.
 // A point is in it where its ray to the light passes through the ball. Every tier with shadows takes it.
+//
+// And the ball in what mirrors (`orbMirror`): where a mirrored ray meets the ball it shows the screen's mean light, at
+// any distance and at once, with no picture taken of it. What the street's picture holds nearer covers it there.
 
 import { CAST_AT, ORB_AT } from "./packet.ts";
 
@@ -13,8 +16,14 @@ import { CAST_AT, ORB_AT } from "./packet.ts";
 export const ORB_REACH = 400;
 /** Where the frame block holds the light's colour, fOrb[6].yzw: light before exposure on a face at the skin turned to the ball. */
 export const ORB_COLOUR = ORB_AT + 25;
-/** And fOrb[7].xyz: how many times the sky's light the street's picture holds, less one, for the ball in it (street-finish.ts). */
-export const ORB_OVER = ORB_AT + 28;
+/** And fOrb[7]: the screen's mean light before exposure, which a mirror facing the ball shows (`orbMirror`), and 1 where a mirror shows the ball at all. */
+export const ORB_SEEN = ORB_AT + 28;
+/**
+ * The ball in a mirror: its outline is soft over this share of the way to it on a mirror polished smooth, and by
+ * MIRROR_ROUGH times the surface's roughness squared more, about as the street's picture blurs with roughness.
+ */
+export const MIRROR_SOFT = 0.004;
+export const MIRROR_ROUGH = 0.4;
 
 /**
  * The shadow's edge: metres either side of the ball's outline over which it goes from lit to dark at the ball, and how
@@ -91,4 +100,27 @@ float orbShade(vec3 rel) {
   return 1.0 - dark * fCast.w;
 }
 #endif
+`;
+
+/**
+ * What a mirror shows along `ray` from a camera-relative point, in `seen`, with the ball in it: `share` of the screen's
+ * mean light where the ray meets the ball, its outline as soft as the surface is rough. Nothing changes with no orb.
+ */
+export function orbMirror(seen: Float64Array | number[], frame: Numbers, ray: Numbers, x: number, y: number, z: number, rough: number, share: number): void {
+  if (!(frame[ORB_SEEN + 3]! > 0)) return;
+  const dx = frame[ORB_AT]! - x, dy = frame[ORB_AT + 1]! - y, dz = frame[ORB_AT + 2]! - z, r = frame[ORB_AT + 3]!;
+  const along = dx * ray[0]! + dy * ray[1]! + dz * ray[2]!, off = Math.sqrt(Math.max(dx * dx + dy * dy + dz * dz - along * along, 0));
+  const w = (MIRROR_SOFT + MIRROR_ROUGH * rough * rough) * Math.max(along, 0) + 1e-3;
+  const ball = share * (1 - step(r - w, r + w, off)) * step(0, 1, along);
+  for (let c = 0; c < 3; c++) seen[c] = seen[c]! + (frame[ORB_SEEN + c]! - seen[c]!) * ball;
+}
+
+/** `orbMirror` in GLSL, after the frame block: one branch where the map has no orb. */
+export const ORB_MIRROR_GLSL = `vec3 orbMirror(vec3 seen, vec3 ray, vec3 rel, float rough, float share) {
+  if (fOrb[7].w <= 0.0) return seen;
+  vec3 d = fOrb[0].xyz - rel;
+  float along = dot(d, ray), off = sqrt(max(dot(d, d) - along * along, 0.0)), r = fOrb[0].w;
+  float w = (${MIRROR_SOFT} + ${MIRROR_ROUGH} * rough * rough) * max(along, 0.0) + 0.001;
+  return mix(seen, fOrb[7].rgb, share * (1.0 - smoothstep(r - w, r + w, off)) * smoothstep(0.0, 1.0, along));
+}
 `;

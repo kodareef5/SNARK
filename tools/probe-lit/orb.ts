@@ -2,7 +2,7 @@
 // each scene drawn by the shell's own program `orb` on medium and on low poly, from where its pucks show and from far
 // off, and by the rasterizer through the scenes' twins. The shell is a box until the art has one: the program works a
 // pixel's place on the ball out from where it is, whatever mesh it is drawn on. Then the light the ball casts by night
-// (client/core/render/orb-light.ts): the ground and the plinth at its foot on medium with the light on, where the
+// (client/core/render/orb-light.ts): the ground and the plinth at its foot on medium with all of the light on, where the
 // rasterizer's picture with the light differs from its picture without. And the shadow it casts by day (`orbShade`
 // there), on medium as it is, held where the rasterizer's picture differs from its picture with no such shadow.
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -117,7 +117,7 @@ export const orbCheck: LitCheck = {
       held.push({ key: shot.key, frame: shot.frames.length - 1, name, pixels: with_.slice(), where });
       writeFileSync(resolve(out, `${shot.key}-${file}-software.png`), encodePng(W, H, with_));
     };
-    const lit = view({ ...medium, orb: { ...medium.orb, light: true } }, 23), unlit = view(medium, 23), light = new Shot(LIGHT_KEY, W, H, ground, lightBytes.slice());
+    const lit = view({ ...medium, orb: { ...medium.orb, light: true } }, 23), unlit = view({ ...medium, orb: { ...medium.orb, ground: false } }, 23), light = new Shot(LIGHT_KEY, W, H, ground, lightBytes.slice());
     for (const [which, metres, up] of LIT) {
       cam.x = SITE.x + 10;
       cam.y = up;

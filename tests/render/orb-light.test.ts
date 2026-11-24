@@ -1,20 +1,20 @@
-// The light an orb casts by night: its colour (client/core/render/orb.ts OrbCast), its halo and pool
-// (client/core/render/passes/orb.ts), its disc in the street's picture (orb.ts orbInStreet) and the sphere light the lit
-// programs add (client/core/render/orb-light.ts).
+// The light an orb casts by night: its colour (client/core/render/orb.ts OrbCast), its halo
+// (client/core/render/passes/orb.ts), and what the lit programs work out (client/core/render/orb-light.ts): the sphere
+// light, the ball in what mirrors, and the shadow it casts.
 import { expect, test } from "bun:test";
 import { TIERS, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
-import { effectsOff, tierWithout } from "../../client/core/passes.ts";
+import { effectsOff, packetWithout, tierWithout } from "../../client/core/passes.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { ORB_CAST, ORB_MIRRORED, OrbCast, orbInStreet, orbMean, orbNight, orbPick, orbScene, writeOrb } from "../../client/core/render/orb.ts";
+import { ORB_CAST, OrbCast, orbMean, orbNight, orbPick, orbScene, writeOrb } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
-import { ORB_COLOUR, ORB_OVER, ORB_REACH, ORB_SEES_GLSL, ORB_SHADE_GLSL, ORB_SHADE_LENGTH, ORB_SHADE_SOFT, orbCast, orbReach, orbSees, orbShade } from "../../client/core/render/orb-light.ts";
+import { LIT_TERRAIN_FRAGMENT } from "../../client/core/render/glsl.ts";
+import { ORB_COLOUR, ORB_MIRROR_GLSL, ORB_REACH, ORB_SEEN, ORB_SEES_GLSL, ORB_SHADE_GLSL, ORB_SHADE_LENGTH, ORB_SHADE_SOFT, orbCast, orbMirror, orbReach, orbSees, orbShade } from "../../client/core/render/orb-light.ts";
 import { CAST_AT, DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DRAW_DETAILS, DRAW_ORB, FRAME, FRAME_FLOATS, FramePacket, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
-import { POOL_REACH } from "../../client/core/render/passes/orb.ts";
 import { postFrame } from "../../client/core/render/post.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";
-import { FINE_STREET_WIDTH, streetMirror } from "../../client/core/render/street-finish.ts";
+import { STREET_GLSL, streetMirror } from "../../client/core/render/street-finish.ts";
 import { StreetReflections } from "../../client/core/render/street-reflections.ts";
 import { lit } from "../../client/core/render/surface.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -24,7 +24,7 @@ import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { nodeForms } from "../../shared/world/nodes.ts";
-import { ORB_SCENES, type OrbSite } from "../../shared/world/orb.ts";
+import { ORB_SCENES, orbCollider, type OrbSite } from "../../shared/world/orb.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
@@ -178,25 +178,21 @@ function orbDraws(scene: Scene, p: FramePacket): { meshes: number; cards: number
   return { meshes, cards, glows };
 }
 
-test("halo and pool add two draws at most, and none by day, switched off or orbless", () => {
+test("the halo adds one draw, and none by day, switched off or with no orb", () => {
   for (const name of ["lowpoly", "medium", "high"]) {
     const { scene, from } = world(tierOf(name));
     for (const metres of [100, 250, 330, 384, 420, 500, 700, 1500, 3000]) {
       const p = scene.build(from(metres), null), { meshes, cards, glows } = orbDraws(scene, p);
-      // One draw holds both cards; it is drawn in each depth range where the pool lies across the split.
-      expect(cards, `${name} from ${metres} m`).toBeGreaterThanOrEqual(1);
-      expect(cards, `${name} from ${metres} m`).toBeLessThanOrEqual(2);
-      // A tier that lights by the ball has no pool, and its halo lies at one depth.
-      expect(glows, `${name} from ${metres} m`).toBe(scene.assets.tier.orb.light ? 1 : 2);
-      if (scene.assets.tier.orb.light || scene.assets.tier.split === 0) expect(cards).toBe(1);
-      // The gate is five draws. Medium passes it only where shell, plinth and pool all lie across its depth split, 330 to 460 m off.
-      expect(meshes + cards, `${name} from ${metres} m`).toBeLessThanOrEqual(name === "medium" && metres > 300 && metres < 500 ? 6 : 5);
+      // One card across the view at one depth, so in one depth range: one draw at any distance.
+      expect([cards, glows], `${name} from ${metres} m`).toEqual([1, 1]);
+      // The gate is five draws: shell and plinth, each in both ranges where it lies across the split, and the halo.
+      expect(meshes + cards, `${name} from ${metres} m`).toBeLessThanOrEqual(5);
     }
     const lit = scene.build(from(250), null).drawCount;
     scene.orbGlow = false;
     const off = scene.build(from(250), null);
     expect(orbDraws(scene, off)).toEqual({ meshes: 2, cards: 0, glows: 0 });
-    expect(lit - off.drawCount).toBeGreaterThanOrEqual(1);
+    expect(lit - off.drawCount).toBe(1);
     scene.orbGlow = true;
     scene.hour = NOON;
     expect(orbDraws(scene, scene.build(from(250), null)).glows).toBe(0);
@@ -208,134 +204,266 @@ test("halo and pool add two draws at most, and none by day, switched off or orbl
   }
 });
 
-test("the halo grows through the haze and the pool lies on the ground to its reach", () => {
+test("the halo lies about the ball's middle and grows through the haze", () => {
   const { scene, from } = world(tierOf("medium"));
-  const cards = (metres: number): { x: number; y: number; z: number; half: number; shows: number; flat: boolean }[] => {
-    const p = scene.build(from(metres, 30), null), out = [];
+  const halo = (metres: number): { at: number[]; half: number; shows: number } => {
+    const p = scene.build(from(metres, 30), null);
     for (let n = 0; n < p.detailCount; n++) {
       const o = n * DETAIL_FLOATS, misc = p.detailWords[o + DETAIL.misc]!;
       if (((misc >>> 8) & 255) !== DETAIL_GLOW) continue;
-      const along = Math.hypot(p.details[o + DETAIL.along]!, p.details[o + DETAIL.along + 1]!, p.details[o + DETAIL.along + 2]!);
-      out.push({ x: p.details[o]!, y: p.details[o + 1]!, z: p.details[o + 2]!, half: along, shows: (misc >>> 16) & 255, flat: p.details[o + DETAIL.along + 1] === 0 && p.details[o + DETAIL.across + 1] === 0 });
+      return { at: [p.details[o]!, p.details[o + 1]!, p.details[o + 2]!], half: Math.hypot(p.details[o + DETAIL.along]!, p.details[o + DETAIL.along + 1]!, p.details[o + DETAIL.along + 2]!), shows: (misc >>> 16) & 255 };
     }
-    return out;
+    throw new Error("no halo");
   };
-  const near = cards(400), far = cards(4000);
-  const halo = (list: typeof near) => list.find((c) => !c.flat)!, pool = (list: typeof near) => list.find((c) => c.flat)!;
-  // The halo about the ball's middle, wider and stronger from across the map.
-  expect([halo(near).x, halo(near).y, halo(near).z]).toEqual([0, SITE.centre - 30, 400]);
-  expect(halo(near).half).toBeGreaterThan(2 * SITE.radius);
-  expect(halo(far).half).toBeGreaterThan(1.3 * halo(near).half);
-  expect(halo(far).shows).toBeGreaterThan(2 * halo(near).shows);
-  expect(halo(near).shows).toBeGreaterThan(0);
-  // The pool on the ground under the axis, out to its reach, and fainter through the haze.
-  expect(pool(near).half).toBe(POOL_REACH);
-  expect(pool(near).y).toBeCloseTo(0.3 - 30, 4);
-  expect(pool(far).shows).toBeLessThan(pool(near).shows);
-  expect(pool(near).shows).toBeGreaterThan(40);
+  const near = halo(400), far = halo(4000);
+  expect(near.at).toEqual([0, SITE.centre - 30, 400]);
+  expect(near.half).toBeGreaterThan(2 * SITE.radius);
+  expect(far.half).toBeGreaterThan(1.3 * near.half);
+  expect(far.shows).toBeGreaterThan(2 * near.shows);
+  expect(near.shows).toBeGreaterThan(0);
+});
+
+/** A block at `hour` with the colour stepped, so its lanes hold the cast light and what a mirror shows. */
+function seenBlock(which: number, hour: number, gain = 1, sites: readonly OrbSite[] = [SITE]): Float32Array {
+  const f = block(which, hour, 380, gain, 0, 2, -300, sites);
+  new OrbCast().step(f, 0);
+  return f;
+}
+
+test("a mirror shows the ball where its ray meets it, by day too, exact at any distance", () => {
+  const sky = [0.01, 0.02, 0.03], mean = [0, 0, 0];
+  for (const hour of [NIGHT, NOON]) {
+    const f = seenBlock(2, hour), e = f[FRAME.exposure]!, ball = [...f.subarray(ORB_SEEN, ORB_SEEN + 3)];
+    // What it shows is the screen's mean light, before exposure: by night the cast light without its gain.
+    orbMean(mean, f);
+    for (let c = 0; c < 3; c++) expect(ball[c]! * e).toBeCloseTo(mean[c]! * f[ORB_AT + 11]!, 4);
+    if (hour === NIGHT) for (let c = 0; c < 3; c++) expect(ball[c]!).toBeCloseTo(f[ORB_COLOUR + c]! / ORB_CAST, 12);
+    else expect([...f.subarray(ORB_COLOUR, ORB_COLOUR + 3)]).toEqual([0, 0, 0]);
+    expect(f[ORB_SEEN + 3]).toBe(1);
+    // From points near and far, a ray to the ball's middle shows the ball whole, and one well past its outline the sky.
+    for (const [x, y, z] of [[0, 0, 0], [40, -1, 200], [-3000, 50, -5000], [0, 300, 290]] as const) {
+      const d = [f[ORB_AT]! - x, f[ORB_AT + 1]! - y, f[ORB_AT + 2]! - z], far = Math.hypot(...d), to = d.map((v) => v / far), seen = [...sky];
+      if (far <= SITE.radius) continue;
+      orbMirror(seen, f, to, x, y, z, 0.05, 1);
+      for (let c = 0; c < 3; c++) expect(seen[c]!).toBeCloseTo(ball[c]!, 12);
+      // Turned aside by twice the angle the ball's outline is seen at, and a little: nothing of it.
+      const turn = 2 * Math.asin(SITE.radius / far) + 0.2, flat = Math.hypot(to[1]!, to[2]!), across = [0, -to[2]! / flat, to[1]! / flat];
+      const aside = to.map((v, c) => v * Math.cos(turn) + across[c]! * Math.sin(turn)), beside = [...sky];
+      orbMirror(beside, f, aside, x, y, z, 0.05, 1);
+      expect(beside).toEqual(sky);
+      // The ball behind the mirror's ray: nothing of it.
+      const back = [...sky];
+      orbMirror(back, f, to.map((v) => -v), x, y, z, 0.05, 1);
+      expect(back).toEqual(sky);
+      // A surface that mirrors by half shows half of it.
+      const half = [...sky];
+      orbMirror(half, f, to, x, y, z, 0.05, 0.5);
+      for (let c = 0; c < 3; c++) expect(half[c]!).toBeCloseTo((ball[c]! + sky[c]!) / 2, 12);
+    }
+  }
+});
+
+test("the ball's outline in a mirror is soft by the surface's roughness and never steps", () => {
+  const f = seenBlock(2, NIGHT), ball = f[ORB_SEEN]!, d = [f[ORB_AT]!, f[ORB_AT + 1]!, f[ORB_AT + 2]!], far = Math.hypot(...d);
+  /** The share of the ball a mirror of `rough` shows along a ray `angle` off the way to its middle. */
+  const share = (angle: number, rough: number): number => {
+    const flat = Math.hypot(d[0]!, d[2]!), up = Math.atan2(d[1]!, flat) + angle, round = Math.atan2(d[0]!, d[2]!), seen = [0, 0, 0];
+    orbMirror(seen, f, [Math.sin(round) * Math.cos(up), Math.sin(up), Math.cos(round) * Math.cos(up)], 0, 0, 0, rough, 1);
+    return seen[0]! / ball;
+  };
+  const outline = Math.asin(SITE.radius / far);
+  /** The angle over which the share falls from nine tenths to a tenth, walking out across the outline. */
+  const edge = (rough: number): number => {
+    let last = 1, from = NaN, to = NaN;
+    for (let angle = 0; angle < outline + 0.6; angle += 0.0001) {
+      const now = share(angle, rough);
+      expect(now).toBeLessThanOrEqual(last + 1e-12);
+      expect(last - now).toBeLessThan(0.05);
+      if (Number.isNaN(from) && now <= 0.9) from = angle;
+      if (Number.isNaN(to) && now <= 0.1) to = angle;
+      last = now;
+    }
+    expect(last).toBe(0);
+    return to - from;
+  };
+  const polished = edge(0.05), dull = edge(0.5);
+  expect(polished).toBeLessThan(0.05);
+  expect(dull).toBeGreaterThan(3 * polished);
+  // A mirror polished smooth shows all of it inside the outline; a dull one, wider than the ball, shows it dimmer.
+  expect(share(0, 0.05)).toBe(1);
+  expect(share(0, 1)).toBeLessThan(1);
+  expect(share(0, 1)).toBeGreaterThan(0.3);
+});
+
+test("a mirror shows a dark ball with its screen off, and no ball with none or when off", () => {
+  const sky = [0.01, 0.02, 0.03], to = (f: Float32Array): number[] => {
+    const d = [f[ORB_AT]!, f[ORB_AT + 1]!, f[ORB_AT + 2]!], far = Math.hypot(...d) || 1;
+    return d.map((v) => v / far);
+  };
+  // The gain at nothing: the ball hides the sky behind it.
+  const dark = seenBlock(2, NIGHT, 0), seen = [...sky];
+  orbMirror(seen, dark, to(dark), 0, 0, 0, 0.05, 1);
+  expect(seen).toEqual([0, 0, 0]);
+  // No orb: the lane is empty and the sky is as it was.
+  const bare = seenBlock(2, NIGHT, 1, []);
+  expect([...bare.subarray(ORB_SEEN, ORB_SEEN + 4)]).toEqual([0, 0, 0, 0]);
+  const same = [...sky];
+  orbMirror(same, bare, [0, 0, 1], 0, 0, 0, 0.05, 1);
+  expect(same).toEqual(sky);
+  // `orbmirror` empties the lane in a built frame, and low poly, which mirrors nothing, never fills it.
+  for (const [name, fills] of [["medium", true], ["lowpoly", false]] as const) {
+    const { scene, from } = world(tierOf(name)), p = scene.build(from(300), null);
+    expect(p.frame[ORB_SEEN + 3], name).toBe(fills ? 1 : 0);
+    packetWithout(p, effectsOff("orbmirror"));
+    expect([...p.frame.subarray(ORB_SEEN, ORB_SEEN + 4)]).toEqual([0, 0, 0, 0]);
+    expect(p.frame[ORB_AT + 3]).toBe(SITE.radius);
+  }
+  // One branch in the text, on the lane a map with no orb leaves empty, and every lit program has it by the light's text.
+  expect(ORB_MIRROR_GLSL.match(/\bif\b/g)).toEqual(["if"]);
+  expect(ORB_MIRROR_GLSL).toContain("if (fOrb[7].w <= 0.0) return seen;");
+  expect(STREET_GLSL).toContain("original = orbMirror(original, ray, rel, rough, mask);");
+  expect(STREET_GLSL).not.toContain("fOrb");
+});
+
+test("wet ground at street level mirrors the ball with no car by, in the terrain program", () => {
+  // The ground's program mirrors the ball over the sky it mirrors, whatever its roughness under 1.
+  expect(LIT_TERRAIN_FRAGMENT).toContain("vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : orbMirror(worldSharp ? skyFrom(r) : skyLight(r), r, vRel, orm.y, 1.0);");
+  for (const tier of TIERS) {
+    if (!tier.lit) continue;
+    const text = PROGRAMS.terrain!(tier, "rgba", false, tier.post !== null), fragment = withDefines(text.fragment, text.defines);
+    expect(fragment).toContain("vec3 orbMirror(vec3 seen, vec3 ray, vec3 rel, float rough, float share) {");
+    expect(compileErrors(fragment), tier.name).toEqual([]);
+  }
+  // An eye 1.7 m over a wet street 300 m south of the ball, looking along it: the ground between, seen at a glance,
+  // mirrors the ball's lower half where the mirrored ray climbs to it, and the sky nearer the eye and beside the ball.
+  const f = block(4, NIGHT, 380, 1, 0, 1.7, -300), sky = [1e-8, 2e-8, 4e-8], wet = 0.25;
+  new OrbCast().step(f, 0);
+  const ball = [...f.subarray(ORB_SEEN, ORB_SEEN + 3)];
+  expect(Math.max(...ball)).toBeGreaterThan(10 * Math.max(...sky));
+  /** What the ground `ahead` metres before the eye and `side` metres across mirrors: the view's ray turned up off level ground. */
+  const mirrored = (ahead: number, side: number): number[] => {
+    const l = Math.hypot(side, 1.7, ahead), seen = [...sky];
+    orbMirror(seen, f, [side / l, 1.7 / l, ahead / l], side, -1.7, ahead, wet, 1);
+    return seen;
+  };
+  // 150 m ahead the mirrored ray meets the ball 0.6 degrees up: the screen's light, many times the sky's.
+  for (let c = 0; c < 3; c++) expect(mirrored(150, 0)[c]!).toBeCloseTo(ball[c]!, 9);
+  // 3 m ahead the ray climbs at 30 degrees and passes over it; 150 m ahead and 150 m aside it passes beside it.
+  expect(mirrored(3, 0)).toEqual(sky);
+  expect(mirrored(150, 150)).toEqual(sky);
+  // Dry asphalt, rough, shows a dim smear of it, not nothing.
+  const dry = [...sky];
+  orbMirror(dry, f, [0, 1.7 / Math.hypot(1.7, 150), 150 / Math.hypot(1.7, 150)], 0, -1.7, 150, 0.9, 1);
+  expect(dry[2]!).toBeGreaterThan(sky[2]!);
+  expect(dry[2]!).toBeLessThan(ball[2]!);
 });
 
 const reg = compileContent(CORE_CONTENT).registry!;
-/** A street with a car to hold the shared picture, 2 m from the camera, and the ball `away` metres north of it at night. */
-function street(away: number, hour = NIGHT, up = 0) {
+/**
+ * A street with a car to hold the shared picture, 2 m north of the camera, and the ball `away` metres north of it by
+ * night: the block, the orb's lanes and colour and then the picture, each frame. `gain` is the screen's, by the frame's time.
+ */
+function street(away: number, gain: (now: number) => number = () => 1) {
   const dims = { chunksX: 2, chunksZ: 2 }, forms = nodeForms(reg);
   const land = { nodes: new StructureStore(dims, forms.halfX, forms.halfY, forms.halfZ, null, forms.parts), dims, hf: new Heightfield(dims, 4, 0, 1), structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts) };
   const cam = new Camera();
   cam.x = cam.z = 40;
-  cam.y = 1.6 + up;
+  cam.y = 1.6;
   cam.update();
   const capture = new StreetReflections(reg, defaultPalette(), forms), p = new FramePacket(), cars = new RemoteSample();
   p.tier = tierOf("high");
   p.lit = true;
-  cars.count = 1;
-  cars.id[0] = 900;
-  cars.kind[0] = reg.index.get("core:compact")!;
-  cars.x[0] = 40;
-  cars.y[0] = up;
-  cars.z[0] = 42;
-  cars.colors[0] = 41;
+  const car = (n: number, x: number, z: number): void => {
+    cars.count = Math.max(cars.count, n + 1);
+    cars.id[n] = 900 + n;
+    cars.kind[n] = reg.index.get("core:compact")!;
+    cars.x[n] = x;
+    cars.z[n] = z;
+    cars.colors[n * 6] = 41 + n;
+  };
+  car(0, 40, 42);
   const site: OrbSite = { ...SITE, x: 40, z: 40 + away };
   const cast = new OrbCast();
-  /** A frame at `now` ms: the block, the orb's lanes and colour, then the picture. */
   const tick = (now: number): FramePacket => {
-    skyFrame(hour, theSky(), p.frame);
-    postFrame(p.frame, p.tier, hour, 1080);
-    writeOrb(p.frame, [site], [BLUE], 380, hour, cam.x, cam.y, cam.z, null, 380 * RATE, RATE, 2);
+    skyFrame(NIGHT, theSky(), p.frame);
+    postFrame(p.frame, p.tier, NIGHT, 1080);
+    writeOrb(p.frame, [site], [BLUE], 380, NIGHT, cam.x, cam.y, cam.z, null, 380 * RATE, RATE, 2, gain(now));
     cast.step(p.frame, now);
     capture.frame(p, cam, land, cars, new Set(), now);
     return p;
   };
-  return { tick, capture, cam, site, p };
+  /** What the car's paint mirrors along a ray, a unit vector, at the picture's own eye, as light after exposure less the gloss's gain. */
+  const mirrors = (ray: readonly number[]): number[] => {
+    const out = new Float64Array([0.001, 0.002, 0.004].map((v) => v / p.frame[FRAME.exposure]!));
+    streetMirror(out, p, ray, p.frame[FRAME.reflection]!, p.frame[FRAME.reflection + 1]!, p.frame[FRAME.reflection + 2]!, 0.05, 1);
+    return [...out].map((v) => (v * p.frame[FRAME.exposure]!) / (1 + p.frame[FRAME.streetLook]!));
+  };
+  return { tick, car, land, cam, site, p, mirrors };
 }
 
-/** The pixel of a street picture that looks along a direction from its eye, as the lit programs look it up. */
-function pixelToward(pixels: Uint8Array, x: number, y: number, z: number): number[] {
-  const width = FINE_STREET_WIDTH, height = width / 2, l = Math.hypot(x, y, z);
-  const i = Math.floor((Math.atan2(x, z) / (2 * Math.PI) + 0.5) * width) & (width - 1), j = Math.min(height - 1, Math.floor((Math.asin(y / l) / Math.PI + 0.5) * height));
-  return [...pixels.subarray((j * width + i) * 4, (j * width + i) * 4 + 4)];
-}
-
-test("the street's picture holds the ball as a disc of its light where it stands", () => {
-  const s = street(300), p = s.tick(0), pixels = p.street!.pixels;
-  // Where the ball's middle is from the picture's eye, which is the car: covered, in the cast light's hue.
-  const to = [s.site.x - 40, s.site.y + s.site.centre - 0.7, s.site.z - 42] as const, at = pixelToward(pixels, ...to);
-  expect(at[3]).toBe(255);
-  expect(at[0]!).toBeGreaterThan(250);
-  // The picture holds many times the sky's light for it, most in the red of Core's light, and a mirror facing the ball
-  // shows the screen's mean light.
-  const over = [...p.frame.subarray(ORB_OVER, ORB_OVER + 3)];
-  expect(over[0]!).toBeGreaterThan(3);
-  expect(over[0]!).toBeGreaterThan(over[2]!);
-  const mirrored = new Float64Array(3), l = Math.hypot(...to), e = p.frame[FRAME.exposure]!;
-  streetMirror(mirrored, p, to.map((v) => v / l), p.frame[FRAME.reflection]!, p.frame[FRAME.reflection + 1]!, p.frame[FRAME.reflection + 2]!, 0.05, 1);
-  const gain = 1 + p.frame[FRAME.streetLook]!, strength = p.frame[FRAME.reflection + 3]!;
-  expect(strength).toBe(0);
-  // Once the picture has faded in.
-  const later = s.tick(250);
-  streetMirror(mirrored, later, to.map((v) => v / l), later.frame[FRAME.reflection]!, later.frame[FRAME.reflection + 1]!, later.frame[FRAME.reflection + 2]!, 0.05, 1);
-  for (let c = 0; c < 3; c++) expect(mirrored[c]! / gain / (later.frame[ORB_COLOUR + c]! / ORB_CAST), `channel ${c}: ${[...mirrored].map((m) => m * e)}`).toBeCloseTo(1, 1);
-  // The disc is as wide as the ball is seen: none of it twice its half angle off, and the sky there is as it was.
-  const half = Math.asin(SITE.radius / l), turn = 2.2 * half, aside = [to[0] * Math.cos(turn) + to[2] * Math.sin(turn), to[1], -to[0] * Math.sin(turn) + to[2] * Math.cos(turn)] as const;
-  expect(pixelToward(pixels, ...aside)).toEqual([0, 0, 0, 0]);
-  let covered = 0;
-  for (let n = 3; n < pixels.length / 2; n += 4) covered += pixels[n + pixels.length / 2]! / 255;
-  // Its pixels over the horizon, against its solid angle there in pixels of the picture (their rows are wider by the cosine of their height).
-  const pixel = (2 * Math.PI) / FINE_STREET_WIDTH, lift = Math.asin(to[1] / l);
-  expect(covered).toBeGreaterThan((0.3 * Math.PI * half * half) / (pixel * pixel * Math.cos(lift)));
-  expect(covered).toBeLessThan((1.3 * Math.PI * half * half) / (pixel * pixel * Math.cos(lift + half)));
+test("a car's paint mirrors the ball from the first frame, and what stands nearer covers it", () => {
+  const s = street(300), p = s.tick(0), e = p.frame[FRAME.exposure]!;
+  // The way from the picture's eye, which is the car, to the ball's upper half, over a car's roof.
+  const d = [s.site.x - 40, s.site.y + s.site.centre + 50 - 1.6 - p.frame[FRAME.reflection + 1]!, s.site.z - 42], far = Math.hypot(...d), to = d.map((v) => v / far);
+  const ball = [...p.frame.subarray(ORB_SEEN, ORB_SEEN + 3)].map((v) => v * e);
+  expect(ball[0]!).toBeGreaterThan(0.1);
+  // Before the picture has faded in, and once it has: the screen's mean light, with no picture of it to wait for.
+  expect(p.frame[FRAME.reflection + 3]).toBe(0);
+  for (let c = 0; c < 3; c++) expect(s.mirrors(to)[c]!).toBeCloseTo(ball[c]!, 6);
+  s.tick(250);
+  expect(p.frame[FRAME.reflection + 3]).toBe(1);
+  for (let c = 0; c < 3; c++) expect(s.mirrors(to)[c]!).toBeCloseTo(ball[c]!, 6);
+  // A second car 6 m toward the ball stands in the picture, before the ball: the paint mirrors the car there, not the ball.
+  s.car(1, 40, 48);
+  s.tick(500);
+  s.tick(1000);
+  const level = [0, 0, 1], behind = s.mirrors(level);
+  expect(behind[0]!).toBeLessThan(0.2 * ball[0]!);
+  // Over the car's roof the ball shows as before.
+  for (let c = 0; c < 3; c++) expect(s.mirrors(to)[c]!).toBeCloseTo(ball[c]!, 6);
 });
 
-test("the picture holds no ball out of range, under its horizon, by day or when off", () => {
-  const dark = (p: FramePacket): boolean => {
-    const pixels = p.street!.pixels;
-    for (let n = pixels.length / 2 + 3; n < pixels.length; n += 4) if (pixels[n] !== 0) return false;
-    return p.frame.subarray(ORB_OVER, ORB_OVER + 3).every((v) => v === 0);
+test("the orb's own colliders are not in the street's picture, and a wall by the shell is", () => {
+  // The picture's car stands 12 m from the ball's skin: the shell's pieces are near enough to be in the picture.
+  const collider = reg.defs.findIndex((d) => d !== undefined && d !== null && orbCollider(d.id)), wall = reg.index.get("core:zruin_zmass8_steel")!;
+  expect(collider).toBeGreaterThan(0);
+  expect(reg.halfY[collider]).toBeGreaterThan(1);
+  const to = [0, 0.2, 1].map((v) => v / Math.hypot(0.2, 1));
+  const shown = (kind: number): { mirrored: number[]; ball: number[] } => {
+    const s = street(SITE.radius + 14);
+    // A piece 10 m north of the camera, between the car and the ball, standing 16 m tall.
+    if (kind > 0) for (const y of [4, 12]) s.land.structs.add(kind, 40, y, 50, 0, 0, 1);
+    s.tick(0);
+    const p = s.tick(250);
+    return { mirrored: s.mirrors(to), ball: [...p.frame.subarray(ORB_SEEN, ORB_SEEN + 3)].map((v) => v * p.frame[FRAME.exposure]!) };
   };
-  expect(dark(street(300).tick(0))).toBe(false);
-  expect(dark(street(ORB_MIRRORED + 200).tick(0))).toBe(true);
-  expect(dark(street(300, NOON).tick(0))).toBe(true);
-  // From a roof over the ball's top, it is under the picture's horizon.
-  expect(dark(street(300, NIGHT, 150).tick(0))).toBe(true);
-  const off = street(300);
-  off.capture.orb = false;
-  expect(dark(off.tick(0))).toBe(true);
-  // Without the late file's part, the same.
-  const part = StreetReflections.orb;
-  StreetReflections.orb = null;
-  try {
-    expect(dark(street(300).tick(0))).toBe(true);
-  } finally {
-    StreetReflections.orb = part;
+  const open = shown(0), piece = shown(collider), walled = shown(wall);
+  for (let c = 0; c < 3; c++) expect(open.mirrored[c]!).toBeCloseTo(open.ball[c]!, 6);
+  // A collider of the ball is drawn as nothing: the mirror shows the ball through it.
+  expect(piece.mirrored).toEqual(open.mirrored);
+  // A wall is a wall, however near the shell it stands.
+  expect(walled.mirrored[0]!).toBeLessThan(0.2 * open.ball[0]!);
+});
+
+test("turning the orb off leaves a parked car's mirrored ground as it was, every frame", () => {
+  // The screen goes dark 400 ms in, between two pictures, in a street where nothing else changes.
+  const s = street(300, (now) => (now < 400 ? 1 : 0));
+  const down = [0.6, -0.5, 0.3].map((v) => v / Math.hypot(0.6, 0.5, 0.3)), d = [0, SITE.centre - 1, 298], far = Math.hypot(...d), to = d.map((v) => v / far);
+  let least = Infinity, most = 0, lit = 0, dark = 0;
+  for (let now = 0; now <= 1500; now += 1000 / 60) {
+    const p = s.tick(now);
+    if (now < 300) continue;
+    const ground = s.mirrors(down)[0]!;
+    least = Math.min(least, ground);
+    most = Math.max(most, ground);
+    // The ball itself goes dark at once in the mirror, as it does on the screen.
+    if (p.frame[ORB_AT + 11]! > 0) lit = Math.max(lit, s.mirrors(to)[0]!);
+    else dark = Math.max(dark, s.mirrors(to)[0]!);
   }
-  // The part alone: nothing nearer than the ball is painted over, and it says no where the lanes hold no light.
-  const f = block(2, NIGHT, 380, 1, 0, 2, -300), over = new Float32Array(3), pixels = new Uint8Array(FINE_STREET_WIDTH * FINE_STREET_WIDTH * 2), depth = new Float32Array(pixels.length / 4).fill(20);
-  expect(orbInStreet.over(f, 0, 0, 0, over)).toBe(false);
-  new OrbCast().step(f, 0);
-  expect(orbInStreet.over(f, 0, 0, 0, over)).toBe(true);
-  orbInStreet.paint(pixels, depth, FINE_STREET_WIDTH, f, 0, 0, 0, over);
-  expect(pixels.every((v) => v === 0)).toBe(true);
-  orbInStreet.paint(pixels, depth.fill(Infinity), FINE_STREET_WIDTH, f, 0, 0, 0, over);
-  expect(pixels.some((v) => v !== 0)).toBe(true);
+  expect(least).toBeGreaterThan(0);
+  expect(most / least).toBeLessThan(1.001);
+  expect(lit).toBeGreaterThan(0.1);
+  expect(dark).toBe(0);
 });
 
 test("the sphere light is strongest at the skin and gone at its reach", () => {
@@ -390,22 +518,22 @@ test("the software render adds the orb's light where the tier takes it, not to m
   orbCast.fill(0);
 });
 
-test("the lit programs take the light on high and ultra alone, in one branch", () => {
-  expect(TIERS.map((t) => t.orb.light)).toEqual([false, false, true, true]);
-  expect(tierWithout(tierOf("high"), effectsOff("orblight")).orb.light).toBe(false);
-  expect(tierWithout(tierOf("high"), effectsOff("orbglow,orbmirror")).orb.light).toBe(true);
+test("the ground takes the light on every lit tier, all else on high and ultra, in one branch", () => {
+  expect(TIERS.map((t) => [t.orb.ground, t.orb.light])).toEqual([[false, false], [true, false], [true, true], [true, true]]);
+  expect(tierWithout(tierOf("high"), effectsOff("orblight")).orb).toMatchObject({ light: false, ground: false });
+  expect(tierWithout(tierOf("high"), effectsOff("orbglow,orbmirror")).orb).toMatchObject({ light: true, ground: true });
   // The twin's reach and lanes are the text's, and a map with no orb leaves at its first line.
   expect(ORB_SEES_GLSL).toContain(`/ ${ORB_REACH.toFixed(1)}`);
   expect(ORB_SEES_GLSL).toContain("gOrb = fOrb[6].yzw * (s * s * w * w * max(dot(normal, d) / far, 0.0));");
   expect(ORB_SEES_GLSL.match(/\bif\b/g)).toEqual(["if"]);
   expect(ORB_SEES_GLSL).toContain("if (fOrb[0].w <= 0.0) return;");
-  expect([ORB_COLOUR, ORB_OVER]).toEqual([ORB_AT + 6 * 4 + 1, ORB_AT + 7 * 4]);
+  expect([ORB_COLOUR, ORB_SEEN]).toEqual([ORB_AT + 6 * 4 + 1, ORB_AT + 7 * 4]);
   for (const tier of TIERS) {
     if (!tier.lit) continue;
     for (const name of ["flat", "terrain", "terrainWindow", "far", "pulled", "seeThrough", "surface", "surfaceLayer", "details", "water", "sky"]) {
       const text = PROGRAMS[name]!(tier, "rgba", false, tier.post !== null), takes = text.defines.includes("#define ORB_LIGHT\n");
-      // The sea and the dome do not light by `lit`.
-      expect(takes, `${tier.name} ${name}`).toBe(tier.orb.light && name !== "water" && name !== "sky");
+      // The ground's programs by the tier's `ground`; the sea and the dome do not light by `lit`.
+      expect(takes, `${tier.name} ${name}`).toBe(name.startsWith("terrain") ? tier.orb.ground : tier.orb.light && name !== "water" && name !== "sky");
       const fragment = withDefines(text.fragment, text.defines);
       if (takes) expect(fragment).toContain("light += gOrb * albedo * (1.0 - mro.b);");
       // The same texts and samplers with the light as without: no new program and no new sampler.
@@ -419,32 +547,31 @@ test("the lit programs take the light on high and ultra alone, in one branch", (
   }
 });
 
-test("high lights the ground and the plinth by the ball; with no orb nothing changes", () => {
-  const picture = (tier: Tier, orbs: readonly OrbSite[] | null, hour = NIGHT, glow = true): { color: Uint8ClampedArray; p: FramePacket } => {
+test("medium lights the ground by the ball, high the plinth too; with no orb nothing changes", () => {
+  const picture = (tier: Tier, orbs: readonly OrbSite[] | null, hour = NIGHT): { color: Uint8ClampedArray; p: FramePacket } => {
     const { scene, from, hf } = world(tier, orbs), raster = new Rasterizer(160, 90, pack(), hf);
     scene.hour = hour;
-    scene.orbGlow = glow;
+    scene.orbGlow = false;
     const p = scene.build(from(200, 60, -0.3), null);
     raster.render(p);
     return { color: raster.color.slice(), p };
   };
-  const high = tierOf("high"), plain = tierWithout(high, effectsOff("orblight"));
-  // The ground before the ball and the plinth's top: lighter in the ball's light, the ground about as the pool makes it.
-  const ground = (80 * 160 + 80) * 4, top = (60 * 160 + 80) * 4, on = picture(high, [SITE]), pool = picture(plain, [SITE]), off = picture(plain, [SITE], NIGHT, false);
-  expect(on.color[ground]! - off.color[ground]!).toBeGreaterThan(15);
-  expect(on.color[top]! - off.color[top]!).toBeGreaterThan(15);
-  expect(pool.color[ground]! - off.color[ground]!).toBeGreaterThan(15);
-  expect(Math.abs(pool.color[ground]! - on.color[ground]!)).toBeLessThan(30);
-  // The pool is a sheet on the ground: it leaves the plinth's top as it was.
-  expect(pool.color[top]).toBe(off.color[top]!);
-  // By day the light adds nothing.
-  expect([...picture(high, [SITE], NOON).color]).toEqual([...picture(plain, [SITE], NOON).color]);
-  // With no orb the frame is the same with the light as without it, and its lanes are empty.
-  const bare = picture(high, null), bareOff = picture(plain, null);
-  expect([...bare.color]).toEqual([...bareOff.color]);
-  expect(bare.p.drawCount).toBe(bareOff.p.drawCount);
-  expect(bare.p.detailCount).toBe(bareOff.p.detailCount);
-  expect(bare.p.frame.subarray(ORB_AT, ORB_AT + ORB_LANES * 4).every((v) => v === 0)).toBe(true);
+  // The ground before the ball and the plinth's top, in the view's middle column.
+  const ground = (80 * 160 + 80) * 4, top = (60 * 160 + 80) * 4;
+  for (const [name, plinth] of [["medium", false], ["high", true]] as const) {
+    const tier = tierOf(name), plain = tierWithout(tier, effectsOff("orblight")), on = picture(tier, [SITE]), off = picture(plain, [SITE]);
+    expect(on.color[ground]! - off.color[ground]!, name).toBeGreaterThan(15);
+    if (plinth) expect(on.color[top]! - off.color[top]!).toBeGreaterThan(15);
+    else expect(on.color[top]).toBe(off.color[top]!);
+    // By day the light adds nothing.
+    expect([...picture(tier, [SITE], NOON).color]).toEqual([...picture(plain, [SITE], NOON).color]);
+    // With no orb the frame is the same with the light as without it, and its lanes are empty.
+    const bare = picture(tier, null), bareOff = picture(plain, null);
+    expect([...bare.color]).toEqual([...bareOff.color]);
+    expect(bare.p.drawCount).toBe(bareOff.p.drawCount);
+    expect(bare.p.detailCount).toBe(bareOff.p.detailCount);
+    expect(bare.p.frame.subarray(ORB_AT, ORB_AT + ORB_LANES * 4).every((v) => v === 0)).toBe(true);
+  }
 });
 
 /** A point `along` metres down the ball's shadow from its middle and `off` metres to the side of the shadow's axis, in a block's frame. */

@@ -35,7 +35,7 @@ const eyeBehind = [0, 0, 0], energy = [0, 0, 0];
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
-import { orbSees, orbShade } from "../../client/core/render/orb-light.ts";
+import { orbMirror, orbSees, orbShade } from "../../client/core/render/orb-light.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
@@ -479,6 +479,8 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const coated = facadeIO.coated;
     const finishShare = glass ? 1 : coated ? Math.max(0,Math.min(1,(0.85-worldOrm[1]!)*3)) : surfaceShare;
     if (finishShare) worldOrm[1] = glossRoughness(worldOrm[1]!,finishShare,p.frame[FRAME.streetLook]!);
+    // The ground mirrors the ball too, as LIT_TERRAIN_FRAGMENT has it.
+    if (ground && worldOrm[1]! < 1) orbMirror(mirrored, p.frame, reflected, rx, ry, rz, worldOrm[1]!, 1);
     streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,finishShare);
     worldOrm[0]! *= open;
     lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored, cast);
@@ -978,7 +980,7 @@ export class Rasterizer {
     // The street lamp's light on the pixel, which `lit` adds, as a lit program's sunShadow finds it (lamp.ts).
     lampSees(p.frame, rx, ry, rz, nx, ny, nz);
     // An orb's light on it, where the tier's lit programs take it (orb-light.ts).
-    orbSees(p.frame, p.lit && p.tier.orb.light, rx, ry, rz, nx, ny, nz);
+    orbSees(p.frame, p.lit && (ground ? p.tier.orb.ground : p.tier.orb.light), rx, ry, rz, nx, ny, nz);
     const contact = (ground || stands) && p.tier.contact ? contactAt(p.frame, rx, ry, rz, nx, ny, nz) : 1;
     const roofs = p.lit && p.tier.roofs && this.roofSide > 0;
     if (ground) return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0) * (roofs ? roofOpen(this.roof, this.roofSide, p.frame, rx, rz, 0, 1, 0, 0) : 1);

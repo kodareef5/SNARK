@@ -410,7 +410,8 @@ void main() {
     * skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0) * roofOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0);
   vec3 v = -normalize(vRel);
   vec3 r = reflect(-v,n);
-  vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
+  // What the ground mirrors, wet most of all: the sky, and the ball where the ray meets it (orb-light.ts).
+  vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : orbMirror(worldSharp ? skyFrom(r) : skyLight(r), r, vRel, orm.y, 1.0);
   o = vec4(shown(lit(albedo, orm, n, v, mirrored, shade), vRel), 1.0);
 }`;
 

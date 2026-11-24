@@ -7,8 +7,8 @@
 // 0.24 ms a megapixel.
 //
 // And what the ball's light costs a lit surface (client/core/render/orb-light.ts): LIT full screen on a wall, with the
-// light's define and without, by night with the wall in its light, past its reach, and on a map with no orb. The gate
-// is 0.05 ms a megapixel. And the shadow the ball casts (`orbShade` there): LIT with medium's defines and with high's, by
+// light's define and without, by night with the wall in its light, past its reach, and on a map with no orb; and with
+// the light but the ball out of what mirrors, which is what the mirror costs. The gate is 0.05 ms a megapixel. And the shadow the ball casts (`orbShade` there): LIT with medium's defines and with high's, by
 // day, with the shadow's define and without.
 //
 //   bun tools/orb/cost.ts           all
@@ -16,6 +16,7 @@
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { ORB_FRAGMENT, OrbCast, writeOrb } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
+import { ORB_SEEN } from "../../client/core/render/orb-light.ts";
 import { FRAME, FRAME_FLOATS, ORB_AT } from "../../client/core/render/packet.ts";
 import { postFrame } from "../../client/core/render/post.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
@@ -89,12 +90,13 @@ void main() {
 }`;
 
 /** The frame block at an hour, Core held, the eye at the ball's foot with its back to it, or on a map with no orb. */
-function wallFrame(hour: number, orb: boolean): number[] {
+function wallFrame(hour: number, orb: boolean, mirror = true): number[] {
   const f = new Float32Array(FRAME_FLOATS);
   skyFrame(hour, theSky(), f);
   postFrame(f, TIERS[2]!, hour, 1080);
   writeOrb(f, orb ? [{ ...SITE, z: -90 }] : [], [BLUE], 380.6, hour, 0, 0, 0, null, 0, 30, 2);
   new OrbCast().step(f, 0);
+  if (!mirror) f.fill(0, ORB_SEEN, ORB_SEEN + 4);
   f[FRAME.eyeHeight] = 10;
   return [...f];
 }
@@ -111,8 +113,9 @@ if (scenes.length > 0 && scenes[0]!.fragment.indexOf(ORB_FRAGMENT.slice(-200)) <
 const lit = PROGRAMS.flat!(TIERS[2]!, "rgba", false, true), LIGHT = "#define ORB_LIGHT\n";
 if (!lit.defines.includes(LIGHT)) throw new Error("high does not light by the orb");
 const KINDS = [["plain", ""], ["high", lit.defines.replace(LIGHT, "")]] as const;
-const CASES = [["off", false, true, 40], ["on, lit", true, true, 40], ["on, past its reach", true, true, 900], ["on, no orb", true, false, 40]] as const;
-const walls = KINDS.flatMap(([kind, defines]) => CASES.map(([name, on, orb, metres]) => ({ name: `${kind} ${name}`, vertex: withDefines(WALL, defines), fragment: withDefines(lit.fragment, (on ? LIGHT : "") + defines), samplers: lit.samplers, frame: wallFrame(23, orb), matrix, uniforms: { uSpan: [metres, 0] } })));
+// The ball in what mirrors has no define: "no mirror" is the same text with the mirror's lane empty, as ?off=orbmirror has it.
+const CASES = [["off", false, true, 40, true], ["on, lit", true, true, 40, true], ["on, past its reach", true, true, 900, true], ["on, no orb", true, false, 40, true], ["on, no mirror", true, true, 40, false]] as const;
+const walls = KINDS.flatMap(([kind, defines]) => CASES.map(([name, on, orb, metres, mirror]) => ({ name: `${kind} ${name}`, vertex: withDefines(WALL, defines), fragment: withDefines(lit.fragment, (on ? LIGHT : "") + defines), samplers: lit.samplers, frame: wallFrame(23, orb, mirror), matrix, uniforms: { uSpan: [metres, 0] } })));
 if (!walls[1]!.fragment.includes("void orbSees(") || walls[0]!.fragment.includes(LIGHT)) throw new Error("the wall's texts are not LIT with the light and without");
 // The shadow: LIT with a tier's defines, with the shadow's and without, at ten in the morning.
 const SHADE = "#define ORB_SHADE\n";

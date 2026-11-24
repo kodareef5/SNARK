@@ -23,7 +23,7 @@ import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
 import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, OPTIC_AT, ORB_AT, OPTIC_FEED_AT, type FramePacket } from "./packet.ts";
 import { FEED_FLOOR, FEED_SATURATION, FEED_TINT } from "./feed.ts";
 import { LAMP_SEES, LAMP_WASH, lampAlbedo, lampLight } from "./lamp.ts";
-import { orbCast } from "./orb-light.ts";
+import { ORB_MIRROR_GLSL, orbCast } from "./orb-light.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
@@ -647,13 +647,14 @@ vec3 encoded(vec3 c) {
 /**
  * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
  * `skyShare`, `skyOn`, `skyLight`, `direct`, `lit`, `tone` and `shown`; `keyShade` is `moonCasts` as the sun's share
- * of a shade and the moon's, and `lit`'s `sodium` is lamp.ts `lampAlbedo`, its gOrb orb-light.ts `orbCast`. `shown` takes where the point is from the
+ * of a shade and the moon's, and `lit`'s `sodium` is lamp.ts `lampAlbedo`, its gOrb orb-light.ts `orbCast`; `orbMirror`
+ * is that file's too, for what mirrors. `shown` takes where the point is from the
  * eye, and the air between (atmosphere.ts `hazed`, which a program defines after this) above water; under water,
  * today's fog. What lights includes SHADOW_GLSL after it, for `lit`'s shade. With LIGHT_TARGET defined (post.ts) it
  * shows light as it is after exposure, for the finishing pass to tone and grade, and the fog's colour as light;
  * `SHOWN_STEP` is a display step, which a text dithering what it shows takes, and 0 there.
  */
-export const LIGHT = `${FRAME_BLOCK}${CONTACT_GLSL}uniform vec3 uSky;
+export const LIGHT = `${FRAME_BLOCK}${ORB_MIRROR_GLSL}${CONTACT_GLSL}uniform vec3 uSky;
 uniform vec2 uFog;
 vec3 skyShare(vec3 f0, float rough, float nv) {
   float a = rough * rough;

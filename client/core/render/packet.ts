@@ -543,7 +543,7 @@ export const MADE_AT = SECTION.made;
  * scene's clock and the clock of the scene before; the scene, the one before, how far the change has crossed and the
  * screen's level; where it looks and the blue eye's power; the way to the sun and how full the tide is; where a change
  * starts and how hard lightning strikes; which strike it is, and the colour of the light it casts by night
- * (orb-light.ts); what the street's picture holds for it (ORB_OVER). Directions but the centre are in the orb's own frame.
+ * (orb-light.ts); what a mirror shows of it (ORB_SEEN). Directions but the centre are in the orb's own frame.
  */
 export const ORB_AT = SECTION.orb;
 export const OPTIC_NONE = 0;
