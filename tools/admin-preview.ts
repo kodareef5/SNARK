@@ -5,6 +5,7 @@ import { ClientSession } from "../client/core/session.ts";
 import { connect } from "../agent/socket.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { KEY_BYTES, TEXT_GLOBAL } from "../shared/net/protocol.ts";
+import type { Client } from "../server/game.ts";
 import { startServer, type RunningServer } from "../server/main.ts";
 import { startFront } from "../server/front.ts";
 import { loadConfig } from "../server/settings/config.ts";
@@ -18,7 +19,7 @@ import { CAUSE_WORDS } from "../server/survival.ts";
 function recordPreview(server: RunningServer): void {
   const { host } = server;
   const { world, records, persistence } = host;
-  const players = host.game.clients.filter(c => c && c.pid > 0);
+  const players = host.game.clients.filter((client): client is Client => client !== null && client.pid > 0);
   if (!persistence || !players.length) throw Error("Preview survivors did not join.");
   const store = new LogStore(logFolder(persistence.store.path), 16 << 20, {
     saveId: persistence.saveId, mapId: world.mapId, world: records.worldId, opAdmin: OP_ADMIN, opDeath: OP_DEATH, causes: CAUSE_WORDS,
@@ -27,7 +28,7 @@ function recordPreview(server: RunningServer): void {
   const start = end - 30 * 60_000;
   const book = new LogRecorder(world.reg.ids, start, 0);
   const key = itemKey(world.reg.index.get("core:stone")!, 0, false);
-  for (const p of players) book.enter(p!.pid, p!.name, 0, "", new Map(), start, 0);
+  for (const p of players) book.enter(p.pid, p.name, 0, "", new Map(), start, 0);
   const steps = 60;
   for (let k = 1; k <= steps; k++) {
     const wall = start + (end - start) * k / steps;
@@ -36,9 +37,9 @@ function recordPreview(server: RunningServer): void {
       const from = world.spawns[index % world.spawns.length]!;
       const angle = k / steps * Math.PI * 1.5 + index;
       const x = from.x + Math.cos(angle) * 180, z = from.z + Math.sin(angle) * 130;
-      book.sample(p!.pid, tick, x, world.hf.heightAt(x, z), z, STATE_ALIVE);
-      if (k % 10 === 0) book.held(p!.pid, new Map([[key, k + index]]), wall, tick);
-      if (k === steps) book.leave(p!.pid, "left", wall, tick);
+      book.sample(p.pid, tick, x, world.hf.heightAt(x, z), z, STATE_ALIVE);
+      if (k % 10 === 0) book.held(p.pid, new Map([[key, k + index]]), wall, tick);
+      if (k === steps) book.leave(p.pid, "left", wall, tick);
     });
     store.write(book.flush(wall, tick));
   }
@@ -71,10 +72,15 @@ async function preview(): Promise<void> {
       name, key: crypto.getRandomValues(new Uint8Array(KEY_BYTES)), registry: world.reg.source ?? world.reg,
       clipHash: world.anim.set.hash, look: defaultLook(), resolveMap: () => world.hf,
     }));
-    intervals.push(setInterval(() => {
+    const movement = setInterval(() => {
       const t = performance.now();
       people.forEach((session, i) => session.update(t, 0, 0, i, 0, 0));
-    }, 100));
+    }, 100);
+    intervals.push(movement);
+    server.host.onStop = () => {
+      clearInterval(movement);
+      void server.stopGently();
+    };
     const deadline = Date.now() + 45_000;
     while ((server.host.game.playerCount < people.length || world.tick < 70) && Date.now() < deadline) await Bun.sleep(120);
     if (server.host.game.playerCount < people.length) throw Error(`Could not join ${city.name}: ${people.map(p => p.closeText || p.state).join(", ")}`);
