@@ -45,6 +45,18 @@ export function prism(poly: readonly (readonly [number, number])[], y0: number, 
 
 const ring = (radius: number): [number, number][] => Array.from({ length: 12 }, (_, k) => [radius * Math.cos((k * Math.PI) / 6), radius * Math.sin((k * Math.PI) / 6)]);
 
+/** Two solids as one level. */
+function both(a: SourceLod, b: SourceLod): SourceLod {
+  const n = a.positions.length / 3;
+  return { positions: Float32Array.from([...a.positions, ...b.positions]), colors: Uint8Array.from([...a.colors, ...b.colors]), indices: Uint32Array.from([...a.indices, ...Array.from(b.indices, (v) => v + n)]) };
+}
+
+/** A post a storey high over `poly`, and on it a cap a centimetre high and a centimetre in, which the post stacked on it hides. */
+function post(poly: readonly (readonly [number, number])[]): SourceLod {
+  const reach = Math.max(...poly.map((p) => Math.hypot(p[0], p[1])));
+  return both(prism(poly, 0, 3), prism(poly.map(([x, z]) => [x * (1 - 0.01 / reach), z * (1 - 0.01 / reach)] as const), 3, 3.01));
+}
+
 /** How far a stand-in joint's square reaches from its corner: a centimetre past a wall's face. */
 export const JOINT_HALF = 0.11;
 
@@ -56,9 +68,9 @@ export const JOINT_HALF = 0.11;
 export function standInTrims(tier: string): SourceMesh[] {
   const h = JOINT_HALF;
   return [
-    { id: `core:joint_sq_${tier}`, lods: [prism([[-h, -h], [h, -h], [h, h], [-h, h]], 0, 3.01)] },
-    { id: `core:joint_r15_${tier}`, lods: [prism(ring(0.15), 0, 3.01)] },
-    { id: `core:joint_r21_${tier}`, lods: [prism(ring(0.21), 0, 3.01)] },
+    { id: `core:joint_sq_${tier}`, lods: [post([[-h, -h], [h, -h], [h, h], [-h, h]])] },
+    { id: `core:joint_r15_${tier}`, lods: [post(ring(0.15))] },
+    { id: `core:joint_r21_${tier}`, lods: [post(ring(0.21))] },
     { id: `core:skirt_${tier}`, lods: [prism([[-1.5, 0], [1.5, 0], [1.5, 0.12], [-1.5, 0.12]], -2.4, 0)] },
   ];
 }
@@ -72,7 +84,7 @@ export function baseAt(structs: StructureStore, x: number, y: number, z: number,
   return structs.frames.make(Math.round(x * STRUCT_UNITS), Math.round(y * STRUCT_UNITS), Math.round(z * STRUCT_UNITS), yaw, TEAM);
 }
 
-/** Sets a piece down in the element of class `cls` named from the corner `a` along `d`, its own +X `turn` of its slot's turns on from that way. Returns its ref. */
+/** Sets a piece down in the element of class `cls` named from the corner `a` along `d`, at `hp` of its full health: a wall with its own +X along `d`, or against it if `flipped`. Returns its ref. */
 export function putAt(structs: StructureStore, reg: Registry, f: Frame, id: string, cls: number, a: readonly number[], d: number, lvl: number, hp = 1, flipped = false): number {
   const kind = reg.index.get(id);
   if (kind === undefined) throw new Error(`no kind ${id}`);
