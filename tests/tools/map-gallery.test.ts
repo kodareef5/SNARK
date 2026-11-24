@@ -39,6 +39,7 @@ test("Miami's authored spawn places use the real checked-in photos", () => proof
     expect(art.regions[name]).toBe(`title/atlas/miami/${file}`);
     expect(readFileSync(titleFile(out, art.regions[name]!))).toEqual(readFileSync(join(photos, file)));
   }
+  expect(art.cover).toBe("title/miami-splash.webp");
   expect(existsSync(titleFile(out, art.cover))).toBe(true);
 }));
 

@@ -151,7 +151,11 @@ export function buildMapGallery(maps: string, titles: string, media: string, bui
       writeRelief(join(folder, "tile.png"), cutRelief(relief, 192, 192));
     }
     const skyline = shots.find((shot) => citySlug.test(shot.name) && shot.name.includes("skyline") && !shot.name.startsWith("worst") && existsSync(join(views, `${shot.name}.png`)));
-    const cover = legacy(`${skyline?.name ?? "aerial-overhead"}.png`, "cover.png", 720) ?? firstPhoto ?? overview;
+    const wide = `${city}-splash.webp`;
+    const hasWide = existsSync(join(media, wide));
+    if (hasWide) copyFileSync(join(media, wide), join(titles, wide));
+    const cover = hasWide ? "title/" + wide
+      : legacy(`${skyline?.name ?? "aerial-overhead"}.png`, "cover.png", 720) ?? firstPhoto ?? overview;
     if (!cover) continue;
     const id = `core:${city}`, definition = MAPS.find((def) => def.id === id);
     const label = definition?.type === "map" ? (definition.label ?? city) : city;
