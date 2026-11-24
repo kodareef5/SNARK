@@ -16,15 +16,18 @@ import { unpackMeshes } from "../pack/write.ts";
 export interface CruiseBodyPose { value: number; mesh: string; sex: string; speed: number; phase: number; pitch: number; direction: number; }
 export interface CruiseBodyVertex { mesh: string; vertex: number; profile: number; at: readonly number[]; }
 
-// An armor piece's vents (the Meridian cuirass vanes and the boot jet exhaust) are drawn only in powered flight off the
-// ground (client/core/render/characters.ts), never on a walking body, so they are not part of these poses.
+// Flight vents stay closed on walkers and seated riders. The fixed armor still draws.
 const FLIGHT_ONLY = new Set(slotsOf(CORE_CONTENT).filter(u => u.slot === "vents" && u.id !== "").map(u => u.id));
+
+export function bodyMeshWithVentsClosed(id: string, sex: string): boolean {
+  return id.startsWith(`core:human_${sex}/`) && !FLIGHT_ONLY.has(id);
+}
 
 /** Feasible creator profiles through the renderer's exact matrices, used to distinguish a real strike from an interval overlap. */
 export function cruiseBodyVertices(sample: CruiseBodyPose, inspect?: (vertex: CruiseBodyVertex) => void, profiles = Array.from({ length: 3 + REGION_COUNT * 2 }, (_, i) => i)) {
   const bodies = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk", import.meta.url))));
   const clips = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-clips/human-clips.snpk", import.meta.url))));
-  const anim = new HumanAnim(clips.clips), selected = unpackMeshes(bodies).filter(m => m.id.startsWith(`core:human_${sample.sex}/`) && !FLIGHT_ONLY.has(m.id));
+  const anim = new HumanAnim(clips.clips), selected = unpackMeshes(bodies).filter(m => bodyMeshWithVentsClosed(m.id, sample.sex));
   const rest = Float32Array.from(bodies.header.rigs.find(r => r.id === `human_${sample.sex}`)!.rest);
   const pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES), scales = new Float32Array(HUMAN_BONES * 3), matrices = new Float32Array(HUMAN_BONES * 12);
   const result = { minimum: [Infinity, Infinity, Infinity], maximum: [-Infinity, -Infinity, -Infinity], witnesses: ["", "", "", "", "", ""] };
