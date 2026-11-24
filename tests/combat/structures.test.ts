@@ -10,6 +10,7 @@ import { BTN_PRIMARY } from "../../shared/sim/character.ts";
 import { DMG_EXPLOSIVE } from "../../shared/sim/damage.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
+import { toldHealth } from "../../shared/world/structures.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
@@ -370,7 +371,8 @@ test("damage to something built is saved with it, and a client is shown a blast"
   expect(structs.damage(ref, 0)).toBe(9900);
   expect(structs.damage(999999999, 5)).toBe(-1);
   run(300);
-  expect(app.session.world!.structs.chunks[chunk]!.hp[ref & 0xffff]).toBe(9900);
+  // The client holds the most health of the stage it is in.
+  expect(app.session.world!.structs.chunks[chunk]!.hp[ref & 0xffff]).toBe(toldHealth(9900, 10000));
   say("god");
   say("kit grenades");
   const s = app.session;

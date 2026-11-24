@@ -774,11 +774,13 @@ let siegeChunk = -1;
   const refs: number[] = [];
   // A wooden box base of a room a cell, 15 storeys, high in the air, so no body touches it.
   for (const [kind, x, y, z, yaw] of boxBase(reg, "wood", x0 + 0.5, 200, z0 + 0.5, 21, 1, 20000)) {
-    const ref = world.structs.add(kind, x, y, z, yaw, 1, 1e9);
+    const ref = world.structs.add(kind, x, y, z, yaw, 1, reg.maxHp[kind]!);
     if (ref >= 0) refs.push(ref);
   }
+  // A blow of a 200th of a piece's health takes it down a stage, so every blow is a row. None takes 200 in ten seconds.
+  const stage = (ref: number): number => reg.maxHp[world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!]! / 200;
   record("pieces in the chunk", world.structs.chunks[siegeChunk]!.live, "");
-  // 256 rows a tick to each client: 80 ticks for the chunk, and the bots' own fists keep changing it meanwhile.
+  // 1,024 rows a tick to each client at most: 20 ticks for the chunk or more, and the bots' own fists keep changing it meanwhile.
   run(200, null);
   const quiet: number[] = [];
   run(150, quiet);
@@ -795,7 +797,10 @@ let siegeChunk = -1;
     saveChunk(chunk, t);
   };
   for (let i = 0; i < 300; i++) {
-    for (let k = 0; k < 50; k++) world.structs.damage(refs[pieces.int(refs.length)]!, 1);
+    for (let k = 0; k < 50; k++) {
+      const ref = refs[pieces.int(refs.length)]!;
+      world.structs.damage(ref, stage(ref));
+    }
     run(1, fire);
   }
   fire.sort((a, b) => a - b);
@@ -803,8 +808,8 @@ let siegeChunk = -1;
   record("tick time before the damage, median", percentile(quiet, 0.5), "ms");
   record("tick time under it, median", percentile(fire, 0.5), "ms", 8);
   record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
-  // About 6.5 bytes a damaged piece, its health alone. 1,500 pieces a second is far more than a raid does.
-  record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 30);
+  // About 3.5 bytes a damaged piece, its slot and its stage of health. 1,500 pieces a second is far more than a raid does.
+  record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 12);
   store.saveChunk = saveChunk;
   // All that differs in the chunk is written together, and a chunk in which only health changes a second apart at most.
   record("times its chunk was written in those ten seconds", chunkWrites, "", 11);

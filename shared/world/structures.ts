@@ -74,6 +74,26 @@ export const GONE_BLAST = 3;
 export const TOUCH_MOVED = 1;
 export const TOUCH_KIND = 2;
 export const TOUCH_LEFT = 4;
+/** The stage that says an owned piece has its kind's most health exactly. Stages 1 to 254 are the 254ths of it reached into. */
+export const STAGE_FULL = 255;
+
+/** The stage a client is told of an owned piece at health `hp` of `max`. */
+export function healthStage(hp: number, max: number): number {
+  if (!(hp < max)) return STAGE_FULL;
+  const stage = Math.ceil((hp / max) * 254);
+  return stage < 1 ? 1 : stage > 254 ? 254 : stage;
+}
+
+/** The health a client holds for a stage: the most the stage covers, but half a stage under `max` for the last, which is not whole. */
+export function stageHealth(stage: number, max: number): number {
+  return stage >= STAGE_FULL ? max : Math.fround(((stage < 254 ? stage : 253.5) / 254) * max);
+}
+
+/** An owned piece's health as every client holds it. Costs shown and charged are worked from this. */
+export function toldHealth(hp: number, max: number): number {
+  return stageHealth(healthStage(hp, max), max);
+}
+
 /** Removals a chunk remembers, so a client can be sent each as one batch. */
 export const GONE_KEPT = 8;
 /** Changed slots a chunk remembers, so a client a few changes behind is sent those without a scan of every slot. */
@@ -160,7 +180,7 @@ export class ChunkTable {
   mod: Uint32Array;
   /**
    * A lattice row's address: its frame's gid (0 for a row with a free pose), its key's two words, and its direction mod 3.
-   * Null until the chunk's first lattice row, then 13 bytes a row. A table detached keeps them: see StructureStore.unkeyRows.
+   * Null until the chunk's first lattice row, then 13 bytes a row. A table detached keeps the columns, zeroed (unkeyRows).
    */
   fr: Uint32Array | null = null;
   k0: Uint32Array | null = null;
@@ -265,6 +285,8 @@ export class StructureStore {
   passed = 0;
   /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
   onChunkChanged: ((chunk: number, healthOnly: boolean) => void) | null = null;
+  /** Per kind, its most health. With it, harm that leaves an owned piece in its stage is told to nobody (`damage`). Authority only. */
+  fullHp: Float32Array | null = null;
 
   /** Per content index, the half extents of the box that bounds the whole structure. */
   private readonly halfX: Float32Array;
@@ -557,10 +579,7 @@ export class StructureStore {
     t.fr![slot] = t.k0![slot] = t.k1![slot] = t.tw![slot] = 0;
   }
 
-  /**
-   * Takes every row of a table out of its frame and its cells, and leaves the rows free. For a table about to be detached:
-   * attached again, `adoptRows` keys its rows by their poses, as rows received are keyed.
-   */
+  /** Takes every row of a table out of its frame and its cells, and leaves the rows free: `detach` does, and `attach` adopts them again. */
   unkeyRows(chunk: number, t: ChunkTable): void {
     if (!t.fr) return;
     for (let slot = t.mapped; slot < t.high; slot++) if (t.fr[slot] !== 0) this.unkey(chunk, t, slot, false);
@@ -978,7 +997,10 @@ export class StructureStore {
     return healed;
   }
 
-  /** Removes the structure at 0 health. Returns the health left (0 if it is gone), or -1 if there is no such structure. Authority only. */
+  /**
+   * Removes the structure at 0 health. Returns the health left (0 if it is gone), or -1 if there is no such structure.
+   * An owned piece left in the stage it was in keeps the chunk's version (`fullHp`). Authority only.
+   */
   damage(ref: number, points: number, stamp = 0): number {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
@@ -990,9 +1012,17 @@ export class StructureStore {
       this.remove(ref, GONE_DESTROYED, stamp);
       return 0;
     }
+    const was = this.differsAt(t, slot);
+    const max = this.fullHp && t.owner[slot] !== 0 ? this.fullHp[t.kind[slot]!]! : 0;
+    if (max > 0 && healthStage(left, max) === healthStage(t.hp[slot]!, max)) {
+      // No client would hold another health for it: saved, as wear is, and sent to nobody.
+      t.hp[slot] = left;
+      this.tally(t, slot, was);
+      this.onChunkChanged?.(chunk, true);
+      return left;
+    }
     // Health is saved and replicated, so the slot counts as changed.
     t.version++;
-    const was = this.differsAt(t, slot);
     t.hp[slot] = left;
     this.tally(t, slot, was);
     t.mod[slot] = t.version;
@@ -1081,6 +1111,45 @@ export class StructureStore {
     for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] !== 0) this.erase(chunk, t, s, 0);
     this.chunks[chunk] = null;
     this.held.splice(this.heldAt(chunk), 1);
+    this.onChunkChanged?.(chunk, false);
+  }
+
+  /**
+   * Takes the chunk's table out of the store with its rows as they are, and returns it, or null if it has none. The store
+   * then holds nothing of the chunk, as after dropChunk. For a client that keeps a chunk it was told to drop.
+   */
+  detach(chunk: number): ChunkTable | null {
+    const t = this.chunks[chunk];
+    if (!t) return null;
+    // Its rows leave their frames and cells, and are keyed again by their poses when it is attached.
+    this.unkeyRows(chunk, t);
+    for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] !== 0) this.unlink(chunk, t, s);
+    this.count -= t.live;
+    this.chunks[chunk] = null;
+    this.held.splice(this.heldAt(chunk), 1);
+    this.shapes++;
+    this.shaped(chunk);
+    this.onChunkChanged?.(chunk, false);
+    return t;
+  }
+
+  /** Puts back a table `detach` gave for `chunk`, in place of what the chunk holds. Its shape counts as changed. */
+  attach(chunk: number, t: ChunkTable): void {
+    this.dropChunk(chunk);
+    this.chunks[chunk] = t;
+    this.held.splice(this.heldAt(chunk), 0, chunk);
+    for (let s = 0; s < t.high; s++) {
+      const kind = t.kind[s]!;
+      if (kind === 0) continue;
+      this.footprint(kind, t.x[s]!, t.z[s]!, t.yaw[s]!);
+      this.link(chunk * 65536 + s, kind, t.y[s]!);
+    }
+    this.count += t.live;
+    if (this.adoptRows(chunk, t)) this.orphans.set(chunk, -1);
+    t.shape++;
+    t.placed++;
+    this.shapes++;
+    this.shaped(chunk);
     this.onChunkChanged?.(chunk, false);
   }
 
@@ -1261,6 +1330,30 @@ export class StructureStore {
   private erase(chunk: number, t: ChunkTable, slot: number, mod: number, inPlace = false): void {
     if (!inPlace) t.placed++;
     if (t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, inPlace);
+    this.unlink(chunk, t, slot);
+    if (t.owner[slot] !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.owner[slot]!, -1);
+    // Empty slots hold zeros, so equal tables are equal byte for byte. A map's slot keeps its place and turn, which are the map's.
+    const was = this.differsAt(t, slot);
+    t.kind[slot] = 0;
+    if (slot >= t.mapped) {
+      t.x[slot] = 0;
+      t.y[slot] = 0;
+      t.z[slot] = 0;
+      t.yaw[slot] = 0;
+    }
+    t.owner[slot] = 0;
+    t.hp[slot] = 0;
+    this.tally(t, slot, was);
+    t.mod[slot] = mod;
+    t.shape++;
+    this.shapes++;
+    this.shaped(chunk);
+    t.live--;
+    this.count--;
+  }
+
+  /** Takes the structure in `slot` out of every grid cell it lies in. Its row stands. */
+  private unlink(chunk: number, t: ChunkTable, slot: number): void {
     this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!);
     const ref = chunk * 65536 + slot;
     for (let cz = this.fz0; cz <= this.fz1; cz++) {
@@ -1282,25 +1375,6 @@ export class StructureStore {
         this.nodeFree = node;
       }
     }
-    if (t.owner[slot] !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.owner[slot]!, -1);
-    // Empty slots hold zeros, so equal tables are equal byte for byte. A map's slot keeps its place and turn, which are the map's.
-    const was = this.differsAt(t, slot);
-    t.kind[slot] = 0;
-    if (slot >= t.mapped) {
-      t.x[slot] = 0;
-      t.y[slot] = 0;
-      t.z[slot] = 0;
-      t.yaw[slot] = 0;
-    }
-    t.owner[slot] = 0;
-    t.hp[slot] = 0;
-    this.tally(t, slot, was);
-    t.mod[slot] = mod;
-    t.shape++;
-    this.shapes++;
-    this.shaped(chunk);
-    t.live--;
-    this.count--;
   }
 
   /** Writes the grid cells a structure's rotated box covers to fx0..fz1. */

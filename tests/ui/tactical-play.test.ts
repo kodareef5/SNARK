@@ -63,10 +63,12 @@ test("a tribe's base 600 m off is on its map within ten seconds with no chunk se
   expect(t.chunks.get(chunkAt(DIMS, 706, 98))!.level).toBe(3);
   expect(stats.cellBytes).toBeLessThanOrEqual(10);
 
-  // Blows that change no cell bake the chunk again, at most once in five seconds, and send nothing.
+  // Blows that change no cell bake the chunk again, at most once in five seconds, and send nothing. Each takes the piece a stage down.
   const bakes = stats.bakes;
+  const full = world.reg.maxHp[k("foundation_wood")]!;
+  world.structs.mend(refs[0]!, full);
   for (let s = 0; s < 12; s++) {
-    world.structs.damage(refs[0]!, 1);
+    world.structs.damage(refs[0]!, full / 100);
     h.run(1000);
   }
   expect(stats.bakes - bakes).toBeGreaterThanOrEqual(2);

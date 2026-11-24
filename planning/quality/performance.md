@@ -23,6 +23,7 @@ touch rule, ASTC, 24-bit depth, 16 texture units, no timer queries.
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
 | C | counts and bytes on Miami as built that day (`187f1213`, map version 5, with the cruise ship), on a busy machine (load 6 to 25), so no times | 2026-11-17 | `d45f43da` |
 | Dnnn | the measurement its decision records | | |
+| W | the wire lane's rows, on a Linux box (Core i9-13980HX, 32 cores, Bun 1.4.3) at load 5 to 20 from other work: bytes, and milliseconds of a modelled link's own time, neither of which load moves | 2026-11-24 | `build/wire` |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time, the three soaks the governor's tests replay in `tests/fixtures/device-reports` | 2026-11-15, 16 | |
 
 Rows without a code are E. Counts and bytes do not move with load; times from M are
@@ -117,13 +118,26 @@ all.
 | Crowd: every survivor and 2,000 creatures | 31.9 KB/s | 36 |
 | Crowd: bodies shown to a client that asked for 2,048; that never asked | 871 of 1,024; 468 of 512 | |
 | Breeding base, each survivor there | 32.4 KB/s | 34 |
-| Siege: 50 pieces of a 20,000-piece chunk damaged a tick | 9.46 KB/s | 30 |
+| Siege: 50 pieces of a 20,000-piece chunk damaged a tick, each blow a stage of the piece's health (W) | 5.24 KB/s | 12 |
+| Near chunks held on joining beside a 4,000-piece base (W): 50; 100; 180 ms; 100 ms with 1% loss; 180 ms with 2%; 100 ms at 60 KB/s | 250; 333; 600; 403; 817; 967 ms | |
+| A 20,000-piece chunk of 97 KB whole (W): no delay; 50; 100; 180 ms there and back | 0.70; 0.78; 1.12; 1.52 s | 0.9 at 50 ms |
+| Back to a dropped 5,000-piece base, both ways (W): unchanged; ten slots changed | 26; 67 bytes | 64; 200 |
 | A 1,512-piece house collapsing, each watcher, all of it | 2,373 bytes | 3,024 |
 | Voice, 100 talking, each listener | 28.7 KB/s | 31 |
 | The map's feeds | 0.009 KB/s | 0.5 |
 | Far feed: first 20 s, mean and most; after; a siege watched, mean and most | 18.4, 19.0 KB; 0.004 KB/s; 0.12, 0.14 KB/s | none; 0.2; 2 |
 | 300 creatures standing still | 1.68 KB/s | 2 |
 | Prediction corrections; undecodable snapshots | 0; 0 | 0 |
+
+The W rows are the wire lane's ([build-wire](../workstreams/build-wire.md)). Before it, on the same box: the siege
+9.63 KB/s, with health as a float and every blow a row; the near chunks 567, 667, 950, 737, 1,267 and 1,550 ms; a
+20,000-piece chunk 2.6 s at 256 slots a tick; and a base come back to its 24 KB of rows again. At 100 ms and more the
+16 KB a client may have on the way holds a large chunk, not the 1,024 slots of a tick.
+
+The house's row read 2,603 bytes on that box before the wire lane and 3,030 after it and the merge of `build/v2`,
+over its 3,024. The fall alone, one watcher on a small world, is 1,880 bytes at all three commits. The row counts
+every client's chunk bytes while the house falls, and the fights before it went differently in the two runs (1,833
+and 1,767 rifle hits), so which change moved it is not known.
 
 On a modelled WebSocket the far feed delays no near chunk at any of six links, 50 ms
 clean to 180 ms with 2% loss and a 60 KB/s line (D256). Losses and freezes by link

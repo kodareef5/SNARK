@@ -163,8 +163,8 @@ import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/wor
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
-import { GONE_BLAST, GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
-import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { GONE_BLAST, GONE_TAKEN, StructureStore, stageHealth, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
+import { CMD_FAR, CMD_HAVE, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { GoneStore } from "./gonelists.ts";
 import type { FarSource } from "./render/far.ts";
@@ -370,6 +370,13 @@ const SMOOTH_LIMIT = 3;
 const VEHICLE_SMOOTH_LIMIT = 12;
 /** Chunks around the body whose nodes stay filled until the tier says how many (assets/tiers.ts `nodes`). Collision needs one, drawing wants more. */
 const NODE_RADIUS = 3;
+/** Chunks kept after a drop on a desktop and on a touch device, the bytes of their tables at most, and a slot's bytes in a table. */
+export const PARK_CHUNKS = 8;
+export const PARK_CHUNKS_TOUCH = 2;
+const PARK_BYTES = 4 * 1024 * 1024;
+const SLOT_BYTES = 32;
+/** In `whole`: the chunk was put back from those kept, and the server's next rows for it bring it up to date. */
+const CAUGHT_UP_NEXT = 2;
 /** Milliseconds with no snapshot past which the game's socket is taken as held back (`behind`): some snapshots' worth. */
 export const BEHIND_MS = 300;
 /** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */
@@ -673,8 +680,20 @@ export class ClientSession {
   readonly far = new FarStore();
   /** Which of the map's own pieces no longer stand in the chunks within the reach `askFar` names for them. */
   readonly gone = new GoneStore();
-  /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
+  /**
+   * Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. CAUGHT_UP_NEXT for
+   * one put back from those kept, until the rows changed while it was away have come: they are not news.
+   */
   private whole = new Uint8Array(0);
+  /** The most chunks kept after the server says to drop them, for coming back to (CMD_HAVE). The shell sets fewer on a touch device. 0 keeps none. */
+  parkMost = PARK_CHUNKS;
+  /** The tables of the chunks kept, oldest first, and their bytes. */
+  private readonly parked = new Map<number, ChunkTable>();
+  private parkedBytes = 0;
+  /** The command that said which it kept (CMD_HAVE), until its answer; the chunks it named; and the chunk the body was in when they were last looked through. */
+  private haveSeq = 0;
+  private readonly haveSaid: number[] = [];
+  private haveAt = -1;
   /** The map's statics, come after the session began (staticsArrived). */
   private arrived: MapStatics | null = null;
   private heldCity: CityStatics | null = null;
@@ -1037,6 +1056,7 @@ export class ClientSession {
     if (steps > 0) {
       this.sendInputs(newestInput, steps);
       this.recenterNodes();
+      this.sayKept();
     }
   }
 
@@ -1109,7 +1129,7 @@ export class ClientSession {
       const d = Math.hypot(dequantX(view.qx[i]!) - x, dequantX(view.qz[i]!) - z);
       if (d < best && view.id[i] !== own && view.id[i] !== this.driving) [best, near] = [d, `${this.registry.defs[view.kind[i]!]?.id ?? view.kind[i]} ${d.toFixed(1)} m`];
     }
-    return { whole: this.whole[chunk] === 1, rows: world.structs.chunks[chunk]?.live ?? 0, statics: this.staticKinds !== null, near };
+    return { whole: this.whole[chunk] !== 0, rows: world.structs.chunks[chunk]?.live ?? 0, statics: this.staticKinds !== null, near };
   }
 
   /** The server's air support view: the drone camera sets itself right from it. */
@@ -1554,9 +1574,7 @@ export class ClientSession {
     messages.add({
       kind: S_CHUNK_DROP,
       read(s, r) {
-        const chunk = r.u16();
-        s.whole[chunk] = 0;
-        s.world?.structs.dropChunk(chunk);
+        s.park(r.u16());
       },
     });
     messages.add({ kind: S_NODES, read: (s, r) => s.nodes(r) });
@@ -1590,6 +1608,7 @@ export class ClientSession {
           if (code === RESULT_OK) s.staticKinds = staticKinds(s.arrived!, s.registry);
           else if (code === RESULT_BUSY) s.staticsSeq = 0;
         }
+        if (seq !== 0 && seq === s.haveSeq) s.unpark(code === RESULT_OK);
         // The newest view or far request, refused, is forgotten so that it is asked again.
         if (code === RESULT_BUSY && seq !== 0 && (seq === s.viewSeq || seq === s.farSeq)) {
           if (seq === s.viewSeq) s.viewCap = s.viewBytes = -1;
@@ -2308,9 +2327,11 @@ export class ClientSession {
     this.nodeGone.clear(); this.nodeCrushed.clear();
     [this.nodeChunk, this.nodeSeen, this.nodeHeld] = [-1, -1, []];
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
+    this.parked.clear();
+    [this.parkedBytes, this.haveSeq, this.haveAt] = [0, 0, -1];
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
-    const far: FarSource = { cells: this.far, lists: this.gone, complete: (chunk) => this.whole[chunk] === 1 };
+    const far: FarSource = { cells: this.far, lists: this.gone, complete: (chunk) => this.whole[chunk] !== 0 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges!, city: () => this.world?.city?.statics ?? this.nodeCity(), ground: hf } } : {};
@@ -2670,6 +2691,76 @@ export class ClientSession {
     return at < statics.first[chunk + 1]! ? this.staticKinds![statics.kind[at]!]! : 0;
   }
 
+  /**
+   * S_CHUNK_DROP. A chunk held whole is kept aside, the newest of `parkMost` chunks and PARK_BYTES, for the server to be
+   * told of when the body is near it again. One already kept is let go: the server refused it.
+   */
+  private park(chunk: number): void {
+    const structs = this.world?.structs;
+    if (!structs || chunk >= structs.chunks.length) return;
+    const was = this.whole[chunk];
+    this.whole[chunk] = 0;
+    if (this.forget(chunk)) return;
+    const t = was !== 0 && this.parkMost > 0 && (structs.chunks[chunk]?.version ?? 0) !== 0 ? structs.detach(chunk) : null;
+    if (!t) return structs.dropChunk(chunk);
+    this.parked.set(chunk, t);
+    this.parkedBytes += t.cap * SLOT_BYTES;
+    for (const old of this.parked.keys()) {
+      if (this.parked.size <= this.parkMost && this.parkedBytes <= PARK_BYTES) break;
+      this.forget(old);
+    }
+  }
+
+  /** Lets go of what was kept of `chunk`, and says whether anything was. */
+  private forget(chunk: number): boolean {
+    const t = this.parked.get(chunk);
+    if (!t) return false;
+    this.parked.delete(chunk);
+    this.parkedBytes -= t.cap * SLOT_BYTES;
+    return true;
+  }
+
+  /** Once the body is in another chunk: tells the server which chunks within HAVE_REACH of it are kept, and at what version. */
+  private sayKept(): void {
+    const world = this.world;
+    if (!world || this.parked.size === 0 || this.haveSeq !== 0) return;
+    const focus = this.mapFocus ?? this.own;
+    const at = chunkAt(world.dims, focus.x, focus.z);
+    if (at === this.haveAt) return;
+    this.haveAt = at;
+    const said = this.haveSaid;
+    said.length = 0;
+    const [cx, cz] = [chunkCx(world.dims, at), chunkCz(world.dims, at)];
+    for (const chunk of this.parked.keys()) {
+      if (said.length < HAVE_MOST && Math.abs(chunkCx(world.dims, chunk) - cx) <= HAVE_REACH && Math.abs(chunkCz(world.dims, chunk) - cz) <= HAVE_REACH) said.push(chunk);
+    }
+    if (said.length === 0) return;
+    this.haveSeq = this.command(CMD_HAVE, (w) => {
+      w.u8(said.length);
+      for (const chunk of said) {
+        w.u16(chunk);
+        w.u32(this.parked.get(chunk)!.version);
+      }
+    });
+  }
+
+  /**
+   * CMD_HAVE's answer. With `ok`, each chunk named and still kept goes back into the near store: the server neither
+   * dropped it nor sent it whole before answering, and sends what changed since next. Otherwise they stay kept.
+   */
+  private unpark(ok: boolean): void {
+    this.haveSeq = 0;
+    const structs = this.world?.structs;
+    for (const chunk of ok && structs ? this.haveSaid : []) {
+      const t = this.parked.get(chunk);
+      if (!t) continue;
+      this.forget(chunk);
+      structs!.attach(chunk, t);
+      this.whole[chunk] = CAUGHT_UP_NEXT;
+    }
+    this.haveSaid.length = 0;
+  }
+
   private chunk(r: BitReader): void {
     const world = this.world;
     if (!world) return;
@@ -2678,6 +2769,8 @@ export class ClientSession {
     const final = r.bool();
     const count = r.bits(16);
     if (chunk >= world.structs.chunks.length) return;
+    // Rows for a chunk kept aside were sent before the server heard it was kept: it comes whole.
+    this.forget(chunk);
     const structs = world.structs;
     const statics = this.staticKinds ? (this.arrived ?? this.opts.statics)! : null;
     const maxHp = this.registry.maxHp;
@@ -2713,7 +2806,7 @@ export class ClientSession {
       if (inPlace) {
         const now = kind !== 0 ? kind : was;
         const owner = this.owners.read(r, 0);
-        const hp = r.bool() ? maxHp[now]! : r.f32();
+        const hp = r.bool() ? maxHp[now]! : owner === 0 ? r.f32() : stageHealth(r.bits(8), maxHp[now]!);
         if (r.overflow) return;
         if (was === 0) continue;
         if (told && (was !== now || hpWas !== Math.fround(hp))) told(was, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
@@ -2730,7 +2823,7 @@ export class ClientSession {
       if (!r.bool()) height += r.svarint();
       const yaw = this.yaws.read(r, 16);
       const owner = this.owners.read(r, 0);
-      const hp = r.bool() ? maxHp[kind]! : r.f32();
+      const hp = r.bool() ? maxHp[kind]! : owner === 0 ? r.f32() : stageHealth(r.bits(8), maxHp[kind]!);
       if (r.overflow) return;
       const y = height / STRUCT_UNITS;
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
@@ -2739,6 +2832,7 @@ export class ClientSession {
     }
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
     const t = world.structs.chunks[chunk];
+    const news = this.whole[chunk] !== CAUGHT_UP_NEXT;
     const reg = this.registry;
     for (let b = r.u8(); b > 0 && !r.overflow; b--) {
       const at = version - r.varint();
@@ -2764,8 +2858,8 @@ export class ClientSession {
             if (kind === 0 || t.mod[slot]! >= at) continue;
             const [x, y, z, yaw] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!];
             const into = list === 1 ? heapAt(reg, kind, x, y, z) : 0;
-            this.onStructure?.(kind, 0, x, y, z, t.hp[slot]!, 0, cause);
-            if (told) {
+            if (news) this.onStructure?.(kind, 0, x, y, z, t.hp[slot]!, 0, cause);
+            if (told && news) {
               if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
               this.rubble.push({ kind, x, y, z, yaw, cause, ox, oy, oz, tick, radius, into, map: t.owner[slot] === 0 ? this.mapKind(chunk, slot) : 0 });
             }

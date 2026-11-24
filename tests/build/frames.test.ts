@@ -376,12 +376,23 @@ test("rows put before their base's first piece are keyed once it has come", () =
   recount(client.structs, client.reg, f);
   client.structs.dropChunk(f.chunks[0]!);
   expect([client.structs.frames.count, client.structs.occupied.size, client.structs.count]).toEqual([0, 0, 0]);
-  // A table's rows unkeyed for parking are keyed again by their poses.
-  for (const chunk of server.structs.held) server.structs.unkeyRows(chunk, server.structs.chunks[chunk]!);
-  expect([server.structs.frames.count, server.structs.occupied.size]).toEqual([0, 0]);
-  for (const chunk of server.structs.held) server.structs.adoptRows(chunk, server.structs.chunks[chunk]!);
-  for (const chunk of server.structs.held) server.structs.adoptRows(chunk, server.structs.chunks[chunk]!);
-  expect([server.structs.frames.count, server.structs.occupied.size]).toEqual([1, live.length - 1]);
+  // A chunk's table taken out for keeping takes its rows out of the frame, and put back they are keyed again by their poses.
+  const ss = server.structs;
+  const base = ss.frames.get(ss.frameAt(refs[1]!))!;
+  const [west, east] = [...base.chunks].sort((p, q) => p - q) as [number, number];
+  const inWest = base.rows[base.chunks.indexOf(west)]!;
+  const kept = ss.detach(west)!;
+  expect([base.live, base.chunks, ss.occupied.size, kept.fr!.some((gid) => gid !== 0)]).toEqual([live.length - 1 - inWest, [east], live.length - 1 - inWest, false]);
+  ss.attach(west, kept);
+  for (const ref of live) if (ref !== refs[4]) expect(sound(ss, server.reg, ref)).toBe(base.gid);
+  expect([ss.frames.count, base.live, ss.occupied.size]).toEqual([1, live.length - 1, live.length - 1]);
+  // With both tables out the frame is gone, and the first table back makes one of its own numbering.
+  const tables = [ss.detach(west)!, ss.detach(east)!];
+  expect([ss.frames.count, ss.occupied.size, ss.count]).toEqual([0, 0, 0]);
+  ss.attach(east, tables[1]!);
+  ss.attach(west, tables[0]!);
+  ss.setVersion(west, tables[0]!.version);
+  expect([ss.frames.count, ss.occupied.size, ss.count, ss.frameAt(refs[1]!) > base.gid]).toEqual([1, live.length - 1, live.length - 1, true]);
 });
 
 const T = FOUNDATION_THICK / 2;

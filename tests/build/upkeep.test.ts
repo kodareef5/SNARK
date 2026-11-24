@@ -13,7 +13,7 @@ import { loadConfig } from "../../server/settings/config.ts";
 import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { CMD_PLACE, CMD_SELECT, RESULT_DAMAGED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, RESULT_WAIT } from "../../shared/net/protocol.ts";
+import { CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DAMAGED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { ACT_REACH, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_PICKUP, STRUCT_REPAIR, cost, refundOf, repairCostOf } from "../../shared/world/upkeep.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -255,6 +255,63 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   void made;
   void sessions;
   void flatGround;
+});
+
+test("a repair is charged what the menu shows, worked from the stage of health a client holds", () => {
+  const made = builder(["ada"]);
+  const { h, sessions, join, structs, act, has } = made;
+  const ada = sessions[0]!;
+  const wall = join(ada, "wall", found(made, ada, 0, 5), 2).ref;
+  // 2,510 of 10,000 gone is 10.04 of 40 wood, 11 rounded up. The stage a client holds has 2,480 gone, which is 10.
+  structs.damage(wall, 2510, h.world.tick);
+  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT_TICKS);
+  for (const what of ["wood", "thatch", "fiber"]) h.say(ada, `give ${what} 50`);
+  const [t, slot] = [ada.world!.structs.chunks[Math.floor(wall / 65536)]!, wall & 0xffff];
+  expect(repairCostOf(reg, t.kind[slot]!, t.hp[slot]!)).toBe(true);
+  const shown = Array.from({ length: cost.n }, (_, k) => [reg.ids[cost.item[k]!]!, cost.count[k]!]);
+  expect(shown).toEqual([["core:wood", 10], ["core:thatch", 3], ["core:fiber", 2]]);
+  expect(act(ada, wall, STRUCT_REPAIR)).toBe(RESULT_OK);
+  expect([has(ada, "wood"), has(ada, "thatch"), has(ada, "fiber")]).toEqual([40, 47, 48]);
+  // Harm under half a stage still costs one of each, shown and charged.
+  structs.damage(wall, 3, h.world.tick);
+  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT_TICKS);
+  h.run(200);
+  expect([t.hp[slot]! < 10000, repairCostOf(reg, t.kind[slot]!, t.hp[slot]!), cost.count[0]]).toEqual([true, true, 1]);
+  expect([act(ada, wall, STRUCT_PICKUP), act(ada, wall, STRUCT_REPAIR), has(ada, "wood")]).toEqual([RESULT_DAMAGED, RESULT_OK, 39]);
+});
+
+test("a harmed piece waits out the repair cooldown again after a restart", () => {
+  const dir = mkdtempSync(joinPath(tmpdir(), "snark-cooldown-"));
+  const dbPath = joinPath(dir, "world.db");
+  const made = builder(["ada"], 40, 40, { dbPath });
+  let { h, act } = made;
+  let ada = made.sessions[0]!;
+  const wall = made.join(ada, "wall", found(made, ada, 0, 5), 2).ref;
+  made.structs.damage(wall, 2500, h.world.tick);
+  // The wait is over: only the materials are missing.
+  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT_TICKS);
+  expect(act(ada, wall, STRUCT_REPAIR)).toBe(RESULT_SHORT);
+  h.run(1500);
+  h.host.shutdown();
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
+  ada = h.join("ada");
+  h.run(600);
+  act = (s, ref, action) => {
+    let code = -1;
+    s.onResult = (_seq, c) => void (code = c);
+    s.command(CMD_STRUCT, (w: BitWriter) => (w.u32(ref), w.u8(action)));
+    h.run(150);
+    return code;
+  };
+  expect(h.world.structs.chunks[Math.floor(wall / 65536)]!.hp[wall & 0xffff]).toBe(7500);
+  expect(act(ada, wall, STRUCT_REPAIR)).toBe(RESULT_WAIT);
+  h.say(ada, "enablecheats");
+  h.say(ada, "setting StructureDamageRepairCooldown 20");
+  expect(act(ada, wall, STRUCT_REPAIR)).toBe(RESULT_WAIT);
+  h.run(20000);
+  expect(act(ada, wall, STRUCT_REPAIR)).toBe(RESULT_SHORT);
+  h.host.shutdown();
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test("in the whole client: a piece looked at is named with how whole it is; the use key held on it lists what can be done, and a digit does it", () => {

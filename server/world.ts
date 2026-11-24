@@ -85,6 +85,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
   const nodeField = nodeSource ? new NodeField(dims, reg, nodeSource) : null;
   const ents = new EntityStore(dims, Math.min(entityStart, entityMax), entityMax, reg.vehicle, reg.move.map(carriageRate));
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  structs.fullHp = reg.maxHp;
   return {
     reg,
     clock: { cycle: 1, day: 1, night: 1 },

@@ -105,9 +105,9 @@ test("far cells stop at the reach asked and at FarRadius, leave out boxes, beds 
   expect(a.tactical.cellAt(130, 130)).not.toBe(0);
   expect(run(a, 2048, 2000, () => a.far.chunks.has(at1500))).toBeGreaterThan(0);
 
-  // A blow changes no cell: the chunk is baked again and nothing is sent.
+  // A blow that takes a piece a stage down changes no cell: the chunk is baked again and nothing is sent.
   const [sent, bakes] = [stats.far, stats.bakes];
-  world.structs.damage(near[0]!, 1);
+  world.structs.damage(near[0]!, 60);
   expect(run(a, 2048, 7000, () => stats.bakes > bakes)).toBeGreaterThan(0);
   run(a, 2048, 1100);
   expect(stats.far).toBe(sent);
@@ -170,7 +170,7 @@ test("a view and a reach the server is too busy to take are asked for again a se
 test("on one stream as Linux runs it, 400 base chunks in reach hold a join's near chunks back not at all, and freeze no one", () => {
   // A survivor joins beside a 3,000-piece base, 100 ms there and back, asking for 2 km of far cells and, on a twin server, for none.
   const r = farJoin({ rtt: 100, loss: 0, bases: 400, near: 3000, herd: 0, seconds: 7 });
-  expect(r.nearMs[1]).toBeGreaterThan(300);
+  expect(r.nearMs[1]).toBeGreaterThan(200);
   expect(r.nearMs[0]).toBeLessThanOrEqual(r.nearMs[1] * 1.05);
   expect(r.frozen).toEqual([0, 0]);
   // The feed was busy meanwhile: most of the base chunks in reach came within the seven seconds, at 8 KB a second.

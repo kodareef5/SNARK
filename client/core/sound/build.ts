@@ -43,6 +43,9 @@ const CITY_GAIN = 0.9;
 const FIRE_REACH = 20;
 const FIRES = 3;
 const FIRE_FRAMES = 8;
+/** Frames and metres within which a blow heard from the player's own hit and one heard from its row are the same blow. */
+const SAME_BLOW_FRAMES = 20;
+const SAME_BLOW_REACH = 5;
 
 /** Fills `out` with x, y, z and kind of each structure within about `r` metres of (x, z) that burns. */
 export type Lit = (x: number, z: number, r: number, out: number[]) => void;
@@ -63,6 +66,9 @@ export class BuildSounds implements BreakSounds {
   private readonly fires: number[] = [];
   private readonly near: number[] = [];
   private frame = 0;
+  /** The last blow heard from the player's own hit, and the last heard from a row: frames left to pair each, and where. */
+  private readonly ownBlow = [0, 0, 0, 0];
+  private readonly rowBlow = [0, 0, 0, 0];
 
   constructor(reg: Registry, ownerOf: (id: string) => number) {
     this.reg = reg;
@@ -93,6 +99,28 @@ export class BuildSounds implements BreakSounds {
   /** A structure row changed (ClientSession.onStructure). Heard on the next frame. */
   structure(was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause: number): void {
     this.queue.push(() => this.heardStructure(was, kind, x, y, z, hpWas, hp, cause));
+  }
+
+  /**
+   * The player's own blow of `damage` landed on a built piece of `kind` (EVENT_HIT). An owned piece's row comes only when
+   * the blow takes it out of its stage of health, so the blow is heard from the hit, and its row, if one comes, is not.
+   */
+  struck(kind: number, x: number, y: number, z: number, damage: number): void {
+    if (this.reg.defs[kind]?.type !== "structure" || this.placed[kind] === 1) return;
+    if (this.paired(this.rowBlow, x, y, z)) return;
+    this.ownBlow[0] = SAME_BLOW_FRAMES;
+    this.ownBlow[1] = x;
+    this.ownBlow[2] = y;
+    this.ownBlow[3] = z;
+    const level = Math.min(1, 0.5 + (damage / Math.max(1, this.reg.maxHp[kind]!)) * 4);
+    this.queue.push(() => this.hear!(this.owner[kind]!, HIT[this.tier[kind]!]!, -1, x, y, z, 0.5, level, false));
+  }
+
+  /** Whether `blow` is waiting within reach of (x, y, z). It is then spent. */
+  private paired(blow: number[], x: number, y: number, z: number): boolean {
+    if (blow[0]! <= 0 || Math.hypot(x - blow[1]!, y - blow[2]!, z - blow[3]!) > SAME_BLOW_REACH) return false;
+    blow[0] = 0;
+    return true;
   }
 
   /**
@@ -144,6 +172,8 @@ export class BuildSounds implements BreakSounds {
     this.hear = hear;
     for (const f of this.queue) f();
     this.queue.length = 0;
+    if (this.ownBlow[0]! > 0) this.ownBlow[0]!--;
+    if (this.rowBlow[0]! > 0) this.rowBlow[0]!--;
     const fires = this.fires;
     if (this.frame++ % FIRE_FRAMES === 0) {
       fires.length = 0;
@@ -195,8 +225,17 @@ export class BuildSounds implements BreakSounds {
       }
       return;
     }
-    if (hp < hpWas) hear(o, HIT[t]!, -1, x, y, z, 0.5, this.placed[kind] === 1 ? CITY_GAIN : Math.min(1, 0.5 + (hpWas - hp) / Math.max(1, reg.maxHp[kind]!) * 4), false);
-    else if (hp > hpWas) hear(o, K.repair, -1, x, y, z, 0.5, 0.8, false);
+    if (hp < hpWas) {
+      // The player's own blow was heard from its hit.
+      if (this.placed[kind] !== 1 && this.paired(this.ownBlow, x, y, z)) return;
+      if (this.placed[kind] !== 1) {
+        this.rowBlow[0] = SAME_BLOW_FRAMES;
+        this.rowBlow[1] = x;
+        this.rowBlow[2] = y;
+        this.rowBlow[3] = z;
+      }
+      hear(o, HIT[t]!, -1, x, y, z, 0.5, this.placed[kind] === 1 ? CITY_GAIN : Math.min(1, 0.5 + (hpWas - hp) / Math.max(1, reg.maxHp[kind]!) * 4), false);
+    } else if (hp > hpWas) hear(o, K.repair, -1, x, y, z, 0.5, 0.8, false);
   }
 
   private heardNode(kind: number, x: number, y: number, z: number): void {

@@ -42,9 +42,10 @@
 //                            slot, which ends the row), x and z 15 bits each (1/512 m from the chunk's corner),
 //                            height 1 bit set if it is the last full row's, else svarint from it (1/512 m, from 0
 //                            for the first), yaw (named u16), owner (named varint), health. Health is 1 bit set for
-//                            the kind's most, else f32. A value named is 0 and its place among those the message
+//                            the kind's most, else f32 for a piece nobody owns and a stage u8 for an owned one
+//                            (healthStage). A value named is 0 and its place among those the message
 //                            named before (as few bits as their count needs), or 1 and the value; see Named.
-//     CHUNK_DROP reliable    chunk u16
+//     CHUNK_DROP reliable    chunk u16. The client may keep the chunk's rows aside and say so when near again (CMD_HAVE).
 //     REJECT    reliable     reason u8, and for REJECT_TRAVEL why, as a string
 //     RESULT    reliable     command sequence u16 (0 when no command asked), code u8
 //     TEXT      reliable     channel u8, text string
@@ -495,6 +496,15 @@ export const CMD_MARK = command();
  */
 export const CMD_THROW = command();
 export const CMD_AIR_SUPPORT = command();
+/**
+ * The chunks a client kept when told to drop them and is near again: a count u8, HAVE_MOST at most, then chunk u16 and
+ * the version u32 it holds of each. Sent before the answer: a drop for each the server will send whole. Sent after it:
+ * for each of the rest, the rows changed since that version, a header alone where none did.
+ */
+export const CMD_HAVE = command();
+export const HAVE_MOST = 16;
+/** Chunks from its own within which a client says what it kept: the server's structRadius and the one more it lets go at. */
+export const HAVE_REACH = 4;
 export const SPOT_TICKS = 1800;
 export const SPOTS_MOST = 8;
 /** Metres a flown drone's camera looks along its middle: what its operator is told of, and may mark (CMD_MARK). */

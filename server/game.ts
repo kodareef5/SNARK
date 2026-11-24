@@ -66,7 +66,7 @@ const DEFAULTS: GameOptions = {
   viewCap: 1024,
   entityRadius: 3,
   structRadius: 3,
-  chunkSlotsPerTick: 256,
+  chunkSlotsPerTick: 1024,
   maxClients: 128,
   lingerTicks: 150,
   spectators: "admin",
@@ -187,6 +187,10 @@ export class Client {
   /** Version of each chunk's used-up nodes the client holds. */
   readonly nodesKnown: Uint32Array;
   readonly subscribed: number[] = [];
+  /** The version it held of each chunk it was last told to drop, oldest first, PARK_KEPT at most: what CMD_HAVE is held to. */
+  readonly parked = new Map<number, number>();
+  /** Chunks it said it kept and was believed, still to be brought up to date. */
+  readonly claimed: number[] = [];
   syncChunk = -1;
   /** Bytes of chunk messages sent on each of the last 32 ticks, and the tick each slot is for. */
   readonly chunkSent = new Uint32Array(32);
@@ -253,6 +257,8 @@ export class Client {
     this.known.fill(0);
     this.nodesKnown.fill(0);
     this.subscribed.length = 0;
+    this.parked.clear();
+    this.claimed.length = 0;
     this.syncChunk = -1;
     this.chunkSent.fill(0);
     this.rowsWaiting = false;
