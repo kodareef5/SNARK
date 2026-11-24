@@ -1273,7 +1273,7 @@ export class Rasterizer {
         // As ownVertex's vMade: a near chunk's piece's material, but on a face in the core's colour, and over it its wear.
         this.made = word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
-        // As FLAT_MESH_VERTEX's uTint: a piece about to be built is one colour.
+        // As FLAT_MESH_VERTEX's uOneColor: a piece about to be built is one colour.
         if (tint > 0) color = tint - 1;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.edgeFlags = this.onStatic ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
