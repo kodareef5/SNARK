@@ -114,6 +114,17 @@ test("the shore clock opens face-on, completes a turn about the keel, and keeps 
   expect(cast.eye.yaw).toBe(start);
 });
 
+test("a preset can frame the coast, the Rex alone, or the mounted pair", () => {
+  const cam = new Camera(), { cast, actors } = beachCast(), scene = { characters: {} } as Scene;
+  for (const [subject, count] of [["coast", 0], ["rex", 1], ["rider", 2]] as const) {
+    const shot = { ...OPENING_SHOT, subject };
+    expect(validShot(shot)).toBe(true);
+    shoreView(scene, cam, actors, shot, 0, 0, 0, cast);
+    expect(actors.count).toBe(count);
+  }
+  expect(validShot({ ...OPENING_SHOT, subject: "missing" })).toBe(false);
+});
+
 test("the clock and seated gaze move while the shoulder camera holds steady in the authored sunset", () => {
   const cam = new Camera(), { cast, actors } = beachCast(), scene = { characters: {} } as Scene;
   const view = (t: number, mx = 0) => {

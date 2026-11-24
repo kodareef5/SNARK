@@ -9,10 +9,12 @@ export const CAMERA_FIELDS = {
   hour: ["Sun hour", 0, 23.95, 0.05],
 } as const;
 export type CameraField = keyof typeof CAMERA_FIELDS;
+export type ShoreSubject = "rider" | "rex" | "coast";
 export interface TitleShot {
   id: string;
   name: string;
   set: "wynwood-shore";
+  subject?: ShoreSubject;
   camera: Record<CameraField, number>;
 }
 export const OPENING_SHOT: TitleShot = {
@@ -26,6 +28,7 @@ export function validShot(value: unknown): value is TitleShot {
   const s = value as TitleShot;
   if (
     s.set !== OPENING_SHOT.set ||
+    (s.subject !== undefined && s.subject !== "rider" && s.subject !== "rex" && s.subject !== "coast") ||
     typeof s.id !== "string" ||
     !/^[a-z0-9][a-z0-9-]{0,47}$/.test(s.id) ||
     typeof s.name !== "string" ||

@@ -150,9 +150,11 @@ async function start() {
     cam = new Camera(),
     flight = new AnimState();
   const cast = shore ? mountRex(actors, shore, reg) : null;
-  const focus = shore ? heroMeshes.map((id) => scene.assets.table.find(id)).filter((m) => m >= 0) : undefined;
+  const meshIds = (ids: readonly string[]) => ids.map(id => scene.assets.table.find(id)).filter(mesh => mesh >= 0);
+  const subjects = shore ? { rider: meshIds(heroMeshes), rex: meshIds(heroMeshes.slice(0, 2)), coast: [] } : undefined;
+  let focus = subjects?.[preset.subject ?? "rider"];
   const readyToReveal = () => {
-    if (!focus?.length) return false;
+    if (!focus) return false;
     return focus.every((mesh) => {
       if (!scene.assets.known(mesh)) return false;
       const level = scene.assets.heldLevel(mesh, 0);
@@ -189,7 +191,10 @@ async function start() {
     cam.aspect = w / h;
     cam.fovY = 0.88;
     const flying = (shot === "flight" || shot === "splash") && head.id === route.map;
-    if (cast) shoreView(scene, cam, actors, preset, seconds, mx, my, cast);
+    if (cast) {
+      focus = subjects![preset.subject ?? "rider"];
+      shoreView(scene, cam, actors, preset, seconds, mx, my, cast);
+    }
     else {
       actors.count = shot === "region" ? 0 : flying ? 2 : 1;
       actors.tick = seconds * 30;
