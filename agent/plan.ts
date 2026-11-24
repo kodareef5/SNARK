@@ -1,7 +1,7 @@
 // The grunt protocol's build helper for SNARK (grunt/protocol.md "Building"), worked with a player's own place
-// command. A plan's pieces sit on a grid of foundation cells; each is resolved to what a builder would aim at (a piece
-// of the tribe's and one of its snap points, or open ground) by the pose the game itself predicts (shared/world/snap.ts
-// poseAt, which goes through the slot a snap point means), so no table of snap points is written here. A whole plan is
+// command. A plan's pieces sit on a grid of foundation cells; each is resolved to what a builder would aim at (a slot
+// that the tribe's pieces offer, or open ground) by the pose the game itself gives the slot (shared/world/lattice/place.ts
+// slotsNear), so no table of places is written here and a base turned any way is joined as it stands. A whole plan is
 // checked before anything is sent, on a scratch copy of the structure store, with the server's own checks in the
 // server's order (as client/core/build.ts previews a piece): terrain, room, enemies, support.
 //
@@ -12,12 +12,10 @@ import type { ClientSession } from "../client/core/session.ts";
 import { RISE, SPAN } from "../content/building.ts";
 import type { Building, FormSpec, Plan, PlanPiece, PieceVerdict, Side } from "../grunt/protocol.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../shared/coords.ts";
-import {
-  LIFT_MAX, LIFT_MIN, ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_STAIRS, ROLE_THING, ROLE_WALL, makeSockets,
-  freePose, obstructed, poseAt, restPose, slotAt, socketsOf, tooHigh, turnsOf, type Pose,
-} from "../shared/world/snap.ts";
+import { LIFT_MAX, LIFT_MIN, ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_STAIRS, ROLE_THING, ROLE_WALL, freePose, restPose, tooHigh, type Pose } from "../shared/world/snap.ts";
 import { RESULT_OBSTRUCTED } from "../shared/net/protocol.ts";
-import { makeVerdict, validate } from "../shared/world/lattice/place.ts";
+import { poseOf, type LatticeKey, type LatticePose } from "../shared/world/lattice/frames.ts";
+import { makeCandidates, makeVerdict, slotsNear, startBase, validate, validateFree, type Site } from "../shared/world/lattice/place.ts";
 import { Found, StructureStore } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
 import { shortName } from "./observe.ts";
@@ -28,6 +26,34 @@ const OUT: Record<Side, [number, number]> = { n: [0, -1], e: [1, 0], s: [0, 1], 
 const NEAR = 0.3;
 /** The server refuses a foundation of another tribe's within this, and a pillar within the second (server/build.ts). */
 const ENEMY_FOUNDATION = 50, ENEMY_PILLAR = 10;
+
+/** The quarter turn nearest a yaw. */
+function quarters(yaw: number): number {
+  return Math.round(yaw / QUARTER) & 3;
+}
+
+/** What is left of a yaw past its nearest quarter turn, in radians. */
+function past(yaw: number): number {
+  return ((yaw - Math.round(yaw / QUARTER) * QUARTER) / YAW_UNITS) * Math.PI * 2;
+}
+
+/**
+ * (dx, dz) on a grid turned `yaw`: by its nearest quarter turn, each taking (dx, dz) to (-dz, dx), and then by what is
+ * left of the yaw along the base's own axes, so a cell of the grid is a square of the base however it stands.
+ */
+function turned(dx: number, dz: number, yaw: number): [number, number] {
+  for (let t = 0; t < quarters(yaw); t++) [dx, dz] = [-dz, dx];
+  const a = past(yaw);
+  return a === 0 ? [dx, dz] : [dx * Math.cos(a) + dz * Math.sin(a), dz * Math.cos(a) - dx * Math.sin(a)];
+}
+
+/** `turned` the other way. */
+function unturned(dx: number, dz: number, yaw: number): [number, number] {
+  const a = past(yaw);
+  if (a !== 0) [dx, dz] = [dx * Math.cos(a) - dz * Math.sin(a), dz * Math.cos(a) + dx * Math.sin(a)];
+  for (let t = 0; t < (4 - quarters(yaw)) % 4; t++) [dx, dz] = [-dz, dx];
+  return [dx, dz];
+}
 
 /** A form's class of place, from the role its structure has (grunt's FormSpec.place). */
 function placeOf(role: number, doorway: boolean): FormSpec["place"] {
@@ -40,11 +66,13 @@ function placeOf(role: number, doorway: boolean): FormSpec["place"] {
   return doorway ? "edge" : "edge";
 }
 
-/** Where a plan lies on SNARK's ground: cell 0, 0's middle, its quarter turns, the height of its floor's top. */
+/** Where a plan lies on SNARK's ground: cell 0, 0's middle, its turn, the height of its floor's top. */
 export interface Frame {
   x: number;
   z: number;
+  /** The quarter turn nearest its yaw, for the protocol, and the yaw itself: a base stands at any. */
   turns: number;
+  yaw: number;
   /** The first foundation's middle, metres: the base's height. NaN until known. */
   y: number;
   /** The base's first foundation, once it stands. */
@@ -53,16 +81,19 @@ export interface Frame {
   off: [number, number];
 }
 
-/** How a piece goes on: a snap point of a piece, on top of a floor, or open ground. */
+/** How a piece goes on: in a slot of a base, on top of a floor, or on open ground. */
 export interface Resolution {
   kind: number;
   variant: number;
   item: string;
   form: string;
-  how: "socket" | "top" | "ground";
+  how: "slot" | "top" | "ground";
+  /** On top: the floor. */
   target: number;
-  socket: number;
-  turn: number;
+  /** In a slot: its base's frame and its key, the piece's turn in it. */
+  fr: number;
+  k0: number;
+  k1: number;
   /** Open ground: steps of an eighth of a metre. */
   lift: number;
   pose: Pose;
@@ -76,10 +107,10 @@ export interface Verdict {
 
 export class Planner {
   readonly session: ClientSession;
-  private readonly sockets = makeSockets();
   private readonly found = new Found();
   private readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  private readonly slot = { fr: 0, k0: 0, k1: 0 };
+  private readonly made: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
+  private readonly slots = makeCandidates();
   private readonly verdict = makeVerdict();
 
   constructor(session: ClientSession) {
@@ -95,6 +126,11 @@ export class Planner {
   }
 
   private heightAt = (x: number, z: number): number => this.session.world!.hf.heightAt(x, z);
+
+  /** What the shared slot rules read of `store`. Bodies, enemies and support are judged here, as `judge` orders them. */
+  private site(store: StructureStore): Site {
+    return { structs: store, tables: this.reg, heightAt: this.heightAt };
+  }
 
   // --- What the game builds ----------------------------------------------------------------------------------------
 
@@ -146,15 +182,14 @@ export class Planner {
   at(f: Frame, dx: number, dz: number): [number, number] {
     dx += f.off[0] * SPAN;
     dz += f.off[1] * SPAN;
-    for (let t = 0; t < f.turns; t++) [dx, dz] = [-dz, dx];
+    [dx, dz] = turned(dx, dz, f.yaw);
     // The protocol's east and south are SNARK's -x and -z.
     return [f.x - dx, f.z - dz];
   }
 
   /** A side of the grid as a direction in SNARK's ground. */
   dir(f: Frame, side: Side): [number, number] {
-    let [dx, dz] = OUT[side];
-    for (let t = 0; t < f.turns; t++) [dx, dz] = [-dz, dx];
+    const [dx, dz] = turned(OUT[side][0], OUT[side][1], f.yaw);
     return [-dx, -dz];
   }
 
@@ -165,7 +200,7 @@ export class Planner {
       const ref = this.foundationOf(String(plan.anchor.base));
       const row = ref < 0 ? null : this.row(world.structs, ref);
       if (!row) return `${plan.anchor.base} is not a piece of a base`;
-      return { x: row.x, z: row.z, y: row.y, turns: this.turnsOf(row.yaw), base: ref, off: [0, 0] };
+      return { x: row.x, z: row.z, y: row.y, turns: quarters(row.yaw), yaw: row.yaw, base: ref, off: [0, 0] };
     }
     const turns = (((plan.anchor.turns ?? 0) % 4) + 4) % 4;
     const [x, z] = [-plan.anchor.at[0], -plan.anchor.at[1]];
@@ -174,14 +209,13 @@ export class Planner {
     for (let i = 0; i < n; i++) {
       const ref = this.found.refs[i]!;
       const r = this.row(world.structs, ref)!;
-      if (this.reg.role[r.kind] !== ROLE_FOUNDATION || r.owner !== this.team || this.team === 0 || this.turnsOf(r.yaw) !== turns) continue;
-      // The point in the base's cells: back through its turns.
-      let [dx, dz] = [-(x - r.x), -(z - r.z)];
-      for (let t = 0; t < (4 - turns) % 4; t++) [dx, dz] = [-dz, dx];
+      if (this.reg.role[r.kind] !== ROLE_FOUNDATION || r.owner !== this.team || this.team === 0 || quarters(r.yaw) !== turns) continue;
+      // The point in the base's cells: back through its turn.
+      const [dx, dz] = unturned(-(x - r.x), -(z - r.z), r.yaw);
       const [ci, cj] = [dx / SPAN, dz / SPAN];
-      if (Math.abs(ci - Math.round(ci)) < 0.1 && Math.abs(cj - Math.round(cj)) < 0.1) return { x: r.x, z: r.z, y: r.y, turns, base: ref, off: [Math.round(ci), Math.round(cj)] };
+      if (Math.abs(ci - Math.round(ci)) < 0.1 && Math.abs(cj - Math.round(cj)) < 0.1) return { x: r.x, z: r.z, y: r.y, turns, yaw: r.yaw, base: ref, off: [Math.round(ci), Math.round(cj)] };
     }
-    return { x, z, y: NaN, turns, base: -1, off: [0, 0] };
+    return { x, z, y: NaN, turns, yaw: turns * QUARTER, base: -1, off: [0, 0] };
   }
 
   /** The foundation a base is known by, from its id or any piece of it (a door, a wall, a box set down): the piece
@@ -201,10 +235,6 @@ export class Planner {
       if (d < bestD) (bestD = d), (best = f);
     }
     return best;
-  }
-
-  private turnsOf(yaw: number): number {
-    return Math.round(yaw / QUARTER) & 3;
   }
 
   private row(store: StructureStore, ref: number) {
@@ -236,7 +266,7 @@ export class Planner {
     const ref0 = this.foundationOf(base);
     const r0 = ref0 < 0 ? null : this.row(store, ref0);
     if (!r0) return null;
-    const f: Frame = { x: r0.x, z: r0.z, y: r0.y, turns: this.turnsOf(r0.yaw), base: ref0, off: [0, 0] };
+    const f: Frame = { x: r0.x, z: r0.z, y: r0.y, turns: quarters(r0.yaw), yaw: r0.yaw, base: ref0, off: [0, 0] };
     // The base: the tribe's pieces reached from its foundation, piece to piece within a cell.
     const seen = new Set([ref0]), todo = [ref0];
     while (todo.length) {
@@ -251,9 +281,7 @@ export class Planner {
     }
     // Back from SNARK's ground to the grid: metres east and south of cell 0, 0, unturned.
     const unturn = (x: number, z: number): [number, number] => {
-      let [dx, dz] = [f.x - x, f.z - z];
-      for (let t = 0; t < (4 - f.turns) % 4; t++) [dx, dz] = [-dz, dx];
-      return [dx, dz];
+      return unturned(f.x - x, f.z - z, f.yaw);
     };
     const sideOf = (dx: number, dz: number): Side => {
       const best = (Object.entries(OUT) as [Side, [number, number]][]).sort((a, b) => b[1][0] * dx + b[1][1] * dz - (a[1][0] * dx + a[1][1] * dz))[0]!;
@@ -314,7 +342,7 @@ export class Planner {
 
   // --- One piece ---------------------------------------------------------------------------------------------------
 
-  /** How `p` goes on in `store`: the snap point of a piece whose predicted pose is where the grid wants it, else (a
+  /** How `p` goes on in `store`: the slot the tribe's pieces offer whose pose is where the grid wants it, else (a
    * foundation, a pillar on the ground, a thing) open ground or a floor's top. */
   resolve(store: StructureStore, f: Frame, p: PlanPiece, spec: FormSpec): Resolution | null {
     const reg = this.reg;
@@ -323,48 +351,48 @@ export class Planner {
     const role = reg.role[k.kind]!;
     const e = this.expected(f, p, spec.place);
     const ey = Number.isNaN(f.y) ? NaN : f.y + e.up;
-    const base = { kind: k.kind, variant: k.variant, item: p.item, form: p.form, lift: 0 };
+    const base = { kind: k.kind, variant: k.variant, item: p.item, form: p.form, lift: 0, target: -1, fr: 0, k0: 0, k1: 0 };
     // A thing: on top of the floor under the spot (or on the ground).
     if (role === ROLE_THING) {
       const floor = this.floorUnder(store, e.x, e.z, ey);
-      const yaw = (f.turns * QUARTER) & (YAW_UNITS - 1);
-      if (floor >= 0 && restPose(store, reg, floor, k.kind, e.x, e.z, yaw, this.pose)) return { ...base, how: "top", target: floor, socket: 0, turn: 0, pose: { ...this.pose } };
+      const yaw = f.yaw & (YAW_UNITS - 1);
+      if (floor >= 0 && restPose(store, reg, floor, k.kind, e.x, e.z, yaw, this.pose)) return { ...base, how: "top", target: floor, pose: { ...this.pose } };
       if (!freePose(this.heightAt, reg, k.kind, e.x, e.z, yaw, 0, this.pose)) return null;
-      return { ...base, how: "ground", target: -1, socket: 0, turn: 0, pose: { ...this.pose } };
+      return { ...base, how: "ground", pose: { ...this.pose } };
     }
-    // Every piece of the tribe's near, every snap point, every turn: the pose nearest where the grid wants it.
+    // Every slot the tribe's pieces offer near, at every turn: the pose nearest where the grid wants it.
     let best: Resolution | null = null, bestScore = Infinity;
     const want = p.up ? this.dir(f, p.up) : null;
-    const n = store.query(e.x - 4.6, e.z - 4.6, e.x + 4.6, e.z + 4.6, this.found);
-    const refs = this.found.refs.slice(0, n);
-    for (const ref of refs) {
-      const r = this.row(store, ref);
-      if (!r || (r.owner !== this.team && r.owner !== -1)) continue;
-      const m = socketsOf(store, reg, ref, k.kind, this.sockets);
-      for (let s = 0; s < m; s++) {
-        for (let t = 0; t < turnsOf(role); t++) {
-          if (!poseAt(store, reg, ref, k.kind, s, t, this.pose)) continue;
-          const px = this.pose.x / STRUCT_UNITS, py = this.pose.y / STRUCT_UNITS, pz = this.pose.z / STRUCT_UNITS;
-          const d = Math.hypot(px - e.x, pz - e.z);
-          if (d > NEAR) continue;
-          if (!Number.isNaN(ey) && Math.abs(py - ey) > 1.3) continue;
-          let score = d + (Number.isNaN(ey) ? 0 : Math.abs(py - ey) * 0.2);
-          // Stairs climb toward the side asked: their +Z (sin, cos of the yaw) along it.
-          if (want) {
-            const a = (this.pose.yaw / YAW_UNITS) * Math.PI * 2;
-            score += (1 - (Math.sin(a) * want[0] + Math.cos(a) * want[1])) * 2;
-          }
-          if (score < bestScore) (bestScore = score), (best = { ...base, how: "socket", target: ref, socket: s, turn: t, pose: { ...this.pose } });
-        }
+    // A wall faces out of the cell it is told on: its own +Z along that side.
+    const out = !want && spec.place !== "floor" && p.side ? this.dir(f, p.side) : null;
+    const forms = reg.forms;
+    const turns = forms.turns[k.kind] ?? 1;
+    const slots = this.slots;
+    const n = slotsNear(this.site(store), k.kind, this.team, e.x, Number.isNaN(ey) ? this.heightAt(e.x, e.z) + RISE / 2 : ey, e.z, slots);
+    for (let s = 0; s < n; s++) {
+      const frame = store.frames.get(slots.fr[s]!)!;
+      for (let t = 0; t < turns; t++) {
+        const k1 = (slots.k1[s]! | (t << 26)) >>> 0;
+        poseOf(frame, slots.k0[s]!, k1, forms, k.kind, this.made);
+        const px = this.made.x / STRUCT_UNITS, py = this.made.y / STRUCT_UNITS, pz = this.made.z / STRUCT_UNITS;
+        const d = Math.hypot(px - e.x, pz - e.z);
+        if (d > NEAR) continue;
+        if (!Number.isNaN(ey) && Math.abs(py - ey) > 1.3) continue;
+        let score = d + (Number.isNaN(ey) ? 0 : Math.abs(py - ey) * 0.2);
+        // Stairs climb toward the side asked: their +Z (sin, cos of the yaw) along it.
+        const a = (this.made.yaw / YAW_UNITS) * Math.PI * 2;
+        if (want) score += (1 - (Math.sin(a) * want[0] + Math.cos(a) * want[1])) * 2;
+        else if (out) score += (1 - (Math.sin(a) * out[0] + Math.cos(a) * out[1])) * 0.01;
+        if (score < bestScore) (bestScore = score), (best = { ...base, how: "slot", fr: slots.fr[s]!, k0: slots.k0[s]!, k1, pose: { x: this.made.x, y: this.made.y, z: this.made.z, yaw: this.made.yaw } });
       }
     }
     if (best) return best;
     // Nothing to join: on the ground, if it stands there by itself (and is the ground storey).
     if ((role === ROLE_FOUNDATION || role === ROLE_PILLAR) && p.level === 0) {
-      const yaw = (f.turns * QUARTER) & (YAW_UNITS - 1);
+      const yaw = f.yaw & (YAW_UNITS - 1);
       const lift = role === ROLE_FOUNDATION && !Number.isNaN(f.y) ? this.liftFor(e.x, e.z, k.kind, yaw, f.y) : 0;
       if (!freePose(this.heightAt, reg, k.kind, e.x, e.z, yaw, lift, this.pose)) return null;
-      return { ...base, lift, how: "ground", target: -1, socket: 0, turn: 0, pose: { ...this.pose } };
+      return { ...base, lift, how: "ground", pose: { ...this.pose } };
     }
     return null;
   }
@@ -434,16 +462,14 @@ export class Planner {
     if (tooHigh(this.heightAt, reg, res.kind, pose)) return { verdict: { status: "too_high", fix: "the ground falls away there: another site, or stand it on pillars" }, res };
     const x = pose.x / STRUCT_UNITS, y = pose.y / STRUCT_UNITS, z = pose.z / STRUCT_UNITS;
     // A piece that joins is asked by its slot, as the server asks it: its neighbours are not in its way.
-    const joined = res.how === "socket" && slotAt(store, reg, res.target, res.kind, res.socket, res.turn, this.slot);
-    const taken = joined
-      ? validate({ structs: store, tables: reg, heightAt: this.heightAt }, res.kind, this.team, this.slot.fr, this.slot.k0, this.slot.k1, x, y, z, this.verdict) === RESULT_OBSTRUCTED
-      : obstructed(store, reg.parts, res.kind, x, y, z, pose.yaw);
+    const joined = res.how === "slot";
+    const taken = (joined ? validate(this.site(store), res.kind, this.team, res.fr, res.k0, res.k1, x, y, z, this.verdict) : validateFree(this.site(store), res.kind, pose, x, y, z, this.verdict)) === RESULT_OBSTRUCTED;
     if (taken) return { verdict: { status: "blocked", by: this.nearestRow(store, x, z), fix: "something built is in the way" }, res };
     const body = this.bodyIn(res.kind, x, y, z);
     if (body) return { verdict: { status: "blocked", by: body, fix: body === "you" ? "step out of its way" : "wait for it to move" }, res };
     const enemy = this.enemyNear(res.kind, x, z);
     if (enemy) return { verdict: { status: "enemy_near", by: enemy, fix: "another tribe builds near: build farther off" }, res };
-    if (!support.stands(res.kind, pose.x, pose.y, pose.z, pose.yaw)) return { verdict: { status: "no_support", fix: "nothing holds it up: a wall or pillar near, or a floor under it" }, res };
+    if (!(joined ? support.standsAt(res.kind, res.fr, res.k0, res.k1) : support.stands(res.kind, pose.x, pose.y, pose.z))) return { verdict: { status: "no_support", fix: "nothing holds it up: a wall or pillar near, or a floor under it" }, res };
     return { verdict: { status: "ok" }, res };
   }
 
@@ -488,7 +514,7 @@ export class Planner {
 
   // --- A whole plan ------------------------------------------------------------------------------------------------
 
-  /** A copy of the tribe's pieces about a plan's site, to check a plan on without touching what the client holds. */
+  /** A copy of what stands about a plan's site, each base under its own number, to check a plan on without touching what the client holds. */
   scratch(f: Frame, pieces: PlanPiece[]): StructureStore {
     const s = this.session, world = s.world!, reg = this.reg;
     const store = new StructureStore(world.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -499,9 +525,16 @@ export class Planner {
     }
     const n = world.structs.query(x0 - 15, z0 - 15, x1 + 15, z1 + 15, this.found);
     const refs = this.found.refs.slice(0, n);
+    const key: LatticeKey = { fr: 0, k0: 0, k1: 0 };
     for (const ref of refs) {
       const r = this.row(world.structs, ref)!;
-      store.add(r.kind, r.x, r.y, r.z, r.yaw, r.owner, r.hp);
+      if (!world.structs.keyAt(ref, key)) {
+        store.add(r.kind, r.x, r.y, r.z, r.yaw, r.owner, r.hp);
+        continue;
+      }
+      const from = world.structs.frames.get(key.fr)!;
+      if (!store.frames.get(key.fr)) store.frames.make(from.ox, from.oy, from.oz, from.yaw, from.team, key.fr);
+      store.place(r.kind, key.fr, key.k0, key.k1, r.owner, r.hp);
     }
     return store;
   }
@@ -522,7 +555,11 @@ export class Planner {
       // A piece that can go (or a builder standing in its way, who steps aside) stands for what follows.
       const goes = verdict.status === "ok" || (verdict.status === "blocked" && verdict.by === "you");
       if (res && goes) {
-        const ref = store.add(res.kind, res.pose.x / STRUCT_UNITS, res.pose.y / STRUCT_UNITS, res.pose.z / STRUCT_UNITS, res.pose.yaw, this.team, this.reg.maxHp[res.kind] ?? 1);
+        const hp = this.reg.maxHp[res.kind] ?? 1;
+        // As the server sets it down: in its slot, as a new base's first piece, or a thing by its pose.
+        const ref = res.how === "slot" ? store.place(res.kind, res.fr, res.k0, res.k1, this.team, hp)
+          : this.reg.forms.cls[res.kind]! >= 0 ? startBase(store, res.kind, res.pose, this.team, hp)
+          : store.add(res.kind, res.pose.x / STRUCT_UNITS, res.pose.y / STRUCT_UNITS, res.pose.z / STRUCT_UNITS, res.pose.yaw, this.team, hp);
         if (Number.isNaN(f.y) && this.reg.role[res.kind] === ROLE_FOUNDATION) (f.y = res.pose.y / STRUCT_UNITS), (f.base = ref);
       } else if (res && verdict.status === "built" && Number.isNaN(f.y) && this.reg.role[res.kind] === ROLE_FOUNDATION) f.y = res.pose.y / STRUCT_UNITS;
     }

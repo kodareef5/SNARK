@@ -9,7 +9,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { Rng } from "../../shared/rng.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { scanNear } from "../../tests/fixtures/enemy-scan.ts";
-import { BASE_TIERS, boxBase, type Piece } from "./base.ts";
+import { BASE_TIERS, boxBase, layBase, type Piece } from "./base.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -30,9 +30,7 @@ export function claimsRows(section: Section, record: Row): void {
   for (let b = 0; b < BASES; b++) bases.push(boxBase(reg, BASE_TIERS[b % 3]!, Math.round(rng.range(400, 7790) / 3) * 3 - 21, 0, Math.round(rng.range(400, 7790) / 3) * 3 - 21, 14, 3, 2000));
   const fill = (structs: StructureStore): number => {
     const t0 = performance.now();
-    bases.forEach((base, b) => {
-      for (const [kind, x, y, z, yaw] of base) structs.add(kind, x, y, z, yaw, b + 1, 100);
-    });
+    bases.forEach((base, b) => layBase(structs, base, b + 1, 100));
     return performance.now() - t0;
   };
   const make = (): StructureStore => new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -57,7 +55,7 @@ export function claimsRows(section: Section, record: Row): void {
 
   // The siege's chunk: a wooden box base of a room a cell, 15 storeys, that fills chunk (20, 20) to its edges.
   const [x0, z0] = [20 * 64, 20 * 64];
-  for (const [kind, x, y, z, yaw] of boxBase(reg, "wood", x0 + 0.5, 0, z0 + 0.5, 21, 1, 20000)) structs.add(kind, x, y, z, yaw, BIG, 100);
+  layBase(structs, boxBase(reg, "wood", x0 + 0.5, 0, z0 + 0.5, 21, 1, 20000), BIG, 100);
   record("pieces in the big chunk", structs.chunks[20 * DIMS.chunksX + 20]!.live, "");
   // Another tribe's foundations on every 3 m of the eight cells by eight read from (px, pz) that is not within reach of it.
   const [px, pz] = [100 * 64 + 15, 20 * 64 + 15];

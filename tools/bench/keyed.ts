@@ -11,7 +11,7 @@ import { BitWriter } from "../../shared/net/codec.ts";
 import { Rng } from "../../shared/rng.ts";
 import { RowCoder } from "../../shared/world/rows.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
-import { BASE_TIERS, boxBase } from "./base.ts";
+import { BASE_TIERS, boxBase, layBase } from "./base.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -33,10 +33,10 @@ export function keyedRows(section: Section, record: Row, parent = "var"): void {
   const rng = new Rng(2026);
   for (let b = 0; b < BASES; b++) {
     const [x, z] = [Math.round(rng.range(400, 7790) / 3) * 3 - 21, Math.round(rng.range(400, 7790) / 3) * 3 - 21];
-    for (const [kind, px, py, pz, yaw] of boxBase(reg, BASE_TIERS[b % 3]!, x, 0, z, 14, 3, EACH)) structs.add(kind, px, py, pz, yaw, b + 1, reg.maxHp[kind]!);
+    layBase(structs, boxBase(reg, BASE_TIERS[b % 3]!, x, 0, z, 14, 3, EACH), b + 1, (kind) => reg.maxHp[kind]!);
   }
   const refs: number[] = [];
-  for (const [kind, x, y, z, yaw] of boxBase(reg, "wood", 2 * 64 + 0.5, 200, 2 * 64 + 0.5, 21, 1, 20000)) refs.push(structs.add(kind, x, y, z, yaw, 999, reg.maxHp[kind]!));
+  refs.push(...layBase(structs, boxBase(reg, "wood", 2 * 64 + 0.5, 200, 2 * 64 + 0.5, 21, 1, 20000), 999, (kind) => reg.maxHp[kind]!));
   const siege = structs.chunks[SIEGE]!;
   record("pieces placed", structs.count, "");
   record("frames", structs.frames.count, "");
@@ -106,19 +106,6 @@ export function keyedRows(section: Section, record: Row, parent = "var"): void {
   }
   record(`open, check and load ${structs.count} structures, median of 5`, median(loads), "ms", 400);
   record("the same, best", Math.min(...loads), "ms");
-  // The same rows put by their poses and keyed by the shim, as a load was before, with no save read: for the machine's pace.
-  const shim: number[] = [];
-  for (let n = 0; n < 5; n++) {
-    const to = make();
-    t0 = performance.now();
-    for (const c of structs.held) {
-      const t = structs.chunks[c]!;
-      for (let s = 0; s < t.high; s++) to.put(c, s, t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, t.owner[s]!, t.hp[s]!, t.mod[s]!);
-      to.setVersion(c, t.version);
-    }
-    shim.push(performance.now() - t0);
-  }
-  record("to put the same rows by their poses, the shim keying each, median of 5", median(shim), "ms");
   record("frames after the load", loaded.frames.count, "", structs.frames.count);
   let off = 0;
   for (const c of structs.held) {

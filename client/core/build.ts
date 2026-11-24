@@ -118,8 +118,8 @@ export class Builder {
   private session: ClientSession | null = null;
   private reg: Registry | null = null;
   private support: Support | null = null;
-  /** The last question support was asked (kind, pose, the store's shapes) and its answer, 1 if it stands. */
-  private readonly stood = new Float64Array(7).fill(-1);
+  /** The last question support was asked (kind, pose, the store's shapes) and its answer, 1 if it stands, then the frame it was asked in. */
+  private readonly stood = new Float64Array(8).fill(-1);
   /** The same for the other tribes' foundations near: the place, the team and the store's shapes, then 1 if one is too near, its metres and what it needs. */
   private readonly near = new Float64Array(7).fill(-1);
   /** The problem and its cause the notice was last worded for. */
@@ -163,11 +163,12 @@ export class Builder {
         return true;
       },
       // Asked again only when the piece, its pose or any piece's place has changed.
-      stands: (kind, x, y, z, yaw) => {
+      stands: (kind, x, y, z, yaw, fr, k0, k1) => {
         const s = this.stood;
-        if (s[0] !== kind || s[1] !== x || s[2] !== y || s[3] !== z || s[4] !== yaw || s[5] !== structs.shapes) {
+        if (s[0] !== kind || s[1] !== x || s[2] !== y || s[3] !== z || s[4] !== yaw || s[5] !== structs.shapes || s[7] !== fr) {
           s.set([kind, x, y, z, yaw, structs.shapes]);
-          s[6] = this.support!.stands(kind, x, y, z, yaw) ? 1 : 0;
+          s[7] = fr;
+          s[6] = (fr !== 0 ? this.support!.standsAt(kind, fr, k0, k1) : this.support!.stands(kind, x, y, z)) ? 1 : 0;
         }
         return s[6] === 1;
       },

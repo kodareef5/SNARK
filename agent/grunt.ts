@@ -540,7 +540,7 @@ export class SnarkWorld implements GameWorld {
       const [x, z] = [res.pose.x / STRUCT_UNITS, res.pose.z / STRUCT_UNITS];
       const facing = ((res.pose.yaw / YAW_UNITS) * 360 + 360) % 360;
       const asForm = shortName(s.registry.ids[res.kind]).replace(/_[a-z]+$/, "");
-      const args: Record<string, unknown> = res.how === "socket" ? { item: p.item, as: asForm, on: `s${res.target}`, socket: res.socket, turn: res.turn }
+      const args: Record<string, unknown> = res.how === "slot" ? { item: p.item, as: asForm, slot: [res.fr, res.k0, res.k1] }
         : res.how === "top" ? { item: p.item, on: `s${res.target}`, x, z, facing } : { item: p.item, as: asForm, x, z, facing, lift: res.lift / 8 };
       const t0 = this.t;
       // In reach, it builds from where it stands; in the piece's way, it steps off first.

@@ -8,8 +8,8 @@ import { Rng } from "../../shared/rng.ts";
 import type { LatticeKey } from "../../shared/world/lattice/frames.ts";
 import { cellAt } from "../../shared/world/lattice/occupancy.ts";
 import { keyLvl } from "../../shared/world/lattice/module.ts";
-import { StructureStore } from "../../shared/world/structures.ts";
-import { BASE_TIERS, boxBase, type Piece } from "./base.ts";
+import { PUT_FREE, StructureStore } from "../../shared/world/structures.ts";
+import { BASE_TIERS, boxBase, layBase, type Piece } from "./base.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -35,21 +35,20 @@ export function framesRows(section: Section, record: Row): void {
     });
     return performance.now() - t0;
   };
+  const bySlot = (structs: StructureStore): number => {
+    const t0 = performance.now();
+    bases.forEach((base, b) => layBase(structs, base, b + 1, 100));
+    return performance.now() - t0;
+  };
   const best = (run: () => number): number => Math.min(run(), run(), run());
-  byPose(make(true));
+  bySlot(make(true));
   const bare = best(() => byPose(make(false)));
   let structs = make(true);
-  const shim = best(() => byPose((structs = make(true))));
-  let free = 0;
-  for (const c of structs.held) {
-    const t = structs.chunks[c]!;
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && (!t.fr || t.fr[s] === 0)) free++;
-  }
+  const slotted = best(() => bySlot((structs = make(true))));
   record("pieces placed", structs.count, "");
-  record("pieces the shim left with a free pose", free, "");
   record("frames", structs.frames.count, "");
   record("to set them down by pose in a store with no forms", bare, "ms");
-  record("to set them down by pose, each keyed by the shim", shim, "ms");
+  record("to set them down by slot, each base begun by its first piece", slotted, "ms");
 
   // The same pieces by their keys, each base's frame made first with its origin.
   const keys: { kind: number; base: number; k0: number; k1: number }[] = [];
@@ -80,22 +79,23 @@ export function framesRows(section: Section, record: Row): void {
   if (keyed.count !== keys.length) throw new Error(`placed ${keyed.count} of ${keys.length} by key`);
   record("to set them down by key", placed, "ms");
 
-  // As a save loads them: rows put chunk by chunk in slot order, keyed by the shim as they come.
-  const load = (to: StructureStore): number => {
+  // As a save loads them: rows put chunk by chunk in slot order, by their keys where the store has forms.
+  const load = (to: StructureStore, byKey: boolean): number => {
+    if (byKey) for (const f of structs.frames.all()) to.frames.make(f.ox, f.oy, f.oz, f.yaw, f.team, f.gid);
     const t0 = performance.now();
     for (const c of structs.held) {
       const t = structs.chunks[c]!;
-      for (let s = 0; s < t.high; s++) to.put(c, s, t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, t.owner[s]!, t.hp[s]!, t.mod[s]!);
+      for (let s = 0; s < t.high; s++) to.put(c, s, t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, t.owner[s]!, t.hp[s]!, t.mod[s]!, byKey ? t.fr![s]! : PUT_FREE, byKey ? t.k0![s]! : 0, byKey ? t.k1![s]! : 0);
       to.setVersion(c, t.version);
     }
     return performance.now() - t0;
   };
-  const loadedBare = best(() => load(make(false)));
+  const loadedBare = best(() => load(make(false), false));
   let loaded = make(true);
-  const loadedKeyed = best(() => load((loaded = make(true))));
+  const loadedKeyed = best(() => load((loaded = make(true)), true));
+  if (loaded.occupied.size !== structs.occupied.size) throw new Error(`loaded ${loaded.occupied.size} cells of ${structs.occupied.size}`);
   record("to put them as loaded rows in a store with no forms", loadedBare, "ms");
-  record("to put them as loaded rows, each keyed by the shim", loadedKeyed, "ms");
-  record("loaded rows the shim left with a free pose", loaded.count - loaded.occupied.size, "");
+  record("to put them as loaded rows by their keys", loadedKeyed, "ms");
 
   let columns = 0;
   for (const c of structs.held) if (structs.chunks[c]!.fr) columns += structs.chunks[c]!.cap * 13;

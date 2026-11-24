@@ -21,10 +21,10 @@ import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
 import { NodeField, nodeForms, scatterNodes, type NodeSpot } from "../world/nodes.ts";
 import { StructureStore } from "../world/structures.ts";
 import { MapWater } from "../world/water.ts";
-import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../world/snap.ts";
+import { frameAxes, type Pose as SnapPose } from "../world/snap.ts";
 import { basisOf, classAxis, twOf, worldOf, yawOf } from "../world/lattice/basis.ts";
 import { rotsOf } from "../world/lattice/frames.ts";
-import { candidates, makeCandidates, makeVerdict, validate, type Site } from "../world/lattice/place.ts";
+import { candidates, makeCandidates, makeVerdict, startBase, validate, type Site } from "../world/lattice/place.ts";
 import { canon, canonical, dotSign, edgesOverlap, elementCorners, exact, facesOverlap, key0, key1, orient, tupleSet, tupleStep } from "../world/lattice/module.ts";
 
 /** A tuning with an entry of every kind and numbers that do not come out even, as a server's settings might produce. */
@@ -392,17 +392,14 @@ export function hullHash(base: Registry): string {
 }
 
 /**
- * Joins random building pieces onto a first piece at many facings, and hashes each pose, whether its place is free, what
- * a look from above picks, the slots a look offers with their scores, and how the best is judged. Equal hashes mean the
+ * Builds bases by slot at many facings: a first piece, then looks near what stands, and hashes each look's slots with
+ * their scores, how the best is judged turned at random, and the pose of what is then set down. Equal hashes mean the
  * client's preview and the server's check agree on both engines.
  */
 export function snapHash(reg: Registry): string {
   const kinds = ["foundation", "wall", "doorframe", "windowframe", "ceiling", "pillar", "door", "stairs"].map((p) => reg.index.get(`core:${p}_stone`)!);
   const rng = new Rng(7106);
   const axes = new Int32Array(4);
-  const pose: SnapPose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const sockets = makeSockets();
-  const aim = makeAim();
   let h1 = 0x811c9dc5;
   let h2 = 0x9747b28c;
   const mix = (v: number): void => {
@@ -419,29 +416,20 @@ export function snapHash(reg: Registry): string {
     const yaw = rng.int(65536);
     frameAxes(yaw, axes);
     for (const v of axes) mix(v);
-    const built = [structs.add(kinds[0]!, 200 + rng.range(-20, 20), 4 + rng.int(64) / 512, 200 + rng.range(-20, 20), yaw, 1, 1)];
-    for (let i = 0; i < 60; i++) {
+    const first: SnapPose = { x: Math.round((200 + rng.range(-20, 20)) * 512), y: 4 * 512 + rng.int(64), z: Math.round((200 + rng.range(-20, 20)) * 512), yaw };
+    const built = [startBase(structs, kinds[0]!, first, 1, 1)];
+    for (let i = 0; i < 90; i++) {
+      // A slanting look that ends somewhere near a piece that stands.
       const target = built[rng.int(built.length)]!;
-      const kind = kinds[rng.int(kinds.length)]!;
-      const n = socketsOf(structs, reg, target, kind, sockets);
-      mix(n);
-      if (n === 0 || !poseAt(structs, reg, target, kind, rng.int(n), rng.int(4), pose)) continue;
-      mix(pose.x);
-      mix(pose.y);
-      mix(pose.z);
-      mix(pose.yaw);
-      const taken = obstructed(structs, reg.parts, kind, pose.x / 512, pose.y / 512, pose.z / 512, pose.yaw);
-      mix(taken ? 1 : 0);
-      if (!taken) built.push(structs.add(kind, pose.x / 512, pose.y / 512, pose.z / 512, pose.yaw, 1, 1));
-      // A look straight down onto somewhere near it.
-      const [lx, ly, lz] = [pose.x / 512 + rng.range(-3, 3), pose.y / 512 + 6, pose.z / 512 + rng.range(-3, 3)];
-      pickSnap(structs, reg, kinds[rng.int(kinds.length)]!, lx, ly, lz, 0, -1, 0, -1, 6, false, aim);
-      mix(aim.target);
-      for (let k = 0; k < aim.count; k++) mix(aim.order[k]!);
-      // The slots a slanting look offers another piece, their scores to the last bit, and what the best is judged as.
+      const t = structs.chunks[Math.floor(target / 65536)]!;
+      const s = target & 0xffff;
+      const lx = t.x[s]! + rng.range(-3, 3);
+      const ly = t.y[s]! + 6;
+      const lz = t.z[s]! + rng.range(-3, 3);
       const held = kinds[rng.int(kinds.length)]!;
       const offered = candidates(site, held, 1, lx - 2, ly, lz - 1, 4 / 13, -12 / 13, 3 / 13, 6.5, slots);
       mix(offered);
+      // Their scores to the last bit.
       for (let k = 0; k < offered; k++) {
         mix(slots.fr[k]!);
         mix(slots.k0[k]!);
@@ -451,15 +439,17 @@ export function snapHash(reg: Registry): string {
         mix(scoreBits[1]!);
       }
       if (offered === 0) continue;
-      const turned = (slots.k1[0]! | (rng.int(rotsOf(reg.forms, held)) << 26)) >>> 0;
-      mix(validate(site, held, 1, slots.fr[0]!, slots.k0[0]!, turned, lx - 2, ly, lz - 1, verdict));
+      const pick = rng.int(Math.min(offered, 3));
+      const turned = (slots.k1[pick]! | (rng.int(rotsOf(reg.forms, held)) << 26)) >>> 0;
+      mix(validate(site, held, 1, slots.fr[pick]!, slots.k0[pick]!, turned, lx - 2, ly, lz - 1, verdict));
       mix(verdict.pose.x);
       mix(verdict.pose.y);
       mix(verdict.pose.z);
       mix(verdict.pose.yaw);
       mix(verdict.a);
-      if (verdict.code === 0 && rng.int(2) === 0) built.push(structs.place(held, slots.fr[0]!, slots.k0[0]!, turned, 1, 1));
+      if (verdict.code === 0) built.push(structs.place(held, slots.fr[pick]!, slots.k0[pick]!, turned, 1, 1));
     }
+    mix(built.length);
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }

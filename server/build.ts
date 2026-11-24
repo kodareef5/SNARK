@@ -159,7 +159,7 @@ export class Build {
         [out.detail, out.a, out.b] = [PLACED_COUNTS, have, cap];
         return true;
       },
-      stands: (kind, x, y, z, yaw) => this.support.stands(kind, x, y, z, yaw),
+      stands: (kind, x, y, z, _yaw, fr, k0, k1) => (fr !== 0 ? this.support.standsAt(kind, fr, k0, k1) : this.support.stands(kind, x, y, z)),
     };
     this.decay.lone = (ref) => {
       this.support.forget();

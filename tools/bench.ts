@@ -22,7 +22,7 @@ import { Rules } from "../server/settings/rules.ts";
 import { WorldStore } from "../server/persist/store.ts";
 import { createWorld, type ServerWorld } from "../server/world.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
-import { STRUCT_UNITS, TICK_RATE, chunkAt } from "../shared/coords.ts";
+import { TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { SURFACE_BUILT } from "../shared/net/rockets.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
@@ -33,7 +33,6 @@ import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Heightfield, TERRAIN_CELL } from "../shared/world/heightfield.ts";
-import { poseAt, type Pose } from "../shared/world/snap.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
 import type { VoicePeer } from "../server/voice.ts";
@@ -49,12 +48,13 @@ import { benchFar } from "./bench/far.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
+import { join as joinTo, start } from "../tests/fixtures/slots.ts";
 import { benchAgent } from "./bench/agent.ts";
 import { benchCollide } from "./bench/collide.ts";
 import { benchDenseWood, benchNodes } from "./bench/nodes.ts";
 import { benchFrameBudget } from "./bench/budget.ts";
 import { benchGovernor } from "./bench/governor.ts";
-import { BASE_TIERS, asTextured, benchBases, boxBase } from "./bench/base.ts";
+import { BASE_TIERS, asTextured, benchBases, boxBase, layBase } from "./bench/base.ts";
 import { benchHelicopters } from "./bench/helicopter.ts";
 import { benchCollision } from "./bench/collision.ts";
 import { benchVehicleTrees } from "./bench/vehicle-tree.ts";
@@ -137,7 +137,7 @@ function buildTerrain(): Heightfield {
 /** The bench map's box bases (bench/base.ts), each owned by a tribe of its own. Returns their centres. */
 function buildBases(world: ServerWorld, reg: Registry): [number, number][] {
   const { centers, pieces } = benchBases(reg, world.hf);
-  pieces.forEach((base, b) => base.forEach(([kind, x, y, z, yaw]) => world.structs.add(kind, x, y, z, yaw, 1 + b, 1000)));
+  pieces.forEach((base, b) => layBase(world.structs, base, 1 + b, 1000));
   return centers;
 }
 
@@ -581,10 +581,10 @@ const wreck: Rubble[] = [];
   // 12 by 12 foundations and three storeys of real building pieces, beside the fight.
   const structs = world.structs;
   const piece = (name: string): number => reg.index.get(`core:${name}_stone`)!;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const add = (name: string, target: number, k: number): number => {
-    if (!poseAt(structs, reg, target, piece(name), k, 0, pose)) throw new Error(`no place for a ${name}`);
-    return structs.add(piece(name), pose.x / STRUCT_UNITS, pose.y / STRUCT_UNITS, pose.z / STRUCT_UNITS, pose.yaw, 9000, 10000);
+    const ref = joinTo(world, target, piece(name), k, 0, 10000);
+    if (ref < 0) throw new Error(`no place for a ${name}`);
+    return ref;
   };
   const N = 12;
   const [hx, hz] = [centers[0]![0] + 52, centers[0]![1] - 18];
@@ -592,7 +592,7 @@ const wreck: Rubble[] = [];
   const ground: number[][] = [];
   for (let i = 0; i < N; i++) {
     ground.push([]);
-    for (let j = 0; j < N; j++) ground[i]!.push(i === 0 && j === 0 ? structs.add(piece("foundation"), hx, hf.heightAt(hx, hz) + 0.1875, hz, 0, 9000, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
+    for (let j = 0; j < N; j++) ground[i]!.push(i === 0 && j === 0 ? start(world, piece("foundation"), hx, hf.heightAt(hx, hz) + 0.1875, hz, 0, 9000, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
   }
   let tiles = ground;
   for (let storey = 0; storey < 3; storey++) {
@@ -771,12 +771,8 @@ let siegeChunk = -1;
   const x0 = (siegeChunk % DIMS.chunksX) * 64;
   const z0 = Math.floor(siegeChunk / DIMS.chunksX) * 64;
   const pieces = new Rng(79);
-  const refs: number[] = [];
   // A wooden box base of a room a cell, 15 storeys, high in the air, so no body touches it.
-  for (const [kind, x, y, z, yaw] of boxBase(reg, "wood", x0 + 0.5, 200, z0 + 0.5, 21, 1, 20000)) {
-    const ref = world.structs.add(kind, x, y, z, yaw, 1, reg.maxHp[kind]!);
-    if (ref >= 0) refs.push(ref);
-  }
+  const refs = layBase(world.structs, boxBase(reg, "wood", x0 + 0.5, 200, z0 + 0.5, 21, 1, 20000), 1, (kind) => reg.maxHp[kind]!);
   // A blow of a 200th of a piece's health takes it down a stage, so every blow is a row. None takes 200 in ten seconds.
   const stage = (ref: number): number => reg.maxHp[world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!]! / 200;
   record("pieces in the chunk", world.structs.chunks[siegeChunk]!.live, "");

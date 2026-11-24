@@ -36,7 +36,7 @@ import { humanHitPose } from "../../shared/anim/zones.ts";
 import { Corpses, RISE_BLEND } from "../../client/core/ragdoll.ts";
 import { REACT_FALL, REACT_RISE, reactAge, reactKind, TOPPLED } from "../../shared/anim/reactions.ts";
 import { corePack } from "../../tests/fixtures/pack.ts";
-import { boxBase } from "./base.ts";
+import { boxBase, layBase } from "./base.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -359,7 +359,7 @@ export function benchFalls(section: Section, record: Row, walled: boolean, run: 
     const bodies = all.slice(0, FALLS_MOST);
     const reg = h.reg, [x0, z0] = [119, 119];
     const pieces = boxBase(reg, "stone", x0, 0, z0, 6, 6, 97);
-    if (walled) for (const [kind, x, y, z, yaw] of pieces) h.world.structs.add(kind, x, y, z, yaw, 1, 100000);
+    if (walled) layBase(h.world.structs, pieces, 1, 100000);
     const floor = walled ? 2 * reg.halfY[pieces[0]![0]]! : 0;
     bodies.forEach((e, k) => put(h, e, x0 + 1.5 + (k % 8) * 2.15, floor, z0 + 2 + Math.floor(k / 8) * 2.8));
     // Two players outside the room, one each side.

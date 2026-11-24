@@ -5,12 +5,11 @@
 
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { Collapse } from "../../shared/world/collapse.ts";
-import { poseAt, type Pose } from "../../shared/world/snap.ts";
 import { Found, GONE_FELL, StructureStore } from "../../shared/world/structures.ts";
 import { Support } from "../../shared/world/support.ts";
-import { boxBase } from "./base.ts";
+import { boxBase, layBase } from "./base.ts";
+import { join, start } from "../../tests/fixtures/slots.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -18,7 +17,6 @@ type Row = (name: string, value: number, unit: string, budget?: number | null) =
 const DIMS = { chunksX: 8, chunksZ: 8 };
 /** server/build.ts's COLLAPSE_WORK. */
 const WORK = 16000;
-const U = STRUCT_UNITS;
 const median = (v: number[]): number => [...v].sort((a, b) => a - b)[v.length >> 1] ?? 0;
 
 export function supportRows(section: Section, record: Row): void {
@@ -26,19 +24,19 @@ export function supportRows(section: Section, record: Row): void {
   if (!reg) throw new Error(errors.join("\n"));
   const make = (): StructureStore => new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const piece = (name: string): number => reg.index.get(`core:${name}_stone`)!;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const flat = (): number => 0;
 
   /** The house of tools/bench.ts: 12 by 12 foundations and `storeys` of walls and ceilings. Returns its foundations and top floors. */
   const house = (structs: StructureStore, storeys: number, n = 12): { ground: number[]; top: number[] } => {
     const add = (name: string, target: number, k: number): number => {
-      if (!poseAt(structs, reg, target, piece(name), k, 0, pose)) throw new Error(`no place for a ${name}`);
-      return structs.add(piece(name), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 9000, 10000);
+      const ref = join({ structs, reg }, target, piece(name), k, 0, 10000);
+      if (ref < 0) throw new Error(`no place for a ${name}`);
+      return ref;
     };
     const ground: number[][] = [];
     for (let i = 0; i < n; i++) {
       ground.push([]);
-      for (let j = 0; j < n; j++) ground[i]!.push(i === 0 && j === 0 ? structs.add(piece("foundation"), 200, 0.1875, 200, 0, 9000, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
+      for (let j = 0; j < n; j++) ground[i]!.push(i === 0 && j === 0 ? start({ structs, reg }, piece("foundation"), 200, 0.1875, 200, 0, 9000, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
     }
     let tiles = ground;
     for (let storey = 0; storey < storeys; storey++) {
@@ -125,7 +123,7 @@ export function supportRows(section: Section, record: Row): void {
   section("Stability: one pass over a base of 20,000 pieces, as a client's overlay asks");
   {
     const structs = make();
-    for (const [kind, x, y, z, yaw] of boxBase(reg, "stone", 190, 0, 190, 40, 3, 20000)) structs.add(kind, x, y, z, yaw, 9000, 100);
+    layBase(structs, boxBase(reg, "stone", 190, 0, 190, 40, 3, 20000), 9000, 100);
     record("pieces in the base", structs.count, "");
     record("frames", structs.frames.count, "");
     const support = new Support(structs, reg, flat);

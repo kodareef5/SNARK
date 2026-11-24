@@ -12,7 +12,7 @@ import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { Enclosure, enclose } from "../../shared/world/lattice/rooms.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { corePack } from "../../tests/fixtures/pack.ts";
-import { boxBase } from "./base.ts";
+import { boxBase, layBase } from "./base.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -41,7 +41,7 @@ export function roomsRows(section: Section, record: Row): void {
   for (const [n, every, most] of [[14, 3, 2000], [21, 1, 20000]] as const) {
     section(`Rooms of a base of ${most.toLocaleString("en")} wooden pieces in one chunk`);
     const structs = make();
-    for (const [kind, x, y, z, yaw] of boxBase(reg, "wood", AT, 0, AT, n, every, most)) structs.add(kind, x, y, z, yaw, 1, 1000);
+    layBase(structs, boxBase(reg, "wood", AT, 0, AT, n, every, most), 1, 1000);
     const [f] = [...structs.frames.all()];
     const chunk = structs.held[0]!;
     const t = structs.chunks[chunk]!;
