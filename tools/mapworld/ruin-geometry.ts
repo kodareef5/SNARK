@@ -67,6 +67,8 @@ export class Mason {
   readonly rooms: { kind: string; points: { x: number; y: number; z: number }[] }[] = [];
   readonly falls: { mode: string; u: number; v: number }[] = [];
   readonly wings: { tiles: number; height: number; u: number; v: number }[] = [];
+  /** Orbs the layout asks for (shared/world/orb.ts): the axis, the heading in degrees as a piece's, the radius and the centre's height over the base. */
+  readonly orbs: { x: number; z: number; yaw: number; radius: number; centre: number }[] = [];
   readonly frame: Frame;
   readonly base: number;
   /** The grid its storeys were stacked on: metres a bay (0 where nothing was stacked) and tiles across and deep. */
@@ -96,6 +98,11 @@ export class Mason {
     const [x, z] = worldPoint(this.frame, u, v);
     // A shape the kit has in no such finish (a floor plate is concrete) is concrete.
     this.keep({ kind: ruinKind(shape, finished(shape, finish) ? finish : "concrete"), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 }, pieceMiddle(shape, y) - RUIN_SHAPES[shape][1] / 2);
+  }
+  /** An orb on the base with its axis at (u, v): it lays no piece of the kit, and the build gives it its shell. */
+  orb(u: number, v: number, radius: number, centre: number, turn = 0): void {
+    const [x, z] = worldPoint(this.frame, u, v);
+    this.orbs.push({ x, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360, radius, centre });
   }
   /** A car standing on y, nose along v turned by `turn`, so 90 puts it along +u; its kind is `pick`'s for the family there. */
   car(family: string, u: number, y: number, v: number, turn = 0): void {

@@ -17,9 +17,9 @@
     ]
   },
   "sphere": {
-    "note": "A sphere standing on the ground: courses of solid blocks round its middle, a hemisphere above it closed from above and its lower part carried down into the ground",
+    "note": "A sphere standing in the ground, its centre 34 m up: an orb, which the build gives a smooth shell and a site of its own",
     "operations": [
-      {"op": "dome", "at": [-2.9, 0.6], "radius": 78, "y": 34, "drum": 0, "below": 40, "shape": "zmass8", "finish": "steel"}
+      {"op": "orb", "at": [-2.9, 0.6], "radius": 78, "y": 34}
     ]
   },
   "covered-stadium": {

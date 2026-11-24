@@ -12,6 +12,8 @@ import type { Building, Ruin } from "./heaps.ts";
 import type { District, Ground, World } from "./ground.ts";
 import type { SiteBuilding } from "./buildings.ts";
 import { RUINS } from "./ruins.ts";
+import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
+import { orbCollision } from "../../shared/world/orb.ts";
 import { ROOF_PLANT } from "./roof-plant.ts";
 import { STREET_FURNITURE } from "./street-furniture.ts";
 
@@ -36,7 +38,15 @@ export interface Footprint {
   readonly district: District | null;
 }
 
+/**
+ * An orb a layout asked for (shared/world/orb.ts), at lattice x and z, its heading in degrees as a piece's; `y` is the
+ * ground under its axis once its shell is laid.
+ */
+export interface SiteOrb { name: string; x: number; z: number; yaw: number; radius: number; centre: number; y?: number }
+
 export interface Site {
+  /** The orbs the ruins' layouts asked for, which the map's head lists. */
+  readonly orbs: SiteOrb[];
   readonly growthRoutes: { points: { x: number; y: number; z: number }[]; width: number }[];
   /** Drivable vehicles a new world parks, as the layers folder's vehicles.json takes them: yaw in degrees as a piece's. */
   readonly vehicles: { kind: string; x: number; z: number; yaw: number; condition?: readonly [number, number]; fuel?: readonly [number, number] }[];
@@ -63,7 +73,22 @@ export interface StaticLayer {
   make(site: Site, placed: readonly StaticPiece[]): StaticPiece[];
 }
 
-export const STATIC_LAYERS: readonly StaticLayer[] = [RUINS, STREET_FURNITURE, ROOF_PLANT];
+/**
+ * Each orb's shell, on the ground under its axis as the ruins left it, where a Tide Eye's site takes its height. It
+ * comes before the street's pieces, so they count it in a chunk and keep clear of it.
+ */
+export const ORB_SHELLS: StaticLayer = {
+  name: "the orbs' shells",
+  make(site) {
+    const snap = (v: number): number => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
+    return site.orbs.flatMap((o) => {
+      [o.x, o.y, o.z] = [snap(o.x), snap(site.groundAt(o.x, o.z)), snap(o.z)];
+      return orbCollision({ ...o, y: o.y, yaw: 0 }).map((p) => ({ ...p, yaw: (p.yaw * 360) / YAW_UNITS }));
+    });
+  },
+};
+
+export const STATIC_LAYERS: readonly StaticLayer[] = [RUINS, ORB_SHELLS, STREET_FURNITURE, ROOF_PLANT];
 
 export function siteOf(world: World, ground: Ground, source: string): Site {
   const { nx, nz, x0, z0, x1, z1, east, south } = ground.grid;
@@ -73,6 +98,7 @@ export function siteOf(world: World, ground: Ground, source: string): Site {
     source,
     world,
     ground,
+    orbs: [],
     growthRoutes: [],
     vehicles: [],
     buildings: [],
