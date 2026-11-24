@@ -568,6 +568,10 @@ export const RESULT_NOT_EMPTY = 26;
 export const RESULT_LIMIT = 27;
 /** A placement refused because a living body stands in the piece's place. OBSTRUCTED is something built in the way. */
 export const RESULT_BODY = 28;
+/** A placement refused because the ground is in the way: a foundation's top would lie too far under it. */
+export const RESULT_TERRAIN = 29;
+/** A placement refused because its session has set down as many pieces this second as it may. */
+export const RESULT_RATE = 30;
 
 const ownKind = counter();
 export const OWN_SESSION = ownKind();

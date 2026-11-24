@@ -24,7 +24,7 @@ import { Found, GONE_BLAST, StructureStore } from "../../shared/world/structures
 import { STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { NO_TARGET } from "../../server/build.ts";
 import { builder } from "../fixtures/build.ts";
-import { CHANGED, SOCKET_SLOTS } from "../fixtures/sockets.ts";
+import { SOCKET_SLOTS } from "../fixtures/sockets.ts";
 import { coreRegistry, flatWorld, wrap, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
@@ -132,12 +132,6 @@ test("a piece set down in a socket is keyed, and its key gives the socket's pose
           pairs++;
           const ref = join(w, target, pieceName, k, turn);
           const today = rowOf(structs, ref);
-          if (`${targetName} ${pieceName} ${k}` === CHANGED) {
-            // Hung from the foundation's underside it is on no level, so it keeps today's pose and has no key.
-            expect([structs.frameAt(ref), structs.frames.count]).toEqual([0, 1]);
-            structs.remove(ref);
-            continue;
-          }
           expect([targetName, pieceName, k, turn, sound(structs, reg, ref)]).toEqual([targetName, pieceName, k, turn, gid]);
           expect(keyLvl(key.k1) - keyLvl(targetKey.k1)).toBe(slot[2]);
           sockets.push(`${key.k0} ${cellOf(key.k1)}`);

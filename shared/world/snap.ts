@@ -5,6 +5,9 @@ import { STRUCT_UNITS, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { Solid, boxSolid, hullFace, partSolid, rayHull, solidsCross } from "./convex.ts";
 import { frame, frameAxes, frameOf } from "./frame.ts";
+import { KEY_BETWEEN, KEY_FOUND, keyOfPose } from "./lattice/adopt.ts";
+import { LEVEL_UNITS } from "./lattice/basis.ts";
+import { poseOf, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
 import { Found, type PartTable, type StructureStore } from "./structures.ts";
 
 export { HALF_SIDE, frameAxes } from "./frame.ts";
@@ -121,8 +124,8 @@ export function socketPose(sockets: Sockets, k: number, tx: number, ty: number, 
 }
 
 /**
- * Metres a new piece's boxes shrink before the overlap test, and SHRINK_OTHER for built pieces. Neighbours touch, wall corners
- * cross a little, and a ceiling's edge lies along the middle of the wall under it.
+ * Metres a thing's boxes shrink before `obstructed` asks whether it overlaps, and SHRINK_OTHER for built pieces. A lattice
+ * piece shrinks by none of them: its neighbours are told by their slots (lattice/place.ts).
  */
 const SHRINK = 0.15;
 const SHRINK_Y = 0.05;
@@ -167,91 +170,100 @@ export const obstruction = { ref: -1 };
 /**
  * Whether a piece of `kind` at this pose (metres) overlaps a built structure. Pieces that only touch, as neighbours do, do not
  * count. Boxes meet boxes by their shrunk rectangles; a convex part meets a box or a part as solids that give way as much.
+ * This is for a thing and for a map piece that returns: a lattice piece is asked by its slot (lattice/place.ts).
  */
 export function obstructed(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number, restoringMapPiece = false): boolean {
   obstruction.ref = -1;
   const a = yaw * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
-  const box = parts.box;
   // Query every structure whose footprint reaches as far as the piece does from its middle.
   const reach = structs.spread[kind]!;
-  let n = structs.query(x - reach, z - reach, x + reach, z + reach, near);
+  const n = structs.query(x - reach, z - reach, x + reach, z + reach, near);
   const refs = near.refs;
-  if (restoringMapPiece) {
-    // The original map pieces already stood together.
-    let built = 0;
-    for (let i = 0; i < n; i++) {
-      const ref = refs[i]!;
-      if ((ref & 0xffff) >= structs.chunks[Math.floor(ref / 65536)]!.mapped) refs[built++] = ref;
-    }
-    n = built;
-  }
-  if (n === 0) return false;
   // The player-built piece keeps its placement tolerance when the map piece returns.
   const side = restoringMapPiece ? SHRINK_OTHER : SHRINK, otherSide = restoringMapPiece ? SHRINK : SHRINK_OTHER;
   const vertical = restoringMapPiece ? 0 : SHRINK_Y, otherVertical = restoringMapPiece ? SHRINK_Y : 0;
+  made = false;
+  for (let k = 0; k < n; k++) {
+    const ref = refs[k]!;
+    // The original map pieces already stood together.
+    if (restoringMapPiece && (ref & 0xffff) < structs.chunks[Math.floor(ref / 65536)]!.mapped) continue;
+    if (meets(structs, parts, kind, x, y, z, c, s, yaw, ref, side, vertical, otherSide, otherVertical)) return (obstruction.ref = ref) >= 0;
+  }
+  return false;
+}
+
+/** A twelfth of a turn: one step of a row's turn class. */
+const TWELFTH = TAU / 12;
+
+/**
+ * Whether a piece of `kind` at this pose (metres), of turn class `tw`, overlaps the built row `ref`. Each gives way by its
+ * metres, sideways and up, before they are asked. A convex part is turned by its yaw alone.
+ */
+export function crosses(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number, tw: number, ref: number, side: number, vertical: number, otherSide: number, otherVertical: number): boolean {
+  const a = yaw * YAW_TO_RAD - tw * TWELFTH;
+  made = false;
+  return meets(structs, parts, kind, x, y, z, detCos(a), detSin(a), yaw, ref, side, vertical, otherSide, otherVertical);
+}
+
+/** Whether `mine` holds the new piece's solids for the question being asked. */
+let made = false;
+
+/** The new piece's boxes are turned by (c, s). Box against box by rectangles, and anything against a convex part as solids. */
+function meets(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, c: number, s: number, yaw: number, ref: number, side: number, vertical: number, otherSide: number, otherVertical: number): boolean {
+  const box = parts.box;
+  const t = structs.chunks[Math.floor(ref / 65536)]!;
+  const slot = ref & 0xffff;
+  const other = t.kind[slot]!;
+  const oa = t.yaw[slot]! * YAW_TO_RAD - (t.tw ? t.tw[slot]! * TWELFTH : 0);
+  const os = detSin(oa);
+  const oc = detCos(oa);
+  const tx = t.x[slot]!;
+  const ty = t.y[slot]!;
+  const tz = t.z[slot]!;
   for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) {
     // This box of the new piece, shrunk, in world space.
     const hx = Math.max(THIN, box[p + 3]! - side);
-    const hy = restoringMapPiece ? box[p + 4]! : Math.max(THIN, box[p + 4]! - vertical);
+    const hy = vertical > 0 ? Math.max(THIN, box[p + 4]! - vertical) : box[p + 4]!;
     const hz = Math.max(THIN, box[p + 5]! - side);
     const cx = x + c * box[p]! + s * box[p + 2]!;
     const cy = y + box[p + 1]!;
     const cz = z - s * box[p]! + c * box[p + 2]!;
-    for (let k = 0; k < n; k++) {
-      const ref = refs[k]!;
-      const t = structs.chunks[Math.floor(ref / 65536)]!;
-      const slot = ref & 0xffff;
-      const other = t.kind[slot]!;
-      const oa = t.yaw[slot]! * YAW_TO_RAD;
-      const os = detSin(oa);
-      const oc = detCos(oa);
-      for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend; q += 6) {
-        const qy = t.y[slot]! + box[q + 1]!;
-        const qh = restoringMapPiece ? Math.max(THIN, box[q + 4]! - otherVertical) : box[q + 4]!;
-        if (cy - hy >= qy + qh || cy + hy <= qy - qh) continue;
-        const qx = t.x[slot]! + oc * box[q]! + os * box[q + 2]!;
-        const qz = t.z[slot]! - os * box[q]! + oc * box[q + 2]!;
-        if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! - otherSide), Math.max(THIN, box[q + 5]! - otherSide))) return (obstruction.ref = ref) >= 0;
-      }
+    for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend; q += 6) {
+      const qy = ty + box[q + 1]!;
+      const qh = otherVertical > 0 ? Math.max(THIN, box[q + 4]! - otherVertical) : box[q + 4]!;
+      if (cy - hy >= qy + qh || cy + hy <= qy - qh) continue;
+      const qx = tx + oc * box[q]! + os * box[q + 2]!;
+      const qz = tz - os * box[q]! + oc * box[q + 2]!;
+      if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! - otherSide), Math.max(THIN, box[q + 5]! - otherSide))) return true;
     }
   }
   const hulls = parts.hulls;
   if (!hulls) return false;
   const boxes = parts.start[kind + 1]! - parts.start[kind]!;
   const count = boxes + hulls.start[kind + 1]! - hulls.start[kind]!;
-  let made = false;
-  for (let k = 0; k < n; k++) {
-    const ref = refs[k]!;
-    const t = structs.chunks[Math.floor(ref / 65536)]!;
-    const slot = ref & 0xffff;
-    const other = t.kind[slot]!;
-    const otherHulls = hulls.start[other + 1]! - hulls.start[other]!;
-    if (count === boxes && otherHulls === 0) continue;
-    // Every part of the new piece as a solid, its convex parts after its boxes, once some part is to be asked.
-    if (!made) {
-      made = true;
-      while (mine.length < count) mine.push(new Solid());
-      for (let i = 0; i < count; i++) {
-        if (i < boxes) {
-          const p = (parts.start[kind]! + i) * 6;
-          boxSolid(x + c * box[p]! + s * box[p + 2]!, y + box[p + 1]!, z - s * box[p]! + c * box[p + 2]!, c, s, box[p + 3]!, box[p + 4]!, box[p + 5]!, mine[i]!);
-        } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, x, y, z, mine[i]!);
-      }
+  const otherHulls = hulls.start[other + 1]! - hulls.start[other]!;
+  if (count === boxes && otherHulls === 0) return false;
+  // Every part of the new piece as a solid, its convex parts after its boxes, once some part is to be asked.
+  if (!made) {
+    made = true;
+    while (mine.length < count) mine.push(new Solid());
+    for (let i = 0; i < count; i++) {
+      if (i < boxes) {
+        const p = (parts.start[kind]! + i) * 6;
+        boxSolid(x + c * box[p]! + s * box[p + 2]!, y + box[p + 1]!, z - s * box[p]! + c * box[p + 2]!, c, s, box[p + 3]!, box[p + 4]!, box[p + 5]!, mine[i]!);
+      } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, x, y, z, mine[i]!);
     }
-    const oa = t.yaw[slot]! * YAW_TO_RAD;
-    const os = detSin(oa);
-    const oc = detCos(oa);
-    // Their boxes against my convex parts; then their convex parts against all of mine. Box against box was asked above.
-    for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend && count > boxes; q += 6) {
-      boxSolid(t.x[slot]! + oc * box[q]! + os * box[q + 2]!, t.y[slot]! + box[q + 1]!, t.z[slot]! - os * box[q]! + oc * box[q + 2]!, oc, os, box[q + 3]!, box[q + 4]!, box[q + 5]!, theirs);
-      for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return (obstruction.ref = ref) >= 0;
-    }
-    for (let h = hulls.start[other]!, hend = hulls.start[other + 1]!; h < hend; h++) {
-      partSolid(hulls, h, t.yaw[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, theirs);
-      for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return (obstruction.ref = ref) >= 0;
-    }
+  }
+  // Their boxes against my convex parts; then their convex parts against all of mine. Box against box was asked above.
+  for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend && count > boxes; q += 6) {
+    boxSolid(tx + oc * box[q]! + os * box[q + 2]!, ty + box[q + 1]!, tz - os * box[q]! + oc * box[q + 2]!, oc, os, box[q + 3]!, box[q + 4]!, box[q + 5]!, theirs);
+    for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return true;
+  }
+  for (let h = hulls.start[other]!, hend = hulls.start[other + 1]!; h < hend; h++) {
+    partSolid(hulls, h, t.yaw[slot]!, tx, ty, tz, theirs);
+    for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return true;
   }
   return false;
 }
@@ -282,6 +294,8 @@ export const BUILD_REACH = 9;
 export const SNAP_SEARCH = 4;
 /** Metres a foundation's underside may stand above the lowest ground under it. */
 export const MAX_ABOVE_GROUND = 2;
+/** Metres a foundation's top may lie under the highest ground it covers. A guess. */
+export const MAX_BURIED = 1;
 /** Lattice units. On open ground a foundation's top sits FREE_TOP above the highest ground under it. A pillar's foot sinks PILLAR_SINK in. */
 const FREE_TOP = STRUCT_UNITS / 8;
 const PILLAR_SINK = STRUCT_UNITS / 8;
@@ -333,12 +347,47 @@ export function socketsOf(structs: StructureStore, tables: PieceTables, target: 
   return out.n;
 }
 
-/** The pose a piece of `kind` takes in socket `k` of `target`, turned `turn`. False if there is no such socket. */
+const slot: LatticeKey = { fr: 0, k0: 0, k1: 0 };
+const slotPose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
+
+/**
+ * For callers that still name a place as a piece and one of its sockets: the frame and key of the slot that socket `k` of
+ * `target` means for a piece of `kind` turned `turn`, to `out`. A socket between two levels (a pillar hung under a
+ * foundation) means the slot at the level above it. False if there is no such socket or the target is in no frame.
+ */
+export function slotAt(structs: StructureStore, tables: PieceTables, target: number, kind: number, k: number, turn: number, out: LatticeKey): boolean {
+  if (k < 0 || k >= socketsOf(structs, tables, target, kind, scratch)) return false;
+  const forms = structs.forms;
+  const f = structs.frames.get(structs.frameAt(target));
+  if (!f || !forms || forms.cls[kind]! < 0) return false;
+  const t = structs.chunks[Math.floor(target / 65536)]!;
+  const s = target & 0xffff;
+  socketPose(scratch, k, units(t.x[s]!), units(t.y[s]!), units(t.z[s]!), t.yaw[s]!, tables.role[kind]!, turn, pose);
+  let got = keyOfPose(f, forms, kind, pose.x, pose.y, pose.z, pose.yaw, out);
+  if (got === KEY_BETWEEN) {
+    const over = pose.y - forms.atY[kind]! - f.oy;
+    got = keyOfPose(f, forms, kind, pose.x, pose.y + LEVEL_UNITS - (((over % LEVEL_UNITS) + LEVEL_UNITS) % LEVEL_UNITS), pose.z, pose.yaw, out);
+  }
+  return got === KEY_FOUND;
+}
+
+/**
+ * The pose a piece of `kind` takes in socket `k` of `target`, turned `turn`: its slot's pose (`slotAt`), or the socket's own
+ * where the target is in no frame. False if there is no such socket.
+ */
 export function poseAt(structs: StructureStore, tables: PieceTables, target: number, kind: number, k: number, turn: number, out: Pose): boolean {
   if (k < 0 || k >= socketsOf(structs, tables, target, kind, scratch)) return false;
+  if (slotAt(structs, tables, target, kind, k, turn, slot)) {
+    poseOf(structs.frames.get(slot.fr)!, slot.k0, slot.k1, structs.forms!, kind, slotPose);
+    out.x = slotPose.x;
+    out.y = slotPose.y;
+    out.z = slotPose.z;
+    out.yaw = slotPose.yaw;
+    return true;
+  }
   const t = structs.chunks[Math.floor(target / 65536)]!;
-  const slot = target & 0xffff;
-  socketPose(scratch, k, units(t.x[slot]!), units(t.y[slot]!), units(t.z[slot]!), t.yaw[slot]!, tables.role[kind]!, turn, out);
+  const s = target & 0xffff;
+  socketPose(scratch, k, units(t.x[s]!), units(t.y[s]!), units(t.z[s]!), t.yaw[s]!, tables.role[kind]!, turn, out);
   return true;
 }
 
@@ -503,4 +552,10 @@ function groundUnder(heightAt: (x: number, z: number) => number, p: Pose, highes
 export function tooHigh(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose): boolean {
   if (tables.role[kind] !== ROLE_FOUNDATION) return false;
   return (p.y - units(tables.halfY[kind]!)) / STRUCT_UNITS - groundUnder(heightAt, p, false) > MAX_ABOVE_GROUND;
+}
+
+/** True when a foundation at this pose breaks MAX_BURIED: the ground is in its way. False for any other role. */
+export function buried(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose): boolean {
+  if (tables.role[kind] !== ROLE_FOUNDATION) return false;
+  return groundUnder(heightAt, p, true) - (p.y + units(tables.halfY[kind]!)) / STRUCT_UNITS > MAX_BURIED;
 }

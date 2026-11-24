@@ -12,7 +12,7 @@ export const SOCKET_SLOTS: readonly (readonly [target: string, piece: string, sl
   ["foundation", "ceiling", BESIDE],
   ["ceiling", "ceiling", BESIDE],
   ...["wall", "doorframe", "windowframe"].flatMap((w) => [["foundation", w, EDGES], ["ceiling", w, EDGES]] as [string, string, Slot[]][]),
-  // A pillar on a floor's middle, and one under it. A design change is waiting: CHANGED.
+  // A pillar on a floor's middle, and one under it. Under a foundation the slot is not the socket's own pose: CHANGED.
   ["foundation", "pillar", [[0, 0, 0, 0], [0, 0, -4, 0]]],
   ["ceiling", "pillar", [[0, 0, 0, 0], [0, 0, -4, 0]]],
   ["pillar", "pillar", [[0, 0, 4, 0], [0, 0, -4, 0]]],
@@ -25,5 +25,5 @@ export const SOCKET_SLOTS: readonly (readonly [target: string, piece: string, sl
   ["doorframe", "door_open", HERE],
   ["pillar", "ceiling", ABOVE],
 ];
-/** The one socket whose pose the forms change: a pillar under a foundation ends at its top plane, not its underside. */
+/** The one socket whose own pose is not its slot's: a pillar under a foundation ends at its top plane, not its underside. */
 export const CHANGED = "foundation pillar 1";
