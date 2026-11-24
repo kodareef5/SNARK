@@ -320,7 +320,7 @@ export const PIECE_OWN = 1, PIECE_PLAIN = 2, PIECE_FIXED = 4, PIECE_SEED = 3, PI
 /** Where ownVertex puts those bits in vMade, over the material's five and the wear's three. */
 export const PIECE_OVER_WEAR = 8;
 /** A sheet's own light either way, its own lean, and the share of sheets left in primer, on a piece. */
-const PIECE_TONE = 0.16, PIECE_TILT = 0.045, PIECE_PRIMED = 0.035;
+const PIECE_TONE = 0.16, PIECE_TILT = 0.045, PIECE_PRIMED = 0.008;
 /** The paint's hold rust begins under on a sound sheet, how far a sheet's own measure takes that down, and the band it comes on over. */
 const PIECE_RUST = [1.08, 0.75] as const, PIECE_RUST_BAND = 0.06;
 /** Red oxide primer and rust, as light. */
@@ -329,7 +329,22 @@ const PIECE_PRIMER = [0.12, 0.04, 0.028] as const, PIECE_RUSTED = [0.1, 0.04, 0.
  * The height a piece's material has for its edges' chips (edged), about which two noises of the piece's own move it,
  * a thumb and a hand across: an arris is bare along about half its length, and seldom more than a centimetre in.
  */
-const PIECE_CHIP = [0.61, 0.09, 0.11] as const, PIECE_CHIP_GRAIN = [0.012, 0.11] as const;
+const PIECE_CHIP = [0.625, 0.09, 0.11] as const, PIECE_CHIP_GRAIN = [0.012, 0.11] as const;
+/** What a chip of a piece's edge shows: steel worn dull, its light, roughness and metal, where a city's bare metal is bright. */
+const PIECE_BARE = [0.2, 0.21, 0.225, 0.5, 0.6] as const;
+/**
+ * A piece's face of normal (nx, ny, nz) as its weathering takes it, into `out`: the piece's own axis nearest the normal,
+ * turned into the world. A card finds a face's normal from one pixel to the next, and a wall at 45 degrees would
+ * choose the way its weathering runs by that noise; this is the same at every pixel of the face.
+ */
+export function ownFace(piece: PiecePixel, nx: number, ny: number, nz: number, out: number[]): number[] {
+  const ox = piece.c * nx - piece.s * nz, oz = piece.s * nx + piece.c * nz, ax = Math.abs(ox), ay = Math.abs(ny), az = Math.abs(oz);
+  const x = ay >= Math.max(ax, az) || ax <= az ? 0 : Math.sign(ox), z = ay >= Math.max(ax, az) || ax > az ? 0 : Math.sign(oz);
+  out[0] = piece.c * x + piece.s * z;
+  out[1] = ay >= Math.max(ax, az) ? Math.sign(ny) : 0;
+  out[2] = piece.c * z - piece.s * x;
+  return out;
+}
 /** A piece's seed from its instance's three floats as stored: no eye moves it. As ownVertex's. */
 export function pieceSeed(x: number, y: number, z: number): number {
   let h = (Math.imul(x, 2654435761) ^ Math.imul(y, 2246822519) ^ Math.imul(z, 3266489917)) >>> 0;
@@ -363,10 +378,17 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   const f = finishes[id]!, r = MADE_READS[k - 1]!, m = r.metres, turn = !piece && axis === 1 && Math.abs(nx) > Math.abs(nz);
   const seed = piece ? piece.bits >> PIECE_SEED : 0;
   // A built piece reads it in its own metres, and its mottle a seed's way off.
-  if (piece) [x, y, z] = [piece.x + (seed & 63) * 1.7, piece.y + ((seed >> 3) & 63) * 1.7, piece.z + (seed >> 6) * 1.7];
+  if (piece) {
+    x = piece.x + (seed & 63) * 1.7;
+    y = piece.y + ((seed >> 3) & 63) * 1.7;
+    z = piece.z + (seed >> 6) * 1.7;
+  }
   const wu = axis === 0 ? z : x, wv = axis === 1 ? z : -y;
   let u = (turn ? wv : wu) / m, v = (turn ? wu : wv) / m;
-  if (piece) [u, v] = [(axis === 0 ? piece.z : piece.x) / m, (axis === 1 ? piece.z : -piece.y) / m];
+  if (piece) {
+    u = (axis === 0 ? piece.z : piece.x) / m;
+    v = (axis === 1 ? piece.z : -piece.y) / m;
+  }
   const spread = Math.log2(Math.max(footprint / m, 1e-9));
   const t = slots[(k - 1) * MADE_FLOATS + 1]! * (1 - clamp((Math.log2(Math.max(footprint / r.far, 1e-9)) - WORLD_FAR) / WORLD_FAR_BAND));
   for (let c = 0; c < 4; c++) maps.base[c] = f.base[c]!;
@@ -743,7 +765,7 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
  * lighter over a little more. All fade as a pixel grows wider than the arris. `line` keeps only the wear (medium's).
  */
 export function edged(albedo: Out, orm: Out, normal: Out, index: number, dist: number, ox: number, oy: number, oz: number, painted: number,
-  x: number, y: number, z: number, footprint: number, city: Numbers, line: boolean): void {
+  x: number, y: number, z: number, footprint: number, city: Numbers, line: boolean, piece = false): void {
   const [wear, chip, shows] = edgings[index]!, f = finishes[index]!, height = (painted - f.lift) / f.height;
   const round = EDGE_ROUND * (0.6 + 0.8 * surfaceNoise(x / 0.37 + z / 0.53, y / 0.41));
   const worn = (1 - smooth(0, round * 2.5, dist)) * wear * (1 - smooth(round, round * 4, footprint));
@@ -759,13 +781,13 @@ export function edged(albedo: Out, orm: Out, normal: Out, index: number, dist: n
   const near = 1 - smooth(0, round * 3, dist), top = 0.15 + 0.45 * near;
   const chipped = near > 0 ? (1 - smooth(top - 0.04, top, height)) * chip * seen : 0;
   if (chipped <= 0) return;
-  const grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3;
+  const grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3, dull = piece && shows === 2;
   for (let c = 0; c < 3; c++) {
-    const bare = shows === 0 ? albedo[c]! * 0.8 : shows === 1 ? [0.3, 0.29, 0.27][c]! * city[c]! : shows === 2 ? [0.56, 0.57, 0.58][c]! : shows === 3 ? grey * 1.3 : albedo[c]! * 1.25;
+    const bare = dull ? PIECE_BARE[c]! : shows === 0 ? albedo[c]! * 0.8 : shows === 1 ? [0.3, 0.29, 0.27][c]! * city[c]! : shows === 2 ? [0.56, 0.57, 0.58][c]! : shows === 3 ? grey * 1.3 : albedo[c]! * 1.25;
     albedo[c] = albedo[c]! + (bare - albedo[c]!) * chipped;
   }
-  orm[1] = orm[1]! + ((shows === 2 ? 0.45 : 1) - orm[1]!) * chipped;
-  if (shows === 2) orm[2] = orm[2]! + (1 - orm[2]!) * chipped;
+  orm[1] = orm[1]! + ((dull ? PIECE_BARE[3] : shows === 2 ? 0.45 : 1) - orm[1]!) * chipped;
+  if (shows === 2) orm[2] = orm[2]! + ((dull ? PIECE_BARE[4] : 1) - orm[2]!) * chipped;
 }
 
 /**
@@ -1334,6 +1356,12 @@ vec3 worldOwn = vec3(0.0);
 vec2 worldTurn = vec2(1.0, 0.0);
 int worldPiece = 0;
 vec3 ownOf(vec3 v) { return vec3(worldTurn.x * v.x - worldTurn.y * v.z, v.y, worldTurn.y * v.x + worldTurn.x * v.z); }
+// A piece's face as its weathering takes it: the piece's own axis nearest its normal, in the world, the same at every pixel of it.
+vec3 ownFace(vec3 n) {
+  vec3 o = ownOf(n), a = abs(o);
+  o = a.y >= max(a.x, a.z) ? vec3(0.0, sign(o.y), 0.0) : a.x > a.z ? vec3(sign(o.x), 0.0, 0.0) : vec3(0.0, 0.0, sign(o.z));
+  return vec3(worldTurn.x * o.x + worldTurn.y * o.z, o.y, worldTurn.x * o.z - worldTurn.y * o.x);
+}
 // How much of a coat the pixel wears (made), and how much of its plaster is lost (weathered): a coat's relief goes with it.
 float worldCoat = 0.0, worldLost = 0.0;
 const float MK[${MADE_READS.length + 1}] = float[${MADE_READS.length + 1}](0.0, ${MADE_READS.map((r) => (r.coat ? "1.0" : "0.0")).join(", ")});
@@ -1591,10 +1619,11 @@ void edged(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec2 face, u
   float chipped = near > 0.0 ? (1.0 - smoothstep(top - 0.04, top, height)) * e.y * seen : 0.0;
   if (chipped > 0.0) {
     float grey = (albedo.r + albedo.g + albedo.b) / 3.0;
-    vec3 bare = e.z == 0.0 ? albedo * 0.8 : e.z == 1.0 ? vec3(0.3, 0.29, 0.27) * uSurfaceCity[0].rgb : e.z == 2.0 ? vec3(0.56, 0.57, 0.58) : e.z == 3.0 ? vec3(grey * 1.3) : albedo * 1.25;
+    bool dull = worldPiece > 0 && e.z == 2.0;
+    vec3 bare = dull ? vec3(${PIECE_BARE.slice(0, 3).map(fl).join(", ")}) : e.z == 0.0 ? albedo * 0.8 : e.z == 1.0 ? vec3(0.3, 0.29, 0.27) * uSurfaceCity[0].rgb : e.z == 2.0 ? vec3(0.56, 0.57, 0.58) : e.z == 3.0 ? vec3(grey * 1.3) : albedo * 1.25;
     albedo = mix(albedo, bare, chipped);
-    orm.y = mix(orm.y, e.z == 2.0 ? 0.45 : 1.0, chipped);
-    if (e.z == 2.0) orm.z = mix(orm.z, 1.0, chipped);
+    orm.y = mix(orm.y, dull ? ${fl(PIECE_BARE[3])} : e.z == 2.0 ? 0.45 : 1.0, chipped);
+    if (e.z == 2.0) orm.z = mix(orm.z, dull ? ${fl(PIECE_BARE[4])} : 1.0, chipped);
   }
 #endif
 }

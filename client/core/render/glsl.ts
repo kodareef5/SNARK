@@ -121,7 +121,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   // No ground known under it (skyopen.ts NO_GROUND), no weathering by its height over it.
   if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0 && fFacade.z < 1.5 && over < 1e5) {
     vec3 a0 = albedo, o0 = orm;
-    weathered(albedo, orm, surface, over, open, vRel, geometric, dx, dy);
+    weathered(albedo, orm, surface, over, open, vRel, worldPiece > 0 ? ownFace(geometric) : geometric, dx, dy);
     albedo = mix(a0, albedo, risen);
     orm = mix(o0, orm, risen);
     n = normalize(mix(n, geometric, worldLost * worldCoat * risen));

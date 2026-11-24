@@ -13,6 +13,8 @@ import { tierShapes } from "../../tools/pack/pieces/tier.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
 import { METAL, bakeMetal, metalColours } from "../../tools/pack/pieces/metal.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import { FACE_PLAIN, FACE_WEARS } from "../../client/core/render/piece-fit.ts";
 
 /** Metres a mesh may stand out of its collider: a sill under its foot, a peg, a hewn timber's bow. */
 const PROUD = 0.04;
@@ -139,18 +141,30 @@ test("every metal level is closed, flat and within what metal aims at", () => {
   }
 });
 
-test("a metal piece is two-toned: plate in its own colour, frame a fixed grey", () => {
+test("a metal piece is two-toned: plate in its own colour, frame and trim a fixed dark slate", () => {
   const colour = metalColours();
-  expect([colour("plate"), colour("frame")]).toEqual([REGION_BASE, 91]);
+  expect([colour("plate"), colour("frame"), colour("trim"), colour("bolt")]).toEqual([REGION_BASE, 4, 4, 96]);
+  // The plate's own colour is the tier's, a lighter steel grey than the slate.
+  const tier = CORE_CONTENT.find((d) => d.id === "core:wall_metal");
+  expect(tier?.type === "structure" && tier.color).toBe(90);
   for (const mesh of bakeMetal(FORMS)) {
     // To the level its frame is drawn at; past it a slab or a pillar is a box of one of the two.
     mesh.lods.slice(0, 3).forEach((lod, level) => {
       const used = new Set(lod.colors);
-      expect([mesh.id, level, used.has(REGION_BASE), used.has(91)]).toEqual([mesh.id, level, true, true]);
+      expect([mesh.id, level, used.has(REGION_BASE), used.has(4)]).toEqual([mesh.id, level, true, true]);
     });
     // Outer edges are said where a wall is seen close, in the byte a static's corner has, and nowhere past it.
-    expect([mesh.id, mesh.lods[0]!.bones!.some((b) => b >> 2 !== 0), mesh.lods[mesh.lods.length - 1]!.bones]).toEqual([mesh.id, true, undefined]);
+    expect([mesh.id, mesh.lods[0]!.bones!.some((b) => ((b >> 2) & 15) !== 0), mesh.lods[mesh.lods.length - 1]!.bones!.some((b) => (b & 63) !== 0)]).toEqual([mesh.id, true, false]);
+    // Every level says which faces wear the piece's material in the mesh's colour: all but the plate's, and all of those but a wall's frame clear of joints.
+    for (const lod of mesh.lods) {
+      for (let v = 0; v < lod.colors.length; v++) {
+        const flags = lod.bones![v]! & (FACE_WEARS | FACE_PLAIN);
+        expect(lod.colors[v] === REGION_BASE ? flags === 0 : flags === FACE_WEARS || flags === (FACE_WEARS | FACE_PLAIN)).toBe(true);
+      }
+    }
   }
+  const wall = bakeMetal(FORMS).find((m) => m.id === "core:wall_metal")!.lods[0]!;
+  expect(wall.bones!.some((b) => (b & (FACE_WEARS | FACE_PLAIN)) === FACE_WEARS)).toBe(true);
 });
 
 test("the metal recipe makes the same mesh each time it is asked", () => {

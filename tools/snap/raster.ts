@@ -18,7 +18,7 @@ import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFa
 import { texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherTwin } from "../../client/core/texgen/weather.ts";
 import { TWIN_SLOTS, madeTwin } from "../../client/core/texgen/materials.ts";
-import { MADE_MARK, PIECE_FIXED, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, pieceSeed, type PiecePixel, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { MADE_MARK, PIECE_FIXED, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ownFace, pieceSeed, type PiecePixel, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -319,6 +319,7 @@ function piecePixel(f: ArrayLike<number>): PiecePixel {
   return o;
 }
 const pieceNow = new Float64Array(6);
+const faceNow = [0, 0, 0];
 
 /**
  * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it
@@ -445,7 +446,9 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const risen = 1 - finishesEarly;
     if (weather && weather[3]! >= 0 && !ground && !touch && risen > 0 && over < 1e5) {
       risenFrom(albedo, worldOrm, normal);
-      weathered(albedo, worldOrm, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, over, open, footprint, p.surfaceCity, sample, 1, weatherTwin(texgenSide(p.tier, p.tier.finishes)));
+      // A piece's weathering runs by its own axis nearest the face's normal, as LIT has it.
+      const wf = piece && (piece[5]! & PIECE_OWN) !== 0 ? ownFace(piecePixel(piece), nx, ny, nz, faceNow) : null;
+      weathered(albedo, worldOrm, index, rx + p.camX, ry + p.camY, rz + p.camZ, wf ? wf[0]! : nx, wf ? wf[1]! : ny, wf ? wf[2]! : nz, over, open, footprint, p.surfaceCity, sample, 1, weatherTwin(texgenSide(p.tier, p.tier.finishes)));
       risenTo(albedo, worldOrm, null, risen);
       // A coat's relief lies down where its plaster is lost, as LIT has it.
       const flat = coatLost.lost * coatLost.coat * risen;
@@ -457,7 +460,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       }
       if (edge && edge[0]! >= 0) {
         risenFrom(albedo, worldOrm, normal);
-        edged(albedo, worldOrm, normal, index, edge[0]!, edge[1]!, edge[2]!, edge[3]!, h, rx + p.camX, ry + p.camY, rz + p.camZ, footprint, p.surfaceCity, p.tier.finishes < 1024);
+        edged(albedo, worldOrm, normal, index, edge[0]!, edge[1]!, edge[2]!, edge[3]!, h, rx + p.camX, ry + p.camY, rz + p.camZ, footprint, p.surfaceCity, p.tier.finishes < 1024, piece !== null && (piece[5]! & PIECE_OWN) !== 0);
         risenTo(albedo, worldOrm, normal, risen);
       }
     }

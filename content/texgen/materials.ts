@@ -100,7 +100,7 @@ export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
   // Riveted steel plate, painted: one sheet 750 mm square to the tile, a row of rivets inside every edge, rain streaks down it and
   // the paint let go under some rivets and up from its foot. A piece reads it in its own frame, each sheet turned and worn its own way.
   {
-    name: "plate", metres: 0.75, seed: 79, level: 0.45, relief: 8, rough: 0.64, hollow: 0.12, dye: 1, shade: 0.1, mottle: 0.05, means: [1, 1, 0.51],
+    name: "plate", metres: 0.75, seed: 79, level: 0.45, relief: 8, rough: 0.64, hollow: 0.12, dye: 1, shade: 0.1, mottle: 0.05, means: [0.98, 0.9, 0.65],
     // Oil-canning a hand deep in a thousand, streaks a finger wide down the sheet, the paint's orange peel, and its slow blotches.
     noise: [{ cell: [0.375, 0.375], height: 0.14, light: 0.04 }, { cell: [0.03, 0.75], height: 0, light: 0.13, warp: 0.02 }, { cell: [0.006, 0.006], height: 0.05, light: 0.03 }, { cell: [0.125, 0.125], height: 0.04, light: 0.09 }],
     course: { size: [0.75, 0.75], bond: 0, joint: 0.004, depth: 0.85, tone: 0, dark: 0.4, pillow: 0.3 },
