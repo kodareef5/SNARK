@@ -935,6 +935,10 @@ export class App {
       }
       session.impacts.length = 0;
     }
+    // Pieces set down and awaited are drawn from the frame of the click, and the preview gives way to one where it stood.
+    this.predict.step(session, f.nowMs);
+    this.predict.fill(scene.predicted, GHOST_BAD, f.nowMs);
+    if (scene.ghost.kind !== 0 && this.predict.covers(scene.ghost.x, scene.ghost.y, scene.ghost.z)) scene.ghost.kind = 0;
     this.ui.air.update(session, this.remote, world, cam);
     scene.airSupport.preview = this.ui.air.marking ? this.ui.air.spot : null;
     scene.airSupport.view = session.airSupport;
@@ -1057,8 +1061,6 @@ export class App {
       v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
     } else { b.active = false; v.active = false; }
     const predict = this.predict;
-    predict.step(session, nowMs);
-    predict.fill(f.scene.predicted, GHOST_BAD, nowMs);
     this.ui.structure.undoable = b.active && predict.undoable;
     // Where a piece just set down stands, the preview has nothing to add.
     if (b.active && b.problem !== RESULT_NO_SNAP && !predict.covers(b.pose.x / STRUCT_UNITS, b.pose.y / STRUCT_UNITS, b.pose.z / STRUCT_UNITS)) {
