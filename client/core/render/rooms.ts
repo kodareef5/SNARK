@@ -120,6 +120,11 @@ class Base {
   private nv = 0;
   private start = new Int32Array(1);
   private items = new Int32Array(0);
+  /** Per face of `enc`, once it has been laid out: its corners as (u, v) and in the world's metres, how many (0 for not yet), and its tiling. */
+  private facePoly = new Float64Array(0);
+  private faceWorld = new Float64Array(0);
+  private faceCorners = new Uint8Array(0);
+  private faceTiling = new Uint8Array(0);
   /** Per face, the ask that last looked at it; and the faces an ask found. */
   private seen = new Int32Array(0);
   private asks = 0;
@@ -178,6 +183,13 @@ class Base {
     }
     this.seen.fill(0);
     this.asks = 0;
+    if (this.faceCorners.length < w.faces) {
+      const size = Math.max(w.faces, this.faceCorners.length * 2);
+      this.facePoly = grown(this.facePoly, size * 8);
+      this.faceWorld = grown(this.faceWorld, size * 8);
+      this.faceCorners = grown(this.faceCorners, size);
+      this.faceTiling = grown(this.faceTiling, size);
+    }
     let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
     for (let g = 0; g < w.faces; g++) {
       const first = w.first[g]!;
@@ -189,23 +201,21 @@ class Base {
       }
       if (low > high) continue;
       const i = this.faces++;
-      const n = enc.faceCorners(g, tuples);
+      // A face's corners are where they were when it was last laid out: they are worked out once.
+      if (this.faceCorners[g] === 0) this.measure(g);
+      const n = this.faceCorners[g]!;
       this.face[i] = g;
       this.corners[i] = n;
-      // A square along the frame's own axes tiles with every other whose corner is a whole number of sides from its own.
-      const straight = n === 4 && tuples[1] === 0 && tuples[2] === 0 && tuples[4] === tuples[0]! + SIDE && tuples[5] === 0 && tuples[6] === 0 && tuples[7] === tuples[3];
-      this.tiling[i] = straight ? 1 + (tuples[0]! & 1) + 2 * (tuples[3]! & 1) : 0;
+      this.tiling[i] = this.faceTiling[g]!;
       for (let k = 0; k < n; k++) {
-        worldOf(this.basis, this.ox, this.oz, tuples, 4 * k, world, 0);
-        const dx = world[0]! - this.ox, dz = world[1]! - this.oz;
-        const u = (dx * this.ax + dz * this.az) / this.l2, v = (dz * this.ax - dx * this.az) / this.l2;
+        const u = this.facePoly[g * 8 + 2 * k]!, v = this.facePoly[g * 8 + 2 * k + 1]!;
         this.poly[i * 8 + 2 * k] = u;
         this.poly[i * 8 + 2 * k + 1] = v;
         u0 = Math.min(u0, u);
         v0 = Math.min(v0, v);
         u1 = Math.max(u1, u);
         v1 = Math.max(v1, v);
-        const x = world[0]! / STRUCT_UNITS, z = world[1]! / STRUCT_UNITS;
+        const x = this.faceWorld[g * 8 + 2 * k]!, z = this.faceWorld[g * 8 + 2 * k + 1]!;
         box[0] = Math.min(box[0]!, x);
         box[2] = Math.min(box[2]!, z);
         box[3] = Math.max(box[3]!, x);
@@ -247,6 +257,23 @@ class Base {
     // Each slot now holds the start of the bucket before it.
     start.copyWithin(0, 1, buckets + 1);
     start[buckets] = total;
+  }
+
+  /** Works out the corners and the tiling of face `g` of `enc`. */
+  private measure(g: number): void {
+    const n = this.enc.faceCorners(g, tuples);
+    this.faceCorners[g] = n;
+    // A square along the frame's own axes tiles with every other whose corner is a whole number of sides from its own.
+    const straight = n === 4 && tuples[1] === 0 && tuples[2] === 0 && tuples[4] === tuples[0]! + SIDE && tuples[5] === 0 && tuples[6] === 0 && tuples[7] === tuples[3];
+    this.faceTiling[g] = straight ? 1 + (tuples[0]! & 1) + 2 * (tuples[3]! & 1) : 0;
+    for (let k = 0; k < n; k++) {
+      worldOf(this.basis, this.ox, this.oz, tuples, 4 * k, world, 0);
+      const dx = world[0]! - this.ox, dz = world[1]! - this.oz;
+      this.facePoly[g * 8 + 2 * k] = (dx * this.ax + dz * this.az) / this.l2;
+      this.facePoly[g * 8 + 2 * k + 1] = (dz * this.ax - dx * this.az) / this.l2;
+      this.faceWorld[g * 8 + 2 * k] = world[0]! / STRUCT_UNITS;
+      this.faceWorld[g * 8 + 2 * k + 1] = world[1]! / STRUCT_UNITS;
+    }
   }
 
   /** Whether laid-out face `i` and the box from (u0, v0) to (u1, v1) share a point. */
@@ -678,4 +705,11 @@ export class RoomFinder {
     const low = Math.floor(b.level(y + cy - hy + IN_FLOOR));
     return b.holds(u - su, v - sv, u + su, v + sv, low, Math.max(low + 1, Math.ceil(b.level(y + cy + hy + this.under))));
   }
+}
+
+/** A column `size` long holding what it held. */
+function grown<T extends Float64Array | Uint8Array>(a: T, size: number): T {
+  const b = new (a.constructor as new (n: number) => T)(size);
+  b.set(a);
+  return b;
 }

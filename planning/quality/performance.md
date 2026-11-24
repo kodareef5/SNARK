@@ -251,8 +251,8 @@ medians of three to five runs. The gates were set on a quiet machine, so a miss 
 
 | Row | Before | Now | Gate |
 | --- | --- | --- | --- |
-| The room finder after one wall goes or comes, a 20,000-piece chunk | 0.96 ms | 0.23 to 0.25 ms | 0.4 |
-| The same, 2,000 pieces | 0.21 ms | 0.07 median; 0.12 to 0.16 by the bench's mean | 0.12 |
+| The room finder after one wall goes or comes, a 20,000-piece chunk | 0.96 ms | 0.20 to 0.25 ms | 0.4 |
+| The same, 2,000 pieces | 0.21 ms | 0.06 median; 0.11 to 0.13 by the bench's mean | 0.12 |
 | The room finder on a chunk whole, 20,000 pieces | 4.65 ms | 3.9 to 4.2 ms | 1.5, missed |
 | The same, 2,000 pieces | 0.85 ms | 0.82 ms | 0.4, missed |
 | The flood alone after one wall goes, 20,000 and 2,000 pieces | 0.58, 0.14 ms | 0.05, 0.02 ms | |
