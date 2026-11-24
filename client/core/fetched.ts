@@ -3,6 +3,7 @@
 
 import { BENT_SECTIONS } from "../../content/bends.ts";
 import { BREAK_BLOCKS } from "../../content/breaks/kinds.ts";
+import { ORBS } from "../../content/orb.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, withContent, type Registry } from "../../shared/content/registry.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
@@ -112,9 +113,9 @@ export function nextTask(channel: TaskChannel, scheduler = (globalThis as { sche
     });
 }
 
-/** The page completes its content file with the same street sections and broken buildings the server generates. */
+/** The page completes its content file with the same street sections, broken buildings and orbs' collision the server generates. */
 export async function fetchContent(get: Get, url: string): Promise<Registry> {
-  const { registry, errors } = compileContent([...((await fetchJson(get, url)) as Def[]), ...BENT_SECTIONS, ...BREAK_BLOCKS]);
+  const { registry, errors } = compileContent([...((await fetchJson(get, url)) as Def[]), ...BENT_SECTIONS, ...BREAK_BLOCKS, ...ORBS]);
   if (!registry) throw new Error(`${url}: ${errors.join("; ")}`);
   return registry;
 }
