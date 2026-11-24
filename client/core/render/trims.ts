@@ -4,10 +4,14 @@
 // to the joint at it, and a ceiling's side to the wall under it: those are bits of the piece's own instance (piece-fit.ts).
 //
 // A tier's trims are meshes of its pack, by name: <ns>:joint_sq_<tier> a square joint, <ns>:joint_r15_<tier> and
-// <ns>:joint_r21_<tier> twelve-sided ones of 0.15 m and 0.21 m, <ns>:skirt_<tier>. <ns> and <tier> are its pieces'
-// material's, core:mat_<tier>. A joint's mesh stands on its corner from the level up a storey, and a skirt's hangs from
-// the middle of its side, its +X along the side and its +Z outward. A tier with no square joint has no trims, and its
-// pieces yield nothing.
+// <ns>:joint_r21_<tier> twelve-sided ones of 0.15 m and 0.21 m, <ns>:skirt_<tier>, <ns>:eave_<tier> and
+// <ns>:ridge_<tier>. <ns> and <tier> are its pieces' material's, core:mat_<tier>. A joint's mesh stands on its corner
+// from the level up a storey. A skirt's hangs from the middle of a foundation's side, its +X along the side and its +Z
+// outward, and an eave's lies so on a ceiling's side. A ridge's lies along the side two roofs' high sides share, at the
+// height their tops meet. A tier with no square joint has no trims, and its pieces yield nothing.
+//
+// A skirt or an eave meets the next one round a corner on the plane that halves the corner: each end's turn is in its
+// instance (piece-fit.ts), so a mesh that ends flat closes an outside corner and clears an inside one at any angle.
 //
 // A chunk's corners are kept between layings (Laid). The next laying takes out and puts in only the pieces that changed,
 // decides again the corners and slabs those turn on, and lists the trims from what is kept.
@@ -16,17 +20,20 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, chunkCx, chunkCz } from "../../../shared/coords.ts";
 import { levelY, worldOf, yawOf } from "../../../shared/world/lattice/basis.ts";
 import { FORM_LAYERS, STOREY_LEVELS, type FormTable } from "../../../shared/world/lattice/forms.ts";
-import { ownDir, type Frame } from "../../../shared/world/lattice/frames.ts";
-import { CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, DIRECTIONS, LVL_MOST, M_MOST, SIDE, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, keyM3, tupleStep, tupleWithin } from "../../../shared/world/lattice/module.ts";
-import { Cells, cellAt, edgeFaces, faceEdges, formCells, vertexEdges } from "../../../shared/world/lattice/occupancy.ts";
+import { ownDir, riseAt, type Frame } from "../../../shared/world/lattice/frames.ts";
+import { CLS_CORNERS, CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, DIRECTIONS, LVL_MOST, M_MOST, SIDE, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLvl, keyM3, tupleStep, tupleWithin } from "../../../shared/world/lattice/module.ts";
+import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "../../../shared/world/lattice/occupancy.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import { DRAW_PIECE } from "./packet.ts";
+import { FIT_ENDS, PIECE_END_IN, PIECE_END_SHIFT } from "./piece-fit.ts";
 import type { PieceLooks } from "./piece-state.ts";
 
 /** Each tier's rank, the highest at a corner giving its joint, and whether its walls run on through a straight run with no joint. */
 const TIER_RULES: Readonly<Record<string, readonly [rank: number, runsOn: boolean]>> = { thatch: [0, false], wood: [1, false], stone: [2, true], metal: [3, true] };
 /** Metres from a chunk's side within which a piece's trims may turn on what stands in the next chunk: a side and a half, and a wall's thickness. */
 const BORDER = 4.7;
+/** The same for a slab, whose side trims turn on the slabs that share a corner with it: two triangles' first corners may lie 6 m apart. */
+const SLAB_NEAR = 6.2;
 /** Metres from a chunk's side within which a wall at a corner may be the next chunk's: half a side, and the most a base's vectors stretch it. */
 const CORNER_BORDER = 1.6;
 /** Metres from a chunk's side past which the walls under a slab's sides are all the chunk's own. */
@@ -50,6 +57,12 @@ const TURNS_ON = Array.from({ length: 9 }, (_, n) => {
   return (dx !== 0 ? 1 << (4 + dx) : 0) | (dz !== 0 ? 1 << (4 + 3 * dz) : 0) | (dx !== 0 && dz !== 0 ? 1 << n : 0);
 });
 
+/** What a wall's kind is to a corner: it ends in joints; its top falls from its own -X end, or from its +X. */
+const W_JOINTED = 1, W_HIGH_MINUS = 2, W_HIGH_PLUS = 4;
+
+/** What a slab's kind takes on its sides: a foundation skirts, a ceiling eaves, a roof ridges. */
+const SIDES_SKIRT = 1, SIDES_EAVE = 2, SIDES_RIDGE = 3;
+
 const WALL = FORM_LAYERS.indexOf("wall");
 const POST = FORM_LAYERS.indexOf("post");
 const SLAB = FORM_LAYERS.indexOf("slab");
@@ -62,12 +75,18 @@ interface Tier {
   readonly r15: number;
   readonly r21: number;
   readonly skirt: number;
+  readonly eave: number;
+  readonly ridge: number;
 }
 
 /** What a chunk's trims are, as `lay` leaves them until it is next called. */
 export interface TrimLayout {
   count: number;
-  /** Per trim: its mesh, the slot of the piece that owns it, where it stands in metres, its yaw and turn class as a row has them, and the quarter storeys it is cut to, 0 for none. */
+  /**
+   * Per trim: its mesh, the slot of the piece that owns it, where it stands in metres, its yaw and turn class as a row
+   * has them, its fit byte (the quarter storeys a joint is cut to, 0 for none; FIT_ENDS and its -X end's turn for a
+   * skirt or an eave whose ends are turned), and its +X end's turn as bits of its state byte.
+   */
   mesh: Uint16Array;
   owner: Uint16Array;
   x: Float32Array;
@@ -76,6 +95,7 @@ export interface TrimLayout {
   yaw: Uint16Array;
   tw: Uint8Array;
   cut: Uint8Array;
+  ends: Uint8Array;
   /** Per slot of the chunk: what of the piece yields, the low bits of its fit byte. */
   yields: Uint8Array;
   /** The chunks round this one whose pieces these turn on, a bit each: a row of three, then the next, its own left out. */
@@ -110,7 +130,7 @@ class Laid {
   held = 0;
   /**
    * The corners its walls end at, each: its key and base; where it stands, and by which sides (INSIDE); the ways walls leave it by, a bit each; the
-   * storeys its tallest reaches; its highest tier; the first wall met, its reach and tier; its flags; its joint, as
+   * quarter storeys its tallest stands there; its highest tier; the first wall met, what it is like and its tier; its flags; its joint, as
    * `decide` packs it; and the first of its walls' ends.
    */
   corners = 0;
@@ -129,16 +149,21 @@ class Laid {
   cflags = new Uint8Array(256);
   cjoint = new Int32Array(256);
   chead = new Int32Array(256);
-  /** Its walls' ends, each: the wall's slot, its corner, the way it leaves it by in the low four bits under what of it yields there, its reach and tier, and the next end at its corner. `dead` of them are of walls gone. */
+  /** Its walls' ends, each: the wall's slot, its corner, the way it leaves it by in the low four bits under what of it yields there, how high it stands at that corner, what it is like (`likeOf`), its tier, and the next end at its corner. `dead` of them are of walls gone. */
   ends = 0;
   dead = 0;
   eslot = new Uint16Array(256);
   ecorner = new Uint32Array(256);
   ebits = new Uint8Array(256);
   ereach = new Uint8Array(256);
+  elike = new Uint8Array(256);
   etier = new Int8Array(256);
   enext = new Int32Array(256);
-  /** Per slot: the kind, frame and key it was told with, 0 for none; what it is (S_); its base among `bases`; its side (INSIDE); its ends, the first and how many; and a slab's yield in the low four bits under the sides it has a skirt on. */
+  /**
+   * Per slot: the kind, frame and key it was told with, 0 for none; what it is (S_); its base among `bases`; its side
+   * (INSIDE); its ends, the first and how many; a slab's yield in the low four bits under the sides it has a trim on;
+   * and for each such side a byte, the turn at its trim's -X end under the turn at its +X end.
+   */
   high = 0;
   sKind = new Uint16Array(0);
   sFr = new Uint32Array(0);
@@ -150,6 +175,7 @@ class Laid {
   sEnd = new Int32Array(0);
   sEnds = new Uint8Array(0);
   sSlab = new Uint8Array(0);
+  sTurn = new Uint32Array(0);
 
   /** Forgets everything, with room for `high` slots and a table for about `keys` cells. */
   clear(high: number, keys: number): void {
@@ -190,6 +216,7 @@ class Laid {
     this.sEnd = grown(this.sEnd, n);
     this.sEnds = grown(this.sEnds, n);
     this.sSlab = grown(this.sSlab, n);
+    this.sTurn = grown(this.sTurn, n);
   }
 }
 
@@ -203,9 +230,18 @@ export class Trims {
   private readonly tiers: Tier[] = [];
   /** Per kind, its tier in `tiers`, or -1. */
   private readonly tierOf: Int8Array;
-  private readonly out: TrimLayout = { count: 0, mesh: new Uint16Array(64), owner: new Uint16Array(64), x: new Float32Array(64), y: new Float32Array(64), z: new Float32Array(64), yaw: new Uint16Array(64), tw: new Uint8Array(64), cut: new Uint8Array(64), yields: new Uint8Array(0), borders: 0 };
+  /** Per kind of wall, what it is to a corner (W_). A rail or a beam, which carries nothing and closes nothing, ends in no joint. */
+  private readonly wallOf: Uint8Array;
+  /** Per kind of slab a whole side wide, what its sides take (SIDES_), and for a roof the metres its high corners' tops stand over its level. */
+  private readonly sidesOf: Uint8Array;
+  private readonly ridgeUp: Float32Array;
+  /** Whether any tier has an eave: then a wall set down or taken up asks the ceilings beside it again. */
+  private readonly eaves: boolean;
+  private readonly out: TrimLayout = { count: 0, mesh: new Uint16Array(64), owner: new Uint16Array(64), x: new Float32Array(64), y: new Float32Array(64), z: new Float32Array(64), yaw: new Uint16Array(64), tw: new Uint8Array(64), cut: new Uint8Array(64), ends: new Uint8Array(64), yields: new Uint8Array(0), borders: 0 };
   private readonly cells = new Cells();
   private readonly round = new Cells();
+  private readonly faces = new Cells();
+  private readonly spokes = new Cells();
   private readonly m = new Int32Array(24);
   private readonly at = new Int32Array(2);
   /** What is kept of each chunk laid, and the chunk being laid: its store, table and corner. */
@@ -230,10 +266,22 @@ export class Trims {
     this.forms = reg.forms;
     this.looks = looks;
     this.tierOf = new Int8Array(reg.defs.length).fill(-1);
+    this.wallOf = new Uint8Array(reg.defs.length);
+    this.sidesOf = new Uint8Array(reg.defs.length);
+    this.ridgeUp = new Float32Array(reg.defs.length);
     const named = new Map<string, number>();
     for (let k = 1; k < reg.defs.length; k++) {
-      const d = reg.defs[k]!;
-      if (!this.forms?.def[k] || d.type !== "structure") continue;
+      const d = reg.defs[k]!, form = this.forms?.def[k];
+      if (!form || d.type !== "structure") continue;
+      if (form.layer === "wall") {
+        const top = form.edges?.[0]?.profile;
+        this.wallOf[k] = (form.carries === true || (form.closes !== undefined && form.closes !== "none") ? W_JOINTED : 0) | (top === "slopeL" ? W_HIGH_MINUS : top === "slopeR" ? W_HIGH_PLUS : 0);
+      }
+      if (form.layer === "slab" && (form.size ?? SIDE) === SIDE && form.span === 0) {
+        const roof = this.forms!.rise[k] !== 0;
+        this.sidesOf[k] = roof ? SIDES_RIDGE : form.corner !== undefined ? 0 : form.root !== undefined ? SIDES_SKIRT : SIDES_EAVE;
+        if (roof) this.ridgeUp[k] = Math.max(...form.corner!);
+      }
       const made = /^([^:]+):mat_(.+)$/.exec(d.material ?? "");
       if (!made) continue;
       const id = `${made[1]}:${made[2]}`;
@@ -243,13 +291,14 @@ export class Trims {
         const sq = mesh("joint_sq");
         named.set(id, this.tiers.length);
         // Without the square joint the tier's meshes are not made to give way, so it has none of the rest either.
-        this.tiers.push({ rank: rule[0], runsOn: rule[1], sq, r15: sq < 0 ? -1 : mesh("joint_r15"), r21: sq < 0 ? -1 : mesh("joint_r21"), skirt: sq < 0 ? -1 : mesh("skirt") });
+        this.tiers.push({ rank: rule[0], runsOn: rule[1], sq, r15: sq < 0 ? -1 : mesh("joint_r15"), r21: sq < 0 ? -1 : mesh("joint_r21"), skirt: sq < 0 ? -1 : mesh("skirt"), eave: sq < 0 ? -1 : mesh("eave"), ridge: sq < 0 ? -1 : mesh("ridge") });
       }
       this.tierOf[k] = named.get(id)!;
     }
     this.any = this.tiers.some((t) => t.sq >= 0);
     // A trim is laid out as a piece is, so its mesh is drawn as one.
-    for (const t of this.tiers) for (const mesh of [t.sq, t.r15, t.r21, t.skirt]) if (mesh >= 0) looks.flag[mesh] = DRAW_PIECE;
+    for (const t of this.tiers) for (const mesh of [t.sq, t.r15, t.r21, t.skirt, t.eave, t.ridge]) if (mesh >= 0) looks.flag[mesh] = DRAW_PIECE;
+    this.eaves = this.tiers.some((t) => t.eave >= 0);
   }
 
   /** Lets go of what is kept of `chunk`. */
@@ -399,6 +448,7 @@ export class Trims {
           out.yaw[i] = yawOf(f.yaw, dir);
           out.tw[i] = dir % 3;
           out.cut[i] = (joint >> 24) & 15;
+          out.ends[i] = 0;
         }
         yields[s]! |= bits >> 4;
       }
@@ -406,7 +456,7 @@ export class Trims {
     for (const s of slabs) {
       const v = w.sSlab[s]!;
       yields[s]! |= v & 15;
-      if (v >> 4 !== 0) this.skirts(s, v >> 4);
+      if (v >> 4 !== 0) this.sides(s, v >> 4);
     }
     slabs.length = 0;
     return out;
@@ -425,32 +475,40 @@ export class Trims {
       out.z = grown(out.z, n);
       out.tw = grown(out.tw, n);
       out.cut = grown(out.cut, n);
+      out.ends = grown(out.ends, n);
     }
     return out.count++;
   }
 
-  /** The skirts of the foundation in slot `s`, on the sides `sides` names a bit each: at the middle of the side, +X back along it so that +Z is the way out. */
-  private skirts(s: number, sides: number): void {
+  /**
+   * The trims on the sides of the slab in slot `s` that `sides` names, a bit each: a skirt or an eave at the middle of
+   * its side, +X back along it so that +Z is the way out, its ends turned as `slab` found; a ridge along its side, at
+   * the height the roof's top has there.
+   */
+  private sides(s: number, sides: number): void {
     const t = this.t, m = this.m, out = this.out, kind = t.kind[s]!, k0 = t.k0![s]!, k1 = t.k1![s]!;
     const f = this.frame(t.fr![s]!);
     if (!f) return;
-    const cls = keyCls(k0), dir = keyDir(k1), step = CLS_STEP[cls]!, mesh = this.tiers[this.tierOf[kind]!]!.skirt;
+    const cls = keyCls(k0), dir = keyDir(k1), step = CLS_STEP[cls]!, tier = this.tiers[this.tierOf[kind]!]!, what = this.sidesOf[kind]!;
+    const mesh = what === SIDES_SKIRT ? tier.skirt : what === SIDES_EAVE ? tier.eave : tier.ridge, turns = this.w.sTurn[s]!;
+    const y = levelY(f.oy, keyLvl(k1)) / STRUCT_UNITS + this.ridgeUp[kind]!;
     keyAnchor(k0, k1, m, 0);
     elementCorners(cls, m, 0, dir, m, 0);
     for (let j = 0; j < 4; j++) {
       if ((sides & (1 << j)) === 0) continue;
-      const along = dirTurn(dir, step * j), way = dirTurn(along, 6);
+      const along = dirTurn(dir, step * j), way = what === SIDES_RIDGE ? along : dirTurn(along, 6), turn = (turns >>> (8 * j)) & 255;
       tupleStep(m, 4 * j, along, SIDE / 2, m, 16);
       worldOf(f.basis, f.ox, f.oz, m, 16, this.at, 0);
       const i = this.room();
       out.mesh[i] = mesh;
       out.owner[i] = s;
       out.x[i] = this.at[0]! / STRUCT_UNITS;
-      out.y[i] = levelY(f.oy, keyLvl(k1)) / STRUCT_UNITS;
+      out.y[i] = y;
       out.z[i] = this.at[1]! / STRUCT_UNITS;
       out.yaw[i] = yawOf(f.yaw, way);
       out.tw[i] = way % 3;
-      out.cut[i] = 0;
+      out.cut[i] = turn === 0 ? 0 : FIT_ENDS | (turn & 15);
+      out.ends[i] = (turn >> 4) << PIECE_END_SHIFT;
     }
   }
 
@@ -520,14 +578,14 @@ export class Trims {
       return !mark;
     }
     // What stands within a side of the chunk's edge may meet a piece of the next chunk.
-    const near = sideOf(t.x[s]! - this.x0, t.z[s]! - this.z0);
+    const near = sideOf(t.x[s]! - this.x0, t.z[s]! - this.z0, layer === SLAB ? SLAB_NEAR : BORDER);
     w.sNear[s] = near;
     w.near[near]!++;
     if (layer === SLAB) {
       w.sRole[s] = S_SLAB;
       if (mark) {
         this.ask(s);
-        this.beside(gid, k0, k1);
+        this.beside(gid, k0, k1, kind);
       }
       return true;
     }
@@ -548,6 +606,7 @@ export class Trims {
     w.sBase[s] = base;
     w.walls[base]!++;
     this.wall(f!, base, s, kind, k0, k1, mark);
+    if (mark && this.eaves) this.under(gid, kind, k0, k1);
     return true;
   }
 
@@ -566,9 +625,10 @@ export class Trims {
     w.near[w.sNear[s]!]!--;
     if ((role & S_SLAB) !== 0) {
       w.sSlab[s] = 0;
-      this.beside(gid, k0, k1);
+      this.beside(gid, k0, k1, kind);
       return true;
     }
+    if (this.eaves) this.under(gid, kind, k0, k1);
     const base = w.sBase[s]!;
     if (base < 0) return true;
     w.walls[base]!--;
@@ -631,18 +691,57 @@ export class Trims {
     this.slabs.push(s);
   }
 
-  /** Notes the slabs beyond each side of the face a key names to be asked again: a foundation's skirt turns on the one beyond. */
-  private beside(gid: number, k0: number, k1: number): void {
+  /**
+   * Notes the slabs a slab of `kind` set down or taken up at this key turns: those beyond each side of its face, whose
+   * skirt or ridge is by the one beyond, and those that share a corner with it, whose trim's end is turned to it.
+   */
+  private beside(gid: number, k0: number, k1: number, kind: number): void {
     const cls = keyCls(k0);
     if (cls !== CLS_SQUARE && cls !== CLS_TRIANGLE) return;
-    const occ = this.store.occupied, cells = this.cells, round = this.round, lvl = keyLvl(k1);
+    const cells = this.cells, round = this.round, lvl = keyLvl(k1);
     faceEdges(k0, k1, lvl, SLAB, cells);
     for (let j = 0; j < cells.n; j++) {
       if (cells.k0[j] === 0) continue;
       edgeFaces(cells.k0[j]!, cells.k1[j]!, lvl, SLAB, round);
-      for (let n = 0; n < round.n; n++) {
-        const ref = round.k0[n] === 0 ? -1 : occ.at(gid, round.k0[n]!, round.k1[n]!);
-        if (ref >= 0 && Math.floor(ref / 65536) === this.chunk) this.ask(ref & 0xffff);
+      this.askAll(gid, round);
+    }
+    // A corner's slabs at each level its cell reaches: an eave stops at a roof that comes up through its level.
+    const what = this.sidesOf[kind]!;
+    if (what !== SIDES_SKIRT && !this.eaves) return;
+    elementVertices(k0, k1, lvl, SLAB, cells);
+    for (let j = 0, n = CLS_CORNERS[cls]!; j < n; j++) {
+      if (cells.k0[j] === 0) continue;
+      for (let up = 0, reach = this.eaves ? this.forms!.reach[kind]! : 1; up < reach && lvl + up <= LVL_MOST; up++) {
+        vertexFaces(cells.k0[j]!, cells.k1[j]!, lvl + up, SLAB, round);
+        this.askAll(gid, round);
+      }
+    }
+  }
+
+  /** Notes the chunk's slabs in `cells` to be asked again. */
+  private askAll(gid: number, cells: Cells): void {
+    const occ = this.store.occupied;
+    for (let n = 0; n < cells.n; n++) {
+      const ref = cells.k0[n] === 0 ? -1 : occ.at(gid, cells.k0[n]!, cells.k1[n]!);
+      if (ref >= 0 && Math.floor(ref / 65536) === this.chunk) this.ask(ref & 0xffff);
+    }
+  }
+
+  /** Notes the slabs a wall set down or taken up at this key stands on the side of, or at a corner of, at each level it stands through: a ceiling has no eave where a wall goes on up. */
+  private under(gid: number, kind: number, k0: number, k1: number): void {
+    const cells = this.cells, round = this.round, faces = this.faces;
+    if (!this.wallCells(kind, k0, k1)) return;
+    for (let c = 0; c < cells.n; c++) {
+      const lvl = keyLvl(cells.k1[c]!);
+      for (let up = 0; up < cells.reach[c]! && lvl + up <= LVL_MOST; up++) {
+        edgeFaces(cells.k0[c]!, cells.k1[c]!, lvl + up, SLAB, round);
+        this.askAll(gid, round);
+        elementVertices(cells.k0[c]!, cells.k1[c]!, lvl + up, SLAB, round);
+        for (let end = 0; end < 2; end++) {
+          if (round.k0[end] === 0) continue;
+          vertexFaces(round.k0[end]!, round.k1[end]!, lvl + up, SLAB, faces);
+          this.askAll(gid, faces);
+        }
       }
     }
   }
@@ -688,21 +787,23 @@ export class Trims {
       const ref = chunk + w.eslot[e]!;
       if (first) {
         w.cfirst[c] = ref;
-        w.creach[c] = w.ereach[e]!;
+        w.creach[c] = w.elike[e]!;
         w.clike[c] = w.etier[e]!;
       }
-      this.meet(c, w.ebits[e]! & 15, ref, w.ereach[e]!, w.etier[e]!);
+      this.meet(c, w.ebits[e]! & 15, ref, w.ereach[e]!, w.elike[e]!, w.etier[e]!);
     }
   }
 
   /** Notes the wall in slot `s` at the corners its cells end at, and its level top over each edge it stands on. With `mark` its corners are gathered and decided after. */
   private wall(f: Frame, base: number, s: number, kind: number, k0: number, k1: number, mark: boolean): void {
-    const w = this.w, forms = this.forms!, cells = this.cells, m = this.m, def = forms.def[kind]!;
+    const w = this.w, forms = this.forms!, cells = this.cells, m = this.m, def = forms.def[kind]!, what = this.wallOf[kind]!;
     w.sEnd[s] = w.ends;
     this.tops(f.gid, base, kind, k0, k1, true, mark);
-    if (!this.wallCells(kind, k0, k1)) return;
-    const wide = def.cells, ref = this.chunk * 65536 + s;
+    if ((what & W_JOINTED) === 0 || !this.wallCells(kind, k0, k1)) return;
+    const wide = def.cells, ref = this.chunk * 65536 + s, foot = keyLvl(k1), span = forms.span[kind]!;
     const dir = keyDir(k1), own = ownDir(forms, kind, k1), tier = this.tierOf[kind]!;
+    // The way its high end leaves its corner by, for a wall whose top slopes: its own +X from its -X end.
+    const high = (what & (W_HIGH_MINUS | W_HIGH_PLUS)) === 0 ? -1 : ((what & W_HIGH_MINUS) !== 0) !== (keyFlip(k1) === 1) ? own : dirTurn(own, 6);
     const fitted = this.looks.yields[kind] === 1 && this.tiers[tier]!.sq >= 0;
     let first = 0, last = 0;
     for (const c of wide ?? []) {
@@ -713,10 +814,13 @@ export class Trims {
     for (let c = 0; c < cells.n; c++) {
       const along = wide ? wide[c]![0] : 0, lvl = keyLvl(cells.k1[c]!), reach = cells.reach[c]!;
       for (let end = 0; end < 2; end++) {
-        // The corner at this end of the cell, and the way the wall leaves it by.
+        // A piece over two edges ends at its two ends alone, and a sloped top at its high end: its low one stands no height.
+        const outer = end === 0 ? along === first : along === last, from = dirTurn(dir, end * 6);
+        if (!outer || (high >= 0 && from !== high)) continue;
+        // The corner at this end of the cell.
         tupleStep(m, 0, dir, (along + end) * SIDE, m, 4);
         if (!tupleWithin(m, 4, M_MOST)) continue;
-        const vk0 = key0(0, m[4]!, m[5]!, m[6]!), vk1 = key1(m[7]!, lvl, 0, WALL, 0, 0), from = dirTurn(dir, end * 6);
+        const vk0 = key0(0, m[4]!, m[5]!, m[6]!), vk1 = key1(m[7]!, lvl, 0, WALL, 0, 0), like = likeOf(span, lvl - foot);
         const slot = this.seek(vk0, ((vk1 & CELL) | (base << 26)) >>> 0, true);
         let at = w.tval[slot]!;
         const made = at < 0;
@@ -726,7 +830,7 @@ export class Trims {
           w.ck1[at] = vk1;
           w.cbase[at] = base;
           w.cfirst[at] = ref;
-          w.creach[at] = reach;
+          w.creach[at] = like;
           w.clike[at] = tier;
           w.ctier[at] = -1;
           w.cmask[at] = w.ctall[at] = 0;
@@ -739,22 +843,24 @@ export class Trims {
           w.cnear[at] = sideOf(x, z);
         }
         if (mark) this.over(at);
-        else this.meet(at, from, ref, reach, tier);
+        else this.meet(at, from, ref, reach, like, tier);
         if (w.ends === w.eslot.length) {
           const n = w.ends * 2;
           w.eslot = grown(w.eslot, n);
           w.ecorner = grown(w.ecorner, n);
           w.ebits = grown(w.ebits, n);
           w.ereach = grown(w.ereach, n);
+          w.elike = grown(w.elike, n);
           w.etier = grown(w.etier, n);
           w.enext = grown(w.enext, n);
         }
-        // Only the ends of the whole piece give way: bit 0 its own -X end, bit 1 its +X.
-        const outer = end === 0 ? along === first : along === last, e = w.ends++;
+        // An end gives way: bit 0 its own -X end, bit 1 its +X.
+        const e = w.ends++;
         w.eslot[e] = s;
         w.ecorner[e] = at;
-        w.ebits[e] = from | ((fitted && outer ? ((own === dir) === (end === 0) ? 1 : 2) : 0) << 4);
+        w.ebits[e] = from | ((fitted ? (from === own ? 1 : 2) : 0) << 4);
         w.ereach[e] = reach;
+        w.elike[e] = like;
         w.etier[e] = tier;
         w.enext[e] = w.chead[at]!;
         w.chead[at] = e;
@@ -787,12 +893,12 @@ export class Trims {
     return w.corners++;
   }
 
-  /** Counts the wall `ref`, of `tier` and `reach` storeys' quarters, among those that leave corner `at` by the way `from`. */
-  private meet(at: number, from: number, ref: number, reach: number, tier: number): void {
+  /** Counts the wall `ref`, of `tier`, `reach` quarter storeys high at the corner and like `like`, among those that leave corner `at` by the way `from`. */
+  private meet(at: number, from: number, ref: number, reach: number, like: number, tier: number): void {
     const w = this.w;
     w.cmask[at]! |= 1 << from;
     if (w.cfirst[at] !== ref) w.cflags[at]! |= SEVERAL;
-    if (reach !== w.creach[at] || tier !== w.clike[at] || !this.tiers[tier]!.runsOn) w.cflags[at]! |= UNALIKE;
+    if (like !== w.creach[at] || tier !== w.clike[at] || !this.tiers[tier]!.runsOn) w.cflags[at]! |= UNALIKE;
     if (reach > w.ctall[at]!) w.ctall[at] = reach;
     if (w.ctier[at]! < 0 || this.tiers[tier]!.rank > this.tiers[w.ctier[at]!]!.rank) w.ctier[at] = tier;
   }
@@ -847,44 +953,63 @@ export class Trims {
       if (round.k0[d] === 0) continue;
       const ref = occ.covering(f.gid, round.k0[d]!, round.k1[d]!);
       if (ref < 0) continue;
-      const t = store.chunks[Math.floor(ref / 65536)]!, s = ref & 0xffff, kind = t.kind[s]!, tier = this.tierOf[kind]!;
+      const t = store.chunks[Math.floor(ref / 65536)]!, s = ref & 0xffff, kind = t.kind[s]!, tier = this.tierOf[kind]!, what = this.wallOf[kind]!, k1 = t.k1![s]!;
+      // As `wall` tells them: no rail or beam, no piece through its own middle, and a sloped top at its high end alone.
+      if (tier >= 0 && ((what & W_JOINTED) === 0 || (forms.wide[kind]! > 1 && this.amid(at, t.k0![s]!, k1, forms.wide[kind]!)))) continue;
+      if (tier >= 0 && (what & (W_HIGH_MINUS | W_HIGH_PLUS)) !== 0 && (d === ownDir(forms, kind, k1)) !== (((what & W_HIGH_MINUS) !== 0) !== (keyFlip(k1) === 1))) continue;
       // The storey of the piece that reaches this level, and how far up it the piece goes on.
-      const up = lvl - keyLvl(t.k1![s]!), storey = Math.floor(up / STOREY_LEVELS) * STOREY_LEVELS;
+      const up = lvl - keyLvl(k1), storey = Math.floor(up / STOREY_LEVELS) * STOREY_LEVELS;
       if (up !== storey || tier < 0) {
         w.cflags[at]! |= UNDER;
         return;
       }
-      const reach = Math.min(STOREY_LEVELS, Math.max(1, forms.span[kind]!) - storey);
+      const reach = Math.min(STOREY_LEVELS, Math.max(1, forms.span[kind]!) - storey), like = likeOf(forms.span[kind]!, storey);
       if (!met) {
         w.cfirst[at] = ref;
-        w.creach[at] = reach;
+        w.creach[at] = like;
         w.clike[at] = tier;
         met = true;
       }
-      this.meet(at, d, ref, reach, tier);
+      this.meet(at, d, ref, reach, like, tier);
     }
+  }
+
+  /** Whether corner `at` is a corner between the edges of the piece `wide` edges long whose key this is, and neither of its ends. */
+  private amid(at: number, k0: number, k1: number, wide: number): boolean {
+    const w = this.w, m = this.m, dir = keyDir(k1);
+    keyAnchor(k0, k1, m, 0);
+    for (let i = 1; i < wide; i++) {
+      tupleStep(m, 0, dir, i * SIDE, m, 4);
+      if (key0(0, m[4]!, m[5]!, m[6]!) === w.ck0[at] && m[7] === keyM3(w.ck1[at]!)) return true;
+    }
+    return false;
   }
 
   /**
    * The sides of the slab in slot `s`: in the low four bits a ceiling's yields where a wall under it comes up to it,
-   * and over them a bit for each side of a foundation with no foundation beyond it, which has a skirt. A slab well
-   * inside the chunk, of a base with walls here, knows the walls under it from the chunk's own.
+   * and over them a bit for each side with a trim: a foundation's with no foundation beyond it, a ceiling's that is
+   * open (`eaved`), a roof's high side that meets another's. Each trim's ends' turns are left in `sTurn`. A roof yields
+   * nowhere: it stands on its level, so a wall or a gable under any side meets its underside and shares none of it.
+   * A slab well inside the chunk, of a base with walls here, knows the walls under it from the chunk's own.
    */
   private slab(s: number): number {
-    const w = this.w, t = this.t, store = this.store, forms = this.forms!, occ = store.occupied, cells = this.cells, round = this.round;
-    const kind = t.kind[s]!, k0 = t.k0![s]!, k1 = t.k1![s]!, def = forms.def[kind]!;
+    const w = this.w, t = this.t, store = this.store, forms = this.forms!, occ = store.occupied, cells = this.cells;
+    const kind = t.kind[s]!, k0 = t.k0![s]!, k1 = t.k1![s]!, def = forms.def[kind]!, what = this.sidesOf[kind]!;
+    w.sTurn[s] = 0;
     const f = this.frame(t.fr![s]!);
     if (!f) {
       w.partial = true;
       return 0;
     }
     const cls = keyCls(k0);
-    if ((cls !== CLS_SQUARE && cls !== CLS_TRIANGLE) || forms.size[kind] !== SIDE || def.corner !== undefined) return 0;
+    if ((cls !== CLS_SQUARE && cls !== CLS_TRIANGLE) || forms.size[kind] !== SIDE || (def.corner !== undefined && what !== SIDES_RIDGE)) return 0;
+    const tier = this.tiers[this.tierOf[kind]!]!, lvl = keyLvl(k1), dir = keyDir(k1), me = this.chunk * 65536 + s;
+    const step = CLS_STEP[cls]!, sides = cls === CLS_SQUARE ? 4 : 3;
+    if (what === SIDES_RIDGE) return tier.ridge < 0 ? 0 : this.ridges(f.gid, me, kind, k0, k1) << 4;
     const lx = t.x[s]! - this.x0, lz = t.z[s]! - this.z0;
     const inside = lx > SLAB_BORDER && lz > SLAB_BORDER && lx < CHUNK_SIZE - SLAB_BORDER && lz < CHUNK_SIZE - SLAB_BORDER;
     const base = inside ? w.bases.indexOf(f) : -1;
-    const tier = this.tiers[this.tierOf[kind]!]!, lvl = keyLvl(k1), dir = keyDir(k1), own = ownDir(forms, kind, k1);
-    const step = CLS_STEP[cls]!, sides = cls === CLS_SQUARE ? 4 : 3;
+    const own = ownDir(forms, kind, k1);
     let bits = 0;
     if (this.looks.yields[kind] === 1 && tier.sq >= 0) {
       faceEdges(k0, k1, base >= 0 ? lvl : lvl - 1, WALL, cells);
@@ -911,28 +1036,129 @@ export class Trims {
         }
       }
     }
-    if (tier.skirt < 0 || def.root === undefined || def.span !== 0) return bits;
-    const me = this.chunk * 65536 + s;
+    const skirt = what === SIDES_SKIRT;
+    if (skirt ? tier.skirt < 0 : what !== SIDES_EAVE || tier.eave < 0) return bits;
+    let open = 0;
+    faceEdges(k0, k1, lvl, skirt ? SLAB : WALL, cells);
+    for (let j = 0; j < sides; j++) if (cells.k0[j] !== 0 && (skirt ? this.skirted(f.gid, cells.k0[j]!, cells.k1[j]!, lvl, me) : this.eaved(f.gid, cells.k0[j]!, cells.k1[j]!, lvl, me))) open |= 1 << j;
+    if (open === 0) return bits;
+    // Each trim's two ends: its +X at the side's first corner, where the way out lies back round from the side, and its -X at the next.
+    const m = this.m, spokes = this.spokes;
+    keyAnchor(k0, k1, m, 0);
+    elementCorners(cls, m, 0, dir, m, 0);
+    let turns = 0;
+    for (let j = 0; j < sides; j++) {
+      const before = (j + sides - 1) % sides;
+      if ((open & ((1 << j) | (1 << before))) === 0 || !tupleWithin(m, 4 * j, M_MOST)) continue;
+      const vk0 = key0(0, m[4 * j]!, m[4 * j + 1]!, m[4 * j + 2]!), vk1 = key1(m[4 * j + 3]!, lvl, 0, SLAB, 0, 0);
+      vertexFaces(vk0, vk1, lvl, SLAB, this.faces);
+      if (!skirt) vertexEdges(vk0, vk1, lvl, WALL, spokes);
+      if ((open & (1 << j)) !== 0) turns |= this.turn(f.gid, dirTurn(dir, step * j), -1, skirt) << (8 * j + 4);
+      if ((open & (1 << before)) !== 0) turns |= this.turn(f.gid, dirTurn(dir, step * before + 6), 1, skirt) << (8 * before);
+    }
+    w.sTurn[s] = turns >>> 0;
+    return bits | (open << 4);
+  }
+
+  /** Whether a foundation's side on this edge has a skirt: no foundation lies beyond it. `me` is the foundation's ref. */
+  private skirted(gid: number, ek0: number, ek1: number, lvl: number, me: number): boolean {
+    const store = this.store, occ = store.occupied, round = this.round;
+    edgeFaces(ek0, ek1, lvl, SLAB, round);
+    for (let n = 0; n < round.n; n++) {
+      const ref = round.k0[n] === 0 ? -1 : occ.at(gid, round.k0[n]!, round.k1[n]!);
+      if (ref < 0 || ref === me) continue;
+      if (this.sidesOf[store.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!] === SIDES_SKIRT) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Whether a ceiling's side on this edge, a wall's cell at the ceiling's level, has an eave: no slab lies beyond it or
+   * comes up through its level there, and no wall stands on the edge or through it. `me` is the ceiling's ref.
+   */
+  private eaved(gid: number, ek0: number, ek1: number, lvl: number, me: number): boolean {
+    const occ = this.store.occupied, round = this.round;
+    if (occ.covering(gid, ek0, ek1) >= 0) return false;
+    edgeFaces(ek0, ek1, lvl, SLAB, round);
+    for (let n = 0; n < round.n; n++) {
+      const ref = round.k0[n] === 0 ? -1 : occ.covering(gid, round.k0[n]!, round.k1[n]!);
+      if (ref >= 0 && ref !== me) return false;
+    }
+    return true;
+  }
+
+  /**
+   * The turn at the end of a skirt or an eave whose side leaves its corner by the way `from`, the open ground lying
+   * round from it toward `sense` (1 toward +Z): how many twelfths of a turn the ground is wide, as piece-fit.ts reads
+   * it, or 0 where it is half a turn or the slab beyond it has no such trim to meet. The corner's faces are in `faces`,
+   * and for an eave its edges in `spokes`.
+   */
+  private turn(gid: number, from: number, sense: number, skirt: boolean): number {
+    const store = this.store, occ = store.occupied, faces = this.faces, spokes = this.spokes;
+    for (let n = 1; n < DIRECTIONS; n++) {
+      // The face that begins where the open ground ends: a square a quarter turn wide, or a triangle a sixth.
+      const b = dirTurn(from, sense * n);
+      for (let shape = 0; shape < 2; shape++) {
+        const at = shape * DIRECTIONS + (sense > 0 ? b : dirTurn(b, shape === 0 ? -3 : -2));
+        if (faces.k0[at] === 0) continue;
+        const ref = skirt ? occ.at(gid, faces.k0[at]!, faces.k1[at]!) : occ.covering(gid, faces.k0[at]!, faces.k1[at]!);
+        if (ref < 0) continue;
+        const kind = store.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!, what = this.sidesOf[kind]!, tier = this.tierOf[kind]!;
+        if (skirt && what !== SIDES_SKIRT) continue;
+        if (n === DIRECTIONS / 2 || tier < 0) return 0;
+        if (skirt ? this.tiers[tier]!.skirt < 0 : what !== SIDES_EAVE || this.tiers[tier]!.eave < 0 || spokes.k0[b] === 0 || !this.eaved(gid, spokes.k0[b]!, spokes.k1[b]!, keyLvl(spokes.k1[b]!), ref)) return 0;
+        return n > DIRECTIONS / 2 ? n - DIRECTIONS / 2 : PIECE_END_IN | (DIRECTIONS / 2 - n);
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * The sides of the roof `me` that take a ridge, a bit each: a side both of whose corners are its highest, where the
+   * roof beyond it at its level has its highest too, drawn by the one of the two whose ref is the lower.
+   */
+  private ridges(gid: number, me: number, kind: number, k0: number, k1: number): number {
+    const store = this.store, forms = this.forms!, occ = store.occupied, cells = this.cells, round = this.round, faces = this.faces;
+    const lvl = keyLvl(k1), sides = CLS_CORNERS[keyCls(k0)]!, rise = riseAt(forms, kind, k0, k1);
+    const top = highest(rise, sides);
+    let bits = 0;
     faceEdges(k0, k1, lvl, SLAB, cells);
     for (let j = 0; j < sides; j++) {
-      if (cells.k0[j] === 0) continue;
+      if (cells.k0[j] === 0 || ((rise >> (3 * j)) & 7) !== top || ((rise >> (3 * ((j + 1) % sides))) & 7) !== top) continue;
       edgeFaces(cells.k0[j]!, cells.k1[j]!, lvl, SLAB, round);
-      let open = true;
-      for (let n = 0; n < round.n && open; n++) {
-        const ref = round.k0[n] === 0 ? -1 : occ.at(f.gid, round.k0[n]!, round.k1[n]!);
-        if (ref < 0 || ref === me) continue;
-        const beyond = forms.def[store.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!];
-        if (beyond && beyond.root !== undefined && beyond.span === 0) open = false;
+      for (let n = 0; n < round.n; n++) {
+        const ref = round.k0[n] === 0 ? -1 : occ.at(gid, round.k0[n]!, round.k1[n]!);
+        if (ref < 0 || ref <= me) continue;
+        const u = store.chunks[Math.floor(ref / 65536)]!, other = u.kind[ref & 0xffff]!, ok0 = u.k0![ref & 0xffff]!, ok1 = u.k1![ref & 0xffff]!;
+        if (this.sidesOf[other] !== SIDES_RIDGE || keyLvl(ok1) !== lvl) continue;
+        // The side of the roof beyond that is this edge, and whether both its corners are that roof's highest.
+        const beyond = riseAt(forms, other, ok0, ok1), n2 = CLS_CORNERS[keyCls(ok0)]!, most = highest(beyond, n2);
+        faceEdges(ok0, ok1, lvl, SLAB, faces);
+        for (let i = 0; i < n2; i++) {
+          if (faces.k0[i] !== cells.k0[j] || faces.k1[i] !== cells.k1[j]) continue;
+          if (((beyond >> (3 * i)) & 7) === most && ((beyond >> (3 * ((i + 1) % n2))) & 7) === most) bits |= 1 << j;
+        }
       }
-      if (open) bits |= 16 << j;
     }
     return bits;
   }
 }
 
-/** By which sides of its chunk a place (x, z) metres from the chunk's corner stands, within BORDER: (dz + 1) * 3 + dx + 1. */
-function sideOf(x: number, z: number): number {
-  const dx = x < BORDER ? -1 : x > CHUNK_SIZE - BORDER ? 1 : 0, dz = z < BORDER ? -1 : z > CHUNK_SIZE - BORDER ? 1 : 0;
+/** The most a roof rises at any of its `n` corners, three bits each in `rise`. */
+function highest(rise: number, n: number): number {
+  let top = 0;
+  for (let k = 0; k < n; k++) top = Math.max(top, (rise >> (3 * k)) & 7);
+  return top;
+}
+
+/** What two walls must share to be alike in a run: the piece's span and how far up it this storey begins, in quarter storeys. */
+function likeOf(span: number, up: number): number {
+  return Math.min(31, span) | (((up >> 2) & 7) << 5);
+}
+
+/** By which sides of its chunk a place (x, z) metres from the chunk's corner stands, within `within` metres: (dz + 1) * 3 + dx + 1. */
+function sideOf(x: number, z: number, within = BORDER): number {
+  const dx = x < within ? -1 : x > CHUNK_SIZE - within ? 1 : 0, dz = z < within ? -1 : z > CHUNK_SIZE - within ? 1 : 0;
   return (dz + 1) * 3 + dx + 1;
 }
 

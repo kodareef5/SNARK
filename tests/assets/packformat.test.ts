@@ -139,6 +139,8 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   // A built piece is turned by its base's own vectors, gives way at its ends and sides and is darker by its stage
   // (client/core/render/piece-fit.ts): the rule's function and table, the line that calls it and the line that darkens.
   // A draw that is not of pieces (uPiece 0) runs none of them. Without those three the text is as it was, 2887871706.
+  // With them it was 4128407468 until the rule turned a trim's ends to their corners and left a point past a
+  // triangle's standing side alone: only the rule's function changed.
   for (const part of [PIECE_FIT_GLSL, PIECE_FIT_PLACE, PIECE_FIT_SHADE]) expect(FLAT_MESH_VERTEX).toContain(part);
   const unfitted = FLAT_MESH_VERTEX.replace(PIECE_FIT_GLSL, "").replace(PIECE_FIT_PLACE, "").replace(PIECE_FIT_SHADE, "");
   const manyColoured = unfitted.replace(oneColor[0]!, "").replace(oneColor[1]!, "");
@@ -151,7 +153,7 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   expect(hashString(FLAT_FRAGMENT + unshaded + FLAT_TERRAIN_VERTEX)).toBe(1090828137);
   expect(hashString(FLAT_FRAGMENT + manyColoured + FLAT_TERRAIN_VERTEX)).toBe(2435062563);
   expect(hashString(FLAT_FRAGMENT + unfitted + FLAT_TERRAIN_VERTEX)).toBe(2887871706);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(4128407468);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(509572875);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {
