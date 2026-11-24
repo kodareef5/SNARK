@@ -12,6 +12,7 @@ import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/text
 import type { Tier } from "../assets/tiers.ts";
 import { WEIGHT } from "../assets/residency.ts";
 import { REGION_BASE, defaultPalette } from "../../../shared/pack/palette.ts";
+import { PIECE_MADE_BITS, PIECE_STAGE } from "./piece-fit.ts";
 import { PIECE_MADE, PIECE_WEAR, PIECE_WEAR_SHIFT, WEAR_OVER_MADE } from "./pieces.ts";
 import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
@@ -1069,8 +1070,9 @@ export function spalled(x: number, y: number, z: number, nx: number, ny: number,
 export function ownVertex(vertex: string): string {
   if (!vertex.includes("out vec3 vRel;") || !vertex.includes("  vRel = p;")) throw new Error("ownVertex: not a flat mesh vertex text");
   // A near chunk's material is its piece's state's (pieces.ts); an instance's its last two regions (MADE_MARK), where its mesh's colour is the instance's.
+  // A built piece's is in its own byte, under its stage (piece-fit.ts).
   return vertex.replace("out vec3 vRel;", "out vec3 vRel;\nout vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nflat out int vMade;\nuniform vec3 uWorldEye;")
-    .replace("  vRel = p;", `  vMade = aPiece != 0u ? int((aColor == ${SPALL_PALETTE}u ? 0u : piece.a & ${PIECE_MADE}u) | (((piece.r >> ${PIECE_WEAR_SHIFT}u) & ${PIECE_WEAR}u) << ${WEAR_OVER_MADE}u)) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n  vRel = p;`)
+    .replace("  vRel = p;", `  vMade = uPiece > 0.5 ? int((aColor >= ${REGION_BASE}u ? iRegA.w & ${PIECE_MADE_BITS}u : 0u) | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u)) : aPiece != 0u ? int((aColor == ${SPALL_PALETTE}u ? 0u : piece.a & ${PIECE_MADE}u) | (((piece.r >> ${PIECE_WEAR_SHIFT}u) & ${PIECE_WEAR}u) << ${WEAR_OVER_MADE}u)) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n  vRel = p;`)
     .replace("  vRel = p;", "  vOwn = l;\n  vPlace = floor((iPos + uOffset + uWorldEye).xz * 4.0 + 0.5);\n  vFace = vec2(float(aBone & 1u), float((aBone >> 1u) & 1u));\n  vEdges = uSkin > 0.5 ? 0u : (aBone >> 2u) & 15u;\n  vRel = p;");
 }
 

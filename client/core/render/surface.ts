@@ -29,6 +29,8 @@ import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { BOUNCE_SUN, ROOF_GLSL } from "./roof.ts";
 import { WEAR_GLSL, wearAlpha } from "./wear.ts";
 import { BENT_GRAIN, BENT_WEAR_GLSL, BEND_GLSL, STRIP_METRES } from "./bend.ts";
+import { PIECE_FIT_GLSL, PIECE_FIT_PLACE, PIECE_STAGE } from "./piece-fit.ts";
+import { WEAR_SHADE } from "./pieces.ts";
 
 /** What a surface that is not metal reflects head on. */
 export const DIELECTRIC = 0.04;
@@ -490,7 +492,7 @@ ${layered ? "out vec3 vBox;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
-${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}void main() {
+${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}${PIECE_FIT_GLSL}void main() {
 
   // A body's rest normal, which its own shade reads (vehicle-shade.ts); on a wheel, its way out from the hub.
   vWheel = vec4(aNormal, 0.0);
@@ -542,7 +544,7 @@ ${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}void main() {
   } else {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);
-    mat3 r = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
+${PIECE_FIT_PLACE}    mat3 r = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
     vec3 bn = aNormal, bt = aTangent.xyz;
     if (uSkin < -2.5) l = bent(l, bn, bt);
     p = r * (uSkin < -0.5 && uSkin > -1.5 ? l * (float(iRegB.y) / ${f(SIZE_UNITS)}) : l) + iPos + uOffset;
@@ -550,7 +552,9 @@ ${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}void main() {
     n = r * bn;
     t = r * bt;
   }
-${dyed ? "  vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));\n  vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 && uSkin > -1.5 ? 0u : iRegB.y));\n" : ""}  vRel = p;
+${dyed ? "  vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));\n  vDye2 = uPiece > 0.5 ? mat3(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0) : mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 && uSkin > -1.5 ? 0u : iRegB.y));\n" : ""}  // A built piece's stage goes with the wheel's side, under 0, where a wheel's is over it: no varying is added for it.
+  if (uPiece > 0.5) vWheel.w = -float(iRegB.x & ${PIECE_STAGE}u);
+  vRel = p;
 ${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
   vTangent = vec4(normalize(t), aTangent.w);
   vUv = uUv.xy + aUv * uUv.zw;
@@ -875,6 +879,8 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float open = skyOpen(vRel, face, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, face, uSkin > 0.5 ? 0.0 : 1.0) * roofOpen(vRel, face, over);
   roofBounce(vRel, face, over);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
+  // A built piece is darker by its stage (piece-fit.ts), as it is drawn flat.
+  albedo *= 1.0 - ${WEAR_SHADE} * max(-vWheel.w, 0.0);
   // The fractional quarter of the material code carries the static vehicle's weather exposure.
   float age = fract(uStreetMaterial)*4.0;
   bool burntSheet = int(uStreetMaterial) == ${BURNT_SHEET};

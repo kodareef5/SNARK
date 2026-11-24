@@ -119,13 +119,14 @@ export class JointBench {
   readonly reg = registry();
   readonly cam = new Camera();
   readonly raster: Rasterizer;
-  private readonly scene: Scene;
+  readonly scene: Scene;
   private readonly forward = [0, 0, 0];
   private readonly ray = [0, 0, 0];
 
   readonly pack: Pack;
 
-  constructor(pack: Pack, junctions: readonly { pieces: readonly Placed[] }[], side = SIDE) {
+  /** `lay` sets down what `junctions` does not, as pieces with keys where the test needs them. */
+  constructor(pack: Pack, junctions: readonly { pieces: readonly Placed[] }[], side = SIDE, lay?: (structs: StructureStore, reg: Registry) => void) {
     this.pack = pack;
     const dims = { chunksX: 8, chunksZ: 8 };
     const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 64);
@@ -137,6 +138,7 @@ export class JointBench {
         if (kind === undefined || structs.add(kind, p.x, p.y, p.z, p.yaw, 0, 1000) < 0) throw new Error(`could not place ${p.id}`);
       }
     }
+    lay?.(structs, this.reg);
     this.scene = new Scene({ dims, hf, structs }, this.reg, pack);
     this.scene.viewHeight = side;
     const wide = Math.round(side / 3);
@@ -217,10 +219,17 @@ export function countsOf(bench: JointBench, j: Junction, meshes: ReadonlyMap<str
   return [near.leak, near.notch, far.leak, far.notch, fought.faces, fought.area];
 }
 
-type Tri = [number, number, number, number, number, number, number, number, number];
+export type Tri = [number, number, number, number, number, number, number, number, number];
+
+/** A piece's triangles in the world, and the box round them. */
+export interface Standing {
+  tris: Tri[];
+  lo: number[];
+  hi: number[];
+}
 
 /** A placed piece's finest triangles in the world, each with its normal. */
-function worldTriangles(mesh: SourceMesh, p: Placed): { tris: Tri[]; lo: number[]; hi: number[] } {
+function worldTriangles(mesh: SourceMesh, p: Placed): Standing {
   const lod = mesh.lods[0]!;
   const yaw = (p.yaw / 65536) * Math.PI * 2, [s, c] = [Math.sin(yaw), Math.cos(yaw)];
   const at = (v: number): [number, number, number] => {
@@ -302,7 +311,11 @@ export interface Fights {
  * cannot order. Faces buried in another solid or in the ground are not counted, as wood's strips inside the next wall's end.
  */
 export function fights(placed: readonly Placed[], meshes: ReadonlyMap<string, SourceMesh>, ground = 0, tell?: (group: string, area: number, at: number[]) => void): Fights {
-  const pieces = placed.map((p) => worldTriangles(meshes.get(p.id)!, p));
+  return fightsOf(placed.map((p) => worldTriangles(meshes.get(p.id)!, p)), ground, tell);
+}
+
+/** The same of pieces given as they stand, however they were placed: as drawn, with their trims. */
+export function fightsOf(pieces: readonly Standing[], ground = 0, tell?: (group: string, area: number, at: number[]) => void): Fights {
   const groups = new Map<string, number>();
   for (let i = 0; i < pieces.length; i++) {
     for (let j = i + 1; j < pieces.length; j++) {

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket } from "../../client/core/render/packet.ts";
+import { PIECE_FIT_GLSL, PIECE_FIT_PLACE, PIECE_FIT_SHADE } from "../../client/core/render/piece-fit.ts";
 import { PIECE_END, PIECE_GLSL, PIECE_PLACE, PIECE_SHADE } from "../../client/core/render/pieces.ts";
 import { hashString } from "../../shared/hash.ts";
 import { BEND_GLSL, BEND_PLACE } from "../../client/core/render/bend.ts";
@@ -135,7 +136,12 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   // for it. A draw with no such colour never runs it. Without those two the text is as it was, 2435062563.
   const oneColor = ["uniform float uOneColor;\n", "  if (uOneColor > 0.5) i = uint(uOneColor) - 1u;\n"];
   for (const line of oneColor) expect(FLAT_MESH_VERTEX).toContain(line);
-  const manyColoured = FLAT_MESH_VERTEX.replace(oneColor[0]!, "").replace(oneColor[1]!, "");
+  // A built piece is turned by its base's own vectors, gives way at its ends and sides and is darker by its stage
+  // (client/core/render/piece-fit.ts): the rule's function and table, the line that calls it and the line that darkens.
+  // A draw that is not of pieces (uPiece 0) runs none of them. Without those three the text is as it was, 2887871706.
+  for (const part of [PIECE_FIT_GLSL, PIECE_FIT_PLACE, PIECE_FIT_SHADE]) expect(FLAT_MESH_VERTEX).toContain(part);
+  const unfitted = FLAT_MESH_VERTEX.replace(PIECE_FIT_GLSL, "").replace(PIECE_FIT_PLACE, "").replace(PIECE_FIT_SHADE, "");
+  const manyColoured = unfitted.replace(oneColor[0]!, "").replace(oneColor[1]!, "");
   const unshaded = manyColoured.replace(PIECE_SHADE, "");
   const unkeyed = unshaded.replace(PIECE_GLSL, "").replace(PIECE_PLACE, "").replace(PIECE_END, "");
   const unbent = unkeyed.replace(BEND_GLSL, "").replace(BEND_PLACE, "");
@@ -144,7 +150,8 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   expect(hashString(FLAT_FRAGMENT + unkeyed + FLAT_TERRAIN_VERTEX)).toBe(3957629961);
   expect(hashString(FLAT_FRAGMENT + unshaded + FLAT_TERRAIN_VERTEX)).toBe(1090828137);
   expect(hashString(FLAT_FRAGMENT + manyColoured + FLAT_TERRAIN_VERTEX)).toBe(2435062563);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(2887871706);
+  expect(hashString(FLAT_FRAGMENT + unfitted + FLAT_TERRAIN_VERTEX)).toBe(2887871706);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(4128407468);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {

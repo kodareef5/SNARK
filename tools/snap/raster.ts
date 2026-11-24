@@ -36,8 +36,9 @@ import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
+import { PIECE_MADE_AT, PIECE_MADE_BITS, PIECE_STAGE, PIECE_STATE_AT, PieceFit } from "../../client/core/render/piece-fit.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
-import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -93,6 +94,8 @@ function surfaceOf(entries: Uint8Array, skin: Uint8Array | null, range: readonly
  * flags say, and its layer with the level it is drawn at, 0 for none.
  */
 interface Surfaced {
+  /** A built piece's damage stage (piece-fit.ts), 0 for any other draw. */
+  pieceWear: number;
   label: number;
   seed: number;
   wheelBones: number;
@@ -1199,6 +1202,7 @@ export class Rasterizer {
     const skinned = (p.drawFlags[d]! & DRAW_SKINNED) !== 0;
     const one = (p.drawFlags[d]! & DRAW_ONE_BONE) !== 0;
     const sized = (p.drawFlags[d]! & DRAW_SIZED) !== 0;
+    const piece = (p.drawFlags[d]! & DRAW_PIECE) !== 0;
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
     this.finishRow = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 ? this.finish.row[p.drawMesh[d]!]! : 0;
     this.fade = p.drawFade[d]!;
@@ -1229,9 +1233,12 @@ export class Rasterizer {
           out[v * 3 + 2] = m[b + 8]! * lx + m[b + 9]! * ly + m[b + 10]! * lz + m[b + 11]!;
         }
       } else {
+        // As FLAT_MESH_VERTEX's pieceFit: a built piece is turned by its basis, and its ends and sides give way.
+        const fit = piece ? this.pieceFit : null;
+        fit?.begin(p.frameTables.get(p.drawBuffer[d]!), data, at);
         const yaw = (view.getUint16(at + 12, true) / 65536) * Math.PI * 2;
-        const s = Math.sin(yaw);
-        const c = Math.cos(yaw);
+        const s = fit ? fit.s : Math.sin(yaw);
+        const c = fit ? fit.c : Math.cos(yaw);
         const ix = view.getFloat32(at, true) + ox;
         const iy = view.getFloat32(at + 4, true) + oy;
         const iz = view.getFloat32(at + 8, true) + oz;
@@ -1252,6 +1259,12 @@ export class Rasterizer {
             ly = b[1]!;
             lz = b[2]!;
           }
+          if (fit) {
+            fit.vertex(lx, ly, lz);
+            lx = fit.x;
+            ly = fit.y;
+            lz = fit.z;
+          }
           out[v * 3] = c * lx + s * lz + ix;
           out[v * 3 + 1] = ly + iy;
           out[v * 3 + 2] = -s * lx + c * lz + iz;
@@ -1271,7 +1284,7 @@ export class Rasterizer {
         const word = lod.piece ? lod.piece[last]! : 0;
         if (word !== 0 && !pieceShown(p.pieces, p.pieceRows, rows, word)) continue;
         // As ownVertex's vMade: a near chunk's piece's material, but on a face in the core's colour, and over it its wear.
-        this.made = word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
+        this.made = piece ? (color >= REGION_BASE ? data[at + PIECE_MADE_AT]! & PIECE_MADE_BITS : 0) | ((data[at + PIECE_STATE_AT]! & PIECE_STAGE) << WEAR_OVER_MADE) : word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         // As FLAT_MESH_VERTEX's uOneColor: a piece about to be built is one colour.
         if (tint > 0) color = tint - 1;
@@ -1665,7 +1678,7 @@ export class Rasterizer {
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
     const wheels = p.drawWheelBones[d]!, finish = p.drawStreetMaterial[d]!;
-    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half, bend: null, bent: null };
+    const s: Surfaced = { pieceWear: 0, weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half, bend: null, bent: null };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1694,6 +1707,9 @@ export class Rasterizer {
       regionDyes(this.dyes, this.pack.palette, data, at + 14, material.grey);
       // A sized instance's last region is its size, and dyes nothing.
       if ((flags & DRAW_SIZED) !== 0) this.dyes.fill(1, SIZE_REGION * 3, SIZE_REGION * 3 + 3);
+      // A built piece's last three are its material, state and fit, and it is darker by its stage.
+      if ((flags & DRAW_PIECE) !== 0) this.dyes.fill(1, 9, 18);
+      s.pieceWear = (flags & DRAW_PIECE) !== 0 ? data[at + PIECE_STATE_AT]! & PIECE_STAGE : 0;
       const kind = transient ? PICK_ENTITY : PICK_STRUCTURE;
       const id = transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
       for (let t = p.drawFirstIndex[d]!; t < end; t += 3) {
@@ -1721,10 +1737,13 @@ export class Rasterizer {
     const k = mode === -1 ? view.getUint8(at + 14 + SIZE_REGION) / SIZE_UNITS : 1;
     const bend = mode === -3 ? s.bend : null;
     if (bend && (!s.bent || s.bent.length < n * 3)) s.bent = new Float32Array(n * 3);
+    const fit = mode <= 0 && (p.drawFlags[d]! & DRAW_PIECE) !== 0 ? this.pieceFit : null;
     if (mode <= 0) {
+      // As SURFACE_VERTEX's pieceFit.
+      fit?.begin(p.frameTables.get(p.drawBuffer[d]!), new Uint8Array(view.buffer, view.byteOffset, view.byteLength), at);
       const yaw = (first / 65536) * Math.PI * 2;
-      const sin = Math.sin(yaw);
-      const cos = Math.cos(yaw);
+      const sin = fit ? fit.s : Math.sin(yaw);
+      const cos = fit ? fit.c : Math.cos(yaw);
       m.set([cos, 0, sin, px + p.drawOffset[d * 3]!, 0, 1, 0, py + p.drawOffset[d * 3 + 1]!, -sin, 0, cos, pz + p.drawOffset[d * 3 + 2]!]);
       px = py = pz = 0;
     }
@@ -1752,6 +1771,12 @@ export class Rasterizer {
         for (let i = 0; i < 6; i++) this.bentFrame[i] = b[3 + i]!;
         s.bent!.set([b[9]!, b[10]!, positions[v * 3 + 1]!], v * 3);
       }
+      if (fit) {
+        fit.vertex(lx, ly, lz);
+        lx = fit.x;
+        ly = fit.y;
+        lz = fit.z;
+      }
       out[v * 3] = m[0]! * lx + m[1]! * ly + m[2]! * lz + m[3]!;
       out[v * 3 + 1] = m[4]! * lx + m[5]! * ly + m[6]! * lz + m[7]!;
       out[v * 3 + 2] = m[8]! * lx + m[9]! * ly + m[10]! * lz + m[11]!;
@@ -1771,6 +1796,7 @@ export class Rasterizer {
     return unpackBend(new Int16Array(b.data.buffer, b.data.byteOffset, b.data.byteLength >> 1), inst * 8);
   }
 
+  private readonly pieceFit = new PieceFit();
   private readonly bentAt = new Float64Array(11);
   private readonly bentFrame = new Float32Array(6);
   private readonly bentFlat = new Float64Array(11);
@@ -2197,6 +2223,7 @@ export class Rasterizer {
           const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!);
           for (let i = 0; i < 3; i++) eye[i] = -carried[i]! / dist;
           dyed(albedo, base, s.tint, this.dyes, mask, mask2);
+          if (s.pieceWear > 0) for (let i = 0; i < 3; i++) albedo[i]! *= wearShade(s.pieceWear);
           if (s.layer) {
             sample(s.layer, u, v, spread, layer);
             wounded(albedo, mro, layer, s.level, wearLate(s.wear, carried[12]!, carried[13]!, carried[14]!));
@@ -2428,8 +2455,11 @@ export class Rasterizer {
             for (let r = 0; r < 3; r++) place[v * 3 + r] = m[b + r * 4]! * lx + m[b + r * 4 + 1]! * ly + m[b + r * 4 + 2]! * lz + m[b + r * 4 + 3]!;
           }
         } else {
+          // As DEPTH_VERTEX's pieceFit.
+          const fit = (flags & DRAW_PIECE) !== 0 ? this.pieceFit : null;
+          fit?.begin(p.frameTables.get(p.casterBuffer[e]!), data, at);
           const yaw = (view.getUint16(at + 12, true) / 65536) * Math.PI * 2;
-          const [s, co] = [Math.sin(yaw), Math.cos(yaw)];
+          const [s, co] = fit ? [fit.s, fit.c] : [Math.sin(yaw), Math.cos(yaw)];
           const grow = (flags & DRAW_SIZED) !== 0 ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
           const [ix, iy, iz] = [px + p.casterOffset[e * 3]!, py + p.casterOffset[e * 3 + 1]!, pz + p.casterOffset[e * 3 + 2]!];
           const bend = this.bendOf(flags, p.casterBuffer[e]!, p.casterFirst[e]! + c), b = this.bentFlat;
@@ -2438,6 +2468,10 @@ export class Rasterizer {
             if (bend) {
               bendVertex(b, bend, lx, ly, lz, 0, 1, 0, 1, 0, 0);
               [lx, ly, lz] = [b[0]!, b[1]!, b[2]!];
+            }
+            if (fit) {
+              fit.vertex(lx, ly, lz);
+              [lx, ly, lz] = [fit.x, fit.y, fit.z];
             }
             place.set([co * lx + s * lz + ix, ly + iy, -s * lx + co * lz + iz], v * 3);
           }
