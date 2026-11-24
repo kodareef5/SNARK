@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
+import "../../client/core/render/orb-late.ts";
 import { TEXGEN_VERTEX, jobFragment, jobPixels, type Job } from "../../client/core/texgen/engine.ts";
 import { materialJob } from "../../client/core/texgen/materials.ts";
 import { weatherJobs } from "../../client/core/texgen/weather.ts";

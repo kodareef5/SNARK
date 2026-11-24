@@ -88,6 +88,8 @@ import { Casting } from "./casting.ts";
 import { AirSupport } from "./passes/air-support.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
+import type { Orbs } from "./passes/orb.ts";
+import type { writeOrb } from "./orb.ts";
 import { Water } from "./passes/water.ts";
 import { FarLayers } from "./passes/far-layers.ts";
 import { LooseEntities } from "./passes/loose-entities.ts";
@@ -162,6 +164,7 @@ const QUAD_INDICES = "quad indices";
 const NEAR = 1 << PASS_NEAR;
 const FAR = 1 << PASS_FAR;
 const NO_SHOTS: readonly ShotEnd[] = [];
+const NO_EYES: readonly TideEyeSite[] = [];
 /** A body in the viewer's own body's seat or arms (Scene.mountOf). */
 const MOUNT_OWN = -2;
 
@@ -434,6 +437,12 @@ export class Scene {
   /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
   static get late(): typeof FarLayers.late { return FarLayers.late; }
   static set late(code: typeof FarLayers.late) { FarLayers.late = code; }
+  /** The orbs' pass and their frame lanes (orb-late.ts), which come after the first frame. Until then a scene draws no orb. */
+  static orb: { Orbs: typeof Orbs; writeOrb: typeof writeOrb } | null = null;
+  private orbs: Orbs | null = null;
+  /** The scene every orb is held on, its place in ORB_SCENES, or -1 for the programme; and what its level is scaled by, 0 for dark. */
+  orbOnly = -1;
+  orbGain = 1;
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
   private readonly unseenFrom = new Uint16Array(MAX_VIEW);
   private readonly unseenAt = new Float64Array(MAX_VIEW * 4);
@@ -836,6 +845,7 @@ export class Scene {
     if (!p.lit) p.frame[FRAME.exposure] = 0;
     writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale, this.eyeHold);
     writeDropSky(p.frame, this.supply?.list ?? null, this.supply?.tick ?? 0, TICK_RATE, cam.x, cam.y, cam.z, this.world.tideEyes ?? [], this.eyeSeconds);
+    if (this.world.orbs) Scene.orb?.writeOrb(p.frame, this.world.orbs, this.world.tideEyes ?? NO_EYES, this.eyeSeconds, this.hour, cam.x, cam.y, cam.z, this.supply?.list ?? null, this.supply?.tick ?? 0, TICK_RATE, this.orbOnly, this.orbGain);
     // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, the one by the viewer's own
     // body, before what casts is chosen.
     const shadows = p.tier.shadows;
@@ -902,6 +912,7 @@ export class Scene {
       // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
       ["tide eyes", this.eyes],
       ["supply drops", this.supplyDrops],
+      ["orbs", { draw: (f) => { if (f.world.orbs && Scene.orb) (this.orbs ??= new Scene.orb.Orbs(this.assets)).draw(f); } }],
       ["moving statics", this.movingStatics],
       ["near store", this.nearStore],
       // What the near store's meshes and the ground hide, of what is drawn so far and from here on: the meshes themselves first.

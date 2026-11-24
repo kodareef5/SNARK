@@ -22,6 +22,7 @@ import { writeBones } from "../client/core/render/characters.ts";
 import { DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER, type TextureUpload } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import "../client/core/render/city-late.ts";
+import "../client/core/render/orb-late.ts";
 import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";

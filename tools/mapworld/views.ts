@@ -13,6 +13,7 @@ import { chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
+import "../../client/core/render/orb-late.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { bakeChunk, pieceShapes, Summary, writeFar } from "../../shared/world/tactical.ts";

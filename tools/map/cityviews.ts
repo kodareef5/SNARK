@@ -20,6 +20,7 @@ import { CITY_BUFFER, type CityLevel } from "../../client/core/render/farcity.ts
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
+import "../../client/core/render/orb-late.ts";
 import { chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CityStatics } from "../../shared/world/city.ts";

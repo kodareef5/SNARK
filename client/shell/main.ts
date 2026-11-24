@@ -194,6 +194,8 @@ async function boot(): Promise<void> {
   if (app.ui.settings.touchFirst) app.ui.inputDevice = 2;
   // The textures the card makes come as a file of their own, which the first frame does not wait for; a touch-first device makes none.
   if (!app.ui.settings.touchFirst) void import("../core/texgen/late.ts").then((m) => renderer.makeWith((app.texgen = m.texgen(renderer.gl))), () => {});
+  // The orbs' screens come as a file of their own too: their program is begun when it lands.
+  void import("../core/render/orb-late.ts").then(() => renderer.late(), () => {});
   // What the screen's own edges take (a notch, a home bar), which the page's padding measures: the interface keeps clear of them.
   const edges = (): void => { const s = getComputedStyle(document.body); [s.paddingLeft, s.paddingTop, s.paddingRight, s.paddingBottom].forEach((side, i) => (app.insets[i] = parseFloat(side) || 0)); };
   edges();
