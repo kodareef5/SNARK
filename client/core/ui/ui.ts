@@ -6,7 +6,6 @@ import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { AirRadio } from "./air-support.ts";
 import { buildFeed } from "../hud/air-feed.ts";
-import { CharacterScreen } from "./character.ts";
 import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.ts";
 import { CreatorScreen } from "./creator.ts";
 import { buildCombat } from "./combat.ts";
@@ -42,7 +41,6 @@ export class Ui {
   readonly chat = new ChatState();
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
-  readonly sheet = new CharacterScreen();
   readonly air = new AirRadio();
   readonly choosing = new ChoosingScreen();
   readonly structure = new StructMenu();
@@ -56,7 +54,6 @@ export class Ui {
   creating = false;
   /** Which screen is up. `options` is the settings screen. */
   map = false;
-  character = false;
   options = false;
   menu = false;
   /** The Creative screen, within the menu. */
@@ -131,13 +128,25 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
-    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !(this.debug?.holdsPointer ?? false);
+    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.options && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Whether a screen of `group` is open. */
   private openIn(group: string): boolean {
     for (const s of this.screens) if (s.group === group && s.isOpen()) return true;
     return false;
+  }
+
+  /** The name of the open screen of `group`, or "". */
+  private openNameIn(group: string): string {
+    for (const s of this.screens) if (s.group === group && s.isOpen()) return s.name;
+    return "";
+  }
+
+  /** The screen of `group` that `code` opens, or null. */
+  private hotkeyed(group: string, code: string): Screen | null {
+    for (const s of this.screens) if (s.group === group && s.hotkey === code) return s;
+    return null;
   }
 
   private closeGroup(group: string): void {
@@ -289,23 +298,24 @@ export class Ui {
         return true;
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
-      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options || this.openIn("bag")))) {
+      const hot = this.hotkeyed("bag", code);
+      if (code === "KeyI" || code === "KeyM" || code === "KeyO" || hot || (code === "Escape" && (this.inventory.open || this.map || this.options || this.openIn("bag")))) {
         if (down && !repeat) {
           this.structure.close();
           // Opening one screen closes the others.
           const map = code === "KeyM" && !this.map;
-          const character = code === "KeyP" && !this.character;
+          const listed = hot && !hot.isOpen() ? hot : null;
           const options = code === "KeyO" && !this.options;
           const inventory = code === "KeyI" && !this.inventory.open;
-          const opened = map ? "map" : character ? "character" : options ? "options" : inventory ? "inventory" : "";
-          const shut = this.map ? "map" : this.character ? "character" : this.options ? "options" : this.inventory.open ? "inventory" : "";
+          const opened = map ? "map" : listed ? listed.name : options ? "options" : inventory ? "inventory" : "";
+          const shut = this.map ? "map" : this.openNameIn("bag") || (this.options ? "options" : this.inventory.open ? "inventory" : "");
           this.hear?.(opened !== "" ? `screen/${opened}/open` : `screen/${shut || "inventory"}/close`);
           this.map = map;
-          this.character = character;
           this.options = options;
           this.inspect = false;
           if (options) { this.menu = true; this.focusTo(KEY_MENU_BACK); }
           this.closeGroup("bag");
+          listed?.show?.(this.at(session));
           if (inventory) this.inventory.open = true;
           else this.inventory.close(session);
         }
@@ -400,7 +410,6 @@ export class Ui {
     if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.emotes.click(key, session)) return;
-    if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
@@ -491,7 +500,6 @@ export class Ui {
       } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) this.choosing.build(f, session, hud);
       else if (this.map && session) buildMap(f, session, hud);
-      else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
       else if (this.air.open && session) this.air.build(f, session, this.menuFocus);
       else if (!this.buildModal(f, session, hud)) {

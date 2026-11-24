@@ -18,6 +18,7 @@ import { KEY_MAP_IMAGE } from "../../client/core/ui/screens.ts";
 import { K_HOLD, MIN_WIDTH, SCALE_FLOOR, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { Ui } from "../../client/core/ui/ui.ts";
 import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
+import type { CharacterScreen } from "../../client/core/ui/character.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { PHONES, camp, direct, nodes, screen, stood, vehicle, type Direct, type Phone, type Stood } from "../kit/kit.ts";
@@ -183,7 +184,7 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   run(50);
   expect([app.ui.inventory.open, f.find(KEY_ZONE_MOVE), f.find(KEY_TOUCH_BUTTON + T_ATTACK)]).toEqual([true, null, null]);
   // Each screen has a way out in the corner that covers none of its own controls, on every phone.
-  for (const [button, open] of [[T_BAG, () => app.ui.inventory.open], [T_CHARACTER, () => app.ui.character], [T_MAP, () => app.ui.map]] as const) for (const [name, w, hh] of PHONES) {
+  for (const [button, open] of [[T_BAG, () => app.ui.inventory.open], [T_CHARACTER, () => app.ui.screen<CharacterScreen>("character").open], [T_MAP, () => app.ui.map]] as const) for (const [name, w, hh] of PHONES) {
     if (!open()) { app.key(button === T_CHARACTER ? "KeyP" : button === T_MAP ? "KeyM" : "KeyI", true, false, 2); h.run(50, (now) => app.frame(now, w, hh)); }
     h.run(50, (now) => app.frame(now, w, hh));
     const close = f.find(KEY_TOUCH_BUTTON + T_CLOSE)!, where = `${name}, screen ${button}`;
@@ -193,7 +194,7 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   app.pointer(0, KEY_TOUCH_BUTTON + T_CLOSE, 0, 0, 0, 3);
   app.pointer(1, KEY_TOUCH_BUTTON + T_CLOSE, 0, 0, 0, 3);
   run(50);
-  expect([app.ui.map, app.ui.inventory.open, app.ui.character, f.find(KEY_TOUCH_BUTTON + T_CLOSE)]).toEqual([false, false, false, null]);
+  expect([app.ui.map, app.ui.inventory.open, app.ui.screen<CharacterScreen>("character").open, f.find(KEY_TOUCH_BUTTON + T_CLOSE)]).toEqual([false, false, false, null]);
   expect(f.find(KEY_ZONE_MOVE)).not.toBeNull();
   // The menu: everything held is let go, and the layer is gone until it is resumed.
   app.pointer(0, KEY_ZONE_MOVE, 150, 350, 0, 1);

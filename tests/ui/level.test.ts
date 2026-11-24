@@ -193,7 +193,7 @@ test("a server's cap on experience short of a level leaves no level to show ahea
   h.say(ada, "addxp 1000");
   expect([ada.progress.xp, ada.progress.level]).toEqual([45, 3]);
   expect(view.app.ui.frame.find(BAR)!.value).toBe(1);
-  view.app.ui.character = true;
+  view.app.ui.screen<CharacterScreen>("character").open = true;
   h.run(100);
   expect([shown(view, KEY_CHAR_TITLE), view.app.ui.frame.find(KEY_CHAR_XP)!.value]).toEqual(["Level 3 · 45 xp", 1]);
 });
@@ -235,7 +235,7 @@ function sheet(xp: number, level: number, points = 0): UiFrame {
   const f = new UiFrame();
   f.begin(16 / 9);
   const progress = { xp, level, statPoints: points, engramPoints: 0, engrams: [], jobs: [], version: 1 };
-  new CharacterScreen().build(f, { progress, ownKind: reg.index.get("core:survivor")! } as never, reg);
+  new CharacterScreen().draw(f, { progress, ownKind: reg.index.get("core:survivor")! } as never, reg);
   return f;
 }
 

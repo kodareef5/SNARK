@@ -14,7 +14,7 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN } from "../../client/core/ui/screens.ts";
 import { KEY_CHOOSE_FILTER, KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE } from "../../client/core/ui/choosing.ts";
-import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
+import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder, type CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_NAME_INPUT, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
@@ -701,31 +701,31 @@ test("the character screen fits every window shape on every tab and page, and it
     };
     /** Pages through the tab shown until the row appears. Returns whether it was found, and leaves its page up. */
     const seek = (key: number): boolean => {
-      for (ui.sheet.page = 0; ; ui.sheet.page++) {
+      for (ui.screen<CharacterScreen>("character").page = 0; ; ui.screen<CharacterScreen>("character").page++) {
         ui.build(aspect, fullHud(), session);
         if (f.find(key)) return true;
-        if (ui.sheet.page >= ui.sheet.pages - 1) return false;
+        if (ui.screen<CharacterScreen>("character").page >= ui.screen<CharacterScreen>("character").pages - 1) return false;
       }
     };
     const seen = new Set<number>();
     for (let tab = 0; tab < 3; tab++) {
       ui.pointer(0, KEY_CHAR_TAB + tab, 0, 0, 0, session);
-      expect(ui.sheet.page).toBe(0);
+      expect(ui.screen<CharacterScreen>("character").page).toBe(0);
       ui.build(aspect, fullHud(), session);
-      for (let page = 0; page < ui.sheet.pages; page++) {
+      for (let page = 0; page < ui.screen<CharacterScreen>("character").pages; page++) {
         ui.build(aspect, fullHud(), session);
         fits(`${name} tab ${tab} page ${page}`);
         for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAR_STAT) seen.add(f.nodes[i]!.key);
-        if (page + 1 < ui.sheet.pages) ui.pointer(0, KEY_CHAR_PAGE + 1, 0, 0, 0, session);
+        if (page + 1 < ui.screen<CharacterScreen>("character").pages) ui.pointer(0, KEY_CHAR_PAGE + 1, 0, 0, 0, session);
       }
       // The pager stops at the last page and at the first.
       ui.pointer(0, KEY_CHAR_PAGE + 1, 0, 0, 0, session);
-      expect(ui.sheet.page).toBe(ui.sheet.pages - 1);
+      expect(ui.screen<CharacterScreen>("character").page).toBe(ui.screen<CharacterScreen>("character").pages - 1);
       for (let i = 0; i < 40; i++) ui.pointer(0, KEY_CHAR_PAGE, 0, 0, 0, session);
-      expect(ui.sheet.page).toBe(0);
+      expect(ui.screen<CharacterScreen>("character").page).toBe(0);
     }
     for (let n = 0; n < engrams.length; n++) expect(seen.has(KEY_CHAR_ENGRAM + n * 2)).toBe(true);
-    expect(ui.sheet.pages).toBeGreaterThanOrEqual(1);
+    expect(ui.screen<CharacterScreen>("character").pages).toBeGreaterThanOrEqual(1);
 
     ui.pointer(0, KEY_CHAR_TAB, 0, 0, 0, session);
     ui.build(aspect, fullHud(), session);
@@ -775,7 +775,7 @@ test("the character screen fits every window shape on every tab and page, and it
     expect([r.u16(), r.u8()]).toEqual([reg.index.get("core:pick")!, 1]);
     // Only one screen shows at a time, so the map key puts this one away.
     ui.key("KeyM", true, false, session);
-    expect([ui.character, ui.map]).toEqual([false, true]);
+    expect([ui.screen<CharacterScreen>("character").open, ui.map]).toEqual([false, true]);
   }
 });
 
@@ -797,11 +797,13 @@ test("with hundreds of engrams and things to make, each button of the character 
   const ui = newUi();
   ui.registry = big;
   ui.key("KeyP", true, false, session);
+  // A press reaches a screen through what it drew.
+  ui.build(16 / 9, fullHud(), session);
   const f = ui.frame;
   /** Presses the button of the row whose line starts with `words`, paging to it. */
   const press = (tab: number, words: string): void => {
     ui.pointer(0, KEY_CHAR_TAB + tab, 0, 0, 0, session);
-    for (ui.sheet.page = 0; ; ui.sheet.page++) {
+    for (ui.screen<CharacterScreen>("character").page = 0; ; ui.screen<CharacterScreen>("character").page++) {
       ui.build(16 / 9, fullHud(), session);
       const keys = new Set<number>();
       for (let i = 0; i < f.count; i++) {
@@ -813,7 +815,7 @@ test("with hundreds of engrams and things to make, each button of the character 
         // A row is its line, then its button.
         return ui.pointer(0, f.nodes[i]!.key + 1, 0, 0, 0, session);
       }
-      if (ui.sheet.page >= ui.sheet.pages - 1) throw new Error(`no row says ${words}`);
+      if (ui.screen<CharacterScreen>("character").page >= ui.screen<CharacterScreen>("character").pages - 1) throw new Error(`no row says ${words}`);
     }
   };
   for (const i of [3, 150, 229]) press(1, `Thing ${i}:`);

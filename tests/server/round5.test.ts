@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { CLOSED_BAD_CONTENT } from "../../client/core/session.ts";
-import { KEY_CHAR_ENGRAM, KEY_CHAR_RECIPE, TAB_ENGRAMS } from "../../client/core/ui/character.ts";
+import { KEY_CHAR_ENGRAM, KEY_CHAR_RECIPE, TAB_ENGRAMS, type CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_STATUS, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { mateReadyAt } from "../../server/breeding.ts";
 import type { EntityRecord } from "../../server/records.ts";
@@ -292,7 +292,7 @@ test("client: on a server that scales stamina, stacks, what things are made of a
     run(500);
     app.key("KeyP", true);
     app.key("KeyP", false);
-    app.ui.sheet.tab = TAB_ENGRAMS;
+    app.ui.screen<CharacterScreen>("character").tab = TAB_ENGRAMS;
     run(100);
     const rows = (from: number): string[] => {
       const f = app.ui.frame;
@@ -305,7 +305,7 @@ test("client: on a server that scales stamina, stacks, what things are made of a
     // Enough levels to learn the hatchet on either server.
     h.host.progression.addXp(me, 100);
     expect(h.host.progression.learn(me, id("engram-hatchet"))).toBe(0);
-    app.ui.sheet.tab = TAB_ENGRAMS + 1;
+    app.ui.screen<CharacterScreen>("character").tab = TAB_ENGRAMS + 1;
     run(300);
     const stacks: number[] = [];
     for (let k = 0; k < s.inventory!.cap; k++) if (s.inventory!.item[k] === id("wood")) stacks.push(s.inventory!.count[k]!);

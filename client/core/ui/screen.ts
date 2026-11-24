@@ -34,12 +34,16 @@ export interface Screen {
    * modal screen is up, as a prompt is.
    */
   readonly layer: "modal" | "over";
-  /** Screens of one group close each other as one opens. "bag" is the inventory, map, character and settings. */
+  /** Screens of one group close each other as one opens, and Escape closes them. "bag" is the inventory, map, character and settings. */
   readonly group?: string;
-  /** The node keys it uses, from `from` for `count`: no two screens' bands may meet (tests/ui/screens.test.ts). */
-  readonly band: { readonly from: number; readonly count: number };
+  /** The key that opens and closes it from play, with the others of its group shut. */
+  readonly hotkey?: string;
+  /** The node keys it uses, each band from `from` for `count`: no two screens' bands may meet (tests/ui/screens.test.ts). */
+  readonly bands: readonly { readonly from: number; readonly count: number }[];
   /** Whether it is up this frame. */
   isOpen(): boolean;
+  /** Brings it up by its hotkey. Without one only its own file opens it. */
+  show?(c: ScreenCtx): void;
   close(c: ScreenCtx): void;
   /** While open, the mouse stays with the camera. Without it an open screen frees the pointer. */
   keepsPointer?: boolean;

@@ -12,6 +12,7 @@ import { KEY_MENU_CREATIVE } from "../../client/core/ui/menu.ts";
 import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../../tests/fixtures/arena.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
+import type { CharacterScreen } from "../../client/core/ui/character.ts";
 
 export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance", "compass", "compass-map", "damage", "level", "character"] as const;
 export type HudMode = (typeof HUD_MODES)[number];
@@ -131,7 +132,7 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
     // Five levels just gained: the gain, the lit bar and the call to spend, or the screen they are spent on.
     s.text("addxp 132.5");
     run(300);
-    app.ui.character = mode === "character";
+    app.ui.screen<CharacterScreen>("character").open = mode === "character";
   }
   run(200);
 }

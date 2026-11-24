@@ -2,8 +2,10 @@
 // screens in this order. A new screen is a file of its own (screen.ts) and one line here.
 
 import type { ScreenRow } from "./screen.ts";
+import { CharacterScreen } from "./character.ts";
 import { TravelScreen } from "./travel.ts";
 
 export const SCREENS: readonly ScreenRow[] = [
+  () => new CharacterScreen(),
   () => new TravelScreen(),
 ];

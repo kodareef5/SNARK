@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import { IMAGE_ICONS, Icons } from "../client/core/assets/icons.ts";
 import { HudModel, fillHotbar } from "../client/core/hud.ts";
 import type { ClientSession } from "../client/core/session.ts";
-import { TAB_MAKE } from "../client/core/ui/character.ts";
+import { TAB_MAKE, type CharacterScreen } from "../client/core/ui/character.ts";
 import { Ui } from "../client/core/ui/ui.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
@@ -180,8 +180,8 @@ if (args.includes("--crafting")) {
   screen("crafting", (ui, hud) => {
     const inv = stocked();
     fillHotbar(hud, inv, 0, reg, pack.palette);
-    ui.character = true;
-    ui.sheet.tab = TAB_MAKE;
+    ui.screen<CharacterScreen>("character").open = true;
+    ui.screen<CharacterScreen>("character").tab = TAB_MAKE;
     return standIn(inv);
   });
 }

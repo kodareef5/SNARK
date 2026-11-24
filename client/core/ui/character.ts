@@ -8,6 +8,7 @@ import { levelFraction, levelTable, xpText } from "../hud/level.ts";
 import type { ClientSession } from "../session.ts";
 import { itemLabel } from "./inventory.ts";
 import { K_BAR, K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_BUTTON, S_LABEL, S_OXYGEN, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_CHAR_PANEL = 1100;
@@ -62,13 +63,39 @@ export function engramOrder(reg: Registry, known: readonly number[] = []): numbe
     .sort((a, b) => (reg.defs[a] as EngramDef).level - (reg.defs[b] as EngramDef).level || a - b);
 }
 
-export class CharacterScreen {
+export class CharacterScreen implements Screen {
+  readonly name = "character";
+  readonly layer = "modal";
+  readonly group = "bag";
+  readonly hotkey = "KeyP";
+  readonly bands = [{ from: KEY_CHAR_PANEL, count: KEY_CHAR_XP + 1 - KEY_CHAR_PANEL }, { from: KEY_CHAR_ENGRAM, count: 4 * LIST_KEYS }];
+  open = false;
   tab = TAB_STATS;
   page = 0;
   /** As of the last build. */
   pages = 1;
 
-  build(f: UiFrame, session: ClientSession, reg: Registry): void {
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  show(): void {
+    this.open = true;
+  }
+
+  close(): void {
+    this.open = false;
+  }
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session && c.registry) this.draw(f, c.session, c.registry);
+  }
+
+  pointer(kind: number, key: number, _x: number, _y: number, _button: number, c: ScreenCtx): boolean {
+    return kind === 0 && c.session !== null && c.registry !== null && this.click(key, c.session, c.registry);
+  }
+
+  draw(f: UiFrame, session: ClientSession, reg: Registry): void {
     const p = session.progress;
     const species = reg.defs[session.ownKind] as SpeciesDef | null;
     const w = Math.min(f.width - 16, 500);

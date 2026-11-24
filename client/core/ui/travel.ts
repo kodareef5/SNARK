@@ -24,7 +24,7 @@ export class TravelScreen implements Screen {
   readonly name = "travel";
   readonly layer = "modal";
   readonly group = "bag";
-  readonly band = { from: KEY_TRAVEL_PANEL, count: 100 };
+  readonly bands = [{ from: KEY_TRAVEL_PANEL, count: 100 }];
   open = false;
   /** Null until the server has answered. */
   list: ClusterList | null = null;
