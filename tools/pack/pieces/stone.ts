@@ -11,8 +11,8 @@
 // Texture coordinates are metres over the 3 m tile from a face's top left corner, as the pictures are painted.
 
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
-import { Carved, add, cross, dot, gateLeaves, mirror, scale, sub, unit, type Uv, type Vec } from "./kit.ts";
-import { yieldPlanes, type TierRecipe } from "./lod.ts";
+import { Carved, add, beamRings, clip, cross, dot, gateLeaves, inset as insetPlan, length, mirror, planeAt, planeMoved, scale, slabOn, sub, unit, uprightPlane, type Flat, type Plane as KitPlane, type Shape, type SlabMap, type Uv, type Vec } from "./kit.ts";
+import { planOf, yieldPlanes, type TierRecipe } from "./lod.ts";
 import { PyRandom } from "./mt.ts";
 
 const H = HALF_SIDE_M;
@@ -2646,6 +2646,255 @@ function ramp(name: string, form: FormDef, level: number): Build | null {
   return b;
 }
 
+// Roofs. These are built in the kit's own frame, z up and the front at -y, on the kit's slabs and cuts, to the rules
+// wood's are: a roof's top is the plane through its row's corner heights, what stands on it is built by height over its
+// low side and by upright thickness, and its lowest course runs out past a low side. So two faces agree along any side
+// they share, whatever their slopes, and a stone roof meets a wooden one.
+
+/** A roof's courses to a third of its rise are the flags' own rows, so a course is a row of the picture: where each begins, as a share of the third. */
+const COURSE_AT = [...FLAG_ROWS].reverse().map((v) => 1 - v / TILE);
+/** How far a roof's lowest course runs out past its low side, measured level. */
+const EAVE = 0.3;
+/** A slate's thickness at its head, at its butt, and the eave course's, measured upright. */
+const LAP_HEAD = 0.013;
+const LAP_BUTT = 0.033;
+const EAVE_COURSE = 0.062;
+/** The oak boards under the slates, measured upright, and how far their top lies under the roof's own plane. */
+const SARK = 0.04;
+const SARK_DROP = 0.002;
+/** A roof's rim timber is this wide, and stands this far in from the side: clear of the yield ring. */
+const RIM = 0.16;
+const RIM_IN = 0.115;
+const RAFTER = 0.2;
+
+/** One flat face of a roof: its corners in plan, what each side is, and its own axes, along its contours and up its slope. */
+interface Facet {
+  poly: Flat[];
+  kinds: ("eave" | "ridge" | "rake" | "fold")[];
+  /** The height of its lowest contour, and metres it rises to a level metre. */
+  lo: number;
+  g: number;
+  up: Flat;
+  along: Flat;
+  /** Where its lowest contour meets the side of the cell its contours are counted from. */
+  o: Flat;
+  /** The axis of the kit's frame its contours run along. */
+  axis: number;
+}
+
+/** The point of a facet `a` along its contours, `s` level metres up its slope and `n` upright over its plane. */
+const onFacet = (f: Facet, a: number, s: number, n = 0): Vec => [f.o[0] + a * f.along[0] + s * f.up[0], f.o[1] + a * f.along[1] + s * f.up[1], f.lo + s * f.g + n];
+/** A facet's own plane moved `by` upright, looking up out of it. */
+const facetPlane = (f: Facet, by = 0): KitPlane => planeAt(add(onFacet(f, 0, 0), [0, 0, by]), [-f.g * f.up[0], -f.g * f.up[1], 1]);
+const facetAt = (f: Facet, q: Flat): [number, number] => [(q[0] - f.o[0]) * f.along[0] + (q[1] - f.o[1]) * f.along[1], (q[0] - f.o[0]) * f.up[0] + (q[1] - f.o[1]) * f.up[1]];
+const heightOn = (f: Facet, q: Flat): number => f.lo + facetAt(f, q)[1] * f.g;
+
+/** A roof form's flat faces: one, or two where its four corners are folded on the diagonal through the odd one. */
+function facetsOf(form: FormDef): { plan: Flat[]; tops: number[]; facets: Facet[]; fold: number; hip: boolean } {
+  const plan = planOf(form);
+  const tops = form.corner!.map((h) => h - form.at[1]);
+  const n = plan.length;
+  const [lo, hi] = [Math.min(...tops), Math.max(...tops)];
+  const odd = tops.findIndex((h, k) => tops.filter((t) => Math.abs(t - h) < 1e-9).length === 1 && n === 4 && tops.filter((t) => Math.abs(t - tops[(k + 1) % n]!) < 1e-9).length === 3);
+  const fold = Math.max(0, odd);
+  const lists = odd < 0 ? [plan.map((_, k) => k)] : [[fold, (fold + 1) % n, (fold + 2) % n], [fold, (fold + 2) % n, (fold + 3) % n]];
+  const facets = lists.map((list): Facet => {
+    const poly = list.map((k) => plan[k]!);
+    // The plane through three of its corners: its slope is the way its height grows fastest.
+    const [a, c, e] = [0, 1, 2].map((i): Vec => [poly[i]![0], poly[i]![1], tops[list[i]!]!]);
+    const nrm = cross(sub(c!, a!), sub(e!, a!));
+    const [gx, gy] = [-nrm[0] / nrm[2], -nrm[1] / nrm[2]];
+    const g = Math.hypot(gx, gy);
+    const up: Flat = [gx / g, gy / g];
+    const along: Flat = [up[1], -up[0]];
+    const low = poly[list.findIndex((k) => Math.abs(tops[k]! - lo) < 1e-9)]!;
+    // Contours are counted from the cell's own side, so the picture's joints fall alike on every face.
+    const least = Math.min(...plan.map((q) => q[0] * along[0] + q[1] * along[1]));
+    const back = least - (low[0] * along[0] + low[1] * along[1]);
+    const kinds = list.map((k, i) => {
+      const j = list[(i + 1) % list.length]!;
+      if ((j - k + n) % n !== 1) return "fold" as const;
+      if (Math.abs(tops[k]! - tops[j]!) > 1e-9) return "rake" as const;
+      return Math.abs(tops[k]! - lo) < 1e-9 ? ("eave" as const) : ("ridge" as const);
+    });
+    return { poly, kinds, lo, g, up, along, o: [low[0] + back * along[0], low[1] + back * along[1]], axis: Math.abs(along[0]) > 0.5 ? 0 : 1 };
+  });
+  return { plan, tops, facets, fold, hip: odd >= 0 && Math.abs(tops[fold]! - hi) < 1e-9 };
+}
+
+/** The upright planes a facet's parts are cut to: each side's own, an eave's moved out to where its slates end. */
+const facetSides = (f: Facet): KitPlane[] => f.poly.map((a, k) => planeMoved(uprightPlane(a, f.poly[(k + 1) % f.poly.length]!), f.kinds[k] === "eave" ? EAVE : 0));
+
+/**
+ * How a facet wears the flags as slates: a third of the roof's rise is one height of the picture, so each of its rows
+ * is a course, and it is as large across as it is up the slope. One mapping the whole face over, so a face drawn flat
+ * wears the same slates as one whose courses are solid.
+ */
+const slateUv = (f: Facet, rise: number) => (q: Vec): Uv => {
+  const [a, s] = facetAt(f, [q[0], q[1]]);
+  return [(a * 3 * f.g) / (rise * Math.sqrt(1 + f.g * f.g)), (3 * s * f.g) / rise];
+};
+
+/**
+ * A facet's courses of stone slates, each lapping the one under it, cut to the facet's sides. A course is one length
+ * of stone along the contour: its slates' joints are the picture's. The lowest runs out over an eave as a double
+ * course, which covers the top of the wall the roof stands on. Past the finest level the eave course alone is solid.
+ */
+function slates(p: Shape, level: number, f: Facet, rise: number): void {
+  const eave = f.kinds.includes("eave");
+  const spans = f.poly.map((q) => facetAt(f, q)[0]);
+  const [a0, a1] = [Math.min(...spans) - EAVE - 0.05, Math.max(...spans) + EAVE + 0.05];
+  // The same thicknesses on every face of every roof, so courses meet across a hip, a valley and a side.
+  const g = rng("slates");
+  const uv = slateUv(f, rise);
+  const heights = [0, 1, 2].flatMap((third) => COURSE_AT.slice(0, -1).map((c) => ((third + c) * rise) / 3)).concat(rise);
+  const from = p.faces.length;
+  const up = (height: number): number => height / f.g;
+  for (let i = 0; i + 1 < heights.length; i++) {
+    const [s0, s1] = [up(heights[i]!), up(heights[i + 1]!)];
+    const head = i === heights.length - 2 ? s1 : s1 + up(0.015);
+    const t = LAP_BUTT + g.uniform(-0.004, 0.003);
+    const first = i === 0 && eave;
+    if (level > 0 && !first) continue;
+    const section: Flat[] = !first ? [[s0, 0], [head, 0], [head, LAP_HEAD], [s0, t]] : level === 0 ? [[-EAVE, 0], [head, 0], [head, LAP_HEAD], [up(0.05), EAVE_COURSE], [-EAVE, EAVE_COURSE]] : [[-EAVE, 0], [s1, 0], [s1, 0.022], [up(0.05), EAVE_COURSE], [-EAVE, EAVE_COURSE]];
+    const rings = [a0, a1].map((a) => section.map(([s, n]) => onFacet(f, a, s, n)));
+    p.loft(rings, (_, r, j) => ["flags", uv(rings[r]![j]!)], (r, j) => ["flags", uv(rings[r]![j]!)], f.axis);
+  }
+  for (const side of facetSides(f)) clip(p, side, null, from);
+}
+
+/** The axis two points lie along, if they lie along one. */
+function axisOf(a: Vec, c: Vec): number | undefined {
+  const moved = [0, 1, 2].filter((k) => Math.abs(c[k]! - a[k]!) > 1e-9);
+  return moved.length === 1 ? moved[0] : undefined;
+}
+
+/**
+ * A straight member in the kit's frame from a to c, `w` across and `h` along `up`: oak, hewn a little out of true on
+ * the finest level, or a dressed stone. One that lies along an axis is left whole by a yield ring across it.
+ */
+function member(p: Shape, level: number, a: Vec, c: Vec, w: number, h: number, up: Vec, key: string, mat = "timber", chamfer = 0.014): void {
+  const g = rng("member", key);
+  const hewn = level === 0 && mat === "timber";
+  const made = beamRings(g, a, c, w, h, up, level === 0 ? chamfer : 0, hewn ? 0.005 : 0, hewn ? Math.max(1, Math.round(length(sub(c, a)) / 1.5)) : 1);
+  const shift = g.uniform(0, 1);
+  const count = made.base.length;
+  // Each face a strip of the picture along the member, its grain running with it.
+  const around = (k: number): number => (k * 0.37 + shift) % 1;
+  p.loft(made.rings, (k, i, j) => [mat, [(i * made.length) / made.n / TILE + shift, around(k) + (j === k ? 0 : Math.max(w, h) / count / TILE)]], (i, j) => [mat, [shift + made.base[j]![0] / TILE, shift + made.base[j]![1] / TILE + i * 0.3]], axisOf(a, c));
+}
+
+/**
+ * A roof: stone slates in lapped courses on oak boards, over a frame like a ceiling's: a beam inside each level side,
+ * a rafter inside each sloped one and under a fold, and common rafters between, their tails out under the eave. A
+ * hip's fold is capped by a roll of dressed stone and a valley's lined by a dressed gutter stone.
+ */
+function roof(form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const b = new Build();
+  const p = b.shape;
+  const { plan, tops, facets, fold, hip } = facetsOf(form);
+  const n = plan.length;
+  const rise = Math.max(...tops) - Math.min(...tops);
+  const folded = facets.length > 1;
+  /** The facet a side of the outline lies on, and what the side is. */
+  const facetOf = (k: number): Facet => facets.find((f) => f.poly.includes(plan[k]!) && f.poly.includes(plan[(k + 1) % n]!))!;
+  const kindOf = (k: number): Facet["kinds"][number] => {
+    const f = facetOf(k);
+    return f.kinds[f.poly.indexOf(plan[k]!)]!;
+  };
+  const slab: SlabMap = (part, k) => {
+    const f = facets[Math.min(k, facets.length - 1)]!;
+    if (part === "top") return ["flags", slateUv(f, rise)];
+    // The boards under the slates run along the contours, and a side is a beam's.
+    if (part === "under") return ["timber", (q) => [facetAt(f, [q[0], q[1]])[0] / TILE, facetAt(f, [q[0], q[1]])[1] / TILE]];
+    return ["timber", (q) => [(q[0] + q[1]) / TILE, 0.3 + q[2] / TILE]];
+  };
+  if (level >= 2) {
+    // One solid: its top wears the slates, and it runs out to a thin edge over each eave.
+    const moved = insetPlan(plan, plan.map((_, k) => (kindOf(k) === "eave" ? -EAVE : 0)));
+    const out = moved.map((q, k) => Math.hypot(q[0] - plan[k]![0], q[1] - plan[k]![1]) > 1e-9);
+    const high = moved.map((q, k) => heightOn(out[k] ? facets.find((f) => f.poly.includes(plan[k]!) && f.kinds.includes("eave"))! : facetOf(k), q) + 0.02);
+    const low = moved.map((_, k) => (out[k] ? high[k]! - 0.07 : tops[k]! - form.thick));
+    slabOn(p, moved, high, low, slab, fold);
+    return b;
+  }
+  facets.forEach((f) => {
+    const from = p.faces.length;
+    slates(p, level, f, rise);
+    // A valley's courses stop short of its fold, where the stone that lines it shows.
+    if (folded && !hip) clip(p, planeMoved(facetSides(f)[f.kinds.indexOf("fold")]!, -0.09), null, from);
+  });
+  // The boards alone, or past the finest the slates and their boards as one sheet that wears the slates.
+  if (level === 0) slabOn(p, plan, tops.map((h) => h - SARK_DROP), SARK, slab, fold);
+  else slabOn(p, plan, tops.map((h) => h + 0.022), SARK + SARK_DROP + 0.022, slab, fold);
+  const under = facets.map((f) => facetPlane(f, -SARK - SARK_DROP));
+  const edge = insetPlan(plan, 0.004);
+  const within = edge.map((a, k) => uprightPlane(a, edge[(k + 1) % n]!));
+  plan.forEach((a, k) => {
+    const c = plan[(k + 1) % n]!;
+    const f = facetOf(k), kind = kindOf(k);
+    const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    const inward: Flat = [-(c[1] - a[1]) / l, (c[0] - a[0]) / l];
+    const at = (q: Flat, z: number): Vec => [q[0] + inward[0] * (RIM_IN + RIM / 2), q[1] + inward[1] * (RIM_IN + RIM / 2), z];
+    const [za, zc] = [tops[k]!, tops[(k + 1) % n]!];
+    const from = p.faces.length;
+    if (kind === "rake") {
+      // A principal rafter under the sloped side, its top cut to the boards it carries.
+      const drop = SARK + RAFTER / 2 - 0.06;
+      member(p, level, at(a, za - drop), at(c, zc - drop), RIM, RAFTER / Math.hypot(1, (zc - za) / l), [0, 0, 1], `rake ${k}`);
+    } else {
+      // A level beam inside a low side or a high one, from the frame's underside up to the boards.
+      const [z0, z1] = [za - form.thick, za + (RIM_IN + RIM) * f.g];
+      member(p, level, at(a, (z0 + z1) / 2), at(c, (z0 + z1) / 2), RIM, z1 - z0, [0, 0, 1], `rim ${k}`);
+    }
+    // Under a hip a rim timber runs on past the fold, under the other face: it is cut to both.
+    for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!])]) clip(p, plane, null, from);
+  });
+  if (folded) {
+    const [a, c] = [plan[(fold + 2) % n]!, plan[fold]!];
+    const [za, zc] = [tops[(fold + 2) % n]!, tops[fold]!];
+    const run = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    // The rafter under the fold. Under a hip it stands as far down as the faces fall away over its width.
+    const drop = SARK + SARK_DROP + RAFTER / 2 + (hip ? (RIM / 2) * facets[0]!.g * Math.SQRT1_2 : 0);
+    let from = p.faces.length;
+    member(p, level, [a[0], a[1], za - drop], [c[0], c[1], zc - drop], RIM, RAFTER / Math.hypot(1, (zc - za) / run), [0, 0, 1], "fold");
+    for (const side of [...within, planeAt([0, 0, Math.min(...tops) - form.thick], [0, 0, -1])]) clip(p, side, null, from);
+    from = p.faces.length;
+    if (hip) {
+      // The dressed roll that caps a hip, out to the corner of the eave course.
+      const reach = facets.every((f) => f.kinds.includes("eave")) ? EAVE * Math.SQRT2 - 0.02 : 0;
+      member(p, level, [a[0] - ((c[0] - a[0]) * reach) / run, a[1] - ((c[1] - a[1]) * reach) / run, za - (reach * (zc - za)) / run + 0.03], [c[0], c[1], zc + 0.03], 0.11, 0.06, [0, 0, 1], "roll", "dressed", 0.018);
+      for (const side of plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), kindOf(k) === "eave" ? EAVE : 0))) clip(p, side, null, from);
+    } else {
+      // The gutter stone that lines a valley, its ends square and just short of the corners.
+      const [t0, t1] = [0.14 / run, 1 - 0.14 / run];
+      member(p, level, [a[0] + (c[0] - a[0]) * t0, a[1] + (c[1] - a[1]) * t0, za + (zc - za) * t0 + 0.03], [a[0] + (c[0] - a[0]) * t1, a[1] + (c[1] - a[1]) * t1, za + (zc - za) * t1 + 0.03], 0.26, 0.036, [0, 0, 1], "gutter", "dressed", 0);
+    }
+  }
+  facets.forEach((f, i) => {
+    const k = Math.sqrt(1 + f.g * f.g);
+    const spans = f.poly.map((q) => facetAt(f, q)[1]);
+    // Clear of the yield rings, their ends in the beams.
+    const sides = f.poly.map((a, s2) => planeMoved(uprightPlane(a, f.poly[(s2 + 1) % f.poly.length]!), f.kinds[s2] === "fold" ? -0.07 : -RIM_IN - 0.02));
+    for (const [j, a] of [0.75, 2.25].entries()) {
+      // A common rafter up the slope, a third of the way in from each side.
+      const from = p.faces.length;
+      const off = -(SARK + SARK_DROP + RAFTER / 2);
+      member(p, level, onFacet(f, a, Math.min(...spans), off), onFacet(f, a, Math.max(...spans), off), 0.12, RAFTER / k, [0, 0, 1], `common ${i} ${j}`);
+      for (const side of sides) clip(p, side, null, from);
+    }
+    if (level > 0 || !f.kinds.includes("eave")) return;
+    // Rafter tails under the eave course, each narrower than the rafter of a roof that runs on below, so it lies inside it.
+    const from = p.faces.length;
+    for (const a of [0.055, 0.75, 2.25, 2.945]) member(p, 1, onFacet(f, a, -EAVE + 0.035, -0.054), onFacet(f, a, 0.02, -0.054), 0.085, 0.09, [0, 0, 1], `tail ${i} ${a}`);
+    f.kinds.forEach((kind, s2) => {
+      if (kind !== "eave") clip(p, facetSides(f)[s2]!, null, from);
+    });
+  });
+  return b;
+}
+
 /** The forms past the first nine, by name. */
 const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: number) => Build | null>> = {
   half_wall: lowWall,
@@ -2664,6 +2913,11 @@ const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: numb
   trapdoor_frame: hatchFrame,
   trapdoor: (_, form, level) => hatch(form, level),
   ramp,
+  roof: (_, form, level) => roof(form, level),
+  roof_hip: (_, form, level) => roof(form, level),
+  roof_valley: (_, form, level) => roof(form, level),
+  triangle_roof: (_, form, level) => roof(form, level),
+  triangle_roof_low: (_, form, level) => roof(form, level),
 };
 
 export const STONE: TierRecipe = {
