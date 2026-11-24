@@ -43,6 +43,8 @@ import { benchTactical } from "./bench/tactical.ts";
 import { benchBreaking } from "./bench/breaking.ts";
 import { benchCensus } from "./bench/census.ts";
 import { benchCollapse } from "./bench/collapse.ts";
+import { PART, PARTS } from "../server/admin/parts.ts";
+import { FALL_MOST } from "../server/build.ts";
 import { benchCity } from "./bench/city.ts";
 import { benchFar } from "./bench/far.ts";
 import { buildCorePack } from "./pack/build.ts";
@@ -575,8 +577,11 @@ benchFirefight(section, record, host, centers[0]!, run, FIREFIGHT_GUNS);
 
 // ---------------------------------------------------------------- collapse
 section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching");
-/** The house's pieces as the Rubble a client receives, for the client frame section below. */
+/** The house's pieces as the Rubble a client receives, and how many fell in each tick, for the client frame section below. */
 const wreck: Rubble[] = [];
+const fellBy: number[] = [];
+/** The parts of a tick that a removal's work lands in (server/admin/parts.ts). */
+const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, PART.chunks];
 {
   // 12 by 12 foundations and three storeys of real building pieces, beside the fight.
   const structs = world.structs;
@@ -631,6 +636,17 @@ const wreck: Rubble[] = [];
     step();
     if (build.collapse.busy || work.length === 0) work.push(performance.now() - t);
   };
+  // Each tick's parts as the server's own clock has them (server/admin/parts.ts), and the pieces it removed.
+  const tickParts = host.game.parts as unknown as { ms: Float64Array; end(tick: number): void };
+  const endParts = tickParts.end.bind(tickParts);
+  const spent: number[][] = [];
+  tickParts.end = (tick) => {
+    spent.push(Array.from(tickParts.ms));
+    endParts(tick);
+  };
+  const calm: number[] = [];
+  run(60, calm);
+  const calmParts = spent.splice(0);
   const sentBytes = host.game.stats.chunkBytes;
   const fallenBefore = build.fallen;
   const wavesBefore = build.collapse.waves;
@@ -638,24 +654,50 @@ const wreck: Rubble[] = [];
   for (const ref of ground.flat()) structs.damage(ref, 1e9, world.tick);
   record("destroy 144 foundations", performance.now() - t0, "ms", 2);
   const whole: number[] = [];
+  const removed: number[] = [];
   let ticks = 0;
   while (build.collapse.busy && ticks < 900) {
+    const had = structs.count;
     run(1, whole);
+    removed.push(had - structs.count);
     ticks++;
   }
   run(30, whole); // the last of it reaches everyone
   build.step = step;
+  tickParts.end = endParts;
+  const byTick = whole.slice();
   work.sort((a, b) => a - b);
   whole.sort((a, b) => a - b);
+  calm.sort((a, b) => a - b);
   record("pieces that fell", build.fallen - fallenBefore, "");
   let standing = 0;
   for (const t of structs.chunks) for (let s = 0; t && s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) standing++;
   record("pieces of the house left standing", standing, "", 0);
   record("removals they fell in", build.collapse.waves - wavesBefore, "");
   record("ticks until the last was down", ticks, "", 60);
+  fellBy.push(...removed);
+  const falls = removed.map((n, k) => (n > 0 ? k : -1)).filter((k) => k >= 0);
+  record("ticks from the first piece to the last", falls[falls.length - 1]! - falls[0]! + 1, "", 45);
+  record("most pieces removed in a tick", Math.max(...removed), "", FALL_MOST);
   record("collapse work in a tick, median", percentile(work, 0.5), "ms", 1.5);
   record("collapse work in a tick, worst", work[work.length - 1]!, "ms", 3);
-  record("whole tick while it fell, worst", whole[whole.length - 1]!, "ms", 16);
+  // The whole tick is the fight's, which the firefight above leaves several times its own median. So the fall is held to
+  // what it adds, in the parts of a tick a removal's work lands in: the worst of their sum, over its worst just before.
+  record("whole tick just before, median", percentile(calm, 0.5), "ms");
+  record("whole tick just before, worst", calm[calm.length - 1]!, "ms");
+  record("whole tick while it fell, median", percentile(whole, 0.5), "ms");
+  record("whole tick while it fell, worst", whole[whole.length - 1]!, "ms");
+  const own = (row: number[]): number => FALL_PARTS.reduce((sum, k) => sum + row[k]!, 0);
+  const most = (list: number[][]): number => list.reduce((m, row) => Math.max(m, own(row)), 0);
+  record("the fall's parts of a tick, just before, worst", most(calmParts), "ms");
+  record("the fall's parts of a tick, while it fell, worst", most(spent.slice(0, ticks)), "ms");
+  record("added to a tick by the fall, worst", most(spent.slice(0, ticks)) - most(calmParts), "ms", 4);
+  if (process.env.BENCH_TICKS) {
+    console.log(`    removed by tick: ${removed.join(" ")}`);
+    console.log(`    ms by tick: ${byTick.map((v) => v.toFixed(1)).join(" ")}`);
+    console.log(`    parts: ${PARTS.join(" ")}`);
+    for (let k = 0; k < byTick.length; k++) console.log(`    ${k}: ${spent[k]!.map((v) => v.toFixed(2)).join(" ")}`);
+  }
   record("sent to each watcher for all of it", (host.game.stats.chunkBytes - sentBytes) / watchers, "bytes", pieces * 2);
 }
 
@@ -1153,7 +1195,7 @@ fullViewRows({ section, record, percentile }, scene, cam, reg, hf);
 
 section("Client frame build (headless): that house coming down 60 m off");
 {
-  // The pieces arrive about a hundred a tick, as the server's waves would send them.
+  // The foundations go first, and the rest arrive as the server removed them above, nearest the break first.
   cam.x = wreck[0]!.ox - 30;
   cam.z = wreck[0]!.oz + 18;
   cam.y = hf.heightAt(cam.x, cam.z) + 8;
@@ -1168,7 +1210,7 @@ section("Client frame build (headless): that house coming down 60 m off");
   for (let f = 0; f < 240; f++) {
     const nowMs = f * (1000 / 60);
     const lot: Rubble[] = [];
-    if (f % 2 === 0) for (let k = 0; k < 110 && at < wreck.length; k++) lot.push({ ...wreck[at++]!, tick: f >> 1 });
+    if (f % 2 === 0) for (let k = f === 0 ? 144 : (fellBy[(f >> 1) - 1] ?? 0); k > 0 && at < wreck.length; k--) lot.push({ ...wreck[at++]!, tick: f >> 1 });
     let t = performance.now();
     falling.absorb(lot, nowMs, cam.x, cam.y, cam.z);
     falling.step(nowMs);
