@@ -4,6 +4,7 @@
 //   bun tools/pieces/forms.ts --only roof,ramp      those alone, large and from four sides: look-<names>.png
 //   bun tools/pieces/forms.ts --only roof --level 1 at another level
 //   bun tools/pieces/forms.ts --village             the village alone; --shots 1,7 those of its views
+//   bun tools/pieces/forms.ts --tier stone          another tier's: its village is a keep, with its joints laid
 //
 // The pieces are baked from the recipe as it stands, not read from a pack, so a change is seen at once.
 
@@ -14,27 +15,31 @@ import type { FormDef } from "../../shared/world/lattice/forms.ts";
 import type { PiecesAsset } from "../art/spec.ts";
 import { SOURCE } from "../art/source.ts";
 import { colliderBox } from "../pack/pieces/lod.ts";
+import type { TierRecipe } from "../pack/pieces/lod.ts";
+import { STONE } from "../pack/pieces/stone.ts";
 import { bakeTier } from "../pack/pieces/tier.ts";
 import { WOOD } from "../pack/pieces/wood.ts";
 import type { SourceMesh } from "../pack/write.ts";
 import { piecesPack, tierMeshes } from "./joints.ts";
 import type { Placed } from "./layout.ts";
 import { Canvas, Studio } from "./sheet.ts";
-import { VILLAGE_SHOTS, village } from "./village.ts";
+import { KEEP_SHOTS, VILLAGE_SHOTS, cutJoints, keep, village } from "./village.ts";
 
 const SMOOTH = 2;
-const TIER = "wood";
+/** The tiers whose recipes make the forms past the first nine. */
+const RECIPES: Readonly<Record<string, TierRecipe>> = { wood: WOOD, stone: STONE };
 const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
 /** Metres on medium at which a made piece's levels begin, and pixels a metre is a metre off at 1,080 rows. */
 const LEVEL_FROM = [0, 19, 60, 147, 386] as const;
 const PIXELS = 935;
 
 /** The tier's pieces and trims baked with their pictures: every form, or those named. */
-export async function baked(names?: readonly string[]): Promise<SourceMesh[]> {
+export async function baked(names?: readonly string[], tier = "wood"): Promise<SourceMesh[]> {
+  const TIER = tier;
   const dir = join(SOURCE, "core/structures", TIER);
   const asset = (await import(join(dir, "asset.ts"))).default as PiecesAsset;
   const forms = Object.fromEntries(Object.entries(ALL).filter(([name]) => !names || names.includes(name)));
-  return bakeTier(WOOD, forms, dir, asset.materials!, 2048, !names || names.some((n) => !(n in ALL)));
+  return bakeTier(RECIPES[TIER]!, forms, dir, asset.materials!, 2048, !names || names.some((n) => !(n in ALL)));
 }
 
 /** A ball round a piece's box: its middle and its radius. */
@@ -58,8 +63,12 @@ export async function main(args: readonly string[], say: (line: string) => void 
   const out = resolve(value("out") ?? "var/pieces");
   mkdirSync(out, { recursive: true });
   const only = value("only")?.split(",");
-  const meshes = await baked(only);
-  const pack = piecesPack([...tierMeshes(["thatch", "stone"]), ...meshes]);
+  const TIER = value("tier") ?? "wood";
+  if (!(TIER in RECIPES)) throw new Error(`no recipe makes the new forms in ${TIER}`);
+  const made0 = await baked(only, TIER);
+  // A joint cut to a lower wall is the client's clamp on the one mesh: for a picture, a mesh of its own.
+  const meshes = [...made0, ...cutJoints(made0)];
+  const pack = piecesPack([...tierMeshes(["thatch", "wood", "stone"].filter((t) => t !== TIER)), ...meshes]);
   const studio = await Studio.of(pack);
   const made = new Map(meshes.map((m) => [m.id, m] as const));
   const id = (name: string): string => `core:${name}_${TIER}`;
@@ -112,7 +121,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
       });
     });
     write(`new-levels-${TIER}.png`, levels);
-    const trims = meshes.filter((m) => !(m.id.slice(5, -TIER.length - 1) in ALL)).map((m) => m.id.slice(5, -TIER.length - 1));
+    const trims = made0.filter((m) => !(m.id.slice(5, -TIER.length - 1) in ALL)).map((m) => m.id.slice(5, -TIER.length - 1));
     if (trims.length > 0) {
       const [tw, th] = [200, 300];
       const sheet = new Canvas(8 + trims.length * 4 * (tw + 4), 30 + th + 4);
@@ -125,10 +134,10 @@ export async function main(args: readonly string[], say: (line: string) => void 
       write(`trims-${TIER}.png`, sheet);
     }
   }
-  const built: Placed[] = village(TIER);
+  const built: Placed[] = TIER === "stone" ? keep(TIER) : village(TIER);
   const [vw, vh] = [1000, 720];
   const wanted = value("shots")?.split(",").map(Number);
-  VILLAGE_SHOTS.forEach(([name, centre, radius, around, above, only], k) => {
+  (TIER === "stone" ? KEEP_SHOTS : VILLAGE_SHOTS).forEach(([name, centre, radius, around, above, only], k) => {
     if (wanted && !wanted.includes(k + 1)) return;
     const canvas = new Canvas(vw, vh);
     const drawn = only ? built.filter((q) => only.test(q.id)) : built;

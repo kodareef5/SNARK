@@ -9,6 +9,7 @@ import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { FORM_LAYERS, makeFormTable, setForm, type FormDef } from "../../shared/world/lattice/forms.ts";
 import { Frame, poseOf, rotsOf, type LatticePose } from "../../shared/world/lattice/frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, canon, canonical, key0, key1, tupleStep } from "../../shared/world/lattice/module.ts";
+import type { SourceMesh } from "../pack/write.ts";
 import type { Placed } from "./layout.ts";
 
 /**
@@ -128,4 +129,29 @@ export function village(tier: string): Placed[] {
   edge("gate", at(5, 1), 3, 0, true);
   edge("half_wall", at(5, 2), 3, 0, true);
   return out;
+}
+
+/** The quarter storeys a joint may be cut to, and the id its mesh is drawn under in a picture when it is. */
+export const cutId = (id: string, cut: number): string => (cut > 0 && cut < 4 ? `${id}_cut${cut}` : id);
+
+/**
+ * A tier's joints as the client's clamp leaves them when it cuts one to a lower wall (client/core/render/piece-fit.ts):
+ * every point over n quarter storeys and a centimetre is set down onto that height. A picture has no clamp, so each is
+ * a mesh of its own.
+ */
+export function cutJoints(meshes: readonly SourceMesh[]): SourceMesh[] {
+  return meshes.filter((m) => /:joint_/.test(m.id)).flatMap((m) => [1, 2, 3].map((cut): SourceMesh => ({
+    ...m,
+    id: cutId(m.id, cut),
+    lods: m.lods.map((lod) => {
+      const positions = Float32Array.from(lod.positions);
+      for (let v = 1; v < positions.length; v += 3) positions[v] = Math.min(positions[v]!, cut * 0.75 + 0.01);
+      return { ...lod, positions };
+    }),
+  })));
+}
+
+export const KEEP_SHOTS: readonly VillageShot[] = [];
+export function keep(tier: string): Placed[] {
+  return village(tier);
 }

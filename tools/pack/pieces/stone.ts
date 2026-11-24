@@ -11,7 +11,7 @@
 // Texture coordinates are metres over the 3 m tile from a face's top left corner, as the pictures are painted.
 
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
-import { Carved, add, cross, dot, scale, sub, unit, type Uv, type Vec } from "./kit.ts";
+import { Carved, add, cross, dot, gateLeaves, mirror, scale, sub, unit, type Uv, type Vec } from "./kit.ts";
 import { yieldPlanes, type TierRecipe } from "./lod.ts";
 import { PyRandom } from "./mt.ts";
 
@@ -560,13 +560,13 @@ function tidy(pts: readonly Vec[]): Vec[] {
  * The faces of a block through a wall from one face to the other: a jamb stone or a lintel. Its outline on each face is
  * in the piece's (x, y), corner for corner, where it stands on the mortar; on each it is bevelled in and risen.
  */
-function block(front: readonly P2[], back: readonly P2[], bevel: number, riseFront: readonly number[], riseBack: readonly number[]): Side[] {
+function block(front: readonly P2[], back: readonly P2[], bevel: number, riseFront: readonly number[], riseBack: readonly number[], core = CORE): Side[] {
   const n = front.length;
   const bev = front.map(() => bevel);
-  const Pf = front.map(([x, y]): Vec => [x, y, CORE]);
-  const Tf = inset(front, bev).map(([x, y], i): Vec => [x, y, CORE + riseFront[i]!]);
-  const Pb = back.map(([x, y]): Vec => [x, y, -CORE]);
-  const Tb = inset(back, bev).map(([x, y], i): Vec => [x, y, -CORE - riseBack[i]!]);
+  const Pf = front.map(([x, y]): Vec => [x, y, core]);
+  const Tf = inset(front, bev).map(([x, y], i): Vec => [x, y, core + riseFront[i]!]);
+  const Pb = back.map(([x, y]): Vec => [x, y, -core]);
+  const Tb = inset(back, bev).map(([x, y], i): Vec => [x, y, -core - riseBack[i]!]);
   // A six-cornered face is cut as the scripts' was, and lit as one face: its two middle corners stand in line with their neighbours.
   const faced = (F: Vec[], out: number): Side[] => {
     if (n !== 6) return [{ pts: F }];
@@ -599,6 +599,8 @@ class Build {
   rings: [number, number][] = [];
   /** Moves every corner as it is taken: a door swung open. */
   turn: ((p: Vec) => Vec) | null = null;
+  /** Texture coordinates run on past the picture's edge, which repeats: a piece wider than a span, or laid at another scale. */
+  free = false;
 
   /** A face already looking outward. Texture coordinates are held inside the picture, as the scripts held them. */
   face(pts: readonly Vec[], mat: string, uv: UvMap, normals?: readonly Vec[], along?: number): void {
@@ -608,8 +610,10 @@ class Build {
     });
     while (keep.length > 1 && !apart(pts[keep[0]!]!, pts[keep[keep.length - 1]!]!)) keep.pop();
     if (keep.length < 3) return;
-    const kit = (p: Vec): Vec => [p[0], -p[2], p[1]];
-    const held = (c: number): number => Math.min(Math.max(c, 0), 1);
+    // A cut through a piece's own middle leaves a coordinate a rounding off nought, which is nought.
+    const nought = (c: number): number => (this.free && Math.abs(c) < 1e-12 ? 0 : c);
+    const kit = (p: Vec): Vec => [nought(p[0]), nought(-p[2]), nought(p[1])];
+    const held = (c: number): number => (this.free ? c : Math.min(Math.max(c, 0), 1));
     const moved = (p: Vec): Vec => (this.turn ? this.turn(p) : p);
     this.shape.face({
       points: keep.map((i) => kit(moved(pts[i]!))),
@@ -737,8 +741,15 @@ interface Laying {
   whole?: boolean;
   /** What is left of a stone cut by `keep` is laid only if it covers this many square metres of the mortar. */
   least?: number;
+  /** `least` is asked only of a stone the cut took something from. */
+  cutOnly?: boolean;
   /** The wall's outline keeps its crowns as geometry: the stones cut at the span's edge along the cut, and the top course whole. */
   outline?: boolean;
+  /** The top course alone keeps its crowns as geometry. */
+  risen?: boolean;
+  /** The pattern runs on past this span's right edge in the same piece, or came in over its left: a stone that wraps is laid whole, once. */
+  runsOut?: boolean;
+  runsIn?: boolean;
 }
 
 /** A shaped stone on a frame, in both halves where it runs past the span's edge, cut to the half-spaces in `keep`. */
@@ -746,14 +757,16 @@ function lay(b: Build, frame: Frame, s: Stone, look: Look, mat: string, o: Layin
   const wraps = Math.max(...s.footprint.map((p) => p[0])) > TILE + 1e-9;
   const [base, face] = breaksOf(s, o.notch ?? Infinity, o.facet ?? Infinity);
   for (const shift of wraps ? [0, -TILE] : [0]) {
-    const risen = o.outline === true && s.course === 0;
+    if (shift !== 0 && o.runsIn) continue;
+    const cut = wraps && !(shift === 0 && o.runsOut);
+    const risen = (o.outline === true || o.risen === true) && s.course === 0;
     let sides = stoneSides(frame, s.footprint, base, face, look, shift, risen);
     const planes = [...(o.keep ?? [])];
-    if (wraps) planes.push(shift === 0 ? keepBelow(frame, TILE) : keepAbove(frame, 0));
+    if (cut) planes.push(shift === 0 ? keepBelow(frame, TILE) : keepAbove(frame, 0));
     for (const plane of planes) sides = clipSolid(sides, plane);
-    if (wraps && o.outline && !risen) sides = crownedCut(sides, frame, s.footprint, look, shift, planes[planes.length - 1]!);
+    if (cut && o.outline && !risen) sides = crownedCut(sides, frame, s.footprint, look, shift, planes[planes.length - 1]!);
     // The footprint is the first face, and stays so through every cut.
-    if (o.least !== undefined && sides.length >= 4 && Math.abs(area2(sides[0]!.pts.map((p) => frame.on(p)))) < o.least) continue;
+    if (o.least !== undefined && sides.length >= 4 && Math.abs(area2(sides[0]!.pts.map((p) => frame.on(p)))) < Math.min(o.least, o.cutOnly ? Math.abs(area2(s.footprint)) - 1e-6 : Infinity)) continue;
     if (sides.length >= 4) b.convex(sides, mat, o.uvOf ?? on(frame), o.whole);
   }
 }
@@ -884,8 +897,8 @@ function lintelOf(o: Opening): Through {
 }
 
 /** A stone through the wall as a plain block, each face as proud as the stone's is on average. */
-function throughBlock(b: Build, { front, back, rise }: Through, mat: string, grain?: string): void {
-  const z = CORE + rise.reduce((sum, r) => sum + r, 0) / rise.length;
+function throughBlock(b: Build, { front, back, rise }: Through, mat: string, grain?: string, core = CORE): void {
+  const z = core + rise.reduce((sum, r) => sum + r, 0) / rise.length;
   const rect = (outline: readonly P2[], at: number): Vec[] => {
     const [x0, x1, y0, y1] = box2(outline);
     return [[x0, y0, at], [x1, y0, at], [x1, y1, at], [x0, y1, at]];
@@ -1539,6 +1552,635 @@ function door(form: FormDef, level: number): Build | null {
   return b;
 }
 
+// The forms past the first nine. Each is built from its row alone, in the mason's own members: walling is the wall's
+// pattern, laid from the piece's foot and its -x end and cut to the piece, as stones (`layWall`) or as a sheet
+// (`panel`); dressed stones are blocks through the wall; flags are the floor's pattern cut to the piece.
+
+/** An upright form's box about its collider's origin: its ends, its foot and top, half its thickness and half its core's. */
+interface WallBox {
+  x0: number;
+  x1: number;
+  foot: number;
+  top: number;
+  half: number;
+  core: number;
+}
+
+function wallBox(form: FormDef): WallBox {
+  const [u0, v0, u1, v1] = outlineBox(form);
+  const half = form.thick / 2;
+  return { x0: u0 - form.at[0], x1: u1 - form.at[0], foot: v0 - form.at[1], top: v1 - form.at[1], half, core: half - MD };
+}
+
+/** A half-plane of a piece's face in its own (x, y): where a x + b y <= c. A region is what lies inside every one of its sides. */
+type Half2 = readonly [number, number, number];
+type Region = readonly Half2[];
+const below = (y: number): Half2 => [0, 1, y];
+const above = (y: number): Half2 => [0, -1, -y];
+const leftOf = (x: number): Half2 => [1, 0, x];
+const rightOf = (x: number): Half2 => [-1, 0, -x];
+
+/** The frames the wall's pattern is laid on to cover both faces of a box: a tile to each span and storey, from the foot and from each face's own left end. */
+function faceTiles(w: WallBox): { frame: Frame; last: boolean; runsIn: boolean; runsOut: boolean }[] {
+  const out: { frame: Frame; last: boolean; runsIn: boolean; runsOut: boolean }[] = [];
+  const [nx, ny] = [Math.ceil((w.x1 - w.x0) / TILE - 1e-6), Math.ceil((w.top - w.foot) / TILE - 1e-6)];
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+    const y = w.foot + (j + 1) * TILE;
+    const at = { last: j === ny - 1, runsIn: i > 0, runsOut: i < nx - 1 };
+    out.push({ frame: new Frame([w.x0 + i * TILE, y, w.core], [1, 0, 0], [0, -1, 0], [0, 0, 1]), ...at });
+    out.push({ frame: new Frame([w.x1 - i * TILE, y, -w.core], [-1, 0, 0], [0, -1, 0], [0, 0, -1]), ...at });
+  }
+  return out;
+}
+
+/** A region of a piece's face as sides on one of its frames, for clip2. */
+const onFrame = (frame: Frame, region: Region): Half2[] => region.map(([a, b, c]) => [a * frame.u[0], -b, c - a * frame.o[0] - b * frame.o[1]] as const);
+/** Sides on a frame as the half-spaces a stone laid on it is cut to. */
+const planesOn = (frame: Frame, sides: readonly Half2[]): Plane[] => sides.map(([a, b, c]) => [frame.at((a * c) / (a * a + b * b), (b * c) / (a * a + b * b)), add(scale(frame.u, a), scale(frame.v, b))] as const);
+
+/**
+ * The wall's stones on both faces of a box, each cut to every region it reaches. A stone that lies in two regions is
+ * two stones there, which is seen only where the regions' own edge is a joint.
+ */
+function layWall(b: Build, w: WallBox, regions: readonly Region[], o: Laying = {}): void {
+  for (const { frame, last, runsIn, runsOut } of faceTiles(w)) {
+    for (const { stone, look } of walling()) {
+      for (const region of regions) lay(b, frame, stone, look, "masonry", { whole: true, cutOnly: true, ...o, runsIn, runsOut, outline: o.outline === true && last, risen: o.risen === true && last, keep: planesOn(frame, onFrame(frame, region)) });
+    }
+  }
+}
+
+/**
+ * A face's walling as fewer cells: two stones laid in one course's height are one cell, and so is a course laid as two
+ * thin ones. A cell is still shaded as the stones in it stand. For a sheet larger than a wall's.
+ */
+function coarseTiles(frame: Frame): Tile[] {
+  const groups = new Map<string, { stone: Stone; look: Look }[]>();
+  for (const laid of walling()) {
+    const key = /^(k\d+s\d+)(?:a|b|[ul]\d+)$/.exec(laid.stone.name)?.[1] ?? laid.stone.name;
+    groups.set(key, [...(groups.get(key) ?? []), laid]);
+  }
+  const out: Tile[] = [];
+  for (const group of groups.values()) {
+    const [v0, v1] = span(group.flatMap(({ stone }) => stone.quad.map((q) => q[1])));
+    const [upper, lower] = [v0, v1].map((v, k) => group.map(({ stone }) => stone.quad).filter((q) => Math.abs(q[k * 2]![1] - v) < 1e-9).sort((a, c) => a[0]![0] - c[0]![0]));
+    const quad: P2[] = [upper![0]![0]!, upper![upper!.length - 1]![1]!, lower![lower!.length - 1]![2]!, lower![0]![3]!];
+    const normals = group.map(({ stone, look }) => ({ box: box2(stone.quad), at: stoneNormal(frame, stone.footprint, look) }));
+    // The normal of whichever of its stones a point lies on.
+    const field = seenFlat(quad, (u, v) => (normals.find(({ box }) => u >= box[0] && u <= box[1] && v >= box[2] && v <= box[3]) ?? normals[0]!).at(u, v));
+    const wraps = Math.max(...quad.map((q) => q[0])) > TILE + 1e-9;
+    for (const shift of wraps ? [0, -TILE] : [0]) out.push({ poly: quad.map(([u, v]) => [u + shift, v] as const), mat: "masonry", field: (u, v) => field(u - shift, v) });
+  }
+  return out;
+}
+
+/** A cell of a sheet given in the piece's own (x, y), the same on both faces: a dressed block, a lintel. */
+interface PanelCell {
+  poly: readonly P2[];
+  mat: string;
+  uv?: UvMap;
+  /** How far its corners' normals lean out from its middle: a block shaded as if its arrises were taken off. */
+  pillow?: number;
+}
+
+interface Panel {
+  /** How far each face stands from the piece's middle. */
+  half: number;
+  /** The piece's outline in (x, y), and each of its sides' material and grain where it is not masonry. */
+  outline: readonly P2[];
+  rim?: (side: number) => readonly [string, string?];
+  /** What the pattern's cells are cut to, and the cells of a face on one of its frames. */
+  regions?: readonly Region[];
+  cells?: (frame: Frame) => Tile[];
+  blocks?: (front: boolean) => readonly PanelCell[];
+}
+
+/**
+ * An upright piece of any outline as one closed sheet: both faces cut into cells, and its rim between them, with a
+ * corner on each yield ring so that its outline is exact where an end is pulled back.
+ */
+function panel(b: Build, w: WallBox, p: Panel): void {
+  const from = b.shape.faces.length;
+  if (p.cells && p.regions) {
+    for (const { frame } of faceTiles(w)) tiles(b, frame.out(p.half - w.core), p.cells(frame), p.regions.map((r) => [...onFrame(frame, r), ...within2(0, TILE, 0, TILE)]));
+  }
+  for (const front of [true, false]) {
+    const z = front ? p.half : -p.half;
+    for (const c of p.blocks?.(front) ?? []) {
+      const pts = c.poly.map(([x, y]): Vec => [x, y, z]);
+      const mid = mean(pts);
+      const normals = c.pillow ? pts.map((q) => unit(add(scale(unit(sub(q, mid)), c.pillow!), [0, 0, front ? 1 : -1]))) : undefined;
+      b.flat(pts, [0, 0, front ? 1 : -1], c.mat, c.uv ?? (front ? FRONT.uv : BACK.uv), normals, b.spans(pts));
+    }
+  }
+  const rings = b.rings.filter(([axis]) => axis === 0).map(([, at]) => at);
+  const turn = Math.sign(area2(p.outline));
+  p.outline.forEach((a, k) => {
+    const c = p.outline[(k + 1) % p.outline.length]!;
+    const out = unit([(c[1] - a[1]) * turn, -(c[0] - a[0]) * turn, 0]);
+    const [mat, grain] = p.rim?.(k) ?? ["masonry"];
+    const ts = [0, ...rings.map((x) => (x - a[0]) / (c[0] - a[0])).filter((t) => t > 1e-9 && t < 1 - 1e-9).sort((x, y) => x - y), 1];
+    for (let i = 0; i + 1 < ts.length; i++) {
+      const [q, r] = [ts[i]!, ts[i + 1]!].map((t): P2 => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t]) as [P2, P2];
+      b.flat([[q[0], q[1], p.half], [r[0], r[1], p.half], [r[0], r[1], -p.half], [q[0], q[1], -p.half]], out, mat, straight(out, grain));
+    }
+  });
+  b.shape.weld(from);
+}
+
+/** A face's tile cut at the yield rings and no further: the cells of a level that wears the pictures plain. */
+const plainCells = (b: Build) => (frame: Frame): Tile[] => {
+  const us = [0, ...b.rings.filter(([axis]) => axis === 0).map(([, at]) => (at - frame.o[0]) * frame.u[0]).filter((u) => u > 1e-9 && u < TILE - 1e-9).sort((x, y) => x - y), TILE];
+  return us.slice(1).map((u, i) => ({ poly: cell(us[i]!, u, 0, TILE), mat: "masonry" }));
+};
+
+/** A dressed coping course is this deep. */
+const COPING = 0.13;
+/** How far a dressed block's face stands from the mortar: prouder than the walling, as the jambs are. */
+const DRESSED = MD + 0.026;
+
+/** The stones of a coping course along the top of a box, about `long` metres each, the wall's ends flat on its own. */
+function copingStones(w: WallBox, key: string, long = 0.78): Through[] {
+  const g = rng("coping", key);
+  const count = Math.max(1, Math.round((w.x1 - w.x0) / long));
+  const edges = [w.x0, ...Array.from({ length: count - 1 }, (_, i) => w.x0 + ((w.x1 - w.x0) * (i + 1 + g.uniform(-0.18, 0.18))) / count), w.x1];
+  const [yb, yt] = [w.top - COPING, w.top - GAP];
+  return edges.slice(1).map((x1, i) => {
+    const [a, c] = [edges[i]! + (i === 0 ? 0 : g.uniform(0.003, 0.006)), x1 - (i === count - 1 ? 0 : g.uniform(0.003, 0.006))];
+    const outline: P2[] = [[a, yb], [c, yb], [c, yt], [a, yt]];
+    return { front: outline, back: outline, rise: [0, 1, 2, 3].map(() => DRESSED + g.uniform(-0.002, 0.004)) };
+  });
+}
+
+/** A dressed block through a wall as a plain block, its two faces shaded as if its arrises were taken off. */
+function pillowBlock(b: Build, { front, rise }: Through, core: number, mat = "dressed", pillow = 0.22, grain?: string): void {
+  const z = core + rise.reduce((sum, r) => sum + r, 0) / rise.length;
+  const [f, k] = [z, -z].map((at) => front.map(([x, y]): Vec => [x, y, at])) as [Vec[], Vec[]];
+  const mid = mean(f);
+  const lean = (out: number) => (p: Vec): Vec => unit(add(scale(unit([p[0] - mid[0], p[1] - mid[1], 0]), pillow), [0, 0, out]));
+  b.convex([{ pts: f, field: lean(1) }, { pts: k, field: lean(-1) }, ...f.map((q, i) => ({ pts: [q, f[(i + 1) % f.length]!, k[(i + 1) % f.length]!, k[i]!] }))], mat, throughUv(grain), true);
+}
+
+/** A dressed block through a wall, its arrises taken off on both faces. A block across a yield ring is pulled back whole. */
+function dressedBlock(b: Build, s: Through, core: number, bevel = 0.014, mat = "dressed", grain?: string): void {
+  b.convex(block(s.front, s.back, bevel, s.rise, s.rise.length === 4 ? [...s.rise].reverse() : s.rise, core), mat, throughUv(grain), true);
+}
+
+/**
+ * A half wall or a quarter wall: the wall's own lower courses, so its beds run on into the wall beside it, under a
+ * dressed coping course that stands a little proud. A battlement, a parapet, a sill wall.
+ */
+function lowWall(name: string, form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const w = wallBox(form);
+  const b = new Build();
+  b.free = true;
+  b.rings = yieldPlanes(form);
+  if (level === 3) {
+    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "masonry");
+    return b;
+  }
+  const under = w.top - COPING;
+  if (level === 0) {
+    b.box([w.x0, w.foot - GAP, -w.core], [w.x1, under + 0.03, w.core], "masonry");
+    layWall(b, w, [[below(under)]], { facet: FACET, least: LEAST });
+    for (const s of copingStones(w, name)) dressedBlock(b, s, w.core);
+    return b;
+  }
+  const outline: P2[] = [[w.x0, w.foot], [w.x1, w.foot], [w.x1, under], [w.x0, under]];
+  if (level === 1) panel(b, w, { half: w.core + FACE, outline, regions: [[below(under)]], cells: (frame) => wallTiles(frame) });
+  else panel(b, w, { half: w.half, outline, regions: [[below(under)]], cells: plainCells(b) });
+  // The coping one stone from end to end, which a yield ring leaves whole.
+  b.box([w.x0, under, -w.core - DRESSED], [w.x1, w.top - GAP, w.core + DRESSED], "dressed", undefined, [0, 0], true);
+  return b;
+}
+
+/**
+ * A strip of foundation under a wall where no floor is: a plinth course, its stones battered as a foundation's are,
+ * on both faces of a core of rubble.
+ */
+function footing(form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const w = wallBox(form);
+  const b = new Build();
+  b.free = true;
+  b.rings = yieldPlanes(form);
+  const outline: P2[] = [[w.x0, w.foot], [w.x1, w.foot], [w.x1, w.top], [w.x0, w.top]];
+  if (level === 3) {
+    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "masonry");
+    return b;
+  }
+  const depth = w.top - w.foot;
+  const sides = ([[1, new Frame([w.x0, w.top, w.half - PD], [1, 0, 0], [0, -1, 0], [0, 0, 1], [0, 0.1])], [-1, new Frame([w.x1, w.top, -w.half + PD], [-1, 0, 0], [0, -1, 0], [0, 0, -1], [0, 0.3])]] as const).map(([side, frame]) => {
+    const g = rng("footing", side);
+    const count = Math.max(2, Math.round((w.x1 - w.x0) / 0.8));
+    const cuts = [0, ...Array.from({ length: count - 1 }, (_, i) => ((w.x1 - w.x0) * (i + 1 + g.uniform(-0.2, 0.2))) / count), w.x1 - w.x0];
+    const stones = cuts.slice(1).map((u, i) => {
+      const stone = shaped({ course: 0, name: `footing${side}${i}`, quad: cell(cuts[i]!, u, 0.004, depth) }, [0.004, 0.012], [0.012, 0.045], [0.04, 0.07], 0.25);
+      const r = rng("footing face", side, i);
+      const out = PD + r.uniform(-0.006, 0.004);
+      const look: Look = { rise: [out - 0.008, out - 0.008 + r.uniform(-0.003, 0.003), out + 0.012, out + 0.012 + r.uniform(-0.003, 0.003)], bevel: [0, 1, 2, 3].map(() => r.uniform(0.016, 0.03)), crown: r.uniform(0.004, 0.01), at: [r.uniform(0.4, 0.6), r.uniform(0.4, 0.6)] };
+      return { stone, look, faced: ontoStone(frame.o, frame.u, frame.v, box2(stone.outline), ["footing", side, i]), x: [frame.o[0] + frame.u[0] * cuts[i]!, frame.o[0] + frame.u[0] * u] as const };
+    });
+    return { side, frame, stones };
+  });
+  if (level === 0) {
+    b.box([w.x0, w.foot, -w.half + PD], [w.x1, w.top, w.half - PD], "masonry");
+    for (const { frame, stones } of sides) for (const { stone, look, faced } of stones) lay(b, frame, stone, look, "masonry", { notch: 0, facet: 0, whole: true, uvOf: (n) => (dot(n, frame.n) > 0.3 ? faced : straight(n)) });
+    return b;
+  }
+  // One block, each plinth stone a cell that wears the stone it wears close to; further off, the picture plain.
+  if (level === 1) panel(b, w, { half: w.half, outline, blocks: (front) => sides[front ? 0 : 1]!.stones.map(({ faced, x }) => ({ poly: [[x[0], w.foot], [x[1], w.foot], [x[1], w.top], [x[0], w.top]], mat: "masonry", uv: faced, pillow: 0.16 })) });
+  else panel(b, w, { half: w.half, outline, regions: [[above(w.foot), below(w.top)]], cells: plainCells(b) });
+  return b;
+}
+
+/** A beam's joints at its underside, as shares of half its span from its middle. */
+const ARCH_JOINTS = [0.14, 0.4, 0.68] as const;
+
+/** The stones of a flat arch from x0 to x1 between two heights: a keystone, voussoirs whose joints lean to one point `centre` metres under it, and a springer at each end. */
+function flatArch(x0: number, x1: number, y0: number, y1: number, joints: readonly number[], centre: number, key: string, gap = 0.004): (Through & { keystone: boolean })[] {
+  const g = rng("arch", key);
+  const [mid, half] = [(x0 + x1) / 2, (x1 - x0) / 2];
+  const lean = (centre + y1 - y0) / centre;
+  const at = [...[...joints].reverse().map((f) => -f * half), ...joints.map((f) => f * half)];
+  // Each joint's place at the underside and at the top, the ends upright.
+  const lines: P2[] = [[x0 - mid, x0 - mid], ...at.map((x): P2 => [x, x * lean]), [x1 - mid, x1 - mid]];
+  return lines.slice(1).map((r, i) => {
+    const l = lines[i]!;
+    const [gl, gr] = [i === 0 ? 0 : gap, i === lines.length - 2 ? 0 : gap];
+    const outline: P2[] = [[mid + l[0] + gl, y0], [mid + r[0] - gr, y0], [mid + r[1] - gr, y1], [mid + l[1] + gl, y1]];
+    const keystone = i === joints.length;
+    return { front: outline, back: outline, keystone, rise: [0, 1, 2, 3].map(() => MD + (keystone ? 0.03 : 0.012) + g.uniform(0, 0.005)) };
+  });
+}
+
+/**
+ * A beam across an edge where a wall's top would be: a flat arch of dressed stone, seven voussoirs with a keystone
+ * that stands proud, on a core of mortar.
+ */
+function archBeam(form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const w = wallBox(form);
+  const b = new Build();
+  b.free = true;
+  b.rings = yieldPlanes(form);
+  const [y0, y1] = [w.foot, w.top - GAP];
+  const outline: P2[] = [[w.x0, y0], [w.x1, y0], [w.x1, y1], [w.x0, y1]];
+  const stones = flatArch(w.x0, w.x1, y0, y1, ARCH_JOINTS, 3.2 * (y1 - y0), "beam");
+  if (level === 0) {
+    b.box([w.x0 + 0.004, y0 + 0.004, -w.core], [w.x1 - 0.004, y1 - 0.004, w.core], "masonry");
+    for (const s of stones) dressedBlock(b, s, w.core, 0.016);
+    return b;
+  }
+  if (level === 3) {
+    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "dressed");
+    return b;
+  }
+  const dressed = (): readonly [string] => ["dressed"];
+  if (level === 1) panel(b, w, { half: w.core + MD + 0.014, outline, rim: dressed, blocks: () => flatArch(w.x0, w.x1, y0, y1, ARCH_JOINTS, 3.2 * (y1 - y0), "beam", 0).map((s) => ({ poly: s.front, mat: "dressed", pillow: 0.2 })) });
+  else panel(b, w, { half: w.half, outline, rim: dressed, blocks: () => [{ poly: outline, mat: "dressed" }] });
+  return b;
+}
+
+/** How deep a gable's raking coping is, measured upright, and how long its footstone is at the low end, where the gable is all one dressed stone. */
+const RAKE = 0.15;
+const FOOTSTONE = 0.72;
+
+/**
+ * The gable under a roof's sloped side: coursed walling under a raking coping of dressed stones, and at its low end
+ * one footstone the whole height. Its top is its outline's own, to the last bit. It is built high at its -x end, and
+ * the other hand is that one in a mirror.
+ */
+function gable(name: string, form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const w = wallBox(form);
+  const b = new Build();
+  b.free = true;
+  // Built as the left hand: the right hand's rings are the same two, mirrored onto each other.
+  b.rings = yieldPlanes(form);
+  const right = form.outline.some(([u, v]) => v - form.at[1] > w.foot + 1e-9 && u - form.at[0] > (w.x0 + w.x1) / 2);
+  const done = (): Build => {
+    if (right) mirror(b.shape, 0);
+    return b;
+  };
+  const slope = (w.top - w.foot) / (w.x1 - w.x0);
+  /** The top's height over x, and the walling's under the coping. */
+  const top = (x: number): number => w.foot + slope * (w.x1 - x);
+  const under = (x: number): number => top(x) - RAKE;
+  const tip = w.x1 - RAKE / slope;
+  if (level === 3) {
+    b.prism([[w.x0, w.foot], [w.x1, w.foot], [w.x0, w.top]], "z", -w.half, w.half, "masonry");
+    return done();
+  }
+  const walling: Region = [[slope, 1, w.foot + slope * w.x1 - RAKE]];
+  const foot = Math.min(tip, w.x1 - FOOTSTONE);
+  // The coping's stones from the high end down to the footstone, then the footstone.
+  const g = rng("rake", "gable");
+  const count = Math.max(1, Math.round((foot - w.x0) / 0.75));
+  const edges = [w.x0, ...Array.from({ length: count - 1 }, (_, i) => w.x0 + ((foot - w.x0) * (i + 1 + g.uniform(-0.15, 0.15))) / count), foot];
+  const stones: Through[] = edges.slice(1).map((x1, i) => {
+    const [a, c] = [edges[i]! + (i === 0 ? 0 : 0.004), x1 - 0.004];
+    const outline: P2[] = [[a, under(a)], [c, under(c)], [c, top(c)], [a, top(a)]];
+    return { front: outline, back: outline, rise: [0, 1, 2, 3].map(() => DRESSED + g.uniform(-0.002, 0.004)) };
+  });
+  const footstone: P2[] = [[foot, w.foot], [w.x1, w.foot], [foot, top(foot)]];
+  if (level === 0) {
+    b.prism([[w.x0, w.foot - GAP], [foot, w.foot - GAP], [foot, under(foot)], [w.x0, under(w.x0)]], "z", -w.core, w.core, "masonry");
+    layWall(b, w, [[...walling, leftOf(foot - 0.004)]], { facet: FACET, least: LEAST });
+    for (const s of stones) dressedBlock(b, s, w.core);
+    dressedBlock(b, { front: footstone, back: footstone, rise: footstone.map(() => DRESSED) }, w.core);
+    return done();
+  }
+  const outline: P2[] = [[w.x0, w.foot], [foot, w.foot], [foot, under(foot)], [w.x0, under(w.x0)]];
+  if (level === 1) panel(b, w, { half: w.core + FACE, outline, regions: [[...walling, leftOf(foot)]], cells: (frame) => wallTiles(frame) });
+  else panel(b, w, { half: w.half, outline, regions: [[...walling, leftOf(foot)]], cells: plainCells(b) });
+  // The coping one dressed stone along the rake, and the footstone.
+  for (const profile of [[[w.x0, under(w.x0)], [foot, under(foot)], [foot, top(foot)], [w.x0, w.top]], footstone] as const) b.convex(loft("z", [[-w.core - DRESSED, profile], [w.core + DRESSED, profile]]), "dressed", throughUv(), true);
+  void name;
+  return done();
+}
+
+/** An opening that stands on the piece's foot: its two sides and its head, about the collider's origin. */
+function doorwayOf(name: string, form: FormDef, w: WallBox): { x0: number; x1: number; head: number } {
+  const o = form.openings?.[0];
+  if (!o || form.openings!.length > 1 || Math.abs(o.y0 - form.at[1] - w.foot) > 1e-9) throw new Error(`stone ${name}: one opening, standing on the piece's foot`);
+  return { x0: o.x0 - form.at[0], x1: o.x1 - form.at[0], head: o.y1 - form.at[1] };
+}
+
+/** The outline of a wall with a doorway through its foot, going round anticlockwise, and which of its sides are the doorway's two reveals and its head. */
+const doorwayOutline = (w: WallBox, d: { x0: number; x1: number; head: number }, top: number): P2[] => [[w.x0, w.foot], [d.x0, w.foot], [d.x0, d.head], [d.x1, d.head], [d.x1, w.foot], [w.x1, w.foot], [w.x1, top], [w.x0, top]];
+
+/** A jamb is long and short work: a flat stone a course high that reaches far into the wall, then an upright one two courses high that does not. */
+const JAMB_LONG: P2 = [0.66, 0.8];
+const JAMB_SHORT: P2 = [0.28, 0.34];
+
+/**
+ * A doorway two edges wide: the wall's own courses, jambs of dressed stones long and short by turns, each a course
+ * high, and one oak lintel over the opening that bears a foot on each jamb. The walling is cut against the jambs.
+ */
+function wideDoorway(name: string, form: FormDef, level: number): Build | null {
+  if (level > 4) return null;
+  const w = wallBox(form);
+  const d = doorwayOf(name, form, w);
+  const b = new Build();
+  b.free = true;
+  if (level === 4) {
+    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "masonry");
+    return b;
+  }
+  if (level < 3) b.rings = yieldPlanes(form);
+  // The courses under the opening's head, from the foot up, each a jamb stone on either side.
+  const beds = [...[...BEDS].reverse().map((v) => w.foot + TILE - v).filter((y) => y < d.head - 0.05), d.head];
+  const g = rng("wide", name);
+  // Each side's stones from the foot: the left begins with a flat one, the right with an upright one.
+  const jambs = [-1, 1].flatMap((side) => {
+    const out: { side: number; yb: number; yt: number; at: number; rise: number[] }[] = [];
+    for (let m = 0, long = side < 0; m + 1 < beds.length; long = !long) {
+      const high = long || m + 2 >= beds.length ? 1 : 2;
+      const reach = g.uniform(...(long ? JAMB_LONG : JAMB_SHORT));
+      out.push({ side, yb: beds[m]!, yt: beds[m + high]!, at: side < 0 ? d.x0 - reach : d.x1 + reach, rise: [0, 1, 2, 3].map(() => DRESSED + g.uniform(0, 0.008)) });
+      m += high;
+    }
+    return out;
+  });
+  const jambBox = (j: (typeof jambs)[number], joint = 0): P2[] => (j.side < 0 ? [[j.at + joint, j.yb], [d.x0, j.yb], [d.x0, j.yt], [j.at + joint, j.yt]] : [[d.x1, j.yb], [j.at - joint, j.yb], [j.at - joint, j.yt], [d.x1, j.yt]]);
+  // The lintel lies in the course over the head where the head is a bed, and is a third of a metre deep where it is not.
+  const over = [...BEDS].map((v) => w.foot + TILE - v).filter((y) => y > d.head + 0.2 && y < d.head + 0.5).pop() ?? Math.min(d.head + 0.34, w.top - 0.1);
+  const [ll, lr] = [Math.max(w.x0 + 0.2, d.x0 - 0.6), Math.min(w.x1 - 0.2, d.x1 + 0.6)];
+  const joint = level === 0 ? 0.008 : 0;
+  const top = level === 3 ? w.top : w.top - GAP;
+  const regions: Region[] = [[above(over), below(top)], [above(d.head), below(over), leftOf(ll - joint)], [above(d.head), below(over), rightOf(lr + joint)], ...jambs.map((j): Region => [above(j.yb), below(j.yt), j.side < 0 ? leftOf(j.at) : rightOf(j.at)])];
+  const outline = doorwayOutline(w, d, top);
+  const rim = (k: number): readonly [string, string?] => (k === 1 || k === 3 ? ["dressed"] : k === 2 ? ["timber", "x"] : ["masonry"]);
+  const lintel = (): Through => {
+    const high = over - 0.008;
+    const outline: P2[] = [[ll + 0.008, d.head], [lr - 0.008, d.head], [lr - 0.008, high], [ll + 0.008, high - 0.005]];
+    return { front: outline, back: outline, rise: [0.004, 0.006, 0, -0.003].map((r) => MD + 0.022 + r) };
+  };
+  if (level === 0) {
+    b.box([w.x0, w.foot - GAP, -w.core], [d.x0 - 0.01, w.top - GAP, w.core], "masonry");
+    b.box([d.x1 + 0.01, w.foot - GAP, -w.core], [w.x1, w.top - GAP, w.core], "masonry");
+    b.box([d.x0 - 0.02, over - 0.015, -w.core], [d.x1 + 0.02, w.top - GAP, w.core], "masonry");
+    layWall(b, w, regions, { risen: true, least: LEAST });
+    // Plain blocks shaded round: eight jamb stones with their arrises cut are 130 triangles the walling needs.
+    for (const j of jambs) pillowBlock(b, { front: jambBox(j, 0.006), back: jambBox(j, 0.006), rise: j.rise }, w.core);
+    pillowBlock(b, lintel(), w.core, "timber", 0.1, "x");
+    // The worn threshold stone between the jambs.
+    b.box([d.x0, w.foot - GAP, -w.half], [d.x1, w.foot + 0.02, w.half], "dressed");
+    return b;
+  }
+  if (level === 3) {
+    // Flat: the two piers and the head, and the lintel's colour over the opening.
+    const cells: PanelCell[] = [
+      { poly: [[w.x0, w.foot], [d.x0, w.foot], [d.x0, d.head], [d.x0, over], [w.x0, top]], mat: "masonry" }, { poly: [[d.x1, w.foot], [w.x1, w.foot], [w.x1, top], [d.x1, over], [d.x1, d.head]], mat: "masonry" },
+      { poly: [[d.x0, d.head], [d.x1, d.head], [d.x1, over], [d.x0, over]], mat: "timber" }, { poly: [[d.x0, over], [d.x1, over], [w.x1, top], [w.x0, top]], mat: "masonry" },
+    ];
+    panel(b, w, { half: w.half, outline, rim, blocks: () => cells });
+    return b;
+  }
+  const lintelCell: PanelCell = { poly: [[ll, d.head], [lr, d.head], [lr, over], [ll, over]], mat: "timber" };
+  if (level === 1) {
+    panel(b, w, {
+      half: w.core + FACE, outline, rim, regions, cells: coarseTiles,
+      blocks: () => [...jambs.map((j): PanelCell => ({ poly: jambBox(j), mat: "dressed", pillow: 0.2 })), lintelCell],
+    });
+    throughBlock(b, lintel(), "timber", "x", w.core);
+    return b;
+  }
+  // The jambs a column each side, as wide as the jamb stones are on average.
+  const wide = jambs.reduce((sum, j) => sum + Math.abs(j.at - (j.side < 0 ? d.x0 : d.x1)) * (j.yt - j.yb), 0) / (2 * (d.head - w.foot));
+  panel(b, w, {
+    half: w.half, outline, rim, cells: plainCells(b),
+    regions: [[above(over), below(top)], [above(d.head), below(over), leftOf(ll)], [above(d.head), below(over), rightOf(lr)], [below(d.head), leftOf(d.x0 - wide)], [below(d.head), rightOf(d.x1 + wide)]],
+    blocks: () => [lintelCell, { poly: [[d.x0 - wide, w.foot], [d.x0, w.foot], [d.x0, d.head], [d.x0 - wide, d.head]], mat: "dressed" }, { poly: [[d.x1, w.foot], [d.x1 + wide, w.foot], [d.x1 + wide, d.head], [d.x1, d.head]], mat: "dressed" }],
+  });
+  return b;
+}
+
+/**
+ * A wall several storeys high in one piece: the wall's pattern storey on storey, under a dressed coping. Close to, each
+ * face is one sheet whose stones are cells shaded as the stones they are, as a wall is from 19 m: every stone a solid
+ * is four walls' triangles in one piece. From 19 m its courses are cells, shaded round at their beds.
+ */
+function tallWall(name: string, form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const w = wallBox(form);
+  const b = new Build();
+  b.free = true;
+  if (level === 3) {
+    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "masonry");
+    return b;
+  }
+  b.rings = yieldPlanes(form);
+  const under = w.top - COPING;
+  const outline: P2[] = [[w.x0, w.foot], [w.x1, w.foot], [w.x1, under], [w.x0, under]];
+  if (level === 0) {
+    panel(b, w, { half: w.core + FACE, outline, regions: [[below(under)]], cells: coarseTiles });
+    for (const s of copingStones(w, name)) dressedBlock(b, s, w.core);
+    return b;
+  }
+  if (level === 1) {
+    const strips = plainCells(b);
+    // A course's normals lean up at its upper bed and down at its lower.
+    const courses = (frame: Frame): Tile[] => strips(frame).flatMap((strip) => BEDS.slice(1).map((v1, k): Tile => {
+      const v0 = BEDS[k]!;
+      return { poly: cell(strip.poly[0]![0], strip.poly[1]![0], v0, v1), mat: "masonry", field: (_, v) => unit(add(frame.n, scale(frame.v, 0.5 * ((v - v0) / (v1 - v0) - 0.5)))) };
+    }));
+    panel(b, w, { half: w.core + FACE, outline, regions: [[below(under)]], cells: courses });
+  } else panel(b, w, { half: w.half, outline, regions: [[below(under)]], cells: plainCells(b) });
+  b.box([w.x0, under, -w.core - DRESSED], [w.x1, w.top - GAP, w.core + DRESSED], "dressed", undefined, [0, 0], true);
+  return b;
+}
+
+/** Where a gate's three strap hinges are, between its foot and its top: its gateway has a pintle at each. */
+const hingesOf = (foot: number, top: number): number[] => [foot + 0.47, (foot + top) / 2, top - 0.47];
+/** A gateway's pier is dressed blocks tall and short by turns, about this high a pair. */
+const PIER_PAIR = 0.875;
+
+/**
+ * A gateway two edges wide and two storeys high: two piers of dressed blocks, tall and proud by turns with short ones
+ * that stand back, and over the opening a flat arch whose voussoirs lean to one point far under it, with a keystone.
+ * Nothing stands in its opening, which its gate fills. From 386 m it is a flat frame seen from both faces.
+ */
+function gatehouse(name: string, form: FormDef, level: number): Build | null {
+  if (level > 4) return null;
+  const w = wallBox(form);
+  const d = doorwayOf(name, form, w);
+  const b = new Build();
+  b.free = true;
+  if (level === 4) {
+    // Twelve triangles cannot close a frame, and a box would shut the opening.
+    const points = doorwayOutline(w, d, w.top).map(([x, y]): Vec => [x, 0, y]);
+    const tris = [0, 1, 2, 0, 2, 7, 2, 3, 7, 3, 6, 7, 3, 5, 6, 3, 4, 5];
+    for (const front of [true, false]) b.shape.faces.push({ points, uvs: points.map(() => [0, 0] as const), mat: "dressed", tris: front ? tris.flatMap((_, i) => (i % 3 === 0 ? [tris[i]!, tris[i + 2]!, tris[i + 1]!] : [])) : tris });
+    b.shape.error = w.half;
+    return b;
+  }
+  if (level < 3) b.rings = yieldPlanes(form);
+  const top = level === 3 ? w.top : w.top - GAP;
+  const outline = doorwayOutline(w, d, top);
+  const dressed = (): readonly [string] => ["dressed"];
+  const g = rng("gateway", name);
+  // Each pier's courses from the foot to the opening's head.
+  const pairs = Math.max(1, Math.round((d.head - w.foot) / PIER_PAIR));
+  const scaleY = (d.head - w.foot) / (pairs * PIER_PAIR);
+  const beds = Array.from({ length: 2 * pairs + 1 }, (_, i) => w.foot + (Math.floor(i / 2) * PIER_PAIR + (i % 2) * 0.5) * scaleY);
+  const bed = level === 0 ? 0.003 : 0;
+  const blocks = ([[w.x0, d.x0], [d.x1, w.x1]] as const).flatMap(([x0, x1], side) => beds.slice(1).map((yt, i) => {
+    const tall = i % 2 === 0;
+    const o: P2[] = [[x0, beds[i]! + bed], [x1, beds[i]! + bed], [x1, yt - bed], [x0, yt - bed]];
+    return { front: o, back: o, tall, side, rise: [0, 1, 2, 3].map(() => (tall ? DRESSED + 0.008 : MD + 0.01) + g.uniform(0, 0.004)) };
+  }));
+  // The arch's joints at its underside: the springers end on the piers' inner faces.
+  const half = (w.x1 - w.x0) / 2;
+  const span = (d.x1 - d.x0) / 2 / half;
+  const arch = flatArch(w.x0, w.x1, d.head, top, [0.085 * span, 0.3 * span, 0.53 * span, 0.765 * span, span], 5.6, name, level === 0 ? 0.004 : 0);
+  if (level === 0) {
+    for (const [x0, x1] of [[w.x0 + 0.004, d.x0 - 0.004], [d.x1 + 0.004, w.x1 - 0.004]] as const) b.box([x0, w.foot - GAP, -w.core], [x1, d.head, w.core], "masonry");
+    b.box([w.x0 + 0.004, d.head + 0.004, -w.core], [w.x1 - 0.004, top - 0.004, w.core], "masonry");
+    for (const s of blocks) dressedBlock(b, s, w.core, s.tall ? 0.022 : 0.014);
+    for (const s of arch) dressedBlock(b, s, w.core, 0.02);
+    // The pintles the gate hangs on, in front of its leaves.
+    for (const y of hingesOf(w.foot + 0.02, d.head - 0.015)) for (const [x0, x1] of [[d.x0, d.x0 + 0.045], [d.x1 - 0.045, d.x1]] as const) b.box([x0, y - 0.07, 0.1], [x1, y + 0.07, 0.15], "iron");
+    return b;
+  }
+  if (level === 1) {
+    panel(b, w, { half: w.core + DRESSED, outline, rim: dressed, blocks: () => [...blocks, ...arch].map((s) => ({ poly: s.front, mat: "dressed", pillow: 0.22 })) });
+    return b;
+  }
+  const band: P2[] = [[w.x0, d.head], [d.x0, d.head], [d.x1, d.head], [w.x1, d.head], [w.x1, top], [w.x0, top]];
+  panel(b, w, { half: w.half, outline, rim: dressed, blocks: () => [{ poly: [[w.x0, w.foot], [d.x0, w.foot], [d.x0, d.head], [w.x0, d.head]], mat: "dressed" }, { poly: [[d.x1, w.foot], [w.x1, w.foot], [w.x1, d.head], [d.x1, d.head]], mat: "dressed" }, { poly: band, mat: "dressed" }] });
+  return b;
+}
+
+/**
+ * A gate of two leaves that meet in the middle: oak planks on three ledges and two braces a leaf, hung on long iron
+ * strap hinges riveted through, and barred across the back in iron brackets. The front is +z.
+ */
+function gate(form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const w = wallBox(form);
+  const b = new Build();
+  b.free = true;
+  if (level === 3) {
+    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "timber", "y");
+    return b;
+  }
+  const [foot, top] = [w.foot + 0.02, w.top - 0.015];
+  const mid = (w.x0 + w.x1) / 2;
+  // Through its thickness: the bar, the ledges, the planks, the straps.
+  const [barZ, backZ, faceZ, ironZ] = [-w.half, -w.half + 0.05, w.half - 0.08, w.half - 0.015];
+  const hinges = hingesOf(foot, top);
+  const leaves = gateLeaves((w.x1 - w.x0) / 2 - 0.012, foot, top, 2, 0.28, 3, 0.47, 0.012);
+  leaves.forEach((leaf, n) => {
+    const [x0, x1] = [mid + leaf.x0, mid + leaf.x1];
+    const near = leaf.hinge < 0 ? x0 : x1;
+    if (level === 0) {
+      leaf.boards.forEach(([a0, a1], k) => {
+        const g = rng("gate plank", n, k);
+        const [a, c] = [mid + a0 + 0.002, mid + a1 - 0.002];
+        const fz = ironZ - g.uniform(0, 0.005);
+        const cp = g.uniform(0.006, 0.01);
+        const profile: P2[] = [[a, faceZ], [c, faceZ], [c, fz - cp], [c - cp, fz], [a + cp, fz], [a, fz - cp]];
+        const [lo, hi] = [foot + g.uniform(0, 0.012), top - g.uniform(0, 0.01)];
+        b.convex(loft("y", [[lo, profile], [hi, profile]]), "timber", (nrm) => straight(nrm, "y", [((k * 0.31 + n * 0.17) % 0.5) - 0.25, ((k * 0.17) % 0.4) - 0.2]));
+      });
+    } else b.box([x0, foot, faceZ], [x1, top, ironZ], "timber", "y");
+    hinges.forEach((yc) => {
+      // A strap hinge across the leaf: square at the hinge, narrowing to a spear point short of the meeting edge.
+      const at = (t: number): number => near - leaf.hinge * t * (x1 - x0);
+      const section = (h: number): P2[] => [[ironZ - 0.004, yc - h], [w.half, yc - h], [w.half, yc + h], [ironZ - 0.004, yc + h]];
+      if (level === 2) b.box([Math.min(at(0.004), at(0.8)), yc - 0.05, ironZ], [Math.max(at(0.004), at(0.8)), yc + 0.05, w.half], "iron", "x");
+      else b.convex(loft("x", [[at(0.002), section(0.055)], [at(0.66), section(0.05)], [at(0.84), section(0.006)]]), "iron", (nrm) => straight(nrm, "x"));
+      if (level === 2) return;
+      // The ledge behind it.
+      b.box([x0 + 0.05, yc - 0.1, backZ], [x1 - 0.05, yc + 0.1, faceZ], "timber", "x");
+      if (level > 0) return;
+      for (const t of [0.12, 0.34, 0.56]) {
+        const xc = at(t);
+        const base: Vec[] = [[xc - 0.018, yc - 0.018, w.half], [xc + 0.018, yc - 0.018, w.half], [xc + 0.018, yc + 0.018, w.half], [xc - 0.018, yc + 0.018, w.half]];
+        b.convex([{ pts: base }, ...base.map((q, k) => ({ pts: [q, base[(k + 1) % 4]!, [xc, yc, w.half + 0.012] as Vec] }))], "iron", (nrm) => straight(nrm));
+      }
+      // The knuckle the strap is forged round, on the pintle in the pier.
+      const knuckle = Array.from({ length: 6 }, (_, k): P2 => [near + 0.022 * Math.cos((k * Math.PI) / 3), w.half + 0.022 * Math.sin((k * Math.PI) / 3) - 0.004]);
+      b.convex(loft("y", [[yc - 0.07, knuckle], [yc + 0.07, knuckle]]), "iron", (nrm) => straight(nrm));
+    });
+    if (level === 2) return;
+    // A brace between each two ledges, rising from the hinge side.
+    for (let i = 0; i + 1 < hinges.length; i++) {
+      const [from, to]: [P2, P2] = [[near - leaf.hinge * 0.25, hinges[i]! + 0.1], [near - leaf.hinge * (x1 - x0 - 0.25), hinges[i + 1]! - 0.1]];
+      const l = Math.hypot(to[0] - from[0], to[1] - from[1]);
+      const dir: P2 = [(to[0] - from[0]) / l, (to[1] - from[1]) / l];
+      const across: P2 = [-dir[1], dir[0]];
+      const corners: P2[] = [...[-0.07, 0.07].map((k) => [from[0] + across[0] * k, from[1] + across[1] * k] as const), ...[0.07, -0.07].map((k) => [to[0] + across[0] * k, to[1] + across[1] * k] as const)];
+      const grain: UvMap = (q) => [(q[0] * dir[0] + q[1] * dir[1]) / TILE + 0.5, (q[0] * across[0] + q[1] * across[1]) / TILE + 0.3];
+      b.convex(loft("z", [[backZ + 0.004, corners], [faceZ, corners]]), "timber", (nrm) => (Math.abs(nrm[2]) > 0.5 ? grain : straight(nrm)));
+    }
+  });
+  if (level === 2) return b;
+  // The bar across the back of both leaves, in an iron bracket on each.
+  const y = foot + 1.3;
+  const reach = (w.x1 - w.x0) / 2 - 0.5;
+  b.box([mid - reach, y - 0.08, barZ + 0.006], [mid + reach, y + 0.08, backZ - 0.004], "timber", "x");
+  if (level === 0) for (const x of [-reach * 0.6, reach * 0.6]) b.box([mid + x - 0.05, y - 0.11, barZ], [mid + x + 0.05, y + 0.1, backZ], "iron");
+  return b;
+}
+
+/** The forms past the first nine, by name. */
+const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: number) => Build | null>> = {
+  half_wall: lowWall,
+  quarter_wall: lowWall,
+  fence_foundation: (_, form, level) => footing(form, level),
+  beam: (_, form, level) => archBeam(form, level),
+  sloped_wall_left: gable,
+  sloped_wall_right: gable,
+  double_doorway: wideDoorway,
+  large_wall: tallWall,
+  gateway: gatehouse,
+  gate: (_, form, level) => gate(form, level),
+};
+
 export const STONE: TierRecipe = {
   name: "stone",
   rank: 2,
@@ -1548,6 +2190,8 @@ export const STONE: TierRecipe = {
   tones: { masonry: [157, 153, 147], flags: [128, 128, 128], dressed: [203, 201, 175], timber: [125, 87, 69], iron: [46, 43, 36] },
   split(name, form, level) {
     const made = (): Build | null => {
+      const planned = PLANNED[name];
+      if (planned) return planned(name, form, level);
       if (form.layer === "wall") return wallFamily(name, form, level);
       if (form.layer === "slab" && form.root === "always") return foundation(form, level);
       if (form.layer === "slab" && form.outline.length === 4 && !form.corner && !form.openings) return ceiling(form, level);
