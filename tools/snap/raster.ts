@@ -1421,6 +1421,8 @@ export class Rasterizer {
               const sun = Math.min(1, Math.max(0, 0.5 + (0.5 * (ux * fr[FRAME.sun]! + uy * fr[FRAME.sun + 1]! + uz * fr[FRAME.sun + 2]!)) / ul));
               const moon = Math.min(1, Math.max(0, 0.5 + (0.5 * (ux * fr[FRAME.moon]! + uy * fr[FRAME.moon + 1]! + uz * fr[FRAME.moon + 2]!)) / ul));
               skyOn(light, fr, uy / ul);
+              const ash = 0.2126 * light[0]! + 0.7152 * light[1]! + 0.0722 * light[2]!;
+              for (let c = 0; c < 3; c++) light[c] = ash + 0.4 * (light[c]! - ash);
               for (let c = 0; c < 3; c++) light[c] = (((a >>> (c * 8)) & 255) / 255) ** 2 * shape[2]! * (fr[FRAME.sunColor + c]! * (0.14 + 0.86 * sun * sun) + fr[FRAME.moonColor + c]! * (0.14 + 0.86 * moon * moon) + 1.35 * light[c]!);
               shown(rgb, light, dist, p);
               for (let c = 0; c < 3; c++) this.color[at * 4 + c] = this.color[at * 4 + c]! + (rgb[c]! * 255 - this.color[at * 4 + c]!) * alpha;

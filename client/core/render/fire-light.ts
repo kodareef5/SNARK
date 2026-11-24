@@ -80,6 +80,31 @@ export function fireRamp(t: number, out: Float64Array | number[]): void {
 const hot = [0, 0, 0];
 
 /**
+ * GLSL for light `c` that is its own, a fire's or a glow's, as a light target takes it: the finish multiplies light by
+ * the hour's grade and holds colour back or brings it out (post.ts), and this undoes both beforehand, so fire is shown
+ * alike at noon and at night and as a display tier shows it. After FRAME_BLOCK.
+ */
+export const UNGRADED = (c: string): string => `max(mix(vec3(dot(${c}, vec3(0.2126, 0.7152, 0.0722))), ${c}, 1.0 / max(fGrade.a, 0.5)), 0.0) / max(fGrade.rgb, vec3(0.25))`;
+
+/** How much brighter than a display's white what is white hot is drawn into a light target, so that bloom takes it. */
+export const FIRE_BLOOMS = 5;
+
+/**
+ * What a display shows of the energy in `e` (a ramp's, in place): each channel pressed under 1. With `target` it is the
+ * light that value stands for, which the finish's tone curve and coding (post.ts) show as a display tier does, so fire
+ * keeps its hue and its dark cracks there; and what is white hot is brighter yet, for bloom to take.
+ */
+export function fireShown(e: Float64Array | number[], target: boolean): void {
+  for (let c = 0; c < 3; c++) {
+    const d = 1 - Math.exp(-e[c]!);
+    e[c] = target ? d * d * (0.76 + 0.24 * d) : d;
+  }
+  if (!target) return;
+  const more = 1 + FIRE_BLOOMS * e[2]! * e[2]!;
+  for (let c = 0; c < 3; c++) e[c] = e[c]! * more;
+}
+
+/**
  * A point of a rocket's flame, into `out`: its light weighed by how much shows, and in out[3] how much of what is
  * behind it it hides. `around` is where the point is round the plume, 0 to 1, `along` from the nozzle to the tip,
  * `facing` how squarely its surface faces the eye, `axial` how nearly the eye looks down the plume, and `metres` its
@@ -111,7 +136,8 @@ export function flameLight(out: Float64Array | number[], around: number, along: 
   fireRamp(0.34 + 0.8 * core + 0.4 * fleck, hot);
   // It gives more light than it hides, so its thin parts glow orange and red and are not a brown veil.
   const glows = cover * (2 - cover);
-  for (let c = 0; c < 3; c++) out[c] = (target ? hot[c]! : 1 - Math.exp(-hot[c]!)) * glows;
+  fireShown(hot, target);
+  for (let c = 0; c < 3; c++) out[c] = hot[c]! * glows;
   out[3] = cover * FLAME_HIDES;
 }
 
@@ -155,10 +181,13 @@ export function lobeLight(out: Float64Array | number[], u: number, v: number, fa
   // It fades into the ground it stands on.
   const cover = edge * keep * fade * smooth(0, FLOOR_FADE, lift);
   fireRamp(t, hot);
+  fireShown(hot, target);
   const light = [lr, lg, lb];
+  // Where little of it shows it glows less than it hides, so its thin edge is no red fringe on the sky behind.
+  const rim = 0.35 + 0.65 * Math.min(1, 2 * cover);
   for (let c = 0; c < 3; c++) {
     const dark = target ? tone * light[c]! : lit ? Math.sqrt(Math.min(1, tone * light[c]!)) : Math.sqrt(tone) * light[c]!;
-    out[c] = cover * ((target ? hot[c]! : 1 - Math.exp(-hot[c]!)) + dark * soot * SOOT_HIDES);
+    out[c] = cover * (hot[c]! * rim + dark * soot * SOOT_HIDES);
   }
   out[3] = cover * (FIRE_HIDES + (SOOT_HIDES - FIRE_HIDES) * soot);
 }
@@ -384,6 +413,21 @@ vec3 fireRamp(float t) {
   float c3 = c * c * c;
   return vec3(6.0 * c * sqrt(c), 5.2 * c3, 3.6 * c3 * c3);
 }
+float fireShown(float e) {
+  float d = 1.0 - exp(-e);
+#ifdef LIGHT_TARGET
+  return d * d * (0.76 + 0.24 * d);
+#else
+  return d;
+#endif
+}
+float fireBlooms(float blue) {
+#ifdef LIGHT_TARGET
+  return 1.0 + ${f(FIRE_BLOOMS)} * blue * blue;
+#else
+  return 1.0;
+#endif
+}
 vec4 flameLight(float around, float along, float facing, float power, float ignite, float seed, float axial, float phase, float metres) {
   float s = ${f(TAU)} * seed;
   float down = axial * axial * axial * axial;
@@ -405,12 +449,9 @@ vec4 flameLight(float around, float along, float facing, float power, float igni
   float body = fuel * fuel * (3.0 - 2.0 * fuel) * min(0.98, 1.45 * depth * depth);
   float cover = power * max(body, fleck);
   vec3 hot = fireRamp(0.34 + 0.8 * core + 0.4 * fleck);
-  float glows = cover * (2.0 - cover);
-#ifdef LIGHT_TARGET
-  return vec4(hot.r * glows, hot.g * glows, hot.b * glows, cover * ${f(FLAME_HIDES)});
-#else
-  return vec4((1.0 - exp(-hot.r)) * glows, (1.0 - exp(-hot.g)) * glows, (1.0 - exp(-hot.b)) * glows, cover * ${f(FLAME_HIDES)});
-#endif
+  float blue = fireShown(hot.b);
+  float glows = cover * (2.0 - cover) * fireBlooms(blue);
+  return vec4(fireShown(hot.r) * glows, fireShown(hot.g) * glows, blue * glows, cover * ${f(FLAME_HIDES)});
 }
 float lobeGrain(float u, float v, float seed) {
   float s = ${f(TAU)} * seed;
@@ -439,13 +480,6 @@ float lobeDark(float tone, float light) {
 #endif
 #endif
 }
-float lobeShown(float energy) {
-#ifdef LIGHT_TARGET
-  return energy;
-#else
-  return 1.0 - exp(-energy);
-#endif
-}
 vec4 lobeLight(float u, float v, float facing, float lift, float age, float heat, float seed, float tone, float fade, float lr, float lg, float lb) {
   float n = lobeGrain(u, v, seed);
   float front = clamp(facing, 0.0, 1.0);
@@ -458,8 +492,10 @@ vec4 lobeLight(float u, float v, float facing, float lift, float age, float heat
   float keep = smoothstep(going - 0.12, going + 0.12, n) * (1.0 - smoothstep(0.9, 1.0, age));
   float cover = edge * keep * fade * smoothstep(0.0, ${f(FLOOR_FADE)}, lift);
   vec3 hot = fireRamp(t);
+  float blue = fireShown(hot.b);
+  float more = fireBlooms(blue) * (0.35 + 0.65 * min(1.0, 2.0 * cover));
   float dim = soot * ${f(SOOT_HIDES)};
-  return vec4(cover * (lobeShown(hot.r) + lobeDark(tone, lr) * dim), cover * (lobeShown(hot.g) + lobeDark(tone, lg) * dim), cover * (lobeShown(hot.b) + lobeDark(tone, lb) * dim), cover * (${f(FIRE_HIDES)} + ${f(SOOT_HIDES - FIRE_HIDES)} * soot));
+  return vec4(cover * (fireShown(hot.r) * more + lobeDark(tone, lr) * dim), cover * (fireShown(hot.g) * more + lobeDark(tone, lg) * dim), cover * (blue * more + lobeDark(tone, lb) * dim), cover * (${f(FIRE_HIDES)} + ${f(SOOT_HIDES - FIRE_HIDES)} * soot));
 }
 `;
 
@@ -562,6 +598,8 @@ flat in vec2 vB;
 uniform vec4 uEffect;
 uniform float uFrom;
 out vec4 o;
+#ifdef LIGHT_TARGET
+${FRAME_BLOCK}#endif
 #ifdef FIRE_NOISE
 ${TILED_GLSL}#endif
 ${FIRE_GLSL}void main() {
@@ -569,4 +607,7 @@ ${FIRE_GLSL}void main() {
   if (z + 0.5 * fwidth(z) < uFrom) discard;
   o = uEffect.x > 0.5 ? lobeLight(vUv.x, vUv.y, vFacing, vLift, vA.x, uEffect.w, vA.z, uEffect.z, vA.y, vLight.r, vLight.g, vLight.b)
     : flameLight(vUv.x, vUv.y, vFacing, vA.x, vA.y, vA.z, vA.w, vB.x, vB.y);
+#ifdef LIGHT_TARGET
+  o.rgb = ${UNGRADED("o.rgb")};
+#endif
 }`;

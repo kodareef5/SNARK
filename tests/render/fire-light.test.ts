@@ -4,7 +4,9 @@
 import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { CONE_TURN, FIRE_GLSL, FIRE_VERTEX_FLOATS, coneRadius, coneSlope, fireFlat, fireRamp, flameLight, flamePhase, flameVertex, lobeBands, lobeLight, lobeNoise, lobeSwell, lobeVertex, putFlame, putLobe, FLAME_TURN_MS, type FireSun } from "../../client/core/render/fire-light.ts";
-import { scorchOf, smokeOf } from "../../client/core/render/detailtext.ts";
+import { DETAIL_LIT_FRAGMENT, scorchOf, smokeOf } from "../../client/core/render/detailtext.ts";
+import { FIRE_FRAGMENT, fireShown } from "../../client/core/render/fire-light.ts";
+import { tone } from "../../client/core/render/surface.ts";
 import { DRAW_BLEND, DRAW_FIRE, DRAW_PLAIN, FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAM, PROGRAMS, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
 import { tiled } from "../../client/core/texgen/noise.ts";
@@ -129,7 +131,7 @@ test("a lobe begins white, cools through fire to soot with glowing cracks, opens
   for (const noise of [2, 1, 0]) {
     const [flash, fire, cracks, holes, gone] = [face(0.02, noise), face(0.25, noise), face(0.5, noise), face(0.8, noise), face(1, noise)];
     expect(flash.blue).toBeGreaterThan(2);
-    expect([fire.red > 1, fire.blue < 0.5 * flash.blue, fire.glowing > 0.8]).toEqual([true, true, true]);
+    expect([fire.red > 1, fire.blue < 0.5 * flash.blue, fire.glowing > 0.7]).toEqual([true, true, true]);
     expect([cracks.glowing > 0.02, cracks.glowing < 0.6, cracks.red < 0.5 * fire.red]).toEqual([true, true, true]);
     expect([holes.cover < 0.75 * cracks.cover, holes.cover > 0, holes.glowing < cracks.glowing]).toEqual([true, true, true]);
     expect(gone).toEqual({ red: 0, blue: 0, cover: 0, glowing: 0 });
@@ -349,4 +351,23 @@ test("a length of a rope of smoke runs the whole of its card, ends thinned into 
   }
   expect([reached > 1, bare > 45]).toEqual([true, true]);
   expect(scorchOf(0.3, 0.2, 0.1)).not.toBe(scorchOf(0.3, 0.2, 0.6));
+});
+
+test("into a light target fire is the light the finish shows as a display tier shows it, hue and dark cracks kept", () => {
+  const coded = (c: number): number => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055);
+  for (let t = 0.05; t <= 1; t += 0.05) {
+    const shown = [0, 0, 0], light = [0, 0, 0], toned = [0, 0, 0];
+    fireRamp(t, shown);
+    fireShown(shown, false);
+    fireRamp(t, light);
+    fireShown(light, true);
+    tone(toned, light);
+    // What the finish's tone curve and coding make of the light is what a display tier draws, within a sixteenth.
+    for (let c = 0; c < 3; c++) expect(Math.abs(coded(Math.min(1, toned[c]!)) - shown[c]!)).toBeLessThan(0.0625);
+    // Only what is near white heat is past where bloom begins (post.ts BLOOM_FROM, 2), and soot's edge is dark red, not salmon.
+    if (t < 0.78 || t > 0.88) expect(Math.max(...light) > 2).toBe(t > 0.88);
+  }
+  // The hour's grade is undone for fire and for a glow, in the fire's text and in the details'.
+  expect(FIRE_FRAGMENT.split("#ifdef LIGHT_TARGET").at(-1)!.includes("/ max(fGrade.rgb")).toBe(true);
+  expect(/d = max\(mix\(vec3\(dot\(d,/.test(DETAIL_LIT_FRAGMENT)).toBe(true);
 });

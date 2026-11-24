@@ -26,6 +26,10 @@ export const MEASURED_VOLUME = 0.02;
 const BLAST_EVERY_MS = 1500;
 const BLAST_REACH = 7.5;
 const BLAST_LOOK = 2;
+/** A bench page's `?rocket=`: a rocket is flown across the view that many metres ahead this often, in ms, for this long, at this speed. */
+const ROCKET_EVERY_MS = 3200;
+const ROCKET_FLIES_MS = 2400;
+const ROCKET_SPEED = 60;
 
 /** What a tool's own server tells a page that is the tool's look at a place (`ToolHooks.address`). */
 export interface ToolOrders {
@@ -86,6 +90,12 @@ export class ToolHooks {
   private blastAhead = 0;
   private blastNext = 0;
   private blasts = 0;
+  /** Metres ahead a bench page's rockets cross the view (`?rocket=`), 0 for none; the run's clock at the next; and the one flying: when it left on the scene's clock, from where, and its way. */
+  private rocketAhead = 0;
+  private rocketNext = 0;
+  private rocketBorn = -1;
+  private readonly rocketFrom = [0, 0, 0];
+  private readonly rocketWay = [0, 0, 0];
   private readonly supply: SupplyView;
 
   /** `supply` is the drops' view, whose clock a picture tool holds with the obelisks'. */
@@ -115,6 +125,8 @@ export class ToolHooks {
     this.farPalms = get("farpalm") === "fronds";
     const blast = Number(get("blast"));
     this.blastAhead = blast > 0 && blast <= 400 ? blast : 0;
+    const rocket = Number(get("rocket"));
+    this.rocketAhead = rocket > 0 && rocket <= 400 ? rocket : 0;
     governor.held = Number(get("level") ?? 0);
     settings.tier = tierOf(get("tier") ?? settings.tier).name;
     const share = Number(get("scale"));
@@ -205,6 +217,30 @@ export class ToolHooks {
       this.blastNext = this.runMs + BLAST_EVERY_MS;
       const x = f.cam.x + Math.sin(f.controls.yaw) * this.blastAhead, z = f.cam.z + Math.cos(f.controls.yaw) * this.blastAhead;
       scene.blasts.burst(BLAST_LOOK, x, f.world.hf.heightAt(x, z) + 0.05, z, 0, 1, 0, BLAST_REACH, SURFACE_GROUND, 0, ++this.blasts, f.sceneMs);
+    }
+    if (this.rocketAhead > 0) {
+      const from = this.rocketFrom, way = this.rocketWay;
+      if (this.rocketBorn >= 0 && f.sceneMs - this.rocketBorn >= ROCKET_FLIES_MS) {
+        scene.blasts.end(1, f.sceneMs);
+        this.rocketBorn = -1;
+      }
+      if (this.rocketBorn < 0 && this.runMs >= this.rocketNext) {
+        // From the view's right and as far ahead, across it and a little away and up.
+        this.rocketNext = this.runMs + ROCKET_EVERY_MS;
+        const sin = Math.sin(f.controls.yaw), cos = Math.cos(f.controls.yaw), d = this.rocketAhead;
+        from[0] = f.cam.x + sin * d + cos * d;
+        from[2] = f.cam.z + cos * d - sin * d;
+        from[1] = f.world.hf.heightAt(from[0], from[2]) + 1.6;
+        way[0] = -0.93 * cos + 0.34 * sin;
+        way[1] = 0.1;
+        way[2] = 0.93 * sin + 0.34 * cos;
+        this.rocketBorn = f.sceneMs;
+        scene.blasts.fly(1, from[0], from[1], from[2], way[0] * ROCKET_SPEED, way[1] * ROCKET_SPEED, way[2] * ROCKET_SPEED, 2, 0.9, f.sceneMs);
+      }
+      if (this.rocketBorn >= 0) {
+        const t = (f.sceneMs - this.rocketBorn) / 1000;
+        scene.blasts.at(1, from[0]! + way[0]! * ROCKET_SPEED * t, from[1]! + way[1]! * ROCKET_SPEED * t - t * t, from[2]! + way[2]! * ROCKET_SPEED * t, way[0]!, way[1]!, way[2]!);
+      }
     }
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = (this.offNow = alternate ? this.other! : this.off);
     scene.alternate = alternate;

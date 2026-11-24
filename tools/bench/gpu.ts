@@ -71,6 +71,8 @@ interface Run {
   ab?: Effect;
   /** Metres ahead of the view a rocket's blast is set off, every second and a half of the run. */
   blast?: number;
+  /** Metres ahead of the view a rocket is flown across it, every three seconds of the run. */
+  rocket?: number;
   /** Whether the frame is timed on the page's clock and not by query. */
   clock?: boolean;
   view?: View;
@@ -339,7 +341,7 @@ function parkFleet(server: ReturnType<typeof startServer>, species: string, cars
   throw new Error(`Only ${parked} of ${cars} ${species} cars fit on the benchmark street`);
 }
 
-const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.window ? ` in ${r.window.join("x")}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.blast ? `, a blast ${r.blast} m off` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}${r.hour !== undefined ? `, at ${r.hour}:00` : ""}`;
+const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.window ? ` in ${r.window.join("x")}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.blast ? `, a blast ${r.blast} m off` : ""}${r.rocket ? `, a rocket ${r.rocket} m off` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}${r.hour !== undefined ? `, at ${r.hour}:00` : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
 async function measure(runs: Run[], times: number, say: (line: string) => void, fleet?: { species: string; cars: number; image?: string }): Promise<Map<string, Record<string, any>[]>> {
@@ -383,7 +385,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void, 
     const day = hourOfDay(server.host.world.tick, server.host.world.dayOffset, server.host.world.clock);
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
-        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}${r.view && LOOKS[r.view] ? `&still&look=${r.view}` : ""}${r.blast ? `&blast=${r.blast}` : ""}`;
+        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}${r.view && LOOKS[r.view] ? `&still&look=${r.view}` : ""}${r.blast ? `&blast=${r.blast}` : ""}${r.rocket ? `&rocket=${r.rocket}` : ""}`;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), (SETTLE_MS + 120000) * (r.cpu ?? 1)))));
         const pixels = r.view || r.window ? [`--window-size=${(r.window ?? [1920, 1080]).join(",")}`, `--force-device-scale-factor=${r.scale ?? 1}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
@@ -583,13 +585,16 @@ if (import.meta.main) {
       card: report.card, waited: report.waited }));
     process.exit(0);
   }
-  // bun tools/bench/gpu.ts blast medium 8 folder [pictures]: a rocket's blasts that far ahead, looked at on a desktop's canvas.
-  if (process.argv[2] === "blast") {
-    const [, , , tier = "medium", metres = "8", folder = tmpdir(), shots = "16"] = process.argv;
+  // bun tools/bench/gpu.ts blast medium 8 folder [pictures] [hour] [effects off]: a rocket's blasts that far ahead, looked at on a
+  // desktop's canvas; `rocket` in place of `blast` flies a rocket across the view that far ahead. Tiers and metres may be lists.
+  if (process.argv[2] === "blast" || process.argv[2] === "rocket") {
+    const [, , what, tiers = "medium", metres = "8", folder = tmpdir(), shots = "16", hour = "", off = ""] = process.argv;
     process.env.GPU_SHOT = folder;
     process.env.GPU_SHOTS = shots;
     // No metres: the same view with nothing set off, to tell a blast's light from the scene's own.
-    await measure([{ scene: "base", tier, ...(Number(metres) > 0 ? { blast: Number(metres) } : {}), window: [1920, 1167] }], 1, console.log);
+    const runs: Run[] = [];
+    for (const tier of tiers.split(",")) for (const m of metres.split(",")) runs.push({ scene: "base", tier, ...(Number(m) > 0 ? { [what as "blast"]: Number(m) } : {}), ...(hour ? { hour: Number(hour) } : {}), ...(off ? { off: off as NonNullable<Run["off"]> } : {}), window: [1920, 1167] });
+    await measure(runs, 1, console.log);
     process.exit(0);
   }
   const times = Number(process.argv[2] ?? 3);

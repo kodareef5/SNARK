@@ -389,8 +389,8 @@ export class Blasts {
     const shares = BY_SURFACE[surface] ?? BY_SURFACE[SURFACE_GROUND]!;
     const lift = 0.25 * scale;
     const px = x + nx * lift, py = y + ny * lift, pz = z + nz * lift;
-    // A flash by the eye is no wider than the view: it is light, and a screen of it is enough.
-    this.ask(FLASH, px, py, pz, nx, ny, nz, seed, far < ROCKET_REACH * scale ? Math.max(0.15, far / ROCKET_REACH) : scale, 1);
+    // A flash is at the fireball's middle, so the ground does not cut it; by the eye it is no wider than the view.
+    this.ask(FLASH, x + nx * 0.55 * ball, y + ny * 0.55 * ball, z + nz * 0.55 * ball, nx, ny, nz, seed, far < ROCKET_REACH * scale ? Math.max(0.15, far / ROCKET_REACH) : scale, 1);
     // Each part has its share of what a blast may fill of the screen, so one by the eye is still all of them: the
     // scorch, which is little; the ring of dust, which is the blast's reach and what a player must read; then the smoke.
     if (surface === SURFACE_GROUND) {

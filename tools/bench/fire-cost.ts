@@ -73,7 +73,7 @@ void main() {
  * A triangle over the whole screen for the details' program: one card's face, 14 m off and 8 m across, of the flags,
  * grey and share shown that `uCard` says, as a see-through draw has it.
  */
-const CARD = `#version 300 es
+export const CARD = `#version 300 es
 uniform vec4 uCard;
 out vec3 vRel, vBulge;
 out vec2 vUv, vCorner;

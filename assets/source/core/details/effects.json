@@ -42,11 +42,11 @@
       "fade": 0.9, "gravity": 0, "colour": [222, 234, 240], "face": "flat", "pass": "blend", "reach": 40
     },
     "blast_flash": {
-      "pictures": ["dust_1"], "count": 1, "size": 9, "life": 0.1, "fade": 0.08, "drag": 0, "gravity": 0,
-      "colour": [255, 232, 170], "face": "camera", "pass": "blend", "lit": false, "reach": 400, "glow": 3
+      "pictures": ["dust_1"], "count": 1, "size": 6, "life": 0.1, "fade": 0.08, "drag": 0, "gravity": 0,
+      "colour": [255, 232, 170], "face": "camera", "pass": "blend", "lit": false, "reach": 400, "glow": 2.4
     },
     "blast_glow": {
-      "pictures": ["dust_1"], "count": 1, "size": 13, "life": [0.16, 0.2], "fade": 0.14, "drag": 0,
+      "pictures": ["dust_1"], "count": 1, "size": 10, "life": [0.16, 0.2], "fade": 0.14, "drag": 0,
       "gravity": 0, "colour": [255, 140, 50], "face": "flat", "pass": "blend", "lit": false, "reach": 150,
       "glow": 1.2
     },
@@ -59,7 +59,7 @@
     "blast_smoke": {
       "pictures": ["dust_1", "dust_2", "dust_3", "dust_4"], "count": [7, 11], "shape": {"sphere": 2.4},
       "speed": [2.5, 6.5], "up": 0.78, "size": [2.2, 3.2], "grow": 2.1, "life": [3.2, 3.85], "fade": 1.4,
-      "drag": 0.9, "gravity": -0.12, "wind": 1, "flutter": {"turn": 0.35}, "colour": [78, 74, 70],
+      "drag": 0.9, "gravity": -0.12, "wind": 1, "flutter": {"turn": 0.35}, "colour": [98, 89, 80],
       "vary": 0.15, "face": "camera", "pass": "blend", "reach": 300, "opacity": 0.78, "thick": true, "appear": 0.45
     },
     "blast_dust": {

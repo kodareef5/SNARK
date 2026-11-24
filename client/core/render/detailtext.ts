@@ -11,6 +11,7 @@ import { STREET_GLSL } from "./street-finish.ts";
 import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
+import { FIRE_BLOOMS, UNGRADED } from "./fire-light.ts";
 import { DIGITS_GLSL } from "./digits.ts";
 import { DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, FRAME_BLOCK, GLOW_STEPS, SMOKE_STEPS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
 import { POOL_ACROSS, POOL_UP, poolShadeGlsl } from "./lamp.ts";
@@ -188,10 +189,10 @@ vec3 wakeOf(vec2 c, float seed) {
 }
 vec3 smokeOf(vec2 c, float seed, float stretch, float torn) {
   float s = 6.2831853 * seed;
-  float r, lump, puff = 1.0;
+  float r, lump, puff = 1.0, rim = 0.82;
   if (stretch > 1.5) {
     float y = c.y * stretch;
-    float x = c.x - 0.15 * sin(1.9 * y + s) - 0.07 * sin(4.3 * y + 2.3 * s);
+    float x = c.x - 0.07 * sin(1.9 * y + s) - 0.04 * sin(4.3 * y + 2.3 * s);
     puff = abs(sin(1.15 * y + 1.7 * s + (x > 0.0 ? 1.6 : 0.0)));
     r = abs(x) / (0.42 + 0.3 * puff + 0.06 * sin(3.7 * y - s));
     r = 0.86 * max(r, (abs(c.y) - 1.0) * stretch + 1.0);
@@ -199,8 +200,9 @@ vec3 smokeOf(vec2 c, float seed, float stretch, float torn) {
   } else {
     r = length(c + 0.17 * vec2(sin(3.9 * c.y + s), sin(3.3 * c.x + 1.7 * s)));
     lump = 0.5 + 0.5 * sin(5.3 * c.x + 2.1 * s) * sin(4.7 * c.y - 1.3 * s);
+    rim = 0.6 + 0.2 * lump;
   }
-  float a = (1.0 - smoothstep(0.3 + 0.22 * lump, 0.82, r)) * smoothstep(1.3 * torn - 0.24, 1.3 * torn, lump + 0.3 * (1.0 - r));
+  float a = (1.0 - smoothstep(0.3 + 0.22 * lump, rim, r)) * smoothstep(1.3 * torn - 0.24, 1.3 * torn, lump + 0.3 * (1.0 - r));
   return vec3(a, 0.0, 0.58 + 0.2 * lump + 0.22 * puff);
 }
 float scorchOf(vec2 c, float seed) {
@@ -266,11 +268,14 @@ void main() {
   if (vFlags == ${DETAIL_GLOW}u) {
     // Light with no surface, as bright as its grey says, as the finish takes it or as a display shows it.
     vec3 e = linear(vA) * (vGrey * ${f(255 / GLOW_STEPS)});
+    vec3 d = (1.0 - exp(-e)) * covers(poolOf(vCorner).x);
 #ifdef LIGHT_TARGET
-    o = vec4(e * covers(poolOf(vCorner).x), 0.0);
-#else
-    o = vec4((1.0 - exp(-e)) * covers(poolOf(vCorner).x), 0.0);
+    // The light a display's value stands for, so the finish shows it as a display tier does; white heat brighter yet, for bloom.
+    d *= d * (0.76 + 0.24 * d);
+    d *= 1.0 + ${f(FIRE_BLOOMS)} * d.b * d.b;
+    d = ${UNGRADED("d")};
 #endif
+    o = vec4(d, 0.0);
     return;
   }
   if (vFlags == ${DETAIL_TIRE}u) {
@@ -293,7 +298,9 @@ void main() {
     // Light goes a little way through smoke: its shaded side keeps a seventh of the sun, and the sky's light all of it.
     // Its colour is squared for light, which is near enough for a grey and three powers a pixel cheaper.
     float sun = clamp(0.5 + 0.5 * dot(n, fSun.xyz), 0.0, 1.0), moon = clamp(0.5 + 0.5 * dot(n, fMoon.xyz), 0.0, 1.0);
-    o = weighed(shown(vA * vA * s.z * (fSunColor.rgb * ((0.14 + 0.86 * sun * sun) * key.x) + fMoonColor.rgb * ((0.14 + 0.86 * moon * moon) * key.y) + 1.35 * skyOn(n.y)), vRel), a);
+    // Smoke is grey: it takes the sky's light with most of the sky's blue left out.
+    vec3 sky = skyOn(n.y);
+    o = weighed(shown(vA * vA * s.z * (fSunColor.rgb * ((0.14 + 0.86 * sun * sun) * key.x) + fMoonColor.rgb * ((0.14 + 0.86 * moon * moon) * key.y) + 1.35 * mix(vec3(dot(sky, vec3(0.2126, 0.7152, 0.0722))), sky, 0.4)), vRel), a);
     return;
   }
   if (vFlags == ${DETAIL_GLASS}u) {
@@ -363,10 +370,10 @@ export function smokeOf(x: number, y: number, seed: number, out: Float64Array | 
     const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
     return t * t * (3 - 2 * t);
   };
-  let r: number, lump: number, puff = 1;
+  let r: number, lump: number, puff = 1, rim = 0.82;
   if (stretch > 1.5) {
     const along = y * stretch;
-    const off = x - 0.15 * Math.sin(1.9 * along + s) - 0.07 * Math.sin(4.3 * along + 2.3 * s);
+    const off = x - 0.07 * Math.sin(1.9 * along + s) - 0.04 * Math.sin(4.3 * along + 2.3 * s);
     // Each side swells into puffs of its own, out of step with the other's, and is darker in the creases between them.
     puff = Math.abs(Math.sin(1.15 * along + 1.7 * s + (off > 0 ? 1.6 : 0)));
     r = Math.abs(off) / (0.42 + 0.3 * puff + 0.06 * Math.sin(3.7 * along - s));
@@ -375,8 +382,10 @@ export function smokeOf(x: number, y: number, seed: number, out: Float64Array | 
   } else {
     r = Math.hypot(x + 0.17 * Math.sin(3.9 * y + s), y + 0.17 * Math.sin(3.3 * x + 1.7 * s));
     lump = 0.5 + 0.5 * Math.sin(5.3 * x + 2.1 * s) * Math.sin(4.7 * y - 1.3 * s);
+    // A puff's outline is as lumpy as its middle, and no disc.
+    rim = 0.6 + 0.2 * lump;
   }
-  out[0] = (1 - step(0.3 + 0.22 * lump, 0.82, r)) * step(1.3 * torn - 0.24, 1.3 * torn, lump + 0.3 * (1 - r));
+  out[0] = (1 - step(0.3 + 0.22 * lump, rim, r)) * step(1.3 * torn - 0.24, 1.3 * torn, lump + 0.3 * (1 - r));
   out[1] = 0;
   out[2] = 0.58 + 0.2 * lump + 0.22 * puff;
 }
