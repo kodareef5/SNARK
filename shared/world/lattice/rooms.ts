@@ -165,6 +165,8 @@ export class Enclosure {
   stale = false;
   /** Whether the last flood finished found other cells, or any cell on the other side of outside, than the one before it. */
   changed = false;
+  /** Whether its cells are other cells than the one before had. Where they are the same, `faceMoved` and `edgeMoved` say which changed sides. */
+  rebuilt = false;
   found = new Flooded();
   private next = new Flooded();
 
@@ -205,6 +207,10 @@ export class Enclosure {
   private cursor = 0;
   private parent = new Int32Array(0);
   private roomOf = new Int32Array(0);
+  /** Per face and per vertex, the flood that last moved a cell of the face, or of a face with a corner there, across outside. */
+  private faceMark = new Int32Array(0);
+  private vertexMark = new Int32Array(0);
+  private floods = 0;
   /** Answers `roundFilled` gave of the last flood, three numbers each: the vertex plus one, the levels, the answer. */
   private asked = new Int32Array(3 * 64);
   private askedMask = 63;
@@ -225,9 +231,11 @@ export class Enclosure {
     this.free = -1;
     this.found.cells = this.found.faces = this.found.rooms = this.found.inside = this.found.doors = 0;
     this.stale = false;
-    this.changed = false;
+    this.changed = this.rebuilt = false;
     this.phase = 0;
     this.asked.fill(0);
+    this.faceMark.fill(0);
+    this.vertexMark.fill(0);
   }
 
   private learn(kind: number): number {
@@ -611,7 +619,8 @@ export class Enclosure {
       const low = Math.min(from, to);
       if (this.gabled(w, e, top, first - low, far - low, c)) continue;
       let met = false;
-      for (const g of [square, triangle]) {
+      for (let i = 0; i < 2; i++) {
+        const g = i === 0 ? square : triangle;
         if (g < 0 || w.first[g]! < 0) continue;
         const other = w.first[g]! + w.count[g]! - 1;
         const side = this.sideOf(g, e);
@@ -662,7 +671,11 @@ export class Enclosure {
     this.roomOf = grown(this.roomOf, w.cells + 1);
     this.roomOf.fill(-1, 0, w.cells + 1);
     w.rooms = w.inside = 0;
+    this.faceMark = grown(this.faceMark, this.faces);
+    this.vertexMark = grown(this.vertexMark, this.vertices);
+    const flood = ++this.floods;
     let same = was.cells === w.cells;
+    let moved = false;
     for (let c = 0; c < w.cells; c++) {
       const root = this.root(c);
       if (root === w.cells) w.room[c] = -1;
@@ -671,9 +684,15 @@ export class Enclosure {
         w.room[c] = this.roomOf[root]!;
         w.inside++;
       }
-      same = same && was.face[c] === w.face[c] && was.lo[c] === w.lo[c] && was.hi[c] === w.hi[c] && was.room[c]! < 0 === w.room[c]! < 0;
+      same = same && was.face[c] === w.face[c] && was.lo[c] === w.lo[c] && was.hi[c] === w.hi[c];
+      if (!same || was.room[c]! < 0 === w.room[c]! < 0) continue;
+      moved = true;
+      const f = w.face[c]!;
+      this.faceMark[f] = flood;
+      for (let k = 0; k < 4; k++) if (this.faceVertex[f * 4 + k]! >= 0) this.vertexMark[this.faceVertex[f * 4 + k]!] = flood;
     }
-    this.changed = !same;
+    this.rebuilt = !same;
+    this.changed = !same || moved;
     this.found = w;
     this.next = was;
     while (this.askedMask + 1 < 16 * this.vertices) this.askedMask = this.askedMask * 2 + 1;
@@ -741,6 +760,18 @@ export class Enclosure {
   edgeFilled(e: number, lo: number, hi: number, ends = false): boolean {
     if (e < 0 || e >= this.edges || !this.sideFilled(e, 0, lo, hi) || !this.sideFilled(e, 1, lo, hi)) return false;
     return !ends || (this.roundFilled(this.edgeVertex[e * 2]!, lo, hi) && this.roundFilled(this.edgeVertex[e * 2 + 1]!, lo, hi));
+  }
+
+  /** After a flood that kept its cells: whether air over face `g` changed sides. */
+  faceMoved(g: number): boolean {
+    return this.faceMark[g] === this.floods;
+  }
+
+  /** After a flood that kept its cells: whether air beside edge `e`, or round either of its ends, changed sides. */
+  edgeMoved(e: number): boolean {
+    for (let i = 0; i < 4; i++) if (this.edgeFace[e * 4 + i]! >= 0 && this.faceMark[this.edgeFace[e * 4 + i]!] === this.floods) return true;
+    for (let k = 0; k < 2; k++) if (this.edgeVertex[e * 2 + k]! >= 0 && this.vertexMark[this.edgeVertex[e * 2 + k]!] === this.floods) return true;
+    return false;
   }
 
   /** Whether room air fills the levels from `lo` up to `hi` all round every corner of face `g`. */

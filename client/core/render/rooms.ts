@@ -105,6 +105,8 @@ class Base {
   private readonly l2: number;
   readonly yaw: number;
   readonly per: number;
+  /** Whether the chunk's last finding flooded it and found its air changed. */
+  moved = false;
   /** Faces with room air: each one's face in `enc`, its corners as (u, v) going round from +u toward +v, how many, and 0 or a number squares of one tiling share. */
   faces = 0;
   private face = new Int32Array(0);
@@ -136,7 +138,7 @@ class Base {
     this.per = STRUCT_UNITS / Math.sqrt(this.l2);
     this.enc = new Enclosure(forms);
     const basis = f.basis;
-    const [left, back] = [x0 * STRUCT_UNITS, z0 * STRUCT_UNITS];
+    const left = x0 * STRUCT_UNITS, back = z0 * STRUCT_UNITS;
     // Air over a face that reaches past the chunk is open to what the chunk does not hold.
     this.enc.open = (corners, n) => {
       for (let k = 0; k < n; k++) {
@@ -346,8 +348,9 @@ export class Rooms {
   /** Per slot, 0 for a piece seen only from inside rooms; and each door's DOOR_ flags. */
   shell = new Uint8Array(0);
   readonly doors = new Map<number, number>();
-  /** Whether any room is inside, and the box round those rooms in metres. */
+  /** Whether any room is inside, whether `shell` stands for every slot, and the box round those rooms in metres. */
   inside = false;
+  sorted = false;
   readonly box = new Float64Array(6);
 
   /** Whether a ball of `r` metres about (x, y, z) reaches an inside room. */
@@ -435,12 +438,16 @@ export class RoomFinder {
     const kept = rooms.version >= 0 && this.update(t, x0, z0, rooms, frames);
     if (!kept) this.lay(t, x0, z0, rooms, frames);
     rooms.version = t.version;
-    // Where the changes left every cell of air as open as it was, only the pieces changed are sorted again.
-    let same = kept;
+    // Where the changes left every cell of air as open as it was, only the pieces changed are sorted again; where they
+    // kept the cells and moved some across outside, those and the pieces that stand by the air that moved.
+    let same = kept, whole = !kept || !rooms.sorted;
     for (const b of rooms.bases) {
+      b.moved = false;
       if (!b.enc.stale && kept) continue;
       b.enc.flood();
+      b.moved = b.enc.changed;
       same = same && !b.enc.changed;
+      whole = whole || b.enc.rebuilt;
     }
     if (!same) {
       const box = rooms.box;
@@ -451,15 +458,31 @@ export class RoomFinder {
         b.index(box);
         rooms.inside ||= b.faces > 0;
       }
+    }
+    if (!rooms.inside) rooms.sorted = false;
+    else if (!same && whole) {
       rooms.doors.clear();
-      for (let slot = 0; rooms.inside && slot < t.high; slot++) this.sort(t, rooms, slot);
-    } else if (rooms.inside) {
-      for (let i = 0; i < this.count; i++) {
-        rooms.doors.delete(this.changed[i]!);
-        this.sort(t, rooms, this.changed[i]!);
-      }
+      for (let slot = 0; slot < t.high; slot++) this.sort(t, rooms, slot);
+      rooms.sorted = true;
+    } else {
+      for (let slot = 0; !same && slot < t.high; slot++) if (this.moved(t, rooms, slot)) this.again(t, rooms, slot);
+      for (let i = 0; i < this.count; i++) this.again(t, rooms, this.changed[i]!);
     }
     return rooms.inside;
+  }
+
+  /** Whether the piece in `slot` stands by air that the last flood moved across outside, or is judged by where its mesh stands. */
+  private moved(t: ChunkTable, rooms: Rooms, slot: number): boolean {
+    const kind = t.kind[slot]!, at = rooms.base[slot]!, form = this.form[kind]!;
+    if (kind === 0) return false;
+    if (at < 0 || form === THING || rooms.element[slot]! < 0 || (this.reach[kind]! & REACH_ELSE) !== 0) return true;
+    const b = rooms.bases[at]!;
+    return b.moved && (form === SLAB ? b.enc.faceMoved(rooms.element[slot]!) : b.enc.edgeMoved(rooms.element[slot]!));
+  }
+
+  private again(t: ChunkTable, rooms: Rooms, slot: number): void {
+    rooms.doors.delete(slot);
+    this.sort(t, rooms, slot);
   }
 
   /** Tells the frame of the keyed piece in `slot` of it, making the frame's part in this chunk where it is the first. */
@@ -560,7 +583,10 @@ export class RoomFinder {
       const q = ((b.yaw - yaw) >> 14) & 3;
       du = q === 0 ? cx : q === 1 ? -cz : q === 2 ? -cx : cz;
       dv = q === 0 ? cz : q === 1 ? cx : q === 2 ? -cz : -cx;
-      if (q & 1) [hu, hv] = [hz, hx];
+      if (q & 1) {
+        hu = hz;
+        hv = hx;
+      }
     }
     const u = b.u(x, z) + du * b.per, v = b.v(x, z) + dv * b.per;
     const su = Math.max(0, hu - IN_SIDE) * b.per, sv = Math.max(0, hv - IN_SIDE) * b.per;
