@@ -6,7 +6,7 @@
 
 import type { FormDef, FormTable } from "./forms.ts";
 import { LEVEL_M, STOREY_LEVELS } from "./forms.ts";
-import { ownDir } from "./frames.ts";
+import { ownDir, riseAt } from "./frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, SIDE, dirTurn, elementCorners, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLvl, keyM3, type Tuples } from "./module.ts";
 import { Cells, NO_REF, Occupancy, elementVertices, faceEdges, formCells } from "./occupancy.ts";
 
@@ -134,29 +134,6 @@ function endHeights(f: FormDef): [number, number] {
     if (Math.abs(p[0] - u1) < EPS) h1 = Math.max(h1, p[1]);
   }
   return [levels(h0), levels(h1)];
-}
-
-/**
- * The levels a roof of `kind` with this key rises at each corner of its face, three bits a corner, the face's corners in
- * the order elementCorners gives them. `corners` holds the same for the form's own corners. A form's square outline
- * starts at its -X, +Z corner and goes round against the face's; a triangle's starts at its reference corner.
- */
-function riseAt(forms: FormTable, kind: number, k0: number, k1: number, corners: number): number {
-  const turned = dirTurn(ownDir(forms, kind, k1), -keyDir(k1));
-  const flip = keyFlip(k1);
-  let rise = 0;
-  if (keyCls(k0) === CLS_SQUARE) {
-    for (let k = 0; k < 4; k++) {
-      const j = (3 + turned / 3 - k) & 3;
-      rise |= ((corners >> (3 * (flip ? j ^ 1 : j))) & 7) << (3 * k);
-    }
-  } else {
-    for (let k = 0; k < 3; k++) {
-      const j = [0, 2, 1][(k - turned / 4 + 3) % 3]!;
-      rise |= ((corners >> (3 * (flip ? 2 - j : j))) & 7) << (3 * k);
-    }
-  }
-  return rise;
 }
 
 /**
@@ -291,7 +268,7 @@ export class Enclosure {
     if (f && f.layer === "slab" && (f.size ?? 2) === SIDE) {
       what = W_SLAB;
       bits = f.closes === undefined ? FULL : shuts(f.closes);
-      for (let j = 0; f.corner && j < f.corner.length; j++) aux |= Math.min(7, Math.round(f.corner[j]! / LEVEL_M)) << (3 * j);
+      aux = this.forms.rise[kind]!;
     } else if (f && f.layer === "wall") {
       const [h0, h1] = endHeights(f);
       bits = shuts(f.closes);
@@ -488,7 +465,7 @@ export class Enclosure {
       at = this.face(k0, k1);
       this.edgesOnly = false;
       if (!comes) this.leave(this.faceHead, this.faceTail, at, lvl, ref);
-      else this.enter(this.faceHead, this.faceTail, at, lvl, lvl, bits, what === W_SLAB && this.aux[kind] !== 0 ? riseAt(this.forms, kind, k0, k1, this.aux[kind]!) : 0, ref);
+      else this.enter(this.faceHead, this.faceTail, at, lvl, lvl, bits, what === W_SLAB && this.aux[kind] !== 0 ? riseAt(this.forms, kind, k0, k1) : 0, ref);
     } else {
       if (keyCls(k0) !== CLS_EDGE) return -1;
       let aux = this.aux[kind]!;

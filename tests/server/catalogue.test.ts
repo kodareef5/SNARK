@@ -1,3 +1,4 @@
+import { FORMS, LIVE_FORMS } from "../../content/building/forms.ts";
 import { FREIGHT_ORDER } from "../../content/vehicles/air-freight.ts";
 import { TANKER_WRECKS } from "../../content/vehicles/tanker-wrecks.ts";
 // The class table: sound in itself, and true of the content that exists.
@@ -41,7 +42,13 @@ import { artTest } from "../fixtures/needs-art.ts";
 // not each move the same numbers.
 const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS, ...SKATE_PARK];
 const ofCreatures = new Set([...CREATURES, ...FEATURES_CONTENT].map((d) => `${d.type} ${d.id}`));
-const rest = CORE_CONTENT.filter((d) => !ofCreatures.has(`${d.type} ${d.id}`));
+// The building pieces past the first nine forms, with their items and engrams, are held by the building tests
+// (tests/build), so a form that goes live moves no number here.
+const TIER = "_(thatch|wood|stone|metal)$";
+const laterForms = Object.keys(LIVE_FORMS).filter((name) => !(name in FORMS)).join("|");
+const laterPiece = new RegExp(`^core:(shape_(${laterForms})$|(${laterForms})${TIER}|(engram-)?piece_(?!(foundation|wall|ceiling|door|pillar|stairs)_[a-z]+$).*${TIER})`);
+const later = CORE_CONTENT.filter((d) => laterPiece.test(d.id));
+const rest = CORE_CONTENT.filter((d) => !ofCreatures.has(`${d.type} ${d.id}`) && !laterPiece.test(d.id));
 const classes = CORE_CONTENT.map(classOf);
 
 test("the class table is sound: parents exist, stubs name what they wait for, slots have fallbacks, references name classes", () => {
@@ -97,7 +104,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
   // 253 with the supply drop's capsule (content/core.ts), the template hammer and its engram, and air support's three vehicles.
   expect(rest.length).toBe(253 + 2 + 3 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
-  expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
+  expect(CORE_CONTENT.length).toBe(rest.length + later.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
   for (const d of CREATURES) brought[classOf(d)] = (brought[classOf(d)] ?? 0) + 1;
   expect(Object.keys(brought).filter((c) => !["species/creature", "prop/egg", "item/egg", "item/saddle", "engram"].includes(c))).toEqual([]);

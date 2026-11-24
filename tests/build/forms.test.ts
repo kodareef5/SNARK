@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import { BUILDING_CONTENT } from "../../content/building.ts";
-import { FORMS, PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
+import { ALL_FORMS, FORMS, PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ShapeDef, StructureDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -14,8 +14,9 @@ import { coreRegistry } from "../fixtures/world.ts";
 
 const TIERS = ["thatch", "wood", "stone", "metal"];
 
-// Each box as its middle and its half extents, as content/building.ts wrote them before it read the rows.
-const BEFORE: Record<keyof typeof FORMS, number[][]> = {
+type First = "foundation" | "wall" | "doorframe" | "windowframe" | "ceiling" | "pillar" | "door" | "door_open" | "stairs";
+// Each box of the first nine pieces as its middle and its half extents, as content/building.ts wrote them before it read the rows.
+const BEFORE: Record<First, number[][]> = {
   foundation: [[0, 0, 0, 1.5, 0.1875, 1.5]],
   wall: [[0, 0, 0, 1.5, 1.5, 0.1]],
   doorframe: [
@@ -46,11 +47,11 @@ const BEFORE: Record<keyof typeof FORMS, number[][]> = {
     [0, 0, 1.35, 1.5, 1.5, 0.15],
   ],
 };
-const HALF_BEFORE: Record<keyof typeof FORMS, number[]> = {
+const HALF_BEFORE: Record<First, number[]> = {
   foundation: [1.5, 0.1875, 1.5], wall: [1.5, 1.5, 0.1], doorframe: [1.5, 1.5, 0.1], windowframe: [1.5, 1.5, 0.1], ceiling: [1.5, 0.125, 1.5],
   pillar: [0.25, 1.5, 0.25], door: [0.7, 1.15625, 0.04], door_open: [0.7, 1.15625, 1.4], stairs: [1.5, 1.5, 1.5],
 };
-const NAMES = Object.keys(FORMS) as (keyof typeof FORMS)[];
+const NAMES = Object.keys(BEFORE) as First[];
 
 const bits = (values: Iterable<number>): number[] => [...new Uint32Array(Float32Array.from(values).buffer)];
 /** Every number of `got` is the very number of `want`, a negative zero told from zero. */
@@ -145,7 +146,7 @@ const T = 0.1875;
 const R = 1.5;
 const prism = (corners: [number, number][], z: number): HullDef => ({ corners: corners.flatMap(([x, y]) => [[x, y, -z], [x, y, z]] as [number, number, number][]) });
 /** Convex colliders for four of the rows to come, each about its form's origin. */
-const HULLS: readonly (readonly [name: keyof typeof PLANNED_FORMS, hull: HullDef])[] = [
+const HULLS: readonly (readonly [name: keyof typeof ALL_FORMS, hull: HullDef])[] = [
   ["ramp", { corners: [[-H, -H, -H], [H, -H, -H], [-H, -H, H], [H, -H, H], [-H, H - 0.06, H], [H, H - 0.06, H]] }],
   ["triangle_foundation", { sixty: true, corners: [[0, -T, 0], [0, T, 0], [3, -T, 0], [3, T, 0], [0, -T, 3], [0, T, 3]] }],
   ["roof", { corners: [-H, H].flatMap((x) => [[x, -R / 2 - 0.125, -H], [x, -R / 2 + 0.125, -H], [x, R / 2 - 0.125, H], [x, R / 2 + 0.125, H]] as [number, number, number][]) }],
@@ -157,16 +158,16 @@ const hullPiece = (name: string, form: FormDef, hull: HullDef, half: readonly nu
 ];
 
 test("a ramp, a triangle, a roof and a sloped wall of convex parts agree with their rows", () => {
-  const defs = HULLS.flatMap(([name, hull]) => hullPiece(name, PLANNED_FORMS[name], hull, formHalf(PLANNED_FORMS[name])));
+  const defs = HULLS.flatMap(([name, hull]) => hullPiece(name, ALL_FORMS[name], hull, formHalf(ALL_FORMS[name])));
   const { registry, errors } = compileContent([...CORE_CONTENT, ...defs]);
   expect(errors).toEqual([]);
   expect(HULLS.map(([name]) => registry!.forms.def[registry!.index.get(`test:${name}`)!]!.cls)).toEqual(["square", "triangle", "square", "edge"]);
   // A ramp a full storey high is not the row's, and neither is a roof that rises the other way.
   const tall: HullDef = { corners: HULLS[0]![1].corners.map(([x, y, z]) => [x, y > 0 ? H : y, z] as [number, number, number]) };
-  expect(colliderFaults(PLANNED_FORMS.ramp, [], [tall])).toContain("convex part 0 reaches out of the form");
+  expect(colliderFaults(ALL_FORMS.ramp, [], [tall])).toContain("convex part 0 reaches out of the form");
   const turned: HullDef = { corners: HULLS[2]![1].corners.map(([x, y, z]) => [x, y, -z] as [number, number, number]) };
-  expect(colliderFaults(PLANNED_FORMS.roof, [], [turned])).toContain("a corner of the form is no corner of its convex parts");
-  expect(colliderFaults(PLANNED_FORMS.roof, [{ at: [0, 0, 0], half: [1.5, 0.875, 1.5] }], [])).toContain("a sloped form's collider is convex parts, not boxes");
+  expect(colliderFaults(ALL_FORMS.roof, [], [turned])).toContain("a corner of the form is no corner of its convex parts");
+  expect(colliderFaults(ALL_FORMS.roof, [{ at: [0, 0, 0], half: [1.5, 0.875, 1.5] }], [])).toContain("a sloped form's collider is convex parts, not boxes");
 });
 
 test("every row is sound: its outline, openings, span and cells agree", () => {
@@ -180,15 +181,15 @@ test("every row is sound: its outline, openings, span and cells agree", () => {
     expect([name, colliderFaults(form, formBoxes(form), [])]).toEqual([name, []]);
   }
   expect(boxed).toBeGreaterThan(NAMES.length);
-  expect(formBoxes(PLANNED_FORMS.double_doorway).length).toBe(3);
-  expect(formBoxes(PLANNED_FORMS.trapdoor_frame).length).toBe(4);
-  expect(() => formBoxes(PLANNED_FORMS.roof)).toThrow();
+  expect(formBoxes(ALL_FORMS.double_doorway).length).toBe(3);
+  expect(formBoxes(ALL_FORMS.trapdoor_frame).length).toBe(4);
+  expect(() => formBoxes(ALL_FORMS.roof)).toThrow();
 });
 
 test("an unsound row is told what is wrong with it", () => {
   const wall: FormDef = FORMS.wall;
-  const large: FormDef = PLANNED_FORMS.large_wall;
-  const roof: FormDef = PLANNED_FORMS.roof;
+  const large: FormDef = ALL_FORMS.large_wall;
+  const roof: FormDef = ALL_FORMS.roof;
   const faults = (f: FormDef): string => formFaults(f).join("\n");
   expect(faults({ ...wall, outline: [[-1.5, 0], [1.5, 0], [0, 1], [1.5, 3], [-1.5, 3]] })).toContain("the outline is not convex at corner 2");
   expect(faults({ ...wall, outline: [...wall.outline].reverse() })).toContain("goes round the wrong way");

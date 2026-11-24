@@ -109,11 +109,14 @@ const SAME_COLOURS = Uint8Array.from({ length: 256 }, (_, i) => i);
  * The colour far blocks draw each palette colour of the far feed in: the palette colour nearest the mean, in light and
  * by area, of the coarsest level of every piece of that colour the feed shows, as `meshOf` binds them. A piece's art
  * is not the colour its kind is listed in (the wood pieces are listed orange and drawn brown), and the feed sends the
- * listed one. `meshOf` gives -1 for a kind with no mesh of its own.
+ * listed one. `meshOf` gives -1 for a kind with no mesh of its own. A piece with no art yet is a stand-in all in its
+ * listed colour: where a colour has pieces with art, the stand-ins are left out of its mean.
  */
 export function farColours(reg: Registry, pack: Pack, meshOf: (kind: number) => number): Uint8Array {
   const shapes = pieceShapes(reg);
   const sums = new Float64Array(256 * 4);
+  const plain = new Float64Array(256 * 4);
+  const one = new Float64Array(4);
   const pal = pack.palette;
   for (let k = 1; k < reg.defs.length; k++) {
     const mesh = shapes.far[k] === 1 ? meshOf(k) : -1;
@@ -125,6 +128,8 @@ export function farColours(reg: Registry, pack: Pack, meshOf: (kind: number) => 
     const at = (v: number, a: number): number => (view.getInt16(v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]!;
     const index = readIndices(pack, lod);
     const own = shapes.tint[k]!;
+    let painted = false;
+    one.fill(0);
     for (let t = 0; t < index.length; t += 3) {
       const a = index[t]!, b = index[t + 1]!, c = index[t + 2]!;
       const u = [0, 1, 2].map((i) => at(b, i) - at(a, i));
@@ -132,10 +137,14 @@ export function farColours(reg: Registry, pack: Pack, meshOf: (kind: number) => 
       const area = Math.hypot(u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!);
       const col = verts[c * VERTEX_BYTES + 6]!;
       const shown = col === REGION_BASE ? own : col > REGION_BASE ? 0 : col;
-      for (let i = 0; i < 3; i++) sums[own * 4 + i]! += srgbToLinear(pal[shown * 4 + i]! / 255) * area;
-      sums[own * 4 + 3]! += area;
+      painted ||= col !== REGION_BASE;
+      for (let i = 0; i < 3; i++) one[i]! += srgbToLinear(pal[shown * 4 + i]! / 255) * area;
+      one[3]! += area;
     }
+    for (let i = 0; i < 4; i++) (painted ? sums : plain)[own * 4 + i]! += one[i]!;
   }
+  // A colour with no painted piece is the mean of its stand-ins.
+  for (let c = 0; c < 256; c++) if (sums[c * 4 + 3] === 0) for (let i = 0; i < 4; i++) sums[c * 4 + i] = plain[c * 4 + i]!;
   const out = SAME_COLOURS.slice();
   for (let c = 0; c < 256; c++) {
     const area = sums[c * 4 + 3]!;

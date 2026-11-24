@@ -2,7 +2,7 @@
 // A piece is an element of the lattice named from a corner (four whole numbers of half-sides) along one of twelve directions.
 
 import { FOUNDATION_THICK } from "../../content/building.ts";
-import { PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -50,7 +50,7 @@ let turned: Registry | null = null;
 export function turnedRegistry(): Registry {
   if (turned) return turned;
   const defs = (["triangle_foundation", "triangle_ceiling"] as const).flatMap((name): Def[] => {
-    const form: FormDef = PLANNED_FORMS[name];
+    const form: FormDef = ALL_FORMS[name];
     const t = form.thick / 2;
     const hull: HullDef = { sixty: true, corners: [[0, -t, 0], [0, t, 0], [3, -t, 0], [3, t, 0], [0, -t, 3], [0, t, 3]] };
     return [
