@@ -1,7 +1,7 @@
 // Sizes and health are the reference game's. Every piece height is a whole number of 1/256 m, so a piece set
 // on another stands exactly on the structure lattice.
 
-import { crafting } from "./craft.ts";
+import { crafting, making } from "./craft.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { outlineBox, type FormDef } from "../shared/world/lattice/forms.ts";
 import { FORMS, formBoxes } from "./building/forms.ts";
@@ -196,6 +196,16 @@ function kit(tier: Tier, name: string): Def[] {
   ];
 }
 
+/**
+ * The template hammer: in the hand it copies a base as a template, sets a template down as a plan and fills the plan
+ * (client/core/hammer.ts, server/plans.ts). ARK's Template Hammer is level 26 for 5 points. Its materials are chosen, in
+ * wood's range, and its weight is the wooden club's 2. Made in the hand in 5 s. It has no model yet.
+ */
+const HAMMER: readonly Def[] = [
+  { type: "item", class: "instrument", id: "core:template_hammer", label: "template hammer", stack: 1, weight: 2, color: 3 },
+  ...making("template_hammer", "Template hammer", 26, 5, 1, 5, [["wood", 30], ["stone", 10], ["fiber", 20], ["hide", 10]]),
+];
+
 export const BUILDING_CONTENT: readonly Def[] = [
   ...SHAPES,
   ...TIERS.flatMap((tier) => [
@@ -206,5 +216,6 @@ export const BUILDING_CONTENT: readonly Def[] = [
   ]),
   ...STORES.flatMap(store),
   ...BEDS.flatMap(bed),
+  ...HAMMER,
   // Cementing paste, which the metal tier and the vault are made of, is the item program's: content/items/resources.ts.
 ];

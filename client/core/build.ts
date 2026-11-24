@@ -8,7 +8,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { handleIndex } from "../../shared/ids.ts";
-import { PLACE_JOIN, PLACE_NEW, PLACE_REST, PLACE_RUN_MOST, writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
+import { PLACE_JOIN, PLACE_NEW, PLACE_PLAN, PLACE_REST, PLACE_RUN_MOST, writeFill, writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
 import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, RESULT_TERRAIN, RESULT_TOO_HIGH, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
@@ -24,6 +24,7 @@ import { BuildView, PROVISIONAL, type Overlaid } from "./build-view.ts";
 import { ASKED, PREDICT_MOST, type Asking, type PredictBuild } from "./predict-build.ts";
 import type { ClientSession } from "./session.ts";
 import { structName } from "./ui/structure.ts";
+import { plansOf, type PlanSlot } from "./plans.ts";
 
 export { PLACE_REACH };
 /** Holding Q this long toggles free placement. */
@@ -194,6 +195,11 @@ export class Builder {
   pending: ((item: number) => number) | null = null;
   /** The pieces set down that are not rows yet. With them the preview sees those pieces and may build on them. */
   predict: PredictBuild | null = null;
+  /** The hologram of a plan the look is on that one of the forms in hand would fill, judged, or null (plans.ts PlanSlots). */
+  planSlot: ((forms: ArrayLike<number>, team: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, reach: number) => PlanSlot | null) | null = null;
+  /** The plan and the piece of it shown, while the mode is PLACE_PLAN. */
+  private planId = 0;
+  private planIndex = 0;
   /** The item in hand that places a piece, or 0. */
   get inHand(): number { return this.item; }
   /** The palette colour the piece is shown in: fine, at the last step that stands or waiting, or refused. */
@@ -272,7 +278,7 @@ export class Builder {
   private judgedN = 0;
   private readonly judged = { fr: new Uint32Array(32), k0: new Uint32Array(32), k1: new Uint32Array(32), ok: new Uint8Array(32), x: new Float64Array(32), y: new Float64Array(32), z: new Float64Array(32), yaw: new Uint16Array(32), tw: new Uint8Array(32) };
   /** What the preview was last worked out from. While none of it changes, it stands. */
-  private readonly from = new Float64Array(20).fill(NaN);
+  private readonly from = new Float64Array(24).fill(NaN);
   /** The problem and its cause the notice was last worded for. */
   private readonly worded = [-1, -1, -1, -1];
   private words = "";
@@ -420,7 +426,7 @@ export class Builder {
     }
     // Nothing the preview is worked out from has changed: it stands as it is.
     const from = this.from;
-    const now = [ox, oy, oz, dx, dy, dz, yaw, kind, this.turn, this.free ? 1 : 0, this.lift, seen === world ? 0 : 1, seen.structs.shapes, world.structs.shapes, this.predict?.stamp ?? 0, team, have, item, this.view!.version];
+    const now = [ox, oy, oz, dx, dy, dz, yaw, kind, this.turn, this.free ? 1 : 0, this.lift, seen === world ? 0 : 1, seen.structs.shapes, world.structs.shapes, this.predict?.stamp ?? 0, team, have, item, this.view!.version, this.planSlot ? plansOf(session).revision : 0];
     let same = this.next === 0 && this.raise === 0;
     for (let i = 0; same && i < now.length; i++) same = from[i] === now[i];
     if (!same) {
@@ -458,7 +464,15 @@ export class Builder {
     this.freeX = Math.round((ox + dx * reach) * STRUCT_UNITS);
     this.freeZ = Math.round((oz + dz * reach) * STRUCT_UNITS);
     this.freeYaw = (Math.round((yaw / (2 * Math.PI)) * YAW_UNITS) + this.turn * (YAW_UNITS / 4)) & (YAW_UNITS - 1);
-    if (reg.role[kind] === ROLE_THING && looked >= 0) {
+    const planned = this.free ? null : (this.planSlot?.(reg.places[this.item]!, team, ox, oy, oz, dx, dy, dz, BUILD_REACH) ?? null);
+    if (planned) {
+      // A plan's hologram the piece in hand fills: its own slot and form, whatever is built round it.
+      [this.mode, this.planId, this.planIndex, this.kind] = [PLACE_PLAN, planned.plan, planned.index, planned.kind];
+      problem = planned.problem;
+      [verdict.detail, verdict.a, verdict.b] = [planned.verdict.detail, planned.verdict.a, planned.verdict.b];
+      [p.x, p.y, p.z, p.yaw] = [planned.verdict.pose.x, planned.verdict.pose.y, planned.verdict.pose.z, planned.verdict.pose.yaw];
+      this.tw = planned.verdict.pose.tw;
+    } else if (reg.role[kind] === ROLE_THING && looked >= 0) {
       // A thing aimed at a structure rests on top of it where the look is, if it is a floor of the builder's tribe.
       this.floor = looked;
       const t = structs.chunks[Math.floor(looked / 65536)]!;
@@ -918,7 +932,8 @@ export class Builder {
     if (!held && seq === 0) return 0;
     if (fine && predict) {
       const at: Asking = { mode: this.mode, variant: this.variant % reg.places[this.item]!.length, fr: this.slot.fr, k0: this.slot.k0, k1: this.keyed(reg), on: this.on, index: 0, count: 1, step: 0, tw: this.tw };
-      if (!predict.add(seq, this.kind, this.item, x, y, z, p.yaw, nowMs, view ? at : null) && held) return 0;
+      // A plan's piece is drawn at once and no more: the view shows the preview a piece by its slot or its own pose.
+      if (!predict.add(seq, this.kind, this.item, x, y, z, p.yaw, nowMs, view && this.mode !== PLACE_PLAN ? at : null) && held) return 0;
     }
     return held ? -1 : seq;
   }
@@ -933,7 +948,8 @@ export class Builder {
     const { fr, k0 } = this.slot;
     const k1 = this.keyed(reg);
     this.asked = session.command(CMD_PLACE, (w: BitWriter) => {
-      if (mode === PLACE_JOIN) writeJoin(w, variant, fr, k0, k1);
+      if (mode === PLACE_PLAN) writeFill(w, this.planId, this.planIndex);
+      else if (mode === PLACE_JOIN) writeJoin(w, variant, fr, k0, k1);
       else if (mode === PLACE_REST) writeRest(w, variant, this.floor, this.freeX, this.freeZ, this.freeYaw);
       else writeNew(w, variant, this.freeX, this.freeZ, this.freeYaw, this.lift);
     });

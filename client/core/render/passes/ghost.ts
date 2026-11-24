@@ -1,14 +1,14 @@
 // The piece a builder is about to place, shown see-through where it would stand, and the pieces it has set down that
 // the server has not yet sent a row for (predict-build.ts), shown as built. With them, this frame's marks: pieces and
 // slots' outlines drawn see-through in one colour each, for a row being dragged, the places a piece may go, pieces
-// that would fall, a plan.
+// that would fall, and the holograms of a template or a plan (hammer.ts). Marks of one mesh, colour and fade are one draw.
 
 import type { Assets } from "../../assets/assets.ts";
 import { STRUCT_UNITS } from "../../../../shared/coords.ts";
 import { poseOf, type LatticePose } from "../../../../shared/world/lattice/frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_VERTEX } from "../../../../shared/world/lattice/module.ts";
 import type { StructureStore } from "../../../../shared/world/structures.ts";
-import { DRAW_BLEND, DRAW_PIECE, MAX_PREDICTED, TRANSIENT_BUFFER } from "../packet.ts";
+import { DRAW_BLEND, DRAW_PIECE, MAX_HOLOGRAMS, MAX_PREDICTED, TRANSIENT_BUFFER } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
 import { FrameTable, PIECE_FRAMED, pieceWord, plainYaw, writePiece } from "../piece-fit.ts";
 import type { PieceLooks } from "../piece-state.ts";
@@ -17,8 +17,8 @@ import type { PieceLooks } from "../piece-state.ts";
 export const SLOT_EDGE_MESH = "core:slot_edge";
 export const SLOT_SQUARE_MESH = "core:slot_square";
 export const SLOT_VERTEX_MESH = "core:slot_vertex";
-/** Marks one frame may hold. One past that is not drawn. */
-export const MARKS_MOST = 320;
+/** Marks one frame may hold: a plan's holograms, and what the builder shows. One past that is not drawn. */
+export const MARKS_MOST = MAX_HOLOGRAMS + 320;
 
 /** A piece of `kind`, or with kind 0 the pack mesh `mesh`, drawn see-through for one frame in one palette colour, `fade` of the way to nothing. */
 interface Mark {
@@ -61,6 +61,9 @@ export class Ghost implements Pass {
   marked = 0;
   /** The slot meshes by class, -1 where the pack has none. */
   private readonly slotMesh: number[] = [];
+  /** The marks in the order they are drawn, and what orders them: those alike together. */
+  private readonly order = new Uint16Array(MARKS_MOST);
+  private readonly alike = (a: number, b: number): number => this.sortKey(a) - this.sortKey(b) || a - b;
   private readonly meshOfKind: Uint16Array;
   private readonly colorOfKind: Uint8Array;
   private readonly radius: Float32Array;
@@ -126,34 +129,47 @@ export class Ghost implements Pass {
     this.drawMarks(f);
   }
 
-  /** The marks: a piece as the piece shown is drawn, and outlines next to each other of one mesh, colour and fade as one draw. */
+  /** What marks alike share: the piece's kind or the mesh, the colour and the fade. */
+  private sortKey(i: number): number {
+    const m = this.marks[i]!;
+    return ((m.kind !== 0 ? m.kind : 0x10000 + m.mesh) * 256 + m.color) * 256 + Math.round(m.fade * 255);
+  }
+
+  /**
+   * The marks, those of one mesh, colour and fade as one draw of many instances. A piece stands as the piece shown does:
+   * by the basis its row would be drawn by, with its turn class.
+   */
   private drawMarks(f: Frame): void {
     const p = f.packet, cam = f.cam, put = f.put;
     const room = p.transientIds.length;
+    const order = this.order;
+    for (let i = 0; i < this.marked; i++) order[i] = i;
+    if (this.marked > 2) order.subarray(0, this.marked).sort(this.alike);
     for (let i = 0; i < this.marked && p.transientCount < room; ) {
-      const m = this.marks[i]!;
-      if (m.kind !== 0) {
-        this.one(f, m.kind, m.x, m.y, m.z, m.yaw, m.tw, m.color, DRAW_BLEND, m.color + 1, m.fade);
-        i++;
-        continue;
-      }
+      const m = this.marks[order[i]!]!;
+      const like = this.sortKey(order[i]!);
+      const mesh = m.kind !== 0 ? this.meshOfKind[m.kind]! : m.mesh;
+      const framed = m.kind !== 0 && this.looks !== null && this.looks.flag[mesh] !== 0;
       const first = p.transientCount;
-      const r = this.radius[m.mesh]!;
+      const r = this.radius[mesh]!;
       let n = 0;
       let from = Infinity;
       let to = -Infinity;
-      for (; i < this.marked && first + n < room; i++, n++) {
-        const q = this.marks[i]!;
-        if (q.kind !== 0 || q.mesh !== m.mesh || q.color !== m.color || q.fade !== m.fade) break;
+      for (; i < this.marked && first + n < room && this.sortKey(order[i]!) === like; i++, n++) {
+        const q = this.marks[order[i]!]!;
         const x = q.x - cam.x, y = q.y - cam.y, z = q.z - cam.z;
         f.transient.set(first + n, x, y, z, q.yaw, q.color);
+        if (framed) {
+          const at = this.frames.add(q.yaw);
+          writePiece(p.transient, first + n, at < 0 ? plainYaw(q.yaw, q.tw) : pieceWord(at, q.yaw, q.tw), this.looks!.made[q.kind]!, at < 0 ? 0 : PIECE_FRAMED, this.looks!.fit[q.kind]!);
+        }
         p.transientIds[first + n] = 0;
         from = Math.min(from, cam.depth(x, y, z) - r);
         to = Math.max(to, cam.depth(x, y, z) + r);
       }
       put.tint = m.color + 1;
       put.fade = m.fade;
-      put.draw(m.mesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, DRAW_BLEND, cam.passesOf(from, to));
+      put.draw(mesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, framed ? DRAW_BLEND | DRAW_PIECE : DRAW_BLEND, cam.passesOf(from, to));
       put.tint = put.fade = 0;
       p.transientCount = first + n;
     }

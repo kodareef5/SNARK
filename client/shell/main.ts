@@ -30,6 +30,7 @@ import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
 import { probeProgress } from "../core/diagnostics.ts";
 import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
+import { pieceBook } from "../../shared/world/plan.ts";
 
 declare const __CONTENT_FILE__: string;
 const params = new URLSearchParams(location.search);
@@ -199,8 +200,11 @@ async function boot(): Promise<void> {
   const orders = params.has("look") ? await fetch(`/__look?view=${encodeURIComponent(params.get("look")!)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
   // A measurement run neither reads nor writes the player's saved interface preferences.
   const measured = selfcheck || bench !== null || device !== null || orders !== null;
-  const save = (): void => { if (!measured) try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} };
+  const save = (): void => { if (!measured) try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); localStorage.setItem("snark.templates", app.hammer.templates.serialize()); } catch {} };
   if (!measured) try { app.ui.settings.restoreInterface(localStorage.getItem("snark.interface")); } catch {}
+  // The templates the template hammer has copied are kept on this device, beside the interface's preferences.
+  if (!measured) try { app.hammer.templates.restore(localStorage.getItem("snark.templates"), pieceBook(app.reg)); } catch {}
+  app.hammer.copyText = (text) => void navigator.clipboard?.writeText(text).catch(() => {});
   addEventListener("pagehide", () => {
     save();
     session.close();
@@ -292,6 +296,7 @@ async function boot(): Promise<void> {
   // The touch layer's layout and its art's stand-in are fetched by a page a finger has used, and by no other.
   let layering = false;
   let savedRevision = app.ui.settings.revision, savedAt = 0;
+  let savedTemplates = app.hammer.templates.revision;
   // Where each frame was, for the debug bar's chart of it (App.shellMarks).
   const marks = app.shellMarks;
   const frame = (now: number): void => {
@@ -316,8 +321,8 @@ async function boot(): Promise<void> {
     const packet = app.frame(now, cssWidth, cssHeight);
     marks[2] = performance.now();
     drivingCheck?.observe(app);
-    if (savedRevision !== app.ui.settings.revision && now - savedAt > 250) {
-      savedRevision = app.ui.settings.revision; savedAt = now;
+    if ((savedRevision !== app.ui.settings.revision || savedTemplates !== app.hammer.templates.revision) && now - savedAt > 250) {
+      savedRevision = app.ui.settings.revision; savedTemplates = app.hammer.templates.revision; savedAt = now;
       save();
     }
     view.apply(app.ui.frame, cssHeight);

@@ -113,16 +113,20 @@ test("a piece in hand is shown where it would go and set down there: on open gro
   expect([b.kind, b.problem]).toEqual([id("wall_wood"), 0]);
   const facing = b.pose.yaw;
   b.key("KeyT", true, false, 0, h.reg);
+  b.key("KeyT", false, false, 0, h.reg);
   preview(h, s, pilot, b);
   expect(b.kind).toBe(id("doorframe_wood"));
   b.key("KeyR", true, false, 0, h.reg);
   preview(h, s, pilot, b);
   expect(b.pose.yaw).toBe((facing + 32768) & 0xffff);
   b.key("KeyT", true, false, 0, h.reg);
+  b.key("KeyT", false, false, 0, h.reg);
   preview(h, s, pilot, b);
   expect(b.kind).toBe(id("windowframe_wood"));
   b.key("KeyT", true, false, 0, h.reg);
+  b.key("KeyT", false, false, 0, h.reg);
   b.key("KeyT", true, false, 0, h.reg);
+  b.key("KeyT", false, false, 0, h.reg);
   preview(h, s, pilot, b);
   expect(b.kind).toBe(id("doorframe_wood"));
   expect(place()).toBe(RESULT_OK);
@@ -468,7 +472,10 @@ test("what is shown is what is built: over two thousand looks with every piece, 
     h.run(70);
     now += 400;
     for (let k = rng.int(3); k > 0; k--) b.key("KeyR", true, false, now, h.reg);
-    for (let k = rng.int(3); k > 0; k--) b.key("KeyT", true, false, now, h.reg);
+    for (let k = rng.int(3); k > 0; k--) {
+      b.key("KeyT", true, false, now, h.reg);
+      b.key("KeyT", false, false, now, h.reg);
+    }
     if (rng.int(3) === 0) {
       b.key("KeyQ", true, false, now, h.reg);
       b.key("KeyQ", false, false, now + 50, h.reg);

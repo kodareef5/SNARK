@@ -96,10 +96,10 @@ test("the placement's answer is read as it was written, with each kind of cause"
   ];
   for (const c of cases) {
     w.reset();
-    writePlaced(w, c);
+    writePlaced(w, { ...c, next: -1, skipped: 0 });
     r.reset(w.bytes());
     expect(readPlaced(r, out)).toBe(true);
-    expect(out).toEqual(c);
+    expect(out).toEqual({ ...c, next: -1, skipped: 0 });
   }
   // Cut short, it says so and nothing is taken from it.
   r.reset(new Uint8Array(2));

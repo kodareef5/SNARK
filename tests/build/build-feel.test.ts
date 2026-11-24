@@ -9,7 +9,7 @@ import { REFUSED } from "../../client/core/predict-build.ts";
 import { KEY_FORM_NAME, KEY_FORM_ON } from "../../client/core/hud/forms.ts";
 import { KEY_BUILD_SAYS } from "../../client/core/hud/hotbar.ts";
 import { KEY_PROMPT_UNDER } from "../../client/core/hud/prompt.ts";
-import { DRAW_BLEND, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_PIECE, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { SLOT_EDGE_MESH, SLOT_SQUARE_MESH } from "../../client/core/render/passes/ghost.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, T_ATTACK, T_CANCEL, T_FOLLOW_ONE } from "../../client/core/touch.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
@@ -17,7 +17,7 @@ import { KEY_STRUCT_FALLS } from "../../client/core/ui/structure.ts";
 import * as touchLayer from "../../client/core/ui/touch.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_MOVE, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_WAIT } from "../../shared/net/protocol.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, parsePack } from "../../shared/pack/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -777,4 +777,28 @@ test("a built piece is picked with the form it was built in, by the middle butto
   expect(b.pick(s, reg, door)).toBe(true);
   run(300);
   expect([s.held, b.kind]).toEqual([2, id("door_wood")]);
+});
+
+test("marks of one piece, colour and fade go as one draw of many, each by its own turn class; a plan's holograms go this way", () => {
+  const { app, s, run } = client(["piece_foundation_wood"]);
+  const kind = id("foundation_wood"), marks = app.scene!.predicted, mesh = app.scene!.meshOfKind[kind]!;
+  run(100);
+  // Forty foundations in one colour, one of them turned 30 degrees in its base, and five in another colour.
+  for (let i = 0; i < 40; i++) marks.piece(kind, s.own.x + (i % 8) * 3, s.own.y, s.own.z + 6 + Math.floor(i / 8) * 3, 0, i === 7 ? 1 : 0, GHOST_OK);
+  for (let i = 0; i < 5; i++) marks.piece(kind, s.own.x + i * 3, s.own.y + 3, s.own.z + 6, 16384, 0, GHOST_BAD, 0.5);
+  const p = run(1);
+  const draws: number[][] = [];
+  for (let d = 0; d < p.drawCount; d++) if (p.drawMesh[d] === mesh && p.drawBuffer[d] === TRANSIENT_BUFFER && (p.drawFlags[d]! & DRAW_BLEND) !== 0) draws.push([p.drawTint[d * 2]! - 1, p.drawTint[d * 2 + 1]!, p.drawInstances[d]!, p.drawFirst[d]!, p.drawFlags[d]! & DRAW_PIECE]);
+  expect(draws.map((d) => d.slice(0, 3)).sort((a, b) => a[2]! - b[2]!)).toEqual([[GHOST_BAD, 0.5, 5], [GHOST_OK, 0, 40]]);
+  // Drawn as a built piece is, an instance says its direction in its base: a twelfth of a turn for each step, the turn class its remainder by three.
+  const many = draws.find((d) => d[2] === 40)!;
+  if (many[4] !== 0) {
+    const turned = Array.from({ length: 40 }, (_, k) => (p.transient[(many[3]! + k) * INSTANCE_BYTES + 12]! & 15) % 3);
+    expect([turned.filter((t) => t === 1).length, turned.filter((t) => t === 0).length]).toEqual([1, 39]);
+  }
+  // The frame after, the marks are the frame's own again: none of these.
+  const next = run(1);
+  let left = 0;
+  for (let d = 0; d < next.drawCount; d++) if (next.drawMesh[d] === mesh && next.drawBuffer[d] === TRANSIENT_BUFFER && next.drawInstances[d]! > 1) left++;
+  expect(left).toBe(0);
 });
