@@ -63,10 +63,15 @@ export interface ShotRound {
   readonly budget?: number;
   readonly mean?: number;
   readonly flying?: number;
+  readonly rockets?: number;
   readonly blasts?: number;
 }
-// The rocket's gate (planning/workstreams/rocket.md): 12 in the air and 8 blasts a second, 0.3 ms a frame on average.
-export const SHOT_ROUNDS: readonly ShotRound[] = [{ label: "arrows", ammo: "arrow_stone" }, { label: "plasma bolts", ammo: "plasma_cell", budget: 0.3 }, { label: "rockets", ammo: "rocket", budget: 1, mean: 0.3, flying: 12, blasts: 8 }];
+export const SHOT_ROUNDS: readonly ShotRound[] = [
+  { label: "arrows", ammo: "arrow_stone" },
+  { label: "plasma bolts", ammo: "plasma_cell", budget: 0.3 },
+  { label: "rockets", ammo: "rocket", flying: 12, rockets: 12, blasts: 8, budget: 1, mean: 0.3 },
+  { label: "plasma and rockets", ammo: "plasma_cell", rockets: 12, blasts: 8 },
+];
 
 const FIGHTERS = 50;
 /** A shot every this many ticks from each: 10 a second. */
@@ -302,9 +307,16 @@ export function benchShots(section: Section, record: Row, scene: Scene, cam: Cam
   for (const round of rounds) {
     const ammo = reg.index.get(`core:${round.ammo}`);
     if (ammo === undefined) continue;
-    const speed = reg.ammoSpeed[ammo]!;
-    // Three runs, and the least of each figure: whatever else the machine is doing only adds to one.
-    const best = { flown: Infinity, drawn: Infinity, whole: Infinity, high: Infinity, cpu: Infinity, most: 0, made: 0 };
+    const rockets = round.rockets ?? 0;
+    const rocketAmmo = reg.index.get("core:rocket");
+    if (rockets && rocketAmmo === undefined) continue;
+    const target = round.flying ?? FLYING;
+    const stepped: number[] = [];
+    const drawn: number[] = [];
+    const whole: number[] = [];
+    const retained: number[] = [];
+    let cpu = 0;
+    let most = 0;
     for (let pass = 0; pass < 3; pass++) {
       const shots = new Shots(reg, pack);
       scene.shots = shots;
@@ -313,33 +325,37 @@ export function benchShots(section: Section, record: Row, scene: Scene, cam: Cam
       const aim = new Rng(707);
       const ms = { draw: 0 };
       const undo = timed(shots, "draw", ms);
-      const stepped: number[] = [];
-      const drawn: number[] = [];
-      let cpu = 0;
       let objects = 0;
       let id = 0;
-      const blastEvery = round.blasts ? Math.round(60 / round.blasts) : 0;
+      const blasts = round.blasts ?? 0;
+      const from = scene.now + 60000;
+      shots.fire = scene.blasts;
       for (let f = 0; f < FRAMES * 2; f++) {
         if (f === FRAMES) {
           Bun.gc(true);
           objects = heapStats().objectCount;
         }
-        const now = f * (1000 / 60);
+        const now = from + f * (1000 / 60);
         const tick = 200 + f / 2;
         crowd.tick = tick;
-        // As many leave each frame as keep the air full: nearly level, from among the crowd, each its own way.
-        for (let n = shots.flying.length; n < (round.flying ?? FLYING); n++) {
+        scene.now = now;
+        scene.shotTick = tick;
+        let missingRockets = rockets;
+        if (rockets) for (const shot of shots.flying) if (shot.rocket) missingRockets--;
+        for (let n = shots.flying.length; n < target; n++) {
+          const numbered = missingRockets > 0;
+          if (numbered) missingRockets--;
+          const item = numbered ? rocketAmmo! : ammo;
+          const speed = reg.ammoSpeed[item]!;
           const yaw = aim.float() * Math.PI * 2;
           const x = cam.x + aim.range(-120, 120);
           const z = cam.z + aim.range(-120, 120);
-          // A round with blasts is told as a rocket is, by a number.
-          if (blastEvery > 0) id = (id % (ROCKET_IDS - 1)) + 1;
-          events.push({ kind: blastEvery > 0 ? EVENT_ROCKET : EVENT_SHOT, x, y: world.hf.heightAt(x, z) + 1.5, z, item: ammo, flies: true, vx: Math.sin(yaw) * speed, vy: speed * 0.02, vz: Math.cos(yaw) * speed, back: 2, rays: 1, seed: 0, silenced: false, id: blastEvery > 0 ? id : 0, own: false, surface: 0, made: 0, far: 0 });
+          if (numbered) id = (id % (ROCKET_IDS - 1)) + 1;
+          events.push({ kind: numbered ? EVENT_ROCKET : EVENT_SHOT, x, y: world.hf.heightAt(x, z) + 1.5, z, item, flies: true, vx: Math.sin(yaw) * speed, vy: speed * 0.02, vz: Math.cos(yaw) * speed, back: 2, rays: 1, seed: 0, silenced: false, id: numbered ? id : 0, own: false, surface: 0, made: 0, far: 0 });
         }
-        if (blastEvery > 0 && f % blastEvery === 0 && shots.flying.length > 0) {
-          // The oldest goes off where it is.
-          const o = shots.flying[0]!;
-          events.push({ kind: EVENT_BLAST, x: o.x, y: o.y, z: o.z, item: ammo, flies: false, vx: 0, vy: 1, vz: 0, back: 0, rays: 1, seed: 0, silenced: false, id: o.id, own: false, surface: 1, made: 0, far: reg.ammoBlast[ammo]! });
+        if (Math.floor(f * blasts / 60) > Math.floor((f - 1) * blasts / 60)) {
+          const o = shots.flying.find((shot) => shot.rocket);
+          if (o) events.push({ kind: EVENT_BLAST, x: o.x, y: o.y, z: o.z, item: o.ammo, flies: false, vx: 0, vy: 1, vz: 0, back: 0, rays: 1, seed: 0, silenced: false, id: o.id, own: false, surface: 1, made: 0, far: reg.ammoBlast[o.ammo]! });
         }
         const c = worked();
         const t = performance.now();
@@ -347,32 +363,27 @@ export function benchShots(section: Section, record: Row, scene: Scene, cam: Cam
         shots.step(world, crowd, tick, now);
         const flown = performance.now() - t;
         const used = worked() - c;
-        if (shots.flying.length > best.most) best.most = shots.flying.length;
+        most = Math.max(most, shots.flying.length);
         ms.draw = 0;
         scene.build(cam, crowd);
         if (f < FRAMES) continue;
         stepped.push(flown);
         drawn.push(ms.draw);
+        whole.push(flown + ms.draw);
         cpu += used;
       }
-      best.made = heapStats().objectCount - objects;
+      Bun.gc(true);
+      retained.push(heapStats().objectCount - objects);
       undo();
-      // A tick comes every other frame, so half the frames fly nothing: the mean and the worst say more than the median.
-      const whole = stepped.map((v, i) => v + drawn[i]!);
-      best.flown = Math.min(best.flown, mean(stepped));
-      best.drawn = Math.min(best.drawn, mean(drawn));
-      best.whole = Math.min(best.whole, mean(whole));
-      best.high = Math.min(best.high, high(whole));
-      best.cpu = Math.min(best.cpu, cpu / FRAMES);
+      for (const shot of shots.flying) if (shot.lit) scene.blasts.end(shot.key, scene.now);
     }
-    record(`${round.label}: rounds in the air at most`, best.most, "");
-    record(`${round.label}: told and flown a frame, mean`, best.flown, "ms");
-    record(`${round.label}: of that, the processor's time`, best.cpu, "ms");
-    record(`${round.label}: drawn a frame, mean`, best.drawn, "ms");
-    record(`${round.label}: a frame's shots in all, mean`, best.whole, "ms", round.mean ?? null);
-    record(`${round.label}: a frame's shots in all, 99th percentile`, best.high, "ms", round.budget ?? null);
-    // Not collected first: what the frames made and left for the collector, less whatever it took meanwhile.
-    record(`${round.label}: objects left by ${FRAMES} frames`, best.made, "");
+    record(`${round.label}: rounds in the air at most`, most, "");
+    record(`${round.label}: told and flown a frame, mean`, mean(stepped), "ms");
+    record(`${round.label}: of that, the processor's time`, cpu / stepped.length, "ms");
+    record(`${round.label}: drawn a frame, mean`, mean(drawn), "ms");
+    record(`${round.label}: a frame's shots in all, mean`, mean(whole), "ms", round.mean ?? null);
+    record(`${round.label}: a frame's shots in all, 99th percentile`, high(whole), "ms", round.budget ?? null);
+    record(`${round.label}: objects retained over ${FRAMES} frames, median`, median(retained), "");
   }
   scene.shots = kept;
 }
