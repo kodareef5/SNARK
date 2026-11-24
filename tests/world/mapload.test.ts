@@ -444,8 +444,10 @@ function faultyServer(of: Uint8Array, fault: (name: string, ask: number) => Faul
   const asks = new Map<string, number>();
   const s = {
     asked: [] as string[],
-    get: (async (url: string) => {
+    refreshed: [] as string[],
+    get: (async (url: string, init?: Parameters<Get>[1]) => {
       s.asked.push(url);
+      if (init?.cache === "reload") s.refreshed.push(url);
       const name = url.slice(4);
       const n = (asks.get(name) ?? 0) + 1;
       asks.set(name, n);
@@ -611,6 +613,7 @@ test("a part that comes damaged or as another's is refused by name and asked for
   const statics = head.parts.filter((p) => p.kind === "statics")[1]!;
   const damaged = (name: string) => `map: its part ${name} is damaged or another's: its bytes are not those its head names`;
   const once = await trial((name, ask) => (name === overview.name && ask === 1 ? "damage" : name === statics.name && ask <= 2 ? "other" : null));
+  expect(once.s.refreshed).toEqual([nameOf(overview), nameOf(statics), nameOf(statics)]);
   // The land came and the page said so before the body's place was known; then the overview there failed once.
   expect([once.first, wholeStatics(once.statics), once.said, once.late]).toEqual(["drawn", true, ["", `loading the map: ${damaged(overview.name)}; asking again in 0.5 s`, ""], [`${damaged(statics.name)}; asking again in 0.5 s`, `${damaged(statics.name)}; asking again in 1 s`, `the map's ${statics.name} came, at ask 3`]]);
   const early = await trial((name) => (name === overview.name ? "damage" : null));

@@ -1,12 +1,15 @@
+import { connectionHint, constrainedConnection } from "./startup-budget.ts";
+
 const box = document.querySelector<HTMLElement>("#scenery")!,
   motion = document.querySelector<HTMLButtonElement>("#motion")!;
 const reduce = matchMedia("(prefers-reduced-motion: reduce)");
-const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
-const constrained = connection?.saveData || ["2g", "slow-2g"].includes(connection?.effectiveType ?? "");
-let allow = !reduce.matches && !constrained,
+let allow = !reduce.matches,
   paused = !allow,
   title = false,
   human = false;
+let titleIdle = false,
+  titleTimer = 0,
+  requested = false;
 let world = "",
   frame: HTMLIFrameElement | null = null,
   url = "",
@@ -35,10 +38,20 @@ function send() {
   );
 }
 function sync() {
-  const portrait = human && world && new URL(world).origin === location.origin;
+  const automatic = allow && !constrainedConnection(connectionHint());
+  if (title && automatic && !titleIdle && !titleTimer && !document.hidden) {
+    titleTimer = setTimeout(() => {
+      titleTimer = 0;
+      const start = () => { titleIdle = true; sync(); };
+      if (typeof requestIdleCallback === "function") requestIdleCallback(start, { timeout: 700 });
+      else start();
+    }, 800);
+  }
+  const visible = ready || !document.hidden;
+  const portrait = visible && human && world && new URL(world).origin === location.origin;
   const next = portrait
     ? new URL("flight.html", world).href
-    : title && allow && !failed
+    : title && visible && !failed && (ready || !paused) && (requested || (automatic && titleIdle))
       ? new URL("flight.html?set=wynwood-shore", document.baseURI).href
       : "";
   if (next !== url) {
@@ -56,7 +69,7 @@ function sync() {
     }
   }
   motion.hidden = !title;
-  motion.textContent = failed ? "Retry live scene" : paused ? "Play live scene" : "Pause live scene";
+  motion.textContent = failed ? "Retry live scene" : paused || !url ? "Play live scene" : "Pause live scene";
   motion.setAttribute("aria-pressed", String(!!url && !paused));
   if (title) document.body.dataset.titleScene = failed ? "failed" : ready ? "live" : url ? "loading" : "still";
   else delete document.body.dataset.titleScene;
@@ -101,17 +114,19 @@ addEventListener("message", (e) => {
   }
 });
 motion.onclick = () => {
-  if (failed || !allow) {
+  if (failed || !frame) {
     failed = false;
     allow = true;
+    requested = true;
     paused = false;
   } else paused = !paused;
   sync();
 };
-document.addEventListener("visibilitychange", send);
+document.addEventListener("visibilitychange", sync);
 reduce.addEventListener("change", () => {
   if (reduce.matches) {
     allow = false;
+    requested = false;
     paused = true;
     mx = my = 0;
     sync();
