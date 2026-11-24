@@ -25,10 +25,20 @@ export type WreckSize = keyof typeof WRECK_SIZES;
 export const rungsOf = (look: "stopped" | "stripped" | "roof" | "burnt"): readonly Rung[] =>
   look === "stopped" ? ["strip", "gut", "cut"] : look === "stripped" ? ["gut", "cut"] : look === "roof" ? ["cut"] : ["burnt"];
 
-/** How a wreck of `size` with `rungs` left is salvaged. */
-export function wreckSalvage(rungs: readonly Rung[], size: WreckSize): SalvageFacet {
-  const by = WRECK_SIZES[size];
-  return { work: WORK * by, rungs: rungs.map((r) => ({ gives: GIVES[r].map((y) => ({ item: y.item, count: Math.round(y.count * by) })) })) };
+/**
+ * How a wreck of `size` with `rungs` left is salvaged, in as many rungs as it has `looks` to show (itself and its
+ * lesser looks): a rung past its last look would change nothing a player sees, so the rungs over are given with the
+ * last. The work is the same in all, shared evenly among the rungs it has.
+ */
+export function wreckSalvage(rungs: readonly Rung[], size: WreckSize, looks = rungs.length): SalvageFacet {
+  const by = WRECK_SIZES[size], n = Math.max(1, Math.min(looks, rungs.length));
+  const groups = Array.from({ length: n }, (_, at) => (at < n - 1 ? [rungs[at]!] : rungs.slice(n - 1)));
+  const gives = (group: readonly Rung[]) => {
+    const sum = new Map<string, number>();
+    for (const r of group) for (const y of GIVES[r]) sum.set(y.item, (sum.get(y.item) ?? 0) + y.count);
+    return [...sum].map(([item, count]) => ({ item, count: Math.round(count * by) }));
+  };
+  return { work: (WORK * by * rungs.length) / n, rungs: groups.map((group) => ({ gives: gives(group) })) };
 }
 
 /** A wreck's break set is its look: every paint of it shares its lesser looks. */
@@ -48,12 +58,13 @@ export const wreckFormKind = (mesh: string, form: WreckForm): string => `core:zz
 export const wreckFormShape = (mesh: string): string => `core:zzzzzzzwreck_shape_${mesh.slice("core:".length)}`;
 
 /**
- * The kind the look drawn as `mesh` becomes as `form`: drawn and walked as the look `as`. It has no paint or health of
- * its own. A swap keeps its row's health, and it is dyed as the kind the map placed.
+ * The kind the look drawn as `mesh` becomes as `form`: drawn and walked as the look `as`. It has no paint of its own:
+ * it is dyed as the kind the map placed, and a swap keeps its row's health. Its own health is its body's, for a map
+ * that sets one down itself, where it is a plain piece with no rungs.
  */
-export function wreckFormDef(mesh: string, form: WreckForm, as: { readonly mesh: string; readonly shape: string; readonly half: readonly [number, number, number]; readonly color: number }): StructureDef {
+export function wreckFormDef(mesh: string, form: WreckForm, as: { readonly mesh: string; readonly shape: string; readonly half: readonly [number, number, number]; readonly color: number; readonly hp: number }): StructureDef {
   return {
-    type: "structure", class: "static", id: wreckFormKind(mesh, form), mesh: as.mesh, shape: as.shape, half: as.half, color: as.color, hp: 1, material: "core:mat_metal",
+    type: "structure", class: "static", id: wreckFormKind(mesh, form), mesh: as.mesh, shape: as.shape, half: as.half, color: as.color, hp: as.hp, material: "core:mat_metal",
     breaks: { ...wreckWhole(mesh), form: WRECK_FORMS[form], variant: 0 },
   };
 }

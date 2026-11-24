@@ -513,6 +513,7 @@ export class Projectiles {
     const reg = this.ctx.world.reg;
     const src = this.round;
     src.far = falloff(far, reg.ammoFalloffFull[ammo]!, reg.ammoFalloffNone[ammo]!);
+    src.ranged = true;
     src.by = by;
     src.x = ox;
     src.z = oz;

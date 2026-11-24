@@ -12,6 +12,8 @@ import { CHUNK_SIZE } from "../shared/coords.ts";
 import { cycleTicks } from "../shared/sim/clock.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { BUILDING_SPANS, STOREY, blankFrame, type BuildingFrame } from "../shared/world/buildings.ts";
+import { frame, frameOf } from "../shared/world/frame.ts";
+import { Found } from "../shared/world/structures.ts";
 import type { GameServer } from "./game.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
@@ -38,6 +40,7 @@ export class CityRegrow {
   private cursor = 0;
   private readonly frame = blankFrame();
   private readonly slots: number[] = [];
+  private readonly found = new Found();
   private readonly bodies: number[] = [];
   /** Chunks looked at, buildings and loose chunks healed, and slots set back, since the start. */
   looked = 0;
@@ -248,7 +251,8 @@ export class CityRegrow {
           }
         }
       }
-      if (taken) left++;
+      // So does anything built there: a foundation laid where a wreck stood.
+      if (taken || (!force && this.built(chunk, slot))) left++;
       else slots.push(slot);
     }
     const healed = slots.length > 0 ? structs.heal(chunk, slots) : 0;
@@ -257,6 +261,32 @@ export class CityRegrow {
     if (healed > 0) this.chunks++;
     this.healed += healed;
     return healed;
+  }
+
+  /** Whether something a tribe built stands in the room the map's piece of `slot` in `chunk` would take back. */
+  private built(chunk: number, slot: number): boolean {
+    const structs = this.ctx.world.structs;
+    const t = structs.chunks[chunk]!;
+    const kind = structs.mapKind(chunk, slot);
+    const [x, y, z] = [t.x[slot]!, t.y[slot]!, t.z[slot]!];
+    frameOf(t.yaw[slot]!);
+    const [c, s] = [Math.abs(frame.cos), Math.abs(frame.sin)];
+    const ex = c * structs.halfXOf(kind) + s * structs.halfZOf(kind), ez = s * structs.halfXOf(kind) + c * structs.halfZOf(kind);
+    const [low, top] = [y + structs.low[kind]!, y + structs.top[kind]!];
+    const n = structs.query(x - ex, z - ez, x + ex, z + ez, this.found, low, top);
+    for (let k = 0; k < n; k++) {
+      const other = this.found.refs[k]!;
+      const u = structs.chunks[Math.floor(other / 65536)]!, o = other & 0xffff;
+      // The map's own pieces beside it stood there with it.
+      if (o < u.mapped || u.kind[o] === 0) continue;
+      const theirs = u.kind[o]!;
+      if (u.y[o]! + structs.top[theirs]! <= low || u.y[o]! + structs.low[theirs]! >= top) continue;
+      frameOf(u.yaw[o]!);
+      const [uc, us] = [Math.abs(frame.cos), Math.abs(frame.sin)];
+      const ux = uc * structs.halfXOf(theirs) + us * structs.halfZOf(theirs), uz = us * structs.halfXOf(theirs) + uc * structs.halfZOf(theirs);
+      if (Math.abs(u.x[o]! - x) < ex + ux && Math.abs(u.z[o]! - z) < ez + uz) return true;
+    }
+    return false;
   }
 
   /**

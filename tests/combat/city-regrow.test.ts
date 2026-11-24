@@ -199,6 +199,28 @@ test("a salvaged wreck returns whole as the map placed it, by its chunk's clock"
   expect([c.id(taken), c.id(stripped), whole(c, c.refs)]).toEqual([kind, kind, true]);
 });
 
+test("a salvaged wreck does not return through what a tribe built where it stood", () => {
+  const kind = "core:compact_abandoned_white";
+  const c = city([{ kind, x: 40, z: 40 }, { kind, x: 60, z: 40 }]);
+  const [built, clear] = c.refs as [number, number];
+  const { h } = c;
+  expect(h.host.rules.assign("CityRegrowDays", "0", "console")).toBe("");
+  const ada = record(h, survivor(h, "ada"));
+  const pick: Source = { by: ada, x: 0, z: 0, item: h.reg.index.get("core:pick_metal")!, base: 32, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: 0 };
+  for (const ref of c.refs) for (let k = 0; k < 24; k++) h.host.combat.hitStructure(pick, ref, c.at(ref).x, 0.5, 40);
+  expect([c.id(built), c.id(clear)]).toEqual(["", ""]);
+  // A foundation laid in the first one's place.
+  const foundation = h.world.structs.add(h.reg.index.get("core:foundation")!, 40, 0.15, 40, 0, ada.team, 100);
+  expect(h.host.rules.assign("CityRegrowClearDistance", "50", "console")).toBe("");
+  period(h, 30);
+  ticks(c, 90);
+  expect([c.id(built), c.id(clear)]).toEqual(["", kind]);
+  // With it gone the wreck returns by the same clock.
+  h.world.structs.remove(foundation);
+  ticks(c, 90);
+  expect(c.id(built)).toBe(kind);
+});
+
 test("a building's last harm is saved with the world, and it returns on that clock after a restart", () => {
   const db = join(dir, "clock.db");
   const { c } = fallen(2, 96, 96, 4, { dbPath: db });

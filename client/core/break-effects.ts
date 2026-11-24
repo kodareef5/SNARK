@@ -12,8 +12,6 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { EVENT_HIT } from "../../shared/net/protocol.ts";
 import { WRECK, formOf, paned, stageOf } from "../../shared/world/breaking.ts";
-import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { GONE_BLAST, GONE_FELL, GONE_TAKEN } from "../../shared/world/structures.ts";
 import type { Tier } from "./assets/tiers.ts";
 import { BREAK_CHIPS, BREAK_DUST, BREAK_GLASS, BREAK_SHARE, BREAK_SPARKS } from "./details/breaks.ts";
@@ -41,8 +39,6 @@ const ROAD = [124, 108, 92] as const;
 const SPARKS = 1, GLASS = 2;
 /** What `BreakSounds.breaking` is asked to sound: pieces gone or broken open, a stage crossed, panes gone, a collapse's rumble, a blow that took a wreck's rung. */
 export const HEARD_IMPACT = 0, HEARD_CRACK = 1, HEARD_GLASS = 2, HEARD_RUMBLE = 3, HEARD_BLOW = 4;
-/** Metres past where a blow landed that the look for what it struck goes on. */
-const STRUCK_PAST = 0.25;
 /** One rumble is asked for a collapse: none again for these ticks within these metres of the last. */
 const RUMBLE_TICKS = 6 * TICK_RATE, RUMBLE_REACH = 60;
 /** A blast, or this many pieces going in a cell, shakes a view within these metres. */
@@ -57,16 +53,6 @@ export function hearStructures(session: { onStructure: StructureListener | null 
     before(was, kind, x, y, z, hpWas, hp, cause);
     listener(was, kind, x, y, z, hpWas, hp, cause);
   };
-}
-
-/**
- * The kind of the structure a blow that landed at (x, y, z) struck, as seen from the attacker's eye (ex, ey, ez): the
- * first the line to it meets. 0 where it meets none, as when the blow's own row has already emptied its slot.
- */
-export function struckKind(world: CollisionWorld, ex: number, ey: number, ez: number, x: number, y: number, z: number): number {
-  const dx = x - ex, dy = y - ey, dz = z - ez, far = Math.hypot(dx, dy, dz);
-  if (!(far > 1e-6) || castWorld(world, ex, ey, ez, dx / far, dy / far, dz / far, far + STRUCK_PAST) !== HIT_STRUCTURE) return 0;
-  return world.structs.chunks[Math.floor(rayHit.ref / 65536)]?.kind[rayHit.ref & 0xffff] ?? 0;
 }
 
 /** Where a cell's bursts go (Details), its sounds (sound/build.ts BuildSounds) and its shake (Sight). */
@@ -264,15 +250,15 @@ export class BreakEffects {
   }
 
   /**
-   * Says in each of the attacker's hits on something built among `events` what it landed on (`struck`), as seen from the
-   * eye (ex, ey, ez) in `world`, and takes in those that landed on a wreck. Before the sounds copy the events.
+   * Takes in each of the attacker's hits on something built among `events` once: the server says what each landed on
+   * (`struck`), and one on a wreck throws its sparks.
    */
-  blows(events: readonly CombatEvent[], world: CollisionWorld, ex: number, ey: number, ez: number, tick: number): void {
+  blows(events: readonly CombatEvent[], tick: number): void {
     for (let i = 0; i < events.length; i++) {
       const e = events[i]!;
-      if (e.kind !== EVENT_HIT || e.zone !== ZONE_NONE || e.struck !== undefined) continue;
-      e.struck = struckKind(world, ex, ey, ez, e.x, e.y, e.z);
-      this.blow(tick, e.struck, e.x, e.y, e.z);
+      if (e.kind !== EVENT_HIT || e.zone !== ZONE_NONE || e.blown) continue;
+      e.blown = true;
+      this.blow(tick, e.struck ?? 0, e.x, e.y, e.z);
     }
   }
 

@@ -132,7 +132,7 @@ import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/tr
 import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { BTN_AIR_REMOTE, BTN_JUMP, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, stanceEye, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
 import { REACT_RULES } from "../../shared/sim/react.ts";
-import { B_CHEST } from "../../shared/anim/human.ts";
+import { B_CHEST, ZONE_NONE } from "../../shared/anim/human.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { blendDoors } from "../../shared/sim/vehicle-panels.ts";
@@ -396,8 +396,10 @@ export interface CombatEvent {
   z: number;
   /** A ZONE_ of shared/anim/human.ts. */
   zone: number;
-  /** For the attacker's hit on something built, the kind it landed on, once looked for (BreakEffects.blows): 0 where none was found. */
+  /** For the attacker's hit with no zone, the kind of what is built that it landed on, a city piece as its map placed it: 0 for nothing built. */
   struck?: number;
+  /** Set once BreakEffects.blows has taken the hit in. */
+  blown?: boolean;
   damage: number;
   kill: boolean;
   /** Armor stopped some of it. */
@@ -2107,6 +2109,7 @@ export class ClientSession {
       ev.damage = r.u16();
       ev.kill = r.bool();
       ev.blocked = r.bool();
+      if (ev.zone === ZONE_NONE) ev.struck = r.u16();
     } else if (kind === EVENT_HURT || kind === EVENT_DEATH) {
       ev.damage = r.u16();
       ev.bearing = r.u8();

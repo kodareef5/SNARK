@@ -4,10 +4,11 @@
 import { expect, test } from "bun:test";
 import type { Source } from "../../server/combat.ts";
 import { DMG_MELEE } from "../../shared/sim/damage.ts";
+import { capsuleFree } from "../../shared/world/collide.ts";
 import { GONE_BLAST, GONE_TAKEN } from "../../shared/world/structures.ts";
 import { ROCKET_REACH, city, rocket, type City } from "../fixtures/city.ts";
 import type { Harness } from "../fixtures/net.ts";
-import { count, record, survivor } from "../kit/kit.ts";
+import { count, put, record, survivor } from "../kit/kit.ts";
 
 const COMPACT = "core:compact_abandoned_white", STRIPPED = "core:zzzzzzzwreck_compact_abandoned_stripped", SHELL = "core:zzzzzzzwreck_compact_abandoned_shell";
 const GIVEN = ["polymer", "crystal", "electronics", "gasoline", "ingot", "oil", "fiber", "ore"] as const;
@@ -154,4 +155,63 @@ test("a wreck beside a tribe's base is anyone's to salvage, and a rung counts ag
   set("CityBreaksPerMinute", "1");
   blows(c, ada.src, second, 8);
   expect([c.id(second), blows(c, ada.src, third, 8), c.hp(third)]).toEqual([STRIPPED, 0, 8000]);
+});
+
+test("whoever stands where a stripped wreck's door comes ajar is moved out of it, and walks away", () => {
+  const c = city([{ kind: COMPACT, x: 100, z: 100 }]);
+  const car = c.refs[0]!;
+  const { h } = c;
+  const ada = hand(h, "ada");
+  const ents = h.world.ents, reg = h.reg;
+  const body = (who: typeof ada) => h.ent(who.id);
+  const free = (e: number): boolean => capsuleFree(h.world, ents.x[e]!, ents.y[e]!, ents.z[e]!, reg.bodyRadius[ents.kind[e]!]!, reg.bodyHeight[ents.kind[e]!]!);
+  // Beside each door, as near as a body stands to swing at it. The stripped look's ajar door is on one side.
+  const bob = hand(h, "bob");
+  put(h, ada.id, { x: 101.4, z: 99.5 });
+  put(h, bob.id, { x: 98.6, z: 99.5 });
+  h.run(300);
+  const [a, b] = [body(ada), body(bob)];
+  expect([free(a), free(b)]).toEqual([true, true]);
+  const was = [[ents.x[a]!, ents.z[a]!], [ents.x[b]!, ents.z[b]!]];
+  blows(c, ada.src, car, 8);
+  expect(c.id(car)).toBe(STRIPPED);
+  // One of them stood where the door now is. Both are free, the one moved less than a metre, straight away from the car.
+  const moved = [Math.hypot(ents.x[a]! - was[0]![0]!, ents.z[a]! - was[0]![1]!), Math.hypot(ents.x[b]! - was[1]![0]!, ents.z[b]! - was[1]![1]!)];
+  expect([free(a), free(b), Math.max(...moved) > 0.1, Math.max(...moved) < 1, Math.min(...moved)]).toEqual([true, true, true, true, 0]);
+  for (let k = 0; k < 10; k++) {
+    h.run(100);
+    expect([free(a), free(b)]).toEqual([true, true]);
+  }
+});
+
+test("a stone that flew there is no blow of a tool, and a tougher city takes more blows for the same", () => {
+  const c = city([{ kind: COMPACT, x: 100, z: 100 }, { kind: COMPACT, x: 100, z: 120 }]);
+  const [car, other] = c.refs as [number, number];
+  const { h } = c;
+  const ada = hand(h, "ada", "core:slingshot");
+  // A slingshot's stone is melee damage. Flown, it strikes no work and is given nothing.
+  for (let k = 0; k < 8; k++) h.host.combat.hitStructure({ ...ada.src, ranged: true }, car, 100, 0.5, 100);
+  expect([c.hp(car), ada.has()]).toEqual([8000, [0, 0, 0, 0, 0, 0, 0, 0]]);
+  // CityResistanceMultiplier 2: a metal pick's blow strikes half as much, sixteen to a rung, and the rung gives the same.
+  const bob = hand(h, "bob");
+  expect(h.host.rules.assign("CityResistanceMultiplier", "2", "console")).toBe("");
+  blows(c, bob.src, other, 1);
+  expect(Math.round(8000 - c.hp(other))).toBe(167);
+  blows(c, bob.src, other, 14);
+  expect(c.id(other)).toBe(COMPACT);
+  blows(c, bob.src, other, 1);
+  expect([c.id(other), bob.has().slice(0, 4)]).toEqual([STRIPPED, [10, 4, 2, 4]]);
+});
+
+test("a lesser look a map sets down itself is a plain piece: no tool works it, and a blast harms it as it did any wreck", () => {
+  const c = city([{ kind: SHELL, x: 100, z: 100 }, { kind: STRIPPED, x: 100, z: 120 }]);
+  const [shell, stripped] = c.refs as [number, number];
+  const { h } = c;
+  const ada = hand(h, "ada");
+  expect([c.hp(shell), blows(c, ada.src, shell, 8), c.hp(shell), ada.has()]).toEqual([8000, 0, 8000, [0, 0, 0, 0, 0, 0, 0, 0]]);
+  h.host.combat.hitStructure(rocket(h.reg), shell, 100, 0.5, 100);
+  h.host.combat.blast(rocket(h.reg), 100, 0.5, 119.5, ROCKET_REACH);
+  expect([c.id(shell), Math.round(c.hp(shell)), c.id(stripped), c.hp(stripped) < 8000]).toEqual([SHELL, 5789, STRIPPED, true]);
+  for (let k = 0; k < 3; k++) h.host.combat.hitStructure(rocket(h.reg), shell, 100, 0.5, 100);
+  expect(c.id(shell)).toBe("");
 });

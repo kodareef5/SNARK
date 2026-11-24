@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
-import { BULLET, BreakEffects, HEARD_BLOW, HEARD_IMPACT, PIECE, hearStructures, struckKind, type BreakDetails } from "../../client/core/break-effects.ts";
+import { BULLET, BreakEffects, HEARD_BLOW, HEARD_IMPACT, PIECE, hearStructures, type BreakDetails } from "../../client/core/break-effects.ts";
 import { BREAK_CHIPS, BREAK_DUST, BREAK_GLASS, BREAK_SPARKS } from "../../client/core/details/breaks.ts";
 import { BreakSets } from "../../client/core/fragments.ts";
 import { cityWord } from "../../client/core/prompts.ts";
@@ -13,7 +13,7 @@ import { ZONE_NONE } from "../../shared/anim/human.ts";
 import { FORM_HEAP, formKind } from "../../shared/content/breaks.ts";
 import { EVENT_HIT } from "../../shared/net/protocol.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
-import { DMG_MELEE } from "../../shared/sim/damage.ts";
+import { DMG_EXPLOSIVE, DMG_MELEE } from "../../shared/sim/damage.ts";
 import { rungKind } from "../../shared/world/breaking.ts";
 import { GONE_BLAST, GONE_TAKEN } from "../../shared/world/structures.ts";
 import { city } from "../fixtures/city.ts";
@@ -132,8 +132,8 @@ test("a salvager's client finds each blow on the wreck, and shows a rung and the
   const blows = (n: number): void => {
     for (let i = 0; i < n; i++) h.host.combat.hitStructure(pick, car, 120, 0.6, 118.6);
     h.run(200);
-    // From an eye south of it, as the app looks before the sounds take the events.
-    breaks.blows(ada.events, ada.world!, 120, 1.6, 116, 100);
+    // As the app does before the sounds take the events.
+    breaks.blows(ada.events, 100);
   };
   ada.events.length = 0;
   // Seven blows change nothing a client is sent: each is a hit for her, found on the wreck.
@@ -152,7 +152,6 @@ test("a salvager's client finds each blow on the wreck, and shows a rung and the
   ada.events.length = 0;
   blows(1);
   expect(c.id(car)).toBe(reg.ids[STRIPPED]!);
-  expect(struckKind(ada.world!, 120, 1.6, 116, 120, 0.6, 118.6)).toBe(STRIPPED);
   a = asked(breaks);
   expect(a.heard).toEqual([[HEARD_BLOW, BLUE, 0.9]]);
   // Eight more leave its shell, and eight more cut it up: one last puff, and nothing in the rubble to fall.
@@ -162,5 +161,30 @@ test("a salvager's client finds each blow on the wreck, and shows a rung and the
   blows(8);
   a = asked(breaks);
   expect([c.id(car), a.heard.map(([what, kind]) => [what, kind]), ada.rubble.length]).toEqual(["", [[HEARD_IMPACT, SHELL]], 0]);
-  expect(struckKind(ada.world!, 120, 1.6, 116, 120, 0.6, 118.6)).toBe(0);
+  // Every blow said the wreck it landed on, as the map placed it: the one that took its last rung too.
+  const all = ada.events.filter((e) => e.kind === EVENT_HIT);
+  expect([all.length, all.every((e) => e.struck === BLUE)]).toEqual([16, true]);
+});
+
+test("a hit says what it landed on: a blast's on a wall behind a wreck is the wall's, and a wreck's last blow the wreck's", () => {
+  const c = city([{ kind: "core:zzzzroad_fastback_abandoned_blue", x: 120, z: 120 }, { shape: "wall8", finish: "concrete", x: 120, z: 126 }]);
+  const [car, wall] = c.refs as [number, number];
+  const { h } = c;
+  const ada = h.join("ada");
+  h.run(400);
+  const rec = record(h, ada);
+  ada.events.length = 0;
+  // A blast past the car, at the wall: every hit of it is told as landing where the blast was, and each says its own piece.
+  h.host.combat.blast({ by: rec, x: 120, z: 116, item: k("core:rocket_launcher"), base: 250, type: DMG_EXPLOSIVE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: 0 }, 120, 1.4, 125.5, 2);
+  h.run(200);
+  const blast = ada.events.filter((e) => e.kind === EVENT_HIT);
+  expect([c.hp(car), blast.length, blast.every((e) => e.struck === WALL)]).toEqual([8000, 1, true]);
+  expect(h.world.structs.mapKind(Math.floor(wall / 65536), wall & 0xffff)).toBe(WALL);
+  // The blow that takes a wreck's last rung empties its slot before the hit is read, and still says the wreck.
+  ada.events.length = 0;
+  const pick: Source = { by: rec, x: 120, z: 117, item: k("core:pick_metal"), base: 32, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: 0 };
+  for (let i = 0; i < 24; i++) h.host.combat.hitStructure(pick, car, 120, 0.6, 118.6);
+  h.run(200);
+  const hits = ada.events.filter((e) => e.kind === EVENT_HIT);
+  expect([c.id(car), hits.length, hits.at(-1)!.kill, hits.at(-1)!.struck]).toEqual(["", 24, true, BLUE]);
 });

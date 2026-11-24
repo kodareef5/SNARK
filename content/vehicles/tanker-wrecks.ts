@@ -24,9 +24,10 @@ export const TANKER_WRECKS: Def[] = Object.keys(bounds).flatMap((state): Def[] =
       material: "core:mat_metal",
       color: state === "burnout" ? 230 : 28,
       breaks: wreckWhole(id),
-      salvage: wreckSalvage(rungsOf(LEFT[state] ?? "roof"), "heavy"),
+      // Only the abandoned one has a lesser look to show: every other is salvaged in one rung.
+      salvage: wreckSalvage(rungsOf(LEFT[state] ?? "roof"), "heavy", state === "abandoned" ? 2 : 1),
     },
   ];
 });
 // Stripped, the abandoned tanker is drawn as the stripped one.
-TANKER_WRECKS.push(wreckFormDef("core:tanker_abandoned", "stripped", { mesh: "core:tanker_stripped", shape: "core:shape_tanker_stripped", half: shapeHalf(boxesOf("stripped")), color: 28 }));
+TANKER_WRECKS.push(wreckFormDef("core:tanker_abandoned", "stripped", { mesh: "core:tanker_stripped", shape: "core:shape_tanker_stripped", half: shapeHalf(boxesOf("stripped")), color: 28, hp: 8000 }));

@@ -847,8 +847,8 @@ export class App {
   /** What the session brought this frame is handed to what draws it, and the scene is told the time. */
   private absorb(f: AppFrame): void {
     const session = this.session, hud = this.hud, cam = this.cam, world = f.world, scene = f.scene, sceneMs = f.sceneMs;
-    // A blow on a wreck is told by no row within a rung: what each hit landed on is found here, for its sparks and its sound.
-    this.breaks.blows(session.events, world, session.own.x, session.own.y + f.eyeNow, session.own.z, session.serverTick);
+    // A blow on a wreck is told by no row within a rung: its hit says what it landed on, for its sparks and its sound.
+    this.breaks.blows(session.events, session.serverTick);
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
     this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
     this.tamedHeard = session.tamed.length;

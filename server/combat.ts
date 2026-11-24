@@ -152,6 +152,8 @@ export interface Source {
   silenced?: boolean;
   /** The share of its damage a round keeps at the distance it hit from (`falloff`, shared/sim/damage.ts). 1 where not given. */
   far?: number;
+  /** Flown there, not swung: a slingshot's stone is melee damage and no blow of a tool. */
+  ranged?: boolean;
   /** A vehicle's blow, which its own contact has already sorted (server/vehicle-contacts.ts struck). */
   vehicle?: boolean;
   /** The share of armor the round goes through, 0 to 1 (weapons-plan.md, M12). Omitted, none. */
@@ -1225,6 +1227,8 @@ export class Combat {
       w.u16(shown);
       w.bool(killed);
       w.bool(harm.blocked > 0);
+      // A hit with no zone says the kind of what is built that it struck: nothing built here.
+      if (zone === ZONE_NONE) w.u16(0);
       game.endOwn(ac);
     }
     if (vc && taken > 0) {
@@ -1325,7 +1329,7 @@ export class Combat {
     hit.structures = world.reg.structureMul[src.item] ?? 1;
     // A structure is spared as its owning tribe would be, and a city piece as a tribe's that stands near it. A heap is
     // anyone's to mine, and a street's wreck anyone's to salvage.
-    const mined = placed !== 0 && src.type === DMG_MELEE && (isHeap(world.reg, t.kind[slot]!) || world.reg.breakFamily[placed] === WRECK);
+    const mined = placed !== 0 && src.type === DMG_MELEE && !src.ranged && (isHeap(world.reg, t.kind[slot]!) || world.reg.breakFamily[placed] === WRECK);
     if (placed !== 0) hit.rule = city.capped(src.by) || (!mined && city.spares(src.by, ref, placed, src.type)) ? 0 : (this.dealt(src.by) * rules.num("StructureResistanceMultiplier")) / rules.num("CityResistanceMultiplier");
     else hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * rules.num("StructureResistanceMultiplier");
     const bus = this.ctx.bus;
@@ -1334,10 +1338,12 @@ export class Combat {
     resolveDamage();
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;
+    // What the attacker is told it struck: a city piece as the map placed it, whatever form it has or is about to lose.
+    const struck = placed !== 0 ? placed : t.kind[slot]!;
     let left: number;
     let done: number;
     if (placed !== 0) {
-      done = city.hit(src.by, ref, placed, harm.health, src.type, src.item, x, y, z);
+      done = city.hit(src.by, ref, placed, harm.health, src.type, src.item, x, y, z, src.ranged === true);
       if (!(done > 0)) return 0;
       left = city.left;
     } else if (city.held && !(before - harm.health > 0)) {
@@ -1368,6 +1374,7 @@ export class Combat {
       w.u16(Math.min(65535, Math.max(1, Math.round(done))));
       w.bool(left === 0);
       w.bool(false);
+      w.u16(struck);
       game.endOwn(ac);
     }
     return done;

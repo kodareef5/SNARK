@@ -16,11 +16,32 @@ test("every kind a street sets down is a whole wreck with one to three rungs", (
       const k = reg.index.get(id)!;
       const rungs = reg.salvageYield[k]!.length;
       expect([id, reg.breakFamily[k], formOf(reg, k), rungs >= 1 && rungs <= 3, reg.salvageWork[k]! > 0]).toEqual([id, WRECK, FORM_WHOLE, true, true]);
-      // Where it stopped it has all three, and stripped the two left.
-      if (look.mesh.endsWith("_abandoned")) expect([id, rungs]).toEqual([id, 3]);
-      if (look.mesh.endsWith("_stripped")) expect([id, rungs]).toEqual([id, 2]);
+      // Where it stopped it has all three, and stripped the two left: but the tanker, which has no shell.
+      if (look.body !== "tanker" && look.mesh.endsWith("_abandoned")) expect([id, rungs]).toEqual([id, 3]);
+      if (look.body !== "tanker" && look.mesh.endsWith("_stripped")) expect([id, rungs]).toEqual([id, 2]);
+      // Every rung past the first shows another look: a wreck never stands unchanged through a rung's blows.
+      const kinds = Array.from({ length: rungs }, (_, rung) => rungKind(reg, k, rung));
+      expect([id, new Set(kinds).size]).toEqual([id, rungs]);
     }
   }
+});
+
+test("a wreck with fewer looks than rungs gives the rungs over with its last, for the same work in all", () => {
+  const of = (id: string) => {
+    const k = reg.index.get(id)!;
+    const gives = reg.salvageYield[k]!.map((rung) => Object.fromEntries(rung.map((y) => [reg.ids[y.item]!.slice("core:".length), y.count])));
+    return { rungs: gives.length, work: reg.salvageWork[k]! * gives.length, gives };
+  };
+  // A crashed tanker has no lesser look: one rung of a heavy wreck's 360, which gives all three lists.
+  const crashed = of("core:tanker_impact");
+  expect([crashed.rungs, crashed.work]).toEqual([1, 360]);
+  expect(crashed.gives[0]).toEqual({ polymer: 30, crystal: 12, electronics: 18, gasoline: 12, ingot: 30, oil: 12, fiber: 24, ore: 105 });
+  // The abandoned one is stripped and then gone: its gutting and its cutting up are one rung.
+  const stopped = of("core:tanker_abandoned");
+  expect([stopped.rungs, stopped.work, stopped.gives[0]]).toEqual([2, 360, { polymer: 30, crystal: 12, electronics: 6, gasoline: 12 }]);
+  expect(stopped.gives[1]).toEqual({ ingot: 30, electronics: 12, oil: 12, fiber: 24, ore: 105 });
+  // A bus has both lesser looks, and keeps three rungs of 120.
+  expect([of("core:zzzzroad_bus_abandoned").rungs, of("core:zzzzroad_bus_abandoned").work]).toEqual([3, 360]);
 });
 
 test("a rung's kind is always one a row may take, and a lesser look is drawn and walked as the look it is", () => {

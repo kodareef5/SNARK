@@ -137,14 +137,16 @@ export function lesserLook(l: StreetLook, form: WreckForm): { readonly look: Str
   return held ? { look: held, shape: shapeOf(held) } : left ? { look: left, shape: wreckFormShape(left.mesh) } : undefined;
 }
 
+const healthOf = (l: StreetLook): number => (l.body === "bus" || l.body === "semi" ? 16000 : 8000);
+const FORM_NAMES = Object.keys(WRECK_FORMS) as WreckForm[];
 const STATICS: readonly StructureDef[] = OURS.flatMap((l) => STREET_KINDS[l.mesh]!.map(({ id, paint }): StructureDef => ({
   type: "structure", class: "static", id, mesh: l.mesh, shape: shapeOf(l), half: shapeHalf(l.boxes),
-  color: colourOf(l, paint), hp: l.body === "bus" || l.body === "semi" ? 16000 : 8000, material: "core:mat_metal",
-  breaks: wreckWhole(l.mesh), salvage: wreckSalvage(rungs(l), SIZES[l.body] ?? "car"),
+  color: colourOf(l, paint), hp: healthOf(l), material: "core:mat_metal",
+  breaks: wreckWhole(l.mesh), salvage: wreckSalvage(rungs(l), SIZES[l.body] ?? "car", 1 + FORM_NAMES.filter((form) => lesserLook(l, form)).length),
 })));
 /** A look's lesser looks, each one kind whatever the paint (salvage.ts). */
 const FORMS: readonly StructureDef[] = OURS.flatMap((l) => (Object.keys(WRECK_FORMS) as WreckForm[]).flatMap((form) => {
   const to = lesserLook(l, form);
-  return to ? [wreckFormDef(l.mesh, form, { mesh: to.look.mesh, shape: to.shape, half: shapeHalf(to.look.boxes), color: colourOf(l, l.painted ? paintsOf(l)[0] : undefined) })] : [];
+  return to ? [wreckFormDef(l.mesh, form, { mesh: to.look.mesh, shape: to.shape, half: shapeHalf(to.look.boxes), color: colourOf(l, l.painted ? paintsOf(l)[0] : undefined), hp: healthOf(l) })] : [];
 }));
 export const WRECKS: readonly Def[] = [...SHAPES, ...STATICS, ...FORMS];

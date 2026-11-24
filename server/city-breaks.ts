@@ -26,6 +26,8 @@ const REST_GAP = 0.5;
 const REST_INSET = 0.25;
 /** Bodies are looked for this far past a new heap's reach, and one in it is raised by this much until it has room. */
 const LIFT_REACH = 2, LIFT_STEP = 0.125;
+/** A body in a wreck's lesser look is moved at most this far out of it, in metres. */
+const CLEAR_REACH = 3;
 /** Past this many allowances, those full again are forgotten. */
 const ALLOWANCES_KEPT = 1024;
 /** A breached piece is left at least this much health by the hit that breached it. */
@@ -185,9 +187,10 @@ export class CityBreaks {
 
   /**
    * A hit lands on the city piece `ref`, placed by the map as `mapKind`, at (x, y, z): `raw` is its damage before the
-   * piece's material, of `type`, from the weapon `item`. Returns the damage done, and sets `left` and `broke`.
+   * piece's material, of `type`, from the weapon `item`. `ranged` is a hit that flew there, which mines and salvages
+   * nothing. Returns the damage done, and sets `left` and `broke`.
    */
-  hit(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number): number {
+  hit(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number, ranged = false): number {
     const { world, rules } = this.ctx;
     const reg = world.reg, structs = world.structs;
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
@@ -198,15 +201,16 @@ export class CityBreaks {
     const takes = reg.structTakes[mapKind];
     const body = takes ? raw * takes[type]! : 0;
     const form = formOf(reg, t.kind[slot]!);
-    const family = reg.breakFamily[mapKind]!;
+    // A wreck's lesser look that a map set down itself has no rungs: it is a plain piece, as any wreck once was.
+    const family = reg.breakFamily[mapKind] === WRECK && !reg.salvageYield[mapKind] ? 0 : reg.breakFamily[mapKind]!;
     if (!rules.on("AllowCityDamage")) {
       // The city as it was: explosives alone harm it, and a piece out of health is gone, whatever it is.
       if (type !== DMG_EXPLOSIVE || !(body > 0)) return 0;
       return hp - body > 0 ? this.keep(ref, mapKind, hp, hp - body) : this.fell(by, ref, false, x, y, z, hp);
     }
-    if (family === WRECK) return this.salvage(by, ref, mapKind, raw, type, item, x, y, z);
+    if (family === WRECK) return this.salvage(by, ref, mapKind, raw, type, item, x, y, z, ranged);
     if (form === FORM_HEAP) {
-      if (type === DMG_MELEE) return this.mine(by, ref, mapKind, item);
+      if (type === DMG_MELEE) return ranged ? 0 : this.mine(by, ref, mapKind, item);
       // An explosive clears a heap, and what it held is lost.
       if (type !== DMG_EXPLOSIVE || !(body > 0)) return 0;
       return hp - body > 0 ? this.keep(ref, mapKind, hp, hp - body) : this.fell(by, ref, false, x, y, z, hp);
@@ -356,6 +360,45 @@ export class CityBreaks {
   }
 
   /**
+   * Moves each living body the piece `ref` is now solid round out of it, to the nearest free place straight away from
+   * its middle. A wreck's lesser look is not all inside the look it was: a stripped car's door stands ajar where whoever
+   * stripped it stood. One with no such place is stood on top of it, as on a new heap.
+   */
+  clear(ref: number): void {
+    const world = this.ctx.world, reg = world.reg, structs = world.structs, ents = world.ents, dims = world.dims;
+    const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
+    const kind = t.kind[slot]!;
+    if (kind === 0) return;
+    const [x, z, top] = [t.x[slot]!, t.z[slot]!, t.y[slot]! + structs.top[kind]!];
+    const reach = structs.spread[kind]! + LIFT_REACH;
+    const cx0 = Math.max(0, Math.floor((x - reach) / 64)), cx1 = Math.min(dims.chunksX - 1, Math.floor((x + reach) / 64));
+    const cz0 = Math.max(0, Math.floor((z - reach) / 64)), cz1 = Math.min(dims.chunksZ - 1, Math.floor((z + reach) / 64));
+    let held = false;
+    for (let cz = cz0; cz <= cz1; cz++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        for (let e = ents.chunkHead[cz * dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
+          const body = ents.kind[e]!;
+          if ((ents.flags[e]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE || ents.seat[e] !== 0 || reg.vehicle[body]) continue;
+          const [r, tall] = [reg.bodyRadius[body]!, reg.bodyHeight[body]!];
+          if (!(r > 0) || ents.y[e]! >= top || !capsuleBox(structs, ref, ents.x[e]!, ents.y[e]!, ents.z[e]!, r, tall, 0)) continue;
+          let [dx, dz] = [ents.x[e]! - x, ents.z[e]! - z];
+          const far = Math.hypot(dx, dz);
+          [dx, dz] = far > 1e-3 ? [dx / far, dz / far] : [1, 0];
+          let out = false;
+          for (let d = LIFT_STEP; d <= CLEAR_REACH && !out; d += LIFT_STEP) {
+            if (!capsuleFree(world, ents.x[e]! + dx * d, ents.y[e]!, ents.z[e]! + dz * d, r, tall)) continue;
+            ents.x[e] = ents.x[e]! + dx * d;
+            ents.z[e] = ents.z[e]! + dz * d;
+            out = true;
+          }
+          if (!out) held = true;
+        }
+      }
+    }
+    if (held) this.lift(ref);
+  }
+
+  /**
    * Whether the piece `ref` rests on the ground or on a piece that stands under its foot and is not `going` too: a look
    * straight down through its footprint. What holds up a piece of no building, and every piece where buildings are not
    * judged for support (CityCollapse off, or a map without its buildings).
@@ -431,22 +474,23 @@ export class CityBreaks {
 
   /**
    * A hit lands on a wreck. A survivor's blow is work, a tool's power as on a heap: it strikes that share of a rung's
-   * health, and the rung gives that share of what it holds, times WreckYieldMultiplier. Any other harm is by what the
+   * health, over CityResistanceMultiplier, and the rung gives that share of what it holds, times WreckYieldMultiplier. Any other harm is by what the
    * wreck's material takes, and gives nothing. A wreck is drawn as its rung's look, and with its last rung gone it is
    * taken, its slot left the map's.
    */
-  private salvage(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number): number {
+  private salvage(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number, ranged: boolean): number {
     const { world, rules, items, progression } = this.ctx;
     const reg = world.reg, structs = world.structs;
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
     const hp = t.hp[slot]!;
-    const blow = type === DMG_MELEE && by !== null && by.kind === this.ctx.survivor;
+    const blow = type === DMG_MELEE && !ranged && by !== null && by.kind === this.ctx.survivor;
     let harm = raw * (reg.structTakes[mapKind]?.[type] ?? 0);
     const force = rules.num("PlayerHarvestingDamageMultiplier");
     if (blow) {
       if (!rules.on("CityToolSalvage")) return 0;
       const tool = item !== 0 ? (reg.defs[item] as ItemDef).tool : undefined;
-      harm = (tool?.power ?? 1) * force * workHealth(reg, mapKind);
+      // A tougher city takes as many more blows, and gives the same.
+      harm = ((tool?.power ?? 1) * force * workHealth(reg, mapKind)) / rules.num("CityResistanceMultiplier");
     }
     if (!(harm > 0)) return 0;
     // As the row keeps it, so the next blow's share starts where this one's ends.
@@ -481,6 +525,7 @@ export class CityBreaks {
     if (kind !== t.kind[slot]) {
       structs.swap(ref, kind, left);
       this.spend(by);
+      this.clear(ref);
     } else {
       structs.wear(ref, left);
       this.silent++;
