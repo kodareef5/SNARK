@@ -365,7 +365,7 @@ test("each of the hammer's actions has a key, a pad button and a button a finger
   expect(row.when!(app, "KeyT", true, false)).toBe(true);
   // Every key the row takes has a pad button, but the two a pad reaches through the list.
   expect(row.keys).toEqual(["KeyQ", "KeyR", "KeyT", "KeyX", "KeyF", "KeyG", "Delete", "ArrowUp", "ArrowDown"]);
-  expect(Object.keys(row.pad!).sort()).toEqual(["ArrowDown", "ArrowUp", "KeyF", "KeyQ", "KeyT", "KeyX"]);
+  expect(Object.keys(row.pad!).sort()).toEqual(["ArrowDown", "ArrowUp", "KeyQ", "KeyT", "KeyX"]);
   // A finger: the strip's buttons carry no key's name, and each does its action.
   app.pointer(0, 0, 5, 5, 0, 1);
   app.pointer(1, 0, 5, 5, 0, 1);
@@ -386,6 +386,10 @@ test("each of the hammer's actions has a key, a pad button and a button a finger
   tap("ArrowUp", 1);
   run(50);
   expect([hammer.mirror, hammer.raise, app.ui.inputDevice, text(KEY_HAMMER_BUTTON + HAMMER_TURN)]).toEqual([false, 1, 1, "RB  Turn"]);
+  // The d-pad's right is the middle button, which fills: here there is no plan to fill.
+  app.mouseButton(1, true, 1);
+  app.mouseButton(1, false, 1);
+  expect([hammer.notice, app.visor.held]).toEqual(["No plan of your tribe's is near", false]);
   // The wheel turns the template, and X puts it away.
   expect(app.wheel(100)).toBe(true);
   expect(hammer.turn).toBe(2);

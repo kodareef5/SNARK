@@ -412,7 +412,9 @@ export class App {
     const building = this.builder.active && this.session.driving < 0 && this.ui.wantsPointerLock;
     // The middle button holds a helmet's visor up (visor.ts). With a piece in hand it picks the built piece looked at.
     if (button === 1) {
-      if (building && down) this.builder.pick(this.session, this.reg);
+      // With the template hammer it fills the plan, as F does: a pad's d-pad right presses it.
+      if (this.hammer.active && this.session.driving < 0 && this.ui.wantsPointerLock) { if (down) this.hammer.fill(); }
+      else if (building && down) this.builder.pick(this.session, this.reg);
       else this.visor.held = down && this.ui.wantsPointerLock;
       return;
     }

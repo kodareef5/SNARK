@@ -715,11 +715,12 @@ export class Hammer {
 const hammering = (c: KeyContext): boolean => c.hammer.active && c.session.driving < 0 && c.ui.wantsPointerLock;
 
 // The hammer's keys while it is in hand: the builder's own for turning, raising and putting away, T for the list of
-// templates, F to fill and G to copy a box. The first button copies or sets down (App.mouseButton).
+// templates, F to fill and G to copy a box. The first button copies or sets down, and the middle one fills, which is
+// the pad's d-pad right (App.mouseButton).
 export const HAMMER_KEYS: readonly KeyRow[] = [{
   name: "hammer",
   keys: ["KeyQ", "KeyR", "KeyT", "KeyX", "KeyF", "KeyG", "Delete", "ArrowUp", "ArrowDown"],
-  pad: { KeyX: 1, KeyT: 3, KeyQ: 14, KeyF: 15, ArrowUp: 12, ArrowDown: 13 },
+  pad: { KeyX: 1, KeyT: 3, KeyQ: 14, ArrowUp: 12, ArrowDown: 13 },
   guide: [
     { code: "Mouse0", group: G_BUILD, title: "Hammer: copy / set down", detail: "With the template hammer: copy the base you look at, or set down the template in hand.", sheet: G_BUILD },
     { code: "KeyF", group: G_BUILD, title: "Hammer: fill the plan", detail: "Build every piece of the plan that you carry the piece for, foundations first.", sheet: G_BUILD },

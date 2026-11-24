@@ -164,11 +164,6 @@ const INSTRUMENTS: Def[] = [
   // GPS: weight 0.5; 5 polymer and 20 electronics at the fabricator; level 52, 21 points, after the compass.
   { type: "item", class: "instrument", id: id("gps"), label: "GPS", stack: 1, weight: 0.5, color: 11 },
   ...made("gps", "GPS", 52, 21, 1, 5, [["polymer", 5], ["electronics", 20]], "fabricator", ["compass"]),
-  // Template hammer: in the hand it copies a base as a template, sets a template down as a plan and fills the plan
-  // (client/core/hammer.ts, server/plans.ts). ARK's Template Hammer is level 26 for 5 points. Its materials are chosen,
-  // in wood's range, and its weight is the wooden club's 2.
-  { type: "item", class: "instrument", id: id("template_hammer"), label: "template hammer", stack: 1, weight: 2, color: 3 },
-  ...made("template_hammer", "Template hammer", 26, 5, 1, 5, [["wood", 30], ["stone", 10], ["fiber", 20], ["hide", 10]], undefined),
 ];
 
 // ---- Armour. Worn as hide is drawn, in its own colours. What a set does beyond its armour is not built: fur's and
