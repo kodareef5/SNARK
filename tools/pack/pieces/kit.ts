@@ -439,3 +439,200 @@ export function beamRings(rng: { uniform(a: number, b: number): number }, a: Vec
   }
   return { rings, base, length: len, n, c, hw, hh };
 }
+
+// Round and cut-out work, added for thatch: poles shaded round, sheets seen from both sides, and solids of any faces.
+
+/** One polygon of a solid as a recipe hands it over, a texture coordinate to a corner. */
+export interface Patch {
+  points: Vec[];
+  uvs: Uv[];
+  mat: string;
+  /** Faces of one group are shaded as one round surface where they meet: a pole's side, a bundle's belly. */
+  group?: number;
+  /** As a face's: the axis it is a prism along and may cross a yield ring uncut. */
+  along?: number;
+}
+
+const GROUP_MARK = "\u0000";
+
+/**
+ * A shape with round parts. Faces of one group share a normal at each point they share, and a level drawn with
+ * materials has one vertex wherever position, normal, texture coordinate and material agree.
+ */
+export class RoundShape extends Shape {
+  private readonly groups = new WeakMap<object, number>();
+  private last = 0;
+
+  /** A group no faces have yet. */
+  group(): number {
+    return ++this.last;
+  }
+
+  private take(patches: readonly Patch[]): this {
+    for (const f of patches) {
+      const face = { points: [...f.points], uvs: [...f.uvs], mat: f.mat, ...(f.along === undefined ? {} : { along: f.along }) };
+      if (f.group !== undefined) this.groups.set(face, f.group);
+      this.faces.push(face);
+    }
+    return this;
+  }
+
+  /** Closed solids of `patches`, which may go round either way: each is turned to go round as its neighbours do, and to look outward. */
+  skin(patches: readonly Patch[]): this {
+    return this.take(aligned(patches, true));
+  }
+
+  /** A sheet with no thickness that is seen from both sides: each patch, and its back turned the other way. */
+  card(patches: readonly Patch[]): this {
+    const front = aligned(patches, false);
+    return this.take([...front, ...front.map((f) => ({ ...f, points: [...f.points].reverse(), uvs: [...f.uvs].reverse(), ...(f.group === undefined ? {} : { group: -f.group }) }))]);
+  }
+
+  /** A cut makes faces anew, so each carries its group through it in its material's name. */
+  override cut(axis: number, at: number): this {
+    for (const f of this.faces) {
+      const g = this.groups.get(f);
+      if (g !== undefined) f.mat = `${f.mat}${GROUP_MARK}${g}`;
+    }
+    super.cut(axis, at);
+    for (const f of this.faces) {
+      const mark = f.mat.indexOf(GROUP_MARK);
+      if (mark < 0) continue;
+      this.groups.set(f, Number(f.mat.slice(mark + 1)));
+      f.mat = f.mat.slice(0, mark);
+    }
+    return this;
+  }
+
+  override lod(materials: readonly string[] | null, colour: (mat: string) => number): SourceLod & { sections?: Uint8Array } {
+    const flat = super.lod(materials, colour);
+    if (!materials) return flat;
+    const [p, n, uv] = [flat.positions, flat.normals!, flat.uvs!];
+    // A group's normal at a point: its faces' normals there, each by the angle it has at that corner.
+    const sums = new Map<string, [number, number, number]>();
+    const keys: (string | undefined)[] = [];
+    const mats: number[] = [];
+    let v = 0;
+    for (const f of this.faces) {
+      const g = this.groups.get(f);
+      const count = f.points.length;
+      for (let k = 0; k < count; k++, v++) {
+        mats.push(materials.indexOf(f.mat));
+        if (g === undefined) {
+          keys.push(undefined);
+          continue;
+        }
+        const key = `${g}|${p[v * 3]},${p[v * 3 + 1]},${p[v * 3 + 2]}`;
+        keys.push(key);
+        const [a, b] = [unit(sub(f.points[(k + 1) % count]!, f.points[k]!)), unit(sub(f.points[(k + count - 1) % count]!, f.points[k]!))];
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot(a, b))));
+        const sum = sums.get(key) ?? [0, 0, 0];
+        for (let c = 0; c < 3; c++) sum[c]! += n[v * 3 + c]! * angle;
+        sums.set(key, sum);
+      }
+    }
+    keys.forEach((key, at) => {
+      if (key === undefined) return;
+      const sum = unit(sums.get(key)!);
+      if (length(sum) > 0.5) n.set(sum, at * 3);
+    });
+    // One vertex where all of a corner's values agree.
+    const ids = new Map<string, number>();
+    const place = new Uint32Array(keys.length);
+    const kept: number[] = [];
+    for (let at = 0; at < keys.length; at++) {
+      const key = `${mats[at]},${flat.colors[at]},${p[at * 3]},${p[at * 3 + 1]},${p[at * 3 + 2]},${n[at * 3]},${n[at * 3 + 1]},${n[at * 3 + 2]},${uv[at * 2]},${uv[at * 2 + 1]}`;
+      let id = ids.get(key);
+      if (id === undefined) {
+        ids.set(key, (id = kept.length));
+        kept.push(at);
+      }
+      place[at] = id;
+    }
+    const pick = (from: ArrayLike<number>, size: number): number[] => kept.flatMap((at) => Array.from({ length: size }, (_, c) => from[at * size + c]!));
+    const out: SourceLod & { sections?: Uint8Array } = {
+      positions: Float32Array.from(pick(p, 3)), colors: Uint8Array.from(pick(flat.colors, 1)), indices: flat.indices.map((at) => place[at]!),
+      uvs: Float32Array.from(pick(uv, 2)), normals: Float32Array.from(pick(n, 3)), sections: flat.sections!,
+    };
+    out.tangents = tangentsOf({ positions: out.positions, indices: out.indices, uvs: out.uvs!, normals: out.normals! });
+    return out;
+  }
+}
+
+/**
+ * `patches` with each turned to go round the way those it shares an edge with do. With `outward`, every joined set is a
+ * closed solid and is turned to look out of itself.
+ */
+function aligned(patches: readonly Patch[], outward: boolean): Patch[] {
+  const out = patches.map((f) => ({ ...f, points: [...f.points], uvs: [...f.uvs] }));
+  const name = (p: Vec): string => `${p[0]},${p[1]},${p[2]}`;
+  // Per edge, the patches along it and the way each runs it.
+  const edges = new Map<string, [number, boolean][]>();
+  out.forEach((f, at) => f.points.forEach((p, k) => {
+    const [a, b] = [name(p), name(f.points[(k + 1) % f.points.length]!)];
+    if (a === b) return;
+    const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+    edges.set(key, [...(edges.get(key) ?? []), [at, a < b]]);
+  }));
+  const turned = new Array<boolean | undefined>(out.length);
+  const sets: number[][] = [];
+  out.forEach((_, first) => {
+    if (turned[first] !== undefined) return;
+    turned[first] = false;
+    const set = [first];
+    for (let q = 0; q < set.length; q++) {
+      const f = out[set[q]!]!;
+      f.points.forEach((p, k) => {
+        const [a, b] = [name(p), name(f.points[(k + 1) % f.points.length]!)];
+        if (a === b) return;
+        const way = (a < b) !== turned[set[q]!];
+        for (const [other, theirs] of edges.get(a < b ? `${a}|${b}` : `${b}|${a}`)!) {
+          if (turned[other] !== undefined) continue;
+          // Two faces at an edge go round alike when they run it opposite ways.
+          turned[other] = theirs === way;
+          set.push(other);
+        }
+      });
+    }
+    sets.push(set);
+  });
+  for (const set of sets) {
+    let volume = 0;
+    for (const at of set) {
+      const f = out[at]!;
+      const sign = turned[at] ? -1 : 1;
+      for (let k = 2; k < f.points.length; k++) volume += sign * dot(f.points[0]!, cross(f.points[k - 1]!, f.points[k]!));
+    }
+    for (const at of set) {
+      if (turned[at] === (outward && volume < 0)) continue;
+      out[at]!.points.reverse();
+      out[at]!.uvs.reverse();
+    }
+  }
+  return out;
+}
+
+/**
+ * A direction and two axes square to it at each point of a path, the first carried along so the frame does not twist.
+ * `up` sets the first where the path does not run along it.
+ */
+export function pathFrames(path: readonly Vec[], up: Vec = [0, 1, 0]): [Vec, Vec, Vec][] {
+  const out: [Vec, Vec, Vec][] = [];
+  let prev: Vec | null = null;
+  path.forEach((_, i) => {
+    const d = unit(sub(path[Math.min(i + 1, path.length - 1)]!, path[Math.max(i - 1, 0)]!));
+    const e1: Vec = prev ? unit(sub(prev, scale(d, dot(prev, d)))) : unit(cross(d, Math.abs(dot(d, up)) < 0.9 ? up : [1, 0, 0]));
+    out.push([d, e1, cross(d, e1)]);
+    prev = e1;
+  });
+  return out;
+}
+
+/** The rings of a round pole along `path`: `sides` points at each, `radius(i, j)` from the path, turned by `twist`. */
+export function poleRings(path: readonly Vec[], sides: number, twist: number, radius: (i: number, j: number) => number, up?: Vec): Vec[][] {
+  return pathFrames(path, up).map(([, e1, e2], i) => Array.from({ length: sides }, (_, j): Vec => {
+    const th = twist + (2 * Math.PI * j) / sides;
+    const r = radius(i, j);
+    return add(path[i]!, add(scale(e1, r * Math.cos(th)), scale(e2, r * Math.sin(th))));
+  }));
+}
