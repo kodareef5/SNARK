@@ -27,7 +27,7 @@ import { Occasions, type DrawnGait, type Happening, type ShotEnd, type Viewer } 
 import { corpseDownAt, type Corpse } from "../ragdoll.ts";
 import { LOW } from "../render/atmosphere.ts";
 import type { Camera } from "../render/camera.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_LIT, DETAIL_PUFF, DETAIL_SMOKE, DETAIL_TIRE, DETAIL_WAKE, GLOW_STEPS, MAX_DETAILS, type FramePacket } from "../render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_LIT, DETAIL_PUFF, DETAIL_SCORCH, DETAIL_SMOKE, DETAIL_WAKE, GLOW_STEPS, MAX_DETAILS, SMOKE_STEPS, type FramePacket } from "../render/packet.ts";
 import type { RemoteSample } from "../session.ts";
 import { BREAK_NEAR, BREAK_SHARE, breakEffects } from "./breaks.ts";
 import { GROUND_WATER, dustColour, groundAt } from "./ground.ts";
@@ -43,6 +43,19 @@ const GROUND_NEAR = 3;
 const FLASH_SECONDS = 0.25;
 /** Seconds over which the fill a bodiless burst was made for stops being held against the next. */
 const PROMISE_SECONDS = 1.5;
+/**
+ * The share of the tier's fill of the screen that bursts with no body may take in all: the rockets' smoke and the
+ * fire's lobes have the rest (render/blasts.ts TRAIL_SHARE, LOBE_SHARE).
+ */
+export const BURST_SHARE = 0.5;
+/** The share of its life a thick puff has had when it begins to tear, and how far it is torn by its end. */
+/**
+ * A burst's particles are each held against the screen's fill for what they cover at their largest and nearest. They
+ * are not all so at once, and this is the share of that sum the frames measured show for a blast.
+ */
+const TOGETHER = 0.45;
+const TEAR_FROM = 0.55;
+const TEAR_MOST = 0.7;
 /** The ground wind is the low clouds' turned down to this share, and it gusts by this share of itself. */
 const WIND_SHARE = 0.1;
 const GUST = 0.4;
@@ -149,6 +162,8 @@ export class Details {
   private screen = 1;
   /** A burst's own random numbers, seeded by `burst`. */
   private seeded = 0;
+  /** The blended fill of the details' own particles in the last frame written, without what `fill` is given besides. */
+  private own = 0;
   /** The screen's fill the bodiless bursts of the last seconds were made for, falling away as they do. */
   private promised = 0;
 
@@ -159,7 +174,7 @@ export class Details {
     this.boatKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "boat" ? 1 : 0);
     this.rotorKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "rotor" ? 1 : 0);
     // A pack made before an effect could glow says nothing of it.
-    const effects = (details?.effects ?? []).map((e) => (e.opacity === undefined ? { ...e, glow: 0, opacity: 1, thick: false, stain: false } : e));
+    const effects = (details?.effects ?? []).map((e) => (e.appear === undefined ? { ...e, glow: e.glow ?? 0, opacity: e.opacity ?? 1, thick: e.thick ?? false, stain: e.stain ?? false, appear: 0.08 } : e));
     this.pictures = details?.pictures ?? [];
     this.treeDust = effects.findIndex(e => e.id.includes("dust") && e.colour !== "body" && e.pass === "blend");
     this.breakFirst = effects.length;
@@ -269,16 +284,20 @@ export class Details {
       colour[2] = e.colour[2];
     } else colour[0] = colour[1] = colour[2] = 128;
     let n = count >= 0 ? count : e.count[0] + Math.floor(this.next() * (e.count[1] - e.count[0] + 1));
-    n = n * tier.details.share * Math.min(1, BURST_NEAR / Math.max(d, 0.01));
+    // Fewer far off. Thick puffs are thinned less and are each larger there, so a far blast's smoke still marks where it struck.
+    const near = Math.min(1, BURST_NEAR / Math.max(d, 0.01));
+    n = n * tier.details.share * (e.thick ? Math.sqrt(near) : near);
     n = n > 0 ? Math.max(1, Math.round(n)) : 0;
+    const sized = e.thick ? scale * (1.35 - 0.35 * near) : scale;
     // A flash is gone in a few frames, and is not held against the screen's fill. The rest is, each particle for what
     // it will cover where it goes: against what is seen now and what the bursts just made will grow to, whichever is more.
     const held = e.pass === "blend" && e.life[1] >= FLASH_SECONDS;
-    let room = held ? Math.min(most, tier.details.fill - Math.max(this.fill, this.promised)) : Infinity;
-    const half = Math.min(most, 0.5 * tier.details.fill);
-    // What one covers through its life at a metre: its size as it is midway, not at its largest.
-    const big = e.size[1] * (1 + e.grow) * 0.5 * scale;
-    const area = (big * big * e.aspect * e.opacity) / this.screen;
+    let room = held ? Math.min(most, BURST_SHARE * tier.details.fill - Math.max(this.own, this.promised)) : Infinity;
+    const half = Math.min(most, 0.5 * BURST_SHARE * tier.details.fill);
+    // What one covers at a metre when it covers most: its size as its fade begins.
+    const big = e.size[1] * (1 + (e.grow - 1) * ease(1 - e.fade / e.life[1])) * sized;
+    // A low wave of the ground's dust is half under the ground it rolls over.
+    const area = ((e.thick && e.colour === "ground" && tint < 0 && e.up < 0.2 ? 0.5 : 1) * TOGETHER * big * big * e.aspect * e.opacity) / this.screen;
     const lies = e.face === "flat" || e.settle > 0;
     // Seconds it goes before the air has stopped it.
     const goes = Math.min(e.life[1], 1 / Math.max(e.drag, 0.25));
@@ -322,7 +341,7 @@ export class Details {
       const vx = (ax * c + bx * w) * across + nx * out, vy = (ay * c + by * w) * across + ny * out, vz = (az * c + bz * w) * across + nz * out;
       // Every number of it is drawn whether it is made or not, so one left out changes none of the others.
       const ends = e.life[0] + this.next() * (e.life[1] - e.life[0]);
-      const size = (e.size[0] + this.next() * (e.size[1] - e.size[0])) * scale;
+      const size = (e.size[0] + this.next() * (e.size[1] - e.size[0])) * sized;
       const heading = this.next() * Math.PI * 2, pitch = (this.next() - 0.5) * 0.8, phase = this.next() * Math.PI * 2, swayTo = this.next() * Math.PI * 2;
       const picture = this.pictures[e.pictures[Math.floor(this.next() * e.pictures.length)]!]!;
       const shade = 1 + e.vary * (this.next() * 2 - 1);
@@ -364,8 +383,8 @@ export class Details {
       pool.effect[i] = effect;
       this.looks(i, e, picture);
       pool.colourA[i] = pool.colourB[i] = (shaded(colour[0]!, shade) | (shaded(colour[1]!, shade) << 8) | (shaded(colour[2]!, shade) << 16) | (255 << 24)) >>> 0;
-      // A thick puff's second colour is its seed.
-      if (e.thick) pool.colourB[i] = puff;
+      // A thick puff's second colour is its seed, and a stain's.
+      if (e.thick || e.stain) pool.colourB[i] = puff;
     }
     this.fill += spent;
     this.promised += spent;
@@ -376,8 +395,8 @@ export class Details {
   private looks(i: number, e: DetailEffect, picture: DetailPicture): void {
     const pool = this.pool;
     pool.cell[i] = picture.cell;
-    pool.flags[i] = e.glow > 0 ? DETAIL_GLOW : e.thick ? DETAIL_SMOKE : e.stain ? DETAIL_TIRE : picture.flat | (e.lit ? DETAIL_LIT : 0) | (e.face === "camera" ? DETAIL_PUFF : 0);
-    pool.grey[i] = e.thick ? 255 : Math.max(1, Math.min(255, Math.round(e.glow > 0 ? e.glow * GLOW_STEPS : picture.grey * 255)));
+    pool.flags[i] = e.glow > 0 ? DETAIL_GLOW : e.thick ? DETAIL_SMOKE : e.stain ? DETAIL_SCORCH : picture.flat | (e.lit ? DETAIL_LIT : 0) | (e.face === "camera" ? DETAIL_PUFF : 0);
+    pool.grey[i] = e.thick ? SMOKE_STEPS : e.stain ? 255 : Math.max(1, Math.min(255, Math.round(e.glow > 0 ? e.glow * GLOW_STEPS : picture.grey * 255)));
   }
 
   /** What a species of `kind` answers, as it plays `anim`. */
@@ -887,8 +906,9 @@ export class Details {
           shows *= Math.min(1, Math.max(0, (d - 0.3) / EYE_FADE));
           if (shows <= 0) continue;
           const area = (4 * half * half * e.aspect * pool.widthScale[i]!) / (Math.max(d, 0.5) ** 2 * 4 * t * t * cam.aspect);
-          // What lies flat is seen as thin as the eye is low over it, and no card covers more than the screen.
-          fill += Math.min(1, area * (e.face === "flat" || pool.landed[i]! >= 0 ? Math.max(0.1, Math.abs(y) / Math.max(d, 0.5)) : 1)) * shows;
+          // What lies flat is seen as thin as the eye is low over it, a thick puff only what of it is over its floor, and no card covers more than the screen.
+          const seen = e.face === "flat" || pool.landed[i]! >= 0 ? Math.max(0.1, Math.abs(y) / Math.max(d, 0.5)) : e.thick ? Math.min(1, Math.max(0.1, 0.5 + (pool.y[i]! - pool.floor(i, pool.x[i]!, pool.z[i]!, hf)) / (4 * half))) : 1;
+          fill += Math.min(1, area * seen) * shows;
         }
         const n = cut + blended;
         if (n >= MAX_DETAILS - reserve) {
@@ -955,9 +975,11 @@ export class Details {
           const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
           sides(out, o, ax * half, ay * half, az * half, (bx * cr + nx * sr) * width, (by * cr + ny * sr) * width, (bz * cr + nz * sr) * width);
         }
-        out[o + DETAIL.floor] = pool.floor(i, pool.x[i]!, pool.z[i]!, hf) - cy;
+        // A thick puff that lies is not faded into the floor it lies on.
+        out[o + DETAIL.floor] = lying && e.thick ? -1e6 : pool.floor(i, pool.x[i]!, pool.z[i]!, hf) - cy;
         words[o + DETAIL.colourA] = pool.colourA[i]!;
-        words[o + DETAIL.colourB] = pool.colourB[i]!;
+        // A thick puff tears as it ages: its second colour's second byte, over its seed.
+        words[o + DETAIL.colourB] = e.thick && !lying ? (pool.colourB[i]! & 255) | (Math.round(255 * TEAR_MOST * Math.min(1, Math.max(0, (pool.age[i]! / pool.end[i]! - TEAR_FROM) / (1 - TEAR_FROM)))) << 8) : pool.colourB[i]!;
         words[o + DETAIL.misc] = (pool.cell[i]! | (pool.flags[i]! << 8) | (Math.round(shows * 255) << 16) | (pool.grey[i]! << 24)) >>> 0;
         this.tagged[n] = p.detailTag[n] = this.muted[pool.effect[i]!]!;
         if (pass === 0) cut++;
@@ -980,7 +1002,7 @@ export class Details {
       }
     }
     p.detailCount = p.detailOwn = cut + blended;
-    p.detailFill = this.fill = fill;
+    p.detailFill = this.fill = this.own = fill;
     return cut;
   }
 }

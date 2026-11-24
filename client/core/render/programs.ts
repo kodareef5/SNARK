@@ -6,7 +6,7 @@ import type { PackMaterial } from "../../../shared/pack/pack.ts";
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
-import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./detailtext.ts";
+import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_LIT_VERTEX, DETAIL_VERTEX } from "./detailtext.ts";
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
@@ -145,7 +145,7 @@ const MAKE = {
   // Small details (packet.ts DRAW_DETAILS): on a lit tier their pictures, lit and in the sun's shadow; on low poly their flat shapes.
   details: (tier, _, hard = false, light = false): ProgramText =>
     tier.lit
-      ? { vertex: DETAIL_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
+      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
       : { vertex: DETAIL_VERTEX, fragment: DETAIL_FLAT_FRAGMENT, defines: "", samplers: {} },
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
   depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uPieces: UNIT.pieces } }),
@@ -176,8 +176,8 @@ void main() {
 }`, defines: drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "", samplers: MESH }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),
   // Fire (packet.ts DRAW_FIRE): a rocket's flame and a fireball's lobes, worked out with no texture read (fire-light.ts).
-  // A lit tier lights the soot from the frame block, and a tier that pays for it reads the value noise.
-  fire: (tier, _, __, light = false) => ({ vertex: FIRE_VERTEX, fragment: FIRE_FRAGMENT, defines: (tier.lit ? "#define FIRE_LIT\n" : "") + (tier.bursts.noise ? "#define FIRE_NOISE\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: {} }),
+  // A lit tier lights the soot from the frame block, and a tier reads the octaves of value noise it pays for.
+  fire: (tier, _, __, light = false) => ({ vertex: FIRE_VERTEX, fragment: FIRE_FRAGMENT, defines: (tier.lit ? "#define FIRE_LIT\n" : "") + (tier.bursts.noise > 0 ? "#define FIRE_NOISE\n" : "") + (tier.bursts.noise > 1 ? "#define FIRE_FINE\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: {} }),
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),

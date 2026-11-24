@@ -4,7 +4,7 @@
 //
 // A draw of fire (packet.ts DRAW_FIRE) is instances of `core:fire_cone` or `core:fire_lobe` (tools/pack/fire.ts). An
 // instance's twenty bytes say where it is and how it burns (`putFlame`, `putLobe`), and the draw's effect says which of
-// the two it is and, for a flame, the frame's phase. The vertex text shapes the mesh: a flame's length flutters, a
+// the two it is, a flame's phase of the frame, and a blast's soot's shade and its heat. The vertex text shapes the mesh: a flame's length flutters, a
 // fireball's outline boils. The fragment text gives light already weighed by how much of it shows, and how much of what
 // is behind it it hides, which is little for fire and most for the soot it cools to.
 //
@@ -22,19 +22,24 @@ export const FIRE_LOBE = 1;
 
 /** A flame's flutter, bands and flecks all come round in this long, so its phase never jumps. */
 export const FLAME_TURN_MS = 2560;
-/** A flame's widest, as a share of its length, and metres between its shock diamonds. */
+/** A flame's widest, as a share of its length, and metres from its nozzle to its first shock diamond: the next are farther apart. */
 export const FLAME_WIDE = 0.1;
-export const DIAMOND = 0.17;
+export const DIAMOND = 0.12;
 /** How much longer and wider a flame is as its motor lights. */
 export const IGNITE_LONG = 0.8;
 export const IGNITE_WIDE = 0.5;
 /** A flame's length is told in these to a metre, and a lobe's radius in these. */
 export const FLAME_STEPS = 32;
 export const LOBE_STEPS = 2048;
+/** How far under a lobe's middle the ground is, is told in these to one of its radii; LOBE_NO_FLOOR says there is none. */
+export const FLOOR_STEPS = 64;
+export const LOBE_NO_FLOOR = 255;
+/** The share of its radius over the ground within which a lobe fades into it, so the ground does not cut it flat. */
+export const FLOOR_FADE = 0.35;
 /** How much of what is behind it a flame hides where it shows whole, a fireball's fire, and its soot. */
 export const FLAME_HIDES = 0.9;
 export const FIRE_HIDES = 0.85;
-export const SOOT_HIDES = 0.62;
+export const SOOT_HIDES = 0.55;
 /** Noise cells across a lobe's radius, how far they drift up in a lobe's life, and how many before the noise repeats. */
 export const LOBE_CELLS = 2.3;
 export const LOBE_FLOW = 1.5;
@@ -87,12 +92,12 @@ export function flameLight(out: Float64Array | number[], around: number, along: 
   const fuel = Math.max(clamp(1 - along), 0.9 * down);
   const ripple = Math.sin(TAU * around + 17 * along - 8 * phase + s);
   const depth = clamp(facing + 0.9 * axial * axial - 0.1 + 0.14 * along * ripple);
-  const beat = 0.5 + 0.5 * Math.cos((TAU / DIAMOND) * along * metres - 8 * phase + s);
-  const cells = beat * beat * beat * fuel;
+  // Shock diamonds: close set and bright by the nozzle, farther apart and fainter along it, travelling out.
+  const run = (along * metres) / DIAMOND;
+  const beat = 0.5 + 0.5 * Math.cos(TAU * Math.sqrt(run * Math.sqrt(run)) - 8 * phase + s);
+  const cells = beat * beat * beat * fuel * fuel;
   const spine = clamp(1.7 * depth - 0.2);
-  const strand = 0.5 + 0.5 * Math.cos(around * 75.398224 + 2.6 * along + 0.7 * ripple + 3 * s);
-  const filament = strand * strand * strand * strand * strand * strand;
-  const core = fuel * fuel * spine * spine * spine * spine * (0.75 + 0.25 * cells) * (0.95 + 0.1 * filament) * (0.9 + 0.6 * ignite);
+  const core = fuel * fuel * spine * spine * (0.86 + 0.62 * cells * spine * spine) * (1 + 0.6 * ignite);
   // Five lanes round the plume, each carrying one fleck out with its own phase and width.
   const lanes = around * 5, lane = Math.floor(lanes);
   const variant = fract((lane + 1) * 0.618034 + seed);
@@ -102,8 +107,11 @@ export function flameLight(out: Float64Array | number[], around: number, along: 
   const fleck = clamp(1 - sx * sx - sy * sy) * 4 * age * (1 - age) * clamp(3 * depth);
   const body = fuel * fuel * (3 - 2 * fuel) * Math.min(0.98, 1.45 * depth * depth);
   const cover = power * Math.max(body, fleck);
-  fireRamp(0.3 + 0.85 * core + 0.4 * fleck, hot);
-  for (let c = 0; c < 3; c++) out[c] = (target ? hot[c]! : 1 - Math.exp(-hot[c]!)) * cover;
+  // White at the nozzle's middle, pale yellow and orange along it, red only where it is thin.
+  fireRamp(0.34 + 0.8 * core + 0.4 * fleck, hot);
+  // It gives more light than it hides, so its thin parts glow orange and red and are not a brown veil.
+  const glows = cover * (2 - cover);
+  for (let c = 0; c < 3; c++) out[c] = (target ? hot[c]! : 1 - Math.exp(-hot[c]!)) * glows;
   out[3] = cover * FLAME_HIDES;
 }
 
@@ -113,31 +121,39 @@ export function lobeBands(u: number, v: number, seed: number): number {
   return 0.5 + 0.28 * Math.sin(1.9 * u + 2.2 * Math.sin(1.3 * v + s)) + 0.22 * Math.sin(2.7 * v - 1.1 * u + 2 * s);
 }
 
-/** Two octaves of the engine's value noise at a lobe's cell (u, v), 0 to 1. */
-export function lobeNoise(u: number, v: number, seed: number): number {
+/**
+ * The engine's value noise at a lobe's cell (u, v), 0 to 1: with `fine` two octaves of it, without, one and a closed-form
+ * ripple in the finer one's place, which costs a weak card half as much.
+ */
+export function lobeNoise(u: number, v: number, seed: number, fine = true): number {
   const k = Math.floor(seed * 255) + 7, s = TAU * seed;
   // Bent, and the finer octave turned, so the noise's square cells do not show.
   const wu = u + 0.45 * Math.sin(1.7 * v + s), wv = v + 0.45 * Math.sin(1.3 * u + 2.1 * s);
-  return 0.62 * tiled(wu, wv, LOBE_PERIOD, LOBE_PERIOD, k) + 0.38 * tiled(1.6 * wu - 1.2 * wv, 1.2 * wu + 1.6 * wv, 2 * LOBE_PERIOD, 2 * LOBE_PERIOD, k + 31);
+  const coarse = tiled(wu, wv, LOBE_PERIOD, LOBE_PERIOD, k);
+  if (fine) return 0.62 * coarse + 0.38 * tiled(1.6 * wu - 1.2 * wv, 1.2 * wu + 1.6 * wv, 2 * LOBE_PERIOD, 2 * LOBE_PERIOD, k + 31);
+  return 0.62 * coarse + 0.38 * (0.5 + 0.5 * Math.sin(3.3 * wu - 2.4 * wv + s) * Math.sin(2.9 * wv + 2.1 * wu - 1.7 * s));
 }
 
 /**
  * A point of a fireball's lobe, into `out` as `flameLight` gives a flame's. (u, v) is the point's cell of the noise,
- * `age` the lobe's from 0 to 1, `heat` how hot it began, `tone` its soot's shade, and (lr, lg, lb) the light that falls
- * on the soot. It begins white, breaks into fire, cools to soot with glowing cracks, opens into holes and is gone.
- * `noise` reads the value noise, and `lit` says the light is light and not a flat tier's shade.
+ * `lift` how far it is over the ground in the lobe's radii, `age` the lobe's from 0 to 1, `heat` how hot it began,
+ * `tone` its soot's shade, and (lr, lg, lb) the light that falls on the soot. It begins white, breaks into fire with a
+ * ragged edge, cools to soot with glowing cracks, opens into holes and is gone. `noise` is the octaves of value noise it
+ * reads, none for bands alone, and `lit` says the light is light and not a flat tier's shade.
  */
-export function lobeLight(out: Float64Array | number[], u: number, v: number, facing: number, age: number, heat: number, seed: number, tone: number, fade: number, lr: number, lg: number, lb: number, noise: boolean, target: boolean, lit: boolean): void {
-  const n = noise ? lobeNoise(u, v, seed) : lobeBands(u, v, seed);
+export function lobeLight(out: Float64Array | number[], u: number, v: number, facing: number, lift: number, age: number, heat: number, seed: number, tone: number, fade: number, lr: number, lg: number, lb: number, noise: number, target: boolean, lit: boolean): void {
+  const n = noise > 0 ? lobeNoise(u, v, seed, noise > 1) : lobeBands(u, v, seed);
   const front = clamp(facing);
-  // The outline is eaten into where the noise is low, so it is never the mesh's own.
-  const edge = smooth(0.02, 0.8, front * (0.45 + 1.1 * n));
+  // The outline is eaten into where the noise is low, deepest while it burns hardest, so it is never the mesh's own.
+  const peak = smooth(0.03, 0.15, age) * (1 - smooth(0.35, 0.6, age));
+  const edge = smooth(0.02, 0.8, front * (0.45 - 0.25 * peak + (1.1 + 0.8 * peak) * n));
   const flash = 1 - smooth(0, 0.07, age);
-  const t = clamp(heat * (0.98 - 1.85 * age + 0.35 * (front - 0.5) * (1 - age)) + (0.5 + 2.2 * age) * (n - 0.5) + flash);
+  const t = clamp(heat * (0.98 - 1.55 * age + 0.35 * (front - 0.5) * (1 - age)) + (0.5 + 2.2 * age) * (n - 0.5) + flash);
   const soot = 1 - smooth(0.02, 0.16, t);
-  const going = 1.1 * smooth(0.6, 1, age);
+  const going = 1.1 * smooth(0.45, 1, age);
   const keep = smooth(going - 0.12, going + 0.12, n) * (1 - smooth(0.9, 1, age));
-  const cover = edge * keep * fade;
+  // It fades into the ground it stands on.
+  const cover = edge * keep * fade * smooth(0, FLOOR_FADE, lift);
   fireRamp(t, hot);
   const light = [lr, lg, lb];
   for (let c = 0; c < 3; c++) {
@@ -170,25 +186,26 @@ export function sootLight(out: Float64Array | number[], nx: number, ny: number, 
   for (let c = 0; c < 3; c++) out[c] = e * (fr[FRAME.sunColor + c]! * sun + fr[FRAME.moonColor + c]! * moon + fr[FRAME.skyBelow + c]! + (fr[FRAME.skyAbove + c]! - fr[FRAME.skyBelow + c]!) * up);
 }
 
-/** A vertex as the vertex text leaves it: where it is from the eye, its two varying numbers, how it faces the eye, and the light on it. */
-export const FIRE_VERTEX_FLOATS = 9;
+/** A vertex as the vertex text leaves it: where it is from the eye, its two varying numbers, how it faces the eye, the light on it, and how far it is over the ground. */
+export const FIRE_VERTEX_FLOATS = 10;
 /** What is the same over an instance, as the vertex text hands it on: four numbers and two. */
 export const fireFlat = new Float64Array(6);
 
 const boil = new Float64Array(4);
 /**
  * How far a lobe's outline is pushed out or in toward the unit way (dx, dy, dz), -1 to 1, in boil[0], and how that
- * changes with the way in boil[1..3]: three slow waves, each lobe's out of step with every other's.
+ * changes with the way in boil[1..3]: four slow waves, each lobe's out of step with every other's.
  */
 function lobeBoil(dx: number, dy: number, dz: number, age: number, seed: number): void {
   const a1 = 3.1 * dx + 2.3 * dy + 0.7 * dz + TAU * seed + 5 * age;
   const a2 = -1.3 * dx - 2.6 * dy + 2.9 * dz + TAU * fract(seed * 7.31) - 4 * age;
   const a3 = 2.1 * dx - 0.9 * dy - 4.2 * dz + TAU * fract(seed * 3.17) + 7 * age;
-  boil[0] = 0.5 * Math.sin(a1) + 0.33 * Math.sin(a2) + 0.17 * Math.sin(a3);
-  const c1 = 0.5 * Math.cos(a1), c2 = 0.33 * Math.cos(a2), c3 = 0.17 * Math.cos(a3);
-  boil[1] = 3.1 * c1 - 1.3 * c2 + 2.1 * c3;
-  boil[2] = 2.3 * c1 - 2.6 * c2 - 0.9 * c3;
-  boil[3] = 0.7 * c1 + 2.9 * c2 - 4.2 * c3;
+  const a4 = 5.3 * dx + 4.1 * dy - 3.7 * dz + TAU * fract(seed * 5.71) - 9 * age;
+  boil[0] = 0.44 * Math.sin(a1) + 0.28 * Math.sin(a2) + 0.15 * Math.sin(a3) + 0.13 * Math.sin(a4);
+  const c1 = 0.44 * Math.cos(a1), c2 = 0.28 * Math.cos(a2), c3 = 0.15 * Math.cos(a3), c4 = 0.13 * Math.cos(a4);
+  boil[1] = 3.1 * c1 - 1.3 * c2 + 2.1 * c3 + 5.3 * c4;
+  boil[2] = 2.3 * c1 - 2.6 * c2 - 0.9 * c3 + 4.1 * c4;
+  boil[3] = 0.7 * c1 + 2.9 * c2 - 4.2 * c3 - 3.7 * c4;
 }
 
 /** A lobe's radius at `age` of its life as a share of its full one: out fast, then slowly on. */
@@ -212,7 +229,8 @@ export function lobeVertex(out: Float64Array, dx: number, dy: number, dz: number
   dy /= l;
   dz /= l;
   lobeBoil(dx, dy, dz, age, seed);
-  const lump = 0.16 + 0.1 * age, h = boil[0]!;
+  const lump = 0.2 + 0.08 * age, h = boil[0]!;
+  const floor = bytes[at + 17]! === LOBE_NO_FLOOR ? 100 : bytes[at + 17]! / FLOOR_STEPS;
   const r = radius * (1 + lump * h);
   const along = dx * boil[1]! + dy * boil[2]! + dz * boil[3]!;
   let nx = dx * (1 + lump * h) - lump * (boil[1]! - dx * along);
@@ -249,12 +267,11 @@ export function lobeVertex(out: Float64Array, dx: number, dy: number, dz: number
   out[6] = light3[0]!;
   out[7] = light3[1]!;
   out[8] = light3[2]!;
+  out[9] = (1 + lump * h) * dy + floor;
   fireFlat[0] = age;
-  fireFlat[1] = bytes[at + 19]! / 255;
+  fireFlat[1] = bytes[at + 18]! / 255;
   fireFlat[2] = seed;
-  fireFlat[3] = bytes[at + 17]! / 255;
-  fireFlat[4] = bytes[at + 18]! / 255;
-  fireFlat[5] = 0;
+  fireFlat[3] = fireFlat[4] = fireFlat[5] = 0;
 }
 const light3 = [0, 0, 0];
 
@@ -309,6 +326,7 @@ export function flameVertex(out: Float64Array, lx: number, ly: number, lz: numbe
   out[4] = lz;
   out[5] = -(nx * x + ny * y + nz * z) / d;
   out[6] = out[7] = out[8] = 0;
+  out[9] = 1;
   const pl = Math.hypot(px, py, pz) || 1;
   fireFlat[0] = power;
   fireFlat[1] = ignite;
@@ -339,9 +357,10 @@ export function putFlame(bytes: Uint8Array, i: number, x: number, y: number, z: 
 
 /**
  * Writes a fireball's lobe as instance `i` of `bytes`: its middle at (x, y, z) from the eye, its radius now in metres,
- * `age` of its life from 0 to 1, its seed, its soot's shade, how much of it shows and how hot it began, each 0 to 1.
+ * `age` of its life from 0 to 1, its seed, how far under its middle the ground is in metres (Infinity for none), and how
+ * much of it shows, 0 to 1. Its soot's shade and its heat are its draw's (the effect's z and w).
  */
-export function putLobe(bytes: Uint8Array, i: number, x: number, y: number, z: number, radius: number, age: number, seed: number, tone: number, fade: number, heat: number): void {
+export function putLobe(bytes: Uint8Array, i: number, x: number, y: number, z: number, radius: number, age: number, seed: number, floor: number, fade: number): void {
   const at = i * INSTANCE_BYTES;
   const view = new DataView(bytes.buffer, bytes.byteOffset + at, INSTANCE_BYTES);
   view.setFloat32(0, x, true);
@@ -352,9 +371,10 @@ export function putLobe(bytes: Uint8Array, i: number, x: number, y: number, z: n
   bytes[at + 14] = a & 255;
   bytes[at + 15] = a >> 8;
   bytes[at + 16] = Math.round(clamp(seed) * 255);
-  bytes[at + 17] = Math.round(clamp(tone) * 255);
+  const under = (floor / Math.max(radius, 1e-3)) * FLOOR_STEPS;
+  bytes[at + 17] = under < LOBE_NO_FLOOR - 0.5 ? Math.max(0, Math.round(under)) : LOBE_NO_FLOOR;
   bytes[at + 18] = Math.round(clamp(fade) * 255);
-  bytes[at + 19] = Math.round(clamp(heat) * 255);
+  bytes[at + 19] = 0;
 }
 
 /** The ramp and the two looks in GLSL. A text defines LIGHT_TARGET, FIRE_LIT and FIRE_NOISE before it as its frame has them. */
@@ -370,12 +390,11 @@ vec4 flameLight(float around, float along, float facing, float power, float igni
   float fuel = max(clamp(1.0 - along, 0.0, 1.0), 0.9 * down);
   float ripple = sin(${f(TAU)} * around + 17.0 * along - 8.0 * phase + s);
   float depth = clamp(facing + 0.9 * axial * axial - 0.1 + 0.14 * along * ripple, 0.0, 1.0);
-  float beat = 0.5 + 0.5 * cos(${f(TAU / DIAMOND)} * along * metres - 8.0 * phase + s);
-  float cells = beat * beat * beat * fuel;
+  float run = along * metres / ${f(DIAMOND)};
+  float beat = 0.5 + 0.5 * cos(${f(TAU)} * sqrt(run * sqrt(run)) - 8.0 * phase + s);
+  float cells = beat * beat * beat * fuel * fuel;
   float spine = clamp(1.7 * depth - 0.2, 0.0, 1.0);
-  float strand = 0.5 + 0.5 * cos(around * 75.398224 + 2.6 * along + 0.7 * ripple + 3.0 * s);
-  float filament = strand * strand * strand * strand * strand * strand;
-  float core = fuel * fuel * spine * spine * spine * spine * (0.75 + 0.25 * cells) * (0.95 + 0.1 * filament) * (0.9 + 0.6 * ignite);
+  float core = fuel * fuel * spine * spine * (0.86 + 0.62 * cells * spine * spine) * (1.0 + 0.6 * ignite);
   float lanes = around * 5.0;
   float lane = floor(lanes);
   float variant = fract((lane + 1.0) * 0.618034 + seed);
@@ -385,22 +404,27 @@ vec4 flameLight(float around, float along, float facing, float power, float igni
   float fleck = clamp(1.0 - sx * sx - sy * sy, 0.0, 1.0) * 4.0 * age * (1.0 - age) * clamp(3.0 * depth, 0.0, 1.0);
   float body = fuel * fuel * (3.0 - 2.0 * fuel) * min(0.98, 1.45 * depth * depth);
   float cover = power * max(body, fleck);
-  vec3 hot = fireRamp(0.3 + 0.85 * core + 0.4 * fleck);
+  vec3 hot = fireRamp(0.34 + 0.8 * core + 0.4 * fleck);
+  float glows = cover * (2.0 - cover);
 #ifdef LIGHT_TARGET
-  return vec4(hot.r * cover, hot.g * cover, hot.b * cover, cover * ${f(FLAME_HIDES)});
+  return vec4(hot.r * glows, hot.g * glows, hot.b * glows, cover * ${f(FLAME_HIDES)});
 #else
-  return vec4((1.0 - exp(-hot.r)) * cover, (1.0 - exp(-hot.g)) * cover, (1.0 - exp(-hot.b)) * cover, cover * ${f(FLAME_HIDES)});
+  return vec4((1.0 - exp(-hot.r)) * glows, (1.0 - exp(-hot.g)) * glows, (1.0 - exp(-hot.b)) * glows, cover * ${f(FLAME_HIDES)});
 #endif
 }
 float lobeGrain(float u, float v, float seed) {
+  float s = ${f(TAU)} * seed;
 #ifdef FIRE_NOISE
   int k = int(floor(seed * 255.0)) + 7;
-  float s = ${f(TAU)} * seed;
   float wu = u + 0.45 * sin(1.7 * v + s);
   float wv = v + 0.45 * sin(1.3 * u + 2.1 * s);
-  return 0.62 * tiled(wu, wv, ${LOBE_PERIOD}, ${LOBE_PERIOD}, k) + 0.38 * tiled(1.6 * wu - 1.2 * wv, 1.2 * wu + 1.6 * wv, ${2 * LOBE_PERIOD}, ${2 * LOBE_PERIOD}, k + 31);
+  float coarse = tiled(wu, wv, ${LOBE_PERIOD}, ${LOBE_PERIOD}, k);
+#ifdef FIRE_FINE
+  return 0.62 * coarse + 0.38 * tiled(1.6 * wu - 1.2 * wv, 1.2 * wu + 1.6 * wv, ${2 * LOBE_PERIOD}, ${2 * LOBE_PERIOD}, k + 31);
 #else
-  float s = ${f(TAU)} * seed;
+  return 0.62 * coarse + 0.38 * (0.5 + 0.5 * sin(3.3 * wu - 2.4 * wv + s) * sin(2.9 * wv + 2.1 * wu - 1.7 * s));
+#endif
+#else
   return 0.5 + 0.28 * sin(1.9 * u + 2.2 * sin(1.3 * v + s)) + 0.22 * sin(2.7 * v - 1.1 * u + 2.0 * s);
 #endif
 }
@@ -422,16 +446,17 @@ float lobeShown(float energy) {
   return 1.0 - exp(-energy);
 #endif
 }
-vec4 lobeLight(float u, float v, float facing, float age, float heat, float seed, float tone, float fade, float lr, float lg, float lb) {
+vec4 lobeLight(float u, float v, float facing, float lift, float age, float heat, float seed, float tone, float fade, float lr, float lg, float lb) {
   float n = lobeGrain(u, v, seed);
   float front = clamp(facing, 0.0, 1.0);
-  float edge = smoothstep(0.02, 0.8, front * (0.45 + 1.1 * n));
+  float peak = smoothstep(0.03, 0.15, age) * (1.0 - smoothstep(0.35, 0.6, age));
+  float edge = smoothstep(0.02, 0.8, front * (0.45 - 0.25 * peak + (1.1 + 0.8 * peak) * n));
   float flash = 1.0 - smoothstep(0.0, 0.07, age);
-  float t = clamp(heat * (0.98 - 1.85 * age + 0.35 * (front - 0.5) * (1.0 - age)) + (0.5 + 2.2 * age) * (n - 0.5) + flash, 0.0, 1.0);
+  float t = clamp(heat * (0.98 - 1.55 * age + 0.35 * (front - 0.5) * (1.0 - age)) + (0.5 + 2.2 * age) * (n - 0.5) + flash, 0.0, 1.0);
   float soot = 1.0 - smoothstep(0.02, 0.16, t);
-  float going = 1.1 * smoothstep(0.6, 1.0, age);
+  float going = 1.1 * smoothstep(0.45, 1.0, age);
   float keep = smoothstep(going - 0.12, going + 0.12, n) * (1.0 - smoothstep(0.9, 1.0, age));
-  float cover = edge * keep * fade;
+  float cover = edge * keep * fade * smoothstep(0.0, ${f(FLOOR_FADE)}, lift);
   vec3 hot = fireRamp(t);
   float dim = soot * ${f(SOOT_HIDES)};
   return vec4(cover * (lobeShown(hot.r) + lobeDark(tone, lr) * dim), cover * (lobeShown(hot.g) + lobeDark(tone, lg) * dim), cover * (lobeShown(hot.b) + lobeDark(tone, lb) * dim), cover * (${f(FIRE_HIDES)} + ${f(SOOT_HIDES - FIRE_HIDES)} * soot));
@@ -461,7 +486,7 @@ uniform vec3 uSun;
 uniform float uLight;
 #endif
 out vec2 vUv;
-out float vFacing;
+out float vFacing, vLift;
 out vec3 vLight;
 flat out vec4 vA;
 flat out vec2 vB;
@@ -479,13 +504,15 @@ void main() {
   if (uEffect.x > 0.5) {
     float radius = iYaw * ${f(65535 / LOBE_STEPS)};
     float age = (float(iRegA.x) + float(iRegA.y) * 256.0) / 65535.0, seed = float(iRegA.z) / 255.0;
+    float under = iRegA.w == ${LOBE_NO_FLOOR}u ? 100.0 : float(iRegA.w) / ${f(FLOOR_STEPS)};
     vec3 d = normalize(l);
     float a1 = dot(d, vec3(3.1, 2.3, 0.7)) + ${f(TAU)} * seed + 5.0 * age;
     float a2 = dot(d, vec3(-1.3, -2.6, 2.9)) + ${f(TAU)} * fract(seed * 7.31) - 4.0 * age;
     float a3 = dot(d, vec3(2.1, -0.9, -4.2)) + ${f(TAU)} * fract(seed * 3.17) + 7.0 * age;
-    float h = 0.5 * sin(a1) + 0.33 * sin(a2) + 0.17 * sin(a3);
-    vec3 g = 0.5 * cos(a1) * vec3(3.1, 2.3, 0.7) + 0.33 * cos(a2) * vec3(-1.3, -2.6, 2.9) + 0.17 * cos(a3) * vec3(2.1, -0.9, -4.2);
-    float lump = 0.16 + 0.1 * age;
+    float a4 = dot(d, vec3(5.3, 4.1, -3.7)) + ${f(TAU)} * fract(seed * 5.71) - 9.0 * age;
+    float h = 0.44 * sin(a1) + 0.28 * sin(a2) + 0.15 * sin(a3) + 0.13 * sin(a4);
+    vec3 g = 0.44 * cos(a1) * vec3(3.1, 2.3, 0.7) + 0.28 * cos(a2) * vec3(-1.3, -2.6, 2.9) + 0.15 * cos(a3) * vec3(2.1, -0.9, -4.2) + 0.13 * cos(a4) * vec3(5.3, 4.1, -3.7);
+    float lump = 0.2 + 0.08 * age;
     vec3 n = normalize(d * (1.0 + lump * h) - lump * (g - d * dot(d, g)));
     p = iPos + radius * (1.0 + lump * h) * d;
     vFacing = -dot(n, normalize(p));
@@ -497,8 +524,9 @@ void main() {
     float k = ${f(LOBE_CELLS)} * (1.35 - 0.35 * clamp(-dot(d, w), 0.0, 1.0)) * (1.0 - 0.22 * age);
     vUv = vec2(dot(d.xz, r), dot(d, up)) * k + vec2(${f(LOBE_PERIOD)} * fract(seed * 3.7), ${f(LOBE_PERIOD)} * fract(seed * 9.1) - ${f(LOBE_FLOW)} * age);
     vLight = sootLight(n);
-    vA = vec4(age, float(iRegB.y) / 255.0, seed, float(iRegA.w) / 255.0);
-    vB = vec2(float(iRegB.x) / 255.0, 0.0);
+    vLift = (1.0 + lump * h) * d.y + under;
+    vA = vec4(age, float(iRegB.x) / 255.0, seed, 0.0);
+    vB = vec2(0.0);
   } else {
     vec3 axis = normalize((vec3(iRegA.xyz) - 128.0) / 127.0);
     float metres = float(iRegA.w) / ${f(FLAME_STEPS)}, power = float(iRegB.x) / 255.0, ignite = float(iRegB.y) / 255.0;
@@ -515,6 +543,7 @@ void main() {
     vFacing = -dot(n, normalize(p));
     vUv = vec2(float(aColor) / ${f(CONE_TURN)}, l.z);
     vLight = vec3(0.0);
+    vLift = 1.0;
     vA = vec4(power, ignite, iYaw, abs(dot(axis, normalize(iPos))));
     vB = vec2(phase, reach);
   }
@@ -526,7 +555,7 @@ export const FIRE_FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
 in vec2 vUv;
-in float vFacing;
+in float vFacing, vLift;
 in vec3 vLight;
 flat in vec4 vA;
 flat in vec2 vB;
@@ -538,6 +567,6 @@ ${TILED_GLSL}#endif
 ${FIRE_GLSL}void main() {
   float z = 1.0 / gl_FragCoord.w;
   if (z + 0.5 * fwidth(z) < uFrom) discard;
-  o = uEffect.x > 0.5 ? lobeLight(vUv.x, vUv.y, vFacing, vA.x, vA.y, vA.z, vA.w, vB.x, vLight.r, vLight.g, vLight.b)
+  o = uEffect.x > 0.5 ? lobeLight(vUv.x, vUv.y, vFacing, vLift, vA.x, uEffect.w, vA.z, uEffect.z, vA.y, vLight.r, vLight.g, vLight.b)
     : flameLight(vUv.x, vUv.y, vFacing, vA.x, vA.y, vA.z, vA.w, vB.x, vB.y);
 }`;

@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { CONE_TURN, FIRE_GLSL, FIRE_VERTEX_FLOATS, coneRadius, coneSlope, fireFlat, fireRamp, flameLight, flamePhase, flameVertex, lobeBands, lobeLight, lobeNoise, lobeSwell, lobeVertex, putFlame, putLobe, FLAME_TURN_MS, type FireSun } from "../../client/core/render/fire-light.ts";
-import { smokeOf } from "../../client/core/render/detailtext.ts";
+import { scorchOf, smokeOf } from "../../client/core/render/detailtext.ts";
 import { DRAW_BLEND, DRAW_FIRE, DRAW_PLAIN, FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAM, PROGRAMS, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
 import { tiled } from "../../client/core/texgen/noise.ts";
@@ -61,11 +61,11 @@ test("the ramp runs from nothing for soot through deep red, orange and yellow to
   for (let t = 0; t < 1; t += 0.01) for (let c = 0; c < 3; c++) expect(ramp(t + 0.01)[c]!).toBeGreaterThanOrEqual(ramp(t)[c]!);
 });
 
-test("the card's text and its twin agree at sampled points: the ramp, a flame, and a lobe with the noise and with bands, for a display and for a light target", () => {
+test("the card's text and its twin agree at sampled points: the ramp, a flame, and a lobe with two octaves of the noise, one and bands, for a display and for a light target", () => {
   for (const target of [false, true]) {
     for (const lit of [false, true]) {
-      for (const noise of [false, true]) {
-        const glsl = compiled([...(target ? ["LIGHT_TARGET"] : []), ...(lit ? ["FIRE_LIT"] : []), ...(noise ? ["FIRE_NOISE"] : [])]);
+      for (const noise of [0, 1, 2]) {
+        const glsl = compiled([...(target ? ["LIGHT_TARGET"] : []), ...(lit ? ["FIRE_LIT"] : []), ...(noise > 0 ? ["FIRE_NOISE"] : []), ...(noise > 1 ? ["FIRE_FINE"] : [])]);
         const out = [0, 0, 0, 0];
         for (let k = 0; k < 400; k++) {
           const t = spread(k, 0.0731);
@@ -75,8 +75,8 @@ test("the card's text and its twin agree at sampled points: the ramp, a flame, a
           const flame = [spread(k, 0.618), 1.1 * spread(k, 0.377), spread(k, 0.233) * 1.2 - 0.1, spread(k, 0.91), spread(k, 0.53), spread(k, 0.147), spread(k, 0.71), 6.283 * spread(k, 0.29), 0.3 + 2 * spread(k, 0.83)] as const;
           flameLight(out, ...flame, target);
           (glsl.flameLight!(...flame) as number[]).forEach((v, c) => expect(v).toBeCloseTo(out[c]!, 6));
-          // A lobe: its cell, how it faces, its age, heat, seed, soot's shade, how much shows, and the light on it.
-          const lobe = [16 * spread(k, 0.618), 16 * spread(k, 0.377) - 2, spread(k, 0.233) * 1.2 - 0.1, spread(k, 0.91), 0.5 + 0.5 * spread(k, 0.53), spread(k, 0.147), 0.1 * spread(k, 0.71), spread(k, 0.29), 2 * spread(k, 0.83), 2 * spread(k, 0.43), 2 * spread(k, 0.57)] as const;
+          // A lobe: its cell, how it faces, how far it is over the ground, its age, heat, seed, soot's shade, how much shows, and the light on it.
+          const lobe = [16 * spread(k, 0.618), 16 * spread(k, 0.377) - 2, spread(k, 0.233) * 1.2 - 0.1, 0.6 * spread(k, 0.67) - 0.1, spread(k, 0.91), 0.5 + 0.5 * spread(k, 0.53), spread(k, 0.147), 0.1 * spread(k, 0.71), spread(k, 0.29), 2 * spread(k, 0.83), 2 * spread(k, 0.43), 2 * spread(k, 0.57)] as const;
           lobeLight(out, ...lobe, noise, target, lit);
           (glsl.lobeLight!(...lobe) as number[]).forEach((v, c) => expect(v).toBeCloseTo(out[c]!, 6));
         }
@@ -113,11 +113,11 @@ test("a flame is hottest at its nozzle's middle, gone by its tip and at its edge
 
 test("a lobe begins white, cools through fire to soot with glowing cracks, opens into holes and is gone", () => {
   // Over the face of a lobe at an age: its mean light, how much of it shows, and the share of it that glows.
-  const face = (age: number, noise: boolean, seed = 0.4): { red: number; blue: number; cover: number; glowing: number } => {
+  const face = (age: number, noise: number, seed = 0.4): { red: number; blue: number; cover: number; glowing: number } => {
     const out = [0, 0, 0, 0];
     let [red, blue, cover, glowing, n] = [0, 0, 0, 0, 0];
     for (let u = 0; u < 4; u += 0.13) for (let v = 0; v < 4; v += 0.13) {
-      lobeLight(out, u, v, 0.8, age, 1, seed, 0.04, 1, 1, 1, 1, noise, true, true);
+      lobeLight(out, u, v, 0.8, 1, age, 1, seed, 0.04, 1, 1, 1, 1, noise, true, true);
       red += out[0]!;
       blue += out[2]!;
       cover += out[3]!;
@@ -126,7 +126,7 @@ test("a lobe begins white, cools through fire to soot with glowing cracks, opens
     }
     return { red: red / n, blue: blue / n, cover: cover / n, glowing: glowing / n };
   };
-  for (const noise of [true, false]) {
+  for (const noise of [2, 1, 0]) {
     const [flash, fire, cracks, holes, gone] = [face(0.02, noise), face(0.25, noise), face(0.5, noise), face(0.8, noise), face(1, noise)];
     expect(flash.blue).toBeGreaterThan(2);
     expect([fire.red > 1, fire.blue < 0.5 * flash.blue, fire.glowing > 0.8]).toEqual([true, true, true]);
@@ -136,21 +136,26 @@ test("a lobe begins white, cools through fire to soot with glowing cracks, opens
   }
   // Its edge is soft: nothing where its surface is edge-on, and less than whole a little in from there.
   const out = [0, 0, 0, 0];
-  lobeLight(out, 1.3, 2.1, 0, 0.3, 1, 0.4, 0.04, 1, 1, 1, 1, true, true, true);
+  lobeLight(out, 1.3, 2.1, 0, 1, 0.3, 1, 0.4, 0.04, 1, 1, 1, 1, 2, true, true);
   expect(out).toEqual([0, 0, 0, 0]);
-  lobeLight(out, 1.3, 2.1, 0.12, 0.3, 1, 0.4, 0.04, 1, 1, 1, 1, true, true, true);
+  lobeLight(out, 1.3, 2.1, 0.12, 1, 0.3, 1, 0.4, 0.04, 1, 1, 1, 1, 2, true, true);
   expect([out[3]! > 0, out[3]! < 0.4]).toEqual([true, true]);
   // What it shows is weighed by how much of it shows, and hides no more than that.
-  lobeLight(out, 1.3, 2.1, 0.9, 0.3, 1, 0.4, 0.04, 0.5, 1, 1, 1, true, true, true);
+  lobeLight(out, 1.3, 2.1, 0.9, 1, 0.3, 1, 0.4, 0.04, 0.5, 1, 1, 1, 2, true, true);
   const half = [...out];
-  lobeLight(out, 1.3, 2.1, 0.9, 0.3, 1, 0.4, 0.04, 1, 1, 1, 1, true, true, true);
+  lobeLight(out, 1.3, 2.1, 0.9, 1, 0.3, 1, 0.4, 0.04, 1, 1, 1, 1, 2, true, true);
   half.forEach((v, c) => expect(v).toBeCloseTo(out[c]! / 2, 9));
+  // It fades into the ground it stands on: nothing at the ground, whole a third of its radius over it.
+  lobeLight(out, 1.3, 2.1, 0.9, 0, 0.3, 1, 0.4, 0.04, 1, 1, 1, 1, 2, true, true);
+  expect(out).toEqual([0, 0, 0, 0]);
+  lobeLight(out, 1.3, 2.1, 0.9, 0.15, 0.3, 1, 0.4, 0.04, 1, 1, 1, 1, 2, true, true);
+  expect([out[3]! > 0, out[3]! < half[3]! * 2]).toEqual([true, true]);
   // Two seeds are two fires; the noise and the bands both stay within 0 and 1.
   let differ = 0;
   for (let k = 0; k < 200; k++) {
     const [u, v] = [16 * spread(k, 0.61), 16 * spread(k, 0.37)];
     if (Math.abs(lobeNoise(u, v, 0.2) - lobeNoise(u, v, 0.7)) > 0.05) differ++;
-    for (const n of [lobeNoise(u, v, 0.2), lobeBands(u, v, 0.2), lobeBands(u, v, 0.9)]) expect([n >= 0, n <= 1]).toEqual([true, true]);
+    for (const n of [lobeNoise(u, v, 0.2), lobeNoise(u, v, 0.2, false), lobeBands(u, v, 0.2), lobeBands(u, v, 0.9)]) expect([n >= 0, n <= 1]).toEqual([true, true]);
   }
   expect(differ).toBeGreaterThan(120);
 });
@@ -189,7 +194,7 @@ test("an instance's twenty bytes carry a flame and a lobe whole, and the vertex 
   frame.set([0, 1, 0], FRAME.sun);
   frame.set([2, 2, 2, 0.5], FRAME.sunColor);
   const env: FireSun = { lit: true, frame, sun: [0, 1, 0], light: 1 };
-  putLobe(bytes, 0, 0, 2, 12, 2, 0.33, 0.6, 0.04, 0.8, 1);
+  putLobe(bytes, 0, 0, 2, 12, 2, 0.33, 0.6, 1, 0.8);
   let [least, most] = [Infinity, 0];
   for (const mesh of fireMeshes().filter((m) => m.id === "core:fire_lobe")) {
     const p = mesh.lods[0]!.positions;
@@ -204,7 +209,17 @@ test("an instance's twenty bytes carry a flame and a lobe whole, and the vertex 
     }
   }
   expect([least > 2 * 0.7, most < 2 * 1.3, most > least * 1.1]).toEqual([true, true, true]);
-  expect([fireFlat[0]!, fireFlat[1], fireFlat[4]!].map((v) => Math.round(v! * 100) / 100)).toEqual([0.33, 1, 0.8]);
+  expect([fireFlat[0]!, fireFlat[1]!].map((v) => Math.round(v * 100) / 100)).toEqual([0.33, 0.8]);
+  // The ground is a metre under its middle, half its radius: a point at its foot is under it, one at its top two and a half radii... over it.
+  lobeVertex(out, 0, -1, 0, bytes, 0, env);
+  expect([out[9]! < 0, out[9]! > -0.8]).toEqual([true, true]);
+  lobeVertex(out, 0, 1, 0, bytes, 0, env);
+  expect([out[9]! > 1.2, out[9]! < 1.8]).toEqual([true, true]);
+  // With no ground under it, no point of it is near one.
+  putLobe(bytes, 1, 0, 2, 12, 2, 0.33, 0.6, Infinity, 0.8);
+  lobeVertex(out, 0, -1, 0, bytes, INSTANCE_BYTES, env);
+  expect(out[9]!).toBeGreaterThan(50);
+  putLobe(bytes, 0, 0, 2, 12, 2, 0.33, 0.6, 1, 0.8);
   // The top of it, in the sun, is lit more than its underside.
   lobeVertex(out, 0, 1, 0, bytes, 0, env);
   const top = out[6]!;
@@ -257,15 +272,15 @@ test("a draw of fire takes the fire program on every tier, which reads the noise
     expect(tierPrograms(tier)).toContain(PROGRAM.fire);
     for (const light of [false, true]) {
       const text = PROGRAMS.fire!(tier, "rgba", false, light);
-      expect([text.defines.includes("FIRE_LIT"), text.defines.includes("FIRE_NOISE"), text.defines.includes("LIGHT_TARGET"), Object.keys(text.samplers)]).toEqual([tier.lit, tier.bursts.noise, light && tier.post !== null, []]);
+      expect([text.defines.includes("FIRE_LIT"), text.defines.includes("FIRE_NOISE"), text.defines.includes("FIRE_FINE"), text.defines.includes("LIGHT_TARGET"), Object.keys(text.samplers)]).toEqual([tier.lit, tier.bursts.noise > 0, tier.bursts.noise > 1, light && tier.post !== null, []]);
       // No texture is read, and both texts name what they hand each other alike.
       expect(text.fragment.includes("texture(")).toBe(false);
-      for (const name of ["vUv", "vFacing", "vLight", "vA", "vB"]) expect([text.vertex.includes(name), text.fragment.includes(name)]).toEqual([true, true]);
+      for (const name of ["vUv", "vFacing", "vLift", "vLight", "vA"]) expect([text.vertex.includes(name), text.fragment.includes(name)]).toEqual([true, true]);
     }
   }
-  // Low poly and a phone draw one lobe in bands; the rest three with the noise.
-  expect(TIERS.map((t) => [t.name, t.bursts.lobes, t.bursts.noise, t.bursts.particles])).toEqual([["lowpoly", 1, false, 20], ["medium", 3, true, 60], ["high", 3, true, 100], ["ultra", 3, true, 160]]);
-  expect(["medium", "high"].map((name) => forTouch(tierOf(name), true).bursts)).toEqual([{ particles: 60, lobes: 1, noise: false }, { particles: 100, lobes: 1, noise: false }]);
+  // Low poly and a phone draw one lobe in bands; medium three with one octave of the noise, high and ultra with two.
+  expect(TIERS.map((t) => [t.name, t.bursts.lobes, t.bursts.noise, t.bursts.particles])).toEqual([["lowpoly", 1, 0, 20], ["medium", 3, 1, 60], ["high", 3, 2, 100], ["ultra", 3, 2, 160]]);
+  expect(["medium", "high"].map((name) => forTouch(tierOf(name), true).bursts)).toEqual([{ particles: 60, lobes: 1, noise: 0 }, { particles: 100, lobes: 1, noise: 0 }]);
 });
 
 test("a thick puff of smoke is whole at its middle, nothing at its card's edge, and each seed's outline is its own", () => {
@@ -290,4 +305,48 @@ test("a thick puff of smoke is whole at its middle, nothing at its card's edge, 
     if (Math.abs(a - out[0]!) > 0.03) differ++;
   }
   expect(differ).toBeGreaterThan(30);
+});
+
+test("a length of a rope of smoke runs the whole of its card, ends thinned into the next, and tears where it is thinnest; a scorch is a patch with rays", () => {
+  const out = [0, 0, 0];
+  // Along its middle it is there from end to end but for the last of it, and nothing at its card's sides.
+  let whole = 0;
+  for (let y = -0.8; y <= 0.8; y += 0.05) {
+    let most = 0;
+    for (let x = -0.4; x <= 0.4; x += 0.05) {
+      smokeOf(x, y, 0.3, out, 8);
+      most = Math.max(most, out[0]!);
+    }
+    if (most > 0.95) whole++;
+    for (const x of [-1, 1]) {
+      smokeOf(x, y, 0.3, out, 8);
+      expect(out[0]!).toBeLessThan(0.02);
+    }
+  }
+  expect(whole).toBeGreaterThan(30);
+  for (const x of [-0.5, 0, 0.5]) for (const y of [-1, 1]) {
+    smokeOf(x, y, 0.3, out, 8);
+    expect(out[0]!).toBeLessThan(0.02);
+  }
+  // Torn, less of it shows, and wholly torn none.
+  const shows = (torn: number): number => {
+    let sum = 0;
+    for (let x = -1; x <= 1; x += 0.1) for (let y = -1; y <= 1; y += 0.1) {
+      smokeOf(x, y, 0.3, out, 8, torn);
+      sum += out[0]!;
+    }
+    return sum;
+  };
+  expect([shows(0.5) < 0.8 * shows(0), shows(0.5) > 0, shows(1) < 0.05 * shows(0)]).toEqual([true, true, true]);
+  // A scorch: whole at its middle, nothing at its card's edge, and rays that reach past its patch some ways and not others.
+  expect(scorchOf(0, 0, 0.4)).toBe(1);
+  let [reached, bare] = [0, 0];
+  for (let k = 0; k < 90; k++) {
+    const a = (k / 90) * 2 * Math.PI;
+    expect(scorchOf(Math.cos(a), Math.sin(a), 0.4)).toBe(0);
+    if (scorchOf(0.55 * Math.cos(a), 0.55 * Math.sin(a), 0.4) > 0.1) reached++;
+    else bare++;
+  }
+  expect([reached > 1, bare > 45]).toEqual([true, true]);
+  expect(scorchOf(0.3, 0.2, 0.1)).not.toBe(scorchOf(0.3, 0.2, 0.6));
 });

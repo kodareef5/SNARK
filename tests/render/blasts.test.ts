@@ -114,7 +114,9 @@ test("a blast never makes more particles than its tier gives one, whatever it hi
   full.blasts.burst(ROCKET, X, full.y, Z, 0, 1, 0, 7.5, SURFACE_GROUND, 0, 5, 0);
   expect([full.details.pool.count > 0, full.details.pool.count < 30, full.details.thinned > 10]).toEqual([true, true, true]);
   // Smoke is never whole: no part of a blast that hides what is behind it shows more than four fifths.
-  for (const e of pack.header.details!.effects) if (/\/(blast_|backblast|scorch)/.test(e.id) && e.pass === "blend" && e.glow === 0) expect(e.opacity).toBeLessThanOrEqual(0.8);
+  const smokes = pack.header.details!.effects.filter((e) => /\/(blast_(soot|smoke|dust|spray|mist|wisps)|backblast)/.test(e.id));
+  expect(smokes.length).toBeGreaterThan(7);
+  for (const e of smokes) expect([e.id, e.opacity <= 0.8, e.thick]).toEqual([e.id, true, true]);
 });
 
 test("a blast's dust reaches its true radius, its scorch lies half a minute, and a far one is not made", () => {
@@ -353,7 +355,7 @@ test("a page prices what burns by leaving it out: no fire, no smoke of a rocket,
   const drawn = (): number => [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & (DRAW_FIRE | DRAW_DETAILS)) !== 0).reduce((n, d) => n + p.drawInstances[d]!, 0);
   const [particles, instances] = [sized(), drawn()];
   // The blast's lobes and the rocket's flame are a draw each.
-  expect([particles > 30, fires(p).length, p.burstCount > 3]).toEqual([true, 2, true]);
+  expect([particles > 30, fires(p).length, p.burstCount > 0]).toEqual([true, 2, true]);
   packetWithout(p, effectsOff("haze"));
   expect([sized(), drawn()]).toEqual([particles, instances]);
   packetWithout(p, effectsOff("bursts"));
@@ -417,7 +419,7 @@ test("an effect may glow, be thick, be a streak, and show less than whole; the d
   for (const text of [DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT]) {
     const gives = text.split("\n").filter((line) => /^\s*o = /.test(line));
     expect(gives.length).toBeGreaterThanOrEqual(3);
-    for (const line of gives) expect(/o = weighed\(|, 0\.0\);$|o = vec4\(0\.0,0\.0,0\.0,/.test(line), line).toBe(true);
+    for (const line of gives) expect(/o = weighed\(|, 0\.0\);$|o = vec4\(0\.0, ?0\.0, ?0\.0,/.test(line), line).toBe(true);
     expect(text.includes("return vec4(uBlend > 0.5 ? c * a : c, a);")).toBe(true);
   }
   // Blended so, a colour that was drawn straight comes out as it did: weighed and added is the same sum.

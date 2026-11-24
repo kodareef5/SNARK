@@ -88,6 +88,8 @@ export interface DetailEffect {
   thick: boolean;
   /** A dark stain on what it lies on, which takes light from it and gives none: a soft disc, a scorch. Its picture is not read. */
   stain: boolean;
+  /** Seconds a see-through one takes to come in: smoke that shows only as the fire over it cools. */
+  appear: number;
 }
 
 /** The most an effect may glow, which a particle's byte holds in sixteenths. */
@@ -154,7 +156,7 @@ export interface SheetSource {
 
 const DEFAULTS: Omit<DetailEffect, "id" | "pictures"> = {
   count: [1, 1], shape: "point", radius: 0, speed: [0, 0], up: 0.5, size: [0.1, 0.1], aspect: 1, grow: 1, life: [1, 1], fade: 0.3,
-  drag: 2, gravity: 1, fall: 0, wind: 0, sway: 0, swayHz: 1, rock: 0, turn: 0, settle: 0, colour: "body", vary: 0, face: "camera", pass: "blend", lit: true, reach: 40, glow: 0, opacity: 1, thick: false, stain: false,
+  drag: 2, gravity: 1, fall: 0, wind: 0, sway: 0, swayHz: 1, rock: 0, turn: 0, settle: 0, colour: "body", vary: 0, face: "camera", pass: "blend", lit: true, reach: 40, glow: 0, opacity: 1, thick: false, stain: false, appear: 0.08,
 };
 
 const pair = (v: unknown): v is [number, number] => Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && Number.isFinite(n)) && v[0] <= v[1];
@@ -222,6 +224,7 @@ export function effectOf(id: string, raw: Record<string, unknown>, pictureOf: (n
   if (out.glow < 0 || out.glow > GLOW_MOST) fail(`glow is from 0 to ${GLOW_MOST}`);
   if (out.glow > 0 && out.pass !== "blend") fail("what glows is see-through: its pass is blend");
   if (!(out.opacity > 0 && out.opacity <= 1)) fail("opacity is above 0 and at most 1");
+  if (!(out.appear > 0)) fail("it appears in more than 0 seconds");
   if (out.thick && (out.pass !== "blend" || out.face !== "camera" || out.glow > 0)) fail("a thick puff is see-through, faces the eye and does not glow");
   if (out.stain && (out.pass !== "blend" || out.face !== "flat" || out.glow > 0 || out.thick)) fail("a stain is see-through, lies flat, and neither glows nor is thick");
   return out;

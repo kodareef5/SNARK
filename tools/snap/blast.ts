@@ -69,13 +69,13 @@ function arrive(view: ProvingView): void {
 }
 
 /** Blasts of `look` on `surface`, a row a seed and a column a moment, on the tier the view has. */
-export function blastSheet(view: ProvingView, w: number, h: number, look: string, surface: string, made: string, moments: readonly number[], seeds: number, far: number): Sheet {
+export function blastSheet(view: ProvingView, w: number, h: number, look: string, surface: string, made: string, moments: readonly number[], seeds: number, far: number, site: readonly number[] | null = null): Sheet {
   const { scene, cam, remote, hf, raster } = view;
   const kind = SURFACES.indexOf(surface as (typeof SURFACES)[number]);
   if (kind < 0) throw new Error(`--surface takes ${SURFACES.join(", ")}, not "${surface}"`);
   if (!(BURST_LOOKS as readonly string[]).includes(look)) throw new Error(`--blast takes ${BURST_LOOKS.join(", ")}, not "${look}"`);
   const radius = look === "rocket" ? 7.5 : look === "grenade" ? 5 : 4;
-  const [x0, z0] = surface === "water" ? water(view) : [236, 372];
+  const [x0, z0] = site !== null ? [site[0]!, site[1]!] : surface === "water" ? water(view) : [236, 372];
   // What is built faces the eye; a body or a vehicle is hit from the eye's side.
   const [nx, ny, nz] = surface === "built" || surface === "body" || surface === "vehicle" ? [0, 0, -1] : [0, 1, 0];
   remote.count = 0;
@@ -109,51 +109,73 @@ export function blastSheet(view: ProvingView, w: number, h: number, look: string
   return { width: W, height: H, pixels, lines };
 }
 
-/** A rocket in flight with its smoke, a column a moment: seen from the side, and from where it was fired. */
-export function rocketSheet(view: ProvingView, w: number, h: number, moments: readonly number[]): Sheet {
+/** Milliseconds a rocket of the flight sheet flies before it ends. */
+const FLIES_MS = 3200;
+
+/**
+ * A rocket in flight with its smoke, a column a moment and the last a second after it ended: from 26 m to the side with
+ * the rocket crossing the view, from three quarters behind, and from the shoulder of the one who fired.
+ */
+export function rocketSheet(view: ProvingView, w: number, h: number, moments: readonly number[], only = -1, site: readonly number[] | null = null): Sheet {
   const { scene, cam, remote, hf, raster } = view;
   remote.count = 0;
-  const [x0, z0] = [244, 262];
+  const [x0, z0] = site !== null ? [site[0]!, site[1]!] : [150, 372];
   const y0 = hf.heightAt(x0, z0) + 1.6;
   const speed = 60, gravity = 2;
-  // Fired level across the view, and for the second row away from the eye.
+  // Fired along +x, a little up. Where the eye stands from the launcher, along the path, up and to its right, and what it looks at.
   const rows = [
-    { way: [1, 0.03, 0], eye: [x0 + 13, y0 + 0.6, z0 - 13], name: "from the side" },
-    { way: [0.05, 0.04, 1], eye: [x0 - 0.3, y0 + 0.12, z0 - 0.8], name: "from where it was fired" },
-  ] as const;
+    { name: "from 26 m to the side", eye: [28, -1, -26], follows: false, at: [28, 4.5, 0] },
+    { name: "from three quarters behind", eye: [-7, 1.4, -9], follows: false, at: [40, 3, 0] },
+    { name: "from the shoulder", eye: [-0.5, 0.15, -0.3], follows: true, at: [0, 0, 0] },
+    { name: "riding 4 m beside it", eye: [-1.5, 0.3, -4], follows: true, at: [0, 0, 0], rides: true },
+  ].filter((_, k) => only < 0 || k === only);
+  const way = [1, 0.12, 0];
+  const l = Math.hypot(...way);
+  const [dx, dy, dz] = [way[0]! / l, way[1]! / l, way[2]! / l];
   const [W, H] = [w * moments.length, h * rows.length];
   const pixels = new Uint8ClampedArray(W * H * 4);
   const lines: string[] = [];
   rows.forEach((r, row) => {
-    const l = Math.hypot(...r.way);
-    const [dx, dy, dz] = [r.way[0] / l, r.way[1] / l, r.way[2] / l];
-    [cam.x, cam.y, cam.z] = r.eye;
+    [cam.x, cam.y, cam.z] = [x0 + r.eye[0], y0 + r.eye[1], z0 + r.eye[2]];
     cam.aspect = w / h;
+    const aim = (tx: number, ty: number, tz: number): void => {
+      cam.yaw = Math.atan2(tx - cam.x, tz - cam.z);
+      cam.pitch = Math.atan2(ty - cam.y, Math.hypot(tx - cam.x, tz - cam.z));
+    };
+    aim(x0 + r.at[0], y0 + r.at[1], z0 + r.at[2]);
     arrive(view);
     const from = scene.now;
     const key = 7 + row;
+    let flying = true;
     scene.blasts.launch(x0, y0, z0, x0 - dx * 0.9, y0 - dy * 0.9, z0 - dz * 0.9, dx, dy, dz, blastSeed(0, x0, y0, z0), false, from);
     scene.blasts.fly(key, x0, y0, z0, dx * speed, dy * speed, dz * speed, gravity, 0.9, from);
     moments.forEach((ms, col) => {
-      const at = (): [number, number, number] => {
-        const t = (scene.now - from) / 1000;
-        return [x0 + dx * speed * t, y0 + dy * speed * t - 0.5 * gravity * t * t, z0 + dz * speed * t];
-      };
       const tell = (): void => {
-        const [x, y, z] = at();
-        scene.blasts.at(key, x, y, z, dx, dy, dz);
-        // The eye follows the rocket from the side, and looks down its path from behind.
-        const [tx, ty, tz] = row === 0 ? [x0 + 13, y0 + 0.6, z0] : [x, y, z];
-        cam.yaw = Math.atan2(tx - cam.x, tz - cam.z);
-        cam.pitch = Math.atan2(ty - cam.y, Math.hypot(tx - cam.x, tz - cam.z));
+        const t = Math.min(FLIES_MS, scene.now - from) / 1000;
+        const [x, y, z] = [x0 + dx * speed * t, y0 + dy * speed * t - 0.5 * gravity * t * t, z0 + dz * speed * t];
+        if (flying && scene.now - from >= FLIES_MS) {
+          flying = false;
+          scene.blasts.end(key, from + FLIES_MS);
+        }
+        if (flying) scene.blasts.at(key, x, y, z, dx, dy, dz);
+        // Riding beside it, the eye keeps its place by the rocket while it flies.
+        if (r.rides && flying) [cam.x, cam.y, cam.z] = [x + r.eye[0], y + r.eye[1], z + r.eye[2]];
+        // From the shoulder the eye follows the rocket, as the one who fired does.
+        if (r.follows && (flying || !r.rides)) aim(x, y, z);
       };
       runTo(view, from, ms, tell);
       for (let py = 0; py < h; py++) pixels.set(raster.color.subarray(py * w * 4, (py + 1) * w * 4), ((row * h + py) * W + col * w) * 4);
-      label(pixels, W, `${ms} ms`, col * w + 6, row * h + 6);
+      label(pixels, W, ms > FLIES_MS ? `${ms} ms, ${ms - FLIES_MS} after it ended` : `${ms} ms`, col * w + 6, row * h + 6);
       lines.push(`${r.name} ${String(ms).padStart(5)} ms: ${scene.blasts.count} cards, ${scene.blasts.flames} flames in ${scene.blasts.draws} draws, fill ${scene.packet.detailFill.toFixed(3)} screens`);
     });
-    scene.blasts.end(key, scene.now);
-    label(pixels, W, r.name, 6, (row + 1) * h - 22);
+    if (flying) scene.blasts.end(key, scene.now);
+    // The next row begins once this one's smoke is gone.
+    for (let k = 0; k < 300; k++) {
+      scene.now += 1000 / 60;
+      remote.tick = (scene.now * TICK_RATE) / 1000;
+      raster.take(scene.build(cam, remote));
+    }
+    label(pixels, W, `${r.name}, ${scene.assets.tier.name}`, 6, (row + 1) * h - 22);
   });
   return { width: W, height: H, pixels, lines };
 }
@@ -169,8 +191,8 @@ export function blastSnap(args: readonly string[], arg: (name: string) => string
   const rocket = args.includes("--rocket");
   const look = arg("blast") ?? "rocket", surface = arg("surface") ?? "ground";
   const sheet = rocket
-    ? rocketSheet(view, w, h, (arg("at") ?? "60,250,700,1500").split(",").map(Number))
-    : blastSheet(view, w, h, look, surface, arg("made") ?? "stone", (arg("at") ?? "40,150,400,1000,2500").split(",").map(Number), Number(arg("seeds") ?? 3), Number(arg("far") ?? 16));
+    ? rocketSheet(view, w, h, (arg("at") ?? "100,500,1500,3000,4200").split(",").map(Number), Number(arg("view") ?? -1), arg("site")?.split(",").map(Number) ?? null)
+    : blastSheet(view, w, h, look, surface, arg("made") ?? "stone", (arg("at") ?? "40,150,400,1000,2500").split(",").map(Number), Number(arg("seeds") ?? 3), Number(arg("far") ?? 16), arg("site")?.split(",").map(Number) ?? null);
   const out = resolve(arg("out") ?? (rocket ? `artifacts/blasts/rocket-${view.scene.assets.tier.name}.png` : `artifacts/blasts/${look}-${surface}-${view.scene.assets.tier.name}.png`));
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, encodePng(sheet.width, sheet.height, sheet.pixels));

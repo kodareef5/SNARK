@@ -129,10 +129,14 @@ export const DETAIL_DIGITS = DETAIL_POOL | 5;
  */
 export const DETAIL_GLOW = DETAIL_POOL | 7;
 /**
- * A thick puff of smoke worked out with no picture (shared/pack/details.ts `thick`), lit as any puff is: its second
- * colour's first byte is its seed, and its grey byte is full.
+ * A thick puff of smoke worked out with no picture (shared/pack/details.ts `thick`), lit as a ball of smoke is, on the
+ * side the sun is: its second colour's first byte is its seed and its second how far it is torn, and its grey byte is
+ * how many times longer than wide its card is, in SMOKE_STEPS, past which it is a length of a rope of smoke.
  */
 export const DETAIL_SMOKE = DETAIL_POOL | DETAIL_LIT | DETAIL_PUFF;
+export const SMOKE_STEPS = 16;
+/** A scorch (shared/pack/details.ts `stain`): an uneven patch of soot with rays, which takes light and gives none. Its second colour's first byte is its seed. */
+export const DETAIL_SCORCH = DETAIL_POOL | DETAIL_LIT | 3;
 /** The sixteenths of a DETAIL_GLOW particle's grey byte. */
 export const GLOW_STEPS = 16;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */

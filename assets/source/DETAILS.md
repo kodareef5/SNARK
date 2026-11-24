@@ -64,8 +64,9 @@ library also holds what burns (`blast_*`, `scorch`, `launch_flash`, `backblast*`
 | `lit`, `reach` | lit by the sun and sky, and the metres from the eye past which it is not made (40) |
 | `opacity` | the most of it that shows, 0 to 1 (1): smoke that must never hide what is behind it whole |
 | `glow` | above 0 it is light with no surface: a soft disc of its colour, that many times as bright, added over what is behind it; over 2 it blooms on high and ultra |
-| `thick` | a thick puff of smoke worked out with no picture, lit as any puff, for smoke a wisp of dust is too thin for |
-| `stain` | a dark soft disc on the ground that takes light and gives none: a scorch |
+| `thick` | a thick puff of smoke worked out with no picture, lit on its sunward side and shaded on the other, torn as it ages, for smoke a wisp of dust is too thin for |
+| `stain` | a dark patch with rays on the ground that takes light and gives none: a scorch |
+| `appear` | seconds a see-through one takes to come in (0.08): smoke that shows only as the fire over it cools |
 
 An effect with `glow`, `thick` or `stain` reads no picture, and still names one.
 

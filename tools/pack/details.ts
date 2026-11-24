@@ -13,7 +13,7 @@ import { readRegions } from "./mask.ts";
 import type { SourceDetails } from "./write.ts";
 
 /** Changes when what the build makes of the same files changes, so the pack is made again. */
-const VERSION = "details-2";
+const VERSION = "details-3";
 /** Where the shared library is, under the source tree. */
 export const LIBRARY = "core/details";
 /** A region with less than this share of a picture's dyed cover is not one of its two. */

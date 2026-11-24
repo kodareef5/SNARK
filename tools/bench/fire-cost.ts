@@ -13,7 +13,7 @@
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { airFrame } from "../../client/core/render/atmosphere.ts";
 import { FIRE_FLAME, FIRE_LOBE, LOBE_STEPS } from "../../client/core/render/fire-light.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, DETAIL_TIRE, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { GLOW_JET, packEffect } from "../../client/core/render/supply-light.ts";
@@ -54,12 +54,13 @@ const FACE = `#version 300 es
 uniform vec4 uEffect, uFlatA;
 uniform vec2 uFlatB;
 out vec2 vUv;
-out float vFacing;
+out float vFacing, vLift;
 out vec3 vLight;
 flat out vec4 vA;
 flat out vec2 vB;
 void main() {
   vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
+  vLift = 1.0;
   vUv = uEffect.x > 0.5 ? at * 3.0 + 8.0 : at * 0.5 + 0.5;
   vFacing = 1.0 - 0.9 * abs(at.x);
   vLight = vec3(1.2, 1.1, 1.0);
@@ -74,15 +75,18 @@ void main() {
  */
 const CARD = `#version 300 es
 uniform vec4 uCard;
-out vec3 vRel;
+out vec3 vRel, vBulge;
 out vec2 vUv, vCorner;
 flat out vec3 vA, vB, vNormal, vLens;
-flat out float vShows, vGrey, vFloor, vHalf;
+flat out float vShows, vGrey, vFloor, vHalf, vShade;
 flat out uint vFlags;
 void main() {
   vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
   vRel = vec3(at.x * 8.0, at.y * 8.0 + 2.0, 14.0);
-  vCorner = at * 0.8;
+  // The screen is one card from corner to corner, so a megapixel of it costs what a megapixel of cards does.
+  vCorner = at;
+  vBulge = vec3(vCorner, 0.0);
+  vShade = 1.0;
   vUv = (at * 0.4 + 0.5) / 4.0;
   vA = vec3(0.3);
   vB = vec3(0.5, 0.3, 0.3);
@@ -115,27 +119,37 @@ export async function fireCost(): Promise<FireCost> {
   const matrix = [...look(0, (14 * Math.PI) / 180, 1)];
   const medium = tierOf("medium"), high = tierOf("high");
   const surface = PROGRAMS.surfaceUndyedWhole!(high, "rgba");
-  const fire = (name: string, tier: typeof medium, light: boolean, bands: boolean, kind: number, a: number[], b: number[]): Record<string, unknown> => {
-    const text = PROGRAMS.fire!(bands ? { ...tier, bursts: { ...tier.bursts, noise: false } } : tier, "rgba", false, light);
-    return { name, vertex: FACE, fragment: withDefines(text.fragment, text.defines), samplers: {}, frame, matrix, uniforms: { uEffect: [kind, 1.1, 0, 0], uFlatA: a, uFlatB: b, uFrom: [0] } };
+  const fire = (name: string, tier: typeof medium, light: boolean, noise: number, kind: number, a: number[], b: number[]): Record<string, unknown> => {
+    const text = PROGRAMS.fire!({ ...tier, bursts: { ...tier.bursts, noise } }, "rgba", false, light);
+    // A lobe's soot's shade and its heat are its draw's.
+    return { name, vertex: FACE, fragment: withDefines(text.fragment, text.defines), samplers: {}, frame, matrix, uniforms: { uEffect: [kind, 1.1, 0.04, 1], uFlatA: a, uFlatB: b, uFrom: [0] } };
   };
   const details = PROGRAMS.details!(medium, "rgba", false, false);
   const card = (name: string, flags: number, grey: number): Record<string, unknown> => ({ name, vertex: CARD, fragment: withDefines(details.fragment, details.defines), samplers: details.samplers, frame, matrix, uniforms: { uCard: [flags, grey, 0.7, 0], uBlend: [1], uCells: [4], uFrom: [0] } });
   // A flame at full power a moment after it lit; a lobe a third through its life, when fire, soot and edge all show.
-  const flame = [1, 0.3, 0.37, 0.2], lobe = [0.35, 1, 0.37, 0.04];
+  const flame = [1, 0.3, 0.37, 0.2], lobe = [0.35, 1, 0.37, 0];
   const runs = [
     { name: "jet", vertex: TUBE, fragment: surface.fragment, samplers: surface.samplers, frame, matrix, uniforms: { uTube: [GLOW_JET, 3], uStreetMaterial: [DROP_GLOW], uEffect: [12, 0xf03838, 1, packEffect(6, false, 3)], uFrom: [0] } },
-    fire("flame", medium, false, false, FIRE_FLAME, flame, [1.1, 0.9]),
-    fire("flame, light target", high, true, false, FIRE_FLAME, flame, [1.1, 0.9]),
-    fire("lobe", medium, false, false, FIRE_LOBE, lobe, [1, 0]),
-    fire("lobe, light target", high, true, false, FIRE_LOBE, lobe, [1, 0]),
-    fire("lobe, bands", medium, false, true, FIRE_LOBE, lobe, [1, 0]),
-    card("smoke card", DETAIL_SMOKE, 1),
+    fire("flame", medium, false, 1, FIRE_FLAME, flame, [1.1, 0.9]),
+    fire("flame, light target", high, true, 2, FIRE_FLAME, flame, [1.1, 0.9]),
+    // Medium reads one octave of the noise, high and ultra two, low poly and a phone none.
+    fire("lobe", medium, false, 1, FIRE_LOBE, lobe, [0, 0]),
+    fire("lobe, two octaves", high, true, 2, FIRE_LOBE, lobe, [0, 0]),
+    fire("lobe, bands", medium, false, 0, FIRE_LOBE, lobe, [0, 0]),
+    // A puff of smoke, a length of a rope of it eight times as long as wide, and a scorch.
+    card("smoke card", DETAIL_SMOKE, 16 / 255),
+    card("rope card", DETAIL_SMOKE, 128 / 255),
+    card("scorch card", DETAIL_SCORCH, 1),
     // A puff of dust from the atlas, lit: flat shape 1 with the lit and puff flags.
     card("dust card", 1 | 8 | 16, 0.8),
     card("glow card", DETAIL_GLOW, 6 / 16),
     // Low poly's details text, for its link alone.
     ((flat) => ({ name: "links, low poly details", vertex: CARD, fragment: withDefines(flat.fragment, flat.defines), samplers: flat.samplers, frame, matrix, uniforms: { uCard: [DETAIL_SMOKE, 1, 0.7, 0], uBlend: [1], uFrom: [0] } }))(PROGRAMS.details!(tierOf("lowpoly"), "rgba")),
+    // The lit details' own two texts, whose vertex text looks a puff of smoke's shadow up: for their link alone.
+    ...[["links, medium details", medium], ["links, high details", high]].map(([name, tier]) => {
+      const text = PROGRAMS.details!(tier as typeof medium, "rgba");
+      return { name: name as string, vertex: withDefines(text.vertex, text.defines), fragment: withDefines(text.fragment, text.defines), samplers: text.samplers, frame, matrix, uniforms: { uCells: [4], uBlend: [1], uFrom: [0] } };
+    }),
     // The program's own two texts, which only a card can say link: with no mesh bound they draw nothing, and their times say nothing.
     ...[["links, medium", medium, false], ["links, high", high, true], ["links, low poly", tierOf("lowpoly"), false]].map(([name, tier, light]) => {
       const text = PROGRAMS.fire!(tier as typeof medium, "rgba", false, light as boolean);
@@ -147,8 +161,8 @@ export async function fireCost(): Promise<FireCost> {
 }
 
 /** The pixels a frame's fire and blended cards would fill, each whole, in megapixels by kind, for a view `width` by `height`. */
-export function burning(p: FramePacket, fovY: number, width: number, height: number): { lobe: number; flame: number; smoke: number; dust: number; glow: number } {
-  const out = { lobe: 0, flame: 0, smoke: 0, dust: 0, glow: 0 };
+export function burning(p: FramePacket, fovY: number, width: number, height: number): { lobe: number; flame: number; smoke: number; dust: number; glow: number; scorch: number } {
+  const out = { lobe: 0, flame: 0, smoke: 0, dust: 0, glow: 0, scorch: 0 };
   const screen = (width * height) / 1e6;
   // Pixels a metre at a metre.
   const focal = height / (2 * Math.tan(fovY / 2));
@@ -170,9 +184,13 @@ export function burning(p: FramePacket, fovY: number, width: number, height: num
         const nx = f[o + 4]! * f[o + 8]! - f[o + 5]! * f[o + 7]!, ny = f[o + 5]! * f[o + 6]! - f[o + 3]! * f[o + 8]!, nz = f[o + 3]! * f[o + 7]! - f[o + 4]! * f[o + 6]!;
         const area = Math.min(screen, (4 * Math.abs(nx * f[o]! + ny * f[o + 1]! + nz * f[o + 2]!) * focal * focal) / (far * far * far) / 1e6);
         const kind = (p.detailWords[o + DETAIL.misc]! >>> 8) & 255;
-        // A stain is as cheap as a glow: a soft disc and no light worked out.
-        if (kind === DETAIL_GLOW || kind === DETAIL_TIRE) out.glow += area;
-        else if (kind === DETAIL_SMOKE) out.smoke += area;
+        if (kind === DETAIL_GLOW) out.glow += area;
+        else if (kind === DETAIL_SCORCH) out.scorch += area;
+        // A puff's part under its floor is behind the ground, and no pixel of it is worked out.
+        else if (kind === DETAIL_SMOKE) {
+          const tall = Math.abs(f[o + 4]!) + Math.abs(f[o + 7]!);
+          out.smoke += area * (tall > 0 ? Math.min(1, Math.max(0, 0.5 + (f[o + 1]! - f[o + DETAIL.floor]!) / (2 * tall))) : 1);
+        }
         else out.dust += area;
       }
     }
@@ -197,7 +215,7 @@ async function blastFrame(cost: FireCost): Promise<void> {
   cam.pitch = 0.1;
   const ms = (p: FramePacket): { all: number; parts: ReturnType<typeof burning> } => {
     const b = burning(p, cam.fovY, W, H);
-    return { all: b.lobe * cost.ms.lobe! + b.flame * cost.ms.flame! + b.smoke * cost.ms["smoke card"]! + b.dust * cost.ms["dust card"]! + b.glow * cost.ms["glow card"]!, parts: b };
+    return { all: b.lobe * cost.ms.lobe! + b.flame * cost.ms.flame! + b.smoke * cost.ms["smoke card"]! + b.dust * cost.ms["dust card"]! + b.glow * cost.ms["glow card"]! + b.scorch * cost.ms["scorch card"]!, parts: b };
   };
   const step = (): FramePacket => {
     scene.now += 1000 / 60;
@@ -208,18 +226,21 @@ async function blastFrame(cost: FireCost): Promise<void> {
   const before = ms(scene.packet).all;
   const from = scene.now;
   scene.blasts.burst(2, x, hf.heightAt(x, z), z, 0, 1, 0, 7.5, 1, 0, blastSeed(1, x, 0, z), from);
-  let peak = { all: 0, parts: ms(scene.packet).parts }, at = 0, after = 0, fill = 0;
+  let peak = { all: 0, parts: ms(scene.packet).parts }, at = 0, after = 0, lies = 0, fill = 0;
   while (scene.now < from + 4000) {
     const now = ms(step());
     if (now.all > peak.all) [peak, at] = [now, scene.now - from];
     fill = Math.max(fill, scene.packet.detailFill);
-    after = now.all;
+    // Its scorch lies on the ground for half a minute, as a tyre's mark does, and is told apart.
+    lies = now.parts.scorch * cost.ms["scorch card"]!;
+    after = now.all - lies;
   }
   const mp = (v: number): string => v.toFixed(2);
-  console.log(`a rocket's blast 8 m off, medium, ${W} by ${H} (${((W * H) / 1e6).toFixed(2)} megapixels), every card and lobe counted whole:`);
+  console.log(`a rocket's blast 8 m off, medium, ${W} by ${H} (${((W * H) / 1e6).toFixed(2)} megapixels), every lobe counted whole and every card for what of it is over the ground:`);
   console.log(`  before it                      ${before.toFixed(3)} ms`);
-  console.log(`  at its peak, ${String(Math.round(at)).padStart(4)} ms in        ${peak.all.toFixed(3)} ms  (megapixels: lobes ${mp(peak.parts.lobe)}, smoke ${mp(peak.parts.smoke)}, dust ${mp(peak.parts.dust)}, glow and stain ${mp(peak.parts.glow)})${peak.all - before <= 1 ? "" : "  MISS (at most 1 ms added)"}`);
+  console.log(`  at its peak, ${String(Math.round(at)).padStart(4)} ms in        ${peak.all.toFixed(3)} ms  (megapixels: lobes ${mp(peak.parts.lobe)}, smoke ${mp(peak.parts.smoke)}, dust ${mp(peak.parts.dust)}, glow ${mp(peak.parts.glow)}, scorch ${mp(peak.parts.scorch)})${peak.all - before <= 1 ? "" : "  MISS (at most 1 ms added)"}`);
   console.log(`  four seconds on                ${after.toFixed(3)} ms${after - before <= 0.05 ? "" : "  MISS (back to before)"}`);
+  console.log(`  its scorch, which stays        ${lies.toFixed(3)} ms`);
   console.log(`  the ledger's fill at most      ${fill.toFixed(3)} screens (the tier's ${scene.assets.tier.details.fill})`);
 }
 
@@ -232,7 +253,7 @@ if (import.meta.main) {
     const most = name === "jet" || name.endsWith("card") ? 0 : name.startsWith("flame") ? FLAME_MOST : LOBE_MOST;
     console.log(`  ${name.padEnd(22)} ${ms.toFixed(4)}${most ? `  ${(ms / jet).toFixed(2)} times the jet (at most ${most})${ms / jet <= most ? "" : "  MISS"}` : ""}`);
   }
-  console.log(`  the fire program's own texts link on it, as medium, high with a light target and low poly have them, and low poly's details text`);
+  console.log(`  the fire program's own texts link on it, as medium, high with a light target and low poly have them, and the details' texts as each has them`);
   if (process.argv.includes("--blast")) await blastFrame(cost);
   process.exit(0);
 }

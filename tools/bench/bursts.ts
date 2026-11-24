@@ -167,7 +167,7 @@ export function benchBursts(section: Section, record: Row, scene: Scene, cam: Ca
   record("the blasts and the details they add, a frame, mean", mean(added), "ms", MEAN_MS);
   record(`the same, worst of ${FRAMES} frames`, Math.max(...added), "ms", WORST_MS);
   record(`particles alive at most (the tier's pool ${tier.details.pool})`, fight.alive, "", tier.details.pool);
-  record(`see-through share of the screen at most, fire counted (the tier's ${tier.details.fill})`, fight.fill, "screens", tier.details.fill * 1.25);
+  record(`see-through share of the screen at most, fire counted (the tier's ${tier.details.fill})`, fight.fill, "screens", tier.details.fill);
   record("of that, fire, rockets' smoke and glows at most", fight.fire, "screens");
   record("and what the blasts threw up among the details at most", fight.dust, "screens");
   record("particles thinned for the screen's fill", fight.thinned, "");

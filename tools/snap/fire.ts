@@ -3,10 +3,11 @@
 // them. raster.ts draws a frame's fire with `drawFire`. Run alone, this file draws the two looks by themselves on a plain
 // ground, which takes a second: flames by seed, phase and view, and fireballs by age and seed.
 //
-//   bun tools/snap/fire.ts [--flames] [--bands] [--night] [--level N] [--out FILE] [--gpu]
+//   bun tools/snap/fire.ts [--flames] [--bands|--coarse] [--night] [--level N] [--out FILE] [--gpu]
 //
 // With --gpu the same sheet is then drawn by the fire program's own texts in headless Chrome on this machine's card, on
 // a plain ground and as low poly lights its soot, and the two pictures are compared: the twin against what it is twin of.
+// The flames' last row is Meridian's jet (suit-finish.ts) on the same cone, for setting the two side by side.
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,6 +17,7 @@ import { CONE_TURN, FIRE_FLAME, FIRE_FRAGMENT, FIRE_VERTEX, FIRE_VERTEX_FLOATS, 
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { withDefines } from "../../client/core/render/programs.ts";
+import { exhaustLight, exhaustPhase } from "../../client/core/render/suit-finish.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 import { fireMeshes } from "../pack/fire.ts";
 import { encodePng } from "./png.ts";
@@ -36,9 +38,9 @@ export interface FireTarget {
   stored(z: number): number;
 }
 
-/** How a frame draws its fire: with the value noise or bands, as light for a finish or for a display, on a lit tier or not. */
+/** How a frame draws its fire: with how many octaves of the value noise, as light for a finish or for a display, on a lit tier or not. */
 export interface FireLook {
-  noise: boolean;
+  noise: number;
   target: boolean;
   env: FireSun;
 }
@@ -51,9 +53,11 @@ const flat = new Float64Array(6);
 
 /**
  * Draws instance `at` (in bytes) of `bytes` on a mesh level's `positions`, `colors` and `indices`: front faces alone, each
- * pixel's light added over what is there less what it hides. Returns the pixels it lit.
+ * pixel's light added over what is there less what it hides. `tone` and `heat` are a blast's soot's shade and its heat,
+ * which its draw's effect holds. `other` lights a flame's pixels in the fire's place: another flame on the same cone,
+ * to set beside it. Returns the pixels it lit.
  */
-export function drawFire(t: FireTarget, positions: Float32Array, colors: Uint8Array, indices: ArrayLike<number>, kind: number, bytes: Uint8Array, at: number, phase: number, look: FireLook): number {
+export function drawFire(t: FireTarget, positions: Float32Array, colors: Uint8Array, indices: ArrayLike<number>, kind: number, bytes: Uint8Array, at: number, phase: number, look: FireLook, tone = 0.04, heat = 1, other: ((out: number[], around: number, along: number, facing: number) => void) | null = null): number {
   const count = positions.length / 3;
   if (made.length < count * N) {
     made = new Float64Array(count * N);
@@ -101,8 +105,9 @@ export function drawFire(t: FireTarget, positions: Float32Array, colors: Uint8Ar
         const qs = 1 / (q0 + q1 + q2);
         if (qs < t.from) continue;
         const carry = (j: number): number => (q0 * made[a * N + j]! + q1 * made[b * N + j]! + q2 * made[c * N + j]!) * qs;
-        if (kind === FIRE_FLAME) flameLight(lit, carry(3), carry(4), carry(5), flat[0]!, flat[1]!, flat[2]!, flat[3]!, flat[4]!, flat[5]!, look.target);
-        else lobeLight(lit, carry(3), carry(4), carry(5), flat[0]!, flat[1]!, flat[2]!, flat[3]!, flat[4]!, carry(6), carry(7), carry(8), look.noise, look.target, look.env.lit);
+        if (other) other(lit, carry(3), carry(4), carry(5));
+        else if (kind === FIRE_FLAME) flameLight(lit, carry(3), carry(4), carry(5), flat[0]!, flat[1]!, flat[2]!, flat[3]!, flat[4]!, flat[5]!, look.target);
+        else lobeLight(lit, carry(3), carry(4), carry(5), carry(9), flat[0]!, heat, flat[2]!, tone, flat[1]!, carry(6), carry(7), carry(8), look.noise, look.target, look.env.lit);
         if (lit[3]! <= 0 && lit[0]! + lit[1]! + lit[2]! <= 0) continue;
         pixels++;
         for (let ch = 0; ch < 3; ch++) t.color[o * 4 + ch] = t.color[o * 4 + ch]! * (1 - lit[3]!) + 255 * lit[ch]!;
@@ -118,6 +123,8 @@ interface Drawn {
   row: number;
   kind: number;
   phase: number;
+  tone: number;
+  heat: number;
   bytes: number[];
 }
 
@@ -184,7 +191,7 @@ try {
     gl.bindVertexArray(m.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, m.instance);
     gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(d.bytes), gl.DYNAMIC_DRAW);
-    gl.uniform4f(u("uEffect"), d.kind, d.phase, 0, 0);
+    gl.uniform4f(u("uEffect"), d.kind, d.phase, d.tone, d.heat);
     gl.drawElementsInstanced(gl.TRIANGLES, m.count, gl.UNSIGNED_SHORT, 0, 1);
   }
   const px = new Uint8Array(s.W * s.H * 4);
@@ -244,11 +251,11 @@ if (import.meta.main) {
   frame.set(night ? [0.002, 0.002, 0.003] : [0.18, 0.16, 0.13], FRAME.skyBelow);
   const gpu = args.includes("--gpu");
   const GROUND = [96, 100, 108];
-  const look: FireLook = { noise: !args.includes("--bands"), target: false, env: { lit: !gpu, frame, sun: [0.35, 0.7, 0.62], light: 1 } };
+  const look: FireLook = { noise: args.includes("--bands") ? 0 : args.includes("--coarse") ? 1 : 2, target: false, env: { lit: !gpu, frame, sun: [0.35, 0.7, 0.62], light: 1 } };
   const drawn: Drawn[] = [];
   const flames = args.includes("--flames");
   const [CW, CH] = flames ? [440, 200] : [220, 200];
-  const cols = flames ? 4 : 8, rows = flames ? 6 : 4;
+  const cols = flames ? 4 : 8, rows = flames ? (gpu ? 6 : 7) : 4;
   const [W, H] = [CW * cols, CH * rows];
   const pixels = new Uint8ClampedArray(W * H * 4);
   const cell = new Uint8ClampedArray(CW * CH * 4);
@@ -285,10 +292,11 @@ if (import.meta.main) {
         // Three lobes, as a blast near has them, the farthest first; the last row one alone.
         const lobes = [[-0.9, 0.3, 0.7, 1.5], [0.8, 0.9, 0.3, 1.3], [0, 0, -0.2, 2]] as const;
         lobes.slice(row === 3 ? 2 : 0).forEach(([x, y, z, r], k) => {
-          const rise = 1.6 * age;
-          putLobe(bytes, 0, x, y + rise - 0.6, 11 + z, r * lobeSwell(age), age, seeds[k]!, 0.025 + 0.02 * k, 1, 1);
-          drawFire(target, ball.positions, ball.colors, ball.indices, 1, bytes, 0, 0, look);
-          drawn.push({ col, row, kind: 1, phase: 0, bytes: [...bytes] });
+          const rise = 1.6 * age, tone = 0.025 + 0.02 * k;
+          // The last row's lobe stands on the ground, which is 1.5 m under where it began.
+          putLobe(bytes, 0, x, y + rise - 0.6, 11 + z, r * lobeSwell(age), age, seeds[k]!, row === 3 ? 1.5 + rise : Infinity, 1);
+          drawFire(target, ball.positions, ball.colors, ball.indices, 1, bytes, 0, 0, look, tone, 1);
+          drawn.push({ col, row, kind: 1, phase: 0, tone, heat: 1, bytes: [...bytes] });
         });
         put(col, row);
       });
@@ -300,14 +308,23 @@ if (import.meta.main) {
       [-0.8, 0, 2, 1, 0, 0, 1, 250], [-0.7, 0, 2, 1, 0, 0, 0.5, 250], [-0.3, -0.05, 2.6, 0.5, 0.1, -1, 0, 0], [0, 0, 2.2, 0.05, 0.03, -1, 0, 0],
       [0.1, 0, 2.8, 0.5, 0.2, 1, 0, 600], [0, 0, 3.2, 0.04, 0.02, 1, 0, 600], [-0.45, 0, 9, 1, 0, 0, 0, 300], [-0.45, 0, 30, 1, 0, 0, 0, 300],
     ];
+    const light = new Float64Array(3);
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
-        const [x, y, z, dx, dy, dz, ignite, ms] = views[(Math.floor(row / 2) * cols + col) % views.length]!;
+        // The last row is the first again, lit as Meridian's jet is.
+        const meridian = row === 6;
+        const [x, y, z, dx, dy, dz, ignite, ms] = views[(meridian ? col : Math.floor(row / 2) * cols + col) % views.length]!;
         ground();
         const l = Math.hypot(dx, dy, dz);
         putFlame(bytes, 0, x, y, z, dx / l, dy / l, dz / l, 0.9, 1, ignite, (0.21 + (row % 2) * 0.37) % 1);
-        drawFire(target, cone.positions, cone.colors, cone.indices, FIRE_FLAME, bytes, 0, flamePhase(ms + (row % 2) * 333), look);
-        drawn.push({ col, row, kind: FIRE_FLAME, phase: flamePhase(ms + (row % 2) * 333), bytes: [...bytes] });
+        const jet = (out: number[], around: number, along: number, facing: number): void => {
+          const hides = exhaustLight(light, along, around, facing, exhaustPhase(ms), 1);
+          // As a display shows that light: toned as the frame's is, to the same ground.
+          for (let c = 0; c < 3; c++) out[c] = hides * Math.min(1, Math.max(0, 1.055 * Math.pow(Math.min(1, light[c]! / (1 + light[c]! * 0.25)), 1 / 2.4) - 0.055));
+          out[3] = hides;
+        };
+        drawFire(target, cone.positions, cone.colors, cone.indices, FIRE_FLAME, bytes, 0, flamePhase(ms + (row % 2) * 333), look, 0, 1, meridian ? jet : null);
+        if (!meridian) drawn.push({ col, row, kind: FIRE_FLAME, phase: flamePhase(ms + (row % 2) * 333), tone: 0, heat: 1, bytes: [...bytes] });
         put(col, row);
       }
     }
@@ -317,7 +334,7 @@ if (import.meta.main) {
   writeFileSync(out, encodePng(W, H, pixels));
   console.log(`${out}  ${W}x${H}  ${(performance.now() - t0).toFixed(0)} ms`);
   if (gpu) {
-    const defines = look.noise ? "#define FIRE_NOISE\n" : "";
+    const defines = (look.noise > 0 ? "#define FIRE_NOISE\n" : "") + (look.noise > 1 ? "#define FIRE_FINE\n" : "");
     const mesh = (lod: typeof cone) => ({ positions: [...lod.positions], colors: [...lod.colors], indices: [...lod.indices] });
     const card = await onCard({ W, H, CW, CH, vertex: withDefines(FIRE_VERTEX, defines), fragment: withDefines(FIRE_FRAGMENT, defines), matrix: [...cam.viewProj], sun: Array.from(look.env.sun), ground: GROUND, meshes: [mesh(cone), mesh(ball)], drawn });
     // How far the twin is from the card, a channel of 255: the mean, and the share of pixels more than eight apart.

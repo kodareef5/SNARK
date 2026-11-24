@@ -9,7 +9,7 @@ const G = 9.81;
 /** Metres a lying particle is lifted off the floor, so it does not flicker into it. */
 const LIFT = 0.012;
 /** Seconds over which a see-through particle comes in, so it is never seen to appear. */
-export const FADE_IN = 0.08;
+
 
 export class Pool {
   /** The most particles there is room for, and how many are alive: the first `count` of every array. */
@@ -194,6 +194,6 @@ export class Pool {
   shows(i: number, e: DetailEffect): number {
     const age = this.age[i]!;
     const out = e.fade > 0 ? Math.min(1, (this.end[i]! - age) / e.fade) : 1;
-    return e.pass === "blend" && !(e.glow > 0) ? Math.min(out, age / FADE_IN) : out;
+    return e.pass === "blend" && !(e.glow > 0) ? Math.min(out, age / e.appear) : out;
   }
 }
