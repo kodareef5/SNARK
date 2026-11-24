@@ -1299,3 +1299,54 @@ export function gateLeaves(half: number, foot: number, top: number, leaves: 1 | 
     };
   });
 }
+
+
+// Added for thatch's roofs, whose cut sides are a saw's teeth: a polygon with corners in a line over one another.
+
+/**
+ * The triangles of a simple polygon in the plane, as indices into it, going round as it does. Unlike `earcut`, an ear is
+ * not cut while another corner lies on its far side, so a polygon whose corners stand in a line over one another, as a
+ * stepped section's do, is laid without a triangle turned over.
+ */
+export function ears(poly: readonly Flat[]): number[] {
+  const n = poly.length;
+  let area = 0;
+  for (let i = 0; i < n; i++) area += poly[i]![0] * poly[(i + 1) % n]![1] - poly[(i + 1) % n]![0] * poly[i]![1];
+  const turn = area >= 0 ? 1 : -1;
+  const left = Array.from({ length: n }, (_, i) => i);
+  const side = (a: number, b: number, c: number): number => turn * ((poly[b]![0] - poly[a]![0]) * (poly[c]![1] - poly[a]![1]) - (poly[b]![1] - poly[a]![1]) * (poly[c]![0] - poly[a]![0]));
+  const same = (p: number, q: number): boolean => poly[p]![0] === poly[q]![0] && poly[p]![1] === poly[q]![1];
+  const out: number[] = [];
+  // First with every corner on an ear's edge counted as in it; where none is left to cut so, with only those inside.
+  let within = -1e-10;
+  while (left.length > 3) {
+    const m = left.length;
+    let cut = -1;
+    for (let i = 0; i < m && cut < 0; i++) {
+      const [a, b, c] = [left[(i + m - 1) % m]!, left[i]!, left[(i + 1) % m]!];
+      if (side(a, b, c) <= 1e-12) continue;
+      if (left.some((p) => p !== a && p !== b && p !== c && !same(p, a) && !same(p, b) && !same(p, c) && side(a, b, p) > within && side(b, c, p) > within && side(c, a, p) > within)) continue;
+      out.push(a, b, c);
+      cut = i;
+    }
+    if (cut >= 0) {
+      left.splice(cut, 1);
+      within = -1e-10;
+    } else if (within < 0) within = 1e-12;
+    else break;
+  }
+  // Corners left in a line are closed as a fan, so every point keeps its edges.
+  for (let k = 1; k + 1 < left.length; k++) out.push(left[0]!, left[k]!, left[k + 1]!);
+  return out;
+}
+
+/** Lays again, by `ears`, the triangles of every face from `from` on that lists its own: the faces `clip` closed its cuts with. */
+export function retile(shape: Shape, from = 0): Shape {
+  for (const f of shape.faces.slice(from) as Face[]) {
+    if (!f.tris || f.points.length < 4) continue;
+    const n = unit(faceNormal(f.points));
+    const e1 = unit(cross(Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], n)), e2 = cross(n, e1);
+    f.tris = ears(f.points.map((p): Flat => [dot(p, e1), dot(p, e2)]));
+  }
+  return shape;
+}

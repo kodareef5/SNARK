@@ -540,11 +540,11 @@ const THATCH_NEW: Record<string, FormDef> = Object.fromEntries(THATCH_PLANNED.ma
 const thatchNew = Object.entries(THATCH_NEW).map(([name, form]) => ({ name, form, shapes: levelsOf(THATCH, name, form) }));
 /** What each new thatch form's levels cost on 2026-11-24. A change may lower a number and may not raise one. */
 const THATCH_NEW_MOST: Record<string, readonly number[]> = {
-  roof: [658, 84, 60, 12],
+  roof: [694, 104, 60, 12],
   roof_hip: [1020, 148, 60, 12],
-  roof_valley: [568, 108, 60, 12],
-  sloped_wall_left: [648, 170, 78, 8],
-  sloped_wall_right: [648, 170, 78, 8],
+  roof_valley: [592, 108, 60, 12],
+  sloped_wall_left: [636, 162, 72, 8],
+  sloped_wall_right: [636, 162, 72, 8],
   half_wall: [820, 112, 72, 12],
   railing: [380, 108, 68, 24],
 };

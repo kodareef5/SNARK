@@ -16,7 +16,7 @@
 // (the tier's asset points them at the cut-out ones'). Past level 1 nothing is cut out.
 
 import { outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
-import { RoundShape, Shape, add, clip, cross, dot, inset, length, mirror, pathFrames, planeAt, planeMoved, poleRings, railingSticks, roundEven, scale, slabOn, sub, unit, uprightPlane, type Flat, type Patch, type Plane, type Uv, type Vec } from "./kit.ts";
+import { RoundShape, Shape, add, clip, cross, dot, ears, inset, length, mirror, pathFrames, planeAt, planeMoved, poleRings, railingSticks, retile, roundEven, scale, slabOn, sub, unit, uprightPlane, type Flat, type Patch, type Plane, type Uv, type Vec } from "./kit.ts";
 import { colliderBox, planOf, type TierRecipe } from "./lod.ts";
 import { PyRandom, pyMod, pyRepr, pyRound } from "./mt.ts";
 
@@ -1127,15 +1127,25 @@ function alongSlope(hut: Hut, f: Slope, a0: number, a1: number, ring: readonly C
     const map = c.uv ?? uv;
     return { points: q.map(([a, e]) => onSlope(f, a, e.s, e.n)), uvs: q.map(([a, e]) => map(a, e.s, e.n)), mat: c.mat ?? mat, ...more };
   });
-  for (const a of [a0, a1]) patches.push({ points: ring.map((c) => onSlope(f, a, c.s, c.n)), uvs: ring.map((c) => capUv(a, c.s, c.n)), mat, ...more });
+  // An end is its section laid in triangles: a stepped section's corners stand over one another.
+  const laid = ears(ring.map((c): Flat => [c.s, c.n]));
+  for (const a of [a0, a1]) {
+    for (let t = 0; t < laid.length; t += 3) {
+      const tri = [ring[laid[t]!]!, ring[laid[t + 1]!]!, ring[laid[t + 2]!]!];
+      patches.push({ points: tri.map((c) => onSlope(f, a, c.s, c.n)), uvs: tri.map((c) => capUv(a, c.s, c.n)), mat, ...more });
+    }
+  }
   hut.raw(patches);
 }
 
-/** Where a pole is cut through, it shows the grain of its end. */
-const endGrain = (q: Vec): readonly [string, Uv] => {
-  const wave = (v: number): number => Math.abs((((v / 0.11) % 2) + 2) % 2 - 1) - 0.5;
-  return ["wood", [184 / 2048 + (wave(q[0] + q[1]) * 150) / 2048, 1 - 1915 / 2048 + (wave(q[2] + q[1] * 0.5) * 150) / 2048]];
-};
+/** Where a pole from `a` to `b` is cut across by a plane, it shows the grain of its end, about the middle of the cut. */
+function endGrain(a: Vec, b: Vec, plane: Plane): (q: Vec) => readonly [string, Uv] {
+  const t = (plane[1] - dot(plane[0], a)) / (dot(plane[0], sub(b, a)) || 1);
+  const c = add(a, scale(sub(b, a), t));
+  // Two ways across that no plane a pole is cut by holds both of.
+  const [e1, e2]: [Vec, Vec] = [[1, 0, 0.37], [0, 1, 0.19]];
+  return (q) => ["wood", [184 / 2048 + (dot(sub(q, c), e1) * 118) / 2048 / 0.07, 1 - 1915 / 2048 + (dot(sub(q, c), e2) * 118) / 2048 / 0.07]];
+}
 
 /** A pole between two points of the kit's frame, cut as the scripts cut theirs. */
 function kitPole(rng: PyRandom, a: Vec, b: Vec, r0: number, r1: number, o: PoleOpts = {}): Pole {
@@ -1186,6 +1196,7 @@ function thatchOn(hut: Hut, level: number, r: Roof, f: Slope): void {
         return uv(a, s, p[2] - f.lo - s * f.g);
       };
       const face = (points: Vec[], group?: number): Patch => ({ points, uvs: points.map(where), mat: "roof", ...(group === undefined ? {} : { group }) });
+      // The top and the underside each lie in one plane, their outer edge the bundles' ends.
       const patches: Patch[] = [face([b0, ...lipTop, b1]), face([u0, ...lipLow, u1]), face([b0, b1, u1, u0]), face([b0, lipTop[0]!, lipLow[0]!, u0]), face([b1, lipTop.at(-1)!, lipLow.at(-1)!, u1])];
       const groups = new Map<number, number>();
       for (let j = 0; j + 1 < xs.length; j++) {
@@ -1214,7 +1225,9 @@ function thatchOn(hut: Hut, level: number, r: Roof, f: Slope): void {
     top.splice(-1, 1, { s: sTop - 0.26, n: COURSE_HEAD + (0.26 / course) * (COURSE_BUTT - COURSE_HEAD) }, { s: sTop - 0.1, n: RIDGE_SWELL }, { s: sTop, n: RIDGE_SWELL });
     alongSlope(hut, f, a0, a1, [{ s: first * course, n: -body }, ...top, { s: sTop, n: -body }], "roof", uv, sideUv, !folded);
   }
-  if (folded) for (const side of slopeSides(f)) clip(hut.shape, side, null, from);
+  if (!folded) return;
+  for (const side of slopeSides(f)) clip(hut.shape, side, null, from);
+  retile(hut.shape, from);
 }
 
 /**
@@ -1252,8 +1265,9 @@ function roofFrame(hut: Hut, level: number, r: Roof): void {
       const from = hut.shape.faces.length;
       const [s0, s1] = [eave ? -ROOF_LIP + 0.04 : 0.13, sTop - 0.13];
       const how: Drawn | null = fine ? {} : null;
-      drawPole(hut, kitPole(rng, onSlope(f, a, s0, drop), onSlope(f, a, s1, drop), radius, radius * 0.9, { band: "bark", bow: 0.006, bowDir: upward, segments: 3, sides: 6, caps: ["axe", "flat"] }), how);
-      if (foldPlane && how) clip(hut.shape, planeMoved(foldPlane, -0.09), endGrain, from);
+      const [foot, head] = [onSlope(f, a, s0, drop), onSlope(f, a, s1, drop)];
+      drawPole(hut, kitPole(rng, foot, head, radius, radius * 0.9, { band: "bark", bow: 0.006, bowDir: upward, segments: 3, sides: 6, caps: ["axe", "flat"] }), how);
+      if (foldPlane && how) clip(hut.shape, planeMoved(foldPlane, -0.09), endGrain(foot, head, planeMoved(foldPlane, -0.09)), from);
     }
     const lie = -r.thick + 2 * RAFTER_R * k + BATTEN_R + 0.002;
     BATTENS.forEach((s, row) => {
@@ -1332,8 +1346,8 @@ function lowTier(hut: Hut, level: number): void {
   else tier(hut, { ...lower, tips: "none", plain: true, back: LOWER_BACK, rows: [row(LOWER_ROWS.top, "ends"), row(LOWER_ROWS.rod, "ends"), row(LOWER_ROWS.last, "ends"), row([FRONT_FOOT, LOWER_ROWS.last[1] + 0.05 + 0.9 * LOWER_ROWS.last[2], 0], "ends")] });
 }
 
-/** A cut through thatch shows reed end on: the lower tier's own picture over its tips. */
-const cutReed = (lift: number) => (q: Vec): readonly [string, Uv] => [BODY, lowerUv([q[0], LOWER_ROWS.last[0] + 0.05 + (q[2] + lift) * 0.2, 0])];
+/** A cut through thatch shows reed end on: the lower tier's own picture over its tips, run through the wall's thickness. */
+const cutReed = (q: Vec): readonly [string, Uv] => [BODY, lowerUv([q[0], LOWER_ROWS.last[0] + 0.1 - q[1], 0])];
 
 /** How a level draws a low wall's poles. */
 const LOW_LOOKS: readonly { post: Drawn | null; pole: Drawn | null; rail: Drawn | null; cord: boolean }[] = [
@@ -1367,8 +1381,8 @@ function gable(form: FormDef, level: number, posts: boolean): Shape | null {
   }
   if (level === 2) slab(hut, -hx, hx, null, true, false);
   else lowTier(hut, level);
-  clip(hut.shape, slope, cutReed(lift));
-  if (level === 2) clip(hut.shape, planeAt([0, 0, -lift - 0.03], [0, 0, -1]), cutReed(lift));
+  clip(hut.shape, slope, cutReed);
+  if (level === 2) clip(hut.shape, planeAt([0, 0, -lift - 0.03], [0, 0, -1]), cutReed);
   const look = LOW_LOOKS[level]!;
   const rng = new PyRandom("gable0");
   const from = hut.shape.faces.length;
@@ -1379,15 +1393,15 @@ function gable(form: FormDef, level: number, posts: boolean): Shape | null {
   };
   along(ROD_Z + 0.012, 0.036, "bark", look.pole);
   along(RAIL_Z, 0.036, "peeled", look.pole);
+  clip(hut.shape, planeAt([0, 0, -lift - 0.02], [0, 0, -1]), null, from);
   // Half a post on the high end's own line, where the other hand's half meets it.
   drawPole(hut, poleOf(rng, [-hx, -0.02, POST_Z], [-hx, high + 0.1, POST_Z - 0.004], POST_R[0], POST_R[1] + 0.004, { band: "bark", caps: ["flat", "flat"], segments: 3 }), posts ? look.post : null);
   for (const [x, radius] of [[-0.75 * hx, 0.045], [0, 0.043], [0.6 * hx, 0.043]] as const) {
     drawCord(hut, cordOf(rng, [x, top(x) - 0.036 * k - 0.012, ROD_Z + 0.012], [-2 * hx, high, 0], radius, 0.07), look.cord ? 0.036 : null);
   }
-  clip(hut.shape, planeAt([-hx, 0, 0], [-1, 0, 0]), endGrain, from);
-  clip(hut.shape, planeAt([hx, 0, 0], [1, 0, 0]), endGrain, from);
-  clip(hut.shape, planeAt([0, 0, -lift - 0.02], [0, 0, -1]), endGrain, from);
-  clip(hut.shape, planeMoved(slope, -0.004), endGrain, from);
+  // Each is cut to the wall's ends and its top, and the two along the top to its foot; a cut wears the pole's own skin carried through.
+  for (const plane of [planeAt([-hx, 0, 0], [-1, 0, 0]), planeAt([hx, 0, 0], [1, 0, 0]), planeMoved(slope, -0.004)]) clip(hut.shape, plane, null, from);
+  retile(hut.shape);
   // A rod outside and a rail inside, each as far as the cut lets it run.
   const rise = rng.uniform(-0.006, 0.006);
   const far = (y: number): number => hx - ((y + 0.09) * 2 * hx) / high;
@@ -1411,8 +1425,8 @@ function halfWall(form: FormDef, level: number, posts: boolean): Shape | null {
   }
   if (level === 2) slab(hut, -hx, hx, null, true, false);
   else lowTier(hut, level);
-  clip(hut.shape, planeAt([0, 0, high - lift - 0.012], [0, 0, 1]), cutReed(lift));
-  if (level === 2) clip(hut.shape, planeAt([0, 0, -lift - 0.03], [0, 0, -1]), cutReed(lift));
+  clip(hut.shape, planeAt([0, 0, high - lift - 0.012], [0, 0, 1]), cutReed);
+  if (level === 2) clip(hut.shape, planeAt([0, 0, -lift - 0.03], [0, 0, -1]), cutReed);
   const look = LOW_LOOKS[level]!;
   const rng = new PyRandom("half0");
   const [post, cord] = posts ? [look.post, look.cord] : [null, false];
@@ -1449,10 +1463,10 @@ function fence(form: FormDef, level: number): Shape | null {
     const side = s.what === "rail" ? -0.045 : s.what === "brace" ? Math.sign(a[1]) * 0.02 - 0.022 : 0;
     const from = hut.shape.faces.length;
     drawPole(hut, kitPole(rng, [a[0], side, a[2]], [b[0], side, b[2]], radius, radius * 0.9, { band: post ? "bark" : s.what === "rail" ? "peeled" : "stick", segments: post ? 2 : 3, sides: s.what === "brace" ? 5 : 6, bow: post ? 0 : 0.006, bowDir: [0, 0, -1], caps: post ? ["flat", "axe"] : ["flat", "flat"] }), how(s.what));
-    for (const x of [-hx, hx]) clip(hut.shape, planeAt([x, 0, 0], [Math.sign(x), 0, 0]), endGrain, from);
+    for (const x of [-hx, hx]) clip(hut.shape, planeAt([x, 0, 0], [Math.sign(x), 0, 0]), null, from);
     // Each rail is lashed to the post it passes.
     if (post && level === 0) for (const z of [high - lift - 0.035 - 0.07 / 2, 0.1 + 0.035 - lift]) drawCord(hut, cordOf(rng, py([a[0], -0.03, z]), [0, 1, 0], radius + 0.012, 0.07), radius);
-    if (post) for (const x of [-hx, hx]) clip(hut.shape, planeAt([x, 0, 0], [Math.sign(x), 0, 0]), endGrain, from);
+    if (post) for (const x of [-hx, hx]) clip(hut.shape, planeAt([x, 0, 0], [Math.sign(x), 0, 0]), null, from);
   }
   return hut.shape;
 }
