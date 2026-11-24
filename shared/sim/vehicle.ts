@@ -1,6 +1,7 @@
 // Native wheel chassis contract. Authority and prediction use the same fixed-tick solver.
 // Occupancy grants control; this module does not grant ownership or spend inventory items.
-import { clamp, detCos, detSin, len3 } from "../math/scalar.ts";
+import { clamp, detCos, detSin } from "../math/scalar.ts";
+import { familyOf } from "./families.ts";
 import { validateSeats, type Seat } from "./seats.ts";
 import { validateThrusterSpec, type ThrusterNozzle, type VehicleThrusterSpec } from "./vehicle-thrusters.ts";
 import { DEFAULT_DRIVETRAIN, validateDrivetrainSpec, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "./vehicle-drivetrain.ts";
@@ -333,23 +334,10 @@ export function validateHelicopterSpec(s: HelicopterSpec): void {
 
 /** Content checks beyond the spec's, so a definition that compiles always registers and draws. Throws on the first fault. */
 export function validateVehicleDefinition(d: VehicleDefinition): void {
-  if (d.movement === "rotor") validateHelicopterSpec(d.spec);
-  else if (d.movement === "boat") {
-    validateBoatSpec(d.spec);
-    if (d.family !== undefined && !["offshore", "jon", "pwc", "yacht", "catamaran"].includes(d.family)) throw new Error("invalid boat family");
-  }
-  else {
-    if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
-    if (d.frame !== undefined && !["car", "sports_car", "van", "off_road", "skateboard"].includes(d.frame)) throw new Error("invalid road vehicle frame");
-    validateVehicleSpec(d.spec, isSkateboard(d));
-    if (d.towed) validateVehicleSpec(d.towed);
-    if (d.passengerAisle !== undefined && (!Number.isFinite(d.passengerAisle) || Math.abs(d.passengerAisle) >= d.spec.halfWidth)) throw new Error("passenger aisle outside cabin");
-  }
+  const family = familyOf(d);
+  if (!family) throw new Error("invalid vehicle movement");
+  family.validateSpec(d);
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
-  if (isWheelVehicle(d) && d.emergencyLights !== undefined && (!Array.isArray(d.emergencyLights) || d.emergencyLights.length < 1 || d.emergencyLights.length > 16 || !d.emergencyLights.every(lamp =>
-    lamp && vec(lamp.at) && (lamp.width === undefined || Number.isFinite(lamp.width) && lamp.width > 0 && lamp.width <= 2) && (lamp.color === "red" || lamp.color === "blue") && (lamp.facing === undefined || lamp.facing === "front" || lamp.facing === "rear")))) throw new Error("invalid emergency lamp layout");
-  if (isWheelVehicle(d) && d.nozzles !== undefined && (!d.spec.thrusters || !Array.isArray(d.nozzles) || d.nozzles.length < 1 || d.nozzles.length > 16 || !d.nozzles.every(n =>
-    n && typeof n.name === "string" && n.name.length > 0 && vec(n.at) && vec(n.dir) && Math.abs(len3(n.dir[0]!, n.dir[1]!, n.dir[2]!) - 1) < .01))) throw new Error("invalid thruster nozzles");
   const bone = (n: unknown): boolean => typeof n === "string" && n.length > 0 && n.length <= 64;
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
   if (!Array.isArray(d.wheels) || d.wheels.length > 16 || !d.wheels.every((w) => bone(w.bone))) throw new Error("invalid vehicle wheels");
@@ -363,22 +351,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
       !Number.isInteger(door.openTicks) || door.openTicks < 1 || door.openTicks > 255 ||
       !Number.isInteger(door.closeTicks) || door.closeTicks < 1 || door.closeTicks > 255) throw new Error("invalid vehicle door");
   }
-  if (d.movement === "rotor") {
-    if (d.wheels.length || d.steeringWheel || !Array.isArray(d.rotors) || d.rotors.length < 1 || d.rotors.length > 4) throw new Error("invalid helicopter rig");
-    for (const rotor of d.rotors) {
-      const n = rotor.axis;
-      if (!bone(rotor.bone) || !vec(rotor.at) || !vec(n) || Math.abs(n[0] * n[0] + n[1] * n[1] + n[2] * n[2] - 1) > 1e-6 ||
-        !Number.isFinite(rotor.radius) || rotor.radius <= 0 || rotor.radius > 16 || !Number.isFinite(rotor.ratio) || rotor.ratio === 0 || Math.abs(rotor.ratio) > 16) throw new Error("invalid helicopter rotor");
-      if (rotor.blur && (!Number.isInteger(rotor.blur.blades) || rotor.blur.blades < 2 || rotor.blur.blades > 8 || !Number.isFinite(rotor.blur.chord) || rotor.blur.chord <= 0 || rotor.blur.chord > rotor.radius)) throw new Error("invalid helicopter rotor blur");
-    }
-  }
-  if (d.movement === "boat") {
-    if (d.wheels.length) throw new Error("invalid boat rig");
-    if (d.boarding && ![d.boarding.water, d.boarding.ladder, d.boarding.deck].every(vec)) throw new Error("invalid boat boarding route");
-    if (d.secondDrive && !d.spec.secondDrive) throw new Error("second boat drive rig has no physical drive");
-    for (const p of [d.propeller, d.outboard, d.secondDrive?.propeller, d.secondDrive?.outboard]) if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
-      !Number.isFinite(p.ratio) || p.ratio === 0 || Math.abs(p.ratio) > 16)) throw new Error("invalid boat propulsion rig");
-  }
+  family.validateRig(d);
   if (d.cargoDoor !== undefined && (!Number.isInteger(d.cargoDoor) || d.cargoDoor < 0 || d.cargoDoor >= d.doors.length)) throw new Error("invalid vehicle cargo door");
   if (d.wreck !== undefined && (typeof d.wreck !== "string" || !d.wreck.includes(":"))) throw new Error("invalid vehicle wreck");
   const s = d.steeringWheel;
