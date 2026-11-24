@@ -11,8 +11,9 @@ import { baseSquares, readBases } from "../core/admin/bases.ts";
 import { clockText, momentText } from "../core/admin/chart.ts";
 import { idWords } from "../core/admin/format.ts";
 import { DOT_AWAY, DOT_DEAD, DOT_OFFLINE, DOT_OUT, DOT_SPECTATING, dotAt, type Dot } from "../core/admin/frame.ts";
-import { groundPicture, loadGround, pictureExtent } from "../core/admin/ground.ts";
+import { groundPicture, loadGround, paperPalette, pictureExtent, pictureSide } from "../core/admin/ground.ts";
 import { placeAt, sampleBefore } from "../core/admin/past.ts";
+import { mapLabelBox, type LabelBox } from "../core/admin/map-labels.ts";
 import { streetsInView } from "../core/admin/street-view.ts";
 import type { Investigation } from "../core/admin/investigation.ts";
 import { holdingAt } from "../core/admin/recall.ts";
@@ -63,23 +64,29 @@ function paint(): void {
   if (!v || !head || !hf) return;
   const density = Math.min(devicePixelRatio, 2);
   ctx.setTransform(density, 0, 0, density, 0, 0);
-  ctx.fillStyle = "#0a1522";
+  ctx.fillStyle = "#e0e9ef";
   ctx.fillRect(0, 0, v.width, v.height);
-  if (S.ground) {
-    const e = pictureExtent(hf);
-    ctx.imageSmoothingEnabled = v.scale * hf.cell < 3;
-    ctx.drawImage(S.ground, v.sx(e.west), v.sy(e.north), e.side * v.scale, e.side * v.scale);
-  }
   const [left, top, right, bottom] = [Math.max(0, v.sx(hf.sizeX)), Math.max(0, v.sy(hf.sizeZ)), Math.min(v.width, v.sx(0)), Math.min(v.height, v.sy(0))];
+  if (S.ground) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, top, right - left, bottom - top);
+    ctx.clip();
+    const e = pictureExtent(hf);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(S.ground, v.sx(e.west), v.sy(e.north), e.side * v.scale, e.side * v.scale);
+    ctx.restore();
+  }
   const grid = gridLines(head.dims, v);
   ctx.font = `12px ${FACE}`;
   for (const l of grid.lon) {
-    ctx.fillStyle = `rgba(4,10,18,${l.sector ? 0.42 : 0.2})`;
+    ctx.fillStyle = `rgba(4,10,18,${l.sector ? 0.23 : 0.12})`;
     ctx.fillRect(Math.round(l.at), top, 1, bottom - top);
-    if (l.numbered) label(ctx, String(l.k), l.at + 3, top + 13, "#dbe8f3");
+    if (l.numbered && l.at < v.width - 62) label(ctx, String(l.k), l.at + 3, top + 13, "#dbe8f3");
   }
   for (const l of grid.lat) {
-    ctx.fillStyle = `rgba(4,10,18,${l.sector ? 0.42 : 0.2})`;
+    ctx.fillStyle = `rgba(4,10,18,${l.sector ? 0.23 : 0.12})`;
     ctx.fillRect(left, Math.round(l.at), right - left, 1);
     if (l.numbered && l.at - top > 16) label(ctx, String(l.k), left + 3, l.at + 13, "#dbe8f3");
   }
@@ -92,14 +99,12 @@ function paint(): void {
     }
   }
   const seen = frame.dots.filter(onMap);
-  drawSites(seen);
+  const mapSites = drawSites(seen);
   drawEvents();
   if (enabled("trails")) track();
   const item = S.item;
   const holders = item ? S.recall.holdersFor(item.item, item.quality, item.blueprint, S.timeline) : null;
   const holding = holders ? holdingAt(holders.holders, frame.live ? S.timeline.to : frame.at, S.timeline.to) : null;
-  const names = enabled("names");
-  const crowded = seen.filter((d) => d.state !== DOT_OFFLINE).length > 60;
   for (const d of seen) {
     const [x, y] = [v.sx(d.x), v.sy(d.z)];
     if (enabled("trails") && d.tail && d.tail.length > 2) {
@@ -118,9 +123,9 @@ function paint(): void {
     ctx.stroke();
     if (holding?.has(d.pid)) ring(x, y, 9, WARN);
     if (d.pid === S.chosen) ring(x, y, 12, ICE);
-    if (d.pid === S.chosen || (names && d.state !== DOT_OFFLINE && !crowded)) label(ctx, d.riding ? `${d.name}, ${S.labels[d.riding] ?? idWords(d.riding)}` : d.name, x + 9, y + 4, d.pid === S.chosen ? ICE : INK);
   }
-  ctx.strokeStyle = "rgba(206,230,250,0.35)";
+  drawNames(seen, mapSites, top, left);
+  ctx.strokeStyle = "rgba(40,70,96,0.32)";
   ctx.lineWidth = 1;
   ctx.strokeRect(Math.round(v.sx(hf.sizeX)) + 0.5, Math.round(v.sy(hf.sizeZ)) + 0.5, Math.round(hf.sizeX * v.scale), Math.round(hf.sizeZ * v.scale));
   const loading = !frame.live && !S.recall.windowFor(S.timeline) ? " · loading" : "";
@@ -139,35 +144,64 @@ const streets = new Map<string, readonly Stretch[]>();
 const pending = new Set<string>();
 let streetTimer: ReturnType<typeof setTimeout> | undefined;
 
-function drawSites(dots: readonly Dot[]): void {
-  if (!enabled("places")) return;
+interface PointName { x: number; y: number; text: string; colour: string; priority: number }
+const pointIn = (v: MapWindow, x: number, y: number): boolean => x >= 7 && x <= v.width - 7 && y >= 7 && y <= v.height - 7;
+
+function drawSites(dots: readonly Dot[]): PointName[] {
+  if (!enabled("places")) return [];
   const v = S.view!;
-  ctx.font = `600 12px ${FACE}`;
-  const occupied = dots.map((d): [number, number, number] => {
-    const x = v.sx(d.x), y = v.sy(d.z);
-    return [x - 6, y, x + 9 + ctx.measureText(d.name).width];
-  });
+  const names: PointName[] = [];
   for (const s of sites) {
     const x = v.sx(s.x), y = v.sy(s.z);
-    if (x < 0 || x > v.width || y < 0 || y > v.height) continue;
-    if (s.kind === "spawn" && v.scale < 0.08) continue;
+    if (!pointIn(v, x, y) || (s.kind === "spawn" && v.scale < 0.15)) continue;
     const size = s.kind === "obelisk" ? 5 : s.kind === "district" ? 0 : 3;
-    const color = s.color ? eyeColour[s.color] ?? ICE : s.kind === "district" ? "#f2e4c4" : INK;
-    if (size) {
+    const nearSurvivor = dots.some((d) => Math.hypot(x - v.sx(d.x), y - v.sy(d.z)) < 9);
+    const colour = s.color ? eyeColour[s.color] ?? ICE : s.kind === "district" ? "#f2e4c4" : INK;
+    if (size && !nearSurvivor) {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = color;
+      ctx.fillStyle = colour;
       ctx.fillRect(-size, -size, 2 * size, 2 * size);
       ctx.strokeStyle = "#07121e";
       ctx.lineWidth = 1.5;
       ctx.strokeRect(-size, -size, 2 * size, 2 * size);
       ctx.restore();
     }
-    const start = x + 9, width = ctx.measureText(s.name).width;
-    if (occupied.some(([px, py, end]) => Math.abs(py - y) < 14 && end >= start && px < start + width)) continue;
-    occupied.push([start, y, start + width]);
-    label(ctx, s.name, start, y + 4, color);
+    if (!nearSurvivor || s.kind === "obelisk") names.push({ x, y, text: s.name, colour, priority: s.kind === "obelisk" ? 3 : s.kind === "landmark" ? 2 : 1 });
+  }
+  return names;
+}
+
+function drawNames(dots: readonly Dot[], names: PointName[], top: number, left: number): void {
+  const v = S.view!;
+  const edge = { left: 7, top: 7, right: v.width - 7, bottom: v.height - 7 };
+  const occupied: LabelBox[] = [
+    { left: v.width - 58, top: 0, right: v.width, bottom: 139 },
+    { left: 0, top: v.height - 38, right: v.width, bottom: v.height },
+    { left: 0, top, right: v.width, bottom: top + 16 },
+    { left, top, right: left + 23, bottom: v.height },
+  ];
+  const show = enabled("names");
+  for (const d of dots) {
+    const x = v.sx(d.x), y = v.sy(d.z);
+    occupied.push({ left: x - 8, top: y - 7, right: x + 8, bottom: y + 7 });
+    if (!pointIn(v, x, y) || (d.pid !== S.chosen && (!show || d.state === DOT_OFFLINE))) continue;
+    const text = v.scale >= 0.12 && d.riding ? `${d.name} · ${S.labels[d.riding] ?? idWords(d.riding)}` : d.name;
+    names.push({ x, y, text, colour: d.pid === S.chosen ? ICE : INK, priority: d.pid === S.chosen ? 5 : 4 });
+  }
+  names.sort((a, b) => b.priority - a.priority);
+  const fit = v.scale < 0.065;
+  const crowd = Math.max(2, Math.floor(v.width * v.height / (fit ? 63_000 : 33_000)));
+  let minor = 0;
+  ctx.font = `600 12px ${FACE}`;
+  for (const name of names) {
+    if (name.priority === 1 && (minor >= crowd || (fit && occupied.some((b) => b.left > name.x - 56 && b.right < name.x + 56 && b.top > name.y - 24 && b.bottom < name.y + 24)))) continue;
+    const pos = mapLabelBox(name.x, name.y, ctx.measureText(name.text).width, edge, occupied);
+    if (!pos) continue;
+    occupied.push(pos);
+    if (name.priority === 1) minor++;
+    label(ctx, name.text, pos.left + 4, pos.top + 13, name.colour);
   }
 }
 
@@ -211,7 +245,7 @@ function drawStreets(): void {
   const v = S.view!;
   if (!enabled("streets") || v.scale < 0.045) return;
   ctx.lineWidth = Math.max(0.6, Math.min(1.8, v.scale * 3));
-  ctx.strokeStyle = "rgba(242,221,174,0.38)";
+  ctx.strokeStyle = "rgba(88,100,111,0.40)";
   ctx.beginPath();
   const seen = new Set<string>();
   for (const part of sectors) for (const street of streets.get(part.name) ?? []) {
@@ -325,7 +359,7 @@ export async function loadMap(api: (path: string) => string, camera: Investigati
     fillPlaces();
   }).catch(() => {});
   await new Promise((done) => requestAnimationFrame(done));
-  const rgba = groundPicture(got.hf, palette);
+  const rgba = groundPicture(got.hf, paperPalette(palette), Math.min(1152, pictureSide(got.hf)));
   const side = Math.sqrt(rgba.length / 4);
   S.ground = document.createElement("canvas");
   [S.ground.width, S.ground.height] = [side, side];

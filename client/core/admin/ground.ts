@@ -61,3 +61,15 @@ export function pictureExtent(hf: { sizeX: number; sizeZ: number }): { west: num
   const side = Math.max(hf.sizeX, hf.sizeZ);
   return { west: (hf.sizeX + side) / 2, north: (hf.sizeZ + side) / 2, side };
 }
+
+/** Warm land tints leave contrast for the heightfield's shadows and blue water. */
+export function paperPalette(palette: Uint8Array): Uint8Array {
+  const paper = palette.slice();
+  for (let i = 0; i < paper.length; i += 4) {
+    const tone = (palette[i]! * .22 + palette[i + 1]! * .68 + palette[i + 2]! * .1 - 135) * .2;
+    paper[i] = 238 + tone;
+    paper[i + 1] = 228 + tone;
+    paper[i + 2] = 211 + tone;
+  }
+  return paper;
+}

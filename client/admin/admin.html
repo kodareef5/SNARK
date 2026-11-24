@@ -68,8 +68,13 @@
           <label>Go to <input type="datetime-local" id="goto" step="1"></label>
         </div>
         <p id="lognote" class="note" role="status">Checking retained history…</p>
+        <div class="retained-range">
+          <label for="retained">Retained history</label>
+          <div class="retained-track"><span id="focus-window" aria-hidden="true"></span><input id="retained" type="range" min="0" max="1000" value="500" disabled></div>
+          <div class="range-ends"><time id="retained-start"></time><time id="retained-end"></time></div>
+        </div>
         <div id="tl" class="strip" tabindex="0" role="region" aria-label="Timeline. Arrows seek. Brackets jump to events. Space plays or pauses."><canvas id="tlcanvas" aria-hidden="true"></canvas><div id="tltip" class="tip" hidden></div></div>
-        <label class="replay-slider"><span class="sr-only">Replay position</span><input type="range" id="scrub" min="0" max="1000" value="1000" disabled><output id="playhead"></output></label>
+        <label class="replay-slider"><span>Playhead in focus</span><input type="range" id="scrub" min="0" max="1000" value="1000" disabled><output id="playhead"></output></label>
       </section>
 
       <section id="events-box" class="admin-panel">

@@ -20,7 +20,7 @@ import { drawMap, lookAt } from "./map.ts";
 const canvas = $<HTMLCanvasElement>("tlcanvas"), tip = $("tltip");
 /** The name column, and the rows of the timeline from the top, in CSS pixels. */
 const NAMES = 104;
-const AXIS = 18, ONLINE = 28, MARKS = 14, LANE = 14, BAND = 14;
+const AXIS = 18, ONLINE = 28, MARKS = 14, LANE = 14;
 /** Where the lanes begin. */
 const LANES_TOP = AXIS + ONLINE + MARKS;
 const STATE_WORDS: Readonly<Record<number, string>> = { [DOT_DEAD]: "dead", [DOT_OUT]: "unconscious", [DOT_SPECTATING]: "spectating", [DOT_AWAY]: "away, body left" };
@@ -37,7 +37,7 @@ export function syncLog(restore?: () => void): void {
   const end = log.on ? Math.max(log.to ?? 0, S.stats!.at) : log.to;
   const has = log.from !== null && end !== null && end > log.from;
   $("timeline").classList.toggle("empty", !has);
-  for (const id of ["play", "speed", "goto", "scrub"]) $<HTMLButtonElement>(id).disabled = !has;
+  for (const id of ["play", "speed", "goto", "scrub", "retained"]) $<HTMLButtonElement>(id).disabled = !has;
   if (!has) {
     if (t.known) {
       t.setSpan(0, 0);
@@ -119,6 +119,16 @@ function showPast(): void {
   $<HTMLInputElement>("bases").disabled = !t.live;
   $("play").textContent = t.playing ? "❚❚" : "▶";
   $("play").setAttribute("aria-label", t.playing ? "Pause" : "Play");
+  const retained = $<HTMLInputElement>("retained");
+  const scale = Math.max(1, t.to - t.from);
+  const full = (at: number): number => (at - t.from) / scale;
+  retained.value = String(Math.round(full((t.start + t.end) / 2) * 1000));
+  retained.setAttribute("aria-valuetext", t.known ? `Window from ${momentText(t.start, offset)} to ${momentText(t.end, offset)}` : "No retained history");
+  const focus = $("focus-window");
+  focus.style.left = `${full(t.start) * 100}%`;
+  focus.style.width = `${(full(t.end) - full(t.start)) * 100}%`;
+  $("retained-start").textContent = t.known ? momentText(t.from, offset) : "";
+  $("retained-end").textContent = t.known ? momentText(t.to, offset) : "";
   const scrub = $<HTMLInputElement>("scrub");
   scrub.value = String(Math.round(t.x(t.at, 1000)));
   scrub.setAttribute("aria-valuetext", t.known ? momentText(t.at, offset) : "No recorded history");
@@ -158,7 +168,7 @@ function drawTimeline(): void {
   lanes.set(w?.survivors ?? [], t.start, t.end, t.to, S.chosen);
   const view = lanes.view();
   const rows = lanes.pinned ? [lanes.pinned, ...view.shown] : view.shown;
-  const height = LANES_TOP + lanes.drawn * LANE + BAND + 6;
+  const height = LANES_TOP + lanes.drawn * LANE + 12;
   canvas.style.height = `${height}px`;
   const g = fit(canvas), W = canvas.clientWidth, sw = W - NAMES;
   const x = (at: number): number => NAMES + t.x(at, sw);
@@ -168,7 +178,7 @@ function drawTimeline(): void {
   const step = timeStep(t.start, t.end, Math.max(2, Math.floor(sw / 110)));
   for (const at of timeTicks(t.start, t.end, Math.max(2, Math.floor(sw / 110)), offset)) {
     g.fillStyle = "rgba(168,204,234,0.10)";
-    g.fillRect(Math.round(x(at)), AXIS, 1, height - AXIS - BAND);
+    g.fillRect(Math.round(x(at)), AXIS, 1, height - AXIS - 4);
     g.fillStyle = DIM;
     g.fillText(tickText(at, step, offset), x(at) + 3, 13);
   }
@@ -213,23 +223,13 @@ function drawTimeline(): void {
       g.fillRect(4, y - 0.5, W - 8, 1);
     }
   }
-  // The whole span below, the window on it.
-  y += 4;
-  const span = Math.max(1, t.to - t.from);
-  const sx = (at: number): number => NAMES + ((at - t.from) / span) * sw;
-  g.fillStyle = "rgba(168,204,234,0.12)";
-  g.fillRect(NAMES, y, sw, BAND - 4);
-  g.fillStyle = "rgba(169,214,242,0.45)";
-  g.fillRect(sx(t.start), y, Math.max(2, sx(t.end) - sx(t.start)), BAND - 4);
-  g.fillStyle = DIM;
-  g.fillText(dayText(t.from, offset), 4, y + 9);
   // The playhead.
   const px = Math.round(x(t.at)) + 0.5;
   g.strokeStyle = t.live ? WELL : WARN;
   g.lineWidth = 2;
   g.beginPath();
   g.moveTo(px, AXIS - 2);
-  g.lineTo(px, y - 4);
+  g.lineTo(px, height - 4);
   g.stroke();
   g.fillStyle = t.live ? WELL : WARN;
   g.beginPath();
@@ -375,7 +375,7 @@ const where = (e: MouseEvent): [number, number] => {
 };
 /** The lane at a height, or null. */
 const laneAt = (y: number): LogSurvivor | null => (y < LANES_TOP ? null : lanes.at(Math.floor((y - LANES_TOP) / LANE)));
-const bandTop = (): number => LANES_TOP + lanes.drawn * LANE + 4;
+const lanesEnd = (): number => LANES_TOP + lanes.drawn * LANE;
 
 canvas.addEventListener("pointerdown", (e) => {
   if (!t.known) return;
@@ -385,15 +385,6 @@ canvas.addEventListener("pointerdown", (e) => {
     // A tap on a name chooses it; a drag scrolls the list.
     canvas.setPointerCapture(e.pointerId);
     names = { y, scroll: lanes.scroll, moved: false };
-    return;
-  }
-  if (y >= bandTop()) {
-    const at = t.from + ((x - NAMES) / sw) * (t.to - t.from);
-    const width = t.end - t.start;
-    t.show(at - width / 2, at + width / 2);
-    if (!t.live && (t.at < t.start || t.at > t.end)) t.seek(at);
-    refresh();
-    ensure();
     return;
   }
   canvas.setPointerCapture(e.pointerId);
@@ -455,7 +446,7 @@ canvas.addEventListener(
     const [x, y] = where(e);
     const sw = canvas.clientWidth - NAMES;
     // Over the names, or over the lanes when they are more than their view holds, the wheel scrolls them; elsewhere it zooms.
-    const list = y >= LANES_TOP && y < bandTop() - 4 && (x < NAMES || lanes.rest.length > lanes.rows);
+    const list = y >= LANES_TOP && y < lanesEnd() && (x < NAMES || lanes.rest.length > lanes.rows);
     if (list && !e.ctrlKey && !e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
       wheelRest += e.deltaY * (e.deltaMode === 1 ? LANE : 1);
       const by = Math.trunc(wheelRest / LANE);
@@ -505,6 +496,12 @@ $("play").addEventListener("click", togglePlay);
 $("previous-event").addEventListener("click", () => selectEvent(-1));
 $("next-event").addEventListener("click", () => selectEvent(1));
 $("event-filter").addEventListener("change", showEvents);
+$("retained").addEventListener("input", () => {
+  const fraction = $<HTMLInputElement>("retained").valueAsNumber / 1000;
+  t.focus(t.from + fraction * (t.to - t.from));
+  refresh();
+  ensure();
+});
 $("scrub").addEventListener("input", () => seek(t.time(Number($<HTMLInputElement>("scrub").value), 1000)));
 $("tl").addEventListener("keydown", (e) => {
   if (!t.known || e.altKey || e.ctrlKey || e.metaKey) return;
