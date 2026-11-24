@@ -76,7 +76,7 @@ const sstep = (a: number, b: number, x: number): number => {
 
 const A = 0x9e3779b1, B = 0x85ebca77, C = 0xc2b2ae3d, D = 0x27d4eb2f, E = 0x2c1b3c6d, F = 0x297a2d39;
 /** A cell of whole numbers and a key as 32 bits, as the shader has them. */
-function bits(x: number, y: number, z: number, k: number): number {
+export function orbBits(x: number, y: number, z: number, k: number): number {
   let h = (Math.imul(x | 0, A) ^ Math.imul(y | 0, B) ^ Math.imul(z | 0, C) ^ Math.imul(k | 0, D)) >>> 0;
   h = Math.imul(h ^ (h >>> 15), E) >>> 0;
   h = Math.imul(h ^ (h >>> 12), F) >>> 0;
@@ -84,7 +84,7 @@ function bits(x: number, y: number, z: number, k: number): number {
 }
 /** 0 to 1 from a cell and a key. */
 export function orbHash(x: number, y: number, z: number, k: number): number {
-  return (bits(x, y, z, k) >>> 8) / 16777216;
+  return (orbBits(x, y, z, k) >>> 8) / 16777216;
 }
 /** Value noise in space, 0 to 1: a point on the ball reads it where it is, so it has no seam. */
 export function orbNoise(x: number, y: number, z: number, k: number): number {
@@ -126,30 +126,66 @@ const line = (d: number, w: number, fp: number): number => {
 };
 const cell = [0, 0, 0];
 /**
+ * The cells round a place's own past the eight nearest it, three numbers each: along each axis the place's own cell (0),
+ * its neighbour on the side the place is nearer (1) or on the far side (-1). Those with fewest far sides come first.
+ */
+const FAR_CELLS: number[] = [];
+for (let far = 1; far <= 3; far++) {
+  for (let i = 0; i < 27; i++) {
+    const o = [(i % 3) - 1, (Math.floor(i / 3) % 3) - 1, Math.floor(i / 9) - 1];
+    if (o.filter((v) => v < 0).length === far) FAR_CELLS.push(o[0]!, o[1]!, o[2]!);
+  }
+}
+let nearest = 1, second = 1, nearestIs = 0;
+/** Takes the point of cell (cx, cy, cz) into the nearest two of the place (x, y, z). */
+function cellPoint(cx: number, cy: number, cz: number, k: number, x: number, y: number, z: number): void {
+  const h = orbBits(cx, cy, cz, k);
+  const dx = cx + (h & 255) / 255 - x, dy = cy + ((h >>> 8) & 255) / 255 - y, dz = cz + ((h >>> 16) & 255) / 255 - z;
+  const d = dx * dx + dy * dy + dz * dz;
+  if (d < nearest) {
+    second = nearest;
+    nearest = d;
+    nearestIs = (h >>> 24) / 255;
+  } else if (d < second) second = d;
+}
+/**
  * Points scattered one to a cell of space: how far the nearest and the next nearest are from a place, in cells, and the
  * nearest's own number, 0 to 1, into `cell`. Where the two are as far, the place is on the wall between their plates.
+ *
+ * Every point within a cell's width of the place is in the 27 cells round its own, so the two distances, held to 1 at
+ * the most, are those of all space and change smoothly from cell to cell. The eight cells nearest the place are looked
+ * at first; each of the other 19 only where its nearest corner is nearer than the second point found, which is some
+ * five of them.
  */
 function cells(x: number, y: number, z: number, k: number): void {
-  const bx = Math.floor(x - 0.5), by = Math.floor(y - 0.5), bz = Math.floor(z - 0.5);
-  let f1 = 9, f2 = 9, own = 0;
-  for (let i = 0; i < 8; i++) {
-    const cx = bx + (i & 1), cy = by + ((i >> 1) & 1), cz = bz + (i >> 2);
-    const h = bits(cx, cy, cz, k);
-    const dx = cx + (h & 255) / 255 - x, dy = cy + ((h >>> 8) & 255) / 255 - y, dz = cz + ((h >>> 16) & 255) / 255 - z;
-    const d = dx * dx + dy * dy + dz * dz;
-    if (d < f1) {
-      f2 = f1;
-      f1 = d;
-      own = (h >>> 24) / 255;
-    } else if (d < f2) f2 = d;
+  const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
+  const sx = x - bx < 0.5 ? -1 : 1, sy = y - by < 0.5 ? -1 : 1, sz = z - bz < 0.5 ? -1 : 1;
+  nearest = second = 1;
+  nearestIs = 0;
+  for (let i = 0; i < 8; i++) cellPoint(bx + sx * (i & 1), by + sy * ((i >> 1) & 1), bz + sz * (i >> 2), k, x, y, z);
+  // How far the far side's cell is along each axis; the near side's is the rest of a cell's width.
+  const gx = 0.5 + Math.abs(x - bx - 0.5), gy = 0.5 + Math.abs(y - by - 0.5), gz = 0.5 + Math.abs(z - bz - 0.5);
+  if (Math.min(gx, gy, gz) ** 2 < second) {
+    for (let i = 0; i < FAR_CELLS.length; i += 3) {
+      const ox = FAR_CELLS[i]!, oy = FAR_CELLS[i + 1]!, oz = FAR_CELLS[i + 2]!;
+      const ax = ox < 0 ? gx : ox * (1 - gx), ay = oy < 0 ? gy : oy * (1 - gy), az = oz < 0 ? gz : oz * (1 - gz);
+      if (ax * ax + ay * ay + az * az < second) cellPoint(bx + sx * ox, by + sy * oy, bz + sz * oz, k, x, y, z);
+    }
   }
-  cell[0] = Math.sqrt(f1);
-  cell[1] = Math.sqrt(f2);
-  cell[2] = own;
+  cell[0] = Math.sqrt(nearest);
+  cell[1] = Math.sqrt(second);
+  cell[2] = nearestIs;
+}
+/** `cells` for a test: the nearest's distance, the next nearest's and the nearest's number, into `out`. */
+export function orbCells(x: number, y: number, z: number, k: number, out: number[]): void {
+  cells(x, y, z, k);
+  out[0] = cell[0]!;
+  out[1] = cell[1]!;
+  out[2] = cell[2]!;
 }
 /** A crater in each cell of space the ball passes through, as a change of its ground's brightness: a dark floor and a bright rim. */
 function craters(x: number, y: number, z: number, k: number, per: number, fp: number): number {
-  const cx = Math.floor(x), cy = Math.floor(y), cz = Math.floor(z), h = bits(cx, cy, cz, k);
+  const cx = Math.floor(x), cy = Math.floor(y), cz = Math.floor(z), h = orbBits(cx, cy, cz, k);
   const r = 0.12 + 0.16 * orbHash(cx, cy, cz, k + 1);
   const d = Math.hypot(x - cx - 0.3 - (0.4 * (h & 255)) / 255, y - cy - 0.3 - (0.4 * ((h >>> 8) & 255)) / 255, z - cz - 0.3 - (0.4 * ((h >>> 16) & 255)) / 255) / r;
   const soft = (fp * per) / r;
@@ -209,21 +245,23 @@ vec3 orbTurn(vec3 n, float a) {
   float c = cos(a), s = sin(a);
   return vec3(c*n.x-s*n.z,n.y,s*n.x+c*n.z);
 }
+const vec3 ORB_FAR_CELLS[19] = vec3[19](${Array.from({ length: 19 }, (_, i) => `vec3(${FAR_CELLS[i * 3]},${FAR_CELLS[i * 3 + 1]},${FAR_CELLS[i * 3 + 2]})`).join(",")});
+void orbCell(vec3 c, vec3 p, float k, inout vec3 f) {
+  uint h = orbBits(c,k);
+  vec3 to = c+orbBytes(h)-p;
+  float d = dot(to,to);
+  if (d < f.x) f = vec3(d,f.x,float(h >> 24u)/255.);
+  else if (d < f.y) f.y = d;
+}
 vec3 orbCells(vec3 p, float k) {
-  vec3 base = floor(p-.5);
-  float f1 = 9., f2 = 9., own = 0.;
-  for (int i=0; i<8; i++) {
-    vec3 c = base+vec3(float(i & 1),float((i >> 1) & 1),float(i >> 2));
-    uint h = orbBits(c,k);
-    vec3 to = c+orbBytes(h)-p;
-    float d = dot(to,to);
-    if (d < f1) {
-      f2 = f1;
-      f1 = d;
-      own = float(h >> 24u)/255.;
-    } else if (d < f2) f2 = d;
+  vec3 own = floor(p), side = step(.5,p-own)*2.-1., f = vec3(1.,1.,0.);
+  for (int i=0; i<8; i++) orbCell(own+side*vec3(float(i & 1),float((i >> 1) & 1),float(i >> 2)),p,k,f);
+  vec3 gap = .5+abs(p-own-.5), far = gap*gap, near = (1.-gap)*(1.-gap);
+  if (min(far.x,min(far.y,far.z)) < f.y) for (int i=0; i<19; i++) {
+    vec3 o = ORB_FAR_CELLS[i];
+    if (dot(max(-o,0.),far)+dot(max(o,0.),near) < f.y) orbCell(own+side*o,p,k,f);
   }
-  return vec3(sqrt(f1),sqrt(f2),own);
+  return vec3(sqrt(f.x),sqrt(f.y),f.z);
 }
 float orbCraters(vec3 p, float k, float per, float fp) {
   vec3 c = floor(p);
@@ -256,8 +294,14 @@ function watcher(out: number[], f: ArrayLike<number>, nx: number, ny: number, nz
   const s = Math.hypot(x, y), r = c >= 0 ? s : 2 - s;
   // The skin: scales, each its own green, dark between, and wet red where it meets the iris.
   const mott = orbNoise(nx * 5 + 4.3, ny * 5 + 4.3, nz * 5 + 4.3, 12), bend = (mott - 0.5) * 1.5, fine = keepAt(24, fp);
-  cells(nx * 24 + bend, ny * 24 + bend, nz * 24 + bend, 15);
-  const sk = 0.6 * mix(0.5, cell[2]!, fine) + 0.4 * mott, seam = 1 - 0.7 * Math.min(line(cell[1]! - cell[0]!, 0.05, fp * 24), 1) * fine;
+  // The scales are read only where a pixel is fine enough to show them.
+  let scale = 0.5, seam = 1;
+  if (fine > 0) {
+    cells(nx * 24 + bend, ny * 24 + bend, nz * 24 + bend, 15);
+    scale = mix(0.5, cell[2]!, fine);
+    seam = 1 - 0.7 * Math.min(line(cell[1]! - cell[0]!, 0.05, fp * 24), 1) * fine;
+  }
+  const sk = 0.6 * scale + 0.4 * mott;
   const skin0 = mix(0.025, 0.07, sk) * seam, skin1 = mix(0.05, 0.1, sk) * seam, skin2 = mix(0.02, 0.03, sk) * seam;
   const wet = 1 - edge(IRIS + 0.09, r, 0.05, fp);
   out[0] = mix(skin0, 0.3, wet);
@@ -310,8 +354,13 @@ vec3 orbWatcher(vec3 n, float t, float fp) {
   float x = dot(n,right), y = dot(n,up), c = dot(n,look);
   float s = length(vec2(x,y)), r = c >= 0. ? s : 2.-s;
   float mott = orbNoise(n*5.+4.3,12.), fine = orbKeep(24.,fp);
-  vec3 sc = orbCells(n*24.+(mott-.5)*1.5,15.);
-  float sk = .6*mix(.5,sc.z,fine)+.4*mott, seam = 1.-.7*min(orbLine(sc.y-sc.x,.05,fp*24.),1.)*fine;
+  float scale = .5, seam = 1.;
+  if (fine > 0.) {
+    vec3 sc = orbCells(n*24.+(mott-.5)*1.5,15.);
+    scale = mix(.5,sc.z,fine);
+    seam = 1.-.7*min(orbLine(sc.y-sc.x,.05,fp*24.),1.)*fine;
+  }
+  float sk = .6*scale+.4*mott;
   vec3 skin = mix(vec3(.025,.05,.02),vec3(.07,.1,.03),sk)*seam;
   float wet = 1.-orbEdge(${g(IRIS + 0.09)},r,.05,fp);
   vec3 col = mix(skin,vec3(.3,.035,.02),wet);
@@ -421,9 +470,13 @@ function core(out: number[], f: ArrayLike<number>, nx: number, ny: number, nz: n
   const drive = 0.3 + 0.4 * heat + power * (0.4 + 0.6 * beat * beat), w = 0.02 + 0.035 * drive;
   cells(nx * 3.1 + 7.7, ny * 3.1 + 7.7, nz * 3.1 + 7.7, 31);
   const wall = cell[1]! - cell[0]!, own = cell[2]!;
-  cells(nx * 8.3 + 2.1, ny * 8.3 + 2.1, nz * 8.3 + 2.1, 32);
-  // Cracks between the plates, and finer ones where it is hot.
-  const crack = line(wall, w, fp * 3.1) + 0.7 * line(cell[1]! - cell[0]!, 0.6 * w, fp * 8.3) * sstep(0.35, 0.7, heat + 0.3 * power);
+  // Cracks between the plates, and finer ones where it is hot, which are read only there.
+  const fine = sstep(0.35, 0.7, heat + 0.3 * power);
+  let crack = line(wall, w, fp * 3.1);
+  if (fine > 0) {
+    cells(nx * 8.3 + 2.1, ny * 8.3 + 2.1, nz * 8.3 + 2.1, 32);
+    crack += 0.7 * line(cell[1]! - cell[0]!, 0.6 * w, fp * 8.3) * fine;
+  }
   const temp = crack * (0.5 + drive), hot = sstep(0.15, 0.7, temp), white = sstep(0.9, 1.8, temp);
   // The plates: dark, each its own shade, glowing a little near its cracks.
   const shade = 0.5 + own, under = 0.35 * Math.exp(-wall / 0.09) * drive, over = Math.min(crack, 1);
@@ -438,9 +491,12 @@ vec3 orbCore(vec3 n, float t, float fp) {
   float heat = orbNoise(n*1.7+vec3(.031,.023,-.019)*t,33.);
   float beat = .5+.5*sin(2.1*t-5.*n.y);
   float drive = .3+.4*heat+power*(.4+.6*beat*beat), w = .02+.035*drive;
-  vec3 big = orbCells(n*3.1+7.7,31.), small = orbCells(n*8.3+2.1,32.);
-  float wall = big.y-big.x;
-  float crack = orbLine(wall,w,fp*3.1)+.7*orbLine(small.y-small.x,.6*w,fp*8.3)*smoothstep(.35,.7,heat+.3*power);
+  vec3 big = orbCells(n*3.1+7.7,31.);
+  float wall = big.y-big.x, fine = smoothstep(.35,.7,heat+.3*power), crack = orbLine(wall,w,fp*3.1);
+  if (fine > 0.) {
+    vec3 small = orbCells(n*8.3+2.1,32.);
+    crack += .7*orbLine(small.y-small.x,.6*w,fp*8.3)*fine;
+  }
   float temp = crack*(.5+drive);
   vec3 magma = mix(mix(vec3(.45,.015,0.),vec3(1.,.28,.02),smoothstep(.15,.7,temp)),vec3(1.25,.9,.45),smoothstep(.9,1.8,temp));
   vec3 plate = vec3(.022,.02,.02)*(.5+big.z)+vec3(.3,.022,0.)*.35*exp(-wall/.09)*drive;

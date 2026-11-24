@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { tierOf, TIERS } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { GAZE_DIP, GAZE_LIFT, ORB_FAR, ORB_FLAT, ORB_FRAGMENT, ORB_SHELL, PUCK, PUCK_FROM, orbFill, orbLevel, orbLight, orbPick, orbPuck, orbRaw, orbScene, puckRings, writeOrb, type Puck } from "../../client/core/render/orb.ts";
+import { GAZE_DIP, GAZE_LIFT, ORB_FAR, ORB_FLAT, ORB_FRAGMENT, ORB_SHELL, PUCK, PUCK_FROM, orbBits, orbCells, orbFill, orbLevel, orbLight, orbPick, orbPuck, orbRaw, orbScene, puckRings, writeOrb, type Puck } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
 import { DRAW_ORB, DRAW_TEXTURED, FRAME, FRAME_FLOATS, FramePacket, InstanceWriter, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
 import type { Frame } from "../../client/core/render/pass.ts";
@@ -117,6 +117,79 @@ test("a scene is quieter as the footprint grows", () => {
     expect(mid, ORB_SCENES[which]).toBeLessThan(near);
     expect(far, ORB_SCENES[which]).toBeLessThan(0.6 * mid);
   }
+});
+
+/** A whole number's worth of 0 to 1 from a seed, for places a test picks. */
+const pick = (n: number, salt: number): number => orbBits(n, salt, 7, 99) / 4294967296;
+
+test("the cell kit finds the nearest two points of all space, within a cell's width", () => {
+  const found = [0, 0, 0];
+  let far = 0;
+  for (let n = 0; n < 4000; n++) {
+    // Places anywhere, and places a hair from a cell's wall or its middle, where the cells looked at change.
+    const edge = n % 2 === 0 ? 0 : 1e-9 * (n % 4 === 1 ? 1 : -1);
+    const at = [0, 1, 2].map((a) => (pick(n, a) - 0.5) * 40), key = 15 + (n % 3);
+    if (edge !== 0) at[n % 3] = Math.round(at[n % 3]! * 2) / 2 + edge;
+    // Every point within two cells, one by one.
+    let f1 = Infinity, f2 = Infinity, own = 0;
+    for (let i = 0; i < 125; i++) {
+      const c = [Math.floor(at[0]!) + (i % 5) - 2, Math.floor(at[1]!) + (Math.floor(i / 5) % 5) - 2, Math.floor(at[2]!) + Math.floor(i / 25) - 2];
+      const h = orbBits(c[0]!, c[1]!, c[2]!, key);
+      const d = Math.hypot(c[0]! + (h & 255) / 255 - at[0]!, c[1]! + ((h >>> 8) & 255) / 255 - at[1]!, c[2]! + ((h >>> 16) & 255) / 255 - at[2]!);
+      if (d < f1) [f2, f1, own] = [f1, d, (h >>> 24) / 255];
+      else if (d < f2) f2 = d;
+    }
+    orbCells(at[0]!, at[1]!, at[2]!, key, found);
+    expect(found[0], `nearest at ${at}`).toBeCloseTo(Math.min(f1, 1), 12);
+    expect(found[1], `next nearest at ${at}`).toBeCloseTo(Math.min(f2, 1), 12);
+    if (f1 < 1) expect(found[2]).toBe(own);
+    if (f2 >= 1) far++;
+  }
+  // Held to 1, which few places reach.
+  expect(far).toBeLessThan(200);
+});
+
+test("the cell kit's distances and Core's light are continuous across its cells", () => {
+  const a = [0, 0, 0], b = [0, 0, 0], step = 1e-7;
+  let most = 0;
+  // The kit: a distance to a point changes by no more than the place moves, across walls and middles of cells too.
+  for (let n = 0; n < 6000; n++) {
+    const at = [0, 1, 2].map((k) => (pick(n, k + 3) - 0.5) * 60), axis = n % 3;
+    at[axis] = Math.round(at[axis]! * 2) / 2;
+    const way = [0, 1, 2].map((k) => pick(n, k + 6) - 0.5), l = Math.hypot(...way);
+    orbCells(at[0]! - (way[0]! / l) * step, at[1]! - (way[1]! / l) * step, at[2]! - (way[2]! / l) * step, 31, a);
+    orbCells(at[0]! + (way[0]! / l) * step, at[1]! + (way[1]! / l) * step, at[2]! + (way[2]! / l) * step, 31, b);
+    most = Math.max(most, Math.abs(a[0]! - b[0]!), Math.abs(a[1]! - b[1]!));
+  }
+  expect(most).toBeLessThanOrEqual(2 * step + 1e-12);
+  // Core: short walks on the ball across the walls and middles of both its plates' cells, the eye at rest and at power.
+  // A crack's edge is the steepest thing it draws, a few hundred to a unit of direction: a cut plate was a jump of 1.
+  const c0 = [0, 0, 0], c1 = [0, 0, 0];
+  let jump = 0, walks = 0;
+  for (const seconds of [362, 380]) {
+    const f = lanes(2, seconds, 23), t = f[ORB_AT + 6]!;
+    for (let n = 0; n < 4000; n++) {
+      const y = 1 - 2 * pick(n, 11), r = Math.sqrt(1 - y * y), turn = 2 * Math.PI * pick(n, 12), dir = [r * Math.cos(turn), y, r * Math.sin(turn)];
+      const [per, add] = n % 2 === 0 ? [3.1, 7.7] : [8.3, 2.1], axis = n % 3;
+      // The nearest wall or middle of a cell along one axis, and the place on the ball there.
+      const wall = (Math.round((dir[axis]! * per + add) * 2) / 2 - add) / per;
+      if (Math.abs(wall) > 0.95) continue;
+      const place = (v: number, out: number[]): void => {
+        const rest = Math.sqrt((1 - v * v) / (1 - dir[axis]! * dir[axis]!));
+        for (let k = 0; k < 3; k++) out[k] = k === axis ? v : dir[k]! * rest;
+      };
+      walks++;
+      for (let k = -4; k < 4; k++) {
+        place(wall + k * step, a);
+        place(wall + (k + 1) * step, b);
+        orbScene(c0, f, 2, a[0]!, a[1]!, a[2]!, t, 0.0005);
+        orbScene(c1, f, 2, b[0]!, b[1]!, b[2]!, t, 0.0005);
+        for (let c = 0; c < 3; c++) jump = Math.max(jump, Math.abs(c0[c]! - c1[c]!));
+      }
+    }
+  }
+  expect(walks).toBeGreaterThan(6000);
+  expect(jump).toBeLessThan(0.001);
 });
 
 test("a change shows one scene or the other at each place, and ends complete", () => {
