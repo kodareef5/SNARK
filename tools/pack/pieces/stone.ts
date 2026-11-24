@@ -2895,6 +2895,397 @@ function roof(form: FormDef, level: number): Build | null {
   return b;
 }
 
+/** A column's ring: a square of half `w` about the pillar's line with its corners cut by `cut`. Cut far enough it is an octagon. */
+const ringOf = (w: number, cut: number): P2[] => octagon(0, 0, w, w, cut);
+const ROUND = 2 - Math.SQRT2;
+
+/**
+ * A thin pillar: a column of dressed stone. A square base block, four eight-sided drums whose beds are cut back, and a
+ * square cap block under the floor it carries. Its drums are shaded round.
+ */
+function column(form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const b = new Build();
+  b.free = true;
+  const [u0, , u1] = outlineBox(form);
+  const w = (u1 - u0) / 2;
+  const hy = form.thick / 2;
+  // It stops short of its box, as a pillar's top block does.
+  const [foot, top] = [-hy, hy - 0.015];
+  if (level === 3) {
+    b.box([-w * 0.85, -hy, -w * 0.85], [w * 0.85, hy, w * 0.85], "dressed");
+    return b;
+  }
+  const r = w * 0.86;
+  const [base, cap] = [foot + 0.26, top - 0.2];
+  const dressed = (key: string, tall: number): ((n: Vec) => UvMap) => {
+    const g = rng("column", key);
+    const shift: P2 = [g.uniform(0, 1), g.uniform(0, 1)];
+    void tall;
+    return (n) => straight(n, undefined, shift);
+  };
+  /** A solid through rings of eight corners, its upright faces between `round` stations shaded as one round surface. */
+  const turned = (stations: readonly (readonly [number, P2[]])[], round: readonly number[], key: string): void => {
+    const sides = loft("y", stations);
+    const n = 8;
+    b.convex(sides.map((side, k) => (k >= 2 && round.includes(Math.floor((k - 2) / n)) ? { ...side, smooth: true } : side)), "dressed", dressed(key, 0));
+  };
+  const ch = level === 0 ? 0.014 : 0;
+  // The base and the cap: square blocks, their arrises cut, the cap drawn in to the shaft under it.
+  if (level === 0) {
+    turned([[foot, ringOf(w - ch, 0.02)], [foot + ch, ringOf(w, 0.02)], [base - 0.05, ringOf(w, 0.02)], [base, ringOf(r + 0.01, (r + 0.01) * ROUND)]], [], "base");
+    turned([[cap, ringOf(r + 0.01, (r + 0.01) * ROUND)], [cap + 0.07, ringOf(w, 0.02)], [top - ch, ringOf(w, 0.02)], [top, ringOf(w - ch, 0.02)]], [], "cap");
+    const g = rng("column drums");
+    const beds = [base, ...[0.26, 0.5, 0.76].map((f) => base + (cap - base) * (f + g.uniform(-0.02, 0.02))), cap];
+    beds.slice(1).forEach((y1, i) => {
+      const y0 = beds[i]!;
+      const rr = r + g.uniform(-0.004, 0.004);
+      const turn = g.uniform(-0.03, 0.03);
+      const ring = (by: number): P2[] => ringOf(rr - by, (rr - by) * ROUND).map(([x, z]) => [x * Math.cos(turn) + z * Math.sin(turn), -x * Math.sin(turn) + z * Math.cos(turn)] as const);
+      turned([[y0, ring(0.012)], [y0 + 0.012, ring(0)], [y1 - 0.012, ring(0)], [y1, ring(0.012)]], [1], `drum ${i}`);
+    });
+    return b;
+  }
+  b.box([-w, foot, -w], [w, base, w], "dressed");
+  b.box([-w, cap + 0.04, -w], [w, top, w], "dressed");
+  turned([[base, ringOf(r, r * ROUND)], [cap + 0.04, ringOf(r, r * ROUND)]], [0], "shaft");
+  return b;
+}
+
+/**
+ * A railing: a balustrade of dressed stone. A plinth rail and a coping rail between half posts at its ends and a post
+ * in its middle, and square balusters set on the diagonal between them. Far off it is its two rails and its post.
+ */
+function balustrade(form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const w = wallBox(form);
+  const b = new Build();
+  b.free = true;
+  if (level < 3) b.rings = yieldPlanes(form);
+  const [low, high] = [w.foot + 0.11, w.top - 0.1];
+  const out = w.half + 0.02;
+  const map = (key: string): [undefined, P2] => {
+    const g = rng("railing", key);
+    return [undefined, [g.uniform(0, 1), g.uniform(0, 1)]];
+  };
+  // The rails: the lower one's top weathered, the upper one a coping that stands out over the balusters.
+  if (level === 0) {
+    b.prism([[-w.half, w.foot], [w.half, w.foot], [w.half, low - 0.02], [w.half - 0.02, low], [-w.half + 0.02, low], [-w.half, low - 0.02]], "x", w.x0, w.x1, "dressed", ...map("plinth"));
+    b.prism([[-out, high + 0.012], [-out + 0.012, high], [out - 0.012, high], [out, high + 0.012], [out, w.top - 0.022], [out - 0.022, w.top], [-out + 0.022, w.top], [-out, w.top - 0.022]], "x", w.x0, w.x1, "dressed", ...map("coping"));
+  } else {
+    b.box([w.x0, w.foot, -w.half], [w.x1, low, w.half], "dressed", ...map("plinth"));
+    b.box([w.x0, high, -out], [w.x1, w.top, out], "dressed", ...map("coping"));
+  }
+  // Half a post at each end, which two railings in a row make whole, and a post in the middle.
+  const post = 0.09;
+  const mid = (w.x0 + w.x1) / 2;
+  const posts: P2[] = [[w.x0, w.x0 + post], [mid - post, mid + post], [w.x1 - post, w.x1]];
+  posts.forEach(([x0, x1], k) => {
+    if (level < 3 || k === 1) b.box([x0, low, -w.half], [x1, high, w.half], "dressed", ...map(`post ${k}`));
+  });
+  if (level === 3) return b;
+  // The balusters of each bay: square, set on the diagonal, twice as far apart from across a yard.
+  const across = Math.min(0.04, w.half - 0.008);
+  for (let bay = 0; bay + 1 < posts.length; bay++) {
+    const [x0, x1] = [posts[bay]![1], posts[bay + 1]![0]];
+    const count = Math.max(1, Math.round((x1 - x0) / (level === 2 ? 0.38 : 0.19)) - 1);
+    for (let i = 0; i < count; i++) {
+      const xc = x0 + ((x1 - x0) * (i + 1)) / (count + 1);
+      const reach = level === 2 ? across * 1.5 : across;
+      b.prism([[xc - reach, 0], [xc, -across], [xc + reach, 0], [xc, across]], "y", low, high, "dressed", undefined, [(i * 0.37) % 1, (bay * 0.41 + i * 0.13) % 1]);
+    }
+  }
+  return b;
+}
+
+/**
+ * A ladder: two oak rails and a rung every 0.3 m, the rails shod and capped in iron. It stands on the wall's face,
+ * where its row puts it, and reads its thickness and its place from the row.
+ */
+function ladder(form: FormDef, level: number): Build | null {
+  if (level > 3) return null;
+  const w = wallBox(form);
+  const b = new Build();
+  b.free = true;
+  const at = form.off ?? 0;
+  // Its back toward the wall, at -z of its own middle.
+  const [back, front] = [at - w.half + 0.004, at + w.half - 0.006];
+  const rail = 0.06;
+  const [foot, top] = [w.foot, w.top - 0.01];
+  for (const [k, s] of [-1, 1].entries()) {
+    const [x0, x1] = s < 0 ? [w.x0, w.x0 + rail] : [w.x1 - rail, w.x1];
+    const cp = level === 0 ? 0.01 : 0;
+    const profile: P2[] = cp > 0 ? [[x0, back], [x1, back], [x1, front - cp], [x1 - cp, front], [x0 + cp, front], [x0, front - cp]] : [[x0, back], [x1, back], [x1, front], [x0, front]];
+    b.convex(loft("y", [[foot, profile], [top, profile]]), "timber", (n) => straight(n, "y", [k * 0.37, k * 0.21]));
+    if (level > 0) continue;
+    // An iron shoe at its foot and a band at its head.
+    for (const [y0, y1] of [[foot, foot + 0.1], [top - 0.14, top - 0.06]] as const) b.box([x0 - 0.004, y0, back], [x1 + 0.004, y1, front + 0.004], "iron");
+  }
+  if (level === 3) return b;
+  const count = Math.max(1, Math.round((w.top - w.foot) / 0.3));
+  const zc = (back + front) / 2 + 0.008;
+  for (let i = 0; i < count; i++) {
+    if (level === 2 && i % 2 === 1) continue;
+    const y = w.foot + ((i + 0.5) * (w.top - w.foot)) / count;
+    // A rung on edge, let into the rails.
+    const h = level === 2 ? 0.032 : 0.02;
+    b.prism([[zc - h, y], [zc, y - h * 1.2], [zc + h, y], [zc, y + h * 1.2]], "x", w.x0 + rail - 0.012, w.x1 - rail + 0.012, "timber", "x", [(i * 0.31) % 1, (i * 0.17) % 1]);
+  }
+  return b;
+}
+
+// Trims: what the client draws where pieces meet (client/core/render/trims.ts). A joint stands on its corner from the
+// level up a storey and a centimetre, and is cut to a lower wall by setting every point over n quarter storeys and a
+// centimetre down onto that height (piece-fit.ts). So a joint has a bed at each height it may be cut to, the stone
+// under each of those beds is as wide as any over it, and its level faces all wear the picture alike: cut, what was
+// over the bed lies flat on the stone under it and is not seen.
+
+/** The beds of a joint's stones: a stone ends on each height a joint may be cut to, with one between each two. */
+const JOINT_BEDS = [0, 0.36, 0.76, 1.11, 1.51, 1.86, 2.26, 2.61, 3.01] as const;
+/** Half the width of a quoin's stones: the long ones, which end on the heights a joint is cut to, and the short ones between. */
+const QUOIN_LONG = 0.165;
+const QUOIN_SHORT = 0.13;
+
+/** A face of a trim given by its corners and the way it looks, shaded as a dressed block where `pillow` says how far its corners' normals lean from its middle. */
+function trimFace(b: Build, pts: readonly Vec[], out: Vec, mat: string, uv: UvMap, pillow = 0): void {
+  const mid = mean(pts);
+  const n = unit(out);
+  const normals = pillow > 0 ? pts.map((q) => unit(add(n, scale(unit(sub(sub(q, mid), scale(n, dot(sub(q, mid), n)))), pillow)))) : undefined;
+  b.flat(pts, out, mat, uv, normals);
+}
+
+/** Level faces of a joint wear the picture by where they lie, so two that lie on one another are one to the eye. */
+const levelUv: UvMap = (q) => [q[0] / TILE + 0.5, q[2] / TILE + 0.5];
+
+/**
+ * The square joint: a quoin. Dressed stones up the corner, long and short by turns: a long one stands 3.5 cm proud of
+ * the short one under it on all four faces, so each wall that ends in the corner sees long and short work up its end,
+ * and its top arris is weathered. The walls' ends lie inside it.
+ */
+function quoin(level: number): Build {
+  const b = new Build();
+  b.free = true;
+  const high = JOINT_BEDS[JOINT_BEDS.length - 1]!;
+  const square = (half: number, y: number): Vec[] => [[-half, y, -half], [half, y, -half], [half, y, half], [-half, y, half]];
+  const sides: readonly Vec[] = [[0, 0, -1], [1, 0, 0], [0, 0, 1], [-1, 0, 0]];
+  if (level === 3) {
+    // Far off, a post of three sides: eight triangles close nothing wider.
+    const three = Array.from({ length: 3 }, (_, k): P2 => [Math.cos((2 * Math.PI * k) / 3) * QUOIN_LONG * 1.6, Math.sin((2 * Math.PI * k) / 3) * QUOIN_LONG * 1.6]);
+    b.convex(loft("y", [[0, three], [high, three]]), "dressed", (n) => straight(n));
+    return b;
+  }
+  const mean2 = (QUOIN_LONG + QUOIN_SHORT) / 2;
+  if (level === 2) {
+    b.box([-mean2, 0, -mean2], [mean2, high, mean2], "dressed");
+    return b;
+  }
+  const g = rng("quoin");
+  /** The upright faces between two rings, each a stone's face with its own place in the picture. */
+  const band = (lower: readonly Vec[], upper: readonly Vec[], pillow: number): void => {
+    for (let k = 0; k < 4; k++) {
+      const shift: P2 = [g.uniform(0, 1), g.uniform(0, 1)];
+      const pts = [lower[k]!, lower[(k + 1) % 4]!, upper[(k + 1) % 4]!, upper[k]!];
+      const across: Vec = [-sides[k]![2], 0, sides[k]![0]];
+      trimFace(b, pts, sides[k]!, "dressed", (q) => [dot(q, across) / TILE + shift[0], -q[1] / TILE + shift[1]], pillow);
+    }
+  };
+  /** The level ring between two squares at one height, looking up or down. */
+  const ledge = (inner: readonly Vec[], outer: readonly Vec[], up: number): void => {
+    for (let k = 0; k < 4; k++) trimFace(b, [inner[k]!, inner[(k + 1) % 4]!, outer[(k + 1) % 4]!, outer[k]!], [0, up, 0], "dressed", levelUv);
+  };
+  trimFace(b, square(level === 0 ? QUOIN_SHORT : mean2, 0), [0, -1, 0], "dressed", levelUv);
+  if (level === 1) {
+    // One shaft with a ring at each height it may be cut to, each length shaded as a stone.
+    const heights = JOINT_BEDS.filter((_, i) => i % 2 === 0);
+    heights.slice(1).forEach((y1, i) => band(square(mean2, heights[i]!), square(mean2, y1), 0.18));
+    trimFace(b, square(mean2, high), [0, 1, 0], "dressed", levelUv);
+    return b;
+  }
+  const wash = 0.022;
+  JOINT_BEDS.slice(1).forEach((y1, i) => {
+    const y0 = JOINT_BEDS[i]!;
+    const long = i % 2 === 1;
+    const half = long ? QUOIN_LONG : QUOIN_SHORT;
+    if (long) {
+      // Out from the short stone under it, up, in over its weathered arris, and in to the short stone over it.
+      ledge(square(QUOIN_SHORT, y0), square(half, y0), -1);
+      band(square(half, y0), square(half, y1 - wash), 0.22);
+      band(square(half, y1 - wash), square(half - wash, y1), 0);
+      if (i < JOINT_BEDS.length - 2) ledge(square(QUOIN_SHORT, y1), square(half - wash, y1), 1);
+      else trimFace(b, square(half - wash, y1), [0, 1, 0], "dressed", levelUv);
+    } else band(square(half, y0), square(half, y1), 0.22);
+  });
+  return b;
+}
+
+/**
+ * A round joint: a pier of dressed drums, twelve sides shaded round, a drum to each quarter storey so that a bed lies
+ * at each height it may be cut to. `reach` is from the corner to its arrises, and an arris lies `turn` round from +x.
+ */
+function pier(level: number, reach: number, turn: number, key: string): Build {
+  const b = new Build();
+  b.free = true;
+  const high = JOINT_BEDS[JOINT_BEDS.length - 1]!;
+  if (level === 3) {
+    const three = Array.from({ length: 3 }, (_, k): P2 => [Math.cos((2 * Math.PI * k) / 3) * reach * 1.2, Math.sin((2 * Math.PI * k) / 3) * reach * 1.2]);
+    b.convex(loft("y", [[0, three], [high, three]]), "dressed", (n) => straight(n));
+    return b;
+  }
+  if (level === 2) {
+    const half = reach * 0.8;
+    b.box([-half, 0, -half], [half, high, half], "dressed");
+    return b;
+  }
+  const g = rng("pier", key);
+  const nought = (c: number): number => (Math.abs(c) < 1e-12 ? 0 : c);
+  const at = (k: number, y: number): Vec => [nought(Math.cos(turn + (Math.PI * (k % 12)) / 6) * reach), y, nought(Math.sin(turn + (Math.PI * (k % 12)) / 6) * reach)];
+  const out = (k: number, lean: number): Vec => unit([Math.cos(turn + (Math.PI * k) / 6), lean, Math.sin(turn + (Math.PI * k) / 6)]);
+  const heights = level === 0 ? JOINT_BEDS.filter((_, i) => i % 2 === 0) : [0, high];
+  heights.slice(1).forEach((y1, i) => {
+    const y0 = heights[i]!;
+    const shift: P2 = [g.uniform(0, 1), g.uniform(0, 1)];
+    // A drum's normals lean out of its beds, so a bed is seen where two drums' shading meets.
+    const lean = level === 0 ? 0.14 : 0;
+    for (let k = 0; k < 12; k++) {
+      const pts = [at(k, y0), at(k + 1, y0), at(k + 1, y1), at(k, y1)];
+      const mid = out(k + 0.5, 0);
+      // The picture goes round with the pier, a face to each twelfth of its girth.
+      const us = [(k * Math.PI * reach) / 6 / TILE + shift[0], ((k + 1) * Math.PI * reach) / 6 / TILE + shift[0]];
+      const normals = [out(k, -lean), out(k + 1, -lean), out(k + 1, lean), out(k, lean)];
+      const back = dot(newell(pts), mid) < 0;
+      const order = back ? [3, 2, 1, 0] : [0, 1, 2, 3];
+      b.shape.face({ points: order.map((j) => [pts[j]![0], -pts[j]![2], pts[j]![1]] as Vec), uvs: order.map((j) => [us[j === 0 || j === 3 ? 0 : 1]!, 1 - (-pts[j]![1] / TILE + shift[1])] as const), mat: "dressed", normals: order.map((j) => [normals[j]![0], -normals[j]![2], normals[j]![1]] as Vec) });
+    }
+  });
+  const ring = (y: number): Vec[] => Array.from({ length: 12 }, (_, k) => at(k, y));
+  trimFace(b, ring(0), [0, -1, 0], "dressed", levelUv);
+  trimFace(b, ring(high), [0, 1, 0], "dressed", levelUv);
+  return b;
+}
+
+/** The skirt's section, out from the foundation's side and down from its top: a weathered top, a nose, a drip under it, and a battered face down to its foot. */
+const SKIRT: readonly P2[] = [[0, -0.02], [0.105, -0.085], [0.105, -0.17], [0.086, -0.19], [0.12, -2.4], [0, -2.4]];
+/** The skirt turns its section round each end of its side in these steps, in degrees from the way out: two skirts at any outside corner close it between them, and their steps do not fall on one another. */
+const SKIRT_TURN = [90, 50, 0] as const;
+
+/**
+ * The skirt under a foundation's open side: a plinth course. A dressed water table, its top weathered, over a
+ * battered face of walling that goes down into the ground. It hangs from the middle of the side, +X along it and +Z
+ * out, and at each end it turns a quarter round the corner.
+ */
+function skirt(level: number): Build {
+  const b = new Build();
+  b.free = true;
+  const face: UvMap = (q) => [(q[0] + H) / TILE, (-0.19 - q[1]) / TILE];
+  if (level === 3) {
+    // Its face alone: two triangles close nothing.
+    const [top, foot] = [SKIRT[1]!, SKIRT[4]!];
+    b.flat([[-H, foot[1], foot[0]], [H, foot[1], foot[0]], [H, top[1], top[0]], [-H, top[1], top[0]]], [0, 0, 1], "masonry", face);
+    return b;
+  }
+  if (level === 2) {
+    b.convex(loft("x", [[-H, [SKIRT[0]!, SKIRT[1]!, SKIRT[4]!]], [H, [SKIRT[0]!, SKIRT[1]!, SKIRT[4]!]]]), (n) => (n[1] > 0.3 ? "dressed" : "masonry"), (n) => (n[2] > 0.5 ? face : straight(n)));
+    return b;
+  }
+  const section = level === 0 ? SKIRT : [SKIRT[0]!, SKIRT[1]!, SKIRT[3]!, SKIRT[4]!, SKIRT[5]!];
+  const mats = level === 0 ? ["dressed", "dressed", "dressed", "masonry", "masonry"] : ["dressed", "dressed", "masonry", "masonry"];
+  const steps = level === 0 ? SKIRT_TURN : [90, 0];
+  const from = b.shape.faces.length;
+  /** The way a part of the section looks, in (z, y): it goes round with the solid on its right. */
+  const outOf = (k: number): P2 => {
+    const [a, c] = [section[k]!, section[k + 1]!];
+    const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    return [-(c[1] - a[1]) / l, (c[0] - a[0]) / l];
+  };
+  const dressedUv: UvMap = (q) => [(q[0] + H) / TILE, 0.5 + (q[1] - q[2]) / TILE];
+  for (let k = 0; k + 1 < section.length; k++) {
+    const [a, c] = [section[k]!, section[k + 1]!];
+    const o = outOf(k);
+    const out: Vec = [0, o[1], o[0]];
+    const quad = (x0: number, x1: number): Vec[] => [[x0, a[1], a[0]], [x1, a[1], a[0]], [x1, c[1], c[0]], [x0, c[1], c[0]]];
+    if (level === 0 && k < 2) {
+      // The water table's stones, each shaded as a block.
+      const g = rng("skirt stones");
+      const cuts = [-H, ...[0.19, 0.4, 0.62, 0.81].map((f) => -H + TILE * (f + g.uniform(-0.03, 0.03))), H];
+      cuts.slice(1).forEach((x1, i) => trimFace(b, quad(cuts[i]!, x1), out, "dressed", dressedUv, 0.16));
+    } else if (level === 0 && k === 3) {
+      // The battered face: its top course a cell to a stone, and under it the picture plain.
+      const down = unit([0, c[1] - a[1], c[0] - a[0]]);
+      const frame = new Frame([-H, a[1], a[0]], [1, 0, 0], down, out);
+      const reach = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      tiles(b, frame, [...wallTiles(frame, (st) => st.course === 0), { poly: cell(0, TILE, BEDS[1]!, reach), mat: "masonry" }], [within2(0, TILE, 0, reach)]);
+    } else trimFace(b, quad(-H, H), out, mats[k]!, mats[k] === "dressed" ? dressedUv : face);
+    // Round each end, about the upright line through the side's own end.
+    for (const end of [-1, 1]) {
+      for (let s = 0; s + 1 < steps.length; s++) {
+        const turned = (q: P2, degrees: number): Vec => [end * (H + q[0] * Math.cos((degrees * Math.PI) / 180)), q[1], q[0] * Math.sin((degrees * Math.PI) / 180)];
+        const half = ((steps[s]! + steps[s + 1]!) / 2) * (Math.PI / 180);
+        const way: Vec = [end * o[0] * Math.cos(half), o[1], o[0] * Math.sin(half)];
+        const pts = [turned(a, steps[s]!), turned(a, steps[s + 1]!), turned(c, steps[s + 1]!), turned(c, steps[s]!)];
+        trimFace(b, pts, way, mats[k]!, mats[k] === "dressed" ? dressedUv : (q) => [(q[0] + H + end * q[2]) / TILE, (-0.19 - q[1]) / TILE]);
+      }
+    }
+  }
+  // Its back, against the foundation and the next skirt's end: the side's own length, and the section at each end.
+  const [top, foot] = [section[0]![1], section[section.length - 1]![1]];
+  b.flat([[-H, foot, 0], [H, foot, 0], [H, top, 0], [-H, top, 0]], [0, 0, -1], "masonry");
+  for (const end of [-1, 1]) b.flat(section.map(([z, y]): Vec => [end * (H + z), y, 0]), [0, 0, -1], "masonry");
+  b.shape.weld(from);
+  return b;
+}
+
+/**
+ * The capping along a ridge where two roofs' high sides meet: saddle stones of dressed stone, six to a side's length,
+ * each shaded as a block. It lies along x on the ridge's own line, which is at its origin's height. No client draws it yet.
+ */
+function ridgeStones(level: number): Build {
+  const b = new Build();
+  b.free = true;
+  const [wide, top, drop, thick] = [0.22, 0.075, 0.068, 0.034];
+  const uv: UvMap = (q) => [(q[0] + H) / TILE, 0.5 + q[2] / TILE];
+  if (level === 3) {
+    b.flat([[-H, 0.02, -wide], [H, 0.02, -wide], [H, 0.02, wide], [-H, 0.02, wide]], [0, 1, 0], "dressed", uv);
+    return b;
+  }
+  if (level === 2) {
+    b.convex(loft("x", [[-H, [[0, top], [wide, -drop], [-wide, -drop]]], [H, [[0, top], [wide, -drop], [-wide, -drop]]]]), "dressed", () => uv);
+    return b;
+  }
+  const from = b.shape.faces.length;
+  // Its section in (z, y): the two wings' tops, their edges and their undersides.
+  const section: P2[] = [[0, top], [wide, -drop], [wide, -drop - thick], [0, top - thick], [-wide, -drop - thick], [-wide, -drop]];
+  const g = rng("ridge stones");
+  const cuts = level === 0 ? [-H, ...[1, 2, 3, 4, 5].map((i) => -H + (TILE * (i + g.uniform(-0.12, 0.12))) / 6), H] : [-H, H];
+  section.forEach((a, k) => {
+    const c = section[(k + 1) % section.length]!;
+    const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    // It goes round with the stone on its right as it is seen from +x.
+    const out: Vec = [0, (c[0] - a[0]) / l, -(c[1] - a[1]) / l];
+    const tops = k === 0 || k === 5;
+    for (let i = 0; i + 1 < (tops ? cuts.length : 2); i++) {
+      const [x0, x1] = tops ? [cuts[i]!, cuts[i + 1]!] : [-H, H];
+      trimFace(b, [[x0, a[1], a[0]], [x1, a[1], a[0]], [x1, c[1], c[0]], [x0, c[1], c[0]]], out, "dressed", uv, tops && level === 0 ? 0.2 : 0);
+    }
+  });
+  // Each end in two parts, one to a wing.
+  for (const [x, way] of [[-H, -1], [H, 1]] as const) for (const part of [[0, 1, 2, 3], [0, 3, 4, 5]]) b.flat(part.map((k): Vec => [x, section[k]![1], section[k]![0]]), [way, 0, 0], "dressed", (q) => [0.5 + q[2] / TILE, 0.5 + q[1] / TILE]);
+  b.shape.weld(from);
+  return b;
+}
+
+/** Stone's trims by the names the client finds them under, each at its four levels. */
+function stoneTrims(): Record<string, Shape[]> {
+  const levels = (make: (level: number) => Build): Shape[] => [0, 1, 2, 3].map((level) => make(level).shape);
+  return {
+    joint_sq: levels(quoin),
+    // A flat faces each wall at 120 and 150 degrees, and an arris lies in the notch between two walls at 60, where the wider pier is.
+    joint_r15: levels((level) => pier(level, 0.17, Math.PI / 12, "r15")),
+    joint_r21: levels((level) => pier(level, 0.22, 0, "r21")),
+    skirt: levels(skirt),
+    ridge: levels(ridgeStones),
+  };
+}
+
 /** The forms past the first nine, by name. */
 const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: number) => Build | null>> = {
   half_wall: lowWall,
@@ -2913,6 +3304,9 @@ const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: numb
   trapdoor_frame: hatchFrame,
   trapdoor: (_, form, level) => hatch(form, level),
   ramp,
+  thin_pillar: (_, form, level) => column(form, level),
+  railing: (_, form, level) => balustrade(form, level),
+  ladder: (_, form, level) => ladder(form, level),
   roof: (_, form, level) => roof(form, level),
   roof_hip: (_, form, level) => roof(form, level),
   roof_valley: (_, form, level) => roof(form, level),
@@ -2924,7 +3318,7 @@ export const STONE: TierRecipe = {
   name: "stone",
   rank: 2,
   runPost: false,
-  jointHalf: T,
+  jointHalf: QUOIN_LONG,
   // Each is a palette entry (shared/pack/palette.ts), so the match is exact.
   tones: { masonry: [157, 153, 147], flags: [128, 128, 128], dressed: [203, 201, 175], timber: [125, 87, 69], iron: [46, 43, 36] },
   split(name, form, level) {
@@ -2941,4 +3335,5 @@ export const STONE: TierRecipe = {
     };
     return made()?.shape ?? null;
   },
+  trims: stoneTrims,
 };
