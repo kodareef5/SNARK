@@ -21,6 +21,7 @@ import { encodePng } from "../snap/png.ts";
 import { Rasterizer } from "../snap/raster.ts";
 import { drawUi } from "../snap/ui.ts";
 import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
+import type { NamePrompt } from "../../client/core/ui/tame.ts";
 
 function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
   if (!(packet.uploads.length + packet.drops.length + packet.assetUploads.length + packet.assetDrops.length + packet.texUploads.length + packet.texDrops.length)) return;
@@ -107,11 +108,11 @@ if (import.meta.main) {
     const tame = [...h.host.records.byPid.values()].find((r) => r.kind === RAPTOR && r.team === me.team)!;
     must("a raptor of hers stands ahead, saddled", tame !== undefined && tame.saddle !== 0 && h.host.records.entOf.has(tame.pid));
     // The client asks for a name, as it does for every new tame, and is given one.
-    must("the client asks its name", app.ui.naming.open);
-    app.ui.naming.edit("Bitey");
+    must("the client asks its name", app.ui.screen<NamePrompt>("naming").open);
+    app.ui.screen<NamePrompt>("naming").edit("Bitey");
     tap("Enter");
     run(300);
-    must("it is named", tame.name === "Bitey" && !app.ui.naming.open);
+    must("it is named", tame.name === "Bitey" && !app.ui.screen<NamePrompt>("naming").open);
     tame.stance = 0;
     const inv = h.host.items.inv(me);
     h.host.items.move(me, inv.item.indexOf(BALL), me, inv.hotbar, 0);

@@ -19,7 +19,7 @@ import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUC
 import { Ui } from "../../client/core/ui/ui.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { KEY_OPEN_LEVEL, KEY_OPEN_MATE, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT, KEY_OPEN_UNSADDLE, waitWords } from "../../client/core/ui/inventory.ts";
-import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
+import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE, type NamePrompt } from "../../client/core/ui/tame.ts";
 import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CHOOSE_DIED, CHOOSE_TRAVEL, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, MAX_NAME_BYTES, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
@@ -1189,7 +1189,7 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     Object.assign(session, { open: null, subject: null });
     session.tamed.push({ handle: 0x1234, kind: reg.index.get("core:raptor")!, level: 42, te: 81 }, { handle: 0x99, kind: reg.index.get("core:parasaur")!, level: 3, te: 100 });
     ui.build(aspect, fullHud(), session);
-    expect([ui.naming.open, ui.captureKeyboard, ui.wantsPointerLock]).toEqual([true, true, false]);
+    expect([ui.screen<NamePrompt>("naming").open, ui.captureKeyboard, ui.wantsPointerLock]).toEqual([true, true, false]);
     expect([f.find(KEY_NAME_TITLE)!.text, f.find(KEY_NAME_INPUT)!.focus]).toEqual(["Tamed: a raptor, level 42", true]);
     for (const key of [KEY_NAME_PANEL, KEY_NAME_TITLE, KEY_NAME_INPUT]) {
       const n = f.find(key)!;
@@ -1207,10 +1207,10 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     expect([sent[3]!.op, named.u32(), named.string(24)]).toEqual([CMD_NAME, 0x1234, "Blue"]);
     // The next tame is asked about in turn. Escape leaves it unnamed, and then there is nothing left to ask.
     ui.build(aspect, fullHud(), session);
-    expect([ui.naming.open, f.find(KEY_NAME_TITLE)!.text]).toEqual([true, "Tamed: a parasaur, level 3"]);
+    expect([ui.screen<NamePrompt>("naming").open, f.find(KEY_NAME_TITLE)!.text]).toEqual([true, "Tamed: a parasaur, level 3"]);
     ui.key("Escape", true, false, session);
     ui.build(aspect, fullHud(), session);
-    expect([ui.naming.open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 4, 0, null]);
+    expect([ui.screen<NamePrompt>("naming").open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 4, 0, null]);
   }
 });
 
@@ -1230,7 +1230,7 @@ test("a tame's name is cut to the 24 bytes the server takes, whatever the script
     session.tamed.push({ handle: 7, kind: reg.index.get("core:raptor")!, level: 1, te: 50 });
     ui.build(16 / 9, fullHud(), session);
     ui.input(KEY_NAME_INPUT, typed);
-    expect(ui.naming.text).toBe(kept);
+    expect(ui.screen<NamePrompt>("naming").typed).toBe(kept);
     ui.key("Enter", true, false, session);
     // The server reads the name with this limit, and refuses the command if it is longer.
     const r = new BitReader(sent[sent.length - 1]!.bytes);
@@ -1315,7 +1315,7 @@ test("one that breeds says its sex and how its mating goes, and has a button for
     session.tamed.push({ handle: 0x77, kind: reg.index.get("core:parasaur")!, level: 9, te: 255 });
     ui.build(aspect, fullHud(), session);
     const title = f.find(KEY_NAME_TITLE)!;
-    expect([ui.naming.open, title.text], name).toEqual([true, "Yours: a young parasaur, level 9"]);
+    expect([ui.screen<NamePrompt>("naming").open, title.text], name).toEqual([true, "Yours: a young parasaur, level 9"]);
     expect(textWidth(title.text, title.style), name).toBeLessThanOrEqual(title.w + 0.01);
   }
 });

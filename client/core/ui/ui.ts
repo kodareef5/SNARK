@@ -12,7 +12,7 @@ import type { TouchPlay } from "../touch.ts";
 import { KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_UNMUTE, unmuteButton } from "./menu.ts";
 import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { Settings } from "../settings.ts";
-import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
+import { buildOverhead } from "./tame.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
 import { SCREENS } from "./screens-list.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL } from "../../../shared/net/protocol.ts";
@@ -29,7 +29,6 @@ export class Ui {
   readonly frame = new UiFrame();
   readonly console = new ConsoleState();
   readonly chat = new ChatState();
-  readonly naming = new NamePrompt();
   /** The screens of SCREENS, made for this interface, in its order. */
   readonly screens: readonly Screen[] = SCREENS.map((make) => make());
   /** The session is in the creator, which is then the whole interface. */
@@ -93,14 +92,14 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    if (this.inspect || this.console.open || this.chat.open || this.naming.open) return true;
+    if (this.inspect || this.console.open || this.chat.open) return true;
     for (const s of this.screens) if (s.isOpen() && (s.holdsKeys || s.keyboard?.())) return true;
     return false;
   }
 
   /** A text field is wanted: the shell of a touch device raises its keyboard within the press that asked. */
   get typing(): boolean {
-    if (this.console.open || this.chat.open || this.naming.open) return true;
+    if (this.console.open || this.chat.open) return true;
     for (const s of this.screens) if (s.isOpen() && s.typing?.()) return true;
     return false;
   }
@@ -108,7 +107,7 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
-    return !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
+    return !this.inspect && !this.console.open && !this.chat.open && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Whether a screen of `group` is open. */
@@ -244,8 +243,6 @@ export class Ui {
       if(code==="ShiftLeft" || code==="ShiftRight")this.menuShift=down;
       if(code==="Tab") { if(down)this.moveFocus(this.menuShift?-1:1); return true; }
     }
-    // The name prompt has the keyboard until it is answered.
-    if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
     // A listed screen whose field has the keyboard takes every key, and a key it does not use is typing.
     if (!con.open) for (const s of this.screens) if (s.isOpen() && s.keyboard?.()) return s.key?.(code, down, repeat, this.at(session)) ?? false;
     if (chat.open && !con.open) {
@@ -387,8 +384,7 @@ export class Ui {
       if (this.slid(key, v)) n.value = v;
       return;
     }
-    if (key === KEY_NAME_INPUT) this.naming.edit(value);
-    else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
+    if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
     else for (const s of this.screens) if (s.text?.(key, value)) return;
   }
@@ -440,11 +436,8 @@ export class Ui {
     } else if (this.creating) this.chat.close();
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
     if (!this.console.open && !this.chat.open) this.buildModal(f, session, hud);
-    // The name prompt goes over every other screen, but under the console.
-    if (session && this.registry && !this.creating) {
-      this.naming.absorb(session);
-      if (!this.console.open && !this.takingAll()) this.naming.build(f, session, this.registry);
-    }
+    // The screens over the rest, such as the name prompt, go over every other screen but under the console.
+    if (!this.creating && !this.console.open && !this.takingAll()) this.buildOver(f, session, hud);
     // A screen, the chat box or a prompt that a keyboard would leave by Escape has a button for it by touch.
     if (plan && this.touchPlay && !this.wantsPointerLock && !this.hudHidden() && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
     // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
@@ -473,6 +466,17 @@ export class Ui {
   private focusing(): Screen | null {
     for (const s of this.screens) if (s.focusNav && s.isOpen()) return s;
     return null;
+  }
+
+  /** Builds every open screen of the "over" layer, in the list's order. */
+  private buildOver(f: UiFrame, session: ClientSession | null, hud: HudModel): void {
+    for (let i = 0; i < this.screens.length; i++) {
+      const s = this.screens[i]!;
+      if (s.layer !== "over" || !s.isOpen()) continue;
+      f.owner = i;
+      s.build(f, this.at(session, hud));
+    }
+    f.owner = -1;
   }
 
   /** Builds the first open modal screen of the list; false where none is open. */

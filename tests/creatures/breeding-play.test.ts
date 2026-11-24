@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
-import { KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
+import { KEY_NAME_TITLE, type NamePrompt } from "../../client/core/ui/tame.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -543,7 +543,7 @@ test("a whole client, looking at an egg, is told when it will hatch and takes it
   // Clearing the list keeps the naming panel shut. It would capture the keyboard.
   app.session.tamed.length = 0;
   run(100);
-  expect(app.ui.naming.open).toBe(false);
+  expect(app.ui.screen<NamePrompt>("naming").open).toBe(false);
   const egg = eggs(h)[0]!;
   const ents = h.world.ents;
   // Ada stands 1.5 m from the egg, on the side away from its mother, and looks down at it.
@@ -577,5 +577,5 @@ test("a whole client, looking at an egg, is told when it will hatch and takes it
   run(100);
   app.key("KeyE", false);
   run(400);
-  expect([baby.team, app.ui.naming.open, app.ui.frame.find(KEY_NAME_TITLE)!.text]).toEqual([me.team, true, `Yours: a young parasaur, level ${baby.genome!.level}`]);
+  expect([baby.team, app.ui.screen<NamePrompt>("naming").open, app.ui.frame.find(KEY_NAME_TITLE)!.text]).toEqual([me.team, true, `Yours: a young parasaur, level ${baby.genome!.level}`]);
 });

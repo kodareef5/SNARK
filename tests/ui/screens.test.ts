@@ -7,6 +7,7 @@ import type { Screen } from "../../client/core/ui/screen.ts";
 import type { ChoosingScreen } from "../../client/core/ui/choosing.ts";
 import type { CreatorScreen } from "../../client/core/ui/creator.ts";
 import type { StructMenu } from "../../client/core/ui/structure.ts";
+import type { NamePrompt } from "../../client/core/ui/tame.ts";
 import type { AirRadio } from "../../client/core/ui/air-support.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../shared/net/protocol.ts";
@@ -109,6 +110,10 @@ const opens: Record<string, (ui: Ui, session: ClientSession) => { s: Screen; shu
     const s = ui.screen<MenuScreen>("menu");
     ui.escaped();
     return { s, shut: () => s.close() };
+  },
+  naming: (ui, session) => {
+    Object.assign(session, { sessionState: SESSION_ALIVE, tamed: [{ handle: 7, kind: reg.index.get("core:parasaur")!, level: 3, te: 80 }] });
+    return { s: ui.screen<NamePrompt>("naming"), shut: () => ui.screen<NamePrompt>("naming").close() };
   },
   choosing: (ui, session) => {
     Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 0, respawnPoints: [{ kind: 0, name: "Beach", x: 10, z: 10, readyAt: 0 }, { kind: 1, name: "Bed", x: 40, z: 30, readyAt: 0 }] });

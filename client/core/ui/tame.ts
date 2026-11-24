@@ -4,10 +4,11 @@
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { MATING_STEPS } from "../../../shared/anim/pose.ts";
-import { CMD_NAME, MAX_NAME_BYTES } from "../../../shared/net/protocol.ts";
+import { CMD_NAME, MAX_NAME_BYTES, SESSION_CREATING } from "../../../shared/net/protocol.ts";
 import { BAR_FOOD, BAR_HEALTH, BAR_TAMING, BAR_TORPOR, MAX_HEARTS, OVER_RANGE, OWNER_OTHER, OWNER_TRIBE, OWNER_WILD, type OverheadModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BAR, K_IMAGE, K_INPUT, K_PANEL, fitText, lineHeight, textWidth, type UiFrame, type UiImage } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_FOOD, S_HEALTH, S_INPUT, S_LABEL, S_OVER_OTHER, S_OVER_PANEL, S_OVER_TAMING, S_OVER_TEXT, S_OVER_TRIBE, S_OVER_WILD, S_PANEL, S_TITLE, S_TORPOR } from "./style.ts";
 
 export const KEY_NAME_PANEL = 2460;
@@ -169,36 +170,72 @@ export function fitBytes(text: string, most: number): string {
   return text.slice(0, end);
 }
 
-export class NamePrompt {
+export class NamePrompt implements Screen {
+  readonly name = "naming";
+  /** Over every other screen, but under the console. */
+  readonly layer = "over";
+  readonly bands = [{ from: KEY_NAME_PANEL, count: KEY_NAME_INPUT + 1 - KEY_NAME_PANEL }];
   /** While open, the panel asks about session.tamed[0]. */
   open = false;
-  text = "";
+  /** The name typed so far. */
+  typed = "";
 
-  absorb(session: ClientSession): void {
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  close(): void {
+    this.open = false;
+  }
+
+  /** Its field has the keyboard until it is answered. */
+  keyboard(): boolean {
+    return this.open;
+  }
+
+  typing(): boolean {
+    return this.open;
+  }
+
+  /** A creature the server says is now this survivor's brings it up, except in the creator. */
+  absorb(c: ScreenCtx): void {
+    const session = c.session;
+    if (!session || !c.registry || session.sessionState === SESSION_CREATING) return;
     if (!this.open && session.tamed.length > 0) {
       this.open = true;
-      this.text = "";
+      this.typed = "";
     }
   }
 
   edit(value: string): void {
-    this.text = fitBytes(value, MAX_NAME_BYTES);
+    this.typed = fitBytes(value, MAX_NAME_BYTES);
   }
 
   /** Returns true for Enter and Escape while the panel is up. Every other key is typing. */
-  key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
+  key(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
+    const session = c.session;
     if (!this.open) return false;
     if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape") return false;
     if (!down || repeat || !session) return true;
     const which = session.tamed.shift();
-    const name = this.text.trim();
+    const name = this.typed.trim();
     if (which && code !== "Escape" && name !== "") session.command(CMD_NAME, (w) => (w.u32(which.handle), w.string(name)));
     this.open = false;
-    this.text = "";
+    this.typed = "";
     return true;
   }
 
-  build(f: UiFrame, session: ClientSession, reg: Registry): void {
+  text(key: number, value: string): boolean {
+    if (key !== KEY_NAME_INPUT) return false;
+    this.edit(value);
+    return true;
+  }
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session && c.registry) this.draw(f, c.session, c.registry);
+  }
+
+  draw(f: UiFrame, session: ClientSession, reg: Registry): void {
     const which = session.tamed[0];
     if (!this.open || !which) {
       this.open = false;
@@ -220,7 +257,7 @@ export class NamePrompt {
     f.text(KEY_NAME_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, young ? `Yours: a young ${what}, level ${which.level}` : `Tamed: a ${what}, level ${which.level}`);
     f.text(KEY_NAME_HINT, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, young ? "It is hungry. Name it and press Enter." : `${which.te}% well. Name it and press Enter.`);
     const field = f.add(KEY_NAME_INPUT, K_INPUT, x + pad, y + pad + titleH + labelH + 8, w - pad * 2, fieldH, S_INPUT);
-    field.text = this.text;
+    field.text = this.typed;
     field.interactive = true;
     field.focus = true;
   }
