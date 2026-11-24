@@ -27,6 +27,7 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps, swapKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
+import { orbLight, orbShown } from "../../client/core/render/orb.ts";
 import { CHANNEL_DIM, CHANNEL_STRIP, EYE_FLOATS, EYE_SLOTS, STORM_DEPTH, eyeEnergy, eyeGlint, eyeRadiance, type StormLit } from "../../client/core/render/tide-eye.ts";
 import { cloudLights, cloudLit } from "../../client/core/render/atmosphere.ts";
 
@@ -37,7 +38,7 @@ import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.t
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
-import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_ORB, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -1919,6 +1920,22 @@ export class Rasterizer {
               const xy = (d0 * poly[v0]! + d1 * poly[v1]! + d2 * poly[v2]!) / (d0 + d1 + d2) - rx, zy = (d0 * poly[v0 + 2]! + d1 * poly[v1 + 2]! + d2 * poly[v2 + 2]!) / (d0 + d1 + d2) - rz;
               reach = Math.max(Math.hypot(xx, zx), Math.hypot(xy, zy));
             }
+          }
+          if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_ORB)) {
+            this.deferred[at] = 0;
+            // An orb's screen, as its program shows it with no light target. The metres a pixel spans there are the
+            // place's change a pixel across and a pixel down, as the card's fwidth has them.
+            const r0 = (e0 + e0x) * poly[v0 + 5]!, r1 = (e1 + e1x) * poly[v1 + 5]!, r2 = (e2 - e0x - e1x) * poly[v2 + 5]!, rs = 1 / (r0 + r1 + r2);
+            const d0 = (e0 + e0y) * poly[v0 + 5]!, d1 = (e1 + e1y) * poly[v1 + 5]!, d2 = (e2 - e0y - e1y) * poly[v2 + 5]!, ds = 1 / (d0 + d1 + d2);
+            let wide = 0;
+            for (let k = 0; k < 3; k++) {
+              const here = k === 0 ? rx : k === 1 ? ry : rz;
+              const w = Math.abs((r0 * poly[v0 + k]! + r1 * poly[v1 + k]! + r2 * poly[v2 + k]!) * rs - here) + Math.abs((d0 * poly[v0 + k]! + d1 * poly[v1 + k]! + d2 * poly[v2 + k]!) * ds - here);
+              wide += w * w;
+            }
+            orbLight(p.frame, rx, ry, rz, Math.sqrt(wide), energy, p.tier.orb.octaves, p.tier.orb.pucks);
+            orbShown(this.color, energy, p.frame, at * 4);
+            continue;
           }
           if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_SKYLINE)) {
             this.deferred[at] = 0;

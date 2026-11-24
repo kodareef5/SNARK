@@ -12,7 +12,7 @@ import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { DROP_GLSL } from "./supply-light.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -106,6 +106,12 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
   };
 }
 
+/**
+ * Fragment texts that come after the first frame, each set by the late file that holds it: the orb's (orb-late.ts).
+ * Until one has come its program is not among a tier's, and nothing is drawn with it.
+ */
+export const LATE: { orb: string | null } = { orb: null };
+
 const MAKE = {
   flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
   // Where the tier reads the finishes in full, asphalt, sand and walks wear (world-surfaces.ts `roadWorn`, `walkWorn`).
@@ -178,6 +184,8 @@ void main() {
   // Fire (packet.ts DRAW_FIRE): a rocket's flame and a fireball's lobes, worked out with no texture read (fire-light.ts).
   // A lit tier lights the soot from the frame block, and a tier reads the octaves of value noise it pays for.
   fire: (tier, _, __, light = false) => ({ vertex: FIRE_VERTEX, fragment: FIRE_FRAGMENT, defines: (tier.lit ? "#define FIRE_LIT\n" : "") + (tier.bursts.noise > 0 ? "#define FIRE_NOISE\n" : "") + (tier.bursts.noise > 1 ? "#define FIRE_FINE\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: {} }),
+  // An orb's screen (packet.ts DRAW_ORB, orb.ts): the tier's octaves of noise, and its pucks or none. Signal's text stands in until the late one has come.
+  orb: (tier, format, hard, light = false): ProgramText => LATE.orb === null ? MAKE.signal(tier, format, hard, light) : { vertex: FLAT_MESH_VERTEX, fragment: LATE.orb, defines: `#define ORB_OCTAVES ${tier.orb.octaves}\n` + (tier.orb.pucks ? "#define ORB_PUCKS\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: MESH },
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),
@@ -225,6 +233,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
   signal: FLAT_DRAW,
   depthTerrainWindow: WINDOW_TILES,
   fire: [...FRAME_ROWS, ...MESH_ROWS],
+  orb: FLAT_DRAW,
   bloomDown: [],
   bloomUp: [],
   finish: [],
@@ -233,12 +242,12 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
 
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
-const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire"];
+const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb"];
 const POST = ["bloomDown", "bloomUp", "finish"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
 export function tierPrograms(tier: Tier): number[] {
-  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) ? [n] : []));
+  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) && (name !== "orb" || LATE.orb !== null) ? [n] : []));
 }
 
 /**
@@ -267,6 +276,7 @@ const DROPS = DRAW_CUTOUT | IS_HANDED | IS_SWAPPING;
  */
 export const CHOICE: readonly Choice[] = [
   pick(PROGRAM.fire, DRAW_FIRE),
+  pick(PROGRAM.orb, DRAW_ORB),
   // An instrument's light with its strip is a SURFACE draw, which its street material draws as a channel of energy.
   pick(PROGRAM.signal, DRAW_EMISSIVE, 0, DRAW_TEXTURED),
   pick(PROGRAM.skyline, DRAW_SKYLINE),

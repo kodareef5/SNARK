@@ -148,6 +148,11 @@ export interface Tier {
    * canvas's own. `scale`: the share a side of that the governor's steps draw, 1 where left out.
    */
   readonly post: { readonly bloom: number; readonly pixels: number; readonly scale?: number } | null;
+  /**
+   * An orb's screen (render/orb.ts): the octaves of noise a scene reads at the most, and whether its pucks are drawn
+   * close up. Low poly shows the same picture with the fewest.
+   */
+  readonly orb: { readonly octaves: number; readonly pucks: boolean };
   /** Whether bodies that move take the sky's light from what is under them (render/contact.ts). */
   readonly contact: boolean;
   /**
@@ -202,6 +207,7 @@ export const TIERS: readonly Tier[] = [
     lit: false, split: 0, viewDistance: VIEW, reach: { bases: 1024, city: 2048, trees: 500, rocks: 0, bushes: 0, parts: 500 }, fade: 0.1, city: { levels: [boxes(340), lattice(600), mass(Infinity, 8)] }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, finish: "full", finishes: 0, relief: false, clouds: 0, water: "flat", waterMarks: 0,
     details: { pool: 384, share: 0.5, reach: 0.6, fill: 0.5 }, bursts: { particles: 20, lobes: 1, noise: 0 }, breaks: { pieces: 256, bones: 256, draws: 16, rest: 2 }, budget: { triangles: 2e6, draws: 2048 }, bodyError: 1,
     post: null,
+    orb: { octaves: 2, pucks: false },
     contact: false,
     roofs: false,
   },
@@ -210,6 +216,7 @@ export const TIERS: readonly Tier[] = [
     lit: true, split: 384, viewDistance: VIEW, reach: { bases: 2048, city: 2500, trees: 1500, rocks: 700, bushes: 400, parts: 1500 }, fade: 0.25, city: { levels: MEDIUM_CITY }, nodes: { chunks: 3, band: [152, 184], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false, moon: true, pools: true }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light", breaks: { pieces: 384, bones: 384, draws: 24, rest: 5 }, city: { levels: nearer(MEDIUM_CITY, PHONE_CITY) }, budget: { triangles: 2e6, draws: 1024 }, nodes: { chunks: 3, band: [152, 184] } }, finish: "full", finishes: 512, relief: false, clouds: 2, water: "simple", waterMarks: 6,
     details: { pool: 1536, share: 1, reach: 1, fill: 1 }, bursts: { particles: 60, lobes: 3, noise: 1 }, breaks: { pieces: 512, bones: 768, draws: 24, rest: 5 }, budget: { triangles: 4e6, draws: 1024, spend: 1, spendTo: 2.5e6 }, bodyError: 1,
     post: null,
+    orb: { octaves: 3, pucks: true },
     contact: false,
     roofs: true,
   },
@@ -218,6 +225,7 @@ export const TIERS: readonly Tier[] = [
     lit: true, split: 384, viewDistance: 6000, reach: { bases: 2048, city: 3000, trees: 1500, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.25, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false, moon: true, lamp: true, pools: true }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1, viewDistance: VIEW, budget: { triangles: 4e6, draws: 2048 }, nodes: { chunks: 4, band: [216, 248] } }, finish: "full", finishes: 1024, relief: false, clouds: 2, water: "simple", waterMarks: 12,
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, bursts: { particles: 100, lobes: 3, noise: 2 }, breaks: { pieces: 1024, bones: 2048, draws: 48, rest: 8 }, budget: { triangles: 6e6, draws: 2048, spend: 2, spendTo: 3.5e6 }, bodyError: 1,
     post: { bloom: 1, pixels: HIGH_PIXELS },
+    orb: { octaves: 4, pucks: true },
     contact: true,
     roofs: true,
   },
@@ -226,6 +234,7 @@ export const TIERS: readonly Tier[] = [
     lit: true, split: 384, viewDistance: 8000, reach: { bases: 2048, city: 3000, trees: 2000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.25, city: { levels: [boxes(1100), lattice(1500), bare(2000), mass(2500, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false, moon: true, lamp: true, pools: true }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: false, clouds: 2, water: "simple", waterMarks: 12,
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, bursts: { particles: 160, lobes: 3, noise: 2 }, breaks: { pieces: 1024, bones: 4096, draws: 64, rest: 12 }, budget: { triangles: 8e6, draws: 4096, spend: 2, spendTo: 5e6 }, bodyError: 1,
     post: { bloom: 1, pixels: 0 },
+    orb: { octaves: 4, pucks: true },
     contact: true,
     roofs: true,
   },
