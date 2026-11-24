@@ -16,7 +16,7 @@ import { handleIndex, makeHandle } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { bolt, readBolt } from "../../shared/net/bolts.ts";
 import { blast, readBlast, readRocket, rocket } from "../../shared/net/rockets.ts";
-import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { makePlaced, readPlaced, type Placed } from "../../shared/net/placed.ts";
 import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { AirCamera } from "./air-camera.ts";
@@ -163,7 +163,8 @@ import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/wor
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
-import { GONE_BLAST, GONE_TAKEN, StructureStore, stageHealth, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
+import { FramesTold, ROW_EMPTY, ROW_IN_PLACE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
+import { GONE_BLAST, GONE_TAKEN, StructureStore, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_HAVE, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { GoneStore } from "./gonelists.ts";
@@ -701,9 +702,10 @@ export class ClientSession {
   private staticsSeq = 0;
   /** The map's statics' kinds as content indices, from the welcome or CMD_STATICS's answer, when the client takes chunks from them. */
   private staticKinds: Uint16Array | null = null;
-  private readonly kinds = new Named();
-  private readonly yaws = new Named();
-  private readonly owners = new Named();
+  /** Reads a chunk message's rows (shared/world/rows.ts), made with the world. */
+  private rows: RowCoder | null = null;
+  /** The frames the server has defined to this session, for one this store let go with its last row and a row names again. */
+  private readonly framesTold = new FramesTold();
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
@@ -2328,6 +2330,8 @@ export class ClientSession {
     [this.nodeChunk, this.nodeSeen, this.nodeHeld] = [-1, -1, []];
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
     this.parked.clear();
+    this.framesTold.clear();
+    this.rows = null;
     [this.parkedBytes, this.haveSeq, this.haveAt] = [0, 0, -1];
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
@@ -2761,6 +2765,14 @@ export class ClientSession {
     this.haveSaid.length = 0;
   }
 
+  /** Whether this store has the frame a keyed row names, made again from its definition where it went with its last row. */
+  private frameFor(structs: StructureStore, gid: number): boolean {
+    if (structs.frames.get(gid)) return true;
+    const def = gid !== 0 ? this.framesTold.get(gid) : undefined;
+    if (def) structs.frames.make(def.ox, def.oy, def.oz, def.yaw, def.team, gid);
+    return def !== undefined;
+  }
+
   private chunk(r: BitReader): void {
     const world = this.world;
     if (!world) return;
@@ -2782,7 +2794,7 @@ export class ClientSession {
       if (r.overflow || at + n > statics.first[chunk + 1]!) return;
       for (let m = at; m < at + n; m++) {
         const kind = this.staticKinds![statics.kind[m]!]!;
-        structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version);
+        structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version, 0);
       }
     }
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
@@ -2790,46 +2802,49 @@ export class ClientSession {
     const kinds = this.registry.defs.length;
     const told = this.onStructure && this.whole[chunk] === 1 ? this.onStructure : null;
     const rows = structs.chunks[chunk];
-    this.kinds.reset();
-    this.yaws.reset();
-    this.owners.reset();
-    let slot = -1;
-    let height = 0;
+    const row = (this.rows ??= new RowCoder(structs.forms, maxHp));
+    row.maxHp = maxHp;
+    row.begin(x0, z0);
+    // The frames a message defines count once its rows are read, as the server counts them once it is sent.
+    this.framesTold.settle();
     for (let i = 0; i < count; i++) {
-      slot += r.bool() ? 1 : r.varint() + 2;
-      const inPlace = r.bool();
-      // A row in place may still say another kind: a door opened, a city piece in a broken form.
-      const kind = inPlace && !r.bool() ? 0 : this.kinds.read(r, 16);
+      row.read(r);
+      const slot = row.slot;
+      const kind = row.kind;
       if (r.overflow || slot > 0xffff || kind >= kinds) return;
       const was = rows && slot < rows.high ? rows.kind[slot]! : 0;
       const hpWas = was !== 0 ? rows!.hp[slot]! : 0;
-      if (inPlace) {
+      if (row.form === ROW_IN_PLACE) {
+        // A row in place may still say another kind: a door opened, a city piece in a broken form.
         const now = kind !== 0 ? kind : was;
-        const owner = this.owners.read(r, 0);
-        const hp = r.bool() ? maxHp[now]! : owner === 0 ? r.f32() : stageHealth(r.bits(8), maxHp[now]!);
-        if (r.overflow) return;
+        const hp = row.health(maxHp[now]!);
         if (was === 0) continue;
         if (told && (was !== now || hpWas !== Math.fround(hp))) told(was, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
-        structs.put(chunk, slot, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, owner, hp, version);
+        structs.put(chunk, slot, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, row.owner, hp, version, 0);
         continue;
       }
-      if (kind === 0) {
+      if (row.form === ROW_EMPTY) {
         if (told && was !== 0) told(was, 0, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, 0, GONE_TAKEN);
         structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
         continue;
       }
-      const x = x0 + r.bits(15) / STRUCT_UNITS;
-      const z = z0 + r.bits(15) / STRUCT_UNITS;
-      if (!r.bool()) height += r.svarint();
-      const yaw = this.yaws.read(r, 16);
-      const owner = this.owners.read(r, 0);
-      const hp = r.bool() ? maxHp[kind]! : owner === 0 ? r.f32() : stageHealth(r.bits(8), maxHp[kind]!);
-      if (r.overflow) return;
-      const y = height / STRUCT_UNITS;
+      if (kind === 0) return;
+      let [x, y, z, yaw, fr] = [row.x, row.y, row.z, row.yaw, 0];
+      if (row.form === ROW_KEYED) {
+        // Its place and turn are its key's in its frame, as the server's are.
+        if (row.def) this.framesTold.take(row.def);
+        const pose = this.frameFor(structs, row.fr) ? structs.keyedPose(chunk, kind, row.fr, row.k0, row.k1) : null;
+        if (!pose) return void structs.frames.drop(row.fr);
+        [x, y, z, yaw, fr] = [pose.x / STRUCT_UNITS, pose.y / STRUCT_UNITS, pose.z / STRUCT_UNITS, pose.yaw, row.fr];
+      }
+      const hp = row.health(maxHp[kind]!);
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
-      structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
+      structs.put(chunk, slot, kind, x, y, z, yaw, row.owner, hp, version, fr, row.k0, row.k1);
+      // A frame is its rows' owner's.
+      if (fr !== 0) structs.frames.get(fr)!.team = row.owner;
       this.onRow?.(chunk * 65536 + slot);
     }
+    this.framesTold.settle();
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
     const t = world.structs.chunks[chunk];
     const news = this.whole[chunk] !== CAUGHT_UP_NEXT;
@@ -2864,7 +2879,7 @@ export class ClientSession {
               this.rubble.push({ kind, x, y, z, yaw, cause, ox, oy, oz, tick, radius, into, map: t.owner[slot] === 0 ? this.mapKind(chunk, slot) : 0 });
             }
             // A heap is as old as its batch, so a later batch of the same message may still take it.
-            if (into !== 0) world.structs.put(chunk, slot, into, x, y, z, yaw, t.owner[slot]!, heapHealth(reg, into), at);
+            if (into !== 0) world.structs.put(chunk, slot, into, x, y, z, yaw, t.owner[slot]!, heapHealth(reg, into), at, 0);
             else world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
           }
         }

@@ -367,6 +367,21 @@ export class BitReader {
 /** The values one message names: each goes whole the first time, then as its place among those named before it. */
 export class Named {
   private readonly seen: number[] = [];
+  /** Where the value last written or read is among those named, or -1 for one that was not kept. */
+  at = -1;
+  /** Whether that value went whole. */
+  whole = false;
+
+  private readonly most: number;
+
+  /** Past `most` values a new one goes whole each time and is not kept, so the search for a value stays short. */
+  constructor(most = Infinity) {
+    this.most = most;
+  }
+
+  get size(): number {
+    return this.seen.length;
+  }
 
   reset(): void {
     this.seen.length = 0;
@@ -376,18 +391,21 @@ export class Named {
   write(w: BitWriter, v: number, bits: number): void {
     const i = this.seen.indexOf(v);
     w.bool(i < 0);
+    this.whole = i < 0;
+    this.at = i;
     if (i >= 0) w.bits(i, widthOf(this.seen.length));
     else {
-      this.seen.push(v);
+      if (this.seen.length < this.most) this.at = this.seen.push(v) - 1;
       if (bits > 0) w.bits(v, bits);
       else w.varint(v);
     }
   }
 
   read(r: BitReader, bits: number): number {
-    if (!r.bool()) return this.seen[r.bits(widthOf(this.seen.length))] ?? 0;
+    this.whole = r.bool();
+    if (!this.whole) return this.seen[(this.at = r.bits(widthOf(this.seen.length)))] ?? 0;
     const v = bits > 0 ? r.bits(bits) : r.varint();
-    this.seen.push(v);
+    this.at = this.seen.length < this.most ? this.seen.push(v) - 1 : -1;
     return v;
   }
 }

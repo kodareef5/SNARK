@@ -191,6 +191,8 @@ export class Client {
   readonly parked = new Map<number, number>();
   /** Chunks it said it kept and was believed, still to be brought up to date. */
   readonly claimed: number[] = [];
+  /** The frames whose definitions it has been sent, by gid (shared/world/rows.ts). */
+  readonly framesTold = new Set<number>();
   syncChunk = -1;
   /** Bytes of chunk messages sent on each of the last 32 ticks, and the tick each slot is for. */
   readonly chunkSent = new Uint32Array(32);
@@ -259,6 +261,7 @@ export class Client {
     this.subscribed.length = 0;
     this.parked.clear();
     this.claimed.length = 0;
+    this.framesTold.clear();
     this.syncChunk = -1;
     this.chunkSent.fill(0);
     this.rowsWaiting = false;
