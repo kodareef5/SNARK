@@ -4,7 +4,7 @@
 import { nearestColour } from "../../../shared/pack/palette.ts";
 import { formBounds, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
 import type { SourceLod } from "../write.ts";
-import type { Shape } from "./kit.ts";
+import { slice, uprightPlane, planeMoved, type Flat, type Plane, type Shape } from "./kit.ts";
 
 /**
  * Metres each level after the finest may lie from it. On medium a level is drawn from 3,505 times its error, so these
@@ -38,6 +38,19 @@ export function yieldPlanes(form: FormDef): [axis: number, at: number][] {
   return [[0, u0 - form.at[0] + form.yieldBand], [0, u1 - form.at[0] - form.yieldBand], [1, -(v0 - form.at[2] + form.yieldBand)], [1, -(v1 - form.at[2] - form.yieldBand)]];
 }
 
+/** A flat form's outline in the recipe's frame, about its collider's origin: (x, y) corners going round against the clock as seen from above. */
+export const planOf = (form: FormDef): Flat[] => form.outline.map(([u, v]): Flat => [u - form.at[0], -(v - form.at[2])]);
+
+/**
+ * Where a flat form that is no rectangle yields: the upright plane a ring lies in, the yield band in from each side of
+ * its outline, side k from corner k to the next. A triangle's three, which run along no axis.
+ */
+export function yieldSlants(form: FormDef): Plane[] {
+  if (!(form.yieldBand > 0) || form.plane !== "flat" || form.outline.length === 4) return [];
+  const plan = planOf(form);
+  return plan.map((a, k) => planeMoved(uprightPlane(a, plan[(k + 1) % plan.length]!), -form.yieldBand));
+}
+
 /** Every level of a form as the recipe builds it, the textured ones cut where the form yields. */
 export function levelsOf(recipe: TierRecipe, name: string, form: FormDef): Shape[] {
   const out: Shape[] = [];
@@ -45,6 +58,7 @@ export function levelsOf(recipe: TierRecipe, name: string, form: FormDef): Shape
     const shape = recipe.split(name, form, level);
     if (!shape) break;
     if (level < TEXTURED) for (const [axis, at] of yieldPlanes(form)) shape.cut(axis, at);
+    if (level < TEXTURED) for (const plane of yieldSlants(form)) slice(shape, plane);
     out.push(shape);
   }
   if (out.length < 2 || out.length > LEVEL_ERRORS.length + 1) throw new Error(`${recipe.name} ${name}: ${out.length} levels`);

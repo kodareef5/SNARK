@@ -811,3 +811,426 @@ export function poleRings(path: readonly Vec[], sides: number, twist: number, ra
     return add(path[i]!, add(scale(e1, r * Math.cos(th)), scale(e2, r * Math.sin(th))));
   }));
 }
+
+
+// Cuts on any plane, solids on outlines that are no rectangle, and the parts ladders, railings and gates are made of:
+// added for the forms past the first nine. Every tier's recipe builds a new form from these, as wood's does.
+
+/** A point of a floor plan or of an upright outline: two coordinates. */
+export type Flat = readonly [number, number];
+/** A plane: the points p where n . p = at, n a unit. What is kept of a cut lies where n . p is less. */
+export type Plane = readonly [normal: Vec, at: number];
+
+/** The plane through `a` that looks along `n`, which need not be a unit. */
+export function planeAt(a: Vec, n: Vec): Plane {
+  const u = unit(n);
+  return [u, dot(u, a)];
+}
+
+/** The upright plane through two points of a plan, (x, y) each, looking to the right of the way from the first to the second: out of an outline that goes round against the clock as seen from above. */
+export const uprightPlane = (a: Flat, b: Flat): Plane => planeAt([a[0], a[1], 0], [b[1] - a[1], a[0] - b[0], 0]);
+
+/** A plane moved `by` along its own normal. */
+export const planeMoved = (p: Plane, by: number): Plane => [p[0], p[1] + by];
+
+/** A convex outline with every side moved in by `by`, or each by its own (out where less than 0): its corners are where the moved sides cross. */
+export function inset(outline: readonly Flat[], by: number | readonly number[]): Flat[] {
+  const n = outline.length;
+  let area = 0;
+  outline.forEach((a, k) => (area += a[0] * outline[(k + 1) % n]![1] - outline[(k + 1) % n]![0] * a[1]));
+  const turn = area >= 0 ? 1 : -1;
+  const lines = outline.map((a, k) => {
+    const b = outline[(k + 1) % n]!, l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    // The way in from a side.
+    const [nx, ny] = [(-(b[1] - a[1]) * turn) / l, ((b[0] - a[0]) * turn) / l];
+    return [nx, ny, nx * a[0] + ny * a[1] + (typeof by === "number" ? by : by[k]!)] as const;
+  });
+  return outline.map((_, k) => {
+    const [u, v] = [lines[(k + n - 1) % n]!, lines[k]!];
+    const det = u[0] * v[1] - u[1] * v[0];
+    return [(u[2] * v[1] - v[2] * u[1]) / det, (u[0] * v[2] - v[0] * u[2]) / det] as const;
+  });
+}
+
+const groupsOf = (s: Shape): WeakMap<object, number> | undefined => (s as unknown as { groups?: WeakMap<object, number> }).groups;
+const roundOf = (s: Shape): Map<object, Vec[]> | undefined => (s as unknown as { round?: Map<object, Vec[]> }).round;
+const CUT_EPS = 1e-7;
+const pointKey = (p: Vec): string => `${Math.round(p[0] * 1e6)},${Math.round(p[1] * 1e6)},${Math.round(p[2] * 1e6)}`;
+
+/** A face's normal by Newell's sum, not a unit. */
+function faceNormal(points: readonly Vec[]): Vec {
+  let n: Vec = [0, 0, 0];
+  points.forEach((p, k) => {
+    const q = points[(k + 1) % points.length]!;
+    n = add(n, [(p[1] - q[1]) * (p[2] + q[2]), (p[2] - q[2]) * (p[0] + q[0]), (p[0] - q[0]) * (p[1] + q[1])]);
+  });
+  return n;
+}
+
+/**
+ * Parts the faces from `from` on at a plane. With `both`, each face that crosses it becomes two and nothing is lost;
+ * without, what lies past the plane is dropped, and the sides of the hole it leaves are returned, each as it must run
+ * round the face that closes it, with the face it was cut from. A round face's halves keep its group and its normals.
+ */
+function parted(shape: Shape, plane: Plane, from: number, both: boolean): { a: Vec; b: Vec; of: Face }[] {
+  const [n, at] = plane;
+  const groups = groupsOf(shape), round = roundOf(shape);
+  const axis = [0, 1, 2].find((a) => Math.abs(Math.abs(n[a]!) - 1) < 1e-9);
+  const tail = shape.faces.splice(from) as Face[];
+  const sides: { a: Vec; b: Vec; of: Face }[] = [];
+  const out: Face[] = [];
+  /** A kept polygon's sides that lie in the plane are sides of the hole, run the other way. */
+  const rim = (points: readonly Vec[], d: readonly number[], of: Face): void => {
+    if (both) return;
+    points.forEach((p, k) => {
+      const j = (k + 1) % points.length;
+      if (Math.abs(d[k]!) <= CUT_EPS && Math.abs(d[j]!) <= CUT_EPS && pointKey(p) !== pointKey(points[j]!)) sides.push({ a: points[j]!, b: p, of });
+    });
+  };
+  for (const f of tail) {
+    if (both && axis !== undefined && f.along === axis) {
+      out.push(f);
+      continue;
+    }
+    const all = f.points.map((p) => dot(n, p) - at);
+    const under = all.every((v) => v <= CUT_EPS), over = all.every((v) => v >= -CUT_EPS);
+    if (under && over) {
+      // It lies in the plane: it closes the cut already where it looks the plane's way, and is cut off where it does not.
+      if (both || dot(faceNormal(f.points), n) > 0) {
+        out.push(f);
+        rim(f.points, all, f);
+      }
+      continue;
+    }
+    if (under || (both && over)) {
+      out.push(f);
+      if (f.tris) for (let t = 0; t < f.tris.length; t += 3) rim([0, 1, 2].map((k) => f.points[f.tris![t + k]!]!), [0, 1, 2].map((k) => all[f.tris![t + k]!]!), f);
+      else rim(f.points, all, f);
+      continue;
+    }
+    if (over) continue;
+    const normals = round?.get(f), group = groups?.get(f);
+    const polys = f.tris ? f.tris.flatMap((_, i) => (i % 3 === 0 ? [[f.tris![i]!, f.tris![i + 1]!, f.tris![i + 2]!]] : [])) : [f.points.map((_, k) => k)];
+    for (const poly of polys) {
+      const d = poly.map((v) => all[v]!);
+      // The part under the plane, and the part over it: points, texture coordinates, normals and how far each is from the plane.
+      const halves = [0, 1].map(() => ({ points: [] as Vec[], uvs: [] as Uv[], normals: [] as Vec[], d: [] as number[] }));
+      poly.forEach((v, k) => {
+        const w = poly[(k + 1) % poly.length]!;
+        const [dv, dw] = [d[k]!, d[(k + 1) % poly.length]!];
+        halves.forEach((h, side) => {
+          if (side === 0 ? dv > CUT_EPS : dv < -CUT_EPS) return;
+          h.points.push(f.points[v]!);
+          h.uvs.push(f.uvs[v]!);
+          if (normals) h.normals.push(normals[v]!);
+          h.d.push(dv);
+        });
+        if (!((dv > CUT_EPS && dw < -CUT_EPS) || (dv < -CUT_EPS && dw > CUT_EPS))) return;
+        // From the lesser corner, so both faces at an edge make the same point.
+        const less = [f.points[v]!, f.points[w]!].map((p) => p.join()).sort()[0] === f.points[v]!.join();
+        const [i, j, di, dj] = less ? [v, w, dv, dw] : [w, v, dw, dv];
+        const t = di / (di - dj);
+        const [p, q] = [f.points[i]!, f.points[j]!];
+        const moved = [0, 1, 2].map((a) => p[a]! + (q[a]! - p[a]!) * t);
+        // Onto the plane itself, which a point between two corners misses by a rounding.
+        const off = dot(n, moved as unknown as Vec) - at;
+        const point = (axis !== undefined ? moved.map((c, a) => (a === axis ? at * Math.sign(n[a]!) : c)) : moved.map((c, a) => c - off * n[a]!)) as unknown as Vec;
+        const uv: Uv = [f.uvs[i]![0] + (f.uvs[j]![0] - f.uvs[i]![0]) * t, f.uvs[i]![1] + (f.uvs[j]![1] - f.uvs[i]![1]) * t];
+        for (const h of halves) {
+          h.points.push(point);
+          h.uvs.push(uv);
+          if (normals) h.normals.push(unit(add(scale(normals[i]!, 1 - t), scale(normals[j]!, t))));
+          h.d.push(0);
+        }
+      });
+      halves.forEach((h, side) => {
+        if (h.points.length < 3 || (side === 1 && !both)) return;
+        const made: Face = { points: h.points, uvs: h.uvs, mat: f.mat, ...(f.along === undefined ? {} : { along: f.along }) };
+        out.push(made);
+        if (normals) round!.set(made, h.normals);
+        if (group !== undefined) groups!.set(made, group);
+        if (side === 0) rim(h.points, h.d, f);
+      });
+    }
+  }
+  shape.faces.push(...out);
+  return sides;
+}
+
+/**
+ * Cuts every face from `from` on where it crosses the plane, so the level has a ring of vertices there: `Shape.cut` for a
+ * plane along no axis, as a triangle's sides have. A prism along the plane's own axis is left whole, as `cut` leaves it.
+ */
+export function slice(shape: Shape, plane: Plane, from = 0): Shape {
+  parted(shape, plane, from, true);
+  return shape;
+}
+
+/** Texture coordinates carried on from a face over the whole of space: as its picture runs across it, and the same straight through it. */
+function carried(f: Face): (p: Vec) => Uv {
+  const o = f.points[0]!;
+  let best: [Vec, Vec, Uv, Uv] | null = null, most = 0;
+  for (let i = 1; i < f.points.length; i++) for (let j = i + 1; j < f.points.length; j++) {
+    const [e1, e2] = [sub(f.points[i]!, o), sub(f.points[j]!, o)];
+    const size = length(cross(e1, e2));
+    if (size > most) [most, best] = [size, [e1, e2, [f.uvs[i]![0] - f.uvs[0]![0], f.uvs[i]![1] - f.uvs[0]![1]], [f.uvs[j]![0] - f.uvs[0]![0], f.uvs[j]![1] - f.uvs[0]![1]]]];
+  }
+  if (!best) return () => f.uvs[0]!;
+  const [e1, e2, d1, d2] = best;
+  const [a, b, c] = [dot(e1, e1), dot(e1, e2), dot(e2, e2)];
+  const det = a * c - b * b;
+  return (p) => {
+    const r = sub(p, o);
+    const [x, y] = [dot(r, e1), dot(r, e2)];
+    const [s, t] = [(x * c - y * b) / det, (y * a - x * b) / det];
+    return [f.uvs[0]![0] + s * d1[0] + t * d2[0], f.uvs[0]![1] + s * d1[1] + t * d2[1]];
+  };
+}
+
+/**
+ * Cuts the closed solids whose faces run from `from` on by a plane: what lies past it is gone, and each solid is closed
+ * again by a face in the plane. `cap` gives that face's material and texture coordinates; without it the face carries
+ * on the picture of the largest face it was cut from. So a board, a plate or a course ends on a triangle's side or
+ * under a slope. Build the parts, then clip them: `const at = p.faces.length; ...; clip(p, plane, cap, at)`.
+ */
+export function clip(shape: Shape, plane: Plane, cap?: ((p: Vec) => readonly [string, Uv]) | null, from = 0): Shape {
+  const [n] = plane;
+  const sides = parted(shape, plane, from, false);
+  // Two solids that touched along the plane leave a side each way, which closes nothing.
+  const waiting = new Map<string, { a: Vec; b: Vec; of: Face }[]>();
+  for (const s of sides) {
+    const met = waiting.get(`${pointKey(s.b)}|${pointKey(s.a)}`);
+    if (met && met.length > 0) met.pop();
+    else waiting.set(`${pointKey(s.a)}|${pointKey(s.b)}`, [...(waiting.get(`${pointKey(s.a)}|${pointKey(s.b)}`) ?? []), s]);
+  }
+  const left = [...waiting.values()].flat();
+  const starts = new Map<string, { a: Vec; b: Vec; of: Face }[]>();
+  for (const s of left) starts.set(pointKey(s.a), [...(starts.get(pointKey(s.a)) ?? []), s]);
+  // The plane's own two axes, so a loop that goes round against the clock in them looks the plane's way.
+  const e1 = unit(cross(Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], n)), e2 = cross(n, e1);
+  const loops: { flat: Flat[]; of: Face; area: number }[] = [];
+  const back = new Map<Flat, Vec>();
+  for (const first of left) {
+    if (!starts.get(pointKey(first.a))?.includes(first)) continue;
+    const flat: Flat[] = [];
+    let longest = first, most = 0;
+    for (let s: typeof first | undefined = first; s; ) {
+      const list = starts.get(pointKey(s.a))!;
+      list.splice(list.indexOf(s), 1);
+      const q: Flat = [dot(s.a, e1), dot(s.a, e2)];
+      back.set(q, s.a);
+      flat.push(q);
+      const size = length(faceNormal(s.of.points));
+      if (size > most) [most, longest] = [size, s];
+      const next: typeof first | undefined = starts.get(pointKey(s.b))?.[0];
+      if (!next && pointKey(s.b) !== pointKey(first.a)) throw new Error("clip: a solid is not closed where the plane cuts it");
+      s = next;
+    }
+    if (flat.length < 3) continue;
+    const area = flat.reduce((sum, q, i) => sum + q[0] * flat[(i + 1) % flat.length]![1] - flat[(i + 1) % flat.length]![0] * q[1], 0);
+    loops.push({ flat, of: longest.of, area });
+  }
+  const inside = (q: Flat, ring: readonly Flat[]): boolean => {
+    let hit = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [a, b] = [ring[i]!, ring[j]!];
+      if (a[1] > q[1] !== b[1] > q[1] && q[0] < ((b[0] - a[0]) * (q[1] - a[1])) / (b[1] - a[1]) + a[0]) hit = !hit;
+    }
+    return hit;
+  };
+  // A loop that goes round the other way is a hole through the smallest loop that holds it.
+  const outers = loops.filter((l) => l.area > 0).sort((a, b) => a.area - b.area);
+  const holes = new Map<object, Flat[][]>();
+  for (const l of loops.filter((l) => l.area <= 0)) {
+    const holder = outers.find((o) => inside(l.flat[0]!, o.flat));
+    if (holder) holes.set(holder, [...(holes.get(holder) ?? []), l.flat]);
+  }
+  for (const l of outers) {
+    const joined = bridged(l.flat, holes.get(l) ?? []);
+    const points = joined.map((q) => back.get(q)!);
+    const carry = cap ? null : carried(l.of);
+    const got = points.map((p) => (cap ? cap(p) : ([l.of.mat, carry!(p)] as const)));
+    const made: Face = { points, uvs: got.map((g) => g[1]), mat: got[0]![0], tris: earcut(joined) };
+    if (l.of.along !== undefined) made.along = l.of.along;
+    shape.faces.push(made);
+  }
+  return shape;
+}
+
+/** Cuts the solids from `from` on to a convex outline of the plan, each side `by` in from it or its own: `clip` at each side's upright plane. */
+export function clipTo(shape: Shape, outline: readonly Flat[], by: number | readonly number[] = 0, cap?: ((p: Vec) => readonly [string, Uv]) | null, from = 0): Shape {
+  let area = 0;
+  outline.forEach((a, k) => (area += a[0] * outline[(k + 1) % outline.length]![1] - outline[(k + 1) % outline.length]![0] * a[1]));
+  outline.forEach((a, k) => {
+    const b = outline[(k + 1) % outline.length]!;
+    const side = area >= 0 ? uprightPlane(a, b) : uprightPlane(b, a);
+    clip(shape, planeMoved(side, -(typeof by === "number" ? by : by[k]!)), cap, from);
+  });
+  return shape;
+}
+
+/** Turns the faces from `from` on into what a mirror across `axis` = 0 shows, each looking outward again: a piece's left hand made from its right. */
+export function mirror(shape: Shape, axis: number, from = 0): Shape {
+  const round = roundOf(shape);
+  const flip = (p: Vec): Vec => p.map((c, a) => (a === axis ? -c || 0 : c)) as unknown as Vec;
+  for (const f of shape.faces.slice(from) as Face[]) {
+    const normals = round?.get(f)?.map(flip);
+    f.points = f.points.map(flip);
+    if (f.tris) for (let t = 0; t < f.tris.length; t += 3) [f.tris[t + 1], f.tris[t + 2]] = [f.tris[t + 2]!, f.tris[t + 1]!];
+    else {
+      f.points.reverse();
+      f.uvs.reverse();
+      normals?.reverse();
+    }
+    if (normals) round!.set(f, normals);
+  }
+  return shape;
+}
+
+/** Moves every point of the faces from `from` on: a part built lying down and stood where it goes. */
+export function place(shape: Shape, to: (p: Vec) => Vec, from = 0): Shape {
+  for (const f of shape.faces.slice(from) as Face[]) f.points = f.points.map(to);
+  return shape;
+}
+
+/** A slab's faces by what they are: its top or underside on side `k` of its fold, or its upright side from corner `k` to the next. */
+export type SlabMap = (part: "top" | "under" | "side", k: number) => readonly [string, (p: Vec) => Uv];
+
+/**
+ * A solid over the convex `outline`, (x, y) corners going round against the clock as seen from above, between a top at
+ * `top[k]` over corner k and an underside: `under` metres under that, measured upright, or at its own height at each
+ * corner. Its sides are upright. A roof's face, a ramp, a wedge. Four corners not in one plane are folded on the
+ * diagonal through corner `fold`, as a hip or a valley is; a side with no height is left out.
+ */
+export function slabOn(shape: Shape, outline: readonly Flat[], top: readonly number[], under: number | readonly number[], mapping: SlabMap, fold = 0): Shape {
+  const n = outline.length;
+  const high = outline.map(([x, y], k): Vec => [x, y, top[k]!]);
+  const low = outline.map(([x, y], k): Vec => [x, y, typeof under === "number" ? top[k]! - under : under[k]!]);
+  const faces: Face[] = [];
+  const face = (points: Vec[], part: "top" | "under" | "side", k: number): void => {
+    const kept = points.filter((p, i) => pointKey(p) !== pointKey(points[(i + 1) % points.length]!));
+    if (kept.length < 3 || length(faceNormal(kept)) < 1e-12) return;
+    const [mat, uv] = mapping(part, k);
+    faces.push({ points: kept, uvs: kept.map(uv), mat });
+  };
+  const flat = (ring: readonly Vec[]): boolean => n === 3 || ring.every((p) => Math.abs(dot(sub(p, ring[0]!), unit(cross(sub(ring[1]!, ring[0]!), sub(ring[2]!, ring[0]!))))) < 1e-9);
+  for (const [ring, part] of [[high, "top"], [low, "under"]] as const) {
+    const fans = flat(ring) ? [ring.map((_, k) => k)] : Array.from({ length: n - 2 }, (_, i) => [fold, (fold + i + 1) % n, (fold + i + 2) % n]);
+    fans.forEach((fan, k) => face(part === "top" ? fan.map((v) => ring[v]!) : fan.map((v) => ring[v]!).reverse(), part, k));
+  }
+  for (let k = 0; k < n; k++) {
+    const j = (k + 1) % n;
+    face([low[k]!, low[j]!, high[j]!, high[k]!], "side", k);
+  }
+  return (shape as unknown as { solid(faces: Face[]): Shape }).solid(faces);
+}
+
+/** A fan slab's faces: on side `k`, how a point becomes texture coordinates from how far along that side it is and how far in from it. */
+export type FanMap = (part: "top" | "under" | "side", k: number) => readonly [string, (p: Vec, along: number, inward: number) => Uv];
+
+/**
+ * A level slab over the convex `outline` from z0 up to z1 whose top and underside are a fan of triangles round
+ * `middle`, one to a side, each wearing its picture along its own side. A triangle's floor is laid so: it has no way
+ * that is its own, so its boards run along each side and meet on the lines to its corners, whichever way it is turned.
+ */
+export function fanSlab(shape: Shape, outline: readonly Flat[], z0: number, z1: number, mapping: FanMap, middle?: Flat): Shape {
+  const n = outline.length;
+  const g: Flat = middle ?? [outline.reduce((s, q) => s + q[0], 0) / n, outline.reduce((s, q) => s + q[1], 0) / n];
+  const faces: Face[] = [];
+  outline.forEach((a, k) => {
+    const b = outline[(k + 1) % n]!;
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const [dx, dy] = [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+    const of = (part: "top" | "under" | "side", points: Vec[]): void => {
+      const [mat, uv] = mapping(part, k);
+      faces.push({ points, uvs: points.map((p) => uv(p, (p[0] - a[0]) * dx + (p[1] - a[1]) * dy, -(p[0] - a[0]) * dy + (p[1] - a[1]) * dx)), mat });
+    };
+    of("top", [[a[0], a[1], z1], [b[0], b[1], z1], [g[0], g[1], z1]]);
+    of("under", [[b[0], b[1], z0], [a[0], a[1], z0], [g[0], g[1], z0]]);
+    of("side", [[a[0], a[1], z0], [b[0], b[1], z0], [b[0], b[1], z1], [a[0], a[1], z1]]);
+  });
+  return (shape as unknown as { solid(faces: Face[]): Shape }).solid(faces);
+}
+
+/** One straight member of a made thing, in the recipe's frame: from a to b, `wide` across in the piece's own plane and `deep` through it, and what part it is. */
+export interface Stick {
+  a: Vec;
+  b: Vec;
+  wide: number;
+  deep: number;
+  what: string;
+}
+
+/**
+ * A ladder's rails and rungs, standing in the plane y = `y` from `foot` up to `top`, `wide` over its rails: two "rail"
+ * sticks and a "rung" every `step`, the first half a step up, each rung let `tenon` into its rails' far sides.
+ */
+export function ladderSticks(wide: number, foot: number, top: number, y: number, rail: readonly [wide: number, deep: number], rung: number, step = 0.3, tenon = 0): Stick[] {
+  const at = wide / 2 - rail[0] / 2;
+  const out: Stick[] = [-1, 1].map((s) => ({ a: [s * at, y, foot], b: [s * at, y, top], wide: rail[0], deep: rail[1], what: "rail" }));
+  const count = Math.max(1, Math.round((top - foot) / step));
+  for (let i = 0; i < count; i++) {
+    const z = foot + ((i + 0.5) * (top - foot)) / count;
+    out.push({ a: [-at - rail[0] / 2 - tenon, y, z], b: [at + rail[0] / 2 + tenon, y, z], wide: rung, deep: rung, what: "rung" });
+  }
+  return out;
+}
+
+/**
+ * A railing's parts in the plane y = 0, from -`half` to `half` along x and from `foot` up to `top`: a "rail" under its
+ * top and one over its foot, a "post" at each end and every `bay` between, and in each bay a "brace" each way, crossed.
+ * `rail` and `post` are each (wide in the plane, deep through it).
+ */
+export function railingSticks(half: number, foot: number, top: number, rail: readonly [number, number], post: readonly [number, number], brace: readonly [number, number], bay = 1.5, clear = 0.1): Stick[] {
+  const out: Stick[] = [];
+  const [hi, lo] = [top - rail[0] / 2, foot + clear + rail[0] / 2];
+  for (const z of [hi, lo]) out.push({ a: [-half, 0, z], b: [half, 0, z], wide: rail[0], deep: rail[1], what: "rail" });
+  const bays = Math.max(1, Math.round((2 * half) / bay));
+  const xs = Array.from({ length: bays + 1 }, (_, i) => -half + (2 * half * i) / bays);
+  xs.forEach((x, i) => {
+    // An end post is half a post: two railings in a row make it whole.
+    const [x0, x1] = [i === 0 ? x : x - post[0] / 2, i === bays ? x : x + post[0] / 2];
+    out.push({ a: [(x0 + x1) / 2, 0, foot], b: [(x0 + x1) / 2, 0, hi - rail[0] / 2], wide: x1 - x0, deep: post[1], what: "post" });
+  });
+  for (let i = 0; i < bays; i++) {
+    const [x0, x1] = [xs[i]! + (i === 0 ? post[0] / 2 : post[0] / 2), xs[i + 1]! - post[0] / 2];
+    const [z0, z1] = [lo + rail[0] / 2, hi - rail[0] / 2];
+    // One a little to the front and one a little behind, so they pass each other.
+    out.push({ a: [x0, -brace[1] / 2, z0], b: [x1, -brace[1] / 2, z1], wide: brace[0], deep: brace[1], what: "brace" });
+    out.push({ a: [x0, brace[1] / 2, z1], b: [x1, brace[1] / 2, z0], wide: brace[0], deep: brace[1], what: "brace" });
+  }
+  return out;
+}
+
+/** A gate's leaf between x0 and x1, from `foot` up to `top`: where its boards stand, its ledges across their backs, and a brace from each ledge's hinge end up to the next. */
+export interface Leaf {
+  /** Each board's two edges along x. */
+  boards: [number, number][];
+  /** The middle height of each ledge. */
+  ledges: number[];
+  /** Each brace from its foot at the hinge side to its head at the meeting side, as (x, z) pairs. */
+  braces: [Flat, Flat][];
+  /** The side its hinges are on: -1 its low x, 1 its high. */
+  hinge: number;
+  x0: number;
+  x1: number;
+}
+
+/**
+ * A gate as one leaf or two that meet in the middle, from -`half` to `half`: boards about `board` wide, `ledges`
+ * ledges spread from `inset` over the foot to as far under the top, and a brace between each two.
+ */
+export function gateLeaves(half: number, foot: number, top: number, leaves: 1 | 2, board: number, ledges: number, inset: number, gap = 0.01): Leaf[] {
+  const spans: [number, number, number][] = leaves === 1 ? [[-half, half, -1]] : [[-half, -gap / 2, -1], [gap / 2, half, 1]];
+  return spans.map(([x0, x1, hinge]) => {
+    const count = Math.max(1, Math.round((x1 - x0) / board));
+    const heights = Array.from({ length: ledges }, (_, i) => foot + inset + ((top - foot - 2 * inset) * i) / Math.max(1, ledges - 1));
+    const [near, far] = hinge < 0 ? [x0, x1] : [x1, x0];
+    return {
+      boards: Array.from({ length: count }, (_, i): [number, number] => [x0 + ((x1 - x0) * i) / count, x0 + ((x1 - x0) * (i + 1)) / count]),
+      ledges: heights,
+      braces: heights.slice(0, -1).map((z, i): [Flat, Flat] => [[near, z], [far, heights[i + 1]!]]),
+      hinge, x0, x1,
+    };
+  });
+}
