@@ -24,12 +24,10 @@ import { createWorld, type ServerWorld } from "../server/world.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { STRUCT_UNITS, TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
-import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
-import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, nextCommandSeq, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
+import { KEY_BYTES } from "../shared/net/protocol.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
-import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
 import { rollWild } from "../shared/sim/genome.ts";
@@ -85,6 +83,8 @@ import { benchParts } from "./bench/parts.ts";
 import { benchTransport } from "./bench/transport.ts";
 import { benchGpu } from "./bench/gpu.ts";
 import { benchUi } from "./bench/ui.ts";
+import { Bot } from "./bench/bot.ts";
+import { FIREFIGHT_GUNS, SHOT_ROUNDS, benchFirefight, benchShots } from "./bench/firefight.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -136,72 +136,6 @@ function buildBases(world: ServerWorld, reg: Registry): [number, number][] {
   const { centers, pieces } = benchBases(reg, world.hf);
   pieces.forEach((base, b) => base.forEach(([kind, x, y, z, yaw]) => world.structs.add(kind, x, y, z, yaw, 1 + b, 1000)));
   return centers;
-}
-
-/** A client that only does what the server can observe: says hello, sends inputs, acknowledges snapshots. */
-class Bot {
-  readonly end: LoopbackEnd;
-  private readonly inputs = new InputBuffer(64);
-  private readonly w = new BitWriter(256);
-  private readonly r = new BitReader();
-  private readonly rng: Rng;
-  private serverTick = 0;
-  private sent = 0;
-  private moveX = 0;
-  private moveZ = 0;
-  private yaw = 0;
-
-  constructor(net: LoopbackNet, name: string, contentHash: number, seed: number) {
-    this.rng = new Rng(seed);
-    this.end = net.connect();
-    this.end.onMessage = (_ch, data) => {
-      if (data[0] !== S_SNAPSHOT) return;
-      this.r.reset(data);
-      this.r.u8();
-      const tick = this.r.u32();
-      if (tick > this.serverTick) this.serverTick = tick;
-    };
-    const w = this.w;
-    const key = new Uint8Array(KEY_BYTES);
-    for (let i = 0; i < KEY_BYTES; i++) key[i] = this.rng.int(256);
-    writeHello(w, PROTOCOL_VERSION, contentHash, 0, name, 0, key, defaultLook());
-    this.end.send(CH_RELIABLE, w.bytes());
-  }
-
-  private seq = 0;
-
-  /** Sends the inventory screen's CMD_MOVE for a whole stack between two slots of the bot's inventory. */
-  move(from: number, to: number, item: number): void {
-    const w = this.w;
-    w.reset();
-    writeCommand(w, (this.seq = nextCommandSeq(this.seq)), CMD_MOVE);
-    w.bits(BOX_SELF, 1);
-    w.varint(from);
-    w.bits(BOX_SELF, 1);
-    w.varint(to);
-    w.u16(0);
-    w.u16(item);
-    this.end.send(CH_RELIABLE, w.bytes());
-  }
-
-  update(worldTick: number): void {
-    const target = (this.serverTick || worldTick) + 3;
-    if (target <= this.sent) return;
-    if (this.rng.int(45) === 0) {
-      this.moveX = this.rng.int(255) - 127;
-      this.moveZ = this.rng.int(255) - 127;
-      this.yaw = this.rng.int(65536);
-    }
-    let count = 0;
-    for (let t = Math.max(this.sent + 1, target - 3); t <= target; t++) {
-      this.inputs.set(t, this.moveX, this.moveZ, this.yaw, 0, this.rng.int(40) === 0 ? 1 : 0);
-      count++;
-    }
-    this.sent = target;
-    this.w.reset();
-    writeInputs(this.w, this.inputs, this.serverTick, target, count);
-    this.end.send(CH_UNRELIABLE, this.w.bytes());
-  }
 }
 
 // Settings are ARK's defaults, or those of the config folder named after --config, to hold a boosted server to the same budgets.
@@ -580,6 +514,9 @@ const pack = parsePack(buildCorePack());
   record("one blast in a 2,000-piece base, worst", blasts[blasts.length - 1]!, "ms", 4);
   record("items the ledger cannot account for", host.items.audit().length, "", 0);
 }
+
+// ---------------------------------------------------------------- firefight
+benchFirefight(section, record, host, centers[0]!, run, FIREFIGHT_GUNS);
 
 // ---------------------------------------------------------------- collapse
 section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching");
@@ -1105,6 +1042,8 @@ section("Client frame build (headless): 300 survivors in view, posed every frame
   record("frame build with them, 99th percentile", percentile(posed, 0.99), "ms", 8);
   record("draw calls", packet.drawCount, "", 400);
 }
+
+benchShots(section, record, scene, cam, { hf, structs: restored }, reg, pack, SHOT_ROUNDS);
 
 section("Client frame build (headless): a breeding base in view, the 512 bodies a client is shown until it asks for more");
 {
