@@ -130,6 +130,7 @@ export class Details {
   private readonly tagged = new Uint8Array(MAX_DETAILS);
   /** The see-through particles as written, while they are put far to near: words, so that every bit is kept. */
   private readonly unsorted = new Uint32Array(MAX_DETAILS * DETAIL_FLOATS);
+  private readonly blendCards = new Float32Array(this.unsorted.buffer);
   private readonly index = new Map<number, number>();
   private readonly due: Waiting[] = [];
   /** The body last posed for a burst this frame, and the tick it was posed at. */
@@ -878,8 +879,6 @@ export class Details {
   /** Writes the particles in view into `p`, the cut-out ones and then the see-through ones far to near. */
   private write(p: FramePacket, cam: Camera, hf: Heightfield, reserve: number): number {
     const pool = this.pool;
-    const out = p.details;
-    const words = p.detailWords;
     const order = this.order;
     const cx = cam.x, cy = cam.y, cz = cam.z;
     // The camera's right and up, which a puff faces.
@@ -892,6 +891,9 @@ export class Details {
     let fill = 0;
     // Cut-out ones go first; see-through ones are kept aside to be sorted.
     for (let pass = 0; pass < 2; pass++) {
+      const out = pass === 0 ? p.details : this.blendCards;
+      const words = pass === 0 ? p.detailWords : this.unsorted;
+      const tags = pass === 0 ? p.detailTag : this.tagged;
       for (let i = 0; i < pool.count; i++) {
         const e = this.effects[pool.effect[i]!]!;
         if ((e.pass === "blend") !== (pass === 1) || (this.muting && this.muted[pool.effect[i]!] === 1)) continue;
@@ -902,12 +904,19 @@ export class Details {
         if (!cam.boxVisible(x - half, y - half, z - half, x + half, y + half, z + half)) continue;
         const d = Math.hypot(x, y, z);
         let shows = pool.shows(i, e) * e.opacity;
+        const lying = pool.landed[i]! >= 0;
+        let floor = pool.ground[i]!;
         if (pass === 1) {
           shows *= Math.min(1, Math.max(0, (d - 0.3) / EYE_FADE));
           if (shows <= 0) continue;
           const area = (4 * half * half * e.aspect * pool.widthScale[i]!) / (Math.max(d, 0.5) ** 2 * 4 * t * t * cam.aspect);
           // What lies flat is seen as thin as the eye is low over it, a thick puff only what of it is over its floor, and no card covers more than the screen.
-          const seen = e.face === "flat" || pool.landed[i]! >= 0 ? Math.max(0.1, Math.abs(y) / Math.max(d, 0.5)) : e.thick ? Math.min(1, Math.max(0.1, 0.5 + (pool.y[i]! - pool.floor(i, pool.x[i]!, pool.z[i]!, hf)) / (4 * half))) : 1;
+          let seen = 1;
+          if (e.face === "flat" || lying) seen = Math.max(0.1, Math.abs(y) / Math.max(d, 0.5));
+          else if (e.thick) {
+            if (floor !== floor) floor = pool.floor(i, pool.x[i]!, pool.z[i]!, hf);
+            seen = Math.min(1, Math.max(0.1, 0.5 + (pool.y[i]! - floor) / (4 * half)));
+          }
           fill += Math.min(1, area * seen) * shows;
         }
         const n = cut + blended;
@@ -920,7 +929,6 @@ export class Details {
         out[o + DETAIL.middle + 1] = y;
         out[o + DETAIL.middle + 2] = z;
         const width = half * e.aspect * pool.widthScale[i]!;
-        const lying = pool.landed[i]! >= 0;
         if (e.face === "streak" && !lying) {
           // Along the way it flies, and across that as the eye sees it.
           let ax = pool.vx[i]!, ay = pool.vy[i]!, az = pool.vz[i]!;
@@ -976,12 +984,13 @@ export class Details {
           sides(out, o, ax * half, ay * half, az * half, (bx * cr + nx * sr) * width, (by * cr + ny * sr) * width, (bz * cr + nz * sr) * width);
         }
         // A thick puff that lies is not faded into the floor it lies on.
-        out[o + DETAIL.floor] = lying && e.thick ? -1e6 : pool.floor(i, pool.x[i]!, pool.z[i]!, hf) - cy;
+        if (floor !== floor && !(lying && e.thick)) floor = pool.floor(i, pool.x[i]!, pool.z[i]!, hf);
+        out[o + DETAIL.floor] = lying && e.thick ? -1e6 : floor - cy;
         words[o + DETAIL.colourA] = pool.colourA[i]!;
         // A thick puff tears as it ages: its second colour's second byte, over its seed.
         words[o + DETAIL.colourB] = e.thick && !lying ? (pool.colourB[i]! & 255) | (Math.round(255 * TEAR_MOST * Math.min(1, Math.max(0, (pool.age[i]! / pool.end[i]! - TEAR_FROM) / (1 - TEAR_FROM)))) << 8) : pool.colourB[i]!;
         words[o + DETAIL.misc] = (pool.cell[i]! | (pool.flags[i]! << 8) | (Math.round(shows * 255) << 16) | (pool.grey[i]! << 24)) >>> 0;
-        this.tagged[n] = p.detailTag[n] = this.muted[pool.effect[i]!]!;
+        tags[n] = this.muted[pool.effect[i]!]!;
         if (pass === 0) cut++;
         else {
           order[blended] = (0x7ffff - Math.min(0x7ffff, Math.floor(d * 64))) * MAX_DETAILS + n;
@@ -990,16 +999,13 @@ export class Details {
       }
     }
     // The see-through ones far to near: their keys are inverted distances, sorted from least.
-    if (blended > 1) {
-      sortU32(order, blended);
-      const from = this.unsorted;
-      for (let k = 0, at = cut * DETAIL_FLOATS; k < blended * DETAIL_FLOATS; k++) from[k] = words[at + k]!;
-      for (let k = 0; k < blended; k++) {
-        const src = ((order[k]! % MAX_DETAILS) - cut) * DETAIL_FLOATS;
-        const dst = (cut + k) * DETAIL_FLOATS;
-        for (let f = 0; f < DETAIL_FLOATS; f++) words[dst + f] = from[src + f]!;
-        p.detailTag[cut + k] = this.tagged[order[k]! % MAX_DETAILS]!;
-      }
+    if (blended > 1) sortU32(order, blended);
+    for (let k = 0; k < blended; k++) {
+      const row = order[k]! % MAX_DETAILS;
+      const src = row * DETAIL_FLOATS;
+      const dst = (cut + k) * DETAIL_FLOATS;
+      for (let f = 0; f < DETAIL_FLOATS; f++) p.detailWords[dst + f] = this.unsorted[src + f]!;
+      p.detailTag[cut + k] = this.tagged[row]!;
     }
     p.detailCount = p.detailOwn = cut + blended;
     p.detailFill = this.fill = this.own = fill;

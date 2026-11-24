@@ -56,6 +56,41 @@ function held(details: Details): number[] {
   return out;
 }
 
+test("airborne smoke uses the floor it sampled while moving", () => {
+  const tier = tierOf("medium");
+  const { details, p, cam, y } = alone(tier);
+  const smoke = pack.header.details!.effects.findIndex((e) => e.id === "core:details/blast_smoke");
+  expect(details.burst(smoke, X, y + 2, Z, 0, 1, 0, 19, 1, 1)).toBe(1);
+  const pool = details.pool;
+  const floor = pool.floor.bind(pool);
+  let samples = 0;
+  let rise = 0;
+  pool.floor = (i, x, z, ground) => {
+    samples++;
+    return floor(i, x, z, ground) + rise;
+  };
+
+  for (const ms of [50, 100, 100]) {
+    samples = 0;
+    rise += 0.2;
+    cam.y += 0.1;
+    cam.update();
+    p.beginFrame();
+    details.frame(p, cam, null, [], [], null, hf, tier, ms);
+    expect(p.detailCount).toBe(1);
+    expect(samples).toBe(1);
+    expect(p.details[DETAIL.floor]).toBe(Math.fround(floor(0, pool.x[0]!, pool.z[0]!, hf) + rise - cam.y));
+  }
+
+  // Dust due after the step reuses the expired puff's slot on a different floor.
+  pool.end[0] = 0;
+  details.groundDust(9, X, y + 3, Z, 0, 1, 1, 1);
+  p.beginFrame();
+  details.frame(p, cam, null, [], [], null, hf, tier, 150);
+  expect(p.detailCount).toBe(1);
+  expect(p.details[DETAIL.floor]).toBe(Math.fround(y + 3 + rise - cam.y));
+});
+
 test("the same seed gives the same blast on every client, and another seed another", () => {
   const medium = tierOf("medium");
   const particles = (seed: number, surface = SURFACE_GROUND): number[] => {
