@@ -24,7 +24,6 @@ import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { boxMesh, buildPack } from "../../tools/pack/write.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { compileErrors, linkErrors } from "../fixtures/glsl.ts";
-import { corePack } from "../fixtures/pack.ts";
 import { sceneRegistry } from "../fixtures/sceneworld.ts";
 
 const RATE = 30;
@@ -419,7 +418,7 @@ test("a scene writes the orb's lanes and draws its screen, on low poly too", () 
   const none = world("medium", pack(), null);
   const bare = none.scene.build(none.cam, null);
   expect(bare.frame.subarray(ORB_AT, ORB_AT + ORB_LANES * 4).every((v) => v === 0)).toBe(true);
-  const artless = world("medium", corePack());
+  const artless = world("medium", parsePack(buildPack(grayboxMeshes(CORE_CONTENT), defaultPalette())));
   const q = artless.scene.build(artless.cam, null);
   expect(q.frame[ORB_AT + 3]).toBe(78);
   expect([...Array(q.drawCount).keys()].filter((d) => (q.drawFlags[d]! & DRAW_ORB) !== 0)).toEqual([]);
