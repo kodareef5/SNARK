@@ -29,6 +29,10 @@ export interface PlanView {
   z: Float64Array;
   yaw: Uint16Array;
   tw: Uint8Array;
+  /** A bit a piece still to be built, as `open` last worked it out, and the rows and filled bits it was worked out from. */
+  live: Uint8Array;
+  liveShapes: number;
+  liveFilled: Uint8Array | null;
 }
 
 const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
@@ -49,15 +53,27 @@ function settle(structs: StructureStore, reg: Registry, v: PlanView): void {
 
 export function makeView(structs: StructureStore, reg: Registry, record: PlanRecord, placed: Placed): PlanView {
   const n = placed.n;
-  const v: PlanView = { record, placed, cells: new CellIndex(placed), x: new Float64Array(n), y: new Float32Array(n), z: new Float64Array(n), yaw: new Uint16Array(n), tw: new Uint8Array(n) };
+  const v: PlanView = { record, placed, cells: new CellIndex(placed), x: new Float64Array(n), y: new Float32Array(n), z: new Float64Array(n), yaw: new Uint16Array(n), tw: new Uint8Array(n), live: new Uint8Array(Math.ceil(n / 8)), liveShapes: -1, liveFilled: null };
   settle(structs, reg, v);
   return v;
 }
 
-/** Whether a piece of a plan is still to be built, as this client sees it: not filled, and no row on its key. */
+/**
+ * Whether a piece of a plan is still to be built, as this client sees it: not filled, and no row on its key. Worked out
+ * for the whole plan when a row has come or gone or the server has told its filled pieces, and read from that after.
+ */
 export function open(structs: StructureStore, v: PlanView, i: number): boolean {
-  if (filledAt(v.record.filled, i)) return false;
-  return v.record.fr === 0 || structs.occupied.at(v.record.fr, v.placed.k0[i]!, v.placed.k1[i]!) < 0;
+  if (v.liveShapes !== structs.shapes || v.liveFilled !== v.record.filled) {
+    v.liveShapes = structs.shapes;
+    v.liveFilled = v.record.filled;
+    v.live.fill(0);
+    const fr = v.record.fr;
+    for (let k = 0; k < v.placed.n; k++) {
+      if (filledAt(v.record.filled, k) || (fr !== 0 && structs.occupied.at(fr, v.placed.k0[k]!, v.placed.k1[k]!) >= 0)) continue;
+      v.live[k >> 3] = v.live[k >> 3]! | (1 << (k & 7));
+    }
+  }
+  return (v.live[i >> 3]! & (1 << (i & 7))) !== 0;
 }
 
 /** The plans a session has been told of, and the server's last answer to a paste. */

@@ -10,6 +10,7 @@
 | `sketch.ts` | A building set down by hand on its frame's tiles, with the map's buildings made for it: in a bare store for the support rule, or under a server for a collapse |
 | `sockets.ts` | Each socket a core piece offers another, as the slot of the lattice it means, and the one socket whose pose the forms change |
 | `build.ts` | Survivors set up to build: cheats, strength, and sixty of every wooden piece in the hotbar |
+| `plans.ts` | Houses as blueprint pieces, a base raised from them straight into a server's rows, the template hammer in a survivor's hotbar, and a blueprint sent up in parts |
 | `enemy-scan.ts` | The enemy range answered by reading every slot of the chunks in range, which the claims grid is proved against |
 | `gather.ts` | Finding a resource node and standing a survivor in reach of it |
 | `agent.ts` | An agent that plays on the harness: its tools called over the protocol while virtual time runs |
