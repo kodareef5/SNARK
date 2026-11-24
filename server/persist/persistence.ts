@@ -390,6 +390,7 @@ export class Persistence {
         store.setMeta("day_offset", world.dayOffset);
         store.setMeta("next_seq", records.nextSeq);
         store.setMeta("next_team", records.nextTeam);
+        store.setMeta("frame_next", world.structs.frames.next);
         store.setMeta("world_id", records.worldId);
         store.setMeta("save_id", this.saveId);
         store.setMeta("map_id", world.mapId);

@@ -260,7 +260,7 @@ test("clients hold the server's rows, keys and frames through building, breaking
   const home = cz * 12 + cx;
   const [x0, z0] = [cx * CHUNK_SIZE, cz * CHUNK_SIZE];
   // A base of team 7 across the border to the east, one of team 8 beside it, and things with no key.
-  const plans = [boxBase(reg, "wood", x0 + 32.5, 120, z0 + 0.5, 10, 1, 1500), boxBase(reg, "stone", x0 + 2, 140, z0 + 40, 5, 2, 400)];
+  const plans = [boxBase(reg, "wood", x0 + 47.5, 120, z0 + 0.5, 10, 1, 1500), boxBase(reg, "stone", x0 + 2, 140, z0 + 40, 5, 2, 400)];
   const next = [0, 0];
   const owners = [7, 8];
   const live: number[] = [];
@@ -326,7 +326,8 @@ test("clients hold the server's rows, keys and frames through building, breaking
       if (wholeOf(h, s).includes(home)) checks++;
     }
   }
-  expect([moved > 30, checks > 5, retaken > 3, swapped > 0, lone > 3, structs.frames.count > 2]).toEqual([true, true, true, true, true, true]);
+  const spans = [...structs.frames.all()].some((f) => f.chunks.length > 1);
+  expect([moved > 30, checks > 5, retaken > 3, swapped > 0, lone > 3, structs.frames.count > 2, spans]).toEqual([true, true, true, true, true, true, true]);
 });
 
 test("the worst row is within the bound the message's guard leaves for one", () => {
