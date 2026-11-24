@@ -15,8 +15,9 @@ import { EVENT_HIT } from "../../shared/net/protocol.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE } from "../../shared/sim/damage.ts";
 import { rungKind } from "../../shared/world/breaking.ts";
+import { HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { GONE_BLAST, GONE_TAKEN } from "../../shared/world/structures.ts";
-import { city } from "../fixtures/city.ts";
+import { GRENADE_REACH, city, grenade } from "../fixtures/city.ts";
 import { record } from "../kit/kit.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -174,7 +175,7 @@ test("a hit says what it landed on: a blast's on a wall behind a wreck is the wa
   h.run(400);
   const rec = record(h, ada);
   ada.events.length = 0;
-  // A blast past the car, at the wall: every hit of it is told as landing where the blast was, and each says its own piece.
+  // Only the wall is within reach of this blast.
   h.host.combat.blast({ by: rec, x: 120, z: 116, item: k("core:rocket_launcher"), base: 250, type: DMG_EXPLOSIVE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: 0 }, 120, 1.4, 125.5, 2);
   h.run(200);
   const blast = ada.events.filter((e) => e.kind === EVENT_HIT);
@@ -187,4 +188,36 @@ test("a hit says what it landed on: a blast's on a wall behind a wreck is the wa
   h.run(200);
   const hits = ada.events.filter((e) => e.kind === EVENT_HIT);
   expect([c.id(car), hits.length, hits.at(-1)!.kill, hits.at(-1)!.struck]).toEqual(["", 24, true, BLUE]);
+});
+
+test("splash sparks land on the wreck and blast debris keeps the explosion's centre", () => {
+  const c = city([{ kind: "core:zzzzroad_fastback_abandoned_blue", x: 128, z: 137, yaw: 16384 }]);
+  const { h } = c;
+  const ada = h.join("ada");
+  h.run(400);
+  const src = { ...grenade(h.reg), by: record(h, ada) };
+  const x = 128, y = 0.6, z = 141.5;
+  expect(castWorld(h.world, x, y, z, 0, 0, -1, GRENADE_REACH)).toBe(HIT_STRUCTURE);
+  expect(rayHit.ref).toBe(c.refs[0]!);
+  const side = z - rayHit.t;
+  expect(z - side).toBeGreaterThan(3);
+  for (const base of [src.base, 1e7]) {
+    ada.events.length = 0;
+    h.host.combat.blast({ ...src, base }, x, y, z, GRENADE_REACH);
+    h.run(200);
+    const hits = ada.events.filter((e) => e.kind === EVENT_HIT && e.struck === BLUE);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.kill).toBe(base !== src.base);
+    const breaks = new BreakEffects(reg, palette);
+    breaks.blows(hits, 100);
+    const sparks = asked(breaks).bursts;
+    expect(sparks).toHaveLength(1);
+    expect(sparks[0]!.part).toBe(BREAK_SPARKS);
+    expect(sparks[0]!.x).toBeCloseTo(x, 4);
+    expect(sparks[0]!.y).toBeCloseTo(y, 4);
+    expect(sparks[0]!.z).toBeCloseTo(side, 4);
+  }
+  const debris = ada.rubble.find((r) => r.kind === BLUE)!;
+  expect([debris.cause, debris.ox, debris.oz, debris.radius]).toEqual([GONE_BLAST, x, z, GRENADE_REACH]);
+  expect(debris.oy).toBeCloseTo(y, 1);
 });

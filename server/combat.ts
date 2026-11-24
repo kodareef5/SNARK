@@ -32,6 +32,7 @@ import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, QUALITY_MUL } from "../shared/sim/items.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
+import { capsuleKind, push } from "../shared/world/collide.ts";
 import { capsuleHull, hullPush } from "../shared/world/convex.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
 import { WRECK, isHeap } from "../shared/world/breaking.ts";
@@ -1339,7 +1340,8 @@ export class Combat {
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;
     // What the attacker is told it struck: a city piece as the map placed it, whatever form it has or is about to lose.
-    const struck = placed !== 0 ? placed : t.kind[slot]!;
+    const was = t.kind[slot]!;
+    const struck = placed !== 0 ? placed : was;
     let left: number;
     let done: number;
     if (placed !== 0) {
@@ -1365,6 +1367,12 @@ export class Combat {
     this.lastStructure.left = left;
     const ac = src.by ? this.clientOf(src.by.pid) ?? this.controllingRider(src.by) : null;
     if (ac) {
+      // A zero-radius capsule moves from the blast to the struck wreck's nearest surface.
+      if (city.held && world.reg.breakFamily[struck] === WRECK && capsuleKind(structs.parts, was, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, x, y, z, 0, 0, -Infinity)) {
+        x += push.x;
+        y += push.y;
+        z += push.z;
+      }
       const w = game.begin(S_EVENT);
       w.u8(EVENT_HIT);
       w.f32(x);

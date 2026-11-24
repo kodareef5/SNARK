@@ -656,6 +656,7 @@ export const MARKER_DEATH = 1;
 /**
  * Kinds of S_EVENT, each after a u8 naming it.
  * HIT, to the attacker: position (3 x f32), zone 4 bits, damage u16, killed 1 bit, armor stopped some 1 bit.
+ *   Zone NONE adds the struck structure kind u16 (its map kind for a city piece, 0 for a body).
  * HURT, to the victim: damage u16, the side it came from (u8, 256ths of a turn, as a facing), zone 4 bits, and
  *   whether the side is shown 1 bit (0 for a silenced shot, whose side is then sent as 0: planning/reference/weapons-plan.md, M10).
  * DEATH, to the victim: the HURT fields, then killer name string, weapon content index u16 (0 for bare hands), distance u16 (tenths of a metre).
