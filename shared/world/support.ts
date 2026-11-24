@@ -20,7 +20,7 @@
 import { STRUCT_UNITS } from "../coords.ts";
 import { FORM_LAYERS, HALF_SIDE_M, STOREY_LEVELS, type FormTable } from "./lattice/forms.ts";
 import { poseOf, riseAt, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
-import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleEqual, tupleStep, tupleWithin } from "./lattice/module.ts";
+import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleEqual, tupleStep, tupleWithin } from "./lattice/module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces, type Occupancy } from "./lattice/occupancy.ts";
 import { ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, floorTop, units, type PieceTables } from "./snap.ts";
 import { Found, type StructureStore } from "./structures.ts";
@@ -244,8 +244,14 @@ export class Support {
   pretend: Pretend | null = null;
   /** Whether some form is a footing. */
   private footed = false;
-  /** Metres on the flat within which a lost piece may have been holding another. */
+  /** Metres on the flat within which a lost piece may have been holding another, both placed by the middle of what they join by. */
   private readonly far: number;
+  /** Metres more with a broad wall on the way, and per kind whether it is one. */
+  private readonly farBroad: number;
+  private readonly broad: Uint8Array;
+  /** Per kind, metres from its place to the middle of what it joins by, and the most of them. */
+  private readonly end: Float32Array;
+  private readonly endMost: number;
   /** The search's pieces still to read, by their cost: each one's ref, the piece it was met from, and whether it hangs from that. */
   private readonly refs: number[][] = [];
   private readonly vias: SupportNode[][] = [];
@@ -272,8 +278,10 @@ export class Support {
     this.cap = new Uint8Array(n).fill(STABILITY);
     this.single = new Uint8Array(n);
     let most = STABILITY;
-    // Metres a piece of some form may reach past what its class does: a triangle from its corner, a wall along its further sides.
-    let slack = 0;
+    this.end = new Float32Array(n);
+    this.broad = new Uint8Array(n);
+    let endMost = 0;
+    let broadest = 0;
     for (let k = 0; k < n; k++) {
       const f = forms && k < forms.cls.length ? forms.def[k] : null;
       // A kind with no form is never in a base: where a row of it stands by itself is its role's to say.
@@ -289,18 +297,35 @@ export class Support {
       if (f.cls === "triangle") this.plain = false;
       if (f.layer === "footing") this.footed = true;
       most = Math.max(most, this.cap[k]!);
-      let along = Math.abs(forms!.atI[k]!);
-      for (const c of f.cells ?? []) along = Math.max(along, Math.abs(c[0] * SIDE - forms!.atI[k]!));
-      slack = Math.max(slack, (Math.max(along, Math.abs(forms!.atJ[k]!)) + (forms!.cls[k] === CLS_TRIANGLE ? 1 : 0)) * HALF_SIDE_M);
+      // How far its place is from the middle of what it joins by. A face's piece is placed by its middle but a triangle,
+      // which is placed by a corner; a wall over two edges joins by either edge's middle; a ladder may hang a side off its hatch.
+      let end = 0;
+      if (f.plane === "flat") {
+        const cx = f.outline.reduce((sum, c) => sum + c[0], 0) / f.outline.length - f.at[0];
+        const cz = f.outline.reduce((sum, c) => sum + c[1], 0) / f.outline.length - f.at[2];
+        end = f.layer === "slab" || f.layer === "fill" ? Math.sqrt(cx * cx + cz * cz) : 0;
+      } else for (const c of f.cells ?? []) end = Math.max(end, Math.abs(c[0] * SIDE * HALF_SIDE_M - f.at[0]));
+      if (f.cls === "edge" && f.hangs?.includes("hatch")) end = Math.max(end, SIDE * HALF_SIDE_M / 2);
+      this.end[k] = end;
+      endMost = Math.max(endMost, end);
+      // A wall over several edges that holds what stands on it carries support from one edge to another.
+      if (f.plane !== "flat" && f.carries && end > 0) {
+        this.broad[k] = 1;
+        broadest = Math.max(broadest, end);
+      }
     }
+    this.endMost = endMost;
     this.capMost = most;
     for (let d = 0; d <= most; d++) {
       this.refs.push([]);
       this.vias.push([]);
       this.hungs.push([]);
     }
-    // Links that cost nothing are followed by `over`. The rest move support METRES_A_COST for each unit, and each piece on the way its slack twice.
-    this.far = most * METRES_A_COST + (most + 1) * 2 * slack + 0.1;
+    // Links that cost nothing are followed by `over`. The rest move support METRES_A_COST for each unit between the
+    // middles of what two pieces join by: a slab's middle, a wall's edge's. A piece's own place may be `end` from that.
+    // A broad wall on the way adds its `end` coming and going, and a way of `most` has room for one at every other link.
+    this.far = most * METRES_A_COST + 0.1;
+    this.farBroad = Math.floor(most / 2) * 2 * broadest;
   }
 
   /** Drops every cached node. Call when the world may have changed. */
@@ -1103,7 +1128,7 @@ export class Support {
           const o = this.node(above);
           if (o && !column.includes(o)) column.push(o);
         }
-        const n = this.dependents(from.x, from.z, -1, rows);
+        const n = this.dependents(from.x, from.z, -1, rows, from.kind);
         for (let k = 0; k < n; k++) {
           const r = rows.refs[k]!;
           if (absent.has(r) || waiting.has(r)) continue;
@@ -1135,12 +1160,23 @@ export class Support {
    * Every building piece that a piece at (x, z) lattice units could have been helping to hold up: all within reach
    * horizontally, at any height. Writes their refs to `out` and returns how many.
    */
-  dependents(x: number, z: number, self: number, found: Found): number {
+  dependents(x: number, z: number, self: number, found: Found, kind = 0): number {
     const { structs, tables } = this;
     const mx = x / STRUCT_UNITS;
     const mz = z / STRUCT_UNITS;
-    const far = this.far;
-    const n = structs.query(mx - far, mz - far, mx + far, mz + far, found);
+    // The lost piece's own reach from its place, the worst where its kind is not said.
+    let far = this.far + (kind > 0 ? this.end[kind]! : this.endMost);
+    let box = far + this.endMost;
+    let n = structs.query(mx - box, mz - box, mx + box, mz + box, found);
+    // A broad wall within that reach may have carried its support a side further at each end.
+    for (let i = 0; i < n && this.farBroad > 0; i++) {
+      const ref = found.refs[i]!;
+      if (this.broad[structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!] !== 1) continue;
+      far += this.farBroad;
+      box += this.farBroad;
+      n = structs.query(mx - box, mz - box, mx + box, mz + box, found);
+      break;
+    }
     const out = found.refs;
     // A piece listed costs half a search step.
     this.work += COST_NODE + (n >> 1);
@@ -1153,7 +1189,8 @@ export class Support {
       if (tables.role[t.kind[slot]!]! < 0) continue;
       const dx = t.x[slot]! - mx;
       const dz = t.z[slot]! - mz;
-      if (dx * dx + dz * dz <= far * far) out[count++] = ref;
+      const reach = far + this.end[t.kind[slot]!]!;
+      if (dx * dx + dz * dz <= reach * reach) out[count++] = ref;
     }
     return count;
   }

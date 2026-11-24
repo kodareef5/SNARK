@@ -21,7 +21,8 @@ test("the low pieces are kinds in wood, stone and metal, one item for the two lo
     expect([...reg.places[id(`piece_pillar_${tier}`)]!]).toEqual([id(`pillar_${tier}`), id(`thin_pillar_${tier}`), id(`beam_${tier}`)]);
     expect([...reg.places[id(`piece_railing_${tier}`)]!]).toEqual([id(`railing_${tier}`)]);
   }
-  expect(reg.index.get("core:railing_thatch")).toBeUndefined();
+  // Thatch has the half wall and the railing alone of these.
+  expect([reg.index.get("core:railing_thatch") !== undefined, [...reg.places[id("piece_half_wall_thatch")]!], reg.index.get("core:beam_thatch"), reg.index.get("core:quarter_wall_thatch")]).toEqual([true, [id("half_wall_thatch")], undefined, undefined]);
   const engram = reg.defs[id("engram-piece_railing_wood")] as EngramDef;
   expect([engram.level, engram.cost]).toEqual([14, 3]);
   expect((reg.defs[id("piece_half_wall_stone")] as ItemDef).label).toBe("stone half wall");

@@ -225,7 +225,7 @@ export class Collapse {
     const key = from.x * KEY + from.z;
     if (this.drew.has(key)) return;
     this.drew.add(key);
-    const n = graph.dependents(from.x, from.z, -1, this.scratch);
+    const n = graph.dependents(from.x, from.z, -1, this.scratch, from.kind);
     const fresh = this.fresh;
     const rank = this.rank;
     fresh.length = 0;

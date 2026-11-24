@@ -72,8 +72,8 @@ const FULL = {
 /** The reference makes no ladder of stone. */
 const { ladder: _ladder, ...STONE } = FULL;
 const TIERS: readonly Tier[] = [
-  // Evolved's thatch: the hut's five pieces, a sloped roof and its sloped walls.
-  { name: "thatch", color: 18, hp: { foundation: 2400, wall: 1600, doorframe: 1600, ceiling: 1600, door: 1000, roof: 1600, roof_hip: 1600, roof_valley: 1600, sloped_wall_left: 1600, sloped_wall_right: 1600 } },
+  // Evolved's thatch: the hut's five pieces, a sloped roof and its sloped walls. The low wall and the railing are ours, for a first yard.
+  { name: "thatch", color: 18, hp: { foundation: 2400, wall: 1600, doorframe: 1600, ceiling: 1600, door: 1000, roof: 1600, roof_hip: 1600, roof_valley: 1600, sloped_wall_left: 1600, sloped_wall_right: 1600, half_wall: 800, railing: 1600 } },
   { name: "wood", color: 3, hp: FULL },
   { name: "stone", color: 5, hp: STONE },
   // A light steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
@@ -172,6 +172,9 @@ const MAKING: { readonly [tier: string]: Making } = {
       // ark.wiki.gg, Sloped Thatch Roof and Sloped Thatch Wall Left, 2026-11-24.
       roof: { level: 5, needs: [["thatch", 15], ["wood", 4], ["fiber", 10]] },
       sloped_wall: { level: 5, needs: [["thatch", 10], ["wood", 2], ["fiber", 7]] },
+      // Ours: half a wall, and a railing at a wall's level as wood's is.
+      half_wall: { level: 4, needs: [["thatch", 5], ["wood", 1], ["fiber", 4]] },
+      railing: { level: 5, needs: [["thatch", 5], ["wood", 1], ["fiber", 3]] },
     },
   },
   wood: {
