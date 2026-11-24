@@ -50,7 +50,7 @@ export async function preparePhotos(dist: string, maps: string, cache = WIKI_PHO
   const withMiami = existsSync(miami);
   const miamiHash = withMiami ? (await readPhotoMap(miami, "miami")).name : undefined;
   const sectionKey = photoKey([...common, ...client(["entry-media.json", "flight.js", "title/wynwood-shore.json", "page.js", "city-worker.js"]),
-    ...source(["tools/wiki/photos.ts", "tools/wiki/photo-recipes.ts", "tools/wiki/photo-recipe.ts", "tools/wiki/photo-stage.ts", "shared/title-scene.ts"])], miamiHash);
+    ...source(["tools/wiki/photos.ts", "tools/wiki/photo-recipes.ts", "tools/wiki/photo-recipe.ts", "tools/wiki/stage/page.ts", "shared/title-scene.ts"])], miamiHash);
   const scenes = await capture(cache, "sections", sectionKey, async (out) => {
     const args = withMiami ? ["--map", miami] : ["--only", "home,footer"];
     const task = Bun.spawn([process.execPath, join(ROOT, "tools/wiki/photos.ts"), "--dist", dist, "--out", out, ...args], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });

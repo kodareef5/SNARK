@@ -83,6 +83,7 @@ const ZONES: Zone[] = [
   // speaks its protocol. Pi loads it under Node, so it uses Node's built-ins and none of Bun's.
   { dir: "grunt", may: ["grunt"], builtins: true },
   { dir: "tools", may: "*", builtins: true },
+  { dir: "tools/wiki/stage", may: ["shared", "content", "client/core", "client/assets", "client/city", "client/shell", "tools", "tools/wiki/stage"], builtins: false },
   // Tests never touch the DOM zones. Logic that needs a test belongs in client/core.
   { dir: "tests", may: ["shared", "content", "client/core", "server", "server/api", "modules", "agent", "grunt", "tools", "tests"], builtins: true },
 ];

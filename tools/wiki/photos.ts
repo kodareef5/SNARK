@@ -30,7 +30,7 @@ if (!existsSync(join(dist, "entry-media.json"))) throw Error("Build the art and 
 const ground = photos.filter(({ route }) => route !== "" && route !== "footer");
 const first = ground[0] ? photoPosition(ground[0].route) : null;
 const head = first && await readPhotoMap(map, "miami");
-const bundle = first && await Bun.build({ entrypoints: [join(ROOT, "tools/wiki/photo-stage.ts")], target: "browser", minify: true, format: "esm" });
+const bundle = first && await Bun.build({ entrypoints: [join(ROOT, "tools/wiki/stage/page.ts")], target: "browser", minify: true, format: "esm" });
 if (bundle && !bundle.success) throw Error(bundle.logs.map(String).join("\n"));
 const js = bundle ? await bundle.outputs[0]!.text() : "";
 const work = mkdtempSync(join(tmpdir(), "snark-wiki-photos-"));
