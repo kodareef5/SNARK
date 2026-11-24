@@ -31,6 +31,7 @@ import { VehicleContacts } from "./vehicle-contacts.ts";
 import { Entangle } from "./entangle.ts";
 import { Breeding } from "./breeding.ts";
 import { Emotes } from "./emote.ts";
+import { Experience } from "./experience.ts";
 import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
@@ -774,6 +775,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   death.corpses = containers.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const emotes = new Emotes({ world, game });
+  const experience = new Experience({
+    world, records, game, progression,
+    awake: () => [creatures.awake, creatures.awakeCount],
+    mountOf: (rec) => {
+      const place = riding.occupancy.seatOf(rec.pid);
+      return place ? (records.byPid.get(place.host) ?? null) : null;
+    },
+    riderOf: (rec) => combat.riderOf?.(rec) ?? null,
+  });
   const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
   const balls = new Balls({
     world, game, records, items, rules, creatures, survival, buffs, taming, breeding, tribes, riding, carry, death, containers,
@@ -848,7 +858,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const e = records.entOf.get(mount.pid);
     return e === undefined ? null : (urban.riderOf(e) ?? riding.riderOf(e) ?? carry.carrierOf(e));
   };
-  if (harvest) harvest.riderOf = combat.riderOf;
   combat.damageModifier = rec => creatureTraits.damageOf(rec);
   combat.resistanceModifier = rec => creatureTraits.takenOf(rec);
   const impale = new CreatureImpale({ world, records, survival,
@@ -1933,6 +1942,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     { beforeStep: () => void (game.players.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
     carry,
     emotes,
+    experience,
     mark(PART.riders),
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat,

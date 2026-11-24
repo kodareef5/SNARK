@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { emptyAirSupport } from "../../shared/sim/air-support.ts";
 import { Controls, LOOK_SPEED } from "../../client/core/controls.ts";
 import { HudModel } from "../../client/core/hud.ts";
+import { levelTable } from "../../client/core/hud/level.ts";
 import { Chart } from "../../client/core/tactical.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { IMAGE_ARROW, arrowSheet } from "../../client/core/ui/arrow.ts";
@@ -728,12 +729,12 @@ test("the character screen fits every window shape on every tab and page, and it
 
     ui.pointer(0, KEY_CHAR_TAB, 0, 0, 0, session);
     ui.build(aspect, fullHud(), session);
-    expect(f.find(KEY_CHAR_TITLE)!.text).toBe("Level 20  99999 xp");
+    expect(f.find(KEY_CHAR_TITLE)!.text).toBe(`Level 20 · 99,999 / ${levelTable(reg)![20]!.toLocaleString("en-US")} xp`);
     expect(f.find(KEY_CHAR_POINTS)!.text).toBe("19 stat points  250 engram points");
     expect(f.find(KEY_CHAR_JOBS)!.text).toBe("making hatchet (3 to go)");
     // A stat the species has a curve for has a line and, with points to spend, a button. A stat with no curve has neither.
     const speed = STAT_NAMES.indexOf("speed");
-    expect(f.find(KEY_CHAR_STAT + speed * 2)!.text).toBe("speed");
+    expect(f.find(KEY_CHAR_STAT + speed * 2)!.text).toBe("speed  +1.5% a point");
     expect(f.find(KEY_CHAR_STAT + speed * 2 + 1)!.text).toBe("+");
     expect(f.find(KEY_CHAR_STAT + STAT_NAMES.indexOf("torpidity") * 2)).toBeNull();
     // The stats tab shows no engrams.

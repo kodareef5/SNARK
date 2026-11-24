@@ -1559,8 +1559,6 @@ export class Combat {
     const level = rec.kind === this.survivor ? progression.levelOf(rec.xp) : (rec.genome?.level ?? 1);
     const base = Math.round((def.killXp ?? 0) * (1 + 0.1 * (level - 1)) * 10) / 10;
     const xp = progression.addXp(killer, base, XP_KILL);
-    const rider = this.riderOf?.(killer) ?? null;
-    if (rider) progression.addXp(rider, base / 2, XP_KILL);
     const kc = this.clientOf(killer.pid);
     if (kc) {
       const w = game.begin(S_EVENT);

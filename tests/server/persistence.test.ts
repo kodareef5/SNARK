@@ -9,6 +9,7 @@ import { WorldStore } from "../../server/persist/store.ts";
 import { EntityRecord } from "../../server/records.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { Vitals } from "../../shared/sim/vitals.ts";
@@ -82,6 +83,32 @@ test("a world survives restart: tick, structures, records and where a survivor s
   expect([twin.state, again.state]).toEqual(["active", "closed"]);
   expect(h2.server.playerCount).toBe(1);
   h2.host.shutdown();
+});
+
+test("each survivor gets one position save per minute even after a rollback", () => {
+  const h = new Harness({}, 1, 60, { dbPath: join(dir, "positions.db"), startingCreatures: 0 });
+  const ada = h.join("ada");
+  const bob = h.join("bob");
+  h.run(1000);
+  const p = h.host.persistence!;
+  p.commit();
+  p.onFailing = null;
+  const writes: number[] = [];
+  const save = p.store.saveEntity.bind(p.store);
+  p.store.saveEntity = (rec) => {
+    save(rec);
+    writes.push(rec.pid);
+    if (writes.length === 1) throw Object.assign(new Error("busy"), { code: "SQLITE_BUSY" });
+  };
+  // Advance only the save clock so every write comes from the position rotation.
+  for (let n = 0; n < 60 * TICK_RATE; n++) {
+    h.world.tick++;
+    p.tryCommit(6);
+  }
+  expect(writes).toHaveLength(3);
+  expect(writes[1]).toBe(writes[0]);
+  expect(new Set(writes.slice(1))).toEqual(new Set([h.client(ada)!.pid, h.client(bob)!.pid]));
+  h.host.shutdown();
 });
 
 test("a first start that stopped before its first commit left no world, so the next start is the first again", () => {

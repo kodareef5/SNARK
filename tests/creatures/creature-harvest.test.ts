@@ -52,11 +52,12 @@ function setup(server: string[] = [], mode: string[] = [], kind = "core:tree") {
 
 test("a creature's harvest profile and server rules fill its bag, wear no rider tool, and share raw XP once", () => {
   const f = setup(["HarvestAmountMultiplier=3", "XPMultiplier=2"], ["DinoHarvestingDamageMultiplier=2", "HarvestXPMultiplier=4", 'HarvestResourceItemAmountClassMultipliers=(ClassName="core:wood",Multiplier=2)']);
-  const { h, s, me, rec, harvest, items, id, total, hp, strike } = f;
+  const { h, s, me, rec, items, id, total, hp, strike } = f;
   h.say(s, "give pick 1");
   const tool = takeInHand(h, s, id("pick"));
   const durability = items.inv(me).dur[tool];
-  harvest.riderOf = (actor) => actor === rec ? me : null;
+  // The rider's half is given by the share (server/experience.ts), which asks combat who steers what.
+  h.host.combat.riderOf = (actor) => actor === rec ? me : null;
   const start = hp(), ownXp = rec.xp, riderXp = me.xp;
   expect(strike({ ...WOOD, power: 2, yields: [{ item: "core:wood", mult: 3 }, { item: "core:thatch", mult: .5 }] })).toBe(true);
   expect(hp()).toBe(start - 2);

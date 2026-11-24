@@ -234,8 +234,8 @@ function made(rules: CampOptions["rules"]): number {
 }
 
 test("CraftXPMultiplier multiplies the experience for making a thing", () => {
-  expect(made({})).toBe(2);
-  expect(made({ CraftXPMultiplier: 4 })).toBe(8);
+  expect(made({})).toBe(1.6);
+  expect(made({ CraftXPMultiplier: 4 })).toBe(6.4);
 });
 
 test("a setting the server does not know stops the test where it is given", () => {

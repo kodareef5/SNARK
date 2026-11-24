@@ -28,8 +28,10 @@ export const XP_GIVEN = 0;
 export const XP_KILL = 1;
 export const XP_HARVEST = 2;
 export const XP_CRAFT = 3;
+/** What comes with time. */
+export const XP_TIME = 4;
 /** Indexed by source. */
-const XP_RULES = ["", "KillXPMultiplier", "HarvestXPMultiplier", "CraftXPMultiplier"];
+const XP_RULES = ["", "KillXPMultiplier", "HarvestXPMultiplier", "CraftXPMultiplier", "GenericXPMultiplier"];
 
 const XP_GAIN = event("xp.gain");
 const LEVEL_UP = event("level.up");
@@ -38,13 +40,15 @@ const ENGRAM_LEARN = event("engram.learn");
 const CRAFT_START = event("craft.start");
 const CRAFT_DONE = event("craft.done");
 /** Where experience came from, as a module is told it, by XP_ source. */
-const XP_WORDS: readonly string[] = ["given", "kill", "harvest", "craft"];
+const XP_WORDS: readonly string[] = ["given", "kill", "harvest", "craft", "time"];
 
 export class Progression {
   rules: Rules | null = null;
   bus: Bus = NO_BUS;
   /** Called after anything that changes a record's stat points or level. */
   onChange: ((rec: EntityRecord) => void) | null = null;
+  /** Called with what a deed earned before any multiplier, so that those near its earner may have a part (server/experience.ts). */
+  onShare: ((rec: EntityRecord, amount: number, source: number) => void) | null = null;
   /** Tells a survivor why what it asked for was refused (a powered station that is out). */
   onNotice: ((pid: number, text: string) => void) | null = null;
   private readonly world: ServerWorld;
@@ -87,7 +91,10 @@ export class Progression {
       this.engramOf[reg.index.get(d.item)!] = k;
       if (d.auto !== undefined) this.autos.push(k);
     });
-    for (const rec of this.records.byPid.values()) rec.progVersion++;
+    for (const rec of this.records.byPid.values()) {
+      rec.progVersion++;
+      rec.xpVersion++;
+    }
   }
 
   /** `tame` uses the tames' level table if content has one. */
@@ -147,23 +154,35 @@ export class Progression {
     return out;
   }
 
-  /** Earned experience is multiplied by XPMultiplier and the rule for its `source`. Capped by `most`. Returns the amount added. */
-  addXp(rec: EntityRecord, amount: number, source = XP_GIVEN): number {
+  /**
+   * Earned experience is multiplied by XPMultiplier and the rule for its `source`. Capped by `most`. Returns the amount
+   * added. A kill's, a harvest's and a craft's are shared, unless `share` is false: a part given is not shared again.
+   */
+  addXp(rec: EntityRecord, amount: number, source = XP_GIVEN, share = true): number {
     if (!(amount > 0)) return 0;
+    const earned = amount;
     if (source !== XP_GIVEN && this.rules) amount *= this.rules.num("XPMultiplier") * this.rules.num(XP_RULES[source]!);
     // A module may change the amount, or refuse it.
     const asked = { pid: rec.pid, source: XP_WORDS[source] ?? "", amount };
     if (this.bus.before(XP_GAIN, asked) !== "") return 0;
     amount = Number(asked.amount);
+    // One at its cap still earns for those near it.
+    if (share && source >= XP_KILL && source <= XP_CRAFT) this.onShare?.(rec, earned, source);
+    // A wild creature can earn a share for its carrier before it can earn domestic levels.
+    if (rec.team === 0 && rec.genome && rec.kind !== this.survivor && source !== XP_GIVEN) return 0;
     const room = this.most(rec) - rec.xp;
     if (amount > room) amount = room;
     if (!(amount > 0)) return 0;
     const before = this.level(rec);
     rec.xp += amount;
-    rec.progVersion++;
-    this.records.dirty.add(rec.pid);
+    rec.xpVersion++;
     const now = this.level(rec);
+    // Passive XP goes into the rotating position save unless it earns a level or the body leaves.
+    if (source !== XP_TIME || now !== before) this.records.dirty.add(rec.pid);
+    else if (rec.kind !== this.survivor) rec.saveXpOnSleep = true;
     if (now !== before) {
+      // A level brings engram points, and engrams learned without asking.
+      rec.progVersion++;
       this.onChange?.(rec);
       this.bus.after(LEVEL_UP, { pid: rec.pid, from: before, to: now });
     }
@@ -179,7 +198,7 @@ export class Progression {
     if (this.statPoints(rec) < 1) return RESULT_SHORT;
     if (this.bus.before(STAT_SPEND, { pid: rec.pid, stat: STAT_NAMES[stat]! }) !== "") return RESULT_DENIED;
     if (!spendPoint(rec.genome, stat)) return RESULT_INVALID;
-    rec.progVersion++;
+    rec.xpVersion++;
     this.records.dirty.add(rec.pid);
     this.onChange?.(rec);
     return RESULT_OK;

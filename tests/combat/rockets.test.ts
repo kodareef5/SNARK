@@ -17,6 +17,7 @@ import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { camp, look, survivor, until } from "../kit/kit.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -340,6 +341,23 @@ test("a blast says its rocket's number, what it went off on and the way out of i
   expect([hull.id, hull.surface, shots.lastEnd.on]).toEqual([hull.number, SURFACE_VEHICLE, car]);
   // Each flew under a number of its own, taken in turn.
   expect(told.blasts.map((b) => b.id)).toEqual(told.blasts.map((_, k) => told.blasts[0]!.id + k));
+});
+
+test("a rocket kill shares XP once with a nearby tribemate", () => {
+  const { h, ada, me, at } = camp({ tribe: "Crew", rules: { GenericXPMultiplier: 0 }, host: { wild: false } });
+  try {
+    const bob = survivor(h, "bob", { tribe: "Crew", at: { x: at.x + 3, z: at.z } });
+    const victim = h.host.spawnCreature("core:dodo", at.x, at.z + 7, 1);
+    expect(victim).toBeGreaterThanOrEqual(0);
+    look(h, ada, victim);
+    h.host.projectiles.launch(h.client(ada)!, me, LAUNCHER, 0, ROCKET, 1);
+    expect(until(h, () => ada.progress.xp > 0 && bob.progress.xp > 0, 2)).toBe(true);
+    expect(h.host.projectiles.lastEnd.on).toBe(victim);
+    h.run(1000);
+    expect([ada.progress.xp, bob.progress.xp]).toEqual([2, 1]);
+  } finally {
+    h.host.shutdown();
+  }
 });
 
 test("a rocket into water goes off on it, its way out up", () => {

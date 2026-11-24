@@ -66,9 +66,10 @@ const FORCED = forcedLink(process.env.SNARK_NET ?? "");
  * and its drop book's circuits call supply drops near whoever is in the world. The tests of everything else were written
  * for a world with neither, so a Harness leaves them out: each of these settings its rules still hold at the default is
  * put as here. `asShipped` keeps them. The welcome said to each who joins is left out the same way: the tests count the
- * lines a survivor is sent.
+ * lines a survivor is sent. So is the experience that comes with time, which would add to every figure a test earns by
+ * how long it ran: a test of it sets GenericXPMultiplier.
  */
-const PLAIN: readonly (readonly [name: string, value: boolean | string])[] = [["bShowCreativeMode", false], ["CreativeForAll", false], ["bDisableLootCrates", true], ["Message", ""]];
+const PLAIN: readonly (readonly [name: string, value: boolean | string | number])[] = [["bShowCreativeMode", false], ["CreativeForAll", false], ["bDisableLootCrates", true], ["Message", ""], ["GenericXPMultiplier", 0]];
 const SHIPPED = new WeakSet<Rules>();
 
 /** Rules a Harness leaves as the server ships them: everyone's cheats, supply drops and the welcome on. */

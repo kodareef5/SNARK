@@ -24,7 +24,7 @@ export const RAPTOR: readonly Def[] = [
     temper: "hunts",
     sight: 22,
     leash: 60,
-    bite: { reach: 2.6 },
+    bite: { harvest: "carrion", reach: 2.6 },
     slots: 20,
     keeps: 4,
     // The reference game's taming numbers.

@@ -2,7 +2,8 @@
 // Modes: play, menu, settings, audio, controls, controller, drive, drive-hidden (the minimap hidden, H held), ride, riding, station,
 // creative (the sundial at 17:30, facing the low sun), creative-night (at 22:30) and creative-locked (the password asked),
 // compass (facing 300 with two tames about, H held), compass-map (the map screen's arrow) and damage (numbers near and far,
-// a head hit, a kill, a burst of eight merged into one, a blocked hit).
+// a head hit, a kill, a burst of eight merged into one, a blocked hit), level (experience just gained, with points to
+// spend) and character (the screen they are spent on).
 
 import type { App } from "../../client/core/app.ts";
 import { DAMAGE_BLOCKED, DAMAGE_BODY, DAMAGE_HEAD, DAMAGE_KILL } from "../../client/core/render/damage-numbers.ts";
@@ -12,7 +13,7 @@ import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../../tests/fixtures/arena.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
 
-export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance", "compass", "compass-map", "damage"] as const;
+export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance", "compass", "compass-map", "damage", "level", "character"] as const;
 export type HudMode = (typeof HUD_MODES)[number];
 
 /** The setup for clientPicture (tools/snap.ts): a survivor with things in her hotbar, then the screen or scene `mode` names. */
@@ -126,6 +127,11 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
     h.host.items.mint(rec, id("meat"), 3);
     s.command(CMD_STRUCT, (w) => (w.u32(fire), w.u8(STRUCT_USE), w.u16(NO_PIN)));
     run(400);
+  } else if (mode === "level" || mode === "character") {
+    // Five levels just gained: the gain, the lit bar and the call to spend, or the screen they are spent on.
+    s.text("addxp 132.5");
+    run(300);
+    app.ui.character = mode === "character";
   }
   run(200);
 }

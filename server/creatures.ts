@@ -684,9 +684,12 @@ export class Creatures {
     this.mind.owned.delete(e);
     const ents = this.world.ents;
     if (ents.mode[e] === MODE_FLYER && ents.team[e] === 0) this.setDownUnder(e);
-    // Asleep it is no longer saved a slice at a time, so where it stopped is saved now.
+    // Sleep removes the body from the rotating position save.
     const rec = this.records.byPid.get(ents.pid[e]!);
-    if (rec && (rec.x !== ents.x[e] || rec.y !== ents.y[e] || rec.z !== ents.z[e])) this.records.dirty.add(rec.pid);
+    if (rec && (rec.saveXpOnSleep || rec.x !== ents.x[e] || rec.y !== ents.y[e] || rec.z !== ents.z[e])) {
+      this.records.dirty.add(rec.pid);
+      rec.saveXpOnSleep = false;
+    }
     // Nothing near, it does not drown, as nothing near is stepped.
     if (this.wet[e] !== 0) {
       this.wet[e] = 0;

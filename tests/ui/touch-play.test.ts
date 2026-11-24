@@ -34,10 +34,11 @@ function phone(h: Harness, name: string): App {
   return app;
 }
 
-/** A phone's interface at a window, from models. */
-function touched([, w, h, insets]: Phone, muted: boolean, as?: Stood): Direct {
+/** A phone's interface at a window, from models. `like` is a client whose level line it shows too. */
+function touched([, w, h, insets]: Phone, muted: boolean, as?: Stood, like?: App): Direct {
   const d = direct(w, h, insets, { finger: true, as });
   d.ui.settings.muted = muted;
+  if (like) Object.assign(d.hud.levelBar, like.hud.levelBar);
   return d;
 }
 
@@ -469,9 +470,9 @@ test("a whole client by touch builds what its models build", () => {
   const run = (ms: number) => h.run(ms, (now) => app.frame(now, w, hh));
   run(600);
   // As it joined, it is the kit's new survivor: the same nodes in the same boxes.
-  expect(boxes(touched(window, true).build())).toEqual(boxes(f));
+  expect(boxes(touched(window, true, undefined, app).build())).toEqual(boxes(f));
   // A full hand, set on both models: the same frame, and it fits.
-  const full = touched(window, true, stood(app));
+  const full = touched(window, true, stood(app), app);
   for (const hud of [app.hud, full.hud]) Object.assign(hud, { prompt: "E  ride a raptor with a long name", ammo: "stone arrow  1 / 1   (24 more)", cone: 0.05 });
   app.ui.build(w / hh, app.hud, app.session);
   layerFits(app.ui, window, true, name);
@@ -481,7 +482,7 @@ test("a whole client by touch builds what its models build", () => {
   app.pointer(1, KEY_TOUCH_BUTTON + T_MORE, 0, 0, 0, 1);
   run(50);
   clusterFits(app.ui, window, ...SECOND_PAGE, name);
-  const turned = touched(window, true, stood(app));
+  const turned = touched(window, true, stood(app), app);
   turned.ui.touchPlay!.more = true;
   expect(nodes(turned.build())).toEqual(nodes(f));
   // Talk, held, talks.
@@ -503,7 +504,7 @@ test("a driver's cluster in a whole client is the one its models build", () => {
   h.run(600);
   // A compact has no lights to switch, so its cluster has no button for them.
   clusterFits(app.ui, window, [T_JUMP, T_VIEW], [T_ATTACK, T_STANCE, T_MORE, T_ORBIT], name);
-  const d = touched(window, false, stood(app));
+  const d = touched(window, false, stood(app), app);
   [d.hud.vehicle, d.hud.prompt] = [app.hud.vehicle, app.hud.prompt];
   expect(nodes(d.build())).toEqual(nodes(app.ui.frame));
 });

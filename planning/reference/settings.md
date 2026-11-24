@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 594 of them: 227 take effect,
-177 wait for a feature that is not built yet, and 190 have no meaning in this
+is listed here, 594 of them: 228 take effect,
+176 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -206,6 +206,7 @@ the admin's settings page may change a setting without a restart.
 | `OverrideMaxExperiencePointsDino` | 0 | The most experience a tame may have. 0 leaves it to the level table. | yes |
 | `LevelExperienceRampOverrides` | none | The level table: `(ExperiencePointsForLevel[0]=5,ExperiencePointsForLevel[1]=20,…)`, each the total needed. The first line is survivors', the second tames'. | yes; clients are told |
 | `OverridePlayerLevelEngramPoints` | none | Engram points given at each level, one line for each level in order: the first is level 1. A level gives at most 65,535. | yes; clients are told |
+| `GenericXPMultiplier` | 1 | Experience that comes with time. Higher is more. | yes |
 | `OverrideNamedEngramEntries` | none | An engram's level, cost and whether it is offered: `(EngramClassName="core:engram-hatchet",EngramHidden=False,EngramPointsCost=3,EngramLevelRequirement=3,RemoveEngramPreReq=True)`. | yes; clients are told |
 | `EngramEntryAutoUnlocks` | none | An engram learned without asking at a level: `(EngramClassName="…",LevelToAutoUnlock=0)`. | yes; clients are told |
 | `bAutoUnlockAllEngrams` | False | Every engram is learned as its level is reached. | yes; clients are told |
@@ -427,7 +428,6 @@ what is built next.
 
 | Setting | Default | What it does | Where |
 | --- | --- | --- | --- |
-| `GenericXPMultiplier` | 1 | Experience that comes with time. Higher is more. | Game.ini |
 | `SpecialXPMultiplier` | 1 | Experience from special events. Higher is more. | Game.ini |
 | `ExplorerNoteXPMultiplier` | 1 | Experience from notes found. *Seen only in a file a player posted.* | Game.ini |
 | `WildKillXPMultiplier` | 1 | Experience from killing wild creatures. *Seen only in a file a player posted.* | Game.ini |

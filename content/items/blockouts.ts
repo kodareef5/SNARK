@@ -83,7 +83,7 @@ const ARMS: Def[] = [
   // Torch: weight 1, melee 10, durability 40; 1 flint, 1 wood and 1 stone in the hand; level 1 and no points. It strikes.
   // Its light, its warmth and the fire it sets are not built.
   { type: "item", class: "weapon", id: id("torch"), stack: 1, weight: 1, color: 3, weapon: { kind: "melee", damage: 10, type: "melee", uses: 40, mesh: BOX, hold: "tool" } },
-  ...made("torch", "Torch", 1, 0, 1, 5, [["flint", 1], ["wood", 1], ["stone", 1]], undefined),
+  ...making("torch", "Torch", 1, 0, 1, 5, [["flint", 1], ["wood", 1], ["stone", 1]], 1.2),
   // Pike: weight 10, melee 50; durability 40 at 0.15 a use, 267 uses; 10 ingots, 10 wood and 20 hide at the smithy; level
   // 25, 10 points, after the spear. It is not thrown. Its reach, half a metre past the spear's, is chosen.
   { type: "item", class: "weapon", id: id("pike"), stack: 1, weight: 10, color: 2, weapon: { kind: "melee", damage: 50, type: "pierce", reach: 3.5, uses: 267, mesh: BOX, hold: "spear" } },

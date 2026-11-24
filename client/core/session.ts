@@ -67,6 +67,7 @@ import {
   OPEN_TAKE_ONLY,
   OWN_STATION,
   OWN_PROGRESSION,
+  OWN_XP,
   OWN_RESPAWN,
   CHOOSE_ARRIVED,
   CHOOSE_DIED,
@@ -2041,21 +2042,29 @@ export class ClientSession {
       kind: OWN_PROGRESSION,
       read(s, r) {
         const p = s.progress;
-        const xp = r.u32();
-        const level = r.u16();
-        const statPoints = r.u16();
         const engramPoints = r.varint();
         const engrams: number[] = [];
         for (let k = r.varint(); k > 0 && !r.overflow; k--) engrams.push(r.u16());
         const jobs: { item: number; left: number; doneAt: number }[] = [];
         for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32() });
         if (r.overflow) return;
-        p.xp = xp;
-        p.level = level;
-        p.statPoints = statPoints;
         p.engramPoints = engramPoints;
         p.engrams = engrams;
         p.jobs = jobs;
+        p.version++;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_XP,
+      read(s, r) {
+        const p = s.progress;
+        const xp = r.f64();
+        const level = r.u16();
+        const statPoints = r.u16();
+        if (r.overflow) return;
+        p.xp = xp;
+        p.level = level;
+        p.statPoints = statPoints;
         p.version++;
       },
     });
