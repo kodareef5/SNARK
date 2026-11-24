@@ -5,10 +5,8 @@ import { Solid, boxSolid, partSolid, solidsCross } from "../shared/world/convex.
 import { frame, frameOf } from "../shared/world/frame.ts";
 import type { NodeSpot } from "../shared/world/nodes.ts";
 import { Found } from "../shared/world/structures.ts";
-import { carMeetsKind } from "../shared/world/vehicle.ts";
-import { boatMeetsKind } from "../shared/world/boat.ts";
-import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
 import type { ServerWorld } from "./world.ts";
+import { familyOf } from "../shared/sim/families.ts";
 
 export class TreeClearance {
   private readonly world: ServerWorld;
@@ -59,10 +57,7 @@ export class TreeClearance {
         const v = ents.vrow[e]!, pose = this.pose;
         pose.x = ents.x[e]!; pose.y = ents.y[e]!; pose.z = ents.z[e]!; pose.yaw = ents.vehicleYaw[v]!; pose.pitch = ents.vehiclePitch[v]!; pose.roll = ents.vehicleRoll[v]!;
         pose.qx = ents.vehicleQx[v]!; pose.qy = ents.vehicleQy[v]!; pose.qz = ents.vehicleQz[v]!; pose.qw = ents.vehicleQw[v]!; pose.steering = ents.steering[v]!;
-        const blocked = def.movement === "boat" ? boatMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, def, pose) :
-          def.movement === "rotor" ? helicopterMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, def, pose) :
-          carMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, def.spec, pose);
-        if (blocked) return true;
+        if (familyOf(def)!.meetsKind(def, parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, pose)) return true;
       } else if (crushed && move && capsuleKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, ents.x[e]!, ents.y[e]!, ents.z[e]!, move.radius, move.height, .002)) return true;
     }
     return false;

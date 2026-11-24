@@ -39,6 +39,7 @@ export const BOAT: VehicleFamily<BoatVehicleDefinition> = {
   joints: (def, from, to) => boatJoints(from, to, def.spec),
   jointPivot: (def, joint) => boatDrives(def.spec)[joint]?.outboard?.pivot,
   hazard: "propeller",
+  clearSlack: 0,
   meetsCapsule: (def, frame, x, y, z, radius, height) => boatMeetsCapsule(def, frame, x, y, z, radius, height),
   meetsVehicle: (def, frame, other, otherFrame) => boatMeetsVehicle(def, frame, other, otherFrame),
   meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => boatMeetsKind(parts, kind, sx, sy, sz, syaw, def, frame, slack),

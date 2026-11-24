@@ -53,6 +53,7 @@ export const ROTOR: VehicleFamily<RotorVehicleDefinition> & { fly: typeof fly } 
   joints: () => undefined,
   jointPivot: () => undefined,
   hazard: "rotor",
+  clearSlack: 0,
   meetsCapsule: (def, frame, x, y, z, radius, height) => helicopterMeetsCapsule(def, frame, x, y, z, radius, height),
   meetsVehicle: (def, frame, other, otherFrame) => helicopterMeetsVehicle(def, frame, other, otherFrame),
   meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => helicopterMeetsKind(parts, kind, sx, sy, sz, syaw, def, frame, slack),

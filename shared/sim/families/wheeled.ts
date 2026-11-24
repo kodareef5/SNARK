@@ -9,6 +9,7 @@ import { isSkateboard, stepVehicle, validateVehicleSpec, type VehicleDefinition,
 import { loadState, state, staticWorld, storeState, vehicleStep } from "../vehicle-state.ts";
 import { carMeetsCapsule, carMeetsKind, carMeetsVehicle } from "../../world/vehicle.ts";
 import { carShapes } from "../../world/vehicle-shapes.ts";
+import { SKIN } from "../../world/collide.ts";
 
 const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
@@ -44,6 +45,7 @@ export const WHEELED: VehicleFamily<WheelVehicleDefinition> = {
   joints: () => undefined,
   jointPivot: () => undefined,
   hazard: null,
+  clearSlack: SKIN,
   meetsCapsule: (def, frame, x, y, z, radius, height) => carMeetsCapsule(def.spec, frame, x, y, z, radius, height),
   meetsVehicle: (def, frame, other, otherFrame) => carMeetsVehicle(def.spec, frame, other, otherFrame),
   meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => carMeetsKind(parts, kind, sx, sy, sz, syaw, def.spec, frame, slack),

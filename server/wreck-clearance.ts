@@ -4,12 +4,10 @@ import { stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import type { VehicleDefinition } from "../shared/sim/vehicle.ts";
 import type { VehicleFrame } from "../shared/sim/vehicle-frame.ts";
-import { boatMeetsCapsule, boatMeetsKind } from "../shared/world/boat.ts";
 import { capsuleKind, SKIN } from "../shared/world/collide.ts";
-import { helicopterMeetsCapsule, helicopterMeetsKind } from "../shared/world/helicopter.ts";
-import { carMeetsCapsule, carMeetsKind } from "../shared/world/vehicle.ts";
 import { placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
+import { familyOf } from "../shared/sim/families.ts";
 
 const REACH = 3;
 
@@ -75,10 +73,8 @@ export class WreckClearance {
       const vehicle = body.vehicle;
       if (vehicle) {
         const { def, pose } = vehicle;
-        const meets = def.movement === "boat" ? boatMeetsKind(structs.parts, kind, x, y, z, yaw, def, pose) :
-          def.movement === "rotor" ? helicopterMeetsKind(structs.parts, kind, x, y, z, yaw, def, pose) :
-          carMeetsKind(structs.parts, kind, x, y, z, yaw, def.spec, pose, SKIN);
-        if (meets) return false;
+        const family = familyOf(def)!;
+        if (family.meetsKind(def, structs.parts, kind, x, y, z, yaw, pose, family.clearSlack)) return false;
         continue;
       }
       const meets = (px: number, pz: number) => capsuleKind(structs.parts, kind, x, y, z, yaw, px, body.y, pz, body.radius, body.height, SKIN);
@@ -105,9 +101,7 @@ export class WreckClearance {
 function touches(body: Occupant, x: number, z: number, other: Occupant): boolean {
   if (other.vehicle) {
     const { def, pose } = other.vehicle;
-    if (def.movement === "rotor") return !!helicopterMeetsCapsule(def, pose, x, body.y, z, body.radius, body.height);
-    if (def.movement === "boat") return !!boatMeetsCapsule(def, pose, x, body.y, z, body.radius, body.height);
-    return !!carMeetsCapsule(def.spec, pose, x, body.y, z, body.radius, body.height);
+    return !!familyOf(def)!.meetsCapsule(def, pose, x, body.y, z, body.radius, body.height);
   }
   return body.y < other.y + other.height && other.y < body.y + body.height &&
     Math.hypot(x - other.x, z - other.z) < body.radius + other.radius;

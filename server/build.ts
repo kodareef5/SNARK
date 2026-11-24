@@ -9,10 +9,6 @@ import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../shared/world/collide.ts";
-import { carMeetsKind } from "../shared/world/vehicle.ts";
-import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
-import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
-import { boatMeetsKind } from "../shared/world/boat.ts";
 import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, floorTop, freePose, obstructed, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
@@ -29,6 +25,7 @@ import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
 import { event, type Bus } from "./events/bus.ts";
+import { familyOf } from "../shared/sim/families.ts";
 
 /** A place command with this target means open ground. */
 export const NO_TARGET = 0xffffffff;
@@ -727,9 +724,7 @@ export class Build {
               x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
               qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
             };
-            if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
-              : isRotorVehicle(car) ? helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
-              : carMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, frame, BODY_SLACK)) return true;
+            if (familyOf(car)!.meetsKind(car, reg.parts, kind, x, y, z, yaw, frame, BODY_SLACK)) return true;
             continue;
           }
           if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;

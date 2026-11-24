@@ -44,6 +44,8 @@ export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> 
   meetsVehicle(def: D, frame: VehicleFrame, other: VehicleDefinition, otherFrame: VehicleFrame): VehicleMeeting | null;
   /** It at `frame` against a structure of `kind` placed at `sx`, `sy`, `sz` facing `syaw`. */
   meetsKind(def: D, parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, frame: VehicleFrame, slack?: number): boolean;
+  /** The slack it is met with when the world clears room for a structure among vehicles (server/wreck-clearance.ts). */
+  readonly clearSlack: number;
 }
 
 /** The one place a row is widened to take any definition: a family only ever gets definitions its `is` accepts. */

@@ -14,9 +14,9 @@ import { skatePlacement } from "../shared/world/skate-placement.ts";
 import { isSkateboard, PATROL_LIGHT_MODES, boatDrives, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
-import { boatPlacement, boatMeetsCapsule, boatMeetsVehicle } from "../shared/world/boat.ts";
+import { boatPlacement } from "../shared/world/boat.ts";
 import { capsuleFree, groundUnder, type CollisionWorld } from "../shared/world/collide.ts";
-import { helicopterPlacement, helicopterMeetsCapsule, helicopterMeetsVehicle } from "../shared/world/helicopter.ts";
+import { helicopterPlacement } from "../shared/world/helicopter.ts";
 import type { MapVehicle } from "../shared/world/mapfile.ts";
 import { castWorld, HIT_NONE, rayHit } from "../shared/world/ray.ts";
 import { vehicleSolidRadius } from "../shared/world/vehicle-shapes.ts";
@@ -27,6 +27,7 @@ import type { Survival } from "./survival.ts";
 import type { Urban } from "./urban.ts";
 import type { ServerWorld } from "./world.ts";
 import { supportedCar, uprightCar } from "./vehicle-recovery.ts";
+import { familyOf } from "../shared/sim/families.ts";
 
 /** Stable authored origin kept by the normal component codec. It never changes when a found aircraft is repaired. */
 export const VEHICLE_ORIGIN = 0x766f72;
@@ -470,9 +471,8 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
             x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!, steering: ents.steering[v]!,
             ...(other ? { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]! } : {}),
           };
-          const hit = isBoatVehicle(def)
-            ? other ? boatMeetsVehicle(def, posed, other, frame) : boatMeetsCapsule(def, posed, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!, world.reg.bodyHeight[kind]!)
-            : other ? helicopterMeetsVehicle(def, posed, other, frame) : helicopterMeetsCapsule(def, posed, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!, world.reg.bodyHeight[kind]!);
+          const family = familyOf(def)!;
+          const hit = other ? family.meetsVehicle(def, posed, other, frame) : family.meetsCapsule(def, posed, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!, world.reg.bodyHeight[kind]!);
           if (hit) return false;
         }
       }

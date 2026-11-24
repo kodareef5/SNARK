@@ -3,12 +3,13 @@ import { CHUNK_SIZE } from "../shared/coords.ts";
 import { quatNlerp, quatRotate } from "../shared/math/quat.ts";
 import { stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
-import { isWheelVehicle, type WheelVehicleDefinition } from "../shared/sim/vehicle.ts";
+import type { WheelVehicleDefinition } from "../shared/sim/vehicle.ts";
 import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "../shared/world/ray.ts";
-import { boatMounts, boatShapes, carShapes, helicopterShapes } from "../shared/world/vehicle-shapes.ts";
+import { carShapes } from "../shared/world/vehicle-shapes.ts";
 import { bounds, makeSolid, solidContact, StaticVehicleSolids, sweep, tube, type ContactGeometry, type SolidFrame, type Swept } from "../shared/world/vehicle-solid.ts";
 import type { ServerWorld } from "./world.ts";
+import { familyOf } from "../shared/sim/families.ts";
 
 export function recoveryFrame(world: ServerWorld, e: number): SolidFrame {
   const a = world.ents, v = a.vrow[e]!;
@@ -53,10 +54,10 @@ export function uprightCar(world: ServerWorld, e: number, def: WheelVehicleDefin
         const vehicle = world.reg.vehicle[a.kind[actor]!];
         if (vehicle) {
           const row = a.vrow[actor]!, at = recoveryFrame(world, actor);
-          const parts = isWheelVehicle(vehicle) ? carShapes(vehicle.spec) : vehicle.movement === "boat" ? boatShapes(vehicle) : helicopterShapes(vehicle);
+          const family = familyOf(vehicle)!;
           const frame = { ...at, yaw: a.vehicleYaw[row]!, pitch: a.vehiclePitch[row]!, roll: a.vehicleRoll[row]!, steering: a.steering[row]! };
-          const mounts = vehicle.movement === "boat" ? boatMounts(frame, vehicle.spec) : null;
-          for (const part of parts) {
+          const mounts = family.mounts(vehicle, frame);
+          for (const part of family.parts(vehicle)) {
             const pose = part.joint === undefined || !mounts ? at : mounts[part.joint]!; sweep(part, pose, pose, other);
             if (solidContact(swept.solid, other.solid, hit, -swept.pad)) return false;
           }
