@@ -5,6 +5,9 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NO_TARGET } from "../../server/build.ts";
+import { STRUCT_UNITS } from "../../shared/coords.ts";
+import { RESULT_OK } from "../../shared/net/protocol.ts";
 import type { Source } from "../../server/combat.ts";
 import { FORM_HEAP, FORM_OPEN, FORM_WHOLE } from "../../shared/content/breaks.ts";
 import { cycleTicks } from "../../shared/sim/clock.ts";
@@ -219,6 +222,25 @@ test("a salvaged wreck does not return through what a tribe built where it stood
   h.world.structs.remove(foundation);
   ticks(c, 90);
   expect(c.id(built)).toBe(kind);
+});
+
+test("a diagonal bus returns beside a foundation that fit while it stood", () => {
+  const kind = "core:zzzzroad_bus_abandoned";
+  const c = city([{ kind, x: 40, z: 40, yaw: 8192 }]);
+  const { h } = c, bus = c.refs[0]!;
+  const ada = survivor(h, "ada", { at: { x: 48, z: 36 } });
+  const rec = record(h, ada), inv = h.host.items.inv(rec);
+  h.host.items.mintAt(rec, inv.hotbar, h.reg.index.get("core:piece_foundation_wood")!, 1);
+  rec.held = 0;
+  expect(h.host.build.set(h.client(ada)!, 0, NO_TARGET, 0, 0, 44 * STRUCT_UNITS, 36 * STRUCT_UNITS, 0, 0)).toBe(RESULT_OK);
+  const foundation = h.host.build.last;
+  strike(c, bus);
+  expect(c.id(bus)).toBe("");
+  put(h, ada, { x: 200, z: 200 });
+  expect(h.host.rules.assign("CityRegrowClearDistance", "10", "console")).toBe("");
+  period(h, 30);
+  ticks(c, 90);
+  expect([c.id(bus), c.id(foundation)]).toEqual([kind, "core:foundation_wood"]);
 });
 
 test("a building's last harm is saved with the world, and it returns on that clock after a restart", () => {

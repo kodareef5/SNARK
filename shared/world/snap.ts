@@ -138,20 +138,33 @@ const theirs = new Solid();
  * Whether a piece of `kind` at this pose (metres) overlaps a built structure. Pieces that only touch, as neighbours do, do not
  * count. Boxes meet boxes by their shrunk rectangles; a convex part meets a box or a part as solids that give way as much.
  */
-export function obstructed(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number): boolean {
+export function obstructed(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number, restoringMapPiece = false): boolean {
   const a = yaw * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
   const box = parts.box;
   // Query every structure whose footprint reaches as far as the piece does from its middle.
   const reach = structs.spread[kind]!;
-  const n = structs.query(x - reach, z - reach, x + reach, z + reach, near);
+  let n = structs.query(x - reach, z - reach, x + reach, z + reach, near);
   const refs = near.refs;
+  if (restoringMapPiece) {
+    // The original map pieces already stood together.
+    let built = 0;
+    for (let i = 0; i < n; i++) {
+      const ref = refs[i]!;
+      if ((ref & 0xffff) >= structs.chunks[Math.floor(ref / 65536)]!.mapped) refs[built++] = ref;
+    }
+    n = built;
+  }
+  if (n === 0) return false;
+  // The player-built piece keeps its placement tolerance when the map piece returns.
+  const side = restoringMapPiece ? SHRINK_OTHER : SHRINK, otherSide = restoringMapPiece ? SHRINK : SHRINK_OTHER;
+  const vertical = restoringMapPiece ? 0 : SHRINK_Y, otherVertical = restoringMapPiece ? SHRINK_Y : 0;
   for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) {
     // This box of the new piece, shrunk, in world space.
-    const hx = Math.max(THIN, box[p + 3]! - SHRINK);
-    const hy = Math.max(THIN, box[p + 4]! - SHRINK_Y);
-    const hz = Math.max(THIN, box[p + 5]! - SHRINK);
+    const hx = Math.max(THIN, box[p + 3]! - side);
+    const hy = restoringMapPiece ? box[p + 4]! : Math.max(THIN, box[p + 4]! - vertical);
+    const hz = Math.max(THIN, box[p + 5]! - side);
     const cx = x + c * box[p]! + s * box[p + 2]!;
     const cy = y + box[p + 1]!;
     const cz = z - s * box[p]! + c * box[p + 2]!;
@@ -165,10 +178,11 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
       const oc = detCos(oa);
       for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend; q += 6) {
         const qy = t.y[slot]! + box[q + 1]!;
-        if (cy - hy >= qy + box[q + 4]! || cy + hy <= qy - box[q + 4]!) continue;
+        const qh = restoringMapPiece ? Math.max(THIN, box[q + 4]! - otherVertical) : box[q + 4]!;
+        if (cy - hy >= qy + qh || cy + hy <= qy - qh) continue;
         const qx = t.x[slot]! + oc * box[q]! + os * box[q + 2]!;
         const qz = t.z[slot]! - os * box[q]! + oc * box[q + 2]!;
-        if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! - SHRINK_OTHER), Math.max(THIN, box[q + 5]! - SHRINK_OTHER))) return true;
+        if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! - otherSide), Math.max(THIN, box[q + 5]! - otherSide))) return true;
       }
     }
   }
@@ -201,11 +215,11 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
     // Their boxes against my convex parts; then their convex parts against all of mine. Box against box was asked above.
     for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend && count > boxes; q += 6) {
       boxSolid(t.x[slot]! + oc * box[q]! + os * box[q + 2]!, t.y[slot]! + box[q + 1]!, t.z[slot]! - os * box[q]! + oc * box[q + 2]!, oc, os, box[q + 3]!, box[q + 4]!, box[q + 5]!, theirs);
-      for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, SHRINK, SHRINK_Y, theirs, SHRINK_OTHER, 0, THIN)) return true;
+      for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return true;
     }
     for (let h = hulls.start[other]!, hend = hulls.start[other + 1]!; h < hend; h++) {
       partSolid(hulls, h, t.yaw[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, theirs);
-      for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, SHRINK, SHRINK_Y, theirs, SHRINK_OTHER, 0, THIN)) return true;
+      for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return true;
     }
   }
   return false;
