@@ -19,6 +19,7 @@ import { XP_HARVEST, type Progression } from "./progression.ts";
 import type { EntityRecord } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
+import { WreckClearance } from "./wreck-clearance.ts";
 
 /** A piece rests on the ground, or on a piece whose top is this near under its foot, in metres. */
 const REST_GAP = 0.5;
@@ -26,8 +27,6 @@ const REST_GAP = 0.5;
 const REST_INSET = 0.25;
 /** Bodies are looked for this far past a new heap's reach, and one in it is raised by this much until it has room. */
 const LIFT_REACH = 2, LIFT_STEP = 0.125;
-/** A body in a wreck's lesser look is moved at most this far out of it, in metres. */
-const CLEAR_REACH = 3;
 /** Past this many allowances, those full again are forgotten. */
 const ALLOWANCES_KEPT = 1024;
 /** A breached piece is left at least this much health by the hit that breached it. */
@@ -77,6 +76,7 @@ export class CityBreaks {
   private readonly glassTakes: Float32Array;
   private readonly glassRam: number;
   private readonly concrete: number;
+  private readonly wreckClearance: WreckClearance;
   private readonly allowances = new Map<number, Allowance>();
   private readonly found = new Found();
   /** Between `gather` and `settle` (a blast), what falls and what is destroyed waits to go as one batch a chunk. */
@@ -97,6 +97,7 @@ export class CityBreaks {
 
   constructor(ctx: CityContext) {
     this.ctx = ctx;
+    this.wreckClearance = new WreckClearance(ctx.world);
     const reg = ctx.world.reg;
     const glass = reg.index.get("core:zzzzzzmat_glass");
     const def = glass !== undefined ? (reg.defs[glass] as MaterialDef) : null;
@@ -360,45 +361,6 @@ export class CityBreaks {
   }
 
   /**
-   * Moves each living body the piece `ref` is now solid round out of it, to the nearest free place straight away from
-   * its middle. A wreck's lesser look is not all inside the look it was: a stripped car's door stands ajar where whoever
-   * stripped it stood. One with no such place is stood on top of it, as on a new heap.
-   */
-  clear(ref: number): void {
-    const world = this.ctx.world, reg = world.reg, structs = world.structs, ents = world.ents, dims = world.dims;
-    const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
-    const kind = t.kind[slot]!;
-    if (kind === 0) return;
-    const [x, z, top] = [t.x[slot]!, t.z[slot]!, t.y[slot]! + structs.top[kind]!];
-    const reach = structs.spread[kind]! + LIFT_REACH;
-    const cx0 = Math.max(0, Math.floor((x - reach) / 64)), cx1 = Math.min(dims.chunksX - 1, Math.floor((x + reach) / 64));
-    const cz0 = Math.max(0, Math.floor((z - reach) / 64)), cz1 = Math.min(dims.chunksZ - 1, Math.floor((z + reach) / 64));
-    let held = false;
-    for (let cz = cz0; cz <= cz1; cz++) {
-      for (let cx = cx0; cx <= cx1; cx++) {
-        for (let e = ents.chunkHead[cz * dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
-          const body = ents.kind[e]!;
-          if ((ents.flags[e]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE || ents.seat[e] !== 0 || reg.vehicle[body]) continue;
-          const [r, tall] = [reg.bodyRadius[body]!, reg.bodyHeight[body]!];
-          if (!(r > 0) || ents.y[e]! >= top || !capsuleBox(structs, ref, ents.x[e]!, ents.y[e]!, ents.z[e]!, r, tall, 0)) continue;
-          let [dx, dz] = [ents.x[e]! - x, ents.z[e]! - z];
-          const far = Math.hypot(dx, dz);
-          [dx, dz] = far > 1e-3 ? [dx / far, dz / far] : [1, 0];
-          let out = false;
-          for (let d = LIFT_STEP; d <= CLEAR_REACH && !out; d += LIFT_STEP) {
-            if (!capsuleFree(world, ents.x[e]! + dx * d, ents.y[e]!, ents.z[e]! + dz * d, r, tall)) continue;
-            ents.x[e] = ents.x[e]! + dx * d;
-            ents.z[e] = ents.z[e]! + dz * d;
-            out = true;
-          }
-          if (!out) held = true;
-        }
-      }
-    }
-    if (held) this.lift(ref);
-  }
-
-  /**
    * Whether the piece `ref` rests on the ground or on a piece that stands under its foot and is not `going` too: a look
    * straight down through its footprint. What holds up a piece of no building, and every piece where buildings are not
    * judged for support (CityCollapse off, or a map without its buildings).
@@ -491,6 +453,12 @@ export class CityBreaks {
     const left = Math.fround(Math.max(0, hp - harm));
     if (left === hp) return 0;
     const rungs = reg.salvageYield[mapKind]!;
+    const rung = rungAt(reg, mapKind, left);
+    let kind = rung < rungs.length ? rungKind(reg, mapKind, rung) : 0;
+    if (kind !== 0 && kind !== t.kind[slot] && !this.wreckClearance.clear(ref, kind)) {
+      if (blow) return 0;
+      kind = t.kind[slot]!;
+    }
     if (blow) {
       const all = rules.num("WreckYieldMultiplier");
       for (let r = 0; r < rungs.length; r++) {
@@ -503,8 +471,7 @@ export class CityBreaks {
       }
       progression?.addXp(by, HEAP_XP * force, XP_HARVEST);
     }
-    const rung = rungAt(reg, mapKind, left);
-    if (rung >= rungs.length) {
+    if (kind === 0) {
       if (!blow) return this.fell(by, ref, false, x, y, z, hp);
       this.onHarm?.(ref);
       this.spend(by);
@@ -516,11 +483,9 @@ export class CityBreaks {
     }
     this.onHarm?.(ref);
     this.left = left;
-    const kind = rungKind(reg, mapKind, rung);
     if (kind !== t.kind[slot]) {
       structs.swap(ref, kind, left);
       this.spend(by);
-      this.clear(ref);
     } else {
       structs.wear(ref, left);
       this.silent++;
