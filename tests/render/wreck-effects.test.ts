@@ -18,7 +18,7 @@ import { rungKind } from "../../shared/world/breaking.ts";
 import { HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { GONE_BLAST, GONE_TAKEN } from "../../shared/world/structures.ts";
 import { GRENADE_REACH, city, grenade } from "../fixtures/city.ts";
-import { put, record } from "../kit/kit.ts";
+import { record, survivor } from "../kit/kit.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry(), palette = defaultPalette();
@@ -228,9 +228,7 @@ test("a blast reports both wrecks in one hit at the nearer wreck", () => {
     { kind: reg.ids[BLUE]!, x: 128, z: 131, yaw: 16384 },
   ]);
   const { h } = c;
-  const client = h.join("miner");
-  h.run(400);
-  put(h, client, { x: 90, z: 90 });
+  const client = survivor(h, "miner", { at: { x: 90, z: 90 } });
   const before = c.refs.map((ref) => c.hp(ref));
   h.host.combat.blast({ ...grenade(h.reg), by: record(h, client) }, 128, 0.6, 127, GRENADE_REACH);
   h.run(200);
