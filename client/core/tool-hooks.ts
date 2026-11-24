@@ -6,6 +6,7 @@
 import { TICK_RATE } from "../../shared/coords.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { SESSION_ALIVE } from "../../shared/net/protocol.ts";
+import { SURFACE_GROUND } from "../../shared/net/rockets.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { tierOf, type Tier } from "./assets/tiers.ts";
@@ -20,6 +21,11 @@ import type { SupplyView } from "./supply.ts";
 
 /** The master volume of a page that measures itself (a probe, a bench, the device page), of 1 for full: `?volume=` gives another. */
 export const MEASURED_VOLUME = 0.02;
+
+/** A bench page's `?blast=`: a rocket's blast is set off on the ground that many metres ahead of the view this often, in ms, once its run has begun. */
+const BLAST_EVERY_MS = 1500;
+const BLAST_REACH = 7.5;
+const BLAST_LOOK = 2;
 
 /** What a tool's own server tells a page that is the tool's look at a place (`ToolHooks.address`). */
 export interface ToolOrders {
@@ -76,6 +82,10 @@ export class ToolHooks {
   /** A measurement run's clock (bench-run.ts BenchRun.clock): ms since its scene was still, -1 before or outside a run; and the page's clock then. */
   private runMs = -1;
   private runFrom = 0;
+  /** Metres ahead a bench page sets blasts off (`?blast=`), 0 for none; the run's clock at the next; and how many went. */
+  private blastAhead = 0;
+  private blastNext = 0;
+  private blasts = 0;
   private readonly supply: SupplyView;
 
   /** `supply` is the drops' view, whose clock a picture tool holds with the obelisks'. */
@@ -103,6 +113,8 @@ export class ToolHooks {
     this.held = look.length === 2 && look.every((v) => typeof v === "number" && Number.isFinite(v)) ? [look[0] as number, look[1] as number] : null;
     if (!pinned) return;
     this.farPalms = get("farpalm") === "fronds";
+    const blast = Number(get("blast"));
+    this.blastAhead = blast > 0 && blast <= 400 ? blast : 0;
     governor.held = Number(get("level") ?? 0);
     settings.tier = tierOf(get("tier") ?? settings.tier).name;
     const share = Number(get("scale"));
@@ -187,6 +199,12 @@ export class ToolHooks {
     } else if (this.runMs >= 0) {
       // The tide's eyes open and shut on the server's ticks; in a run, from the run's still frame, so every run sees each eye alike.
       scene.eyeSeconds = this.runMs / 1000;
+    }
+    if (this.blastAhead > 0 && this.runMs >= this.blastNext) {
+      // Ahead of where the view looks now, which turns: each is in view while it burns.
+      this.blastNext = this.runMs + BLAST_EVERY_MS;
+      const x = f.cam.x + Math.sin(f.controls.yaw) * this.blastAhead, z = f.cam.z + Math.cos(f.controls.yaw) * this.blastAhead;
+      scene.blasts.burst(BLAST_LOOK, x, f.world.hf.heightAt(x, z) + 0.05, z, 0, 1, 0, BLAST_REACH, SURFACE_GROUND, 0, ++this.blasts, f.sceneMs);
     }
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = (this.offNow = alternate ? this.other! : this.off);
     scene.alternate = alternate;

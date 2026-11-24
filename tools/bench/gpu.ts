@@ -69,6 +69,8 @@ interface Run {
   off?: Effect | "far";
   /** An effect every other frame draws without, on the page's clock. */
   ab?: Effect;
+  /** Metres ahead of the view a rocket's blast is set off, every second and a half of the run. */
+  blast?: number;
   /** Whether the frame is timed on the page's clock and not by query. */
   clock?: boolean;
   view?: View;
@@ -119,6 +121,8 @@ export function plan(): Run[] {
     runs.push({ scene, tier, passes: true }, { scene, tier }, ...list.map((off) => ({ scene, tier, off })));
   }
   for (const tier of ["medium", "ultra"]) runs.push({ scene: "flock", tier }, { scene: "flock", tier, off: "layers" });
+  // What burns (render/blasts.ts), off every other frame: a rocket's blast 8 m ahead of the view, and one 40 m off.
+  for (const tier of ["medium", "high"]) for (const blast of [8, 40]) runs.push({ scene: "base", tier, ab: "bursts", blast });
   for (const view of ["street", "air"] as View[]) {
     for (const tier of ["medium", "high", "ultra"]) for (const scale of [1, 2]) runs.push({ scene: "city", view, tier, scale }, { scene: "city", view, tier, scale, clock: true });
     for (const [tier, scale] of [["medium", 1], ["ultra", 2]] as const) for (const off of ["shadows", "far"] as const) runs.push({ scene: "city", view, tier, scale, off });
@@ -335,7 +339,7 @@ function parkFleet(server: ReturnType<typeof startServer>, species: string, cars
   throw new Error(`Only ${parked} of ${cars} ${species} cars fit on the benchmark street`);
 }
 
-const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.window ? ` in ${r.window.join("x")}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}${r.hour !== undefined ? `, at ${r.hour}:00` : ""}`;
+const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.window ? ` in ${r.window.join("x")}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.blast ? `, a blast ${r.blast} m off` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}${r.hour !== undefined ? `, at ${r.hour}:00` : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
 async function measure(runs: Run[], times: number, say: (line: string) => void, fleet?: { species: string; cars: number; image?: string }): Promise<Map<string, Record<string, any>[]>> {
@@ -379,7 +383,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void, 
     const day = hourOfDay(server.host.world.tick, server.host.world.dayOffset, server.host.world.clock);
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
-        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}${r.view && LOOKS[r.view] ? `&still&look=${r.view}` : ""}`;
+        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}${r.view && LOOKS[r.view] ? `&still&look=${r.view}` : ""}${r.blast ? `&blast=${r.blast}` : ""}`;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), (SETTLE_MS + 120000) * (r.cpu ?? 1)))));
         const pixels = r.view ? [`--window-size=${(r.window ?? [1920, 1080]).join(",")}`, `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
@@ -411,7 +415,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void, 
         clearInterval(held);
         browser.kill();
         await browser.exited;
-        const ab = result?.alternate ? `${result.alternate.own} ms on the page's clock with it, ${result.alternate.other} without, a frame without it ${result.alternate.less} ms against those either side` : `${result?.gpuMs?.frame?.median ?? "untimed"} ms ${r.clock ? "on the page's clock" : "on the GPU"}`;
+        const ab = result?.alternate ? `${result.alternate.own} ms on the page's clock with it, ${result.alternate.other} without, a frame without it ${result.alternate.less} ms against those either side (${result.alternate.least} at its dearest)` : `${result?.gpuMs?.frame?.median ?? "untimed"} ms ${r.clock ? "on the page's clock" : "on the GPU"}`;
         say(`${nameOf(r)}: ${result ? `${ab}, ${result.frameMs.median} ms a frame, ${result.buildAndSubmitMs.median} ms ours, ${result.drawCalls} GL draws, ${result.triangles} triangles${result.turn ? ` (over the turn ${result.turn.draws} and ${result.turn.triangles})` : ""}${result.calls ? `, a frame ${JSON.stringify(result.calls)}` : ""}` : "no report"} (load ${loadavg()[0]!.toFixed(1)})`);
         if (result) out.set(nameOf(r), [...(out.get(nameOf(r)) ?? []), result]);
       }
@@ -450,6 +454,12 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
     record("the frame, timed whole, median", gpu(all), "ms");
     record("a frame's time, median, by the clock", median(all.map((r) => r.frameMs.median)), "ms");
     for (const [name, list] of reports) if (name.startsWith(`${key}, `) && name.endsWith(" off")) record(`${name.slice(key.length + 2)}: what it costs`, gpu(all) - gpu(list), "ms");
+    for (const [name, list] of reports) {
+      if (!name.startsWith(`${key}, a blast `) || !list[0]?.alternate) continue;
+      const what = name.slice(key.length + 2, name.indexOf(", bursts"));
+      record(`${what}: what its fire costs a frame, median`, -median(list.map((r) => r.alternate.less)), "ms");
+      record(`${what}: at its dearest frames`, -median(list.map((r) => r.alternate.least)), "ms", 1);
+    }
   }
   for (const view of ["street", "air"] as View[]) {
     for (const tier of ["medium", "high", "ultra"]) {

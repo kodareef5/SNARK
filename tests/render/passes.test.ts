@@ -85,7 +85,7 @@ test("a run that turns effects off every other frame: each kind's median, and ea
   // A view that grows dearer as it turns, the frames without the effect a millisecond cheaper.
   const frames = Array.from({ length: 9 }, (_, i) => 10 + i * 0.5 - (i % 2 ? 1 : 0));
   const other = frames.map((_, i) => i % 2 === 1);
-  expect(alternateSpread(frames, other)).toEqual({ own: 12, other: 10.5, less: -1 });
+  expect(alternateSpread(frames, other)).toEqual({ own: 12, other: 10.5, less: -1, least: -1 });
   expect(alternateSpread(frames, frames.map(() => false))).toBeNull();
 });
 
