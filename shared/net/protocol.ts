@@ -275,7 +275,8 @@ export const S_GONE = serverKind();
  * sequence u16; pieces placed, 6 bits, then per piece 1 bit for "the chunk of the piece before" or else its chunk u16, and its
  * slot u16; then 1 bit for "stopped", and if so the RESULT_ code u8 and a detail, 3 bits (PLACED_): nothing, the structure in
  * the way (ref u32), the body in the way (entity index varint), a count and its cap (two varints), or metres to another
- * tribe's piece and the metres it needs (two varints).
+ * tribe's piece and the metres it needs (two varints). Last, 1 bit for a plan's fill, and if set the place in the plan's
+ * order to go on from and the pieces passed over as blocked, two varints.
  */
 export const S_PLACED = serverKind();
 export const PLACED_NONE = 0;
@@ -373,7 +374,9 @@ export const CMD_CHAT = command();
  * gid varint and the key's two words u32 each, the turn in the second; then 1 bit for a row, and if set the direction each
  * piece is a whole side on from the last, 4 bits, and the count less one, 5 bits. 1 is open ground, for a base's first
  * piece or a thing: x and z (s32 lattice units), yaw u16 and lift (s8 steps). 2 is a thing on a floor: the floor's ref u32,
- * x and z (s32 lattice units) and yaw u16. The server works the position and every check out again itself.
+ * x and z (s32 lattice units) and yaw u16. 3 fills a plan (server/plans.ts): the plan's id varint, then 1 bit: set for
+ * one piece, by its place in the plan varint, clear for the next pieces the builder carries, from a place in the plan's
+ * order varint, as many as a count less one, 5 bits. The server works the position and every check out again itself.
  */
 export const CMD_PLACE = command();
 /**

@@ -8,7 +8,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { handleIndex } from "../../shared/ids.ts";
-import { PLACE_JOIN, PLACE_NEW, PLACE_REST, writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
+import { PLACE_JOIN, PLACE_NEW, PLACE_PLAN, PLACE_REST, writeFill, writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
 import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, RESULT_TERRAIN, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
@@ -19,6 +19,7 @@ import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ROLE_THING, enemyGap, enemyGapFound, f
 import { Support } from "../../shared/world/support.ts";
 import type { ClientSession } from "./session.ts";
 import { structName } from "./ui/structure.ts";
+import type { PlanSlot } from "./plans.ts";
 
 export { PLACE_REACH };
 /** Holding Q this long toggles free placement. */
@@ -90,6 +91,11 @@ export class Builder {
   readonly by: Blocker = { detail: PLACED_NONE, a: 0, b: 0 };
   /** How many of an item have been set down and not yet taken from the inventory (PredictBuild.pending). */
   pending: ((item: number) => number) | null = null;
+  /** The hologram of a plan the look is on that one of the forms in hand would fill, judged, or null (plans.ts PlanSlots). */
+  planSlot: ((forms: ArrayLike<number>, team: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, reach: number) => PlanSlot | null) | null = null;
+  /** The plan and the piece of it shown, while the mode is PLACE_PLAN. */
+  private planId = 0;
+  private planIndex = 0;
   /** The item in hand that places a piece, or 0. */
   get inHand(): number { return this.item; }
   /** free means the piece joins nothing. `turn` is its turn in a slot, or quarter turns on open ground. */
@@ -217,7 +223,14 @@ export class Builder {
     this.freeX = Math.round((ox + dx * reach) * STRUCT_UNITS);
     this.freeZ = Math.round((oz + dz * reach) * STRUCT_UNITS);
     this.freeYaw = (Math.round((yaw / (2 * Math.PI)) * YAW_UNITS) + this.turn * (YAW_UNITS / 4)) & (YAW_UNITS - 1);
-    if (reg.role[kind] === ROLE_THING && looked >= 0) {
+    const planned = this.free ? null : (this.planSlot?.(forms, team, ox, oy, oz, dx, dy, dz, BUILD_REACH) ?? null);
+    if (planned) {
+      // A plan's hologram the piece in hand fills: its own slot and form, whatever is built round it.
+      [this.mode, this.planId, this.planIndex, this.kind] = [PLACE_PLAN, planned.plan, planned.index, planned.kind];
+      problem = planned.problem;
+      [verdict.detail, verdict.a, verdict.b] = [planned.verdict.detail, planned.verdict.a, planned.verdict.b];
+      [p.x, p.y, p.z, p.yaw] = [planned.verdict.pose.x, planned.verdict.pose.y, planned.verdict.pose.z, planned.verdict.pose.yaw];
+    } else if (reg.role[kind] === ROLE_THING && looked >= 0) {
       // A thing aimed at a structure rests on top of it where the look is, if it is a floor of the builder's tribe.
       this.floor = looked;
       const t = structs.chunks[Math.floor(looked / 65536)]!;
@@ -382,7 +395,8 @@ export class Builder {
     const { fr, k0 } = this.slot;
     const k1 = this.keyed(reg);
     this.asked = session.command(CMD_PLACE, (w: BitWriter) => {
-      if (mode === PLACE_JOIN) writeJoin(w, variant, fr, k0, k1);
+      if (mode === PLACE_PLAN) writeFill(w, this.planId, this.planIndex);
+      else if (mode === PLACE_JOIN) writeJoin(w, variant, fr, k0, k1);
       else if (mode === PLACE_REST) writeRest(w, variant, this.floor, this.freeX, this.freeZ, this.freeYaw);
       else writeNew(w, variant, this.freeX, this.freeZ, this.freeYaw, this.lift);
     });
