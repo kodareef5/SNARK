@@ -5,9 +5,9 @@ import { XP_CRAFT, XP_GIVEN, XP_HARVEST, XP_KILL, XP_TIME } from "../../server/p
 import { Experience, SHARE_RANGE } from "../../server/experience.ts";
 import { camp, put, record, ride, survivor, tame, type CampOptions } from "../kit/kit.ts";
 
-/** Ada and bob of one tribe and cy of none, 3 m apart, with no drip to blur what each earns. */
+/** Ada and bob of one tribe and cy of none, 3 m apart. */
 function crew(rules: CampOptions["rules"] = {}) {
-  const { h, ada, me, at } = camp({ tribe: "Crew", rules: { GenericXPMultiplier: 0, ...rules } });
+  const { h, ada, me, at } = camp({ tribe: "Crew", rules });
   const bob = survivor(h, "bob", { tribe: "Crew", at: { x: at.x + 3, z: at.z } });
   const cy = survivor(h, "cy", { at: { x: at.x, z: at.z + 3 } });
   const recs = [me, record(h, bob), record(h, cy)];

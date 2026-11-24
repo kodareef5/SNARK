@@ -81,7 +81,6 @@ test("a gain of experience sends twelve bytes; a level sends the engrams and poi
   const ada = h.join("ada");
   h.run(400);
   h.say(ada, "enablecheats");
-  h.host.setSetting("GenericXPMultiplier", "0");
   const sent = ownSent(h, 0);
   h.say(ada, "addxp 2.5");
   expect(sent.filter((m) => m[0] === OWN_XP || m[0] === OWN_PROGRESSION).map((m) => [m[0], m.length - 1])).toEqual([[OWN_XP, 12]]);

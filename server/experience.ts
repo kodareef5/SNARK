@@ -12,7 +12,10 @@ import type { ServerWorld } from "./world.ts";
 
 /** Experience a minute, before GenericXPMultiplier. */
 export const DRIP_PER_MINUTE = 0.66;
-/** Ticks between drips. One a tick would send each survivor its experience thirty times a second. */
+/**
+ * Ticks between one body's drips. Each body has its own tick of them, by its record id, so that the saving and the
+ * sending a drip causes fall on a few records a tick and never on every one at once.
+ */
 export const DRIP_TICKS = 10 * TICK_RATE;
 /** Metres from a survivor within which its team shares what is earned, and its tames get the drip. */
 export const SHARE_RANGE = 100;
@@ -48,20 +51,31 @@ export class Experience {
   }
 
   step(tick: number): void {
-    if (tick % DRIP_TICKS !== 0) return;
-    const { world, records, progression } = this.ctx;
+    const { world, records, game, progression } = this.ctx;
     const ents = world.ents;
+    const slot = tick % DRIP_TICKS;
     const amount = (DRIP_PER_MINUTE * DRIP_TICKS) / (60 * TICK_RATE);
-    this.gather();
-    const { teams, bodies, found } = this;
-    for (let i = 0; i < found.length; i++) progression.addXp(found[i]!, amount, XP_TIME);
-    if (found.length === 0) return;
+    let here = false;
+    for (let i = 0; i < game.clients.length; i++) {
+      const c = game.clients[i];
+      if (!c || !c.active || c.closed || c.pid === 0) continue;
+      here = true;
+      if (c.pid % DRIP_TICKS !== slot) continue;
+      const rec = records.byPid.get(c.pid);
+      if (rec && !rec.dead && !rec.out && records.entOf.has(rec.pid)) progression.addXp(rec, amount, XP_TIME);
+    }
+    if (!here) return;
     const [list, count] = this.ctx.awake();
+    const { teams, bodies } = this;
+    let gathered = false;
     for (let k = 0; k < count; k++) {
-      const e = list[k]!;
-      const rec = records.byPid.get(ents.pid[e]!);
+      const e = list[k]!, pid = ents.pid[e]!;
+      if (pid % DRIP_TICKS !== slot) continue;
+      const rec = records.byPid.get(pid);
       // The list holds every body that is awake. Only a tamed creature is given this.
       if (!rec || rec.team === 0 || !rec.genome || rec.kind === this.survivor) continue;
+      if (!gathered) this.gather();
+      gathered = true;
       for (let i = 0; i < teams.length; i++) {
         if (teams[i] !== rec.team || !near(ents, e, bodies[i]!)) continue;
         progression.addXp(rec, amount, XP_TIME);

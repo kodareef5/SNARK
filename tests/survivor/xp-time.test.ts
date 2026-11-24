@@ -1,14 +1,17 @@
 // Experience that comes with time (server/experience.ts): the drip to a living survivor, and to a tame near one of its tribe.
+// A Harness leaves it out (tests/fixtures/net.ts), so each test here asks for it.
 
 import { expect, test } from "bun:test";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { DRIP_PER_MINUTE, SHARE_RANGE } from "../../server/experience.ts";
-import { camp, creature, tame } from "../kit/kit.ts";
+import { DRIP_PER_MINUTE, DRIP_TICKS, SHARE_RANGE } from "../../server/experience.ts";
+import { Rules } from "../../server/settings/rules.ts";
+import { camp, creature, record, survivor, tame } from "../kit/kit.ts";
 
 const MINUTE = 60_000;
+const DRIP = { GenericXPMultiplier: 1 };
 
 test("a living survivor gains ARK's drip each minute, and its own screen has the fraction", () => {
-  const { h, ada, me } = camp();
+  const { h, ada, me } = camp({ rules: DRIP });
   const xp = me.xp;
   h.run(MINUTE);
   expect(me.xp - xp).toBeCloseTo(DRIP_PER_MINUTE, 6);
@@ -25,10 +28,12 @@ test("GenericXPMultiplier and XPMultiplier multiply the drip, and 0 ends it", ()
   const none = camp({ rules: { GenericXPMultiplier: 0 } });
   none.h.run(MINUTE);
   expect(none.me.xp).toBe(0);
+  // The server ships with it on.
+  expect(new Rules().num("GenericXPMultiplier")).toBe(1);
 });
 
 test("a dead survivor gains nothing with time", () => {
-  const { h, ada, me } = camp();
+  const { h, ada, me } = camp({ rules: DRIP });
   h.say(ada, "suicide");
   expect(me.dead).toBe(true);
   const xp = me.xp;
@@ -37,7 +42,7 @@ test("a dead survivor gains nothing with time", () => {
 });
 
 test("a tame gains the drip only with a survivor of its tribe within 100 m; a wild creature never", () => {
-  const { h, ada, at } = camp();
+  const { h, ada, at } = camp({ rules: DRIP });
   const near = tame(h, ada, "dodo");
   const far = tame(h, ada, "dodo", { at: { x: at.x + 6, z: at.z + 6 } });
   const wild = creature(h, "dodo", { x: at.x - 6, z: at.z + 6 });
@@ -47,4 +52,22 @@ test("a tame gains the drip only with a survivor of its tribe within 100 m; a wi
   h.run(MINUTE);
   expect(near.rec.xp - was[0]!).toBeCloseTo(DRIP_PER_MINUTE, 6);
   expect([far.rec.xp - was[1]!, wild.rec.xp - was[2]!]).toEqual([0, 0]);
+});
+
+test("each body has its own tick of the drip, so no tick gives it to all of them", () => {
+  const { h, ada, at, me } = camp({ rules: DRIP });
+  const bob = record(h, survivor(h, "bob", { at: { x: at.x + 3, z: at.z } }));
+  const pets = [tame(h, ada, "dodo"), tame(h, ada, "dodo", { at: { x: at.x + 6, z: at.z + 6 } }), tame(h, ada, "dodo", { at: { x: at.x - 6, z: at.z + 6 } })];
+  for (const pet of pets) h.host.creatures.mind.stay(pet.e, h.world.tick + 60 * TICK_RATE);
+  const bodies = [me, bob, ...pets.map((pet) => pet.rec)];
+  // The tick on which each gained, over one whole round of them.
+  const when: number[][] = bodies.map(() => []);
+  for (let t = 0; t < DRIP_TICKS; t++) {
+    const was = bodies.map((rec) => rec.xp);
+    h.server.tick();
+    bodies.forEach((rec, i) => void (rec.xp > was[i]! && when[i]!.push(h.world.tick % DRIP_TICKS)));
+  }
+  // Once each in the round, on the tick its own record id names.
+  expect(when).toEqual(bodies.map((rec) => [rec.pid % DRIP_TICKS]));
+  expect(new Set(when.flat()).size).toBe(bodies.length);
 });

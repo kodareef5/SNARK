@@ -5,7 +5,7 @@ import { TAME_XP } from "../../content/core.ts";
 import { camp, tame } from "../kit/kit.ts";
 
 test("a tame gains ARK's 88 levels on the tames' table and stops at its end", () => {
-  const { h, ada, me } = camp({ rules: { GenericXPMultiplier: 0 } });
+  const { h, ada, me } = camp();
   const prog = h.host.progression;
   const pet = tame(h, ada, "dodo").rec;
   pet.xp = 0;
