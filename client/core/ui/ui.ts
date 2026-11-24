@@ -407,9 +407,14 @@ export class Ui {
       return;
     }
     if (kind === 0 && key !== 0) this.hear?.("click");
-    // A node a screen of the list drew goes to that screen alone.
+    // A node a screen of the list drew goes to that screen alone, and only while it is still open: a press can come
+    // between a close and the next frame.
     const owner = this.frame.find(key)?.owner ?? -1;
-    if (owner >= 0) return void this.screens[owner]!.pointer?.(kind, key, x, y, button, this.at(session));
+    if (owner >= 0) {
+      const s = this.screens[owner]!;
+      if (s.isOpen()) s.pointer?.(kind, key, x, y, button, this.at(session));
+      return;
+    }
     if (kind === 0 && !button && this.air.click(key, session)) return;
     if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;

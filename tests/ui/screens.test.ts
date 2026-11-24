@@ -3,7 +3,7 @@ import { HudModel } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import type { CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_EMOTE_BUTTON, type EmoteMenu } from "../../client/core/ui/emotes.ts";
-import type { Screen } from "../../client/core/ui/screen.ts";
+import type { Screen, ScreenCtx } from "../../client/core/ui/screen.ts";
 import { RESULT_DENIED } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
@@ -21,7 +21,7 @@ function fakeSession(): { session: ClientSession; sent: number[] } {
     state: "active", airSupport: emptyAirSupport(), inventory: new Inventory(40 + HOTBAR_SLOTS + ARMOR_SLOTS, 40), held: 0, tamed: [],
     serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" }, ownKind: reg.index.get("core:survivor")!,
     progress: { level: 1, xp: 0, statPoints: 0, engramPoints: 0, jobs: [], engrams: [], version: 1 },
-    command: (op: number) => (sent.push(op), 1),
+    command: (op: number) => (sent.push(op), 1), emote: () => (sent.push(-1), 1),
   } as unknown as ClientSession;
   return { session, sent };
 }
@@ -55,13 +55,15 @@ test("screens have names of their own and key bands that do not meet", () => {
   for (let i = 1; i < bands.length; i++) expect(bands[i]!.from, `${bands[i]!.name} meets ${bands[i - 1]!.name}`).toBeGreaterThanOrEqual(bands[i - 1]!.from + bands[i - 1]!.count);
 });
 
+/** How this test opens each listed screen. A screen added to the list needs a line here. */
+const opens: Record<string, (ui: Ui) => Screen> = {
+  travel: openTravel,
+  character: (ui) => { const s = ui.screen<CharacterScreen>("character"); s.open = true; return s; },
+  emotes: (ui) => { const s = ui.screen<EmoteMenu>("emotes"); s.open = true; return s; },
+};
+
 test("each open screen frees the pointer, draws inside its bands and owns what it drew", () => {
   const { session } = fakeSession();
-  const opens: Record<string, (ui: Ui) => Screen> = {
-    travel: openTravel,
-    character: (ui) => { const s = ui.screen<CharacterScreen>("character"); s.open = true; return s; },
-    emotes: (ui) => { const s = ui.screen<EmoteMenu>("emotes"); s.open = true; return s; },
-  };
   for (const name of new Ui().screens.map((s) => s.name)) {
     expect(opens[name], `a way to open ${name} in this test`).toBeDefined();
     const ui = new Ui();
@@ -81,6 +83,26 @@ test("a press on a screen's node goes to that screen", () => {
   ui.pointer(0, KEY_TRAVEL_BUTTON, 0, 0, 0, session);
   expect(sent.length).toBe(1);
   expect(travel.note).toBe("leaving for B");
+});
+
+test("a press that comes after its screen closed, before the next frame, does nothing", () => {
+  for (const name of new Ui().screens.map((s) => s.name)) {
+    const ui = new Ui(), { session, sent } = fakeSession();
+    const s = opens[name]!(ui);
+    const keys = drawn(ui, s, session).filter((n) => n.interactive).map((n) => n.key);
+    expect(keys.length, name).toBeGreaterThan(0);
+    // Closed by its own file, as a server answer or another key would.
+    s.close({} as ScreenCtx);
+    for (const key of keys) ui.pointer(0, key, 0, 0, 0, session);
+    expect([s.isOpen(), sent], name).toEqual([false, []]);
+  }
+  // The travel list closed by Escape, as a player would.
+  const ui = new Ui(), { session, sent } = fakeSession();
+  const travel = openTravel(ui);
+  drawn(ui, travel, session);
+  ui.key("Escape", true, false, session);
+  ui.pointer(0, KEY_TRAVEL_BUTTON, 0, 0, 0, session);
+  expect([travel.open, sent]).toEqual([false, []]);
 });
 
 test("a screen's hotkey opens it and shuts the rest of its group, and Escape shuts it", () => {
