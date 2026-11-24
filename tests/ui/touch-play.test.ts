@@ -22,6 +22,7 @@ import type { CharacterScreen } from "../../client/core/ui/character.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { PHONES, camp, direct, nodes, screen, stood, vehicle, type Direct, type Phone, type Stood } from "../kit/kit.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 // The touch layer's layout, which a page fetches when a finger is first used; here it is at hand.
 import * as layout from "../../client/core/ui/touch.ts";
 
@@ -202,7 +203,7 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   app.pointer(0, KEY_TOUCH_BUTTON + T_MENU, 0, 0, 0, 3);
   app.pointer(1, KEY_TOUCH_BUTTON + T_MENU, 0, 0, 0, 3);
   run(50);
-  expect([app.ui.menu, app.controls.moveZ, app.touch.stick, f.find(KEY_ZONE_MOVE), f.find(KEY_MENU) !== null]).toEqual([true, 0, false, null, true]);
+  expect([app.ui.screen<MenuScreen>("menu").menu, app.controls.moveZ, app.touch.stick, f.find(KEY_ZONE_MOVE), f.find(KEY_MENU) !== null]).toEqual([true, 0, false, null, true]);
 });
 
 test("the layer follows the last thing used: a key or a pad's stick puts it away, and a finger brings it back", () => {

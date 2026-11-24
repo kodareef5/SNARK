@@ -19,6 +19,7 @@ import type { Tier } from "../assets/tiers.ts";
 import type { textWidth as TextWidth, UiFrame, wrapText as WrapText } from "./nodes.ts";
 import type { glass as Glass } from "./skin.ts";
 import type { Ui } from "./ui.ts";
+import type { MenuScreen } from "./menu-screen.ts";
 
 /** What the page draws with from the first frame's script. */
 export interface StorageKit {
@@ -226,7 +227,8 @@ export class StoragePage {
   /** Once a frame, from the app: what the page shows, and what the port is told. `tier` is the chosen one, as this device draws it. */
   step(ui: Ui, tier: Tier, port: AssetPort | null, r: Residency | null, sounds: SoundLibrary | null, now: number): void {
     this.touch = ui.touch;
-    this.keeping.step(ui.settings, tier, ui.menu && ui.options, ui.menu && ui.options && ui.settings.tab === STORAGE_TAB, port, r, sounds, now);
+    const menu = ui.screen<MenuScreen>("menu"), shown = menu.menu && menu.options;
+    this.keeping.step(ui.settings, tier, shown, shown && ui.settings.tab === STORAGE_TAB, port, r, sounds, now);
   }
 
   /** Draws the tab in the settings panel at `x`, `y`, `w` by `h`, under its tabs. */

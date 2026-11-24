@@ -20,6 +20,7 @@ import { ReportStore } from "../../server/reports.ts";
 import { fakePort, type FakePort } from "../fixtures/debug-port.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 
 const pack = parsePack(corePackBytes());
 const ROOT = join(import.meta.dir, "../..");
@@ -149,13 +150,13 @@ test("Escape gives the pointer to an open drawer, and a press on the world gives
   expect([bar.open, bar.holdsPointer, app.ui.wantsPointerLock]).toEqual([true, false, true]);
   // The browser lets the lock go on Escape; the drawer takes the pointer and the menu stays shut.
   app.ui.escaped();
-  expect([bar.holdsPointer, app.ui.menu]).toEqual([true, false]);
+  expect([bar.holdsPointer, app.ui.screen<MenuScreen>("menu").menu]).toEqual([true, false]);
   // Escape again, with the pointer free, shuts the drawer.
   app.key("Escape", true);
-  expect([bar.open, app.ui.menu]).toEqual([false, false]);
+  expect([bar.open, app.ui.screen<MenuScreen>("menu").menu]).toEqual([false, false]);
   // With the drawer shut, Escape is the menu's again.
   app.ui.escaped();
-  expect(app.ui.menu).toBe(true);
+  expect(app.ui.screen<MenuScreen>("menu").menu).toBe(true);
 });
 
 test("a press on a tab opens it, and on the open tab shuts the drawer", async () => {

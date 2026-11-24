@@ -24,6 +24,22 @@ export interface ScreenCtx {
   finger: number;
   /** Plays an occasion of the interface by its cue (shared/sound/cues.ts). */
   hear(cue: string): void;
+  /** The frame as the last build left it, which the shell shows and the presses come from. */
+  readonly frame: UiFrame;
+  /** The console or the chat box is over the screens, which are then not built. */
+  covered: boolean;
+  /** A node is to take the focus at the end of this build. */
+  focusPending: boolean;
+  /** Gives the focus to `key`, and to its field in the shell. */
+  focusTo(key: number): void;
+  /** The focus to the next interactive node, or the one before. */
+  moveFocus(by: number): void;
+  /** The pointer is over `key`: the focus follows it, the shell's field does not. */
+  hover(key: number): void;
+  /** Presses `key` at `x`, `y` as the pointer would. */
+  press(key: number, x: number, y: number): void;
+  /** Turns the focused control a step, or with `end` to its end: true if something took it. */
+  adjust(by: number, end: boolean): boolean;
 }
 
 /** Why every screen is told to let go. */
@@ -40,6 +56,8 @@ export interface Screen {
   readonly group?: string;
   /** The key that opens and closes it from play, with the others of its group shut. */
   readonly hotkey?: string;
+  /** The name its open and close sounds go by, where not its own. */
+  readonly sound?: string;
   /** The node keys it uses, each band from `from` for `count`: no two screens' bands may meet (tests/ui/screens.test.ts). */
   readonly bands: readonly { readonly from: number; readonly count: number }[];
   /** Whether it is up this frame. */
@@ -66,6 +84,14 @@ export interface Screen {
   focusNav?: boolean;
   /** A text field is wanted, so a touch device raises its keyboard. */
   typing?(): boolean;
+  /** While true it takes every key and every press before anything else, as the menu does. */
+  takesAll?(): boolean;
+  /** While true the HUD is not drawn under it. */
+  hidesHud?(): boolean;
+  /** Escape with nothing else to close brings it up. */
+  escape?(c: ScreenCtx): void;
+  /** Left and right on its focused node: true or false if it decided, undefined to leave it to a slider. */
+  adjust?(key: number, by: number, end: boolean, c: ScreenCtx): boolean | undefined;
   /** A key while open. True if the screen used it. */
   key?(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean;
   /** A key while the body is played and no screen has the pointer, open or not. True if the screen used it. */
@@ -80,7 +106,7 @@ export interface Screen {
   /** A field's new text. True if the field was this screen's. */
   text?(key: number, value: string): boolean;
   /** A slider's new value, 0 to 1. True if the slider was this screen's. */
-  value?(key: number, value: number): boolean;
+  value?(key: number, value: number, c: ScreenCtx): boolean;
   /** The server's answer to command `seq`. */
   result?(seq: number, code: number, c: ScreenCtx): void;
   /** The session died or went to the creator. */

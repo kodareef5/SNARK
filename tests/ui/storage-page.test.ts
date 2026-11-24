@@ -19,6 +19,7 @@ import { S_HUD_COUNT, S_HUD_HIT, S_HUD_KEY, S_ICE, S_MENU_NOTE, S_OXYGEN } from 
 import { Ui } from "../../client/core/ui/ui.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { stressSet } from "../../tools/pack/stress.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 
 const MB = 1024 * 1024, GB = 1024 * MB;
 
@@ -71,7 +72,7 @@ function world(): { ui: Ui; page: StoragePage; port: Port; r: Residency } {
   const port = new Port(), r = new Residency(set.manifest, parsePack(set.files[0]!.bytes), port);
   r.cap = 6;
   const ui = new Ui(), page = made();
-  ui.storage = page;
+  ui.screen<MenuScreen>("menu").storage = page;
   return { ui, page, port, r };
 }
 
@@ -80,8 +81,8 @@ test("the page's own copies of the interface's numbers are the interface's", () 
 });
 
 function openStorage(ui: Ui): void {
-  ui.openMenu();
-  ui.options = true;
+  ui.escaped();
+  ui.screen<MenuScreen>("menu").options = true;
   ui.settings.tab = STORAGE_TAB;
 }
 
@@ -118,7 +119,7 @@ test("opening the tab names everything the chosen tier keeps, and counts it once
   ui.settings.tier = "lowpoly";
   step(page, ui, port, r, 9032);
   expect(port.told.slice(-1)).toEqual(["keep 0 reset"]);
-  ui.options = false;
+  ui.screen<MenuScreen>("menu").options = false;
   step(page, ui, port, r, 9048);
   expect(port.told.slice(-1)).toEqual(["limit 256 MB"]);
 });
@@ -228,7 +229,7 @@ const STATES: KeepState[] = ["built", "none", "confirm", "full", "done", "over",
 
 test("every state's words fit their boxes in every window, inside the screen's edges, with nothing overlapping and edges shared exactly", () => {
   const ui = new Ui(), hud = new HudModel(), page = made(), v = page.keeping.view;
-  ui.storage = page;
+  ui.screen<MenuScreen>("menu").storage = page;
   openStorage(ui);
   let checked = 0;
   /** Where each window's buttons stand, by window and variant: the same in every state that has them. */
@@ -286,7 +287,7 @@ test("every state's words fit their boxes in every window, inside the screen's e
 
 test("the keyboard and the pad reach every button of the tab, and Enter presses the one with the focus", () => {
   const ui = new Ui(), hud = new HudModel(), page = made();
-  ui.storage = page;
+  ui.screen<MenuScreen>("menu").storage = page;
   openStorage(ui);
   Object.assign(page.keeping.view, { state: "downloading", saved: 812 * MB, total: 2 * GB, missing: 1.2 * GB });
   ui.build(16 / 9, hud, null);
@@ -311,7 +312,7 @@ test("the keyboard and the pad reach every button of the tab, and Enter presses 
 
 test("a browser that saves nothing greys Download all, and a page that has everything built in shows no buttons", () => {
   const ui = new Ui(), hud = new HudModel(), page = made();
-  ui.storage = page;
+  ui.screen<MenuScreen>("menu").storage = page;
   openStorage(ui);
   Object.assign(page.keeping.view, { state: "none", saved: 0 });
   ui.build(16 / 9, hud, null);

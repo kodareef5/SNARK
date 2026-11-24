@@ -22,6 +22,7 @@ import { takeInHand } from "../fixtures/gather.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-round3-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -405,7 +406,7 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   app.key("Escape", true);
   run(50);
   expect(app.ui.frame.find(KEY_SETTINGS_PANEL)).toBeNull();
-  expect(app.ui.menu).toBe(true);
+  expect(app.ui.screen<MenuScreen>("menu").menu).toBe(true);
   app.key("Escape", true); // Settings -> menu -> play, one layer at a time.
   run(50);
   expect(app.ui.wantsPointerLock).toBe(true);

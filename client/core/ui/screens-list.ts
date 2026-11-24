@@ -9,10 +9,12 @@ import { CreatorScreen } from "./creator.ts";
 import { EmoteMenu } from "./emotes.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { MapScreen } from "./screens.ts";
+import { MenuScreen } from "./menu-screen.ts";
 import { StructMenu } from "./structure.ts";
 import { TravelScreen } from "./travel.ts";
 
 export const SCREENS: readonly ScreenRow[] = [
+  () => new MenuScreen(),
   () => new CreatorScreen(),
   () => new ChoosingScreen(),
   () => new CharacterScreen(),

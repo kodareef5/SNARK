@@ -4,7 +4,7 @@ import { padBinding } from "./controls-guide.ts";
 import type { Selection } from "./keyboard.ts";
 import { S_KEY, S_KEY_SMALL, S_KEY_EDGE, S_KEY_ACTIVE, S_MENU_NOTE, S_HUD_COUNT } from "./style.ts";
 
-export const KEY_CONTROL_PAD=6000;
+export const KEY_CONTROL_PAD=5850;
 const XBOX=["A","B","X","Y","LB","RB","LT","RT","View","Menu","LS","RS","↑","↓","←","→"];
 const PS=["×","○","□","△","L1","R1","L2","R2","Touch","Options","L3","R3","↑","↓","←","→"];
 export function padLabel(button:number,glyphs:number):string { return (glyphs?PS:XBOX)[button]??""; }

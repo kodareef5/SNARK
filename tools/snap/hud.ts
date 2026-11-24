@@ -14,6 +14,7 @@ import { flatGround } from "../../tests/fixtures/arena.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
 import type { CharacterScreen } from "../../client/core/ui/character.ts";
 import type { EmoteMenu } from "../../client/core/ui/emotes.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 
 export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance", "compass", "compass-map", "damage", "level", "character"] as const;
 export type HudMode = (typeof HUD_MODES)[number];
@@ -43,11 +44,11 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
   c.yaw = 0;
   c.pitch = -0.1;
   if (mode === "menu" || mode === "settings" || mode === "audio" || mode === "controls" || mode === "controller") {
-    app.ui.openMenu();
-    app.ui.options = mode === "settings" || mode === "audio";
+    app.ui.escaped();
+    app.ui.screen<MenuScreen>("menu").options = mode === "settings" || mode === "audio";
     app.ui.settings.tab = mode === "audio" ? 1 : 0;
-    app.ui.help = mode === "controls" || mode === "controller";
-    app.ui.helpDevice = mode === "controller" ? 1 : 0;
+    app.ui.screen<MenuScreen>("menu").help = mode === "controls" || mode === "controller";
+    app.ui.screen<MenuScreen>("menu").helpDevice = mode === "controller" ? 1 : 0;
   } else if (mode === "drive" || mode === "drive-hidden") {
     const car = h.host.spawnVehicle("core:compact", x - 1.6, z - 0.12, me.team, 0);
     if (h.host.urban.mount(h.client(s)!, car) !== 0) throw new Error("could not get into the car");
@@ -111,7 +112,7 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
       me.ownDirty = true;
       run(200);
     }
-    app.ui.openMenu();
+    app.ui.escaped();
     app.ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, s);
     run(400);
   } else if (mode === "emotes" || mode === "emote-dance") {

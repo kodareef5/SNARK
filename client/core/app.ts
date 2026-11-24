@@ -81,6 +81,7 @@ import type { EmoteMenu } from "./ui/emotes.ts";
 import type { StructMenu } from "./ui/structure.ts";
 import type { AirRadio } from "./ui/air-support.ts";
 import type { InventoryScreen } from "./ui/inventory.ts";
+import type { MenuScreen } from "./ui/menu-screen.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_REFRESH_MS, type TravelScreen } from "./ui/travel.ts";
@@ -255,13 +256,13 @@ export class App {
       },
     };
     // Within the press that chose it, which is when a browser lets a page open another.
-    this.ui.openLink = (url) => this.page?.open?.(url);
+    this.ui.screen<MenuScreen>("menu").openLink = (url) => this.page?.open?.(url);
     this.ui.local = (line) => this.debugWord(line) ?? (this.sounds ? App.late!.soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     this.ui.chat.local = (line) => this.debugWord(line);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
-    void import("./ui/storage.ts").then((m) => (this.ui.storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
+    void import("./ui/storage.ts").then((m) => (this.ui.screen<MenuScreen>("menu").storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
     this.shots = new Shots(reg);
     this.supply = new SupplyView(reg, pack);
     this.breaks = new BreakEffects(reg, pack.palette);
@@ -454,7 +455,7 @@ export class App {
       if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
     }
     this.ui.pointer(kind, key, x, y, button, this.session, finger);
-    if (this.ui.menu || this.ui.opened("air")) this.blur();
+    if (this.ui.screen<MenuScreen>("menu").menu || this.ui.opened("air")) this.blur();
   }
 
   zoomMini(turn: number): void {
@@ -572,7 +573,7 @@ export class App {
       this.arrived = true;
       page.arrived();
       // Asked for once the world is in, so the first frame waits for nothing more.
-      page.json("links.json").then((answer) => (this.ui.links = siteLinks(answer)), () => {});
+      page.json("links.json").then((answer) => (this.ui.screen<MenuScreen>("menu").links = siteLinks(answer)), () => {});
     }
     if (session.state === "closed" && (session.closeReason === REJECT_TRAVEL || session.closeReason === REJECT_FULL) && !this.turnedAway) {
       this.turnedAway = t.open = true;
@@ -723,7 +724,7 @@ export class App {
     ui.canTalk = this.voice !== null && this.voice.notice === "";
     ui.creatureAhead = this.lookedAt >= 0;
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
-    ui.storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
+    ui.screen<MenuScreen>("menu").storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
     this.nowMs = nowMs;
     // The debug bar is a file of its own, fetched once Settings.debug is first on.
     if (ui.settings.debug && !this.debugAsked) {
@@ -746,8 +747,9 @@ export class App {
     }
 
     this.travel(nowMs);
-    if (this.ui.leftWorld) { this.ui.leftWorld=false; this.page?.go("./?screen=roster"); }
-    if (this.ui.reconnectRequested) { this.ui.reconnectRequested = false; this.page?.reload?.(); }
+    const menu = this.ui.screen<MenuScreen>("menu");
+    if (menu.leftWorld) { menu.leftWorld = false; this.page?.go("./?screen=roster"); }
+    if (menu.reconnectRequested) { menu.reconnectRequested = false; this.page?.reload?.(); }
     if (session.state === "closed") {
       this.dash.none(hud);
       // Only the reasons a player can act on are spelled out.
@@ -757,7 +759,7 @@ export class App {
       if (this.sound) this.sounds?.hush(this.sound);
       return false;
     }
-    if (this.ui.menu || this.ui.inspect) this.blur();
+    if (this.ui.screen<MenuScreen>("menu").menu || this.ui.inspect) this.blur();
     this.prompts.pulse(c);
     this.sight.hold(nowMs, c);
     f.holding = this.holding = this.heldInArms();
@@ -897,7 +899,7 @@ export class App {
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     hud.dpr = this.dpr;
-    scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
+    scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.screen<MenuScreen>("menu").creativeScreen.sundial.held, session.creative);
     scene.viewHeight = f.height;
     scene.now = sceneMs;
     scene.eyeSeconds = session.renderClock / TICK_RATE;
@@ -945,7 +947,7 @@ export class App {
   private fillHud(f: AppFrame): void {
     const session = this.session, hud = this.hud, cam = this.cam, c = this.controls, alive = f.alive, nowMs = f.nowMs;
     const fill = this.hudFill, body = f.body;
-    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active;
+    f.menu = this.ui.screen<MenuScreen>("menu").menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active;
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);

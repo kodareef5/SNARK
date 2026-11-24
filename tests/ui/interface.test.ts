@@ -15,6 +15,7 @@ import { filledVital } from "../../client/core/ui/vitals.ts";
 import { IMAGE_SKIN, ICON_SIZE, SKIN_HEIGHT, SKIN_WIDTH } from "../../client/core/ui/skin.ts";
 import { drawUi } from "../../tools/snap/ui.ts";
 import { bindTextInput } from "../../client/core/ui/events.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 
 test("the quiet HUD keeps ten numbered slots fixed when status and contextual vitals change", () => {
   for (const aspect of [9 / 16, 4 / 3, 16 / 9, 32 / 9]) {
@@ -53,19 +54,19 @@ test("Escape consumes gameplay input, navigates one layer, and traps menu focus"
   ui.build(16 / 9, hud, null);
   ui.key("Escape", true, false, null);
   ui.build(16 / 9, hud, null);
-  expect([ui.menu, ui.captureKeyboard, ui.wantsPointerLock]).toEqual([true, true, false]);
+  expect([ui.screen<MenuScreen>("menu").menu, ui.captureKeyboard, ui.wantsPointerLock]).toEqual([true, true, false]);
   expect(ui.frame.find(KEY_MENU_RESUME)!.focus).toBe(true);
   expect(ui.frame.find(KEY_HOTBAR)).toBeNull();
   expect(ui.key("KeyW", true, false, null)).toBe(true);
-  ui.key("Escape", true, true, null); expect(ui.menu).toBe(true);
+  ui.key("Escape", true, true, null); expect(ui.screen<MenuScreen>("menu").menu).toBe(true);
   ui.key("Tab", true, false, null); expect(ui.menuFocus).toBe(KEY_MENU_SETTINGS);
-  ui.key("Enter", true, false, null); expect(ui.options).toBe(true);
+  ui.key("Enter", true, false, null); expect(ui.screen<MenuScreen>("menu").options).toBe(true);
   ui.build(16 / 9, hud, null); expect(ui.frame.find(KEY_MENU_BACK)!.focus).toBe(true);
-  ui.key("Escape", true, false, null); expect([ui.menu,ui.options]).toEqual([true,false]);
-  ui.pointer(0, KEY_MENU_CONTROLS, 0, 0, 0, null); expect(ui.help).toBe(true);
-  ui.pointer(0, KEY_MENU_BACK, 0, 0, 0, null); expect(ui.help).toBe(false);
+  ui.key("Escape", true, false, null); expect([ui.screen<MenuScreen>("menu").menu,ui.screen<MenuScreen>("menu").options]).toEqual([true,false]);
+  ui.pointer(0, KEY_MENU_CONTROLS, 0, 0, 0, null); expect(ui.screen<MenuScreen>("menu").help).toBe(true);
+  ui.pointer(0, KEY_MENU_BACK, 0, 0, 0, null); expect(ui.screen<MenuScreen>("menu").help).toBe(false);
   ui.build(16 / 9, hud, null); expect(ui.frame.find(KEY_MENU)).not.toBeNull();
-  ui.key("Escape", true, false, null); expect([ui.menu, ui.wantsPointerLock]).toEqual([false,true]);
+  ui.key("Escape", true, false, null); expect([ui.screen<MenuScreen>("menu").menu, ui.wantsPointerLock]).toEqual([false,true]);
 });
 
 test("inspection releases the camera and exposes details only until its key is released", () => {
@@ -132,10 +133,10 @@ test("every menu, settings group and device layout fits from phone portrait to u
   expect(grouped.sort((a,b)=>a-b)).toEqual(SETTING_ROWS.map((_,i)=>i));
   const ui=new Ui(),hud=new HudModel();
   // The links the menu shows beneath Controls, which make it taller.
-  ui.links=siteLinks({wiki:"/wiki/",repository:"https://git.example.com/a/long/way/down/to/the/repository/of/the/game"});
+  ui.screen<MenuScreen>("menu").links=siteLinks({wiki:"/wiki/",repository:"https://git.example.com/a/long/way/down/to/the/repository/of/the/game"});
   for (const aspect of [9/16,4/3,16/9,21/9,32/9]) for (const mode of [0,1,2,3,4,5,6,7]) for(const context of (mode>=6?[0,1,2,3,4,5]:[0])) for(const glyphs of (mode===7?[0,1]:[0])) {
-    ui.menu=true; ui.options=mode>=1 && mode<=5; ui.settings.tab=mode-1; ui.help=mode>=6; ui.helpDevice=mode-6;
-    ui.helpGroup=context;ui.settings.padGlyphs=glyphs;ui.build(aspect,hud,null);
+    ui.screen<MenuScreen>("menu").menu=true; ui.screen<MenuScreen>("menu").options=mode>=1 && mode<=5; ui.settings.tab=mode-1; ui.screen<MenuScreen>("menu").help=mode>=6; ui.screen<MenuScreen>("menu").helpDevice=mode-6;
+    ui.screen<MenuScreen>("menu").helpGroup=context;ui.settings.padGlyphs=glyphs;ui.build(aspect,hud,null);
     const nodes=ui.frame.nodes.slice(0,ui.frame.count), keys=new Set<number>();
     for (const n of nodes) {
       const where=`aspect=${aspect} mode=${mode} key=${n.key}`;
@@ -156,10 +157,10 @@ test("a phone on its side: the menu, every settings tab and page, and the contro
   const ui=new Ui(),hud=new HudModel();
   ui.inputDevice=2;ui.layer=layout;
   // With the links the menu shows beneath Controls, which a short canvas has to make room for.
-  ui.links=siteLinks({wiki:"/wiki/",repository:"https://git.example.com/code"});
+  ui.screen<MenuScreen>("menu").links=siteLinks({wiki:"/wiki/",repository:"https://git.example.com/code"});
   let paged=0;
   for (const [w,h] of [[1056,488],[834,469],[710,400],[1280,576]] as const) for (const mode of [0,1,2,3,4,5,6,7,8]) {
-    ui.canvasHeight=h;ui.menu=true;ui.options=mode>=1 && mode<=5;ui.settings.tab=mode-1;ui.settings.page=0;ui.help=mode>=6;ui.helpDevice=mode-6;
+    ui.canvasHeight=h;ui.screen<MenuScreen>("menu").menu=true;ui.screen<MenuScreen>("menu").options=mode>=1 && mode<=5;ui.settings.tab=mode-1;ui.settings.page=0;ui.screen<MenuScreen>("menu").help=mode>=6;ui.screen<MenuScreen>("menu").helpDevice=mode-6;
     for (let page=0;page<4;page++) {
       ui.build(w/h,hud,null);
       const f=ui.frame,nodes=f.nodes.slice(0,f.count),where=`${w}x${h} mode=${mode} page=${page}`;
@@ -179,7 +180,7 @@ test("a phone on its side: the menu, every settings tab and page, and the contro
       // On so short a canvas the controls are the touch page, whichever was asked for.
       if (mode>=6 && h<640) expect(nodes.some(n=>n.text==="Left side") && !nodes.some(n=>n.label==="Controller"),where).toBe(true);
       // Every row of a tab is on one of its pages.
-      if (!ui.options || !f.find(KEY_SETTINGS_PAGE)) break;
+      if (!ui.screen<MenuScreen>("menu").options || !f.find(KEY_SETTINGS_PAGE)) break;
       const was=ui.settings.page;
       ui.pointer(0,KEY_SETTINGS_PAGE+1,0,0,0,null);ui.build(w/h,hud,null);
       if (ui.settings.page===was) break;
@@ -189,11 +190,11 @@ test("a phone on its side: the menu, every settings tab and page, and the contro
   expect(paged).toBeGreaterThanOrEqual(2);
   // A full window, and a phone upright, show every tab whole: no tab pages there.
   for (const [aspect,height] of [[16/9,720],[9/16,720],[405/876,876]] as const) for (let tab=0;tab<SETTING_GROUPS.length;tab++) {
-    ui.canvasHeight=height;ui.options=true;ui.help=false;ui.settings.tab=tab;ui.settings.page=0;ui.build(aspect,hud,null);
+    ui.canvasHeight=height;ui.screen<MenuScreen>("menu").options=true;ui.screen<MenuScreen>("menu").help=false;ui.settings.tab=tab;ui.settings.page=0;ui.build(aspect,hud,null);
     expect(ui.frame.find(KEY_SETTINGS_PAGE),`tab ${tab} at ${height}`).toBeNull();
   }
   // The audio tab's eight rows, over the pages of the shortest canvas, each once.
-  ui.canvasHeight=400;ui.options=true;ui.help=false;ui.settings.tab=1;ui.settings.page=0;
+  ui.canvasHeight=400;ui.screen<MenuScreen>("menu").options=true;ui.screen<MenuScreen>("menu").help=false;ui.settings.tab=1;ui.settings.page=0;
   const seen:string[]=[];
   for (let page=0;page<4;page++) {
     ui.build(710/400,hud,null);
@@ -207,7 +208,7 @@ test("a phone on its side: the menu, every settings tab and page, and the contro
 });
 
 test("sliders accept pointer values, reject invalid input, and support repeated precise keyboard adjustments",()=>{
-  const ui=new Ui(),hud=new HudModel();ui.menu=ui.options=true;ui.settings.tab=2;
+  const ui=new Ui(),hud=new HudModel();ui.screen<MenuScreen>("menu").menu=ui.screen<MenuScreen>("menu").options=true;ui.settings.tab=2;
   ui.build(16/9,hud,null);
   const slider=ui.frame.nodes.slice(0,ui.frame.count).find(n=>n.kind===K_SLIDER)!;
   expect(slider.label).toBe("Mouse sensitivity");
@@ -223,7 +224,7 @@ test("sliders accept pointer values, reject invalid input, and support repeated 
   ui.input(slider.key,"8");expect(ui.settings.sensitivity).toBe(3);
   const copy=new Settings();copy.restoreInterface(ui.settings.interfacePreferences());expect(copy.sensitivity).toBe(3);
   ui.console.open=true;expect(ui.adjustFocused(-1)).toBe(false);expect(ui.settings.sensitivity).toBe(3);
-  ui.console.open=false;ui.options=ui.menu=false;ui.key("ArrowLeft",true,false,null);expect(ui.settings.sensitivity).toBe(3);
+  ui.console.open=false;ui.screen<MenuScreen>("menu").options=ui.screen<MenuScreen>("menu").menu=false;ui.key("ArrowLeft",true,false,null);expect(ui.settings.sensitivity).toBe(3);
 });
 
 test("a page starts muted and offers to unmute over the HUD and the menu; a press unmutes, and the choice is saved", () => {
@@ -231,7 +232,7 @@ test("a page starts muted and offers to unmute over the HUD and the menu; a pres
   ui.layer=layout;
   expect(ui.settings.muted).toBe(true);
   for (const aspect of [9/16,4/3,16/9,32/9]) for (const menu of [false,true]) for (const touch of [false,true]) {
-    ui.menu=menu;ui.inputDevice=touch?2:0;ui.build(aspect,hud,null);
+    ui.screen<MenuScreen>("menu").menu=menu;ui.inputDevice=touch?2:0;ui.build(aspect,hud,null);
     const b=ui.frame.find(KEY_UNMUTE)!,where=`aspect=${aspect} menu=${menu} touch=${touch}`;
     expect([b.interactive,b.text],where).toEqual([true,"Unmute sound"]);
     expect(textWidth(b.text,b.style),where).toBeLessThanOrEqual(b.w);
@@ -244,7 +245,7 @@ test("a page starts muted and offers to unmute over the HUD and the menu; a pres
   ui.pointer(2,KEY_UNMUTE,0,0,0,null);ui.pointer(0,KEY_UNMUTE,0,0,2,null);
   expect([ui.settings.muted,ui.settings.revision]).toEqual([true,before]);
   ui.pointer(0,KEY_UNMUTE,0,0,0,null);
-  expect([ui.settings.muted,ui.settings.revision,ui.menu]).toEqual([false,before+1,true]);
+  expect([ui.settings.muted,ui.settings.revision,ui.screen<MenuScreen>("menu").menu]).toEqual([false,before+1,true]);
   ui.build(16/9,hud,null);
   expect(ui.frame.find(KEY_UNMUTE)).toBeNull();
   // The choice outlasts the page; a visitor with nothing saved, or with preferences from before, is muted.
@@ -256,17 +257,17 @@ test("a page starts muted and offers to unmute over the HUD and the menu; a pres
 });
 
 test("the menu's links are buttons beneath Controls that open where the server says, once a press, by pointer or by key", () => {
-  const ui=new Ui(),hud=new HudModel(),opened:string[]=[];ui.openMenu();ui.openLink=(url)=>void opened.push(url);
-  ui.links=siteLinks({wiki:"/wiki/",repository:"https://snark.dev/code"});ui.build(16/9,hud,null);
+  const ui=new Ui(),hud=new HudModel(),opened:string[]=[];ui.escaped();ui.screen<MenuScreen>("menu").openLink=(url)=>void opened.push(url);
+  ui.screen<MenuScreen>("menu").links=siteLinks({wiki:"/wiki/",repository:"https://snark.dev/code"});ui.build(16/9,hud,null);
   const buttons=()=>ui.frame.nodes.slice(0,ui.frame.count).filter(n=>n.interactive).map(n=>n.text);
   expect(buttons()).toEqual(["Reconnect","Settings","Controls","Wiki","Source code","Unmute sound"]);
   ui.pointer(0,KEY_MENU_LINK+1,0,0,0,null);
-  expect([opened,ui.menu]).toEqual([["https://snark.dev/code"],true]);
+  expect([opened,ui.screen<MenuScreen>("menu").menu]).toEqual([["https://snark.dev/code"],true]);
   // Chosen with the keyboard: Tab moves the focus down to the button, and Enter presses it.
   ui.pointer(2,KEY_MENU_CONTROLS,0,0,0,null);ui.build(16/9,hud,null);ui.key("Tab",true,false,null);ui.key("Enter",true,false,null);
   expect(opened.at(-1)).toBe("/wiki/");
   // A link the server hid has no button, and its key opens nothing; the settings beneath the menu show none.
-  ui.links=siteLinks({wiki:"/wiki/",repository:""});ui.build(16/9,hud,null);ui.pointer(0,KEY_MENU_LINK+1,0,0,0,null);
+  ui.screen<MenuScreen>("menu").links=siteLinks({wiki:"/wiki/",repository:""});ui.build(16/9,hud,null);ui.pointer(0,KEY_MENU_LINK+1,0,0,0,null);
   expect([buttons().includes("Source code"),opened.length]).toEqual([false,2]);
   ui.pointer(0,KEY_MENU_SETTINGS,0,0,0,null);ui.build(16/9,hud,null);
   for(let tab=0;tab<SETTING_GROUPS.length;tab++){ui.settings.tab=tab;ui.build(16/9,hud,null);expect(buttons().includes("Wiki")).toBe(false);}
@@ -274,7 +275,7 @@ test("the menu's links are buttons beneath Controls that open where the server s
 
 test("a range field's position reaches its slider through the shell's binding as a fraction of the field's maximum", () => {
   const ui = new Ui(), hud = new HudModel();
-  ui.menu = ui.options = true;
+  ui.screen<MenuScreen>("menu").menu = ui.screen<MenuScreen>("menu").options = true;
   ui.settings.tab = 2;
   ui.build(16 / 9, hud, null);
   const slider = ui.frame.nodes.slice(0, ui.frame.count).find((n) => n.kind === K_SLIDER)!;
@@ -330,7 +331,7 @@ test("the dashboard sits under the minimap or in its place, clear of the readout
 });
 
 test("control contexts and symbol preference change the guide and persist only the preference",()=>{
-  const ui=new Ui(),hud=new HudModel();ui.menu=ui.help=true;
+  const ui=new Ui(),hud=new HudModel();ui.screen<MenuScreen>("menu").menu=ui.screen<MenuScreen>("menu").help=true;
   ui.build(16/9,hud,null);ui.pointer(0,KEY_CONTROL_GROUP+3,0,0,0,null);ui.build(16/9,hud,null);
   const e=ui.frame.nodes.slice(0,ui.frame.count).find(n=>n.interactive && n.label==="E: Rotate")!;
   expect(e).toBeDefined();ui.pointer(0,e.key,0,0,0,null);ui.build(16/9,hud,null);
@@ -344,11 +345,11 @@ test("control contexts and symbol preference change the guide and persist only t
 });
 
 test("horizontal value adjustment follows direction, and never invokes the asset download action",()=>{
-  const ui=new Ui(),hud=new HudModel();ui.menu=ui.options=true;ui.build(16/9,hud,null);
-  ui.menuFocus=2310+11*4+2; // Graphics' previous button remains focused for both directions.
+  const ui=new Ui(),hud=new HudModel();ui.screen<MenuScreen>("menu").menu=ui.screen<MenuScreen>("menu").options=true;ui.build(16/9,hud,null);
+  ui.menuFocus=KEY_SETTINGS_ROW+11*4+2; // Graphics' previous button remains focused for both directions.
   ui.settings.tier="medium";expect(ui.adjustFocused(-1)).toBe(true);expect(String(ui.settings.tier)).toBe("lowpoly");
   expect(ui.adjustFocused(1)).toBe(true);expect(ui.settings.tier).toBe("medium");
-  ui.settings.tab=4;ui.build(16/9,hud,null);ui.menuFocus=2310+10*4+3;
+  ui.settings.tab=4;ui.build(16/9,hud,null);ui.menuFocus=KEY_SETTINGS_ROW+10*4+3;
   expect(ui.adjustFocused(1)).toBe(false);expect(ui.settings.keepAll).toBe(false);
 });
 

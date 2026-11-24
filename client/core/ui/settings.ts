@@ -8,7 +8,7 @@ import type { StoragePage } from "./storage.ts";
 
 export const KEY_SETTINGS_PANEL = 2300;
 export const KEY_SETTINGS_TITLE = 2301;
-export const KEY_SETTINGS_ROW = 2310;
+export const KEY_SETTINGS_ROW = 6200;
 /** The microphone's meter and the Input tab's note: clear of the rows' keys (KEY_SETTINGS_ROW, four a row). */
 export const KEY_SETTINGS_MIC = 5950;
 export const KEY_SETTINGS_TAB = 2270;

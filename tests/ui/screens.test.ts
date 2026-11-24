@@ -12,6 +12,7 @@ import { flatWorld } from "../fixtures/world.ts";
 import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
+import { baseKey } from "../../client/core/ui/nodes.ts";
 import { Chart } from "../../client/core/tactical.ts";
 import { KEY_MAP_IMAGE, type MapScreen } from "../../client/core/ui/screens.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
@@ -19,8 +20,10 @@ import { corePack } from "../fixtures/pack.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { emptyAirSupport } from "../../shared/sim/air-support.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
+import { UNIT_CLOCK } from "../../shared/sim/clock.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const hf = buildProvingHeightfield();
@@ -38,9 +41,9 @@ function fakeSession(): { session: ClientSession; sent: number[] } {
   return { session, sent };
 }
 
-/** Whether `key` is in one of the screen's bands, or is a piece of a glass panel or a slider keyed in one (skin.ts, slider.ts). */
+/** Whether `key` is in one of the screen's bands, or is a part made from a key in one. */
 function inBands(s: Screen, key: number): boolean {
-  const base = key >= 4000000 ? Math.floor((key - 4000000) / 4) : key >= 2000000 ? Math.floor((key - 2000000) / 16) : key;
+  const base = baseKey(key);
   return s.bands.some((b) => base >= b.from && base < b.from + b.count);
 }
 
@@ -101,6 +104,11 @@ const opens: Record<string, (ui: Ui, session: ClientSession) => { s: Screen; shu
     const s = ui.screen<InventoryScreen>("inventory");
     s.open = true;
     return { s, shut: () => s.shut(session) };
+  },
+  menu: (ui) => {
+    const s = ui.screen<MenuScreen>("menu");
+    ui.escaped();
+    return { s, shut: () => s.close() };
   },
   choosing: (ui, session) => {
     Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 0, respawnPoints: [{ kind: 0, name: "Beach", x: 10, z: 10, readyAt: 0 }, { kind: 1, name: "Bed", x: 40, z: 30, readyAt: 0 }] });
@@ -166,7 +174,7 @@ test("a screen's hotkey opens it and shuts the rest of its group, and Escape shu
   openTravel(ui);
   drawn(ui, travel, session);
   ui.key("Escape", true, false, session);
-  expect([travel.open, ui.menu]).toEqual([false, false]);
+  expect([travel.open, ui.screen<MenuScreen>("menu").menu]).toEqual([false, false]);
   expect(heard).toEqual(["screen/character/open", "screen/map/open", "screen/character/open", "screen/character/close", "screen/travel/close"]);
 });
 
@@ -241,4 +249,25 @@ test("the radio's play button works while it is closed, J opens it, and Tab keep
     expect(own.has(ui.navigate(0))).toBe(true);
   }
   expect(ui.console.open).toBe(false);
+});
+
+test("every page of the menu draws inside the menu's bands", () => {
+  const { session } = fakeSession();
+  Object.assign(session, { creative: true, admin: true, clock: UNIT_CLOCK, dayOffset: 0 });
+  const pages: [string, (m: MenuScreen) => void][] = [
+    ["menu", () => {}],
+    ...[0, 1, 2, 3, 4].map((tab): [string, (m: MenuScreen) => void] => [`settings ${tab}`, (m) => (m.options = true)]),
+    ...[0, 1, 2].map((device): [string, (m: MenuScreen) => void] => [`controls ${device}`, (m) => ((m.help = true), (m.helpDevice = device))]),
+    ["creative", (m) => (m.creative = true)],
+  ];
+  for (const [name, open] of pages) {
+    const ui = new Ui();
+    const menu = ui.screen<MenuScreen>("menu");
+    ui.escaped();
+    open(menu);
+    if (name.startsWith("settings")) ui.settings.tab = Number(name.slice(9));
+    const nodes = drawn(ui, menu, session);
+    expect(nodes.length, name).toBeGreaterThan(0);
+    for (const n of nodes) expect(inBands(menu, n.key), `${name} drew key ${n.key}`).toBe(true);
+  }
 });

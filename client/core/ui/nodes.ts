@@ -203,6 +203,19 @@ export function lineHeight(style: number): number {
   return Math.ceil(STYLES[style]!.font * LINE_HEIGHT);
 }
 
+/**
+ * The key a node made from another's stands for: a slider's parts (slider.ts), a vital's (vitals.ts), a glass panel's
+ * slices (skin.ts), and the lights and lines a control adds 60,000 to 99,999 above its own key (menu.ts, settings.ts).
+ */
+export function baseKey(key: number): number {
+  if (key >= 4000000) return Math.floor((key - 4000000) / 4);
+  if (key >= 3000000 && key < 3100000) return Math.floor((key - 3000000) / 4);
+  if (key >= 3000000) return key;
+  if (key >= 2000000) return Math.floor((key - 2000000) / 16);
+  if (key >= 60000 && key < 100000) return key % 10000;
+  return key;
+}
+
 /** Advance with kerning disabled, matching the bundled face in the shell. */
 export function glyphAdvance(code: number, style: number): number {
   const s = STYLES[style]!;

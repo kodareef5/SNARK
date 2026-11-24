@@ -9,19 +9,16 @@ import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.t
 import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand, hotbarCell, hotbarLeft, hotbarTop } from "./hud.ts";
 import type { TouchPlay } from "../touch.ts";
-import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
-import { CONTROL_GROUPS } from "./controls-guide.ts";
-import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE, menuLink, unmuteButton } from "./menu.ts";
-import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
+import { KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_UNMUTE, unmuteButton } from "./menu.ts";
 import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { Settings } from "../settings.ts";
-import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
-import type { StoragePage } from "./storage.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
 import { SCREENS } from "./screens-list.ts";
-import type { SiteLink } from "../travel.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL } from "../../../shared/net/protocol.ts";
+
+/** The keys that turn a focused control: left and right a step, Home and End to its ends. */
+const ARROWS = ["ArrowLeft", "ArrowRight", "Home", "End"];
 
 /** The channel each key opens the chat box on. */
 const CHAT_KEYS: Record<string, number> = { Enter: TEXT_GLOBAL, NumpadEnter: TEXT_GLOBAL, Insert: TEXT_LOCAL, Slash: TEXT_GLOBAL };
@@ -35,18 +32,8 @@ export class Ui {
   readonly naming = new NamePrompt();
   /** The screens of SCREENS, made for this interface, in its order. */
   readonly screens: readonly Screen[] = SCREENS.map((make) => make());
-  /** The admin's tools, opened from the menu while the server shows creative mode. */
-  readonly creativeScreen = new CreativeScreen();
   /** The session is in the creator, which is then the whole interface. */
   creating = false;
-  /** Which screen is up. `options` is the settings screen. */
-  options = false;
-  menu = false;
-  /** The Creative screen, within the menu. */
-  creative = false;
-  help = false;
-  helpDevice = 0;
-  helpGroup = 0;
   /** What the player last used: 0 the keyboard and mouse, 1 a pad, 2 a finger. The HUD's controls and words follow it. */
   inputDevice = 0;
   /** The canvas's height in units, which a short window lowers (nodes.ts canvasHeight). The app sets it each frame. */
@@ -60,8 +47,6 @@ export class Ui {
   layer: typeof import("./touch.ts") | null = null;
   /** The debug bar (debug/debug.ts), which the app fetches once Settings.debug is first on; null until then. */
   debug: import("../debug/debug.ts").DebugBar | null = null;
-  /** The Storage tab's page (ui/storage.ts), which the app fetches after the first frame. */
-  storage: StoragePage | null = null;
   flyer = false;
   /** A piece is being built, or a vehicle set down: the touch cluster is then the builder's. The app sets both. */
   building = false;
@@ -72,17 +57,21 @@ export class Ui {
   touchShown = 0;
   get touch(): boolean { return this.inputDevice === 2; }
   inspect = false;
-  reconnectRequested = false;
-  leftWorld = false;
-  /** The links the menu shows, as the page's server names them (links.json), and what opens one beside the game. */
-  links: readonly SiteLink[] = [];
-  openLink: ((url: string) => void) | null = null;
   menuFocus = KEY_MENU_RESUME;
   private focusNext = 0;
   private menuShift = false;
   readonly settings = new Settings();
   /** What the screens read, set before each call to them. */
-  private readonly ctx: ScreenCtx = { session: null, registry: null, palette: null, hud: null, settings: this.settings, focus: 0, inputDevice: 0, finger: 0, hear: (cue) => this.hear?.(cue) };
+  private readonly ctx: ScreenCtx = {
+    session: null, registry: null, palette: null, hud: null, settings: this.settings, focus: 0, inputDevice: 0, finger: 0,
+    frame: this.frame, covered: false, focusPending: false,
+    hear: (cue) => this.hear?.(cue),
+    focusTo: (key) => this.focusTo(key),
+    moveFocus: (by) => this.moveFocus(by),
+    hover: (key) => (this.menuFocus = key),
+    press: (key, x, y) => this.pointer(0, key, x, y, 0, this.ctx.session),
+    adjust: (by, end) => this.adjustFocused(by, end),
+  };
   /** The session has no body and chooses where to rise, so the mouse is free. */
   private dead = false;
   /** The app sets both once it has them. */
@@ -104,7 +93,7 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    if (this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open) return true;
+    if (this.inspect || this.console.open || this.chat.open || this.naming.open) return true;
     for (const s of this.screens) if (s.isOpen() && (s.holdsKeys || s.keyboard?.())) return true;
     return false;
   }
@@ -119,7 +108,7 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
-    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.options && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
+    return !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Whether a screen of `group` is open. */
@@ -128,9 +117,9 @@ export class Ui {
     return false;
   }
 
-  /** The name of the open screen of `group`, or "". */
+  /** The name the sounds call the open screen of `group` by, or "". */
   private openNameIn(group: string): string {
-    for (const s of this.screens) if (s.group === group && s.isOpen()) return s.name;
+    for (const s of this.screens) if (s.group === group && s.isOpen()) return s.sound ?? s.name;
     return "";
   }
 
@@ -142,7 +131,7 @@ export class Ui {
 
   /** A slider's new value, for the open screens of the list. */
   private slid(key: number, value: number): boolean {
-    for (const s of this.screens) if (s.isOpen() && s.value?.(key, value)) return true;
+    for (const s of this.screens) if (s.isOpen() && s.value?.(key, value, this.ctx)) return true;
     return false;
   }
 
@@ -165,12 +154,30 @@ export class Ui {
     if (hud) c.hud = hud;
     c.focus = this.menuFocus;
     c.inputDevice = this.inputDevice;
+    c.covered = this.console.open || this.chat.open;
+    c.focusPending = this.focusNext !== 0;
     return c;
+  }
+
+  /** The open screen of the list that takes every key and press first, if any. */
+  private takingAll(): Screen | null {
+    for (const s of this.screens) if (s.isOpen() && s.takesAll?.()) return s;
+    return null;
+  }
+
+  /** In the creator, or under a screen that hides it, the HUD is not drawn. */
+  private hudHidden(): boolean {
+    if (this.creating) return true;
+    for (const s of this.screens) if (s.isOpen() && s.hidesHud?.()) return true;
+    return false;
   }
 
   /** Escape where no screen takes it: the debug bar's open drawer takes the pointer back first, else the menu opens. */
   escaped(): void {
-    if (!this.debug?.escaped()) this.openMenu();
+    if (this.debug?.escaped()) return;
+    this.inspect = false;
+    this.menuShift = false;
+    for (const s of this.screens) if (s.escape) return s.escape(this.at(this.ctx.session));
   }
 
   /** The drawer is to open as soon as the debug bar comes: F3 turned the bar on. */
@@ -197,14 +204,6 @@ export class Ui {
     return this.debug?.wheel(dy) ?? false;
   }
 
-  openMenu(): void {
-    this.menu = true;
-    this.menuShift = false;
-    this.inspect = false;
-    this.help = this.options = this.creative = false;
-    this.focusTo(KEY_MENU_RESUME);
-  }
-
   private focusTo(key: number): void { this.menuFocus = this.focusNext = key; }
 
   private moveFocus(by: number): void {
@@ -223,33 +222,22 @@ export class Ui {
   }
 
   adjustFocused(by: number, end = false): boolean {
-    if(this.console.open || this.chat.open || (!this.menu && !this.creating))return false;
-    if(this.menu && this.creative)return !end && this.creativeScreen.adjust(this.menuFocus,by,this.menuShift);
-    const n=this.frame.find(this.menuFocus);
-    if(n?.kind===K_SLIDER) { this.input(n.key,String(end?(by>0?1:0):n.value+by*n.step)); return true; }
-    return !end && this.options && settingsAdjust(this.menuFocus,by,this.settings);
+    const top = this.takingAll();
+    if (this.console.open || this.chat.open || (!top && !this.creating)) return false;
+    const own = top?.adjust?.(this.menuFocus, by, end, this.at(this.ctx.session));
+    if (own !== undefined) return own;
+    const n = this.frame.find(this.menuFocus);
+    if (n?.kind !== K_SLIDER) return false;
+    this.input(n.key, String(end ? (by > 0 ? 1 : 0) : n.value + by * n.step));
+    return true;
   }
 
   /** Returns true if the interface used the key. The shell must then suppress the browser's own handling. */
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
-    // The password's field has the keys a field types with; the menu keeps those that move between its controls.
-    const typing = this.menu && this.creative && this.menuFocus === KEY_CREATIVE_PASSWORD;
-    if (typing && !["Escape", "Tab", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ShiftLeft", "ShiftRight"].includes(code)) return false;
-    if(down && ["ArrowLeft","ArrowRight","Home","End"].includes(code) && this.adjustFocused(code==="ArrowLeft"||code==="Home"?-1:1,code==="Home"||code==="End"))return true;
-    if (this.menu) {
-      if (code === "ShiftLeft" || code === "ShiftRight") this.menuShift = down;
-      if (code === "Escape" && down && !repeat) {
-        if (this.options || this.help) { this.options = this.help = false; this.focusTo(KEY_MENU_RESUME); }
-        else if (this.creative) { this.creative = false; this.focusTo(KEY_MENU_CREATIVE); }
-        else this.menu = false;
-      }
-      if (typing && down && !repeat && (code === "Enter" || code === "NumpadEnter")) { if (session) this.creativeScreen.submit(session); return true; }
-      if (down && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) this.moveFocus(code === "ArrowUp" || (code === "Tab" && this.menuShift) ? -1 : 1);
-      // A key presses the middle of what has the focus, as the pad does, so a dial is not turned to where the key never was.
-      const n = this.frame.find(this.menuFocus);
-      if (down && !repeat && (code === "Enter" || code === "Space" || code === "NumpadEnter")) this.pointer(0, this.menuFocus, n ? n.x + n.w / 2 : 0, n ? n.y + n.h / 2 : 0, 0, session);
-      return true;
-    }
+    // A screen that takes every key has them first, and adjusts its focused control through the ctx.
+    const top = this.takingAll();
+    if (top) return top.key?.(code, down, repeat, this.at(session)) ?? false;
+    if (down && ARROWS.includes(code) && this.adjustFocused(code === "ArrowLeft" || code === "Home" ? -1 : 1, code === "Home" || code === "End")) return true;
     const con = this.console;
     const chat = this.chat;
     if(this.creating && !con.open) {
@@ -306,17 +294,14 @@ export class Ui {
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
       const hot = this.hotkeyed("bag", code);
-      if (code === "KeyO" || hot || (code === "Escape" && (this.options || this.openIn("bag")))) {
+      if (hot || (code === "Escape" && this.openIn("bag"))) {
         if (down && !repeat) {
           // Opening one screen closes the others.
           const listed = hot && !hot.isOpen() ? hot : null;
-          const options = code === "KeyO" && !this.options;
-          const opened = listed ? listed.name : options ? "options" : "";
-          const shut = this.openNameIn("bag") || (this.options ? "options" : "");
+          const opened = listed ? listed.sound ?? listed.name : "";
+          const shut = this.openNameIn("bag");
           this.hear?.(opened !== "" ? `screen/${opened}/open` : `screen/${shut || "inventory"}/close`);
-          this.options = options;
           this.inspect = false;
-          if (options) { this.menu = true; this.focusTo(KEY_MENU_BACK); }
           this.closeModals(this.at(session));
           listed?.show?.(this.at(session));
         }
@@ -364,32 +349,9 @@ export class Ui {
     if (this.debug?.pointer(kind, key, x, y, button)) return;
     if (key === KEY_UNMUTE) { if (kind === 0 && button === 0) { this.settings.muted = false; this.settings.changed(); } return; }
     if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
-    if (this.menu) {
-      if (kind === 2 && this.frame.find(key)?.interactive) this.menuFocus = key;
-      if (this.creative && session && (kind !== 0 || button === 0) && this.creativeScreen.pointer(kind, key, x, y, session)) {
-        if (kind === 0 && this.frame.find(key)?.interactive) this.focusTo(key);
-        return;
-      }
-      if (kind === 0 && button === 0) {
-        if(this.frame.find(key)?.interactive)this.focusTo(key);
-        if (key === KEY_MENU_RESUME) { if (session?.state === "closed") this.reconnectRequested = true; else this.menu = false; }
-        else if (key === KEY_MENU_CREATIVE && session?.creative) { this.creative = true; this.focusTo(this.creativeScreen.first(session)); }
-        else if (key === KEY_MENU_SETTINGS) { this.options = true; this.focusTo(KEY_MENU_BACK); }
-        else if (key === KEY_MENU_CONTROLS) { this.help = true; this.helpDevice = this.inputDevice; this.focusTo(KEY_MENU_BACK); }
-        else if (key === KEY_MENU_BACK) { this.focusTo(this.creative ? KEY_MENU_CREATIVE : KEY_MENU_RESUME); this.options = this.help = this.creative = false; }
-        else if (key === KEY_MENU_LEAVE) { session?.close(); this.leftWorld=true; this.focusTo(KEY_MENU_RESUME); }
-        else if (!this.options && !this.help && !this.creative) { const url = menuLink(key, this.links); if (url !== null) this.openLink?.(url); }
-        else if (this.help && key >= KEY_CONTROLS_DEVICE && key <= KEY_CONTROLS_DEVICE + 2) this.helpDevice = key - KEY_CONTROLS_DEVICE;
-        else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;
-        else if (this.help && key === KEY_CONTROL_GLYPHS) { this.settings.padGlyphs=1-this.settings.padGlyphs; this.settings.changed(); }
-        else if (this.options && !settingsClick(key, this.settings)) this.storage?.click(key, this.settings);
-      }
-      return;
-    }
-    if (kind === 0 && key === KEY_MENU_OPEN) {
-      this.openMenu();
-      return;
-    }
+    const top = this.takingAll();
+    if (top) return void top.pointer?.(kind, key, x, y, button, this.at(session));
+    if (kind === 0 && key === KEY_MENU_OPEN) return this.escaped();
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_TAG) {
       this.chat.cycle(session);
@@ -414,7 +376,6 @@ export class Ui {
       c.finger = 0;
       return;
     }
-    if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     for (const s of this.screens) if (s.catchAll && s.isOpen()) s.pointer?.(kind, key, x, y, button, this.at(session));
   }
 
@@ -423,11 +384,10 @@ export class Ui {
     if(n?.kind===K_SLIDER) {
       if(value.trim()==="" || !Number.isFinite(Number(value)))return;
       const v=Math.max(0,Math.min(1,Math.round(Number(value)/n.step)*n.step));
-      if(this.options?settingsValue(key,v,this.settings):this.slid(key,v))n.value=v;
+      if (this.slid(key, v)) n.value = v;
       return;
     }
-    if (key === KEY_CREATIVE_PASSWORD) this.creativeScreen.edit(value);
-    else if (key === KEY_NAME_INPUT) this.naming.edit(value);
+    if (key === KEY_NAME_INPUT) this.naming.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
     else for (const s of this.screens) if (s.text?.(key, value)) return;
@@ -448,7 +408,7 @@ export class Ui {
     // A survivor still in the creator has no vitals, no position and nothing to aim at.
     if (session) this.chat.absorb(session);
     if (session && (this.creating || this.dead)) this.chat.wait(session.serverTick);
-    if (!this.creating && !this.menu) {
+    if (!this.hudHidden()) {
       const controls = (this.wantsPointerLock || this.inspect) && !session?.open;
       // A finger's zones lie under the whole HUD while the body is being played.
       const play = plan !== null && this.touchPlay !== null && session !== null && controls && this.wantsPointerLock;
@@ -479,33 +439,17 @@ export class Ui {
       if (controls && session) this.buildPlay(f, session, hud);
     } else if (this.creating) this.chat.close();
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
-    // The Creative entry follows the server's rule, and so does the screen if it was open.
-    if (this.creative && !session?.creative) { this.creative = false; this.focusTo(KEY_MENU_RESUME); }
-    const creative = this.menu && this.creative && !this.console.open && !this.chat.open;
-    if (session) this.creativeScreen.pump(session, creative);
-    if (!this.console.open && !this.chat.open) {
-      if (this.menu) {
-        if (this.options) {
-          buildSettings(f, this.settings, hud.micLevel, this.menuFocus, this.storage);
-        } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus, this.helpGroup, this.settings.padGlyphs);
-        else if (creative && session) {
-          this.creativeScreen.build(f, session, hud, this.menuFocus);
-          // The password's field gives way to the tools once the server has given the role.
-          if (!f.find(this.menuFocus)?.interactive && !this.focusNext) this.focusTo(this.creativeScreen.first(session));
-        } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);
-      } else if (this.options) buildSettings(f, this.settings, hud.micLevel);
-      else this.buildModal(f, session, hud);
-    }
+    if (!this.console.open && !this.chat.open) this.buildModal(f, session, hud);
     // The name prompt goes over every other screen, but under the console.
     if (session && this.registry && !this.creating) {
       this.naming.absorb(session);
-      if (!this.console.open && !this.menu) this.naming.build(f, session, this.registry);
+      if (!this.console.open && !this.takingAll()) this.naming.build(f, session, this.registry);
     }
     // A screen, the chat box or a prompt that a keyboard would leave by Escape has a button for it by touch.
-    if (plan && this.touchPlay && !this.wantsPointerLock && !this.menu && !this.creating && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
+    if (plan && this.touchPlay && !this.wantsPointerLock && !this.hudHidden() && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
     // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
     // Not while a finger types in the chat box, which has its place.
-    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.creating || this.menu ? 0 : hud.compassBottom, this.creating || this.menu ? null : hud);
+    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.hudHidden() ? 0 : hud.compassBottom, this.hudHidden() ? null : hud);
     if (this.settings.debug) this.debug?.build(f);
     if (session) this.console.absorb(session);
     this.console.build(f);
