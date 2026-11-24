@@ -11,6 +11,7 @@ import { GEAR_COUNT, GEAR_HELD } from "../../../shared/sim/entities.ts";
 import { V_FOOD, V_HEALTH, V_WATER, type Vitals } from "../../../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_EQUIP, ACT_RELOAD, ACT_SWING, FISTS, HOLD_NAMES, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW } from "../../../shared/sim/weapon.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
+import { WRECK } from "../../../shared/world/breaking.ts";
 import type { CombatEvent, LocalShot, RemoteSample } from "../session.ts";
 import type { Hear } from "./bodies.ts";
 
@@ -46,6 +47,7 @@ const K = {
   kill: cueKey("kill"),
   flesh: cueKey("impact/flesh"),
   stone: cueKey("impact/stone"),
+  metal: cueKey("impact/metal"),
   heart: cueKey("heartbeat"),
   hungry: cueKey("hungry"),
   levelUp: cueKey("level_up"),
@@ -59,7 +61,7 @@ const K = {
 const VOICE = (n: string): number[] => [cueKey(`voice/male/${n}`), cueKey(`voice/female/${n}`)];
 /** By hold, what the item in hand makes; and what a blow or a shot of it lands as. */
 const IN_HAND = HOLD_NAMES.map((_, h) => [SWING[h]!, DRAW[h]!, RELEASE[h]!, FIRE[h]!, RELOAD[h]!, K.equip, K.pump, K.shell]);
-const LANDS = [K.flesh, K.stone];
+const LANDS = [K.flesh, K.stone, K.metal];
 const MARKS = [K.marker, K.head, K.kill];
 const HURT = VOICE("hurt");
 const HURT_BADLY = VOICE("hurt/badly");
@@ -191,7 +193,9 @@ export class ActionSounds {
         this.fightAtMs = this.nowMs;
         // A blow that kills is followed by EVENT_KILL, which is where the kill is heard.
         hear(ui, e.zone === ZONE_HEAD ? K.head : K.marker, -1, 0, 0, 0, 0, 1, true);
-        hear(survivor, e.zone === ZONE_NONE ? K.stone : K.flesh, -1, e.x, e.y, e.z, 0, Math.min(1, 0.4 + e.damage / 60), false);
+        // Anything built is heard as stone but a wreck, which is metal: no row tells its blows, so this is all that is heard of one.
+        const built = this.reg.breakFamily[e.struck ?? 0] === WRECK ? K.metal : K.stone;
+        hear(survivor, e.zone === ZONE_NONE ? built : K.flesh, -1, e.x, e.y, e.z, 0, Math.min(1, 0.4 + e.damage / 60), false);
       } else if (e.kind === EVENT_HURT && own.vitals) {
         this.hurtAtMs = this.nowMs;
         const max = own.vitals.max[V_HEALTH]! || 1;

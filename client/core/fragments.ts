@@ -8,7 +8,7 @@ import { FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_HUNG, FORM_OPEN, FORM_WHO
 import type { ShapeBox } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
-import { formOf, variantAt } from "../../shared/world/breaking.ts";
+import { WRECK, formOf, variantAt } from "../../shared/world/breaking.ts";
 import { hullPoint } from "../../shared/world/convex.ts";
 import { GONE_BLAST, GONE_FELL } from "../../shared/world/structures.ts";
 
@@ -125,11 +125,12 @@ export class BreakSets {
   /**
    * What a city piece throws as its slot is emptied or takes its heap: `kind` is what it was as it went, `map` what the
    * map placed, at (x, y, z). A piece whole or breached throws what its open form sheds and what stood of that; one
-   * already opened, what stood of it. Null for a piece with no forms, which falls whole.
+   * already opened, what stood of it. Null for a piece with no forms, which falls whole, and for a wreck, whose lesser
+   * looks are meshes of its own and no cuts of it.
    */
   rubble(kind: number, map: number, x: number, y: number, z: number): BreakSet | null {
     const reg = this.reg;
-    if (map === 0 || reg.breakSet[map] === 0 || reg.breakSet[kind] !== reg.breakSet[map]) return null;
+    if (map === 0 || reg.breakSet[map] === 0 || reg.breakSet[kind] !== reg.breakSet[map] || reg.breakFamily[map] === WRECK) return null;
     const form = formOf(reg, kind);
     if (form !== FORM_WHOLE && form !== FORM_BREACH_A && form !== FORM_BREACH_B) return this.of(kind, SET_STOOD);
     const variant = variantAt(x, y, z);
@@ -142,10 +143,10 @@ export class BreakSets {
     return heap !== 0 ? this.of(heap, SET_LEAVES) : null;
   }
 
-  /** What a city piece throws as its row turns from `was` into form `kind` in place, or null where nothing leaves. */
+  /** What a city piece throws as its row turns from `was` into form `kind` in place, or null where nothing leaves: a wreck's rung throws nothing. */
   swap(was: number, kind: number): BreakSet | null {
     const reg = this.reg;
-    if (reg.breakSet[was] === 0 || reg.breakSet[was] !== reg.breakSet[kind]) return null;
+    if (reg.breakSet[was] === 0 || reg.breakSet[was] !== reg.breakSet[kind] || reg.breakFamily[was] === WRECK) return null;
     const from = formOf(reg, was), to = formOf(reg, kind);
     if (to === FORM_WHOLE || to === from) return null;
     const breached = from === FORM_BREACH_A || from === FORM_BREACH_B;

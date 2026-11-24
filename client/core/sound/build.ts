@@ -5,11 +5,13 @@
 // before the player came is heard and one put out while they were away is not. Each piece is heard by its own sounds
 // where it has them, else by its material's (the `{tier}` of shared/sound/cues.ts). Pieces that break are heard a cell
 // of them at a time (`breaking`, fed by break-effects.ts), so a street falling is a few sounds and not a thousand.
+// A street's wreck is heard there too, as metal: a rung taken, and its last.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
+import { WRECK } from "../../../shared/world/breaking.ts";
 import { GONE_BLAST, GONE_DESTROYED, GONE_FELL, GONE_TAKEN } from "../../../shared/world/structures.ts";
-import { HEARD_CRACK, HEARD_GLASS, HEARD_IMPACT, type BreakSounds } from "../break-effects.ts";
+import { HEARD_BLOW, HEARD_CRACK, HEARD_GLASS, HEARD_IMPACT, type BreakSounds } from "../break-effects.ts";
 import type { Hear } from "./bodies.ts";
 
 const TIERS = ["thatch", "wood", "stone", "metal"];
@@ -93,21 +95,22 @@ export class BuildSounds implements BreakSounds {
 
   /**
    * Whether a row's change is heard through `breaking` and so not by its row: a piece destroyed, fallen or blown apart,
-   * and a city piece taking a form or losing health.
+   * a wreck cut up and taken, and a city piece taking a form or losing health.
    */
   merged(was: number, kind: number, cause: number): boolean {
-    if (kind === 0) return cause === GONE_DESTROYED || cause === GONE_FELL || cause === GONE_BLAST;
+    if (kind === 0) return cause === GONE_DESTROYED || cause === GONE_FELL || cause === GONE_BLAST || (cause === GONE_TAKEN && this.reg.breakFamily[was] === WRECK);
     return was !== 0 && this.reg.breakSet[was] !== 0 && (was === kind || this.reg.breakSet[kind] === this.reg.breakSet[was]);
   }
 
   /**
    * One sound for a cell of pieces breaking at a place: `what` a HEARD_, `kind` one of the pieces, whose own sounds or
-   * material's are heard, `level` 0 to 1. Every city material is heard as stone until the tiers know them.
+   * material's are heard, `level` 0 to 1. Every city material is heard as stone until the tiers know them; a wreck's is
+   * metal, which they know.
    */
   breaking(what: number, kind: number, x: number, y: number, z: number, level: number): void {
     this.queue.push(() => {
       const o = this.owner[kind] ?? -1, t = this.tier[kind] ?? 2;
-      this.hear!(o, what === HEARD_IMPACT ? DESTROY[t]! : what === HEARD_CRACK ? HIT[t]! : what === HEARD_GLASS ? K.glass : K.collapse, -1, x, y, z, 0.5, level, false);
+      this.hear!(o, what === HEARD_IMPACT ? DESTROY[t]! : what === HEARD_CRACK || what === HEARD_BLOW ? HIT[t]! : what === HEARD_GLASS ? K.glass : K.collapse, -1, x, y, z, 0.5, level, false);
     });
   }
 

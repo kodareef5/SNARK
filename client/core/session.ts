@@ -396,6 +396,8 @@ export interface CombatEvent {
   z: number;
   /** A ZONE_ of shared/anim/human.ts. */
   zone: number;
+  /** For the attacker's hit on something built, the kind it landed on, once looked for (BreakEffects.blows): 0 where none was found. */
+  struck?: number;
   damage: number;
   kill: boolean;
   /** Armor stopped some of it. */

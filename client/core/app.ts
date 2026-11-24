@@ -262,7 +262,7 @@ export class App {
     this.supply = new SupplyView(reg, pack);
     this.breaks = new BreakEffects(reg, pack.palette);
     // Whoever else follows structure rows adds itself the same way; each is told in the order it was added.
-    hearStructures(session, (was, kind, x, y, z, hpWas, hp) => this.breaks.row(this.reg, session.serverTick, was, kind, x, y, z, hpWas, hp));
+    hearStructures(session, (was, kind, x, y, z, hpWas, hp, cause) => this.breaks.row(this.reg, session.serverTick, was, kind, x, y, z, hpWas, hp, cause));
     const nodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
     session.onNode = (chunk, index, used, crushed, priorForm) => {
       const field = session.nodeField;
@@ -847,6 +847,8 @@ export class App {
   /** What the session brought this frame is handed to what draws it, and the scene is told the time. */
   private absorb(f: AppFrame): void {
     const session = this.session, hud = this.hud, cam = this.cam, world = f.world, scene = f.scene, sceneMs = f.sceneMs;
+    // A blow on a wreck is told by no row within a rung: what each hit landed on is found here, for its sparks and its sound.
+    this.breaks.blows(session.events, world, session.own.x, session.own.y + f.eyeNow, session.own.z, session.serverTick);
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
     this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
     this.tamedHeard = session.tamed.length;

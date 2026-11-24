@@ -3,16 +3,22 @@
 // tick before anything is asked for, so a street that falls asks for a few bursts and sounds, not one a piece. A cell
 // gives the details dust and, above low poly, chips, glass and sparks (details/breaks.ts); the sounds one impact, crack
 // or pane (sound/build.ts `breaking`); and a view near it a shake (sight.ts). Nothing here is read by the simulation.
+// A street's wreck is salvaged, not broken: a blow on it is sparks, and a rung and its last are a little dust, sparks
+// and metal's sounds.
 
+import { ZONE_NONE } from "../../shared/anim/human.ts";
 import { FORM_WHOLE } from "../../shared/content/breaks.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { paned, stageOf } from "../../shared/world/breaking.ts";
-import { GONE_BLAST, GONE_FELL } from "../../shared/world/structures.ts";
+import { EVENT_HIT } from "../../shared/net/protocol.ts";
+import { WRECK, formOf, paned, stageOf } from "../../shared/world/breaking.ts";
+import type { CollisionWorld } from "../../shared/world/collide.ts";
+import { HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
+import { GONE_BLAST, GONE_FELL, GONE_TAKEN } from "../../shared/world/structures.ts";
 import type { Tier } from "./assets/tiers.ts";
 import { BREAK_CHIPS, BREAK_DUST, BREAK_GLASS, BREAK_SHARE, BREAK_SPARKS } from "./details/breaks.ts";
 import type { Details } from "./details/details.ts";
-import type { ClientSession, Rubble } from "./session.ts";
+import type { ClientSession, CombatEvent, Rubble } from "./session.ts";
 
 /** Metres a side of the cells breaks are merged in. */
 export const CELL = 8;
@@ -29,10 +35,14 @@ const SAME_BREAK_TICKS = 15;
 /** Dust is the pieces' colour taken this far toward pale dust; a piece of no known finish is this masonry grey. sRGB. */
 const DUSTED = 0.45;
 const PALE = [200, 194, 184] as const, MASONRY = [150, 146, 138] as const;
+/** What a wreck's dust is taken from, whatever its paint: the road's dirt and its own rust. sRGB. */
+const ROAD = [124, 108, 92] as const;
 /** What a material does besides dust and chips. */
 const SPARKS = 1, GLASS = 2;
-/** What `BreakSounds.breaking` is asked to sound: pieces gone or broken open, a stage crossed, panes gone, a collapse's rumble. */
-export const HEARD_IMPACT = 0, HEARD_CRACK = 1, HEARD_GLASS = 2, HEARD_RUMBLE = 3;
+/** What `BreakSounds.breaking` is asked to sound: pieces gone or broken open, a stage crossed, panes gone, a collapse's rumble, a blow that took a wreck's rung. */
+export const HEARD_IMPACT = 0, HEARD_CRACK = 1, HEARD_GLASS = 2, HEARD_RUMBLE = 3, HEARD_BLOW = 4;
+/** Metres past where a blow landed that the look for what it struck goes on. */
+const STRUCK_PAST = 0.25;
 /** One rumble is asked for a collapse: none again for these ticks within these metres of the last. */
 const RUMBLE_TICKS = 6 * TICK_RATE, RUMBLE_REACH = 60;
 /** A blast, or this many pieces going in a cell, shakes a view within these metres. */
@@ -47,6 +57,16 @@ export function hearStructures(session: { onStructure: StructureListener | null 
     before(was, kind, x, y, z, hpWas, hp, cause);
     listener(was, kind, x, y, z, hpWas, hp, cause);
   };
+}
+
+/**
+ * The kind of the structure a blow that landed at (x, y, z) struck, as seen from the attacker's eye (ex, ey, ez): the
+ * first the line to it meets. 0 where it meets none, as when the blow's own row has already emptied its slot.
+ */
+export function struckKind(world: CollisionWorld, ex: number, ey: number, ez: number, x: number, y: number, z: number): number {
+  const dx = x - ex, dy = y - ey, dz = z - ez, far = Math.hypot(dx, dy, dz);
+  if (!(far > 1e-6) || castWorld(world, ex, ey, ez, dx / far, dy / far, dz / far, far + STRUCK_PAST) !== HIT_STRUCTURE) return 0;
+  return world.structs.chunks[Math.floor(rayHit.ref / 65536)]?.kind[rayHit.ref & 0xffff] ?? 0;
 }
 
 /** Where a cell's bursts go (Details), its sounds (sound/build.ts BuildSounds) and its shake (Sight). */
@@ -88,10 +108,16 @@ class Cell {
   fell = false;
   /** One of its pieces, whose sounds are heard. */
   kind = 0;
-  /** In a flush: its distance from the eye squared, the particles it wants, and those it is given. */
+  /** Of wrecks: rungs taken, wrecks cut up and blows landed; and one of them, whose sounds are heard. */
+  rungs = 0;
+  cuts = 0;
+  blows = 0;
+  wreck = 0;
+  /** In a flush: its distance from the eye squared, the particles it wants, those it is given, and the sparks of its blows. */
   far = 0;
   want = 0;
   give = 0;
+  hits = 0;
   kept = false;
 }
 
@@ -108,7 +134,10 @@ export class BreakEffects {
   private readonly finish: Int32Array;
   private readonly does: Uint8Array;
   private readonly volume: Float32Array;
-  private readonly halfY: Float32Array;
+  /** By kind: how far its foot and its middle are from its place. A wreck stands on its place; any other is about it. */
+  private readonly low: Float32Array;
+  private readonly mid: Float32Array;
+  private readonly wreck: Uint8Array;
   private rumbleAt = -Infinity;
   private rumbleX = 0;
   private rumbleZ = 0;
@@ -118,9 +147,20 @@ export class BreakEffects {
     this.finish = new Int32Array(n).fill(-1);
     this.does = new Uint8Array(n);
     this.volume = new Float32Array(n);
-    this.halfY = reg.halfY;
+    this.low = Float32Array.from(reg.halfY, (h) => -h);
+    this.mid = new Float32Array(n);
+    this.wreck = Uint8Array.from(reg.breakFamily, (f) => (f === WRECK ? 1 : 0));
+    const { start, box } = reg.parts;
     reg.defs.forEach((d, kind) => {
       if (d?.type !== "structure") return;
+      if (this.wreck[kind] === 1) {
+        let low = Infinity, top = -Infinity;
+        for (let p = start[kind]! * 6, end = start[kind + 1]! * 6; p < end; p += 6) {
+          low = Math.min(low, box[p + 1]! - box[p + 4]!);
+          top = Math.max(top, box[p + 1]! + box[p + 4]!);
+        }
+        if (low <= top) [this.low[kind], this.mid[kind]] = [low, (low + top) / 2];
+      }
       this.volume[kind] = 8 * reg.halfX[kind]! * reg.halfY[kind]! * reg.halfZ[kind]!;
       const c = d.color * 4;
       if (c >= 0 && c + 2 < palette.length) this.finish[kind] = palette[c]! | (palette[c + 1]! << 8) | (palette[c + 2]! << 16);
@@ -149,6 +189,7 @@ export class BreakEffects {
       }
       c = this.cells[this.used++]!;
       c.x = c.y = c.z = c.n = c.pieces = c.swaps = c.steps = c.panes = c.volume = c.r = c.g = c.b = c.dyed = c.metal = c.glass = c.kind = 0;
+      c.rungs = c.cuts = c.blows = c.wreck = 0;
       c.floor = Infinity;
       c.blast = c.fell = false;
       c.coords = coords;
@@ -163,10 +204,10 @@ export class BreakEffects {
   /** Adds a piece of `kind` at a place to `c`, `share` of it leaving, in the finish and material of `map` (0 where the map's kind is not known). */
   private add(c: Cell, map: number, kind: number, x: number, y: number, z: number, share: number): void {
     c.x += x;
-    c.y += y;
+    c.y += y + (this.mid[kind] ?? 0);
     c.z += z;
     c.n++;
-    const foot = y - (this.halfY[kind] ?? 0);
+    const foot = y + (this.low[kind] ?? 0);
     if (foot < c.floor) c.floor = foot;
     c.volume += share * ((this.volume[kind] ?? 0) || (this.volume[map] ?? 0));
     const rgb = this.finish[map] ?? -1;
@@ -183,7 +224,11 @@ export class BreakEffects {
    * A structure row changed in place (ClientSession.onStructure) at about server tick `tick`: a city piece that took a
    * form, crossed a stage or lost its panes. A form's map kind is not told, so its stages are passed over and it is grey.
    */
-  row(reg: Registry, tick: number, was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number): void {
+  row(reg: Registry, tick: number, was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause = -1): void {
+    if (this.wreck[was] === 1) {
+      this.salvaged(reg, tick, was, kind, x, y, z, cause);
+      return;
+    }
     if (was === 0 || kind === 0 || reg.breakSet[was] === 0) return;
     const whole = reg.breakForm[was] === FORM_WHOLE;
     const swapped = was !== kind;
@@ -197,6 +242,63 @@ export class BreakEffects {
     if (swapped) c.swaps++;
     if (stepped) c.steps++;
     if (panes) c.panes++;
+  }
+
+  /**
+   * A wreck's row changed, with the removal's `cause` where its slot was emptied: a rung down to a lesser look, or its
+   * last, cut up and taken (GONE_TAKEN, which is told no other way). A wreck set back as the map has it is passed over,
+   * and one blown apart comes with its removal (`take`).
+   */
+  private salvaged(reg: Registry, tick: number, was: number, kind: number, x: number, y: number, z: number, cause: number): void {
+    const cut = kind === 0 && cause === GONE_TAKEN;
+    if (!cut && (kind === 0 || reg.breakSet[kind] !== reg.breakSet[was] || formOf(reg, kind) <= formOf(reg, was))) return;
+    const c = this.cell(x, y, z, tick, true);
+    if (!c) return;
+    this.strike(c, x, y + this.mid[was]!, z);
+    const foot = y + this.low[was]!;
+    if (foot < c.floor) c.floor = foot;
+    c.volume += (cut ? 1 : 0.5) * this.volume[was]!;
+    if (cut) c.cuts++;
+    else c.rungs++;
+    if (c.wreck === 0) c.wreck = was;
+  }
+
+  /**
+   * Says in each of the attacker's hits on something built among `events` what it landed on (`struck`), as seen from the
+   * eye (ex, ey, ez) in `world`, and takes in those that landed on a wreck. Before the sounds copy the events.
+   */
+  blows(events: readonly CombatEvent[], world: CollisionWorld, ex: number, ey: number, ez: number, tick: number): void {
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i]!;
+      if (e.kind !== EVENT_HIT || e.zone !== ZONE_NONE || e.struck !== undefined) continue;
+      e.struck = struckKind(world, ex, ey, ez, e.x, e.y, e.z);
+      this.blow(tick, e.struck, e.x, e.y, e.z);
+    }
+  }
+
+  /**
+   * A tool's blow landed at (x, y, z) on a structure of `kind`, at about server tick `tick`: the attacker's own, which
+   * the server tells nobody else. A wreck throws a few sparks there and no dust, as no row says a blow within a rung.
+   * Any other kind is passed over.
+   */
+  blow(tick: number, kind: number, x: number, y: number, z: number): void {
+    if (this.wreck[kind] !== 1) return;
+    const c = this.cell(x, y, z, tick, true);
+    if (!c) return;
+    this.strike(c, x, y, z);
+    c.blows++;
+  }
+
+  /** Adds a place a wreck was struck at to `c`, in the road's dust. */
+  private strike(c: Cell, x: number, y: number, z: number): void {
+    c.x += x;
+    c.y += y;
+    c.z += z;
+    c.n++;
+    c.r += ROAD[0];
+    c.g += ROAD[1];
+    c.b += ROAD[2];
+    c.dyed++;
   }
 
   /** Takes in the pieces removals took. `list` is left as it is: rubble.ts empties it. */
@@ -239,7 +341,9 @@ export class BreakEffects {
       const c = near[k]!;
       // Low poly makes no glass, so panes alone are given nothing there.
       const want = c.pieces * PIECE[row]! + c.swaps * Math.ceil(PIECE[row]! / 2) + c.steps * BULLET[row]! + (row > 0 ? c.panes * PIECE[row]! : 0);
-      c.want = Math.min(most, want);
+      // A wreck's rung is a form taken and its last a piece gone. A blow on it is a bullet's end, all sparks: none on low poly.
+      c.want = Math.min(most, want + c.cuts * PIECE[row]! + c.rungs * Math.ceil(PIECE[row]! / 2));
+      c.hits = row === 0 ? 0 : Math.min(most - c.want, c.blows * BULLET[row]!);
     }
     for (let k = 0; k < near.length; k++) {
       const c = near[k]!;
@@ -287,19 +391,27 @@ export class BreakEffects {
     to.dyed += c.dyed;
     to.metal += c.metal;
     to.glass += c.glass;
+    to.rungs += c.rungs;
+    to.cuts += c.cuts;
+    to.blows += c.blows;
+    if (to.wreck === 0) to.wreck = c.wreck;
     if (c.blast) to.blast = true;
     if (c.fell) to.fell = true;
   }
 
-  /** The bursts of one cell: on low poly dust alone, else dust, chips, and glass and sparks by the share of its pieces that give them. */
+  /** The bursts of one cell: on low poly dust alone, else dust, chips, and glass and sparks by the share of its pieces that give them. A wreck gives dust and sparks. */
   private burst(details: BreakDetails, c: Cell, row: number, tick: number): void {
     const n = c.give;
-    if (n <= 0) return;
-    const broke = c.pieces + c.swaps + c.steps + c.panes;
+    if (n <= 0 && c.hits <= 0) return;
+    const wrecks = c.rungs + c.cuts;
+    const broke = Math.max(1, c.pieces + c.swaps + c.steps + c.panes + wrecks);
     const glass = row === 0 ? 0 : Math.round(n * Math.min(1, (c.panes + c.glass) / broke));
     const dust = row === 0 ? n : Math.ceil((n - glass) / 2);
     const bits = n - glass - dust;
-    const sparks = c.metal > 0 ? Math.round(bits * 0.35 * Math.min(1, c.metal / broke)) : 0;
+    // A wreck's share of the bits is all sparks: it throws no chips.
+    const struck = Math.round((bits * wrecks) / broke);
+    const chips = bits - struck - (c.metal > 0 ? Math.round((bits - struck) * 0.35 * Math.min(1, c.metal / broke)) : 0);
+    const sparks = bits - chips + c.hits;
     const r = c.r / c.dyed, g = c.g / c.dyed, b = c.b / c.dyed;
     const dusty = Math.round(r + (PALE[0] - r) * DUSTED) | (Math.round(g + (PALE[1] - g) * DUSTED) << 8) | (Math.round(b + (PALE[2] - b) * DUSTED) << 16);
     const across = Math.cbrt(c.volume);
@@ -307,17 +419,20 @@ export class BreakEffects {
     const floor = c.floor < c.y ? c.floor : NaN;
     if (dust > 0) details.breakBurst(BREAK_DUST, id, c.x, c.y, c.z, floor, c.tick, tick, Math.min(3, Math.max(0.4, across * 0.5)), dust, dusty);
     const size = Math.min(2, Math.max(0.7, across * 0.45));
-    if (bits > sparks) details.breakBurst(BREAK_CHIPS, id, c.x, c.y, c.z, floor, c.tick, tick, size, bits - sparks, Math.round(r) | (Math.round(g) << 8) | (Math.round(b) << 16));
+    if (chips > 0) details.breakBurst(BREAK_CHIPS, id, c.x, c.y, c.z, floor, c.tick, tick, size, chips, Math.round(r) | (Math.round(g) << 8) | (Math.round(b) << 16));
     if (glass > 0) details.breakBurst(BREAK_GLASS, id, c.x, c.y, c.z, floor, c.tick, tick, size, glass, -1);
     if (sparks > 0) details.breakBurst(BREAK_SPARKS, id, c.x, c.y, c.z, floor, c.tick, tick, 1, sparks, -1);
   }
 
-  /** The sounds of one cell: an impact louder the more pieces went, else a crack; its panes; and a collapse's one rumble. */
+  /** The sounds of one cell: an impact louder the more pieces went, else a crack; its panes; its wrecks'; and a collapse's one rumble. */
   private sound(sounds: BreakSounds, c: Cell, tick: number): void {
     const broke = c.pieces + c.swaps * 0.5;
     if (broke > 0) sounds.breaking(HEARD_IMPACT, c.kind, c.x, c.y, c.z, Math.min(1, 0.7 + 0.06 * broke));
     else if (c.steps > 0) sounds.breaking(HEARD_CRACK, c.kind, c.x, c.y, c.z, 0.9);
     if (c.panes + c.glass > 0) sounds.breaking(HEARD_GLASS, c.kind, c.x, c.y, c.z, Math.min(1, 0.7 + 0.1 * (c.panes + c.glass)));
+    // A wreck is heard apart, by its own metal: cut up as a piece gone, a rung as a blow.
+    if (c.cuts > 0) sounds.breaking(HEARD_IMPACT, c.wreck, c.x, c.y, c.z, Math.min(1, 0.7 + 0.06 * c.cuts));
+    else if (c.rungs > 0) sounds.breaking(HEARD_BLOW, c.wreck, c.x, c.y, c.z, 0.9);
     if (!c.fell || (tick - this.rumbleAt < RUMBLE_TICKS && Math.hypot(c.x - this.rumbleX, c.z - this.rumbleZ) < RUMBLE_REACH)) return;
     sounds.breaking(HEARD_RUMBLE, c.kind, c.x, c.y, c.z, 0.7);
     this.rumbleAt = tick;

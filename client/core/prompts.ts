@@ -3,6 +3,7 @@
 // (keys.ts) to act on; the server's answer is the one that counts.
 
 import { CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
+import { FORM_BREACH_A, FORM_OPEN } from "../../shared/content/breaks.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
@@ -21,7 +22,7 @@ import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { loosePrompt } from "./balls.ts";
 import type { Builder } from "./build.ts";
 import type { Controls } from "./controls.ts";
-import { STAGES, STAGE_WHOLE, isHeap, stageOf } from "../../shared/world/breaking.ts";
+import { STAGES, STAGE_WHOLE, WRECK, formOf, isHeap, stageOf } from "../../shared/world/breaking.ts";
 import type { AppFrame, FramePart } from "./frame.ts";
 import { BAG } from "./render/dropped.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
@@ -43,11 +44,16 @@ const VIEW_FLAG_PROP = 8;
 export const GLIDER_KEY_TICKS = 6;
 
 /** Whether seat `k` of the creature at `host` of `r` has someone in it. */
+/** What a street's wreck says of itself by the look its row holds: as the map set it down, stripped, then a shell. */
+const wreckWord = (form: number): string => (form === FORM_BREACH_A ? "stripped" : form === FORM_OPEN ? "shell" : "wreck");
+
 /**
  * What a city piece looked at says of itself: "rubble" for a heap, its stage where it is worn, and nothing for one that
- * stands whole. `placed` is the kind the map set there, which its health is measured by, and `kind` what its row now holds.
+ * stands whole. A wreck says its look, never a stage: its health is its rungs', and is not told within one. `placed` is
+ * the kind the map set there, which its health is measured by, and `kind` what its row now holds.
  */
 export function cityWord(reg: Registry, placed: number, kind: number, hp: number): string {
+  if (reg.breakFamily[placed] === WRECK) return wreckWord(formOf(reg, kind));
   if (isHeap(reg, kind)) return "rubble";
   const stage = stageOf(reg, placed, hp);
   return stage === STAGE_WHOLE ? "" : STAGES[stage]!;
