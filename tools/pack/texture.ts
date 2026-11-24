@@ -73,17 +73,48 @@ export function placedAt(format: TextureFormat, t: EncodedTexture, at: number, h
   return format === "astc" && t.block !== 4 ? { at, hash, block: t.block } : { at, hash };
 }
 
+/** Textures arrive largest first. A smaller texture can use the start of a longer chain with the same encoded steps. */
+export class TexturePrefixes {
+  private readonly owners = new Map<string, PlacedTexture>();
+
+  owner(role: TextureRole, placed: PlacedTexture): PlacedTexture | undefined {
+    const start = role + "/" + (placed.block ?? 4) + "/";
+    const owner = this.owners.get(start + placed.hash.join(""));
+    if (owner) return owner;
+    let key = start;
+    for (const hash of placed.hash) {
+      key += hash;
+      if (!this.owners.has(key)) this.owners.set(key, placed);
+    }
+    return undefined;
+  }
+}
+
 /** The texture file of `textures`, each laid out as `laidOut` lays it, and where each is in it. */
-export function writeTextureFile(format: TextureFormat, textures: readonly EncodedTexture[]): { bytes: Uint8Array; placed: PlacedTexture[] } {
-  const laid = textures.map((t, i) => laidOut(format, t, i));
-  const bytes = new Uint8Array(laid.reduce((sum, l) => sum + l.bytes.length, TEXTURE_HEADER_BYTES));
+export function writeTextureFile(format: TextureFormat, textures: readonly EncodedTexture[], share = false): { bytes: Uint8Array; placed: PlacedTexture[] } {
+  const prefixes = new TexturePrefixes(), chunks: Uint8Array[] = [];
+  const order = textures.map((_, i) => i), placed: PlacedTexture[] = [];
+  if (share) order.sort((a, b) => textures[b]!.pictures.length - textures[a]!.pictures.length);
+  let size = TEXTURE_HEADER_BYTES;
+  for (const i of order) {
+    const t = textures[i]!;
+    const laid = laidOut(format, t, i);
+    const entry = placedAt(format, t, size, laid.hash);
+    const owner = share ? prefixes.owner(t.role, entry) : undefined;
+    if (owner) entry.at = owner.at;
+    else {
+      chunks.push(laid.bytes);
+      size += laid.bytes.length;
+    }
+    placed[i] = entry;
+  }
+  const bytes = new Uint8Array(size);
   bytes.set(textureHeader(format, textures.length));
   let at = TEXTURE_HEADER_BYTES;
-  const placed = laid.map((l, i): PlacedTexture => {
-    bytes.set(l.bytes, at);
-    at += l.bytes.length;
-    return placedAt(format, textures[i]!, at - l.bytes.length, l.hash);
-  });
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
   return { bytes, placed };
 }
 

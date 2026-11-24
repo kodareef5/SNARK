@@ -67,22 +67,29 @@ function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
   }
   // A skeleton's clips are in planes already.
   for (const e of [...(manifest.clips ?? []), ...(manifest.pages ?? [])]) parts[e.file]!.push({ at: e.at, bytes: e.part.bytes, filters: [[FILTER_NONE, []]], put: (at, stored) => void ((e.at = at), stored < e.part.bytes && (e.part.stored = stored)) });
+  const textureParts = files.map(() => new Map<number, Part>());
   for (const tex of manifest.textures ?? []) {
     for (const [format, v] of Object.entries(tex.in) as [TextureFormat, NonNullable<(typeof tex.in)[TextureFormat]>][]) {
       if (v.file >= files.length) continue;
       const stored: number[] = [];
       v.hash.forEach((_, step) => {
         const bytes = stepBytes(format, tex.role, step, blockOf(format, v));
-        parts[v.file]!.push({
-          at: v.at + stepOffset(format, tex.role, step, blockOf(format, v)),
-          bytes,
-          filters: textureFilters(format, tex.role, step),
-          put: (to, size) => {
-            if (step === 0) v.at = to;
-            stored[step] = size;
-            if (size < bytes) v.stored = stored;
-          },
-        });
+        const at = v.at + stepOffset(format, tex.role, step, blockOf(format, v));
+        const put = (to: number, size: number): void => {
+          if (step === 0) v.at = to;
+          stored[step] = size;
+          if (size < bytes) v.stored = stored;
+        };
+        const seen = textureParts[v.file]!.get(at);
+        if (seen) {
+          if (seen.bytes !== bytes) throw new Error(`store: shared texture step at ${at} has two lengths`);
+          const prior = seen.put;
+          seen.put = (to, size) => { prior(to, size); put(to, size); };
+        } else {
+          const part = { at, bytes, filters: textureFilters(format, tex.role, step), put };
+          textureParts[v.file]!.set(at, part);
+          parts[v.file]!.push(part);
+        }
       });
     }
   }

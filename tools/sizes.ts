@@ -93,7 +93,7 @@ export function weigh(dist: string): boolean {
     ["sound, kbit/s", (sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.bytes, 0), 0) * 8) / Math.max(1, seconds) / 1000],
     ["music", (existsSync(music) ? readdirSync(music, { recursive: true }) : []).reduce((s: number, n) => s + (statSync(join(music, String(n))).isFile() ? statSync(join(music, String(n))).size : 0), 0)],
     ["sound takes stored twice", twice(sounds.flatMap((x) => x.takes.map((t) => t.hash)))],
-    ["texture steps stored twice, astc", twice((m.textures ?? []).flatMap((t) => t.in.astc?.hash ?? []))],
+    ["texture steps stored twice, astc", twice(textureRanges(m, "astc", Infinity).map((range) => range.hash))],
     ["mesh parts stored twice", twice(m.meshes.flatMap((x) => x.levels.flatMap((l) => l.parts.map((p) => p.hash))))],
   ];
   let ok = true;
@@ -175,14 +175,24 @@ export function mapLandmarks(source: string): Map<string, string[]> {
   return out;
 }
 
-/** Bytes of every step of a manifest's textures in `format` up to `widest` pixels across. */
-function texturesOf(m: Manifest, format: TextureFormat, widest: number, only?: readonly number[]): number {
-  let bytes = 0;
+/** A physical range is counted once even when several capped textures use it. */
+export function textureRanges(m: Manifest, format: TextureFormat, widest: number, only?: readonly number[]): { bytes: number; hash: string }[] {
+  const ranges = new Map<string, { bytes: number; hash: string }>();
   for (const [k, t] of (m.textures ?? []).entries()) {
     const v = only && !only.includes(k) ? undefined : t.in[format];
-    if (v) for (let s = 0; s <= stepOf(Math.min(widest, topIn(format, t.top))); s++) bytes += storedStep(v, format, t.role, s);
+    if (!v) continue;
+    let at = v.at;
+    for (let s = 0; s <= stepOf(Math.min(widest, topIn(format, t.top))); s++) {
+      const bytes = storedStep(v, format, t.role, s);
+      ranges.set(`${v.file}/${at}/${bytes}`, { bytes, hash: v.hash[s]! });
+      at += bytes;
+    }
   }
-  return bytes;
+  return [...ranges.values()];
+}
+
+function texturesOf(m: Manifest, format: TextureFormat, widest: number, only?: readonly number[]): number {
+  return textureRanges(m, format, widest, only).reduce((sum, r) => sum + r.bytes, 0);
 }
 
 /**

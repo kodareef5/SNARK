@@ -16,7 +16,7 @@ import type { AstcKind } from "./astc.ts";
 import { fileHash } from "./manifest.ts";
 import type { SplitFile } from "./split.ts";
 import { PartStore, textureFilters, type StoreReport } from "./store.ts";
-import { isNeutral, laidOut, placedAt, rgbaTexture, textureHeader, writeTextureFile, type EncodedTexture, type PlacedTexture } from "./texture.ts";
+import { isNeutral, laidOut, placedAt, rgbaTexture, textureHeader, TexturePrefixes, writeTextureFile, type EncodedTexture, type PlacedTexture } from "./texture.ts";
 
 /** A texture for the build: what the manifest lists of it, and a way to its pictures. */
 export interface TextureSource {
@@ -157,7 +157,7 @@ export interface EncodeReport {
 export type Variants = Record<TextureFormat, EncodedTexture>;
 
 /**
- * Encodes `sources` a texture at a time and hands each to `take`, in order, while the next is encoded, so that no more
+ * Encodes `sources` a texture at a time and hands each to `take`, largest first when sharing, while the next is encoded, so that no more
  * than two textures' pictures are held. Returns the place of each source among those handed on: its own, another's
  * with `share` where they are the same, or -1 where it was left out. The bytes are the same whatever the number of
  * threads and however the blocks are shared out among them.
@@ -190,12 +190,15 @@ export async function eachTexture(sources: readonly TextureSource[], opts: Encod
   /** By key, so that pictures that are the same are encoded once. With a cache, only while they are being encoded. */
   const made = new Map<string, Promise<Uint8Array>>();
   const places: number[] = [];
+  const order = sources.map((_, i) => i);
+  if (opts.share) order.sort((a, b) => sources[b]!.top - sources[a]!.top);
   /** The place of each texture handed on, by its role, alpha and pictures as given. */
   const written = new Map<string, number>();
   let count = 0;
   let taking: Promise<void> = Promise.resolve();
   try {
-    for (const s of sources) {
+    for (const i of order) {
+      const s = sources[i]!;
       // A texture's pictures are made through floats several times their size. What the one before left is collected
       // first, so that what is held follows the largest texture and not how often the collector happens to run.
       Bun.gc(true);
@@ -204,18 +207,18 @@ export async function eachTexture(sources: readonly TextureSource[], opts: Encod
       const alpha = ((s.role === "base" || s.role === "mro") && (opts.alpha?.has(s.id) ?? false)) || s.role === "layer";
       if (opts.share) {
         if (isNeutral(s.role, alpha, mips)) {
-          places.push(-1);
+          places[i] = -1;
           continue;
         }
         const same = sha(JSON.stringify([s.role, alpha, ...mips.map((m) => sha(m))]));
         const had = written.get(same);
         if (had !== undefined) {
-          places.push(had);
+          places[i] = had;
           continue;
         }
         written.set(same, count);
       }
-      places.push(count++);
+      places[i] = count++;
       const pictures: Promise<Uint8Array>[][] = [[], []];
       mips.forEach((mip, i) => {
         const rgba = new Uint8Array(new SharedArrayBuffer(mip.length));
@@ -252,7 +255,7 @@ export async function encodeTextures(sources: readonly TextureSource[], opts: En
   const { report, places } = await eachTexture(sources, opts, async (t) => {
     for (const format of TEXTURE_FORMATS) textures[format].push(t[format]);
   });
-  return { variants: TEXTURE_FORMATS.map((format) => ({ format, ...writeTextureFile(format, textures[format]) })), report, places };
+  return { variants: TEXTURE_FORMATS.map((format) => ({ format, ...writeTextureFile(format, textures[format], opts.share) })), report, places };
 }
 
 export interface TextureFile extends SplitFile {
@@ -286,9 +289,15 @@ function buildOrder(manifest: Manifest, sources: readonly TextureSource[]): { al
 
 /** Lists in the manifest the textures written, where each is in the file of each variant (`placed`, by format, from file `first`), and tells the materials their places. */
 function listTextures(manifest: Manifest, all: readonly TextureSource[], places: readonly number[], placed: readonly (readonly PlacedTexture[])[], first: number): void {
-  const kept = all.filter((_, i) => places[i] !== -1 && places.indexOf(places[i]!) === i);
-  manifest.textures = kept.map((s, i) => ({ id: s.id, role: s.role, top: s.top, in: Object.fromEntries(TEXTURE_FORMATS.map((format, k) => [format, { file: first + k, ...placed[k]![i]! }])) }));
-  for (const m of manifest.materials ?? []) for (const role of TEXTURE_ROLES) if (textureOf(m, role) >= 0) setTexture(m, role, places[textureOf(m, role)]!);
+  const logical = new Map<number, number>();
+  manifest.textures = [];
+  for (const [i, s] of all.entries()) {
+    const physical = places[i]!;
+    if (physical < 0 || logical.has(physical)) continue;
+    logical.set(physical, manifest.textures.length);
+    manifest.textures.push({ id: s.id, role: s.role, top: s.top, in: Object.fromEntries(TEXTURE_FORMATS.map((format, k) => [format, { file: first + k, ...placed[k]![physical]! }])) });
+  }
+  for (const m of manifest.materials ?? []) for (const role of TEXTURE_ROLES) if (textureOf(m, role) >= 0) setTexture(m, role, logical.get(places[textureOf(m, role)]!) ?? -1);
 }
 
 /**
@@ -330,7 +339,7 @@ export async function writeTextures(manifest: Manifest, sources: readonly Textur
   const store = new PartStore({ workers: opts.workers, cache: opts.parts });
   const files = TEXTURE_FORMATS.map((format) => {
     const path = join(dir, `${name}.tex.${format}.sntx`);
-    return { format, path, fd: openSync(path, "w"), at: TEXTURE_HEADER_BYTES, raw: TEXTURE_HEADER_BYTES, placed: [] as PlacedTexture[] };
+    return { format, path, fd: openSync(path, "w"), at: TEXTURE_HEADER_BYTES, raw: TEXTURE_HEADER_BYTES, placed: [] as PlacedTexture[], prefixes: new TexturePrefixes() };
   });
   let count = 0;
   /** Raw bytes of the textures handed on and not yet written, and a promise for each that it is written. */
@@ -350,7 +359,9 @@ export async function writeTextures(manifest: Manifest, sources: readonly Textur
           const from = stepOffset(file.format, role, s, block);
           return bytes.subarray(from, from + stepBytes(file.format, role, s, block));
         });
-        return { placed: placedAt(file.format, t[file.format], 0, hash), steps, stored: Promise.all(steps.map((raw, s) => store.part(raw, textureFilters(file.format, role, s), file.path))) };
+        const placed = placedAt(file.format, t[file.format], 0, hash);
+        const owner = file.prefixes.owner(role, placed);
+        return { placed, owner, steps, stored: owner ? [] : Promise.all(steps.map((raw, s) => store.part(raw, textureFilters(file.format, role, s), file.path))) };
       });
       const bytes = laid.reduce((sum, l) => sum + l.steps.reduce((n, s) => n + s.length, 0), 0);
       const ready = Promise.all(laid.map((l) => l.stored));
@@ -358,8 +369,15 @@ export async function writeTextures(manifest: Manifest, sources: readonly Textur
       held += bytes;
       writing = writing.then(async () => {
         const parts = await ready;
-        laid.forEach(({ placed, steps }, k) => {
+        laid.forEach(({ placed, owner, steps }, k) => {
           const file = files[k]!;
+          file.placed.push(placed);
+          if (owner) {
+            placed.at = owner.at;
+            const sizes = owner.stored?.slice(0, steps.length);
+            if (sizes?.some((n, s) => n < steps[s]!.length)) placed.stored = sizes;
+            return;
+          }
           placed.at = file.at;
           const sizes = parts[k]!.map((part, s) => {
             writeAt(file.fd, part, file.at);
@@ -372,7 +390,6 @@ export async function writeTextures(manifest: Manifest, sources: readonly Textur
             return part.length;
           });
           if (sizes.some((n, s) => n < steps[s]!.length)) placed.stored = sizes;
-          file.placed.push(placed);
         });
         held -= bytes;
       });
