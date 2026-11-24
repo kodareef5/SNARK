@@ -850,10 +850,10 @@ function stairs(form: FormDef, level: number): Shape | null {
 const COURSES = 12;
 /** How far a roof's lowest course runs out past its low side, measured level. */
 const EAVE = 0.3;
-/** A roof board's thickness at its head, at its butt, and the eave board's. Square to the slope. */
-const LAP_HEAD = 0.012;
-const LAP_BUTT = 0.03;
-const EAVE_BOARD = 0.055;
+/** A roof board's thickness at its head, at its butt, and the eave board's, measured upright. */
+const LAP_HEAD = 0.013;
+const LAP_BUTT = 0.033;
+const EAVE_BOARD = 0.062;
 /** The boards under the courses, measured upright, and how far their top lies under the roof's own plane. */
 const SARK = 0.04;
 const SARK_DROP = 0.002;
@@ -877,10 +877,12 @@ interface Facet {
   axis: number;
 }
 
-/** The point of a facet `a` along its contours, `s` level metres up its slope and `n` off its plane. */
+/**
+ * The point of a facet `a` along its contours, `s` level metres up its slope and `n` upright over its plane. What is
+ * built by height and upright thickness is the same along a side two faces share, whatever their slopes.
+ */
 function onFacet(f: Facet, a: number, s: number, n = 0): Vec {
-  const k = Math.sqrt(1 + f.g * f.g);
-  return [f.o[0] + a * f.along[0] + (s - (n * f.g) / k) * f.up[0], f.o[1] + a * f.along[1] + (s - (n * f.g) / k) * f.up[1], f.lo + s * f.g + n / k];
+  return [f.o[0] + a * f.along[0] + s * f.up[0], f.o[1] + a * f.along[1] + s * f.up[1], f.lo + s * f.g + n];
 }
 /** A facet's own plane moved `by` upright, looking up out of it. */
 const facetPlane = (f: Facet, by = 0): Plane => planeAt(add(onFacet(f, 0, 0), [0, 0, by]), [-f.g * f.up[0], -f.g * f.up[1], 1]);
@@ -932,20 +934,24 @@ function courses(p: Shape, level: number, f: Facet, rise: number, seed: number, 
   const eave = f.kinds.includes("eave");
   const spans = f.poly.map((q) => facetAt(f, q)[0]);
   const [a0, a1] = [Math.min(...spans) - EAVE - 0.05, Math.max(...spans) + EAVE + 0.05];
-  const as = level === 0 && wavy ? [a0, (a0 + a1) / 2, a1] : [a0, a1];
+  // A wavy course has a ring at each end of the face, where it is true, and one between, where it wanders.
+  const as = level === 0 && wavy ? [a0, Math.min(...spans), (a0 + a1) / 2, Math.max(...spans), a1] : [a0, a1];
+  const middle = as.length === 5 ? 2 : -1;
   const rng = new PyRandom(seed);
   const from = p.faces.length;
   for (let i = level === 0 ? 0 : COURSES; i < COURSES; i++) {
-    const [s0, s1] = [(i * rise) / COURSES / f.g, ((i + 1) * rise) / COURSES / f.g];
-    const head = i === COURSES - 1 ? s1 : s1 + 0.03;
+    // Every measure up the slope is a height over the low side, so two faces of different slopes agree where they meet.
+    const up = (height: number): number => height / f.g;
+    const [s0, s1] = [up((i * rise) / COURSES), up(((i + 1) * rise) / COURSES)];
+    const head = i === COURSES - 1 ? s1 : s1 + up(0.015);
     const t = LAP_BUTT + rng.uniform(-0.004, 0.003);
     const wander = rng.uniform(-0.008, 0.008);
     const first = i === 0 && eave;
     const rings = as.map((a, r): Vec[] => {
-      const butt = s0 + (as.length === 3 && r === 1 && !first ? wander : 0);
+      const butt = s0 + (r === middle && !first ? wander : 0);
       const section: Flat[] = first
-        ? [[-EAVE, 0], [head, 0], [head, LAP_HEAD], [0.1, EAVE_BOARD], [-EAVE + 0.012, EAVE_BOARD], [-EAVE, EAVE_BOARD - 0.012]]
-        : [[butt, 0], [head, 0], [head, LAP_HEAD], [butt + 0.012, t], [butt, t - 0.01]];
+        ? [[-EAVE, 0], [head, 0], [head, LAP_HEAD], [up(0.05), EAVE_BOARD], [-EAVE + 0.012, EAVE_BOARD], [-EAVE, EAVE_BOARD - 0.012]]
+        : [[butt, 0], [head, 0], [head, LAP_HEAD], [butt + up(0.006), t], [butt, t - 0.01]];
       return section.map(([s, n]) => onFacet(f, a, s, n));
     });
     const uv = (r: number, j: number): Uv => {
@@ -957,7 +963,7 @@ function courses(p: Shape, level: number, f: Facet, rise: number, seed: number, 
   if (level > 0 && eave) {
     // Past the finest the courses are the picture's, and the eave board alone stands out of it.
     const s1 = rise / COURSES / f.g;
-    const rings = as.map((a) => ([[-EAVE, 0], [s1, 0], [s1, 0.022], [0.1, EAVE_BOARD], [-EAVE, EAVE_BOARD]] as const).map(([s, n]) => onFacet(f, a, s, n)));
+    const rings = as.map((a) => ([[-EAVE, 0], [s1, 0], [s1, 0.022], [0.05 / f.g, EAVE_BOARD], [-EAVE, EAVE_BOARD]] as const).map(([s, n]) => onFacet(f, a, s, n)));
     const uv = (r: number, j: number): Uv => [as[r]! / 3, facetAt(f, [rings[r]![j]![0], rings[r]![j]![1]])[1] / s1 / 12 - BOARD_ROLL_V];
     p.loft(rings, (_, r, j) => ["boards", uv(r, j)], (r, j) => ["boards", uv(r, j)], f.axis);
   }
@@ -1025,8 +1031,9 @@ function roof(form: FormDef, level: number): Shape | null {
   }
   facets.forEach((f) => {
     const from = p.faces.length;
-    // A folded roof's courses are straight: each is cut on the fold, and has no triangles for a middle ring besides.
-    courses(p, level, f, rise, 900, !folded);
+    // Only a square slope's courses wander: its sides are where a course is true. A fold or a triangle's side crosses
+    // every course somewhere along it, and there it must meet the next face's.
+    courses(p, level, f, rise, 900, !folded && n === 4);
     // A valley's courses stop short of its fold, where the board that lines it shows.
     if (folded && !hip) clip(p, planeMoved(facetSides(f)[f.kinds.indexOf("fold")]!, -0.09), null, from);
   });
@@ -1085,14 +1092,14 @@ function roof(form: FormDef, level: number): Shape | null {
     for (const [j, a] of [0.75, 2.25].entries()) {
       // A common rafter up the slope, under each of the boards' nail lines.
       const from = p.faces.length;
-      const off = -(SARK + SARK_DROP + RAFTER / 2) / k;
+      const off = -(SARK + SARK_DROP + RAFTER / 2);
       spar(p, level, onFacet(f, a, Math.min(...spans), off), onFacet(f, a, Math.max(...spans), off), 0.12, RAFTER / k, Z, [3 * j + i, 3 * j + i + 1, 3 * j + i, 3 * j + i + 2], 940 + 10 * i + j, { segs: 2 });
       for (const side of sides) clip(p, side, null, from);
     }
     if (level > 0 || !f.kinds.includes("eave")) return;
     // Rafter tails under the eave boards, each narrower than the rafter of a roof that runs on below, so it lies inside it.
     const from = p.faces.length;
-    for (const a of [0.055, 0.75, 2.25, 2.945]) timber(p, onFacet(f, a, -EAVE + 0.035, -0.05), onFacet(f, a, 0.02, -0.05), 0.085, 0.09, Z, [4, 5, 4, 5], { chamfer: 0 });
+    for (const a of [0.055, 0.75, 2.25, 2.945]) timber(p, onFacet(f, a, -EAVE + 0.035, -0.054), onFacet(f, a, 0.02, -0.054), 0.085, 0.09, Z, [4, 5, 4, 5], { chamfer: 0 });
     f.kinds.forEach((kind, s) => {
       if (kind !== "eave") clip(p, facetSides(f)[s]!, null, from);
     });
@@ -1261,7 +1268,10 @@ function triFoundation(form: FormDef, level: number): Shape | null {
     // An iron dog on each face of each corner, as a square's has.
     for (let k = 0; k < n; k++) {
       const e = side(k);
-      for (const [t0, t1] of [[-0.002, blk + 0.12], [e.l - blk - 0.12, e.l + 0.002]] as const) for (const zc of [mid - 0.075, mid + 0.075]) turnedBox(p, e.a, e.d, [t0, -0.002, zc - 0.03], [t1, 0.008, zc + 0.03], iron("x", "rivets", t0));
+      const from = p.faces.length;
+      for (const [t0, t1] of [[-0.02, blk + 0.12], [e.l - blk - 0.12, e.l + 0.02]] as const) for (const zc of [mid - 0.075, mid + 0.075]) turnedBox(p, e.a, e.d, [t0, -0.002, zc - 0.03], [t1, 0.008, zc + 0.03], iron("x", "rivets", t0));
+      // Two millimetres proud of its own side, and of the sides it meets at the corners.
+      clipTo(p, plan, -0.002, null, from);
     }
   }
   return p;
@@ -1342,9 +1352,10 @@ function hatchFrame(form: FormDef, level: number): Shape | null {
     member(p, level, [c[0], c[1], bottom], [c[0], c[1], z1], w, w, Y, [4, 5, 6, 7], null, 1325 + i, ROUGH * 0.3);
   });
   const trim = 0.13;
-  // Trimmers the whole way across beside the hole, and headers between them at its other two sides.
-  for (const [i, x] of [hx0 - trim / 2, hx1 + trim / 2].entries()) member(p, level, [x, -inner, zc + 0.012], [x, inner, zc + 0.012], trim, hgt - 0.024, Z, [11 - 6 * i, 11 - 6 * i + 1, 11 - 6 * i, 11 - 6 * i + 1], null, 1330 + i, ROUGH * 0.5, H - inner);
-  for (const [i, y] of [hy0 - trim / 2, hy1 + trim / 2].entries()) member(p, level, [hx0, y, zc + 0.012], [hx1, y, zc + 0.012], trim, hgt - 0.024, Z, [8 - 7 * i, 8 - 7 * i + 1, 8 - 7 * i, 8 - 7 * i + 1], null, 1340 + i, ROUGH * 0.5, 0);
+  const back = 0.006;
+  // Trimmers the whole way across beside the hole, and headers between them at its other two sides: a hewn face's stray back from it.
+  for (const [i, x] of [hx0 - trim / 2 - back, hx1 + trim / 2 + back].entries()) member(p, level, [x, -inner, zc + 0.012], [x, inner, zc + 0.012], trim, hgt - 0.024, Z, [11 - 6 * i, 11 - 6 * i + 1, 11 - 6 * i, 11 - 6 * i + 1], null, 1330 + i, ROUGH * 0.5, H - inner);
+  for (const [i, y] of [hy0 - trim / 2 - back, hy1 + trim / 2 + back].entries()) member(p, level, [hx0, y, zc + 0.012], [hx1, y, zc + 0.012], trim, hgt - 0.024, Z, [8 - 7 * i, 8 - 7 * i + 1, 8 - 7 * i, 8 - 7 * i + 1], null, 1340 + i, ROUGH * 0.5, 0);
   return p;
 }
 
