@@ -4,5 +4,18 @@
   "core/vehicles/skateboard",
   "core/vehicles/air_carrier",
   "core/vehicles/air_trailer",
-  "core/vehicles/survey_drone"
+  "core/vehicles/survey_drone",
+  "core/vehicles/berlinetta_salvaged",
+  "core/vehicles/bus_salvaged",
+  "core/vehicles/caravan_salvaged",
+  "core/vehicles/compact_salvaged",
+  "core/vehicles/fastback_salvaged",
+  "core/vehicles/monster_truck_salvaged",
+  "core/vehicles/muscle_car_salvaged",
+  "core/vehicles/panel_van_salvaged",
+  "core/vehicles/patrol_jeep_salvaged",
+  "core/vehicles/patrol_sedan_salvaged",
+  "core/vehicles/semi_salvaged",
+  "core/vehicles/taxi_salvaged",
+  "core/vehicles/veloce_salvaged"
 ]

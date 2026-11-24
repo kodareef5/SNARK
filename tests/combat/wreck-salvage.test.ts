@@ -9,7 +9,7 @@ import { ROCKET_REACH, city, rocket, type City } from "../fixtures/city.ts";
 import type { Harness } from "../fixtures/net.ts";
 import { count, record, survivor } from "../kit/kit.ts";
 
-const COMPACT = "core:compact_abandoned_white", STRIPPED = "core:zzzzzzzwreck_compact_abandoned_stripped";
+const COMPACT = "core:compact_abandoned_white", STRIPPED = "core:zzzzzzzwreck_compact_abandoned_stripped", SHELL = "core:zzzzzzzwreck_compact_abandoned_shell";
 const GIVEN = ["polymer", "crystal", "electronics", "gasoline", "ingot", "oil", "fiber", "ore"] as const;
 
 const version = (c: City, ref: number): number => c.h.world.structs.chunks[Math.floor(ref / 65536)]!.version;
@@ -40,8 +40,8 @@ test("a wreck goes down its rungs under a tool, and each rung gives all it holds
   // Stripped: its fittings are given, and it is drawn as its stripped look.
   expect([c.id(car), Math.round(c.hp(car)), version(c, car) > v, ada.has()]).toEqual([STRIPPED, 5333, true, [10, 4, 2, 4, 0, 0, 0, 0]]);
   blows(c, ada.src, car, 8);
-  // Gutted. The compact has no shell yet, so it keeps the look it has.
-  expect([c.id(car), ada.has()]).toEqual([STRIPPED, [10, 4, 6, 4, 6, 4, 8, 0]]);
+  // Gutted: a shell.
+  expect([c.id(car), ada.has()]).toEqual([SHELL, [10, 4, 6, 4, 6, 4, 8, 0]]);
   blows(c, ada.src, car, 8);
   // Cut up: taken, with no cause to show, and its slot stays the map's.
   expect([c.id(car), ada.has()]).toEqual(["", [10, 4, 6, 4, 10, 4, 8, 35]]);
@@ -67,7 +67,7 @@ test("a rung gives the same whatever the blows, and bare hands strike 1", () => 
   blows(c, bob.src, two, 14);
   expect([c.id(two), bob.has()]).toEqual([STRIPPED, [10, 4, 2, 4, 0, 0, 0, 0]]);
   blows(c, bob.src, two, 13);
-  expect([c.id(two), bob.has()]).toEqual([STRIPPED, [10, 4, 6, 4, 6, 4, 8, 0]]);
+  expect([c.id(two), bob.has()]).toEqual([SHELL, [10, 4, 6, 4, 6, 4, 8, 0]]);
 });
 
 test("a look the street holds lower has only the rungs left to it", () => {
@@ -82,11 +82,11 @@ test("a look the street holds lower has only the rungs left to it", () => {
   blows(c, who[1]!.src, burnt, 8);
   blows(c, who[2]!.src, roof, 8);
   expect([c.id(burnt), who[1]!.has(), c.id(roof), who[2]!.has()]).toEqual(["", [0, 0, 0, 0, 2, 0, 0, 17], "", [0, 0, 0, 0, 4, 0, 0, 35]]);
-  // A bus takes three times the work and gives three times as much. It has no lesser look.
+  // A bus takes three times the work and gives three times as much.
   blows(c, who[3]!.src, bus, 23);
   expect(who[3]!.has().slice(0, 4)).toEqual([28, 11, 5, 11]);
   blows(c, who[3]!.src, bus, 1);
-  expect([c.id(bus), Math.round(c.hp(bus)), who[3]!.has().slice(0, 4)]).toEqual(["core:zzzzroad_bus_abandoned", 10667, [30, 12, 6, 12]]);
+  expect([c.id(bus), Math.round(c.hp(bus)), who[3]!.has().slice(0, 4)]).toEqual(["core:zzzzzzzwreck_bus_abandoned_stripped", 10667, [30, 12, 6, 12]]);
 });
 
 test("a blast takes a wreck down its rungs and gives nothing", () => {
