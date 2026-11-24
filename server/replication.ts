@@ -154,12 +154,12 @@ export class Replication {
     }
   }
 
-  /** Every session is told its state again (OWN_SESSION), at its next turn. */
   /** Takes the most bodies a session may be shown from the options again (ViewCap). A session has it at its next ask. */
   recap(): void {
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
   }
 
+  /** Every session is told its state again (OWN_SESSION), at its next turn. */
   markAllOwn(): void {
     for (const c of this.clients) if (c?.active) c.ownDirty = true;
   }

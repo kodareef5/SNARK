@@ -78,7 +78,7 @@ test("a Zephyr at its boost speed down a deck of road pieces never outruns its c
       fastest = Math.max(fastest, Math.hypot(a.vx[car]!, a.vz[car]!));
       if (a.y[car]! > 0.05) onDeck++;
       const ahead = Math.min(chunks - 1, Math.floor((s.own.z + 40) / CHUNK_SIZE)) * chunks + column;
-      if (s.whole[ahead] !== 1) behind++;
+      if (!s.world!.far.complete(ahead)) behind++;
     });
     expect(fastest).toBeGreaterThan(75);
     expect(onDeck).toBeGreaterThan(900);

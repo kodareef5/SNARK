@@ -62,7 +62,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { REACT_BITS } from "../anim/pose.ts";
 import { counter, flags } from "../codes.ts";
-import { BTN_CROUCH, BTN_PRONE, Body, buttonCount } from "../sim/character.ts";
+import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, Body, buttonCount } from "../sim/character.ts";
 
 declare const __WIRE__: number;
 /**
@@ -753,6 +753,15 @@ export const INPUT_HOLD_TICKS = 8;
  */
 export const VEHICLE_HOLD_TICKS = 30;
 export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
+/** Ticks a body's last input goes on when none comes: `driven`, a vehicle someone drives or flies. Both ends step by it. */
+export const holdTicks = (driven: boolean): number => (driven ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS);
+/**
+ * The buttons a body is stepped with once its input is let go: a car stands on its handbrake, a rotor vehicle has none,
+ * and a body on foot keeps its stance of `buttons`. Both ends step by it.
+ */
+export function letGoButtons(vehicle: { readonly movement?: string } | null | undefined, buttons: number): number {
+  return vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : buttons & INPUT_KEPT;
+}
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;
 export const MAX_NAME_BYTES = 24;
