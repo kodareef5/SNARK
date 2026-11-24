@@ -455,7 +455,7 @@ const get = async (path) => (await fetch(path)).json();
 const bytes = async (path) => new Uint8Array(await (await fetch(path)).arrayBuffer());
 const post = (path, body) => fetch(path, { method: "POST", body });
 try {
-  const { runs, UNIT, SKY_SIZE, SKY_SLICES, ground } = await get("/runs");
+  const { runs, UNIT, SKY_SIZE, SKY_SLICES, ground, sand } = await get("/runs");
   const canvas = document.createElement("canvas");
   [canvas.width, canvas.height] = [1024, 1024];
   const gl = canvas.getContext("webgl2", { antialias: false });
@@ -474,6 +474,11 @@ try {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   }
+  gl.activeTexture(gl.TEXTURE0 + UNIT.windowTint);
+  gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8UI, ground, ground, 0, gl.RED_INTEGER, gl.UNSIGNED_BYTE, new Uint8Array(ground * ground).fill(sand));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   const waves = [];
   gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
   for (const name of ["long", "short"]) {
@@ -530,6 +535,8 @@ try {
     }
     for (let i = 0; i < 4; i++) gl.drawArrays(gl.TRIANGLES, 0, 3);
     finish();
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) throw new Error("water timing WebGL error: " + error);
     if (timer) {
       const q = gl.createQuery();
       gl.beginQuery(timer.TIME_ELAPSED_EXT, q);
@@ -562,6 +569,7 @@ try {
 /** WATER full screen, calm and with its waves, inside the window and past the map and shallow enough for foam, and LIT hazed for scale; noon's frame block, in ms a megapixel, blended. */
 async function timeWater(chrome: string): Promise<Record<string, number | string | boolean>> {
   const ground = 1025;
+  const sand = nearestColour(defaultPalette(), 214, 196, 150);
   const hf = new Heightfield({ chunksX: 32, chunksZ: 32 }, 2, -64, 1 / 64);
   hf.seaLevel = 0;
   // The ground 2 m under the sea, or `deep` metres under it where the sea's level is moved down to it.
@@ -607,7 +615,7 @@ async function timeWater(chrome: string): Promise<Record<string, number | string
       const path = new URL(req.url).pathname;
       const [, kind, name = ""] = path.split("/");
       if (path === "/") return new Response(TIME_PAGE, { headers: { "content-type": "text/html" } });
-      if (path === "/runs") return Response.json({ runs, UNIT, SKY_SIZE, SKY_SLICES, ground });
+      if (path === "/runs") return Response.json({ runs, UNIT, SKY_SIZE, SKY_SLICES, ground, sand });
       if (path === "/table") return new Response(theSky().table);
       if (kind === "mips") {
         const key = name.replace(".bin", "") as keyof typeof mips;
