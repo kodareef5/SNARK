@@ -1,6 +1,6 @@
 // The near store: the structures and the resource nodes of the chunks the client holds whole, drawn per chunk and per mesh
 // as instanced batches. A chunk's instance buffer is rebuilt only when a piece is added, removed or replaced, and uploaded
-// once. Damage changes nothing that is drawn. Resource nodes are drawn the same way, each as the mesh of its form
+// once. Damage lays nothing out again: a built piece's stage goes up as its instance's bytes (../piece-state.ts). Resource nodes are drawn the same way, each as the mesh of its form
 // (shared/world/nodes.ts) at its size. The map's statics drawn flat as their form are a mesh a chunk (../nearcity.ts),
 // drawn by a second row of the frame's list (`meshes`), once the frame knows what hides what.
 

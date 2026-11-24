@@ -236,9 +236,12 @@ export class Trims {
   /** Doubles the table once it is half full, so a search is short. */
   private room(): void {
     if (this.held * 2 < this.cap) return;
-    const [k0, k1, gens, vals, gen] = [this.tk0, this.tk1, this.tgen, this.tval, this.gen];
+    const k0 = this.tk0, k1 = this.tk1, gens = this.tgen, vals = this.tval, gen = this.gen;
     this.cap *= 2;
-    [this.tk0, this.tk1, this.tgen, this.tval] = [new Uint32Array(this.cap), new Uint32Array(this.cap), new Uint32Array(this.cap), new Int32Array(this.cap)];
+    this.tk0 = new Uint32Array(this.cap);
+    this.tk1 = new Uint32Array(this.cap);
+    this.tgen = new Uint32Array(this.cap);
+    this.tval = new Int32Array(this.cap);
     this.held = 0;
     for (let i = 0; i < k0.length; i++) if (gens[i] === gen) this.tval[this.seek(k0[i]!, k1[i]!, true)] = vals[i]!;
   }
@@ -247,9 +250,14 @@ export class Trims {
     const out = this.out;
     if (out.count === out.mesh.length) {
       const n = out.count * 2;
-      [out.mesh, out.owner, out.yaw] = [grown(out.mesh, n), grown(out.owner, n), grown(out.yaw, n)];
-      [out.x, out.y, out.z] = [grown(out.x, n), grown(out.y, n), grown(out.z, n)];
-      [out.tw, out.cut] = [grown(out.tw, n), grown(out.cut, n)];
+      out.mesh = grown(out.mesh, n);
+      out.owner = grown(out.owner, n);
+      out.yaw = grown(out.yaw, n);
+      out.x = grown(out.x, n);
+      out.y = grown(out.y, n);
+      out.z = grown(out.z, n);
+      out.tw = grown(out.tw, n);
+      out.cut = grown(out.cut, n);
     }
     const i = out.count++;
     worldOf(f.basis, f.ox, f.oz, m, mi, this.at, 0);
@@ -315,7 +323,11 @@ export class Trims {
           this.cflags[at] = x < CORNER_BORDER || z < CORNER_BORDER || x > CHUNK_SIZE - CORNER_BORDER || z > CHUNK_SIZE - CORNER_BORDER ? EDGE : 0;
         }
         this.meet(at, from, ref, reach, tier);
-        if (this.ends === this.eslot.length) [this.eslot, this.ecorner, this.ebits] = [grown(this.eslot, this.ends * 2), grown(this.ecorner, this.ends * 2), grown(this.ebits, this.ends * 2)];
+        if (this.ends === this.eslot.length) {
+          this.eslot = grown(this.eslot, this.ends * 2);
+          this.ecorner = grown(this.ecorner, this.ends * 2);
+          this.ebits = grown(this.ebits, this.ends * 2);
+        }
         // Only the ends of the whole piece give way: bit 0 its own -X end, bit 1 its +X.
         const outer = end === 0 ? along === first : along === last;
         this.eslot[this.ends] = ref & 0xffff;
@@ -329,9 +341,17 @@ export class Trims {
   private corner(): number {
     if (this.corners === this.ck0.length) {
       const n = this.corners * 2;
-      [this.ck0, this.ck1, this.cfirst] = [grown(this.ck0, n), grown(this.ck1, n), grown(this.cfirst, n)];
-      [this.cbase, this.ctall, this.creach, this.cflags] = [grown(this.cbase, n), grown(this.ctall, n), grown(this.creach, n), grown(this.cflags, n)];
-      [this.cmask, this.ctier, this.clike, this.cjoint] = [grown(this.cmask, n), grown(this.ctier, n), grown(this.clike, n), grown(this.cjoint, n)];
+      this.ck0 = grown(this.ck0, n);
+      this.ck1 = grown(this.ck1, n);
+      this.cfirst = grown(this.cfirst, n);
+      this.cbase = grown(this.cbase, n);
+      this.ctall = grown(this.ctall, n);
+      this.creach = grown(this.creach, n);
+      this.cflags = grown(this.cflags, n);
+      this.cmask = grown(this.cmask, n);
+      this.ctier = grown(this.ctier, n);
+      this.clike = grown(this.clike, n);
+      this.cjoint = grown(this.cjoint, n);
     }
     return this.corners++;
   }
