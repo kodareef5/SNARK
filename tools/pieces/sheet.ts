@@ -122,17 +122,17 @@ export class Studio {
 
   /**
    * The pieces from `around` degrees round `centre` and `above` degrees up, the ball of `radius` filling the picture,
-   * at `level` of each or its coarsest. With `distance`, as large as on a screen `screen` pixels high from that far.
+   * at `level` of each or its coarsest. What lies under `floor` is hidden, as the ground hides it.
    */
-  shoot(placed: readonly Placed[], width: number, height: number, centre: readonly [number, number, number], radius: number, around: number, above: number, level = 0, textured = true): Uint8ClampedArray {
+  shoot(placed: readonly Placed[], width: number, height: number, centre: readonly [number, number, number], radius: number, around: number, above: number, level = 0, floor: number | null = 0): Uint8ClampedArray {
     const view = this.view(width, height);
     const header = this.pack.header.meshes;
     // One draw takes one level, so pieces are drawn by the level each has.
     const parts = placed.map((p) => [this.index.get(p.id)!, p.x, p.y, p.z, p.yaw] as const);
     const least = Math.min(...parts.map(([m]) => header[m]!.lods.length - 1));
     const at = Math.min(level, least);
-    const surfaced = textured && parts.every(([m]) => (header[m]!.lods[at]!.sections?.length ?? 0) > 0);
-    view.draw({ mesh: parts[0]![0], level: at, placed: parts, around, above, centre, radius, rig: null, colors: [3, 3, 3, 3, 3, 3], textured: surfaced, floor: 0 });
+    const surfaced = parts.every(([m]) => (header[m]!.lods[at]!.sections?.length ?? 0) > 0);
+    view.draw({ mesh: parts[0]![0], level: at, placed: parts, around, above, centre, radius, rig: null, colors: [3, 3, 3, 3, 3, 3], textured: surfaced, ...(floor === null ? {} : { floor }) });
     return view.raster.color;
   }
 }

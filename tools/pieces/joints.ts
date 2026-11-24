@@ -24,9 +24,11 @@ import type { Junction, Placed, Prism } from "./layout.ts";
 export const THROUGH = 0.1;
 /** An outside corner is unfilled where a ray gets this far inside the faces a square joint would have. */
 export const NOTCH = 0.03;
-/** Two faces fight where they look the same way, lie within this of one plane and share more than `FIGHT_AREA`. */
+/** Two faces fight where they look the same way, lie within this of each other where they overlap and share more than `FIGHT_AREA`. */
 export const COPLANAR = 0.0005;
 export const FIGHT_AREA = 1e-4;
+/** The cosine of two degrees: faces turned less than that from each other look the same way. A hewn face strays under one. */
+const PARALLEL = 0.9994;
 /** The picture's height in pixels, a third as wide: a storey's height and the metre round its vertex, 2 cm a pixel. */
 export const SIDE = 192;
 const FAR = 6;
@@ -238,34 +240,34 @@ function worldTriangles(mesh: SourceMesh, p: Placed): { tris: Tri[]; lo: number[
   return { tris, lo, hi };
 }
 
-/** What two triangles of one plane share, both given in that plane: its area and its middle. */
-function shared(a: number[], b: number[]): { area: number; mid: [number, number] } | null {
-  const area = (q: number[]): number => {
-    let sum = 0;
-    for (let i = 0; i < q.length; i += 2) sum += q[i]! * q[(i + 3) % q.length]! - q[(i + 2) % q.length]! * q[i + 1]!;
-    return sum / 2;
-  };
+/** What two triangles laid in one plane share, as a polygon in that plane, or null. */
+function shared(a: number[], b: number[]): number[] | null {
   let poly = area(a) < 0 ? [a[4]!, a[5]!, a[2]!, a[3]!, a[0]!, a[1]!] : a;
   const clip = area(b) < 0 ? [b[4]!, b[5]!, b[2]!, b[3]!, b[0]!, b[1]!] : b;
   for (let e = 0; e < 6 && poly.length >= 6; e += 2) {
     const [ax, ay, bx, by] = [clip[e]!, clip[e + 1]!, clip[(e + 2) % 6]!, clip[(e + 3) % 6]!];
-    const side = (x: number, y: number): number => (bx - ax) * (y - ay) - (by - ay) * (x - ax);
-    const out: number[] = [];
-    for (let i = 0; i < poly.length; i += 2) {
-      const [px, py, qx, qy] = [poly[i]!, poly[i + 1]!, poly[(i + 2) % poly.length]!, poly[(i + 3) % poly.length]!];
-      const [sp, sq] = [side(px, py), side(qx, qy)];
-      if (sp >= 0) out.push(px, py);
-      if ((sp > 0 && sq < 0) || (sp < 0 && sq > 0)) out.push(px + ((qx - px) * sp) / (sp - sq), py + ((qy - py) * sp) / (sp - sq));
-    }
-    poly = out;
+    poly = kept(poly, (x, y) => (bx - ax) * (y - ay) - (by - ay) * (x - ax));
   }
-  if (poly.length < 6) return null;
-  const mid: [number, number] = [0, 0];
+  return poly.length >= 6 ? poly : null;
+}
+
+/** A polygon's area, signed by the way it goes round. */
+function area(q: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < q.length; i += 2) sum += q[i]! * q[(i + 3) % q.length]! - q[(i + 2) % q.length]! * q[i + 1]!;
+  return sum / 2;
+}
+
+/** The part of a convex polygon where `side`, which is linear, is not below 0. */
+function kept(poly: number[], side: (x: number, y: number) => number): number[] {
+  const out: number[] = [];
   for (let i = 0; i < poly.length; i += 2) {
-    mid[0] += (poly[i]! / poly.length) * 2;
-    mid[1] += (poly[i + 1]! / poly.length) * 2;
+    const [px, py, qx, qy] = [poly[i]!, poly[i + 1]!, poly[(i + 2) % poly.length]!, poly[(i + 3) % poly.length]!];
+    const [sp, sq] = [side(px, py), side(qx, qy)];
+    if (sp >= 0) out.push(px, py);
+    if ((sp > 0 && sq < 0) || (sp < 0 && sq > 0)) out.push(px + ((qx - px) * sp) / (sp - sq), py + ((qy - py) * sp) / (sp - sq));
   }
-  return { area: Math.abs(area(poly)), mid };
+  return out;
 }
 
 /** How many closed solids of `tris` hold the point: the faces a ray from it leaves by, less those it enters by. */
@@ -289,7 +291,7 @@ function holding(tris: readonly Tri[], o: readonly number[], d: readonly number[
 }
 
 export interface Fights {
-  /** Pairs of pieces and planes in which their faces share more than FIGHT_AREA. */
+  /** Pairs of pieces and the ways their faces look in which they share more than FIGHT_AREA. */
   faces: number;
   /** All that they share, in square centimetres. */
   area: number;
@@ -299,7 +301,7 @@ export interface Fights {
  * Faces of different pieces of `placed` that look the same way from one plane, with air in front of them: what a card
  * cannot order. Faces buried in another solid or in the ground are not counted, as wood's strips inside the next wall's end.
  */
-export function fights(placed: readonly Placed[], meshes: ReadonlyMap<string, SourceMesh>, ground = 0): Fights {
+export function fights(placed: readonly Placed[], meshes: ReadonlyMap<string, SourceMesh>, ground = 0, tell?: (group: string, area: number, at: number[]) => void): Fights {
   const pieces = placed.map((p) => worldTriangles(meshes.get(p.id)!, p));
   const groups = new Map<string, number>();
   for (let i = 0; i < pieces.length; i++) {
@@ -325,17 +327,32 @@ export function fights(placed: readonly Placed[], meshes: ReadonlyMap<string, So
         const height = p.t[0] * p.n[0]! + p.t[1] * p.n[1]! + p.t[2] * p.n[2]!;
         const mine = flat(p.t);
         for (const q of fb) {
-          if (p.n[0]! * q.n[0]! + p.n[1]! * q.n[1]! + p.n[2]! * q.n[2]! < 0.9999) continue;
-          if ([0, 3, 6].some((k) => Math.abs(q.t[k]! * p.n[0]! + q.t[k + 1]! * p.n[1]! + q.t[k + 2]! * p.n[2]! - height) > COPLANAR)) continue;
-          const both = shared(mine, flat(q.t));
-          if (!both || both.area < 1e-7) continue;
-          // Two millimetres off the middle of what they share, along a ray no face is likely to lie along.
-          const at = [0, 1, 2].map((k) => u[k]! * both.mid[0] + v[k]! * both.mid[1] + p.n[k]! * (height + 0.002));
-          if (at[1]! < ground) continue;
+          if (p.n[0]! * q.n[0]! + p.n[1]! * q.n[1]! + p.n[2]! * q.n[2]! < PARALLEL) continue;
+          const over = shared(mine, flat(q.t));
+          if (!over) continue;
+          // Of what they share, the part where the two lie within COPLANAR of each other: the gap between two planes is linear.
+          const gap = (x: number, y: number): number => [0, 1, 2].reduce((sum, k) => sum + (u[k]! * x + v[k]! * y + p.n[k]! * height - q.t[k]!) * q.n[k]!, 0);
+          const close = kept(kept(over, (x, y) => COPLANAR - gap(x, y)), (x, y) => COPLANAR + gap(x, y));
+          const both = close.length >= 6 ? Math.abs(area(close)) : 0;
+          if (both < 1e-7) continue;
+          const mid = [0, 0];
+          for (let k = 0; k < close.length; k++) mid[k % 2]! += (close[k]! / close.length) * 2;
+          // The share of it with air in front: its middle and halfway to each corner, two millimetres off, along a ray no face is likely to lie along.
+          const spots = [mid, ...Array.from({ length: close.length / 2 }, (_, k) => [(close[k * 2]! + mid[0]!) / 2, (close[k * 2 + 1]! + mid[1]!) / 2])];
           const along = [p.n[0]! + 0.0137, p.n[1]! + 0.0291, p.n[2]! + 0.0173];
-          if (pieces.reduce((sum, piece) => sum + holding(piece.tris, at, along), 0) > 0) continue;
-          const key = `${i},${j},${p.n.map((c) => Math.round(c * 100)).join()},${Math.round(height * 500)}`;
-          groups.set(key, (groups.get(key) ?? 0) + both.area);
+          let open = 0;
+          let at: number[] = [];
+          for (const spot of spots) {
+            const from = [0, 1, 2].map((k) => u[k]! * spot[0]! + v[k]! * spot[1]! + p.n[k]! * (height + 0.002));
+            if (from[1]! < ground || pieces.reduce((sum, piece) => sum + holding(piece.tris, from, along), 0) > 0) continue;
+            open++;
+            at = from;
+          }
+          if (open === 0) continue;
+          const seen = (both * open) / spots.length;
+          const key = `${i},${j},${p.n.map((c) => Math.round(c * 10)).join()}`;
+          groups.set(key, (groups.get(key) ?? 0) + seen);
+          tell?.(key, seen, at);
         }
       }
     }
