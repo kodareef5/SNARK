@@ -600,7 +600,10 @@ export const OWN_LOOK = ownKind();
 export const OWN_HELD = ownKind();
 /** count u8, then per buff: content index u16, end tick u32 (0 for no end). */
 export const OWN_BUFFS = ownKind();
-/** The server rules a client acts on, which may change while it runs: flags u16 of RULE_ bits. */
+/**
+ * The server rules a client acts on, which may change while it runs: flags u16 of RULE_ bits, then what an orb shows u8
+ * (0 for its programme, else a scene's number and one) and its brightness u8 (shared/world/orb.ts ORB_GAIN_UNITS).
+ */
 export const OWN_RULES = ownKind();
 const ruleFlag = flags();
 export const RULE_DAMAGE_NUMBERS = ruleFlag();

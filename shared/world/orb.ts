@@ -54,6 +54,13 @@ export function orbShow(seconds: number, out: OrbShow, only = -1): OrbShow {
   return out;
 }
 
+/** An orb's brightness on the wire: a byte of this many to 1, so 0 to 4 in fiftieths. */
+export const ORB_GAIN_UNITS = 50;
+/** What an admin's word for the scene holds an orb to: a scene's number, or -1 for the programme ("auto", or a word that names none). */
+export function orbOnly(word: string): number {
+  return ORB_SCENES.indexOf(word.trim().toLowerCase() as OrbScene);
+}
+
 // ---- The shell, which bodies stand on and rays stop at. The engine has no curved collider, so the shell is flat facets:
 // convex parts whose outer corners lie on one grid of rows and meridians, so facets meet edge to edge with no lip. A
 // course is some rows of that grid, cut into equal pieces round the axis. A turned piece's frame is rounded (frame.ts),
