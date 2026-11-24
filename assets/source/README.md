@@ -290,6 +290,22 @@ fits each look's collision boxes to its finest level, into
     bun run art -- core:fastback_abandoned   (and so on, each by itself)
     bun assets/source/core/vehicles/parked_common/bounds.ts
 
+### Salvaged road vehicles
+
+A survivor salvages a street's wreck down to its stripped look, then to a shell
+(`content/vehicles/salvage.ts`). Each body's are a pieces asset of their own,
+`core/vehicles/<vehicle>_salvaged/`, built by `parked_common/salvaged.py` from the
+live vehicle's own model and drawn with the abandoned look's pictures. The
+abandoned packs are not rebuilt: a rebuild moves their vertices. A shell has no
+wheel, door, lamp, bumper or seat, and no bonnet or boot where the model makes
+one apart: the folder's `salvaged.py` lists what comes off as `OFF`. A heavy road
+vehicle's prepared parts have no names, so its list is boxes. The compact's shell
+and the Concept's are baked in TypeScript from their packs. No map places these
+looks. The packs are in git, and `distribution/bundled-art.json` lists them.
+
+    bun run art -- core:fastback_salvaged   (and so on, each by itself)
+    bun assets/source/core/vehicles/parked_common/bounds.ts
+
 A vehicle modelled as hundreds of separate closed parts (pressings, tubes, castings
 joined into one object) cannot keep all of them in its flat levels: a 6,400 triangle
 level of a 947-part jeep has under seven triangles a part. Which parts go is the
