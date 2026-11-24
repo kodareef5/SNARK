@@ -1,3 +1,4 @@
+import { adminContext } from "../admin/shell.ts";
 // What the drop book's admin page's files share: finding an element, the page's state, saying a line, asking the world
 // and telling it, and a field of the draft.
 
@@ -87,13 +88,13 @@ export const say = (text: string, cls = "dim"): void => {
 };
 
 export async function ask<T>(path: string): Promise<T> {
-  const r = await fetch(`supply/${path}`, { cache: "no-store" });
+  const r = await fetch((await adminContext()).api(`supply/${path}`), { cache: "no-store" });
   if (!r.ok) throw new Error(`${path} answered ${r.status}`);
   return (await r.json()) as T;
 }
 
 export async function post(what: string, body: unknown): Promise<{ status: number; answer: Record<string, unknown> }> {
-  const r = await fetch(`supply/${what}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch((await adminContext()).api(`supply/${what}`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, answer: (await r.json().catch(() => ({}))) as Record<string, unknown> };
 }
 

@@ -74,7 +74,7 @@ test("__debug names the codes for anyone and gives only an admin the log and sta
   const at = `http://127.0.0.1:${front.port}/miami/__debug`;
   let session: ClientSession | null = null;
   try {
-    expect([frontPasses("POST", "/miami/__debug"), frontPasses("PUT", "/miami/__debug")]).toEqual([true, false]);
+    expect([frontPasses("POST", "/__debug"), frontPasses("PUT", "/__debug")]).toEqual([true, false]);
     for (let k = 0; k < 200 && (await fetch(at, { headers: tunnel })).status === 503; k++) await Bun.sleep(50);
     const names = await fetch(at, { headers: tunnel });
     expect([names.status, await names.json()]).toEqual([200, { names: codeNames(P) }]);

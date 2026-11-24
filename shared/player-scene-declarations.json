@@ -1,0 +1,13 @@
+{
+  "$schema": "./player-scene-declarations.schema.json",
+  "scenes": [
+    { "id": "red-tide", "category": "title", "name": "Red tide at Wynwood" },
+    { "id": "across-biscayne-bay", "category": "loaders", "name": "Across Biscayne Bay", "subject": "coast" },
+    {
+      "id": "under-the-sextant",
+      "category": "loaders",
+      "name": "Under the Sextant",
+      "camera": { "side": -0.75, "back": 2.55, "height": -0.45, "pan": 9, "tilt": 21, "lens": 62, "hour": 18.68 }
+    }
+  ]
+}

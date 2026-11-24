@@ -1,0 +1,138 @@
+.cluster-main {
+  --cluster-ink: #172c44;
+  --cluster-muted: #53667a;
+  --cluster-blue: #164878;
+  --cluster-line: #d7e1eb;
+  --cluster-paper: #fff;
+  color: var(--cluster-ink);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+.cluster-main [hidden] { display: none !important; }
+.cluster-main h1, .cluster-main h2, .cluster-main p, .cluster-main dl, .cluster-main dd { margin: 0; }
+.cluster-header { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; margin: .25rem 0 1.5rem; }
+.cluster-header h1 { font-size: clamp(2rem, 4vw, 3.3rem); line-height: 1.04; letter-spacing: -.038em; }
+.cluster-updated { color: var(--cluster-muted); font-size: .875rem; }
+
+.cluster-summary { display: flex; flex-wrap: wrap; gap: 1rem 0; padding: .2rem 0 1.45rem; }
+.cluster-summary > div { display: flex; flex-direction: column-reverse; gap: .16rem; padding: 0 clamp(.85rem, 3.7vw, 2.25rem); min-width: min(8rem, 33.33%); }
+.cluster-summary > div:first-child { padding-left: 0; }
+.cluster-summary > div + div { border-inline-start: 1px solid var(--cluster-line); }
+.cluster-summary dt { color: var(--cluster-muted); font-size: .85rem; }
+.cluster-summary dd { color: var(--cluster-ink); font-size: 1.9rem; line-height: 1; font-weight: 680; }
+.cluster-empty { padding: 1.25rem; background: var(--cluster-paper); border: 1px solid var(--cluster-line); border-radius: .55rem; }
+.cluster-empty + .cluster-worlds:not(:empty) { margin-top: 1rem; }
+
+.cluster-worlds { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17.5rem), 1fr)); gap: clamp(.9rem, 2.3vw, 1.45rem); }
+.cluster-worlds:has(> :only-child) { max-width: 29rem; }
+@media (min-width: 50rem) {
+  .cluster-worlds:has(> :nth-child(2):last-child) .cluster-preview { aspect-ratio: 4 / 3; max-height: 29rem; }
+}
+.cluster-world-card {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--cluster-paper);
+  border: 1px solid var(--cluster-line);
+  border-radius: .65rem;
+  box-shadow: 0 1px 3px #172c4410;
+}
+.cluster-world-card:hover, .cluster-world-card:focus-within { border-color: #7b9ab8; }
+.cluster-world-card:focus-within { outline: 2px solid var(--cluster-blue); outline-offset: 2px; }
+.cluster-preview {
+  display: grid;
+  place-items: center;
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background-color: #e5eef6;
+  background-image: linear-gradient(#2f527914 1px, transparent 1px), linear-gradient(90deg, #2f527914 1px, transparent 1px);
+  background-size: 23px 23px;
+  border-bottom: 1px solid var(--cluster-line);
+}
+.cluster-preview canvas { width: 100%; height: 100%; min-width: 0; min-height: 0; display: block; object-fit: contain; }
+.cluster-map-north, .cluster-map-key {
+  position: absolute;
+  right: .58rem;
+  top: .58rem;
+  padding: .2rem .38rem;
+  background: #fffffff0;
+  color: #173657;
+  border: 1px solid #3858753c;
+  border-radius: .2rem;
+  line-height: 1.25;
+  font-size: .7rem;
+  font-weight: 700;
+}
+.cluster-map-key { top: auto; right: auto; left: .58rem; bottom: .58rem; display: inline-flex; gap: .3rem; align-items: center; }
+.cluster-map-key i { width: .48rem; height: .48rem; border-radius: 50%; background: #bd4327; }
+.cluster-map-empty { text-align: center; padding: .4rem .65rem; color: #36536c; background: #f9fbfe; border: 1px solid #cad9e8; border-radius: .3rem; font-size: .875rem; }
+.cluster-world-body { flex: 1; display: flex; flex-direction: column; gap: .85rem; padding: 1rem 1.1rem 0; }
+.cluster-world-heading { display: flex; justify-content: space-between; align-items: start; gap: .5rem; }
+.cluster-world-heading div { min-width: 0; }
+.cluster-world-heading h2 { font-size: 1.22rem; line-height: 1.2; overflow-wrap: anywhere; }
+.cluster-world-heading a { color: var(--cluster-ink); text-decoration: none; }
+.cluster-world-heading a:focus-visible { outline: none; }
+.cluster-world-heading a::after { content: ""; position: absolute; inset: 0; }
+.cluster-world-card:is(:hover, :focus-within) .cluster-world-heading a { color: var(--cluster-blue); }
+.cluster-map-name, .cluster-world-note { color: var(--cluster-muted); font-size: .84rem; overflow-wrap: anywhere; }
+.cluster-health {
+  display: inline-flex;
+  align-items: center;
+  gap: .38rem;
+  flex: none;
+  align-self: start;
+  border-radius: .32rem;
+  padding: .25rem .42rem;
+  color: #40536b;
+  background: #edf1f6;
+  line-height: 1.1;
+  font-size: .75rem;
+  font-weight: 650;
+}
+.cluster-health::before { content: ""; width: .42rem; height: .42rem; border-radius: 50%; background: currentColor; }
+.cluster-health[data-state="0"] { color: #205684; background: #e6f0fb; }
+.cluster-health[data-state="1"], .cluster-health[data-state="locked"] { color: #80551b; background: #fbf0db; }
+.cluster-health[data-state="2"] { color: #96352b; background: #fae9e5; }
+.cluster-world-population { display: flex; align-items: center; gap: .6rem; color: var(--cluster-muted); font-size: .86rem; }
+.cluster-count { flex: none; }
+.cluster-world-population progress { flex: 1; min-width: 0; margin: 0; height: .48rem; appearance: none; border: 0; border-radius: .4rem; background: #e8eef4; color: #4879a5; }
+.cluster-world-population progress::-webkit-progress-bar { background: #e8eef4; border-radius: .4rem; }
+.cluster-world-population progress::-webkit-progress-value { background: #4879a5; border-radius: .4rem; }
+.cluster-world-population progress::-moz-progress-bar { background: #4879a5; border-radius: .4rem; }
+.cluster-world-open { display: flex; justify-content: space-between; gap: 1rem; margin-top: auto; padding: .65rem 0; border-top: 1px solid var(--cluster-line); color: var(--cluster-blue); font-size: .85rem; font-weight: 650; }
+.cluster-world-open span + span { font-size: 1.1rem; line-height: 1.1; }
+
+.cluster-access { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: .7rem 1.2rem; padding: .95rem 1.1rem; margin-bottom: 1.4rem; background: #edf4fb; border: 1px solid #c9daec; border-radius: .55rem; }
+.cluster-access h2 { font-size: 1.06rem; }
+.cluster-access p { color: var(--cluster-muted); font-size: .9rem; }
+.cluster-access form { display: flex; gap: .65rem; align-items: end; flex-wrap: wrap; }
+.cluster-field { display: flex; flex-direction: column; gap: .25rem; }
+.cluster-field label { font-size: .8rem; font-weight: 650; color: var(--cluster-ink); }
+.cluster-main :is(button, input, select) { min-height: 2.45rem; max-width: 100%; padding: .37rem .65rem; background: var(--cluster-paper); color: var(--cluster-ink); border: 1px solid #bbcbdc; border-radius: .32rem; font: inherit; }
+.cluster-main button { cursor: pointer; }
+.cluster-main .cluster-primary { color: white; background: var(--cluster-blue); border-color: var(--cluster-blue); }
+.cluster-main :is(button, input, select):focus-visible { outline: 2px solid var(--cluster-blue); outline-offset: 2px; }
+
+.cluster-chat { display: grid; overflow: hidden; background: var(--cluster-paper); border: 1px solid var(--cluster-line); border-radius: .65rem; }
+.cluster-chat-filters { display: flex; gap: .7rem 1.15rem; flex-wrap: wrap; padding: 1rem 1.1rem; background: #f0f5fb; }
+.cluster-chat-filters .cluster-field { min-width: min(13rem, 100%); }
+.cluster-chat-state { border-top: 1px solid var(--cluster-line); color: var(--cluster-muted); padding: .8rem 1.1rem; }
+.cluster-chat-lines { max-height: min(66vh, 48rem); overflow: auto; margin: 0; padding: 0; list-style: none; }
+.cluster-chat-lines:empty { display: none; }
+.cluster-chat-lines li { border-top: 1px solid var(--cluster-line); padding: .8rem 1.1rem; overflow-wrap: anywhere; }
+.cluster-chat-lines .chat-meta { display: block; color: var(--cluster-muted); font-size: .8rem; margin-bottom: .24rem; }
+.cluster-chat-lines .chat-meta time { color: var(--cluster-blue); }
+.cluster-chat-lines strong { font-weight: 700; margin-inline-end: .25rem; }
+
+@media (max-width: 35rem) {
+  .cluster-header { align-items: start; }
+  .cluster-summary > div { padding-inline: .65rem; }
+  .cluster-summary dt { font-size: .75rem; }
+  .cluster-summary dd { font-size: 1.6rem; }
+  .cluster-chat-filters .cluster-field { flex: 1; min-width: min(8rem, 100%); }
+  .cluster-access form { max-width: 100%; }
+}

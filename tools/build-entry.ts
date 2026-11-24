@@ -1,3 +1,4 @@
+import { wikiSceneCatalog } from "./wiki/studio-catalog.ts";
 import { titlePoster } from "./title/poster.ts";
 import { buildMapGallery } from "./title/maps.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -51,15 +52,24 @@ export async function buildEntry(dist: string): Promise<void> {
   const files = readdirSync(assets).sort();
   const named = (prefix: string) => "assets/" + files.find((n) => n.startsWith(prefix) && !n.endsWith(".br"));
   const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
-  const result = await Bun.build({
-    entrypoints: [join(source, "entry.ts"), join(source, "flight.ts"), join(source, "studio.ts"), join(source, "scene-studio.ts"), join(source, "wait.ts")],
+  const bundle = {
     outdir: dist,
-    target: "browser",
+    target: "browser" as const,
     minify: true,
-    naming: "[name].[ext]",
     define: { __TITLE_RELEASES__: JSON.stringify(releases), __SKY_FILE__: JSON.stringify(named("sky.")), __HUD_ATLAS_URL__: JSON.stringify(named("hud.")) },
+  };
+  const entry = await Bun.build({
+    ...bundle, entrypoints: [join(source, "entry.ts")], splitting: true,
+    naming: { entry: "[name].[ext]", chunk: "entry-chunks/[name]-[hash].[ext]" },
   });
-  if (!result.success) throw Error(result.logs.map(String).join("\n"));
+  const result = await Bun.build({
+    ...bundle, entrypoints: ["flight.ts", "studio.ts", "scene-studio.ts", "wait.ts"].map(name => join(source, name)),
+    naming: "[name].[ext]",
+  });
+  for (const built of [entry, result]) if (!built.success) throw Error(built.logs.map(String).join("\n"));
+  for (const output of entry.outputs) {
+    if (output.kind === "chunk") writeFileSync(output.path + ".br", brotliCompressSync(readFileSync(output.path)));
+  }
   for (const name of ["entry.css", "flight.html", "studio.html", "scene-studio.css"]) cpSync(join(source, name), join(dist, name));
   // The waiting page carries its script in its HTML: once it is fetched, it asks nothing more of a server that is stopping.
   const waiting = readFileSync(join(dist, "wait.js"), "utf8").replaceAll("</script", "<\\/script");
@@ -83,20 +93,21 @@ export async function buildEntry(dist: string): Promise<void> {
     if (existsSync(tile)) cpSync(tile, join(titles, "map-" + name + ".png"));
   }
   buildMapGallery(maps, titles, media);
-  const theme = "assets/music/dawn/theme.opus";
   const studio = new TextEncoder().encode(JSON.stringify(studioContent(CORE_CONTENT)));
   const studioFile = `assets/studio-content.${partHash(studio)}.json`;
   writeFileSync(join(dist, studioFile), studio);
   writeFileSync(join(dist, studioFile + ".br"), brotliCompressSync(studio));
   const data = {
-    music: existsSync(join(dist, theme)) && statSync(join(dist, theme)).size <= 2 * 1024 * 1024 ? theme : null,
     content: named("content."),
     studioContent: studioFile,
     sky: named("sky."),
     boot: "assets/" + manifest.files[manifest.boot]!.name,
     font: font ? "assets/" + font : null,
   };
-  writeFileSync(join(dist, "entry-media.json"), JSON.stringify(data));
+  writeFileSync(join(dist, "entry-media.json"), JSON.stringify({ ...data,
+    bytes: Object.fromEntries([data.boot, data.content, data.sky].map(path => [path, statSync(join(dist, path)).size])),
+  }));
+  writeFileSync(join(dist, "scene-catalog.json"), JSON.stringify(wikiSceneCatalog()));
   for (const name of ["entry.js", "flight.js", "studio.js", "entry.css", "title/wynwood-shore.json", "scene-studio.js", "scene-studio.css"])
     writeFileSync(join(dist, name + ".br"), brotliCompressSync(readFileSync(join(dist, name))));
   await titlePoster(dist);

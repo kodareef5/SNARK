@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import type { InstrumentCamera, MapCamera } from "../../shared/player-scenes.ts";
 import { CHUNK_SIZE, FRAME_MIDDLE, type FramedDims } from "../../shared/coords.ts";
 import { serverWire } from "../../server/wire.ts";
 import { TransverseMercator } from "../mapworld/geo.ts";
@@ -20,27 +21,20 @@ export interface PlaceShot extends Image {
   card?: Image;
 }
 
-type Point = readonly [longitude: number, latitude: number, metresUp: number];
-type Camera = { at: Point; towards: Point; hour: number; eyeSeconds?: number };
-type InstrumentCamera = { view: string; hour: number; over?: number; x?: number; z?: number; look?: [number, number, number] };
-
-interface Shot {
-  kind: PlaceShot["kind"];
-  caption: string;
-  alt: string;
-  name: string;
-  camera: Camera | InstrumentCamera;
-}
+type Point = MapCamera["at"];
+type Shot = { caption: string; alt: string; name: string } & (
+  { kind: "city"; camera: MapCamera } | { kind: "obelisk"; camera: InstrumentCamera }
+);
 
 const ROOT = resolve(import.meta.dir, "../..");
 const SIZE = [1440, 810] as const;
 const SMALL = [640, 360] as const;
 const CARD = [384, 216] as const;
 
-const city = (name: string, caption: string, alt: string, camera: Camera): Shot => ({ kind: "city", name, caption, alt, camera });
+const city = (name: string, caption: string, alt: string, camera: MapCamera): Shot => ({ kind: "city", name, caption, alt, camera });
 const obelisk = (name: string, caption: string, alt: string, camera: InstrumentCamera): Shot => ({ kind: "obelisk", name, caption, alt, camera });
 
-const PHOTOS: Readonly<Record<string, readonly Shot[]>> = {
+export const PLACE_RECIPES: Readonly<Record<string, readonly Shot[]>> = {
   miami: [
     city("biscayne-bay", "The Miami waterfront from Biscayne Bay", "Koru and the Miami waterfront seen across the bay", { at: [-80.18310, 25.77309, 6.4], towards: [-80.18494, 25.77374, 17], hour: 17.68 }),
     city("causeways", "PortMiami and the MacArthur Causeway", "The cruise terminal and the causeway crossing the water", { at: [-80.15525, 25.78160, 25], towards: [-80.15924, 25.77361, 18], hour: 17.25 }),
@@ -91,7 +85,7 @@ export function buildPlaceShots(sources: ReadonlyMap<string, string>, media: str
 
   const shots = new Map<string, PlaceShot[]>();
   for (const [slug, source] of sources) {
-    const photos = PHOTOS[slug];
+    const photos = PLACE_RECIPES[slug];
     if (!photos) continue;
     shots.set(slug, photos.map(({ name, alt, kind, caption }, index) => ({
       ...copy(slug, source, name, SIZE, 320 * 1024), name, alt, kind, caption,
@@ -102,7 +96,7 @@ export function buildPlaceShots(sources: ReadonlyMap<string, string>, media: str
   return shots;
 }
 
-export const placeCities = Object.keys(PHOTOS);
+export const placeCities = Object.keys(PLACE_RECIPES);
 
 export function projectCityCamera([lon0, lat0]: readonly [number, number], dims: FramedDims): (point: Point) => [number, number, number] {
   const tm = new TransverseMercator(lat0, lon0);
@@ -116,7 +110,7 @@ export function projectCityCamera([lon0, lat0]: readonly [number, number], dims:
 }
 
 export async function retakePlaceShots(slug: string, dist: string, map: string, destination: string, names: readonly string[] = []): Promise<void> {
-  const all = PHOTOS[slug];
+  const all = PLACE_RECIPES[slug];
   if (!all) throw new Error(`no wiki cameras for ${slug}`);
   if (names.some((name) => !all.some((shot) => shot.name === name))) throw new Error(`unknown wiki camera for ${slug}: ${names.join(", ")}`);
   const photos = names.length ? all.filter((shot) => names.includes(shot.name)) : all;

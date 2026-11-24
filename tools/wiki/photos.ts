@@ -10,7 +10,7 @@ import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 import { devtools } from "../map/trip.ts";
 import { encodePhoto, readPhotoMap, WIKI_PHOTOS } from "./photo-files.ts";
 import { photoReady, type PhotoStatus } from "./photo-recipe.ts";
-import { CARD_SIZE, FOOTER_SHOT, PORTRAIT_SIZE, WIKI_SCENE_BRIEFS, photoName, photoPosition, photoSize } from "./photo-recipes.ts";
+import { CARD_SIZE, FOOTER_SHOT, PORTRAIT_SIZE, WIKI_HOME_SECONDS, WIKI_FOOTER_SECONDS, WIKI_SCENE_BRIEFS, photoName, photoPosition, photoSize } from "./photo-recipes.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const SHELL = '<!doctype html><html><head><meta charset="utf-8"><style>html,body,canvas{margin:0;width:100%;height:100%;display:block;background:#000}</style></head><body><canvas></canvas><script type="module" src="/__wiki-photo.js"></script></body></html>';
@@ -88,7 +88,7 @@ try {
     footer = name === "footer";
     for (const [label, size] of footer ? [[name, photoSize(recipe.route)]] as const : [[name, photoSize(recipe.route)], ["home.portrait", PORTRAIT_SIZE]] as const) {
       await viewport(size);
-      await page.send("Page.navigate", { url: host.url + "flight.html?set=wynwood-shore&still=" + (footer ? "8" : "3") + "&wiki=" + label });
+      await page.send("Page.navigate", { url: host.url + "flight.html?set=wynwood-shore&still=" + (footer ? WIKI_FOOTER_SECONDS : WIKI_HOME_SECONDS) + "&wiki=" + label });
       await until<boolean>(`location.search.endsWith(${JSON.stringify(label)}) && document.body?.dataset.settled === 'true'`, label, Boolean);
       await shot(label, size, name === label && !footer);
     }

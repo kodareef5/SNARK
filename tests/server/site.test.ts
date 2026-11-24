@@ -25,6 +25,15 @@ writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));
 writeFileSync(join(dir, "index.html"), "<!doctype html><title>the game</title>");
 mkdirSync(join(dir, "wiki"));
 writeFileSync(join(dir, "wiki/index.html"), "<!doctype html><title>the wiki</title>");
+const adminDir = join(dir, "admin");
+mkdirSync(adminDir);
+for (const file of ["index", "cluster", "scene-studio", "settings", "loadouts", "drops", "cast", "first-frame", "sounds"]) {
+  writeFileSync(join(adminDir, `${file}.html`), `<title>admin ${file}</title>`);
+}
+writeFileSync(join(adminDir, "cluster.js"), "export {};");
+writeFileSync(join(adminDir, "admin.css"), "body{color:white}");
+writeFileSync(join(dir, "scene-studio.js"), "export const studio = true;");
+writeFileSync(join(dir, "sounds.html"), "the old board");
 const running: { stop(): void }[] = [];
 afterAll(() => {
   for (const r of running) r.stop();
@@ -45,7 +54,7 @@ function opens(url: string, origin: string | null): Promise<boolean> {
 
 test("a server's path is its public address's, plain words that are not the site's own; a request falls in its world, on the site, or at the path itself", () => {
   expect([pathOf(""), pathOf("https://play.example"), pathOf("https://play.example/"), pathOf("https://play.example/miami/"), pathOf("/miami"), pathOf("/eu/miami")]).toEqual(["", "", "", "/miami", "/miami", "/eu/miami"]);
-  for (const bad of ["/mi ami", "/miami?x", "//miami", "/..", "/wiki", "https://play.example/assets", "/source/x", "/cluster", "/cluster/admin", "javascript:alert(1)", "ftp://play.example/miami"]) expect(() => pathOf(bad)).toThrow("--public-url");
+  for (const bad of ["/mi ami", "/miami?x", "//miami", "/..", "/wiki", "https://play.example/assets", "/source/x", "/cluster", "/cluster/admin", "/admin/miami", "javascript:alert(1)", "ftp://play.example/miami"]) expect(() => pathOf(bad)).toThrow("--public-url");
   expect([placeOf("", "/ws"), placeOf("/miami", "/miami"), placeOf("/miami", "/miami/ws"), placeOf("/miami", "/"), placeOf("/miami", "/miamiz/ws")]).toEqual([
     { at: "world", path: "/ws" },
     { at: "slash", path: "/miami" },
@@ -55,6 +64,16 @@ test("a server's path is its public address's, plain words that are not the site
   ]);
 });
 
+test("the first title response offers play and chooses one poster orientation", () => {
+  const html = startPage([], { wiki: "", repository: "" }, { world: true, directory: "" });
+  expect(html).toContain('data-action="begin">Play</button>');
+  expect(html).toContain('data-action="servers">Browse worlds</button>');
+  expect(html).toContain('href="/cluster/title-poster.webp?portrait" media="(orientation: portrait)"');
+  expect(html).toContain('<noscript><h1>SNARK</h1>');
+  expect(html).not.toContain("flight.html");
+  expect(html).not.toContain('src="main.js"');
+});
+
 test("the start screen lists each world with its count and goes to its path, and a link is only ever an address or a path of the site", () => {
   expect([worldAddress({ url: "/miami", port: 8798 }, "abc.trycloudflare.com", false), worldAddress({ url: "https://tampa.example/", port: 8799 }, "x", false), worldAddress({ url: "", port: 8799 }, "192.168.1.20:8798", true)]).toEqual(["/miami/", "https://tampa.example/", "//192.168.1.20:8799/"]);
   // A page that came straight to a world's port goes to the other's port, under its path.
@@ -62,8 +81,8 @@ test("the start screen lists each world with its count and goes to its path, and
   expect([linkOf(" /wiki/ "), linkOf("https://git.example.com/snark"), linkOf("javascript:alert(1)"), linkOf("wiki"), linkOf(""), linkOf("//elsewhere.example/"), linkOf("/\\elsewhere.example/")]).toEqual(["/wiki/", "https://git.example.com/snark", "", "", "", "", ""]);
   const page = startPage(
     [
-      { name: "Miami", map: "Miami", mapId: "core:miami", address: "/miami/", players: 3, max: 70 },
-      { name: "<Tampa>", map: "Tampa", mapId: "core:tampa", address: "/tampa/", players: 70, max: 70 },
+      { id: 1, name: "Miami", map: "Miami", mapId: "core:miami", address: "/miami/", players: 3, max: 70 },
+      { id: 2, name: "<Tampa>", map: "Tampa", mapId: "core:tampa", address: "/tampa/", players: 70, max: 70 },
     ],
     { wiki: "/wiki/", repository: "" },
   );
@@ -92,7 +111,7 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
   const said = { name: "Miami", map: "proving:1", settings: {} };
   expect([await (await get(`${at}/miami/settings.json`)).json(), await (await get(`${at}/settings.json`)).json()]).toEqual([said, said]);
   // The worlds running, as the start screen lists them, for the wiki's maps: with no cluster, this one alone.
-  const alone = [{ name: "Miami", map: "proving:1", mapId: "proving:1", address: "/miami/", players: 0, max: 70 }];
+  const alone = [{ id: "local", name: "Miami", map: "proving:1", mapId: "proving:1", address: "/miami/", players: 0, max: 70 }];
   expect([await (await get(`${at}/miami/worlds.json`)).json(), await (await get(`${at}/worlds.json`)).json()]).toEqual([alone, alone]);
   // Its sockets are under its path, and not at the root, which is the site's.
   expect([await opens(`ws://127.0.0.1:${s.port}/miami/ws`, null), await opens(`ws://127.0.0.1:${s.port}/ws`, null)]).toEqual([true, false]);
@@ -103,14 +122,41 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
   const wiki = await get(`${at}/wiki?x=1`);
   expect([wiki.status, wiki.headers.get("location"), await (await get(`${at}/wiki/`)).text()]).toEqual([308, "wiki/?x=1", "<!doctype html><title>the wiki</title>"]);
   expect([(await get(`${at}/source/`)).status, (await (await get(`${at}/source/`)).text()).includes("Coming soon")]).toEqual([200, true]);
-  // The sound board and the admin page are the world's, behind its password, and the site does not hand them out.
-  writeFileSync(join(dir, "sounds.html"), "the board");
-  mkdirSync(join(dir, "admin"));
-  writeFileSync(join(dir, "admin/index.html"), "the admin page");
   expect([await (await get(`${at}/sounds.html`)).text(), (await get(`${at}/admin/sounds.json`)).status]).toEqual(["not found", 404]);
-  for (const path of ["/Sounds.html", "//sounds.html", "/admin/", "/Admin/index.html", "/admin/stats.json", "/admin"]) expect([path, await (await get(`${at}${path}`)).text()]).toEqual([path, "not found"]);
-  // The world's own are behind its gate, which this server, with no admin password, keeps shut, in any case of the path.
-  for (const path of ["/miami/sounds.html", "/miami/Sounds.html", "/miami/admin/", "/miami/ADMIN/stats.json", "/miami/admin/survivors.json"]) expect(await (await get(`${at}${path}`)).text()).toStartWith("the admin pages open on a development server");
+  for (const path of ["/Sounds.html", "//sounds.html", "/Admin/index.html", "/admin/stats.json"]) expect([path, await (await get(`${at}${path}`)).text()]).toEqual([path, "not found"]);
+  for (const path of ["/miami/sounds.html", "/miami/Sounds.html", "/miami/admin/", "/miami/ADMIN/stats.json", "/miami/admin/survivors.json", "/admin/worlds/local/map/"]) expect(await (await get(`${at}${path}`)).text()).toStartWith("the admin pages open on a development server");
+});
+
+test("standalone admin serves public navigation and gates each world tool", async () => {
+  const s = startServer({ port: 0, clientDir: dir, probeScene: true, adminPassword: "operator" });
+  running.push(s);
+  const at = `http://127.0.0.1:${s.port}`;
+  const good = { headers: { authorization: `Basic ${btoa("x:operator")}` } };
+  for (const path of ["/admin/", "/admin/chat/"]) expect(await (await get(at + path)).text()).toBe("<title>admin cluster</title>");
+  for (const [from, to] of [["/admin", "/admin/"], ["/admin/chat", "/admin/chat/"], ["/cluster/admin/", "/admin/"]]) {
+    const res = await get(`${at}${from}?tab=chat`);
+    expect([res.status, res.headers.get("location")]).toEqual([308, `${to}?tab=chat`]);
+  }
+  for (const page of ["map", "survivors", "items", "health", "saves", "restart", "settings", "loadouts", "drops", "cast", "first-frame", "sounds"]) {
+    const path = `${at}/admin/worlds/local/${page}/`;
+    expect((await get(path)).status).toBe(401);
+    const res = await get(path, good);
+    const file = ["map", "survivors", "items", "health", "saves", "restart"].includes(page) ? "index" : page;
+    expect([res.status, res.headers.get("cache-control"), await res.text()]).toEqual([200, "no-store", `<title>admin ${file}</title>`]);
+  }
+  const map = await get(`${at}/admin/worlds/local/?survivor=Ada`, good);
+  expect([map.status, map.headers.get("location")]).toEqual([308, "/admin/worlds/local/map/?survivor=Ada"]);
+  for (const [old, page] of [["/sounds.html", "sounds"], ["/admin/index.html", "map"], ["/admin/drops.html", "drops"]]) {
+    const res = await get(at + old, good);
+    expect([res.status, res.headers.get("location")]).toEqual([308, `/admin/worlds/local/${page}/`]);
+  }
+  expect(await (await get(`${at}/admin/ui/admin.css`)).text()).toBe("body{color:white}");
+  expect(await (await get(`${at}/admin/ui/scene-studio.js`)).text()).toBe("export const studio = true;");
+  for (const path of ["/admin/ui/index.html", "/admin/ui/admin.js.gz", "/admin/worlds/99/map/", "/admin/worlds/local/toString/"]) expect((await get(at + path, good)).status).toBe(404);
+  expect((await get(`${at}/admin/scenes/`)).status).toBe(401);
+  expect(await (await get(`${at}/admin/scenes/`, good)).text()).toBe("<title>admin scene-studio</title>");
+  expect((await get(`${at}/admin/scenes/api`, good)).status).toBe(200);
+  expect(await (await get(`${at}/admin/map-context.json`, good)).json()).toEqual({ districts: [] });
 });
 
 test("a server at the root of its host is all world as before, and has the page the source link goes to and its links", async () => {
@@ -119,6 +165,23 @@ test("a server at the root of its host is all world as before, and has the page 
   const at = `http://127.0.0.1:${s.port}`;
   expect([await (await get(`${at}/`)).text(), (await get(`${at}/source/`)).status]).toEqual(["<!doctype html><title>the game</title>", 200]);
   expect(await (await get(`${at}/links.json`)).json()).toEqual({ wiki: "/wiki/", repository: "/source/" });
+});
+
+test("canonical links to an external world go to its announced mount", async () => {
+  const saves = mkdtempSync(join(dir, "external-"));
+  const config = loadConfig({}, ["-clusterid=external", `-ClusterDirOverride=${saves}`, "?SessionName=Miami"]).rules;
+  const local = startServer({ port: 0, clientDir: dir, publicUrl: "/miami", dbPath: join(saves, "miami.db"), noBackups: true, config });
+  running.push(local);
+  const folder = local.host.cluster!.folder;
+  const announcement = folder.announcement(local.host.cluster!.world)!;
+  folder.announce({ ...announcement, world: announcement.world + 1, url: "https://remote.example/region/tampa" });
+  const front = startFront(join(saves, "external"), 0, "127.0.0.1");
+  running.push(front);
+  const path = `/admin/worlds/${announcement.world + 1}/map/?survivor=Ada`;
+  for (const port of [local.port, front.port]) {
+    const res = await get(`http://127.0.0.1:${port}${path}`);
+    expect([res.status, res.headers.get("location")]).toEqual([307, `https://remote.example/region/tampa${path}`]);
+  }
 });
 
 test("a standalone title stays at the proxy origin and the game preloads its map at the play URL", async () => {
@@ -131,7 +194,7 @@ test("a standalone title stays at the proxy origin and the game preloads its map
     try {
       const at = `http://127.0.0.1:${s.port}`;
       const proxy = { host: "play.example.org" };
-      const page = await get(at + "/?screen=roster", { headers: proxy });
+      const page = await get(at + "/?screen=roster&survivor=June", { headers: proxy });
       expect(await page.text()).toContain("entry-root");
       expect(page.headers.get("link")).toBeNull();
       expect(await (await get(at + "/entry-worlds.json", { headers: proxy })).json()).toMatchObject([{ address: "/", password: false }]);
@@ -160,10 +223,6 @@ test("the front sends each path to its world and the site to the lowest world, s
   };
 
   const [miami, tampa] = [world("Miami", "miami password"), world("Tampa", "the password")];
-  const adminDir = join(dir, "admin");
-  mkdirSync(adminDir, { recursive: true });
-  writeFileSync(join(adminDir, "cluster.html"), "<!doctype html><title>cluster admin</title>");
-  writeFileSync(join(adminDir, "cluster.js"), "export {};");
   const front = startFront(join(saves, "site"), 0, "127.0.0.1");
   running.push(front);
   const at = `http://127.0.0.1:${front.port}`;
@@ -171,28 +230,47 @@ test("the front sends each path to its world and the site to the lowest world, s
   const start = await (await get(`${at}/`)).text();
   expect([start.indexOf('href="/miami/"') > 0, start.indexOf('href="/tampa/"') > start.indexOf('href="/miami/"')]).toEqual([true, true]);
   // And so does the list the wiki's maps are marked from, each world by its map's id.
-  const listed = (await (await get(`${at}/worlds.json`)).json()) as { name: string; mapId: string; address: string }[];
-  expect(listed.map((w) => [w.name, w.mapId, w.address])).toEqual([["Miami", miami.host.world.mapId, "/miami/"], ["Tampa", tampa.host.world.mapId, "/tampa/"]]);
+  const listed = (await (await get(`${at}/worlds.json`)).json()) as { id: number; name: string; mapId: string; address: string }[];
+  expect(listed.map((w) => [w.id, w.name, w.mapId, w.address])).toEqual([[miami.host.cluster!.world, "Miami", miami.host.world.mapId, "/miami/"], [tampa.host.cluster!.world, "Tampa", tampa.host.world.mapId, "/tampa/"]]);
   const admin = await get(`${at}/cluster/admin?world=tampa`);
-  expect([admin.status, admin.headers.get("location")]).toEqual([308, "/cluster/admin/?world=tampa"]);
-  expect(await (await get(`${at}/cluster/admin/`)).text()).toContain("<title>cluster admin</title>");
+  expect([admin.status, admin.headers.get("location")]).toEqual([308, "/admin/?world=tampa"]);
   expect(await (await get(`${at}/cluster/admin/cluster.js`)).text()).toBe("export {};");
   expect((await get(`${at}/cluster/admin/overview.json`)).status).toBe(404);
   expect(await (await get(`${at}/cluster/title-scene.json`)).json()).toMatchObject({set:"wynwood-shore"});
   expect((await get(`${at}/cluster/admin/scenes/`)).status).toBe(401);
   expect((await get(`${at}/cluster/admin/scenes/api`, { method:"POST" })).status).toBe(401);
+  const loader = await (await get(at + "/cluster/loader-scene.json")).json() as { landscape: string; portrait: string };
+  expect(loader.landscape).toBe("/cluster/loader-poster.webp");
+  expect(loader.portrait).toBe("/cluster/loader-poster.webp?portrait");
+  expect((await get(at + loader.landscape)).status).toBe(307);
+  expect((await get(at + "/cluster/loader-scene.json", { method: "POST" })).status).toBe(405);
   const director = { authorization: `Basic ${btoa("operator:miami password")}` };
   expect((await get(`${at}/cluster/admin/scenes/api`, {headers:director})).status).toBe(200);
   expect((await get(`${at}/cluster/admin/scenes/api`, {method:"POST",headers:{...director,origin:"https://elsewhere.example"}})).status).toBe(403);
 
   const shot = await (await get(`${at}/cluster/title-scene.json`)).json() as { name: string };
   const picture = "data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA";
-  const published = await get(`${at}/cluster/admin/scenes/api`, { method: "POST", headers: { ...director, origin: at, "content-type": "application/json" },
+  const published = await get(`${at}/admin/scenes/api`, { method: "POST", headers: { ...director, origin: at, "content-type": "application/json" },
     body: JSON.stringify({ revision: 0, shot: { ...shot, name: "Harbor light" }, publish: true, picture, portrait: picture }) });
   expect(published.status).toBe(200);
   expect(await (await get(`http://127.0.0.1:${tampa.port}/cluster/title-scene.json`)).json()).toMatchObject({ name: "Harbor light" });
   expect((await get(`${at}/cluster/title-poster.webp?portrait`)).headers.get("content-type")).toBe("image/webp");
   const good = { headers: { authorization: `Basic ${btoa("x:the password")}` } };
+  const tampaAdmin = `/admin/worlds/${listed[1]!.id}/settings/`;
+  expect((await get(at + tampaAdmin, { headers: director })).status).toBe(401);
+  expect(await (await get(at + tampaAdmin, good)).text()).toBe("<title>admin settings</title>");
+  const realm = async (path: string): Promise<string | null> => (await get(at + path)).headers.get("www-authenticate");
+  const tampaRealm = `Basic realm="SNARK admin world ${listed[1]!.id}", charset="UTF-8"`;
+  expect([await realm(tampaAdmin), await realm("/tampa/admin/settings.json"), await realm("/miami/admin/settings.json")]).toEqual([
+    tampaRealm, tampaRealm, `Basic realm="SNARK admin world ${listed[0]!.id}", charset="UTF-8"`,
+  ]);
+  const oldSettings = await get(`${at}/tampa/admin/settings.html?panel=stats`, good);
+  expect([oldSettings.status, oldSettings.headers.get("location")]).toEqual([308, `${tampaAdmin}?panel=stats`]);
+  const direct = await get(`http://127.0.0.1:${miami.port}${tampaAdmin}`);
+  expect([direct.status, direct.headers.get("location")]).toEqual([307, `http://127.0.0.1:${tampa.port}/tampa${tampaAdmin}`]);
+  expect((await get(direct.headers.get("location")!, good)).status).toBe(200);
+  const named = await get(`http://127.0.0.1:${miami.port}${tampaAdmin}`, { headers: { host: "play.example" } });
+  expect([named.status, named.headers.get("location")]).toEqual([307, `/tampa${tampaAdmin}`]);
   expect((await get(`${at}/miami/admin/chat.json`, good)).status).toBe(401);
   expect((await get(`${at}/tampa/admin/chat.json`)).status).toBe(401);
   expect(await (await get(`${at}/tampa/admin/overview.json`, good)).json()).toMatchObject({ stats: { world: { name: "Tampa" } }, positions: [], chat: [] });
@@ -234,7 +312,13 @@ test("the front sends each path to its world and the site to the lowest world, s
   expect([live.drops.map((d) => [d.id, d.tier, d.state]), live.acts.length >= 5, live.acts.at(-1)!.what.startsWith("supply call 10 10 mauve arms plain: the book has no tier")]).toEqual([[[made.id, "blue", "coming"]], true, true]);
   expect([(await (await post("cancel", { id: made.id })).json() as { said: string }).said, tampa.host.supply.live(), (await post("land", { id: "x" })).status]).toEqual([`cancelled ${made.id}`, 0, 400]);
   // The front passes these acts and nothing else under a world's admin pages.
-  expect((await get(`${at}/tampa/admin/stats.json`, { method: "POST", headers: good.headers })).status).toBe(405);
+  for (const path of ["/tampa/admin/stats.json", "/tampa/admin/supply/fake", "/tampa/admin/loadouts/fake", "/fake/tampa/admin/settings", `${tampaAdmin}`]) {
+    expect((await get(at + path, { method: "POST", headers: good.headers })).status).toBe(405);
+  }
+  for (const path of ["settings", "stop", "loadouts/apply", "loadouts/reset", "loadouts/book"]) {
+    expect((await get(`${at}/tampa/admin/${path}`, { method: "POST" })).status).toBe(401);
+    expect((await get(`${at}/tampa/admin/${path}`, { method: "POST", headers: { ...good.headers, origin: "https://elsewhere.example" } })).status).toBe(403);
+  }
   const terrain = await get(`${at}/tampa/admin/terrain.rgba`, { headers: { ...good.headers, "accept-encoding": "identity" } });
   const rgba = new Uint8Array(await terrain.arrayBuffer());
   expect([terrain.status, terrain.headers.get("cache-control"), rgba.length]).toEqual([200, "no-store", ADMIN_TERRAIN_SIDE ** 2 * 4]);

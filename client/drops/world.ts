@@ -1,3 +1,4 @@
+import { adminContext } from "../admin/shell.ts";
 // The drops page's views of the world: tiers and classes, the map with its sites, and the circuits with the book's
 // rules. Each draws fields of the draft (state.ts field); the map also listens to its own picture.
 
@@ -164,7 +165,7 @@ export function mapDraw(l: Loaded): void {
 export async function mapRead(): Promise<void> {
   S.map.live = await ask<LiveWire>("live.json");
   if (S.map.terrain) return;
-  const r = await fetch("terrain.rgba", { cache: "no-store" });
+  const r = await fetch((await adminContext()).api("terrain.rgba"), { cache: "no-store" });
   if (!r.ok) return;
   const bytes = new Uint8ClampedArray(await r.arrayBuffer());
   const n = Math.round(Math.sqrt(bytes.length / 4));

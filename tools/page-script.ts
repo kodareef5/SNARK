@@ -158,9 +158,9 @@ export async function buildPageScript(dist: string, define: Record<string, strin
   return files.map((f) => relative(dist, f)).sort((a, b) => (a === "main.js" ? -1 : b === "main.js" ? 1 : a === PAGE ? -1 : b === PAGE ? 1 : a.localeCompare(b)));
 }
 
-/** The files main.js imports before it runs, which the page asks for beside it. */
-export function preloaded(dist: string): string[] {
-  return [...new Set([...readFileSync(join(dist, "main.js"), "utf8").matchAll(/\bimport\s*(?:\{[^}]*\}\s*from\s*)?"\.\/([^"]+\.js)"/g)].map((m) => m[1]!))];
+/** The static imports the browser needs before an entry script can run. */
+export function preloaded(dist: string, script = "main.js"): string[] {
+  return [...new Set([...readFileSync(join(dist, script), "utf8").matchAll(/\bimport\s*(?:\{[^}]*\}\s*from\s*)?"\.\/([^"]+\.js)"/g)].map((m) => m[1]!))];
 }
 
 /**

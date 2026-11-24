@@ -20,7 +20,7 @@ export interface Answer {
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-export type Get = (url: string) => Promise<Answer>;
+export type Get = (url: string, init?: { cache: "reload" }) => Promise<Answer>;
 
 /** An answer the server gave with a success status, or an error naming the request and how it failed. */
 async function answer(get: Get, url: string): Promise<Answer> {

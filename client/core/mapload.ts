@@ -20,11 +20,12 @@ import { CHUNK_SIZE, SECTOR_CHUNKS, chunkCount } from "../../shared/coords.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { Buildings } from "../../shared/world/buildings.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { COARSE_STEP, MapStatics, OVERVIEW_CHUNKS, OVERVIEW_STEP, blankLayers, blankStatics, listedRows, partHash, partSteps, readHead, readPart, setGround, setNodes, setStatics, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { COARSE_STEP, MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, listedRows, partHash, partSteps, readHead, readPart, setGround, setNodes, setStatics, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
 import { fetchBytes, within, type Get } from "./fetched.ts";
 import { HeldTops } from "./render/blocks.ts";
-import { PREDICTED_REACH } from "./session.ts";
+import { everywhere, firstFrameParts, overviewOf, partDistance, squareKey } from "./map-first.ts";
+export { FIRST_REACH, firstFrameParts } from "./map-first.ts";
 import { holdRoad, holdStreets, type RoadPiece, type StreetsPiece } from "../../shared/world/mapfile.ts";
 import { RoadSectors } from "../../shared/world/roadframe.ts";
 import { StreetSectors } from "../../shared/world/streets.ts";
@@ -41,12 +42,6 @@ export const PARTS_AT_ONCE = 6;
  */
 export const URGENT_AT_ONCE = 4;
 export const AFTER_AT_ONCE = 2;
-/**
- * Metres round the body whose overviews the first frame waits for, so the ground there is drawn finer than the head's
- * coarse picture and its trees stand: the far trees' reach on the high tier (assets/tiers.ts), within half an overview's
- * side, so at most four.
- */
-export const FIRST_REACH = 2048;
 /** Metres round the body, and round where it will be LEAD seconds on, whose ground is urgent once the game is played. */
 export const RING = 600;
 /** Seconds of the body's way ahead of it whose ground is asked for as if the body were there. */
@@ -78,40 +73,8 @@ export interface Place {
   readonly vz: number;
 }
 
-/**
- * Whether the first frame waits for part `p` wherever the body is: the landmarks' definitions, and on a map with a listed
- * node layer every sector's ground and so every overview, since the head does not say that layer's slots a chunk and a
- * node source counts them as it is made.
- */
-function everywhere(head: MapHead, p: MapPart): boolean {
-  return p.kind === "land" || ((p.kind === "ground" || p.kind === "overview") && head.layers.some((rule) => rule.type === 1));
-}
-
 /** Whether part `p` comes after the first frame and nothing waits for it: a square's tops, a sector's buildings. */
 const unwaited = (p: MapPart): boolean => p.kind === "tops" || p.kind === "buildings";
-
-/** A square of the lattice by its column and row, as a number. */
-const squareKey = (col: number, row: number): number => col * 4096 + row;
-/** The overview's square a sector's lies in: both are squares of the lattice, and a sector's lies within one overview's. */
-const overviewOf = (sector: { readonly col: number; readonly row: number }): number => squareKey(Math.floor((sector.col * SECTOR_CHUNKS) / OVERVIEW_CHUNKS), Math.floor((sector.row * SECTOR_CHUNKS) / OVERVIEW_CHUNKS));
-
-/**
- * The parts the first frame waits for with the body at (x, z), besides the head, in the head's order: those it waits for
- * everywhere, the ground of each sector within PREDICTED_REACH of it on both axes, where the body is predicted from the
- * first frame on, the overviews those sectors lie in, which hold their nodes and their water, and those less than
- * FIRST_REACH from it. The loader asks by it, and the map's build holds its worst over the map to a budget
- * (tools/map/pack.ts).
- */
-export function firstFrameParts(head: MapHead, x: number, z: number): MapPart[] {
-  const r = PREDICTED_REACH;
-  const grounds = head.parts.filter((p) => {
-    if (p.kind !== "ground") return false;
-    const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
-    return sq.cx0 * CHUNK_SIZE <= x + r && sq.cx1 * CHUNK_SIZE >= x - r && sq.cz0 * CHUNK_SIZE <= z + r && sq.cz1 * CHUNK_SIZE >= z - r;
-  });
-  const under = new Set(grounds.map(overviewOf));
-  return head.parts.filter((p) => everywhere(head, p) || grounds.includes(p) || (p.kind === "overview" && (under.has(squareKey(p.col, p.row)) || offOf(head, p, x, z) < FIRST_REACH)));
-}
 
 /**
  * The parts the map's statics are handed over after, besides the head: every part but the tops, the roads' frame, the
@@ -278,7 +241,7 @@ class Asker {
     const f = this.fails.get(name) ?? { net: 0, damaged: 0, told: false };
     let bytes: Uint8Array;
     try {
-      bytes = new Uint8Array(await fetchBytes(this.get, url));
+      bytes = new Uint8Array(await fetchBytes(f.damaged ? (path) => this.get(path, { cache: "reload" }) : this.get, url));
     } catch (e) {
       return { wait: this.failed(name, f, why(e), false) };
     }
@@ -487,7 +450,7 @@ export class MapLoader {
   private off(p: MapPart): number {
     const head = this.staged.head;
     const { x, z, vx, vz } = this.place();
-    return Math.min(offOf(head, p, x, z), offOf(head, p, x + vx * LEAD, z + vz * LEAD));
+    return Math.min(partDistance(head, p, x, z), partDistance(head, p, x + vx * LEAD, z + vz * LEAD));
   }
 
   /** Whether part `p` is an overview or ground within RING of the body or of where it is heading. */
@@ -635,9 +598,3 @@ export function* rowsOf(head: MapHead, table: MapStatics, sectors: readonly MapP
 
 /** Rows rowsOf copies between two pauses. */
 const COPY_SLICE = 1 << 16;
-
-/** Metres from (x, z) to the map's part `p`'s square, an overview's (whose tops are of the same square) or a sector's. */
-function offOf(head: MapHead, p: MapPart, x: number, z: number): number {
-  const sq = squareOf(head.dims, p.kind === "overview" || p.kind === "tops" ? OVERVIEW_CHUNKS : SECTOR_CHUNKS, p.col, p.row)!;
-  return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
-}

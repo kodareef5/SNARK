@@ -1,3 +1,5 @@
+import { PREDICTED_REACH } from "./map-first.ts";
+export { PREDICTED_REACH } from "./map-first.ts";
 import { Blockers, survivorKind } from "../../shared/sim/blockers.ts";
 import { CUE_DEAD, CUE_HELD, CUE_OUT, OWN_STRIDE_BITS, fallFrameChanged } from "../../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
@@ -369,12 +371,6 @@ const SMOOTH_LIMIT = 3;
 const VEHICLE_SMOOTH_LIMIT = 12;
 /** Chunks around the body whose nodes stay filled until the tier says how many (assets/tiers.ts `nodes`). Collision needs one, drawing wants more. */
 const NODE_RADIUS = 3;
-/**
- * Metres round the body whose ground a prediction may read: what a tick's step reaches, a vehicle's length, and the way
- * from the snapshot a replay starts at, at 250 m/s on a link of 200 ms. Its body is predicted only where every chunk this
- * near holds the map's own ground (shared/world/heightfield.ts), and the page's first frame waits for the sectors it meets.
- */
-export const PREDICTED_REACH = 128;
 /** Milliseconds with no snapshot past which the game's socket is taken as held back (`behind`): some snapshots' worth. */
 export const BEHIND_MS = 300;
 /** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */

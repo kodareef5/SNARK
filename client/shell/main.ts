@@ -45,9 +45,24 @@ void import("../core/render/city-late.ts");
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? (await import("./device.ts")).devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
-const splash=document.querySelector<HTMLElement>("#boot-splash");
-const loadingLine=document.querySelector<HTMLElement>("#boot-line");
-if(selfcheck || bench || device || params.has("look") || params.has("trip"))splash?.remove();
+const splash = document.querySelector<HTMLElement>("#boot-splash")!;
+const loadingLine = document.querySelector<HTMLElement>("#boot-line")!;
+const loadingBar = document.querySelector<HTMLProgressElement>("#boot-progress")!;
+const entryBack = document.querySelector<HTMLAnchorElement>("#entry-back")!;
+const loadingStages = ["Loading world data…", "Preparing the scene…", "Joining the server…", "Loading the starting area…", "Drawing the first frame…"];
+function showStage(stage: number, detail = ""): void {
+  loadingBar.value = stage;
+  loadingLine.textContent = detail || loadingStages[stage]!;
+}
+function bootError(message: string): void {
+  splash.hidden = false;
+  document.querySelector<HTMLElement>("#boot-heading")!.textContent = "Couldn’t enter world";
+  loadingBar.hidden = true;
+  loadingLine.textContent = message;
+  entryBack.hidden = false;
+  root.textContent = message;
+}
+if (selfcheck || bench || device || params.has("look") || params.has("trip")) splash.hidden = true;
 /** The GPU's times of a frame where nothing times it. */
 const UNTIMED: readonly number[][] = [];
 /** A survivor arriving from another server of the cluster, with its ticket (client/core/travel.ts). */
@@ -59,7 +74,8 @@ try { if(!arrival && location.pathname.endsWith("/play.html")) launch=readLaunch
 
 if(launch && params.get("name")!==launch.name)launch=null;
 if(launch?.intent==="create"){
-  const back=document.querySelector<HTMLAnchorElement>("#entry-back");if(back){back.href="./?screen=create";back.textContent="Return to character creation";}
+  entryBack.href = "./?screen=create";
+  entryBack.textContent = "Return to character creation";
 }
 async function boot(): Promise<void> {
   // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
@@ -67,7 +83,11 @@ async function boot(): Promise<void> {
   // round the body and its overviews once the welcome says where that is, and the rest while the world is drawn
   // (client/core/mapload.ts).
   // Until the first frame the page's one line says what it waits for when a part has failed (client/core/mapload.ts).
-  const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, { say: (line) => {root.textContent=line || "Preparing world…";if(loadingLine)loadingLine.textContent=root.textContent;}, wait: (ms) => new Promise((go) => setTimeout(go, ms)), pause: nextTask(new MessageChannel()) }));
+  const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, {
+    say: (line) => showStage(loadingBar.value, line),
+    wait: (ms) => new Promise((go) => setTimeout(go, ms)),
+    pause: nextTask(new MessageChannel()),
+  }));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
   // The reaction curves come as their own file after the first frame. A world is joined once they are held, so a
   // stagger is drawn as the server judges it.
@@ -81,6 +101,7 @@ async function boot(): Promise<void> {
   const bootBytes = fetchBytes(fetch, `assets/${core.files[core.boot]!.name}`);
   // Each part is checked against the hash its head names as it is read.
   const loader = await loading, { head, hf, nodes, content: land } = loader.staged;
+  showStage(1);
   const { reg, manifest, pack } = await withLandmarks(fetch, land, await content, core, parsePack(new Uint8Array(await bootBytes)));
   const silent = fetchSounds(fetch, manifest);
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
@@ -92,6 +113,7 @@ async function boot(): Promise<void> {
   const widest = renderer.gl.getParameter(renderer.gl.MAX_TEXTURE_SIZE) as number;
   const ground = groundSize(hf);
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
+  showStage(2);
   const socket = await early;
   await reactionCurves;
   const session = new ClientSession(socket?.open ? socket : connect(socketAddress(location, "ws")), {
@@ -252,12 +274,9 @@ async function boot(): Promise<void> {
   const drive = drivingCheck?.vehicle?.data;
 
   function showEntryProblem(){
-    splash?.remove();
-    root.replaceChildren();
-    root.textContent = createFailed ? "This spawn is unavailable. Choose another starting area."
+    bootError(createFailed ? "This spawn is unavailable. Choose another starting area."
       : session.closeReason === REJECT_PASSWORD ? "Incorrect server password."
-      : session.closeReason === REJECT_NAME ? "This survivor is unavailable." : "Disconnected from world.";
-    document.querySelector<HTMLElement>("#entry-back")!.hidden=false;
+      : session.closeReason === REJECT_NAME ? "This survivor is unavailable." : "Disconnected from world.");
   }
   let restored = 0;
   if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress!.frames, still: progress!.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck?.dinosaur?.data }) });
@@ -304,7 +323,10 @@ async function boot(): Promise<void> {
       save();
     }
     view.apply(app.ui.frame, cssHeight);
-    if (!packet) {if(session.state==="closed" && splash?.isConnected)splash.remove();return;}
+    if (!packet) {
+      if (session.state === "closed") splash.hidden = true;
+      return;
+    }
     const built = (marks[3] = performance.now());
     // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
     const ratio = app.scene ? canvasRatio(app.scene.assets.tier, devicePixelRatio, cssWidth, cssHeight) : devicePixelRatio;
@@ -321,7 +343,10 @@ async function boot(): Promise<void> {
       const sent = light.frame(now, packet, app, copy.getImageData(0, 0, sampleW, sampleH).data, { userAgent: navigator.userAgent, dpr: devicePixelRatio, renderer: renderer.rendererName, format: renderer.format });
       if (sent) void Promise.all(sent.map((part) => fetch("__play", { method: "POST", body: part }).then((r) => r.ok, () => false))).then((ok) => say(ok.every(Boolean) ? `Light capture saved in the record of play, ${sent.length} parts` : `Light capture: ${ok.filter((o) => !o).length} of ${sent.length} parts not saved`));
     }
-    if(splash?.isConnected)splash.remove();
+    if (!splash.hidden && !(launch?.intent === "create" && session.sessionState === SESSION_CREATING)) {
+      splash.hidden = true;
+      performance.mark("snark-first-world-frame");
+    }
     if (renderer.failed.length + renderer.failedTextures.length > 0) {
       for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
@@ -360,7 +385,9 @@ async function boot(): Promise<void> {
   // on the console says when the map comes slowly, and the statics are handed over round the body and then whole.
   await session.welcomed;
   if(launch && session.state==="closed"){showEntryProblem();return;}
+  showStage(3);
   await loader.follow(() => session.mapFocus, { say: (line) => app.ui.console.print(line), arriving: (statics, whole) => session.staticsSteps(statics, whole), held: () => session.behind });
+  showStage(4);
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger), typing: () => app.ui.typing });
   requestAnimationFrame(frame);
@@ -368,9 +395,7 @@ async function boot(): Promise<void> {
 
 (device ? device.before().then((go) => (go ? boot() : undefined)) : boot()).catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  splash?.remove();
-  root.textContent = message;
-  document.querySelector<HTMLElement>("#entry-back")!.hidden=false;
+  bootError(message);
   device?.fail(message);
   if (selfcheck) void fetch("__selfcheck", { method: "POST", body: JSON.stringify({ ok: false, error: message }) });
 });

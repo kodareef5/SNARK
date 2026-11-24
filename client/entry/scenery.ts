@@ -1,12 +1,18 @@
+import { constrainedConnection, survivorPreview } from "../core/startup-budget.ts";
+import { connectionHint } from "./startup-budget.ts";
+
 const box = document.querySelector<HTMLElement>("#scenery")!,
   motion = document.querySelector<HTMLButtonElement>("#motion")!;
 const reduce = matchMedia("(prefers-reduced-motion: reduce)");
-const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
-const constrained = connection?.saveData || ["2g", "slow-2g"].includes(connection?.effectiveType ?? "");
-let allow = !reduce.matches && !constrained,
+let allow = !reduce.matches,
   paused = !allow,
   title = false,
   human = false;
+let titleIdle = false,
+  titleTimer = 0,
+  idleCallback = 0,
+  requested = false,
+  previewRequested = false;
 let world = "",
   frame: HTMLIFrameElement | null = null,
   url = "",
@@ -34,11 +40,37 @@ function send() {
     location.origin,
   );
 }
+function cancelTitleStart() {
+  clearTimeout(titleTimer);
+  if (idleCallback) cancelIdleCallback(idleCallback);
+  titleTimer = idleCallback = 0;
+}
+
+function startTitleAfterPaint() {
+  if (titleIdle || titleTimer || idleCallback || requested) return;
+  titleTimer = setTimeout(() => {
+    titleTimer = 0;
+    const start = () => {
+      idleCallback = 0;
+      titleIdle = true;
+      sync();
+    };
+    if (typeof requestIdleCallback === "function") idleCallback = requestIdleCallback(start, { timeout: 700 });
+    else start();
+  }, 800);
+}
+
 function sync() {
-  const portrait = human && world && new URL(world).origin === location.origin;
+  const hint = connectionHint(), constrained = constrainedConnection(hint);
+  const automatic = allow && !constrained;
+  if (!title) titleIdle = false;
+  if (title && automatic && !document.hidden) startTitleAfterPaint();
+  else cancelTitleStart();
+  const canShowPortrait = human && world !== "" && new URL(world).origin === location.origin;
+  const portrait = canShowPortrait && !failed && survivorPreview(hint, document.hidden, previewRequested);
   const next = portrait
     ? new URL("flight.html", world).href
-    : title && allow && !failed
+    : title && (ready || !document.hidden) && !failed && (ready || !paused) && (requested || (automatic && titleIdle))
       ? new URL("flight.html?set=wynwood-shore", document.baseURI).href
       : "";
   if (next !== url) {
@@ -55,9 +87,10 @@ function sync() {
       box.append(frame);
     }
   }
-  motion.hidden = !title;
-  motion.textContent = failed ? "Retry live scene" : paused ? "Play live scene" : "Pause live scene";
-  motion.setAttribute("aria-pressed", String(!!url && !paused));
+  motion.hidden = !title && !(canShowPortrait && (constrained || failed));
+  if (title) motion.textContent = failed ? "Retry live scene" : paused || !url ? "Play live scene" : "Pause live scene";
+  else motion.textContent = url ? "Hide survivor preview" : "Show survivor preview";
+  motion.setAttribute("aria-pressed", String(!!url && (!title || !paused)));
   if (title) document.body.dataset.titleScene = failed ? "failed" : ready ? "live" : url ? "loading" : "still";
   else delete document.body.dataset.titleScene;
   send();
@@ -72,6 +105,7 @@ export function sceneFor(
   opening = false,
 ) {
   if (opening !== title || portrait !== human || address !== world) failed = false;
+  if (portrait !== human || address !== world) previewRequested = false;
   title = opening;
   human = portrait;
   world = address;
@@ -93,25 +127,31 @@ addEventListener("message", (e) => {
   if (e.data.type === "frame") send();
   if (e.data.type === "failed") {
     failed = true;
-    paused = true;
-    if (human) {
-      frame.remove();
-      frame = null;
-    } else sync();
+    if (title) paused = true;
+    sync();
   }
 });
 motion.onclick = () => {
-  if (failed || !allow) {
+  if (human && !title) {
+    previewRequested = !frame;
+    failed = false;
+  } else if (failed || !frame) {
     failed = false;
     allow = true;
+    requested = true;
     paused = false;
+    cancelTitleStart();
   } else paused = !paused;
   sync();
 };
-document.addEventListener("visibilitychange", send);
+addEventListener("pagehide", cancelTitleStart);
+addEventListener("pageshow", (event) => { if (event.persisted) sync(); });
+document.addEventListener("visibilitychange", sync);
+connectionHint()?.addEventListener?.("change", sync);
 reduce.addEventListener("change", () => {
   if (reduce.matches) {
     allow = false;
+    requested = false;
     paused = true;
     mx = my = 0;
     sync();

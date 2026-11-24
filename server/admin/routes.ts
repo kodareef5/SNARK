@@ -28,6 +28,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ADMIN_TERRAIN_SIDE, type AdminOverview, type Stats, type Survivors } from "../../shared/admin.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { BUILDING_SPANS, blankFrame, type Buildings } from "../../shared/world/buildings.ts";
 import { mapHeightfield, type MapData } from "../../shared/world/mapfile.ts";
 import { paintRelief } from "../../shared/world/relief.ts";
 import type { Host } from "../host.ts";
@@ -47,6 +48,30 @@ import { onlinePositions, survivorsOf, type RunStart } from "./survivors.ts";
 
 const FRESH = { "cache-control": "no-store" };
 const JSON_HEADERS = { ...FRESH, "content-type": "application/json" };
+
+function districtCenters(buildings: Buildings | null): { name: string; x: number; z: number }[] {
+  if (!buildings) return [];
+  const centers = new Map<string, { x: number; z: number; n: number }>();
+  const seen = new Set<number>();
+  const frame = blankFrame();
+  for (const handle of buildings.handles()) {
+    const name = buildings.district(handle);
+    if (!name || name === "Unzoned") continue;
+    if ((buildings.flags(handle) & BUILDING_SPANS) !== 0) {
+      const id = buildings.id(handle);
+      if (seen.has(id)) continue;
+      seen.add(id);
+    }
+    const center = centers.get(name) ?? { x: 0, z: 0, n: 0 };
+    buildings.frame(handle, frame);
+    center.x += frame.x;
+    center.z += frame.z;
+    center.n++;
+    centers.set(name, center);
+  }
+  return [...centers].map(([name, { x, z, n }]) => ({ name, x: Math.round(x / n), z: Math.round(z / n) }));
+}
+
 /** The page's own files, by the path they are asked for at, and their type. */
 const FILES: Readonly<Record<string, [string, string]>> = {
   "/admin/": ["index.html", "text/html; charset=utf-8"],
@@ -126,6 +151,7 @@ export class AdminPages {
   private readonly overview: EverySecond<string>;
   private readonly chat: EverySecond<string>;
   private terrainGzip: Uint8Array<ArrayBuffer> | null = null;
+  private mapContext: string | null = null;
   private readonly ticks: EverySecond<string>;
   private readonly survivors: EverySecond<Promise<string>>;
   /** The newest of each level's bases and the version of the cells it was made from, which is looked at once a second. */
@@ -185,6 +211,11 @@ export class AdminPages {
     if (at === "/admin/stats.json") return new Response(this.statsJson.get(now), { headers: JSON_HEADERS });
     if (at === "/admin/overview.json") return new Response(this.overview.get(now), { headers: JSON_HEADERS });
     if (at === "/admin/chat.json") return new Response(this.chat.get(now), { headers: JSON_HEADERS });
+    if (at === "/admin/map-context.json") {
+      if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { allow: "GET, HEAD" } });
+      this.mapContext ??= JSON.stringify({ districts: districtCenters(this.o.host.world.buildings) });
+      return new Response(this.mapContext, { headers: JSON_HEADERS });
+    }
     if (at === "/admin/terrain.rgba") return this.terrainImage(req);
     if (at === "/admin/survivors.json") return this.survivors.get(now).then((text) => new Response(text, { headers: JSON_HEADERS }));
     if (at === "/admin/minutes.json") return new Response(this.minutes(Number(url.searchParams.get("from") ?? 0)), { headers: JSON_HEADERS });

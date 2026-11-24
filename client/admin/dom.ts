@@ -6,12 +6,14 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { MapHead } from "../../shared/world/mapfile.ts";
 import type { BaseChunk, BaseSquare } from "../core/admin/bases.ts";
+import type { InvestigatedItem } from "../core/admin/investigation.ts";
 import { SPANS } from "../core/admin/chart.ts";
 import type { MapFrame } from "../core/admin/frame.ts";
 import { Recall } from "../core/admin/recall.ts";
 import type { SortKey } from "../core/admin/table.ts";
 import { Timeline } from "../core/admin/timeline.ts";
 import type { MapWindow } from "../core/admin/view.ts";
+import { adminContext } from "./shell.ts";
 
 export const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 export { esc } from "../core/admin/format.ts";
@@ -41,13 +43,14 @@ export function label(g: CanvasRenderingContext2D, text: string, x: number, y: n
 
 /** Fetches a path under /admin/, fresh, and fails on anything but success. */
 export async function ask(path: string): Promise<Response> {
-  const r = await fetch(path, { cache: "no-store" });
+  const r = await fetch((await adminContext()).api(path), { cache: "no-store" });
   if (!r.ok) throw new Error(`${path} answered ${r.status}: ${await r.text()}`);
   return r;
 }
 
 /** The page's state. */
 export const S = {
+  page: "",
   stats: null as Stats | null,
   minutes: null as Minutes | null,
   people: null as Survivors | null,
@@ -70,12 +73,27 @@ export const S = {
   timeline: new Timeline(),
   recall: new Recall(async (path) => (await ask(path)).json()),
   /** The item asked about: who held it is drawn on the map. */
-  item: null as { item: string; quality: number; blueprint: boolean } | null,
+  item: null as InvestigatedItem | null,
 };
 
 /** What one file asks of another, set by the entry, so the files need not import each other in a ring. */
 export const hooks = {
   drawMap: (): void => {},
+  showInspector: (): void => {},
+  seek: (_at: number): void => {},
+  stateChanged: (): void => {},
+  mapUrl: (_pid?: number, _at?: number): string => "#",
   showPeople: (): void => {},
   chooseSurvivor: (_pid: number, _look: boolean): void => {},
 };
+
+const rendered = new WeakMap<HTMLElement, string>();
+
+export function paintHtml(el: HTMLElement, html: string): void {
+  if (rendered.get(el) === html) return;
+  const active = document.activeElement;
+  const key = el.contains(active) && active instanceof HTMLElement ? active.dataset.focus : undefined;
+  el.innerHTML = html;
+  rendered.set(el, html);
+  if (key) Array.from(el.querySelectorAll<HTMLElement>("[data-focus]")).find((node) => node.dataset.focus === key)?.focus({ preventScroll: true });
+}

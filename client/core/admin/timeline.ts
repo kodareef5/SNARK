@@ -72,6 +72,14 @@ export class Timeline {
     this.show(this.start + ms, this.end + ms);
   }
 
+  /** Pans the focused window over retained history, keeping its playhead when that moment remains visible. */
+  focus(at: number): void {
+    const half = (this.end - this.start) / 2;
+    this.playing = false;
+    this.show(at - half, at + half);
+    if (this.at < this.start || this.at > this.end) this.seek(at);
+  }
+
   /** Puts the playhead at `t`, which leaves live, and brings the window to it if it is outside. */
   seek(t: number): void {
     this.live = false;

@@ -6,8 +6,9 @@
 // session starts with alone: the definitions, the rigs and a line naming each mesh and clip.
 
 import { FACADE_MATERIALS } from "../client/core/render/facade.ts";
+import { buildAdmin } from "./build-admin.ts";
 import { buildEntry } from "./build-entry.ts";
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
 import { Binding } from "../client/core/assets/bind.ts";
@@ -160,7 +161,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const define = { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
   // The page's script is main.js and page.js, and each file it fetches later takes what it shares with them from
   // page.js (tools/page-script.ts). Workers and worklets run in their own threads, so each is bundled as a separate file.
-  const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/debug/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });
+  const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/debug/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });
   if (!workers.success) throw new Error(workers.logs.map(String).join("\n"));
   // Sent without the notes written for readers, as the page's script is (tools/script-notes.ts).
   for (const o of workers.outputs) if (o.path.endsWith(".js")) finishScript(o.path);
@@ -168,19 +169,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // What main.js imports before it runs, which the page asks for beside it: page.js.
   const pieces = preloaded(dist);
   console.log(`ui           ${ui.bytes} bytes transferred, ${ui.decodedBytes} RGBA bytes`);
-  copyFileSync(join(root, "client/sound/sounds.html"), join(dist, "sounds.html"));
-  // The world and cluster dashboards use the HUD’s face.
-  // The drop book's page is a zone of its own beside them (client/drops), and is served with them.
-  const admin = await Bun.build({ entrypoints: [...["admin.ts", "cluster.ts", "cast.ts", "settings.ts", "loadouts.ts", "first-frame.ts"].map((name) => join(root, "client/admin", name)), join(root, "client/drops/drops.ts")], outdir: join(dist, "admin"), naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
-  if (!admin.success) throw new Error(admin.logs.map(String).join("\n"));
-  const face = (prefix: string): string => ui.font ? `@font-face { font-family: "Barlow Semi Condensed"; src: url("${prefix}${ui.font}") format("truetype"); font-display: swap; }` : "";
-  writeFileSync(join(dist, "admin/index.html"), readFileSync(join(root, "client/admin/admin.html"), "utf8").replace("/* face */", face("../")));
-  writeFileSync(join(dist, "admin/cluster.html"), readFileSync(join(root, "client/admin/cluster.html"), "utf8").replace("/* face */", face("/")));
-  writeFileSync(join(dist, "admin/drops.html"), readFileSync(join(root, "client/drops/drops.html"), "utf8").replace("/* face */", face("../")));
-  writeFileSync(join(dist, "admin/cast.html"), readFileSync(join(root, "client/admin/cast.html"), "utf8").replace("/* face */", face("../")));
-  writeFileSync(join(dist, "admin/settings.html"), readFileSync(join(root, "client/admin/settings.html"), "utf8").replace("/* face */", face("../")));
-  writeFileSync(join(dist, "admin/loadouts.html"), readFileSync(join(root, "client/admin/loadouts.html"), "utf8").replace("/* face */", face("../")));
-  writeFileSync(join(dist, "admin/first-frame.html"), readFileSync(join(root, "client/admin/first-frame.html"), "utf8").replace("/* face */", face("../")));
+  await buildAdmin(dist);
   // The music as it is played: each track's layers as Opus, music.json listing them, and the lab to hear them.
   const music = join(root, "assets/source/core/music");
   if (ART && existsSync(join(music, "music.json"))) {

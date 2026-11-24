@@ -1,7 +1,9 @@
 import { MAPS } from "../../content/maps.ts";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import type { MapHead } from "../../shared/world/mapfile.ts";
 import { encodePng, readPicture } from "../pack/image.ts";
+import { cutRelief, mapHeader, overviewRelief, spawnRelief, writeRelief } from "./map-card.ts";
 
 // These are the map teams' saved native camera views. Keep the entry catalogue small enough for browsing.
 function thumbnail(source: string, dest: string, width: number) {
@@ -46,46 +48,118 @@ export function spawnPhotoName(name: string) {
   );
 }
 
-export function buildMapGallery(maps: string, titles: string, media: string) {
-  const catalogue: Record<string, { label: string; mapTile: string; cover: string; overview?: string; regions: Record<string, string> }> = {};
-  for (const city of (existsSync(maps) ? readdirSync(maps).sort() : [])) {
-    const views = join(maps, city, "reports/world1"),
-      recipe = join(views, "views.json");
-    if (!existsSync(recipe)) continue;
-    const folder = join(titles, "atlas", city);
-    mkdirSync(folder, { recursive: true });
-    const dir = "title/atlas/" + city + "/";
-    const shots = JSON.parse(readFileSync(recipe, "utf8")) as { name: string; spawn?: string }[];
-    const cover =
-      shots.find((v) => v.name.includes("skyline") && !v.name.startsWith("worst") && existsSync(join(views, v.name + ".png")))?.name ??
-      "aerial-overhead";
-    thumbnail(join(views, cover + ".png"), join(folder, "cover.png"), 720);
-    const id = "core:" + city;
-    const definition = MAPS.find((def) => def.id === id);
-    const label = definition?.type === "map" ? (definition.label ?? city) : city;
-    thumbnail(join(views, "aerial-overhead.png"), join(folder, "tile.png"), 200);
-    const art: (typeof catalogue)[string] = { label, mapTile: dir + "tile.png", cover: dir + "cover.png", regions: {} };
-    catalogue[id] = art;
-    const overview = join(views, "mapscreen-z0-0_0.png");
-    if (existsSync(join(maps, city, "tiles/z0/0_0.png"))) art.overview = "title/map-" + city + ".png";
-    else if (existsSync(overview)) {
-      thumbnail(overview, join(folder, "map.png"), 640);
-      art.overview = dir + "map.png";
+interface MapArt {
+  label: string;
+  mapTile: string;
+  cover: string;
+  overview?: string;
+  regions: Record<string, string>;
+}
+
+function json<T>(file: string, otherwise: T): T {
+  if (!existsSync(file)) return otherwise;
+  try { return JSON.parse(readFileSync(file, "utf8")) as T; }
+  catch (error) { console.warn(`Map gallery could not read ${file}.`, String(error)); return otherwise; }
+}
+
+function builtHead(path: string, city: string): MapHead | null {
+  if (!existsSync(path)) return null;
+  try {
+    const head = mapHeader(path);
+    if (head.id !== `core:${city}`) throw Error(`Expected core:${city}, found ${head.id}.`);
+    return head;
+  } catch (error) {
+    console.warn(`Map gallery could not read ${path}.`, String(error));
+    return null;
+  }
+}
+
+const entries = (folder: string): string[] => existsSync(folder) ? readdirSync(folder) : [];
+const citySlug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function buildMapGallery(maps: string, titles: string, media: string, builtMaps = resolve(import.meta.dir, "../../var/maps")) {
+  const catalogue: Record<string, MapArt> = {};
+  const cities = new Set([...entries(maps), ...entries(join(media, "atlas")),
+    ...entries(builtMaps).filter((file) => file.endsWith(".snmap")).map((file) => file.slice(0, -6))]);
+  mkdirSync(titles, { recursive: true });
+  for (const city of [...cities].filter((name) => citySlug.test(name)).sort()) {
+    const source = join(maps, city), views = join(source, "reports/world1");
+    const report = json<{ name: string; spawn?: string }[] | null>(join(views, "views.json"), null);
+    const shots = Array.isArray(report) ? report : [];
+    const authored = json<{ spawns?: { name: string }[] } | null>(join(source, "world.json"), null)
+      ?? json<{ spawns?: { name: string }[] }>(join(source, "world/world.json"), {});
+    const head = builtHead(join(builtMaps, `${city}.snmap`), city);
+    const spawnNames = new Set([...(head?.spawns ?? []), ...(authored.spawns ?? [])].map(({ name }) => name));
+    const spawns = new Map(head?.spawns.map((point) => [point.name, point]));
+    const relief = head ? overviewRelief(head, 512) : null;
+    const folder = join(titles, "atlas", city), dir = `title/atlas/${city}/`;
+    const regions: Record<string, string> = Object.create(null);
+    let firstPhoto: string | undefined;
+    function legacy(name: string, file: string, width: number): string | undefined {
+      const path = join(views, name);
+      if (!existsSync(path)) return undefined;
+      mkdirSync(folder, { recursive: true });
+      try {
+        thumbnail(path, join(folder, file), width);
+        return dir + file;
+      } catch (error) {
+        console.warn(`Map gallery could not read ${path}.`, String(error));
+        return undefined;
+      }
     }
-    const world = JSON.parse(readFileSync(join(maps, city, "world/world.json"), "utf8")) as { spawns: { name: string }[] };
-    for (const { name } of world.spawns) {
-      const stem = spawnPhotoName(name);
-      const webp = stem + ".webp";
-      if (existsSync(join(media, "atlas", city, webp))) {
-        art.regions[name] = dir + webp;
+    for (const name of spawnNames) {
+      const stem = spawnPhotoName(name), webp = `${stem}.webp`;
+      const photo = join(media, "atlas", city, webp);
+      if (existsSync(photo)) {
+        mkdirSync(folder, { recursive: true });
+        copyFileSync(photo, join(folder, webp));
+        regions[name] = dir + webp;
+        firstPhoto ??= regions[name];
         continue;
       }
-      const file = (shots.find((shot) => shot.spawn === name)?.name ?? stem) + ".png",
-        src = join(views, file);
-      if (!existsSync(src)) continue;
-      thumbnail(src, join(folder, file), 360);
-      art.regions[name] = dir + file;
+      const saved = shots.find((shot) => shot.spawn === name && citySlug.test(shot.name));
+      const native = `${saved?.name ?? stem}.png`;
+      const shot = legacy(native, native, 360);
+      if (shot) {
+        regions[name] = shot;
+        firstPhoto ??= shot;
+        continue;
+      }
+      const point = spawns.get(name);
+      if (head && relief && point) {
+        mkdirSync(folder, { recursive: true });
+        writeRelief(join(folder, `${stem}.png`), spawnRelief(relief, head, point));
+        regions[name] = dir + stem + ".png";
+      }
     }
+    let overview: string | undefined;
+    if (relief) {
+      mkdirSync(folder, { recursive: true });
+      writeRelief(join(folder, "map.png"), relief);
+      overview = dir + "map.png";
+    } else {
+      const tile = join(source, "tiles/z0/0_0.png");
+      if (existsSync(tile)) {
+        const name = `map-${city}.png`;
+        copyFileSync(tile, join(titles, name));
+        overview = "title/" + name;
+      } else overview = legacy("mapscreen-z0-0_0.png", "map.png", 640);
+    }
+    let mapTile = legacy("aerial-overhead.png", "tile.png", 200);
+    if (!mapTile && relief) {
+      mapTile = dir + "tile.png";
+      writeRelief(join(folder, "tile.png"), cutRelief(relief, 192, 192));
+    }
+    const skyline = shots.find((shot) => citySlug.test(shot.name) && shot.name.includes("skyline") && !shot.name.startsWith("worst") && existsSync(join(views, `${shot.name}.png`)));
+    const wide = `${city}-splash.webp`;
+    const hasWide = existsSync(join(media, wide));
+    if (hasWide) copyFileSync(join(media, wide), join(titles, wide));
+    const cover = hasWide ? "title/" + wide
+      : legacy(`${skyline?.name ?? "aerial-overhead"}.png`, "cover.png", 720) ?? firstPhoto ?? overview;
+    if (!cover) continue;
+    const id = `core:${city}`, definition = MAPS.find((def) => def.id === id);
+    const label = definition?.type === "map" ? (definition.label ?? city) : city;
+    catalogue[id] = { label, mapTile: mapTile ?? overview ?? cover, cover, overview, regions };
   }
   writeFileSync(join(titles, "maps.json"), JSON.stringify(catalogue));
 }

@@ -18,19 +18,6 @@ export const button = (id: string, label: string, style = "secondary", attr = ""
 export const field = (id: string, label: string, value = "", attr = "") =>
   "<label>" + esc(label) + '<input id="' + id + '" value="' + esc(value) + '" ' + attr + "></label>";
 const palette = defaultPalette();
-const steps = ["Identity", "Appearance", "Build", "Spawn"];
-export function stepper(index: number) {
-  return (
-    '<ol class="steps" aria-label="Character creation">' +
-    steps
-      .map(
-        (name, i) =>
-          "<li " + (i === index ? 'aria-current="step"' : "") + ' class="' + (i < index ? "done" : "") + '">' + (i + 1) + ". " + name + "</li>",
-      )
-      .join("") +
-    "</ol>"
-  );
-}
 function styles(look: Uint8Array, id: number, label: string, items: readonly string[]) {
   return (
     "<fieldset><legend>" +

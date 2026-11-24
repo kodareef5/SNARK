@@ -2,15 +2,21 @@
 
 Open the cluster root or a world’s own URL to reach the title. Direct world links may add `?screen=roster` or `?screen=link`. The roster is scoped to the browser identity and world. A character’s level, appearance and inventory remain on its world. A linking code lasts five minutes. The owning browser approves one named survivor. Recovery requires a separately saved one-use code.
 
-The title opens on a live shot across Biscayne Bay toward the red Wynwood sextant. Meridian sits astride a breathing Rex at the edge of the beach. The sextant opens broadside to the beach, turns over three minutes and sweeps its index back and forth. The shot holds its preset sun hour while the red sky effect moves. Pointer movement shifts the shoulder camera slightly. The entry page loads the shot independently of joining a world. Reduced motion, data saver and 2G start on the published still. Play live scene opts in. Leaving the title releases its renderer. The creator renders the survivor on a small local heightfield. Selecting a world prepares its boot assets and the chosen spawn sector (up to 2 MiB). On faster connections the menu also warms up to 128 KiB of shared coarse wildlife pages and one opening music layer, capped at 2 MiB. These optional downloads run in the background and can be interrupted by joining.
+The first HTML response shows the emblem, Play, and a still of the published title. A live shot can follow on a visible tab with a suitable connection. Reduced motion and data saver start with the still. The opening shot frames Meridian on the Rex across Biscayne Bay from the red Wynwood sextant.
+
+Play resumes the last available survivor. A new player can name a survivor, keep the default appearance and spawn, and enter. Browse worlds, appearance controls, the spawn map and recovery remain available in the same flow.
+
+Choosing a world starts up to two low-priority requests for files its game page will use. The controller warms the map head, landmark definitions, core assets and terrain for the chosen spawn or returning survivor. Slow connections and data saver skip speculative downloads. Other connections get a 3 or 4 MiB allowance per selected world. Entering starts the game immediately. Its published loader stays up while the world joins and draws the first frame.
 
 ## Updating the title changelog
 
 The title displays [CHANGELOG.txt](../../CHANGELOG.txt) newest first. The first eight versions group the initial development history by date. For a new release, update `version` in the root `package.json` and prepend its heading, for example `v0.0.9 — 2026-11-24`. Under each feature name, write one `- ` bullet per change. Leave a blank line between the release heading and each feature group. The build checks the newest version against the package and serves the original text at `title/changelog.txt`. To refresh an existing client build, run `bun tools/build-entry.ts client/dist`.
 
-## Directing the title
+## Directing scenes
 
-Open **Scene studio** in the cluster admin at `/cluster/admin/scenes/`. Drag to aim, shift-drag to truck and lift, and scroll to dolly. The sliders also set field of view and sun hour. Portrait and landscape preview the same responsive framing used by the title. Duplicate a shot for a new setup. **Save draft** keeps the published title intact. **Publish to title** writes the camera and both loading plates together. New visitors see that revision immediately. Named shots live in the cluster folder's `title-scenes.sqlite` or beside a standalone world's save. A server with no save keeps them in memory.
+Open **Scene Studio** at `/admin/scenes/`. Title and Loaders each have a selector, drafts, a live camera and a published landscape and portrait. Drag to aim, shift-drag to move the camera, and scroll to dolly. Wiki lists each native section and city recipe and shows its captures when the wiki is built. The cluster stores edited shots beside its saves.
+
+Add a JSON declaration to give the studio another player scene. The build supplies the camera, light and cast defaults. [Scene declarations](../../shared/player-scene-declarations.md)
 
 The default camera is in `shared/title-scene.ts`. The mounted cast, lighting and portrait framing are in `client/core/title-shore.ts`. On the map the foreground is a built bank that drops into the bay in one sample; there it is dressed as one of Miami's beaches, sand near the cast and its waterline graded as the map's build grades a beach (`shared/world/beach.ts`), so the title's water has the beach's wash, foam and wet sand. The title enlarges the sextant above its Wynwood keel by 3.35× so the bow reads from across the bay. To inspect a point in the cycle, open `/flight.html?set=wynwood-shore&still=16`, where the number is elapsed seconds. To recut the surveyed shoreline and building heights after a Miami map update, run `bun tools/title/shore.ts var/maps/miami.parts`. The ordinary client build renders the default landscape and portrait stills in local Chrome and caches them by asset and scene hash. A build without Chrome or WebGL uses the existing coastal still until an operator publishes a shot.
 
@@ -26,7 +32,7 @@ bun tools/build-entry.ts client/dist
 
 Chrome renders the live map, Pteranodon, saddle and rider from the built asset packs. FFmpeg encodes the stills and fallback loop in `client/entry/media`. Omit `--video` to retake only the stills. Use `--out` to review replacements in another directory first. The normal client build also packages this media. The route coordinates, light and shot times live in `client/core/title-route.ts`. The camera and native actor arrangement live in `client/entry/flight.ts`.
 
-The region pass takes a native aerial picture at each public spawn. The card gallery also uses the map teams’ saved camera views in each city’s `reports/world1` directory. The build sizes those images for the browser.
+The region pass takes a native aerial picture at each public spawn. The gallery uses checked-in spawn photographs and any local camera reports. For an installed city map, the game build reads its header to draw a north-up chart and crops the local terrain for spawn points that have no photograph.
 
 ## The wiki's studio
 

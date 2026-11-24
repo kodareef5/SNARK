@@ -10,9 +10,14 @@ export function chatPanel(list: HTMLElement, state: HTMLElement) {
   let snapshot = "";
   return ({ lines, note }: { lines: readonly (AdminChatLine & { world?: string })[]; note: string }): void => {
     const next = JSON.stringify(lines);
-    if (snapshot !== next) list.innerHTML = chatRows(lines);
+    if (snapshot !== next) {
+      const oldTop = list.scrollTop;
+      const oldHeight = list.scrollHeight;
+      list.innerHTML = chatRows(lines);
+      if (oldTop > 4) list.scrollTop = oldTop + list.scrollHeight - oldHeight;
+    }
     snapshot = next;
-    state.textContent = note;
+    if (state.textContent !== note) state.textContent = note;
     state.hidden = !note;
   };
 }

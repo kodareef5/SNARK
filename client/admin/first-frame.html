@@ -1,50 +1,22 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <title>SNARK admin: first frame</title>
-    <style>
-      /* face */
-      :root { --ink: #dbe8f3; --dim: #93a9bd; --edge: rgba(168, 204, 234, 0.22); --ice: #a9d6f2; --well: #8fd9c4; --warn: #ecb048; --bad: #ec6a52;
-        font: 15px/1.35 "Barlow Semi Condensed", "Barlow", system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--ink); background: #08111c; }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: radial-gradient(120% 80% at 18% -10%, #21405f 0%, #102136 46%, #08111c 100%) fixed; min-height: 100vh; }
-      a { color: var(--ice); }
-      h1, h2 { font-weight: 500; margin: 0; letter-spacing: 0.02em; }
-      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--dim); margin-bottom: 8px; }
-      select { font: inherit; color: inherit; background: rgba(36, 60, 88, 0.62); border: 1px solid var(--edge); padding: 3px 9px; }
-      .page { max-width: 1280px; margin: 0 auto; padding: 14px 16px 40px; display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
-      header { grid-column: 1 / -1; display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
-      header nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
-      .glass { background: rgba(20, 36, 56, 0.78); border: 1px solid var(--edge); padding: 12px 14px; min-width: 0; }
-      .wide { grid-column: 1 / -1; }
-      .bar { position: relative; display: flex; height: 22px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--edge); margin: 8px 0; overflow: hidden; }
-      .bar b.mark { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--bad); }
-      .bar i { display: block; height: 100%; } .bar i.room { background: repeating-linear-gradient(135deg, rgba(143, 217, 196, 0.25) 0 6px, transparent 6px 12px); }
-      i.key { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: baseline; }
-      table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text-align: left; padding: 3px 6px; border-bottom: 1px solid rgba(168, 204, 234, 0.08); overflow-wrap: break-word; }
-      td:not(:first-child), th:not(:first-child) { text-align: right; white-space: nowrap; }
-      th { color: var(--dim); font-weight: 400; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
-      .dim { color: var(--dim); } .warn { color: var(--warn); } .bad { color: var(--bad); } .well { color: var(--well); }
-      @media (max-width: 760px) { .page { grid-template-columns: 1fr; } }
-    </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>First frame · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
   </head>
   <body>
-    <div class="page">
-      <header>
-        <h1>First frame</h1><span class="dim">what a player downloads before the game draws, Brotli</span>
-        <select id="map"></select>
-        <nav><a href="./">Admin</a><a href="../">Play</a></nav>
-      </header>
-      <section class="glass wide"><p id="summary">reading the build's weighing</p><div id="bar"></div></section>
-      <section class="glass"><h2>Its parts</h2><table><thead><tr><th>Part</th><th>Bytes</th><th>Of the budget</th><th>Change</th></tr></thead><tbody id="parts"></tbody></table></section>
-      <section class="glass"><h2>Each map, with its landmarks</h2><table><thead><tr><th>Map</th><th>Bytes</th><th>Room</th><th>Change</th></tr></thead><tbody id="maps"></tbody></table></section>
-      <section class="glass wide"><h2>The page's script by folder</h2><div id="folders"></div>
+    <main class="tool-page first-frame-page">
+      <header class="tool-intro"><h1>First frame</h1><p>Inspect the bytes a player downloads before the first frame.</p></header>
+      <label>Build view <select id="map"></select></label>
+      <section class="glass wide"><p id="summary">Loading build measurements…</p><div id="bar"></div></section>
+      <section class="glass"><h2>Download budget</h2><table><thead><tr><th>Part</th><th>Bytes</th><th>Of the budget</th><th>Change</th></tr></thead><tbody id="parts"></tbody></table></section>
+      <section class="glass"><h2>Map downloads</h2><table><thead><tr><th>Map</th><th>Bytes</th><th>Room</th><th>Change</th></tr></thead><tbody id="maps"></tbody></table></section>
+      <section class="glass wide"><h2>Script size by folder</h2><div id="folders"></div>
         <p class="dim">A module's share is its runs of the minified script, as the source maps place them, compressed alone and scaled to the script's own Brotli bytes: an estimate.</p></section>
-      <section class="glass wide"><h2>Its largest modules</h2><table><thead><tr><th>Module</th><th>Brotli</th><th>Minified</th><th>Change</th></tr></thead><tbody id="modules"></tbody></table></section>
-    </div>
-    <script type="module" src="first-frame.js"></script>
+      <section class="glass wide"><h2>Largest modules</h2><table><thead><tr><th>Module</th><th>Brotli</th><th>Minified</th><th>Change</th></tr></thead><tbody id="modules"></tbody></table></section>
+    </main>
+    <script type="module" src="/admin/ui/first-frame.js"></script>
   </body>
 </html>

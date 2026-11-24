@@ -12,7 +12,7 @@ import { inflateRawSync } from "node:zlib";
 import { SURFACE_PREFIX } from "../content/surfaces.ts";
 import { parseManifest, readPages, storedStep, type Manifest } from "../shared/pack/manifest.ts";
 import type { ManifestSound } from "../shared/pack/sound.ts";
-import { pageScriptProblems } from "./page-script.ts";
+import { pageScriptProblems, preloaded } from "./page-script.ts";
 import { STEP0_SIZE, stepOf, topIn, type TextureFormat } from "../shared/pack/texture.ts";
 
 const KB = 1024;
@@ -62,10 +62,11 @@ export function weigh(dist: string): boolean {
   const sounds = m.sounds ?? [];
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
+  const titleImports = existsSync(join(dist, "entry.js")) ? preloaded(dist, "entry.js").map(name => name + ".br") : [];
   const rows: [string, number][] = [
-    ["title script, style, font, catalogue and poster", titleBytes(["entry.js.br", "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/red-tide.webp", "title/snark-emblem.webp"])],
-    // A page fetches one of the title's two stills: the wide one here, or on a tall screen the lighter tall one.
-    ["game loading poster", titleBytes(["title/red-tide.webp", "title/snark-emblem.webp"])],
+    ["title script, style, font, catalogue and poster", titleBytes(["entry.js.br", ...titleImports, "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/red-tide.webp", "title/snark-emblem.webp"])],
+    ["game loading poster", titleBytes(["title/snark-emblem.webp"]) +
+      Math.max(titleBytes(["title/loader-wynwood.webp"]), titleBytes(["title/loader-wynwood-portrait.webp"]))],
     ["the page's script, Brotli", script.reduce((s, n) => s + size(n), 0)],
     ["the content, Brotli", fetched.filter((n) => n.includes("/content.")).reduce((s, n) => s + size(n), 0)],
     ["manifest, Brotli", size("assets/manifest.json.br")],

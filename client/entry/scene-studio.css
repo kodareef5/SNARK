@@ -1,93 +1,10 @@
-@font-face {
-  font-family: Barlow;
-  src: url("/title/barlow.ttf");
-}
-* {
-  box-sizing: border-box;
-}
-html {
-  color-scheme: dark;
-  font:
-    16px/1.45 Barlow,
-    system-ui,
-    sans-serif;
-  color: #e9e2dd;
-  background: #121111;
-}
-body {
-  margin: 0;
-}
-header {
-  display: flex;
-  gap: 2rem;
-  align-items: center;
-  border-bottom: 1px solid #443632;
-  padding: 1rem 3vw;
-}
-header h1 {
-  font-size: 1.4rem;
-  margin: 0;
-}
-header a:last-child {
-  margin-left: auto;
-}
-a {
-  color: #e3aaa1;
-  text-underline-offset: 4px;
-}
-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(270px, 320px);
-  gap: 2rem;
-  max-width: 1800px;
-  margin: auto;
-  padding: 2rem 3vw;
-}
-h2 {
-  font-size: 1.12rem;
-  margin: 0 0 0.75rem;
-}
-button,
-select,
-input {
-  font: inherit;
-  color: inherit;
-}
-button,
-select,
-input:not([type="range"], [type="checkbox"]) {
-  background: #272121;
-  border: 1px solid #594941;
-  border-radius: 5px;
-  padding: 0.42rem 0.65rem;
-}
-button {
-  cursor: pointer;
-}
-button:hover {
-  border-color: #daa096;
-}
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-#view:focus-visible {
-  outline: 2px solid #ffb4a6;
-  outline-offset: 2px;
-}
-button:disabled {
-  opacity: 0.6;
-}
-.primary {
-  background: #a74435;
-  border-color: #b65545;
-}
+.studio-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 320px); gap: 20px; align-items: start }
 .monitor {
   min-width: 0;
 }
 #view {
   position: relative;
-  background: #241b20 url("/title/red-tide.webp") center/cover;
+  background: #241b20 url("/cluster/title-poster.webp") center/cover;
   aspect-ratio: 16/9;
   border-radius: 7px;
   overflow: hidden;
@@ -97,7 +14,10 @@ button:disabled {
 #view:active {
   cursor: grabbing;
 }
+#view iframe { opacity: 0 }
+#view[data-ready] iframe { opacity: 1 }
 #view.tall {
+  background-image: url("/cluster/title-poster.webp?portrait");
   aspect-ratio: 9/16;
   max-height: 72vh;
   margin: auto;
@@ -136,11 +56,11 @@ iframe,
 .help,
 #published,
 #notice {
-  color: #c3b4ae;
+  color: var(--dim);
   font-size: 0.91rem;
 }
 .section {
-  border-bottom: 1px solid #423532;
+  border-bottom: 1px solid var(--edge);
   padding: 0 0 1rem;
   margin: 0 0 1rem;
 }
@@ -154,14 +74,14 @@ iframe,
 }
 .control {
   display: grid;
-  grid-template-columns: 6.2rem 1fr 3.6rem;
+  grid-template-columns: 6.2rem minmax(30px, 1fr) 4.3rem;
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0;
 }
 .control input {
   width: 100%;
-  accent-color: #d58172;
+  accent-color: var(--ice);
 }
 .control output {
   text-align: right;
@@ -177,13 +97,10 @@ iframe,
   width: 100%;
 }
 @media (max-width: 820px) {
-  main {
+  .studio-grid {
     grid-template-columns: 1fr;
     padding: 1rem;
     gap: 1rem;
-  }
-  header {
-    gap: 0.8rem;
   }
   #view.tall {
     max-height: 60vh;
@@ -192,3 +109,28 @@ iframe,
     width: 100%;
   }
 }
+.scene-categories { display: flex; gap: .55rem; flex-wrap: wrap; }
+.scene-categories [aria-pressed="true"] { color: #fff; background: #24588d; border-color: #24588d; }
+.scene-categories [aria-pressed="true"]:hover { background: #183e6b; }
+#studio-status { display: flex; gap: .8rem; align-items: center; }
+#studio-status:has(#notice:empty):has(#reload[hidden]) { display: none; }
+#studio-status p { margin: 0; }
+#view[data-category="loaders"] { background-image: url("/cluster/loader-poster.webp"); }
+#view[data-category="loaders"].tall { background-image: url("/cluster/loader-poster.webp?portrait"); }
+.wiki-preview {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+  overflow: hidden;
+  background: #edf2f7;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+}
+.wiki-preview img { display: block; width: 100%; height: auto; }
+#wiki-preview-note { margin: 1.25rem; color: var(--dim); text-align: center; }
+#recipe-detail { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .35rem .7rem; font-size: .9rem; }
+#recipe-detail dt { font-weight: 650; }
+#recipe-detail dd { margin: 0; overflow-wrap: anywhere; color: var(--dim); }
+#recipe-declaration { margin-bottom: .85rem; }
+#recipe-declaration summary { cursor: pointer; }
+#recipe-source { padding: .7rem; background: #edf2f7; overflow: auto; max-height: 26rem; font-size: .8rem; }

@@ -1,3 +1,4 @@
+import { adminContext } from "./shell.ts";
 // The admin's loadouts page: the book of what new survivors wear and carry (server/admin/loadout-routes.ts), changed
 // as a draft and saved whole with the revision it was read at. What it shows is made in client/core/admin/loadouts.ts;
 // this is the page's wiring.
@@ -40,7 +41,7 @@ const say = (text: string, kind = "dim"): void => {
 const failed = (err: unknown): void => say(err instanceof Error ? err.message : String(err), "bad");
 
 async function post(what: string, body: unknown): Promise<{ status: number; answer: Record<string, unknown> }> {
-  const r = await fetch(`loadouts/${what}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch((await adminContext()).api(`loadouts/${what}`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, answer: (await r.json().catch(() => ({}))) as Record<string, unknown> };
 }
 
@@ -202,7 +203,7 @@ async function act(at: HTMLElement): Promise<void> {
     const into = S.selected;
     const now = d.loadouts.find((l) => l.id === into)?.entries.length ?? 0;
     if (now > 0 && !confirm(`Put what ${who.name} wears and carries in place of the ${now === 1 ? "entry" : `${now} entries`} of ${into}?`)) return;
-    const r = await fetch(`loadouts/capture.json?pid=${who.pid}`, { cache: "no-store" });
+    const r = await fetch((await adminContext()).api(`loadouts/capture.json?pid=${who.pid}`), { cache: "no-store" });
     const got = (await r.json().catch(() => ({}))) as { survivor?: string; entries?: Entry[]; cut?: number; error?: string };
     if (r.status !== 200 || !got.entries) return say(got.error ?? `The server answered ${r.status}.`, "warn");
     const why = fill(d, S.draft!, into, got.entries);

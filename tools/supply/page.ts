@@ -6,10 +6,11 @@
 //
 //   bun tools/supply/page.ts [--port 8790] [--shots] [--drive] [--map <file.snmap>]
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { buildAdmin } from "../build-admin.ts";
 import { startServer } from "../../server/main.ts";
 import { corePackBytes } from "../../tests/fixtures/pack.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
@@ -25,14 +26,12 @@ mkdirSync(join(dist, "assets"), { recursive: true });
 const { files, manifest } = splitPack(corePackBytes(), "core");
 for (const [f, file] of files.entries()) if (file.role !== "mesh") writeFileSync(join(dist, "assets", manifest.files[f]!.name), file.bytes);
 writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(manifest));
-const built = await Bun.build({ entrypoints: [join(ROOT, "client/drops/drops.ts")], outdir: join(dist, "admin"), naming: "[name].[ext]", target: "browser", sourcemap: "linked" });
-if (!built.success) throw new Error(built.logs.map(String).join("\n"));
-writeFileSync(join(dist, "admin/drops.html"), readFileSync(join(ROOT, "client/drops/drops.html"), "utf8"));
+await buildAdmin(dist);
 // Driven, the world has a save of its own in a folder that is thrown away, so that its book is a file with a history,
 // as a real world's is, and what the page says when that history cannot be written can be seen.
 const kept = values.drive ? mkdtempSync(join(tmpdir(), "snark-drops-world-")) : null;
 const server = startServer({ port: Number(values.port), clientDir: dist, dev: true, ...(kept ? { dbPath: join(kept, "world.db") } : {}), ...(values.map ? { map: resolve(values.map) } : {}) });
-const at = `http://127.0.0.1:${server.port}/admin/drops.html`;
+const at = `http://127.0.0.1:${server.port}/admin/worlds/local/drops/`;
 console.log(`the drops page: ${at}`);
 if (values.drive) {
   const chrome = findChrome();

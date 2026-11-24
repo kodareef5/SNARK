@@ -13,6 +13,7 @@ export interface SiteLinks {
 
 /** A world as the start screen lists it, with the address a page goes to for it. The wiki's maps are found by `mapId`. */
 export interface SiteWorld {
+  id: number | "local";
   name: string;
   map: string;
   mapId: string;
@@ -22,7 +23,7 @@ export interface SiteWorld {
 }
 
 /** The first parts of a path the site answers itself, so no world may be reached at one. */
-const SITE_PATHS = new Set(["wiki", "assets", "source", "cluster"]);
+const SITE_PATHS = new Set(["wiki", "assets", "source", "cluster", "admin"]);
 
 /**
  * The path a server is reached at, from its public address (--public-url): "/miami" for https://play.example/miami and for
@@ -119,9 +120,52 @@ export function startPage(worlds: readonly SiteWorld[], links: SiteLinks, entry?
   const fallback = `<h1>SNARK</h1><p class="sub">Miami Devolved</p><h2>Choose a world</h2>${list}${linkLine(links)}`;
   if (!entry) return page("SNARK",fallback,refresh);
   const emblem = '<img class="title-emblem" src="title/snark-emblem.webp" alt="SNARK · Miami Devolved" width="480" height="480">';
-  const changelog = `<aside id="title-changelog" aria-labelledby="release-heading" hidden><h2 id="release-heading">Changelog</h2></aside>`;
   const archive = '<a class="release-link" href="title/changelog.txt" target="_blank" rel="noopener">Changelog</a>';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#10233a"><title>SNARK: Miami Devolved</title><link rel="stylesheet" href="entry.css"><link rel="preload" as="image" href="/cluster/title-poster.webp" media="(orientation: landscape)"><link rel="preload" as="image" href="/cluster/title-poster.webp?portrait" media="(orientation: portrait)"></head><body data-world="${entry.world}" data-directory="${esc(entry.directory)}"><div id="scenery" aria-hidden="true"></div><div class="shade"></div><div class="entry-shell"><header><a class="brand" href="./" aria-label="SNARK Miami Devolved title">${emblem}</a><div id="world-label"></div></header><main id="entry-root"><div class="opening">${emblem}<button type="button" class="skip">Skip intro</button></div></main><footer>${linkLine(links)}${archive}<span id="loading" role="status"></span><span id="scene-loading" role="status">Loading scene…</span><button id="motion" hidden></button></footer></div>${changelog}<noscript>${fallback}</noscript><script type="module" src="entry.js"></script></body></html>`;
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b192c"><title>SNARK: Miami Devolved</title>
+<style>
+html{color-scheme:dark;background:#0b192c;color:#f1f6ff;font:16px system-ui,sans-serif}
+html,body{margin:0;min-height:100svh}
+html[data-opening] #scenery,html[data-opening] .shade{position:fixed;inset:0;z-index:-1}
+html[data-opening] #scenery{background:#0b192c url('/cluster/title-poster.webp') center/cover}
+@media(orientation:portrait){html[data-opening] #scenery{background-image:url('/cluster/title-poster.webp?portrait')}}
+html[data-opening] .entry-shell{height:100svh;display:grid;grid-template-rows:64px 1fr 49px;box-sizing:border-box;padding:0 clamp(20px,4.6vw,76px)}
+html[data-opening] #entry-root{display:grid}
+html[data-opening] .entry-title{display:grid;grid-template-rows:1fr auto;width:min(100%,28rem)}
+html[data-opening] .title-identity{align-self:center}
+html[data-opening] h1{margin:0}
+html[data-opening] .shade{background:linear-gradient(0deg,#07141ce5,transparent 58%)}
+html[data-opening] .entry-shell header,html[data-opening] .entry-shell footer{visibility:hidden}
+html[data-opening] .title-emblem{width:clamp(216px,min(34vw,49svh),430px);max-width:100%;height:auto}
+html[data-opening] .home-actions{display:grid;gap:4px}
+html[data-opening] button{color:#142738;background:#f6e8ce;border:0;padding:12px 24px;font:600 1rem system-ui}
+html[data-opening] .quiet{color:#edf5ff;background:transparent;padding:12px 20px 12px 0}
+</style>
+<script>document.documentElement.dataset.opening="";</script>
+<link rel="preload" as="image" href="/cluster/title-poster.webp" media="(orientation: landscape)">
+<link rel="preload" as="image" href="/cluster/title-poster.webp?portrait" media="(orientation: portrait)">
+<link rel="stylesheet" href="entry.css" media="print" onload="this.media='all';delete document.documentElement.dataset.opening">
+<noscript><link rel="stylesheet" href="entry.css"><style>.entry-shell{display:none}</style></noscript>
+</head><body data-world="${entry.world}" data-directory="${esc(entry.directory)}">
+<div id="scenery" aria-hidden="true"></div><div class="shade" aria-hidden="true"></div>
+<div class="entry-shell">
+<header><a class="brand" href="./" aria-label="SNARK title">${emblem}</a><div id="world-label"></div></header>
+<main id="entry-root"><section class="home entry-title" aria-labelledby="entry-title">
+<div class="title-identity"><h1 id="entry-title" tabindex="-1">${emblem}</h1></div>
+<div class="home-actions">
+<div class="title-options"><button type="button" class="quiet" data-action="servers">Browse worlds</button>
+<button type="button" class="quiet" data-action="all">My survivors</button></div>
+<button type="button" class="primary" data-action="begin">Play</button></div>
+</section></main>
+<footer>${linkLine(links)}${archive}<span id="loading" role="status"></span>
+<span id="scene-loading" role="status">Loading scene…</span><button id="motion" hidden></button></footer>
+</div>
+<aside id="title-changelog" aria-labelledby="release-heading" hidden><h2 id="release-heading">Changelog</h2></aside>
+<noscript>${fallback}</noscript>
+<script>document.querySelector(".entry-title").addEventListener("click",e=>{const a=e.target.closest("[data-action]");if(a)window.snarkTitleAction=a.dataset.action})</script>
+<script type="module" src="entry.js"></script></body></html>`;
 }
 
 /** Where RepositoryUrl goes until the operator names the code's home. */

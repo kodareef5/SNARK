@@ -1,39 +1,50 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { serveFile } from "../../server/files.ts";
+import { DEFAULT_LOADER_SHOT, DEFAULT_TITLE_SHOT } from "../../shared/player-scenes.ts";
+import type { TitleShot } from "../../shared/title-scene.ts";
 import { findChrome, CHROME_FLAGS } from "../chrome.ts";
-import { OPENING_SHOT } from "../../shared/title-scene.ts";
 
-/** Bake the default still from the actual cooked client. Cached by scene and pack contents outside Git. */
+/** Bake the native default title and loader frames. The cache lives outside Git. */
 export async function titlePoster(dist: string) {
-  const names = ["red-tide.webp", "red-tide-portrait.webp"];
-  const loadingPlate = () => {
-    for (const name of names) copyFileSync(join(dist, "title/miami-flight.webp"), join(dist, "title", name));
-  };
   const hash = createHash("sha256");
-  for (const file of ["flight.js", "title/wynwood-shore.json", "assets/manifest.json", "entry-media.json"])
+  for (const file of ["flight.js", "title/wynwood-shore.json", "assets/manifest.json", "entry-media.json"]) {
     hash.update(readFileSync(join(dist, file)));
-  const cache = join(import.meta.dir, "../../var/title-posters", hash.digest("hex"));
-  if (names.every((n) => existsSync(join(cache, n)))) {
-    for (const name of names) copyFileSync(join(cache, name), join(dist, "title", name));
-    return;
   }
-  // Source-only builds and machines without a browser still ship the existing coastal loading plate.
+  const title = join(dist, "title");
+  const cache = join(import.meta.dir, "../../var/title-posters");
+  const scenes = [
+    { name: "red-tide", shot: DEFAULT_TITLE_SHOT, seconds: 3, width: 1600, quality: 87 },
+    { name: "loader-wynwood", shot: DEFAULT_LOADER_SHOT, seconds: 8, width: 1440, quality: 85 },
+  ];
+  const frames = scenes.flatMap((scene) => [false, true].map((portrait) => {
+    const name = `${scene.name}${portrait ? "-portrait" : ""}.webp`;
+    const key = hash.copy().update(JSON.stringify(scene)).digest("hex");
+    return { ...scene, name, portrait, cached: join(cache, key, name), out: join(title, name) };
+  }));
+  const missing = frames.filter(({ cached, out }) => {
+    if (!existsSync(cached)) return true;
+    copyFileSync(cached, out);
+    return false;
+  });
+  if (!missing.length) return;
+  const fallback = (out: string) => copyFileSync(join(title, basename(out).startsWith("loader-wynwood") ? "miami-splash.webp" : "miami-flight.webp"), out);
   const chrome = findChrome();
   if (!chrome || !existsSync(join(dist, "assets-worker.js"))) {
-    console.info("Title stills use the coastal plate. Publishing a shot replaces both.");
-    loadingPlate();
+    console.info("Default stills use the coastal plate on this build.");
+    for (const { out } of missing) fallback(out);
     return;
   }
   const { devtools } = await import("../map/trip.ts");
+  let preset: TitleShot = DEFAULT_TITLE_SHOT;
   const host = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch(req) {
       const path = new URL(req.url).pathname;
-      return path === "/cluster/title-scene.json" ? Response.json(OPENING_SHOT) : serveFile(dist, req, path);
+      return path === "/cluster/title-scene.json" ? Response.json(preset) : serveFile(dist, req, path);
     },
   });
   const profile = mkdtempSync(join(tmpdir(), "snark-title-"));
@@ -55,30 +66,36 @@ export async function titlePoster(dist: string) {
   let page: Awaited<ReturnType<typeof devtools>> | undefined;
   try {
     page = await devtools(profile);
-    for (const name of names) {
-      const portrait = name.includes("portrait");
-      await page.send("Emulation.setDeviceMetricsOverride", {
-        width: portrait ? 720 : 1600,
-        height: portrait ? 1280 : 900,
-        mobile: false,
-        deviceScaleFactor: 1,
-      });
-      await page.send("Page.navigate", { url: host.url + "flight.html?set=wynwood-shore&still&aspect=" + name });
-      const start = Date.now();
-      while (!(await page.value<boolean>("document.body?.dataset.settled === 'true' && location.search.endsWith('" + name + "')"))) {
-        const error = await page.value<string>("document.body?.dataset.error");
-        if (error || Date.now() - start > 45000)
-          throw Error(error || "Title materials: " + JSON.stringify(await page.value("window.titleRetake?.()")));
-        await Bun.sleep(180);
+    for (const { name, cached, out, shot, seconds, portrait, width, quality } of missing) {
+      try {
+        preset = shot;
+        await page.send("Emulation.setDeviceMetricsOverride", {
+          width: portrait ? 720 : width,
+          height: portrait ? 1280 : width * 9 / 16,
+          mobile: false,
+          deviceScaleFactor: 1,
+        });
+        await page.send("Page.navigate", { url: host.url + `flight.html?set=${shot.set}&still=${seconds}&aspect=${name}` });
+        const start = Date.now();
+        while (!(await page.value<boolean>(`document.body?.dataset.settled === 'true' && location.search.endsWith(${JSON.stringify(name)})`))) {
+          const error = await page.value<string>("document.body?.dataset.error");
+          if (error || Date.now() - start > 45000) throw Error(error || "Scene materials did not settle.");
+          await Bun.sleep(180);
+        }
+        const picture = await page.send("Page.captureScreenshot", { format: "webp", quality });
+        mkdirSync(dirname(cached), { recursive: true });
+        const temporary = `${cached}.${process.pid}`;
+        writeFileSync(temporary, Buffer.from(picture.data, "base64"));
+        renameSync(temporary, cached);
+        copyFileSync(cached, out);
+      } catch (error) {
+        console.warn(`Using the coastal loading plate for ${name}.`, String(error));
+        fallback(out);
       }
-      const shot = await page.send("Page.captureScreenshot", { format: "webp", quality: 87 });
-      mkdirSync(cache, { recursive: true });
-      writeFileSync(join(cache, name), Buffer.from(shot.data, "base64"));
-      copyFileSync(join(cache, name), join(dist, "title", name));
     }
   } catch (error) {
-    console.warn("Using the coastal loading plate:", String(error));
-    loadingPlate();
+    console.warn("Using the coastal loading plate.", String(error));
+    for (const { out } of missing) fallback(out);
   } finally {
     page?.close();
     browser.kill();

@@ -177,6 +177,7 @@ export function shoreView(
   cam.yaw = a + (c.pan - portrait * 12 + mouseX * 1.3) * DEG;
   cam.pitch = (c.tilt + mouseY * 0.75) * DEG;
   cam.fovY = c.lens * DEG;
+  actors.count = shot.subject === "coast" ? 0 : shot.subject === "rex" ? 1 : 2;
   actors.tick = seconds * 30;
   scene.hour = c.hour;
   // Face the shore at the opening. Linger broadside and pass the narrow edge faster, with continuous angular velocity.

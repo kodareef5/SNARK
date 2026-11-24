@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SNARK player scene declarations",
+  "type": "object",
+  "required": [
+    "scenes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "category",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"
+          },
+          "category": {
+            "enum": [
+              "title",
+              "loaders"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "\\S"
+          },
+          "camera": {
+            "type": "object",
+            "description": "Omitted fields use the category’s Wynwood camera.",
+            "additionalProperties": false,
+            "properties": {
+              "side": {
+                "type": "number",
+                "description": "Truck in metres",
+                "minimum": -16,
+                "maximum": 16
+              },
+              "back": {
+                "type": "number",
+                "description": "Dolly in metres",
+                "minimum": -8,
+                "maximum": 32
+              },
+              "height": {
+                "type": "number",
+                "description": "Lift in metres",
+                "minimum": -3,
+                "maximum": 16
+              },
+              "pan": {
+                "type": "number",
+                "description": "Pan in degrees",
+                "minimum": -180,
+                "maximum": 180
+              },
+              "tilt": {
+                "type": "number",
+                "description": "Tilt in degrees",
+                "minimum": -65,
+                "maximum": 75
+              },
+              "lens": {
+                "type": "number",
+                "description": "Vertical field of view in degrees",
+                "minimum": 28,
+                "maximum": 94
+              },
+              "hour": {
+                "type": "number",
+                "description": "Local sun hour",
+                "minimum": 0,
+                "maximum": 23.95
+              }
+            }
+          },
+          "subject": {
+            "enum": [
+              "rider",
+              "rex",
+              "coast"
+            ],
+            "description": "Omit for the mounted rider. The coast uses terrain and the obelisk."
+          }
+        }
+      }
+    }
+  }
+}
