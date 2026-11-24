@@ -136,10 +136,12 @@ test("nobody is cast twice, the caps hold for bodies still walking off, and a ca
   expect([...per.host.cast.cast.people.byId.values()].filter((c) => c.story && !per.host.cast.cast.stories.get(c.story)?.parts.length)).toEqual([]);
 });
 
-test("the admin page's writes go through the cluster front, and a world takes them only from a page it served", async () => {
-  expect(frontPasses("POST", "/miami/admin/cast")).toBe(true);
-  expect(frontPasses("POST", "/miami/admin/stats.json")).toBe(false);
-  expect(frontPasses("DELETE", "/miami/admin/cast")).toBe(false);
+test("the front admits cast writes and the world checks their origin", async () => {
+  // The front removes the selected world mount before checking its write allowlist.
+  expect(frontPasses("POST", "/admin/cast")).toBe(true);
+  expect(frontPasses("POST", "/admin/stats.json")).toBe(false);
+  expect(frontPasses("POST", "/unregistered/admin/cast")).toBe(false);
+  expect(frontPasses("DELETE", "/admin/cast")).toBe(false);
   const h = new Harness({}, 1, 30, { cast: { enabled: false } });
   const dir = mkdtempSync(join(tmpdir(), "cast-admin-page-"));
   try {
