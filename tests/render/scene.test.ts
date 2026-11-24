@@ -574,9 +574,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // stripped forms (content/vehicles/salvage.ts) added theirs. It was 3091927605 until every body's shell and the nine
   // bodies' stripped looks that only salvage leaves (content/vehicles/wrecks.ts SALVAGED_LOOKS) added their meshes.
   // The launcher and its effects add mesh handles after the salvaged bodies.
-  // It was 2832364003 until the 43 shapes of the orb's shell (content/orb.ts) added their grey meshes, which number the
-  // meshes after them on; without them it is that again. They are drawn as nothing, like the Tide Eye's three before them.
-  expect(hash).toBe(3115831847);
+  // It was 2832364003 until the kinds drawn as nothing lost the grey meshes nothing drew (shared/content/slots.ts): the
+  // 216 collision pieces under bent kerbs (content/bends.ts) and the Tide Eye's three (content/terminals.ts), which
+  // numbers the meshes after them that many back. With the 43 of the orb's shell as well it had been 3115831847.
+  expect(hash).toBe(1909060155);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -622,8 +623,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 3120527 until the three finishes above, 1760943328 until the shed's, 2591537817 until the skate park's,
   // 1800001343 until the two parked Concept 003 meshes, 4134447771 until the city's broken forms, 2206766379
   // until the wrecks' stripped forms, and 3892484967 until the shells and the looks only salvage leaves, as above.
-  // And 2924218475 until the orb's shell's grey meshes, as above.
-  expect(saddled.hash).toBe(3330468365);
+  // And 2924218475 until the kinds drawn as nothing lost their grey meshes, as above (3330468365 with the orb's shell's).
+  expect(saddled.hash).toBe(1982246606);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

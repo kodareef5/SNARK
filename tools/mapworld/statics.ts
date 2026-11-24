@@ -14,6 +14,8 @@ import type { SiteBuilding } from "./buildings.ts";
 import { RUINS } from "./ruins.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { orbCollision } from "../../shared/world/orb.ts";
+import { toYaw } from "../map/layers.ts";
+import { own } from "./known.ts";
 import { ROOF_PLANT } from "./roof-plant.ts";
 import { STREET_FURNITURE } from "./street-furniture.ts";
 
@@ -40,9 +42,10 @@ export interface Footprint {
 
 /**
  * An orb a layout asked for (shared/world/orb.ts), at lattice x and z, its heading in degrees as a piece's; `y` is the
- * ground under its axis once its shell is laid.
+ * ground under its axis once its shell is laid, and `building` its place's among the site's buildings, whose pieces
+ * its shell's and its plinth's are.
  */
-export interface SiteOrb { name: string; x: number; z: number; yaw: number; radius: number; centre: number; y?: number }
+export interface SiteOrb { name: string; x: number; z: number; yaw: number; radius: number; centre: number; y?: number; building?: number }
 
 export interface Site {
   /** The orbs the ruins' layouts asked for, which the map's head lists. */
@@ -74,8 +77,9 @@ export interface StaticLayer {
 }
 
 /**
- * Each orb's shell, on the ground under its axis as the ruins left it, where a Tide Eye's site takes its height. It
- * comes before the street's pieces, so they count it in a chunk and keep clear of it.
+ * Each orb's shell and plinth, on the ground under its axis as the ruins left it, where a Tide Eye's site takes its
+ * height. It comes before the street's pieces, so they count it in a chunk and keep clear of it. Its pieces are its
+ * place's building's, so a look at one names the place.
  */
 export const ORB_SHELLS: StaticLayer = {
   name: "the orbs' shells",
@@ -83,7 +87,12 @@ export const ORB_SHELLS: StaticLayer = {
     const snap = (v: number): number => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
     return site.orbs.flatMap((o) => {
       [o.x, o.y, o.z] = [snap(o.x), snap(site.groundAt(o.x, o.z)), snap(o.z)];
-      return orbCollision({ ...o, y: o.y, yaw: 0 }).map((p) => ({ ...p, yaw: (p.yaw * 360) / YAW_UNITS }));
+      // The plinth turns with the heading the map's head will give the site.
+      return orbCollision({ ...o, y: o.y, yaw: toYaw(o.yaw) }).map((p) => {
+        const piece = { ...p, yaw: (p.yaw * 360) / YAW_UNITS };
+        if (o.building !== undefined) own(piece, o.building);
+        return piece;
+      });
     });
   },
 };

@@ -18,6 +18,7 @@ import { skyFile, theSky } from "../client/core/render/sky.ts";
 import { WATER_MATERIAL } from "../client/core/render/water.ts";
 import { BENT_SECTIONS } from "../content/bends.ts";
 import { BREAK_BLOCKS } from "../content/breaks/kinds.ts";
+import { ORBS } from "../content/orb.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, surfaceMaterial } from "../content/surfaces.ts";
 import { HUMAN } from "../shared/anim/human.ts";
@@ -130,9 +131,9 @@ function wholeFarColours(reg: Registry, pack: Pack): number[] {
   return [...farColours(reg, pack, meshOf)];
 }
 
-/** The content file carries the definitions the page cannot generate from its street and building kits. */
+/** The content file carries the definitions the page cannot generate from its street and building kits and its orbs' sizes. */
 export function clientContent(): Uint8Array {
-  const generated = new Set([...BENT_SECTIONS, ...BREAK_BLOCKS].map((d) => d.id));
+  const generated = new Set([...BENT_SECTIONS, ...BREAK_BLOCKS, ...ORBS].map((d) => d.id));
   return new TextEncoder().encode(JSON.stringify(CORE_CONTENT.filter((d) => !generated.has(d.id))));
 }
 
