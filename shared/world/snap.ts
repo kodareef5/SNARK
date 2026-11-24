@@ -134,11 +134,42 @@ const near = new Found();
 const mine: Solid[] = [];
 const theirs = new Solid();
 
+/** Metres to the piece `enemyGap` last found, and the metres its role needs. */
+export const enemyGapFound = { metres: 0, needs: 0 };
+
+/**
+ * The nearest foundation or pillar of a team other than `team` that stands too near (x, z) for a piece to be built
+ * there: within `foundation` metres of a foundation, or `pillar` of a pillar. Fills `enemyGapFound`; false for none.
+ */
+export function enemyGap(structs: StructureStore, role: ArrayLike<number>, team: number, x: number, z: number, foundation: number, pillar: number): boolean {
+  const dims = structs.dims;
+  let best = Infinity;
+  for (let cz = Math.max(0, Math.floor((z - foundation) / 64)); cz <= Math.min(dims.chunksZ - 1, Math.floor((z + foundation) / 64)); cz++) {
+    for (let cx = Math.max(0, Math.floor((x - foundation) / 64)); cx <= Math.min(dims.chunksX - 1, Math.floor((x + foundation) / 64)); cx++) {
+      const t = structs.chunks[cz * dims.chunksX + cx];
+      if (!t) continue;
+      for (let s = 0; s < t.high; s++) {
+        const owner = t.owner[s]!, r = role[t.kind[s]!]!;
+        if (owner === 0 || owner === team || (r !== ROLE_FOUNDATION && r !== ROLE_PILLAR)) continue;
+        const reach = r === ROLE_FOUNDATION ? foundation : pillar;
+        const dx = t.x[s]! - x, dz = t.z[s]! - z, far = dx * dx + dz * dz;
+        if (far < reach * reach && far < best) [best, enemyGapFound.needs] = [far, reach];
+      }
+    }
+  }
+  enemyGapFound.metres = Math.sqrt(best);
+  return best !== Infinity;
+}
+
+/** The structure `obstructed` last found in the way, or -1. */
+export const obstruction = { ref: -1 };
+
 /**
  * Whether a piece of `kind` at this pose (metres) overlaps a built structure. Pieces that only touch, as neighbours do, do not
  * count. Boxes meet boxes by their shrunk rectangles; a convex part meets a box or a part as solids that give way as much.
  */
 export function obstructed(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number, restoringMapPiece = false): boolean {
+  obstruction.ref = -1;
   const a = yaw * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
@@ -182,7 +213,7 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
         if (cy - hy >= qy + qh || cy + hy <= qy - qh) continue;
         const qx = t.x[slot]! + oc * box[q]! + os * box[q + 2]!;
         const qz = t.z[slot]! - os * box[q]! + oc * box[q + 2]!;
-        if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! - otherSide), Math.max(THIN, box[q + 5]! - otherSide))) return true;
+        if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! - otherSide), Math.max(THIN, box[q + 5]! - otherSide))) return (obstruction.ref = ref) >= 0;
       }
     }
   }
@@ -215,11 +246,11 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
     // Their boxes against my convex parts; then their convex parts against all of mine. Box against box was asked above.
     for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend && count > boxes; q += 6) {
       boxSolid(t.x[slot]! + oc * box[q]! + os * box[q + 2]!, t.y[slot]! + box[q + 1]!, t.z[slot]! - os * box[q]! + oc * box[q + 2]!, oc, os, box[q + 3]!, box[q + 4]!, box[q + 5]!, theirs);
-      for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return true;
+      for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return (obstruction.ref = ref) >= 0;
     }
     for (let h = hulls.start[other]!, hend = hulls.start[other + 1]!; h < hend; h++) {
       partSolid(hulls, h, t.yaw[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, theirs);
-      for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return true;
+      for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return (obstruction.ref = ref) >= 0;
     }
   }
   return false;

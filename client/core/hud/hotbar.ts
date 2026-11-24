@@ -32,7 +32,8 @@ export interface HotbarModel {
   ammo: string;
 }
 
-export function fillHotbar(m: HotbarModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array): void {
+/** `spend` of `spendItem` in the held slot are set down and not yet taken from it by the server (predict-build.ts): the count shows without them. */
+export function fillHotbar(m: HotbarModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array, spendItem = 0, spend = 0): void {
   const first = inv ? inv.hotbar : -1;
   m.held = held;
   if (first < 0) {
@@ -55,7 +56,8 @@ export function fillHotbar(m: HotbarModel, inv: Inventory | null, held: number, 
     const c = (def.color ?? 15) * 4;
     cell.label = name.slice(0, 4);
     cell.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
-    cell.number = inv!.count[first + i]! > 1 ? String(inv!.count[first + i]) : def.weapon?.ammo ? String(inv!.loaded[first + i]) : "";
+    const count = inv!.count[first + i]!, left = i === held && item === spendItem ? Math.max(0, count - spend) : count;
+    cell.number = count > 1 ? String(left) : def.weapon?.ammo ? String(inv!.loaded[first + i]) : "";
   }
 }
 
@@ -64,7 +66,7 @@ export const HOTBAR: HudWidget<HotbarModel> = {
   make: () => ({ hotbar: [], held: -1, ammo: "" }),
   fill(m, c) {
     const a = c.frame;
-    if (a) fillHotbar(m, a.alive ? c.session.inventory : null, c.session.held, a.reg, a.palette);
+    if (a) fillHotbar(m, a.alive ? c.session.inventory : null, c.session.held, a.reg, a.palette, a.spendItem, a.spend);
   },
   // The hotbar stays at the bottom even when a message, a vital or chat changes.
   build(f, m, at) {

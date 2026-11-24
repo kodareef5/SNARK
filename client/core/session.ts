@@ -17,6 +17,7 @@ import { PI, TAU } from "../../shared/math/scalar.ts";
 import { bolt, readBolt } from "../../shared/net/bolts.ts";
 import { blast, readBlast, readRocket, rocket } from "../../shared/net/rockets.ts";
 import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
+import { makePlaced, readPlaced, type Placed } from "../../shared/net/placed.ts";
 import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { AirCamera } from "./air-camera.ts";
 import { airFeedView, type AirFeedView } from "./air-feed.ts";
@@ -105,6 +106,7 @@ import {
   S_OWN,
   S_REJECT,
   S_RESULT,
+  S_PLACED,
   S_SNAPSHOT,
   S_TEXT,
   RESTART_GO,
@@ -704,6 +706,10 @@ export class ClientSession {
   private readonly died = new Map<number, number>();
   private readonly dying: number[] = [];
   onResult: ((seq: number, code: number) => void) | null = null;
+  /** The server's answer to a placement (S_PLACED), the same object each time, and a chunk row that has landed, by its ref. */
+  onPlaced: ((placed: Placed) => void) | null = null;
+  private readonly placed = makePlaced();
+  onRow: ((ref: number) => void) | null = null;
   /**
    * Told of each structure row a snapshot changes in a chunk already whole: its kind before and after (0 where there is
    * none), where, its health before and after, and for a removal its GONE_ cause (else -1). For sound only.
@@ -1591,6 +1597,12 @@ export class ClientSession {
           s.askAt = s.lastNow + ASK_AGAIN_MS;
         }
         s.onResult?.(seq, code);
+      },
+    });
+    messages.add({
+      kind: S_PLACED,
+      read(s, r) {
+        if (readPlaced(r, s.placed)) s.onPlaced?.(s.placed);
       },
     });
     messages.add({
@@ -2723,6 +2735,7 @@ export class ClientSession {
       const y = height / STRUCT_UNITS;
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
       structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
+      this.onRow?.(chunk * 65536 + slot);
     }
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
     const t = world.structs.chunks[chunk];

@@ -489,6 +489,8 @@ export class Scene {
   private readonly loose: Things;
   get beams(): number[] { return this.marks.beams; }
   get ghost(): Ghost["ghost"] { return this.placing.ghost; }
+  /** The pieces set down and awaited, which the app fills each frame (predict-build.ts). */
+  get predicted(): Ghost { return this.placing; }
   get things(): Thing[] { return this.loose.things; }
   set things(list: Thing[]) { this.loose.things = list; }
   /** Entities that are one mesh each, and pieces falling after a removal (passes/loose-entities.ts). */
@@ -622,7 +624,7 @@ export class Scene {
     this.eyes = new TideEyes(this.assets);
     this.movingStatics = new MovingStatics(reg, this.assets, this.flatFlags, this.landmarkKinds);
     this.marks = new Beams(this.assets);
-    this.placing = new Ghost(this.assets, this.meshOfKind);
+    this.placing = new Ghost(this.assets, this.meshOfKind, this.colorOfKind);
     this.loose = new Things(this.assets);
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);

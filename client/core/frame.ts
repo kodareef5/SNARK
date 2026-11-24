@@ -127,6 +127,11 @@ export class AppFrame implements HudFrame {
   /** The words under the crosshair, and whether a piece is in hand to build with. */
   prompt = "";
   building = false;
+  /** What was last played with (Ui.inputDevice): 0 keys, 1 a pad, 2 a finger. */
+  device = 0;
+  /** Pieces asked for and not yet taken from the hotbar's count: their item, and how many (predict-build.ts). */
+  spendItem = 0;
+  spend = 0;
 
   /** For the HUD's fills (hud/widget.ts HudFrame): the pause menu is open, a vehicle is driven, a mount's rivalry shows, what the governor did. */
   menu = false;
