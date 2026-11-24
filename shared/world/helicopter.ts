@@ -80,10 +80,19 @@ const interactionSweep: Swept = { solid: makeSolid(), hazard: false, radius: 0, 
 const interactionSolid = makeSolid();
 interface HelicopterInteraction extends ContactGeometry { rotor: boolean; otherRotor: boolean; otherPropeller: boolean }
 const interactionHit: HelicopterInteraction = { rotor: false, nx: 0, ny: 0, nz: 0, x: 0, y: 0, z: 0, depth: 0, otherRotor: false, otherPropeller: false };
-function frameState(def: RotorVehicleDefinition, frame: HelicopterFrame): HelicopterState {
-  const state = createHelicopter(def.spec, frame.x, frame.y, frame.z, frame.yaw);
-  state.pitch = frame.pitch; state.roll = frame.roll;
-  vehicleRotation({ ...frame }, q);
+/** Two poses a query may hold at once: a craft's own, and what it meets. */
+const poses = [poseState(), poseState()] as const;
+function poseState(): HelicopterState {
+  return { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, qx: 0, qy: 0, qz: 0, qw: 1, vx: 0, vy: 0, vz: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0,
+    groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, steering: 0, wheelAngle: 0, fuel: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0,
+    rotorRpm: 0, rotorPhase: 0, engineCondition: 1, rotorCondition: 1, engineOn: false, collective: 0 };
+}
+/** A frame's pose as a state the shapes are swept by, in scratch pose `slot`: nothing is made or checked for a query. */
+function frameState(frame: HelicopterFrame, slot: 0 | 1 = 0): HelicopterState {
+  const state = poses[slot];
+  state.x = frame.x; state.y = frame.y; state.z = frame.z;
+  state.yaw = frame.yaw; state.pitch = frame.pitch; state.roll = frame.roll;
+  vehicleRotation(frame, q);
   state.qx = q[0]!; state.qy = q[1]!; state.qz = q[2]!; state.qw = q[3]!;
   return state;
 }
@@ -99,7 +108,7 @@ function interaction(def: RotorVehicleDefinition, state: HelicopterState, obstac
 }
 /** Full oriented vehicle envelope against a would-be structure, so building cannot intersect a tilted rotor or tail. */
 export function helicopterMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, def: RotorVehicleDefinition, frameAt: HelicopterFrame, slack = 0): boolean {
-  const state = frameState(def, frameAt), boxes = parts.box;
+  const state = frameState(frameAt), boxes = parts.box;
   frameOf(syaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch;
   for (let i = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; i < end; i += 6) {
     boxSolid(sx + (cs * boxes[i]! + sn * boxes[i + 2]!) * stretch, sy + boxes[i + 1]!, sz + (cs * boxes[i + 2]! - sn * boxes[i]!) * stretch,
@@ -115,13 +124,13 @@ export function helicopterMeetsKind(parts: PartTable, kind: number, sx: number, 
 /** Conservative circumscribed capsule cylinder. Server sweeps this query between authoritative frames; no particle decides a hit. */
 export function helicopterMeetsCapsule(def: RotorVehicleDefinition, frame: HelicopterFrame, x: number, y: number, z: number, radius: number, height: number): (ContactGeometry & { rotor: boolean }) | null {
   const capsule = tube([x, y, z], [x, y + Math.max(height, radius * 2), z], [1, 0, 0], [0, 0, 1], radius, radius, 12);
-  return interaction(def, frameState(def, frame), capsule, 0);
+  return interaction(def, frameState(frame), capsule, 0);
 }
 
 const otherSweep: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0, bounds: bounds() };
 /** The same shapes against another vehicle. Callers sweep relative motion and own authority, impulses and damage. */
 export function helicopterMeetsVehicle(def: RotorVehicleDefinition, frame: HelicopterFrame, other: VehicleDefinition, otherFrame: BoatFrame): HelicopterInteraction | null {
-  const source = frameState(def, frame), target = frameState(def, otherFrame);
+  const source = frameState(frame), target = frameState(otherFrame, 1);
   let parts: readonly Shape[];
   if (other.movement === "rotor") {
     const rotorParts = interactionShapes.get(other) ?? localShapes(other); interactionShapes.set(other, rotorParts); parts = rotorParts;
