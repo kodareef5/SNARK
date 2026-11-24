@@ -5,7 +5,6 @@ import { findAssets } from "../../tools/art/assets.ts";
 import { checkAsset } from "../../tools/art/check.ts";
 import { fromAssets } from "../../tools/wiki/credits.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
-import { HELD_TRIANGLES } from "../../assets/source/core/items/weapons/materials.ts";
 
 const asset = (await findAssets()).find((a) => a.id === "core:plasma")!;
 const pack = parsePack(await Bun.file(asset.file).bytes());
@@ -31,7 +30,8 @@ test("each plasma gun is held on the right prop bone, muzzle forward of its grip
 test("each plasma gun keeps to the held budget at every level, in two materials", () => {
   for (const id of GUNS) {
     const mesh = meshes.find((m) => m.id === id)!;
-    mesh.lods.forEach((lod, level) => expect(lod.indices.length / 3).toBeLessThanOrEqual(HELD_TRIANGLES[level]!));
+    // The held item's budget, level by level (HELD_TRIANGLES beside the weapons' art).
+    mesh.lods.forEach((lod, level) => expect(lod.indices.length / 3).toBeLessThanOrEqual([1200, 480, 160, 48][level]!));
     expect(mesh.materials!.map((m) => m.id).sort()).toEqual(["core:plasma/glow", "core:plasma/tek"]);
     expect(new Set(mesh.lods[0]!.sections).size).toBe(2);
   }
