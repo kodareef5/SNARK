@@ -90,6 +90,8 @@ import {
   EVENT_NAME_BYTES,
   EVENT_SHOT,
   EVENT_BLAST,
+  EVENT_COLLAPSE,
+  EVENT_GROAN,
   EVENT_IMPACT,
   EVENT_BALL,
   OWN_KEPT,
@@ -149,10 +151,13 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
+import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
-import { GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
+import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
+import { GONE_BLAST, GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
+import { GoneStore } from "./gonelists.ts";
 import type { FarSource } from "./render/far.ts";
 import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
@@ -196,6 +201,8 @@ export interface SessionOptions {
   tideEyes?: readonly TideEyeSite[];
   /** That map's tops as they come (mapload.ts StagedMap), of which the scene draws the city past the far city as blocks, where its levels are made. */
   tops?: HeldTops;
+  /** That map's buildings, each sector's set in as it comes (mapload.ts StagedMap), or as a file read whole has them. */
+  buildings?: Buildings | null;
 }
 
 /** Null if the tuning does not parse or the derived content does not compile. */
@@ -209,20 +216,28 @@ function derive(reg: Registry, tuning: string): Registry | null {
   }
 }
 
-/** A structure that was just destroyed or fell. */
+/** A structure that was just destroyed, fell or was blown apart. */
 export interface Rubble {
+  /** The kind it was as it went: a city piece's form. */
   kind: number;
   x: number;
   y: number;
   z: number;
   yaw: number;
-  /** GONE_DESTROYED or GONE_FELL. */
+  /** GONE_DESTROYED, GONE_FELL or GONE_BLAST. */
   cause: number;
-  /** Where the removal began. For a fall, where support was lost. */
+  /** Where the removal began. For a fall, where support was lost; for a blast, its centre. */
   ox: number;
   oy: number;
   oz: number;
+  /** The server's tick it went at. */
   tick: number;
+  /** A blast's reach in metres, 0 for any other cause. */
+  radius: number;
+  /** The heap's kind its slot took in its place, or 0 where the slot was emptied. */
+  into: number;
+  /** The kind the map placed there, whose finish a city piece and its heap are drawn in, or 0 for a piece that is not the map's. */
+  map: number;
 }
 
 /** Beyond this the oldest queued rubble is dropped. */
@@ -592,6 +607,13 @@ export class ClientSession {
   readonly events: CombatEvent[] = [];
   /** Blows that landed on bodies near, oldest first (EVENT_IMPACT). The scene takes them each frame. */
   readonly impacts: Impact[] = [];
+  /**
+   * Collapses told since they were last taken (EVENT_COLLAPSE), for the dust drawn over them from afar: the middle of what
+   * fell, its foot, and how far across and how tall it stood, in metres. The oldest goes when a ninth comes.
+   */
+  readonly collapses: { x: number; z: number; foot: number; across: number; tall: number }[] = [];
+  /** Buildings heard to give since they were last taken (EVENT_GROAN): where each gave. The oldest goes when a ninth comes. */
+  readonly groans: { x: number; y: number; z: number }[] = [];
   /** Creatures just tamed, waiting for the naming prompt. te is in percent. */
   readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
   /** The creature whose inventory is open, or null when the open container is not a creature. Shares are 0 to 1. */
@@ -624,6 +646,8 @@ export class ClientSession {
   sightZero = 0;
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
   readonly far = new FarStore();
+  /** Which of the map's own pieces no longer stand in the chunks within the reach `askFar` names for them. */
+  readonly gone = new GoneStore();
   /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
   private whole = new Uint8Array(0);
   /** The map's statics, come after the session began (staticsArrived). */
@@ -788,6 +812,7 @@ export class ClientSession {
   private viewBytes = 0;
   private viewSeq = 0;
   private farAsked = -1;
+  private goneAsked = -1;
   private farSeq = 0;
   private askAt = -Infinity;
 
@@ -866,13 +891,18 @@ export class ClientSession {
     this.viewSeq = seq;
   }
 
-  /** Asks for far cells within `metres`. Sent when it changes, and again when the server was too busy to take it. The server holds it to its FarRadius. */
-  askFar(metres: number): void {
+  /**
+   * Asks for far cells within `metres`, and for the lists of the map's pieces gone within `lists`. Sent when either changes,
+   * and again when the server was too busy to take it. The server holds them to its FarRadius and GoneRadius.
+   */
+  askFar(metres: number, lists = 0): void {
     const m = Math.max(0, Math.min(0xffff, Math.round(metres)));
-    if (m === this.farAsked || this.lastNow < this.askAt) return;
-    const seq = this.command(CMD_FAR, (w) => w.u16(m));
+    const g = Math.max(0, Math.min(0xffff, Math.round(lists)));
+    if ((m === this.farAsked && g === this.goneAsked) || this.lastNow < this.askAt) return;
+    const seq = this.command(CMD_FAR, (w) => (w.u16(m), w.u16(g)));
     if (seq === 0) return;
     this.farAsked = m;
+    this.goneAsked = g;
     this.farSeq = seq;
   }
 
@@ -2096,6 +2126,20 @@ export class ClientSession {
       const won = { handle: r.u32(), kind: r.u16(), level: r.u16(), te: r.u8() };
       if (!r.overflow && this.tamed.length < 8) this.tamed.push(won);
       return;
+    } else if (kind === EVENT_COLLAPSE) {
+      // Not a combat event: where much of a building came down at once, far enough off to be drawn as a column of dust.
+      const fell = { x: r.f32(), z: r.f32(), foot: r.sbits(16) / 2, across: r.u8(), tall: r.u8() * 2 };
+      if (r.overflow) return;
+      if (this.collapses.length >= 8) this.collapses.shift();
+      this.collapses.push(fell);
+      return;
+    } else if (kind === EVENT_GROAN) {
+      // Not a combat event: a building near is about to come down.
+      const gave = { x: r.f32(), y: r.f32(), z: r.f32() };
+      if (r.overflow) return;
+      if (this.groans.length >= 8) this.groans.shift();
+      this.groans.push(gave);
+      return;
     } else if (kind === EVENT_IMPACT) {
       // Not a combat event: where a blow landed on a body, for its draw to snap back from it (render/impact-springs.ts).
       const handle = r.u32(), bone = r.u8(), facing = r.u8(), pitch = (r.u8() << 24) >> 24, strength = r.u8(), how = r.bits(2);
@@ -2159,7 +2203,7 @@ export class ClientSession {
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
-    const far: FarSource = { cells: this.far, complete: (chunk) => this.whole[chunk] === 1 };
+    const far: FarSource = { cells: this.far, lists: this.gone, complete: (chunk) => this.whole[chunk] === 1 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges!, city: () => this.world?.city?.statics ?? this.nodeCity(), ground: hf } } : {};
@@ -2502,6 +2546,22 @@ export class ClientSession {
     this.vehicleCorrection.reconcile(this.own, vehicle && predicted && dx * dx + dy * dy + dz * dz < smoothLimit * smoothLimit, this.ownPrev, alpha);
   }
 
+  /** The map's buildings, of the sectors come so far, or null where the map has none or the page was given none. */
+  get buildings(): Buildings | null {
+    return this.opts.buildings ?? null;
+  }
+
+  /**
+   * The kind the map placed in `slot` of `chunk`, whatever stands there now. A city piece (owned by nobody, in a map slot)
+   * has that kind's finish, material and full health in any form. 0 for a slot past the map's, or without the map's statics.
+   */
+  mapKind(chunk: number, slot: number): number {
+    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics) : null;
+    if (!statics || chunk + 1 >= statics.first.length) return 0;
+    const at = statics.first[chunk]! + slot;
+    return at < statics.first[chunk + 1]! ? this.staticKinds![statics.kind[at]!]! : 0;
+  }
+
   private chunk(r: BitReader): void {
     const world = this.world;
     if (!world) return;
@@ -2537,17 +2597,19 @@ export class ClientSession {
     for (let i = 0; i < count; i++) {
       slot += r.bool() ? 1 : r.varint() + 2;
       const inPlace = r.bool();
-      const kind = inPlace ? 0 : this.kinds.read(r, 16);
+      // A row in place may still say another kind: a door opened, a city piece in a broken form.
+      const kind = inPlace && !r.bool() ? 0 : this.kinds.read(r, 16);
       if (r.overflow || slot > 0xffff || kind >= kinds) return;
       const was = rows && slot < rows.high ? rows.kind[slot]! : 0;
       const hpWas = was !== 0 ? rows!.hp[slot]! : 0;
       if (inPlace) {
+        const now = kind !== 0 ? kind : was;
         const owner = this.owners.read(r, 0);
-        const hp = r.bool() ? maxHp[was]! : r.f32();
+        const hp = r.bool() ? maxHp[now]! : r.f32();
         if (r.overflow) return;
         if (was === 0) continue;
-        if (told && hpWas !== Math.fround(hp)) told(was, was, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
-        structs.put(chunk, slot, was, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, owner, hp, version);
+        if (told && (was !== now || hpWas !== Math.fround(hp))) told(was, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
+        structs.put(chunk, slot, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, owner, hp, version);
         continue;
       }
       if (kind === 0) {
@@ -2568,6 +2630,7 @@ export class ClientSession {
     }
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
     const t = world.structs.chunks[chunk];
+    const reg = this.registry;
     for (let b = r.u8(); b > 0 && !r.overflow; b--) {
       const at = version - r.varint();
       const cause = r.bits(2);
@@ -2576,20 +2639,31 @@ export class ClientSession {
       const oy = told ? r.f32() : 0;
       const oz = told ? r.f32() : 0;
       const tick = told ? r.u32() : 0;
-      let last = 0;
-      for (let runs = r.varint(); runs > 0 && !r.overflow; runs--) {
-        const first = last + r.svarint();
-        const more = r.varint();
-        last = first + more + 1;
-        if (r.overflow || !t || first < 0) break;
-        for (let slot = first; slot <= first + more && slot < t.high; slot++) {
-          if (t.kind[slot] === 0 || t.mod[slot]! >= at) continue;
-          this.onStructure?.(t.kind[slot]!, 0, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.hp[slot]!, 0, cause);
-          if (told) {
-            if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
-            this.rubble.push({ kind: t.kind[slot]!, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, cause, ox, oy, oz, tick });
+      const radius = cause === GONE_BLAST ? r.u8() / 4 : 0;
+      // Slots that take their heap where they stood come first where there are any, then those emptied.
+      const leaves = r.bool();
+      for (let list = leaves ? 1 : 0; list >= 0 && !r.overflow; list--) {
+        if (leaves && list === 0 && !r.bool()) break;
+        let last = 0;
+        for (let runs = r.varint(); runs > 0 && !r.overflow; runs--) {
+          const first = last + r.svarint();
+          const more = r.varint();
+          last = first + more + 1;
+          if (r.overflow || !t || first < 0) break;
+          for (let slot = first; slot <= first + more && slot < t.high; slot++) {
+            const kind = t.kind[slot]!;
+            if (kind === 0 || t.mod[slot]! >= at) continue;
+            const [x, y, z, yaw] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!];
+            const into = list === 1 ? heapAt(reg, kind, x, y, z) : 0;
+            this.onStructure?.(kind, 0, x, y, z, t.hp[slot]!, 0, cause);
+            if (told) {
+              if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
+              this.rubble.push({ kind, x, y, z, yaw, cause, ox, oy, oz, tick, radius, into, map: t.owner[slot] === 0 ? this.mapKind(chunk, slot) : 0 });
+            }
+            // A heap is as old as its batch, so a later batch of the same message may still take it.
+            if (into !== 0) world.structs.put(chunk, slot, into, x, y, z, yaw, t.owner[slot]!, heapHealth(reg, into), at);
+            else world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
           }
-          world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
         }
       }
     }

@@ -4,6 +4,8 @@
 // to facadeSurface at points away from every edge. Each pass writes one of its outputs: the albedo, the room's light,
 // the normal, and occlusion, roughness and the far side's share.
 
+import { WEAR_PANES_OUT } from "../../client/core/render/pieces.ts";
+import { STAGE_FAILING } from "../../shared/world/breaking.ts";
 import { sample } from "../../client/core/render/cpu-texture.ts";
 import { FACADE_FLOOD, FACADE_GLSL, FACADE_TIERS, KIND, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { facadeMaps } from "../facade/build.ts";
@@ -95,7 +97,7 @@ void main() {
   gl_Position = uViewProj * vec4(aRel, 1.0);
 }`;
 
-const fragment = (rooms: boolean, facade = true): string => `#version 300 es
+const fragment = (rooms: boolean, facade = true, wear = 0): string => `#version 300 es
 ${facade ? "#define FACADE\n" : ""}${rooms ? "#define FACADE_ROOMS\n" : ""}precision highp float;
 precision highp int;
 in vec3 vRel, vOwn;
@@ -112,7 +114,7 @@ ${FACADE_GLSL.replaceAll("FACADE_NORMAL", "rg")}void main() {
   vec3 albedo = vec3(0.5), orm = vec3(1.0), n = geometric, room;
   vec4 far, roomAt;
 #ifdef FACADE
-  int k = facade(albedo, orm, n, room, far, roomAt, vClass, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uEyeY, vRel.y + uEyeY);
+  int k = facade(albedo, orm, n, room, far, roomAt, vClass, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uEyeY, vRel.y + uEyeY, ${wear});
 #else
   int k = 1;
   room = vec3(0.0);
@@ -127,7 +129,10 @@ interface Picture { key: string; color: Uint8Array; face: Int16Array }
 const pictures: Picture[] = [];
 
 /** The twin's picture of a view on a tier, every pass. */
-function twin(view: (typeof VIEWS)[number], tier: FacadeTier, sampleAt: FacadeSample): { colors: Uint8Array[]; face: Int16Array } {
+/** The wear the worn pictures are drawn at: failing, its panes out. */
+const WORN = STAGE_FAILING | WEAR_PANES_OUT;
+
+function twin(view: (typeof VIEWS)[number], tier: FacadeTier, sampleAt: FacadeSample, wear = 0): { colors: Uint8Array[]; face: Int16Array } {
   const { f, r, u, tan } = viewProj(view.eye, view.at);
   const colors = Array.from({ length: PASSES }, () => new Uint8Array(W * H * 4));
   const face = new Int16Array(W * H).fill(-1);
@@ -159,8 +164,8 @@ function twin(view: (typeof VIEWS)[number], tier: FacadeTier, sampleAt: FacadeSa
     const args = [[x - origin[0]!, y - origin[1]!, -origin[2]!], [1, 0, 0], Math.round((origin[0]! + ORIGIN[0]!) * 4), Math.round((origin[2]! + ORIGIN[2]!) * 4), p[1]!, p[1]!] as const;
     o.room.fill(0);
     o.farShare = 0;
-    if (kind !== KIND.none) facadeSurface(o, kind, p[0]! - x, p[1]! - y, w, h, [0, 0, 1], rel.map((q) => -q / dist), ...args, footprint, dist, tier, sampleAt);
-    if (kind === KIND.none || kind === KIND.shutter || kind === KIND.door || kind === KIND.pier) facadeMarks(o, kind, p[0]! - x, p[1]! - y, w, h, edges, [0, 0, 1], ...args, FLOOD, footprint, tier, sampleAt);
+    if (kind !== KIND.none) facadeSurface(o, kind, p[0]! - x, p[1]! - y, w, h, [0, 0, 1], rel.map((q) => -q / dist), ...args, footprint, dist, tier, sampleAt, wear);
+    if (kind === KIND.none || kind === KIND.shutter || kind === KIND.door || kind === KIND.pier) facadeMarks(o, kind, p[0]! - x, p[1]! - y, w, h, edges, [0, 0, 1], ...args, FLOOD, footprint, tier, sampleAt, wear);
     const outs = [o.albedo.map(Math.sqrt), o.room.map(Math.sqrt), o.normal.map((q) => q * 0.5 + 0.5), [o.orm[0]!, o.orm[1]!, o.farShare]];
     outs.forEach((v, k) => colors[k]!.set([...[0, 1, 2].map((c) => Math.round(Math.min(1, Math.max(0, v[c]!)) * 255)), 255], at * 4));
   }
@@ -191,6 +196,14 @@ export const facadeCheck: LitCheck = {
           const key = `facade-${name}-${v}-${pass}`;
           shots.push(new RawShot(key, W, H, VERTEX, fragment(tier.reflect), [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1], ["aEdges", 1]], data, { uViewProj: viewProj(view.eye, view.at).m, uPass: [pass], uEyeY: [EYE_Y], fFacade: [FLOOD, 1, 0, 0] }, maps));
           pictures.push({ key, color: drawn.colors[pass]!, face: drawn.face });
+        }
+        // The near view again of pieces failing with their panes out (pieces.ts): the marks by stage, and glass broken.
+        if (v !== 0) return;
+        const worn = twin(view, tier, sampleAt, WORN);
+        for (let pass = 0; pass < PASSES; pass++) {
+          const key = `facade-${name}-worn-${pass}`;
+          shots.push(new RawShot(key, W, H, VERTEX, fragment(tier.reflect, true, WORN), [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1], ["aEdges", 1]], data, { uViewProj: viewProj(view.eye, view.at).m, uPass: [pass], uEyeY: [EYE_Y], fFacade: [FLOOD, 1, 0, 0] }, maps));
+          pictures.push({ key, color: worn.colors[pass]!, face: worn.face });
         }
       });
     }

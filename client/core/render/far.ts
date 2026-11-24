@@ -12,6 +12,7 @@ import { REGION_BASE, nearestColour } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres, pieceShapes, type FarCells } from "../../../shared/world/tactical.ts";
 import type { FarStore } from "../farcells.ts";
+import type { GoneStore } from "../gonelists.ts";
 import type { Camera } from "./camera.ts";
 import { columnFaces, type Columns } from "./blocks.ts";
 import { FADE_ORDER } from "./hand.ts";
@@ -32,6 +33,8 @@ export const FAR_HEIGHT = 1024;
  */
 export const FAR_SLOTS = 1 << 30;
 export const FAR_SPAN = 1 << 29;
+/** The last of that span is the fragments' meshes' (fragment-meshes.ts): a tile's slot wraps short of them. */
+export const FAR_TILE_SPAN = FAR_SPAN - 4096;
 /** The instance buffer every tile is drawn with: one instance at the origin. Clear of chunk indices and the node store's. */
 export const FAR_BUFFER = 2 << 20;
 /** The far city's tiles and the city's blocks are drawn with the next one (farcity.ts, cityblocks.ts). */
@@ -64,9 +67,13 @@ export function fadeKeeps(dist: number, gone: number, share: number, x: number, 
   return (g - dist) * 16 > (FADE_ORDER[(y & 3) * 4 + (x & 3)]! + 0.5) * g * share === gone > 0;
 }
 
-/** What the scene draws far bases from: the far feed's cells, and which chunks the near store holds whole. */
+/**
+ * What the scene draws far bases from: the far feed's cells, and which chunks the near store holds whole. `lists` are the
+ * map's own pieces gone, which the far city leaves out.
+ */
 export interface FarSource {
   readonly cells: FarStore;
+  readonly lists?: GoneStore;
   /** Whether the near store holds `chunk` whole: its last row has come since it was last dropped. */
   complete(chunk: number): boolean;
 }
@@ -343,7 +350,7 @@ export class FarBlocks {
       if (!tile.data) continue;
       if (tile.slot < 0 && this.off(t, x, z) <= reach) {
         tile.slot = FAR_SLOTS + this.next;
-        this.next = (this.next + 1) % FAR_SPAN;
+        this.next = (this.next + 1) % FAR_TILE_SPAN;
         p.assetUploads.push({ slot: tile.slot, mesh: this.mesh, level: 0, data: tile.data, indexCount: tile.indexCount, indexBytes: tile.indexBytes, quads: true });
         budget.spend(tile.data.length);
       }

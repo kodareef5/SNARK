@@ -1,11 +1,11 @@
 // Durable world state in one SQLite database. One commit is one transaction, so a crash lands the whole world on a commit boundary.
 // Saves refer to content by string id through content_ids, never by a build's dense index, so adding content does not disturb them.
-// The map's statics are the map's: chunk_structs holds only the chunks that no longer stand as the map placed them, laid over
-// the map's on load.
+// The map's statics are the map's: chunk_structs holds only the chunks that no longer stand as the map placed them, and of
+// each only what differs from the map, laid over the map's on load.
 
 import { Database, type Statement } from "bun:sqlite";
 import type { Registry } from "../../shared/content/registry.ts";
-import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
+import type { StructureStore } from "../../shared/world/structures.ts";
 import type { EntityRecord } from "../records.ts";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -14,16 +14,85 @@ import { listBackups } from "./backup.ts";
 import { refuseNetworkDisk } from "./disk.ts";
 import { holdSave, type SaveLock } from "./lock.ts";
 
-export const SCHEMA_VERSION = 4;
-const CHUNK_FORMAT = 1;
-/** Per structure slot in a chunk blob: kind, x, y, z, yaw, owner, hp, mod. */
-const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
+export const SCHEMA_VERSION = 5;
+/**
+ * A chunk's structures as what differs from the map. Integers are little-endian, and a varint is 7 bits a byte, low first.
+ *   format u8, the chunk's map slots u16
+ *   changed map slots varint, then entries in ascending slots until that many are told:
+ *     slots skipped since the entry before varint, flags u8, then as flagged the kind u16, health f32, owner u32, and the
+ *     count less one varint of slots in a row that are the same
+ *   live slots past the map's varint, then each: slots skipped varint, kind u16, x y z f32, yaw u16, owner u32, health f32
+ * A map slot keeps the map's kind, its kind's health and no owner where no flag says otherwise. Kinds are the save's ids.
+ */
+const CHUNK_FORMAT = 2;
+const SLOT_EMPTY = 1;
+const SLOT_KIND = 2;
+const SLOT_HP = 4;
+const SLOT_OWNER = 8;
+const SLOT_RUN = 16;
+/** The most bytes one changed map slot and one slot past the map's take. */
+const CHANGED_BYTES = 3 + 1 + 2 + 4 + 4;
+const BUILT_BYTES = 3 + 2 + 4 + 4 + 4 + 2 + 4 + 4;
+
+/** What reads a chunk's saved structures is told: its map slot count, each changed map slot, each slot past the map's. */
+interface ChunkVisitor {
+  head(mapped: number): void;
+  /** `flags` says which of `kind` (the save's id), `hp` and `owner` were saved. With SLOT_EMPTY the slot holds nothing. */
+  changed(slot: number, flags: number, kind: number, hp: number, owner: number): void;
+  built(slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number): void;
+}
+
+/** Reads a chunk's saved structures to `to`. Throws for a format this build does not read and for bytes that are not one. */
+function readChunk(chunk: number, data: Uint8Array, to: ChunkVisitor): void {
+  if (data[0] !== CHUNK_FORMAT) throw new Error(`chunk ${chunk}: its structures were saved in format ${data[0]}, and this build reads ${CHUNK_FORMAT}: old saves are not read, so start a new save`);
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let at = 1;
+  const bad = (): never => {
+    throw new Error(`chunk ${chunk}: unreadable structure data`);
+  };
+  const need = (n: number): number => {
+    if (at + n > data.length) bad();
+    at += n;
+    return at - n;
+  };
+  const varint = (): number => {
+    let v = 0;
+    for (let shift = 0; ; shift += 7) {
+      const b = data[need(1)]!;
+      v += (b & 127) * 2 ** shift;
+      if (b < 128) return v;
+      if (shift > 21) bad();
+    }
+  };
+  const mapped = view.getUint16(need(2), true);
+  to.head(mapped);
+  let slot = 0;
+  for (let left = varint(); left > 0; ) {
+    slot += varint();
+    const flags = data[need(1)]!;
+    const kind = flags & SLOT_KIND ? view.getUint16(need(2), true) : 0;
+    const hp = flags & SLOT_HP ? view.getFloat32(need(4), true) : 0;
+    const owner = flags & SLOT_OWNER ? view.getUint32(need(4), true) : 0;
+    const n = flags & SLOT_RUN ? varint() + 1 : 1;
+    if (n > left || slot + n > mapped) bad();
+    for (const end = slot + n; slot < end; slot++) to.changed(slot, flags, kind, hp, owner);
+    left -= n;
+  }
+  slot = mapped - 1;
+  for (let left = varint(); left > 0; left--) {
+    slot += varint() + 1;
+    const p = need(BUILT_BYTES - 3);
+    if (slot > 0xffff) bad();
+    to.built(slot, view.getUint16(p, true), view.getFloat32(p + 2, true), view.getFloat32(p + 6, true), view.getFloat32(p + 10, true), view.getUint16(p + 14, true), view.getUint32(p + 16, true), view.getFloat32(p + 20, true));
+  }
+  if (at !== data.length) bad();
+}
 
 // chunk_blobs holds per-chunk state other than structures, keyed by tag. transfers holds what left this world for another
 // of its cluster, and what came (server/cluster/cluster.ts).
 const SCHEMA = `
   CREATE TABLE content_ids (idx INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE);
-  CREATE TABLE chunk_structs (chunk INTEGER PRIMARY KEY, version INTEGER NOT NULL, slots INTEGER NOT NULL, data BLOB NOT NULL);
+  CREATE TABLE chunk_structs (chunk INTEGER PRIMARY KEY, version INTEGER NOT NULL, data BLOB NOT NULL);
   CREATE TABLE entities (pid INTEGER PRIMARY KEY, kind INTEGER NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL, yaw INTEGER NOT NULL, data BLOB NOT NULL);
   CREATE TABLE survivors (name TEXT PRIMARY KEY, pid INTEGER NOT NULL) WITHOUT ROWID;
   CREATE TABLE journal (seq INTEGER PRIMARY KEY, tick INTEGER NOT NULL, op INTEGER NOT NULL, data BLOB NOT NULL);
@@ -90,9 +159,11 @@ export class WorldStore {
   readonly codec: RecordCodec;
 
   private readonly allowMissing: boolean;
+  private readonly maxHp: Float32Array;
   private readonly lock: SaveLock;
   private readonly putMeta: Statement;
   private readonly putChunk: Statement;
+  private readonly dropChunk: Statement;
   private readonly putEntity: Statement;
   private readonly dropEntity: Statement;
   private readonly putJournal: Statement;
@@ -129,6 +200,7 @@ export class WorldStore {
     if (!opts.allowNetworkDisk) refuseNetworkDisk(path);
     this.path = path;
     this.allowMissing = opts.allowMissingContent ?? false;
+    this.maxHp = reg.maxHp;
     this.lock = holdSave(path);
     let opened: Database | null = null;
     try {
@@ -164,7 +236,10 @@ export class WorldStore {
           db.exec(SCHEMA);
           db.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION);
         })();
-      } else if (current !== SCHEMA_VERSION) throw new Error(`save has schema ${current}, and this build reads ${SCHEMA_VERSION}`);
+      } else if (current !== SCHEMA_VERSION) {
+        // Nothing older stays readable (planning/direction.md), so there is no step from one schema to the next.
+        throw new Error(`save has schema ${current}, and this build reads ${SCHEMA_VERSION}: ${current < SCHEMA_VERSION ? "old saves are not read, so start a new save" : "a newer build wrote it"}`);
+      }
 
       // Intern every content id this build knows, then map the save's indices to runtime ones.
       const saved = new Map<string, number>();
@@ -196,7 +271,8 @@ export class WorldStore {
       }
 
       this.putMeta = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
-      this.putChunk = db.prepare("INSERT OR REPLACE INTO chunk_structs (chunk, version, slots, data) VALUES (?, ?, ?, ?)");
+      this.putChunk = db.prepare("INSERT OR REPLACE INTO chunk_structs (chunk, version, data) VALUES (?, ?, ?)");
+      this.dropChunk = db.prepare("DELETE FROM chunk_structs WHERE chunk = ?");
       this.putEntity = db.prepare("INSERT OR REPLACE INTO entities (pid, kind, x, y, z, yaw, data) VALUES (?, ?, ?, ?, ?, ?, ?)");
       this.dropEntity = db.prepare("DELETE FROM entities WHERE pid = ?");
       this.putJournal = db.prepare("INSERT INTO journal (seq, tick, op, data) VALUES (?, ?, ?, ?)");
@@ -226,7 +302,7 @@ export class WorldStore {
       // A file that cannot be written is closed as it is.
     }
     // A statement left open keeps the connection, and its hold on the file, alive after close.
-    for (const s of [this.putMeta, this.putChunk, this.putEntity, this.dropEntity, this.putJournal, this.putSurvivor, this.putTransfer]) s.finalize();
+    for (const s of [this.putMeta, this.putChunk, this.dropChunk, this.putEntity, this.dropEntity, this.putJournal, this.putSurvivor, this.putTransfer]) s.finalize();
     this.db.close();
     this.lock.release();
   }
@@ -244,56 +320,112 @@ export class WorldStore {
     this.putMeta.run(key, value);
   }
 
-  saveChunk(chunk: number, t: ChunkTable): void {
-    const n = t.high;
-    const out = new Uint8Array(1 + n * SLOT_BYTES);
-    out[0] = CHUNK_FORMAT;
-    let off = 1;
-    const kinds = new Uint16Array(n);
-    for (let s = 0; s < n; s++) kinds[s] = this.toSaved[t.kind[s]!]!;
-    for (const col of [kinds, t.x, t.y, t.z, t.yaw, t.owner, t.hp, t.mod]) {
-      const bytes = new Uint8Array(col.buffer, col.byteOffset, n * col.BYTES_PER_ELEMENT);
-      out.set(bytes, off);
-      off += bytes.length;
+  /**
+   * Writes what differs from the map in `chunk`: its changed map slots, with neighbours that are the same told as one, and
+   * its live slots past the map's. A chunk that stands as placed has no row, so one that does again loses its row.
+   */
+  saveChunk(chunk: number, structs: StructureStore): void {
+    const t = structs.chunks[chunk];
+    if (!t || t.differs === 0) {
+      this.dropChunk.run(chunk);
+      return;
     }
-    this.putChunk.run(chunk, t.version, n, out);
+    const list = structs.changedSlots(chunk);
+    const built = t.differs - t.changed;
+    const out = new Uint8Array(3 + 3 + list.length * CHANGED_BYTES + 3 + built * BUILT_BYTES);
+    const view = new DataView(out.buffer);
+    let at = 0;
+    const varint = (v: number): void => {
+      for (; v >= 128; v = Math.floor(v / 128)) out[at++] = (v & 127) | 128;
+      out[at++] = v;
+    };
+    out[at++] = CHUNK_FORMAT;
+    view.setUint16(at, t.mapped, true);
+    at += 2;
+    varint(list.length);
+    const flagsOf = (s: number): number => {
+      const kind = t.kind[s]!;
+      if (kind === 0) return SLOT_EMPTY;
+      return (kind !== structs.mapKind(chunk, s) ? SLOT_KIND : 0) | (t.hp[s] !== this.maxHp[kind] ? SLOT_HP : 0) | (t.owner[s] !== 0 ? SLOT_OWNER : 0);
+    };
+    let next = 0;
+    for (let i = 0; i < list.length; ) {
+      const s = list[i]!;
+      const flags = flagsOf(s);
+      // Neighbours that say the same are one entry: a storey levelled, or a wall given to one owner.
+      let n = 1;
+      for (; i + n < list.length; n++) {
+        const u = list[i + n]!;
+        if (u !== s + n || flagsOf(u) !== flags) break;
+        if ((flags & SLOT_KIND && t.kind[u] !== t.kind[s]) || (flags & SLOT_HP && t.hp[u] !== t.hp[s]) || (flags & SLOT_OWNER && t.owner[u] !== t.owner[s])) break;
+      }
+      varint(s - next);
+      out[at++] = flags | (n > 1 ? SLOT_RUN : 0);
+      if (flags & SLOT_KIND) {
+        view.setUint16(at, this.toSaved[t.kind[s]!]!, true);
+        at += 2;
+      }
+      if (flags & SLOT_HP) {
+        view.setFloat32(at, t.hp[s]!, true);
+        at += 4;
+      }
+      if (flags & SLOT_OWNER) {
+        view.setUint32(at, t.owner[s]!, true);
+        at += 4;
+      }
+      if (n > 1) varint(n - 1);
+      next = s + n;
+      i += n;
+    }
+    varint(built);
+    for (let s = t.mapped, last = t.mapped - 1; s < t.high; s++) {
+      if (t.kind[s] === 0) continue;
+      varint(s - last - 1);
+      last = s;
+      view.setUint16(at, this.toSaved[t.kind[s]!]!, true);
+      view.setFloat32(at + 2, t.x[s]!, true);
+      view.setFloat32(at + 6, t.y[s]!, true);
+      view.setFloat32(at + 10, t.z[s]!, true);
+      view.setUint16(at + 14, t.yaw[s]!, true);
+      view.setUint32(at + 16, t.owner[s]!, true);
+      view.setFloat32(at + 20, t.hp[s]!, true);
+      at += BUILT_BYTES - 3;
+    }
+    this.putChunk.run(chunk, t.version, out.subarray(0, at));
   }
 
   /**
-   * Lays the saved chunks over what `structs` holds, which is the map's statics as placeStatics set them down, slot over slot.
-   * Returns the number of structures.
+   * Lays the saved chunks over what `structs` holds, which is the map's statics as placeStatics set them down: each changed
+   * map slot where the map has it, then the slots past the map's. A slot's `mod` is not saved. Each loaded slot takes its
+   * chunk's version, which is right for a client, since every client starts from none. Returns the number of structures.
    */
   loadChunks(structs: StructureStore): number {
-    const rows = this.db.query("SELECT chunk, version, slots, data FROM chunk_structs").all() as { chunk: number; version: number; slots: number; data: Uint8Array }[];
+    const rows = this.db.query("SELECT chunk, version, data FROM chunk_structs").all() as { chunk: number; version: number; data: Uint8Array }[];
     for (const row of rows) {
-      const n = row.slots;
-      if (row.data[0] !== CHUNK_FORMAT || row.data.length !== 1 + n * SLOT_BYTES) throw new Error(`chunk ${row.chunk}: unreadable structure data`);
-      let off = 1;
-      const take = <T extends Uint16Array | Uint32Array | Float32Array>(ctor: new (n: number) => T): T => {
-        // Copy, because blob offsets are not aligned to the element size.
-        const col = new ctor(n);
-        const size = col.BYTES_PER_ELEMENT * n;
-        new Uint8Array(col.buffer).set(row.data.subarray(off, off + size));
-        off += size;
-        return col;
+      const chunk = row.chunk;
+      // A kind this build lacks is left out, and counted where the operator chose to go on without it.
+      const lost = (kind: number): void => {
+        if (!this.allowMissing) return;
+        this.codec.drop(kind, 1);
+        this.dropped.chunks.add(chunk);
       };
-      const kind = take(Uint16Array);
-      const x = take(Float32Array);
-      const y = take(Float32Array);
-      const z = take(Float32Array);
-      const yaw = take(Uint16Array);
-      const owner = take(Uint32Array);
-      const hp = take(Float32Array);
-      const mod = take(Uint32Array);
-      for (let s = 0; s < n; s++) {
-        const now = this.toRuntime[kind[s]!]!;
-        if (now === 0 && kind[s] !== 0 && this.allowMissing) {
-          this.codec.drop(kind[s]!, 1);
-          this.dropped.chunks.add(row.chunk);
-        }
-        structs.put(row.chunk, s, now, x[s]!, y[s]!, z[s]!, yaw[s]!, owner[s]!, hp[s]!, mod[s]!);
-      }
-      structs.setVersion(row.chunk, row.version);
+      readChunk(chunk, row.data, {
+        head: (mapped) => {
+          const here = structs.chunks[chunk]?.mapped ?? 0;
+          if (mapped !== here) throw new Error(`chunk ${chunk}: saved over ${mapped} pieces of the map's, and this map sets down ${here} there`);
+        },
+        changed: (slot, flags, kind, hp, owner) => {
+          const now = flags & SLOT_EMPTY ? 0 : flags & SLOT_KIND ? this.toRuntime[kind]! : structs.mapKind(chunk, slot);
+          if (now === 0 && flags & SLOT_KIND) lost(kind);
+          structs.putMapped(chunk, slot, now, now === 0 ? 0 : owner, now === 0 ? 0 : flags & SLOT_HP ? hp : this.maxHp[now]!, row.version);
+        },
+        built: (slot, kind, x, y, z, yaw, owner, hp) => {
+          const now = this.toRuntime[kind]!;
+          if (now === 0) lost(kind);
+          else structs.put(chunk, slot, now, x, y, z, yaw, owner, hp, row.version);
+        },
+      });
+      structs.setVersion(chunk, row.version);
     }
     return structs.count;
   }
@@ -371,10 +503,11 @@ export class WorldStore {
       if (this.missingContent.includes(row.id)) missing.add(row.idx);
     }
     for (const row of this.db.query("SELECT DISTINCT kind FROM entities").all() as { kind: number }[]) if (missing.has(row.kind)) return true;
-    for (const row of this.db.query("SELECT slots, data FROM chunk_structs").all() as { slots: number; data: Uint8Array }[]) {
-      for (let s = 0; s < row.slots; s++) if (missing.has(row.data[1 + s * 2]! | (row.data[2 + s * 2]! << 8))) return true;
+    let used = false;
+    for (const row of this.db.query("SELECT chunk, data FROM chunk_structs").all() as { chunk: number; data: Uint8Array }[]) {
+      readChunk(row.chunk, row.data, { head: () => {}, changed: (_slot, flags, kind) => (used ||= (flags & SLOT_KIND) !== 0 && missing.has(kind)), built: (_slot, kind) => (used ||= missing.has(kind)) });
     }
-    return false;
+    return used;
   }
 }
 

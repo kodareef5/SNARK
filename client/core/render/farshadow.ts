@@ -312,6 +312,14 @@ const COPY_SLICE = 1 << 20;
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
 
 /**
+ * Milliseconds the map goes without another piece gone before it is swept again for those that went, and the longest it
+ * waits while they keep going: a building that comes down wave by wave is swept for once, as the far city's tiles past
+ * the eye's own are made (farcity.ts QUIET_FAR, WAIT_FAR).
+ */
+export const SWEEP_QUIET = 2000;
+export const SWEEP_WAIT = 10000;
+
+/**
  * The far map of one map's city, and the sky's openness over it (skyopen.ts): made and swept where `maker` makes the far
  * city's levels, else here, and put on the card a frame's allowance of rows at a time. A map is looked up once all of
  * it is on the card, while its sun is near enough the one in the sky.
@@ -364,6 +372,9 @@ export class FarShadow {
   private readonly seen: Uint32Array;
   private readonly changed: number[] = [];
   private stale = false;
+  /** When a piece last went that the map is not swept for yet, and when the first of them did. */
+  private staleAt = 0;
+  private staleFrom = 0;
   /** The latest map, with the sun, cell, side and rise it was made for; and the sun, cell and side of the one asked for. */
   private map: Uint16Array | null = null;
   private readonly mapSun = new Float64Array(3);
@@ -456,8 +467,9 @@ export class FarShadow {
     }
     const casts = cascades > 0 && sun !== null;
     this.take();
-    this.follow();
-    const swept = casts && (!this.map || this.stale || this.mapCell !== cell || this.mapSize !== size || tipMoves(this.mapSun, sun, this.mapRise) >= REMAKE * cell);
+    this.follow(now);
+    const quiet = this.stale && (now - this.staleAt >= SWEEP_QUIET || now - this.staleFrom >= SWEEP_WAIT);
+    const swept = casts && (!this.map || quiet || this.mapCell !== cell || this.mapSize !== size || tipMoves(this.mapSun, sun, this.mapRise) >= REMAKE * cell);
     const open = this.open.due(cell, now);
     if (!this.away && (swept || open) && this.copied()) this.ask(cell, size, swept ? sun : null, open, now);
     this.take();
@@ -495,9 +507,9 @@ export class FarShadow {
 
   /**
    * Notes the chunks a piece of which has gone since they were last made, and makes them again once the solid heights
-   * are here, after which the map and the openness are due again.
+   * are here, after which the map is due again once it has been quiet (SWEEP_QUIET), and the openness by its own rule.
    */
-  private follow(): void {
+  private follow(now: number): void {
     const version = this.standing.goneVersion;
     for (let c = 0; c < version.length; c++) {
       if (version[c] === this.seen[c]) continue;
@@ -512,7 +524,9 @@ export class FarShadow {
       if (bare) chunkSolid(bare, this.city.dims, this.hf.minY, c, this.city.in(c) > 0 ? cityTops(this.city, c, this.hf, leftOut(this.city, c, this.goneOf(c), this.skip!)) : null, this.hf);
     }
     this.changed.length = 0;
+    if (!this.stale) this.staleFrom = now;
     this.stale = true;
+    this.staleAt = now;
     this.open.changed();
     this.roof?.changed();
   }

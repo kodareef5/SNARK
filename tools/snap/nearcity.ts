@@ -183,7 +183,7 @@ function pictures(shot: Shot, tier: string, W: number, H: number): [Picture, Pic
     if (meshed && !said && own?.mesh && import.meta.main) {
       said = true;
       const m = own.mesh;
-      console.log(`chunk ${CHUNK}: ${city.in(CHUNK)} pieces, ${own.mine.reduce((n, v) => n + v, 0)} in its mesh, ${m.faces} faces, steps ${m.bounds.half.map((h) => ((h / 32767) * 1000).toFixed(3)).join(", ")} mm; chunk ${BESIDE} drawn as instances: ${!scene.near!.chunk(BESIDE)?.mine.includes(1)}`);
+      console.log(`chunk ${CHUNK}: ${city.in(CHUNK)} pieces, ${own.drawn.reduce((n, v) => n + v, 0)} in its mesh, ${m.shown} faces shown and ${m.faces - m.shown} kept, steps ${m.bounds.half.map((h) => ((h / 32767) * 1000).toFixed(3)).join(", ")} mm; chunk ${BESIDE} drawn as instances: ${!scene.near!.chunk(BESIDE)?.mine.includes(1)}`);
     }
   }
   return [out[0]!, out[1]!];

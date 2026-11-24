@@ -33,11 +33,13 @@ test("low poly's programs are the pinned flat texts, and every sampler a program
   // details program reads and which is free outside its draws, where the finish's passes, after every draw, read their
   // sources (post.ts); and the sky's openness, the facades' five, what stands overhead and the walls' weathering masks
   // past the sixteen: no program's fragment text reads more than the sixteen it may, the flat program on a tier that
-  // draws facades reading fifteen there and two more in its vertex text.
+  // draws facades reading fifteen there and three more in its vertex text, the pieces' states (pieces.ts) the third.
   const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint, UNIT.atlas, UNIT.layer, UNIT.details, UNIT.open];
   expect([new Set(units).size, Math.max(...units)]).toEqual([17, 16]);
   expect([UNIT.open, UNIT.facade, UNIT.road, UNIT.street, UNIT.roof]).toEqual([16, 17, 22, 23, 24]);
-  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(17);
+  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(18);
+  // The pieces' states are read by vertex texts alone, so a fragment text's sixteen are as they were.
+  for (const tier of TIERS) for (const make of Object.values(PROGRAMS)) expect(make(tier, "bc").fragment).not.toContain("uPieces");
   const fragmentReads = (p: ProgramText): number => Object.keys(p.samplers).filter((name) => new RegExp(`uniform\\s+(?:\\w+\\s+)?\\w*sampler\\w+\\s+[^;]*\\b${name}\\b`).test(p.fragment)).length;
   expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => fragmentReads(make(tier, "bc")))))).toBe(15);
   expect(Object.entries(PROGRAMS).filter(([, make]) => Object.values(make(TIERS[1]!, "bc").samplers).includes(UNIT.details)).map(([name]) => name)).toEqual(["details", "bloomDown", "bloomUp", "finish"]);

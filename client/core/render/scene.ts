@@ -36,6 +36,7 @@ import { streetTextureBytes } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
 import { DamageNumbers } from "./damage-numbers.ts";
+import { DustColumns } from "./dust-columns.ts";
 import { StreetWires } from "./street-wires.ts";
 import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
@@ -242,6 +243,8 @@ export class Scene {
   now = 0;
   /** Damage numbers (damage-numbers.ts): struck by Feedback, drawn as detail cards over everything else. */
   readonly damage = new DamageNumbers();
+  /** Columns of dust over collapses told from afar, which the app hands on as they come (dust-columns.ts). */
+  readonly dust = new DustColumns();
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
   plainSky = false;
   /**
@@ -608,8 +611,9 @@ export class Scene {
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.characters.thrusterPlumes.pictures(pack.header.details);
+    this.dust.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
-    this.looseEntities = new LooseEntities(reg, this.assets, this.packet, this.put, this.transient, this.hiding, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, pitched: this.pitched, capsuleKind: this.supplyDrops.kind, characters: this.characters, clouds: this.clouds, dropped: this.dropped });
+    this.looseEntities = new LooseEntities(reg, this.assets, this.packet, this.put, this.transient, this.hiding, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, regionsOfKind: this.regionsOfKind, pitched: this.pitched, capsuleKind: this.supplyDrops.kind, characters: this.characters, clouds: this.clouds, dropped: this.dropped });
     let reach = 0;
     for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
     this.bodySlack = reach * 2;
@@ -695,10 +699,11 @@ export class Scene {
     this.layers.far?.reset();
     this.layers.nodesFar?.reset();
     this.layers.city?.reset();
-    this.nearStore.near?.reset();
+    this.nearStore.near?.reset(this.world.city?.statics);
     this.layers.landmarks?.reset();
     this.waters.reset();
     this.layers.blocks?.reset();
+    this.looseEntities.reset();
     this.casting.cascades.clear();
     this.layers.farShadow?.reset();
   }
@@ -926,7 +931,8 @@ export class Scene {
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
     this.damage.build(cam, this.now);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count);
+    this.dust.build(cam, this.now);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count);
     const particles = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
@@ -937,6 +943,8 @@ export class Scene {
     streetWires.write(p);
     const street = p.detailCount;
     streetLamps.write(p);
+    const dust = p.detailCount;
+    this.dust.write(p);
     const wheelsAndGlass = p.detailCount;
     tireContacts.write(p);
     windscreens.write(p);
@@ -954,7 +962,8 @@ export class Scene {
     this.put.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.put.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
     this.put.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
-    this.put.drawDetails(street, wheelsAndGlass - street, DRAW_BLEND, streetLamps.passes(cam));
+    this.put.drawDetails(street, dust - street, DRAW_BLEND, streetLamps.passes(cam));
+    this.put.drawDetails(dust, wheelsAndGlass - dust, DRAW_BLEND, this.dust.passes(cam));
     this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
     this.put.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.put.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);

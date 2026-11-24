@@ -126,6 +126,8 @@ export class Players {
   remoteInput: ((c: Client, tick: number) => boolean) | null = null;
   /** Where a remote operator's camera is while it flies, radians for its turn and tilt: what its look and its marks start from. */
   remoteEye: ((c: Client) => RemoteEye | null) | null = null;
+  /** The pid whose session's vehicle is being stepped, for whoever is asked what it broke. 0 outside that step. */
+  driving = 0;
   /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
   readonly feet: ServerFootContacts;
   /** Bodies a walker cannot walk through (server/blocking.ts). */
@@ -245,7 +247,9 @@ export class Players {
         if (vehicle) {
           const quiet = remote || c.closed || T - c.inputAt > VEHICLE_HOLD_TICKS;
           const moveX = quiet ? 0 : c.heldX, moveZ = quiet ? 0 : c.heldZ, buttons = quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons;
+          this.driving = c.pid;
           if (!this.pairStep?.(e, b, moveX, moveZ, buttons, vehicle, !quiet)) this.vehicleStep(world, b, moveX, moveZ, buttons, vehicle, TICK_DT, c.heldYaw, !quiet);
+          this.driving = 0;
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
           this.footBefore.copy(b);

@@ -11,6 +11,7 @@ import {
 import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
+import { PIECE_KEYS, PIECE_ROWS } from "../core/render/pieces.ts";
 import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
 import {
   AT_DRAW, AT_FRAME, AT_TILES, Drawn, SEND_1F, SEND_1I, SEND_2F, SEND_3F, SEND_3FV, SEND_FLOATS, SHELL_UNIFORMS, type UniformRow,
@@ -392,6 +393,8 @@ export class GlRenderer {
     // The streets round the camera (core/render/streets.ts): their distances filtered, their kinds read as they are.
     texture(UNIT.streets, gl.RGBA8, STREET_SIDE, STREET_SIDE, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
     texture(UNIT.streetKinds, gl.RGBA8UI, STREET_SIDE, STREET_SIDE, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
+    // The states of the near chunks' pieces (core/render/pieces.ts), which the vertex texts read.
+    texture(UNIT.pieces, gl.RGBA8UI, PIECE_KEYS, PIECE_ROWS, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
     // What stands overhead (roof.ts), filtered, on its unit alone: each map is put on it as it comes.
     texture(UNIT.roof, gl.RGBA8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
     this.roadRows = new Uint8Array(roadSamples(g.width[SOURCE_WINDOW]!) * roadSamples(g.height[SOURCE_WINDOW]!) * ROAD_PLANES);
@@ -534,11 +537,11 @@ export class GlRenderer {
         gl.enableVertexAttribArray(a);
         gl.vertexAttribDivisor(a, 1);
       }
-      if (u.made) {
+      if (u.piece) {
         this.array(lod.buffers[lod.buffers.push(gl.createBuffer()!) - 1]!);
-        gl.bufferData(gl.ARRAY_BUFFER, u.made, gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, u.piece, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(15);
-        gl.vertexAttribIPointer(15, 1, gl.UNSIGNED_BYTE, 1, 0);
+        gl.vertexAttribIPointer(15, 1, gl.UNSIGNED_INT, 4, 0);
       }
     } else if (!lod) return;
     this.vertexArray(lod.vao);
@@ -1040,6 +1043,12 @@ export class GlRenderer {
       const x = p.streetAt[t & ~1]!, y = p.streetAt[(t & ~1) + 1]!;
       const format = t & 1 ? gl.RGBA_INTEGER : gl.RGBA, from = t & 1 ? p.streetKinds : p.streetDist;
       gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, STREET_TILE_SIDE, STREET_TILE_SIDE, format, gl.UNSIGNED_BYTE, from, (t >> 1) * STREET_TILE_BYTES);
+    }
+    // The pieces' states that changed, each a run of one row's texels.
+    if (p.pieceUploads > 0) gl.activeTexture(gl.TEXTURE0 + UNIT.pieces);
+    for (let k = 0; k < p.pieceUploads * 3; k += 3) {
+      const row = p.pieceRuns[k]!, from = p.pieceRuns[k + 1]!;
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, from, row, p.pieceRuns[k + 2]!, 1, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, p.pieces, (row * PIECE_KEYS + from) * 4);
     }
     // The facades' atlases on their units while the frame names them; none is read until each it names has come (facade.ts).
     for (let k = 0; k < p.facadeSlots.length; k++) {

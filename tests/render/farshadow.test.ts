@@ -8,7 +8,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { ThreadedCityMaker, cityKinds, type CityThread } from "../../client/core/render/citymake.ts";
-import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
+import { FAR_SPAN, FarShadow, SWEEP_QUIET, SWEEP_WAIT, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { CAST_AT, FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { OPEN_BYTES, openMeasure } from "../../client/core/render/skyopen.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
@@ -204,10 +204,11 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   // An allowance of 100 rows a frame: the map goes up in three frames, and is looked up from the third; the sky's
   // openness takes what is left of it. Until then the frame says where the camera is on the grid, the map not looked up.
   let sun: number[] | null = sunAt(30, 120);
+  let now = 0;
   const frame = (bytes = 100 * rowBytes) => {
     p.beginFrame();
     const budget = allowance(bytes);
-    shadow.update(p, budget, 300, 20, 300, sun);
+    shadow.update(p, budget, 300, 20, 300, sun, now);
     return { rows: p.farRows, from: p.farRow, spent: budget.spent, scale: p.frame[FRAME.farScale]! };
   };
   expect([frame(), frame(), frame()]).toEqual([
@@ -240,17 +241,33 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   expect(p.frame[FRAME.farScale]).toBe(1 / TOP_CELL);
   frame();
   frame();
-  // A piece gone: its chunk is made again and the map swept again.
-  gone.set(chunkA, new Uint8Array(city.in(chunkA)).fill(1));
-  version[chunkA]!++;
+  // Pieces gone, and more a second later: the map is swept again once, when none has gone for two seconds.
+  const goes = (at: number, left: number): void => {
+    gone.set(chunkA, new Uint8Array(city.in(chunkA)).fill(1).fill(0, 0, left));
+    version[chunkA]!++;
+    now = at;
+    frame();
+  };
+  goes(0, 1);
+  goes(1000, 0);
+  now = 1000 + SWEEP_QUIET - 1;
+  frame();
+  expect(shadow.stats.sweeps).toBe(2);
+  now = 1000 + SWEEP_QUIET;
   frame();
   expect(shadow.stats.sweeps).toBe(3);
+  // Pieces that keep going, one every second and a half, are swept for ten seconds after the first of them.
+  for (let at = 4000; at <= 4000 + SWEEP_WAIT + 500; at += 1500) {
+    goes(at, (at / 1500) & 1);
+    expect(shadow.stats.sweeps).toBe(at < 4000 + SWEEP_WAIT ? 3 : 4);
+  }
+  const swept = shadow.stats.sweeps;
   // A lost context: the layer is empty, so nothing is looked up until the map is all on it again, unswept.
   shadow.reset();
   expect(frame().scale).toBe(-1 / TOP_CELL);
   frame();
   expect(frame().scale).toBe(1 / TOP_CELL);
-  expect(shadow.stats.sweeps).toBe(3);
+  expect(shadow.stats.sweeps).toBe(swept);
   // A sun gone far from the map's, as the day's first is from last evening's: not looked up until the new one is all there.
   sun = sunAt(60, 200);
   expect(frame().scale).toBe(-1 / TOP_CELL);

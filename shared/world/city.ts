@@ -60,6 +60,15 @@ export class CityStatics {
    */
   readonly bent: MapStatics;
   readonly bentKind: Uint16Array;
+  /**
+   * Per piece, where a near mesh is made of a slot's broken form (render/nearcity.ts): the kind the map placed there, whose
+   * colour and material the form wears, having none of its own; 0 for a piece drawn as its own kind. And how a form
+   * kind's convex parts are painted (PartPaint). `apart` marks the pieces whose boxes merge with no other piece's: a
+   * form, and a piece whose state its own faces must show.
+   */
+  readonly dye?: Uint16Array;
+  readonly apart?: Uint8Array;
+  readonly paint?: (kind: number) => PartPaint | null;
 
   /** `rows`, where given, are what CityStatics.steps made of `statics` with `reg`. */
   constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[], reg: Registry, rows?: CityRows) {
@@ -101,6 +110,16 @@ export const UNBENT: Pick<CityStatics, "bent" | "bentKind"> = { bent: MapStatics
 
 /** Pieces made between two pauses (CityStatics.steps, chunkReach). */
 const SLICE = 1 << 15;
+
+/**
+ * How the convex parts of a broken form's look are painted, in their order: a colour of its own a part or 0 for its
+ * piece's, and the faces of each that show the core a cut bared, a bit a face, drawn in `bare`.
+ */
+export interface PartPaint {
+  readonly color: Uint8Array;
+  readonly core: Uint32Array;
+  readonly bare: number;
+}
 
 /** A city's pieces by chunk. */
 interface CityRows {
@@ -331,6 +350,36 @@ export interface CityPart {
   readonly made: Uint8Array;
   readonly faces: number;
   readonly box: readonly number[];
+  /** Made with keys (mergedPart): what each face is of, and what is kept beside the faces drawn while every piece stands. */
+  readonly keyed?: KeyedFaces;
+}
+
+/**
+ * A slot's key is its number, under PIECE_SLOTS; a merge group's is PIECE_SLOTS and its number. A face's word holds its own
+ * key in its low PIECE_KEY_BITS bits and over them its holder: 0 for none, else a key of its own chunk and 1, or
+ * NEIGHBOUR_HOLDER, a neighbour's number times PIECE_SLOTS and a slot of that neighbour.
+ */
+export const PIECE_KEY_BITS = 12;
+export const PIECE_SLOTS = 2048;
+export const NEIGHBOUR_HOLDER = 2 * PIECE_SLOTS + 1;
+
+/**
+ * What mergedPart says of a part made with keys. A face is drawn when its own key stands and its holder is none or does
+ * not; a group stands while each of its members does.
+ */
+export interface KeyedFaces {
+  /** Faces before this are drawn while every piece stands, in the order a part made without keys has them. */
+  readonly shown: number;
+  /** Per face, its word (PIECE_KEY_BITS). */
+  readonly piece: Uint32Array;
+  /** Merge groups: group g's member slots are `slots` from `first[g]` up to `first[g + 1]`. */
+  readonly first: Uint32Array;
+  readonly slots: Uint16Array;
+  /** Of the faces from `shown` on, those a merge group's member shows once the group is broken; the rest another piece hid. */
+  readonly fallback: number;
+  /** Faces left out for good: hidden by their own piece, and under the ground. */
+  readonly own: number;
+  readonly buried: number;
 }
 
 export const EMPTY_PART: CityPart = { pos: new Float32Array(0), color: new Uint8Array(0), edges: new Uint8Array(0), made: new Uint8Array(0), faces: 0, box: [0, 0, 0, 0, 0, 0] };
@@ -350,6 +399,7 @@ class Out {
   color = new Uint8Array(1024);
   edges = new Uint8Array(1024);
   made = new Uint8Array(1024);
+  piece = new Uint32Array(1024);
   faces = 0;
   readonly box = new Float64Array(6);
   x0 = 0;
@@ -363,7 +413,7 @@ class Out {
   }
 
   /** A face of the world corners `c` at `at`, 12 numbers in order round it, with its outer borders (CityPart `edges`). */
-  quad(c: ArrayLike<number>, at: number, col: number, edges = 0): void {
+  quad(c: ArrayLike<number>, at: number, col: number, edges = 0, piece = 0): void {
     const f = this.faces++;
     if (f === this.color.length) {
       const pos = new Float32Array(this.pos.length * 2);
@@ -378,7 +428,11 @@ class Out {
       const made = new Uint8Array(this.made.length * 2);
       made.set(this.made);
       this.made = made;
+      const piece = new Uint32Array(this.piece.length * 2);
+      piece.set(this.piece);
+      this.piece = piece;
     }
+    this.piece[f] = piece;
     // The internal merge key keeps the palette in its low byte and the label above it: two bits of a street fixture's
     // material, then five of a material made from a recipe, so that faces of two never merge.
     this.edges[f] = edges | (((col >>> 8) & 3) << 4);
@@ -403,7 +457,7 @@ class Out {
   }
 
   /** A face of `count` world corners in `c`, in order round it, as quads fanned from its first; one left a triangle repeats its last corner. */
-  ring(c: Float64Array, count: number, col: number): void {
+  ring(c: Float64Array, count: number, col: number, piece = 0): void {
     const q = this.corners;
     for (let k = 1; k + 1 < count; k += 2) {
       const last = Math.min(k + 2, count - 1);
@@ -413,7 +467,7 @@ class Out {
         q[6 + a] = c[(k + 1) * 3 + a]!;
         q[9 + a] = c[last * 3 + a]!;
       }
-      this.quad(q, 0, col);
+      this.quad(q, 0, col, 0, piece);
     }
   }
 
@@ -451,16 +505,23 @@ const FACE_CORNERS = Uint8Array.from(
   }),
 );
 
-/** Boxes to make faces of: centre, half extents, the cosine and sine of their turn; a colour; whether its faces are wanted. */
+/**
+ * Boxes to make faces of: centre, half extents, the cosine and sine of their turn; a colour; whether its faces are wanted;
+ * and, made with keys, its key as a holder (KeyedFaces), 0 without.
+ */
 class Boxes {
   n = 0;
   f = new Float64Array(8 * 1024);
   color = new Uint16Array(1024);
   under = new Uint16Array(1024);
   own = new Uint8Array(1024);
+  key = new Uint32Array(1024);
 
-  push(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, c: number, s: number, color: number, own: boolean, under = color): void {
+  push(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, c: number, s: number, color: number, own: boolean, under = color, key = 0): void {
     if (this.n === this.color.length) {
+      const k = new Uint32Array(this.key.length * 2);
+      k.set(this.key);
+      this.key = k;
       const f = new Float64Array(this.f.length * 2);
       f.set(this.f);
       this.f = f;
@@ -487,6 +548,7 @@ class Boxes {
     this.color[this.n] = color;
     this.under[this.n] = under;
     this.own[this.n] = own ? 1 : 0;
+    this.key[this.n] = key;
     this.n++;
   }
 }
@@ -514,9 +576,13 @@ class Hulls {
   color = new Uint16Array(64);
   under = new Uint16Array(64);
   own = new Uint8Array(64);
+  key = new Uint32Array(64);
+  /** Its faces that show a broken form's core, a bit a face, and the colour they are drawn in (PartPaint). */
+  core = new Uint32Array(64);
+  bare = new Uint8Array(64);
 
   /** Part `p` of `t` on a piece whose middle is at (cx, cy, cz), turned by the cosine and sine (c, s) as a box is. */
-  push(t: HullTable, p: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, under = color): void {
+  push(t: HullTable, p: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, under = color, key = 0, core = 0, bare = 0): void {
     if (this.n === this.part.length) {
       const grow = <T extends Float64Array | Uint32Array | Uint16Array | Uint8Array>(a: T): T => {
         const b = new (a.constructor as new (n: number) => T)(a.length * 2);
@@ -524,10 +590,13 @@ class Hulls {
         return b;
       };
       [this.at, this.planes, this.box] = [grow(this.at), grow(this.planes), grow(this.box)];
-      [this.part, this.color, this.under, this.own] = [grow(this.part), grow(this.color), grow(this.under), grow(this.own)];
+      [this.part, this.color, this.under, this.own, this.key, this.core, this.bare] = [grow(this.part), grow(this.color), grow(this.under), grow(this.own), grow(this.key), grow(this.core), grow(this.bare)];
     }
     const h = this.n++;
     this.table[h] = t;
+    this.key[h] = key;
+    this.core[h] = core;
+    this.bare[h] = bare;
     this.part[h] = p;
     this.color[h] = color;
     this.under[h] = under;
@@ -601,11 +670,18 @@ function partLength(t: HullTable, p: number): number {
   return Math.max(hi[0]! - lo[0]!, hi[1]! - lo[1]!, hi[2]! - lo[2]!);
 }
 
-/** Puts kind `k`'s convex parts in `form` longer than `least` on a piece at (cx, cy, cz) turned by (c, s) in `hulls`. */
-function pushHulls(form: CityForm, k: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, least: number, under = color): void {
+/**
+ * Puts kind `k`'s convex parts in `form` longer than `least` on a piece at (cx, cy, cz) turned by (c, s) in `hulls`. With
+ * `paint`, a broken form's: a part of a colour of its own is in it, under the bits of `color` over its low eight.
+ */
+function pushHulls(form: CityForm, k: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, least: number, under = color, key = 0, paint: PartPaint | null = null): void {
   const t = form.hulls;
   if (!t) return;
-  for (let p = t.start[k]!; p < t.start[k + 1]!; p++) if (least <= 0 || partLength(t, p) > least) hulls.push(t, p, cx, cy, cz, c, s, color, own, under);
+  for (let p = t.start[k]!; p < t.start[k + 1]!; p++) {
+    if (least > 0 && partLength(t, p) <= least) continue;
+    const h = p - t.start[k]!, mine = paint?.color[h] ?? 0;
+    hulls.push(t, p, cx, cy, cz, c, s, mine ? (color & ~255) | mine : color, own, mine ? (under & ~255) | mine : under, key, paint?.core[h] ?? 0, paint?.bare ?? 0);
+  }
 }
 
 const gridCount = new Uint32Array(GRID_SIDE * GRID_SIDE + 1);
@@ -620,7 +696,7 @@ const ring = new Float64Array(3 * MAX_CORNERS);
  * Puts the standing pieces of the chunks round `chunk` that reach within MARGIN of it in `boxes` and `hulls`, as `form`
  * has them, and with `own` its own.
  */
-function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm, far = false, labels?: Uint8Array): void {
+function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm, far = false, labels?: Uint8Array, keys?: Uint32Array): void {
   const { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const under = city.under ?? color;
   const cx = chunkCx(dims, chunk);
@@ -641,15 +717,16 @@ function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone,
         if (x[i]! + r < x0 - MARGIN || x[i]! - r > x0 + CHUNK_SIZE + MARGIN || z[i]! + r < z0 - MARGIN || z[i]! - r > z0 + CHUNK_SIZE + MARGIN) continue;
         const label = (labels?.[k] ?? 0) << 8;
         const a = (yaw[i]! / YAW_UNITS) * TAU;
-        if (plain[k] === 1) boxes.push(x[i]!, y[i]!, z[i]!, halfX[k]!, halfY[k]!, halfZ[k]!, detCos(a), detSin(a), label | color[k]!, c === chunk, label | under[k]!);
+        const key = keys ? keys[i]! : 0;
+        if (plain[k] === 1) boxes.push(x[i]!, y[i]!, z[i]!, halfX[k]!, halfY[k]!, halfZ[k]!, detCos(a), detSin(a), label | color[k]!, c === chunk, label | under[k]!, key);
         else {
           const [cs, sn] = [detCos(a), detSin(a)];
           const B = form.box;
           for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
             const own = form.color?.[b / 6] ?? 0;
-            boxes.push(x[i]! + cs * B[b]! + sn * B[b + 2]!, y[i]! + B[b + 1]!, z[i]! + cs * B[b + 2]! - sn * B[b]!, B[b + 3]!, B[b + 4]!, B[b + 5]!, cs, sn, label | (own || color[k]!), c === chunk, label | (own || under[k]!));
+            boxes.push(x[i]! + cs * B[b]! + sn * B[b + 2]!, y[i]! + B[b + 1]!, z[i]! + cs * B[b + 2]! - sn * B[b]!, B[b + 3]!, B[b + 4]!, B[b + 5]!, cs, sn, label | (own || color[k]!), c === chunk, label | (own || under[k]!), key);
           }
-          pushHulls(form, k, x[i]!, y[i]!, z[i]!, cs, sn, label | color[k]!, c === chunk, 0, label | under[k]!);
+          pushHulls(form, k, x[i]!, y[i]!, z[i]!, cs, sn, label | color[k]!, c === chunk, 0, label | under[k]!, key);
         }
       }
     }
@@ -676,13 +753,183 @@ function holds(q: number, wx: number, wy: number, wz: number): boolean {
 }
 
 /**
- * The faces of `boxes` and `hulls` marked own, less those another box or part holds whole and those under the ground. In
- * the grid, entries from boxes.n on are parts.
+ * A part being made with keys (KeyedFaces): the faces kept beside those drawn, the merge groups, and each group's members
+ * as the boxes they were before they merged, which show again once their group is broken.
  */
-function faces(dims: MapDims, chunk: number, hf: Ground): CityPart {
+class Keyed {
+  readonly kept = new Out();
+  groups = 0;
+  readonly first: number[] = [0];
+  readonly slots: number[] = [];
+  /** Members: eight numbers each as `boxes` has a box, a colour, its slot's key and its group's as holders, and its merged box. */
+  n = 0;
+  f = new Float64Array(8 * 256);
+  color = new Uint16Array(256);
+  slot = new Uint32Array(256);
+  group = new Uint32Array(256);
+  box = new Uint32Array(256);
+  fallback = 0;
+  own = 0;
+  buried = 0;
+
+  begin(): this {
+    this.groups = this.n = this.fallback = this.own = this.buried = 0;
+    this.first.length = 1;
+    this.slots.length = 0;
+    return this;
+  }
+
+  /**
+   * The key as a holder of merged box `b` of a frame turned by (c, s), about to be put in `boxes`: its piece's where every
+   * member is one piece's, else a new group's, whose members are kept.
+   */
+  key(b: number, keys: Uint32Array, c: number, s: number): number {
+    const head = memberHead[b]!, row = rawRow[head]!;
+    let one = true;
+    for (let m = rawNext[head]!; m >= 0 && one; m = rawNext[m]!) one = rawRow[m] === row;
+    if (one) return keys[row]!;
+    const key = PIECE_SLOTS + this.groups++ + 1, from = this.slots.length;
+    for (let m = head; m >= 0; m = rawNext[m]!) {
+      const slot = keys[rawRow[m]!]! - 1;
+      let known = false;
+      for (let k = from; k < this.slots.length && !known; k++) known = this.slots[k] === slot;
+      if (!known) this.slots.push(slot);
+      this.member(m, c, s, slot + 1, key);
+    }
+    this.first.push(this.slots.length);
+    return key;
+  }
+
+  /** A new group of `slot` alone, as a holder. */
+  alone(slot: number): number {
+    this.slots.push(slot);
+    this.first.push(this.slots.length);
+    return PIECE_SLOTS + this.groups++ + 1;
+  }
+
+  private member(m: number, c: number, s: number, slot: number, group: number): void {
+    if (this.n === this.color.length) {
+      const grow = <T extends Float64Array | Uint32Array | Uint16Array>(a: T): T => {
+        const b = new (a.constructor as new (n: number) => T)(a.length * 2);
+        b.set(a);
+        return b;
+      };
+      [this.f, this.color, this.slot, this.group, this.box] = [grow(this.f), grow(this.color), grow(this.slot), grow(this.group), grow(this.box)];
+    }
+    const k = this.n++, o = m * 7, f = this.f;
+    const hx = (rawBox[o + 3]! - rawBox[o]!) / 2, hy = (rawBox[o + 4]! - rawBox[o + 1]!) / 2, hz = (rawBox[o + 5]! - rawBox[o + 2]!) / 2;
+    const fx = rawBox[o]! + hx, fy = rawBox[o + 1]! + hy, fz = rawBox[o + 2]! + hz;
+    f[k * 8] = c * fx + s * fz;
+    f[k * 8 + 1] = fy;
+    f[k * 8 + 2] = c * fz - s * fx;
+    f[k * 8 + 3] = hx;
+    f[k * 8 + 4] = hy;
+    f[k * 8 + 5] = hz;
+    f[k * 8 + 6] = c;
+    f[k * 8 + 7] = s;
+    this.color[k] = rawBox[o + 6]!;
+    this.slot[k] = slot;
+    this.group[k] = group;
+    this.box[k] = boxes.n;
+  }
+
+  /** Whether a face of key `own` held by key `by` (both as holders) can never show: one piece's two parts, or a group's face held by its member. */
+  never(own: number, by: number): boolean {
+    if (by === 0 || by === own) return true;
+    if (own <= PIECE_SLOTS || by > PIECE_SLOTS) return false;
+    const g = own - PIECE_SLOTS - 1;
+    for (let k = this.first[g]!; k < this.first[g + 1]!; k++) if (this.slots[k] === by - 1) return true;
+    return false;
+  }
+
+  /** The part: the faces of `shown`, then those kept. */
+  part(shown: Out): CityPart {
+    const k = this.kept, a = shown.faces, n = a + k.faces;
+    const join = <T extends Float32Array | Uint8Array | Uint32Array>(x: T, y: T, per: number): T => {
+      const made = new (x.constructor as new (n: number) => T)(n * per);
+      made.set(x.subarray(0, a * per));
+      made.set(y.subarray(0, k.faces * per), a * per);
+      return made;
+    };
+    const keyed: KeyedFaces = { shown: a, piece: join(shown.piece, k.piece, 1), first: Uint32Array.from(this.first), slots: Uint16Array.from(this.slots), fallback: this.fallback, own: this.own, buried: this.buried };
+    return { pos: join(shown.pos, k.pos, 12), color: join(shown.color, k.color, 1), edges: join(shown.edges, k.edges, 1), made: join(shown.made, k.made, 1), faces: n, box: Array.from(shown.box), keyed };
+  }
+}
+
+const keying = new Keyed();
+
+/**
+ * The faces of the box at `o` of `F`, eight numbers as `boxes` has one, less those under the ground and those another
+ * box or part of the grid holds whole, `skip` aside. Made with keys, for a box of key `own` as a holder: a face one other
+ * piece holds is kept with that holder, but one its own piece holds; and with `group`, a group's member as it was before
+ * it merged, every face is kept, held by the group where nothing else holds it.
+ */
+function boxFaces(F: Float64Array, o: number, skip: number, edge: number, colour: number, under: number, hf: Ground, gx0: number, gz0: number, keyed: Keyed | null, own: number, group: number): void {
+  const n = boxes.n;
+  const [bx, by, bz, hx, hy, hz, c, s] = [F[o]!, F[o + 1]!, F[o + 2]!, F[o + 3]!, F[o + 4]!, F[o + 5]!, F[o + 6]!, F[o + 7]!];
+  for (let k = 0; k < 8; k++) {
+    const lx = k & 1 ? hx : -hx;
+    const lz = k & 4 ? hz : -hz;
+    corners[k * 3] = c * lx + s * lz + bx;
+    corners[k * 3 + 1] = (k & 2 ? hy : -hy) + by;
+    corners[k * 3 + 2] = c * lz - s * lx + bz;
+  }
+  const ground = hf.heightAt(bx, bz);
+  for (let f = 0; f < 6; f++) {
+    for (let m = 0; m < 4; m++) {
+      const k = FACE_CORNERS[f * 4 + m]!;
+      face[m * 3] = corners[k * 3]!;
+      face[m * 3 + 1] = corners[k * 3 + 1]!;
+      face[m * 3 + 2] = corners[k * 3 + 2]!;
+    }
+    // Under the ground: a face looking down onto it, or all four corners below it.
+    let above = !(f === 3 && face[1]! <= ground + 0.1);
+    if (above) {
+      above = false;
+      for (let m = 0; m < 4 && !above; m++) above = face[m * 3 + 1]! > hf.heightAt(face[m * 3]!, face[m * 3 + 2]!) + 0.05;
+    }
+    if (!above) {
+      if (keyed) keyed.buried++;
+      continue;
+    }
+    // Held whole by one other box or part, found in the grid cell of the face's middle.
+    const gi = Math.floor(((face[0]! + face[6]!) / 2 - gx0) / GRID);
+    const gj = Math.floor(((face[2]! + face[8]!) / 2 - gz0) / GRID);
+    let held = false, holder = 0, never = false;
+    if (gi >= 0 && gj >= 0 && gi < GRID_SIDE && gj < GRID_SIDE) {
+      const cell = gj * GRID_SIDE + gi;
+      for (let e = gridCount[cell]!; e < gridCount[cell + 1]!; e++) {
+        const h = gridList[e]!;
+        if (h === skip || !(h < n ? holds(h, face[0]!, face[1]!, face[2]!) && holds(h, face[3]!, face[4]!, face[5]!) && holds(h, face[6]!, face[7]!, face[8]!) && holds(h, face[9]!, face[10]!, face[11]!) : hulls.holdsAll(h - n, face, 4))) continue;
+        held = true;
+        if (!keyed) break;
+        // The first to hold it is its holder, but a face its own piece holds too never shows.
+        const by = h < n ? boxes.key[h]! : hulls.key[h - n]!;
+        if ((never = keyed.never(own, by))) break;
+        if (holder === 0) holder = by;
+      }
+    }
+    const col = f === 3 ? under : colour;
+    if (!keyed) {
+      if (!held) out.quad(face, 0, col, outerEdges(edge, face, ground, gx0, gz0));
+    } else if (never) keyed.own++;
+    else if (!held && group === 0) out.quad(face, 0, col, outerEdges(edge, face, ground, gx0, gz0), own - 1);
+    else {
+      keyed.kept.quad(face, 0, col, outerEdges(edge, face, ground, gx0, gz0), (own - 1) | ((held ? holder : group) << PIECE_KEY_BITS));
+      if (group !== 0) keyed.fallback++;
+    }
+  }
+}
+
+/**
+ * The faces of `boxes` and `hulls` marked own, less those another box or part holds whole and those under the ground. In
+ * the grid, entries from boxes.n on are parts. With `keyed`, each face's word, and after the faces drawn those kept.
+ */
+function faces(dims: MapDims, chunk: number, hf: Ground, keyed: Keyed | null = null): CityPart {
   const x0 = chunkCx(dims, chunk) * CHUNK_SIZE;
   const z0 = chunkCz(dims, chunk) * CHUNK_SIZE;
   out.reset(x0, z0);
+  keyed?.kept.reset(x0, z0);
   const n = boxes.n;
   const B = boxes.f;
   const H = hulls.box;
@@ -724,48 +971,12 @@ function faces(dims: MapDims, chunk: number, hf: Ground): CityPart {
       gridFill.set(gridCount.subarray(0, GRID_SIDE * GRID_SIDE));
     }
   }
-  for (let q = 0; q < n; q++) {
-    if (boxes.own[q] !== 1) continue;
-    const o = q * 8;
-    const [bx, by, bz, hx, hy, hz, c, s] = [B[o]!, B[o + 1]!, B[o + 2]!, B[o + 3]!, B[o + 4]!, B[o + 5]!, B[o + 6]!, B[o + 7]!];
-    for (let k = 0; k < 8; k++) {
-      const lx = k & 1 ? hx : -hx;
-      const lz = k & 4 ? hz : -hz;
-      corners[k * 3] = c * lx + s * lz + bx;
-      corners[k * 3 + 1] = (k & 2 ? hy : -hy) + by;
-      corners[k * 3 + 2] = c * lz - s * lx + bz;
-    }
-    const ground = hf.heightAt(bx, bz);
-    for (let f = 0; f < 6; f++) {
-      for (let m = 0; m < 4; m++) {
-        const k = FACE_CORNERS[f * 4 + m]!;
-        face[m * 3] = corners[k * 3]!;
-        face[m * 3 + 1] = corners[k * 3 + 1]!;
-        face[m * 3 + 2] = corners[k * 3 + 2]!;
-      }
-      // Under the ground: a face looking down onto it, or all four corners below it.
-      if (f === 3 && face[1]! <= ground + 0.1) continue;
-      let above = false;
-      for (let m = 0; m < 4 && !above; m++) above = face[m * 3 + 1]! > hf.heightAt(face[m * 3]!, face[m * 3 + 2]!) + 0.05;
-      if (!above) continue;
-      // Held whole by one other box or part, found in the grid cell of the face's middle.
-      const gi = Math.floor(((face[0]! + face[6]!) / 2 - gx0) / GRID);
-      const gj = Math.floor(((face[2]! + face[8]!) / 2 - gz0) / GRID);
-      let held = false;
-      if (gi >= 0 && gj >= 0 && gi < GRID_SIDE && gj < GRID_SIDE) {
-        const cell = gj * GRID_SIDE + gi;
-        for (let e = gridCount[cell]!; e < gridCount[cell + 1]! && !held; e++) {
-          const h = gridList[e]!;
-          held = h !== q && (h < n ? holds(h, face[0]!, face[1]!, face[2]!) && holds(h, face[3]!, face[4]!, face[5]!) && holds(h, face[6]!, face[7]!, face[8]!) && holds(h, face[9]!, face[10]!, face[11]!) : hulls.holdsAll(h - n, face, 4));
-        }
-      }
-      if (!held) out.quad(face, 0, f === 3 ? boxes.under[q]! : boxes.color[q]!, outerEdges(q, face, ground, gx0, gz0));
-    }
-  }
+  for (let q = 0; q < n; q++) if (boxes.own[q] === 1) boxFaces(B, q * 8, q, q, boxes.color[q]!, boxes.under[q]!, hf, gx0, gz0, keyed, boxes.key[q]!, 0);
   for (let q = 0; q < hulls.n; q++) {
     if (hulls.own[q] !== 1) continue;
     const t = hulls.table[q]!;
     const p = hulls.part[q]!;
+    const own = hulls.key[q]!;
     const first = q * MAX_CORNERS * 3;
     for (let f = t.face[p]!, end = t.face[p + 1]!, o = q * PART_FACES * 4; f < end; f++, o += 4) {
       // Its corners, less any on the line between the two either side of it, as a flight's bend is.
@@ -790,30 +1001,46 @@ function faces(dims: MapDims, chunk: number, hf: Ground): CityPart {
         above ||= ring[m * 3 + 1]! > hf.heightAt(ring[m * 3]!, ring[m * 3 + 2]!) + 0.05;
       }
       // Under the ground, as a box's: a face looking straight down onto it, or every corner below it.
-      if (!above || (hulls.planes[o + 1]! < -0.9999 && top <= hf.heightAt(mx, mz) + 0.1)) continue;
+      if (!above || (hulls.planes[o + 1]! < -0.9999 && top <= hf.heightAt(mx, mz) + 0.1)) {
+        if (keyed) keyed.buried++;
+        continue;
+      }
       // A face looking more down than across is a soffit.
-      if (!heldWhole(n + q, ring, count, mx, mz, gx0, gz0)) out.ring(ring, count, hulls.planes[o + 1]! < -0.7 ? hulls.under[q]! : hulls.color[q]!);
+      // A face a cut bared is the core's colour, and wears no material.
+      const col = ((hulls.core[q]! >>> (f - t.face[p]!)) & 1) === 1 ? hulls.bare[q]! : hulls.planes[o + 1]! < -0.7 ? hulls.under[q]! : hulls.color[q]!;
+      const by = heldWhole(n + q, ring, count, mx, mz, gx0, gz0, keyed, own);
+      if (by === 0) out.ring(ring, count, col, keyed ? own - 1 : 0);
+      else if (keyed && by > 0) keyed.kept.ring(ring, count, col, (own - 1) | (by << PIECE_KEY_BITS));
+      else if (keyed) keyed.own++;
     }
   }
-  return out.part();
+  if (!keyed) return out.part();
+  // Each group's members as they were, which show where the group is broken.
+  for (let k = 0; k < keyed.n; k++) boxFaces(keyed.f, k * 8, keyed.box[k]!, -1, keyed.color[k]!, keyed.color[k]!, hf, gx0, gz0, keyed, keyed.slot[k]!, keyed.group[k]!);
+  return keyed.part(out);
 }
 
 /**
  * Whether a face of `count` world corners in `c`, its middle at (mx, mz), is held whole by one box or part other than
- * grid entry `q`, among those in the grid cell of its middle.
+ * grid entry `q`, among those in the grid cell of its middle: 0 for none, else 1; or with `keyed`, for a face of key
+ * `own`, its holder's key, or -1 where it never shows (Keyed.never).
  */
-function heldWhole(q: number, c: Float64Array, count: number, mx: number, mz: number, gx0: number, gz0: number): boolean {
+function heldWhole(q: number, c: Float64Array, count: number, mx: number, mz: number, gx0: number, gz0: number, keyed: Keyed | null = null, own = 0): number {
   const gi = Math.floor((mx - gx0) / GRID);
   const gj = Math.floor((mz - gz0) / GRID);
-  if (gi < 0 || gj < 0 || gi >= GRID_SIDE || gj >= GRID_SIDE) return false;
+  if (gi < 0 || gj < 0 || gi >= GRID_SIDE || gj >= GRID_SIDE) return 0;
   const cell = gj * GRID_SIDE + gi;
   const n = boxes.n;
+  let holder = 0;
   for (let e = gridCount[cell]!; e < gridCount[cell + 1]!; e++) {
     const h = gridList[e]!;
-    if (h === q) continue;
-    if (h >= n ? hulls.holdsAll(h - n, c, count) : holdsAll(h, c, count)) return true;
+    if (h === q || !(h >= n ? hulls.holdsAll(h - n, c, count) : holdsAll(h, c, count))) continue;
+    if (!keyed) return 1;
+    const by = h < n ? boxes.key[h]! : hulls.key[h - n]!;
+    if (keyed.never(own, by)) return -1;
+    if (holder === 0) holder = by;
   }
-  return false;
+  return holder;
 }
 
 const beyond = new Float64Array(3);
@@ -877,7 +1104,7 @@ function framesOf(city: CityStatics, chunk: number, g: Gone): number[] {
  * Puts the standing pieces of `chunk` turned by `f` short of a quarter in `framed`, in the frame turned by (c, s), by their
  * boxes as `form` has them; with `parts`, their convex parts in `hulls` too, placed in the frame. Returns how many boxes.
  */
-function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean, far = false, labels?: Uint8Array): number {
+function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean, far = false, labels?: Uint8Array, rows = false): number {
   const { first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const from = first[chunk]!;
   let nb = 0;
@@ -885,25 +1112,51 @@ function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: num
     if ((g && g[i - from] === 1) || yaw[i]! % QUARTER !== f) continue;
     const k = kind[i]!;
     if (far && city.near[k] === 1) continue;
-    const label = (labels?.[k] ?? 0) << 8;
+    // A broken form wears the colour and material of the kind the map placed. A piece set apart merges with no other's.
+    const worn = city.dye?.[i] || k;
+    const label = (labels?.[worn] ?? 0) << 8 | (city.apart?.[i] === 1 ? (i - from + 1) << 16 : 0);
     const quarter = Math.floor(yaw[i]! / QUARTER) % 4;
     const odd = quarter % 2 === 1;
     // The world to the frame: the inverse of the turn a piece's vertices are given.
     const lx = c * x[i]! - s * z[i]!;
     const lz = s * x[i]! + c * z[i]!;
     if (plain[k] === 1) {
-      nb = frameBox(nb, lx, y[i]!, lz, odd ? halfZ[k]! : halfX[k]!, halfY[k]!, odd ? halfX[k]! : halfZ[k]!, label | color[k]!);
+      nb = frameBox(nb, lx, y[i]!, lz, odd ? halfZ[k]! : halfX[k]!, halfY[k]!, odd ? halfX[k]! : halfZ[k]!, label | color[worn]!);
+      if (rows) rowOf(nb - 1, i);
       continue;
     }
     // In the frame a shape's boxes and parts are turned by whole quarters.
     const [qc, qs] = [QUARTER_COS[quarter]!, QUARTER_SIN[quarter]!];
     const B = form.box;
     for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
-      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, label | (form.color?.[b / 6] || color[k]!));
+      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, label | (form.color?.[b / 6] || color[worn]!));
+      if (rows) rowOf(nb - 1, i);
     }
-    if (parts) pushHulls(form, k, lx, y[i]!, lz, qc, qs, color[k]!, true, 0);
+    if (parts) pushHulls(form, k, lx, y[i]!, lz, qc, qs, color[worn]!, true, 0);
   }
   return nb;
+}
+
+/**
+ * While a part is made with keys: the city's row each box of a frame came from, the boxes as they were before they
+ * merged, and each merged box's members as a list from `memberHead` by `rawNext` to -1.
+ */
+let rawRow = new Int32Array(1024);
+let rawBox = new Float64Array(7 * 1024);
+let rawNext = new Int32Array(1024);
+let memberHead = new Int32Array(1024);
+let memberTail = new Int32Array(1024);
+let spareHead = new Int32Array(1024);
+let spareTail = new Int32Array(1024);
+
+/** Notes that box `b` of the frame came from row `i`. */
+function rowOf(b: number, i: number): void {
+  if (b >= rawRow.length) {
+    const grown = new Int32Array(rawRow.length * 2);
+    grown.set(rawRow);
+    rawRow = grown;
+  }
+  rawRow[b] = i;
 }
 
 /** Puts the box of half extents (hx, hy, hz) at (fx, fy, fz) in the frame in `framed` as box `nb`. Returns how many there are. */
@@ -933,27 +1186,30 @@ function frameBox(nb: number, fx: number, fy: number, fz: number, hx: number, hy
  * Optional labels by content kind distinguish otherwise identical colours during merging: two bits of a street fixture's
  * material, and above them five of a material made from a recipe (CityPart `made`).
  */
-export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (chunk: number) => Gone, gap: number, least: number, labels?: Uint8Array): CityPart {
+export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (chunk: number) => Gone, gap: number, least: number, labels?: Uint8Array, keys?: Uint32Array): CityPart {
   if (city.in(chunk) === 0) return EMPTY_PART;
   const form = least > 0 ? city.walked : city.look;
+  const keyed = keys && gap >= 0 && least <= 0 ? keying.begin() : null;
+  // A broken form's faces are a group's of its slot alone: its slot's own key says whether the whole piece stands.
+  for (let i = city.first[chunk]!; keyed && city.dye && i < city.first[chunk + 1]!; i++) if (city.dye[i] !== 0 && keys![i] !== 0) keys![i] = keyed.alone(keys![i]! - 1);
   boxes.n = 0;
   hulls.n = 0;
-  gather(city, chunk, gone, gap < 0 && least <= 0, form, least > 0, labels);
+  gather(city, chunk, gone, gap < 0 && least <= 0, form, least > 0, labels, keyed ? keys : undefined);
   if (gap >= 0 || least > 0) {
     const g = gone(chunk);
     for (const f of framesOf(city, chunk, g)) {
       const a = (f / YAW_UNITS) * TAU;
       const c = detCos(a);
       const s = detSin(a);
-      let nb = frameBoxes(city, chunk, g, f, c, s, form, false, least > 0, labels);
-      if (gap >= 0) nb = merge(nb, gap);
+      let nb = frameBoxes(city, chunk, g, f, c, s, form, false, least > 0, labels, keyed !== null);
+      if (gap >= 0) nb = merge(nb, gap, keyed !== null);
       for (let b = 0; b < nb; b++) {
         const o = b * 7;
         const [hx, hy, hz] = [(framed[o + 3]! - framed[o]!) / 2, (framed[o + 4]! - framed[o + 1]!) / 2, (framed[o + 5]! - framed[o + 2]!) / 2];
         if (Math.max(hx, hy, hz) * 2 <= least) continue;
         const [fx, fy, fz] = [framed[o]! + hx, framed[o + 1]! + hy, framed[o + 2]! + hz];
         // Back to the world from the frame, as a piece's vertices are turned.
-        boxes.push(c * fx + s * fz, fy, c * fz - s * fx, hx, hy, hz, c, s, framed[o + 6]!, true);
+        boxes.push(c * fx + s * fz, fy, c * fz - s * fx, hx, hy, hz, c, s, framed[o + 6]! & 0xffff, true, undefined, keyed ? keyed.key(b, keys!, c, s) : 0);
       }
     }
     const { first, kind, yaw, x, y, z, color, plain } = city;
@@ -961,16 +1217,26 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
       if ((g && g[i - first[chunk]!] === 1) || plain[kind[i]!] === 1) continue;
       const a = (yaw[i]! / YAW_UNITS) * TAU;
       const k = kind[i]!;
-      const label = (labels?.[k] ?? 0) << 8;
-      pushHulls(form, k, x[i]!, y[i]!, z[i]!, detCos(a), detSin(a), label | color[k]!, true, least);
+      const worn = city.dye?.[i] || k;
+      const label = (labels?.[worn] ?? 0) << 8;
+      pushHulls(form, k, x[i]!, y[i]!, z[i]!, detCos(a), detSin(a), label | color[worn]!, true, least, undefined, keyed ? keys![i]! : 0, worn !== k ? city.paint?.(k) ?? null : null);
     }
   }
-  return faces(city.dims, chunk, hf);
+  return faces(city.dims, chunk, hf, keyed);
 }
 
 /** Merges the `nb` boxes in `framed` along y, x, z and y again, as mergedPart says. Returns how many are left. */
-function merge(nb: number, gap: number): number {
+function merge(nb: number, gap: number, members = false): number {
   if (keys.length < nb * 5) keys = new Int32Array(nb * 10);
+  if (members) {
+    if (rawNext.length < nb) [rawNext, memberHead, memberTail, spareHead, spareTail] = [new Int32Array(nb * 2), new Int32Array(nb * 2), new Int32Array(nb * 2), new Int32Array(nb * 2), new Int32Array(nb * 2)];
+    if (rawBox.length < nb * 7) rawBox = new Float64Array(nb * 14);
+    rawBox.set(framed.subarray(0, nb * 7));
+    for (let b = 0; b < nb; b++) {
+      memberHead[b] = memberTail[b] = b;
+      rawNext[b] = -1;
+    }
+  }
   for (const ax of [1, 0, 2, 1]) {
     const u = (ax + 1) % 3;
     const v = (ax + 2) % 3;
@@ -999,14 +1265,23 @@ function merge(nb: number, gap: number): number {
         const l = (kept - 1) * 7;
         if (same && framed[b * 7 + ax]! <= spare[l + 3 + ax]! + gap) {
           spare[l + 3 + ax] = Math.max(spare[l + 3 + ax]!, framed[b * 7 + 3 + ax]!);
+          if (members) {
+            rawNext[spareTail[kept - 1]!] = memberHead[b]!;
+            spareTail[kept - 1] = memberTail[b]!;
+          }
           continue;
         }
       }
       spare.set(framed.subarray(b * 7, b * 7 + 7), kept * 7);
+      if (members) {
+        spareHead[kept] = memberHead[b]!;
+        spareTail[kept] = memberTail[b]!;
+      }
       lastKey = b;
       kept++;
     }
     [framed, spare] = [spare, framed];
+    if (members) [memberHead, spareHead, memberTail, spareTail] = [spareHead, memberHead, spareTail, memberTail];
     nb = kept;
   }
   return nb;

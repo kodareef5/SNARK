@@ -25,6 +25,8 @@ import { Visor } from "./visor.ts";
 const GLIDE_FOV = (6 * Math.PI) / 180;
 /** A thruster car's boost: how much wider the view opens, and how far it shakes, radians. */
 const BOOST_FOV = 10 * Math.PI / 180, BOOST_SHAKE = .0035;
+/** A break near turns the view this far at most, radians (0.6 degrees), half that under a finger, and is spent in this long. */
+export const JOLT = (0.6 * Math.PI) / 180, JOLT_TOUCH = JOLT / 2, JOLT_MS = 700;
 /** Initial vertical field of view, in radians. AIM_FOV multiplies the player's setting while aiming. */
 const BASE_FOV = 1.2217;
 const AIM_FOV = 0.79;
@@ -66,6 +68,24 @@ function wornOptic(reg: Registry, inv: Inventory | null): OpticFacet | null {
   return def?.optic && def.wear?.slot === "head" && (inv!.dur[at]! > 0 || !(def.wear.uses > 0)) ? def.optic : null;
 }
 
+/** The shake a break near gives the view (break-effects.ts): how hard, 1 to 0 as it is spent. It turns the view alone. */
+export class Jolt {
+  trauma = 0;
+
+  /** Shakes by `amount` of the most, 0 to 1, unless it shakes harder already. */
+  add(amount: number): void {
+    if (amount > this.trauma) this.trauma = Math.min(1, amount);
+  }
+
+  /** Puts the view's turn at `nowMs` in `out`, yaw and pitch, no more than `most` in all, and spends `dt` milliseconds of the shake. */
+  turn(nowMs: number, dt: number, most: number, out: Float64Array): void {
+    const by = this.trauma * this.trauma * most * 0.7;
+    out[0] = Math.sin(nowMs * 0.083) * by;
+    out[1] = Math.sin(nowMs * 0.117 + 1) * by;
+    this.trauma = Math.max(0, this.trauma - Math.max(0, dt) / JOLT_MS);
+  }
+}
+
 export class Sight implements FramePart {
   /** Eased toward what the held weapon and the aim button ask for. */
   private fov = BASE_FOV;
@@ -79,6 +99,7 @@ export class Sight implements FramePart {
   private glassOptic: OpticFacet | null = null;
   private glassPressed = false;
   private readonly shook = new Float64Array(2);
+  private readonly jolted = new Jolt();
   /**
    * A sight that zooms (the sniper's, D1083) while aimed through, its zoom, and its zero in metres (0 for none), dialled
    * with Alt and the wheel; and the zero the server was last told of.
@@ -106,6 +127,11 @@ export class Sight implements FramePart {
   private lookPitch = 0;
   private toldZoom = 0;
   private toldFocus = 0;
+
+  /** A break near shakes the view by `amount` of the most, 0 to 1. */
+  jolt(amount: number): void {
+    this.jolted.add(amount);
+  }
 
   /** Whether a raised sight takes zoom steps: a scope that zooms, a glass, a visor. */
   get zooming(): boolean {
@@ -214,6 +240,12 @@ export class Sight implements FramePart {
       // A thruster car's boost opens the view further and shakes it a little while the nozzles fire; the look sent does not.
       want += BOOST_FOV;
       lookYaw += Math.sin(nowMs * .071) * BOOST_SHAKE; lookPitch += Math.sin(nowMs * .093 + 1) * BOOST_SHAKE;
+    }
+    if (this.jolted.trauma > 0) {
+      // A break near shakes the view for a moment; the look sent does not move.
+      this.jolted.turn(nowMs, dt, f.ui.touch ? JOLT_TOUCH : JOLT, this.shook);
+      lookYaw += this.shook[0]!;
+      lookPitch += this.shook[1]!;
     }
     // Under a glider the view opens with its speed, a dive's most, and third person stands back to hold the wings.
     const gliding = alive && session.driving < 0 && session.own.glide !== 0;

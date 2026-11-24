@@ -29,18 +29,18 @@ test("what goes together is remembered as one removal a chunk, in runs of slots;
   const refs = Uint32Array.from([a[7]!, b[0]!, a[3]!, a[2]!, a[3]!, a[4]!, 5000, 0, 0]);
   expect(w.structs.removeMany(refs, 7, GONE_FELL, 10, 2, 8, 77)).toBe(5);
   expect([t0.version - v0, t1.version - v1, changed]).toEqual([1, 1, [0, 1]]);
-  expect(t0.gone).toEqual([{ version: v0 + 1, cause: GONE_FELL, x: 10, y: 2, z: 8, stamp: 77, runs: [2, 3, 7, 1], count: 4 }]);
-  expect(t1.gone).toEqual([{ version: v1 + 1, cause: GONE_FELL, x: 10, y: 2, z: 8, stamp: 77, runs: [0, 1], count: 1 }]);
+  expect(t0.gone).toEqual([{ version: v0 + 1, cause: GONE_FELL, x: 10, y: 2, z: 8, stamp: 77, radius: 0, runs: [2, 3, 7, 1], left: [], count: 4 }]);
+  expect(t1.gone).toEqual([{ version: v1 + 1, cause: GONE_FELL, x: 10, y: 2, z: 8, stamp: 77, radius: 0, runs: [0, 1], left: [], count: 1 }]);
   expect(told.map((p) => p[0]).sort((p, q) => p - q)).toEqual([a[2]!, a[3]!, a[4]!, a[7]!, b[0]!]);
   expect(told.every((p) => p[1] === GONE_FELL)).toBe(true);
   expect([w.structs.count, t0.live, t0.kind[3], t0.mod[3]]).toEqual([8, 6, 0, v0 + 1]);
 
   expect(w.structs.remove(a[0]!)).toBe(true);
-  expect(t0.gone[1]).toEqual({ version: v0 + 2, cause: GONE_TAKEN, x: 4, y: 0.5, z: 8, stamp: 0, runs: [0, 1], count: 1 });
+  expect(t0.gone[1]).toEqual({ version: v0 + 2, cause: GONE_TAKEN, x: 4, y: 0.5, z: 8, stamp: 0, radius: 0, runs: [0, 1], left: [], count: 1 });
   // The record is placed at the first of the three.
   for (const k of [9, 8, 5]) expect(w.structs.damage(a[k]!, 1e9, 90)).toBe(0);
   expect(t0.gone.length).toBe(3);
-  expect(t0.gone[2]).toEqual({ version: v0 + 5, cause: GONE_DESTROYED, x: 31, y: 0.5, z: 8, stamp: 90, runs: [9, 1, 8, 1, 5, 1], count: 3 });
+  expect(t0.gone[2]).toEqual({ version: v0 + 5, cause: GONE_DESTROYED, x: 31, y: 0.5, z: 8, stamp: 90, radius: 0, runs: [9, 1, 8, 1, 5, 1], left: [], count: 3 });
   // Damage that does not destroy is a change between, so the next piece destroyed on that tick is another record. So is one on another tick.
   expect(w.structs.damage(a[1]!, 10, 90)).toBe(90);
   w.structs.damage(a[6]!, 1e9, 90);
@@ -250,7 +250,7 @@ test("two columns that lose their footing at once are two columns, though one is
 test("a piece seen to go waits its turn, drops as a thing dropped does, drifts out from where it began, and is gone when the ground has it", () => {
   const halfY = new Float32Array(8).fill(1.5);
   const f = new Falling(halfY, () => 0);
-  const piece = (x: number, y: number, z: number, cause = GONE_FELL, tick = 100, kind = 3): Rubble => ({ kind, x, y, z, yaw: 1000, cause, ox: 10, oy: 4.5, oz: 10, tick });
+  const piece = (x: number, y: number, z: number, cause = GONE_FELL, tick = 100, kind = 3): Rubble => ({ kind, x, y, z, yaw: 1000, cause, ox: 10, oy: 4.5, oz: 10, tick, radius: 0, into: 0, map: 0 });
   // Three pieces of one removal in a line going east from its origin, one of a removal two ticks later, and one destroyed outright.
   const list = [piece(13, 4.5, 10), piece(16, 4.5, 10), piece(22, 4.5, 10), piece(13, 7.5, 10, GONE_FELL, 102), piece(40, 1.5, 40, GONE_DESTROYED, 100, 5)];
   f.absorb(list, 5000, 0, 0, 0);
@@ -303,7 +303,7 @@ test("only so many are shown falling: the nearest to the eye, whatever order the
   // A row of pieces going away from an eye at the origin, absorbed farthest first, in two lots.
   const row = (from: number, to: number): Rubble[] => {
     const out: Rubble[] = [];
-    for (let k = to - 1; k >= from; k--) out.push({ kind: 1, x: k + 1, y: 50, z: 0, yaw: 0, cause: GONE_DESTROYED, ox: 0, oy: 0, oz: 0, tick: 7 });
+    for (let k = to - 1; k >= from; k--) out.push({ kind: 1, x: k + 1, y: 50, z: 0, yaw: 0, cause: GONE_DESTROYED, ox: 0, oy: 0, oz: 0, tick: 7, radius: 0, into: 0, map: 0 });
     return out;
   };
   const half = MAX_FALLING / 2;

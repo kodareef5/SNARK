@@ -5,6 +5,7 @@ import { Genome, POINT_CAP, STAT_NAMES } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT, QUALITY_NAMES } from "../../shared/sim/items.ts";
 import { loadoutCommands } from "./loadout.ts";
 import { lootCommands } from "./loot.ts";
+import { cityCommands } from "./city.ts";
 import { supplyCommands } from "./supply.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 import { placeFree } from "../place.ts";
@@ -322,5 +323,5 @@ export function addAdminCommands(con: Console): void {
       },
     },
   ];
-  con.add(...commands, ...lootCommands(), ...supplyCommands(), ...loadoutCommands());
+  con.add(...commands, ...lootCommands(), ...supplyCommands(), ...loadoutCommands(), ...cityCommands());
 }

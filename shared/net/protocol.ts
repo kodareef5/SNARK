@@ -27,13 +27,18 @@
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits; to a client that takes statics, for
 //                            a chunk that holds map statics, from the map 1 bit, and if set first slot u16 and count
 //                            u16 of the slots it takes as the map has them; rows, in ascending slots; then removals:
-//                            count u8, and per removal: versions back varint, cause 2 bits (taken, destroyed, fell),
-//                            unless taken where it began (3 x f32) and when (tick u32), then runs of slots: count
-//                            varint, and per run: first slot minus the end of the run before svarint, length-1
-//                            varint. Slots from the map are set first, then rows, then removals. A removal leaves
-//                            alone any row newer than itself.
+//                            count u8, and per removal: versions back varint, cause 2 bits (taken, destroyed, fell,
+//                            blast), unless taken where it began (3 x f32) and when (tick u32), for a blast its
+//                            reach u8 (quarter metres), leaves 1 bit, then runs of slots: count varint, and per
+//                            run: first slot minus the end of the run before svarint, length-1 varint. With leaves
+//                            set those slots take their heap's kind where they stood (heapAt, at heapHealth) in
+//                            place of emptying; 1 bit follows, set if runs of emptied slots follow too. Slots from
+//                            the map are set first, then rows, then removals. A removal leaves alone any row newer
+//                            than itself. A row for a slot just taken from the map is in place where a piece
+//                            still stands in it.
 //                            A row: 1 bit set if its slot follows the last row's, else the gap less one varint; in
-//                            place 1 bit, then owner (named varint) and health; else kind (named u16, 0 for an empty
+//                            place 1 bit, then kind changed 1 bit and if set its kind (named u16), then owner
+//                            (named varint) and health; else kind (named u16, 0 for an empty
 //                            slot, which ends the row), x and z 15 bits each (1/512 m from the chunk's corner),
 //                            height 1 bit set if it is the last full row's, else svarint from it (1/512 m, from 0
 //                            for the first), yaw (named u16), owner (named varint), health. Health is 1 bit set for
@@ -216,7 +221,8 @@ export const S_TACTICAL = serverKind();
  */
 export const S_MARKS = serverKind();
 /**
- * Every tribe's structures beyond the view, to draw on the horizon (shared/world/tactical.ts). Reliable. chunk u16, then runs
+ * Every tribe's structures beyond the view, to draw on the horizon (shared/world/tactical.ts). Reliable. chunk u16, 1 bit
+ * set where the map's own pieces are left out (to a session that holds the map's statics and draws those itself), then runs
  * until its 256 cells of 4 m are covered, row by row: length-1 u8, filled 1 bit, and if filled: palette colour u8, top u8
  * (half metres above the ground at the cell's middle to 64 m, then 2 m steps to 318 m). No owner or team. A chunk is sent
  * whole, and an emptied one is sent empty. Protocol 9.
@@ -257,6 +263,14 @@ export const RESTART_OFF = 0xffff;
 /** The longest a stop may be said ahead, in seconds: a day. */
 export const RESTART_MOST = 86400;
 export const S_AIR_SUPPORT = serverKind();
+/**
+ * Which of the map's own pieces no longer stand in one chunk, to a session that holds the map's statics, within GoneRadius
+ * and what it asked (shared/world/gone.ts). Reliable. chunk u16, the list's version varint, then 1 bit for its form. Runs
+ * (0): count varint, then per run the slots it starts past the last run's end varint, 1 bit for more than one slot, and if so
+ * its length less 2 varint. Bits (1): count varint, then a bit a slot from slot 0, set for one gone. A list with no slot
+ * says every piece of the chunk stands again.
+ */
+export const S_GONE = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -381,7 +395,10 @@ export const CMD_OPEN = command();
 export const CMD_VIEW = command();
 /** The finest map zoom the client is showing, 2 bits. Structure cells are sent at the size that suits it (S_TACTICAL). */
 export const CMD_MAP_ZOOM = command();
-/** Metres u16: how far off the client wants far cells (S_FAR). The server holds it to FarRadius and reads it once a second. 0, or never asking, is none. */
+/**
+ * Metres u16: how far off the client wants far cells (S_FAR), then metres u16: how far off it wants the lists of its map's
+ * pieces gone (S_GONE). The server holds them to FarRadius and GoneRadius and reads them once a second. 0, or never asking, is none.
+ */
 export const CMD_FAR = command();
 /**
  * Protocol 11. A creature in a survivor's arms: a CARRY_ action u8, and for CARRY_PICK_UP the creature's entity index u32.
@@ -686,6 +703,15 @@ export const IMPACT_VEHICLE = 3;
 export const IMPACT_FULL = 40;
 export const IMPACT_HEARD = 150;
 export const IMPACTS_PER_TICK = 16;
+/**
+ * COLLAPSE, to clients within the reach of the lists of pieces gone (S_GONE): one break took more than COLLAPSE_PIECES of
+ * the map's pieces from a chunk in a tick. The middle of what fell, x and z (2 x f32), its foot s16 in half metres, how
+ * far across it stood u8 in metres, and how tall u8 in steps of 2 m. A client far off draws a column of dust there.
+ */
+export const EVENT_COLLAPSE = eventKind();
+export const COLLAPSE_PIECES = 16;
+/** GROAN, to clients within 150 m: a building of the map has lost what carried it and is about to come down. Where it gave (3 x f32). */
+export const EVENT_GROAN = eventKind();
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

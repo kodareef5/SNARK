@@ -27,7 +27,7 @@ export const PACK_LANES = Math.max(2, Math.min(8, availableParallelism()));
  * build's copies. An everyday build's are 16 to 20% larger and are held to the same, so a map that passes one passes as a
  * release. The tops are not waited for and count in no first frame.
  */
-export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20, road: 256 << 10, streets: 256 << 10 };
+export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20, road: 256 << 10, streets: 256 << 10, buildings: 512 << 10 };
 /**
  * Brotli bytes of the heaviest first frame on a map: its head and the parts the page's first frame waits for where it
  * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, the ground of the sectors within
@@ -120,7 +120,7 @@ const kb = (bytes: number): string => (bytes / 1e3).toFixed(0);
 /** What a client fetches of a map, in lines: its parts by kind (how many, the median and the most, all of them) and its heaviest first frame. */
 export function partsTable(packed: Packed): string[] {
   const lines = [`on the wire, Brotli and gzip${packed.release ? "" : " (an everyday build's)"}: kind, count, median and most KB, all MB`];
-  for (const kind of ["head", "land", "overview", "ground", "statics", "tops", "road", "streets"] as const) {
+  for (const kind of ["head", "land", "overview", "ground", "statics", "tops", "road", "streets", "buildings"] as const) {
     const of = packed.parts.filter((p) => p.kind === kind);
     if (of.length === 0) continue;
     const cell = (encoding: "br" | "gz"): string => {

@@ -336,11 +336,16 @@ export class Survival {
     const person = rec.kind === this.survivor;
     const safe = (person ? SAFE_LANDING : CREATURE_SAFE_LANDING) * (this.rules ? this.rules.num("MaxFallSpeedMultiplier") : 1);
     if (!(speed > safe)) return;
+    this.crushed(rec, (speed - safe) * (person ? LANDING_DAMAGE : CREATURE_LANDING_DAMAGE));
+  }
+
+  /** `points` of health lost as to a fall: a hard landing, or a storey coming down on a body. */
+  crushed(rec: EntityRecord, points: number): void {
     // A fall is a blow with nobody behind it, and a module is asked of it as of any other.
     const asked = { target: "body", victim: rec.pid, kind: this.world.reg.ids[rec.kind]!, team: rec.team, byPid: 0, byTeam: 0, item: "", type: "fall", zone: 0, scale: 1 };
     if (this.bus.n[DAMAGE] !== 0 && this.bus.before(DAMAGE, asked) !== "") return;
     const scale = Number(asked.scale);
-    this.add(rec, V_HEALTH, -(speed - safe) * (person ? LANDING_DAMAGE : CREATURE_LANDING_DAMAGE) * (scale >= 0 ? scale : 1), CAUSE_FALL);
+    this.add(rec, V_HEALTH, -points * (scale >= 0 ? scale : 1), CAUSE_FALL);
   }
 
   /** Call when a record is deleted. */

@@ -72,6 +72,8 @@ export class FarCells {
   readonly tint = new Uint8Array(SIDE * SIDE);
   readonly top = new Uint8Array(SIDE * SIDE);
   filled = 0;
+  /** As read from the wire: whether the map's own pieces were left out of them (writeFar). */
+  built = false;
 
   same(o: FarCells): boolean {
     if (this.filled !== o.filled) return false;
@@ -92,6 +94,12 @@ export class Summary {
   /** The far cells, and the bakes that changed them, apart from the map's: each moves only when its own cells do. */
   readonly far = new FarCells();
   farVersion = 0;
+  /**
+   * The far cells of what was built alone, the map's own pieces left out, for a session that holds the map and draws those
+   * itself; and the bakes that changed them. A bake fills them. A summary kept has none until something built shows.
+   */
+  built: FarCells | null = null;
+  builtVersion = 0;
   /** Per cell, level after level: the palette colour of its tallest piece, and the byte described at CELL_FILLED. */
   readonly tint = new Uint8Array(CELLS);
   readonly info = new Uint8Array(CELLS);
@@ -146,26 +154,37 @@ const top = new Float32Array(SIDE * SIDE);
 const who = new Int32Array(SIDE * SIDE);
 const farTop = new Float32Array(SIDE * SIDE);
 const farWho = new Int32Array(SIDE * SIDE);
+const builtTop = new Float32Array(SIDE * SIDE);
+const builtWho = new Int32Array(SIDE * SIDE);
 
-function keep(c: number, h: number, s: number, far: boolean): void {
+/** `far` is 0 for a piece the far feed leaves out, 1 for a map's own piece and 2 for one built. */
+function keep(c: number, h: number, s: number, far: number): void {
   if (who[c]! < 0 || h > top[c]!) {
     top[c] = h;
     who[c] = s;
   }
-  if (far && (farWho[c]! < 0 || h > farTop[c]!)) {
+  if (far === 0) return;
+  if (farWho[c]! < 0 || h > farTop[c]!) {
     farTop[c] = h;
     farWho[c] = s;
+  }
+  if (far === 2 && (builtWho[c]! < 0 || h > builtTop[c]!)) {
+    builtTop[c] = h;
+    builtWho[c] = s;
   }
 }
 
 /**
  * Summarises the chunk whose corner is (x0, z0) into `out`, every level. The same table gives the same summary on any
  * machine. A piece is counted in its own chunk only, so a wide one is cut at the chunk's edge. `out.version` is left alone.
+ * `out.built` is the far cells of the pieces in slots past the map's (ChunkTable.mapped).
  */
 export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: PieceShapes, hf: Heightfield, out: Summary): void {
   who.fill(-1);
   farWho.fill(-1);
+  builtWho.fill(-1);
   if (t) {
+    const mapped = t.mapped;
     const { kind, x, y, z } = t;
     const { halfX, halfY, halfZ, far } = shapes;
     const inv = 1 / TACTICAL_CELL;
@@ -177,7 +196,7 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
       const hz = halfZ[k]!;
       const px = x[s]! - x0;
       const pz = z[s]! - z0;
-      const shown = far[k] === 1;
+      const shown = far[k] !== 1 ? 0 : s < mapped ? 1 : 2;
       if (hx <= SMALL_HALF && hz <= SMALL_HALF) {
         let cx = (px * inv) | 0;
         let cz = (pz * inv) | 0;
@@ -210,13 +229,17 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
   }
   const { tint, info, teams } = out;
   const farCells = out.far;
+  const builtCells = (out.built ??= new FarCells());
   let teamCount = 0;
   let filled = 0;
   let farFilled = 0;
+  let builtFilled = 0;
   for (let c = 0; c < SIDE * SIDE; c++) {
     const s = who[c]!;
     farCells.tint[c] = 0;
     farCells.top[c] = 0;
+    builtCells.tint[c] = 0;
+    builtCells.top[c] = 0;
     if (s < 0) {
       tint[c] = 0;
       info[c] = 0;
@@ -228,6 +251,12 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
       farCells.tint[c] = shapes.tint[t!.kind[f]!]!;
       farCells.top[c] = farTopByte(farTop[c]! - ground);
       farFilled++;
+    }
+    const b = builtWho[c]!;
+    if (b >= 0) {
+      builtCells.tint[c] = shapes.tint[t!.kind[b]!]!;
+      builtCells.top[c] = farTopByte(builtTop[c]! - ground);
+      builtFilled++;
     }
     const above = top[c]! - ground;
     let band = 0;
@@ -247,6 +276,7 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
   out.teamCount = teamCount;
   out.filled = filled;
   farCells.filled = farFilled;
+  builtCells.filled = builtFilled;
   coarsen(out);
 }
 
@@ -356,9 +386,13 @@ export function readCells(r: BitReader, out: Cells): number {
   return chunk;
 }
 
-/** Writes S_FAR's fields after its type: all of a chunk's far cells, in at most 802 bytes. */
-export function writeFar(w: BitWriter, chunk: number, f: FarCells): void {
+/**
+ * Writes S_FAR's fields after its type: all of a chunk's far cells, in at most 803 bytes. `built` says the map's own pieces
+ * are left out of them.
+ */
+export function writeFar(w: BitWriter, chunk: number, f: FarCells, built = false): void {
   w.u16(chunk);
+  w.bool(built);
   const { tint, top } = f;
   for (let c = 0; c < SIDE * SIDE; ) {
     const t = top[c]!;
@@ -378,6 +412,7 @@ export function writeFar(w: BitWriter, chunk: number, f: FarCells): void {
 /** Reads what writeFar wrote. Returns the chunk, or -1 if the message is malformed, and then `out` holds nothing of use. */
 export function readFar(r: BitReader, out: FarCells): number {
   const chunk = r.u16();
+  const built = r.bool();
   let c = 0;
   let filled = 0;
   while (c < SIDE * SIDE && !r.overflow) {
@@ -393,6 +428,7 @@ export function readFar(r: BitReader, out: FarCells): number {
   }
   if (r.overflow) return -1;
   out.filled = filled;
+  out.built = built;
   return chunk;
 }
 

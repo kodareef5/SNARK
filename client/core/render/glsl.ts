@@ -8,6 +8,7 @@ import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
+import { PIECE_END, PIECE_GLSL, PIECE_PLACE, PIECE_SHADE, WEAR_OVER_MADE, WEAR_STAGE } from "./pieces.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONES_PER_ROW, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
 import { AIR } from "./atmosphere.ts";
@@ -16,7 +17,7 @@ import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -87,10 +88,26 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
   float painted = 0.0;
+  int surface = vSurface;
 #ifdef WORLD_WEATHER
-  worldMade = vMade;
+  // A face's material, and over it its piece's wear (pieces.ts): past worn, a wall is lost to its core in patches.
+  worldMade = vMade & ${(1 << WEAR_OVER_MADE) - 1};
+  int wear = vMade >> ${WEAR_OVER_MADE};
+  float rim = 0.0;
+  if ((wear & ${WEAR_STAGE}) >= 2 && uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) {
+    vec2 lost = spalled(vRel + uWorldEye, geometric, wear & ${WEAR_STAGE});
+    rim = lost.y;
+    if (lost.x > 0.5) {
+      albedo = SPALL_COLOUR;
+      surface = ${SPALL_SURFACE};
+      worldMade = 0;
+    }
+  }
 #endif
-  if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
+  if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, surface, vRel, dx, dy);
+#ifdef WORLD_WEATHER
+  albedo *= 1.0 - ${SPALL_RIM} * rim;
+#endif
   float over = overGround(vRel);
   float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0) * roofOpen(vRel, geometric, over);
   roofBounce(vRel, geometric, over);
@@ -100,7 +117,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   // No ground known under it (skyopen.ts NO_GROUND), no weathering by its height over it.
   if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0 && fFacade.z < 1.5 && over < 1e5) {
     vec3 a0 = albedo, o0 = orm;
-    weathered(albedo, orm, vSurface, over, open, vRel, geometric, dx, dy);
+    weathered(albedo, orm, surface, over, open, vRel, geometric, dx, dy);
     albedo = mix(a0, albedo, risen);
     orm = mix(o0, orm, risen);
     n = normalize(mix(n, geometric, worldLost * worldCoat * risen));
@@ -109,7 +126,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
 #if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
   if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0 && mod(fFacade.z, 2.0) < 0.5) {
     vec3 a0 = albedo, o0 = orm, n0 = n;
-    edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
+    edged(albedo, orm, n, surface, vFace, vEdges, painted, vRel, dx, dy);
     albedo = mix(a0, albedo, risen);
     orm = mix(o0, orm, risen);
     if (risen < 1.0) n = normalize(mix(n0, n, risen));
@@ -121,7 +138,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   float roomOpen = 0.0;
   int front = 0;
 #ifdef FACADE
-  if (uSolid < 1.5 && uSkin < 0.5 && fFacade.y > 0.5 && (front = facade(albedo, orm, n, room, far, roomAt, vFacade, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uWorldEye.y, over)) == 2) worldSharp = true;
+  if (uSolid < 1.5 && uSkin < 0.5 && fFacade.y > 0.5 && (front = facade(albedo, orm, n, room, far, roomAt, vFacade, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uWorldEye.y, over, wear)) == 2) worldSharp = true;
   // A room is lit by the sky's share over the street at the top of its opening (facade.ts ROOM_OUT).
   roomOpen = max(skyOpen(roomAt.xyz, geometric, roomAt.w, 0.0), ${ROOM_OPEN_LEAST.toFixed(2)});
 #endif
@@ -152,8 +169,8 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
 #ifdef STREET_FINISH
   float receives = vFixture > 0 ? fixtureShare : front == 2 ? 1.0 : front == 3 ? clamp((0.85-orm.y)*3.0,0.0,1.0) : 0.0;
   if (front == 0 && uSolid < 1.5 && uSkin < 0.5 && vFixture == 0) {
-    if (vSurface == ${GLASS}) receives = clamp((0.8-orm.y)*2.5,0.0,1.0);
-    else if (vSurface == ${STEEL} || vSurface == ${RUST}) receives = clamp((0.85-orm.y)*3.0,0.0,1.0)*orm.z;
+    if (surface == ${GLASS}) receives = clamp((0.8-orm.y)*2.5,0.0,1.0);
+    else if (surface == ${STEEL} || surface == ${RUST}) receives = clamp((0.85-orm.y)*3.0,0.0,1.0)*orm.z;
   }
   orm.y = receives > 0.0 ? glossRoughness(orm.y,receives) : orm.y;
   mirrored = streetMirror(mirrored,r,vRel,orm.y,receives);
@@ -220,10 +237,10 @@ uniform sampler2D uPalette;
 uniform highp sampler2D uBones;
 out vec3 vRel;
 flat out vec3 vColor;
-${BONE}${BEND_GLSL}void main() {
+${BONE}${BEND_GLSL}${PIECE_GLSL}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p;
-  if (uSkin > 0.5) {
+${PIECE_PLACE}  if (uSkin > 0.5) {
     // A body with bones: the instance names its first bone where a rigid one has its yaw. With uSkin 2 each vertex follows
     // its bone of the pose the body stands in, whose first bone is uOffset.x, and then the instance's first bone.
     vec4 v = vec4(l + iPos, 1.0);
@@ -239,9 +256,9 @@ ${BEND_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uO
   uint i = aColor;
   if (i >= ${REGION_BASE}u) { uint r = i - ${REGION_BASE}u; i = r < 4u ? iRegA[r] : iRegB[r - 4u]; }
   vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;
-  vRel = p;
+${PIECE_SHADE}  vRel = p;
   gl_Position = uViewProj * vec4(p, 1.0);
-}`;
+${PIECE_END}}`;
 
 export const FLAT_TERRAIN_VERTEX = `#version 300 es
 layout(location=0) in uvec4 aGrid;

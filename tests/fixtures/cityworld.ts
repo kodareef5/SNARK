@@ -4,6 +4,7 @@
 
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
+import { GoneStore } from "../../client/core/gonelists.ts";
 import { HeldTops } from "../../client/core/render/blocks.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import type { BlocksSource } from "../../client/core/render/cityblocks.ts";
@@ -17,6 +18,7 @@ import { CHUNK_SIZE, STRUCT_UNITS, YAW_UNITS, chunkAt, chunkCx, chunkCz, type Ma
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { CityStatics } from "../../shared/world/city.ts";
+import { writeGone } from "../../shared/world/gone.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapStatic } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
@@ -147,15 +149,18 @@ export function cityWorld(options: CityWorldOptions) {
   const server = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   for (const s of o.statics) {
     const k = reg.index.get(s.kind)!;
-    server.add(k, s.x, s.y, s.z, s.yaw, 0, 1000);
+    // At its kind's full health, as the map sets a piece down: less would be a worn piece, drawn so.
+    server.add(k, s.x, s.y, s.z, s.yaw, 0, reg.maxHp[k]!);
   }
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const cells = new FarStore();
+  const lists = new GoneStore();
+  let told = 0;
   const whole = new Uint8Array(dims.chunksX * dims.chunksZ);
   const complete = (chunk: number): boolean => whole[chunk] === 1;
   const pack = o.pack ?? farPack();
   const shapes = pieceShapes(reg);
-  const world: { dims: MapDims; hf: Heightfield; structs: StructureStore; far: { cells: FarStore; complete: typeof complete }; city?: CitySource; tops?: BlocksSource } = { dims, hf, structs, far: { cells, complete } };
+  const world: { dims: MapDims; hf: Heightfield; structs: StructureStore; far: { cells: FarStore; lists: GoneStore; complete: typeof complete }; city?: CitySource; tops?: BlocksSource } = { dims, hf, structs, far: { cells, lists, complete } };
   const tops = new HeldTops(dims);
   if (o.tops) {
     // As mapTops bakes them, from the server's store.
@@ -187,7 +192,7 @@ export function cityWorld(options: CityWorldOptions) {
   const r = new BitReader();
   let now = 0;
   return {
-    reg, dims, hf, statics, server, structs, cells, whole, scene, cam, raster, pack, W, H, tops,
+    reg, dims, hf, statics, server, structs, cells, lists, whole, scene, cam, raster, pack, W, H, tops,
     /** Bakes `chunk`'s far cells from the server's store and hands them to the far store, as S_FAR does. */
     send(chunk: number): void {
       const s = new Summary();
@@ -196,6 +201,15 @@ export function cityWorld(options: CityWorldOptions) {
       writeFar(w, chunk, s.far);
       r.reset(w.bytes());
       cells.read(r, dims);
+    },
+    /** Tells which pieces of `chunk` are gone, as S_GONE does: `slots`, or the slots the server's store holds empty. A piece's slot is its place among the chunk's statics. */
+    list(chunk: number, slots?: number[]): void {
+      const t = server.chunks[chunk];
+      const gone = slots ?? [...Array(t?.high ?? 0).keys()].filter((s) => t!.kind[s] === 0);
+      w.reset();
+      writeGone(w, chunk, ++told, Uint16Array.from(gone).sort());
+      r.reset(w.bytes());
+      lists.read(r, dims);
     },
     /** Copies the server's rows of `chunk` into the near store and marks it whole. */
     rows(chunk: number): void {
@@ -216,9 +230,9 @@ export function cityWorld(options: CityWorldOptions) {
     chunkOf(x: number, z: number): number {
       return chunkAt(dims, x, z);
     },
-    /** One frame a sixtieth of a second after the last, drawn by the rasterizer without the ground. */
-    frame(ground = false): FramePacket {
-      scene.now = now += 1000 / 60;
+    /** One frame a sixtieth of a second after the last, or `ms` after it, drawn by the rasterizer without the ground. */
+    frame(ground = false, ms = 1000 / 60): FramePacket {
+      scene.now = now += ms;
       const p = scene.build(cam, null);
       const tiles = p.tileCount;
       if (!ground) p.tileCount = 0;

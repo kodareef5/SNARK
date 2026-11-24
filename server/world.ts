@@ -10,6 +10,7 @@ import { ENTITY_LIMIT, EntityStore, carriageRate } from "../shared/sim/entities.
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
+import type { Buildings } from "../shared/world/buildings.ts";
 import { mapHeightfield, mapNodes, mapTops, parseMap, placeStatics, resolveNodes, writeMap, type MapData, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
 import { OBELISK } from "../shared/world/obelisks.ts";
 import type { TideEyeSite } from "../shared/world/tide-eye.ts";
@@ -32,6 +33,11 @@ export interface ServerWorld extends CollisionWorld {
   readonly mapHash: number;
   /** The map file's statics, which a client holding the file takes chunks from (HELLO_STATICS). Null for a world of no file. */
   statics: MapStatics | null;
+  /**
+   * The map file's buildings (shared/world/buildings.ts): which building a map slot's piece is of, its storey, and the
+   * building's frame, stairs and name. Null for a world of no file, or of a file without them.
+   */
+  buildings: Buildings | null;
   readonly spawn: { readonly x: number; readonly z: number; readonly yaw: number };
   /** Respawn choices for a dead survivor. The first is `spawn`. */
   readonly spawns: readonly { readonly name: string; readonly x: number; readonly z: number; readonly yaw: number }[];
@@ -92,6 +98,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     mapId,
     mapHash,
     statics: null,
+    buildings: null,
     spawn,
     spawns: spawns ?? [{ name: "Spawn", ...spawn }],
     zones,
@@ -136,7 +143,10 @@ export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions =
   const zones = [...(defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn"), ...(map.regions ?? [])];
   const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityMax ?? ENTITY_LIMIT, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones, opts.entityStart);
   placeStatics(map, world.structs, reg);
+  // Without the order the map lists its pieces in: a slot's row is its chunk's first row plus the slot, and what a slot's
+  // piece is of comes from the buildings, by chunk and slot.
   world.statics = map.statics.unordered();
+  world.buildings = map.buildings ?? null;
   world.tideEyes = map.tideEyes ?? [];
   // A plain obelisk is three blocks one on another: one place for the three.
   const places = world.tideEyes.map((site, eye) => ({ x: site.x, z: site.z, eye }));

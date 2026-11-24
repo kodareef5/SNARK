@@ -41,7 +41,9 @@ import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
 import { storeRows } from "./bench/store.ts";
 import { benchTactical } from "./bench/tactical.ts";
+import { benchBreaking } from "./bench/breaking.ts";
 import { benchCensus } from "./bench/census.ts";
+import { benchCollapse } from "./bench/collapse.ts";
 import { benchCity } from "./bench/city.ts";
 import { benchFar } from "./bench/far.ts";
 import { buildCorePack } from "./pack/build.ts";
@@ -626,7 +628,7 @@ const wreck: Rubble[] = [];
   const origin = { x: hx, y: hf.heightAt(hx, hz) + 0.1875, z: hz };
   for (const t of structs.chunks) {
     if (!t) continue;
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) wreck.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 0 });
+    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) wreck.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 0, radius: 0, into: 0, map: 0 });
   }
 
   const build = host.build;
@@ -812,7 +814,7 @@ let siegeChunk = -1;
   // About 6.5 bytes a damaged piece, its health alone. 1,500 pieces a second is far more than a raid does.
   record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 30);
   store.saveChunk = saveChunk;
-  // The chunk is saved whole, 570 KB of it, but a chunk in which only health changes is written a second apart at most.
+  // All that differs in the chunk is written together, and a chunk in which only health changes a second apart at most.
   record("times its chunk was written in those ten seconds", chunkWrites, "", 11);
   record("commit time under it, median", percentile(commitTimes, 0.5), "ms", 4);
   record("commit time under it, 99th percentile (a commit that writes the chunk)", percentile(commitTimes, 0.99), "ms", 10);
@@ -1278,6 +1280,8 @@ benchDamageNumbers(section, record);
 benchShadow(section, record);
 benchTextured(section, record);
 benchDepth(section, record);
+benchBreaking(section, record);
+await benchCollapse(section, record);
 benchTerrain(section, record, hf);
 await benchTextures(section, record);
 // Brotli at 11 over every part is minutes of work on a set of 2 GB and holds no budget, so it runs only when asked for.

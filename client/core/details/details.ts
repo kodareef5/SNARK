@@ -29,6 +29,7 @@ import { LOW } from "../render/atmosphere.ts";
 import type { Camera } from "../render/camera.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_WAKE, MAX_DETAILS, type FramePacket } from "../render/packet.ts";
 import type { RemoteSample } from "../session.ts";
+import { BREAK_NEAR, BREAK_SHARE, breakEffects } from "./breaks.ts";
 import { GROUND_WATER, dustColour, groundAt } from "./ground.ts";
 import { Pool } from "./pool.ts";
 
@@ -76,6 +77,8 @@ interface Waiting {
   /** Sustained emitters already resolved their complete vehicle frame and supporting surface. */
   origin?: { x: number; y: number; z: number; floor: number };
   wash?: { speed: number; side: number; outside: number };
+  /** A break's burst (breakBurst): its colour as a word, or -1 for its effect's own. */
+  broke?: number;
 }
 
 export class Details {
@@ -121,6 +124,9 @@ export class Details {
   private readonly machine = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
   private readonly treeDust: number;
   private readonly nodeColours = new Uint8Array(6);
+  /** The first of the break effects (breaks.ts), which follow the pack's, and how many of their particles are alive. */
+  private readonly breakFirst: number;
+  breaking = 0;
 
   /** `animOf` gives what a species of a kind plays, or null for one not drawn on a rig of its own. */
   constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array, animOf: (kind: number) => CreatureAnim | null, drawnGait: DrawnGait | null = null, drawnPose: ((id: number, kind: number, tick: number) => Solved | null) | null = null) {
@@ -128,9 +134,11 @@ export class Details {
     this.birth = reg.birthScale;
     this.boatKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "boat" ? 1 : 0);
     this.rotorKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "rotor" ? 1 : 0);
-    this.effects = details?.effects ?? [];
+    const effects = details?.effects ?? [];
     this.pictures = details?.pictures ?? [];
-    this.treeDust = this.effects.findIndex(e => e.id.includes("dust") && e.colour !== "body" && e.pass === "blend");
+    this.treeDust = effects.findIndex(e => e.id.includes("dust") && e.colour !== "body" && e.pass === "blend");
+    this.breakFirst = effects.length;
+    this.effects = this.treeDust < 0 ? effects : effects.concat(breakEffects(this.pictures, effects[this.treeDust]!.pictures));
     this.pool = new Pool(MAX_DETAILS);
     this.reg = reg;
     this.animOf = animOf;
@@ -176,6 +184,18 @@ export class Details {
     const effect = this.effects[this.treeDust]!;
     const h: Happening = { occasion: "struck", id, kind: 0, tick, x, y, z, yaw: 0, size, anim: 0, cue: 0, grounded: true, colours: this.nodeColours, fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
     this.waiting.push({ h, answer: { effect, delay: 0, entry: { effect: this.treeDust, from: "ground", at: "now", count: [least, most] } }, due: tick, index: id, origin: { x, y: y + 0.25, z, floor: y } });
+  }
+
+  /**
+   * One part of a break's burst (breaks.ts BREAK_) at a place: `count` particles as its tier has them, so the tier's share
+   * is not taken again, in the colour word `rgb` or, for -1, the effect's own. `tick` seeds it and `due` is when it is made.
+   * They land on `floor`, or on the ground for NaN.
+   */
+  breakBurst(part: number, id: number, x: number, y: number, z: number, floor: number, tick: number, due: number, size: number, count: number, rgb: number): void {
+    if (this.treeDust < 0 || count <= 0 || this.waiting.length >= MOST_WAITING) return;
+    const index = this.breakFirst + part, effect = this.effects[index]!;
+    const h: Happening = { occasion: "struck", id, kind: 0, tick, x, y, z, yaw: 0, size, anim: 0, cue: 0, grounded: true, colours: this.nodeColours, fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
+    this.waiting.push({ h, answer: { effect, delay: 0, entry: { effect: index, from: "ground", at: "now", count: [count, count] } }, due, index: part, origin: { x, y, z, floor }, broke: rgb });
   }
 
   /** What a species of `kind` answers, as it plays `anim`. */
@@ -226,6 +246,9 @@ export class Details {
     const wz = LOW.wind[1] * WIND_SHARE * gust;
     const full = this.pool.count / Math.max(1, tier.details.pool);
     this.pool.step(dt, this.effects, hf, wx, wz, Math.max(0, 1 - full * full));
+    let breaking = 0;
+    for (let i = 0, effect = this.pool.effect, first = this.breakFirst; i < this.pool.count; i++) if (effect[i]! >= first) breaking++;
+    this.breaking = breaking;
     // The bursts whose moment has come, nearest first, as many as a frame makes; the rest wait a frame.
     const due = this.due;
     due.length = 0;
@@ -518,11 +541,15 @@ export class Details {
     const kind = wet ? GROUND_WATER : groundAt(hf, px, w.origin?.floor ?? y, pz);
     if (answer.entry.on && !answer.entry.on.includes(kind)) return 0;
     const colour = this.colour;
-    if (e.colour === "ground" && !dustColour(hf, this.palette, kind, px, pz, colour)) return 0;
+    const broke = w.broke !== undefined, tinted = broke && w.broke! >= 0;
+    if (tinted) { colour[0] = w.broke! & 255; colour[1] = (w.broke! >>> 8) & 255; colour[2] = (w.broke! >>> 16) & 255; }
+    else if (e.colour === "ground" && !dustColour(hf, this.palette, kind, px, pz, colour)) return 0;
     const [least, most] = answer.entry.count ?? e.count;
     let n = least + Math.floor(rng.float() * (most - least + 1));
-    n = n * tier.details.share * Math.min(1, NEAR / Math.max(d, 0.01));
+    n = broke ? n * Math.min(1, BREAK_NEAR / Math.max(d, 0.01)) : n * tier.details.share * Math.min(1, NEAR / Math.max(d, 0.01));
     n = n > 0 ? Math.max(1, Math.round(n)) : 0;
+    // Breaks hold their share of the pool and no more, so a falling street leaves room for everything else.
+    if (broke) n = Math.max(0, Math.min(n, Math.floor(tier.details.pool * BREAK_SHARE) - this.breaking));
     let share = 0;
     if (e.pass === "blend") {
       // How much of the screen the burst covers at its largest, at its distance.
@@ -543,6 +570,7 @@ export class Details {
     for (let k = 0; k < n; k++) {
       const i = pool.count < tier.details.pool ? pool.take() : -1;
       if (i < 0) break;
+      if (broke) this.breaking++;
       // Where it starts and which way it goes: out from the place, and up by the effect's share.
       let sx = 0, sy = 0, sz = 0;
       let dx = ox, dy = oy, dz = oz;
@@ -618,18 +646,18 @@ export class Details {
         pool.grey[i] = Math.round(255 * rng.float());
       }
       const shade = 1 + e.vary * (rng.float() * 2 - 1);
-      pool.colourA[i] = this.paint(e, picture.regions[0]!, h, book, colour, shade);
-      pool.colourB[i] = this.paint(e, picture.regions[1]!, h, book, colour, shade);
+      pool.colourA[i] = this.paint(e, picture.regions[0]!, h, book, colour, shade, tinted);
+      pool.colourB[i] = this.paint(e, picture.regions[1]!, h, book, colour, shade, tinted);
     }
     return e.pass === "blend" ? n * share : 0;
   }
 
-  /** The colour word of a particle's region `region` of the body, the ground's `ground`, or the effect's own, shaded. */
-  private paint(e: DetailEffect, region: number, h: Happening, book: Book, ground: readonly number[], shade: number): number {
+  /** The colour word of a particle's region `region` of the body, the ground's `ground` (a break's own where `tinted`), or the effect's own, shaded. */
+  private paint(e: DetailEffect, region: number, h: Happening, book: Book, ground: readonly number[], shade: number, tinted = false): number {
     let r: number;
     let g: number;
     let b: number;
-    if (e.colour === "ground") { r = ground[0]!; g = ground[1]!; b = ground[2]!; }
+    if (e.colour === "ground" || tinted) { r = ground[0]!; g = ground[1]!; b = ground[2]!; }
     else if (Array.isArray(e.colour)) [r, g, b] = e.colour;
     else {
       const dye = (region >= 0 && h.colours[region]) || book.colour;

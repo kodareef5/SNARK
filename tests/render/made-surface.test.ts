@@ -1,17 +1,20 @@
 // A material made from a recipe as a surface reads it (client/core/render/world-surfaces.ts made) and as it reaches the
-// card: a stream of a byte a vertex on a near chunk's mesh, an instance's last two regions, and the lit program's text.
+// card: a near chunk's piece's state, an instance's last two regions, and the lit program's text.
 import { expect, test } from "bun:test";
 import { SURFACE_NAMES, surfaceIndex } from "../../content/surfaces.ts";
 import { RUIN_FINISHES, ruinKind } from "../../content/ruins.ts";
 import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { NearMaking } from "../../client/core/render/nearcity.ts";
+import { PIECE_KEYS, PIECE_MADE, pieceMade } from "../../client/core/render/pieces.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
-import { MADE_MARK, coatLost, madeFar, madeShift, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { MADE_MARK, SPALL_PALETTE, coatLost, madeFar, madeShift, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TWIN_SLOTS, madeTwin, materialHeight, materialRows } from "../../client/core/texgen/materials.ts";
 import { MADE_FLOATS, materialIndex } from "../../client/core/texgen/layers.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { CityStatics, mergedPart } from "../../shared/world/city.ts";
+import { flatMap } from "../fixtures/map.ts";
+import { nearClient } from "../fixtures/nearclient.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const city = [1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0], rose = [0.8, 0.45, 0.4];
@@ -116,16 +119,16 @@ test("a coat's relief is marked to lie down with lost plaster; a block's joints 
 test("the lit program of a near static reads the made array and the vertex's material; a phone's and low poly's do not", () => {
   for (const name of ["medium", "high", "ultra"] as const) {
     const p = PROGRAMS.flat!(tierOf(name), "bc");
-    expect(p.vertex).toContain("layout(location=15) in uint aMade;");
+    expect(p.vertex).toContain(`vMade = aPiece != 0u ? int((aColor == ${SPALL_PALETTE}u ? 0u : piece.a & ${PIECE_MADE}u)`);
     expect(p.vertex).toContain(`iRegB.x == ${MADE_MARK}u ? int(iRegB.y)`);
-    expect(p.fragment).toContain("worldMade = vMade;");
+    expect(p.fragment).toContain("worldMade = vMade & 31;");
     expect(p.fragment).toContain("fMade[k * 2 - 2]");
     expect(p.fragment).toContain("&& over < 1e5");
     expect(p.defines).toContain("WORLD_WEATHER");
   }
   const touch = { ...tierOf("medium"), finish: "light" as const };
   for (const p of [PROGRAMS.flat!(tierOf("lowpoly"), "bc"), PROGRAMS.flat!(touch, "astc")]) {
-    expect(p.vertex).not.toContain("aMade");
+    expect(p.vertex).not.toContain("vMade");
     expect(p.defines).not.toContain("WORLD_WEATHER");
   }
   // The mark is no colour a vertex or a region can name.
@@ -133,7 +136,7 @@ test("the lit program of a near static reads the made array and the vertex's mat
   expect((SURFACE_NAMES as readonly string[])[plaster]).toBeDefined();
 });
 
-test("a chunk's faces of two materials in one colour stay apart, and its mesh carries a byte a vertex beside its vertices", () => {
+test("a chunk's faces of two materials in one colour stay apart, and each piece's state says its material", () => {
   const reg = coreRegistry(), dims = { chunksX: 1, chunksZ: 1 };
   const kinds = [ruinKind("wall8", "rose"), ruinKind("wall8", "rosestucco"), ruinKind("wall8", "roseblock")];
   const statics = kinds.map((kind, i) => ({ kind, x: 12 + i * 8, y: 2, z: 20, yaw: 0 }));
@@ -145,14 +148,19 @@ test("a chunk's faces of two materials in one colour stay apart, and its mesh ca
   const plain = mergedPart(new CityStatics(dims, statics, reg), 0, { heightAt: () => 0 }, () => new Uint8Array(3), 0.01, 0);
   expect(part.faces).toBeGreaterThan(plain.faces);
   expect(new Set(part.color.subarray(0, part.faces)).size).toBe(new Set(plain.color.subarray(0, plain.faces)).size);
-  const making = new NearMaking(new CityStatics(dims, statics, reg), 0, { heightAt: () => 0 }, new Uint8Array(3).fill(1), () => null, 4, labels);
+  // Its mesh carries a word a vertex, the same for a face's four, whose own key is the face's piece.
+  const making = new NearMaking(new CityStatics(dims, statics, reg), 0, { heightAt: () => 0 }, new Uint8Array(3).fill(1), () => null, 4, labels, true);
   while (!making.done) making.step();
-  const mesh = making.finish();
-  expect(mesh.made!.length).toBe(mesh.faces * 4);
-  for (let f = 0; f < mesh.faces; f++) expect(new Set(mesh.made!.subarray(f * 4, f * 4 + 4)).size).toBe(1);
-  expect([...new Set(mesh.made!)].sort()).toEqual([...made].sort());
-  // A chunk of painted pieces alone has no stream.
-  const painted = new NearMaking(new CityStatics(dims, statics.slice(0, 1), reg), 0, { heightAt: () => 0 }, new Uint8Array(1).fill(1), () => null, 4, labels);
-  while (!painted.done) painted.step();
-  expect(painted.finish().made).toBeNull();
+  const mesh = making.finish(), words = new Uint32Array(mesh.piece.buffer);
+  expect(words.length).toBe(mesh.faces * 4);
+  for (let f = 0; f < mesh.faces; f++) expect(new Set(words.subarray(f * 4, f * 4 + 4)).size).toBe(1);
+  expect([...new Set(Array.from(words.subarray(0, mesh.shown * 4), (w) => w & (PIECE_KEYS - 1)))].sort()).toEqual([0, 1, 2]);
+  // Drawn by a client, each piece's texel holds its material, which the rasterizer reads as the card does.
+  const w = nearClient(flatMap(3, { statics }));
+  w.scene.near!.pieces = Infinity;
+  w.follow(32, 32);
+  const p = w.frame(), row = p.pieceRowOf.get(0)!;
+  expect(row).toBeGreaterThan(0);
+  expect(kinds.map((_, s) => p.pieces[(row * PIECE_KEYS + s) * 4 + 3]! & PIECE_MADE)).toEqual([0, materialIndex("stucco"), materialIndex("block")]);
+  expect(kinds.map((_, s) => pieceMade(p.pieces, p.pieceRows, row * 9, s))).toEqual([0, materialIndex("stucco"), materialIndex("block")]);
 });

@@ -89,7 +89,7 @@ export class Occlusion implements Pass {
     const p = this.packet, h = this.hiding, hf = this.world.hf;
     // The meshes are drawn after: room for each cell of them in view a draw in each range, or no picture.
     let cells = 0;
-    for (let k = 0; k < this.store.later.length; k += 5) for (const v of this.store.batches.get(this.store.later[k]!)!.inView) cells += v;
+    for (let k = 0; k < this.store.later.length; k += 5) for (const v of this.store.batches.get(this.store.later[k]!)!.inView) cells += (v & 1) + (v >> 1);
     if (p.dropped > 0 || p.drawCount + this.put.doubled + 2 * cells > MAX_DRAWS) return;
     const slope = Math.tan(cam.fovY / 2);
     const reach = cam.near * Math.sqrt(1 + slope * slope * (1 + cam.aspect * cam.aspect));

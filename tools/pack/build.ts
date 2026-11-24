@@ -5,7 +5,9 @@ import { HAS_SURFACES, worldSurfaceMeshes } from "../surfaces/build.ts";
 import { HAS_FACADES, facadeMeshes } from "../facade/build.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { breakPaint, type Paint } from "../../content/breaks/leaves.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { RUIN_FINISHES } from "../../content/ruins.ts";
 import type { Def, ShapeBox } from "../../shared/content/defs.ts";
 import { cornerByte } from "../../shared/world/city.ts";
 import { hullOf, hullPoint, type HullDef } from "../../shared/world/convex.ts";
@@ -83,12 +85,14 @@ function eggMesh(): SourceMesh {
 
 /**
  * Boxes and convex parts as one level: each face of a part its corners round it, in a fan. With `cull`, a face whose every
- * corner is in one of the other parts is left out, as a flight's treads hide each other's backs.
+ * corner is in one of the other parts is left out, as a flight's treads hide each other's backs. With `paint`, a broken
+ * form's: a convex part of a colour of its own is drawn in it, and a face that shows the core in the fracture's colour.
  */
-function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[], cull = false): SourceLod {
+function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[], cull = false, paint: Paint | null = null): SourceLod {
   // Each part as its faces, each face its corners round it seen from outside; and its colour, the instance's where it has none.
   const parts: number[][][][] = [];
-  const colour = [...boxes.map((b) => b.color ?? REGION_BASE), ...hulls.map(() => REGION_BASE)];
+  const colour = [...boxes.map((b) => b.color ?? REGION_BASE), ...hulls.map((_, h) => paint?.color[h] || REGION_BASE)];
+  const core = (i: number, f: number): boolean => i >= boxes.length && (((paint?.core[i - boxes.length] ?? 0) >>> f) & 1) === 1;
   for (const b of boxes) {
     const one = boxMesh(b.half, REGION_BASE);
     const at = (v: number): number[] => [0, 1, 2].map((a) => one.positions[v * 3 + a]! + b.at[a]!);
@@ -129,17 +133,17 @@ function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[], cull =
     return edges;
   };
   parts.forEach((faces, i) => {
-    for (const face of faces) {
-      if (cull && parts.some((other, j) => j !== i && face.every((q) => inside(other, q)))) continue;
+    faces.forEach((face, f) => {
+      if (cull && parts.some((other, j) => j !== i && face.every((q) => inside(other, q)))) return;
       const first = positions.length / 3;
       const edges = i < boxes.length ? outer(i, face) : 0;
       face.forEach((q, k) => {
         positions.push(q[0]!, q[1]!, q[2]!);
-        colors.push(colour[i]!);
+        colors.push(core(i, f) ? RUIN_FINISHES.fracture.color : colour[i]!);
         bones.push(i < boxes.length ? cornerByte(k, edges) : 0);
       });
       for (let k = 2; k < face.length; k++) indices.push(first, first + k - 1, first + k);
-    }
+    });
   });
   return { positions: Float32Array.from(positions), colors: Uint8Array.from(colors), indices: Uint32Array.from(indices), bones: Uint8Array.from(bones) };
 }
@@ -166,7 +170,9 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
       // A shape drawn otherwise than it is walked, a flight's treads over its ramp, is drawn as walked at its coarsest level.
       // Its look is the first two, since low poly draws from the second. One whose look has parts of their own colours, a
       // facade module, is its look at every level, as the near city's mesh draws it: walked, its recesses are a flat wall.
-      const look = shape.look ? partsMesh(shape.look.boxes ?? [], shape.look.hulls ?? [], true) : null;
+      // A broken form's skin is its instance's colour, the finish of the piece the map placed; what a cut bared is the core.
+      const paint = d.breaks && d.breaks.form !== "whole" ? breakPaint(d.breaks.set, d.breaks.form, d.breaks.variant ?? 0) : null;
+      const look = shape.look ? partsMesh(shape.look.boxes ?? [], shape.look.hulls ?? [], true, paint) : null;
       meshes.push({ id: d.id, lods: look ? [look, look, shape.look!.boxes?.some((b) => b.color) ? look : walked] : [walked] });
       continue;
     }

@@ -8,6 +8,7 @@
 import type { PackMaterial } from "../../../shared/pack/pack.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
+import { WEAR_PANES_OUT, WEAR_STAGE } from "./pieces.ts";
 
 type Numbers = ArrayLike<number>;
 type Out = Float64Array | number[];
@@ -293,6 +294,15 @@ function farSide(out: Out, gx: number, rx: number, ry: number, rz: number, over:
   return clamp((tall - hy) / 1.5);
 }
 
+/**
+ * How a wall's cracks and scars grow with its piece's stage (shared/world/breaking.ts: whole, worn, cracked, failing): the
+ * share of its corners that crack, how many times as long and as wide a crack runs and how far across the face it may,
+ * and the share of its slots with a burst of scars. A whole piece's are what every wall has.
+ */
+export const CRACK_SHARE = [0.35, 0.7, 1.01, 1.01], CRACK_LONG = [1, 1.6, 2.6, 3.4], CRACK_REACH = [0.7, 0.7, 1.1, 1.4], CRACK_WIDE = [1, 1.5, 2.5, 3.5], SCAR_SHARE = [0.07, 0.35, 0.6, 0.85];
+/** What a pane's recess reflects where its piece's panes are out and the tier draws no room. */
+const PANES_OUT_ALBEDO = 0.006;
+
 /** What glass of each kind is dressed with, by its seed's state from 0 to 1: broken below the first, boarded below the second, a blind above the third, a curtain above the fourth (homes only). */
 const DRESS: Readonly<Record<string, readonly number[]>> = { curtain: [0.12, 0.2, 0.6, 2], display: [0.1, 0.32, 0.9, 2], strip: [0.1, 0.25, 0.85, 2] };
 const DRESS_HOMES = [0.1, 0.18, 0.82, 0.64];
@@ -323,7 +333,7 @@ const glassRoom = new Float64Array(3), far = new Float64Array(3), frame = new Fl
  * `footprint` metres a pixel at `dist` metres from the eye; `tier` what the tier draws. `o` holds the world finish's
  * albedo, occlusion, roughness and metal, and normal as it comes, which a part keeps where its element does not reach.
  */
-export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, w: number, h: number, n: Numbers, v: Numbers, corner: Numbers, right: Numbers, px: number, pz: number, height: number, over: number, footprint: number, dist: number, tier: FacadeTier, sample: FacadeSample): void {
+export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, w: number, h: number, n: Numbers, v: Numbers, corner: Numbers, right: Numbers, px: number, pz: number, height: number, over: number, footprint: number, dist: number, tier: FacadeTier, sample: FacadeSample, wear = 0): void {
   const d = KINDS[kind]!, r = d.room;
   const rl = Math.hypot(n[2]!, n[0]!) || 1, rx = n[2]! / rl, rz = -n[0]! / rl;
   const vx = v[0]! * rx + v[2]! * rz, vy = v[1]!, vz = Math.max(v[0]! * n[0]! + v[1]! * n[1]! + v[2]! * n[2]!, 0.02);
@@ -363,8 +373,10 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
   o.normal[2] = n[2]! * bz + rz * bump[0]!;
   const film = [base[0]!, base[1]!, base[2]!], rough = packed[1]!;
   // Glass with no room behind it, or on a tier without rooms, and a hole through a shutter, are a dark recess.
-  let ga = 0.02, gr = r ? 0.5 : rough, share = 0, filmed = 0, shard = 1;
-  const dressed = facadeDress(kind, seed);
+  // A piece whose panes are out (pieces.ts WEAR_PANES_OUT) shows its glass broken whatever its seed dressed it with, and with no room a darker recess.
+  const out = (wear & WEAR_PANES_OUT) !== 0;
+  let ga = out ? PANES_OUT_ALBEDO : 0.02, gr = out ? 1 : r ? 0.5 : rough, share = 0, filmed = 0, shard = 1;
+  const dressed = out ? "broken" : facadeDress(kind, seed);
   const broken = dressed === "broken", boards = dressed === "boards", blind = dressed === "blind", drape = dressed === "drape";
   if (r && a < 1 && tier.reflect) {
     const flip = fract(seed * 11.3) < 0.5;
@@ -578,8 +590,9 @@ function markAt(m: number, x: number, y: number, x0: number, y0: number, dw: num
  * one of the marks' atlas: a poster, a tag or a large piece low on a wall, a tag or a piece on a shutter, a level's number
  * and a striped foot on a pier. The face, its corner, its right, its place and the rest are as facadeSurface takes them.
  */
-export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w: number, h: number, edges: number, n: Numbers, corner: Numbers, right: Numbers, px: number, pz: number, height: number, over: number, flood: number, footprint: number, tier: FacadeTier, sample: FacadeSample): void {
+export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w: number, h: number, edges: number, n: Numbers, corner: Numbers, right: Numbers, px: number, pz: number, height: number, over: number, flood: number, footprint: number, tier: FacadeTier, sample: FacadeSample, wear = 0): void {
   if (w < 0.3 || h < 0.3) return;
+  const stage = wear & WEAR_STAGE;
   const rl = Math.hypot(n[2]!, n[0]!) || 1, rx = n[2]! / rl, rz = -n[0]! / rl;
   const seed = facadeSeed(px, pz, corner[0]! + right[0]! * w * 0.5, height - y + h * 0.5, corner[2]! + right[2]! * w * 0.5);
   const fp = Math.max(footprint, 1e-4);
@@ -601,8 +614,9 @@ export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w:
   if (Math.min(w, h) >= 0.4) {
     for (let c = 0; c < 4; c++) {
       const right1 = c & 1, top = c >> 1;
-      if ((edges & ((right1 ? 2 : 1) | (top ? 8 : 4))) === 0 || fract(seed * (7.13 + c * 3.31)) >= 0.35) continue;
-      const length = Math.min(0.3 + 0.7 * fract(seed * (5.1 + c * 1.7)), 0.7 * Math.min(w, h));
+      // A whole piece cracks from some of its corners at an outer edge; a worn one from more, and a cracked one from each, farther and wider.
+      if ((stage < 2 && (edges & ((right1 ? 2 : 1) | (top ? 8 : 4))) === 0) || fract(seed * (7.13 + c * 3.31)) >= CRACK_SHARE[stage]!) continue;
+      const length = Math.min((0.3 + 0.7 * fract(seed * (5.1 + c * 1.7))) * CRACK_LONG[stage]!, CRACK_REACH[stage]! * Math.min(w, h));
       let ax = right1 ? w : 0, ay = top ? h : 0;
       if (Math.hypot(x - ax, y - ay) > length + 0.05) continue;
       const sx = right1 ? -1 : 1, sy = top ? -1 : 1;
@@ -612,7 +626,7 @@ export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w:
         const bx = ax + sx * Math.cos(angle) * length / 3, by = ay + sy * Math.sin(angle) * length / 3;
         const ex = bx - ax, ey = by - ay, t = clamp(((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey));
         const qx = x - ax - ex * t, qy = y - ay - ey * t, d = Math.hypot(qx, qy);
-        const half = 0.0012 + 0.0028 * (1 - (along + t * length / 3) / length);
+        const half = (0.0012 + 0.0028 * (1 - (along + t * length / 3) / length)) * CRACK_WIDE[stage]!;
         const cover = clamp((half + 0.5 * fp - d) / fp) * Math.min(1, (2 * half) / fp);
         if (cover > crack) {
           crack = cover;
@@ -646,7 +660,7 @@ export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w:
   }
   // A burst of bullet scars, a dark hole in a pale broken ring, low enough to have been aimed at someone.
   let scar = 0, sxn = 0, syn = 0;
-  if (kind === KIND.none && fract(slot * 11.9) < 0.07 && sx1 - sx0 >= 1.4 && sy1 - sy0 >= 1.4) {
+  if (kind === KIND.none && fract(slot * 11.9) < SCAR_SHARE[stage]! && sx1 - sx0 >= 1.4 && sy1 - sy0 >= 1.4) {
     const cx = sx0 + 0.7 + fract(slot * 4.7) * (sx1 - sx0 - 1.4), cy = clamp(0.8 + 1.6 * fract(slot * 6.1) - (over - y), sy0 + 0.7, sy1 - 0.7);
     if (Math.hypot(x - cx, y - cy) < 0.65) {
       for (let k = 0; k < 10; k++) {
@@ -848,7 +862,7 @@ float facadeShopGlass(vec2 g, float w, float seed, float footprint) {
   fDecal = kept;
   return cover;
 }
-int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room, inout vec4 far, int kind, float x, float y, float w, float h, vec3 corner, vec3 right, vec3 nn, vec3 side, vec2 place, vec3 rel, float footprint, float height, float over) {
+int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room, inout vec4 far, int kind, float x, float y, float w, float h, vec3 corner, vec3 right, vec3 nn, vec3 side, vec2 place, vec3 rel, float footprint, float height, float over, int wear) {
   vec3 v = -normalize(rel);
   float dist = length(rel);
   vec3 view = vec3(dot(v, side), v.y, max(dot(v, nn), 0.02));
@@ -875,11 +889,12 @@ int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room,
   float rough = fPacked.g;
   float bz = sqrt(max(0.0, 1.0 - dot(fBump, fBump)));
   vec3 bent = nn * bz + side * fBump.x + vec3(0.0, fBump.y, 0.0);
-  float ga = 0.02, gr = glassy ? 0.5 : rough, share = 0.0, shard = 1.0;
+  bool out1 = (wear & ${WEAR_PANES_OUT}) != 0;
+  float ga = out1 ? ${fl(PANES_OUT_ALBEDO)} : 0.02, gr = out1 ? 1.0 : glassy ? 0.5 : rough, share = 0.0, shard = 1.0;
   int sharp = (kind == ${KIND.sign} || kind == ${KIND.shutter}) && a > 0.5 ? 3 : 1;
   vec4 dress = KW[kind];
   float state = fract(seed * 5.77);
-  bool broken = state < dress.x, boards = !broken && state < dress.y, blind = !broken && !boards && state > dress.z, drape = !broken && !boards && !blind && state > dress.w;
+  bool broken = out1 || state < dress.x, boards = !broken && state < dress.y, blind = !broken && !boards && state > dress.z, drape = !broken && !boards && !blind && state > dress.w;
 #ifdef FACADE_ROOMS
   vec3 far3 = vec3(0.0);
   if (glassy && a < 1.0) {
@@ -962,8 +977,14 @@ float facadeMark(int m, float x, float y, float x0, float y0, float dw, float dh
   fDecal = mix(fade < 1.0 ? textureLod(uFacadeMarks, at, l) : vec4(0.0), MM[m], fade);
   return fDecal.a;
 }
-void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, float x, float y, float w, float h, uint edges, vec3 nn, vec3 side, vec3 corner, vec3 right, vec2 place, float height, float over, float footprint) {
+const float CRACK_SHARE[4] = float[4](${CRACK_SHARE.map(fl).join(", ")});
+const float CRACK_LONG[4] = float[4](${CRACK_LONG.map(fl).join(", ")});
+const float CRACK_REACH[4] = float[4](${CRACK_REACH.map(fl).join(", ")});
+const float CRACK_WIDE[4] = float[4](${CRACK_WIDE.map(fl).join(", ")});
+const float SCAR_SHARE[4] = float[4](${SCAR_SHARE.map(fl).join(", ")});
+void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, float x, float y, float w, float h, uint edges, vec3 nn, vec3 side, vec3 corner, vec3 right, vec2 place, float height, float over, float footprint, int wear) {
   if (w < 0.3 || h < 0.3) return;
+  int stage = wear & ${WEAR_STAGE};
   float seed = facadeSeed(place, vec3(corner.x + right.x * w * 0.5, height - y + h * 0.5, corner.z + right.z * w * 0.5));
   float fp = max(footprint, 1e-4), tx = 0.0, ty = 0.0;
   if (fFacade.x > ${fl(NO_FLOOD)}) {
@@ -981,8 +1002,8 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
     for (int c = 0; c < 4; c++) {
       int right1 = c & 1, top = c >> 1;
       uint want = uint((right1 == 1 ? 2 : 1) | (top == 1 ? 8 : 4));
-      if ((edges & want) == 0u || fract(seed * (7.13 + float(c) * 3.31)) >= 0.35) continue;
-      float length1 = min(0.3 + 0.7 * fract(seed * (5.1 + float(c) * 1.7)), 0.7 * min(w, h));
+      if ((stage < 2 && (edges & want) == 0u) || fract(seed * (7.13 + float(c) * 3.31)) >= CRACK_SHARE[stage]) continue;
+      float length1 = min((0.3 + 0.7 * fract(seed * (5.1 + float(c) * 1.7))) * CRACK_LONG[stage], CRACK_REACH[stage] * min(w, h));
       vec2 a = vec2(right1 == 1 ? w : 0.0, top == 1 ? h : 0.0);
       if (length(vec2(x, y) - a) > length1 + 0.05) continue;
       vec2 sgn = vec2(right1 == 1 ? -1.0 : 1.0, top == 1 ? -1.0 : 1.0);
@@ -994,7 +1015,7 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
         float t = clamp(dot(vec2(x, y) - a, e) / dot(e, e), 0.0, 1.0);
         vec2 q = vec2(x, y) - a - e * t;
         float d = length(q);
-        float half1 = 0.0012 + 0.0028 * (1.0 - (along + t * length1 / 3.0) / length1);
+        float half1 = (0.0012 + 0.0028 * (1.0 - (along + t * length1 / 3.0) / length1)) * CRACK_WIDE[stage];
         float cover = clamp((half1 + 0.5 * fp - d) / fp, 0.0, 1.0) * min(1.0, 2.0 * half1 / fp);
         if (cover > crack) {
           crack = cover;
@@ -1025,7 +1046,7 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
   }
   int scar = 0;
   float sxn = 0.0, syn = 0.0;
-  if (kind == 0 && fract(slot * 11.9) < 0.07 && sx1 - sx0 >= 1.4 && sy1 - sy0 >= 1.4) {
+  if (kind == 0 && fract(slot * 11.9) < SCAR_SHARE[stage] && sx1 - sx0 >= 1.4 && sy1 - sy0 >= 1.4) {
     float cx = sx0 + 0.7 + fract(slot * 4.7) * (sx1 - sx0 - 1.4), cy = clamp(0.8 + 1.6 * fract(slot * 6.1) - (over - y), sy0 + 0.7, sy1 - 0.7);
     if (length(vec2(x - cx, y - cy)) < 0.65) {
       for (int k = 0; k < 10; k++) {
@@ -1078,7 +1099,7 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
   vec2 bent = vec2(tx, ty) * 0.6 * crack + vec2(px2, py2) * 0.35 + (scar > 0 ? vec2(sxn, syn) : vec2(0.0));
   if (bent.x != 0.0 || bent.y != 0.0) n = normalize(n + side * bent.x + vec3(0.0, bent.y, 0.0));
 }
-int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out vec4 far, out vec4 roomAt, int colour, vec2 face, vec2 fx, vec2 fy, vec3 own, vec3 ox, vec3 oy, vec2 place, uint edges, vec3 rel, vec3 dpx, vec3 dpy, vec3 geometric, float height, float over) {
+int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out vec4 far, out vec4 roomAt, int colour, vec2 face, vec2 fx, vec2 fy, vec3 own, vec3 ox, vec3 oy, vec2 place, uint edges, vec3 rel, vec3 dpx, vec3 dpy, vec3 geometric, float height, float over, int wear) {
   room = vec3(0.0);
   far = vec4(0.0);
   roomAt = vec4(rel, over);
@@ -1106,8 +1127,8 @@ int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out v
   float x = face.x * w, y = face.y * h, footprint = max(length(dpx), length(dpy));
   roomAt = vec4(rel + vec3(0.0, h - y, 0.0) + vec3(nn.x, 0.0, nn.z) * ${fl(ROOM_OUT)}, over + h - y);
   vec3 corner = own - qu * face.x - qv * face.y, right = qu / max(length(qu), 1e-6);
-  int part = kind == 0 ? 0 : facadePart(albedo, orm, n, room, far, kind, x, y, w, h, corner, right, nn, side, place, rel, footprint, height, over);
-  if (kind == 0 || kind == ${KIND.shutter} || kind == ${KIND.door} || kind == ${KIND.pier}) facadeMarks(albedo, orm, n, kind, x, y, w, h, edges, nn, side, corner, right, place, height, over, footprint);
+  int part = kind == 0 ? 0 : facadePart(albedo, orm, n, room, far, kind, x, y, w, h, corner, right, nn, side, place, rel, footprint, height, over, wear);
+  if (kind == 0 || kind == ${KIND.shutter} || kind == ${KIND.door} || kind == ${KIND.pier}) facadeMarks(albedo, orm, n, kind, x, y, w, h, edges, nn, side, corner, right, place, height, over, footprint, wear);
   return part;
 }
 #endif

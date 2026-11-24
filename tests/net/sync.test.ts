@@ -54,18 +54,18 @@ test("a client with the map's statics is sent only the slots that differ from th
   const statics = h.world.statics!;
   const held = (c: number): number => statics.first[c + 1]! - statics.first[c]!;
   // The proving ground's busiest chunk of statics, within sight of the spawn: one taken away, one hurt, another taken
-  // and a wall set down in its slot.
+  // and a wall set down, in a slot past the map's.
   let chunk = 0;
   for (let c = 0; c < structs.chunks.length; c++) if (held(c) > held(chunk)) chunk = c;
   const t = structs.chunks[chunk]!;
   const hurt = [...Array(held(chunk)).keys()].find((s) => h.reg.maxHp[t.kind[s]!]! > 100)!;
   const gone = (hurt + 1) % held(chunk);
-  const reused = (hurt + 2) % held(chunk);
+  const other = (hurt + 2) % held(chunk);
   expect(structs.damage(chunk * 65536 + hurt, 50)).toBeGreaterThan(0);
   structs.remove(chunk * 65536 + gone);
-  structs.remove(chunk * 65536 + reused);
+  structs.remove(chunk * 65536 + other);
   const wall = h.reg.index.get("core:wall")!;
-  expect(structs.add(wall, chunkCx(h.world.dims, chunk) * CHUNK_SIZE + 9, 300, chunkCz(h.world.dims, chunk) * CHUNK_SIZE + 9, 0, 7, 100)).toBe(chunk * 65536 + reused);
+  expect(structs.add(wall, chunkCx(h.world.dims, chunk) * CHUNK_SIZE + 9, 300, chunkCz(h.world.dims, chunk) * CHUNK_SIZE + 9, 0, 7, 100)).toBe(chunk * 65536 + held(chunk));
   const ada = h.join("ada");
   const bob = h.join("bob", {}, { statics: false });
   const bytes = [0, 0];
@@ -82,7 +82,7 @@ test("a client with the map's statics is sent only the slots that differ from th
   const chunks = whole(ada);
   expect(chunks.includes(chunk) && chunks.filter((c) => held(c) > 0).length > 1).toBe(true);
   expect([differ(structs, ada.world!.structs, chunks), differ(structs, bob.world!.structs, whole(bob))]).toEqual([0, 0]);
-  // Bob is sent every static as a row; Ada the chunks' headers, about 15 bytes each, and the three slots that changed.
+  // Bob is sent every static as a row; Ada the chunks' headers, about 15 bytes each, and the four slots that changed.
   expect(bytes[0]! * 5).toBeLessThan(bytes[1]!);
   // A blow lands on the hurt one: its health alone, with the message's header, is a dozen bytes or so.
   const was = bytes[0]!;
@@ -163,4 +163,71 @@ test("a near window of the map's statics is whole within a tick of the body's ar
   // Once what was sent has landed, each holds the window as the server does.
   h.run(1000);
   expect([differ(structs, ada.world!.structs, window), differ(structs, bob.world!.structs, window)]).toEqual([0, 0]);
+});
+
+test("a changed chunk cut over several messages lands whole on a map-holding client", () => {
+  // 600 crates in one chunk: every fifth gone, every seventh hurt, every eleventh another kind, and 40 pieces built over them.
+  const crates: MapStatic[] = [];
+  for (let k = 0; k < 600; k++) crates.push({ kind: "core:crate", x: 4 * CHUNK_SIZE + 4 + (k % 8) * 7, y: 40 + Math.floor(k / 64) * 3, z: 4 * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 7, yaw: 0 });
+  const h = new Harness({ chunkSlotsPerTick: 16 }, 1, 30, { map: writeMap(flatMap(9, { statics: crates })) });
+  const structs = h.world.structs;
+  const chunk = 4 * 9 + 4;
+  const wall = h.reg.index.get("core:wall")!;
+  for (let s = 0; s < 600; s++) {
+    if (s % 5 === 0) structs.remove(chunk * 65536 + s);
+    else if (s % 7 === 0) structs.damage(chunk * 65536 + s, 1 + (s % 3));
+    else if (s % 11 === 0) structs.swap(chunk * 65536 + s, wall);
+  }
+  for (let i = 0; i < 40; i++) structs.add(wall, 4 * CHUNK_SIZE + 5 + i, 300, 4 * CHUNK_SIZE + 30, 0, 7, 100);
+  for (let i = 0; i < 40; i += 4) structs.remove(chunk * 65536 + 600 + i);
+  const t = structs.chunks[chunk]!;
+  const ada = h.join("ada");
+  let messages = 0;
+  const end = h.ends[0]!;
+  const on = end.onMessage!;
+  end.onMessage = (ch, d) => {
+    if (d[0] === S_CHUNK && (d[1]! | (d[2]! << 8)) === chunk) messages++;
+    on(ch, d);
+  };
+  h.run(3000);
+  // 226 changed map slots and 40 slots past them, 16 rows a message.
+  expect([t.changed, structs.changedSlots(chunk).length, messages]).toEqual([226, 226, 17]);
+  expect([h.client(ada)!.known[chunk], differ(structs, ada.world!.structs, [chunk]), ada.world!.structs.chunks[chunk]!.live]).toEqual([t.version, 0, t.live]);
+});
+
+test("a client holding the map is sent no full row for a damaged map slot", () => {
+  const crates: MapStatic[] = [];
+  for (let k = 0; k < 600; k++) crates.push({ kind: k % 2 === 0 ? "core:crate" : "core:wall", x: 4 * CHUNK_SIZE + 4 + (k % 8) * 7, y: 40 + Math.floor(k / 64) * 3, z: 4 * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 7, yaw: (k * 4096) & 0xffff });
+  const chunk = 4 * 9 + 4;
+  /** The bytes of the chunk's messages to a client that joins after `change`, and what it then holds that the server does not. */
+  const join = (change: (structs: StructureStore) => void): number[] => {
+    const h = new Harness({}, 1, 30, { map: writeMap(flatMap(9, { statics: crates })) });
+    change(h.world.structs);
+    const ada = h.join("ada");
+    let bytes = 0;
+    const end = h.ends[0]!;
+    const on = end.onMessage!;
+    end.onMessage = (ch, d) => {
+      if (d[0] === S_CHUNK && (d[1]! | (d[2]! << 8)) === chunk) bytes += d.length;
+      on(ch, d);
+    };
+    h.run(2000);
+    return [bytes, differ(h.world.structs, ada.world!.structs, [chunk]), h.client(ada)!.known[chunk]! - h.world.structs.chunks[chunk]!.version];
+  };
+  const [header] = join(() => {});
+  // 100 pieces hurt, each to a health of its own: its slot, that it stands where the map has it, nobody's, and the health.
+  const [hurt, wrong, behind] = join((structs) => [...Array(100).keys()].forEach((i) => structs.damage(chunk * 65536 + i * 5, 1 + (i % 7))));
+  expect([wrong, behind]).toEqual([0, 0]);
+  // That is 5.5 bytes a piece. A full row is its kind, place, height and turn besides, over 10.
+  expect((hurt! - header!) / 100).toBeLessThanOrEqual(6);
+  // A piece of another kind in the slot is still told whole, and a slot emptied as a row that says only that.
+  const [mixed, off] = join((structs) => {
+    const wall = structs.mapKind(chunk, 1);
+    for (let i = 0; i < 100; i++) {
+      if (i % 3 === 0) structs.swap(chunk * 65536 + i * 4, wall);
+      else if (i % 3 === 1) structs.remove(chunk * 65536 + i * 4);
+      else structs.damage(chunk * 65536 + i * 4, 2);
+    }
+  });
+  expect([off, mixed! > header!]).toEqual([0, true]);
 });

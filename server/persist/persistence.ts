@@ -26,8 +26,9 @@ export interface PersistenceOptions {
 }
 
 /**
- * One second. A chunk in which only health changed is written this far apart at most, because a chunk is saved whole and a
- * base under fire changes health every tick. A crash can give back a second of damage. It never gives back a piece.
+ * One second. A chunk in which only health changed is written this far apart at most, because all that differs in a chunk
+ * is written together and a base under fire changes health every tick. A crash can give back a second of damage. It never
+ * gives back a piece.
  */
 const HEALTH_TICKS = TICK_RATE;
 /** Commits between journal prunings. */
@@ -337,16 +338,13 @@ export class Persistence {
 
     try {
       store.transaction(() => {
-        for (const chunk of this.dirtyChunks) {
-          const t = world.structs.chunks[chunk];
-          if (t) store.saveChunk(chunk, t);
-        }
+        // A chunk's row is what differs from the map, and a chunk that stands as placed again loses its row.
+        for (const chunk of this.dirtyChunks) store.saveChunk(chunk, world.structs);
         this.hurtWritten.length = 0;
         for (const chunk of this.hurtChunks) {
           if (this.dirtyChunks.has(chunk)) continue;
           if (!last && world.tick - (this.chunkAt.get(chunk) ?? -HEALTH_TICKS) < HEALTH_TICKS) continue;
-          const t = world.structs.chunks[chunk];
-          if (t) store.saveChunk(chunk, t);
+          store.saveChunk(chunk, world.structs);
           this.hurtWritten.push(chunk);
         }
         for (const pid of records.dirty) {

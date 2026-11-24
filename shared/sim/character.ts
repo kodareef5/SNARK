@@ -850,7 +850,7 @@ function touchAt(uy: number, store: StructureStore | null, ref: number, ny: numb
   if (uy < -LEVEL) return h - r * (1 + uy);
   if (!store) return h * 0.5;
   const t = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff, kind = t.kind[slot]!;
-  const low = Math.max(0, t.y[slot]! + store.low[kind]! - ny), high = Math.min(h, t.y[slot]! + store.high[kind]! - ny);
+  const low = Math.max(0, t.y[slot]! + store.low[kind]! - ny), high = Math.min(h, t.y[slot]! + store.top[kind]! - ny);
   return high > low ? (low + high) * 0.5 : h * 0.5;
 }
 /** The upward share of a way out under which it is level, through a capsule's side. */

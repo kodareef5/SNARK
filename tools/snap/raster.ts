@@ -18,7 +18,7 @@ import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFa
 import { texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherTwin } from "../../client/core/texgen/weather.ts";
 import { TWIN_SLOTS, madeTwin } from "../../client/core/texgen/materials.ts";
-import { MADE_MARK, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { MADE_MARK, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -35,6 +35,7 @@ import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyope
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
+import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
 import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
@@ -69,8 +70,8 @@ interface DecodedLod {
   indices: Uint32Array;
   /** Read from the pack, where the level is drawn with materials. A manifest's rasterizer has it from an upload of its own. */
   surface?: DecodedSurface;
-  /** A near chunk's material made from a recipe, a byte a vertex (AssetUpload `made`), where any face wears one. */
-  made?: Uint8Array;
+  /** A near chunk's mesh's word a vertex, its face's piece and holder (AssetUpload `piece`, render/pieces.ts). */
+  piece?: Uint32Array;
 }
 
 /** What a level drawn with materials has for each vertex besides, and on a body the skin entries. */
@@ -315,10 +316,13 @@ const NOTHING = [0, 0, 0];
  */
 function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null, roomOpen: RoomOpen | null = null, fixture = 0, made = 0): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
-  for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
+  // A near chunk's piece's wear rides over its material (pieces.ts): it is darker by its stage, as PIECE_SHADE has it.
+  const wear = made >> WEAR_OVER_MADE, dim = wearShade(wear);
+  made &= (1 << WEAR_OVER_MADE) - 1;
+  for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * dim);
   // Where no facade's part is drawn, a window is its bay's mean (facade.ts facadeFarVertex).
   const bay = !ground && facade && facade[0] === FACADE_FAR && FACADE_TIERS[p.tier.name] ? facadeFarColour(colorIndex) : null;
-  if (bay) for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(bay[c]!);
+  if (bay) for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(bay[c]! * dim);
   normal[0] = smooth ? smooth[0]! : nx;
   normal[1] = smooth ? smooth[1]! : ny;
   normal[2] = smooth ? smooth[2]! : nz;
@@ -366,11 +370,24 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     opened[1] = rough;
     lit(light,albedo,opened,normal,eye,p.frame,mirrored);
   } else if (sample) {
-    const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light", index = surfaceIndex(colorIndex, ground, city);
+    const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light";
+    let index = surfaceIndex(colorIndex, ground, city);
+    // Past worn, a wall is lost to its core in patches, where the program weathers, as LIT has it.
+    let rim = 0;
+    if ((wear & WEAR_STAGE) >= 2 && !ground && !touch && weather && weather[3]! >= 0) {
+      const lost = spalled(rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, wear & WEAR_STAGE);
+      rim = lost[1]!;
+      if (lost[0]! > 0.5) {
+        albedo.set(SPALL_LINEAR);
+        index = SPALL_SURFACE;
+        made = 0;
+      }
+    }
     let asphalt = ground && index === DRY_ASPHALT.surface ? 1 : 0;
     // A material made from a recipe is drawn where the tier makes its layers, on what weathers.
     const side = ground || touch || !weather || weather[3]! < 0 || made === 0 ? 0 : texgenSide(p.tier, p.tier.finishes);
     const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly, side > 0 ? made : 0, TWIN_SLOTS, side > 0 ? madeTwin(side) : null);
+    if (rim > 0) for (let c = 0; c < 3; c++) albedo[c]! *= 1 - SPALL_RIM * rim;
     // Asphalt's and sand's wear, as LIT_TERRAIN_FRAGMENT has it where the tier reads the finishes in full: it reads the
     // packed array's masks, so it comes up with them as the weathering does.
     const off = p.frame[FRAME.roadOff]! % 4, road = off % 2 < 0.5, walks = off < 1.5;
@@ -436,7 +453,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     facadeIO.coated = false;
     facadeIO.room.fill(0);
     facadeIO.farShare = 0;
-    if (facade && facade[0]! >= 0 && facadeSample && tier && p.frame[FRAME.facade + 1]! > 0.5) glass = facadeFlat(facade, nx, ny, nz, rx, ry, rz, dist, over, p.frame[FRAME.facade]!, tier, facadeSample);
+    if (facade && facade[0]! >= 0 && facadeSample && tier && p.frame[FRAME.facade + 1]! > 0.5) glass = facadeFlat(facade, nx, ny, nz, rx, ry, rz, dist, over, p.frame[FRAME.facade]!, tier, facadeSample, wear);
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
     const sharp = glass || worldSharp(worldOrm[1]!);
@@ -481,7 +498,7 @@ const facadeSky = new Float64Array(3), facadeLight = new Float64Array(3);
  * A pixel's facade part and marks into the scratch litFlat lights (albedo, worldOrm, normal), from `facade`, the face as
  * Rasterizer.facadeAt keeps it. Returns whether the pixel mirrors the sky as a picture, as glass does.
  */
-function facadeFlat(facade: ArrayLike<number>, nx: number, ny: number, nz: number, rx: number, ry: number, rz: number, dist: number, over: number, flood: number, tier: FacadeTier, sample: FacadeSample): boolean {
+function facadeFlat(facade: ArrayLike<number>, nx: number, ny: number, nz: number, rx: number, ry: number, rz: number, dist: number, over: number, flood: number, tier: FacadeTier, sample: FacadeSample, wear = 0): boolean {
   const kind = facade[0]!, x = facade[1]!, y = facade[2]!, w = facade[3]!, h = facade[4]!, footprint = facade[13]!;
   const corner = [facade[6]!, facade[7]!, facade[8]!], right = [facade[9]!, 0, facade[10]!], height = ry + facade[14]!;
   facadeIO.albedo.set(albedo);
@@ -489,8 +506,8 @@ function facadeFlat(facade: ArrayLike<number>, nx: number, ny: number, nz: numbe
   facadeIO.normal.set(normal);
   facadeIO.sharp = false;
   facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
-  if (kind > 0) facadeSurface(facadeIO, kind, x, y, w, h, facadeSky, eye, corner, right, facade[11]!, facade[12]!, height, over, footprint, dist, tier, sample);
-  if (kind === KIND.none || kind === KIND.shutter || kind === KIND.door || kind === KIND.pier) facadeMarks(facadeIO, kind, x, y, w, h, facade[5]!, facadeSky, corner, right, facade[11]!, facade[12]!, height, over, flood, footprint, tier, sample);
+  if (kind > 0) facadeSurface(facadeIO, kind, x, y, w, h, facadeSky, eye, corner, right, facade[11]!, facade[12]!, height, over, footprint, dist, tier, sample, wear);
+  if (kind === KIND.none || kind === KIND.shutter || kind === KIND.door || kind === KIND.pier) facadeMarks(facadeIO, kind, x, y, w, h, facade[5]!, facadeSky, corner, right, facade[11]!, facade[12]!, height, over, flood, footprint, tier, sample, wear);
   albedo.set(facadeIO.albedo);
   worldOrm.set(facadeIO.orm);
   normal.set(facadeIO.normal);
@@ -826,6 +843,8 @@ export class Rasterizer {
       // In a visor's heat view a body shows as hot as its kind (D1081); the ground and the rest by their light.
       heatOfShown((packet.drawFlags[d]! >>> DRAW_HEAT_SHIFT) & 3);
       this.draw(packet, d);
+      // A piece's material and wear are its own draw's.
+      this.made = 0;
       heatOfShown(0);
     }
     while (step < STEP_FAR_SEE) this.step(packet, ++step);
@@ -1241,10 +1260,15 @@ export class Rasterizer {
       const ranged = (p.drawFlags[d]! & DRAW_RANGED) !== 0;
       const [from, end] = ranged ? [p.drawFirstIndex[d]!, p.drawFirstIndex[d]! + p.drawIndexCount[d]!] : [0, lod.indices.length];
       if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
+      // A near chunk's mesh is drawn by its pieces' states: the nine rows its chunk is given (pieces.ts).
+      const rows = (p.pieceRowOf.get(p.drawBuffer[d]!) ?? 0) * 9;
       for (let t = from; t < end; t += 3) {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
-        this.made = lod.made ? lod.made[last]! : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
+        const word = lod.piece ? lod.piece[last]! : 0;
+        if (word !== 0 && !pieceShown(p.pieces, p.pieceRows, rows, word)) continue;
+        // As ownVertex's vMade: a near chunk's piece's material, but on a face in the core's colour, and over it its wear.
+        this.made = word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.edgeFlags = this.onStatic ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
@@ -1532,7 +1556,7 @@ export class Rasterizer {
     const indices = u.quads ? Uint32Array.from(quadIndices(u.indexCount, 4).subarray(0, u.indexCount)) : new Uint32Array(u.indexCount);
     for (let i = 0; !u.quads && i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
     const verts = u.data.subarray(u.quads ? 0 : (u.indexCount * u.indexBytes + 3) & ~3);
-    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices, ...(u.made ? { made: u.made } : {}) };
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices, ...(u.piece ? { piece: new Uint32Array(u.piece.buffer, u.piece.byteOffset, u.piece.byteLength >> 2) } : {}) };
   }
 
   /**
@@ -1751,7 +1775,8 @@ export class Rasterizer {
       poly[i * 7 + 6] = (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / w;
     }
 
-    const light = (AMBIENT + DIFFUSE * Math.max(0, nx * p.sun[0]! + ny * p.sun[1]! + nz * p.sun[2]!)) * p.light;
+    // A near chunk's piece is darker by its stage (pieces.ts PIECE_SHADE).
+    const light = (AMBIENT + DIFFUSE * Math.max(0, nx * p.sun[0]! + ny * p.sun[1]! + nz * p.sun[2]!)) * p.light * wearShade(this.made >> WEAR_OVER_MADE);
     const pal = this.pack.palette;
     const r = pal[colorIndex * 4]! * light;
     const g = pal[colorIndex * 4 + 1]! * light;
@@ -2361,7 +2386,11 @@ export class Rasterizer {
             place.set([co * lx + s * lz + ix, ly + iy, -s * lx + co * lz + iz], v * 3);
           }
         }
-        for (let t = from; t < to; t += 3) this.castTriangle(out, size, m, place, lod.indices[t]!, lod.indices[t + 1]!, lod.indices[t + 2]!, (flags & DRAW_TWO_SIDED) !== 0);
+        const rows = (p.pieceRowOf.get(p.casterBuffer[e]!) ?? 0) * 9;
+        for (let t = from; t < to; t += 3) {
+          const word = lod.piece ? lod.piece[lod.indices[t + 2]!]! : 0;
+          if (word === 0 || pieceShown(p.pieces, p.pieceRows, rows, word)) this.castTriangle(out, size, m, place, lod.indices[t]!, lod.indices[t + 1]!, lod.indices[t + 2]!, (flags & DRAW_TWO_SIDED) !== 0);
+        }
       }
     }
     return out;

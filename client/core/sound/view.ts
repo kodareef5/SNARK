@@ -1,5 +1,6 @@
 // What the sound producers read of the player each frame, taken from the session, and the session's changes to
 // structures and nodes handed to build.ts. Kept apart so that the producers depend on a few plain fields, not the session.
+// Rows of pieces that break are left to break-effects.ts, which asks for one sound a cell of them.
 
 import { LOOK_SEX } from "../../../shared/anim/look.ts";
 import { SESSION_ALIVE } from "../../../shared/net/protocol.ts";
@@ -61,7 +62,11 @@ export function soundView(session: ClientSession, sky: SkyClock | null = null): 
 
 /** Hands the session's changes to structures and nodes to `sounds`, from now on. */
 export function hearSession(session: ClientSession, sounds: Sounds): void {
-  session.onStructure = (was, kind, x, y, z, hpWas, hp, cause) => sounds.build.structure(was, kind, x, y, z, hpWas, hp, cause);
+  const beforeStructure = session.onStructure;
+  session.onStructure = (was, kind, x, y, z, hpWas, hp, cause) => {
+    beforeStructure?.(was, kind, x, y, z, hpWas, hp, cause);
+    if (!sounds.build.merged(was, kind, cause)) sounds.build.structure(was, kind, x, y, z, hpWas, hp, cause);
+  };
   const beforeNode = session.onNode;
   session.onNode = (chunk, index, used, crushed, form) => {
     beforeNode?.(chunk, index, used, crushed, form);

@@ -3,6 +3,8 @@ import { TANKER_WRECKS } from "../../content/vehicles/tanker-wrecks.ts";
 import { expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { BREAK_BLOCKS } from "../../content/breaks/kinds.ts";
+import { CITY_MATERIALS } from "../../content/breaks/materials.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
@@ -51,7 +53,8 @@ test("the core pack's definitions fall into the classes, each passing its row", 
   const counts: Record<string, number> = {};
   for (const d of rest) counts[classOf(d)] = (counts[classOf(d)] ?? 0) + 1;
   // The stations wave moved cementing paste and its engram to content/items/resources.ts, and took the ingot's engram out
-  // (planning/reference/stations-plan.md, S0): a resource and two engrams fewer here.
+  // (planning/reference/stations-plan.md, S0): a resource and two engrams fewer here. The city's broken forms
+  // (content/breaks) added a static and a shape each, and the city its eight materials.
   expect(counts).toEqual({
     "item/resource": 10,
     "item/consumable": 4,
@@ -75,9 +78,9 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     // harbours', a shape each vessel and a static each of its hulk and forms (content/vehicles/harbour-wrecks.ts), and
     // the street furniture, a shape and a static each piece (content/street.ts), and a marina's dock kit and moored
     // hulls, a shape each module and the launch's hull and a static each module and each hull's paint (content/docks.ts).
-    "structure/static": 9 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.filter((d) => d.type === "structure").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length + DOCKS.filter((d) => d.type === "structure").length,
-    shape: 18 + TERMINALS.filter((d) => d.type === "shape").length + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + TANKER_WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length + DOCKS.filter((d) => d.type === "shape").length,
-    material: 4,
+    "structure/static": 9 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.filter((d) => d.type === "structure").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length + DOCKS.filter((d) => d.type === "structure").length + BREAK_BLOCKS.filter((d) => d.type === "structure").length,
+    shape: 18 + TERMINALS.filter((d) => d.type === "shape").length + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + TANKER_WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length + DOCKS.filter((d) => d.type === "shape").length + BREAK_BLOCKS.filter((d) => d.type === "shape").length,
+    material: 4 + CITY_MATERIALS.length,
     node: 14,
     "prop/container": 2,
     "prop/crate": 1,
@@ -87,7 +90,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     map: 5, // miami-coast became Miami (D810)
   });
   // 253 with the supply drop's capsule (content/core.ts).
-  expect(rest.length).toBe(253 + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length);
+  expect(rest.length).toBe(253 + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

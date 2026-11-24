@@ -582,10 +582,10 @@ export class FarNodes {
     }
   }
 
-  /** The top bytes the map's own pieces make in the cells of `chunk`, where the far feed has told nothing of it and they are here. */
+  /** The top bytes the map's own pieces make in the cells of `chunk`, where the far feed's cells do not count them and they are here. */
   private mapTops(chunk: number): Uint8Array | undefined {
     const city = this.city;
-    if (!city || !this.source.ground || (this.cells?.changed[chunk] ?? 0) > 0 || city.first[chunk + 1] === city.first[chunk]) return undefined;
+    if (!city || !this.source.ground || (this.cells?.full[chunk] ?? 0) === 1 || city.first[chunk + 1] === city.first[chunk]) return undefined;
     let tops = this.mapCells.get(chunk);
     if (!tops) this.mapCells.set(chunk, (tops = cityTops(city, chunk, this.source.ground, null)));
     return tops;
@@ -640,8 +640,8 @@ export class FarNodes {
       const s = (spots = this.spotsOf(room, c, chunk));
       const told = this.source.gone(chunk);
       if (told) for (const i of told) gone[i] = 1;
-      // Building in the far feed's 4 m cells, counted from the chunk's corner.
-      const built = this.cells?.chunks.get(chunk)?.top ?? this.mapTops(chunk);
+      // Building in the far feed's 4 m cells, counted from the chunk's corner: what the feed tells, and the map's own pieces where it leaves them out.
+      const built = this.cells?.chunks.get(chunk)?.top, placed = this.mapTops(chunk);
       const x0 = chunkCx(this.dims, chunk) * CHUNK_SIZE, z0 = chunkCz(this.dims, chunk) * CHUNK_SIZE;
       for (let i = 0; i < n; i++) {
         const at = c * n + i;
@@ -656,7 +656,8 @@ export class FarNodes {
           if (reach + MARGIN > next) next = reach + MARGIN;
           continue;
         }
-        if (built && built[Math.floor((s.pos[at * 3 + 2]! - z0) / TACTICAL_CELL) * BUILT_SIDE + Math.floor((s.pos[at * 3]! - x0) / TACTICAL_CELL)] !== 0) continue;
+        const cell = Math.floor((s.pos[at * 3 + 2]! - z0) / TACTICAL_CELL) * BUILT_SIDE + Math.floor((s.pos[at * 3]! - x0) / TACTICAL_CELL);
+        if ((built && built[cell] !== 0) || (placed && placed[cell] !== 0)) continue;
         keep[at] = 1;
         counts[this.formGroup[form]! * CELLS + c]!++;
         total++;

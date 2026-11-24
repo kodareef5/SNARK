@@ -1738,8 +1738,8 @@ export class Behavior {
   private walled(e: number, prey: number): boolean {
     if (this.between(e, prey) !== HIT_STRUCTURE) return false;
     const structs = this.world.structs;
-    const t = structs.chunks[Math.floor(rayHit.ref / 65536)];
-    const takes = t ? this.reg.structTakes[t.kind[rayHit.ref & 0xffff]!] : null;
+    // A city piece is of the kind the map placed, whatever form it has taken.
+    const takes = this.reg.structTakes[structs.bodyKind(Math.floor(rayHit.ref / 65536), rayHit.ref & 0xffff)];
     return !takes || !(takes[DMG_MELEE]! > 0);
   }
 
