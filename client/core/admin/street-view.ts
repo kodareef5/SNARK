@@ -3,7 +3,7 @@ import { squareOf, type MapHead, type MapPart } from "../../../shared/world/mapf
 import type { MapWindow } from "./view.ts";
 
 /** Order only the sectors in view, nearest the middle first when a large view cannot fetch them all. */
-export function streetsInView(head: MapHead, view: MapWindow, limit: number): MapPart[] {
+export function streetsInView(head: Pick<MapHead, "dims" | "parts">, view: MapWindow, limit: number): MapPart[] {
   const west = view.worldX(0), east = view.worldX(view.width);
   const north = view.worldZ(0), south = view.worldZ(view.height);
   return head.parts.flatMap((part) => {

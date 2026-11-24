@@ -34,16 +34,23 @@ export function syncLog(restore?: () => void): void {
   const log = S.stats?.log;
   if (!log) return;
   const note = $("lognote");
-  const has = log.from !== null && log.to !== null;
+  const end = log.on ? Math.max(log.to ?? 0, S.stats!.at) : log.to;
+  const has = log.from !== null && end !== null && end > log.from;
   $("timeline").classList.toggle("empty", !has);
   for (const id of ["play", "speed", "goto", "scrub"]) $<HTMLButtonElement>(id).disabled = !has;
   if (!has) {
+    if (t.known) {
+      t.setSpan(0, 0);
+      t.goLive();
+      S.recall.reset();
+      desired++;
+      hooks.showPeople();
+    }
     note.textContent = log.on ? "The survivor log is on and holds nothing yet: it begins as survivors play." : `No survivor log: ${log.why}.`;
     refresh();
     return;
   }
-  const end = log.on ? Math.max(log.to!, S.stats!.at) : log.to!;
-  t.setSpan(log.from!, end);
+  t.setSpan(log.from!, end!);
   restore?.();
   note.textContent = `${log.on ? "The survivor log holds" : `The survivor log is off (${log.why}); it holds`} ${spanText(end - log.from!)} from ${momentText(log.from!, offset)}, ${bytesText(log.bytes)} of its ${bytesText(log.cap)}.`;
   refresh();
@@ -135,7 +142,7 @@ export function showPastPeople(): boolean {
   paintHtml($("rows"), rows
     .map((r) => {
       const state = r.online ? (STATE_WORDS[r.state] ?? "online") + (r.riding ? `, on a ${esc(S.labels[r.riding] ?? idWords(r.riding))}` : "") : "offline";
-      const where = d && Number.isFinite(r.x) ? placeText(d, r.x, r.z) : "";
+      const where = Number.isFinite(r.x) ? d ? placeText(d, r.x, r.z) : `X ${Math.round(r.x)} · Z ${Math.round(r.z)}` : "—";
       return `<tr data-pid="${r.pid}"${r.pid === S.chosen ? ' class="chosen"' : ""}><td><button type="button" class="row-button" data-focus="survivor-${r.pid}" aria-pressed="${r.pid === S.chosen}"><span class="dot ${r.online ? (r.state === DOT_DEAD ? "dead" : "on") : ""}"></span>${esc(r.name)}</button></td><td class="wide">${esc(r.tribe)}</td><td>${state}</td><td class="num wide">${r.playMs > 0 ? spanText(r.playMs) : ""}</td><td class="wide">${where}</td><td class="wide">${r.deaths || ""}</td></tr>`;
     })
     .join(""));
@@ -330,7 +337,8 @@ function showHolders(): void {
   const h = item ? S.recall.holdersFor(item.item, item.quality, item.blueprint, t) : null;
   const rows = h?.holders.filter((x) => x.from <= t.end && (x.to ?? t.to) >= t.start) ?? [];
   const now = holdingAt(rows, t.at, t.to);
-  const empty = !item ? "Select an item to see who held it and when." : !h ? "Loading holding intervals…" : "Nobody held this item in the selected window.";
+  const empty = !t.known ? "No recorded item history is available." : !item ? "Select an item to see who held it and when."
+    : !h ? "Loading holding intervals…" : "Nobody held this item in the selected window.";
   paintHtml($("holders"), rows.length === 0 ? `<tbody><tr><td class="dim">${empty}</td></tr></tbody>` :
     '<thead><tr><th scope="col">Survivor</th><th scope="col">Holding interval</th><th scope="col">Peak</th><th scope="col">Map</th></tr></thead><tbody>' + rows.map((x) => {
       const at = Math.max(x.from, t.start), active = now.has(x.pid);
