@@ -7,7 +7,7 @@ import { WALL_HEIGHT, WALL_THICK } from "../../content/building.ts";
 import { STRUCT_UNITS, TICK_DT } from "../../shared/coords.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
 import { Solid, partSolid } from "../../shared/world/convex.ts";
-import { HALF_SIDE, STRETCH_MOST, classAxis, classAxis60, frame, frameAxes, frameOf } from "../../shared/world/frame.ts";
+import { CLASS_STRETCH_MOST, HALF_SIDE, STRETCH_MOST, classAxis, classAxis60, frame, frameAxes, frameOf } from "../../shared/world/frame.ts";
 import { HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { Found } from "../../shared/world/structures.ts";
 import { Base, STOREY, cornersOf, dodecagon, mixedHouse, ring, row, turnedWorld, type Built, type Cell } from "../fixtures/turned.ts";
@@ -40,7 +40,7 @@ test("a frame of turn class 0 is the frame a yaw alone gave, at every yaw", () =
   expect(differ).toEqual([]);
 });
 
-test("a frame of class 1 or 2 lies along its class's lattice vector, and no class stretches a box past STRETCH_MOST", () => {
+test("a frame of class 1 or 2 lies along its class's lattice vector, and stretches a box no more than CLASS_STRETCH_MOST", () => {
   const wrong: number[] = [];
   let most = 0;
   for (let yaw = 0; yaw < 4 * Q; yaw++) {
@@ -53,8 +53,8 @@ test("a frame of class 1 or 2 lies along its class's lattice vector, and no clas
     }
   }
   expect(wrong).toEqual([]);
-  expect(most).toBeLessThan(STRETCH_MOST);
-  expect(most).toBeGreaterThan(1);
+  expect(most).toBeLessThan(CLASS_STRETCH_MOST);
+  expect(most).toBeGreaterThan(STRETCH_MOST);
 });
 
 /** A base's turns: every one within a quarter, each in one of the four quarters. */
@@ -165,11 +165,12 @@ function slabLeaks(w: TestWorld, b: Base, built: Built, on: readonly number[], y
   return leaks;
 }
 
-/** Whether every piece is listed in the grid cell under each corner of its collider, pulled a millimetre toward its middle. */
+/** Whether every piece is listed in the grid cell under each corner of its collider, pulled a millimetre toward its middle, and reaches no further than its kind's spread. */
 function gridHolds(w: TestWorld, refs: readonly number[]): boolean {
   for (const ref of refs) {
     const r = rowOf(w, ref);
     for (const [ux, uz] of colliderCorners(w, ref)) {
+      if (Math.hypot(ux / U - r.x, uz / U - r.z) > w.structs.spread[r.kind]!) return false;
       const x = ux / U + Math.sign(r.x - ux / U) * 0.001;
       const z = uz / U + Math.sign(r.z - uz / U) * 0.001;
       const n = w.structs.query(x, z, x, z, found);
@@ -212,7 +213,7 @@ test("neighbours in a mixed house share corners as whole lattice units, and no r
       const fault = cornerFault(w, b, ref, cell, true);
       if (fault) fail(yaw, fault);
     }
-    if (!gridHolds(w, house.refs)) fail(yaw, "a piece is missing from a grid cell it reaches");
+    if (!gridHolds(w, house.refs)) fail(yaw, "a piece is missing from a grid cell it reaches, or reaches past its spread");
     // Down through the floor and up through the roof where the triangle meets each square.
     const before = leaks;
     // A wall stands over each end of a floor's seam, so the floor is tried clear of it.
@@ -273,7 +274,7 @@ test("six triangles round a corner and a dodecagon close with no leak, at every 
           const fault = cornerFault(w, b, ref, cell);
           if (fault) fail(yaw, `${name} ${d}: ${fault}`);
         }
-        if (!gridHolds(w, built.refs)) fail(yaw, `${name} ${d}: a piece is missing from a grid cell it reaches`);
+        if (!gridHolds(w, built.refs)) fail(yaw, `${name} ${d}: a piece is missing from a grid cell it reaches, or reaches past its spread`);
         const now = slabLeaks(w, b, built, built.refs, b.top, cast);
         if (now > 0) fail(yaw, `${name} ${d}: a ray passes between joined pieces`);
         leaks += now;

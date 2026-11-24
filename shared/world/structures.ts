@@ -5,7 +5,7 @@
 import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import type { VehicleSurface } from "../sim/vehicle.ts";
 import { hullPoint, type HullTable } from "./convex.ts";
-import { HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
+import { CLASS_STRETCH_MOST, HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
 import { KEY_BETWEEN, KEY_FOUND, keyOfPose } from "./lattice/adopt.ts";
 import type { FormTable } from "./lattice/forms.ts";
 import { Frames, baseOrigin, keyFits, poseOf, twOfKey, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
@@ -397,7 +397,8 @@ export class StructureStore {
       }
       this.low[k] = low;
       this.top[k] = high;
-      this.spread[k] = spread * STRETCH_MOST;
+      // Only a kind with a form is ever a lattice row, of any turn class.
+      this.spread[k] = spread * (this.forms !== null && this.forms.cls[k]! >= 0 ? CLASS_STRETCH_MOST : STRETCH_MOST);
     }
   }
 

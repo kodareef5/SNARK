@@ -5,18 +5,15 @@
 // frame's own axes, so two patches the ideal test calls a hair apart can be centimetres apart or overlapped when far along ζ and ζ².
 
 import { STRUCT_UNITS, YAW_UNITS } from "../../coords.ts";
-import { STRETCH_MOST, frameAxes, turn30 } from "../frame.ts";
+import { frameAxes, turn30 } from "../frame.ts";
 import type { Tuples } from "./module.ts";
 
-export { classAxis, classAxis60, turn30, turn60 } from "../frame.ts";
+export { CLASS_STRETCH_MOST, classAxis, classAxis60, turn30, turn60 } from "../frame.ts";
 
 /** Yaw units in a quarter turn. A quarter turn of direction, three steps, is this much less yaw. */
 export const QUARTER_YAW = YAW_UNITS / 4;
 /** Lattice units in one level, a quarter storey (0.75 m). */
 export const LEVEL_UNITS = (STRUCT_UNITS * 3) / 4;
-/** No class of frame makes a box wider than this many times its written size. */
-export const CLASS_STRETCH_MOST = STRETCH_MOST;
-
 /** Lattice units a place may be from its ideal place, for each half-side its tuple goes along ζ or ζ² (measured: 0.7015). */
 export const DRIFT_MOST = 0.71;
 

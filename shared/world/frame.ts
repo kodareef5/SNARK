@@ -8,8 +8,10 @@ import { TAU, detCos, detSin } from "../math/scalar.ts";
 /** In lattice units. A metre and a half. */
 export const HALF_SIDE = (STRUCT_UNITS * 3) / 2;
 const QUARTER = YAW_UNITS / 4;
-/** No frame of any turn class makes a box wider than this many times its written size. */
-export const STRETCH_MOST = 1 + 2 / HALF_SIDE;
+/** No frame of turn class 0 makes a box wider than this many times its written size. */
+export const STRETCH_MOST = 1 + 1 / HALF_SIDE;
+/** Nor any frame of class 1 or 2 than this: its axis is rounded once more. */
+export const CLASS_STRETCH_MOST = 1 + 2 / HALF_SIDE;
 
 /**
  * The world directions of the +X and +Z axes of a frame turned `yaw`, each as a whole-number vector half a side long, written to
