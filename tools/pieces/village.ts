@@ -235,7 +235,7 @@ export const KEEP_SHOTS: readonly VillageShot[] = [
   ["a quoin at the hall's corner, close", [6, 2, 0], 2.7, 138, 10],
   ["the terrace: the ramp, the balustrade, the hatch and the pillars from the north", [4.5, 2, 7.5], 6.6, 12, 26],
   ["the hall's gables beside the tower from the north-west", [-0.5, 4, 5.2], 5.6, 310, 30],
-  ["the hall's hipped end and its eave over the wall, close", [5.4, 4, 0.6], 3.6, 112, 20],
+  ["the gateway's arch and the tall wall's quoins, and the hall's hips beyond", [5.4, 4, 0.6], 3.6, 112, 20],
   ["the floors alone: triangles round a point, the hatch and the terrace", [2.5, 0.4, 3.6], 11.5, 200, 58, FLOORS],
 ];
 
@@ -302,3 +302,15 @@ export function keep(tier: string): Placed[] {
   trims();
   return out;
 }
+
+/** Corners to look at with their joints, by the ways their walls leave them, in twelfths of a turn: a straight run has none. */
+export const CORNERS: readonly (readonly [name: string, ways: readonly number[], storeys?: number])[] = [["walls 90", [0, 3]], ["tee", [0, 3, 6]], ["cross", [0, 3, 6, 9]], ["two storeys", [0, 3], 2], ["walls 180", [0, 6]], ["walls 60", [0, 2]], ["walls 120", [0, 4]], ["walls 150", [0, 5]], ["a half wall beside a wall", [0, 3], -1]];
+
+/** Walls of `tier` that leave one corner by `ways`, on `storeys` storeys, with the joints the client would lay; with -1 storeys, the second wall is a half wall. */
+export function corner(tier: string, ways: readonly number[], storeys = 1): Placed[] {
+  const { out, edge, trims } = placer(tier);
+  for (let storey = 0; storey < Math.max(1, storeys); storey++) ways.forEach((way, k) => edge(storeys < 0 && k > 0 ? "half_wall" : "wall", at(0, 0), way, storey * 4, k % 2 === 1));
+  trims();
+  return out;
+}
+

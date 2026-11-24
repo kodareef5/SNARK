@@ -2842,9 +2842,17 @@ function roof(form: FormDef, level: number): Build | null {
     const [za, zc] = [tops[k]!, tops[(k + 1) % n]!];
     const from = p.faces.length;
     if (kind === "rake") {
-      // A principal rafter under the sloped side, its top cut to the boards it carries.
-      const drop = SARK + RAFTER / 2 - 0.06;
-      member(p, level, at(a, za - drop), at(c, zc - drop), RIM, RAFTER / Math.hypot(1, (zc - za) / l), [0, 0, 1], `rake ${k}`);
+      // A principal rafter under the sloped side, from the boards it carries down to the roof's underside: a gable
+      // whose top is that underside is closed against it, and one whose top is the roof's own plane stands in front of it.
+      const deep = form.thick - SARK + 0.06;
+      const drop = SARK - 0.06 + deep / 2;
+      member(p, level, at(a, za - drop), at(c, zc - drop), RIM, deep / Math.hypot(1, (zc - za) / l), [0, 0, 1], `rake ${k}`);
+      for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!]), floor]) clip(p, plane, null, from);
+      // A barge board in the side itself, from the boards down to the roof's underside: the roof's edge is closed
+      // where no gable stands in it, and it lies inside the gable's stone where one does.
+      const barge = form.thick - SARK - SARK_DROP;
+      const verge = (q: Flat, z: number): Vec => [q[0] + inward[0] * 0.05, q[1] + inward[1] * 0.05, z - SARK - SARK_DROP - barge / 2];
+      member(p, 1, verge(a, za), verge(c, zc), 0.09, barge / Math.hypot(1, (zc - za) / l), [0, 0, 1], `verge ${k}`);
     } else {
       // A level beam inside a low side or a high one, from the frame's underside up to the boards.
       const [z0, z1] = [za - form.thick, za + (RIM_IN + RIM) * f.g];
@@ -2879,8 +2887,8 @@ function roof(form: FormDef, level: number): Build | null {
     const spans = f.poly.map((q) => facetAt(f, q)[1]);
     // Clear of the yield rings, their ends in the beams.
     const sides = f.poly.map((a, s2) => planeMoved(uprightPlane(a, f.poly[(s2 + 1) % f.poly.length]!), f.kinds[s2] === "fold" ? -0.07 : -RIM_IN - 0.02));
-    for (const [j, a] of [0.75, 2.25].entries()) {
-      // A common rafter up the slope, a third of the way in from each side.
+    for (const [j, a] of level === 0 ? [0.75, 2.25].entries() : []) {
+      // A common rafter up the slope, a third of the way in from each side: from 19 m the boards' picture is all of it.
       const from = p.faces.length;
       const off = -(SARK + SARK_DROP + RAFTER / 2);
       member(p, level, onFacet(f, a, Math.min(...spans), off), onFacet(f, a, Math.max(...spans), off), 0.12, RAFTER / k, [0, 0, 1], `common ${i} ${j}`);

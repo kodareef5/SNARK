@@ -1,6 +1,6 @@
 // Draws the forms past the first nine as a tier's recipe makes them, with their pictures, under var/pieces/:
 //
-//   bun tools/pieces/forms.ts                       new-wood.png, new-levels-wood.png, trims-wood.png, village-wood.png
+//   bun tools/pieces/forms.ts                       new-wood.png, new-levels-wood.png, trims-wood.png, corners-wood.png, village-wood.png
 //   bun tools/pieces/forms.ts --only roof,ramp      those alone, large and from four sides: look-<names>.png
 //   bun tools/pieces/forms.ts --only roof --level 1 at another level
 //   bun tools/pieces/forms.ts --village             the village alone; --shots 1,7 those of its views
@@ -23,7 +23,7 @@ import type { SourceMesh } from "../pack/write.ts";
 import { piecesPack, tierMeshes } from "./joints.ts";
 import type { Placed } from "./layout.ts";
 import { Canvas, Studio } from "./sheet.ts";
-import { KEEP_SHOTS, VILLAGE_SHOTS, cutJoints, keep, village } from "./village.ts";
+import { CORNERS, KEEP_SHOTS, VILLAGE_SHOTS, corner, cutJoints, keep, village } from "./village.ts";
 
 const SMOOTH = 2;
 /** The tiers whose recipes make the forms past the first nine. */
@@ -133,6 +133,19 @@ export async function main(args: readonly string[], say: (line: string) => void 
       }));
       write(`trims-${TIER}.png`, sheet);
     }
+  }
+  if (!args.includes("--village") && made0.some((m) => m.id === id("joint_sq"))) {
+    // Each corner with the joints the client would lay at it, from outside and from above.
+    const [jw, jh] = [216, 250];
+    const sheet = new Canvas(8 + CORNERS.length * (jw + 4), 30 + 2 * (jh + 4));
+    sheet.text(`${TIER}: corners with their joints, from outside and from above`, 8, 6, undefined, 2);
+    CORNERS.forEach(([name, ways, storeys], k) => {
+      const laid = corner(TIER, ways, storeys);
+      const tall = Math.max(1, storeys ?? 1) * 3;
+      [[225, 12], [225, 58]].forEach(([around, above], row) => sheet.shrink(studio.shoot(laid, jw * SMOOTH, jh * SMOOTH, [0, 0.375 + tall / 2, 0], tall * 0.62 + 0.4, around!, above!, 0, null), jw * SMOOTH, jh * SMOOTH, SMOOTH, 8 + k * (jw + 4), 30 + row * (jh + 4)));
+      sheet.text(name, 12 + k * (jw + 4), 34);
+    });
+    write(`corners-${TIER}.png`, sheet);
   }
   const built: Placed[] = TIER === "stone" ? keep(TIER) : village(TIER);
   const [vw, vh] = [1000, 720];
