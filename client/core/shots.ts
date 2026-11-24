@@ -48,8 +48,8 @@ const MAX_BURSTS = 64;
 /** Metres about where a round left, on the ground, within which a body is taken for its shooter over its first two ticks. */
 const SHOOTER = 1;
 /** Bodies are sorted into squares this many metres wide, so that a flight is tested against those near it. A power of two of them. */
-const NEAR_CELL = 16;
-const NEAR_CELLS = 1024;
+const NEAR_CELL = 8;
+const NEAR_CELLS = 2048;
 const MAX_FLYING = 256;
 /** Two shotguns' worth of pellets and a few more. */
 const MAX_TRACERS = 48;
@@ -154,10 +154,9 @@ export class Shots {
   readonly bursts: { x: number; y: number; z: number; born: number; mesh: number; size: number }[] = [];
   private flashOfAmmo: Int32Array = new Int32Array(0);
   private burstOfAmmo: Int32Array = new Int32Array(0);
-  /** The bodies of the sample last sorted, by the square each stands in: where each square's run starts, and the run. */
-  private readonly nearStart = new Uint16Array(NEAR_CELLS + 1);
-  private readonly nearBody = new Uint16Array(MAX_VIEW);
-  private readonly nearCell = new Uint16Array(MAX_VIEW);
+  /** Each square links the bodies in it in sample order. */
+  private readonly nearHead = new Int16Array(NEAR_CELLS);
+  private readonly nearNext = new Int16Array(MAX_VIEW);
   /** The widest of them, which a flight's search is widened by. */
   private nearWide = 0;
   private bodiesSorted = false;
@@ -437,10 +436,12 @@ export class Shots {
     // its end was within one more. A rocket is told before the server flies it, so its way is looked along here.
     this.look(f, world, back <= 0 || rocket);
     for (let k = 0; k < (ended > 0 ? back + 2 : back) && f.waits === 0; k++) {
-      flyStep(f, f.gravity);
-      if (ended > 0 && f.flown + piece.length >= ended) {
-        this.end(f, piece.x, piece.y, piece.z, piece.dx, piece.dy, piece.dz, ended - f.flown, nowMs);
-        return;
+      if (ended > 0) {
+        flyStep(f, f.gravity);
+        if (f.flown + piece.length >= ended) {
+          this.end(f, piece.x, piece.y, piece.z, piece.dx, piece.dy, piece.dz, ended - f.flown, nowMs);
+          return;
+        }
       }
       if (!this.advance(f, world, null, nowMs, false)) return;
     }
@@ -473,26 +474,18 @@ export class Shots {
   /** Sorts the bodies of `remote` that a shot can meet into squares, for `advance` to find those near a flight's piece. */
   private sort(remote: RemoteSample): void {
     const reg = this.reg;
-    const start = this.nearStart;
-    const cell = this.nearCell;
-    start.fill(0);
+    const heads = this.nearHead;
+    heads.fill(-1);
     let wide = 0;
-    for (let i = 0; i < remote.count; i++) {
+    for (let i = remote.count - 1; i >= 0; i--) {
       const kind = remote.kind[i]!;
       const r = reg.bodyRadius[kind]!;
-      if (reg.move[kind] === null || r <= 0) {
-        cell[i] = NEAR_CELLS;
-        continue;
-      }
+      if (reg.move[kind] === null || r <= 0) continue;
       if (r > wide) wide = r;
       const c = nearSquare(Math.floor(remote.x[i]! / NEAR_CELL), Math.floor(remote.z[i]! / NEAR_CELL));
-      cell[i] = c;
-      start[c]!++;
+      this.nearNext[i] = heads[c]!;
+      heads[c] = i;
     }
-    // Each square's count becomes where its run ends, and filling from the back leaves it where the run begins.
-    for (let c = 1; c < NEAR_CELLS; c++) start[c]! += start[c - 1]!;
-    start[NEAR_CELLS] = start[NEAR_CELLS - 1]!;
-    for (let i = remote.count - 1; i >= 0; i--) if (cell[i]! < NEAR_CELLS) this.nearBody[--start[cell[i]!]!] = i;
     this.nearWide = wide;
   }
 
@@ -552,7 +545,7 @@ export class Shots {
   }
 
   /**
-   * Cuts the piece `f` flies next, already looked along, at the first body in it: the client's own, which is not among
+   * Cuts the current flight `piece` at the first body in it: the client's own, which is not among
    * those it is sent, and the drawn bodies of `remote`. They are met where they are drawn now, a
    * tick before the round is there: near enough for a picture, and it lets the round be drawn no further than the body.
    */
@@ -561,7 +554,6 @@ export class Shots {
     let length = f.clear;
     // A round that goes off meets no body here: the server's blast ends it.
     if (f.rocket || !(length > 0)) return;
-    flyStep(f, f.gravity);
     const { x, y, z, dx, dy, dz } = piece;
     let met = false;
     const me = this.me;
@@ -583,25 +575,28 @@ export class Shots {
       const pad = this.nearWide;
       const ex = x + dx * length;
       const ez = z + dz * length;
-      const x0 = Math.floor(((x < ex ? x : ex) - pad) / NEAR_CELL);
-      const x1 = Math.floor(((x < ex ? ex : x) + pad) / NEAR_CELL);
-      const z0 = Math.floor(((z < ez ? z : ez) - pad) / NEAR_CELL);
-      const z1 = Math.floor(((z < ez ? ez : z) + pad) / NEAR_CELL);
+      const minX = Math.min(x, ex), maxX = Math.max(x, ex);
+      const x0 = Math.floor((minX - pad) / NEAR_CELL);
+      const x1 = Math.floor((maxX + pad) / NEAR_CELL);
+      const minZ = Math.min(z, ez), maxZ = Math.max(z, ez);
+      const z0 = Math.floor((minZ - pad) / NEAR_CELL);
+      const z1 = Math.floor((maxZ + pad) / NEAR_CELL);
       for (let cz = z0; cz <= z1; cz++) {
         for (let cx = x0; cx <= x1; cx++) {
           const c = nearSquare(cx, cz);
-          for (let k = this.nearStart[c]!, end = this.nearStart[c + 1]!; k < end; k++) {
-            const i = this.nearBody[k]!;
+          for (let i = this.nearHead[c]!; i >= 0; i = this.nearNext[i]!) {
             const kind = remote.kind[i]!;
             const r = reg.bodyRadius[kind]!;
-            if (near && (remote.x[i]! - f.sx) * (remote.x[i]! - f.sx) + (remote.z[i]! - f.sz) * (remote.z[i]! - f.sz) < (r + SHOOTER) * (r + SHOOTER)) continue;
+            const bx = remote.x[i]!, bz = remote.z[i]!;
+            if (bx + r < minX || bx - r > maxX || bz + r < minZ || bz - r > maxZ) continue;
+            if (near && (bx - f.sx) * (bx - f.sx) + (bz - f.sz) * (bz - f.sz) < (r + SHOOTER) * (r + SHOOTER)) continue;
             // As tall as its kind stands first: few are in the way at all, and only one that is has its stance read.
             const full = reg.bodyHeight[kind]!;
-            let t = rayBox(x, y, z, dx, dy, dz, remote.x[i]! - r, remote.y[i]!, remote.z[i]! - r, remote.x[i]! + r, remote.y[i]! + full, remote.z[i]! + r);
+            let t = rayBox(x, y, z, dx, dy, dz, bx - r, remote.y[i]!, bz - r, bx + r, remote.y[i]! + full, bz + r);
             if (!(t < length)) continue;
             const tall = this.tall(remote, i, kind);
             if (!(tall > 0)) continue;
-            if (tall < full) t = rayBox(x, y, z, dx, dy, dz, remote.x[i]! - r, remote.y[i]!, remote.z[i]! - r, remote.x[i]! + r, remote.y[i]! + tall, remote.z[i]! + r);
+            if (tall < full) t = rayBox(x, y, z, dx, dy, dz, bx - r, remote.y[i]!, bz - r, bx + r, remote.y[i]! + tall, bz + r);
             if (t < length) {
               length = t;
               met = true;
@@ -691,7 +686,10 @@ export class Shots {
     if (this.tick < 0 || whole - this.tick > 8 || whole < this.tick) this.tick = whole - 1;
     // One that left since the last step has its first piece tested now, before it is drawn.
     this.bodiesSorted = false;
-    for (const f of this.flying) if (f.fresh) this.bodies(f, remote);
+    for (const f of this.flying) if (f.fresh) {
+      flyStep(f, f.gravity);
+      this.bodies(f, remote);
+    }
     for (; this.tick < whole; this.tick++) {
       let kept = 0;
       for (const f of this.flying) {
