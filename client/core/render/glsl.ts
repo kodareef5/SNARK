@@ -18,7 +18,7 @@ import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_OVER_WEAR, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -93,7 +93,10 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
 #ifdef WORLD_WEATHER
   // A face's material, and over it its piece's wear (pieces.ts): past worn, a wall is lost to its core in patches.
   worldMade = vMade & ${(1 << WEAR_OVER_MADE) - 1};
-  int wear = vMade >> ${WEAR_OVER_MADE};
+  int wear = (vMade >> ${WEAR_OVER_MADE}) & ${(1 << (PIECE_OVER_WEAR - WEAR_OVER_MADE)) - 1};
+  worldPiece = vMade >> ${PIECE_OVER_WEAR};
+  worldOwn = vOwn;
+  if (worldPiece > 0) worldTurn = vPlace;
   float rim = 0.0;
   if ((wear & ${WEAR_STAGE}) >= 2 && uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) {
     vec2 lost = spalled(vRel + uWorldEye, geometric, wear & ${WEAR_STAGE});
@@ -118,7 +121,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   // No ground known under it (skyopen.ts NO_GROUND), no weathering by its height over it.
   if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0 && fFacade.z < 1.5 && over < 1e5) {
     vec3 a0 = albedo, o0 = orm;
-    weathered(albedo, orm, surface, over, open, vRel, geometric, dx, dy);
+    weathered(albedo, orm, surface, over, open, vRel, worldPiece > 0 ? ownFace(geometric) : geometric, dx, dy);
     albedo = mix(a0, albedo, risen);
     orm = mix(o0, orm, risen);
     n = normalize(mix(n, geometric, worldLost * worldCoat * risen));

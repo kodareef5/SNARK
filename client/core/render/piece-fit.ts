@@ -39,6 +39,11 @@ export const PIECE_STAGE = WEAR_STAGE;
 export const PIECE_SCORCHED = 4;
 export const PIECE_FRAMED = 128;
 export const PIECE_MADE_BITS = 31;
+/**
+ * In the spare byte of a vertex of a piece's flat mesh, over its corner and edges (shared/world/city.ts cornerByte):
+ * its face wears the piece's recipe material in the mesh's own colour, and keeps clear of the material's joints and rivets.
+ */
+export const FACE_WEARS = 64, FACE_PLAIN = 128;
 
 export const FIT_NONE = 0;
 export const FIT_WALL = 1;

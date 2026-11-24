@@ -3,10 +3,12 @@
 // meet. Floors are deck plate on beams, the foundation a raft with a channel round it on footings, the pillar a box
 // section between base and cap plates, the door a framed leaf with strap hinges and a sight slot.
 //
-// It has no pictures. Every level is flat: the plate's faces are colour region 0, the instance's colour, which wears
-// the "plate" material where the card makes recipes (content/texgen/materials.ts) and is the tier's steel grey where it
-// does not; frame, bolts and nosings are fixed palette colours, so the piece is two-toned steel on every client. The
-// material's sheets are 0.75 m square with rivets inside their edges, the grid the ribs stand on.
+// It has no pictures. Every level is flat: the plate's faces are colour region 0, the instance's colour; frame, trim,
+// bolts and nosings are fixed palette colours, so the piece is two-toned steel on every client. Where the card makes
+// recipes every face wears the "plate" material (content/texgen/materials.ts) in its own colour, read in the piece's own
+// frame: sheets 0.75 m square from the piece's origin with rivets inside their edges, the grid the ribs stand on. The
+// frame round a wall wears the sheets as the plate does, so a row of rivets runs along it inside the wall's edge; trim,
+// bolts and nosings keep clear of joints and rivets (FACE_PLAIN).
 //
 // Levels: 0 is everything; 1 has no nuts and no small fittings; 2 is the frame as plain boxes; then plain solids. It
 // works in the frame the other tiers do: x along the piece, z up, the front at -y.
@@ -16,6 +18,7 @@ import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lat
 import type { SourceLod, SourceMesh } from "../write.ts";
 import { Shape, add, cross, flatLod, scale, unit, type FaceMap, type Vec } from "./kit.ts";
 import { errorOf, levelsOf, type TierRecipe } from "./lod.ts";
+import { FACE_PLAIN, FACE_WEARS } from "../../../client/core/render/piece-fit.ts";
 
 const H = HALF_SIDE_M;
 const FACE = 0.1; // a frame member's face: the wall's own
@@ -32,7 +35,7 @@ const PROUD = 0.012; // a nut stands this far off its member
 const DECK = 0.04; // a floor's plate
 const FLOOR = 0.25; // a floor's depth, which a pillar's head stands under
 type Cell = readonly [number, number];
-type Mat = "plate" | "frame" | "bolt" | "dark" | "nosing";
+type Mat = "plate" | "frame" | "trim" | "bolt" | "dark" | "nosing";
 
 /** A face of one material; a flat level's faces have no texture coordinates. */
 const tone = (mat: Mat): FaceMap => () => [mat, () => [0, 0]];
@@ -58,7 +61,7 @@ function nuts(p: Shape, points: readonly Cell[], face: number): void {
  * A member along x from x0 to x1, from z0 to z1, its faces at ±`face`: bevelled toward the plate on its upper edges
  * ("up", a sill), its lower ("down", a head) or both (a rib, which stands through the plate).
  */
-function rail(p: Shape, x0: number, x1: number, z0: number, z1: number, bevel: "up" | "down" | "both" | "none", face = FACE, mat: Mat = "frame"): void {
+function rail(p: Shape, x0: number, x1: number, z0: number, z1: number, bevel: "up" | "down" | "both" | "none", face = FACE, mat: Mat = "trim"): void {
   // A bevel runs from the member's face down to the plate's, steeper than it is wide: two at a corner then cross and never lie in one plane.
   const [b, f, d] = [BEVEL, face, face - SKIN];
   const lower: Cell[] = bevel === "down" || bevel === "both" ? [[-f, z0 + b], [-(f - d), z0], [f - d, z0], [f, z0 + b]] : [[-f, z0], [f, z0]];
@@ -67,7 +70,7 @@ function rail(p: Shape, x0: number, x1: number, z0: number, z1: number, bevel: "
 }
 
 /** An upright member from z0 to z1 between x0 and x1: bevelled toward the plate on its edge at x0 ("low"), x1 ("high") or both. */
-function stile(p: Shape, x0: number, x1: number, z0: number, z1: number, bevel: "low" | "high" | "both" | "none", face = FACE, mat: Mat = "frame"): void {
+function stile(p: Shape, x0: number, x1: number, z0: number, z1: number, bevel: "low" | "high" | "both" | "none", face = FACE, mat: Mat = "trim"): void {
   const [b, f, d] = [BEVEL, face, face - SKIN];
   const low: Cell[] = bevel === "low" || bevel === "both" ? [[x0 + b, -f], [x0, -(f - d)], [x0, f - d], [x0 + b, f]] : [[x0, -f], [x0, f]];
   const high: Cell[] = bevel === "high" || bevel === "both" ? [[x1 - b, f], [x1, f - d], [x1, -(f - d)], [x1 - b, -f]] : [[x1, f], [x1, -f]];
@@ -76,7 +79,7 @@ function stile(p: Shape, x0: number, x1: number, z0: number, z1: number, bevel: 
 
 /** A triangular plate through the wall in the corner (x, z) of its frame, its legs `leg` long toward (sx, sz), with three nuts a face. */
 function gusset(p: Shape, level: number, x: number, z: number, sx: number, sz: number, leg = 0.26): void {
-  p.extrude([[z, x], [z + sz * leg, x], [z, x + sx * leg]], "y", -GUSSET, GUSSET, tone("frame"));
+  p.extrude([[z, x], [z + sz * leg, x], [z, x + sx * leg]], "y", -GUSSET, GUSSET, tone("trim"));
   if (level === 0) nuts(p, [[x + sx * 0.06, z + sz * 0.06], [x + sx * 0.16, z + sz * 0.05], [x + sx * 0.05, z + sz * 0.16]], GUSSET);
 }
 
@@ -115,13 +118,14 @@ function wallFamily(form: FormDef, level: number): Shape | null {
   }
   const [sill, head, in0, in1] = [f.foot + SILL, f.top - HEAD, -f.hx + POST, f.hx - POST];
   const plain = level === 2;
-  const post = (x0: number, x1: number, inner: "low" | "high"): void => (plain ? void p.box([x0, -FACE, f.foot], [x1, FACE, f.top], tone("frame")) : stile(p, x0, x1, f.foot, f.top, inner));
-  const across = (x0: number, x1: number, z0: number, z1: number, bevel: "up" | "down" | "both", face = FACE): void => (plain ? void p.box([x0, -face, z0], [x1, face, z1], tone("frame")) : rail(p, x0, x1, z0, z1, bevel, face));
-  const upright = (x0: number, x1: number, z0: number, z1: number, bevel: "low" | "high" | "both" | "none", face = FACE): void => (plain || bevel === "none" ? void p.box([x0, -face, z0], [x1, face, z1], tone("frame")) : stile(p, x0, x1, z0, z1, bevel, face));
+  // The posts, the sill and the head are the wall's frame, along its edges; what stands inside them is trim.
+  const post = (x0: number, x1: number, inner: "low" | "high"): void => (plain ? void p.box([x0, -FACE, f.foot], [x1, FACE, f.top], tone("frame")) : stile(p, x0, x1, f.foot, f.top, inner, FACE, "frame"));
+  const across = (x0: number, x1: number, z0: number, z1: number, bevel: "up" | "down" | "both", mat: Mat = "trim"): void => (plain ? void p.box([x0, -FACE, z0], [x1, FACE, z1], tone(mat)) : rail(p, x0, x1, z0, z1, bevel, FACE, mat));
+  const upright = (x0: number, x1: number, z0: number, z1: number, bevel: "low" | "high" | "both" | "none", face = FACE): void => (plain || bevel === "none" ? void p.box([x0, -face, z0], [x1, face, z1], tone("trim")) : stile(p, x0, x1, z0, z1, bevel, face));
   const skin = (x0: number, x1: number, z0: number, z1: number): void => void p.box([x0, -SKIN, z0], [x1, SKIN, z1], tone("plate"));
   post(-f.hx, in0, "high");
   post(in1, f.hx, "low");
-  across(in0, in1, head, f.top, "down");
+  across(in0, in1, head, f.top, "down", "frame");
   const corners = (): void => {
     if (plain) return;
     gusset(p, level, in0, head, 1, -1);
@@ -129,7 +133,7 @@ function wallFamily(form: FormDef, level: number): Shape | null {
   };
   const rib = 0.04; // half a rib's width at its foot
   if (!o) {
-    across(in0, in1, f.foot, sill, "up");
+    across(in0, in1, f.foot, sill, "up", "frame");
     skin(in0, in1, sill - 0.01, head + 0.01);
     if (plain) return p;
     // A rail across the middle and a rib each side of it, on the grid.
@@ -149,8 +153,8 @@ function wallFamily(form: FormDef, level: number): Shape | null {
     // Box-section jambs from the floor and a lintel whose ends run past them; the sill stops at the jambs.
     const [jamb, lintel] = [0.14, 0.2];
     const [ja, jb, top] = [o.x0 - jamb, o.x1 + jamb, o.z1 + lintel];
-    across(in0, ja, f.foot, sill, "up");
-    across(jb, in1, f.foot, sill, "up");
+    across(in0, ja, f.foot, sill, "up", "frame");
+    across(jb, in1, f.foot, sill, "up", "frame");
     upright(ja, o.x0, f.foot, o.z1 + 0.01, "low");
     upright(o.x1, jb, f.foot, o.z1 + 0.01, "high");
     across(ja - 0.1, jb + 0.1, o.z1, top, "both");
@@ -180,14 +184,14 @@ function wallFamily(form: FormDef, level: number): Shape | null {
   // A window: the ribs run past it either side, and a heavy sill and lintel span between them with the jambs inside.
   const [bar, jamb] = [0.13, 0.1];
   const [ra, rb] = [-GRID - rib, GRID + rib];
-  across(in0, in1, f.foot, sill, "up");
+  across(in0, in1, f.foot, sill, "up", "frame");
   if (plain) {
-    p.box([ra, -FACE, o.z0 - bar], [rb, FACE, o.z0], tone("frame"));
-    p.box([ra, -FACE, o.z1], [rb, FACE, o.z1 + bar], tone("frame"));
-    for (const [x0, x1] of [[ra, o.x0], [o.x1, rb]] as const) p.box([x0, -FACE, o.z0], [x1, FACE, o.z1], tone("frame"));
+    p.box([ra, -FACE, o.z0 - bar], [rb, FACE, o.z0], tone("trim"));
+    p.box([ra, -FACE, o.z1], [rb, FACE, o.z1 + bar], tone("trim"));
+    for (const [x0, x1] of [[ra, o.x0], [o.x1, rb]] as const) p.box([x0, -FACE, o.z0], [x1, FACE, o.z1], tone("trim"));
   } else {
     // The sill's top falls away to both faces, so it reads as a weathered ledge.
-    p.extrude([[-FACE, o.z0 - bar], [FACE, o.z0 - bar], [FACE, o.z0 - 0.035], [FACE - 0.05, o.z0], [-(FACE - 0.05), o.z0], [-FACE, o.z0 - 0.035]], "x", ra, rb, tone("frame"));
+    p.extrude([[-FACE, o.z0 - bar], [FACE, o.z0 - bar], [FACE, o.z0 - 0.035], [FACE - 0.05, o.z0], [-(FACE - 0.05), o.z0], [-FACE, o.z0 - 0.035]], "x", ra, rb, tone("trim"));
     rail(p, ra, rb, o.z1, o.z1 + bar, "up");
     upright(o.x0 - jamb, o.x0, o.z0 - 0.01, o.z1 + 0.01, "low");
     upright(o.x1, o.x1 + jamb, o.z0 - 0.01, o.z1 + 0.01, "high");
@@ -227,7 +231,7 @@ function foundation(form: FormDef, level: number): Shape | null {
   if (level > 3) return null;
   const p = new Shape();
   const [top, bottom] = [form.thick / 2, -form.thick / 2];
-  const sides = slab("plate", "frame");
+  const sides = slab("plate", "trim");
   if (level === 3) return p.box([-H, -H, bottom], [H, H, top], sides);
   const [under, pad] = [top - DECK, 0.1]; // the deck's underside, and how high a footing stands
   if (level === 2) {
@@ -244,23 +248,23 @@ function foundation(form: FormDef, level: number): Shape | null {
   const block = 0.13; // a block at each corner, which the channels run into
   const reach = H - block + 0.01;
   for (const s of [-1, 1]) {
-    p.extrude(section(H).map(([a, z]) => [s * a, z] as const), "x", -reach, reach, tone("frame"));
-    alongY(p, section(H).map(([a, z]) => [s * a, z] as const), -reach, reach, tone("frame"));
+    p.extrude(section(H).map(([a, z]) => [s * a, z] as const), "x", -reach, reach, tone("trim"));
+    alongY(p, section(H).map(([a, z]) => [s * a, z] as const), -reach, reach, tone("trim"));
   }
   const footing = 0.3;
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
     const [x0, x1] = sx < 0 ? [-H, -H + footing] : [H - footing, H];
     const [y0, y1] = sy < 0 ? [-H, -H + footing] : [H - footing, H];
-    p.box([x0, y0, bottom], [x1, y1, bottom + pad + 0.012], tone("frame"));
-    p.box([sx < 0 ? -H : H - block, sy < 0 ? -H : H - block, bottom + pad], [sx < 0 ? -H + block : H, sy < 0 ? -H + block : H, under + 0.005], tone("frame"));
+    p.box([x0, y0, bottom], [x1, y1, bottom + pad + 0.012], tone("trim"));
+    p.box([sx < 0 ? -H : H - block, sy < 0 ? -H : H - block, bottom + pad], [sx < 0 ? -H + block : H, sy < 0 ? -H + block : H, under + 0.005], tone("trim"));
     if (level === 0) for (const [fx, fy] of [[sx * (H - 0.07), sy * (H - 0.22)], [sx * (H - 0.22), sy * (H - 0.07)]] as const) nut(p, [fx, fy, bottom + pad + 0.012], [0, 0, 1], 0.026, 0.016);
   }
   // Stiffeners in the channel's mouth, on the grid.
   const marks = level === 0 ? [-GRID, 0, GRID] : [0];
   for (const s of [-1, 1]) for (const at of marks) {
     const [a0, a1] = s < 0 ? [-H + 0.004, -H + web + 0.01] : [H - web - 0.01, H - 0.004];
-    p.box([at - 0.012, a0, bottom + pad + flange - 0.005], [at + 0.012, a1, under - flange + 0.005], tone("frame"));
-    p.box([a0, at - 0.012, bottom + pad + flange - 0.005], [a1, at + 0.012, under - flange + 0.005], tone("frame"));
+    p.box([at - 0.012, a0, bottom + pad + flange - 0.005], [at + 0.012, a1, under - flange + 0.005], tone("trim"));
+    p.box([a0, at - 0.012, bottom + pad + flange - 0.005], [a1, at + 0.012, under - flange + 0.005], tone("trim"));
   }
   if (level === 0) {
     const z = (bottom + pad + under) / 2;
@@ -282,11 +286,11 @@ function ceiling(form: FormDef, level: number): Shape | null {
   if (level > 3) return null;
   const p = new Shape();
   const [top, bottom] = [form.thick / 2, -form.thick / 2 + 0.01];
-  if (level === 3) return p.box([-H, -H, bottom], [H, H, top], slab("plate", "frame", "plate"));
+  if (level === 3) return p.box([-H, -H, bottom], [H, H, top], slab("plate", "trim", "plate"));
   const under = top - DECK;
   const rim = 0.085;
   const [x0, x1] = [-H, H];
-  const deck = (z0: number, z1: number): void => void p.box([x0, -H, z0], [x1, H, z1], slab("plate", "frame", "plate"));
+  const deck = (z0: number, z1: number): void => void p.box([x0, -H, z0], [x1, H, z1], slab("plate", "trim", "plate"));
   if (level === 2) {
     deck(bottom, top);
     return p;
@@ -296,15 +300,15 @@ function ceiling(form: FormDef, level: number): Shape | null {
   for (const s of [-1, 1]) {
     const [y0, y1] = s < 0 ? [-H, -H + rim] : [H - rim, H];
     const at = (x: number): Vec[] => [[x, y0, bottom], [x, y1, bottom], [x, y1, under + 0.004], [x, y0, under + 0.004]];
-    p.loft([at(x0), at(x1)], () => ["frame", [0, 0]], () => ["frame", [0, 0]], 0);
+    p.loft([at(x0), at(x1)], () => ["trim", [0, 0]], () => ["trim", [0, 0]], 0);
     const [a0, a1] = s < 0 ? [-H, -H + rim] : [H - rim, H];
-    p.box([a0, -H + rim, bottom], [a1, H - rim, under + 0.004], tone("frame"));
+    p.box([a0, -H + rim, bottom], [a1, H - rim, under + 0.004], tone("trim"));
   }
   // Joists across y between the rim's beams: a flange under a web.
   for (const x of [-GRID, 0, GRID]) {
     for (const [w, z0, z1] of [[0.05, bottom + 0.012, bottom + 0.04], [0.015, bottom + 0.035, under + 0.004]] as const) {
       const at = (y: number): Vec[] => [[x - w, y, z0], [x + w, y, z0], [x + w, y, z1], [x - w, y, z1]];
-      p.loft([at(-H + rim - 0.004), at(H - rim + 0.004)], () => ["frame", [0, 0]], () => ["frame", [0, 0]], 1);
+      p.loft([at(-H + rim - 0.004), at(H - rim + 0.004)], () => ["trim", [0, 0]], () => ["trim", [0, 0]], 1);
     }
   }
   if (level === 0) {
@@ -324,12 +328,12 @@ function pillar(form: FormDef, level: number): Shape | null {
   const k = half / 0.25;
   const hz = form.thick / 2;
   const shaft = 0.17 * k;
-  if (level === 3) return p.box([-0.2 * k, -0.2 * k, -hz], [0.2 * k, 0.2 * k, hz - 0.012], tone("frame"));
+  if (level === 3) return p.box([-0.2 * k, -0.2 * k, -hz], [0.2 * k, 0.2 * k, hz - 0.012], tone("trim"));
   const plate = 0.045;
   // The cap plate stands under the floor the pillar carries, and the shaft runs on into it, short of its top.
   const cap = hz - FLOOR;
-  p.box([-half, -half, -hz], [half, half, -hz + plate], tone("frame"));
-  p.box([-half, -half, cap - plate], [half, half, cap], tone("frame"));
+  p.box([-half, -half, -hz], [half, half, -hz + plate], tone("trim"));
+  p.box([-half, -half, cap - plate], [half, half, cap], tone("trim"));
   if (level === 2) return p.box([-shaft, -shaft, -hz + plate - 0.005], [shaft, shaft, hz - 0.012], tone("plate"));
   // The shaft with its corners eased, as a rolled section's are.
   const c = 0.03 * k;
@@ -340,12 +344,12 @@ function pillar(form: FormDef, level: number): Shape | null {
   for (const s of [-1, 1]) {
     const z = s < 0 ? -hz + plate - 0.004 : cap - plate + 0.004;
     for (const way of [-1, 1]) {
-      p.extrude([[way * (shaft - 0.004), z], [way * (half - 0.012), z], [way * (shaft - 0.004), z - s * leg]], "x", -thick, thick, tone("frame"));
-      alongY(p, [[way * (shaft - 0.004), z], [way * (half - 0.012), z], [way * (shaft - 0.004), z - s * leg]], -thick, thick, tone("frame"));
+      p.extrude([[way * (shaft - 0.004), z], [way * (half - 0.012), z], [way * (shaft - 0.004), z - s * leg]], "x", -thick, thick, tone("trim"));
+      alongY(p, [[way * (shaft - 0.004), z], [way * (half - 0.012), z], [way * (shaft - 0.004), z - s * leg]], -thick, thick, tone("trim"));
     }
   }
   const collar = 0.07;
-  p.box([-shaft - 0.014, -shaft - 0.014, -collar], [shaft + 0.014, shaft + 0.014, collar], tone("frame"));
+  p.box([-shaft - 0.014, -shaft - 0.014, -collar], [shaft + 0.014, shaft + 0.014, collar], tone("trim"));
   if (level === 0) {
     const at = half - 0.055;
     for (const s of [-1, 1]) for (const [x, y] of [[-at, -at], [at, -at], [at, at], [-at, at]] as const) nut(p, [x, y, s < 0 ? -hz + plate : cap - plate], [0, 0, -s], 0.024 * k, 0.016);
@@ -376,7 +380,7 @@ function door(form: FormDef, level: number): Shape | null {
   const face = form.thick / 2;
   p.box([-hw + 0.01, front, -hh + 0.01], [hw - 0.01, back, hh - 0.01], tone("plate"));
   // The frame of flat bar on both faces, as one member through the leaf each side.
-  const flat = (x0: number, x1: number, z0: number, z1: number): void => void p.box([x0, -face, z0], [x1, face, z1], tone("frame"));
+  const flat = (x0: number, x1: number, z0: number, z1: number): void => void p.box([x0, -face, z0], [x1, face, z1], tone("trim"));
   flat(-hw, -hw + bar, -hh, hh);
   flat(hw - bar, hw, -hh, hh);
   flat(-hw + bar - 0.005, hw - bar + 0.005, -hh, -hh + bar + 0.03);
@@ -386,9 +390,9 @@ function door(form: FormDef, level: number): Shape | null {
   flat(-hw + bar - 0.005, hw - bar + 0.005, rails[0] - 0.045, rails[0] + 0.045);
   // The sight slot: a dark opening in a heavy surround, under a hood on the front.
   const [sz, sw] = [rails[1] - 0.28, 0.17];
-  p.box([-sw - 0.05, -face, sz - 0.075], [sw + 0.05, face, sz + 0.075], tone("frame"));
+  p.box([-sw - 0.05, -face, sz - 0.075], [sw + 0.05, face, sz + 0.075], tone("trim"));
   p.box([-sw, -face - 0.002, sz - 0.028], [sw, face + 0.002, sz + 0.028], tone("dark"));
-  p.extrude([[-face - 0.03, sz + 0.05], [-face, sz + 0.05], [-face, sz + 0.085], [-face - 0.012, sz + 0.085]], "x", -sw - 0.05, sw + 0.05, tone("frame"));
+  p.extrude([[-face - 0.03, sz + 0.05], [-face, sz + 0.05], [-face, sz + 0.085], [-face - 0.012, sz + 0.085]], "x", -sw - 0.05, sw + 0.05, tone("trim"));
   const hinges = [-hh + 0.4, hh - 0.4] as const;
   for (const z of hinges) {
     // A strap tapering to a point, on a knuckle at the door's edge.
@@ -422,7 +426,7 @@ function stairs(form: FormDef, level: number): Shape | null {
   const steps = form.steps!;
   const hz = form.thick / 2;
   const [run, rise] = [(2 * H) / steps, form.thick / steps];
-  const body = slab("frame", "plate");
+  const body = slab("trim", "plate");
   // Coarsest, the slope from foot to head; before that, midway between the steps' noses and their roots.
   if (level === 4) return p.extrude([[H, -hz], [-H, hz], [-H, -hz]], "x", -H, H, body);
   if (level === 3) return p.extrude([[H, -hz], [H, -hz + rise / 2], [-H + run / 2, hz], [-H, hz], [-H, -hz]], "x", -H, H, body);
@@ -445,9 +449,9 @@ function stairs(form: FormDef, level: number): Shape | null {
       const zTop = -hz + (i + 1) * rise;
       const [yBack, yNose] = [H - (i + 1) * run, H - i * run];
       // The tread's plate, then its nosing and two bars across it, which catch the light and the foot.
-      p.box([-s + 0.004, yBack, zTop - tread - 0.002], [s - 0.004, yNose - 0.04, zTop - 0.008], tone("frame"));
+      p.box([-s + 0.004, yBack, zTop - tread - 0.002], [s - 0.004, yNose - 0.04, zTop - 0.008], tone("trim"));
       p.extrude([[yNose - 0.05, zTop - tread - 0.002], [yNose, zTop - tread - 0.002], [yNose, zTop - 0.006], [yNose - 0.008, zTop], [yNose - 0.05, zTop]], "x", -s + 0.004, s - 0.004, tone("nosing"));
-      for (const y of [yBack + 0.07, yBack + 0.16]) p.extrude([[y - 0.012, zTop - 0.009], [y + 0.012, zTop - 0.009], [y + 0.006, zTop - 0.001], [y - 0.006, zTop - 0.001]], "x", -s + 0.02, s - 0.02, tone("frame"));
+      for (const y of [yBack + 0.07, yBack + 0.16]) p.extrude([[y - 0.012, zTop - 0.009], [y + 0.012, zTop - 0.009], [y + 0.006, zTop - 0.001], [y - 0.006, zTop - 0.001]], "x", -s + 0.02, s - 0.02, tone("trim"));
     }
   }
   // Past the bars' distance a nosing is a strip of its colour along each tread's edge.
@@ -455,20 +459,20 @@ function stairs(form: FormDef, level: number): Shape | null {
   // A stringer up each side, proud of the cheek, from the floor at the foot to the head.
   const deep = 0.16 + rise;
   const stringer: Cell[] = [[H, -hz], [H, -hz + deep], [-H + deep, hz], [-H, hz], [-H, hz - 0.2], [H - 0.2, -hz]];
-  for (const [x0, x1] of [[-H, -s], [s, H]] as const) p.extrude(stringer, "x", x0, x1, tone("frame"));
+  for (const [x0, x1] of [[-H, -s], [s, H]] as const) p.extrude(stringer, "x", x0, x1, tone("trim"));
   if (level === 2) return p;
   // The back and the cheeks are framed as a wall is: a post at each back corner, a sill round the foot and a head across the back.
-  for (const [x0, x1] of [[-H, -s + 0.03], [s - 0.03, H]] as const) p.box([x0, -H, -hz], [x1, -H + 0.1, hz - 0.004], tone("frame"));
-  p.box([-s, -H, -hz], [s, -H + 0.058, -hz + SILL], tone("frame"));
+  for (const [x0, x1] of [[-H, -s + 0.03], [s - 0.03, H]] as const) p.box([x0, -H, -hz], [x1, -H + 0.1, hz - 0.004], tone("trim"));
+  p.box([-s, -H, -hz], [s, -H + 0.058, -hz + SILL], tone("trim"));
   {
-    p.box([-s, -H, hz - HEAD - lift], [s, -H + 0.058, hz - lift - 0.004], tone("frame"));
-    p.box([-s, -H + 0.012, -0.045], [s, -H + 0.062, 0.045], tone("frame"));
-    for (const x of [-GRID, GRID]) p.box([x - 0.04, -H + 0.016, -hz + SILL - 0.01], [x + 0.04, -H + 0.058, hz - HEAD - lift + 0.01], tone("frame"));
+    p.box([-s, -H, hz - HEAD - lift], [s, -H + 0.058, hz - lift - 0.004], tone("trim"));
+    p.box([-s, -H + 0.012, -0.045], [s, -H + 0.062, 0.045], tone("trim"));
+    for (const x of [-GRID, GRID]) p.box([x - 0.04, -H + 0.016, -hz + SILL - 0.01], [x + 0.04, -H + 0.058, hz - HEAD - lift + 0.01], tone("trim"));
     for (const sx of [-1, 1]) {
       const [x0, x1] = sx < 0 ? [-H, -s + 0.004] : [s - 0.004, H];
       // The cheek's sill along the floor, and a post under the stringer's middle.
-      p.box([x0, -H + 0.1, -hz], [x1, H - 0.02, -hz + 0.12], tone("frame"));
-      p.box([x0 + (sx < 0 ? 0.012 : 0), -0.05, -hz + 0.12], [x1 - (sx < 0 ? 0 : 0.012), 0.05, -0.2], tone("frame"));
+      p.box([x0, -H + 0.1, -hz], [x1, H - 0.02, -hz + 0.12], tone("trim"));
+      p.box([x0 + (sx < 0 ? 0.012 : 0), -0.05, -hz + 0.12], [x1 - (sx < 0 ? 0 : 0.012), 0.05, -0.2], tone("trim"));
     }
   }
   if (level === 0) {
@@ -487,9 +491,9 @@ export const METAL: TierRecipe = {
   rank: 3,
   runPost: false,
   jointHalf: 0.11,
-  // Each is a palette entry (shared/pack/palette.ts), so the match is exact: the steel greys 89 and 91, whose painted
-  // finish is steel (content/surfaces.ts), a rusted iron, black, and the marker yellow, a steel's colour too.
-  tones: { plate: [139, 148, 156], frame: [174, 182, 191], bolt: [77, 83, 88], dark: [20, 20, 24], nosing: [236, 208, 72] },
+  // Each is a palette entry (shared/pack/palette.ts), so the match is exact: the plate a light steel grey (90), the
+  // frame and the trim a dark slate (4), bolts a rusted iron (96), black, and the marker yellow.
+  tones: { plate: [156, 165, 174], frame: [92, 98, 110], trim: [92, 98, 110], bolt: [79, 74, 68], dark: [20, 20, 24], nosing: [236, 208, 72] },
   split(name, form, level) {
     if (form.layer === "wall") return wallFamily(form, level);
     if (form.layer === "slab" && form.root === "always") return foundation(form, level);
@@ -508,14 +512,24 @@ export function metalColours(): (mat: string) => number {
   return (mat) => (mat === "plate" ? REGION_BASE : fixed.get(mat)!);
 }
 
+/** A level with each face of a fixed colour marked as wearing its piece's material, and all but the frame's as keeping clear of joints: flatLod lays a face's corners down in the faces' order. */
+function marked(shape: Shape, lod: SourceLod): SourceLod {
+  const bones = lod.bones ?? new Uint8Array(lod.colors.length);
+  let v = 0;
+  for (const f of shape.faces) for (let k = 0; k < f.points.length; k++, v++) bones[v]! |= f.mat === "plate" ? 0 : f.mat === "frame" ? FACE_WEARS : FACE_WEARS | FACE_PLAIN;
+  if (v !== bones.length) throw new Error("metal: a level's corners are not its faces'");
+  return { ...lod, bones };
+}
+
 /**
  * The tier's meshes as its pack holds them: every level flat, in the colours above, the levels a wall is seen close
- * at saying their faces' corners and outer edges so the flat program wears their arrises (kit.ts flatLod).
+ * at saying their faces' corners and outer edges so the flat program wears their arrises (kit.ts flatLod), and every
+ * level which faces wear the piece's material in their own colour.
  */
 export function bakeMetal(forms: Readonly<Record<string, FormDef>>): SourceMesh[] {
   const colour = metalColours();
   return Object.entries(forms).map(([name, form]): SourceMesh => ({
     id: `core:${name}_${METAL.name}`,
-    lods: levelsOf(METAL, name, form).map((shape, level): SourceLod => ({ ...flatLod(shape, colour, level < 3), ...(level > 0 ? { error: errorOf(shape, level) } : {}) })),
+    lods: levelsOf(METAL, name, form).map((shape, level): SourceLod => ({ ...marked(shape, flatLod(shape, colour, level < 3)), ...(level > 0 ? { error: errorOf(shape, level) } : {}) })),
   }));
 }
