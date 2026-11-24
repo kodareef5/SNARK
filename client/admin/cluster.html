@@ -19,8 +19,12 @@
           <p id="access-note" role="status"></p>
         </div>
         <form id="sign-in">
+          <div class="cluster-field" id="sign-in-world-field" hidden>
+            <label for="sign-in-world">World</label>
+            <select id="sign-in-world"></select>
+          </div>
           <div class="cluster-field" id="password-field">
-            <label for="password">Admin password</label>
+            <label id="password-label" for="password">Admin password</label>
             <input id="password" type="password" required autocomplete="current-password" />
           </div>
           <button class="cluster-primary" id="submit-password" type="submit">Sign in</button>

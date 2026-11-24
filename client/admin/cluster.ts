@@ -16,6 +16,8 @@ $("cluster-chat").hidden = !isChat;
 
 const worldFilter = $<HTMLSelectElement>("chat-world"), channel = $<HTMLSelectElement>("chat-channel");
 const password = $<HTMLInputElement>("password");
+const signInWorld = $<HTMLSelectElement>("sign-in-world");
+const submitPassword = $<HTMLButtonElement>("submit-password");
 const elements = new Map<string, HTMLElement>();
 const updated = $<HTMLTimeElement>("updated");
 const dashboard = new ClusterAdmin((path, auth) => fetch(path, {
@@ -96,12 +98,33 @@ function renderCard(el: HTMLElement, card: ClusterWorld): void {
 const chat = chatPanel($("chat-lines"), $("chat-state"));
 const renderChat = (): void => chat(dashboard.chat(worldFilter.value, channel.value));
 
-function renderAccess(locked: number): void {
-  $("access").hidden = !locked && !dashboard.signedIn;
+function setOptions(select: HTMLSelectElement, options: HTMLOptionElement[], fallback = ""): void {
+  if (options.length === select.length && options.every((o, i) => o.value === select.options[i]?.value && o.text === select.options[i]?.text)) return;
+  const selected = select.value;
+  select.replaceChildren(...options);
+  select.value = options.some((option) => option.value === selected) ? selected : fallback;
+}
+
+function renderAccess(): void {
+  const locked = [...dashboard.worlds.values()].filter((card) => card.locked);
+  const sole = locked.length === 1 ? locked[0] : undefined;
+  const busy = dashboard.authenticating;
+  $("access").hidden = !locked.length && !dashboard.signedIn;
   $("sign-out").hidden = !dashboard.signedIn;
-  $("submit-password").hidden = $("password-field").hidden = !locked;
-  const noun = locked === 1 ? "world needs its" : "worlds need their";
-  const note = locked ? `${locked} ${noun} admin password.` : "Signed in for this page.";
+  $("sign-in-world-field").hidden = locked.length < 2;
+  submitPassword.hidden = $("password-field").hidden = !locked.length;
+  const options = locked.map(({ world, admin }) => new Option(world.name, admin.link));
+  if (locked.length > 1) options.unshift(new Option("Choose a world", ""));
+  setOptions(signInWorld, options, sole?.admin.link);
+  signInWorld.required = locked.length > 1;
+  signInWorld.disabled = busy || locked.length < 2;
+  submitPassword.disabled = password.disabled = busy || !locked.length;
+  submitPassword.textContent = busy ? "Signing in…" : "Sign in";
+  $("password-label").textContent = sole ? `Password for ${sole.world.name}` : "Admin password";
+  const selected = dashboard.worlds.get(signInWorld.value);
+  const notice = !busy && selected?.locked ? selected.cover : "";
+  const noun = locked.length === 1 ? "world needs its" : "worlds need their";
+  const note = notice || (locked.length ? `${locked.length} ${noun} admin password.` : "Signed in for this page.");
   if ($("access-note").textContent !== note) $("access-note").textContent = note;
 }
 
@@ -130,18 +153,14 @@ function renderOverview(players: number, max: number): void {
 }
 
 function render(): void {
-  const { players, max, locked } = dashboard.totals();
-  renderAccess(locked);
+  const { players, max } = dashboard.totals();
+  renderAccess();
   if (!isChat) {
     renderOverview(players, max);
     return;
   }
   const options = [new Option("All worlds", ""), ...[...dashboard.worlds].map(([key, { world }]) => new Option(world.name, key))];
-  if (options.length !== worldFilter.length || options.some((o, i) => o.value !== worldFilter.options[i]?.value || o.text !== worldFilter.options[i]?.text)) {
-    const selected = worldFilter.value;
-    worldFilter.replaceChildren(...options);
-    worldFilter.value = dashboard.worlds.has(selected) ? selected : "";
-  }
+  setOptions(worldFilter, options);
   renderChat();
 }
 
@@ -154,19 +173,27 @@ async function refresh(): Promise<void> {
   render();
 }
 
-function signIn(auth: string): void {
-  dashboard.signIn(auth);
+$("sign-in").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!signInWorld.value || dashboard.authenticating) return;
+  const bytes = new TextEncoder().encode(`admin:${password.value}`);
+  const auth = `Basic ${btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))}`;
+  const pending = dashboard.signIn(signInWorld.value, auth);
+  password.value = "";
+  render();
+  await pending;
+  render();
+});
+signInWorld.addEventListener("change", () => {
+  password.value = "";
+  renderAccess();
+});
+$("sign-out").addEventListener("click", () => {
+  dashboard.signOut();
   password.value = "";
   render();
   void refresh();
-}
-
-$("sign-in").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const bytes = new TextEncoder().encode(`admin:${password.value}`);
-  signIn(`Basic ${btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))}`);
 });
-$("sign-out").addEventListener("click", () => signIn(""));
 if (isChat) {
   addChatChannels(channel);
   worldFilter.addEventListener("change", renderChat);
