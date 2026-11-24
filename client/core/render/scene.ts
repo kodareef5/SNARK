@@ -309,11 +309,14 @@ export class Scene {
   get shots(): Shots | null { return this.shotsDrawn; }
   set shots(shots: Shots | null) {
     this.shotsDrawn = shots;
-    shots?.bind(this.assets);
+    if (shots) {
+      shots.bind(this.assets);
+      shots.fire = this.blasts;
+    }
   }
   private shotsDrawn: Shots | null = null;
   shotTick = 0;
-  /** What burns: rockets' flames and smoke, and blasts. The shots are given it as the frame meets them. */
+  /** The scene draws rocket flames, smoke and blasts. */
   readonly blasts: Blasts;
   /** Whether what burns is drawn, which a page turns off for a before and after (passes.ts "bursts"). */
   get bursts(): boolean { return this.blasts.on; }
@@ -1025,7 +1028,6 @@ export class Scene {
       ch.corpses(p, cam, remote, this.world, own ? makeHandle(own.id, own.generation ?? 0) : 0, own?.down === true);
     }
     // Then the shots in the air, and the supply drops' shafts and capsules.
-    if (this.shots) this.shots.fire = this.blasts;
     this.shots?.draw(ch, p, cam, this.shotTick);
     this.supply?.draw(ch, p, cam);
     if (remote) {

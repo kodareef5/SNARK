@@ -152,8 +152,8 @@ export class Shots {
   readonly flashes: { x: number; y: number; z: number; dx: number; dy: number; dz: number; born: number; until: number; mesh: number; size: number }[] = [];
   /** Where a bolt of light ended on something: its burst's mesh and size. */
   readonly bursts: { x: number; y: number; z: number; born: number; mesh: number; size: number }[] = [];
-  private flashOfAmmo!: Int32Array;
-  private burstOfAmmo!: Int32Array;
+  private flashOfAmmo: Int32Array = new Int32Array(0);
+  private burstOfAmmo: Int32Array = new Int32Array(0);
   /** The bodies of the sample last sorted, by the square each stands in: where each square's run starts, and the run. */
   private readonly nearStart = new Uint16Array(NEAR_CELLS + 1);
   private readonly nearBody = new Uint16Array(MAX_VIEW);
@@ -165,7 +165,7 @@ export class Shots {
   /** The flash of a tame going into a soul ball or coming out (tools/pack/balls.ts), or the blast's where a pack has none. */
   private ballMesh = -1;
   private now = 0;
-  private meshOfAmmo!: Int32Array;
+  private meshOfAmmo: Int32Array = new Int32Array(0);
   private tracerMesh = -1;
   /**
    * The client's own body as last absorbed, which another's round may meet: its feet, how wide it is and how tall as it
@@ -195,9 +195,9 @@ export class Shots {
   /** The whole tick the flights have been flown through. */
   private tick = -1;
 
-  constructor(reg: Registry, pack: Pack) {
+  constructor(reg: Registry, pack?: Pack) {
     this.reg = reg;
-    this.name(new Assets(reg, pack));
+    if (pack) this.name(new Assets(reg, pack));
   }
 
   /**
