@@ -571,8 +571,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // sheet in limestone, mint and clay and its monitor's seam. It was 2280214352 until the skate park's kicker, rail and
   // ledge (content/skate-park.ts) added their grey meshes, 3630105137 until the two parked Concept 003 meshes shifted
   // handles, 1615357347 until the city's broken forms (content/breaks) added theirs, and 563689127 until the wrecks'
-  // stripped forms (content/vehicles/salvage.ts) added theirs.
-  expect(hash).toBe(3091927605);
+  // stripped forms (content/vehicles/salvage.ts) added theirs. It was 3091927605 until every body's shell and the nine
+  // bodies' stripped looks that only salvage leaves (content/vehicles/wrecks.ts SALVAGED_LOOKS) added their meshes.
+  expect(hash).toBe(2630567081);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -616,9 +617,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // sinking walk's slopes, as above.
   // And 2416789718 until the finishes of materials made from recipes, as above.
   // And 3120527 until the three finishes above, 1760943328 until the shed's, 2591537817 until the skate park's,
-  // 1800001343 until the two parked Concept 003 meshes, 4134447771 until the city's broken forms, and 2206766379
-  // until the wrecks' stripped forms.
-  expect(saddled.hash).toBe(3892484967);
+  // 1800001343 until the two parked Concept 003 meshes, 4134447771 until the city's broken forms, 2206766379
+  // until the wrecks' stripped forms, and 3892484967 until the shells and the looks only salvage leaves, as above.
+  expect(saddled.hash).toBe(725207311);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

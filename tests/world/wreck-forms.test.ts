@@ -1,9 +1,9 @@
 // The street's wrecks as content: every look is a wreck with its rungs, and its lesser looks are kinds a row may take.
 
 import { expect, test } from "bun:test";
-import { STREET_LOOKS, WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
-import { BREAK_VARIANTS, FORM_BREACH_A, FORM_WHOLE, formKind } from "../../shared/content/breaks.ts";
-import type { StructureDef } from "../../shared/content/defs.ts";
+import { SALVAGED_LOOKS, STREET_LOOKS, WRECK_KINDS, lesserLook, wreckLook } from "../../content/vehicles/wrecks.ts";
+import { BREAK_VARIANTS, FORM_BREACH_A, FORM_OPEN, FORM_WHOLE, formKind } from "../../shared/content/breaks.ts";
+import { shapeHalf, type ShapeDef, type StructureDef } from "../../shared/content/defs.ts";
 import { WRECK, formOf, rungAt, rungKind, workHealth } from "../../shared/world/breaking.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -24,21 +24,46 @@ test("every kind a street sets down is a whole wreck with one to three rungs", (
 });
 
 test("a rung's kind is always one a row may take, and a lesser look is drawn and walked as the look it is", () => {
-  let lesser = 0;
+  const forms = { stripped: FORM_BREACH_A, shell: FORM_OPEN } as const;
+  const lesser = { stripped: 0, shell: 0 };
   for (const look of STREET_LOOKS) {
     const k = reg.index.get(WRECK_KINDS[look.mesh]![0]!)!;
     for (let rung = 0; rung < 3; rung++) expect(rungKind(reg, k, rung)).not.toBe(0);
-    const stripped = rungKind(reg, k, 1);
-    if (stripped === k) continue;
-    lesser++;
-    const as = STREET_LOOKS.find((l) => l.mesh === (look.body === "tanker" ? "core:tanker_stripped" : `${look.mesh}_stripped`))!;
-    const whole = def(reg.index.get(WRECK_KINDS[as.mesh]![0]!)!);
-    expect([def(stripped).mesh, def(stripped).shape, def(stripped).half]).toEqual([as.mesh, whole.shape, whole.half]);
-    // Every paint of the look takes the one kind, cut once for every place.
-    for (const id of WRECK_KINDS[look.mesh]!) for (let v = 0; v < BREAK_VARIANTS; v++) expect(formKind(reg, reg.index.get(id)!, FORM_BREACH_A, v)).toBe(stripped);
+    for (const form of ["stripped", "shell"] as const) {
+      const kind = formKind(reg, k, forms[form], 0);
+      // The tanker's salvage is its own content: where it stopped it is drawn stripped, and it has no shell.
+      const as = look.body === "tanker" ? (look.mesh === "core:tanker_abandoned" && form === "stripped" ? { mesh: "core:tanker_stripped", shape: "core:shape_tanker_stripped", boxes: STREET_LOOKS.find((l) => l.mesh === "core:tanker_stripped")!.boxes } : undefined)
+        : ((to) => to && { mesh: to.look.mesh, shape: to.shape, boxes: to.look.boxes })(lesserLook(look, form));
+      expect([look.mesh, form, kind !== 0]).toEqual([look.mesh, form, as !== undefined]);
+      if (!as) continue;
+      lesser[form]++;
+      expect([def(kind).mesh, def(kind).shape, def(kind).half]).toEqual([as.mesh, as.shape, shapeHalf(as.boxes)]);
+      expect((reg.defs[reg.index.get(as.shape)!] as ShapeDef).boxes).toEqual(as.boxes);
+      // Every paint of the look takes the one kind, cut once for every place.
+      for (const id of WRECK_KINDS[look.mesh]!) for (let v = 0; v < BREAK_VARIANTS; v++) expect(formKind(reg, reg.index.get(id)!, forms[form], v)).toBe(kind);
+    }
+    // Where it stopped it is stripped and then a shell; set down stripped, a shell at once; on its roof or burnt, itself.
+    const [stripped, shell] = [formKind(reg, k, FORM_BREACH_A, 0), formKind(reg, k, FORM_OPEN, 0)];
+    expect([look.mesh, rungKind(reg, k, 1), rungKind(reg, k, 2)]).toEqual([look.mesh, stripped || shell || k, shell || stripped || k]);
   }
-  // The compact, the Concept, the fastback, the caravan, the panel van and the tanker have a stripped look.
-  expect(lesser).toBe(6);
+  // Every body is stripped where it stopped, the tanker too. Every body but the tanker has a shell, which the compact,
+  // the Concept, the fastback, the caravan and the panel van take from their stripped looks too.
+  expect(lesser).toEqual({ stripped: 15, shell: 19 });
+});
+
+test("a look only salvage leaves is no kind a map places: it has a shape, and a body's street looks lead to it", () => {
+  // The nine bodies the street never set down stripped, and the fourteen shells.
+  expect([SALVAGED_LOOKS.filter((l) => l.mesh.endsWith("_stripped")).length, SALVAGED_LOOKS.filter((l) => l.mesh.endsWith("_shell")).length]).toEqual([9, 14]);
+  const drawn = new Set(reg.defs.flatMap((d) => (d?.type === "structure" && d.breaks?.family === "wreck" && d.breaks.form !== "whole" && d.mesh ? [d.mesh] : [])));
+  for (const look of SALVAGED_LOOKS) {
+    expect([look.mesh, look.mesh in WRECK_KINDS, STREET_LOOKS.some((l) => l.mesh === look.mesh), drawn.has(look.mesh)]).toEqual([look.mesh, false, false, true]);
+    expect(look.boxes.length).toBeGreaterThan(0);
+    // It is as long and as wide as its body where it stopped, within a door's swing, and no taller.
+    const whole = shapeHalf(STREET_LOOKS.find((l) => l.mesh === `core:${look.body}_abandoned`)!.boxes), half = shapeHalf(look.boxes);
+    expect([look.mesh, half[0] < whole[0] + 0.5, half[1] <= whole[1] + 0.02, Math.abs(half[2] - whole[2]) < 0.6]).toEqual([look.mesh, true, true, true]);
+  }
+  // No kind but a wreck's form is drawn as one, so none is dyed, placed or counted as a street look.
+  for (const d of reg.defs) if (d?.type === "structure" && SALVAGED_LOOKS.some((l) => l.mesh === d.mesh)) expect([d.id, d.id.startsWith("core:zzzzzzzwreck_"), wreckLook(d.id)]).toEqual([d.id, true, undefined]);
 });
 
 test("a wreck's rung follows its health, and a rung's work is the same share of it whatever its health", () => {

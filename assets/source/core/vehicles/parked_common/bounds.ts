@@ -1,6 +1,6 @@
 // The boxes bodies meet on each of the fleet's abandoned statics, fitted to its finest level as built:
 // bun assets/source/core/vehicles/parked_common/bounds.ts writes content/vehicles/abandoned-bounds.json from the packs
-// of the <vehicle>_abandoned folders. The mesh is cut into layers 5 cm high, each the plan of the triangles it crosses,
+// of the <vehicle>_abandoned folders, and of the <vehicle>_salvaged folders beside them. The mesh is cut into layers 5 cm high, each the plan of the triangles it crosses,
 // and neighbouring layers are joined, the pair that adds least room first, until a few boxes are left: a vehicle's
 // body, its cabin, its roof's or wheels' step. A box keeps 98 in 100 of the points across, so a mirror does not widen it,
 // and all of them along.
@@ -50,7 +50,8 @@ export function fit(points: Float32Array, indices: Uint32Array): { at: number[];
 
 if (import.meta.main) {
   const out: Record<string, { at: number[]; half: number[] }[]> = {};
-  for (const folder of readdirSync(join(HERE, "..")).filter((f) => f.endsWith("_abandoned") && f !== "compact_abandoned").sort()) {
+  // The compact's street looks keep the boxes content/vehicles/wrecks.ts states.
+  for (const folder of readdirSync(join(HERE, "..")).filter((f) => (f.endsWith("_abandoned") && f !== "compact_abandoned") || f.endsWith("_salvaged")).sort()) {
     const pack = parsePack(new Uint8Array(readFileSync(join(HERE, "..", folder, `${folder}.snpk`))));
     for (const m of pack.header.meshes) {
       const lod = m.lods[0]!, v = lodVertices(pack, lod), view = new DataView(v.buffer, v.byteOffset, v.byteLength);

@@ -59,6 +59,14 @@ test("no id there was before the forms has its index moved by them", () => {
   const wrecks = ids.filter(wreckForm);
   expect(wrecks.length).toBeGreaterThan(0);
   expect(wrecks.filter((id) => reg.index.get(id)! < last)).toEqual([]);
+  // So are the shapes of the looks only salvage leaves: a form's shape is one a map's kind has, or one of these.
+  const shapes = wrecks.filter((id) => reg.defs[reg.index.get(id)!]!.type === "shape");
+  expect(shapes.length).toBeGreaterThan(0);
+  for (const id of wrecks) {
+    const d = reg.defs[reg.index.get(id)!]!;
+    if (d.type === "structure") expect([id, reg.index.get(d.shape!)! < last || shapes.includes(d.shape!)]).toEqual([id, true]);
+    else expect([id, d.type]).toEqual([id, "shape"]);
+  }
 });
 
 test("each form of each breaking shape in each variant is a static kind of its own shape, with no finish", () => {
