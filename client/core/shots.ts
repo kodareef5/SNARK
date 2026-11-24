@@ -160,6 +160,7 @@ export class Shots {
   private readonly nearCell = new Uint16Array(MAX_VIEW);
   /** The widest of them, which a flight's search is widened by. */
   private nearWide = 0;
+  private bodiesSorted = false;
   private blastMesh = -1;
   /** The flash of a tame going into a soul ball or coming out (tools/pack/balls.ts), or the blast's where a pack has none. */
   private ballMesh = -1;
@@ -552,7 +553,7 @@ export class Shots {
 
   /**
    * Cuts the piece `f` flies next, already looked along, at the first body in it: the client's own, which is not among
-   * those it is sent, and the drawn bodies of `remote`, which must be sorted. They are met where they are drawn now, a
+   * those it is sent, and the drawn bodies of `remote`. They are met where they are drawn now, a
    * tick before the round is there: near enough for a picture, and it lets the round be drawn no further than the body.
    */
   private bodies(f: Flying, remote: RemoteSample | null): void {
@@ -571,7 +572,11 @@ export class Shots {
         met = true;
       }
     }
-    if (remote) {
+    if (remote && remote.count > 0) {
+      if (!this.bodiesSorted) {
+        this.sort(remote);
+        this.bodiesSorted = true;
+      }
       const reg = this.reg;
       // A shot starts inside its shooter's box, so over its first two pieces whoever stands where it left is passed over.
       const near = f.age < 2;
@@ -685,10 +690,8 @@ export class Shots {
     // After a clock jump, do not catch up tick by tick.
     if (this.tick < 0 || whole - this.tick > 8 || whole < this.tick) this.tick = whole - 1;
     // One that left since the last step has its first piece tested now, before it is drawn.
-    let fresh = false;
-    for (const f of this.flying) if (f.fresh) fresh = true;
-    if ((this.tick < whole || fresh) && remote && this.flying.length > 0) this.sort(remote);
-    if (fresh) for (const f of this.flying) if (f.fresh) this.bodies(f, remote);
+    this.bodiesSorted = false;
+    for (const f of this.flying) if (f.fresh) this.bodies(f, remote);
     for (; this.tick < whole; this.tick++) {
       let kept = 0;
       for (const f of this.flying) {

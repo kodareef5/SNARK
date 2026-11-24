@@ -388,8 +388,10 @@ const LOG_LINES = 200;
 /** Ticks a death the server told of is kept for the bodies drawn behind it. */
 const DIED_KEPT = 2 * TICK_RATE;
 
-/** Beyond this the oldest untaken event is dropped. */
+/** Shots and feedback each keep this many events between frames. */
 const MAX_EVENTS = 64;
+/** A delayed frame can receive both launches and blasts from a hundred players. */
+const MAX_ROCKET_EVENTS = 256;
 
 /** One S_EVENT as received. Fields its kind does not carry are zero. See EVENT_* in shared/net/protocol.ts. */
 export interface CombatEvent {
@@ -2095,8 +2097,8 @@ export class ClientSession {
         const speed = (this.registry.ammoSpeed[bolt.ammo] ?? 0) * bolt.speed;
         if (r.overflow || !(speed > 0)) break;
         this.events.push({ ...ev, kind: EVENT_SHOT, x: bolt.x, y: bolt.y, z: bolt.z, item: bolt.ammo, flies: true, vx: bolt.dx * speed, vy: bolt.dy * speed, vz: bolt.dz * speed, back: bolt.back, silenced: bolt.silenced, far: bolt.ended, wet: bolt.wet, mine: bolt.mine });
-        if (this.events.length > MAX_EVENTS) this.events.shift();
       }
+      this.trimEvents();
       return;
     }
     if (kind === EVENT_SHOT) {
@@ -2203,7 +2205,26 @@ export class ClientSession {
     } else return;
     if (r.overflow) return;
     this.events.push(ev);
-    if (this.events.length > MAX_EVENTS) this.events.shift();
+    this.trimEvents();
+  }
+
+  private trimEvents(): void {
+    const events = this.events;
+    if (events.length <= MAX_EVENTS) return;
+    let shots = 0, rockets = 0, feedback = 0;
+    let first = events.length;
+    // Keep the newest of each kind in arrival order for sound, shots and feedback.
+    for (let i = first - 1; i >= 0; i--) {
+      const ev = events[i]!;
+      if (ev.kind === EVENT_SHOT) {
+        if (++shots > MAX_EVENTS) continue;
+      } else if (ev.kind === EVENT_ROCKET || ev.kind === EVENT_BLAST) {
+        if (++rockets > MAX_ROCKET_EVENTS) continue;
+      } else if (++feedback > MAX_EVENTS) continue;
+      first--;
+      if (first !== i) events[first] = ev;
+    }
+    if (first > 0) events.splice(0, first);
   }
 
   private welcome(r: BitReader): void {
