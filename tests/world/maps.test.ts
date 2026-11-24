@@ -25,6 +25,20 @@ import { coreRegistry } from "../fixtures/world.ts";
 const dir = mkdtempSync(join(tmpdir(), "snark-maps-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
+test("joining asks for the map and its landmarks before the game script runs", () => {
+  const file = writeMap(flatMap(4, { content: {
+    landmarks: [{ name: "dock", x: 32, y: 0, z: 32, yaw: 0 }],
+    defs: CORE_PACK.defs.filter(def => def.id === "core:crate"),
+  } }));
+  const head = readHead(file);
+  const route = mapRoutes(file, head.id);
+  const landmark = head.parts.find(part => part.kind === "land")!;
+  expect(route.link).toContain(`<map/${head.name}>`);
+  expect(route.link).toContain(`<map/${landmark.name}>`);
+  expect(route.link).not.toContain("ground.");
+  route.close();
+});
+
 test("a new map is a file: a flat one made here runs a server, is served as a browser fetches it, and is walked on", async () => {
   const file = writeMap(flatMap(4, { statics: [{ kind: "core:crate", x: 140, y: 0.5, z: 128, yaw: 0 }] }));
   const h = new Harness({}, 1, 60, { map: file });

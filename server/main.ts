@@ -173,7 +173,7 @@ export type MapRoute = ((path: string, req: Request) => Response | Promise<Respo
  * takes away the parts its new head does not name, so a part this server names and its folder no longer has is cut from
  * the file it holds, and gzipped once. That holds the old file's disk until the server stops, and its parts' gzip in memory
  * once asked for. A map made in code, or given with no such folder, is cut likewise. `link` is the header that has a page
- * ask for the head as it is read, before it has read map.json, named relatively as the page's own fetch does.
+ * ask for the head and landmark definitions before JavaScript reads map.json.
  */
 export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, hash?: number): MapRoute {
   const fd = typeof file === "string" ? openSync(file, "r") : -1;
@@ -189,6 +189,9 @@ export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, ha
     throw new Error(`map: ${String(file)} was built again as the server started: start it again`);
   }
   const json = JSON.stringify({ id, hash: head.hash, head: `map/${head.name}` });
+  const landmarks = head.parts.find(part => part.kind === "land");
+  const link = [head.name, ...(landmarks ? [landmarks.name] : [])]
+    .map(name => `<map/${name}>; rel=preload; as=fetch; crossorigin`).join(", ");
   const folder = typeof file === "string" ? partsFolder(file) : "";
   const wanted = new Map([{ name: head.name, at: 0, length: head.bytes, hash: "" }, ...head.parts].map((p) => [p.name, p]));
   const onDisk = folder !== "" && [...wanted.values()].every((p) => existsSync(join(folder, `${p.name}.br`)) && existsSync(join(folder, `${p.name}.gz`)) && existsSync(join(folder, p.name)) && statSync(join(folder, p.name)).size === p.length);
@@ -216,7 +219,7 @@ export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, ha
       if (!onDisk) return cut(name, req);
       return serveFile(folder, req, `/${name}`).then((res) => (res.status === 404 ? cut(name, req) : res));
     },
-    { link: `<map/${head.name}>; rel=preload; as=fetch; crossorigin`, version: head.version, close },
+    { link, version: head.version, close },
   );
 }
 
@@ -341,6 +344,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   // Directories: the ones this world is listed in, and its own if it hosts one. Its title searches them all.
   const titleScenes = new TitleScenes(
     host.cluster ? join(host.cluster.folder.root, "title-scenes.sqlite") : opts.dbPath ? opts.dbPath + ".title-scenes.sqlite" : ":memory:",
+    clientDir,
   );
   const listings = opts.directory ? new ServerDirectory(host.cluster ? join(host.cluster.folder.root,"directory.sqlite") : opts.dbPath ? opts.dbPath+".directory.sqlite" : ":memory:") : null;
   const directories = opts.directories ?? [];
@@ -458,9 +462,16 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       const answered = opts.routes?.(req, url);
       if (answered) return answered;
       const clusterPath = url.pathname;
-      if (clusterPath === "/cluster/title-poster.webp" || clusterPath === "/cluster/title-scene.json") {
+      if (clusterPath === "/cluster/title-scene.json" || clusterPath === "/cluster/title-poster.webp" ||
+          clusterPath === "/cluster/loader-scene.json" || clusterPath === "/cluster/loader-poster.webp") {
         if (req.method !== "GET") return new Response(null, { status: 405, headers: { Allow: "GET" } });
-        return clusterPath.endsWith(".webp") ? titleScenes.poster(url.searchParams.has("portrait")) : titleScenes.active();
+        const portrait = url.searchParams.has("portrait");
+        switch (clusterPath) {
+          case "/cluster/title-poster.webp": return titleScenes.poster(portrait);
+          case "/cluster/loader-poster.webp": return titleScenes.loaderPoster(portrait);
+          case "/cluster/loader-scene.json": return titleScenes.loader();
+          default: return titleScenes.active();
+        }
       }
       const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
       const local = !opts.dev || namesThisMachine(req.headers.get("host"), named);
@@ -492,7 +503,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       // and the version of the page on disk now, which is another until the client is built.
       if (path === "/ready.json") return new Response(JSON.stringify({ started: meter.startedAt, wire, page: builtWire(clientDir), map: host.world.mapId } satisfies Ready), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
       if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, players:host.game.playerCount, max:host.game.opts.maxClients, listed, pve:host.rules.on("serverPVE"), about:plain(host.rules.text("ServerDescription")).slice(0,ABOUT_MAX), discord:discordOf(host.rules.text("DiscordUrl")), tags:tagsOf(host.rules.text("ServerTags")), spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
-      if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
+      if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite","survivor"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
       if (path === "/ws" || path === "/voice") {
         if (!local) {
           const asked = (req.headers.get("host") ?? "").slice(0, 100);

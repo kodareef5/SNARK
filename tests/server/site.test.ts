@@ -64,6 +64,16 @@ test("a server's path is its public address's, plain words that are not the site
   ]);
 });
 
+test("the first title response offers play and chooses one poster orientation", () => {
+  const html = startPage([], { wiki: "", repository: "" }, { world: true, directory: "" });
+  expect(html).toContain('data-action="begin">Play</button>');
+  expect(html).toContain('data-action="servers">Browse worlds</button>');
+  expect(html).toContain('href="/cluster/title-poster.webp?portrait" media="(orientation: portrait)"');
+  expect(html).toContain('<noscript><h1>SNARK</h1>');
+  expect(html).not.toContain("flight.html");
+  expect(html).not.toContain('src="main.js"');
+});
+
 test("the start screen lists each world with its count and goes to its path, and a link is only ever an address or a path of the site", () => {
   expect([worldAddress({ url: "/miami", port: 8798 }, "abc.trycloudflare.com", false), worldAddress({ url: "https://tampa.example/", port: 8799 }, "x", false), worldAddress({ url: "", port: 8799 }, "192.168.1.20:8798", true)]).toEqual(["/miami/", "https://tampa.example/", "//192.168.1.20:8799/"]);
   // A page that came straight to a world's port goes to the other's port, under its path.
@@ -184,7 +194,7 @@ test("a standalone title stays at the proxy origin and the game preloads its map
     try {
       const at = `http://127.0.0.1:${s.port}`;
       const proxy = { host: "play.example.org" };
-      const page = await get(at + "/?screen=roster", { headers: proxy });
+      const page = await get(at + "/?screen=roster&survivor=June", { headers: proxy });
       expect(await page.text()).toContain("entry-root");
       expect(page.headers.get("link")).toBeNull();
       expect(await (await get(at + "/entry-worlds.json", { headers: proxy })).json()).toMatchObject([{ address: "/", password: false }]);
@@ -229,6 +239,11 @@ test("the front sends each path to its world and the site to the lowest world, s
   expect(await (await get(`${at}/cluster/title-scene.json`)).json()).toMatchObject({set:"wynwood-shore"});
   expect((await get(`${at}/cluster/admin/scenes/`)).status).toBe(401);
   expect((await get(`${at}/cluster/admin/scenes/api`, { method:"POST" })).status).toBe(401);
+  const loader = await (await get(at + "/cluster/loader-scene.json")).json() as { landscape: string; portrait: string };
+  expect(loader.landscape).toBe("/cluster/loader-poster.webp");
+  expect(loader.portrait).toBe("/cluster/loader-poster.webp?portrait");
+  expect((await get(at + loader.landscape)).status).toBe(307);
+  expect((await get(at + "/cluster/loader-scene.json", { method: "POST" })).status).toBe(405);
   const director = { authorization: `Basic ${btoa("operator:miami password")}` };
   expect((await get(`${at}/cluster/admin/scenes/api`, {headers:director})).status).toBe(200);
   expect((await get(`${at}/cluster/admin/scenes/api`, {method:"POST",headers:{...director,origin:"https://elsewhere.example"}})).status).toBe(403);
