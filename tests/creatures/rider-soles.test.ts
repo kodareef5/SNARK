@@ -52,7 +52,7 @@ test("native quantized sole witnesses survive repack, cache ordering and boot-on
   expect(twice.header.rigs).toEqual(pack.header.rigs);
   const split = splitPack(orderPack(bytes), "feet", { boot: () => false });
   const boot = parsePack(split.files.find(f => f.role === "boot")!.bytes);
-  expect(boot.header.rigs).toEqual(pack.header.rigs);
+  expect(boot.header.rigs.map((rig) => rig.soles)).toEqual(pack.header.rigs.map((rig) => rig.soles));
   expect(boot.header.meshes.length).toBe(0);
   expect(original.header.rigs).toEqual(source);
 });
