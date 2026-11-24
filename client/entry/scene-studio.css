@@ -4,7 +4,7 @@
 }
 #view {
   position: relative;
-  background: #241b20 url("/title/red-tide.webp") center/cover;
+  background: #241b20 url("/cluster/title-poster.webp") center/cover;
   aspect-ratio: 16/9;
   border-radius: 7px;
   overflow: hidden;
@@ -14,7 +14,10 @@
 #view:active {
   cursor: grabbing;
 }
+#view iframe { opacity: 0 }
+#view[data-ready] iframe { opacity: 1 }
 #view.tall {
+  background-image: url("/cluster/title-poster.webp?portrait");
   aspect-ratio: 9/16;
   max-height: 72vh;
   margin: auto;
@@ -71,7 +74,7 @@ iframe,
 }
 .control {
   display: grid;
-  grid-template-columns: 6.2rem 1fr 3.6rem;
+  grid-template-columns: 6.2rem minmax(30px, 1fr) 4.3rem;
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0;
@@ -98,9 +101,6 @@ iframe,
     grid-template-columns: 1fr;
     padding: 1rem;
     gap: 1rem;
-  }
-  header {
-    gap: 0.8rem;
   }
   #view.tall {
     max-height: 60vh;

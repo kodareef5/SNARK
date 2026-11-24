@@ -230,11 +230,13 @@ addEventListener("message", (e) => {
   if (e.data.type === "frame") updateFrame();
   if (e.data.type === "ready") {
     viewerReady = true;
+    view.dataset.ready = "";
     $("playback").textContent = "Live · Miami";
     $<HTMLButtonElement>("publish").disabled = false;
   }
   if (e.data.type === "failed") {
     viewerReady = false;
+    delete view.dataset.ready;
     $("playback").textContent = "The renderer could not load. Reload the studio to retry.";
     $<HTMLButtonElement>("publish").disabled = true;
   }
