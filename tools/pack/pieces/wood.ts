@@ -926,13 +926,13 @@ const facetSides = (f: Facet, eaves = EAVE): Plane[] => f.poly.map((a, k) => pla
 /**
  * A facet's courses of boards, each lapping the one under it, running along the contours and cut to the facet's
  * sides. The lowest runs out over an eave as one thick board, which covers the top of the wall the roof stands on.
- * A course's lower edge wanders in its middle and is true at its ends, where the next face's course meets it.
+ * With `wavy`, a course's lower edge wanders in its middle; it is true at its ends, where the next face's course meets it.
  */
-function courses(p: Shape, level: number, f: Facet, rise: number, seed: number): void {
+function courses(p: Shape, level: number, f: Facet, rise: number, seed: number, wavy: boolean): void {
   const eave = f.kinds.includes("eave");
   const spans = f.poly.map((q) => facetAt(f, q)[0]);
   const [a0, a1] = [Math.min(...spans) - EAVE - 0.05, Math.max(...spans) + EAVE + 0.05];
-  const as = level === 0 ? [a0, (a0 + a1) / 2, a1] : [a0, a1];
+  const as = level === 0 && wavy ? [a0, (a0 + a1) / 2, a1] : [a0, a1];
   const rng = new PyRandom(seed);
   const from = p.faces.length;
   for (let i = level === 0 ? 0 : COURSES; i < COURSES; i++) {
@@ -1025,14 +1025,14 @@ function roof(form: FormDef, level: number): Shape | null {
   }
   facets.forEach((f) => {
     const from = p.faces.length;
-    courses(p, level, f, rise, 900);
+    // A folded roof's courses are straight: each is cut on the fold, and has no triangles for a middle ring besides.
+    courses(p, level, f, rise, 900, !folded);
     // A valley's courses stop short of its fold, where the board that lines it shows.
     if (folded && !hip) clip(p, planeMoved(facetSides(f)[f.kinds.indexOf("fold")]!, -0.09), null, from);
   });
   // The underlay alone, or past the finest the courses and their underlay as one sheet that wears the courses' picture.
-  const straight = !folded && n === 4 ? facets[0]!.axis : undefined;
-  if (level === 0) slabOn(p, plan, tops.map((h) => h - SARK_DROP), SARK, slab, fold, straight);
-  else slabOn(p, plan, tops.map((h) => h + 0.022), SARK + SARK_DROP + 0.022, slab, fold, straight);
+  if (level === 0) slabOn(p, plan, tops.map((h) => h - SARK_DROP), SARK, slab, fold);
+  else slabOn(p, plan, tops.map((h) => h + 0.022), SARK + SARK_DROP + 0.022, slab, fold);
   const under = facets.map((f) => facetPlane(f, -SARK - SARK_DROP));
   const edge = inset(plan, 0.004);
   const within = edge.map((a, k) => uprightPlane(a, edge[(k + 1) % n]!));
@@ -1053,7 +1053,8 @@ function roof(form: FormDef, level: number): Shape | null {
       const [z0, z1] = [za - form.thick, za + (RIM_IN + RIM) * f.g];
       spar(p, level, at(a, (z0 + z1) / 2), at(b, (z0 + z1) / 2), RIM, z1 - z0, Z, [5 + k, 6 + k, 5 + k, 7 + k], 920 + k, { segs: 2 });
     }
-    for (const plane of [...within.filter((_, j) => j !== k), under[facets.indexOf(f)]!]) clip(p, plane, null, from);
+    // Under a hip a rim timber runs on past the fold, under the other face: it is cut to both.
+    for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!])]) clip(p, plane, null, from);
   });
   if (folded) {
     const [a, b] = [plan[(fold + 2) % n]!, plan[fold]!];
@@ -1068,7 +1069,7 @@ function roof(form: FormDef, level: number): Shape | null {
     if (hip) {
       // The roll that caps a hip, planed, out to the corner of the eave boards.
       const reach = facets.every((f) => f.kinds.includes("eave")) ? EAVE * Math.SQRT2 - 0.02 : 0;
-      timber(p, [a[0] - ((b[0] - a[0]) * reach) / run, a[1] - ((b[1] - a[1]) * reach) / run, za - (reach * (zb - za)) / run + 0.036], [b[0], b[1], zb + 0.036], 0.09, 0.06, Z, [1, 2, 1, 2], { chamfer: level === 0 ? 0.014 : 0, end: level === 0 ? [3, 1] : null });
+      timber(p, [a[0] - ((b[0] - a[0]) * reach) / run, a[1] - ((b[1] - a[1]) * reach) / run, za - (reach * (zb - za)) / run + 0.03], [b[0], b[1], zb + 0.03], 0.09, 0.06, Z, [1, 2, 1, 2], { chamfer: level === 0 ? 0.014 : 0, end: level === 0 ? [3, 1] : null });
       for (const side of plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), kindOf(k) === "eave" ? EAVE : 0))) clip(p, side, null, from);
     } else {
       // The board that lines a valley, its ends square and just short of the corners.
@@ -1144,9 +1145,12 @@ function gable(form: FormDef, level: number, strips: boolean): Shape | null {
   }
   // The rake: a timber along the slope, built a little over the plane and cut to it.
   const drop = (rake / 2 - 0.006) * Math.hypot(1, rise / (2 * f.hx));
-  const [lo, hi]: [Vec, Vec] = [[f.hx + 0.1, 0, at(f.hx + 0.1) - drop], [-f.hx, 0, f.top - drop]];
+  const [lo, hi]: [Vec, Vec] = [[f.hx + 0.1, 0, at(f.hx + 0.1) - drop], [-f.hx - 0.1, 0, at(-f.hx - 0.1) - drop]];
+  const raked = p.faces.length;
   if (level === 0) timber(p, lo, hi, 2 * TOP_T, rake, Z, [4, 5, 4, 6], { rough: ROUGH * 0.6, seed: 1006, segs: 2 });
   else timber(p, lo, hi, 2 * TOP_T, rake, Z, [4, 5, 4, 6], { chamfer: 0 });
+  // Its high end is upright, on the wall's own end.
+  clip(p, planeAt([-f.hx, 0, 0], [-1, 0, 0]), (q) => ["timber", [0.5 + q[1] / 3, bandV(4) + (q[2] - f.top) / 3]], raked);
   if (strips) endStrips(p, { ...f, top: f.top + 0.05 }, level, [1, 1], [-1]);
   // Cut to the slope, to the foot the sill reaches under, and to the low end.
   clip(p, slope, (q) => ["timber", [(q[0] + f.hx) / 3, bandV(4) + q[1] / 3]]);
@@ -1749,6 +1753,8 @@ function gate(form: FormDef, level: number): Shape | null {
 /** The heights a joint may be cut to, a centimetre over one, two and three quarter storeys, and its own. */
 const JOINT_RINGS = [0.76, 1.51, 2.26] as const;
 const JOINT_HIGH = 3;
+/** Half the width of the square joint: a wall's corner post and a centimetre. */
+const JOINT_HALF = POST + 0.01;
 const JOINT_CAP = 0.01;
 
 /** A face a trim has no back for: given looking outward, into a level that is drawn open where it is never seen. */
@@ -1861,8 +1867,9 @@ function ridge(level: number): Shape {
 function woodTrims(): Record<string, Shape[]> {
   const levels = (make: (level: number) => Shape): Shape[] => [0, 1, 2, 3].map(make);
   return {
-    // A hewn corner post with a pegged head, as wide as two walls' corner posts side by side.
-    joint_sq: levels((level) => post(level, 4, POST * Math.SQRT2, Math.PI / 4, true, 1, 2300)),
+    // A hewn corner post with a pegged head. It holds the corner posts of the walls that end in it, a centimetre
+    // past their inner sides, so none of its faces lies in a plane with one of theirs.
+    joint_sq: levels((level) => post(level, 4, JOINT_HALF * Math.SQRT2, Math.PI / 4, true, 1, 2300)),
     // Round posts where walls meet off the square: a flat faces each wall at 120 and 150 degrees, and an arris lies
     // in the notch between two walls at 60, where the wider post is.
     joint_r15: levels((level) => post(level, 12, 0.15, Math.PI / 12, false, 5, 2301)),
@@ -1907,7 +1914,7 @@ export function woodRecipe(strips: boolean): TierRecipe {
     name: "wood",
     rank: 1,
     runPost: true,
-    jointHalf: POST,
+    jointHalf: JOINT_HALF,
     // Each is a palette entry (shared/pack/palette.ts), so the match is exact.
     tones: { boards: [176, 120, 84], deck: [198, 142, 104], timber: [94, 60, 40], fittings: [46, 36, 32] },
     split(name, form, level) {

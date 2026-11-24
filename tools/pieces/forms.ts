@@ -3,7 +3,7 @@
 //   bun tools/pieces/forms.ts                       new-wood.png, new-levels-wood.png, trims-wood.png, village-wood.png
 //   bun tools/pieces/forms.ts --only roof,ramp      those alone, large and from four sides: look-<names>.png
 //   bun tools/pieces/forms.ts --only roof --level 1 at another level
-//   bun tools/pieces/forms.ts --village             the village alone
+//   bun tools/pieces/forms.ts --village             the village alone; --shots 1,7 those of its views
 //
 // The pieces are baked from the recipe as it stands, not read from a pack, so a change is seen at once.
 
@@ -126,10 +126,13 @@ export async function main(args: readonly string[], say: (line: string) => void 
     }
   }
   const built: Placed[] = village(TIER);
-  const [vw, vh] = [900, 640];
-  VILLAGE_SHOTS.forEach(([name, centre, radius, around, above], k) => {
+  const [vw, vh] = [1000, 720];
+  const wanted = value("shots")?.split(",").map(Number);
+  VILLAGE_SHOTS.forEach(([name, centre, radius, around, above, only], k) => {
+    if (wanted && !wanted.includes(k + 1)) return;
     const canvas = new Canvas(vw, vh);
-    canvas.shrink(studio.shoot(built, vw * SMOOTH, vh * SMOOTH, centre, radius, around, above, 0, 0), vw * SMOOTH, vh * SMOOTH, SMOOTH, 0, 0);
+    const drawn = only ? built.filter((q) => only.test(q.id)) : built;
+    canvas.shrink(studio.shoot(drawn, vw * SMOOTH, vh * SMOOTH, centre, radius, around, above, 0, 0), vw * SMOOTH, vh * SMOOTH, SMOOTH, 0, 0);
     canvas.text(`${TIER} village: ${name}`, 8, 6);
     write(`village-${TIER}-${k + 1}.png`, canvas);
   });

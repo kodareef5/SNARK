@@ -66,7 +66,7 @@ export function levelsOf(recipe: TierRecipe, name: string, form: FormDef): Shape
     const slants = level < TEXTURED ? yieldSlants(form) : [];
     for (const plane of slants) slice(shape, plane);
     // Rings that cross a hair apart near a corner leave points a hair apart: a fifth of a millimetre is one point.
-    if (slants.length > 0) tidy(shape, 2e-4);
+    if (slants.length > 0) tidy(shape, 2e-4, slants);
     out.push(shape);
   }
   if (out.length < 2 || out.length > LEVEL_ERRORS.length + 1) throw new Error(`${recipe.name} ${name}: ${out.length} levels`);

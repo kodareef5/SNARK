@@ -1079,8 +1079,9 @@ export function clip(shape: Shape, plane: Plane, cap?: ((p: Vec) => readonly [st
 /**
  * Makes one point of every few that lie within `within` of each other, and drops what that leaves with no area. Two
  * cuts that cross a hair apart leave such points, and a triangle between them that no card can light either way.
+ * Of points that near, one that lies on any of `rings` is the one kept.
  */
-export function tidy(shape: Shape, within = 2e-5): Shape {
+export function tidy(shape: Shape, within = 2e-5, rings: readonly Plane[] = []): Shape {
   const cell = within * 4;
   const held = new Map<string, Vec[]>();
   const one = (p: Vec): Vec => {
@@ -1093,6 +1094,8 @@ export function tidy(shape: Shape, within = 2e-5): Shape {
   };
   const round = roundOf(shape);
   const faces = shape.faces as Face[];
+  // A point on a ring is the one kept, so the ring stays in its plane.
+  for (const f of faces) for (const p of f.points) if (rings.some(([n, at]) => Math.abs(dot(n, p) - at) < 1e-9)) one(p);
   for (let n = faces.length - 1; n >= 0; n--) {
     const f = faces[n]!;
     f.points = f.points.map(one);
