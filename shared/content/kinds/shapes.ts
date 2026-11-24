@@ -2,6 +2,7 @@
 
 import { REGION_BASE } from "../../pack/palette.ts";
 import { hullFault, hullPoint, type HullDef } from "../../world/convex.ts";
+import { colliderFaults, formFaults, type FormDef } from "../../world/lattice/forms.ts";
 import type { Content } from "../defs.ts";
 import { f, row, type Fields, type Kind, type Named } from "../kind.ts";
 
@@ -42,6 +43,8 @@ export interface ShapeDef extends Named {
   readonly look?: ShapeLook;
   /** A door may be set in it. */
   readonly doorway?: boolean;
+  /** The slot of a base's lattice it fills, and its dimensions, which its boxes and parts must agree with. */
+  readonly form?: FormDef;
 }
 
 export interface ShapeLook {
@@ -83,13 +86,14 @@ const FIELDS = {
   hulls: f("list"),
   look: f("facet"),
   doorway: f("switch"),
+  form: f("facet", "snap points and the piece's size"),
 } satisfies Fields<ShapeDef>;
 
 export const shapes: Kind<ShapeDef> = {
   type: "shape",
   fields: FIELDS,
   rows: [
-    row("shape", "shape", FIELDS, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls", "look"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." }),
+    row("shape", "shape", FIELDS, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls", "look", "form"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." }),
   ],
   check(d, { errors, positive }) {
     if (!PIECE_ROLES.includes(d.role)) errors.push(`${d.id}: role must be one of ${PIECE_ROLES.join(", ")}`);
@@ -112,5 +116,9 @@ export const shapes: Kind<ShapeDef> = {
     }
     // One box about them all says whether any reaches too far; then each is asked, so each that does is listed.
     if (shapeHalf([], hulls).some((v) => !(v <= MAX_STRUCTURE_HALF))) for (const h of hulls) if (shapeHalf([], [h]).some((v) => !(v <= MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a convex part reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
+    if (d.form !== undefined) {
+      const faults = formFaults(d.form);
+      for (const fault of faults.length > 0 ? faults : colliderFaults(d.form, d.boxes, d.hulls ?? [])) errors.push(`${d.id}: ${fault}`);
+    }
   },
 };

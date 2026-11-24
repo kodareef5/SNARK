@@ -194,11 +194,11 @@ What names what: `shape` names a `shape`; `material` names a `material`; `opens`
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `shape` | snap points and collision | built | `role`, `boxes` | `doorway`, `hulls`, `look` | 1584 |
+| `shape` | snap points and collision | built | `role`, `boxes` | `doorway`, `hulls`, `look`, `form` | 1584 |
 
 - **`shape`** on shelf `shapes`. The form of a piece, shared by every material: what bodies walk on and what joins what.
 
-ARK's names: `role` is the snap type.
+ARK's names: `role` is the snap type; `form` is snap points and the piece's size.
 
 ## Materials
 
