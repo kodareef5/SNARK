@@ -1,4 +1,5 @@
 import type { TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import type { OrbSite } from "../../../shared/world/orb.ts";
 import { writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import { EYE_FROM } from "../optics.ts";
@@ -102,6 +103,8 @@ export interface RenderWorld {
   /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
   readonly mapId?: string;
   readonly tideEyes?: readonly TideEyeSite[];
+  /** The map's orbs (shared/world/orb.ts), drawn by their own pass at any distance. */
+  readonly orbs?: readonly OrbSite[];
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
