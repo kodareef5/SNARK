@@ -1,0 +1,300 @@
+// A survivor reels from a blow (server/reactions.ts): a car at walking pace or a heavy blow staggers them, every client
+// draws the same reaction the server judges shots against, and a shove the survivor brought on itself never staggers.
+import { expect, test } from "bun:test";
+import { RemoteSample } from "../../client/core/session.ts";
+import { NO_CLIPS, Pose } from "../../shared/anim/clip.ts";
+import { B_CHEST, B_HEAD, HUMAN } from "../../shared/anim/human.ts";
+import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
+import { packReact, react, reactAge, reactDir, reactFrames, reactHeight, reactKind, reactStart, reactStrength, REACT_CHEST, REACT_FALL, REACT_HEAD, REACT_HEAVY, REACT_STAGGER } from "../../shared/anim/reactions.ts";
+import "../../shared/anim/reaction-late.ts";
+import { FALL_UNITS_MOST } from "../../server/falls.ts";
+import { MF_ROOTED } from "../../shared/sim/character.ts";
+import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
+import { rayBody } from "../../shared/anim/zones.ts";
+import { REACT_RULES, TIER_BUMP, TIER_FALL, TIER_NONE, TIER_STAGGER, deltaV, dirOf, tierOf } from "../../shared/sim/react.ts";
+import { ZONE_HEAD } from "../../shared/anim/human.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
+import { Harness } from "../fixtures/net.ts";
+import { flatMap } from "../fixtures/map.ts";
+
+test("a reaction word keeps its class, start, way, height and strength", () => {
+  const w = packReact(REACT_HEAVY, 300, 13, REACT_HEAD, 2);
+  expect([reactKind(w), reactStart(w), reactDir(w), reactHeight(w), reactStrength(w)]).toEqual([REACT_HEAVY, 300 & 255, 13, REACT_HEAD, 2]);
+  expect(reactAge(w, 302.5)).toBe(2.5);
+  // The start's low byte wraps, and the age with it.
+  expect(reactAge(packReact(REACT_STAGGER, 255, 0, 0, 0), 257)).toBe(2);
+});
+
+test("a push is counted in sixteenths toward the body's left", () => {
+  // Facing +Z: pushed along +Z is straight ahead, along +X its left, along -X its right.
+  expect([dirOf(0, 0, 1), dirOf(0, 1, 0), dirOf(0, 0, -1), dirOf(0, -1, 0)]).toEqual([0, 4, 8, 12]);
+  // Facing +X a quarter turn on: pushed along +X is ahead.
+  expect(dirOf(16384, 1, 0)).toBe(0);
+});
+
+test("only a blow someone dealt staggers or fells; one the body brought on itself is a bump", () => {
+  expect(tierOf(0.5, true)).toBe(TIER_NONE);
+  expect(tierOf(1.5, true)).toBe(TIER_BUMP);
+  expect(tierOf(3, true)).toBe(TIER_STAGGER);
+  expect(tierOf(7, true)).toBe(TIER_FALL);
+  // A sprint into a wall: all of the sprint, but its own.
+  expect(tierOf(deltaV(7.2, 80, Infinity), false)).toBe(TIER_BUMP);
+  // A rifle round's push is nothing.
+  expect(tierOf(deltaV(900, 80, 0.01), true, REACT_RULES)).toBe(TIER_NONE);
+});
+
+test("a staggered pose turns the chest and head, then settles to the plain pose", () => {
+  const anim = new HumanAnim(NO_CLIPS), st = new AnimState(), plain = new Pose(HUMAN.bones), hit = new Pose(HUMAN.bones);
+  humanPose(anim, st, 100, plain);
+  st.react = packReact(REACT_STAGGER, 100, 8, REACT_CHEST, 3);
+  const turned = (a: Pose, b: Pose, bone: number) => {
+    const dot = Math.abs(a.rot[bone * 4]! * b.rot[bone * 4]! + a.rot[bone * 4 + 1]! * b.rot[bone * 4 + 1]! + a.rot[bone * 4 + 2]! * b.rot[bone * 4 + 2]! + a.rot[bone * 4 + 3]! * b.rot[bone * 4 + 3]!);
+    return 2 * Math.acos(Math.min(1, dot));
+  };
+  let peak = 0;
+  for (let t = 100; t < 100 + reactFrames(st.react); t += 0.5) {
+    humanPose(anim, st, t, hit);
+    peak = Math.max(peak, turned(plain, hit, B_CHEST), turned(plain, hit, B_HEAD));
+  }
+  expect(peak).toBeGreaterThan(0.12);
+  humanPose(anim, st, 100 + reactFrames(st.react), hit);
+  expect(turned(plain, hit, B_CHEST)).toBe(0);
+  expect(turned(plain, hit, B_HEAD)).toBe(0);
+});
+
+test("a shot is judged against the reeling pose that is drawn", () => {
+  const anim = new HumanAnim(NO_CLIPS), st = new AnimState(), pose = new Pose(HUMAN.bones), solved = new Solved(HUMAN.bones);
+  st.react = packReact(REACT_HEAVY, 0, 8, REACT_HEAD, 3);
+  // The head as a client draws it at tick 5, pushed back by a blow to the face.
+  humanPose(anim, st, 5, pose);
+  solve(HUMAN, pose, solved);
+  const head = new Float64Array(3), plainHead = new Float64Array(3);
+  boneToModel(solved, B_HEAD, 0, 0.1, 0, head);
+  const still = new AnimState(), stillPose = new Pose(HUMAN.bones), stillSolved = new Solved(HUMAN.bones);
+  humanPose(anim, still, 5, stillPose);
+  solve(HUMAN, stillPose, stillSolved);
+  boneToModel(stillSolved, B_HEAD, 0, 0.1, 0, plainHead);
+  const moved = Math.hypot(head[0]! - plainHead[0]!, head[2]! - plainHead[2]!);
+  expect(moved).toBeGreaterThan(0.05);
+  // A ray across the drawn head, from the side, hits the head on the server too.
+  const fire = (at: Float64Array, s: AnimState) => rayBody(anim, s, 5, 0, 0, 0, 0, -2, at[1]!, at[2]!, 1, 0, 0, 4);
+  expect(fire(head, st)).toBe(ZONE_HEAD);
+  expect(react).toBeDefined();
+});
+
+/** A walker standing in the road and a watcher by it, with a car and its driver some way back. */
+function road() {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  h.host.setSetting("Knockdowns", "true");
+  const s = h.join("walker", { latencyMs: 75 }), w = h.join("watcher");
+  h.run(600);
+  const a = h.world.ents, c = h.client(s)!, seen = h.client(w)!;
+  const car = h.host.spawnVehicle("core:compact", 100, 60, 0);
+  const driver = h.host.spawnCreature("core:civilian", 101.5, 60, 1);
+  // Driven by one of the watcher's tribe, so it may shove the walker.
+  const team = h.host.records.byPid.get(a.pid[seen.ent]!)!.team;
+  h.host.records.byPid.get(a.pid[driver]!)!.team = team;
+  a.setTeam(driver, team);
+  expect(h.host.urban.seatNpc(driver, car, "driver")).toBe(0);
+  h.run(1500);
+  a.setPosition(c.ent, 100, 0, 72);
+  h.world.history.discontinuity(c.ent);
+  a.setPosition(seen.ent, 96, 0, 76);
+  h.world.history.discontinuity(seen.ent);
+  h.run(1000);
+  return { h, s, w, a, c, car };
+}
+
+test("a car at a walking pace staggers a survivor, who keeps their feet and their client keeps up", () => {
+  const { h, s, w, a, c, car } = road();
+  try {
+    const remote = new RemoteSample();
+    let word = 0, drawn = 0, ownSaw = 0, hit = false;
+    const before = s.stats.corrections;
+    h.run(4000, () => {
+      // Rolls at walking pace until it touches them, then stops.
+      if (!hit) { a.vz[car] = 4; a.vx[car] = 0; }
+      if (a.react[c.ent] !== 0 && word === 0) { word = a.react[c.ent]!; hit = true; a.vz[car] = 0; }
+      if (s.own.react !== 0) ownSaw = s.own.react;
+      w.sampleRemote(remote);
+      for (let i = 0; i < remote.count; i++) if (remote.id[i] === c.ent && remote.react[i] !== 0) drawn = remote.react[i]!;
+    });
+    expect(word).not.toBe(0);
+    expect([REACT_STAGGER, REACT_HEAVY]).toContain(reactKind(word));
+    expect(h.host.falls.stats.fell).toBe(0);
+    // Every machine has the server's word: the watcher draws it, the walker's own client predicted it.
+    expect(drawn).toBe(word);
+    expect(ownSaw).toBe(word);
+    // Over by now, on the server and in prediction alike.
+    expect([a.react[c.ent], s.own.react]).toEqual([0, 0]);
+    // Told of the shove once; the rest was stepped alike on both sides.
+    expect(s.stats.corrections - before).toBeLessThanOrEqual(2);
+  } finally { h.host.shutdown(); }
+});
+
+test("a second heavy blow while still reeling knocks the survivor down, and a calm one only bumps", () => {
+  const { h, c } = road();
+  try {
+    const r = h.host.reactions;
+    // A heavy blow from the front, at the chest.
+    expect(r.shove(c.ent, 4, 0, -1, 1.3, true)).toBe(TIER_STAGGER);
+    h.run(200);
+    expect(r.shove(c.ent, 4, 0, -1, 1.3, true)).toBe(TIER_FALL);
+    // Once it has ended, the body is calm for a while: another blow is only a bump.
+    const { h: h2, c: c2 } = road();
+    try {
+      const r2 = h2.host.reactions;
+      expect(r2.shove(c2.ent, 4, 0, -1, 1.3, true)).toBe(TIER_STAGGER);
+      h2.run(1500);
+      expect(r2.shove(c2.ent, 4, 0, -1, 1.3, true)).toBe(TIER_BUMP);
+    } finally { h2.host.shutdown(); }
+  } finally { h.host.shutdown(); }
+});
+
+test("a toppled pose lies the body down the way it was pushed, then stands it up", () => {
+  const anim = new HumanAnim(NO_CLIPS), st = new AnimState(), plain = new Pose(HUMAN.bones), pose = new Pose(HUMAN.bones);
+  humanPose(anim, st, 0, plain);
+  st.react = packReact(REACT_FALL, 0, 0, 1, 0);
+  humanPose(anim, st, 30, pose);
+  const solved = new Solved(HUMAN.bones), head = new Float64Array(3);
+  solve(HUMAN, pose, solved);
+  boneToModel(solved, B_HEAD, 0, 0, 0, head);
+  // Lying: the head near the ground, out ahead the way it was pushed.
+  expect(head[1]!).toBeLessThan(0.4);
+  expect(head[2]!).toBeGreaterThan(0.45);
+  humanPose(anim, st, reactFrames(st.react), pose);
+  expect([...pose.rot]).toEqual([...plain.rot]);
+  expect([...pose.root]).toEqual([...plain.root]);
+});
+
+test("a knockdown past the fall budget topples the survivor, who gets up again", () => {
+  const { h, a, c, car } = road();
+  try {
+    // Every unit of fall already spent elsewhere.
+    h.host.falls.units = FALL_UNITS_MOST;
+    let word = 0, rooted = false;
+    h.run(4000, () => {
+      if (a.z[car]! < 90 && word === 0) { a.vz[car] = 9; a.vx[car] = 0; }
+      else a.vz[car] = 0;
+      if (word === 0 && reactKind(a.react[c.ent]!) === REACT_FALL) word = a.react[c.ent]!;
+      if (word !== 0 && (a.mflags[c.ent]! & MF_ROOTED) !== 0) rooted = true;
+    });
+    expect(h.host.falls.stats.fell).toBe(0);
+    expect(h.host.falls.stats.refused).toBeGreaterThanOrEqual(1);
+    expect(word).not.toBe(0);
+    expect(rooted).toBe(true);
+    // Up again and free to walk.
+    expect(a.react[c.ent]).toBe(0);
+    expect(a.mflags[c.ent]! & MF_ROOTED).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+/** Two survivors on open ground, the second standing 1.2 m ahead of the first along +Z. */
+function pair() {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  h.host.setSetting("Knockdowns", "true");
+  const s = h.join("thrown"), t = h.join("bystander");
+  h.run(600);
+  const a = h.world.ents, c = h.client(s)!, d = h.client(t)!;
+  a.setPosition(c.ent, 100, 0, 80);
+  h.world.history.discontinuity(c.ent);
+  a.setPosition(d.ent, 100, 0, 81.2);
+  h.world.history.discontinuity(d.ent);
+  h.run(500);
+  return { h, a, c, d };
+}
+
+test("a body thrown into a bystander staggers them, and a harder throw fells them too", () => {
+  for (const [speed, falls] of [[8, 1], [15, 2]] as const) {
+    const { h, a, c, d } = pair();
+    try {
+      let word = 0;
+      // Knocked flying by another survivor, who may harm the bystander.
+      expect(h.host.falls.knock(c.ent, 0, 1, speed, 4, 0, 0, a.pid[c.ent]!)).toBe(true);
+      h.run(1500, () => { if (word === 0 && a.react[d.ent] !== 0) word = a.react[d.ent]!; });
+      expect(h.host.falls.stats.fell).toBe(falls);
+      if (falls === 1) expect([REACT_STAGGER, REACT_HEAVY]).toContain(reactKind(word));
+    } finally { h.host.shutdown(); }
+  }
+});
+
+test("a heavy blow shoves a raptor a little and a rex hardly at all", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    const a = h.world.ents;
+    const raptor = h.host.spawnCreature("core:raptor", 90, 90, 0), rex = h.host.spawnCreature("core:rex", 110, 90, 0);
+    h.run(300);
+    const moved = (e: number) => {
+      const before = a.vx[e]!;
+      h.host.reactions.blow(e, false, 80, 1, 0, 1);
+      return a.vx[e]! - before;
+    };
+    expect(moved(raptor)).toBeGreaterThan(0.5);
+    expect(moved(rex)).toBeLessThan(0.05);
+  } finally { h.host.shutdown(); }
+});
+
+test("the Staggers, StaggerSpeed and KnockdownSpeed settings decide what a blow does", () => {
+  const { h, c } = road();
+  try {
+    const r = h.host.reactions;
+    h.host.setSetting("Staggers", "false");
+    expect(r.shove(c.ent, 4, 0, -1, 1.3, true)).toBe(TIER_NONE);
+    h.host.setSetting("Staggers", "true");
+    h.host.setSetting("StaggerSpeed", "5");
+    expect(r.shove(c.ent, 4, 0, -1, 1.3, true)).toBe(TIER_BUMP);
+    h.host.setSetting("StaggerSpeed", "2.5");
+    h.host.setSetting("KnockdownSpeed", "20");
+    expect(r.shove(c.ent, 8, 0, -1, 1.3, true)).toBe(TIER_STAGGER);
+  } finally { h.host.shutdown(); }
+});
+
+test("walking into a wall is felt once by its own client, as a soft blow drawn at the chest", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    const s = h.join("walker", { latencyMs: 60 });
+    h.run(600);
+    const a = h.world.ents, c = h.client(s)!, pilot = h.pilots[0]!;
+    // A stone wall across +Z, two metres ahead.
+    const wall = h.reg.index.get("core:wall_stone")!;
+    h.world.structs.add(wall, 100, h.reg.halfY[wall]!, 82, 0, 1, 10000);
+    a.setPosition(c.ent, 100, 0, 80);
+    h.world.history.discontinuity(c.ent);
+    h.run(600);
+    let bumps = 0;
+    pilot.yaw = 0; pilot.moveZ = 1;
+    h.run(3000, () => {
+      for (const im of s.impacts) if (im.id === c.ent) bumps++;
+      s.impacts.length = 0;
+    });
+    // One bump on reaching it, none while it keeps pressing, and the server never staggered it.
+    expect(bumps).toBe(1);
+    expect(a.react[c.ent]).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("a body thrown at a survivor its thrower may not harm leaves them standing", () => {
+  for (const pve of [true, false]) {
+    const { h, a, c, d } = pair();
+    try {
+      h.host.setSetting("serverPVE", pve ? "true" : "false");
+      const thrower = h.host.records.byPid.get(a.pid[c.ent]!)!, bystander = h.host.records.byPid.get(a.pid[d.ent]!)!;
+      expect(thrower.team).not.toBe(bystander.team);
+      // The thrown body was knocked down by its own tribe's member, whom the bystander's tribe is safe from in PvE.
+      expect(h.host.falls.knock(c.ent, 0, 1, 15, 4, 0, 0, thrower.pid)).toBe(true);
+      h.run(1500);
+      expect(h.host.falls.stats.fell).toBe(pve ? 1 : 2);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+test("a survivor just up from a fall is calm: the next blow only bumps", () => {
+  const { h, c } = road();
+  try {
+    expect(h.host.falls.knock(c.ent, 0, 0.5, 0, 0, 0, 0)).toBe(true);
+    for (let k = 0; k < 200 && h.host.falls.isDown(c.ent); k++) h.run(50);
+    expect(h.host.falls.isDown(c.ent)).toBe(false);
+    h.run(300);
+    expect(h.host.reactions.shove(c.ent, 4, 0, -1, 1.3, true)).toBe(TIER_BUMP);
+  } finally { h.host.shutdown(); }
+});

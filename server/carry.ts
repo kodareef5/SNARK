@@ -17,7 +17,7 @@ import { Solved, solve } from "../shared/anim/skeleton.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { CARRY_DROP, CARRY_PICK_UP, CARRY_THROW, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { Body, BTN_PRIMARY, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye } from "../shared/sim/character.ts";
+import { Body, BTN_PRIMARY, MF_DOWN, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye } from "../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED, F_HELD, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import { ACT_NONE, HOLD_CARRY, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
@@ -164,7 +164,7 @@ export class Carry {
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec || rec.dead || rec.keyHash !== null || reg.defs[rec.kind]?.type !== "species" || reg.carriable[rec.kind] !== 1) return RESULT_INVALID;
     if (rec.team !== 0 && !tribes.may(me, rec.team)) return RESULT_NOT_YOURS;
-    if (rec.out) return RESULT_DENIED;
+    if (rec.out || (ents.mflags[e]! & MF_DOWN) !== 0) return RESULT_DENIED;
     if (this.holds.has(e) || ents.driven[e] !== 0 || ents.seat[e] !== 0) return RESULT_BUSY;
     // Within reach of the eye, and in sight of it, as the use key's ray would find it.
     const p = reg.move[ents.kind[body]!]!;

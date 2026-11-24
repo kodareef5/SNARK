@@ -4,7 +4,7 @@
 
 import { Pose } from "../anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../anim/human.ts";
-import { AnimState, CUE_LAND, CUE_NONE, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
+import { AnimState, CUE_LAND, CUE_NONE, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, DIR_STEPS, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
 import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "./weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../anim/skeleton.ts";
 import { creaturePose, rayCreature, type CreatureAnim } from "../anim/creature.ts";
@@ -530,6 +530,15 @@ export function creatureHash(anims: Iterable<CreatureAnim>, reg: Registry): stri
     for (let tick = 1500; tick < 1560; tick += 3.5) {
       st.speed = tick < 1530 ? 0 : 4;
       pose(tick, false);
+    }
+    // Turning on its feet, going forward and backing up, each step of turn either way.
+    st.unpack(0);
+    st.mode = MODE_WALK;
+    for (let k = 0; k < 14; k++) {
+      st.speed = 2 + (k % 4) * 4;
+      st.dir = k < 7 ? 0 : DIR_STEPS / 2;
+      st.setTurn((k % 7) - 3);
+      pose(1600 + k * 2.5, k % 5 === 0);
     }
     // Standing for a minute: every turn of its idle, a variant or not, for three bodies.
     st.unpack(0);

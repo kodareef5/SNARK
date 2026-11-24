@@ -15,8 +15,17 @@ import type { CollisionWorld } from "../world/collide.ts";
 import { sampleClip, type Clip } from "./clip.ts";
 import { creaturePose, type CreatureAnim } from "./creature.ts";
 import { AnimState, CUE_FELL } from "./pose.ts";
-import { Ragdoll } from "./ragdoll.ts";
+import { Ragdoll, type CarrierFrame } from "./ragdoll.ts";
 import { Solved, solve } from "./skeleton.ts";
+
+/** The live fall a body keeps as it dies. */
+export interface FallenState {
+  readonly size: number;
+  readonly state: Float64Array;
+  readonly awake: boolean;
+  readonly ticks: number;
+  readonly carrier?: CarrierFrame;
+}
 
 /** The already-decided root motion of a lethal physical impact. Never add its impulse twice. */
 export interface CorpseImpact {
@@ -145,6 +154,8 @@ export class Fall {
   readonly ragdoll: Ragdoll;
   /** Consecutive ticks with solid support, bounded by SETTLE_TICKS for checkpoint persistence. */
   ticks = 0;
+  /** What a living body does with its limbs each tick as it falls, from its state alone; none for the dead. */
+  reflex: ((r: Ragdoll) => void) | null = null;
 
   constructor(ragdoll: Ragdoll) {
     this.ragdoll = ragdoll;
@@ -159,8 +170,11 @@ export class Fall {
   tick(world: CollisionWorld): boolean {
     const r = this.ragdoll;
     const wasAwake = r.awake;
+    if (wasAwake) this.reflex?.(r);
     if (!r.step(world, 1 / TICK_RATE) && !wasAwake) return false;
-    this.ticks = r.supported ? Math.min(SETTLE_TICKS, (wasAwake ? this.ticks : 0) + 1) : 0;
+    const c = r.carrier;
+    const movingSupport = c && (c.vx * c.vx + c.vy * c.vy + c.vz * c.vz + c.wx * c.wx + c.wy * c.wy + c.wz * c.wz > .0001);
+    this.ticks = r.supported && !movingSupport ? Math.min(SETTLE_TICKS, (wasAwake ? this.ticks : 0) + 1) : 0;
     if (this.ticks === SETTLE_TICKS) r.settle(world);
     return true;
   }

@@ -2,6 +2,8 @@
 
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { Pose } from "./clip.ts";
+import { blendFromFall, RISE_BLEND, type FallenPose } from "./human-fall.ts";
+import { reactAge } from "./reactions.ts";
 import { HUMAN, HUMAN_BONES } from "./human.ts";
 import { createMountMotion, mountPose } from "./mount.ts";
 import { humanPose, type AnimState, type HumanAnim } from "./pose.ts";
@@ -15,11 +17,18 @@ const motion = createMountMotion();
 export const BODY_REACH_Y = 0.9;
 export const BODY_REACH = 1.75;
 
+/** The unseated, upright or rising pose used by a shot at a fractional server tick. */
+export function humanHitPose(anim: HumanAnim, st: AnimState, tick: number, x: number, y: number, z: number, yaw: number, from: FallenPose | null, out: Pose): void {
+  st.facing = yaw / 65536;
+  humanPose(anim, st, tick, out);
+  if (from) blendFromFall(from, x, y, z, st.facing * TAU, HUMAN.rest, Math.min(1, reactAge(st.react, tick) / RISE_BLEND), out);
+}
+
 /**
  * Returns the zone a ray hits, or 0. The body stands at (bx, by, bz) facing `yaw` (1/65536 turns). The ray starts at
  * (ox, oy, oz) and runs along the unit direction (dx, dy, dz) no farther than `maxT`. `zoneHit` holds the bone and the distance.
  */
-export function rayBody(anim: HumanAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, padding = 0, impaled = false, lying: Solved | null = null): number {
+export function rayBody(anim: HumanAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, padding = 0, impaled = false, lying: Solved | null = null, rising: FallenPose | null = null): number {
   // Most rays miss the bounding sphere, so test that first.
   const cx = bx - ox;
   const cy = by + BODY_REACH_Y - oy;
@@ -38,7 +47,7 @@ export function rayBody(anim: HumanAnim, st: AnimState, tick: number, bx: number
     solved.pos.set(lying.pos);
   } else {
     if (impaled) mountPose(motion, { role: "impaled", tick: 0, startTick: 0, durationTicks: 1 }, pose);
-    else humanPose(anim, st, tick, pose);
+    else humanHitPose(anim, st, tick, bx, by, bz, yaw, rising, pose);
     solve(HUMAN, pose, solved);
   }
   // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.

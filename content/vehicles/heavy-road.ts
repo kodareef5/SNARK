@@ -5,6 +5,7 @@ import type {
 } from "../../shared/sim/vehicle.ts";
 import { COMPACT_SPECIES, COMPACT_VEHICLE } from "./compact.ts";
 import { TANKER_VEHICLE } from "./tanker.ts";
+import { withRooms } from "./cabin-room.ts";
 
 type Point = readonly [number, number, number];
 
@@ -70,7 +71,7 @@ function heavyRoad(name: "bus" | "semi") {
     id,
     frame: "van",
     ...(bus ? {passengerAisle: 0} : {}),
-    seats,
+    seats: withRooms(id, seats),
     spec: {
       ...TANKER_VEHICLE.spec,
       axles,

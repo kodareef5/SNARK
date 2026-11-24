@@ -9,7 +9,8 @@
 
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../shared/anim/pose.ts";
 import { dequantX, dequantY, quantX, quantY, type SentView } from "../shared/net/view.ts";
-import { BLOCK_LIGHT, BLOCK_MOST, Blockers, blockMass, pairing } from "../shared/sim/blockers.ts";
+import { BLOCK_LIGHT, BLOCK_MOST, Blockers, pairing } from "../shared/sim/blockers.ts";
+import { bodyMass } from "../shared/sim/body-mass.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { BodyGrid } from "./bodies.ts";
 import { TICK_DT } from "../shared/coords.ts";
@@ -144,7 +145,7 @@ export class BodyBlocking {
       this.near = new Int32Array(n * 2);
       this.nearFar = new Float64Array(n * 2);
     }
-    const near = this.near, nearFar = this.nearFar, light = blockMass(world.reg, ents.kind[e]!) * BLOCK_LIGHT;
+    const near = this.near, nearFar = this.nearFar, light = bodyMass(world.reg, ents.kind[e]!) * BLOCK_LIGHT;
     let m = 0;
     for (let k = 0; k < n; k++) {
       const j = found[k]!;
@@ -155,7 +156,7 @@ export class BodyBlocking {
       if (j === e || j === skip || !blocks(world, j, team) || pairing(ents.emote[e]!, ents.emote[j]!)) continue;
       if (!creature && this.survivorsPass && this.survivor[ents.kind[j]!] === 1 && this.survivor[ents.kind[e]!] === 1) continue;
       const always = creature && (ents.driven[j] !== 0 || this.survivor[ents.kind[j]!] === 1);
-      if (!always && blockMass(world.reg, ents.kind[j]!) < light) continue;
+      if (!always && bodyMass(world.reg, ents.kind[j]!) < light) continue;
       near[m] = j;
       nearFar[m++] = far;
     }

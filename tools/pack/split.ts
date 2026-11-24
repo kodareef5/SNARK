@@ -3,7 +3,7 @@
 
 import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
 import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
-import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshReach, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, HIT_PLANE_UNITS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshReach, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
 import { PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION } from "../../shared/pack/stored.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
@@ -150,6 +150,22 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   }
   const away = new Set(streamed.map((e) => e.rig));
   for (const c of pack.header.clips) if (!away.has(rigOf(c))) headers[0]!.clips.push({ ...c, rotOffset: blobs[0]!.append(rot(c)), rootOffset: blobs[0]!.append(root(c)) });
+
+  // Skin-fitted hulls use four decimal places. Other authored precision stays in the header.
+  const boot = headers[0]!, blob = blobs[0]!;
+  for (const rig of boot.rigs) for (const surface of rig.hitSurfaces ?? []) for (const bone of surface.bones) for (const piece of bone.pieces) {
+    const values = piece.planes;
+    if (!values.length || values.length % 4) continue;
+    const bytes = new Uint8Array(values.length * 2), plane = new DataView(bytes.buffer);
+    const exact = values.every((value, k) => {
+      plane.setInt16(k * 2, Math.round(value * HIT_PLANE_UNITS), true);
+      return Object.is(plane.getInt16(k * 2, true) / HIT_PLANE_UNITS, value);
+    });
+    if (!exact) continue;
+    boot.hitPlaneOffset ??= blob.size;
+    blob.append(bytes);
+    piece.planes = [values.length];
+  }
 
   const files: SplitFile[] = [
     { name: `${name}.boot.snpk`, role: "boot", bytes: blobs[0]!.file(headers[0]!) },

@@ -4,16 +4,16 @@ import { LAUNCH_BOARDING } from '../content/vehicles/boat-art.ts';
 import { Pose } from '../shared/anim/clip.ts';
 import { HUMAN, HUMAN_BONES, SOCKET_EYE } from '../shared/anim/human.ts';
 import type { PackRig } from '../shared/pack/pack.ts';
-import { createMountMotion, mountOrigin } from '../shared/anim/mount.ts';
-import { occupantPose, occupantSeat, createOccupantSeat } from '../shared/anim/occupant.ts';
+import { createMountMotion } from '../shared/anim/mount.ts';
+import { occupantSeat, createOccupantSeat, seatBody } from '../shared/anim/occupant.ts';
 import { AnimState, bodySeed } from '../shared/anim/pose.ts';
-import { fitSeatControls } from '../shared/anim/seat-controls.ts';
-import { boneToModel, Solved, solve } from '../shared/anim/skeleton.ts';
+import { boneToModel, Solved } from '../shared/anim/skeleton.ts';
 import { CHUNK_SIZE, TICK_DT, TICK_RATE, chunkAt } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { quatRotate } from '../shared/math/quat.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
+import { bodyMass } from '../shared/sim/body-mass.ts';
 import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from '../shared/sim/entities.ts';
 import { stepRotorBody, stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
@@ -694,7 +694,7 @@ export class Urban {
     if (host) for (const seat of host.definition.seats) {
       const actor = this.occupancy.occupant(pid, seat.id), ae = this.entity(actor), occupant = records.byPid.get(actor);
       if (!occupant || ae < 0 || makeHandle(ae, ents.gen[ae]!) !== this.occupancy.occupantHandle(pid, seat.id)) continue;
-      mass += world.reg.mass[occupant.kind]! || 80;
+      mass += bodyMass(world.reg, occupant.kind);
       if (occupant.inv) mass += items.inv(occupant).weight(items.table);
     }
     return Math.max(0, Math.min(1e6, mass));
@@ -1068,6 +1068,19 @@ export class Urban {
     return this.begin(pid, place.host, place.seat, 'exit');
   }
 
+  /** Whether a body of `kind` set down on the ground at (x, z) would stand clear of the world, every body and every car. */
+  roomFor(kind: number, x: number, z: number): boolean {
+    const { world } = this.ctx, move = world.reg.move[kind];
+    if (!move) return false;
+    const y = groundUnder(world.hf, x, z, move.radius);
+    return Number.isFinite(y) && this.seating.free({ x, y, z }, 0, [], 0, undefined, kind);
+  }
+
+  /** Whether `actor` is getting in or out of a seat now. */
+  boardingNpc(actor: number): boolean {
+    return !!this.occupancy.pending(this.ctx.world.ents.pid[actor]!);
+  }
+
   /** Whether `actor` sits in a seat now (not getting in or out). */
   seatedNpc(actor: number): boolean {
     const pid = this.ctx.world.ents.pid[actor]!;
@@ -1344,7 +1357,7 @@ export class Urban {
           this.struckAt.set(key, world.tick);
           if (this.struckAt.size > 4096) this.struckAt.clear();
           // Thrown out the way the door stands and on with the car, the lighter the farther.
-          const share = DOOR_MASS / (DOOR_MASS + (reg.mass[k]! > 0 ? reg.mass[k]! : 80));
+          const share = DOOR_MASS / (DOOR_MASS + bodyMass(reg, k));
           ents.vx[j] = ents.vx[j]! + (ents.vx[e]! * 0.6 + nx * speed * DOOR_OUT) * share;
           ents.vz[j] = ents.vz[j]! + (ents.vz[e]! * 0.6 + nz * speed * DOOR_OUT) * share;
           ents.vy[j] = Math.max(ents.vy[j]!, speed * DOOR_UP * share);
@@ -1788,7 +1801,7 @@ export class Urban {
     const pid = ents.pid[vehicle]!, host = this.hosts.get(pid), seat = host?.definition.seats[ents.seatSlot[actor]! - 1];
     if (!host || !seat || this.entity(pid) !== vehicle || host.handle !== makeHandle(vehicle, ents.gen[vehicle]!)) return false;
     if (this.occupancy.occupant(pid, seat.id) !== ents.pid[actor] || this.occupancy.occupantHandle(pid, seat.id) !== makeHandle(actor, ents.gen[actor]!)) return false;
-    this.poseOn(actor, vehicle, seat.anchor, !!seat.driver);
+    this.poseOn(actor, vehicle, seat.anchor);
     boneToModel(this.solved, SOCKET_EYE.bone, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, out);
     quatRotate(this.seatRotation, 0, out[0]!, out[1]!, out[2]!, out, 0);
     out[0] += this.seatOrigin[0]!; out[1] += this.seatOrigin[1]!; out[2] += this.seatOrigin[2]!;
@@ -1796,26 +1809,22 @@ export class Urban {
   }
 
   /** Physical seat pose uses the common survivor proportions (D54). */
-  private poseOn(actor: number, vehicle: number, anchor: readonly [number, number, number], driver: boolean): VehicleState & { qx?: number; qy?: number; qz?: number; qw?: number } {
+  private poseOn(actor: number, vehicle: number, anchor: readonly [number, number, number]): VehicleState & { qx?: number; qy?: number; qz?: number; qw?: number } {
     const { world } = this.ctx, ents = world.ents;
-    const state = this.state(vehicle), seat = this.seatAt, rotation = this.seatRotation, origin = this.seatOrigin;
-    vehiclePoint(state, anchor, seat); vehicleRotation(state, rotation);
+    const state = this.state(vehicle), rotation = this.seatRotation, origin = this.seatOrigin;
     const def = world.reg.vehicle[ents.kind[vehicle]!]!, seatDefinition = def.seats.find(s => s.anchor === anchor)!;
     const st = this.occupantState; st.unpack(ents.anim[actor]!, ents.cue[actor]!); st.seed = bodySeed(actor);
     occupantSeat(def, seatDefinition, state, ents.yaw[actor]! * TAU / 65536, this.occupantSeat);
-    occupantPose(world.anim, st, world.tick, this.pose, this.occupantSeat, null, 0, this.occupantSeat.aimYaw!, driver, this.motion);
     const definition = world.reg.defs[ents.kind[actor]!];
     const mesh = definition?.type === 'species' ? definition.mesh.replace(/^[^:]*:/, '') : 'human';
     const rest = this.rests.get(mesh + '_m') ?? HUMAN.rest;
-    solve(HUMAN, this.pose, this.solved, rest);
-    if (seatDefinition) fitSeatControls(this.pose, this.solved, rest, null, seatDefinition, state.steering);
-    mountOrigin(this.solved, seat, rotation, origin);
+    seatBody(world.anim, st, world.tick, this.occupantSeat, rest, null, this.pose, this.solved, rotation, origin, this.motion);
     return state;
   }
 
   private pin(actor: number, vehicle: number, anchor: readonly [number, number, number], driver: boolean): void {
     const { world } = this.ctx, ents = world.ents, def = world.reg.vehicle[ents.kind[vehicle]!]!;
-    const state = this.poseOn(actor, vehicle, anchor, driver), seat = this.seatAt, rotation = this.seatRotation, origin = this.seatOrigin;
+    const state = this.poseOn(actor, vehicle, anchor), seat = this.seatAt, rotation = this.seatRotation, origin = this.seatOrigin;
     ents.loadBody(actor, this.body);
     this.body.x = origin[0]!; this.body.y = origin[1]!; this.body.z = origin[2]!;
     const client = this.client(ents.pid[actor]!);

@@ -22,7 +22,8 @@
 //     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8, ticks given up since the welcome
 //                            1 bit and if set u16 (wrapping), buttons carried into this tick from an input that came
 //                            after its own 1 bit and if set BUTTON_BITS bits, session state 2 bits, driven entity index + 1
-//                            varint (0 = its own body), that body, entity delta (see view.ts)
+//                            varint (0 = its own body), own stride change bit and if changed 14 bits, that body,
+//                            vehicle contact proxies, entity delta (see view.ts)
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits; to a client that takes statics, for
 //                            a chunk that holds map statics, from the map 1 bit, and if set first slot u16 and count
 //                            u16 of the slots it takes as the map has them; rows, in ascending slots; then removals:
@@ -54,6 +55,7 @@
 import { SkateState, readSkate, writeSkate } from "../sim/skate-state.ts";
 import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
+import { REACT_BITS } from "../anim/pose.ts";
 import { counter, flags } from "../codes.ts";
 import { BTN_CROUCH, BTN_PRONE, Body, buttonCount } from "../sim/character.ts";
 
@@ -836,6 +838,10 @@ export function writeBody(w: BitWriter, b: Body): void {
     w.bits(b.jetSprintTap, 4);
     w.bits(b.jetRecovery, 6);
   }
+  // A blow it reels from: a body standing steady pays the one bit.
+  const reeling = b.react !== 0 || b.reactTicks !== 0;
+  w.bool(reeling);
+  if (reeling) { w.bits(b.react, REACT_BITS); w.u8(b.reactTicks); }
   // The glider (protocol 39): a body that carries none pays the one bit.
   const glider = b.glideGear !== 0 || b.glide !== 0 || b.glideKeys !== 0;
   w.bool(glider);
@@ -883,6 +889,8 @@ export function readBody(r: BitReader, b: Body): void {
     b.jetSprintTap = r.bits(4);
     b.jetRecovery = r.bits(6);
   } else b.jetGear = b.jetSpent = b.jetThrust = b.jetKeys = b.jetJumpTap = b.jetSprintTap = b.jetRecovery = 0;
+  if (r.bool()) { b.react = r.bits(REACT_BITS); b.reactTicks = r.u8(); }
+  else b.react = b.reactTicks = 0;
   if (r.bool()) {
     b.glideGear = r.bits(2);
     b.glide = r.bits(1);

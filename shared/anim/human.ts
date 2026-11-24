@@ -198,5 +198,7 @@ export const HUMAN_RAGDOLL: RagdollDef = (() => {
     swing: Float64Array.from(bodies, (b) => b[2] * deg),
     twist: Float64Array.from(bodies, (b) => b[3] * deg),
     contacts: Int16Array.of(B_SPINE, B_UPPER_CHEST, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_HAND_L, B_HAND_R, B_FOOT_L, B_FOOT_R),
+    // Forearms stay out of the chest, hips and head, and shins out of each other. Thighs share the hips and always touch.
+    pairs: Int16Array.of(4, 1, 6, 1, 4, 0, 6, 0, 4, 2, 6, 2, 8, 10),
   };
 })();

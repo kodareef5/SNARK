@@ -14,17 +14,23 @@
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
-import { layHuman } from "../../shared/anim/human-fall.ts";
+import { brace, layHuman, RISE_BLEND } from "../../shared/anim/human-fall.ts";
+import { packLie, reactAge, reactKind, REACT_CREATURE_DOWN, REACT_FALL, REACT_RISE } from "../../shared/anim/reactions.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { poseCreatureOn, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
 import { AnimState, CUE_DEAD, CUE_DECAY_SHIFT, CUE_DOWN, CUE_OUT, FLY_SPEED_STEP, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
-import { TICK_RATE } from "../../shared/coords.ts";
+import { TICK_DT, TICK_RATE } from "../../shared/coords.ts";
+import { quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
+import { detCos, detSin } from "../../shared/math/scalar.ts";
 import { handleIndex, makeHandle } from "../../shared/ids.ts";
 import { decodeCorpseCheckpoint, type CorpseMotion } from "../../shared/net/corpse.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
+import { CARRIER_TRAVEL, type Mover, type MoverPose, type Ragdoll } from "../../shared/anim/ragdoll.ts";
+import { MOVER_MARGIN, WALKING, moverNear, nearestMovers, type Solid } from "../../shared/sim/vehicle-movers.ts";
+import { checkpointAt } from "./fall-checkpoints.ts";
 import type { RemoteSample } from "./session.ts";
 
 /** Ticks over which the last pose alive blends into the death clip. */
@@ -46,11 +52,72 @@ const CATCH_UP = 6;
 const CHECKPOINT_AGE = TICK_RATE;
 /** Ticks a survivor's fall is stepped in one frame. Its ragdoll lies four seconds at most, so a late one soon catches up. */
 const FALL_CATCH_UP = 30;
-/** Ticks a survivor takes to rise from where it lay into what it does now. */
-export const GET_UP = 30;
+const NO_MOVERS: readonly Mover[] = [];
+/** Places a client keeps of each vehicle in view, at least half a tick apart: at least sixteen ticks of its way, as far
+ * back as a fall's catch-up steps a few ticks at once. */
+const CAR_PLACES = 32;
+
+/** A place and turn, as MoverPose, that can be written. */
+interface Place { x: number; y: number; z: number; qx: number; qy: number; qz: number; qw: number }
+
+/** Where a vehicle in view was seen: at `ticks`, oldest first, each place in `places` as x, y, z and its turn. */
+interface CarSeen { readonly ticks: Float64Array; readonly places: Float64Array; n: number; update: number }
+
+/**
+ * Keeps where a vehicle was seen at render tick `tick`, newest last. The newest place moves with each frame until it is
+ * half a tick past the one kept before it; then it stays, and the next frame begins another. However high the frame
+ * rate, the places kept stay half a tick apart.
+ */
+function keepPlace(seen: CarSeen, tick: number, at: MoverPose): void {
+  // The render clock stepped back: what was kept after it is of another time.
+  while (seen.n > 0 && seen.ticks[seen.n - 1]! > tick) seen.n--;
+  if (seen.n) {
+    const last = seen.n - 1, o = last * 7, reach = CARRIER_TRAVEL * Math.max(1, tick - seen.ticks[last]!);
+    const dx = at.x - seen.places[o]!, dy = at.y - seen.places[o + 1]!, dz = at.z - seen.places[o + 2]!;
+    if (dx * dx + dy * dy + dz * dz > reach * reach) seen.n = 0;
+  }
+  let k = seen.n;
+  if (k >= 2 && seen.ticks[k - 1]! - seen.ticks[k - 2]! < 0.5) k--;
+  else if (k === CAR_PLACES) {
+    seen.ticks.copyWithin(0, 1); seen.places.copyWithin(0, 7);
+    k--;
+  }
+  seen.ticks[k] = tick;
+  seen.places.set([at.x, at.y, at.z, at.qx, at.qy, at.qz, at.qw], k * 7);
+  seen.n = k + 1;
+}
+
+/** Writes to `out` where a vehicle was at `tick`, between the places it was seen at, and at the nearest end outside them. */
+function placeAt(seen: CarSeen, tick: number, out: Place): void {
+  const t = seen.ticks, p = seen.places, n = seen.n;
+  let a = 0, b = 0, k = 0;
+  if (tick >= t[n - 1]!) a = b = n - 1;
+  else if (tick > t[0]!) {
+    while (t[a + 1]! <= tick) a++;
+    b = a + 1;
+    k = (tick - t[a]!) / (t[b]! - t[a]!);
+  }
+  const ao = a * 7, bo = b * 7;
+  out.x = p[ao]! + (p[bo]! - p[ao]!) * k; out.y = p[ao + 1]! + (p[bo + 1]! - p[ao + 1]!) * k; out.z = p[ao + 2]! + (p[bo + 2]! - p[ao + 2]!) * k;
+  // The turn between the two, the shorter way round.
+  const sign = p[ao + 3]! * p[bo + 3]! + p[ao + 4]! * p[bo + 4]! + p[ao + 5]! * p[bo + 5]! + p[ao + 6]! * p[bo + 6]! < 0 ? -1 : 1;
+  const qx = p[ao + 3]! + (p[bo + 3]! * sign - p[ao + 3]!) * k, qy = p[ao + 4]! + (p[bo + 4]! * sign - p[ao + 4]!) * k;
+  const qz = p[ao + 5]! + (p[bo + 5]! * sign - p[ao + 5]!) * k, qw = p[ao + 6]! + (p[bo + 6]! * sign - p[ao + 6]!) * k;
+  const l = 1 / Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+  out.qx = qx * l; out.qy = qy * l; out.qz = qz * l; out.qw = qw * l;
+}
+export { RISE_BLEND } from "../../shared/anim/human-fall.ts";
 const impactRoot = new Float64Array(3);
 
-export interface Corpse {
+interface CarriedBody {
+  x: number; y: number; z: number;
+  clock: number;
+  fall: Fall | null;
+  /** The root in the roof's current render frame, between physics ticks. */
+  drawn?: Float64Array;
+}
+
+export interface Corpse extends CarriedBody {
   readonly kind: number;
   readonly id: number;
   /** Slot and generation, for sparse physical checkpoints and reuse invalidation. */
@@ -170,8 +237,11 @@ class Seen {
   }
 }
 
-/** A survivor knocked down (CUE_DOWN), lying as its ragdoll, and for GET_UP ticks after it gets up; or a survivor's body (CUE_DEAD). */
-export interface HumanFall {
+/** A survivor knocked down (CUE_DOWN), lying as its ragdoll, and for RISE_BLEND ticks after it gets up; or a survivor's body (CUE_DEAD). */
+export interface HumanFall extends CarriedBody {
+  readonly creature?: CreatureAnim | null;
+  readonly dead?: boolean;
+  size?: number;
   handle: number;
   /** Null until its checkpoint comes, and once it has risen. */
   fall: Fall | null;
@@ -190,21 +260,136 @@ export interface HumanFall {
   readonly solved: Solved;
   /** Lying. Once up, the render tick it got up at, and how far it has risen, 0 to 1. */
   down: boolean;
+  /** The render tick it was first seen down this fall. */
+  downAt: number;
   upAt: number;
   risen: number;
   seen: number;
 }
 
 const fallRoot = new Float64Array(3);
+/** Ticks into a stand-in topple at which it is held lying until the fall it stands in for comes. */
+const WAIT_LYING = 40;
 
 /** Survivors knocked down among the remote entities and the viewer's own body, each lying as the server's ragdoll. */
 export class HumanFalls {
   private readonly byId = new Map<number, HumanFall>();
   private readonly survivor: (kind: number) => boolean;
+  private readonly mortal: readonly (CreatureAnim | null)[];
+  private readonly solid: (kind: number) => Solid | null;
   private updates = 0;
+  /** The vehicles and heavy creatures in view, where each is and where it was a tick before, for falls to meet (shared/anim/ragdoll.ts movers). */
+  /** The vehicles and walking creatures in view, each by its handle: where it is drawn now, and where it was seen. */
+  private readonly cars: { handle: number; reach: number; boxes: Float64Array; vehicle: boolean; at: MoverPose; seen: CarSeen }[] = [];
+  /** By handle, so a slot taken by a new vehicle starts its own places. */
+  private readonly carSeen = new Map<number, CarSeen>();
+  private carUpdates = 0;
+  private readonly near: { from: Place; to: Place; boxes: Float64Array; aside: boolean; near: number; handle: number }[] = [];
+  private readonly nearPool: { from: Place; to: Place; boxes: Float64Array; aside: boolean; near: number; handle: number }[] = [];
 
-  constructor(survivor: (kind: number) => boolean) {
+  constructor(survivor: (kind: number) => boolean, solid: (kind: number) => Solid | null = () => null, mortal: readonly (CreatureAnim | null)[] = []) {
     this.survivor = survivor;
+    this.mortal = mortal;
+    this.solid = solid;
+  }
+
+  /** Takes up the vehicles in view: each where it is now, and a tick back along its way from where it was last seen. */
+  private seeCars(remote: RemoteSample): void {
+    this.cars.length = 0;
+    const tick = remote.tick, update = ++this.carUpdates;
+    for (let i = 0; i < remote.count; i++) {
+      const solid = this.solid(remote.kind[i]!);
+      if (!solid) continue;
+      const handle = makeHandle(remote.id[i]!, remote.gen[i]!), half = remote.yaw[i]! / 2;
+      const quat = solid.vehicle && (remote.vehicleQx[i] || remote.vehicleQy[i] || remote.vehicleQz[i] || remote.vehicleQw[i]);
+      const at: MoverPose = quat
+        ? { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: remote.vehicleQx[i]!, qy: remote.vehicleQy[i]!, qz: remote.vehicleQz[i]!, qw: remote.vehicleQw[i]! }
+        : { x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, qx: 0, qy: detSin(half), qz: 0, qw: detCos(half) };
+      let seen = this.carSeen.get(handle);
+      if (!seen) this.carSeen.set(handle, (seen = { ticks: new Float64Array(CAR_PLACES), places: new Float64Array(CAR_PLACES * 7), n: 0, update }));
+      seen.update = update;
+      keepPlace(seen, tick, at);
+      this.cars.push({ handle, reach: solid.reach, boxes: solid.boxes, vehicle: solid.vehicle, at, seen });
+    }
+    for (const [handle, seen] of this.carSeen) if (seen.update !== update) this.carSeen.delete(handle);
+  }
+
+  private readonly carrierAt: Place = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
+  private readonly carrierBefore: Place = { ...this.carrierAt };
+
+  /** Puts a supported body in the vehicle frame seen at the tick its physics reached. */
+  followCarrier(r: Ragdoll, tick: number): boolean {
+    const seen = r.carrier && this.carSeen.get(r.carrier.handle);
+    if (!seen || tick < seen.ticks[0]! || tick > seen.ticks[seen.n - 1]!) return false;
+    placeAt(seen, tick, this.carrierAt);
+    const velocity = tick - 1 >= seen.ticks[0]!;
+    if (velocity) placeAt(seen, tick - 1, this.carrierBefore);
+    return r.followCarrier(this.carrierAt, velocity ? this.carrierBefore : undefined, TICK_DT);
+  }
+
+  private readonly frameQuat = new Float64Array(4);
+
+  /** Carries the rendered root through the fraction of a physics tick since its last pose. */
+  drawCarrier(body: CarriedBody, tick: number): void {
+    const frame = body.fall?.ragdoll.carrier, seen = frame && this.carSeen.get(frame.handle);
+    if (!frame || !seen || tick < body.clock || tick - body.clock >= 1 || tick < seen.ticks[0]!) {
+      body.drawn = undefined;
+      return;
+    }
+    const out = body.drawn ??= new Float64Array(3), from = frame.pose, q = this.frameQuat;
+    const to = this.carrierAt;
+    placeAt(seen, tick, to);
+    q[0] = from.qx; q[1] = from.qy; q[2] = from.qz; q[3] = from.qw;
+    quatUnrotate(q, 0, body.x - from.x, body.y - from.y, body.z - from.z, out, 0);
+    q[0] = to.qx; q[1] = to.qy; q[2] = to.qz; q[3] = to.qw;
+    quatRotate(q, 0, out[0]!, out[1]!, out[2]!, out, 0);
+    out[0]! += to.x; out[1]! += to.y; out[2]! += to.z;
+  }
+
+  /** The vehicles in view near ragdoll `fall`'s hips, as they move over the step to `tick`. */
+  private carsNear(h: HumanFall, tick: number): readonly Mover[] {
+    const r = h.fall!.ragdoll;
+    r.rootPosition(fallRoot);
+    return this.carsAround(fallRoot[0]!, fallRoot[1]!, fallRoot[2]!, tick);
+  }
+
+  /**
+   * The vehicles in view within reach of (x, y, z), each moving from where it was at `tick` - 1 to where it was at
+   * `tick`, as the server's step to `tick` meets them (server/ragdoll-movers.ts), the nearest first as the server
+   * ranks them; reused by the next call. A creature meets what lies at its feet only as it walks, as on the server.
+   */
+  carsAround(x: number, y: number, z: number, tick: number): readonly Mover[] {
+    this.near.length = 0;
+    for (const c of this.cars) {
+      const m = (this.nearPool[this.near.length] ??= { from: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, to: { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }, boxes: new Float64Array(0), aside: false, near: 0, handle: 0 });
+      const reach = c.reach + MOVER_MARGIN;
+      // Near where it was at the step, not where it is drawn: a catch-up steps ticks it has since driven on from.
+      placeAt(c.seen, tick, m.to);
+      const dx = m.to.x - x, dz = m.to.z - z;
+      if (dx * dx + dz * dz > reach * reach) continue;
+      placeAt(c.seen, tick - 1, m.from);
+      const wx = m.to.x - m.from.x, wz = m.to.z - m.from.z;
+      if (!c.vehicle && wx * wx + wz * wz < WALKING * WALKING) continue;
+      m.boxes = c.boxes;
+      m.aside = !c.vehicle;
+      m.near = Math.min(moverNear(c.boxes, m.from, x, y, z), moverNear(c.boxes, m.to, x, y, z));
+      m.handle = c.handle;
+      this.near.push(m);
+    }
+    nearestMovers(this.near);
+    return this.near;
+  }
+
+  /**
+   * For a body known to be down whose fall's checkpoint has not come yet, the reaction it is drawn with meanwhile at
+   * render tick `tick`: a topple (REACT_FALL) begun as it went down and held lying, against `facing` (LIE_FACINGS to a
+   * turn). 0 for any other body.
+   */
+  waiting(id: number, tick: number, facing = 0): number {
+    const h = this.byId.get(id);
+    if (!h || !h.down || h.fall) return 0;
+    const age = Math.min(Math.max(0, tick - h.downAt), WAIT_LYING);
+    return packLie(REACT_FALL, Math.floor(tick - age), false, 0, facing);
   }
 
   /** The fall to draw entity `id` by, lying or getting up, or undefined to draw it as it moves. */
@@ -216,43 +401,59 @@ export class HumanFalls {
   /** `own` is the handle of the viewer's own body (0 for none), which is not in `remote`, and `ownDown` whether it lies knocked down. */
   update(remote: RemoteSample, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, own: number, ownDown: boolean): void {
     const tick = remote.tick, seen = ++this.updates;
+    this.seeCars(remote);
     for (let i = 0; i < remote.count; i++) {
       // A survivor's body (CUE_DEAD) lies as its ragdoll for good.
-      if (!this.survivor(remote.kind[i]!)) continue;
-      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, (remote.cue[i]! & (CUE_DOWN | CUE_DEAD)) !== 0, tick, seen, world, motions);
+      const kind = remote.kind[i]!, human = this.survivor(kind);
+      const creature = !human && remote.react[i] === REACT_CREATURE_DOWN ? this.mortal[kind] : null;
+      if (!human && !creature && !this.byId.get(remote.id[i]!)?.creature) continue;
+      const down = !!creature || (human && (remote.cue[i]! & (CUE_DOWN | CUE_DEAD)) !== 0);
+      this.track(makeHandle(remote.id[i]!, remote.gen[i]!), remote.id[i]!, down, tick, seen, world, motions, creature, (remote.cue[i]! & CUE_DEAD) !== 0, remote.react[i]!);
     }
     if (own !== 0) this.track(own, handleIndex(own), ownDown, tick, seen, world, motions);
     for (const [id, h] of this.byId) if (h.seen !== seen) this.byId.delete(id);
   }
 
-  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined): void {
+  private track(handle: number, id: number, down: boolean, tick: number, seen: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined, creature?: CreatureAnim | null, dead = false, reaction = 0): void {
     let h = this.byId.get(id);
     if (h && h.handle !== handle) h = undefined;
     if (!h) {
       if (!down) return;
-      h = { handle, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(HUMAN.bones), down: true, upAt: -1, risen: 0, seen };
+      h = { handle, creature, dead, fall: null, clock: 0, motionRevision: 0, motionTick: -1, spent: -1, x: 0, y: 0, z: 0, yaw: 0, solved: new Solved(creature?.rig.bones ?? HUMAN.bones), down: true, downAt: tick, upAt: -1, risen: 0, seen };
       this.byId.set(id, h);
     }
     h.seen = seen;
     if (!down) {
-      if (h.down) { h.down = false; h.upAt = tick; h.spent = Math.max(h.spent, h.motionTick); }
+      h.drawn = undefined;
+      if (h.down) {
+        const rose = reactKind(reaction) === REACT_RISE ? tick - reactAge(reaction, tick) : tick;
+        this.advance(h, Math.ceil(rose) - 1, world, motions);
+        h.down = false; h.upAt = rose; h.spent = Math.max(h.spent, h.motionTick, Math.ceil(rose) - 1);
+      }
       if (h.upAt < 0) return;
-      h.risen = Math.min(1, (tick - h.upAt) / GET_UP);
+      h.risen = Math.min(1, (tick - h.upAt) / RISE_BLEND);
       if (h.risen >= 1) { h.upAt = -1; h.fall = null; }
       return;
     }
     if (!h.down) {
       // Knocked down again: what was sent of the last fall is spent.
-      h.down = true; h.upAt = -1; h.fall = null; h.spent = Math.max(h.spent, h.motionTick);
+      h.down = true; h.downAt = tick; h.upAt = -1; h.fall = null; h.spent = Math.max(h.spent, h.motionTick);
       h.motionRevision = 0; h.motionTick = -1;
     }
-    const motion = motions?.get(handle), to = Math.floor(tick);
+    this.advance(h, Math.floor(tick), world, motions);
+    this.drawCarrier(h, tick);
+  }
+
+  private advance(h: HumanFall, to: number, world: CollisionWorld, motions: ReadonlyMap<number, CorpseMotion> | undefined): void {
+    const motion = checkpointAt(motions, h.handle, to);
     if (motion && motion.tick > h.spent && motion.tick <= to && (motion.revision > h.motionRevision || (motion.revision === h.motionRevision && motion.tick > h.motionTick))) this.lay(h, motion);
     const fall = h.fall;
     if (!fall) return;
     let moved = false;
     for (let n = 0; h.clock < to && n < FALL_CATCH_UP; n++) {
+      moved = this.followCarrier(fall.ragdoll, h.clock) || moved;
       h.clock++;
+      fall.ragdoll.movers = this.cars.length ? this.carsNear(h, h.clock) : NO_MOVERS;
       moved = fall.tick(world) || moved;
     }
     if (moved) this.place(h);
@@ -262,13 +463,18 @@ export class HumanFalls {
   private lay(h: HumanFall, motion: CorpseMotion): void {
     const cp = decodeCorpseCheckpoint(motion.data);
     if (!cp) return;
-    const r = layHuman(cp.x, cp.y, cp.z, cp.yaw, cp.out);
-    if (!r.restore(cp.state, cp.awake)) return;
+    const r = h.creature ? layCorpse(h.creature, false, false, cp.x, cp.y, cp.z, cp.yaw, cp.size, h.solved, true) : layHuman(cp.x, cp.y, cp.z, cp.yaw, cp.out);
+    if (!r || !r.restore(cp.state, cp.awake)) return;
     h.fall = new Fall(r);
+    // A living body braces as the server's does.
+    if (!h.creature && !h.dead) h.fall.reflex = brace;
     h.fall.ticks = cp.ticks;
+    h.size = cp.size;
     h.x = cp.x; h.y = cp.y; h.z = cp.z; h.yaw = cp.yaw;
     h.clock = motion.tick; h.motionTick = motion.tick; h.motionRevision = motion.revision;
-    r.pose(h.solved);
+    r.carrier = cp.carrier;
+    if (this.followCarrier(r, motion.tick)) this.place(h);
+    else r.pose(h.solved);
   }
 
   /** Carries its place to the ragdoll's hips, as the server carries its entity, and poses it there. */
@@ -304,9 +510,9 @@ export class Corpses {
   /** Survivors knocked down, lying as their ragdolls. */
   readonly humans: HumanFalls;
 
-  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array, survivor: (kind: number) => boolean = () => false) {
+  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array, survivor: (kind: number) => boolean = () => false, solid: (kind: number) => Solid | null = () => null) {
     this.mortal = mortal;
-    this.humans = new HumanFalls(survivor);
+    this.humans = new HumanFalls(survivor, solid, mortal);
     void birthScale;
   }
 
@@ -341,7 +547,7 @@ export class Corpses {
       if (!this.mortal[kind] || (remote.cue[i]! & CUE_DEAD) === 0) continue;
       let c = this.byId.get(remote.id[i]!);
       const handle = makeHandle(remote.id[i]!, remote.gen[i]!);
-      const motion = motions?.get(handle);
+      const motion = checkpointAt(motions, handle, Math.floor(tick));
       // A body whose entity's place another has taken is a new one. A body that lies never moves, so one elsewhere is another.
       if (c && (c.handle !== handle || c.kind !== kind || (!c.falling && !c.motionRevision && !motion && (c.x !== wireX(remote.x[i]!) || c.z !== wireX(remote.z[i]!))))) {
         this.forget(c);
@@ -367,6 +573,7 @@ export class Corpses {
     for (const c of this.list) {
       if (c.settling) waiting.push(c);
       else this.move(c, world, tick);
+      this.humans.drawCarrier(c, tick);
     }
     // Start nearest first, then rotate fairly: one difficult corpse cannot consume a neighbour's entire budget.
     const far = (c: Corpse): number => (c.x - cx) * (c.x - cx) + (c.z - cz) * (c.z - cz);
@@ -477,6 +684,8 @@ export class Corpses {
     if (!c.landed && !checkpoint.awake) c.landed = motion.tick;
     c.clock = motion.tick; c.motionTick = motion.tick; c.motionRevision = motion.revision;
     this.needsCheckpoint.delete(c.handle);
+    r.carrier = checkpoint.carrier;
+    if (this.humans.followCarrier(r, motion.tick)) this.place(c, r);
     r.pose(c.solved);
   }
 
@@ -593,6 +802,9 @@ export class Corpses {
     if (c.motionRevision && !fall.still && to - c.clock > CHECKPOINT_AGE) { this.needsCheckpoint.add(c.handle); return; }
     let moved = false;
     for (let n = 0; c.clock < to && n < CATCH_UP; n++) {
+      moved = this.humans.followCarrier(fall.ragdoll, c.clock) || moved;
+      fall.ragdoll.rootPosition(impactRoot);
+      fall.ragdoll.movers = this.humans.carsAround(impactRoot[0]!, impactRoot[1]!, impactRoot[2]!, c.clock + 1);
       if (fall.still) {
         // Nothing moves it now but the world changing under it, which a tick finds out.
         const woke = fall.tick(world);
@@ -606,12 +818,14 @@ export class Corpses {
       moved = true;
     }
     if (moved) {
-      if (c.motionRevision) {
-        fall.ragdoll.rootPosition(impactRoot);
-        c.x = wireX(impactRoot[0]!); c.y = wireY(impactRoot[1]!); c.z = wireX(impactRoot[2]!);
-        fall.ragdoll.rebase(c.x, c.y, c.z);
-      }
+      if (c.motionRevision) this.place(c, fall.ragdoll);
       fall.ragdoll.pose(c.solved);
     }
+  }
+
+  private place(c: Corpse, r: Ragdoll): void {
+    r.rootPosition(impactRoot);
+    c.x = wireX(impactRoot[0]!); c.y = wireY(impactRoot[1]!); c.z = wireX(impactRoot[2]!);
+    r.rebase(c.x, c.y, c.z);
   }
 }

@@ -1114,14 +1114,14 @@ export class Scene {
     for (let o = n - 1; o >= 0 && need > budget; o--) {
       const k = order[o]! % MAX_VIEW;
       const i = from[k]!;
-      st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!);
+      st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!, remote.stride[i]!);
       // An open panel needs its live hinge: a shared closed pose would put cover back in the doorway.
       if (remote.vehicleDoors[i] && this.sizes.vehicle[remote.kind[i]!]?.breakablePanels) continue;
       const mount = this.bodyMount[k]!, slot = remote.seatSlot[i]!;
       const saddle = mount === MOUNT_OWN ? this.own!.gear[GEAR_WORN]! : mount >= 0 ? remote.gear[mount * GEAR_COUNT + GEAR_WORN]! : 0;
       // Missing authored sockets can only over-reserve; valid seats match add()'s separate fitted stand-in exactly.
       const profile = this.bodyRides[k] && this.saddleSeats[saddle]?.[slot - 1]?.rider ? saddle * (MAX_SEATS + 1) + slot : 0;
-      need -= ch.bones(remote.kind[i]!) - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0, slot === IMPALE_SLOT, profile, remote.gear, i * GEAR_COUNT, remote.vehicleMissingPanels[i]);
+      need -= ch.bones(remote.kind[i]!) - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0, slot === IMPALE_SLOT, profile, remote.gear, i * GEAR_COUNT, remote.id[i]!, remote.tick, remote.vehicleMissingPanels[i]);
       this.bodyRigid[k] = 1;
     }
   }
@@ -1179,7 +1179,7 @@ export class Scene {
   private addRemote(remote: RemoteSample, i: number, at: Float64Array, k: number, rigid: boolean, unseen: boolean): void {
     const st = this.state;
     const kind = remote.kind[i]!;
-    st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!);
+    st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!, remote.stride[i]!);
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;

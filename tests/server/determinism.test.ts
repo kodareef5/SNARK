@@ -16,6 +16,6 @@ test.skipIf(nodeMajor < 24)("JavaScriptCore and V8 produce identical simulation 
   const run = Bun.spawnSync([node!, "--no-warnings", "tools/simhash.ts"], { cwd: import.meta.dir + "/../.." });
   const v8 = run.stdout.toString().trim();
   expect(run.exitCode).toBe(0);
-  expect(v8).toMatch(/^[0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{24} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{64} [0-9a-f]{64} [0-9a-f]{64}$/);
+  expect(v8).toMatch(/^[0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{24} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{64} [0-9a-f]{64} [0-9a-f]{64} [0-9a-f]{64} [0-9a-f]{64} [0-9a-f]{64}$/);
   expect(v8).toBe(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash() + " " + collisionHashes());
 });

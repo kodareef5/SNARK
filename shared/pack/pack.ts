@@ -217,8 +217,12 @@ export interface PackClip {
   rootOffset: number;
 }
 
+export const HIT_PLANE_UNITS = 10000;
+
 export interface PackHeader {
   paletteOffset: number;
+  /** Boot packs may store a piece's planes as its coefficient count, followed here by that many little-endian i16s. */
+  hitPlaneOffset?: number;
   meshes: PackMesh[];
   rigs: PackRig[];
   clips: PackClip[];
@@ -297,6 +301,20 @@ export function parsePack(file: Uint8Array): Pack {
     }
   });
   if (header.paletteOffset + 1024 > blob.length) throw new Error("pack: palette outside the file");
+  if (header.hitPlaneOffset !== undefined) {
+    let at = header.hitPlaneOffset;
+    if (!Number.isSafeInteger(at) || at < 0 || at > blob.length) throw new Error("pack: hit planes outside the file");
+    const planes = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
+    for (const rig of header.rigs) for (const surface of rig.hitSurfaces ?? []) for (const bone of surface.bones) for (const piece of bone.pieces) {
+      if (piece.planes.length !== 1) continue;
+      const count = piece.planes[0]!;
+      if (!Number.isSafeInteger(count) || count <= 0 || count % 4 || at + 2 * count > blob.length) throw new Error("pack: invalid hit plane count");
+      const values = new Array<number>(count);
+      for (let k = 0; k < count; k++, at += 2) values[k] = planes.getInt16(at, true) / HIT_PLANE_UNITS;
+      piece.planes = values;
+    }
+    delete header.hitPlaneOffset;
+  }
   const d = header.details;
   if (d && !(d.atlas.side >= CELL && d.atlas.side <= ATLAS_MOST && (d.atlas.side & (d.atlas.side - 1)) === 0)) throw new Error(`pack: the details atlas is ${d.atlas.side} pixels across`);
   if (d) {

@@ -1,9 +1,10 @@
 // Reach vehicle controls after solving the survivor's actual proportions. Bones keep their lengths; an unreachable
 // control is approached as far as the arm can comfortably reach, never by stretching or moving the seated pelvis.
-import { quatAxis, quatIdentity, quatMul, quatMulConj, quatNormalize, quatRotate, type Numbers } from "../math/quat.ts";
+import { quatAxis, quatIdentity, quatMul, quatMulConj, quatRotate, type Numbers } from "../math/quat.ts";
 import { TAU } from "../math/scalar.ts";
 import type { Pose } from "./clip.ts";
 import { B_FINGERS_L, B_FINGERS_R, B_HAND_L, B_HAND_R, B_LOWER_ARM_L, B_LOWER_ARM_R, B_PROP_L, B_PROP_R, B_THUMB_L, B_THUMB_R, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN } from "./human.ts";
+import { bend, square, toward, within } from "./ik.ts";
 import { solve, type Solved } from "./skeleton.ts";
 
 export interface MountControl {
@@ -18,21 +19,9 @@ const ARMS = [
   [B_UPPER_ARM_R, B_LOWER_ARM_R, B_HAND_R, B_PROP_R, B_FINGERS_R, B_THUMB_R, -1],
 ] as const;
 const elbows = new Float64Array(6), wrists = new Float64Array(6), grips = new Float64Array(6), hands = new Float64Array(8);
-const q = new Float64Array(4), hand = new Float64Array(4), vector = new Float64Array(3);
+const q = new Float64Array(4), hand = new Float64Array(4), vector = new Float64Array(3), pole = new Float64Array(3);
 const usable = new Uint8Array(2);
 const UNIT_SCALE = new Float32Array(HUMAN.bones * 3).fill(1);
-
-/** The shortest rotation from one nonzero direction to another. */
-function toward(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
-  const al = Math.sqrt(ax * ax + ay * ay + az * az), bl = Math.sqrt(bx * bx + by * by + bz * bz);
-  ax /= al; ay /= al; az /= al; bx /= bl; by /= bl; bz /= bl;
-  const dot = ax * bx + ay * by + az * bz;
-  if (dot < -.999999) {
-    const x = Math.abs(ax) < .9 ? 1 : 0, y = 1 - x;
-    q[0] = -az * y; q[1] = az * x; q[2] = ax * y - ay * x; q[3] = 0;
-  } else { q[0] = ay * bz - az * by; q[1] = az * bx - ax * bz; q[2] = ax * by - ay * bx; q[3] = 1 + dot; }
-  quatNormalize(q, 0);
-}
 
 /**
  * `solved` must be solve(HUMAN, pose, solved, rest, scale). Updates both pose and solved; call before placing the
@@ -72,27 +61,22 @@ export function fitPilotControls(pose: Pose, solved: Solved, rest: Float32Array,
     usable[side] = a > 1e-6 && b > 1e-6 && distance > 1e-6 ? 1 : 0;
     if (!usable[side]) continue;
     dx /= distance; dy /= distance; dz /= distance;
-    const reach = Math.max(Math.abs(a - b) + .002, Math.min((a + b) * .985, distance));
+    const reach = within(distance, Math.abs(a - b) + .002, (a + b) * .985);
     wrists[at] = solved.pos[upper * 3]! + dx * reach;
     wrists[at + 1] = solved.pos[upper * 3 + 1]! + dy * reach;
     wrists[at + 2] = solved.pos[upper * 3 + 2]! + dz * reach;
     // A fixed outward/downward pole prevents elbow flips as the control moves through neutral.
-    const along = dx * sign * .15 - dy - dz * .1;
-    let px = sign * .15 - dx * along, py = -1 - dy * along, pz = -.1 - dz * along;
-    let length = Math.sqrt(px * px + py * py + pz * pz);
-    if (length < 1e-6) { px = -dz; py = 0; pz = dx; length = Math.sqrt(px * px + pz * pz); }
-    const forward = (a * a - b * b + reach * reach) / (2 * reach), bend = Math.sqrt(Math.max(0, a * a - forward * forward));
-    elbows[at] = solved.pos[upper * 3]! + dx * forward + px / length * bend;
-    elbows[at + 1] = solved.pos[upper * 3 + 1]! + dy * forward + py / length * bend;
-    elbows[at + 2] = solved.pos[upper * 3 + 2]! + dz * forward + pz / length * bend;
-    toward(ux, uy, uz, elbows[at]! - solved.pos[upper * 3]!, elbows[at + 1]! - solved.pos[upper * 3 + 1]!, elbows[at + 2]! - solved.pos[upper * 3 + 2]!);
+    let length = square(pole, 0, sign * .15, -1, -.1, dx, dy, dz);
+    if (length < 1e-6) { pole[0] = -dz; pole[1] = 0; pole[2] = dx; length = Math.sqrt(dz * dz + dx * dx); }
+    bend(elbows, at, solved.pos[upper * 3]!, solved.pos[upper * 3 + 1]!, solved.pos[upper * 3 + 2]!, dx, dy, dz, reach, a, b, pole[0]!, pole[1]!, pole[2]!, length);
+    toward(q, 0, ux, uy, uz, elbows[at]! - solved.pos[upper * 3]!, elbows[at + 1]! - solved.pos[upper * 3 + 1]!, elbows[at + 2]! - solved.pos[upper * 3 + 2]!);
     quatMulConj(pose.rot, upper * 4, solved.rot, HUMAN.parent[upper]! * 4, q, 0);
   }
   solve(HUMAN, pose, solved, rest, scale);
   for (let side = 0; side < 2; side++) {
     if (!usable[side]) continue;
     const [upper, lower, wrist] = ARMS[side]!, at = side * 3;
-    toward((rest[wrist * 3]! - rest[lower * 3]!) * scales[lower * 3 + 0]!, (rest[wrist * 3 + 1]! - rest[lower * 3 + 1]!) * scales[lower * 3 + 1]!, (rest[wrist * 3 + 2]! - rest[lower * 3 + 2]!) * scales[lower * 3 + 2]!, wrists[at]! - elbows[at]!, wrists[at + 1]! - elbows[at + 1]!, wrists[at + 2]! - elbows[at + 2]!);
+    toward(q, 0, (rest[wrist * 3]! - rest[lower * 3]!) * scales[lower * 3 + 0]!, (rest[wrist * 3 + 1]! - rest[lower * 3 + 1]!) * scales[lower * 3 + 1]!, (rest[wrist * 3 + 2]! - rest[lower * 3 + 2]!) * scales[lower * 3 + 2]!, wrists[at]! - elbows[at]!, wrists[at + 1]! - elbows[at + 1]!, wrists[at + 2]! - elbows[at + 2]!);
     quatMulConj(pose.rot, lower * 4, solved.rot, upper * 4, q, 0);
   }
   solve(HUMAN, pose, solved, rest, scale);

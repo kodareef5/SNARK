@@ -25,8 +25,11 @@ const MB = 1024 * KB;
  * for 1,039. The rest are waste the build can always avoid.
  */
 export const FIRST_FRAME_BUDGET = 1088 * KB;
+/** The reaction curves, which a page fetches after its first frame and waits for before it joins a world. */
+export const REACTION_CURVES_BUDGET = 96 * KB;
 const BUDGETS: Record<string, number> = {
   "everything before the first frame, Brotli": FIRST_FRAME_BUDGET,
+  "the reaction curves a world waits for, Brotli": REACTION_CURVES_BUDGET,
   "title script, style, font, catalogue and poster": 512 * KB,
   "game loading poster": 224 * KB,
   "sound, kbit/s": 42,
@@ -69,6 +72,8 @@ export function weigh(dist: string): boolean {
     ["manifest", size("assets/manifest.json")],
     ["boot pack, Brotli", size(`${boot}.br`)],
     ["everything before the first frame, Brotli", first],
+    // Fetched beside the map's parts as the page boots; the session is opened once they are held (client/shell/main.ts).
+    ["the reaction curves a world waits for, Brotli", existsSync(join(dist, "reaction-late.js.br")) ? size("reaction-late.js.br") : Infinity],
     ["the world's finishes on medium (512), astc", finishes("astc", 512)],
     ["the world's finishes on medium (512), bc", finishes("bc", 512)],
     ["the world's finishes on high (1,024), astc", finishes("astc", 1024)],

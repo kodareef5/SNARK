@@ -2,6 +2,19 @@
 // holds who sits in each, whatever the host is, and its authority (a vehicle's in server/urban.ts, a creature's in
 // server/riding.ts) says what may be done and where a body goes.
 
+/**
+ * The room an enclosed seat's occupant has, measured from its host's mesh (tools/pack/cabin-room.ts). Each plane is in the
+ * host's axes from the seat's anchor: its height over the anchor, then how much it rises per metre.
+ */
+export interface SeatRoom {
+  /** The roof over the head: height, rise toward +X, rise toward +Z. */
+  readonly roof: readonly [number, number, number];
+  /** The footwell floor and toe board ahead of the seat: height, rise toward +Z. */
+  readonly floor: readonly [number, number];
+  /** The cushion's top under the anchor, a little below it. */
+  readonly seat: number;
+}
+
 /** Points are in the host's frame: metres, +X its left, +Y up, +Z forward, the origin on the ground under its middle. */
 export interface Seat {
   /** Saved and sent by name: `driver`, `passenger`, `rear_left`... */
@@ -47,6 +60,8 @@ export interface Seat {
    * rest, and stands in for it where the rig is not loaded.
    */
   readonly socket?: string;
+  /** An enclosed seat's room. A seated body is fitted inside it (shared/anim/seat-fit.ts); without one it is left as posed. */
+  readonly room?: SeatRoom;
 }
 
 /** At most this many seats a host (server/occupancy.ts holds the same). */
@@ -69,7 +84,7 @@ export function validateSeats(seats: readonly Seat[], doors: number, what: strin
       (seat.socket !== undefined && !(typeof seat.socket === "string" && seat.socket.length > 0 && seat.socket.length <= 64))) throw new Error(`invalid ${what} seat`);
     if ((seat.pose !== undefined && !["drive", "passenger", "pilot", "cabin", "pwc", "skate"].includes(seat.pose)) ||
       (seat.weapons !== undefined && typeof seat.weapons !== "boolean")) throw new Error(`invalid ${what} seat profile`);
-    if (seat.controls && ((seat.pose !== "pilot" && seat.pose !== "pwc") || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
+    if (seat.controls && ((seat.pose !== "pilot" && seat.pose !== "pwc" && seat.pose !== "drive") || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
     if (seat.controls?.style !== undefined && seat.controls.style !== "helicopter" && seat.controls.style !== "helm" && seat.controls.style !== "handlebar") throw new Error(`invalid ${what} control style`);
     if (seat.rider && (what !== "saddle" || !seat.socket || !pair(seat.rider.hands) || !pair(seat.rider.feet) || (seat.rider.knees !== undefined && !pair(seat.rider.knees)))) throw new Error(`invalid ${what} rider sockets`);
     const soles = seat.rider?.soles;
@@ -77,10 +92,19 @@ export function validateSeats(seats: readonly Seat[], doors: number, what: strin
     const grips = seat.rider?.grips;
     if (grips && (!Number.isFinite(grips.radius) || grips.radius < .005 || grips.radius > .05 || !Array.isArray(grips.span) || grips.span.length !== 2 || !grips.span.every(Number.isFinite) || grips.span[0] < -.3 || grips.span[0] >= 0 || grips.span[1] <= 0 || grips.span[1] > .3)) throw new Error(`invalid ${what} hand grips`);
     if (grips?.forearmAlignment !== undefined && (!Number.isFinite(grips.forearmAlignment) || grips.forearmAlignment < 0 || grips.forearmAlignment > 90)) throw new Error(`invalid ${what} forearm alignment`);
+    if (seat.room !== undefined && !validRoom(seat.room)) throw new Error(`invalid ${what} seat room`);
     const turn = seat.controls?.turn;
     if (turn && (!vec(turn.pivot) || !vec(turn.axis) || Math.abs(turn.axis.reduce((n: number, v: number) => n + v * v, 0) - 1) > 1e-6 || !Number.isFinite(turn.ratio) || Math.abs(turn.ratio) > 50)) throw new Error(`invalid ${what} moving controls`);
     names.add(seat.id);
     if (seat.driver) drivers++;
   }
   if (drivers !== 1) throw new Error(`a ${what} must have one driver seat`);
+}
+
+/** Planes no steeper than three in one, a roof over the anchor and a floor and cushion under it, all within four metres. */
+function validRoom(room: SeatRoom): boolean {
+  const plane = (p: unknown, above: boolean): boolean => Array.isArray(p) && p.length === (above ? 3 : 2) && p.every(Number.isFinite) &&
+    (above ? p[0] > 0 && p[0] < 4 : p[0] < 0 && p[0] > -4) && p.every((v, i) => i === 0 || Math.abs(v) <= 3);
+  return typeof room === "object" && room !== null && plane(room.roof, true) && plane(room.floor, false) &&
+    Number.isFinite(room.seat) && room.seat <= 0 && room.seat > -4;
 }

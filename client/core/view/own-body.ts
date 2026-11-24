@@ -6,7 +6,8 @@ import { creatureHold } from "../../../shared/sim/creature-actions.ts";
 import { handleGen, handleIndex } from "../../../shared/ids.ts";
 import { PI, TAU } from "../../../shared/math/scalar.ts";
 import { MF_DOWN, glidePhase } from "../../../shared/sim/character.ts";
-import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, carriageRate } from "../../../shared/sim/entities.ts";
+import { TURN_STEPS, predictedStride, turnSteps } from "../../../shared/anim/pose.ts";
 import { ARMOR_SLOTS } from "../../../shared/sim/items.ts";
 import { FISTS, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import type { AppFrame } from "../frame.ts";
@@ -47,9 +48,15 @@ export function ownBody(d: Director, f: AppFrame): void {
   // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.
   body.state.setAction(session.own.act, f.holding >= 0 ? HOLD_CARRY : (reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
   body.state.seed = bodySeed(body.id);
+  body.state.stride = session.driving < 0 && !session.own.seat ? predictedStride(session.ownStride, body.state) : -1;
   // An emote is the server's to say: the one it plays for this body, as the view has it.
   body.state.unpackEmote(0);
-  for (let i = 0; i < r.count; i++) if (r.id[i] === body.id) body.state.unpackEmote(r.emote[i]!);
+  for (let i = 0; i < r.count; i++) if (r.id[i] === body.id && r.gen[i] === body.generation) {
+    body.state.unpackEmote(r.emote[i]!);
+    break;
+  }
+  // A blow it reels from is in its predicted body, as the server last set it.
+  body.state.react = session.own.react;
   // While riding, the mount is the body it predicts, drawn from the prediction and always from outside.
   // Its own body is then one more remote body, where the server has it on the seat.
   const riding = (f.riding = alive && session.driving >= 0);
@@ -65,6 +72,17 @@ export function ownBody(d: Director, f: AppFrame): void {
     body.state.stance = 0;
     // Posed from what the server poses it from: the look as the input carries it, and a flyer's climb.
     body.state.setMotion(session.own.vx, session.own.vz, body.yaw, (Math.round((c.pitch / (PI / 2)) * 16384) * (PI / 2)) / 16384, session.own.vy);
+    // A mount that does not strafe shows its turn as the server packs it: a step a tick toward how fast it turned.
+    const rate = carriageRate(reg.move[session.bodyKind]);
+    if (rate > 0) {
+      const ticks = session.simTick - d.turnTick;
+      if (ticks !== 0) {
+        const kept = d.turnTick >= 0 && ticks > 0 && ticks <= 2 * TURN_STEPS;
+        d.turnSteps = turnSteps(session.ownTurn, rate, kept ? d.turnSteps : 0, kept ? ticks : 1);
+        d.turnTick = session.simTick;
+      }
+      body.state.setTurn(d.turnSteps);
+    } else d.turnTick = -1;
     body.state.setAction(session.own.act, reg.combat[session.bodyKind] ? creatureHold(session.own) : 0, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
     // The mount's colours, its saddle and its cues come from its remote copy.
@@ -83,6 +101,7 @@ export function ownBody(d: Director, f: AppFrame): void {
       body.state.unpackCue(r.cue[i]!);
     }
   }
+  if (!riding) d.turnTick = -1;
   body.down = !riding && (session.own.mflags & MF_DOWN) !== 0;
   f.scene.skip = riding ? session.driving : -1;
   f.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;

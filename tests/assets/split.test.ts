@@ -152,6 +152,22 @@ artTest("the boot file holds the survivor's clips, and the clip file each creatu
   for (const c of pack.clips.clips) expect(all.clips[all.index.get(c.id)!]).toEqual(c);
 });
 
+test("boot hit planes keep exact authored values and reject truncated coefficients", () => {
+  const pieces = [[.1234, -.2345, .3456, -3.2768], [0, 1, 0, 3.2767], [0, 1, 0, 4], [1 / 7, 0, 1, 0]]
+    .map(planes => ({ box: [-1, 1, -1, 1, -1, 1], planes }));
+  const rig = { id: "test:body", skeleton: "test", rest: [0, 0, 0], hitSurfaces: [{ root: 0, zone: 1, bones: [{ bone: 0, pieces }] }] };
+  const full = buildPack([], defaultPalette(), [], [rig]);
+  const boot = splitPack(full, "test").files[0]!.bytes, before = boot.slice();
+  const jsonSize = new DataView(boot.buffer, boot.byteOffset, boot.byteLength).getUint32(8, true);
+  const wire = JSON.parse(new TextDecoder().decode(boot.subarray(12, 12 + jsonSize)));
+  expect(wire.rigs[0].hitSurfaces[0].bones[0].pieces.map((p: { planes: number[] }) => p.planes)).toEqual([[4], [4], pieces[2]!.planes, pieces[3]!.planes]);
+  expect(parsePack(full).header.rigs).toEqual([rig]);
+  expect(parsePack(boot).header.rigs).toEqual([rig]);
+  expect(parsePack(boot).header.hitPlaneOffset).toBeUndefined();
+  expect(boot).toEqual(before);
+  expect(() => parsePack(boot.subarray(0, boot.length - 1))).toThrow("invalid hit plane count");
+});
+
 test("the survivors' emotes come after the first frame: none in the boot file, one group in the clip file, all of them there", () => {
   const whole = buildPack([], defaultPalette(), authoredClips());
   const pack = parsePack(whole);

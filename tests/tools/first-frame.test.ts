@@ -98,3 +98,10 @@ test("the first frame holds the made textures' read; their engine comes later", 
   expect(files.filter((f) => f.startsWith("content/texgen/"))).toEqual([]);
   expect(readFileSync(join(CLIENT, "shell/main.ts"), "utf8")).toContain('import("../core/texgen/late.ts")');
 });
+
+test("a reeling body is posed in the first frame; its curves come in a later file", () => {
+  const files = [...firstFrameFiles()].map((f) => relative(ROOT, f));
+  expect(files).toContain("shared/anim/reactions.ts");
+  for (const file of ["shared/anim/reaction-late.ts", "shared/anim/reaction-curves.ts", "shared/anim/reaction-bake.ts"]) expect(files.includes(file), file).toBe(false);
+  expect(readFileSync(join(CLIENT, "shell/main.ts"), "utf8")).toContain('import("../../shared/anim/reaction-late.ts")');
+});

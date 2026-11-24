@@ -69,6 +69,9 @@ async function boot(): Promise<void> {
   // Until the first frame the page's one line says what it waits for when a part has failed (client/core/mapload.ts).
   const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, { say: (line) => {root.textContent=line || "Preparing world…";if(loadingLine)loadingLine.textContent=root.textContent;}, wait: (ms) => new Promise((go) => setTimeout(go, ms)), pause: nextTask(new MessageChannel()) }));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
+  // The reaction curves come as their own file after the first frame. A world is joined once they are held, so a
+  // stagger is drawn as the server judges it.
+  const reactionCurves = import("../../shared/anim/reaction-late.ts");
   // The socket opens once the landmarks' definitions are in, so its handshake runs while they are read. The server waits 5 s
   // for a hello, and a socket it gave up on is opened again.
   const early = loading.then(() => connect(socketAddress(location, "ws")), () => null);
@@ -90,6 +93,7 @@ async function boot(): Promise<void> {
   const ground = groundSize(hf);
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
   const socket = await early;
+  await reactionCurves;
   const session = new ClientSession(socket?.open ? socket : connect(socketAddress(location, "ws")), {
     ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, arrival?.name ?? launch?.name ?? params.get("name"), arrival !== null),
     ...(arrival ? { ticket: arrival.ticket } : {}),

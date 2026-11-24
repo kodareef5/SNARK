@@ -1,5 +1,5 @@
 import type { BodyBlocking } from "./blocking.ts";
-import type { Lane } from "./lane.ts";
+import { LANE_ROW, type Lane } from "./lane.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
 import type { CreatureCombatFacet } from "../shared/content/defs.ts";
@@ -9,7 +9,7 @@ import type { CreatureCombatFacet } from "../shared/content/defs.ts";
 import { AnimState, bodySeed, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
 import { posedSubmerged } from "../shared/anim/breath.ts";
 import { TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SECONDARY, BTN_SPRINT, Body, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, swimDepth, type MoveParams } from "../shared/sim/character.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, swimDepth, type MoveParams } from "../shared/sim/character.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_SWING, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { Behavior } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
@@ -329,11 +329,11 @@ export class Creatures {
     // Ways asked for are searched before anyone steers, within the tick's budget.
     mind.plan(tick);
     let stepped = 0;
-    this.lane.enter();
+    this.lane.enter(LANE_ROW.creatures);
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
       // A vehicle's wheels move it (server/urban.ts), and nothing breathes in it.
-      if (world.reg.vehicle[ents.kind[e]!]) continue;
+      if (world.reg.vehicle[ents.kind[e]!] || (ents.mflags[e]! & MF_DOWN) !== 0) continue;
       // A driven creature is stepped with its session's body, and breathes as it goes. A held one moves with whoever holds it.
       if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0 || ents.seatSlot[e] === IMPALE_SLOT) {
         this.tactics.delete(e);
@@ -404,7 +404,7 @@ export class Creatures {
       else if (landing > 0 && (b.mflags & MF_OUT) !== 0 && world.anims[kind]?.torporFall) this.cue(e, CUE_LAND, false);
       if (p.flies) this.flew(e);
       // Tactical braking/turning is deliberate, not a failed path step. Keep Behavior's cached path input intact.
-      if (!combat?.ai || move !== 0) mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
+      if (!combat?.ai || move !== 0) mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT, stepOut.wallInto, stepOut.wallNx, stepOut.wallNz);
       // A bite goes through the same action step as any blow.
       const jaws = world.reg.weapon[kind];
       let struck = false;

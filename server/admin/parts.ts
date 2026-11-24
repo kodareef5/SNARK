@@ -7,6 +7,7 @@
 // /admin/ticks.json answers it (routes.ts).
 
 import { TICK_RATE } from "../../shared/coords.ts";
+import type { LaneReport } from "../lane.ts";
 
 /**
  * The parts, in the order a tick runs them, then what the loop does between ticks. `stray` is the time between ticks
@@ -58,6 +59,8 @@ export interface TickReport {
   worst: number[];
   /** The long ticks held, oldest first. */
   recent: LongTick[];
+  /** The physics lane's time by row (server/lane.ts), where the answer is the server's. */
+  physics?: LaneReport;
 }
 
 const N = COUNTS.length;

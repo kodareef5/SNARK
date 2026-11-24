@@ -134,7 +134,12 @@ const nozzleSockets = Object.fromEntries(ZEPHYR_NOZZLES.map(n => [n.name, n.at])
   "nozzle_roll_l" | "nozzle_roll_r" | "nozzle_pitch_f" | "nozzle_pitch_r", Vec3>;
 
 // A lower canopy: the roof crest stands at 1.18 m. The electric drive has no exhaust.
+const zephyrWheel = [.42, .735, .385] as const;
 export const ZEPHYR_ART = {
-  id: "core:zephyr", ...frame, envelope: { min: [-1.035, 0, -2.25], max: [1.035, 1.19, 2.25] }, shotPanels: zephyrPanels,
-  anchors: { ...anchors, ...nozzleSockets },
+  id: "core:zephyr", ...frame, pivots: [...pivots.slice(0, -1), zephyrWheel], envelope: { min: [-1.035, 0, -2.25], max: [1.035, 1.19, 2.25] }, shotPanels: zephyrPanels,
+  anchors: {
+    ...anchors, ...nozzleSockets, steering: zephyrWheel,
+    seat_driver: [.42, .295, .115], seat_front_passenger: [-.42, .295, .115],
+    camera_driver: [.42, .92, .175], camera_front_passenger: [-.42, .92, .175],
+  },
 } as const;

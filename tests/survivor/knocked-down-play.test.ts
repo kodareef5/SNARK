@@ -4,6 +4,8 @@ import { expect, test } from "bun:test";
 import { Corpses } from "../../client/core/ragdoll.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
+import { CUE_DOWN } from "../../shared/anim/pose.ts";
+import { REACT_RISE, reactKind } from "../../shared/anim/reactions.ts";
 import { survivorKind } from "../../shared/sim/blockers.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -54,8 +56,9 @@ test("a watching client lays and steps the fall as the server does, tick for tic
   try {
     const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k));
     const poses = new Map<number, { rot: Float32Array; pos: Float32Array; x: number; y: number; z: number }>();
-    let compared = 0, rising = 0;
+    let compared = 0, rising = 0, risen = false;
     drive(h, a, car, 6000, () => {
+      risen ||= reactKind(a.react[c.ent]!) === REACT_RISE;
       const pose = h.host.falls.poseOf(c.ent);
       if (pose) poses.set(h.world.tick, { rot: pose.rot.slice(), pos: pose.pos.slice(), x: a.x[c.ent]!, y: a.y[c.ent]!, z: a.z[c.ent]! });
       w.sampleRemote(remote);
@@ -72,7 +75,9 @@ test("a watching client lays and steps the fall as the server does, tick for tic
     });
     expect(h.host.falls.stats.rose).toBe(1);
     expect(compared).toBeGreaterThan(30);
-    expect(rising).toBeGreaterThan(10);
+    // Up, it gets up as its reaction word poses it everywhere; the client hands its ragdoll over to that in a few ticks.
+    expect(risen).toBe(true);
+    expect(rising).toBeGreaterThan(4);
     expect(drawn.humans.of(c.ent)).toBeUndefined();
   } finally { h.host.shutdown(); }
 });
@@ -91,8 +96,102 @@ test("a watching client lays a dead survivor's body where the server's lies", ()
     for (let j = 0; j < a.flags.length; j++) if (h.host.corpses.at(j) && survivorKind(h.reg, a.kind[j]!)) body = j;
     const f = drawn.humans.of(body)!;
     expect(f.down).toBe(true);
+    expect(f.fall!.reflex).toBeNull();
     // It lies where the server's lies, near where it died.
     expect([f.x, f.y, f.z]).toEqual([a.x[body]!, a.y[body]!, a.z[body]!]);
     expect(Math.hypot(f.x - x, f.z - z)).toBeLessThan(1.5);
+  } finally { h.host.shutdown(); }
+});
+
+test("a watcher draws every survivor it sees knocked down as down, never standing", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    h.host.setSetting("Knockdowns", "true");
+    const w = h.join("watcher"), fallers = Array.from({ length: 8 }, (_, k) => h.join(`faller${k}`));
+    h.run(800);
+    const a = h.world.ents, seen = h.client(w)!;
+    a.setPosition(seen.ent, 100, 0, 70);
+    h.world.history.discontinuity(seen.ent);
+    const ids = fallers.map((s, k) => {
+      const c = h.client(s)!;
+      a.setPosition(c.ent, 96 + (k % 4) * 2, 0, 76 + Math.floor(k / 4) * 2);
+      h.world.history.discontinuity(c.ent);
+      return c.ent;
+    });
+    h.run(800);
+    for (const e of ids) expect(h.host.falls.knock(e, 0, 1, 3, 2, 0, 0)).toBe(true);
+    const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k));
+    let standing = 0;
+    h.run(1500, () => {
+      w.sampleRemote(remote);
+      drawn.update(remote, w.world!, 0, 0, new Map(), w.corpseMotions);
+      for (let i = 0; i < remote.count; i++) {
+        if (!ids.includes(remote.id[i]!) || (remote.cue[i]! & CUE_DOWN) === 0) continue;
+        if (drawn.humans.of(remote.id[i]!)) continue;
+        if (drawn.humans.waiting(remote.id[i]!, remote.tick) === 0) standing++;
+      }
+    });
+    expect(standing).toBe(0);
+    expect(h.host.falls.stats.fell).toBe(8);
+  } finally { h.host.shutdown(); }
+});
+
+test("a fall knocked between ticks lays on a watcher exactly where the server's lies", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    h.host.setSetting("Knockdowns", "true");
+    const w = h.join("watcher"), faller = h.join("faller");
+    h.run(800);
+    const a = h.world.ents, seen = h.client(w)!, c = h.client(faller)!;
+    a.setPosition(seen.ent, 100, 0, 70); h.world.history.discontinuity(seen.ent);
+    a.setPosition(c.ent, 100, 0, 76); h.world.history.discontinuity(c.ent);
+    h.run(800);
+    // Knocked between ticks, after this tick's falls have stepped: its first step is the next tick's.
+    expect(h.host.falls.knock(c.ent, 4, 2, 3, 2, 0, 0)).toBe(true);
+    const at = new Map<number, [number, number, number]>(), remote = new RemoteSample();
+    const drawn = new Corpses(h.world.anims, undefined, (k) => survivorKind(h.reg, k));
+    let compared = 0, most = 0;
+    h.run(1500, () => {
+      if (h.host.falls.poseOf(c.ent)) at.set(h.world.tick, [a.x[c.ent]!, a.y[c.ent]!, a.z[c.ent]!]);
+      w.sampleRemote(remote);
+      drawn.update(remote, w.world!, 0, 0, new Map(), w.corpseMotions);
+      const fall = drawn.humans.of(c.ent), was = fall && at.get(fall.clock);
+      if (!fall?.down || !was) return;
+      compared++;
+      most = Math.max(most, Math.hypot(fall.x - was[0], fall.y - was[1], fall.z - was[2]));
+    });
+    expect(compared).toBeGreaterThan(20);
+    expect(most).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("a late watcher starts a living fall at its current airborne pose", () => {
+  const h = new Harness({}, 9, 60, { clips: NO_CLIPS, rigs: [], wild: false, map: writeMap(flatMap(4)) });
+  try {
+    const faller = h.join("faller");
+    h.run(700);
+    const a = h.world.ents, e = h.ent(faller);
+    a.setPosition(e, 100, 50, 100);
+    h.world.history.discontinuity(e);
+    expect(h.host.falls.knock(e, 1, 1, 3, 2, 0, 0)).toBe(true);
+    const launch = h.host.falls.motion(e)!.tick;
+    h.run(800);
+    const joined = h.world.tick, watcher = h.join("late-watcher");
+    const remote = new RemoteSample(), drawn = new Corpses(h.world.anims, undefined, k => survivorKind(h.reg, k));
+    const heights = new Map<number, number>();
+    let seen = 0;
+    h.run(1000, () => {
+      heights.set(h.world.tick, a.y[e]!);
+      if (!watcher.world) return;
+      watcher.sampleRemote(remote);
+      drawn.update(remote, watcher.world, 0, 0, new Map(), watcher.corpseMotions);
+      const f = drawn.humans.of(e);
+      if (!f || !heights.has(f.clock)) return;
+      expect(f.motionTick).toBeGreaterThanOrEqual(joined);
+      expect(f.y).toBe(heights.get(f.clock)!);
+      seen++;
+    });
+    expect(joined - launch).toBeGreaterThan(20);
+    expect(seen).toBeGreaterThan(10);
   } finally { h.host.shutdown(); }
 });

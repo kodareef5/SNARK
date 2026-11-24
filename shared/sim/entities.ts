@@ -5,11 +5,18 @@
 import { copySkate, SkateState } from "./skate-state.ts";
 import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
-import { AnimState, CUE_DEAD, CUE_JET } from "../anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_JET, turnSteps } from "../anim/pose.ts";
 import { PI, TAU } from "../math/scalar.ts";
-import { MODE_WALK, STAMINA_UNITS, glidePhase, type Body } from "./character.ts";
+import { MODE_WALK, STAMINA_UNITS, glidePhase, type Body, type MoveParams } from "./character.ts";
 
 const posed = new AnimState();
+/** A slot whose turn has not been measured yet. */
+const NO_TICK = 0xffffffff;
+
+/** For a body of `p` that turns and does not strafe, the most it turns a tick, which its turn is shown against; else 0. */
+export function carriageRate(p: MoveParams | null | undefined): number {
+  return p && !p.strafe ? p.turnRate : 0;
+}
 
 /** Indices into EntityStore.gears: the item in hand, then one per armor slot. */
 export const GEAR_HELD = 0;
@@ -127,6 +134,8 @@ export class EntityStore {
   private readonly vfree: number[] = [];
   /** By kind, set for a vehicle's. */
   private readonly vehicular: ArrayLike<unknown>;
+  /** By kind, carriageRate: how far a body that does not strafe turns a tick at most, 0 for one that strafes. */
+  private readonly turning: ArrayLike<number>;
 
   /** Persistent id, or 0 for entities that are never saved. */
   pid: Float64Array;
@@ -134,10 +143,23 @@ export class EntityStore {
   pitch: Int16Array;
   /** The pose, packed as shared/net/view.ts sends it. Whoever moves the body writes it. */
   anim: Uint32Array;
+  /**
+   * For the turn a body that does not strafe shows (AnimState.setTurn): the tick of its last pose, its yaw and turn then,
+   * and its yaw and turn at its last pose of an earlier tick.
+   */
+  turnTick: Uint32Array;
+  turnYaw: Uint16Array;
+  turnNow: Int8Array;
+  turnFrom: Uint16Array;
+  turnWas: Int8Array;
   /** A creature's cues (AnimState.packCue), sent beside the pose. The server's Creatures sets and clears them. */
   cue: Uint32Array;
   /** A survivor's emote (AnimState.packEmote), sent beside the pose; 0 for none. The server's Emotes sets and clears it. */
   emote: Uint32Array;
+  /** A survivor's reaction to a blow (shared/anim/reactions.ts), sent beside the pose; 0 for none. */
+  react: Uint32Array;
+  /** Ticks left of a body's reaction to a blow (Body.reactTicks), counted down by its step. */
+  reactTicks: Uint8Array;
   /** The rest of the predicted state. See `Body` in character.ts. */
   mode: Uint8Array;
   stance: Uint8Array;
@@ -215,15 +237,16 @@ export class EntityStore {
 
   /**
    * It starts with room for `cap` and may grow to `max`. With no `max` it never grows. `vehicular` is set for each kind that
-   * is a vehicle (Registry.vehicle).
+   * is a vehicle (Registry.vehicle), and `turning` is each kind's carriageRate.
    */
-  constructor(dims: MapDims, cap: number, max = cap, vehicular: ArrayLike<unknown> = []) {
+  constructor(dims: MapDims, cap: number, max = cap, vehicular: ArrayLike<unknown> = [], turning: ArrayLike<number> = []) {
     if (max > ENTITY_LIMIT) throw new Error("entity capacity exceeds handle index range");
     if (cap < 1 || cap > max) throw new Error("an entity store starts with at least one slot and no more than its limit");
     this.dims = dims;
     this.cap = cap;
     this.max = max;
     this.vehicular = vehicular;
+    this.turning = turning;
     this.gen = new Uint16Array(cap).fill(1);
     this.died = new Uint16Array(cap);
     this.flags = new Uint8Array(cap);
@@ -276,8 +299,15 @@ export class EntityStore {
     this.clearVehicle(0);
     this.pitch = new Int16Array(cap);
     this.anim = new Uint32Array(cap);
+    this.turnTick = new Uint32Array(cap).fill(NO_TICK);
+    this.turnYaw = new Uint16Array(cap);
+    this.turnNow = new Int8Array(cap);
+    this.turnFrom = new Uint16Array(cap);
+    this.turnWas = new Int8Array(cap);
     this.cue = new Uint32Array(cap);
     this.emote = new Uint32Array(cap);
+    this.react = new Uint32Array(cap);
+    this.reactTicks = new Uint8Array(cap);
     this.pid = new Float64Array(cap);
     this.mode = new Uint8Array(cap);
     this.stance = new Uint8Array(cap);
@@ -374,8 +404,12 @@ export class EntityStore {
     this.seatGen[i] = 0;
     this.pitch[i] = 0;
     this.anim[i] = 0;
+    this.turnTick[i] = NO_TICK;
+    this.turnNow[i] = 0;
     this.cue[i] = 0;
     this.emote[i] = 0;
+    this.react[i] = 0;
+    this.reactTicks[i] = 0;
     this.pid[i] = 0;
     this.mode[i] = MODE_WALK;
     this.stance[i] = 0;
@@ -438,8 +472,15 @@ export class EntityStore {
     this.seatGen = wider(this.seatGen, cap);
     this.pitch = wider(this.pitch, cap);
     this.anim = wider(this.anim, cap);
+    this.turnTick = wider(this.turnTick, cap, NO_TICK);
+    this.turnYaw = wider(this.turnYaw, cap);
+    this.turnNow = wider(this.turnNow, cap);
+    this.turnFrom = wider(this.turnFrom, cap);
+    this.turnWas = wider(this.turnWas, cap);
     this.cue = wider(this.cue, cap);
     this.emote = wider(this.emote, cap);
+    this.react = wider(this.react, cap);
+    this.reactTicks = wider(this.reactTicks, cap);
     this.pid = wider(this.pid, cap);
     this.mode = wider(this.mode, cap);
     this.stance = wider(this.stance, cap);
@@ -653,11 +694,26 @@ export class EntityStore {
     posed.stance = this.stance[i]!;
     posed.setAction(this.act[i]!, this.hold[i]!, tick - this.actTicks[i]!);
     posed.setMotion(this.vx[i]!, this.vz[i]!, (this.yaw[i]! * TAU) / 65536, (this.pitch[i]! * (PI / 2)) / 16384, this.vy[i]!);
+    const rate = this.turning[this.kind[i]!] ?? 0;
+    if (rate > 0) posed.setTurn(this.turned(i, tick, rate));
     posed.setJet(this.jetThrust[i]!, this.jetGear[i]!);
     posed.setGlide(this.glide[i]! !== 0, glidePhase(this.vx[i]!, this.vy[i]!, this.vz[i]!));
     this.anim[i] = posed.pack();
     // The one bit says its motion bits are laid out for the air: under thrust, or under an open glider.
     if (!(this.cue[i]! & CUE_DEAD)) this.cue[i] = this.jetThrust[i] || this.glide[i] ? this.cue[i]! | CUE_JET : this.cue[i]! & ~CUE_JET;
+  }
+
+  /** The steps of turn body `i` shows at `tick`: its yaw now against its yaw at its last pose of an earlier tick. */
+  private turned(i: number, tick: number, rate: number): number {
+    if (this.turnTick[i] !== tick) {
+      const fresh = this.turnTick[i] === NO_TICK;
+      this.turnFrom[i] = fresh ? this.yaw[i]! : this.turnYaw[i]!;
+      // A body left unposed for a tick, as one at rest is, was not turning: it starts again from none.
+      this.turnWas[i] = tick - this.turnTick[i]! === 1 ? this.turnNow[i]! : 0;
+      this.turnTick[i] = tick;
+    }
+    this.turnYaw[i] = this.yaw[i]!;
+    return (this.turnNow[i] = turnSteps(this.yaw[i]! - this.turnFrom[i]!, rate, this.turnWas[i]!));
   }
 
   loadBody(i: number, b: Body): void {
@@ -675,6 +731,8 @@ export class EntityStore {
     b.speedQ = this.speedQ[i]!;
     b.swimQ = this.swimQ[i]!;
     b.mflags = this.mflags[i]!;
+    b.react = this.react[i]!;
+    b.reactTicks = this.reactTicks[i]!;
     b.kind = this.kind[i]!;
     b.yaw = this.yaw[i]!;
     const v = this.vrow[i]!;
@@ -750,6 +808,8 @@ export class EntityStore {
     this.stance[i] = b.stance;
     this.stamina[i] = b.stamina;
     this.mflags[i] = b.mflags;
+    this.react[i] = b.react;
+    this.reactTicks[i] = b.reactTicks;
     this.yaw[i] = b.yaw;
     let v = this.vrow[i]!;
     if (v === 0 && b.vehicle) {

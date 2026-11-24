@@ -53,6 +53,17 @@ function taken(text: string, spec: string, exports: readonly string[]): string[]
 const DIGITS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 /**
+ * The reaction curves, baked as the page is built and put in place of the module that bakes them where it is run
+ * (shared/anim/reaction-curves.ts), so the page fetches the text and never the solver.
+ */
+export const bakedCurves: Bun.BunPlugin = { name: "curves", setup(b) {
+  b.onLoad({ filter: /[\\/]shared[\\/]anim[\\/]reaction-curves\.ts$/ }, async () => {
+    const { packCurves } = await import("../shared/anim/reaction-bake.ts");
+    return { contents: `export const REACT_CURVES = ${JSON.stringify(packCurves())};`, loader: "js" };
+  });
+} };
+
+/**
  * Builds the page's script into `dist`, with `define` as the page's build defines it. Returns the files written, main.js
  * and page.js first.
  */
@@ -115,7 +126,7 @@ export async function buildPageScript(dist: string, define: Record<string, strin
       return { contents: names.length > 0 ? `export { ${names.map((n) => `${named(file, n)} as ${n}`).join(", ")} } from "${FROM_PAGE}";` : `import "${FROM_PAGE}";`, loader: "js" };
     });
   } };
-  const later = late.size > 0 ? await Bun.build({ ...opts, entrypoints: [...late], outdir: dist, naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" }, splitting: true, sourcemap: "linked", plugins: [dynamic, link] }) : null;
+  const later = late.size > 0 ? await Bun.build({ ...opts, entrypoints: [...late], outdir: dist, naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" }, splitting: true, sourcemap: "linked", plugins: [dynamic, link, bakedCurves] }) : null;
   if (later && !later.success) throw new Error(later.logs.map(String).join("\n"));
   const main = await Bun.build({ ...opts, entrypoints: [entry], outdir: dist, naming: "[name].[ext]", sourcemap: "linked", plugins: [dynamic, link] });
   if (!main.success) throw new Error(main.logs.map(String).join("\n"));

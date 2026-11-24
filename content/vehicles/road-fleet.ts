@@ -12,6 +12,7 @@ import { FASTBACK_ART } from "./fastback-art.ts";
 import { BERLINETTA_ART, VELOCE_ART, ZEPHYR_ART, ZEPHYR_NOZZLES } from "./sports-art.ts";
 import { ZEPHYR_THRUSTERS } from "../../shared/sim/vehicle-thrusters.ts";
 import { CARAVAN_ART, PANEL_VAN_ART } from "./van-art.ts";
+import { withRooms } from "./cabin-room.ts";
 
 // Each enclosed body supplies its own metal cabin panels; the compact dimensions do not fit the fleet.
 const { shotPanels: _compactPanels, ...roadDefaults } = COMPACT_VEHICLE;
@@ -70,6 +71,7 @@ interface Trim {
   readonly extraDoors?: readonly VehicleDoor[];
   readonly cargoDoor?: number;
   readonly breakablePanels?: WheelVehicleDefinition["breakablePanels"];
+  readonly controls?: VehicleSeat["controls"];
   readonly shotPanels?: WheelVehicleDefinition["shotPanels"];
   readonly emergencyLights?: readonly EmergencyLamp[];
   readonly nozzles?: WheelVehicleDefinition["nozzles"];
@@ -85,11 +87,11 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
   };
   const vehicle: WheelVehicleDefinition = {
     ...roadDefaults, id: art.id, frame, spec, beltline: trim.beltline, shotPanels: art.shotPanels,
-    seats: [
-      { id: "driver", driver: true, anchor: at.seat_driver, entry: at.approach_left, door: 0 },
+    seats: withRooms(art.id, [
+      { id: "driver", driver: true, anchor: at.seat_driver, entry: at.approach_left, door: 0, ...(trim.controls && { pose: "drive" as const, controls: trim.controls }) },
       { id: "passenger", anchor: at.seat_front_passenger, entry: at.approach_right, door: 1 },
       ...(trim.extraSeats ?? []),
-    ],
+    ]),
     doors: [...COMPACT_VEHICLE.doors, ...(trim.extraDoors ?? [])],
     ...(trim.breakablePanels ? { breakablePanels: trim.breakablePanels } : {}),
     ...(trim.shotPanels ? { shotPanels: trim.shotPanels } : {}),
@@ -184,7 +186,10 @@ const patrolJeep = patrolCar(PATROL_JEEP_ART, "off_road", {
 // (`spawn core:zephyr`) and parks nowhere: no city weight, no wreck and no bay on the test-drive lot.
 const zephyr = roadCar(ZEPHYR_ART, "sports_car", {
   ...sports, mass: 1700, frontDriveShare: 0, rearGrip: 2.22, downforce: 1.9, steerSpeed: 31, maxForward: 63, thrusters: ZEPHYR_THRUSTERS,
-}, { aliases: ["zephyr", "flying_car"], paints: [34, 230, 232, 90, 29], health: 860, slots: 12, payload: 180, beltline: .79, nozzles: ZEPHYR_NOZZLES });
+}, { aliases: ["zephyr", "flying_car"], paints: [34, 230, 232, 90, 29], health: 860, slots: 12, payload: 180, beltline: .79, nozzles: ZEPHYR_NOZZLES,
+  controls: { left: [.592, .735, .385], right: [.248, .735, .385], style: "helm",
+    turn: { pivot: ZEPHYR_ART.anchors.steering, axis: [0, 0, 1], ratio: COMPACT_VEHICLE.steeringWheel!.ratio } },
+});
 
 const conceptSeats = CONCEPT003_ART.anchors;
 const concept003 = roadCar(CONCEPT003_ART, "car", {

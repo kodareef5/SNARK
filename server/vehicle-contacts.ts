@@ -6,6 +6,7 @@ import { CHUNK_SIZE, TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { MAX_CONTACT_PROXIES, contactBody, contactRelevant, contactHorizon, contactReach, publicContactBody, type ContactSnapshot } from '../shared/net/contact.ts';
 import { clamp, len3, TAU } from '../shared/math/scalar.ts';
+import { bodyMass } from '../shared/sim/body-mass.ts';
 import { youngScale } from '../shared/sim/breeding.ts';
 import { Body, MODE_GHOST, MODE_NONE, stanceHeight } from '../shared/sim/character.ts';
 import { DMG_MELEE } from '../shared/sim/damage.ts';
@@ -31,8 +32,6 @@ export interface VehicleCollisionPair {
   rotorA: boolean; rotorB: boolean; propellerA: boolean; propellerB: boolean;
   hazardFreshA: boolean; hazardFreshB: boolean;
 }
-/** Metres a second a car closes at, at least, to knock a body off its feet (server/host.ts, Knockdowns). */
-export const KNOCK_SPEED = 6;
 /**
  * A creature at most this share of the car's mass and this tall is run over: the car rolls on over it with a thump of
  * THUMP m/s upward, and it is crushed, from RUN_OVER_SPEED m/s.
@@ -63,8 +62,13 @@ export interface VehicleContactsContext {
   /** Off the active list: it keeps its pose with no capture, until something wakes it (server/urban.ts). */
   asleep?(vehicle: number): boolean;
   pair?(event: VehicleCollisionPair): void;
-  /** A body other than a vehicle was struck by vehicle `vehicle` closing at `speed` m/s, hard enough to harm: it may be knocked down. */
-  struck?(body: number, speed: number): void;
+  /**
+   * A body other than a vehicle was struck by a driven vehicle hard enough to harm: its speed changed by `dv` m/s along the
+   * unit (dx, dz), at `y`. It may stagger or be knocked down (server/reactions.ts).
+   */
+  struck?(body: number, dv: number, dx: number, dz: number, y: number, wx: number, wy: number, wz: number, by: EntityRecord): void;
+  /** Whether body `e` lies knocked down as a ragdoll, which a car passes over rather than strikes again. */
+  down?(e: number): boolean;
 }
 /** `settled`: it starts this tick in the pose it was captured in last tick, and nothing placed it since. */
 interface Frame { body: Body; handle: number; pid: number; tick: number; motionEpoch: number; consumed: boolean; by: number; byHandle: number; settled: boolean }
@@ -155,7 +159,7 @@ export class VehicleContacts {
       row.hitched = e === towed;
       if (!row.hitched && !contactRelevant(this.snapshotBody, row, contactReach(def), other ? 1.5 : .5)) continue;
       contactBody(row.body, row.state);
-      row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale);
+      row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, bodyMass(world.reg, kind, scale));
       const fixed = !other && definition?.type === 'species' && definition.still === true && row.grounded;
       const anchored = !!other && (this.ctx.anchored?.(e, by ?? vehicle) ?? false);
       row.response = row.hitched ? 'dynamic' : fixed || anchored ? 'fixed' : combat.vehicleDisplaces(by, vehicle, victim) ? 'dynamic' : 'protected';
@@ -205,6 +209,11 @@ export class VehicleContacts {
   }
 
   /** After creatures.step, before attachment repinning/history/replication. */
+  /** The vehicles that moved in the last step, by entity. */
+  get moved(): readonly number[] {
+    return this.ordered;
+  }
+
   step(): readonly number[] {
     const { world } = this.ctx, ents = world.ents;
     this.changed.length = 0;
@@ -329,6 +338,7 @@ export class VehicleContacts {
     // Any valid seat is protected from a second impact on its attached visual body.
     if (seat >= 0 && ents.gen[seat] === ents.seatGen[e] && (ents.flags[seat]! & F_ALIVE) !== 0) return false;
     if (this.ctx.boarding?.(e, car)) return false;
+    if (this.ctx.down?.(e)) return false;
     const rec = records.byPid.get(ents.pid[e]!);
     return !!rec && !rec.dead && records.entOf.get(rec.pid) === e;
   }
@@ -348,8 +358,7 @@ export class VehicleContacts {
     }
     if (!this.defB) { this.upright(this.b.prior); this.upright(this.b.state); }
     this.a.spec = this.defA.spec; this.a.mass = vehicleMassProperties(this.defA.spec, this.a.state).mass; this.a.response = 'dynamic';
-    const mass = this.defB ? vehicleMassProperties(this.defB.spec, this.b.state).mass
-      : (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale;
+    const mass = this.defB ? vehicleMassProperties(this.defB.spec, this.b.state).mass : bodyMass(world.reg, kind, scale);
     this.b.spec = this.defB?.spec ?? null; this.b.mass = Math.max(1, mass); this.b.response = 'dynamic';
     if (isSkateboard(this.defB) && this.ctx.driverOf(e)) this.heightB = SKATER_HEIGHT;
     const sourceHeight = isSkateboard(this.defA) && this.ctx.driverOf(car) ? SKATER_HEIGHT : 0;
@@ -359,9 +368,21 @@ export class VehicleContacts {
   private upright(s: DynamicState): void { s.qx = s.qy = s.qz = 0; s.qw = 1; s.pitchRate = s.yawRate = s.rollRate = 0; }
   /** Geometry bounds choose samples; they are never used as damage speed. */
   private rigidContact(car: number, frame: Frame, e: number, def: VehicleDefinition): Contact | null {
+    const { world } = this.ctx, ents = world.ents;
+    const other = world.reg.vehicle[ents.kind[e]!], radius = world.reg.move[ents.kind[e]!]!.radius;
+    // A character sweep accepts at most eight radii of travel. Vehicle captures include both ends of their path.
+    if (!other || (!isSkateboard(def) && !isSkateboard(other))) {
+      const prior = other ? this.frames.get(e)?.body : undefined;
+      const reach = vehicleSolidRadius(def) + (other ? vehicleSolidRadius(other) : radius * (8 + CAPSULE_EXTENT) + .05);
+      const x = ents.x[e]!, z = ents.z[e]!, px = prior?.x ?? x, pz = prior?.z ?? z;
+      if (Math.min(x, px) > Math.max(frame.body.x, ents.x[car]!) + reach ||
+          Math.max(x, px) < Math.min(frame.body.x, ents.x[car]!) - reach ||
+          Math.min(z, pz) > Math.max(frame.body.z, ents.z[car]!) + reach ||
+          Math.max(z, pz) < Math.min(frame.body.z, ents.z[car]!) - reach) return null;
+    }
     this.sweeps++;
     this.prepare(car, frame, e);
-    const { world } = this.ctx, ents = world.ents, c = this.b.prior, d = this.b.state;
+    const c = this.b.prior, d = this.b.state;
     // Actors use history and a capped character step. Vehicle captures have already passed their own velocity and epoch checks.
     if (!this.defB && len3(d.x - c.x, d.y - c.y, d.z - c.z) > world.reg.move[ents.kind[e]!]!.radius * 8 + .05) return null;
     const hit = this.queries.sweep();
@@ -432,7 +453,7 @@ export class VehicleContacts {
     this.store(car, a.state, true);
     this.runOvers++;
     const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0, base: RUN_OVER_HARM, type: DMG_MELEE,
-      quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+      quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, vehicle: true };
     // Thrown along under the car at half its speed, tumbling end over end about the car's right.
     const impact: CorpseImpact = { victimHandle: c.handle, victimPid: c.pid, vx: a.state.vx * 0.5, vy: 0.5, vz: a.state.vz * 0.5,
       wx: clamp(a.state.vz * 2, -8, 8), wy: 0, wz: clamp(-a.state.vx * 2, -8, 8) };
@@ -506,8 +527,10 @@ export class VehicleContacts {
       const harmful = speed - MIN_HARM_SPEED;
       const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0,
         base: Math.min(300, .5 * harmful * harmful * a.mass / (a.mass + b.mass)), type: DMG_MELEE,
-        quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
-      if (speed >= KNOCK_SPEED) this.ctx.struck?.(c.entity, speed);
+        quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, vehicle: true };
+      // The way the blow sent it: its velocity now less what it had, flat.
+      const px = b.state.vx - b.prior.vx, pz = b.state.vz - b.prior.vz, flat = Math.sqrt(px * px + pz * pz);
+      if (flat > 1e-6) this.ctx.struck?.(c.entity, Math.abs(result.deltaSpeedB), px / flat, pz / flat, c.y, impact?.wx ?? 0, impact?.wy ?? 0, impact?.wz ?? 0, by);
       combat.land(src, c.entity, ZONE_NONE, c.x, c.y, c.z, 0, impact);
     }
     // Either callback can destroy or replace a slot.

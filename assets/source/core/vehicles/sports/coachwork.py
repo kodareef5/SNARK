@@ -406,6 +406,9 @@ class Coupe:
     def __init__(self, name):
         self.name = name
         self.style = STYLES[name]
+        self.pivots = dict(PIVOTS)
+        if name == "zephyr":
+            self.pivots["steering_wheel"] = (0.42, 0.735, 0.385)
         self.parts = {bone: [] for bone in PIVOTS}
         self.bone = "chassis"
 
@@ -1146,6 +1149,7 @@ class Coupe:
             self.port("nozzle " + name, centre, normal, along, rx, ry, lift)
 
     def interior(self):
+        bucket_start = len(self.parts["chassis"])
         for side in [-1, 1]:
             cx = side * 0.42
 
@@ -1235,6 +1239,11 @@ class Coupe:
                     0.0045,
                     "dash",
                 )
+        if self.name == "zephyr":
+            for bucket in self.parts["chassis"][bucket_start:]:
+                for vertex in bucket.data.vertices:
+                    vertex.co.y -= 0.12
+                    vertex.co.z += 0.075
         # Dashboard is lower across the windscreen than the eye point. Instrument binnacle points toward driver.
         rings = []
         for x in between(-0.813, 0.813, 18):
@@ -1266,7 +1275,7 @@ class Coupe:
         self.box("shift switch", (-0.028, 0.408, 0.087), (0.028, 0.445, 0.152), 0.01, "dash")
         self.box("centre screen", (-0.119, 0.501, 0.545), (0.124, 0.671, 0.564), 0.015, "navigation")
         self.bone = "steering_wheel"
-        x, y, z = PIVOTS[self.bone]
+        x, y, z = self.pivots[self.bone]
         rim = []
         for k in range(41):
             a = TAU * k / 40
@@ -1424,7 +1433,7 @@ class Coupe:
         bpy.context.scene.collection.objects.link(rig)
         bpy.context.view_layer.objects.active = rig
         bpy.ops.object.mode_set(mode="EDIT")
-        for bone, (x, y, z) in PIVOTS.items():
+        for bone, (x, y, z) in self.pivots.items():
             b = arm.edit_bones.new(bone)
             b.head = (x, -z, y)
             b.tail = (x, -z, y + 0.1)

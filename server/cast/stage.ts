@@ -82,6 +82,8 @@ export interface CastBodies {
   /** Begins getting in at the wheel, or beside it; false if it cannot. */
   board(pid: number, car: number, seat?: "driver" | "passenger"): boolean;
   seated(pid: number): boolean;
+  /** Whether its getting in or out is still under way; a refused one is not. */
+  boarding?(pid: number): boolean;
   alight(pid: number): boolean;
   car(car: number): CarState | null;
   drive(car: number, moveX: number, moveZ: number, handbrake: boolean): void;
@@ -757,7 +759,9 @@ export class CastStage implements Stage {
       return;
     }
     if (!this.bodies.seated(b.pid)) {
-      if (b.boarding) return;
+      // Getting in; once refused (its way to the door blocked), it tries again.
+      if (b.boarding && (this.bodies.boarding?.(b.pid) ?? true)) return;
+      b.boarding = false;
       // Out of it: walk to its door and get in.
       const door = this.bodies.door(b.car);
       const at = this.bodies.at(b.pid);

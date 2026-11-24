@@ -34,7 +34,7 @@ import { Emotes } from "./emote.ts";
 import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
-import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
+import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE, IMPACT_BLAST, IMPACT_SHOT } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
 import { Balls } from "./balls.ts";
 import { Eggs } from "./eggs.ts";
@@ -66,7 +66,7 @@ import { Death, OP_DEATH } from "./death.ts";
 import { Harvest } from "./harvest.ts";
 import { VehicleTrees } from "./vehicle-trees.ts";
 import { Progression } from "./progression.ts";
-import { JET_BOOTS, JET_CUIRASS, JET_HELMET, stanceEye } from "../shared/sim/character.ts";
+import { JET_BOOTS, JET_CUIRASS, JET_HELMET, MODE_WALK, stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
@@ -100,6 +100,7 @@ import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { settle, settleNear } from "./place.ts";
 import { Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
+import { LANE_ROW } from "./lane.ts";
 import { CarReturn } from "./car-return.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
@@ -120,7 +121,11 @@ import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
-import { HumanAnim } from "../shared/anim/pose.ts";
+import { CUE_HELD, CUE_OUT, CUE_TORPOR, HumanAnim } from "../shared/anim/pose.ts";
+import { REACT_RULES, TIER_FALL } from "../shared/sim/react.ts";
+import { Reactions, SHOVE_MOST } from "./reactions.ts";
+import { bodyMass } from "../shared/sim/body-mass.ts";
+import { solidOf } from "../shared/sim/vehicle-movers.ts";
 import { Cluster } from "./cluster/cluster.ts";
 import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
@@ -240,6 +245,15 @@ export interface Host {
   readonly loose: Loose;
   /** Survivors knocked off their feet, lying as ragdolls (server/falls.ts). */
   readonly falls: Falls;
+  /** Survivors reeling from blows (server/reactions.ts). */
+  readonly reactions: Reactions;
+  /**
+   * Knocks survivor `e` off its feet as a blow does, moving as it moves now and turning at (wx, wy, wz): a ragdoll where
+   * the fall budget has room, a topple by its reaction where it has not (server/falls.ts, server/reactions.ts).
+   */
+  knock(e: number, wx?: number, wy?: number, wz?: number): void;
+  /** What the ragdoll checkpoints sent to clients have cost (server/corpse-motion.ts). */
+  readonly corpseMotion: { readonly stats: { readonly bytes: number; readonly checkpoints: number; readonly corrections: number; readonly deferred: number } };
   readonly balls: Balls;
   readonly overhead: Overhead;
   readonly gaze: Gaze;
@@ -708,8 +722,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.players.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair), linked: (a, b) => hitches.linked(a, b) || airSupport.joined(world.ents.pid[a]!, world.ents.pid[b]!), towing: e => hitches.trailerOf(e),
-    // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
-    struck: (body) => knockDown(body),
+    // A car that strikes a survivor staggers them, or knocks them off their feet (Knockdowns) as a door does.
+    struck: (body, dv, dx, dz, y, wx, wy, wz, by) => {
+      if (reactions.shove(body, dv, dx, dz, y - world.ents.y[body]!, true, true) === TIER_FALL) knockDown(body, wx, wy, wz, by);
+    },
+    // A body lying as its ragdoll is not struck again where its entity stands in for it.
+    down: (e) => falls.isDown(e),
     parkingBrake: e => urban.parkingBrake(e),
     resting: e => urban.resting(e),
     asleep: e => urban.asleep(e),
@@ -725,7 +743,19 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   containers.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c, true) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
-  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death, containers }, (opts.seed ?? 1) + 103);
+  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death, containers, moved: () => movedSolids() }, (opts.seed ?? 1) + 103);
+  // The vehicles that moved this tick and the heavy creatures walking, which wake the bodies near them.
+  const solidsMoved: number[] = [];
+  const movedSolids = (): readonly number[] => {
+    solidsMoved.length = 0;
+    for (const e of urban.contacts?.moved ?? []) solidsMoved.push(e);
+    const ents = world.ents;
+    for (let k = 0; k < creatures.awakeCount; k++) {
+      const e = creatures.awake[k]!;
+      if (ents.vx[e]! * ents.vx[e]! + ents.vz[e]! * ents.vz[e]! > 0.25 && solidOf(reg, ents.kind[e]!)) solidsMoved.push(e);
+    }
+    return solidsMoved;
+  };
   death.corpses = containers.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const emotes = new Emotes({ world, game });
@@ -914,8 +944,40 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
   const loose = new Loose({ world, game, records, items, combat, death });
   const falls = new Falls(world);
+  // Staggers (server/reactions.ts): only a living survivor on its own feet reels.
+  /** Whether body `e` is a living survivor on its feet, not seated, lying, held or out. */
+  const upright = (e: number): boolean => {
+    const ents = world.ents;
+    return (ents.flags[e]! & F_ALIVE) !== 0 && ents.kind[e] === survivor && ents.seat[e] === 0 && !falls.isDown(e) &&
+      (ents.cue[e]! & (CUE_HELD | CUE_OUT)) === 0 && ents.mode[e] === MODE_WALK;
+  };
+  const reactions = new Reactions({
+    world,
+    standing: (e) => upright(e) && rules.on("Staggers"),
+    upright: (e) => upright(e),
+    rules: () => ({ bump: REACT_RULES.bump, stagger: rules.num("StaggerSpeed"), fall: rules.on("Knockdowns") ? rules.num("KnockdownSpeed") : Infinity }),
+    creatureMayFall: (e) => falls.creatureMayFall(e),
+    creature: (e) => {
+      const ents = world.ents;
+      return !falls.isDown(e) && (ents.flags[e]! & F_ALIVE) !== 0 && ents.kind[e] !== survivor && !reg.vehicle[ents.kind[e]!] && ents.seat[e] === 0 &&
+        (ents.cue[e]! & (CUE_HELD | CUE_OUT)) === 0 && rules.on("Staggers");
+    },
+    mass: (e) => bodyMass(reg, world.ents.kind[e]!),
+  });
   game.players.isDown = (e) => falls.isDown(e);
   combat.downPose = (e, tick) => falls.poseAt(e, tick);
+  combat.riseFrom = (e, tick) => falls.riseFrom(e, tick);
+  combat.downSize = (e, tick) => falls.sizeAt(e, tick);
+  // A blow or a blast may stagger a survivor, or fell them; a shot never does.
+  combat.onBlow = (target, kind, taken, dx, dz, up, by) => {
+    if (kind === IMPACT_SHOT) return;
+    if (reactions.blow(target, kind === IMPACT_BLAST, taken, dx, dz, up) === TIER_FALL) {
+      const ents = world.ents, push = Math.min(SHOVE_MOST * 2, taken / 20);
+      ents.vx[target] = ents.vx[target]! + dx * push;
+      ents.vz[target] = ents.vz[target]! + dz * push;
+      knockDown(target, dz * 2, 0.3, -dx * 2, by);
+    }
+  };
   corpses.handOff = (e) => falls.take(e);
   // A sight's zero lifts its flying rounds (D1083).
   projectiles.zero = (c) => gaze.zeroOf(c);
@@ -1458,31 +1520,36 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // up where it comes to rest (server/falls.ts), stunned a moment more as it does. Where no ragdoll may fall it is stunned
   // standing: the body has no hold on where it goes (shared/sim/character.ts, MF_ROOTED), and its client predicts it so.
   const stunned = reg.index.get("core:stunned") ?? -1;
-  const knockDown = (body: number, wx = 0, wy = 0, wz = 0): void => {
+  // `by` is who knocked it down, carried with its fall as the blame for whatever it strikes as it flies.
+  const knockDown = (body: number, wx = 0, wy = 0, wz = 0, by: EntityRecord | null = null): void => {
     if (stunned < 0 || !rules.on("Knockdowns")) return;
     const rec = records.byPid.get(world.ents.pid[body]!);
-    if (!rec || rec.kind !== survivor) return;
+    if (!rec || (rec.kind !== survivor && !falls.creatureMayFall(body))) return;
     const ents = world.ents;
-    if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz)) buffs.give(rec, stunned, 0, KNOCKDOWN_SECONDS);
+    // Where no ragdoll may fall for it, it topples by its reaction, held where it is until it gets up.
+    if (!falls.knock(body, ents.vx[body]!, ents.vy[body]!, ents.vz[body]!, wx, wy, wz, by?.pid ?? 0) && rec.kind === survivor) buffs.give(rec, stunned, 0, reactions.standing(body) ? reactions.topple(body) : KNOCKDOWN_SECONDS);
     refreshBody(rec);
   };
   urban.onSkateFall = (actor, yaw, hard) => {
     const dx = Math.sin(yaw), dz = Math.cos(yaw);
     if (hard) {
       world.ents.vx[actor] = dx * 1.1; world.ents.vz[actor] = dz * 1.1;
-      knockDown(actor, dz * 2, .35, -dx * 2);
+      knockDown(actor, dz * 2, .35, -dx * 2, records.byPid.get(world.ents.pid[actor]!) ?? null);
       return;
     }
     // A missed landing: a stumble, up again within a second.
     const rec = records.byPid.get(world.ents.pid[actor]!);
     if (rec && stunned >= 0) { buffs.give(rec, stunned, 0, SKATE_STUMBLE_SECONDS); refreshBody(rec); }
   };
-  falls.onUp = (body) => {
+  falls.onUp = (body, up, way, facing) => {
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (rec && stunned >= 0) buffs.give(rec, stunned, 0, GET_UP_SECONDS);
     if (rec) refreshBody(rec);
+    // It gets up as every machine poses it, and is calm a while, as after a stagger.
+    if (world.ents.kind[body] === survivor) reactions.rise(body, up, way, facing);
+    else creatures.cue(body, CUE_TORPOR, false);
   };
-  const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  const doorBlow: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, vehicle: true };
   urban.onDoorStrike = (vehicle, body, speed, dx, dz) => {
     const ents = world.ents, driver = game.clients.find((c) => c?.active && c.drive === vehicle);
     doorBlow.by = driver ? records.byPid.get(driver.pid) ?? null : null;
@@ -1490,7 +1557,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     doorBlow.z = ents.z[vehicle]!;
     doorBlow.base = Math.min(DOOR_HARM_MOST, DOOR_HARM_BASE + speed * DOOR_HARM_PER);
     const impact = { victimHandle: ents.handleOf(body), victimPid: ents.pid[body]!, vx: ents.vx[body]!, vy: ents.vy[body]!, vz: ents.vz[body]!, wx: dz * 3, wy: 0, wz: -dx * 3 };
-    knockDown(body, impact.wx, impact.wy, impact.wz);
+    // A door knocks down only those its blow may land on.
+    const victim = records.byPid.get(ents.pid[body]!);
+    if (victim && combat.mayShove(doorBlow.by, victim)) knockDown(body, impact.wx, impact.wy, impact.wz, doorBlow.by);
     combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
   };
   game.players.blockBodies = () => [creatures.awake, creatures.awakeCount];
@@ -1810,8 +1879,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     opts.modules ?? [],
   );
   const mark = (part: number): System => ({ step: () => parts.mark(part) });
-  /** Physics: its time is the lane's (server/lane.ts). */
-  const physics = (s: System): System => ({ step: (tick) => { lane.enter(); s.step!(tick); lane.leave(); } });
+  /** Physics: its time is the lane's, kept in row `row` (server/lane.ts). */
+  const physics = (s: System, row: number): System => ({ step: (tick) => { lane.enter(row); s.step!(tick); lane.leave(); } });
   // The tick. Each hook walks this list from the top, so a row's place here is its place in every hook it has: a new
   // system is a row where its work belongs. The simulation is the same on every run only while the order is.
   const systems: System[] = [
@@ -1843,12 +1912,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat,
     projectiles,
-    physics(loose),
+    physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
     creatures,
     mark(PART.creatures),
-    physics({ step: contacts }),
+    physics({ step: contacts }, LANE_ROW.contacts),
     mark(PART.contacts),
     impale,
     ...(spawner ? [spawner] : []),
@@ -1860,8 +1929,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     breeding,
     feces,
     overhead,
-    physics(corpses),
-    physics({ step: () => falls.step() }),
+    physics(corpses, LANE_ROW.corpses),
+    physics({ step: () => falls.step() }, LANE_ROW.falls),
+    physics({ step: () => reactions.step() }, LANE_ROW.react),
     voice,
     mark(PART.world),
     { step: keepHouse },
@@ -1924,6 +1994,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     eggs,
     loose,
     falls,
+    reactions,
+    knock: (e, wx = 0, wy = 0, wz = 0) => knockDown(e, wx, wy, wz),
+    corpseMotion: corpseReplication,
     balls,
     overhead,
     gaze,

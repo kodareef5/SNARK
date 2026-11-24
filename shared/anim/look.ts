@@ -1,13 +1,16 @@
-// A look is the 28 bytes the character creator makes. It picks meshes, colours and bone stretches only.
-// On foot, hit zones, collision and eye retain the common skeleton. Seated eyes and capsule centres follow the
-// rendered body binding/proportions; capsule radii and movement collision stay canonical.
+// A look is the 28 bytes the character creator makes. It picks meshes, colours and bone stretches only. Hit zones,
+// collision and eyes keep the common skeleton in every pose, so no look is harder to hit than another. The stretches
+// that move the head are bounded instead: a drawn head stays within about 2 cm of the head shots are judged on as it
+// stands, a seat puts it right on it (shared/anim/seat-fit.ts), and it never grows past HEAD_GROW.
 
 import { REGION_BASE, EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../pack/palette.ts";
+import type { Pose } from "./clip.ts";
+import type { Solved } from "./skeleton.ts";
 import type { Rng } from "../rng.ts";
 import {
   B_CHEST, B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R,
   B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_THUMB_L, B_THUMB_R, B_TOE_L, B_TOE_R, B_UPPER_ARM_L, B_UPPER_ARM_R,
-  B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN_BONES,
+  B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
 } from "./human.ts";
 
 export const LOOK_BYTES = 28;
@@ -155,8 +158,22 @@ export function lookColors(look: Uint8Array, out: Uint8Array, at = 0): void {
   out[at + 5] = 0;
 }
 
-/** Writes `HUMAN_BONES * 3` stretch factors around 1, one per bone axis. Regions that touch the same bone multiply. */
-export function lookScales(look: Uint8Array, out: Float32Array): void {
+/** How far a drawn head's middle may sit from the hit head's, in any pose on foot, in metres. */
+export const HEAD_SLACK = 0.02;
+/** The most a look stretches a head along any axis. Past it a shot through the drawn head's edge would miss its zone. */
+export const HEAD_GROW = 1.04;
+/** The bones whose joints carry the head over the hips, hips first. */
+const OVER_HIPS = [B_HIPS, B_SPINE, B_CHEST, B_UPPER_CHEST, B_NECK, B_HEAD];
+const LEG_BONES = [B_UPPER_LEG_L, B_UPPER_LEG_R, B_LOWER_LEG_L, B_LOWER_LEG_R];
+const HEAD_MIDDLE = [0, 1, 2].map((a) => (HUMAN.capA[B_HEAD * 3 + a]! + HUMAN.capB[B_HEAD * 3 + a]!) / 2);
+
+/**
+ * Writes `HUMAN_BONES * 3` stretch factors around 1, one per bone axis. Regions that touch the same bone multiply. The
+ * body is `rest`'s rig, drawn with lookJoints. Its head's middle is then off the hit body's, in any pose, by no more
+ * than its hips' joint is, plus what the legs lift the hips, plus what each length over the hips and the head's middle
+ * stretch: the stretches that move the head are eased back together until that is within HEAD_SLACK.
+ */
+export function lookScales(look: Uint8Array, out: Float32Array, rest: ArrayLike<number> = HUMAN.rest): void {
   out.fill(1, 0, HUMAN_BONES * 3);
   for (let r = 0; r < REGION_COUNT; r++) {
     const v = regionOf(look, r);
@@ -168,6 +185,41 @@ export function lookScales(look: Uint8Array, out: Float32Array): void {
       if ((axes & Z) !== 0) out[bone * 3 + 2]! *= k;
     }
   }
+  for (let a = 0; a < 3; a++) out[B_HEAD * 3 + a] = Math.min(out[B_HEAD * 3 + a]!, HEAD_GROW);
+  const hips = length([0, 1, 2].map((a) => rest[B_HIPS * 3 + a]! - HUMAN.rest[B_HIPS * 3 + a]!));
+  // Each term is the stretch less 1 times a length, so all ease together in proportion.
+  let reach = Math.abs(lookLift(out, rest)) + length([0, 1, 2].map((a) => HEAD_MIDDLE[a]! * (out[B_HEAD * 3 + a]! - 1)));
+  for (let k = 1; k < OVER_HIPS.length; k++) {
+    const b = OVER_HIPS[k]!, p = OVER_HIPS[k - 1]!;
+    reach += Math.abs((HUMAN.rest[b * 3 + 1]! - HUMAN.rest[p * 3 + 1]!) * (out[p * 3 + 1]! - 1));
+  }
+  // A rig whose own hips are already off by the slack keeps no such stretch.
+  const room = HEAD_SLACK - hips, share = reach <= room ? 1 : room <= 0 ? 0 : room / reach;
+  if (share === 1) return;
+  for (const b of [...OVER_HIPS, ...LEG_BONES]) out[b * 3 + 1] = 1 + (out[b * 3 + 1]! - 1) * share;
+  for (const a of [0, 2]) out[B_HEAD * 3 + a] = 1 + (out[B_HEAD * 3 + a]! - 1) * share;
+}
+
+/** The length of a vector of three. */
+function length(v: readonly number[]): number {
+  return Math.sqrt(v[0]! * v[0]! + v[1]! * v[1]! + v[2]! * v[2]!);
+}
+
+/**
+ * Writes to `out` the joint offsets (solve's `jointOffsets`) a body of `rest`'s rig stretched by `scales` is drawn with
+ * on foot: its joints over the hips go where the hit body's are (HUMAN), stretched along their lengths only, so its
+ * head stays with the hit body's however it bends; widths widen its flesh and move no joint.
+ */
+export function lookJoints(rest: ArrayLike<number>, scales: Float32Array | null, out: Float32Array): void {
+  out.fill(0, 0, HUMAN_BONES * 3);
+  for (let k = 1; k < OVER_HIPS.length; k++) {
+    const b = OVER_HIPS[k]!, p = OVER_HIPS[k - 1]!;
+    for (const a of [0, 1, 2]) {
+      const hit = HUMAN.rest[b * 3 + a]! - HUMAN.rest[p * 3 + a]!, own = rest[b * 3 + a]! - rest[p * 3 + a]!;
+      // solve stretches the offset by the parent's stretch on each axis: along the length only, here.
+      out[b * 3 + a] = (a === 1 || !scales ? hit : hit / scales[p * 3 + a]!) - own;
+    }
+  }
 }
 
 /** Returns what the stretch adds to a straight leg, so that raising the hips by it keeps the feet on the ground. `rest` holds the rest joints. */
@@ -175,4 +227,21 @@ export function lookLift(scales: Float32Array, rest: ArrayLike<number>): number 
   const upper = rest[B_UPPER_LEG_L * 3 + 1]! - rest[B_LOWER_LEG_L * 3 + 1]!;
   const lower = rest[B_LOWER_LEG_L * 3 + 1]! - rest[B_FOOT_L * 3 + 1]!;
   return upper * (scales[B_UPPER_LEG_L * 3 + 1]! - 1) + lower * (scales[B_LOWER_LEG_L * 3 + 1]! - 1);
+}
+
+/** The lower ankle stays at the height its bent leg would reach without its length slider. */
+export function plantLookFeet(pose: Pose, solved: Solved, scales: Float32Array, rest: Float32Array): void {
+  const left = solved.pos[B_FOOT_L * 3 + 1]! <= solved.pos[B_FOOT_R * 3 + 1]!;
+  const upper = left ? B_UPPER_LEG_L : B_UPPER_LEG_R, lower = left ? B_LOWER_LEG_L : B_LOWER_LEG_R;
+  const foot = left ? B_FOOT_L : B_FOOT_R;
+  let lift = 0;
+  for (let i = 0; i < 2; i++) {
+    const bone = i === 0 ? upper : lower, end = i === 0 ? lower : foot;
+    const x = solved.rot[bone * 4]!, z = solved.rot[bone * 4 + 2]!;
+    const extra = (rest[bone * 3 + 1]! - rest[end * 3 + 1]!) * (scales[bone * 3 + 1]! - 1);
+    lift += extra * (1 - 2 * (x * x + z * z));
+  }
+  if (!lift) return;
+  pose.root[1]! += lift;
+  for (let i = 1; i < solved.pos.length; i += 3) solved.pos[i]! += lift;
 }

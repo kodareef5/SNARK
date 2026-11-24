@@ -8,12 +8,14 @@ import type { PackRig } from "../shared/pack/pack.ts";
 import { SeatedSoles } from "./rider-soles.ts";
 import { SeatedGrips } from "./rider-grips.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
-import { AnimState, CUE_DOWN, bodySeed } from "../shared/anim/pose.ts";
+import { AnimState, CUE_DOWN, bodySeed, fallFrameChanged } from "../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { RIDER_TARGET_FLOATS } from "../shared/anim/rider-controls.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
 import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../shared/anim/occupant.ts";
 import { SEAT_FLOATS, riderTargets, saddleSeat, seatOn } from "../shared/anim/seat.ts";
+import type { FallenPose } from "../shared/anim/human-fall.ts";
+import { REACT_CREATURE_DOWN, REACT_RISE, reactKind } from "../shared/anim/reactions.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { boatDrives } from "../shared/sim/vehicle.ts";
@@ -146,6 +148,8 @@ export interface Source {
   silenced?: boolean;
   /** The share of its damage a round keeps at the distance it hit from (`falloff`, shared/sim/damage.ts). 1 where not given. */
   far?: number;
+  /** A vehicle's blow, which its own contact has already sorted (server/vehicle-contacts.ts struck). */
+  vehicle?: boolean;
   /** The share of armor the round goes through, 0 to 1 (weapons-plan.md, M12). Omitted, none. */
   pierce?: number;
 }
@@ -172,6 +176,7 @@ export class Combat {
   private readonly soles: SeatedSoles;
   private readonly grips: SeatedGrips;
   private readonly survivor: number;
+  private readonly dodo: number;
   /** A second entity the cast in progress skips: the rider of the creature that is biting. -1 for none. */
   private spare = -1;
   private biting = false;
@@ -239,6 +244,13 @@ export class Combat {
   corpses: Corpses | null = null;
   /** The pose a survivor knocked down lay in at a tick, to be hit as it lay (server/falls.ts); null for none. The host sets it. */
   downPose: (e: number, tick: number) => Solved | null = () => null;
+  riseFrom: (e: number, tick: number) => FallenPose | null = () => null;
+  downSize: (e: number, tick: number) => number = () => 1;
+  /**
+   * A blow that hurt body `target`: its IMPACT_ kind, the damage taken, the unit way it went (dx, dz), how high it landed
+   * above the feet, and who dealt it.
+   */
+  onBlow: (target: number, kind: number, taken: number, dx: number, dz: number, up: number, by: EntityRecord | null) => void = () => {};
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
   private readonly inBlast = new Found(256);
   private readonly found: number[] = [];
@@ -261,6 +273,7 @@ export class Combat {
     this.occupant = new OccupantBody(ctx.rigs);
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
+    this.dodo = reg.index.get("core:dodo") ?? -1;
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
     this.vehicleReach = Float32Array.from(reg.vehicle, (vehicle, kind) => {
       if (!vehicle) return 0;
@@ -729,9 +742,9 @@ export class Combat {
           const h = reg.bodyHeight[kind]!;
           const rig = this.anims[kind]?.rig;
           const car = reg.vehicle[kind];
-          const bodyReach = car ? this.vehicleReach[kind]! : this.human[kind] ? BODY_REACH + BODY_REACH_Y : rig ? rig.reach : Math.max(BODY_REACH, h * .5 + reg.bodyRadius[kind]!);
+          const bodyReach = car ? this.vehicleReach[kind]! : this.human[kind] ? BODY_REACH + BODY_REACH_Y : rig ? rig.reach + (kind === this.dodo ? Math.abs(rig.mid) : 0) : Math.max(BODY_REACH, h * .5 + reg.bodyRadius[kind]!);
           const px = ents.x[i]! - ox;
-          const py = ents.y[i]! + (car || this.human[kind] ? 0 : rig ? rig.mid : h * .5) - oy;
+          const py = ents.y[i]! + (car || this.human[kind] || kind === this.dodo ? 0 : rig ? rig.mid : h * .5) - oy;
           const pz = ents.z[i]! - oz;
           const t = px * dx + py * dy + pz * dz;
           const off2 = px * px + py * py + pz * pz - t * t;
@@ -829,6 +842,8 @@ export class Combat {
       out.yaw = ents.yaw[i]!;
       out.anim = ents.anim[i]!;
       out.cue = ents.cue[i]!;
+      out.react = ents.react[i]!;
+      out.stride = world.history.strideOf(i, now, world);
       out.vehicleFrom(ents, i);
       out.seatFrom(ents, i);
       if (out.seat) out.hostEpoch = world.history.motionEpoch(out.seat - 1);
@@ -839,10 +854,11 @@ export class Combat {
     const k = tick - whole;
     const current = this.vehicleNow;
     current.x = ents.x[i]!; current.y = ents.y[i]!; current.z = ents.z[i]!;
-    current.yaw = ents.yaw[i]!; current.anim = ents.anim[i]!; current.cue = ents.cue[i]!;
+    current.yaw = ents.yaw[i]!; current.anim = ents.anim[i]!; current.cue = ents.cue[i]!; current.react = ents.react[i]!;
+    current.stride = world.history.strideOf(i, now, world);
     current.vehicleFrom(ents, i); current.seatFrom(ents, i);
     if (current.seat) current.hostEpoch = world.history.motionEpoch(current.seat - 1);
-    out.blend(current, k);
+    out.blend(current, k, ents.kind[i] === this.survivor);
     return true;
   }
 
@@ -934,7 +950,8 @@ export class Combat {
       // further back by as much as the body moved. Tested this way, nothing slips between ticks.
       let rx = ox, ry = oy, rz = oz, ux = dx, uy = dy, uz = dz;
       let scale = 1;
-      if (this.sweep > 0 && this.where(i, tick - this.sweep, before) && past.sameSeat(before)) {
+      if (this.sweep > 0 && this.where(i, tick - this.sweep, before) && past.sameSeat(before) &&
+        !fallFrameChanged(kind === this.survivor, past.cue, past.react, before.cue, before.react)) {
         const mx = past.x - before.x;
         const my = past.y - before.y;
         const mz = past.z - before.z;
@@ -958,12 +975,14 @@ export class Combat {
       const reach = this.t / scale;
       if (this.human[kind] && world.anim) {
         if (past.seat && !this.seatInRay(past, rx, ry, rz, ux, uy, uz, reach)) continue;
-        // A survivor's emote as it is now: emotes change seldom beside the ticks a hit looks back.
-        st.unpack(past.anim, past.cue, world.ents.emote[i]!);
+        // A survivor's emote as it is now: emotes change seldom beside the ticks a hit looks back. Its reaction as it was then.
+        st.unpack(past.anim, past.cue, world.ents.emote[i]!, past.react, past.stride);
         st.seed = bodySeed(i);
         const seated = this.seated(i, past, tick);
         const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach, this.contactPadding)
-          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT, (past.cue & CUE_DOWN) !== 0 ? this.downPose(i, Math.round(tick)) : null);
+          // A ragdoll lies as a watcher draws it: about where the body is now, posed as at the last tick it stepped to.
+          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT, (past.cue & CUE_DOWN) !== 0 ? this.downPose(i, Math.floor(tick)) : null,
+            reactKind(past.react) === REACT_RISE ? this.riseFrom(i, tick) : null);
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
           this.zone = zone;
@@ -977,11 +996,13 @@ export class Combat {
         st.seed = bodySeed(i);
         // A young creature is its kind's shape scaled down about its position. The ray is scaled up about that
         // point instead, and the hit distance is scaled back.
-        const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
+        const fallen = past.react === REACT_CREATURE_DOWN ? this.downPose(i, Math.floor(tick)) : null;
+        const size = fallen ? this.downSize(i, Math.floor(tick)) : world.ents.grown[i] !== 0
+          ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
         const zone =
           size === 1
-            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, world)
-            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size, this.contactPadding / size, world, size);
+            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, world, 1, fallen)
+            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size, this.contactPadding / size, world, size, fallen);
         if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;
@@ -1050,6 +1071,11 @@ export class Combat {
    */
   creatureHostile(by: EntityRecord, victim: EntityRecord): boolean {
     return by !== victim && (by.team === 0 || victim.team !== by.team) && !this.spared(by, victim.team, DMG_MELEE, false);
+  }
+
+  /** Whether a blow from `by` may knock body `victim` off its feet: wherever a blow of theirs would land on it. */
+  mayShove(by: EntityRecord | null, victim: EntityRecord): boolean {
+    return !this.spared(by, victim.team, DMG_MELEE, by === victim);
   }
 
   private spared(by: EntityRecord | null, team: number, type: number, self: boolean): boolean {
@@ -1227,6 +1253,9 @@ export class Combat {
     if (crash) {
       dx = crash.vx; dy = crash.vy; dz = crash.vz;
       kind = IMPACT_VEHICLE;
+    } else if (src.vehicle) {
+      dx = ents.x[target]! - src.x; dy = 0; dz = ents.z[target]! - src.z;
+      kind = IMPACT_VEHICLE;
     } else if (aimed) {
       dx = this.ray[0]!; dy = this.ray[1]!; dz = this.ray[2]!;
       kind = src.type === DMG_MELEE ? IMPACT_MELEE : IMPACT_SHOT;
@@ -1237,6 +1266,9 @@ export class Combat {
     const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (!(l > 1e-6)) return;
     dx /= l; dy /= l; dz /= l;
+    // A car's own contact sorts its blow (server/vehicle-contacts.ts struck); every other may stagger or fell the body.
+    const flat = Math.sqrt(dx * dx + dz * dz);
+    if (kind !== IMPACT_VEHICLE && flat > 1e-6) this.onBlow(target, kind, taken, dx / flat, dz / flat, y - ents.y[target]!, src.by);
     // How hard, 0 to 255: a blow of IMPACT_FULL damage or more is the hardest. How far that moves a body is its client's to say by its weight.
     const strength = Math.min(255, Math.max(1, Math.round((taken / IMPACT_FULL) * 255)));
     const bone = aimed ? this.aimedBone : -1;

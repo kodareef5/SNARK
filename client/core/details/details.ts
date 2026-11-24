@@ -419,7 +419,7 @@ export class Details {
           vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! }, this.rotation);
           rotated = true;
         }
-        st.unpack(r.anim[i]!, r.cue[i]!, r.emote[i]!);
+        st.unpack(r.anim[i]!, r.cue[i]!, r.emote[i]!, r.react[i]!, r.stride[i]!);
         if (r.grown[i] !== 0) size = youngScale(this.birth[h.kind]!, r.span[i]!, r.grown[i]!, r.tick);
       } else st.unpack(h.anim, h.cue);
       st.seed = bodySeed(h.id);

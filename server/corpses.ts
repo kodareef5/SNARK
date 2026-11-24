@@ -8,16 +8,17 @@
 // that rests on the ground, on something built or on the bottom. In water it weighs and slows as a ragdoll does there, so
 // it sinks. It lies, and its ragdoll is laid, only where it came to rest.
 
+import type { Mover as RagdollMover } from "../shared/anim/ragdoll.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
-import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type CorpseImpact } from "../shared/anim/corpse.ts";
+import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type CorpseImpact, type FallenState } from "../shared/anim/corpse.ts";
 import { WET_DAMP, WET_GRAVITY, type RagdollDef } from "../shared/anim/ragdoll.ts";
 import { HUMAN, HUMAN_RAGDOLL } from "../shared/anim/human.ts";
 import { layHuman } from "../shared/anim/human-fall.ts";
 import { Solved, rayZones, zoneHit, type Skeleton } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
-import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
+import { CHUNK_SIZE, TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { POS_UNITS } from "../shared/net/view.ts";
-import { CORPSE_BODIES_MAX, CORPSE_MOTION_COMPONENT, decodeCorpseCheckpoint, encodeCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
+import { CORPSE_BODIES_MAX, CORPSE_MOTION_COMPONENT, decodeCorpseCheckpoint, encodeCorpseCheckpoint, packCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
 import { makeHandle } from "../shared/ids.ts";
 import { detCos, detSin } from "../shared/math/scalar.ts";
 import { quatNormalize } from "../shared/math/quat.ts";
@@ -48,6 +49,8 @@ import { saved } from "./saved.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
+import { RagdollMovers } from "./ragdoll-movers.ts";
+import { solidOf } from "../shared/sim/vehicle-movers.ts";
 
 /** Ticks a body lies at 1x. ARK publishes none: fifteen minutes, as a cache lies (D244). */
 export const CORPSE_TICKS = 15 * 60 * TICK_RATE;
@@ -80,6 +83,9 @@ const BOAT_WRECK_FIELDS = ["flooding", "steering", "payloadMass"] as const;
 const wreckRotation = new Float64Array(4), wreckPoint = new Float64Array(3);
 const corpseRoot = new Float64Array(3);
 
+/** Ticks between the checkpoints of a body a vehicle is pushing. */
+const DISTURBED_TICKS = 6;
+
 export interface CorpsesContext {
   readonly world: ServerWorld;
   readonly game: GameServer;
@@ -91,6 +97,8 @@ export interface CorpsesContext {
   readonly progression?: Progression;
   readonly death?: Death;
   readonly containers?: Containers;
+  /** The vehicles and heavy creatures that moved this tick, whose bodies near them wake to meet them. */
+  readonly moved?: () => readonly number[];
 }
 
 /** One body. Its place, facing and size are as the wire carries them. */
@@ -135,12 +143,17 @@ export interface Body {
   /** A physical death starts directly in the replicated ragdoll; the capsule never also owns its motion. */
   launch: CorpseImpact | null;
   /** A survivor's fall it died in (server/falls.ts take), which its ragdoll goes on from instead of being laid anew. */
-  handed: { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null;
+  handed: FallenState | null;
   motionRevision: number;
   motionStanding: boolean;
   motionWorld: number;
   motion: CorpseMotion | null;
+  published: CorpseMotion | null;
   reach: number;
+  /** The tick its checkpoint last changed, and whether a vehicle touched it last tick. */
+  sent: number;
+  touched: boolean;
+  carrier?: number;
 }
 
 /** What one blow gave, for tests and the console. */
@@ -154,12 +167,14 @@ export interface Take {
 
 const HUMAN_SHAPE = { skel: HUMAN, ragdoll: HUMAN_RAGDOLL };
 
+const NO_MOVERS: readonly RagdollMover[] = [];
 export class Corpses {
   readonly ctx: CorpsesContext;
   readonly seed: number;
   /** By record id, and by entity. */
   readonly bodies = new Map<number, Body>();
   private readonly byEnt = new Map<number, Body>();
+  private readonly cars: RagdollMovers;
   /** Bodies whose ragdolls are still moving. */
   private readonly moving: Body[] = [];
   /** Bodies falling or sinking to where they will lie. */
@@ -185,6 +200,7 @@ export class Corpses {
 
   constructor(ctx: CorpsesContext, seed: number) {
     this.ctx = ctx;
+    this.cars = new RagdollMovers(ctx.world);
     this.deadline = ctx.deadlines.kind("corpse", (a, stamp) => this.due(a, stamp));
     this.seed = seed;
     this.rng = new Rng(seed);
@@ -202,7 +218,7 @@ export class Corpses {
   }
 
   /** A survivor's fall that entity `e` dies in, taken from server/falls.ts. The host sets it. */
-  handOff: (e: number) => { readonly state: Float64Array; readonly awake: boolean; readonly ticks: number } | null = () => null;
+  handOff: (e: number) => FallenState | null = () => null;
 
   /** Whether the body that is entity `e` is opened by the use key: every one but a survivor's, which carries nothing. */
   opens(e: number): boolean {
@@ -229,8 +245,9 @@ export class Corpses {
     const ents = world.ents;
     const tick = world.tick;
     const young = rec.grown !== 0 && growthStep(rec.span, rec.grown, tick) < GROWN;
+    const handed = this.handOff(e);
     const span = sizeSpan(ents.grown[e] !== 0 ? youngScale(reg.birthScale[rec.kind]!, ents.span[e]!, ents.grown[e]!, tick) : 1);
-    const size = corpseSize(span);
+    const size = handed?.size ?? corpseSize(span);
     const name = rec.name !== "" ? rec.name : reg.ids[rec.kind]!.slice(reg.ids[rec.kind]!.indexOf(":") + 1);
     const body = records.create(this.corpse, name);
     body.x = wireX(ents.x[e]!);
@@ -253,8 +270,7 @@ export class Corpses {
     const max = (of.corpse?.health ?? HEALTH) * size * rules.num("HarvestHealthMultiplier");
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
     const survivor = rec.kind === this.survivor;
-    // A survivor that dies knocked down goes on lying as its fall had it; one lying prone or knocked out goes limp lying.
-    const handed = survivor ? this.handOff(e) : null;
+    // A body already in a fall keeps that pose and momentum when it dies.
     const out = handed ? false : rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0 || (survivor && ents.stance[e] === STANCE_PRONE);
     const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
     b.handed = handed;
@@ -264,7 +280,7 @@ export class Corpses {
       b.motionRevision = 1;
     }
     // A survivor has no death clip a client could lay it by, so its body is always sent as its ragdoll lies.
-    if (survivor) b.motionRevision = 1;
+    if (survivor || handed) b.motionRevision = 1;
     if (b.wreck) {
       const v = ents.vrow[e]!;
       Object.assign(b.wreck, { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!,
@@ -276,7 +292,7 @@ export class Corpses {
       }
     }
     // Off the ground with nothing under it, it falls on as it was going.
-    if (!b.launch && (ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
+    if (!handed && !b.launch && (ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
     this.save(b);
     this.laid.set(rec.pid, b);
   }
@@ -287,11 +303,15 @@ export class Corpses {
   }
 
   /** Cheap send decision for an already-visible corpse. Zero means the ordinary stationary/falling path. */
+  motionCarrier(e: number): number { return this.byEnt.get(e)?.carrier ?? 0; }
+
   motionRevision(e: number): number { return this.byEnt.get(e)?.motionRevision ?? 0; }
 
   /** Current whole-tick checkpoint, including one first seen long after its original impact. */
-  motion(e: number): CorpseMotion | null {
-    const motion = this.byEnt.get(e)?.motion;
+  motion(e: number, delivery?: "first" | "correction"): CorpseMotion | null {
+    const b = this.byEnt.get(e), motion = b?.motion;
+    // A recent keyframe costs less to send. Older arrivals start from the current tick.
+    if (delivery && b?.published && b.moving && this.ctx.world.tick - b.published.tick < DISTURBED_TICKS) return b.published;
     return motion ? { revision: motion.revision, tick: this.ctx.world.tick, data: motion.data } : null;
   }
 
@@ -362,7 +382,7 @@ export class Corpses {
       rec, kind, e: -1, max, left, young, size, move, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
       fall: null, pose: !wreck && rig ? new Solved(rig.skel.bones) : null, moving: false, drop: null, dropped: 0, wreck,
-      launch: null, handed: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD,
+      launch: null, handed: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, published: null, reach: PAD, sent: 0, touched: false,
     };
     this.bodies.set(rec.pid, b);
     return b;
@@ -431,16 +451,22 @@ export class Corpses {
     const saved = b.rec.extra.get(CORPSE_MOTION_COMPONENT), checkpoint = saved ? decodeCorpseCheckpoint(saved) : null;
     const human = b.kind === this.survivor;
     // A survivor has no death clip: it goes limp standing, as one knocked down does (shared/anim/human-fall.ts).
-    b.motionStanding = human || !!b.launch || checkpoint?.standing === true;
+    b.motionStanding = human || !!b.handed || !!b.launch || checkpoint?.standing === true;
     const r = human && b.pose ? layHuman(b.x, b.y, b.z, b.yaw, b.out) : anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose, b.motionStanding) : null;
     if (r) {
       b.fall = new Fall(r);
       if (saved && (!checkpoint || checkpoint.x !== b.x || checkpoint.y !== b.y || checkpoint.z !== b.z || checkpoint.yaw !== b.yaw || checkpoint.size !== b.size || checkpoint.out !== b.out || checkpoint.air !== b.air || !r.restore(checkpoint.state, checkpoint.awake))) {
         throw new Error(`corpse ${b.rec.pid}: invalid physical checkpoint`);
       }
-      if (checkpoint) b.fall.ticks = checkpoint.ticks;
+      const continuing = !!checkpoint || !!b.handed;
+      if (checkpoint) {
+        b.fall.ticks = checkpoint.ticks;
+        // Runtime vehicle handles can change across a save. Discover support again at the saved world pose.
+        if (checkpoint.carrier) r.awake = true;
+      }
       if (b.handed) {
         r.restore(b.handed.state, b.handed.awake);
+        r.carrier = b.handed.carrier;
         b.fall.ticks = b.handed.ticks;
         b.handed = null;
       }
@@ -449,26 +475,37 @@ export class Corpses {
         r.launch(launch.vx, launch.vy, launch.vz, launch.wx, launch.wy, launch.wz);
         b.launch = null;
       }
-      if (b.motionRevision) { this.updateMotion(b, false); r.pose(b.pose!); this.save(b); }
+      if (b.motionRevision) { this.updateMotion(b, false, continuing); r.pose(b.pose!); this.save(b); }
       if (!b.fall.still) this.wake(b);
     }
   }
 
   /** Move spatial interest and harvesting with the simulated root; publish topology/sleep transitions once. */
-  private updateMotion(b: Body, wasMoving: boolean): void {
+  private updateMotion(b: Body, wasMoving: boolean, continuing = false): void {
     const fall = b.fall!, r = fall.ragdoll, world = this.ctx.world;
     r.rootPosition(corpseRoot);
     b.x = b.rec.x = wireX(corpseRoot[0]!); b.y = b.rec.y = wireY(corpseRoot[1]!); b.z = b.rec.z = wireX(corpseRoot[2]!);
     r.rebase(b.x, b.y, b.z);
     b.reach = Math.max(PAD, r.reach(b.x, b.y, b.z));
     this.reach = Math.max(this.reach, b.reach);
-    const revision = r.worldRevision(world);
+    const revision = r.worldRevision(world), before = b.motionRevision;
     if (b.motion && (revision !== b.motionWorld || wasMoving === fall.still)) b.motionRevision++;
+    // A vehicle pushing it is outside what a client can step alike: it is told again while that lasts, and as it ends.
+    else if (b.motion && (r.carrier?.handle !== b.carrier || (r.touched && world.tick - b.sent >= DISTURBED_TICKS) || (b.touched && !r.touched))) b.motionRevision++;
+    if (b.motionRevision !== before) b.sent = world.tick;
+    b.carrier = r.carrier?.handle;
+    b.touched = r.touched;
     b.motionWorld = revision;
     if (b.e >= 0) world.ents.setPosition(b.e, b.x, b.y, b.z);
-    const data = encodeCorpseCheckpoint({ x: b.x, y: b.y, z: b.z, yaw: b.yaw, size: b.size, out: b.out, air: b.air,
-      awake: r.awake, standing: b.motionStanding, ticks: fall.ticks, state: r.checkpoint() });
+    const publish = b.motion?.revision !== b.motionRevision;
+    const checkpoint = { x: b.x, y: b.y, z: b.z, yaw: b.yaw, size: b.size, out: b.out, air: b.air,
+      awake: r.awake, standing: b.motionStanding, carrier: r.carrier, ticks: fall.ticks, state: r.checkpoint() };
+    // Unobserved terrain and sleep transitions must still replay exactly from an earlier revision.
+    const round = publish && !continuing && (!b.motion || r.touched);
+    const data = round ? packCorpseCheckpoint(checkpoint) : encodeCorpseCheckpoint(checkpoint);
+    if (round) r.restore(checkpoint.state, r.awake);
     b.motion = { revision: b.motionRevision, tick: world.tick, data };
+    if (publish) b.published = b.motion;
     b.rec.extra.set(CORPSE_MOTION_COMPONENT, data);
   }
 
@@ -562,6 +599,24 @@ export class Corpses {
     b.moving = true;
   }
 
+  /** Wakes the bodies lying within reach of vehicle `e`, so their next step meets it. */
+  private wakeNear(e: number): void {
+    const { ents, reg, dims } = this.ctx.world;
+    const solid = solidOf(reg, ents.kind[e]!);
+    if (!solid) return;
+    const x = ents.x[e]!, z = ents.z[e]!, cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE), reach = solid.reach + PAD;
+    for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
+      const kx = cx + ox, kz = cz + oz;
+      if (kx < 0 || kz < 0 || kx >= dims.chunksX || kz >= dims.chunksZ) continue;
+      for (let t = ents.chunkHead[kz * dims.chunksX + kx]!; t >= 0; t = ents.next[t]!) {
+        const b = this.byEnt.get(t);
+        if (!b || b.moving || !b.fall) continue;
+        const dx = b.x - x, dz = b.z - z, far = reach + b.reach;
+        if (dx * dx + dz * dz <= far * far) this.wake(b);
+      }
+    }
+  }
+
   /** The decay stage: by what time has left of it or what harvesting has, whichever is further gone. */
   private cue(b: Body): void {
     const tick = this.ctx.world.tick;
@@ -631,6 +686,8 @@ export class Corpses {
       if (b.drop) dropping[still++] = b;
     }
     dropping.length = still;
+    // Bodies a vehicle drives at wake to meet it.
+    for (const e of this.ctx.moved?.() ?? []) this.wakeNear(e);
     const moving = this.moving;
     let kept = 0;
     for (const b of moving) {
@@ -639,7 +696,10 @@ export class Corpses {
         b.moving = false;
         continue;
       }
+      fall.ragdoll.movers = this.cars.near(fall.ragdoll);
       if (fall.tick(world)) {
+        // A vehicle or a creature moving it is outside what clients lay alike: from now its checkpoint is sent.
+        if (!b.motionRevision && fall.ragdoll.touched) b.motionRevision = 1;
         if (b.motionRevision) { this.updateMotion(b, true); this.save(b); }
         fall.ragdoll.pose(b.pose!);
       }
@@ -656,6 +716,8 @@ export class Corpses {
         continue;
       }
       if (b.moving || !b.fall || b.fall.ragdoll.awake) continue;
+      // A parked support may have disappeared without moving.
+      b.fall.ragdoll.movers = b.fall.ragdoll.carrier ? this.cars.near(b.fall.ragdoll) : NO_MOVERS;
       if (b.fall.tick(world)) {
         if (b.motionRevision) { this.updateMotion(b, false); this.save(b); }
         b.fall.ragdoll.pose(b.pose!);

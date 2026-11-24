@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { Corpses as Drawn } from "../../client/core/ragdoll.ts";
 import { RemoteSample } from "../../client/core/session.ts";
+import { CorpseReplication } from "../../server/corpse-motion.ts";
+import { SentView } from "../../shared/net/view.ts";
 import { joinClips } from "../../shared/anim/clip.ts";
 import { makeHandle } from "../../shared/ids.ts";
 import { decodeCorpseCheckpoint } from "../../shared/net/corpse.ts";
@@ -96,5 +98,42 @@ test("a visible corpse burst respects the existing reliable window and deferred 
     expect(ids.every(id => s.corpseMotions.has(id))).toBe(true);
     expect(Math.max(...bytes.values())).toBeLessThanOrEqual(16384);
     expect(bytes.size).toBeGreaterThan(1);
+  } finally { h.host.shutdown(); }
+});
+
+test("a watcher sees a lost roof sooner within its two corrections per snapshot", () => {
+  const { h, c, ents } = camp();
+  try {
+    const other = h.join("roadside");
+    h.run(600);
+    const roadside = h.client(other)!, view = new SentView();
+    ents.setPosition(c.ent, 40, 0, 40);
+    ents.setPosition(roadside.ent, 40, 0, 40);
+    const bodies = [5, 6, 12].map(distance => h.host.spawnCreature("core:dodo", 40 + distance, 40, 1));
+    const roof = bodies[2]!, data = h.host.corpses.motion(killed(h).e)!.data;
+    view.count = bodies.length;
+    bodies.forEach((e, i) => { view.id[i] = e; view.gen[i] = ents.gen[e]!; });
+    let revision = 1, carrier = makeHandle(103, 2);
+    const sent: number[] = [];
+    const source = {
+      motionRevision: (e: number) => bodies.includes(e) ? revision : 0,
+      motionCarrier: (e: number) => e === roof ? carrier : 0,
+      motion: (e: number) => { sent.push(e); return { revision, tick: h.world.tick, data }; },
+    };
+    const stream = new CorpseReplication(h.server, [source]);
+    stream.sync(c, view);
+    expect(sent.splice(0)).toEqual(bodies);
+    carrier = 0;
+    stream.sync(roadside, view);
+    expect(sent.splice(0)).toEqual(bodies);
+    revision++;
+    h.run(100);
+    stream.sync(c, view);
+    expect(sent.splice(0)).toEqual([roof, bodies[0]!]);
+    stream.sync(roadside, view);
+    expect(sent.splice(0)).toEqual(bodies.slice(0, 2));
+    stream.sync(c, view);
+    expect(sent.splice(0)).toEqual([bodies[1]!]);
+    expect(stream.stats.corrections).toBe(5);
   } finally { h.host.shutdown(); }
 });

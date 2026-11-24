@@ -227,7 +227,7 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
   expect(sent.rev[0]).toBe(1);
 });
 
-test("a creature's cues go with its action: sent when they change, the action again with them, and nothing more for a body whose cues stay as they were", () => {
+test("unchanged cues and stride offsets add no bits to position updates", () => {
   const w = new BitWriter(1 << 12);
   const r = new BitReader();
   const colors = new Uint8Array(6);
@@ -266,6 +266,17 @@ test("a creature's cues go with its action: sent when they change, the action ag
   const [, movedHeld, moved] = send(view(101, anim, knocked), sent, held);
   const [, , plainMoved] = send(view(101, anim, 0), plainSent, plainHeld);
   expect([moved, movedHeld.cue[0]]).toEqual([plainMoved, knocked]);
+  const running = view(100, anim, knocked);
+  running.stride[0] = 219;
+  const [clockSent, clockHeld, clockCreate] = send(running, null, null);
+  expect([clockHeld.stride[0], clockCreate - create]).toEqual([219, 8]);
+  running.qx[0] = 101;
+  const [, steadyHeld, steadyBits] = send(running, clockSent, clockHeld);
+  expect([steadyHeld.stride[0], steadyBits]).toEqual([219, moved]);
+  const [, transition] = send(running, sent, held);
+  expect(transition.stride[0]).toBe(219);
+  const [, stopped] = send(view(100, anim, knocked), clockSent, clockHeld);
+  expect(stopped.stride[0]).toBe(0);
   // A change of cues alone sends the action again with them: what a change of the action alone sends, and the cues.
   st.out = false;
   const woke = st.packCue();

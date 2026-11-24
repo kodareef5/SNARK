@@ -1,9 +1,10 @@
 // Saddle contacts after the actual survivor proportions have been solved. This adjusts rotations only: the seated
 // pelvis and limb lengths are fixed, so an impossible saddle produces a measurable residual rather than stretched limbs.
-import { quatAxis, quatIdentity, quatMul, quatMulConj, quatNormalize, quatRotate } from "../math/quat.ts";
+import { quatAxis, quatIdentity, quatMul, quatMulConj, quatRotate } from "../math/quat.ts";
 import { PI, detCos, detSin } from "../math/scalar.ts";
 import type { Pose } from "./clip.ts";
 import { B_FINGERS_L, B_FINGERS_R, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_PROP_L, B_PROP_R, B_THUMB_L, B_THUMB_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN } from "./human.ts";
+import { bend, square, toward, within } from "./ik.ts";
 import { GRIP_POSE_FLOATS } from "./rider-grips.ts";
 import { solve, type Solved } from "./skeleton.ts";
 import { B_TOE_L, B_TOE_R, B_FINGERTIPS_L, B_FINGERTIPS_R } from "./human.ts";
@@ -34,24 +35,12 @@ const LIMBS = [
   [B_UPPER_LEG_L, B_LOWER_LEG_L, B_FOOT_L, B_FOOT_L, 1],
   [B_UPPER_LEG_R, B_LOWER_LEG_R, B_FOOT_R, B_FOOT_R, -1],
 ] as const;
-const q = new Float64Array(4), v = new Float64Array(3), twist = new Float64Array(4);
+const q = new Float64Array(4), v = new Float64Array(3), twist = new Float64Array(4), pole = new Float64Array(3);
 const ends = new Float64Array(12), bends = new Float64Array(12), rotations = new Float64Array(16);
 const usable = new Uint8Array(4), selected = new Uint8Array(4);
 const goals = new Float64Array(12), supportFault = new Uint8Array(4);
 const UNIT_SCALE = new Float32Array(HUMAN.bones * 3).fill(1);
 function length3(x: number, y: number, z: number): number { return Math.sqrt(x * x + y * y + z * z); }
-
-/** Shortest rotation between two nonzero vectors; the opposite-vector case has a deterministic perpendicular axis. */
-function toward(ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
-  const a = length3(ax, ay, az), b = length3(bx, by, bz);
-  ax /= a; ay /= a; az /= a; bx /= b; by /= b; bz /= b;
-  const dot = ax * bx + ay * by + az * bz;
-  if (dot < -.999999) {
-    const x = Math.abs(ax) < .9 ? 1 : 0, y = 1 - x;
-    q[0] = -az * y; q[1] = az * x; q[2] = ax * y - ay * x; q[3] = 0;
-  } else { q[0] = ay * bz - az * by; q[1] = az * bx - ax * bz; q[2] = ax * by - ay * bx; q[3] = 1 + dot; }
-  quatNormalize(q, 0);
-}
 
 /**
  * `solved` must already be solve(HUMAN, pose, solved, rest, scale). Targets are in that HUMAN pose's local frame,
@@ -120,7 +109,7 @@ export function fitRiderControls(pose: Pose, solved: Solved, rest: Float32Array,
     else { dx = 0; dy = arm ? 0 : -1; dz = arm ? 1 : 0; }
     // Stay just inside full extension/folding to avoid a singular knee/elbow, without changing either segment length.
     const margin = Math.min(.002, Math.min(a, b) * .01);
-    const reach = Math.max(Math.abs(a - b) + margin, Math.min(a + b - margin, distance));
+    const reach = within(distance, Math.abs(a - b) + margin, a + b - margin);
     ends[at] = sx + dx * reach; ends[at + 1] = sy + dy * reach; ends[at + 2] = sz + dz * reach;
     let px = sign * (arm ? .45 : 1), py = arm ? -1 : -.15, pz = arm ? .1 : .6;
     if (!arm && (mask & RIDER_KNEES) !== 0) {
@@ -129,20 +118,11 @@ export function fitRiderControls(pose: Pose, solved: Solved, rest: Float32Array,
         px = targets[pole]! - sx; py = targets[pole + 1]! - sy; pz = targets[pole + 2]! - sz;
       }
     }
-    let along = px * dx + py * dy + pz * dz;
-    px -= dx * along; py -= dy * along; pz -= dz * along;
-    let length = length3(px, py, pz);
-    if (length < 1e-8) {
-      // A pole directly on the reach axis is ambiguous. Choose the outward axis, or forward if parallel to it.
-      px = Math.abs(dx) < .9 ? sign : 0; py = 0; pz = Math.abs(dx) < .9 ? 0 : 1;
-      along = px * dx + pz * dz; px -= dx * along; py -= dy * along; pz -= dz * along;
-      length = length3(px, py, pz);
-    }
-    const forward = (a * a - b * b + reach * reach) / (2 * reach), bend = Math.sqrt(Math.max(0, a * a - forward * forward));
-    bends[at] = sx + dx * forward + px / length * bend;
-    bends[at + 1] = sy + dy * forward + py / length * bend;
-    bends[at + 2] = sz + dz * forward + pz / length * bend;
-    toward(ux, uy, uz, bends[at]! - sx, bends[at + 1]! - sy, bends[at + 2]! - sz);
+    let length = square(pole, 0, px, py, pz, dx, dy, dz);
+    // A pole directly on the reach axis is ambiguous. Choose the outward axis, or forward if parallel to it.
+    if (length < 1e-8) length = square(pole, 0, Math.abs(dx) < .9 ? sign : 0, 0, Math.abs(dx) < .9 ? 0 : 1, dx, dy, dz);
+    bend(bends, at, sx, sy, sz, dx, dy, dz, reach, a, b, pole[0]!, pole[1]!, pole[2]!, length);
+    toward(q, 0, ux, uy, uz, bends[at]! - sx, bends[at + 1]! - sy, bends[at + 2]! - sz);
     quatMulConj(pose.rot, upper * 4, solved.rot, HUMAN.parent[upper]! * 4, q, 0);
     usable[limb] = 1;
   }
@@ -150,7 +130,7 @@ export function fitRiderControls(pose: Pose, solved: Solved, rest: Float32Array,
   for (let limb = 0; limb < 4; limb++) {
     if (!usable[limb]) continue;
     const chain = LIMBS[limb]!, upper = chain[0], lower = chain[1], end = chain[2], at = limb * 3;
-    toward((rest[end * 3]! - rest[lower * 3]!) * scales[lower * 3]!, (rest[end * 3 + 1]! - rest[lower * 3 + 1]!) * scales[lower * 3 + 1]!, (rest[end * 3 + 2]! - rest[lower * 3 + 2]!) * scales[lower * 3 + 2]!, ends[at]! - bends[at]!, ends[at + 1]! - bends[at + 1]!, ends[at + 2]! - bends[at + 2]!);
+    toward(q, 0, (rest[end * 3]! - rest[lower * 3]!) * scales[lower * 3]!, (rest[end * 3 + 1]! - rest[lower * 3 + 1]!) * scales[lower * 3 + 1]!, (rest[end * 3 + 2]! - rest[lower * 3 + 2]!) * scales[lower * 3 + 2]!, ends[at]! - bends[at]!, ends[at + 1]! - bends[at + 1]!, ends[at + 2]! - bends[at + 2]!);
     if (limb < 2 && (mask & RIDER_GRIPS) !== 0 && grips && alignmentValid && alignment > 0) {
       // The shortest swing leaves an arbitrary forearm roll. Transfer the longitudinal part of the desired wrist
       // rotation onto the forearm, bounded by the authored allowance. The elbow/wrist positions cannot move:

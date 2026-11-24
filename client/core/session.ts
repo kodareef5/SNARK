@@ -1,5 +1,5 @@
 import { Blockers, survivorKind } from "../../shared/sim/blockers.ts";
-import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
+import { CUE_DEAD, CUE_HELD, CUE_OUT, OWN_STRIDE_BITS, fallFrameChanged } from "../../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
@@ -18,8 +18,9 @@ import { AirCamera } from "./air-camera.ts";
 import { airFeedView, type AirFeedView } from "./air-feed.ts";
 import { VehiclePrediction } from "./vehicle-prediction.ts";
 import { VehicleCorrection } from "./vehicle-correction.ts";
-import { newerCorpseMotion, readCorpseMotion, type CorpseMotion } from "../../shared/net/corpse.ts";
-import { CMD_CORPSE, S_CORPSE } from "../../shared/net/protocol.ts";
+import { FallCheckpoints } from "./fall-checkpoints.ts";
+import { readCorpseMotion } from "../../shared/net/corpse.ts";
+import { CMD_CORPSE, IMPACT_MELEE, S_CORPSE } from "../../shared/net/protocol.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
@@ -127,7 +128,9 @@ import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { BTN_AIR_REMOTE, BTN_JUMP, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_AIR_REMOTE, BTN_JUMP, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, stanceEye, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
+import { REACT_RULES } from "../../shared/sim/react.ts";
+import { B_CHEST } from "../../shared/anim/human.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { blendDoors } from "../../shared/sim/vehicle-panels.ts";
@@ -295,6 +298,9 @@ export class RemoteSample {
   readonly cue = new Uint32Array(MAX_VIEW);
   /** A survivor's emote, packed as `AnimState.packEmote` does; 0 for none. */
   readonly emote = new Uint32Array(MAX_VIEW);
+  /** A survivor's reaction to a blow, as shared/anim/reactions.ts packs it; 0 for none. */
+  readonly react = new Uint32Array(MAX_VIEW);
+  readonly stride = new Uint8Array(MAX_VIEW);
   /** LOOK_BYTES each, valid where `hasLook` is 1. */
   readonly look = new Uint8Array(MAX_VIEW * LOOK_BYTES);
   readonly hasLook = new Uint8Array(MAX_VIEW);
@@ -499,12 +505,13 @@ export class ClientSession {
   /** Every moving static's state as the server last told it (S_MOTION), by ref: all after a welcome, then each as it is thrown. */
   readonly motions = new Map<number, MotionState>();
   /** Sparse exact launch/resume state, keyed by generation-qualified entity handle. Kept across packet/snapshot ordering. */
-  readonly corpseMotions = new Map<number, CorpseMotion>();
+  readonly corpseMotions = new FallCheckpoints();
   private corpseRetryAt = -TICK_RATE;
   private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
   world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; tideEyes?: readonly TideEyeSite[]; landmarks?: readonly MapLandmark[]; tops?: BlocksSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
+  ownStride = 0;
   ownKind = 0;
   /** Index of the entity its inputs drive in place of its own body, or -1. */
   driving = -1;
@@ -578,6 +585,9 @@ export class ClientSession {
   shotOrigin: ((out: Float64Array, tick: number, yaw: number, pitch: number) => boolean) | null = null;
   private readonly shotEye = new Float64Array(3);
   private firedTick = 0;
+  /** The last tick its own body was felt bumping a wall, and the last it touched one at all. */
+  private bumpTick = 0;
+  private wallTick = -2;
   /** Oldest first. Shots.absorb takes the shots and blasts, then Feedback.absorb empties it. */
   readonly events: CombatEvent[] = [];
   /** Blows that landed on bodies near, oldest first (EVENT_IMPACT). The scene takes them each frame. */
@@ -1002,6 +1012,13 @@ export class ClientSession {
     return this.state === "active" && this.sessionState === SESSION_ALIVE && this.ownHandle !== 0 ? this.own : null;
   }
 
+  /** How far the predicted body turned over its last tick, in 1/65536 turns; 0 where that tick's body is not kept. */
+  get ownTurn(): number {
+    const t = this.simTick - 1, slot = t & (HISTORY - 1);
+    if (t < 0 || this.bodyTick[slot] !== t) return 0;
+    return ((this.own.yaw - this.bodies[slot]!.yaw + 32768) & 0xffff) - 32768;
+  }
+
   /**
    * Whether the body is predicted from here on: the near node field takes the chunks whose ground has come, and the body
    * is predicted while all within PREDICTED_REACH hold the map's own ground. Where they do not it is drawn as the server
@@ -1100,7 +1117,10 @@ export class ClientSession {
       out.grown[n] = b.grown[j]!;
       const both = a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j];
       const sameSeat = both && a!.seat[i] === b.seat[j] && a!.seatGen[i] === b.seatGen[j] && a!.seatSlot[i] === b.seatSlot[j];
-      const attachment = both && k < .5 ? a! : b, attachmentRow = attachment === a ? i : j;
+      // A fall switches between feet and hips only at the first snapshot in its new frame.
+      const switched = both && fallFrameChanged(this.registry.ids[b.kind[j]!] === "core:survivor", a!.cue[i]!, a!.react[i]!, b.cue[j]!, b.react[j]!);
+      const attachment = both && (switched || k < .5) ? a! : b, attachmentRow = attachment === a ? i : j;
+      out.stride[n] = attachment.stride[attachmentRow]!;
       out.seat[n] = attachment.seat[attachmentRow]!; out.seatSlot[n] = attachment.seatSlot[attachmentRow]!; out.seatGen[n] = attachment.seatGen[attachmentRow]!;
       const vehicle = this.registry.vehicle[b.kind[j]!];
       if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
@@ -1110,7 +1130,7 @@ export class ClientSession {
         noVehicle(out, n);
         out.bare[n] = 1;
       }
-      if (both && sameSeat) {
+      if (sameSeat && !switched) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
         out.z[n] = dequantX(a!.qz[i]! + (b.qz[j]! - a!.qz[i]!) * k);
@@ -1122,10 +1142,12 @@ export class ClientSession {
         out.anim[n] = k < 0.5 ? a!.anim[i]! : b.anim[j]!;
         out.cue[n] = k < 0.5 ? a!.cue[i]! : b.cue[j]!;
         out.emote[n] = k < 0.5 ? a!.emote[i]! : b.emote[j]!;
+        out.react[n] = k < 0.5 ? a!.react[i]! : b.react[j]!;
       } else {
         out.anim[n] = attachment.anim[attachmentRow]!;
         out.cue[n] = attachment.cue[attachmentRow]!;
         out.emote[n] = attachment.emote[attachmentRow]!;
+        out.react[n] = attachment.react[attachmentRow]!;
         out.x[n] = dequantX(attachment.qx[attachmentRow]!);
         out.y[n] = dequantY(attachment.qy[attachmentRow]!);
         out.z[n] = dequantX(attachment.qz[attachmentRow]!);
@@ -1240,6 +1262,21 @@ export class ClientSession {
     this.remoteDelay = want > d ? Math.min(want, d + ticks * 0.1) : Math.max(want, d - ticks * 0.01);
   }
 
+  /**
+   * Its own body coming up against a wall hard enough to feel it, on the tick's first step only: drawn as a soft blow at
+   * the chest, back off the wall (render/impact-springs.ts). Drawn only; nothing else changes.
+   */
+  private bumped(t: number): void {
+    const into = stepOut.wallInto;
+    if (into <= 0) return;
+    const fresh = t - this.wallTick > 1;
+    this.wallTick = t;
+    if (!fresh || t <= this.bumpTick || into < REACT_RULES.bump) return;
+    this.bumpTick = t;
+    if (this.impacts.length >= MAX_IMPACTS) this.impacts.shift();
+    this.impacts.push({ id: handleIndex(this.ownHandle), bone: B_CHEST, dx: stepOut.wallNx, dy: 0, dz: stepOut.wallNz, strength: Math.min(0.4, into / 8), kind: IMPACT_MELEE });
+  }
+
   private step(t: number, pilot = true): void {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
@@ -1271,6 +1308,7 @@ export class ClientSession {
       if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, p, combat, TICK_DT, true, !pilot);
       else stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, p, TICK_DT);
       this.world!.blockers = null;
+      this.bumped(t);
       this.meetVehicles(t, p);
     } else {
       this.own.yaw = inp.yaw[i]!;
@@ -1546,11 +1584,7 @@ export class ClientSession {
       kind: S_CORPSE,
       read(s, r) {
         const motion = readCorpseMotion(r);
-        if (motion && newerCorpseMotion(motion, s.corpseMotions.get(motion.id))) {
-          s.corpseMotions.delete(motion.id);
-          while (s.corpseMotions.size >= MAX_VIEW) s.corpseMotions.delete(s.corpseMotions.keys().next().value!);
-          s.corpseMotions.set(motion.id, motion);
-        }
+        if (motion) s.corpseMotions.set(motion.id, motion);
       },
     });
     messages.add({
@@ -1726,6 +1760,7 @@ export class ClientSession {
           s.choosing = CHOOSE_DIED;
         }
         s.admin = admin;
+        if (handle !== s.ownHandle) s.ownStride = 0;
         s.ownHandle = handle;
         s.dayOffset = dayOffset;
       },
@@ -2080,6 +2115,7 @@ export class ClientSession {
     const version = r.u32();
     const tick = r.u32();
     this.ownHandle = r.u32();
+    this.ownStride = 0;
     this.ownKind = r.u16();
     this.sessionState = r.bits(2);
     this.admin = r.bool();
@@ -2192,6 +2228,7 @@ export class ClientSession {
     const carried = r.bool() ? r.bits(BUTTON_BITS) : 0;
     const state = r.bits(2);
     const driving = r.varint() - 1;
+    const stride = r.bool() ? r.bits(OWN_STRIDE_BITS) : null;
     const sb = this.serverBody;
     this.mark(SNAP_HEAD);
     readBody(r, sb);
@@ -2223,6 +2260,7 @@ export class ClientSession {
     for (const id of dying) if (!this.died.has(id)) this.died.set(id, tick);
     for (const [id, at] of this.died) if (tick - at > DIED_KEPT) this.died.delete(id);
     if (this.latestSnapshot > 0) this.noteGap(tick);
+    this.ownStride = next.ownStride = stride ?? base?.ownStride ?? 0;
     this.previousSnapshot = this.latestSnapshot;
     this.latestSnapshot = tick;
     this.needFull = false;
