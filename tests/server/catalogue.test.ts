@@ -1,3 +1,4 @@
+import { FREIGHT_ORDER } from "../../content/vehicles/air-freight.ts";
 import { TANKER_WRECKS } from "../../content/vehicles/tanker-wrecks.ts";
 // The class table: sound in itself, and true of the content that exists.
 import { expect, test } from "bun:test";
@@ -54,20 +55,22 @@ test("the core pack's definitions fall into the classes, each passing its row", 
   for (const d of rest) counts[classOf(d)] = (counts[classOf(d)] ?? 0) + 1;
   // The stations wave moved cementing paste and its engram to content/items/resources.ts, and took the ingot's engram out
   // (planning/reference/stations-plan.md, S0): a resource and two engrams fewer here. The city's broken forms
-  // (content/breaks) added a static and a shape each, and the city its eight materials.
+  // (content/breaks) added a static and a shape each, and the city its eight materials. Air support added a freight
+  // order, the resource a call spends, and its engram.
   expect(counts).toEqual({
-    "item/resource": 10,
+    "item/resource": 11,
     "item/consumable": 4,
     "item/weapon": 3,
     "item/armor": 25,
     "item/structure": 29,
     "item/vehicle": 3,
-    engram: 61,
+    engram: 62,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
-    // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts).
-    "species/vehicle": ROAD_FLEET.length + MARINE_FLEET.length + 7,
+    // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts). The 10 past the fleets are the
+    // three helicopters, the three boats, the skateboard, and air support's carrier, trailer and drone.
+    "species/vehicle": ROAD_FLEET.length + MARINE_FLEET.length + 10,
     "species/civilian": 1,
     // And three road surfaces to drive on, on a paving shape of their own.
     "structure/piece": 36,
@@ -89,8 +92,8 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     spawns: 4,
     map: 5, // miami-coast became Miami (D810)
   });
-  // 253 with the supply drop's capsule (content/core.ts).
-  expect(rest.length).toBe(253 + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
+  // 253 with the supply drop's capsule (content/core.ts), and air support's three vehicles.
+  expect(rest.length).toBe(253 + 3 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
