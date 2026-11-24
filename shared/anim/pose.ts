@@ -576,8 +576,21 @@ const CARRY_FROM = B_SHOULDER_R;
 const CARRY_TO = B_UPPER_LEG_L;
 
 /** 0 to 1, leaving and arriving level. */
-function smooth(t: number): number {
+export function smooth(t: number): number {
   return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+}
+
+/** Ticks since a state's act began, at `tick`. A pose drawn a moment before the act's first tick wraps above 250, and that counts as 0. */
+export function actElapsed(st: AnimState, tick: number): number {
+  if ((st.action & 7) === ACT_NONE) return 0;
+  let e = (tick - st.actionStart) % 256;
+  if (e < 0) e += 256;
+  return e > 250 ? 0 : e;
+}
+
+/** How much of a swing `e` ticks old is in the pose, 0 to 1. */
+export function swingShare(e: number): number {
+  return smooth(e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT);
 }
 
 /** Ticks for a bow to come up as the draw begins and go down after the shot, and for a gun to come down for loading. */
@@ -803,10 +816,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   const act = st.action & 7;
   // Both hands are on a glider's handles, whatever the body had in them.
   const hold = st.glide && !st.grounded ? HOLD_HANDS : st.action >>> 3;
-  // Ticks since the act began. A pose drawn a moment before the act's first tick wraps above 250, and that counts as 0.
-  let e = act === ACT_NONE ? 0 : (tick - st.actionStart) % 256;
-  if (e < 0) e += 256;
-  if (e > 250) e = 0;
+  const e = actElapsed(st, tick);
   /** How far the arms are up and aimed, 0 to 1. Raised arms follow the whole look pitch, not only the spine's share. */
   let raised = 0;
   let kick = 0;
@@ -851,7 +861,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
       hold === HOLD_HANDS ? ((odd ? anim.cross : anim.jab) ?? (odd ? (anim.punchCross ?? anim.punch) : anim.punch))
       : hold === HOLD_TOOL ? ((st.pick ? (odd ? anim.pickB : anim.pickA) : odd ? anim.chopB : anim.chopA) ?? anim.toolSwing)
       : hold === HOLD_THROW ? anim.throwing : anim.toolSwing;
-    const k = smooth(e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT);
+    const k = swingShare(e);
     if (clip && k > 0) {
       sampleClip(clip, (e / SWING_TICKS) * (clip.frames - 1), a);
       blendPose(out, out, a, k, UPPER_FROM, UPPER_TO);

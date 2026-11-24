@@ -32,6 +32,14 @@ export class PoseBuilder {
     this.refresh(0);
   }
 
+  /** Starts from `pose` in place of rest, to turn some of its bones where it stands. */
+  from(pose: Pose): this {
+    this.pose.rot.set(pose.rot);
+    this.pose.root.set(pose.root);
+    this.refresh(0);
+    return this;
+  }
+
   /** In model space. */
   hips(x: number, y: number, z: number): this {
     this.pose.root[0] = x - HUMAN.rest[0]!;
@@ -116,6 +124,12 @@ export class PoseBuilder {
   /** Copies a bone's model-space rotation, for the pose so far, to `out` at `o`. */
   rotation(bone: number, out: Float64Array, o: number): void {
     quatCopy(out, o, this.world, bone * 4);
+  }
+
+  /** Straightens a bone on its parent, as it rests. */
+  straighten(bone: number): this {
+    quatCopy(this.world, bone * 4, this.world, HUMAN.parent[bone]! * 4);
+    return this.store(bone);
   }
 
   /** Gives a bone the model-space rotation in `q` at `o`, regardless of its parents. */

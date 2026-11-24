@@ -1,4 +1,5 @@
 import { skateDeckRotation } from "../../../shared/anim/skate.ts";
+import { ownArms } from "./own-arms.ts";
 import { ImpactSprings } from "./impact-springs.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { survivorKind } from "../../../shared/sim/blockers.ts";
@@ -358,6 +359,8 @@ export class Characters {
   fresh = 0;
   /** The camera's pitch and half the height of its view, in radians, which the scene sets for the viewer's body (eyeRoom). */
   readonly eye = { pitch: 0, half: 0 };
+  /** The viewer's own origin under its eye, metres, as its body is posed. */
+  private eyeDrop = 0;
   /** Which of a vehicle's `hides` bones to hide, bit by bit, for the entity with this id; null hides none. */
   hiddenBones: ((kind: number, id: number) => number) | null = null;
   /** Set while the sun casts. Null leaves every body out of the shadows. */
@@ -1632,6 +1635,7 @@ export class Characters {
         this.posingId = id;
         // The proportions hits are judged on, which a seat's fit is worked out for (shared/anim/seat-fit.ts).
         this.standard = k.sets[0]!.rest;
+        this.eyeDrop = y;
         if (fallen?.down) fallenPose(fallen, fallen.x, fallen.y, fallen.z, fallen.yaw, set.rest, this.pose);
         else this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
         if (fallen && !fallen.down) blendFromFall(fallen, x + p.camX, y + p.camY, z + p.camZ, yaw, set.rest, fallen.risen, this.pose);
@@ -1811,6 +1815,8 @@ export class Characters {
     if (onFoot) lookJoints(set.rest, scales, this.joints);
     solve(HUMAN, this.pose, solved, set.rest, scales, onFoot ? this.joints : undefined);
     if (onFoot && scales) plantLookFeet(this.pose, solved, scales, set.rest);
+    // Its own arms go where its eye sees a blow or a carried tool (own-arms.ts), the eye as far ahead as the body is pushed back.
+    if (upright && ownArms(this.pose, st, tick, -this.eyeDrop, this.eyeRoom(solved, set.rest, this.eyeDrop), this.eye.pitch, g.phase, g.speed)) solve(HUMAN, this.pose, solved, set.rest, scales, this.joints);
     if (rider?.profile && seat) fitRiderControls(this.pose, solved, set.rest, scales, rider.targets, steers, undefined, soles, grips);
     if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
   }
