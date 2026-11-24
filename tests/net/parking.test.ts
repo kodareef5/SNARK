@@ -49,15 +49,18 @@ function away(link: LinkOptions = {}) {
   go(0);
   h.run(2000);
   expect(s.world!.structs.chunks[BASE]!.live).toBe(5000);
-  // The whole base as rows: about 24 KB.
-  expect(whole).toBeGreaterThan(20000);
+  // The whole base as rows by their keys: about 8 KB.
+  expect(whole).toBeGreaterThan(6000);
   go(5);
   h.run(2000);
   expect([s.world!.structs.chunks[BASE], h.client(s)!.known[BASE], h.client(s)!.parked.get(BASE)]).toEqual([null, 0, structs.chunks[BASE]!.version]);
   return { h, s, structs, go, bytes: () => bytes, mark: () => void (bytes = 0) };
 }
 
-/** Slots of the base's chunk the client holds otherwise than the server, an owned piece's health as a client is told it. */
+/**
+ * Slots of the base's chunk the client holds otherwise than the server, its frame, key and turn class among them, an
+ * owned piece's health as a client is told it.
+ */
 function differ(structs: StructureStore, s: ClientSession): number {
   const [t, u] = [structs.chunks[BASE]!, s.world!.structs.chunks[BASE]];
   if (!u || u.version !== t.version || u.live !== t.live) return -1;
@@ -65,7 +68,8 @@ function differ(structs: StructureStore, s: ClientSession): number {
   for (let k = 0; k < Math.max(t.high, u.high); k++) {
     const kind = t.kind[k] ?? 0;
     const hp = kind !== 0 ? toldHealth(t.hp[k]!, structs.fullHp![kind]!) : 0;
-    if (kind !== (u.kind[k] ?? 0) || (kind !== 0 && ([t.x, t.y, t.z, t.yaw, t.owner].some((col, i) => col[k] !== [u.x, u.y, u.z, u.yaw, u.owner][i]![k]) || hp !== u.hp[k]))) n++;
+    const cols = (of: typeof t): number[] => [of.x[k]!, of.y[k]!, of.z[k]!, of.yaw[k]!, of.owner[k]!, of.fr?.[k] ?? 0, of.k0?.[k] ?? 0, of.k1?.[k] ?? 0, of.tw?.[k] ?? 0];
+    if (kind !== (u.kind[k] ?? 0) || (kind !== 0 && (cols(t).some((v, i) => v !== cols(u)[i]) || hp !== u.hp[k]))) n++;
   }
   return n;
 }
@@ -132,7 +136,7 @@ test("a kept chunk the server does not remember so comes whole", () => {
   go(0);
   h.run(2000);
   expect(differ(structs, s)).toBe(0);
-  expect(bytes()).toBeGreaterThan(20000);
+  expect(bytes()).toBeGreaterThan(6000);
 });
 
 test("a version other than the one it was dropped at is refused", () => {
@@ -154,7 +158,7 @@ test("set down on the base at once, with no time to say what it kept, the client
   go(0);
   h.run(2000);
   expect(differ(structs, s)).toBe(0);
-  expect(bytes()).toBeGreaterThan(20000);
+  expect(bytes()).toBeGreaterThan(6000);
 });
 
 test("what it kept is said while the server is already sending the chunk whole: the rows win", () => {

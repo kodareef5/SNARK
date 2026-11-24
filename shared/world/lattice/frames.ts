@@ -30,6 +30,16 @@ export interface LatticePose {
   tw: number;
 }
 
+/** What a frame is made from: what a row or a save says of it. */
+export interface FrameDef {
+  gid: number;
+  ox: number;
+  oy: number;
+  oz: number;
+  yaw: number;
+  team: number;
+}
+
 export class Frame {
   /** Never 0 and never given to another frame. */
   readonly gid: number;
