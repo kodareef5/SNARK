@@ -52,10 +52,12 @@ export async function fromAssets(): Promise<{ credits: Map<string, string>; colo
     const credit = found.length ? found.join("; ") : MADE;
     if (a.spec.kind === "human-clips") credits.set("human", credit);
     const samples = a.spec.kind === "creature" ? a.spec.regions.map((r) => r.sample) : null;
-    // A creature's credit is its body's. A pieces asset's is every piece's.
-    const pieces = a.spec.kind === "pieces" ? a.spec.modelCredit : undefined;
+    const pieces = a.spec.kind === "pieces" ? a.spec : null;
+    const pieceCredits = pieces ? new Map(pieces.pieces.flatMap((piece) => piece.modelCredit ? [[piece.id, piece.modelCredit] as const] : [])) : null;
     for (const id of headerMeshes(a.file)) {
-      credits.set(id, pieces ?? (id === a.id && a.spec.kind === "creature" ? a.spec.modelCredit ?? credit : credit));
+      const model = pieceCredits?.get(id) ?? pieceCredits?.get(id.replace(/\/dropped$/, ""));
+      const body = id === a.id && a.spec.kind === "creature" ? a.spec.modelCredit : undefined;
+      credits.set(id, model ?? pieces?.modelCredit ?? body ?? credit);
       if (samples) colours.set(id, samples);
     }
   }

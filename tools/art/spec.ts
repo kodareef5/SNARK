@@ -358,6 +358,8 @@ export interface SaddledSpec {
  */
 /** One piece of a pieces asset: see `PiecesAsset.pieces`. */
 export interface PieceSpec {
+  /** Credit for this piece and its dropped mesh, shown in the wiki. */
+  readonly modelCredit?: string;
   readonly id: string;
   readonly object: string;
   readonly errors?: readonly number[];

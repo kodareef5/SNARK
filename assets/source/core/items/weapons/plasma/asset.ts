@@ -1,6 +1,6 @@
 // The plasma guns and their bolt, built by model.py: the rifle and the pistol, each held on the right prop bone, lying
 // on its side and pictured from above as the firearms are, and the bolt, the muzzle flash and the impact burst the
-// client draws for a shot. The guns are cut from two models by Jerd (SOURCES.md) to the held item's budget.
+// client draws for a shot. The guns are cut from two models by Jerd (ATTRIBUTION.md) to the held item's budget.
 //
 // Materials: "tek", one small picture of three bands (tex.py: gunmetal alloy, dark alloy, ceramic plate) that both guns
 // lie in, and "glow", their lenses: two draws a gun. "plasma" is the bolt's, flash's and burst's. The two that glow
@@ -11,14 +11,20 @@ import { HELD_TRIANGLES } from "../materials.ts";
 
 /** Radians round from the lying gun's front and above it, as the firearms' pictures: its side shows. */
 const ICON = { around: 0.5, above: 1.25 };
+const LICENSE = "CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)";
 
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
-  modelCredit: "Jerd · CC0 1.0 by the author's note, CC BY 4.0 as filed",
   pieces: [
-    { id: "core:rifle_plasma", object: "rifle", hold: "prop_r", dropped: "auto", icon: ICON },
-    { id: "core:pistol_plasma", object: "pistol", hold: "prop_r", dropped: "auto", icon: ICON },
+    {
+      id: "core:rifle_plasma", object: "rifle", hold: "prop_r", dropped: "auto", icon: ICON,
+      modelCredit: `Electric Rifle by Jerd (https://sketchfab.com/3d-models/electric-rifle-1a940582312e41cdadca0fbe948da754). ${LICENSE}. SNARK simplified and retextured the model`,
+    },
+    {
+      id: "core:pistol_plasma", object: "pistol", hold: "prop_r", dropped: "auto", icon: ICON,
+      modelCredit: `Low Poly Pistol by Jerd (https://sketchfab.com/3d-models/low-poly-pistol-77d5a6313555495ca2810b6a1fe707a9). Mesh by Quaternius. ${LICENSE}. SNARK simplified and retextured the model`,
+    },
     // One level each, so a bolt glows at any distance: a flat level has no glow.
     { id: "core:plasma_bolt", object: "bolt", triangles: [100] },
     { id: "core:plasma_flash", object: "flash", triangles: [100] },

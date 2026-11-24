@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { B_PROP_R, HUMAN } from "../../shared/anim/human.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { findAssets } from "../../tools/art/assets.ts";
@@ -59,8 +60,26 @@ test("the bolt's head is at its origin and its tail a metre behind", () => {
   expect(header.center[2] - header.half[2]).toBeCloseTo(-1, 3);
 });
 
-test("the wiki credits every plasma piece to the model's author", async () => {
+test("the plasma gun credits follow each model into the wiki", async () => {
   const { credits } = await fromAssets();
-  for (const id of GUNS) expect(credits.get(id)).toBe(asset.spec.kind === "pieces" ? asset.spec.modelCredit : undefined);
-  expect(credits.get(GUNS[0]!)).toContain("Jerd");
+  const attribution = await Bun.file(join(asset.dir, "ATTRIBUTION.md")).text();
+  const license = "https://creativecommons.org/licenses/by/4.0/";
+  const models = [
+    ["core:rifle_plasma", "Electric Rifle by Jerd", "https://sketchfab.com/3d-models/electric-rifle-1a940582312e41cdadca0fbe948da754"],
+    ["core:pistol_plasma", "Low Poly Pistol by Jerd", "https://sketchfab.com/3d-models/low-poly-pistol-77d5a6313555495ca2810b6a1fe707a9"],
+  ] as const;
+  for (const [id, name, source] of models) {
+    expect(attribution).toContain(source);
+    for (const mesh of [id, `${id}/dropped`]) {
+      expect(credits.get(mesh)).toContain(name);
+      expect(credits.get(mesh)).toContain(source);
+      expect(credits.get(mesh)).toContain(license);
+      expect(credits.get(mesh)).toContain("SNARK simplified and retextured the model");
+    }
+  }
+  expect(credits.get("core:pistol_plasma")).toContain("Quaternius");
+  expect(attribution).toContain(license);
+  for (const id of ["core:plasma_bolt", "core:plasma_flash", "core:plasma_burst"]) {
+    expect(credits.get(id)).toBe("made for the game");
+  }
 });
