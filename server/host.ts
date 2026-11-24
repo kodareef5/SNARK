@@ -1229,6 +1229,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     world.nodeField?.retable(reg);
     // A wheel's ray reads each road piece's surface, and the ground's grips, from the parts.
     world.structs.parts = withSurfaces(world.structs.parts, reg.parts);
+    world.structs.fullHp = reg.maxHp;
     progression.rebuild();
     supply.retable();
     urban.retable();
