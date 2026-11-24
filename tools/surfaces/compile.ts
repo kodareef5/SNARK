@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
+import "../../client/core/render/orb-late.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 const folder = resolve("var/surfaces");
