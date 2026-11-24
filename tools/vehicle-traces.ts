@@ -48,6 +48,13 @@ function shown(v: string | undefined): string {
   return String(dv.getFloat64(0));
 }
 
+/** Every field any tick of `rows` has. */
+function fieldsOf(rows: Line[]): Set<string> {
+  const names = new Set<string>();
+  for (const row of rows) for (const name of Object.keys(row[2])) names.add(name);
+  return names;
+}
+
 /** Each course's first difference, and the fields one side has that the other lacks. Empty when they agree. */
 export function compare(was: Line[], now: Line[]): string[] {
   const out: string[] = [];
@@ -67,15 +74,22 @@ export function compare(was: Line[], now: Line[]): string[] {
       out.push(`${course}: only ${x ? "before" : "now"}`);
       continue;
     }
-    const names = new Set(Object.keys(x[0]![2])), others = new Set(Object.keys(y[0]![2]));
+    // A field one side has on some tick and the other on none, such as a state renamed or new, is named once here.
+    const names = fieldsOf(x), others = fieldsOf(y);
     const gone = [...names].filter((n) => !others.has(n)), added = [...others].filter((n) => !names.has(n));
     if (gone.length) out.push(`${course}: fields gone: ${gone.join(", ")}`);
     if (added.length) out.push(`${course}: fields new: ${added.join(", ")}`);
     if (x.length !== y.length) out.push(`${course}: ${x.length} ticks before, ${y.length} now`);
+    // Then row by row: which tick it is, and every field either side has on it, so one that comes later is compared too.
     find: for (let i = 0; i < Math.min(x.length, y.length); i++) {
-      for (const name of names) {
-        if (!others.has(name) || x[i]![2][name] === y[i]![2][name]) continue;
-        out.push(`${course}: first differs at tick ${x[i]![1]}, ${name}: ${shown(x[i]![2][name])} before, ${shown(y[i]![2][name])} now`);
+      const p = x[i]!, q = y[i]!;
+      if (p[1] !== q[1]) {
+        out.push(`${course}: row ${i} is tick ${p[1]} before, ${q[1]} now`);
+        break;
+      }
+      for (const name of new Set([...Object.keys(p[2]), ...Object.keys(q[2])])) {
+        if (p[2][name] === q[2][name] || !names.has(name) || !others.has(name)) continue;
+        out.push(`${course}: first differs at tick ${p[1]}, ${name}: ${shown(p[2][name])} before, ${shown(q[2][name])} now`);
         break find;
       }
     }
