@@ -33,25 +33,27 @@
         </div></details>
       </section>
 
-      <section id="people" class="admin-panel roster">
-        <div class="panel-head"><h2>Survivors</h2><span id="count" class="dim"></span></div>
-        <div class="roster-tools">
-          <label class="sr-only" for="find">Find survivor or tribe</label>
-          <input id="find" type="search" placeholder="Find a survivor or tribe" autocomplete="off" spellcheck="false">
-          <label class="sr-only" for="presence">Presence</label>
-          <select id="presence"><option value="all">All survivors</option><option value="online">Online</option><option value="offline">Offline</option></select>
-        </div>
-        <div class="scroll">
-          <table aria-label="Survivors"><thead><tr id="heads"></tr></thead><tbody id="rows"></tbody></table>
-          <p class="note" id="none">Loading survivors…</p>
-        </div>
-      </section>
+      <div class="survivor-column">
+        <section id="people" class="admin-panel roster">
+          <div class="panel-head"><h2>Survivors</h2><span id="count" class="dim"></span></div>
+          <div class="roster-tools">
+            <label class="sr-only" for="find">Find survivor or tribe</label>
+            <input id="find" type="search" placeholder="Find a survivor or tribe" autocomplete="off" spellcheck="false">
+            <label class="sr-only" for="presence">Presence</label>
+            <select id="presence"><option value="all">All survivors</option><option value="online">Online</option><option value="offline">Offline</option></select>
+          </div>
+          <div class="scroll">
+            <table aria-label="Survivors"><thead><tr id="heads"></tr></thead><tbody id="rows"></tbody></table>
+            <p class="note" id="none">Loading survivors…</p>
+          </div>
+        </section>
 
-      <aside id="inspector" class="admin-panel inspector" hidden aria-label="Survivor inspector">
-        <div class="panel-head"><h2 id="inspector-name">Survivor</h2><button type="button" id="close-inspector" aria-label="Close inspector">×</button></div>
-        <div id="survivor-detail"></div>
-        <section id="chosenlog"></section>
-      </aside>
+        <aside id="inspector" class="admin-panel inspector" hidden aria-label="Survivor inspector">
+          <div class="panel-head"><h2 id="inspector-name">Survivor</h2><button type="button" id="close-inspector" aria-label="Close inspector">×</button></div>
+          <div id="survivor-detail"></div>
+          <section id="chosenlog"></section>
+        </aside>
+      </div>
 
       <section id="timeline" class="admin-panel">
         <div class="panel-head">

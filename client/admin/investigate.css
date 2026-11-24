@@ -47,9 +47,11 @@
   align-items: start;
 }
 .investigation[data-view="map"] #mapbox { grid-column: 1; grid-row: 1; }
-.investigation[data-view="map"] #people { grid-column: 2; grid-row: 1; }
+.survivor-column { display: contents; }
+@media (min-width: 1011px) {
+  .investigation[data-view="map"] .survivor-column { display: grid; align-content: start; gap: 14px; grid-column: 2; grid-row: 1 / span 4; }
+}
 .investigation[data-view="map"] #timeline { grid-column: 1; }
-.investigation[data-view="map"] #inspector { grid-column: 2; grid-row: 2 / span 4; }
 .investigation[data-view="map"] #events-box, .investigation[data-view="map"] #figures { grid-column: 1; }
 .investigation[data-view="survivors"] .investigation-layout { grid-template-columns: minmax(0, 1.8fr) minmax(245px, 1fr); align-items: start; }
 .investigation[data-view="survivors"] #people { grid-column: 1; }
@@ -241,7 +243,7 @@
 
 @media (max-width: 1010px) {
   .investigation[data-view="map"] .investigation-layout, .investigation[data-view="survivors"] .investigation-layout { grid-template-columns: minmax(0,1fr); }
-  .investigation .investigation-layout > #mapbox, .investigation .investigation-layout > #people, .investigation .investigation-layout > #timeline,
+  .investigation .investigation-layout > #mapbox, .investigation .investigation-layout #people, .investigation .investigation-layout > #timeline,
   .investigation .investigation-layout > #world-chat, .investigation .investigation-layout > #events-box, .investigation .investigation-layout > #figures { grid-column: 1; grid-row: auto; }
   .investigation .inspector {
     position: fixed;
