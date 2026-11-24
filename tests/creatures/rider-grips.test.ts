@@ -57,7 +57,13 @@ test("native hand calibration survives repacking, ordering and a boot header wit
  const bytes=buildPack(meshes,source.palette,[],source.header.rigs),again=parsePack(bytes);
  expect(again.header.rigs).toEqual(source.header.rigs);
  const split=splitPack(orderPack(bytes),"hands",{boot:()=>false}),boot=parsePack(split.files.find(f=>f.role==="boot")!.bytes);
- expect(boot.header.meshes.length).toBe(0);expect(boot.header.rigs).toEqual(source.header.rigs);
+ expect(boot.header.meshes.length).toBe(0);
+ const carried=boot.header.rigs.flatMap(r=>r.grips??[]);
+ expect(carried.every(validGrip)).toBe(true);
+ expect(carried.map(p=>({...p,poses:p.poses.length}))).toEqual(profiles.map(p=>({...p,poses:p.poses.length})));
+ let deviation=0;
+ for(const [i,p] of carried.entries())for(const [k,point] of p.poses.entries())deviation=Math.max(deviation,Math.abs(point-profiles[i]!.poses[k]!));
+ expect(deviation).toBeLessThanOrEqual(5.001e-10);
 });
 
 test("dense native radius interpolation retains surface clearance and contact around all native hand meshes",()=>{

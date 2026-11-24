@@ -158,7 +158,17 @@ export interface PackMesh {
 
 /** Native upright-grip calibration at unit hand size. Twelve values per radius, six per hand (left then right): marker X/Z,
  * finger/distal curl, thumb Z curl/Y opposition. Rows are equally spaced; span bounds the native contact witnesses along the bar. */
-export interface PackGrip { mesh: string; start: number; step: number; poses: number[]; span: [number, number] }
+export interface PackGrip {
+  mesh: string;
+  start: number;
+  step: number;
+  poses: number[];
+  span: [number, number];
+  /** When stored in the blob, poses gives the count followed at this offset by that many little-endian i32s. */
+  poseOffset?: number;
+}
+
+export const GRIP_POSE_UNITS = 1_000_000_000;
 
 /** Contact boundaries in the source clip's 0..1 turn, before gait phase alignment. */
 export interface PackFootfall { bone: number; plant: number; lift: number }
@@ -314,6 +324,16 @@ export function parsePack(file: Uint8Array): Pack {
       piece.planes = values;
     }
     delete header.hitPlaneOffset;
+  }
+  for (const rig of header.rigs) for (const grip of rig.grips ?? []) {
+    const at = grip.poseOffset;
+    if (at === undefined) continue;
+    const count = Array.isArray(grip.poses) && grip.poses.length === 1 ? grip.poses[0]! : 0;
+    if (!Number.isSafeInteger(at) || at < 0 || !Number.isSafeInteger(count) || count <= 0 || at + count * 4 > blob.length) {
+      throw new Error(`pack: grip ${grip.mesh} points outside the file`);
+    }
+    grip.poses = Array.from({ length: count }, (_, k) => view.getInt32(12 + jsonLength + at + 4 * k, true) / GRIP_POSE_UNITS);
+    delete grip.poseOffset;
   }
   const d = header.details;
   if (d && !(d.atlas.side >= CELL && d.atlas.side <= ATLAS_MOST && (d.atlas.side & (d.atlas.side - 1)) === 0)) throw new Error(`pack: the details atlas is ${d.atlas.side} pixels across`);
