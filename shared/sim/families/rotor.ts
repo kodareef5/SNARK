@@ -2,7 +2,8 @@
 // autopilot gives an analog order (`fly`) where a pilot gives keys (`step`).
 
 import type { CollisionWorld } from "../../world/collide.ts";
-import { helicopterWorld } from "../../world/helicopter.ts";
+import { helicopterMeetsCapsule, helicopterMeetsKind, helicopterMeetsVehicle, helicopterWorld } from "../../world/helicopter.ts";
+import { helicopterShapes } from "../../world/vehicle-shapes.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, stepOut, type Body } from "../character.ts";
 import type { VehicleFamily } from "../families.ts";
 import { stepHelicopter, type HelicopterInput } from "../helicopter.ts";
@@ -47,4 +48,12 @@ export const ROTOR: VehicleFamily<RotorVehicleDefinition> & { fly: typeof fly } 
     stepOut.landSpeed = vehicleStep.landSpeed;
   },
   fly,
+  parts: (def) => helicopterShapes(def),
+  mounts: () => null,
+  joints: () => undefined,
+  jointPivot: () => undefined,
+  hazard: "rotor",
+  meetsCapsule: (def, frame, x, y, z, radius, height) => helicopterMeetsCapsule(def, frame, x, y, z, radius, height),
+  meetsVehicle: (def, frame, other, otherFrame) => helicopterMeetsVehicle(def, frame, other, otherFrame),
+  meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => helicopterMeetsKind(parts, kind, sx, sy, sz, syaw, def, frame, slack),
 };

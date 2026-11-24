@@ -1,10 +1,11 @@
 // Boats: a hull that floats, driven by one or two propellers (shared/sim/boat.ts).
 
-import { boatWorld } from "../../world/boat.ts";
+import { boatMeetsCapsule, boatMeetsKind, boatMeetsVehicle, boatWorld } from "../../world/boat.ts";
+import { boatJoints, boatMounts, boatShapes } from "../../world/vehicle-shapes.ts";
 import { BTN_JUMP, BTN_SPRINT, stepOut } from "../character.ts";
 import { stepBoat } from "../boat.ts";
 import type { VehicleFamily } from "../families.ts";
-import { validateBoatSpec, type BoatVehicleDefinition, type VehicleDefinition } from "../vehicle.ts";
+import { boatDrives, validateBoatSpec, type BoatVehicleDefinition, type VehicleDefinition } from "../vehicle.ts";
 import { loadState, state, storeState, vehicleStep } from "../vehicle-state.ts";
 
 const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
@@ -33,4 +34,12 @@ export const BOAT: VehicleFamily<BoatVehicleDefinition> = {
     stepOut.landSpeed = vehicleStep.landSpeed;
     storeState(b, state);
   },
+  parts: (def) => boatShapes(def),
+  mounts: (def, frame) => boatMounts(frame, def.spec),
+  joints: (def, from, to) => boatJoints(from, to, def.spec),
+  jointPivot: (def, joint) => boatDrives(def.spec)[joint]?.outboard?.pivot,
+  hazard: "propeller",
+  meetsCapsule: (def, frame, x, y, z, radius, height) => boatMeetsCapsule(def, frame, x, y, z, radius, height),
+  meetsVehicle: (def, frame, other, otherFrame) => boatMeetsVehicle(def, frame, other, otherFrame),
+  meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => boatMeetsKind(parts, kind, sx, sy, sz, syaw, def, frame, slack),
 };

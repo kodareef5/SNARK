@@ -9,7 +9,8 @@ import { frame, frameOf } from "./frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "./ray.ts";
 import type { PartTable } from "./structures.ts";
 import { StaticVehicleSolids, bounds, makeSolid, solidContact, sweep, tube, type ContactGeometry, type Shape, type Swept } from "./vehicle-solid.ts";
-import { boatMounts, boatShapes, carShapes, helicopterShapes as localShapes, type BoatFrame } from "./vehicle-shapes.ts";
+import { helicopterShapes as localShapes, type BoatFrame } from "./vehicle-shapes.ts";
+import { meetOther } from "./vehicle-meet.ts";
 const q = new Float64Array(4);
 export class StaticHelicopterWorld implements HelicopterWorld {
   private readonly supportWorld: CollisionWorld;
@@ -131,17 +132,6 @@ const otherSweep: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0
 /** The same shapes against another vehicle. Callers sweep relative motion and own authority, impulses and damage. */
 export function helicopterMeetsVehicle(def: RotorVehicleDefinition, frame: HelicopterFrame, other: VehicleDefinition, otherFrame: BoatFrame): HelicopterInteraction | null {
   const source = frameState(frame), target = frameState(otherFrame, 1);
-  let parts: readonly Shape[];
-  if (other.movement === "rotor") {
-    const rotorParts = interactionShapes.get(other) ?? localShapes(other); interactionShapes.set(other, rotorParts); parts = rotorParts;
-  } else if (other.movement === "boat") parts = boatShapes(other);
-  else parts = carShapes(other.spec);
-  const mounts = other.movement === "boat" ? boatMounts(otherFrame, other.spec) : null;
-  for (const part of parts) {
-    const pose = part.joint === undefined || !mounts ? target : mounts[part.joint]!;
-    sweep(part, pose, pose, otherSweep);
-    const hit = interaction(def, source, otherSweep.solid, 0);
-    if (hit) { hit.otherRotor = other.movement === "rotor" && part.hazard; hit.otherPropeller = other.movement === "boat" && part.hazard; return hit; }
-  }
+  return meetOther(other, otherFrame, target, otherSweep, (solid) => interaction(def, source, solid, 0));
   return null;
 }

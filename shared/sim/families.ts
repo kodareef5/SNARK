@@ -2,11 +2,17 @@
 // and how its body steps. Content picks one with `movement`; a vehicle with none is wheeled.
 
 import type { CollisionWorld } from "../world/collide.ts";
+import type { PartTable } from "../world/structures.ts";
+import type { ContactGeometry, Shape, SolidFrame, SolidJoint } from "../world/vehicle-solid.ts";
 import type { Body } from "./character.ts";
 import { BOAT } from "./families/boat.ts";
 import { ROTOR } from "./families/rotor.ts";
 import { WHEELED } from "./families/wheeled.ts";
 import type { VehicleDefinition, VehicleWorld } from "./vehicle.ts";
+import type { VehicleFrame } from "./vehicle-frame.ts";
+
+/** What a shape query met of a vehicle, and whether what it met was a spinning rotor or a propeller of another. */
+export type VehicleMeeting = ContactGeometry & { otherRotor: boolean; otherPropeller: boolean; rotor?: boolean; propeller?: boolean };
 
 export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> {
   /** Its `movement` in content. */
@@ -22,6 +28,22 @@ export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> 
    * reads them its own way. What happened is left in `vehicleStep` (vehicle-state.ts).
    */
   step(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: D, pilot: boolean, environment?: VehicleWorld): void;
+  /** The parts it meets the world and other vehicles with, its hazard parts first. */
+  parts(def: D): readonly Shape[];
+  /** Where its jointed parts stand at `frame`, by joint (a boat's outboards); null where no part turns on a joint. */
+  mounts(def: D, frame: VehicleFrame): readonly SolidFrame[] | null;
+  /** Its jointed parts swept between two frames, for a block test; undefined where none turns. */
+  joints(def: D, from: VehicleFrame, to: VehicleFrame): SolidJoint[] | undefined;
+  /** Where joint `joint` turns, from the hull's origin, so a part swung about it is reached in full. */
+  jointPivot(def: D, joint: number): readonly [number, number, number] | undefined;
+  /** What a hazard part of it is to what it meets: a rotor, a propeller, or none. */
+  readonly hazard: "rotor" | "propeller" | null;
+  /** It at `frame` against an upright capsule of `radius`, `height` standing at `x`, `y`, `z`. */
+  meetsCapsule(def: D, frame: VehicleFrame, x: number, y: number, z: number, radius: number, height: number): ContactGeometry & { rotor?: boolean; propeller?: boolean } | null;
+  /** It at `frame` against another vehicle at `otherFrame`. The answer is scratch: copy it before the next query. */
+  meetsVehicle(def: D, frame: VehicleFrame, other: VehicleDefinition, otherFrame: VehicleFrame): VehicleMeeting | null;
+  /** It at `frame` against a structure of `kind` placed at `sx`, `sy`, `sz` facing `syaw`. */
+  meetsKind(def: D, parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, frame: VehicleFrame, slack?: number): boolean;
 }
 
 /** The one place a row is widened to take any definition: a family only ever gets definitions its `is` accepts. */

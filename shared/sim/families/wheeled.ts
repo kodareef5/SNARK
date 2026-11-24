@@ -7,6 +7,8 @@ import type { VehicleFamily } from "../families.ts";
 import { stepSkateboard } from "../skateboard.ts";
 import { isSkateboard, stepVehicle, validateVehicleSpec, type VehicleDefinition, type WheelVehicleDefinition } from "../vehicle.ts";
 import { loadState, state, staticWorld, storeState, vehicleStep } from "../vehicle-state.ts";
+import { carMeetsCapsule, carMeetsKind, carMeetsVehicle } from "../../world/vehicle.ts";
+import { carShapes } from "../../world/vehicle-shapes.ts";
 
 const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
@@ -37,4 +39,12 @@ export const WHEELED: VehicleFamily<WheelVehicleDefinition> = {
     stepOut.landSpeed = vehicleStep.landSpeed;
     storeState(b, state);
   },
+  parts: (def) => carShapes(def.spec),
+  mounts: () => null,
+  joints: () => undefined,
+  jointPivot: () => undefined,
+  hazard: null,
+  meetsCapsule: (def, frame, x, y, z, radius, height) => carMeetsCapsule(def.spec, frame, x, y, z, radius, height),
+  meetsVehicle: (def, frame, other, otherFrame) => carMeetsVehicle(def.spec, frame, other, otherFrame),
+  meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => carMeetsKind(parts, kind, sx, sy, sz, syaw, def.spec, frame, slack),
 };
