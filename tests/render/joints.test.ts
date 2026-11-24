@@ -15,10 +15,10 @@ import { test } from "../fixtures/needs-art.ts";
  * `bun tools/pieces/sheet.ts --table` prints them again, and `bun tools/pieces/sheet.ts` draws what they count.
  */
 const AT_MOST: Record<TierName, Record<string, readonly number[]>> = {
-  thatch: { "walls 180": [3, 0, 1, 0, 0, 0], "walls 90": [61, 1615, 3, 743, 1, 5], "tee": [3, 0, 0, 0, 2, 9], "cross": [6, 0, 0, 0, 4, 16], "openings 90": [3, 0, 0, 0, 0, 0], "two storeys": [99, 3494, 6, 1481, 9, 36], "mixed 90": [3, 0, 0, 0, 0, 0] },
+  thatch: { "walls 180": [3, 0, 1, 0, 0, 0], "walls 90": [61, 1615, 3, 304, 1, 5], "tee": [3, 0, 0, 0, 2, 9], "cross": [6, 0, 0, 0, 4, 16], "openings 90": [3, 0, 0, 0, 0, 0], "two storeys": [99, 3494, 6, 604, 9, 36], "mixed 90": [3, 0, 0, 0, 0, 0] },
   wood: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 0, 0, 0, 1, 65], "tee": [0, 0, 0, 0, 2, 136], "cross": [0, 0, 0, 0, 4, 272], "openings 90": [0, 0, 0, 0, 2, 387], "two storeys": [0, 0, 0, 0, 3, 323], "mixed 90": [0, 0, 0, 0, 0, 0] },
-  stone: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 3759, 0, 2218, 1, 36], "tee": [0, 0, 0, 0, 2, 72], "cross": [0, 0, 0, 0, 4, 144], "openings 90": [0, 3757, 0, 2210, 1, 36], "two storeys": [0, 9368, 0, 4936, 4, 502], "mixed 90": [0, 3694, 0, 2189, 0, 0] },
-  metal: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 3575, 0, 2138, 1, 100], "tee": [0, 0, 0, 0, 2, 200], "cross": [0, 0, 0, 0, 4, 400], "openings 90": [0, 3575, 0, 2138, 1, 100], "two storeys": [0, 8921, 0, 4765, 3, 600], "mixed 90": [0, 0, 0, 0, 0, 0] },
+  stone: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 3759, 0, 992, 1, 36], "tee": [0, 0, 0, 0, 2, 72], "cross": [0, 0, 0, 0, 4, 144], "openings 90": [0, 3757, 0, 987, 1, 36], "two storeys": [0, 9368, 0, 2206, 4, 502], "mixed 90": [0, 3694, 0, 984, 0, 0] },
+  metal: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 3575, 0, 961, 1, 100], "tee": [0, 0, 0, 0, 2, 200], "cross": [0, 0, 0, 0, 4, 400], "openings 90": [0, 3575, 0, 961, 1, 100], "two storeys": [0, 8921, 0, 2141, 3, 600], "mixed 90": [0, 0, 0, 0, 0, 0] },
 };
 
 /**

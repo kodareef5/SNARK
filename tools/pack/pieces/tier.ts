@@ -10,7 +10,7 @@ import type { MaterialSpec } from "../../art/spec.ts";
 import { baker, painted } from "../bake.ts";
 import { spanOf } from "../surface.ts";
 import type { SourceLod, SourceMesh } from "../write.ts";
-import { LEVEL_ERRORS, TEXTURED, flatLevels, levelsOf, type TierRecipe } from "./lod.ts";
+import { TEXTURED, errorOf, flatLevels, levelsOf, type TierRecipe } from "./lod.ts";
 
 /** A tier's meshes with no materials, every level in flat colours: the shapes alone, which need no pictures. */
 export function tierShapes(recipe: TierRecipe, forms: Readonly<Record<string, FormDef>>): SourceMesh[] {
@@ -44,7 +44,7 @@ export function bakeTier(recipe: TierRecipe, forms: Readonly<Record<string, Form
     });
     const lods = shapes.map((shape, level): SourceLod => {
       const lod = level < TEXTURED ? shape.lod(names, () => 0) : shape.lod(null, tone);
-      return level > 0 ? { ...lod, error: LEVEL_ERRORS[level - 1]! } : lod;
+      return level > 0 ? { ...lod, error: errorOf(shape, level) } : lod;
     });
     // Where a client has no pictures yet, and on low poly, a textured level is drawn in the colours read off them.
     const colour = baker(lods[0]!, used, names.map((mat) => made.get(mat)!.maps), palette);

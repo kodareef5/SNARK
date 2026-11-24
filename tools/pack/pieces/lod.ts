@@ -51,10 +51,18 @@ export function levelsOf(recipe: TierRecipe, name: string, form: FormDef): Shape
   return out;
 }
 
+/** Metres a form's level after the finest is stated to lie from it: the recipe's own word for it, or the level's usual. */
+export const errorOf = (shape: Shape, level: number): number => shape.error ?? LEVEL_ERRORS[level - 1]!;
+
+/** What each of a form's levels after the finest states, for a tier's asset to tell the check. */
+export function statedErrors(recipe: TierRecipe, name: string, form: FormDef): number[] {
+  return levelsOf(recipe, name, form).slice(1).map((shape, k) => errorOf(shape, k + 1));
+}
+
 /** The levels with no materials, each face in its tone: what a test of shape needs, and no pictures. */
 export function flatLevels(recipe: TierRecipe, name: string, form: FormDef, palette: Uint8Array): SourceLod[] {
   const colour = (mat: string): number => nearestColour(palette, ...(recipe.tones[mat] ?? recipe.tones[mat.replace(/_b$/, "")]!) as [number, number, number]);
-  return levelsOf(recipe, name, form).map((shape, level) => ({ ...shape.lod(null, colour), ...(level > 0 ? { error: LEVEL_ERRORS[level - 1]! } : {}) }));
+  return levelsOf(recipe, name, form).map((shape, level) => ({ ...shape.lod(null, colour), ...(level > 0 ? { error: errorOf(shape, level) } : {}) }));
 }
 
 /** The box a form's collider fills about its own origin, in the engine's frame: least x, y, z and most. */

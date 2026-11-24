@@ -5,7 +5,7 @@
 import { FORMS } from "../../../../../content/building/forms.ts";
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { MADE_PIECE_TRIANGLES } from "../../../../../tools/art/check.ts";
-import { LEVEL_ERRORS } from "../../../../../tools/pack/pieces/lod.ts";
+import { statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
 import { bakeTier } from "../../../../../tools/pack/pieces/tier.ts";
 import { WOOD } from "../../../../../tools/pack/pieces/wood.ts";
 
@@ -27,7 +27,7 @@ export default {
   kind: "pieces",
   source: { bake: () => bakeTier(WOOD, FORMS, import.meta.dir, MATERIALS, TOP) },
   // Each level is built for its distance and states how far it lies from the finest; the check prints what it measures.
-  pieces: Object.keys(FORMS).map((name) => ({ id: `core:${name}_wood`, object: name, errors: [...LEVEL_ERRORS] })),
+  pieces: Object.entries(FORMS).map(([name, form]) => ({ id: `core:${name}_wood`, object: name, errors: statedErrors(WOOD, name, form) })),
   materials: MATERIALS,
   budgets: { triangles: MADE_PIECE_TRIANGLES.map(([, most]) => most), texture: { top: TOP, megabytes: 64 } },
 } satisfies PiecesAsset;

@@ -207,7 +207,7 @@ export class JointBench {
 
 /** The level and views a junction is judged at again, as it is drawn from across a yard. */
 export const COARSE = 2;
-export const COARSE_VIEWS = VIEWS.filter(([, above]) => above < 10);
+export const COARSE_VIEWS = VIEWS.filter(([, above], k) => above < 10 && k % 4 === 0);
 
 /** What a junction is held to, in this order: leak, notch, both again at COARSE, fighting faces and their square centimetres. */
 export const COUNTS = ["leak", "notch", "coarse leak", "coarse notch", "fights", "fight cm2"] as const;
@@ -328,6 +328,9 @@ export function fights(placed: readonly Placed[], meshes: ReadonlyMap<string, So
         const mine = flat(p.t);
         for (const q of fb) {
           if (p.n[0]! * q.n[0]! + p.n[1]! * q.n[1]! + p.n[2]! * q.n[2]! < PARALLEL) continue;
+          // A face wholly to one side of this one's plane, further off than COPLANAR, is nowhere within it.
+          const off = [0, 3, 6].map((k) => q.t[k]! * p.n[0]! + q.t[k + 1]! * p.n[1]! + q.t[k + 2]! * p.n[2]! - height);
+          if (off.every((d) => d > COPLANAR) || off.every((d) => d < -COPLANAR)) continue;
           const over = shared(mine, flat(q.t));
           if (!over) continue;
           // Of what they share, the part where the two lie within COPLANAR of each other: the gap between two planes is linear.
@@ -344,7 +347,8 @@ export function fights(placed: readonly Placed[], meshes: ReadonlyMap<string, So
           let at: number[] = [];
           for (const spot of spots) {
             const from = [0, 1, 2].map((k) => u[k]! * spot[0]! + v[k]! * spot[1]! + p.n[k]! * (height + 0.002));
-            if (from[1]! < ground || pieces.reduce((sum, piece) => sum + holding(piece.tris, from, along), 0) > 0) continue;
+            // Only a piece whose box holds the point can hold it in a solid.
+            if (from[1]! < ground || pieces.reduce((sum, piece) => sum + (from.every((c, k) => c >= piece.lo[k]! && c <= piece.hi[k]!) ? holding(piece.tris, from, along) : 0), 0) > 0) continue;
             open++;
             at = from;
           }

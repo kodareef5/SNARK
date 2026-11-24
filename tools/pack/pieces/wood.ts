@@ -40,6 +40,7 @@ const DROP = 0.02; // the top plate stands this far under the wall's top, and th
 const ROUGH = 0.011; // how far a hewn timber strays from true
 const WAVE = 0.016; // how far a board's lower edge wanders
 const SINK = 0.03; // a pillar's top stands this far under its box
+const BOX_ERROR = 0.085; // how far a wall's plain box lies from the wall, as the check measures it
 const Z: Vec = [0, 0, 1];
 const Y: Vec = [0, 1, 0];
 const X: Vec = [1, 0, 0];
@@ -134,10 +135,13 @@ function timber(p: Shape, a: Vec, b: Vec, w: number, h: number, up: Vec, bands: 
   });
 }
 
-/** A timber: hewn and chamfered on the finest level, squared on the rest. */
-function member(p: Shape, level: number, a: Vec, b: Vec, w: number, h: number, up: Vec, bands: Bands, end: Cell | null = null, seed = 0, rough = ROUGH, along0 = 0): void {
+/**
+ * A timber: hewn and chamfered on the finest level, squared on the rest. Past the finest its ends are timber too,
+ * so a level is drawn with one material fewer, unless `grain` keeps the end grain that marks it from afar.
+ */
+function member(p: Shape, level: number, a: Vec, b: Vec, w: number, h: number, up: Vec, bands: Bands, end: Cell | null = null, seed = 0, rough = ROUGH, along0 = 0, grain = false): void {
   if (level === 0) timber(p, a, b, w, h, up, bands, { end, rough, seed, along0 });
-  else timber(p, a, b, w, h, up, bands, { end, chamfer: 0, along0 });
+  else timber(p, a, b, w, h, up, bands, { end: grain ? end : null, chamfer: 0, along0 });
 }
 
 /** A timber along a curved path of points, its sections square to the path: an arched brace. */
@@ -363,7 +367,12 @@ function wallFamily(form: FormDef, level: number): Shape | null {
   const openings = form.openings ?? [];
   if (openings.length > 1) throw new Error("wood frames one opening to a wall");
   const p = new Shape();
-  if (level === 4) return p.box([-f.hx, -WALL_T, f.foot], [f.hx, WALL_T, f.top], tone("boards"));
+  if (level === 4) {
+    p.box([-f.hx, -WALL_T, f.foot], [f.hx, WALL_T, f.top], tone("boards"));
+    // A box lies nearer a wall or a window than a doorway, which it shuts: it may be drawn, and cast its shadow, from nearer.
+    if (!openings.some((o) => o.y0 - form.at[1] <= f.foot + 1e-9)) p.error = BOX_ERROR;
+    return p;
+  }
   if (level === 3) {
     // The plain wall shows its frame round its boards, the posts as wide as its yield band; one with an opening has no triangles to spare for it.
     if (openings.length > 0) return plainWall(f, openings, form.at);
@@ -527,7 +536,7 @@ function foundation(form: FormDef, level: number): Shape | null {
     [[bottom - SINK, mid], [mid, top - thick]].forEach(([z0, z1], k) => {
       const zc = (z0! + z1!) / 2;
       const [a, b]: [Vec, Vec] = (k + i) % 2 === 0 ? [[sx * (H - blk), sy * (H - blk / 2), zc], [sx * (H - 0.002), sy * (H - blk / 2), zc]] : [[sx * (H - blk / 2), sy * (H - blk), zc], [sx * (H - blk / 2), sy * (H - 0.002), zc]];
-      member(p, level, a, b, blk - 0.004, z1! - z0!, Z, [3, 4, 5, 6], [(i + k) % 4, 1], 410 + 2 * i + k, ROUGH * 0.4);
+      member(p, level, a, b, blk - 0.004, z1! - z0!, Z, [3, 4, 5, 6], [(i + k) % 4, 1], 410 + 2 * i + k, ROUGH * 0.4, 0, true);
     });
   });
   const inner = H - blk;
@@ -565,11 +574,10 @@ function ceiling(form: FormDef, level: number): Shape | null {
   const top = form.thick / 2;
   const bottom = -top + 0.01;
   const thick = 0.05;
-  // Past the joists' distance one slab as deep as the rim, so its edge is as thick and as dark as it was; its underside is the boards'.
-  if (level === 3) return p.box([-H, -H, bottom], [H, H, top], (label) => tone(label === "+z" ? "deck" : label === "-z" ? "boards" : "timber")(label, [0, 0, 0], [0, 0, 0]));
+  // Past the joists' distance one slab as deep as the rim, so its edge is as thick and as dark as it was.
+  if (level === 3) return p.box([-H, -H, bottom], [H, H, top], (label) => tone(label[1] === "z" ? "deck" : "timber")(label, [0, 0, 0], [0, 0, 0]));
   if (level === 2) return p.box([-H, -H, bottom], [H, H, top], (label, lo, hi) => {
-    if (label === "-z") return ["boards", (q) => [(q[0] + H) / 3, (H - q[1]) / 3]];
-    return label === "+z" ? grid("deck")(label, lo, hi) : beam(label[1] === "y" ? "x" : "y", label[1] === "y" ? 2 : 5)(label, lo, hi);
+    return label[1] === "z" ? grid("deck")(label, lo, hi) : beam(label[1] === "y" ? "x" : "y", label[1] === "y" ? 2 : 5)(label, lo, hi);
   });
   deck(p, top, thick, "boards", level, 500);
   const [r, w] = [1.49, 0.16];
@@ -623,7 +631,7 @@ function pillar(form: FormDef, level: number): Shape | null {
     ([[0, 2], [1, 9]] as const).forEach(([n, band]) => {
       const z = top - 0.115;
       const [a, b]: [Vec, Vec] = n === 0 ? [[-0.247 * k, 0, z], [0.247 * k, 0, z]] : [[0, -0.247 * k, z], [0, 0.247 * k, z]];
-      member(p, level, a, b, (0.16 - 0.004 * n) * k, 0.23 - 0.004 * n, Z, [band, band + 1, band, band + 1], [2 + n, 0], 601 + n, ROUGH * 0.3);
+      member(p, level, a, b, (0.16 - 0.004 * n) * k, 0.23 - 0.004 * n, Z, [band, band + 1, band, band + 1], [2 + n, 0], 601 + n, ROUGH * 0.3, 0, true);
     });
   } else {
     p.box([-0.245 * k, -0.245 * k, -hz], [0.245 * k, 0.245 * k, -hz + 0.29], beam("x", 3));

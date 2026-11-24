@@ -79,6 +79,8 @@ export function earcut(poly: readonly (readonly [number, number])[]): number[] {
 /** One level of one piece, gathered as closed solids. */
 export class Shape {
   readonly faces: Face[] = [];
+  /** Metres it lies from the finest level, where its recipe says other than its level's usual. */
+  error?: number;
 
   /** Takes the faces of one closed solid, turned so that they look outward. */
   private solid(faces: Face[]): this {
