@@ -71,7 +71,7 @@ export { withoutNotes };
  */
 export function paging(reg: Registry, pack: Pack): { bootSurfaces: ReadonlySet<string>; boot: (id: string) => boolean; place: (id: string) => readonly [number, number] } {
   const has = (asset: string, id: string): boolean => asset === "mesh" && pack.meshIndex.has(id);
-  const boot = new Set([MISSING_MESH, WATER_MESH, BEAM_MESH, FAR_MESH]);
+  const boot = new Set([MISSING_MESH, WATER_MESH, BEAM_MESH, FAR_MESH, "core:fire_cone", "core:fire_lobe"]);
   const bootSurfaces = new Set<string>();
   const places = new Map<string, readonly [number, number]>();
   const kinds = new Map<string, number>();
