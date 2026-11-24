@@ -10,7 +10,7 @@ import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { compareShot, nearShots } from "../../tools/snap/nearcity.ts";
-import { Rasterizer } from "../../tools/snap/raster.ts";
+import { PICK_STRUCTURE, Rasterizer } from "../../tools/snap/raster.ts";
 import { miamiSlice } from "../fixtures/cityslice.ts";
 import { farPack } from "../fixtures/farworld.ts";
 import { alike, nearClient, shareAlike, shotOf } from "../fixtures/nearclient.ts";
@@ -22,7 +22,9 @@ test("a downtown chunk and those round it rasterize the same as a mesh a chunk a
   const plays: [string, readonly string[]][] = [["high", shots.map((s) => s.name)], ["lowpoly", ["border-across-1", "border-over", "player-floor"]]];
   for (const [tier, names] of plays) {
     for (const shot of shots.filter((s) => names.includes(s.name))) {
-      const { counts } = compareShot(shot, tier, W, H);
+      const { counts, instances, mesh } = compareShot(shot, tier, W, H);
+      expect(instances.pickKind.includes(PICK_STRUCTURE)).toBe(true);
+      expect(mesh.pickKind.includes(PICK_STRUCTURE)).toBe(true);
       // A surface off by more than a step of the lattice or of the depth buffer: single pixels along an edge where a
       // corner moved under a millimetre, and on low poly where the checker's lines moved with it.
       expect({ tier, shot: shot.name, off: counts.farther + counts.nearer <= 0.0003 * W * H }).toEqual({ tier, shot: shot.name, off: true });

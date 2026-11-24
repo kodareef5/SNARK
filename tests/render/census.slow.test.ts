@@ -62,9 +62,22 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // again when a shop's front came to have a frame, a sill and a drip (content/ruins.ts SHOP_FRAME): on high the street
   // was 142,290 near and 144,772 far triangles, the roof 172,896 and 198,162, the air 195,754 and 190,496, and the roof
   // on medium cast 104.
+  // Street lamp cards contribute to the whole frame. Only chunk-owned geometry belongs to the near city.
   expect(got).toEqual({
-    "street-300": { lowpoly: [96, 0, 145672, 11, 103722], "medium, touch": [60, 39, 85116, 10, 128688], medium: [95, 87, 145576, 14, 149614], high: [95, 178, 145576, 14, 149614], ultra: [95, 206, 145576, 14, 149614] },
+    "street-300": { lowpoly: [95, 0, 145576, 11, 103722], "medium, touch": [60, 39, 85116, 10, 128688], medium: [95, 87, 145576, 14, 149614], high: [95, 178, 145576, 14, 149614], ultra: [95, 206, 145576, 14, 149614] },
     "roof-300": { lowpoly: [151, 0, 176438, 13, 132974], "medium, touch": [90, 29, 106864, 14, 167416], medium: [151, 105, 176438, 19, 203004], high: [151, 189, 176438, 19, 203004], ultra: [151, 227, 176438, 19, 203004] },
-    "air-300": { lowpoly: [182, 0, 199392, 11, 126452], "medium, touch": [81, 5, 123094, 9, 144934], medium: [181, 24, 199296, 14, 195338], high: [181, 173, 199296, 14, 195338], ultra: [181, 192, 199296, 14, 195338] },
+    "air-300": { lowpoly: [181, 0, 199296, 11, 126452], "medium, touch": [81, 5, 123094, 9, 144934], medium: [181, 24, 199296, 14, 195338], high: [181, 173, 199296, 14, 195338], ultra: [181, 192, 199296, 14, 195338] },
   });
+});
+
+test("street lamp cards add to the whole frame and leave the city counts alone", () => {
+  const slice = miamiSlice();
+  const w = censusWorld(slice.map, slice.centre, coreRegistry(), farPack());
+  const street = SLICE_VIEWS[0]!;
+  const setup = SETUPS.find((s) => s.name === "lowpoly")!;
+  const lit = w.count(street, setup);
+  const dark = w.count(street, setup, (scene) => { scene.streetLamps.on = false; });
+  expect(lit.draws).toBeGreaterThan(dark.draws);
+  expect(lit.triangles).toBeGreaterThan(dark.triangles);
+  expect([lit.near, lit.nearTriangles, lit.far, lit.farTriangles]).toEqual([dark.near, dark.nearTriangles, dark.far, dark.farTriangles]);
 });
