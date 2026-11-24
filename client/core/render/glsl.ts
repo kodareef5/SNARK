@@ -8,6 +8,7 @@ import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
+import { PIECE_FIT_GLSL, PIECE_FIT_PLACE, PIECE_FIT_SHADE } from "./piece-fit.ts";
 import { PIECE_END, PIECE_GLSL, PIECE_PLACE, PIECE_SHADE, WEAR_OVER_MADE, WEAR_STAGE } from "./pieces.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONES_PER_ROW, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
@@ -238,7 +239,7 @@ uniform sampler2D uPalette;
 uniform highp sampler2D uBones;
 out vec3 vRel;
 flat out vec3 vColor;
-${BONE}${BEND_GLSL}${PIECE_GLSL}void main() {
+${BONE}${BEND_GLSL}${PIECE_GLSL}${PIECE_FIT_GLSL}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p;
 ${PIECE_PLACE}  if (uSkin > 0.5) {
@@ -252,13 +253,13 @@ ${PIECE_PLACE}  if (uSkin > 0.5) {
     float t = iYaw * 6.283185307;
     float s = sin(t), c = cos(t);
     if (uSkin < -0.5 && uSkin > -1.5) l *= float(iRegB.y) / ${SIZE_UNITS.toFixed(1)};
-${BEND_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
+${BEND_PLACE}${PIECE_FIT_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
   }
   uint i = aColor;
   if (i >= ${REGION_BASE}u) { uint r = i - ${REGION_BASE}u; i = r < 4u ? iRegA[r] : iRegB[r - 4u]; }
   if (uOneColor > 0.5) i = uint(uOneColor) - 1u;
   vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;
-${PIECE_SHADE}  vRel = p;
+${PIECE_SHADE}${PIECE_FIT_SHADE}  vRel = p;
   gl_Position = uViewProj * vec4(p, 1.0);
 ${PIECE_END}}`;
 

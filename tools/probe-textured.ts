@@ -233,6 +233,8 @@ interface Frame {
   scalars: Record<string, number | boolean>;
   arrays: [string, number, number][];
   uploads: number[][];
+  /** Each buffer of built pieces' bases (packet.ts frameTables): the buffer, the table's stamp and its axes. */
+  frameTables: [number, number, number[]][];
   drops: number[];
   assetUploads: unknown[];
   assetDrops: number[];
@@ -264,6 +266,7 @@ function packFrame(p: FramePacket, out: Bytes): Frame {
     scalars: { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt },
     arrays,
     uploads: p.uploads.map((u) => [u.buffer, ...ref(u.data)]),
+    frameTables: [...p.frameTables].map(([buffer, t]) => [buffer, t.stamp, [...t.axes]]),
     drops: [...p.drops],
     assetUploads: p.assetUploads.map(({ data, ...u }) => ({ ...u, data: ref(data) })),
     assetDrops: [...p.assetDrops],
@@ -536,6 +539,8 @@ function unpack(p, f, blob) {
   for (const [name, at, n] of f.arrays) p[name].set(new p[name].constructor(blob.buffer, at, n));
   const data = ([at, n]) => blob.subarray(at, at + n);
   for (const [buffer, at, n] of f.uploads) p.uploads.push({ buffer, data: data([at, n]), slots: new Uint16Array(0) });
+  p.frameTables.clear();
+  for (const [buffer, stamp, axes] of f.frameTables) p.frameTables.set(buffer, { axes: Float32Array.from(axes), stamp });
   for (const u of f.assetUploads) p.assetUploads.push({ ...u, data: data(u.data) });
   for (const u of f.texUploads) p.texUploads.push({ ...u, data: data(u.data) });
   p.drops.push(...f.drops);

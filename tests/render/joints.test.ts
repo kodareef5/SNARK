@@ -5,6 +5,8 @@ import { expect } from "bun:test";
 import { FORMS } from "../../content/building/forms.ts";
 import { COUNTS, JointBench, countsOf, piecesPack, registry, tierMeshes } from "../../tools/pieces/joints.ts";
 import { JUNCTIONS, TIERS, tierJunction, type TierName } from "../../tools/pieces/layout.ts";
+import { STONE } from "../../tools/pack/pieces/stone.ts";
+import { THATCH, THATCH_FORMS } from "../../tools/pack/pieces/thatch.ts";
 import { tierShapes } from "../../tools/pack/pieces/tier.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
 import { bakeMetal } from "../../tools/pack/pieces/metal.ts";
@@ -74,4 +76,23 @@ test("metal as its recipe makes it meets no worse than the boxes it replaces", (
     // A corner's open notch is the boxes' own to the pixel, until joints are drawn there.
     expect([j.name, counted[0], counted[1]]).toEqual([j.name, 0, AT_MOST.metal[j.name]![1]!]);
   }
+});
+
+test("stone as its recipe makes it meets no worse than the stone it replaces", () => {
+  const pack = piecesPack([...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, FORMS)]);
+  const laid = lay()[TIERS.indexOf("stone")]!;
+  const bench = new JointBench(pack, laid);
+  const meshes = meshesOf(pack);
+  for (const j of laid) {
+    hold(countsOf(bench, j, meshes), AT_MOST.stone[j.name]!, `recipe stone ${j.name}`);
+  }
+});
+
+test("thatch as its recipe makes it meets no worse than the thatch it replaces", () => {
+  const forms = Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]));
+  const pack = piecesPack([...tierMeshes(["wood", "stone"]), ...tierShapes(THATCH, forms)]);
+  const laid = lay()[TIERS.indexOf("thatch")]!;
+  const bench = new JointBench(pack, laid);
+  const meshes = meshesOf(pack);
+  for (const j of laid) hold(countsOf(bench, j, meshes), AT_MOST.thatch[j.name]!, `recipe thatch ${j.name}`);
 });

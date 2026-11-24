@@ -808,18 +808,19 @@ function stairs(form: FormDef, level: number): Shape | null {
       return [along / 3, bandV(band) + (across - hiLine / Math.SQRT2 / 2) / 3];
     }]);
   }
+  const sill = -hz + 0.18;
   if (level < 2) {
-    const sill = -hz + 0.18;
     [-1, 1].forEach((sx, i) => {
       const x = sx * 1.42;
       member(p, level, [x, -H, (-hz + sill) / 2], [x, H - 0.03, (-hz + sill) / 2], 0.12, sill + hz, Z, sx < 0 ? [4, 5, 4, 5] : [8, 9, 8, 9], null, 810 + i);
       member(p, level, [x, -H + 0.1, sill], [x, -H + 0.1, hz - tread], 0.12, 0.2, X, [6, 6, 7, 7], null, 812 + i, ROUGH * 0.5);
       member(p, level, [x, 0, sill], [x, 0, 0.12], 0.12, 0.2, X, [11, 11, 3, 3], null, 814 + i, ROUGH * 0.5);
     });
-    member(p, level, [-1.36, -H + 0.03, (-hz + sill) / 2], [1.36, -H + 0.03, (-hz + sill) / 2], 0.05, sill + hz, Z, [7, 7, 7, 7], null, 816);
-    member(p, level, [-1.36, -H + 0.035, 0], [1.36, -H + 0.035, 0], 0.05, 0.18, Z, [10, 10, 10, 10], null, 817);
-    member(p, level, [0, -H + 0.03, sill], [0, -H + 0.03, hz - tread], 0.18, 0.06, Y, [5, 5, 5, 5], null, 818, ROUGH * 0.4);
   }
+  // The back's sill, rail and post stay a level longer: they are what its tall wall is known by.
+  member(p, level, [-1.36, -H + 0.03, (-hz + sill) / 2], [1.36, -H + 0.03, (-hz + sill) / 2], 0.05, sill + hz, Z, [7, 7, 7, 7], null, 816);
+  member(p, level, [-1.36, -H + 0.035, 0], [1.36, -H + 0.035, 0], 0.05, 0.18, Z, [10, 10, 10, 10], null, 817);
+  member(p, level, [0, -H + 0.03, sill], [0, -H + 0.03, hz - tread], 0.18, 0.06, Y, [5, 5, 5, 5], null, 818, ROUGH * 0.4);
   return p;
 }
 

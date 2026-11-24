@@ -1069,6 +1069,7 @@ export class App {
       ghost.y = b.pose.y / STRUCT_UNITS;
       ghost.z = b.pose.z / STRUCT_UNITS;
       ghost.yaw = b.pose.yaw;
+      ghost.tw = b.tw;
       ghost.color = b.color;
     }
     // The slot it would go in, and faintly the others the look offers.
@@ -1081,7 +1082,7 @@ export class App {
       }
     }
     if (v.active) {
-      ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw;
+      ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw; ghost.tw = 0;
       ghost.color = v.problem === RESULT_OK ? GHOST_OK : GHOST_BAD;
     }
   }

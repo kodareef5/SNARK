@@ -45,6 +45,8 @@ export interface Asking {
   index: number;
   count: number;
   step: number;
+  /** Its turn class in its base, as its row's will be. */
+  tw: number;
 }
 
 export interface Predicted {
@@ -63,11 +65,12 @@ export interface Predicted {
   on: readonly number[];
   kind: number;
   item: number;
-  /** Metres, and a facing in wire units. */
+  /** Metres, a facing in wire units, and its turn class in its base. */
   x: number;
   y: number;
   z: number;
   yaw: number;
+  tw: number;
   state: number;
   bornMs: number;
   /** The row it became, once placed, and when its state last changed. */
@@ -115,7 +118,7 @@ export class PredictBuild {
     const fr = mode === PLACE_JOIN ? at!.fr : mode === PLACE_NEW ? PROVISIONAL + (id & 0xffffff) : 0;
     const over: Overlaid = { id, kind, mode, fr, k0: at?.k0 ?? 0, k1: at?.k1 ?? 0, x: Math.round(x * STRUCT_UNITS), y: Math.round(y * STRUCT_UNITS), z: Math.round(z * STRUCT_UNITS), yaw };
     const first = at && at.index > 0 ? this.entries.findLast((q) => q.index === 0 && q.count > 1) : undefined;
-    const e: Predicted = { id, seq, group: first ? first.id : id, index: at?.index ?? 0, count: at?.count ?? 1, step: at?.step ?? 0, variant: at?.variant ?? 0, over, on: at ? at.on.slice() : [], kind, item, x, y, z, yaw, state: ASKED, bornMs: nowMs, ref: -1, atMs: nowMs, drawn: true, spent: true, undo: false, inv: null, invVersion: 0, chunkVersion: 0 };
+    const e: Predicted = { id, seq, group: first ? first.id : id, index: at?.index ?? 0, count: at?.count ?? 1, step: at?.step ?? 0, variant: at?.variant ?? 0, over, on: at ? at.on.slice() : [], kind, item, x, y, z, yaw, tw: at?.tw ?? 0, state: ASKED, bornMs: nowMs, ref: -1, atMs: nowMs, drawn: true, spent: true, undo: false, inv: null, invVersion: 0, chunkVersion: 0 };
     this.entries.push(e);
     this.stamp++;
     return e;
@@ -301,7 +304,7 @@ export class PredictBuild {
     for (const e of this.entries) {
       if (!e.drawn) continue;
       const q = ghost.pieces[n++]!;
-      [q.kind, q.x, q.y, q.z, q.yaw] = [e.kind, e.x, e.y, e.z, e.yaw];
+      [q.kind, q.x, q.y, q.z, q.yaw, q.tw] = [e.kind, e.x, e.y, e.z, e.yaw, e.tw];
       q.fade = e.state === REFUSED ? Math.max(0.01, (nowMs - e.atMs) / FADE_MS) : 0;
     }
     ghost.predicted = n;

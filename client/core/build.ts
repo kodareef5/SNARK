@@ -150,6 +150,8 @@ export class Builder {
   /** The structure kind the piece would become, and its pose. problem is 0 if it may go there, else a RESULT_ code. */
   kind = 0;
   readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  /** Its turn class in its base: 0, or 1 or 2 for a slot 30 or 60 degrees round. A free pose has none. */
+  tw = 0;
   problem = 0;
   /** The server's last refusal for a moment, else the current problem. */
   notice = "";
@@ -353,6 +355,7 @@ export class Builder {
     this.stabilityMost = reg.stabilityCap[kind] || STABILITY;
     this.slotMark.cls = -1;
     this.joining = false;
+    this.tw = 0;
     const hit = castWorld(seen, ox, oy, oz, dx, dy, dz, BUILD_REACH);
     const looked = hit === HIT_STRUCTURE ? rayHit.ref : -1;
     // A piece that is no row yet is not one to pick, mend or rest a thing on.
@@ -405,6 +408,7 @@ export class Builder {
       this.mode = PLACE_JOIN;
       problem = validate(site, kind, team, at.fr, at.k0, this.keyed(reg), ox, oy, oz, verdict);
       [p.x, p.y, p.z, p.yaw] = [verdict.pose.x, verdict.pose.y, verdict.pose.z, verdict.pose.yaw];
+      this.tw = verdict.pose.tw;
       this.joining = true;
       slotMarkOf(structs.frames.get(at.fr)!, at.k0, at.k1, this.slotMark);
       if (problem === 0) this.stability = support.stabilityAt(kind, at.fr, at.k0, this.keyed(reg));
@@ -626,7 +630,7 @@ export class Builder {
     const seq = held ? 0 : this.place(session, reg);
     if (!held && seq === 0) return 0;
     if (fine && predict) {
-      const at: Asking = { mode: this.mode, variant: this.variant % reg.places[this.item]!.length, fr: this.slot.fr, k0: this.slot.k0, k1: this.keyed(reg), on: this.on, index: 0, count: 1, step: 0 };
+      const at: Asking = { mode: this.mode, variant: this.variant % reg.places[this.item]!.length, fr: this.slot.fr, k0: this.slot.k0, k1: this.keyed(reg), on: this.on, index: 0, count: 1, step: 0, tw: this.tw };
       if (!predict.add(seq, this.kind, this.item, x, y, z, p.yaw, nowMs, view ? at : null) && held) return 0;
     }
     return held ? -1 : seq;
