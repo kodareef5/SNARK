@@ -9,6 +9,8 @@ import { UNIT } from "../core/render/programs.ts";
 export type ReadAtlas = (file: ManifestFile) => Promise<Uint8Array>;
 
 async function readAtlas(file: ManifestFile): Promise<Uint8Array> {
+  // Let the browser present the first draw before it requests the finer pixels.
+  await new Promise<void>(go => requestAnimationFrame(() => go()));
   const response = await fetch("assets/" + file.name, { priority: "low" });
   if (!response.ok) throw new Error("details atlas: HTTP " + response.status);
   return new Uint8Array(await response.arrayBuffer());
