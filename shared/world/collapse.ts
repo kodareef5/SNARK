@@ -9,8 +9,8 @@ import { COST_NODE, Support, type SupportNode } from "./support.ts";
 /** Packs lattice x and z into one key. z is less than this on the largest map there can be. */
 const KEY = MAX_CHUNKS_PER_AXIS * CHUNK_SIZE * STRUCT_UNITS;
 
-/** The most pieces one call removes. The rest go in the next call. */
-const WAVE_MAX = 1024;
+/** The most pieces one call removes, whatever it is allowed. The rest go in the next call. */
+export const WAVE_MAX = 1024;
 
 export class Collapse {
   /** Pieces fallen, the removals they went in, and collapses finished. */
@@ -19,6 +19,11 @@ export class Collapse {
   settled = 0;
   /** Pieces that came down under a claim and were taken instead of falling. */
   claimed = 0;
+  /** Removals the collapse now running has made. The next collapse begins at 0. */
+  made = 0;
+  /** Chunks the collapse now running has lost a piece in, and a count of the changes to that list. */
+  readonly chunks = new Set<number>();
+  listed = 0;
   /** Called for a piece about to come down under a claim, while its row can still be read. True takes the piece, false lets it fall. */
   onClaim: ((ref: number, claim: number) => boolean) | null = null;
   /** Work the last step() did, in budget units. */
@@ -79,6 +84,7 @@ export class Collapse {
       this.oy = t.y[slot]!;
       this.oz = t.z[slot]!;
     }
+    this.lose(Math.floor(ref / 65536));
     this.lost.push(node);
     this.lostBy.push(claim);
     // The graph's cached straight-up answers are now stale.
@@ -100,15 +106,17 @@ export class Collapse {
   }
 
   /**
-   * Does up to `budget` units of work (a search step costs 1, building a node about 24), then removes the pieces found unsupported.
-   * `stamp` is the clock value the removal is marked with. Returns how many pieces it removed.
+   * Does up to `budget` units of work (a search step costs 1, building a node about 24), then removes the pieces found unsupported,
+   * `most` of them at most. `stamp` is the clock value the removal is marked with. Returns how many pieces it removed.
+   * What is left standing at the end is the same whatever the budget and whatever `most`.
    */
-  step(budget: number, stamp: number): number {
+  step(budget: number, stamp: number, most = WAVE_MAX): number {
     if (!this.running) return 0;
     const graph = this.graph;
     graph.work = 0;
     graph.limit = budget;
-    while (graph.work < budget && this.fell < WAVE_MAX) {
+    const room = most < 1 ? 1 : most > WAVE_MAX ? WAVE_MAX : most;
+    while (graph.work < budget && this.fell < room) {
       if (this.drawn < this.lost.length) {
         this.draw();
         continue;
@@ -148,8 +156,52 @@ export class Collapse {
       graph.forget();
       this.running = false;
       this.settled++;
+      this.made = 0;
+      if (this.chunks.size > 0) this.listed++;
+      this.chunks.clear();
     }
     return 0;
+  }
+
+  private lose(chunk: number): void {
+    if (this.chunks.has(chunk)) return;
+    this.chunks.add(chunk);
+    this.listed++;
+  }
+
+  /**
+   * Goes on with a collapse a save caught midway: `chunks` are those it had lost pieces in, and (x, y, z) where it began.
+   * Every piece built in them and in the chunks round them is put in doubt, which is every piece it could still bring down.
+   */
+  resume(chunks: readonly number[], x: number, y: number, z: number): void {
+    const { structs, tables } = this;
+    const { chunksX, chunksZ } = structs.dims;
+    const near = new Set<number>();
+    for (const chunk of chunks) {
+      const cx = chunk % chunksX;
+      const cz = Math.floor(chunk / chunksX);
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (cx + dx >= 0 && cz + dz >= 0 && cx + dx < chunksX && cz + dz < chunksZ) near.add((cz + dz) * chunksX + cx + dx);
+    }
+    for (const chunk of near) {
+      const t = structs.chunks[chunk];
+      // The map's own pieces are nobody's and are never judged.
+      for (let slot = t ? t.mapped : 0; t && slot < t.high; slot++) {
+        const ref = chunk * 65536 + slot;
+        if (t.kind[slot] === 0 || tables.role[t.kind[slot]!]! < 0 || this.inDoubt.has(ref)) continue;
+        this.inDoubt.add(ref);
+        this.doubt.push(ref);
+        this.doubtBy.push(0);
+      }
+    }
+    if (this.doubt.length === this.at) return;
+    if (!this.running) [this.ox, this.oy, this.oz] = [x, y, z];
+    this.running = true;
+    for (const chunk of chunks) this.lose(chunk);
+  }
+
+  /** Where the collapse now running began, in metres. */
+  get origin(): readonly [number, number, number] {
+    return [this.ox, this.oy, this.oz];
   }
 
   /**
@@ -213,6 +265,7 @@ export class Collapse {
         this.lost.push(node);
         this.lostBy.push(by);
       }
+      this.lose(Math.floor(ref / 65536));
       if (taken) this.taking[takes++] = ref;
       else this.falling[falls++] = ref;
     }
@@ -225,6 +278,7 @@ export class Collapse {
     this.fallen += fell;
     this.claimed += taken;
     this.waves++;
+    this.made++;
     this.graph.again();
     this.graph.work += COST_NODE;
     return removed;

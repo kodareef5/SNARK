@@ -4,6 +4,7 @@
 // the pieces of one set are one draw. Past the tier's bones a piece is its set as one thing on one bone.
 
 import type { Registry } from "../../../../shared/content/registry.ts";
+import { INSTANCE_BYTES } from "../../../../shared/pack/pack.ts";
 import { GEAR_COUNT } from "../../../../shared/sim/entities.ts";
 import type { Assets } from "../../assets/assets.ts";
 import { MOST_GROUPS, POSE, fragmentPose, shrinkPose } from "../../fragments.ts";
@@ -19,6 +20,8 @@ import { FragmentMeshes } from "../fragment-meshes.ts";
 import type { Hiding } from "../hide.ts";
 import { BONE_FLOATS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_DRAWS, MAX_FALLING, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, type FramePacket, type InstanceWriter } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
+import { PIECE_FRAMED, pieceWord, plainYaw, writePiece } from "../piece-fit.ts";
+import type { PieceLooks } from "../piece-state.ts";
 import type { OwnBody } from "../scene.ts";
 
 /** What the pass reads of the scene: its tables by kind, and who draws the kinds it leaves out. */
@@ -47,6 +50,8 @@ const pose = new Float64Array(POSE.length);
 export class LooseEntities implements Pass {
   /** Structures falling after a removal. The app sets it (Scene.falling). */
   falling: Falling | null = null;
+  /** How built pieces are drawn (the near store's): with it, a piece falling whole leaves from where its row was drawn. */
+  pieces: PieceLooks | null = null;
   /** The break sets' meshes on the card. */
   readonly fragments = new FragmentMeshes();
   /** Of the last frame's fragments: pieces drawn a bone a group and as one thing, the bones they took and the draws they added. */
@@ -92,6 +97,7 @@ export class LooseEntities implements Pass {
   private readonly radiusOfMesh: Float32Array;
   private readonly meshOfKind: Uint16Array;
   private readonly colorOfKind: Uint8Array;
+  private readonly regionsOfKind: Uint8Array;
   /** Per kind, its break set and its form in it, by which a falling form of its map piece is known. */
   private readonly breakSet: Uint16Array;
   private readonly breakForm: Uint8Array;
@@ -126,6 +132,7 @@ export class LooseEntities implements Pass {
     this.radiusOfMesh = assets.table.radius;
     this.meshOfKind = looks.meshOfKind;
     this.colorOfKind = looks.colorOfKind;
+    this.regionsOfKind = looks.regionsOfKind;
     this.breakSet = reg.breakSet;
     this.breakForm = reg.breakForm;
     this.carrier = Math.max(0, assets.table.find(FAR_MESH));
@@ -197,14 +204,23 @@ export class LooseEntities implements Pass {
     if (whole > 0) {
       this.counts.fill(0);
       for (let i = 0; i < fl.count; i++) if (!fl.sets[i]) this.tally(cam, this.meshOfKind[fl.kind[i]!]!, fl.x[i]! - cam.x, fl.y[i]! - cam.y, fl.z[i]! - cam.z);
-      const total = this.drawTallied(cam, p.transientCount, 0, this.fallLevel);
+      const looks = this.pieces, frames = looks ? p.frameTables.get(TRANSIENT_BUFFER) : undefined;
+      const total = this.drawTallied(cam, p.transientCount, 0, this.fallLevel, looks?.flag);
       for (let i = 0; i < fl.count; i++) {
         if (fl.sets[i]) continue;
-        const kind = fl.kind[i]!, map = fl.map[i]!;
-        const at = this.cursor[this.meshOfKind[kind]!]!++;
+        const kind = fl.kind[i]!, map = fl.map[i]!, mesh = this.meshOfKind[kind]!;
+        const at = this.cursor[mesh]!++;
         // A form that falls whole, a wreck's lesser look, keeps the colour of the kind the map placed.
         const dye = map !== 0 && this.breakForm[kind] !== 0 && this.breakSet[map] === this.breakSet[kind] ? map : kind;
-        this.transient.set(at, fl.x[i]! - cam.x, fl.y[i]! - cam.y, fl.z[i]! - cam.z, fl.yaw[i]!, this.colorOfKind[dye]!);
+        const yaw = fl.yaw[i]!;
+        this.transient.set(at, fl.x[i]! - cam.x, fl.y[i]! - cam.y, fl.z[i]! - cam.z, yaw, this.colorOfKind[dye]!);
+        if (looks && looks.flag[mesh] !== 0) {
+          // Until it lets go it stands on its base's vectors, as its row did; turning, by the yaw nearest its class.
+          const tw = Math.max(0, fl.tw[i]!), slot = fl.held[i] === 1 && frames ? frames.add(yaw) : -1;
+          p.transient[at * INSTANCE_BYTES + 15] = this.regionsOfKind[dye * 5]!;
+          p.transient[at * INSTANCE_BYTES + 16] = this.regionsOfKind[dye * 5 + 1]!;
+          writePiece(p.transient, at, slot < 0 ? plainYaw(yaw, tw) : pieceWord(slot, yaw, tw), looks.made[dye]!, slot < 0 ? 0 : PIECE_FRAMED, looks.fit[kind]!);
+        }
         p.transientIds[at] = 0;
       }
       p.transientCount = total;
@@ -405,8 +421,9 @@ export class LooseEntities implements Pass {
    * Draws what was tallied, the instances of each mesh together, from transient instance `total` on. Returns where
    * they end. With `levels`, each mesh's are drawn at the level the nearest point of the nearest asks for, which it
    * keeps there; otherwise at their finest however far off, so only their materials are told how near they are.
+   * `pieces` gives a mesh's draw its DRAW_PIECE flag.
    */
-  private drawTallied(cam: Camera, total: number, flags = 0, levels: Int8Array | null = null): number {
+  private drawTallied(cam: Camera, total: number, flags = 0, levels: Int8Array | null = null, pieces: Uint32Array | null = null): number {
     const counts = this.counts;
     for (let m = 0; m < counts.length; m++) {
       this.cursor[m] = total;
@@ -416,7 +433,7 @@ export class LooseEntities implements Pass {
         if (levels) this.assets.wantTextured(m, level, near);
         else showMaterials(this.assets, m, near);
         this.put.nearAt = near;
-        this.put.draw(m, level, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, flags, cam.passesOf(this.from[m]!, this.to[m]!));
+        this.put.draw(m, level, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, pieces ? flags | pieces[m]! : flags, cam.passesOf(this.from[m]!, this.to[m]!));
       }
       total += counts[m]!;
     }

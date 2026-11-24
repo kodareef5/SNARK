@@ -120,6 +120,11 @@ class Base {
   private nv = 0;
   private start = new Int32Array(1);
   private items = new Int32Array(0);
+  /** Per face of `enc`, once it has been laid out: its corners as (u, v) and in the world's metres, how many (0 for not yet), and its tiling. */
+  private facePoly = new Float64Array(0);
+  private faceWorld = new Float64Array(0);
+  private faceCorners = new Uint8Array(0);
+  private faceTiling = new Uint8Array(0);
   /** Per face, the ask that last looked at it; and the faces an ask found. */
   private seen = new Int32Array(0);
   private asks = 0;
@@ -178,6 +183,13 @@ class Base {
     }
     this.seen.fill(0);
     this.asks = 0;
+    if (this.faceCorners.length < w.faces) {
+      const size = Math.max(w.faces, this.faceCorners.length * 2);
+      this.facePoly = grown(this.facePoly, size * 8);
+      this.faceWorld = grown(this.faceWorld, size * 8);
+      this.faceCorners = grown(this.faceCorners, size);
+      this.faceTiling = grown(this.faceTiling, size);
+    }
     let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
     for (let g = 0; g < w.faces; g++) {
       const first = w.first[g]!;
@@ -189,23 +201,21 @@ class Base {
       }
       if (low > high) continue;
       const i = this.faces++;
-      const n = enc.faceCorners(g, tuples);
+      // A face's corners are where they were when it was last laid out: they are worked out once.
+      if (this.faceCorners[g] === 0) this.measure(g);
+      const n = this.faceCorners[g]!;
       this.face[i] = g;
       this.corners[i] = n;
-      // A square along the frame's own axes tiles with every other whose corner is a whole number of sides from its own.
-      const straight = n === 4 && tuples[1] === 0 && tuples[2] === 0 && tuples[4] === tuples[0]! + SIDE && tuples[5] === 0 && tuples[6] === 0 && tuples[7] === tuples[3];
-      this.tiling[i] = straight ? 1 + (tuples[0]! & 1) + 2 * (tuples[3]! & 1) : 0;
+      this.tiling[i] = this.faceTiling[g]!;
       for (let k = 0; k < n; k++) {
-        worldOf(this.basis, this.ox, this.oz, tuples, 4 * k, world, 0);
-        const dx = world[0]! - this.ox, dz = world[1]! - this.oz;
-        const u = (dx * this.ax + dz * this.az) / this.l2, v = (dz * this.ax - dx * this.az) / this.l2;
+        const u = this.facePoly[g * 8 + 2 * k]!, v = this.facePoly[g * 8 + 2 * k + 1]!;
         this.poly[i * 8 + 2 * k] = u;
         this.poly[i * 8 + 2 * k + 1] = v;
         u0 = Math.min(u0, u);
         v0 = Math.min(v0, v);
         u1 = Math.max(u1, u);
         v1 = Math.max(v1, v);
-        const x = world[0]! / STRUCT_UNITS, z = world[1]! / STRUCT_UNITS;
+        const x = this.faceWorld[g * 8 + 2 * k]!, z = this.faceWorld[g * 8 + 2 * k + 1]!;
         box[0] = Math.min(box[0]!, x);
         box[2] = Math.min(box[2]!, z);
         box[3] = Math.max(box[3]!, x);
@@ -247,6 +257,23 @@ class Base {
     // Each slot now holds the start of the bucket before it.
     start.copyWithin(0, 1, buckets + 1);
     start[buckets] = total;
+  }
+
+  /** Works out the corners and the tiling of face `g` of `enc`. */
+  private measure(g: number): void {
+    const n = this.enc.faceCorners(g, tuples);
+    this.faceCorners[g] = n;
+    // A square along the frame's own axes tiles with every other whose corner is a whole number of sides from its own.
+    const straight = n === 4 && tuples[1] === 0 && tuples[2] === 0 && tuples[4] === tuples[0]! + SIDE && tuples[5] === 0 && tuples[6] === 0 && tuples[7] === tuples[3];
+    this.faceTiling[g] = straight ? 1 + (tuples[0]! & 1) + 2 * (tuples[3]! & 1) : 0;
+    for (let k = 0; k < n; k++) {
+      worldOf(this.basis, this.ox, this.oz, tuples, 4 * k, world, 0);
+      const dx = world[0]! - this.ox, dz = world[1]! - this.oz;
+      this.facePoly[g * 8 + 2 * k] = (dx * this.ax + dz * this.az) / this.l2;
+      this.facePoly[g * 8 + 2 * k + 1] = (dz * this.ax - dx * this.az) / this.l2;
+      this.faceWorld[g * 8 + 2 * k] = world[0]! / STRUCT_UNITS;
+      this.faceWorld[g * 8 + 2 * k + 1] = world[1]! / STRUCT_UNITS;
+    }
   }
 
   /** Whether laid-out face `i` and the box from (u0, v0) to (u1, v1) share a point. */
@@ -345,6 +372,10 @@ export class Rooms {
   k0 = new Uint32Array(0);
   k1 = new Uint32Array(0);
   element = new Int32Array(0);
+  /** The slots sorted again whenever any air moves (RoomFinder.always), `loosed` of them, and per slot its place among them, or -1. */
+  loose = new Int32Array(0);
+  looseAt = new Int32Array(0);
+  loosed = 0;
   /** Per slot, 0 for a piece seen only from inside rooms; and each door's DOOR_ flags. */
   shell = new Uint8Array(0);
   readonly doors = new Map<number, number>();
@@ -380,6 +411,10 @@ export class RoomFinder {
   /** The slots changed since the rooms were last found (update), and how many. */
   private changed = new Int32Array(0);
   private count = 0;
+  /** Scratch: the pieces by air that moved, as their frames name them; those to sort again; and per slot whether it is among them. */
+  private readonly refs: number[] = [];
+  private again = new Int32Array(0);
+  private marked = new Uint8Array(0);
 
   /** Metres a mesh must end under its storey's top: the most any floor's coarser levels lie from its finest. */
   private under = 0;
@@ -438,16 +473,17 @@ export class RoomFinder {
     const kept = rooms.version >= 0 && this.update(t, x0, z0, rooms, frames);
     if (!kept) this.lay(t, x0, z0, rooms, frames);
     rooms.version = t.version;
-    // Where the changes left every cell of air as open as it was, only the pieces changed are sorted again; where they
-    // kept the cells and moved some across outside, those and the pieces that stand by the air that moved.
-    let same = kept, whole = !kept || !rooms.sorted;
+    // Where the changes left every cell of air as open as it was, only the pieces changed are sorted again; where air
+    // moved across outside, or cells came or went, those and the pieces that stand by the air that is other than it was.
+    let same = kept, rebuilt = false;
+    const whole = !kept || !rooms.sorted;
     for (const b of rooms.bases) {
       b.moved = false;
       if (!b.enc.stale && kept) continue;
       b.enc.flood();
       b.moved = b.enc.changed;
       same = same && !b.enc.changed;
-      whole = whole || b.enc.rebuilt;
+      rebuilt ||= b.enc.rebuilt;
     }
     if (!same) {
       const box = rooms.box;
@@ -465,10 +501,77 @@ export class RoomFinder {
       for (let slot = 0; slot < t.high; slot++) this.sort(t, rooms, slot);
       rooms.sorted = true;
     } else {
-      for (let slot = 0; !same && slot < t.high; slot++) if (this.moved(t, rooms, slot)) this.again(t, rooms, slot);
-      for (let i = 0; i < this.count; i++) this.again(t, rooms, this.changed[i]!);
+      if (!same) this.sortMoved(t, rooms);
+      for (let i = 0; i < this.count; i++) this.resort(t, rooms, this.changed[i]!);
+      // Where cells came or went the doors are listed lowest slot first, as sorting every piece lists them.
+      if (rebuilt && rooms.doors.size > 1) {
+        const slots = [...rooms.doors.keys()].sort((a, b) => a - b);
+        for (const slot of slots) {
+          const flags = rooms.doors.get(slot)!;
+          rooms.doors.delete(slot);
+          rooms.doors.set(slot, flags);
+        }
+      }
     }
     return rooms.inside;
+  }
+
+  /**
+   * Sorts again each piece `moved` is true of, lowest slot first: of those judged by where their meshes stand, and of
+   * those each frame says stand by air that moved, so no slot that stands by still air is looked at.
+   */
+  private sortMoved(t: ChunkTable, rooms: Rooms): void {
+    const refs = this.refs;
+    refs.length = 0;
+    for (const b of rooms.bases) if (b.moved) b.enc.movedRefs(refs);
+    const most = rooms.loosed + refs.length;
+    if (this.again.length < most) this.again = new Int32Array(Math.max(most, this.again.length * 2));
+    if (this.marked.length < t.high) this.marked = new Uint8Array(Math.max(t.high, this.marked.length * 2));
+    const again = this.again, marked = this.marked;
+    let n = 0;
+    for (let i = 0; i < rooms.loosed; i++) {
+      const slot = rooms.loose[i]!;
+      marked[slot] = 1;
+      again[n++] = slot;
+    }
+    for (let i = 0; i < refs.length; i++) {
+      const slot = refs[i]!;
+      if (slot >= t.high || marked[slot] === 1) continue;
+      marked[slot] = 1;
+      again[n++] = slot;
+    }
+    const sorted = again.subarray(0, n).sort();
+    for (let i = 0; i < n; i++) {
+      marked[sorted[i]!] = 0;
+      if (this.moved(t, rooms, sorted[i]!)) this.resort(t, rooms, sorted[i]!);
+    }
+  }
+
+  /** Whether the piece in `slot` is sorted again whenever any air moves: it is in no frame, or judged by where its mesh stands. */
+  private always(t: ChunkTable, rooms: Rooms, slot: number): boolean {
+    const kind = t.kind[slot]!;
+    return kind !== 0 && (rooms.base[slot]! < 0 || this.form[kind] === THING || rooms.element[slot]! < 0 || (this.reach[kind]! & REACH_ELSE) !== 0);
+  }
+
+  /** Sets whether `slot` is among the rooms' `loose`. */
+  private loosen(rooms: Rooms, slot: number, loose: boolean): void {
+    const at = rooms.looseAt[slot]!;
+    if (at >= 0 === loose) return;
+    if (loose) {
+      if (rooms.loosed === rooms.loose.length) {
+        const grown = new Int32Array(Math.max(64, rooms.loosed * 2));
+        grown.set(rooms.loose);
+        rooms.loose = grown;
+      }
+      rooms.looseAt[slot] = rooms.loosed;
+      rooms.loose[rooms.loosed++] = slot;
+      return;
+    }
+    // The last takes its place.
+    const last = rooms.loose[--rooms.loosed]!;
+    rooms.loose[at] = last;
+    rooms.looseAt[last] = at;
+    rooms.looseAt[slot] = -1;
   }
 
   /** Whether the piece in `slot` stands by air that the last flood moved across outside, or is judged by where its mesh stands. */
@@ -480,13 +583,13 @@ export class RoomFinder {
     return b.moved && (form === SLAB ? b.enc.faceMoved(rooms.element[slot]!) : b.enc.edgeMoved(rooms.element[slot]!));
   }
 
-  private again(t: ChunkTable, rooms: Rooms, slot: number): void {
+  private resort(t: ChunkTable, rooms: Rooms, slot: number): void {
     rooms.doors.delete(slot);
     this.sort(t, rooms, slot);
   }
 
-  /** Tells the frame of the keyed piece in `slot` of it, making the frame's part in this chunk where it is the first. */
-  private enter(t: ChunkTable, x0: number, z0: number, rooms: Rooms, frames: Frames, slot: number): void {
+  /** Tells the frame of the keyed piece in `slot` of it, making the frame's part in this chunk, with room for `pieces`, where it is the first. */
+  private enter(t: ChunkTable, x0: number, z0: number, rooms: Rooms, frames: Frames, slot: number, pieces: number): void {
     const gid = t.fr![slot]!;
     const bases = rooms.bases;
     let at = bases.length - 1;
@@ -495,6 +598,7 @@ export class RoomFinder {
       const f = frames.get(gid);
       if (!f || bases.length === 32767) return;
       at = bases.push(new Base(f, this.forms, x0, z0)) - 1;
+      if (pieces > 0) bases[at]!.enc.reserve(Math.min(pieces - slot, f.live));
     }
     rooms.base[slot] = at;
     rooms.kind[slot] = t.kind[slot]!;
@@ -515,10 +619,17 @@ export class RoomFinder {
       rooms.k1 = new Uint32Array(n);
       rooms.element = new Int32Array(n);
       rooms.shell = new Uint8Array(n);
+      rooms.looseAt = new Int32Array(n);
     }
     rooms.base.fill(-1);
+    rooms.looseAt.fill(-1);
+    rooms.loosed = 0;
     const fr = t.fr;
-    for (let slot = 0; fr && slot < t.high; slot++) if (t.kind[slot] !== 0 && fr[slot] !== 0) this.enter(t, x0, z0, rooms, frames, slot);
+    for (let slot = 0; slot < t.high; slot++) {
+      if (t.kind[slot] === 0) continue;
+      if (fr && fr[slot] !== 0) this.enter(t, x0, z0, rooms, frames, slot, t.high);
+      if (this.always(t, rooms, slot)) this.loosen(rooms, slot, true);
+    }
   }
 
   /**
@@ -542,7 +653,8 @@ export class RoomFinder {
       const slot = this.changed[i]!, held = rooms.base[slot]!;
       if (held >= 0) bases[held]!.enc.remove(rooms.kind[slot]!, rooms.k0[slot]!, rooms.k1[slot]!, slot);
       rooms.base[slot] = -1;
-      if (fr !== null && fr[slot] !== 0 && t.kind[slot] !== 0) this.enter(t, x0, z0, rooms, frames, slot);
+      if (fr !== null && fr[slot] !== 0 && t.kind[slot] !== 0) this.enter(t, x0, z0, rooms, frames, slot, 0);
+      this.loosen(rooms, slot, this.always(t, rooms, slot));
     }
     return true;
   }
@@ -593,4 +705,11 @@ export class RoomFinder {
     const low = Math.floor(b.level(y + cy - hy + IN_FLOOR));
     return b.holds(u - su, v - sv, u + su, v + sv, low, Math.max(low + 1, Math.ceil(b.level(y + cy + hy + this.under))));
   }
+}
+
+/** A column `size` long holding what it held. */
+function grown<T extends Float64Array | Uint8Array>(a: T, size: number): T {
+  const b = new (a.constructor as new (n: number) => T)(size);
+  b.set(a);
+  return b;
 }

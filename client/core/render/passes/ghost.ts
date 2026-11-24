@@ -121,10 +121,14 @@ export class Ghost implements Pass {
     m.fade = fade;
   }
 
-  draw(f: Frame): void {
-    const g = this.ghost;
+  /** The transient buffer's bases are begun before anything draws: falling pieces, drawn before these, stand in them too. */
+  update(f: Frame): void {
     this.frames.clear();
     if (this.looks) f.packet.frameTables.set(TRANSIENT_BUFFER, this.frames);
+  }
+
+  draw(f: Frame): void {
+    const g = this.ghost;
     // The whole mesh takes the colour, so a piece with colours of its own shows fine or refused as a plain one does.
     if (g.kind !== 0) this.one(f, g.kind, g.x, g.y, g.z, g.yaw, g.tw, g.color, DRAW_BLEND, g.color + 1, 0);
     for (let i = 0; i < this.predicted; i++) {

@@ -952,6 +952,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   containers.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   persistence?.sidecar("decay", build.decay, DECAY_SAVE_TICKS);
+  if (persistence && !loaded!.fresh) build.resume(persistence.store.meta("collapse"));
+  persistence?.sidecar("collapse", build.unsettled);
   combat.onStructureHurt.on((ref) => build.hurt(ref));
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.on("globalVoiceChat") }, (out) => void crypto.getRandomValues(out));
   /** Lingering bodies are not counted. */
