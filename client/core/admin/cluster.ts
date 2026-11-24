@@ -10,7 +10,7 @@ import { MapWater } from "../../../shared/world/water.ts";
 import type { LiveWorld } from "../wiki/world.ts";
 import { baseSquares, readBases, type BaseSquare } from "./bases.ts";
 import { inChannel } from "./chat.ts";
-import { groundPicture, pictureExtent } from "./ground.ts";
+import { groundPicture, paperPalette, pictureExtent } from "./ground.ts";
 import { verdict, type Verdict } from "./health.ts";
 
 export interface ClusterSiteWorld extends LiveWorld {
@@ -34,13 +34,7 @@ type Resolve = (world: ClusterSiteWorld) => AdminAddress | null;
 type ClusterView = "overview" | "chat";
 
 const palette = defaultPalette();
-const paper = palette.slice();
-for (let i = 0; i < paper.length; i += 4) {
-  const tone = (palette[i]! * .22 + palette[i + 1]! * .68 + palette[i + 2]! * .1 - 135) * .2;
-  paper[i] = 238 + tone;
-  paper[i + 1] = 228 + tone;
-  paper[i + 2] = 211 + tone;
-}
+const paper = paperPalette(palette);
 const side = ADMIN_TERRAIN_SIDE;
 
 export interface ClusterWorld {
