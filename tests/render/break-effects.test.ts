@@ -30,7 +30,7 @@ const WALL = kind("concrete"), ROSE = kind("rose"), STEEL = kind("steel");
 const GLAZED = reg.defs.findIndex((_, k) => reg.glassHp[k]! > 0 && reg.breakSet[k] !== 0 && reg.breakForm[k] === 0);
 const MEDIUM = tierOf("medium"), LOW = tierOf("lowpoly");
 
-const piece = (x: number, y: number, z: number, tick: number, map = WALL, cause = GONE_DESTROYED): Rubble => ({ kind: map, x, y, z, yaw: 0, cause, ox: x, oy: y, oz: z, tick, radius: 0, into: 0, map });
+const piece = (x: number, y: number, z: number, tick: number, map = WALL, cause = GONE_DESTROYED): Rubble => ({ kind: map, x, y, z, yaw: 0, tw: -1, cause, ox: x, oy: y, oz: z, tick, radius: 0, into: 0, map });
 /** `n` pieces a tick, spread over `across` by `deep` metres from (64, 2, 64). */
 const wave = (n: number, tick: number, across: number, deep: number, map = WALL, cause = GONE_DESTROYED): Rubble[] => {
   const side = Math.ceil(Math.sqrt(n));

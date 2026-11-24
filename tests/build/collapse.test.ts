@@ -252,7 +252,7 @@ test("two columns that lose their footing at once are two columns, though one is
 test("a piece seen to go waits its turn, drops as a thing dropped does, drifts out from where it began, and is gone when the ground has it", () => {
   const halfY = new Float32Array(8).fill(1.5);
   const f = new Falling(halfY, () => 0);
-  const piece = (x: number, y: number, z: number, cause = GONE_FELL, tick = 100, kind = 3): Rubble => ({ kind, x, y, z, yaw: 1000, cause, ox: 10, oy: 4.5, oz: 10, tick, radius: 0, into: 0, map: 0 });
+  const piece = (x: number, y: number, z: number, cause = GONE_FELL, tick = 100, kind = 3): Rubble => ({ kind, x, y, z, yaw: 1000, tw: -1, cause, ox: 10, oy: 4.5, oz: 10, tick, radius: 0, into: 0, map: 0 });
   // Three pieces of one removal in a line going east from its origin, one of a removal two ticks later, and one destroyed outright.
   const list = [piece(13, 4.5, 10), piece(16, 4.5, 10), piece(22, 4.5, 10), piece(13, 7.5, 10, GONE_FELL, 102), piece(40, 1.5, 40, GONE_DESTROYED, 100, 5)];
   f.absorb(list, 5000, 0, 0, 0);
@@ -305,7 +305,7 @@ test("only so many are shown falling: the nearest to the eye, whatever order the
   // A row of pieces going away from an eye at the origin, absorbed farthest first, in two lots.
   const row = (from: number, to: number): Rubble[] => {
     const out: Rubble[] = [];
-    for (let k = to - 1; k >= from; k--) out.push({ kind: 1, x: k + 1, y: 50, z: 0, yaw: 0, cause: GONE_DESTROYED, ox: 0, oy: 0, oz: 0, tick: 7, radius: 0, into: 0, map: 0 });
+    for (let k = to - 1; k >= from; k--) out.push({ kind: 1, x: k + 1, y: 50, z: 0, yaw: 0, tw: -1, cause: GONE_DESTROYED, ox: 0, oy: 0, oz: 0, tick: 7, radius: 0, into: 0, map: 0 });
     return out;
   };
   const half = MAX_FALLING / 2;

@@ -115,6 +115,17 @@ export function plainYaw(yaw: number, tw: number): number {
   return (yaw - Math.round((tw * YAW_UNITS) / 12)) & (YAW_UNITS - 1);
 }
 
+/** The cosine and sine a framed piece of `yaw` and class `tw` is turned by, as a table's slot gives them, to `out[0]` and `out[1]`. */
+export function pieceTurn(yaw: number, tw: number, out: number[]): void {
+  basisOf(yaw & (QUARTER - 1), basis);
+  const d = pieceWord(0, yaw, tw);
+  for (let i = 0; i < 6; i++) turnAxes[i] = basis[i]! / HALF_SIDE;
+  axis(turnAxes, 0, d, out);
+  out[1] = -out[1]!;
+}
+
+const turnAxes = new Float32Array(6);
+
 /** Writes instance `i`'s piece bytes: its word or yaw, the material it wears, its state and its fit. */
 export function writePiece(bytes: Uint8Array, i: number, word: number, made: number, state: number, fit: number): void {
   const at = i * INSTANCE_BYTES;

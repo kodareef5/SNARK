@@ -620,7 +620,7 @@ const wreck: Rubble[] = [];
   const origin = { x: hx, y: hf.heightAt(hx, hz) + 0.1875, z: hz };
   for (const t of structs.chunks) {
     if (!t) continue;
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) wreck.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 0, radius: 0, into: 0, map: 0 });
+    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) wreck.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, tw: reg.forms?.def[t.kind[s]!] ? t.twAt(s) : -1, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 0, radius: 0, into: 0, map: 0 });
   }
 
   const build = host.build;
