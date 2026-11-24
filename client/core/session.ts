@@ -17,7 +17,7 @@ import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { AirCamera } from "./air-camera.ts";
 import { airFeedView, type AirFeedView } from "./air-feed.ts";
 import { VehiclePrediction } from "./vehicle-prediction.ts";
-import { VehicleCorrection } from "./vehicle-correction.ts";
+import { CORRECTION_FADE_MS, VehicleCorrection } from "./vehicle-correction.ts";
 import { FallCheckpoints } from "./fall-checkpoints.ts";
 import { readCorpseMotion } from "../../shared/net/corpse.ts";
 import { CMD_CORPSE, IMPACT_MELEE, S_CORPSE } from "../../shared/net/protocol.ts";
@@ -28,9 +28,8 @@ import {
   BUTTON_MASK,
   HELLO_SPECTATE,
   HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
-  INPUT_HOLD_TICKS,
-  VEHICLE_HOLD_TICKS,
-  INPUT_KEPT,
+  holdTicks,
+  letGoButtons,
   INPUT_REDUNDANCY,
   InputBuffer,
   MARGIN_UNKNOWN,
@@ -130,7 +129,7 @@ import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { BTN_AIR_REMOTE, BTN_JUMP, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, stanceEye, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_AIR_REMOTE, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, stanceEye, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
 import { REACT_RULES } from "../../shared/sim/react.ts";
 import { B_CHEST, ZONE_NONE } from "../../shared/anim/human.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
@@ -355,8 +354,10 @@ const STALL_TICKS = 4;
 const MARGIN_WINDOW = 90;
 const MAX_STEPS_PER_UPDATE = 8;
 /** Time constant of the fade that hides a correction, and the largest correction hidden, in metres. */
-const SMOOTH_MS = 90;
+const SMOOTH_MS = CORRECTION_FADE_MS;
 const SMOOTH_LIMIT = 3;
+/** The largest correction hidden of a vehicle driven: at its speed a tick's disagreement is metres. */
+const VEHICLE_SMOOTH_LIMIT = 12;
 /** Chunks around the body whose nodes stay filled until the tier says how many (assets/tiers.ts `nodes`). Collision needs one, drawing wants more. */
 const NODE_RADIUS = 3;
 /**
@@ -1025,11 +1026,11 @@ export class ClientSession {
     const i = last & inp.mask;
     const known = last > 0 && inp.has(last);
     const vehicle = this.registry.vehicle[this.own.kind];
-    const span = vehicle && this.driving >= 0 ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS;
+    const span = holdTicks(!!vehicle && this.driving >= 0);
     const [x, z, buttons] = [inp.moveX[i]!, inp.moveZ[i]!, inp.buttons[i]!];
     const yaw = known ? inp.yaw[i]! : Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff;
     const pitch = known ? inp.pitch[i]! : 0;
-    const quiet = !known ? 0 : vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : buttons & INPUT_KEPT;
+    const quiet = known ? letGoButtons(vehicle, buttons) : 0;
     // Past its history the body is not stepped: the next snapshot gives it.
     if (to - this.simTick < HISTORY) for (let t = this.simTick + 1; t <= to; t++) {
       const held = known && t - last <= span;
@@ -2521,9 +2522,9 @@ export class ClientSession {
       } else if (last !== 0) {
         const i = last & this.inputs.mask;
         // Past the hold the server stops a quiet car on its handbrake (server/game.ts); replay the same.
-        const vehicle = this.registry.vehicle[this.own.kind];
-        const held = ++gap <= (vehicle && this.driving >= 0 ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS);
-        const quiet = vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : this.inputs.buttons[i]! & INPUT_KEPT;
+        const driven = this.registry.vehicle[this.own.kind];
+        const held = ++gap <= holdTicks(!!driven && this.driving >= 0);
+        const quiet = letGoButtons(driven, this.inputs.buttons[i]!);
         pilot = held;
         this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, held ? this.inputs.buttons[i]! & BUTTON_MASK : quiet);
         this.letGo[t & (HISTORY - 1)] = held ? 0 : 1;
@@ -2542,13 +2543,14 @@ export class ClientSession {
     const dx = wasX - (this.ownPrev.x + (this.own.x - this.ownPrev.x) * alpha) + this.smoothX;
     const dy = wasY - (this.ownPrev.y + (this.own.y - this.ownPrev.y) * alpha) + this.smoothY;
     const dz = wasZ - (this.ownPrev.z + (this.own.z - this.ownPrev.z) * alpha) + this.smoothZ;
-    const smoothLimit = vehicle ? 12 : SMOOTH_LIMIT;
-    if (predicted && dx * dx + dy * dy + dz * dz < smoothLimit * smoothLimit) {
+    const limit = vehicle ? VEHICLE_SMOOTH_LIMIT : SMOOTH_LIMIT;
+    const hidden = predicted && dx * dx + dy * dy + dz * dz < limit * limit;
+    if (hidden) {
       this.smoothX = dx;
       this.smoothY = dy;
       this.smoothZ = dz;
     } else this.smoothX = this.smoothY = this.smoothZ = 0;
-    this.vehicleCorrection.reconcile(this.own, vehicle && predicted && dx * dx + dy * dy + dz * dz < smoothLimit * smoothLimit, this.ownPrev, alpha);
+    this.vehicleCorrection.reconcile(this.own, vehicle && hidden, this.ownPrev, alpha);
   }
 
   /** The map's buildings, of the sectors come so far, or null where the map has none or the page was given none. */

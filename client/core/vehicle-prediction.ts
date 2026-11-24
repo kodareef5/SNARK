@@ -13,7 +13,7 @@ import { isSkateboard, isWheelVehicle, type VehicleDefinition, type VehicleWorld
 import { groundUnder, type CollisionWorld } from '../../shared/world/collide.ts';
 import { SKATER_HEIGHT, VehiclePairQueries } from '../../shared/world/vehicle-pair.ts';
 import type { RemoteSample } from './session.ts';
-import { VehicleCorrection } from './vehicle-correction.ts';
+import { CORRECTION_FADE_MS, VehicleCorrection } from './vehicle-correction.ts';
 
 interface Proxy {
   fact: ContactProxy;
@@ -183,9 +183,9 @@ export class VehiclePrediction {
   }
 
   update(dtMs: number): void {
-    const keep = Math.exp(-dtMs / 90);
+    const keep = Math.exp(-dtMs / CORRECTION_FADE_MS);
     for (const p of this.proxies.values()) {
-      // Bound the extra visual speed of a large correction; small corrections keep the ordinary 90ms decay.
+      // Bound the extra visual speed of a large correction; small corrections keep the ordinary decay.
       const offset = Math.sqrt(p.sx * p.sx + p.sy * p.sy + p.sz * p.sz);
       const bounded = Math.max(keep, 1 - dtMs * .008 / Math.max(.001, offset));
       p.sx *= bounded; p.sy *= bounded; p.sz *= bounded;
@@ -207,7 +207,6 @@ export class VehiclePrediction {
       const other = this.registry.vehicle[p.fact.kind] ?? undefined;
       this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height, 0, SKATER_HEIGHT);
       while (p.tick < tick) { this.advance(p, other); p.tick++; }
-      if (p.fact.hitched) continue;
     }
     this.used.clear();
     for (let iteration = 0; iteration < 4; iteration++) {

@@ -2,6 +2,8 @@
 import { quatIdentity, quatMul, quatNlerp, type Numbers } from '../../shared/math/quat.ts';
 import type { Body } from '../../shared/sim/character.ts';
 const identity = new Float64Array([0, 0, 0, 1]);
+/** Time constant, in milliseconds, of the fade that hides a correction: of a place, and of an attitude. */
+export const CORRECTION_FADE_MS = 90;
 export class VehicleCorrection {
   readonly q = new Float64Array(identity);
   private readonly before = new Float64Array(4);
@@ -30,7 +32,7 @@ export class VehicleCorrection {
     quatMul(this.q, 0, this.before, 0, this.after, 0);
     // A large collision correction is still continuous. Only a qualified discontinuity cuts the fade.
   }
-  update(dtMs: number): void { quatNlerp(this.q, 0, this.q, 0, identity, 0, 1 - Math.exp(-dtMs / 90)); }
+  update(dtMs: number): void { quatNlerp(this.q, 0, this.q, 0, identity, 0, 1 - Math.exp(-dtMs / CORRECTION_FADE_MS)); }
   apply(q: Numbers): void { quatMul(q, 0, this.q, 0, q, 0); }
 
   private interpolate(body: Body, previous: Body, alpha: number, out: Float64Array): void {

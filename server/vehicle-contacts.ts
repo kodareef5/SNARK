@@ -208,12 +208,12 @@ export class VehicleContacts {
     frame.byHandle = actor !== undefined && ents.pid[actor] === frame.by ? makeHandle(actor, ents.gen[actor]!) : 0;
   }
 
-  /** After creatures.step, before attachment repinning/history/replication. */
   /** The vehicles that moved in the last step, by entity. */
   get moved(): readonly number[] {
     return this.ordered;
   }
 
+  /** After creatures.step, before attachment repinning/history/replication. */
   step(): readonly number[] {
     const { world } = this.ctx, ents = world.ents;
     this.changed.length = 0;

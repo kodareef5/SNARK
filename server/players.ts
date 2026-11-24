@@ -13,6 +13,8 @@ import {
   INPUT_HOLD_TICKS,
   INPUT_KEPT,
   INPUT_WINDOW,
+  holdTicks,
+  letGoButtons,
   MAX_CLIENT_MESSAGE,
   REJECT_DENIED,
   REJECT_MALFORMED,
@@ -26,7 +28,7 @@ import {
   readInputs,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE } from "../shared/net/transport.ts";
-import { BTN_AIR_REMOTE, BTN_JUMP, BTN_SECONDARY, Body, stepBody, stepOut } from "../shared/sim/character.ts";
+import { BTN_AIR_REMOTE, BTN_SECONDARY, Body, stepBody, stepOut } from "../shared/sim/character.ts";
 import { stepVehicleBody } from "../shared/sim/vehicle-body.ts";
 import type { VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { cancelCreatureAction, creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
@@ -158,7 +160,7 @@ export class Players {
 
   /** How long a client's last input goes on when none comes: longer for a vehicle it drives or flies. */
   private holdTicks(c: Client): number {
-    return c.drive >= 0 && this.world.reg.vehicle[this.world.ents.kind[c.drive]!] ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS;
+    return holdTicks(c.drive >= 0 && !!this.world.reg.vehicle[this.world.ents.kind[c.drive]!]);
   }
 
   /** Once a tick, before commands: each session's input for tick `T` steps its body, or what it drives, then its action and aim. */
@@ -246,7 +248,7 @@ export class Players {
         const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 && ents.gen[parent] === ents.seatGen[e];
         if (vehicle) {
           const quiet = remote || c.closed || T - c.inputAt > VEHICLE_HOLD_TICKS;
-          const moveX = quiet ? 0 : c.heldX, moveZ = quiet ? 0 : c.heldZ, buttons = quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons;
+          const moveX = quiet ? 0 : c.heldX, moveZ = quiet ? 0 : c.heldZ, buttons = quiet ? letGoButtons(vehicle, c.heldButtons) : c.heldButtons;
           this.driving = c.pid;
           if (!this.pairStep?.(e, b, moveX, moveZ, buttons, vehicle, !quiet)) this.vehicleStep(world, b, moveX, moveZ, buttons, vehicle, TICK_DT, c.heldYaw, !quiet);
           this.driving = 0;

@@ -346,8 +346,9 @@ export class StaticVehicleSolids {
       }
     }
     if (this.separating && initial && solidsCross(initial.solid, -initial.pad, -initial.pad, b, 0, skin, 0)) {
-      this.normal(initial.solid, b, initial.realFaces, initial.realEdges);
+      // A terrain face's own normal stands in for the one the search would find.
       if (forcedX !== undefined) { this.hit.nx = forcedX; this.hit.ny = forcedY!; this.hit.nz = forcedZ!; }
+      else this.normal(initial.solid, b, initial.realFaces, initial.realEdges);
       const { nx, ny, nz } = this.hit;
       const low = (solid: Solid): number => {
         let value = Infinity;
@@ -358,8 +359,8 @@ export class StaticVehicleSolids {
       // its original face penetration permits escape, but cannot authorize crossing another wall or its far side.
       if (low(a.solid) - a.pad >= low(initial.solid) - initial.pad - 1e-8) return false;
     }
-    this.normal(a.solid, b, a.realFaces, a.realEdges);
     if (forcedX !== undefined) { this.hit.nx = forcedX; this.hit.ny = forcedY!; this.hit.nz = forcedZ!; }
+    else this.normal(a.solid, b, a.realFaces, a.realEdges);
     this.geometry(a.solid, b); return true;
   }
   private geometry(a: Solid, b: Solid): void {
