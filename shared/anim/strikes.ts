@@ -86,6 +86,8 @@ const EYE_HEIGHT = 1.62;
 const LEFT_UP = 0.15;
 /** Degrees a tool is turned in the palm, so its striking side leads the knuckles. */
 const GRIP_ROLL = 90;
+/** Times the left hand is solved onto a haft. */
+const LEFT_PASSES = 4;
 /** Degrees the fingers fold at the knuckles and again at their tips, and the thumb across them, in a fist. */
 const FINGER_FOLD = 105;
 const THUMB_FOLD = 45;
@@ -256,20 +258,21 @@ export function poseArm(b: PoseBuilder, m: Move, s: Float64Array, side: Side, ey
   if (held > 0) {
     turned(s, S_RIGHT + S_HAFT, eye, 3);
     turned(s, o + S_EDGE, eye, 6);
-    // The left hand goes to the haft above the right, and is solved twice: where its wrist is depends on how it is turned.
-    for (let pass = side > 0 ? 0 : 1; pass < 2; pass++) {
-      forearmGrip(b, side, lower, hand);
-      if (pass === 1) break;
+    if (side > 0) {
+      // The left hand goes to the haft above the right. Where its wrist is depends on how the hand is turned, and that on
+      // where the wrist is, so it is solved a few times over, first with the wrist on the haft itself.
       const p = b.joint(B_PROP_R);
       const hl = Math.sqrt(dir[3]! * dir[3]! + dir[4]! * dir[4]! + dir[5]! * dir[5]!);
-      // The wrist stands off the haft by the palm's own offset from it, as the hand is turned.
+      const hx = p[0] + (dir[3]! / hl) * LEFT_UP, hy = p[1] + (dir[4]! / hl) * LEFT_UP, hz = p[2] + (dir[5]! / hl) * LEFT_UP;
       const r = HUMAN.rest;
-      quatRotate(grip, 0, r[B_PROP_L * 3]! - r[B_HAND_L * 3]!, r[B_PROP_L * 3 + 1]! - r[B_HAND_L * 3 + 1]!, r[B_PROP_L * 3 + 2]! - r[B_HAND_L * 3 + 2]!, off, 0);
-      const tx = x + (p[0] + (dir[3]! / hl) * LEFT_UP - off[0]! - x) * held;
-      const ty = y + (p[1] + (dir[4]! / hl) * LEFT_UP - off[1]! - y) * held;
-      const tz = z + (p[2] + (dir[5]! / hl) * LEFT_UP - off[2]! - z) * held;
-      reach(b, upper, lower, UPPER_ARM, FOREARM, [tx, ty, tz], pole, roll);
-    }
+      off[0] = off[1] = off[2] = 0;
+      for (let pass = 0; pass < LEFT_PASSES; pass++) {
+        reach(b, upper, lower, UPPER_ARM, FOREARM, [x + (hx - off[0]! - x) * held, y + (hy - off[1]! - y) * held, z + (hz - off[2]! - z) * held], pole, roll);
+        forearmGrip(b, side, lower, hand);
+        // The wrist stands off the haft by the palm's own offset from it, as the hand is turned.
+        quatRotate(grip, 0, r[B_PROP_L * 3]! - r[B_HAND_L * 3]!, r[B_PROP_L * 3 + 1]! - r[B_HAND_L * 3 + 1]!, r[B_PROP_L * 3 + 2]! - r[B_HAND_L * 3 + 2]!, off, 0);
+      }
+    } else forearmGrip(b, side, lower, hand);
     // The forearm takes its share of the hand's turn about its length, and the wrist the rest.
     b.rotation(lower, fore, 0);
     quatMulConj(rel, 0, fore, 0, grip, 0);

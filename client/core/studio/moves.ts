@@ -30,7 +30,7 @@ const HUMAN_GROUPS = [
   ["Moving", [["idle", "Idle"], ["walk", "Walk"], ["jog", "Jog"], ["sprint", "Sprint"], ["fall", "Fall"]]],
   ["Crouch and prone", [["crouchIdle", "Crouched"], ["crouchWalk", "Crouched walk"], ["proneIdle", "Prone"], ["proneCrawl", "Crawl"]]],
   ["Swimming", [["swimIdle", "Treading water"], ["swim", "Swim"]]],
-  ["Fists and tools", [["punch", "Punch"], ["punchCross", "Cross"], ["toolSwing", "Tool swing"], ["throwing", "Throw"]]],
+  ["Fists and tools", [["jab", "Jab"], ["cross", "Cross"], ["chopA", "Chop, steep"], ["chopB", "Chop, flat"], ["pickA", "Pick, overhead"], ["pickB", "Pick, from the shoulder"], ["toolCarry", "Tool carried"], ["toolSwing", "Spear swing"], ["throwing", "Throw"]]],
   ["Bow and guns", [["bowReady", "Bow ready"], ["bowDrawn", "Bow drawn"], ["gunAimed", "Rifle aimed"], ["gunLowered", "Rifle lowered"], ["pistolAimed", "Pistol aimed"], ["pistolLowered", "Pistol lowered"]]],
 ] as const;
 export type HumanClip = (typeof HUMAN_GROUPS)[number][1][number][0];
