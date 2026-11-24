@@ -15,10 +15,11 @@ import type { LatticeKey } from "../../shared/world/lattice/frames.ts";
 import { CLS_SQUARE, key0, key1 } from "../../shared/world/lattice/module.ts";
 import { Cells, formCells } from "../../shared/world/lattice/occupancy.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
-import type { StructureStore } from "../../shared/world/structures.ts";
+import { Found, type StructureStore } from "../../shared/world/structures.ts";
 import { boxBase } from "../../tools/bench/base.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
+import { Base, dodecagon, mixedHouse, turnedWorld } from "../fixtures/turned.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-savekeyed-"));
@@ -153,6 +154,40 @@ test("a keyed piece is 5 bytes or less on disk, a free row stays free, and a fai
   store.transaction(() => store.saveChunk(chunk, loaded));
   expect([blob(), wrote]).toEqual([first, 0]);
   store.close();
+});
+
+test("pieces 30 and 60 degrees round in their base load turned so, in the grid cells they cover", () => {
+  const w = turnedWorld(4);
+  const { structs, reg } = w;
+  const refs = [...mixedHouse(new Base(w, 60, 60, 5000)).refs, ...dodecagon(new Base(w, 130, 70, 61234), 1).refs];
+  const classes = (of: StructureStore): number[] => refs.map((ref) => of.chunks[Math.floor(ref / 65536)]!.twAt(ref & 0xffff));
+  expect([0, 1, 2].map((tw) => classes(structs).filter((c) => c === tw).length > 4)).toEqual([true, true, true]);
+  const db = join(dir, "turned.db");
+  let store = new WorldStore(db, reg);
+  store.transaction(() => {
+    for (const chunk of structs.held) store.saveChunk(chunk, structs);
+    store.setMeta("tick", 1);
+  });
+  store.close();
+  store = new WorldStore(db, reg);
+  const loaded = turnedWorld(4).structs;
+  expect(store.loadChunks(loaded)).toBe(refs.length);
+  store.close();
+  expect([held(loaded), classes(loaded)]).toEqual([held(structs), classes(structs)]);
+  // What a body or a ray is tested against in each 2 m square round the two bases.
+  const found = new Found();
+  const listed = (of: StructureStore): string[] => {
+    const out: string[] = [];
+    for (let x = 40; x < 160; x += 2) {
+      for (let z = 40; z < 100; z += 2) {
+        const n = of.query(x, z, x + 2, z + 2, found);
+        out.push([...found.refs.subarray(0, n)].sort((a, b) => a - b).join());
+      }
+    }
+    return out;
+  };
+  expect(listed(loaded)).toEqual(listed(structs));
+  expect(listed(structs).filter((cell) => cell !== "").length).toBeGreaterThan(40);
 });
 
 test("keyed pieces of content a build lacks are refused, or dropped with their frame when told to go on", () => {

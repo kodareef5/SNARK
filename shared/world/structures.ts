@@ -94,6 +94,10 @@ export function toldHealth(hp: number, max: number): number {
   return stageHealth(healthStage(hp, max), max);
 }
 
+/** For `put`, in place of a frame: the row has no key, and loses one it had; or its key is left as it stands. */
+export const PUT_FREE = 0;
+export const PUT_AS_IS = -2;
+
 /** Removals a chunk remembers, so a client can be sent each as one batch. */
 export const GONE_KEPT = 8;
 /** Changed slots a chunk remembers, so a client a few changes behind is sent those without a scan of every slot. */
@@ -1143,8 +1147,9 @@ export class StructureStore {
   /**
    * Sets a slot to replicated or loaded contents. `kind` 0 empties it. Does not advance the table version, so follow with
    * setVersion. A piece for a map slot goes where the map has that slot (putMapped), since a map slot never moves.
-   * `fr` is the row's frame with its key in (k0, k1), its pose theirs (`keyedPose`); 0 for a row that has no key and is
-   * given none; left out, the shim keys the row if it can.
+   * `fr` is the row's frame with its key in (k0, k1), its pose theirs (`keyedPose`); PUT_FREE for a row that has no key;
+   * PUT_AS_IS for one told in place, which keeps its key if its kind still fills its slot; left out, the shim keys the
+   * row if it can.
    */
   put(chunk: number, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number, fr = -1, k0 = 0, k1 = 0): void {
     const t = this.tableOf(chunk);
@@ -1158,6 +1163,7 @@ export class StructureStore {
       this.tally(t, slot, was);
       t.mod[slot] = mod;
       if (fr > 0) this.keyAs(chunk, t, slot, fr, k0, k1);
+      else if (fr === PUT_FREE && t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, false);
       return;
     }
     const inPlace = kind !== 0 && there && t.kind[slot] !== 0;
@@ -1169,7 +1175,8 @@ export class StructureStore {
       t.mod[slot] = mod;
     }
     if (kind !== 0 && fr > 0) this.keyAs(chunk, t, slot, fr, k0, k1);
-    else if (kind !== 0 && fr < 0 && this.forms && !this.adopt(chunk, t, slot)) this.orphans.set(chunk, -1);
+    else if (kind !== 0 && fr === PUT_FREE && t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, false);
+    else if (kind !== 0 && fr === -1 && this.forms && !this.adopt(chunk, t, slot)) this.orphans.set(chunk, -1);
   }
 
   /** Sets a map slot to loaded contents, where the map has it. `kind` 0 empties it. Follow with setVersion, as after put. */

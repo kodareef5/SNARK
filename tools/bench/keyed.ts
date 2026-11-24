@@ -106,6 +106,19 @@ export function keyedRows(section: Section, record: Row, parent = "var"): void {
   }
   record(`open, check and load ${structs.count} structures, median of 5`, median(loads), "ms", 400);
   record("the same, best", Math.min(...loads), "ms");
+  // The same rows put by their poses and keyed by the shim, as a load was before, with no save read: for the machine's pace.
+  const shim: number[] = [];
+  for (let n = 0; n < 5; n++) {
+    const to = make();
+    t0 = performance.now();
+    for (const c of structs.held) {
+      const t = structs.chunks[c]!;
+      for (let s = 0; s < t.high; s++) to.put(c, s, t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, t.owner[s]!, t.hp[s]!, t.mod[s]!);
+      to.setVersion(c, t.version);
+    }
+    shim.push(performance.now() - t0);
+  }
+  record("to put the same rows by their poses, the shim keying each, median of 5", median(shim), "ms");
   record("frames after the load", loaded.frames.count, "", structs.frames.count);
   let off = 0;
   for (const c of structs.held) {

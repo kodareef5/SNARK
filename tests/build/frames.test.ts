@@ -20,7 +20,7 @@ import { CLS_DIRS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, DIRS, cellOf,
 import { Cells, NO_REF, Occupancy, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "../../shared/world/lattice/occupancy.ts";
 import { populateProving, PROVING_DIMS, buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { poseAt, type Pose } from "../../shared/world/snap.ts";
-import { Found, GONE_BLAST, StructureStore } from "../../shared/world/structures.ts";
+import { Found, GONE_BLAST, PUT_AS_IS, PUT_FREE, StructureStore } from "../../shared/world/structures.ts";
 import { STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { NO_TARGET } from "../../server/build.ts";
 import { builder } from "../fixtures/build.ts";
@@ -418,7 +418,7 @@ test("rows put by their keys are one base in the sender's frame whatever their o
       const t = ss.chunks[chunk]!;
       const [fr, k0, k1] = keyOf(ss, ref) as [number, number, number];
       if (fr === 0) {
-        cs.put(chunk, slot, t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, 7, 1, 1, 0);
+        cs.put(chunk, slot, t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, 7, 1, 1, PUT_FREE);
         continue;
       }
       const at = cs.keyedPose(chunk, t.kind[slot]!, fr, k0, k1)!;
@@ -432,7 +432,7 @@ test("rows put by their keys are one base in the sender's frame whatever their o
     expect([cs.frames.count, f.live, f.roots, cs.occupied.size]).toEqual([1, base.live, base.roots, ss.occupied.size]);
     // A foundation put with no key makes no frame, where the shim would have made it one.
     const kind = client.kind("core:foundation_wood");
-    cs.put(0, 0, kind, 20, 1, 20, 77, 7, 1, 1, 0);
+    cs.put(0, 0, kind, 20, 1, 20, 77, 7, 1, 1, PUT_FREE);
     expect([cs.frameAt(0), cs.frames.count]).toEqual([0, 1]);
     cs.put(0, 1, kind, 30, 1, 30, 77, 7, 1, 1);
     expect([cs.frameAt(1) > base.gid, cs.frames.count]).toEqual([true, 2]);
@@ -460,9 +460,14 @@ test("a row put in a cell a stale row still has takes the cell, and the stale ro
   expect([keyOf(structs, stale), keyOf(structs, fresh), sound(structs, w.reg, fresh), f.live, structs.occupied.size]).toEqual([[0, 0, 0], [fr, k0, k1], fr, live, entries]);
   structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, t.version);
   expect([sound(structs, w.reg, fresh), f.live, structs.occupied.size]).toEqual([fr, live, entries]);
-  // The same row told again keeps its key, and told with another takes that one.
-  structs.put(chunk, t.high - 1, t.kind[t.high - 1]!, t.x[t.high - 1]!, t.y[t.high - 1]!, t.z[t.high - 1]!, t.yaw[t.high - 1]!, 7, 1, t.version, fr, k0, k1);
+  // The same row told again keeps its key; told in place it keeps it too; told free it loses it.
+  const again = (as: number): void => structs.put(chunk, t.high - 1, t.kind[t.high - 1]!, t.x[t.high - 1]!, t.y[t.high - 1]!, t.z[t.high - 1]!, t.yaw[t.high - 1]!, 7, 1, t.version, as, k0, k1);
+  again(fr);
   expect([keyOf(structs, fresh), f.live, structs.occupied.size]).toEqual([[fr, k0, k1], live, entries]);
+  again(PUT_AS_IS);
+  expect([keyOf(structs, fresh), f.live, structs.occupied.size]).toEqual([[fr, k0, k1], live, entries]);
+  again(PUT_FREE);
+  expect([keyOf(structs, fresh), f.live, structs.occupied.size < entries, structs.refAt(fr, k0, k1)]).toEqual([[0, 0, 0], live - 1, true, -1]);
   // The last row of a frame put out by the row that takes its cell: the frame stands, with that row.
   const lone = flatWorld(4);
   const one = lone.structs.add(lone.kind("core:foundation_wood"), 100, 1, 100, 0, 7, 1);

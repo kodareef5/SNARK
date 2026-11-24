@@ -8,7 +8,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { ROW_BITS_MOST, ROW_FREE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
-import type { StructureStore } from "../../shared/world/structures.ts";
+import { PUT_FREE, type StructureStore } from "../../shared/world/structures.ts";
 import type { EntityRecord } from "../records.ts";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -465,7 +465,7 @@ export class WorldStore {
           if (r.form === ROW_KEYED && named[named.length - 1] !== r.fr && !named.includes(r.fr)) named.push(r.fr);
           if (now === 0) return lost(r.saved);
           const hp = r.health(this.maxHp[now]!);
-          if (r.form === ROW_FREE) return structs.put(chunk, r.slot, now, r.x, r.y, r.z, r.yaw, r.owner, hp, row.version, 0);
+          if (r.form === ROW_FREE) return structs.put(chunk, r.slot, now, r.x, r.y, r.z, r.yaw, r.owner, hp, row.version, PUT_FREE);
           const at = structs.keyedPose(chunk, now, r.fr, r.k0, r.k1);
           if (!at) throw new Error(`chunk ${chunk}: the piece in slot ${r.slot} was saved by a key that is no slot of its form in a frame the save has: old saves are not read, so start a new save`);
           structs.put(chunk, r.slot, now, at.x / STRUCT_UNITS, at.y / STRUCT_UNITS, at.z / STRUCT_UNITS, at.yaw, r.owner, hp, row.version, r.fr, r.k0, r.k1);

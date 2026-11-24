@@ -24,6 +24,7 @@ touch rule, ASTC, 24-bit depth, 16 texture units, no timer queries.
 | C | counts and bytes on Miami as built that day (`187f1213`, map version 5, with the cruise ship), on a busy machine (load 6 to 25), so no times | 2026-11-17 | `d45f43da` |
 | Dnnn | the measurement its decision records | | |
 | W | the wire lane's rows, on a Linux box (Core i9-13980HX, 32 cores, Bun 1.4.3) at load 5 to 20 from other work: bytes, and milliseconds of a modelled link's own time, neither of which load moves | 2026-11-24 | `build/wire` |
+| K | the keyed lane's rows on the same Linux box: bytes, a modelled link's own time, and times from `bun tools/bench/keyed.ts` alone while the box was quiet. Rows marked "busy" are from one `bun run bench` at load 17, beside two other benches | 2026-11-24 | `build/keyed` |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time, the three soaks the governor's tests replay in `tests/fixtures/device-reports` | 2026-11-15, 16 | |
 
 Rows without a code are E. Counts and bytes do not move with load; times from M are
@@ -118,10 +119,12 @@ all.
 | Crowd: every survivor and 2,000 creatures | 31.9 KB/s | 36 |
 | Crowd: bodies shown to a client that asked for 2,048; that never asked | 871 of 1,024; 468 of 512 | |
 | Breeding base, each survivor there | 32.4 KB/s | 34 |
-| Siege: 50 pieces of a 20,000-piece chunk damaged a tick, each blow a stage of the piece's health (W) | 5.24 KB/s | 12 |
-| Near chunks held on joining beside a 4,000-piece base (W): 50; 100; 180 ms; 100 ms with 1% loss; 180 ms with 2%; 100 ms at 60 KB/s | 250; 333; 600; 403; 817; 967 ms | |
-| A 20,000-piece chunk of 97 KB whole (W): no delay; 50; 100; 180 ms there and back | 0.70; 0.78; 1.12; 1.52 s | 0.9 at 50 ms |
-| Back to a dropped 5,000-piece base, both ways (W): unchanged; ten slots changed | 26; 67 bytes | 64; 200 |
+| Siege: 50 pieces of a 20,000-piece chunk damaged a tick, each blow a stage of the piece's health (K) | 4.89 KB/s | 12 |
+| Near chunks held on joining beside a 4,000-piece base (K): 50; 100; 180 ms; 100 ms with 1% loss; 180 ms with 2%; 100 ms at 60 KB/s | 250; 333; 600; 400; 817; 950 ms | |
+| A 20,000-piece chunk joined, by frame and key (K): in the order it was built; each piece the nearest to the last; shuffled | 1.59; 2.4; 4.5 B a piece | 3.6 |
+| A 20,000-piece chunk of 32 KB whole (K): no delay; 50; 100; 180 ms there and back | 0.70; 0.72; 0.75; 0.78 s | 0.9 at 50 ms |
+| Back to a dropped 5,000-piece base of 7.9 KB, both ways (K): unchanged; ten slots changed | 26; 66 bytes | 64; 200 |
+| A lone foundation with its frame; the same piece as a free row (K) | 11.2; 8.7 B | |
 | A 1,512-piece house collapsing, each watcher, all of it | 2,373 bytes | 3,024 |
 | Voice, 100 talking, each listener | 28.7 KB/s | 31 |
 | The map's feeds | 0.009 KB/s | 0.5 |
@@ -131,8 +134,12 @@ all.
 
 The W rows are the wire lane's ([build-wire](../workstreams/build-wire.md)). Before it, on the same box: the siege
 9.63 KB/s, with health as a float and every blow a row; the near chunks 567, 667, 950, 737, 1,267 and 1,550 ms; a
-20,000-piece chunk 2.6 s at 256 slots a tick; and a base come back to its 24 KB of rows again. At 100 ms and more the
-16 KB a client may have on the way holds a large chunk, not the 1,024 slots of a tick.
+20,000-piece chunk 2.6 s at 256 slots a tick; and a base come back to its 24 KB of rows again.
+
+The K rows are the keyed lane's ([build-keyed](../workstreams/build-keyed.md)). Before it, with every row its pose (W):
+the siege 5.24 KB/s; a 20,000-piece chunk 4.86 bytes a piece, 97 KB, whole in 0.70, 0.78, 1.12 and 1.52 s, the 16 KB a
+client may have on the way holding it at 100 ms and more; a 5,000-piece base 24 KB. The 1,024 slots of a tick hold a
+large chunk now.
 
 The house's row read 2,603 bytes on that box before the wire lane and 3,030 after it and the merge of `build/v2`,
 over its 3,024. The fall alone, one watcher on a small world, is 1,880 bytes at all three commits. The row counts
@@ -172,7 +179,21 @@ are in [networking](../architecture/networking.md).
 | --- | --- | --- |
 | Save: 519,017 structures, 313,216 records | 65.9 MB | |
 | Open, check and load the structures; load the entity records | 72; 231 to 234 ms | 3,000; 3,000 |
+| The same save with pieces by frame and key (K, busy): 501,497 structures, 313,219 records | 56.8 MB | |
+| Open, check and load those structures; load the entity records (K, busy) | 774; 518 ms | 3,000; 3,000 |
+| 520,000 undamaged pieces of 251 bases alone (K): on disk, a piece; open, check and load, median of 5 | 1.69 B; 304 ms | 5; 400 |
+| A harmed piece on disk; the 20,000-piece chunk on disk whole, and after a minute of the siege (K) | 5.5 B; 30.6; 110 KB | |
+| The commit that writes the 20,000-piece chunk alone (K): median; worst of 60 | 0.92; 1.9 ms | 1.5 worst |
+| The siege's commit that writes it, 99th percentile (K, busy); another lane's bench of the format before, run beside it | 2.23; 3.89 ms | 10 |
 | Start a host on the save; under other settings; of that, bringing over; first commit after | 660 to 661; 684 to 696; 23 to 35; 455 to 491 ms | none; 5,000; 2,000; 5,000 |
+
+The 72 ms is from before a piece had a key. With keys, a load sets each piece in its frame's cells: 0.55 µs a piece
+more, by the save's keys or by the shim that worked them out from poses. Before the keyed lane the 20,000-piece chunk
+was 488 KB on disk at 25 bytes a piece, its commit alone 0.55 ms at the median and 5.2 at worst, and 520,000 pieces
+loaded through the shim in 448 to 599 ms; the same rows put by pose with no save read take 350 ms beside the 304. The
+commit's median rose because packing 20,000 rows takes 0.8 ms where copying them took 0.2; the 1.5 ms hoped for its
+worst is missed. With the box busy the same part read 1.3 to 2.1 ms for the commit and 406 to 489 ms for the load, and
+the shim 470 to 592 ms for the same rows.
 
 A rule is read where it is used, so a 50x server ticks as one at ARK's defaults
 (`--config config/boosted-50x`).
