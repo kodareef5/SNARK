@@ -58,13 +58,13 @@ function geometry(): Map<string, FitSolid[]> {
     if (!instance.placed) continue;
     const index = byId.get(open.get(instance.id) ?? instance.prototype)!, p = prototypes[index]!;
     const yaw = Math.round(instance.yaw * YAW_UNITS / 360), origin = instance.at.map((v: number) => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
-    frameOf(yaw); const c = frame.cos, s = frame.sin, stretch = frame.stretch;
+    frameOf(yaw, 0); const c = frame.cos, s = frame.sin, stretch = frame.stretch;
     (p.boxes ?? []).forEach((b, part) => {
       const solid = new Solid(); boxSolid(origin[0]! + (c * b.at[0]! + s * b.at[2]!) * stretch, origin[1]! + b.at[1]!, origin[2]! + (-s * b.at[0]! + c * b.at[2]!) * stretch, c, s, b.half[0]! * stretch, b.half[1]!, b.half[2]! * stretch, solid);
       add(`${instance.id}/box${part}`, solid, p.sourceParts?.boxes[part]?.support ?? (p.category === "floor" || (p.category === "stairs" && p.art?.kind === "landing" && part === 0)));
     });
     for (let part = hulls.start[index]!; part < hulls.start[index + 1]!; part++) {
-      const solid = new Solid(); partSolid(hulls, part, yaw, origin[0]!, origin[1]!, origin[2]!, solid);
+      const solid = new Solid(); partSolid(hulls, part, yaw, 0, origin[0]!, origin[1]!, origin[2]!, solid);
       add(`${instance.id}/hull${part - hulls.start[index]!}`, solid, p.sourceParts?.hulls[part - hulls.start[index]!]!?.support ?? (p.category === "floor" || (p.category === "stairs" && part === hulls.start[index]!)));
     }
   }

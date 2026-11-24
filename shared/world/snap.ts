@@ -237,7 +237,7 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
         if (i < boxes) {
           const p = (parts.start[kind]! + i) * 6;
           boxSolid(x + c * box[p]! + s * box[p + 2]!, y + box[p + 1]!, z - s * box[p]! + c * box[p + 2]!, c, s, box[p + 3]!, box[p + 4]!, box[p + 5]!, mine[i]!);
-        } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, x, y, z, mine[i]!);
+        } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, 0, x, y, z, mine[i]!);
       }
     }
     const oa = t.yaw[slot]! * YAW_TO_RAD;
@@ -249,7 +249,7 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
       for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return (obstruction.ref = ref) >= 0;
     }
     for (let h = hulls.start[other]!, hend = hulls.start[other + 1]!; h < hend; h++) {
-      partSolid(hulls, h, t.yaw[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, theirs);
+      partSolid(hulls, h, t.yaw[slot]!, t.twAt(slot), t.x[slot]!, t.y[slot]!, t.z[slot]!, theirs);
       for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, side, vertical, theirs, otherSide, otherVertical, THIN)) return (obstruction.ref = ref) >= 0;
     }
   }
@@ -453,12 +453,12 @@ export function floorTop(structs: StructureStore, tables: PieceTables, ref: numb
   const from = tables.halfY[kind]! + 1;
   let down = Infinity;
   for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
-    const d = rayHull(hulls, p, t.yaw[slot]!, dx, from, dz, 0, -1, 0, 0);
+    const d = rayHull(hulls, p, t.yaw[slot]!, t.twAt(slot), dx, from, dz, 0, -1, 0, 0);
     if (d >= down) continue;
     down = d;
     floorFace.level = hullFace.ny >= LEVEL;
   }
-  frameOf(t.yaw[slot]!);
+  frameOf(t.yaw[slot]!, t.twAt(slot));
   const fx = frame.cos * dx - frame.sin * dz;
   const fz = frame.sin * dx + frame.cos * dz;
   const box = parts.box;

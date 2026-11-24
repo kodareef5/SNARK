@@ -128,7 +128,7 @@ export class CityBreaks {
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
     const [x, y, z] = [t.x[slot]!, t.y[slot]!, t.z[slot]!];
     // From the piece's box, in its own frame.
-    frameOf(t.yaw[slot]!);
+    frameOf(t.yaw[slot]!, t.twAt(slot));
     const [cos, sin] = [frame.cos, frame.sin];
     const [hx, hy, hz] = [structs.halfXOf(mapKind), structs.halfYOf(mapKind), structs.halfZOf(mapKind)];
     const out = reach + Math.max(hx, hz);
@@ -232,7 +232,7 @@ export class CityBreaks {
     const left = hp - harm;
     if (family === 0) return left > 0 ? this.keep(ref, mapKind, hp, left) : this.fell(by, ref, false, x, y, z, hp);
     if (form === FORM_WHOLE) {
-      const breach = breachAt(reg, mapKind, t.yaw[slot]!, x - t.x[slot]!, y - t.y[slot]!, z - t.z[slot]!);
+      const breach = breachAt(reg, mapKind, t.yaw[slot]!, t.twAt(slot), x - t.x[slot]!, y - t.y[slot]!, z - t.z[slot]!);
       // One hit moves a piece no further than one new breach, however large.
       if (breach !== 0 && left <= breachHealth(reg, mapKind)) return this.reform(by, ref, mapKind, breach, Math.max(left, BREACH_LEAST), hp);
       if (breach !== 0 || left > 0) return this.keep(ref, mapKind, hp, left);
@@ -373,7 +373,7 @@ export class CityBreaks {
     const [x, z] = [t.x[slot]!, t.z[slot]!];
     const foot = t.y[slot]! + structs.low[kind]!;
     if (foot <= world.hf.heightAt(x, z) + REST_GAP) return true;
-    frameOf(t.yaw[slot]!);
+    frameOf(t.yaw[slot]!, t.twAt(slot));
     const [c, s] = [Math.abs(frame.cos), Math.abs(frame.sin)];
     const ex = Math.max(0.05, c * structs.halfXOf(kind) + s * structs.halfZOf(kind) - REST_INSET);
     const ez = Math.max(0.05, s * structs.halfXOf(kind) + c * structs.halfZOf(kind) - REST_INSET);
@@ -388,7 +388,7 @@ export class CityBreaks {
       // Its top is at the foot, and its box is under the footprint.
       const top = u.y[o]! + structs.top[under]!;
       if (top < foot - REST_GAP || top > foot + 0.05) continue;
-      frameOf(u.yaw[o]!);
+      frameOf(u.yaw[o]!, u.twAt(o));
       const [uc, us] = [Math.abs(frame.cos), Math.abs(frame.sin)];
       const ux = uc * structs.halfXOf(under) + us * structs.halfZOf(under), uz = us * structs.halfXOf(under) + uc * structs.halfZOf(under);
       if (Math.abs(u.x[o]! - x) < ex + ux && Math.abs(u.z[o]! - z) < ez + uz) return true;
@@ -527,7 +527,7 @@ export class CityBreaks {
       if (spent > 0) structs.mend(ref, left);
       return spent;
     }
-    const breach = form === FORM_WHOLE ? breachAt(reg, mapKind, t.yaw[slot]!, x - t.x[slot]!, y - t.y[slot]!, z - t.z[slot]!) : 0;
+    const breach = form === FORM_WHOLE ? breachAt(reg, mapKind, t.yaw[slot]!, t.twAt(slot), x - t.x[slot]!, y - t.y[slot]!, z - t.z[slot]!) : 0;
     if (breach !== 0) this.reform(by, ref, mapKind, breach, Math.max(BREACH_LEAST, Math.min(left, breachHealth(reg, mapKind))), hp);
     else if (formKind(reg, mapKind, FORM_OPEN, 0) !== 0) this.reform(by, ref, mapKind, FORM_OPEN, bodyHealth(reg, mapKind) * OPEN_SHARE, hp);
     else {

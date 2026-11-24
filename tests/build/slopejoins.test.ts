@@ -7,7 +7,7 @@ import { FLOOR_THICK, FOUNDATION_THICK } from "../../content/building.ts";
 import { STRUCT_UNITS, TICK_DT } from "../../shared/coords.ts";
 import { Body, stanceHeight, stepBody } from "../../shared/sim/character.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
-import { frameAxes, sixtyOf } from "../../shared/world/frame.ts";
+import { frameAxes, turn60 } from "../../shared/world/frame.ts";
 import { HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { ROOF_RISE, ROOF_THICK, TRIANGLE_HALF, hullWorld } from "../fixtures/hulls.ts";
 import type { TestWorld } from "../fixtures/world.ts";
@@ -22,7 +22,7 @@ function vectors(yaw: number): { ex: number[]; ez: number[]; e60: number[] } {
   frameAxes(yaw, axes);
   const ex = [axes[0]!, axes[1]!];
   const ez = [axes[2]!, axes[3]!];
-  sixtyOf(ex[0]!, ex[1]!, axes, 2);
+  turn60(ex[0]!, ex[1]!, axes, 2);
   return { ex, ez, e60: [axes[2]!, axes[3]!] };
 }
 

@@ -197,7 +197,7 @@ export class Builder {
       else if (obstructed(structs, reg.parts, kind, px, py, pz, p.yaw)) {
         problem = RESULT_OBSTRUCTED;
         [by.detail, by.a] = [PLACED_STRUCTURE, obstruction.ref];
-      } else if (capsuleKind(reg.parts, kind, px, py, pz, p.yaw, own.x, own.y, own.z, reg.bodyRadius[session.ownKind]!, reg.bodyHeight[session.ownKind]!, BODY_SLACK)) {
+      } else if (capsuleKind(reg.parts, kind, px, py, pz, p.yaw, 0, own.x, own.y, own.z, reg.bodyRadius[session.ownKind]!, reg.bodyHeight[session.ownKind]!, BODY_SLACK)) {
         problem = RESULT_BODY;
         [by.detail, by.a] = [PLACED_ENTITY, handleIndex(session.ownHandle)];
       } else if (this.enemyNear(structs, reg, session.tribe.team, px, pz)) {

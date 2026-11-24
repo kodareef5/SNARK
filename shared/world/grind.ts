@@ -49,7 +49,7 @@ export function grindAt(w: CollisionWorld, x: number, y: number, z: number, fx: 
     const ref = found.refs[i]!, slot = ref & 65535, row = store.chunks[ref >>> 16]!;
     const lines = store.parts.grindLine?.[row.kind[slot]!];
     if (!lines) continue;
-    frameOf(row.yaw[slot]!);
+    frameOf(row.yaw[slot]!, row.twAt(slot));
     const c = frame.cos * frame.stretch, s = frame.sin * frame.stretch;
     for (const line of lines) {
       for (let k = 1; k < line.length; k++) {

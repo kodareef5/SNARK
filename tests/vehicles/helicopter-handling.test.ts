@@ -120,7 +120,7 @@ test("rotor's empty space stays empty; full quaternion transforms agree for plac
   structs.remove(post); structs.add(3, s.x + 3.5, s.y + 3.15, s.z, 0, 0, 100);
   expect(world.blocked(s, s, def)?.rotor).toBe(true);
   expect(helicopterMeetsCapsule(def, s, s.x + 3.5, s.y + 2.6, s.z, .3, 1.7)?.rotor).toBe(true);
-  expect(helicopterMeetsKind(structs.parts, 3, s.x + 3.5, s.y + 3.15, s.z, 0, def, s)).toBe(true);
+  expect(helicopterMeetsKind(structs.parts, 3, s.x + 3.5, s.y + 3.15, s.z, 0, 0, def, s)).toBe(true);
   s.qz = 1; s.qw = 0;
   const out = [0, 0, 0]; vehiclePoint(s, [0, 1, 0], out); expect(out[1]).toBeCloseTo(s.y - 1, 6);
   expect(rayVehicle(def, s.x, s.y, s.z, s.yaw, s.x, s.y - 1, s.z + 8, 0, 0, -1, spec.height, s)).toBeLessThan(8);

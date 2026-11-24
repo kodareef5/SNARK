@@ -270,7 +270,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     for (let i = 0; i < deck.length; i++) {
       const d = deck[i]!; if (d.gap) continue;
       const a = d.yaw * Math.PI / 180; const dx = Math.cos(a); const dz = -Math.sin(a);
-      packedFrameOf(Math.round(d.yaw * 65536 / 360) & 65535);
+      packedFrameOf(Math.round(d.yaw * 65536 / 360) & 65535, 0);
       // Share collision's lattice axes. A few millimetres of overlap close coordinate rounding cracks between lanes;
       // otherwise a centre ray can see an underpass through an apparent continuous deck.
       const lateralX = p.way.kind === "road_bridge" ? packedFrame.sin * packedFrame.stretch : -dz;
