@@ -29,7 +29,7 @@ import { LOW } from "../render/atmosphere.ts";
 import type { Camera } from "../render/camera.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_LIT, DETAIL_PUFF, DETAIL_SCORCH, DETAIL_SMOKE, DETAIL_WAKE, GLOW_STEPS, MAX_DETAILS, SMOKE_STEPS, type FramePacket } from "../render/packet.ts";
 import type { RemoteSample } from "../session.ts";
-import { BREAK_NEAR, BREAK_SHARE, breakEffects } from "./breaks.ts";
+import { BREAK_CHIPS, BREAK_NEAR, BREAK_SHARE, breakEffects } from "./breaks.ts";
 import { GROUND_WATER, dustColour, groundAt } from "./ground.ts";
 import { Pool } from "./pool.ts";
 
@@ -202,6 +202,15 @@ export class Details {
       reg.birthScale,
       drawnGait,
     );
+  }
+
+  /** A landed tool shakes a few chips loose at the contact point. Their colour comes from the node. */
+  nodeStrike(kind: number, x: number, y: number, z: number, tick: number, due: number): void {
+    const node = this.reg.defs[kind];
+    if (node?.type !== "node" || !node.material) return;
+    const c = node.color * 4;
+    const colour = this.palette[c]! | (this.palette[c + 1]! << 8) | (this.palette[c + 2]! << 16);
+    this.breakBurst(BREAK_CHIPS, kind, x, y, z, NaN, tick, due, 0.22, 4, colour);
   }
 
   /** A witnessed tree fracture reuses authored dust and the ordinary global particle/fill/distance budgets. */

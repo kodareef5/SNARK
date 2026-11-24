@@ -32,6 +32,8 @@ const K = {
   crumble: cueKey("crumble"),
   picked: cueKey("picked"),
   glass: cueKey("impact/glass"),
+  bark: cueKey("struck/wood"),
+  stone: cueKey("struck/stone"),
 };
 /** How loud a city piece's stage crossing or change of form is heard. Its health is not told within a stage, so a blow's own size is not known. */
 const CITY_GAIN = 0.9;
@@ -109,6 +111,14 @@ export class BuildSounds implements BreakSounds {
       const o = this.owner[kind] ?? -1, t = this.tier[kind] ?? 2;
       this.hear!(o, what === HEARD_IMPACT ? DESTROY[t]! : what === HEARD_CRACK ? HIT[t]! : what === HEARD_GLASS ? K.glass : K.collapse, -1, x, y, z, 0.5, level, false);
     });
+  }
+
+  /** The blow itself sounds at the surface the tool met. */
+  nodeStrike(kind: number, x: number, y: number, z: number): void {
+    const node = this.reg.defs[kind];
+    if (node?.type !== "node" || !node.material) return;
+    const key = node.material === "wood" ? K.bark : K.stone;
+    this.queue.push(() => this.hear!(this.nodeOwner[kind]!, key, -1, x, y, z, 0.15, 0.85, false));
   }
 
   /** A node used up (ClientSession.onNode), of `kind` at (x, y, z). */

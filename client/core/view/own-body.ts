@@ -9,7 +9,7 @@ import { MF_DOWN, glidePhase } from "../../../shared/sim/character.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, carriageRate } from "../../../shared/sim/entities.ts";
 import { TURN_STEPS, predictedStride, turnSteps } from "../../../shared/anim/pose.ts";
 import { ARMOR_SLOTS } from "../../../shared/sim/items.ts";
-import { FISTS, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
+import { FISTS, HOLD_CARRY, poseHold } from "../../../shared/sim/weapon.ts";
 import type { AppFrame } from "../frame.ts";
 import { bodySeed } from "../render/scene.ts";
 import type { Director } from "./director.ts";
@@ -46,7 +46,7 @@ export function ownBody(d: Director, f: AppFrame): void {
   body.state.setJet(session.own.jetThrust, session.own.jetGear);
   body.state.setGlide(session.own.glide !== 0, glidePhase(session.own.vx, session.own.vy, session.own.vz));
   // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.
-  body.state.setAction(session.own.act, f.holding >= 0 ? HOLD_CARRY : (reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
+  body.state.setAction(session.own.act, f.holding >= 0 ? HOLD_CARRY : poseHold(reg.weapon[session.own.held] ?? FISTS), session.simTick - session.own.actTicks);
   body.state.seed = bodySeed(body.id);
   body.state.stride = session.driving < 0 && !session.own.seat ? predictedStride(session.ownStride, body.state) : -1;
   // An emote is the server's to say: the one it plays for this body, as the view has it.

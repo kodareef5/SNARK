@@ -9,6 +9,7 @@
 // --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 // --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
 // --blast LOOK (--surface WHAT, --at MS,MS) draws a blast at moments after it went off, and --rocket a rocket in flight (tools/snap/blast.ts).
+// --strikes fists|hatchet|pick draws a blow as a sheet of its moments (tools/snap/strikes.ts).
 
 import { zoomed } from "../client/core/optics.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -40,7 +41,7 @@ import { Inventory } from "../shared/sim/items.ts";
 import { stationRecipes } from "../client/core/ui/station.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
-import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
+import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL, SWING_TICKS } from "../shared/sim/weapon.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, withContent, type Registry } from "../shared/content/registry.ts";
@@ -85,6 +86,7 @@ import { blastSnap } from "./snap/blast.ts";
 import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
 import { saddleAsset, saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
+import { strikeSheet } from "./snap/strikes.ts";
 import { frozenPack } from "../tests/fixtures/pack.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
@@ -859,6 +861,29 @@ export function clientPicture(width: number, height: number, look: Uint8Array | 
   return raster.color;
 }
 
+/**
+ * The same whole client, pictured more than once: `film` runs it on and calls `shot` for a picture of it as it then is.
+ */
+export function clientFilm(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void, h: Harness) => void, film: (app: App, run: (ms: number) => void, shot: () => Uint8ClampedArray) => void): void {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const pack = parsePack(corePackBytes());
+  const app = new App(h.join("ada", {}, { manual: true, look }), h.reg, pack);
+  app.fromEye = true;
+  let packet = app.frame(0, width, height);
+  const run = (ms: number): void => h.run(ms, (now) => (packet = app.frame(now, width, height)));
+  run(500);
+  setup(app, run, h);
+  run(50);
+  const raster = new Rasterizer(width, height, pack, app.session.world!.hf);
+  app.scene!.resetUploads();
+  packet = app.frame(h.now + 1, width, height);
+  raster.render(packet!);
+  film(app, run, () => {
+    raster.render(packet!);
+    return raster.color.slice();
+  });
+}
+
 /** The view a model is drawn with: narrow, so that near and far parts are drawn nearly the same size. */
 const MODEL_FOV = 0.2;
 
@@ -1128,6 +1153,63 @@ if (import.meta.main) {
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(W, H, pixels));
     console.log(`${out}\n${W}x${H}  ${shots.length} moments of ${f.ticks.length} ticks  ${(performance.now() - t0).toFixed(0)} ms`);
+    process.exit(0);
+  }
+  if (args.includes("--strikes")) {
+    // A blow's moments from outside, a tile each (tools/snap/strikes.ts).
+    const [tw, th] = (arg("size") ?? "250x400").split("x").map(Number) as [number, number];
+    const columns = Number(arg("columns") ?? 8), step = Number(arg("step") ?? 1), from = Number(arg("from") ?? 0);
+    const what = arg("strikes") ?? "fists";
+    const pixels = new Uint8ClampedArray(tw * columns * th * 2 * 4);
+    if (args.includes("--eye")) {
+      // From the striker's own eye, in the whole client: --look DEGREES pitches the view, --crouch, --walk.
+      const frames = Math.max(1, Math.round(step * 2));
+      clientFilm(tw, th, defaultLook(), (app, run, hh) => {
+        const s = app.session;
+        if (what !== "fists") {
+          const item = hh.reg.index.get(`core:${what}`)!;
+          const rec = hh.host.records.byPid.get(hh.world.ents.pid[hh.ent(s)]!)!;
+          hh.host.items.mint(rec, item, 1);
+          run(200);
+          const inv = s.inventory!;
+          s.command(CMD_MOVE, (wr) => (wr.bits(BOX_SELF, 1), wr.varint(inv.item.indexOf(item)), wr.bits(BOX_SELF, 1), wr.varint(inv.hotbar), wr.u16(0), wr.u16(item)));
+          run(150);
+          s.command(CMD_SELECT, (wr) => wr.u8(0));
+          run(1500);
+        }
+        app.view.thirdPerson = false;
+        app.controls.yaw = 0;
+        app.controls.pitch = (Number(arg("look") ?? 0) * Math.PI) / 180;
+        if (args.includes("--crouch")) app.controls.key("KeyC", true);
+        if (args.includes("--walk")) app.controls.key("KeyW", true);
+        run(600);
+      }, (app, run, shot) => {
+        app.controls.mouseButton(0, true);
+        // A held button strikes again as a swing ends, with the other move: a row for each.
+        const own = app.session.own;
+        for (let row = 0; row < 2; row++) {
+          // From the frame its own predicted swing is `from` ticks old, and no swing left over from the row before.
+          for (let i = 0; i < 120 && !(own.act === ACT_SWING && own.actTicks === from); i++) run(1000 / 60);
+          for (let c = 0; c < columns; c++) {
+            const from_ = shot();
+            for (let py = 0; py < th; py++) pixels.set(from_.subarray(py * tw * 4, (py + 1) * tw * 4), ((row * th + py) * tw * columns + c * tw) * 4);
+            run((frames * 1000) / 60);
+          }
+          for (let i = 0; i < 120 && own.act === ACT_SWING && own.actTicks >= from && own.actTicks < SWING_TICKS - 1; i++) run(1000 / 60);
+        }
+      });
+      const out = resolve(arg("out") ?? `artifacts/strikes-${what}-eye.png`);
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, encodePng(tw * columns, th * 2, pixels));
+      console.log(out);
+      process.exit(0);
+    }
+    const view = provingView(tw, th);
+    strikeSheet(view, { what, face: (Number(arg("face") ?? 35) * Math.PI) / 180, look: Number(arg("look") ?? 0), crouch: args.includes("--crouch"), speed: Number(arg("speed") ?? 0), close: args.includes("--close"), columns, from, step, width: tw, height: th }, pixels);
+    const out = resolve(arg("out") ?? `artifacts/strikes-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(tw * columns, th * 2, pixels));
+    console.log(out);
     process.exit(0);
   }
   if (args.includes("--fight")) {

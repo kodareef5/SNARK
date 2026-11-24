@@ -212,7 +212,7 @@ cue("turret", "structure", "weapon", "world", "waits:defences", "a turret fires"
 cue("felled", "node", "build", "world", "fire", "a wood node's slot is used up (S_NODES)", { falls: ["{owner}/felled", "core:node/felled/wood"] });
 cue("crumble", "node", "build", "world", "fire", "a stone node's slot is used up", { falls: ["{owner}/crumble", "core:node/crumble/stone"] });
 cue("picked", "node", "build", "world", "fire", "a plant node's slot is used up", { falls: ["{owner}/picked", "core:node/picked/foliage"] });
-cue("struck", "node", "hit", "world", "hook", "a blow lands on a node (own strike and aim, which the session does not keep)", { falls: ["core:surface/impact/wood"] });
+cue("struck/{material}", "node", "hit", "world", "fire", "the server confirms a harvesting blow at its contact point", { falls: ["{owner}/struck", "core:surface/impact/{material}"] });
 cue("regrow", "node", "build", "world", "waits:polish", "a node's slot is freed");
 
 // ---- The interface, never placed. Shared family core:ui.

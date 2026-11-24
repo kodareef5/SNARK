@@ -33,7 +33,7 @@ export const CATEGORY_ROWS: Readonly<Record<Category, readonly string[]>> = {
   bodies: ["S_SNAPSHOT"],
   world: ["S_CHUNK", "S_CHUNK_DROP", "S_NODES", "S_TACTICAL", "S_MARKS", "S_FAR", "S_MOTION", "S_SUPPLY", "EVENT_TAMED", "EVENT_BALL"],
   combat: ["EVENT_HIT", "EVENT_HURT", "EVENT_DEATH", "EVENT_KILL", "EVENT_SHOT", "EVENT_BOLTS", "EVENT_ROCKET", "EVENT_BLAST"],
-  cosmetic: ["EVENT_IMPACT", "S_CORPSE"],
+  cosmetic: ["EVENT_IMPACT", "EVENT_STRIKE", "S_CORPSE"],
   text: ["S_TEXT"],
   session: ["S_WELCOME", "S_RESULT", "S_REJECT", "S_TRAVEL", "S_TUNING", "C_HELLO"],
   input: ["C_INPUT"],

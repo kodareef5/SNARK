@@ -10,6 +10,8 @@ import { AnimState } from "../../shared/anim/pose.ts";
 import { RIG_CLIPS } from "../../shared/anim/rigs.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
+import { FISTS } from "../../shared/sim/weapon.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { Assets } from "../../client/core/assets/assets.ts";
 import { Characters } from "../../client/core/render/characters.ts";
@@ -81,6 +83,47 @@ test("the survivor's moves are its own clips, then all eighty emotes, each sayin
     if (!clipOf(m.source, null, c.anim)) expect(m.missing).toBe("needs the art release");
   }
   expect(firstMove(before)!.key).toBe(c.anim.idle ? "idle" : own[0]!.moves[0]!.key);
+});
+
+test("the studio shows each strike with its tool and its in-game timing", () => {
+  const anim = chars().anim;
+  const moves = humanMoves(anim, false).flatMap((g) => g.moves);
+  const p = new Playback();
+  for (const [key, item] of [
+    ["jab", undefined], ["cross", undefined], ["chopA", "core:hatchet"],
+    ["chopB", "core:hatchet"], ["pickA", "core:pick"], ["pickB", "core:pick"],
+  ] as const) {
+    const move = moves.find((m) => m.key === key)!;
+    const clip = clipOf(move.source, null, anim)!;
+    const weapon = item ? reg.weapon[reg.index.get(item)!]! : FISTS;
+    expect(move.item).toBe(item);
+    p.start(clip.frames, clip.loop, move.durationTicks);
+    expect(p.length).toBe(weapon.swingTicks / TICK_RATE);
+    p.step(weapon.strikeTick / TICK_RATE);
+    expect(p.at).toBeCloseTo((clip.frames - 1) * weapon.strikeTick / weapon.swingTicks);
+    expect(p.seconds).toBeCloseTo(weapon.strikeTick / TICK_RATE);
+    p.step((weapon.swingTicks - weapon.strikeTick) / TICK_RATE);
+    expect(p.playing).toBe(false);
+    expect(p.at).toBe(clip.frames - 1);
+  }
+  expect(moves.find((m) => m.key === "toolCarry")!.item).toBe("core:hatchet");
+});
+
+test("a repeated strike meets the next on time and scrubs through its swing", () => {
+  const p = new Playback();
+  p.start(61, false, 15);
+  p.loop = true;
+  p.step(0.5);
+  expect(p.at).toBe(0);
+  expect(p.length).toBe(0.5);
+  p.scrub(0.5);
+  expect(p.seconds).toBe(0.25);
+  expect(p.share).toBe(0.5);
+  p.speed = 0.25;
+  p.step(0.5);
+  expect(p.share).toBe(0.75);
+  p.start(30, true);
+  expect(p.length).toBe(1);
 });
 
 test("the clock loops, holds a one-shot's last frame, scrubs and speeds", () => {

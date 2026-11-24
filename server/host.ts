@@ -70,7 +70,7 @@ import { VehicleTrees } from "./vehicle-trees.ts";
 import { Progression } from "./progression.ts";
 import { JET_BOOTS, JET_CUIRASS, JET_HELMET, MODE_WALK, stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
-import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
+import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY, poseHold } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { walk, type System } from "./system.ts";
 import { Items } from "./items.ts";
@@ -1855,7 +1855,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;
       const loaded = works ? inv.loaded[slot]! : 0;
       const ammo = works ? combat.ammoFor(rec, slot) : 0;
-      ents.hold[e] = arms >= 0 ? HOLD_CARRY : params.hold;
+      ents.hold[e] = arms >= 0 ? HOLD_CARRY : poseHold(params);
       ents.rounds[e] = loaded;
       ents.reloadTo[e] = works ? Math.min(params.clip, (ammo === inv.ammo[slot] ? loaded : 0) + (ammo !== 0 ? inv.total(ammo) : 0)) : 0;
       // A change of held item stops its action and starts the equip delay.

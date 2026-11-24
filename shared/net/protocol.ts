@@ -728,6 +728,8 @@ export const SHOT_HEARD = 260;
  * it later is told then. Its blast says its number.
  */
 export const EVENT_ROCKET = eventKind();
+/** A survivor's own swing landed: server tick u32, node kind varint (0 for other targets), then world position (3 x f32) for a node. */
+export const EVENT_STRIKE = eventKind();
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

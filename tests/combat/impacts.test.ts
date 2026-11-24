@@ -35,6 +35,8 @@ test("a punch on a dummy tells the puncher and a bystander which bone it struck,
     pilot.buttons = 0;
     h.run(800);
     expect(h.host.combat.hits).toBe(hits + 1);
+    expect(ada.strike?.node).toBe(0);
+    expect(bo.strike).toBeNull();
     for (const who of [ada, bo]) {
       const seen = who.impacts.filter((im) => im.id === e);
       expect(seen.length).toBe(1);

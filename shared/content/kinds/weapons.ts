@@ -69,6 +69,8 @@ export interface WeaponFacet {
   /** Mesh held in the hand, and how the body holds it. */
   readonly mesh?: string;
   readonly hold: "tool" | "bow" | "rifle" | "pistol" | "spear";
+  /** A tool swung as a pick is, with both hands from overhead. Omitted, it chops. */
+  readonly swing?: "pick";
   // Fire modes and the blow (planning/reference/weapons-plan.md, M4, built by W2). Omitted, a weapon fires once a press,
   // reloads its whole clip in one go and strikes with bare hands.
   /** Holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
@@ -303,6 +305,7 @@ function weaponParams(w: WeaponFacet): WeaponParams {
     reloadTicks: kind === W_BOW || kind === W_GUN ? ticks(w.reload, 1) : 0,
     clip: kind === W_BOW || kind === W_GUN ? (w.clip ?? 1) : 0,
     wet: w.wet ?? (kind === W_MELEE),
+    ...(w.swing === "pick" ? { pick: true } : {}),
     // Fire modes and the blow (planning/reference/weapons-plan.md, M4), only where the facet says.
     ...(w.auto ? { auto: true } : {}),
     ...(w.reloadEach ? { reloadEach: true } : {}),

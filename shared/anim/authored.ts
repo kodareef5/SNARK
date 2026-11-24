@@ -6,41 +6,63 @@ import { TAU, detSin } from "../math/scalar.ts";
 import { Pose, type Clip } from "./clip.ts";
 import { emoteClips } from "./emote-clips.ts";
 import { glideClips } from "./glide-clips.ts";
+import { strikeClips } from "./strikes.ts";
 import {
   B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK,
-  B_PROP_L, B_PROP_R, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
+  B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
 } from "./human.ts";
 
 const DEG = TAU / 360;
 
 /** A limb bone's rest axis runs from its joint to the joint of the bone it maps to. */
 const TOWARD: Readonly<Record<number, number>> = {
+  [B_SHOULDER_L]: B_UPPER_ARM_L, [B_SHOULDER_R]: B_UPPER_ARM_R,
   [B_UPPER_ARM_L]: B_LOWER_ARM_L, [B_LOWER_ARM_L]: B_HAND_L, [B_UPPER_ARM_R]: B_LOWER_ARM_R, [B_LOWER_ARM_R]: B_HAND_R,
   [B_UPPER_LEG_L]: B_LOWER_LEG_L, [B_LOWER_LEG_L]: B_FOOT_L, [B_UPPER_LEG_R]: B_LOWER_LEG_R, [B_LOWER_LEG_R]: B_FOOT_R,
 };
 
+const chains = Array.from(HUMAN.parent, (_, bone) => {
+  const chain: number[] = [];
+  for (let b = bone; b > 0; b = HUMAN.parent[b]!) chain.push(b);
+  return chain.reverse();
+});
+
 /** Builds one pose. Set bones from the hips outward, because turning a parent carries its children with it. */
 export class PoseBuilder {
   readonly pose = new Pose(HUMAN_BONES);
+  rest = HUMAN.rest;
   /** Model-space rotation of each bone. */
   private readonly world = new Float64Array(HUMAN_BONES * 4);
   private readonly q = new Float64Array(4);
   private readonly v = new Float64Array(3);
 
+  /** World rotations below this index already match the current pose. */
+  private worldReady = 0;
+
   constructor() {
-    this.refresh(0);
+    this.refresh(HUMAN_BONES);
+  }
+
+  /** Starts from `pose` in place of rest, to turn some of its bones where it stands. */
+  from(pose: Pose, rest = HUMAN.rest): this {
+    this.rest = rest;
+    this.pose.rot.set(pose.rot);
+    this.pose.root.set(pose.root);
+    this.worldReady = 0;
+    return this;
   }
 
   /** In model space. */
   hips(x: number, y: number, z: number): this {
-    this.pose.root[0] = x - HUMAN.rest[0]!;
-    this.pose.root[1] = y - HUMAN.rest[1]!;
-    this.pose.root[2] = z - HUMAN.rest[2]!;
+    this.pose.root[0] = x - this.rest[0]!;
+    this.pose.root[1] = y - this.rest[1]!;
+    this.pose.root[2] = z - this.rest[2]!;
     return this;
   }
 
   /** Degrees about the model's X, then Y, then Z axis, applied on top of the bone's current rotation. */
   turn(bone: number, x: number, y = 0, z = 0): this {
+    this.refresh(bone + 1);
     const q = this.q;
     for (const [angle, ax, ay, az] of [[x, 1, 0, 0], [y, 0, 1, 0], [z, 0, 0, 1]] as const) {
       if (angle === 0) continue;
@@ -54,9 +76,9 @@ export class PoseBuilder {
   aim(bone: number, dx: number, dy: number, dz: number, roll = 0): this {
     const to = TOWARD[bone];
     if (to === undefined) throw new Error(`bone ${HUMAN.names[bone]} has no axis to aim`);
-    let ax = HUMAN.rest[to * 3]! - HUMAN.rest[bone * 3]!;
-    let ay = HUMAN.rest[to * 3 + 1]! - HUMAN.rest[bone * 3 + 1]!;
-    let az = HUMAN.rest[to * 3 + 2]! - HUMAN.rest[bone * 3 + 2]!;
+    let ax = this.rest[to * 3]! - this.rest[bone * 3]!;
+    let ay = this.rest[to * 3 + 1]! - this.rest[bone * 3 + 1]!;
+    let az = this.rest[to * 3 + 2]! - this.rest[bone * 3 + 2]!;
     const al = Math.sqrt(ax * ax + ay * ay + az * az);
     ax /= al;
     ay /= al;
@@ -95,6 +117,7 @@ export class PoseBuilder {
 
   /** Degrees about the bone's own X, then Y, then Z axis (its rest frame as turned): a curl of the fingers whatever way the hand is turned. */
   local(bone: number, x: number, y = 0, z = 0): this {
+    this.refresh(bone + 1);
     const q = this.q;
     for (const [angle, ax, ay, az] of [[x, 1, 0, 0], [y, 0, 1, 0], [z, 0, 0, 1]] as const) {
       if (angle === 0) continue;
@@ -112,15 +135,32 @@ export class PoseBuilder {
     return this.store(bone);
   }
 
+  /** Copies a bone's model-space rotation, for the pose so far, to `out` at `o`. */
+  rotation(bone: number, out: Float64Array, o: number): void {
+    this.refresh(bone + 1);
+    quatCopy(out, o, this.world, bone * 4);
+  }
+
+  /** Straightens a bone on its parent, as it rests. */
+  straighten(bone: number): this {
+    this.refresh(bone);
+    quatCopy(this.world, bone * 4, this.world, HUMAN.parent[bone]! * 4);
+    return this.store(bone);
+  }
+
+  /** Gives a bone the model-space rotation in `q` at `o`, regardless of its parents. */
+  rotate(bone: number, q: Float64Array, o: number): this {
+    quatCopy(this.world, bone * 4, q, o);
+    return this.store(bone);
+  }
+
   /** The joint's position in model space, for the pose so far. */
   joint(bone: number): [number, number, number] {
-    const chain: number[] = [];
-    for (let b = bone; b >= 0; b = HUMAN.parent[b]!) chain.push(b);
-    const rest = HUMAN.rest;
+    this.refresh(HUMAN.parent[bone]! + 1);
+    const rest = this.rest;
     const at: [number, number, number] = [rest[0]! + this.pose.root[0]!, rest[1]! + this.pose.root[1]!, rest[2]! + this.pose.root[2]!];
-    for (let i = chain.length - 2; i >= 0; i--) {
-      const b = chain[i]!;
-      const p = chain[i + 1]!;
+    for (const b of chains[bone]!) {
+      const p = HUMAN.parent[b]!;
       quatRotate(this.world, p * 4, rest[b * 3]! - rest[p * 3]!, rest[b * 3 + 1]! - rest[p * 3 + 1]!, rest[b * 3 + 2]! - rest[p * 3 + 2]!, this.v, 0);
       at[0] += this.v[0]!;
       at[1] += this.v[1]!;
@@ -132,6 +172,7 @@ export class PoseBuilder {
   /** The model-space place of a point given from `bone`'s joint in its rest frame, for the pose so far. */
   point(bone: number, x: number, y: number, z: number): [number, number, number] {
     const at = this.joint(bone);
+    this.refresh(bone + 1);
     quatRotate(this.world, bone * 4, x, y, z, this.v, 0);
     return [at[0] + this.v[0]!, at[1] + this.v[1]!, at[2] + this.v[2]!];
   }
@@ -195,6 +236,7 @@ export class PoseBuilder {
 
   /** Stores the model-space rotation of `bone` relative to its parent and carries its children with it. */
   private store(bone: number): this {
+    this.refresh(bone);
     const p = HUMAN.parent[bone]!;
     if (p < 0) quatCopy(this.pose.rot, bone * 4, this.world, bone * 4);
     else {
@@ -202,16 +244,18 @@ export class PoseBuilder {
       quatNormalize(this.q, 0);
       quatCopy(this.pose.rot, bone * 4, this.q, 0);
     }
-    this.refresh(bone + 1);
+    this.worldReady = bone + 1;
     return this;
   }
 
-  private refresh(from: number): void {
-    for (let b = from; b < HUMAN_BONES; b++) {
+  private refresh(end: number): void {
+    if (end <= this.worldReady) return;
+    for (let b = this.worldReady; b < end; b++) {
       const p = HUMAN.parent[b]!;
       if (p < 0) quatCopy(this.world, b * 4, this.pose.rot, b * 4);
       else quatMul(this.world, b * 4, this.world, p * 4, this.pose.rot, b * 4);
     }
+    this.worldReady = end;
   }
 }
 
@@ -360,5 +404,6 @@ export function authoredClips(): readonly Clip[] {
     clip("human/launcher_push", 1, true, (b) => launcherLoading(b, ROUND_HOME)),
     ...emoteClips(),
     ...glideClips(),
+    ...strikeClips(),
   ]);
 }

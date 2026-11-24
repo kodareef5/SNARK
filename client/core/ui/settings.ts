@@ -19,13 +19,13 @@ export const KEY_SETTINGS_SLIDER = 5900;
 export const SETTING_GROUPS = [
   { name: "Display", rows: [11, 21, 18, 19, 12, 2, 0, 24] },
   { name: "Audio", rows: [17, 5, 6, 7, 8, 9, 3, 4] },
-  { name: "Input", rows: [1, 22] },
+  { name: "Input", rows: [1, 22, 25] },
   { name: "Interface", rows: [14, 15, 16, 23, 13, 20] },
   // Its one row, Download all, is the page's own buttons (ui/storage.ts).
   { name: "Storage", rows: [10] },
 ] as const;
 export const STORAGE_TAB = 4;
-const TOGGLES = new Set([0,4,12,14,15,16,17,20,23]);
+const TOGGLES = new Set([0,4,12,14,15,16,17,20,23,24,25]);
 
 /** `storage` is the Storage tab's page, once it has come (ui/storage.ts). */
 export function buildSettings(f: UiFrame, s: Settings, micLevel = 0, focus = 0, storage: StoragePage | null = null): void {
