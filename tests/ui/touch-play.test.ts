@@ -184,7 +184,7 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   run(50);
   expect([app.ui.inventory.open, f.find(KEY_ZONE_MOVE), f.find(KEY_TOUCH_BUTTON + T_ATTACK)]).toEqual([true, null, null]);
   // Each screen has a way out in the corner that covers none of its own controls, on every phone.
-  for (const [button, open] of [[T_BAG, () => app.ui.inventory.open], [T_CHARACTER, () => app.ui.screen<CharacterScreen>("character").open], [T_MAP, () => app.ui.map]] as const) for (const [name, w, hh] of PHONES) {
+  for (const [button, open] of [[T_BAG, () => app.ui.inventory.open], [T_CHARACTER, () => app.ui.screen<CharacterScreen>("character").open], [T_MAP, () => app.ui.opened("map")]] as const) for (const [name, w, hh] of PHONES) {
     if (!open()) { app.key(button === T_CHARACTER ? "KeyP" : button === T_MAP ? "KeyM" : "KeyI", true, false, 2); h.run(50, (now) => app.frame(now, w, hh)); }
     h.run(50, (now) => app.frame(now, w, hh));
     const close = f.find(KEY_TOUCH_BUTTON + T_CLOSE)!, where = `${name}, screen ${button}`;
@@ -194,7 +194,7 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   app.pointer(0, KEY_TOUCH_BUTTON + T_CLOSE, 0, 0, 0, 3);
   app.pointer(1, KEY_TOUCH_BUTTON + T_CLOSE, 0, 0, 0, 3);
   run(50);
-  expect([app.ui.map, app.ui.inventory.open, app.ui.screen<CharacterScreen>("character").open, f.find(KEY_TOUCH_BUTTON + T_CLOSE)]).toEqual([false, false, false, null]);
+  expect([app.ui.opened("map"), app.ui.inventory.open, app.ui.screen<CharacterScreen>("character").open, f.find(KEY_TOUCH_BUTTON + T_CLOSE)]).toEqual([false, false, false, null]);
   expect(f.find(KEY_ZONE_MOVE)).not.toBeNull();
   // The menu: everything held is let go, and the layer is gone until it is resumed.
   app.pointer(0, KEY_ZONE_MOVE, 150, 350, 0, 1);
@@ -385,7 +385,7 @@ test("the map by touch: a finger drags it, a tap looks there, and two fingers pi
   app.pointer(0, KEY_TOUCH_BUTTON + T_MAP, 0, 0, 0, 1); app.pointer(1, KEY_TOUCH_BUTTON + T_MAP, 0, 0, 0, 1);
   run(100);
   const f = app.ui.frame, chart = app.hud.chart!, map = f.find(KEY_MAP_IMAGE)!;
-  expect([app.ui.map, map.interactive]).toEqual([true, true]);
+  expect([app.ui.opened("map"), map.interactive]).toEqual([true, true]);
   const cx = map.x + map.w / 2, cy = map.y + map.h / 2;
   // Zoomed in, so there is somewhere to go. Two fingers part: one step in; they close: one step out, and back in.
   const zoom = chart.fullZoom;

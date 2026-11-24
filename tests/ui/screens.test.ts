@@ -7,19 +7,25 @@ import type { Screen, ScreenCtx } from "../../client/core/ui/screen.ts";
 import { RESULT_DENIED } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
+import { Chart } from "../../client/core/tactical.ts";
+import { KEY_MAP_IMAGE, type MapScreen } from "../../client/core/ui/screens.ts";
+import { buildProvingHeightfield } from "../../shared/world/proving.ts";
+import { corePack } from "../fixtures/pack.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { emptyAirSupport } from "../../shared/sim/air-support.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
+const hf = buildProvingHeightfield();
+const palette = corePack().palette;
 
 /** Enough of a session for the interface to build, which records the commands sent. */
 function fakeSession(): { session: ClientSession; sent: number[] } {
   const sent: number[] = [];
   const session = {
     state: "active", airSupport: emptyAirSupport(), inventory: new Inventory(40 + HOTBAR_SLOTS + ARMOR_SLOTS, 40), held: 0, tamed: [],
-    serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" }, ownKind: reg.index.get("core:survivor")!,
+    serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "", team: 0 }, world: { hf }, markers: [], tactical: null, mapLocation: true, own: { x: 100, y: 0, z: 100 }, ownKind: reg.index.get("core:survivor")!,
     progress: { level: 1, xp: 0, statPoints: 0, engramPoints: 0, jobs: [], engrams: [], version: 1 },
     command: (op: number) => (sent.push(op), 1), emote: () => (sent.push(-1), 1),
   } as unknown as ClientSession;
@@ -35,7 +41,9 @@ function inBands(s: Screen, key: number): boolean {
 /** Builds with the screen open, and returns the nodes it owns. */
 function drawn(ui: Ui, s: Screen, session: ClientSession) {
   ui.registry = reg;
-  ui.build(16 / 9, new HudModel(), session);
+  const hud = new HudModel();
+  hud.chart = new Chart(hf, palette);
+  ui.build(16 / 9, hud, session);
   const at = ui.screens.indexOf(s);
   return ui.frame.nodes.slice(0, ui.frame.count).filter((n) => n.owner === at);
 }
@@ -60,6 +68,7 @@ const opens: Record<string, (ui: Ui) => Screen> = {
   travel: openTravel,
   character: (ui) => { const s = ui.screen<CharacterScreen>("character"); s.open = true; return s; },
   emotes: (ui) => { const s = ui.screen<EmoteMenu>("emotes"); s.open = true; return s; },
+  map: (ui) => { const s = ui.screen<MapScreen>("map"); s.open = true; return s; },
 };
 
 test("each open screen frees the pointer, draws inside its bands and owns what it drew", () => {
@@ -113,9 +122,9 @@ test("a screen's hotkey opens it and shuts the rest of its group, and Escape shu
   ui.key("KeyP", true, false, session);
   expect([travel.open, sheet.open]).toEqual([false, true]);
   ui.key("KeyM", true, false, session);
-  expect([sheet.open, ui.map]).toEqual([false, true]);
+  expect([sheet.open, ui.opened("map")]).toEqual([false, true]);
   ui.key("KeyP", true, false, session);
-  expect([sheet.open, ui.map]).toEqual([true, false]);
+  expect([sheet.open, ui.opened("map")]).toEqual([true, false]);
   ui.key("KeyP", true, false, session);
   expect(sheet.open).toBe(false);
   openTravel(ui);
@@ -148,4 +157,27 @@ test("the server's answer reaches the screen that asked", () => {
   expect(emotes.open).toBe(false);
   ui.results(42, RESULT_DENIED);
   expect(emotes.notice).toBe("Not now: stand still, hands free");
+});
+
+test("the map takes a finger's drag through the list, with no click", () => {
+  const ui = new Ui(), { session } = fakeSession();
+  const map = ui.screen<MapScreen>("map");
+  const heard: string[] = [];
+  ui.hear = (cue) => heard.push(cue);
+  ui.key("KeyM", true, false, session);
+  heard.length = 0;
+  const hud = new HudModel();
+  hud.chart = new Chart(hf, palette);
+  // Twice: the first build looks at the reader, as a freshly opened map does.
+  ui.build(16 / 9, hud, session);
+  ui.build(16 / 9, hud, session);
+  const picture = ui.frame.find(KEY_MAP_IMAGE)!;
+  expect(picture.owner).toBe(ui.screens.indexOf(map));
+  const [cx, cy] = [picture.x + picture.w / 2, picture.y + picture.h / 2];
+  const before = hud.chart.fullU;
+  ui.pointer(0, KEY_MAP_IMAGE, cx, cy, 0, session, 1);
+  ui.pointer(2, KEY_MAP_IMAGE, cx + 60, cy, 0, session, 1);
+  ui.pointer(1, KEY_MAP_IMAGE, cx + 60, cy, 0, session, 1);
+  expect(hud.chart.fullU).toBeLessThan(before);
+  expect(heard).toEqual([]);
 });

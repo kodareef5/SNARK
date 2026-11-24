@@ -79,7 +79,6 @@ import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
 import { glass } from "./ui/skin.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
-import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_REFRESH_MS, type TravelScreen } from "./ui/travel.ts";
 import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
@@ -447,7 +446,6 @@ export class App {
   pointer(kind: number, key: number, x: number, y: number, button: number, finger = 0): void {
     if (finger > 0) this.ui.inputDevice = 2;
     if (this.touch.pointer(kind, key, x, y, finger, this.nowMs, this.touchTarget, this.unit)) return;
-    if (!this.ui.menu && this.ui.map && mapPointer(this.hud, kind, key, x, y, finger)) return;
     if ((this.ui.wantsPointerLock || this.ui.inspect) && kind === 0 && button === 0) {
       if (key >= KEY_VITAL && key < KEY_VITAL + this.hud.vitals.length * 2) { this.ui.settings.vitalLabels = !this.ui.settings.vitalLabels; this.ui.settings.changed(); }
       if (key === KEY_MINIMAP_TOGGLE) { this.ui.settings.minimap = !this.ui.settings.minimap; this.ui.settings.changed(); }
@@ -455,7 +453,7 @@ export class App {
       const slot = (key - KEY_HOTBAR) / 3;
       if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
     }
-    this.ui.pointer(kind, key, x, y, button, this.session);
+    this.ui.pointer(kind, key, x, y, button, this.session, finger);
     if (this.ui.menu || this.ui.air.open) this.blur();
   }
 

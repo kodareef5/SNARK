@@ -103,7 +103,7 @@ export const screenPixels = (size: number, distance: number, fov: number, height
 export const SIGHT_KEYS: readonly KeyRow[] = [{
   name: "sight zoom",
   keys: ["ArrowUp", "ArrowDown"],
-  when: (c) => c.zooming && !c.ui.map,
+  when: (c) => c.zooming && !c.ui.opened("map"),
   press(c, code, down) {
     if (down) c.zoomBy(code === "ArrowUp" ? -1 : 1);
     return true;

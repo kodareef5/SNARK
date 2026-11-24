@@ -612,7 +612,7 @@ test("the choosing and map screens fit every window shape, and a place picked in
         ui.pointer(0, KEY_CHOOSE_ROW, 0, 0, 0, session);
         expect(sent.length).toBe(0);
         expect(ui.key("Escape", true, false, session)).toBe(true);
-        expect(ui.map).toBe(false);
+        expect(ui.opened("map")).toBe(false);
       }
     }
   }
@@ -775,7 +775,7 @@ test("the character screen fits every window shape on every tab and page, and it
     expect([r.u16(), r.u8()]).toEqual([reg.index.get("core:pick")!, 1]);
     // Only one screen shows at a time, so the map key puts this one away.
     ui.key("KeyM", true, false, session);
-    expect([ui.screen<CharacterScreen>("character").open, ui.map]).toEqual([false, true]);
+    expect([ui.screen<CharacterScreen>("character").open, ui.opened("map")]).toEqual([false, true]);
   }
 });
 

@@ -5,6 +5,7 @@ import { ANY_KEY, pressKey, type KeyRow } from "../../client/core/key-row.ts";
 import { KEY_ROWS } from "../../client/core/keys.ts";
 import { touchKey } from "../../client/core/touch.ts";
 import type { TravelScreen } from "../../client/core/ui/travel.ts";
+import type { MapScreen } from "../../client/core/ui/screens.ts";
 import { keyBinding } from "../../client/core/ui/controls-guide.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { BTN_MOD, BTN_PRONE } from "../../shared/sim/character.ts";
@@ -144,7 +145,7 @@ test("the arrows zoom a sight, then lift a piece being placed, then move the map
   expect(press("ArrowUp")).toBe("build");
   expect(app.builder.lift).toBe(1);
   app.builder.active = false;
-  app.ui.map = true;
+  app.ui.screen<MapScreen>("map").open = true;
   expect(press("ArrowUp")).toBe("chart");
 });
 

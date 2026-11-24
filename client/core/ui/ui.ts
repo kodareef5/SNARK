@@ -17,7 +17,6 @@ import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_M
 import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
-import { buildMap } from "./screens.ts";
 import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
@@ -51,7 +50,6 @@ export class Ui {
   /** The session is in the creator, which is then the whole interface. */
   creating = false;
   /** Which screen is up. `options` is the settings screen. */
-  map = false;
   options = false;
   menu = false;
   /** The Creative screen, within the menu. */
@@ -94,7 +92,7 @@ export class Ui {
   private menuShift = false;
   readonly settings = new Settings();
   /** What the screens read, set before each call to them. */
-  private readonly ctx: ScreenCtx = { session: null, registry: null, palette: null, hud: null, settings: this.settings, focus: 0, inputDevice: 0, hear: (cue) => this.hear?.(cue) };
+  private readonly ctx: ScreenCtx = { session: null, registry: null, palette: null, hud: null, settings: this.settings, focus: 0, inputDevice: 0, finger: 0, hear: (cue) => this.hear?.(cue) };
   /** The session has no body and chooses where to rise, so the mouse is free. */
   private dead = false;
   /** The app sets both once it has them. */
@@ -102,6 +100,11 @@ export class Ui {
   palette: Uint8Array | null = null;
   /** A console line this client answers itself, without the server: the answer, or null for a line to send. */
   local: ((line: string) => string | null) | null = null;
+
+  /** Whether the screen of SCREENS named `name` is up. */
+  opened(name: string): boolean {
+    return this.screen(name).isOpen();
+  }
 
   /** The screen of SCREENS by its name. */
   screen<S extends Screen>(name: string): S {
@@ -126,7 +129,7 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
-    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.options && !this.dead && !this.creating && !this.structure.open && !(this.debug?.holdsPointer ?? false);
+    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.options && !this.dead && !this.creating && !this.structure.open && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Whether a screen of `group` is open. */
@@ -303,18 +306,16 @@ export class Ui {
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
       const hot = this.hotkeyed("bag", code);
-      if (code === "KeyI" || code === "KeyM" || code === "KeyO" || hot || (code === "Escape" && (this.inventory.open || this.map || this.options || this.openIn("bag")))) {
+      if (code === "KeyI" || code === "KeyO" || hot || (code === "Escape" && (this.inventory.open || this.options || this.openIn("bag")))) {
         if (down && !repeat) {
           this.structure.close();
           // Opening one screen closes the others.
-          const map = code === "KeyM" && !this.map;
           const listed = hot && !hot.isOpen() ? hot : null;
           const options = code === "KeyO" && !this.options;
           const inventory = code === "KeyI" && !this.inventory.open;
-          const opened = map ? "map" : listed ? listed.name : options ? "options" : inventory ? "inventory" : "";
-          const shut = this.map ? "map" : this.openNameIn("bag") || (this.options ? "options" : this.inventory.open ? "inventory" : "");
+          const opened = listed ? listed.name : options ? "options" : inventory ? "inventory" : "";
+          const shut = this.openNameIn("bag") || (this.options ? "options" : this.inventory.open ? "inventory" : "");
           this.hear?.(opened !== "" ? `screen/${opened}/open` : `screen/${shut || "inventory"}/close`);
-          this.map = map;
           this.options = options;
           this.inspect = false;
           if (options) { this.menu = true; this.focusTo(KEY_MENU_BACK); }
@@ -362,8 +363,8 @@ export class Ui {
     return false;
   }
 
-  /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
-  pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null): void {
+  /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. `finger` is 0 for a mouse, else the touch's number. */
+  pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null, finger = 0): void {
     if (this.debug?.pointer(kind, key, x, y, button)) return;
     if (key === KEY_UNMUTE) { if (kind === 0 && button === 0) { this.settings.muted = false; this.settings.changed(); } return; }
     if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
@@ -406,13 +407,16 @@ export class Ui {
       this.creator.pointer(kind, key, session);
       return;
     }
-    if (kind === 0 && key !== 0) this.hear?.("click");
     // A node a screen of the list drew goes to that screen alone, and only while it is still open: a press can come
     // between a close and the next frame.
     const owner = this.frame.find(key)?.owner ?? -1;
-    if (owner >= 0) {
-      const s = this.screens[owner]!;
-      if (s.isOpen()) s.pointer?.(kind, key, x, y, button, this.at(session));
+    const listed = owner >= 0 ? this.screens[owner]! : null;
+    if (kind === 0 && key !== 0 && !listed?.quiet) this.hear?.("click");
+    if (listed) {
+      const c = this.at(session);
+      c.finger = finger;
+      if (listed.isOpen()) listed.pointer?.(kind, key, x, y, button, c);
+      c.finger = 0;
       return;
     }
     if (kind === 0 && !button && this.air.click(key, session)) return;
@@ -467,7 +471,7 @@ export class Ui {
       }
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
-      hud.bare = this.map || this.dead;
+      hud.bare = this.opened("map") || this.dead;
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.
@@ -509,7 +513,6 @@ export class Ui {
         } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);
       } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) this.choosing.build(f, session, hud);
-      else if (this.map && session) buildMap(f, session, hud);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
       else if (this.air.open && session) this.air.build(f, session, this.menuFocus);
       else if (!this.buildModal(f, session, hud)) {

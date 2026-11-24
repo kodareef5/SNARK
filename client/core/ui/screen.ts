@@ -20,6 +20,8 @@ export interface ScreenCtx {
   focus: number;
   /** 0 the keyboard and mouse, 1 a pad, 2 a finger. */
   inputDevice: number;
+  /** In a press, 0 for a mouse, else the touch's own number. */
+  finger: number;
   /** Plays an occasion of the interface by its cue (shared/sound/cues.ts). */
   hear(cue: string): void;
 }
@@ -47,6 +49,8 @@ export interface Screen {
   close(c: ScreenCtx): void;
   /** While open, the mouse stays with the camera. Without it an open screen frees the pointer. */
   keepsPointer?: boolean;
+  /** A press on it makes no click sound, as on a map that is dragged. */
+  quiet?: boolean;
   /** A field of it has the keyboard: keys type and do not drive the body. */
   keyboard?(): boolean;
   /** A text field is wanted, so a touch device raises its keyboard. */
