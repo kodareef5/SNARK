@@ -1,3 +1,21 @@
+v0.0.12 — 2026-11-24
+
+Street salvage and driving
+- Strip a parked wreck with a tool to recover parts, fuel and metal. Other players see the fittings come off and the shell disappear as you work.
+- The chase camera holds its distance when a Zephyr boosts through a turn.
+
+Combat
+- Craft a plasma pistol or a scoped automatic plasma rifle at the fabricator. Their bolts take time to reach a target and can be dodged.
+- Rockets leave a visible smoke trail and burst on impact. Nearby players see the same blast, including players who join while a rocket is in flight.
+- Fists alternate from a guard. Hatchets swing one-handed and picks swing with both hands. A landed hit on a tree or rock scatters splinters or grit.
+
+Experience
+- Survivors and nearby tames earn experience over time. Kills, harvesting and crafting share experience with nearby tribemates. Riders earn a share of their mount’s gains.
+- Saddled raptors can harvest a corpse with a bite. The bar below the hotbar tracks your next level.
+
+Wiki
+- Browse creatures, equipment and cities from the wiki sidebar. Inspect models in 3D, play sounds on demand and see gear and landmarks photographed in the game.
+
 v0.0.11 — 2026-11-23
 
 Buildings
