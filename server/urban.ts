@@ -40,6 +40,7 @@ import type { EntityRecord, Records } from './records.ts';
 import { Seating, type Point } from './seating.ts';
 import { RestingBeat } from './vehicle-rest.ts';
 import { damagePanel, missingDoor, savedPanels } from "./vehicle-panels.ts";
+import { PATROL_LAMPS, VEHICLE_COMPONENT, VehicleSaver, restoreVehicle, startVehicle } from "./vehicles/save.ts";
 import type { ServerWorld } from './world.ts';
 
 interface UrbanContext {
@@ -84,20 +85,6 @@ export interface UrbanIncident { action: number; tick: number; offender: number;
 /** Seat tables are pruned as hosts disappear and actors go idle; these only bound a pathological world. */
 const MAX_HOSTS = 1 << 16;
 const MAX_ACTORS = 1 << 16;
-/** Namespaced extension, preserved by the normal record codec even in builds without vehicles. */
-const VEHICLE_COMPONENT = 0x757262;
-/** A single optional byte for a parked vehicle’s warning lights, independent of the saved chassis layout. */
-const PATROL_LAMPS = 0x6c616d;
-/**
- * The saved component, little-endian: a version u8 (8 wheeled, 5 rotor, 9 boat), these fields as f32 in this order and
- * whether it stands on its wheels u8, then its mechanical/attitude fields as f32 and whether its engine runs u8.
- */
-const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
-const ROTOR_FIELDS = ["vehicleRotorRpm", "vehicleRotorPhase", "vehicleEngineCondition", "vehicleRotorCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleCollective"] as const;
-const HULL_FIELDS = ["vehicleEngineCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleFlooding", "vehicleHullCondition"] as const;
-const BASE_BYTES = 2 + VEHICLE_FIELDS.length * 4;
-const formOf = (movement: VehicleDefinition['movement']): { version: number; extra: readonly (typeof ROTOR_FIELDS[number] | typeof HULL_FIELDS[number])[] } =>
-  movement === 'rotor' ? { version: 5, extra: ROTOR_FIELDS } : movement === 'boat' ? { version: 9, extra: HULL_FIELDS } : { version: 8, extra: HULL_FIELDS };
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
 const REST_TICKS = 30;
 /** Ticks a vehicle has nothing to do before it sleeps: two heartbeats, and longer than History keeps. */
@@ -175,8 +162,7 @@ export class Urban {
    * as a driver's keys would give them, and the tick they were given; a stale one stops the car on its handbrake. */
   private readonly npcDrive = new Map<number, { x: number; z: number; buttons: number; t: number }>();
   /** The bytes a car's mechanical component would be saved as, made again each tick without allocating. */
-  private readonly saving = new Uint8Array(BASE_BYTES + ROTOR_FIELDS.length * 4 + 1);
-  private readonly savingView = new DataView(this.saving.buffer);
+  private readonly saver = new VehicleSaver();
   /** Per host this tick, a bit for each door someone is getting in or out by. */
   private readonly opening = new Map<number, number>();
   /**
@@ -278,20 +264,9 @@ export class Urban {
     this.active.push(host);
     ents.loadBody(e, this.body);
     if (!this.body.vehicle) {
-      this.body.vehicle = true;
-      for (const field of VEHICLE_FIELDS) this.body[field] = 0;
-      this.body.vehicleYaw = this.body.yaw * TAU / 65536;
-      this.body.grounded = !isBoatVehicle(definition);
-      this.body.fuel = definition.spec.fuelCapacity;
-      this.body.vehicleRpm = isWheelVehicle(definition) ? definition.spec.drivetrain?.idleRpm ?? 0 : 0;
-      this.body.vehicleRotorRpm = this.body.vehicleRotorPhase = 0;
-      this.body.vehicleEngineCondition = this.body.vehicleRotorCondition = 1;
-      this.body.vehicleEngineOn = false;
-      this.body.vehicleHullCondition = 1; this.body.vehicleFlooding = 0;
-      this.body.vehicleQx = this.body.vehicleQz = this.body.vehicleCollective = 0;
-      this.body.vehicleQy = Math.fround(Math.sin(this.body.vehicleYaw / 2)); this.body.vehicleQw = Math.fround(Math.cos(this.body.vehicleYaw / 2));
+      startVehicle(this.body, definition);
       const saved = this.ctx.records.byPid.get(pid)?.extra.get(VEHICLE_COMPONENT);
-      if (saved) this.restoreSaved(pid, saved, definition);
+      if (saved) restoreVehicle(this.body, pid, saved, definition);
       else if (!isRotorVehicle(definition)) {
         const vitals = this.ctx.records.byPid.get(pid)?.vitals;
         this.body.vehicleHullCondition = Math.fround(vitals ? Math.max(0, Math.min(1, vitals.at(V_HEALTH, world.tick) / Math.max(1, vitals.max[V_HEALTH]!))) : 1);
@@ -334,67 +309,6 @@ export class Urban {
     if (mode) rec.extra.set(PATROL_LAMPS, Uint8Array.of(mode));
     else rec.extra.delete(PATROL_LAMPS);
     records.dirty.add(rec.pid);
-  }
-
-  /** Reads a saved component into `this.body`, clamped to the current definition, which settings may have retuned. */
-  private restoreSaved(pid: number, saved: Uint8Array, definition: VehicleDefinition): void {
-    const b = this.body, { version, extra } = formOf(definition.movement), size = BASE_BYTES + extra.length * 4 + 1;
-    if (saved[0] !== version || saved.length !== size) throw new Error(`vehicle ${pid}: its saved state is version ${saved[0]} in ${saved.length} bytes, and this build reads version ${version} in ${size}`);
-    const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
-    const values = VEHICLE_FIELDS.map((_, i) => view.getFloat32(1 + i * 4, true));
-    const rotor = extra.map((_, i) => view.getFloat32(BASE_BYTES + i * 4, true));
-    if (!values.every(Number.isFinite) || !rotor.every(Number.isFinite) || saved[BASE_BYTES - 1]! > 1 || saved[saved.length - 1]! > 1) throw new Error(`vehicle ${pid}: its saved state is unreadable`);
-    for (let i = 0; i < VEHICLE_FIELDS.length; i++) b[VEHICLE_FIELDS[i]!] = values[i]!;
-    b.grounded = saved[BASE_BYTES - 1]! !== 0;
-    const clampTo = (v: number, lo: number, hi: number): number => Math.fround(Math.min(hi, Math.max(lo, v)));
-    const train = isWheelVehicle(definition) ? definition.spec.drivetrain : undefined;
-    const spec = definition.spec, travel = isWheelVehicle(definition) ? definition.spec.suspensionTravel ?? .18 : 0;
-    const normal = isBoatVehicle(definition) ? .9 : definition.spec.minGroundNormal;
-    const grade = detAtan2(Math.sqrt(1 - normal * normal), normal);
-    const wrapped = (v: number): number => { const a = v % TAU; return Math.fround(a - Math.floor((a + TAU / 2) / TAU) * TAU); };
-    b.vehicleYaw = wrapped(b.vehicleYaw); b.wheelAngle = wrapped(b.wheelAngle);
-    b.vehiclePitch = wrapped(b.vehiclePitch);
-    b.vehicleRoll = wrapped(b.vehicleRoll);
-    b.vehicleGroundPitch = clampTo(b.vehicleGroundPitch, -grade, grade);
-    b.vehicleGroundRoll = clampTo(b.vehicleGroundRoll, -grade, grade);
-    const steer = isRotorVehicle(definition) ? 0 : definition.spec.maxSteer;
-    b.steering = clampTo(b.steering, -steer, steer);
-    b.vehicleYawRate = clampTo(b.vehicleYawRate, -12, 12);
-    b.vehiclePitchRate = clampTo(b.vehiclePitchRate, -12, 12);
-    b.vehicleRollRate = clampTo(b.vehicleRollRate, -12, 12);
-    b.vehicleRideOffset = clampTo(b.vehicleRideOffset, -Math.min(travel * 0.65, spec.clearance * 0.65), travel);
-    b.vehicleRideVelocity = clampTo(b.vehicleRideVelocity, -60, 60);
-    // Engine/cruise speed is a powered target, not a limit on downhill, impact or dive momentum, including boats.
-    b.vx = clampTo(b.vx, -120, 120); b.vy = clampTo(b.vy, -100, 100); b.vz = clampTo(b.vz, -120, 120);
-    b.fuel = clampTo(b.fuel, 0, definition.spec.fuelCapacity);
-    b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, isBoatVehicle(definition) ? 1 : train?.forwardRatios.length ?? 12));
-    b.vehicleRpm = clampTo(b.vehicleRpm, 0, isBoatVehicle(definition) ? definition.spec.maxRpm : train?.redlineRpm ?? 32767);
-    b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, isBoatVehicle(definition) ? definition.spec.shiftDelay : train?.shiftCooldown ?? 1);
-    // Payload is recomputed from records right after loading.
-    b.vehiclePayloadMass = 0;
-    if (isRotorVehicle(definition)) {
-      b.vehicleRotorRpm = clampTo(rotor[0]!, 0, definition.spec.rotorRpm);
-      b.vehicleRotorPhase = wrapped(rotor[1]!);
-      b.vehicleEngineCondition = clampTo(rotor[2]!, 0, 1);
-      b.vehicleRotorCondition = clampTo(rotor[3]!, 0, 1);
-      b.vehicleEngineOn = saved[size - 1] === 1;
-      const norm = Math.hypot(rotor[4]!, rotor[5]!, rotor[6]!, rotor[7]!);
-      if (norm > 1e-6) {
-        b.vehicleQx = Math.fround(rotor[4]! / norm); b.vehicleQy = Math.fround(rotor[5]! / norm);
-        b.vehicleQz = Math.fround(rotor[6]! / norm); b.vehicleQw = Math.fround(rotor[7]! / norm);
-      } else throw new Error(`vehicle ${pid}: its saved attitude is unreadable`);
-      b.vehicleCollective = clampTo(rotor[8]!, 0, 1);
-    }
-    if (!isRotorVehicle(definition)) {
-      b.vehicleEngineCondition = clampTo(rotor[0]!, 0, 1);
-      b.vehicleFlooding = clampTo(rotor[5]!, 0, 1);
-      b.vehicleHullCondition = clampTo(rotor[6]!, 0, 1);
-      b.vehicleEngineOn = saved[size - 1] === 1;
-      const norm = Math.hypot(rotor[1]!, rotor[2]!, rotor[3]!, rotor[4]!);
-      if (norm > 1e-6) { b.vehicleQx = Math.fround(rotor[1]! / norm); b.vehicleQy = Math.fround(rotor[2]! / norm); b.vehicleQz = Math.fround(rotor[3]! / norm); b.vehicleQw = Math.fround(rotor[4]! / norm); }
-      else throw new Error(`vehicle ${pid}: its saved attitude is unreadable`);
-    }
-    b.yaw = Math.round(b.vehicleYaw * 65536 / TAU) & 65535;
   }
 
   private note(host: HostSeat): void {
@@ -1756,20 +1670,8 @@ export class Urban {
     const { world, records } = this.ctx, ents = world.ents;
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec) return;
-    const { version, extra } = formOf(world.reg.vehicle[rec.kind]?.movement);
-    const bytes = this.saving.subarray(0, BASE_BYTES + extra.length * 4 + 1), view = this.savingView;
-    bytes[0] = version;
-    const b = this.saved;
-    ents.loadBody(e, b);
-    for (let i = 0; i < VEHICLE_FIELDS.length; i++) view.setFloat32(1 + i * 4, b[VEHICLE_FIELDS[i]!], true);
-    bytes[BASE_BYTES - 1] = b.grounded ? 1 : 0;
-    if (extra.length) {
-      for (let i = 0; i < extra.length; i++) view.setFloat32(BASE_BYTES + i * 4, b[extra[i]!], true);
-      bytes[bytes.length - 1] = b.vehicleEngineOn ? 1 : 0;
-    }
-    const old = rec.extra.get(VEHICLE_COMPONENT);
-    if (old?.length === bytes.length && bytes.every((v, i) => old[i] === v)) return;
-    rec.extra.set(VEHICLE_COMPONENT, bytes.slice()); records.dirty.add(rec.pid);
+    ents.loadBody(e, this.saved);
+    if (this.saver.write(rec, this.saved, world.reg.vehicle[rec.kind]?.movement)) records.dirty.add(rec.pid);
   }
 
   /**

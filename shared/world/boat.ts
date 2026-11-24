@@ -11,7 +11,8 @@ import { frame, frameOf } from "./frame.ts";
 import type { PartTable } from "./structures.ts";
 import { StaticVehicleSolids, bounds, makeSolid, solidContact, sweep, tube, type ContactGeometry, type SolidFrame, type Swept } from "./vehicle-solid.ts";
 
-import { boatMounts, boatJoints, boatShapes, carShapes, helicopterShapes, type BoatFrame } from "./vehicle-shapes.ts";
+import { boatMounts, boatJoints, boatShapes, type BoatFrame } from "./vehicle-shapes.ts";
+import { meetOther } from "./vehicle-meet.ts";
 export { boatShapes, type BoatFrame } from "./vehicle-shapes.ts";
 
 export class StaticBoatWorld implements BoatWorld {
@@ -106,12 +107,5 @@ export function boatMeetsCapsule(def: BoatVehicleDefinition, frame: BoatFrame, x
 }
 export function boatMeetsVehicle(def: BoatVehicleDefinition, frame: BoatFrame, other: VehicleDefinition, otherFrame: BoatFrame): BoatInteraction | null {
   const s = collisionFrame(frame), target = collisionFrame(otherFrame);
-  const shapes = other.movement === "boat" ? boatShapes(other) : other.movement === "rotor" ? helicopterShapes(other) : carShapes(other.spec);
-  const mounts = other.movement === "boat" ? boatMounts(otherFrame, other.spec) : null;
-  for (const part of shapes) {
-    const pose = part.joint === undefined || !mounts ? target : mounts[part.joint]!; sweep(part, pose, pose, otherSweep);
-    const hit = interaction(def, s, otherSweep.solid, 0);
-    if (hit) { hit.otherRotor = other.movement === "rotor" && part.hazard; hit.otherPropeller = other.movement === "boat" && part.hazard; return hit; }
-  }
-  return null;
+  return meetOther(other, otherFrame, target, otherSweep, (solid) => interaction(def, s, solid, 0));
 }

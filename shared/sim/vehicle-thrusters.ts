@@ -3,7 +3,7 @@
 // spec has `thrusters` reads or writes them; every other car steps as it always has.
 import { TICK_RATE } from "../coords.ts";
 import { quatUnrotate } from "../math/quat.ts";
-import { clamp, detAtan2 } from "../math/scalar.ts";
+import { approach, clamp, detAtan2 } from "../math/scalar.ts";
 import type { VehicleDefinition, VehicleSpec, VehicleState, VehicleWorld } from "./vehicle.ts";
 
 export interface VehicleThrusterSpec {
@@ -145,7 +145,6 @@ export function endThrusterTick(s: VehicleState, t: VehicleThrusterSpec): void {
   s.thrust = thrust >>> 0; s.thrustCool = ((s.thrustCool ?? 0) & 0xffff0000 | Math.min(0xffff, boostCool)) >>> 0;
 }
 
-const approach = (n: number, target: number, by: number): number => n < target ? Math.min(n + by, target) : Math.max(n - by, target);
 
 /** Seconds of a server setting as a cooldown in ticks, 0 for none, within what the state carries. */
 export const cooldownTicks = (seconds: number): number => Number.isFinite(seconds) && seconds > 0 ? clamp(Math.round(seconds * TICK_RATE), 0, 0xffff) : 0;

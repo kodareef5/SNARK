@@ -1,6 +1,7 @@
 // Authored compound shapes shared by static collision and every vehicle/actor interaction query.
 import { quatMul, quatRotate } from "../math/quat.ts";
 import { detCos, detSin, len3 } from "../math/scalar.ts";
+import { familyOf } from "../sim/families.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
 import { boatDrives, type VehicleDefinition, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type RotorVehicleDefinition, type VehicleSpec } from "../sim/vehicle.ts";
 import { box, makeSolid, shape, tube, type Shape, type SolidFrame, type SolidJoint } from "./vehicle-solid.ts";
@@ -103,11 +104,11 @@ const solidRadii = new WeakMap<VehicleDefinition, number>();
 export function vehicleSolidRadius(def: VehicleDefinition): number {
   const cached = solidRadii.get(def);
   if (cached !== undefined) return cached;
-  const parts = def.movement === "boat" ? boatShapes(def) : def.movement === "rotor" ? helicopterShapes(def) : carShapes(def.spec);
-  const drives = def.movement === "boat" ? boatDrives(def.spec) : undefined;
+  const family = familyOf(def);
+  if (!family) return 0;
   let radius = 0;
-  for (const part of parts) {
-    const pivot = part.joint === undefined ? undefined : drives?.[part.joint]?.outboard?.pivot;
+  for (const part of family.parts(def)) {
+    const pivot = part.joint === undefined ? undefined : family.jointPivot(def, part.joint);
     radius = Math.max(radius, part.radius + (pivot ? len3(...pivot) : 0));
   }
   solidRadii.set(def, radius);

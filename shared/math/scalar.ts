@@ -48,3 +48,22 @@ export function detAtan2(y: number, x: number): number {
   if (x < 0) a = PI - a;
   return y < 0 ? -a : a;
 }
+
+/** `v` moved toward `target` by at most `by`. */
+export function approach(v: number, target: number, by: number): number {
+  return v < target ? Math.min(v + by, target) : Math.max(v - by, target);
+}
+
+export function square(v: number): number {
+  return v * v;
+}
+
+/** An angle in radians folded into -PI to PI. */
+export function wrapAngle(a: number): number {
+  return a - Math.floor((a + TAU / 2) / TAU) * TAU;
+}
+
+/** A command from -1 to 1, where anything not finite is 0. */
+export function unitCommand(v: number): number {
+  return Number.isFinite(v) ? clamp(v, -1, 1) : 0;
+}
