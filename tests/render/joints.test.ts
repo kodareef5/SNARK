@@ -3,15 +3,16 @@
 
 import { expect } from "bun:test";
 import { FORMS } from "../../content/building/forms.ts";
-import { COUNTS, JointBench, countsOf, piecesPack, registry, tierMeshes } from "../../tools/pieces/joints.ts";
-import { JUNCTIONS, TIERS, tierJunction, type TierName } from "../../tools/pieces/layout.ts";
+import { COARSE, COARSE_VIEWS, COUNTS, JointBench, SIDE, countsOf, fightsOf, piecesPack, registry, tierMeshes } from "../../tools/pieces/joints.ts";
+import { JUNCTIONS, TIERS, tierJunction, type Junction, type TierName, type WallEnd } from "../../tools/pieces/layout.ts";
 import { STONE } from "../../tools/pack/pieces/stone.ts";
 import { THATCH, THATCH_FORMS } from "../../tools/pack/pieces/thatch.ts";
-import { tierShapes } from "../../tools/pack/pieces/tier.ts";
-import { WOOD } from "../../tools/pack/pieces/wood.ts";
+import { tierShapes, trimShapes } from "../../tools/pack/pieces/tier.ts";
+import { WOOD, WOOD_JOINTED } from "../../tools/pack/pieces/wood.ts";
 import { bakeMetal } from "../../tools/pack/pieces/metal.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 import { test } from "../fixtures/needs-art.ts";
+import { FOUNDATION_THICK, baseAt, drawn, layJunction, round } from "../fixtures/trims.ts";
 
 /**
  * What each junction counted on 2026-11-24, wood as its Blender scripts made it, in the order of COUNTS. A change may lower a number and may not raise one:
@@ -96,3 +97,41 @@ test("thatch as its recipe makes it meets no worse than the thatch it replaces",
   const meshes = meshesOf(pack);
   for (const j of laid) hold(countsOf(bench, j, meshes), AT_MOST.thatch[j.name]!, `recipe thatch ${j.name}`);
 });
+
+/** Corners the client lays a wood joint at, by the ways of their walls: the square post, and the two round ones off the square. */
+const JOINTED: readonly (readonly [name: string, joint: string, ways: readonly (readonly [way: number, left: boolean, storey?: number])[]])[] = [
+  ["walls 90", "joint_sq_wood", [[0, false], [90, true]]],
+  ["tee", "joint_sq_wood", [[0, false], [180, true], [90, true]]],
+  ["cross", "joint_sq_wood", [[0, false], [90, true], [180, true], [270, false]]],
+  ["two storeys", "joint_sq_wood", [[0, false], [90, true], [0, false, 1], [90, true, 1]]],
+  ["walls 180", "joint_sq_wood", [[0, false], [180, true]]],
+  ["walls 60", "joint_r21_wood", [[0, false], [60, true]]],
+  ["walls 120", "joint_r15_wood", [[0, false], [120, true]]],
+  ["walls 150", "joint_r15_wood", [[0, false], [150, true]]],
+];
+
+for (const [recipe, what] of [[WOOD_JOINTED, "with no strips"], [WOOD, "with its strips, which the joints fold away"]] as const) {
+  test(`wood ${what} and its own joints closes every corner, square or not`, () => {
+    // The recipe's walls and trims as the client lays and fits them (client/core/render/trims.ts): what turning wood's switch gives.
+    const pack = piecesPack([...tierMeshes(["thatch", "stone"]), ...tierShapes(recipe, FORMS), ...trimShapes(recipe)]);
+    const laid: Junction[] = [];
+    const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
+      JOINTED.forEach(([name, , ways], k) => {
+        const storeys = name === "two storeys";
+        const [vx, vz] = [64 + (k % 4) * 32, 64 + Math.floor(k / 4) * 32];
+        const ends = ways.map(([way, left, storey]): WallEnd => ({ form: "wall", tier: "wood", way, left, storey: storey ?? 0 }));
+        laid.push(layJunction(structs, reg, baseAt(structs, vx, storeys ? FOUNDATION_THICK : 0, vz, 0), name, vx, vz, 0, ends, storeys ? "wood" : null));
+      });
+    });
+    bench.draw({ vertex: [64, 64] }, 1.5, 30, 20);
+    const got = drawn(bench.scene, { chunksX: 8, chunksZ: 8 }, pack, meshesOf(pack));
+    laid.forEach((j, k) => {
+      const [near, far, fought] = [bench.measure(j), bench.measure(j, COARSE, COARSE_VIEWS), fightsOf(round(got, j.vertex[0], j.vertex[1], 4.7))];
+      const joints = round(got, j.vertex[0], j.vertex[1], 0.4).filter((d) => d.trim && d.id.includes("joint")).map((d) => d.id.slice(5));
+      // The joint its walls' ways ask for stands there, one a storey.
+      expect([j.name, ...new Set(joints)]).toEqual([j.name, JOINTED[k]![1]]);
+      // No pixel shows through, no outside corner is open, near or from across a yard, and no two faces lie in one plane.
+      expect([j.name, near.leak, near.notch, far.leak, far.notch, fought.faces, fought.area]).toEqual([j.name, 0, 0, 0, 0, 0, 0]);
+    });
+  });
+}

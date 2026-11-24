@@ -2,15 +2,15 @@
 // own numbers, so it must lie in the form's collider, carry the ring it yields at, and keep to the piece budget.
 
 import { expect, test } from "bun:test";
-import { FORMS } from "../../content/building/forms.ts";
-import { MADE_PIECE_TRIANGLES, measureSurface } from "../../tools/art/check.ts";
-import { Carved, type Vec } from "../../tools/pack/pieces/kit.ts";
-import { TEXTURED, colliderBox, levelsOf, yieldPlanes } from "../../tools/pack/pieces/lod.ts";
+import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES, measureSurface } from "../../tools/art/check.ts";
+import { Carved, Shape, clip, dot, planeAt, slice, type Vec } from "../../tools/pack/pieces/kit.ts";
+import { TEXTURED, colliderBox, levelsOf, planOf, yieldPlanes, yieldSlants } from "../../tools/pack/pieces/lod.ts";
 import { STONE } from "../../tools/pack/pieces/stone.ts";
 import { THATCH, THATCH_FORMS, THATCH_SOLIDS } from "../../tools/pack/pieces/thatch.ts";
 import type { FormDef } from "../../shared/world/lattice/forms.ts";
-import { tierShapes } from "../../tools/pack/pieces/tier.ts";
-import { WOOD } from "../../tools/pack/pieces/wood.ts";
+import { tierShapes, trimShapes } from "../../tools/pack/pieces/tier.ts";
+import { WOOD, WOOD_JOINTED } from "../../tools/pack/pieces/wood.ts";
 import { METAL, bakeMetal, metalColours } from "../../tools/pack/pieces/metal.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 
@@ -319,3 +319,215 @@ test("the thatch recipe makes the same mesh each time it is asked", () => {
   const [a, b] = [tierShapes(THATCH, THATCHED), tierShapes(THATCH, THATCHED)];
   expect(a.map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(b.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
 });
+
+// The forms past the first nine, in wood, and wood's trims. Another tier holds its own to the same.
+
+const PLANNED: Record<string, FormDef> = PLANNED_FORMS;
+const planned = Object.entries(PLANNED).map(([name, form]) => ({ name, form, shapes: levelsOf(WOOD, name, form) }));
+const isRoof = (form: FormDef): boolean => form.corner !== undefined && form.span === 0;
+/** A roof's lowest course runs out 0.30 m past a low side, measured level. Its eave board stands 0.065 m over its plane, and a hip's roll 0.09 over the faces beside it. */
+const EAVE = 0.3;
+const ROOF_PROUD = 0.09;
+/** What each new wood form's levels cost on 2026-11-24. A change may lower a number and may not raise one. */
+const WOOD_NEW_MOST: Record<string, readonly number[]> = {
+  half_wall: [948, 252, 120, 28, 12],
+  quarter_wall: [596, 156, 96, 28, 12],
+  railing: [508, 172, 92, 24],
+  corner_pillar: [320, 124, 60, 12],
+  thin_pillar: [320, 124, 60, 12],
+  beam: [212, 28, 28, 12],
+  ramp: [1080, 148, 76, 8],
+  triangle_foundation: [770, 156, 20, 8],
+  triangle_ceiling: [952, 254, 48, 8],
+  quarter_foundation: [772, 204, 72, 12],
+  roof: [812, 236, 60, 12],
+  roof_hip: [1378, 480, 60, 12],
+  roof_valley: [1074, 370, 60, 12],
+  triangle_roof: [942, 260, 44, 8],
+  triangle_roof_low: [886, 204, 44, 8],
+  sloped_wall_left: [728, 224, 122, 8],
+  sloped_wall_right: [728, 224, 122, 8],
+  fence_foundation: [256, 56, 28, 12],
+  trapdoor_frame: [1208, 384, 112, 32],
+  trapdoor: [420, 204, 36, 12],
+  ladder: [208, 144, 84, 24],
+  double_doorway: [1564, 468, 148, 28, 12],
+  large_wall: [1576, 280, 144, 28, 12],
+  gateway: [720, 104, 68, 28, 12],
+  gate: [1212, 300, 96, 12],
+};
+
+/** A roof's own surface over a point of its plan, in the engine's frame about its collider's origin: the plane of the face the point lies over. */
+function roofHeight(form: FormDef, x: number, z: number): number {
+  const plan = form.outline.map(([u, v]) => [u - form.at[0], v - form.at[2]] as const);
+  const tops = form.corner!.map((h) => h - form.at[1]);
+  const n = plan.length;
+  const odd = n === 4 ? tops.findIndex((h, k) => tops.filter((t) => Math.abs(t - h) < 1e-9).length === 1 && tops.filter((t) => Math.abs(t - tops[(k + 1) % n]!) < 1e-9).length === 3) : -1;
+  const plane = (list: number[]): number => {
+    const [a, b, c] = list.map((k) => [plan[k]![0], tops[k]!, plan[k]![1]] as const);
+    const nrm = [(b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])];
+    return a[1] - (nrm[0]! * (x - a[0]) + nrm[2]! * (z - a[2])) / nrm[1]!;
+  };
+  if (odd < 0) return plane([0, 1, 2]);
+  const [h1, h2] = [plane([odd, (odd + 1) % 4, (odd + 2) % 4]), plane([odd, (odd + 2) % 4, (odd + 3) % 4])];
+  // A hip is the lower of its two faces everywhere, and a valley the higher.
+  return tops[odd]! === Math.max(...tops) ? Math.min(h1, h2) : Math.max(h1, h2);
+}
+
+test("every level of every new wood form lies in its form's box and the margin its kind is given", () => {
+  for (const { name, form, shapes } of planned) {
+    const box = colliderBox(form);
+    const along = form.plane === "upright" ? 0 : 2;
+    shapes.forEach((shape, level) => {
+      const over = [0, 0, 0, 0, 0, 0];
+      for (const p of shape.corners()) {
+        const at = [p[0], p[2], -p[1]];
+        for (let a = 0; a < 3; a++) {
+          over[a] = Math.max(over[a]!, box[a]! - at[a]!);
+          over[a + 3] = Math.max(over[a + 3]!, at[a]! - box[a + 3]!);
+        }
+        // A roof stands no further over its own plane than its courses are thick, whatever its box holds.
+        if (isRoof(form)) expect(at[1]! - roofHeight(form, at[0]!, at[2]!), `${name} level ${level} over its plane`).toBeLessThanOrEqual(ROOF_PROUD);
+      }
+      over.forEach((most, k) => {
+        const a = k % 3;
+        // An eave's boards run out past a low side, and where that side meets a sloped one, as far along it.
+        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? 0.002 : ROOF_PROUD) : EAVE + 0.001) : form.layer === "leaf" ? PROUD_LEAF : form.layer === "wall" && a === along ? PROUD_ENDS : PROUD;
+        expect(most, `${name} level ${level} past its ${k < 3 ? "least" : "most"} ${"xyz"[a]}`).toBeLessThanOrEqual(margin);
+      });
+    });
+  }
+});
+
+test("a textured level of a new wood form that yields has a ring on each plane it yields at, a triangle's three among them", () => {
+  for (const { name, form, shapes } of planned) {
+    const planes = [...yieldPlanes(form).map(([axis, at]) => ({ n: [0, 1, 2].map((a) => (a === axis ? 1 : 0)) as unknown as Vec, at, axis })), ...yieldSlants(form).map(([n, at]) => ({ n, at, axis: -1 }))];
+    if (form.yieldBand > 0 && form.plane !== "across") expect(planes.length, name).toBeGreaterThanOrEqual(form.plane === "upright" ? 2 : form.outline.length);
+    for (const { n, at, axis } of planes) {
+      shapes.slice(0, TEXTURED).forEach((shape, level) => {
+        let on = 0;
+        for (const f of shape.faces) {
+          const side = f.points.map((p) => dot(n, p) - at);
+          on += side.filter((d) => Math.abs(d) < 1e-7).length;
+          // Past a ring that runs along no axis, a point may have been made one with its neighbour a fifth of a millimetre off.
+          const slack = axis < 0 ? 3e-4 : 1e-6;
+          if (side.some((d) => d > slack) && side.some((d) => d < -slack)) expect(f.along, `${name} level ${level}: a ${f.mat} face crosses the ring at ${at}`).toBe(axis < 0 ? -2 : axis);
+        }
+        expect(on, `${name} level ${level}: vertices on the ring at ${at}`).toBeGreaterThanOrEqual(4);
+      });
+    }
+  }
+});
+
+test("every new wood level is closed, looks outward and costs no more than a made piece may or than it did", () => {
+  const meshes = tierShapes(WOOD, PLANNED);
+  expect(tierShapes(WOOD, { ...FORMS, ...PLANNED }).length).toBe(34);
+  for (const mesh of meshes) {
+    const most = WOOD_NEW_MOST[mesh.id.slice(5, -5)]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(Math.min(most[level]!, MADE_PIECE_TRIANGLES[level]![1]));
+    });
+  }
+  const again = tierShapes(WOOD, PLANNED);
+  expect(meshes.map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(again.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
+});
+
+test("a sloped wall's two hands are each other in a mirror, point for point", () => {
+  const [left, right] = ["sloped_wall_left", "sloped_wall_right"].map((name) => planned.find((p) => p.name === name)!.shapes);
+  left!.forEach((shape, level) => {
+    const name = (p: Vec, flip: number): string => [flip * p[0], p[1], p[2]].map((c) => (Math.round(c * 1e6) / 1e6 || 0).toFixed(6)).join();
+    expect([...new Set(shape.corners().map((p) => name(p, -1)))].sort()).toEqual([...new Set(right![level]!.corners().map((p) => name(p, 1)))].sort());
+    expect(shape.triangles).toBe(right![level]!.triangles);
+  });
+});
+
+test("with no strips, every wood wall ends flat on its collider's ends at every level", () => {
+  // What WOOD becomes when its one switch is turned (tools/pack/pieces/wood.ts): the joints stand where the strips did.
+  for (const [name, form] of Object.entries({ ...FORMS, ...PLANNED } as Record<string, FormDef>)) {
+    if (form.layer !== "wall") continue;
+    const box = colliderBox(form);
+    levelsOf(WOOD_JOINTED, name, form).forEach((shape, level) => {
+      const xs = shape.corners().map((p) => p[0]);
+      // To the 2 mm a hewn corner post strays on the finest level, and to the last bit past it.
+      const slack = level === 0 ? 0.002 : 1e-9;
+      expect(Math.abs(Math.min(...xs) - box[0]), `${name} level ${level}, its -x end`).toBeLessThanOrEqual(slack);
+      expect(Math.abs(Math.max(...xs) - box[3]), `${name} level ${level}, its +x end`).toBeLessThanOrEqual(slack);
+    });
+    // And with them it stands past its ends, which is all the switch changes.
+    const xs = levelsOf(WOOD, name, form)[0]!.corners().map((p) => Math.abs(p[0]));
+    if (form.outline.length === 4 && form.thick === 0.2 && (form.cells?.length ?? 1) < 3) expect(Math.max(...xs), name).toBeGreaterThan(box[3] + 0.05);
+  }
+});
+
+test("wood's trims are the five the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
+  const trims = trimShapes(WOOD);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_wood", "core:joint_r15_wood", "core:joint_r21_wood", "core:skirt_wood", "core:ridge_wood"]);
+  for (const mesh of trims) {
+    const most = TRIM_TRIANGLES[mesh.id.slice(5, -5)]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(most[level]!);
+      expect([mesh.id, level, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0]);
+      if (lod.indices.length / 3 > 2) expect([mesh.id, level, s.holes]).toEqual([mesh.id, level, 0]);
+    });
+  }
+});
+
+test("a joint is cut to a lower wall by its rings: its shaft is one section, and its head and pegs lie inside it", () => {
+  const reach: Record<string, number> = { joint_sq: 0.15 * Math.SQRT2, joint_r15: 0.15, joint_r21: 0.21 };
+  for (const [name, shapes] of Object.entries(WOOD.trims!())) {
+    if (!(name in reach)) continue;
+    const finest = shapes[0]!.corners();
+    // It stands on its corner from the level to a centimetre over a storey.
+    expect([name, Math.min(...finest.map((p) => p[2])), Math.max(...finest.map((p) => p[2]))]).toEqual([name, 0, 3.01]);
+    for (const cut of [0.76, 1.51, 2.26]) {
+      // A ring at each height the client clamps it to (client/core/render/piece-fit.ts): n quarter storeys and a centimetre.
+      expect(finest.filter((p) => Math.abs(p[2] - cut) < 1e-9).length, `${name} at ${cut}`).toBeGreaterThanOrEqual(12);
+      // Clamped there, what was over the ring lies inside the ring's own outline, so the post ends in a level top and no more.
+      const ring = finest.filter((p) => Math.abs(p[2] - cut) < 1e-9);
+      const far = Math.max(...ring.map((p) => Math.hypot(p[0], p[1])));
+      for (const p of finest) if (p[2] > cut && p[2] < 2.7) expect(Math.hypot(p[0], p[1]), `${name} over ${cut}`).toBeLessThanOrEqual(far + 0.004);
+    }
+    for (const p of finest) expect(Math.hypot(p[0], p[1]), name).toBeLessThanOrEqual(reach[name]! + 0.011);
+    // Its head is drawn in, so the head folds flat onto the shaft.
+    for (const p of finest) if (p[2] > 3) expect(Math.hypot(p[0], p[1]), name).toBeLessThan(reach[name]! * 0.81);
+  }
+});
+
+test("a skirt hangs 2.4 m from the middle of a side, 0.12 m out, and a ridge lies along its line", () => {
+  const box = (name: string, level = 0): number[] => {
+    const p = trimShapes(WOOD).find((m) => m.id === `core:${name}_wood`)!.lods[level]!.positions;
+    return [0, 1, 2].flatMap((a) => [Math.min(...Array.from({ length: p.length / 3 }, (_, v) => p[v * 3 + a]!)), Math.max(...Array.from({ length: p.length / 3 }, (_, v) => p[v * 3 + a]!))]).map((v) => Math.round(v * 1e4) / 1e4);
+  };
+  // In the engine's frame: +X along the side, +Y up from the foundation's top, +Z outward. Its pegs stand a centimetre proud.
+  expect(box("skirt").map((v) => v || 0)).toEqual([-1.5, 1.5, -2.4, 0, 0, 0.13]);
+  expect(box("skirt", 1).map((v) => v || 0)).toEqual([-1.5, 1.5, -2.4, 0, 0, 0.12]);
+  const ridge = box("ridge");
+  expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
+  expect(ridge[3]!).toBeLessThanOrEqual(0.13);
+  expect(Math.max(-ridge[4]!, ridge[5]!)).toBeLessThanOrEqual(0.22);
+});
+
+test("the kit cuts a solid on a slant and closes it, and a ring on a slant loses nothing", () => {
+  const map = () => ["m", (p: Vec) => [p[0], p[1]] as const] as const;
+  const shape = new Shape().box([0, 0, 0], [1, 1, 1], map).box([2, 0, 0], [3, 1, 1], map);
+  const volume = (s: Shape): number => {
+    const c = s.corners();
+    let sum = 0;
+    for (let t = 0; t < c.length; t += 3) sum += dot(c[t]!, [c[t + 1]![1] * c[t + 2]![2] - c[t + 1]![2] * c[t + 2]![1], c[t + 1]![2] * c[t + 2]![0] - c[t + 1]![0] * c[t + 2]![2], c[t + 1]![0] * c[t + 2]![1] - c[t + 1]![1] * c[t + 2]![0]]) / 6;
+    return sum;
+  };
+  expect(volume(shape)).toBeCloseTo(2, 9);
+  slice(shape, planeAt([0.5, 0.5, 0.5], [1, 2, 3]));
+  expect([volume(shape).toFixed(9), measureSurface(shape.lod(null, () => 0)).holes]).toEqual(["2.000000000", 0]);
+  // Half of the first box is cut off through its middle, and none of the second, which lies under the plane.
+  clip(shape, planeAt([0.5, 0.5, 0.5], [-1, 0, 1]));
+  const s = measureSurface(shape.lod(null, () => 0));
+  expect([volume(shape).toFixed(9), s.holes, s.flipped, s.insideOut]).toEqual(["1.500000000", 0, 0, 0]);
+});
+
+void planOf;
