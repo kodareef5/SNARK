@@ -1058,13 +1058,14 @@ section("Client frame build (headless): the 20,000-piece chunk told of 50 damage
     const at = performance.now();
     packet = scene.build(cam, null);
     times.push(performance.now() - at);
-    for (const u of packet.uploads) uploaded += u.data.length;
+    // A piece whose stage changed sends its own 20 bytes (BufferUpload.bytes), any other upload its whole buffer.
+    for (const u of packet.uploads) uploaded += u.bytes ?? u.data.length;
   }
   times.sort((a, b) => a - b);
   record("pieces in the chunk", t.live, "");
   record("take the rows in and build the frame, median", percentile(times, 0.5), "ms", 1);
   record("take the rows in and build the frame, 99th percentile", percentile(times, 0.99), "ms", 2);
-  record("instance bytes uploaded again in those 300 frames", uploaded, "bytes", 0);
+  record("instance bytes uploaded again in those 300 frames", uploaded, "bytes", 4096);
 }
 
 section("Client frame build (headless): 300 survivors in view, posed every frame");
