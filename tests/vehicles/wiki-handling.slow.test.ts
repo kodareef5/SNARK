@@ -21,7 +21,9 @@ function sensible(def: VehicleDefinition, h: Handling): void {
   const s = def.spec, length = s.halfLength * 2, within = (n: number, lo: number, hi: number, what: string) => expect([def.id, what, n > lo && n < hi]).toEqual([def.id, what, true]);
   if (h.movement === "skateboard") {
     within(h.top, 5, s.maxForward + .01, "push speed");
-    within(h.ollie, .6, 1.1, "ollie height");
+    // A tapped pop and a fully held one: 0.5 m and 1.1 m (planning/workstreams/skateboard.md).
+    within(h.ollie, .4, .6, "tapped ollie height");
+    within(h.ollieHigh, 1, 1.2, "held ollie height");
     within(h.braking, 2, 10, "foot braking");
   } else if (h.movement === "wheeled") {
     within(h.top, 5, s.maxForward + 0.01, "top speed under its limiter");
@@ -75,10 +77,10 @@ test("every vehicle's page says how it drives and its top speed as measured, wit
   expect(listed.length).toBeGreaterThan(10);
   for (const e of listed) {
     const table = e.tables.find((t) => ["How it drives", "How it handles", "How it flies", "How it rides"].includes(t.title))!;
-    expect([e.id, table.rows.length]).toEqual([e.id, e.handling!.movement === "wheeled" ? 11 : e.handling!.movement === "boat" ? 10 : e.handling!.movement === "skateboard" ? 11 : 7]);
+    expect([e.id, table.rows.length]).toEqual([e.id, e.handling!.movement === "wheeled" ? 11 : e.handling!.movement === "boat" ? 10 : e.handling!.movement === "skateboard" ? 14 : 7]);
     for (const [row, [what, value]] of table.rows.entries()) {
-      // Only what drives it is said in words, and a skateboard's keys, which follow its three measured figures.
-      const words = ["Driven wheels", "Drive"].includes(text(what!)) || (e.handling!.movement === "skateboard" && row >= 3);
+      // Only what drives it is said in words, and a skateboard's keys, which follow its four measured figures.
+      const words = ["Driven wheels", "Drive"].includes(text(what!)) || (e.handling!.movement === "skateboard" && row >= 4);
       expect([e.id, text(what!), words ? text(value!).length > 2 : /\d/.test(text(value!))]).toEqual([e.id, text(what!), true]);
       expect(text(value!)).not.toMatch(/NaN|Infinity|undefined|null/);
     }
