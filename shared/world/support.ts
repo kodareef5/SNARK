@@ -19,8 +19,8 @@
 
 import { STRUCT_UNITS } from "../coords.ts";
 import { FORM_LAYERS, HALF_SIDE_M, STOREY_LEVELS, type FormTable } from "./lattice/forms.ts";
-import { poseOf, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
-import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleStep, tupleWithin } from "./lattice/module.ts";
+import { poseOf, riseAt, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
+import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleEqual, tupleStep, tupleWithin } from "./lattice/module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces, type Occupancy } from "./lattice/occupancy.ts";
 import { ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, floorTop, units, type PieceTables } from "./snap.ts";
 import { Found, type StructureStore } from "./structures.ts";
@@ -67,6 +67,10 @@ const key: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
 const NONE: number[] = [];
 const m = new Int32Array(8);
+const C = new Int32Array(16);
+const D = new Int32Array(16);
+/** The bits of a cell's second word but its level: m3, direction and layer. */
+const COLUMN = ((1 << 26) - 1) & ~(511 << 10);
 
 /** Adds the square named from the tuple at `m[0]` along `d`, at `lvl` in the slab layer, to `out`. A cell off the lattice has a first word of 0. */
 function square(out: Cells, d: number, lvl: number): void {
@@ -452,14 +456,57 @@ export class Support {
     return keyLvl(k1) + own.reach[0] - 1 <= LVL_MOST;
   }
 
-  /** Notes each slab at `lvl` beside the edge of a cell, at `cost`, or at what it adds as the lower piece where `cost` is -1. */
-  private beside(fr: number, k0: number, k1: number, lvl: number, cost: number, self: number): void {
+  /**
+   * Notes each slab at `lvl` beside the edge of a cell, at `cost`, or at what it adds as the lower piece where `cost` is -1.
+   * With `roofs`, a roof too whose side over the edge is level at `lvl`: a wall holds a roof's level side, and a roof
+   * holds nothing that stands on it.
+   */
+  private beside(fr: number, k0: number, k1: number, lvl: number, cost: number, self: number, roofs = false): void {
     if (this.plain) edgeSquares(k0, k1, lvl, faces);
     else edgeFaces(k0, k1, lvl, SLAB, faces);
+    const deep = roofs && this.sloped();
     for (let f = 0; f < faces.n; f++) {
-      const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
-      if (ref >= 0) this.put(ref, cost < 0 ? this.loose[this.kindOf(ref)]! : cost);
+      const ref = deep ? this.covering(fr, faces.k0[f]!, faces.k1[f]!, self) : this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
+      if (ref < 0) continue;
+      const kind = this.kindOf(ref);
+      if (this.forms!.rise[kind] !== 0) {
+        if (!roofs) continue;
+        keyAnchor(k0, k1, C, 0);
+        tupleStep(C, 0, keyDir(k1), SIDE, C, 4);
+        if (this.cornerLvl(ref, C, 0) !== lvl || this.cornerLvl(ref, C, 4) !== lvl) continue;
+      }
+      this.put(ref, cost < 0 ? this.loose[kind]! : cost);
     }
+  }
+
+  /** Whether some roof is built: a slab whose cell reaches over its own level. */
+  private sloped(): boolean {
+    return this.structs.occupied.deep[SLAB]! > 0 || (this.pretend !== null && this.pretend.occupied.deep[SLAB]! > 0);
+  }
+
+  /** The key of the piece `ref`, to `key`. */
+  private keyOf(ref: number): void {
+    if (pretended(ref)) {
+      key.k0 = this.pretend!.k0[Math.floor(ref / 65536)]!;
+      key.k1 = this.pretend!.k1[Math.floor(ref / 65536)]!;
+      return;
+    }
+    const t = this.structs.chunks[Math.floor(ref / 65536)]!;
+    key.k0 = t.k0![ref & 0xffff]!;
+    key.k1 = t.k1![ref & 0xffff]!;
+  }
+
+  /** The level of the underside of slab `ref` at the lattice point `p[pi]`, a corner of its face: its own level, and for a roof what it rises to there. NaN where the point is no corner of it. */
+  private cornerLvl(ref: number, p: Int32Array, pi: number): number {
+    const kind = this.kindOf(ref);
+    this.keyOf(ref);
+    const lvl = keyLvl(key.k1);
+    const rise = riseAt(this.forms!, kind, key.k0, key.k1);
+    if (rise === 0) return lvl;
+    keyAnchor(key.k0, key.k1, D, 0);
+    const n = elementCorners(keyCls(key.k0), D, 0, keyDir(key.k1), D, 0);
+    for (let k = 0; k < n; k++) if (tupleEqual(D, 4 * k, p, pi)) return lvl + ((rise >> (3 * k)) & 7);
+    return NaN;
   }
 
   /**
@@ -472,15 +519,22 @@ export class Support {
       if (this.plain && f >= 12 && f < 24) continue;
       const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
       const cost = f < 24 ? corner : middle;
-      if (ref >= 0) this.put(ref, cost < 0 ? this.loose[this.kindOf(ref)]! : cost + more);
+      // A post and a roof hold nothing of each other.
+      if (ref >= 0 && this.forms!.rise[this.kindOf(ref)] === 0) this.put(ref, cost < 0 ? this.loose[this.kindOf(ref)]! : cost + more);
     }
     vertexEdges(k0, k1, lvl, SLAB, mids);
     for (let e = 12; e < mids.n; e++) if (mids.k0[e] !== 0) this.beside(fr, mids.k0[e]!, mids.k1[e]!, lvl, side < 0 ? -1 : side + more, self);
   }
 
-  /** Notes each slab across a side of the slab a key names, square or triangle. */
-  private across(fr: number, k0: number, k1: number, lvl: number, self: number): void {
-    if (this.plain && keyCls(k0) === CLS_SQUARE) {
+  /**
+   * Notes each slab across a side of the slab of `kind` a key names, square or triangle, where the two undersides are
+   * as high as each other at both ends of the side: level slabs on one level, a roof beside the roof that carries its
+   * slope on, a ridge's two faces, a roof's high side and the floor it rises to.
+   */
+  private across(kind: number, fr: number, k0: number, k1: number, lvl: number, self: number): void {
+    const rise = riseAt(this.forms!, kind, k0, k1);
+    const deep = rise !== 0 || this.sloped();
+    if (!deep && this.plain && keyCls(k0) === CLS_SQUARE) {
       squaresAcross(k0, k1, lvl, faces);
       for (let f = 0; f < 4; f++) {
         const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
@@ -488,15 +542,33 @@ export class Support {
       }
       return;
     }
-    const mine = cellOf(cellAt(k1, lvl, SLAB));
     faceEdges(k0, k1, lvl, SLAB, sides);
-    for (let s = 0; s < sides.n; s++) {
+    if (!deep) {
+      const mine = cellOf(cellAt(k1, lvl, SLAB));
+      for (let s = 0; s < sides.n; s++) {
+        if (sides.k0[s] === 0) continue;
+        edgeFaces(sides.k0[s]!, sides.k1[s]!, lvl, SLAB, faces);
+        for (let f = 0; f < faces.n; f++) {
+          if (faces.k0[f] === k0 && faces.k1[f] === mine) continue;
+          const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
+          if (ref >= 0) this.put(ref, COST_BESIDE);
+        }
+      }
+      return;
+    }
+    keyAnchor(k0, k1, C, 0);
+    const n = elementCorners(keyCls(k0), C, 0, keyDir(k1), C, 0);
+    for (let s = 0; s < n; s++) {
       if (sides.k0[s] === 0) continue;
-      edgeFaces(sides.k0[s]!, sides.k1[s]!, lvl, SLAB, faces);
+      const to = s + 1 === n ? 0 : s + 1;
+      const a = lvl + ((rise >> (3 * s)) & 7);
+      const b = lvl + ((rise >> (3 * to)) & 7);
+      // The slab whose cell holds the side's lower end: one level with it, or a roof that reaches it.
+      edgeFaces(sides.k0[s]!, sides.k1[s]!, Math.min(a, b), SLAB, faces);
       for (let f = 0; f < faces.n; f++) {
-        if (faces.k0[f] === k0 && faces.k1[f] === mine) continue;
-        const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
-        if (ref >= 0) this.put(ref, COST_BESIDE);
+        if (faces.k0[f] === 0 || (faces.k0[f] === k0 && ((faces.k1[f]! ^ k1) & COLUMN) === 0)) continue;
+        const ref = this.covering(fr, faces.k0[f]!, faces.k1[f]!, self);
+        if (ref >= 0 && this.cornerLvl(ref, C, 4 * s) === a && this.cornerLvl(ref, C, 4 * to) === b) this.put(ref, COST_BESIDE);
       }
     }
   }
@@ -512,13 +584,22 @@ export class Support {
     const loose = this.loose;
     const low = lvl > -LVL_MOST;
     if (layer === SLAB) {
-      this.across(fr, k0, k1, lvl, self);
+      this.across(kind, fr, k0, k1, lvl, self);
       if (!low || flat) return;
+      const rise = riseAt(forms, kind, k0, k1);
       faceEdges(k0, k1, lvl - 1, WALL, sides);
       for (let s = 0; s < sides.n; s++) {
         const e0 = sides.k0[s]!;
         const e1 = sides.k1[s]!;
         if (e0 === 0) continue;
+        // A roof lies on the wall under each side it is level along, at that side's height. No post holds it.
+        if (rise !== 0) {
+          const a = (rise >> (3 * s)) & 7;
+          if (a !== ((rise >> (3 * (s + 1 === sides.n ? 0 : s + 1))) & 7)) continue;
+          const wall = this.ending(fr, e0, cellAt(e1, lvl + a - 1, WALL), lvl + a, self);
+          if (wall >= 0) this.put(wall, COST_SIDE + loose[this.kindOf(wall)]!);
+          continue;
+        }
         // The wall under this side, and the post under its middle.
         const wall = this.ending(fr, e0, e1, lvl, self);
         if (wall >= 0) this.put(wall, COST_SIDE + loose[this.kindOf(wall)]!);
@@ -526,6 +607,7 @@ export class Support {
         const post = this.ending(fr, mids.k0[0]!, mids.k1[0]!, lvl, self);
         if (post >= 0) this.put(post, COST_SIDE + loose[this.kindOf(post)]!);
       }
+      if (rise !== 0) return;
       // The posts under its corners, and under its middle if it has one.
       elementVertices(k0, k1, lvl - 1, POST, verts);
       const corners = CLS_CORNERS[keyCls(k0)]!;
@@ -585,7 +667,7 @@ export class Support {
       if (!this.cells(kind, k0, k1)) return;
       for (let c = 0; c < own.n; c++) {
         const end = keyLvl(own.k1[c]!) + own.reach[c]!;
-        if (end <= LVL_MOST) this.beside(fr, own.k0[c]!, own.k1[c]!, end, COST_SIDE + mine, self);
+        if (end <= LVL_MOST) this.beside(fr, own.k0[c]!, own.k1[c]!, end, COST_SIDE + mine, self, true);
       }
     } else if (layer === POST) {
       const top = keyLvl(k1) + forms.span[kind]!;
@@ -601,12 +683,21 @@ export class Support {
     const mine = this.loose[kind]!;
     const low = lvl > -LVL_MOST;
     if (layer === SLAB) {
-      this.across(fr, k0, k1, lvl, self);
+      this.across(kind, fr, k0, k1, lvl, self);
+      const rise = riseAt(forms, kind, k0, k1);
       faceEdges(k0, k1, lvl, WALL, sides);
       for (let s = 0; s < sides.n; s++) {
         const e0 = sides.k0[s]!;
         const e1 = sides.k1[s]!;
         if (e0 === 0) continue;
+        // A roof: the wall hung under each side it is level along, and nothing on it.
+        if (rise !== 0) {
+          const a = (rise >> (3 * s)) & 7;
+          if (a !== ((rise >> (3 * (s + 1 === sides.n ? 0 : s + 1))) & 7) || lvl + a <= -LVL_MOST) continue;
+          const hung = this.ending(fr, e0, cellAt(e1, lvl + a - 1, WALL), lvl + a, self);
+          if (hung >= 0) this.put(hung, COST_HUNG + HUNG);
+          continue;
+        }
         const wall = this.starting(fr, e0, e1, lvl, self);
         if (wall >= 0) this.put(wall, mine);
         edgeMiddle(e0, e1, lvl, mids, 0);
@@ -620,6 +711,7 @@ export class Support {
         const below = this.ending(fr, m0, cellAt(m1, lvl - 1, POST), lvl, self);
         if (below >= 0) this.put(below, COST_HUNG + HUNG);
       }
+      if (rise !== 0) return;
       elementVertices(k0, k1, lvl, POST, verts);
       for (let v = 0; v < verts.n; v++) {
         const post = this.starting(fr, verts.k0[v]!, verts.k1[v]!, lvl, self);

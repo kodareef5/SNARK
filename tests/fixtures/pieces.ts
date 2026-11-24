@@ -5,7 +5,7 @@
 import type { ClientSession } from "../../client/core/session.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { writeJoin } from "../../shared/net/place.ts";
+import { writeJoin, writeNew } from "../../shared/net/place.ts";
 import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_OK } from "../../shared/net/protocol.ts";
 import { partSolid, Solid } from "../../shared/world/convex.ts";
 import { frame, frameOf } from "../../shared/world/frame.ts";
@@ -104,6 +104,13 @@ export class Plot {
     const ref = this.w.structs.place(this.w.kind(id), key.fr, key.k0, key.k1, this.team, 1);
     if (ref < 0) throw new Error(`${id} at ${p.join()} has no room`);
     return ref;
+  }
+
+  /** `put` for a piece of kind `id` named by its key, turn and all. */
+  putKey(id: string, key: LatticeKey): number {
+    const code = validate(this.site, this.w.kind(id), this.team, key.fr, key.k0, key.k1, NaN, NaN, NaN, verdict);
+    if (code !== RESULT_OK) throw new Error(`${id} is refused with ${code}`);
+    return this.w.structs.place(this.w.kind(id), key.fr, key.k0, key.k1, this.team, 1);
   }
 
   /** The stability of a built piece. */
@@ -274,4 +281,46 @@ export function leaks(w: TestWorld, x: number, y: number, z: number, far: number
     if (castWorld(w, x, y, z, Math.cos(a), 0, Math.sin(a), far) !== HIT_STRUCTURE) out++;
   }
   return out;
+}
+
+/** The server's world as a test world, and a plot in it for the survivor `s`'s tribe. */
+export function plotOf(h: Harness, s: ClientSession): { w: TestWorld; p: Plot } {
+  const w: TestWorld = { dims: h.world.dims, hf: h.world.hf, structs: h.world.structs, reg: h.reg, kind: (name) => h.reg.index.get(name)! };
+  return { w, p: new Plot(w, h.host.records.byPid.get(h.client(s)!.pid)!.team) };
+}
+
+/**
+ * Sets a base's first piece down through the server, on open ground `ahead` metres in front of the survivor, turned
+ * `yaw`: the item `core:<item>` in its first form. The plot is then that base's.
+ */
+export function found(h: Harness, s: ClientSession, p: Plot, item: string, yaw: number, ahead = 6): number {
+  hand(h, s, item, 40);
+  let code = -1;
+  s.onResult = (_seq, c) => void (code = c);
+  s.command(CMD_PLACE, (out: BitWriter) => writeNew(out, 0, Math.round(s.own.x * U), Math.round((s.own.z + ahead) * U), yaw));
+  h.run(150);
+  if (code !== RESULT_OK) throw new Error(`the base's first piece was refused with ${code}`);
+  p.fr = h.world.structs.frameAt(h.host.build.last);
+  return h.host.build.last;
+}
+
+/**
+ * Sets a piece down through the server as the survivor would: the item `core:<item>` in hand, in the form whose kind is
+ * `kind`, in the slot `keyOf` names. Answers its ref. Throws with the server's code where it is refused.
+ */
+export function build(h: Harness, s: ClientSession, p: Plot, item: string, kind: string, at: Tuple, lvl: number, own: number): number {
+  const itemId = h.reg.index.get(`core:${item}`)!;
+  if (s.inventory!.item[s.inventory!.hotbar + 9] !== itemId || s.held !== 9) hand(h, s, item, 60);
+  const variant = [...h.reg.places[itemId]!].indexOf(h.reg.index.get(kind)!);
+  if (variant < 0) throw new Error(`${item} places no ${kind}`);
+  const got = send(h, s, variant, keyOf(p.w, p.fr, kind, at, lvl, own));
+  if (got.code !== RESULT_OK) throw new Error(`${kind} at ${at.join()} level ${lvl} along ${own}: ${got.code}`);
+  return got.ref;
+}
+
+/** Puts the survivor at the lattice point `at` of the plot's base, standing on level `lvl`. */
+export function stand(h: Harness, s: ClientSession, p: Plot, at: Tuple, lvl = 0): void {
+  const [x, z] = p.metres(at);
+  h.say(s, `tp ${x.toFixed(3)} ${(p.height(lvl) + 0.05).toFixed(3)} ${z.toFixed(3)}`);
+  h.run(120);
 }

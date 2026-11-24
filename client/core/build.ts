@@ -16,7 +16,7 @@ import { dirVector, levelY, twOf, worldOf, yawOf } from "../../shared/world/latt
 import { FORM_LAYERS, HALF_SIDE_M } from "../../shared/world/lattice/forms.ts";
 import type { Frame, LatticeKey } from "../../shared/world/lattice/frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, SIDE, dirTurn, elementCorners, keyAnchor, keyCls, keyDir, keyLvl } from "../../shared/world/lattice/module.ts";
-import { PLACE_REACH, SWITCH_MARGIN, candidates, choose, makeCandidates, makeVerdict, runKey, validate, validateFree, type Site } from "../../shared/world/lattice/place.ts";
+import { PLACE_REACH, SWITCH_MARGIN, candidates, choose, makeCandidates, makeVerdict, propose, runKey, validate, validateFree, type Proposal, type Site } from "../../shared/world/lattice/place.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ROLE_THING, enemyGap, enemyGapFound, freePose, restPose, type Pose } from "../../shared/world/snap.ts";
 import { STABILITY, Support } from "../../shared/world/support.ts";
@@ -189,6 +189,9 @@ export class Builder {
   stability = -2;
   stabilityMost = STABILITY;
   /** The slot the piece shown would go in, for its outline. */
+  /** The slot and item a form was last fitted to, and what was found for it. */
+  private readonly fitted = [0, 0, 0, 0];
+  private readonly fit: Proposal = { variant: 0, rot: 0, held: false };
   readonly slotMark: SlotMark = { cls: -1, x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
   /** The other free slots near the look that the piece may go in, the first `others` of them: the places Q steps through. */
   readonly otherMarks: SlotMark[] = Array.from({ length: OTHERS_MOST }, () => ({ cls: -1, x: 0, y: 0, z: 0, yaw: 0, tw: 0 }));
@@ -522,6 +525,17 @@ export class Builder {
       }
       [at.fr, at.k0, at.k1] = [c.fr[i]!, c.k0[i]!, c.k1[i]!];
       this.mode = PLACE_JOIN;
+      // What stands round the slot says which of the item's forms fits it, and how turned: a roof's once, when the slot
+      // is first shown, and the builder may then turn it and change it; a sloped wall's hand at every turn.
+      const item = this.item;
+      const forms = reg.places[item]!;
+      const fresh = this.fitted[0] !== at.fr || this.fitted[1] !== at.k0 || this.fitted[2] !== at.k1 || this.fitted[3] !== item;
+      const turns = reg.forms.turns[kind]!;
+      if (!this.wheelOpen && propose(structs, forms, at.fr, at.k0, at.k1, ((this.turn % turns) + turns) % turns, this.fit) && (fresh || this.fit.held)) {
+        [this.variant, this.turn] = [this.fit.variant, this.fit.rot];
+        kind = this.kind = forms[this.variant]!;
+      }
+      [this.fitted[0], this.fitted[1], this.fitted[2], this.fitted[3]] = [at.fr, at.k0, at.k1, item];
       problem = validate(site, kind, team, at.fr, at.k0, this.keyed(reg), ox, oy, oz, verdict);
       [p.x, p.y, p.z, p.yaw] = [verdict.pose.x, verdict.pose.y, verdict.pose.z, verdict.pose.yaw];
       this.tw = verdict.pose.tw;

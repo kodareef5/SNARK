@@ -8,7 +8,7 @@ import { BUILD_REACH, SNAP_SEARCH, buried, crosses, obstructed, obstruction, too
 import { Found, type StructureStore } from "../structures.ts";
 import { levelY, worldOf } from "./basis.ts";
 import { FORM_LAYERS, HALF_SIDE_M, LEVEL_M, SLOT_CLASSES, STOREY_LEVELS, type FormLayer, type FormTable, type Rel } from "./forms.ts";
-import { baseOrigin, keyFits, ownDir, poseOf, type Frame, type LatticeKey, type LatticePose } from "./frames.ts";
+import { baseOrigin, keyFits, ownDir, poseOf, riseAt, rotsOf, type Frame, type LatticeKey, type LatticePose } from "./frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, edgesOverlap, elementCorners, facesOverlap, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyM0, keyM1, keyM2, keyM3, tupleEqual, tupleStep, tupleWithin } from "./module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexFaces } from "./occupancy.ts";
 
@@ -933,4 +933,139 @@ export function startBase(structs: StructureStore, kind: number, at: Pose, team:
   const ref = structs.place(kind, f.gid, key0(forms.cls[kind]!, 0, 0, 0), key1(0, 0, 0, forms.layer[kind]!, 0, 0), team, hp);
   if (ref < 0) structs.frames.drop(f.gid);
   return ref;
+}
+
+// ---------------------------------------------------------------- proposing a form
+
+/** What `propose` found: which of an item's forms, and its turn in the slot. `held` where the pieces round it leave no other form: it is said again at every turn the builder gives. */
+export interface Proposal {
+  variant: number;
+  rot: number;
+  held: boolean;
+}
+
+/** What weighs in a roof's choice: a corner that agrees with a slab beside it, one that does not, and the order the forms come in. */
+const AGREES = 1000;
+const CLASHES = 10000;
+const WALL = FORM_LAYERS.indexOf("wall");
+
+/** The levels over `lvl` the slab `ref` has its underside at the lattice point `p[pi]`, or -1 where that is no corner of it or it is under `lvl`. */
+function slabRise(structs: StructureStore, forms: FormTable, ref: number, lvl: number, p: Int32Array, pi: number): number {
+  const t = structs.chunks[Math.floor(ref / 65536)]!;
+  const slot = ref & 0xffff;
+  const b0 = t.k0![slot]!;
+  const b1 = t.k1![slot]!;
+  const rise = riseAt(forms, t.kind[slot]!, b0, b1);
+  keyAnchor(b0, b1, B, 0);
+  const n = elementCorners(keyCls(b0), B, 0, keyDir(b1), B, 0);
+  for (let k = 0; k < n; k++) if (tupleEqual(B, 4 * k, p, pi)) return Math.max(-1, keyLvl(b1) + ((rise >> (3 * k)) & 7) - lvl);
+  return -1;
+}
+
+/**
+ * Which of the forms `kinds` an item places, and which turn, fits the slot (k0, k1) of frame `fr` best by what stands
+ * round it, to `out`. `rot` is the turn the builder has it at. False where the pieces round it say nothing, or none of
+ * the forms is a roof or a sloped wall of the slot's class.
+ *
+ * A roof's corners are made to agree with the slabs across its sides: a slope beside a slope carries it on, the corner
+ * between two slopes that meet from outside is a hip, and from inside a valley. With nothing beside it, it is a slope
+ * that is low over a wall under it. A sloped wall is high at the end the roof over it is high at, or the end a taller
+ * wall stands at, whichever face the builder turns to the front.
+ */
+export function propose(structs: StructureStore, kinds: ArrayLike<number>, fr: number, k0: number, k1: number, rot: number, out: Proposal): boolean {
+  const forms = structs.forms;
+  const occupied = structs.occupied;
+  if (!forms) return false;
+  const cls = keyCls(k0);
+  const lvl = keyLvl(k1);
+  const dir = keyDir(k1);
+  if (cls === CLS_EDGE) {
+    // The roof over this edge, by its height at the edge's two ends.
+    keyAnchor(k0, k1, A, 0);
+    tupleStep(A, 0, dir, SIDE, A, 4);
+    let first = -1;
+    let far = -1;
+    edgeFaces(k0, k1, lvl, SLAB, round);
+    for (let f = 0; f < round.n && first === far; f++) {
+      const ref = round.k0[f] === 0 ? -1 : occupied.covering(fr, round.k0[f]!, round.k1[f]!);
+      if (ref < 0) continue;
+      first = slabRise(structs, forms, ref, lvl, A, 0);
+      far = slabRise(structs, forms, ref, lvl, A, 4);
+      if (first < 0 || far < 0) first = far = -1;
+    }
+    if (first === far) {
+      // No roof: a wall that stands on from one end at this level, and none at the other.
+      const on = [0, 0];
+      for (let end = 0; end < 2; end++) {
+        m.set(A.subarray(4 * end, 4 * end + 4), 0);
+        canonical(CLS_EDGE, m, 0, dirTurn(dir, end === 0 ? 6 : 0), m, 4);
+        if (tupleWithin(m, 4, M_MOST) && occupied.covering(fr, key0(CLS_EDGE, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, WALL, 0, 0)) >= 0) on[end] = 1;
+      }
+      if (on[0] === on[1]) return false;
+      [first, far] = [on[0]!, on[1]!];
+    }
+    for (let v = 0; v < kinds.length; v++) {
+      const f = forms.def[kinds[v]!];
+      const top = f?.cls === "edge" ? f.edges?.[0]?.profile : undefined;
+      if (top !== "slopeL" && top !== "slopeR") continue;
+      // Its own -X end is the edge's first unless it is turned about.
+      const turned = (((rot % 2) + 2) % 2) === 1;
+      if ((top === "slopeL") === (first > far !== turned)) {
+        [out.variant, out.rot, out.held] = [v, rot, true];
+        return true;
+      }
+    }
+    return false;
+  }
+  if (cls !== CLS_SQUARE && cls !== CLS_TRIANGLE) return false;
+  // What each corner should rise, from the slabs across each side: -1 where none says.
+  keyAnchor(k0, k1, A, 0);
+  const n = elementCorners(cls, A, 0, dir, A, 0);
+  const want = [-1, -1, -1, -1];
+  let walled = 0;
+  let said = false;
+  faceEdges(k0, k1, lvl, SLAB, sides);
+  for (let s = 0; s < n; s++) {
+    if (sides.k0[s] === 0) continue;
+    const to = s + 1 === n ? 0 : s + 1;
+    for (let up = ROOF_LEVELS; up >= -ROOF_LEVELS; up -= ROOF_LEVELS) {
+      if (Math.abs(lvl + up) > LVL_MOST) continue;
+      edgeFaces(sides.k0[s]!, sides.k1[s]!, lvl + up, SLAB, round);
+      for (let f = 0; f < round.n; f++) {
+        if (round.k0[f] === 0 || (round.k0[f] === k0 && ((round.k1[f]! ^ k1) & COLUMN & ~LVL_BITS) === 0)) continue;
+        const ref = occupied.covering(fr, round.k0[f]!, round.k1[f]!);
+        if (ref < 0) continue;
+        const a = slabRise(structs, forms, ref, lvl, A, 4 * s);
+        const b = slabRise(structs, forms, ref, lvl, A, 4 * to);
+        if (a < 0 || b < 0 || a > ROOF_LEVELS || b > ROOF_LEVELS) continue;
+        if (want[s]! < 0) want[s] = a;
+        if (want[to]! < 0) want[to] = b;
+        said = true;
+      }
+    }
+    // A wall that ends under this side at the slot's level: the roof is low along it.
+    const under = lvl > -LVL_MOST ? occupied.covering(fr, sides.k0[s]!, cellAt(sides.k1[s]!, lvl - 1, WALL)) : -1;
+    if (under >= 0) {
+      const t = structs.chunks[Math.floor(under / 65536)]!;
+      if (keyLvl(t.k1![under & 0xffff]!) + forms.span[t.kind[under & 0xffff]!]! === lvl) walled |= 1 << s;
+    }
+  }
+  if (!said && walled === 0) return false;
+  let best = -Infinity;
+  for (let v = 0; v < kinds.length; v++) {
+    const kind = kinds[v]!;
+    if (forms.cls[kind] !== cls || forms.rise[kind] === 0) continue;
+    for (let r = 0, rots = rotsOf(forms, kind); r < rots; r++) {
+      const rise = riseAt(forms, kind, k0, (cellOf(k1) | (r << 26)) >>> 0);
+      let score = (kinds.length - v) * 10 - r / 8;
+      for (let c = 0; c < n; c++) {
+        const at = (rise >> (3 * c)) & 7;
+        if (want[c]! >= 0) score += want[c] === at ? AGREES : -CLASHES;
+        // Low all along a walled side.
+        if ((walled >> c) & 1 && at === 0 && ((rise >> (3 * (c + 1 === n ? 0 : c + 1))) & 7) === 0) score += 1;
+      }
+      if (score > best) [best, out.variant, out.rot, out.held] = [score, v, r, false];
+    }
+  }
+  return best > -Infinity;
 }
