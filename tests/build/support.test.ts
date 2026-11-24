@@ -4,7 +4,9 @@ import { expect, test } from "bun:test";
 import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { slopeKind } from "../../content/slopes.ts";
+import { Collapse } from "../../shared/world/collapse.ts";
 import { floorTop, units } from "../../shared/world/snap.ts";
+import { GONE_FELL } from "../../shared/world/structures.ts";
 import { STABILITY, Support } from "../../shared/world/support.ts";
 import { TRIANGLE_HALF, hullWorld } from "../fixtures/hulls.ts";
 import { count, join as joinTo, slot, start } from "../fixtures/slots.ts";
@@ -138,6 +140,25 @@ test("held by walls: two floors out from the wall and not a third; walls on a fl
   support.standsRef(out2);
   expect(support.visited).toBeLessThan(12);
   expect(units(1)).toBe(U);
+});
+
+test("nobody's pieces are scenery: set down by pose they are never judged, and what an owner sets on them still is", () => {
+  const { w, support, kind } = setup(0);
+  const box = w.kind("core:storage_box");
+  // A wall, a ceiling, a door and a pillar in the air, and a box on the ceiling: nobody's stand, a tribe's do not.
+  const air = (owner: number): number[] => ["wall", "ceiling", "door", "pillar"].map((piece, i) => w.structs.add(kind(piece), 100 + owner * 20, 6, 100 + i * 8, 0, owner, 1));
+  const [nobodys, owned] = [air(0), air(7)];
+  expect([nobodys.map((ref) => support.standsRef(ref)), owned.map((ref) => support.standsRef(ref))]).toEqual([[true, true, true, true], [false, false, false, false]]);
+  const onIt = w.structs.add(box, 100, 6.125 + w.reg.halfY[box]!, 108, 0, 0, 1);
+  const theirs = w.structs.add(box, 100.6, 6.125 + w.reg.halfY[box]!, 108.6, 0, 7, 1);
+  expect([support.standsRef(onIt), support.standsRef(theirs)]).toEqual([true, true]);
+  // A piece of the scenery goes: the rest stays, nobody's box with it, and the tribe's box that stood on it falls.
+  const collapse = new Collapse(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
+  w.structs.onRemove = (ref, cause) => void (cause !== GONE_FELL && collapse.gone(ref));
+  w.structs.remove(nobodys[1]!);
+  for (let k = 0; collapse.busy && k < 100; k++) collapse.step(16000, k + 1);
+  const there = (ref: number): boolean => w.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff] !== 0;
+  expect([collapse.busy, there(nobodys[0]!), there(nobodys[2]!), there(nobodys[3]!), there(onIt), there(theirs)]).toEqual([false, true, true, true, true, false]);
 });
 
 test("a map's static is no building piece, sloped or not: it offers no place, holds nothing up and is never judged", () => {

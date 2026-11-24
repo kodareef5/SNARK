@@ -576,6 +576,11 @@ export function moveBlueprint(bp: Blueprint, forms: BlueprintForms, by: ArrayLik
   return remade(bp, forms, false, 0, by, levels);
 }
 
+/** The blueprint mirrored if asked, then turned `k` steps about its anchor, then moved by a tuple and quarter storeys: what a paste does to it. */
+export function placeBlueprint(bp: Blueprint, forms: BlueprintForms, mirror: boolean, k: number, by: ArrayLike<number>, levels: number): BlueprintMoved {
+  return remade(bp, forms, mirror, k, by, levels);
+}
+
 /** The blueprint with its anchor at the anchor and level of the piece at `piece`. */
 export function reanchorBlueprint(bp: Blueprint, forms: BlueprintForms, piece: number): BlueprintMoved {
   const p = bp.pieces[piece];
@@ -619,6 +624,48 @@ function touches(f: Facts, k0: number, k1: number): number {
   if (f.cls !== CLS_SQUARE) return 2 * corners;
   tupleStep(C, 4 * corners, dirTurn(dir, 3), 1, C, 8 * corners);
   return 2 * corners + 1;
+}
+
+/**
+ * The pieces joined to the piece at `from`, itself first and then the nearest by joins, `most` at most: places in
+ * `pieces`. Two are joined as checkBlueprint joins them. Pieces of a form not in `forms` join nothing.
+ */
+export function walkBlueprint(pieces: readonly BlueprintPiece[], forms: BlueprintForms, from: number, most: number): number[] {
+  const at = new Map<number, number[]>();
+  const points: number[][] = [];
+  for (let i = 0; i < pieces.length; i++) {
+    const p = pieces[i]!;
+    const f = factsOf(forms, p.form);
+    const mine: number[] = [];
+    points.push(mine);
+    if (!f) continue;
+    const n = touches(f, p.k0, p.k1);
+    const lvl = keyLvl(p.k1);
+    for (let c = 0; c < n; c++) {
+      for (let up = 0; up <= f.span; up++) {
+        const point = pointOf(C, 4 * c, lvl + up);
+        mine.push(point);
+        const list = at.get(point);
+        if (list) list.push(i);
+        else at.set(point, [i]);
+      }
+    }
+  }
+  const out: number[] = [];
+  if (!(from >= 0 && from < pieces.length) || most <= 0) return out;
+  const seen = new Uint8Array(pieces.length);
+  seen[from] = 1;
+  out.push(from);
+  for (let head = 0; head < out.length && out.length < most; head++) {
+    for (const point of points[out[head]!]!) {
+      for (const j of at.get(point)!) {
+        if (seen[j] === 1 || out.length >= most) continue;
+        seen[j] = 1;
+        out.push(j);
+      }
+    }
+  }
+  return out;
 }
 
 /** Float slack on the boxes that choose which pairs the exact tests see. */

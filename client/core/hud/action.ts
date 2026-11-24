@@ -26,7 +26,8 @@ export interface ActionModel {
   actionFraction: number;
 }
 
-export function fillAction(m: ActionModel & { ammo: string }, session: ClientSession | null, reg: Registry): void {
+export function fillAction(m: ActionModel & { ammo: string; buildSays?: string }, session: ClientSession | null, reg: Registry): void {
+  if (m.buildSays !== undefined) m.buildSays = "";
   m.actionKind = ACTION_NONE;
   m.actionFraction = 0;
   m.ammo = "";
@@ -77,6 +78,7 @@ export const ACTION: HudWidget<ActionModel> = {
     if (a.alive && a.inCar) m.ammo = "";
     // With a piece in hand the line says the builder's keys.
     if (a.building) m.ammo = a.device === 2 ? "" : a.device === 1 ? BUILD_HINT_PAD : BUILD_HINT;
+    if (a.building) m.buildSays = a.buildSays;
   },
   build(f, m, at) {
     const { W, H } = at;

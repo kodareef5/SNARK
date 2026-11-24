@@ -14,13 +14,14 @@
 // piece's form relates to, by its class, layer, span and cells: a new form needs no rule here.
 //
 // A row with no key joins nothing and holds nothing. A thing (a box, a bed) rests on the ground or on the floor under its
-// middle. A built piece with no key stands only where a base's first piece would.
+// middle. A built piece with no key stands only where a base's first piece would. Nobody's row is scenery, as a map's
+// statics are: it stands wherever it is.
 
 import { STRUCT_UNITS } from "../coords.ts";
 import { FORM_LAYERS, HALF_SIDE_M, STOREY_LEVELS, type FormTable } from "./lattice/forms.ts";
-import { poseOf, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
+import { poseOf, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
 import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleStep, tupleWithin } from "./lattice/module.ts";
-import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "./lattice/occupancy.ts";
+import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces, type Occupancy } from "./lattice/occupancy.ts";
 import { ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, floorTop, units, type PieceTables } from "./snap.ts";
 import { Found, type StructureStore } from "./structures.ts";
 
@@ -111,6 +112,21 @@ function edgeMiddle(k0: number, k1: number, lvl: number, out: Cells, at: number)
 export interface SupportTables extends PieceTables {
   readonly stabilityCap?: Uint8Array;
 }
+
+/**
+ * Pieces counted as built though no row has them: a plan's, judged before it is filled. All are in one frame, which
+ * need not be made yet. Piece `i` has the ref pretendRef(i), which no row has: a chunk's last slot is never used.
+ */
+export interface Pretend {
+  readonly frame: Frame;
+  readonly occupied: Occupancy;
+  readonly kind: ArrayLike<number>;
+  readonly k0: ArrayLike<number>;
+  readonly k1: ArrayLike<number>;
+}
+
+export const pretendRef = (i: number): number => i * 65536 + 0xffff;
+const pretended = (ref: number): boolean => (ref & 0xffff) === 0xffff;
 
 /** A cached description of one piece: its place, and what holds it. */
 export class SupportNode {
@@ -220,6 +236,8 @@ export class Support {
   private readonly single: Uint8Array;
   /** Whether no form fills a triangle, so the only slab across a square's side is a square. Reading triangles too gives the same answers. */
   plain = true;
+  /** Pieces to count as built beside the rows, or null. Set it, ask by `node(pretendRef(i))`, and `forget()` when it changes. */
+  pretend: Pretend | null = null;
   /** Whether some form is a footing. */
   private footed = false;
   /** Metres on the flat within which a lost piece may have been holding another. */
@@ -294,6 +312,7 @@ export class Support {
 
   /** Whether the piece a node was made of is still there with the same kind and position. */
   alive(n: SupportNode): boolean {
+    if (pretended(n.ref)) return this.pretend !== null;
     const t = this.structs.chunks[Math.floor(n.ref / 65536)];
     const slot = n.ref & 0xffff;
     return !!t && slot < t.high && t.kind[slot] === n.kind && units(t.x[slot]!) === n.x && units(t.y[slot]!) === n.y && units(t.z[slot]!) === n.z;
@@ -301,6 +320,7 @@ export class Support {
 
   /** The node of the piece at `ref`, built on first use. Null if nothing is built there, it is not a building piece, or the question was cut. */
   node(ref: number): SupportNode | null {
+    if (pretended(ref)) return this.pretended(ref);
     const t = this.structs.chunks[Math.floor(ref / 65536)];
     const slot = ref & 0xffff;
     if (!t || !t.fr || t.fr[slot] === 0 || !this.forms) return this.free(ref);
@@ -320,6 +340,23 @@ export class Support {
     return n;
   }
 
+  /** The node of a pretended piece, or null if none is pretended there or the question was cut. */
+  private pretended(ref: number): SupportNode | null {
+    const p = this.pretend;
+    const i = Math.floor(ref / 65536);
+    if (!p || !this.forms || i >= p.kind.length || p.kind[i] === 0) return null;
+    const known = this.nodes.get(ref);
+    if (known) return known;
+    if (this.asking && this.made > 0 && this.work > this.limit) {
+      this.cut = true;
+      return null;
+    }
+    this.made++;
+    const n = this.describe(p.kind[i]!, p.frame.gid, p.k0[i]!, p.k1[i]!, ref);
+    this.nodes.set(ref, n);
+    return n;
+  }
+
   /**
    * Builds the node of a piece of `kind` at a key of frame `fr`: the pieces that hold it, read from the cells its form
    * relates to. `self` is its ref, or -1 for a piece not yet built.
@@ -329,13 +366,13 @@ export class Support {
     let x: number;
     let y: number;
     let z: number;
-    const t = self >= 0 ? structs.chunks[Math.floor(self / 65536)] : undefined;
+    const t = self >= 0 && !pretended(self) ? structs.chunks[Math.floor(self / 65536)] : undefined;
     if (t) {
       x = units(t.x[self & 0xffff]!);
       y = units(t.y[self & 0xffff]!);
       z = units(t.z[self & 0xffff]!);
     } else {
-      poseOf(structs.frames.get(fr)!, k0, k1, this.forms!, kind, pose);
+      poseOf(this.pretend?.frame.gid === fr ? this.pretend.frame : structs.frames.get(fr)!, k0, k1, this.forms!, kind, pose);
       ({ x, y, z } = pose);
     }
     const root = this.rootAt(kind, x, y, z);
@@ -363,10 +400,12 @@ export class Support {
   }
 
   private kindOf(ref: number): number {
+    if (pretended(ref)) return this.pretend!.kind[Math.floor(ref / 65536)]!;
     return this.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!;
   }
 
   private lvlOf(ref: number): number {
+    if (pretended(ref)) return keyLvl(this.pretend!.k1[Math.floor(ref / 65536)]!);
     return keyLvl(this.structs.chunks[Math.floor(ref / 65536)]!.k1![ref & 0xffff]!);
   }
 
@@ -374,7 +413,8 @@ export class Support {
   private at(fr: number, k0: number, k1: number, self: number): number {
     if (k0 === 0) return -1;
     this.reads++;
-    const ref = this.structs.occupied.at(fr, k0, k1);
+    let ref = this.structs.occupied.at(fr, k0, k1);
+    if (ref < 0 && this.pretend?.frame.gid === fr) ref = this.pretend.occupied.at(fr, k0, k1);
     return ref === self ? -1 : ref;
   }
 
@@ -382,7 +422,8 @@ export class Support {
   private covering(fr: number, k0: number, k1: number, self: number): number {
     if (k0 === 0) return -1;
     this.reads += 4;
-    const ref = this.structs.occupied.covering(fr, k0, k1);
+    let ref = this.structs.occupied.covering(fr, k0, k1);
+    if (ref < 0 && this.pretend?.frame.gid === fr) ref = this.pretend.occupied.covering(fr, k0, k1);
     return ref === self ? -1 : ref;
   }
 
@@ -1025,21 +1066,22 @@ export class Support {
       return null;
     }
     this.made++;
-    const n = this.describeFree(t.kind[slot]!, units(t.x[slot]!), units(t.y[slot]!), units(t.z[slot]!), ref);
+    const n = this.describeFree(t.kind[slot]!, units(t.x[slot]!), units(t.y[slot]!), units(t.z[slot]!), ref, t.owner[slot] === 0);
     this.frees.set(ref, n);
     return n;
   }
 
   /**
    * Builds the node of a piece of `kind` that joins nothing, at (x, y, z) lattice units. `self` is its ref, or -1 for one
-   * not yet built. A thing lists the floors whose top its foot is on, under its middle.
+   * not yet built. A thing lists the floors whose top its foot is on, under its middle. `scenery` is a row nobody owns,
+   * which is never judged: it stands by itself.
    */
-  private describeFree(kind: number, x: number, y: number, z: number, self: number): SupportNode {
+  private describeFree(kind: number, x: number, y: number, z: number, self: number, scenery = false): SupportNode {
     const { structs, tables } = this;
     const role = tables.role[kind]!;
-    if (role !== ROLE_THING) {
+    if (scenery || role !== ROLE_THING) {
       this.work += COST_NODE;
-      return new SupportNode(this, self, kind, role, x, y, z, this.rootAt(kind, x, y, z), 0, 0, 0, NONE, NONE, NONE, NONE, NONE);
+      return new SupportNode(this, self, kind, role, x, y, z, scenery || this.rootAt(kind, x, y, z), 0, 0, 0, NONE, NONE, NONE, NONE, NONE);
     }
     const foot = y - units(tables.halfY[kind]!);
     const mx = x / STRUCT_UNITS;

@@ -65,7 +65,7 @@ function numbers(w: TestWorld): Map<string, number> {
 function ramble(w: TestWorld, rng: Rng, tries: number): number[] {
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   const kinds = ["foundation", "wall", "wall", "wall", "wall", "doorframe", "ceiling", "ceiling", "ceiling", "ceiling", "pillar", "stairs", "door"].map((p) => w.kind(`core:${p}_wood`));
-  const site: Site = { structs: w.structs, tables: w.reg, heightAt: (x, z) => w.hf.heightAt(x, z), stands: (kind, _x, _y, _z, _yaw, fr, k0, k1) => support.standsAt(kind, fr, k0, k1) };
+  const site: Site = { structs: w.structs, tables: w.reg, heightAt: (x, z) => w.hf.heightAt(x, z), standsAt: (kind, fr, k0, k1) => support.standsAt(kind, fr, k0, k1) };
   const built = [start(w, kinds[0]!, 62.5, FOUNDATION_THICK / 2, 62.5, rng.int(65536), 3, 100)];
   for (let i = 0; i < tries; i++) {
     const target = built[rng.int(built.length)]!;

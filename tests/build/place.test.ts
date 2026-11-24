@@ -544,7 +544,7 @@ test("what the server refuses of a key before it looks at the world", () => {
   expect(judge(wall, TEAM, key.fr, key.k0, key.k1, 40)).toBe(RESULT_FAR);
   // The site's own answers come last, in order: a body, the ground, another tribe, the cap, support.
   const asked: string[] = [];
-  const all: Site = { ...site, body: () => (asked.push("body"), -1), enemy: () => (asked.push("enemy"), false), full: () => (asked.push("full"), false), stands: () => (asked.push("stands"), false) };
+  const all: Site = { ...site, body: () => (asked.push("body"), -1), enemy: () => (asked.push("enemy"), false), full: () => (asked.push("full"), false), standsAt: () => (asked.push("stands"), false) };
   expect(validate(all, wall, TEAM, key.fr, key.k0, key.k1, 100, 2, 100, verdict)).toBe(RESULT_NO_SUPPORT);
   expect(asked).toEqual(["body", "enemy", "full", "stands"]);
 });

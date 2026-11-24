@@ -7,6 +7,8 @@ import type { BitReader, BitWriter } from "./codec.ts";
 export const PLACE_JOIN = 0;
 export const PLACE_NEW = 1;
 export const PLACE_REST = 2;
+/** A piece of a plan, on its key (server/plans.ts): the one named, or the next ones in the plan's order that the builder carries. */
+export const PLACE_PLAN = 3;
 /** Pieces one command may set down in a row: its key stepped whole sides along a direction. */
 export const PLACE_RUN_MOST = 32;
 
@@ -28,10 +30,14 @@ export interface PlaceRequest {
   z: number;
   yaw: number;
   lift: number;
+  /** PLACE_PLAN: the plan's id; then the piece's place in the plan, or -1 to fill `count` from place `from` of the plan's order. */
+  plan: number;
+  index: number;
+  from: number;
 }
 
 export function makePlaceRequest(): PlaceRequest {
-  return { variant: 0, mode: PLACE_JOIN, fr: 0, k0: 0, k1: 0, count: 1, step: 0, floor: 0, x: 0, z: 0, yaw: 0, lift: 0 };
+  return { variant: 0, mode: PLACE_JOIN, fr: 0, k0: 0, k1: 0, count: 1, step: 0, floor: 0, x: 0, z: 0, yaw: 0, lift: 0, plan: 0, index: -1, from: 0 };
 }
 
 /** After the command's kind. */
@@ -45,6 +51,16 @@ export function writePlace(w: BitWriter, p: PlaceRequest): void {
     w.bool(p.count > 1);
     if (p.count > 1) {
       w.bits(p.step, 4);
+      w.bits(p.count - 1, 5);
+    }
+    return;
+  }
+  if (p.mode === PLACE_PLAN) {
+    w.varint(p.plan);
+    w.bool(p.index >= 0);
+    if (p.index >= 0) w.varint(p.index);
+    else {
+      w.varint(p.from);
       w.bits(p.count - 1, 5);
     }
     return;
@@ -72,6 +88,17 @@ export function readPlace(r: BitReader, out: PlaceRequest): boolean {
     }
     return !r.overflow && out.step < 12;
   }
+  if (out.mode === PLACE_PLAN) {
+    out.plan = r.varint();
+    out.index = -1;
+    out.from = 0;
+    if (r.bool()) out.index = r.varint();
+    else {
+      out.from = r.varint();
+      out.count = r.bits(5) + 1;
+    }
+    return !r.overflow;
+  }
   if (out.mode !== PLACE_NEW && out.mode !== PLACE_REST) return false;
   if (out.mode === PLACE_REST) out.floor = r.u32();
   out.x = r.sbits(32);
@@ -98,5 +125,11 @@ export function writeNew(w: BitWriter, variant: number, x: number, z: number, ya
 /** A thing on the floor `floor`, its middle over (x, z) lattice units. */
 export function writeRest(w: BitWriter, variant: number, floor: number, x: number, z: number, yaw: number): void {
   [one.variant, one.mode, one.floor, one.x, one.z, one.yaw] = [variant, PLACE_REST, floor, x, z, yaw];
+  writePlace(w, one);
+}
+
+/** The piece at `index` of plan `plan`, or with an index of -1 up to `count` of its pieces from place `from` of its order. */
+export function writeFill(w: BitWriter, plan: number, index: number, from = 0, count = 1): void {
+  [one.variant, one.mode, one.plan, one.index, one.from, one.count] = [0, PLACE_PLAN, plan, index, from, count];
   writePlace(w, one);
 }

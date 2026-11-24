@@ -215,7 +215,7 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
     // Each button presses the key its row names (build.ts BUILD_KEYS): R, T, Q, the arrows, and Escape as a finger's cancel.
     corner(T_ATTACK, I_PLACE, "Place");
     at(T_RELOAD, 0, BUTTON, I_ROTATE, "Rotate");
-    at(T_FOLLOW_ONE, 1, BUTTON, I_VARIANT, "Next form");
+    at(T_FOLLOW_ONE, 1, BUTTON, I_VARIANT, "Next form; hold and drag for the wheel of forms");
     at(T_SNAP, 2, BUTTON, I_SNAP, "Next snap point; hold for free placement");
     at(T_RAISE, 3, SMALL, I_UP, "Raise");
     at(T_LOWER, 4, SMALL, I_DOWN, "Lower");

@@ -8,6 +8,7 @@ import { COMPASS } from "./compass.ts";
 import { CROSSHAIR } from "./crosshair.ts";
 import { DOTS } from "./dots.ts";
 import { FALLEN } from "./fallen.ts";
+import { FORMS } from "./forms.ts";
 import { HOTBAR } from "./hotbar.ts";
 import { JET } from "./jet.ts";
 import { LEVEL } from "./level.ts";
@@ -49,6 +50,7 @@ export const HUD_WIDGETS: readonly HudWidget<any>[] = [
   LEVEL,
   CROSSHAIR,
   PROMPT,
+  FORMS,
   ACTION,
   RESTART,
   WORDS,

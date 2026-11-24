@@ -4,7 +4,7 @@
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_METRES, PLACED_NONE, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_RATE, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { OWN_STRUCTURES, MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_METRES, PLACED_NONE, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_RATE, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -13,9 +13,11 @@ import { carMeetsKind } from "../shared/world/vehicle.ts";
 import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
 import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
 import { boatMeetsKind } from "../shared/world/boat.ts";
-import { PLACE_JOIN, PLACE_NEW, PLACE_REST, makePlaceRequest, readPlace, type PlaceRequest } from "../shared/net/place.ts";
+import { PLACE_JOIN, PLACE_NEW, PLACE_PLAN, PLACE_REST, makePlaceRequest, readPlace, type PlaceRequest } from "../shared/net/place.ts";
 import { PLACED_MOST, makePlaced, writePlaced } from "../shared/net/placed.ts";
-import { makeVerdict, runKey, startBase, validate, validateFree, type Site, type Verdict } from "../shared/world/lattice/place.ts";
+import { makeVerdict, runKey, startBase, validate, validateFree, validatePlan, type Site, type Verdict } from "../shared/world/lattice/place.ts";
+import { PLAN_FILL_REACH } from "../shared/world/plan.ts";
+import type { Plans } from "./plans.ts";
 import { ROLE_FOUNDATION, ROLE_PILLAR, enemyGap, enemyGapFound, floorTop, freePose, restPose, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN, toldHealth } from "../shared/world/structures.ts";
@@ -80,6 +82,9 @@ interface Claim {
   cache: EntityRecord | null;
 }
 
+/** One more than the greatest cap a builder is told of: its count and cap go as one number, to tell a change of either. */
+const STRUCTURES_CAP_SPAN = 1 << 21;
+
 export class Build {
   /** Counters. `fallen` counts pieces that fell when their support went. */
   placed = 0;
@@ -99,6 +104,8 @@ export class Build {
   readonly decay: Decay;
   /** Ref of the last piece set down, or -1. */
   last = -1;
+  /** The plans, whose pieces a PLACE_PLAN request sets down and which are told of every piece set down. The host sets it. */
+  plans: Plans | null = null;
   /** Checks whether a piece about to be built would stand. */
   readonly support: Support;
   readonly collapse: Collapse;
@@ -159,8 +166,37 @@ export class Build {
         [out.detail, out.a, out.b] = [PLACED_COUNTS, have, cap];
         return true;
       },
-      stands: (kind, x, y, z, _yaw, fr, k0, k1) => (fr !== 0 ? this.support.standsAt(kind, fr, k0, k1) : this.support.stands(kind, x, y, z)),
+      stands: (kind, x, y, z) => this.support.stands(kind, x, y, z),
+      // A frame not made yet has no piece to stand on: its first is one that stands anywhere.
+      standsAt: (kind, fr, k0, k1) => {
+        const form = world.reg.forms.def[kind]!;
+        if (!structs.frames.get(fr)) return form.root === "always";
+        const stability = this.support.stabilityAt(kind, fr, k0, k1);
+        return stability >= 0 && stability >= (form.need ?? 0);
+      },
     };
+    // A builder is told how near the cap it stands, so the preview can say so before a piece is refused for it.
+    const told = new WeakMap<Client, { at: number; count: number }>();
+    ctx.game.own.add<number>({
+      kind: OWN_STRUCTURES,
+      version: (c, rec) => {
+        const inv = ctx.items.inv(rec);
+        if (c.ent < 0 || rec.held < 0 || !world.reg.places[inv.item[inv.hotbar + rec.held]!]) return undefined;
+        let t = told.get(c);
+        if (!t) told.set(c, (t = { at: -TICK_RATE, count: 0 }));
+        // Counted once a second.
+        if (world.tick - t.at >= TICK_RATE) {
+          t.at = world.tick;
+          t.count = world.claims.near(world.ents.x[c.ent]!, world.ents.z[c.ent]!) * STRUCTURES_CAP_SPAN + Math.max(0, Math.min(STRUCTURES_CAP_SPAN - 1, ctx.rules.num("TheMaxStructuresInRange")));
+        }
+        return t.count;
+      },
+      write: (w, c) => {
+        const count = told.get(c)!.count;
+        w.varint(Math.floor(count / STRUCTURES_CAP_SPAN));
+        w.varint(count % STRUCTURES_CAP_SPAN);
+      },
+    });
     this.decay.lone = (ref) => {
       this.support.forget();
       const node = this.support.node(ref);
@@ -642,8 +678,10 @@ export class Build {
     const sound = readPlace(r, req);
     answer.refs.length = 0;
     answer.detail = PLACED_NONE;
+    [answer.next, answer.skipped] = [-1, 0];
     let code = sound ? RESULT_OK : RESULT_INVALID;
-    for (let i = 0; sound && i < req.count && code === RESULT_OK; i++) {
+    if (sound && req.mode === PLACE_PLAN) code = this.fill(c, req);
+    for (let i = 0; sound && req.mode !== PLACE_PLAN && i < req.count && code === RESULT_OK; i++) {
       if (!this.spend(c)) code = RESULT_RATE;
       else if (i > 0 && !runKey(req.k0, req.k1, req.step, i, this.slot)) code = RESULT_NO_SNAP;
       else code = i === 0 ? this.set(c, req) : this.set(c, req, this.slot.k0, this.slot.k1);
@@ -664,6 +702,54 @@ export class Build {
   }
 
   /**
+   * A plan's pieces, each through `set`: the one the request names, or up to its count of the next in the plan's order
+   * that the builder carries. A piece something is in the way of is passed over; the fill stops at the first that
+   * nothing would hold up. The answer says where in the order to go on from.
+   */
+  private fill(c: Client, req: PlaceRequest): number {
+    const plans = this.plans;
+    const rec = this.ctx.records.byPid.get(c.pid);
+    const answer = this.answer;
+    if (!plans || !rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
+    const inv = this.ctx.items.inv(rec);
+    const hand = req.index >= 0;
+    let at = hand ? 0 : req.from;
+    let code = RESULT_OK;
+    for (let i = 0; i < req.count; i++) {
+      if (!this.spend(c)) {
+        code = RESULT_RATE;
+        break;
+      }
+      code = plans.pick(rec, req, at, inv);
+      if (code !== RESULT_OK || !plans.picked) {
+        at = plans.cursor;
+        break;
+      }
+      code = this.set(c, req);
+      if (code === RESULT_OK) {
+        this.placed++;
+        if (answer.refs.length < PLACED_MOST) answer.refs.push(this.last);
+        at = plans.cursor;
+        // Its last piece took the plan with it.
+        if (!plans.byId.has(req.plan)) break;
+        continue;
+      }
+      this.refused++;
+      // What a later piece cannot mend stops the fill at this piece.
+      if (hand || code === RESULT_NO_SUPPORT || code === RESULT_FULL || code === RESULT_DENIED || code === RESULT_INVALID || code === RESULT_NOT_YOURS || code === RESULT_SHORT) {
+        at = plans.cursor - 1;
+        break;
+      }
+      at = plans.cursor;
+      answer.skipped++;
+      answer.detail = PLACED_NONE;
+      code = RESULT_OK;
+    }
+    if (!hand) answer.next = at;
+    return code;
+  }
+
+  /**
    * Checks a decoded place request, its key (k0, k1) if it joins a base. If it passes, builds the piece and takes one from
    * the builder's hand. Returns a RESULT code, and leaves what stood in the way in the answer.
    */
@@ -678,10 +764,13 @@ export class Build {
     if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
     const inv = items.inv(rec);
     const slot = rec.held >= 0 ? inv.hotbar + rec.held : -1;
-    const forms = slot >= 0 && inv.count[slot]! > 0 ? reg.places[inv.item[slot]!] : null;
-    this.bare = !forms;
-    if (!forms || req.variant >= forms.length) return RESULT_INVALID;
-    const kind = forms[req.variant]!;
+    // A plan's piece is the plan's to name, and is paid for from wherever the builder carries it.
+    const planned = req.mode === PLACE_PLAN ? (this.plans?.picked ?? null) : null;
+    const forms = planned ? null : slot >= 0 && inv.count[slot]! > 0 ? reg.places[inv.item[slot]!] : null;
+    this.bare = !forms && !planned;
+    if (!planned && (req.mode === PLACE_PLAN || !forms || req.variant >= forms.length)) return RESULT_INVALID;
+    const kind = planned ? planned.kind : forms![req.variant]!;
+    if (planned && inv.total(reg.pieceItem[kind]!) < 1) return RESULT_SHORT;
     const structs = world.structs;
     const pose = this.pose;
     // Reach is measured from the server's eye position, not the client's.
@@ -692,7 +781,8 @@ export class Build {
     this.team = rec.team;
     let code: number;
     // A row is reached by its first piece.
-    if (req.mode === PLACE_JOIN) code = validate(this.site, kind, rec.team, req.fr, k0, k1, k0 === req.k0 && k1 === req.k1 ? ex : NaN, ey, ez, verdict);
+    if (planned) code = validatePlan(this.site, kind, rec.team, planned.frame, planned.k0, planned.k1, ex, ey, ez, verdict, PLAN_FILL_REACH);
+    else if (req.mode === PLACE_JOIN) code = validate(this.site, kind, rec.team, req.fr, k0, k1, k0 === req.k0 && k1 === req.k1 ? ex : NaN, ey, ez, verdict);
     else {
       if (req.mode === PLACE_NEW) {
         // Open ground takes only a piece that stands on the ground by itself, and only inside the map.
@@ -738,12 +828,15 @@ export class Build {
     }
     const def = reg.defs[kind] as StructureDef;
     // A piece of a base goes down by its key; a base's first makes its frame; a thing has only its pose.
-    const ref = req.mode === PLACE_JOIN ? structs.place(kind, req.fr, k0, k1, rec.team, def.hp)
+    const ref = planned ? this.plans!.setDown(planned, def.hp)
+      : req.mode === PLACE_JOIN ? structs.place(kind, req.fr, k0, k1, rec.team, def.hp)
       : reg.forms.cls[kind]! >= 0 ? startBase(structs, kind, at, rec.team, def.hp)
       : structs.add(kind, px, py, pz, at.yaw, rec.team, def.hp);
     if (ref < 0) return RESULT_FULL;
-    items.burn(rec, slot, 1);
+    if (planned) items.burnItem(rec, reg.pieceItem[kind]!, 1);
+    else items.burn(rec, slot, 1);
     this.last = ref;
+    this.plans?.landed(ref);
     // A bed gets its fixture record at once, so it is found among the fixtures.
     if (reg.isBed[kind] === 1) this.ctx.fixtures.ensure(ref);
     // Placing counts as a visit for decay. placedAt matters only when pickup is time-limited.

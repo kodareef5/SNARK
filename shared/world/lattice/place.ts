@@ -80,8 +80,10 @@ export interface Site {
   enemy?(x: number, z: number, out: Verdict): boolean;
   /** Whether as many pieces stand round (x, z) as may. It fills the verdict's detail. */
   full?(x: number, z: number, out: Verdict): boolean;
-  /** Whether a piece at this pose (lattice units) would be held up: in the slot (k0, k1) of frame `fr`, or with `fr` 0 joined to nothing. */
-  stands?(kind: number, x: number, y: number, z: number, yaw: number, fr: number, k0: number, k1: number): boolean;
+  /** Whether a piece at this pose (lattice units) that joins nothing would be held up: a thing, or a base's first piece. */
+  stands?(kind: number, x: number, y: number, z: number, yaw: number): boolean;
+  /** Whether a piece at this key of a frame would be held up. Every piece that joins a base is asked about so, and a plan's piece. */
+  standsAt?(kind: number, fr: number, k0: number, k1: number): boolean;
 }
 
 /** What `validate` decided: a RESULT_ code, a PLACED_ detail and its numbers, and the pose in lattice units. */
@@ -728,7 +730,7 @@ function refuse(out: Verdict, code: number, detail = PLACED_NONE, a = 0): number
 }
 
 /** What is asked of any piece once its pose is known, in the order a builder is told of it: bodies, the ground, other tribes, the cap, support. */
-function rest(site: Site, kind: number, at: Pose, tw: number, fr: number, k0: number, k1: number, out: Verdict): number {
+function rest(site: Site, kind: number, at: Pose, tw: number, out: Verdict, fr = 0, k0 = 0, k1 = 0): number {
   const x = at.x / U;
   const y = at.y / U;
   const z = at.z / U;
@@ -739,7 +741,8 @@ function rest(site: Site, kind: number, at: Pose, tw: number, fr: number, k0: nu
   out.detail = PLACED_NONE;
   if (site.enemy?.(x, z, out)) return (out.code = RESULT_ENEMY_NEAR);
   if (site.full?.(x, z, out)) return (out.code = RESULT_LIMIT);
-  if (site.stands && !site.stands(kind, at.x, at.y, at.z, at.yaw, fr, k0, k1)) return refuse(out, RESULT_NO_SUPPORT);
+  // A piece in a slot is asked about by its key. A pose says no slot.
+  if (fr !== 0 ? site.standsAt && !site.standsAt(kind, fr, k0, k1) : site.stands && !site.stands(kind, at.x, at.y, at.z, at.yaw)) return refuse(out, RESULT_NO_SUPPORT);
   return (out.code = RESULT_OK);
 }
 
@@ -758,16 +761,34 @@ export function validate(site: Site, kind: number, team: number, fr: number, k0:
   const f = structs.frames.get(fr);
   if (!f) return refuse(out, RESULT_NO_SNAP);
   if (team === 0 || f.team !== team) return refuse(out, RESULT_NOT_YOURS);
+  return judge(site, forms, kind, f, k0, k1, ex, ey, ez, out, false);
+}
+
+/**
+ * `validate` for a plan's piece (server/plans.ts) in the frame `f`, which need not be made yet: under a gid no frame has,
+ * it is judged against what stands of other bases. Nothing built need offer its slot, it may be flipped, and it is held
+ * up as its key says (Site.standsAt).
+ */
+export function validatePlan(site: Site, kind: number, team: number, f: Frame, k0: number, k1: number, ex: number, ey: number, ez: number, out: Verdict, reach = PLACE_REACH): number {
+  const forms = site.structs.forms;
+  if (!forms || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0) return refuse(out, RESULT_INVALID);
+  if (team === 0 || f.team !== team) return refuse(out, RESULT_NOT_YOURS);
+  return judge(site, forms, kind, f, k0, k1, ex, ey, ez, out, true, reach);
+}
+
+function judge(site: Site, forms: FormTable, kind: number, f: Frame, k0: number, k1: number, ex: number, ey: number, ez: number, out: Verdict, plan: boolean, reach = PLACE_REACH): number {
+  const structs = site.structs;
+  const fr = f.gid;
   // No form says yet that it may be flipped.
-  if (!keyFits(forms, kind, k0, k1) || keyFlip(k1) !== 0 || !formCells(forms, kind, k0, k1, cells)) return refuse(out, RESULT_INVALID);
+  if (!keyFits(forms, kind, k0, k1) || (!plan && keyFlip(k1) !== 0) || !formCells(forms, kind, k0, k1, cells)) return refuse(out, RESULT_INVALID);
   const at = out.pose;
   poseOf(f, k0, k1, forms, kind, at);
   const x = at.x / U;
   const y = at.y / U;
   const z = at.z / U;
   if (!(x >= 0 && z >= 0 && x < structs.dims.chunksX * CHUNK_SIZE && z < structs.dims.chunksZ * CHUNK_SIZE)) return refuse(out, RESULT_INVALID);
-  if ((forms.size[kind] === SIDE && !onGrid(k0, k1)) || (site.turned !== true && at.tw !== 0) || !offered(site, forms, kind, f, k0, k1, at)) return refuse(out, RESULT_NO_SNAP);
-  if ((x - ex) * (x - ex) + (y - ey) * (y - ey) + (z - ez) * (z - ez) > PLACE_REACH * PLACE_REACH) return refuse(out, RESULT_FAR);
+  if ((forms.size[kind] === SIDE && !onGrid(k0, k1)) || (site.turned !== true && at.tw !== 0) || (!plan && !offered(site, forms, kind, f, k0, k1, at))) return refuse(out, RESULT_NO_SNAP);
+  if ((x - ex) * (x - ex) + (y - ey) * (y - ey) + (z - ez) * (z - ez) > reach * reach) return refuse(out, RESULT_FAR);
   let by = taken(structs, forms, kind, fr, k0, k1);
   if (by < 0) by = blocking(structs, forms, kind, fr, k0, k1);
   if (by < 0) {
@@ -783,7 +804,7 @@ export function validate(site: Site, kind: number, team: number, fr: number, k0:
   }
   if (by < 0) by = crowding(site, forms, kind, f, k0, k1, at);
   if (by >= 0) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, by);
-  return rest(site, kind, at, at.tw, fr, k0, k1, out);
+  return rest(site, kind, at, at.tw, out, fr, k0, k1);
 }
 
 /**
@@ -804,12 +825,12 @@ export function validateFree(site: Site, kind: number, at: Pose, ex: number, ey:
   if ((x - ex) * (x - ex) + (y - ey) * (y - ey) + (z - ez) * (z - ez) > PLACE_REACH * PLACE_REACH) return refuse(out, RESULT_FAR);
   if (!structs.forms || structs.forms.cls[kind]! < 0) {
     if (obstructed(structs, site.tables.parts, kind, x, y, z, at.yaw)) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, obstruction.ref);
-    return rest(site, kind, at, 0, 0, 0, 0, out);
+    return rest(site, kind, at, 0, out);
   }
   const reach = structs.spread[kind]!;
   const rows = structs.query(x - reach, z - reach, x + reach, z + reach, near);
   for (let r = 0; r < rows; r++) if (crosses(structs, site.tables.parts, kind, x, y, z, at.yaw, 0, near.refs[r]!, 0, 0, GIVE_OTHER, 0)) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, near.refs[r]!);
-  return rest(site, kind, at, 0, 0, 0, 0, out);
+  return rest(site, kind, at, 0, out);
 }
 
 const origin = { ox: 0, oy: 0, oz: 0 };

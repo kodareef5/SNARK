@@ -29,6 +29,7 @@ import { BAG } from "./render/dropped.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import { itemLabel, waitWords } from "./ui/inventory.ts";
+import { STABILITY } from "../../shared/world/support.ts";
 import { structName } from "./ui/structure.ts";
 import type { VehiclePlacement } from "./vehicle-placement.ts";
 import { lookAt, nearbyBoard, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
@@ -242,7 +243,9 @@ export class Prompts implements FramePart {
     this.aimed = ref;
     const mine = s.tribe.team !== 0 && t.owner[ref & 0xffff] === s.tribe.team;
     const usable = (reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) && rayHit.t <= REACH;
-    return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${reg.maxHp[kind]}`;
+    // With a piece in hand, how well a piece of the tribe's own stands is said too.
+    const stands = mine ? this.builder.stabilityOf(world, ref) : -2;
+    return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${reg.maxHp[kind]}${stands >= 0 ? `  stability ${stands} of ${reg.stabilityCap[kind] || STABILITY}` : ""}`;
   }
 
   /** The use button's prompt, and before it what a click of the soul ball in hand would do. */

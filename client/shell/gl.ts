@@ -130,6 +130,8 @@ export class GlRenderer {
   formats: TextureFormat[] = [];
   format: TextureFormat = "rgba";
   drawCalls = 0;
+  /** Whether part of an instance buffer is written in place (packet.ts BufferUpload `from`). Off, the whole buffer goes up again. */
+  partial = true;
   /** Errors other than a want of memory after a frame's uploads. There should be none. */
   errors = 0;
   /** What compared lookups give on this device (shadowfilter.ts). Where they come back "hard" the shadow lookup filters for itself. */
@@ -1053,9 +1055,12 @@ export class GlRenderer {
     // Resource changes first, in order.
     for (const u of p.uploads) {
       let buffer = this.buffers.get(u.buffer);
+      // Part of a buffer the card holds (a piece's state), where the buffer is the size it was; else the whole of it.
+      const part = buffer !== undefined && this.partial && u.bytes !== undefined && u.from !== undefined;
       if (!buffer) this.buffers.set(u.buffer, (buffer = gl.createBuffer()!));
       this.array(buffer);
-      gl.bufferData(gl.ARRAY_BUFFER, u.data, gl.STATIC_DRAW);
+      if (part) gl.bufferSubData(gl.ARRAY_BUFFER, u.from!, u.data, u.from!, u.bytes!);
+      else gl.bufferData(gl.ARRAY_BUFFER, u.data, gl.STATIC_DRAW);
     }
     for (const id of p.drops) {
       gl.deleteBuffer(this.buffers.get(id) ?? null);
