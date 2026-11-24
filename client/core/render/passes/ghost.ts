@@ -110,7 +110,15 @@ export class Ghost implements Pass {
   private mark(kind: number, mesh: number, x: number, y: number, z: number, yaw: number, tw: number, color: number, fade: number): void {
     if (this.marked === MARKS_MOST) return;
     const m = this.marks[this.marked++]!;
-    [m.kind, m.mesh, m.x, m.y, m.z, m.yaw, m.tw, m.color, m.fade] = [kind, mesh, x, y, z, yaw & 0xffff, tw, color, fade];
+    m.kind = kind;
+    m.mesh = mesh;
+    m.x = x;
+    m.y = y;
+    m.z = z;
+    m.yaw = yaw & 0xffff;
+    m.tw = tw;
+    m.color = color;
+    m.fade = fade;
   }
 
   draw(f: Frame): void {
