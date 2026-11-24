@@ -51,6 +51,8 @@ const NEAR = 3.1;
 const BAND = 0.05;
 /** Work units to build one node, and each cell read for it costs a quarter more. A search step costs 1. 16,000 are about a millisecond. */
 export const COST_NODE = 6;
+/** Work units for a piece found not to stand: what removing it and telling of it will cost the tick. */
+const COST_FALL = 24;
 
 const SLAB = FORM_LAYERS.indexOf("slab");
 const FILL = FORM_LAYERS.indexOf("fill");
@@ -637,7 +639,8 @@ export class Support {
 
   /**
    * Asked afresh by pose, for a piece already built (pass its ref as `self`) or one about to be. A kind that is not a
-   * building piece stands. The pose is given its key in each base it is a free slot of, as the adoption shim would.
+   * building piece stands. The pose is given its key in each base it is a free slot of, as the adoption shim would: a
+   * pose says no turn of 30 or 60 degrees, so a piece turned so is asked about by its key (stabilityAt).
    */
   stands(kind: number, x: number, y: number, z: number, yaw: number, self = -1): boolean {
     this.visited = 0;
@@ -679,6 +682,7 @@ export class Support {
     this.asking = true;
     const stands = n.fr === 0 ? this.askFree(n) : this.reach(n, this.cap[n.kind]! - this.need[n.kind]!) >= 0;
     this.asking = false;
+    if (!stands && !this.cut) this.work += COST_FALL;
     return stands;
   }
 
@@ -1009,7 +1013,8 @@ export class Support {
     const far = this.far;
     const n = structs.query(mx - far, mz - far, mx + far, mz + far, found);
     const out = found.refs;
-    this.work += COST_NODE + n;
+    // A piece listed costs half a search step.
+    this.work += COST_NODE + (n >> 1);
     let count = 0;
     for (let i = 0; i < n; i++) {
       const ref = out[i]!;
@@ -1027,6 +1032,7 @@ export class Support {
   // ---------------------------------------------------------------------------------------------------------------
   // Going away with the adoption shim: pieces with no key, judged by sockets and by reach in metres. A thing rests on a
   // floor by `describeFree` until things have a rule of their own. Everything from here down is deleted with `inPlace`.
+  // A piece with no key is of turn class 0, so its sockets lie along frameAxes of its yaw alone.
 
   /** Nodes made the old way, of any row a question about a piece with no key met. */
   private readonly frees = new Map<number, SupportNode>();
