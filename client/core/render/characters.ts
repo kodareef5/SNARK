@@ -1,4 +1,5 @@
 import { skateDeckRotation } from "../../../shared/anim/skate.ts";
+import { caughtStrikeTick } from "./strike-contact.ts";
 import { ownArms } from "./own-arms.ts";
 import { ImpactSprings } from "./impact-springs.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
@@ -358,7 +359,7 @@ export class Characters {
   override: { id: number; clip: Clip; frame: number } | null = null;
   fresh = 0;
   /** The camera's pitch and half the height of its view, in radians, which the scene sets for the viewer's body (eyeRoom). */
-  readonly eye = { pitch: 0, half: 0 };
+  readonly eye = { pitch: 0, half: 0, strikeAt: -Infinity };
   /** The viewer's own origin under its eye, metres, as its body is posed. */
   private eyeDrop = 0;
   /** Which of a vehicle's `hides` bones to hide, bit by bit, for the entity with this id; null hides none. */
@@ -1816,7 +1817,7 @@ export class Characters {
     solve(HUMAN, this.pose, solved, set.rest, scales, onFoot ? this.joints : undefined);
     if (onFoot && scales) plantLookFeet(this.pose, solved, scales, set.rest);
     // Its own arms go where its eye sees a blow or a carried tool (own-arms.ts), the eye as far ahead as the body is pushed back.
-    if (upright && ownArms(this.pose, st, tick, -this.eyeDrop, this.eyeRoom(solved, set.rest, this.eyeDrop), this.eye.pitch, g.phase, g.speed)) solve(HUMAN, this.pose, solved, set.rest, scales, this.joints);
+    if (upright && ownArms(this.pose, st, caughtStrikeTick(st, tick, this.eye.strikeAt), -this.eyeDrop, this.eyeRoom(solved, set.rest, this.eyeDrop), this.eye.pitch, g.phase, g.speed)) solve(HUMAN, this.pose, solved, set.rest, scales, this.joints);
     if (rider?.profile && seat) fitRiderControls(this.pose, solved, set.rest, scales, rider.targets, steers, undefined, soles, grips);
     if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
   }

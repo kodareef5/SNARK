@@ -831,6 +831,7 @@ export class App {
     const strike = session.strike;
     session.strike = null;
     if (strike && session.sessionState === SESSION_ALIVE && !session.airCamera.id && session.driving < 0) {
+      if (f.body.firstPerson && session.tickClock - strike.tick < 4) scene.characters.eye.strikeAt = session.tickClock;
       // After this swing's recovery an old hit would kick the next swing.
       if (session.tickClock - strike.tick < SWING_TICKS - FISTS.strikeTick && this.ui.settings.viewKick) this.sight.struck(f.nowMs);
       if (strike.node && session.serverTick - strike.tick < SWING_TICKS) {
