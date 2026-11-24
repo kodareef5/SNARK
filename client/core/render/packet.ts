@@ -29,6 +29,8 @@ export const TRANSIENT_BUFFER = 0xffffffff;
 export const MAX_WATER_TILES = 289;
 /** Pieces set down and awaited a frame may show as built (passes/ghost.ts). */
 export const MAX_PREDICTED = 32;
+/** Pieces of a template or a plan a frame may show where they would stand (passes/holograms.ts). The nearest are shown. */
+export const MAX_HOLOGRAMS = 256;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
@@ -816,9 +818,9 @@ export class FramePacket {
   readonly streetKinds = new Uint8Array(STREET_TILES_FRAME * STREET_TILE_BYTES);
 
   transientCount = 0;
-  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_PREDICTED + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
+  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_PREDICTED + MAX_HOLOGRAMS + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
   /** Entity slot index of each transient instance, for picking. */
-  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_PREDICTED + MAX_FALLING + MAX_SKINNED);
+  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_PREDICTED + MAX_HOLOGRAMS + MAX_FALLING + MAX_SKINNED);
 
   /** Bones of every body drawn this frame, BONE_FLOATS each. */
   boneCount = 0;

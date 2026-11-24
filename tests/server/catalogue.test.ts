@@ -64,7 +64,9 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "item/armor": 25,
     "item/structure": 29,
     "item/vehicle": 3,
-    engram: 62,
+    // The template hammer and its engram (content/building.ts).
+    "item/instrument": 1,
+    engram: 63,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
@@ -92,8 +94,8 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     spawns: 4,
     map: 5, // miami-coast became Miami (D810)
   });
-  // 253 with the supply drop's capsule (content/core.ts), and air support's three vehicles.
-  expect(rest.length).toBe(253 + 3 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
+  // 253 with the supply drop's capsule (content/core.ts), the template hammer and its engram, and air support's three vehicles.
+  expect(rest.length).toBe(253 + 2 + 3 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

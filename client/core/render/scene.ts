@@ -95,6 +95,7 @@ import { CHUNK_CELLS, HIDDEN, NODE_BUFFERS, NearStore } from "./passes/near-stor
 import { MovingStatics } from "./passes/moving-statics.ts";
 import { Beams } from "./passes/beams.ts";
 import { Ghost } from "./passes/ghost.ts";
+import { Holograms } from "./passes/holograms.ts";
 import { Things, type Thing } from "./passes/things.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 
@@ -486,6 +487,8 @@ export class Scene {
   /** Beams over places to mark, the piece about to be built, and loose meshes, each a pass, which the app sets through these. */
   private readonly marks: Beams;
   private readonly placing: Ghost;
+  /** The pieces of templates and plans shown where they would stand, which the app fills each frame (hammer.ts). */
+  readonly holograms: Holograms;
   private readonly loose: Things;
   get beams(): number[] { return this.marks.beams; }
   get ghost(): Ghost["ghost"] { return this.placing.ghost; }
@@ -625,6 +628,7 @@ export class Scene {
     this.movingStatics = new MovingStatics(reg, this.assets, this.flatFlags, this.landmarkKinds);
     this.marks = new Beams(this.assets);
     this.placing = new Ghost(this.assets, this.meshOfKind, this.colorOfKind);
+    this.holograms = new Holograms(this.assets, this.meshOfKind);
     this.loose = new Things(this.assets);
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
@@ -916,6 +920,7 @@ export class Scene {
       ["rubble", this.looseEntities.rubble],
       ["tree falls", { draw: () => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, this.fallTree); } }],
       ["ghost", this.placing],
+      ["holograms", this.holograms],
       ["things", this.loose],
       ["details", { draw: (f) => this.showDetails(f.cam, f.remote) }],
       // After the details, so fire is drawn over the dust and smoke round it.

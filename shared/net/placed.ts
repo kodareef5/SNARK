@@ -16,10 +16,13 @@ export interface Placed {
   detail: number;
   a: number;
   b: number;
+  /** A plan's fill: the place in the plan's order to go on from, and -1 for any other placement. `skipped` are pieces passed over as blocked. */
+  next: number;
+  skipped: number;
 }
 
 export function makePlaced(): Placed {
-  return { seq: 0, refs: [], code: RESULT_OK, detail: PLACED_NONE, a: 0, b: 0 };
+  return { seq: 0, refs: [], code: RESULT_OK, detail: PLACED_NONE, a: 0, b: 0, next: -1, skipped: 0 };
 }
 
 /** After the message's kind. */
@@ -35,14 +38,20 @@ export function writePlaced(w: BitWriter, p: Placed): void {
     w.u16(p.refs[i]! & 0xffff);
   }
   w.bool(p.code !== RESULT_OK);
-  if (p.code === RESULT_OK) return;
-  w.u8(p.code);
-  w.bits(p.detail, 3);
-  if (p.detail === PLACED_STRUCTURE) w.u32(p.a);
-  else if (p.detail === PLACED_ENTITY) w.varint(p.a);
-  else if (p.detail === PLACED_COUNTS || p.detail === PLACED_METRES) {
-    w.varint(p.a);
-    w.varint(p.b);
+  if (p.code !== RESULT_OK) {
+    w.u8(p.code);
+    w.bits(p.detail, 3);
+    if (p.detail === PLACED_STRUCTURE) w.u32(p.a);
+    else if (p.detail === PLACED_ENTITY) w.varint(p.a);
+    else if (p.detail === PLACED_COUNTS || p.detail === PLACED_METRES) {
+      w.varint(p.a);
+      w.varint(p.b);
+    }
+  }
+  w.bool(p.next >= 0);
+  if (p.next >= 0) {
+    w.varint(p.next);
+    w.varint(p.skipped);
   }
 }
 
@@ -66,6 +75,11 @@ export function readPlaced(r: BitReader, out: Placed): boolean {
       out.a = r.varint();
       out.b = r.varint();
     } else if (out.detail !== PLACED_NONE) return false;
+  }
+  [out.next, out.skipped] = [-1, 0];
+  if (r.bool()) {
+    out.next = r.varint();
+    out.skipped = r.varint();
   }
   return !r.overflow;
 }

@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 595 of them: 230 take effect,
+is listed here, 600 of them: 235 take effect,
 175 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -65,6 +65,11 @@ the admin's settings page may change a setting without a restart.
 | `ForceAllStructureLocking` | False | Everything that can be locked is locked when it is built. | yes |
 | `PreventOutOfTribePinCodeUse` | False | A PIN opens nothing for those outside the tribe. | yes |
 | `TheMaxStructuresInRange` | 10500 | The most things built within about 100 m of each other, whoever built them. 0 is no limit. *ARK's distance is fixed and unpublished. Here it is the 16 m squares whose middle is within 96 m.* | yes |
+| `MaxPlansPerTribe` | 4 | Plans a tribe may have standing at once: templates set down with the template hammer and not yet built. *Ours. ARK's Template Hammer has no such limit that its pages give.* | yes |
+| `MaxPlanPieces` | 2000 | The most pieces one plan may have. *Ours. A template holds 2,000 at most, as ARK's does.* | yes |
+| `MaxPlansPerChunk` | 8 | Plans that may stand in one 64 m square of the map, whoever set them down. *Ours.* | yes |
+| `PlanPasteCooldown` | 10 | Seconds a tribe waits between setting down two plans. *Ours.* | yes |
+| `PlanExpiryHours` | 24 | Hours a plan stands after the last piece of it was built. 0 is for good. *Ours. Real hours, while the server runs.* | yes |
 | `PvEAllowStructuresAtSupplyDrops` | False | On a PvE server, building within 30 m of a place the drop book lands drops at. | yes |
 | `AllowCrateSpawnsOnTopOfStructures` | False | Supply drops may land on what a tribe built, and near it: a floor there counts as ground, and the drop book's distance from a base is not asked. | yes |
 | `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away. | yes |

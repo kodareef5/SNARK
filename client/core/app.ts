@@ -62,6 +62,7 @@ import { Viewpoint } from "./viewpoint.ts";
 import { Orbit } from "./orbit.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
 import { Builder, GHOST_BAD, GHOST_OK, buildReason } from "./build.ts";
+import { Hammer } from "./hammer.ts";
 import { PredictBuild } from "./predict-build.ts";
 import { STRUCT_REASONS } from "./ui/structure.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
@@ -246,8 +247,8 @@ export class App {
       get airMarking() { return app.ui.air.marking; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
-      get building() { return app.builder.active && app.session.driving < 0; },
-      rotate: (by) => this.builder.rotate(by, this.reg),
+      get building() { return (app.builder.active || app.hammer.active) && app.session.driving < 0; },
+      rotate: (by) => (this.hammer.active ? this.hammer.rotate(by) : this.builder.rotate(by, this.reg)),
       zoom: (notches, alt) => void this.zoomBy(notches, alt),
       adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
@@ -292,6 +293,7 @@ export class App {
       const undone = this.predict.result(seq, code, this.nowMs);
       if (undone > RESULT_OK) this.builder.say(undone === RESULT_WAIT ? "Too late to take it back" : (STRUCT_REASONS[undone] ?? "It cannot be taken back"), this.nowMs);
       this.builder.result(seq, code, this.nowMs);
+      this.hammer.result(seq, code);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
       if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
@@ -299,7 +301,11 @@ export class App {
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
     this.builder.pending = (item) => this.predict.pending(item);
+    this.ui.tool.hammer = this.hammer;
+    this.builder.planSlot = (forms, team, ox, oy, oz, dx, dy, dz, reach) => (session.world ? this.hammer.slots.find(session, session.world, this.reg, forms, team, ox, oy, oz, dx, dy, dz, reach) : null);
     session.onPlaced = (p) => {
+      // A fill of the hammer's is its own to answer.
+      if (this.hammer.placed(p)) return;
       this.predict.placed(p, session, this.nowMs);
       this.builder.answered(p.seq, p.code, p.code === RESULT_OK ? "" : buildReason(this.reg, session, p.code, p, (entity) => this.nameOf(entity)), this.nowMs);
     };
@@ -309,6 +315,8 @@ export class App {
   }
 
   readonly builder = new Builder();
+  /** The template hammer: templates copied and kept, the one being set down, and the plans being filled (hammer.ts). */
+  readonly hammer = new Hammer();
   /** The pieces set down that the server has not yet sent as rows (predict-build.ts). */
   readonly predict = new PredictBuild();
 
@@ -404,7 +412,9 @@ export class App {
     const building = this.builder.active && this.session.driving < 0 && this.ui.wantsPointerLock;
     // The middle button holds a helmet's visor up (visor.ts). With a piece in hand it picks the built piece looked at.
     if (button === 1) {
-      if (building && down) this.builder.pick(this.session, this.reg);
+      // With the template hammer it fills the plan, as F does: a pad's d-pad right presses it.
+      if (this.hammer.active && this.session.driving < 0 && this.ui.wantsPointerLock) { if (down) this.hammer.fill(); }
+      else if (building && down) this.builder.pick(this.session, this.reg);
       else this.visor.held = down && this.ui.wantsPointerLock;
       return;
     }
@@ -416,6 +426,12 @@ export class App {
     if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
     if (button === 0 && this.vehiclePlacement.active) {
       if (down) this.vehiclePlacement.place(this.session);
+      return;
+    }
+    // With the template hammer the first button copies or sets down, and the mouse's second puts the template away.
+    if (this.hammer.active && this.session.driving < 0 && (button === 0 || (button === 2 && source === 0 && this.hammer.chosen >= 0))) {
+      if (down && button === 0) this.hammer.act();
+      else if (down) this.hammer.choose(-1);
       return;
     }
     if (button === 0 && this.builder.active) {
@@ -463,6 +479,10 @@ export class App {
     // With a piece in hand the wheel turns it, and is no sight's zoom.
     if (this.builder.active && this.session.driving < 0) {
       this.builder.scroll(notches, this.reg);
+      return true;
+    }
+    if (this.hammer.active && this.hammer.chosen >= 0 && this.session.driving < 0) {
+      this.hammer.scroll(notches);
       return true;
     }
     return this.zoomBy(notches) || this.orbit.wheel(notches);
@@ -1059,7 +1079,9 @@ export class App {
       lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.dir);
       b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
       v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
-    } else { b.active = false; v.active = false; }
+      this.hammer.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
+    } else { b.active = false; v.active = false; this.hammer.active = false; }
+    this.hammer.holograms(f.scene.holograms, session, this.pack.palette, this.cam.x, this.cam.y, this.cam.z, nowMs);
     const predict = this.predict;
     this.ui.structure.undoable = b.active && predict.undoable;
     // Where a piece just set down stands, the preview has nothing to add.

@@ -66,6 +66,9 @@ export class Tribes {
   /** Called with a record whose team changed, so its body can show it. */
   onTeam: ((rec: EntityRecord) => void) | null = null;
   onNotice: ((pid: number, text: string) => void) | null = null;
+  /** Called when everything of team `from` becomes team `to`'s, and when a team's last member has left it. */
+  onMerged: ((from: number, to: number) => void) | null = null;
+  onGone: ((team: number) => void) | null = null;
   private readonly invites = new Map<number, Invite>();
   private readonly survivor: number;
   private readonly world: ServerWorld;
@@ -187,6 +190,7 @@ export class Tribes {
     // A survivor who has built nothing is the usual case, and then no chunk is read.
     const moved = this.world.claims.total(was) > 0 ? this.world.structs.reown(was, tribe.id) : 0;
     if (moved > 0) this.bus.after(STRUCTURE_OWNER, { from: was, to: tribe.id, n: moved });
+    this.onMerged?.(was, tribe.id);
     for (const other of this.records.byPid.values()) {
       if (other.team !== was || other === rec) continue;
       other.team = tribe.id;
@@ -310,6 +314,7 @@ export class Tribes {
     if (tribe.members.length === 0) {
       // The last member left, so the tribe is gone. What it owned keeps the team id, which no one can act for now.
       this.byId.delete(tribe.id);
+      this.onGone?.(tribe.id);
     } else if (tribe.owner === rec.pid) {
       // Ownership passes to the longest-standing member.
       tribe.owner = tribe.members[0]!;

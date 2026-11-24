@@ -8,10 +8,11 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
+import { Plans } from "./plans.ts";
 import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
@@ -226,6 +227,7 @@ export interface Host {
   readonly chat: Chat;
   readonly voice: Voice;
   readonly build: Build;
+  readonly plans: Plans;
   readonly fixtures: Fixtures;
   readonly motion: Motion;
   readonly stations: Stations;
@@ -965,6 +967,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
+  // Templates set down and not yet built: they follow their team, and go with it.
+  const plans = new Plans({ world, game, records, items, tribes, rules });
+  build.plans = plans;
+  tribes.onMerged = (from, to) => plans.moved(from, to);
+  tribes.onGone = (team) => plans.dropTeam(team);
+  if (persistence) {
+    if (!loaded!.fresh) plans.load(persistence.store.loadPlans());
+    persistence.plans = plans;
+  }
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
   const loose = new Loose({ world, game, records, items, combat, death });
   const falls = new Falls(world);
@@ -1960,6 +1971,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     castHost,
     mark(PART.spawner),
     build,
+    plans,
     cityCollapse,
     cityRegrow,
     mark(PART.build),
@@ -2014,6 +2026,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     chat,
     voice,
     build,
+    plans,
     fixtures,
     motion,
     stations,
@@ -2150,6 +2163,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.handle(CMD_VEHICLE, (c, r) => vehicles.command(c, r));
   game.handle(CMD_CLOCK, (c, r) => creative.turn(c, r));
   game.handle(CMD_PLACE, (c, r, seq) => build.place(c, r, seq));
+  game.handle(CMD_PLAN_PART, (c, r) => plans.part(c, r));
+  game.handle(CMD_PLAN_COMMIT, (c, r, seq) => plans.commit(c, r, seq));
+  game.handle(CMD_PLAN_CANCEL, (c, r) => plans.cancel(c, r));
   game.handle(CMD_STRUCT, (c, r) => build.act(c, r));
   game.handle(CMD_FEED, (c, r) => taming.feed(c, r));
   game.handle(CMD_ORDER, (c, r) => taming.order(c, r));
