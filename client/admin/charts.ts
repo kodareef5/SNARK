@@ -1,7 +1,9 @@
 // The admin page's charts: the tiles' last two minutes, and the last hours a point a minute (client/core/admin/chart.ts).
 
 import { chartRuns, clockText, timeTicks, valueAxis } from "../core/admin/chart.ts";
-import { $, BAD, FACE, ICE, S, WARN, WELL, fit, offset } from "./dom.ts";
+import { $, FACE, S, fit, offset } from "./dom.ts";
+
+const MEDIAN = "#2365a5", WORST = "#aa6228", HEAP = "#2c765f", BUDGET = "#b74137";
 
 /** The last two minutes, a point a second, as lines over the tile's foot. */
 export function spark(c: HTMLCanvasElement, series: number[][], colours: string[], top: number): void {
@@ -23,8 +25,8 @@ function chart(id: string, lines: { v: number[]; colour: string; fill?: boolean 
   const shown = (v: number[]): number[] => v.filter((_, i) => at[i]! >= t0);
   const axis = valueAxis(Math.max(0, ...lines.flatMap((l) => shown(l.v))), floor);
   g.font = `12px ${FACE}`;
-  g.fillStyle = "#93a9bd";
-  g.strokeStyle = "rgba(168,204,234,0.12)";
+  g.fillStyle = "#4e6277";
+  g.strokeStyle = "rgba(87,115,143,0.18)";
   for (const v of axis.ticks) {
     const y = Math.round(h - foot - (v / axis.top) * (h - foot - 6)) + 0.5;
     g.fillText(words(v), 0, y + 4);
@@ -39,7 +41,7 @@ function chart(id: string, lines: { v: number[]; colour: string; fill?: boolean 
   g.translate(left, 6);
   const [cw, ch] = [w - left, h - foot - 6];
   if (budget > 0) {
-    g.strokeStyle = BAD;
+    g.strokeStyle = BUDGET;
     g.setLineDash([4, 4]);
     g.beginPath();
     g.moveTo(0, ch - (budget / axis.top) * ch);
@@ -54,7 +56,7 @@ function chart(id: string, lines: { v: number[]; colour: string; fill?: boolean 
       if (l.fill && run.length > 2) {
         g.lineTo(run[run.length - 2]!, ch);
         g.lineTo(run[0]!, ch);
-        g.fillStyle = "rgba(169,214,242,0.22)";
+        g.fillStyle = "rgba(35,101,165,0.14)";
         g.fill();
       } else {
         g.strokeStyle = l.colour;
@@ -70,8 +72,8 @@ export function drawCharts(): void {
   const m = S.minutes?.columns, none: number[] = [];
   const mb = (v: number): string => (v >= 1e9 ? `${(v / 1e9).toFixed(1)} GB` : `${Math.round(v / 1e6)} MB`);
   const budget = S.stats?.ticks.budget ?? 33;
-  chart("c-tick", [{ v: m?.p50 ?? none, colour: ICE, fill: true }, { v: m?.p50 ?? none, colour: ICE }, { v: m?.worst ?? none, colour: WARN }], budget, (v) => `${v} ms`, budget);
-  chart("c-late", [{ v: m?.late ?? none, colour: WARN }, { v: m?.lateMean ?? none, colour: ICE }], 10, (v) => `${v} ms`);
-  chart("c-online", [{ v: m?.online ?? none, colour: WELL }], 4, (v) => String(v));
-  chart("c-memory", [{ v: m?.rss ?? none, colour: ICE }, { v: m?.heap ?? none, colour: WELL }], 1e8, mb);
+  chart("c-tick", [{ v: m?.p50 ?? none, colour: MEDIAN, fill: true }, { v: m?.p50 ?? none, colour: MEDIAN }, { v: m?.worst ?? none, colour: WORST }], budget, (v) => `${v} ms`, budget);
+  chart("c-late", [{ v: m?.late ?? none, colour: WORST }, { v: m?.lateMean ?? none, colour: MEDIAN }], 10, (v) => `${v} ms`);
+  chart("c-online", [{ v: m?.online ?? none, colour: HEAP }], 4, (v) => String(v));
+  chart("c-memory", [{ v: m?.rss ?? none, colour: MEDIAN }, { v: m?.heap ?? none, colour: HEAP }], 1e8, mb);
 }
