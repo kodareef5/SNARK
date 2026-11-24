@@ -15,7 +15,7 @@ import { packSkateWord } from "../shared/sim/skate-state.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
 import { F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
-import { GONE_BLAST, GONE_TAKEN, RECENT, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED } from "../shared/world/structures.ts";
+import { GONE_BLAST, GONE_TAKEN, RECENT, STAGE_FULL, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED, healthStage } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import type { Client, GameOptions, GameStats } from "./game.ts";
@@ -510,7 +510,7 @@ export class Replication {
     return m;
   }
 
-  /** A row of a chunk message (CHUNK in shared/net/protocol.ts). In place, only its owner and health, and its kind if `swapped`. */
+  /** A row of a chunk message (S_CHUNK in shared/net/protocol.ts). In place, only its owner and health, and its kind if `swapped`. */
   private row(w: BitWriter, t: ChunkTable, s: number, x0: number, z0: number, inPlace: boolean, swapped = false): void {
     const gap = s - this.rowSlot - 1;
     this.rowSlot = s;
@@ -532,10 +532,15 @@ export class Replication {
       this.rowY = y;
       this.yaws.write(w, t.yaw[s]!, 16);
     }
-    this.owners.write(w, t.owner[s]!, 0);
-    const full = t.hp[s] === this.world.reg.maxHp[kind];
-    w.bool(full);
-    if (!full) w.f32(t.hp[s]!);
+    const owner = t.owner[s]!;
+    this.owners.write(w, owner, 0);
+    const max = this.world.reg.maxHp[kind]!;
+    // Nobody's piece (the map's) is told exactly, since its forms turn on its health. An owned one is told its stage.
+    const stage = owner === 0 ? (t.hp[s] === max ? STAGE_FULL : 0) : healthStage(t.hp[s]!, max);
+    w.bool(stage === STAGE_FULL);
+    if (stage === STAGE_FULL) return;
+    if (owner === 0) w.f32(t.hp[s]!);
+    else w.bits(stage, 8);
   }
 
   /** Runs of slots, each coded from where the one before ended. */

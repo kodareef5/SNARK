@@ -161,7 +161,7 @@ import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/wor
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
-import { GONE_BLAST, GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
+import { GONE_BLAST, GONE_TAKEN, StructureStore, stageHealth, withSurfaces } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { GoneStore } from "./gonelists.ts";
@@ -2701,7 +2701,7 @@ export class ClientSession {
       if (inPlace) {
         const now = kind !== 0 ? kind : was;
         const owner = this.owners.read(r, 0);
-        const hp = r.bool() ? maxHp[now]! : r.f32();
+        const hp = r.bool() ? maxHp[now]! : owner === 0 ? r.f32() : stageHealth(r.bits(8), maxHp[now]!);
         if (r.overflow) return;
         if (was === 0) continue;
         if (told && (was !== now || hpWas !== Math.fround(hp))) told(was, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
@@ -2718,7 +2718,7 @@ export class ClientSession {
       if (!r.bool()) height += r.svarint();
       const yaw = this.yaws.read(r, 16);
       const owner = this.owners.read(r, 0);
-      const hp = r.bool() ? maxHp[kind]! : r.f32();
+      const hp = r.bool() ? maxHp[kind]! : owner === 0 ? r.f32() : stageHealth(r.bits(8), maxHp[kind]!);
       if (r.overflow) return;
       const y = height / STRUCT_UNITS;
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);

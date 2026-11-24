@@ -39,7 +39,10 @@ export function refundOf(reg: Registry, kind: number): boolean {
   return fill(reg, kind, 0.5, false);
 }
 
-/** The missing share of each ingredient, rounded up. Fills `cost`. False if the kind has no known recipe or the structure is whole. */
+/**
+ * The missing share of each ingredient, rounded up. Fills `cost`. False if the kind has no known recipe or the structure is whole.
+ * `hp` is the health a client holds (toldHealth), on the server too, so the cost shown is the cost charged.
+ */
 export function repairCostOf(reg: Registry, kind: number, hp: number): boolean {
   const max = reg.maxHp[kind]!;
   if (!(hp < max) || !(max > 0)) return false;

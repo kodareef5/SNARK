@@ -42,7 +42,8 @@
 //                            slot, which ends the row), x and z 15 bits each (1/512 m from the chunk's corner),
 //                            height 1 bit set if it is the last full row's, else svarint from it (1/512 m, from 0
 //                            for the first), yaw (named u16), owner (named varint), health. Health is 1 bit set for
-//                            the kind's most, else f32. A value named is 0 and its place among those the message
+//                            the kind's most, else f32 for a piece nobody owns and a stage u8 for an owned one
+//                            (healthStage). A value named is 0 and its place among those the message
 //                            named before (as few bits as their count needs), or 1 and the value; see Named.
 //     CHUNK_DROP reliable    chunk u16
 //     REJECT    reliable     reason u8, and for REJECT_TRAVEL why, as a string

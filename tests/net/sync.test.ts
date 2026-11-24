@@ -5,7 +5,7 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { S_CHUNK } from "../../shared/net/protocol.ts";
 import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
-import { GONE_FELL, type StructureStore } from "../../shared/world/structures.ts";
+import { GONE_FELL, toldHealth, type StructureStore } from "../../shared/world/structures.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -35,14 +35,15 @@ test("a collapse too large for one message reaches the client whole", () => {
   expect(h.server.stats.overflows).toBe(1);
 });
 
-/** Slots of the chunks `held` has whole that differ from `structs`. */
+/** Slots of the chunks `held` has whole that differ from `structs`, an owned piece's health being the stage a client is told. */
 function differ(structs: StructureStore, held: StructureStore, chunks: number[]): number {
   let n = 0;
   for (const c of chunks) {
     const [t, u] = [structs.chunks[c]!, held.chunks[c]!];
     for (let s = 0; s < Math.max(t.high, u.high); s++) {
       const kind = t.kind[s] ?? 0;
-      if (kind !== (u.kind[s] ?? 0) || (kind !== 0 && [t.x, t.y, t.z, t.yaw, t.owner, t.hp].some((col, i) => col[s] !== [u.x, u.y, u.z, u.yaw, u.owner, u.hp][i]![s]))) n++;
+      const hp = kind !== 0 && t.owner[s] !== 0 ? toldHealth(t.hp[s]!, structs.fullHp![kind]!) : t.hp[s];
+      if (kind !== (u.kind[s] ?? 0) || (kind !== 0 && ([t.x, t.y, t.z, t.yaw, t.owner].some((col, i) => col[s] !== [u.x, u.y, u.z, u.yaw, u.owner][i]![s]) || hp !== u.hp[s]))) n++;
     }
   }
   return n;

@@ -105,9 +105,9 @@ test("far cells stop at the reach asked and at FarRadius, leave out boxes, beds 
   expect(a.tactical.cellAt(130, 130)).not.toBe(0);
   expect(run(a, 2048, 2000, () => a.far.chunks.has(at1500))).toBeGreaterThan(0);
 
-  // A blow changes no cell: the chunk is baked again and nothing is sent.
+  // A blow that takes a piece a stage down changes no cell: the chunk is baked again and nothing is sent.
   const [sent, bakes] = [stats.far, stats.bakes];
-  world.structs.damage(near[0]!, 1);
+  world.structs.damage(near[0]!, 60);
   expect(run(a, 2048, 7000, () => stats.bakes > bakes)).toBeGreaterThan(0);
   run(a, 2048, 1100);
   expect(stats.far).toBe(sent);

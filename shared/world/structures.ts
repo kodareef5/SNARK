@@ -67,6 +67,26 @@ export const GONE_BLAST = 3;
 export const TOUCH_MOVED = 1;
 export const TOUCH_KIND = 2;
 export const TOUCH_LEFT = 4;
+/** The stage that says an owned piece has its kind's most health exactly. Stages 1 to 254 are the 254ths of it reached into. */
+export const STAGE_FULL = 255;
+
+/** The stage a client is told of an owned piece at health `hp` of `max`. */
+export function healthStage(hp: number, max: number): number {
+  if (!(hp < max)) return STAGE_FULL;
+  const stage = Math.ceil((hp / max) * 254);
+  return stage < 1 ? 1 : stage > 254 ? 254 : stage;
+}
+
+/** The health a client holds for a stage: the most the stage covers, but half a stage under `max` for the last, which is not whole. */
+export function stageHealth(stage: number, max: number): number {
+  return stage >= STAGE_FULL ? max : Math.fround(((stage < 254 ? stage : 253.5) / 254) * max);
+}
+
+/** An owned piece's health as every client holds it. Costs shown and charged are worked from this. */
+export function toldHealth(hp: number, max: number): number {
+  return stageHealth(healthStage(hp, max), max);
+}
+
 /** Removals a chunk remembers, so a client can be sent each as one batch. */
 export const GONE_KEPT = 8;
 /** Changed slots a chunk remembers, so a client a few changes behind is sent those without a scan of every slot. */
@@ -237,6 +257,8 @@ export class StructureStore {
   passed = 0;
   /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
   onChunkChanged: ((chunk: number, healthOnly: boolean) => void) | null = null;
+  /** Per kind, its most health. With it, harm that leaves an owned piece in its stage is told to nobody (`damage`). Authority only. */
+  fullHp: Float32Array | null = null;
 
   /** Per content index, the half extents of the box that bounds the whole structure. */
   private readonly halfX: Float32Array;
@@ -686,7 +708,10 @@ export class StructureStore {
     return healed;
   }
 
-  /** Removes the structure at 0 health. Returns the health left (0 if it is gone), or -1 if there is no such structure. Authority only. */
+  /**
+   * Removes the structure at 0 health. Returns the health left (0 if it is gone), or -1 if there is no such structure.
+   * An owned piece left in the stage it was in keeps the chunk's version (`fullHp`). Authority only.
+   */
   damage(ref: number, points: number, stamp = 0): number {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
@@ -698,9 +723,17 @@ export class StructureStore {
       this.remove(ref, GONE_DESTROYED, stamp);
       return 0;
     }
+    const was = this.differsAt(t, slot);
+    const max = this.fullHp && t.owner[slot] !== 0 ? this.fullHp[t.kind[slot]!]! : 0;
+    if (max > 0 && healthStage(left, max) === healthStage(t.hp[slot]!, max)) {
+      // No client would hold another health for it: saved, as wear is, and sent to nobody.
+      t.hp[slot] = left;
+      this.tally(t, slot, was);
+      this.onChunkChanged?.(chunk, true);
+      return left;
+    }
     // Health is saved and replicated, so the slot counts as changed.
     t.version++;
-    const was = this.differsAt(t, slot);
     t.hp[slot] = left;
     this.tally(t, slot, was);
     t.mod[slot] = t.version;

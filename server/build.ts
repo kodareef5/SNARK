@@ -15,7 +15,7 @@ import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
 import { boatMeetsKind } from "../shared/world/boat.ts";
 import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, floorTop, freePose, obstructed, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
-import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
+import { Found, GONE_FELL, GONE_TAKEN, toldHealth } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
 import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
 import type { Fixtures } from "./fixtures.ts";
@@ -104,6 +104,8 @@ export class Build {
   /** Ticks, by ref. Entries are dropped once they no longer matter. */
   private readonly hurtAt = new Map<number, number>();
   private readonly placedAt = new Map<number, number>();
+  /** The tick this server began at. A harmed piece with no entry in `hurtAt` counts as harmed then, so a restart ends no cooldown. */
+  private readonly bootAt: number;
   /** Claims on the running collapse, numbered from 1. `claim` is the number the removal in progress is under, or 0. */
   private readonly claims: Claim[] = [];
   private claim = 0;
@@ -123,6 +125,7 @@ export class Build {
   constructor(ctx: BuildContext) {
     this.ctx = ctx;
     const world = ctx.world;
+    this.bootAt = world.tick;
     const structs = world.structs;
     const heightAt = (x: number, z: number): number => world.hf.heightAt(x, z);
     this.support = new Support(structs, world.reg, heightAt);
@@ -504,8 +507,8 @@ export class Build {
     }
     if (action === STRUCT_REPAIR) {
       if (!mine) return RESULT_NOT_YOURS;
-      if (!repairCostOf(reg, kind, t.hp[slot]!)) return RESULT_INVALID;
-      if (tick - (this.hurtAt.get(ref) ?? -Infinity) < this.repairWait()) return RESULT_WAIT;
+      if (!repairCostOf(reg, kind, toldHealth(t.hp[slot]!, reg.maxHp[kind]!))) return RESULT_INVALID;
+      if (tick - (this.hurtAt.get(ref) ?? this.bootAt) < this.repairWait()) return RESULT_WAIT;
       const inv = items.inv(rec);
       for (let k = 0; k < cost.n; k++) if (inv.total(cost.item[k]!) < cost.count[k]!) return RESULT_SHORT;
       for (let k = 0; k < cost.n; k++) if (!items.burnItem(rec, cost.item[k]!, cost.count[k]!)) throw new Error("the ingredients were counted");

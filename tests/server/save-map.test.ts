@@ -12,7 +12,7 @@ import type { ServerWorld } from "../../server/world.ts";
 import { S_FAR, S_GONE } from "../../shared/net/protocol.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
-import { Found, GONE_DESTROYED, type StructureStore } from "../../shared/world/structures.ts";
+import { Found, GONE_DESTROYED, toldHealth, type StructureStore } from "../../shared/world/structures.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -37,12 +37,14 @@ function lent(world: ServerWorld): boolean {
 }
 
 /** Each slot of each chunk as a save keeps it: its kind, and for a piece its place, turn, owner and health. */
-function tables(structs: StructureStore): Record<number, number[][]> {
+function tables(structs: StructureStore, told = false): Record<number, number[][]> {
   const out: Record<number, number[][]> = {};
   for (const c of structs.held) {
     const t = structs.chunks[c]!;
     const rows: number[][] = [];
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0) rows.push([s, t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, t.owner[s]!, t.hp[s]!]);
+    // With `told`, an owned piece's health as a client holds it.
+    const hp = (s: number): number => (told && t.owner[s] !== 0 ? toldHealth(t.hp[s]!, structs.fullHp![t.kind[s]!]!) : t.hp[s]!);
+    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0) rows.push([s, t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, t.owner[s]!, hp(s)]);
     if (rows.length > 0) out[c] = rows;
   }
   return out;
@@ -360,7 +362,7 @@ test("a client joining after a restart sees what a client that never left sees",
   built.forEach((ref, i) => i % 3 === 0 && structs.remove(ref));
   h.run(2500);
   const seen = (s: ClientSession): unknown => [near, beside].map((c) => tables(s.world!.structs)[c]);
-  const server = [near, beside].map((c) => tables(structs)[c]);
+  const server = [near, beside].map((c) => tables(structs, true)[c]);
   expect(watchers.map(seen)).toEqual([server, server]);
   h.host.shutdown();
 
@@ -373,7 +375,7 @@ test("a client joining after a restart sees what a client that never left sees",
   again.world.structs.damage(near * 65536 + 5, 2);
   again.world.structs.remove(beside * 65536 + 200);
   again.run(500);
-  const now = [near, beside].map((c) => tables(again.world.structs)[c]);
+  const now = [near, beside].map((c) => tables(again.world.structs, true)[c]);
   expect([late.map(seen), now[1]!.length]).toEqual([[now, now], server[1]!.length - 1]);
   again.host.shutdown();
 });
