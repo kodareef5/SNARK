@@ -18,6 +18,9 @@ export interface PadTarget {
   readonly zooming?: boolean;
   /** With `alt`, a scope's zero in place of its zoom (LB held). */
   zoom?(notches: number, alt?: boolean): void;
+  /** A piece is in hand, on foot: the build buttons apply (PAD_BUILD), and RB and LB turn the piece (`rotate`). */
+  readonly building?: boolean;
+  rotate?(by: number): void;
   key(code: string, down: boolean): void;
   mouse(button: number, down: boolean): void;
   move(x: number, z: number): void;
@@ -32,6 +35,8 @@ export const PAD_TAPS: Readonly<Record<number,string>> = {2:"KeyR",8:"KeyM",11:"
 export const PAD_HOLDS: Readonly<Record<number,string>> = {2:"KeyF",8:"KeyH",11:"KeyX"};
 export const PAD_HOLD_MS=350;
 export const PAD_DEAD_ZONE=.18;
+/** With a piece in hand: B puts it away, X uses, Y is the next form, and the d-pad lifts it and takes the next snap. */
+export const PAD_BUILD: Readonly<Record<number, string>> = { 1: "KeyX", 2: "KeyE", 3: "KeyT", 12: "ArrowUp", 13: "ArrowDown", 14: "KeyQ" };
 const SKATE_KEYS: Readonly<Record<number, string>> = { 0: "Space", 2: "KeyQ", 3: "KeyE", 4: "KeyX", 5: "KeyC", 6: "KeyG", 7: "KeyR", 10: "ShiftLeft" };
 const PAD_SLOTS:Readonly<Record<number,number>>={12:0,15:1,13:2,14:3};
 export function padAxis(value: number): number {
@@ -54,6 +59,7 @@ export class GamepadInput {
   private flying=false;
   private patrol=false;
   private skating=false;
+  private building=false;
   private selecting=false;
   private reload=false;
 
@@ -70,6 +76,10 @@ export class GamepadInput {
     if (!!target.skating !== this.skating) {
       this.release(target);
       this.skating = !!target.skating;
+    }
+    if (!!target.building !== this.building) {
+      this.release(target);
+      this.building = !!target.building;
     }
     if(target.flying!==this.flying || target.patrol!==this.patrol) {
       // Mounted and on-foot right-stick actions start on a fresh press.
@@ -112,6 +122,13 @@ export class GamepadInput {
       }
       const trickKey = target.skating ? SKATE_KEYS[i] : undefined;
       if (trickKey) { this.hold(i, trickKey, target); continue; }
+      if (target.building) {
+        const key = PAD_BUILD[i];
+        if (key) { this.hold(i, key, target); continue; }
+        if (i === 4 || i === 5) { target.rotate?.(i === 5 ? 1 : -1); continue; }
+        // The d-pad's right picks the built piece looked at, as the middle mouse button does.
+        if (i === 15) { target.mouse(1, true); target.mouse(1, false); continue; }
+      }
       const modifier=down(4);
       // A raised sight's zoom on the d-pad's up and down; LB and the right stick's press hold a helmet's visor up, as the
       // middle mouse button does (client/core/visor.ts).

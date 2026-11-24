@@ -273,6 +273,20 @@ export const S_AIR_SUPPORT = serverKind();
  */
 export const S_GONE = serverKind();
 
+/**
+ * The answer to a CMD_PLACE that was judged, sent just before its S_RESULT (shared/net/placed.ts). Reliable. The command's
+ * sequence u16; pieces placed, 6 bits, then per piece 1 bit for "the chunk of the piece before" or else its chunk u16, and its
+ * slot u16; then 1 bit for "stopped", and if so the RESULT_ code u8 and a detail, 3 bits (PLACED_): nothing, the structure in
+ * the way (ref u32), the body in the way (entity index varint), a count and its cap (two varints), or metres to another
+ * tribe's piece and the metres it needs (two varints).
+ */
+export const S_PLACED = serverKind();
+export const PLACED_NONE = 0;
+export const PLACED_STRUCTURE = 1;
+export const PLACED_ENTITY = 2;
+export const PLACED_COUNTS = 3;
+export const PLACED_METRES = 4;
+
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
 export const REJECT_FULL = 3;
@@ -552,6 +566,8 @@ export const RESULT_PIN = 25;
 export const RESULT_NOT_EMPTY = 26;
 /** A placement refused because as many pieces stand around the place as the server allows. */
 export const RESULT_LIMIT = 27;
+/** A placement refused because a living body stands in the piece's place. OBSTRUCTED is something built in the way. */
+export const RESULT_BODY = 28;
 
 const ownKind = counter();
 export const OWN_SESSION = ownKind();

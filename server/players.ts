@@ -67,8 +67,8 @@ export const DID_RELOAD = 4;
 /** The flyer it drives began a barrel roll. */
 export const DID_ROLL = 16;
 
-/** Read every argument and check r.overflow before acting. Returns a RESULT code. */
-export type CommandHandler = (c: Client, r: BitReader) => number;
+/** Read every argument and check r.overflow before acting. Returns a RESULT code. `seq` is the command's, for a handler that answers with more than its result. */
+export type CommandHandler = (c: Client, r: BitReader, seq: number) => number;
 
 /** What the player step needs: of the game, and two things each of the other two parts. */
 export interface PlayersContext {
@@ -419,7 +419,7 @@ export class Players {
       let code: number;
       try {
         // What a session is shown is its own to ask in any state, so that is answered here.
-        code = op === CMD_VIEW ? this.replication.askView(c, r) : op === CMD_STATICS ? this.replication.takeStatics(c) : op === CMD_HAVE ? this.replication.have(c, r) : !handler ? RESULT_INVALID : !this.allows.ask(c, op) ? RESULT_DENIED : handler(c, r);
+        code = op === CMD_VIEW ? this.replication.askView(c, r) : op === CMD_STATICS ? this.replication.takeStatics(c) : op === CMD_HAVE ? this.replication.have(c, r) : !handler ? RESULT_INVALID : !this.allows.ask(c, op) ? RESULT_DENIED : handler(c, r, seq);
       } catch (err) {
         this.stats.faults++;
         this.sessions.fault(c);

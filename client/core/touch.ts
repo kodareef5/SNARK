@@ -11,6 +11,8 @@ export interface TouchTarget {
   move(x: number, z: number): void;
   /** In CSS pixels, as a mouse moves. */
   look(dx: number, dy: number): void;
+  /** A finger held still on the view for LONG_MS, at (x, y) in units. */
+  longPress?(x: number, y: number): void;
 }
 
 /** The zones' keys, then a key to a button: KEY_TOUCH_BUTTON + its number. */
@@ -65,6 +67,10 @@ export class TouchPlay {
   knobY = 0;
   private lookX = 0;
   private lookY = 0;
+  /** When the look finger went down, how far it has moved since in units, and whether its long press has fired. */
+  private lookSince = 0;
+  private lookMoved = 0;
+  private lookLong = false;
   /** Where the finger on Attack was last, which turns the view as it drags. */
   private aimX = 0;
   private aimY = 0;
@@ -103,7 +109,7 @@ export class TouchPlay {
       return true;
     }
     if (key === KEY_ZONE_LOOK) {
-      if (kind === 0 && this.lookFinger === 0) { this.lookFinger = who; this.lookX = x; this.lookY = y; }
+      if (kind === 0 && this.lookFinger === 0) { this.lookFinger = who; this.lookX = x; this.lookY = y; this.lookSince = nowMs; this.lookMoved = 0; this.lookLong = false; }
       else if (who !== this.lookFinger) return true;
       else if (kind === 1) this.lookFinger = 0;
       else if (kind === 2) this.turn(x, y, t, unit);
@@ -137,6 +143,10 @@ export class TouchPlay {
       if (this.finger[b] === 0) continue;
       if ((shown & (1 << b)) === 0) this.lift(b, t, true);
       else if (b === T_STANCE && !this.long[b] && nowMs - this.since[b]! >= LONG_MS) { this.long[b] = 1; t.key("KeyX", true); t.key("KeyX", false); }
+    }
+    if (this.lookFinger !== 0 && !this.lookLong && this.lookMoved <= STICK_DEAD && nowMs - this.lookSince >= LONG_MS) {
+      this.lookLong = true;
+      t.longPress?.(this.lookX, this.lookY);
     }
     if (this.aiming && (shown & (1 << T_AIM)) === 0) t.mouse(this.aimedWith, (this.aiming = false));
     if (this.shifted && (shown & (1 << T_SHIFT)) === 0) t.key("ShiftLeft", (this.shifted = false));
@@ -183,6 +193,7 @@ export class TouchPlay {
 
   private turn(x: number, y: number, t: TouchTarget, unit: number): void {
     t.look((x - this.lookX) * unit * LOOK_GAIN, (y - this.lookY) * unit * LOOK_GAIN);
+    this.lookMoved += Math.hypot(x - this.lookX, y - this.lookY);
     this.lookX = x; this.lookY = y;
   }
 }

@@ -135,7 +135,8 @@ export class Prompts implements FramePart {
     const menu = f.ui.structure;
     menu.tick(nowMs);
     this.seatNotice.tick(nowMs);
-    const built = alive && !b.active && !v.active && session.driving < 0 ? this.builtAt(f, world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
+    // With a piece in hand what is built is still aimed at, so it is used, mended and taken down as with an empty hand.
+    const built = alive && !v.active && session.driving < 0 ? this.builtAt(f, world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && f.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;
@@ -155,7 +156,7 @@ export class Prompts implements FramePart {
       emotes.targetName = r.name[i]!;
     }
     if (emotes.open) characters.wantEmotes();
-    f.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
+    f.prompt = !alive ? "" : v.active ? v.notice : b.active ? menu.notice || (b.notice !== "" && built !== "" ? `${b.notice}\n${built}` : b.notice || built) : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
   }
 
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */

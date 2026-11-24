@@ -280,7 +280,7 @@ test("each situation has its own cluster on the same arcs, at every window", () 
   const helm = (boat: boolean, rotor: boolean, more: object = {}) => (d: Direct): void => { d.hud.vehicle = Object.assign(new VehicleTelemetry(), { active: true, rotor, boat }, more); };
   const SITUATIONS: [string, (d: Direct) => void, readonly number[], readonly number[]][] = [
     ["the second page", (d) => { d.ui.touchPlay!.more = true; }, ...SECOND_PAGE],
-    ["building", (d) => { d.ui.building = true; }, [T_ATTACK, T_ROTATE, T_RELOAD, T_SNAP, T_RAISE, T_LOWER], [T_JUMP, T_STANCE, T_MORE]],
+    ["building", (d) => { d.ui.building = true; }, [T_ATTACK, T_RELOAD, T_FOLLOW_ONE, T_SNAP, T_RAISE, T_LOWER, T_CANCEL], [T_JUMP, T_STANCE, T_MORE, T_ROTATE]],
     ["placing a vehicle", (d) => { d.ui.placing = true; }, [T_ATTACK, T_ROTATE, T_SNAP, T_CANCEL], [T_JUMP, T_STANCE, T_MORE, T_RAISE]],
     ["a flyer", (d) => { d.ui.flyer = true; }, [T_ATTACK, T_JUMP, T_ROLL, T_HOLD, T_MORE], [T_STANCE, T_AIM]],
     ["a car", helm(false, false, { lightMode: 0 }), [T_JUMP, T_VIEW, T_ORBIT], [T_ATTACK, T_STANCE, T_MORE]],

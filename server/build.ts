@@ -4,7 +4,7 @@
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { MAX_NAME_BYTES, TEXT_NOTICE, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LIMIT, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, S_PLACED, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LIMIT, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -13,7 +13,8 @@ import { carMeetsKind } from "../shared/world/vehicle.ts";
 import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
 import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
 import { boatMeetsKind } from "../shared/world/boat.ts";
-import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, floorTop, freePose, obstructed, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
+import { makePlaced, writePlaced } from "../shared/net/placed.ts";
+import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, enemyGap, enemyGapFound, floorTop, freePose, obstructed, obstruction, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN, toldHealth } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
@@ -121,6 +122,8 @@ export class Build {
   private readonly near = new Found();
   private readonly look = [0, 0, 0];
   private readonly inWay: number[] = [];
+  /** What `set` last decided, as its session is told (S_PLACED): the piece placed, or what stood in the way. */
+  private readonly answer = makePlaced();
 
   constructor(ctx: BuildContext) {
     this.ctx = ctx;
@@ -345,7 +348,7 @@ export class Build {
     }
     if (opens !== 0) {
       // A door swaps to its other kind, unless a body is in the way.
-      if (this.bodyIn(opens, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!)) return RESULT_OBSTRUCTED;
+      if (this.bodyIn(opens, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!) >= 0) return RESULT_OBSTRUCTED;
       structs.swap(ref, opens);
       if (state) {
         state.kind = opens;
@@ -577,8 +580,19 @@ export class Build {
     return this.ctx.world.claims.enemyNear(team, x, z, ENEMY_FOUNDATION, ENEMY_PILLAR);
   }
 
-  /** Returns a RESULT code. */
-  place(c: Client, r: BitReader): number {
+  /**
+   * The nearest of another tribe's foundations or pillars that `enemyNear` refuses a piece at (x, z) for, into the answer:
+   * whole metres to it and the metres its kind needs. A scan of its own, made only for a refusal, so `enemyNear` may be
+   * answered any other way.
+   */
+  private enemyGap(team: number, x: number, z: number): void {
+    const world = this.ctx.world;
+    if (!enemyGap(world.structs, world.reg.role, team, x, z, ENEMY_FOUNDATION, ENEMY_PILLAR)) return;
+    [this.answer.detail, this.answer.a, this.answer.b] = [PLACED_METRES, Math.floor(enemyGapFound.metres), enemyGapFound.needs];
+  }
+
+  /** Returns a RESULT code. With the command's `seq`, its session is first told what was placed or what stopped it (S_PLACED). */
+  place(c: Client, r: BitReader, seq = 0): number {
     const variant = r.u8();
     const target = r.u32();
     let socket = 0;
@@ -600,10 +614,20 @@ export class Build {
       }
     }
     const turn = r.u8();
-    if (r.overflow) return RESULT_INVALID;
-    const code = this.set(c, variant, target, socket, turn, x, z, yaw, lift);
-    if (code === RESULT_OK) this.placed++;
-    else this.refused++;
+    const answer = this.answer;
+    const code = r.overflow ? ((answer.detail = PLACED_NONE), RESULT_INVALID) : this.set(c, variant, target, socket, turn, x, z, yaw, lift);
+    if (!r.overflow) {
+      if (code === RESULT_OK) this.placed++;
+      else this.refused++;
+    }
+    if (seq !== 0) {
+      answer.seq = seq;
+      answer.code = code;
+      answer.refs.length = 0;
+      if (code === RESULT_OK) answer.refs.push(this.last);
+      writePlaced(this.ctx.game.begin(S_PLACED), answer);
+      this.ctx.game.endOwn(c);
+    }
     return code;
   }
 
@@ -612,6 +636,8 @@ export class Build {
     const { world, records, items, tribes } = this.ctx;
     const reg = world.reg;
     const ents = world.ents;
+    const answer = this.answer;
+    answer.detail = PLACED_NONE;
     const rec = records.byPid.get(c.pid);
     if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
     const inv = items.inv(rec);
@@ -652,13 +678,23 @@ export class Build {
       return RESULT_DENIED;
     }
     if (tooHigh((gx, gz) => world.hf.heightAt(gx, gz), reg, kind, pose)) return RESULT_TOO_HIGH;
-    if (obstructed(structs, reg.parts, kind, px, py, pz, pose.yaw) || this.bodyIn(kind, px, py, pz, pose.yaw)) return RESULT_OBSTRUCTED;
-    if (this.enemyNear(rec.team, px, pz)) return RESULT_ENEMY_NEAR;
+    if (obstructed(structs, reg.parts, kind, px, py, pz, pose.yaw)) {
+      [answer.detail, answer.a] = [PLACED_STRUCTURE, obstruction.ref];
+      return RESULT_OBSTRUCTED;
+    }
+    const body = this.bodyIn(kind, px, py, pz, pose.yaw);
+    if (body >= 0) {
+      [answer.detail, answer.a] = [PLACED_ENTITY, body];
+      return RESULT_BODY;
+    }
+    if (this.enemyNear(rec.team, px, pz)) {
+      this.enemyGap(rec.team, px, pz);
+      return RESULT_ENEMY_NEAR;
+    }
     const cap = this.ctx.rules.num("TheMaxStructuresInRange");
     const have = cap > 0 ? world.claims.near(px, pz) : 0;
     if (cap > 0 && have >= cap) {
-      // The placement answer is to carry `have` and `cap`. Until it does they go as a notice.
-      this.ctx.game.sendText(c, TEXT_NOTICE, `${have.toLocaleString("en-US")} of ${cap.toLocaleString("en-US")} structures here`);
+      [answer.detail, answer.a, answer.b] = [PLACED_COUNTS, have, cap];
       return RESULT_LIMIT;
     }
     if (!this.support.stands(kind, pose.x, pose.y, pose.z, pose.yaw)) return RESULT_NO_SUPPORT;
@@ -693,8 +729,8 @@ export class Build {
 
   onPlaced: ((by: EntityRecord, ref: number) => void) | null = null;
 
-  /** Whether anything alive stands where a piece of `kind` at this pose would be. */
-  private bodyIn(kind: number, x: number, y: number, z: number, yaw: number): boolean {
+  /** The entity index of something alive that stands where a piece of `kind` at this pose would be, or -1. */
+  private bodyIn(kind: number, x: number, y: number, z: number, yaw: number): number {
     const world = this.ctx.world;
     const ents = world.ents;
     const reg = world.reg;
@@ -715,13 +751,13 @@ export class Build {
             };
             if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
               : isRotorVehicle(car) ? helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
-              : carMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, frame, BODY_SLACK)) return true;
+              : carMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, frame, BODY_SLACK)) return i;
             continue;
           }
-          if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
+          if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return i;
         }
       }
     }
-    return false;
+    return -1;
   }
 }

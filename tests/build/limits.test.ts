@@ -1,6 +1,7 @@
 // The claims grid (server/claims.ts): the enemy range and the structure cap, read from 16 m cells and proved against a scan.
 
 import { expect, test } from "bun:test";
+import { buildReason } from "../../client/core/build.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { ENEMY_FOUNDATION, ENEMY_PILLAR, NO_TARGET } from "../../server/build.ts";
 import { CAP_CELLS, CLAIM_CELL, Claims } from "../../server/claims.ts";
@@ -258,6 +259,9 @@ test("a piece over the structure cap is refused with both numbers", () => {
   const ada = sessions[0] as ClientSession;
   let code = -1;
   ada.onResult = (_seq, c) => void (code = c);
+  // The placement's own answer carries both numbers, and the client words them.
+  let said = "";
+  ada.onPlaced = (p) => void (said = buildReason(h.reg, ada, p.code, p));
   let row = 0;
   /** Sets a foundation down on the next free place along a row. Returns the result code. */
   const found = (): number => {
@@ -276,14 +280,14 @@ test("a piece over the structure cap is refused with both numbers", () => {
   expect(h.say(ada, "setting TheMaxStructuresInRange 3")[0]).toContain("TheMaxStructuresInRange=3");
   const had = count(ada, "foundation");
   expect(found()).toBe(RESULT_LIMIT);
-  expect(ada.log.at(-1)?.text).toBe("3 of 3 structures here");
+  expect(said).toBe("3 of 3 structures here");
   expect([count(ada, "foundation"), h.host.build.refused]).toEqual([had, 1]);
   // Room is made by a higher cap, by a piece taken down, or by no cap at all.
   h.say(ada, "setting TheMaxStructuresInRange 4");
   expect(found()).toBe(RESULT_OK);
   const third = h.host.build.last;
   expect(found()).toBe(RESULT_LIMIT);
-  expect(ada.log.at(-1)?.text).toBe("4 of 4 structures here");
+  expect(said).toBe("4 of 4 structures here");
   expect(act(ada, third, STRUCT_DEMOLISH)).toBe(RESULT_OK);
   ada.onResult = (_seq, c) => void (code = c);
   expect([found(), found()]).toEqual([RESULT_OK, RESULT_LIMIT]);
