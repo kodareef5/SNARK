@@ -17,15 +17,15 @@ import { frame, frameOf } from "./frame.ts";
 export type VehicleSurfaceAt = (hit: number, ref: number, x: number, z: number) => VehicleSurface;
 
 /**
- * Whether a structure of `kind` set at (sx, sy, sz) turned `syaw` would meet a vehicle's hull at (x, y, z) turned `yaw`
+ * Whether a structure of `kind` set at (sx, sy, sz) turned `syaw`, of turn class `stw`, would meet a vehicle's hull at (x, y, z) turned `yaw`
  * radians: the hull as upright capsules of its half width along its length, and small ones in its corners, so a piece
  * through its nose or boot is met as one through its middle.
  */
-export function vehicleMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, spec: VehicleHullSpec, x: number, y: number, z: number, yaw: number, slack: number): boolean {
+export function vehicleMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, stw: number, spec: VehicleHullSpec, x: number, y: number, z: number, yaw: number, slack: number): boolean {
   const sn = detSin(yaw), cs = detCos(yaw), w = spec.halfWidth, l = spec.halfLength, corner = Math.min(0.3, w / 2);
   const along = Math.max(0, l - w), steps = Math.ceil(along / (w / 2));
   // A point on the hull's long axis or in a corner, in the world: +X the left (cos, -sin), +Z forward (sin, cos).
-  const at = (lx: number, lz: number, r: number): boolean => capsuleKind(parts, kind, sx, sy, sz, syaw, x + cs * lx + sn * lz, y, z - sn * lx + cs * lz, r, spec.height, slack);
+  const at = (lx: number, lz: number, r: number): boolean => capsuleKind(parts, kind, sx, sy, sz, syaw, stw, x + cs * lx + sn * lz, y, z - sn * lx + cs * lz, r, spec.height, slack);
   for (let i = -steps; i <= steps; i++) if (at(0, steps === 0 ? 0 : (along * i) / steps, w)) return true;
   for (const lx of [w - corner, corner - w]) for (const lz of [l - corner, corner - l]) if (at(lx, lz, corner)) return true;
   return false;
@@ -77,15 +77,15 @@ export function carMeetsVehicle(p: VehicleSpec, at: VehicleFrame, other: Vehicle
   }
   return null;
 }
-export function carMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, p: VehicleSpec, at: VehicleFrame, slack = 0): boolean {
-  frameOf(syaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch, boxes = parts.box;
+export function carMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, stw: number, p: VehicleSpec, at: VehicleFrame, slack = 0): boolean {
+  frameOf(syaw, stw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch, boxes = parts.box;
   for (let i = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; i < end; i += 6) {
     boxSolid(sx + (cs * boxes[i]! + sn * boxes[i + 2]!) * stretch, sy + boxes[i + 1]!, sz + (cs * boxes[i + 2]! - sn * boxes[i]!) * stretch,
       cs, sn, boxes[i + 3]! * stretch, boxes[i + 4]!, boxes[i + 5]! * stretch, targetSolid);
     if (carContact(p, at, targetSolid, slack)) return true;
   }
   if (parts.hulls) for (let i = parts.hulls.start[kind]!, end = parts.hulls.start[kind + 1]!; i < end; i++) {
-    partSolid(parts.hulls, i, syaw, sx, sy, sz, targetSolid); if (carContact(p, at, targetSolid, slack)) return true;
+    partSolid(parts.hulls, i, syaw, stw, sx, sy, sz, targetSolid); if (carContact(p, at, targetSolid, slack)) return true;
   }
   return false;
 }

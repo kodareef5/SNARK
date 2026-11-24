@@ -120,12 +120,12 @@ test("owned boats exchange finite momentum and are clipped on their captured rig
 test("construction reserves the boat's deck and motor while leaving clear air above its open cockpit", () => {
   const { h, ents, boat } = setup();
   try {
-    const build = h.host.build as unknown as { bodyIn(kind: number, x: number, y: number, z: number, yaw: number): boolean };
+    const build = h.host.build as unknown as { bodyIn(kind: number, x: number, y: number, z: number, yaw: number, tw: number): number };
     const ceiling = h.reg.index.get("core:ceiling")!, pillar = h.reg.index.get("core:pillar_wood")!, y = ents.y[boat]!;
-    expect(build.bodyIn(ceiling, 62, y + .5, 62.2, 0)).toBe(true);
-    expect(build.bodyIn(ceiling, 62, y + 1.9, 62.2, 0)).toBe(false);
-    expect(build.bodyIn(pillar, 62, y + .8, 60.3, 0)).toBe(true);
-    expect(build.bodyIn(pillar, 66, y + .8, 60.3, 0)).toBe(false);
+    expect(build.bodyIn(ceiling, 62, y + .5, 62.2, 0, 0)).toBe(boat);
+    expect(build.bodyIn(ceiling, 62, y + 1.9, 62.2, 0, 0)).toBe(-1);
+    expect(build.bodyIn(pillar, 62, y + .8, 60.3, 0, 0)).toBe(boat);
+    expect(build.bodyIn(pillar, 66, y + .8, 60.3, 0, 0)).toBe(-1);
   } finally { h.host.shutdown(); }
 });
 

@@ -4,8 +4,8 @@
 
 import { OWN_STRIDE_BITS, ownStrideWord } from "../shared/anim/pose.ts";
 import { MODE_WALK } from "../shared/sim/character.ts";
-import { CHUNK_SIZE, STRUCT_UNITS, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { type BitReader, type BitWriter, Named } from "../shared/net/codec.ts";
+import { CHUNK_SIZE, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
+import type { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { BUTTON_BITS, HAVE_MOST, MARGIN_UNKNOWN, OWN_SESSION, REMOVAL_NEWS_TICKS, RESULT_INVALID, RESULT_OK, SESSION_ALIVE, S_CHUNK, S_CHUNK_DROP, S_OWN, S_SNAPSHOT, writeBody } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
@@ -15,7 +15,8 @@ import { packSkateWord } from "../shared/sim/skate-state.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
 import { F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
-import { GONE_BLAST, GONE_TAKEN, RECENT, STAGE_FULL, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED, healthStage } from "../shared/world/structures.ts";
+import { ROW_BITS_MOST, RowCoder } from "../shared/world/rows.ts";
+import { GONE_BLAST, GONE_TAKEN, RECENT, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import type { Client, GameOptions, GameStats } from "./game.ts";
@@ -24,11 +25,6 @@ import { PART, type TickParts } from "./admin/parts.ts";
 
 /** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
 const SNAPSHOT_BYTES_MIN = 600;
-/**
- * The most bits one row of a chunk message takes: slot 25, in place 1, kind 17, x and z 30, height 41, yaw 17, owner 41,
- * health 33. Rows stop where one more of these might not fit the message. What a client is owed counts the bytes written.
- */
-const ROW_BITS = 205;
 /**
  * Chunk bytes a client may have on the way. On one stream everything sent before a snapshot it has read has reached it,
  * so what was sent since its newest acknowledged snapshot is still coming, ahead of the snapshots after it.
@@ -100,14 +96,10 @@ export class Replication {
   private readonly changed = new Uint32Array(RECENT);
   /** The chunks and versions of the CMD_HAVE being read. */
   private readonly said = new Uint32Array(HAVE_MOST * 2);
-  /** Kept through the rows of one chunk message: the last row's slot and height, and the values it has named. */
-  private rowSlot = -1;
-  private rowY = 0;
+  /** Writes the rows of one chunk message at a time (shared/world/rows.ts). */
+  private readonly rows: RowCoder;
   /** Bytes of its chunk window left to the session whose chunks are being sent. A message's rows stop once they pass it. */
   private room = 0;
-  private readonly kinds = new Named();
-  private readonly yaws = new Named();
-  private readonly owners = new Named();
   private readonly ids = new Uint32Array(MAX_VIEW);
   private readonly movers = new Uint32Array(MAX_VIEW);
   private readonly idle = new Uint32Array(MAX_VIEW);
@@ -122,6 +114,7 @@ export class Replication {
     this.w = ctx.w;
     this.parts = ctx.parts;
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
+    this.rows = new RowCoder(world.structs.forms, world.reg.maxHp);
     this.aroundTick = new Uint32Array(chunkCount(world.dims));
     this.aroundAt = new Uint16Array(chunkCount(world.dims));
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
@@ -571,36 +564,8 @@ export class Replication {
   }
 
   /** A row of a chunk message (S_CHUNK in shared/net/protocol.ts). In place, only its owner and health, and its kind if `swapped`. */
-  private row(w: BitWriter, t: ChunkTable, s: number, x0: number, z0: number, inPlace: boolean, swapped = false): void {
-    const gap = s - this.rowSlot - 1;
-    this.rowSlot = s;
-    w.bool(gap === 0);
-    if (gap !== 0) w.varint(gap - 1);
-    w.bool(inPlace);
-    const kind = s < t.high ? t.kind[s]! : 0;
-    if (inPlace) {
-      w.bool(swapped);
-      if (swapped) this.kinds.write(w, kind, 16);
-    } else {
-      this.kinds.write(w, kind, 16);
-      if (kind === 0) return;
-      w.bits(Math.round((t.x[s]! - x0) * STRUCT_UNITS), 15);
-      w.bits(Math.round((t.z[s]! - z0) * STRUCT_UNITS), 15);
-      const y = Math.round(t.y[s]! * STRUCT_UNITS);
-      w.bool(y === this.rowY);
-      if (y !== this.rowY) w.svarint(y - this.rowY);
-      this.rowY = y;
-      this.yaws.write(w, t.yaw[s]!, 16);
-    }
-    const owner = t.owner[s]!;
-    this.owners.write(w, owner, 0);
-    const max = this.world.reg.maxHp[kind]!;
-    // Nobody's piece (the map's) is told exactly, since its forms turn on its health. An owned one is told its stage.
-    const stage = owner === 0 ? (t.hp[s] === max ? STAGE_FULL : 0) : healthStage(t.hp[s]!, max);
-    w.bool(stage === STAGE_FULL);
-    if (stage === STAGE_FULL) return;
-    if (owner === 0) w.f32(t.hp[s]!);
-    else w.bits(stage, 8);
+  private row(w: BitWriter, t: ChunkTable, s: number, inPlace: boolean, swapped = false): void {
+    this.rows.write(w, t, s, inPlace, swapped, this.world.structs.frames);
   }
 
   /** Runs of slots, each coded from where the one before ended. */
@@ -661,11 +626,9 @@ export class Replication {
     if (mapped > 0) w.bool(filling);
     const fill = w.pos;
     if (filling) w.bits(0, 32);
-    this.rowSlot = -1;
-    this.rowY = 0;
-    this.kinds.reset();
-    this.yaws.reset();
-    this.owners.reset();
+    // A frame is defined with the first row that names it to this session.
+    this.rows.maxHp = this.world.reg.maxHp;
+    this.rows.begin(x0, z0, -1, c.framesTold);
     // Only rows count against the budget. Slots taken from the map cost no bytes, and their setting down is the client's.
     let count = 0;
     let rows = 0;
@@ -673,11 +636,11 @@ export class Replication {
     let final = true;
     // Rows stop where another might not fit, with a byte left for the count of removals, and once they pass what is left
     // of the window. The first row always goes, so a chunk begun moves on.
-    const room = Math.min(w.buf.length * 8 - ROW_BITS - 8, Math.max(w.pos, this.room * 8));
+    const room = Math.min(w.buf.length * 8 - ROW_BITS_MOST - 8, Math.max(w.pos, this.room * 8));
     // A client a few changes behind is sent those from the chunk's log. Otherwise every slot is looked at.
     const logged = cursor === 0 && !filling ? this.changedSince(t, from, byRemoval, budget) : -1;
     if (logged >= 0) {
-      for (; rows < logged && w.pos <= room; rows++) this.row(w, t, this.changed[rows]! >> 3, x0, z0, (this.changed[rows]! & TOUCH_MOVED) === 0, (this.changed[rows]! & TOUCH_KIND) !== 0);
+      for (; rows < logged && w.pos <= room; rows++) this.row(w, t, this.changed[rows]! >> 3, (this.changed[rows]! & TOUCH_MOVED) === 0, (this.changed[rows]! & TOUCH_KIND) !== 0);
       count = rows;
       // Cut short, the rest go by the scan from the next of them, which ascend.
       if (rows < logged) {
@@ -700,7 +663,7 @@ export class Replication {
           count++;
           // The client has just set this slot down from its map, so a piece there is told in place: by owner and health,
           // and by its kind where that is no longer the map's (a broken form, a heap).
-          this.row(w, t, s, x0, z0, t.kind[s] !== 0, t.kind[s] !== this.world.structs.mapKind(chunk, s));
+          this.row(w, t, s, t.kind[s] !== 0, t.kind[s] !== this.world.structs.mapKind(chunk, s));
           s++;
           rows++;
         }
@@ -709,7 +672,7 @@ export class Replication {
       for (; s < end && count < budget && w.pos <= room; s++) {
         if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
         count++;
-        this.row(w, t, s, x0, z0, false);
+        this.row(w, t, s, false);
         rows++;
       }
       final = s >= end;
@@ -777,6 +740,7 @@ export class Replication {
     c.chunkSent[k] = c.chunkSent[k]! + bytes.length;
     this.room -= bytes.length;
     c.conn.send(CH_RELIABLE, bytes);
+    this.rows.sent();
     if (final) {
       if (c.known[chunk] === 0 && !c.subscribed.includes(chunk)) c.subscribed.push(chunk);
       c.known[chunk] = target;

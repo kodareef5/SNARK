@@ -31,21 +31,21 @@ export class TreeClearance {
     const world = this.world, field = world.nodeField!, forms = field.forms, parts = forms.parts, box = parts.box;
     const reach = field.store.spread[spot.form]!, structures = world.structs, placed = structures.parts;
     const n = crushed ? structures.query(spot.x - reach, spot.z - reach, spot.x + reach, spot.z + reach, this.found) : 0;
-    frameOf(spot.yaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch;
+    frameOf(spot.yaw, 0); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch;
     for (let i = parts.start[spot.form]! * 6, end = parts.start[spot.form + 1]! * 6; i < end; i += 6) {
       boxSolid(spot.x + (cs * box[i]! + sn * box[i + 2]!) * stretch, spot.y + box[i + 1]!, spot.z + (cs * box[i + 2]! - sn * box[i]!) * stretch,
         cs, sn, box[i + 3]! * stretch, box[i + 4]!, box[i + 5]! * stretch, this.trunk);
       for (let j = 0; j < n; j++) {
         const ref = this.found.refs[j]!, row = structures.chunks[Math.floor(ref / 65536)]!, at = ref & 65535, kind = row.kind[at]!;
         if (structures.isSoft(kind)) continue;
-        frameOf(row.yaw[at]!); const c = frame.cos, s = frame.sin, scale = frame.stretch, boxes = placed.box;
+        frameOf(row.yaw[at]!, row.twAt(at)); const c = frame.cos, s = frame.sin, scale = frame.stretch, boxes = placed.box;
         for (let k = placed.start[kind]! * 6, last = placed.start[kind + 1]! * 6; k < last; k += 6) {
           boxSolid(row.x[at]! + (c * boxes[k]! + s * boxes[k + 2]!) * scale, row.y[at]! + boxes[k + 1]!, row.z[at]! + (c * boxes[k + 2]! - s * boxes[k]!) * scale,
             c, s, boxes[k + 3]! * scale, boxes[k + 4]!, boxes[k + 5]! * scale, this.other);
           if (solidsCross(this.trunk, .002, .002, this.other, 0, 0, 0)) return true;
         }
         if (placed.hulls) for (let k = placed.hulls.start[kind]!; k < placed.hulls.start[kind + 1]!; k++) {
-          partSolid(placed.hulls, k, row.yaw[at]!, row.x[at]!, row.y[at]!, row.z[at]!, this.other);
+          partSolid(placed.hulls, k, row.yaw[at]!, row.twAt(at), row.x[at]!, row.y[at]!, row.z[at]!, this.other);
           if (solidsCross(this.trunk, .002, .002, this.other, 0, 0, 0)) return true;
         }
       }
@@ -59,11 +59,11 @@ export class TreeClearance {
         const v = ents.vrow[e]!, pose = this.pose;
         pose.x = ents.x[e]!; pose.y = ents.y[e]!; pose.z = ents.z[e]!; pose.yaw = ents.vehicleYaw[v]!; pose.pitch = ents.vehiclePitch[v]!; pose.roll = ents.vehicleRoll[v]!;
         pose.qx = ents.vehicleQx[v]!; pose.qy = ents.vehicleQy[v]!; pose.qz = ents.vehicleQz[v]!; pose.qw = ents.vehicleQw[v]!; pose.steering = ents.steering[v]!;
-        const blocked = def.movement === "boat" ? boatMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, def, pose) :
-          def.movement === "rotor" ? helicopterMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, def, pose) :
-          carMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, def.spec, pose);
+        const blocked = def.movement === "boat" ? boatMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, 0, def, pose) :
+          def.movement === "rotor" ? helicopterMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, 0, def, pose) :
+          carMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, 0, def.spec, pose);
         if (blocked) return true;
-      } else if (crushed && move && capsuleKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, ents.x[e]!, ents.y[e]!, ents.z[e]!, move.radius, move.height, .002)) return true;
+      } else if (crushed && move && capsuleKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, 0, ents.x[e]!, ents.y[e]!, ents.z[e]!, move.radius, move.height, .002)) return true;
     }
     return false;
   }

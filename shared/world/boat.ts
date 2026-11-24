@@ -88,16 +88,16 @@ function interaction(def: BoatVehicleDefinition, s: BoatFrame & SolidFrame, targ
   }
   return null;
 }
-export function boatMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, def: BoatVehicleDefinition, at: BoatFrame, slack = 0): boolean {
+export function boatMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, stw: number, def: BoatVehicleDefinition, at: BoatFrame, slack = 0): boolean {
   const s = collisionFrame(at), boxes = parts.box;
-  frameOf(syaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch;
+  frameOf(syaw, stw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch;
   for (let i = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; i < end; i += 6) {
     boxSolid(sx + (cs * boxes[i]! + sn * boxes[i + 2]!) * stretch, sy + boxes[i + 1]!, sz + (cs * boxes[i + 2]! - sn * boxes[i]!) * stretch,
       cs, sn, boxes[i + 3]! * stretch, boxes[i + 4]!, boxes[i + 5]! * stretch, obstacle);
     if (interaction(def, s, obstacle, slack)) return true;
   }
   if (parts.hulls) for (let i = parts.hulls.start[kind]!, end = parts.hulls.start[kind + 1]!; i < end; i++) {
-    partSolid(parts.hulls, i, syaw, sx, sy, sz, obstacle); if (interaction(def, s, obstacle, slack)) return true;
+    partSolid(parts.hulls, i, syaw, stw, sx, sy, sz, obstacle); if (interaction(def, s, obstacle, slack)) return true;
   }
   return false;
 }

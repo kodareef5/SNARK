@@ -131,14 +131,20 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   // was shown: one more line darkens a piece of such a mesh by its stage from the state it already read (PIECE_SHADE),
   // which is all low poly and a phone show of wear. A vertex with no word never runs it, and a whole piece's is times 1.
   for (const part of [PIECE_GLSL, PIECE_PLACE, PIECE_SHADE, PIECE_END]) expect(FLAT_MESH_VERTEX).toContain(part);
-  const unshaded = FLAT_MESH_VERTEX.replace(PIECE_SHADE, "");
+  // A piece about to be built is drawn in one colour (uOneColor): one uniform and one line that swaps a vertex's colour
+  // for it. A draw with no such colour never runs it. Without those two the text is as it was, 2435062563.
+  const oneColor = ["uniform float uOneColor;\n", "  if (uOneColor > 0.5) i = uint(uOneColor) - 1u;\n"];
+  for (const line of oneColor) expect(FLAT_MESH_VERTEX).toContain(line);
+  const manyColoured = FLAT_MESH_VERTEX.replace(oneColor[0]!, "").replace(oneColor[1]!, "");
+  const unshaded = manyColoured.replace(PIECE_SHADE, "");
   const unkeyed = unshaded.replace(PIECE_GLSL, "").replace(PIECE_PLACE, "").replace(PIECE_END, "");
   const unbent = unkeyed.replace(BEND_GLSL, "").replace(BEND_PLACE, "");
   expect(hashString(FLAT_FRAGMENT + unbent.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(2880639374);
   expect(hashString(FLAT_FRAGMENT + unbent + FLAT_TERRAIN_VERTEX)).toBe(1010688119);
   expect(hashString(FLAT_FRAGMENT + unkeyed + FLAT_TERRAIN_VERTEX)).toBe(3957629961);
   expect(hashString(FLAT_FRAGMENT + unshaded + FLAT_TERRAIN_VERTEX)).toBe(1090828137);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(2435062563);
+  expect(hashString(FLAT_FRAGMENT + manyColoured + FLAT_TERRAIN_VERTEX)).toBe(2435062563);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(2887871706);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {

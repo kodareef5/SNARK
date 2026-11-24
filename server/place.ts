@@ -67,7 +67,7 @@ export class UnloadedNodes {
           // Most nodes reach far less than the widest banyan.
           const near = r + spread[form]! + PAD;
           if (dx * dx + dz * dz >= near * near) continue;
-          if (capsuleKind(forms.parts, form, at[k]!, at[k + 1]!, at[k + 2]!, at[k + 4]!, x, y, z, r, h, SKIN)) return true;
+          if (capsuleKind(forms.parts, form, at[k]!, at[k + 1]!, at[k + 2]!, at[k + 4]!, 0, x, y, z, r, h, SKIN)) return true;
         }
       }
     }
