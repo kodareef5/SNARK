@@ -552,6 +552,7 @@ export class NearStore implements Pass {
     if (b.frames) this.packet.frameTables.delete(id);
     this.instanceBytes -= b.onCard;
     this.batches.delete(id);
+    if (id < NODE_BUFFERS) this.trims.forget(id);
   }
 
   /** The sum of `placed` of the tables of the chunks round `chunk` that `borders` names (trims.ts borderBit). */
@@ -1435,7 +1436,7 @@ export class NearStore implements Pass {
 
   /** Writes a chunk's trims after its pieces: each an instance of its mesh in its piece's block, coloured and staged as its piece, held in its cell's boxes. */
   private layTrims(b: ChunkBatch, trims: TrimLayout, t: ChunkTable, chunk: number, colorOf: Uint8Array, x0: number, z0: number, blocks: number): void {
-    const w = new InstanceWriter(b.data), blockAt = this.blockAt, cells = b.cells, frames = b.frames!;
+    const w = new InstanceWriter(b.data), blockAt = this.blockAt, cells = b.cells, frames = b.frames!, data = b.data, regions = this.regionsOfKind;
     for (let k = 0; k < trims.count; k++) {
       const s = trims.owner[k]!, block = blockAt[s]!;
       if (block === UNDRAWN) continue;
@@ -1443,8 +1444,9 @@ export class NearStore implements Pass {
       const i = this.cellCursor[mesh * blocks + block]!++;
       const x = trims.x[k]!, y = trims.y[k]!, z = trims.z[k]!, yaw = trims.yaw[k]!, tw = trims.tw[k]!, at = frames.slotOf(yaw);
       w.set(i, x - x0, y, z - z0, 0, colorOf[dye]!);
-      b.data.set(this.regionsOfKind.subarray(dye * 5, dye * 5 + 2), i * INSTANCE_BYTES + 15);
-      writePiece(b.data, i, at < 0 ? plainYaw(yaw, tw) : pieceWord(at, yaw, tw), this.pieces.made[dye]!, (at < 0 ? 0 : PIECE_FRAMED) | this.pieces.stage(t, s), trims.cut[k]!);
+      data[i * INSTANCE_BYTES + 15] = regions[dye * 5]!;
+      data[i * INSTANCE_BYTES + 16] = regions[dye * 5 + 1]!;
+      writePiece(data, i, at < 0 ? plainYaw(yaw, tw) : pieceWord(at, yaw, tw), this.pieces.made[dye]!, (at < 0 ? 0 : PIECE_FRAMED) | this.pieces.stage(t, s), trims.cut[k]!);
       b.slots[i] = s;
       b.kinds[i] = kind;
       b.trimmed![i] = 1;
