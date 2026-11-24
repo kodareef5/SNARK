@@ -38,10 +38,13 @@ test("a map unpacked into a folder of layers and built from it again is the same
     "not in the core content: test:elsewhere, test:hauler",
   ]);
   // Where it sits on the lattice and its display origin go into the folder's map.json, and come back.
-  const placed = writeMap({ ...busyMap(), tideEyes: [{ name: "The Lantern", x: 32, y: 4, z: 60, radius: 24, color: "green", form: "lantern", yaw: 61873 }], dims: { chunksX: 2, chunksZ: 3, frameX: 3000, frameZ: 17, originX: 3008, originZ: 128 } });
+  const placed = writeMap({ ...busyMap(), tideEyes: [{ name: "The Lantern", x: 32, y: 4, z: 60, radius: 24, color: "green", form: "lantern", yaw: 61873 }], orbs: [{ name: "Sphere", x: 70.5, y: 3.25, z: 99, yaw: 4097, radius: 78, centre: 34 }], dims: { chunksX: 2, chunksZ: 3, frameX: 3000, frameZ: 17, originX: 3008, originZ: 128 } });
   writeLayers(parseMap(placed), join(dir, "placed"));
   expect(JSON.parse(readFileSync(join(dir, "placed", "map.json"), "utf8"))).toMatchObject({ chunks: [2, 3], frame: [3000, 17], origin: [3008, 128] });
   expect(writeMap(readLayers(join(dir, "placed")))).toEqual(placed);
+  // Its orbs too, a heading in degrees in the folder and in the map's units out of it.
+  expect(JSON.parse(readFileSync(join(dir, "placed", "map.json"), "utf8")).orbs).toEqual([{ name: "Sphere", x: 70.5, y: 3.25, z: 99, yaw: (4097 * 360) / 65536, radius: 78, centre: 34 }]);
+  expect(readLayers(join(dir, "placed")).orbs).toEqual(parseMap(placed).orbs!);
   expect(describe(placed)[2]).toBe("south-east corner at lattice column 3000, row 17; display origin at column 3008, row 128");
   // A scattered layer's slots taken out go into the folder as their own file, and come back.
   const busy = busyMap();

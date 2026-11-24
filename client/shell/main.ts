@@ -110,6 +110,7 @@ async function boot(): Promise<void> {
     tops: loader.staged.tops,
     buildings: loader.staged.buildings,
     tideEyes: head.tideEyes,
+    orbs: head.orbs,
     ...(land ? { landmarks: land.landmarks } : {}),
   });
   // Riding out a restart (client/core/waiting.ts). The page learns which start of the server it is on, and when the

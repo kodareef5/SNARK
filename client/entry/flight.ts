@@ -135,6 +135,7 @@ async function start() {
   const world: RenderWorld & { city?: NonNullable<RenderWorld["city"]> } = {
     mapId: shore ? "core:miami" : head.id,
     tideEyes: shore ? [shore.eye] : loader?.staged.head.tideEyes,
+    ...(!shore && loader?.staged.head.orbs ? { orbs: loader.staged.head.orbs } : {}),
     ...(shore ? { nodes: shorePalms(shore, reg), tops: { tops: shore.tops, maker: new WorkerCityMaker("city-worker.js", 1) } } : {}),
     dims: head.dims,
     hf,

@@ -98,7 +98,7 @@ for (const v of views) {
     });
   }
   const complete = (chunk: number): boolean => Math.abs(chunkCx(map.dims, chunk) - Math.floor(view.cam.x / 64)) <= 3 && Math.abs(chunkCz(map.dims, chunk) - Math.floor(view.cam.z / 64)) <= 3;
-  const scene = new Scene({ mapId: map.id, tideEyes: map.tideEyes, dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
+  const scene = new Scene({ mapId: map.id, tideEyes: map.tideEyes, ...(map.orbs ? { orbs: map.orbs } : {}), dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
     far: { cells: farCells, complete },
     city: { statics: city, complete },
     farNodes: { nodes: view.nodes.source, held: (c) => view.nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(map.dims) }
