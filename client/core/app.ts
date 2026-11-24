@@ -18,7 +18,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_SELECT, EVENT_HIT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { HIT_NONE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { BreakEffects, HEARD_RUMBLE, hearStructures } from "./break-effects.ts";
@@ -51,7 +51,7 @@ import { isSkateboard } from "../../shared/sim/vehicle.ts";
 import { thrustersOf } from "../../shared/sim/vehicle-thrusters.ts";
 import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD } from "../../shared/sim/character.ts";
 import { CUE_HELD } from "../../shared/anim/pose.ts";
-import { ACT_SWING } from "../../shared/sim/weapon.ts";
+import { FISTS, SWING_TICKS } from "../../shared/sim/weapon.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
 import { SeatedAim } from "./seated-aim.ts";
@@ -828,6 +828,16 @@ export class App {
       code.hearSession(session, this.sounds);
       this.ui.hear = (key) => this.sounds?.hearUi(code.cueKey(key));
     }
+    const strike = session.strike;
+    session.strike = null;
+    if (strike && session.sessionState === SESSION_ALIVE && !session.airCamera.id && session.driving < 0) {
+      // After this swing's recovery an old hit would kick the next swing.
+      if (session.tickClock - strike.tick < SWING_TICKS - FISTS.strikeTick && this.ui.settings.viewKick) this.sight.struck(f.nowMs);
+      if (strike.node && session.serverTick - strike.tick < SWING_TICKS) {
+        scene.details.nodeStrike(strike.node, strike.x, strike.y, strike.z, strike.tick, session.renderClock - session.remoteDelay);
+        this.sounds?.build.nodeStrike(strike.node, strike.x, strike.y, strike.z);
+      }
+    }
     const trees = session.predictedTrees;
     if (trees) for (const event of trees.present()) {
       scene.hideNode(event.ref, event.action === "break");
@@ -936,8 +946,6 @@ export class App {
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
-    // A blow of its own that landed kicks the view (sight.ts): a hit while its own swing is under way.
-    if (session.own.act === ACT_SWING && session.events.some((ev) => ev.kind === EVENT_HIT)) this.sight.struck(nowMs);
     this.feedback.absorb(session, this.reg, f.sceneMs, f.scene.damage);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, f.sceneMs, session.hitMarkers);
     fillOverhead(hud.overhead, session, this.remote, cam, f.scene.characters, alive && !hud.out && !hud.feed ? f.eyeNow : -1, c.yaw, c.pitch, f.lookReach);

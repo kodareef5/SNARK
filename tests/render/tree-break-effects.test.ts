@@ -31,3 +31,21 @@ test("tree break feedback uses bounded short-lived authored particles without re
   for (let i = 0; i < 800; i++) details.nodeBreak(tree, i, 64, 0, 64, 32, 1);
   frame(32); expect(details.pool.count).toBeLessThanOrEqual(24 * 10); expect(details.pool.count).toBeLessThanOrEqual(tier.details.pool);
 });
+
+test("a harvested surface sheds a few small chips where the tool landed", () => {
+  const world = createMapWorld(reg, parseMap(writeMap(flatMap(2))));
+  const details = new Details(reg, dust, defaultPalette(), () => null);
+  const remote = new RemoteSample(), cam = new Camera(), packet = new FramePacket();
+  remote.tick = 30;
+  cam.x = 64; cam.y = 1.5; cam.z = 62; cam.update();
+  const rock = reg.index.get("core:rock")!;
+  details.nodeStrike(rock, 64, 1, 64, 30, 30);
+  details.frame(packet, cam, remote, [], [], null, world.hf, tierOf("lowpoly"), 1000, world);
+  const pool = details.pool;
+  expect(pool.count).toBeGreaterThan(0);
+  expect(pool.count).toBeLessThanOrEqual(4);
+  for (let i = 0; i < pool.count; i++) {
+    expect(Math.hypot(pool.x[i]! - 64, pool.y[i]! - 1, pool.z[i]! - 64)).toBeLessThan(0.21);
+    expect(pool.size[i]!).toBeLessThan(0.05);
+  }
+});

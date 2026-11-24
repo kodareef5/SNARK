@@ -119,11 +119,14 @@ test("what a thing is built of decides what harms it: fists and a hatchet bring 
   expect([combat.structureHits, combat.lastStructure.damage, combat.lastStructure.left]).toEqual([1, 8, 1592]);
   const told = s.events.filter((ev) => ev.kind === EVENT_HIT);
   expect(told.map((ev) => [ev.zone, ev.damage, ev.kill])).toEqual([[ZONE_NONE, 8, false]]);
+  expect(s.strike?.node).toBe(0);
+  const firstContact = s.strike!.tick;
   face(0);
   swing(h, pilot);
   face(6);
   swing(h, pilot);
   expect([hp(wood), hp(stone), combat.structureHits]).toEqual([10000, 10000, 1]);
+  expect(s.strike!.tick).toBeGreaterThan(firstContact);
   // A blow that does nothing costs the hatchet no durability.
   const slot = arm("tools", "hatchet", 700);
   const inv = h.host.items.inv(rec);

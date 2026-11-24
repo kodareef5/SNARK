@@ -82,6 +82,7 @@ import {
   S_NODES,
   EVENT_DEATH,
   EVENT_HIT,
+  EVENT_STRIKE,
   EVENT_TAMED,
   OWN_SUBJECT,
   OWN_OVERHEAD,
@@ -607,6 +608,8 @@ export class ClientSession {
   readonly events: CombatEvent[] = [];
   /** Blows that landed on bodies near, oldest first (EVENT_IMPACT). The scene takes them each frame. */
   readonly impacts: Impact[] = [];
+  /** The latest unpresented contact from this survivor's own swing. */
+  strike: { tick: number; node: number; x: number; y: number; z: number } | null = null;
   /**
    * Collapses told since they were last taken (EVENT_COLLAPSE), for the dust drawn over them from afar: the middle of what
    * fell, its foot, and how far across and how tall it stood, in metres. The oldest goes when a ninth comes.
@@ -1790,7 +1793,10 @@ export class ClientSession {
           s.choosing = CHOOSE_DIED;
         }
         s.admin = admin;
-        if (handle !== s.ownHandle) s.ownStride = 0;
+        if (handle !== s.ownHandle) {
+          s.ownStride = 0;
+          s.strike = null;
+        }
         s.ownHandle = handle;
         s.dayOffset = dayOffset;
       },
@@ -2132,6 +2138,11 @@ export class ClientSession {
       if (r.overflow) return;
       if (this.collapses.length >= 8) this.collapses.shift();
       this.collapses.push(fell);
+      return;
+    } else if (kind === EVENT_STRIKE) {
+      const tick = r.u32(), node = r.varint();
+      const x = node ? r.f32() : 0, y = node ? r.f32() : 0, z = node ? r.f32() : 0;
+      if (!r.overflow) this.strike = { tick, node, x, y, z };
       return;
     } else if (kind === EVENT_GROAN) {
       // Not a combat event: a building near is about to come down.

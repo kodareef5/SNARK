@@ -25,7 +25,7 @@ import { quatRotate } from "../shared/math/quat.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { CreatureAttackDef, CreatureModeDef, SpeciesDef } from "../shared/content/defs.ts";
-import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_IMPACT, EVENT_KILL, IMPACTS_PER_TICK, IMPACT_BLAST, IMPACT_FULL, IMPACT_HEARD, IMPACT_MELEE, IMPACT_SHOT, IMPACT_VEHICLE, PASSENGER_VIEW_DELAY, SESSION_ALIVE, S_EVENT } from "../shared/net/protocol.ts";
+import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_IMPACT, EVENT_KILL, EVENT_STRIKE, IMPACTS_PER_TICK, IMPACT_BLAST, IMPACT_FULL, IMPACT_HEARD, IMPACT_MELEE, IMPACT_SHOT, IMPACT_VEHICLE, PASSENGER_VIEW_DELAY, SESSION_ALIVE, S_EVENT } from "../shared/net/protocol.ts";
 import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DAMAGE_TYPES, DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
@@ -532,18 +532,40 @@ export class Combat {
     src.buff = 0;
     src.pierce = 0;
     const wears = item !== 0 && reg.uses[item]! > 0;
+    let landed = false;
+    let node = 0;
     if (body >= 0) {
       // Harvest damage is the blow's damage as the attacker's melee and the weapon's quality make it, times the server's rule.
-      corpses!.struck(rec, body, src.base * src.quality * src.attack * this.ctx.rules.num(c ? "PlayerHarvestingDamageMultiplier" : "DinoHarvestingDamageMultiplier"), item);
+      landed = corpses!.struck(rec, body, src.base * src.quality * src.attack * this.ctx.rules.num(c ? "PlayerHarvestingDamageMultiplier" : "DinoHarvestingDamageMultiplier"), item);
       if (wears) items.wear(rec, slot, 1);
     } else if (target >= 0) {
       const t = this.t;
       this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t, undefined, true, this.panel);
+      landed = true;
       if (wears) items.wear(rec, slot, 1);
     } else if (what === HIT_NODE && harvest) {
-      if (c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
-      else if (gathers === "berries") harvest.browse(rec, Math.floor(ref / 65536), ref & 0xffff);
-    } else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
+      const chunk = Math.floor(ref / 65536), index = ref & 0xffff;
+      if (c) {
+        node = harvest.field.standing(chunk, index);
+        landed = harvest.struck(c, chunk, index);
+      } else if (gathers === "berries") harvest.browse(rec, chunk, index);
+    } else if (what === HIT_STRUCTURE) {
+      landed = true;
+      const damage = this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT);
+      if (damage > 0 && wears) items.wear(rec, slot, 1);
+    }
+    if (c && landed) {
+      const game = this.ctx.game, w = game.begin(S_EVENT);
+      w.u8(EVENT_STRIKE);
+      w.u32(world.tick);
+      w.varint(node);
+      if (node !== 0) {
+        w.f32(ox + d[0]! * worldT);
+        w.f32(oy + d[1]! * worldT);
+        w.f32(oz + d[2]! * worldT);
+      }
+      game.endOwn(c);
+    }
   }
 
   private reload(c: Client): void {
