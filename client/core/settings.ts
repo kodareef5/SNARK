@@ -71,14 +71,8 @@ export class Settings {
   /** The view a survivor rises in: from behind, or from the eye. V changes it, and it is kept. */
   thirdPerson = true;
   diagnostics = true;
-  /** Diagnostics' third value: the readout and under it the resource monitor (ui/monitor.ts). F3 and the console's `monitor` turn it on and off. */
-  monitor = true;
-  /** Whether the readout was on before F3 turned the monitor on, so that F3 again leaves it as it was. Not saved. */
-  numbersBefore = false;
-  /** Bug report mode (notes/notes.ts): `/notes` in chat or `notes` in the console turns it on and off, and it is kept. */
-  notes = false;
-  /** The frame's budget, live (notes/budget.ts): `/budget` turns it on and off, and it is kept. */
-  budget = false;
+  /** The debug bar at the screen's foot (debug/debug.ts): F3, `/debug` or the Interface tab turn it on, and it is kept. */
+  debug = false;
   vitalLabels = false;
   minimapZoom = -1;
   padGlyphs = 0;
@@ -117,7 +111,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "monitor", "notes", "budget", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["zoomSensitivity", .5, 1.5], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
@@ -178,11 +172,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Connection", value: (s) => `${Math.round((s.snapshotBytes * TICK_RATE) / 1000)} KB/s`, step: (s, by) => void (s.snapshotBytes = SNAPSHOT_BYTES[clamp(SNAPSHOT_BYTES.indexOf(s.snapshotBytes) + by, 0, SNAPSHOT_BYTES.length - 1)]!) },
   { label: "Minimap", value: (s) => s.minimap ? "on" : "off", step: (s) => void (s.minimap = !s.minimap) },
   { label: "Status labels", value: (s) => s.vitalLabels ? "on" : "off", step: (s) => void (s.vitalLabels = !s.vitalLabels) },
-  { label: "Diagnostics", value: (s) => (s.monitor ? "monitor" : s.diagnostics ? "numbers" : "off"), step: (s, by) => {
-      const v = ((s.monitor ? 2 : s.diagnostics ? 1 : 0) + by + 3) % 3;
-      s.diagnostics = v > 0;
-      s.monitor = v > 1;
-    } },
+  { label: "Diagnostics", value: (s) => (s.diagnostics ? "numbers" : "off"), step: (s) => void (s.diagnostics = !s.diagnostics) },
   { label: "Sound", value: (s) => s.muted ? "off" : "on", step: (s) => void (s.muted = !s.muted) },
   range("Finish gloss", "finishGloss", 0.5, 2, 0.05),
   { label: "Road finish", value: s => ROAD_FINISHES[s.roadFinish]!, step: (s, by) => void (s.roadFinish = clamp(s.roadFinish + by, 0, 2)) },
@@ -190,27 +180,13 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Render resolution", value: (s) => RESOLUTIONS[s.resolution]!.label + (s.resolution === 0 && s.autoShare < 1 ? `, ${Math.round(s.autoShare * 100)}%` : ""), step: (s, by) => void (s.resolution = clamp(s.resolution + by, 0, RESOLUTIONS.length - 1)) },
   // Shown in the Input group (ui/settings.ts SETTING_GROUPS) after the mouse's own.
   range("Zoom sensitivity","zoomSensitivity",ZOOM_SENSITIVITY_MIN,ZOOM_SENSITIVITY_MAX,.05),
+  { label: "Debug bar", value: (s) => (s.debug ? "on" : "off"), step: (s) => void (s.debug = !s.debug) },
 ];
 
-/** F3 and the console's `monitor`: Diagnostics to "monitor", or back to what it was before. Returns what the console says. */
-export function toggleMonitor(s: Settings): string {
-  if (!s.monitor) s.numbersBefore = s.diagnostics;
-  s.monitor = !s.monitor;
-  s.diagnostics = s.monitor || s.numbersBefore;
+/** `/debug` in chat or the console: the debug bar on or off. Returns what the console says. */
+export function toggleDebug(s: Settings): string {
+  s.debug = !s.debug;
   s.changed();
-  return `resource monitor ${s.monitor ? "on" : "off"}`;
+  return s.debug ? "debug bar on: F3 opens its drawer" : "debug bar off";
 }
 
-/** `/notes` in chat and `notes` in the console: bug report mode on or off. Returns what the console says. */
-export function toggleNotes(s: Settings): string {
-  s.notes = !s.notes;
-  s.changed();
-  return s.notes ? "bug report mode on: asking the server whether this session may take notes" : "bug report mode off";
-}
-
-/** `/budget` in chat and `budget` in the console: the frame's budget panel on or off. */
-export function toggleBudget(s: Settings): string {
-  s.budget = !s.budget;
-  s.changed();
-  return s.budget ? "frame budget on: the panel under the minimap" : "frame budget off";
-}

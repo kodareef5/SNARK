@@ -1,3 +1,4 @@
+import { logTo } from "./early-log.ts";
 import { launchKey,readLaunch } from "../core/entry-state.ts";
 import { SETTLED_MS, backAddress, readComeback, readReady, waitKey, waitOut, type Comeback } from "../core/waiting.ts";
 import type { Ready } from "../../shared/ready.ts";
@@ -29,7 +30,6 @@ import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
 import { probeProgress } from "../core/diagnostics.ts";
 import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
-import { CAPTURE_KEY, LightCapture, SAMPLE_H, SAMPLE_W } from "../core/light-capture.ts";
 
 declare const __CONTENT_FILE__: string;
 const params = new URLSearchParams(location.search);
@@ -156,8 +156,8 @@ async function boot(): Promise<void> {
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   // The data utility's record of each frame comes as its own file, which the first frame does not wait for (D899).
   void import("../core/assets/frames.ts").then((m) => (app.frames = new m.FrameRing()));
-  // Bug report mode's part that needs the browser, fetched once the mode is first on (D1091).
-  app.notePort = () => import("../notes/port.ts").then((m) => m.notePort(canvas, renderer, PassClock));
+  // The debug bar's part that needs the browser, fetched once the bar is first on; it takes the page's log from then.
+  app.debugPort = () => import("../debug/debug-port.ts").then((m) => m.debugPort(canvas, renderer, PassClock, logTo));
   const previous=session.onResult;
   session.onResult=(seq,result)=>{previous?.(seq,result);if(createSeq && seq===createSeq && result!==RESULT_OK)createFailed=true;};
   if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
@@ -211,10 +211,17 @@ async function boot(): Promise<void> {
   };
   const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes"), params.has("sync") ? () => performance.now() : null) : null);
   // A development world's page captures the light it draws for ten seconds at F9, read back from a small copy of the
-  // canvas, and sends it with its record of play.
-  const light = new LightCapture(), copy = Object.assign(document.createElement("canvas"), { width: SAMPLE_W, height: SAMPLE_H }).getContext("2d", { willReadFrequently: true })!;
+  // canvas, and sends it with its record of play. Its code (core/light-capture.ts) comes at the first press.
+  let light: import("../core/light-capture.ts").LightCapture | null = null, copy: CanvasRenderingContext2D | null = null, sampleW = 0, sampleH = 0;
   const say = (line: string): void => (console.log(line), app.ui.chat.print(TEXT_NOTICE, line, session.serverTick));
-  if (!measured) void fetch("__play").then((r) => r.status === 204 && addEventListener("keydown", (e) => e.code === CAPTURE_KEY && light.start(performance.now()) && say("Capturing the light of every frame for ten seconds")), () => {});
+  const capture = (): Promise<void> => import("../core/light-capture.ts").then((m) => {
+    light ??= new m.LightCapture();
+    sampleW = m.SAMPLE_W;
+    sampleH = m.SAMPLE_H;
+    copy ??= Object.assign(document.createElement("canvas"), { width: sampleW, height: sampleH }).getContext("2d", { willReadFrequently: true })!;
+    if (light.start(performance.now())) say("Capturing the light of every frame for ten seconds");
+  });
+  if (!measured) void fetch("__play").then((r) => r.status === 204 && addEventListener("keydown", (e) => void (e.code === "F9" && capture())), () => {});
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
@@ -260,6 +267,8 @@ async function boot(): Promise<void> {
   // The touch layer's layout and its art's stand-in are fetched by a page a finger has used, and by no other.
   let layering = false;
   let savedRevision = app.ui.settings.revision, savedAt = 0;
+  // Where each frame was, for the debug bar's chart of it (App.shellMarks).
+  const marks = app.shellMarks;
   const frame = (now: number): void => {
     if(launch && (session.state==="closed" || createFailed)){showEntryProblem();return;}
     if(launch && session.state==="active" && session.sessionState!==SESSION_CREATING){
@@ -269,7 +278,7 @@ async function boot(): Promise<void> {
     requestAnimationFrame(frame);
     const cssWidth = canvas.clientWidth;
     const cssHeight = canvas.clientHeight;
-    const t0 = performance.now();
+    const t0 = (marks[0] = performance.now());
     app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
     if (app.ui.touch && !app.ui.layer && !layering) { layering = true; void import("../core/ui/touch.ts").then((m) => (app.ui.layer = m), () => (layering = false)); }
     if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
@@ -278,7 +287,9 @@ async function boot(): Promise<void> {
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
     if (app.scene) app.scene.assets.format = renderer.format;
+    marks[1] = performance.now();
     const packet = app.frame(now, cssWidth, cssHeight);
+    marks[2] = performance.now();
     drivingCheck?.observe(app);
     if (savedRevision !== app.ui.settings.revision && now - savedAt > 250) {
       savedRevision = app.ui.settings.revision; savedAt = now;
@@ -286,7 +297,7 @@ async function boot(): Promise<void> {
     }
     view.apply(app.ui.frame, cssHeight);
     if (!packet) {if(session.state==="closed" && splash?.isConnected)splash.remove();return;}
-    const built = performance.now();
+    const built = (marks[3] = performance.now());
     // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
     const ratio = app.scene ? canvasRatio(app.scene.assets.tier, devicePixelRatio, cssWidth, cssHeight) : devicePixelRatio;
     const width = Math.floor(cssWidth * ratio);
@@ -297,9 +308,9 @@ async function boot(): Promise<void> {
     }
     if (packet.lit) surfaces?.start();
     renderer.draw(packet);
-    if (light.on) {
-      copy.drawImage(canvas, 0, 0, SAMPLE_W, SAMPLE_H);
-      const sent = light.frame(now, packet, app, copy.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data, { userAgent: navigator.userAgent, dpr: devicePixelRatio, renderer: renderer.rendererName, format: renderer.format });
+    if (light?.on && copy) {
+      copy.drawImage(canvas, 0, 0, sampleW, sampleH);
+      const sent = light.frame(now, packet, app, copy.getImageData(0, 0, sampleW, sampleH).data, { userAgent: navigator.userAgent, dpr: devicePixelRatio, renderer: renderer.rendererName, format: renderer.format });
       if (sent) void Promise.all(sent.map((part) => fetch("__play", { method: "POST", body: part }).then((r) => r.ok, () => false))).then((ok) => say(ok.every(Boolean) ? `Light capture saved in the record of play, ${sent.length} parts` : `Light capture: ${ok.filter((o) => !o).length} of ${sent.length} parts not saved`));
     }
     if(splash?.isConnected)splash.remove();
@@ -308,7 +319,7 @@ async function boot(): Promise<void> {
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
       app.pressure();
     }
-    const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
+    const ours = (marks[4] = performance.now()) - t0, gpu = clock?.take() ?? UNTIMED;
     app.drawn(packet, ours, width, height, renderer.uploadMs, built - t0);
     device?.frame(now, packet, t0, built);
     if (progress?.frames === 30) loser?.loseContext();

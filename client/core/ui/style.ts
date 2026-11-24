@@ -250,3 +250,10 @@ export const STYLES: readonly Style[] = [
   /* S_VIGNETTE */ { ...style(0x000000ff, 0xffffff), lens: LENS_VIGNETTE },
   /* S_FEED_SMALL_LEFT */ mono(0xb9cdd4, 11, 0),
 ];
+
+/** Adds the styles of a screen the page fetches later, and returns the first one's index. */
+export function addStyles(list: readonly Style[]): number {
+  const at = STYLES.length;
+  (STYLES as Style[]).push(...list);
+  return at;
+}

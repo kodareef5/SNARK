@@ -1,12 +1,11 @@
-// What the crosshair is on, for the resource monitor's inspect card (ui/monitor.ts): the crosshair's own ray, as the app
-// casts it to name who is looked at (prompts.ts), against the ground, structures, nodes (trees, rocks) and bodies, and
-// from what it meets the model, the level the scene wants of it and the level drawn, and the material under the
-// crosshair where a coarse level the page holds can tell it. Asked for when the card is made, never in a frame of its
-// own. It reads the app's, the scene's and the residency's private fields by name, as the inspectors do (D900), and
-// takes the ray's code from the kit (ui/monitor-kit.ts).
+// What the crosshair is on, for the debug bar's Assets tab: the crosshair's own ray, as the app casts it to name who is
+// looked at (prompts.ts), against the ground, structures, nodes (trees, rocks) and bodies, and from what it meets the
+// model, the level the scene wants of it and the level drawn, and the material under the crosshair where a coarse level
+// the page holds can tell it. Asked for a few times a second while the tab shows, never in a frame of its own. It reads
+// the app's, the scene's and the residency's private fields by name.
 
 import type { App } from "../app.ts";
-import type { MonitorKit } from "../ui/monitor-kit.ts";
+import { castWorld, rayHit } from "../../../shared/world/ray.ts";
 import { STEP0_SIZE } from "./copied.ts";
 import type { Residency } from "./residency.ts";
 
@@ -133,7 +132,7 @@ function firstMesh(slots: Int32Array | undefined): number {
 }
 
 /** Fills `out` with what the crosshair is on, by the ray the app cast this frame (prompts.ts): from the eye, along its aim. */
-export function pickLook(app: App, kit: MonitorKit, out: LookPick): LookPick {
+export function pickLook(app: App, out: LookPick): LookPick {
   out.what = "none";
   out.distance = LOOK_RANGE;
   out.water = false;
@@ -143,9 +142,9 @@ export function pickLook(app: App, kit: MonitorKit, out: LookPick): LookPick {
   // A body that is not alive has no eye, and the app casts no ray.
   if (!world || !scene || eye < 0) return out;
   const d = app["aim"], ox = s.own.x, oy = s.own.y + eye, oz = s.own.z;
-  const kind = kit.castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, LOOK_RANGE);
-  let best = kind === HIT_NONE ? LOOK_RANGE : kit.rayHit.t;
-  const ref = kit.rayHit.ref;
+  const kind = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, LOOK_RANGE);
+  let best = kind === HIT_NONE ? LOOK_RANGE : rayHit.t;
+  const ref = rayHit.ref;
   const r = app.remote;
   let body = -1;
   for (let i = 0; i < r.count; i++) {

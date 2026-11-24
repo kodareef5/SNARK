@@ -152,7 +152,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const define = { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
   // The page's script is main.js and page.js, and each file it fetches later takes what it shares with them from
   // page.js (tools/page-script.ts). Workers and worklets run in their own threads, so each is bundled as a separate file.
-  const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/notes/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });
+  const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/debug/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });
   if (!workers.success) throw new Error(workers.logs.map(String).join("\n"));
   // Sent without the notes written for readers, as the page's script is (tools/script-notes.ts).
   for (const o of workers.outputs) if (o.path.endsWith(".js")) finishScript(o.path);

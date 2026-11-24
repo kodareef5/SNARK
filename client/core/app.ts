@@ -12,10 +12,8 @@ import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
 import type { FrameRing } from "./assets/frames.ts";
 import type { Effect } from "./passes.ts";
 import { RESOLUTIONS, sceneShare } from "./render/post.ts";
-import { toggleBudget, toggleMonitor, toggleNotes } from "./settings.ts";
-import { MONITOR_KIT } from "./ui/monitor-kit.ts";
-import { NOTES_KIT } from "./notes-kit.ts";
-import type { NotePort } from "./notes/port.ts";
+import { toggleDebug } from "./settings.ts";
+import type { DebugPort } from "./debug/port.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
@@ -28,7 +26,8 @@ import { pressKey } from "./key-row.ts";
 import { KEY_ROWS } from "./keys.ts";
 import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
 import { HudFill } from "./hud/widget.ts";
-import { AppFrame, type FramePart } from "./frame.ts";
+import { AppFrame, type FramePart, type PartRow } from "./frame.ts";
+import type { Probe } from "./probe.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Sight } from "./sight.ts";
 import { AirFeed } from "./air-feed.ts";
@@ -135,7 +134,7 @@ export class App {
   readonly remote = new RemoteSample();
   /**
    * Who the camera follows and from where (view/director.ts). The view, the orbit camera on K and what the tests and
-   * the notes read of them are forwarded.
+   * the debug bar read of them are forwarded.
    */
   readonly director = new Director();
   /** The view of the own survivor knocked down or dying, and the red and black over it. */
@@ -159,21 +158,16 @@ export class App {
   private tools: ToolHooks | null = null;
   /** Keeps the frame steady under the tier chosen (governor.ts). The shell tells it what each frame took. */
   readonly governor = new Governor();
-  /** What each frame took and what came in it, for the data utility's monitor (assets/frames.ts), once the shell has fetched it. */
+  /** What each frame took and what came in it (assets/frames.ts), once the shell has fetched it. */
   frames: FrameRing | null = null;
   /** The textures the card makes (texgen/engine.ts), once their file has come: how far they have come up, which the shell draws them by. */
   texgen: import("./texgen/engine.ts").Texgen | null = null;
-  private monitorAsked = false;
   /** The world's sounds' code (sound-late.ts), which comes after the first frame, as the sounds' rows do (D1107). */
   static late: SoundCode | null = null;
   private soundAsked = false;
-  /**
-   * Bug report mode (notes/notes.ts), fetched once Settings.notes is first on, as the monitor is; null until then. And
-   * what fetches the browser's part of it, which the shell sets (client/notes/port.ts).
-   */
-  notes: import("./notes/notes.ts").Notes | null = null;
-  notePort: (() => Promise<NotePort>) | null = null;
-  private notesAsked = false;
+  /** What fetches the debug bar's part that needs the browser, which the shell sets (client/debug/debug-port.ts). */
+  debugPort: (() => Promise<DebugPort>) | null = null;
+  private debugAsked = false;
   /**
    * Whether the card has linked every program a tier draws with, beginning those it has not (the shell's `ready`). A
    * tier chosen or stepped to is drawn once it has, and the one before until then; null draws it at once.
@@ -254,8 +248,8 @@ export class App {
     };
     // Within the press that chose it, which is when a browser lets a page open another.
     this.ui.openLink = (url) => this.page?.open?.(url);
-    this.ui.local = (line) => (line === "monitor" ? toggleMonitor(this.ui.settings) : this.notesWord(line) ?? (this.sounds ? App.late!.soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null));
-    this.ui.chat.local = (line) => this.notesWord(line);
+    this.ui.local = (line) => this.debugWord(line) ?? (this.sounds ? App.late!.soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
+    this.ui.chat.local = (line) => this.debugWord(line);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
@@ -287,7 +281,7 @@ export class App {
       this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
-    this.parts = this.rows();
+    this.parts = this.listed();
   }
 
   readonly builder = new Builder();
@@ -327,7 +321,7 @@ export class App {
   set eggKept(on: boolean) { this.prompts.eggKept = on; }
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
   seatPress(): Ridden | null { return this.prompts.seatPress(this.session, this.remote); }
-  /** The look as the prompts last cast it, and how far along it body `i` is met: the monitor's and the notes' (assets/look.ts). */
+  /** The look as the prompts last cast it, and how far along it body `i` is met: the debug bar's (assets/look.ts). */
   protected get aim(): readonly number[] { return this.prompts.aim; }
   protected lookHit(i: number, ox: number, oy: number, oz: number, use = false): number { return this.prompts.lookHit(this.f, i, ox, oy, oz, use); }
 
@@ -510,7 +504,7 @@ export class App {
   private tooled(): ToolHooks {
     if (!this.tools) {
       this.tools = new ToolHooks(this.supply);
-      this.parts = this.rows();
+      this.parts = this.listed();
     }
     return this.tools;
   }
@@ -539,8 +533,8 @@ export class App {
    */
   drawn(packet: FramePacket, ours: number, width = 0, height = 0, uploadMs = 0, buildMs = 0): void {
     this.frames?.record(this.nowMs, this.interval, ours, uploadMs, this.scene?.assets.residency ?? null, this.sounds?.library ?? null);
-    // A note's picture is the canvas as just drawn, and its record takes the row above (notes/notes.ts).
-    this.notes?.drawn(packet, ours, width, height, uploadMs, buildMs);
+    // The debug bar's picture is the canvas as just drawn, and its record takes the row above (debug/debug.ts).
+    this.ui.debug?.drawn(packet, ours, width, height, uploadMs, buildMs);
     const budget = this.scene?.budget;
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
@@ -598,47 +592,97 @@ export class App {
     page.go(trip ? arrivalAddress(serverAddress(list, to, page), session.name, trip.ticket) : joinAddress(serverAddress(list, to, page), session.name));
   }
 
+  /**
+   * Where the shell's frame was on the page's clock, which the shell writes each frame for the debug bar (debug/spans.ts
+   * SpanRing.close): its start, just before frame(), just after it, once the interface is applied, and once it is drawn.
+   */
+  readonly shellMarks = new Float64Array(5);
+  /** What times the frame while the debug bar is on, and the slots of the app's own spans. */
+  private timer: Probe | null = null;
+  private readonly spans = { app: -1, measure: -1, turn: -1, update: -1, sample: -1, build: -1 };
+
+  /**
+   * What times the frame while the debug bar is on (debug/spans.ts): measure, turn and each part under "app", and the
+   * scene's build under the part "build". Null, as in the game, runs the parts as rows() has them, with no wrappers.
+   */
+  get probe(): Probe | null {
+    return this.timer;
+  }
+  set probe(probe: Probe | null) {
+    this.timer = probe;
+    const s = this.spans;
+    if (probe) {
+      s.app = probe.slot("app", probe.slot("frame", -1));
+      s.measure = probe.slot("measure", s.app);
+      s.turn = probe.slot("turn", s.app);
+      s.update = probe.slot("update", s.turn);
+      s.sample = probe.slot("sample", s.turn);
+      s.build = probe.slot("build", s.app);
+    }
+    this.parts = this.listed();
+    this.scene?.time(probe, s.build);
+  }
+
+  /** While the frame is timed: `slot` ran from `from` until now. Returns now, or 0 untimed. */
+  private lap(slot: number, from: number): number {
+    const probe = this.timer;
+    if (!probe) return 0;
+    const now = probe.now();
+    probe.add(slot, from, now);
+    return now;
+  }
+
   /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
-    const f = this.f;
+    const f = this.f, probe = this.timer, from = probe ? probe.now() : 0;
+    probe?.begin(this.shellMarks[0] || from);
     this.measure(f, nowMs, width, height);
-    if (!this.turn(f)) return null;
+    const measured = this.lap(this.spans.measure, from), turned = this.turn(f);
+    this.lap(this.spans.turn, measured);
     const parts = this.parts;
-    for (let i = 0; i < parts.length; i++) parts[i]!.step(f);
-    return f.packet;
+    if (turned) for (let i = 0; i < parts.length; i++) parts[i]!.step(f);
+    this.lap(this.spans.app, from);
+    return turned ? f.packet : null;
+  }
+
+  /** The frame's parts in rows()'s order, each timed by its name while the debug bar's probe is on. */
+  private listed(): FramePart[] {
+    const rows = this.rows();
+    return this.timer ? this.timer.parts(rows, this.spans.app) : rows.map((r) => r[1]);
   }
 
   /**
-   * The frame's parts, once the session has had its turn and there is a world. A part's place here is its place in the
-   * frame. A new part is a file of its own and a line here. The rows written out here are the app's own still.
+   * The frame's parts, once the session has had its turn and there is a world, each by the name the debug bar times it
+   * by. A part's place here is its place in the frame. A new part is a file of its own and a line here. The rows written
+   * out here are the app's own still.
    */
-  private rows(): FramePart[] {
+  private rows(): PartRow[] {
     const tools = this.tools;
     return [
       // A tool's lines are typed and its look held before anything reads the look.
-      ...(tools ? [tools.lines] : []),
+      ...(tools ? [["tool lines", tools.lines] as const] : []),
       // The camera's subject and its view; the instruments of a vehicle driven, whose speed widens the view; the aim and any sight.
-      this.director,
-      this.dash,
-      this.sight,
+      ["director", this.director],
+      ["dash", this.dash],
+      ["sight", this.sight],
       // With the view decided: the own body as it is drawn, then the camera placed.
-      this.director.body,
-      this.fallen,
-      this.director.place,
+      ["body", this.director.body],
+      ["fallen", this.fallen],
+      ["place", this.director.place],
       // A drone flown: its feed's zoom, view and interference, over the camera placed at it.
-      this.feed,
+      ["feed", this.feed],
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
-      { step: (f) => this.absorb(f) },
-      ...(tools ? [tools.stage] : []),
-      { step: (f) => this.build(f) },
-      ...(tools ? [tools.finish] : []),
-      this.guarded("sound", { step: (f) => this.hear(f) }),
-      { step: (f) => this.ghost(f) },
+      ["absorb", { step: (f) => this.absorb(f) }],
+      ...(tools ? [["tool stage", tools.stage] as const] : []),
+      ["build", { step: (f) => this.build(f) }],
+      ...(tools ? [["tool finish", tools.finish] as const] : []),
+      ["sound", this.guarded("sound", { step: (f) => this.hear(f) })],
+      ["ghost", { step: (f) => this.ghost(f) }],
       // What the use key is on, and the voice port told where speakers are. Then the HUD, which reads all of the above.
-      this.guarded("prompts", this.prompts),
-      this.guarded("voice", this.heard),
-      this.guarded("hud", { step: (f) => this.fillHud(f) }),
-      { step: (f) => this.interface(f) },
+      ["prompts", this.guarded("prompts", this.prompts)],
+      ["voice", this.guarded("voice", this.heard)],
+      ["hud", this.guarded("hud", { step: (f) => this.fillHud(f) })],
+      ["interface", { step: (f) => this.interface(f) }],
     ];
   }
 
@@ -674,15 +718,10 @@ export class App {
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
     ui.storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
     this.nowMs = nowMs;
-    // The resource monitor is a file of its own, fetched once Diagnostics is first "monitor".
-    if (ui.settings.monitor && !this.monitorAsked) {
-      this.monitorAsked = true;
-      void import("./ui/monitor.ts").then((m) => (ui.monitor = new m.Monitor(this, MONITOR_KIT)), () => (this.monitorAsked = false));
-    }
-    // Bug report mode likewise, once Settings.notes or the budget's panel is first on (D1091, D1095).
-    if ((ui.settings.notes || ui.settings.budget) && !this.notesAsked) {
-      this.notesAsked = true;
-      void import("./notes/notes.ts").then((m) => (this.notes = new m.Notes(this, NOTES_KIT)), () => (this.notesAsked = false));
+    // The debug bar is a file of its own, fetched once Settings.debug is first on.
+    if (ui.settings.debug && !this.debugAsked) {
+      this.debugAsked = true;
+      void import("./debug/debug.ts").then((m) => (ui.debug = new m.DebugBar(this)), () => (this.debugAsked = false));
     }
   }
 
@@ -719,8 +758,10 @@ export class App {
     f.airFrom = this.airFrom;
     this.director.airControls(f);
     if (!session.airCamera.id) this.director.cockpitNow(f);
+    const updating = this.timer ? this.timer.now() : 0;
     if (f.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.sight.buttons(this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons));
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
+    this.lap(this.spans.update, updating);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
     const world = session.world;
@@ -753,6 +794,7 @@ export class App {
       this.scene.supply = this.supply;
       this.ui.emotes.has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
+      if (this.timer) this.scene.time(this.timer, this.spans.build);
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
       const chart = (hud.chart = new Chart(world.hf, this.pack.palette));
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
@@ -782,7 +824,9 @@ export class App {
     }
     hud.status = this.debug ? `${scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
     // Sampled before the camera, which puts a passenger in its seat on the vehicle as it is drawn.
+    const sampling = this.timer ? this.timer.now() : 0;
     session.sampleRemote(this.remote);
+    this.lap(this.spans.sample, sampling);
   }
 
   /** What the session brought this frame is handed to what draws it, and the scene is told the time. */
@@ -930,15 +974,15 @@ export class App {
   /** The interface is built over the HUD. */
   private interface(f: AppFrame): void {
     this.ui.build(f.aspect, this.hud, this.session);
-    // Over the interface: an open note's line, its bar and a picture's flash (notes/notes.ts).
-    this.notes?.frame(f.nowMs, f.width, f.height);
   }
 
-  /** The console's and chat's words of bug report mode: `notes` turns it on and off, `perf [seconds]` keeps a record. Null for any other line. */
-  private notesWord(line: string): string | null {
-    if (line === "notes") return toggleNotes(this.ui.settings);
-    if (line === "budget") return toggleBudget(this.ui.settings);
-    if (!/^perf(\s|$)/.test(line)) return null;
-    return this.notes ? this.notes.perf(line) : "a performance record is kept in bug report mode: /notes turns it on";
+  /** The console's and chat's `debug`: the bar on or off; `debug save [words]` saves what it holds. Null for any other line. */
+  private debugWord(line: string): string | null {
+    if (line === "debug") return toggleDebug(this.ui.settings);
+    const save = /^debug\s+save(?:\s+(.*))?$/s.exec(line);
+    if (!save) return null;
+    if (!this.ui.debug || !this.ui.settings.debug) return "the debug bar is off: /debug turns it on";
+    return this.ui.debug.save(save[1] ?? "");
   }
+
 }

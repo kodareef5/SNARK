@@ -21,6 +21,18 @@ export const [PASS_MAKING, PASS_UPLOADS, PASS_CASTERS, PASS_NEAR, PASS_FAR, PASS
 /** The pass each of the frame's steps (packet.ts STEP_) begins. */
 export const PASS_OF_STEP: readonly number[] = [PASS_NEAR, PASS_FAR, PASS_FAR_SEE, PASS_NEAR_SEE, PASS_BODY];
 
+/**
+ * The page's own time in each pass of the last frame drawn, while the debug bar reads it (gl.ts fills it). By PASSES:
+ * where each pass first began, in ms from the draw's start (NaN where it did not run), and its ms in all. Then when the
+ * draw began and ended on the page's clock.
+ */
+export interface PassCpu {
+  readonly start: Float64Array;
+  readonly ms: Float64Array;
+  began: number;
+  ended: number;
+}
+
 const TIME_ELAPSED = 0x88bf;
 const GPU_DISJOINT = 0x8fbb;
 const QUERY_RESULT = 0x8866;

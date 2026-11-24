@@ -48,7 +48,7 @@ test("every row has a name of its own", () => {
 test("rows that want the same key stand in the order the keys were always tried in", () => {
   // Earlier, later, and a key both take.
   const pairs: [string, string, string][] = [
-    ["note", "interface", "F8"],
+    ["debug", "interface", "F3"],
     ["place vehicle", "interface", "Escape"],
     ["place vehicle", "build", "KeyQ"],
     ["interface", "inspect zoom", "Minus"],

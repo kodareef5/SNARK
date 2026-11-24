@@ -1,20 +1,20 @@
 // The display's interval kept apart from the game's rate (D1120). A frame is judged against the target, the fastest the
 // page has kept up since it began or since the display changed, snapped to a display's rate, which a slow stretch cannot
-// drag down; the budget's panel and a report's summary say both, and count a frame late against the target.
+// drag down; the debug bar and a capture's summary say both, and count a frame late against the target.
 
 import { expect, test } from "bun:test";
 import type { App } from "../../client/core/app.ts";
 import { FrameRing, REFRESH_RATES, RefreshTarget, refreshOf } from "../../client/core/assets/frames.ts";
-import { frameStrip } from "../../client/core/notes/budget.ts";
-import { PerfRing, SECOND_FIELDS } from "../../client/core/notes/ring.ts";
-import { FrameSampler, type FrameExtra } from "../../client/core/notes/sample.ts";
+import { PerfRing, SECOND_FIELDS } from "../../client/core/debug/ring.ts";
+import { FrameSampler, type FrameExtra } from "../../client/core/debug/sample.ts";
+import { frameStrip } from "../../client/core/debug/strip.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 
 const extra: FrameExtra = { build: 0, scene: 0, gpu: -1, glDraws: 0, longMs: 0, longTasks: 0, shotMs: 0, flags: 0, heap: 0 };
 
 /**
  * A page's frames as the app takes them: each frame's interval to the data utility's target (App.frame), its row to the
- * data utility's ring (App.drawn) and to the record (notes/sample.ts). `play` draws `seconds` at `hz` and says from
+ * frame ring (App.drawn) and to the record (debug/sample.ts). `play` draws `seconds` at `hz` and says from
  * when to when on the page's clock.
  */
 function page() {
@@ -44,7 +44,7 @@ test("a window's rate is snapped to the first display's rate it comes within 8% 
   expect(asked.map(refreshOf)).toEqual([60, 60, 60, 60, 75, 90, 100, 120, 120, 144, 165, 240, 240]);
 });
 
-test("three seconds at 60 then four at 30: the target stays at 60, and the panel and the report call the slow stretch late", () => {
+test("three seconds at 60 then four at 30: the target stays at 60, and the bar and the record call the slow stretch late", () => {
   const pg = page();
   pg.play(60, 3);
   const slow = pg.play(30, 4);
@@ -56,7 +56,7 @@ test("three seconds at 60 then four at 30: the target stays at 60, and the panel
   const seconds = pg.ring.secondRows(0), late = SECOND_FIELDS.indexOf("late"), target = SECOND_FIELDS.indexOf("targetMs");
   expect(seconds.filter((r) => r[0]! >= 4 && r[0]! <= 6).map((r) => [r[1], r[late], r[target]])).toEqual([[30, 30, 16.67], [30, 30, 16.67], [30, 30, 16.67]]);
   expect(seconds.filter((r) => r[0]! <= 2).map((r) => r[late])).toEqual([0, 0, 0]);
-  // The panel: its line where the display's interval is, the rate in words, and the frames late against it.
+  // The bar: its line where the display's interval is, the rate in words, and the frames late against it.
   const strip = frameStrip(pg.frames, pg.now());
   expect(strip.target).toBeCloseTo(1000 / 60, 6);
   expect(strip.title).toBe("30 fps of 60 · 33.3 ms a frame");
@@ -64,7 +64,7 @@ test("three seconds at 60 then four at 30: the target stays at 60, and the panel
   expect(strip.line).toBe(`last 5 s: 120 of ${strip.counted} frames late, the worst 33.3 ms (2.0 display intervals)`);
 });
 
-test("a steady 60 is on time: no frame late, in the panel or the report", () => {
+test("a steady 60 is on time: no frame late, in the bar or the record", () => {
   const pg = page();
   const all = pg.play(60, 10);
   const s = pg.ring.summary(all.from, all.to);

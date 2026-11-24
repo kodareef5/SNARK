@@ -24,10 +24,11 @@ import { pathOf } from "./site.ts";
  */
 
 /** Whether the front passes a request on to a world: any read, and the writes a world takes behind its own gate (its
- * survivors, its directory, play, a bug report, its admin page's Cast panel, its drop book's acts) and the cluster's scene studio. */
+ * survivors, its directory, play, a bug report, the debug bar's ask, its admin page's Cast panel, its drop book's acts) and
+ * the cluster's scene studio. */
 export function frontPasses(method: string, path: string): boolean {
   if (method === "GET" || method === "HEAD") return true;
-  if ((method === "POST" || method === "OPTIONS") && /\/(survivors|directory|__play|__report|admin\/cast)$/.test(path)) return true;
+  if ((method === "POST" || method === "OPTIONS") && /\/(survivors|directory|__play|__report|__debug|admin\/cast)$/.test(path)) return true;
   // The drop book's page changes its world's book and calls test drops (server/admin/supply-routes.ts): its acts and no
   // other path under a world's admin pages.
   if (method === "POST" && /\/admin\/supply\/[a-z]+$/.test(path)) return true;

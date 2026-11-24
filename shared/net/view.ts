@@ -960,18 +960,22 @@ function untold(drawn: EntityView, before: EntityView | null, l: number, next: E
  * Returns false if the data is inconsistent. `next` becomes the view the server holds the client to have, which later deltas
  * are read against. `drawn`, if given, becomes what the client shows: `before`, which is what it showed after the snapshot
  * before this one, with this snapshot's ops applied. A body the snapshot says nothing of stays as it was last told of.
- * The ids of bodies taken away because they died are pushed to `died`.
+ * The ids of bodies taken away because they died are pushed to `died`. `tally`, if given, is told the bits of the count as
+ * op -1, then of each op read: its OP_, its body's kind (as a create reads it, else as the base has it, or -1) and its bits.
  */
-export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView, before: EntityView | null = null, drawn: EntityView | null = null, died: number[] | null = null): boolean {
+export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView, before: EntityView | null = null, drawn: EntityView | null = null, died: number[] | null = null, tally: ((op: number, kind: number, bits: number) => void) | null = null): boolean {
   const nb = base ? base.count : 0;
   // With no baseline and no snapshot for a second, the server has started again from nothing.
   if (!base && before && next.tick - before.tick >= VIEW_RING) before = null;
+  let at = r.pos;
   const count = r.varint();
+  tally?.(-1, -1, r.pos - at);
   if (count > MAX_VIEW * 2) return false;
   let i = 0;
   let l = 0;
   let prev = 0;
   for (let k = 0; k < count; k++) {
+    at = r.pos;
     const gap = r.varint();
     if (gap === 0) return false;
     prev += gap;
@@ -982,6 +986,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (drawn) l = untold(drawn, before, l, next);
     }
     const present = i < nb && base!.id[i] === id;
+    let kind = present ? base!.kind[i]! : -1;
     if (drawn) {
       l = carry(drawn, before, l, id);
       if (before && l < before.count && before.id[l] === id) l++;
@@ -990,7 +995,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (present) i++;
       if (op === OP_DIED && died) died.push(id);
     } else if (op === OP_CREATE) {
-      const kind = r.varint();
+      kind = r.varint();
       const gen = r.bits(12);
       const qx = r.bits(22);
       const qy = r.bits(20);
@@ -1074,6 +1079,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       i++;
     } else return false;
     if (r.overflow) return false;
+    tally?.(op, kind, r.pos - at);
   }
   while (i < nb) {
     if (!next.copyFrom(base!, i++)) return false;

@@ -1,11 +1,9 @@
 // What the crosshair is on (client/core/assets/look.ts) in a small world with a client in it: a wall set in front of
-// the eye, the ground under it, and the sky over it; and what the inspect card and the strip by touch say of each.
+// the eye, the ground under it, and the sky over it.
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { emptyPick, pickLook } from "../../client/core/assets/look.ts";
-import { cardWords, pickLine } from "../../client/core/ui/monitor-card.ts";
-import { MONITOR_KIT } from "../../client/core/ui/monitor-kit.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -21,26 +19,17 @@ test("the crosshair's ray names a wall in front of the eye, its model and level,
   app.controls.yaw = 0;
   app.controls.pitch = 0;
   run(400);
-  const pick = pickLook(app, MONITOR_KIT, emptyPick()), r = app.scene!.assets.residency;
+  const pick = pickLook(app, emptyPick());
   expect([pick.what, pick.id]).toEqual(["structure", "core:wall_wood"]);
   expect(pick.distance).toBeGreaterThan(3);
   expect(pick.distance).toBeLessThan(6);
   expect(pick.mesh).toBe(app.scene!.meshOfKind[wall]!);
   expect(pick.shown).toBeGreaterThanOrEqual(0);
-  const lines: string[] = [], under: string[] = [];
-  cardWords(r, pick, 12, lines, under);
-  expect(lines[0]).toMatch(/^Wall wood · \d m$/);
-  expect(lines[1]).toMatch(/^Model level \d of \d/);
-  expect(pickLine(r, pick)).toMatch(/^Wall wood · \d m · level \d/);
   // Down at the ground, and up at the sky.
   app.controls.pitch = -1.3;
   run(50);
-  expect(pickLook(app, MONITOR_KIT, pick).what).toBe("ground");
-  cardWords(r, pick, 12, lines, under);
-  expect(lines).toEqual([`Ground · ${Math.round(pick.distance)} m`]);
+  expect(pickLook(app, pick).what).toBe("ground");
   app.controls.pitch = 1.4;
   run(50);
-  expect(pickLook(app, MONITOR_KIT, pick).what).toBe("none");
-  cardWords(r, pick, 12, lines, under);
-  expect(lines[0]).toBe("Nothing within 400 m");
+  expect(pickLook(app, pick).what).toBe("none");
 });

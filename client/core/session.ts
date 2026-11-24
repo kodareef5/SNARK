@@ -6,6 +6,7 @@ import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 
 import { PredictedTrees } from "./vehicle-trees.ts";
 import { messages, ownKinds, type Readers } from "./readers.ts";
+import { SNAP_BODIES, SNAP_CONTACTS, SNAP_HEAD, SNAP_OWN, SNAP_REST, type NetTap } from "./net-tap.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
@@ -106,6 +107,9 @@ import {
   S_AIR_SUPPORT,
   CMD_AIR_SUPPORT,
   S_WELCOME,
+  C_COMMAND,
+  C_HELLO,
+  C_INPUT,
   REJECT_TRAVEL,
   TICKET_BYTES,
   nextCommandSeq,
@@ -685,7 +689,15 @@ export class ClientSession {
    * predicted state. `transitions` counts those that changed which body it is or where it sits (a mount, a seat), which
    * nothing predicts and are not counted as either. `unsent` counts commands too long for a message.
    */
-  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, transitions: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, unsent: 0, unheld: 0 };
+  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, transitions: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, bytesOut: 0, unsent: 0, unheld: 0 };
+  /** Counts every message on the socket while the debug bar is on (debug/net.ts). */
+  tap: NetTap | null = null;
+  /** Where the tap was last told a snapshot's section ended, in bits from the message's start. */
+  private marked = 0;
+  private readonly tally = (op: number, kind: number, bits: number): void => {
+    this.marked += bits;
+    this.tap?.snapshot(SNAP_BODIES, op, kind, bits);
+  };
   readonly prediction = new PredictionTrace();
   /** What is left to hide of the last correction. Add it to the body's position when drawing. */
   smoothX = 0;
@@ -793,7 +805,15 @@ export class ClientSession {
     };
     const w = this.w;
     writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, (opts.intent === "create" ? HELLO_NEW : opts.intent === "resume" ? HELLO_RESUME : 0) | (opts.spectate ? HELLO_SPECTATE : 0) | (opts.statics ? HELLO_STATICS : 0), opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null,opts.createRequest);
-    conn.send(CH_RELIABLE, w.bytes());
+    this.send(CH_RELIABLE, C_HELLO, -1);
+  }
+
+  /** Sends what `w` holds, a message of C_ `kind` and CMD_ `sub` (or -1), and counts it. */
+  private send(channel: number, kind: number, sub: number): void {
+    const data = this.w.bytes();
+    this.conn.send(channel, data);
+    this.stats.bytesOut += data.length;
+    this.tap?.sent(kind, sub, data.length);
   }
 
   /** `args` appends the op's arguments. Returns the sequence number, or 0 if nothing was sent. Commands are not predicted or resent. */
@@ -811,7 +831,7 @@ export class ClientSession {
       return 0;
     }
     this.commandSeq = seq;
-    this.conn.send(CH_RELIABLE, w.bytes());
+    this.send(CH_RELIABLE, C_COMMAND, op);
     return seq;
   }
 
@@ -1392,7 +1412,7 @@ export class ClientSession {
     w.reset();
     // The last argument is how far behind the newest snapshot remote entities were drawn when the newest input was sampled.
     writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, newest, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - this.remoteDelay));
-    this.conn.send(CH_UNRELIABLE, w.bytes());
+    this.send(CH_UNRELIABLE, C_INPUT, -1);
     [this.sentInput, this.sentAck] = [newest, this.latestSnapshot];
   }
 
@@ -1405,8 +1425,24 @@ export class ClientSession {
     this.stats.bytesIn += data.length;
     const r = this.r;
     r.reset(data);
+    const kind = r.u8();
+    const tap = this.tap;
+    if (tap) {
+      // Owner state, an event and a line of text come one to a message, named by the byte after the kind.
+      tap.received(kind, kind === S_OWN || kind === S_EVENT || kind === S_TEXT ? (data[1] ?? -1) : -1, data.length);
+      this.marked = 0;
+    }
     // A kind with no reader is ignored.
-    ClientSession.messages.read(r.u8(), this, r);
+    ClientSession.messages.read(kind, this, r);
+    // The bits no section took: the last byte's padding, or all past where a stale or broken snapshot stopped being read.
+    if (tap && kind === S_SNAPSHOT) tap.snapshot(SNAP_REST, -1, -1, data.length * 8 - this.marked);
+  }
+
+  /** Tells the tap the bits from the last section's end to where the snapshot is read to, as section `section`. */
+  private mark(section: number): void {
+    if (!this.tap) return;
+    this.tap.snapshot(section, -1, -1, this.r.pos - this.marked);
+    this.marked = this.r.pos;
   }
 
   /** Adds the readers of the server's messages that are this file's, and gives the table. A feature's own message is added from its own file (client/core/readers.ts). */
@@ -2157,9 +2193,12 @@ export class ClientSession {
     const state = r.bits(2);
     const driving = r.varint() - 1;
     const sb = this.serverBody;
+    this.mark(SNAP_HEAD);
     readBody(r, sb);
+    this.mark(SNAP_OWN);
     if (r.overflow || tick <= this.latestSnapshot) return;
     if (!readContacts(r, this.contactSnapshot, tick, this.world?.hf.sizeX, this.world?.hf.sizeZ)) { this.stats.undecodable++; return; }
+    this.mark(SNAP_CONTACTS);
     const gapMs = this.snapshotAt < 0 ? 0 : this.lastNow - this.snapshotAt;
     this.snapshotAt = this.lastNow;
 
@@ -2174,7 +2213,7 @@ export class ClientSession {
     const drawn = this.drawn.alloc(tick);
     const dying = this.dying;
     dying.length = 0;
-    if (!readViewDelta(r, base, next, this.drawn.find(this.latestSnapshot), drawn, dying) || r.overflow) {
+    if (!readViewDelta(r, base, next, this.drawn.find(this.latestSnapshot), drawn, dying, this.tap && this.tally) || r.overflow) {
       next.tick = drawn.tick = 0;
       this.stats.undecodable++;
       this.needFull = true;
