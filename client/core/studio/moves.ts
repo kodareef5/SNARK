@@ -5,6 +5,7 @@
 import type { Clip } from "../../../shared/anim/clip.ts";
 import type { CreatureAnim } from "../../../shared/anim/creature.ts";
 import { EMOTES, LIBRARY_EMOTES } from "../../../shared/anim/emotes.ts";
+import { SWING_TICKS } from "../../../shared/sim/weapon.ts";
 import type { HumanAnim } from "../../../shared/anim/pose.ts";
 import { EMOTE_PAGES } from "../ui/emotes.ts";
 
@@ -16,6 +17,10 @@ export interface Move {
   key: string;
   label: string;
   source: MoveSource;
+  /** A move the game plays over this many ticks regardless of its sample count. */
+  durationTicks?: number;
+  /** The item the survivor holds for this move. */
+  item?: string;
   /** Not to be had here yet: an emote whose clip comes with the art release. */
   missing?: string;
 }
@@ -25,12 +30,22 @@ export interface MoveGroup {
   moves: Move[];
 }
 
+const punch = { durationTicks: SWING_TICKS };
+const chop = { durationTicks: SWING_TICKS, item: "core:hatchet" };
+const pick = { durationTicks: SWING_TICKS, item: "core:pick" };
+
 /** The survivor's own clips, by field, in the order they are listed. */
 const HUMAN_GROUPS = [
   ["Moving", [["idle", "Idle"], ["walk", "Walk"], ["jog", "Jog"], ["sprint", "Sprint"], ["fall", "Fall"]]],
   ["Crouch and prone", [["crouchIdle", "Crouched"], ["crouchWalk", "Crouched walk"], ["proneIdle", "Prone"], ["proneCrawl", "Crawl"]]],
   ["Swimming", [["swimIdle", "Treading water"], ["swim", "Swim"]]],
-  ["Fists and tools", [["jab", "Jab"], ["cross", "Cross"], ["chopA", "Chop, steep"], ["chopB", "Chop, flat"], ["pickA", "Pick, overhead"], ["pickB", "Pick, from the shoulder"], ["toolCarry", "Tool carried"], ["toolSwing", "Spear swing"], ["throwing", "Throw"]]],
+  ["Fists and tools", [
+    ["jab", "Jab", punch], ["cross", "Cross", punch],
+    ["chopA", "Chop, steep", chop], ["chopB", "Chop, flat", chop],
+    ["pickA", "Pick, overhead", pick], ["pickB", "Pick, from the shoulder", pick],
+    ["toolCarry", "Tool carried", { item: "core:hatchet" }],
+    ["toolSwing", "Spear swing", { durationTicks: SWING_TICKS, item: "core:spear" }], ["throwing", "Throw"],
+  ]],
   ["Bow and guns", [["bowReady", "Bow ready"], ["bowDrawn", "Bow drawn"], ["gunAimed", "Rifle aimed"], ["gunLowered", "Rifle lowered"], ["pistolAimed", "Pistol aimed"], ["pistolLowered", "Pistol lowered"]]],
 ] as const;
 export type HumanClip = (typeof HUMAN_GROUPS)[number][1][number][0];
@@ -86,7 +101,7 @@ export function creatureMoves(anim: CreatureAnim): MoveGroup[] {
 export function humanMoves(anim: HumanAnim, here: boolean): MoveGroup[] {
   const groups: MoveGroup[] = [];
   for (const [name, fields] of HUMAN_GROUPS) {
-    const moves = fields.filter(([f]) => anim[f] !== null).map(([f, label]): Move => ({ key: f, label, source: { human: f } }));
+    const moves = fields.filter(([f]) => anim[f] !== null).map(([f, label, details]): Move => ({ key: f, label, source: { human: f }, ...details }));
     if (moves.length) groups.push({ name, moves });
   }
   const placed = new Set<string>();
