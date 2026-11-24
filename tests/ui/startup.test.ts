@@ -47,6 +47,25 @@ test("first-frame work takes priority and duplicate callers share one transfer",
   expect(pending).toHaveLength(3);
 });
 
+test("small jobs wait behind higher priority work that needs a reservation", async () => {
+  const pending: { url: string; done: (response: Response) => void }[] = [];
+  const queue = new StartupQueue((url) => new Promise((done) => pending.push({ url, done })), 100);
+  const active = queue.ask(file("/boot", 3, 60), signal());
+  await tick();
+  const large = queue.ask(file("/land", 2, 64), signal());
+  const smallJob = queue.ask(file("/ground", 1, 16), signal());
+  await tick();
+  expect(pending.map((p) => p.url)).toEqual(["/boot"]);
+  pending[0]!.done(small());
+  await active;
+  await tick();
+  expect(pending.map((p) => p.url)).toEqual(["/boot", "/land", "/ground"]);
+  pending[1]!.done(small());
+  pending[2]!.done(small());
+  expect((await large)?.bytes).toBe(6);
+  expect((await smallJob)?.bytes).toBe(6);
+});
+
 test("canceling one caller keeps a shared request until its last caller leaves", async () => {
   let network: AbortSignal | null = null;
   const queue = new StartupQueue((_url, init) => {

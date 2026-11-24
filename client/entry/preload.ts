@@ -75,7 +75,10 @@ class WorldWarmup {
   async spawn(x: number, z: number, signal: AbortSignal, say?: Say): Promise<void> {
     const head = await this.head(signal);
     if (!head || !Number.isFinite(x) || !Number.isFinite(z) || signal.aborted) return;
-    const parts = firstFrameParts(head, x, z).filter((p) => p.kind === "overview" || p.kind === "ground");
+    const needed = firstFrameParts(head, x, z);
+    const definitions = needed.find((p) => p.kind === "land");
+    if (definitions) void this.part(definitions, signal);
+    const parts = needed.filter((p) => p.kind === "overview" || p.kind === "ground");
     parts.sort((a, b) => partDistance(head, a, x, z) - partDistance(head, b, x, z));
     const first = parts.slice(0, 24);
     const warmed = await Promise.all(first.map((p) => this.part(p, signal)));

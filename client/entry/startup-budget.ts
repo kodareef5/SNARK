@@ -116,6 +116,7 @@ export class StartupQueue {
         if (work.listeners.size === 0) {
           this.work.delete(file.url);
           work.stop.abort();
+          this.schedule();
         }
       };
       work.listeners.add(done);
@@ -143,8 +144,9 @@ export class StartupQueue {
       for (const job of pending) {
         if (this.active >= this.lanes) break;
         const limit = Math.min(job.file.wireLimit, this.available);
-        if (limit > 0 && (limit === job.file.wireLimit || this.active === 0)) void this.run(job, limit);
-        else if (this.active === 0) this.finish(job, null);
+        if (limit < job.file.wireLimit && this.active > 0) break;
+        if (limit > 0) void this.run(job, limit);
+        else this.finish(job, null);
       }
     });
   }
