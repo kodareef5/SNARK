@@ -616,8 +616,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // sinking walk's slopes, as above.
   // And 2416789718 until the finishes of materials made from recipes, as above.
   // And 3120527 until the three finishes above, 1760943328 until the shed's, 2591537817 until the skate park's,
-  // 1800001343 until the two parked Concept 003 meshes, and 4134447771 until the city's broken forms.
-  expect(saddled.hash).toBe(2206766379);
+  // 1800001343 until the two parked Concept 003 meshes, 4134447771 until the city's broken forms, and 2206766379
+  // until the wrecks' stripped forms.
+  expect(saddled.hash).toBe(3892484967);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
