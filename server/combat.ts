@@ -1397,6 +1397,7 @@ export class Combat {
    * at its centre, the damage summed.
    */
   blast(src: Source, x: number, y: number, z: number, radius: number, direct = -1): void {
+    if (!(radius > 0)) return;
     const world = this.ctx.world;
     const ents = world.ents;
     const reg = world.reg;
@@ -1420,9 +1421,11 @@ export class Combat {
           const my = ents.y[i]! + reg.bodyHeight[kind]! * 0.5 - y;
           const mz = ents.z[i]! - z;
           // The distance to the body's nearest point, approximated as the distance to its middle less its radius.
-          const mid = Math.sqrt(mx * mx + my * my + mz * mz);
+          const distance2 = mx * mx + my * my + mz * mz;
+          const reach = radius + reg.bodyRadius[kind]!;
+          if (i !== direct && distance2 >= reach * reach) continue;
+          const mid = Math.sqrt(distance2);
           const far = i === direct ? 0 : Math.max(0, mid - reg.bodyRadius[kind]!);
-          if (far >= radius) continue;
           // World geometry between the two shields the body.
           if (i !== direct && mid > 0.5 && castWorld(world, x, y + 0.1, z, mx / mid, (my - 0.1) / mid, mz / mid, mid - 0.3) !== HIT_NONE) continue;
           found.push(i);
@@ -1476,6 +1479,7 @@ export class Combat {
       found.push(ref);
       share.push(fade(far));
     }
+    if (found.length === 0) return;
     this.city.gather();
     this.blasting = true;
     this.blastHits = this.blastDamage = 0;

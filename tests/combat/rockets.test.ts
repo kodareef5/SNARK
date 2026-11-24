@@ -3,7 +3,6 @@
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { BLASTS_A_TICK } from "../../server/projectiles.ts";
 import type { Source } from "../../server/combat.ts";
 import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -370,34 +369,51 @@ test("a blast that damages many pieces sends its shooter one hit report, at its 
   expect(told.hits.slice(3).map((v) => [v.damage, v.killed])).toEqual([[65535, false]]);
 });
 
-test("the third blast of a tick is judged the tick after, and harms as the others did", () => {
-  const { h, s, c, rec, at, ents, shots, dummy, health, launch, step } = range();
-  const d = dummy(0, 18);
-  h.run(300);
-  const told = tap(h, s);
-  const combat = h.host.combat;
-  // Three rockets leave in one tick for the ground before the dummy, and end in one tick.
-  launch(ents.x[d]!, at.y, ents.z[d]! - 2.5, 3);
-  expect([0, 1, 2].map((k) => shots.numberAt(k))).toEqual([0, 1, 2].map((k) => shots.numberAt(0) + k));
-  const [hits, full] = [combat.hits, health(d)];
-  for (let ticks = 0; shots.flyingCount > 0 && ticks < 60; ticks++) step();
-  const ended = h.world.tick;
-  // All three are told at once, and two of them judged.
-  expect([shots.blasts, told.blasts.length, told.blasts.every((b) => b.tick === ended)]).toEqual([3, 3, true]);
-  expect([combat.hits - hits, shots.waitingCount]).toEqual([BLASTS_A_TICK, 1]);
-  const two = full - health(d);
-  expect(two).toBeGreaterThan(0);
-  step();
-  expect([combat.hits - hits, shots.waitingCount]).toEqual([3, 0]);
-  // The one that waited did what each of the others did. The dummy mends a little meanwhile.
-  expect(Math.abs(full - health(d) - two * 1.5)).toBeLessThan(2);
-  expect(told.blasts.length).toBe(3);
-  // Grenades are counted with them: three thrown in a tick go off in a tick on the ground, and the third waits one.
+for (const count of [3, 50, 100]) {
+  test(`a volley of ${count} rockets damages bodies and cover on the impact tick`, () => {
+    const { h, s, at, ents, shots, dummy, health, launch, land } = range();
+    const inside = dummy(0, 18);
+    const outside = dummy(12, 18);
+    const structs = h.world.structs;
+    const foundation = structs.add(id("foundation_metal"), at.x + 4, at.y + 0.25, at.z + 16, 0, 0, 1e7);
+    h.run(300);
+    const told = tap(h, s);
+    const combat = h.host.combat;
+    launch(at.x, at.y, at.z + 15.5, count);
+    const full = health(inside);
+    const hits = combat.hits;
+    const built = combat.structureHits;
+    land();
+    expect(shots.blasts).toBe(count);
+    expect(told.blasts.length).toBe(count);
+    expect(told.blasts.every((b) => b.tick === h.world.tick)).toBe(true);
+    expect(combat.hits - hits).toBe(count);
+    expect(health(inside)).toBeLessThan(full);
+    expect(combat.structureHits - built).toBe(count);
+    ents.setPosition(inside, at.x + 13, at.y, at.z + 18);
+    ents.setPosition(outside, at.x, at.y, at.z + 18);
+    structs.remove(foundation);
+    const replacement = structs.add(id("foundation_metal"), at.x + 4, at.y + 0.25, at.z + 16, 0, 0, 500);
+    const original = health(outside);
+    h.run(1500);
+    expect(health(outside)).toBeGreaterThanOrEqual(original);
+    expect(combat.hits - hits).toBe(count);
+    expect(structs.chunks[replacement >>> 16]!.hp[replacement & 0xffff]).toBe(500);
+  });
+}
+
+test("grenades with the same fuse damage nearby bodies together", () => {
+  const { h, s, c, rec, at, shots, dummy, step } = range();
   const grenade = id("grenade");
+  const told = tap(h, s);
+  shots.lob(c, rec, grenade, 0);
+  for (let ticks = 0; shots.bursts === 0 && ticks < 200; ticks++) step();
+  const first = told.blasts[0]!;
+  dummy(first.x - at.x, first.z - at.z + 1);
+  h.run(300);
+  const hits = h.host.combat.hits;
   for (let k = 0; k < 3; k++) shots.lob(c, rec, grenade, 0);
-  for (let ticks = 0; shots.bursts < 3 && ticks < 200; ticks++) step();
-  expect([shots.bursts, shots.waitingCount]).toEqual([3, 1]);
-  expect(told.blasts.slice(3).map((b) => [b.item, b.id, b.surface, b.radius])).toEqual([0, 1, 2].map(() => [grenade, 0, SURFACE_GROUND, reg.blast[grenade]!]));
-  step();
-  expect(shots.waitingCount).toBe(0);
+  for (let ticks = 0; shots.bursts < 4 && ticks < 200; ticks++) step();
+  expect(told.blasts.slice(1).map((b) => [b.tick, b.id, b.item])).toEqual(Array(3).fill([h.world.tick, 0, grenade]));
+  expect(h.host.combat.hits - hits).toBe(3);
 });
