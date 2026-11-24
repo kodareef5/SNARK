@@ -88,8 +88,8 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
   // were 393,476 and 1,871,612 until a cell's reach sideways was its meshes' measured reach (pack.ts meshReach), not
   // their bounds' corner: fewer cells reach a cascade they cannot shade. The street's was 138,704 while its cars were the
   // compact's five looks; as six looks a chunk of the fleet's (the jeep's 24,000 and the semi's 20,564 finest among them,
-  // content/vehicles/wrecks.ts) it casts this.
-  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([364236, 1590572, 259860]);
+  // content/vehicles/wrecks.ts) it cast 259,860, and with the Concept's two lighter wreck looks in the rotation, this.
+  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([364236, 1590572, 207978]);
 });
 
 artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {
