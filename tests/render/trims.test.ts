@@ -66,11 +66,14 @@ test("a corner takes the joint its walls' ways ask for, drawn once by the wall o
     ["60 and 120 degrees", [0, 2, 6], ["joint_r21_metal"]],
     ["a corner of walls 30 degrees round", [1, 4], ["joint_sq_metal"]],
   ];
-  const walls: number[][] = [];
+  const walls: number[][] = [], edged: number[][] = [];
   const { all } = benchOf([...standInTrims("metal"), ...standInTrims("wood")], (structs, reg) => {
     cases.forEach(([, ways], k) => {
       const f = baseAt(structs, 40 + k * 16, 0, 40, 0);
       walls.push(ways.map((d) => putAt(structs, reg, f, "core:wall_metal", CLS_EDGE, O, d, 0)));
+      // The same again with its corner on the line between two chunks, where its walls may be either's.
+      const g = baseAt(structs, 40 + k * 16, 0, 128, 0);
+      edged.push(ways.map((d) => putAt(structs, reg, g, "core:wall_metal", CLS_EDGE, O, d, 0)));
     });
     // Wood shows a post in a straight run.
     const f = baseAt(structs, 40, 0, 80, 0);
@@ -89,7 +92,12 @@ test("a corner takes the joint its walls' ways ask for, drawn once by the wall o
     // The joint is its lowest wall's: it carries that wall's slot.
     const joint = round(got, 40 + k * 16, 40, 0.3).find((d) => d.trim);
     if (joint) expect(joint.ref, name).toBe(walls[k]![0]!);
+    expect(trimsAt(got, 40 + k * 16, 128), `${name}, across two chunks`).toEqual(want);
+    expect(edged[k]!.map((ref) => yieldOf(pieceOf(got, ref))), `${name}, across two chunks`).toEqual(walls[k]!.map((ref) => yieldOf(pieceOf(got, ref))));
+    const across = round(got, 40 + k * 16, 128, 0.3).find((d) => d.trim);
+    if (across) expect(across.ref, `${name}, across two chunks`).toBe(edged[k]![0]!);
   });
+  expect(new Set(edged.flat().map((ref) => Math.floor(ref / 65536))).size).toBeGreaterThan(2);
   expect(trimsAt(got, 40, 80)).toEqual(["joint_sq_wood"]);
   // A square joint is turned with its walls: 30 degrees round, its corner is not where an unturned one's is.
   const turned = round(got, 40 + 9 * 16, 40, 0.3).find((d) => d.trim)!;

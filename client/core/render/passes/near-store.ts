@@ -1436,7 +1436,7 @@ export class NearStore implements Pass {
   /** Writes a chunk's trims after its pieces: each an instance of its mesh in its piece's block, coloured and staged as its piece, held in its cell's boxes. */
   private layTrims(b: ChunkBatch, trims: TrimLayout, t: ChunkTable, chunk: number, colorOf: Uint8Array, x0: number, z0: number, blocks: number): void {
     const w = new InstanceWriter(b.data), blockAt = this.blockAt, cells = b.cells, frames = b.frames!;
-    for (let k = 0, n = 0; k < trims.count; k++) {
+    for (let k = 0; k < trims.count; k++) {
       const s = trims.owner[k]!, block = blockAt[s]!;
       if (block === UNDRAWN) continue;
       const mesh = trims.mesh[k]!, kind = t.kind[s]!, dye = this.dye(chunk, s, kind, t.owner[s]!);
@@ -1448,7 +1448,6 @@ export class NearStore implements Pass {
       b.slots[i] = s;
       b.kinds[i] = kind;
       b.trimmed![i] = 1;
-      b.trimAt![n++] = i;
       const r = this.radiusOfMesh[mesh]!;
       grow(b.zone, (block % cells) * 6, x - r, y - r, z - r, x + r, y + r, z + r);
       grow(b.cellBox, (this.cursor[mesh]! * cells + (block % cells)) * 6, x - r, y - r, z - r, x + r, y + r, z + r);
@@ -1459,9 +1458,10 @@ export class NearStore implements Pass {
       b.maxY = Math.max(b.maxY, y + r);
       b.maxZ = Math.max(b.maxZ, z + r);
     }
+    this.trimsIn(b);
   }
 
-  /** Finds a batch's trims' instances again, after its instances moved (`reform`). */
+  /** Lists a batch's trims' instances by their pieces' slots: as they are laid, and again after its instances moved (`reform`). */
   private trimsIn(b: ChunkBatch): void {
     const next = b.trimFirst!.slice(), at = b.trimAt!;
     for (let i = 0; i < b.meshAt; i++) if (b.trimmed![i] === 1) at[next[b.slots[i]!]!++] = i;
