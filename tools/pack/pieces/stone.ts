@@ -3045,6 +3045,8 @@ const JOINT_BEDS = [0, 0.36, 0.76, 1.11, 1.51, 1.86, 2.26, 2.61, 3.01] as const;
 /** Half the width of a quoin's stones: the long ones, which end on the heights a joint is cut to, and the short ones between. */
 const QUOIN_LONG = 0.165;
 const QUOIN_SHORT = 0.13;
+/** How far under its top a quoin's topmost stone begins to draw in. */
+const QUOIN_CAP = 0.07;
 
 /** A face of a trim given by its corners and the way it looks, shaded as a dressed block where `pillow` says how far its corners' normals lean from its middle. */
 function trimFace(b: Build, pts: readonly Vec[], out: Vec, mat: string, uv: UvMap, pillow = 0): void {
@@ -3059,8 +3061,8 @@ const levelUv: UvMap = (q) => [q[0] / TILE + 0.5, q[2] / TILE + 0.5];
 
 /**
  * The square joint: a quoin. Dressed stones up the corner, long and short by turns: a long one stands 3.5 cm proud of
- * the short one under it on all four faces, so each wall that ends in the corner sees long and short work up its end,
- * and its top arris is weathered. The walls' ends lie inside it.
+ * the short one under it on all four faces, so each wall that ends in the corner sees long and short work up its end.
+ * The walls' ends lie inside it.
  */
 function quoin(level: number): Build {
   const b = new Build();
@@ -3101,19 +3103,20 @@ function quoin(level: number): Build {
     trimFace(b, square(mean2, high), [0, 1, 0], "dressed", levelUv);
     return b;
   }
-  const wash = 0.022;
   JOINT_BEDS.slice(1).forEach((y1, i) => {
     const y0 = JOINT_BEDS[i]!;
     const long = i % 2 === 1;
     const half = long ? QUOIN_LONG : QUOIN_SHORT;
-    if (long) {
-      // Out from the short stone under it, up, in over its weathered arris, and in to the short stone over it.
-      ledge(square(QUOIN_SHORT, y0), square(half, y0), -1);
-      band(square(half, y0), square(half, y1 - wash), 0.22);
-      band(square(half, y1 - wash), square(half - wash, y1), 0);
-      if (i < JOINT_BEDS.length - 2) ledge(square(QUOIN_SHORT, y1), square(half - wash, y1), 1);
-      else trimFace(b, square(half - wash, y1), [0, 1, 0], "dressed", levelUv);
-    } else band(square(half, y0), square(half, y1), 0.22);
+    const last = i === JOINT_BEDS.length - 2;
+    band(square(half, y0), square(half, last ? y1 - QUOIN_CAP : y1), 0.22);
+    if (!long) return;
+    // A long stone's bed and its top, out past the short stones under and over it. Its top is level to its arris:
+    // weathered, the stones folded onto it by a cut would stand out over the slope.
+    ledge(square(QUOIN_SHORT, y0), square(half, y0), -1);
+    if (!last) return ledge(square(QUOIN_SHORT, y1), square(half, y1), 1);
+    // The topmost stone alone is weathered, in to a flat that an eave's course covers.
+    band(square(half, y1 - QUOIN_CAP), square(QUOIN_SHORT - 0.03, y1), 0);
+    trimFace(b, square(QUOIN_SHORT - 0.03, y1), [0, 1, 0], "dressed", levelUv);
   });
   return b;
 }
