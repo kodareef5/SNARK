@@ -55,6 +55,9 @@ const OTHERS_SEEN = 16;
 const OTHERS_A_FRAME = 1;
 /** How see-through the other slots' marks are, 0 to 1. */
 export const OTHERS_FADE = 0.55;
+/** A piece that would fall is drawn over itself this see-through, this many metres toward the eye so it is not hidden by itself. */
+export const FALL_FADE = 0.3;
+export const FALL_NEAR = 0.04;
 
 /** Pieces one row may have, and how many of a row are judged anew in one frame. */
 export const ROW_MOST = PLACE_RUN_MOST;
@@ -240,6 +243,8 @@ export class Builder {
   private overStamp = 0;
   private readonly overFor = [-1, -1, -1];
   private rowGen = 0;
+  /** The built piece last asked how it stands, the store's shapes then, and the answer. */
+  private readonly standing = [-1, -1, -2];
   /** Whether `offered` is of the look as it is now. */
   private joining = false;
   /** Slots judged for their marks: what they were judged for, then each one's frame and key, whether it is fine, and its pose. */
@@ -704,6 +709,20 @@ export class Builder {
     on.length = kept;
     for (const id of on) if (predict.unsure(id) >= UNSURE_MOST) return true;
     return false;
+  }
+
+  /**
+   * How well the built piece `ref` of `world` stands, for the words under the crosshair with a piece in hand: its
+   * stability, or -2 for none to say. Asked again only when another piece is looked at or one has been set down or gone.
+   */
+  stabilityOf(world: CollisionWorld, ref: number): number {
+    if (!this.active || !this.reg) return -2;
+    const s = this.standing;
+    if (s[0] !== ref || s[1] !== world.structs.shapes) {
+      [s[0], s[1]] = [ref, world.structs.shapes];
+      s[2] = world.structs.frameAt(ref) !== 0 ? this.siteFor(world).support.stability(ref) : -2;
+    }
+    return s[2]!;
   }
 
   /** What the hotbar's line says of the piece shown: how well it would stand. "" with nothing to say. */

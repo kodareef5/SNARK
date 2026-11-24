@@ -4,6 +4,8 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import { CMD_STRUCT, MAX_NAME_BYTES, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
+import type { StructureStore } from "../../../shared/world/structures.ts";
+import { FALL_MOST, Support } from "../../../shared/world/support.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
 import { fitBytes } from "./tame.ts";
 import type { ClientSession } from "../session.ts";
@@ -13,6 +15,8 @@ import { S_BUTTON, S_INPUT, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 export const KEY_STRUCT_PANEL = 2400;
 export const KEY_STRUCT_TITLE = 2401;
 export const KEY_STRUCT_HEALTH = 2402;
+/** Under the health, for a piece of the tribe's own that holds others up: how many would fall with it. */
+export const KEY_STRUCT_FALLS = 2403;
 /** One button per action, in LISTED order. KEY_STRUCT_DETAIL is the line under each that says what it costs or gives. */
 export const KEY_STRUCT_BUTTON = 2410;
 export const KEY_STRUCT_DETAIL = 2420;
@@ -97,6 +101,13 @@ export class StructMenu {
   /** A piece just set down can be taken back, and what does it: the builder's undo (App.undo). The list then offers it. */
   undoable = false;
   onUndo: (() => void) | null = null;
+  /** The tribe's pieces that would fall if the menu's piece were taken away, the first `falling` of them, while its list is open. */
+  readonly falls = new Uint32Array(FALL_MOST);
+  falling = 0;
+  /** What `falls` was worked out for: the piece and the store's shapes. And the support of the store it was asked of. */
+  private readonly fallsFor = [-1, -1];
+  private support: Support | null = null;
+  private supportOf: StructureStore | null = null;
   /** Actions the list showed at the last build, in order. */
   private actions: number[] = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH];
   private noticeUntil = 0;
@@ -123,6 +134,22 @@ export class StructMenu {
   close(): void {
     this.open = false;
     this.pad = 0;
+  }
+
+  /** How many pieces would fall with the piece `ref`, into `falls`. Worked out again only when a piece has been set down or has gone. */
+  private wouldFall(session: ClientSession, reg: Registry, ref: number): number {
+    const world = session.world!;
+    const structs = world.structs;
+    if (this.supportOf !== structs) {
+      this.supportOf = structs;
+      this.support = new Support(structs, reg, (x, z) => world.hf.heightAt(x, z));
+      this.fallsFor[0] = -1;
+    }
+    if (this.fallsFor[0] !== ref || this.fallsFor[1] !== structs.shapes) {
+      [this.fallsFor[0], this.fallsFor[1]] = [ref, structs.shapes];
+      this.falling = this.support!.wouldFall(ref, this.falls);
+    }
+    return this.falling;
   }
 
   private send(session: ClientSession, ref: number, action: number, pin = NO_PIN): void {
@@ -254,6 +281,7 @@ export class StructMenu {
   }
 
   build(f: UiFrame, session: ClientSession, reg: Registry): void {
+    if (!this.open || this.pad !== 0) this.falling = 0;
     if (!this.open) return;
     const t = session.world?.structs.chunks[Math.floor(this.ref / 65536)];
     const slot = this.ref & 0xffff;
@@ -306,6 +334,10 @@ export class StructMenu {
     }
     this.actions = actionsOf(reg, kind);
     if (this.undoable) this.actions.push(STRUCT_UNDO);
+    // Taking away a piece of the tribe's own: what it holds up is counted, and the app shows those pieces.
+    const mine = session.tribe.team !== 0 && t.owner[slot] === session.tribe.team;
+    const falling = mine ? this.wouldFall(session, reg, this.ref) : (this.falling = 0);
+    const fallH = falling > 0 ? labelH : 0;
     const inner = w - pad * 2;
     const said: Record<number, [string, string]> = {
       [STRUCT_PICKUP]: ["Take it back", hp < max ? "not while it is damaged" : "into your hands, as it was"],
@@ -322,15 +354,16 @@ export class StructMenu {
     const lines = this.actions.map((a, i) => `${i + 1}  ${said[a]![0]}`);
     const details = this.actions.map((a) => said[a]![1]);
     const step = rowH + labelH + 8;
-    const h = pad * 2 + titleH + labelH + 8 + lines.length * step;
+    const h = pad * 2 + titleH + labelH + fallH + 8 + lines.length * step;
     // Beside the crosshair where there is room, else under it.
     const x = Math.round(f.width / 2 + 40 + w <= f.width - 8 ? f.width / 2 + 40 : (f.width - w) / 2);
     const y = Math.round(Math.min(f.height - h - 8, f.height / 2 + 40));
     f.add(KEY_STRUCT_PANEL, K_PANEL, x, y, w, h, S_PANEL);
     f.text(KEY_STRUCT_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, structName(reg, kind));
     f.text(KEY_STRUCT_HEALTH, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, `${Math.ceil(hp)} of ${max}`);
+    if (falling > 0) f.text(KEY_STRUCT_FALLS, x + pad, y + pad + titleH + labelH, w - pad * 2, S_LABEL, `${falling === FALL_MOST ? `${falling} or more` : falling} ${falling === 1 ? "piece" : "pieces"} would fall with it`);
     lines.forEach((line, i) => {
-      const top = y + pad + titleH + labelH + 8 + i * step;
+      const top = y + pad + titleH + labelH + fallH + 8 + i * step;
       const b = f.add(KEY_STRUCT_BUTTON + i, K_BUTTON, x + pad, top, w - pad * 2, rowH, S_BUTTON);
       b.text = line;
       b.interactive = true;

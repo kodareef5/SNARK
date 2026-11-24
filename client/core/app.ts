@@ -61,7 +61,7 @@ import { Lasers } from "./render/laser.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { Orbit } from "./orbit.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
-import { Builder, GHOST_BAD, GHOST_OK, GHOST_SLOT, OTHERS_FADE, buildReason } from "./build.ts";
+import { Builder, FALL_FADE, FALL_NEAR, GHOST_BAD, GHOST_OK, GHOST_SLOT, OTHERS_FADE, buildReason } from "./build.ts";
 import { PredictBuild } from "./predict-build.ts";
 import { STRUCT_REASONS } from "./ui/structure.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
@@ -1081,6 +1081,14 @@ export class App {
     if (b.active && row.on) {
       for (let i = 1; i < row.ok; i++) marks.piece(row.kind, row.x[i]!, row.y[i]!, row.z[i]!, row.yaw[i]!, row.tw[i]!, b.colorOf(row.stab[i]!));
       if (row.code !== 0 && row.ok > 0) marks.piece(row.kind, row.x[row.ok]!, row.y[row.ok]!, row.z[row.ok]!, row.yaw[row.ok]!, row.tw[row.ok]!, GHOST_BAD);
+    }
+    // With a piece's list open, the pieces that would fall with it, each drawn over itself a little toward the eye.
+    const menu = this.ui.structure;
+    for (let i = 0; menu.open && i < menu.falling; i++) {
+      const ref = menu.falls[i]!, t = world.structs.chunks[Math.floor(ref / 65536)], k = ref & 0xffff;
+      if (!t || k >= t.high || t.kind[k] === 0) continue;
+      const ex = this.cam.x - t.x[k]!, ey = this.cam.y - t.y[k]!, ez = this.cam.z - t.z[k]!, near = FALL_NEAR / Math.max(1, Math.hypot(ex, ey, ez));
+      marks.piece(t.kind[k]!, t.x[k]! + ex * near, t.y[k]! + ey * near, t.z[k]! + ez * near, t.yaw[k]!, t.twAt(k), GHOST_BAD, FALL_FADE);
     }
     // The slot it would go in, and faintly the others the look offers.
     if (b.active && b.slotMark.cls >= 0) {

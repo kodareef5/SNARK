@@ -3,14 +3,16 @@
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { GHOST_BAD, GHOST_OK, GHOST_SLOT, GHOST_WARN, OTHERS_FADE, OTHERS_MOST } from "../../client/core/build.ts";
+import { FALL_FADE, GHOST_BAD, GHOST_OK, GHOST_SLOT, GHOST_WARN, OTHERS_FADE, OTHERS_MOST } from "../../client/core/build.ts";
 import { PROVISIONAL } from "../../client/core/build-view.ts";
 import { REFUSED } from "../../client/core/predict-build.ts";
 import { KEY_BUILD_SAYS } from "../../client/core/hud/hotbar.ts";
+import { KEY_PROMPT_UNDER } from "../../client/core/hud/prompt.ts";
 import { DRAW_BLEND, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { SLOT_EDGE_MESH, SLOT_SQUARE_MESH } from "../../client/core/render/passes/ghost.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, T_ATTACK, T_CANCEL } from "../../client/core/touch.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
+import { KEY_STRUCT_FALLS } from "../../client/core/ui/structure.ts";
 import * as touchLayer from "../../client/core/ui/touch.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_MOVE, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_WAIT } from "../../shared/net/protocol.ts";
@@ -549,4 +551,63 @@ test("a finger held on Place and dragged, and a pad's trigger held while the loo
   run(300);
   expect(h.host.build.placed).toBe(1 + swept + far);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a piece's list says how many pieces would fall with it and shows them; in hand, a piece says how well a built one stands", () => {
+  const { h, app, s, run, aim, click, text, stand, mine } = client(["piece_foundation_wood", "piece_wall_wood", "piece_ceiling_wood"], 0, 20);
+  const ox = s.own.x, oy = s.own.y, oz = s.own.z, top = oy + 0.125;
+  const marks = app.scene!.predicted;
+  const shown = (): string[] => Array.from(marks.marks.slice(0, marks.marked), (m) => (m.kind !== 0 ? `${reg.ids[m.kind]!.slice(5)}:${m.color}:${m.fade}` : "")).filter((m) => m !== "").sort();
+  // A foundation, a wall on its far side, and two floors hung from the wall's top back over the builder.
+  app.key("Digit1", true);
+  aim(ox, oy, oz + 4);
+  run(300);
+  click();
+  run(300);
+  app.key("Digit2", true);
+  aim(ox, top, oz + 5.4);
+  run(300);
+  click();
+  run(300);
+  app.key("Digit3", true);
+  aim(ox, top + 2.9, oz + 5.3);
+  run(300);
+  app.mouseButton(0, true);
+  aim(ox, top + 3, oz - 9);
+  run(100);
+  app.mouseButton(0, false);
+  run(300);
+  expect([h.host.build.placed, mine().length]).toEqual([4, 4]);
+  // With the floor in hand, each built piece looked at says how well it stands.
+  stand(ox, oz + 2.2);
+  aim(ox, top + 1.5, oz + 5.4);
+  run(200);
+  expect(text(KEY_PROMPT)).toBe("hold E  wooden wall  10000/10000  stability 4 of 4");
+  aim(ox, top + 2.8, oz + 1);
+  run(200);
+  expect(`${text(KEY_PROMPT)}\n${text(KEY_PROMPT_UNDER)}`).toContain("wooden ceiling  10000/10000  stability 1 of 4");
+  // The wall's list: both floors would fall with it, and both are drawn over in the refused colour while it is open.
+  aim(ox, top + 1.5, oz + 5.4);
+  run(200);
+  expect(shown()).toEqual([]);
+  app.key("KeyE", true);
+  run(500);
+  app.key("KeyE", false);
+  run(50);
+  expect([app.ui.structure.open, text(KEY_STRUCT_FALLS)]).toEqual([true, "2 pieces would fall with it"]);
+  expect(shown()).toEqual([`ceiling_wood:${GHOST_BAD}:${FALL_FADE}`, `ceiling_wood:${GHOST_BAD}:${FALL_FADE}`]);
+  // Taken down, those two fall and nothing else.
+  app.key("Digit3", true);
+  app.key("Digit3", false);
+  run(2000);
+  expect([app.ui.structure.open, mine().length, shown()]).toEqual([false, 1, []]);
+  expect(mine().map((ref) => h.world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff])).toEqual([id("foundation_wood")]);
+  // A piece that holds nothing up has no such line.
+  aim(ox, top, oz + 4);
+  run(200);
+  app.key("KeyE", true);
+  run(500);
+  app.key("KeyE", false);
+  run(50);
+  expect([app.ui.structure.open, app.ui.frame.find(KEY_STRUCT_FALLS), shown()]).toEqual([true, null, []]);
 });
