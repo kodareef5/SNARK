@@ -12,13 +12,18 @@ import { TICK_DT } from "../coords.ts";
 
 export { vehicleStep } from "./vehicle-state.ts";
 
-/** Inputs use the ordinary signed bytes/buttons. Each family reads them its own way (families.ts). */
-export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, dt = TICK_DT, _yaw = b.yaw, pilot = true, environment?: VehicleWorld): void {
-  if (dt !== TICK_DT) throw new Error("vehicles step at the shared fixed tick");
+/** Empties the last step's report, so what one vehicle met is never read as another's. */
+function clearStep(): void {
   vehicleStep.skateHurt = 0;
   stepOut.landSpeed = 0;
   vehicleStep.blocked = null; vehicleStep.impactSpeed = vehicleStep.landSpeed = vehicleStep.fuelUsed = 0; vehicleStep.rotorHit = vehicleStep.water = false;
   vehicleStep.propHit = vehicleStep.capsized = false; vehicleStep.immersion = vehicleStep.propellerImmersion = vehicleStep.planing = 0;
+}
+
+/** Inputs use the ordinary signed bytes/buttons. Each family reads them its own way (families.ts). */
+export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, dt = TICK_DT, _yaw = b.yaw, pilot = true, environment?: VehicleWorld): void {
+  if (dt !== TICK_DT) throw new Error("vehicles step at the shared fixed tick");
+  clearStep();
   if (b.mode === MODE_NONE) { b.vx = b.vy = b.vz = 0; return; }
   const family = familyOf(def);
   if (!family) throw new Error(`no vehicle family moves by ${String(def.movement)}`);
@@ -31,10 +36,7 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
  */
 export const trailerStep: { impactSpeed: number; landSpeed: number; blocked: string | null } = { impactSpeed: 0, landSpeed: 0, blocked: null };
 export function stepHitchedBodies(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: WheelVehicleDefinition, trailer: Body, trailerDef: WheelVehicleDefinition, pilot = true, environment?: VehicleWorld): void {
-  vehicleStep.skateHurt = 0;
-  stepOut.landSpeed = 0;
-  vehicleStep.blocked = null; vehicleStep.impactSpeed = vehicleStep.landSpeed = vehicleStep.fuelUsed = 0; vehicleStep.rotorHit = vehicleStep.water = false;
-  vehicleStep.propHit = vehicleStep.capsized = false; vehicleStep.immersion = vehicleStep.propellerImmersion = vehicleStep.planing = 0;
+  clearStep();
   const world = staticWorld(w);
   loadState(state, b); loadState(trailerState, trailer);
   const [own, towed] = stepHitched(state, { throttle: moveZ / 127, steer: -moveX / 127, brake: 0, handbrake: (buttons & BTN_JUMP) !== 0, pilot,
@@ -47,9 +49,10 @@ export function stepHitchedBodies(w: CollisionWorld, b: Body, moveX: number, mov
 
 /** A rotor vehicle flown by analog commands rather than keys: an autopilot (server/air-carrier.ts). */
 export function stepRotorBody(w: CollisionWorld, b: Body, input: HelicopterInput, def: RotorVehicleDefinition): void {
-  vehicleStep.blocked = null; vehicleStep.impactSpeed = vehicleStep.landSpeed = vehicleStep.fuelUsed = 0; vehicleStep.rotorHit = vehicleStep.water = false;
+  clearStep();
   if (b.mode === MODE_NONE) { b.vx = b.vy = b.vz = 0; return; }
   ROTOR.fly(w, b, input, def);
+  stepOut.landSpeed = vehicleStep.landSpeed;
 }
 
 // Remote presentation: one active bit, three signed 10-bit angles, plus a separate 16-bit wheel angle.
