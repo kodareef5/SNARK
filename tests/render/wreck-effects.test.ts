@@ -106,7 +106,7 @@ test("a wreck cut up gives a last puff, and a heap mined out gives none", () => 
 test("a rung beside a wall that breaks leaves the wall its chips and its own sound", () => {
   const breaks = new BreakEffects(reg, palette);
   breaks.row(reg, 100, BLUE, STRIPPED, 100, 0, 104, 8000, 5333);
-  breaks.take([{ kind: WALL, x: 101, y: 2, z: 104, yaw: 0, cause: GONE_BLAST, ox: 101, oy: 2, oz: 104, tick: 100, radius: 4, into: 0, map: WALL }]);
+  breaks.take([{ kind: WALL, x: 101, y: 2, z: 104, yaw: 0, tw: -1, cause: GONE_BLAST, ox: 101, oy: 2, oz: 104, tick: 100, radius: 4, into: 0, map: WALL }]);
   const { bursts, heard } = asked(breaks);
   expect(count(bursts, BREAK_CHIPS)).toBeGreaterThan(0);
   expect(count(bursts, BREAK_SPARKS)).toBeGreaterThan(0);

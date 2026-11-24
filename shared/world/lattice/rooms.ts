@@ -35,11 +35,17 @@ const PASS_DOWN = 2;
 
 const FULL_TURN = 0xfff;
 const EPS = 1e-6;
+/** In `edgeAsked`, an edge `shut` has not been asked of in this flood: over every level. */
+const NEVER = 0x7fff;
+/** The most edges whose pieces may come or go between two floods for the second to look only at the rooms beside them. */
+const TOUCHED_MOST = 64;
 
 const cells = new Cells();
 const sides = new Cells();
 const ends = new Cells();
 const m = new Int32Array(20);
+/** A face's corners in `m`, as `open` is given them. */
+const corners = m.subarray(4, 20);
 
 /** One room of a finished flood: how many air cells it has, and each doorway or hatch on it with its leaf (NO_REF for none) and whether that shuts it. */
 export interface Room {
@@ -64,8 +70,9 @@ export class Flooded {
   count = new Int32Array(0);
   rooms = 0;
   inside = 0;
-  /** Each doorway or hatch a cell met: the cell, the piece, its leaf or NO_REF, and whether it was shut. */
+  /** Each doorway or hatch a cell met: the cell, the piece, its leaf or NO_REF, and whether it was shut. The first `hatches` are the hatches, met as the cells were found. */
   doors = 0;
+  hatches = 0;
   doorCell = new Int32Array(0);
   doorRef = new Uint32Array(0);
   doorLeaf = new Uint32Array(0);
@@ -142,7 +149,7 @@ export class Enclosure {
   stale = false;
   /** Whether the last flood finished found other cells, or any cell on the other side of outside, than the one before it. */
   changed = false;
-  /** Whether its cells are other cells than the one before had. Where they are the same, `faceMoved` and `edgeMoved` say which changed sides. */
+  /** Whether its cells are other cells than the one before had. Either way `faceMoved` and `edgeMoved` say where the air is other than it was. */
   rebuilt = false;
   found = new Flooded();
   private next = new Flooded();
@@ -156,12 +163,17 @@ export class Enclosure {
   private vertexHead = new Int32Array(0);
   /** Per edge: its list of pieces, lowest first; the square to its left and right, then the triangle; and its two ends. */
   private edgeHead = new Int32Array(0);
+  private edgeTail = new Int32Array(0);
   private edgeFace = new Int32Array(0);
   private edgeVertex = new Int32Array(0);
+  /** Per edge, for the flood under way: a level `shut` was asked of it, and the first of its pieces that ends over that level. */
+  private edgeAsked = new Int16Array(0);
+  private edgeSkip = new Int32Array(0);
   /** Per face: its key, its list of slabs and hatch leaves, lowest first, whether it is open air, and per side its edge twice plus 1 where the face is to that edge's right (-1 for none), and its corners' vertices. */
   private faceK0 = new Uint32Array(0);
   private faceK1 = new Uint32Array(0);
   private faceHead = new Int32Array(0);
+  private faceTail = new Int32Array(0);
   private faceOpen = new Uint8Array(0);
   private faceEdge = new Int32Array(0);
   private faceVertex = new Int32Array(0);
@@ -178,6 +190,8 @@ export class Enclosure {
   private what: Uint8Array;
   private bits: Uint8Array;
   private aux: Int32Array;
+  /** Per kind, once asked: the levels a piece on one edge for at most a storey reaches, or 0 for any other piece. */
+  private single: Uint8Array;
 
   /** A flood under way: 0 not begun, 1 finding cells face by face, 2 joining them cell by cell. */
   private phase = 0;
@@ -188,6 +202,12 @@ export class Enclosure {
   private faceMark = new Int32Array(0);
   private vertexMark = new Int32Array(0);
   private floods = 0;
+  /** Whether only pieces on edges have come or gone since `found` was found, and those edges: its cells then stand. */
+  private edgesOnly = false;
+  private readonly touched: number[] = [];
+  /** Scratch for a flood of the rooms beside those edges: per room of `found`, outside air first, whether it is found again, and its highest cell. */
+  private hit = new Uint8Array(0);
+  private highest = new Int32Array(0);
   /** Answers `roundFilled` gave of the last flood, three numbers each: the vertex plus one, the levels, the answer. */
   private asked = new Int32Array(3 * 64);
   private askedMask = 63;
@@ -199,6 +219,7 @@ export class Enclosure {
     this.what = new Uint8Array(n).fill(W_UNKNOWN);
     this.bits = new Uint8Array(n);
     this.aux = new Int32Array(n);
+    this.single = new Uint8Array(n);
   }
 
   /** Forgets every piece. */
@@ -206,13 +227,36 @@ export class Enclosure {
     this.ids = new Occupancy();
     this.vertices = this.edges = this.faces = this.nodes = 0;
     this.free = -1;
-    this.found.cells = this.found.faces = this.found.rooms = this.found.inside = this.found.doors = 0;
+    this.found.cells = this.found.faces = this.found.rooms = this.found.inside = this.found.doors = this.found.hatches = 0;
+    this.edgesOnly = false;
+    this.touched.length = 0;
     this.stale = false;
     this.changed = this.rebuilt = false;
     this.phase = 0;
     this.asked.fill(0);
     this.faceMark.fill(0);
     this.vertexMark.fill(0);
+  }
+
+  /** Makes room for `pieces` more pieces at once, where they would otherwise make it as they come. */
+  reserve(pieces: number): void {
+    const size = this.nodes + pieces + (pieces >> 2) + 256;
+    if (size <= this.nodeNext.length) return;
+    this.nodeNext = grown(this.nodeNext, size);
+    this.nodeLo = grown(this.nodeLo, size);
+    this.nodeHi = grown(this.nodeHi, size);
+    this.nodeBits = grown(this.nodeBits, size);
+    this.nodeAux = grown(this.nodeAux, size);
+    this.nodeRef = grown(this.nodeRef, size);
+    // A flood has at most a cell for each slab.
+    for (const w of [this.found, this.next]) {
+      w.face = grown(w.face, pieces);
+      w.lo = grown(w.lo, pieces);
+      w.hi = grown(w.hi, pieces);
+      w.room = grown(w.room, pieces);
+      w.rise = grown(w.rise, pieces);
+      w.pass = grown(w.pass, pieces);
+    }
   }
 
   private learn(kind: number): number {
@@ -243,6 +287,7 @@ export class Enclosure {
     }
     this.bits[kind] = bits;
     this.aux[kind] = aux;
+    this.single[kind] = f && f.cells === undefined && this.forms.span[kind]! <= STOREY_LEVELS ? Math.max(1, this.forms.span[kind]!) : 0;
     return (this.what[kind] = what);
   }
 
@@ -271,10 +316,14 @@ export class Enclosure {
     if (e === this.edgeHead.length) {
       const size = Math.max(64, e * 2);
       this.edgeHead = grown(this.edgeHead, size);
+      this.edgeTail = grown(this.edgeTail, size);
+      this.edgeAsked = grown(this.edgeAsked, size);
+      this.edgeSkip = grown(this.edgeSkip, size);
       this.edgeFace = grown(this.edgeFace, size * 4);
       this.edgeVertex = grown(this.edgeVertex, size * 2);
     }
-    this.edgeHead[e] = -1;
+    this.edgeHead[e] = this.edgeTail[e] = -1;
+    this.edgeAsked[e] = NEVER;
     this.edgeFace.fill(-1, e * 4, e * 4 + 4);
     this.ids.put(1, k0, cell, e);
     elementVertices(k0, cell, 0, 0, ends);
@@ -292,13 +341,14 @@ export class Enclosure {
       this.faceK0 = grown(this.faceK0, size);
       this.faceK1 = grown(this.faceK1, size);
       this.faceHead = grown(this.faceHead, size);
+      this.faceTail = grown(this.faceTail, size);
       this.faceOpen = grown(this.faceOpen, size);
       this.faceEdge = grown(this.faceEdge, size * 4);
       this.faceVertex = grown(this.faceVertex, size * 4);
     }
     this.faceK0[f] = k0;
     this.faceK1[f] = cell;
-    this.faceHead[f] = -1;
+    this.faceHead[f] = this.faceTail[f] = -1;
     this.ids.put(1, k0, cell, f);
     const cls = keyCls(k0);
     const d = keyDir(k1);
@@ -326,7 +376,7 @@ export class Enclosure {
     }
     keyAnchor(k0, cell, m, 0);
     elementCorners(cls, m, 0, d, m, 4);
-    this.faceOpen[f] = this.open?.(m.subarray(4, 4 + 4 * n), n) ? 1 : 0;
+    this.faceOpen[f] = this.open?.(corners, n) ? 1 : 0;
     return f;
   }
 
@@ -355,28 +405,35 @@ export class Enclosure {
     return n;
   }
 
-  /** Puts a node in the list at `heads[at]`, kept lowest first. */
-  private enter(heads: Int32Array, at: number, lo: number, hi: number, bits: number, aux: number, ref: number): void {
+  /** Puts a node in the list at `heads[at]`, kept lowest first. `tails[at]` is the list's last node, or -1 where that is not known. */
+  private enter(heads: Int32Array, tails: Int32Array, at: number, lo: number, hi: number, bits: number, aux: number, ref: number): void {
     const next = this.nodeNext;
-    let before = -1;
-    let n = heads[at]!;
-    while (n >= 0 && this.nodeLo[n]! <= lo) {
-      before = n;
-      n = next[n]!;
+    let before = tails[at]!;
+    let n = -1;
+    // A piece no lower than the last goes after it, as walking the list would find.
+    if (before < 0 || this.nodeLo[before]! > lo) {
+      before = -1;
+      n = heads[at]!;
+      while (n >= 0 && this.nodeLo[n]! <= lo) {
+        before = n;
+        n = next[n]!;
+      }
     }
     const made = this.node(n, lo, hi, bits, aux, ref);
     if (before < 0) heads[at] = made;
     else this.nodeNext[before] = made;
+    if (n < 0) tails[at] = made;
   }
 
   /** Takes the node of piece `ref` at level `lo` out of the list at `heads[at]`. */
-  private leave(heads: Int32Array, at: number, lo: number, ref: number): void {
+  private leave(heads: Int32Array, tails: Int32Array, at: number, lo: number, ref: number): void {
     const next = this.nodeNext;
     let before = -1;
     for (let n = heads[at]!; n >= 0; before = n, n = next[n]!) {
       if (this.nodeRef[n] !== ref || this.nodeLo[n] !== lo) continue;
       if (before < 0) heads[at] = next[n]!;
       else next[before] = next[n]!;
+      if (tails[at] === n) tails[at] = before;
       next[n] = this.free;
       this.free = n;
       return;
@@ -406,33 +463,44 @@ export class Enclosure {
     if (what === W_SLAB || what === W_FACE_LEAF) {
       if (keyCls(k0) !== CLS_SQUARE && keyCls(k0) !== CLS_TRIANGLE) return -1;
       at = this.face(k0, k1);
-      if (!comes) this.leave(this.faceHead, at, lvl, ref);
-      else this.enter(this.faceHead, at, lvl, lvl, bits, what === W_SLAB && this.aux[kind] !== 0 ? riseAt(this.forms, kind, k0, k1) : 0, ref);
+      this.edgesOnly = false;
+      if (!comes) this.leave(this.faceHead, this.faceTail, at, lvl, ref);
+      else this.enter(this.faceHead, this.faceTail, at, lvl, lvl, bits, what === W_SLAB && this.aux[kind] !== 0 ? riseAt(this.forms, kind, k0, k1) : 0, ref);
     } else {
       if (keyCls(k0) !== CLS_EDGE) return -1;
-      // A piece on one edge for at most a storey covers its own cell alone.
-      const span = this.forms.span[kind]!;
-      if (this.forms.def[kind]!.cells === undefined && span <= STOREY_LEVELS) {
-        cells.n = 1;
-        cells.k0[0] = k0;
-        cells.k1[0] = k1;
-        cells.reach[0] = Math.max(1, span);
-      } else if (!formCells(this.forms, kind, k0, k1, cells)) return -1;
       let aux = this.aux[kind]!;
       // A sloped wall's heights at its edge's first end and at its far one: its own -X is the first unless turned or flipped.
       if ((bits & SLOPED) !== 0 && ((keyDir(k1) !== ownDir(this.forms, kind, k1)) !== (keyFlip(k1) === 1))) aux = (aux >> 4) | ((aux & 15) << 4);
       else if ((bits & DOORWAY) !== 0) aux += lvl;
-      for (let i = 0; i < cells.n; i++) {
-        const e = this.edge(cells.k0[i]!, cells.k1[i]!);
-        const lo = keyLvl(cells.k1[i]!);
-        if (i === 0) at = e;
-        if (!comes) this.leave(this.edgeHead, e, lo, ref);
-        else this.enter(this.edgeHead, e, lo, lo + cells.reach[i]!, bits, aux, ref);
+      // A piece on one edge for at most a storey covers its own cell alone.
+      const single = this.single[kind]!;
+      if (single !== 0) {
+        at = this.edge(k0, k1);
+        this.touch(at);
+        if (!comes) this.leave(this.edgeHead, this.edgeTail, at, lvl, ref);
+        else this.enter(this.edgeHead, this.edgeTail, at, lvl, lvl + single, bits, aux, ref);
+      } else {
+        if (!formCells(this.forms, kind, k0, k1, cells)) return -1;
+        for (let i = 0; i < cells.n; i++) {
+          const e = this.edge(cells.k0[i]!, cells.k1[i]!);
+          const lo = keyLvl(cells.k1[i]!);
+          if (i === 0) at = e;
+          this.touch(e);
+          if (!comes) this.leave(this.edgeHead, this.edgeTail, e, lo, ref);
+          else this.enter(this.edgeHead, this.edgeTail, e, lo, lo + cells.reach[i]!, bits, aux, ref);
+        }
       }
     }
     this.stale = true;
     this.phase = 0;
     return at;
+  }
+
+  /** Notes that the pieces on edge `e` are no longer what `found` was found with. */
+  private touch(e: number): void {
+    if (!this.edgesOnly) return;
+    if (this.touched.length < TOUCHED_MOST) this.touched.push(e);
+    else this.edgesOnly = false;
   }
 
   /** The node of a leaf that shuts level `lvl` in the list from `n`, or -1. */
@@ -506,9 +574,13 @@ export class Enclosure {
     const first = w.first[g]!;
     if (first < 0) return -1;
     const top = first + w.count[g]! - 1;
-    for (let c = first; c <= top; c++) {
-      if (lvl < w.lo[c]!) return -1;
-      if (lvl < w.hi[c]!) return c;
+    if (lvl < w.lo[first]!) return -1;
+    if (lvl < w.hi[top]!) {
+      // A face's cells follow each other with no gap, and storeys are mostly one height: the cell is guessed, then walked to.
+      let c = Math.min(top, first + Math.floor((lvl - w.lo[first]!) / (w.hi[first]! - w.lo[first]!)));
+      while (w.lo[c]! > lvl) c--;
+      while (w.hi[c]! <= lvl) c++;
+      return c;
     }
     const rise = w.rise[top]!;
     if (rise === 0) return -1;
@@ -522,7 +594,12 @@ export class Enclosure {
    * levels, a doorway those a shut leaf covers and those over its opening, a window only for a body.
    */
   private shut(w: Flooded, e: number, lvl: number, c: number): number {
-    for (let n = this.edgeHead[e]!; n >= 0 && this.nodeLo[n]! <= lvl; n = this.nodeNext[n]!) {
+    // The pieces that end at or under a level asked before end under this one, and are passed over.
+    let n = this.edgeAsked[e]! <= lvl ? this.edgeSkip[e]! : this.edgeHead[e]!;
+    while (n >= 0 && this.nodeHi[n]! <= lvl) n = this.nodeNext[n]!;
+    this.edgeAsked[e] = lvl;
+    this.edgeSkip[e] = n;
+    for (; n >= 0 && this.nodeLo[n]! <= lvl; n = this.nodeNext[n]!) {
       const bits = this.nodeBits[n]!;
       if (this.nodeHi[n]! <= lvl || (bits & (LEAF | SLOPED)) !== 0) continue;
       if ((bits & FULL) !== 0) return this.nodeHi[n]!;
@@ -587,7 +664,14 @@ export class Enclosure {
         if (open) break;
         if (a >= 0) this.join(c, a);
         if (b >= 0) this.join(c, b);
-        lvl++;
+        // Up to the edge's next piece, and to the top of each cell met, every level meets the same: they are passed over.
+        const skip = this.edgeSkip[e]!;
+        let to = skip < 0 ? top : this.nodeLo[skip]!;
+        if (a >= 0 ? lvl >= w.hi[a]! : square >= 0 && w.first[square]! >= 0) to = lvl;
+        else if (a >= 0) to = Math.min(to, w.hi[a]!);
+        if (b >= 0 ? lvl >= w.hi[b]! : triangle >= 0 && w.first[triangle]! >= 0) to = lvl;
+        else if (b >= 0) to = Math.min(to, w.hi[b]!);
+        lvl = Math.max(lvl + 1, to);
       }
       if (open || from === to) continue;
       // Over that the roof slopes along the side: a gable shuts it, or the air goes on under a roof that slopes the same.
@@ -620,12 +704,14 @@ export class Enclosure {
   flood(limit = Infinity): boolean {
     if (!this.stale) return true;
     const w = this.next;
+    if (limit === Infinity && this.phase === 0 && this.edgesOnly && this.found.faces === this.faces) return this.beside(w);
     let work = 0;
     if (this.phase === 0) {
       w.cells = w.doors = 0;
       w.faces = this.faces;
       w.first = grown(w.first, this.faces);
       w.count = grown(w.count, this.faces);
+      this.edgeAsked.fill(NEVER, 0, this.edges);
       this.cursor = 0;
       this.phase = 1;
     }
@@ -634,6 +720,7 @@ export class Enclosure {
         if (work++ >= limit) return false;
         this.column(w, this.cursor);
       }
+      w.hatches = w.doors;
       this.parent = grown(this.parent, w.cells + 1);
       for (let c = 0; c <= w.cells; c++) this.parent[c] = c;
       this.cursor = 0;
@@ -643,6 +730,72 @@ export class Enclosure {
       if (work++ >= limit) return false;
       this.link(w, this.cursor);
     }
+    return this.finish(w);
+  }
+
+  /**
+   * The flood where only pieces on edges came or went, so every cell stands as `found` has it: only the rooms with a
+   * cell beside one of those edges are joined afresh, and outside air with them where it has one. A cell beside none of
+   * them reaches what it reached, so every other room is as it was.
+   */
+  private beside(w: Flooded): boolean {
+    const was = this.found;
+    const n = was.cells;
+    w.cells = n;
+    w.faces = was.faces;
+    w.face = grown(w.face, n);
+    w.lo = grown(w.lo, n);
+    w.hi = grown(w.hi, n);
+    w.room = grown(w.room, n);
+    w.rise = grown(w.rise, n);
+    w.pass = grown(w.pass, n);
+    w.first = grown(w.first, was.faces);
+    w.count = grown(w.count, was.faces);
+    w.face.set(was.face.subarray(0, n));
+    w.lo.set(was.lo.subarray(0, n));
+    w.hi.set(was.hi.subarray(0, n));
+    w.rise.set(was.rise.subarray(0, n));
+    w.pass.set(was.pass.subarray(0, n));
+    w.first.set(was.first.subarray(0, was.faces));
+    w.count.set(was.count.subarray(0, was.faces));
+    w.doors = 0;
+    for (let d = 0; d < was.hatches; d++) w.door(was.doorCell[d]!, was.doorRef[d]!, was.doorLeaf[d]!, was.doorShut[d] === 1);
+    w.hatches = was.hatches;
+    this.edgeAsked.fill(NEVER, 0, this.edges);
+    // Per room of the last flood, outside air first: whether a cell of it is beside a changed edge.
+    if (this.hit.length < was.rooms + 1) {
+      this.hit = new Uint8Array(Math.max(64, 2 * was.rooms + 1));
+      this.highest = new Int32Array(this.hit.length);
+    }
+    const hit = this.hit.fill(0, 0, was.rooms + 1);
+    const highest = this.highest;
+    for (const e of this.touched) {
+      for (let i = 0; i < 4; i++) {
+        const g = this.edgeFace[e * 4 + i]!;
+        const first = g < 0 ? -1 : was.first[g]!;
+        for (let c = first; first >= 0 && c < first + was.count[g]!; c++) hit[was.room[c]! + 1] = 1;
+      }
+    }
+    // A room not found again is one room still: its cells hang from its highest, and outside air's from outside air.
+    for (let c = 0; c < n; c++) highest[was.room[c]! + 1] = c;
+    highest[0] = n;
+    this.parent = grown(this.parent, n + 1);
+    const parent = this.parent;
+    for (let c = 0; c < n; c++) parent[c] = hit[was.room[c]! + 1] === 1 ? c : highest[was.room[c]! + 1]!;
+    parent[n] = n;
+    // The doorways are met cell by cell: those of a room as it was are kept in their places among the ones found now.
+    let d = was.hatches;
+    for (let c = 0; c < n; c++) {
+      if (hit[was.room[c]! + 1] === 1) {
+        while (d < was.doors && was.doorCell[d]! <= c) d++;
+        this.link(w, c);
+      } else for (; d < was.doors && was.doorCell[d]! <= c; d++) w.door(c, was.doorRef[d]!, was.doorLeaf[d]!, was.doorShut[d] === 1);
+    }
+    return this.finish(w);
+  }
+
+  /** Numbers the rooms of the cells joined in `w`, says what changed since `found`, and makes `w` the flood found. */
+  private finish(w: Flooded): boolean {
     // Rooms are numbered in the order their first cells come.
     const was = this.found;
     this.roomOf = grown(this.roomOf, w.cells + 1);
@@ -668,6 +821,17 @@ export class Enclosure {
       this.faceMark[f] = flood;
       for (let k = 0; k < 4; k++) if (this.faceVertex[f * 4 + k]! >= 0) this.vertexMark[this.faceVertex[f * 4 + k]!] = flood;
     }
+    // Where its cells are other cells, a face is marked where its air is other than it was, cell for cell.
+    for (let f = 0; !same && f < w.faces; f++) {
+      const n = w.first[f]! < 0 ? 0 : w.count[f]!;
+      const a = w.first[f]!;
+      const b = f < was.faces ? was.first[f]! : -1;
+      let differ = n !== (b < 0 ? 0 : was.count[f]!);
+      for (let k = 0; !differ && k < n; k++) differ = w.lo[a + k] !== was.lo[b + k] || w.hi[a + k] !== was.hi[b + k] || w.room[a + k]! < 0 !== was.room[b + k]! < 0;
+      if (!differ) continue;
+      this.faceMark[f] = flood;
+      for (let k = 0; k < 4; k++) if (this.faceVertex[f * 4 + k]! >= 0) this.vertexMark[this.faceVertex[f * 4 + k]!] = flood;
+    }
     this.rebuilt = !same;
     this.changed = !same || moved;
     this.found = w;
@@ -677,6 +841,8 @@ export class Enclosure {
     else this.asked.fill(0);
     this.phase = 0;
     this.stale = false;
+    this.edgesOnly = true;
+    this.touched.length = 0;
     return true;
   }
 
@@ -739,16 +905,26 @@ export class Enclosure {
     return !ends || (this.roundFilled(this.edgeVertex[e * 2]!, lo, hi) && this.roundFilled(this.edgeVertex[e * 2 + 1]!, lo, hi));
   }
 
-  /** After a flood that kept its cells: whether air over face `g` changed sides. */
+  /** Whether the last flood found the air over face `g` other than the one before it: a cell changed sides, came, went or changed its levels. */
   faceMoved(g: number): boolean {
     return this.faceMark[g] === this.floods;
   }
 
-  /** After a flood that kept its cells: whether air beside edge `e`, or round either of its ends, changed sides. */
+  /** Whether the last flood found the air beside edge `e`, or round either of its ends, other than the one before it. */
   edgeMoved(e: number): boolean {
     for (let i = 0; i < 4; i++) if (this.edgeFace[e * 4 + i]! >= 0 && this.faceMark[this.edgeFace[e * 4 + i]!] === this.floods) return true;
     for (let k = 0; k < 2; k++) if (this.edgeVertex[e * 2 + k]! >= 0 && this.vertexMark[this.edgeVertex[e * 2 + k]!] === this.floods) return true;
     return false;
+  }
+
+  /**
+   * Each piece on a face `faceMoved` is true of, and on an edge `edgeMoved` is true of, by the name it was told with,
+   * added to `out`. A piece over several edges may come more than once.
+   */
+  movedRefs(out: number[]): void {
+    const flood = this.floods, next = this.nodeNext, ref = this.nodeRef;
+    for (let f = 0; f < this.faces; f++) if (this.faceMark[f] === flood) for (let n = this.faceHead[f]!; n >= 0; n = next[n]!) out.push(ref[n]!);
+    for (let e = 0; e < this.edges; e++) if (this.edgeHead[e]! >= 0 && this.edgeMoved(e)) for (let n = this.edgeHead[e]!; n >= 0; n = next[n]!) out.push(ref[n]!);
   }
 
   /** Whether room air fills the levels from `lo` up to `hi` all round every corner of face `g`. */

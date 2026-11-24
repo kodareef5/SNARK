@@ -59,6 +59,9 @@ export class Falling {
   readonly y = new Float32Array(MAX_FALLING);
   readonly z = new Float32Array(MAX_FALLING);
   readonly yaw = new Uint16Array(MAX_FALLING);
+  /** Each one's turn class as it stood, or -1 for one turned by its yaw alone; and 1 while a whole piece has not let go and stands as it stood. */
+  readonly tw = new Int8Array(MAX_FALLING);
+  readonly held = new Uint8Array(MAX_FALLING);
   /** Where each stood. */
   readonly x0 = new Float64Array(MAX_FALLING);
   readonly y0 = new Float64Array(MAX_FALLING);
@@ -111,7 +114,7 @@ export class Falling {
   private readonly nearest = new Map<number, number>();
   private readonly found = new Found(64);
   /** Scratch for `broken`. Its set is a piece's own before anything reads it. */
-  private readonly entry: Broken = { cause: 0, x: 0, y: 0, z: 0, yaw: 0, ox: 0, oy: 0, oz: 0, radius: 0, wait: 0, under: 0, set: null as unknown as BreakSet };
+  private readonly entry: Broken = { cause: 0, x: 0, y: 0, z: 0, yaw: 0, tw: -1, ox: 0, oy: 0, oz: 0, radius: 0, wait: 0, under: 0, set: null as unknown as BreakSet };
 
   /** `halfY` is the half height of each kind of structure, by content index. */
   constructor(halfY: Float32Array, heightAt: (x: number, z: number) => number, city: FallingCity | null = null) {
@@ -152,7 +155,7 @@ export class Falling {
       const front = fell ? (Math.hypot(r.x - r.ox, r.y - r.oy, r.z - r.oz) - nearest.get(r.tick)!) * FRONT_MS_PER_METRE : 0;
       // Fragments count from the server's tick. A whole piece counts from now, later by its tick's place among those that came with it.
       const wait = set ? Math.min(MAX_FRONT_MS, front) : Math.min(MAX_WAIT_MS, front + (fell ? (r.tick - first) * TICK_DT * 1000 : 0));
-      this.take(r.tick, tick, nowMs, wait, r.kind, r.map, r.x, r.y, r.z, r.yaw, r.cause, r.ox, r.oy, r.oz, r.radius, set, ex, ey, ez);
+      this.take(r.tick, tick, nowMs, wait, r.kind, r.map, r.x, r.y, r.z, r.yaw, r.tw, r.cause, r.ox, r.oy, r.oz, r.radius, set, ex, ey, ez);
     }
     const swaps = this.swaps;
     for (let s = 0; s < swaps.length; s += 5) {
@@ -170,8 +173,9 @@ export class Falling {
         break;
       }
       const map = placed !== 0 ? placed : this.city!.reg.breakForm[was] === 0 ? was : kind;
-      if (blast) this.take(blast.tick, tick, nowMs, 0, kind, map, x, y, z, t.yaw[slot]!, GONE_BLAST, blast.ox, blast.oy, blast.oz, blast.radius, set, ex, ey, ez);
-      else this.take(tick, tick, nowMs, 0, kind, map, x, y, z, t.yaw[slot]!, GONE_DESTROYED, x, y, z, 0, set, ex, ey, ez);
+      const tw = this.city!.reg.forms?.def[kind] ? t.twAt(slot) : -1;
+      if (blast) this.take(blast.tick, tick, nowMs, 0, kind, map, x, y, z, t.yaw[slot]!, tw, GONE_BLAST, blast.ox, blast.oy, blast.oz, blast.radius, set, ex, ey, ez);
+      else this.take(tick, tick, nowMs, 0, kind, map, x, y, z, t.yaw[slot]!, tw, GONE_DESTROYED, x, y, z, 0, set, ex, ey, ez);
     }
     swaps.length = 0;
     list.length = 0;
@@ -190,7 +194,7 @@ export class Falling {
   }
 
   /** `born` is the break's tick, `tick` and `nowMs` are now, and `wait` is in milliseconds. */
-  private take(born: number, tick: number, nowMs: number, wait: number, kind: number, map: number, x: number, y: number, z: number, yaw: number, cause: number, ox: number, oy: number, oz: number, radius: number, set: BreakSet | null, ex: number, ey: number, ez: number): void {
+  private take(born: number, tick: number, nowMs: number, wait: number, kind: number, map: number, x: number, y: number, z: number, yaw: number, tw: number, cause: number, ox: number, oy: number, oz: number, radius: number, set: BreakSet | null, ex: number, ey: number, ez: number): void {
     this.taken++;
     if (set && (tick - born) / TICK_RATE > TOO_LATE) return;
     const d2 = (x - ex) * (x - ex) + (y - ey) * (y - ey) + (z - ez) * (z - ez);
@@ -224,6 +228,8 @@ export class Falling {
     this.y0[i] = y;
     this.z0[i] = z;
     this.yaw0[i] = yaw;
+    this.tw[i] = tw;
+    this.held[i] = 1;
     this.cause[i] = cause;
     this.ox[i] = ox;
     this.oy[i] = oy;
@@ -281,6 +287,7 @@ export class Falling {
     e.y = this.y0[i]!;
     e.z = this.z0[i]!;
     e.yaw = this.yaw0[i]!;
+    e.tw = this.tw[i]!;
     e.ox = this.ox[i]!;
     e.oy = this.oy[i]!;
     e.oz = this.oz[i]!;
@@ -344,6 +351,7 @@ export class Falling {
       this.y[kept] = y;
       this.z[kept] = this.z0[kept]! + this.vz[kept]! * t;
       this.yaw[kept] = (this.yaw0[kept]! + Math.round(this.spin[kept]! * t)) & (YAW_UNITS - 1);
+      this.held[kept] = t > 0 ? 0 : 1;
       kept++;
     }
     for (let i = kept; i < this.count; i++) this.sets[i] = null;
@@ -358,6 +366,7 @@ export class Falling {
     this.y0[to] = this.y0[from]!;
     this.z0[to] = this.z0[from]!;
     this.yaw0[to] = this.yaw0[from]!;
+    this.tw[to] = this.tw[from]!;
     this.cause[to] = this.cause[from]!;
     this.ox[to] = this.ox[from]!;
     this.oy[to] = this.oy[from]!;

@@ -11,6 +11,7 @@ import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { WRECK, formOf, variantAt } from "../../shared/world/breaking.ts";
 import { hullPoint } from "../../shared/world/convex.ts";
 import { GONE_BLAST, GONE_FELL } from "../../shared/world/structures.ts";
+import { pieceTurn } from "./render/piece-fit.ts";
 
 type Corner = readonly [number, number, number];
 
@@ -182,6 +183,8 @@ export interface Broken {
   y: number;
   z: number;
   yaw: number;
+  /** Its turn class where it stood on its base's vectors, as a built piece is drawn (piece-fit.ts), or -1 for one turned by its yaw alone. */
+  tw: number;
   /** Where the break began: a blast's centre, where support was lost, or the piece's own place. */
   ox: number;
   oy: number;
@@ -217,6 +220,8 @@ const LINGER = 0.08, LINGER_MORE = 0.07;
 /** A pose's numbers: twelve of a 3 by 4 matrix by rows, the group's middle, when it rests, and the height of its lowest point. */
 export const POSE = { centre: 12, settled: 15, low: 16, length: 17 } as const;
 
+const turned = [0, 0];
+
 /** A group's seed: the piece's place on the structures' lattice and the group's number. */
 export function fragmentSeed(x: number, y: number, z: number, group: number): number {
   let h = Math.imul(Math.round(x * STRUCT_UNITS) | 0, 0x9e3779b1);
@@ -247,7 +252,14 @@ function rand(seed: number, k: number): number {
 export function fragmentPose(e: Broken, g: number, floor: number, t: number, out: Float64Array): void {
   const boxes = e.set.boxes, n = e.set.groups.length, b = g * 6, w = n * 6;
   const cx = boxes[b]!, cy = boxes[b + 1]!, cz = boxes[b + 2]!, hx = boxes[b + 3]!, hy = boxes[b + 4]!, hz = boxes[b + 5]!;
-  const turn = (e.yaw / YAW_UNITS) * 2 * Math.PI, cosYaw = Math.cos(turn), sinYaw = Math.sin(turn);
+  const turn = (e.yaw / YAW_UNITS) * 2 * Math.PI;
+  let cosYaw = Math.cos(turn), sinYaw = Math.sin(turn);
+  // A built piece stood on its base's vectors, which are not a metre long: its fragments leave from there.
+  if (e.tw >= 0) {
+    pieceTurn(e.yaw, e.tw, turned);
+    cosYaw = turned[0]!;
+    sinYaw = turned[1]!;
+  }
   const x0 = e.x + cosYaw * cx + sinYaw * cz, y0 = e.y + cy, z0 = e.z - sinYaw * cx + cosYaw * cz;
   const under = Math.min(floor, y0 - hy);
   const seed = fragmentSeed(e.x, e.y, e.z, g), shared = fragmentSeed(e.x, e.y, e.z, -1);

@@ -4,6 +4,7 @@
 
 import { CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz } from "../../../../shared/coords.ts";
 import type { Assets } from "../../assets/assets.ts";
+import { PLATE_CLEAR } from "../base-occluders.ts";
 import type { Camera } from "../camera.ts";
 import type { Casting } from "../casting.ts";
 import type { Draws } from "../draws.ts";
@@ -138,6 +139,7 @@ export class Occlusion implements Pass {
         }
       }
     }
+    this.platesIn(cam, reach);
     if (!h.on) return;
     h.end();
     // The ground's tiles, in view and cast.
@@ -204,6 +206,27 @@ export class Occlusion implements Pass {
     }
     for (; next < p.casterCount; next++) this.casting.moveCaster(next, at++);
     p.casterCount = at;
+  }
+
+  /**
+   * Puts in the picture the plates of the bases whose pieces were all drawn this frame (base-occluders.ts, NearStore.plated):
+   * each as the city's occluders are, and none the camera stands so near that the near plane may cut its piece open.
+   */
+  private platesIn(cam: Camera, reach: number): void {
+    const h = this.hiding, across = h.height / (2 * Math.tan(cam.fovY / 2)) / HIDE_PIXELS, clear = reach * 1.1 + PLATE_CLEAR;
+    for (const id of this.store.plated) {
+      const o = this.store.batches.get(id)!.plates;
+      for (let k = 0; k < o.length; k += OCCLUDER) {
+        const x = o[k]! - cam.x, y = o[k + 1]! - cam.y, z = o[k + 2]! - cam.z, r = o[k + 8]!;
+        const d = Math.sqrt(x * x + y * y + z * z) - r;
+        if ((d > 0 && o[k + 9]! * across < d) || !cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+        // How far the camera is from the plate itself, in the plate's own frame.
+        const c = o[k + 6]!, s = o[k + 7]!;
+        const ax = Math.max(Math.abs(c * x - s * z) - o[k + 3]!, 0), ay = Math.max(Math.abs(y) - o[k + 4]!, 0), az = Math.max(Math.abs(s * x + c * z) - o[k + 5]!, 0);
+        if (ax * ax + ay * ay + az * az < clear * clear) continue;
+        h.box(x, y, z, o[k + 3]!, o[k + 4]!, o[k + 5]!, c, s);
+      }
+    }
   }
 
   /**

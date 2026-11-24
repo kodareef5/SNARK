@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { BUILD_REASONS, Builder, GHOST_OK } from "../../client/core/build.ts";
-import { DRAW_BLEND, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_PIECE, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { BUILDING_CONTENT } from "../../content/building.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -22,7 +22,7 @@ import { capsuleKind } from "../../shared/world/collide.ts";
 import { CLS_SQUARE, key0, key1 } from "../../shared/world/lattice/module.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
 import type { Pose } from "../../shared/world/snap.ts";
-import { PLACE_RATE } from "../../server/build.ts";
+import { FALL_FIRST, PLACE_RATE, WAVE_TICKS } from "../../server/build.ts";
 import { GONE_DESTROYED, GONE_FELL } from "../../shared/world/structures.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
@@ -751,7 +751,7 @@ test("nothing is built that nothing would hold up; and when what held a piece go
   for (const r of [near, floor[0]!, floor[1]!, floor[2]!]) structs.remove(r);
   h.run(300);
 
-  // A tower of sixty walls with its bottom knocked out falls in one tick, as one wave.
+  // A tower of sixty walls with its bottom knocked out falls in two removals: what the first may take, then the rest.
   s.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
   h.run(100);
   s.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round((at.x + 4) * U), Math.round((at.z + 8) * U), 0));
@@ -769,10 +769,11 @@ test("nothing is built that nothing would hold up; and when what held a piece go
   structs.damage(bottom, 1e9);
   const waves = h.host.build.collapse.waves;
   h.server.tick();
-  expect(h.host.build.fallen - before).toBe(59);
-  expect(h.host.build.collapse.waves - waves).toBe(1);
+  expect([h.host.build.fallen - before, h.host.build.collapse.waves - waves]).toEqual([FALL_FIRST, 1]);
+  for (let k = 0; k < WAVE_TICKS; k++) h.server.tick();
+  expect([h.host.build.fallen - before, h.host.build.collapse.waves - waves]).toEqual([59, 2]);
   expect(mine()).toBe(1);
-  h.server.tick();
+  for (let k = 0; k < WAVE_TICKS; k++) h.server.tick();
   expect(h.host.build.collapse.busy).toBe(false);
 });
 
@@ -792,8 +793,8 @@ test("a house that comes down: whoever watches is told of it as a few removals a
       const falling = app.falling;
       if (!packet || !falling || falling.count === 0) return;
       most = Math.max(most, falling.count);
-      // Falling walls are one plain draw of wall instances from the frame's transient buffer.
-      for (let d = 0; d < packet.drawCount; d++) if (packet.drawBuffer[d] === TRANSIENT_BUFFER && packet.drawMesh[d] === wallMesh() && packet.drawFlags[d] === 0) drawn = Math.max(drawn, packet.drawInstances[d]!);
+      // Falling walls are one draw of wall instances from the frame's transient buffer, laid out as pieces.
+      for (let d = 0; d < packet.drawCount; d++) if (packet.drawBuffer[d] === TRANSIENT_BUFFER && packet.drawMesh[d] === wallMesh() && packet.drawFlags[d] === DRAW_PIECE) drawn = Math.max(drawn, packet.drawInstances[d]!);
     });
   run(600);
   const s = app.session;
@@ -853,8 +854,8 @@ test("a house that comes down: whoever watches is told of it as a few removals a
   const waves = h.host.build.collapse.waves;
   run(2500);
   expect([ours(structs), h.host.build.pending, h.host.build.fallen]).toEqual([0, 0, pieces - N * N]);
-  // A house this size is judged within one tick's work now, so it may fall as one wave.
-  expect(h.host.build.collapse.waves - waves).toBeGreaterThan(0);
+  // Its 112 pieces fall at the server's pace: 32, 52, then the rest.
+  expect(h.host.build.collapse.waves - waves).toBe(3);
   // Removing row by row would cost at least four bytes a row. Each client got the collapse for under two.
   expect([ours(s.world!.structs), ours(bob.world!.structs), same(s), same(bob)]).toEqual([0, 0, true, true]);
   const each = (h.server.stats.chunkBytes - sent) / 2;

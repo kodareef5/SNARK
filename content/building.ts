@@ -76,8 +76,8 @@ const TIERS: readonly Tier[] = [
   { name: "thatch", color: 18, hp: { foundation: 2400, wall: 1600, doorframe: 1600, ceiling: 1600, door: 1000, roof: 1600, roof_hip: 1600, roof_valley: 1600, sloped_wall_left: 1600, sloped_wall_right: 1600 } },
   { name: "wood", color: 3, hp: FULL },
   { name: "stone", color: 5, hp: STONE },
-  // A steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
-  { name: "metal", color: 89, hp: FULL, made: "plate" },
+  // A light steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
+  { name: "metal", color: 90, hp: FULL, made: "plate" },
 ];
 /** The forms a tier is made in: those it has a health for that content places. */
 const formsOf = (tier: Tier): string[] => Object.keys(tier.hp).filter((name) => name in LIVE);
