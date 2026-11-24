@@ -487,3 +487,151 @@ test("a stone hatch's leaf fills its frame's hole to 5 mm a side, and the frame 
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
+
+// Metal's new forms: its five roofs along the sides they share and across a hip's and a valley's own fold, a gutter
+// over the roof below, the gable's two hands under a roof, a triangle of floor beside a square, and the hatch's leaf
+// in its frame. Measured on the metal recipe's meshes, as wood's and thatch's are above.
+
+import { METAL } from "../../tools/pack/pieces/metal.ts";
+
+const metalCache = new Map<string, Tri[]>();
+/** A metal piece's triangles in the world at `level`. */
+function metalStanding(s: Set, level: number): Tri[] {
+  const key = `${s.form},${s.x},${s.z},${s.turn},${s.level ?? 0},${level}`;
+  let out = metalCache.get(key);
+  if (out) return out;
+  const form = ALL[s.form]!;
+  const shapes = levelsOf(METAL, s.form, form);
+  const [c, sn] = [Math.cos((s.turn * Math.PI) / 180), Math.sin((s.turn * Math.PI) / 180)];
+  const at = (p: readonly number[]): number[] => [s.x + c * p[0]! + sn * p[1]!, (s.level ?? 0) + form.at[1] + p[2]!, s.z + sn * p[0]! - c * p[1]!];
+  const corners = shapes[Math.min(level, shapes.length - 1)]!.corners();
+  out = [];
+  for (let t = 0; t < corners.length; t += 3) out.push([...at(corners[t]!), ...at(corners[t + 1]!), ...at(corners[t + 2]!)] as unknown as Tri);
+  metalCache.set(key, out);
+  return out;
+}
+
+/** The most two metal pieces' tops differ along the line from (x0, z0) to (x1, z1), each read half a millimetre to the side of it that it lies on. */
+function metalApart(a: Tri[], b: Tri[], edge: readonly [number, number, number, number], from = 4): number {
+  const [x0, z0, x1, z1] = edge;
+  const l = Math.hypot(x1 - x0, z1 - z0);
+  const [nx, nz] = [(-(z1 - z0) / l) * 0.0005, ((x1 - x0) / l) * 0.0005];
+  let most = 0;
+  for (let k = from; k < 120 - from; k++) {
+    const [x, z] = [x0 + ((x1 - x0) * (k + 0.37)) / 120, z0 + ((z1 - z0) * (k + 0.37)) / 120];
+    const [ha, hb] = [over(a, x + nx, z + nz) ?? over(a, x - nx, z - nz), over(b, x - nx, z - nz) ?? over(b, x + nx, z + nz)];
+    expect(ha !== null && hb !== null, `both reach the line at ${k}`).toBe(true);
+    most = Math.max(most, Math.abs(ha![1] - hb![1]));
+  }
+  return most;
+}
+
+test("metal roofs that share a side, flush or at a hip between two pieces, meet along it to a millimetre at every near level", () => {
+  const said: string[] = [];
+  for (const [name, a, b, edge] of [...THATCH_FLUSH, ...HIPPED]) {
+    for (let level = 0; level < TEXTURED; level++) {
+      // The whole side but its last 10 cm at each end, where a gutter's corner or a hip's capping ends.
+      const most = metalApart(metalStanding(a, level), metalStanding(b, level), edge);
+      said.push(`metal: ${name}, level ${level}: ${(most * 1000).toFixed(2)} mm`);
+      expect(most, `${name}, level ${level}`).toBeLessThanOrEqual(0.001);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a metal hip's capping and a valley's lining are one height on both faces of their fold", () => {
+  const said: string[] = [];
+  for (const form of ["roof_hip", "roof_valley"]) {
+    for (let level = 0; level < TEXTURED; level++) {
+      const tris = metalStanding(roofAt(form, 0, 0), level);
+      const most = metalApart(tris, tris, [-1.5, 1.5, 1.5, -1.5]);
+      said.push(`metal: ${form} across its fold, level ${level}: ${(most * 1000).toFixed(2)} mm`);
+      expect(most, `${form} level ${level}`).toBeLessThanOrEqual(0.001);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a metal roof that runs on down from another lies under its gutter, which laps its sheet, its seams and its half seam", () => {
+  const [upper, lower] = [metalStanding({ form: "roof", x: 0, z: 0, turn: 0, level: 1.5 }, 0), metalStanding({ form: "roof", x: 0, z: -3, turn: 0 }, 0)];
+  const said: string[] = [];
+  // Over a seam (x = 0 and 0.75), between seams, and from the lower roof's half seam along its high side out to the gutter's lip.
+  for (const x of [-1.2, -0.75, -0.4, 0, 0.3, 1.1]) for (const out of [0.01, 0.05, 0.15, 0.28]) {
+    const [hu, hl] = [over(upper, x, -1.5 - out)!, over(lower, x, -1.5 - out)!];
+    said.push(`metal: the gutter over the lower roof at ${x}, ${out} m down: ${((hu[1] - hl[1]) * 1000).toFixed(1)} mm`);
+    expect(hu[1] - hl[1], `${x}, ${out} m down`).toBeGreaterThan(0.005);
+    expect(hu[1] - hl[1], `${x}, ${out} m down`).toBeLessThan(0.06);
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a metal gable's top lies in the plane of the roof's corner heights to 2 mm, with no gap under the roof and nothing through it", () => {
+  const roof = ALL.roof!;
+  const said: string[] = [];
+  for (let level = 0; level < TEXTURED; level++) {
+    for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
+      const wall = metalStanding({ form: hand, x, z: 0, turn }, level);
+      const over0 = metalStanding({ form: "roof", x: 0, z: 0, turn: 0 }, level);
+      // The plane through the roof row's corner heights: its top where the slab hangs under them, its underside where it stands on them.
+      const plane = (z: number): number => ((z + 1.5) / 3) * (roof.corner![0]! - roof.corner![2]!);
+      let most = 0, tops = 0, over1 = -Infinity;
+      for (const t of wall) for (let k = 0; k < 9; k += 3) {
+        const off = t[k + 1]! - plane(t[k + 2]!);
+        over1 = Math.max(over1, off);
+        if (off > -0.002) {
+          tops++;
+          most = Math.max(most, Math.abs(off));
+        }
+      }
+      expect(over1, `${hand} level ${level}`).toBeLessThanOrEqual(0.002);
+      expect(tops, `${hand} level ${level}: points on the plane`).toBeGreaterThanOrEqual(4);
+      expect(most).toBeLessThanOrEqual(0.002);
+      let [gap, through] = [0, 0];
+      // From 60 m a gable stops on its low end's ring, 5 cm high there.
+      for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.08]) {
+        const px = x - Math.sign(x) * inward;
+        const [w, r] = [over(wall, px, z), over(over0, px, z)!];
+        if (!w) continue;
+        gap = Math.max(gap, r[0] - w[1]);
+        through = Math.max(through, w[1] - r[1]);
+      }
+      said.push(`metal: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane, gap under the roof ${(Math.max(0, gap) * 1000).toFixed(2)} mm, through it ${(Math.max(0, through) * 1000).toFixed(2)} mm`);
+      expect(gap, `${hand} level ${level}: no gap under the roof`).toBeLessThanOrEqual(1e-6);
+      expect(through, `${hand} level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a metal triangle of floor and a square share their side's two corners at every level, and neither crosses it", () => {
+  for (const [tri, square] of [["triangle_foundation", "foundation"], ["triangle_ceiling", "ceiling"]] as const) {
+    for (let level = 0; level < 4; level++) {
+      const [a, b] = [metalStanding({ form: tri, x: 0, z: 0, turn: 0 }, level), metalStanding({ form: square, x: 1.5, z: -1.5, turn: 0 }, level)];
+      const top = Math.max(...a.map((t) => Math.max(t[1], t[4], t[7])));
+      const corner = (tris: readonly Tri[], x: number): boolean => tris.some((t) => [0, 3, 6].some((k) => t[k] === x && Math.abs(t[k + 2]!) < 1e-12 && Math.abs(t[k + 1]! - top) < 1e-9));
+      // Each has a vertex exactly on each corner of the side, at the floor's top: a triangle's deck is cut to its outline.
+      expect([tri, level, corner(a, 0), corner(a, 3), corner(b, 0), corner(b, 3)]).toEqual([tri, level, true, true, true, true]);
+      expect(Math.min(...a.map((t) => Math.min(t[2], t[5], t[8]))), `${tri} level ${level}`).toBeGreaterThanOrEqual(-1e-9);
+      expect(Math.max(...b.map((t) => Math.max(t[2], t[5], t[8]))), `${square} level ${level}`).toBeLessThanOrEqual(1e-9);
+      expect(Math.abs(Math.max(...b.map((t) => Math.max(t[1], t[4], t[7]))) - top), `${tri} level ${level}: tops level`).toBeLessThanOrEqual(1e-9);
+    }
+  }
+});
+
+test("a metal hatch's leaf fills its frame's hole to 4 mm a side, and the frame keeps out of the hole", () => {
+  const hole = ALL.trapdoor_frame!.openings![0]!;
+  for (let level = 0; level < 4; level++) {
+    const [leaf, frame] = [metalStanding({ form: "trapdoor", x: 0, z: 0, turn: 0 }, level), metalStanding({ form: "trapdoor_frame", x: 0, z: 0, turn: 0 }, level)];
+    const reach = (tris: readonly Tri[], k: number, way: number): number => Math.max(...tris.map((t) => Math.max(way * t[k]!, way * t[k + 3]!, way * t[k + 6]!)));
+    for (const [k, lo, hi] of [[0, hole.x0, hole.x1], [2, hole.y0, hole.y1]] as const) {
+      for (const clear of [hi - reach(leaf, k, 1), lo * -1 - reach(leaf, k, -1)]) {
+        expect(clear, `level ${level}`).toBeGreaterThan(0);
+        expect(clear, `level ${level}`).toBeLessThanOrEqual(0.005);
+      }
+    }
+    for (const t of frame) for (let k = 0; k < 9; k += 3) expect(t[k]! > hole.x0 + 1e-6 && t[k]! < hole.x1 - 1e-6 && t[k + 2]! > hole.y0 + 1e-6 && t[k + 2]! < hole.y1 - 1e-6, `level ${level}`).toBe(false);
+    const [leafTop, floor] = [Math.max(...leaf.map((t) => Math.max(t[1], t[4], t[7]))), Math.max(...frame.map((t) => Math.max(t[1], t[4], t[7])))];
+    // Its plate lies 4 mm under the floor; its wheel's hub stands 32 mm over it, to the level it is drawn at.
+    expect(leafTop - floor, `level ${level}`).toBeLessThanOrEqual(level < 3 ? 0.0321 : -0.0039);
+  }
+});
