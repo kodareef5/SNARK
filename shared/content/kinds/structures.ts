@@ -423,6 +423,8 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     // Convex parts, only if some shape has them, so content without them is compiled as it always was.
     const hulls = hullsOf(reg.defs, once(shapesById));
     if (reg.defs.some((_, k) => hulls(k).length > 0)) reg.parts.hulls = hullTable(n, hulls);
+    // A store learns the forms with the parts it is made from.
+    reg.parts.forms = reg.forms;
     // An open door maps back to the closed door's item.
     for (let i = 1; i < n; i++) if (reg.opens[i] !== 0 && reg.pieceItem[reg.opens[i]!] === 0) reg.pieceItem[reg.opens[i]!] = reg.pieceItem[i]!;
     // A burning fire maps back to the unlit fire's item.

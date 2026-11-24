@@ -9,6 +9,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import type { HullDef } from "../../shared/world/convex.ts";
 import { FORM_LAYERS, HALF_SIDE_M, LEVEL_M, SLOT_CLASSES, colliderFaults, formFaults, formHalf, formPose, type FormDef } from "../../shared/world/lattice/forms.ts";
 import { HALF_SIDE, frameAxes, makeSockets, socketPose, socketsFor, units, type Pose } from "../../shared/world/snap.ts";
+import { CHANGED, SOCKET_SLOTS } from "../fixtures/sockets.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const TIERS = ["thatch", "wood", "stone", "metal"];
@@ -91,34 +92,6 @@ test("the registry gives each built piece's form by its kind, and none to anythi
     expect(reg.forms.cls[reg.index.get(id)!]).toBe(-1);
   }
 });
-
-// Where the slot a socket means is, from the piece that offers it: half-sides along its X and Z, quarter storeys from its
-// level to the slot's, and quarter turns to the slot's facing. Sockets are today's, in the order socketsFor gives them.
-type Slot = readonly [i: number, j: number, lvl: number, quarters: number];
-const BESIDE: Slot[] = [[0, 2, 0, 0], [2, 0, 0, 0], [0, -2, 0, 0], [-2, 0, 0, 0]];
-const EDGES: Slot[] = [[0, 1, 0, 0], [1, 0, 0, 1], [0, -1, 0, 2], [-1, 0, 0, 3]];
-const HERE: Slot[] = [[0, 0, 0, 0]];
-const ABOVE: Slot[] = [[0, 0, 4, 0]];
-const SOCKET_SLOTS: readonly (readonly [target: string, piece: string, slots: Slot[]])[] = [
-  ["foundation", "foundation", BESIDE],
-  ["foundation", "ceiling", BESIDE],
-  ["ceiling", "ceiling", BESIDE],
-  ...["wall", "doorframe", "windowframe"].flatMap((w) => [["foundation", w, EDGES], ["ceiling", w, EDGES]] as [string, string, Slot[]][]),
-  // A pillar on a floor's middle, and one under it. A design change is waiting: see the test.
-  ["foundation", "pillar", [[0, 0, 0, 0], [0, 0, -4, 0]]],
-  ["ceiling", "pillar", [[0, 0, 0, 0], [0, 0, -4, 0]]],
-  ["pillar", "pillar", [[0, 0, 4, 0], [0, 0, -4, 0]]],
-  ["foundation", "stairs", HERE],
-  ["ceiling", "stairs", HERE],
-  ...["wall", "doorframe", "windowframe"].flatMap((under) => ["wall", "doorframe", "windowframe"].map((on) => [under, on, ABOVE] as [string, string, Slot[]])),
-  // The face either side of the edge above a wall.
-  ...["wall", "doorframe", "windowframe"].map((w) => [w, "ceiling", [[0, 1, 4, 0], [0, -1, 4, 0]]] as [string, string, Slot[]]),
-  ["doorframe", "door", HERE],
-  ["doorframe", "door_open", HERE],
-  ["pillar", "ceiling", ABOVE],
-];
-/** The one socket whose pose the forms change: a pillar under a foundation ends at its top plane, not its underside. */
-const CHANGED = "foundation pillar 1";
 
 test("each form's pose in the slot a socket means is the socket's pose", () => {
   const reg = coreRegistry();

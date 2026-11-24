@@ -104,6 +104,7 @@ interface FillingParts {
   start: Uint32Array;
   box: Float32Array;
   hulls?: HullTable;
+  forms?: import("../world/lattice/forms.ts").FormTable;
 }
 
 /** The registry while it is compiled, which a kind's hooks write. */

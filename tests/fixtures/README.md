@@ -8,6 +8,7 @@
 | `arena.ts` | Level, dry, empty ground of a given size near the spawn point |
 | `city.ts` | A flat map whose statics are city pieces of the ruin kit, a server on it, and a rocket, a grenade and a rifle round from nobody |
 | `sketch.ts` | A building set down by hand on its frame's tiles, with the map's buildings made for it: in a bare store for the support rule, or under a server for a collapse |
+| `sockets.ts` | Each socket a core piece offers another, as the slot of the lattice it means, and the one socket whose pose the forms change |
 | `build.ts` | Survivors set up to build: cheats, strength, and sixty of every wooden piece in the hotbar |
 | `enemy-scan.ts` | The enemy range answered by reading every slot of the chunks in range, which the claims grid is proved against |
 | `gather.ts` | Finding a resource node and standing a survivor in reach of it |

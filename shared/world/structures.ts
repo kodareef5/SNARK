@@ -6,6 +6,11 @@ import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../
 import type { VehicleSurface } from "../sim/vehicle.ts";
 import { hullPoint, type HullTable } from "./convex.ts";
 import { HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
+import { KEY_BETWEEN, KEY_FOUND, keyOfPose } from "./lattice/adopt.ts";
+import type { FormTable } from "./lattice/forms.ts";
+import { Frames, baseOrigin, keyFits, poseOf, twOfKey, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
+import { key0, key1 } from "./lattice/module.ts";
+import { Cells, Occupancy, formCells } from "./lattice/occupancy.ts";
 
 export const GRID_CELL = 4;
 /**
@@ -24,6 +29,8 @@ export interface PartTable {
   readonly box: Float32Array;
   /** Convex parts, for kinds with sloped or three-sided forms. */
   readonly hulls?: HullTable;
+  /** The slot of a base's lattice each built kind fills. A store given none keys no row. */
+  readonly forms?: FormTable;
 }
 
 /** A map's statics as columns grouped by chunk, as MapStatics holds them (shared/world/mapfile.ts). */
@@ -151,6 +158,14 @@ export class ChunkTable {
   hp: Float32Array;
   /** Table version at which the slot last changed. */
   mod: Uint32Array;
+  /**
+   * A lattice row's address: its frame's gid (0 for a row with a free pose), its key's two words, and its direction mod 3.
+   * Null until the chunk's first lattice row, then 13 bytes a row. A table detached keeps them: see StructureStore.unkeyRows.
+   */
+  fr: Uint32Array | null = null;
+  k0: Uint32Array | null = null;
+  k1: Uint32Array | null = null;
+  tw: Uint8Array | null = null;
   free: number[] = [];
   constructor(cap = 16, lent: Pick<PlacedRows, "x" | "y" | "z" | "yaw"> | null = null) {
     this.cap = cap;
@@ -186,7 +201,7 @@ export class ChunkTable {
     if (slot < this.cap) return;
     let cap = this.cap;
     while (cap <= slot) cap *= 2;
-    const grow = <T extends Uint16Array | Float32Array | Uint32Array>(a: T): T => {
+    const grow = <T extends Uint16Array | Float32Array | Uint32Array | Uint8Array>(a: T): T => {
       const b = new (a.constructor as new (n: number) => T)(cap);
       b.set(a);
       return b;
@@ -200,9 +215,22 @@ export class ChunkTable {
     this.hp = grow(this.hp);
     this.mod = grow(this.mod);
     this.stamp = grow(this.stamp);
+    if (this.fr) [this.fr, this.k0, this.k1, this.tw] = [grow(this.fr), grow(this.k0!), grow(this.k1!), grow(this.tw!)];
     this.cap = cap;
   }
+
+  /** Makes the key columns, for the chunk's first lattice row. */
+  keyed(): void {
+    [this.fr, this.k0, this.k1, this.tw] = [new Uint32Array(this.cap), new Uint32Array(this.cap), new Uint32Array(this.cap), new Uint8Array(this.cap)];
+  }
 }
+
+// Scratch for keying a row.
+const cells = new Cells();
+const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
+const found: LatticeKey = { fr: 0, k0: 0, k1: 0 };
+const origin = { ox: 0, oy: 0, oz: 0 };
+const tried: Frame[] = [];
 
 /** A query's results. `refs` is replaced when it grows, so read it after the query returns. */
 export class Found {
@@ -278,10 +306,25 @@ export class StructureStore {
   /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. */
   private readonly pad: Float32Array;
 
+  /** The built kinds' forms, or null: then no row has a key. */
+  readonly forms: FormTable | null;
+  /** The bases: each lattice row is in one, by the gid in its `fr`. */
+  readonly frames: Frames;
+  /** Which lattice row fills each cell of each frame. */
+  readonly occupied = new Occupancy();
+  /** The frame and key `place` is setting a row down by, while `add` writes it. */
+  private placing: Frame | null = null;
+  private placingK0 = 0;
+  private placingK1 = 0;
+  /** Chunks with rows `put` found no key for, each with `frames.listings` as it was when they were last tried. */
+  private readonly orphans = new Map<number, number>();
+
   constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array, soft: Uint8Array | null = null, parts: PartTable | null = null) {
     this.dims = dims;
     this.soft = soft;
     this.parts = parts ?? oneBoxEach(halfX, halfY, halfZ);
+    this.forms = parts?.forms ?? null;
+    this.frames = new Frames(chunkCount(dims));
     this.halfX = halfX;
     this.halfY = halfY;
     this.halfZ = halfZ;
@@ -352,9 +395,244 @@ export class StructureStore {
     }
     t.version++;
     this.write(chunk, t, slot, kind, x, y, z, yaw & 0xffff, owner, hp, t.version);
+    if (this.placing) this.key(chunk, t, slot, this.placing, this.placingK0, this.placingK1);
+    else if (this.forms) this.adopt(chunk, t, slot);
     t.touch(slot, TOUCH_MOVED);
     this.onChunkChanged?.(chunk, false);
     return chunk * 65536 + slot;
+  }
+
+  /**
+   * Whether `place` would set a piece of `kind` down by this key: the frame is made, the key names a slot of the kind's
+   * form (keyFits), and every cell the piece would cover is on the lattice and free.
+   */
+  fits(kind: number, fr: number, k0: number, k1: number): boolean {
+    const forms = this.forms;
+    if (!forms || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || !this.frames.get(fr)) return false;
+    if (!keyFits(forms, kind, k0, k1) || !formCells(forms, kind, k0, k1, cells)) return false;
+    for (let i = 0; i < cells.n; i++) if (!this.occupied.free(fr, cells.k0[i]!, cells.k1[i]!, cells.reach[i]!)) return false;
+    return true;
+  }
+
+  /**
+   * Sets a piece down in a slot of a frame's lattice, as `add` does one by its pose: its place and turn are poseOf of its
+   * key. Returns the ref, or -1 where the key does not fit (`fits`), the owner is not the frame's team, the pose is off
+   * the map or the chunk is full. Authority only.
+   */
+  place(kind: number, fr: number, k0: number, k1: number, owner: number, hp: number): number {
+    if (!this.fits(kind, fr, k0, k1)) return -1;
+    const f = this.frames.get(fr)!;
+    poseOf(f, k0, k1, this.forms!, kind, pose);
+    const x = pose.x / STRUCT_UNITS;
+    const z = pose.z / STRUCT_UNITS;
+    if (owner === 0 || owner !== f.team || !(x >= 0 && z >= 0 && x < this.dims.chunksX * CHUNK_SIZE && z < this.dims.chunksZ * CHUNK_SIZE)) return -1;
+    this.placing = f;
+    this.placingK0 = k0;
+    this.placingK1 = k1;
+    // Shape listeners wait until the row has its key.
+    this.hold();
+    const ref = this.add(kind, x, pose.y / STRUCT_UNITS, z, pose.yaw, owner, hp);
+    this.placing = null;
+    this.release();
+    return ref;
+  }
+
+  /** The gid of the frame the piece `ref` is in, or 0 for a row with a free pose, or for none. */
+  frameAt(ref: number): number {
+    const t = this.chunks[Math.floor(ref / 65536)];
+    return t && t.fr ? t.fr[ref & 0xffff]! : 0;
+  }
+
+  /** The address of the piece `ref`, to `out`. False for a row with a free pose, or for none. */
+  keyAt(ref: number, out: LatticeKey): boolean {
+    const t = this.chunks[Math.floor(ref / 65536)];
+    const slot = ref & 0xffff;
+    if (!t || !t.fr || t.fr[slot] === 0) return false;
+    out.fr = t.fr[slot]!;
+    out.k0 = t.k0![slot]!;
+    out.k1 = t.k1![slot]!;
+    return true;
+  }
+
+  /** The ref of the piece entered in exactly the cell of this key in frame `fr`, whatever its turn, or -1. */
+  refAt(fr: number, k0: number, k1: number): number {
+    return this.occupied.at(fr, k0, k1);
+  }
+
+  /** The ref of the piece that covers the level of this key's edge, face or vertex, from there or from under it, or -1. */
+  covering(fr: number, k0: number, k1: number): number {
+    return this.occupied.covering(fr, k0, k1);
+  }
+
+  /** Writes the refs of frame `fr`'s rows to `out`, a chunk at a time in the order the frame came to them, and returns the count. */
+  rowsOf(fr: number, out: Found): number {
+    const f = this.frames.get(fr);
+    if (!f) return 0;
+    if (out.refs.length < f.live) out.refs = new Uint32Array(f.live);
+    let n = 0;
+    for (const chunk of f.chunks) {
+      const t = this.chunks[chunk]!;
+      const of = t.fr!;
+      for (let slot = t.mapped; slot < t.high; slot++) if (of[slot] === fr) out.refs[n++] = chunk * 65536 + slot;
+    }
+    return n;
+  }
+
+  /** Makes a frame's box the least that holds its rows' origins, if rows that left may have made it more. */
+  tighten(f: Frame): void {
+    if (!f.loose) return;
+    f.loose = false;
+    let first = true;
+    for (const chunk of f.chunks) {
+      const t = this.chunks[chunk]!;
+      const of = t.fr!;
+      for (let slot = t.mapped; slot < t.high; slot++) {
+        if (of[slot] !== f.gid) continue;
+        const x = Math.round(t.x[slot]! * STRUCT_UNITS);
+        const z = Math.round(t.z[slot]! * STRUCT_UNITS);
+        if (first) [f.minX, f.maxX, f.minZ, f.maxZ] = [x, x, z, z];
+        first = false;
+        f.minX = Math.min(f.minX, x);
+        f.maxX = Math.max(f.maxX, x);
+        f.minZ = Math.min(f.minZ, z);
+        f.maxZ = Math.max(f.maxZ, z);
+      }
+    }
+  }
+
+  /** Gives the row in `slot` its place in frame `f`: its key columns, its cells and its count. The cells are free (`fits`). */
+  private key(chunk: number, t: ChunkTable, slot: number, f: Frame, k0: number, k1: number): void {
+    const forms = this.forms!;
+    const kind = t.kind[slot]!;
+    if (!t.fr) t.keyed();
+    t.fr![slot] = f.gid;
+    t.k0![slot] = k0;
+    t.k1![slot] = k1;
+    t.tw![slot] = twOfKey(k0, k1);
+    this.cover(chunk, t, slot);
+    this.frames.enter(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), forms.def[kind]!.root !== undefined);
+  }
+
+  /** Enters the keyed row in `slot` in each cell its kind's form covers. */
+  private cover(chunk: number, t: ChunkTable, slot: number): void {
+    formCells(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, cells);
+    for (let i = 0; i < cells.n; i++) this.occupied.put(t.fr![slot]!, cells.k0[i]!, cells.k1[i]!, chunk * 65536 + slot, cells.reach[i]!);
+  }
+
+  /**
+   * Takes the keyed row in `slot` out of its cells before it is erased. A row changed where it stands keeps its key columns
+   * and its count, for `rekey` once its new kind is written; any other leaves its frame, which goes with its last row.
+   */
+  private unkey(chunk: number, t: ChunkTable, slot: number, inPlace: boolean): void {
+    const f = this.frames.get(t.fr![slot]!)!;
+    const kind = t.kind[slot]!;
+    const root = this.forms!.def[kind]!.root !== undefined;
+    formCells(this.forms!, kind, t.k0![slot]!, t.k1![slot]!, cells);
+    for (let i = 0; i < cells.n; i++) this.occupied.take(f.gid, cells.k0[i]!, cells.k1[i]!);
+    if (inPlace) {
+      if (root) f.roots--;
+      return;
+    }
+    this.frames.leave(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), root);
+    t.fr![slot] = t.k0![slot] = t.k1![slot] = t.tw![slot] = 0;
+  }
+
+  /** Enters a row changed where it stands in its cells again, if its new kind fills the same slot at the same pose (a door opened). Else the row leaves its frame (a heap). */
+  private rekey(chunk: number, t: ChunkTable, slot: number): void {
+    const forms = this.forms!;
+    const kind = t.kind[slot]!;
+    const fr = t.fr![slot]!;
+    const f = this.frames.get(fr)!;
+    const x = Math.round(t.x[slot]! * STRUCT_UNITS);
+    const z = Math.round(t.z[slot]! * STRUCT_UNITS);
+    if (this.fits(kind, fr, t.k0![slot]!, t.k1![slot]!)) {
+      poseOf(f, t.k0![slot]!, t.k1![slot]!, forms, kind, pose);
+      if (pose.x === x && pose.z === z && pose.y === Math.round(t.y[slot]! * STRUCT_UNITS) && pose.yaw === t.yaw[slot]) {
+        this.cover(chunk, t, slot);
+        if (forms.def[kind]!.root !== undefined) f.roots++;
+        return;
+      }
+    }
+    this.frames.leave(f, chunk, x, z, false);
+    t.fr![slot] = t.k0![slot] = t.k1![slot] = t.tw![slot] = 0;
+  }
+
+  /**
+   * Takes every row of a table out of its frame and its cells, and leaves the rows free. For a table about to be detached:
+   * attached again, `adoptRows` keys its rows by their poses, as rows received are keyed.
+   */
+  unkeyRows(chunk: number, t: ChunkTable): void {
+    if (!t.fr) return;
+    for (let slot = t.mapped; slot < t.high; slot++) if (t.fr[slot] !== 0) this.unkey(chunk, t, slot, false);
+  }
+
+  // The adoption shim: `adopt`, `adoptRows`, `orphans`, their callers in `add`, `put` and `setVersion`, and lattice/adopt.ts.
+  // Temporary. A piece set down by its pose alone is given a frame and a key where its pose is exactly a slot's. Delete it
+  // all once placing, the wire and the save speak keys.
+
+  /**
+   * Keys the free row in `slot` if it can be: into a frame of its owner with rows in this chunk or one beside it, where its
+   * pose is exactly that of a free slot, or else, for a piece that may hold a base up, as the first row of a new frame.
+   * False for a built piece left free.
+   */
+  private adopt(chunk: number, t: ChunkTable, slot: number): boolean {
+    const forms = this.forms!;
+    const kind = t.kind[slot]!;
+    const owner = t.owner[slot]!;
+    if (owner === 0 || slot < t.mapped || forms.cls[kind]! < 0 || (t.fr !== null && t.fr[slot] !== 0)) return true;
+    const x = Math.round(t.x[slot]! * STRUCT_UNITS);
+    const y = Math.round(t.y[slot]! * STRUCT_UNITS);
+    const z = Math.round(t.z[slot]! * STRUCT_UNITS);
+    const yaw = t.yaw[slot]!;
+    const { chunksX, chunksZ } = this.dims;
+    const cx = chunk % chunksX;
+    const cz = (chunk - cx) / chunksX;
+    tried.length = 0;
+    let between = false;
+    for (let nz = Math.max(0, cz - 1); nz <= Math.min(chunksZ - 1, cz + 1); nz++) {
+      for (let nx = Math.max(0, cx - 1); nx <= Math.min(chunksX - 1, cx + 1); nx++) {
+        for (const f of this.frames.listed(nz * chunksX + nx)) {
+          if (f.team !== owner || tried.includes(f)) continue;
+          tried.push(f);
+          const answer = keyOfPose(f, forms, kind, x, y, z, yaw, found);
+          if (answer === KEY_BETWEEN) between = true;
+          if (answer !== KEY_FOUND || !this.fits(kind, f.gid, found.k0, found.k1)) continue;
+          poseOf(f, found.k0, found.k1, forms, kind, pose);
+          if (pose.x !== x || pose.y !== y || pose.z !== z || pose.yaw !== yaw) continue;
+          this.key(chunk, t, slot, f, found.k0, found.k1);
+          return true;
+        }
+      }
+    }
+    // A pillar hung under a foundation is of its base and half a level off every slot: it stays free, where it is today.
+    if (between || forms.def[kind]!.root === undefined) return false;
+    baseOrigin(forms, kind, x, y, z, yaw, origin);
+    this.key(chunk, t, slot, this.frames.make(origin.ox, origin.oy, origin.oz, yaw, owner), key0(forms.cls[kind]!, 0, 0, 0), key1(0, 0, 0, forms.layer[kind]!, 0, 0));
+    return true;
+  }
+
+  /** Tries each built row of a table that has no key. Returns whether one is still free. */
+  adoptRows(chunk: number, t: ChunkTable): boolean {
+    const forms = this.forms;
+    let left = false;
+    if (forms) for (let slot = t.mapped; slot < t.high; slot++) if (t.kind[slot] !== 0 && !this.adopt(chunk, t, slot)) left = true;
+    return left;
+  }
+
+  /** Tries the rows `put` left free in `chunk` and the chunks round it again, where a frame has come to a chunk since they were last tried. */
+  private readopt(chunk: number): void {
+    const { chunksX, chunksZ } = this.dims;
+    const cx = chunk % chunksX;
+    const cz = (chunk - cx) / chunksX;
+    for (let nz = Math.max(0, cz - 1); nz <= Math.min(chunksZ - 1, cz + 1); nz++) {
+      for (let nx = Math.max(0, cx - 1); nx <= Math.min(chunksX - 1, cx + 1); nx++) {
+        const near = nz * chunksX + nx;
+        const t = this.chunks[near];
+        if (this.orphans.get(near) === this.frames.listings || !this.orphans.has(near)) continue;
+        if (t && this.adoptRows(near, t)) this.orphans.set(near, this.frames.listings);
+        else this.orphans.delete(near);
+      }
+    }
   }
 
   /**
@@ -498,6 +776,8 @@ export class StructureStore {
     if (was !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, was, -1);
     t.owner[slot] = to;
     if (to !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, to, 1);
+    // A frame is its rows' owner's.
+    if (t.fr !== null && t.fr[slot] !== 0) this.frames.get(t.fr[slot]!)!.team = to;
   }
 
   /** `stamp` is the caller's clock. Authority only. */
@@ -771,6 +1051,7 @@ export class StructureStore {
       if (slot >= t.high) t.high = slot + 1;
       t.mod[slot] = mod;
     }
+    if (kind !== 0 && this.forms && !this.adopt(chunk, t, slot)) this.orphans.set(chunk, -1);
   }
 
   /** Sets a map slot to loaded contents, where the map has it. `kind` 0 empties it. Follow with setVersion, as after put. */
@@ -788,6 +1069,7 @@ export class StructureStore {
     t.recentCount = 0;
     t.recentFloor = version;
     t.freeStale = true;
+    if (this.orphans.size > 0) this.readopt(chunk);
     this.onChunkChanged?.(chunk, false);
   }
 
@@ -957,6 +1239,7 @@ export class StructureStore {
     this.count++;
     this.footprint(kind, x, z, yaw);
     this.link(chunk * 65536 + slot, kind, y);
+    if (inPlace && t.fr !== null && t.fr[slot] !== 0) this.rekey(chunk, t, slot);
   }
 
   /** Puts `ref`, of `kind` with its centre at height `y`, at the head of the list of each grid cell from fx0..fz1. */
@@ -977,6 +1260,7 @@ export class StructureStore {
 
   private erase(chunk: number, t: ChunkTable, slot: number, mod: number, inPlace = false): void {
     if (!inPlace) t.placed++;
+    if (t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, inPlace);
     this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!);
     const ref = chunk * 65536 + slot;
     for (let cz = this.fz0; cz <= this.fz1; cz++) {
