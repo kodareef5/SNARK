@@ -49,4 +49,3 @@ export function resolveAdmin(href: string, worlds: AdminWorld[], read: ReadUrl) 
     },
   };
 }
-
