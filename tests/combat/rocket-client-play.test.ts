@@ -7,7 +7,9 @@ import { App } from "../../client/core/app.ts";
 import type { Blasts } from "../../client/core/render/blasts.ts";
 import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../../shared/net/protocol.ts";
+import { packBolt } from "../../shared/net/bolts.ts";
+import { SURFACE_AIR, writeBlast, writeRocket } from "../../shared/net/rockets.ts";
+import { BOX_SELF, CMD_MOVE, CMD_SELECT, EVENT_BLAST, EVENT_ROCKET, S_EVENT } from "../../shared/net/protocol.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -25,6 +27,34 @@ class Fire {
     real.burst = (...a) => (this.bursts.push(a), burst.apply(real, a));
   }
 }
+
+test("the first frame draws a queued rocket trail and blast with the scene's fire", () => {
+  const h = new Harness();
+  const s = h.join("eve");
+  h.run(500);
+  const app = new App(s, h.reg, corePack());
+  const receiver = h.client(s)!;
+  const { x, y, z } = s.own;
+  const ammo = h.reg.index.get("core:rocket")!;
+  const start = new Uint32Array(5);
+  packBolt(x, y + 20, z, 0, 0, 1, start, 0);
+  const launch = h.server.begin(S_EVENT);
+  launch.u8(EVENT_ROCKET);
+  writeRocket(launch, start, 0, ammo, 7, 2, false);
+  h.server.endOwn(receiver);
+  const blast = h.server.begin(S_EVENT);
+  blast.u8(EVENT_BLAST);
+  writeBlast(blast, x, y + 20, z + 5, 0, 1, 0, 7.5, ammo, 8, SURFACE_AIR, 0);
+  h.server.endOwn(receiver);
+  h.run(100);
+  expect(app.scene).toBeNull();
+  expect(s.events.map((ev) => ev.kind)).toEqual([EVENT_ROCKET, EVENT_BLAST]);
+  app.frame(h.now, 1280, 720);
+  expect(app.shots.flying.map((f) => [f.id, f.lit])).toEqual([[7, true]]);
+  expect(app.scene!.blasts.trails).toBe(1);
+  expect(app.scene!.blasts.alight).toBe(1);
+  expect(app.shots.blasts).toHaveLength(0);
+});
 
 test("a rocket one client fires flies on both and ends on both at its blast", () => {
   const h = new Harness({}, 1, 60, { dev: true });
