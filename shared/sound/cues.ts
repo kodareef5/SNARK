@@ -174,6 +174,9 @@ cue("supply/settle", "prop", "build", "world", "fire", "a landed capsule's louvr
 cue("supply/count", "prop", "item", "world", "fire", "a chime for each step of a drop's tier, as its lantern opens", { falls: ["core:tech/chime"] });
 cue("supply/open", "prop", "item", "world", "fire", "a capsule's hatch is first opened", { falls: ["core:bang/gate"] });
 cue("supply/gone", "prop", "item", "world", "fire", "a capsule shuts and goes", { falls: ["core:tech/pulse"] });
+// The orb (shared/world/orb.ts). Nothing is sent for it: each client hears it from the map's sites (client/core/sound/orb.ts).
+// No take of its own exists yet (assets/source/core/sfx/orb): the obelisk's drone stands in, played lower.
+cue("orb/hum", "prop", "build", "world", "fire", "an orb within hearing, at the point of its sphere nearest the ear", { loop: true, falls: ["core:orb/hum", "core:tech/obelisk@0.8"] });
 cue("hit/marker", "ui", "ui", "ear", "fire", "EVENT_HIT for the attacker", { falls: ["core:weapon/hit/marker"] });
 cue("hit/head", "ui", "ui", "ear", "fire", "EVENT_HIT on the head zone", { falls: ["core:weapon/hit/head"] });
 cue("kill", "ui", "ui", "ear", "fire", "EVENT_HIT with the killed bit, or EVENT_KILL", { falls: ["core:weapon/kill"] });

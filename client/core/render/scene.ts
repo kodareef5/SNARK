@@ -1,4 +1,5 @@
 import type { TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import type { OrbSite } from "../../../shared/world/orb.ts";
 import { writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import { EYE_FROM } from "../optics.ts";
@@ -87,6 +88,8 @@ import { Casting } from "./casting.ts";
 import { AirSupport } from "./passes/air-support.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
+import type { Orbs } from "./passes/orb.ts";
+import type { writeOrb } from "./orb.ts";
 import { Water } from "./passes/water.ts";
 import { FarLayers } from "./passes/far-layers.ts";
 import { LooseEntities } from "./passes/loose-entities.ts";
@@ -102,6 +105,8 @@ export interface RenderWorld {
   /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
   readonly mapId?: string;
   readonly tideEyes?: readonly TideEyeSite[];
+  /** The map's orbs (shared/world/orb.ts), drawn by their own pass at any distance. */
+  readonly orbs?: readonly OrbSite[];
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
@@ -159,6 +164,7 @@ const QUAD_INDICES = "quad indices";
 const NEAR = 1 << PASS_NEAR;
 const FAR = 1 << PASS_FAR;
 const NO_SHOTS: readonly ShotEnd[] = [];
+const NO_EYES: readonly TideEyeSite[] = [];
 /** A body in the viewer's own body's seat or arms (Scene.mountOf). */
 const MOUNT_OWN = -2;
 
@@ -431,6 +437,14 @@ export class Scene {
   /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
   static get late(): typeof FarLayers.late { return FarLayers.late; }
   static set late(code: typeof FarLayers.late) { FarLayers.late = code; }
+  /** The orbs' pass and their frame lanes (orb-late.ts), which come after the first frame. Until then a scene draws no orb. */
+  static orb: { Orbs: typeof Orbs; writeOrb: typeof writeOrb } | null = null;
+  private orbs: Orbs | null = null;
+  /** The scene every orb is held on, its place in ORB_SCENES, or -1 for the programme; and what its level is scaled by, 0 for dark. */
+  orbOnly = -1;
+  orbGain = 1;
+  /** Whether the nearest orb's halo is drawn (passes.ts `orbglow`). */
+  orbGlow = true;
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
   private readonly unseenFrom = new Uint16Array(MAX_VIEW);
   private readonly unseenAt = new Float64Array(MAX_VIEW * 4);
@@ -833,6 +847,7 @@ export class Scene {
     if (!p.lit) p.frame[FRAME.exposure] = 0;
     writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale, this.eyeHold);
     writeDropSky(p.frame, this.supply?.list ?? null, this.supply?.tick ?? 0, TICK_RATE, cam.x, cam.y, cam.z, this.world.tideEyes ?? [], this.eyeSeconds);
+    if (this.world.orbs) Scene.orb?.writeOrb(p.frame, this.world.orbs, this.world.tideEyes ?? NO_EYES, this.eyeSeconds, this.hour, cam.x, cam.y, cam.z, this.supply?.list ?? null, this.supply?.tick ?? 0, TICK_RATE, this.orbOnly, this.orbGain);
     // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, the one by the viewer's own
     // body, before what casts is chosen.
     const shadows = p.tier.shadows;
@@ -899,6 +914,7 @@ export class Scene {
       // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
       ["tide eyes", this.eyes],
       ["supply drops", this.supplyDrops],
+      ["orbs", { update: (f) => this.orbPass(f)?.update(f), draw: (f) => this.orbPass(f)?.draw(f) }],
       ["moving statics", this.movingStatics],
       ["near store", this.nearStore],
       // What the near store's meshes and the ground hide, of what is drawn so far and from here on: the meshes themselves first.
@@ -943,19 +959,31 @@ export class Scene {
     ];
   }
 
+  /** The orbs' pass, made once its code has come (orb-late.ts), where the map has an orb. */
+  private orbPass(f: Frame): Orbs | null {
+    if (!f.world.orbs || !Scene.orb) return null;
+    const pass = (this.orbs ??= new Scene.orb.Orbs(this.assets));
+    pass.glow = this.orbGlow;
+    return pass;
+  }
+
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires } = this;
+    const orbCards = this.world.orbs ? (this.orbs?.cards ?? null) : null;
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
     this.damage.build(cam, this.now);
     this.dust.build(cam, this.now);
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0));
     const particles = p.detailCount;
+    // An orb's halo first of the cards, so what is nearer is drawn over it.
+    orbCards?.write(p);
+    const blurs = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
     patrolLights.write(p);
@@ -984,7 +1012,8 @@ export class Scene {
     const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
     this.put.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
     this.put.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
-    this.put.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
+    if (orbCards) this.put.drawDetails(particles, blurs - particles, DRAW_BLEND, orbCards.passes(cam));
+    this.put.drawDetails(blurs, lamps - blurs, DRAW_BLEND, rotorBlur.passes(cam));
     this.put.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.put.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
     this.put.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));

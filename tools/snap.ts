@@ -22,6 +22,7 @@ import { writeBones } from "../client/core/render/characters.ts";
 import { DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER, type TextureUpload } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import "../client/core/render/city-late.ts";
+import "../client/core/render/orb-late.ts";
 import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";
@@ -320,7 +321,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const motion = map ? { motion: { states: () => states, tick: () => 0, statics: () => map.statics } } : {};
   const tideEyes = map ? map.tideEyes : [{ ...PROVING_OBELISK, color: "blue" as const, radius: 14, y: hf.heightAt(PROVING_OBELISK.x, PROVING_OBELISK.z) }];
   const held = map && city ? { city: { statics: new CityStatics(dims, map.statics, reg), complete: () => true } } : {};
-  const scene = new Scene({ mapId: map?.id, tideEyes, dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion, ...held }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  const scene = new Scene({ mapId: map?.id, tideEyes, ...(map?.orbs ? { orbs: map.orbs } : {}), dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion, ...held }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
   cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;

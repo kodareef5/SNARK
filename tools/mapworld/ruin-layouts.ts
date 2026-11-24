@@ -868,6 +868,7 @@ function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, compo
         for (let q = rho; q < above - along / 4 || q === rho; q += along) ring(m, op, Math.max(0, q), foot - (k + .5) * h, finish, scale);
       });
     }
+    if (op.op === "orb") { const [u, v] = op.at ?? [0, 0]; const r = op.radius ?? 8; m.orb(u, v, r, op.y ?? r, op.turn ?? 0); }
     if (op.op === "pyramid") pyramid(m, op, rule);
     if (op.op === "wheel") wheel(m, op, rule);
     if (op.op === "vault") vault(m, selected, op, rule);

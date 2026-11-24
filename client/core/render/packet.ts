@@ -167,6 +167,11 @@ export const DRAW_HEAT_SHIFT = 17;
  * of it shows, so it is blended as such, front faces alone.
  */
 export const DRAW_FIRE = 1 << 19;
+/**
+ * An orb's screen (render/orb.ts): a flat draw of its shell, each pixel worked out from where it is on the ball by the
+ * frame block's fOrb. Drawn flat whatever materials the shell's mesh has.
+ */
+export const DRAW_ORB = 1 << 20;
 export const HEAT_WORLD = 0;
 export const HEAT_COLD = 1;
 export const HEAT_WARM = 2;
@@ -301,6 +306,8 @@ export const MAX_TIRE_CONTACTS = 8;
 /** The supply drops' streaks in the sky a frame holds, and the vec4 lanes of their section (`drops`). */
 export const DROP_STREAKS = 4;
 export const DROP_LANES = DROP_STREAKS * 2 + 3;
+/** The vec4 lanes of the orb's section (`orb`). */
+export const ORB_LANES = 8;
 
 /** A section of the frame block: its name, the first of FRAME_BLOCK's members it holds, and its floats, whole vec4s. */
 export interface FrameSection {
@@ -334,6 +341,7 @@ export const FRAME_SECTIONS = [
   { name: "drops", first: "fDrops", floats: DROP_LANES * 4 },
   { name: "optic", first: "fOptic", floats: 8 },
   { name: "made", first: "fMade", floats: MADE_READS.length * MADE_FLOATS },
+  { name: "orb", first: "fOrb", floats: ORB_LANES * 4 },
 ] as const satisfies readonly FrameSection[];
 
 /** Where each section of `rows` begins, in floats, by its name, and where the last ends, `end`. */
@@ -529,6 +537,15 @@ export const OPTIC_BURST_AT = SECTION.optic + 7;
  * made array (-1 for none) and how far it has come up, 0 to 1; then where the eye is in its tiles (texgen/slots.ts).
  */
 export const MADE_AT = SECTION.made;
+/**
+ * fOrb: the screen of the orb nearest the eye (orb.ts writeOrb). One orb is enough: a map has one, and with more only
+ * the nearest shows a picture. Its centre from the eye and its radius (0 for none); its heading's cosine and sine, the
+ * scene's clock and the clock of the scene before; the scene, the one before, how far the change has crossed and the
+ * screen's level; where it looks and the blue eye's power; the way to the sun and how full the tide is; where a change
+ * starts and how hard lightning strikes; which strike it is, and the colour of the light it casts by night
+ * (orb-light.ts); what a mirror shows of it (ORB_SEEN). Directions but the centre are in the orb's own frame.
+ */
+export const ORB_AT = SECTION.orb;
 export const OPTIC_NONE = 0;
 export const OPTIC_NIGHT = 1;
 export const OPTIC_HEAT = 2;
@@ -553,6 +570,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fDrops[${4 * 2 + 3}];
   highp vec4 fOptic, fPhosphor;
   highp vec4 fMade[${(MADE_READS.length * MADE_FLOATS) / 4}];
+  highp vec4 fOrb[${ORB_LANES}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

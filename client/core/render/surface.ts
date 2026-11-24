@@ -20,9 +20,10 @@ import { VEHICLE_GLASS_GLSL } from "./vehicle-glass.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
-import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, OPTIC_AT, OPTIC_FEED_AT, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, OPTIC_AT, ORB_AT, OPTIC_FEED_AT, type FramePacket } from "./packet.ts";
 import { FEED_FLOOR, FEED_SATURATION, FEED_TINT } from "./feed.ts";
 import { LAMP_SEES, LAMP_WASH, lampAlbedo, lampLight } from "./lamp.ts";
+import { ORB_MIRROR_GLSL, orbCast } from "./orb-light.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
@@ -298,6 +299,8 @@ export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numb
     lampAlbedo(sodium, albedo);
     direct(out, lampLight, 0, 4, sodium, metal, a * a, n, v, nv);
   }
+  // The orb's light on the point being lit (orb-light.ts `orbSees`): no shadow and no highlight.
+  if (frame[ORB_AT + 3]! > 0) for (let c = 0; c < 3; c++) out[c]! += orbCast[c]! * albedo[c]! * (1 - metal);
   const moon = moonCasts(frame);
   direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv, moon ? 1 : shade);
   direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv, moon ? shade : 1);
@@ -644,13 +647,14 @@ vec3 encoded(vec3 c) {
 /**
  * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
  * `skyShare`, `skyOn`, `skyLight`, `direct`, `lit`, `tone` and `shown`; `keyShade` is `moonCasts` as the sun's share
- * of a shade and the moon's, and `lit`'s `sodium` is lamp.ts `lampAlbedo`. `shown` takes where the point is from the
+ * of a shade and the moon's, and `lit`'s `sodium` is lamp.ts `lampAlbedo`, its gOrb orb-light.ts `orbCast`; `orbMirror`
+ * is that file's too, for what mirrors. `shown` takes where the point is from the
  * eye, and the air between (atmosphere.ts `hazed`, which a program defines after this) above water; under water,
  * today's fog. What lights includes SHADOW_GLSL after it, for `lit`'s shade. With LIGHT_TARGET defined (post.ts) it
  * shows light as it is after exposure, for the finishing pass to tone and grade, and the fog's colour as light;
  * `SHOWN_STEP` is a display step, which a text dithering what it shows takes, and 0 there.
  */
-export const LIGHT = `${FRAME_BLOCK}${CONTACT_GLSL}uniform vec3 uSky;
+export const LIGHT = `${FRAME_BLOCK}${ORB_MIRROR_GLSL}${CONTACT_GLSL}uniform vec3 uSky;
 uniform vec2 uFog;
 vec3 skyShare(vec3 f0, float rough, float nv) {
   float a = rough * rough;
@@ -684,6 +688,9 @@ vec2 keyShade(float shade) {
 #ifdef LAMP
 vec4 gLamp = vec4(0.0);
 #endif
+#ifdef ORB_LIGHT
+vec3 gOrb = vec3(0.0);
+#endif
 vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   float rough = max(mro.g, ${f(SMOOTHEST)});
   float a = rough * rough;
@@ -696,6 +703,9 @@ vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
     vec3 sodium = mix(albedo, vec3(dot(albedo, vec3(${LAMP_SEES.map(f).join(", ")}))), ${f(LAMP_WASH)});
     light += direct(gLamp.xyz, fLampColor.rgb * gLamp.w, sodium, mro.b, a * a, n, v, nv);
   }
+#endif
+#ifdef ORB_LIGHT
+  light += gOrb * albedo * (1.0 - mro.b);
 #endif
   vec2 key = keyShade(shade);
   return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) * key.x + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv) * key.y;

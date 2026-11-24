@@ -139,10 +139,12 @@ async function start() {
   const nodes = new NodeField(dim, reg, source);
   const maker = new WorkerCityMaker("city-worker.js", 2);
   const world: RenderWorld & { city?: NonNullable<RenderWorld["city"]> } = {
-    mapId: head.id, dims: dim, hf, structs, nodes: nodes.store, tideEyes: head.tideEyes,
+    mapId: head.id, dims: dim, hf, structs, nodes: nodes.store, tideEyes: head.tideEyes, ...(head.orbs ? { orbs: head.orbs } : {}),
     tops: { tops, maker }, landmarks: content?.landmarks,
   };
   const tier = tierOf("high");
+  // A map with an orb is photographed with its screen on.
+  if (head.orbs?.length) await import("../../../client/core/render/orb-late.ts");
   const renderer = new GlRenderer(canvas, pack, hf, assets, null);
   const scene = new Scene(world, reg, pack, { manifest: assets, port: new WorkerPort(assets, "assets", tier.diskBytes, null) });
   scene.assets.tier = tier;

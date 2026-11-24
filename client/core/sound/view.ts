@@ -42,6 +42,7 @@ export function soundView(session: ClientSession, sky: SkyClock | null = null): 
     airSupport: session.airSupport,
     // The supply drops are heard at the tick they are drawn at.
     supply: { list: session.supply, tick: session.tickClock },
+    orbs: session.world?.orbs,
     hour: sky ? sky.hour : hourOfDay(session.serverTick, session.dayOffset, session.clock),
     turned: sky?.turned ?? false,
     trees: (x, z, r) => (field ? field.store.query(x - r, z - r, x + r, z + r, found) : 0),

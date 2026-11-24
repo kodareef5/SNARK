@@ -21,6 +21,7 @@ import { farShadowCheck } from "./probe-lit/farshadow.ts";
 import { layersCheck } from "./probe-lit/layers.ts";
 import { litCheck } from "./probe-lit/lit.ts";
 import { nodesCheck } from "./probe-lit/nodes.ts";
+import { orbCheck } from "./probe-lit/orb.ts";
 import { postCheck } from "./probe-lit/post.ts";
 import { seamsCheck } from "./probe-lit/seams.ts";
 import { shadowCheck } from "./probe-lit/shadow.ts";
@@ -37,7 +38,7 @@ import { CHROME_FLAGS } from "./chrome.ts";
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, piecesCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, damageCheck, rotorCheck, facadeCheck, streetFinishCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, piecesCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, damageCheck, rotorCheck, facadeCheck, streetFinishCheck, orbCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
@@ -47,6 +48,8 @@ const { parsePack } = await load("pack");
 const { describePack } = await load("manifest");
 const { Heightfield } = await load("heightfield");
 const { tierOf } = await load("tiers");
+// The orb's program comes late in the game (orb-late.ts); here it is loaded up front.
+await load("orb-late");
 
 const get = async (path) => (await fetch(path)).json();
 const bytes = async (path) => new Uint8Array(await (await fetch(path)).arrayBuffer());
@@ -74,9 +77,10 @@ function unpack(p, f, blob) {
   const previous = [p.street, p.previousStreet];
   p.beginFrame();
   for (const [name, value] of Object.entries(f.scalars)) if (name === "tier") p.tier = tierOf(value); else p[name] = value;
-  if (p.tier.reflectionHz !== f.reflectionHz) {
-    const key = p.tier.name + "/" + f.reflectionHz;
-    if (!reflectionTiers.has(key)) reflectionTiers.set(key, { ...p.tier, reflectionHz: f.reflectionHz });
+  // A tier made for a check is its named tier but for these: its street picture's rate, and whether it lights by an orb.
+  if (p.tier.reflectionHz !== f.reflectionHz || p.tier.orb.light !== f.orbLight) {
+    const key = p.tier.name + "/" + f.reflectionHz + "/" + f.orbLight;
+    if (!reflectionTiers.has(key)) reflectionTiers.set(key, { ...p.tier, reflectionHz: f.reflectionHz, orb: { ...p.tier.orb, light: f.orbLight } });
     p.tier = reflectionTiers.get(key);
   }
   // An array longer than the packet's own, as the far shadow's rows are, is taken as it comes.
@@ -272,7 +276,7 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHE
     });
     return { shots: listed, raws: raws.map((s) => ({ key: s.key })) };
   };
-  const modules = await Bun.build({ entrypoints: ["client/shell/gl.ts", "client/core/render/packet.ts", "shared/pack/pack.ts", "shared/pack/manifest.ts", "shared/world/heightfield.ts", "client/core/assets/tiers.ts"].map((f) => join(ROOT, f)), target: "browser", splitting: true, format: "esm", naming: "[name].[ext]" });
+  const modules = await Bun.build({ entrypoints: ["client/shell/gl.ts", "client/core/render/packet.ts", "shared/pack/pack.ts", "shared/pack/manifest.ts", "shared/world/heightfield.ts", "client/core/assets/tiers.ts", "client/core/render/orb-late.ts"].map((f) => join(ROOT, f)), target: "browser", splitting: true, format: "esm", naming: "[name].[ext]" });
   if (!modules.success) throw new Error(modules.logs.map(String).join("\n"));
   const served = new Map<string, Blob>(modules.outputs.map((o) => [`/m/${o.path.slice(2)}`, o]));
   const pixels = new Map<string, Uint8Array>();

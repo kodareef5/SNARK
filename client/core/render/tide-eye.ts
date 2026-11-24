@@ -142,7 +142,7 @@ export function writeEyeSky(frame: Float32Array, sites: readonly TideEyeSite[], 
 }
 
 /** Whether lightning is striking at a site's clock, 0 to 1, and which strike it is. */
-function strike(t: number, seed: number, power: number, storm: number, open: number, out: { id: number }): number {
+export function strike(t: number, seed: number, power: number, storm: number, open: number, out: { id: number }): number {
   const tick = t * STRIKE_RATE + seed * 97, id = Math.floor(tick), f = tick - id;
   out.id = id;
   const chance = mix(0.06, 0.8, clamp(power * 1.2)) * sstep(0.3, 0.6, storm) + 0.04 * open;

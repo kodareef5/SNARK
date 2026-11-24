@@ -208,7 +208,8 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const sits = framed({ chunksX, chunksZ, frameX: base.info.frame[0], frameZ: base.info.frame[1] });
   const origin = [sits.originX + (world.room?.west ?? 0) * SECTOR_CHUNKS, sits.originZ + (world.room?.north ?? 0) * SECTOR_CHUNKS];
   const tideEyes = obelisks.flatMap(o => o.color ? [{ ...engine(o), color: o.color, radius: o.radius!, y: site.groundAt(o.x, o.z), yaw: o.yaw * 360 / 65536 }] : []);
-  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunksX, chunksZ], frame: [sits.frameX, sits.frameZ], origin, ...(tideEyes.length ? { tideEyes } : {}), minY: world.minY, stepY: world.stepY, seaLevel: world.sea === false ? null : 0 }, null, 2)}\n`);
+  const orbs = site.orbs.map((o) => ({ ...engine(o), y: o.y ?? site.groundAt(o.x, o.z) }));
+  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunksX, chunksZ], frame: [sits.frameX, sits.frameZ], origin, ...(tideEyes.length ? { tideEyes } : {}), ...(orbs.length ? { orbs } : {}), minY: world.minY, stepY: world.stepY, seaLevel: world.sea === false ? null : 0 }, null, 2)}\n`);
   const heights = new Uint8Array(nx * nz * 2);
   const view = new DataView(heights.buffer);
   let deepest = Infinity;

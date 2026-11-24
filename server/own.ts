@@ -6,6 +6,7 @@ import { fitBytes, type BitReader } from "../shared/net/codec.ts";
 import { TEXT_NOTICE, MAX_OPEN_NAME_BYTES, OPEN_TAKE_ONLY, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_SURVIVORS_PASS, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_VITALS, OWN_VOICE, OWN_XP, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
+import { ORB_GAIN_UNITS, orbOnly } from "../shared/world/orb.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_WATER } from "../shared/sim/vitals.ts";
 import { sendKept } from "./balls.ts";
@@ -172,6 +173,8 @@ export function addOwnState(ctx: OwnContext): void {
           (rules.on("bShowCreativeMode") ? RULE_CREATIVE : 0) |
           (rules.on("SurvivorsBlock") ? 0 : RULE_SURVIVORS_PASS),
       );
+      w.u8(orbOnly(rules.text("OrbScene")) + 1);
+      w.u8(Math.round(Math.min(4, Math.max(0, rules.num("OrbBrightness"))) * ORB_GAIN_UNITS));
     },
   });
   // The voice token is sent once to each connection.
