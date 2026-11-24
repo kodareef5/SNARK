@@ -1,13 +1,15 @@
 // The thatch tier's building pieces, made by the thatch recipe (tools/pack/pieces/thatch.ts) from the forms content
-// places: `bun run art -- core:thatch` builds them with no Blender. Each replaces the grey box of the structure with
-// its id. model.py, pieces.py and kit.py are what the recipe was ported from, kept until every tier is made this way.
+// places and its share of the forms to come, and its trims: the pole at a corner, the skirt and the ridge's roll.
+// `bun run art -- core:thatch` builds them with no Blender. Each replaces the grey box of the structure with its id; a
+// form no kind uses yet and a trim are in the pack for the lanes that draw them.
+// model.py, pieces.py and kit.py are what the recipe was ported from, kept until every tier is made this way.
 
-import { FORMS } from "../../../../../content/building/forms.ts";
+import { FORMS, PLANNED_FORMS } from "../../../../../content/building/forms.ts";
 import type { FormDef } from "../../../../../shared/world/lattice/forms.ts";
-import { MADE_PIECE_TRIANGLES } from "../../../../../tools/art/check.ts";
+import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
-import { statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
-import { THATCH, THATCH_FORMS, THATCH_JOINTED, THATCH_SOLIDS } from "../../../../../tools/pack/pieces/thatch.ts";
+import { errorOf, statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
+import { THATCH, THATCH_FORMS, THATCH_JOINTED, THATCH_PLANNED, THATCH_SOLIDS } from "../../../../../tools/pack/pieces/thatch.ts";
 import { bakeTier } from "../../../../../tools/pack/pieces/tier.ts";
 import type { SourceMesh } from "../../../../../tools/pack/write.ts";
 
@@ -34,7 +36,7 @@ const MATERIALS = {
   earth: picture("earth", { tiles: 1.5 }),
 };
 const TOP = 2048;
-const THATCHED: Readonly<Record<string, FormDef>> = Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]));
+const THATCHED: Readonly<Record<string, FormDef>> = Object.fromEntries([...THATCH_FORMS.map((name) => [name, FORMS[name]] as const), ...THATCH_PLANNED.map((name) => [name, PLANNED_FORMS[name]] as const)]);
 
 /**
  * The tier's meshes for `forms`, and its trims with them where asked; without `posts`, as its walls are once joints
@@ -53,9 +55,12 @@ export function bakeThatch(forms: Readonly<Record<string, FormDef>>, trims = fal
 
 export default {
   kind: "pieces",
-  source: { bake: () => bakeThatch(THATCHED) },
+  source: { bake: () => bakeThatch(THATCHED, true) },
   // Each level is built for its distance and states how far it lies from the finest; the check prints what it measures.
-  pieces: Object.entries(THATCHED).map(([name, form]) => ({ id: `core:${name}_thatch`, object: name, errors: statedErrors(THATCH, name, form) })),
+  pieces: [
+    ...Object.entries(THATCHED).map(([name, form]) => ({ id: `core:${name}_thatch`, object: name, errors: statedErrors(THATCH, name, form) })),
+    ...Object.entries(THATCH.trims!()).map(([name, shapes]) => ({ id: `core:${name}_thatch`, object: name, errors: shapes.slice(1).map((shape, k) => errorOf(shape, k + 1)), triangles: TRIM_TRIANGLES[name]!, ...(shapes[3]!.triangles < 4 ? { open: 3 } : {}) })),
+  ],
   materials: MATERIALS,
   // Six materials, since each piece is made of its own thing: 13.3 MB each at the top size, a quarter of that on medium.
   budgets: { triangles: MADE_PIECE_TRIANGLES.map(([, most]) => most), texture: { top: TOP, megabytes: 80 } },
