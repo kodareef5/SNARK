@@ -12,7 +12,7 @@ import { BTN_SPRINT, Body, stepBody } from "../../shared/sim/character.ts";
 import { BAIL } from "../../shared/sim/skate-state.ts";
 import { stepVehicleBody, vehicleStep } from "../../shared/sim/vehicle-body.ts";
 import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
-import { landmarkKinds } from "../../shared/world/city.ts";
+import { floatingKinds, landmarkKinds } from "../../shared/world/city.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { MAX_CORNERS, hullFault } from "../../shared/world/convex.ts";
 import { parseMap, readHead, writeMap } from "../../shared/world/mapfile.ts";
@@ -329,12 +329,16 @@ test("a map refuses an orb off it, unnamed, off the ground or turned by a fracti
   expect(() => writeMap(flatMap(4, { orbs: [{ ...SITE, centre: 0 }, { ...SITE, name: "Other", yaw: 65535 }] }))).not.toThrow();
 });
 
-test("the far city, the blocks and the far feed leave the shell out", () => {
-  const [landmark, feed] = [landmarkKinds(reg), pieceShapes(reg).far];
-  for (const c of orbShell(R, UP)) expect([landmark[reg.index.get(c.kind)!], feed[reg.index.get(c.kind)!]]).toEqual([1, 0]);
-  // A block of the city is in both.
-  const block = reg.index.get("core:zruin_zmass8_steel")!;
-  expect([landmark[block], feed[block]]).toEqual([0, 1]);
+test("the far city, the blocks, the far shadow and the far feed leave the shell out", () => {
+  const [landmark, floating, feed] = [landmarkKinds(reg), floatingKinds(reg), pieceShapes(reg).far];
+  for (const c of orbShell(R, UP)) {
+    const k = reg.index.get(c.kind)!;
+    expect([landmark[k], floating[k], feed[k]]).toEqual([1, 1, 0]);
+  }
+  // A Tide Eye's collider is left out the same way, and a block of the city is in them all.
+  const [spar, block] = [reg.index.get("core:zztide_eye_spar")!, reg.index.get("core:zruin_zmass8_steel")!];
+  expect([landmark[spar], floating[spar], feed[spar]]).toEqual([1, 1, 0]);
+  expect([landmark[block], floating[block], feed[block]]).toEqual([0, 0, 1]);
 });
 
 test("a server and its clients hold their map's orbs", () => {
