@@ -162,10 +162,12 @@ try {
   await phase("Mixed fire", async () => {
     await shooter.value("ctrl.mouseButton(0,true)");
     for (let i = 0; i < 2; i++) {
+      await until(() => observer.value<boolean>("s.own.rounds > 0"), "launcher reload", 8000);
       await observer.value("ctrl.mouseButton(0,true)");
-      await until(() => server.host.projectiles.blasts > blasts + i, "rocket impact", 6000);
+      await Bun.sleep(200);
       await observer.value("ctrl.mouseButton(0,false)");
-      await Bun.sleep(3500);
+      await until(() => server.host.projectiles.blasts > blasts + i, `rocket ${i + 1} impact`, 6000);
+      await Bun.sleep(i === 0 ? 4500 : 2600);
     }
     await shooter.value("ctrl.mouseButton(0,false)");
   });
