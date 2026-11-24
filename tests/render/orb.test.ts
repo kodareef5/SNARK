@@ -54,7 +54,7 @@ function directions(count: number): number[][] {
 const MOMENTS: readonly (readonly [seconds: number, hour: number])[] = [[362, 12], [371.5, 23], [380, 23], [383.7, 6], [440, 18.2], [475.9, 0], [3.3, 9]];
 const colour = [0, 0, 0];
 
-test("every scene is finite and in range over the ball, at every footprint and moment", () => {
+test("every scene is finite and in range over the ball at every footprint", () => {
   const ball = directions(300);
   for (let which = 0; which < ORB_SCENES.length; which++) {
     for (const [seconds, hour] of MOMENTS) {
@@ -120,7 +120,7 @@ test("a scene is quieter as the footprint grows", () => {
   }
 });
 
-test("a change shows one scene or the other at each place, from the side facing the blue eye, and ends complete", () => {
+test("a change shows one scene or the other at each place, and ends complete", () => {
   const ball = directions(500), cast = 10 * ORB_HOLD + CAST_PHASE;
   const show = orbShow(cast + 1, { scene: 0, before: 0, wipe: 0 });
   expect(show.scene).not.toBe(show.before);
@@ -174,7 +174,7 @@ test("a change shows one scene or the other at each place, from the side facing 
   }
 });
 
-test("pucks are evenly spaced at every height, tile each ring with no gap or overlap, and are off past their fade", () => {
+test("pucks are evenly spaced, tile every ring whole, and are off past their fade", () => {
   const rings = puckRings(78), a: Puck = { ring: 0, count: 0, x: 0, y: 0, z: 0, off: 0 }, b = { ...a };
   expect(Math.abs((Math.PI * 78) / rings - PUCK)).toBeLessThan(0.001);
   let fewest = Infinity;
@@ -243,7 +243,7 @@ test("pucks are evenly spaced at every height, tile each ring with no gap or ove
   expect(Math.abs(sum / plain - 1)).toBeLessThan(0.12);
 });
 
-test("the level is lower by night than at noon as light before exposure, and both are finite", () => {
+test("the level is lower by night than at noon before exposure, and finite", () => {
   const lights = theSky().lights, noon = exposureFor(12, lights), night = exposureFor(0, lights);
   expect(night).toBeGreaterThan(1000 * noon);
   for (const e of [noon, night, exposureFor(18, lights)]) expect(Number.isFinite(orbRaw(e)) && orbRaw(e) > 0).toBe(true);
@@ -255,7 +255,7 @@ test("the level is lower by night than at noon as light before exposure, and bot
   expect([orbLevel(0), orbRaw(0)]).toEqual([ORB_FLAT, ORB_FLAT]);
 });
 
-test("the lanes hold the nearest orb, the programme's scene and where the Watcher looks, the same for every eye", () => {
+test("the lanes hold the nearest orb, its scene and the Watcher's look for every eye", () => {
   const far: OrbSite = { ...SITE, name: "Far", x: 5000 };
   const frame = new Float32Array(FRAME_FLOATS), again = new Float32Array(FRAME_FLOATS);
   const seconds = 7 * ORB_HOLD + CAST_PHASE + 100, tick = seconds * RATE;
@@ -338,7 +338,7 @@ function stage(meshes: readonly string[]) {
   return { from, wanted, packet, f };
 }
 
-test("the pass draws a shell and a plinth a site at any distance, marks the shell for its program, and skips what is missing", () => {
+test("the pass draws shell and plinth at any distance and skips missing meshes", () => {
   const whole = stage(["core:orb/plinth", "core:orb/shell"]);
   for (const metres of [150, 900, 8000]) {
     const draws = whole.from(metres);
@@ -387,7 +387,7 @@ function world(tier: string, thePack: Pack, orbs: readonly OrbSite[] | null = [{
   return { scene, cam, hf };
 }
 
-test("a scene with an orb writes its lanes and draws its screen, which the rasterizer shows by the twin, on low poly too", () => {
+test("a scene writes the orb's lanes and draws its screen, on low poly too", () => {
   for (const tier of ["lowpoly", "medium"]) {
     const { scene, cam, hf } = world(tier, pack());
     scene.eyeSeconds = 5 * ORB_HOLD + CAST_PHASE + 30;
