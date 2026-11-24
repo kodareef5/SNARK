@@ -104,8 +104,23 @@ export class CharacterScreen implements Screen {
       if (kind === 0) this.choose(TABS.length + part.index);
       return true;
     }
-    if (part) return this.parts[part.index]!.pointer?.(kind, part.local, x, y, button, c) ?? false;
+    if (part) return this.shown(part.index)?.pointer?.(kind, part.local, x, y, button, c) ?? true;
     return kind === 0 && c.session !== null && c.registry !== null && this.click(key, c.session, c.registry);
+  }
+
+  text(key: number, value: string, c: ScreenCtx): boolean {
+    const part = partOf(key, KEY_CHAR_PARTS, this.parts.length);
+    return part !== null && part.local >= 0 && (this.shown(part.index)?.text?.(part.local, value, c) ?? true);
+  }
+
+  value(key: number, value: number, c: ScreenCtx): boolean {
+    const part = partOf(key, KEY_CHAR_PARTS, this.parts.length);
+    return part !== null && part.local >= 0 && (this.shown(part.index)?.value?.(part.local, value, c) ?? false);
+  }
+
+  /** Part `index`, if its tab is the one shown: a key of a part whose tab has been left, before the frame is drawn again, reaches nothing. */
+  private shown(index: number): ScreenPart | null {
+    return this.tab === TABS.length + index ? this.parts[index] ?? null : null;
   }
 
   private choose(tab: number): void {

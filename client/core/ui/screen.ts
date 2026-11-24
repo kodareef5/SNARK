@@ -106,7 +106,7 @@ export interface Screen {
   /** `kind` 0 for a press, 1 a release, 2 a move, over a node this screen drew. True if it used the event. */
   pointer?(kind: number, key: number, x: number, y: number, button: number, c: ScreenCtx): boolean;
   /** A field's new text. True if the field was this screen's. */
-  text?(key: number, value: string): boolean;
+  text?(key: number, value: string, c: ScreenCtx): boolean;
   /** A slider's new value, 0 to 1. True if the slider was this screen's. */
   value?(key: number, value: number, c: ScreenCtx): boolean;
   /** The server's answer to command `seq`. */
@@ -135,8 +135,16 @@ export interface ScreenPart {
   /** Its tab's words. */
   readonly label: string;
   build(f: UiFrame, at: PartBox, k: PartKeys, c: ScreenCtx): void;
+  /** How many pages it takes in `at`, for its host's pager. One where it does not say. */
+  pages?(at: PartBox, c: ScreenCtx): number;
   /** `local` is the part's own key. True if it used the event. */
   pointer?(kind: number, local: number, x: number, y: number, button: number, c: ScreenCtx): boolean;
+  /** A field of its own, `local`, has new text. True if it took it. */
+  text?(local: number, value: string, c: ScreenCtx): boolean;
+  /** A slider of its own, `local`, has a new value from 0 to 1. True if it took it. */
+  value?(local: number, value: number, c: ScreenCtx): boolean;
+  /** Left and right on its focused control: true or false if it decided, undefined to leave it to a slider. */
+  adjust?(local: number, by: number, end: boolean, c: ScreenCtx): boolean | undefined;
 }
 
 /** Keys a host gives each part: the first for its tab, then PART_KEYS - 1 of the part's own. */

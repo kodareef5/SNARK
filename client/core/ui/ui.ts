@@ -392,7 +392,7 @@ export class Ui {
     }
     if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
-    else for (const s of this.screens) if (s.text?.(key, value)) return;
+    else for (const s of this.screens) if (s.text?.(key, value, this.ctx)) return;
   }
 
   build(aspect: number, hud: HudModel, session: ClientSession | null): void {

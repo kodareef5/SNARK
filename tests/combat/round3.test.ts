@@ -6,7 +6,8 @@ import { App } from "../../client/core/app.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { FOV_MAX, SENSITIVITY_MIN, Settings, VOLUME_MAX } from "../../client/core/settings.ts";
 import { KEY_HIT_MARK } from "../../client/core/ui/combat.ts";
-import { KEY_SETTINGS_MIC, KEY_SETTINGS_PANEL, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, buildSettings, settingsClick } from "../../client/core/ui/settings.ts";
+import { KEY_SETTINGS_MIC, KEY_SETTINGS_PANEL, KEY_SETTINGS_PARTS, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, buildSettings, settingsClick } from "../../client/core/ui/settings.ts";
+import { PART_KEYS, type ScreenCtx } from "../../client/core/ui/screen.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { createHost } from "../../server/host.ts";
 import type { Rules } from "../../server/settings/rules.ts";
@@ -362,8 +363,9 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   f.begin(16 / 9);
   buildSettings(f, s);
   expect([f.find(KEY_SETTINGS_ROW + 1)!.text, f.find(KEY_SETTINGS_ROW + 9)!.text]).toEqual(["off", "100 degrees"]);
-  s.tab = 2; f.begin(16/9); buildSettings(f,s);
-  expect(f.find(KEY_SETTINGS_ROW + 5)!.text).toBe("20%");
+  // The Input tab is a part of the page, drawn with its own keys: its first row's value is its own key 5.
+  s.tab = 2; f.begin(16/9); buildSettings(f,s,0,0,null,{ settings: s, focus: 0 } as ScreenCtx);
+  expect(f.find(KEY_SETTINGS_PARTS + 2 * PART_KEYS + 1 + 5)!.text).toBe("20%");
   s.tab = 1; f.begin(16/9); buildSettings(f,s);
   expect([f.find(KEY_SETTINGS_ROW + 13)!.text, f.find(KEY_SETTINGS_ROW + 17)!.text]).toEqual(["100%", "hold"]);
   for (let n = 0; n < 40; n++) settingsClick(KEY_SETTINGS_ROW + 12 + 3, s);

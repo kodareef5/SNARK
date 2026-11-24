@@ -14,7 +14,9 @@ import { flatWorld } from "../fixtures/world.ts";
 import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
-import { K_BUTTON, baseKey } from "../../client/core/ui/nodes.ts";
+import { K_BUTTON, K_INPUT, K_SLIDER, baseKey } from "../../client/core/ui/nodes.ts";
+import { KEY_SETTINGS_PARTS, KEY_SETTINGS_TAB, SETTING_GROUPS } from "../../client/core/ui/settings.ts";
+import { INPUT_SETTINGS } from "../../client/core/ui/settings-input.ts";
 import { Chart } from "../../client/core/tactical.ts";
 import { KEY_MAP_IMAGE, type MapScreen } from "../../client/core/ui/screens.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
@@ -309,4 +311,70 @@ test("two parts both drawing their own key 1 show as two tabs, and each click re
     ui.pointer(0, button.key, 0, 0, 0, session);
   }
   expect(pressed).toEqual(["Brands 1", "Tribe 1"]);
+});
+
+test("a part's old button pressed after its tab was left, before the next frame, does nothing; its fields and sliders reach it", () => {
+  const ui = new Ui(), { session } = fakeSession();
+  const sheet = ui.screen<CharacterScreen>("character");
+  const heard: string[] = [];
+  /** A part with a button at its key 1, a slider at its key 2 and a field at its key 3, each telling what reached it. */
+  const part = (name: string): ScreenPart => ({
+    name,
+    label: name,
+    build(f, at, k) {
+      const b = f.add(k.key(1), K_BUTTON, at.x, at.y, 80, 30, S_BUTTON);
+      b.text = `${name} button`;
+      b.interactive = true;
+      f.add(k.key(2), K_SLIDER, at.x, at.y + 40, 120, 30, S_BUTTON).interactive = true;
+      f.add(k.key(3), K_INPUT, at.x, at.y + 80, 120, 30, S_BUTTON).interactive = true;
+    },
+    pointer(kind, local) {
+      if (kind === 0) heard.push(`${name} pressed ${local}`);
+      return true;
+    },
+    value(local, value) {
+      heard.push(`${name} slid ${local} to ${value}`);
+      return true;
+    },
+    text(local, value) {
+      heard.push(`${name} typed ${local}: ${value}`);
+      return true;
+    },
+  });
+  sheet.parts.push(part("A"), part("B"));
+  sheet.open = true;
+  let nodes = drawn(ui, sheet, session);
+  const tab = (name: string) => nodes.find((n) => n.text === name)!.key;
+  ui.pointer(0, tab("A"), 0, 0, 0, session);
+  nodes = drawn(ui, sheet, session);
+  const button = nodes.find((n) => n.text === "A button")!.key;
+  const slide = nodes.find((n) => n.kind === K_SLIDER)!.key, field = nodes.find((n) => n.kind === K_INPUT)!.key;
+  ui.pointer(0, button, 0, 0, 0, session);
+  ui.input(slide, ".5");
+  ui.input(field, "Rex");
+  // To B, and A's controls pressed and edited before the frame shows B.
+  ui.pointer(0, tab("B"), 0, 0, 0, session);
+  ui.pointer(0, button, 0, 0, 0, session);
+  ui.input(slide, ".9");
+  ui.input(field, "late");
+  expect(heard).toEqual(["A pressed 1", "A slid 2 to 0.5", "A typed 3: Rex"]);
+});
+
+test("the settings page's Input tab is a part: its slider moves by pointer, value and arrows, and an edit after leaving it is dropped", () => {
+  const ui = new Ui(), hud = new HudModel(), menu = ui.screen<MenuScreen>("menu");
+  menu.menu = menu.options = true;
+  ui.settings.tab = SETTING_GROUPS.findIndex((t) => t.part === INPUT_SETTINGS);
+  ui.build(16 / 9, hud, null);
+  const slider = ui.frame.nodes.slice(0, ui.frame.count).find((n) => n.kind === K_SLIDER && n.label === "Mouse sensitivity")!;
+  expect(slider.key).toBeGreaterThanOrEqual(KEY_SETTINGS_PARTS);
+  ui.pointer(0, slider.key, slider.x + slider.w / 2, slider.y, 0, null);
+  ui.input(slider.key, ".5");
+  expect(ui.settings.sensitivity).toBe(1.6);
+  ui.key("ArrowRight", true, false, null);
+  expect(ui.settings.sensitivity).toBe(1.7);
+  // Mid-edit, the Display tab is chosen; what comes for the Input tab's slider before the frame is drawn again is dropped.
+  ui.pointer(0, KEY_SETTINGS_TAB, 0, 0, 0, null);
+  ui.input(slider.key, ".9");
+  ui.key("ArrowRight", true, false, null);
+  expect([ui.settings.tab, ui.settings.sensitivity]).toEqual([0, 1.7]);
 });

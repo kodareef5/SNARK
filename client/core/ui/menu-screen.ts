@@ -7,7 +7,8 @@ import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
 import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_RESUME, KEY_MENU_SETTINGS, menuLink } from "./menu.ts";
 import { K_SLIDER, type UiFrame } from "./nodes.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
-import { buildSettings, KEY_SETTINGS_PANEL, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
+import { buildSettings, KEY_SETTINGS_PANEL, KEY_SETTINGS_PARTS, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, MOST_SETTING_TABS, settingsAdjust, settingsClick, settingsPart, settingsValue } from "./settings.ts";
+import { PART_KEYS } from "./screen.ts";
 import type { StoragePage } from "./storage.ts";
 import type { SiteLink } from "../travel.ts";
 
@@ -29,6 +30,8 @@ export class MenuScreen implements Screen {
     { from: 5600, count: 400 },
     { from: 7000, count: 200 },
     { from: 8000, count: 400 },
+    // The keys of the settings page's parts (settings.ts KEY_SETTINGS_PARTS).
+    { from: KEY_SETTINGS_PARTS, count: MOST_SETTING_TABS * PART_KEYS },
     // The keyboard's and the pad's pictures on the controls page (keyboard.ts, controller.ts).
     { from: 3100000, count: 20000 },
     { from: 3200000, count: 1000 },
@@ -128,12 +131,25 @@ export class MenuScreen implements Screen {
   /** Left and right on the focused control. Undefined leaves it to a slider. */
   adjust(key: number, by: number, end: boolean, c: ScreenCtx): boolean | undefined {
     if (this.menu && this.creative) return !end && this.creativeScreen.adjust(key, by, this.shift);
+    const part = this.options ? settingsPart(key, c.settings) : null;
+    if (part === "stale") return false;
+    // Undefined from the part leaves the step to a slider, as the page's own rows do.
+    if (part) return part.part.adjust ? part.part.adjust(part.local, by, end, c) : undefined;
     if (c.frame.find(key)?.kind === K_SLIDER) return undefined;
     return !end && this.options && settingsAdjust(key, by, c.settings);
   }
 
   pointer(kind: number, key: number, x: number, y: number, button: number, c: ScreenCtx): boolean {
     const session = c.session, interactive = c.frame.find(key)?.interactive === true;
+    // A part of the settings page has its own presses, and none once its tab has been left.
+    const part = this.options ? settingsPart(key, c.settings) : null;
+    if (part === "stale") return true;
+    if (part) {
+      if (kind === 2 && interactive) c.hover(key);
+      if (kind === 0 && interactive) c.focusTo(key);
+      part.part.pointer?.(kind, part.local, x, y, button, c);
+      return true;
+    }
     if (!this.menu) return kind === 0 && this.options && settingsClick(key, c.settings);
     if (kind === 2 && interactive) c.hover(key);
     if (this.creative && session && (kind !== 0 || button === 0) && this.creativeScreen.pointer(kind, key, x, y, session)) {
@@ -174,21 +190,28 @@ export class MenuScreen implements Screen {
     return true;
   }
 
-  text(key: number, value: string): boolean {
+  text(key: number, value: string, c: ScreenCtx): boolean {
+    const part = this.options ? settingsPart(key, c.settings) : null;
+    if (part === "stale") return true;
+    if (part) return part.part.text?.(part.local, value, c) ?? false;
     if (key !== KEY_CREATIVE_PASSWORD) return false;
     this.creativeScreen.edit(value);
     return true;
   }
 
   value(key: number, value: number, c: ScreenCtx): boolean {
-    return this.options && settingsValue(key, value, c.settings);
+    if (!this.options) return false;
+    const part = settingsPart(key, c.settings);
+    if (part === "stale") return false;
+    if (part) return part.part.value?.(part.local, value, c) ?? false;
+    return settingsValue(key, value, c.settings);
   }
 
   build(f: UiFrame, c: ScreenCtx): void {
     const session = c.session, hud = c.hud;
     if (!hud) return;
-    if (!this.menu) return buildSettings(f, c.settings, hud.micLevel);
-    if (this.options) buildSettings(f, c.settings, hud.micLevel, c.focus, this.storage);
+    if (!this.menu) return buildSettings(f, c.settings, hud.micLevel, 0, null, c);
+    if (this.options) buildSettings(f, c.settings, hud.micLevel, c.focus, this.storage, c);
     else if (this.help) buildControls(f, this.helpDevice, c.focus, this.helpGroup, c.settings.padGlyphs);
     else if (this.creative && session) {
       this.creativeScreen.build(f, session, hud, c.focus);
