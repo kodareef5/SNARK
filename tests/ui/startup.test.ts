@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
-import { constrainedConnection, startupBudget, StartupQueue, survivorPreview } from "../../client/entry/startup-budget.ts";
+import { constrainedConnection, startupBudget, StartupQueue, survivorPreview } from "../../client/core/startup-budget.ts";
 
 const file = (url: string, rank = 0, wireLimit = 24, decodedLimit = 64) => ({ url, rank, wireLimit, decodedLimit, keep: true });
 const signal = () => new AbortController().signal;
 const tick = () => new Promise<void>((done) => setTimeout(done, 0));
 const small = () => new Response("cached", { headers: { "content-length": "6" } });
+const makeQueue = (fetch: (url: string, stop: AbortSignal) => Promise<Response>, bytes = 100, lanes = 2) =>
+  new StartupQueue({ fetch, stop: () => new AbortController() }, bytes, lanes);
 
 test("a constrained connection spends no speculative startup bytes", () => {
   for (const hint of [{ saveData: true }, { effectiveType: "3g" }, { downlink: 0.8 }, { rtt: 400 }]) {
@@ -28,7 +30,7 @@ test("a survivor preview needs consent on a slow link and a visible tab", () => 
 
 test("first-frame work takes priority and duplicate callers share one transfer", async () => {
   const pending: { url: string; done: (response: Response) => void }[] = [];
-  const queue = new StartupQueue((url) => new Promise((done) => pending.push({ url, done })), 100);
+  const queue = makeQueue((url) => new Promise((done) => pending.push({ url, done })));
   const ground = queue.ask(file("/ground", 1), signal());
   const head = queue.ask(file("/head", 3), signal());
   const boot = queue.ask(file("/boot", 2), signal());
@@ -49,7 +51,7 @@ test("first-frame work takes priority and duplicate callers share one transfer",
 
 test("small jobs wait behind higher priority work that needs a reservation", async () => {
   const pending: { url: string; done: (response: Response) => void }[] = [];
-  const queue = new StartupQueue((url) => new Promise((done) => pending.push({ url, done })), 100);
+  const queue = makeQueue((url) => new Promise((done) => pending.push({ url, done })));
   const active = queue.ask(file("/boot", 3, 60), signal());
   await tick();
   const large = queue.ask(file("/land", 2, 64), signal());
@@ -68,11 +70,10 @@ test("small jobs wait behind higher priority work that needs a reservation", asy
 
 test("canceling one caller keeps a shared request until its last caller leaves", async () => {
   let network: AbortSignal | null = null;
-  const queue = new StartupQueue((_url, init) => {
-    const passed = init.signal!;
+  const queue = makeQueue((_url, passed) => {
     network = passed;
     return new Promise((_done, reject) => passed.addEventListener("abort", () => reject(passed.reason), { once: true }));
-  }, 100);
+  });
   const a = new AbortController(), b = new AbortController();
   const first = queue.ask(file("/head"), a.signal);
   const second = queue.ask(file("/head"), b.signal);
@@ -89,12 +90,13 @@ test("canceling one caller keeps a shared request until its last caller leaves",
 
 test("the transfer budget uses encoded bytes and caps unknown-length bodies", async () => {
   const requests: string[] = [];
-  const queue = new StartupQueue(async (url) => {
+  const bytes = 20;
+  const queue = makeQueue(async (url) => {
     requests.push(url);
     if (url === "/compressed") return new Response("ab".repeat(15), { headers: { "content-length": "8", "content-encoding": "br" } });
     if (url === "/unknown") return new Response("ab".repeat(20));
     return small();
-  }, 20, 1);
+  }, bytes, 1);
   expect((await queue.ask(file("/compressed", 1, 12), signal()))?.data?.length).toBe(30);
   expect(await queue.ask(file("/unknown", 1, 12), signal())).toBeNull();
   expect(await queue.ask(file("/unfunded", 1, 12), signal())).toBeNull();
@@ -102,13 +104,12 @@ test("the transfer budget uses encoded bytes and caps unknown-length bodies", as
 });
 
 test("partial responses never populate whole-file warmups", async () => {
-  const calls: { headers?: RequestInit["headers"]; priority: "low" }[] = [];
-  const queue = new StartupQueue(async (_url, init) => {
-    calls.push(init);
+  const calls: string[] = [];
+  const queue = makeQueue(async (url) => {
+    calls.push(url);
     return calls.length === 1 ? new Response("partial", { status: 206 }) : small();
-  }, 100);
+  });
   expect(await queue.ask(file("/whole"), signal())).toBeNull();
   expect((await queue.ask(file("/whole"), signal()))?.bytes).toBe(6);
-  expect(calls).toHaveLength(2);
-  expect(calls.every((init) => !init.headers && init.priority === "low")).toBe(true);
+  expect(calls).toEqual(["/whole", "/whole"]);
 });

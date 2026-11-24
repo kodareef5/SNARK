@@ -1,6 +1,7 @@
 import { readHead, type MapHead, type MapPart } from "../../shared/world/mapfile.ts";
 import { firstFrameParts, partDistance } from "../core/map-first.ts";
-import { connectionHint, constrainedConnection, startupBudget, StartupQueue } from "./startup-budget.ts";
+import { constrainedConnection, startupBudget } from "../core/startup-budget.ts";
+import { connectionHint, startupQueue } from "./startup-budget.ts";
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -17,12 +18,12 @@ interface EntryMedia {
 type Say = (message: string) => void;
 
 class WorldWarmup {
-  readonly queue: StartupQueue;
+  readonly queue: ReturnType<typeof startupQueue>;
   readonly base: string;
 
   constructor(base: string, budget: number) {
     this.base = base;
-    this.queue = new StartupQueue(fetch, budget);
+    this.queue = startupQueue(budget);
   }
 
   private async json<T>(path: string, signal: AbortSignal): Promise<T | null> {

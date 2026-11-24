@@ -1,4 +1,5 @@
-import { connectionHint, constrainedConnection, survivorPreview } from "./startup-budget.ts";
+import { constrainedConnection, survivorPreview } from "../core/startup-budget.ts";
+import { connectionHint } from "./startup-budget.ts";
 
 const box = document.querySelector<HTMLElement>("#scenery")!,
   motion = document.querySelector<HTMLButtonElement>("#motion")!;
