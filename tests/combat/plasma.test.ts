@@ -4,7 +4,10 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import "../../client/core/render/city-late.ts";
-import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
+import { DRAW_SKINNED, DRAW_TEXTURED } from "../../client/core/render/packet.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, TICK_DT } from "../../shared/coords.ts";
 import { BOLT_BACK_MOST, bolt, packBolt, readBolt, writeBolt } from "../../shared/net/bolts.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
@@ -122,8 +125,8 @@ test("energy burns thatch, chars wood and leaves stone and metal whole", () => {
   expect([takes("mat_thatch"), takes("mat_wood"), takes("mat_stone"), takes("mat_metal")]).toEqual([1, 0.25, 0, 0]);
 });
 
-test("a bolt is told in a hundred bits: its start to 2 cm, its way to a twentieth of a degree", () => {
-  const w = new BitWriter(64);
+test("a bolt is told in a hundred and one bits: its start to 2 cm, its way to a twentieth of a degree", () => {
+  const w = new BitWriter(96);
   const packed = new Uint32Array(10);
   const way = [Math.sin(2.1) * Math.cos(-0.4), Math.sin(-0.4), Math.cos(2.1) * Math.cos(-0.4)] as const;
   packBolt(5123.4567, 87.654, 9001.2345, way[0], way[1], way[2], packed, 0);
@@ -132,12 +135,13 @@ test("a bolt is told in a hundred bits: its start to 2 cm, its way to a twentiet
   const first = w.pos;
   writeBolt(w, packed, 5, id("plasma_cell"), 99, true, id("plasma_cell"));
   // The first of a message names its ammunition, and each after it of the same says so in a bit.
-  expect(first).toBe(116);
-  expect(w.pos - first).toBe(100);
-  // One that had ended when it was told says how far it had gone, in 13 bits more.
+  expect(first).toBe(117);
+  expect(w.pos - first).toBe(101);
+  // One that had ended when it was told says how far it had gone, in 13 bits more; one that left slower than its
+  // ammunition flies, a bow's half drawn, says at what share in 8. The ticks since it left are whole, and never one more.
   const second = w.pos;
-  writeBolt(w, packed, 0, id("plasma_cell"), 3, false, id("plasma_cell"), 19.6);
-  expect(w.pos - second).toBe(113);
+  writeBolt(w, packed, 0, id("plasma_cell"), 3.9, false, id("plasma_cell"), 19.6, 0.75);
+  expect(w.pos - second).toBe(122);
   const r = new BitReader();
   r.reset(w.bytes());
   readBolt(r, 0);
@@ -148,9 +152,11 @@ test("a bolt is told in a hundred bits: its start to 2 cm, its way to a twentiet
   readBolt(r, bolt.ammo);
   expect([bolt.x, bolt.y, bolt.z, bolt.ammo, bolt.back, bolt.silenced]).toEqual([12.5, -3.25, 40000.75, id("plasma_cell"), BOLT_BACK_MOST, true]);
   expect(bolt.dy).toBeCloseTo(1, 6);
-  expect(bolt.ended).toBe(0);
+  expect([bolt.ended, bolt.speed]).toEqual([0, 1]);
   readBolt(r, bolt.ammo);
   expect(Math.abs(bolt.ended - 19.6)).toBeLessThan(1 / 16);
+  expect(Math.abs(bolt.speed - 0.75)).toBeLessThan(1 / 255);
+  expect(bolt.back).toBe(3);
   expect(r.overflow).toBe(false);
 });
 
@@ -243,16 +249,29 @@ test("a client whose assets stream, as the browser's do, draws its own bolt and 
   expect(boot.meshIndex.has("core:plasma_bolt")).toBe(false);
   const first = (): Manifest => parseManifest(JSON.stringify(bootManifest(manifest)));
   const h = new Harness({}, 1, 60, { dev: true });
-  const nets = [new FakeNet(files.map((f) => f.bytes), { latencyMs: 30, bytesPerSecond: 2e6 }), new FakeNet(files.map((f) => f.bytes), { latencyMs: 30, bytesPerSecond: 2e6 })];
+  // Every fetch takes 150 ms to begin, so what a shot is drawn with must have been asked for before the shot.
+  const nets = [new FakeNet(files.map((f) => f.bytes), { latencyMs: 150, bytesPerSecond: 2e6 }), new FakeNet(files.map((f) => f.bytes), { latencyMs: 150, bytesPerSecond: 2e6 })];
   const app = new App(h.join("ada", { latencyMs: 40 }, { manual: true }), h.reg, boot, { manifest: first(), port: nets[0]! });
   const eve = new App(h.join("eve", { latencyMs: 40 }, { manual: true }), h.reg, boot, { manifest: first(), port: nets[1]! });
   const drawn = [new Set<string>(), new Set<string>()];
+  /** Frames in which the shooter's own bolt was in the air, and those of them in which it was drawn with its glowing material. */
+  let flying = 0, glowing = 0;
   const run = (ms: number): void =>
     h.run(ms, (now) => {
       for (const net of nets) net.advance(now);
       [app, eve].forEach((a, k) => {
         const p = a.frame(now, 1280, 720);
-        if (p) for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_SKINNED) !== 0) drawn[k]!.add(manifest.meshes[p.drawMesh[d]!]!.id);
+        let lit = false;
+        if (p) for (let d = 0; d < p.drawCount; d++) {
+          if ((p.drawFlags[d]! & DRAW_SKINNED) === 0) continue;
+          const mesh = manifest.meshes[p.drawMesh[d]!]!.id;
+          drawn[k]!.add(mesh);
+          if (mesh === "core:plasma_bolt" && (p.drawFlags[d]! & DRAW_TEXTURED) !== 0 && manifest.materials![p.drawMaterial[d]!]!.id === "core:plasma/plasma") lit = true;
+        }
+        if (k === 0 && a.shots.flying.length > 0) {
+          flying++;
+          if (lit) glowing++;
+        }
       });
     });
   run(500);
@@ -284,6 +303,9 @@ test("a client whose assets stream, as the browser's do, draws its own bolt and 
   run(500);
   for (const seen of drawn) expect(["core:plasma_bolt", "core:plasma_flash", "core:plasma_burst"].filter((m) => !seen.has(m))).toEqual([]);
   expect(drawn[0]!.has("core:rifle_plasma")).toBe(true);
+  // From the first shot on: no frame had a bolt in the air and nothing glowing drawn for it.
+  expect(flying).toBeGreaterThan(20);
+  expect(glowing).toBe(flying);
 });
 
 /** A survivor in the middle of a wide flat map with the rifle in hand and loaded, aimed level and north, over a link of `latencyMs`. */
@@ -405,3 +427,180 @@ for (const far of [8, 20]) {
     expect(Math.abs(burst!.x - at.x)).toBeLessThan(1);
   });
 }
+
+// A gun for measuring with: it goes exactly where it looks, and its round is the rifle's bolt but for its harm.
+const LANCE: readonly Def[] = [
+  { type: "item", class: "weapon", id: "core:test_lance", stack: 1, weapon: { kind: "gun", ammo: ["core:test_lance_bolt"], clip: 1, reload: 1, uses: 100, mesh: "core:rifle", hold: "rifle" } },
+  { type: "item", class: "ammo", id: "core:test_lance_bolt", stack: 100, ammo: { damage: 10, type: "energy", speed: 240, gravity: 0, reach: 300, mesh: "core:dart" } },
+];
+
+for (const crossing of [false, true]) {
+  test(`a bolt's last piece meets a body ${crossing ? "that only reaches its line after the bolt is gone: it is not harmed" : "standing in it"}`, () => {
+    const made = compileContent([...CORE_CONTENT, ...LANCE]);
+    expect(made.errors).toEqual([]);
+    const lance = made.registry!;
+    const h = new Harness({}, 5, 30, { dev: true, map: writeMap(flatMap(48)) }, lance);
+    const s = h.join("ada");
+    h.run(1000);
+    h.say(s, "enablecheats");
+    const at = { x: 24 * CHUNK_SIZE, z: 24 * CHUNK_SIZE - 600 };
+    h.say(s, `tp ${at.x} ${at.z}`);
+    h.run(500);
+    const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
+    h.host.items.mint(rec, lance.index.get("core:test_lance")!, 1);
+    h.host.items.mint(rec, lance.index.get("core:test_lance_bolt")!, 5);
+    h.run(300);
+    takeInHand(h, s, lance.index.get("core:test_lance")!);
+    h.run(3000);
+    const pilot = h.pilots[0]!;
+    [pilot.yaw, pilot.pitch] = [0, 0];
+    h.run(300);
+    const ents = h.world.ents;
+    const ground = ents.y[h.ent(s)]!;
+    const dummy = h.host.spawnCreature("core:dummy", at.x + 60, at.z + 200, 1);
+    expect(dummy).toBeGreaterThanOrEqual(0);
+    h.run(300);
+    const shots = h.host.projectiles;
+    pilot.buttons |= BTN_PRIMARY;
+    for (let t = 0; shots.flyingCount === 0 && t < 30; t++) h.run(TICK_MS);
+    pilot.buttons &= ~BTN_PRIMARY;
+    expect(shots.flyingCount).toBe(1);
+    const bolt = shots.flyingAt(0) as unknown as { x: number; z: number; oz: number; gone: number };
+    // A body crossing at 45 m/s is 1.5 m from the line a tick before it reaches it.
+    const SPEED = 45;
+    let share = -1;
+    for (let t = 0; t < 60 && shots.flyingCount > 0; t++) {
+      const left = 300 - bolt.gone;
+      const piece = 240 * TICK_DT;
+      // The bolt's last piece is the next tick's when under one is left, and the tick before it when under two are.
+      const within = left <= piece ? 0 : left <= 2 * piece ? 1 : -1;
+      if (within >= 0) {
+        if (within === 0) share = left / piece;
+        // Just short of where the bolt is gone: on its line as that tick ends, and for one crossing, a tick's travel off before.
+        ents.setPosition(dummy, bolt.x + (crossing ? within * SPEED * TICK_DT : 0), ground, bolt.oz + 300 - 0.4);
+      }
+      h.run(TICK_MS);
+    }
+    // The last piece took under two thirds of its tick, so one crossing was still a body's width off when the bolt was gone.
+    expect(share).toBeGreaterThan(0.2);
+    expect(share).toBeLessThan(0.66);
+    expect(shots.flyingCount).toBe(0);
+    expect(shots.struck).toBe(crossing ? 0 : 1);
+  });
+}
+
+/** Two clients drawn frame by frame on level ground: ada, who shoots, 1.5 m into a range that runs north, and eve. */
+function watched(shooterMs: number, eveAt: readonly [number, number], wide = false) {
+  const h = new Harness({}, 1, 60, wide ? { dev: true, map: writeMap(flatMap(48)) } : { dev: true });
+  const pack = corePack();
+  const app = new App(h.join("ada", { latencyMs: shooterMs }, { manual: true }), h.reg, pack);
+  const eve = new App(h.join("eve", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  const run = (ms: number, each?: () => void): void =>
+    h.run(ms, (now) => {
+      app.frame(now, 1280, 720);
+      eve.frame(now, 1280, 720);
+      each?.();
+    });
+  run(500);
+  const say = (who: App, line: string): void => {
+    who.session.text(line);
+    run(300);
+  };
+  say(app, "enablecheats");
+  say(eve, "enablecheats");
+  const g = wide ? null : flatGround(h, 24, 44);
+  const at = g ? { x: g.x + 12, z: g.z + 1.5, y: g.y } : { x: 24 * CHUNK_SIZE, z: 24 * CHUNK_SIZE - 600, y: 0 };
+  say(app, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
+  say(eve, `tp ${(at.x + eveAt[0]).toFixed(3)} ${(at.z + eveAt[1]).toFixed(3)}`);
+  if (!g) at.y = h.world.ents.y[h.ent(app.session)]!;
+  /** Gives ada `kit` and puts `item` in her hand. */
+  const arm = (kit: string, item: number): void => {
+    say(app, `kit ${kit}`);
+    const inv = app.session.inventory!;
+    const from = inv.item.indexOf(item);
+    if (from !== inv.hotbar) app.session.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(inv.hotbar), w.u16(0), w.u16(item)));
+    run(150);
+    app.session.command(CMD_SELECT, (w) => w.u8(0));
+    run(6000);
+  };
+  return { h, app, eve, run, at, arm };
+}
+
+test("one a bolt hits sees it burst on their own body, and not fly on through them", () => {
+  // Eighty metres up the range: further than the server flies the bolt as it fires, so each client finds the end itself.
+  const FAR = 80;
+  const { h, app, eve, run, at, arm } = watched(20, [0, FAR], true);
+  h.host.survival.gods.add(h.client(eve.session)!.pid);
+  arm("plasma", id("rifle_plasma"));
+  app.controls.yaw = 0;
+  app.controls.pitch = Math.atan2(1.0 - 1.62, FAR);
+  app.controls.mouseButton(2, true);
+  run(1000);
+  let past = 0;
+  let burst: { x: number; z: number } | null = null;
+  app.controls.mouseButton(0, true);
+  run(100);
+  app.controls.mouseButton(0, false);
+  run(900, () => {
+    for (const f of eve.shots.flying) if (f.z > at.z + FAR + 1) past++;
+    burst ??= eve.shots.bursts[0] ? { x: eve.shots.bursts[0].x, z: eve.shots.bursts[0].z } : null;
+  });
+  expect(h.host.projectiles.struck).toBe(1);
+  expect(past).toBe(0);
+  expect(burst).not.toBeNull();
+  expect(Math.abs(burst!.z - (at.z + FAR))).toBeLessThan(1);
+  expect(Math.abs(burst!.x - at.x)).toBeLessThan(1);
+});
+
+for (const [what, far, latencyMs] of [["a bolt", 7, 20], ["a bolt", 7, 45], ["a bolt", 7, 110], ["a half-drawn arrow", 2, 45], ["a half-drawn arrow", 2, 110]] as const) {
+  test(`over a link of ${latencyMs} ms another's client never draws ${what} beyond a wall ${far} m from its muzzle`, () => {
+    const { h, app, eve, run, at, arm } = watched(latencyMs, [6, 3]);
+    h.world.structs.add(id("wall"), at.x, at.y + 1.5, at.z + far, 0, 0, 10000);
+    if (what === "a bolt") arm("plasma", id("rifle_plasma"));
+    else arm("bow", id("bow"));
+    app.controls.yaw = 0;
+    app.controls.pitch = 0;
+    run(500);
+    let seen = 0, past = 0;
+    const watch = (): void => {
+      seen = Math.max(seen, eve.shots.flying.length + eve.shots.bursts.length + eve.shots.ends.length);
+      for (const f of eve.shots.flying) if (f.z > at.z + far) past++;
+    };
+    app.controls.mouseButton(0, true);
+    // A bow is fully drawn in 36 ticks: let go at half of that.
+    run(what === "a bolt" ? 100 : 18 * TICK_MS, watch);
+    app.controls.mouseButton(0, false);
+    run(1500, watch);
+    expect(h.host.projectiles.fired).toBe(1);
+    // It was told, and ended at the wall on the watcher's screen as on the server.
+    expect(seen).toBeGreaterThan(0);
+    expect(past).toBe(0);
+    expect(Math.abs(h.host.projectiles.lastEnd.z - (at.z + far - 0.1))).toBeLessThan(0.05);
+  });
+}
+
+test("a bolt the server flew part of a tick as it fired is told as not flown, and stops at a wall within that tick's reach", () => {
+  const { h, app, eve, run, at, arm } = watched(20, [6, 3]);
+  // 6.9 m off: past the 6 m the server flies it at once, short of the 8 m a whole tick would carry a copy untested.
+  const far = 6.9;
+  h.world.structs.add(id("wall"), at.x, at.y + 1.5, at.z + far, 0, 0, 10000);
+  arm("plasma", id("rifle_plasma"));
+  app.controls.yaw = 0;
+  app.controls.pitch = 0;
+  run(500);
+  // The shooter's view is three quarters of a tick old, whatever its link.
+  h.host.combat.viewTick = () => h.world.tick - 0.75;
+  let seen = 0, past = 0;
+  const watch = (): void => {
+    seen = Math.max(seen, eve.shots.flying.length + eve.shots.bursts.length);
+    for (const f of eve.shots.flying) if (f.z > at.z + far) past++;
+  };
+  app.controls.mouseButton(0, true);
+  run(100, watch);
+  app.controls.mouseButton(0, false);
+  run(1000, watch);
+  expect(h.host.projectiles.fired).toBe(1);
+  expect(Math.abs(h.host.projectiles.lastEnd.z - (at.z + far - 0.1))).toBeLessThan(0.05);
+  expect(seen).toBeGreaterThan(0);
+  expect(past).toBe(0);
+});

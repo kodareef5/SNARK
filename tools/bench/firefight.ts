@@ -283,7 +283,7 @@ export function benchShots(section: Section, record: Row, scene: Scene, cam: Cam
     scene.shots = shots;
     const speed = reg.ammoSpeed[ammo]!;
     const events: unknown[] = [];
-    const session = { fired: [], inventory: null, held: -1, events } as unknown as ClientSession;
+    const session = { fired: [], inventory: null, held: -1, events, state: "active", own: { x: cam.x, y: world.hf.heightAt(cam.x, cam.z), z: cam.z, kind: survivor } } as unknown as ClientSession;
     const aim = new Rng(707);
     const ms = { draw: 0 };
     const undo = timed(shots, "draw", ms);

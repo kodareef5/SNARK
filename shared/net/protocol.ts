@@ -713,10 +713,12 @@ export const COLLAPSE_PIECES = 16;
 /** GROAN, to clients within 150 m: a building of the map has lost what carried it and is about to come down. Where it gave (3 x f32). */
 export const EVENT_GROAN = eventKind();
 /**
- * BOLTS, to clients within hearing: the rounds that left at full speed this tick, in one message (shared/net/bolts.ts):
- * a count u8, then each round's start, way, ammunition and the ticks since it left. The round's speed is its ammunition's.
+ * BOLTS, to clients within hearing of a round's muzzle or sight of its way: the rounds that flew off this tick, in one
+ * message (shared/net/bolts.ts): a count u8, then each round's start, way, ammunition and the ticks since it left.
  */
 export const EVENT_BOLTS = eventKind();
+/** Metres on the ground within which a shot is heard: a client told of one from further, for its round's sake, plays no report. */
+export const SHOT_HEARD = 260;
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

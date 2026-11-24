@@ -2078,7 +2078,7 @@ export class ClientSession {
       for (let n = r.u8(); n > 0 && !r.overflow; n--) {
         readBolt(r, last);
         last = bolt.ammo;
-        const speed = this.registry.ammoSpeed[bolt.ammo] ?? 0;
+        const speed = (this.registry.ammoSpeed[bolt.ammo] ?? 0) * bolt.speed;
         if (r.overflow || !(speed > 0)) break;
         this.events.push({ ...ev, kind: EVENT_SHOT, x: bolt.x, y: bolt.y, z: bolt.z, item: bolt.ammo, flies: true, vx: bolt.dx * speed, vy: bolt.dy * speed, vz: bolt.dz * speed, back: bolt.back, silenced: bolt.silenced, far: bolt.ended });
         if (this.events.length > MAX_EVENTS) this.events.shift();

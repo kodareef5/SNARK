@@ -5,7 +5,7 @@
 import { TAU } from "../shared/math/scalar.ts";
 import { BOLTS_MOST, packBolt, writeBolt } from "../shared/net/bolts.ts";
 import type { BitWriter } from "../shared/net/codec.ts";
-import { EVENT_BLAST, EVENT_BOLTS, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
+import { EVENT_BLAST, EVENT_BOLTS, EVENT_SHOT, SHOT_HEARD, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, shotDir, zeroUnits } from "../shared/sim/aim.ts";
 import { Body } from "../shared/sim/character.ts";
@@ -34,7 +34,7 @@ export const STUCK_TICKS = 60 * TICK_RATE;
 const PICKUP_REACH = 1.2;
 const PICKUP_EVERY = 5;
 /** Clients within this many metres of a shot are sent it. */
-const HEARD = 260;
+const HEARD = SHOT_HEARD;
 /** Rounds kept to be told together. One more and those kept are told at once. */
 const TOLD_MOST = 1024;
 /** Clients within this many metres of the way a round flies are told of it too, however far its muzzle: it may be coming at them. */
@@ -146,13 +146,14 @@ export class Projectiles {
   /** While `fling` sends a throw: `tell` tells the thrower too. */
   private toShooter = false;
   /**
-   * The rounds that left at full speed since the last step, told together when it ends (EVENT_BOLTS): where each left
-   * on the ground, the tick it was fired and where its way ends on the ground; its start and way as the message says
-   * them; then its ammunition, the ticks since it left, its silencer, the metres it had gone if it has ended, and whose
-   * it is (a client's id, or -1 for one its shooter is told too).
+   * The rounds that flew off since they were last told, told together (EVENT_BOLTS): where each left on the ground and
+   * where its way ends there; its start and way as the message says them; then its ammunition, the whole ticks since it
+   * left, its silencer, the metres it had gone if it has ended, the share of full speed it left at, and whose it is (a
+   * client's id, or -1 for one its shooter is told too).
    */
-  private readonly told = new Float64Array(TOLD_MOST * 5);
+  private readonly told = new Float64Array(TOLD_MOST * 4);
   private readonly toldEnded = new Float32Array(TOLD_MOST);
+  private readonly toldSpeed = new Float32Array(TOLD_MOST);
   /** Whether the flight `fly` last ended met something: the ground, a wall, water or a body. One out of reach did not. */
   private met = false;
   private readonly toldPacked = new Uint32Array(TOLD_MOST * 5);
@@ -402,10 +403,10 @@ export class Projectiles {
     let flies = true;
     for (let j = 1; j <= whole && flies; j++) flies = this.fly(f, view + j, 1);
     if (flies && back - whole > 0.01) flies = this.fly(f, now, back - whole);
-    // Nearby clients get its launch state and fly their own copy from there. One at full speed is told with the tick's
-    // others, and one that has met something already is told where, as no client's copy would find the bodies of then.
-    if (speed === full) this.keep(c, ox, oy, oz, d, ammo, back, silenced, !flies && this.met ? Math.max(f.gone, 0.1) : 0, speed);
-    else this.tell(c, ox, oy, oz, ammo, true, d[0]! * speed, d[1]! * speed, d[2]! * speed, Math.round(back), 1, 0, silenced);
+    // Nearby clients get its launch state and fly their own copy from there, told with the tick's others. They are told
+    // the whole ticks it was flown, as a part of one is not tested to its end, and where it met something if it has, as no
+    // client's copy would find the bodies of then.
+    this.keep(c, ox, oy, oz, d, ammo, whole, silenced, !flies && this.met ? Math.max(f.gone, 0.1) : 0, speed, full);
     if (!flies) return;
     if (this.flying.length >= MAX_FLYING) this.flying.shift();
     this.flying.push(f);
@@ -413,6 +414,8 @@ export class Projectiles {
 
   step(): void {
     const tick = this.ctx.world.tick;
+    // Rounds fired between ticks are told before they are flown on, so that none is told a tick it may have ended in.
+    this.tellKept();
     const flying = this.flying;
     let kept = 0;
     for (let i = 0; i < flying.length; i++) {
@@ -458,8 +461,8 @@ export class Projectiles {
     this.tellKept();
   }
 
-  /** Keeps a round that left `c`'s body at its ammunition's full speed along the unit way `d`, to be told when the step ends. */
-  private keep(c: Client, ox: number, oy: number, oz: number, d: readonly number[], ammo: number, back: number, silenced: boolean, ended: number, speed: number): void {
+  /** Keeps a round that left `c`'s body along the unit way `d` at `speed`, of its ammunition's `full`, to be told when the step ends. */
+  private keep(c: Client, ox: number, oy: number, oz: number, d: readonly number[], ammo: number, back: number, silenced: boolean, ended: number, speed: number, full: number): void {
     for (const l of this.heard) l("shot", ox, oz, c.name, silenced);
     if (this.toldCount >= TOLD_MOST) this.tellKept();
     const n = this.toldCount++;
@@ -467,12 +470,12 @@ export class Projectiles {
     // Its way on the ground: to where it ended, to its reach, or as far as a round with none is looked for.
     const reach = this.ctx.world.reg.ammoReach[ammo]!;
     const way = ended > 0 ? ended : reach > 0 ? reach : Math.min(WAY_MOST, (speed * FLIGHT_TICKS) / TICK_RATE);
-    t[n * 5] = ox;
-    t[n * 5 + 1] = oz;
-    t[n * 5 + 2] = this.ctx.world.tick;
-    t[n * 5 + 3] = ox + d[0]! * way;
-    t[n * 5 + 4] = oz + d[2]! * way;
+    t[n * 4] = ox;
+    t[n * 4 + 1] = oz;
+    t[n * 4 + 2] = ox + d[0]! * way;
+    t[n * 4 + 3] = oz + d[2]! * way;
     this.toldEnded[n] = ended;
+    this.toldSpeed[n] = full > 0 && speed < full ? speed / full : 1;
     packBolt(ox, oy, oz, d[0]!, d[1]!, d[2]!, this.toldPacked, n * 5);
     this.toldAmmo[n] = ammo;
     this.toldBack[n] = Math.min(255, Math.round(back));
@@ -491,7 +494,6 @@ export class Projectiles {
     const { world, game } = this.ctx;
     const ents = world.ents;
     const t = this.told;
-    const now = world.tick;
     for (const other of game.clients) {
       if (!other?.active || other.closed) continue;
       const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
@@ -501,12 +503,12 @@ export class Projectiles {
       let last = 0;
       for (let n = 0; n < count; n++) {
         if (this.toldBy[n] === other.id) continue;
-        const ox = t[n * 5]!;
-        const oz = t[n * 5 + 1]!;
+        const ox = t[n * 4]!;
+        const oz = t[n * 4 + 1]!;
         if ((bx - ox) * (bx - ox) + (bz - oz) * (bz - oz) > HEARD * HEARD) {
           // Out of hearing: how near its way comes, as the nearest point of that way on the ground.
-          const wx = t[n * 5 + 3]! - ox;
-          const wz = t[n * 5 + 4]! - oz;
+          const wx = t[n * 4 + 2]! - ox;
+          const wz = t[n * 4 + 3]! - oz;
           const along = wx * wx + wz * wz;
           const share = along > 0 ? Math.max(0, Math.min(1, ((bx - ox) * wx + (bz - oz) * wz) / along)) : 0;
           const nx = ox + wx * share - bx;
@@ -518,8 +520,7 @@ export class Projectiles {
           w.u8(EVENT_BOLTS);
           w.u8(0);
         }
-        // One kept from a tick before has flown that much longer.
-        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]! + (now - t[n * 5 + 2]!), this.toldSilenced[n] === 1, last, this.toldEnded[n]!);
+        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]!, this.toldSilenced[n] === 1, last, this.toldEnded[n]!, this.toldSpeed[n]!);
         last = this.toldAmmo[n]!;
         if (++said === BOLTS_MOST) {
           // The count is the message's third byte, written last.
@@ -576,8 +577,10 @@ export class Projectiles {
     }
     // Skip the shooter, if its entity slot still holds it.
     const shooter = (world.ents.flags[f.self]! & F_ALIVE) !== 0 && world.ents.pid[f.self] === f.by ? f.self : -1;
-    // A piece cut short by the world took that much less of the tick.
-    const target = combat.castBodies(shooter, x, y, z, dx, dy, dz, length, 0, t, (share * length) / piece.length);
+    // A piece cut short, by the world or by its reach, took that much less of the tick, and took it first: the bodies
+    // are met where they were until then, not where they went in what was left of the tick.
+    const took = (share * length) / piece.length;
+    const target = combat.castBodies(shooter, x, y, z, dx, dy, dz, length, 0, t - share + took, took);
     const blast = world.reg.ammoBlast[f.ammo]! > 0;
     if (target >= 0) {
       const at = combat.t;

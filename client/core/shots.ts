@@ -36,6 +36,8 @@ export const BOLT_BURST_MS = 160;
 const BOLT_FLASH = 0.24;
 const BOLT_BURST = 0.7;
 const BOLT_TAIL = 2.2;
+/** Metres off that the materials of a shot's meshes are kept as if at, while no shot is drawn. */
+const PRELOAD = 30;
 /** Bursts drawn at once. */
 const MAX_BURSTS = 64;
 /** Metres about where a round left, on the ground, within which a body is taken for its shooter over its first two ticks. */
@@ -65,6 +67,8 @@ interface Flying extends Flight {
   /** Where it left on the ground: whoever stands there fired it, and it does not meet them. */
   ox: number;
   oz: number;
+  /** Its own shooter's, which does not meet the body it left. */
+  own: boolean;
 }
 
 interface Tracer {
@@ -112,6 +116,8 @@ export class Shots {
   private now = 0;
   private meshOfAmmo!: Int32Array;
   private tracerMesh = -1;
+  /** The client's own body as last absorbed, which another's round may meet: its feet and its kind, 0 while it is not in the world. */
+  private readonly me = { x: 0, y: 0, z: 0, kind: 0 };
   /** The scene's assets, once it has named them (`bind`), and every mesh a shot is drawn with: few and small, and kept asked for. */
   private assets: Assets | null = null;
   private kept: number[] = [];
@@ -156,6 +162,11 @@ export class Shots {
     const held = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.hotbar + session.held : -1;
     const fitted = held >= 0 ? inv!.attach[held]! : 0;
     const silenced = fitted !== 0 && (reg.defs[fitted] as ItemDef | null)?.attachment === "silencer";
+    const me = this.me;
+    me.x = session.own.x;
+    me.y = session.own.y;
+    me.z = session.own.z;
+    me.kind = session.state === "active" ? session.own.kind : 0;
     for (const s of session.fired) {
       // Its own shot leaves along the server's ray: the same aim, cone and seed (shared/sim/aim.ts).
       const full = reg.ammoSpeed[s.ammo]!;
@@ -259,7 +270,7 @@ export class Shots {
       const ahead = back >= 0 ? AHEAD / speed : 0;
       this.flash(x + vx * ahead, y + vy * ahead - (back >= 0 ? BELOW : 0), z + vz * ahead, nowMs, lit, BOLT_FLASH * size, BOLT_FLASH_MS, vx / speed, vy / speed, vz / speed);
     }
-    const f: Flying = { x, y, z, vx, vy, vz, gravity: this.reg.ammoGravity[ammo]!, mesh, ammo, left: FLIGHT_TICKS, age: 0, flown: 0, reach: this.reg.ammoReach[ammo]!, ox: x, oz: z };
+    const f: Flying = { x, y, z, vx, vy, vz, gravity: this.reg.ammoGravity[ammo]!, mesh, ammo, left: FLIGHT_TICKS, age: 0, flown: 0, reach: this.reg.ammoReach[ammo]!, ox: x, oz: z, own: back < 0 };
     // One that ended is flown to its end however many ticks that takes: `back` is whole ticks, and its end was within one more.
     for (let k = 0; k < (ended > 0 ? back + 2 : back); k++) {
       flyStep(f, f.gravity);
@@ -342,6 +353,16 @@ export class Shots {
       length = rayHit.t;
       ends = true;
     }
+    // Another's round meets the client's own body, which is not among those it is sent.
+    const me = this.me;
+    if (!f.own && me.kind !== 0) {
+      const r = this.reg.bodyRadius[me.kind]!;
+      const t = rayBox(x, y, z, dx, dy, dz, me.x - r, me.y, me.z - r, me.x + r, me.y + this.reg.bodyHeight[me.kind]!, me.z + r);
+      if (t < length) {
+        length = t;
+        ends = true;
+      }
+    }
     if (remote) {
       const reg = this.reg;
       // A shot starts inside its shooter's box, so over its first two pieces whoever stands where it left is passed over.
@@ -419,9 +440,18 @@ export class Shots {
 
   /** `tick` may be fractional. A flight is drawn that far along its next piece. */
   draw(ch: Characters, p: FramePacket, cam: Camera, tick: number): void {
-    // Asked for every frame, so that a page has come and its mesh is on the card before the first shot needs it.
+    // Asked for every frame as a draw asks, shot or no shot, so that each mesh is on the card with its surface and its
+    // materials before the first shot needs them: a surface is not sent for until its level is there.
     const assets = this.assets;
-    if (assets) for (const mesh of this.kept) if (assets.known(mesh)) assets.want(mesh, 0, 1);
+    if (assets) {
+      for (const mesh of this.kept) {
+        if (!assets.known(mesh)) continue;
+        // Its materials are said to be thirty metres off, so their pictures are kept small until a shot is near.
+        assets.wantTextured(mesh, 0, PRELOAD);
+        const held = assets.level(mesh, 0);
+        if (held >= 0) assets.textured(mesh, held);
+      }
+    }
     const ahead = (tick - Math.floor(tick)) * TICK_DT;
     for (const f of this.flying) {
       const x = f.x + f.vx * ahead - cam.x;
