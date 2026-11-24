@@ -5,6 +5,7 @@ import { expect } from "bun:test";
 import { FORMS } from "../../content/building/forms.ts";
 import { COUNTS, JointBench, countsOf, piecesPack, registry, tierMeshes } from "../../tools/pieces/joints.ts";
 import { JUNCTIONS, TIERS, tierJunction, type TierName } from "../../tools/pieces/layout.ts";
+import { STONE } from "../../tools/pack/pieces/stone.ts";
 import { tierShapes } from "../../tools/pack/pieces/tier.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
@@ -58,5 +59,15 @@ test("wood as its recipe makes it meets no worse than the wood it replaces", () 
   const meshes = meshesOf(pack);
   for (const j of laid) {
     hold(countsOf(bench, j, meshes), AT_MOST.wood[j.name]!, `recipe wood ${j.name}`);
+  }
+});
+
+test("stone as its recipe makes it meets no worse than the stone it replaces", () => {
+  const pack = piecesPack([...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, FORMS)]);
+  const laid = lay()[TIERS.indexOf("stone")]!;
+  const bench = new JointBench(pack, laid);
+  const meshes = meshesOf(pack);
+  for (const j of laid) {
+    hold(countsOf(bench, j, meshes), AT_MOST.stone[j.name]!, `recipe stone ${j.name}`);
   }
 });

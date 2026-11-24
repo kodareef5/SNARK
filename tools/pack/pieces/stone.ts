@@ -3,9 +3,10 @@
 // under assets/source/core/structures/stone), drawing from the same seeds, so its stones are the ones those made and
 // the painted pictures fit them joint for joint. It works in their frame, the game's: +y up, the front at +z.
 //
-// Levels: 0 is every stone a solid of its own, its crown drawn as normals on a flat face; 1 is each face of a piece
-// one flat sheet cut stone by stone, every stone still shaded round; 2 is plain solids that wear the pictures; 3 and 4
-// are plain solids in flat colours.
+// Levels: 0 is every stone a solid of its own with a flat face shaded as its crown, the top course and the stones cut
+// at a wall's ends crowned as the scripts crowned them; 1 is each face of a piece one flat sheet welded from a cell to a
+// stone, each cell shaded as the stone it is, bevels and all; 2 is plain solids that wear the pictures; 3 and 4 are
+// plain solids in flat colours. The pictures' normal maps hold a stone's grain and not its crown, so the crown is here.
 //
 // Texture coordinates are metres over the 3 m tile from a face's top left corner, as the pictures are painted.
 
@@ -75,7 +76,7 @@ const CORE = T - MD;
 const GAP = 0.004;
 /** How far a stone's face stands from the mortar where a level draws it flat. */
 const FACE = 0.034;
-/** A walling stone's corner is broken off its face where the break's lesser side is this long: four in ten of them. The rest are the painting's. */
+/** A walling stone's corner is broken off its face where the break's lesser side is this long: one in five of them, every hard break among them. The rest are the painting's. */
 const FACET = 0.034;
 /** What a cut leaves of a stone on the stairs is laid where it covers this much of the mortar, in square metres. */
 const LEAST = 0.02;
@@ -356,6 +357,8 @@ interface Side {
   field?: (p: Vec) => Vec;
   /** It looks outward as it is given. */
   turned?: boolean;
+  /** The way it looks, where that is known exactly: a cut's own plane, so a cut at 45 degrees is mapped one way every time. */
+  facing?: Vec;
 }
 type Plane = readonly [Vec, Vec];
 
@@ -387,7 +390,7 @@ function clipSolid(sides: readonly Side[], [p0, n]: Plane): Side[] {
     const e1 = unit(sub(cap[0]!, mid));
     const e2 = cross(n, e1);
     const turn = (p: Vec): number => Math.atan2(dot(sub(p, mid), e2), dot(sub(p, mid), e1));
-    out.push({ pts: cap.sort((a, b) => turn(a) - turn(b)) });
+    out.push({ pts: cap.sort((a, b) => turn(a) - turn(b)), facing: n });
   }
   return out;
 }
@@ -640,6 +643,7 @@ class Build {
     const turned = sides.map((s) => {
       // A face given turned is part of a larger one, and is mapped as that is.
       if (s.turned) return { ...s, n: s.field ? s.field(s.pts[0]!) : newell(s.pts) };
+      if (s.facing) return dot(newell(s.pts), s.facing) < 0 ? { ...s, pts: [...s.pts].reverse(), n: s.facing } : { ...s, n: s.facing };
       const n = newell(s.pts);
       return dot(n, sub(mean(s.pts), mid)) < 0 ? { ...s, pts: [...s.pts].reverse(), n: scale(n, -1) } : { ...s, n };
     });
@@ -1176,19 +1180,19 @@ function foundation(form: FormDef, level: number): Build | null {
 }
 
 /** A hewn oak beam: its section a little out of true and not quite the same at both ends. `keep` names a side, "lo" or "hi", cut square by the piece's edge. */
-function beam(b: Build, axis: string, centre: number, half: number, run: P2, low: number, high: number, key: string, level: number, keep = ""): void {
+function beam(b: Build, axis: string, centre: number, half: number, run: P2, low: number, high: number, key: string, keep = ""): void {
   const g = rng("beam", key);
-  const jit = (): number => (level === 0 ? g.uniform(-0.006, 0.006) : 0);
+  const jit = (): number => g.uniform(-0.006, 0.006);
   const section = (): P2[] => {
     let [lo, hi] = [centre - half, centre + half];
     if (keep !== "lo") lo += jit();
     if (keep !== "hi") hi += jit();
     const under = low + jit();
-    const [c1, c2] = level === 0 ? [g.uniform(0.012, 0.028), g.uniform(0.012, 0.028)] : [0.015, 0.015];
+    const [c1, c2] = [g.uniform(0.012, 0.028), g.uniform(0.012, 0.028)];
     return [[lo, high], ...(keep === "lo" ? [[lo, under] as const] : [[lo, under + c1] as const, [lo + c1, under] as const]), ...(keep === "hi" ? [[hi, under] as const] : [[hi - c2, under] as const, [hi, under + c2] as const]), [hi, high]];
   };
   const [first, second] = [section(), section()];
-  b.convex(loft(axis, [[run[0], first], [run[1], second.length === first.length ? second : first]]), "timber", (n) => straight(n, axis), true);
+  b.convex(loft(axis, [[run[0], first], [run[1], second]]), "timber", (n) => straight(n, axis), true);
 }
 
 /** Where a ceiling's beams run each way: two across the slab and half a beam along each edge, which meets its neighbour's half under the joint. */
@@ -1248,8 +1252,8 @@ function ceiling(form: FormDef, level: number): Build | null {
     b.convex(sides, "masonry", (n) => (n[1] < -0.5 ? faced : straight(n)), true);
   }));
   // The beams one way run whole; the others are cut between them.
-  for (const [centre, half, keep] of BEAMS) beam(b, "x", centre, half, [-H, H], bottomY, 0, `('x', ${py(centre)})`, 0, keep);
-  for (const [centre, half, keep] of BEAMS) for (const [z0, z1] of BAYS) beam(b, "z", centre, half, [z0, z1], bottomY + 0.02, 0, `('z', ${py(centre)}, ${py(z0)})`, 0, keep);
+  for (const [centre, half, keep] of BEAMS) beam(b, "x", centre, half, [-H, H], bottomY, 0, `('x', ${py(centre)})`, keep);
+  for (const [centre, half, keep] of BEAMS) for (const [z0, z1] of BAYS) beam(b, "z", centre, half, [z0, z1], bottomY + 0.02, 0, `('z', ${py(centre)}, ${py(z0)})`, keep);
   return b;
 }
 
