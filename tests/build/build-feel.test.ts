@@ -6,11 +6,12 @@ import { App } from "../../client/core/app.ts";
 import { FALL_FADE, GHOST_BAD, GHOST_OK, GHOST_SLOT, GHOST_WARN, OTHERS_FADE, OTHERS_MOST } from "../../client/core/build.ts";
 import { PROVISIONAL } from "../../client/core/build-view.ts";
 import { REFUSED } from "../../client/core/predict-build.ts";
+import { KEY_FORM_NAME, KEY_FORM_ON } from "../../client/core/hud/forms.ts";
 import { KEY_BUILD_SAYS } from "../../client/core/hud/hotbar.ts";
 import { KEY_PROMPT_UNDER } from "../../client/core/hud/prompt.ts";
 import { DRAW_BLEND, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { SLOT_EDGE_MESH, SLOT_SQUARE_MESH } from "../../client/core/render/passes/ghost.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, T_ATTACK, T_CANCEL } from "../../client/core/touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, T_ATTACK, T_CANCEL, T_FOLLOW_ONE } from "../../client/core/touch.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { KEY_STRUCT_FALLS } from "../../client/core/ui/structure.ts";
 import * as touchLayer from "../../client/core/ui/touch.ts";
@@ -610,4 +611,170 @@ test("a piece's list says how many pieces would fall with it and shows them; in 
   app.key("KeyE", false);
   run(50);
   expect([app.ui.structure.open, app.ui.frame.find(KEY_STRUCT_FALLS), shown()]).toEqual([true, null, []]);
+});
+
+test("the form key held opens a wheel of the piece's forms, chosen by the look, the scroll, a pad's stick or a finger's drag; a tap still cycles", () => {
+  const { h, app, s, run, aim, click, tap, text, ghost, b } = client(["piece_foundation_wood", "piece_wall_wood"], 0, 20);
+  app.ui.layer = touchLayer;
+  const ox = s.own.x, oy = s.own.y, oz = s.own.z, top = oy + 0.125;
+  app.key("Digit1", true);
+  aim(ox, oy, oz + 4);
+  run(300);
+  click();
+  run(300);
+  // A piece of one form has no wheel, however long its key is held.
+  app.key("KeyT", true);
+  run(500);
+  expect([b.wheelOpen, app.ui.frame.find(KEY_FORM_NAME)]).toEqual([false, null]);
+  app.key("KeyT", false);
+  app.key("Digit2", true);
+  aim(ox, top, oz + 5.4);
+  run(300);
+  expect(ghost.kind).toBe(id("wall_wood"));
+  // A tap is the next form.
+  tap("KeyT");
+  run(50);
+  expect([ghost.kind, b.wheelOpen]).toEqual([id("doorframe_wood"), false]);
+  // Held, the wheel opens on the form in hand, with the forms the item places, by their own names.
+  app.key("KeyT", true);
+  run(450);
+  const names = [0, 1, 2].map((i) => text(KEY_FORM_NAME + i));
+  expect([b.wheelOpen, b.wheelAt, names, app.ui.frame.find(KEY_FORM_NAME + 3)]).toEqual([true, 1, ["wall", "doorframe", "windowframe"], null]);
+  expect(names).toEqual(Array.from(reg.places[id("piece_wall_wood")]!, (kind) => reg.ids[kind]!.slice(5).split("_")[0]!));
+  // The look moved down and to the left is on the third; the view has not turned, and the preview is that form already.
+  const yaw = app.controls.yaw, pitch = app.controls.pitch;
+  app.look(-40, 25);
+  run(50);
+  expect([b.wheelAt, app.controls.yaw, app.controls.pitch, ghost.kind]).toEqual([2, yaw, pitch, id("windowframe_wood")]);
+  const on = app.ui.frame.find(KEY_FORM_ON)!, third = app.ui.frame.find(KEY_FORM_NAME + 2)!;
+  expect([on.x, Math.abs(on.y - third.y) < 8]).toEqual([third.x, true]);
+  // The scroll steps round it, and does not turn the piece.
+  const turn = b.turn;
+  app.wheel(100);
+  run(50);
+  expect([b.wheelAt, b.turn]).toEqual([0, turn]);
+  app.wheel(-100);
+  run(50);
+  expect(b.wheelAt).toBe(2);
+  // Let go, that form is in hand, and the look turns the view again.
+  app.key("KeyT", false);
+  run(50);
+  expect([b.wheelOpen, ghost.kind, app.ui.frame.find(KEY_FORM_NAME)]).toEqual([false, id("windowframe_wood"), null]);
+  app.look(10, 0);
+  expect(app.controls.yaw).not.toBe(yaw);
+  aim(ox, top, oz + 5.4);
+  click();
+  run(300);
+  expect(h.world.structs.chunks[Math.floor(h.host.build.last / 65536)]!.kind[h.host.build.last & 0xffff]).toBe(id("windowframe_wood"));
+
+  // A pad: Y held opens it, the right stick pushed up is on the first, and letting Y go takes it.
+  aim(ox, top, oz + 2.6);
+  run(100);
+  const pad = { connected: true, mapping: "standard", axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+  let at = h.now;
+  app.gamepads([pad], (at += 16));
+  pad.buttons[3]!.pressed = true;
+  app.gamepads([pad], (at += 16));
+  run(450);
+  expect([b.wheelOpen, b.wheelAt]).toEqual([true, 2]);
+  at = h.now;
+  pad.axes[3] = -1;
+  for (let f = 0; f < 6; f++) app.gamepads([pad], (at += 16));
+  expect(b.wheelAt).toBe(0);
+  pad.axes[3] = 0;
+  pad.buttons[3]!.pressed = false;
+  app.gamepads([pad], (at += 16));
+  run(50);
+  expect([b.wheelOpen, ghost.kind]).toEqual([false, id("wall_wood")]);
+  // Y tapped is the next form.
+  at = h.now;
+  pad.buttons[3]!.pressed = true;
+  app.gamepads([pad], (at += 16));
+  pad.buttons[3]!.pressed = false;
+  app.gamepads([pad], (at += 16));
+  run(50);
+  expect(ghost.kind).toBe(id("doorframe_wood"));
+
+  // A finger: held on the forms' button the wheel opens, a drag to the right is on the second, and lifting takes it.
+  const forms = KEY_TOUCH_BUTTON + T_FOLLOW_ONE;
+  app.pointer(0, KEY_ZONE_LOOK, 700, 300, 0, 1);
+  app.pointer(1, KEY_ZONE_LOOK, 700, 300, 0, 1);
+  run(50);
+  expect(app.ui.frame.find(forms)).not.toBeNull();
+  app.pointer(0, forms, 900, 500, 0, 1);
+  app.pointer(1, forms, 900, 500, 0, 1);
+  run(50);
+  expect(ghost.kind).toBe(id("windowframe_wood"));
+  app.pointer(0, forms, 900, 500, 0, 1);
+  run(450);
+  expect([b.wheelOpen, b.wheelAt]).toEqual([true, 2]);
+  app.pointer(2, forms, 920, 510, 0, 1);
+  run(50);
+  expect(b.wheelAt).toBe(1);
+  app.pointer(1, forms, 920, 510, 0, 1);
+  run(50);
+  expect([b.wheelOpen, ghost.kind]).toEqual([false, id("doorframe_wood")]);
+  expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a built piece is picked with the form it was built in, by the middle button and a pad's d-pad, and an opened door as its door", () => {
+  const { h, app, s, run, aim, click, tap, stand, ghost, b } = client(["piece_foundation_wood", "piece_wall_wood", "piece_door_wood"], 0, 20);
+  const ox = s.own.x, oy = s.own.y, oz = s.own.z, top = oy + 0.125;
+  app.key("Digit1", true);
+  aim(ox, oy, oz + 4);
+  run(300);
+  click();
+  run(300);
+  // A doorframe on the far side, with its door, and a windowframe on the right.
+  app.key("Digit2", true);
+  aim(ox, top, oz + 5.4);
+  run(300);
+  tap("KeyT");
+  run(50);
+  click();
+  run(300);
+  const frame = h.host.build.last;
+  aim(ox + 1.4, top, oz + 4);
+  tap("KeyT");
+  run(100);
+  click();
+  run(300);
+  expect([h.host.build.placed, h.world.structs.chunks[Math.floor(h.host.build.last / 65536)]!.kind[h.host.build.last & 0xffff]]).toEqual([3, id("windowframe_wood")]);
+  app.key("Digit3", true);
+  aim(ox, top + 1, oz + 5.4);
+  run(300);
+  expect([ghost.kind, b.problem]).toEqual([id("door_wood"), 0]);
+  click();
+  run(300);
+  const door = h.host.build.last;
+  expect(h.host.build.placed).toBe(4);
+  // With the foundation in hand, the middle button on the doorframe takes the wall in hand as a doorframe.
+  app.key("Digit1", true);
+  stand(ox, oz + 2.2);
+  aim(ox - 1.2, top + 1.5, oz + 5.4);
+  run(300);
+  expect(b.looked).toBe(frame);
+  app.mouseButton(1, true);
+  app.mouseButton(1, false);
+  run(300);
+  expect([s.held, b.kind]).toEqual([1, id("doorframe_wood")]);
+  // A pad's d-pad right on the windowframe: the same item, as a windowframe.
+  aim(ox + 1.45, top + 0.3, oz + 4);
+  run(200);
+  const pad = { connected: true, mapping: "standard", axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+  let at = h.now;
+  app.gamepads([pad], (at += 16));
+  pad.buttons[15]!.pressed = true;
+  app.gamepads([pad], (at += 16));
+  pad.buttons[15]!.pressed = false;
+  app.gamepads([pad], (at += 16));
+  run(200);
+  expect([s.held, b.kind]).toEqual([1, id("windowframe_wood")]);
+  // The door, opened, is still picked as the door it was set down as.
+  h.world.structs.swap(door, id("door_open_wood"));
+  run(300);
+  expect(s.world!.structs.chunks[Math.floor(door / 65536)]!.kind[door & 0xffff]).toBe(id("door_open_wood"));
+  expect(b.pick(s, reg, door)).toBe(true);
+  run(300);
+  expect([s.held, b.kind]).toEqual([2, id("door_wood")]);
 });

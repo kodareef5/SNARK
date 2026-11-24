@@ -46,10 +46,10 @@ export const LONG_MS = 400;
 /** What a tap of a button presses for a moment. */
 const TAPS: Readonly<Record<number, string>> = {
   [T_MENU]: "Escape", [T_BAG]: "KeyI", [T_CHARACTER]: "KeyP", [T_MAP]: "KeyM", [T_CLOSE]: "Escape", [T_CANCEL]: "Escape", [T_CHAT]: "Enter",
-  [T_VIEW]: "KeyV", [T_ORBIT]: "KeyK", [T_FOLLOW]: "KeyJ", [T_STAY]: "KeyU", [T_FOLLOW_ONE]: "KeyT", [T_STAY_ONE]: "KeyY", [T_SIC]: "Period", [T_ROTATE]: "KeyE", [T_RAISE]: "ArrowUp", [T_LOWER]: "ArrowDown",
+  [T_VIEW]: "KeyV", [T_ORBIT]: "KeyK", [T_FOLLOW]: "KeyJ", [T_STAY]: "KeyU", [T_STAY_ONE]: "KeyY", [T_SIC]: "Period", [T_ROTATE]: "KeyE", [T_RAISE]: "ArrowUp", [T_LOWER]: "ArrowDown",
 };
 /** What a button holds down while a finger is on it. The same key means what the body's state makes of it: R reloads on foot and yaws a helicopter. */
-const HELD: Readonly<Record<number, string>> = { [T_PACK]: "KeyF", [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE", [T_MELEE]: "KeyG", [T_SNAP]: "KeyQ", [T_DOWN]: "ControlLeft", [T_ROLL]: "KeyC", [T_HOLD]: "KeyX", [T_MIC]: "KeyB" };
+const HELD: Readonly<Record<number, string>> = { [T_FOLLOW_ONE]: "KeyT", [T_PACK]: "KeyF", [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE", [T_MELEE]: "KeyG", [T_SNAP]: "KeyQ", [T_DOWN]: "ControlLeft", [T_ROLL]: "KeyC", [T_HOLD]: "KeyX", [T_MIC]: "KeyB" };
 
 /** The key a button stands for, held or tapped; undefined for one that is no key's (the attack, the aim, the pages). */
 export function touchKey(button: number): string | undefined {
@@ -74,6 +74,9 @@ export class TouchPlay {
   /** Where the finger on Attack was last, which turns the view as it drags. */
   private aimX = 0;
   private aimY = 0;
+  /** The same for the finger on the whistle to one, which with a piece in hand is the forms' button: held, its drag chooses on their wheel. */
+  private formX = 0;
+  private formY = 0;
   private sprinting = false;
   /** Per button: the finger on it, when it went down, and whether its long press has fired. */
   private readonly finger = new Int32Array(T_COUNT);
@@ -126,12 +129,19 @@ export class TouchPlay {
       }
       else if (b === T_MORE) this.more = !this.more;
       else if (b === T_SHIFT) t.key("ShiftLeft", (this.shifted = !this.shifted));
-      else if (HELD[b]) t.key(HELD[b]!, true);
+      else if (HELD[b]) {
+        t.key(HELD[b]!, true);
+        if (b === T_FOLLOW_ONE) [this.formX, this.formY] = [x, y];
+      }
       else if (TAPS[b]) { t.key(TAPS[b]!, true); t.key(TAPS[b]!, false); }
     } else if (who !== this.finger[b]) return true;
     else if (kind === 2 && b === T_ATTACK) {
       t.look((x - this.aimX) * unit * LOOK_GAIN, (y - this.aimY) * unit * LOOK_GAIN);
       this.aimX = x; this.aimY = y;
+    }
+    else if (kind === 2 && b === T_FOLLOW_ONE) {
+      t.look((x - this.formX) * unit * LOOK_GAIN, (y - this.formY) * unit * LOOK_GAIN);
+      this.formX = x; this.formY = y;
     }
     else if (kind === 1) this.lift(b, t, false);
     return true;

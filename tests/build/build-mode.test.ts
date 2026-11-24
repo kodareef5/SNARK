@@ -285,7 +285,10 @@ test("2,000 seeded placements under loss: the client's rows end as the server's,
     // Often too short a wait for the last answer to be back.
     h.run(20 + rng.int(120));
     for (let k = rng.int(3); k > 0; k--) b.key("KeyR", true, false, h.now, h.reg);
-    for (let k = rng.int(3); k > 0; k--) b.key("KeyT", true, false, h.now, h.reg);
+    for (let k = rng.int(3); k > 0; k--) {
+      b.key("KeyT", true, false, h.now, h.reg);
+      b.key("KeyT", false, false, h.now, h.reg);
+    }
     if (rng.int(10) === 0) b.free = !b.free;
     step();
     preview(h, s, pilot, b, h.now);

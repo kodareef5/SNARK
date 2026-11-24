@@ -134,6 +134,10 @@ export class AppFrame implements HudFrame {
   spend = 0;
   /** What the builder's preview says over the hotbar's line: how well the piece would stand. */
   buildSays = "";
+  /** The forms' wheel of the piece in hand (Builder.wheelOpen): open, the form it is on, the forms' names. */
+  formsOpen = false;
+  formAt = 0;
+  formNames: readonly string[] = [];
 
   /** For the HUD's fills (hud/widget.ts HudFrame): the pause menu is open, a vehicle is driven, a mount's rivalry shows, what the governor did. */
   menu = false;

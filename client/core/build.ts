@@ -69,6 +69,16 @@ const ROW_NEED = 16;
 const ROW_LAYERS: readonly number[] = [FORM_LAYERS.indexOf("slab"), FORM_LAYERS.indexOf("wall"), FORM_LAYERS.indexOf("footing")];
 const stepKey: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 
+/** Pixels of the look's movement from the wheel's middle before it chooses, and the most it remembers. */
+const WHEEL_DEAD = 18;
+const WHEEL_REACH = 70;
+
+/** What a form is called on the wheel: its kind's own word, as "doorframe" of core:doorframe_wood. */
+export function formName(reg: Registry, kind: number): string {
+  const id = reg.ids[kind] ?? "";
+  return id.slice(id.indexOf(":") + 1).split("_")[0]!.replaceAll("-", " ");
+}
+
 /** A slot's outline: its class (a CLS_ of the lattice, -1 for none), its middle in metres and its turn in wire units. */
 export interface SlotMark {
   cls: number;
@@ -243,6 +253,16 @@ export class Builder {
   private overStamp = 0;
   private readonly overFor = [-1, -1, -1];
   private rowGen = 0;
+  /**
+   * The wheel of the forms of the item in hand, open while the form key is held past a tap: the forms' names in the
+   * order the item places them, and the one the wheel is on, which the preview shows.
+   */
+  wheelOpen = false;
+  wheelAt = 0;
+  readonly wheelNames: string[] = [];
+  private tDownAt = -1;
+  private wheelX = 0;
+  private wheelY = 0;
   /** The built piece last asked how it stands, the store's shapes then, and the answer. */
   private readonly standing = [-1, -1, -2];
   /** Whether `offered` is of the look as it is now. */
@@ -354,7 +374,8 @@ export class Builder {
       this.notice = "";
       this.looked = -1;
       this.from[0] = NaN;
-      this.row.on = false;
+      this.row.on = this.wheelOpen = false;
+      this.tDownAt = -1;
       if (this.view && nowMs - this.activeAt >= VIEW_IDLE_MS) {
         this.view = null;
         this.sites.length = 0;
@@ -368,12 +389,19 @@ export class Builder {
       this.free = this.pinned = false;
       if (item === this.wantItem) this.variant = this.wantVariant;
       this.wantItem = 0;
+      // The wheel's names are the forms' own: what each kind is called before its material.
+      this.wheelNames.length = 0;
+      for (const form of forms) this.wheelNames.push(formName(reg, form));
+      this.wheelOpen = false;
+    }
+    if (this.tDownAt >= 0 && !this.wheelOpen && nowMs - this.tDownAt >= HOLD_MS && forms.length > 1) {
+      [this.wheelOpen, this.wheelAt, this.wheelX, this.wheelY] = [true, this.variant % forms.length, 0, 0];
     }
     if (this.qDownAt >= 0 && nowMs - this.qDownAt >= HOLD_MS) {
       this.free = !this.free;
       this.qDownAt = -2;
     }
-    const kind = forms[this.variant % forms.length]!;
+    const kind = forms[(this.wheelOpen ? this.wheelAt : this.variant) % forms.length]!;
     this.kind = kind;
     this.session = session;
     this.reg = reg;
@@ -768,13 +796,23 @@ export class Builder {
       if (!down) this.qDownAt = -1;
       return true;
     }
-    if (code !== "KeyR" && code !== "KeyT" && code !== "ArrowUp" && code !== "ArrowDown") return false;
+    if (code === "KeyT") {
+      if (down && !repeat) this.tDownAt = nowMs;
+      else if (!down) {
+        // Let go on the wheel, the form it was on is taken. Let go before the wheel opened, it was a tap: the next form.
+        if (this.wheelOpen) this.variant = this.wheelAt;
+        else if (this.tDownAt >= 0) this.variant++;
+        if (this.wheelOpen || this.tDownAt >= 0) this.turn = 0;
+        this.wheelOpen = false;
+        this.tDownAt = -1;
+      }
+      return true;
+    }
+    if (code !== "KeyR" && code !== "ArrowUp" && code !== "ArrowDown") return false;
     if (!down) return true;
     if (code === "KeyR" && !repeat) this.rotate(1, reg);
-    else if (code === "KeyT" && !repeat) {
-      this.variant++;
-      this.turn = 0;
-    } else if (this.mode === PLACE_JOIN) this.raise += code === "ArrowUp" ? 1 : -1;
+    else if (code === "KeyR") return true;
+    else if (this.mode === PLACE_JOIN) this.raise += code === "ArrowUp" ? 1 : -1;
     else if (code === "ArrowUp") this.lift = Math.min(LIFT_MAX, this.lift + 1);
     else this.lift = Math.max(LIFT_MIN, this.lift - 1);
     return true;
@@ -791,12 +829,32 @@ export class Builder {
     this.turn = (((this.turn + by) % ways) + ways) % ways;
   }
 
-  /** The mouse wheel's notches, which turn the piece one step a whole notch. */
+  /** The look's movement while the forms' wheel is open, in pixels as a mouse moves: the wheel goes to the form that way from its middle. */
+  turnWheel(dx: number, dy: number): void {
+    const n = this.wheelNames.length;
+    if (!this.wheelOpen || n === 0) return;
+    this.wheelX += dx;
+    this.wheelY += dy;
+    const far = Math.hypot(this.wheelX, this.wheelY);
+    if (far > WHEEL_REACH) [this.wheelX, this.wheelY] = [(this.wheelX / far) * WHEEL_REACH, (this.wheelY / far) * WHEEL_REACH];
+    if (far < WHEEL_DEAD) return;
+    // The first form is straight up, and the rest follow round to the right.
+    const turn = Math.atan2(this.wheelX, -this.wheelY) / ((2 * Math.PI) / n);
+    this.wheelAt = ((Math.round(turn) % n) + n) % n;
+  }
+
+  /** The mouse wheel's notches, which turn the piece one step a whole notch, or with the forms' wheel open step through the forms. */
   scroll(notches: number, reg: Registry): void {
     this.wheel += notches;
     const steps = Math.trunc(this.wheel);
     if (steps === 0) return;
     this.wheel -= steps;
+    const n = this.wheelNames.length;
+    if (this.wheelOpen && n > 0) {
+      this.wheelAt = (((this.wheelAt + steps) % n) + n) % n;
+      this.wheelX = this.wheelY = 0;
+      return;
+    }
     this.rotate(steps, reg);
   }
 
@@ -817,8 +875,10 @@ export class Builder {
     const inv = session.inventory;
     const t = ref >= 0 ? session.world?.structs.chunks[Math.floor(ref / 65536)] : undefined;
     if (!this.active || !inv || !t || inv.hotbar < 0 || session.held < 0) return false;
-    const kind = t.kind[ref & 0xffff]!;
-    const item = reg.pieceItem[kind]!;
+    // A piece standing in another state than it was set down in, a door opened, is picked as the form that was set down.
+    const stands = t.kind[ref & 0xffff]!;
+    const item = reg.pieceItem[stands]!;
+    const kind = item !== 0 && !reg.places[item]!.includes(stands) && reg.opens[stands] !== 0 ? reg.opens[stands]! : stands;
     const variant = item !== 0 ? reg.places[item]!.indexOf(kind) : -1;
     if (variant < 0) return false;
     if (item === this.item) {
@@ -940,7 +1000,7 @@ export const BUILD_KEYS: readonly KeyRow[] = [{
     { code: "KeyQ", group: G_BUILD, title: "Next snap point / thruster flip", detail: "Tap to cycle snaps. Hold to toggle free placement. At the wheel of a thruster car (the Zephyr), on or just off the ground, flip: hold W for a front flip, S for a back flip, A or D for a barrel roll, or nothing for a kickflip; its nozzles catch it on its wheels. G flips too." },
     { code: "KeyQ", group: G_BUILD, title: "Next snap point", detail: "Tap to cycle snaps. Hold to toggle free placement.", sheet: G_BUILD },
     { code: "KeyR", group: G_BUILD, title: "Rotate", detail: "Rotate the active building preview. The mouse wheel turns it either way.", sheet: G_BUILD },
-    { code: "KeyT", group: G_BUILD, title: "Next form", detail: "Cycle the piece in hand through its forms: wall, doorframe, windowframe.", sheet: G_BUILD },
+    { code: "KeyT", group: G_BUILD, title: "Next form / form wheel", detail: "Tap for the next form of the piece in hand: wall, doorframe, windowframe. Hold for a wheel of them, move the look or scroll to one, and let go.", sheet: G_BUILD },
     { code: "KeyX", group: G_BUILD, title: "Put away", detail: "Put the piece in hand away. The right mouse button does too.", sheet: G_BUILD },
     { code: "KeyE", group: G_BUILD, title: "Use / piece menu", detail: "Tap to use what you look at. Hold on a built piece to mend it, take it back or take it down.", sheet: G_BUILD },
     { code: "ArrowUp", group: G_BUILD, title: "Raise preview", sheet: G_BUILD },

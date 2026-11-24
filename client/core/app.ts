@@ -449,7 +449,10 @@ export class App {
   }
 
   look(dx: number, dy: number): void {
-    if (this.ui.wantsPointerLock) this.director.look(this.f, dx, dy);
+    if (!this.ui.wantsPointerLock) return;
+    // With the forms' wheel open the look chooses a form, and the view stays where it was.
+    if (this.builder.wheelOpen) this.builder.turnWheel(dx, dy);
+    else this.director.look(this.f, dx, dy);
   }
 
   /** Whether a raised sight takes zoom steps: a scope that zooms, a glass, a visor. */
@@ -1013,6 +1016,7 @@ export class App {
     // The count shows without the pieces on their way down, and without a dragged row's while it is held.
     f.spendItem = this.builder.inHand; f.spend = this.predict.pending(f.spendItem) + (this.builder.row.on ? this.builder.row.ok : 0);
     f.buildSays = this.builder.active ? this.builder.says() : "";
+    f.formsOpen = this.builder.active && this.builder.wheelOpen; f.formAt = this.builder.wheelAt; f.formNames = this.builder.wheelNames;
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
