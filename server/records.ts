@@ -100,6 +100,8 @@ export class EntityRecord {
   progVersion = 0;
   /** Counts every change to the experience, the level and the stat points, for sending. */
   xpVersion = 0;
+  /** A creature earned passive XP during this wake and needs a final save on sleep. */
+  saveXpOnSleep = false;
   /** The owning team: a survivor's own, a tribe's, or 0 for a wild creature. `rank` is its standing in a tribe. */
   team = 0;
   rank = 0;

@@ -5,7 +5,9 @@ import { expect, test } from "bun:test";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { DRIP_PER_MINUTE, DRIP_TICKS, SHARE_RANGE } from "../../server/experience.ts";
 import { Rules } from "../../server/settings/rules.ts";
-import { camp, creature, record, survivor, tame } from "../kit/kit.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
+import { flatMap } from "../fixtures/map.ts";
+import { camp, creature, put, record, restart, survivor, tame, until } from "../kit/kit.ts";
 
 const MINUTE = 60_000;
 const DRIP = { GenericXPMultiplier: 1 };
@@ -90,4 +92,26 @@ test("the drip writes no record of its own, and is saved within the minute with 
   // The save has all but the last minute's.
   expect(me.xp - saved()).toBeLessThanOrEqual(DRIP_PER_MINUTE + 1e-9);
   expect(saved()).toBeGreaterThan(0);
+});
+
+test("a stationary tame keeps its last passive XP after sleeping and restarting", () => {
+  const at = { x: 128, z: 128 };
+  const { h, ada } = camp({ place: { map: writeMap(flatMap(8)), at: () => at }, rules: DRIP, save: true });
+  const { rec, e } = tame(h, ada, "dodo");
+  h.host.creatures.mind.stay(e, h.world.tick + 60 * TICK_RATE);
+  h.run(2000);
+  const savedXp = () => h.host.persistence!.store.loadEntities().find((r) => r.pid === rec.pid)?.xp;
+  const before = rec.xp;
+  expect(until(h, () => rec.xp > before && rec.xp !== savedXp(), 21)).toBe(true);
+  const earned = rec.xp;
+  const ents = h.world.ents;
+  expect([rec.x, rec.y, rec.z]).toEqual([ents.x[e], ents.y[e], ents.z[e]]);
+  put(h, ada, { x: 480, z: 480 });
+  expect(h.host.creatures.isChunkAwake(ents.chunk[e]!)).toBe(false);
+  const loaded = restart(h);
+  try {
+    expect(loaded.host.records.byPid.get(rec.pid)?.xp).toBe(earned);
+  } finally {
+    loaded.host.shutdown();
+  }
 });

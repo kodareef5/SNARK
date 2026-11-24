@@ -175,9 +175,9 @@ export class Progression {
     rec.xp += amount;
     rec.xpVersion++;
     const now = this.level(rec);
-    // What time gave is saved when where the body stands is, within a minute (server/persist/persistence.ts), and when
-    // it leaves or sleeps. Saved at each drip, every body's whole record was written six times a minute for it.
+    // Passive XP goes into the rotating position save unless it earns a level or the body leaves.
     if (source !== XP_TIME || now !== before) this.records.dirty.add(rec.pid);
+    else if (rec.kind !== this.survivor) rec.saveXpOnSleep = true;
     if (now !== before) {
       // A level brings engram points, and engrams learned without asking.
       rec.progVersion++;
