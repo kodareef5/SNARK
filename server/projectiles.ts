@@ -37,6 +37,10 @@ const PICKUP_EVERY = 5;
 const HEARD = 260;
 /** Rounds kept to be told together. One more and those kept are told at once. */
 const TOLD_MOST = 1024;
+/** Clients within this many metres of the way a round flies are told of it too, however far its muzzle: it may be coming at them. */
+const SEEN = 100;
+/** The longest way taken for a round with no reach, in metres: past it a round is not looked for. */
+const WAY_MOST = 600;
 /** A stuck arrow stands this many metres back from what it hit. */
 const STAND_OUT = 0.06;
 const MAX_THROWN = 256;
@@ -85,6 +89,9 @@ interface Flying extends Flight {
   /** The last tick it may fly, and the tick it has been flown through. */
   until: number;
   flown: number;
+  /** The metres it has gone, and the metres at which it is gone (0 for one with no reach). */
+  gone: number;
+  reach: number;
   /** `wet` means its weapon works under water. `under` means it is under water now. */
   wet: boolean;
   under: boolean;
@@ -140,10 +147,14 @@ export class Projectiles {
   private toShooter = false;
   /**
    * The rounds that left at full speed since the last step, told together when it ends (EVENT_BOLTS): where each left
-   * on the ground and the tick it was fired, its start and way as the message says them, then its ammunition, the ticks
-   * since it left, its silencer and whose it is (a client's id, or -1 for one its shooter is told too).
+   * on the ground, the tick it was fired and where its way ends on the ground; its start and way as the message says
+   * them; then its ammunition, the ticks since it left, its silencer, the metres it had gone if it has ended, and whose
+   * it is (a client's id, or -1 for one its shooter is told too).
    */
-  private readonly told = new Float64Array(TOLD_MOST * 3);
+  private readonly told = new Float64Array(TOLD_MOST * 5);
+  private readonly toldEnded = new Float32Array(TOLD_MOST);
+  /** Whether the flight `fly` last ended met something: the ground, a wall, water or a body. One out of reach did not. */
+  private met = false;
   private readonly toldPacked = new Uint32Array(TOLD_MOST * 5);
   private readonly toldAmmo = new Uint16Array(TOLD_MOST);
   private readonly toldBack = new Uint8Array(TOLD_MOST);
@@ -380,21 +391,22 @@ export class Projectiles {
     const full = reg.ammoSpeed[ammo]!;
     const speed = launchSpeed(full, draw) * (wet && oy < sea ? WATER_SPEED : 1);
     const back = now - view;
-    // A round with a reach is gone that far from where it left, which was `back` ticks ago.
-    const life = reg.ammoFlightTicks[ammo]!;
     const f: Flying = {
       x: ox, y: oy, z: oz, vx: d[0]! * speed, vy: d[1]! * speed, vz: d[2]! * speed,
       gravity: reg.ammoGravity[ammo]!, ammo, weapon, quality, draw, by: rec.pid, self: c.ent, ox, oy, oz,
-      until: life < FLIGHT_TICKS ? Math.floor(view) + life : now + FLIGHT_TICKS, flown: now, wet, under: oy < sea, silenced,
+      until: now + FLIGHT_TICKS, flown: now, gone: 0, reach: reg.ammoReach[ammo]!, wet, under: oy < sea, silenced,
     };
-    // Nearby clients get its launch state and fly their own copy from there. One at full speed is told with the tick's others.
-    if (speed === full) this.keep(c, ox, oy, oz, d, ammo, back, silenced);
-    else this.tell(c, ox, oy, oz, ammo, true, f.vx, f.vy, f.vz, Math.round(back), 1, 0, silenced);
     // Fly it from the view tick to now, one tick's piece at a time, each against the bodies of that tick,
     // then the leftover part of a tick.
     const whole = Math.floor(back);
-    for (let j = 1; j <= whole; j++) if (!this.fly(f, view + j, 1)) return;
-    if (back - whole > 0.01 && !this.fly(f, now, back - whole)) return;
+    let flies = true;
+    for (let j = 1; j <= whole && flies; j++) flies = this.fly(f, view + j, 1);
+    if (flies && back - whole > 0.01) flies = this.fly(f, now, back - whole);
+    // Nearby clients get its launch state and fly their own copy from there. One at full speed is told with the tick's
+    // others, and one that has met something already is told where, as no client's copy would find the bodies of then.
+    if (speed === full) this.keep(c, ox, oy, oz, d, ammo, back, silenced, !flies && this.met ? Math.max(f.gone, 0.1) : 0, speed);
+    else this.tell(c, ox, oy, oz, ammo, true, d[0]! * speed, d[1]! * speed, d[2]! * speed, Math.round(back), 1, 0, silenced);
+    if (!flies) return;
     if (this.flying.length >= MAX_FLYING) this.flying.shift();
     this.flying.push(f);
   }
@@ -447,14 +459,20 @@ export class Projectiles {
   }
 
   /** Keeps a round that left `c`'s body at its ammunition's full speed along the unit way `d`, to be told when the step ends. */
-  private keep(c: Client, ox: number, oy: number, oz: number, d: readonly number[], ammo: number, back: number, silenced: boolean): void {
+  private keep(c: Client, ox: number, oy: number, oz: number, d: readonly number[], ammo: number, back: number, silenced: boolean, ended: number, speed: number): void {
     for (const l of this.heard) l("shot", ox, oz, c.name, silenced);
     if (this.toldCount >= TOLD_MOST) this.tellKept();
     const n = this.toldCount++;
     const t = this.told;
-    t[n * 3] = ox;
-    t[n * 3 + 1] = oz;
-    t[n * 3 + 2] = this.ctx.world.tick;
+    // Its way on the ground: to where it ended, to its reach, or as far as a round with none is looked for.
+    const reach = this.ctx.world.reg.ammoReach[ammo]!;
+    const way = ended > 0 ? ended : reach > 0 ? reach : Math.min(WAY_MOST, (speed * FLIGHT_TICKS) / TICK_RATE);
+    t[n * 5] = ox;
+    t[n * 5 + 1] = oz;
+    t[n * 5 + 2] = this.ctx.world.tick;
+    t[n * 5 + 3] = ox + d[0]! * way;
+    t[n * 5 + 4] = oz + d[2]! * way;
+    this.toldEnded[n] = ended;
     packBolt(ox, oy, oz, d[0]!, d[1]!, d[2]!, this.toldPacked, n * 5);
     this.toldAmmo[n] = ammo;
     this.toldBack[n] = Math.min(255, Math.round(back));
@@ -462,7 +480,10 @@ export class Projectiles {
     this.toldBy[n] = this.toShooter ? -1 : c.id;
   }
 
-  /** Tells each client the rounds kept that left within its hearing, its own left out, in as few messages as hold them. */
+  /**
+   * Tells each client the rounds kept that left within its hearing or fly within its sight, its own left out, in as few
+   * messages as hold them.
+   */
   private tellKept(): void {
     const count = this.toldCount;
     if (count === 0) return;
@@ -479,16 +500,26 @@ export class Projectiles {
       let said = 0;
       let last = 0;
       for (let n = 0; n < count; n++) {
-        const ox = t[n * 3]!;
-        const oz = t[n * 3 + 1]!;
-        if (this.toldBy[n] === other.id || (bx - ox) * (bx - ox) + (bz - oz) * (bz - oz) > HEARD * HEARD) continue;
+        if (this.toldBy[n] === other.id) continue;
+        const ox = t[n * 5]!;
+        const oz = t[n * 5 + 1]!;
+        if ((bx - ox) * (bx - ox) + (bz - oz) * (bz - oz) > HEARD * HEARD) {
+          // Out of hearing: how near its way comes, as the nearest point of that way on the ground.
+          const wx = t[n * 5 + 3]! - ox;
+          const wz = t[n * 5 + 4]! - oz;
+          const along = wx * wx + wz * wz;
+          const share = along > 0 ? Math.max(0, Math.min(1, ((bx - ox) * wx + (bz - oz) * wz) / along)) : 0;
+          const nx = ox + wx * share - bx;
+          const nz = oz + wz * share - bz;
+          if (nx * nx + nz * nz > SEEN * SEEN) continue;
+        }
         if (!w) {
           w = game.begin(S_EVENT);
           w.u8(EVENT_BOLTS);
           w.u8(0);
         }
         // One kept from a tick before has flown that much longer.
-        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]! + (now - t[n * 3 + 2]!), this.toldSilenced[n] === 1, last);
+        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]! + (now - t[n * 5 + 2]!), this.toldSilenced[n] === 1, last, this.toldEnded[n]!);
         last = this.toldAmmo[n]!;
         if (++said === BOLTS_MOST) {
           // The count is the message's third byte, written last.
@@ -512,6 +543,11 @@ export class Projectiles {
     f.flown = Math.floor(t);
     flyStep(f, f.gravity, dt);
     let length = piece.length;
+    this.met = false;
+    if (!(length > 0)) return false;
+    // The piece that reaches its reach is cut there, so that it ends at the same metre whenever it was fired.
+    const last = f.reach > 0 && f.gone + length >= f.reach;
+    if (last) length = f.reach - f.gone;
     if (!(length > 0)) return false;
     const { x, y, z, dx, dy, dz } = piece;
     const hf = world.hf;
@@ -545,6 +581,8 @@ export class Projectiles {
     const blast = world.reg.ammoBlast[f.ammo]! > 0;
     if (target >= 0) {
       const at = combat.t;
+      f.gone += at;
+      this.met = true;
       if (blast) {
         this.ended(x + dx * at, y + dy * at, z + dz * at, target);
         this.explode(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, x + dx * at, y + dy * at, z + dz * at, target);
@@ -555,6 +593,8 @@ export class Projectiles {
       const hx = x + dx * length;
       const hy = y + dy * length;
       const hz = z + dz * length;
+      f.gone += length;
+      this.met = true;
       this.ended(hx, hy, hz, on);
       // A round with a blast goes off a little short of what it met, and the blast is the whole of its harm.
       if (blast) {
@@ -568,6 +608,8 @@ export class Projectiles {
       if (on === -1 && !gone && this.rng.float() < world.reg.ammoRecover[f.ammo]!) this.stand(f.ammo, hx - dx * STAND_OUT, hy - dy * STAND_OUT, hz - dz * STAND_OUT, dx, dy, dz);
       return false;
     }
+    if (last) return false;
+    f.gone += piece.length;
     flyEnd(f, f.gravity, dt);
     if (splash) {
       f.under = true;

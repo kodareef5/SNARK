@@ -1,4 +1,4 @@
-// A round that flies, as it is told to those who see it (EVENT_BOLTS): 99 bits where EVENT_SHOT is 35 bytes, and a
+// A round that flies, as it is told to those who see it (EVENT_BOLTS): 100 bits where EVENT_SHOT is 35 bytes, and a
 // tick's rounds in one message. A client draws from it and decides nothing, so its start is to 2 cm and its way to a
 // fiftieth of a degree.
 
@@ -21,8 +21,15 @@ const YAW_STEPS = 1 << YAW_BITS;
 const PITCH_STEPS = (1 << PITCH_BITS) - 1;
 const clamp = (v: number, most: number): number => (v < 0 ? 0 : v > most ? most : v);
 
-/** One round as read: where it left, the unit way it went, its ammunition, the ticks since it left and whether its gun is silenced. */
-export const bolt = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1, ammo: 0, back: 0, silenced: false };
+/** Steps to a metre of the way a round had gone when it ended, and the bits they are said in: to 500 m. */
+const ENDED = 16;
+const ENDED_BITS = 13;
+
+/**
+ * One round as read: where it left, the unit way it went, its ammunition, the ticks since it left, whether its gun is
+ * silenced, and the metres it had gone when it ended, if it ended before it was told (0 if it flies on).
+ */
+export const bolt = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 1, ammo: 0, back: 0, silenced: false, ended: 0 };
 
 /** A round's start and way as the message says them, worked out once for all who are told: x, y, z, yaw, pitch. */
 export function packBolt(x: number, y: number, z: number, dx: number, dy: number, dz: number, out: Uint32Array, at: number): void {
@@ -36,9 +43,10 @@ export function packBolt(x: number, y: number, z: number, dx: number, dy: number
 
 /**
  * Writes the round packed at `at` of `packed`. `last` is the ammunition of the round written before it in this message, 0
- * for the first: a round of the same is said in one bit.
+ * for the first: a round of the same is said in one bit. `ended` is the metres it had gone when it ended, where the
+ * server flew it to its end as it looked back to its shooter's view, or 0.
  */
-export function writeBolt(w: BitWriter, packed: Uint32Array, at: number, ammo: number, back: number, silenced: boolean, last: number): void {
+export function writeBolt(w: BitWriter, packed: Uint32Array, at: number, ammo: number, back: number, silenced: boolean, last: number, ended = 0): void {
   w.bits(packed[at]!, LEVEL_BITS);
   w.bits(packed[at + 1]!, UP_BITS);
   w.bits(packed[at + 2]!, LEVEL_BITS);
@@ -48,6 +56,8 @@ export function writeBolt(w: BitWriter, packed: Uint32Array, at: number, ammo: n
   if (ammo !== last) w.u16(ammo);
   w.bits(clamp(Math.round(back), BOLT_BACK_MOST), 4);
   w.bool(silenced);
+  w.bool(ended > 0);
+  if (ended > 0) w.bits(clamp(Math.round(ended * ENDED), (1 << ENDED_BITS) - 1) || 1, ENDED_BITS);
 }
 
 /** Reads one round into `bolt`. `last` as for writeBolt. */
@@ -64,4 +74,5 @@ export function readBolt(r: BitReader, last: number): void {
   bolt.ammo = r.bool() ? last : r.u16();
   bolt.back = r.bits(4);
   bolt.silenced = r.bool();
+  bolt.ended = r.bool() ? r.bits(ENDED_BITS) / ENDED : 0;
 }

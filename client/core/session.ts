@@ -2073,14 +2073,14 @@ export class ClientSession {
     const kind = r.u8();
     const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0 };
     if (kind === EVENT_BOLTS) {
-      // The tick's rounds that fly, each read as the shot it is: its speed is its ammunition's.
+      // The tick's rounds that fly, each read as the shot it is: its speed is its ammunition's, and `far` the metres it had gone if it has ended.
       let last = 0;
       for (let n = r.u8(); n > 0 && !r.overflow; n--) {
         readBolt(r, last);
         last = bolt.ammo;
         const speed = this.registry.ammoSpeed[bolt.ammo] ?? 0;
         if (r.overflow || !(speed > 0)) break;
-        this.events.push({ ...ev, kind: EVENT_SHOT, x: bolt.x, y: bolt.y, z: bolt.z, item: bolt.ammo, flies: true, vx: bolt.dx * speed, vy: bolt.dy * speed, vz: bolt.dz * speed, back: bolt.back, silenced: bolt.silenced });
+        this.events.push({ ...ev, kind: EVENT_SHOT, x: bolt.x, y: bolt.y, z: bolt.z, item: bolt.ammo, flies: true, vx: bolt.dx * speed, vy: bolt.dy * speed, vz: bolt.dz * speed, back: bolt.back, silenced: bolt.silenced, far: bolt.ended });
         if (this.events.length > MAX_EVENTS) this.events.shift();
       }
       return;
