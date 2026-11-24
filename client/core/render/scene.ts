@@ -266,6 +266,9 @@ export class Scene {
    */
   get hide(): boolean { return this.occlusion.on; }
   set hide(on: boolean) { this.occlusion.on = on; }
+  /** Whether the bases' own walls and ceilings hide what is behind them (base-occluders.ts). Off for a before and after. */
+  get plating(): boolean { return this.nearStore.plating; }
+  set plating(on: boolean) { this.nearStore.plating = on; }
   get nearFirst(): boolean {
     return this.put.nearFirst;
   }
@@ -642,6 +645,7 @@ export class Scene {
     const far = this.layers.farMesh;
     this.nearStore = new NearStore(world, reg, this.assets, this.packet, this.put, this.casting, this.budget, this.hiding, this.street, (stream?.manifest ?? pack.header).meshes, far, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, meshOfForm: this.meshOfForm, colorOfForm: this.colorOfForm, sizeOfForm: this.sizeOfForm, mostOfForm: this.mostOfForm, reachOfMesh: this.reachOfMesh, reachOfStatic: this.reachOfStatic, groundFlags: this.groundFlags, bentKind: this.bentKind, regionsOfKind: this.regionsOfKind, treeOf: this.treeOf, trisOfMesh: this.trisOfMesh, radiusOfMesh: this.radiusOfMesh, trunkTris: this.trunkTris, leafTris: this.leafTris, landmarkKinds: this.landmarkKinds, missing });
     this.placing.looks = this.nearStore.pieces;
+    this.looseEntities.pieces = this.nearStore.pieces;
     this.nearStore.far = this.layers.far;
     this.occlusion = new Occlusion(world, this.assets, this.packet, this.put, this.casting, this.terrain, this.hiding, this.nearStore);
     this.layers.onCity = () => {

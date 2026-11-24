@@ -235,6 +235,8 @@ export interface Rubble {
   y: number;
   z: number;
   yaw: number;
+  /** Its turn class as it stood (ChunkTable.twAt), or -1 for a kind with no form, which is turned by its yaw alone. */
+  tw: number;
   /** GONE_DESTROYED, GONE_FELL or GONE_BLAST. */
   cause: number;
   /** Where the removal began. For a fall, where support was lost; for a blast, its centre. */
@@ -2907,7 +2909,8 @@ export class ClientSession {
             if (news) this.onStructure?.(kind, 0, x, y, z, t.hp[slot]!, 0, cause);
             if (told && news) {
               if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
-              this.rubble.push({ kind, x, y, z, yaw, cause, ox, oy, oz, tick, radius, into, map: t.owner[slot] === 0 ? this.mapKind(chunk, slot) : 0 });
+              // Its class is read here: the row is emptied below.
+              this.rubble.push({ kind, x, y, z, yaw, tw: reg.forms?.def[kind] ? t.twAt(slot) : -1, cause, ox, oy, oz, tick, radius, into, map: t.owner[slot] === 0 ? this.mapKind(chunk, slot) : 0 });
             }
             // A heap is as old as its batch, so a later batch of the same message may still take it.
             if (into !== 0) world.structs.put(chunk, slot, into, x, y, z, yaw, t.owner[slot]!, heapHealth(reg, into), at, PUT_AS_IS);

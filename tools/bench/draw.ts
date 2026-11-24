@@ -112,3 +112,22 @@ for (let i = 0; i < 60; i++) {
 lay.sort((a, b) => a - b);
 row("the 20,000-piece chunk laid out again and the frame built, median", percentile(lay, 0.5), "ms");
 row("the 20,000-piece chunk laid out again and the frame built, 99th percentile", percentile(lay, 0.99), "ms");
+
+// One outer wall goes and comes back, as in a siege: the frame after each.
+const wall = reg.index.get("core:wall_wood")!;
+let gone = 0;
+while (t.kind[gone] !== wall || Math.abs(t.z[gone]! - sz - 0.5) > 0.01) gone++;
+const pose = [t.kind[gone]!, t.x[gone]!, t.y[gone]!, t.z[gone]!, t.yaw[gone]!] as const;
+const goes: number[] = [];
+for (let i = 0; i < 60; i++) {
+  for (const comes of [false, true]) {
+    if (comes) structs.add(...pose, 1, reg.maxHp[wall]!);
+    else structs.remove(siege * 65536 + gone, 0);
+    at = performance.now();
+    scene.build(cam, null);
+    goes.push(performance.now() - at);
+  }
+}
+goes.sort((a, b) => a - b);
+row("the 20,000-piece chunk laid out again after one wall goes or comes, median", percentile(goes, 0.5), "ms");
+row("the 20,000-piece chunk laid out again after one wall goes or comes, 99th percentile", percentile(goes, 0.99), "ms");

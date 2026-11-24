@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { BUILD_REASONS, Builder, GHOST_OK } from "../../client/core/build.ts";
-import { DRAW_BLEND, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_PIECE, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { BUILDING_CONTENT } from "../../content/building.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -790,8 +790,8 @@ test("a house that comes down: whoever watches is told of it as a few removals a
       const falling = app.falling;
       if (!packet || !falling || falling.count === 0) return;
       most = Math.max(most, falling.count);
-      // Falling walls are one plain draw of wall instances from the frame's transient buffer.
-      for (let d = 0; d < packet.drawCount; d++) if (packet.drawBuffer[d] === TRANSIENT_BUFFER && packet.drawMesh[d] === wallMesh() && packet.drawFlags[d] === 0) drawn = Math.max(drawn, packet.drawInstances[d]!);
+      // Falling walls are one draw of wall instances from the frame's transient buffer, laid out as pieces.
+      for (let d = 0; d < packet.drawCount; d++) if (packet.drawBuffer[d] === TRANSIENT_BUFFER && packet.drawMesh[d] === wallMesh() && packet.drawFlags[d] === DRAW_PIECE) drawn = Math.max(drawn, packet.drawInstances[d]!);
     });
   run(600);
   const s = app.session;

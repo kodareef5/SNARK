@@ -244,6 +244,29 @@ pair of every sample. A window fills in 7, 4, 2 and 1 frames by tier. Flying 3 k
 600 m/s draws no tile coarser; at 3,000 m/s, 20. After a teleport the window is in
 within 4 frames.
 
+### Bases: rooms, trims and plates (2026-11-24, Linux, i9-13980HX)
+
+Each part alone (`bun tools/bench/rooms.ts`, `draw.ts --trims`, `occluders.ts`) with other lanes running, load 6 to 9:
+medians of three to five runs. The gates were set on a quiet machine, so a miss by a tenth is the load's.
+
+| Row | Before | Now | Gate |
+| --- | --- | --- | --- |
+| The room finder after one wall goes or comes, a 20,000-piece chunk | 0.96 ms | 0.20 to 0.25 ms | 0.4 |
+| The same, 2,000 pieces | 0.21 ms | 0.06 median; 0.11 to 0.13 by the bench's mean | 0.12 |
+| The room finder on a chunk whole, 20,000 pieces | 4.65 ms | 3.9 to 4.2 ms | 1.5, missed |
+| The same, 2,000 pieces | 0.85 ms | 0.82 ms | 0.4, missed |
+| The flood alone after one wall goes, 20,000 and 2,000 pieces | 0.58, 0.14 ms | 0.05, 0.02 ms | |
+| A 20,000-piece chunk laid out again with wood's stand-in trims, frame built | 12.9 ms | 3.8 to 4.9 ms | 6 |
+| The same with no trims | 3.4 ms | 2.9 to 3.1 ms | |
+| A chunk's plates found when it is laid out, 2,000 and 20,000 pieces of stone | | 0.23, 0.40 ms | |
+| Frame build 30 m from a stone base with 300 creatures, its plates in the picture | 0.66 ms | 0.82 ms | |
+| That base from 12 m, 30 m and a mount's back: triangles | 1.97, 1.60, 1.67 M | 1.73, 1.54, 1.61 M | a fall |
+| The same of metal, from 12 m: triangles; draws | 1.61 M; 20 | 1.28 M; 13 | a fall |
+
+The whole-chunk row is paid by a chunk first seen and by a change of many pieces at once; a slab's going no longer pays
+it. The plates' 0.16 ms a frame is the picture's tests, which a frame with no occluder skips. Why the plates hide little
+at 30 m is in [build-occluders](../workstreams/build-occluders.md).
+
 ### Far bases (D257)
 
 | Row | 130 base chunks within 2 km | 480 |

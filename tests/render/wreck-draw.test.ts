@@ -148,7 +148,7 @@ test("a stripped wreck blown apart falls whole, in the paint the map placed it i
   w.set(0, 0);
   const falling = (w.scene.falling = new Falling(reg.halfY, () => 0, { reg, structs: w.structs }));
   const [x, z] = [w.city.x[w.city.first[CHUNK]!]!, w.city.z[w.city.first[CHUNK]!]!];
-  falling.absorb([{ kind: stripped, x, y: 0, z, yaw: 0, cause: GONE_BLAST, ox: x + 2, oy: 1, oz: z, tick: 0, radius: 6, into: 0, map: blue }], w.scene.now, w.cam.x, w.cam.y, w.cam.z);
+  falling.absorb([{ kind: stripped, x, y: 0, z, yaw: 0, tw: -1, cause: GONE_BLAST, ox: x + 2, oy: 1, oz: z, tick: 0, radius: 6, into: 0, map: blue }], w.scene.now, w.cam.x, w.cam.y, w.cam.z);
   expect([falling.count, falling.sets[0]]).toEqual([1, null]);
   const p = w.run(1);
   const whole = [...Array(p.drawCount).keys()].filter((d) => p.drawBuffer[d] === TRANSIENT_BUFFER && p.drawMesh[d] === w.scene.meshOfKind[stripped]);
