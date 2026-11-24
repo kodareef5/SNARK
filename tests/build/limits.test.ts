@@ -14,6 +14,7 @@ import { GONE_BLAST, GONE_FELL, StructureStore, type PlacedRows } from "../../sh
 import { STRUCT_DEMOLISH } from "../../shared/world/upkeep.ts";
 import { PIECES, builder } from "../fixtures/build.ts";
 import { scanNear } from "../fixtures/enemy-scan.ts";
+import { join, start } from "../fixtures/slots.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -296,4 +297,94 @@ test("a piece over the structure cap is refused with both numbers", () => {
   expect(found()).toBe(RESULT_OK);
   expect(h.host.items.audit()).toEqual([]);
   h.host.shutdown();
+});
+
+/** A seeded world of bases of several tribes over many chunks, with things, pieces set down by pose and nobody's scenery. */
+function tribesWorld(seed: number): { structs: StructureStore; claims: Claims } {
+  const dims: MapDims = { chunksX: 6, chunksZ: 6 };
+  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const claims = new Claims(structs, reg.role);
+  const rng = new Rng(seed);
+  const w = { structs, reg };
+  const [box, wall] = [id("storage_box"), id("wall_wood")];
+  for (let b = 0; b < 40; b++) {
+    const team = 1 + rng.int(6);
+    const first = start(w, id("foundation_wood"), 20 + rng.int(340), 0.1875, 20 + rng.int(340), rng.int(65536), team, 100);
+    const built = [first];
+    for (let n = rng.int(12); n > 0; n--) {
+      const kind = KINDS[rng.int(KINDS.length)]!;
+      const ref = join(w, built[rng.int(built.length)]!, kind, rng.int(4), 0, 100);
+      if (ref >= 0) built.push(ref);
+    }
+  }
+  // Things and loose pieces are in no base, and nobody's are in no tribe.
+  for (let n = 0; n < 60; n++) structs.add(rng.int(2) === 0 ? box : wall, 10 + rng.int(360), 1 + rng.int(3), 10 + rng.int(360), rng.int(65536), rng.int(8), 100);
+  return { structs, claims };
+}
+
+test("a tribe's pieces change owner the same whether every chunk is read or only those it built in", () => {
+  /** Everything a change of owner writes: each chunk's version, owners, the versions its slots changed at and its log of changes; each base's team; each team's count. */
+  const state = (o: { structs: StructureStore; claims: Claims }): unknown[] => [
+    o.structs.held.map((c) => {
+      const t = o.structs.chunks[c]!;
+      return [c, t.version, [...t.owner.subarray(0, t.high)], [...t.mod.subarray(0, t.high)], t.recentCount, t.recentSlot ? [...t.recentSlot.subarray(0, Math.min(t.recentCount, 256))] : [], t.differs];
+    }),
+    [...o.structs.frames.all()].map((f) => [f.gid, f.team]),
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((team) => o.claims.total(team)),
+  ];
+  let passed = 0, moved = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const [all, some] = [tribesWorld(seed), tribesWorld(seed)];
+    expect(state(some)).toEqual(state(all));
+    // Tribes join tribes, one that has nothing joins, one joins a tribe that was not there, and nobody's pieces are given.
+    for (const [from, to] of [[3, 5], [1, 5], [5, 2], [9, 4], [6, 9], [7, 7], [0, 8], [4, 1]] as const) {
+      const whole = all.structs.reown(from, to);
+      const part = some.structs.reown(from, to, (chunk) => {
+        const has = some.claims.has(from, chunk);
+        if (!has) passed++;
+        return has;
+      });
+      expect([seed, from, to, part]).toEqual([seed, from, to, whole]);
+      expect(state(some)).toEqual(state(all));
+      moved += whole;
+    }
+  }
+  // Pieces did change hands, and chunks the tribe had not built in were passed over unread.
+  expect(moved).toBeGreaterThan(500);
+  expect(passed).toBeGreaterThan(100);
+});
+
+test("a lone root is told by its base's one row as by its links: a base of one piece has nothing joined to it", () => {
+  const { h, structs } = builder(["ada"], 60);
+  const rng = new Rng(9);
+  const g = h.world.spawn;
+  const here = { structs, reg };
+  const refs: number[] = [];
+  // Bases of one piece and of several, a pillar in the air, pieces taken away so that a base's last ones no longer touch.
+  for (let b = 0; b < 60; b++) {
+    const kind = rng.int(3) === 0 ? id("pillar_wood") : id("foundation_wood");
+    const [x, z] = [g.x + 40 + (b % 10) * 9, g.z + 30 + Math.floor(b / 10) * 9];
+    const y = h.world.hf.heightAt(x, z) + (kind === id("pillar_wood") ? 1.375 + rng.int(2) * 3 : 0.1875);
+    const first = start(here, kind, x, y, z, rng.int(65536), 50 + (b % 3), 100);
+    expect(first).toBeGreaterThanOrEqual(0);
+    const built = [first];
+    for (let n = rng.int(3) === 0 ? 0 : rng.int(5); n > 0; n--) {
+      const ref = join(here, built[rng.int(built.length)]!, KINDS[rng.int(KINDS.length)]!, rng.int(4), 0, 100);
+      if (ref >= 0) built.push(ref);
+    }
+    if (built.length > 2 && rng.int(2) === 0) structs.remove(built.splice(1 + rng.int(built.length - 1), 1)[0]!);
+    refs.push(...built);
+  }
+  refs.push(structs.add(id("foundation_wood"), g.x + 30, 1, g.z + 20, 0, 50, 100), structs.add(id("storage_box"), g.x + 34, 1, g.z + 20, 0, 50, 100));
+  const support = h.host.build.support;
+  /** The rule as it was: a root with no link to anything. */
+  const byLinks = (ref: number): boolean => {
+    support.forget();
+    const node = support.node(ref);
+    return node !== null && node.root && (node.role === 0 || node.role === 3) && node.links.length === 0;
+  };
+  const lone = h.host.build.decay.lone!;
+  const answers = refs.map((ref) => lone(ref));
+  expect(answers).toEqual(refs.map(byLinks));
+  expect([answers.filter(Boolean).length > 10, answers.filter((a) => !a).length > 20]).toEqual([true, true]);
 });

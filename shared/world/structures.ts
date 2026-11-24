@@ -1046,14 +1046,20 @@ export class StructureStore {
     return left;
   }
 
-  /** Returns how many structures changed owner. Authority only. */
-  reown(from: number, to: number): number {
+  /**
+   * Gives every structure of `from` to `to`, and returns how many changed owner. `built` says whether `from` owns
+   * anything in a chunk, where the caller keeps that (the server's claims grid): then the slots of a chunk are read only
+   * if a base of `from` has rows in it or `built` says so, and the rest are passed over unread. Authority only.
+   */
+  reown(from: number, to: number, built: ((chunk: number) => boolean) | null = null): number {
     let n = 0;
     if (from === to) return 0;
-    for (let chunk = 0; chunk < this.chunks.length; chunk++) {
-      const t = this.chunks[chunk];
+    for (const chunk of this.held) {
+      const t = this.chunks[chunk]!;
       // A chunk as the map placed it holds only pieces owned by nobody.
-      if (!t || (from !== 0 && t.differs === 0)) continue;
+      if (from !== 0 && t.differs === 0) continue;
+      // A base's rows are where its frame is listed. A thing is in no frame, which is what `built` is asked for.
+      if (built !== null && from !== 0 && !this.frames.listed(chunk).some((f) => f.team === from) && !built(chunk)) continue;
       let any = false;
       for (let slot = 0; slot < t.high; slot++) {
         if (t.kind[slot] === 0 || t.owner[slot] !== from) continue;
