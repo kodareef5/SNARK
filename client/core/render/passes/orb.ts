@@ -128,6 +128,9 @@ export class Orbs implements Pass {
       }
     }
     p.transientIds[first] = 0;
+    const from = p.drawCount;
     f.put.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
+    // Its bounds, so that what hides it leaves it out (occlusion.ts) and its step draws it at its own depth.
+    f.put.boxRows(from, p.drawCount, x - r, y - r, z - r, x + r, y + r, z + r);
   }
 }

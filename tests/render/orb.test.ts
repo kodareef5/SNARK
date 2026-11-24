@@ -5,7 +5,7 @@ import { tierOf, TIERS } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { GAZE_DIP, GAZE_LIFT, ORB_FAR, ORB_FLAT, ORB_FRAGMENT, ORB_SHELL, PUCK, PUCK_FROM, orbBits, orbCells, orbFill, orbLevel, orbLight, orbPick, orbPuck, orbRaw, orbScene, puckRings, writeOrb, type Puck } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
-import { DRAW_ORB, DRAW_TEXTURED, FRAME, FRAME_FLOATS, FramePacket, InstanceWriter, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DRAW_ORB, DRAW_TEXTURED, FRAME, FRAME_FLOATS, FramePacket, InstanceWriter, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
 import type { Frame } from "../../client/core/render/pass.ts";
 import { Orbs } from "../../client/core/render/passes/orb.ts";
 import { PROGRAM, PROGRAMS, drawProgram, tierPrograms, withDefines } from "../../client/core/render/programs.ts";
@@ -395,14 +395,19 @@ function stage(meshes: readonly string[]) {
   packet.tier = tierOf("high");
   const cam = new Camera();
   cam.far = 12000;
-  const draws: { mesh: number; level: number; flags: number; passes: number }[] = [], wanted: string[] = [];
+  const draws: { mesh: number; level: number; flags: number; passes: number; box?: number[] }[] = [], wanted: string[] = [];
   const assets = {
     table: { find: (id: string) => meshes.indexOf(id), error: meshes.map(() => [0, 0.5, 4]), radius: Float32Array.from(meshes, () => 60) },
     choose: (errors: readonly number[], distance: number) => (distance > 2000 ? errors.length - 1 : distance > 300 ? 1 : 0),
     want: (mesh: number) => void wanted.push(`flat ${meshes[mesh]}`),
     wantTextured: (mesh: number) => void wanted.push(`textured ${meshes[mesh]}`),
   };
-  const put = { doubled: 0, draw: (mesh: number, level: number, _b: number, _f: number, _n: number, _x: number, _y: number, _z: number, flags: number, passes: number) => void draws.push({ mesh, level, flags, passes }) };
+  const put = {
+    doubled: 0,
+    draw: (mesh: number, level: number, _b: number, _f: number, _n: number, _x: number, _y: number, _z: number, flags: number, passes: number) => void (draws.push({ mesh, level, flags, passes }), packet.drawCount++),
+    // The bounds a draw is given, for what hides it to leave it out.
+    boxRows: (from: number, to: number, ...box: number[]) => { for (let d = from; d < to; d++) draws[d]!.box = box; },
+  };
   const f = { cam, packet, assets, put, transient: new InstanceWriter(packet.transient), world: { orbs: [SITE] as readonly OrbSite[] } };
   const pass = new Orbs(assets as never);
   /** The frame's draws with the camera `metres` south of the ball, looking at it. */
@@ -429,6 +434,8 @@ test("the pass draws shell and plinth at any distance and skips missing meshes",
     expect(draws.every((d) => d.passes !== 0)).toBe(true);
     expect(whole.wanted).toEqual(["flat core:orb/shell", "textured core:orb/plinth"]);
   }
+  // Each draw is given its bounds: the ball's from its middle, 400 m ahead and 32 m up, and the plinth's from its foot.
+  expect(whole.from(400).map((d) => d.box)).toEqual([[-78, -46, 322, 78, 110, 478], [-60, -62, 340, 60, 58, 460]]);
   // Coarser levels with distance, and nothing where the ball is behind the eye.
   expect([whole.from(150)[0]!.level, whole.from(900)[0]!.level, whole.from(8000)[0]!.level]).toEqual([0, 1, 2]);
   // Past ORB_FAR the coarsest level is drawn, whatever the tier's error rule would pick.
@@ -454,9 +461,10 @@ let made: Pack | null = null;
 const pack = (): Pack => (made ??= parsePack(buildPack([...grayboxMeshes(CORE_CONTENT), { id: "core:orb/shell", lods: [boxMesh([44, 44, 44], 12)] }, { id: "core:orb/plinth", lods: [boxMesh([50, 3, 50], 5)] }], defaultPalette())));
 
 /** A flat map with the ball on it, drawn on `tier` from 300 m south. */
-function world(tier: string, thePack: Pack, orbs: readonly OrbSite[] | null = [{ ...SITE, y: 0 }]) {
+function world(tier: string, thePack: Pack, orbs: readonly OrbSite[] | null = [{ ...SITE, y: 0 }], shape?: (hf: Heightfield) => void) {
   const reg = sceneRegistry(), dims = { chunksX: 32, chunksZ: 32 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  shape?.(hf);
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const scene = new Scene({ dims, hf, structs, ...(orbs ? { orbs } : {}), tideEyes: [{ ...BLUE, y: 0 }] }, reg, thePack);
   scene.assets.tier = tierOf(tier);
@@ -507,6 +515,44 @@ test("a scene writes the orb's lanes and draws its screen, on low poly too", () 
   const q = artless.scene.build(artless.cam, null);
   expect(q.frame[ORB_AT + 3]).toBe(78);
   expect([...Array(q.drawCount).keys()].filter((d) => (q.drawFlags[d]! & DRAW_ORB) !== 0)).toEqual([]);
+});
+
+test("a hill that hides the ball leaves its shell and plinth out of the frame", () => {
+  for (const tier of ["medium", "high"]) {
+    // A ridge 300 m high and 500 m thick across the way to the ball, 200 m from the eye: thick enough to hold whole tiles of the ground.
+    const { scene, cam, hf } = world(tier, pack(), undefined, (ground) => {
+      for (let j = 0; j < ground.nz; j++) for (let i = 0; i < ground.nx; i++) ground.setSample(i, j, j * ground.cell > SITE.z - 750 && j * ground.cell < SITE.z - 250 ? 300 : 0);
+    });
+    cam.z = SITE.z - 950;
+    cam.y = hf.heightAt(cam.x, cam.z) + 2;
+    cam.pitch = 0;
+    const meshes = (): string[] => {
+      // The second frame of a view: the first has the ground's tiles still coming.
+      scene.build(cam, null);
+      const p = scene.build(cam, null), out: string[] = [];
+      for (let d = 0; d < p.drawCount; d++) {
+        const id = scene.assets.manifest.meshes[p.drawMesh[d]!]!.id;
+        if (id.startsWith("core:orb/")) out.push(id);
+      }
+      return [...new Set(out)];
+    };
+    expect(meshes(), tier).toEqual([]);
+    // Its halo is drawn all the same, by night: at the ball's depth, so the ridge hides what of it the ridge covers, and
+    // the rest is the glow in the haze over a ball out of sight.
+    scene.hour = 23;
+    expect(meshes(), tier).toEqual([]);
+    const night = scene.build(cam, null);
+    let glows = 0;
+    for (let n = 0; n < night.detailCount; n++) if (((night.detailWords[n * DETAIL_FLOATS + DETAIL.misc]! >>> 8) & 255) === DETAIL_GLOW) glows++;
+    expect(glows, tier).toBeGreaterThanOrEqual(1);
+    // With nothing left out for being hidden, both are drawn; and from over the ridge, both are seen.
+    scene.hide = false;
+    expect(meshes().sort(), tier).toEqual(["core:orb/plinth", "core:orb/shell"]);
+    scene.hide = true;
+    cam.y = 900;
+    cam.pitch = -0.6;
+    expect(meshes().sort(), tier).toEqual(["core:orb/plinth", "core:orb/shell"]);
+  }
 });
 
 test("the program's texts compile on every tier, with the tier's octaves and pucks", () => {
