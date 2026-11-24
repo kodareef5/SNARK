@@ -10,7 +10,7 @@ import { decodeTakes, type ManifestSound } from "../../shared/pack/sound.ts";
 import { listSounds, takesOf, type ListedOwner, type Variant } from "../core/sound/listing.ts";
 import { distanceGain, lowpassAt, semitones } from "../core/sound/place.ts";
 
-const $ = <T extends HTMLElement>(id: string): T => document.querySelector<T>(`#${id}`)!;
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.querySelector<T>(`#${id}`)!;
 const [list, note, far, way, vary, find, missing, later] = [$("list"), $("note"), $<HTMLInputElement>("far"), $<HTMLSelectElement>("way"), $<HTMLInputElement>("vary"), $<HTMLInputElement>("find"), $<HTMLInputElement>("missing"), $<HTMLInputElement>("later")];
 let ctx: AudioContext | null = null;
 /** Directions as the ear hears them: x to the right, z ahead (the listener faces -z). */
@@ -77,9 +77,9 @@ async function boot(): Promise<void> {
   const seconds = sounds.reduce((n, s) => n + s.takes.reduce((m, t) => m + t.samples / s.rate, 0), 0);
   const bytes = sounds.reduce((n, s) => n + s.takes.reduce((m, t) => m + t.bytes, 0), 0);
   note.textContent = `${sounds.length} sounds, ${sounds.reduce((n, s) => n + s.takes.length, 0)} takes, ${seconds.toFixed(0)} s, ${(bytes / 1048576).toFixed(1)} MB, ${manifest.sounds?.length ?? 0} of them in the game's file.`;
-  list.innerHTML = listSounds(sounds, owners).map((g) => `<h2>${esc(g.title)}</h2>${g.cards.map((c) => `<details class="card" open><summary><b>${esc(c.title)}</b> <code>${esc(c.id)}</code> <span class="count"><i class="own">${c.count.own} own</i> <i class="stand-in">${c.count["stand-in"]} stand-in</i> <i class="shared">${c.count.shared} shared</i> <i class="none">${c.count.none} none</i></span>${c.files.map((f) => ` <a href="${esc(resource(`admin/source/${f}`))}" target="_blank">${esc(f.split("/").pop()!)}</a>`).join("")}</summary>
-    ${c.occasions.map((o) => `<div class="occ${o.status.startsWith("waits:") ? " later" : ""}${o.variants.every((v) => v.by === "own") ? "" : " gap"}" data-text="${esc(`${c.id} ${o.name} ${o.label} ${o.status} ${o.when}`.toLowerCase())}"><div class="what"><b>${esc(o.label)}</b> <code>${esc(o.name)}</code> <i>${esc(o.status)}${o.loop ? ", loops" : ""}</i><small>${esc(o.when)}</small>${o.want ? `<small class="want">the brief asks for: ${esc(o.want)}</small>` : ""}</div><div class="how">${o.variants.map(chip).join("")}</div>${o.variants.filter((v) => v.by === "own").map((v) => `<div class="takes">${v.word ? `<span>${esc(v.word)}</span>` : ""}${takes(v.sound!)}</div>`).join("")}</div>`).join("")}
-    ${c.loose.length > 0 ? `<div class="occ"><div class="what"><b>its own, heard by no occasion</b></div>${c.loose.map((n) => `<div class="takes"><span>${esc(n)}</span>${takes(`${c.id}/sound/${n}`)}</div>`).join("")}</div>` : ""}</details>`).join("")}`).join("");
+  list.innerHTML = listSounds(sounds, owners).map((g) => `<section class="cue-group"><h2>${esc(g.title)}</h2>${g.cards.map((c) => `<details class="card"><summary><b>${esc(c.title)}</b> <code>${esc(c.id)}</code> <span class="count"><i class="own">${c.count.own} own</i> <i class="stand-in">${c.count["stand-in"]} stand-in</i> <i class="shared">${c.count.shared} shared</i> <i class="none">${c.count.none} none</i></span>${c.files.map((f) => ` <a href="${esc(resource(`admin/source/${f}`))}" target="_blank">${esc(f.split("/").pop()!)}</a>`).join("")}</summary>
+    ${c.occasions.map((o) => `<div class="occ${o.status.startsWith("waits:") ? " later" : ""}${o.variants.every((v) => v.by === "own") ? "" : " gap"}" data-text="${esc(`${c.title} ${c.id} ${o.name} ${o.label} ${o.status} ${o.when}`.toLowerCase())}"><div class="what"><b>${esc(o.label)}</b> <code>${esc(o.name)}</code> <i>${esc(o.status)}${o.loop ? ", loops" : ""}</i><small>${esc(o.when)}</small>${o.want ? `<small class="want">the brief asks for: ${esc(o.want)}</small>` : ""}</div><div class="how">${o.variants.map(chip).join("")}</div>${o.variants.filter((v) => v.by === "own").map((v) => `<div class="takes">${v.word ? `<span>${esc(v.word)}</span>` : ""}${takes(v.sound!)}</div>`).join("")}</div>`).join("")}
+    ${c.loose.length > 0 ? `<div class="occ" data-text="${esc([c.title, c.id, ...c.loose].join(" ").toLowerCase())}"><div class="what"><b>Additional takes</b></div>${c.loose.map((n) => `<div class="takes"><span>${esc(n)}</span>${takes(`${c.id}/sound/${n}`)}</div>`).join("")}</div>` : ""}</details>`).join("")}</section>`).join("");
   document.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-play], [data-take]");
     const s = b && byId.get(b.dataset.play ?? b.dataset.take ?? "");
@@ -90,8 +90,16 @@ async function boot(): Promise<void> {
     buffers(fileOf(s), s).then((all) => play(all[k]!, s.range, s.vary, Number(b.dataset.rate ?? 1)), (err: unknown) => (note.textContent = String(err)));
   });
   const filter = (): void => {
-    const q = find.value.toLowerCase();
-    for (const o of list.querySelectorAll<HTMLElement>(".occ[data-text]")) o.hidden = (q !== "" && !o.dataset.text!.includes(q)) || (missing.checked && !o.classList.contains("gap")) || (!later.checked && o.classList.contains("later"));
+    const q = find.value.trim().toLowerCase();
+    for (const row of list.querySelectorAll<HTMLElement>(".occ[data-text]")) {
+      row.hidden = !row.dataset.text!.includes(q) || (missing.checked && !row.classList.contains("gap")) || (!later.checked && row.classList.contains("later"));
+    }
+    for (const card of list.querySelectorAll<HTMLDetailsElement>("details")) {
+      card.hidden = !card.querySelector(".occ:not([hidden])");
+      if (q && !card.hidden) card.open = true;
+    }
+    for (const group of list.querySelectorAll<HTMLElement>(".cue-group")) group.hidden = !group.querySelector("details:not([hidden])");
+    $("empty-sounds").hidden = !!list.querySelector(".cue-group:not([hidden])");
   };
   find.oninput = missing.onchange = later.onchange = filter;
   filter();

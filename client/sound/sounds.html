@@ -13,12 +13,13 @@
     <div class="tool-panel controls bar">
       <label>Distance <input id="far" type="range" min="0" max="60" step="1" value="3" oninput="farOut.textContent = this.value + ' m'" /><output id="farOut">3 m</output></label>
       <label>From <select id="way"><option>ahead</option><option>right</option><option>behind</option><option>left</option></select></label>
-      <label><input id="vary" type="checkbox" checked /> vary the pitch as the game does</label>
+      <label><input id="vary" type="checkbox" checked /> Vary pitch</label>
       <label>Find <input id="find" type="search" placeholder="dodo, step, alarm, waits:" /></label>
-      <label><input id="missing" type="checkbox" /> not all its own</label>
-      <label><input id="later" type="checkbox" /> occasions not in the game yet</label>
+      <label><input id="missing" type="checkbox" /> Show missing or shared takes</label>
+      <label><input id="later" type="checkbox" /> Include planned cues</label>
     </div>
-    <div id="list">Loading.</div>
+    <p id="empty-sounds" role="status" hidden>No cues match these filters.</p>
+      <div id="list">Loading sounds…</div>
     </main>
     <script type="module" src="/admin/ui/board.js"></script>
   </body>

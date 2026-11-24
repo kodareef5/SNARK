@@ -75,11 +75,15 @@ function mount(): void {
     toggle.setAttribute("aria-expanded", String(show));
     toggle.setAttribute("aria-label", show ? "Close navigation" : "Open navigation");
     backdrop.hidden = !show;
+    if (main) main.inert = show;
     if (show) document.querySelector<HTMLElement>(".admin-brand")?.focus();
     else toggle.focus();
   };
   toggle.onclick = () => open(toggle.getAttribute("aria-expanded") !== "true");
   backdrop.onclick = () => open(false);
+  matchMedia("(max-width: 720px)").addEventListener("change", () => {
+    if (!backdrop.hidden) open(false);
+  });
   document.addEventListener("keydown", e => { if (e.key === "Escape" && !backdrop.hidden) open(false); });
   void adminContext().then(install).catch((error: Error) => {
     const alert = document.createElement("p");
