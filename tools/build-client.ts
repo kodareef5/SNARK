@@ -15,6 +15,7 @@ import { Binding } from "../client/core/assets/bind.ts";
 import { AssetTable } from "../client/core/assets/table.ts";
 import { SKY_MATERIAL } from "../client/core/render/atmosphere.ts";
 import { FAR_MESH, farColours } from "../client/core/render/far.ts";
+import { SLOT_EDGE_MESH, SLOT_SQUARE_MESH, SLOT_VERTEX_MESH } from "../client/core/render/passes/ghost.ts";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
 import { WATER_MATERIAL } from "../client/core/render/water.ts";
 import { BENT_SECTIONS } from "../content/bends.ts";
@@ -73,7 +74,7 @@ export { withoutNotes };
  */
 export function paging(reg: Registry, pack: Pack): { bootSurfaces: ReadonlySet<string>; boot: (id: string) => boolean; place: (id: string) => readonly [number, number] } {
   const has = (asset: string, id: string): boolean => asset === "mesh" && pack.meshIndex.has(id);
-  const boot = new Set([MISSING_MESH, WATER_MESH, BEAM_MESH, FAR_MESH, "core:fire_cone", "core:fire_lobe"]);
+  const boot = new Set([MISSING_MESH, WATER_MESH, BEAM_MESH, FAR_MESH, "core:fire_cone", "core:fire_lobe", SLOT_EDGE_MESH, SLOT_SQUARE_MESH, SLOT_VERTEX_MESH]);
   const bootSurfaces = new Set<string>();
   const places = new Map<string, readonly [number, number]>();
   const kinds = new Map<string, number>();

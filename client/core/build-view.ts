@@ -14,7 +14,7 @@ import { PUT_FREE, StructureStore, type ChunkTable } from "../../shared/world/st
 const NEAR = 48;
 const FAR = 160;
 /** Rows copied in one frame while a chunk is first read: about a millisecond. */
-const ROWS_A_FRAME = 2000;
+const ROWS_A_FRAME = 1000;
 /** A frame made here for a base the server has not answered for takes a gid from this up. The server's count up from 1. */
 export const PROVISIONAL = 0x40000000;
 

@@ -12,12 +12,14 @@ import { PLACE_JOIN, PLACE_NEW, PLACE_REST, writeJoin, writeNew, writeRest } fro
 import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, RESULT_TERRAIN, RESULT_TOO_HIGH, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
+import { levelY, worldOf, yawOf } from "../../shared/world/lattice/basis.ts";
 import { HALF_SIDE_M } from "../../shared/world/lattice/forms.ts";
-import { SIDE, keyLvl } from "../../shared/world/lattice/module.ts";
+import type { Frame } from "../../shared/world/lattice/frames.ts";
+import { SIDE, elementCorners, keyAnchor, keyCls, keyDir, keyLvl } from "../../shared/world/lattice/module.ts";
 import { PLACE_REACH, candidates, choose, makeCandidates, makeVerdict, validate, validateFree, type Site } from "../../shared/world/lattice/place.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ROLE_THING, enemyGap, enemyGapFound, freePose, restPose, type Pose } from "../../shared/world/snap.ts";
-import { Support } from "../../shared/world/support.ts";
+import { STABILITY, Support } from "../../shared/world/support.ts";
 import { BuildView, PROVISIONAL } from "./build-view.ts";
 import { ASKED, type Asking, type PredictBuild } from "./predict-build.ts";
 import type { ClientSession } from "./session.ts";
@@ -40,9 +42,51 @@ const VIEW_NEED = PLACE_REACH + 20;
 const ON_REACH = 1.75 * SIDE * HALF_SIDE_M;
 /** Pieces not yet answered for that may stand one on another: a third waits for the first's answer. */
 const UNSURE_MOST = 2;
-/** Palette indices for the ghost. */
+/** Palette indices for the ghost: fine, fine and at the last step that stands, refused; and for a slot's outline. */
 export const GHOST_OK = 16;
+export const GHOST_WARN = 3;
 export const GHOST_BAD = 8;
+export const GHOST_SLOT = 10;
+/** Under this stability a piece that stands is shown in the warning colour: nothing more hangs far off it. */
+export const STABLE_FROM = 2;
+/** Other free slots marked at most, how many of the look's candidates are gone through for them, and how many are judged anew in one frame. */
+export const OTHERS_MOST = 8;
+const OTHERS_SEEN = 16;
+const OTHERS_A_FRAME = 1;
+/** How see-through the other slots' marks are, 0 to 1. */
+export const OTHERS_FADE = 0.55;
+
+/** A slot's outline: its class (a CLS_ of the lattice, -1 for none), its middle in metres and its turn in wire units. */
+export interface SlotMark {
+  cls: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+}
+
+const corners = new Int32Array(16);
+const anchor = new Int32Array(4);
+const point = new Int32Array(2);
+
+/** The outline of the slot (k0, k1) of frame `f`, to `out`. A triangle is marked at its middle as a corner is. */
+function slotMarkOf(f: Frame, k0: number, k1: number, out: SlotMark): void {
+  const cls = keyCls(k0);
+  keyAnchor(k0, k1, anchor, 0);
+  const n = elementCorners(cls, anchor, 0, keyDir(k1), corners, 0);
+  let x = 0;
+  let z = 0;
+  for (let i = 0; i < n; i++) {
+    worldOf(f.basis, f.ox, f.oz, corners, 4 * i, point, 0);
+    x += point[0]! / n;
+    z += point[1]! / n;
+  }
+  out.cls = n === 3 ? 0 : cls;
+  out.x = x / STRUCT_UNITS;
+  out.z = z / STRUCT_UNITS;
+  out.y = levelY(f.oy, keyLvl(k1)) / STRUCT_UNITS;
+  out.yaw = yawOf(f.yaw, keyDir(k1));
+}
 
 /** Keyed by the RESULT_ code from the local check or the server: what is said where no cause is known. */
 export const BUILD_REASONS: Readonly<Record<number, string>> = {
@@ -94,6 +138,8 @@ export function buildReason(reg: Registry, session: ClientSession, code: number,
 interface Asked {
   readonly site: Site;
   readonly support: Support;
+  /** The same checks for a place the builder does not stand at or reach from. */
+  readonly bare: Site;
 }
 
 const NO_PIECES: readonly never[] = [];
@@ -107,6 +153,16 @@ export class Builder {
   problem = 0;
   /** The server's last refusal for a moment, else the current problem. */
   notice = "";
+  /** How well the piece shown would stand, from its material's most down to 0; -2 where that is not said: a thing, a piece refused. */
+  stability = -2;
+  stabilityMost = STABILITY;
+  /** The slot the piece shown would go in, for its outline. */
+  readonly slotMark: SlotMark = { cls: -1, x: 0, y: 0, z: 0, yaw: 0 };
+  /** The other free slots near the look that the piece may go in, the first `others` of them: the places Q steps through. */
+  readonly otherMarks: SlotMark[] = Array.from({ length: OTHERS_MOST }, () => ({ cls: -1, x: 0, y: 0, z: 0, yaw: 0 }));
+  others = 0;
+  /** Whether the other slots are marked (Settings.buildSlots). */
+  showOthers = true;
   /** What is in the way of the piece where it is shown, for `problem`. */
   readonly by: Blocker = { detail: PLACED_NONE, a: 0, b: 0 };
   /** How many of an item have been set down and not yet taken from the inventory (PredictBuild.pending). */
@@ -115,6 +171,12 @@ export class Builder {
   predict: PredictBuild | null = null;
   /** The item in hand that places a piece, or 0. */
   get inHand(): number { return this.item; }
+  /** The palette colour the piece is shown in: fine, at the last step that stands or waiting, or refused. */
+  get color(): number {
+    if (this.problem === RESULT_WAIT) return GHOST_WARN;
+    if (this.problem !== 0) return GHOST_BAD;
+    return this.stability >= 0 && this.stability < STABLE_FROM ? GHOST_WARN : GHOST_OK;
+  }
   /** free means the piece joins nothing. `turn` is its turn in a slot, or quarter turns on open ground. */
   variant = 0;
   turn = 0;
@@ -149,6 +211,12 @@ export class Builder {
   /** The pieces not yet answered for that the piece shown joins or stands on. */
   private readonly on: number[] = [];
   private readonly off: number[] = [];
+  /** Whether `offered` is of the look as it is now. */
+  private joining = false;
+  /** Slots judged for their marks: what they were judged for, then each one's frame and key, whether it is fine, and its pose. */
+  private readonly judgedFor = [-1, -1, -1, -1];
+  private judgedN = 0;
+  private readonly judged = { fr: new Uint32Array(32), k0: new Uint32Array(32), k1: new Uint32Array(32), ok: new Uint8Array(32), x: new Float64Array(32), y: new Float64Array(32), z: new Float64Array(32), yaw: new Uint16Array(32), tw: new Uint8Array(32) };
   /** What the preview was last worked out from. While none of it changes, it stands. */
   private readonly from = new Float64Array(20).fill(NaN);
   /** The problem and its cause the notice was last worded for. */
@@ -203,7 +271,7 @@ export class Builder {
     };
     // The session's own store and the view's: a world left behind is forgotten with its first.
     if (this.sites.length >= 2) this.sites.shift();
-    const made = { site, support };
+    const made = { site, support, bare: { ...site, body: undefined } };
     this.sites.push(made);
     return made;
   }
@@ -272,14 +340,19 @@ export class Builder {
       now[12] = seen.structs.shapes;
       from.set(now);
     }
+    this.markOthers(session, seen, world, reg, kind, team);
     this.notice = nowMs < this.refusalUntil ? this.refusal : this.words;
   }
 
   /** Works the preview out: where the piece would go in the world `seen`, and what is wrong with it there. */
   private work(session: ClientSession, seen: CollisionWorld, world: CollisionWorld, reg: Registry, kind: number, team: number, have: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, yaw: number): void {
     const structs = seen.structs;
-    const site = this.siteFor(seen).site;
+    const { site, support } = this.siteFor(seen);
     const view = seen === world ? null : this.view!;
+    this.stability = -2;
+    this.stabilityMost = reg.stabilityCap[kind] || STABILITY;
+    this.slotMark.cls = -1;
+    this.joining = false;
     const hit = castWorld(seen, ox, oy, oz, dx, dy, dz, BUILD_REACH);
     const looked = hit === HIT_STRUCTURE ? rayHit.ref : -1;
     // A piece that is no row yet is not one to pick, mend or rest a thing on.
@@ -332,6 +405,9 @@ export class Builder {
       this.mode = PLACE_JOIN;
       problem = validate(site, kind, team, at.fr, at.k0, this.keyed(reg), ox, oy, oz, verdict);
       [p.x, p.y, p.z, p.yaw] = [verdict.pose.x, verdict.pose.y, verdict.pose.z, verdict.pose.yaw];
+      this.joining = true;
+      slotMarkOf(structs.frames.get(at.fr)!, at.k0, at.k1, this.slotMark);
+      if (problem === 0) this.stability = support.stabilityAt(kind, at.fr, at.k0, this.keyed(reg));
       if (problem === 0 && view && this.unsure(view, site, kind, team, ox, oy, oz)) problem = RESULT_WAIT;
     } else {
       // A bed is set only on a floor.
@@ -339,6 +415,8 @@ export class Builder {
       else {
         this.mode = PLACE_NEW;
         problem = validateFree(site, kind, p, ox, oy, oz, verdict);
+        // A base's first piece stands by itself.
+        if (problem === 0 && reg.forms.cls[kind]! >= 0) this.stability = this.stabilityMost;
       }
     }
     this.next = this.raise = 0;
@@ -353,6 +431,46 @@ export class Builder {
     if (w[0] !== problem || w[1] !== by.detail || w[2] !== by.a || w[3] !== by.b) {
       [w[0], w[1], w[2], w[3]] = [problem, by.detail, by.a, by.b];
       this.words = problem === 0 ? "" : buildReason(reg, session, problem, by, undefined, structs);
+    }
+  }
+
+  /**
+   * Marks the other slots the look offers that the piece may go in, the nearest first: each judged once as the server
+   * would judge it from anywhere, a few new ones a frame, and left out while the builder's own body stands in it.
+   */
+  private markOthers(session: ClientSession, seen: CollisionWorld, world: CollisionWorld, reg: Registry, kind: number, team: number): void {
+    this.others = 0;
+    if (!this.showOthers || !this.joining || this.mode !== PLACE_JOIN) return;
+    const c = this.offered;
+    const at = this.slot;
+    const j = this.judged;
+    const forWhat = this.judgedFor;
+    const stamp = [kind, this.turn, this.view?.version ?? 0, seen === world ? world.structs.shapes : -1];
+    if (forWhat[0] !== stamp[0] || forWhat[1] !== stamp[1] || forWhat[2] !== stamp[2] || forWhat[3] !== stamp[3]) {
+      [forWhat[0], forWhat[1], forWhat[2], forWhat[3]] = [stamp[0]!, stamp[1]!, stamp[2]!, stamp[3]!];
+      this.judgedN = 0;
+    }
+    const own = session.own;
+    const structs = seen.structs;
+    let anew = OTHERS_A_FRAME;
+    for (let k = 0; k < c.n && k < OTHERS_SEEN && this.others < OTHERS_MOST; k++) {
+      const [fr, k0, k1] = [c.fr[k]!, c.k0[k]!, c.k1[k]!];
+      if (fr === at.fr && k0 === at.k0 && k1 === at.k1) continue;
+      let i = 0;
+      while (i < this.judgedN && (j.fr[i] !== fr || j.k0[i] !== k0 || j.k1[i] !== k1)) i++;
+      if (i === this.judgedN) {
+        if (anew === 0 || i === j.fr.length) continue;
+        anew--;
+        this.judgedN++;
+        const turns = reg.forms.turns[kind]!;
+        const code = validate(this.siteFor(seen).bare, kind, team, fr, k0, (k1 | ((((this.turn % turns) + turns) % turns) << 26)) >>> 0, NaN, NaN, NaN, this.alone);
+        const q = this.alone.pose;
+        [j.fr[i], j.k0[i], j.k1[i], j.ok[i]] = [fr, k0, k1, code === RESULT_OK ? 1 : 0];
+        [j.x[i], j.y[i], j.z[i], j.yaw[i], j.tw[i]] = [q.x / STRUCT_UNITS, q.y / STRUCT_UNITS, q.z / STRUCT_UNITS, q.yaw, q.tw];
+      }
+      if (j.ok[i] !== 1) continue;
+      if (capsuleKind(reg.parts, kind, j.x[i]!, j.y[i]!, j.z[i]!, j.yaw[i]!, j.tw[i]!, own.x, own.y, own.z, reg.bodyRadius[session.ownKind]!, reg.bodyHeight[session.ownKind]!, BODY_SLACK)) continue;
+      slotMarkOf(structs.frames.get(fr)!, k0, k1, this.otherMarks[this.others++]!);
     }
   }
 
@@ -385,6 +503,11 @@ export class Builder {
     on.length = kept;
     for (const id of on) if (predict.unsure(id) >= UNSURE_MOST) return true;
     return false;
+  }
+
+  /** What the hotbar's line says of the piece shown: how well it would stand. "" with nothing to say. */
+  says(): string {
+    return this.problem === 0 && this.stability >= 0 ? `Stability ${this.stability} of ${this.stabilityMost}` : "";
   }
 
   /** The shown slot's second word with the piece's turn in it: as many turns as its form has. */

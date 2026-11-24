@@ -87,6 +87,8 @@ export interface HudFrame {
   /** Pieces set down that the server has not yet taken from the count: their item, and how many. */
   spendItem: number;
   spend: number;
+  /** What the builder's preview says of the piece in hand, over the line of its keys. */
+  buildSays: string;
 }
 
 /** Where the HUD's shared places are on a canvas, worked out once a build (layout.ts) and read by every widget. */

@@ -61,7 +61,7 @@ import { Lasers } from "./render/laser.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { Orbit } from "./orbit.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
-import { Builder, GHOST_BAD, GHOST_OK, buildReason } from "./build.ts";
+import { Builder, GHOST_BAD, GHOST_OK, GHOST_SLOT, OTHERS_FADE, buildReason } from "./build.ts";
 import { PredictBuild } from "./predict-build.ts";
 import { STRUCT_REASONS } from "./ui/structure.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
@@ -1008,6 +1008,7 @@ export class App {
     const fill = this.hudFill, body = f.body;
     f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active; f.device = this.ui.inputDevice;
     f.spendItem = this.builder.inHand; f.spend = this.predict.pending(f.spendItem);
+    f.buildSays = this.builder.active ? this.builder.says() : "";
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
@@ -1050,8 +1051,9 @@ export class App {
   /** A piece in hand, or a vehicle to set down, is tried where the look is on, and drawn there from the next frame. */
   private ghost(f: AppFrame): void {
     const session = this.session, c = this.controls, world = f.world, nowMs = f.nowMs, eyeNow = f.eyeNow;
-    const ghost = f.scene.ghost;
+    const ghost = f.scene.ghost, marks = f.scene.predicted;
     ghost.kind = 0;
+    marks.clear();
     const b = this.builder, v = this.vehiclePlacement;
     if (f.alive && session.driving < 0) {
       lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.dir);
@@ -1067,7 +1069,16 @@ export class App {
       ghost.y = b.pose.y / STRUCT_UNITS;
       ghost.z = b.pose.z / STRUCT_UNITS;
       ghost.yaw = b.pose.yaw;
-      ghost.color = b.problem === 0 ? GHOST_OK : GHOST_BAD;
+      ghost.color = b.color;
+    }
+    // The slot it would go in, and faintly the others the look offers.
+    if (b.active && b.slotMark.cls >= 0) {
+      const at = b.slotMark;
+      marks.slot(at.cls, at.x, at.y, at.z, at.yaw, GHOST_SLOT);
+      for (let i = 0; i < b.others; i++) {
+        const o = b.otherMarks[i]!;
+        marks.slot(o.cls, o.x, o.y, o.z, o.yaw, GHOST_SLOT, OTHERS_FADE);
+      }
     }
     if (v.active) {
       ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw;
