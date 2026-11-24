@@ -65,6 +65,8 @@ const GLIDE_RISE = 0.75;
 export const ORBIT_BACK = BACK;
 /** Metres a chase camera's boom holds it back at rest where the caller gives no length. */
 export const CHASE_BOOM = 6;
+/** The longest frame, in milliseconds, a chase camera's target is carried along with its subject through. */
+const CARRY_MS = 1000;
 /** Gap kept between the camera and the obstacle, so the near plane does not cut into a wall. */
 const CLEAR = 0.3;
 /** Preserve useful world depth precision in a squeezed orbit, even at maximum FOV on an ultrawide screen. */
@@ -133,6 +135,10 @@ export class Viewpoint {
     let lowRoof = false, highEdge = false, pinched = false;
     const elapsed = Math.max(0, Math.min(100, dt));
     const switched = !this.vehicleLook || (motion?.id ?? -1) !== this.vehicleId;
+    // The target goes along with its subject for the frame's real time, so the spring holds no lag at any speed.
+    const carried = Math.max(0, Math.min(CARRY_MS, dt)) / 1000;
+    this.target[0]! += (motion?.vx ?? 0) * carried;
+    this.target[2]! += (motion?.vz ?? 0) * carried;
     const reset = switched || Math.hypot(ex - this.target[0]!, ey - this.target[1]!, ez - this.target[2]!) > 10;
     if (reset || Math.abs(angle(yaw - this.lastYaw)) > 0.00001 || Math.abs(pitch - this.lastPitch) > 0.00001) this.lookIdle = 0;
     else this.lookIdle += elapsed;
@@ -143,14 +149,15 @@ export class Viewpoint {
     this.vehicleLook = true;
     this.vehicleId = motion?.id ?? -1;
     const wanted = this.lead;
-    wanted[0] = ex + Math.max(-1.8, Math.min(1.8, (motion?.vx ?? 0) * .1));
+    wanted[0] = ex;
     wanted[1] = ey + Math.max(-.25, Math.min(.25, (motion?.vy ?? 0) * .035));
-    wanted[2] = ez + Math.max(-1.8, Math.min(1.8, (motion?.vz ?? 0) * .1));
+    wanted[2] = ez;
     const seconds = elapsed / 1000;
     if (motion?.kick && !reset) this.targetVelocity[1] -= motion.kick;
     for (let i = 0; i < 3; i++) {
       if (reset) { this.target[i] = wanted[i]!; this.targetVelocity[i] = 0; continue; }
       // Exact critically damped spring: stable through variable frame times, with softer vertical suspension response.
+      // Across and along, its speed is the target's past its subject's.
       const omega = i === 1 ? 12 : 22, decay = Math.exp(-omega * seconds);
       const offset = this.target[i]! - wanted[i]!, change = (this.targetVelocity[i]! + omega * offset) * seconds;
       this.target[i] = wanted[i]! + (offset + change) * decay;
