@@ -25,6 +25,7 @@ import { builder } from "../fixtures/build.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { start } from "../fixtures/slots.ts";
 
 const reg = coreRegistry();
 const CAPSULE = reg.index.get("core:supply_capsule")!;
@@ -133,7 +134,7 @@ test("a circuit with sites calls drops at them alone: those within reach of a su
   // A tribe's foundation thirty metres from one of them.
   me.team = h.host.records.newTeam();
   const foundation = reg.index.get("core:foundation_wood")!;
-  h.world.structs.add(foundation, 200, reg.halfY[foundation]!, 350, 0, me.team, reg.maxHp[foundation]!);
+  start(h.world, foundation, 200, reg.halfY[foundation]!, 350, 0, me.team, reg.maxHp[foundation]!);
   const { supply } = h.host;
   expect([supply.siteFault(200, 320), supply.siteFault(320, 250), supply.siteFault(200, 350)]).toEqual(["base", "", "built"]);
   seconds(h, 40);
@@ -161,7 +162,7 @@ test("AllowCrateSpawnsOnTopOfStructures: a drop may land on a floor a tribe buil
   me.team = h.host.records.newTeam();
   const foundation = reg.index.get("core:foundation_wood")!;
   const top = 2 * reg.halfY[foundation]!;
-  h.world.structs.add(foundation, 280, reg.halfY[foundation]!, 250, 0, me.team, reg.maxHp[foundation]!);
+  start(h.world, foundation, 280, reg.halfY[foundation]!, 250, 0, me.team, reg.maxHp[foundation]!);
   const { supply } = h.host;
   seconds(h, 20);
   expect([supply.drops.length, supply.siteFault(280, 250), supply.circuits.get("c")!.why]).toEqual([0, "built", "no fit place"]);

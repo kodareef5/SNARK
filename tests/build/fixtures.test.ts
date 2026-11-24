@@ -20,12 +20,13 @@ import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT
 import { writeNew, writeRest } from "../../shared/net/place.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
-import { floorFace, floorTop, poseAt, units, type Pose } from "../../shared/world/snap.ts";
+import { floorFace, floorTop, units } from "../../shared/world/snap.ts";
 import { GONE_FELL } from "../../shared/world/structures.ts";
 import { NO_PIN, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_UNLOCK, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { builder } from "../fixtures/build.ts";
 import { ROOF_RISE, ROOF_THICK, hullRegistry } from "../fixtures/hulls.ts";
 import { Harness } from "../fixtures/net.ts";
+import { join as joinTo, start } from "../fixtures/slots.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -115,7 +116,7 @@ test("a thing is set down on the ground or on a floor of its builder's tribe, jo
   expect(setDown(made, bob, at.x - 0.75, at.z + 5.5, f).code).toBe(RESULT_NOT_YOURS);
   // Nothing joins a box, and a box in the air does not stand.
   expect(join(ada, "wall", onGround.ref, 0).code).toBe(RESULT_NO_SNAP);
-  expect(h.host.build.support.stands(id("storage_box"), Math.round((at.x + 9) * U), Math.round((at.y + 4) * U), Math.round((at.z + 9) * U), 0)).toBe(false);
+  expect(h.host.build.support.stands(id("storage_box"), Math.round((at.x + 9) * U), Math.round((at.y + 4) * U), Math.round((at.z + 9) * U))).toBe(false);
   expect(RESULT_NO_SUPPORT).toBe(18);
 
   // The preview puts a box where the look meets a floor, and the server builds it there.
@@ -388,16 +389,18 @@ test("a vault that comes down onto a sloped roof lands on the slope under its mi
   const h = new Harness({}, 1, 60, { dev: true }, reg);
   const g = flatGround(h, 12, 12);
   const structs = h.world.structs;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const pillar = (x: number, z: number): number => structs.add(kind("core:pillar_wood"), x, g.y + 1.375, z, 0, 1, 10000);
+  const pillar = (x: number, z: number): number => start({ structs, reg }, kind("core:pillar_wood"), x, g.y + 1.375, z, 0, 1, 10000);
   const on = (target: number, name: string): number => {
-    expect(poseAt(structs, reg, target, kind(name), 0, 0, pose)).toBe(true);
-    return structs.add(kind(name), pose.x / U, pose.y / U, pose.z / U, 0, 1, 10000);
+    const ref = joinTo({ structs, reg }, target, kind(name), 0, 0, 10000);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
-  // A roof slab on a pillar, rising half a metre a metre toward +Z. Beside it two pillars, one on the other, and a floor on them
-  // reaching over the roof, with a vault on it whose middle is over the slab a metre up its slope.
+  // A roof slab over a pillar, its top level with the pillar's, rising half a metre a metre toward +Z: the slab has no form,
+  // so it is the one that stands by itself. Beside it two pillars, one on the other, and a floor on them reaching over
+  // the roof, with a vault on it whose middle is over the slab a metre up its slope.
   const [rx, rz] = [g.x + 4, g.z + 6];
-  const roof = on(pillar(rx, rz), "test:roof");
+  pillar(rx, rz);
+  const roof = structs.add(kind("test:roof_standing"), rx, g.y + 2.875 - reg.halfY[kind("test:roof_standing")]!, rz, 0, 1, 10000);
   const base = pillar(rx + 2.7, rz);
   const floor = on(on(base, "core:pillar_wood"), "core:ceiling_wood");
   const [vx, vz] = [rx + 1.3, rz + 1];

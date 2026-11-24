@@ -1,48 +1,33 @@
 // Piece placement arithmetic, which the client's preview and the server's check share.
 
 import { expect, test } from "bun:test";
-import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, RISE, WALL_HEIGHT } from "../../content/building.ts";
+import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, RISE, WALL_HEIGHT, WALL_THICK } from "../../content/building.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
+import { RESULT_OBSTRUCTED } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
-import {
-  HALF_SIDE,
-  MAX_ABOVE_GROUND,
-  ROLE_CEILING,
-  ROLE_DOOR,
-  ROLE_FOUNDATION,
-  ROLE_PILLAR,
-  ROLE_STAIRS,
-  ROLE_WALL,
-  floorFace,
-  floorTop,
-  frameAxes,
-  freePose,
-  makeAim,
-  makeSockets,
-  obstructed,
-  pickSnap,
-  poseAt,
-  restPose,
-  socketsFor,
-  socketsOf,
-  tooHigh,
-  turnsOf,
-  units,
-  type Pose,
-} from "../../shared/world/snap.ts";
+import { poseOf, type LatticeKey, type LatticePose } from "../../shared/world/lattice/frames.ts";
+import { cellOf, keyLvl } from "../../shared/world/lattice/module.ts";
+import { candidates, makeCandidates, makeVerdict, validateFree, type Site } from "../../shared/world/lattice/place.ts";
+import { HALF_SIDE, MAX_ABOVE_GROUND, floorFace, floorTop, frameAxes, freePose, obstructed, restPose, tooHigh, units, type Pose } from "../../shared/world/snap.ts";
 import { ROOF_RISE, ROOF_THICK, TRIANGLE_HALF, hullWorld } from "../fixtures/hulls.ts";
+import { EAST, NORTH, SOUTH, WEST, count, join as joinTo, judge, poseIn, slot, start } from "../fixtures/slots.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
 const Q = 16384;
+const offered = makeCandidates();
+const key: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 
-/** Builds a piece in socket `k` of `target`, turned `turn`. Returns its ref. */
+/** Builds a piece in place `k` of `target`, turned `turn`. Returns its ref. */
 function join(w: TestWorld, target: number, piece: string, k: number, turn = 0): number {
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const kind = w.kind(`core:${piece}`);
-  expect(poseAt(w.structs, w.reg, target, kind, k, turn, pose)).toBe(true);
-  return w.structs.add(kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
+  const ref = joinTo(w, target, w.kind(`core:${piece}`), k, turn);
+  expect(ref).toBeGreaterThanOrEqual(0);
+  return ref;
+}
+
+function siteOf(w: TestWorld): Site {
+  return { structs: w.structs, tables: w.reg, heightAt: (x, z) => w.hf.heightAt(x, z) };
 }
 
 /** A structure's position in lattice units, and its yaw. */
@@ -70,9 +55,9 @@ test("a frame's two axes are whole-number vectors, a quarter turn swaps them exa
   const w = flatWorld(4);
   for (let trial = 0; trial < 60; trial++) {
     const yaw = rng.int(65536);
-    const start = w.structs.add(w.kind("core:foundation_wood"), 128 + trial * 0.01, 0.1875, 128, yaw, 7, 1);
-    const home = at(w, start);
-    let ref = start;
+    const first = start(w, w.kind("core:foundation_wood"), 128 + trial * 0.01, 0.1875, 128, yaw, 7);
+    const home = at(w, first);
+    let ref = first;
     let i = 0;
     let j = 0;
     const steps = [0, 1, 2, 3];
@@ -80,75 +65,95 @@ test("a frame's two axes are whole-number vectors, a quarter turn swaps them exa
     for (let s = 0; s < 40 || i !== 0 || j !== 0; s++) {
       // Wander for a while, then head home along one axis and then the other.
       const k = s < 40 ? steps[rng.int(4)]! : i > 0 ? 3 : i < 0 ? 1 : j > 0 ? 2 : 0;
-      ref = join(w, ref, "foundation_wood", k);
-      made.push(ref);
+      // A cell walked over before is the piece that is there: a slot holds one.
+      expect(slot(w, ref, w.kind("core:foundation_wood"), k, 0, key)).toBe(true);
+      const there = w.structs.refAt(key.fr, key.k0, cellOf(key.k1));
+      ref = there >= 0 ? there : join(w, ref, "foundation_wood", k);
+      if (there < 0) made.push(ref);
       if (k === 0) j++;
       else if (k === 1) i++;
       else if (k === 2) j--;
       else i--;
     }
-    expect(at(w, ref)).toEqual(home);
-    for (const r of [start, ...made]) w.structs.remove(r);
+    expect([ref, at(w, ref)]).toEqual([first, home]);
+    for (const r of [first, ...made]) w.structs.remove(r);
   }
 });
 
 test("the places one piece offers another are the reference's: edge to edge, on edges, on tops, in doorways", () => {
-  const s = makeSockets();
-  const hF = units(FOUNDATION_THICK / 2);
-  const hW = units(WALL_HEIGHT / 2);
-  const hC = units(FLOOR_THICK / 2);
-  const hS = units(RISE / 2);
-  const hD = units(DOOR_HEIGHT / 2);
-  const list = (target: number, piece: number, th: number, ph: number, doorway = false): number[][] => {
-    socketsFor(target, piece, th, ph, doorway, s);
-    return Array.from({ length: s.n }, (_, k) => [s.i[k]!, s.j[k]!, s.dy[k]!, s.dq[k]!]);
+  const w = flatWorld(4);
+  const kind = (piece: string): number => w.kind(`core:${piece}_wood`);
+  const half = (piece: string): number => w.reg.halfY[kind(piece)]!;
+  const made: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
+  const axes = new Int32Array(4);
+  /**
+   * The slots a piece of `on`, alone in a base of its own, offers a piece of `held`: each as half-sides along the
+   * piece's own X and Z from its middle to the slot's, and levels up from its own, sorted. `ground` lays it on the ground.
+   */
+  const offers = (on: string, held: string, ground = false): string[] => {
+    const yaw = 7000;
+    const target = start(w, kind(on), 100, ground ? half(on) : 6, 100, yaw, 7);
+    const [tx, ty, tz] = at(w, target);
+    w.structs.keyAt(target, key);
+    const frame = w.structs.frames.get(key.fr)!;
+    const level = keyLvl(key.k1);
+    frameAxes(yaw, axes);
+    const long = axes[0]! * axes[0]! + axes[1]! * axes[1]!;
+    // A look straight down at its middle.
+    const n = candidates(siteOf(w), kind(held), 7, 100, ty / U + 4, 100, 0, -1, 0, 4, offered);
+    const out: string[] = [];
+    for (let i = 0; i < n; i++) {
+      poseOf(frame, offered.k0[i]!, offered.k1[i]!, w.reg.forms, kind(held), made);
+      out.push(`${((made.x - tx) * axes[0]! + (made.z - tz) * axes[1]!) / long},${((made.x - tx) * axes[2]! + (made.z - tz) * axes[3]!) / long},${keyLvl(offered.k1[i]!) - level}`);
+    }
+    w.structs.remove(target);
+    return out.sort();
   };
-  // Foundation to foundation is the four neighbours, level. A ceiling off a foundation is the same, with tops level.
-  expect(list(ROLE_FOUNDATION, ROLE_FOUNDATION, hF, hF)).toEqual([[0, 2, 0, 0], [2, 0, 0, 0], [0, -2, 0, 0], [-2, 0, 0, 0]]);
-  expect(list(ROLE_FOUNDATION, ROLE_CEILING, hF, hC).map((p) => p[2])).toEqual([hF - hC, hF - hC, hF - hC, hF - hC]);
-  expect(list(ROLE_CEILING, ROLE_CEILING, hC, hC).length).toBe(4);
+  const BESIDE = ["-2,0,0", "0,-2,0", "0,2,0", "2,0,0"];
+  const SIDES = ["-1,0,0", "0,-1,0", "0,1,0", "1,0,0"];
+  // Foundation to foundation is the four neighbours, at its own level and four either side of it. A ceiling off a floor is the four, tops level.
+  const beside = offers("foundation", "foundation", true);
+  expect([beside.filter((p) => p.endsWith(",0")), beside.length]).toEqual([BESIDE, 16]);
+  expect([offers("foundation", "ceiling"), offers("ceiling", "ceiling")]).toEqual([BESIDE, BESIDE]);
   // A foundation joins nothing but a foundation.
-  for (const t of [ROLE_CEILING, ROLE_WALL, ROLE_PILLAR, ROLE_STAIRS, ROLE_DOOR]) expect(list(t, ROLE_FOUNDATION, hC, hF)).toEqual([]);
-  // A wall goes on each edge of a floor, standing on it and facing out, or on a wall.
-  expect(list(ROLE_FOUNDATION, ROLE_WALL, hF, hW)).toEqual([[0, 1, hF + hW, 0], [1, 0, hF + hW, 1], [0, -1, hF + hW, 2], [-1, 0, hF + hW, 3]]);
-  expect(list(ROLE_CEILING, ROLE_WALL, hC, hW).map((p) => p[2])).toEqual([hC + hW, hC + hW, hC + hW, hC + hW]);
-  expect(list(ROLE_WALL, ROLE_WALL, hW, hW)).toEqual([[0, 0, 2 * hW, 0]]);
-  // A ceiling on a wall has an edge along the wall, to either side, with its top level with the wall's. On a pillar it is level too.
-  expect(list(ROLE_WALL, ROLE_CEILING, hW, hC)).toEqual([[0, 1, hW - hC, 0], [0, -1, hW - hC, 0]]);
-  expect(list(ROLE_PILLAR, ROLE_CEILING, hW, hC)).toEqual([[0, 0, hW - hC, 0]]);
-  // A pillar goes on the middle of a floor or a pillar, or under it. Under a ceiling its top is level with the ceiling's, as a wall's is.
-  for (const [t, th] of [[ROLE_FOUNDATION, hF], [ROLE_PILLAR, hW]] as const) expect(list(t, ROLE_PILLAR, th, hW)).toEqual([[0, 0, th + hW, 0], [0, 0, -(th + hW), 0]]);
-  expect(list(ROLE_CEILING, ROLE_PILLAR, hC, hW)).toEqual([[0, 0, hC + hW, 0], [0, 0, hC - hW, 0]]);
-  // Stairs go on a floor. A door goes in a doorway, standing on its sill, and nowhere else.
-  expect(list(ROLE_FOUNDATION, ROLE_STAIRS, hF, hS)).toEqual([[0, 0, hF + hS, 0]]);
-  expect(list(ROLE_CEILING, ROLE_STAIRS, hC, hS).length).toBe(1);
-  expect(list(ROLE_WALL, ROLE_DOOR, hW, hD, true)).toEqual([[0, 0, hD - hW, 0]]);
-  expect(list(ROLE_WALL, ROLE_DOOR, hW, hD, false)).toEqual([]);
-  for (const t of [ROLE_FOUNDATION, ROLE_CEILING, ROLE_PILLAR]) expect(list(t, ROLE_DOOR, hF, hD, true)).toEqual([]);
+  for (const on of ["ceiling", "wall", "pillar", "stairs", "door"]) expect([on, offers(on, "foundation", true)]).toEqual([on, []]);
+  // A wall goes on each side of a floor, standing on it, or on a wall.
+  expect([offers("foundation", "wall"), offers("ceiling", "wall"), offers("wall", "wall")]).toEqual([SIDES, SIDES, ["0,0,4"]]);
+  // A ceiling on a wall has a side along the wall, to either hand, its top level with the wall's.
+  expect(offers("wall", "ceiling")).toEqual(["0,-1,4", "0,1,4"]);
+  // A pillar that begins a base stands on a corner of its squares: the four ceilings round its top are offered, and not one centred on it.
+  expect(offers("pillar", "ceiling")).toEqual(["-1,-1,4", "-1,1,4", "1,-1,4", "1,1,4"]);
+  // A pillar goes on a floor's middle, its corners and the middles of its sides, or under them; and on a pillar, or under it.
+  const points = [-1, 0, 1].flatMap((i) => [-1, 0, 1].map((j) => `${i},${j}`));
+  for (const on of ["foundation", "ceiling"]) expect([on, offers(on, "pillar")]).toEqual([on, [...points.map((p) => `${p},-4`), ...points.map((p) => `${p},0`)].sort()]);
+  expect(offers("pillar", "pillar")).toEqual(["0,0,-4", "0,0,4"]);
+  // Stairs go on a floor. A door goes in a doorway and nowhere else.
+  expect([offers("foundation", "stairs"), offers("ceiling", "stairs"), offers("doorframe", "door"), offers("wall", "door")]).toEqual([["0,0,0"], ["0,0,0"], ["0,0,0"], []]);
+  for (const on of ["foundation", "ceiling", "pillar"]) expect([on, offers(on, "door")]).toEqual([on, []]);
   // Nothing joins stairs or a door.
-  for (const p of [ROLE_FOUNDATION, ROLE_WALL, ROLE_CEILING, ROLE_PILLAR, ROLE_DOOR, ROLE_STAIRS]) expect([list(ROLE_STAIRS, p, hS, hW).length, list(ROLE_DOOR, p, hD, hW).length]).toEqual([0, 0]);
-  // The number of ways each may be turned in its socket.
-  expect([ROLE_FOUNDATION, ROLE_WALL, ROLE_CEILING, ROLE_PILLAR, ROLE_DOOR, ROLE_STAIRS].map(turnsOf)).toEqual([1, 2, 1, 1, 2, 4]);
+  for (const held of ["foundation", "wall", "ceiling", "pillar", "door", "stairs"]) expect([held, offers("stairs", held, true), offers("door", held, true)]).toEqual([held, [], []]);
+  // The number of ways each may be turned in its slot.
+  expect(["foundation", "wall", "ceiling", "pillar", "door", "stairs"].map((piece) => w.reg.forms.turns[kind(piece)])).toEqual([1, 2, 1, 1, 2, 4]);
 });
 
 test("a house built by joining pieces stands exactly: floors level, storeys in step, and the same place reached two ways is one place", () => {
   for (const yaw of [0, 5000, 16384, 23456, 40000, 65000]) {
     const w = flatWorld(4);
-    const f00 = w.structs.add(w.kind("core:foundation_stone"), 100, FOUNDATION_THICK / 2, 100, yaw, 7, 1);
+    const f00 = start(w, w.kind("core:foundation_stone"), 100, FOUNDATION_THICK / 2, 100, yaw, 7);
     const f01 = join(w, f00, "foundation_stone", 0);
     const f10 = join(w, f00, "foundation_stone", 1);
     const f11 = join(w, f01, "foundation_stone", 1);
     const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-    poseAt(w.structs, w.reg, f10, w.kind("core:foundation_stone"), 0, 0, pose);
+    poseIn(w, f10, w.kind("core:foundation_stone"), 0, 0, pose);
     expect([pose.x, pose.y, pose.z]).toEqual(at(w, f11).slice(0, 3));
     // A wall on the first's south edge and one on its west. A ceiling from each lands in the same place over the first.
     const south = join(w, f00, "wall_stone", 2);
     const west = join(w, f00, "doorframe_stone", 3);
     const fromSouth: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
     const fromWest: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-    // Each wall faces out, so the side over the house is its own -Z, the second of its two sockets.
-    poseAt(w.structs, w.reg, south, w.kind("core:ceiling_stone"), 1, 0, fromSouth);
-    poseAt(w.structs, w.reg, west, w.kind("core:ceiling_stone"), 1, 0, fromWest);
+    // Each wall faces out, so the side over the house is its own -Z, the second of its two places.
+    poseIn(w, south, w.kind("core:ceiling_stone"), 1, 0, fromSouth);
+    poseIn(w, west, w.kind("core:ceiling_stone"), 1, 0, fromWest);
     expect([fromSouth.x, fromSouth.y, fromSouth.z]).toEqual([fromWest.x, fromWest.y, fromWest.z]);
     const [fx, fy, fz] = at(w, f00);
     expect([fromSouth.x, fromSouth.z]).toEqual([fx, fz]);
@@ -158,7 +163,7 @@ test("a house built by joining pieces stands exactly: floors level, storeys in s
     expect(at(w, stairs)[3]).toBe((yaw + 3 * Q) & 0xffff);
     const pillar = join(w, f10, "pillar_stone", 0);
     const onPillar: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-    poseAt(w.structs, w.reg, pillar, w.kind("core:ceiling_stone"), 0, 0, onPillar);
+    poseIn(w, pillar, w.kind("core:ceiling_stone"), 0, 0, onPillar);
     expect(onPillar.y).toBe(fromSouth.y);
     expect([onPillar.x, onPillar.z]).toEqual(at(w, f10).filter((_v, i) => i === 0 || i === 2));
     const door = join(w, west, "door_stone", 0, 1);
@@ -167,22 +172,23 @@ test("a house built by joining pieces stands exactly: floors level, storeys in s
     expect(at(w, door)[3]).toBe((at(w, west)[3] + 2 * Q) & 0xffff);
     const upper = join(w, south, "wall_stone", 0);
     expect(at(w, upper)).toEqual([at(w, south)[0], at(w, south)[1] + units(WALL_HEIGHT), at(w, south)[2], at(w, south)[3]]);
-    expect(poseAt(w.structs, w.reg, f00, w.kind("core:wall_stone"), 4, 0, pose)).toBe(false);
-    expect(poseAt(w.structs, w.reg, f00, w.kind("core:door_stone"), 0, 0, pose)).toBe(false);
-    expect(poseAt(w.structs, w.reg, south, w.kind("core:door_stone"), 0, 0, pose)).toBe(false);
-    expect(poseAt(w.structs, w.reg, 123456, w.kind("core:wall_stone"), 0, 0, pose)).toBe(false);
-    expect(socketsOf(w.structs, w.reg, f00, w.kind("core:block"), makeSockets())).toBe(0);
+    expect(poseIn(w, f00, w.kind("core:wall_stone"), 4, 0, pose)).toBe(false);
+    expect(poseIn(w, f00, w.kind("core:door_stone"), 0, 0, pose)).toBe(false);
+    expect(poseIn(w, south, w.kind("core:door_stone"), 0, 0, pose)).toBe(false);
+    expect(poseIn(w, 123456, w.kind("core:wall_stone"), 0, 0, pose)).toBe(false);
+    expect(count(w, f00, w.kind("core:block"))).toBe(0);
   }
 });
 
 test("what is in the way: the same place twice, a ceiling over stairs, a pillar in them; not neighbours, corners or a door in its frame", () => {
   const w = flatWorld(4);
-  const f = w.structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 3000, 7, 1);
+  const f = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 3000, 7);
+  const site = siteOf(w);
+  /** Whether the server would refuse the piece for what is built in its way. */
   const blocked = (target: number, piece: string, k: number, turn = 0): boolean => {
-    const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-    const kind = w.kind(`core:${piece}`);
-    expect(poseAt(w.structs, w.reg, target, kind, k, turn, pose)).toBe(true);
-    return obstructed(w.structs, w.reg.parts, kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw);
+    const code = judge(site, w.reg, target, w.kind(`core:${piece}`), k, turn);
+    expect(code).toBeGreaterThanOrEqual(0);
+    return code === RESULT_OBSTRUCTED;
   };
   expect(blocked(f, "foundation_wood", 0)).toBe(false);
   const n = join(w, f, "foundation_wood", 0);
@@ -210,45 +216,43 @@ test("what is in the way: the same place twice, a ceiling over stairs, a pillar 
   expect(blocked(wallN, "ceiling_wood", 1)).toBe(true);
   // A structure built at another angle obstructs where it crosses a place, and not elsewhere.
   const g = flatWorld(4);
-  const base = g.structs.add(g.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, 7, 1);
+  const base = start(g, g.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, 7);
   g.structs.add(g.kind("core:block"), 103.6, 1, 100, 8000, 0, 1);
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  poseAt(g.structs, g.reg, base, g.kind("core:foundation_wood"), 1, 0, pose);
-  expect(obstructed(g.structs, g.reg.parts, g.kind("core:foundation_wood"), pose.x / U, pose.y / U, pose.z / U, pose.yaw)).toBe(true);
-  poseAt(g.structs, g.reg, base, g.kind("core:foundation_wood"), 3, 0, pose);
-  expect(obstructed(g.structs, g.reg.parts, g.kind("core:foundation_wood"), pose.x / U, pose.y / U, pose.z / U, pose.yaw)).toBe(false);
+  expect(judge(siteOf(g), g.reg, base, g.kind("core:foundation_wood"), EAST) === RESULT_OBSTRUCTED).toBe(true);
+  expect(judge(siteOf(g), g.reg, base, g.kind("core:foundation_wood"), WEST) === RESULT_OBSTRUCTED).toBe(false);
 });
 
-test("a look chooses the piece it lands on, else the nearest with a place; that piece's places come nearest first", () => {
+test("a look is offered the places near where it ends, the nearest first, of whatever piece offers them", () => {
   const w = flatWorld(4);
-  const f = w.structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, 7, 1);
-  const far = w.structs.add(w.kind("core:foundation_wood"), 109, FOUNDATION_THICK / 2, 100, 0, 7, 1);
-  const aim = makeAim();
+  const f = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, 7);
+  const far = start(w, w.kind("core:foundation_wood"), 109, FOUNDATION_THICK / 2, 100, 0, 7);
+  const site = siteOf(w);
   const wall = w.kind("core:wall_wood");
-  /** A look that ends at (x, y, z), having hit `hit` (a ref, or -1). */
-  const look = (kind: number, x: number, y: number, z: number, hit = -1): void => pickSnap(w.structs, w.reg, kind, x, y + 5, z, 0, -1, 0, hit, 5, hit < 0, aim);
-  // Looking at the foundation near its north edge puts that edge first for a wall, then the nearer of the others.
-  look(wall, 100.4, FOUNDATION_THICK, 101.2, f);
-  expect([aim.target, aim.count, [...aim.order.subarray(0, 4)]]).toEqual([f, 4, [0, 1, 3, 2]]);
-  look(wall, 98.7, FOUNDATION_THICK, 99.9, f);
-  expect(aim.order[0]).toBe(3);
+  /** A look straight down that ends at (x, y, z). Returns how many places it is offered. */
+  const look = (kind: number, x: number, y: number, z: number): number => candidates(site, kind, 7, x, y + 5, z, 0, -1, 0, 5, offered);
+  /** Which place of `target` the look's `i`th slot is, or -1. */
+  const place = (target: number, kind: number, i: number): number => {
+    for (let k = 0; k < count(w, target, kind); k++) if (slot(w, target, kind, k, 0, key) && key.fr === offered.fr[i] && key.k0 === offered.k0[i] && cellOf(key.k1) === offered.k1[i]) return k;
+    return -1;
+  };
+  // Looking at the foundation near its north side puts that side first for a wall, then the nearer of the others.
+  expect(look(wall, 100.4, FOUNDATION_THICK, 101.2)).toBe(4);
+  expect([0, 1, 2, 3].map((i) => place(f, wall, i))).toEqual([NORTH, EAST, WEST, SOUTH]);
+  look(wall, 98.7, FOUNDATION_THICK, 99.9);
+  expect(place(f, wall, 0)).toBe(WEST);
+  // A look that ends on the ground beside a base is offered its nearest side, and between two bases the nearer one's.
   look(wall, 102.4, 0, 100.2);
-  expect([aim.target, aim.order[0], aim.ground]).toEqual([f, 1, true]);
+  expect(place(f, wall, 0)).toBe(EAST);
   look(wall, 106.8, 0, 100.2);
-  expect([aim.target, aim.order[0]]).toEqual([far, 3]);
+  expect(place(far, wall, 0)).toBe(WEST);
   look(w.kind("core:foundation_wood"), 103, 0, 100);
-  expect([aim.target, aim.order[0]]).toEqual([f, 1]);
-  look(wall, 130, 0, 130);
-  expect([aim.target, aim.count]).toEqual([-1, 0]);
-  // Looking at a piece with no socket for the held piece picks the nearest that has one. A door has none anywhere until a doorframe is built.
-  look(w.kind("core:door_wood"), 100, FOUNDATION_THICK, 100, f);
-  expect(aim.target).toBe(-1);
-  const frame = join(w, f, "doorframe_wood", 2);
-  look(w.kind("core:door_wood"), 100, FOUNDATION_THICK, 100, f);
-  expect([aim.target, aim.count]).toEqual([frame, 1]);
-  // Where the look ended is reported, for setting a piece on open ground.
-  look(wall, 12.5, 0, 14.25);
-  expect([aim.px, aim.py, aim.pz]).toEqual([12.5, 0, 14.25]);
+  expect(place(f, w.kind("core:foundation_wood"), 0)).toBe(EAST);
+  expect(look(wall, 130, 0, 130)).toBe(0);
+  // A door has no place anywhere until a doorframe is built, and then its one place in it.
+  expect(look(w.kind("core:door_wood"), 100, FOUNDATION_THICK, 100)).toBe(0);
+  const frame = join(w, f, "doorframe_wood", SOUTH);
+  expect(look(w.kind("core:door_wood"), 100, FOUNDATION_THICK, 100)).toBe(1);
+  expect(place(frame, w.kind("core:door_wood"), 0)).toBe(0);
 });
 
 test("on open ground: a foundation's top a little above the highest ground under it, raised or lowered by steps, a pillar's foot in the ground, and nothing else", () => {
@@ -293,7 +297,10 @@ test("a sloped piece is in the way where its parts are and not where its box hol
   const ramp = w.kind("test:ramp");
   const box = w.kind("core:storage_box");
   const wall = w.kind("core:wall_stone");
-  const blocked = (kind: number, x: number, y: number, z: number, yaw = 0): boolean => obstructed(w.structs, w.reg.parts, kind, x, y, z, yaw);
+  const site = siteOf(w);
+  const verdict = makeVerdict();
+  /** Whether the server would refuse the piece, set down by this pose and joined to nothing, for what is built in its way. */
+  const blocked = (kind: number, x: number, y: number, z: number, yaw = 0): boolean => validateFree(site, kind, { x: units(x), y: units(y), z: units(z), yaw }, x, y, z, verdict) === RESULT_OBSTRUCTED;
   // A ramp a storey high on flat ground, rising toward +Z: its slope is y = z - 98.5 between z = 98.5 and 101.5.
   const r = w.structs.add(ramp, 100, 1.5, 100, 0, 7, 1);
   expect(blocked(box, 100, 0.5, 101)).toBe(true);
@@ -327,7 +334,8 @@ test("a sloped piece is in the way where its parts are and not where its box hol
       put("core:foundation_stone", at(0, 2), FOUNDATION_THICK / 2, 0, [0, 0.2, 0]),
       put("test:ramp", at(0, 2), FOUNDATION_THICK + 1.5, 0, [0, -0.2, 0]),
       put("core:ceiling_stone", at(0, 4), FOUNDATION_THICK + 3 - FLOOR_THICK / 2, 0, [0, -0.25, -0.5]),
-      put("core:wall_stone", at(1, 2), FOUNDATION_THICK + 1.5, Q, [-0.5, 0, 0]),
+      // Beside the ramp and touching it: a wall on the foundation's own side would stand half its thickness into the ramp's.
+      put("core:wall_stone", at(1 + WALL_THICK / 2 / 1.5, 2), FOUNDATION_THICK + 1.5, Q, [-0.5, 0, 0]),
     ];
     for (let left = 0; left < set.length; left++) {
       const refs = set.flatMap((p, i) => (i === left ? [] : [w.structs.add(p.k, p.x, p.y, p.z, p.a, 7, 1)]));
@@ -356,7 +364,7 @@ test("a thing is set on a floor's top under its middle: a box's within a side sq
   const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const lift = units(0.3125);
   // A foundation of boxes, as before.
-  const f = w.structs.add(w.kind("core:foundation_stone"), 50, FOUNDATION_THICK / 2, 50, 0, 7, 1);
+  const f = start(w, w.kind("core:foundation_stone"), 50, FOUNDATION_THICK / 2, 50, 0, 7);
   expect(restPose(w.structs, w.reg, f, box, 50.4, 49.2, 0, pose)).toBe(true);
   expect([pose.x, pose.y, pose.z]).toEqual([units(50.4), units(FOUNDATION_THICK) + lift, units(49.2)]);
   expect(restPose(w.structs, w.reg, f, box, 52, 50, 0, pose)).toBe(false);

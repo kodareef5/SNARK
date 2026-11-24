@@ -19,11 +19,11 @@ import { BTN_CROUCH, BTN_JUMP, BTN_PRIMARY, BTN_RELOAD, BTN_SECONDARY, BTN_SPRIN
 import { F_ALIVE, F_PROP } from "../../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { NO_PIN, STRUCT_LIGHT, STRUCT_NAME, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { slotAt } from "../../shared/world/snap.ts";
 import type { Client } from "../../server/game.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { PIECES, builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
+import { slot as placeOf } from "../fixtures/slots.ts";
 
 const slot = { fr: 0, k0: 0, k1: 0 };
 
@@ -290,8 +290,8 @@ function fuzz(seed: number): { codes: Map<number, Map<number, number>>; faults: 
       if (near.mine.length > 0 && chance(0.75)) {
         const on = pick(near.mine);
         if (chance(0.15)) return writeRest(w, variant, on, x, z, rng.int(65536));
-        // A socket of the piece as its slot, or a key of numbers.
-        const found = forms !== null && forms !== undefined && slotAt(h.world.structs, reg, on, forms[variant] ?? forms[0]!, rng.int(8), rng.int(4), slot);
+        // A place of the piece as its slot, or a key of numbers.
+        const found = forms !== null && forms !== undefined && placeOf(h.world, on, forms[variant] ?? forms[0]!, rng.int(8), rng.int(4), slot);
         if (found && chance(0.9)) return writeJoin(w, variant, slot.fr, slot.k0, slot.k1, chance(0.1) ? 1 + rng.int(32) : 1, rng.int(12));
         return writeJoin(w, variant, chance(0.5) ? h.world.structs.frameAt(on) : rng.int(2 ** 31), rng.int(2 ** 32), rng.int(2 ** 32));
       }

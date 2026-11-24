@@ -13,9 +13,10 @@ import { Cells, formCells } from "../../shared/world/lattice/occupancy.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { FRAMES_TOLD, ROW_BITS_MOST, ROW_FREE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
 import { Found, StructureStore, toldHealth } from "../../shared/world/structures.ts";
-import { boxBase } from "../../tools/bench/base.ts";
+import { boxBase, layBase, layPieces } from "../../tools/bench/base.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
+import { start } from "../fixtures/slots.ts";
 import { Base, dodecagon, mixedHouse, turnedRegistry } from "../fixtures/turned.ts";
 import { coreRegistry, type TestWorld } from "../fixtures/world.ts";
 
@@ -128,7 +129,7 @@ function watcher(link: LinkOptions = {}, seed = 1, reg = coreRegistry()) {
 test("a 20,000-piece keyed chunk joins at 3.6 bytes a piece or less, and the client holds the server's frame and keys", () => {
   const { h, s, chunk, structs, x0, z0 } = watcher({ tcp: true, latencyMs: 25 });
   const seen = tap(h, s, chunk);
-  for (const [kind, x, y, z, yaw] of boxBase(h.reg, "wood", x0 + 0.5, 300, z0 + 0.5, 21, 1, 20000)) structs.add(kind, x, y, z, yaw, 7, h.reg.maxHp[kind]!);
+  layBase(structs, boxBase(h.reg, "wood", x0 + 0.5, 300, z0 + 0.5, 21, 1, 20000), 7, (kind) => h.reg.maxHp[kind]!);
   h.run(3000);
   const t = structs.chunks[chunk]!;
   expect([t.live, t.fr!.filter((gid) => gid !== 0).length, structs.frames.count]).toEqual([20000, 20000, 1]);
@@ -142,7 +143,7 @@ test("a 20,000-piece keyed chunk joins at 3.6 bytes a piece or less, and the cli
 test("a damaged piece's row in place is about 3.3 bytes with its message's header", () => {
   const { h, s, chunk, structs, x0, z0 } = watcher();
   const refs: number[] = [];
-  for (const [kind, x, y, z, yaw] of boxBase(h.reg, "wood", x0 + 0.5, 300, z0 + 0.5, 21, 1, 20000)) refs.push(structs.add(kind, x, y, z, yaw, 7, h.reg.maxHp[kind]!));
+  refs.push(...layBase(structs, boxBase(h.reg, "wood", x0 + 0.5, 300, z0 + 0.5, 21, 1, 20000), 7, (kind) => h.reg.maxHp[kind]!));
   h.run(3000);
   const seen = tap(h, s, chunk);
   const t = structs.chunks[chunk]!;
@@ -169,7 +170,8 @@ test("a lone foundation costs no more than a free row and its frame's number", (
     const { h, s, chunk, structs, x0, z0 } = watcher();
     const seen = tap(h, s, chunk);
     const kind = h.reg.index.get("core:foundation_wood")!;
-    for (let i = 0; i < 200; i++) structs.add(kind, x0 + 4 + (i % 14) * 4, 100 + i * 0.25, z0 + 4 + Math.floor(i / 14) * 4, 1 + i * 7, owner, h.reg.maxHp[kind]!);
+    // Nobody's is set down by its pose. A tribe's begins a base.
+    for (let i = 0; i < 200; i++) (owner === 0 ? structs.add(kind, x0 + 4 + (i % 14) * 4, 100 + i * 0.25, z0 + 4 + Math.floor(i / 14) * 4, 1 + i * 7, 0, h.reg.maxHp[kind]!) : start(h.world, kind, x0 + 4 + (i % 14) * 4, 100 + i * 0.25, z0 + 4 + Math.floor(i / 14) * 4, 1 + i * 7, owner, h.reg.maxHp[kind]!));
     h.run(1500);
     expect(wrong(h, s)).toEqual([]);
     expect(s.world!.structs.chunks[chunk]!.live).toBe(200);
@@ -187,7 +189,7 @@ test("a base over two chunks is one frame on the client, defined once", () => {
   const { h, s, chunk, structs, x0, z0 } = watcher({ latencyMs: 30, jitterMs: 20, loss: 0.03 });
   const seen = tap(h, s);
   // 63 m wide from the middle of the chunk: half its pieces are in the chunk to the east.
-  for (const [kind, x, y, z, yaw] of boxBase(h.reg, "wood", x0 + 32.5, 200, z0 + 0.5, 21, 1, 3000)) structs.add(kind, x, y, z, yaw, 7, h.reg.maxHp[kind]!);
+  layBase(structs, boxBase(h.reg, "wood", x0 + 32.5, 200, z0 + 0.5, 21, 1, 3000), 7, (kind) => h.reg.maxHp[kind]!);
   h.run(3000);
   const f = [...structs.frames.all()][0]!;
   expect([structs.frames.count, [...f.chunks].sort((a, b) => a - b), f.live]).toEqual([1, [chunk, chunk + 1], 3000]);
@@ -201,7 +203,7 @@ test("a frame gone with its last row here is made again when a row names it, wit
   const seen = tap(h, s);
   const kind = h.reg.index.get("core:foundation_wood")!;
   const layer = h.reg.forms.layer[kind]!;
-  const near = structs.add(kind, x0 + 10, 100, z0 + 10, 0, 7, 100);
+  const near = start(h.world, kind, x0 + 10, 100, z0 + 10, 0, 7, 100);
   const gid = structs.frameAt(near);
   // The same base 300 m west, far past what the survivor is sent.
   const far = structs.place(kind, gid, key0(CLS_SQUARE, -200, 0, 0), key1(0, 0, 0, layer, 0, 0), 7, 100);
@@ -223,7 +225,7 @@ test("past 1,024 definitions both ends forget them all, and a frame named again 
   const kind = h.reg.index.get("core:foundation_wood")!;
   const layer = h.reg.forms.layer[kind]!;
   const refs: number[] = [];
-  for (let i = 0; i < FRAMES_TOLD + 6; i++) refs.push(structs.add(kind, x0 + 4 + (i % 14) * 4, 100 + i * 0.25, z0 + 4 + (Math.floor(i / 14) % 14) * 4, 1 + i * 7, 7, 100));
+  for (let i = 0; i < FRAMES_TOLD + 6; i++) refs.push(start(h.world, kind, x0 + 4 + (i % 14) * 4, 100 + i * 0.25, z0 + 4 + (Math.floor(i / 14) % 14) * 4, 1 + i * 7, 7, 100));
   h.run(2000);
   const told = h.client(s)!.framesTold;
   const kept = (s as unknown as { framesTold: { size: number } }).framesTold;
@@ -239,7 +241,7 @@ test("past 1,024 definitions both ends forget them all, and a frame named again 
 
 test("a kept chunk comes back with its keys and its frame, though no row defines it", () => {
   const { h, s, chunk, structs, x0, z0, go } = watcher();
-  for (const [kind, x, y, z, yaw] of boxBase(h.reg, "wood", x0 + 0.5, 100, z0 + 0.5, 21, 1, 5000)) structs.add(kind, x, y, z, yaw, 7, h.reg.maxHp[kind]!);
+  layBase(structs, boxBase(h.reg, "wood", x0 + 0.5, 100, z0 + 0.5, 21, 1, 5000), 7, (kind) => h.reg.maxHp[kind]!);
   h.run(2000);
   const held = s.world!.structs;
   const gid = structs.frameAt(chunk * 65536);
@@ -320,10 +322,12 @@ test("clients hold the server's rows, keys and frames through building, breaking
     drop(ref);
     told?.(ref, cause);
   };
+  const laid = new Map<string, number>();
   const build = (b: number, n: number): void => {
     for (; n > 0 && next[b]! < plans[b]!.length; n--) {
-      const [kind, x, y, z, yaw] = plans[b]![next[b]!++]!;
-      const ref = structs.add(kind, x, y, z, yaw, owners[b]!, reg.maxHp[kind]!);
+      const piece = plans[b]![next[b]!++]!;
+      // In its slot of its base, whose frame is made again if every piece of it has gone.
+      const [ref] = layPieces(structs, reg, [piece], owners[b]!, reg.maxHp[piece[0]]!, laid) as [number];
       if (ref >= 0) live.push(ref);
     }
   };
@@ -352,7 +356,7 @@ test("clients hold the server's rows, keys and frames through building, breaking
         if (at !== undefined && structs.swap(at, kindOf(at) === door ? open : door)) swapped++;
       } else if (what === 7) {
         // A foundation of nobody's base, at a turn of its own: a frame that comes and goes.
-        const at = structs.add(foundation, x0 + rng.range(2, 120), 100 + rng.range(0, 8), z0 + rng.range(2, 60), 1 + rng.int(65000), 7, reg.maxHp[foundation]!);
+        const at = start(h.world, foundation, x0 + rng.range(2, 120), 100 + rng.range(0, 8), z0 + rng.range(2, 60), 1 + rng.int(65000), 7, reg.maxHp[foundation]!);
         if (at >= 0) lone += live.push(at) > 0 ? 1 : 0;
       } else if (what === 8) live.push(structs.add(crate, x0 + rng.range(2, 120), 100, z0 + rng.range(2, 60), rng.int(65536), rng.int(2) * 7, reg.maxHp[crate]!));
       else if (round === 30) structs.reown(8, 9);

@@ -16,9 +16,10 @@ import { CLS_SQUARE, key0, key1 } from "../../shared/world/lattice/module.ts";
 import { Cells, formCells } from "../../shared/world/lattice/occupancy.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Found, type StructureStore } from "../../shared/world/structures.ts";
-import { boxBase } from "../../tools/bench/base.ts";
+import { boxBase, layBase } from "../../tools/bench/base.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
+import { start } from "../fixtures/slots.ts";
 import { Base, dodecagon, mixedHouse, turnedWorld } from "../fixtures/turned.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
@@ -64,7 +65,7 @@ test("a save and a load leave every row, key, frame and cell as it was, and a ba
   const structs = h.world.structs;
   const reg = h.reg;
   const [x0, z0] = [3 * CHUNK_SIZE, 6 * CHUNK_SIZE];
-  const add = (pieces: ReturnType<typeof boxBase>, owner: number): number[] => pieces.map(([kind, x, y, z, yaw]) => structs.add(kind, x, y, z, yaw, owner, reg.maxHp[kind]!));
+  const add = (pieces: ReturnType<typeof boxBase>, owner: number): number[] => layBase(structs, pieces, owner, (kind) => reg.maxHp[kind]!);
   // A base across a chunk border with a piece of it 300 m off, another team's, lone foundations, and things with no key.
   const a = add(boxBase(reg, "wood", x0 + 47.5, 120, z0 + 0.5, 10, 1, 1200), 7);
   const b = add(boxBase(reg, "stone", x0 + 2, 140, z0 + 40, 5, 2, 300), 8);
@@ -72,7 +73,7 @@ test("a save and a load leave every row, key, frame and cell as it was, and a ba
   const gid = structs.frameAt(a[0]!);
   const far = structs.place(foundation, gid, key0(CLS_SQUARE, -140, 0, 0), key1(0, 0, 0, reg.forms.layer[foundation]!, 0, 0), 7, 50);
   expect([far >= 0, structs.frames.get(gid)!.chunks.length]).toEqual([true, 3]);
-  const lone = [1, 2, 3].map((i) => structs.add(foundation, x0 + 10 * i, 100 + i, z0 + 20, 1000 * i + 1, 7, reg.maxHp[foundation]!));
+  const lone = [1, 2, 3].map((i) => start(h.world, foundation, x0 + 10 * i, 100 + i, z0 + 20, 1000 * i + 1, 7, reg.maxHp[foundation]!));
   const crate = reg.index.get("core:crate")!;
   structs.add(crate, x0 + 5, 100, z0 + 5, 777, 7, 3);
   structs.add(crate, x0 + 9, 100, z0 + 5, 778, 0, reg.maxHp[crate]!);
@@ -84,7 +85,7 @@ test("a save and a load leave every row, key, frame and cell as it was, and a ba
   expect(structs.swap(door, reg.index.get("core:door_open_wood")!)).toBe(true);
   expect(structs.reown(8, 9)).toBeGreaterThan(200);
   // A frame made and gone before any commit still takes its number for good.
-  structs.remove(structs.add(foundation, x0 + 50, 100, z0 + 50, 4321, 7, 1));
+  structs.remove(start(h.world, foundation, x0 + 50, 100, z0 + 50, 4321, 7));
   h.run(2500);
   const before = held(structs);
   const next = structs.frames.next;
@@ -111,8 +112,8 @@ test("a keyed piece is 5 bytes or less on disk, a free row stays free, and a fai
   const w = flatWorld(4);
   const { structs, reg } = w;
   const pieces = boxBase(reg, "wood", 64.5, 20, 64.5, 21, 1, 5000);
-  for (const [kind, x, y, z, yaw] of pieces) structs.add(kind, x, y, z, yaw, 7, reg.maxHp[kind]!);
-  // A foundation with no key, as a pillar hung under one is: where a slot of the base would be, and off it.
+  layBase(structs, pieces, 7, (kind) => reg.maxHp[kind]!);
+  // A foundation with no key, as one set down by its pose is: where a slot of the base would be, and off it.
   const foundation = w.kind("core:foundation_wood");
   const chunk = structs.held[0]!;
   const t = structs.chunks[chunk]!;
@@ -206,7 +207,7 @@ test("keyed pieces of content a build lacks are refused, or dropped with their f
   const own = structs.frames.make(200 * 512, 30 * 512, 200 * 512, 0, 7);
   for (let i = 0; i < 4; i++) expect(structs.place(kind, own.gid, key0(CLS_SQUARE, 2 * i, 0, 0), key1(0, 0, 0, layer, 0, 0), 7, 100)).toBeGreaterThanOrEqual(0);
   const foundation = full.index.get("core:foundation_wood")!;
-  const base = structs.frameAt(structs.add(foundation, 300, 30, 300, 0, 7, 50));
+  const base = structs.frameAt(start(host.world, foundation, 300, 30, 300, 0, 7, 50));
   expect(structs.place(kind, base, key0(CLS_SQUARE, 0, 0, 0), key1(0, 8, 0, layer, 0, 0), 7, 100)).toBeGreaterThanOrEqual(0);
   host.shutdown();
   expect(table(db)).toEqual([[own.gid, 7], [base, 7]]);

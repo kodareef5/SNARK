@@ -3,22 +3,21 @@
 
 import { expect, test } from "bun:test";
 import { FOUNDATION_THICK, WALL_THICK } from "../../content/building.ts";
-import { STRUCT_UNITS, TICK_DT } from "../../shared/coords.ts";
+import { TICK_DT } from "../../shared/coords.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
 import { HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
-import { frameAxes, poseAt, type Pose } from "../../shared/world/snap.ts";
+import { frameAxes } from "../../shared/world/snap.ts";
+import { join as joinTo, start } from "../fixtures/slots.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
-const U = STRUCT_UNITS;
 const Q = 16384;
-const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
 const axes = new Int32Array(4);
 
-/** Builds a piece in socket `k` of `target`, as the server does. Returns its ref. */
+/** Builds a piece in place `k` of `target`, as the server does. Returns its ref. */
 function join(w: TestWorld, target: number, piece: string, k: number): number {
-  const kind = w.kind(`core:${piece}`);
-  if (!poseAt(w.structs, w.reg, target, kind, k, 0, pose)) throw new Error(`no socket ${k} for ${piece}`);
-  return w.structs.add(kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
+  const ref = joinTo(w, target, w.kind(`core:${piece}`), k);
+  if (ref < 0) throw new Error(`no place ${k} for ${piece}`);
+  return ref;
 }
 
 function at(w: TestWorld, ref: number): [number, number, number] {
@@ -53,7 +52,7 @@ test("no ray passes between two joined pieces, wherever the first was turned: no
   };
   eachYaw((yaw) => {
     // Two foundations side by side, a wall two pieces high along the same edge of each, and a ceiling off each wall.
-    const f1 = w.structs.add(w.kind("core:foundation_stone"), 128, FOUNDATION_THICK / 2, 128, yaw, 7, 1);
+    const f1 = start(w, w.kind("core:foundation_stone"), 128, FOUNDATION_THICK / 2, 128, yaw, 7);
     const f2 = join(w, f1, "foundation_stone", 1);
     const w1 = join(w, f1, "wall_stone", 0);
     const w2 = join(w, f2, "wall_stone", 0);
@@ -119,7 +118,7 @@ test("a door meets its frame: a look straight at either edge of a shut door ends
   lookDirection(0, 0, d);
   expect([d[0], d[1]]).toEqual([0, 0]);
   for (let quarter = 0; quarter < 4; quarter++) {
-    const f = w.structs.add(w.kind("core:foundation_stone"), 100, FOUNDATION_THICK / 2, 100, quarter * Q, 7, 1);
+    const f = start(w, w.kind("core:foundation_stone"), 100, FOUNDATION_THICK / 2, 100, quarter * Q, 7);
     // The edge of the foundation that faces -Z, whichever way the foundation is turned.
     const frame = join(w, f, "doorframe_stone", (2 - quarter) & 3);
     const door = join(w, frame, "door_stone", 0);
@@ -137,7 +136,7 @@ test("a door meets its frame: a look straight at either edge of a shut door ends
 
 /** A row of `n` foundations along the first one's X, each with a wall on the same edge. Returns the first wall and the first foundation. */
 function row(w: TestWorld, yaw: number, n: number): { wall: number; floor: number; all: number[] } {
-  const first = w.structs.add(w.kind("core:foundation_stone"), 128, FOUNDATION_THICK / 2, 128, yaw, 7, 1);
+  const first = start(w, w.kind("core:foundation_stone"), 128, FOUNDATION_THICK / 2, 128, yaw, 7);
   const all = [first];
   let f = first;
   let wall = -1;

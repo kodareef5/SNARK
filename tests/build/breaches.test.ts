@@ -3,23 +3,23 @@
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { FLOOR_THICK, FOUNDATION_THICK, WALL_THICK } from "../../content/building.ts";
-import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_DENIED, RESULT_FAR, RESULT_LOCKED, RESULT_OK, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { BTN_USE, STANCE_CROUCH, stanceEye, stanceHeight } from "../../shared/sim/character.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
-import { frameAxes, poseAt, type Pose } from "../../shared/world/snap.ts";
+import { frameAxes } from "../../shared/world/snap.ts";
 import { NO_PIN, STRUCT_LOCK, STRUCT_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
+import { join as joinTo, start } from "../fixtures/slots.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
-const U = STRUCT_UNITS;
 
 /** Survivors with cheats on level ground, two metres apart. */
 function arena(names: string[], wide = 40, deep = 24) {
@@ -50,10 +50,10 @@ test("a wall built at a turn that leaves its pieces a hair apart is still a wall
   const structs = h.world.structs;
   const ents = h.world.ents;
   const team = recs[0]!.team;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const join = (target: number, piece: string, k: number): number => {
-    expect(poseAt(structs, reg, target, id(piece), k, 0, pose)).toBe(true);
-    return structs.add(id(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, team, 10000);
+    const ref = joinTo({ structs, reg }, target, id(piece), k, 0, 10000);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
   const place = (ref: number): [number, number, number] => {
     const t = structs.chunks[Math.floor(ref / 65536)]!;
@@ -67,7 +67,7 @@ test("a wall built at a turn that leaves its pieces a hair apart is still a wall
   expect(length).toBeGreaterThan(768.69);
   const [ax, az, nx, nz] = [axes[0]! / length, axes[1]! / length, axes[2]! / length, axes[3]! / length];
   // Ada's two foundations side by side, with a wall along the same edge of each.
-  const f1 = structs.add(id("foundation_stone"), at.x, at.y + FOUNDATION_THICK / 2, at.z, yaw, team, 15000);
+  const f1 = start({ structs, reg }, id("foundation_stone"), at.x, at.y + FOUNDATION_THICK / 2, at.z, yaw, team, 15000);
   const f2 = join(f1, "foundation_stone", 1);
   const walls = [join(f1, "wall_stone", 0), join(f2, "wall_stone", 0)];
   const [x1, , z1] = place(walls[0]!);
@@ -257,23 +257,23 @@ test("a vault that comes down whole does not come down on whoever stands under i
   const ents = world.ents;
   const team = recs[0]!.team;
   const p = reg.move[id("survivor")]!;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const join = (target: number, piece: string, k: number): number => {
-    expect(poseAt(structs, reg, target, id(piece), k, 0, pose)).toBe(true);
-    return structs.add(id(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, team, 10000);
+    const ref = joinTo({ structs, reg }, target, id(piece), k, 0, 10000);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
   const row = (ref: number) => {
     const t = structs.chunks[Math.floor(ref / 65536)]!;
     return { kind: t.kind[ref & 0xffff]!, x: t.x[ref & 0xffff]!, y: t.y[ref & 0xffff]!, z: t.z[ref & 0xffff]! };
   };
   // Two foundations side by side. On the far one a wall, and from its top a floor back over the near one, three metres up.
-  const near = structs.add(id("foundation_stone"), at.x, at.y + FOUNDATION_THICK / 2, at.z, 0, team, 15000);
+  const near = start({ structs, reg }, id("foundation_stone"), at.x, at.y + FOUNDATION_THICK / 2, at.z, 0, team, 15000);
   const far = join(near, "foundation_stone", 0);
   const wall = join(far, "wall_stone", 2);
   const floor = join(wall, "ceiling_stone", 0);
   expect([row(floor).x, row(floor).z]).toEqual([row(near).x, row(near).z]);
   // The house next door stands a hand's breadth off, and has a wall on the edge that faces this one.
-  const next = structs.add(id("foundation_stone"), at.x + 3.2, at.y + FOUNDATION_THICK / 2, at.z, 0, team, 15000);
+  const next = start({ structs, reg }, id("foundation_stone"), at.x + 3.2, at.y + FOUNDATION_THICK / 2, at.z, 0, team, 15000);
   const screen = join(next, "wall_stone", 3);
   // The vault stands on the upper floor with its side a hand from over that wall. It holds something.
   const half = reg.halfY[id("vault")]!;

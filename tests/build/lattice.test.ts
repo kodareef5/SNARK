@@ -62,7 +62,7 @@ import {
   tupleTurn,
   tupleWithin,
 } from "../../shared/world/lattice/module.ts";
-import { HALF_SIDE, ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_STAIRS, ROLE_WALL, frameAxes, makeSockets, socketPose, socketsFor, type Pose } from "../../shared/world/snap.ts";
+import { HALF_SIDE, ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_STAIRS, ROLE_WALL, frameAxes, type Pose } from "../../shared/world/snap.ts";
 
 const tup = (...m: number[]): Int32Array => Int32Array.from(m);
 const list = (t: Int32Array, o = 0, n = 4): number[] => Array.from(t.subarray(o, o + n));
@@ -604,11 +604,21 @@ test("squares stand on a triangle's three sides, and one laid inward crosses it"
   }
 });
 
-test("a frame's own pieces land where socketPose puts them, bit for bit", () => {
+test("a frame's own pieces land where its axes put them, bit for bit", () => {
   const rng = new Rng(608);
   const roles = [ROLE_FOUNDATION, ROLE_WALL, ROLE_CEILING, ROLE_PILLAR, ROLE_DOOR, ROLE_STAIRS];
-  const half = [96, 768, 48, 768, 600, 768];
-  const sockets = makeSockets();
+  // Where one piece goes from another: half-sides along the other's own X and Z, and quarter turns of yaw.
+  const BESIDE = [[0, 2, 0], [2, 0, 0], [0, -2, 0], [-2, 0, 0]];
+  const SIDES = [[0, 1, 0], [1, 0, 1], [0, -1, 2], [-1, 0, 3]];
+  const HERE = [[0, 0, 0]];
+  const steps = (from: number, to: number): number[][] => {
+    const floor = from === ROLE_FOUNDATION || from === ROLE_CEILING;
+    if (floor && (to === ROLE_CEILING || (to === ROLE_FOUNDATION && from === ROLE_FOUNDATION))) return BESIDE;
+    if (floor && to === ROLE_WALL) return SIDES;
+    if (from === ROLE_WALL && to === ROLE_CEILING) return [[0, 1, 0], [0, -1, 0]];
+    if ((floor && (to === ROLE_PILLAR || to === ROLE_STAIRS)) || (from === ROLE_PILLAR && (to === ROLE_PILLAR || to === ROLE_CEILING)) || (from === ROLE_WALL && (to === ROLE_WALL || to === ROLE_DOOR))) return HERE;
+    return [];
+  };
   const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const basis = new Int32Array(8);
   const axes = new Int32Array(4);
@@ -630,14 +640,19 @@ test("a frame's own pieces land where socketPose puts them, bit for bit", () => 
       const { x, y, z, yaw, role, m: from } = built[rng.int(3) === 0 ? rng.int(built.length) : built.length - 1]!;
       const m = from.slice();
       const piece = roles[rng.int(roles.length)]!;
-      socketsFor(role, piece, half[role]!, half[piece]!, true, sockets);
-      if (sockets.n === 0) continue;
-      const k = rng.int(sockets.n);
-      socketPose(sockets, k, x, y, z, yaw, piece, rng.int(4), pose);
-      // The target's +X is direction d: the socket is i half-sides along it and j along the quarter turn on.
+      const ways = steps(role, piece);
+      if (ways.length === 0) continue;
+      const [i, j, quarters] = ways[rng.int(ways.length)] as [number, number, number];
+      // By the piece's own axes, as yaw alone gives them, turned a whole number of quarters.
+      frameAxes(yaw, axes);
+      pose.x = x + i * axes[0]! + j * axes[2]!;
+      pose.y = y;
+      pose.z = z + i * axes[1]! + j * axes[3]!;
+      pose.yaw = (yaw + (quarters + rng.int(4)) * 16384) & 0xffff;
+      // The target's +X is direction d: the place is i half-sides along it and j along the quarter turn on.
       const d = dirOf(frameYaw, yaw, 0);
-      tupleStep(m, 0, d, sockets.i[k]!, m, 0);
-      tupleStep(m, 0, dirTurn(d, 3), sockets.j[k]!, m, 0);
+      tupleStep(m, 0, d, i, m, 0);
+      tupleStep(m, 0, dirTurn(d, 3), j, m, 0);
       worldOf(basis, ox, oz, m, 0, at, 0);
       expect([at[0], at[1]]).toEqual([pose.x, pose.z]);
       const facing = dirOf(frameYaw, pose.yaw, 0);
@@ -670,8 +685,8 @@ test("a frame's own pieces land where socketPose puts them, bit for bit", () => 
         squares++;
       } else if (piece === ROLE_WALL && (role === ROLE_FOUNDATION || role === ROLE_CEILING)) {
         // A wall on a floor's side is at the middle of one side of the floor's square.
-        tupleStep(m, 0, d, -sockets.i[k]! - 1, t, 0);
-        tupleStep(t, 0, dirTurn(d, 3), -sockets.j[k]! - 1, t, 0);
+        tupleStep(m, 0, d, -i - 1, t, 0);
+        tupleStep(t, 0, dirTurn(d, 3), -j - 1, t, 0);
         squareCorners(t, 0, d, corners, 0);
         const mids: string[] = [];
         for (let c = 0; c < 4; c++) {

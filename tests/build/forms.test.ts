@@ -1,19 +1,18 @@
 // Forms: the rows a piece's collider is made from, the registry's table of them, and the poses they imply.
 
 import { expect, test } from "bun:test";
-import { BUILDING_CONTENT, FOUNDATION_THICK } from "../../content/building.ts";
+import { BUILDING_CONTENT } from "../../content/building.ts";
 import { FORMS, PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ShapeDef, StructureDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import type { HullDef } from "../../shared/world/convex.ts";
 import { FORM_LAYERS, HALF_SIDE_M, LEVEL_M, SLOT_CLASSES, colliderFaults, formFaults, formHalf, formPose, type FormDef } from "../../shared/world/lattice/forms.ts";
-import { HALF_SIDE, frameAxes, makeSockets, socketPose, socketsFor, units, type Pose } from "../../shared/world/snap.ts";
-import { CHANGED, SOCKET_SLOTS } from "../fixtures/sockets.ts";
+import { HALF_SIDE, units, type Pose } from "../../shared/world/snap.ts";
+import { places } from "../fixtures/slots.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const TIERS = ["thatch", "wood", "stone", "metal"];
-const Q = 16384;
 
 // Each box as its middle and its half extents, as content/building.ts wrote them before it read the rows.
 const BEFORE: Record<keyof typeof FORMS, number[][]> = {
@@ -93,58 +92,36 @@ test("the registry gives each built piece's form by its kind, and none to anythi
   }
 });
 
-test("each form's pose in the slot a socket means is the socket's pose", () => {
+test("each form's pose in a place fits the piece that offers it: standing on its top, or tops level, or a door on its sill", () => {
   const reg = coreRegistry();
-  const sockets = makeSockets();
-  const axes = new Int32Array(4);
-  const old: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const now: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const differ: string[] = [];
+  const at: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const wrong: string[] = [];
   let pairs = 0;
-  for (const yaw of [0, 8048]) {
-    for (const [targetName, pieceName, slots] of SOCKET_SLOTS) {
+  for (const targetName of NAMES) {
+    for (const pieceName of NAMES) {
       const tk = reg.index.get(`core:${targetName}_wood`)!;
       const pk = reg.index.get(`core:${pieceName}_wood`)!;
-      const target = reg.forms.def[tk]!;
       const piece = reg.forms.def[pk]!;
-      socketsFor(reg.role[tk]!, reg.role[pk]!, units(reg.halfY[tk]!), units(reg.halfY[pk]!), reg.doorway[tk] === 1, sockets);
-      expect([targetName, pieceName, sockets.n]).toEqual([targetName, pieceName, slots.length]);
       // The target stands in a slot of its own, its reference point here.
       const [rx, ry, rz] = [40000, 9000, 50000];
-      formPose(target, rx, ry, rz, yaw, 0, now);
-      const [tx, ty, tz] = [now.x, now.y, now.z];
-      frameAxes(yaw, axes);
-      for (const [k, [i, j, lvl, quarters]] of slots.entries()) {
-        for (let turn = 0; turn < piece.turns; turn++) {
-          socketPose(sockets, k, tx, ty, tz, yaw, reg.role[pk]!, turn, old);
-          formPose(piece, rx + i * axes[0]! + j * axes[2]!, ry + lvl * units(LEVEL_M), rz + i * axes[1]! + j * axes[3]!, (yaw + quarters * Q) & 0xffff, turn, now);
-          pairs++;
-          if (`${targetName} ${pieceName} ${k}` === CHANGED) {
-            expect([now.x - old.x, now.y - old.y, now.z - old.z, now.yaw - old.yaw]).toEqual([0, units(FOUNDATION_THICK), 0, 0]);
-            if (!differ.includes(CHANGED)) differ.push(CHANGED);
-          } else if (now.x !== old.x || now.y !== old.y || now.z !== old.z || now.yaw !== old.yaw) differ.push(`${targetName} ${pieceName} ${k} turn ${turn} yaw ${yaw}`);
-        }
+      formPose(reg.forms.def[tk]!, rx, ry, rz, 0, 0, at);
+      const [top, bottom] = [at.y + units(reg.halfY[tk]!), at.y - units(reg.halfY[tk]!)];
+      for (const [k, [, , lvl]] of places(reg, tk, pk).entries()) {
+        formPose(piece, rx, ry + lvl * units(LEVEL_M), rz, 0, 0, at);
+        const [head, foot] = [at.y + units(reg.halfY[pk]!), at.y - units(reg.halfY[pk]!)];
+        const slab = piece.layer === "slab";
+        const under = piece.layer === "post" && k === 1;
+        // A floor's top is level with what it lies beside or on. A pillar under a floor ends in the plane of the floor's
+        // top, and one under a pillar at that pillar's foot. A door stands on its doorway's sill. The rest stand on top.
+        const fits = slab ? head === top : under ? head === (reg.forms.def[tk]!.layer === "post" ? bottom : top) : piece.layer === "leaf" ? foot === bottom : foot === top;
+        pairs++;
+        if (!fits) wrong.push(`${targetName} ${pieceName} ${k}`);
       }
     }
   }
-  expect(differ).toEqual([CHANGED]);
-  expect(pairs).toBeGreaterThan(150);
+  expect(wrong).toEqual([]);
+  expect(pairs).toBeGreaterThan(50);
   expect(units(HALF_SIDE_M)).toBe(HALF_SIDE);
-});
-
-// Sockets no pair of roles is missing from the table above: every pair socketsFor answers is in it.
-test("the socket table covers every pair of core pieces that join today", () => {
-  const reg = coreRegistry();
-  const sockets = makeSockets();
-  const listed = new Set(SOCKET_SLOTS.map(([t, p]) => `${t} ${p}`));
-  for (const t of NAMES) {
-    for (const p of NAMES) {
-      const tk = reg.index.get(`core:${t}_wood`)!;
-      const pk = reg.index.get(`core:${p}_wood`)!;
-      socketsFor(reg.role[tk]!, reg.role[pk]!, units(reg.halfY[tk]!), units(reg.halfY[pk]!), reg.doorway[tk] === 1, sockets);
-      expect([t, p, sockets.n > 0]).toEqual([t, p, listed.has(`${t} ${p}`)]);
-    }
-  }
 });
 
 const errorsWith = (change: (d: Def) => Def, more: readonly Def[] = []): string[] => compileContent([...CORE_CONTENT.map(change), ...more]).errors;

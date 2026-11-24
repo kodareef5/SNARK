@@ -20,16 +20,15 @@ import { CLS_ROTS, ownDir, poseOf, rotsOf, twOfKey, type Frame, type LatticeKey,
 import { CLS_DIRS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, DIRS, cellOf, key0, key1, keyAnchor, keyCls, keyDir, keyLayer, keyLvl, keyRot } from "../../shared/world/lattice/module.ts";
 import { Cells, NO_REF, Occupancy, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "../../shared/world/lattice/occupancy.ts";
 import { populateProving, PROVING_DIMS, buildProvingHeightfield } from "../../shared/world/proving.ts";
-import { poseAt, type Pose } from "../../shared/world/snap.ts";
 import { Found, GONE_BLAST, PUT_AS_IS, PUT_FREE, StructureStore } from "../../shared/world/structures.ts";
+import type { Pose } from "../../shared/world/snap.ts";
 import { STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { builder } from "../fixtures/build.ts";
-import { SOCKET_SLOTS } from "../fixtures/sockets.ts";
+import { join as joinTo, mirror, places, start } from "../fixtures/slots.ts";
 import { coreRegistry, flatWorld, wrap, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
 const Q = 16384;
-const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
 const key: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 const made: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
 const cells = new Cells();
@@ -47,12 +46,15 @@ function keyOf(structs: StructureStore, ref: number): number[] {
   return structs.keyAt(ref, key) ? [key.fr, key.k0, key.k1] : [0, 0, 0];
 }
 
-/** Sets `piece` down in socket `k` of `target` by its pose alone, as the server does today. */
-function join(w: TestWorld, target: number, piece: string, k: number, turn = 0, owner = 7): number {
-  const kind = w.kind(`core:${piece}_wood`);
-  if (!poseAt(w.structs, w.reg, target, kind, k, turn, pose)) throw new Error(`no socket ${k} for ${piece}`);
-  return w.structs.add(kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, owner, 1);
+/** Sets `piece` down in place `k` of `target` (fixtures/slots.ts), by its slot. */
+function join(w: TestWorld, target: number, piece: string, k: number, turn = 0): number {
+  const ref = joinTo(w, target, w.kind(`core:${piece}_wood`), k, turn);
+  if (ref < 0) throw new Error(`no place ${k} for ${piece}`);
+  return ref;
 }
+
+/** Each pair of core pieces of which the first has places for the second. */
+const PAIRS = ["foundation", "ceiling", "wall", "doorframe", "windowframe", "pillar", "stairs", "door", "door_open"].flatMap((on, _i, names) => names.map((piece) => [on, piece] as const));
 
 /** What the store holds of a keyed piece, checked against its key: its pose, its turn class and each cell it covers. Returns its gid. */
 function sound(structs: StructureStore, reg: Registry, ref: number): number {
@@ -93,8 +95,8 @@ function recount(structs: StructureStore, reg: Registry, f: Frame): void {
  */
 function house(w: TestWorld, yaw: number, x = 100, z = 100, owner = 7): number[] {
   const refs: number[] = [];
-  const put = (piece: string, target: number, k: number, turn = 0): number => refs[refs.push(join(w, target, piece, k, turn, owner)) - 1]!;
-  const sw = refs[refs.push(w.structs.add(w.kind("core:foundation_wood"), x, FOUNDATION_THICK / 2, z, yaw, owner, 1)) - 1]!;
+  const put = (piece: string, target: number, k: number, turn = 0): number => refs[refs.push(join(w, target, piece, k, turn)) - 1]!;
+  const sw = refs[refs.push(start(w, w.kind("core:foundation_wood"), x, FOUNDATION_THICK / 2, z, yaw, owner)) - 1]!;
   const se = put("foundation", sw, 1);
   const nw = put("foundation", sw, 0);
   const ne = put("foundation", se, 0);
@@ -113,18 +115,21 @@ function house(w: TestWorld, yaw: number, x = 100, z = 100, owner = 7): number[]
   return refs;
 }
 
-test("a piece set down in a socket is keyed, and its key gives the socket's pose", () => {
+test("a piece joined to another is keyed at the level its place says, and set down again by that key is the same row", () => {
   const sockets: string[] = [];
   let pairs = 0;
   for (const yaw of [0, 8048, 21384, 40000, 65535]) {
     const w = flatWorld(4);
     const { structs, reg } = w;
-    for (const [targetName, pieceName, slots] of SOCKET_SLOTS) {
+    for (const [targetName, pieceName] of PAIRS) {
+      const slots = places(reg, w.kind(`core:${targetName}_wood`), w.kind(`core:${pieceName}_wood`));
+      if (slots.length === 0) continue;
       // The target stands in a base of its own: a foundation, and what joins the target to it. A ceiling is off a wall's
       // top, away from the foundation, so that every slot it offers is free.
-      const base = structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, yaw, 7, 1);
+      const base = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, yaw, 7);
       const scaffold = [base];
       if (targetName === "ceiling") scaffold.push(join(w, base, "wall", 0));
+      if (targetName === "door" || targetName === "door_open") scaffold.push(join(w, base, "doorframe", 0));
       if (targetName !== "foundation") scaffold.push(join(w, scaffold[scaffold.length - 1]!, targetName, 0));
       const target = scaffold[scaffold.length - 1]!;
       const gid = sound(structs, reg, target);
@@ -208,11 +213,13 @@ test("two bases at other yaws are two frames; one over a chunk border is one", (
   expect([structs.frames.listed(4).includes(fa), structs.frames.listed(5).includes(fa), structs.frames.listed(6).length]).toEqual([true, true, 0]);
   recount(structs, reg, fa);
   recount(structs, reg, fb);
-  // A third at the first's yaw and off its lattice by a lattice unit is its own.
-  const c = structs.add(w.kind("core:foundation_wood"), 61 + 1 / U, FOUNDATION_THICK / 2, 124, 0, 7, 1);
+  // A third begun at the first's yaw, a lattice unit off its lattice, is its own: bases never merge.
+  const c = start(w, w.kind("core:foundation_wood"), 61 + 1 / U, FOUNDATION_THICK / 2, 124, 0, 7);
   expect([structs.frames.count, structs.frameAt(c) === fa.gid]).toEqual([3, false]);
-  // Another tribe's foundation set exactly beside the first base is not of its frame.
-  const other = structs.add(w.kind("core:foundation_wood"), 58, FOUNDATION_THICK / 2, 100, 0, 8, 1);
+  // Another tribe's foundation is not set in the first base's slot beside it. Begun there by its pose, it is a base of its own.
+  expect(structs.keyAt(a[0]!, key)).toBe(true);
+  expect(structs.place(w.kind("core:foundation_wood"), fa.gid, key0(CLS_SQUARE, -2, 0, 0), key.k1, 8, 1)).toBe(-1);
+  const other = start(w, w.kind("core:foundation_wood"), 58, FOUNDATION_THICK / 2, 100, 0, 8);
   expect([structs.frames.count, structs.frames.get(structs.frameAt(other))!.team]).toEqual([4, 8]);
   // The west row of the first base goes, and the frame leaves the west chunk.
   for (const ref of a) if (rowOf(structs, ref)[1]! < 64 * U) structs.remove(ref);
@@ -321,13 +328,14 @@ test("statics and free things have no key, and their chunks no key columns", () 
   const [x, z] = [(empty % PROVING_DIMS.chunksX) * 64 + 20, Math.floor(empty / PROVING_DIMS.chunksX) * 64 + 20];
   const box = structs.add(w.kind("core:storage_box"), x, 1, z, 0, 7, 1);
   const bed = structs.add(w.kind("core:bed"), x + 4, 1, z, 0, 7, 1);
-  // A wall alone is of no base, and a foundation nobody owns is scenery.
+  // A piece set down by its pose is of no base, whatever it is and whoever owns it: a wall, a foundation, scenery.
   const wall = structs.add(w.kind("core:wall_wood"), x + 8, 1.5, z, 0, 7, 1);
+  const loose = structs.add(w.kind("core:foundation_wood"), x + 16, 1, z, 0, 7, 1);
   const scenery = structs.add(w.kind("core:foundation_wood"), x + 12, 1, z, 0, 0, 1);
-  expect([box, bed, wall, scenery].map((ref) => structs.frameAt(ref))).toEqual([0, 0, 0, 0]);
+  expect([box, bed, wall, loose, scenery].map((ref) => structs.frameAt(ref))).toEqual([0, 0, 0, 0, 0]);
   expect([structs.chunks[empty]!.fr, structs.frames.count]).toEqual([null, 0]);
-  // A pillar is a root wherever it stands: the store does not know the ground.
-  const pillar = structs.add(w.kind("core:pillar_wood"), x + 20, WALL_HEIGHT / 2, z, 0, 7, 1);
+  // A pillar begins a base wherever it stands: the store does not know the ground.
+  const pillar = start(w, w.kind("core:pillar_wood"), x + 20, WALL_HEIGHT / 2, z, 0, 7);
   const t = structs.chunks[empty]!;
   expect([structs.frameAt(pillar), structs.frames.count, t.fr!.length, t.k0!.length, t.k1!.length, t.tw!.length]).toEqual([1, 1, t.cap, t.cap, t.cap, t.cap]);
   // The columns grow with the table, and an emptied row's are zero.
@@ -341,7 +349,7 @@ test("statics and free things have no key, and their chunks no key columns", () 
   expect(structs.held.filter((c) => structs.chunks[c]!.fr !== null)).toEqual([empty]);
 });
 
-test("rows put before their base's first piece are keyed once it has come", () => {
+test("rows a client is sent are one base however often they come; a chunk dropped or kept takes its rows out", () => {
   const server = flatWorld(4);
   const refs = house(server, 9000, 61, 100);
   // The first foundation is taken up and a wall set down beside the base takes its slot, so a wall's row now comes first.
@@ -349,13 +357,7 @@ test("rows put before their base's first piece are keyed once it has come", () =
   const first = join(server, refs[1]!, "wall", 3);
   expect(first).toBe(refs[0]!);
   const client = flatWorld(4);
-  const send = (): void => {
-    for (const chunk of server.structs.held) {
-      const t = server.structs.chunks[chunk]!;
-      for (let slot = 0; slot < t.high; slot++) client.structs.put(chunk, slot, t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.owner[slot]!, t.hp[slot]!, t.mod[slot]!);
-      client.structs.setVersion(chunk, t.version);
-    }
-  };
+  const send = (): void => mirror(server.structs, client.structs);
   send();
   const live = refs.filter((ref) => rowOf(server.structs, ref)[0] !== 0);
   const frames = new Set(live.map((ref) => sound(client.structs, client.reg, ref)));
@@ -424,12 +426,12 @@ test("rows put by their keys are one base in the sender's frame whatever their o
     }
     const f = cs.frames.get(base.gid)!;
     expect([cs.frames.count, f.live, f.roots, cs.occupied.size]).toEqual([1, base.live, base.roots, ss.occupied.size]);
-    // A foundation put with no key makes no frame, where the shim would have made it one.
+    // A foundation put with no key makes no frame, whether it is said to be free or nothing is said.
     const kind = client.kind("core:foundation_wood");
     cs.put(0, 0, kind, 20, 1, 20, 77, 7, 1, 1, PUT_FREE);
     expect([cs.frameAt(0), cs.frames.count]).toEqual([0, 1]);
     cs.put(0, 1, kind, 30, 1, 30, 77, 7, 1, 1);
-    expect([cs.frameAt(1) > base.gid, cs.frames.count]).toEqual([true, 2]);
+    expect([cs.frameAt(1), cs.frames.count]).toEqual([0, 1]);
     // No pose for a frame that is not made, a key of another form's slot, or a place in another chunk.
     const wall = refs.find((ref) => rowOf(ss, ref)[0] === client.kind("core:wall_wood"))!;
     const [fr, k0, k1] = keyOf(ss, wall) as [number, number, number];
@@ -464,7 +466,7 @@ test("a row put in a cell a stale row still has takes the cell, and the stale ro
   expect([keyOf(structs, fresh), f.live, structs.occupied.size < entries, structs.refAt(fr, k0, k1)]).toEqual([[0, 0, 0], live - 1, true, -1]);
   // The last row of a frame put out by the row that takes its cell: the frame stands, with that row.
   const lone = flatWorld(4);
-  const one = lone.structs.add(lone.kind("core:foundation_wood"), 100, 1, 100, 0, 7, 1);
+  const one = start(lone, lone.kind("core:foundation_wood"), 100, 1, 100, 0, 7);
   const [g, a, b] = keyOf(lone.structs, one) as [number, number, number];
   const u = lone.structs.chunks[Math.floor(one / 65536)]!;
   lone.structs.put(Math.floor(one / 65536), 5, u.kind[0]!, u.x[0]!, u.y[0]!, u.z[0]!, u.yaw[0]!, 7, 1, 1, g, a, b);

@@ -16,7 +16,8 @@ import { CLS_EDGE, CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, DIRS, canon, 
 import { Cells, NO_REF, Occupancy, formCells } from "../../shared/world/lattice/occupancy.ts";
 import { Enclosure, SENSE_BODY, SENSE_SIGHT, enclose, indoorsAt } from "../../shared/world/lattice/rooms.ts";
 import { Found, StructureStore } from "../../shared/world/structures.ts";
-import { boxBase } from "../../tools/bench/base.ts";
+import { boxBase, layBase } from "../../tools/bench/base.ts";
+import { metric, mirror } from "../fixtures/slots.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
 const ROWS: [string, FormDef][] = [...Object.entries(FORMS), ...Object.entries(PLANNED_FORMS)];
@@ -486,7 +487,9 @@ function house(structs: StructureStore, reg: Registry, x0: number, z0: number): 
   const k = (id: string): number => reg.index.get(`core:${id}`)!;
   const [F, W, C, DF, D, WF, BOX] = [k("foundation_wood"), k("wall_wood"), k("ceiling_wood"), k("doorframe_wood"), k("door_wood"), k("windowframe_wood"), k("storage_box")];
   const refs: number[] = [];
-  const add = (kind: number, x: number, y: number, z: number, yaw = 0): number => refs[refs.push(structs.add(kind, x, y, z, yaw, 1, 1000)) - 1]!;
+  // Each piece in the slot of the base its pose is, the first foundation beginning the base.
+  const set = metric({ structs, reg }, 1, 1000);
+  const add = (kind: number, x: number, y: number, z: number, yaw = 0): number => refs[refs.push(set(kind, x, y, z, yaw)) - 1]!;
   const floor = (s: number): number => 2 * reg.halfY[F]! + s * 3;
   let door = -1, split = -1;
   const boxes: number[] = [];
@@ -547,13 +550,10 @@ test("a house at an odd yaw has the rooms it has at yaw 0", () => {
     });
     expect(placed.includes(-1)).toBe(false);
     expect(flooded(turned.structs, reg, placed)).toEqual(first);
-    // And set down by their poses alone, as a client is sent them: the frame is made again from the first piece.
+    // And as a client is sent them, slot for slot by their keys.
     const sent = flatWorld(4);
-    const again = placed.map((ref) => {
-      const t0 = turned.structs.chunks[Math.floor(ref / 65536)]!, s = ref & 0xffff;
-      return sent.structs.add(t0.kind[s]!, t0.x[s]!, t0.y[s]!, t0.z[s]!, t0.yaw[s]!, 1, 1000);
-    });
-    expect(flooded(sent.structs, reg, again)).toEqual(first);
+    mirror(turned.structs, sent.structs);
+    expect(flooded(sent.structs, reg, placed)).toEqual(first);
     // Asked of a point: the west hall is indoors, the east hall and the air over the roof are not.
     const enc = new Enclosure(reg.forms);
     enclose(turned.structs, f.gid, enc);
@@ -621,15 +621,23 @@ test("as a house's pieces come and go the renderer's rooms stay what fresh ones 
   const kept = new Map<number, Rooms>();
   const rng = new Rng(77);
   const gone: number[][] = [];
+  const key = { fr: 0, k0: 0, k1: 0 };
   let most = 0, least = Infinity;
   for (let step = 0; step < 300; step++) {
     const at = rng.int(live.length);
     const ref = live[at]!;
     const table = w.structs.chunks[Math.floor(ref / 65536)]!, s = ref & 0xffff;
-    if (gone.length > 0 && (live.length === 0 || rng.int(2) === 0)) live.push(w.structs.add(...(gone.splice(rng.int(gone.length), 1)[0] as [number, number, number, number, number]), 1, 1000));
+    if (gone.length > 0 && (live.length === 0 || rng.int(2) === 0)) {
+      // Back where it was: a piece of the base in its slot, a box by its pose.
+      const [kind, x, y, z, yaw, fr, k0, k1] = gone.splice(rng.int(gone.length), 1)[0] as [number, number, number, number, number, number, number, number];
+      const back = fr !== 0 ? w.structs.place(kind, fr, k0, k1, 1, 1000) : w.structs.add(kind, x, y, z, yaw, 1, 1000);
+      expect(back).toBeGreaterThanOrEqual(0);
+      live.push(back);
+    }
     else if (reg.opens[table.kind[s]!] !== 0) w.structs.swap(ref, reg.opens[table.kind[s]!]!);
     else {
-      gone.push([table.kind[s]!, table.x[s]!, table.y[s]!, table.z[s]!, table.yaw[s]!]);
+      const keyed = w.structs.keyAt(ref, key);
+      gone.push([table.kind[s]!, table.x[s]!, table.y[s]!, table.z[s]!, table.yaw[s]!, keyed ? key.fr : 0, key.k0, key.k1]);
       w.structs.remove(ref);
       live.splice(at, 1);
     }
@@ -692,7 +700,7 @@ test("the bench's bases of 2,000 and 20,000 pieces flood in a few milliseconds",
   const reg = coreRegistry();
   for (const [n, every, most] of [[14, 3, 2000], [21, 1, 20000]] as const) {
     const structs = new StructureStore({ chunksX: 8, chunksZ: 8 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-    for (const [kind, x, y, z, yaw] of boxBase(reg, "wood", 64 * 6 + 0.5, 0, 64 * 6 + 0.5, n, every, most)) structs.add(kind, x, y, z, yaw, 1, 1000);
+    layBase(structs, boxBase(reg, "wood", 64 * 6 + 0.5, 0, 64 * 6 + 0.5, n, every, most), 1, 1000);
     const [f] = [...structs.frames.all()];
     expect([structs.frames.count, structs.rowsOf(f!.gid, found)]).toEqual([1, most]);
     const enc = new Enclosure(reg.forms);

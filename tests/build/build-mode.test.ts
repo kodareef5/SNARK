@@ -12,7 +12,8 @@ import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { KEY_PROMPT_UNDER } from "../../client/core/hud/prompt.ts";
 import { KEY_STRUCT_BUTTON } from "../../client/core/ui/structure.ts";
 import { ENEMY_FOUNDATION, ENEMY_PILLAR } from "../../server/build.ts";
-import { STRUCT_UNITS } from "../../shared/coords.ts";
+import { Rules } from "../../server/settings/rules.ts";
+import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { makePlaced, readPlaced, writePlaced } from "../../shared/net/placed.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_ENEMY_NEAR, RESULT_LIMIT, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
@@ -27,7 +28,9 @@ import { Harness, type Pilot } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { PANEL, sceneWorld } from "../fixtures/sceneworld.ts";
 import { coreRegistry } from "../fixtures/world.ts";
-import { REPAIR_WAIT_TICKS } from "../../shared/world/upkeep.ts";
+
+/** What a server waits before a harmed piece may be mended, as its settings have it unless changed. */
+const REPAIR_WAIT = Math.round(new Rules().num("StructureDamageRepairCooldown") * TICK_RATE);
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -409,7 +412,7 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   expect([b.active, harmed === base || harmed === door]).toEqual([true, true]);
   h.world.structs.damage(harmed, 4000);
   // Harm with no record of when counts from the server's start, so it is dated past the repair wait.
-  h.host.build.hurt(harmed, h.world.tick - REPAIR_WAIT_TICKS);
+  h.host.build.hurt(harmed, h.world.tick - REPAIR_WAIT);
   for (const [item, n] of [["wood", 200], ["thatch", 200], ["fiber", 200]] as const) h.host.items.mint(rec, id(item), n);
   run(300);
   expect(text(KEY_PROMPT) + text(KEY_PROMPT_UNDER)).toContain("hold E");

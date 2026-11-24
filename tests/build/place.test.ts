@@ -14,9 +14,9 @@ import { formHalf } from "../../shared/world/lattice/forms.ts";
 import { poseOf, rotsOf, type LatticeKey, type LatticePose } from "../../shared/world/lattice/frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_VERTEX, cellOf, elementCorners, facesOverlap, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, keyM0, keyM3 } from "../../shared/world/lattice/module.ts";
 import { OFFERS, SWITCH_MARGIN, candidates, choose, makeCandidates, makeVerdict, runKey, startBase, validate, validateFree, type Candidates, type Site } from "../../shared/world/lattice/place.ts";
-import { MAX_BURIED, freePose, makeSockets, poseAt, restPose, slotAt, socketPose, socketsOf, units, type Pose } from "../../shared/world/snap.ts";
+import { MAX_BURIED, frameAxes, freePose, restPose, units, type Pose } from "../../shared/world/snap.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
-import { CHANGED, SOCKET_SLOTS } from "../fixtures/sockets.ts";
+import { count, places, poseIn, slot, start } from "../fixtures/slots.ts";
 import { flatWorld, wrap, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
@@ -38,12 +38,12 @@ function rowOf(structs: StructureStore, ref: number): number[] {
   return [Math.round(t.x[s]! * U), Math.round(t.y[s]! * U), Math.round(t.z[s]! * U), t.yaw[s]!];
 }
 
-/** Sets `piece` down in socket `k` of `target` by its slot. */
+/** Sets `piece` down in place `k` of `target` (fixtures/slots.ts) by its slot. */
 function join(w: TestWorld, target: number, piece: string, k: number, turn = 0): number {
   const kind = w.kind(piece.includes(":") ? piece : `core:${piece}_wood`);
-  if (!slotAt(w.structs, w.reg, target, kind, k, turn, key)) throw new Error(`no socket ${k} for ${piece}`);
+  if (!slot(w, target, kind, k, turn, key)) throw new Error(`no place ${k} for ${piece}`);
   const ref = w.structs.place(kind, key.fr, key.k0, key.k1, TEAM, 1);
-  if (ref < 0) throw new Error(`${piece} does not fit socket ${k}`);
+  if (ref < 0) throw new Error(`${piece} does not fit place ${k}`);
   return ref;
 }
 
@@ -60,42 +60,48 @@ function indexOf(c: Candidates, fr: number, k0: number, k1: number): number {
 
 const list = (c: Candidates): string[] => Array.from({ length: c.n }, (_, i) => `${c.fr[i]} ${c.k0[i]} ${c.k1[i]} ${c.score[i]}`);
 
-test("every place a socket allows is offered as a slot with the socket's pose", () => {
-  const sockets = makeSockets();
+test("every place one piece has for another is offered as a slot, with the pose its own axes and the pieces' sizes give", () => {
+  const NAMES = ["foundation", "ceiling", "wall", "doorframe", "windowframe", "pillar", "stairs", "door", "door_open"];
+  const axes = new Int32Array(4);
   let pairs = 0;
   for (const yaw of [0, 8048, 21384, 40000, 65535]) {
     const w = flatWorld(4);
     const { structs, reg } = w;
     const site = siteOf(w);
-    for (const [targetName, pieceName, slots] of SOCKET_SLOTS) {
-      // The target stands in a base of its own. A ceiling is off a wall's top, away from the foundation, so each of its slots is free.
-      const base = structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, yaw, TEAM, 1);
-      const scaffold = [base];
-      if (targetName === "ceiling") scaffold.push(join(w, base, "wall", 0));
-      if (targetName !== "foundation") scaffold.push(join(w, scaffold[scaffold.length - 1]!, targetName, 0));
-      const target = scaffold[scaffold.length - 1]!;
-      const [tx, ty, tz, tyaw] = rowOf(structs, target) as [number, number, number, number];
-      const kind = w.kind(`core:${pieceName}_wood`);
-      expect(socketsOf(structs, reg, target, kind, sockets)).toBe(slots.length);
-      for (let k = 0; k < slots.length; k++) {
-        for (let turn = 0; turn < reg.forms.turns[kind]!; turn++) {
-          pairs++;
-          socketPose(sockets, k, tx, ty, tz, tyaw, reg.role[kind]!, turn, pose);
-          const today = [pose.x, pose.y, pose.z, pose.yaw];
-          // A pillar under a foundation ends at its top plane, not its underside.
-          if (`${targetName} ${pieceName} ${k}` === CHANGED) today[1] = today[1]! + units(FOUNDATION_THICK);
-          expect(slotAt(structs, reg, target, kind, k, turn, key)).toBe(true);
-          const name = `${targetName} ${pieceName} ${k} turn ${turn} yaw ${yaw}`;
-          lookDown(site, kind, today[0]! / U, today[1]! / U, today[2]! / U);
-          expect([name, indexOf(out, key.fr, key.k0, key.k1) >= 0]).toEqual([name, true]);
-          const code = validate(site, kind, TEAM, key.fr, key.k0, key.k1, today[0]! / U, today[1]! / U + 2, today[2]! / U, verdict);
-          expect([name, code, verdict.pose.x, verdict.pose.y, verdict.pose.z, verdict.pose.yaw]).toEqual([name, RESULT_OK, ...today]);
-          expect(poseAt(structs, reg, target, kind, k, turn, pose)).toBe(true);
-          expect([pose.x, pose.y, pose.z, pose.yaw]).toEqual(today);
+    for (const targetName of NAMES) {
+      for (const pieceName of NAMES) {
+        const kind = w.kind(`core:${pieceName}_wood`);
+        const slots = places(reg, w.kind(`core:${targetName}_wood`), kind);
+        if (slots.length === 0) continue;
+        // The target stands in a base of its own. A ceiling is off a wall's top, away from the foundation, so each of its slots is free.
+        const base = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, yaw, TEAM);
+        const scaffold = [base];
+        if (targetName === "ceiling") scaffold.push(join(w, base, "wall", 0));
+        if (targetName !== "foundation") scaffold.push(join(w, scaffold[scaffold.length - 1]!, targetName, 0));
+        const target = scaffold[scaffold.length - 1]!;
+        const [tx, ty, tz, tyaw] = rowOf(structs, target) as [number, number, number, number];
+        const tk = structs.chunks[Math.floor(target / 65536)]!.kind[target & 0xffff]!;
+        expect(count(w, target, kind)).toBe(slots.length);
+        frameAxes(tyaw, axes);
+        const turns = reg.forms.turns[kind]!;
+        for (const [k, [i, j, lvl, quarters]] of slots.entries()) {
+          for (let turn = 0; turn < turns; turn++) {
+            pairs++;
+            // Along the target's own axes; levels from the plane the target's form is measured from; a wall or a door turned by halves.
+            const want = [tx + i * axes[0]! + j * axes[2]!, ty - reg.forms.atY[tk]! + lvl * units(0.75) + reg.forms.atY[kind]!, tz + i * axes[1]! + j * axes[3]!, (tyaw + (quarters + turn * (turns === 2 ? 2 : 1)) * 16384) & 0xffff];
+            expect(slot(w, target, kind, k, turn, key)).toBe(true);
+            const name = `${targetName} ${pieceName} ${k} turn ${turn} yaw ${yaw}`;
+            lookDown(site, kind, want[0]! / U, want[1]! / U, want[2]! / U);
+            expect([name, indexOf(out, key.fr, key.k0, key.k1) >= 0]).toEqual([name, true]);
+            const code = validate(site, kind, TEAM, key.fr, key.k0, key.k1, want[0]! / U, want[1]! / U + 2, want[2]! / U, verdict);
+            expect([name, code, verdict.pose.x, verdict.pose.y, verdict.pose.z, verdict.pose.yaw]).toEqual([name, RESULT_OK, ...want]);
+            expect(poseIn(w, target, kind, k, turn, pose)).toBe(true);
+            expect([pose.x, pose.y, pose.z, pose.yaw]).toEqual(want);
+          }
         }
+        for (const ref of scaffold.reverse()) structs.remove(ref);
+        expect(structs.count).toBe(0);
       }
-      for (const ref of scaffold.reverse()) structs.remove(ref);
-      expect(structs.count).toBe(0);
     }
   }
   expect(pairs).toBeGreaterThan(400);
@@ -105,7 +111,7 @@ test("what offers what is a table over layers; a lone foundation's slots", () =>
   expect(OFFERS.map((o) => `${o.from}>${o.to}`)).toEqual(["slab>slab", "slab>fill", "slab>wall", "slab>post", "slab>leaf", "wall>wall", "wall>slab", "wall>leaf", "post>post", "post>slab", "footing>wall"]);
   const w = flatWorld(4);
   const site = siteOf(w);
-  w.structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 3000, TEAM, 1);
+  start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 3000, TEAM);
   const count = (piece: string): number => lookDown(site, w.kind(`core:${piece}_wood`), 100, FOUNDATION_THICK, 100);
   // Four edges; four neighbours, a ceiling's level and a foundation's at each level the ground allows; nine points, on it and under it; itself.
   expect([count("wall"), count("ceiling"), count("foundation"), count("pillar"), count("stairs"), count("door")]).toEqual([4, 4, 16, 18, 1, 0]);
@@ -121,15 +127,15 @@ test("what offers what is a table over layers; a lone foundation's slots", () =>
 
 test("two pieces offering one edge give one candidate; a taken edge is not offered", () => {
   const w = flatWorld(4);
-  const { structs, reg } = w;
+  const { structs } = w;
   const site = siteOf(w);
   const wall = w.kind("core:wall_wood");
-  const a = structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM, 1);
+  const a = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM);
   const b = join(w, a, "foundation", 1);
   // The edge between them, looked at from over it: socket 1 of the first and socket 3 of the second.
-  expect(slotAt(structs, reg, a, wall, 1, 0, key)).toBe(true);
+  expect(slot(w, a, wall, 1, 0, key)).toBe(true);
   const shared = { ...key };
-  expect(slotAt(structs, reg, b, wall, 3, 0, key)).toBe(true);
+  expect(slot(w, b, wall, 3, 0, key)).toBe(true);
   expect([key.fr, key.k0, cellOf(key.k1)]).toEqual([shared.fr, shared.k0, cellOf(shared.k1)]);
   expect(lookDown(site, wall, 101.5, FOUNDATION_THICK, 100)).toBe(7);
   expect([indexOf(out, shared.fr, shared.k0, shared.k1), new Set(list(out).map((l) => l.split(" ").slice(0, 3).join(" "))).size]).toEqual([0, 7]);
@@ -163,16 +169,16 @@ function plannedWorld(chunks = 4): TestWorld {
 
 test("a wall is not offered or taken where a taller piece covers that level", () => {
   const w = plannedWorld();
-  const { structs, reg } = w;
+  const { structs } = w;
   const site = siteOf(w);
   const wall = w.kind("core:wall_wood");
   const quarter = w.kind("test:quarter_wall");
-  const a = structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM, 1);
+  const a = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM);
   // A whole wall on the east edge. A half wall on the west with a floor on it, half a storey up, whose east edge is the wall's.
   const tall = join(w, a, "wall", 1);
   structs.keyAt(tall, key);
   const east = { ...key };
-  expect(slotAt(structs, reg, a, wall, 3, 0, key)).toBe(true);
+  expect(slot(w, a, wall, 3, 0, key)).toBe(true);
   const half = structs.place(w.kind("test:half_wall"), key.fr, key.k0, key.k1, TEAM, 1);
   structs.keyAt(a, key);
   const floor = structs.place(w.kind("core:ceiling_wood"), key.fr, key.k0, key1(keyM3(key.k1), 2, 0, 0, 0, 0), TEAM, 1);
@@ -240,7 +246,7 @@ test("the slot shown is kept until another is 0.25 m better or it drops out", ()
   const w = flatWorld(4);
   const site = siteOf(w);
   const wall = w.kind("core:wall_wood");
-  w.structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM, 1);
+  start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM);
   // Nearer the north edge than the east one.
   lookDown(site, wall, 100.3, FOUNDATION_THICK, 100.6);
   const north = { fr: out.fr[0]!, k0: out.k0[0]!, k1: out.k1[0]! };
@@ -264,7 +270,7 @@ test("a foundation beside a base is offered at each level the ground allows", ()
   const w = flatWorld(4);
   const { structs } = w;
   const foundation = w.kind("core:foundation_wood");
-  const base = structs.add(foundation, 100, 4 + FOUNDATION_THICK / 2, 100, 0, TEAM, 1);
+  const base = start(w, foundation, 100, 4 + FOUNDATION_THICK / 2, 100, 0, TEAM);
   structs.keyAt(base, key);
   const beside = (i: number, lvl: number): [number, number] => [key0(CLS_SQUARE, 2 * i, 0, 0), key1(0, lvl, 0, 0, 0, 0)];
   const levels = (site: Site, i: number): number[] => {
@@ -301,7 +307,7 @@ test("a thing still rests on a floor, and what it overlaps is named", () => {
   const { structs, reg } = w;
   const site = siteOf(w);
   const box = w.kind("core:storage_box");
-  const f = structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM, 1);
+  const f = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM);
   expect(restPose(structs, reg, f, box, 100.4, 99.6, 0, pose)).toBe(true);
   expect(validateFree(site, box, pose, 100, 2, 100, verdict)).toBe(RESULT_OK);
   expect([verdict.pose.x, verdict.pose.y, verdict.pose.z]).toEqual([pose.x, pose.y, pose.z]);
@@ -312,7 +318,7 @@ test("a thing still rests on a floor, and what it overlaps is named", () => {
   expect(validateFree(site, box, pose, 100, 2, 100, verdict)).toBe(RESULT_OK);
   expect(validateFree(site, box, pose, 100, 20, 100, verdict)).toBe(RESULT_FAR);
   // A wall is not set down where the box stands, and stairs are not set over it.
-  expect(slotAt(structs, reg, f, w.kind("core:stairs_wood"), 0, 0, key)).toBe(true);
+  expect(slot(w, f, w.kind("core:stairs_wood"), 0, 0, key)).toBe(true);
   expect([validate(site, w.kind("core:stairs_wood"), TEAM, key.fr, key.k0, key.k1, 100, 2, 100, verdict), verdict.a]).toEqual([RESULT_OBSTRUCTED, first]);
 });
 
@@ -320,16 +326,16 @@ test("walls meeting at a base's corners never overlap, with no shrink", () => {
   const wall = "core:wall_wood";
   for (const yaw of [0, 4111, 12000, 29876, 50001]) {
     const w = flatWorld(4);
-    const { structs, reg } = w;
+    const { structs } = w;
     const site = siteOf(w);
-    const base = structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, yaw, TEAM, 1);
+    const base = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, yaw, TEAM);
     const cells = [base, join(w, base, "foundation", 0)];
     cells.push(join(w, cells[0]!, "foundation", 1), join(w, cells[1]!, "foundation", 1));
     // Every edge of a two by two base, the twelve of them, each offered by one cell or two.
     const lower: number[] = [];
     for (const cell of cells) {
       for (let k = 0; k < 4; k++) {
-        expect(slotAt(structs, reg, cell, w.kind(wall), k, (k + lower.length) % 2, key)).toBe(true);
+        expect(slot(w, cell, w.kind(wall), k, (k + lower.length) % 2, key)).toBe(true);
         const code = validate(site, w.kind(wall), TEAM, key.fr, key.k0, key.k1, 100, 3, 100, verdict);
         if (structs.refAt(key.fr, key.k0, key.k1) >= 0) expect(code).toBe(RESULT_OBSTRUCTED);
         else {
@@ -341,25 +347,25 @@ test("walls meeting at a base's corners never overlap, with no shrink", () => {
     expect(lower.length).toBe(12);
     // A wall over each, a pillar at each cell's middle and a floor over each cell.
     for (const under of lower) {
-      expect(slotAt(structs, reg, under, w.kind(wall), 0, 0, key)).toBe(true);
+      expect(slot(w, under, w.kind(wall), 0, 0, key)).toBe(true);
       expect([yaw, validate(site, w.kind(wall), TEAM, key.fr, key.k0, key.k1, 100, 5, 100, verdict)]).toEqual([yaw, RESULT_OK]);
       expect(structs.place(w.kind(wall), key.fr, key.k0, key.k1, TEAM, 1)).toBeGreaterThanOrEqual(0);
     }
     for (const cell of cells) {
       for (const [piece, k] of [["pillar", 0], ["pillar", 1]] as const) {
-        expect(slotAt(structs, reg, cell, w.kind(`core:${piece}_wood`), k, 0, key)).toBe(true);
+        expect(slot(w, cell, w.kind(`core:${piece}_wood`), k, 0, key)).toBe(true);
         expect([yaw, piece, k, validate(site, w.kind(`core:${piece}_wood`), TEAM, key.fr, key.k0, key.k1, 100, 3, 100, verdict)]).toEqual([yaw, piece, k, RESULT_OK]);
         expect(structs.place(w.kind(`core:${piece}_wood`), key.fr, key.k0, key.k1, TEAM, 1)).toBeGreaterThanOrEqual(0);
       }
       // The floor lies on the pillar under it and on the walls round it.
       const pillar = structs.refAt(key.fr, key.k0, key1(keyM3(key.k1), 0, 0, 4, 0, 0));
-      expect(slotAt(structs, reg, pillar, w.kind("core:ceiling_wood"), 0, 0, key)).toBe(true);
+      expect(slot(w, pillar, w.kind("core:ceiling_wood"), 0, 0, key)).toBe(true);
       expect([yaw, validate(site, w.kind("core:ceiling_wood"), TEAM, key.fr, key.k0, key.k1, 100, 5, 100, verdict)]).toEqual([yaw, RESULT_OK]);
       expect(structs.place(w.kind("core:ceiling_wood"), key.fr, key.k0, key.k1, TEAM, 1)).toBeGreaterThanOrEqual(0);
     }
     expect(structs.count).toBe(4 + 24 + 8 + 4);
     // Stairs are not set where a pillar stands in the middle of their floor.
-    expect(slotAt(structs, reg, base, w.kind("core:stairs_wood"), 0, 0, key)).toBe(true);
+    expect(slot(w, base, w.kind("core:stairs_wood"), 0, 0, key)).toBe(true);
     expect(validate(site, w.kind("core:stairs_wood"), TEAM, key.fr, key.k0, key.k1, 100, 3, 100, verdict)).toBe(RESULT_OBSTRUCTED);
   }
 });
@@ -389,7 +395,7 @@ test("a second base at another yaw is refused only where the two really overlap"
     const { structs } = w;
     const site = siteOf(w);
     const foundation = w.kind("core:foundation_wood");
-    const base = structs.add(foundation, 100, FOUNDATION_THICK / 2, 100, yaw, TEAM, 1);
+    const base = start(w, foundation, 100, FOUNDATION_THICK / 2, 100, yaw, TEAM);
     const cells = [base, join(w, base, "foundation", 0), join(w, base, "foundation", 1)];
     for (let i = 0; i < 400; i++) {
       const turned = rng.int(65536);
@@ -478,7 +484,7 @@ test("2,400 looks: a slot offered is taken or refused for what is built, never i
   const { structs, reg } = w;
   const site = siteOf(w);
   const names = ["foundation", "wall", "doorframe", "windowframe", "ceiling", "pillar", "door", "stairs"];
-  structs.add(w.kind("core:foundation_wood"), 128, FOUNDATION_THICK / 2, 128, 7777, TEAM, 1);
+  start(w, w.kind("core:foundation_wood"), 128, FOUNDATION_THICK / 2, 128, 7777, TEAM);
   const codes = new Map<number, number>();
   const placed = new Map<string, number>();
   let offered = 0;
@@ -515,11 +521,10 @@ test("2,400 looks: a slot offered is taken or refused for what is built, never i
 
 test("what the server refuses of a key before it looks at the world", () => {
   const w = flatWorld(4);
-  const { structs, reg } = w;
   const site = siteOf(w);
   const wall = w.kind("core:wall_wood");
-  const base = structs.add(w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM, 1);
-  expect(slotAt(structs, reg, base, wall, 0, 0, key)).toBe(true);
+  const base = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM);
+  expect(slot(w, base, wall, 0, 0, key)).toBe(true);
   const judge = (kind: number, team: number, fr: number, k0: number, k1: number, ey = 2): number => validate(site, kind, team, fr, k0, k1, 100, ey, 100, verdict);
   expect(judge(wall, TEAM, key.fr, key.k0, key.k1)).toBe(RESULT_OK);
   // No such frame; another tribe's; nobody's.
@@ -548,7 +553,7 @@ test("a row of pieces is its first key stepped whole sides along a direction", (
   const w = flatWorld(4);
   const { structs } = w;
   const site = siteOf(w);
-  const base = structs.add(w.kind("core:foundation_wood"), 60, FOUNDATION_THICK / 2, 100, 0, TEAM, 1);
+  const base = start(w, w.kind("core:foundation_wood"), 60, FOUNDATION_THICK / 2, 100, 0, TEAM);
   structs.keyAt(base, key);
   const ceiling = w.kind("core:foundation_wood");
   const first = { fr: key.fr, k0: key0(CLS_SQUARE, 2, 0, 0), k1: key.k1 };

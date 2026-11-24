@@ -15,12 +15,14 @@ import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import type { MapStatic } from "../../shared/world/mapfile.ts";
+import { PUT_FREE } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { FLOOR, PIER, WALL } from "../fixtures/cityworld.ts";
 import { farPack } from "../fixtures/farworld.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { alike, metresOf, nearClient, shareAlike, shotOf, smallCity } from "../fixtures/nearclient.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { poseSlot } from "../fixtures/slots.ts";
 
 test("a batched cabinet, drain and sign retain their finishes and their concrete supports", () => {
   const reg = coreRegistry();
@@ -394,7 +396,14 @@ test("a chunk with rooms has them found again 2 s after a piece last left its me
   const [F, W, C, BOX] = [k("foundation_wood"), k("wall_wood"), k("ceiling_wood"), k("storage_box")];
   const floor = 2 * reg.halfY[F]!, wall = floor + reg.halfY[W]!;
   const hut: [number, number, number, number, number][] = [[F, 100.5, reg.halfY[F]!, 100.5, 0], [W, 100.5, wall, 99, 0], [W, 100.5, wall, 102, 0], [W, 99, wall, 100.5, 16384], [W, 102, wall, 100.5, 16384], [C, 100.5, floor + 3 - reg.halfY[C]!, 100.5, 0], [BOX, 100.5, floor + reg.halfY[BOX]!, 100.5, 0]];
-  hut.forEach(([kind, x, y, z, yaw], n) => structs.put(chunk, piers.length + n, kind, x, y, z, yaw, 1, 100, 2));
+  // As a client is sent it: its base's frame, each piece by its key, the box by its pose.
+  const base = structs.frames.make(99 * 512, Math.round(floor * 512), 99 * 512, 0, 1);
+  const key = { fr: 0, k0: 0, k1: 0 };
+  hut.forEach(([kind, x, y, z, yaw], n) => {
+    const keyed = poseSlot({ structs, reg }, base.gid, kind, x, y, z, yaw, key);
+    expect(keyed).toBe(kind !== BOX);
+    structs.put(chunk, piers.length + n, kind, x, y, z, yaw, 1, 100, 2, keyed ? base.gid : PUT_FREE, key.k0, key.k1);
+  });
   structs.setVersion(chunk, 2);
   near.pieces = Infinity;
   for (let f = 0; f < 6; f++) w.frame();

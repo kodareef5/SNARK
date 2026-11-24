@@ -21,12 +21,13 @@ import { stanceEye } from "../../shared/sim/character.ts";
 import { capsuleKind } from "../../shared/world/collide.ts";
 import { CLS_SQUARE, key0, key1 } from "../../shared/world/lattice/module.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
+import type { Pose } from "../../shared/world/snap.ts";
 import { PLACE_RATE } from "../../server/build.ts";
-import { makeSockets, poseAt, socketsOf, type Pose } from "../../shared/world/snap.ts";
 import { GONE_DESTROYED, GONE_FELL } from "../../shared/world/structures.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
 import { PIECES, STOCK, builder } from "../fixtures/build.ts";
+import { count, join as joinTo, slot, start } from "../fixtures/slots.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -515,8 +516,8 @@ test("what is shown is what is built: over two thousand looks with every piece, 
   expect(Object.keys(why).length).toBeGreaterThanOrEqual(1);
   expect(s.stats.undecodable).toBe(0);
   expect(h.host.items.audit()).toEqual([]);
-  expect(socketsOf(h.world.structs, h.reg, h.host.build.last, id("wall_wood"), makeSockets())).toBeGreaterThanOrEqual(0);
-  expect(poseAt(h.world.structs, h.reg, 0x7fff0000, id("wall_wood"), 0, 0, { x: 0, y: 0, z: 0, yaw: 0 })).toBe(false);
+  expect(count(h.world, h.host.build.last, id("wall_wood"))).toBeGreaterThanOrEqual(0);
+  expect(slot(h.world, 0x7fff0000, id("wall_wood"), 0, 0, { fr: 0, k0: 0, k1: 0 })).toBe(false);
   expect(DOOR_WIDTH).toBe(1.4);
 });
 
@@ -725,12 +726,8 @@ test("nothing is built that nothing would hold up; and when what held a piece go
   expect(h.host.items.audit()).toEqual([]);
 
   // A floor of five on two pillars. With the far pillar gone, the two pieces past the near pillar's reach fall.
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const add = (piece: string, target: number, k: number): number => {
-    poseAt(structs, h.reg, target, id(`${piece}_wood`), k, 0, pose);
-    return structs.add(id(`${piece}_wood`), pose.x / U, pose.y / U, pose.z / U, pose.yaw, team, 10000);
-  };
-  const near = structs.add(id("pillar_wood"), at.x - 12, at.y + 1.5 - 0.125, at.z + 14, 0, team, 6250);
+  const add = (piece: string, target: number, k: number): number => joinTo(h.world, target, id(`${piece}_wood`), k, 0, 10000);
+  const near = start(h.world, id("pillar_wood"), at.x - 12, at.y + 1.5 - 0.125, at.z + 14, 0, team, 6250);
   const floor = [add("ceiling", near, 0)];
   for (let k = 0; k < 4; k++) floor.push(add("ceiling", floor[k]!, 1));
   const farPillar = add("pillar", floor[2]!, 1);
@@ -755,10 +752,7 @@ test("nothing is built that nothing would hold up; and when what held a piece go
   // Past the first wall the test adds rows directly, because a builder cannot reach sixty storeys up.
   let top = ok("wall", base, 0);
   const bottom = top;
-  for (let k = 0; k < 59; k++) {
-    poseAt(structs, h.reg, top, id("wall_wood"), 0, 0, pose);
-    top = structs.add(id("wall_wood"), pose.x / U, pose.y / U, pose.z / U, pose.yaw, team, 10000);
-  }
+  for (let k = 0; k < 59; k++) top = joinTo(h.world, top, id("wall_wood"), 0, 0, 10000);
   expect(h.host.build.support.standsRef(top)).toBe(true);
   const before = h.host.build.fallen;
   structs.damage(bottom, 1e9);
@@ -803,16 +797,16 @@ test("a house that comes down: whoever watches is told of it as a few removals a
 
   // A house four foundations square and two storeys high, added directly in front of them.
   const structs = h.world.structs;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const add = (piece: string, target: number, k: number): number => {
-    expect(poseAt(structs, h.reg, target, id(`${piece}_wood`), k, 0, pose)).toBe(true);
-    return structs.add(id(`${piece}_wood`), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 9, 10000);
+    const ref = joinTo(h.world, target, id(`${piece}_wood`), k, 0, 10000);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
   const N = 4;
   const ground: number[][] = [];
   for (let i = 0; i < N; i++) {
     ground.push([]);
-    for (let j = 0; j < N; j++) ground[i]!.push(i === 0 && j === 0 ? structs.add(id("foundation_wood"), g.x + 15, g.y + FOUNDATION_THICK / 2, g.z + 12, 0, 9, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
+    for (let j = 0; j < N; j++) ground[i]!.push(i === 0 && j === 0 ? start(h.world, id("foundation_wood"), g.x + 15, g.y + FOUNDATION_THICK / 2, g.z + 12, 0, 9, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
   }
   let tiles = ground;
   for (let storey = 0; storey < 2; storey++) {
@@ -872,7 +866,7 @@ test("a house that comes down: whoever watches is told of it as a few removals a
   run(1500);
   expect([same(cy), ours(cy.world!.structs), cy.rubble.length]).toEqual([true, 0, 0]);
   // A removal stamped 100 ticks ago is no longer news, so it adds no rubble.
-  const old = structs.add(id("pillar_wood"), g.x + 20, g.y + 1.375, g.z + 10, 0, 9, 6250);
+  const old = start(h.world, id("pillar_wood"), g.x + 20, g.y + 1.375, g.z + 10, 0, 9, 6250);
   run(300);
   expect(ours(bob.world!.structs)).toBe(1);
   const seen = bob.rubble.length;
@@ -880,10 +874,10 @@ test("a house that comes down: whoever watches is told of it as a few removals a
   run(300);
   expect([ours(bob.world!.structs), bob.rubble.length - seen, same(bob)]).toEqual([0, 0, true]);
   // A slot emptied and refilled before the next sync. Clients get the new piece, not a hole.
-  const first = structs.add(id("pillar_wood"), g.x + 20, g.y + 1.375, g.z + 10, 0, 9, 6250);
+  const first = start(h.world, id("pillar_wood"), g.x + 20, g.y + 1.375, g.z + 10, 0, 9, 6250);
   run(300);
   structs.damage(first, 1e9, h.world.tick);
-  const second = structs.add(id("foundation_wood"), g.x + 24, g.y + FOUNDATION_THICK / 2, g.z + 10, 0, 9, 15000);
+  const second = start(h.world, id("foundation_wood"), g.x + 24, g.y + FOUNDATION_THICK / 2, g.z + 10, 0, 9, 15000);
   expect(second).toBe(first);
   run(300);
   expect([ours(bob.world!.structs), same(bob), same(s), same(cy)]).toEqual([1, true, true, true]);

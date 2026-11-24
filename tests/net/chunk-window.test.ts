@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { LinkOptions } from "../../shared/net/loopback.ts";
-import { boxBase } from "../../tools/bench/base.ts";
+import { boxBase, layBase } from "../../tools/bench/base.ts";
 import { Harness } from "../fixtures/net.ts";
 
 /** A survivor on `link`, and the bench's wooden box base of `count` owned pieces set down at once in the chunk it stands in. */
@@ -14,7 +14,7 @@ function base(link: LinkOptions, count: number): { h: Harness; s: ClientSession;
   h.run(2000);
   const chunk = h.world.ents.chunk[h.ent(s)]!;
   const [x0, z0] = [chunkCx(h.world.dims, chunk) * CHUNK_SIZE, chunkCz(h.world.dims, chunk) * CHUNK_SIZE];
-  for (const [kind, x, y, z, yaw] of boxBase(h.reg, "wood", x0 + 0.5, 300, z0 + 0.5, 21, 1, count)) h.world.structs.add(kind, x, y, z, yaw, 7, h.reg.maxHp[kind]!);
+  layBase(h.world.structs, boxBase(h.reg, "wood", x0 + 0.5, 300, z0 + 0.5, 21, 1, count), 7, (kind) => h.reg.maxHp[kind]!);
   expect(h.world.structs.chunks[chunk]!.live).toBe(count);
   return { h, s, chunk };
 }

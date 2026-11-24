@@ -10,17 +10,22 @@ import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { KEY_STRUCT_BUTTON, KEY_STRUCT_DETAIL, KEY_STRUCT_HEALTH, KEY_STRUCT_PANEL, KEY_STRUCT_TITLE, STRUCT_REASONS, structName } from "../../client/core/ui/structure.ts";
 import { DECAY_EVERY } from "../../server/decay.ts";
 import { loadConfig } from "../../server/settings/config.ts";
+import { Rules } from "../../server/settings/rules.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DAMAGED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { writeNew } from "../../shared/net/place.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { ACT_REACH, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_PICKUP, STRUCT_REPAIR, cost, refundOf, repairCostOf } from "../../shared/world/upkeep.ts";
+import { ACT_REACH, STRUCT_DEMOLISH, STRUCT_PICKUP, STRUCT_REPAIR, cost, refundOf, repairCostOf } from "../../shared/world/upkeep.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { PIECES, STOCK, builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
+import { SOUTH, join as joinTo, start } from "../fixtures/slots.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+
+/** What a server waits before a harmed piece may be mended, as its settings have it unless changed. */
+const REPAIR_WAIT = Math.round(new Rules().num("StructureDamageRepairCooldown") * TICK_RATE);
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -56,7 +61,7 @@ test("the arithmetic of it: half back for taking down, the missing part for mend
   // A structure with no recipe refunds nothing.
   expect(refundOf(reg, id("block"))).toBe(false);
   expect([structName(reg, wall), structName(reg, id("doorframe_wood")), structName(reg, id("foundation_stone")), structName(reg, id("block"))]).toEqual(["wooden wall", "wooden doorframe", "stone foundation", "block"]);
-  expect([REPAIR_WAIT_TICKS, ACT_REACH]).toEqual([180 * TICK_RATE, 4]);
+  expect([REPAIR_WAIT, ACT_REACH]).toEqual([180 * TICK_RATE, 4]);
 });
 
 test("a piece is taken back while it is whole, mended for the part that is missing once it has been left alone, and taken down for half of what it is made of", () => {
@@ -84,7 +89,7 @@ test("a piece is taken back while it is whole, mended for the part that is missi
   h.run(100);
   expect([act(ada, second, STRUCT_PICKUP), act(ada, second, STRUCT_REPAIR)]).toEqual([RESULT_DAMAGED, RESULT_WAIT]);
   // The harm is backdated so that the three minute wait ends in one second.
-  h.host.build.hurt(second, h.world.tick - REPAIR_WAIT_TICKS + TICK_RATE);
+  h.host.build.hurt(second, h.world.tick - REPAIR_WAIT + TICK_RATE);
   expect(act(ada, second, STRUCT_REPAIR)).toBe(RESULT_WAIT);
   h.run(1000);
   expect(act(ada, second, STRUCT_REPAIR)).toBe(RESULT_SHORT);
@@ -264,7 +269,7 @@ test("a repair is charged what the menu shows, worked from the stage of health a
   const wall = join(ada, "wall", found(made, ada, 0, 5), 2).ref;
   // 2,510 of 10,000 gone is 10.04 of 40 wood, 11 rounded up. The stage a client holds has 2,480 gone, which is 10.
   structs.damage(wall, 2510, h.world.tick);
-  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT_TICKS);
+  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT);
   for (const what of ["wood", "thatch", "fiber"]) h.say(ada, `give ${what} 50`);
   const [t, slot] = [ada.world!.structs.chunks[Math.floor(wall / 65536)]!, wall & 0xffff];
   expect(repairCostOf(reg, t.kind[slot]!, t.hp[slot]!)).toBe(true);
@@ -274,7 +279,7 @@ test("a repair is charged what the menu shows, worked from the stage of health a
   expect([has(ada, "wood"), has(ada, "thatch"), has(ada, "fiber")]).toEqual([40, 47, 48]);
   // Harm under half a stage still costs one of each, shown and charged.
   structs.damage(wall, 3, h.world.tick);
-  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT_TICKS);
+  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT);
   h.run(200);
   expect([t.hp[slot]! < 10000, repairCostOf(reg, t.kind[slot]!, t.hp[slot]!), cost.count[0]]).toEqual([true, true, 1]);
   expect([act(ada, wall, STRUCT_PICKUP), act(ada, wall, STRUCT_REPAIR), has(ada, "wood")]).toEqual([RESULT_DAMAGED, RESULT_OK, 39]);
@@ -289,7 +294,7 @@ test("a harmed piece waits out the repair cooldown again after a restart", () =>
   const wall = made.join(ada, "wall", found(made, ada, 0, 5), 2).ref;
   made.structs.damage(wall, 2500, h.world.tick);
   // The wait is over: only the materials are missing.
-  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT_TICKS);
+  h.host.build.hurt(wall, h.world.tick - REPAIR_WAIT);
   expect(act(ada, wall, STRUCT_REPAIR)).toBe(RESULT_SHORT);
   h.run(1500);
   h.host.shutdown();
@@ -329,10 +334,10 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   // Team 99999 is no tribe she belongs to.
   const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
   // Each wall is on the south edge of a foundation, so that it has support.
-  h.world.structs.add(id("foundation_wood"), g.x + 7, g.y + 0.1875, g.z + 6.5, 0, rec.team, 15000);
-  h.world.structs.add(id("foundation_wood"), g.x + 11, g.y + 0.1875, g.z + 6.5, 0, 99999, 15000);
-  const wall = h.world.structs.add(id("wall_wood"), g.x + 7, g.y + 1.875, g.z + 5, 0, rec.team, 10000);
-  const theirs = h.world.structs.add(id("wall_wood"), g.x + 11, g.y + 1.875, g.z + 5, 0, 99999, 10000);
+  const mine = start(h.world, id("foundation_wood"), g.x + 7, g.y + 0.1875, g.z + 6.5, 0, rec.team, 15000);
+  const other = start(h.world, id("foundation_wood"), g.x + 11, g.y + 0.1875, g.z + 6.5, 0, 99999, 15000);
+  const wall = joinTo(h.world, mine, id("wall_wood"), SOUTH, 1, 10000);
+  const theirs = joinTo(h.world, other, id("wall_wood"), SOUTH, 1, 10000);
   expect([wall, theirs].map((ref) => h.host.build.support.standsRef(ref))).toEqual([true, true]);
   app.controls.yaw = 0;
   app.controls.pitch = 0;

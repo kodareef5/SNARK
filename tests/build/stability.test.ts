@@ -8,18 +8,18 @@ import { FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../../content/buildi
 import { CORE_CONTENT } from "../../content/core.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
-import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Collapse } from "../../shared/world/collapse.ts";
 import { FORM_LAYERS } from "../../shared/world/lattice/forms.ts";
 import type { LatticeKey } from "../../shared/world/lattice/frames.ts";
 import { CLS_SQUARE, key0, key1 } from "../../shared/world/lattice/module.ts";
-import { makeSockets, obstructed, poseAt, socketsOf, type Pose } from "../../shared/world/snap.ts";
+import { RESULT_OK } from "../../shared/net/protocol.ts";
+import type { Site } from "../../shared/world/lattice/place.ts";
 import { Found, GONE_FELL } from "../../shared/world/structures.ts";
 import { FALL_MOST, STABILITY, Support } from "../../shared/world/support.ts";
+import { NORTH, count, join as joinTo, judge, put, raised, set, slot, start } from "../fixtures/slots.ts";
 import { coreRegistry, flatWorld, wrap, type TestWorld } from "../fixtures/world.ts";
 
-const U = STRUCT_UNITS;
 const SLAB = FORM_LAYERS.indexOf("slab");
 const dir = mkdtempSync(join(tmpdir(), "snark-stability-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -27,15 +27,15 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 function setup(yaw = 0, w = flatWorld(4)) {
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   const kind = (piece: string, tier = "wood"): number => w.kind(`core:${piece}_${tier}`);
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  /** Builds a piece in socket `k` of `target`, whether or not it would stand. */
+  /** Builds a piece in place `k` of `target`, whether or not it would stand. */
   const join = (target: number, piece: string, k: number, tier = "wood"): number => {
-    expect(poseAt(w.structs, w.reg, target, kind(piece, tier), k, 0, pose)).toBe(true);
-    return w.structs.add(kind(piece, tier), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
+    const ref = joinTo(w, target, kind(piece, tier), k);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
-  const foundation = (x: number, z: number): number => w.structs.add(kind("foundation"), x, FOUNDATION_THICK / 2, z, yaw, 7, 1);
+  const foundation = (x: number, z: number): number => start(w, kind("foundation"), x, FOUNDATION_THICK / 2, z, yaw, 7);
   /** A pillar with its foot in the ground. */
-  const pillar = (x: number, z: number, tier = "wood"): number => w.structs.add(kind("pillar", tier), x, WALL_HEIGHT / 2 - 0.125, z, yaw, 7, 1);
+  const pillar = (x: number, z: number, tier = "wood"): number => start(w, kind("pillar", tier), x, WALL_HEIGHT / 2 - 0.125, z, yaw, 7);
   const s = (ref: number): number => support.stability(ref);
   return { w, support, join, foundation, pillar, kind, s };
 }
@@ -65,17 +65,16 @@ function numbers(w: TestWorld): Map<string, number> {
 function ramble(w: TestWorld, rng: Rng, tries: number): number[] {
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   const kinds = ["foundation", "wall", "wall", "wall", "wall", "doorframe", "ceiling", "ceiling", "ceiling", "ceiling", "pillar", "stairs", "door"].map((p) => w.kind(`core:${p}_wood`));
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const sockets = makeSockets();
-  const built = [w.structs.add(kinds[0]!, 62.5, FOUNDATION_THICK / 2, 62.5, rng.int(65536), 3, 100)];
+  const site: Site = { structs: w.structs, tables: w.reg, heightAt: (x, z) => w.hf.heightAt(x, z), stands: (kind, _x, _y, _z, _yaw, fr, k0, k1) => support.standsAt(kind, fr, k0, k1) };
+  const built = [start(w, kinds[0]!, 62.5, FOUNDATION_THICK / 2, 62.5, rng.int(65536), 3, 100)];
   for (let i = 0; i < tries; i++) {
     const target = built[rng.int(built.length)]!;
     const kind = kinds[rng.int(kinds.length)]!;
-    const n = socketsOf(w.structs, w.reg, target, kind, sockets);
-    if (n === 0 || !poseAt(w.structs, w.reg, target, kind, rng.int(n), rng.int(4), pose)) continue;
-    if (obstructed(w.structs, w.reg.parts, kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw)) continue;
-    if (!support.stands(kind, pose.x, pose.y, pose.z, pose.yaw)) continue;
-    built.push(w.structs.add(kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 3, 100));
+    const n = count(w, target, kind);
+    if (n === 0) continue;
+    const k = rng.int(n);
+    const turn = rng.int(4);
+    if (judge(site, w.reg, target, kind, k, turn) === RESULT_OK) built.push(joinTo(w, target, kind, k, turn, 100));
   }
   return built;
 }
@@ -150,24 +149,24 @@ test("distance is along the way through the pieces: the floor beside the second 
 
 test("a post holds the slab over its middle fully, one on a side's middle by 3 and one on a corner by 2; a post hung from a slab holds nothing", () => {
   const { w, kind, foundation, s } = setup(0);
-  foundation(100, 100);
-  const top = FOUNDATION_THICK + WALL_HEIGHT;
-  const post = (x: number, z: number, y = FOUNDATION_THICK + WALL_HEIGHT / 2): number => w.structs.add(kind("pillar"), x, y, z, 0, 7, 1);
-  const slab = (x: number, z: number, y = top - FLOOR_THICK / 2): number => w.structs.add(kind("ceiling"), x, y, z, 0, 7, 1);
+  const fr = w.structs.frameAt(foundation(100, 100));
+  // Places are half-sides of 1.5 m from the foundation's corner at (98.5, 98.5), and levels quarter storeys over its top.
+  const post = (i: number, j: number, lvl = 0): number => set(w, fr, kind("pillar"), i, j, lvl);
+  const slab = (i: number, j: number, lvl = 4): number => set(w, fr, kind("ceiling"), i, j, lvl);
   // A post on the foundation's corner, a slab with that corner, and one beyond it, 6.7 m from the foundation.
-  const corner = post(101.5, 101.5);
-  const a = slab(103, 103);
-  const b = slab(106, 103);
+  const corner = post(2, 2);
+  const a = slab(3, 3);
+  const b = slab(5, 3);
   expect([corner, a, b].map(s)).toEqual([4, 2, 0]);
   // A post on the middle of the foundation's west side holds the slab west of it by 3.
-  expect([post(98.5, 100), slab(97, 100)].map(s)).toEqual([4, 3]);
+  expect([post(0, 1), slab(-1, 1)].map(s)).toEqual([4, 3]);
   // A post hung under the far corner of the slab at 2 stands, and the slab that shares only that corner with it is not held by it.
-  const hung = post(104.5, 104.5);
-  const diagonal = slab(106, 106);
+  const hung = post(4, 4);
+  const diagonal = slab(5, 5);
   expect([s(hung), s(diagonal)]).toEqual([1, -1]);
   // A post standing on that corner holds the slab a storey up by 2 less than the post has.
-  const up = post(104.5, 104.5, top + WALL_HEIGHT / 2);
-  expect([s(up), s(slab(106, 106, top + WALL_HEIGHT - FLOOR_THICK / 2))]).toEqual([1, -1]);
+  const up = post(4, 4, 4);
+  expect([s(up), s(slab(5, 5, 8))]).toEqual([1, -1]);
 
   // With the foundation gone, the slab 6.7 m from it falls too: what stood straight on the foundation is followed.
   const collapse = new Collapse(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
@@ -183,10 +182,11 @@ test("a ring of floors and walls with nothing under it holds nothing, in a base 
   const fr = w.structs.frameAt(f);
   const ring = [[10, 10], [12, 10], [12, 12], [10, 12]].map(([i, j]) => w.structs.place(kind("ceiling"), fr, key0(CLS_SQUARE, i!, 0, 0), key1(j!, 4, 0, SLAB, 0, 0), 7, 1));
   expect(ring.every((r) => r >= 0)).toBe(true);
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const key: LatticeKey = { fr: 0, k0: 0, k1: 0 };
+  // A wall on each one's north side, a storey down: hung under it.
   const hung = ring.map((r) => {
-    poseAt(w.structs, w.reg, r, kind("wall"), 0, 0, pose);
-    return w.structs.add(kind("wall"), pose.x / U, pose.y / U - WALL_HEIGHT, pose.z / U, pose.yaw, 7, 1);
+    expect(slot(w, r, kind("wall"), NORTH, 0, key)).toBe(true);
+    return put(w, kind("wall"), raised(key, -4), 7);
   });
   expect(hung.every((r) => w.structs.frameAt(r) === fr)).toBe(true);
   expect([...ring, ...hung].map((r) => support.stability(r))).toEqual([-1, -1, -1, -1, -1, -1, -1, -1]);
@@ -244,7 +244,7 @@ test("every number is the same whatever order the pieces were set down in, read 
     };
     const inOrder = list.map((_, k) => k);
     const whole = want(lay(inOrder, null));
-    // Set down by pose through the shim, the pieces have the numbers they have set down by key.
+    // Set down again by their keys in another store, the pieces have the numbers they had.
     expect(whole).toEqual(want(built));
     const holed = want(lay(inOrder, gone));
     failing += holed.filter((p) => p[1] < 1).length;
@@ -332,10 +332,11 @@ test("the top of a tower of 30 storeys is asked about in work that grows with it
   const tower = (storeys: number) => {
     const { w, support, join, foundation } = setup(0);
     let tile = foundation(100, 100);
-    const first = join(tile, "wall", 0);
+    let first = -1;
     let top = first;
     for (let storey = 0; storey < storeys; storey++) {
       const walls = [0, 1, 2, 3].map((k) => join(tile, "wall", k));
+      if (storey === 0) first = walls[0]!;
       top = walls[0]!;
       tile = join(walls[0]!, "ceiling", 1);
     }
@@ -347,7 +348,7 @@ test("the top of a tower of 30 storeys is asked about in work that grows with it
     return { w, floor: ask(tile), wall: ask(top), foot: ask(first), visited: (support.stability(tile), support.visited) };
   };
   const [hut, mid, tall] = [tower(1), tower(15), tower(30)];
-  expect(tall.w.structs.count).toBe(1 + 30 * 5 + 1);
+  expect(tall.w.structs.count).toBe(1 + 30 * 5);
   // A question goes down one column: a piece a storey, not the tower's 150.
   expect(tall.visited).toBeLessThan(40);
   expect(tall.floor).toBeLessThan(1000);

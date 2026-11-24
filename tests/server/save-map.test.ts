@@ -15,6 +15,7 @@ import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { Found, GONE_DESTROYED, toldHealth, type StructureStore } from "../../shared/world/structures.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
+import { start } from "../fixtures/slots.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-savemap-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -113,7 +114,7 @@ test("a base built, damaged and half pulled down, with a static hurt and one tak
   for (const c of [busy, empty]) {
     const [x0, z0] = [(c % 8) * 64 + 20, Math.floor(c / 8) * 64 + 20];
     for (let i = 0; i < 6; i++) {
-      refs.push(structs.add(k("foundation_wood"), x0 + i * 3, 30.19, z0, 0, 9, 100));
+      refs.push(start(h.world, k("foundation_wood"), x0 + i * 3, 30.19, z0, 0, 9, 100));
       refs.push(structs.add(k("wall_stone"), x0 + i * 3, 31.88, z0 + 1.5, 0, 9, 100));
     }
   }

@@ -8,7 +8,7 @@ import type { LinkOptions } from "../../shared/net/loopback.ts";
 import { CMD_HAVE, C_COMMAND, S_CHUNK, S_CHUNK_DROP, S_RESULT } from "../../shared/net/protocol.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { toldHealth, type StructureStore } from "../../shared/world/structures.ts";
-import { boxBase } from "../../tools/bench/base.ts";
+import { boxBase, layBase } from "../../tools/bench/base.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -27,7 +27,7 @@ function away(link: LinkOptions = {}) {
   const s = h.join("ada", link);
   h.run(1000);
   const structs = h.world.structs;
-  for (const [kind, x, y, z, yaw] of boxBase(h.reg, "wood", BASE_CX * CHUNK_SIZE + 0.5, 100, ROW * CHUNK_SIZE + 0.5, 21, 1, 5000)) structs.add(kind, x, y, z, yaw, 7, h.reg.maxHp[kind]!);
+  layBase(structs, boxBase(h.reg, "wood", BASE_CX * CHUNK_SIZE + 0.5, 100, ROW * CHUNK_SIZE + 0.5, 21, 1, 5000), 7, (kind) => h.reg.maxHp[kind]!);
   const go = (chunks: number): void => void h.world.ents.setPosition(h.ent(s), (BASE_CX + chunks + 0.5) * CHUNK_SIZE, 0, (ROW + 0.5) * CHUNK_SIZE);
   let bytes = 0;
   let whole = 0;

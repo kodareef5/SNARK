@@ -6,9 +6,12 @@ import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
 import { STRUCT_UNITS, TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Collapse } from "../../shared/world/collapse.ts";
-import { ROLE_FOUNDATION, ROLE_PILLAR, obstructed, poseAt, socketsOf, makeSockets, type Pose } from "../../shared/world/snap.ts";
+import { RESULT_OK } from "../../shared/net/protocol.ts";
+import type { Site } from "../../shared/world/lattice/place.ts";
+import { ROLE_FOUNDATION, ROLE_PILLAR, type Pose } from "../../shared/world/snap.ts";
 import { GONE_DESTROYED, GONE_FELL, GONE_KEPT, GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { Support } from "../../shared/world/support.ts";
+import { count, join as joinTo, judge, poseIn, start } from "../fixtures/slots.ts";
 import { coreRegistry, flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
@@ -71,17 +74,16 @@ function rows(w: TestWorld): number[][] {
 function ramble(w: TestWorld, rng: Rng, tries: number): number[] {
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   const kinds = ["foundation", "wall", "wall", "wall", "wall", "doorframe", "ceiling", "ceiling", "ceiling", "ceiling", "pillar", "stairs", "door"].map((p) => w.kind(`core:${p}_wood`));
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const sockets = makeSockets();
-  const built = [w.structs.add(kinds[0]!, 62.5, FOUNDATION_THICK / 2, 62.5, rng.int(65536), 3, 100)];
+  const site: Site = { structs: w.structs, tables: w.reg, heightAt: (x, z) => w.hf.heightAt(x, z), stands: (kind, _x, _y, _z, _yaw, fr, k0, k1) => support.standsAt(kind, fr, k0, k1) };
+  const built = [start(w, kinds[0]!, 62.5, FOUNDATION_THICK / 2, 62.5, rng.int(65536), 3, 100)];
   for (let i = 0; i < tries; i++) {
     const target = built[rng.int(built.length)]!;
     const kind = kinds[rng.int(kinds.length)]!;
-    const n = socketsOf(w.structs, w.reg, target, kind, sockets);
-    if (n === 0 || !poseAt(w.structs, w.reg, target, kind, rng.int(n), rng.int(4), pose)) continue;
-    if (obstructed(w.structs, w.reg.parts, kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw)) continue;
-    if (!support.stands(kind, pose.x, pose.y, pose.z, pose.yaw)) continue;
-    built.push(w.structs.add(kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 3, 100));
+    const n = count(w, target, kind);
+    if (n === 0) continue;
+    const k = rng.int(n);
+    const turn = rng.int(4);
+    if (judge(site, w.reg, target, kind, k, turn) === RESULT_OK) built.push(joinTo(w, target, kind, k, turn, 100));
   }
   return built;
 }
@@ -183,19 +185,18 @@ test("what leaned on a wall falls when the wall loses its footing, though the wa
   const lean = worlds.map((w) => {
     const kind = (piece: string): number => w.kind(`core:${piece}_wood`);
     const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-    const sockets = makeSockets();
-    /** Joins a piece to `target` at the socket that puts it at (x, z). */
+    /** Joins a piece to `target` in the place that puts it at (x, z). */
     const at = (target: number, piece: string, x: number, z: number): number => {
-      const n = socketsOf(w.structs, w.reg, target, kind(piece), sockets);
+      const n = count(w, target, kind(piece));
       for (let k = 0; k < n; k++) {
-        if (!poseAt(w.structs, w.reg, target, kind(piece), k, 0, pose) || pose.x !== x * U || pose.z !== z * U) continue;
-        return w.structs.add(kind(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 3, 100);
+        if (!poseIn(w, target, kind(piece), k, 0, pose) || pose.x !== x * U || pose.z !== z * U) continue;
+        return joinTo(w, target, kind(piece), k, 0, 100);
       }
       throw new Error(`no place for a ${piece} at ${x}, ${z}`);
     };
     // Three foundations: north, south of it, and east of that. A wall stands on the north one's east edge and another on
     // the east one's north edge, and one floor lies on the tops of both.
-    const north = w.structs.add(kind("foundation"), 100, FOUNDATION_THICK / 2, 100, 0, 3, 100);
+    const north = start(w, kind("foundation"), 100, FOUNDATION_THICK / 2, 100, 0, 3, 100);
     const south = at(north, "foundation", 100, 97);
     const east = at(south, "foundation", 103, 97);
     const wall = at(north, "wall", 101.5, 100);
@@ -227,18 +228,18 @@ test("two columns that lose their footing at once are two columns, though one is
   const reg = coreRegistry();
   const structs = new StructureStore({ chunksX: 4, chunksZ: 132 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const kind = (piece: string): number => reg.index.get(`core:${piece}_wood`)!;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const join = (target: number, piece: string, k: number): number => {
-    expect(poseAt(structs, reg, target, kind(piece), k, 0, pose)).toBe(true);
-    return structs.add(kind(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 100);
+    const ref = joinTo({ structs, reg }, target, kind(piece), k, 0, 100);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
   // In the north, a floor on a pillar and a second floor hanging from the side of the first.
-  const pillar = structs.add(kind("pillar"), 100, WALL_HEIGHT / 2 - 0.125, 8292, 0, 7, 100);
+  const pillar = start({ structs, reg }, kind("pillar"), 100, WALL_HEIGHT / 2 - 0.125, 8292, 0, 7, 100);
   const floor = join(pillar, "ceiling", 0);
   const hung = join(floor, "ceiling", 1);
   const t = structs.chunks[Math.floor(floor / 65536)]!;
   // In the south, a foundation a lattice step east of that first floor and 8,192 m from it.
-  const south = structs.add(kind("foundation"), t.x[floor & 0xffff]! + 1 / U, FOUNDATION_THICK / 2, t.z[floor & 0xffff]! - 8192, 0, 7, 100);
+  const south = start({ structs, reg }, kind("foundation"), t.x[floor & 0xffff]! + 1 / U, FOUNDATION_THICK / 2, t.z[floor & 0xffff]! - 8192, 0, 7, 100);
   const collapse = new Collapse(structs, reg, () => 0);
   structs.onRemove = (ref, cause) => void (cause !== GONE_FELL && collapse.gone(ref));
   structs.damage(south, 1e9, 40);

@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { FOUNDATION_THICK } from "../../content/building.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
-import { poseAt, type Pose } from "../../shared/world/snap.ts";
 import { Support } from "../../shared/world/support.ts";
+import { slot, start } from "../fixtures/slots.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 /** `count` walls stacked far overhead in the grid cells of (x, z). They are newer than what is there, so a query lists them first. */
@@ -22,10 +22,10 @@ test("the oldest piece of a tall column still stops a body and a ray, and still 
   expect(rayHit.ref).toBe(old);
 
   const wood = (piece: string): number => w.kind(`core:${piece}_wood`);
-  const foundation = w.structs.add(wood("foundation"), 100, FOUNDATION_THICK / 2, 100, 0, 7, 1);
+  const foundation = start(w, wood("foundation"), 100, FOUNDATION_THICK / 2, 100, 0, 7);
   pile(w, 100, 100, 300);
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  expect(poseAt(w.structs, w.reg, foundation, wood("wall"), 0, 0, pose)).toBe(true);
-  expect(support.stands(wood("wall"), pose.x, pose.y, pose.z, pose.yaw)).toBe(true);
+  const key = { fr: 0, k0: 0, k1: 0 };
+  expect(slot(w, foundation, wood("wall"), 0, 0, key)).toBe(true);
+  expect(support.standsAt(wood("wall"), key.fr, key.k0, key.k1)).toBe(true);
 });
