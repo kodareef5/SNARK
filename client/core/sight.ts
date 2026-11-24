@@ -10,6 +10,8 @@ import { chunkAt } from "../../shared/coords.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_GAZE, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
+import { smooth } from "../../shared/anim/pose.ts";
+import { ACT_SWING, FISTS, HOLD_HANDS, HOLD_TOOL } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, breathShare, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_VISOR, GLIDE_DIVE } from "../../shared/sim/character.ts";
 import { FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
@@ -26,6 +28,13 @@ const GLIDE_FOV = (6 * Math.PI) / 180;
 /** A thruster car's boost: how much wider the view opens, and how far it shakes, radians. */
 const BOOST_FOV = 10 * Math.PI / 180, BOOST_SHAKE = .0035;
 /** A break near turns the view this far at most, radians (0.6 degrees), half that under a finger, and is spent in this long. */
+/**
+ * A blow with fists or a tool turns the striker's view: it dips BLOW_DIP and leans BLOW_SIDE to the side of the blow as
+ * it lands, between BLOW_FROM and BLOW_TO ticks of the swing, and a blow the server says landed kicks it up HIT_KICK for
+ * HIT_KICK_MS. Radians. The look sent does not move.
+ */
+const BLOW_DIP = (0.3 * Math.PI) / 180, BLOW_SIDE = (0.2 * Math.PI) / 180, BLOW_FROM = 3, BLOW_AT = 5, BLOW_TO = 8;
+const HIT_KICK = (0.6 * Math.PI) / 180, HIT_KICK_MS = 120;
 export const JOLT = (0.6 * Math.PI) / 180, JOLT_TOUCH = JOLT / 2, JOLT_MS = 700;
 /** Initial vertical field of view, in radians. AIM_FOV multiplies the player's setting while aiming. */
 const BASE_FOV = 1.2217;
@@ -99,6 +108,7 @@ export class Sight implements FramePart {
   private glassOptic: OpticFacet | null = null;
   private glassPressed = false;
   private readonly shook = new Float64Array(2);
+  private struckAt = -Infinity;
   private readonly jolted = new Jolt();
   /**
    * A sight that zooms (the sniper's, D1083) while aimed through, its zoom, and its zero in metres (0 for none), dialled
@@ -131,6 +141,11 @@ export class Sight implements FramePart {
   /** A break near shakes the view by `amount` of the most, 0 to 1. */
   jolt(amount: number): void {
     this.jolted.add(amount);
+  }
+
+  /** A blow of the viewer's own landed, the server says, at `nowMs`. */
+  struck(nowMs: number): void {
+    this.struckAt = nowMs;
   }
 
   /** Whether a raised sight takes zoom steps: a scope that zooms, a glass, a visor. */
@@ -240,6 +255,18 @@ export class Sight implements FramePart {
       // A thruster car's boost opens the view further and shakes it a little while the nozzles fire; the look sent does not.
       want += BOOST_FOV;
       lookYaw += Math.sin(nowMs * .071) * BOOST_SHAKE; lookPitch += Math.sin(nowMs * .093 + 1) * BOOST_SHAKE;
+    }
+    if (alive && session.driving < 0 && f.ui.settings.viewKick) {
+      const own = session.own, hold = (reg.weapon[own.held] ?? FISTS).hold;
+      if (own.act === ACT_SWING && (hold === HOLD_HANDS || hold === HOLD_TOOL)) {
+        // The swing as its body is drawn: from the predicted act, between ticks.
+        const start = session.simTick - own.actTicks, e = session.tickClock - start;
+        const by = e < BLOW_AT ? smooth((e - BLOW_FROM) / (BLOW_AT - BLOW_FROM)) : smooth((BLOW_TO - e) / (BLOW_TO - BLOW_AT));
+        lookPitch -= BLOW_DIP * by;
+        lookYaw += ((start & 1) !== 0 ? BLOW_SIDE : -BLOW_SIDE) * by;
+      }
+      const since = (nowMs - this.struckAt) / HIT_KICK_MS;
+      if (since >= 0 && since < 1) lookPitch += HIT_KICK * (1 - since) * (1 - since);
     }
     if (this.jolted.trauma > 0) {
       // A break near shakes the view for a moment; the look sent does not move.

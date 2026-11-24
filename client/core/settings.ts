@@ -40,6 +40,8 @@ export class Settings {
   keepPaused = false;
   /** Applies only if the server allows it. */
   damageNumbers = true;
+  /** A blow of the viewer's own turns its view a little, and one that lands kicks it (sight.ts). */
+  viewKick = true;
   /** A multiple of the default. */
   sensitivity = 1;
   /**
@@ -111,7 +113,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "damageNumbers", "viewKick", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["zoomSensitivity", .5, 1.5], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
@@ -148,6 +150,7 @@ export const DOWNLOAD_ROW = 10;
 
 export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Damage numbers", value: (s) => (s.damageNumbers ? "on" : "off"), step: (s) => void (s.damageNumbers = !s.damageNumbers) },
+  { label: "View kick", value: (s) => (s.viewKick ? "on" : "off"), step: (s) => void (s.viewKick = !s.viewKick) },
   range("Mouse sensitivity","sensitivity",SENSITIVITY_MIN,SENSITIVITY_MAX,.1),
   range("Field of view","fov",FOV_MIN,FOV_MAX,5),
   volume("Voice volume","voiceVolume"),
