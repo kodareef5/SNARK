@@ -139,7 +139,7 @@ async function start() {
   const nodes = new NodeField(dim, reg, source);
   const maker = new WorkerCityMaker("city-worker.js", 2);
   const world: RenderWorld & { city?: NonNullable<RenderWorld["city"]> } = {
-    mapId: head.id, dims: dim, hf, structs, nodes: nodes.store, tideEyes: head.tideEyes,
+    mapId: head.id, dims: dim, hf, structs, nodes: nodes.store, tideEyes: head.tideEyes, ...(head.orbs ? { orbs: head.orbs } : {}),
     tops: { tops, maker }, landmarks: content?.landmarks,
   };
   const tier = tierOf("high");

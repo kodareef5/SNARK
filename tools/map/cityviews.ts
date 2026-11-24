@@ -122,6 +122,7 @@ for (const v of views) {
       farNodes: { nodes: view.nodes.source, held: (c) => view.nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(map.dims) },
       ...(view.motion ? { motion: view.motion } : {}),
       tideEyes: map.tideEyes,
+      ...(map.orbs ? { orbs: map.orbs } : {}),
       ...(map.content?.landmarks.length ? { landmarks: map.content.landmarks } : {}),
     },
     view.reg, view.pack, view.port ? { manifest: files.manifest, port: view.port } : undefined,

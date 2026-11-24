@@ -320,7 +320,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const motion = map ? { motion: { states: () => states, tick: () => 0, statics: () => map.statics } } : {};
   const tideEyes = map ? map.tideEyes : [{ ...PROVING_OBELISK, color: "blue" as const, radius: 14, y: hf.heightAt(PROVING_OBELISK.x, PROVING_OBELISK.z) }];
   const held = map && city ? { city: { statics: new CityStatics(dims, map.statics, reg), complete: () => true } } : {};
-  const scene = new Scene({ mapId: map?.id, tideEyes, dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion, ...held }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  const scene = new Scene({ mapId: map?.id, tideEyes, ...(map?.orbs ? { orbs: map.orbs } : {}), dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion, ...held }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
   cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;

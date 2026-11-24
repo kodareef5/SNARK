@@ -14,6 +14,7 @@ import type { Buildings } from "../shared/world/buildings.ts";
 import { mapHeightfield, mapNodes, mapTops, parseMap, placeStatics, resolveNodes, writeMap, type MapData, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
 import { OBELISK } from "../shared/world/obelisks.ts";
 import type { TideEyeSite } from "../shared/world/tide-eye.ts";
+import type { OrbSite } from "../shared/world/orb.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_POOL, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
@@ -49,6 +50,8 @@ export interface ServerWorld extends CollisionWorld {
    */
   tideEyes: readonly TideEyeSite[];
   obelisks: readonly { readonly x: number; readonly z: number; readonly eye: number }[];
+  /** The map's orbs (the map file's head), in its order. */
+  orbs: readonly OrbSite[];
   /** `nodes` (from CollisionWorld) is this field's store. */
   readonly nodeField: NodeField | null;
   /** The field's nodes in chunks nobody has loaded, which placements test too (server/place.ts). */
@@ -105,6 +108,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     tick: 0,
     tideEyes: [],
     obelisks: [],
+    orbs: [],
     dayOffset: offsetForHour(0, 9),
   };
 }
@@ -148,6 +152,7 @@ export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions =
   world.statics = map.statics.unordered();
   world.buildings = map.buildings ?? null;
   world.tideEyes = map.tideEyes ?? [];
+  world.orbs = map.orbs ?? [];
   // A plain obelisk is three blocks one on another: one place for the three.
   const places = world.tideEyes.map((site, eye) => ({ x: site.x, z: site.z, eye }));
   const { kinds, kind, x, z } = world.statics;
