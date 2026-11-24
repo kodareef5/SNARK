@@ -18,6 +18,8 @@ export interface MaterialDef extends Named {
   readonly ram?: number;
   /** What one half's heap of it gives in all, mined out: each an item and how many. */
   readonly heap?: readonly { readonly item: string; readonly count: number }[];
+  /** The stability of a built piece of it that stands by itself (shared/world/support.ts). Omitted, 4. */
+  readonly stability?: number;
 }
 
 /** Every material by its id. */
@@ -29,6 +31,7 @@ const FIELDS = {
   health: f("number"),
   ram: f("number"),
   heap: f("list", "", { refs: { "[].item": "item" } }),
+  stability: f("number"),
 } satisfies Fields<MaterialDef>;
 
 const columns = (n: number) => ({
@@ -43,7 +46,7 @@ export const materials: Kind<MaterialDef, ReturnType<typeof columns>> = {
   type: "material",
   fields: FIELDS,
   rows: [
-    row("material", "material", FIELDS, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays", "health", "ram", "heap"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited. A city material also says the health of one half of a piece, the energy that rams through one, and what its heap gives." }),
+    row("material", "material", FIELDS, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays", "health", "ram", "heap", "stability"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited. It may say how firmly a piece of it stands by itself, which is how far it may be built out from what holds it. A city material also says the health of one half of a piece, the energy that rams through one, and what its heap gives." }),
   ],
   check(d, { errors }) {
     for (const [type, v] of Object.entries(d.takes)) {
@@ -51,6 +54,7 @@ export const materials: Kind<MaterialDef, ReturnType<typeof columns>> = {
     }
     if (d.health !== undefined && !(d.health > 0)) errors.push(`${d.id}: health is more than 0`);
     if (d.ram !== undefined && !(d.ram > 0)) errors.push(`${d.id}: ram is more than 0 joules`);
+    if (d.stability !== undefined && !(Number.isInteger(d.stability) && d.stability >= 1 && d.stability <= 15)) errors.push(`${d.id}: stability is a whole number from 1 to 15`);
     for (const y of d.heap ?? []) if (!(Number.isInteger(y?.count) && y.count > 0)) errors.push(`${d.id}: a heap gives a whole number of an item, more than 0`);
   },
   columns,

@@ -710,11 +710,12 @@ test("nothing is built that nothing would hold up; and when what held a piece go
   expect([h.host.build.fallen, mine()]).toEqual([0, all - 1]);
   const seen = (ref: number): number => s.world!.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!;
   expect([seen(west), seen(shared)]).toEqual([0, rowOf(shared)[0]]);
-  // Without its frame the door falls. The rest still joins the east walls through the floors.
+  // Without its frame the door falls. The west floor still joins the east walls through the east floor. The west walls
+  // hung from it and the upper wall on it are a piece further from those walls by the way through the pieces, and fall.
   structs.damage(shared, 1e9);
   h.run(400);
-  expect([door, overWest, overEast, outer.ww, upper].map(there)).toEqual([false, true, true, true, true]);
-  expect(h.host.build.fallen).toBe(1);
+  expect([door, overWest, overEast, outer.ww, upper].map(there)).toEqual([false, true, true, false, false]);
+  expect(h.host.build.fallen).toBe(5);
   // The east foundation is the last piece on the ground, so all the rest falls. The three destroyed pieces do not count as fallen.
   structs.damage(east, 1e9);
   h.run(600);

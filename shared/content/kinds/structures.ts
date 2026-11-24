@@ -213,6 +213,8 @@ const columns = (n: number) => ({
   doorway: u8(n),
   /** Per structure whose shape has a form: the slot it fills and its dimensions (shared/world/lattice/forms.ts). */
   forms: makeFormTable(n),
+  /** Per structure: the stability of one that stands by itself, its material's or 4 (shared/world/support.ts). */
+  stabilityCap: u8(n, 4),
   /** Per structure: the item that places it (0 if none), its full health, and the days it lasts unvisited (0 means for ever). */
   pieceItem: u16(n),
   maxHp: f32(n),
@@ -376,6 +378,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     const m = d.material !== undefined ? once(materialsById).get(d.material)! : null;
     if (m) reg.structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
     reg.decayDays[i] = d.decayDays ?? m?.decayDays ?? 0;
+    if (m?.stability !== undefined) reg.stabilityCap[i] = m.stability;
     if (d.breaks) {
       reg.breakSet[i] = once(breakSets).get(d.breaks.set)!;
       reg.breakShape[i] = d.breaks.set;

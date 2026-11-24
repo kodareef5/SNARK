@@ -193,28 +193,30 @@ test("what leaned on a wall falls when the wall loses its footing, though the wa
       }
       throw new Error(`no place for a ${piece} at ${x}, ${z}`);
     };
-    // Two foundations, north and south, each with a wall on its east edge and floors going east from the walls' tops.
+    // Three foundations: north, south of it, and east of that. A wall stands on the north one's east edge and another on
+    // the east one's north edge, and one floor lies on the tops of both.
     const north = w.structs.add(kind("foundation"), 100, FOUNDATION_THICK / 2, 100, 0, 3, 100);
     const south = at(north, "foundation", 100, 97);
+    const east = at(south, "foundation", 103, 97);
     const wall = at(north, "wall", 101.5, 100);
-    const other = at(south, "wall", 101.5, 97);
+    const other = at(east, "wall", 103, 98.5);
     const c1 = at(wall, "ceiling", 103, 100);
     const cs = at(other, "ceiling", 103, 97);
-    const c3 = at(c1, "ceiling", 103, 103);
-    // This floor leans on the north wall alone. It is 5.4 m from it, 7.5 m from the south wall and 6.7 m from the north foundation.
-    const far = at(c3, "ceiling", 106, 103);
+    // West of the north wall, a floor on its top and one more beyond.
+    const c3 = at(wall, "ceiling", 100, 100);
+    // This floor leans on the north wall alone: it is two pieces out from it, and four from the other wall by the way through the pieces.
+    const far = at(c3, "ceiling", 97, 100);
     return { north, wall, c1, cs, c3, far };
   });
   const [w, naive] = worlds as [TestWorld, TestWorld];
   const p = lean[0]!;
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   expect([p.wall, p.c1, p.cs, p.c3, p.far].map((ref) => support.standsRef(ref))).toEqual([true, true, true, true, true]);
-  // The north foundation goes. Its wall hangs from the floors, which the south wall holds, so it stays. So does everything near enough the south wall.
+  // The north foundation goes. Its wall hangs from the floor the other wall holds, so it stays. So does everything near enough the other wall.
   const result = bringDown(w, [p.north], 16000);
   const there = (ref: number): boolean => w.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff] !== 0;
   expect([p.wall, p.c1, p.cs, p.c3].map(there)).toEqual([true, true, true, true]);
-  // The far floor is out of the south wall's reach and the wall it leaned on stands on nothing now, so it falls,
-  // though it is farther from the lost foundation than anything a foundation holds.
+  // The far floor is out of the other wall's reach, and the wall it leaned on hangs now and holds nothing, so it falls.
   expect([there(p.far), result.fell]).toEqual([false, 1]);
   askEach(naive, [lean[1]!.north]);
   expect(rows(w)).toEqual(rows(naive));
