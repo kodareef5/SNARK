@@ -8,6 +8,13 @@
 <script>
   const probeParams = new URLSearchParams(location.search);
   if (["device","bench","selfcheck","look","trip"].some(key => probeParams.has(key))) document.documentElement.classList.add("probe");
+  document.addEventListener("error", event => {
+    if (!(event.target instanceof HTMLScriptElement) || event.target.type !== "module") return;
+    document.getElementById("boot-heading").textContent = "Couldn’t enter world";
+    document.getElementById("boot-line").textContent = "The game files couldn’t load. Return to survivors to try again.";
+    document.getElementById("boot-progress").hidden = true;
+    document.getElementById("entry-back").hidden = false;
+  }, true);
   // What the first frame needs is asked for as the page is read. A device probe measures the link quiet first (client/core/device.ts).
   if (!new URLSearchParams(location.search).has("device")) for (const href of FETCHED) document.head.append(Object.assign(document.createElement("link"), { rel: "preload", as: "fetch", crossOrigin: "anonymous", href }));
 </script>
@@ -56,7 +63,7 @@
 <body>
 <canvas id="view"></canvas>
 <section id="boot-splash" aria-labelledby="boot-heading">
-  <img src="title/snark-emblem.webp" width="480" height="480" alt="SNARK · Miami Devolved">
+  <img src="title/snark-emblem.webp" loading="lazy" width="480" height="480" alt="SNARK · Miami Devolved">
   <h1 id="boot-heading">Entering world</h1>
   <progress id="boot-progress" max="4" value="0" aria-label="World loading"></progress>
   <span id="boot-line" role="status">Loading world data…</span>

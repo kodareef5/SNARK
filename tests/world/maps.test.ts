@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliDecompressSync } from "node:zlib";
-import { CORE_PACK } from "../../content/core.ts";
+import { CORE_CONTENT, CORE_PACK } from "../../content/core.ts";
 import { createHost, type Host } from "../../server/host.ts";
 import { mapRoutes } from "../../server/main.ts";
 import { createMapWorld, provingFile } from "../../server/world.ts";
@@ -28,7 +28,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 test("joining asks for the map and its landmarks before the game script runs", () => {
   const file = writeMap(flatMap(4, { content: {
     landmarks: [{ name: "dock", x: 32, y: 0, z: 32, yaw: 0 }],
-    defs: CORE_PACK.defs.filter(def => def.id === "core:crate"),
+    defs: CORE_CONTENT.filter(def => def.type === "structure" && def.id === "core:crate"),
   } }));
   const head = readHead(file);
   const route = mapRoutes(file, head.id);

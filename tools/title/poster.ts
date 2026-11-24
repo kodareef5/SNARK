@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, copyFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { serveFile } from "../../server/files.ts";
 import { DEFAULT_LOADER_SHOT, DEFAULT_TITLE_SHOT } from "../../shared/player-scenes.ts";
 import type { TitleShot } from "../../shared/title-scene.ts";
@@ -30,7 +30,7 @@ export async function titlePoster(dist: string) {
     return false;
   });
   if (!missing.length) return;
-  const fallback = (out: string) => copyFileSync(join(title, "miami-flight.webp"), out);
+  const fallback = (out: string) => copyFileSync(join(title, basename(out).startsWith("loader-wynwood") ? "miami-splash.webp" : "miami-flight.webp"), out);
   const chrome = findChrome();
   if (!chrome || !existsSync(join(dist, "assets-worker.js"))) {
     console.info("Default stills use the coastal plate on this build.");
