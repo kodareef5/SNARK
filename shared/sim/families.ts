@@ -48,6 +48,8 @@ export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> 
   readonly clearSlack: number;
   /** Whether the world holds it up at `x`, `y`, `z` facing `yaw`, as it would be set down: ground, a pad, or water. */
   supports(world: CollisionWorld, x: number, y: number, z: number, yaw: number, def: D): boolean;
+  /** The boxes a ragdoll meets it as (vehicle-movers.ts): centre and half size, six numbers each, in its frame. */
+  movers(def: D): number[];
 }
 
 /** The one place a row is widened to take any definition: a family only ever gets definitions its `is` accepts. */

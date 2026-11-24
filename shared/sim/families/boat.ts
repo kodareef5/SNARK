@@ -41,6 +41,10 @@ export const BOAT: VehicleFamily<BoatVehicleDefinition> = {
   hazard: "propeller",
   clearSlack: 0,
   supports: (world, x, y, z, yaw, def) => boatPlacement(world, x, y, z, yaw, def),
+  movers(def) {
+    const s = def.spec, low = s.clearance > 0 ? s.clearance : 0;
+    return [0, (low + s.height) / 2, 0, s.halfWidth, (s.height - low) / 2, s.halfLength];
+  },
   meetsCapsule: (def, frame, x, y, z, radius, height) => boatMeetsCapsule(def, frame, x, y, z, radius, height),
   meetsVehicle: (def, frame, other, otherFrame) => boatMeetsVehicle(def, frame, other, otherFrame),
   meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => boatMeetsKind(parts, kind, sx, sy, sz, syaw, def, frame, slack),

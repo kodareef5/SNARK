@@ -55,6 +55,13 @@ export const ROTOR: VehicleFamily<RotorVehicleDefinition> & { fly: typeof fly } 
   hazard: "rotor",
   clearSlack: 0,
   supports: (world, x, y, z, yaw, def) => helicopterPlacement(world, x, y, z, yaw, def),
+  // Its cabin's box, as its shapes have it, with the engine's and any other authored box beside it.
+  movers(def) {
+    const s = def.spec, low = s.clearance > 0 ? s.clearance : 0;
+    const boxes = [0, (low + s.height) / 2, 0, s.halfWidth, (s.height - low) / 2, s.halfLength];
+    for (const b of [...(s.engineBox ? [s.engineBox] : []), ...(s.bodyBoxes ?? [])]) boxes.push(b.at[0]!, b.at[1]!, b.at[2]!, b.half[0]!, b.half[1]!, b.half[2]!);
+    return boxes;
+  },
   meetsCapsule: (def, frame, x, y, z, radius, height) => helicopterMeetsCapsule(def, frame, x, y, z, radius, height),
   meetsVehicle: (def, frame, other, otherFrame) => helicopterMeetsVehicle(def, frame, other, otherFrame),
   meetsKind: (def, parts, kind, sx, sy, sz, syaw, frame, slack) => helicopterMeetsKind(parts, kind, sx, sy, sz, syaw, def, frame, slack),
