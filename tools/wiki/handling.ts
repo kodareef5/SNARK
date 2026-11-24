@@ -391,6 +391,12 @@ export function rotorHandling(def: RotorVehicleDefinition, driver: number): Roto
 
 const measured = new Map<string, Handling>();
 
+/**
+ * Whether a player sits in it to drive it, and so whether it can be measured by driving it. Air support's trailer is
+ * towed, its carrier flies itself and its drone is flown from the ground by a model of its own: none has a seat.
+ */
+export const driven = (def: VehicleDefinition): boolean => def.seats.some((s) => s.driver);
+
 /** How a vehicle drives, measured once a build for each definition; one that differs from another by its id alone shares its figures. */
 export function handlingOf(def: VehicleDefinition, driver: number): Handling {
   const key = JSON.stringify([{ ...def, id: "" }, driver]);

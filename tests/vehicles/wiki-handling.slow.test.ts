@@ -7,9 +7,11 @@ import type { Def, SpeciesDef } from "../../shared/content/defs.ts";
 import type { VehicleDefinition, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { buildCatalogue, type Cell, type Entry } from "../../tools/wiki/catalogue.ts";
 import { fleetTables } from "../../tools/wiki/driving.ts";
-import { KMH, handlingOf, roadHandling, type Handling } from "../../tools/wiki/handling.ts";
+import { KMH, driven, handlingOf, roadHandling, type Handling } from "../../tools/wiki/handling.ts";
 
-const vehicles = CORE_CONTENT.filter((d): d is SpeciesDef & { vehicle: VehicleDefinition } => d.type === "species" && d.class === "vehicle" && d.vehicle !== undefined);
+const every = CORE_CONTENT.filter((d): d is SpeciesDef & { vehicle: VehicleDefinition } => d.type === "species" && d.class === "vehicle" && d.vehicle !== undefined);
+/** The vehicles a player sits in to drive, which are measured by driving them. */
+const vehicles = every.filter((d) => driven(d.vehicle));
 const entries = buildCatalogue();
 const text = (c: Cell | Cell[]): string => (Array.isArray(c) ? c.map(text).join("") : typeof c === "string" ? c : "rate" in c ? c.text : c.id);
 
@@ -57,8 +59,19 @@ test("every vehicle is measured by its own model, each figure finite and of its 
   for (const d of vehicles) sensible(d.vehicle, handlingOf(d.vehicle, 80));
 });
 
+test("a vehicle nobody sits in to drive is not measured: its page has no figures and no table", () => {
+  const unseated = every.filter((d) => !driven(d.vehicle)).map((d) => d.id).sort();
+  expect(unseated).toEqual(["core:air_carrier", "core:air_trailer", "core:survey_drone"]);
+  for (const id of unseated) {
+    const e = entries.find((x) => x.id === id)!;
+    expect([id, e.handling, e.tables, e.facts.map((f) => f.label)]).toEqual([id, undefined, [], id === "core:survey_drone" ? ["Driven", "Mass"] : ["Driven", "Doors", "Mass"]]);
+  }
+  expect(entries.find((x) => x.id === "core:air_trailer")!.group).toBe("Trailer");
+});
+
 test("every vehicle's page says how it drives and its top speed as measured, with no figure missing", () => {
-  const listed = entries.filter((e) => e.kind === "vehicles");
+  // A vehicle nobody drives has no such page (the test above).
+  const listed = entries.filter((e) => e.kind === "vehicles" && e.handling !== undefined);
   expect(listed.length).toBeGreaterThan(10);
   for (const e of listed) {
     const table = e.tables.find((t) => ["How it drives", "How it handles", "How it flies", "How it rides"].includes(t.title))!;

@@ -17,7 +17,8 @@ import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import type { Landmark } from "../../shared/world/landmark.ts";
 import { iconSubjects, type IconFraming } from "../pack/icons.ts";
 import { drivingTable, topSpeed } from "./driving.ts";
-import { handlingOf, type Handling } from "./handling.ts";
+import { driven, handlingOf, type Handling } from "./handling.ts";
+import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import type { Subject } from "./posters.ts";
 
 export { num, time };
@@ -222,13 +223,24 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     // A species with no art of its own is a stand-in, and not in the wiki (coverage.ts).
     if (!picture.meshes.every(has)) continue;
     const vehicle = d.vehicle;
+    // A road vehicle nobody drives is towed, whatever chassis it borrows.
     const group = vehicle?.movement === "boat" && vehicle.family ? marineGroups[vehicle.family]
+      : vehicle && isWheelVehicle(vehicle) && !driven(vehicle) ? "Trailer"
       : vehicle ? sentence(vehicle.movement === "rotor" || vehicle.movement === "boat" ? vehicle.movement : (vehicle.frame ?? "car").replace("_", " "))
       : creature ? (d.fly ? "Flyer" : "Creature") : "Human";
     const e = entry(d.id, kind, group === "Skateboard" ? "Street skateboard" : labelOf(d), group, picture, [d.id]);
     const fact = facts(e);
     if (kind === "vehicles") {
       const v = d.vehicle!;
+      if (!driven(v)) {
+        // Nobody sits in it to drive it: it is towed, or flies itself. Its tank, hold and health are what its kind needs,
+        // and a server's settings give it its health, so its page says only what a player meets of it.
+        fact("Driven", "By nobody aboard");
+        if (v.doors.length) fact("Doors", String(v.doors.length));
+        fact("Mass", `${num(v.spec.mass ?? d.mass ?? 0)} kg`);
+        e.console = line("spawn", d.id);
+        continue;
+      }
       const handling = handlingOf(v, driver);
       e.handling = handling;
       fact("Top speed", topSpeed(handling));
