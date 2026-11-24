@@ -10,7 +10,8 @@ import { SPANS, clockText, joinMinutes } from "../core/admin/chart.ts";
 import { agoText, bytesText, counted, idWords, msText, spanText } from "../core/admin/format.ts";
 import { MAP_LAYERS, readInvestigation, writeInvestigation, type Investigation } from "../core/admin/investigation.ts";
 import { stopText } from "../core/admin/settings.ts";
-import { liveFrame } from "../core/admin/frame.ts";
+import { DOT_AWAY, DOT_DEAD, DOT_OUT, DOT_SPECTATING, liveFrame } from "../core/admin/frame.ts";
+import { sessionAt } from "../core/admin/past.ts";
 import { FAILING, recentLoop, verdict } from "../core/admin/health.ts";
 import { deathsText, findSurvivors, placeText, playedText, seenText, sortSurvivors, type SortKey } from "../core/admin/table.ts";
 import { addChatChannels, chatPanel } from "./chat.ts";
@@ -194,7 +195,8 @@ const headers: [SortKey, string, string][] = [
   ["name", "Name", ""], ["tribe", "Tribe", "wide"], ["level", "Lvl", "num wide"],
   ["seen", "Presence", ""], ["played", "Played", "wide"], ["deaths", "Deaths", "wide"],
 ];
-const LIVE_HEADS = headers.map(([key, label, cls]) => `<th class="${cls}" scope="col"><button type="button" data-sort="${key}">${label}</button></th>`).join("");
+const LIVE_HEADS = headers.map(([key, label, cls]) => `<th class="${cls}" scope="col"><button type="button" data-sort="${key}">${label}</button></th>`).join("")
+  + '<th class="wide" scope="col">Where</th>';
 
 function showPeople(): void {
   if (showPastPeople()) return showInspector();
@@ -212,11 +214,12 @@ function showPeople(): void {
   paintHtml($("rows"), rows.map((r) => {
     const dot = r.online ? (r.dead ? "dead" : "on") : "";
     const selected = r.pid === S.chosen;
-    return `<tr data-pid="${r.pid}"${selected ? ' class="chosen"' : ""}><td><button type="button" class="row-button" data-focus="survivor-${r.pid}" aria-pressed="${selected}"><span class="dot ${dot}"></span>${esc(r.name)}</button></td><td class="wide">${esc(r.tribe || "—")}</td><td class="num wide">${r.level}</td><td>${seenText(r, now)}</td><td class="wide">${playedText(r)}</td><td class="wide">${deathsText(r, now)}</td></tr>`;
+    const where = Number.isFinite(r.x) && Number.isFinite(r.z) ? `X ${Math.round(r.x)} · Z ${Math.round(r.z)}` : "—";
+    return `<tr data-pid="${r.pid}"${selected ? ' class="chosen"' : ""}><td><button type="button" class="row-button" data-focus="survivor-${r.pid}" aria-pressed="${selected}"><span class="dot ${dot}"></span>${esc(r.name)}</button></td><td class="wide">${esc(r.tribe || "—")}</td><td class="num wide">${r.level}</td><td>${seenText(r, now)}</td><td class="wide">${playedText(r)}</td><td class="wide">${deathsText(r, now)}</td><td class="wide">${where}</td></tr>`;
   }).join(""));
   $("none").hidden = rows.length > 0;
   $("none").textContent = !S.people ? "Loading survivors…" : all.length === 0 ? "No survivors on this world yet." : "No survivors match these filters.";
-  for (const b of document.querySelectorAll<HTMLElement>("#heads button")) b.parentElement?.setAttribute("aria-sort", b.dataset.sort === S.sort ? "ascending" : "none");
+  for (const b of document.querySelectorAll<HTMLElement>("#heads button")) b.parentElement?.setAttribute("aria-sort", b.dataset.sort !== S.sort ? "none" : S.sort === "name" || S.sort === "tribe" ? "ascending" : "descending");
   S.frame = liveFrame(now, all, $<HTMLInputElement>("offline").checked);
   showInspector();
   drawMap();
@@ -238,8 +241,12 @@ function showInspector(): void {
   $("inspector-name").textContent = name;
   const liveInfo = !historic && now
     ? `<dt>Tribe</dt><dd>${esc(now.tribe || "Unaffiliated")}</dd><dt>Level</dt><dd>${now.level}</dd><dt>Presence</dt><dd>${esc(seenText(now, S.people!.at))}</dd><dt>Played</dt><dd>${esc(playedText(now)) || "—"}</dd>` : "";
+  const session = historic && past ? sessionAt(past, S.timeline.at, S.timeline.to) : null;
+  const words: Record<number, string> = { [DOT_AWAY]: "Away", [DOT_DEAD]: "Dead", [DOT_OUT]: "Unconscious", [DOT_SPECTATING]: "Spectating" };
+  const pastInfo = !historic ? "" : `<dt>Presence</dt><dd>${d ? words[d.state] ?? "Online" : session ? "Online" : "Offline"}</dd>`
+    + (session ? `<dt>Tribe</dt><dd>${esc(session.tribe || "Unaffiliated")}</dd>` : "");
   const deaths = !historic ? now?.deaths.slice().reverse() ?? [] : [];
-  paintHtml($("survivor-detail"), `<dl>${liveInfo}<dt>${historic ? "Recorded location" : "Location"}</dt><dd>${esc(locationText)}</dd></dl>
+  paintHtml($("survivor-detail"), `<dl>${liveInfo}${pastInfo}<dt>${historic ? "Recorded location" : "Location"}</dt><dd>${esc(locationText)}</dd></dl>
     ${page !== "map" ? `<a data-focus="survivor-map" class="action-link" href="${esc(hooks.mapUrl(pid))}">Open replay map</a>` : position ? '<button type="button" id="locate-survivor" data-focus="locate">Center map</button>' : ""}
     ${deaths.length ? `<details><summary>Recorded deaths</summary><ul class="goes">${deaths.map((x) => `<li>${x.at === null ? "Earlier run" : `<a href="${esc(hooks.mapUrl(pid, x.at))}">${clockText(x.at, offset, true)}</a>`}${dims ? ` · ${esc(placeText(dims, x.x, x.z))}` : ""}</li>`).join("")}</ul></details>` : ""}`);
 }

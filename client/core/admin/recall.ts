@@ -109,6 +109,13 @@ export class Recall {
       && serves({ ...h, step: 0 }, t.start, t.end, 0) ? h : null;
   }
 
+  reset(): void {
+    this.window = null;
+    this.begin("window", "");
+    this.forget();
+    this.forgetHolders();
+  }
+
   forgetHolders(): void {
     this.holders = null;
     this.begin("holders", "");

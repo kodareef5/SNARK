@@ -44,7 +44,7 @@ test("street reads stay in the map window and favour its centre", () => {
   const dims = framed({ chunksX: 4 * SECTOR_CHUNKS, chunksZ: 4 * SECTOR_CHUNKS, frameX: 10 * SECTOR_CHUNKS, frameZ: 20 * SECTOR_CHUNKS });
   const part = (col: number, row: number, kind: MapPart["kind"]): MapPart => ({ col, row, kind, at: 0, length: 0, hash: "", name: `${kind}-${col}-${row}` });
   const missed = part(13, 23, "streets"), centred = part(11, 21, "streets"), edge = part(12, 21, "streets");
-  const head = { dims, parts: [missed, edge, part(11, 21, "ground"), centred] } as MapHead;
+  const head: Pick<MapHead, "dims" | "parts"> = { dims, parts: [missed, edge, part(11, 21, "ground"), centred] };
   const view = new MapWindow({ sizeX: 4 * sector, sizeZ: 4 * sector });
   view.resize(400, 400);
   view.look(1.7 * sector, 1.5 * sector, 250 / sector);
