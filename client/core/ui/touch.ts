@@ -212,12 +212,14 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
     at(T_SNAP, 1, BUTTON, I_LEFT, "Turn left");
     at(T_CANCEL, 2, BUTTON, I_CANCEL, "Cancel");
   } else if (situation === "building") {
+    // Each button presses the key its row names (build.ts BUILD_KEYS): R, T, Q, the arrows, and Escape as a finger's cancel.
     corner(T_ATTACK, I_PLACE, "Place");
-    at(T_ROTATE, 0, BUTTON, I_ROTATE, "Rotate");
-    at(T_RELOAD, 1, BUTTON, I_VARIANT, "Next variant");
+    at(T_RELOAD, 0, BUTTON, I_ROTATE, "Rotate");
+    at(T_FOLLOW_ONE, 1, BUTTON, I_VARIANT, "Next form");
     at(T_SNAP, 2, BUTTON, I_SNAP, "Next snap point; hold for free placement");
     at(T_RAISE, 3, SMALL, I_UP, "Raise");
     at(T_LOWER, 4, SMALL, I_DOWN, "Lower");
+    at(T_CANCEL, 5, SMALL, I_CANCEL, "Put away");
   } else {
     corner(T_ATTACK, I_ATTACK, "Attack");
     at(T_MORE, 3, SMALL, I_MORE, t.more ? "Back" : "More", t.more);
@@ -267,6 +269,11 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
 
 /** What the use key would do, from a prompt that names it ("E  ride raptor" gives "Ride raptor"); "" for any other line. */
 export function usePrompt(prompt: string): string {
+  // A built piece's line may stand under the builder's reason (prompts.ts): "E use  box" or "hold E  wall".
+  for (const line of prompt.split("\n")) {
+    if (line.startsWith("E use  ")) return `Use ${line.slice(7)}`;
+    if (line.startsWith("hold E  ")) return `Hold: ${line.slice(8)}`;
+  }
   if (!prompt.startsWith("E  ")) return "";
   return prompt.charAt(3).toUpperCase() + prompt.slice(4).split("   F  ")[0]!;
 }

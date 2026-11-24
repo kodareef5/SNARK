@@ -82,6 +82,11 @@ export interface HudFrame {
   /** The words under the crosshair (prompts.ts), and whether a piece is in hand to build with. */
   prompt: string;
   building: boolean;
+  /** What was last played with: 0 keys, 1 a pad, 2 a finger. */
+  device: number;
+  /** Pieces set down that the server has not yet taken from the count: their item, and how many. */
+  spendItem: number;
+  spend: number;
 }
 
 /** Where the HUD's shared places are on a canvas, worked out once a build (layout.ts) and read by every widget. */

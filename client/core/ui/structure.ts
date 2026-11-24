@@ -25,6 +25,9 @@ export const KEY_PIN_CLEAR = 2450;
 /** The field a bed's name is typed in, on the PIN panel's place. */
 export const KEY_STRUCT_NAME_INPUT = 2451;
 
+/** The list's own last line while a piece is in hand and one was just set down: it takes that one back. No command has this number. */
+export const STRUCT_UNDO = 255;
+
 /** The actions a piece of `kind` lists, in order: digit n + 1 chooses the nth. */
 export function actionsOf(reg: Registry, kind: number): number[] {
   const out = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH];
@@ -91,6 +94,9 @@ export class StructMenu {
   digits = "";
   /** The name typed so far. */
   typed = "";
+  /** A piece just set down can be taken back, and what does it: the builder's undo (App.undo). The list then offers it. */
+  undoable = false;
+  onUndo: (() => void) | null = null;
   /** Actions the list showed at the last build, in order. */
   private actions: number[] = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH];
   private noticeUntil = 0;
@@ -143,6 +149,11 @@ export class StructMenu {
   choose(n: number, session: ClientSession): void {
     const action = this.actions[n];
     if (!this.open || this.pad !== 0 || action === undefined) return;
+    if (action === STRUCT_UNDO) {
+      this.onUndo?.();
+      this.open = false;
+      return;
+    }
     if (action === STRUCT_PIN || action === STRUCT_NAME) {
       this.pad = action;
       this.digits = "";
@@ -294,6 +305,7 @@ export class StructMenu {
       return;
     }
     this.actions = actionsOf(reg, kind);
+    if (this.undoable) this.actions.push(STRUCT_UNDO);
     const inner = w - pad * 2;
     const said: Record<number, [string, string]> = {
       [STRUCT_PICKUP]: ["Take it back", hp < max ? "not while it is damaged" : "into your hands, as it was"],
@@ -305,6 +317,7 @@ export class StructMenu {
       [STRUCT_LIGHT]: reg.burning[kind] === 1 ? ["Put it out", "what is half cooked starts again"] : ["Light it", "it burns what fuel lies on it"],
       [STRUCT_NAME]: ["Name it", "as its tribe sees it on the map"],
       [STRUCT_TRAVEL]: ["Travel from it", "to another of your tribe's beds"],
+      [STRUCT_UNDO]: ["Undo your last piece", "takes back the piece you set down last"],
     };
     const lines = this.actions.map((a, i) => `${i + 1}  ${said[a]![0]}`);
     const details = this.actions.map((a) => said[a]![1]);

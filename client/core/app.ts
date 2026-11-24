@@ -18,8 +18,9 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
-import { HIT_NONE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, RESULT_WAIT, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
+import { BUILD_REACH } from "../../shared/world/snap.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { BreakEffects, HEARD_RUMBLE, hearStructures } from "./break-effects.ts";
 import { Controls } from "./controls.ts";
@@ -60,7 +61,9 @@ import { Lasers } from "./render/laser.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { Orbit } from "./orbit.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
-import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
+import { Builder, GHOST_BAD, GHOST_OK, buildReason } from "./build.ts";
+import { PredictBuild } from "./predict-build.ts";
+import { STRUCT_REASONS } from "./ui/structure.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { VoicePort } from "./voice/port.ts";
 import { Heard } from "./voice/heard.ts";
@@ -199,6 +202,7 @@ export class App {
   private readonly touchTarget: TouchTarget = {
     key: (code, down) => { this.key(code, down, false, 2); }, mouse: (button, down) => this.mouseButton(button, down, 2),
     move: (x, z) => this.controls.touchMove(x, z), look: (dx, dy) => this.look(dx, dy),
+    longPress: (x, y) => this.pickAt(x, y),
   };
   /** What the screen's edges take from each side, in CSS pixels: left, top, right, bottom. The shell sets them. */
   readonly insets = [0, 0, 0, 0];
@@ -242,6 +246,8 @@ export class App {
       get airMarking() { return app.ui.air.marking; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
+      get building() { return app.builder.active && app.session.driving < 0; },
+      rotate: (by) => this.builder.rotate(by, this.reg),
       zoom: (notches, alt) => void this.zoomBy(notches, alt),
       adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
@@ -282,6 +288,9 @@ export class App {
       this.ui.air.result(seq, code, session.tickClock);
       this.ui.creator.result(seq, code === RESULT_OK);
       this.ui.inventory.result(seq, code, session.tickClock);
+      // The answer to an undo; else a placement the server never judged, whose predicted piece goes.
+      const undone = this.predict.result(seq, code, this.nowMs);
+      if (undone > RESULT_OK) this.builder.say(undone === RESULT_WAIT ? "Too late to take it back" : (STRUCT_REASONS[undone] ?? "It cannot be taken back"), this.nowMs);
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
@@ -289,10 +298,35 @@ export class App {
       this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
+    this.builder.pending = (item) => this.predict.pending(item);
+    session.onPlaced = (p) => {
+      this.predict.placed(p, session, this.nowMs);
+      this.builder.answered(p.seq, p.code, p.code === RESULT_OK ? "" : buildReason(this.reg, session, p.code, p, (entity) => this.nameOf(entity)), this.nowMs);
+    };
+    session.onRow = (ref) => this.predict.row(ref);
+    this.ui.structure.onUndo = () => this.undo();
     this.parts = this.listed();
   }
 
   readonly builder = new Builder();
+  /** The pieces set down that the server has not yet sent as rows (predict-build.ts). */
+  readonly predict = new PredictBuild();
+
+  /** Takes back the piece last set down, through its pickup. */
+  undo(): void {
+    if (this.predict.undo(this.session) === 0) this.builder.say("Nothing to undo", this.nowMs);
+  }
+
+  /** The name of the body with entity index `entity` as the last sample has it: its own, or its kind's; "" for one not in view. */
+  private nameOf(entity: number): string {
+    const r = this.remote;
+    for (let i = 0; i < r.count; i++) {
+      if (r.id[i] !== entity) continue;
+      const id = this.reg.ids[r.kind[i]!] ?? "";
+      return r.name[i] || `a ${id.slice(id.indexOf(":") + 1).replaceAll("_", " ")}`;
+    }
+    return "";
+  }
   readonly vehiclePlacement = new VehiclePlacement();
   /** What the use key would act on, and the words that say so (prompts.ts). */
   readonly prompts: Prompts;
@@ -367,9 +401,16 @@ export class App {
 
   mouseButton(button: number, down: boolean, source = 0): void {
     if (down && source !== 1) this.ui.inputDevice = source;
-    // The middle button holds a helmet's visor up (visor.ts).
+    const building = this.builder.active && this.session.driving < 0 && this.ui.wantsPointerLock;
+    // The middle button holds a helmet's visor up (visor.ts). With a piece in hand it picks the built piece looked at.
     if (button === 1) {
-      this.visor.held = down && this.ui.wantsPointerLock;
+      if (building && down) this.builder.pick(this.session, this.reg);
+      else this.visor.held = down && this.ui.wantsPointerLock;
+      return;
+    }
+    // The mouse's own secondary button puts the piece in hand away. A pad's aim and a finger's do not.
+    if (button === 2 && building && source === 0) {
+      if (down) this.builder.putAway(this.session, this.nowMs);
       return;
     }
     if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
@@ -378,7 +419,12 @@ export class App {
       return;
     }
     if (button === 0 && this.builder.active) {
-      if (down) this.builder.place(this.session, this.reg);
+      const b = this.builder, x = b.pose.x / STRUCT_UNITS, y = b.pose.y / STRUCT_UNITS, z = b.pose.z / STRUCT_UNITS;
+      // A place already asked for is not asked for twice. A piece the preview finds nothing wrong with is drawn at once.
+      if (down && !this.predict.covers(x, y, z)) {
+        const fine = b.problem === 0, seq = b.place(this.session, this.reg);
+        if (fine) this.predict.add(seq, b.kind, b.inHand, x, y, z, b.pose.yaw, this.nowMs);
+      }
       return;
     }
     // The button that would strike throws what is in the arms, where the body looks.
@@ -387,6 +433,14 @@ export class App {
       return;
     }
     this.controls.mouseButton(button, down, source);
+  }
+
+  /** A finger held still on the view at (x, y) canvas units: with a piece in hand, picks the built piece under it. */
+  private pickAt(x: number, y: number): void {
+    const world = this.session.world, b = this.builder, frame = this.ui.frame;
+    if (!world || !b.active || this.session.driving >= 0 || !this.ui.wantsPointerLock) return;
+    this.cam.ray(x / Math.max(frame.width, 1), y / Math.max(frame.height, 1), this.dir);
+    if (castWorld(world, this.cam.x, this.cam.y, this.cam.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, BUILD_REACH + 4) === HIT_STRUCTURE) b.pick(this.session, this.reg, rayHit.ref);
   }
 
   gamepads(pads: readonly (PadSample | null)[], now: number): void {
@@ -406,6 +460,11 @@ export class App {
   wheel(deltaY: number, mode = 0): boolean {
     if (!this.ui.wantsPointerLock) return false;
     const notches = mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100;
+    // With a piece in hand the wheel turns it, and is no sight's zoom.
+    if (this.builder.active && this.session.driving < 0) {
+      this.builder.scroll(notches, this.reg);
+      return true;
+    }
     return this.zoomBy(notches) || this.orbit.wheel(notches);
   }
 
@@ -876,6 +935,10 @@ export class App {
       }
       session.impacts.length = 0;
     }
+    // Pieces set down and awaited are drawn from the frame of the click, and the preview gives way to one where it stood.
+    this.predict.step(session, f.nowMs);
+    this.predict.fill(scene.predicted, GHOST_BAD, f.nowMs);
+    if (scene.ghost.kind !== 0 && this.predict.covers(scene.ghost.x, scene.ghost.y, scene.ghost.z)) scene.ghost.kind = 0;
     this.ui.air.update(session, this.remote, world, cam);
     scene.airSupport.preview = this.ui.air.marking ? this.ui.air.spot : null;
     scene.airSupport.view = session.airSupport;
@@ -945,7 +1008,8 @@ export class App {
   private fillHud(f: AppFrame): void {
     const session = this.session, hud = this.hud, cam = this.cam, c = this.controls, alive = f.alive, nowMs = f.nowMs;
     const fill = this.hudFill, body = f.body;
-    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active;
+    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active; f.device = this.ui.inputDevice;
+    f.spendItem = this.builder.inHand; f.spend = this.predict.pending(f.spendItem);
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
@@ -996,7 +1060,10 @@ export class App {
       b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
       v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
     } else { b.active = false; v.active = false; }
-    if (b.active && b.problem !== RESULT_NO_SNAP) {
+    const predict = this.predict;
+    this.ui.structure.undoable = b.active && predict.undoable;
+    // Where a piece just set down stands, the preview has nothing to add.
+    if (b.active && b.problem !== RESULT_NO_SNAP && !predict.covers(b.pose.x / STRUCT_UNITS, b.pose.y / STRUCT_UNITS, b.pose.z / STRUCT_UNITS)) {
       ghost.kind = b.kind;
       ghost.x = b.pose.x / STRUCT_UNITS;
       ghost.y = b.pose.y / STRUCT_UNITS;

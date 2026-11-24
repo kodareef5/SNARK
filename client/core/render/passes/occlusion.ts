@@ -188,6 +188,7 @@ export class Occlusion implements Pass {
     p.drawWear.fill(0, kept, p.drawCount);
     p.drawSwap.fill(0, kept, p.drawCount);
     p.drawEffect.fill(0, kept * 4, p.drawCount * 4);
+    p.drawTint.fill(0, kept * 2, p.drawCount * 2);
     p.drawCount = kept;
     const casts = this.store.chunkCasts;
     let at = 0, next = 0;

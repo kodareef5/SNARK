@@ -2148,7 +2148,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   game.handle(CMD_VEHICLE, (c, r) => vehicles.command(c, r));
   game.handle(CMD_CLOCK, (c, r) => creative.turn(c, r));
-  game.handle(CMD_PLACE, (c, r) => build.place(c, r));
+  game.handle(CMD_PLACE, (c, r, seq) => build.place(c, r, seq));
   game.handle(CMD_STRUCT, (c, r) => build.act(c, r));
   game.handle(CMD_FEED, (c, r) => taming.feed(c, r));
   game.handle(CMD_ORDER, (c, r) => taming.order(c, r));
