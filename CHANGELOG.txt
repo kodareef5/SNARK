@@ -1,3 +1,34 @@
+v0.0.11 — 2026-11-23
+
+Buildings
+- Buildings break and collapse. Rockets blow out walls.
+- Mineable rubble heaps. Cars ram through weak pieces.
+- /city reset rebuilds them.
+
+Vehicles
+- Added air support: call a drone trailer from a semi's radio (J).
+- Fly drones from the trailer, with a camera feed and a payload.
+- Semis tow trailers.
+- Added Concept 003, with breakable glass and doors.
+
+Skateboard
+- Added the skateboard: ollies, flips, grabs, spins and grinds.
+- Craftable kicker, rail and ledge.
+
+Bodies
+- Survivors and creatures block each other.
+- Thrown items tumble and land. Q throws, E picks up.
+- Shoves stagger. Hard hits and cars knock survivors down.
+- Dodo ragdolls.
+
+Servers
+- Change settings live from the admin page.
+- Admin loadouts for new survivors. New survivors start with nothing.
+- doexit 60 restarts with a countdown. Players reconnect by themselves.
+
+Tools
+- Debug bar replaces bug report mode and F3: /debug or F3.
+
 v0.0.10 — 2026-11-22
 
 Streets
