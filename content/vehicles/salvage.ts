@@ -44,6 +44,9 @@ export type WreckForm = keyof typeof WRECK_FORMS;
 /** The id of the kind the look drawn as `mesh` becomes as `form`. It sorts after every id there was, so no index moves. */
 export const wreckFormKind = (mesh: string, form: WreckForm): string => `core:zzzzzzzwreck_${mesh.slice("core:".length)}_${form}`;
 
+/** The id of the shape of a look drawn as `mesh` that only salvage leaves, and no map places. It sorts as the kinds do. */
+export const wreckFormShape = (mesh: string): string => `core:zzzzzzzwreck_shape_${mesh.slice("core:".length)}`;
+
 /**
  * The kind the look drawn as `mesh` becomes as `form`: drawn and walked as the look `as`. It has no paint or health of
  * its own. A swap keeps its row's health, and it is dyed as the kind the map placed.

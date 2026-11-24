@@ -4,7 +4,7 @@
 // sets one down with y the ground and its yaw along the street (tools/mapworld/ruins.ts).
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../../shared/content/defs.ts";
 import { COMPACT_SPECIES } from "./compact.ts";
-import { rungsOf, wreckFormDef, wreckSalvage, wreckWhole, type Rung, type WreckSize } from "./salvage.ts";
+import { WRECK_FORMS, rungsOf, wreckFormDef, wreckFormShape, wreckSalvage, wreckWhole, type Rung, type WreckForm, type WreckSize } from "./salvage.ts";
 import fitted from "./abandoned-bounds.json" with { type: "json" };
 import tanker from "./tanker-wreck-bounds.json" with { type: "json" };
 
@@ -106,15 +106,36 @@ const shapeOf = (l: StreetLook): string => (l.body === "compact" ? l.mesh.replac
 const colourOf = (l: StreetLook, paint?: string): number => paint ? STREET_PAINTS.find((p) => p.name === paint)!.color : l.body === "compact" ? BURNT : BODIES.find((b) => b.body === l.body)!.color!;
 // The tanker's salvage is its own content; the street only sets it down.
 const OURS = STREET_LOOKS.filter((l) => l.body !== "tanker");
-const SHAPES: readonly ShapeDef[] = OURS.map((l) => ({ type: "shape", id: shapeOf(l), role: "thing", boxes: l.boxes }));
+
+/**
+ * The looks only salvage leaves, which no map places and no paint is a kind of: a body's stripped look where the street
+ * holds none, and every body's shell. Each is a mesh of <body>_salvaged with its boxes fitted (abandoned-bounds.json).
+ */
+export const SALVAGED_LOOKS: readonly StreetLook[] = OURS.filter((l) => l.mesh.endsWith("_abandoned")).flatMap((l) => (Object.keys(WRECK_FORMS) as WreckForm[]).flatMap((form): StreetLook[] => {
+  const mesh = `${l.mesh}_${form}`, rows = (fitted as Record<string, { at: number[]; half: number[] }[]>)[mesh];
+  return rows && !OURS.some((o) => o.mesh === mesh) ? [{ mesh, body: l.body, painted: l.painted, boxes: boxesOf(rows) }] : [];
+}));
+const SHAPES: readonly ShapeDef[] = [
+  ...OURS.map((l): ShapeDef => ({ type: "shape", id: shapeOf(l), role: "thing", boxes: l.boxes })),
+  ...SALVAGED_LOOKS.map((l): ShapeDef => ({ type: "shape", id: wreckFormShape(l.mesh), role: "thing", boxes: l.boxes })),
+];
 
 /** Bodies larger than a car, which give and take more (salvage.ts). */
 const SIZES: Readonly<Record<string, WreckSize>> = { caravan: "van", panel_van: "van", patrol_jeep: "van", monster_truck: "van", bus: "heavy", semi: "heavy" };
 /** The rungs a look has left: a burnt one is the compact's unpainted. */
 const rungs = (l: StreetLook): readonly Rung[] =>
   rungsOf(l.body === "compact" && !l.painted ? "burnt" : l.mesh.endsWith("_stripped") ? "stripped" : l.mesh.endsWith("_roof") ? "roof" : "stopped");
-/** The look a salvaged one takes once stripped: its body's stripped look, where it stands where it stopped and has one. */
-const strippedOf = (l: StreetLook): StreetLook | undefined => OURS.find((o) => o.mesh === `${l.mesh}_stripped`);
+/**
+ * The look a wreck takes as `form`, and the shape it is walked as: its body's stripped look and then its shell where
+ * it stands where it stopped, the shell alone where the street set it down stripped. On its roof or burnt it has none.
+ */
+export function lesserLook(l: StreetLook, form: WreckForm): { readonly look: StreetLook; readonly shape: string } | undefined {
+  const stopped = l.mesh.endsWith("_abandoned");
+  if (!stopped && !(form === "shell" && l.mesh.endsWith("_abandoned_stripped"))) return undefined;
+  const mesh = `core:${l.body}_abandoned_${form}`;
+  const held = OURS.find((o) => o.mesh === mesh), left = SALVAGED_LOOKS.find((o) => o.mesh === mesh);
+  return held ? { look: held, shape: shapeOf(held) } : left ? { look: left, shape: wreckFormShape(left.mesh) } : undefined;
+}
 
 const STATICS: readonly StructureDef[] = OURS.flatMap((l) => STREET_KINDS[l.mesh]!.map(({ id, paint }): StructureDef => ({
   type: "structure", class: "static", id, mesh: l.mesh, shape: shapeOf(l), half: shapeHalf(l.boxes),
@@ -122,8 +143,8 @@ const STATICS: readonly StructureDef[] = OURS.flatMap((l) => STREET_KINDS[l.mesh
   breaks: wreckWhole(l.mesh), salvage: wreckSalvage(rungs(l), SIZES[l.body] ?? "car"),
 })));
 /** A look's lesser looks, each one kind whatever the paint (salvage.ts). */
-const FORMS: readonly StructureDef[] = OURS.flatMap((l) => {
-  const to = strippedOf(l);
-  return to ? [wreckFormDef(l.mesh, "stripped", { mesh: to.mesh, shape: shapeOf(to), half: shapeHalf(to.boxes), color: colourOf(l, l.painted ? paintsOf(l)[0] : undefined) })] : [];
-});
+const FORMS: readonly StructureDef[] = OURS.flatMap((l) => (Object.keys(WRECK_FORMS) as WreckForm[]).flatMap((form) => {
+  const to = lesserLook(l, form);
+  return to ? [wreckFormDef(l.mesh, form, { mesh: to.look.mesh, shape: to.shape, half: shapeHalf(to.look.boxes), color: colourOf(l, l.painted ? paintsOf(l)[0] : undefined) })] : [];
+}));
 export const WRECKS: readonly Def[] = [...SHAPES, ...STATICS, ...FORMS];

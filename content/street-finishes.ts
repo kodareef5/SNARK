@@ -22,6 +22,12 @@ for (const part of [
   "muscle_car_abandoned/livery", "patrol_jeep_abandoned/patrol", "patrol_sedan_abandoned/cruiser", "road_van_abandoned/coach",
   "semi_abandoned/livery", "taxi_abandoned/livery", "veloce_abandoned/coachwork",
 ]) materials.set("core:" + part, PAINT);
+// The looks salvage leaves (<vehicle>_salvaged) are drawn with the abandoned looks' pictures under materials of their own.
+for (const part of [
+  "berlinetta_salvaged/coachwork", "bus_salvaged/livery", "fastback_salvaged/enamel", "monster_truck_salvaged/livery",
+  "muscle_car_salvaged/livery", "patrol_jeep_salvaged/patrol", "patrol_sedan_salvaged/cruiser", "semi_salvaged/livery",
+  "taxi_salvaged/livery", "veloce_salvaged/coachwork",
+]) materials.set("core:" + part, PAINT);
 materials.set("core:compact_wreck/body", BURNT_SHEET);
 materials.set("core:human-bodies/meridian", ENAMEL_ARMOR);
 // The Miami instruments: glazed ceramic and fired enamel under a clear coat, cast and brushed metal that keeps its own colour, cut glass.
@@ -33,7 +39,7 @@ materials.set("core:supply-capsule/glow", DROP_GLOW);
 for (const part of [
   "compact/cabin", "compact/trim", "compact_abandoned/cabin", "compact_abandoned/trim", "compact_wreck/cabin",
   "compact_wreck/trim", "fastback/detail", "road_van/cabin", "road_van/fittings", "street/street", "street/street_cut",
-  "fastback_abandoned/detail", "road_van_abandoned/cabin", "road_van_abandoned/fittings",
+  "fastback_abandoned/detail", "road_van_abandoned/cabin", "road_van_abandoned/fittings", "fastback_salvaged/detail",
 ]) materials.set("core:" + part, FITTINGS);
 
 export function streetMaterial(id: string, wheeledRig = false): number {
@@ -49,9 +55,13 @@ for (const [age, models] of [
     "berlinetta_abandoned", "bus_abandoned", "caravan_abandoned", "caravan_abandoned_stripped", "fastback_abandoned",
     "fastback_abandoned_roof", "fastback_abandoned_stripped", "monster_truck_abandoned", "muscle_car_abandoned",
     "panel_van_abandoned", "panel_van_abandoned_stripped", "patrol_jeep_abandoned", "patrol_sedan_abandoned", "semi_abandoned",
-    "taxi_abandoned", "veloce_abandoned"]],
+    "taxi_abandoned", "veloce_abandoned",
+    // A stripped look only salvage leaves weathers as its body's street looks do.
+    ...["berlinetta", "bus", "monster_truck", "muscle_car", "patrol_jeep", "patrol_sedan", "semi", "taxi", "veloce"].map((body) => `${body}_abandoned_stripped`)]],
   [0.78, ["tanker_impact", "tanker_rear_crush", "tanker_rollover", "tanker_separated", "tanker_stripped", "tanker_cistern"]],
-  [1, ["compact_wreck", "compact_wreck_tipped", "tanker_burnout"]],
+  // A shell is as far gone as a burnt wreck: the table's most.
+  [1, ["compact_wreck", "compact_wreck_tipped", "tanker_burnout",
+    ...["berlinetta", "bus", "caravan", "compact", "concept003", "fastback", "monster_truck", "muscle_car", "panel_van", "patrol_jeep", "patrol_sedan", "semi", "taxi", "veloce"].map((body) => `${body}_abandoned_shell`)]],
 ] as const) for (const model of models) exposure.set("core:" + model, age);
 export const vehicleWeather = (model: string): number => exposure.get(model) ?? 0;
 export const crownedSpokes = new Set(["core:compact"]);
