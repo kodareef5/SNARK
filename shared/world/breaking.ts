@@ -84,15 +84,15 @@ function middleOf(reg: Registry, kind: number, axis: number): number {
 }
 
 /**
- * The breach a whole piece of `kind` turned `yaw` takes from a hit (dx, dy, dz) metres from its place: FORM_BREACH_A for
+ * The breach a whole piece of `kind` turned `yaw`, of turn class `tw`, takes from a hit (dx, dy, dz) metres from its place: FORM_BREACH_A for
  * its first half (toward -X of its own frame, a pier's lower, a roof's -Z slope), FORM_BREACH_B for its other, the one it
  * has where it has only one, or 0 for a piece with no breach.
  */
-export function breachAt(reg: Registry, kind: number, yaw: number, dx: number, dy: number, dz: number): number {
+export function breachAt(reg: Registry, kind: number, yaw: number, tw: number, dx: number, dy: number, dz: number): number {
   const a = formKind(reg, kind, FORM_BREACH_A, 0), b = formKind(reg, kind, FORM_BREACH_B, 0);
   if (a === 0 || b === 0) return a !== 0 ? FORM_BREACH_A : b !== 0 ? FORM_BREACH_B : 0;
   const axis = halvesAxis(reg, kind);
-  frameOf(yaw);
+  frameOf(yaw, tw);
   const along = axis === 0 ? dx * frame.cos - dz * frame.sin : axis === 1 ? dy : dx * frame.sin + dz * frame.cos;
   return along < middleOf(reg, kind, axis) ? FORM_BREACH_A : FORM_BREACH_B;
 }

@@ -42,9 +42,9 @@ test("a piece cannot be built through a car's nose or boot, and one already thro
     const car = h.host.spawnVehicle("core:compact", x, z, 0, 0), ents = h.world.ents, me = h.client(ada)!;
     h.run(300);
     const pillar = h.reg.index.get("core:pillar_wood")!, py = ents.y[car]! + h.world.structs.halfYOf(pillar);
-    const build = (h.host as unknown as { build: { bodyIn(kind: number, x: number, y: number, z: number, yaw: number): boolean } }).build;
-    for (const along of [-1.7, 0, 1.7]) expect(build.bodyIn(pillar, x, py, z + along, 0)).toBe(true);
-    expect(build.bodyIn(pillar, x, py, z - 2.6, 0)).toBe(false);
+    const build = (h.host as unknown as { build: { bodyIn(kind: number, x: number, y: number, z: number, yaw: number, tw: number): number } }).build;
+    for (const along of [-1.7, 0, 1.7]) expect(build.bodyIn(pillar, x, py, z + along, 0, 0)).toBe(car);
+    expect(build.bodyIn(pillar, x, py, z - 2.6, 0, 0)).toBe(-1);
     // Through the boot anyway, as a map could leave one.
     expect(h.world.structs.add(pillar, x, py, z - 1.7, 0, 0, 10000)).toBeGreaterThanOrEqual(0);
     expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);

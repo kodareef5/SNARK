@@ -231,7 +231,7 @@ export class Build {
    * Moves every living body out of the place a piece of `kind` is about to be set down in. A body goes aside by the shortest
    * way that is clear all along, so never through a wall, or else up onto the piece. One with no such place stays where it is.
    */
-  private makeWay(kind: number, x: number, y: number, z: number, yaw: number): void {
+  private makeWay(kind: number, x: number, y: number, z: number, yaw: number, tw: number): void {
     const world = this.ctx.world;
     const ents = world.ents;
     const reg = world.reg;
@@ -249,7 +249,7 @@ export class Build {
           if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE || ents.seat[i] !== 0) continue;
           const k = ents.kind[i]!;
           if (reg.vehicle[k]) continue;
-          if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, SKIN)) found.push(i);
+          if (capsuleKind(reg.parts, kind, x, y, z, yaw, tw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, SKIN)) found.push(i);
         }
       }
     }
@@ -280,7 +280,7 @@ export class Build {
           const py = Math.max(groundUnder(world.hf, px, pz, r), by);
           // The piece is not built yet, so this asks only about what stands there already.
           if (!capsuleFree(world, px, py, pz, r, h)) break;
-          if (capsuleKind(reg.parts, kind, x, y, z, yaw, px, py, pz, r, h, SKIN)) continue;
+          if (capsuleKind(reg.parts, kind, x, y, z, yaw, tw, px, py, pz, r, h, SKIN)) continue;
           ents.setPosition(i, px, py, pz);
           moved = true;
         }
@@ -299,7 +299,7 @@ export class Build {
     for (const l of this.landing) {
       const half = world.reg.halfY[l.kind]!;
       const y = this.floorUnder(l.x, l.z, l.y - half) + half;
-      this.makeWay(l.kind, l.x, y, l.z, l.yaw);
+      this.makeWay(l.kind, l.x, y, l.z, l.yaw, 0);
       const ref = world.structs.add(l.kind, l.x, y, l.z, l.yaw, l.owner, l.hp);
       if (ref >= 0) {
         if (l.rec) fixtures.bind(l.rec, ref);
@@ -348,7 +348,7 @@ export class Build {
     }
     if (opens !== 0) {
       // A door swaps to its other kind, unless a body is in the way.
-      if (this.bodyIn(opens, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!) >= 0) return RESULT_OBSTRUCTED;
+      if (this.bodyIn(opens, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot)) >= 0) return RESULT_OBSTRUCTED;
       structs.swap(ref, opens);
       if (state) {
         state.kind = opens;
@@ -682,7 +682,7 @@ export class Build {
       [answer.detail, answer.a] = [PLACED_STRUCTURE, obstruction.ref];
       return RESULT_OBSTRUCTED;
     }
-    const body = this.bodyIn(kind, px, py, pz, pose.yaw);
+    const body = this.bodyIn(kind, px, py, pz, pose.yaw, 0);
     if (body >= 0) {
       [answer.detail, answer.a] = [PLACED_ENTITY, body];
       return RESULT_BODY;
@@ -730,7 +730,7 @@ export class Build {
   onPlaced: ((by: EntityRecord, ref: number) => void) | null = null;
 
   /** The entity index of something alive that stands where a piece of `kind` at this pose would be, or -1. */
-  private bodyIn(kind: number, x: number, y: number, z: number, yaw: number): number {
+  private bodyIn(kind: number, x: number, y: number, z: number, yaw: number, tw: number): number {
     const world = this.ctx.world;
     const ents = world.ents;
     const reg = world.reg;
@@ -749,12 +749,12 @@ export class Build {
               x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
               qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
             };
-            if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
-              : isRotorVehicle(car) ? helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
-              : carMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, frame, BODY_SLACK)) return i;
+            if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, tw, car, frame, BODY_SLACK)
+              : isRotorVehicle(car) ? helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, tw, car, frame, BODY_SLACK)
+              : carMeetsKind(reg.parts, kind, x, y, z, yaw, tw, car.spec, frame, BODY_SLACK)) return i;
             continue;
           }
-          if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return i;
+          if (capsuleKind(reg.parts, kind, x, y, z, yaw, tw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return i;
         }
       }
     }

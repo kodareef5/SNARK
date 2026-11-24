@@ -427,8 +427,8 @@ export class StaticVehicleSolids {
     for (let i = 0; i < n; i++) {
       const ref = this.found.refs[i]!, row = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535, kind = row.kind[slot]!;
       if (store.isSoft(kind) || name === "node" && this.ignoreNode?.(ref)) continue;
-      const x = row.x[slot]!, y = row.y[slot]!, z = row.z[slot]!, yaw = row.yaw[slot]!;
-      frameOf(yaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch, boxes = store.parts.box;
+      const x = row.x[slot]!, y = row.y[slot]!, z = row.z[slot]!, yaw = row.yaw[slot]!, tw = row.twAt(slot);
+      frameOf(yaw, tw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch, boxes = store.parts.box;
       for (let j = store.parts.start[kind]! * 6, end = store.parts.start[kind + 1]! * 6; j < end; j += 6) {
         boxSolid(x + (cs * boxes[j]! + sn * boxes[j + 2]!) * stretch, y + boxes[j + 1]!, z + (cs * boxes[j + 2]! - sn * boxes[j]!) * stretch,
           cs, sn, boxes[j + 3]! * stretch, boxes[j + 4]!, boxes[j + 5]! * stretch, this.obstacle);
@@ -436,7 +436,7 @@ export class StaticVehicleSolids {
       }
       const hulls = store.parts.hulls;
       if (hulls) for (let j = hulls.start[kind]!, end = hulls.start[kind + 1]!; j < end; j++) {
-        partSolid(hulls, j, yaw, x, y, z, this.obstacle);
+        partSolid(hulls, j, yaw, tw, x, y, z, this.obstacle);
         for (let part = 0; part < count; part++) if (this.meets(this.swept[part]!, this.obstacle) && !take(ref)) return retained ? this.obstacleHit : this.hit;
       }
     }

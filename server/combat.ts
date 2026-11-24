@@ -1406,7 +1406,7 @@ export class Combat {
       this.blastDamage += done;
       if (left === 0) this.blastKilled = true;
       // The nearest wreck supplies the sparks and sound for the combined hit.
-      if (src.by && world.reg.breakFamily[struck] === WRECK && capsuleKind(structs.parts, was, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, x, y, z, 0, 0, -Infinity)) {
+      if (src.by && world.reg.breakFamily[struck] === WRECK && capsuleKind(structs.parts, was, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot), x, y, z, 0, 0, -Infinity)) {
         const distance = push.x * push.x + push.y * push.y + push.z * push.z;
         if (distance < this.blastSurfaceDistance) {
           this.blastSurfaceDistance = distance;
@@ -1502,7 +1502,7 @@ export class Combat {
       const slot = ref & 0xffff;
       const kind = t.kind[slot]!;
       // The blast in the box's own frame, and the point of the box nearest it.
-      const a = (t.yaw[slot]! * Math.PI * 2) / 65536;
+      const a = (t.yaw[slot]! * Math.PI * 2) / 65536 - (t.twAt(slot) * Math.PI) / 6;
       const sn = Math.sin(a);
       const cs = Math.cos(a);
       const px = x - t.x[slot]!;
@@ -1519,7 +1519,7 @@ export class Combat {
         const box = parts.box;
         for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) far = Math.min(far, fromBox(lx - box[p]!, ly - box[p + 1]!, lz - box[p + 2]!, box[p + 3]!, box[p + 4]!, box[p + 5]!));
         // With no radius, a part's push is the way from the blast to its nearest point, and deeper than 0 inside it.
-        for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) if (capsuleHull(hulls, p, t.yaw[slot]!, px, pz, ly, ly, 0, far)) far = Math.max(0, -hullPush.depth);
+        for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) if (capsuleHull(hulls, p, t.yaw[slot]!, t.twAt(slot), px, pz, ly, ly, 0, far)) far = Math.max(0, -hullPush.depth);
       } else far = fromBox(lx, ly, lz, structs.halfXOf(kind), structs.halfYOf(kind), structs.halfZOf(kind));
       // Its nearest point's height from the blast, past what one storey clears, is as far again.
       const up = Math.abs(ly) - structs.halfYOf(kind) - STOREY_CLEAR;

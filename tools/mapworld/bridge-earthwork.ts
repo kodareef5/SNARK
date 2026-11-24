@@ -159,7 +159,7 @@ export function gradeRoadEntrances(site: Site, entrances: readonly RoadEntrance[
   let changed = 0;
   for (const e of entrances) {
     const slabs = e.slabs.map(p => {
-      frameOf(Math.round(p.yaw * 65536 / 360) & 65535);
+      frameOf(Math.round(p.yaw * 65536 / 360) & 65535, 0);
       return { x: Math.round(p.x * STRUCT_UNITS) / STRUCT_UNITS, y: Math.round(p.y * STRUCT_UNITS) / STRUCT_UNITS,
         z: Math.round(p.z * STRUCT_UNITS) / STRUCT_UNITS, c: frame.cos, s: frame.sin, stretch: frame.stretch,
         grade: Number(p.kind.match(/floorroad([1-4])_/)?.[1] ?? 0) / 32 };
