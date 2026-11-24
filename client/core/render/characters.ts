@@ -67,6 +67,9 @@ import { PatrolLights } from "./patrol-lights.ts";
 import { solidOf } from "../../../shared/sim/vehicle-movers.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
+/** The places of a held item that has none. */
+const NO_POINTS = new Float32Array(9);
+
 export const BODY_RADIUS = BODY_REACH;
 /**
  * An outfit is heavy where its pieces' coarsest levels hold more than this many times the triangles of the body parts
@@ -1813,7 +1816,7 @@ export class Characters {
       at[o] = x + p.camX; at[o + 1] = y + p.camY; at[o + 2] = z + p.camZ;
       for (let k = 0; k < 3; k++) {
         // A vertex of the held mesh goes through its bone from where the bone rests, and so does a place on it.
-        const q = h.item * 9 + k * 3, vx = rest[r]! + reg.heldPoints[q]!, vy = rest[r + 1]! + reg.heldPoints[q + 1]!, vz = rest[r + 2]! + reg.heldPoints[q + 2]!;
+        const q = k * 3, pt = reg.heldPoints[h.item] ?? NO_POINTS, vx = rest[r]! + pt[q]!, vy = rest[r + 1]! + pt[q + 1]!, vz = rest[r + 2]! + pt[q + 2]!;
         at[o + 3 + k * 3] = bones[m]! * vx + bones[m + 1]! * vy + bones[m + 2]! * vz + bones[m + 3]! + p.camX;
         at[o + 4 + k * 3] = bones[m + 4]! * vx + bones[m + 5]! * vy + bones[m + 6]! * vz + bones[m + 7]! + p.camY;
         at[o + 5 + k * 3] = bones[m + 8]! * vx + bones[m + 9]! * vy + bones[m + 10]! * vz + bones[m + 11]! + p.camZ;
@@ -1831,7 +1834,7 @@ export class Characters {
     else if (share >= LAUNCHER_HOME) g.tubeEmpty = false;
     const loaded = own && this.ownRounds >= 0 ? this.ownRounds > 0 || share >= LAUNCHER_HOME : !g.tubeEmpty;
     if (unseen) return;
-    const q = h.item * 9 + HELD_ROUND * 3, pt = reg.heldPoints;
+    const q = HELD_ROUND * 3, pt = reg.heldPoints[h.item] ?? NO_POINTS;
     if (share >= LAUNCHER_FETCHED && share < LAUNCHER_AT_MUZZLE) this.roundOn(p, h.round, first + B_PROP_L, rest[B_PROP_L * 3]!, rest[B_PROP_L * 3 + 1]!, rest[B_PROP_L * 3 + 2]! - ROUND_HELD, own, id);
     else if (share >= LAUNCHER_AT_MUZZLE && share < LAUNCHER_HOME) {
       const k = (share - LAUNCHER_AT_MUZZLE) / (LAUNCHER_HOME - LAUNCHER_AT_MUZZLE);

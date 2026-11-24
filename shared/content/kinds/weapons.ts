@@ -6,7 +6,7 @@ import { DAMAGE_TYPES } from "../../sim/damage.ts";
 import { FLIGHT_TICKS } from "../../sim/projectiles.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../../sim/weapon.ts";
 import type { Content } from "../defs.ts";
-import { f, f32, f64, paletteIndex, u16, u32, u8, type Checking, type Fields, type Kind } from "../kind.ts";
+import { f, f32, f64, list, paletteIndex, u16, u32, u8, type Checking, type Fields, type Kind } from "../kind.ts";
 import type { Registry } from "../registry.ts";
 import type { DamageType } from "./damage.ts";
 import type { ItemDef } from "./items.ts";
@@ -381,10 +381,10 @@ const columns = (n: number) => ({
   kickAngle: f32(n),
   kickTicks: u8(n),
   /**
-   * Per weapon, nine to each: its muzzle, its vent and its loaded round's place on its held mesh, x, y and z (HELD_MUZZLE,
-   * HELD_VENT, HELD_ROUND), and which of them it has, as bits of those three.
+   * Per weapon with places on its held mesh, nine numbers: its muzzle, its vent and its loaded round's place, x, y and z
+   * (HELD_MUZZLE, HELD_VENT, HELD_ROUND), and which of them it has, as bits of those three.
    */
-  heldPoints: f32(n * 9),
+  heldPoints: list<Float32Array>(n),
   heldHas: u8(n),
 });
 
@@ -415,7 +415,7 @@ export const weapons: Kind<ItemDef, ReturnType<typeof columns>> = {
       }
       [d.weapon.muzzle, d.weapon.vent, d.weapon.round].forEach((at, k) => {
         if (!at) return;
-        reg.heldPoints.set(at, i * 9 + k * 3);
+        (reg.heldPoints[i] ??= new Float32Array(9)).set(at, k * 3);
         reg.heldHas[i] = reg.heldHas[i]! | (1 << k);
       });
       if (d.weapon.burst) reg.burstLook[i] = BURST_LOOKS.indexOf(d.weapon.burst);

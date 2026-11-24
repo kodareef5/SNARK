@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
-import { BLAST_MS } from "../../client/core/shots.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { dress } from "../../server/commands/combat.ts";
 import { ZONE_NONE } from "../../shared/anim/human.ts";
@@ -385,14 +384,15 @@ test("damage to something built is saved with it, and a client is shown a blast"
   const meshes = (): string[] => [...packet!.drawMesh.subarray(0, packet!.drawCount)].filter((_, d) => (packet!.drawFlags[d]! & DRAW_SKINNED) !== 0).map((m) => pack.header.meshes[m]!.id);
   app.controls.pitch = -0.6;
   run(4000);
-  expect(app.shots.blasts.length).toBe(0);
+  // The blast is the scene's fire now, a lobe mesh and not the cube, and is out when its fire's time has run.
+  const fire = app.shots.fire!;
+  expect(fire.alight).toBe(0);
   for (let n = 0; n < 60 && h.host.projectiles.bursts === 0; n++) run(1000 / 30);
   expect(h.host.projectiles.bursts).toBe(1);
   run(50);
-  expect(app.shots.blasts.length).toBe(1);
-  expect(meshes()).toContain("core:blast");
-  run(BLAST_MS + 100);
-  expect(app.shots.blasts.length).toBe(0);
+  expect([fire.alight, app.shots.blasts.length]).toEqual([1, 0]);
   expect(meshes()).not.toContain("core:blast");
+  run(3000);
+  expect(fire.alight).toBe(0);
   expect(structs.chunks[chunk]!.kind[ref & 0xffff] === 0 || structs.chunks[chunk]!.hp[ref & 0xffff]! < 9900).toBe(true);
 });
