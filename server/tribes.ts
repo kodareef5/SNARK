@@ -184,7 +184,8 @@ export class Tribes {
     this.invites.delete(rec.pid);
     const was = rec.team;
     // What it built and tamed joins the tribe, and stays if it later leaves.
-    const moved = this.world.structs.reown(was, tribe.id);
+    // A survivor who has built nothing is the usual case, and then no chunk is read.
+    const moved = this.world.claims.total(was) > 0 ? this.world.structs.reown(was, tribe.id) : 0;
     if (moved > 0) this.bus.after(STRUCTURE_OWNER, { from: was, to: tribe.id, n: moved });
     for (const other of this.records.byPid.values()) {
       if (other.team !== was || other === rec) continue;

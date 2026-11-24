@@ -9,6 +9,7 @@
 | `city.ts` | A flat map whose statics are city pieces of the ruin kit, a server on it, and a rocket, a grenade and a rifle round from nobody |
 | `sketch.ts` | A building set down by hand on its frame's tiles, with the map's buildings made for it: in a bare store for the support rule, or under a server for a collapse |
 | `build.ts` | Survivors set up to build: cheats, strength, and sixty of every wooden piece in the hotbar |
+| `enemy-scan.ts` | The enemy range answered by reading every slot of the chunks in range, which the claims grid is proved against |
 | `gather.ts` | Finding a resource node and standing a survivor in reach of it |
 | `agent.ts` | An agent that plays on the harness: its tools called over the protocol while virtual time runs |
 | `pack.ts` | The core asset pack: built once by `bun run check` for every test file, or once per test process run alone |

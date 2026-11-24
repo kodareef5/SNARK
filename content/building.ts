@@ -3,60 +3,31 @@
 
 import { crafting } from "./craft.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
+import { outlineBox, type FormDef } from "../shared/world/lattice/forms.ts";
+import { FORMS, formBoxes } from "./building/forms.ts";
 
 const box = (x: number, y: number, z: number, hx: number, hy: number, hz: number): ShapeBox => ({ at: [x, y, z], half: [hx, hy, hz] });
 
-/** Metres. */
-export const SPAN = 3;
-export const WALL_HEIGHT = 3;
-export const WALL_THICK = 0.2;
-export const FLOOR_THICK = 0.25;
-export const FOUNDATION_THICK = 0.375;
-/** Wider than a survivor and taller than one stands. */
-export const DOOR_WIDTH = 1.4;
-export const DOOR_HEIGHT = 2.3125;
-/** At a standing survivor's eye height, and too short for any body to get through, even prone in a jump. */
-const WINDOW_WIDTH = 1.2;
-const WINDOW_SILL = 1.2;
-const WINDOW_HEIGHT = 0.7;
-const STEPS = 10;
+const across = (f: FormDef): number => outlineBox(f)[2] - outlineBox(f)[0];
+const up = (f: FormDef): number => outlineBox(f)[3] - outlineBox(f)[1];
 
-const H = SPAN / 2;
-const WH = WALL_HEIGHT / 2;
-const T = WALL_THICK / 2;
-const post = (SPAN - DOOR_WIDTH) / 4;
-const lintel = (WALL_HEIGHT - DOOR_HEIGHT) / 2;
-const jamb = (SPAN - WINDOW_WIDTH) / 4;
+/** Metres, each read from the piece's form (content/building/forms.ts). */
+export const SPAN = across(FORMS.foundation);
+export const WALL_HEIGHT = up(FORMS.wall);
+export const WALL_THICK = FORMS.wall.thick;
+export const FLOOR_THICK = FORMS.ceiling.thick;
+export const FOUNDATION_THICK = FORMS.foundation.thick;
+export const DOOR_WIDTH = across(FORMS.door);
+export const DOOR_HEIGHT = up(FORMS.door);
 /** Floor to floor. A ceiling's top is level with the top of the walls that hold it. */
 export const RISE = WALL_HEIGHT;
 
-const shape = (name: string, role: ShapeDef["role"], boxes: ShapeBox[]): ShapeDef => ({ type: "shape", id: `core:shape_${name}`, role, boxes });
+const ROLES: { readonly [name in keyof typeof FORMS]: ShapeDef["role"] } = { foundation: "foundation", wall: "wall", doorframe: "wall", windowframe: "wall", ceiling: "ceiling", pillar: "pillar", door: "door", door_open: "door", stairs: "stairs" };
 
-const SHAPES: readonly ShapeDef[] = [
-  shape("foundation", "foundation", [box(0, 0, 0, H, FOUNDATION_THICK / 2, H)]),
-  shape("wall", "wall", [box(0, 0, 0, H, WH, T)]),
-  { ...shape("doorframe", "wall", [box(-H + post, 0, 0, post, WH, T), box(H - post, 0, 0, post, WH, T), box(0, WH - lintel, 0, DOOR_WIDTH / 2, lintel, T)]), doorway: true },
-  shape("windowframe", "wall", [
-    box(-H + jamb, 0, 0, jamb, WH, T),
-    box(H - jamb, 0, 0, jamb, WH, T),
-    box(0, -WH + WINDOW_SILL / 2, 0, WINDOW_WIDTH / 2, WINDOW_SILL / 2, T),
-    box(0, WH - (WALL_HEIGHT - WINDOW_SILL - WINDOW_HEIGHT) / 2, 0, WINDOW_WIDTH / 2, (WALL_HEIGHT - WINDOW_SILL - WINDOW_HEIGHT) / 2, T),
-  ]),
-  shape("ceiling", "ceiling", [box(0, 0, 0, H, FLOOR_THICK / 2, H)]),
-  shape("pillar", "pillar", [box(0, 0, 0, 0.25, WH, 0.25)]),
-  // An open door stands at a right angle on its hinge, at the doorway's left as seen from the front.
-  shape("door", "door", [box(0, 0, 0, DOOR_WIDTH / 2, DOOR_HEIGHT / 2, 0.04)]),
-  shape("door_open", "door", [box(-DOOR_WIDTH / 2 + 0.04, 0, DOOR_WIDTH / 2, 0.04, DOOR_HEIGHT / 2, DOOR_WIDTH / 2)]),
-  // Each step is a block from the bottom up to its tread. The stairs rise toward +Z.
-  shape(
-    "stairs",
-    "stairs",
-    Array.from({ length: STEPS }, (_, i) => {
-      const height = ((i + 1) * RISE) / STEPS;
-      return box(0, -RISE / 2 + height / 2, -H + ((i + 0.5) * SPAN) / STEPS, H, height / 2, SPAN / STEPS / 2);
-    }),
-  ),
-];
+const SHAPES: readonly ShapeDef[] = (Object.keys(FORMS) as (keyof typeof FORMS)[]).map((name) => {
+  const form: FormDef = FORMS[name];
+  return { type: "shape", id: `core:shape_${name}`, role: ROLES[name], boxes: formBoxes(form), ...(form.closes === "doorway" ? { doorway: true } : {}), form };
+});
 
 interface Tier {
   readonly name: string;
