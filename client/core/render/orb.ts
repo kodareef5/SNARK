@@ -5,7 +5,8 @@
 //
 // Close up the picture is LED pucks on a brick grid of rings with a dark trellis between; a change of scene is a front
 // that crosses the skin and shows one scene or the other at a pixel, never both; and the screen's level follows the
-// frame's exposure, so it reads at noon and blooms at night.
+// frame's exposure, so it reads at noon and blooms at night. By night the ball lights what is round it in the colour of
+// what it shows (OrbCast, orb-light.ts), and stands in the street's picture as a disc of it (orbInStreet).
 //
 // Everything is written twice: GLSL for the program `orb` (programs.ts), and the same arithmetic in TypeScript for the
 // software renderer (tools/snap/raster.ts), the tests and the contact sheet (tools/orb/sheet.ts). This file comes after
@@ -15,9 +16,12 @@ import type { SupplyList } from "../../../shared/sim/supply.ts";
 import { POSE_BRAKING, POSE_FLYING, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
 import { ORB_HOLD, orbShow, type OrbShow, type OrbSite } from "../../../shared/world/orb.ts";
 import { CAST_PHASE, EYE_PERIOD, eyeKnot, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
-import { linearToSrgb } from "./color-space.ts";
+import { linearToSrgb, srgbToLinear } from "./color-space.ts";
+import { ORB_COLOUR } from "./orb-light.ts";
 import { FRAME, FRAME_BLOCK, ORB_AT, ORB_LANES } from "./packet.ts";
 import { sunDirection } from "./sky.ts";
+import { captureByte } from "./street-finish.ts";
+import type { StreetOrb } from "./street-reflections.ts";
 import { GRADED, TONE, graded, tone } from "./surface.ts";
 import { EYE_SKY, aperture, eyePhase, eyePower, eyeSeed, eyeStorm, strike } from "./tide-eye.ts";
 
@@ -874,3 +878,170 @@ export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefi
   frame[ORB_AT + 20] = (cs * ox - sn * oz) / ol;
   frame[ORB_AT + 22] = (sn * ox + cs * oz) / ol;
 }
+
+// ---- The light the ball casts by night (orb-light.ts): its colour, and its disc in the street's picture.
+
+/**
+ * Directions the screen's mean is read at, spread evenly over the ball, in MEAN_PARTS parts of 32 that each cover it:
+ * one part is read at a time, so a reading costs 32 looks at a scene, and the mean is of all of them. Fewer miss the
+ * mean of a scene whose light is in thin lines, as Core's is, by half.
+ */
+const MEAN_WAYS = 128;
+const MEAN_PARTS = 4;
+/** The footprint they are read with: a pixel's from about 300 m, where the scenes still show all they have. */
+const MEAN_FOOTPRINT = 0.01;
+/** Seconds in which every part is read once, and the seconds the colour takes to follow the mean. */
+const MEAN_EVERY = 0.1;
+const MEAN_EASE = 0.15;
+/** The front of a change is a line of light: its share of the ball's skin. */
+const LEAD_SHARE = 0.0213;
+/** How many times the screen's own light the ball casts on what is round it. Tune it from real frames. */
+export const ORB_CAST = 3;
+
+const ways = new Float32Array(MEAN_WAYS * 3);
+for (let i = 0; i < MEAN_WAYS; i++) {
+  const y = 1 - (2 * (i + 0.5)) / MEAN_WAYS, r = Math.sqrt(1 - y * y), a = i * 2.39996323;
+  ways[i * 3] = r * Math.cos(a);
+  ways[i * 3 + 1] = y;
+  ways[i * 3 + 2] = r * Math.sin(a);
+}
+const seen = [0, 0, 0];
+const whole = new Float64Array(MEAN_PARTS * 3);
+
+/** The sum of what the screen shows at part `part` of the directions, linear and before its level, into `out` from `at`. */
+function orbPart(out: Float64Array, at: number, f: ArrayLike<number>, part: number): void {
+  let r = 0, g = 0, b = 0;
+  const front = f[ORB_AT + 10]! * 1.1 - 0.05;
+  for (let i = part * 3; i < MEAN_WAYS * 3; i += MEAN_PARTS * 3) {
+    const x = ways[i]!, y = ways[i + 1]!, z = ways[i + 2]!;
+    const on = 0.5 - 0.5 * (x * f[ORB_AT + 20]! + y * f[ORB_AT + 21]! + z * f[ORB_AT + 22]!) < front;
+    orbScene(seen, f, on ? f[ORB_AT + 8]! : f[ORB_AT + 9]!, x, y, z, on ? f[ORB_AT + 6]! : f[ORB_AT + 7]!, MEAN_FOOTPRINT, 2);
+    r += seen[0]!;
+    g += seen[1]!;
+    b += seen[2]!;
+  }
+  out[at] = r;
+  out[at + 1] = g;
+  out[at + 2] = b;
+}
+
+/** The mean from the parts' sums, with the line of light a change's front is. */
+function meanOf(out: Float64Array | number[], parts: Float64Array, f: ArrayLike<number>): void {
+  const lead = f[ORB_AT + 10]! < 1 ? LEAD_SHARE : 0;
+  for (let c = 0; c < 3; c++) {
+    let sum = 0;
+    for (let k = 0; k < MEAN_PARTS; k++) sum += parts[k * 3 + c]!;
+    out[c] = sum / MEAN_WAYS + (c === 0 ? 0.75 : c === 1 ? 0.9 : 1) * lead;
+  }
+}
+
+/** The mean of what the screen shows over the whole ball, linear and before its level, into `out`: the lanes' scenes read at every direction. */
+export function orbMean(out: Float64Array | number[], f: ArrayLike<number>): void {
+  for (let k = 0; k < MEAN_PARTS; k++) orbPart(whole, k * 3, f, k);
+  meanOf(out, whole, f);
+}
+
+/**
+ * How much of the ball's cast light shows, 0 by day to 1 on a dark night: by the stops of exposure the level rises
+ * over, since by day the sun drowns it; on low poly, which has no exposure, by the sun's height.
+ */
+export function orbNight(exposure: number, sunY: number): number {
+  return exposure > 0 ? sstep(ORB_DAY_STOPS, ORB_NIGHT_STOPS, Math.log2(Math.max(1, exposure))) : 1 - sstep(-0.1, 0.1, sunY);
+}
+
+/**
+ * The colour of the light an orb casts, kept from frame to frame: the screen's mean, a part of it read at a time and
+ * followed smoothly, so it never steps; by the screen's level and the night.
+ */
+export class OrbCast {
+  private readonly parts = new Float64Array(MEAN_PARTS * 3);
+  private readonly wanted = new Float64Array(3);
+  private readonly mean = new Float64Array(3);
+  private part = 0;
+  /** The scene's clock, in ms, when a part was last read and at the frame before. */
+  private read = -Infinity;
+  private last = -Infinity;
+  /** The screen's mean light by night, as light after exposure: what the halo and the pool show. Zero by day, with no orb and with its gain at nothing. */
+  readonly shown = new Float64Array(3);
+
+  /** Brings the colour to `now` ms and writes it into the frame's lanes (orb-light.ts ORB_COLOUR), which `writeOrb` has filled. */
+  step(frame: Float32Array, now: number): void {
+    const shown = this.shown, mean = this.mean;
+    shown[0] = shown[1] = shown[2] = 0;
+    const exposure = frame[FRAME.exposure]!, level = frame[ORB_AT + 11]! * orbNight(exposure, frame[SUN + 1]!);
+    // No orb, by day or dark: nothing is read, and the next frame it casts takes the mean whole.
+    if (!(frame[ORB_AT + 3]! > 0) || !(level > 0)) {
+      this.last = -Infinity;
+      return;
+    }
+    // A clock that stands still or runs back is a tool's or a new world's: every part is read and the mean taken whole.
+    const still = !(now > this.last), dt = (now - this.last) / 1000;
+    if (still || dt > 1) {
+      for (let k = 0; k < MEAN_PARTS; k++) orbPart(this.parts, k * 3, frame, k);
+      this.read = now;
+    } else if (now - this.read >= (MEAN_EVERY * 1000) / MEAN_PARTS) {
+      orbPart(this.parts, this.part * 3, frame, this.part);
+      this.part = (this.part + 1) % MEAN_PARTS;
+      this.read = now;
+    }
+    meanOf(this.wanted, this.parts, frame);
+    const k = still || dt > 1 ? 1 : 1 - Math.exp(-dt / MEAN_EASE);
+    this.last = now;
+    for (let c = 0; c < 3; c++) {
+      mean[c] = mean[c]! + (this.wanted[c]! - mean[c]!) * k;
+      shown[c] = mean[c]! * level;
+      frame[ORB_COLOUR + c] = exposure > 0 ? (shown[c]! * ORB_CAST) / exposure : 0;
+    }
+  }
+}
+
+/** Metres from which the street's picture holds the ball: past them its disc is under a pixel of the picture. */
+export const ORB_MIRRORED = 3000;
+/** How many times the sky's light the picture's may hold for the ball, less one: past it the disc is as bright as the picture goes. */
+const OVER_MOST = 63;
+/** Metres before the ball's skin within which what the picture holds is the ball's own pieces, which are drawn as nothing. */
+const SKIN_SLACK = 16;
+
+/**
+ * The ball in the street's picture (street-reflections.ts): a disc of its screen's mean light where it stands, at the
+ * size it is seen, so paint, glass and steel near it show it. By night the screen is many times as bright as the sky
+ * the picture is a share of, so the picture is taken as a share of more (`over`).
+ */
+export const orbInStreet: StreetOrb = {
+  over(frame, x, y, z, over) {
+    const radius = frame[ORB_AT + 3]!;
+    if (!(radius > 0) || !(frame[ORB_COLOUR]! + frame[ORB_COLOUR + 1]! + frame[ORB_COLOUR + 2]! > 0)) return false;
+    const dx = frame[ORB_AT]! - x, dy = frame[ORB_AT + 1]! - y, dz = frame[ORB_AT + 2]! - z, far = Math.hypot(dx, dy, dz);
+    // Too far to fill a pixel, round the picture's eye, or wholly under its horizon.
+    if (far > ORB_MIRRORED || far <= radius || dy + radius <= 0) return false;
+    for (let c = 0; c < 3; c++) over[c] = Math.min(OVER_MOST, Math.max(0, frame[ORB_COLOUR + c]! / ORB_CAST / Math.max(frame[FRAME.skyAbove + c]!, 1e-12) - 1));
+    return true;
+  },
+  paint(pixels, depth, width, frame, x, y, z, over) {
+    const height = width >> 1, radius = frame[ORB_AT + 3]!;
+    const dx = frame[ORB_AT]! - x, dy = frame[ORB_AT + 1]! - y, dz = frame[ORB_AT + 2]! - z, far = Math.hypot(dx, dy, dz);
+    const half = Math.asin(radius / far), pixel = TAU / width, lift = Math.asin(dy / far);
+    // A disc under a pixel across shows as its share of the pixel.
+    const fits = Math.min(1, (2 * half) / pixel) ** 2;
+    const middle = Math.floor((Math.atan2(dx, dz) / TAU + 0.5) * width);
+    const j0 = Math.max(0, Math.floor(((lift - half) / Math.PI + 0.5) * height - 1)), j1 = Math.min(height - 1, Math.ceil(((lift + half) / Math.PI + 0.5) * height));
+    for (let j = j0; j <= j1; j++) {
+      const up = ((j + 0.5) / height - 0.5) * Math.PI, level = Math.cos(up), rise = Math.sin(up);
+      // The columns the disc may reach in this row: all of them where it stands over the picture's pole.
+      const reach = Math.abs(up) + half >= Math.PI / 2 ? width >> 1 : Math.min(width >> 1, Math.ceil((half + pixel) / (level * pixel)));
+      for (let k = -reach; k < reach; k++) {
+        const i = (middle + k) & (width - 1), round = ((i + 0.5) / width - 0.5) * TAU;
+        const toward = (Math.sin(round) * level * dx + rise * dy + Math.cos(round) * level * dz) / far;
+        const cover = clamp((half - Math.acos(Math.min(1, toward))) / pixel + 0.5) * fits;
+        if (cover <= 0) continue;
+        const at = j * width + i, along = far * toward, hit = along - Math.sqrt(Math.max(0, radius * radius - far * far + along * along));
+        if (depth[at]! <= hit - SKIN_SLACK) continue;
+        for (let c = 0; c < 3; c++) {
+          const light = Math.min(1, frame[ORB_COLOUR + c]! / ORB_CAST / Math.max(frame[FRAME.skyAbove + c]! * (1 + over[c]!), 1e-12));
+          pixels[at * 4 + c] = captureByte(Math.min(1, light * cover + srgbToLinear(pixels[at * 4 + c]! / 255) * (1 - cover)));
+        }
+        pixels[at * 4 + 3] = Math.round(255 * cover + pixels[at * 4 + 3]! * (1 - cover));
+      }
+    }
+  },
+};

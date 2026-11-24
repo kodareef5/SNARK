@@ -1,5 +1,6 @@
 // Receiver labels are optical properties. Gameplay material, impact sounds and salvage stay independent.
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
+import { ORB_OVER } from "./orb-light.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
 import { SURFACE_NAMES } from "../../../content/surfaces.ts";
 // Normal-incidence and grazing values of a coated, tinted faceplate.
@@ -311,7 +312,7 @@ vec3 streetMirror(vec3 original, vec3 ray, vec3 rel, float rough, float mask) {
     vec4 previous = streetSample(ray,rel-fPreviousReflection.xyz,rough,1.0-fStreetLook.y);
     local = mix(local,previous,fPreviousReflection.w);
   }
-  return (original*(1.0-strength*local.a)+local.rgb*fSkyAbove.rgb*strength)*gain;
+  return (original*(1.0-strength*local.a)+local.rgb*fSkyAbove.rgb*(1.0+fOrb[7].rgb)*strength)*gain;
 #else
   return original*(1.0+mask*fStreetLook.x);
 #endif
@@ -368,7 +369,7 @@ export function streetMirror(
   if (old < 1) sampleStreet(p.street, ray, x - p.frame[f]!, y - p.frame[f+1]!, z - p.frame[f+2]!, rough, 1 - old);
   if (old > 0 && p.previousStreet) sampleStreet(p.previousStreet, ray, x - p.frame[history]!, y - p.frame[history+1]!, z - p.frame[history+2]!, rough, old);
   const strength = mask * p.frame[f + 3]!;
-  for (let c = 0; c < 3; c++) out[c] = (out[c]! * (1 - strength * sample[3]!) + sample[c]! * p.frame[FRAME.skyAbove + c]! * strength) * gain;
+  for (let c = 0; c < 3; c++) out[c] = (out[c]! * (1 - strength * sample[3]!) + sample[c]! * p.frame[FRAME.skyAbove + c]! * (1 + p.frame[ORB_OVER + c]!) * strength) * gain;
 }
 function sampleStreet(image: StreetImage, ray: ArrayLike<number>, x: number, y: number, z: number, rough: number, weight: number): void {
   const near = clamp((19 - Math.hypot(x, y, z)) / 9);

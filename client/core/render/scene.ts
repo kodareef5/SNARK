@@ -443,6 +443,8 @@ export class Scene {
   /** The scene every orb is held on, its place in ORB_SCENES, or -1 for the programme; and what its level is scaled by, 0 for dark. */
   orbOnly = -1;
   orbGain = 1;
+  /** Whether the nearest orb's halo and pool are drawn (passes.ts `orbglow`). */
+  orbGlow = true;
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
   private readonly unseenFrom = new Uint16Array(MAX_VIEW);
   private readonly unseenAt = new Float64Array(MAX_VIEW * 4);
@@ -912,7 +914,7 @@ export class Scene {
       // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
       ["tide eyes", this.eyes],
       ["supply drops", this.supplyDrops],
-      ["orbs", { draw: (f) => { if (f.world.orbs && Scene.orb) (this.orbs ??= new Scene.orb.Orbs(this.assets)).draw(f); } }],
+      ["orbs", { update: (f) => this.orbPass(f)?.update(f), draw: (f) => this.orbPass(f)?.draw(f) }],
       ["moving statics", this.movingStatics],
       ["near store", this.nearStore],
       // What the near store's meshes and the ground hide, of what is drawn so far and from here on: the meshes themselves first.
@@ -957,19 +959,31 @@ export class Scene {
     ];
   }
 
+  /** The orbs' pass, made once its code has come (orb-late.ts), where the map has an orb. */
+  private orbPass(f: Frame): Orbs | null {
+    if (!f.world.orbs || !Scene.orb) return null;
+    const pass = (this.orbs ??= new Scene.orb.Orbs(this.assets));
+    pass.glow = this.orbGlow;
+    return pass;
+  }
+
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires } = this;
+    const orbCards = this.world.orbs ? (this.orbs?.cards ?? null) : null;
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
     this.damage.build(cam, this.now);
     this.dust.build(cam, this.now);
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0));
     const particles = p.detailCount;
+    // An orb's halo and pool first of the cards, so what is nearer is drawn over them.
+    orbCards?.write(p);
+    const blurs = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
     patrolLights.write(p);
@@ -998,7 +1012,8 @@ export class Scene {
     const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
     this.put.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
     this.put.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
-    this.put.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
+    if (orbCards) this.put.drawDetails(particles, blurs - particles, DRAW_BLEND, orbCards.passes(cam));
+    this.put.drawDetails(blurs, lamps - blurs, DRAW_BLEND, rotorBlur.passes(cam));
     this.put.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.put.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
     this.put.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));

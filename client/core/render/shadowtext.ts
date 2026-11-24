@@ -15,6 +15,7 @@ import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./farshadow.ts";
 import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
+import { ORB_SEES_GLSL } from "./orb-light.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
 import { PIECE_END, PIECE_GLSL, PIECE_PLACE } from "./pieces.ts";
@@ -158,8 +159,9 @@ function filterText(m: number): string {
  * cast twice. With LAMP, `sunShadow` first finds how much of the street lamp's light reaches the point (`lampSees`, the
  * twin of lamp.ts `lampReach` but for the shadow): by its pool, distance and facing, and by four compared taps of the
  * lamp's map in its corner of its layer, moved off the surface as the cascades' are; LIGHT's `lit` adds it from gLamp.
+ * With ORB_LIGHT it finds an orb's light too, shadows or none (orb-light.ts), which `lit` adds from gOrb.
  */
-export const SHADOW_GLSL = `#define fFarAt fSwell.zw
+export const SHADOW_GLSL = `${ORB_SEES_GLSL}#define fFarAt fSwell.zw
 #define fFarScale fLook.w
 #define fFarDepth fSkyAlong.w
 #ifdef SHADOW_CASCADES
@@ -246,6 +248,9 @@ float sunShadow(vec3 rel, vec3 normal) {
 #ifdef LAMP
   lampSees(rel, normal);
 #endif
+#ifdef ORB_LIGHT
+  orbSees(rel, normal);
+#endif
   if (uCascades == 0 || fCast.w <= 0.0) return 1.0;
   int k = 0;
   float t = shadowShare(rel, 0);
@@ -274,6 +279,9 @@ float sunShadow(vec3 rel, vec3 normal) {
 }
 #else
 float sunShadow(vec3 rel, vec3 normal) {
+#ifdef ORB_LIGHT
+  orbSees(rel, normal);
+#endif
   return 1.0;
 }
 #endif

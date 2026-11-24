@@ -166,9 +166,12 @@ export const BENCH_TURN_MS = 15000;
  * (render/streets.ts). "kerbs" draws the bent kerbs with none of their wear (render/bend.ts `bentWear`). "weather" draws
  * the walls with none of their weathering (world-surfaces.ts `weathered`), its masks made as ever. "bursts" draws nothing
  * that burns (render/blasts.ts): no rocket's flame, smoke or glow, no blast's fire, and none of what a blast or a
- * launcher threw up among the small details.
+ * launcher threw up among the small details. An orb's light by night comes off in its three parts: "orbglow" draws no
+ * halo and no pool (render/passes/orb.ts), "orbmirror" leaves the ball out of the street's picture
+ * (render/street-reflections.ts), and "orblight" draws the lit programs without its light, and the pool for it
+ * (render/orb-light.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather", "bursts"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather", "bursts", "orbglow", "orbmirror", "orblight"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -193,6 +196,7 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
     if (off.has("farcity")) copy = { ...copy, reach: { ...copy.reach, city: 0 } };
     if (off.has("light")) copy = { ...copy, post: null };
     if (off.has("bloom") && copy.post) copy = { ...copy, post: { ...copy.post, bloom: 0 } };
+    if (off.has("orblight")) copy = { ...copy, orb: { ...copy.orb, light: false } };
     mine.set(key, copy);
   }
   return copy;

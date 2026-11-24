@@ -60,6 +60,8 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  * finish tones and grades.
  */
 const out = (tier: Tier, light: boolean): string => (tier.contact ? "#define CONTACT\n" : "") + (tier.roofs ? "#define ROOF\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
+/** And where the tier lights by an orb (orb-light.ts), for a program that lights by `lit`. */
+const lights = (tier: Tier, light: boolean): string => (tier.orb.light ? "#define ORB_LIGHT\n" : "") + out(tier, light);
 
 /**
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
@@ -74,7 +76,7 @@ function flatOr(tier: Tier, format: TextureFormat, hard: boolean, light: boolean
   const facades = weathers ? FACADE_TIERS[tier.name] : null;
   const own = weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex);
   const facadeUnits: Record<string, number> = facades ? { uFacadeBase: UNIT.facade, uFacadeNormal: UNIT.facade + 1, uFacadeOrm: UNIT.facade + 2, uFacadeRooms: UNIT.facade + 3, uFacadeMarks: UNIT.facade + 4 } : {};
-  return { vertex: litVertex ?? (facades ? facadeVertex(own) : FACADE_TIERS[tier.name] && vertex === FAR_MESH_VERTEX ? facadeFarVertex(own) : own), fragment: texgenText(streetText((facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), weather && tier.lit), weathers), defines: (weather ? "#define STREET_FINISH\n" : "") + (weather && tier.lit ? "#define STREET\n" : "") + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + `#define WORLD_TAPS ${Math.max(1, tier.anisotropy).toFixed(1)}\n` + (weathers ? `#define WORLD_WEATHER\n${tier.finishes >= 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uRoof: UNIT.roof, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits, ...(weather && tier.lit ? { uStreetEnv: UNIT.street } : {}), ...(weathers ? { uTexgen: UNIT.texgen } : {}) } };
+  return { vertex: litVertex ?? (facades ? facadeVertex(own) : FACADE_TIERS[tier.name] && vertex === FAR_MESH_VERTEX ? facadeFarVertex(own) : own), fragment: texgenText(streetText((facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), weather && tier.lit), weathers), defines: (weather ? "#define STREET_FINISH\n" : "") + (weather && tier.lit ? "#define STREET\n" : "") + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + `#define WORLD_TAPS ${Math.max(1, tier.anisotropy).toFixed(1)}\n` + (weathers ? `#define WORLD_WEATHER\n${tier.finishes >= 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uRoof: UNIT.roof, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits, ...(weather && tier.lit ? { uStreetEnv: UNIT.street } : {}), ...(weathers ? { uTexgen: UNIT.texgen } : {}) } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
@@ -84,7 +86,7 @@ function surface(tier: Tier, format: TextureFormat, hard: boolean, light: boolea
   if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
   if (variant.layered) samplers.uLayer = UNIT.layer;
   // A bent piece's wear (bend.ts) where the tier reads the finishes in full.
-  return { vertex: surfaceVertex(variant), fragment: streetText(surfaceFragment(format, AIR, variant), tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (tier.lit && tier.finish === "full" ? "#define BENT_WEAR\n" : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers };
+  return { vertex: surfaceVertex(variant), fragment: streetText(surfaceFragment(format, AIR, variant), tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (tier.lit && tier.finish === "full" ? "#define BENT_WEAR\n" : "") + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers };
 }
 
 /** `tier`, the texture variant, whether compared lookups come back hard, and whether the device has a light target (post.ts). */
@@ -151,7 +153,7 @@ const MAKE = {
   // Small details (packet.ts DRAW_DETAILS): on a lit tier their pictures, lit and in the sun's shadow; on low poly their flat shapes.
   details: (tier, _, hard = false, light = false): ProgramText =>
     tier.lit
-      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
+      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
       : { vertex: DETAIL_VERTEX, fragment: DETAIL_FLAT_FRAGMENT, defines: "", samplers: {} },
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
   depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uPieces: UNIT.pieces } }),

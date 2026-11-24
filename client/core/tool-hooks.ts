@@ -253,6 +253,9 @@ export class ToolHooks {
     scene.moonShadows = !off.has("moon");
     scene.streetLamps.light = !off.has("lamp");
     scene.streetLamps.shaded = !off.has("pools");
+    // An orb's halo and pool, and its disc in the street's picture (`?ab=orbglow`, `orbmirror`).
+    scene.orbGlow = !off.has("orbglow");
+    scene.street.orb = !off.has("orbmirror");
   }
 
   /** The frame built: the effects that live in its packet come off. */

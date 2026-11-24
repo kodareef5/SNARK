@@ -1,22 +1,86 @@
 // The orbs (shared/world/orb.ts): each a shell whose skin is a screen, on a plinth. The map head places a site once, so
 // it is drawn at any distance, whatever chunks a client holds. What the screen shows is the frame block's (../orb.ts
 // writeOrb), which holds one orb, the nearest: its shell is the screen, and any other's is drawn as plain steel.
+//
+// By night the nearest lights what is round it (../orb.ts OrbCast): a halo in the haze about it, and on the ground at
+// its foot a pool, where the tier's lit programs do not take its light themselves (../orb-light.ts).
 
 import type { OrbSite } from "../../../../shared/world/orb.ts";
 import { SIZE_UNITS } from "../../../../shared/world/nodes.ts";
 import type { Assets } from "../../assets/assets.ts";
-import { ORB_FAR, ORB_SHELL, nearestOrb } from "../orb.ts";
-import { BONE_FLOATS, DRAW_ORB, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, MAX_BONES, MAX_DRAWS, TRANSIENT_BUFFER } from "../packet.ts";
+import { HAZE_DENSITY, HAZE_HEIGHT, hazeAmount } from "../atmosphere.ts";
+import { linearToSrgb } from "../color-space.ts";
+import { ORB_FAR, ORB_SHELL, OrbCast, nearestOrb } from "../orb.ts";
+import { BONE_FLOATS, DETAIL, DETAIL_GLOW, DRAW_ORB, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, FRAME, GLOW_STEPS, MAX_BONES, MAX_DRAWS, ORB_AT, TRANSIENT_BUFFER } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
+import { VehicleCards } from "../vehicle-cards.ts";
+
+/**
+ * The halo: a card about the ball's middle across the view, HALO_SIZE radii across its half with no haze between and
+ * HALO_GROWS more with all of it. It shows HALO_SHOWS of the light's brightness, of which HALO_NEAR with no haze between
+ * and the rest by the haze, so across the map the ball stands in a dome of light.
+ */
+export const HALO_SIZE = 2.2, HALO_GROWS = 4;
+export const HALO_SHOWS = 5, HALO_NEAR = 0.08;
+/** The pool: a sheet on the ground about the ball's axis, gone POOL_REACH metres out, showing POOL_SHOWS of the light's brightness at its middle. */
+export const POOL_REACH = 300;
+export const POOL_SHOWS = 1.6;
+/** Metres the sheet lies over the ground under the axis. */
+const POOL_LIFT = 0.3;
+
+/** The cards of the light the nearest orb casts: light with no surface, added over what is behind them (packet.ts DETAIL_GLOW). */
+class OrbCards extends VehicleCards {
+  constructor() {
+    super(2);
+  }
+
+  /** A card at (x, y, z) from the camera with half axes along and across it, in the colour `tint` (RGBA bytes), `shows` of 255 at its middle. */
+  card(x: number, y: number, z: number, lx: number, ly: number, lz: number, ax: number, ay: number, az: number, tint: number, shows: number): void {
+    if (shows < 1) return;
+    const i = this.next(), card = this.cards;
+    card[i] = x; card[i + 1] = y; card[i + 2] = z;
+    card[i + DETAIL.along] = lx; card[i + DETAIL.along + 1] = ly; card[i + DETAIL.along + 2] = lz;
+    card[i + DETAIL.across] = ax; card[i + DETAIL.across + 1] = ay; card[i + DETAIL.across + 2] = az;
+    card[i + DETAIL.floor] = 0;
+    this.words[i + DETAIL.colourA] = this.words[i + DETAIL.colourB] = tint;
+    this.words[i + DETAIL.misc] = ((GLOW_STEPS << 24) | (Math.min(255, Math.round(shows)) << 16) | (DETAIL_GLOW << 8)) >>> 0;
+  }
+}
 
 export class Orbs implements Pass {
   /** The shell, made ORB_SHELL in radius about the ball's centre, and the plinth, made about the ground under its axis. Under 0 while the art has none. */
   private readonly shell: number;
   private readonly plinth: number;
+  /** The colour of the light the nearest orb casts, and its halo and pool, which the scene draws among its details. */
+  readonly cast = new OrbCast();
+  readonly cards = new OrbCards();
+  /** Whether the halo and the pool are drawn (passes.ts `orbglow`). */
+  glow = true;
 
   constructor(assets: Assets) {
     this.shell = assets.table.find("core:orb/shell");
     this.plinth = assets.table.find("core:orb/plinth");
+  }
+
+  update(f: Frame): void {
+    const frame = f.packet.frame, cards = this.cards, shown = this.cast.shown;
+    this.cast.step(frame, f.now);
+    cards.begin();
+    const bright = Math.max(shown[0]!, shown[1]!, shown[2]!), radius = frame[ORB_AT + 3]!;
+    if (!this.glow || bright <= 0) return;
+    // The light's hue as the cards' colour, and its brightness as how much of them shows.
+    const tint = (Math.round(255 * linearToSrgb(shown[0]! / bright)) | (Math.round(255 * linearToSrgb(shown[1]! / bright)) << 8) | (Math.round(255 * linearToSrgb(shown[2]! / bright)) << 16) | (255 << 24)) >>> 0;
+    const x = frame[ORB_AT]!, y = frame[ORB_AT + 1]!, z = frame[ORB_AT + 2]!, far = Math.hypot(x, y, z);
+    if (far <= radius) return;
+    const haze = hazeAmount(HAZE_DENSITY, HAZE_HEIGHT, frame[FRAME.eyeHeight]!, far, y / far);
+    // The eye's right and up (camera.ts): the halo lies across the view at one depth, so it is in one depth range.
+    const cam = f.cam, sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw), sp = Math.sin(cam.pitch), cp = Math.cos(cam.pitch);
+    const size = radius * (HALO_SIZE + HALO_GROWS * haze);
+    cards.card(x, y, z, -sy * sp * size, cp * size, -cy * sp * size, -cy * size, 0, sy * size, tint, 255 * Math.min(1, HALO_SHOWS * bright * (HALO_NEAR + haze)));
+    // A tier that lights by the ball lights the ground too; on the rest the pool stands for that.
+    if (f.packet.tier.orb.light && f.packet.lit) return;
+    const site = f.world.orbs![nearestOrb(f.world.orbs!, cam.x, cam.y, cam.z)]!;
+    cards.card(x, site.y + POOL_LIFT - cam.y, z, POOL_REACH, 0, 0, 0, 0, POOL_REACH, tint, 255 * Math.min(1, POOL_SHOWS * bright) * (1 - haze));
   }
 
   draw(f: Frame): void {
