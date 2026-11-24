@@ -540,6 +540,8 @@ export const RESULT_WAIT = 23;
 export const RESULT_LOCKED = 24;
 export const RESULT_PIN = 25;
 export const RESULT_NOT_EMPTY = 26;
+/** A placement refused because as many pieces stand around the place as the server allows. */
+export const RESULT_LIMIT = 27;
 
 const ownKind = counter();
 export const OWN_SESSION = ownKind();
