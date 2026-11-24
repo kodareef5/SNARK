@@ -8,11 +8,17 @@ import type { Source } from "../../server/combat.ts";
 import { BREAK_FAMILIES, FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_HUNG, FORM_OPEN, FORM_WHOLE } from "../../shared/content/breaks.ts";
 import { Pieces, gather } from "../../shared/world/bearing.ts";
 import { formOf } from "../../shared/world/breaking.ts";
+import { readHead, type MapHead } from "../../shared/world/mapfile.ts";
 import { rocket } from "../fixtures/city.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const file = process.env.CITY_MAP ?? "var/maps/miami.snmap";
-const there = existsSync(file);
+/** The map's head alone, read from the front of its file: its length is the u32 at byte 12. */
+async function head(): Promise<MapHead> {
+  const f = Bun.file(file), front = new DataView(await f.slice(0, 16).arrayBuffer());
+  return readHead(new Uint8Array(await f.slice(0, front.getUint32(12, true)).arrayBuffer()), false);
+}
+const there = existsSync(file) && (await head()).buildings !== null;
 let made: Harness | null = null;
 /** One server on the city for every test here. */
 async function server(): Promise<Harness> {
