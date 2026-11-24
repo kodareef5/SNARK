@@ -5,7 +5,8 @@
 import { makeHandle } from "../../shared/ids.ts";
 import { CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, CMD_THROW, CMD_VEHICLE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, VEHICLE_DOOR, VEHICLE_PACK, VEHICLE_INSPECT, VEHICLE_LIGHTS } from "../../shared/net/protocol.ts";
 import { isSkateboard, isWheelVehicle } from "../../shared/sim/vehicle.ts";
-import { BUILD_KEYS } from "./build.ts";
+import { BUILD_FIRST_KEYS, BUILD_KEYS } from "./build.ts";
+import { HAMMER_KEYS } from "./hammer.ts";
 import { GLASS_KEYS } from "./glass.ts";
 import { FEED_KEYS } from "./air-feed.ts";
 import { ANY_KEY, G_WORLD, type KeyRow } from "./key-row.ts";
@@ -253,6 +254,7 @@ const BODY: KeyRow = { name: "body", keys: ANY_KEY, press: (c, code, down, _repe
 export const KEY_ROWS: readonly KeyRow[] = [
   DEBUG,
   ...PLACEMENT_KEYS,
+  ...BUILD_FIRST_KEYS,
   INTERFACE,
   INSPECT_ZOOM,
   TYPING,
@@ -261,6 +263,7 @@ export const KEY_ROWS: readonly KeyRow[] = [
   ...GLASS_KEYS,
   ...VISOR_KEYS,
   ...BUILD_KEYS,
+  ...HAMMER_KEYS,
   ...CHART_KEYS,
   ALT,
   SHIFT,

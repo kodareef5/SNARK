@@ -36,15 +36,13 @@
 //                            the map are set first, then rows, then removals. A removal leaves alone any row newer
 //                            than itself. A row for a slot just taken from the map is in place where a piece
 //                            still stands in it.
-//                            A row: 1 bit set if its slot follows the last row's, else the gap less one varint; in
-//                            place 1 bit, then kind changed 1 bit and if set its kind (named u16), then owner
-//                            (named varint) and health; else kind (named u16, 0 for an empty
-//                            slot, which ends the row), x and z 15 bits each (1/512 m from the chunk's corner),
-//                            height 1 bit set if it is the last full row's, else svarint from it (1/512 m, from 0
-//                            for the first), yaw (named u16), owner (named varint), health. Health is 1 bit set for
-//                            the kind's most, else f32. A value named is 0 and its place among those the message
+//                            A row is laid out in shared/world/rows.ts: in place with its owner and health alone, an
+//                            empty slot, a free row by its pose, or a keyed row by its frame and key, the frame
+//                            defined with the first row that names it to the session. Health is 1 bit set for the
+//                            kind's most, else f32 for a piece nobody owns and a stage u8 for an owned one
+//                            (healthStage). A value named is 0 and its place among those the message
 //                            named before (as few bits as their count needs), or 1 and the value; see Named.
-//     CHUNK_DROP reliable    chunk u16
+//     CHUNK_DROP reliable    chunk u16. The client may keep the chunk's rows aside and say so when near again (CMD_HAVE).
 //     REJECT    reliable     reason u8, and for REJECT_TRAVEL why, as a string
 //     RESULT    reliable     command sequence u16 (0 when no command asked), code u8
 //     TEXT      reliable     channel u8, text string
@@ -272,6 +270,31 @@ export const S_AIR_SUPPORT = serverKind();
  */
 export const S_GONE = serverKind();
 
+/**
+ * The answer to a CMD_PLACE that was judged, sent just before its S_RESULT (shared/net/placed.ts). Reliable. The command's
+ * sequence u16; pieces placed, 6 bits, then per piece 1 bit for "the chunk of the piece before" or else its chunk u16, and its
+ * slot u16; then 1 bit for "stopped", and if so the RESULT_ code u8 and a detail, 3 bits (PLACED_): nothing, the structure in
+ * the way (ref u32), the body in the way (entity index varint), a count and its cap (two varints), or metres to another
+ * tribe's piece and the metres it needs (two varints). Last, 1 bit for a plan's fill, and if set the place in the plan's
+ * order to go on from and the pieces passed over as blocked, two varints.
+ */
+export const S_PLACED = serverKind();
+export const PLACED_NONE = 0;
+export const PLACED_STRUCTURE = 1;
+export const PLACED_ENTITY = 2;
+export const PLACED_COUNTS = 3;
+export const PLACED_METRES = 4;
+/**
+ * A plan, to a member of the tribe it belongs to who is near it (shared/net/plan.ts, server/plans.ts). Reliable, and
+ * counted in the chunk window. The plan's id varint, then 1 bit: set for the whole record (shared/world/plan.ts
+ * writePlan), clear for its filled bits alone, as a blob.
+ */
+export const S_PLAN = serverKind();
+/** A plan the session was told of is gone, or no longer its to see: the plan's id varint. Reliable. */
+export const S_PLAN_GONE = serverKind();
+/** What became of a CMD_PLAN_COMMIT (shared/net/plan.ts PlanReport). Reliable. */
+export const S_PLAN_REPORT = serverKind();
+
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
 export const REJECT_FULL = 3;
@@ -347,10 +370,13 @@ export const CMD_DROP = command();
 /** Channel 3 bits (TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE), then the text string. */
 export const CMD_CHAT = command();
 /**
- * Places the building piece in hand: form index u8, then target u32. A structure ref is followed by its socket u8, and for
- * socket 255 (a thing set on top of it) by x and z (s32 lattice units) and yaw u16. 0xffffffff means open ground and is
- * followed by x and z (s32 lattice units), yaw u16 and lift (s8 steps). Last is the turn in place u8. The server works
- * the position out again itself.
+ * Places the building piece in hand (shared/net/place.ts): form index u8, then a mode, 2 bits. 0 joins a base: its frame's
+ * gid varint and the key's two words u32 each, the turn in the second; then 1 bit for a row, and if set the direction each
+ * piece is a whole side on from the last, 4 bits, and the count less one, 5 bits. 1 is open ground, for a base's first
+ * piece or a thing: x and z (s32 lattice units), yaw u16 and lift (s8 steps). 2 is a thing on a floor: the floor's ref u32,
+ * x and z (s32 lattice units) and yaw u16. 3 fills a plan (server/plans.ts): the plan's id varint, then 1 bit: set for
+ * one piece, by its place in the plan varint, clear for the next pieces the builder carries, from a place in the plan's
+ * order varint, as many as a count less one, 5 bits. The server works the position and every check out again itself.
  */
 export const CMD_PLACE = command();
 /**
@@ -481,6 +507,24 @@ export const CMD_MARK = command();
  */
 export const CMD_THROW = command();
 export const CMD_AIR_SUPPORT = command();
+/**
+ * The chunks a client kept when told to drop them and is near again: a count u8, HAVE_MOST at most, then chunk u16 and
+ * the version u32 it holds of each. Sent before the answer: a drop for each the server will send whole. Sent after it:
+ * for each of the rest, the rows changed since that version, a header alone where none did.
+ */
+export const CMD_HAVE = command();
+export const HAVE_MOST = 16;
+/**
+ * A part of a blueprint to set down as a plan (shared/net/plan.ts): the whole's bytes varint, this part's offset varint,
+ * and its bytes as a blob, PLAN_PART_BYTES at most and every part but the last exactly that. Parts may come in any order.
+ */
+export const CMD_PLAN_PART = command();
+/** Sets the uploaded blueprint down as a plan, or asks only what the limits are (shared/net/plan.ts PlanCommit). S_PLAN_REPORT answers. */
+export const CMD_PLAN_COMMIT = command();
+/** Takes a plan of the survivor's tribe away: its id varint. */
+export const CMD_PLAN_CANCEL = command();
+/** Chunks from its own within which a client says what it kept: the server's structRadius and the one more it lets go at. */
+export const HAVE_REACH = 4;
 export const SPOT_TICKS = 1800;
 export const SPOTS_MOST = 8;
 /** Metres a flown drone's camera looks along its middle: what its operator is told of, and may mark (CMD_MARK). */
@@ -540,6 +584,14 @@ export const RESULT_WAIT = 23;
 export const RESULT_LOCKED = 24;
 export const RESULT_PIN = 25;
 export const RESULT_NOT_EMPTY = 26;
+/** A placement refused because as many pieces stand around the place as the server allows. */
+export const RESULT_LIMIT = 27;
+/** A placement refused because a living body stands in the piece's place. OBSTRUCTED is something built in the way. */
+export const RESULT_BODY = 28;
+/** A placement refused because the ground is in the way: a foundation's top would lie too far under it. */
+export const RESULT_TERRAIN = 29;
+/** A placement refused because its session has set down as many pieces this second as it may. */
+export const RESULT_RATE = 30;
 
 const ownKind = counter();
 export const OWN_SESSION = ownKind();
@@ -655,6 +707,11 @@ export const OWN_STATION = ownKind();
 export const OWN_KEPT = ownKind();
 /** experience f64, level u16, unspent stat points u16. Sent at each gain, so it carries nothing that a gain leaves as it was. */
 export const OWN_XP = ownKind();
+/**
+ * structures of every tribe counted round the survivor varint, the most that may stand there varint (0 for no cap). Sent
+ * while a building piece is in hand, when either has changed, at most once a second.
+ */
+export const OWN_STRUCTURES = ownKind();
 
 export const MARKER_DEATH = 1;
 

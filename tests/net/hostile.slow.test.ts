@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import * as P from "../../shared/net/protocol.ts";
+import { writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
 import { BOX_OPEN, BOX_SELF } from "../../shared/net/protocol.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -18,12 +19,13 @@ import { BTN_CROUCH, BTN_JUMP, BTN_PRIMARY, BTN_RELOAD, BTN_SECONDARY, BTN_SPRIN
 import { F_ALIVE, F_PROP } from "../../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { NO_PIN, STRUCT_LIGHT, STRUCT_NAME, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { ON_TOP } from "../../shared/world/snap.ts";
-import { NO_TARGET } from "../../server/build.ts";
 import type { Client } from "../../server/game.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { PIECES, builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
+import { slot as placeOf } from "../fixtures/slots.ts";
+
+const slot = { fr: 0, k0: 0, k1: 0 };
 
 const SEEDS = process.env.SNARK_FUZZ_SEED ? [Number(process.env.SNARK_FUZZ_SEED)] : Array.from({ length: 24 }, (_, i) => i + 1);
 /** Commands one world is sent: 480,000 in all, each world saved and loaded again, about 9 s on the development machine. */
@@ -38,7 +40,7 @@ const FAMILIES: Record<string, { ops: number[]; share: number }> = {
   stations: { ops: [P.CMD_CRAFT_AT, P.CMD_CRAFT_BLUEPRINT], share: 0.25 },
   creatures: { ops: [P.CMD_ORDER, P.CMD_NAME, P.CMD_FEED, P.CMD_OPEN, P.CMD_CARRY, P.CMD_TAKE], share: 0.2 },
   vehicles: { ops: [P.CMD_VEHICLE], share: 0.4 },
-  session: { ops: [P.CMD_TEXT, P.CMD_CHAT, P.CMD_VIEW, P.CMD_MAP_ZOOM, P.CMD_FAR, P.CMD_RESPAWN, P.CMD_CREATE, P.CMD_CLOSE, P.CMD_STATICS, P.CMD_TRAVEL], share: 0.3 },
+  session: { ops: [P.CMD_TEXT, P.CMD_CHAT, P.CMD_VIEW, P.CMD_MAP_ZOOM, P.CMD_FAR, P.CMD_RESPAWN, P.CMD_CREATE, P.CMD_CLOSE, P.CMD_STATICS, P.CMD_TRAVEL, P.CMD_HAVE], share: 0.3 },
 };
 /** Answers that stop a command at its first checks. */
 const EARLY = new Set([P.RESULT_INVALID, P.RESULT_DENIED, P.RESULT_STALE, P.RESULT_BUSY]);
@@ -75,7 +77,7 @@ function survivor(seed: number) {
   h.say(s, `tp ${at.x.toFixed(3)} ${(at.z + 4).toFixed(3)}`);
   s.command(P.CMD_SELECT, (w) => w.u8(0));
   h.run(100);
-  s.command(P.CMD_PLACE, (w) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round(at.x * STRUCT_UNITS), 32), w.sbits(Math.round((at.z + 8) * STRUCT_UNITS), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  s.command(P.CMD_PLACE, (w) => writeNew(w, 0, Math.round(at.x * STRUCT_UNITS), Math.round((at.z + 8) * STRUCT_UNITS), 0));
   h.run(200);
   const sw = h.host.build.last;
   const nw = b.join(s, "foundation", sw, 0).ref;
@@ -282,19 +284,19 @@ function fuzz(seed: number): { codes: Map<number, Map<number, number>>; faults: 
     [P.CMD_PLACE]: (w) => {
       const o = own();
       const forms = o.rec && o.inv && o.rec.held >= 0 ? reg.places[o.inv.item[o.inv.hotbar + o.rec.held]!] : null;
-      w.u8(forms && chance(0.85) ? rng.int(forms.length) : rng.int(4));
       const b = c().body;
+      const variant = forms && chance(0.85) ? rng.int(forms.length) : rng.int(4);
+      const [x, z] = [Math.round((b.x + rng.range(-6, 6)) * STRUCT_UNITS), Math.round((b.z + rng.range(-6, 6)) * STRUCT_UNITS)];
       if (near.mine.length > 0 && chance(0.75)) {
         const on = pick(near.mine);
-        w.u32(on);
-        const socket = chance(0.15) ? ON_TOP : chance(0.9) ? rng.int(8) : rng.int(256);
-        w.u8(socket);
-        if (socket === ON_TOP) w.sbits(Math.round((b.x + rng.range(-3, 3)) * STRUCT_UNITS), 32), w.sbits(Math.round((b.z + rng.range(-3, 3)) * STRUCT_UNITS), 32), w.u16(rng.int(65536));
-      } else {
-        w.u32(chance(0.9) ? NO_TARGET : rng.int(2 ** 32));
-        w.sbits(Math.round((b.x + rng.range(-6, 6)) * STRUCT_UNITS), 32), w.sbits(Math.round((b.z + rng.range(-6, 6)) * STRUCT_UNITS), 32), w.u16(rng.int(65536)), w.sbits(rng.int(5) - 2, 8);
+        if (chance(0.15)) return writeRest(w, variant, on, x, z, rng.int(65536));
+        // A place of the piece as its slot, or a key of numbers.
+        const found = forms !== null && forms !== undefined && placeOf(h.world, on, forms[variant] ?? forms[0]!, rng.int(8), rng.int(4), slot);
+        if (found && chance(0.9)) return writeJoin(w, variant, slot.fr, slot.k0, slot.k1, chance(0.1) ? 1 + rng.int(32) : 1, rng.int(12));
+        return writeJoin(w, variant, chance(0.5) ? h.world.structs.frameAt(on) : rng.int(2 ** 31), rng.int(2 ** 32), rng.int(2 ** 32));
       }
-      w.u8(chance(0.8) ? rng.int(4) : rng.int(256));
+      if (chance(0.9)) return writeNew(w, variant, x, z, rng.int(65536), rng.int(5) - 2);
+      w.u8(variant), w.bits(3, 2), w.u32(rng.int(2 ** 32));
     },
     [P.CMD_STRUCT]: (w) => {
       // With nothing open it mostly opens something to work at; the forge is lit and put out.
@@ -360,13 +362,19 @@ function fuzz(seed: number): { codes: Map<number, Map<number, number>>; faults: 
       if (action === P.VEHICLE_REFUEL) w.u8(chance(0.5) ? 0 : rng.int(256));
     },
     [P.CMD_STATICS]: () => {},
+    // Chunks it never kept, at versions it never held, and more of them than may be said.
+    [P.CMD_HAVE]: (w) => {
+      const n = chance(0.9) ? rng.int(P.HAVE_MOST + 1) : rng.int(256);
+      w.u8(n);
+      for (let i = 0; i < n && i < 40; i++) (w.u16(rng.int(65536)), w.u32(chance(0.5) ? rng.int(64) : rng.int(0x100000000)));
+    },
   };
   /** How often each op is sent, by weight. The families the review found least reached are sent most. */
   const weights: [number, number][] = [
     [P.CMD_MOVE, 8], [P.CMD_USE, 4], [P.CMD_DROP, 2], [P.CMD_SELECT, 4], [P.CMD_LOAD, 2], [P.CMD_ATTACH, 2], [P.CMD_DETACH, 1], [P.CMD_UNLOAD, 1], [P.CMD_REPAIR, 2],
     [P.CMD_SPEND, 2], [P.CMD_LEARN, 2], [P.CMD_CRAFT, 3], [P.CMD_PLACE, 10], [P.CMD_STRUCT, 10], [P.CMD_CRAFT_AT, 2], [P.CMD_CRAFT_BLUEPRINT, 2], [P.CMD_CLOSE, 1],
     [P.CMD_ORDER, 4], [P.CMD_NAME, 1], [P.CMD_FEED, 1], [P.CMD_OPEN, 3], [P.CMD_CARRY, 2], [P.CMD_TAKE, 2], [P.CMD_VEHICLE, 8],
-    [P.CMD_TEXT, 1], [P.CMD_CHAT, 1], [P.CMD_VIEW, 1], [P.CMD_MAP_ZOOM, 1], [P.CMD_FAR, 1], [P.CMD_RESPAWN, 1], [P.CMD_CREATE, 1], [P.CMD_TRAVEL, 1], [P.CMD_STATICS, 1],
+    [P.CMD_TEXT, 1], [P.CMD_CHAT, 1], [P.CMD_VIEW, 1], [P.CMD_MAP_ZOOM, 1], [P.CMD_FAR, 1], [P.CMD_RESPAWN, 1], [P.CMD_CREATE, 1], [P.CMD_TRAVEL, 1], [P.CMD_STATICS, 1], [P.CMD_HAVE, 1],
   ];
   const total = weights.reduce((n, [, k]) => n + k, 0);
   const opOf = (): number => {

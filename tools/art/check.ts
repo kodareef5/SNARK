@@ -64,6 +64,17 @@ export const REST_SLACK = 0.002;
  * and the finest is held to what the look at arm's length needs.
  */
 export const PIECE_TRIANGLES = [[0, 3200], [50, 2000], [100, 800], [250, 250], [500, 60]] as const;
+/**
+ * What a building piece made by a tier's recipe (tools/pack/pieces) may cost, in place of PIECE_TRIANGLES: its levels are
+ * built one by one for these distances, so a 2,000-piece base 60 m off is 0.3 M. PIECE_TRIANGLES holds the tiers still
+ * modelled in Blender, and takes these numbers when the last of them is ported.
+ */
+export const MADE_PIECE_TRIANGLES = [[0, 1600], [20, 560], [60, 160], [150, 40], [400, 12]] as const;
+/**
+ * What a tier's trims may cost at each of their four levels: a joint, of which a base has one a corner, a skirt and a
+ * ridge. Their two coarsest levels are open where nothing sees them: a joint has no top or foot, a skirt is its face.
+ */
+export const TRIM_TRIANGLES: Readonly<Record<string, readonly number[]>> = { joint_sq: [160, 48, 12, 8], joint_r15: [160, 48, 12, 8], joint_r21: [160, 48, 12, 8], skirt: [120, 32, 8, 2], ridge: [96, 24, 8, 2] };
 /** Metres on medium a building piece keeps its materials to at least, so a base does not go flat across a yard. */
 export const PIECE_TEXTURED = 80;
 /** What a landmark's 16 m cell of its ship or building may draw from each distance on medium: five building pieces' worth. */
@@ -301,7 +312,7 @@ export function levelStarts(errors: readonly number[], height: number, tier: Tie
   });
 }
 
-function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], faults: string[], bones?: number, stated?: readonly number[]): MeshFacts {
+function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], faults: string[], bones?: number, stated?: readonly number[], open?: number): MeshFacts {
   const header = pack.header.meshes[pack.meshIndex.get(mesh.id)!]!;
   const tall = header.half[1] * 2;
   const errors = header.lods.map((l, level) => (level === 0 ? 0 : l.error));
@@ -331,7 +342,7 @@ function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], f
     }
     if (facts.budget !== null && facts.triangles > facts.budget) faults.push(`${where}: ${facts.triangles} triangles, and its budget is ${facts.budget}`);
     if (facts.budget === null && budgets.length > 0) faults.push(`${where}: the asset gives this level no triangle budget`);
-    if (facts.holes > 0) faults.push(`${where}: ${facts.holes} ${facts.holes === 1 ? "hole" : "holes"} (${facts.openEdges} open edges)`);
+    if (facts.holes > 0 && !(open !== undefined && l >= open)) faults.push(`${where}: ${facts.holes} ${facts.holes === 1 ? "hole" : "holes"} (${facts.openEdges} open edges)`);
     if (facts.flipped > 0) faults.push(`${where}: ${facts.flipped} edges between faces that look opposite ways`);
     if (facts.insideOut > 0) faults.push(`${where}: ${facts.insideOut} of its ${facts.parts} parts inside out`);
     if (bones !== undefined && lod.bones) for (const b of lod.bones) if (b >= bones) strays++;
@@ -645,9 +656,9 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: r
   else if (spec.kind === "pieces") {
     for (const piece of spec.pieces) {
       const mesh = meshes.find((m) => m.id === piece.id);
-      if (mesh) report.meshes.push(measureMesh(mesh, pack, piece.triangles ?? spec.budgets.triangles, report.faults, undefined, piece.errors));
+      if (mesh) report.meshes.push(measureMesh(mesh, pack, piece.triangles ?? spec.budgets.triangles, report.faults, undefined, piece.errors, piece.open));
       else report.faults.push(`${piece.id}: not in the pack`);
-      if (mesh && PIECES.has(piece.id)) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!));
+      if (mesh && PIECES.has(piece.id)) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!, "bake" in spec.source ? MADE_PIECE_TRIANGLES : PIECE_TRIANGLES));
       else if (mesh && landmarkOf(asset) !== null) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!, piece.budget ?? (LANDMARK_CELL.test(piece.id) ? (spec.budgets.cells ?? LANDMARK_TRIANGLES) : PIECE_TRIANGLES)));
       if (mesh && piece.hold) report.faults.push(...heldFaults(mesh, piece.hold, piece.wing === true));
       if (piece.dropped === undefined) continue;
@@ -679,7 +690,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: r
 
 /**
  * What is wrong with a building piece's levels on medium, or a landmark's piece's: one never drawn or drawn over a sliver,
- * one over `most` (PIECE_TRIANGLES, or for a landmark's cell its asset's `budgets.cells` or LANDMARK_TRIANGLES), or flat
+ * one over `most` (PIECE_TRIANGLES, MADE_PIECE_TRIANGLES for a recipe's piece, or for a landmark's cell its asset's `budgets.cells` or LANDMARK_TRIANGLES), or flat
  * too near. A piece with no materials is flat by design.
  */
 export function pieceFaults(mesh: SourceMesh, facts: MeshFacts, most: readonly (readonly [number, number])[] = PIECE_TRIANGLES): string[] {

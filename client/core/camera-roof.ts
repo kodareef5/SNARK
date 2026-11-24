@@ -119,7 +119,7 @@ export function roofEnvelope(w: CollisionWorld, ax: number, az: number, bx: numb
     for (let i = 0; i < n; i++) {
       const ref = found.refs[i]!, table = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535, kind = table.kind[slot]!;
       if (store.isSoft(kind)) continue;
-      frameOf(table.yaw[slot]!);
+      frameOf(table.yaw[slot]!, table.twAt(slot));
       const c = frame.cos, s = frame.sin, stretch = frame.stretch, shrink = 1 / stretch;
       const ax0 = ax - table.x[slot]!, az0 = az - table.z[slot]!, bx0 = bx - table.x[slot]!, bz0 = bz - table.z[slot]!;
       const aX = (c * ax0 - s * az0) * shrink, aZ = (s * ax0 + c * az0) * shrink;
@@ -139,7 +139,7 @@ export function roofEnvelope(w: CollisionWorld, ax: number, az: number, bx: numb
       const hulls = store.parts.hulls;
       if (!hulls) continue;
       for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
-        partSolid(hulls, p, table.yaw[slot]!, table.x[slot]!, table.y[slot]!, table.z[slot]!, solid);
+        partSolid(hulls, p, table.yaw[slot]!, table.twAt(slot), table.x[slot]!, table.y[slot]!, table.z[slot]!, solid);
         for (let f = hulls.face[p]!, end = hulls.face[p + 1]!; f < end; f++) {
           const at = solid.at, triangle = f * 3, i0 = hulls.faceCorners[triangle]! * 3;
           const i1 = hulls.faceCorners[triangle + 1]! * 3, i2 = hulls.faceCorners[triangle + 2]! * 3;

@@ -2,9 +2,11 @@ import { expect } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
+import { writeJoin } from "../../shared/net/place.ts";
 import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT } from "../../shared/net/protocol.ts";
 import { flatGround } from "./arena.ts";
 import { Harness } from "./net.ts";
+import { slot as slotOf } from "./slots.ts";
 import { coreRegistry } from "./world.ts";
 import type { HostOptions } from "../../server/host.ts";
 
@@ -42,13 +44,17 @@ export function builder(names = ["ada"], wide = 40, deep = wide, host: HostOptio
     s.command(CMD_SELECT, (w: BitWriter) => w.u8(PIECES.indexOf(piece)));
     h.run(100);
   };
-  /** Sends CMD_PLACE directly. ref is -1 if nothing was built. */
-  const join = (s: ClientSession, piece: string, target: number, socket: number, turn = 0, variant = 0): { code: number; ref: number } => {
+  const slot = { fr: 0, k0: 0, k1: 0 };
+  /** Sends CMD_PLACE for place `place` of `target` (fixtures/slots.ts), as its slot. ref is -1 if nothing was built. */
+  const join = (s: ClientSession, piece: string, target: number, place: number, turn = 0, variant = 0): { code: number; ref: number } => {
     hold(s, piece);
     let code = -1;
     s.onResult = (_seq, c) => void (code = c);
     const before = h.host.build.placed;
-    s.command(CMD_PLACE, (w: BitWriter) => (w.u8(variant), w.u32(target), w.u8(socket), w.u8(turn)));
+    // The slot in the server's own frame. Where there is none, a frame nobody has, which is no place.
+    const forms = reg.places[id(`piece_${piece}_wood`)]!;
+    const found = slotOf({ structs, reg }, target, forms[variant] ?? forms[0]!, place, turn, slot);
+    s.command(CMD_PLACE, (w: BitWriter) => writeJoin(w, variant, found ? slot.fr : 0, slot.k0, slot.k1));
     h.run(150);
     return { code, ref: h.host.build.placed > before ? h.host.build.last : -1 };
   };

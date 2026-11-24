@@ -29,6 +29,7 @@ import { BAG } from "./render/dropped.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import { itemLabel, waitWords } from "./ui/inventory.ts";
+import { STABILITY } from "../../shared/world/support.ts";
 import { structName } from "./ui/structure.ts";
 import type { VehiclePlacement } from "./vehicle-placement.ts";
 import { lookAt, nearbyBoard, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
@@ -135,7 +136,8 @@ export class Prompts implements FramePart {
     const menu = f.ui.structure;
     menu.tick(nowMs);
     this.seatNotice.tick(nowMs);
-    const built = alive && !b.active && !v.active && session.driving < 0 ? this.builtAt(f, world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
+    // With a piece in hand what is built is still aimed at, so it is used, mended and taken down as with an empty hand.
+    const built = alive && !v.active && session.driving < 0 ? this.builtAt(f, world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && f.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;
@@ -155,7 +157,7 @@ export class Prompts implements FramePart {
       emotes.targetName = r.name[i]!;
     }
     if (emotes.open) characters.wantEmotes();
-    f.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
+    f.prompt = !alive ? "" : v.active ? v.notice : b.active ? menu.notice || (b.notice !== "" && built !== "" ? `${b.notice}\n${built}` : b.notice || built) : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
   }
 
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
@@ -241,7 +243,9 @@ export class Prompts implements FramePart {
     this.aimed = ref;
     const mine = s.tribe.team !== 0 && t.owner[ref & 0xffff] === s.tribe.team;
     const usable = (reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) && rayHit.t <= REACH;
-    return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${reg.maxHp[kind]}`;
+    // With a piece in hand, how well a piece of the tribe's own stands is said too.
+    const stands = mine ? this.builder.stabilityOf(world, ref) : -2;
+    return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${reg.maxHp[kind]}${stands >= 0 ? `  stability ${stands} of ${reg.stabilityCap[kind] || STABILITY}` : ""}`;
   }
 
   /** The use button's prompt, and before it what a click of the soul ball in hand would do. */

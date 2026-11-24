@@ -145,7 +145,8 @@ export function farWorld(o: FarWorldOptions) {
  */
 export function castle(w: FarWorld, cx: number, cz: number, y0 = 0): number {
   const [foundation, wall, ceiling, doorway, window, pillar, stairs, door] = ["foundation_wood", "wall_wood", "ceiling_wood", "doorframe_wood", "windowframe_wood", "pillar_wood", "stairs_wood", "door_wood"].map((n) => w.id(`core:${n}`));
-  const put = (kind: number, lx: number, y: number, lz: number, quarter: number): void => void w.server.add(kind, cx + lx, y0 + y, cz + lz, (quarter * 16384) & 0xffff, 1, 1000);
+  // At full health: an owned piece hurt past a stage is drawn darker near, and far blocks know no stage.
+  const put = (kind: number, lx: number, y: number, lz: number, quarter: number): void => void w.server.add(kind, cx + lx, y0 + y, cz + lz, (quarter * 16384) & 0xffff, 1, w.reg.maxHp[kind]!);
   const [N, S, RISE] = [13, 3, 3];
   const half = ((N - 1) / 2) * S;
   const F = 2 * w.reg.halfY[foundation!]!;

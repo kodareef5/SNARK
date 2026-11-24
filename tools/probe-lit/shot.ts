@@ -73,6 +73,8 @@ export interface Frame {
   assetDrops: number[];
   /** Each chunk drawn by its pieces' states and its row of them (packet.ts pieceRowOf). */
   pieceRowOf: [number, number][];
+  /** Each buffer of built pieces' bases (packet.ts frameTables): the buffer, the table's stamp and its axes. */
+  frameTables: [number, number, number[]][];
   texUploads: unknown[];
   texDrops: number[];
 }
@@ -164,6 +166,7 @@ export class Shot {
       assetUploads: p.assetUploads.map(({ data, piece, ...u }) => ({ ...u, data: ref(data), ...(piece ? { piece: ref(piece) } : {}) })),
       assetDrops: [...p.assetDrops],
       pieceRowOf: [...p.pieceRowOf],
+      frameTables: [...p.frameTables].map(([buffer, t]) => [buffer, t.stamp, [...t.axes]]),
       texUploads: p.texUploads.map(({ data, ...u }) => ({ ...u, data: ref(data) })),
       texDrops: [...p.texDrops],
     });

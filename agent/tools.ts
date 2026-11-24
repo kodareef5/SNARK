@@ -15,7 +15,10 @@ import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../shared/sim/vit
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { W_MELEE } from "../shared/sim/weapon.ts";
 import { latOf, lonOf, xOfLon, zOfLat } from "../shared/world/coords.ts";
-import { ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, makeSockets, poseAt, socketsOf, turnsOf, type Pose } from "../shared/world/snap.ts";
+import { writeJoin, writeNew, writeRest } from "../shared/net/place.ts";
+import { keyFits, poseOf, type LatticePose } from "../shared/world/lattice/frames.ts";
+import { makeCandidates, slotsOf, type Site } from "../shared/world/lattice/place.ts";
+import { ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING } from "../shared/world/snap.ts";
 import { Found } from "../shared/world/structures.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK } from "../shared/world/upkeep.ts";
 import { Commands, resultWords } from "./commands.ts";
@@ -38,8 +41,6 @@ const ORDERS: Record<string, number> = { stay: ORDER_STAY, follow: ORDER_FOLLOW,
 const ANSWER_MS = 3000;
 const CHANNELS: Record<string, number> = { global: TEXT_GLOBAL, local: TEXT_LOCAL, tribe: TEXT_TRIBE };
 const CHANNEL_WORDS: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_LOCAL]: "local", [TEXT_TRIBE]: "tribe", [TEXT_NOTICE]: "notice" };
-/** A place command's target for open ground, as server/build.ts reads it. */
-const OPEN_GROUND = 0xffffffff;
 /** How far from the eye a piece is set without walking first: the server's reach (BUILD_REACH 9 + 3) less a margin. */
 const PLACE_REACH = 10.5;
 /** Why a survivor without a body chooses, in words. */
@@ -113,8 +114,10 @@ export class Agent implements ToolHost {
   /** The calls not yet answered. They are answered when the session closes, so none is left waiting on a server that has gone. */
   private readonly pending = new Set<(a: Answer) => void>();
   private readonly found = new Found();
-  private readonly sockets = makeSockets();
-  private readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  /** The slots a piece offers the piece in hand, in the order its snap points are numbered. */
+  private readonly offered = makeCandidates();
+  private readonly pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
+  private readonly slot = { fr: 0, k0: 0, k1: 0 };
   private readonly at = [0, 0, 0];
 
   constructor(session: ClientSession, opts: AgentOptions = {}) {
@@ -762,28 +765,41 @@ export class Agent implements ToolHost {
     const on = a.on === undefined ? null : this.target({ id: a.on });
     this.idle();
     if (on && on.ref < 0) throw new Bad(`${on.id} is not something built`);
-    if (!on && !free) throw new Bad(`a ${this.nameOf(kind)} joins a piece of your tribe's: give on, the piece, and side`);
+    if (!on && !free && !Array.isArray(a.slot)) throw new Bad(`a ${this.nameOf(kind)} joins a piece of your tribe's: give on, the piece, and side`);
     const inv = s.inventory;
     if (!inv || inv.total(item) === 0) return refused(`you carry no ${this.nameOf(item)}`);
-    // Where it goes: a socket of the piece it joins, or on its top, or on open ground.
-    let socket = -1;
+    // Where it goes: a slot of its tribe's base, by the piece it joins or by its key, or on a floor's top, or on open ground.
+    let joined = false;
     let x = 0, z = 0, y = 0;
     const turn = whole(a, "turn", 0, 3, 0);
-    if (turn >= turnsOf(role)) return refused(`a ${this.nameOf(kind)} turns ${turnsOf(role)} way${turnsOf(role) === 1 ? "" : "s"} in its place, not ${turn + 1}`);
-    if (on && role !== ROLE_THING) {
+    const turns = reg.forms.turns[kind] ?? 1;
+    if (turn >= turns && role !== ROLE_THING) return refused(`a ${this.nameOf(kind)} turns ${turns} way${turns === 1 ? "" : "s"} in its place, not ${turn + 1}`);
+    if (Array.isArray(a.slot) && role !== ROLE_THING) {
+      // The slot itself, from a builder that worked it out: its base's frame and the two words of its key.
+      const [fr, k0, k1] = a.slot.map(Number) as [number, number, number];
+      if (a.slot.length !== 3 || ![fr, k0, k1].every(Number.isInteger)) throw new Bad("slot is a base's number and the two numbers of a key");
+      [this.slot.fr, this.slot.k0, this.slot.k1] = [fr, k0 >>> 0, k1 >>> 0];
+      joined = true;
+    } else if (on && role !== ROLE_THING) {
+      const n = slotsOf(this.site(), kind, on.ref, this.offered);
+      let pick = 0;
       if (a.socket !== undefined) {
         // A snap point by its number, for a builder that knows them.
-        const k = whole(a, "socket", 0, 255, 0);
-        const n = socketsOf(world.structs, reg, on.ref, kind, this.sockets);
-        if (k >= n) return refused(n === 0 ? `a ${this.nameOf(kind)} does not join ${on.id}` : `${on.id} has ${n} snap points for a ${this.nameOf(kind)}, 0 to ${n - 1}`);
-        socket = k;
+        pick = whole(a, "socket", 0, 255, 0);
+        if (pick >= n) return refused(n === 0 ? `a ${this.nameOf(kind)} does not join ${on.id}` : `${on.id} has ${n} snap points for a ${this.nameOf(kind)}, 0 to ${n - 1}`);
       } else {
-        const want = a.side === undefined ? "" : text(a, "side");
-        const picked = this.socket(on.ref, kind, want);
+        const picked = this.side(on.ref, kind, a.side === undefined ? "" : text(a, "side"), n);
         if (typeof picked === "string") return refused(picked);
-        socket = picked;
+        pick = picked;
       }
-      poseAt(world.structs, reg, on.ref, kind, socket, turn, this.pose);
+      // The server is told the slot, in its base, with the piece's turn in it.
+      [this.slot.fr, this.slot.k0, this.slot.k1] = [this.offered.fr[pick]!, this.offered.k0[pick]!, (this.offered.k1[pick]! | (turn << 26)) >>> 0];
+      joined = true;
+    }
+    if (joined) {
+      const f = world.structs.frames.get(this.slot.fr);
+      if (!f || !keyFits(reg.forms, kind, this.slot.k0, this.slot.k1)) return refused(`that is no place in a base for a ${this.nameOf(kind)}`);
+      poseOf(f, this.slot.k0, this.slot.k1, reg.forms, kind, this.pose);
       [x, y, z] = [this.pose.x / STRUCT_UNITS, this.pose.y / STRUCT_UNITS, this.pose.z / STRUCT_UNITS];
     } else {
       const at = this.where(a);
@@ -807,23 +823,12 @@ export class Agent implements ToolHost {
     const held = await this.inHand(item);
     if (held.state !== "done") return held;
     const before = new Set(this.builtNear(kind, x, z));
-    const seq = this.commands.send(CMD_PLACE, (w) => {
-      w.u8(Math.max(0, variant));
-      if (socket >= 0) {
-        w.u32(on!.ref);
-        w.u8(socket);
-        w.u8(turn);
-        return;
-      }
-      w.u32(on ? on.ref : OPEN_GROUND);
-      if (on) w.u8(ON_TOP);
-      w.sbits(Math.round(x * STRUCT_UNITS), 32);
-      w.sbits(Math.round(z * STRUCT_UNITS), 32);
-      w.u16(yaw);
-      // Lift in eighths of a metre, for a piece on open ground.
-      if (!on) w.sbits(Math.round(amount(a, "lift", -0.5, 1, 0) * 8), 8);
-      w.u8(0);
-    });
+    const form = Math.max(0, variant);
+    const [px, pz] = [Math.round(x * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
+    const { fr, k0, k1 } = this.slot;
+    // Lift in eighths of a metre, for a piece on open ground.
+    const lift = Math.round(amount(a, "lift", -0.5, 1, 0) * 8);
+    const seq = this.commands.send(CMD_PLACE, (w) => (joined ? writeJoin(w, form, fr, k0, k1) : on ? writeRest(w, form, on.ref, px, pz, yaw) : writeNew(w, form, px, pz, yaw, lift)));
     const code = seq === 0 ? 0 : await this.result(seq);
     if (code !== RESULT_OK) return this.outcome(seq, code, {});
     // The new row comes with the chunk's next news.
@@ -831,16 +836,27 @@ export class Agent implements ToolHost {
     return ref >= 0 ? { state: "done", placed: this.nameOf(kind), id: `s${ref}` } : { state: "done", placed: this.nameOf(kind) };
   }
 
+  /** What the shared slot rules read of this client's world. */
+  private site(): Site {
+    const world = this.session.world!;
+    return { structs: world.structs, tables: this.session.registry, heightAt: (x, z) => world.hf.heightAt(x, z) };
+  }
+
+  /** The pose a piece of `kind` has in slot `k` of `offered`, unturned, to `pose`. */
+  private poseIn(kind: number, k: number): void {
+    const structs = this.session.world!.structs;
+    poseOf(structs.frames.get(this.offered.fr[k]!)!, this.offered.k0[k]!, this.offered.k1[k]!, this.session.registry.forms, kind, this.pose);
+  }
+
   /**
-   * The socket of piece `ref` that a `kind` takes on side `side`: by the compass, from the piece's middle to where the new one
-   * would stand; top for one above, bottom below; for a ceiling on a wall, over the floor the wall stands on.
+   * Which of the `n` slots piece `ref` offers a `kind` (`offered`) is on side `asked`: by the compass, from the piece's middle
+   * to where the new one would stand; top for one above, bottom below; for a ceiling on a wall, over the floor the wall stands on.
    */
-  private socket(ref: number, kind: number, asked: string): number | string {
+  private side(ref: number, kind: number, asked: string, n: number): number | string {
     let side = asked;
     const s = this.session;
     const reg = s.registry;
     const structs = s.world!.structs;
-    const n = socketsOf(structs, reg, ref, kind, this.sockets);
     if (n === 0) return `a ${this.nameOf(kind)} does not join a ${this.nameOf(structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!)}`;
     const t = structs.chunks[Math.floor(ref / 65536)]!;
     const slot = ref & 0xffff;
@@ -848,7 +864,7 @@ export class Agent implements ToolHost {
     const named: string[] = [];
     let best = -1;
     for (let k = 0; k < n; k++) {
-      poseAt(structs, reg, ref, kind, k, 0, this.pose);
+      this.poseIn(kind, k);
       const dx = this.pose.x / STRUCT_UNITS - tx;
       const dy = this.pose.y / STRUCT_UNITS - ty;
       const dz = this.pose.z / STRUCT_UNITS - tz;
@@ -864,17 +880,17 @@ export class Agent implements ToolHost {
       best = named.indexOf("top");
     }
     // A ceiling on a wall goes over the room: the side the wall's foundation is on.
-    if (best < 0 && side === "top" && reg.role[t.kind[slot]!] === 1) best = this.overRoom(ref, kind, n);
+    if (best < 0 && side === "top" && reg.role[t.kind[slot]!] === 1) best = this.overRoom(kind, n);
     if (best >= 0) return best;
     return `a ${this.nameOf(kind)} goes on the ${[...new Set(named)].join(", ")} of ${`s${ref}`}, not the ${side}`;
   }
 
-  /** Of a wall's sockets for a ceiling, the one above a floor of the tribe's, else the first. */
-  private overRoom(ref: number, kind: number, n: number): number {
+  /** Of a wall's slots for a ceiling (`offered`), the one above a floor of the tribe's, else the first. */
+  private overRoom(kind: number, n: number): number {
     const structs = this.session.world!.structs;
     const reg = this.session.registry;
     for (let k = 0; k < n; k++) {
-      poseAt(structs, reg, ref, kind, k, 0, this.pose);
+      this.poseIn(kind, k);
       const x = this.pose.x / STRUCT_UNITS;
       const z = this.pose.z / STRUCT_UNITS;
       const m = structs.query(x - 0.2, z - 0.2, x + 0.2, z + 0.2, this.found);

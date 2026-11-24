@@ -6,7 +6,7 @@ import { Rng } from "../../shared/rng.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, CMD_USE, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
-import { NO_TARGET } from "../../server/build.ts";
+import { PLACE_NEW, makePlaceRequest } from "../../shared/net/place.ts";
 import { BTN_JUMP, BTN_SPRINT, BTN_USE, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
 import { V_WATER } from "../../shared/sim/vitals.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
@@ -159,7 +159,7 @@ test("as in ARK, a bed is not set down under water, and a fire under water is no
   h.say(s, `tp ${shore.x} ${shore.z + 3}`);
   h.run(800);
   const c = h.client(s)!;
-  const set = (x: number, z: number): number => h.host.build.set(c, 0, NO_TARGET, 0, 0, Math.round(x * U), Math.round(z * U), 0, 0);
+  const set = (x: number, z: number): number => h.host.build.set(c, { ...makePlaceRequest(), mode: PLACE_NEW, x: Math.round(x * U), z: Math.round(z * U) });
   expect(h.world.hf.heightAt(shore.x, shore.z)).toBeLessThan(LAKES.high.surface - 0.5);
   expect(set(shore.x, shore.z)).toBe(RESULT_DENIED);
   h.run(200);

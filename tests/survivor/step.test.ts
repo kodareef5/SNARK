@@ -12,9 +12,10 @@ import { BTN_CROUCH, BTN_PRONE, BTN_SPRINT, Body, stanceHeight, stepBody, type M
 import { SKIN, capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { nodeForms } from "../../shared/world/nodes.ts";
-import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_STAIRS, ROLE_WALL, freePose, poseAt, type Pose } from "../../shared/world/snap.ts";
+import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_STAIRS, ROLE_WALL, freePose, type Pose } from "../../shared/world/snap.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { hullRegistry } from "../fixtures/hulls.ts";
+import { join as joinTo, start } from "../fixtures/slots.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const reg = hullRegistry();
@@ -181,11 +182,16 @@ test("every piece content means to be walked onto still is, and every piece mean
   const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const foundation = reg.role.indexOf(ROLE_FOUNDATION);
   const doorframe = reg.doorway.indexOf(1);
-  /** A piece in socket `socket` of `target` as the game joins it, or on open ground as it sets one down. Returns its ref. */
-  const put = (w: TestWorld, k: number, target = -1, socket = 0): number => {
-    if (target < 0) freePose(() => 0, reg, k, 64, 64, 0, 0, pose);
-    else if (!poseAt(w.structs, reg, target, k, socket, 0, pose)) throw new Error(`no socket for ${reg.defs[k]!.id}`);
-    return w.structs.add(k, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
+  /** A piece in place `place` of `target` as the game joins it, or on open ground as it begins a base. Returns its ref. */
+  const put = (w: TestWorld, k: number, target = -1, place = 0): number => {
+    if (target >= 0) {
+      const ref = joinTo(w, target, k, place);
+      if (ref < 0) throw new Error(`no place for ${reg.defs[k]!.id}`);
+      return ref;
+    }
+    freePose(() => 0, reg, k, 64, 64, 0, 0, pose);
+    // A road is laid as a foundation is and is in no base: it has no form.
+    return reg.forms.cls[k]! >= 0 ? start(w, k, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7) : w.structs.add(k, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
   };
   const topOf = (w: TestWorld, ref: number, k: number): number => w.structs.chunks[Math.floor(ref / 65536)]!.y[ref & 0xffff]! + w.structs.halfYOf(k);
   const joined = [ROLE_CEILING, ROLE_STAIRS, ROLE_WALL, ROLE_PILLAR, ROLE_DOOR];

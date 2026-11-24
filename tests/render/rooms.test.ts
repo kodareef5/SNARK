@@ -11,6 +11,7 @@ import { StructureStore } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { metric } from "../fixtures/slots.ts";
 
 const DIMS = { chunksX: 16, chunksZ: 16 };
 const [X0, Z0] = [400, 400];
@@ -26,26 +27,28 @@ function house(structs: StructureStore): { door: number; split: number } {
   const k = (id: string): number => reg.index.get(`core:${id}`)!;
   const [F, W, C, DF, D, WF, BOX] = [k("foundation_wood"), k("wall_wood"), k("ceiling_wood"), k("doorframe_wood"), k("door_wood"), k("windowframe_wood"), k("storage_box")];
   const floor = (s: number): number => 2 * reg.halfY[F]! + s * 3;
+  // Each piece in the slot of the base its pose is, the first foundation beginning the base.
+  const add = metric({ structs, reg }, 1, 1000);
   let door = -1, split = -1;
-  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) structs.add(F, X0 + 1.5 + 3 * i, reg.halfY[F]!, Z0 + 1.5 + 3 * j, 0, 1, 1000);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) add(F, X0 + 1.5 + 3 * i, reg.halfY[F]!, Z0 + 1.5 + 3 * j, 0);
   for (let s = 0; s < 2; s++) {
     const y = floor(s) + reg.halfY[W]!;
     for (let i = 0; i < 4; i++) {
       const doorway = s === 0 && i === 0;
-      structs.add(doorway ? DF : W, X0 + 1.5 + 3 * i, y, Z0, 0, 1, 1000);
-      if (doorway) door = structs.add(D, X0 + 1.5, floor(0) + reg.halfY[D]!, Z0, 0, 1, 1000);
-      structs.add(W, X0 + 1.5 + 3 * i, y, Z0 + 9, 0, 1, 1000);
+      add(doorway ? DF : W, X0 + 1.5 + 3 * i, y, Z0, 0);
+      if (doorway) door = add(D, X0 + 1.5, floor(0) + reg.halfY[D]!, Z0, 0);
+      add(W, X0 + 1.5 + 3 * i, y, Z0 + 9, 0);
     }
     for (let j = 0; j < 3; j++) {
-      structs.add(W, X0, y, Z0 + 1.5 + 3 * j, 16384, 1, 1000);
-      structs.add(s === 0 && j === 1 ? WF : W, X0 + 12, y, Z0 + 1.5 + 3 * j, 16384, 1, 1000);
+      add(W, X0, y, Z0 + 1.5 + 3 * j, 16384);
+      add(s === 0 && j === 1 ? WF : W, X0 + 12, y, Z0 + 1.5 + 3 * j, 16384);
       if (s === 0) {
-        const ref = structs.add(W, X0 + 6, y, Z0 + 1.5 + 3 * j, 16384, 1, 1000);
+        const ref = add(W, X0 + 6, y, Z0 + 1.5 + 3 * j, 16384);
         if (j === 1) split = ref;
       }
     }
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) structs.add(C, X0 + 1.5 + 3 * i, floor(s) + 3 - reg.halfY[C]!, Z0 + 1.5 + 3 * j, 0, 1, 1000);
-    structs.add(BOX, X0 + 3 + 1.5 * s, floor(s) + reg.halfY[BOX]!, Z0 + 4.5, 0, 1, 1000);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) add(C, X0 + 1.5 + 3 * i, floor(s) + 3 - reg.halfY[C]!, Z0 + 1.5 + 3 * j, 0);
+    add(BOX, X0 + 3 + 1.5 * s, floor(s) + reg.halfY[BOX]!, Z0 + 4.5, 0);
   }
   return { door, split };
 }

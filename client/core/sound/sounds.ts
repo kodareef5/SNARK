@@ -34,6 +34,8 @@ import { AirSounds } from "./air-support.ts";
 import { SupplySounds } from "./supply.ts";
 import { OrbSounds } from "./orb.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
+import { ZONE_NONE } from "../../../shared/anim/human.ts";
+import { EVENT_HIT } from "../../../shared/net/protocol.ts";
 import type { SupplyList } from "../../../shared/sim/supply.ts";
 import type { OrbSite } from "../../../shared/world/orb.ts";
 
@@ -257,6 +259,7 @@ export class Sounds {
   /** Copies what the session queued since the last frame, before the hit marks and tracers take it. */
   absorb(events: Parameters<ActionSounds["absorb"]>[0], fired: Parameters<ActionSounds["absorb"]>[1], tamed: number): void {
     this.actions.absorb(events, fired, tamed);
+    for (const e of events) if (e.kind === EVENT_HIT && e.zone === ZONE_NONE && !e.kill && e.struck) this.build.struck(e.struck, e.x, e.y, e.z, e.damage);
   }
 
   /** One frame: what everything did is heard by `ear` at `volumes`, and the device is told in one packet. */

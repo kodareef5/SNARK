@@ -364,6 +364,8 @@ export interface PieceSpec {
   readonly object: string;
   readonly errors?: readonly number[];
   readonly triangles?: readonly number[];
+  /** The first level that may be an open sheet: a trim seen from one side, from so far off that it has two triangles. */
+  readonly open?: number;
   readonly hold?: "prop_r" | "prop_l";
   /** With `hold`: a glider's wing for that hand, which spans as it will from its grip (see `pieces`). */
   readonly wing?: boolean;

@@ -26,8 +26,6 @@ export const NO_PIN = 0xffff;
 export const PIN_TRIES = 3;
 export const PIN_WAIT_TICKS = 30 * TICK_RATE;
 
-/** A damaged structure cannot be mended for this long. Three minutes, in ticks. */
-export const REPAIR_WAIT_TICKS = 180 * TICK_RATE;
 /** Metres from the eye to the piece's nearest face, roughly. */
 export const ACT_REACH = 4;
 
@@ -39,7 +37,10 @@ export function refundOf(reg: Registry, kind: number): boolean {
   return fill(reg, kind, 0.5, false);
 }
 
-/** The missing share of each ingredient, rounded up. Fills `cost`. False if the kind has no known recipe or the structure is whole. */
+/**
+ * The missing share of each ingredient, rounded up. Fills `cost`. False if the kind has no known recipe or the structure is whole.
+ * `hp` is the health a client holds (toldHealth), on the server too, so the cost shown is the cost charged.
+ */
 export function repairCostOf(reg: Registry, kind: number, hp: number): boolean {
   const max = reg.maxHp[kind]!;
   if (!(hp < max) || !(max > 0)) return false;

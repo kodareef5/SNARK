@@ -236,6 +236,7 @@ export function bases(world: ServerWorld): (n: number, box: boolean) => number {
   const built: [number[], number[]] = [[], []];
   return (n, box) => {
     const mine = built[box ? 1 : 0];
+    // These bases are nobody's, set down by pose: scenery, which support never judges.
     while (mine.length > n) world.structs.remove(mine.pop()!);
     const plan = box ? boxBase().slice(0, n) : basePieces(n);
     for (let i = mine.length; i < plan.length; i++) {

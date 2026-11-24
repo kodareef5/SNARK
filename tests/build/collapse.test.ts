@@ -6,9 +6,13 @@ import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
 import { STRUCT_UNITS, TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Collapse } from "../../shared/world/collapse.ts";
-import { ROLE_FOUNDATION, ROLE_PILLAR, obstructed, poseAt, socketsOf, makeSockets, type Pose } from "../../shared/world/snap.ts";
+import { fallMost } from "../../server/build.ts";
+import { RESULT_OK } from "../../shared/net/protocol.ts";
+import type { Site } from "../../shared/world/lattice/place.ts";
+import { ROLE_FOUNDATION, ROLE_PILLAR, type Pose } from "../../shared/world/snap.ts";
 import { GONE_DESTROYED, GONE_FELL, GONE_KEPT, GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { Support } from "../../shared/world/support.ts";
+import { count, join as joinTo, judge, poseIn, start } from "../fixtures/slots.ts";
 import { coreRegistry, flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
@@ -71,23 +75,22 @@ function rows(w: TestWorld): number[][] {
 function ramble(w: TestWorld, rng: Rng, tries: number): number[] {
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   const kinds = ["foundation", "wall", "wall", "wall", "wall", "doorframe", "ceiling", "ceiling", "ceiling", "ceiling", "pillar", "stairs", "door"].map((p) => w.kind(`core:${p}_wood`));
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const sockets = makeSockets();
-  const built = [w.structs.add(kinds[0]!, 62.5, FOUNDATION_THICK / 2, 62.5, rng.int(65536), 3, 100)];
+  const site: Site = { structs: w.structs, tables: w.reg, heightAt: (x, z) => w.hf.heightAt(x, z), standsAt: (kind, fr, k0, k1) => support.standsAt(kind, fr, k0, k1) };
+  const built = [start(w, kinds[0]!, 62.5, FOUNDATION_THICK / 2, 62.5, rng.int(65536), 3, 100)];
   for (let i = 0; i < tries; i++) {
     const target = built[rng.int(built.length)]!;
     const kind = kinds[rng.int(kinds.length)]!;
-    const n = socketsOf(w.structs, w.reg, target, kind, sockets);
-    if (n === 0 || !poseAt(w.structs, w.reg, target, kind, rng.int(n), rng.int(4), pose)) continue;
-    if (obstructed(w.structs, w.reg.parts, kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw)) continue;
-    if (!support.stands(kind, pose.x, pose.y, pose.z, pose.yaw)) continue;
-    built.push(w.structs.add(kind, pose.x / U, pose.y / U, pose.z / U, pose.yaw, 3, 100));
+    const n = count(w, target, kind);
+    if (n === 0) continue;
+    const k = rng.int(n);
+    const turn = rng.int(4);
+    if (judge(site, w.reg, target, kind, k, turn) === RESULT_OK) built.push(joinTo(w, target, kind, k, turn, 100));
   }
   return built;
 }
 
-/** Destroys `victims` and steps the collapse with `budget` per call. worst is the most work one call did. */
-function bringDown(w: TestWorld, victims: number[], budget: number): { calls: number; worst: number; fell: number; waves: number } {
+/** Destroys `victims` and steps the collapse with `budget` per call, each removal of at most `most(removals so far)` pieces. worst is the most work one call did, and largest the most pieces one removed. */
+function bringDown(w: TestWorld, victims: number[], budget: number, most: (made: number) => number = () => 1024): { calls: number; worst: number; fell: number; waves: number; largest: number } {
   const collapse = new Collapse(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   let fell = 0;
   w.structs.onRemove = (ref, cause) => {
@@ -102,8 +105,12 @@ function bringDown(w: TestWorld, victims: number[], budget: number): { calls: nu
   let calls = 0;
   let tick = 41;
   let worst = 0;
+  let largest = 0;
   for (; collapse.busy && calls < 100000; calls++) {
-    collapse.step(budget, tick++);
+    const allowed = most(collapse.made);
+    const removed = collapse.step(budget, tick++, allowed);
+    expect(removed).toBeLessThanOrEqual(allowed);
+    if (removed > largest) largest = removed;
     if (collapse.spent > worst) worst = collapse.spent;
   }
   expect(collapse.busy).toBe(false);
@@ -116,7 +123,7 @@ function bringDown(w: TestWorld, victims: number[], budget: number): { calls: nu
     }
   }
   w.structs.onRemove = null;
-  return { calls, worst, fell, waves: collapse.waves };
+  return { calls, worst, fell, waves: collapse.waves, largest };
 }
 
 /** The naive way. Removes `victims`, then every piece that does not stand, until everything left does. */
@@ -135,13 +142,13 @@ function askEach(w: TestWorld, victims: number[]): void {
   }
 }
 
-test("worked out in waves, a collapse leaves exactly what asking piece by piece until nothing changes would, whatever its allowance; a small allowance takes more calls and never a longer one", () => {
+test("a collapse leaves what asking piece by piece would, at any work budget and removal bound", () => {
   let fellInAll = 0;
   let mostWaves = 0;
   let chunksTouched = 0;
   for (let seed = 1; seed <= 6; seed++) {
-    // Three identical worlds: one for each budget, and one to ask piece by piece.
-    const worlds = [0, 1, 2].map(() => flatWorld(4));
+    // Six identical worlds: one for each budget, one to ask piece by piece, and three for removals held to a few pieces.
+    const worlds = [0, 1, 2, 3, 4, 5].map(() => flatWorld(4));
     const built = worlds.map((w) => ramble(w, new Rng(seed), 800));
     expect(rows(worlds[1]!)).toEqual(rows(worlds[0]!));
     expect(built[0]!.length).toBeGreaterThan(60);
@@ -169,6 +176,14 @@ test("worked out in waves, a collapse leaves exactly what asking piece by piece 
     askEach(worlds[2]!, victims);
     expect(rows(worlds[0]!)).toEqual(rows(worlds[2]!));
     expect(rows(worlds[1]!)).toEqual(rows(worlds[2]!));
+    // A removal held to one piece, to seven, and to the server's own pace takes more removals and leaves the same.
+    const one = bringDown(worlds[3]!, victims, 16000, () => 1);
+    const seven = bringDown(worlds[4]!, victims, 250, () => 7);
+    const paced = bringDown(worlds[5]!, victims, 16000, fallMost);
+    for (const k of [3, 4, 5]) expect(rows(worlds[k]!)).toEqual(rows(worlds[2]!));
+    expect([one.fell, seven.fell, paced.fell, one.largest, one.waves]).toEqual([big.fell, big.fell, big.fell, Math.min(1, big.fell), big.fell]);
+    expect(seven.largest).toBeLessThanOrEqual(7);
+    expect(paced.waves).toBeGreaterThanOrEqual(big.waves);
     // With every foundation and pillar gone, nothing is left.
     if (seed % 3 === 0) expect(w0.structs.count).toBe(0);
   }
@@ -178,43 +193,72 @@ test("worked out in waves, a collapse leaves exactly what asking piece by piece 
   expect(chunksTouched).toBeGreaterThan(1);
 });
 
+test("a second break while a collapse runs joins it, and what is left is as if both broke at once", () => {
+  for (let seed = 1; seed <= 4; seed++) {
+    const [w, naive] = [flatWorld(4), flatWorld(4)];
+    const built = ramble(w, new Rng(seed), 800);
+    ramble(naive, new Rng(seed), 800);
+    const row = (ref: number) => ({ t: w.structs.chunks[Math.floor(ref / 65536)]!, slot: ref & 0xffff });
+    const roots = built.filter((ref) => [ROLE_FOUNDATION, ROLE_PILLAR].includes(w.reg.role[row(ref).t.kind[row(ref).slot]!]!));
+    const middle = roots.map((ref) => row(ref).t.x[row(ref).slot]!).sort((p, q) => p - q)[roots.length >> 1]!;
+    const west = roots.filter((ref) => row(ref).t.x[row(ref).slot]! <= middle);
+    const east = roots.filter((ref) => row(ref).t.x[row(ref).slot]! > middle);
+    const collapse = new Collapse(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
+    w.structs.onRemove = (ref, cause) => void (cause !== GONE_FELL && collapse.gone(ref));
+    for (const ref of west) w.structs.damage(ref, 1e9, 40);
+    // Three removals of three pieces, and the first collapse is still running when the east side goes.
+    let tick = 41;
+    while (collapse.made < 3 && collapse.busy) collapse.step(16000, tick++, 3);
+    expect([collapse.busy, collapse.made, collapse.fallen]).toEqual([true, 3, 9]);
+    for (const ref of east) w.structs.damage(ref, 1e9, tick);
+    while (collapse.busy && tick < 100000) collapse.step(16000, tick++, fallMost(collapse.made));
+    // One collapse from first to last: its count of removals ran on, and began again only when it settled.
+    expect([collapse.busy, collapse.settled, collapse.made, collapse.chunks.size]).toEqual([false, 1, 0, 0]);
+    w.structs.onRemove = null;
+    askEach(naive, [...west, ...east]);
+    expect(rows(w)).toEqual(rows(naive));
+    expect(w.structs.count).toBe(0);
+  }
+});
+
 test("what leaned on a wall falls when the wall loses its footing, though the wall itself is held some other way and stays", () => {
   const worlds = [flatWorld(4), flatWorld(4)];
   const lean = worlds.map((w) => {
     const kind = (piece: string): number => w.kind(`core:${piece}_wood`);
     const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-    const sockets = makeSockets();
-    /** Joins a piece to `target` at the socket that puts it at (x, z). */
+    /** Joins a piece to `target` in the place that puts it at (x, z). */
     const at = (target: number, piece: string, x: number, z: number): number => {
-      const n = socketsOf(w.structs, w.reg, target, kind(piece), sockets);
+      const n = count(w, target, kind(piece));
       for (let k = 0; k < n; k++) {
-        if (!poseAt(w.structs, w.reg, target, kind(piece), k, 0, pose) || pose.x !== x * U || pose.z !== z * U) continue;
-        return w.structs.add(kind(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 3, 100);
+        if (!poseIn(w, target, kind(piece), k, 0, pose) || pose.x !== x * U || pose.z !== z * U) continue;
+        return joinTo(w, target, kind(piece), k, 0, 100);
       }
       throw new Error(`no place for a ${piece} at ${x}, ${z}`);
     };
-    // Two foundations, north and south, each with a wall on its east edge and floors going east from the walls' tops.
-    const north = w.structs.add(kind("foundation"), 100, FOUNDATION_THICK / 2, 100, 0, 3, 100);
+    // Three foundations: north, south of it, and east of that. A wall stands on the north one's east edge and another on
+    // the east one's north edge, and one floor lies on the tops of both.
+    const north = start(w, kind("foundation"), 100, FOUNDATION_THICK / 2, 100, 0, 3, 100);
     const south = at(north, "foundation", 100, 97);
+    const east = at(south, "foundation", 103, 97);
     const wall = at(north, "wall", 101.5, 100);
-    const other = at(south, "wall", 101.5, 97);
+    const other = at(east, "wall", 103, 98.5);
     const c1 = at(wall, "ceiling", 103, 100);
     const cs = at(other, "ceiling", 103, 97);
-    const c3 = at(c1, "ceiling", 103, 103);
-    // This floor leans on the north wall alone. It is 5.4 m from it, 7.5 m from the south wall and 6.7 m from the north foundation.
-    const far = at(c3, "ceiling", 106, 103);
+    // West of the north wall, a floor on its top and one more beyond.
+    const c3 = at(wall, "ceiling", 100, 100);
+    // This floor leans on the north wall alone: it is two pieces out from it, and four from the other wall by the way through the pieces.
+    const far = at(c3, "ceiling", 97, 100);
     return { north, wall, c1, cs, c3, far };
   });
   const [w, naive] = worlds as [TestWorld, TestWorld];
   const p = lean[0]!;
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   expect([p.wall, p.c1, p.cs, p.c3, p.far].map((ref) => support.standsRef(ref))).toEqual([true, true, true, true, true]);
-  // The north foundation goes. Its wall hangs from the floors, which the south wall holds, so it stays. So does everything near enough the south wall.
+  // The north foundation goes. Its wall hangs from the floor the other wall holds, so it stays. So does everything near enough the other wall.
   const result = bringDown(w, [p.north], 16000);
   const there = (ref: number): boolean => w.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff] !== 0;
   expect([p.wall, p.c1, p.cs, p.c3].map(there)).toEqual([true, true, true, true]);
-  // The far floor is out of the south wall's reach and the wall it leaned on stands on nothing now, so it falls,
-  // though it is farther from the lost foundation than anything a foundation holds.
+  // The far floor is out of the other wall's reach, and the wall it leaned on hangs now and holds nothing, so it falls.
   expect([there(p.far), result.fell]).toEqual([false, 1]);
   askEach(naive, [lean[1]!.north]);
   expect(rows(w)).toEqual(rows(naive));
@@ -225,18 +269,18 @@ test("two columns that lose their footing at once are two columns, though one is
   const reg = coreRegistry();
   const structs = new StructureStore({ chunksX: 4, chunksZ: 132 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const kind = (piece: string): number => reg.index.get(`core:${piece}_wood`)!;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const join = (target: number, piece: string, k: number): number => {
-    expect(poseAt(structs, reg, target, kind(piece), k, 0, pose)).toBe(true);
-    return structs.add(kind(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 100);
+    const ref = joinTo({ structs, reg }, target, kind(piece), k, 0, 100);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
   // In the north, a floor on a pillar and a second floor hanging from the side of the first.
-  const pillar = structs.add(kind("pillar"), 100, WALL_HEIGHT / 2 - 0.125, 8292, 0, 7, 100);
+  const pillar = start({ structs, reg }, kind("pillar"), 100, WALL_HEIGHT / 2 - 0.125, 8292, 0, 7, 100);
   const floor = join(pillar, "ceiling", 0);
   const hung = join(floor, "ceiling", 1);
   const t = structs.chunks[Math.floor(floor / 65536)]!;
   // In the south, a foundation a lattice step east of that first floor and 8,192 m from it.
-  const south = structs.add(kind("foundation"), t.x[floor & 0xffff]! + 1 / U, FOUNDATION_THICK / 2, t.z[floor & 0xffff]! - 8192, 0, 7, 100);
+  const south = start({ structs, reg }, kind("foundation"), t.x[floor & 0xffff]! + 1 / U, FOUNDATION_THICK / 2, t.z[floor & 0xffff]! - 8192, 0, 7, 100);
   const collapse = new Collapse(structs, reg, () => 0);
   structs.onRemove = (ref, cause) => void (cause !== GONE_FELL && collapse.gone(ref));
   structs.damage(south, 1e9, 40);
@@ -250,7 +294,7 @@ test("two columns that lose their footing at once are two columns, though one is
 test("a piece seen to go waits its turn, drops as a thing dropped does, drifts out from where it began, and is gone when the ground has it", () => {
   const halfY = new Float32Array(8).fill(1.5);
   const f = new Falling(halfY, () => 0);
-  const piece = (x: number, y: number, z: number, cause = GONE_FELL, tick = 100, kind = 3): Rubble => ({ kind, x, y, z, yaw: 1000, cause, ox: 10, oy: 4.5, oz: 10, tick, radius: 0, into: 0, map: 0 });
+  const piece = (x: number, y: number, z: number, cause = GONE_FELL, tick = 100, kind = 3): Rubble => ({ kind, x, y, z, yaw: 1000, tw: -1, cause, ox: 10, oy: 4.5, oz: 10, tick, radius: 0, into: 0, map: 0 });
   // Three pieces of one removal in a line going east from its origin, one of a removal two ticks later, and one destroyed outright.
   const list = [piece(13, 4.5, 10), piece(16, 4.5, 10), piece(22, 4.5, 10), piece(13, 7.5, 10, GONE_FELL, 102), piece(40, 1.5, 40, GONE_DESTROYED, 100, 5)];
   f.absorb(list, 5000, 0, 0, 0);
@@ -303,7 +347,7 @@ test("only so many are shown falling: the nearest to the eye, whatever order the
   // A row of pieces going away from an eye at the origin, absorbed farthest first, in two lots.
   const row = (from: number, to: number): Rubble[] => {
     const out: Rubble[] = [];
-    for (let k = to - 1; k >= from; k--) out.push({ kind: 1, x: k + 1, y: 50, z: 0, yaw: 0, cause: GONE_DESTROYED, ox: 0, oy: 0, oz: 0, tick: 7, radius: 0, into: 0, map: 0 });
+    for (let k = to - 1; k >= from; k--) out.push({ kind: 1, x: k + 1, y: 50, z: 0, yaw: 0, tw: -1, cause: GONE_DESTROYED, ox: 0, oy: 0, oz: 0, tick: 7, radius: 0, into: 0, map: 0 });
     return out;
   };
   const half = MAX_FALLING / 2;

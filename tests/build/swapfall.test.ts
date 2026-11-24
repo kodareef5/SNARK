@@ -2,26 +2,23 @@
 
 import { expect, test } from "bun:test";
 import { FOUNDATION_THICK } from "../../content/building.ts";
-import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { Collapse } from "../../shared/world/collapse.ts";
-import { poseAt, type Pose } from "../../shared/world/snap.ts";
 import { GONE_FELL, GONE_TAKEN } from "../../shared/world/structures.ts";
+import { join as joinTo, start } from "../fixtures/slots.ts";
 import { flatWorld } from "../fixtures/world.ts";
-
-const U = STRUCT_UNITS;
 
 test("a fire that goes out while the floor under it is coming down comes down with it", () => {
   for (const goesOut of [false, true]) {
     const w = flatWorld(4);
     const kind = (name: string): number => w.kind(`core:${name}`);
-    const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
     const join = (target: number, piece: string, k: number): number => {
-      expect(poseAt(w.structs, w.reg, target, kind(piece), k, 0, pose)).toBe(true);
-      return w.structs.add(kind(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 3, 100);
+      const ref = joinTo(w, target, kind(piece), k, 0, 100);
+      expect(ref).toBeGreaterThanOrEqual(0);
+      return ref;
     };
     const there = (ref: number): boolean => w.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff] !== 0;
     // A foundation, a wall on its edge, a floor off the wall's top, and a lit campfire in the middle of that floor.
-    const ground = w.structs.add(kind("foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, 3, 100);
+    const ground = start(w, kind("foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, 3, 100);
     const wall = join(ground, "wall_wood", 0);
     const floor = join(wall, "ceiling_wood", 1);
     const t = w.structs.chunks[Math.floor(floor / 65536)]!;

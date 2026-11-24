@@ -11,6 +11,8 @@ export interface TouchTarget {
   move(x: number, z: number): void;
   /** In CSS pixels, as a mouse moves. */
   look(dx: number, dy: number): void;
+  /** A finger held still on the view for LONG_MS, at (x, y) in units. */
+  longPress?(x: number, y: number): void;
 }
 
 /** The zones' keys, then a key to a button: KEY_TOUCH_BUTTON + its number. */
@@ -44,10 +46,10 @@ export const LONG_MS = 400;
 /** What a tap of a button presses for a moment. */
 const TAPS: Readonly<Record<number, string>> = {
   [T_MENU]: "Escape", [T_BAG]: "KeyI", [T_CHARACTER]: "KeyP", [T_MAP]: "KeyM", [T_CLOSE]: "Escape", [T_CANCEL]: "Escape", [T_CHAT]: "Enter",
-  [T_VIEW]: "KeyV", [T_ORBIT]: "KeyK", [T_FOLLOW]: "KeyJ", [T_STAY]: "KeyU", [T_FOLLOW_ONE]: "KeyT", [T_STAY_ONE]: "KeyY", [T_SIC]: "Period", [T_ROTATE]: "KeyE", [T_RAISE]: "ArrowUp", [T_LOWER]: "ArrowDown",
+  [T_VIEW]: "KeyV", [T_ORBIT]: "KeyK", [T_FOLLOW]: "KeyJ", [T_STAY]: "KeyU", [T_STAY_ONE]: "KeyY", [T_SIC]: "Period", [T_ROTATE]: "KeyE", [T_RAISE]: "ArrowUp", [T_LOWER]: "ArrowDown",
 };
 /** What a button holds down while a finger is on it. The same key means what the body's state makes of it: R reloads on foot and yaws a helicopter. */
-const HELD: Readonly<Record<number, string>> = { [T_PACK]: "KeyF", [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE", [T_MELEE]: "KeyG", [T_SNAP]: "KeyQ", [T_DOWN]: "ControlLeft", [T_ROLL]: "KeyC", [T_HOLD]: "KeyX", [T_MIC]: "KeyB" };
+const HELD: Readonly<Record<number, string>> = { [T_FOLLOW_ONE]: "KeyT", [T_PACK]: "KeyF", [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE", [T_MELEE]: "KeyG", [T_SNAP]: "KeyQ", [T_DOWN]: "ControlLeft", [T_ROLL]: "KeyC", [T_HOLD]: "KeyX", [T_MIC]: "KeyB" };
 
 /** The key a button stands for, held or tapped; undefined for one that is no key's (the attack, the aim, the pages). */
 export function touchKey(button: number): string | undefined {
@@ -65,9 +67,16 @@ export class TouchPlay {
   knobY = 0;
   private lookX = 0;
   private lookY = 0;
+  /** When the look finger went down, how far it has moved since in units, and whether its long press has fired. */
+  private lookSince = 0;
+  private lookMoved = 0;
+  private lookLong = false;
   /** Where the finger on Attack was last, which turns the view as it drags. */
   private aimX = 0;
   private aimY = 0;
+  /** The same for the finger on the whistle to one, which with a piece in hand is the forms' button: held, its drag chooses on their wheel. */
+  private formX = 0;
+  private formY = 0;
   private sprinting = false;
   /** Per button: the finger on it, when it went down, and whether its long press has fired. */
   private readonly finger = new Int32Array(T_COUNT);
@@ -103,7 +112,7 @@ export class TouchPlay {
       return true;
     }
     if (key === KEY_ZONE_LOOK) {
-      if (kind === 0 && this.lookFinger === 0) { this.lookFinger = who; this.lookX = x; this.lookY = y; }
+      if (kind === 0 && this.lookFinger === 0) { this.lookFinger = who; this.lookX = x; this.lookY = y; this.lookSince = nowMs; this.lookMoved = 0; this.lookLong = false; }
       else if (who !== this.lookFinger) return true;
       else if (kind === 1) this.lookFinger = 0;
       else if (kind === 2) this.turn(x, y, t, unit);
@@ -120,12 +129,19 @@ export class TouchPlay {
       }
       else if (b === T_MORE) this.more = !this.more;
       else if (b === T_SHIFT) t.key("ShiftLeft", (this.shifted = !this.shifted));
-      else if (HELD[b]) t.key(HELD[b]!, true);
+      else if (HELD[b]) {
+        t.key(HELD[b]!, true);
+        if (b === T_FOLLOW_ONE) [this.formX, this.formY] = [x, y];
+      }
       else if (TAPS[b]) { t.key(TAPS[b]!, true); t.key(TAPS[b]!, false); }
     } else if (who !== this.finger[b]) return true;
     else if (kind === 2 && b === T_ATTACK) {
       t.look((x - this.aimX) * unit * LOOK_GAIN, (y - this.aimY) * unit * LOOK_GAIN);
       this.aimX = x; this.aimY = y;
+    }
+    else if (kind === 2 && b === T_FOLLOW_ONE) {
+      t.look((x - this.formX) * unit * LOOK_GAIN, (y - this.formY) * unit * LOOK_GAIN);
+      this.formX = x; this.formY = y;
     }
     else if (kind === 1) this.lift(b, t, false);
     return true;
@@ -137,6 +153,10 @@ export class TouchPlay {
       if (this.finger[b] === 0) continue;
       if ((shown & (1 << b)) === 0) this.lift(b, t, true);
       else if (b === T_STANCE && !this.long[b] && nowMs - this.since[b]! >= LONG_MS) { this.long[b] = 1; t.key("KeyX", true); t.key("KeyX", false); }
+    }
+    if (this.lookFinger !== 0 && !this.lookLong && this.lookMoved <= STICK_DEAD && nowMs - this.lookSince >= LONG_MS) {
+      this.lookLong = true;
+      t.longPress?.(this.lookX, this.lookY);
     }
     if (this.aiming && (shown & (1 << T_AIM)) === 0) t.mouse(this.aimedWith, (this.aiming = false));
     if (this.shifted && (shown & (1 << T_SHIFT)) === 0) t.key("ShiftLeft", (this.shifted = false));
@@ -183,6 +203,7 @@ export class TouchPlay {
 
   private turn(x: number, y: number, t: TouchTarget, unit: number): void {
     t.look((x - this.lookX) * unit * LOOK_GAIN, (y - this.lookY) * unit * LOOK_GAIN);
+    this.lookMoved += Math.hypot(x - this.lookX, y - this.lookY);
     this.lookX = x; this.lookY = y;
   }
 }

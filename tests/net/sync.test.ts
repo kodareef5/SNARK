@@ -5,7 +5,7 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { S_CHUNK } from "../../shared/net/protocol.ts";
 import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
-import { GONE_FELL, type StructureStore } from "../../shared/world/structures.ts";
+import { GONE_FELL, toldHealth, type StructureStore } from "../../shared/world/structures.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -35,14 +35,15 @@ test("a collapse too large for one message reaches the client whole", () => {
   expect(h.server.stats.overflows).toBe(1);
 });
 
-/** Slots of the chunks `held` has whole that differ from `structs`. */
+/** Slots of the chunks `held` has whole that differ from `structs`, an owned piece's health being the stage a client is told. */
 function differ(structs: StructureStore, held: StructureStore, chunks: number[]): number {
   let n = 0;
   for (const c of chunks) {
     const [t, u] = [structs.chunks[c]!, held.chunks[c]!];
     for (let s = 0; s < Math.max(t.high, u.high); s++) {
       const kind = t.kind[s] ?? 0;
-      if (kind !== (u.kind[s] ?? 0) || (kind !== 0 && [t.x, t.y, t.z, t.yaw, t.owner, t.hp].some((col, i) => col[s] !== [u.x, u.y, u.z, u.yaw, u.owner, u.hp][i]![s]))) n++;
+      const hp = kind !== 0 && t.owner[s] !== 0 ? toldHealth(t.hp[s]!, structs.fullHp![kind]!) : t.hp[s];
+      if (kind !== (u.kind[s] ?? 0) || (kind !== 0 && ([t.x, t.y, t.z, t.yaw, t.owner].some((col, i) => col[s] !== [u.x, u.y, u.z, u.yaw, u.owner][i]![s]) || hp !== u.hp[s]))) n++;
     }
   }
   return n;
@@ -134,8 +135,8 @@ test("statics handed over a step at a time leave the session and its world as th
   expect(c.statics).toBe(true);
 });
 
-test("a near window of the map's statics is whole within a tick of the body's arrival for a client that holds them, rows still going at 256 slots a tick to one that does not", () => {
-  // The 7 by 7 chunks round the middle of a map 9 chunks wide each hold 640 crates: 31,360 slots, 123 ticks at 256 a tick.
+test("a near window of the map's statics is whole within a tick of the body's arrival for a client that holds them, rows still going at 1,024 slots a tick to one that does not", () => {
+  // The 7 by 7 chunks round the middle of a map 9 chunks wide each hold 640 crates: 31,360 slots, 31 ticks at 1,024 a tick.
   const crates: MapStatic[] = [];
   for (let cz = 1; cz <= 7; cz++) for (let cx = 1; cx <= 7; cx++) for (let k = 0; k < 640; k++) crates.push({ kind: "core:crate", x: cx * CHUNK_SIZE + 4 + (k % 8) * 8, y: 40 + Math.floor(k / 64) * 3, z: cz * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 8, yaw: 0 });
   const h = new Harness({}, 1, 30, { map: writeMap(flatMap(9, { statics: crates })) });
@@ -159,7 +160,7 @@ test("a near window of the map's statics is whole within a tick of the body's ar
   }
   // Ticks from the body's arrival until the server has sent each chunk of the window whole.
   expect(whole[0]).toBeLessThanOrEqual(1);
-  expect(whole[1]).toBeGreaterThanOrEqual(122);
+  expect(whole[1]).toBeGreaterThanOrEqual(30);
   // Once what was sent has landed, each holds the window as the server does.
   h.run(1000);
   expect([differ(structs, ada.world!.structs, window), differ(structs, bob.world!.structs, window)]).toEqual([0, 0]);

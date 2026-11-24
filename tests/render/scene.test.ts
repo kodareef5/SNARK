@@ -577,7 +577,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2832364003 until the kinds drawn as nothing lost the grey meshes nothing drew (shared/content/slots.ts): the
   // 216 collision pieces under bent kerbs (content/bends.ts) and the Tide Eye's three (content/terminals.ts), which
   // numbers the meshes after them that many back. With the 43 of the orb's shell as well it had been 3115831847.
-  expect(hash).toBe(1909060155);
+  // It was 1909060155 until the building pieces past the first nine (content/building.ts) and the triangle slot's mark added theirs (3190097451 with them and without the orb).
+  expect(hash).toBe(1436136949);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -624,7 +625,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // 1800001343 until the two parked Concept 003 meshes, 4134447771 until the city's broken forms, 2206766379
   // until the wrecks' stripped forms, and 3892484967 until the shells and the looks only salvage leaves, as above.
   // And 2924218475 until the kinds drawn as nothing lost their grey meshes, as above (3330468365 with the orb's shell's).
-  expect(saddled.hash).toBe(1982246606);
+  // And 1982246606 until the building pieces, as above (1220435809 with them and without the orb).
+  expect(saddled.hash).toBe(2246990923);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

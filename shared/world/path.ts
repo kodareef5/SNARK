@@ -377,7 +377,7 @@ export class PathFinder {
       const slot = ref & 0xffff;
       if (this.doorways![t.kind[slot]!] !== 1) continue;
       // The doorway's middle runs along the piece's +Z, through its centre.
-      frameOf(t.yaw[slot]!);
+      frameOf(t.yaw[slot]!, t.twAt(slot));
       const dx = x - t.x[slot]!;
       const dz = z - t.z[slot]!;
       const along = dx * frame.sin + dz * frame.cos;

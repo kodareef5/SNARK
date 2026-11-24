@@ -332,9 +332,9 @@ test("the dashboard sits under the minimap or in its place, clear of the readout
 test("control contexts and symbol preference change the guide and persist only the preference",()=>{
   const ui=new Ui(),hud=new HudModel();ui.menu=ui.help=true;
   ui.build(16/9,hud,null);ui.pointer(0,KEY_CONTROL_GROUP+3,0,0,0,null);ui.build(16/9,hud,null);
-  const e=ui.frame.nodes.slice(0,ui.frame.count).find(n=>n.interactive && n.label==="E: Rotate")!;
+  const e=ui.frame.nodes.slice(0,ui.frame.count).find(n=>n.interactive && n.label==="R: Rotate")!;
   expect(e).toBeDefined();ui.pointer(0,e.key,0,0,0,null);ui.build(16/9,hud,null);
-  expect(ui.frame.find(KEY_CONTROL_DETAIL+2)!.text).toBe("E  /  Rotate");
+  expect(ui.frame.find(KEY_CONTROL_DETAIL+2)!.text).toBe("R  /  Rotate");
   ui.pointer(0,KEY_CONTROLS_DEVICE+1,0,0,0,null);ui.pointer(0,KEY_CONTROL_GROUP+2,0,0,0,null);ui.build(16/9,hud,null);
   expect(ui.frame.find(KEY_CONTROL_PAD+1)!.label).toBe("B: Inventory");
   ui.pointer(0,KEY_CONTROL_GLYPHS,0,0,0,null);ui.build(16/9,hud,null);

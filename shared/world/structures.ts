@@ -5,7 +5,10 @@
 import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import type { VehicleSurface } from "../sim/vehicle.ts";
 import { hullPoint, type HullTable } from "./convex.ts";
-import { HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
+import { CLASS_STRETCH_MOST, HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
+import type { FormTable } from "./lattice/forms.ts";
+import { Frames, keyFits, poseOf, twOfKey, type Frame, type FrameDef, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
+import { Cells, Occupancy, formCells } from "./lattice/occupancy.ts";
 
 export const GRID_CELL = 4;
 /**
@@ -24,6 +27,8 @@ export interface PartTable {
   readonly box: Float32Array;
   /** Convex parts, for kinds with sloped or three-sided forms. */
   readonly hulls?: HullTable;
+  /** The slot of a base's lattice each built kind fills. A store given none keys no row. */
+  readonly forms?: FormTable;
 }
 
 /** A map's statics as columns grouped by chunk, as MapStatics holds them (shared/world/mapfile.ts). */
@@ -67,6 +72,30 @@ export const GONE_BLAST = 3;
 export const TOUCH_MOVED = 1;
 export const TOUCH_KIND = 2;
 export const TOUCH_LEFT = 4;
+/** The stage that says an owned piece has its kind's most health exactly. Stages 1 to 254 are the 254ths of it reached into. */
+export const STAGE_FULL = 255;
+
+/** The stage a client is told of an owned piece at health `hp` of `max`. */
+export function healthStage(hp: number, max: number): number {
+  if (!(hp < max)) return STAGE_FULL;
+  const stage = Math.ceil((hp / max) * 254);
+  return stage < 1 ? 1 : stage > 254 ? 254 : stage;
+}
+
+/** The health a client holds for a stage: the most the stage covers, but half a stage under `max` for the last, which is not whole. */
+export function stageHealth(stage: number, max: number): number {
+  return stage >= STAGE_FULL ? max : Math.fround(((stage < 254 ? stage : 253.5) / 254) * max);
+}
+
+/** An owned piece's health as every client holds it. Costs shown and charged are worked from this. */
+export function toldHealth(hp: number, max: number): number {
+  return stageHealth(healthStage(hp, max), max);
+}
+
+/** For `put`, in place of a frame: the row has no key, and loses one it had; or its key is left as it stands. */
+export const PUT_FREE = 0;
+export const PUT_AS_IS = -2;
+
 /** Removals a chunk remembers, so a client can be sent each as one batch. */
 export const GONE_KEPT = 8;
 /** Changed slots a chunk remembers, so a client a few changes behind is sent those without a scan of every slot. */
@@ -151,6 +180,17 @@ export class ChunkTable {
   hp: Float32Array;
   /** Table version at which the slot last changed. */
   mod: Uint32Array;
+  /**
+   * A lattice row's address: its frame's gid (0 for a row with a free pose), its key's two words, and its direction mod 3.
+   * Null until the chunk's first lattice row, then 13 bytes a row. A table detached keeps them, with its frames in `away`.
+   * The grid cells a row lies in go by its `tw`, so only the store's `turn` writes it.
+   */
+  fr: Uint32Array | null = null;
+  k0: Uint32Array | null = null;
+  k1: Uint32Array | null = null;
+  tw: Uint8Array | null = null;
+  /** For a table `detach` gave: the frames its rows were in, to make again those that have gone when it is attached. */
+  away: FrameDef[] | null = null;
   free: number[] = [];
   constructor(cap = 16, lent: Pick<PlacedRows, "x" | "y" | "z" | "yaw"> | null = null) {
     this.cap = cap;
@@ -186,7 +226,7 @@ export class ChunkTable {
     if (slot < this.cap) return;
     let cap = this.cap;
     while (cap <= slot) cap *= 2;
-    const grow = <T extends Uint16Array | Float32Array | Uint32Array>(a: T): T => {
+    const grow = <T extends Uint16Array | Float32Array | Uint32Array | Uint8Array>(a: T): T => {
       const b = new (a.constructor as new (n: number) => T)(cap);
       b.set(a);
       return b;
@@ -200,9 +240,24 @@ export class ChunkTable {
     this.hp = grow(this.hp);
     this.mod = grow(this.mod);
     this.stamp = grow(this.stamp);
+    if (this.fr) [this.fr, this.k0, this.k1, this.tw] = [grow(this.fr), grow(this.k0!), grow(this.k1!), grow(this.tw!)];
     this.cap = cap;
   }
+
+  /** The turn class of the row in `slot`, which every frame of a row is made by: 0 where the chunk has no lattice row. */
+  twAt(slot: number): number {
+    return this.tw !== null ? this.tw[slot]! : 0;
+  }
+
+  /** Makes the key columns, for the chunk's first lattice row. */
+  keyed(): void {
+    [this.fr, this.k0, this.k1, this.tw] = [new Uint32Array(this.cap), new Uint32Array(this.cap), new Uint32Array(this.cap), new Uint8Array(this.cap)];
+  }
 }
+
+// Scratch for keying a row.
+const cells = new Cells();
+const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
 
 /** A query's results. `refs` is replaced when it grows, so read it after the query returns. */
 export class Found {
@@ -237,6 +292,8 @@ export class StructureStore {
   passed = 0;
   /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
   onChunkChanged: ((chunk: number, healthOnly: boolean) => void) | null = null;
+  /** Per kind, its most health. With it, harm that leaves an owned piece in its stage is told to nobody (`damage`). Authority only. */
+  fullHp: Float32Array | null = null;
 
   /** Per content index, the half extents of the box that bounds the whole structure. */
   private readonly halfX: Float32Array;
@@ -275,13 +332,26 @@ export class StructureStore {
   readonly low: Float32Array;
   readonly top: Float32Array;
   readonly spread: Float32Array;
-  /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. */
+  /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. Twice that for a turned row. */
   private readonly pad: Float32Array;
+
+  /** The built kinds' forms, or null: then no row has a key. */
+  readonly forms: FormTable | null;
+  /** The bases: each lattice row is in one, by the gid in its `fr`. */
+  readonly frames: Frames;
+  /** Which lattice row fills each cell of each frame. */
+  readonly occupied = new Occupancy();
+  /** The frame and key `place` is setting a row down by, while `add` writes it. */
+  private placing: Frame | null = null;
+  private placingK0 = 0;
+  private placingK1 = 0;
 
   constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array, soft: Uint8Array | null = null, parts: PartTable | null = null) {
     this.dims = dims;
     this.soft = soft;
     this.parts = parts ?? oneBoxEach(halfX, halfY, halfZ);
+    this.forms = parts?.forms ?? null;
+    this.frames = new Frames(chunkCount(dims));
     this.halfX = halfX;
     this.halfY = halfY;
     this.halfZ = halfZ;
@@ -319,18 +389,23 @@ export class StructureStore {
           const [px, py, pz] = hullPoint([at[c * 3]!, at[c * 3 + 1]!, at[c * 3 + 2]!], sixty);
           low = Math.min(low, py);
           high = Math.max(high, py);
-          // A corner along a 60 degree vector is off its true place by up to that vector's rounding, under a unit in a half side.
+          // A corner along a 60 degree vector is off its true place by up to that vector's rounding, under two units in a half side.
           spread = Math.max(spread, Math.sqrt(px * px + pz * pz) * (sixty ? 1 + 2 / HALF_SIDE : 1));
           if (sixty) this.pad[k] = Math.max(this.pad[k]!, Math.abs(at[c * 3 + 2]!) / HALF_SIDE);
         }
       }
       this.low[k] = low;
       this.top[k] = high;
-      this.spread[k] = spread * STRETCH_MOST;
+      // Only a kind with a form is ever a lattice row, of any turn class.
+      this.spread[k] = spread * (this.forms !== null && this.forms.cls[k]! >= 0 ? CLASS_STRETCH_MOST : STRETCH_MOST);
     }
   }
 
-  /** Snaps the position to the 1/512 m lattice. Returns the ref, or -1 if the kind is unknown or the chunk is full. Authority only. */
+  /**
+   * Sets a structure down by its pose, snapped to the 1/512 m lattice: a row with no key. A thing, a node and a map's piece
+   * are set down so. A built piece set down so is in no base: it joins nothing and holds nothing up, and a base's piece
+   * goes down by `place`. Returns the ref, or -1 if the kind is unknown or the chunk is full. Authority only.
+   */
   add(kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number): number {
     if (kind <= 0 || kind >= this.halfX.length || this.halfX[kind] === 0) return -1;
     x = Math.round(x * STRUCT_UNITS) / STRUCT_UNITS;
@@ -352,9 +427,246 @@ export class StructureStore {
     }
     t.version++;
     this.write(chunk, t, slot, kind, x, y, z, yaw & 0xffff, owner, hp, t.version);
+    if (this.placing) this.key(chunk, t, slot, this.placing, this.placingK0, this.placingK1);
     t.touch(slot, TOUCH_MOVED);
     this.onChunkChanged?.(chunk, false);
     return chunk * 65536 + slot;
+  }
+
+  /**
+   * Whether `place` would set a piece of `kind` down by this key: the frame is made, the key names a slot of the kind's
+   * form (keyFits), and every cell the piece would cover is on the lattice and free.
+   */
+  fits(kind: number, fr: number, k0: number, k1: number): boolean {
+    const forms = this.forms;
+    if (!forms || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || !this.frames.get(fr)) return false;
+    if (!keyFits(forms, kind, k0, k1) || !formCells(forms, kind, k0, k1, cells)) return false;
+    for (let i = 0; i < cells.n; i++) if (!this.occupied.free(fr, cells.k0[i]!, cells.k1[i]!, cells.reach[i]!)) return false;
+    return true;
+  }
+
+  /**
+   * Sets a piece down in a slot of a frame's lattice, as `add` does one by its pose: its place and turn are poseOf of its
+   * key. Returns the ref, or -1 where the key does not fit (`fits`), the owner is not the frame's team, the pose is off
+   * the map or the chunk is full. Authority only.
+   */
+  place(kind: number, fr: number, k0: number, k1: number, owner: number, hp: number): number {
+    if (!this.fits(kind, fr, k0, k1)) return -1;
+    const f = this.frames.get(fr)!;
+    poseOf(f, k0, k1, this.forms!, kind, pose);
+    const x = pose.x / STRUCT_UNITS;
+    const z = pose.z / STRUCT_UNITS;
+    if (owner === 0 || owner !== f.team || !(x >= 0 && z >= 0 && x < this.dims.chunksX * CHUNK_SIZE && z < this.dims.chunksZ * CHUNK_SIZE)) return -1;
+    this.placing = f;
+    this.placingK0 = k0;
+    this.placingK1 = k1;
+    // Shape listeners wait until the row has its key.
+    this.hold();
+    const ref = this.add(kind, x, pose.y / STRUCT_UNITS, z, pose.yaw, owner, hp);
+    this.placing = null;
+    this.release();
+    return ref;
+  }
+
+  /** The gid of the frame the piece `ref` is in, or 0 for a row with a free pose, or for none. */
+  frameAt(ref: number): number {
+    const t = this.chunks[Math.floor(ref / 65536)];
+    return t && t.fr ? t.fr[ref & 0xffff]! : 0;
+  }
+
+  /** The address of the piece `ref`, to `out`. False for a row with a free pose, or for none. */
+  keyAt(ref: number, out: LatticeKey): boolean {
+    const t = this.chunks[Math.floor(ref / 65536)];
+    const slot = ref & 0xffff;
+    if (!t || !t.fr || t.fr[slot] === 0) return false;
+    out.fr = t.fr[slot]!;
+    out.k0 = t.k0![slot]!;
+    out.k1 = t.k1![slot]!;
+    return true;
+  }
+
+  /** The ref of the piece entered in exactly the cell of this key in frame `fr`, whatever its turn, or -1. */
+  refAt(fr: number, k0: number, k1: number): number {
+    return this.occupied.at(fr, k0, k1);
+  }
+
+  /** The ref of the piece that covers the level of this key's edge, face or vertex, from there or from under it, or -1. */
+  covering(fr: number, k0: number, k1: number): number {
+    return this.occupied.covering(fr, k0, k1);
+  }
+
+  /** Writes the refs of frame `fr`'s rows to `out`, a chunk at a time in the order the frame came to them, and returns the count. */
+  rowsOf(fr: number, out: Found): number {
+    const f = this.frames.get(fr);
+    if (!f) return 0;
+    if (out.refs.length < f.live) out.refs = new Uint32Array(f.live);
+    let n = 0;
+    for (const chunk of f.chunks) {
+      const t = this.chunks[chunk]!;
+      const of = t.fr!;
+      for (let slot = t.mapped; slot < t.high; slot++) if (of[slot] === fr) out.refs[n++] = chunk * 65536 + slot;
+    }
+    return n;
+  }
+
+  /** Sets the turn class of the row standing in `slot`, and lists it again in the grid cells its turned box covers. */
+  private turn(chunk: number, t: ChunkTable, slot: number, tw: number): void {
+    if (t.tw![slot] === tw) return;
+    this.unlink(chunk, t, slot);
+    t.tw![slot] = tw;
+    this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!, tw);
+    this.link(chunk * 65536 + slot, t.kind[slot]!, t.y[slot]!);
+  }
+
+  /** Makes a frame's box the least that holds its rows' origins, if rows that left may have made it more. */
+  tighten(f: Frame): void {
+    if (!f.loose) return;
+    f.loose = false;
+    let first = true;
+    for (const chunk of f.chunks) {
+      const t = this.chunks[chunk]!;
+      const of = t.fr!;
+      for (let slot = t.mapped; slot < t.high; slot++) {
+        if (of[slot] !== f.gid) continue;
+        const x = Math.round(t.x[slot]! * STRUCT_UNITS);
+        const z = Math.round(t.z[slot]! * STRUCT_UNITS);
+        if (first) [f.minX, f.maxX, f.minZ, f.maxZ] = [x, x, z, z];
+        first = false;
+        f.minX = Math.min(f.minX, x);
+        f.maxX = Math.max(f.maxX, x);
+        f.minZ = Math.min(f.minZ, z);
+        f.maxZ = Math.max(f.maxZ, z);
+      }
+    }
+  }
+
+  /** Gives the row in `slot` its place in frame `f`: its key columns, its cells and its count. The cells are free (`fits`). */
+  private key(chunk: number, t: ChunkTable, slot: number, f: Frame, k0: number, k1: number): void {
+    const forms = this.forms!;
+    const kind = t.kind[slot]!;
+    if (!t.fr) t.keyed();
+    t.fr![slot] = f.gid;
+    t.k0![slot] = k0;
+    t.k1![slot] = k1;
+    this.turn(chunk, t, slot, twOfKey(forms, kind, k1));
+    // Counted in before its cells are taken, so the frame stands while a row it puts out leaves.
+    this.frames.enter(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), forms.def[kind]!.root !== undefined);
+    this.cover(chunk, t, slot);
+  }
+
+  /**
+   * Enters the keyed row in `slot` in each cell its kind's form covers. A cell another row has is that of a row the
+   * authority no longer has there, whose own row is still to come to this store: that row loses its key.
+   */
+  private cover(chunk: number, t: ChunkTable, slot: number): void {
+    const fr = t.fr![slot]!;
+    const ref = chunk * 65536 + slot;
+    formCells(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, cells);
+    for (let i = 0; i < cells.n; i++) {
+      if (this.occupied.put(fr, cells.k0[i]!, cells.k1[i]!, ref, cells.reach[i]!)) continue;
+      const other = this.occupied.at(fr, cells.k0[i]!, cells.k1[i]!);
+      if (other === ref) continue;
+      // `unkey` uses the scratch cells, so this row's are listed again after it.
+      this.unkey(Math.floor(other / 65536), this.chunks[Math.floor(other / 65536)]!, other & 0xffff, false);
+      formCells(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, cells);
+      this.occupied.put(fr, cells.k0[i]!, cells.k1[i]!, ref, cells.reach[i]!);
+    }
+  }
+
+  /**
+   * Takes the keyed row in `slot` out of its cells before it is erased. A row changed where it stands keeps its key columns
+   * and its count, for `rekey` once its new kind is written; any other leaves its frame, which goes with its last row, and
+   * keeps its key columns only with `keep` (a table detached).
+   */
+  private unkey(chunk: number, t: ChunkTable, slot: number, stays: boolean, keep = false): void {
+    const f = this.frames.get(t.fr![slot]!)!;
+    const kind = t.kind[slot]!;
+    const root = this.forms!.def[kind]!.root !== undefined;
+    formCells(this.forms!, kind, t.k0![slot]!, t.k1![slot]!, cells);
+    for (let i = 0; i < cells.n; i++) this.occupied.take(f.gid, cells.k0[i]!, cells.k1[i]!);
+    if (stays) {
+      if (root) f.roots--;
+      return;
+    }
+    this.frames.leave(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), root);
+    if (keep) return;
+    this.turn(chunk, t, slot, 0);
+    t.fr![slot] = t.k0![slot] = t.k1![slot] = 0;
+  }
+
+  /** Enters a row changed where it stands in its cells again, if its new kind fills the same slot at the same pose (a door opened). Else the row leaves its frame (a heap). */
+  private rekey(chunk: number, t: ChunkTable, slot: number): void {
+    const forms = this.forms!;
+    const kind = t.kind[slot]!;
+    const fr = t.fr![slot]!;
+    const f = this.frames.get(fr)!;
+    const x = Math.round(t.x[slot]! * STRUCT_UNITS);
+    const z = Math.round(t.z[slot]! * STRUCT_UNITS);
+    if (this.fits(kind, fr, t.k0![slot]!, t.k1![slot]!)) {
+      poseOf(f, t.k0![slot]!, t.k1![slot]!, forms, kind, pose);
+      if (pose.x === x && pose.z === z && pose.y === Math.round(t.y[slot]! * STRUCT_UNITS) && pose.yaw === t.yaw[slot]) {
+        this.cover(chunk, t, slot);
+        if (forms.def[kind]!.root !== undefined) f.roots++;
+        return;
+      }
+    }
+    this.frames.leave(f, chunk, x, z, false);
+    this.turn(chunk, t, slot, 0);
+    t.fr![slot] = t.k0![slot] = t.k1![slot] = 0;
+  }
+
+  /** Takes every row of a table out of its frame and its cells. The rows keep their keys, and `away` the frames they were in: `detach` does, for `attach`. */
+  unkeyRows(chunk: number, t: ChunkTable): void {
+    t.away = this.frames.listed(chunk).map((f) => ({ gid: f.gid, ox: f.ox, oy: f.oy, oz: f.oz, yaw: f.yaw, team: f.team }));
+    if (!t.fr) return;
+    for (let slot = t.mapped; slot < t.high; slot++) if (t.fr[slot] !== 0) this.unkey(chunk, t, slot, false, true);
+  }
+
+  /**
+   * Enters the rows of an attached table in their frames again by the keys they kept, the frames that have gone made as
+   * they were. A row whose cell another row has taken since is the older of the two, and loses its key.
+   */
+  private rejoin(chunk: number, t: ChunkTable): void {
+    const away = t.away ?? [];
+    t.away = null;
+    if (!t.fr) return;
+    for (const d of away) if (!this.frames.get(d.gid)) this.frames.make(d.ox, d.oy, d.oz, d.yaw, d.team, d.gid);
+    for (let slot = t.mapped; slot < t.high; slot++) {
+      const fr = t.fr[slot]!;
+      if (fr === 0) continue;
+      const f = this.frames.get(fr);
+      let free = f !== undefined && formCells(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, cells);
+      for (let i = 0; free && i < cells.n; i++) free = this.occupied.at(fr, cells.k0[i]!, cells.k1[i]!) < 0;
+      if (free) this.key(chunk, t, slot, f!, t.k0![slot]!, t.k1![slot]!);
+      else {
+        this.turn(chunk, t, slot, 0);
+        t.fr[slot] = t.k0![slot] = t.k1![slot] = 0;
+      }
+    }
+    for (const d of away) this.frames.drop(d.gid);
+  }
+
+  /**
+   * Where the key (k0, k1) of frame `fr` puts a piece of `kind`, in lattice units, for a row that comes by its key (`put`).
+   * Null if the frame is not made, the key names no slot of the kind's form, or the place is not in `chunk`. The answer is
+   * scratch: read it before the store is asked anything else.
+   */
+  keyedPose(chunk: number, kind: number, fr: number, k0: number, k1: number): LatticePose | null {
+    const forms = this.forms;
+    const f = this.frames.get(fr);
+    if (!forms || !f || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || !keyFits(forms, kind, k0, k1) || !formCells(forms, kind, k0, k1, cells)) return null;
+    poseOf(f, k0, k1, forms, kind, pose);
+    const x = pose.x / STRUCT_UNITS;
+    const z = pose.z / STRUCT_UNITS;
+    if (!(x >= 0 && z >= 0 && x < this.dims.chunksX * CHUNK_SIZE && z < this.dims.chunksZ * CHUNK_SIZE) || chunkAt(this.dims, x, z) !== chunk) return null;
+    return pose;
+  }
+
+  /** Gives the row in `slot` the key a message or a save has for it, where it has another or none. The frame is made. */
+  private keyAs(chunk: number, t: ChunkTable, slot: number, fr: number, k0: number, k1: number): void {
+    if (t.fr !== null && t.fr[slot] === fr && t.k0![slot] === k0 && t.k1![slot] === k1) return;
+    if (t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, false);
+    this.key(chunk, t, slot, this.frames.get(fr)!, k0, k1);
   }
 
   /**
@@ -410,7 +722,7 @@ export class StructureStore {
       for (let i = 0; i < kind.length; i++) {
         const r = order.length > 0 ? order[i]! : i;
         if (slotOf[r]! < 0) continue;
-        this.footprint(kinds[kind[r]!]!, x[r]!, z[r]!, yaw[r]!);
+        this.footprint(kinds[kind[r]!]!, x[r]!, z[r]!, yaw[r]!, 0);
         put(r);
       }
     };
@@ -487,6 +799,20 @@ export class StructureStore {
 
   /** Called with a structure's ref and cause before it is removed, while its row can still be read. Authority only. */
   onRemove: ((ref: number, cause: number) => void) | null = null;
+
+  /** Called as a piece with an owner is set down (`by` 1) or goes (-1), and once each way when one changes owner. (x, z) is as its row holds it. */
+  onOwned: ((kind: number, x: number, z: number, owner: number, by: number) => void) | null = null;
+
+  /** Gives the piece in `slot` to `to`, which may be nobody. */
+  private own(t: ChunkTable, slot: number, to: number): void {
+    const was = t.owner[slot]!;
+    if (was === to) return;
+    if (was !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, was, -1);
+    t.owner[slot] = to;
+    if (to !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, to, 1);
+    // A frame is its rows' owner's.
+    if (t.fr !== null && t.fr[slot] !== 0) this.frames.get(t.fr[slot]!)!.team = to;
+  }
 
   /** `stamp` is the caller's clock. Authority only. */
   remove(ref: number, cause = GONE_TAKEN, stamp = 0): boolean {
@@ -668,7 +994,7 @@ export class StructureStore {
       const was = t.kind[slot]!;
       if (was === kind) {
         // Its health or its owner alone: the grid and what is drawn stand.
-        t.owner[slot] = 0;
+        this.own(t, slot, 0);
         t.hp[slot] = hp;
         this.tally(t, slot, true);
         t.mod[slot] = t.version;
@@ -686,7 +1012,10 @@ export class StructureStore {
     return healed;
   }
 
-  /** Removes the structure at 0 health. Returns the health left (0 if it is gone), or -1 if there is no such structure. Authority only. */
+  /**
+   * Removes the structure at 0 health. Returns the health left (0 if it is gone), or -1 if there is no such structure.
+   * An owned piece left in the stage it was in keeps the chunk's version (`fullHp`). Authority only.
+   */
   damage(ref: number, points: number, stamp = 0): number {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
@@ -698,9 +1027,17 @@ export class StructureStore {
       this.remove(ref, GONE_DESTROYED, stamp);
       return 0;
     }
+    const was = this.differsAt(t, slot);
+    const max = this.fullHp && t.owner[slot] !== 0 ? this.fullHp[t.kind[slot]!]! : 0;
+    if (max > 0 && healthStage(left, max) === healthStage(t.hp[slot]!, max)) {
+      // No client would hold another health for it: saved, as wear is, and sent to nobody.
+      t.hp[slot] = left;
+      this.tally(t, slot, was);
+      this.onChunkChanged?.(chunk, true);
+      return left;
+    }
     // Health is saved and replicated, so the slot counts as changed.
     t.version++;
-    const was = this.differsAt(t, slot);
     t.hp[slot] = left;
     this.tally(t, slot, was);
     t.mod[slot] = t.version;
@@ -709,21 +1046,27 @@ export class StructureStore {
     return left;
   }
 
-  /** Returns how many structures changed owner. Authority only. */
-  reown(from: number, to: number): number {
+  /**
+   * Gives every structure of `from` to `to`, and returns how many changed owner. `built` says whether `from` owns
+   * anything in a chunk, where the caller keeps that (the server's claims grid): then the slots of a chunk are read only
+   * if a base of `from` has rows in it or `built` says so, and the rest are passed over unread. Authority only.
+   */
+  reown(from: number, to: number, built: ((chunk: number) => boolean) | null = null): number {
     let n = 0;
     if (from === to) return 0;
-    for (let chunk = 0; chunk < this.chunks.length; chunk++) {
-      const t = this.chunks[chunk];
+    for (const chunk of this.held) {
+      const t = this.chunks[chunk]!;
       // A chunk as the map placed it holds only pieces owned by nobody.
-      if (!t || (from !== 0 && t.differs === 0)) continue;
+      if (from !== 0 && t.differs === 0) continue;
+      // A base's rows are where its frame is listed. A thing is in no frame, which is what `built` is asked for.
+      if (built !== null && from !== 0 && !this.frames.listed(chunk).some((f) => f.team === from) && !built(chunk)) continue;
       let any = false;
       for (let slot = 0; slot < t.high; slot++) {
         if (t.kind[slot] === 0 || t.owner[slot] !== from) continue;
         if (!any) t.version++;
         any = true;
         const was = this.differsAt(t, slot);
-        t.owner[slot] = to;
+        this.own(t, slot, to);
         this.tally(t, slot, was);
         t.mod[slot] = t.version;
         t.touch(slot, 0);
@@ -737,28 +1080,35 @@ export class StructureStore {
   /**
    * Sets a slot to replicated or loaded contents. `kind` 0 empties it. Does not advance the table version, so follow with
    * setVersion. A piece for a map slot goes where the map has that slot (putMapped), since a map slot never moves.
+   * `fr` is the row's frame with its key in (k0, k1), its pose theirs (`keyedPose`); PUT_FREE for a row that has no key;
+   * PUT_AS_IS, or left out, for one whose key is left as it stands: a row told in place keeps its key if its kind still
+   * fills its slot, and any other has none.
    */
-  put(chunk: number, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number): void {
+  put(chunk: number, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number, fr = PUT_AS_IS, k0 = 0, k1 = 0): void {
     const t = this.tableOf(chunk);
     const there = slot < t.high && t.x[slot] === Math.fround(x) && t.y[slot] === Math.fround(y) && t.z[slot] === Math.fround(z) && t.yaw[slot] === yaw;
     if (kind !== 0 && slot < t.mapped && !there) throw new Error(`chunk ${chunk}: slot ${slot} is the map's and keeps its place`);
     if (kind !== 0 && there && t.kind[slot] === kind) {
       // The same piece in the same place: only its health or owner changed, so the grid and what is drawn stand.
       const was = this.differsAt(t, slot);
-      t.owner[slot] = owner;
+      this.own(t, slot, owner);
       t.hp[slot] = hp;
       this.tally(t, slot, was);
       t.mod[slot] = mod;
+      if (fr > 0) this.keyAs(chunk, t, slot, fr, k0, k1);
+      else if (fr === PUT_FREE && t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, false);
       return;
     }
-    const inPlace = kind !== 0 && there && t.kind[slot] !== 0;
-    if (slot < t.high && t.kind[slot] !== 0) this.erase(chunk, t, slot, mod, inPlace);
-    if (kind !== 0) this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, mod, inPlace);
+    const stays = kind !== 0 && there && t.kind[slot] !== 0;
+    if (slot < t.high && t.kind[slot] !== 0) this.erase(chunk, t, slot, mod, stays);
+    if (kind !== 0) this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, mod, stays);
     else {
       t.ensure(slot);
       if (slot >= t.high) t.high = slot + 1;
       t.mod[slot] = mod;
     }
+    if (kind !== 0 && fr > 0) this.keyAs(chunk, t, slot, fr, k0, k1);
+    else if (kind !== 0 && fr === PUT_FREE && t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, false);
   }
 
   /** Sets a map slot to loaded contents, where the map has it. `kind` 0 empties it. Follow with setVersion, as after put. */
@@ -787,6 +1137,45 @@ export class StructureStore {
     for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] !== 0) this.erase(chunk, t, s, 0);
     this.chunks[chunk] = null;
     this.held.splice(this.heldAt(chunk), 1);
+    this.onChunkChanged?.(chunk, false);
+  }
+
+  /**
+   * Takes the chunk's table out of the store with its rows as they are, and returns it, or null if it has none. The store
+   * then holds nothing of the chunk, as after dropChunk. For a client that keeps a chunk it was told to drop.
+   */
+  detach(chunk: number): ChunkTable | null {
+    const t = this.chunks[chunk];
+    if (!t) return null;
+    // Its rows leave their frames and cells and keep their keys, for when it is attached.
+    this.unkeyRows(chunk, t);
+    for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] !== 0) this.unlink(chunk, t, s);
+    this.count -= t.live;
+    this.chunks[chunk] = null;
+    this.held.splice(this.heldAt(chunk), 1);
+    this.shapes++;
+    this.shaped(chunk);
+    this.onChunkChanged?.(chunk, false);
+    return t;
+  }
+
+  /** Puts back a table `detach` gave for `chunk`, in place of what the chunk holds. Its shape counts as changed. */
+  attach(chunk: number, t: ChunkTable): void {
+    this.dropChunk(chunk);
+    this.chunks[chunk] = t;
+    this.held.splice(this.heldAt(chunk), 0, chunk);
+    for (let s = 0; s < t.high; s++) {
+      const kind = t.kind[s]!;
+      if (kind === 0) continue;
+      this.footprint(kind, t.x[s]!, t.z[s]!, t.yaw[s]!, t.twAt(s));
+      this.link(chunk * 65536 + s, kind, t.y[s]!);
+    }
+    this.count += t.live;
+    this.rejoin(chunk, t);
+    t.shape++;
+    t.placed++;
+    this.shapes++;
+    this.shaped(chunk);
     this.onChunkChanged?.(chunk, false);
   }
 
@@ -920,8 +1309,8 @@ export class StructureStore {
     return this.halfZ[kind]!;
   }
 
-  private write(chunk: number, t: ChunkTable, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number, inPlace = false): void {
-    if (!inPlace) t.placed++;
+  private write(chunk: number, t: ChunkTable, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number, stays = false): void {
+    if (!stays) t.placed++;
     t.ensure(slot);
     if (slot >= t.high) t.high = slot + 1;
     const was = this.differsAt(t, slot);
@@ -934,6 +1323,7 @@ export class StructureStore {
       t.yaw[slot] = yaw;
     }
     t.owner[slot] = owner;
+    if (owner !== 0) this.onOwned?.(kind, t.x[slot]!, t.z[slot]!, owner, 1);
     t.hp[slot] = hp;
     this.tally(t, slot, was);
     t.mod[slot] = mod;
@@ -942,8 +1332,9 @@ export class StructureStore {
     this.shaped(chunk);
     t.live++;
     this.count++;
-    this.footprint(kind, x, z, yaw);
+    this.footprint(kind, x, z, yaw, t.twAt(slot));
     this.link(chunk * 65536 + slot, kind, y);
+    if (stays && t.fr !== null && t.fr[slot] !== 0) this.rekey(chunk, t, slot);
   }
 
   /** Puts `ref`, of `kind` with its centre at height `y`, at the head of the list of each grid cell from fx0..fz1. */
@@ -962,29 +1353,11 @@ export class StructureStore {
     }
   }
 
-  private erase(chunk: number, t: ChunkTable, slot: number, mod: number, inPlace = false): void {
-    if (!inPlace) t.placed++;
-    this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!);
-    const ref = chunk * 65536 + slot;
-    for (let cz = this.fz0; cz <= this.fz1; cz++) {
-      for (let cx = this.fx0; cx <= this.fx1; cx++) {
-        const cells = this.heads[(cz >> 4) * this.dims.chunksX + (cx >> 4)];
-        if (!cells) continue;
-        const cell = (cz & 15) * CELLS + (cx & 15);
-        let prev = 0;
-        let node = cells[cell]!;
-        while (node !== 0 && this.nodeRef[node - 1] !== ref) {
-          prev = node;
-          node = this.nodeNext[node - 1]!;
-        }
-        if (node === 0) continue;
-        const next = this.nodeNext[node - 1]!;
-        if (prev === 0) cells[cell] = next;
-        else this.nodeNext[prev - 1] = next;
-        this.nodeNext[node - 1] = this.nodeFree;
-        this.nodeFree = node;
-      }
-    }
+  private erase(chunk: number, t: ChunkTable, slot: number, mod: number, stays = false): void {
+    if (!stays) t.placed++;
+    if (t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, stays);
+    this.unlink(chunk, t, slot);
+    if (t.owner[slot] !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.owner[slot]!, -1);
     // Empty slots hold zeros, so equal tables are equal byte for byte. A map's slot keeps its place and turn, which are the map's.
     const was = this.differsAt(t, slot);
     t.kind[slot] = 0;
@@ -1005,15 +1378,41 @@ export class StructureStore {
     this.count--;
   }
 
+  /** Takes the structure in `slot` out of every grid cell it lies in. Its row stands. */
+  private unlink(chunk: number, t: ChunkTable, slot: number): void {
+    this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot));
+    const ref = chunk * 65536 + slot;
+    for (let cz = this.fz0; cz <= this.fz1; cz++) {
+      for (let cx = this.fx0; cx <= this.fx1; cx++) {
+        const cells = this.heads[(cz >> 4) * this.dims.chunksX + (cx >> 4)];
+        if (!cells) continue;
+        const cell = (cz & 15) * CELLS + (cx & 15);
+        let prev = 0;
+        let node = cells[cell]!;
+        while (node !== 0 && this.nodeRef[node - 1] !== ref) {
+          prev = node;
+          node = this.nodeNext[node - 1]!;
+        }
+        if (node === 0) continue;
+        const next = this.nodeNext[node - 1]!;
+        if (prev === 0) cells[cell] = next;
+        else this.nodeNext[prev - 1] = next;
+        this.nodeNext[node - 1] = this.nodeFree;
+        this.nodeFree = node;
+      }
+    }
+  }
+
   /** Writes the grid cells a structure's rotated box covers to fx0..fz1. */
-  private footprint(kind: number, x: number, z: number, yaw: number): void {
-    frameOf(yaw);
+  private footprint(kind: number, x: number, z: number, yaw: number, tw: number): void {
+    frameOf(yaw, tw);
     const s = Math.abs(frame.sin);
     const c = Math.abs(frame.cos);
     const hx = this.halfX[kind]! * frame.stretch;
     const hz = this.halfZ[kind]! * frame.stretch;
-    const ex = c * hx + s * hz + this.pad[kind]!;
-    const ez = s * hx + c * hz + this.pad[kind]!;
+    const pad = tw === 0 ? this.pad[kind]! : 2 * this.pad[kind]!;
+    const ex = c * hx + s * hz + pad;
+    const ez = s * hx + c * hz + pad;
     let x0 = Math.floor((x - ex) / GRID_CELL);
     let x1 = Math.floor((x + ex) / GRID_CELL);
     let z0 = Math.floor((z - ez) / GRID_CELL);

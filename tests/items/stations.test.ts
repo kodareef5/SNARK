@@ -10,7 +10,7 @@ import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_CRAFT_AT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
-import { ON_TOP } from "../../shared/world/snap.ts";
+import { writeNew, writeRest } from "../../shared/net/place.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { KEY_STATION_JOB, KEY_STATION_RECIPE, RECIPE_KEYS, RECIPE_MAKE, RECIPE_STATUS, StationPanel, stationRecipes } from "../../client/core/ui/station.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
@@ -38,14 +38,8 @@ function setDown(made: Made, s: ClientSession, item: string, x: number, z: numbe
   h.run(100);
   const before = h.host.build.placed;
   s.command(CMD_PLACE, (w: BitWriter) => {
-    w.u8(0);
-    w.u32(target);
-    if (target !== NO_TARGET) w.u8(ON_TOP);
-    w.sbits(Math.round(x * U), 32);
-    w.sbits(Math.round(z * U), 32);
-    w.u16(0);
-    if (target === NO_TARGET) w.sbits(0, 8);
-    w.u8(0);
+    if (target === NO_TARGET) writeNew(w, 0, Math.round(x * U), Math.round(z * U), 0);
+    else writeRest(w, 0, target, Math.round(x * U), Math.round(z * U), 0);
   });
   h.run(150);
   expect(h.host.build.placed).toBe(before + 1);

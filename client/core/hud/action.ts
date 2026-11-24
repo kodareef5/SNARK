@@ -16,13 +16,18 @@ export const ACTION_NONE = 0;
 export const ACTION_DRAW = 1;
 export const ACTION_RELOAD = 2;
 
+/** What the hotbar's line says with a piece in hand: the builder's keys, and a pad's buttons. A finger's buttons say their own. */
+export const BUILD_HINT = "R turn   T form   Q next place   X put away   Z undo";
+export const BUILD_HINT_PAD = "RB turn   Y form   D-pad left next place   B put away";
+
 export interface ActionModel {
   /** An ACTION_ kind, and how far along it is, 0 to 1. */
   actionKind: number;
   actionFraction: number;
 }
 
-export function fillAction(m: ActionModel & { ammo: string }, session: ClientSession | null, reg: Registry): void {
+export function fillAction(m: ActionModel & { ammo: string; buildSays?: string }, session: ClientSession | null, reg: Registry): void {
+  if (m.buildSays !== undefined) m.buildSays = "";
   m.actionKind = ACTION_NONE;
   m.actionFraction = 0;
   m.ammo = "";
@@ -72,7 +77,8 @@ export const ACTION: HudWidget<ActionModel> = {
     fillAction(m, a.alive ? c.session : null, a.reg);
     if (a.alive && a.inCar) m.ammo = "";
     // With a piece in hand the line says the builder's keys.
-    if (a.building) m.ammo = "E turn   Q next place   R form";
+    if (a.building) m.ammo = a.device === 2 ? "" : a.device === 1 ? BUILD_HINT_PAD : BUILD_HINT;
+    if (a.building) m.buildSays = a.buildSays;
   },
   build(f, m, at) {
     const { W, H } = at;

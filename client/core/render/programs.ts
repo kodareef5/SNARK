@@ -15,9 +15,9 @@ import { DROP_GLSL } from "./supply-light.ts";
 import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
-import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
+import { PIECE_SPALL_RIM, PIECE_SPALL_TEXT, SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
 import { CASTER_ROWS, CUTOUT_CASTER_ROWS, DETAIL_ROWS, FLAT_ROWS, FRAME_ROWS, LAYER_ROWS, MATERIAL_ROWS, MESH_ROWS, tileRows, type UniformRow } from "./uniforms.ts";
-import { ownVertex, worldVertex } from "./world-surfaces.ts";
+import { SPALL_GLSL, SPALL_RIM, ownVertex, worldVertex } from "./world-surfaces.ts";
 import { WATER_FRAGMENT } from "./water.ts";
 
 /**
@@ -85,8 +85,10 @@ function surface(tier: Tier, format: TextureFormat, hard: boolean, light: boolea
   if (tier.lit) samplers.uStreetEnv = UNIT.street;
   if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
   if (variant.layered) samplers.uLayer = UNIT.layer;
-  // A bent piece's wear (bend.ts) where the tier reads the finishes in full.
-  return { vertex: surfaceVertex(variant), fragment: streetText(surfaceFragment(format, AIR, variant), tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (tier.lit && tier.finish === "full" ? "#define BENT_WEAR\n" : "") + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers };
+  // A bent piece's wear (bend.ts), and a built piece's loss to its core past worn (surface.ts PIECE_SPALL), where the tier reads the finishes in full.
+  const full = tier.lit && tier.finish === "full";
+  const fragment = surfaceFragment(format, AIR, variant).replace(`${PIECE_SPALL_TEXT}\n`, full ? SPALL_GLSL : "").replace(PIECE_SPALL_RIM, String(SPALL_RIM));
+  return { vertex: surfaceVertex(variant), fragment: streetText(fragment, tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (full ? "#define BENT_WEAR\n#define PIECE_SPALL\n" : "") + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers };
 }
 
 /** `tier`, the texture variant, whether compared lookups come back hard, and whether the device has a light target (post.ts). */

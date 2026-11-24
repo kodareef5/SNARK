@@ -4,10 +4,10 @@
 
 import { expect, test } from "bun:test";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
-import { ROLE_FOUNDATION } from "../../shared/world/snap.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
+import { start } from "../fixtures/slots.ts";
 
 /** One survivor at (200, 200) with a car beside it, and four cars parked a kilometre away, all settled. */
 function lots() {
@@ -59,8 +59,8 @@ test("a sleeping car wakes when it is harmed, pushed or stood on nothing, and an
     expect(urban.asleep(far[1]!)).toBe(false);
     expect([urban.asleep(far[2]!), urban.asleep(far[3]!)]).toEqual([true, true]);
     // A car asleep on a floor falls when the floor is taken away, though nobody is near.
-    const foundation = h.reg.role.findIndex((role) => role === ROLE_FOUNDATION);
-    const floor = h.world.structs.add(foundation, 700, 2, 1100, 0, 777, 1000);
+    const foundation = h.reg.index.get("core:foundation_metal")!;
+    const floor = start(h.world, foundation, 700, 2, 1100, 0, 777, 1000);
     const high = h.host.spawnVehicle("core:compact", 700, 1100, 0, 0, { y: h.world.structs.topIn(699, 1099, 701, 1101) });
     looks(600);
     expect(urban.asleep(high)).toBe(true);

@@ -209,7 +209,8 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
         continue;
       }
       // A wide piece fills the cells whose centres its turned box reaches, grown by half a cell.
-      const a = t.yaw[s]! * YAW_TO_RAD;
+      // A turn class is a twelfth of a turn on, toward +Z.
+      const a = t.yaw[s]! * YAW_TO_RAD - t.twAt(s) * (TAU / 12);
       const sn = detSin(a);
       const cs = detCos(a);
       const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;

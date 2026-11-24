@@ -85,6 +85,8 @@ export class Persistence {
   readonly transferRows: TransferRow[] = [];
   /** Per-chunk state other than structures. Each provider encodes the chunks it has marked dirty, and `all` marks every chunk it has state for. */
   readonly blobs: { tag: number; dirty: Set<number>; encode(chunk: number): Uint8Array | null; all(): void }[] = [];
+  /** The plans (server/plans.ts): it encodes those it has marked dirty, null for one that is gone, and `all` marks every one. */
+  plans: { dirty: Set<number>; encode(id: number): { chunk: number; data: Uint8Array } | null; all(): void } | null = null;
   /** Null while commits succeed. */
   failing: Failing | null = null;
   /** Called with each failure, and once with null when a commit succeeds again. */
@@ -307,6 +309,7 @@ export class Persistence {
     this.chunkAt.clear();
     for (const pid of this.records.byPid.keys()) this.records.dirty.add(pid);
     for (const b of this.blobs) b.all();
+    this.plans?.all();
     for (const s of this.sidecars) s.of.dirty = true;
     this.newSurvivors.length = 0;
     for (const [name, pid] of this.survivors) this.newSurvivors.push([name, pid]);
@@ -375,6 +378,12 @@ export class Persistence {
           store.saveEntity(rec);
         }
         for (const b of this.blobs) for (const chunk of b.dirty) store.saveBlob(chunk, b.tag, b.encode(chunk));
+        if (this.plans) {
+          for (const id of this.plans.dirty) {
+            const plan = this.plans.encode(id);
+            store.savePlan(id, plan ? plan.chunk : 0, plan ? plan.data : null);
+          }
+        }
         for (const j of this.pending) store.appendJournal(j.seq, j.tick, j.op, j.data);
         this.written.length = 0;
         this.sidecars.forEach((s, i) => {
@@ -390,6 +399,7 @@ export class Persistence {
         store.setMeta("day_offset", world.dayOffset);
         store.setMeta("next_seq", records.nextSeq);
         store.setMeta("next_team", records.nextTeam);
+        store.setMeta("frame_next", world.structs.frames.next);
         store.setMeta("world_id", records.worldId);
         store.setMeta("save_id", this.saveId);
         store.setMeta("map_id", world.mapId);
@@ -425,6 +435,7 @@ export class Persistence {
       this.sidecars[i]!.at = world.tick;
     }
     for (const b of this.blobs) b.dirty.clear();
+    this.plans?.dirty.clear();
     this.commits++;
     for (const cb of callbacks) cb();
   }

@@ -5,7 +5,10 @@
 
 import { Database, type Statement } from "bun:sqlite";
 import type { Registry } from "../../shared/content/registry.ts";
-import type { StructureStore } from "../../shared/world/structures.ts";
+import { CHUNK_SIZE, STRUCT_UNITS, chunkCx, chunkCz } from "../../shared/coords.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { ROW_BITS_MOST, ROW_FREE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
+import { PUT_FREE, type StructureStore } from "../../shared/world/structures.ts";
 import type { EntityRecord } from "../records.ts";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -14,90 +17,89 @@ import { listBackups } from "./backup.ts";
 import { refuseNetworkDisk } from "./disk.ts";
 import { holdSave, type SaveLock } from "./lock.ts";
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 7;
 /**
  * A chunk's structures as what differs from the map. Integers are little-endian, and a varint is 7 bits a byte, low first.
  *   format u8, the chunk's map slots u16
  *   changed map slots varint, then entries in ascending slots until that many are told:
  *     slots skipped since the entry before varint, flags u8, then as flagged the kind u16, health f32, owner u32, and the
  *     count less one varint of slots in a row that are the same
- *   live slots past the map's varint, then each: slots skipped varint, kind u16, x y z f32, yaw u16, owner u32, health f32
+ *   live slots past the map's varint, then each as a row of a chunk message (shared/world/rows.ts), from the map's last
+ *     slot on: free by its pose or keyed by its frame and key, its health exact
  * A map slot keeps the map's kind, its kind's health and no owner where no flag says otherwise. Kinds are the save's ids.
+ * A frame a row names is a row of `frames`, never defined in the bytes.
  */
-const CHUNK_FORMAT = 2;
+const CHUNK_FORMAT = 3;
 const SLOT_EMPTY = 1;
 const SLOT_KIND = 2;
 const SLOT_HP = 4;
 const SLOT_OWNER = 8;
 const SLOT_RUN = 16;
-/** The most bytes one changed map slot and one slot past the map's take. */
+/** The most bytes one changed map slot takes. */
 const CHANGED_BYTES = 3 + 1 + 2 + 4 + 4;
-const BUILT_BYTES = 3 + 2 + 4 + 4 + 4 + 2 + 4 + 4;
 
 /** What reads a chunk's saved structures is told: its map slot count, each changed map slot, each slot past the map's. */
 interface ChunkVisitor {
   head(mapped: number): void;
   /** `flags` says which of `kind` (the save's id), `hp` and `owner` were saved. With SLOT_EMPTY the slot holds nothing. */
   changed(slot: number, flags: number, kind: number, hp: number, owner: number): void;
-  built(slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number): void;
+  /** `row` holds the row just read: its slot, its kind (`saved` the save's id), and its pose or its frame and key. */
+  built(row: RowCoder): void;
 }
 
-/** Reads a chunk's saved structures to `to`. Throws for a format this build does not read and for bytes that are not one. */
-function readChunk(chunk: number, data: Uint8Array, to: ChunkVisitor): void {
+const reader = new BitReader();
+
+/**
+ * Reads a chunk's saved structures to `to`, its rows through `rows`, their places told from the chunk's corner (x0, z0)
+ * metres. Throws for a format this build does not read and for bytes that are not one.
+ */
+function readChunk(chunk: number, data: Uint8Array, rows: RowCoder, x0: number, z0: number, to: ChunkVisitor): void {
   if (data[0] !== CHUNK_FORMAT) throw new Error(`chunk ${chunk}: its structures were saved in format ${data[0]}, and this build reads ${CHUNK_FORMAT}: old saves are not read, so start a new save`);
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  let at = 1;
+  const r = reader;
+  r.reset(data);
+  r.u8();
   const bad = (): never => {
     throw new Error(`chunk ${chunk}: unreadable structure data`);
   };
-  const need = (n: number): number => {
-    if (at + n > data.length) bad();
-    at += n;
-    return at - n;
-  };
-  const varint = (): number => {
-    let v = 0;
-    for (let shift = 0; ; shift += 7) {
-      const b = data[need(1)]!;
-      v += (b & 127) * 2 ** shift;
-      if (b < 128) return v;
-      if (shift > 21) bad();
-    }
-  };
-  const mapped = view.getUint16(need(2), true);
+  const mapped = r.u16();
+  if (r.overflow) bad();
   to.head(mapped);
   let slot = 0;
-  for (let left = varint(); left > 0; ) {
-    slot += varint();
-    const flags = data[need(1)]!;
-    const kind = flags & SLOT_KIND ? view.getUint16(need(2), true) : 0;
-    const hp = flags & SLOT_HP ? view.getFloat32(need(4), true) : 0;
-    const owner = flags & SLOT_OWNER ? view.getUint32(need(4), true) : 0;
-    const n = flags & SLOT_RUN ? varint() + 1 : 1;
-    if (n > left || slot + n > mapped) bad();
+  for (let left = r.varint(); left > 0; ) {
+    slot += r.varint();
+    const flags = r.u8();
+    const kind = flags & SLOT_KIND ? r.u16() : 0;
+    const hp = flags & SLOT_HP ? r.f32() : 0;
+    const owner = flags & SLOT_OWNER ? r.u32() : 0;
+    const n = flags & SLOT_RUN ? r.varint() + 1 : 1;
+    if (r.overflow || n > left || slot + n > mapped) bad();
     for (const end = slot + n; slot < end; slot++) to.changed(slot, flags, kind, hp, owner);
     left -= n;
   }
-  slot = mapped - 1;
-  for (let left = varint(); left > 0; left--) {
-    slot += varint() + 1;
-    const p = need(BUILT_BYTES - 3);
-    if (slot > 0xffff) bad();
-    to.built(slot, view.getUint16(p, true), view.getFloat32(p + 2, true), view.getFloat32(p + 6, true), view.getFloat32(p + 10, true), view.getUint16(p + 14, true), view.getUint32(p + 16, true), view.getFloat32(p + 20, true));
+  rows.begin(x0, z0, mapped - 1);
+  for (let left = r.varint(); left > 0; left--) {
+    rows.read(r);
+    if (r.overflow || rows.slot > 0xffff || (rows.form !== ROW_FREE && rows.form !== ROW_KEYED)) bad();
+    to.built(rows);
   }
-  if (at !== data.length) bad();
+  // The rows end within the last byte.
+  if (r.overflow || r.remainingBits >= 8) bad();
 }
 
 // chunk_blobs holds per-chunk state other than structures, keyed by tag. transfers holds what left this world for another
-// of its cluster, and what came (server/cluster/cluster.ts).
+// of its cluster, and what came (server/cluster/cluster.ts). frames holds each base some saved chunk has a row of: its
+// origin in lattice units, its turn and its team. plans holds each template set down and not yet built (server/plans.ts),
+// with the chunk its anchor is in.
 const SCHEMA = `
   CREATE TABLE content_ids (idx INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE);
   CREATE TABLE chunk_structs (chunk INTEGER PRIMARY KEY, version INTEGER NOT NULL, data BLOB NOT NULL);
+  CREATE TABLE frames (gid INTEGER PRIMARY KEY, x INTEGER NOT NULL, y INTEGER NOT NULL, z INTEGER NOT NULL, yaw INTEGER NOT NULL, team INTEGER NOT NULL);
   CREATE TABLE entities (pid INTEGER PRIMARY KEY, kind INTEGER NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL, yaw INTEGER NOT NULL, data BLOB NOT NULL);
   CREATE TABLE survivors (name TEXT PRIMARY KEY, pid INTEGER NOT NULL) WITHOUT ROWID;
   CREATE TABLE journal (seq INTEGER PRIMARY KEY, tick INTEGER NOT NULL, op INTEGER NOT NULL, data BLOB NOT NULL);
   CREATE TABLE chunk_blobs (chunk INTEGER NOT NULL, tag INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (chunk, tag)) WITHOUT ROWID;
   CREATE TABLE transfers (id TEXT NOT NULL, dir INTEGER NOT NULL, pid INTEGER NOT NULL, name TEXT NOT NULL, hop INTEGER NOT NULL, peer INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, dir)) WITHOUT ROWID;
+  CREATE TABLE plans (id INTEGER PRIMARY KEY, chunk INTEGER NOT NULL, data BLOB NOT NULL);
 `;
 
 /**
@@ -164,6 +166,16 @@ export class WorldStore {
   private readonly putMeta: Statement;
   private readonly putChunk: Statement;
   private readonly dropChunk: Statement;
+  private readonly putFrame: Statement;
+  private readonly dropFrame: Statement;
+  /** The team of each frame the save has a row for, and the frames each saved chunk's rows name. */
+  private readonly framesSaved = new Map<number, number>();
+  private readonly chunkFrames = new Map<number, number[]>();
+  /** What puts those two back as they were, should the transaction that changed them fail. */
+  private readonly undo: (() => void)[] = [];
+  /** Writes and reads a chunk's rows, made for the store whose chunks are first saved or loaded. */
+  private rows: RowCoder | null = null;
+  private w = new BitWriter(4096);
   private readonly putEntity: Statement;
   private readonly dropEntity: Statement;
   private readonly putJournal: Statement;
@@ -273,6 +285,8 @@ export class WorldStore {
       this.putMeta = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
       this.putChunk = db.prepare("INSERT OR REPLACE INTO chunk_structs (chunk, version, data) VALUES (?, ?, ?)");
       this.dropChunk = db.prepare("DELETE FROM chunk_structs WHERE chunk = ?");
+      this.putFrame = db.prepare("INSERT OR REPLACE INTO frames (gid, x, y, z, yaw, team) VALUES (?, ?, ?, ?, ?, ?)");
+      this.dropFrame = db.prepare("DELETE FROM frames WHERE gid = ?");
       this.putEntity = db.prepare("INSERT OR REPLACE INTO entities (pid, kind, x, y, z, yaw, data) VALUES (?, ?, ?, ?, ?, ?, ?)");
       this.dropEntity = db.prepare("DELETE FROM entities WHERE pid = ?");
       this.putJournal = db.prepare("INSERT INTO journal (seq, tick, op, data) VALUES (?, ?, ?, ?)");
@@ -302,7 +316,7 @@ export class WorldStore {
       // A file that cannot be written is closed as it is.
     }
     // A statement left open keeps the connection, and its hold on the file, alive after close.
-    for (const s of [this.putMeta, this.putChunk, this.dropChunk, this.putEntity, this.dropEntity, this.putJournal, this.putSurvivor, this.putTransfer]) s.finalize();
+    for (const s of [this.putMeta, this.putChunk, this.dropChunk, this.putFrame, this.dropFrame, this.putEntity, this.dropEntity, this.putJournal, this.putSurvivor, this.putTransfer]) s.finalize();
     this.db.close();
     this.lock.release();
   }
@@ -313,103 +327,132 @@ export class WorldStore {
   }
 
   transaction(write: () => void): void {
-    this.db.transaction(write).immediate();
+    this.undo.length = 0;
+    try {
+      this.db.transaction(write).immediate();
+    } catch (err) {
+      // Nothing was written, so what was noted of frames is taken back.
+      for (let i = this.undo.length - 1; i >= 0; i--) this.undo[i]!();
+      throw err;
+    } finally {
+      this.undo.length = 0;
+    }
   }
 
   setMeta(key: string, value: string | number): void {
     this.putMeta.run(key, value);
   }
 
+  /** The coder of a chunk's rows, for `structs`' forms: kinds as the save's ids and health exact. */
+  private coder(structs: StructureStore): RowCoder {
+    return (this.rows ??= new RowCoder(structs.forms, this.maxHp, { kindOut: this.toSaved, kindIn: this.toRuntime, exact: true }));
+  }
+
+  /** Notes which frames the chunk's saved rows name, to be put back if the transaction fails. */
+  private names(chunk: number, gids: number[] | null): void {
+    const was = this.chunkFrames.get(chunk);
+    if ((was?.length ?? 0) === (gids?.length ?? 0) && (was ?? []).every((gid, i) => gid === gids![i])) return;
+    this.undo.push(() => void (was ? this.chunkFrames.set(chunk, was) : this.chunkFrames.delete(chunk)));
+    if (gids) this.chunkFrames.set(chunk, gids);
+    else this.chunkFrames.delete(chunk);
+  }
+
   /**
    * Writes what differs from the map in `chunk`: its changed map slots, with neighbours that are the same told as one, and
-   * its live slots past the map's. A chunk that stands as placed has no row, so one that does again loses its row.
+   * its live slots past the map's as rows. A chunk that stands as placed has no row, so one that does again loses its row.
+   * A frame its rows name is written with it if the save has it not, or under another team, and a frame its rows named
+   * before that has since gone is deleted.
    */
   saveChunk(chunk: number, structs: StructureStore): void {
     const t = structs.chunks[chunk];
-    if (!t || t.differs === 0) {
-      this.dropChunk.run(chunk);
-      return;
+    const named = this.chunkFrames.get(chunk);
+    if (!t || t.differs === 0) this.dropChunk.run(chunk);
+    else {
+      const list = structs.changedSlots(chunk);
+      const built = t.differs - t.changed;
+      const room = 3 + 5 + list.length * CHANGED_BYTES + 5 + Math.ceil((built * ROW_BITS_MOST) / 8) + 1;
+      if (room > this.w.buf.length) this.w = new BitWriter(Math.max(room, this.w.buf.length * 2));
+      const w = this.w;
+      w.reset();
+      w.u8(CHUNK_FORMAT);
+      w.u16(t.mapped);
+      w.varint(list.length);
+      const flagsOf = (s: number): number => {
+        const kind = t.kind[s]!;
+        if (kind === 0) return SLOT_EMPTY;
+        return (kind !== structs.mapKind(chunk, s) ? SLOT_KIND : 0) | (t.hp[s] !== this.maxHp[kind] ? SLOT_HP : 0) | (t.owner[s] !== 0 ? SLOT_OWNER : 0);
+      };
+      let next = 0;
+      for (let i = 0; i < list.length; ) {
+        const s = list[i]!;
+        const flags = flagsOf(s);
+        // Neighbours that say the same are one entry: a storey levelled, or a wall given to one owner.
+        let n = 1;
+        for (; i + n < list.length; n++) {
+          const u = list[i + n]!;
+          if (u !== s + n || flagsOf(u) !== flags) break;
+          if ((flags & SLOT_KIND && t.kind[u] !== t.kind[s]) || (flags & SLOT_HP && t.hp[u] !== t.hp[s]) || (flags & SLOT_OWNER && t.owner[u] !== t.owner[s])) break;
+        }
+        w.varint(s - next);
+        w.u8(flags | (n > 1 ? SLOT_RUN : 0));
+        if (flags & SLOT_KIND) w.u16(this.toSaved[t.kind[s]!]!);
+        if (flags & SLOT_HP) w.f32(t.hp[s]!);
+        if (flags & SLOT_OWNER) w.u32(t.owner[s]!);
+        if (n > 1) w.varint(n - 1);
+        next = s + n;
+        i += n;
+      }
+      w.varint(built);
+      const rows = this.coder(structs);
+      rows.begin(chunkCx(structs.dims, chunk) * CHUNK_SIZE, chunkCz(structs.dims, chunk) * CHUNK_SIZE, t.mapped - 1);
+      for (let s = t.mapped; s < t.high; s++) if (t.kind[s] !== 0) rows.write(w, t, s, false, false, structs.frames);
+      if (w.overflow) throw new Error(`chunk ${chunk}: its structures do not fit the room made for them`);
+      this.putChunk.run(chunk, t.version, w.bytes());
     }
-    const list = structs.changedSlots(chunk);
-    const built = t.differs - t.changed;
-    const out = new Uint8Array(3 + 3 + list.length * CHANGED_BYTES + 3 + built * BUILT_BYTES);
-    const view = new DataView(out.buffer);
-    let at = 0;
-    const varint = (v: number): void => {
-      for (; v >= 128; v = Math.floor(v / 128)) out[at++] = (v & 127) | 128;
-      out[at++] = v;
-    };
-    out[at++] = CHUNK_FORMAT;
-    view.setUint16(at, t.mapped, true);
-    at += 2;
-    varint(list.length);
-    const flagsOf = (s: number): number => {
-      const kind = t.kind[s]!;
-      if (kind === 0) return SLOT_EMPTY;
-      return (kind !== structs.mapKind(chunk, s) ? SLOT_KIND : 0) | (t.hp[s] !== this.maxHp[kind] ? SLOT_HP : 0) | (t.owner[s] !== 0 ? SLOT_OWNER : 0);
-    };
-    let next = 0;
-    for (let i = 0; i < list.length; ) {
-      const s = list[i]!;
-      const flags = flagsOf(s);
-      // Neighbours that say the same are one entry: a storey levelled, or a wall given to one owner.
-      let n = 1;
-      for (; i + n < list.length; n++) {
-        const u = list[i + n]!;
-        if (u !== s + n || flagsOf(u) !== flags) break;
-        if ((flags & SLOT_KIND && t.kind[u] !== t.kind[s]) || (flags & SLOT_HP && t.hp[u] !== t.hp[s]) || (flags & SLOT_OWNER && t.owner[u] !== t.owner[s])) break;
-      }
-      varint(s - next);
-      out[at++] = flags | (n > 1 ? SLOT_RUN : 0);
-      if (flags & SLOT_KIND) {
-        view.setUint16(at, this.toSaved[t.kind[s]!]!, true);
-        at += 2;
-      }
-      if (flags & SLOT_HP) {
-        view.setFloat32(at, t.hp[s]!, true);
-        at += 4;
-      }
-      if (flags & SLOT_OWNER) {
-        view.setUint32(at, t.owner[s]!, true);
-        at += 4;
-      }
-      if (n > 1) varint(n - 1);
-      next = s + n;
-      i += n;
+    const now = t && t.differs !== 0 ? structs.frames.listed(chunk) : [];
+    for (const f of now) {
+      const was = this.framesSaved.get(f.gid);
+      if (was === f.team) continue;
+      this.putFrame.run(f.gid, f.ox, f.oy, f.oz, f.yaw, f.team);
+      this.undo.push(() => void (was === undefined ? this.framesSaved.delete(f.gid) : this.framesSaved.set(f.gid, was)));
+      this.framesSaved.set(f.gid, f.team);
     }
-    varint(built);
-    for (let s = t.mapped, last = t.mapped - 1; s < t.high; s++) {
-      if (t.kind[s] === 0) continue;
-      varint(s - last - 1);
-      last = s;
-      view.setUint16(at, this.toSaved[t.kind[s]!]!, true);
-      view.setFloat32(at + 2, t.x[s]!, true);
-      view.setFloat32(at + 6, t.y[s]!, true);
-      view.setFloat32(at + 10, t.z[s]!, true);
-      view.setUint16(at + 14, t.yaw[s]!, true);
-      view.setUint32(at + 16, t.owner[s]!, true);
-      view.setFloat32(at + 20, t.hp[s]!, true);
-      at += BUILT_BYTES - 3;
+    // A frame goes with its last row, and that row's chunk is saved after it.
+    for (const gid of named ?? []) {
+      const team = this.framesSaved.get(gid);
+      if (team === undefined || structs.frames.get(gid)) continue;
+      this.dropFrame.run(gid);
+      this.undo.push(() => void this.framesSaved.set(gid, team));
+      this.framesSaved.delete(gid);
     }
-    this.putChunk.run(chunk, t.version, out.subarray(0, at));
+    this.names(chunk, now.length > 0 ? now.map((f) => f.gid) : null);
   }
 
   /**
    * Lays the saved chunks over what `structs` holds, which is the map's statics as placeStatics set them down: each changed
-   * map slot where the map has it, then the slots past the map's. A slot's `mod` is not saved. Each loaded slot takes its
-   * chunk's version, which is right for a client, since every client starts from none. Returns the number of structures.
+   * map slot where the map has it, then the slots past the map's, a keyed row in its saved frame by its key and a free
+   * row left free. A slot's `mod` is not saved. Each loaded slot takes its chunk's version, which is right for a client,
+   * since every client starts from none. Returns the number of structures.
    */
   loadChunks(structs: StructureStore): number {
+    // The frames first, under their own numbers, so that a base is one frame whatever order its rows come in.
+    for (const f of this.db.query("SELECT gid, x, y, z, yaw, team FROM frames").all() as { gid: number; x: number; y: number; z: number; yaw: number; team: number }[]) {
+      structs.frames.make(f.x, f.y, f.z, f.yaw, f.team, f.gid);
+      this.framesSaved.set(f.gid, f.team);
+    }
+    structs.frames.next = Math.max(structs.frames.next, Number(this.meta("frame_next") ?? 0));
     const rows = this.db.query("SELECT chunk, version, data FROM chunk_structs").all() as { chunk: number; version: number; data: Uint8Array }[];
+    const coder = this.coder(structs);
     for (const row of rows) {
       const chunk = row.chunk;
+      const named: number[] = [];
       // A kind this build lacks is left out, and counted where the operator chose to go on without it.
       const lost = (kind: number): void => {
         if (!this.allowMissing) return;
         this.codec.drop(kind, 1);
         this.dropped.chunks.add(chunk);
       };
-      readChunk(chunk, row.data, {
+      readChunk(chunk, row.data, coder, chunkCx(structs.dims, chunk) * CHUNK_SIZE, chunkCz(structs.dims, chunk) * CHUNK_SIZE, {
         head: (mapped) => {
           const here = structs.chunks[chunk]?.mapped ?? 0;
           if (mapped !== here) throw new Error(`chunk ${chunk}: saved over ${mapped} pieces of the map's, and this map sets down ${here} there`);
@@ -419,14 +462,22 @@ export class WorldStore {
           if (now === 0 && flags & SLOT_KIND) lost(kind);
           structs.putMapped(chunk, slot, now, now === 0 ? 0 : owner, now === 0 ? 0 : flags & SLOT_HP ? hp : this.maxHp[now]!, row.version);
         },
-        built: (slot, kind, x, y, z, yaw, owner, hp) => {
-          const now = this.toRuntime[kind]!;
-          if (now === 0) lost(kind);
-          else structs.put(chunk, slot, now, x, y, z, yaw, owner, hp, row.version);
+        built: (r) => {
+          const now = r.kind;
+          if (r.form === ROW_KEYED && named[named.length - 1] !== r.fr && !named.includes(r.fr)) named.push(r.fr);
+          if (now === 0) return lost(r.saved);
+          const hp = r.health(this.maxHp[now]!);
+          if (r.form === ROW_FREE) return structs.put(chunk, r.slot, now, r.x, r.y, r.z, r.yaw, r.owner, hp, row.version, PUT_FREE);
+          const at = structs.keyedPose(chunk, now, r.fr, r.k0, r.k1);
+          if (!at) throw new Error(`chunk ${chunk}: the piece in slot ${r.slot} was saved by a key that is no slot of its form in a frame the save has: old saves are not read, so start a new save`);
+          structs.put(chunk, r.slot, now, at.x / STRUCT_UNITS, at.y / STRUCT_UNITS, at.z / STRUCT_UNITS, at.yaw, r.owner, hp, row.version, r.fr, r.k0, r.k1);
         },
       });
+      if (named.length > 0) this.chunkFrames.set(chunk, named);
       structs.setVersion(chunk, row.version);
     }
+    // A frame all of whose rows were left out stands in no chunk. The save lets go of it when its chunk is next written.
+    for (const gid of this.framesSaved.keys()) structs.frames.drop(gid);
     return structs.count;
   }
 
@@ -454,6 +505,16 @@ export class WorldStore {
   saveBlob(chunk: number, tag: number, data: Uint8Array | null): void {
     if (data) this.db.query("INSERT OR REPLACE INTO chunk_blobs (chunk, tag, data) VALUES (?, ?, ?)").run(chunk, tag, data);
     else this.db.query("DELETE FROM chunk_blobs WHERE chunk = ? AND tag = ?").run(chunk, tag);
+  }
+
+  /** A null `data` deletes the plan. */
+  savePlan(id: number, chunk: number, data: Uint8Array | null): void {
+    if (data) this.db.query("INSERT OR REPLACE INTO plans (id, chunk, data) VALUES (?, ?, ?)").run(id, chunk, data);
+    else this.db.query("DELETE FROM plans WHERE id = ?").run(id);
+  }
+
+  loadPlans(): { id: number; chunk: number; data: Uint8Array }[] {
+    return this.db.query("SELECT id, chunk, data FROM plans ORDER BY id").all() as { id: number; chunk: number; data: Uint8Array }[];
   }
 
   loadBlobs(tag: number): { chunk: number; data: Uint8Array }[] {
@@ -504,8 +565,10 @@ export class WorldStore {
     }
     for (const row of this.db.query("SELECT DISTINCT kind FROM entities").all() as { kind: number }[]) if (missing.has(row.kind)) return true;
     let used = false;
+    // The rows are walked without the forms, for the kinds they name alone.
+    const rows = new RowCoder(null, this.maxHp, { exact: true });
     for (const row of this.db.query("SELECT chunk, data FROM chunk_structs").all() as { chunk: number; data: Uint8Array }[]) {
-      readChunk(row.chunk, row.data, { head: () => {}, changed: (_slot, flags, kind) => (used ||= (flags & SLOT_KIND) !== 0 && missing.has(kind)), built: (_slot, kind) => (used ||= missing.has(kind)) });
+      readChunk(row.chunk, row.data, rows, 0, 0, { head: () => {}, changed: (_slot, flags, kind) => (used ||= (flags & SLOT_KIND) !== 0 && missing.has(kind)), built: (r) => (used ||= missing.has(r.saved)) });
     }
     return used;
   }

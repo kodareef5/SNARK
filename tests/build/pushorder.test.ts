@@ -3,22 +3,22 @@
 
 import { expect, test } from "bun:test";
 import { FOUNDATION_THICK } from "../../content/building.ts";
-import { STRUCT_UNITS, TICK_DT } from "../../shared/coords.ts";
+import { TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_SPRINT, Body, stepBody } from "../../shared/sim/character.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
-import { HALF_SIDE, frameAxes, poseAt, type Pose } from "../../shared/world/snap.ts";
+import { HALF_SIDE, frameAxes } from "../../shared/world/snap.ts";
+import { join as joinTo, mirror, start } from "../fixtures/slots.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
-const U = STRUCT_UNITS;
 const YAW = 3000;
 
 test("a body pushed out of two pieces at once ends in the same place whatever order the pieces were stored in", () => {
   const built = flatWorld(4);
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const join = (target: number, piece: string, k: number): number => {
-    expect(poseAt(built.structs, built.reg, target, built.kind(`core:${piece}`), k, 0, pose)).toBe(true);
-    return built.structs.add(built.kind(`core:${piece}`), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
+    const ref = joinTo(built, target, built.kind(`core:${piece}`), k);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
   // Pieces that stood in this chunk before and are gone leave their slots to the next ones built, last freed first. So the
   // room below is built into slots in falling order, as a base rebuilt on a server is.
@@ -26,7 +26,7 @@ test("a body pushed out of two pieces at once ends in the same place whatever or
   for (let k = 0; k < 8; k++) before.push(built.structs.add(built.kind("core:pillar_stone"), 70 + k * 2, 1.5, 70, 0, 7, 1));
   for (const ref of before) built.structs.remove(ref);
   // A room on one foundation: a doorway, three walls, a pillar in the middle and a ceiling, with a second foundation outside the door.
-  const floor = built.structs.add(built.kind("core:foundation_stone"), 100, FOUNDATION_THICK / 2, 100, YAW, 7, 1);
+  const floor = start(built, built.kind("core:foundation_stone"), 100, FOUNDATION_THICK / 2, 100, YAW, 7);
   join(floor, "doorframe_stone", 0);
   const side = join(floor, "wall_stone", 1);
   join(floor, "wall_stone", 2);
@@ -37,13 +37,7 @@ test("a body pushed out of two pieces at once ends in the same place whatever or
 
   // The same rows as a client holds them: applied slot by slot.
   const sent = flatWorld(4);
-  const from = built.structs.chunks;
-  for (let chunk = 0; chunk < from.length; chunk++) {
-    const t = from[chunk];
-    if (!t) continue;
-    for (let slot = 0; slot < t.high; slot++) sent.structs.put(chunk, slot, t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.owner[slot]!, t.hp[slot]!, t.mod[slot]!);
-    sent.structs.setVersion(chunk, t.version);
-  }
+  mirror(built.structs, sent.structs);
 
   const p = built.reg.move[built.kind("core:survivor")]!;
   const axes = new Int32Array(4);

@@ -1,8 +1,8 @@
 /**
  * Materials the card makes from recipes (client/core/texgen/materials.ts) and a building's pieces wear by their `made`
  * (shared/content/kinds/structures.ts) in place of their colour's painted finish. A recipe is numbers alone: a square
- * tile, and on it up to four noises, grains scattered one to a cell, courses of laid units and ribs up the tile, each
- * with what it adds to the height and to the light. One program reads them all, so a new material is one entry here and
+ * tile, and on it up to four noises, grains scattered one to a cell, courses of laid units, rivets along their joints and
+ * ribs up the tile, each with what it adds to the height and to the light. One program reads them all, so a new material is one entry here and
  * a finish that names it (content/ruins.ts), and its row of what a wall's read needs of it (client/core/texgen/layers.ts
  * MADE_READS), which a test checks against it. Lengths are metres. A material's mean is its
  * piece's painted finish's, which it is far off, in the far city and on a phone; keep a tile's own light even, and
@@ -38,10 +38,19 @@ export interface MaterialRecipe {
   /**
    * Courses of units `size` across and up, each course moved `bond` of a unit from the one under it; joints `joint`
    * wide either side of a unit's edge, struck back by `depth` and darker by `dark`; each unit's light its own by `tone`.
+   * With `pillow`, a unit's face falls by that much of the relief over its last 6 cm, as a sheet drawn down by its rivets.
    */
-  readonly course?: { readonly size: readonly [number, number]; readonly bond: number; readonly joint: number; readonly depth: number; readonly tone: number; readonly dark: number };
+  readonly course?: { readonly size: readonly [number, number]; readonly bond: number; readonly joint: number; readonly depth: number; readonly tone: number; readonly dark: number; readonly pillow?: number };
   /** Ribs up the tile every `pitch`, `height` of the relief: a wave where `width` is 0, else a seam that wide either side. */
   readonly rib?: { readonly pitch: number; readonly width: number; readonly height: number };
+  /**
+   * Rivets along the courses' joints, `inset` in from a unit's edge and `pitch` apart, each a head `radius` wide and
+   * `height` of the relief high. Under some of a unit's top row a streak runs `run` down it, darker by `streak` and
+   * rustier by `rust`; and the paint within 3 cm of a unit's edge is worn lighter by `wear` in patches. With `bare`, the
+   * dye falls by that much where paint lets go first: under a streak's head, round a rivet, along a joint and over the
+   * `foot` metres above a unit's lower edge. A built piece's read turns that to rust, each sheet by its own measure.
+   */
+  readonly rivet?: { readonly pitch: number; readonly inset: number; readonly radius: number; readonly height: number; readonly streak: number; readonly run: number; readonly rust: number; readonly wear: number; readonly foot?: number; readonly bare?: number };
   /** It lies on faces that look up alone, a roof's: its piece's other faces are their painted finish. */
   readonly lies?: true;
   /** It is a coat over its wall: where the weathering finds the plaster lost, its relief lies down with it. A block's joints stay. */
@@ -87,5 +96,14 @@ export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
     name: "gravel", metres: 2, seed: 67, level: 0.05, relief: 12, rough: 0.75, hollow: -0.4, dye: 0.25, shade: 0, mottle: 0.1, lies: true, means: [0.7, 0.16, 0.73],
     noise: [{ cell: [0.25, 0.25], height: 0.1, light: 0.04 }],
     grain: { size: 0.016, core: 0.42, radius: 0.6, height: 0.8, tone: 0.5, gap: 0.12, bare: 0, warm: 0.15 },
+  },
+  // Riveted steel plate, painted: one sheet 750 mm square to the tile, a row of rivets inside every edge, rain streaks down it and
+  // the paint let go under some rivets and up from its foot. A piece reads it in its own frame, each sheet turned and worn its own way.
+  {
+    name: "plate", metres: 0.75, seed: 79, level: 0.45, relief: 8, rough: 0.64, hollow: 0.12, dye: 1, shade: 0.1, mottle: 0.05, means: [0.98, 0.9, 0.65],
+    // Oil-canning a hand deep in a thousand, streaks a finger wide down the sheet, the paint's orange peel, and its slow blotches.
+    noise: [{ cell: [0.375, 0.375], height: 0.14, light: 0.04 }, { cell: [0.03, 0.75], height: 0, light: 0.13, warp: 0.02 }, { cell: [0.006, 0.006], height: 0.05, light: 0.03 }, { cell: [0.125, 0.125], height: 0.04, light: 0.09 }],
+    course: { size: [0.75, 0.75], bond: 0, joint: 0.004, depth: 0.85, tone: 0, dark: 0.4, pillow: 0.3 },
+    rivet: { pitch: 0.108, inset: 0.052, radius: 0.012, height: 0.5, streak: 0.35, run: 0.35, rust: 0.3, wear: 0.3, foot: 0.12, bare: 1 },
   },
 ];

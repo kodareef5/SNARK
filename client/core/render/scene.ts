@@ -272,6 +272,9 @@ export class Scene {
    */
   get hide(): boolean { return this.occlusion.on; }
   set hide(on: boolean) { this.occlusion.on = on; }
+  /** Whether the bases' own walls and ceilings hide what is behind them (base-occluders.ts). Off for a before and after. */
+  get plating(): boolean { return this.nearStore.plating; }
+  set plating(on: boolean) { this.nearStore.plating = on; }
   get nearFirst(): boolean {
     return this.put.nearFirst;
   }
@@ -503,6 +506,8 @@ export class Scene {
   private readonly loose: Things;
   get beams(): number[] { return this.marks.beams; }
   get ghost(): Ghost["ghost"] { return this.placing.ghost; }
+  /** The pieces set down and awaited, which the app fills each frame (predict-build.ts). */
+  get predicted(): Ghost { return this.placing; }
   get things(): Thing[] { return this.loose.things; }
   set things(list: Thing[]) { this.loose.things = list; }
   /** Entities that are one mesh each, and pieces falling after a removal (passes/loose-entities.ts). */
@@ -636,7 +641,7 @@ export class Scene {
     this.eyes = new TideEyes(this.assets);
     this.movingStatics = new MovingStatics(reg, this.assets, this.flatFlags, this.landmarkKinds);
     this.marks = new Beams(this.assets);
-    this.placing = new Ghost(this.assets, this.meshOfKind);
+    this.placing = new Ghost(this.assets, this.meshOfKind, this.colorOfKind);
     this.loose = new Things(this.assets);
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
@@ -653,6 +658,8 @@ export class Scene {
     this.layers = new FarLayers(world, reg, pack, this.assets, this.packet, this.put, this.casting, { meshOfKind: this.meshOfKind, meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, flatFlags: this.flatFlags, landmarkKinds: this.landmarkKinds, missing, farPalms: opts.farPalms ?? false, hidden: (ref) => this.nearStore.hiddenNodes.has(ref) });
     const far = this.layers.farMesh;
     this.nearStore = new NearStore(world, reg, this.assets, this.packet, this.put, this.casting, this.budget, this.hiding, this.street, (stream?.manifest ?? pack.header).meshes, far, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, meshOfForm: this.meshOfForm, colorOfForm: this.colorOfForm, sizeOfForm: this.sizeOfForm, mostOfForm: this.mostOfForm, reachOfMesh: this.reachOfMesh, reachOfStatic: this.reachOfStatic, groundFlags: this.groundFlags, bentKind: this.bentKind, regionsOfKind: this.regionsOfKind, treeOf: this.treeOf, trisOfMesh: this.trisOfMesh, radiusOfMesh: this.radiusOfMesh, trunkTris: this.trunkTris, leafTris: this.leafTris, landmarkKinds: this.landmarkKinds, missing });
+    this.placing.looks = this.nearStore.pieces;
+    this.looseEntities.pieces = this.nearStore.pieces;
     this.nearStore.far = this.layers.far;
     this.occlusion = new Occlusion(world, this.assets, this.packet, this.put, this.casting, this.terrain, this.hiding, this.nearStore);
     this.layers.onCity = () => {

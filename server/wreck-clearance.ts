@@ -69,19 +69,19 @@ export class WreckClearance {
   clear(ref: number, kind: number): boolean {
     const { structs, ents } = this.world;
     const row = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535;
-    const x = row.x[slot]!, y = row.y[slot]!, z = row.z[slot]!, yaw = row.yaw[slot]!;
+    const x = row.x[slot]!, y = row.y[slot]!, z = row.z[slot]!, yaw = row.yaw[slot]!, tw = row.twAt(slot);
     const bodies = this.nearby(x, z, structs.spread[kind]! + REACH + this.widest);
     for (const body of bodies) {
       const vehicle = body.vehicle;
       if (vehicle) {
         const { def, pose } = vehicle;
-        const meets = def.movement === "boat" ? boatMeetsKind(structs.parts, kind, x, y, z, yaw, def, pose) :
-          def.movement === "rotor" ? helicopterMeetsKind(structs.parts, kind, x, y, z, yaw, def, pose) :
-          carMeetsKind(structs.parts, kind, x, y, z, yaw, def.spec, pose, SKIN);
+        const meets = def.movement === "boat" ? boatMeetsKind(structs.parts, kind, x, y, z, yaw, tw, def, pose) :
+          def.movement === "rotor" ? helicopterMeetsKind(structs.parts, kind, x, y, z, yaw, tw, def, pose) :
+          carMeetsKind(structs.parts, kind, x, y, z, yaw, tw, def.spec, pose, SKIN);
         if (meets) return false;
         continue;
       }
-      const meets = (px: number, pz: number) => capsuleKind(structs.parts, kind, x, y, z, yaw, px, body.y, pz, body.radius, body.height, SKIN);
+      const meets = (px: number, pz: number) => capsuleKind(structs.parts, kind, x, y, z, yaw, tw, px, body.y, pz, body.radius, body.height, SKIN);
       if (!meets(body.x, body.z)) continue;
       const dx = body.x - x, dz = body.z - z, far = Math.hypot(dx, dz);
       if (far === 0) return false;

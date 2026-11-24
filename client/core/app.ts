@@ -18,8 +18,9 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
-import { HIT_NONE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, RESULT_WAIT, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
+import { BUILD_REACH } from "../../shared/world/snap.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { BreakEffects, HEARD_RUMBLE, hearStructures } from "./break-effects.ts";
 import { Controls } from "./controls.ts";
@@ -60,7 +61,10 @@ import { Lasers } from "./render/laser.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { Orbit } from "./orbit.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
-import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
+import { Builder, FALL_FADE, FALL_NEAR, GHOST_BAD, GHOST_OK, GHOST_SLOT, OTHERS_FADE, buildReason } from "./build.ts";
+import { Hammer } from "./hammer.ts";
+import { PredictBuild } from "./predict-build.ts";
+import { STRUCT_REASONS } from "./ui/structure.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { VoicePort } from "./voice/port.ts";
 import { Heard } from "./voice/heard.ts";
@@ -199,6 +203,7 @@ export class App {
   private readonly touchTarget: TouchTarget = {
     key: (code, down) => { this.key(code, down, false, 2); }, mouse: (button, down) => this.mouseButton(button, down, 2),
     move: (x, z) => this.controls.touchMove(x, z), look: (dx, dy) => this.look(dx, dy),
+    longPress: (x, y) => this.pickAt(x, y),
   };
   /** What the screen's edges take from each side, in CSS pixels: left, top, right, bottom. The shell sets them. */
   readonly insets = [0, 0, 0, 0];
@@ -242,6 +247,8 @@ export class App {
       get airMarking() { return app.ui.air.marking; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
+      get building() { return (app.builder.active || app.hammer.active) && app.session.driving < 0; },
+      rotate: (by) => (this.hammer.active ? this.hammer.rotate(by) : this.builder.rotate(by, this.reg)),
       zoom: (notches, alt) => void this.zoomBy(notches, alt),
       adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
@@ -282,17 +289,54 @@ export class App {
       this.ui.air.result(seq, code, session.tickClock);
       this.ui.creator.result(seq, code === RESULT_OK);
       this.ui.inventory.result(seq, code, session.tickClock);
+      // The answer to an undo; else a placement the server never judged, whose predicted piece goes.
+      const undone = this.predict.result(seq, code, this.nowMs);
+      if (undone > RESULT_OK) this.builder.say(undone === RESULT_WAIT ? "Too late to take it back" : (STRUCT_REASONS[undone] ?? "It cannot be taken back"), this.nowMs);
       this.builder.result(seq, code, this.nowMs);
+      this.hammer.result(seq, code);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
       if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
       this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
+    this.builder.predict = this.predict;
+    this.ui.tool.hammer = this.hammer;
+    this.builder.planSlot = (forms, team, ox, oy, oz, dx, dy, dz, reach) => (session.world ? this.hammer.slots.find(session, session.world, this.reg, forms, team, ox, oy, oz, dx, dy, dz, reach) : null);
+    session.onPlaced = (p) => {
+      // A fill of the hammer's is its own to answer.
+      if (this.hammer.placed(p)) return;
+      this.predict.placed(p, session, this.nowMs);
+      // A piece that went with the one it stood on has been shown going: its own refusal says nothing new.
+      const quiet = this.predict.quiet(p.seq) && p.code !== RESULT_OK;
+      this.builder.answered(p.seq, quiet ? RESULT_OK : p.code, p.code === RESULT_OK || quiet ? "" : buildReason(this.reg, session, p.code, p, (entity) => this.nameOf(entity)), this.nowMs);
+    };
+    session.onRow = (ref) => this.predict.row(ref);
+    this.ui.structure.onUndo = () => this.undo();
     this.parts = this.listed();
   }
 
   readonly builder = new Builder();
+  /** The template hammer: templates copied and kept, the one being set down, and the plans being filled (hammer.ts). */
+  readonly hammer = new Hammer();
+  /** The pieces set down that the server has not yet sent as rows (predict-build.ts). */
+  readonly predict = new PredictBuild();
+
+  /** Takes back the piece last set down, through its pickup. */
+  undo(): void {
+    if (this.predict.undo(this.session) === 0) this.builder.say("Nothing to undo", this.nowMs);
+  }
+
+  /** The name of the body with entity index `entity` as the last sample has it: its own, or its kind's; "" for one not in view. */
+  private nameOf(entity: number): string {
+    const r = this.remote;
+    for (let i = 0; i < r.count; i++) {
+      if (r.id[i] !== entity) continue;
+      const id = this.reg.ids[r.kind[i]!] ?? "";
+      return r.name[i] || `a ${id.slice(id.indexOf(":") + 1).replaceAll("_", " ")}`;
+    }
+    return "";
+  }
   readonly vehiclePlacement = new VehiclePlacement();
   /** What the use key would act on, and the words that say so (prompts.ts). */
   readonly prompts: Prompts;
@@ -367,9 +411,19 @@ export class App {
 
   mouseButton(button: number, down: boolean, source = 0): void {
     if (down && source !== 1) this.ui.inputDevice = source;
-    // The middle button holds a helmet's visor up (visor.ts).
+    const building = this.builder.active && this.session.driving < 0 && this.ui.wantsPointerLock;
+    // The middle button holds a helmet's visor up (visor.ts). With a piece in hand it picks the built piece looked at.
     if (button === 1) {
-      this.visor.held = down && this.ui.wantsPointerLock;
+      // With the template hammer it fills the plan, as F does: a pad's d-pad right presses it.
+      if (this.hammer.active && this.session.driving < 0 && this.ui.wantsPointerLock) { if (down) this.hammer.fill(); }
+      else if (building && down) this.builder.pick(this.session, this.reg);
+      else this.visor.held = down && this.ui.wantsPointerLock;
+      return;
+    }
+    // The mouse's own secondary button puts the piece in hand away. A pad's aim and a finger's do not.
+    if (button === 2 && building && source === 0) {
+      // A row being dragged is given up; with none, the piece is put away.
+      if (down && !this.builder.cancel()) this.builder.putAway(this.session, this.nowMs);
       return;
     }
     if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
@@ -377,8 +431,17 @@ export class App {
       if (down) this.vehiclePlacement.place(this.session);
       return;
     }
+    // With the template hammer the first button copies or sets down, and the mouse's second puts the template away.
+    if (this.hammer.active && this.session.driving < 0 && (button === 0 || (button === 2 && source === 0 && this.hammer.chosen >= 0))) {
+      if (down && button === 0) this.hammer.act();
+      else if (down) this.hammer.choose(-1);
+      return;
+    }
     if (button === 0 && this.builder.active) {
-      if (down) this.builder.place(this.session, this.reg);
+      // A place already asked for is not asked for twice. A piece the preview finds nothing wrong with is drawn at once:
+      // one that goes down in rows when the button comes up, with the row the look swept out meanwhile.
+      if (down) this.builder.press(this.session, this.reg, this.nowMs);
+      else this.builder.release(this.session, this.reg, this.nowMs);
       return;
     }
     // The button that would strike throws what is in the arms, where the body looks.
@@ -389,12 +452,23 @@ export class App {
     this.controls.mouseButton(button, down, source);
   }
 
+  /** A finger held still on the view at (x, y) canvas units: with a piece in hand, picks the built piece under it. */
+  private pickAt(x: number, y: number): void {
+    const world = this.session.world, b = this.builder, frame = this.ui.frame;
+    if (!world || !b.active || this.session.driving >= 0 || !this.ui.wantsPointerLock) return;
+    this.cam.ray(x / Math.max(frame.width, 1), y / Math.max(frame.height, 1), this.dir);
+    if (castWorld(world, this.cam.x, this.cam.y, this.cam.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, BUILD_REACH + 4) === HIT_STRUCTURE) b.pick(this.session, this.reg, rayHit.ref);
+  }
+
   gamepads(pads: readonly (PadSample | null)[], now: number): void {
     if (this.steer) this.pad.update(pads, now, this.padTarget);
   }
 
   look(dx: number, dy: number): void {
-    if (this.ui.wantsPointerLock) this.director.look(this.f, dx, dy);
+    if (!this.ui.wantsPointerLock) return;
+    // With the forms' wheel open the look chooses a form, and the view stays where it was.
+    if (this.builder.wheelOpen) this.builder.turnWheel(dx, dy);
+    else this.director.look(this.f, dx, dy);
   }
 
   /** Whether a raised sight takes zoom steps: a scope that zooms, a glass, a visor. */
@@ -406,6 +480,15 @@ export class App {
   wheel(deltaY: number, mode = 0): boolean {
     if (!this.ui.wantsPointerLock) return false;
     const notches = mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100;
+    // With a piece in hand the wheel turns it, and is no sight's zoom.
+    if (this.builder.active && this.session.driving < 0) {
+      this.builder.scroll(notches, this.reg);
+      return true;
+    }
+    if (this.hammer.active && this.hammer.chosen >= 0 && this.session.driving < 0) {
+      this.hammer.scroll(notches);
+      return true;
+    }
     return this.zoomBy(notches) || this.orbit.wheel(notches);
   }
 
@@ -876,6 +959,10 @@ export class App {
       }
       session.impacts.length = 0;
     }
+    // Pieces set down and awaited are drawn from the frame of the click, and the preview gives way to one where it stood.
+    this.predict.step(session, f.nowMs);
+    this.predict.fill(scene.predicted, GHOST_BAD, f.nowMs);
+    if (scene.ghost.kind !== 0 && this.predict.covers(scene.ghost.x, scene.ghost.y, scene.ghost.z)) scene.ghost.kind = 0;
     this.ui.air.update(session, this.remote, world, cam);
     scene.airSupport.preview = this.ui.air.marking ? this.ui.air.spot : null;
     scene.airSupport.view = session.airSupport;
@@ -947,7 +1034,11 @@ export class App {
   private fillHud(f: AppFrame): void {
     const session = this.session, hud = this.hud, cam = this.cam, c = this.controls, alive = f.alive, nowMs = f.nowMs;
     const fill = this.hudFill, body = f.body;
-    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active;
+    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active; f.device = this.ui.inputDevice;
+    // The count shows without the pieces on their way down, and without a dragged row's while it is held.
+    f.spendItem = this.builder.inHand; f.spend = this.predict.pending(f.spendItem) + (this.builder.row.on ? this.builder.row.ok : 0);
+    f.buildSays = this.builder.active ? this.builder.says() : "";
+    f.formsOpen = this.builder.active && this.builder.wheelOpen; f.formAt = this.builder.wheelAt; f.formNames = this.builder.wheelNames;
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
@@ -990,24 +1081,54 @@ export class App {
   /** A piece in hand, or a vehicle to set down, is tried where the look is on, and drawn there from the next frame. */
   private ghost(f: AppFrame): void {
     const session = this.session, c = this.controls, world = f.world, nowMs = f.nowMs, eyeNow = f.eyeNow;
-    const ghost = f.scene.ghost;
+    const ghost = f.scene.ghost, marks = f.scene.predicted;
     ghost.kind = 0;
+    marks.clear();
     const b = this.builder, v = this.vehiclePlacement;
     if (f.alive && session.driving < 0) {
       lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.dir);
       b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
       v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
-    } else { b.active = false; v.active = false; }
-    if (b.active && b.problem !== RESULT_NO_SNAP) {
+      this.hammer.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, c.yaw, nowMs);
+    } else { b.active = false; v.active = false; this.hammer.active = false; }
+    this.hammer.holograms(marks, session, this.pack.palette, this.cam.x, this.cam.y, this.cam.z, nowMs);
+    const predict = this.predict;
+    this.ui.structure.undoable = b.active && predict.undoable;
+    // Where a piece just set down stands, the preview has nothing to add.
+    if (b.active && b.problem !== RESULT_NO_SNAP && !predict.covers(b.pose.x / STRUCT_UNITS, b.pose.y / STRUCT_UNITS, b.pose.z / STRUCT_UNITS)) {
       ghost.kind = b.kind;
       ghost.x = b.pose.x / STRUCT_UNITS;
       ghost.y = b.pose.y / STRUCT_UNITS;
       ghost.z = b.pose.z / STRUCT_UNITS;
       ghost.yaw = b.pose.yaw;
-      ghost.color = b.problem === 0 ? GHOST_OK : GHOST_BAD;
+      ghost.tw = b.tw;
+      ghost.color = b.color;
+    }
+    // A row being dragged: each piece after the first in the colour of how it would stand, and the one that would not in the refused colour.
+    const row = b.row;
+    if (b.active && row.on) {
+      for (let i = 1; i < row.ok; i++) marks.piece(row.kind, row.x[i]!, row.y[i]!, row.z[i]!, row.yaw[i]!, row.tw[i]!, b.colorOf(row.stab[i]!));
+      if (row.code !== 0 && row.ok > 0) marks.piece(row.kind, row.x[row.ok]!, row.y[row.ok]!, row.z[row.ok]!, row.yaw[row.ok]!, row.tw[row.ok]!, GHOST_BAD);
+    }
+    // With a piece's list open, the pieces that would fall with it, each drawn over itself a little toward the eye.
+    const menu = this.ui.structure;
+    for (let i = 0; menu.open && i < menu.falling; i++) {
+      const ref = menu.falls[i]!, t = world.structs.chunks[Math.floor(ref / 65536)], k = ref & 0xffff;
+      if (!t || k >= t.high || t.kind[k] === 0) continue;
+      const ex = this.cam.x - t.x[k]!, ey = this.cam.y - t.y[k]!, ez = this.cam.z - t.z[k]!, near = FALL_NEAR / Math.max(1, Math.hypot(ex, ey, ez));
+      marks.piece(t.kind[k]!, t.x[k]! + ex * near, t.y[k]! + ey * near, t.z[k]! + ez * near, t.yaw[k]!, t.twAt(k), GHOST_BAD, FALL_FADE);
+    }
+    // The slot it would go in, and faintly the others the look offers.
+    if (b.active && b.slotMark.cls >= 0) {
+      const at = b.slotMark;
+      marks.slot(at.cls, at.x, at.y, at.z, at.yaw, GHOST_SLOT, 0, at.tw);
+      for (let i = 0; i < b.others; i++) {
+        const o = b.otherMarks[i]!;
+        marks.slot(o.cls, o.x, o.y, o.z, o.yaw, GHOST_SLOT, OTHERS_FADE, o.tw);
+      }
     }
     if (v.active) {
-      ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw;
+      ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw; ghost.tw = 0;
       ghost.color = v.problem === RESULT_OK ? GHOST_OK : GHOST_BAD;
     }
   }

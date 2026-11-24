@@ -7,6 +7,7 @@ import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_BLEND, MATERIAL_EXHAUST, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
+import type { FrameTable } from "./piece-fit.ts";
 import { PIECE_KEYS, PIECE_ROWS } from "./pieces.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
 import { STREET_TILE_BYTES, STREET_TILES_FRAME } from "./streets.ts";
@@ -26,6 +27,10 @@ export const TRANSIENT_BUFFER = 0xffffffff;
  * camera that ultra's 8 km view reaches, sixteen marker beams, and a piece about to be built.
  */
 export const MAX_WATER_TILES = 289;
+/** Pieces set down and awaited a frame may show as built (passes/ghost.ts). */
+export const MAX_PREDICTED = 32;
+/** Pieces of a template or a plan a frame may show where they would stand (passes/holograms.ts). The nearest are shown. */
+export const MAX_HOLOGRAMS = 256;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
@@ -172,6 +177,11 @@ export const DRAW_FIRE = 1 << 19;
  * frame block's fOrb. Drawn flat whatever materials the shell's mesh has.
  */
 export const DRAW_ORB = 1 << 20;
+/**
+ * Built pieces and their trims (render/piece-fit.ts): each instance's last three regions are a recipe material, a state
+ * and a fit, and where it is framed its yaw's place holds a slot of `frameTables` for the draw's buffer and a direction.
+ */
+export const DRAW_PIECE = 1 << 21;
 export const HEAT_WORLD = 0;
 export const HEAT_COLD = 1;
 export const HEAT_WARM = 2;
@@ -585,6 +595,12 @@ export interface BufferUpload {
   data: Uint8Array;
   /** Structure slot of each instance, for picking. */
   slots: Uint16Array;
+  /**
+   * Given where only some of a buffer the card holds has changed: the first byte and how many. `data` is still the
+   * whole buffer, so a renderer that will not write part of one sends it all.
+   */
+  from?: number;
+  bytes?: number;
 }
 
 /**
@@ -728,6 +744,8 @@ export class FramePacket {
 
   readonly uploads: BufferUpload[] = [];
   readonly drops: number[] = [];
+  /** The bases the pieces of a buffer stand in, by the buffer: what a DRAW_PIECE draw of it gives `uFrames`. Kept by who fills the buffer. */
+  readonly frameTables = new Map<number, FrameTable>();
   /** Levels of meshes to put on the graphics card, and slots to take off it, before this frame's draws. */
   readonly assetUploads: AssetUpload[] = [];
   readonly assetDrops: number[] = [];
@@ -778,6 +796,11 @@ export class FramePacket {
    */
   readonly drawEffect = new Float32Array(MAX_DRAWS * 4);
   /**
+   * Two numbers a flat draw: a palette colour plus 1 that every vertex takes in place of its own, 0 for none; and the
+   * share of a see-through draw's alpha it has lost, 0 for none. A piece about to be built, fine or refused (passes/ghost.ts).
+   */
+  readonly drawTint = new Float32Array(MAX_DRAWS * 2);
+  /**
    * For a DRAW_TEXTURED draw of bodies that are hurt or dead, whose material has a layer on the card: the level its layer
    * is drawn at, in LAYER_LEVELS of the whole (surface.ts `wounded`). 0 for any other, which reads no layer.
    */
@@ -813,9 +836,9 @@ export class FramePacket {
   readonly streetKinds = new Uint8Array(STREET_TILES_FRAME * STREET_TILE_BYTES);
 
   transientCount = 0;
-  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
+  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_PREDICTED + MAX_HOLOGRAMS + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
   /** Entity slot index of each transient instance, for picking. */
-  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED);
+  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_PREDICTED + MAX_HOLOGRAMS + MAX_FALLING + MAX_SKINNED);
 
   /** Bones of every body drawn this frame, BONE_FLOATS each. */
   boneCount = 0;
@@ -915,6 +938,7 @@ export class FramePacket {
     this.drawHand.fill(0);
     this.drawSwap.fill(0);
     this.drawEffect.fill(0);
+    this.drawTint.fill(0);
     this.drawLayer.fill(0);
     this.drawWear.fill(0);
     this.drawCount = 0;

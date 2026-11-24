@@ -1,151 +1,397 @@
-// A base's interior: the pieces of a chunk seen only from rooms its own pieces close. Pieces snap to rooms 3 m a side on
-// the lattice of the piece they were joined to, whose axes are whole-number vectors at any turn (shared/world/frame.ts),
-// so a room is found by whole numbers, exactly. Outside air floods through the rooms from the open air round them and
-// from any room whose floor reaches past the chunk, so a chunk's border hides nothing. A wall, a floor and a ceiling
-// close a room's side, a doorframe only while a shut door stands in it, a window frame never. A piece is shell where a
-// room it closes, or any its mesh reaches, is outside air; the rest is seen only from inside its rooms.
+// A base's interior: the pieces of a chunk seen only from rooms its own pieces close. A piece of a base has a key in
+// its frame's lattice, and the rooms are found on those keys alone (shared/world/lattice/rooms.ts), frame by frame, from
+// the pieces of each frame that stand in this chunk. Air over a face that reaches past the chunk is outside air, so a
+// chunk's border hides nothing. A piece is shell where air it bounds, or any its mesh reaches, is outside air; the rest
+// is seen only from inside its rooms. A piece with no key closes nothing, and is interior where its mesh stands in rooms.
 
-import { RISE } from "../../../content/building.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, STRUCT_UNITS } from "../../../shared/coords.ts";
-import { HALF_SIDE, frameAxes } from "../../../shared/world/frame.ts";
-import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_WALL } from "../../../shared/world/snap.ts";
+import { LEVEL_UNITS, worldOf } from "../../../shared/world/lattice/basis.ts";
+import { HALF_SIDE_M, LEVEL_M, type FormTable } from "../../../shared/world/lattice/forms.ts";
+import type { Frame, Frames } from "../../../shared/world/lattice/frames.ts";
+import { SIDE, facesOverlap, keyLvl } from "../../../shared/world/lattice/module.ts";
+import { Enclosure } from "../../../shared/world/lattice/rooms.ts";
 import type { ChunkTable } from "../../../shared/world/structures.ts";
 
-/** What a kind is to the rooms it stands among. A thing stands in them and closes nothing. */
+/** What a kind is to the rooms it stands among. A thing closes nothing a mesh's reach is asked of, and is judged by where its mesh stands. */
 const THING = 0;
-const FLOOR = 1;
-const WALL = 2;
-const DOORWAY = 3;
-const WINDOW = 4;
-const SHUT = 5;
-const OPEN = 6;
-
-/** A room's `closed` bits: its side toward the next room along a, toward the next along b, and its floor; a doorway on either side, and a shut door in it. */
-const SIDE_A = 1;
-const SIDE_B = 2;
-const BELOW = 4;
-const DOORWAY_A = 8;
-const DOORWAY_B = 16;
-const SHUT_A = 32;
-const SHUT_B = 64;
-/** The bit a piece of each FORM sets on the room it closes, by its face: a floor, a side along a, a side along b. */
-const BITS: readonly (readonly number[])[] = [[0, 0, 0], [BELOW, 0, 0], [0, SIDE_A, SIDE_B], [0, DOORWAY_A, DOORWAY_B], [0, 0, 0], [0, SHUT_A, SHUT_B], [0, 0, 0]];
+const SLAB = 1;
+const SIDE_PIECE = 2;
+const SHUT = 3;
+const OPEN = 4;
 
 /** Per door slot: open when the rooms were found, and between outside air and an inside room then. */
 export const DOOR_OPEN = 1;
 export const DOOR_FRONTIER = 2;
 
-/** Lattice units of a storey and of a chunk's side. */
-const STOREY = RISE * STRUCT_UNITS;
+/** Lattice units of a chunk's side, and yaw units of a quarter turn. */
 const SPAN = CHUNK_SIZE * STRUCT_UNITS;
 const QUARTER = 16384;
-/** Rooms of open air kept round a lattice's own, from which outside air floods in. Past them all is outside air. */
-const MARGIN = 1;
-/** Past these a chunk's pieces are all shell: lattices in one chunk, and rooms of all of them. */
-const MOST_LATTICES = 64;
-const MOST_ROOMS = 1 << 21;
 /**
  * Metres a mesh may reach past a room's side, and down into its floor, and still be hidden. A wall is seen into between
  * its boards: an inner wall's end 0.1 m into an outer one shows from outside.
  */
 const IN_SIDE = 0.005;
 const IN_FLOOR = 0.05;
-/** Metres of slack in telling a piece's shape. */
-const SLACK = 0.01;
-/** Rooms a side's mesh reaches besides the two it closes: past its ends, over its storey's top, under its floor, or any other. */
+/** Air a side's mesh reaches besides the two sides it stands between: round its ends, over its top, under its foot, or any other. */
 const REACH_ENDS = 1;
 const REACH_UP = 2;
 const REACH_DOWN = 4;
 const REACH_ELSE = 8;
+/** Half-sides a bucket of a base's faces is wide. */
+const BUCKET = SIDE;
+const EPS = 1e-9;
 
-/** The rooms of one lattice: its turn, its axes (whole-number, a half side long), the residues of its rooms' middles, and its grid. */
-class Lattice {
-  index = 0;
-  within = 0;
-  c = 0;
-  s = 0;
-  /** The square of an axis' length, and how many cells a metre is. */
-  l2 = 0;
-  per = 0;
-  /** Residues of a room's middle along each axis (mod 2 l2) and of a storey's floor (mod STOREY), in lattice units. */
-  ru = 0;
-  rv = 0;
-  ry = 0;
-  a0 = 0;
-  b0 = 0;
-  k0 = 0;
-  na = 0;
-  nb = 0;
-  nk = 0;
-  closed = new Uint8Array(0);
-  /** 1 for a room of outside air, and as it was before the last flood. */
-  outside = new Uint8Array(0);
-  was = new Uint8Array(0);
+const world = new Int32Array(2);
+const tuples = new Int32Array(16);
+const others = new Int32Array(16);
+const clipA = new Float64Array(32);
+const clipB = new Float64Array(32);
 
-  /** Whether room (a, b, k) is outside air, as anything off the grid is. */
-  open(a: number, b: number, k: number): boolean {
-    const i = a - this.a0, j = b - this.b0, l = k - this.k0;
-    return i < 0 || j < 0 || l < 0 || i >= this.na || j >= this.nb || l >= this.nk || this.outside[(l * this.nb + j) * this.na + i] === 1;
+/** The area of a polygon of `n` corners in `poly` from `at`, cut to the box from (u0, v0) to (u1, v1). */
+function areaIn(poly: Float64Array, at: number, n: number, u0: number, v0: number, u1: number, v1: number): number {
+  let from = clipA;
+  let to = clipB;
+  for (let i = 0; i < 2 * n; i++) from[i] = poly[at + i]!;
+  // Each side of the box in turn keeps what is on its inner side: u or v, at least or at most a bound.
+  for (let side = 0; side < 4 && n > 0; side++) {
+    const axis = side & 1;
+    const bound = side === 0 ? u0 : side === 1 ? v0 : side === 2 ? u1 : v1;
+    const sign = side < 2 ? 1 : -1;
+    let kept = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const a = (from[2 * i + axis]! - bound) * sign;
+      const b = (from[2 * j + axis]! - bound) * sign;
+      if (a >= 0) {
+        to[2 * kept] = from[2 * i]!;
+        to[2 * kept + 1] = from[2 * i + 1]!;
+        kept++;
+      }
+      if (a >= 0 !== b >= 0) {
+        const s = a / (a - b);
+        to[2 * kept] = from[2 * i]! + s * (from[2 * j]! - from[2 * i]!);
+        to[2 * kept + 1] = from[2 * i + 1]! + s * (from[2 * j + 1]! - from[2 * i + 1]!);
+        kept++;
+      }
+    }
+    n = kept;
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  let twice = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    twice += from[2 * i]! * from[2 * j + 1]! - from[2 * j]! * from[2 * i + 1]!;
+  }
+  return Math.abs(twice) / 2;
+}
+
+/**
+ * One frame's part in a chunk: its rooms, and its faces with room air over them laid out to be found from a place. A
+ * place is told in the frame's own half-sides: `u` along its +X and `v` along its +Z from its origin, and levels up.
+ */
+class Base {
+  readonly gid: number;
+  readonly enc: Enclosure;
+  /** The frame's vectors and origin in lattice units, its +X a half-side long, that vector's squared length, its yaw, and half-sides in a metre. */
+  private readonly basis: Int32Array;
+  private readonly ox: number;
+  private readonly oy: number;
+  private readonly oz: number;
+  private readonly ax: number;
+  private readonly az: number;
+  private readonly l2: number;
+  readonly yaw: number;
+  readonly per: number;
+  /** Whether the chunk's last finding flooded it and found its air changed. */
+  moved = false;
+  /** Faces with room air: each one's face in `enc`, its corners as (u, v) going round from +u toward +v, how many, and 0 or a number squares of one tiling share. */
+  faces = 0;
+  private face = new Int32Array(0);
+  private poly = new Float64Array(0);
+  private corners = new Uint8Array(0);
+  private tiling = new Uint8Array(0);
+  /** The faces by bucket: the buckets from (bu, bv), `nu` by `nv`, each one's faces in `items` from `start`. */
+  private bu = 0;
+  private bv = 0;
+  private nu = 0;
+  private nv = 0;
+  private start = new Int32Array(1);
+  private items = new Int32Array(0);
+  /** Per face of `enc`, once it has been laid out: its corners as (u, v) and in the world's metres, how many (0 for not yet), and its tiling. */
+  private facePoly = new Float64Array(0);
+  private faceWorld = new Float64Array(0);
+  private faceCorners = new Uint8Array(0);
+  private faceTiling = new Uint8Array(0);
+  /** Per face, the ask that last looked at it; and the faces an ask found. */
+  private seen = new Int32Array(0);
+  private asks = 0;
+  private hit: number[] = [];
+
+  constructor(f: Frame, forms: FormTable, x0: number, z0: number) {
+    this.gid = f.gid;
+    this.basis = f.basis;
+    this.ox = f.ox;
+    this.oy = f.oy;
+    this.oz = f.oz;
+    this.ax = f.basis[0]!;
+    this.az = f.basis[1]!;
+    this.l2 = this.ax * this.ax + this.az * this.az;
+    this.yaw = f.yaw;
+    this.per = STRUCT_UNITS / Math.sqrt(this.l2);
+    this.enc = new Enclosure(forms);
+    const basis = f.basis;
+    const left = x0 * STRUCT_UNITS, back = z0 * STRUCT_UNITS;
+    // Air over a face that reaches past the chunk is open to what the chunk does not hold.
+    this.enc.open = (corners, n) => {
+      for (let k = 0; k < n; k++) {
+        worldOf(basis, f.ox, f.oz, corners, 4 * k, world, 0);
+        if (world[0]! < left || world[1]! < back || world[0]! > left + SPAN || world[1]! > back + SPAN) return true;
+      }
+      return false;
+    };
   }
 
-  /**
-   * Whether every room the box reaches is inside: about (x, y, z) metres, `da` and `db` metres along the lattice's axes
-   * and `dy` up, `ha`, `hb` and `hy` metres to each side.
-   */
-  holds(x: number, y: number, z: number, da: number, db: number, dy: number, ha: number, hb: number, hy: number, under: number): boolean {
-    const m = 2 * this.l2;
-    const X = x * STRUCT_UNITS, Z = z * STRUCT_UNITS;
-    const ca = (X * this.c - Z * this.s - this.ru) / m + da * this.per;
-    const cb = (X * this.s + Z * this.c - this.rv) / m + db * this.per;
-    const sa = Math.max(0, ha - IN_SIDE) * this.per, sb = Math.max(0, hb - IN_SIDE) * this.per;
-    const low = ((y + dy - hy + IN_FLOOR) * STRUCT_UNITS - this.ry) / STOREY;
-    const high = ((y + dy + hy + under) * STRUCT_UNITS - this.ry) / STOREY;
-    const k0 = Math.floor(low), k1 = Math.max(k0, Math.ceil(high) - 1);
-    for (let a = Math.ceil(ca - sa - 0.5), a1 = Math.floor(ca + sa + 0.5); a <= a1; a++) {
-      for (let b = Math.ceil(cb - sb - 0.5), b1 = Math.floor(cb + sb + 0.5); b <= b1; b++) {
-        for (let k = k0; k <= k1; k++) if (this.open(a, b, k)) return false;
+  /** A place in metres along the frame's own +X, in half-sides from its origin; and `v`, along its +Z. */
+  u(x: number, z: number): number {
+    return ((x * STRUCT_UNITS - this.ox) * this.ax + (z * STRUCT_UNITS - this.oz) * this.az) / this.l2;
+  }
+
+  v(x: number, z: number): number {
+    return ((z * STRUCT_UNITS - this.oz) * this.ax - (x * STRUCT_UNITS - this.ox) * this.az) / this.l2;
+  }
+
+  /** A height in metres as the frame's levels. */
+  level(y: number): number {
+    return (y * STRUCT_UNITS - this.oy) / LEVEL_UNITS;
+  }
+
+  /** Lays out the faces the last flood left with room air, and grows `box` (metres) round their rooms. */
+  index(box: Float64Array): void {
+    const enc = this.enc;
+    const w = enc.found;
+    this.faces = 0;
+    if (w.inside === 0) return;
+    if (this.face.length < w.faces) {
+      this.face = new Int32Array(w.faces);
+      this.poly = new Float64Array(w.faces * 8);
+      this.corners = new Uint8Array(w.faces);
+      this.tiling = new Uint8Array(w.faces);
+      this.seen = new Int32Array(w.faces);
+    }
+    this.seen.fill(0);
+    this.asks = 0;
+    if (this.faceCorners.length < w.faces) {
+      const size = Math.max(w.faces, this.faceCorners.length * 2);
+      this.facePoly = grown(this.facePoly, size * 8);
+      this.faceWorld = grown(this.faceWorld, size * 8);
+      this.faceCorners = grown(this.faceCorners, size);
+      this.faceTiling = grown(this.faceTiling, size);
+    }
+    let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
+    for (let g = 0; g < w.faces; g++) {
+      const first = w.first[g]!;
+      let low = Infinity, high = -Infinity;
+      for (let c = first; first >= 0 && c < first + w.count[g]!; c++) {
+        if (w.room[c]! < 0) continue;
+        low = Math.min(low, w.lo[c]!);
+        high = Math.max(high, w.hi[c]!);
       }
+      if (low > high) continue;
+      const i = this.faces++;
+      // A face's corners are where they were when it was last laid out: they are worked out once.
+      if (this.faceCorners[g] === 0) this.measure(g);
+      const n = this.faceCorners[g]!;
+      this.face[i] = g;
+      this.corners[i] = n;
+      this.tiling[i] = this.faceTiling[g]!;
+      for (let k = 0; k < n; k++) {
+        const u = this.facePoly[g * 8 + 2 * k]!, v = this.facePoly[g * 8 + 2 * k + 1]!;
+        this.poly[i * 8 + 2 * k] = u;
+        this.poly[i * 8 + 2 * k + 1] = v;
+        u0 = Math.min(u0, u);
+        v0 = Math.min(v0, v);
+        u1 = Math.max(u1, u);
+        v1 = Math.max(v1, v);
+        const x = this.faceWorld[g * 8 + 2 * k]!, z = this.faceWorld[g * 8 + 2 * k + 1]!;
+        box[0] = Math.min(box[0]!, x);
+        box[2] = Math.min(box[2]!, z);
+        box[3] = Math.max(box[3]!, x);
+        box[5] = Math.max(box[5]!, z);
+      }
+      box[1] = Math.min(box[1]!, (this.oy + low * LEVEL_UNITS) / STRUCT_UNITS);
+      box[4] = Math.max(box[4]!, (this.oy + high * LEVEL_UNITS) / STRUCT_UNITS);
+    }
+    this.bu = Math.floor(u0 / BUCKET);
+    this.bv = Math.floor(v0 / BUCKET);
+    this.nu = Math.floor(u1 / BUCKET) - this.bu + 1;
+    this.nv = Math.floor(v1 / BUCKET) - this.bv + 1;
+    const buckets = this.nu * this.nv;
+    if (this.start.length < buckets + 1) this.start = new Int32Array(buckets + 1);
+    const start = this.start.fill(0, 0, buckets + 1);
+    let total = 0;
+    // Counted into the slot after each bucket's, summed to each bucket's end, then set down from its end backward.
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < this.faces; i++) {
+        let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
+        for (let k = 0; k < this.corners[i]!; k++) {
+          a0 = Math.min(a0, this.poly[i * 8 + 2 * k]!);
+          a1 = Math.max(a1, this.poly[i * 8 + 2 * k]!);
+          b0 = Math.min(b0, this.poly[i * 8 + 2 * k + 1]!);
+          b1 = Math.max(b1, this.poly[i * 8 + 2 * k + 1]!);
+        }
+        for (let b = Math.floor(b0 / BUCKET) - this.bv; b <= Math.floor(b1 / BUCKET) - this.bv; b++) {
+          for (let a = Math.floor(a0 / BUCKET) - this.bu; a <= Math.floor(a1 / BUCKET) - this.bu; a++) {
+            if (pass === 0) start[b * this.nu + a + 1]!++;
+            else this.items[--start[b * this.nu + a + 1]!] = i;
+          }
+        }
+      }
+      if (pass === 1) break;
+      for (let b = 0; b < buckets; b++) start[b + 1]! += start[b]!;
+      total = start[buckets]!;
+      if (this.items.length < total) this.items = new Int32Array(total);
+    }
+    // Each slot now holds the start of the bucket before it.
+    start.copyWithin(0, 1, buckets + 1);
+    start[buckets] = total;
+  }
+
+  /** Works out the corners and the tiling of face `g` of `enc`. */
+  private measure(g: number): void {
+    const n = this.enc.faceCorners(g, tuples);
+    this.faceCorners[g] = n;
+    // A square along the frame's own axes tiles with every other whose corner is a whole number of sides from its own.
+    const straight = n === 4 && tuples[1] === 0 && tuples[2] === 0 && tuples[4] === tuples[0]! + SIDE && tuples[5] === 0 && tuples[6] === 0 && tuples[7] === tuples[3];
+    this.faceTiling[g] = straight ? 1 + (tuples[0]! & 1) + 2 * (tuples[3]! & 1) : 0;
+    for (let k = 0; k < n; k++) {
+      worldOf(this.basis, this.ox, this.oz, tuples, 4 * k, world, 0);
+      const dx = world[0]! - this.ox, dz = world[1]! - this.oz;
+      this.facePoly[g * 8 + 2 * k] = (dx * this.ax + dz * this.az) / this.l2;
+      this.facePoly[g * 8 + 2 * k + 1] = (dz * this.ax - dx * this.az) / this.l2;
+      this.faceWorld[g * 8 + 2 * k] = world[0]! / STRUCT_UNITS;
+      this.faceWorld[g * 8 + 2 * k + 1] = world[1]! / STRUCT_UNITS;
+    }
+  }
+
+  /** Whether laid-out face `i` and the box from (u0, v0) to (u1, v1) share a point. */
+  private meets(i: number, u0: number, v0: number, u1: number, v1: number): boolean {
+    const p = this.poly, at = i * 8, n = this.corners[i]!;
+    let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
+    for (let k = 0; k < n; k++) {
+      a0 = Math.min(a0, p[at + 2 * k]!);
+      a1 = Math.max(a1, p[at + 2 * k]!);
+      b0 = Math.min(b0, p[at + 2 * k + 1]!);
+      b1 = Math.max(b1, p[at + 2 * k + 1]!);
+    }
+    if (a1 < u0 || a0 > u1 || b1 < v0 || b0 > v1) return false;
+    if (this.tiling[i] !== 0) return true;
+    // A side with the whole box on its outer side parts them.
+    for (let k = 0; k < n; k++) {
+      const j = (k + 1) % n;
+      const su = p[at + 2 * j]! - p[at + 2 * k]!, sv = p[at + 2 * j + 1]! - p[at + 2 * k + 1]!;
+      const c0 = su * (v0 - p[at + 2 * k + 1]!), c1 = su * (v1 - p[at + 2 * k + 1]!);
+      const d0 = sv * (u0 - p[at + 2 * k]!), d1 = sv * (u1 - p[at + 2 * k]!);
+      if (Math.max(c0, c1) - Math.min(d0, d1) < -EPS) return false;
+    }
+    return true;
+  }
+
+  /** The laid-out faces the box from (u0, v0) to (u1, v1) meets, to `hit`. */
+  private find(u0: number, v0: number, u1: number, v1: number): number[] {
+    const hit = this.hit;
+    hit.length = 0;
+    const ask = ++this.asks;
+    const a0 = Math.max(0, Math.floor(u0 / BUCKET) - this.bu), a1 = Math.min(this.nu - 1, Math.floor(u1 / BUCKET) - this.bu);
+    const b0 = Math.max(0, Math.floor(v0 / BUCKET) - this.bv), b1 = Math.min(this.nv - 1, Math.floor(v1 / BUCKET) - this.bv);
+    for (let b = b0; b <= b1; b++) {
+      for (let a = a0; a <= a1; a++) {
+        for (let at = this.start[b * this.nu + a]!; at < this.start[b * this.nu + a + 1]!; at++) {
+          const i = this.items[at]!;
+          if (this.seen[i] === ask) continue;
+          this.seen[i] = ask;
+          if (this.meets(i, u0, v0, u1, v1)) hit.push(i);
+        }
+      }
+    }
+    return hit;
+  }
+
+  /** Whether a room's air is in the box from (u0, v0) to (u1, v1), from level `l0` up to `l1`, its sides and its bounds counted in. */
+  reaches(u0: number, v0: number, u1: number, v1: number, l0: number, l1: number): boolean {
+    if (this.faces === 0) return false;
+    const w = this.enc.found;
+    for (const i of this.find(u0, v0, u1, v1)) {
+      const g = this.face[i]!;
+      for (let c = w.first[g]!, end = c + w.count[g]!; c < end; c++) if (w.room[c]! >= 0 && w.lo[c]! <= l1 && w.hi[c]! > l0) return true;
+    }
+    return false;
+  }
+
+  /** Whether room air fills the box from (u0, v0) to (u1, v1) over the levels from `l0` up to `l1`: every face under it has it at each, and they cover it. */
+  holds(u0: number, v0: number, u1: number, v1: number, l0: number, l1: number): boolean {
+    if (this.faces === 0) return false;
+    // A box with no width is asked as a sliver.
+    u1 = Math.max(u1, u0 + 1e-6);
+    v1 = Math.max(v1, v0 + 1e-6);
+    const hit = this.find(u0, v0, u1, v1);
+    let got = 0, tiling = -1, kept = 0;
+    for (const i of hit) {
+      // A square along the frame's axes runs from its first corner to its third.
+      const p = this.poly, at = i * 8;
+      const area = this.tiling[i] !== 0 ? Math.max(0, Math.min(u1, p[at + 4]!) - Math.max(u0, p[at]!)) * Math.max(0, Math.min(v1, p[at + 5]!) - Math.max(v0, p[at + 1]!)) : areaIn(p, at, this.corners[i]!, u0, v0, u1, v1);
+      if (area <= 0) continue;
+      if (this.enc.filled(this.face[i]!, l0, l1) !== 1) return false;
+      got += area;
+      tiling = tiling < 0 || tiling === this.tiling[i] ? this.tiling[i]! : 0;
+      hit[kept++] = i;
+    }
+    if (got < (u1 - u0) * (v1 - v0) * (1 - 1e-6)) return false;
+    // Faces of two tilings may lie over one another, and their areas then say nothing: so none may.
+    for (let p = 0; tiling === 0 && p < kept; p++) {
+      const n = this.enc.faceCorners(this.face[hit[p]!]!, tuples);
+      for (let q = p + 1; q < kept; q++) if (facesOverlap(tuples, 0, n, others, 0, this.enc.faceCorners(this.face[hit[q]!]!, others))) return false;
     }
     return true;
   }
 }
 
 /**
- * A chunk's rooms, kept with what is drawn of it: its lattices, and per slot the room each piece closes or stands before,
- * so that after a few pieces change only theirs are found again. Asked each frame whether the camera is near an inside one.
+ * A chunk's rooms, kept with what is drawn of it: each frame's part of them, and per slot what its frame was told of it,
+ * so that after a few pieces change only theirs are told again. Asked each frame whether the camera is near an inside one.
  */
 export class Rooms {
-  /** The chunk's version they stand at, or -1 where they are to be found whole; and pieces left out since (RoomFinder.update). */
+  /** The chunk's version they stand at, or -1 where they are to be found whole. */
   version = -1;
-  loose = 0;
-  readonly lattices: Lattice[] = [];
-  /** Per slot: its lattice, or -1; its room in that lattice's grid; and its FORM * 4 plus how it bounds the room (0 under it, 1 or 2 a side along a or b). */
-  lattice = new Int8Array(0);
-  cell = new Int32Array(0);
-  code = new Uint8Array(0);
+  readonly bases: Base[] = [];
+  /** Per slot: its base in `bases`, or -1; the kind and key that base was told; and its face or edge there, or -1. */
+  base = new Int16Array(0);
+  kind = new Uint16Array(0);
+  k0 = new Uint32Array(0);
+  k1 = new Uint32Array(0);
+  element = new Int32Array(0);
+  /** The slots sorted again whenever any air moves (RoomFinder.always), `loosed` of them, and per slot its place among them, or -1. */
+  loose = new Int32Array(0);
+  looseAt = new Int32Array(0);
+  loosed = 0;
   /** Per slot, 0 for a piece seen only from inside rooms; and each door's DOOR_ flags. */
   shell = new Uint8Array(0);
   readonly doors = new Map<number, number>();
-  /** Whether any room is inside, and the box round those rooms in metres. */
+  /** Whether any room is inside, whether `shell` stands for every slot, and the box round those rooms in metres. */
   inside = false;
+  sorted = false;
   readonly box = new Float64Array(6);
 
   /** Whether a ball of `r` metres about (x, y, z) reaches an inside room. */
   near(x: number, y: number, z: number, r: number): boolean {
     const box = this.box;
     if (!this.inside || x < box[0]! - r || y < box[1]! - r || z < box[2]! - r || x > box[3]! + r || y > box[4]! + r || z > box[5]! + r) return false;
-    for (const l of this.lattices) {
-      const m = 2 * l.l2;
-      const X = x * STRUCT_UNITS, Z = z * STRUCT_UNITS;
-      const ca = (X * l.c - Z * l.s - l.ru) / m, cb = (X * l.s + Z * l.c - l.rv) / m;
-      const ck = (y * STRUCT_UNITS - l.ry) / STOREY;
-      const ra = r * l.per, rk = (r * STRUCT_UNITS) / STOREY;
-      for (let a = Math.ceil(ca - ra - 0.5), a1 = Math.floor(ca + ra + 0.5); a <= a1; a++) {
-        for (let b = Math.ceil(cb - ra - 0.5), b1 = Math.floor(cb + ra + 0.5); b <= b1; b++) {
-          for (let k = Math.floor(ck - rk), k1 = Math.floor(ck + rk); k <= k1; k++) if (!l.open(a, b, k)) return true;
-        }
-      }
+    for (const b of this.bases) {
+      const u = b.u(x, z), v = b.v(x, z), l = b.level(y);
+      const ru = r * b.per, rl = (r * STRUCT_UNITS) / LEVEL_UNITS;
+      if (b.reaches(u - ru, v - ru, u + ru, v + ru, l - rl, l + rl)) return true;
     }
     return false;
   }
@@ -154,24 +400,21 @@ export class Rooms {
 /** Finds which of a chunk's pieces are shell. One per scene; its scratch grows to the largest chunk. */
 export class RoomFinder {
   /**
-   * Per kind: what it is to its rooms, which rooms its mesh reaches besides those it closes (REACH_), its half height in
-   * lattice units, and its mesh's box about its origin in its own frame (middle x, y, z, then half x, y, z) in metres.
+   * Per kind: what it is to its rooms, which air its mesh reaches besides what it stands between (REACH_), the levels it
+   * stands, and its mesh's box about its origin in its own frame (middle x, y, z, then half x, y, z) in metres.
    */
   private readonly form: Uint8Array;
   private readonly reach: Uint8Array;
-  private readonly halfY: Int32Array;
+  private readonly span: Uint8Array;
   private readonly box: Float32Array;
-  /** The slots changed since the rooms were last found (update), how many, and whether any closed or opened a side. */
+  private readonly forms: FormTable;
+  /** The slots changed since the rooms were last found (update), and how many. */
   private changed = new Int32Array(0);
   private count = 0;
-  private touched = false;
-  /** Per slot of a chunk being found whole: its room along a, b and up. */
-  private ra = new Int32Array(0);
-  private rb = new Int32Array(0);
-  private rk = new Int32Array(0);
-  private queue = new Int32Array(0);
-  private readonly axes = new Int32Array(4);
-  private readonly ext = new Int32Array(MOST_LATTICES * 6);
+  /** Scratch: the pieces by air that moved, as their frames name them; those to sort again; and per slot whether it is among them. */
+  private readonly refs: number[] = [];
+  private again = new Int32Array(0);
+  private marked = new Uint8Array(0);
 
   /** Metres a mesh must end under its storey's top: the most any floor's coarser levels lie from its finest. */
   private under = 0;
@@ -179,42 +422,39 @@ export class RoomFinder {
   /** `meshes` are the pack's, with their bounds over every level; `errors` each level's error by mesh (AssetTable). */
   constructor(reg: Registry, meshOf: Uint16Array, meshes: readonly { readonly center: readonly number[]; readonly half: readonly number[] }[], errors: readonly (readonly number[])[]) {
     const n = reg.defs.length;
+    this.forms = reg.forms;
     this.form = new Uint8Array(n);
     this.reach = new Uint8Array(n);
-    this.halfY = new Int32Array(n);
+    this.span = new Uint8Array(n);
     this.box = new Float32Array(n * 6);
-    const half = HALF_SIDE / STRUCT_UNITS;
-    const { start, box, hulls } = reg.parts;
     for (let k = 1; k < n; k++) {
       const mesh = meshes[meshOf[k]!];
       for (let i = 0; i < 3 && mesh; i++) {
         this.box[k * 6 + i] = mesh.center[i]!;
         this.box[k * 6 + 3 + i] = mesh.half[i]!;
       }
-      this.halfY[k] = Math.round(reg.halfY[k]! * STRUCT_UNITS);
-      const role = reg.role[k]!;
-      if (hulls && hulls.start[k + 1]! > hulls.start[k]!) continue;
-      const p = start[k]! * 6, boxes = start[k + 1]! - start[k]!;
-      // One box over the whole of a room's floor or side, laid in the middle of it.
-      const whole = boxes === 1 && Math.abs(box[p]!) < SLACK && Math.abs(box[p + 2]!) < SLACK && box[p + 3]! >= half - SLACK;
-      if ((role === ROLE_FOUNDATION || role === ROLE_CEILING) && whole && box[p + 5]! >= half - SLACK) this.form[k] = FLOOR;
-      else if (role === ROLE_WALL) this.form[k] = reg.doorway[k] === 1 ? DOORWAY : whole && box[p + 4]! >= reg.halfY[k]! - SLACK ? WALL : WINDOW;
-      else if (role === ROLE_DOOR) {
-        // A shut door lies across its doorway, in the wall's plane.
-        let across = true;
-        for (let q = p; q < p + boxes * 6; q += 6) across &&= box[q + 5]! < box[q + 3]! && Math.abs(box[q + 2]!) <= box[q + 5]!;
-        this.form[k] = across ? SHUT : OPEN;
-      }
+      const f = reg.forms.def[k];
+      if (!f) continue;
+      this.span[k] = f.span;
+      // A piece over more than one edge, or with a sloped top, is judged by where its mesh stands.
+      const wide = new Set((f.cells ?? []).map((c) => c[0])).size > 1;
+      const flat = (f.edges ?? []).every((e) => e.profile === "flat");
+      if (f.layer === "slab" && (f.size ?? SIDE) === SIDE) this.form[k] = SLAB;
+      else if (f.layer === "wall" && !wide && flat && f.closes !== undefined && f.closes !== "none") this.form[k] = SIDE_PIECE;
+      else if (f.layer === "leaf" && f.cls === "edge" && !wide && reg.opens[k] !== 0) this.form[k] = f.closes === "full" ? SHUT : OPEN;
     }
     // A mesh reaching a storey's top shows where a ceiling's coarser level sinks under it.
-    for (let k = 1; k < n; k++) if (this.form[k] === FLOOR) for (const e of errors[meshOf[k]!] ?? []) this.under = Math.max(this.under, e);
+    for (let k = 1; k < n; k++) if (this.form[k] === SLAB) for (const e of errors[meshOf[k]!] ?? []) this.under = Math.max(this.under, e);
     for (let k = 1; k < n; k++) {
-      // Which rooms its mesh reaches besides those it closes: its floor's column, or its side's storey of the two rooms.
-      const b = this.box, at = k * 6, form = this.form[k]!;
-      const along = Math.abs(b[at]!) + b[at + 3]!, across = Math.abs(b[at + 2]!) + b[at + 5]!;
-      const foot = b[at + 1]! - b[at + 4]! + IN_FLOOR + reg.halfY[k]!, top = b[at + 1]! + b[at + 4]! + this.under + reg.halfY[k]!;
-      if (form === FLOOR) this.reach[k] = along > half + IN_SIDE || across > half + IN_SIDE ? REACH_ELSE : 0;
-      else if (form !== THING) this.reach[k] = (along > half + IN_SIDE ? REACH_ENDS : 0) | (top > RISE ? REACH_UP : 0) | (foot < 0 ? REACH_DOWN : 0) | (across > 2 * half + IN_SIDE ? REACH_ELSE : 0);
+      const f = reg.forms.def[k];
+      const form = this.form[k]!;
+      if (!f || form === THING) continue;
+      // The mesh's box from its slot's reference point: past its face sideways, or past its edge's ends, top, foot or thickness.
+      const b = this.box, at = k * 6;
+      const along = Math.abs(f.at[0] + b[at]!) + b[at + 3]!, across = Math.abs(f.at[2] + b[at + 2]!) + b[at + 5]!;
+      const foot = f.at[1] + b[at + 1]! - b[at + 4]! + IN_FLOOR, top = f.at[1] + b[at + 1]! + b[at + 4]! + this.under;
+      if (form === SLAB) this.reach[k] = f.cls === "triangle" || along > HALF_SIDE_M + IN_SIDE || across > HALF_SIDE_M + IN_SIDE ? REACH_ELSE : 0;
+      else this.reach[k] = (along > HALF_SIDE_M + IN_SIDE ? REACH_ENDS : 0) | (top > f.span * LEVEL_M ? REACH_UP : 0) | (foot < 0 ? REACH_DOWN : 0) | (across > 2 * HALF_SIDE_M + IN_SIDE ? REACH_ELSE : 0);
     }
   }
 
@@ -226,379 +466,250 @@ export class RoomFinder {
 
   /**
    * Finds which pieces of the chunk at (x0, z0) metres are seen only from inside rooms, into `rooms`: what was found of
-   * the chunk before, brought up to date by the slots changed since where they are few. Whether any piece is inside, and
-   * so whether its `shell` and `doors` stand.
+   * the chunk before, brought up to date by the slots changed since where they are few. `frames` are the store's. Whether
+   * any piece is inside, and so whether its `shell` and `doors` stand.
    */
-  find(t: ChunkTable, x0: number, z0: number, rooms: Rooms): boolean {
-    const kept = rooms.version >= 0 && this.update(t, rooms);
-    if (!kept && !this.lay(t, rooms)) {
-      rooms.version = -1;
-      return (rooms.inside = false);
-    }
+  find(t: ChunkTable, x0: number, z0: number, rooms: Rooms, frames: Frames): boolean {
+    const kept = rooms.version >= 0 && this.update(t, x0, z0, rooms, frames);
+    if (!kept) this.lay(t, x0, z0, rooms, frames);
     rooms.version = t.version;
-    // Where the changes closed or opened no room's side, or left every room as open to the air as it was, only the
-    // pieces changed are sorted again.
-    let same = kept;
-    if (!kept || this.touched) {
-      let inside = 0;
-      for (const l of rooms.lattices) {
-        if (same) l.was.set(l.outside);
-        l.outside.fill(0);
-        inside += this.flood(l, x0, z0);
-        for (let at = 0; same && at < l.outside.length; at++) same = l.was[at] === l.outside[at];
-      }
-      rooms.inside = inside > 0;
+    // Where the changes left every cell of air as open as it was, only the pieces changed are sorted again; where air
+    // moved across outside, or cells came or went, those and the pieces that stand by the air that is other than it was.
+    let same = kept, rebuilt = false;
+    const whole = !kept || !rooms.sorted;
+    for (const b of rooms.bases) {
+      b.moved = false;
+      if (!b.enc.stale && kept) continue;
+      b.enc.flood();
+      b.moved = b.enc.changed;
+      same = same && !b.enc.changed;
+      rebuilt ||= b.enc.rebuilt;
     }
-    if (same) {
-      for (let i = 0; i < this.count; i++) {
-        rooms.doors.delete(this.changed[i]!);
-        this.sort(t, rooms, this.changed[i]!);
-      }
-    } else {
-      rooms.doors.clear();
-      for (let slot = 0; slot < t.high; slot++) this.sort(t, rooms, slot);
+    if (!same) {
       const box = rooms.box;
       box[0] = box[1] = box[2] = Infinity;
       box[3] = box[4] = box[5] = -Infinity;
-      for (const l of rooms.lattices) this.bound(l, box);
+      rooms.inside = false;
+      for (const b of rooms.bases) {
+        b.index(box);
+        rooms.inside ||= b.faces > 0;
+      }
+    }
+    if (!rooms.inside) rooms.sorted = false;
+    else if (!same && whole) {
+      rooms.doors.clear();
+      for (let slot = 0; slot < t.high; slot++) this.sort(t, rooms, slot);
+      rooms.sorted = true;
+    } else {
+      if (!same) this.sortMoved(t, rooms);
+      for (let i = 0; i < this.count; i++) this.resort(t, rooms, this.changed[i]!);
+      // Where cells came or went the doors are listed lowest slot first, as sorting every piece lists them.
+      if (rebuilt && rooms.doors.size > 1) {
+        const slots = [...rooms.doors.keys()].sort((a, b) => a - b);
+        for (const slot of slots) {
+          const flags = rooms.doors.get(slot)!;
+          rooms.doors.delete(slot);
+          rooms.doors.set(slot, flags);
+        }
+      }
     }
     return rooms.inside;
   }
 
-  /** Finds the rooms of every piece of the chunk afresh. Whether a room may be shut in. */
-  private lay(t: ChunkTable, rooms: Rooms): boolean {
-    const lattices = rooms.lattices;
-    lattices.length = 0;
-    if (rooms.lattice.length < t.high) {
-      const n = Math.max(t.high, rooms.lattice.length * 2);
-      rooms.lattice = new Int8Array(n);
-      rooms.cell = new Int32Array(n);
-      rooms.code = new Uint8Array(n);
+  /**
+   * Sorts again each piece `moved` is true of, lowest slot first: of those judged by where their meshes stand, and of
+   * those each frame says stand by air that moved, so no slot that stands by still air is looked at.
+   */
+  private sortMoved(t: ChunkTable, rooms: Rooms): void {
+    const refs = this.refs;
+    refs.length = 0;
+    for (const b of rooms.bases) if (b.moved) b.enc.movedRefs(refs);
+    const most = rooms.loosed + refs.length;
+    if (this.again.length < most) this.again = new Int32Array(Math.max(most, this.again.length * 2));
+    if (this.marked.length < t.high) this.marked = new Uint8Array(Math.max(t.high, this.marked.length * 2));
+    const again = this.again, marked = this.marked;
+    let n = 0;
+    for (let i = 0; i < rooms.loosed; i++) {
+      const slot = rooms.loose[i]!;
+      marked[slot] = 1;
+      again[n++] = slot;
+    }
+    for (let i = 0; i < refs.length; i++) {
+      const slot = refs[i]!;
+      if (slot >= t.high || marked[slot] === 1) continue;
+      marked[slot] = 1;
+      again[n++] = slot;
+    }
+    const sorted = again.subarray(0, n).sort();
+    for (let i = 0; i < n; i++) {
+      marked[sorted[i]!] = 0;
+      if (this.moved(t, rooms, sorted[i]!)) this.resort(t, rooms, sorted[i]!);
+    }
+  }
+
+  /** Whether the piece in `slot` is sorted again whenever any air moves: it is in no frame, or judged by where its mesh stands. */
+  private always(t: ChunkTable, rooms: Rooms, slot: number): boolean {
+    const kind = t.kind[slot]!;
+    return kind !== 0 && (rooms.base[slot]! < 0 || this.form[kind] === THING || rooms.element[slot]! < 0 || (this.reach[kind]! & REACH_ELSE) !== 0);
+  }
+
+  /** Sets whether `slot` is among the rooms' `loose`. */
+  private loosen(rooms: Rooms, slot: number, loose: boolean): void {
+    const at = rooms.looseAt[slot]!;
+    if (at >= 0 === loose) return;
+    if (loose) {
+      if (rooms.loosed === rooms.loose.length) {
+        const grown = new Int32Array(Math.max(64, rooms.loosed * 2));
+        grown.set(rooms.loose);
+        rooms.loose = grown;
+      }
+      rooms.looseAt[slot] = rooms.loosed;
+      rooms.loose[rooms.loosed++] = slot;
+      return;
+    }
+    // The last takes its place.
+    const last = rooms.loose[--rooms.loosed]!;
+    rooms.loose[at] = last;
+    rooms.looseAt[last] = at;
+    rooms.looseAt[slot] = -1;
+  }
+
+  /** Whether the piece in `slot` stands by air that the last flood moved across outside, or is judged by where its mesh stands. */
+  private moved(t: ChunkTable, rooms: Rooms, slot: number): boolean {
+    const kind = t.kind[slot]!, at = rooms.base[slot]!, form = this.form[kind]!;
+    if (kind === 0) return false;
+    if (at < 0 || form === THING || rooms.element[slot]! < 0 || (this.reach[kind]! & REACH_ELSE) !== 0) return true;
+    const b = rooms.bases[at]!;
+    return b.moved && (form === SLAB ? b.enc.faceMoved(rooms.element[slot]!) : b.enc.edgeMoved(rooms.element[slot]!));
+  }
+
+  private resort(t: ChunkTable, rooms: Rooms, slot: number): void {
+    rooms.doors.delete(slot);
+    this.sort(t, rooms, slot);
+  }
+
+  /** Tells the frame of the keyed piece in `slot` of it, making the frame's part in this chunk, with room for `pieces`, where it is the first. */
+  private enter(t: ChunkTable, x0: number, z0: number, rooms: Rooms, frames: Frames, slot: number, pieces: number): void {
+    const gid = t.fr![slot]!;
+    const bases = rooms.bases;
+    let at = bases.length - 1;
+    while (at >= 0 && bases[at]!.gid !== gid) at--;
+    if (at < 0) {
+      const f = frames.get(gid);
+      if (!f || bases.length === 32767) return;
+      at = bases.push(new Base(f, this.forms, x0, z0)) - 1;
+      if (pieces > 0) bases[at]!.enc.reserve(Math.min(pieces - slot, f.live));
+    }
+    rooms.base[slot] = at;
+    rooms.kind[slot] = t.kind[slot]!;
+    rooms.k0[slot] = t.k0![slot]!;
+    rooms.k1[slot] = t.k1![slot]!;
+    rooms.element[slot] = bases[at]!.enc.add(t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, slot);
+  }
+
+  /** Tells every keyed piece of the chunk to its frame afresh. */
+  private lay(t: ChunkTable, x0: number, z0: number, rooms: Rooms, frames: Frames): void {
+    rooms.bases.length = 0;
+    this.count = 0;
+    if (rooms.base.length < t.high) {
+      const n = Math.max(t.high, rooms.base.length * 2);
+      rooms.base = new Int16Array(n);
+      rooms.kind = new Uint16Array(n);
+      rooms.k0 = new Uint32Array(n);
+      rooms.k1 = new Uint32Array(n);
+      rooms.element = new Int32Array(n);
       rooms.shell = new Uint8Array(n);
+      rooms.looseAt = new Int32Array(n);
     }
-    if (this.ra.length < t.high) {
-      const n = Math.max(t.high, this.ra.length * 2);
-      this.ra = new Int32Array(n);
-      this.rb = new Int32Array(n);
-      this.rk = new Int32Array(n);
-    }
-    rooms.lattice.fill(-1);
-    rooms.loose = 0;
-    const axes = this.axes, forms = this.form, halfY = this.halfY;
-    const lattice = rooms.lattice, code = rooms.code, ra = this.ra, rb = this.rb, rk = this.rk;
-    const kinds = t.kind, xs = t.x, ys = t.y, zs = t.z, yaws = t.yaw;
-    let within = -1, c = 0, s = 0, l2 = 0;
-    // The lattice the last piece stood on: its index (-1 for none), turn and residues.
-    let li = -1, lw = -1, lu = 0, lv = 0, ly = 0;
-    let floors = 0, walls = 0;
-    // Each lattice's least room along a, b and up, then its most.
-    const ext = this.ext;
-    for (let i = 0; i < ext.length; i++) ext[i] = i % 6 < 3 ? 1 << 30 : -(1 << 30);
+    rooms.base.fill(-1);
+    rooms.looseAt.fill(-1);
+    rooms.loosed = 0;
+    const fr = t.fr;
     for (let slot = 0; slot < t.high; slot++) {
-      const kind = kinds[slot]!;
-      const form = forms[kind]!;
-      if (kind === 0 || form === THING) continue;
-      const yaw = yaws[slot]!;
-      if ((yaw & (QUARTER - 1)) !== within) {
-        within = yaw & (QUARTER - 1);
-        frameAxes(within, axes);
-        c = axes[0]!;
-        s = axes[2]!;
-        l2 = c * c + s * s;
-      }
-      const X = xs[slot]! * STRUCT_UNITS, Z = zs[slot]! * STRUCT_UNITS, Y = ys[slot]! * STRUCT_UNITS;
-      // A floor's room is over its middle, from its top. A side's is the room before it along the axis it faces, from its foot.
-      let u = X * c - Z * s, v = X * s + Z * c, level = Y + halfY[kind]!, face = 0;
-      if (form !== FLOOR) {
-        level = Y - halfY[kind]!;
-        face = (yaw >> 14) & 1 ? 1 : 2;
-        if (face === 1) u -= l2;
-        else v -= l2;
-      }
-      const m = 2 * l2;
-      let a = (u - lu) / m, b = (v - lv) / m, k = (level - ly) / STOREY;
-      if (lw !== within || (a | 0) !== a || (b | 0) !== b || (k | 0) !== k) {
-        lu = ((u % m) + m) % m;
-        lv = ((v % m) + m) % m;
-        ly = ((level % STOREY) + STOREY) % STOREY;
-        lw = within;
-        li = this.latticeOf(lattices, within, lu, lv, ly);
-        if (li < 0) {
-          if (lattices.length === MOST_LATTICES) {
-            lw = -1;
-            continue;
-          }
-          const l = new Lattice();
-          l.index = li = lattices.length;
-          l.within = within;
-          l.c = c;
-          l.s = s;
-          l.l2 = l2;
-          l.per = STRUCT_UNITS / (2 * Math.sqrt(l2));
-          l.ru = lu;
-          l.rv = lv;
-          l.ry = ly;
-          lattices.push(l);
-        }
-        a = (u - lu) / m;
-        b = (v - lv) / m;
-        k = (level - ly) / STOREY;
-      }
-      lattice[slot] = li;
-      ra[slot] = a;
-      rb[slot] = b;
-      rk[slot] = k;
-      code[slot] = form * 4 + face;
-      if (form === FLOOR) floors++;
-      else if (form === WALL || form === DOORWAY) walls++;
-      const e = li * 6, k0 = face === 0 ? k - 1 : k, a1 = face === 1 ? a + 1 : a, b1 = face === 2 ? b + 1 : b;
-      if (a < ext[e]!) ext[e] = a;
-      if (b < ext[e + 1]!) ext[e + 1] = b;
-      if (k0 < ext[e + 2]!) ext[e + 2] = k0;
-      if (a1 > ext[e + 3]!) ext[e + 3] = a1;
-      if (b1 > ext[e + 4]!) ext[e + 4] = b1;
-      if (k > ext[e + 5]!) ext[e + 5] = k;
+      if (t.kind[slot] === 0) continue;
+      if (fr && fr[slot] !== 0) this.enter(t, x0, z0, rooms, frames, slot, t.high);
+      if (this.always(t, rooms, slot)) this.loosen(rooms, slot, true);
     }
-    // A room is shut in by a floor under it, another over it and four sides.
-    if (floors < 2 || walls < 4) return false;
-    let total = 0;
-    for (const l of lattices) {
-      const e = l.index * 6;
-      l.a0 = ext[e]! - MARGIN;
-      l.b0 = ext[e + 1]! - MARGIN;
-      l.k0 = ext[e + 2]! - MARGIN;
-      l.na = ext[e + 3]! - ext[e]! + 1 + 2 * MARGIN;
-      l.nb = ext[e + 4]! - ext[e + 1]! + 1 + 2 * MARGIN;
-      l.nk = ext[e + 5]! - ext[e + 2]! + 1 + 2 * MARGIN;
-      total += l.na * l.nb * l.nk;
-    }
-    if (total > MOST_ROOMS) return false;
-    for (const l of lattices) {
-      l.closed = new Uint8Array(l.na * l.nb * l.nk);
-      l.outside = new Uint8Array(l.na * l.nb * l.nk);
-      l.was = new Uint8Array(l.na * l.nb * l.nk);
-    }
-    const cell = rooms.cell;
-    for (let slot = 0; slot < t.high; slot++) {
-      if (lattice[slot]! < 0) continue;
-      const l = lattices[lattice[slot]!]!;
-      const at = ((rk[slot]! - l.k0) * l.nb + rb[slot]! - l.b0) * l.na + ra[slot]! - l.a0;
-      cell[slot] = at;
-      l.closed[at]! |= BITS[code[slot]! >> 2]![code[slot]! & 3]!;
-    }
-    return true;
   }
 
   /**
-   * Brings the rooms up to date with the slots changed since they were found, where those are few. A piece standing past
-   * the rooms held, as one that grows the base does, is left out: it closes nothing, and is shell, until they are found
-   * whole, once as many are left out as would have them found whole now. Whether it could.
+   * Brings the rooms up to date with the slots changed since they were found, where those are few: a slot written since,
+   * or one whose key is no longer what its frame was told. Whether it could.
    */
-  private update(t: ChunkTable, rooms: Rooms): boolean {
-    if (rooms.lattice.length < t.high) return false;
+  private update(t: ChunkTable, x0: number, z0: number, rooms: Rooms, frames: Frames): boolean {
+    if (rooms.base.length < t.high) return false;
     const mod = t.mod, since = rooms.version, most = Math.max(64, t.high >> 4);
-    let changed = rooms.loose;
-    for (let slot = 0; slot < t.high; slot++) if (mod[slot]! > since && ++changed > most) return false;
-    const axes = this.axes, lattices = rooms.lattices;
-    this.count = 0;
-    this.touched = false;
+    const fr = t.fr, bases = rooms.bases;
     if (this.changed.length < most) this.changed = new Int32Array(most);
+    this.count = 0;
     for (let slot = 0; slot < t.high; slot++) {
-      if (mod[slot]! <= since) continue;
+      const held = rooms.base[slot]!, keyed = fr !== null && fr[slot] !== 0 && t.kind[slot] !== 0;
+      const told = held >= 0 && keyed && bases[held]!.gid === fr[slot] && rooms.kind[slot] === t.kind[slot] && rooms.k0[slot] === t.k0![slot] && rooms.k1[slot] === t.k1![slot];
+      if (mod[slot]! <= since && (told || (held < 0 && !keyed))) continue;
+      if (this.count === most) return false;
       this.changed[this.count++] = slot;
-      // What the slot held closes nothing now. No two pieces close one side, as they would stand in each other.
-      const was = rooms.lattice[slot]!;
-      if (was >= 0) lattices[was]!.closed[rooms.cell[slot]!]! &= ~BITS[rooms.code[slot]! >> 2]![rooms.code[slot]! & 3]!;
-      this.touched ||= was >= 0;
-      rooms.lattice[slot] = -1;
-      const kind = t.kind[slot]!, form = this.form[kind]!;
-      if (kind === 0 || form === THING) continue;
-      const yaw = t.yaw[slot]!, within = yaw & (QUARTER - 1);
-      frameAxes(within, axes);
-      const c = axes[0]!, s = axes[2]!, l2 = c * c + s * s, m = 2 * l2;
-      const X = t.x[slot]! * STRUCT_UNITS, Z = t.z[slot]! * STRUCT_UNITS, Y = t.y[slot]! * STRUCT_UNITS;
-      let u = X * c - Z * s, v = X * s + Z * c, level = Y + this.halfY[kind]!, face = 0;
-      if (form !== FLOOR) {
-        level = Y - this.halfY[kind]!;
-        face = (yaw >> 14) & 1 ? 1 : 2;
-        if (face === 1) u -= l2;
-        else v -= l2;
-      }
-      const ru = ((u % m) + m) % m, rv = ((v % m) + m) % m, ry = ((level % STOREY) + STOREY) % STOREY;
-      const li = this.latticeOf(lattices, within, ru, rv, ry);
-      const l = li >= 0 ? lattices[li]! : null;
-      const i = l ? (u - ru) / m - l.a0 : 0, j = l ? (v - rv) / m - l.b0 : 0, k = l ? (level - ry) / STOREY - l.k0 : 0;
-      // Its rooms must lie off the grid's edge, as every room a piece closes does.
-      if (!l || i < 1 || j < 1 || k < (face === 0 ? 2 : 1) || i + (face === 1 ? 1 : 0) > l.na - 2 || j + (face === 2 ? 1 : 0) > l.nb - 2 || k > l.nk - 2) {
-        rooms.loose++;
-        continue;
-      }
-      const at = (k * l.nb + j) * l.na + i;
-      rooms.lattice[slot] = li;
-      rooms.cell[slot] = at;
-      rooms.code[slot] = form * 4 + face;
-      l.closed[at]! |= BITS[form]![face]!;
-      this.touched = true;
+    }
+    for (let i = 0; i < this.count; i++) {
+      const slot = this.changed[i]!, held = rooms.base[slot]!;
+      if (held >= 0) bases[held]!.enc.remove(rooms.kind[slot]!, rooms.k0[slot]!, rooms.k1[slot]!, slot);
+      rooms.base[slot] = -1;
+      if (fr !== null && fr[slot] !== 0 && t.kind[slot] !== 0) this.enter(t, x0, z0, rooms, frames, slot, 0);
+      this.loosen(rooms, slot, this.always(t, rooms, slot));
     }
     return true;
-  }
-
-  /** The index in `lattices` of the one of this turn and these residues, or -1. */
-  private latticeOf(lattices: readonly Lattice[], within: number, ru: number, rv: number, ry: number): number {
-    for (let i = 0; i < lattices.length; i++) {
-      const o = lattices[i]!;
-      if (o.within === within && o.ru === ru && o.rv === rv && o.ry === ry) return i;
-    }
-    return -1;
   }
 
   /** Sorts the piece in `slot`: 0 in the rooms' `shell` where it is seen only from inside rooms, else 1; and sets a door's flags. */
   private sort(t: ChunkTable, rooms: Rooms, slot: number): void {
-    const kind = t.kind[slot]!, li = rooms.lattice[slot]!, lattices = rooms.lattices;
+    const kind = t.kind[slot]!, at = rooms.base[slot]!, form = this.form[kind]!;
+    const e = at < 0 ? -1 : rooms.element[slot]!;
     let hidden = false;
     if (kind === 0) hidden = false;
-    else if (li >= 0) {
-      // The room it stands on or before, and the room under it or beyond it.
-      const l = lattices[li]!, out = l.outside, at = rooms.cell[slot]!, form = rooms.code[slot]! >> 2, face = rooms.code[slot]! & 3, plane = l.na * l.nb;
-      const other = face === 0 ? at - plane : face === 1 ? at + 1 : at + l.na;
-      const near = out[at]!, far = out[other]!;
-      if (form >= SHUT) rooms.doors.set(slot, (form === OPEN ? DOOR_OPEN : 0) | (near !== far ? DOOR_FRONTIER : 0));
-      const r = this.reach[kind]!;
-      hidden = near === 0 && far === 0;
-      if (hidden && (r & REACH_ELSE) !== 0) hidden = this.within(t, slot, l);
-      else if (hidden && r !== 0) {
-        // The rooms past a side's ends lie along the other axis; over and under it, those and its own two a storey off.
-        const ends = (r & REACH_ENDS) === 0 ? 0 : face === 1 ? l.na : 1;
-        hidden = clear(out, at, other, ends) && ((r & REACH_UP) === 0 || clear(out, at + plane, other + plane, ends)) && ((r & REACH_DOWN) === 0 || clear(out, at - plane, other - plane, ends));
+    else if (e >= 0 && form !== THING) {
+      const b = rooms.bases[at]!, enc = b.enc, lvl = keyLvl(rooms.k1[slot]!), r = this.reach[kind]!;
+      if (form === SLAB) hidden = enc.filled(e, lvl, lvl + 1) === 1 && enc.filled(e, lvl - 1, lvl) === 1;
+      else {
+        const top = lvl + this.span[kind]!, ends = (r & REACH_ENDS) !== 0;
+        if (form >= SHUT) rooms.doors.set(slot, (form === OPEN ? DOOR_OPEN : 0) | (enc.sideFilled(e, 0, lvl, top) !== enc.sideFilled(e, 1, lvl, top) ? DOOR_FRONTIER : 0));
+        // The air its mesh reaches past its ends, over its top and under its foot is asked on both sides too.
+        hidden = enc.edgeFilled(e, lvl, top, ends) && ((r & REACH_UP) === 0 || enc.edgeFilled(e, top, top + 1, ends)) && ((r & REACH_DOWN) === 0 || enc.edgeFilled(e, lvl - 1, lvl, ends));
       }
+      if (hidden && (r & REACH_ELSE) !== 0) hidden = this.within(t, slot, b);
     } else {
-      for (let i = 0; !hidden && i < lattices.length; i++) hidden = this.within(t, slot, lattices[i]!);
+      for (let i = 0; !hidden && i < rooms.bases.length; i++) hidden = this.within(t, slot, rooms.bases[i]!);
     }
     rooms.shell[slot] = hidden ? 0 : 1;
   }
 
-  /**
-   * Floods outside air through a lattice's rooms. Returns how many are inside. The grid's edge is outside air, and so is
-   * the room within it next to it, since every side a piece closes lies between two rooms of a piece; so only rooms off
-   * the edge are walked, and each of their neighbours is on the grid.
-   */
-  private flood(l: Lattice, x0: number, z0: number): number {
-    const { na, nb, nk, closed, outside } = l;
-    const plane = na * nb, n = plane * nk;
-    if (this.queue.length < n) this.queue = new Int32Array(Math.max(n, this.queue.length * 2));
-    const queue = this.queue;
-    let tail = 0;
-    const m = 2 * l.l2;
-    const X0 = x0 * STRUCT_UNITS, Z0 = z0 * STRUCT_UNITS;
-    for (let j = 0; j < nb; j++) {
-      for (let i = 0; i < na; i++) {
-        const edge = i === 0 || j === 0 || i === na - 1 || j === nb - 1;
-        // A room whose floor reaches past the chunk is open to what the chunk does not hold.
-        let rim = edge || i === 1 || j === 1 || i === na - 2 || j === nb - 2;
-        const u = l.ru + (l.a0 + i) * m, v = l.rv + (l.b0 + j) * m;
-        for (let corner = 0; corner < 4 && !rim; corner++) {
-          const cu = u + (corner & 1 ? l.l2 : -l.l2), cv = v + (corner & 2 ? l.l2 : -l.l2);
-          const X = (cu * l.c + cv * l.s) / l.l2 - X0, Z = (cv * l.c - cu * l.s) / l.l2 - Z0;
-          rim = X < 0 || Z < 0 || X > SPAN || Z > SPAN;
-        }
-        for (let k = 0, at = j * na + i; k < nk; k++, at += plane) {
-          if (edge || k === 0 || k === nk - 1) outside[at] = 1;
-          else if (rim || k === 1 || k === nk - 2) {
-            outside[at] = 1;
-            queue[tail++] = at;
-          }
-        }
-      }
-    }
-    // A doorway is closed by a shut door in it.
-    const shutA = (f: number): boolean => (f & SIDE_A) !== 0 || (f & (DOORWAY_A | SHUT_A)) === (DOORWAY_A | SHUT_A);
-    const shutB = (f: number): boolean => (f & SIDE_B) !== 0 || (f & (DOORWAY_B | SHUT_B)) === (DOORWAY_B | SHUT_B);
-    for (let head = 0; head < tail; ) {
-      const at = queue[head++]!;
-      const f = closed[at]!;
-      let next = at + 1;
-      if (!shutA(f) && outside[next] === 0) {
-        outside[next] = 1;
-        queue[tail++] = next;
-      }
-      next = at - 1;
-      if (!shutA(closed[next]!) && outside[next] === 0) {
-        outside[next] = 1;
-        queue[tail++] = next;
-      }
-      next = at + na;
-      if (!shutB(f) && outside[next] === 0) {
-        outside[next] = 1;
-        queue[tail++] = next;
-      }
-      next = at - na;
-      if (!shutB(closed[next]!) && outside[next] === 0) {
-        outside[next] = 1;
-        queue[tail++] = next;
-      }
-      next = at + plane;
-      if ((closed[next]! & BELOW) === 0 && outside[next] === 0) {
-        outside[next] = 1;
-        queue[tail++] = next;
-      }
-      next = at - plane;
-      if ((f & BELOW) === 0 && outside[next] === 0) {
-        outside[next] = 1;
-        queue[tail++] = next;
-      }
-    }
-    return Math.max(0, (na - 2) * (nb - 2) * (nk - 2)) - tail;
-  }
-
-  /** Whether every room the mesh of the piece in `slot` reaches is an inside room of `l`. */
-  private within(t: ChunkTable, slot: number, l: Lattice): boolean {
+  /** Whether all the air the mesh of the piece in `slot` reaches is room air of `b`. */
+  private within(t: ChunkTable, slot: number, b: Base): boolean {
+    if (b.faces === 0) return false;
     const kind = t.kind[slot]!, yaw = t.yaw[slot]!;
     const box = this.box, at = kind * 6;
     const cx = box[at]!, cy = box[at + 1]!, cz = box[at + 2]!, hx = box[at + 3]!, hy = box[at + 4]!, hz = box[at + 5]!;
-    // Turned square to the lattice, its box is its mesh's; turned otherwise, as far as the mesh reaches at any turn.
-    if ((yaw & (QUARTER - 1)) !== l.within) {
-      const side = Math.hypot(Math.abs(cx) + hx, Math.abs(cz) + hz);
-      return l.holds(t.x[slot]!, t.y[slot]!, t.z[slot]!, 0, 0, cy, side, side, hy, this.under);
-    }
-    const q = (yaw >> 14) & 3;
-    const da = q === 0 ? cx : q === 1 ? cz : q === 2 ? -cx : -cz;
-    const db = q === 0 ? cz : q === 1 ? -cx : q === 2 ? -cz : cx;
-    return q & 1 ? l.holds(t.x[slot]!, t.y[slot]!, t.z[slot]!, da, db, cy, hz, hx, hy, this.under) : l.holds(t.x[slot]!, t.y[slot]!, t.z[slot]!, da, db, cy, hx, hz, hy, this.under);
-  }
-
-  /** Grows `box` round a lattice's inside rooms, in metres. */
-  private bound(l: Lattice, box: Float64Array): void {
-    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity, k0 = Infinity, k1 = -Infinity;
-    for (let k = 0, at = 0; k < l.nk; k++) {
-      for (let j = 0; j < l.nb; j++) {
-        for (let i = 0; i < l.na; i++, at++) {
-          if (l.outside[at] === 1) continue;
-          if (i < a0) a0 = i;
-          if (i > a1) a1 = i;
-          if (j < b0) b0 = j;
-          if (j > b1) b1 = j;
-          if (k < k0) k0 = k;
-          k1 = k;
-        }
+    const x = t.x[slot]!, y = t.y[slot]!, z = t.z[slot]!;
+    let du = 0, dv = 0, hu = hx, hv = hz;
+    // Turned square to the frame, its box is its mesh's; turned otherwise, as far as the mesh reaches at any turn.
+    if (((yaw - b.yaw) & (QUARTER - 1)) !== 0 || (t.tw !== null && t.tw[slot] !== 0)) hu = hv = Math.hypot(Math.abs(cx) + hx, Math.abs(cz) + hz);
+    else {
+      const q = ((b.yaw - yaw) >> 14) & 3;
+      du = q === 0 ? cx : q === 1 ? -cz : q === 2 ? -cx : cz;
+      dv = q === 0 ? cz : q === 1 ? cx : q === 2 ? -cz : -cx;
+      if (q & 1) {
+        hu = hz;
+        hv = hx;
       }
     }
-    if (a0 > a1) return;
-    const m = 2 * l.l2;
-    for (let corner = 0; corner < 4; corner++) {
-      const u = l.ru + (l.a0 + (corner & 1 ? a1 : a0)) * m + (corner & 1 ? l.l2 : -l.l2);
-      const v = l.rv + (l.b0 + (corner & 2 ? b1 : b0)) * m + (corner & 2 ? l.l2 : -l.l2);
-      const x = (u * l.c + v * l.s) / l.l2 / STRUCT_UNITS, z = (v * l.c - u * l.s) / l.l2 / STRUCT_UNITS;
-      box[0] = Math.min(box[0]!, x);
-      box[2] = Math.min(box[2]!, z);
-      box[3] = Math.max(box[3]!, x);
-      box[5] = Math.max(box[5]!, z);
-    }
-    box[1] = Math.min(box[1]!, (l.ry + (l.k0 + k0) * STOREY) / STRUCT_UNITS);
-    box[4] = Math.max(box[4]!, (l.ry + (l.k0 + k1 + 1) * STOREY) / STRUCT_UNITS);
+    const u = b.u(x, z) + du * b.per, v = b.v(x, z) + dv * b.per;
+    const su = Math.max(0, hu - IN_SIDE) * b.per, sv = Math.max(0, hv - IN_SIDE) * b.per;
+    const low = Math.floor(b.level(y + cy - hy + IN_FLOOR));
+    return b.holds(u - su, v - sv, u + su, v + sv, low, Math.max(low + 1, Math.ceil(b.level(y + cy + hy + this.under))));
   }
 }
 
-/** Whether rooms `at` and `other` are inside, and with `ends` the rooms that far either side of each. */
-function clear(out: Uint8Array, at: number, other: number, ends: number): boolean {
-  return out[at] === 0 && out[other] === 0 && (ends === 0 || (out[at - ends] === 0 && out[at + ends] === 0 && out[other - ends] === 0 && out[other + ends] === 0));
+/** A column `size` long holding what it held. */
+function grown<T extends Float64Array | Uint8Array>(a: T, size: number): T {
+  const b = new (a.constructor as new (n: number) => T)(size);
+  b.set(a);
+  return b;
 }

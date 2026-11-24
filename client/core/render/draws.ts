@@ -174,6 +174,9 @@ export class Draws {
   nearAt = 0;
   /** The effect `draw` gives its draws (packet.ts drawEffect): all 0 but while a supply drop's lights are drawn. */
   readonly effect = new Float32Array(4);
+  /** The tint and the fade `draw` gives its draws (packet.ts drawTint): 0 but while a piece about to be built is drawn. */
+  tint = 0;
+  fade = 0;
   /** The swap `draw` gives its draws (packet.ts drawSwap): 0 but while a cell of trees changing level is drawn (`swapOf`). */
   swap = 0;
   /** Scratch for the draws of a level, four numbers each: material, 1 if from the trunk's level, first index, indices. */
@@ -269,6 +272,8 @@ export class Draws {
       p.drawHand[d] = hand;
       p.drawSwap[d] = material < 0 ? 0 : this.swap;
       p.drawEffect.set(this.effect, d * 4);
+      p.drawTint[d * 2] = this.tint;
+      p.drawTint[d * 2 + 1] = this.fade;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
       p.drawWear[d] = p.drawLayer[d]! > 0 ? Math.floor(layer / WEAR_KEY) : 0;
       const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;

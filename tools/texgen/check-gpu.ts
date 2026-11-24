@@ -5,9 +5,10 @@
 // floats are 32 bits where the twin's are 64, so a byte may differ by a step where a feature's edge falls between them.
 // It says too how long the card took to make each program's pipeline at its first draw, and to make everything.
 //
-//   bun tools/texgen/check-gpu.ts [--side 512] [--out folder]
+//   bun tools/texgen/check-gpu.ts [--side 512] [--out folder] [--time plate]
 //
-// With --out, each layer's two pictures and their difference are kept there as PNGs.
+// With --out, each layer's two pictures and their difference are kept there as PNGs. With --time, that material's
+// slot is made again nine times alone, and the median of the page's ms and the frames it took are said.
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,7 +21,9 @@ import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
 import { encodePng } from "../snap/png.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
-const { values } = parseArgs({ options: { side: { type: "string", default: "512" }, out: { type: "string" } } });
+const { values } = parseArgs({ options: { side: { type: "string", default: "512" }, out: { type: "string" }, time: { type: "string" } } });
+const timed = values.time === undefined ? 0 : MATERIAL_RECIPES.findIndex((r) => r.name === values.time) + 1;
+if (values.time !== undefined && timed === 0) throw new Error(`no recipe "${values.time}"`);
 const side = Number(values.side);
 const chrome = findChrome();
 if (!chrome) throw new Error("no Chrome: set CHROME");
@@ -89,8 +92,20 @@ const more = Math.min(${MATERIAL_RECIPES.length - MADE_SLOTS}, ${MADE_SLOTS});
 for (let k = 0; k < more; k++) want[${MADE_LAYER} + k * 2] = want[${MADE_LAYER} + k * 2 + 1] = ${MADE_SLOTS} + k + 1;
 const [againFrames, againMs] = more > 0 ? run() : [0, 0];
 read(${MADE_LAYER}, ${MADE_LAYER} + more * 2);
+// One material's slot alone, made over another's and timed.
+const alone: number[] = [];
+let aloneFrames = 0;
+for (let k = 0; k < (${timed} > 0 ? 9 : 0); k++) {
+  want[${MADE_LAYER}] = want[${MADE_LAYER} + 1] = ${timed} === 1 ? 2 : 1;
+  run();
+  want[${MADE_LAYER}] = want[${MADE_LAYER} + 1] = ${timed};
+  const [f, t] = run();
+  alone.push(t);
+  aloneFrames = f;
+}
+alone.sort((a, b) => a - b);
 const info = gl.getExtension("WEBGL_debug_renderer_info");
-(globalThis as Record<string, unknown>).done = { renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), warm, frames, ms, slowest, out, first: engine.first, more, againFrames, againMs, slowAt };
+(globalThis as Record<string, unknown>).done = { alone: alone[4] ?? 0, aloneLeast: alone[0] ?? 0, aloneFrames, renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), warm, frames, ms, slowest, out, first: engine.first, more, againFrames, againMs, slowAt };
 `);
 const built = await Bun.build({ entrypoints: [entry], target: "browser", minify: false });
 if (!built.success) throw new Error(built.logs.map(String).join("\n"));
@@ -114,7 +129,7 @@ try {
   ws.onmessage = (e) => { const d = JSON.parse(String(e.data)); if (d.id && waiting.has(d.id)) { waiting.get(d.id)!(d.result); waiting.delete(d.id); } };
   const send = (method: string, params: object): Promise<any> => new Promise((r) => { waiting.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
   await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/` });
-  let done: { error?: string; renderer: string; warm: number; frames: number; ms: number; slowest: number; out: { layer: number; version: number; bytes: string }[]; first: number[]; more: number; againFrames: number; againMs: number; slowAt: string } | null = null;
+  let done: { error?: string; alone: number; aloneLeast: number; aloneFrames: number; renderer: string; warm: number; frames: number; ms: number; slowest: number; out: { layer: number; version: number; bytes: string }[]; first: number[]; more: number; againFrames: number; againMs: number; slowAt: string } | null = null;
   for (let i = 0; i < 1200 && !done; i++) {
     await Bun.sleep(100);
     done = (await send("Runtime.evaluate", { expression: "globalThis.done ?? null", returnByValue: true }))?.result?.value ?? null;
@@ -123,6 +138,7 @@ try {
   if (done.error) throw new Error(done.error);
   console.log(`card: ${done.renderer}; ${side} a side; its programs' first draws ${done.warm.toFixed(1)} ms; made in ${done.frames} frames, ${done.ms.toFixed(0)} ms by the page's clock with every frame waited for, the slowest frame ${done.slowest.toFixed(1)} ms (${done.slowAt})`);
   console.log(`${done.more} slots made again with other materials in ${done.againFrames} frames, ${done.againMs.toFixed(0)} ms`);
+  if (timed > 0) console.log(`${values.time}'s slot alone, made again: ${done.aloneFrames} frames, ${done.alone.toFixed(2)} ms the median of nine, ${done.aloneLeast.toFixed(2)} the least`);
   const jobs = texgenJobs();
   let worst = 0;
   for (const { layer: l, version, bytes } of done.out) {

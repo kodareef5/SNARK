@@ -8,7 +8,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
-import { NO_TARGET } from "../../server/build.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { APART, RETRY_SECONDS, SITE_CLEAR } from "../../server/supply.ts";
@@ -16,6 +15,7 @@ import { DECK_CLEAR } from "../../server/supply/ground.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_PLACE, RESULT_DENIED, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { writeNew } from "../../shared/net/place.ts";
 import { QUALITY_RATING } from "../../shared/sim/items.ts";
 import type { CircuitDoc, SupplyBook } from "../../shared/supply/book.ts";
 import { simulate } from "../../shared/supply/simulate.ts";
@@ -25,6 +25,7 @@ import { builder } from "../fixtures/build.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { start } from "../fixtures/slots.ts";
 
 const reg = coreRegistry();
 const CAPSULE = reg.index.get("core:supply_capsule")!;
@@ -133,7 +134,7 @@ test("a circuit with sites calls drops at them alone: those within reach of a su
   // A tribe's foundation thirty metres from one of them.
   me.team = h.host.records.newTeam();
   const foundation = reg.index.get("core:foundation_wood")!;
-  h.world.structs.add(foundation, 200, reg.halfY[foundation]!, 350, 0, me.team, reg.maxHp[foundation]!);
+  start(h.world, foundation, 200, reg.halfY[foundation]!, 350, 0, me.team, reg.maxHp[foundation]!);
   const { supply } = h.host;
   expect([supply.siteFault(200, 320), supply.siteFault(320, 250), supply.siteFault(200, 350)]).toEqual(["base", "", "built"]);
   seconds(h, 40);
@@ -161,7 +162,7 @@ test("AllowCrateSpawnsOnTopOfStructures: a drop may land on a floor a tribe buil
   me.team = h.host.records.newTeam();
   const foundation = reg.index.get("core:foundation_wood")!;
   const top = 2 * reg.halfY[foundation]!;
-  h.world.structs.add(foundation, 280, reg.halfY[foundation]!, 250, 0, me.team, reg.maxHp[foundation]!);
+  start(h.world, foundation, 280, reg.halfY[foundation]!, 250, 0, me.team, reg.maxHp[foundation]!);
   const { supply } = h.host;
   seconds(h, 20);
   expect([supply.drops.length, supply.siteFault(280, 250), supply.circuits.get("c")!.why]).toEqual([0, "built", "no fit place"]);
@@ -239,7 +240,7 @@ test("on a PvE server nothing is built within thirty metres of a place drops lan
     h.say(ada, `tp ${(at.x - 58 + far).toFixed(3)} ${at.z.toFixed(3)}`);
     made.hold(ada, "foundation");
     code = -1;
-    ada.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round((at.x - 58 + far + 3) * U), 32), w.sbits(Math.round(at.z * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+    ada.command(CMD_PLACE, (w: BitWriter) => writeNew(w, 0, Math.round((at.x - 58 + far + 3) * U), Math.round(at.z * U), 0));
     h.run(200);
     return code;
   };

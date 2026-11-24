@@ -21,7 +21,11 @@ import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
 import { NodeField, nodeForms, scatterNodes, type NodeSpot } from "../world/nodes.ts";
 import { StructureStore } from "../world/structures.ts";
 import { MapWater } from "../world/water.ts";
-import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../world/snap.ts";
+import { frameAxes, type Pose as SnapPose } from "../world/snap.ts";
+import { basisOf, classAxis, twOf, worldOf, yawOf } from "../world/lattice/basis.ts";
+import { rotsOf } from "../world/lattice/frames.ts";
+import { candidates, makeCandidates, makeVerdict, startBase, validate, type Site } from "../world/lattice/place.ts";
+import { canon, canonical, dotSign, edgesOverlap, elementCorners, exact, facesOverlap, key0, key1, orient, tupleSet, tupleStep } from "../world/lattice/module.ts";
 
 /** A tuning with an entry of every kind and numbers that do not come out even, as a server's settings might produce. */
 export const FIXED_TUNING: Tuning = {
@@ -388,45 +392,121 @@ export function hullHash(base: Registry): string {
 }
 
 /**
- * Joins random building pieces onto a first piece at many facings, and hashes each pose, whether its place is free, and
- * what a look from above picks. Equal hashes mean the client's preview and the server's check agree on both engines.
+ * Builds bases by slot at many facings: a first piece, then looks near what stands, and hashes each look's slots with
+ * their scores, how the best is judged turned at random, and the pose of what is then set down. Equal hashes mean the
+ * client's preview and the server's check agree on both engines.
  */
 export function snapHash(reg: Registry): string {
   const kinds = ["foundation", "wall", "doorframe", "windowframe", "ceiling", "pillar", "door", "stairs"].map((p) => reg.index.get(`core:${p}_stone`)!);
   const rng = new Rng(7106);
   const axes = new Int32Array(4);
-  const pose: SnapPose = { x: 0, y: 0, z: 0, yaw: 0 };
-  const sockets = makeSockets();
-  const aim = makeAim();
   let h1 = 0x811c9dc5;
   let h2 = 0x9747b28c;
   const mix = (v: number): void => {
     h1 = Math.imul(h1 ^ (v | 0), 0x01000193);
     h2 = Math.imul(h2 + (v | 0), 0x85ebca6b) ^ (h2 >>> 13);
   };
+  const slots = makeCandidates();
+  const verdict = makeVerdict();
+  const score = new Float64Array(1);
+  const scoreBits = new Int32Array(score.buffer);
   for (let trial = 0; trial < 120; trial++) {
     const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+    const site: Site = { structs, tables: reg, heightAt: () => 3.5 };
     const yaw = rng.int(65536);
     frameAxes(yaw, axes);
     for (const v of axes) mix(v);
-    const built = [structs.add(kinds[0]!, 200 + rng.range(-20, 20), 4 + rng.int(64) / 512, 200 + rng.range(-20, 20), yaw, 1, 1)];
-    for (let i = 0; i < 60; i++) {
+    const first: SnapPose = { x: Math.round((200 + rng.range(-20, 20)) * 512), y: 4 * 512 + rng.int(64), z: Math.round((200 + rng.range(-20, 20)) * 512), yaw };
+    const built = [startBase(structs, kinds[0]!, first, 1, 1)];
+    for (let i = 0; i < 90; i++) {
+      // A slanting look that ends somewhere near a piece that stands.
       const target = built[rng.int(built.length)]!;
-      const kind = kinds[rng.int(kinds.length)]!;
-      const n = socketsOf(structs, reg, target, kind, sockets);
-      mix(n);
-      if (n === 0 || !poseAt(structs, reg, target, kind, rng.int(n), rng.int(4), pose)) continue;
-      mix(pose.x);
-      mix(pose.y);
-      mix(pose.z);
-      mix(pose.yaw);
-      const taken = obstructed(structs, reg.parts, kind, pose.x / 512, pose.y / 512, pose.z / 512, pose.yaw);
-      mix(taken ? 1 : 0);
-      if (!taken) built.push(structs.add(kind, pose.x / 512, pose.y / 512, pose.z / 512, pose.yaw, 1, 1));
-      // A look straight down onto somewhere near it.
-      pickSnap(structs, reg, kinds[rng.int(kinds.length)]!, pose.x / 512 + rng.range(-3, 3), pose.y / 512 + 6, pose.z / 512 + rng.range(-3, 3), 0, -1, 0, -1, 6, false, aim);
-      mix(aim.target);
-      for (let k = 0; k < aim.count; k++) mix(aim.order[k]!);
+      const t = structs.chunks[Math.floor(target / 65536)]!;
+      const s = target & 0xffff;
+      const lx = t.x[s]! + rng.range(-3, 3);
+      const ly = t.y[s]! + 6;
+      const lz = t.z[s]! + rng.range(-3, 3);
+      const held = kinds[rng.int(kinds.length)]!;
+      const offered = candidates(site, held, 1, lx - 2, ly, lz - 1, 4 / 13, -12 / 13, 3 / 13, 6.5, slots);
+      mix(offered);
+      // Their scores to the last bit.
+      for (let k = 0; k < offered; k++) {
+        mix(slots.fr[k]!);
+        mix(slots.k0[k]!);
+        mix(slots.k1[k]!);
+        score[0] = slots.score[k]!;
+        mix(scoreBits[0]!);
+        mix(scoreBits[1]!);
+      }
+      if (offered === 0) continue;
+      const pick = rng.int(Math.min(offered, 3));
+      const turned = (slots.k1[pick]! | (rng.int(rotsOf(reg.forms, held)) << 26)) >>> 0;
+      mix(validate(site, held, 1, slots.fr[pick]!, slots.k0[pick]!, turned, lx - 2, ly, lz - 1, verdict));
+      mix(verdict.pose.x);
+      mix(verdict.pose.y);
+      mix(verdict.pose.z);
+      mix(verdict.pose.yaw);
+      mix(verdict.a);
+      if (verdict.code === 0) built.push(structs.place(held, slots.fr[pick]!, slots.k0[pick]!, turned, 1, 1));
+    }
+    mix(built.length);
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Walks the lattice of a base at many frame yaws, and hashes each frame's whole-number vectors, where each step lands in
+ * the world, the axis of a piece along it, the key of the element named there, and whether that element overlaps the last
+ * one. Equal hashes mean a client derives the poses and the refusals its server does.
+ */
+export function latticeHash(): string {
+  const rng = new Rng(3301);
+  const basis = new Int32Array(8);
+  const at = new Int32Array(2);
+  const m = new Int32Array(4);
+  const anchor = new Int32Array(4);
+  const corners = new Int32Array(32);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  const mix = (v: number): void => {
+    h1 = Math.imul(h1 ^ (v | 0), 0x01000193);
+    h2 = Math.imul(h2 + (v | 0), 0x85ebca6b) ^ (h2 >>> 13);
+  };
+  for (let trial = 0; trial < 2000; trial++) {
+    const yaw = rng.int(65536);
+    basisOf(yaw, basis);
+    for (const v of basis) mix(v);
+    tupleSet(m, 0, 0, 0, 0, 0);
+    let last = 0;
+    let lastN = 0;
+    for (let step = 0; step < 40; step++) {
+      const d = rng.int(12);
+      tupleStep(m, 0, d, 1 + rng.int(2), m, 0);
+      worldOf(basis, rng.int(4096), rng.int(4096), m, 0, at, 0);
+      mix(at[0]!);
+      mix(at[1]!);
+      classAxis(yawOf(yaw, d), twOf(d), at, 0);
+      mix(at[0]!);
+      mix(at[1]!);
+      const cls = 1 + rng.int(3);
+      canonical(cls, m, 0, d, anchor, 0);
+      mix(key0(cls, anchor[0]!, anchor[1]!, anchor[2]!));
+      mix(key1(anchor[3]!, rng.int(511) - 255, canon.dir, rng.int(6), canon.turn, 0));
+      // This element against the one before it, which is kept in the other half of `corners`.
+      const here = 16 - last;
+      const n = elementCorners(cls, anchor, 0, canon.dir, corners, here);
+      if (step > 0) {
+        mix(orient(corners, last, corners, last + 4, corners, here));
+        mix(exact.a);
+        mix(exact.b);
+        mix(dotSign(corners, last, corners, last + 4, corners, here + 4));
+        mix(exact.a);
+        mix(exact.b);
+        if (n === 2 && lastN === 2) mix(edgesOverlap(corners, last, corners, here) ? 1 : 0);
+        else if (n > 2 && lastN > 2) mix(facesOverlap(corners, last, lastN, corners, here, n) ? 1 : 0);
+      }
+      last = here;
+      lastN = n;
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");

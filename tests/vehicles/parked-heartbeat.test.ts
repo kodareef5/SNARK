@@ -5,10 +5,10 @@
 import { expect, test } from "bun:test";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { BTN_JUMP, Body } from "../../shared/sim/character.ts";
-import { ROLE_FOUNDATION } from "../../shared/world/snap.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
+import { start } from "../fixtures/slots.ts";
 
 const FIELDS = Object.keys(new Body()) as (keyof Body)[];
 
@@ -52,9 +52,9 @@ test("settled cars' heartbeats are answered from the last, and each answer is wh
 test("a change of shape anywhere, or to the car, makes the next heartbeat a real step, and a car whose floor goes falls", () => {
   const { h, cars, run } = lot();
   try {
-    const foundation = h.reg.role.findIndex((role) => role === ROLE_FOUNDATION);
+    const foundation = h.reg.index.get("core:foundation_metal")!;
     // A piece set down far off still changes the world's shapes: every car steps once, then is answered again.
-    const far = h.world.structs.add(foundation, 200, 0, 200, 0, 777, 1000);
+    const far = start(h.world, foundation, 200, 0, 200, 0, 777, 1000);
     expect(far).toBeGreaterThanOrEqual(0);
     expect(run(30)).toEqual({ steps: cars.length, kept: 0 });
     expect(run(30)).toEqual({ steps: cars.length, kept: cars.length });
@@ -63,7 +63,7 @@ test("a change of shape anywhere, or to the car, makes the next heartbeat a real
     expect(h.host.urban.resting(cars[0]!)).toBe(true);
     expect(run(30).kept).toBe(cars.length - 1);
     // One parked on a floor two metres up, settled and answered, falls once the floor is taken away.
-    const floor = h.world.structs.add(foundation, 120, 2, 120, 0, 777, 1000);
+    const floor = start(h.world, foundation, 120, 2, 120, 0, 777, 1000);
     const top = h.world.structs.topIn(119, 119, 121, 121);
     const car = h.host.spawnVehicle("core:compact", 120, 120, 0, 0, { y: top });
     expect(car).toBeGreaterThanOrEqual(0);

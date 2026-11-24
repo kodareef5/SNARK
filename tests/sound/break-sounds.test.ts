@@ -56,7 +56,7 @@ test("a wave of a hundred pieces is heard as its cells, not as a hundred rows", 
   for (let i = 0; i < 100; i++) {
     const x = 64 + (i % 10) * 0.7, z = 64 + Math.floor(i / 10) * 0.7;
     session.onStructure!(WALL, 0, x, 2, z, 100, 0, GONE_FELL);
-    rubble.push({ kind: WALL, x, y: 2, z, yaw: 0, cause: GONE_FELL, ox: 64, oy: 2, oz: 64, tick: 100, radius: 0, into: 0, map: WALL });
+    rubble.push({ kind: WALL, x, y: 2, z, yaw: 0, tw: -1, cause: GONE_FELL, ox: 64, oy: 2, oz: 64, tick: 100, radius: 0, into: 0, map: WALL });
   }
   // Whoever listened before the sounds is still told every row.
   expect(told.length).toBe(100);

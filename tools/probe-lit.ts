@@ -94,6 +94,8 @@ function unpack(p, f, blob) {
   for (const u of f.assetUploads) p.assetUploads.push({ ...u, data: data(u.data), ...(u.piece ? { piece: data(u.piece) } : {}) });
   p.pieceRowOf.clear();
   for (const [chunk, row] of f.pieceRowOf) p.pieceRowOf.set(chunk, row);
+  p.frameTables.clear();
+  for (const [buffer, stamp, axes] of f.frameTables) p.frameTables.set(buffer, { axes: Float32Array.from(axes), stamp });
   for (const u of f.texUploads) p.texUploads.push({ ...u, data: data(u.data) });
   p.drops.push(...f.drops);
   p.assetDrops.push(...f.assetDrops);

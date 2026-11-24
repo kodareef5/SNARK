@@ -24,7 +24,7 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { buildCorePack } from "../pack/build.ts";
-import { asTextured, boxBase, type Piece } from "./base.ts";
+import { asTextured, boxBase, layBase, type Piece } from "./base.ts";
 import { bases, held, terrain } from "./depth.ts";
 
 type Section = (title: string) => void;
@@ -112,7 +112,7 @@ export function siegeScene(reg: Registry, pack: Pack, tier: Tier): { scene: Scen
   const [cx, cz] = [480, 480];
   const ground = (x: number, z: number): number => hf.heightAt(x, z);
   const put = (kind: number, x: number, z: number, storey: number): void => void structs.add(kind, x, ground(x, z) + storey * 3.3 + structs.halfYOf(kind), z, rng.int(4) * 16384, 1, 1000);
-  const lay = (pieces: Piece[]): void => void pieces.forEach(([kind, x, y, z, yaw]) => structs.add(kind, x, y, z, yaw, 1, 1000));
+  const lay = (pieces: Piece[]): void => void layBase(structs, pieces, 1, 1000);
   lay(boxBase(reg, "stone", cx + 39, ground(cx + 60, cz), cz - 21, 14, 3, 2000));
   const all = reg.defs.flatMap((d, k) => (d?.type === "structure" && d.class === "piece" ? [k] : []));
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) for (const kind of all) for (let n = 0; n < 20; n++) put(kind, cx + dx * 64 + rng.range(-31, 31), cz + dz * 64 + rng.range(-31, 31), rng.int(3));

@@ -18,6 +18,7 @@ import type { OrbSite } from "../shared/world/orb.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_POOL, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
+import { Claims } from "./claims.ts";
 import { History } from "./history.ts";
 import { UnloadedNodes } from "./place.ts";
 
@@ -29,6 +30,8 @@ export interface ServerWorld extends CollisionWorld {
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
+  /** Where each team has built, kept as `structs` changes (server/claims.ts). */
+  readonly claims: Claims;
   readonly ents: EntityStore;
   readonly mapId: string;
   readonly mapHash: number;
@@ -84,6 +87,8 @@ export interface WorldOptions {
 export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityMax: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource, zones: ServerWorld["zones"] = [], entityStart = ENTITY_START): ServerWorld {
   const nodeField = nodeSource ? new NodeField(dims, reg, nodeSource) : null;
   const ents = new EntityStore(dims, Math.min(entityStart, entityMax), entityMax, reg.vehicle, reg.move.map(carriageRate));
+  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  structs.fullHp = reg.maxHp;
   return {
     reg,
     clock: { cycle: 1, day: 1, night: 1 },
@@ -92,7 +97,8 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     nodeField,
     unloaded: nodeField ? new UnloadedNodes(dims, nodeField) : null,
     ...(nodeField ? { nodes: nodeField.store } : {}),
-    structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts),
+    structs,
+    claims: new Claims(structs, reg.role),
     ents,
     history: new History(ents, undefined, reg.vehicle, reg.index.get("core:survivor")),
     anim: new HumanAnim(NO_CLIPS),

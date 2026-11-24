@@ -15,7 +15,7 @@ import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { buildCorePack } from "../pack/build.ts";
-import { BASE_TIERS, asTextured, benchBases, boxBase, type Piece } from "./base.ts";
+import { BASE_TIERS, asTextured, benchBases, boxBase, layPieces, type Piece } from "./base.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -55,10 +55,11 @@ export function bases(reg: Registry, hf: Heightfield): { centers: [number, numbe
 export function held(reg: Registry, pack: Pack, hf: Heightfield, x: number, z: number, piecesOf: (chunk: number) => Piece[], reach = HELD): Scene {
   const structs = new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const [cx, cz] = [Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE)];
+  const laid = new Map<string, number>();
   for (let dz = -reach; dz <= reach; dz++) {
     for (let dx = -reach; dx <= reach; dx++) {
       if (cx + dx < 0 || cz + dz < 0 || cx + dx >= DIMS.chunksX || cz + dz >= DIMS.chunksZ) continue;
-      for (const [kind, px, py, pz, yaw] of piecesOf((cz + dz) * DIMS.chunksX + cx + dx)) structs.add(kind, px, py, pz, yaw, 1, 1000);
+      layPieces(structs, reg, piecesOf((cz + dz) * DIMS.chunksX + cx + dx), 1, 1000, laid);
     }
   }
   const scene = new Scene({ dims: DIMS, hf, structs }, reg, pack);

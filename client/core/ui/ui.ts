@@ -24,6 +24,7 @@ import { Settings } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
 import type { StoragePage } from "./storage.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
+import { HammerPanel } from "./hammer.ts";
 import { EmoteMenu } from "./emotes.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { TravelScreen } from "./travel.ts";
@@ -45,6 +46,8 @@ export class Ui {
   readonly air = new AirRadio();
   readonly choosing = new ChoosingScreen();
   readonly structure = new StructMenu();
+  /** The template hammer's panel (ui/hammer.ts). */
+  readonly tool = new HammerPanel();
   readonly emotes = new EmoteMenu();
   readonly naming = new NamePrompt();
   /** The other servers of the cluster, opened at an obelisk's terminal. */
@@ -107,17 +110,17 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    return this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
+    return this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering || this.tool.open;
   }
 
   /** A text field is wanted: the shell of a touch device raises its keyboard within the press that asked. */
   get typing(): boolean {
-    return this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
+    return this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering || this.tool.open;
   }
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !(this.debug?.holdsPointer ?? false);
+    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !this.tool.open && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Escape where no screen takes it: the debug bar's open drawer takes the pointer back first, else the menu opens. */
@@ -208,6 +211,7 @@ export class Ui {
     // The name prompt has the keyboard until it is answered.
     if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
     if (this.structure.naming && !con.open) return this.structure.key(code, down, repeat, session);
+    if (this.tool.open && !con.open) return this.tool.key(code, down, repeat);
     if (this.choosing.filtering && !con.open) return this.choosing.key(code, down, repeat);
     if (chat.open && !con.open) {
       // The chat box has the keyboard. It handles Enter, Escape and Tab, and every other key is typing.
@@ -359,6 +363,7 @@ export class Ui {
     if (kind === 0 && !button && this.air.click(key, session)) return;
     if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
+    if (kind === 0 && this.tool.click(key)) return;
     if (kind === 0 && this.emotes.click(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
@@ -377,6 +382,7 @@ export class Ui {
     if (key === KEY_CREATIVE_PASSWORD) this.creativeScreen.edit(value);
     else if (key === KEY_NAME_INPUT) this.naming.edit(value);
     else if (key === KEY_STRUCT_NAME_INPUT) this.structure.edit(value);
+    else if (this.tool.field(key)) this.tool.edit(key, value);
     else if (key === KEY_CHOOSE_FILTER) this.choosing.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
@@ -429,6 +435,7 @@ export class Ui {
     if (this.dead || this.creating || session?.state === "closed") this.air.open = this.air.marking = false;
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
     if (this.dead || this.creating) this.structure.close();
+    if (this.dead || this.creating || this.menu) this.tool.close();
     // The filter is for one spell of choosing.
     if (!this.dead && (this.choosing.filtering || this.choosing.filter !== "")) {
       this.choosing.filtering = false;
@@ -458,6 +465,7 @@ export class Ui {
       else {
         this.inventory.build(f, session, this.registry, this.palette);
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
+        if (session && this.registry && !this.inventory.open && !this.structure.open) this.tool.build(f, session, this.registry, this.inputDevice);
         if (session && !this.inventory.open) this.emotes.build(f);
       }
     }

@@ -1,9 +1,11 @@
 import { parseNumber } from "../../shared/console.ts";
 import type { ItemDef, StructureDef } from "../../shared/content/defs.ts";
+import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
 import { SLOT_OF_ZONE, HUMAN_ZONE_COUNT, ZONE_NAMES } from "../../shared/anim/human.ts";
 import { PIECE_SCALE } from "../../shared/sim/damage.ts";
 import { QUALITY_MUL } from "../../shared/sim/items.ts";
+import { startBase } from "../../shared/world/lattice/place.ts";
 import { named, type Console, type ConsoleCommand } from "../console.ts";
 import type { Host } from "../host.ts";
 import type { EntityRecord } from "../records.ts";
@@ -162,7 +164,11 @@ export function addCombatCommands(con: Console): void {
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
         const x = c.body.x + Math.sin(a) * 3;
         const z = c.body.z + Math.cos(a) * 3;
-        const ref = world.structs.add(kind, x, world.hf.heightAt(x, z) + def.half[1], z, c.heldYaw, ctx.host.records.byPid.get(c.pid)?.team ?? 0, def.hp);
+        const team = ctx.host.records.byPid.get(c.pid)?.team ?? 0;
+        const y = world.hf.heightAt(x, z) + def.half[1];
+        // A piece that may begin a base begins one, as one set down by hand does. Any other stands by its pose, in no base.
+        const begins = team !== 0 && reg.forms.def[kind]?.root !== undefined;
+        const ref = begins ? startBase(world.structs, kind, { x: Math.round(x * STRUCT_UNITS), y: Math.round(y * STRUCT_UNITS), z: Math.round(z * STRUCT_UNITS), yaw: c.heldYaw & 0xffff }, team, def.hp) : world.structs.add(kind, x, y, z, c.heldYaw, team, def.hp);
         // A bed is one only with its record, as one built is (Build.place).
         if (ref >= 0 && reg.isBed[kind] === 1) ctx.host.fixtures.ensure(ref);
         return ref < 0 ? "no room for it there" : `placed ${def.id} (${def.hp} health)`;

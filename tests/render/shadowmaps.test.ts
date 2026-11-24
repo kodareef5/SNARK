@@ -79,8 +79,8 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
       const facades = weather && FACADE_TIERS[tier.name] ? `#define FACADE\n${FACADE_TIERS[tier.name]!.reflect ? "#define FACADE_ROOMS\n" : ""}` : "";
       // The ground's asphalt and sand wear where the finishes are read in full (world-surfaces.ts roadWorn).
       const road = name === "terrain" && tier.finish === "full" ? "#define WORLD_ROAD\n" : "";
-      // A textured draw wears a bent kerb (bend.ts) where the finishes are read in full.
-      const street = name === "flat" || name === "seeThrough" ? "#define STREET_FINISH\n#define STREET\n" : name === "surface" ? `#define STREET\n${tier.finish === "full" ? "#define BENT_WEAR\n" : ""}` : "";
+      // A textured draw wears a bent kerb (bend.ts), and a built piece past worn its core (surface.ts), where the finishes are read in full.
+      const street = name === "flat" || name === "seeThrough" ? "#define STREET_FINISH\n#define STREET\n" : name === "surface" ? `#define STREET\n${tier.finish === "full" ? "#define BENT_WEAR\n#define PIECE_SPALL\n" : ""}` : "";
       expect(p.defines).toBe(`${road}${street}${relief}${slant}${weather}${facades}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n${tier.shadows.lamp ? "#define LAMP\n" : ""}#define ORB_SHADE\n${(name === "terrain" ? tier.orb.ground : tier.orb.light) ? "#define ORB_LIGHT\n" : ""}${tier.contact ? "#define CONTACT\n" : ""}${tier.roofs ? "#define ROOF\n" : ""}`);
       expect(p.samplers.uShadow).toBe(UNIT.shadow);
       expect(PROGRAMS[name]!(tier, "rgba", true).defines).toContain(`${size}.0\n#define SHADOW_HARD\n`);

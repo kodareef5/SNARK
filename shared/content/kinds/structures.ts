@@ -6,6 +6,7 @@ import type { VehicleSurface } from "../../sim/vehicle.ts";
 import { validVehicleSurface } from "../../world/vehicle-surface.ts";
 import { boxEdges } from "../../world/grind.ts";
 import { hullTable, type HullDef } from "../../world/convex.ts";
+import { formFaults, formHalf, makeFormTable, setForm } from "../../world/lattice/forms.ts";
 import { BREAK_FAMILIES, BREAK_FORMS, BREAK_VARIANTS, type BreakFamily, type BreakForm } from "../breaks.ts";
 import type { Def } from "../defs.ts";
 import { ID, drawnFaults, f, f32, i8, list, mesh, row, u16, u8, type Fields, type Kind, type Named } from "../kind.ts";
@@ -166,7 +167,7 @@ const FIELDS = {
   coarse: f("number", "its mesh's levels chosen as if it stood this many times as far off, 1 to 16: scenery of many alike"),
   colors: f("list", "the colours of its mesh's regions after the first, as a moored hull its vessel's"),
   half: f("vec3"),
-  shape: f("text", "SnapPoints", { refs: { "": "shape" } }),
+  shape: f("text", "its boxes and convex parts, and for a built piece its form", { refs: { "": "shape" } }),
   hp: f("number", "Health"),
   material: f("text", "StructureSettingsClass", { refs: { "": "material" } }),
   slots: f("number", "an inventory component"),
@@ -210,6 +211,10 @@ const columns = (n: number) => ({
   role: i8(n, -1),
   /** Per structure: 1 if it is a wall with a doorway. */
   doorway: u8(n),
+  /** Per structure whose shape has a form: the slot it fills and its dimensions (shared/world/lattice/forms.ts). */
+  forms: makeFormTable(n),
+  /** Per structure: the stability of one that stands by itself, its material's or 4 (shared/world/support.ts). */
+  stabilityCap: u8(n, 4),
   /** Per structure: the item that places it (0 if none), its full health, and the days it lasts unvisited (0 means for ever). */
   pieceItem: u16(n),
   maxHp: f32(n),
@@ -258,6 +263,9 @@ const breakSets = (input: readonly Def[]): Map<string, number> => {
 /** The box that holds each shape asked of it so far, by the shape's id. */
 const heldBoxes = (): Map<string, [number, number, number] | null> => new Map();
 
+/** The box about its origin that holds each sound form asked of it so far, by the shape's id. */
+const heldForms = (): Map<string, [number, number, number] | null> => new Map();
+
 /** The convex parts of the structure at `k`. A bent piece has none: it is walked as the pieces laid under it. */
 const hullsOf = (defs: readonly (Def | null)[], shapes: ReadonlyMap<string, ShapeDef>) => (k: number): readonly HullDef[] => {
   const d = defs[k];
@@ -269,7 +277,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
   fields: FIELDS,
   rows: [
     row("structure", "structure", FIELDS, { abstract: true, ark: "APrimalStructure", shelf: "structures", doc: "Anything built or standing in the world that is not alive." }),
-    row("structure/piece", "structure", FIELDS, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "grindLine", "vehicleSurface"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." }),
+    row("structure/piece", "structure", FIELDS, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "grindLine", "vehicleSurface", "made"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up. A tier with no pictures names the material made from a recipe that its faces in its own colour wear." }),
     row("structure/container", "structure", FIELDS, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." }),
     row("structure/station", "structure", FIELDS, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "charges", "powered", "dry"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." }),
     row("structure/bed", "structure", FIELDS, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." }),
@@ -333,6 +341,11 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (!held.has(d.shape)) { const shape = once(shapesById).get(d.shape); held.set(d.shape, shape ? shapeHalf(shape.boxes, shape.hulls, shape.look) : null); }
     const holds = held.get(d.shape)!;
     if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
+    // A form says the same box from its outline and thickness. What is drawn of a shape may reach past it.
+    const forms = once(heldForms);
+    if (!forms.has(d.shape)) { const shape = once(shapesById).get(d.shape); forms.set(d.shape, shape?.form && formFaults(shape.form).length === 0 ? formHalf(shape.form) : null); }
+    const formed = forms.get(d.shape)!;
+    if (formed && formed.some((v, a) => v - d.half[a]! > 1e-6 || (!once(shapesById).get(d.shape!)!.look && d.half[a]! - v > 1e-6))) errors.push(`${d.id}: half must be [${formed.join(", ")}], the box that holds the form of ${d.shape}`);
   },
   columns,
   fill(d, i, reg, { boxes, once }) {
@@ -349,6 +362,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
       // and it is never judged for support, as a static of one box is not.
       if (d.class !== "static") reg.role[i] = PIECE_ROLES.indexOf(shape.role);
       if (shape.doorway) reg.doorway[i] = 1;
+      if (d.class !== "static" && shape.form) setForm(reg.forms, i, shape.form);
       for (const b of shape.boxes) boxes.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
     } else boxes.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
     reg.parts.grindLine[i] = d.grindLine ? (d.grindLine.length ? [d.grindLine] : undefined) :
@@ -364,6 +378,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     const m = d.material !== undefined ? once(materialsById).get(d.material)! : null;
     if (m) reg.structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
     reg.decayDays[i] = d.decayDays ?? m?.decayDays ?? 0;
+    if (m?.stability !== undefined) reg.stabilityCap[i] = m.stability;
     if (d.breaks) {
       reg.breakSet[i] = once(breakSets).get(d.breaks.set)!;
       reg.breakShape[i] = d.breaks.set;
@@ -411,6 +426,8 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     // Convex parts, only if some shape has them, so content without them is compiled as it always was.
     const hulls = hullsOf(reg.defs, once(shapesById));
     if (reg.defs.some((_, k) => hulls(k).length > 0)) reg.parts.hulls = hullTable(n, hulls);
+    // A store learns the forms with the parts it is made from.
+    reg.parts.forms = reg.forms;
     // An open door maps back to the closed door's item.
     for (let i = 1; i < n; i++) if (reg.opens[i] !== 0 && reg.pieceItem[reg.opens[i]!] === 0) reg.pieceItem[reg.opens[i]!] = reg.pieceItem[i]!;
     // A burning fire maps back to the unlit fire's item.

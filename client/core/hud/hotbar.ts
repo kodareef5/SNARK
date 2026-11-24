@@ -11,6 +11,8 @@ import type { HudWidget } from "./widget.ts";
 
 /** The line that says what is loaded. */
 export const KEY_AMMO = 35;
+/** The line over it with a piece in hand: what the preview says of the piece. */
+export const KEY_BUILD_SAYS = 5540;
 /** Per hotbar slot: its box, its swatch, its number. */
 export const KEY_HOTBAR = 40;
 
@@ -30,9 +32,12 @@ export interface HotbarModel {
   held: number;
   /** The loaded ammunition, the rounds in the weapon, and those carried. "" for a weapon that takes none. */
   ammo: string;
+  /** With a piece in hand, what the preview says of it: how well it would stand. */
+  buildSays: string;
 }
 
-export function fillHotbar(m: HotbarModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array): void {
+/** `spend` of `spendItem` in the held slot are set down and not yet taken from it by the server (predict-build.ts): the count shows without them. */
+export function fillHotbar(m: HotbarModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array, spendItem = 0, spend = 0): void {
   const first = inv ? inv.hotbar : -1;
   m.held = held;
   if (first < 0) {
@@ -55,16 +60,17 @@ export function fillHotbar(m: HotbarModel, inv: Inventory | null, held: number, 
     const c = (def.color ?? 15) * 4;
     cell.label = name.slice(0, 4);
     cell.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
-    cell.number = inv!.count[first + i]! > 1 ? String(inv!.count[first + i]) : def.weapon?.ammo ? String(inv!.loaded[first + i]) : "";
+    const count = inv!.count[first + i]!, left = i === held && item === spendItem ? Math.max(0, count - spend) : count;
+    cell.number = count > 1 ? String(left) : def.weapon?.ammo ? String(inv!.loaded[first + i]) : "";
   }
 }
 
 export const HOTBAR: HudWidget<HotbarModel> = {
   name: "hotbar",
-  make: () => ({ hotbar: [], held: -1, ammo: "" }),
+  make: () => ({ hotbar: [], held: -1, ammo: "", buildSays: "" }),
   fill(m, c) {
     const a = c.frame;
-    if (a) fillHotbar(m, a.alive ? c.session.inventory : null, c.session.held, a.reg, a.palette);
+    if (a) fillHotbar(m, a.alive ? c.session.inventory : null, c.session.held, a.reg, a.palette, a.spendItem, a.spend);
   },
   // The hotbar stays at the bottom even when a message, a vital or chat changes.
   build(f, m, at) {
@@ -94,6 +100,7 @@ export const HOTBAR: HudWidget<HotbarModel> = {
         f.text(key + 2, x + 2, y0 + cell - small - 2, cell - 7, S_HUD_COUNT, c.number);
       }
       if (m.ammo !== "") f.text(KEY_AMMO, Math.max(left, W / 2 - 150), y0 - lineHeight(S_PROMPT) - 3, Math.min(300, right - left), S_PROMPT, m.ammo);
+      if (m.buildSays !== "") f.text(KEY_BUILD_SAYS, Math.max(left, W / 2 - 150), y0 - (m.ammo !== "" ? 2 : 1) * (lineHeight(S_PROMPT) + 3), Math.min(300, right - left), S_PROMPT, fitText(m.buildSays, Math.min(300, right - left), S_PROMPT));
     }
   },
 };

@@ -22,7 +22,7 @@ import { Rules } from "../server/settings/rules.ts";
 import { WorldStore } from "../server/persist/store.ts";
 import { createWorld, type ServerWorld } from "../server/world.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
-import { STRUCT_UNITS, TICK_RATE, chunkAt } from "../shared/coords.ts";
+import { TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { SURFACE_BUILT } from "../shared/net/rockets.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
@@ -33,27 +33,30 @@ import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Heightfield, TERRAIN_CELL } from "../shared/world/heightfield.ts";
-import { poseAt, type Pose } from "../shared/world/snap.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
 import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
 import { storeRows } from "./bench/store.ts";
+import { claimsRows } from "./bench/claims.ts";
 import { benchTactical } from "./bench/tactical.ts";
 import { benchBreaking } from "./bench/breaking.ts";
 import { benchCensus } from "./bench/census.ts";
 import { benchCollapse } from "./bench/collapse.ts";
+import { PART, PARTS } from "../server/admin/parts.ts";
+import { FALL_MOST } from "../server/build.ts";
 import { benchCity } from "./bench/city.ts";
 import { benchFar } from "./bench/far.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
+import { join as joinTo, start } from "../tests/fixtures/slots.ts";
 import { benchAgent } from "./bench/agent.ts";
 import { benchCollide } from "./bench/collide.ts";
 import { benchDenseWood, benchNodes } from "./bench/nodes.ts";
 import { benchFrameBudget } from "./bench/budget.ts";
 import { benchGovernor } from "./bench/governor.ts";
-import { BASE_TIERS, asTextured, benchBases, boxBase } from "./bench/base.ts";
+import { BASE_TIERS, asTextured, benchBases, boxBase, layBase } from "./bench/base.ts";
 import { benchHelicopters } from "./bench/helicopter.ts";
 import { benchCollision } from "./bench/collision.ts";
 import { benchVehicleTrees } from "./bench/vehicle-tree.ts";
@@ -136,7 +139,7 @@ function buildTerrain(): Heightfield {
 /** The bench map's box bases (bench/base.ts), each owned by a tribe of its own. Returns their centres. */
 function buildBases(world: ServerWorld, reg: Registry): [number, number][] {
   const { centers, pieces } = benchBases(reg, world.hf);
-  pieces.forEach((base, b) => base.forEach(([kind, x, y, z, yaw]) => world.structs.add(kind, x, y, z, yaw, 1 + b, 1000)));
+  pieces.forEach((base, b) => layBase(world.structs, base, 1 + b, 1000));
   return centers;
 }
 
@@ -574,16 +577,19 @@ benchFirefight(section, record, host, centers[0]!, run, FIREFIGHT_GUNS);
 
 // ---------------------------------------------------------------- collapse
 section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching");
-/** The house's pieces as the Rubble a client receives, for the client frame section below. */
+/** The house's pieces as the Rubble a client receives, and how many fell in each tick, for the client frame section below. */
 const wreck: Rubble[] = [];
+const fellBy: number[] = [];
+/** The parts of a tick that a removal's work lands in (server/admin/parts.ts). */
+const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, PART.chunks];
 {
   // 12 by 12 foundations and three storeys of real building pieces, beside the fight.
   const structs = world.structs;
   const piece = (name: string): number => reg.index.get(`core:${name}_stone`)!;
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const add = (name: string, target: number, k: number): number => {
-    if (!poseAt(structs, reg, target, piece(name), k, 0, pose)) throw new Error(`no place for a ${name}`);
-    return structs.add(piece(name), pose.x / STRUCT_UNITS, pose.y / STRUCT_UNITS, pose.z / STRUCT_UNITS, pose.yaw, 9000, 10000);
+    const ref = joinTo(world, target, piece(name), k, 0, 10000);
+    if (ref < 0) throw new Error(`no place for a ${name}`);
+    return ref;
   };
   const N = 12;
   const [hx, hz] = [centers[0]![0] + 52, centers[0]![1] - 18];
@@ -591,7 +597,7 @@ const wreck: Rubble[] = [];
   const ground: number[][] = [];
   for (let i = 0; i < N; i++) {
     ground.push([]);
-    for (let j = 0; j < N; j++) ground[i]!.push(i === 0 && j === 0 ? structs.add(piece("foundation"), hx, hf.heightAt(hx, hz) + 0.1875, hz, 0, 9000, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
+    for (let j = 0; j < N; j++) ground[i]!.push(i === 0 && j === 0 ? start(world, piece("foundation"), hx, hf.heightAt(hx, hz) + 0.1875, hz, 0, 9000, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
   }
   let tiles = ground;
   for (let storey = 0; storey < 3; storey++) {
@@ -619,7 +625,7 @@ const wreck: Rubble[] = [];
   const origin = { x: hx, y: hf.heightAt(hx, hz) + 0.1875, z: hz };
   for (const t of structs.chunks) {
     if (!t) continue;
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) wreck.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 0, radius: 0, into: 0, map: 0 });
+    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) wreck.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, tw: reg.forms?.def[t.kind[s]!] ? t.twAt(s) : -1, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 0, radius: 0, into: 0, map: 0 });
   }
 
   const build = host.build;
@@ -630,6 +636,17 @@ const wreck: Rubble[] = [];
     step();
     if (build.collapse.busy || work.length === 0) work.push(performance.now() - t);
   };
+  // Each tick's parts as the server's own clock has them (server/admin/parts.ts), and the pieces it removed.
+  const tickParts = host.game.parts as unknown as { ms: Float64Array; end(tick: number): void };
+  const endParts = tickParts.end.bind(tickParts);
+  const spent: number[][] = [];
+  tickParts.end = (tick) => {
+    spent.push(Array.from(tickParts.ms));
+    endParts(tick);
+  };
+  const calm: number[] = [];
+  run(60, calm);
+  const calmParts = spent.splice(0);
   const sentBytes = host.game.stats.chunkBytes;
   const fallenBefore = build.fallen;
   const wavesBefore = build.collapse.waves;
@@ -637,24 +654,50 @@ const wreck: Rubble[] = [];
   for (const ref of ground.flat()) structs.damage(ref, 1e9, world.tick);
   record("destroy 144 foundations", performance.now() - t0, "ms", 2);
   const whole: number[] = [];
+  const removed: number[] = [];
   let ticks = 0;
   while (build.collapse.busy && ticks < 900) {
+    const had = structs.count;
     run(1, whole);
+    removed.push(had - structs.count);
     ticks++;
   }
   run(30, whole); // the last of it reaches everyone
   build.step = step;
+  tickParts.end = endParts;
+  const byTick = whole.slice();
   work.sort((a, b) => a - b);
   whole.sort((a, b) => a - b);
+  calm.sort((a, b) => a - b);
   record("pieces that fell", build.fallen - fallenBefore, "");
   let standing = 0;
   for (const t of structs.chunks) for (let s = 0; t && s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) standing++;
   record("pieces of the house left standing", standing, "", 0);
   record("removals they fell in", build.collapse.waves - wavesBefore, "");
   record("ticks until the last was down", ticks, "", 60);
+  fellBy.push(...removed);
+  const falls = removed.map((n, k) => (n > 0 ? k : -1)).filter((k) => k >= 0);
+  record("ticks from the first piece to the last", falls[falls.length - 1]! - falls[0]! + 1, "", 45);
+  record("most pieces removed in a tick", Math.max(...removed), "", FALL_MOST);
   record("collapse work in a tick, median", percentile(work, 0.5), "ms", 1.5);
   record("collapse work in a tick, worst", work[work.length - 1]!, "ms", 3);
-  record("whole tick while it fell, worst", whole[whole.length - 1]!, "ms", 16);
+  // The whole tick is the fight's, which the firefight above leaves several times its own median. So the fall is held to
+  // what it adds, in the parts of a tick a removal's work lands in: the worst of their sum, over its worst just before.
+  record("whole tick just before, median", percentile(calm, 0.5), "ms");
+  record("whole tick just before, worst", calm[calm.length - 1]!, "ms");
+  record("whole tick while it fell, median", percentile(whole, 0.5), "ms");
+  record("whole tick while it fell, worst", whole[whole.length - 1]!, "ms");
+  const own = (row: number[]): number => FALL_PARTS.reduce((sum, k) => sum + row[k]!, 0);
+  const most = (list: number[][]): number => list.reduce((m, row) => Math.max(m, own(row)), 0);
+  record("the fall's parts of a tick, just before, worst", most(calmParts), "ms");
+  record("the fall's parts of a tick, while it fell, worst", most(spent.slice(0, ticks)), "ms");
+  record("added to a tick by the fall, worst", most(spent.slice(0, ticks)) - most(calmParts), "ms", 4);
+  if (process.env.BENCH_TICKS) {
+    console.log(`    removed by tick: ${removed.join(" ")}`);
+    console.log(`    ms by tick: ${byTick.map((v) => v.toFixed(1)).join(" ")}`);
+    console.log(`    parts: ${PARTS.join(" ")}`);
+    for (let k = 0; k < byTick.length; k++) console.log(`    ${k}: ${spent[k]!.map((v) => v.toFixed(2)).join(" ")}`);
+  }
   record("sent to each watcher for all of it", (host.game.stats.chunkBytes - sentBytes) / watchers, "bytes", pieces * 2);
 }
 
@@ -770,14 +813,12 @@ let siegeChunk = -1;
   const x0 = (siegeChunk % DIMS.chunksX) * 64;
   const z0 = Math.floor(siegeChunk / DIMS.chunksX) * 64;
   const pieces = new Rng(79);
-  const refs: number[] = [];
   // A wooden box base of a room a cell, 15 storeys, high in the air, so no body touches it.
-  for (const [kind, x, y, z, yaw] of boxBase(reg, "wood", x0 + 0.5, 200, z0 + 0.5, 21, 1, 20000)) {
-    const ref = world.structs.add(kind, x, y, z, yaw, 1, 1e9);
-    if (ref >= 0) refs.push(ref);
-  }
+  const refs = layBase(world.structs, boxBase(reg, "wood", x0 + 0.5, 200, z0 + 0.5, 21, 1, 20000), 1, (kind) => reg.maxHp[kind]!);
+  // A blow of a 200th of a piece's health takes it down a stage, so every blow is a row. None takes 200 in ten seconds.
+  const stage = (ref: number): number => reg.maxHp[world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!]! / 200;
   record("pieces in the chunk", world.structs.chunks[siegeChunk]!.live, "");
-  // 256 rows a tick to each client: 80 ticks for the chunk, and the bots' own fists keep changing it meanwhile.
+  // 1,024 rows a tick to each client at most: 20 ticks for the chunk or more, and the bots' own fists keep changing it meanwhile.
   run(200, null);
   const quiet: number[] = [];
   run(150, quiet);
@@ -794,7 +835,10 @@ let siegeChunk = -1;
     saveChunk(chunk, t);
   };
   for (let i = 0; i < 300; i++) {
-    for (let k = 0; k < 50; k++) world.structs.damage(refs[pieces.int(refs.length)]!, 1);
+    for (let k = 0; k < 50; k++) {
+      const ref = refs[pieces.int(refs.length)]!;
+      world.structs.damage(ref, stage(ref));
+    }
     run(1, fire);
   }
   fire.sort((a, b) => a - b);
@@ -802,8 +846,8 @@ let siegeChunk = -1;
   record("tick time before the damage, median", percentile(quiet, 0.5), "ms");
   record("tick time under it, median", percentile(fire, 0.5), "ms", 8);
   record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
-  // About 6.5 bytes a damaged piece, its health alone. 1,500 pieces a second is far more than a raid does.
-  record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 30);
+  // About 3.5 bytes a damaged piece, its slot and its stage of health. 1,500 pieces a second is far more than a raid does.
+  record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 12);
   store.saveChunk = saveChunk;
   // All that differs in the chunk is written together, and a chunk in which only health changes a second apart at most.
   record("times its chunk was written in those ten seconds", chunkWrites, "", 11);
@@ -988,6 +1032,7 @@ section("Restart under other settings: the save of the sizing target, every time
 
 // ---------------------------------------------------------------- entity store
 storeRows(section, record);
+claimsRows(section, record);
 
 // ---------------------------------------------------------------- client frame
 section("Client frame build (headless): standing 60 m from a 2,000-piece base of wood, of stone and of thatch, on medium, levels drawn with their materials");
@@ -1051,13 +1096,14 @@ section("Client frame build (headless): the 20,000-piece chunk told of 50 damage
     const at = performance.now();
     packet = scene.build(cam, null);
     times.push(performance.now() - at);
-    for (const u of packet.uploads) uploaded += u.data.length;
+    // A piece whose stage changed sends its own 20 bytes (BufferUpload.bytes), any other upload its whole buffer.
+    for (const u of packet.uploads) uploaded += u.bytes ?? u.data.length;
   }
   times.sort((a, b) => a - b);
   record("pieces in the chunk", t.live, "");
   record("take the rows in and build the frame, median", percentile(times, 0.5), "ms", 1);
   record("take the rows in and build the frame, 99th percentile", percentile(times, 0.99), "ms", 2);
-  record("instance bytes uploaded again in those 300 frames", uploaded, "bytes", 0);
+  record("instance bytes uploaded again in those 300 frames", uploaded, "bytes", 4096);
 }
 
 section("Client frame build (headless): 300 survivors in view, posed every frame");
@@ -1149,7 +1195,7 @@ fullViewRows({ section, record, percentile }, scene, cam, reg, hf);
 
 section("Client frame build (headless): that house coming down 60 m off");
 {
-  // The pieces arrive about a hundred a tick, as the server's waves would send them.
+  // The foundations go first, and the rest arrive as the server removed them above, nearest the break first.
   cam.x = wreck[0]!.ox - 30;
   cam.z = wreck[0]!.oz + 18;
   cam.y = hf.heightAt(cam.x, cam.z) + 8;
@@ -1164,7 +1210,7 @@ section("Client frame build (headless): that house coming down 60 m off");
   for (let f = 0; f < 240; f++) {
     const nowMs = f * (1000 / 60);
     const lot: Rubble[] = [];
-    if (f % 2 === 0) for (let k = 0; k < 110 && at < wreck.length; k++) lot.push({ ...wreck[at++]!, tick: f >> 1 });
+    if (f % 2 === 0) for (let k = f === 0 ? 144 : (fellBy[(f >> 1) - 1] ?? 0); k > 0 && at < wreck.length; k--) lot.push({ ...wreck[at++]!, tick: f >> 1 });
     let t = performance.now();
     falling.absorb(lot, nowMs, cam.x, cam.y, cam.z);
     falling.step(nowMs);

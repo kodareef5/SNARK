@@ -4,9 +4,12 @@ import { expect, test } from "bun:test";
 import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { slopeKind } from "../../content/slopes.ts";
-import { floorTop, makeSockets, poseAt, socketsOf, units, type Pose } from "../../shared/world/snap.ts";
-import { CEILING_REACH, LOAD_REACH, Support } from "../../shared/world/support.ts";
+import { Collapse } from "../../shared/world/collapse.ts";
+import { floorTop, units } from "../../shared/world/snap.ts";
+import { GONE_FELL } from "../../shared/world/structures.ts";
+import { STABILITY, Support } from "../../shared/world/support.ts";
 import { TRIANGLE_HALF, hullWorld } from "../fixtures/hulls.ts";
+import { count, join as joinTo, slot, start } from "../fixtures/slots.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
@@ -15,20 +18,21 @@ function setup(yaw = 0) {
   const w = flatWorld(4);
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   const kind = (piece: string): number => w.kind(`core:${piece}_wood`);
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  /** Whether a piece would stand in socket `k` of `target`, without building it. */
+  const key = { fr: 0, k0: 0, k1: 0 };
+  /** Whether a piece would stand in place `k` of `target`, without building it. */
   const would = (target: number, piece: string, k: number, turn = 0): boolean => {
-    expect(poseAt(w.structs, w.reg, target, kind(piece), k, turn, pose)).toBe(true);
-    return support.stands(kind(piece), pose.x, pose.y, pose.z, pose.yaw);
+    expect(slot(w, target, kind(piece), k, turn, key)).toBe(true);
+    return support.standsAt(kind(piece), key.fr, key.k0, key.k1);
   };
-  /** Builds a piece in socket `k` of `target`, whether or not it would stand. */
+  /** Builds a piece in place `k` of `target`, whether or not it would stand. */
   const join = (target: number, piece: string, k: number, turn = 0): number => {
-    expect(poseAt(w.structs, w.reg, target, kind(piece), k, turn, pose)).toBe(true);
-    return w.structs.add(kind(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
+    const ref = joinTo(w, target, kind(piece), k, turn);
+    expect(ref).toBeGreaterThanOrEqual(0);
+    return ref;
   };
-  const foundation = (x: number, z: number): number => w.structs.add(kind("foundation"), x, FOUNDATION_THICK / 2, z, yaw, 7, 1);
+  const foundation = (x: number, z: number): number => start(w, kind("foundation"), x, FOUNDATION_THICK / 2, z, yaw, 7);
   /** A pillar with its foot in the ground. */
-  const pillar = (x: number, z: number): number => w.structs.add(kind("pillar"), x, WALL_HEIGHT / 2 - 0.125, z, yaw, 7, 1);
+  const pillar = (x: number, z: number): number => start(w, kind("pillar"), x, WALL_HEIGHT / 2 - 0.125, z, yaw, 7);
   return { w, support, would, join, foundation, pillar, kind };
 }
 
@@ -91,7 +95,7 @@ test("a floor reaches two pieces out from what holds it and no further: (2,0) an
     const c30 = join(c20, "ceiling", 1);
     expect(would(c30, "ceiling", 1)).toBe(true);
   }
-  expect([CEILING_REACH, LOAD_REACH]).toEqual([6.5, 5]);
+  expect(STABILITY).toBe(4);
 });
 
 test("held by walls: two floors out from the wall and not a third; walls on a floor near its support and not at the far edge of the second piece out", () => {
@@ -119,7 +123,7 @@ test("held by walls: two floors out from the wall and not a third; walls on a fl
   const c2 = pjoin(c1, "ceiling", 1);
   expect([pwould(c0, "wall", 1), pwould(c1, "wall", 1), pwould(c2, "wall", 1)]).toEqual([true, true, false]);
 
-  // Near is not joined. A ceiling beside a wall but in no socket stands on nothing.
+  // Near is not joined. A ceiling beside a wall but in no slot of its base stands on nothing.
   const loose = w.structs.add(kind("ceiling"), 104.2, FOUNDATION_THICK + WALL_HEIGHT - 0.125, 104.2, 0, 7, 1);
   expect(support.standsRef(loose)).toBe(false);
   // A door stands in its frame and nowhere else.
@@ -127,7 +131,7 @@ test("held by walls: two floors out from the wall and not a third; walls on a fl
   expect(would(frame, "door", 0)).toBe(true);
   expect(support.standsRef(w.structs.add(kind("door"), 126, 1.5, 100, 0, 7, 1))).toBe(false);
   // Floors joined in a ring with nothing under any of them hold nothing up, each other included.
-  const a = w.structs.add(kind("ceiling"), 150, 6, 150, 0, 7, 1);
+  const a = start(w, kind("ceiling"), 150, 6, 150, 0, 7);
   const b = join(a, "ceiling", 1);
   const c = join(b, "ceiling", 0);
   const d = join(c, "ceiling", 3);
@@ -136,6 +140,25 @@ test("held by walls: two floors out from the wall and not a third; walls on a fl
   support.standsRef(out2);
   expect(support.visited).toBeLessThan(12);
   expect(units(1)).toBe(U);
+});
+
+test("nobody's pieces are scenery: set down by pose they are never judged, and what an owner sets on them still is", () => {
+  const { w, support, kind } = setup(0);
+  const box = w.kind("core:storage_box");
+  // A wall, a ceiling, a door and a pillar in the air, and a box on the ceiling: nobody's stand, a tribe's do not.
+  const air = (owner: number): number[] => ["wall", "ceiling", "door", "pillar"].map((piece, i) => w.structs.add(kind(piece), 100 + owner * 20, 6, 100 + i * 8, 0, owner, 1));
+  const [nobodys, owned] = [air(0), air(7)];
+  expect([nobodys.map((ref) => support.standsRef(ref)), owned.map((ref) => support.standsRef(ref))]).toEqual([[true, true, true, true], [false, false, false, false]]);
+  const onIt = w.structs.add(box, 100, 6.125 + w.reg.halfY[box]!, 108, 0, 0, 1);
+  const theirs = w.structs.add(box, 100.6, 6.125 + w.reg.halfY[box]!, 108.6, 0, 7, 1);
+  expect([support.standsRef(onIt), support.standsRef(theirs)]).toEqual([true, true]);
+  // A piece of the scenery goes: the rest stays, nobody's box with it, and the tribe's box that stood on it falls.
+  const collapse = new Collapse(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
+  w.structs.onRemove = (ref, cause) => void (cause !== GONE_FELL && collapse.gone(ref));
+  w.structs.remove(nobodys[1]!);
+  for (let k = 0; collapse.busy && k < 100; k++) collapse.step(16000, k + 1);
+  const there = (ref: number): boolean => w.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff] !== 0;
+  expect([collapse.busy, there(nobodys[0]!), there(nobodys[2]!), there(nobodys[3]!), there(onIt), there(theirs)]).toEqual([false, true, true, true, true, false]);
 });
 
 test("a map's static is no building piece, sloped or not: it offers no place, holds nothing up and is never judged", () => {
@@ -147,7 +170,7 @@ test("a map's static is no building piece, sloped or not: it offers no place, ho
   // A roof left in the air stands, as a box static does, and a floor beside it is offered no place on it.
   const roof = w.structs.add(w.kind(slopeKind("roof")), 100, 9, 100, 0, 0, 9000);
   expect(support.standsRef(roof)).toBe(true);
-  expect(socketsOf(w.structs, w.reg, roof, w.kind("core:ceiling_wood"), makeSockets())).toBe(0);
+  expect(count(w, roof, w.kind("core:ceiling_wood"))).toBe(0);
 });
 
 test("a thing stands on a floor of convex parts where its foot is on the part's top under its middle, level or sloped", () => {
@@ -155,17 +178,17 @@ test("a thing stands on a floor of convex parts where its foot is on the part's 
   const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
   const box = w.kind("core:storage_box");
   const half = units(0.3125);
-  const set = (ref: number, x: number, z: number, y = floorTop(w.structs, w.reg, ref, units(x), units(z))): boolean => support.stands(box, units(x), y + half, units(z), 0);
+  const set = (ref: number, x: number, z: number, y = floorTop(w.structs, w.reg, ref, units(x), units(z))): boolean => support.stands(box, units(x), y + half, units(z));
   // On a triangle foundation, and not off it over the square about its corner, at the same height.
   const tri = w.structs.add(w.kind("test:triangle"), 100, TRIANGLE_HALF, 100, 0, 7, 1);
   expect(set(tri, 101.5, 100.8)).toBe(true);
   expect(set(tri, 99.2, 99.2, units(2 * TRIANGLE_HALF))).toBe(false);
-  // A sloped roof slab held on a pillar: a thing come down on its slope stands there, and not at the height of its peak.
-  const pillar = w.structs.add(w.kind("core:pillar_stone"), 150, WALL_HEIGHT / 2 - 0.125, 150, 0, 7, 1);
-  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  expect(poseAt(w.structs, w.reg, pillar, w.kind("test:roof"), 0, 0, pose)).toBe(true);
-  const roof = w.structs.add(w.kind("test:roof"), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
+  // A sloped roof slab over a pillar, its top level with the pillar's: a thing come down on its slope stands there, and
+  // not at the height of its peak. The slab has no form, so it is in no base: it is the one that stands by itself.
+  start(w, w.kind("core:pillar_stone"), 150, WALL_HEIGHT / 2 - 0.125, 150, 0, 7);
+  const roofY = units(WALL_HEIGHT - 0.125) - units(w.reg.halfY[w.kind("test:roof_standing")]!);
+  const roof = w.structs.add(w.kind("test:roof_standing"), 150, roofY / U, 150, 0, 7, 1);
   expect(support.standsRef(roof)).toBe(true);
   expect([set(roof, 150.4, 149), set(roof, 149, 151.2)]).toEqual([true, true]);
-  expect(set(roof, 150.4, 149, pose.y + units(w.reg.halfY[w.kind("test:roof")]!))).toBe(false);
+  expect(set(roof, 150.4, 149, roofY + units(w.reg.halfY[w.kind("test:roof_standing")]!))).toBe(false);
 });

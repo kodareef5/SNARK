@@ -18,6 +18,7 @@ import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, 
 import { ORB_SEES_GLSL, ORB_SHADE_GLSL } from "./orb-light.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
+import { PIECE_FIT_GLSL, PIECE_FIT_PLACE } from "./piece-fit.ts";
 import { PIECE_END, PIECE_GLSL, PIECE_PLACE } from "./pieces.ts";
 
 /** Texels of the receiver's cascade the lookup is moved along its normal, at most, where the surface runs along the light. */
@@ -331,7 +332,7 @@ mat3x4 bone(int i) {
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
-${BEND_GLSL}${PIECE_GLSL}void main() {
+${BEND_GLSL}${PIECE_GLSL}${PIECE_FIT_GLSL}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p;
 ${PIECE_PLACE}  if (uSkin > 0.5) {
@@ -347,7 +348,7 @@ ${PIECE_PLACE}  if (uSkin > 0.5) {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);
     if (uSkin < -0.5 && uSkin > -1.5) l *= float(iRegB.y) / ${g(SIZE_UNITS)};
-${BEND_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
+${BEND_PLACE}${PIECE_FIT_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
   }
   vUv = uUv.xy + aUv * uUv.zw;
   gl_Position = uViewProj * vec4(p, 1.0);

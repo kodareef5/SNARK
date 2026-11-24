@@ -207,7 +207,7 @@ function fallingScene(view: ProvingView, ms: number): void {
     for (let s = 0; t && s < t.high; s++) {
       if (t.kind[s] === 0 || reg.role[t.kind[s]!]! < 0 || Math.abs(t.x[s]! - cx) > 4 || Math.abs(t.z[s]! - cz) > 4) continue;
       refs.push(chunk * 65536 + s);
-      gone.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 1, radius: 0, into: 0, map: 0 });
+      gone.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, tw: reg.forms?.def[t.kind[s]!] ? t.twAt(s) : -1, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 1, radius: 0, into: 0, map: 0 });
     }
   });
   for (const ref of refs) structs.remove(ref);

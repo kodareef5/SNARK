@@ -49,16 +49,18 @@ export function texgenSide(tier: Tier, finishes: number, layers = TEXGEN_LAYERS)
  * What a wall's read and the frame need of each material made from a recipe (content/texgen/materials.ts), in the
  * recipes' order, pinned here so that the first frame holds no recipe: its name, its tile's side in metres, its relief
  * in millimetres, how far the world's mottle moves it, the metres it goes to its means over and how far its second
- * copy is moved in its tiles (world-surfaces.ts madeFar, madeShift), whether it lies on a roof alone, and whether it is
- * a coat. A test says when a row is stale.
+ * copy is moved in its tiles (world-surfaces.ts madeFar, madeShift), whether it lies on a roof alone, whether it is
+ * a coat, and the share of its tile about its middle that is clear of joints and rivets, which a built piece's plain
+ * faces are folded into. A test says when a row is stale.
  */
-export const MADE_READS: readonly { readonly name: string; readonly metres: number; readonly relief: number; readonly mottle: number; readonly far: number; readonly shift: readonly [number, number]; readonly lies: boolean; readonly coat: boolean }[] = [
-  { name: "stucco", metres: 2, relief: 7, mottle: 0.05, far: 2, shift: [0.37, 0.71], lies: false, coat: true },
-  { name: "render", metres: 2, relief: 3, mottle: 0.04, far: 2, shift: [0.37, 0.71], lies: false, coat: true },
-  { name: "block", metres: 1.6, relief: 9, mottle: 0.05, far: 0.8, shift: [0.25, 0.75], lies: false, coat: false },
-  { name: "corrugated", metres: 1.524, relief: 18, mottle: 0.05, far: 0.3048, shift: [0.35, 0.71], lies: false, coat: false },
-  { name: "seam", metres: 2, relief: 25, mottle: 0.04, far: 2, shift: [0.25, 0.71], lies: false, coat: false },
-  { name: "gravel", metres: 2, relief: 12, mottle: 0.1, far: 2, shift: [0.37, 0.71], lies: true, coat: false },
+export const MADE_READS: readonly { readonly name: string; readonly metres: number; readonly relief: number; readonly mottle: number; readonly far: number; readonly shift: readonly [number, number]; readonly lies: boolean; readonly coat: boolean; readonly plain: number }[] = [
+  { name: "stucco", metres: 2, relief: 7, mottle: 0.05, far: 2, shift: [0.37, 0.71], lies: false, coat: true, plain: 1 },
+  { name: "render", metres: 2, relief: 3, mottle: 0.04, far: 2, shift: [0.37, 0.71], lies: false, coat: true, plain: 1 },
+  { name: "block", metres: 1.6, relief: 9, mottle: 0.05, far: 0.8, shift: [0.25, 0.75], lies: false, coat: false, plain: 1 },
+  { name: "corrugated", metres: 1.524, relief: 18, mottle: 0.05, far: 0.3048, shift: [0.35, 0.71], lies: false, coat: false, plain: 1 },
+  { name: "seam", metres: 2, relief: 25, mottle: 0.04, far: 2, shift: [0.25, 0.71], lies: false, coat: false, plain: 1 },
+  { name: "gravel", metres: 2, relief: 12, mottle: 0.1, far: 2, shift: [0.37, 0.71], lies: true, coat: false, plain: 1 },
+  { name: "plate", metres: 0.75, relief: 8, mottle: 0.05, far: 0.75, shift: [1, 1], lies: false, coat: false, plain: 0.76 },
 ];
 /** The most materials there may be: a face's key and a look's bits keep room for these (shared/world/city.ts, render/finish-near.ts). */
 export const MOST_MATERIALS = 12;

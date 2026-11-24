@@ -14,20 +14,23 @@ import { mipmapped } from "./weather.ts";
 
 /** Metres either way the relief's slope is measured over for the lean. */
 const SLOPE = 0.003;
+/** Metres from a unit's edge over which its face falls to it, where its course says it does (`pillow`). */
+const PILLOW = 0.06;
 /** Rows of four numbers a material is given the card as (materialRows). */
-export const MATERIAL_ROWS = 13;
+export const MATERIAL_ROWS = 16;
 
 /** Recipe `r` as the card is given it, `which` 0 for its base colour and 1 for its relief. */
 export function materialRows(r: MaterialRecipe, which: number): Float32Array {
-  const f = new Float32Array(MATERIAL_ROWS * 4), g = r.grain, c = r.course, b = r.rib;
+  const f = new Float32Array(MATERIAL_ROWS * 4), g = r.grain, c = r.course, b = r.rib, v = r.rivet;
   f.set([r.metres, r.seed, r.level, which, 0.5 / r.means[0], r.shade, r.dye, r.rough, r.hollow, r.relief / 1000 / (2 * SLOPE), 0, 0]);
   r.noise.forEach((n, i) => {
     f.set([n.cell[0], n.cell[1], n.height, n.light], 12 + i * 4);
     f[28 + i] = n.warp ?? 0;
   });
   if (g) f.set([g.size, g.core, g.radius, g.height, g.tone, g.gap, g.bare, g.warm], 32);
-  if (c) f.set([c.size[0], c.size[1], c.bond, c.joint, c.depth, c.tone, c.dark, 0], 40);
+  if (c) f.set([c.size[0], c.size[1], c.bond, c.joint, c.depth, c.tone, c.dark, c.pillow ?? 0], 40);
   if (b) f.set([b.pitch, b.width, b.height, 0], 48);
+  if (v) f.set([v.pitch, v.inset, v.radius, v.height, v.streak, v.run, v.rust, v.wear, v.foot ?? 0, v.bare ?? 0, 0, 0], 52);
   return f;
 }
 
@@ -40,13 +43,15 @@ const wrap = (i: number, n: number): number => ((i % n) + n) % n;
  */
 export function materialHeight(f: Float32Array, x: number, y: number, out: Float64Array): number {
   const T = f[0]!, seed = f[1]!;
-  let h = f[2]!, light = 1, dye = f[6]!, warm = 0, before = 0.5;
+  let h = f[2]!, light = 1, dye = f[6]!, warm = 0, before = 0.5, first = 0.5, grit = 0.5;
   for (let i = 0; i < 4; i++) {
     const a = 12 + i * 4, cx = f[a]!;
     if (cx <= 0) break;
     const cy = f[a + 1]!, n = fbm((x + f[28 + i]! * (before - 0.5)) / cx, y / cy, Math.round(T / cx), Math.round(T / cy), seed + 100 * (i + 1), 2);
     h += f[a + 2]! * (n - 0.5);
     light *= 1 + f[a + 3]! * (n - 0.5);
+    if (i === 0) first = n;
+    if (i === 2) grit = n;
     before = n;
   }
   if (f[32]! > 0) {
@@ -62,8 +67,29 @@ export function materialHeight(f: Float32Array, x: number, y: number, out: Float
     const cw = f[40]!, ch = f[41]!, row = Math.floor(y / ch), sx = x + f[42]! * cw * (row - 2 * Math.floor(row / 2)), col = Math.floor(sx / cw);
     const fx = sx - col * cw, fy = y - row * ch, d = Math.min(fx, cw - fx, fy, ch - fy);
     const joint = 1 - smoothstep(0.5 * f[43]!, f[43]!, d), tone = hash3(wrap(col, Math.round(T / cw)), wrap(row, Math.round(T / ch)), seed + 5);
-    h *= 1 - f[44]! * joint;
+    h = (h - f[47]! * (1 - smoothstep(0, PILLOW, d))) * (1 - f[44]! * joint);
     light *= (1 + f[45]! * (tone - 0.5)) * (1 - f[46]! * joint);
+    if (f[52]! > 0) {
+      // The nearest rivet of the rows inside the unit's top and foot, and of the columns inside its sides.
+      const ins = f[53]!, R = f[54]!, nx = Math.round((cw - 2 * ins) / f[52]!), ny = Math.round((ch - 2 * ins) / f[52]!);
+      const kx = Math.min(Math.max(Math.floor(((fx - ins) * nx) / (cw - 2 * ins) + 0.5), 0), nx), rx = ins + (kx * (cw - 2 * ins)) / nx, ry = fy < 0.5 * ch ? ins : ch - ins;
+      const qx = fx < 0.5 * cw ? ins : cw - ins, qy = ins + (Math.min(Math.max(Math.floor(((fy - ins) * ny) / (ch - 2 * ins) + 0.5), 0), ny) * (ch - 2 * ins)) / ny;
+      const dr = Math.min(Math.hypot(fx - rx, fy - ry), Math.hypot(fx - qx, fy - qy));
+      const head = 1 - smoothstep(0.45 * R, R, dr), ring = (1 - smoothstep(R, 1.8 * R, dr)) * (1 - head);
+      h += f[55]! * head;
+      light *= (1 - 0.6 * f[46]! * ring) * (1 + f[59]! * (1 - smoothstep(f[43]!, f[43]! + 0.03, d)) * smoothstep(0.45, 0.75, before));
+      const t = (fy - ins) / f[57]!;
+      let loose = 0;
+      if (t > 0 && t < 1) {
+        const own = hash3(wrap(col, Math.round(T / cw)) * 64 + kx, wrap(row, Math.round(T / ch)), seed + 9), wide = R * (0.8 + 1.2 * t);
+        const s = Math.max(0, own - 0.5) * 2 * (1 - smoothstep(0.3 * wide, wide, Math.abs(fx - rx + 0.012 * (before - 0.5) * t))) * (1 - t) * (1 - t) * (1 - head);
+        light *= 1 - f[56]! * s;
+        warm += f[58]! * s;
+        loose = s;
+      }
+      // Where the paint lets go first: under a streak's head, round a rivet, along a joint and up from a unit's foot, by the tile's own noises.
+      if (f[61]! > 0) dye *= 1 - f[61]! * Math.min(1, Math.max(loose, 0.5 * ring, 0.45 * joint, 1 - (ch - fy) / (f[60]! * (0.3 + 1.4 * before))) * (0.55 + 0.5 * first + 0.4 * grit));
+    }
   }
   if (f[48]! > 0) {
     const pitch = f[48]!, fx = x - Math.floor(x / pitch) * pitch, d = Math.min(fx, pitch - fx);
@@ -99,7 +125,7 @@ export function materialTexel(f: Float32Array, x: number, y: number, out: Float6
 }
 
 const MATERIAL_GLSL = `float heightOf(float x, float y, out vec3 look) {
-  float T = uJob[2].x, h = uJob[2].z, light = 1.0, dye = uJob[3].z, warm = 0.0, before = 0.5;
+  float T = uJob[2].x, h = uJob[2].z, light = 1.0, dye = uJob[3].z, warm = 0.0, before = 0.5, first = 0.5, grit = 0.5;
   int seed = int(uJob[2].y);
   for (int i = 0; i < 4; i++) {
     vec4 n = uJob[5 + i];
@@ -107,6 +133,8 @@ const MATERIAL_GLSL = `float heightOf(float x, float y, out vec3 look) {
     float v = fbm((x + uJob[9][i] * (before - 0.5)) / n.x, y / n.y, int(floor(T / n.x + 0.5)), int(floor(T / n.y + 0.5)), seed + 100 * (i + 1), 2);
     h += n.z * (v - 0.5);
     light *= 1.0 + n.w * (v - 0.5);
+    if (i == 0) first = v;
+    if (i == 2) grit = v;
     before = v;
   }
   vec4 g = uJob[10], g2 = uJob[11];
@@ -124,8 +152,28 @@ const MATERIAL_GLSL = `float heightOf(float x, float y, out vec3 look) {
     float row = floor(y / k.y), sx = x + k.z * k.x * (row - 2.0 * floor(row / 2.0)), col = floor(sx / k.x);
     float fx = sx - col * k.x, fy = y - row * k.y, d = min(min(fx, k.x - fx), min(fy, k.y - fy));
     float joint = 1.0 - smoothstep(0.5 * k.w, k.w, d), tone = hash3(wrapi(int(col), int(floor(T / k.x + 0.5))), wrapi(int(row), int(floor(T / k.y + 0.5))), seed + 5);
-    h *= 1.0 - k2.x * joint;
+    h = (h - k2.w * (1.0 - smoothstep(0.0, ${PILLOW}, d))) * (1.0 - k2.x * joint);
     light *= (1.0 + k2.y * (tone - 0.5)) * (1.0 - k2.z * joint);
+    vec4 v = uJob[15], v2 = uJob[16];
+    if (v.x > 0.0) {
+      float nx = floor((k.x - 2.0 * v.y) / v.x + 0.5), ny = floor((k.y - 2.0 * v.y) / v.x + 0.5);
+      float kx = clamp(floor((fx - v.y) * nx / (k.x - 2.0 * v.y) + 0.5), 0.0, nx), rx = v.y + kx * (k.x - 2.0 * v.y) / nx, ry = fy < 0.5 * k.y ? v.y : k.y - v.y;
+      float qx = fx < 0.5 * k.x ? v.y : k.x - v.y, qy = v.y + clamp(floor((fy - v.y) * ny / (k.y - 2.0 * v.y) + 0.5), 0.0, ny) * (k.y - 2.0 * v.y) / ny;
+      float dr = min(length(vec2(fx - rx, fy - ry)), length(vec2(fx - qx, fy - qy)));
+      float head = 1.0 - smoothstep(0.45 * v.z, v.z, dr), ring = (1.0 - smoothstep(v.z, 1.8 * v.z, dr)) * (1.0 - head);
+      h += v.w * head;
+      light *= (1.0 - 0.6 * k2.z * ring) * (1.0 + v2.w * (1.0 - smoothstep(k.w, k.w + 0.03, d)) * smoothstep(0.45, 0.75, before));
+      float t = (fy - v.y) / v2.y, loose = 0.0;
+      if (t > 0.0 && t < 1.0) {
+        float own = hash3(wrapi(int(col), int(floor(T / k.x + 0.5))) * 64 + int(kx), wrapi(int(row), int(floor(T / k.y + 0.5))), seed + 9), wide = v.z * (0.8 + 1.2 * t);
+        float s = max(0.0, own - 0.5) * 2.0 * (1.0 - smoothstep(0.3 * wide, wide, abs(fx - rx + 0.012 * (before - 0.5) * t))) * (1.0 - t) * (1.0 - t) * (1.0 - head);
+        light *= 1.0 - v2.x * s;
+        warm += v2.z * s;
+        loose = s;
+      }
+      vec4 v3 = uJob[17];
+      if (v3.y > 0.0) dye *= 1.0 - v3.y * min(1.0, max(max(loose, 0.5 * ring), max(0.45 * joint, 1.0 - (k.y - fy) / (v3.x * (0.3 + 1.4 * before)))) * (0.55 + 0.5 * first + 0.4 * grit));
+    }
   }
   vec4 b = uJob[14];
   if (b.x > 0.0) {

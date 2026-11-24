@@ -23,6 +23,10 @@ touch rule, ASTC, 24-bit depth, 16 texture units, no timer queries.
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
 | C | counts and bytes on Miami as built that day (`187f1213`, map version 5, with the cruise ship), on a busy machine (load 6 to 25), so no times | 2026-11-17 | `d45f43da` |
 | Dnnn | the measurement its decision records | | |
+| W | the wire lane's rows, on a Linux box (Core i9-13980HX, 32 cores, Bun 1.4.3) at load 5 to 20 from other work: bytes, and milliseconds of a modelled link's own time, neither of which load moves | 2026-11-24 | `build/wire` |
+| S | the support lane's rows, on the same Linux box at load 9 to 11 from other lanes and a second bench: `bun run bench` once for the house's collapse, where the tick at the target was 17.7 ms and the fight's 44 to 50; `bun tools/bench/support.ts` for the rest. Counts do not move with load; times are high | 2026-11-24 | `build/support` |
+| K | the keyed lane's rows on the same Linux box: bytes, a modelled link's own time, and times from `bun tools/bench/keyed.ts` alone while the box was quiet. Rows marked "busy" are from one `bun run bench` at load 17, beside two other benches | 2026-11-24 | `build/keyed` |
+| F | the collapse lane's rows on the same Linux box: `bun tools/bench/falling.ts`, `bun tools/bench/support.ts` and the same house on `main` before keys, each at load 2 to 4; `bun run bench` once before the pace at load 2 to 4 and once after at 9 to 13, which its counts and bytes do not feel | 2026-11-24 | `build/collapse` |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time, the three soaks the governor's tests replay in `tests/fixtures/device-reports` | 2026-11-15, 16 | |
 
 Rows without a code are E. Counts and bytes do not move with load; times from M are
@@ -117,13 +121,36 @@ all.
 | Crowd: every survivor and 2,000 creatures | 31.9 KB/s | 36 |
 | Crowd: bodies shown to a client that asked for 2,048; that never asked | 871 of 1,024; 468 of 512 | |
 | Breeding base, each survivor there | 32.4 KB/s | 34 |
-| Siege: 50 pieces of a 20,000-piece chunk damaged a tick | 9.46 KB/s | 30 |
-| A 1,512-piece house collapsing, each watcher, all of it | 2,373 bytes | 3,024 |
+| Siege: 50 pieces of a 20,000-piece chunk damaged a tick, each blow a stage of the piece's health (K) | 4.89 KB/s | 12 |
+| Near chunks held on joining beside a 4,000-piece base (K): 50; 100; 180 ms; 100 ms with 1% loss; 180 ms with 2%; 100 ms at 60 KB/s | 250; 333; 600; 400; 817; 950 ms | |
+| A 20,000-piece chunk joined, by frame and key (K): in the order it was built; each piece the nearest to the last; shuffled | 1.59; 2.4; 4.5 B a piece | 3.6 |
+| A 20,000-piece chunk of 32 KB whole (K): no delay; 50; 100; 180 ms there and back | 0.70; 0.72; 0.75; 0.78 s | 0.9 at 50 ms |
+| Back to a dropped 5,000-piece base of 7.9 KB, both ways (K): unchanged; ten slots changed | 26; 66 bytes | 64; 200 |
+| A lone foundation with its frame; the same piece as a free row (K) | 11.2; 8.7 B | |
+| A 1,512-piece house collapsing, each watcher, all of it (F) | 2,173 bytes | 3,024 |
 | Voice, 100 talking, each listener | 28.7 KB/s | 31 |
 | The map's feeds | 0.009 KB/s | 0.5 |
 | Far feed: first 20 s, mean and most; after; a siege watched, mean and most | 18.4, 19.0 KB; 0.004 KB/s; 0.12, 0.14 KB/s | none; 0.2; 2 |
 | 300 creatures standing still | 1.68 KB/s | 2 |
 | Prediction corrections; undecodable snapshots | 0; 0 | 0 |
+
+The W rows are the wire lane's ([build-wire](../workstreams/build-wire.md)). Before it, on the same box: the siege
+9.63 KB/s, with health as a float and every blow a row; the near chunks 567, 667, 950, 737, 1,267 and 1,550 ms; a
+20,000-piece chunk 2.6 s at 256 slots a tick; and a base come back to its 24 KB of rows again.
+
+The K rows are the keyed lane's ([build-keyed](../workstreams/build-keyed.md)). Before it, with every row its pose (W):
+the siege 5.24 KB/s; a 20,000-piece chunk 4.86 bytes a piece, 97 KB, whole in 0.70, 0.78, 1.12 and 1.52 s, the 16 KB a
+client may have on the way holding it at 100 ms and more; a 5,000-piece base 24 KB. The 1,024 slots of a tick hold a
+large chunk now.
+
+The house's row read 2,603 bytes on that box before the wire lane and 3,030 after it and the merge of `build/v2`,
+over its 3,024. The fall alone, one watcher on a small world, is 1,880 bytes at all three commits. The row counts
+every client's chunk bytes while the house falls, and the fights before it went differently in the two runs (1,833
+and 1,767 rifle hits), so which change moved it is not known.
+
+A removal costs a watcher 28 bytes a chunk before its slots, so the row follows the count of removals: 2,373 bytes on
+`main` before keys (13 removals on this box), 1,518 for 6 with keys, 2,173 for the pace's 11 (F). Over four chunks the same house is
+3,025, 1,907 and 2,823.
 
 On a modelled WebSocket the far feed delays no near chunk at any of six links, 50 ms
 clean to 180 ms with 2% loss and a 60 KB/s line (D256). Losses and freezes by link
@@ -140,8 +167,13 @@ are in [networking](../architecture/networking.md).
 | Fly 2,000 arrows, median, 99th; a blast in a 2,000-piece base, median, worst | 0.54, 1.40 to 1.44; 0.10, 1.25 to 1.29 ms | 2, 4; 1, 4 |
 | Brawl, median, 99th; siege, added to the tick | 5.30 to 5.51, 6.61 to 6.89; 0.15 to 0.19 ms | 8, 16; none |
 | Siege: chunk writes in 10 s; commit median; commit writing the chunk | 10; 0.08 to 0.09; 0.75 to 2.89 ms | 11; 4; 10 |
-| Collapse of 1,512 pieces: ticks to the last; work a tick, median, worst | 29; 0.78 to 0.80, 0.96 to 1.01 ms | 60; 1.5, 3 |
-| The same: whole tick, worst; ask whether a piece stands | 12.8 to 18.2; 0.031 ms | 16; 0.1 |
+| Collapse of 1,512 pieces (F): ticks to the last; first piece to last; removals; most in one; work a tick, median, worst | 27; 21; 11; 212; 0.61, 1.30 ms | 60; 45; none; 256; 1.5, 3 |
+| The same (S): ask whether a piece stands; its stability; the top floor of 30 storeys | 0.008; 0.004; 0.019 ms | 0.1 each |
+| The same in the bench's fight (F), at load 9 to 13: whole tick just before, median, worst; while it fell; added by the fall to the parts its work lands in, worst | 66.6, 73.5; 65.7, 96.3 ms; 0.38 ms | none; none; 4 |
+| The same before the pace, at load 2 to 4 (F): whole tick just before, median, worst; while it fell | 54.1, 60.7; 51.7, 55.7 ms | |
+| The same by itself, 40 watching (F): whole tick with nothing happening; while it fell, median, worst; a piece removed; a piece fallen, in all | 0.44; 0.84, 1.90 ms; 0.57; 10.2 µs | none; none, 16; none |
+| At the pace (F), a hut of 128; the house; a base of 20,000: ticks first piece to last; removals; most in the air if all were shown | 5, 21, 177; 3, 11, 89; 112, 1,326, 5,219 | 15, 45, 300 |
+| A base of 20,000 pieces, every stability in one pass (S) | 8.2 to 9.6 ms | |
 | Voice: relay for a second of 100 talking; who hears whom, median, worst | 3.9 to 4.1; 0.22, 0.28 to 0.31 ms | 20; 0.5, 2 |
 | Breeding base: tick median before and with it; 99th; look for pairs, median, worst | 7.96 to 8.13, 8.39 to 8.67; 10.2 to 15.9; 0.12, 0.16 ms | 1.5 × before + 0.5; 16; 0.5, 2 |
 | Breeding base, worst tick while 150 females lay | 11.4 to 16.4 ms | 33.3 |
@@ -152,13 +184,40 @@ are in [networking](../architecture/networking.md).
 | A hundred dodos killed at once: bodies made and laid; their falls, a tick, median, worst; ticks until all lie still | 0.92 to 1.04; 0.56, 0.62 ms; 31 | 15; 3, 10; 300 |
 | The hundred at rest, worst tick; a swing's search among them; a blow's yield | 0.021 to 0.022; 0.023; 0.002 ms | 0.5; 0.05; 0.05 |
 
+The S rows are the support lane's ([build-support](../workstreams/build-support.md)). The old rule, on the same
+box by `bun tools/bench/support.ts` before it: a question 0.032 ms, the top floor of 30 storeys 0.054 ms, the house
+down in 30 steps of 1.12 ms. In the reference bench it was 29 ticks, 0.78 to 0.80 ms a tick, and a whole tick of 12.8
+to 18.2 ms at worst. A wave now removes 165 to 350 pieces where it removed about 47.
+
+The F rows are the collapse lane's ([build-collapse](../workstreams/build-collapse.md)). The whole tick while the house
+fell was never the fall's: after the firefight section the bench's fight ticks at 54 ms on that box when it is quiet
+(creatures 30, bodies 8.5, snapshots 9), and the falling ticks are no longer than the ticks before them. So the 16 ms row is gone and
+the fall is held to what it adds. By itself the house's fall adds 13.9 ms over its 27 ticks: judging 8.9, telling 40
+watchers 2.1, saving 0.9, removing 0.8. On `main` before keys the same fall added 37.4 ms over 30 ticks, 31.1 of it
+judging, and with keys and no pace 11.3 over 11. A removal takes 32 pieces, then 20 more each time, 256 at most, every
+other tick: the house's 6 removals of up to 307 are 11 of up to 212.
+
 ### Saves and starts
 
 | Row | Result | Budget |
 | --- | --- | --- |
 | Save: 519,017 structures, 313,216 records | 65.9 MB | |
 | Open, check and load the structures; load the entity records | 72; 231 to 234 ms | 3,000; 3,000 |
+| The same save with pieces by frame and key (K, busy): 501,497 structures, 313,219 records | 56.8 MB | |
+| Open, check and load those structures; load the entity records (K, busy) | 774; 518 ms | 3,000; 3,000 |
+| 520,000 undamaged pieces of 251 bases alone (K): on disk, a piece; open, check and load, median of 5 | 1.69 B; 304 ms | 5; 400 |
+| A harmed piece on disk; the 20,000-piece chunk on disk whole, and after a minute of the siege (K) | 5.5 B; 30.6; 110 KB | |
+| The commit that writes the 20,000-piece chunk alone (K): median; worst of 60 | 0.92; 1.9 ms | 1.5 worst |
+| The siege's commit that writes it, 99th percentile (K, busy); another lane's bench of the format before, run beside it | 2.23; 3.89 ms | 10 |
 | Start a host on the save; under other settings; of that, bringing over; first commit after | 660 to 661; 684 to 696; 23 to 35; 455 to 491 ms | none; 5,000; 2,000; 5,000 |
+
+The 72 ms is from before a piece had a key. With keys, a load sets each piece in its frame's cells: 0.55 µs a piece
+more, by the save's keys or by the shim that worked them out from poses. Before the keyed lane the 20,000-piece chunk
+was 488 KB on disk at 25 bytes a piece, its commit alone 0.55 ms at the median and 5.2 at worst, and 520,000 pieces
+loaded through the shim in 448 to 599 ms; the same rows put by pose with no save read take 350 ms beside the 304. The
+commit's median rose because packing 20,000 rows takes 0.8 ms where copying them took 0.2; the 1.5 ms hoped for its
+worst is missed. With the box busy the same part read 1.3 to 2.1 ms for the commit and 406 to 489 ms for the load, and
+the shim 470 to 592 ms for the same rows.
 
 A rule is read where it is used, so a 50x server ticks as one at ARK's defaults
 (`--config config/boosted-50x`).
@@ -200,6 +259,29 @@ bench bases, 0.39% in a city of 81 built-up chunks and 0.67% with every base hel
 pair of every sample. A window fills in 7, 4, 2 and 1 frames by tier. Flying 3 km at
 600 m/s draws no tile coarser; at 3,000 m/s, 20. After a teleport the window is in
 within 4 frames.
+
+### Bases: rooms, trims and plates (2026-11-24, Linux, i9-13980HX)
+
+Each part alone (`bun tools/bench/rooms.ts`, `draw.ts --trims`, `occluders.ts`) with other lanes running, load 6 to 9:
+medians of three to five runs. The gates were set on a quiet machine, so a miss by a tenth is the load's.
+
+| Row | Before | Now | Gate |
+| --- | --- | --- | --- |
+| The room finder after one wall goes or comes, a 20,000-piece chunk | 0.96 ms | 0.20 to 0.25 ms | 0.4 |
+| The same, 2,000 pieces | 0.21 ms | 0.06 median; 0.11 to 0.13 by the bench's mean | 0.12 |
+| The room finder on a chunk whole, 20,000 pieces | 4.65 ms | 3.9 to 4.2 ms | 1.5, missed |
+| The same, 2,000 pieces | 0.85 ms | 0.82 ms | 0.4, missed |
+| The flood alone after one wall goes, 20,000 and 2,000 pieces | 0.58, 0.14 ms | 0.05, 0.02 ms | |
+| A 20,000-piece chunk laid out again with wood's stand-in trims, frame built | 12.9 ms | 3.8 to 4.9 ms | 6 |
+| The same with no trims | 3.4 ms | 2.9 to 3.1 ms | |
+| A chunk's plates found when it is laid out, 2,000 and 20,000 pieces of stone | | 0.23, 0.40 ms | |
+| Frame build 30 m from a stone base with 300 creatures, its plates in the picture | 0.66 ms | 0.82 ms | |
+| That base from 12 m, 30 m and a mount's back: triangles | 1.97, 1.60, 1.67 M | 1.73, 1.54, 1.61 M | a fall |
+| The same of metal, from 12 m: triangles; draws | 1.61 M; 20 | 1.28 M; 13 | a fall |
+
+The whole-chunk row is paid by a chunk first seen and by a change of many pieces at once; a slab's going no longer pays
+it. The plates' 0.16 ms a frame is the picture's tests, which a frame with no occluder skips. Why the plates hide little
+at 30 m is in [build-occluders](../workstreams/build-occluders.md).
 
 ### Far bases (D257)
 
