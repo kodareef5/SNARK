@@ -12,10 +12,10 @@ import { PLACE_JOIN, PLACE_NEW, PLACE_PLAN, PLACE_REST, PLACE_RUN_MOST, writeFil
 import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, RESULT_TERRAIN, RESULT_TOO_HIGH, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
-import { dirVector, levelY, worldOf, yawOf } from "../../shared/world/lattice/basis.ts";
+import { dirVector, levelY, twOf, worldOf, yawOf } from "../../shared/world/lattice/basis.ts";
 import { FORM_LAYERS, HALF_SIDE_M } from "../../shared/world/lattice/forms.ts";
 import type { Frame, LatticeKey } from "../../shared/world/lattice/frames.ts";
-import { CLS_EDGE, CLS_SQUARE, SIDE, dirTurn, elementCorners, keyAnchor, keyCls, keyDir, keyLvl } from "../../shared/world/lattice/module.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, SIDE, dirTurn, elementCorners, keyAnchor, keyCls, keyDir, keyLvl } from "../../shared/world/lattice/module.ts";
 import { PLACE_REACH, SWITCH_MARGIN, candidates, choose, makeCandidates, makeVerdict, runKey, validate, validateFree, type Site } from "../../shared/world/lattice/place.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ROLE_THING, enemyGap, enemyGapFound, freePose, restPose, type Pose } from "../../shared/world/snap.ts";
@@ -83,24 +83,26 @@ export function formName(reg: Registry, kind: number): string {
   return id.slice(id.indexOf(":") + 1, id.lastIndexOf("_")).replace(/_open$/, "").replaceAll("_", " ").replaceAll("-", " ");
 }
 
-/** A slot's outline: its class (a CLS_ of the lattice, -1 for none), its middle in metres and its turn in wire units. */
+/** A slot's outline: its class (a CLS_ of the lattice, -1 for none), its middle in metres (a triangle's first corner), its turn in wire units and its turn class in its base. */
 export interface SlotMark {
   cls: number;
   x: number;
   y: number;
   z: number;
   yaw: number;
+  tw: number;
 }
 
 const corners = new Int32Array(16);
 const anchor = new Int32Array(4);
 const point = new Int32Array(2);
 
-/** The outline of the slot (k0, k1) of frame `f`, to `out`. A triangle is marked at its middle as a corner is. */
+/** The outline of the slot (k0, k1) of frame `f`, to `out`. A triangle is marked from its first corner, as its pieces are placed. */
 function slotMarkOf(f: Frame, k0: number, k1: number, out: SlotMark): void {
   const cls = keyCls(k0);
   keyAnchor(k0, k1, anchor, 0);
-  const n = elementCorners(cls, anchor, 0, keyDir(k1), corners, 0);
+  const n = cls === CLS_TRIANGLE ? 1 : elementCorners(cls, anchor, 0, keyDir(k1), corners, 0);
+  if (cls === CLS_TRIANGLE) corners.set(anchor, 0);
   let x = 0;
   let z = 0;
   for (let i = 0; i < n; i++) {
@@ -108,7 +110,8 @@ function slotMarkOf(f: Frame, k0: number, k1: number, out: SlotMark): void {
     x += point[0]! / n;
     z += point[1]! / n;
   }
-  out.cls = n === 3 ? 0 : cls;
+  out.cls = cls;
+  out.tw = twOf(keyDir(k1));
   out.x = x / STRUCT_UNITS;
   out.z = z / STRUCT_UNITS;
   out.y = levelY(f.oy, keyLvl(k1)) / STRUCT_UNITS;
@@ -186,9 +189,9 @@ export class Builder {
   stability = -2;
   stabilityMost = STABILITY;
   /** The slot the piece shown would go in, for its outline. */
-  readonly slotMark: SlotMark = { cls: -1, x: 0, y: 0, z: 0, yaw: 0 };
+  readonly slotMark: SlotMark = { cls: -1, x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
   /** The other free slots near the look that the piece may go in, the first `others` of them: the places Q steps through. */
-  readonly otherMarks: SlotMark[] = Array.from({ length: OTHERS_MOST }, () => ({ cls: -1, x: 0, y: 0, z: 0, yaw: 0 }));
+  readonly otherMarks: SlotMark[] = Array.from({ length: OTHERS_MOST }, () => ({ cls: -1, x: 0, y: 0, z: 0, yaw: 0, tw: 0 }));
   others = 0;
   /** Whether the other slots are marked (Settings.buildSlots). */
   showOthers = true;

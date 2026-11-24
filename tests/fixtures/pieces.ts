@@ -13,6 +13,7 @@ import { worldOf } from "../../shared/world/lattice/basis.ts";
 import { keyAt, type Frame, type LatticeKey } from "../../shared/world/lattice/frames.ts";
 import { DIRS, SIDE, dirTurn, keyAnchor, keyCls, keyDir, CLS_EDGE, elementCorners } from "../../shared/world/lattice/module.ts";
 import { candidates, makeCandidates, makeVerdict, startBase, validate, type Candidates, type Site, type Verdict } from "../../shared/world/lattice/place.ts";
+import { HIT_STRUCTURE, castWorld } from "../../shared/world/ray.ts";
 import { Support } from "../../shared/world/support.ts";
 import type { Harness } from "./net.ts";
 import type { TestWorld } from "./world.ts";
@@ -243,4 +244,34 @@ export function send(h: Harness, s: ClientSession, variant: number, key: Lattice
   s.command(CMD_PLACE, (w: BitWriter) => writeJoin(w, variant, key.fr, key.k0, key.k1));
   h.run(150);
   return { code, ref: h.host.build.placed > before ? h.host.build.last : -1 };
+}
+
+/** The centre of the square with a corner at `a` and sides along `e` and a quarter turn on: where a square piece's slot is named from. */
+export const centre = (a: Tuple, e: number): number[] => step(step(a, e, 1), e + 3, 1);
+/** The middle of the edge from `a` along `d`. */
+export const mid = (a: Tuple, d: number): number[] => step(a, d, 1);
+
+/** Every built row of a store as text, in order: its kind, its frame and key, and its place to the lattice unit. */
+export function rowsOf(structs: TestWorld["structs"], ids: readonly (string | undefined)[]): string[] {
+  const out: string[] = [];
+  structs.chunks.forEach((t) => {
+    for (let s = 0; t && s < t.high; s++) {
+      if (t.kind[s] === 0 || !t.fr || t.fr[s] === 0) continue;
+      out.push(`${ids[t.kind[s]!]} ${t.k0![s]} ${t.k1![s]} ${Math.round(t.x[s]! * U)} ${Math.round(t.y[s]! * U)} ${Math.round(t.z[s]! * U)} ${t.yaw[s]} ${t.twAt(s)}`);
+    }
+  });
+  return out.sort();
+}
+
+/**
+ * How many of `n` level rays from (x, y, z) metres, spread evenly round, get `far` metres without meeting something
+ * built: the gaps a body's eye would find in a wall round it.
+ */
+export function leaks(w: TestWorld, x: number, y: number, z: number, far: number, n = 720): number {
+  let out = 0;
+  for (let k = 0; k < n; k++) {
+    const a = (k + 0.37) * ((2 * Math.PI) / n);
+    if (castWorld(w, x, y, z, Math.cos(a), 0, Math.sin(a), far) !== HIT_STRUCTURE) out++;
+  }
+  return out;
 }

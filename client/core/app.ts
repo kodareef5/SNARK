@@ -1119,10 +1119,10 @@ export class App {
     // The slot it would go in, and faintly the others the look offers.
     if (b.active && b.slotMark.cls >= 0) {
       const at = b.slotMark;
-      marks.slot(at.cls, at.x, at.y, at.z, at.yaw, GHOST_SLOT);
+      marks.slot(at.cls, at.x, at.y, at.z, at.yaw, GHOST_SLOT, 0, at.tw);
       for (let i = 0; i < b.others; i++) {
         const o = b.otherMarks[i]!;
-        marks.slot(o.cls, o.x, o.y, o.z, o.yaw, GHOST_SLOT, OTHERS_FADE);
+        marks.slot(o.cls, o.x, o.y, o.z, o.yaw, GHOST_SLOT, OTHERS_FADE, o.tw);
       }
     }
     if (v.active) {
