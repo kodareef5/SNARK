@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import { resolveAdmin, type AdminWorld } from "../../client/admin/target.ts";
+import { resolveAdmin as readAdmin, type AdminWorld } from "../../client/core/admin/navigation.ts";
 
+const resolveAdmin = (href: string, worlds: AdminWorld[]) => readAdmin(href, worlds, (url, base) => new URL(url, base));
 const origin = "https://snark.example";
 const miami: AdminWorld = { id: 14, name: "Miami", map: "Miami", mapId: "core:miami", address: "/miami/", players: 2, max: 70 };
 const tampa: AdminWorld = { ...miami, id: 18, name: "Tampa", address: "/west/tampa" };

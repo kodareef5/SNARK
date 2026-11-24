@@ -1,13 +1,14 @@
 import { esc } from "../core/admin/format.ts";
-import { address, cluster, clusterPath, resolveAdmin, sections, worldPath, type AdminWorld } from "./target.ts";
+import { address, cluster, clusterPath, resolveAdmin, sections, worldPath, type AdminWorld } from "../core/admin/navigation.ts";
 
+const readUrl = (href: string, base?: string) => new URL(href, base);
 type Context = ReturnType<typeof resolveAdmin>;
 let pending: Promise<Context> | undefined;
 
 export function adminContext(): Promise<Context> {
   return pending ??= fetch("/worlds.json", { cache: "no-store" }).then(async response => {
     if (!response.ok) throw Error("World directory unavailable.");
-    return resolveAdmin(location.href, await response.json() as AdminWorld[]);
+    return resolveAdmin(location.href, await response.json() as AdminWorld[], readUrl);
   });
 }
 
@@ -37,8 +38,8 @@ function install(ctx: Context): void {
   const group = (label: string, links: string) => `<div class="admin-nav-group"><h2>${label}</h2>${links}</div>`;
   const worldHref = (world: AdminWorld) => {
     try {
-      const url = address(world, location.origin);
-      return url.origin === location.origin ? worldPath(world.id, ctx.world ? ctx.view : "map") : new URL("admin/", url).href;
+      const url = address(world, location.origin, readUrl);
+      return url.origin === location.origin ? worldPath(world.id, ctx.world ? ctx.view : "map") : new URL("admin/", url.href).href;
     } catch { return ""; }
   };
   const worldLinks = ctx.worlds.map(world => {

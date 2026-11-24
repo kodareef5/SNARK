@@ -1,4 +1,4 @@
-import type { LiveWorld } from "../core/wiki/world.ts";
+import type { LiveWorld } from "../wiki/world.ts";
 
 export interface AdminWorld extends LiveWorld { id: number | "local" }
 
@@ -12,22 +12,28 @@ const worldPages = sections.flatMap(([, pages]) => [...pages]);
 export const worldPath = (id: AdminWorld["id"], view: string) => `/admin/worlds/${id}/${view}/`;
 export const clusterPath = (view: string) => view === "overview" ? "/admin/" : `/admin/${view}/`;
 
-export function address(world: AdminWorld, origin: string): URL {
-  const url = new URL(world.address, origin);
+interface SiteUrl {
+  href: string; pathname: string; origin: string; protocol: string;
+  username: string; password: string; search: string; hash: string;
+}
+type ReadUrl = (href: string, base?: string) => SiteUrl;
+
+export function address(world: Pick<LiveWorld, "address">, origin: string, read: ReadUrl): SiteUrl {
+  const url = read(world.address, origin);
   if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash) throw Error("Invalid world address.");
   if (!url.pathname.endsWith("/")) url.pathname += "/";
   return url;
 }
 
-export function resolveAdmin(href: string, worlds: AdminWorld[]) {
-  const { origin, pathname } = new URL(href);
+export function resolveAdmin(href: string, worlds: AdminWorld[], read: ReadUrl) {
+  const { origin, pathname } = read(href);
   const route = /\/admin\/worlds\/(local|\d+)\/([a-z-]+)\/?$/.exec(pathname);
   const world = route ? worlds.find(row => String(row.id) === route[1]) : null;
   if (route && !world) throw Error("This world is unavailable. Return to the overview to choose a running world.");
   const view = route?.[2] ?? (pathname.split("/")[2] || "overview");
   const title = [...cluster, ...worldPages].find(([slug]) => slug === view)?.[1];
   if (!title) throw Error("Unknown admin page.");
-  const base = world ? address(world, origin) : null;
+  const base = world ? address(world, origin, read) : null;
   if (base && base.origin !== origin) throw Error("Open this world on its own server.");
   return {
     view, title, worlds, world: world ?? null,
@@ -37,7 +43,7 @@ export function resolveAdmin(href: string, worlds: AdminWorld[]) {
     },
     api(path: string) {
       if (!base) throw Error("Choose a world first.");
-      const target = new URL(path, new URL("admin/", base));
+      const target = read(path, read("admin/", base.href).href);
       if (target.origin !== origin || !target.pathname.startsWith(base.pathname)) throw Error("Invalid world resource.");
       return target.href;
     },
