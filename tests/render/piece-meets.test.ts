@@ -3,12 +3,12 @@
 // Each piece is set down by its collider's origin and a turn, as a base's lattice would set it.
 
 import { expect, test } from "bun:test";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS } from "../../content/building/forms.ts";
 import type { FormDef } from "../../shared/world/lattice/forms.ts";
 import { TEXTURED, levelsOf } from "../../tools/pack/pieces/lod.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
 
-const ALL: Record<string, FormDef> = { ...FORMS, ...PLANNED_FORMS };
+const ALL: Record<string, FormDef> = ALL_FORMS;
 type Tri = readonly [number, number, number, number, number, number, number, number, number];
 /** A piece where it stands: its form, its collider's origin on the plan, the height of its slot's level, and degrees it is turned from +X toward +Z. */
 interface Set {
@@ -84,6 +84,8 @@ function apart(a: Set, b: Set, edge: readonly [number, number, number, number], 
 
 const ROOT3 = Math.sqrt(3);
 const roofAt = (form: string, x: number, z: number, turn = 0): Set => ({ form, x, z, turn });
+/** Fortieths of a metre from a valley's low corner at which its courses, clear of the fold's lining, meet the slope beside it. */
+const VALLEY_FROM = 5;
 /** Roof faces that lie in one plane across the side they share, or fall away from it alike: every level must meet there. */
 const FLUSH: [string, Set, Set, [number, number, number, number]][] = [
   ["two slopes side by side", roofAt("roof", 0, 0), roofAt("roof", 3, 0), [1.5, -1.5, 1.5, 1.5]],
@@ -105,10 +107,10 @@ test("roof faces that share a side in one plane, or a ridge, meet along it to a 
   const said: string[] = [];
   for (const [name, a, b, edge] of FLUSH) {
     for (let level = 0; level < TEXTURED; level++) {
-      // A valley's courses stand back from its fold, where its lining board shows. For 0.35 m from each end of the fold
-      // the board, not a course, meets the roof beside it: 1.5 cm over a ridge's last course at its high corner, and
-      // up to 6 cm under a slope's eave board at its low one, where it has no eave of its own.
-      const most = apart(a, b, edge, level, name.startsWith("a valley") ? 14 : 4);
+      // A valley's courses stand back from its fold, where its lining board shows. For 0.35 m from the fold's high end
+      // the board, not a course, meets the roof beside it, 1.5 cm over a ridge's last course. At its low end its lowest
+      // course is an eave board as the slope's beside it is, and they meet from 0.13 m on.
+      const most = apart(a, b, edge, level, name.endsWith("over its ridge") ? 14 : name.startsWith("a valley") ? VALLEY_FROM : 4);
       said.push(`${name}, level ${level}: ${(most * 1000).toFixed(2)} mm`);
       expect(most, `${name}, level ${level}`).toBeLessThanOrEqual(0.001);
     }
@@ -140,16 +142,56 @@ test("a roof that runs on down from another lies under its eave board, which lap
   }
 });
 
-/** Metres between a gable's top and the roof boards over it, as wood's recipe has them today. A change may lower it. */
+/** Metres between a gable's top and the roof over it in stone and thatch, until their roofs' sides are as deep as their slabs. */
 const GABLE_GAP = 0.215;
 
-test("a sloped wall's top lies in the plane of the roof's underside, under its boards, and its two hands meet the roof alike", () => {
+/** Metres of air a wall may have under a roof's edge: a hewn timber's stray at the finest level, a coarser level's own error past it. */
+const UNDER_ROOF = [0.005, 0.02, 0.02] as const;
+
+/**
+ * A slope on the walls that carry it, in any tier, `stand` giving a piece's triangles: the most air between a wall's
+ * top and the lowest of the roof over it, and the most a wall stands through the roof's top. Under each sloped side a
+ * gable, read across the half of it the roof covers. Under the low side a wall whose top is the roof's level, read
+ * across its thickness at `across` from the side's line, the eave over its outer half. At the high side the inner face
+ * of a wall that stands on past the roof: how far the roof's lowest there is over its slab's underside.
+ */
+function roofOnWalls(stand: (s: Set, level: number) => Tri[], level: number, across: readonly number[] = [-0.09, -0.05, -0.02, 0.02, 0.05, 0.09]): { gable: number; eave: number; high: number; through: number } {
+  const row = ALL.roof!;
+  const roof = stand(roofAt("roof", 0, 0), level);
+  const out = { gable: 0, eave: 0, high: 0, through: 0 };
+  for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
+    const wall = stand({ form: hand, x, z: 0, turn }, level);
+    for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
+      const px = x - Math.sign(x) * inward;
+      const [w, r] = [over(wall, px, z), over(roof, px, z)];
+      if (!w) continue;
+      out.gable = Math.max(out.gable, r ? r[0] - w[1] : Infinity);
+      out.through = Math.max(out.through, r ? w[1] - r[1] : 0);
+    }
+  }
+  const low = stand({ form: "wall", x: 0, z: -1.5, turn: 0, level: -3 }, level);
+  for (const x of [-1.38, -1.2, -0.6, -0.3, 0.2, 0.7, 1.3, 1.38]) for (const off of across) {
+    const [w, r] = [over(low, x, -1.5 + off), over(roof, x, -1.5 + off)];
+    if (!w) continue;
+    out.eave = Math.max(out.eave, r ? r[0] - w[1] : Infinity);
+    out.through = Math.max(out.through, r ? w[1] - r[1] : 0);
+  }
+  // The slab's underside half a millimetre inside the wall's face, a yield band in from the high side.
+  const z = 1.5 - 0.0995;
+  const under = ((z + 1.5) / 3) * (row.corner![0]! - row.corner![2]!);
+  for (const x of [-1.38, -0.6, 0.2, 1.3]) {
+    const r = over(roof, x, z);
+    out.high = Math.max(out.high, r ? r[0] - under : Infinity);
+  }
+  return out;
+}
+
+test("a sloped wall's top lies in the plane of the roof's underside, and its two hands meet the roof alike", () => {
   const roof = ALL.roof!;
   for (let level = 0; level < TEXTURED; level++) {
     for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
       // On the roof's east side its front looks east, and on the west side west: either way it is high where the roof is.
       const wall = standing({ form: hand, x, z: 0, turn }, level);
-      const over0 = standing({ form: "roof", x: 0, z: 0, turn: 0 }, level);
       // The plane of the roof's underside, which its row's corner heights stand a slab over: from its slot's level at its low side to 1.5 m at its high one.
       const plane = (z: number): number => ((z + 1.5) / 3) * (roof.corner![0]! - roof.corner![2]!);
       let most = 0, tops = 0;
@@ -164,18 +206,22 @@ test("a sloped wall's top lies in the plane of the roof's underside, under its b
       }
       expect(tops, `${hand} level ${level}: points on the plane`).toBeGreaterThanOrEqual(4);
       expect(most).toBeLessThanOrEqual(0.002);
-      // Under the roof's side, from its eave to its high side: nothing of the roof is under the wall's top. The roof
-      // stands on its corner heights since 2026-11-24, and its rim timbers are 0.115 m in from its sides, so over the
-      // wall only its boards run: they begin 0.21 m over the wall's top at the finest level, which is open to the day.
-      for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
-        const px = x - Math.sign(x) * inward;
-        const [w, r] = [over(wall, px, z), over(over0, px, z)!];
-        if (!w) continue;
-        expect(r[0], `${hand} level ${level} at ${z}: nothing of the roof in the wall`).toBeGreaterThanOrEqual(w[1] - 0.003);
-        expect(r[0] - w[1], `${hand} level ${level} at ${z}: the gap under the boards`).toBeLessThanOrEqual(GABLE_GAP);
-      }
     }
   }
+});
+
+test("a wood roof's sides are as deep as its slab: a gable, the wall under its eave and a wall past its high side meet timber", () => {
+  const said: string[] = [];
+  for (let level = 0; level < TEXTURED; level++) {
+    const met = roofOnWalls(standing, level);
+    said.push(`wood level ${level}: air over a gable ${(met.gable * 1000).toFixed(1)} mm, over the eave wall ${(met.eave * 1000).toFixed(1)} mm, at a wall past the high side ${(met.high * 1000).toFixed(1)} mm, through the roof ${(met.through * 1000).toFixed(1)} mm`);
+    // A rake board along each sloped side, a plate along the low one that bears on the wall, a beam along the high one.
+    expect(met.gable, `level ${level}: over a gable`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.eave, `level ${level}: over the eave wall`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.high, `level ${level}: at a wall past the high side`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.through, `level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
 test("a triangle of floor and a square share their side's two corners, and neither crosses it", () => {

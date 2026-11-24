@@ -1350,3 +1350,27 @@ export function retile(shape: Shape, from = 0): Shape {
   }
   return shape;
 }
+
+
+// A roof's rim, added so that a wall under or beside a roof meets solid roof: every tier's roof builds its edge timbers on these.
+
+/**
+ * A roof's rim on the plan: for each side of the convex `outline`, the strip from `out[k]` metres outside that side to
+ * `inward` inside it, as four corners going round as the outline does, the side's own two first. Two strips meet at a
+ * corner on the line between where their outer and their inner sides cross, so the strips tile the rim and none lies
+ * in another. A side marked `through` runs square through a corner instead, and a neighbour not so marked butts on it.
+ */
+export function rimStrips(outline: readonly Flat[], out: readonly number[], inward: number, through: readonly boolean[] = []): Flat[][] {
+  const n = outline.length;
+  const outer = inset(outline, out.map((o) => -o));
+  const inner = inset(outline, inward);
+  /** The outline with side k alone moved in: at its two ends, where its inner side crosses its neighbours' outer ones. */
+  const crossed = (k: number): Flat[] => inset(outline, out.map((o, s) => (s === k ? inward : -o)));
+  return outline.map((_, k) => {
+    const [prev, next] = [(k + n - 1) % n, (k + 1) % n];
+    const mine = through[k] === true;
+    const start: [Flat, Flat] = mine && !through[prev] ? [outer[k]!, crossed(k)[k]!] : !mine && through[prev] ? [crossed(prev)[k]!, inner[k]!] : [outer[k]!, inner[k]!];
+    const end: [Flat, Flat] = mine && !through[next] ? [outer[next]!, crossed(k)[next]!] : !mine && through[next] ? [crossed(next)[next]!, inner[next]!] : [outer[next]!, inner[next]!];
+    return [start[0], end[0], end[1], start[1]];
+  });
+}

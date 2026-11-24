@@ -339,10 +339,16 @@ test("the thatch recipe makes the same mesh each time it is asked", () => {
 const PLANNED: Record<string, FormDef> = PLANNED_FORMS;
 const planned = Object.entries(PLANNED).map(([name, form]) => ({ name, form, shapes: levelsOf(WOOD, name, form) }));
 const isRoof = (form: FormDef): boolean => form.corner !== undefined && form.span === 0;
-/** A roof's lowest course runs out 0.30 m past a low side, measured level. Its eave board stands 0.065 m over its plane, and a hip's roll 0.09 over the faces beside it. */
+/** A roof's lowest course runs out 0.30 m past a low side, measured level. Its eave board stands 0.065 m over its plane, and a hip's roll climbs at its high corner to the height of a ridge's capping, 0.13 m over the faces that fall away beside it. */
 const EAVE = 0.3;
-const ROOF_PROUD = 0.09;
-/** What each new wood form's levels cost on 2026-11-24. A change may lower a number and may not raise one. */
+const ROOF_PROUD = 0.13;
+/** A low side's plate bears on the wall under it, 0.028 m under the roof's own level, as a wall's sill reaches under its foot. */
+const ROOF_SEAT = 0.03;
+/**
+ * What each new wood form's levels cost on 2026-11-24. A change may lower a number and may not raise one. The roofs
+ * were 812, 1378, 1074, 942 and 886 at the finest and 60 or 44 at the third, before their rims were boards on their
+ * sides' own lines: the third level gained a plate and an eave of its own to each low side.
+ */
 const WOOD_NEW_MOST: Record<string, readonly number[]> = {
   half_wall: [948, 252, 120, 28, 12],
   quarter_wall: [596, 156, 96, 28, 12],
@@ -354,11 +360,11 @@ const WOOD_NEW_MOST: Record<string, readonly number[]> = {
   triangle_foundation: [770, 156, 20, 8],
   triangle_ceiling: [952, 254, 48, 8],
   quarter_foundation: [772, 204, 72, 12],
-  roof: [812, 236, 60, 12],
-  roof_hip: [1378, 480, 60, 12],
-  roof_valley: [1074, 370, 60, 12],
-  triangle_roof: [942, 260, 44, 8],
-  triangle_roof_low: [886, 204, 44, 8],
+  roof: [638, 200, 84, 12],
+  roof_hip: [1162, 447, 108, 12],
+  roof_valley: [910, 366, 60, 12],
+  triangle_roof: [718, 196, 84, 8],
+  triangle_roof_low: [620, 128, 44, 8],
   sloped_wall_left: [728, 224, 122, 8],
   sloped_wall_right: [728, 224, 122, 8],
   fence_foundation: [256, 56, 28, 12],
@@ -406,7 +412,7 @@ test("every level of every new wood form lies in its form's box and the margin i
       over.forEach((most, k) => {
         const a = k % 3;
         // An eave's boards run out past a low side, and where that side meets a sloped one, as far along it.
-        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? 0.002 : ROOF_PROUD) : EAVE + 0.001) : form.layer === "leaf" ? PROUD_LEAF : form.layer === "wall" && a === along ? PROUD_ENDS : PROUD;
+        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? ROOF_SEAT : ROOF_PROUD) : EAVE + 0.001) : form.layer === "leaf" ? PROUD_LEAF : form.layer === "wall" && a === along ? PROUD_ENDS : PROUD;
         expect(most, `${name} level ${level} past its ${k < 3 ? "least" : "most"} ${"xyz"[a]}`).toBeLessThanOrEqual(margin);
       });
     });

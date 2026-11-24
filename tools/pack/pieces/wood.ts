@@ -10,7 +10,7 @@
 // every 3 m, one tile to a wall, and fittings every 1 m: 683 and 2,048 pixels a metre at 2,048 pixels.
 
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
-import { Shape, add, beamRings, clip, clipTo, cross, dot, fanSlab, gateLeaves, inset, ladderSticks, length, mirror, place, planeAt, planeMoved, railingSticks, roundEven, scale, slabOn, sub, unit, uprightPlane, widths, type FaceMap, type Flat, type Plane, type Stick, type Uv, type Vec } from "./kit.ts";
+import { Shape, add, beamRings, clip, clipTo, cross, dot, fanSlab, gateLeaves, inset, ladderSticks, length, mirror, place, planeAt, planeMoved, railingSticks, rimStrips, roundEven, scale, slabOn, sub, unit, uprightPlane, widths, type FaceMap, type Flat, type Plane, type SlabMap, type Stick, type Uv, type Vec } from "./kit.ts";
 import { planOf, type TierRecipe } from "./lod.ts";
 import { PyRandom } from "./mt.ts";
 
@@ -857,10 +857,16 @@ const EAVE_BOARD = 0.062;
 /** The boards under the courses, measured upright, and how far their top lies under the roof's own plane. */
 const SARK = 0.04;
 const SARK_DROP = 0.002;
-/** A roof's rim timber is this wide, and stands this far in from the side: clear of the yield ring, so the ring cuts no timber along its length. */
-const RIM = 0.16;
-const RIM_IN = 0.115;
+/** A roof's rim timbers lie on its sides' own lines, as wide as its yield band and as deep as its slab: a wall under a side meets them, and the ring cuts none along its length. */
+const RIM = 0.1;
+/** A low side's plate runs out over the wall under it, short of its outer face, and reaches under the roof's level onto the wall's top plate, as a sill does. */
+const PLATE_OUT = 0.096;
+const SEAT = DROP + 0.008;
+/** The rafter under a fold is this wide. */
+const FOLD = 0.16;
 const RAFTER = 0.2;
+/** The boards that cap a ridge (`ridge`): how far each reaches down the slope, and its top over the ridge's line at the ridge and at its edge. */
+const CAP = { wide: 0.22, top: 0.075, drop: 0.068 } as const;
 
 /** One flat face of a roof: its corners in plan, what each side is, and its own axes, along its contours and up its slope. */
 interface Facet {
@@ -884,8 +890,6 @@ interface Facet {
 function onFacet(f: Facet, a: number, s: number, n = 0): Vec {
   return [f.o[0] + a * f.along[0] + s * f.up[0], f.o[1] + a * f.along[1] + s * f.up[1], f.lo + s * f.g + n];
 }
-/** A facet's own plane moved `by` upright, looking up out of it. */
-const facetPlane = (f: Facet, by = 0): Plane => planeAt(add(onFacet(f, 0, 0), [0, 0, by]), [-f.g * f.up[0], -f.g * f.up[1], 1]);
 const facetAt = (f: Facet, q: Flat): [number, number] => [(q[0] - f.o[0]) * f.along[0] + (q[1] - f.o[1]) * f.along[1], (q[0] - f.o[0]) * f.up[0] + (q[1] - f.o[1]) * f.up[1]];
 const heightOn = (f: Facet, q: Flat): number => f.lo + facetAt(f, q)[1] * f.g;
 
@@ -930,8 +934,7 @@ const facetSides = (f: Facet, eaves = EAVE): Plane[] => f.poly.map((a, k) => pla
  * sides. The lowest runs out over an eave as one thick board, which covers the top of the wall the roof stands on.
  * With `wavy`, a course's lower edge wanders in its middle; it is true at its ends, where the next face's course meets it.
  */
-function courses(p: Shape, level: number, f: Facet, rise: number, seed: number, wavy: boolean): void {
-  const eave = f.kinds.includes("eave");
+function courses(p: Shape, level: number, f: Facet, rise: number, seed: number, wavy: boolean, eave = f.kinds.includes("eave")): void {
   const spans = f.poly.map((q) => facetAt(f, q)[0]);
   const [a0, a1] = [Math.min(...spans) - EAVE - 0.05, Math.max(...spans) + EAVE + 0.05];
   // A wavy course has a ring at each end of the face, where it is true, and one between, where it wanders.
@@ -1021,74 +1024,115 @@ function roof(form: FormDef, level: number): Shape | null {
     return [a / 3, (s * f.g) / rise - BOARD_ROLL_V];
   };
   const slab = (part: "top" | "under" | "side", k: number): readonly [string, (q: Vec) => Uv] => (part === "side" ? beam("x", 6)("-y", X, X) : ["boards", top(facets[Math.min(k, facets.length - 1)]!)]);
-  if (level >= 2) {
-    // One solid: its top wears the courses' picture, and it runs out to a thin edge over each eave.
-    const moved = inset(plan, plan.map((_, k) => (kindOf(k) === "eave" ? -EAVE : 0)));
+  const lowest = Math.min(...tops) - form.thick;
+  const eaves = plan.map((_, k) => kindOf(k) === "eave");
+  /** A rim timber's faces: its grain along its side, each on a band of the timber sheet. */
+  const rimMap = (k: number, band: number): SlabMap => {
+    const [a, b] = [plan[k]!, plan[(k + 1) % n]!];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const f = facetOf(k);
+    return (part) => ["timber", (q) => {
+      const along = ((q[0] - a[0]) * (b[0] - a[0]) + (q[1] - a[1]) * (b[1] - a[1])) / l;
+      const across = (-(q[0] - a[0]) * (b[1] - a[1]) + (q[1] - a[1]) * (b[0] - a[0])) / l;
+      return [along / 3, bandV((band + (part === "side" ? 0 : 1)) % 12) + (part === "side" ? q[2] - heightOn(f, [q[0], q[1]]) + form.thick / 2 : across - 0.05) / 3];
+    }];
+  };
+  /**
+   * The timbers of the rim, one a side, each from the slab's underside up to what it carries: a rake board along a
+   * sloped side and a beam along a high one, and along a low side a plate that also covers the outer half of the wall
+   * under it and bears on that wall's top. A gable, an eave wall and a wall that stands on past a high side meet timber.
+   */
+  const raked = plan.map((_, k) => kindOf(k) === "rake");
+  const rim = (top: (k: number) => number): void => rimStrips(plan, eaves.map((e) => (e ? PLATE_OUT : 0)), RIM, raked).forEach((quad, k) => {
+    const f = facetOf(k);
+    const [a, b] = [plan[k]!, plan[(k + 1) % n]!];
+    const from = p.faces.length;
+    // A level one that lies along an axis is a prism along it, which a ring across it leaves whole.
+    slabOn(p, quad, quad.map((q) => heightOn(f, q) - top(k)), eaves[k] ? quad.map(() => lowest - SEAT) : form.thick - top(k), rimMap(k, raked[k] ? 2 + k : 5 + k), 0, raked[k] ? undefined : axisOf([a[0], a[1], 0], [b[0], b[1], 0]));
+    // A rake board runs on past a low side to the plate's face, and ends level on the wall there as the plate does.
+    if (raked[k]) clip(p, planeAt([0, 0, lowest - SEAT], [0, 0, -1]), null, from);
+  });
+  if (level === 3) {
+    // One solid: its top wears the courses' colour, and it runs out to a thin edge over each eave.
+    const moved = inset(plan, eaves.map((e) => (e ? -EAVE : 0)));
     const out = moved.map((q, k) => Math.hypot(q[0] - plan[k]![0], q[1] - plan[k]![1]) > 1e-9);
     const high = moved.map((q, k) => heightOn(out[k] ? facets.find((f) => f.poly.includes(plan[k]!) && f.kinds.includes("eave"))! : facetOf(k), q) + 0.02);
     const low = moved.map((_, k) => (out[k] ? high[k]! - 0.07 : tops[k]! - form.thick));
-    return slabOn(p, moved, high, low, level === 3 ? (part) => tone(part === "side" ? "timber" : "boards")("", X, X) : slab, fold);
+    return slabOn(p, moved, high, low, (part) => tone(part === "side" ? "timber" : "boards")("", X, X), fold);
+  }
+  if (level === 2) {
+    // The slab as deep as its row to every side, its top wearing the courses' picture; a thin edge out over each eave; and the plates.
+    slabOn(p, plan, tops.map((h) => h + 0.02), form.thick + 0.02, slab, fold);
+    const axis = (k: number): number | undefined => axisOf([plan[k]![0], plan[k]![1], 0], [plan[(k + 1) % n]![0], plan[(k + 1) % n]![1], 0]);
+    rimStrips(plan, eaves.map((e) => (e ? EAVE : 0)), 0).forEach((quad, k) => {
+      if (eaves[k]) slabOn(p, quad, quad.map((q) => heightOn(facetOf(k), q) + 0.02), 0.07, slab, 0, axis(k));
+    });
+    rimStrips(plan, eaves.map((e) => (e ? PLATE_OUT : 0)), RIM, raked).forEach((quad, k) => {
+      if (eaves[k]) slabOn(p, quad, quad.map((q) => heightOn(facetOf(k), q) - 0.05), quad.map(() => lowest - SEAT), rimMap(k, 5 + k), 0, axis(k));
+    });
+    return p;
   }
   facets.forEach((f) => {
     const from = p.faces.length;
     // Only a square slope's courses wander: its sides are where a course is true. A fold or a triangle's side crosses
-    // every course somewhere along it, and there it must meet the next face's.
-    courses(p, level, f, rise, 900, !folded && n === 4);
+    // every course somewhere along it, and there it must meet the next face's. A valley's lowest course is an eave
+    // board too, as thick as those of the slopes beside it at its low corner.
+    courses(p, level, f, rise, 900, !folded && n === 4, f.kinds.includes("eave") || (folded && !hip));
     // A valley's courses stop short of its fold, where the board that lines it shows.
     if (folded && !hip) clip(p, planeMoved(facetSides(f)[f.kinds.indexOf("fold")]!, -0.09), null, from);
   });
   // The underlay alone, or past the finest the courses and their underlay as one sheet that wears the courses' picture.
   if (level === 0) slabOn(p, plan, tops.map((h) => h - SARK_DROP), SARK, slab, fold);
   else slabOn(p, plan, tops.map((h) => h + 0.022), SARK + SARK_DROP + 0.022, slab, fold);
-  const under = facets.map((f) => facetPlane(f, -SARK - SARK_DROP));
+  // A plate stands up to its eave board, and the rest to the underlay.
+  rim((k) => (eaves[k] ? 0.003 : SARK + SARK_DROP));
   const edge = inset(plan, 0.004);
   const within = edge.map((a, k) => uprightPlane(a, edge[(k + 1) % n]!));
-  plan.forEach((a, k) => {
-    const b = plan[(k + 1) % n]!;
-    const f = facetOf(k), kind = kindOf(k);
-    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    const inward: Flat = [-(b[1] - a[1]) / l, (b[0] - a[0]) / l];
-    const at = (q: Flat, z: number): Vec => [q[0] + inward[0] * (RIM_IN + RIM / 2), q[1] + inward[1] * (RIM_IN + RIM / 2), z];
-    const [za, zb] = [tops[k]!, tops[(k + 1) % n]!];
-    const from = p.faces.length;
-    if (kind === "rake") {
-      // A principal rafter under the sloped side, its top cut to the boards it carries.
-      const drop = SARK + RAFTER / 2 - 0.06;
-      spar(p, level, at(a, za - drop), at(b, zb - drop), RIM, RAFTER / Math.hypot(1, (zb - za) / l), Z, [2 + k, 3 + k, 2 + k, 4 + k], 910 + k, { segs: 2 });
-    } else {
-      // A level beam inside a low side or a high one, from the slab's underside up to the boards.
-      const [z0, z1] = [za - form.thick, za + (RIM_IN + RIM) * f.g];
-      spar(p, level, at(a, (z0 + z1) / 2), at(b, (z0 + z1) / 2), RIM, z1 - z0, Z, [5 + k, 6 + k, 5 + k, 7 + k], 920 + k, { segs: 2 });
-    }
-    // Under a hip a rim timber runs on past the fold, under the other face: it is cut to both.
-    for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!])]) clip(p, plane, null, from);
-  });
   if (folded) {
     const [a, b] = [plan[(fold + 2) % n]!, plan[fold]!];
     const [za, zb] = [tops[(fold + 2) % n]!, tops[fold]!];
     const run = Math.hypot(b[0] - a[0], b[1] - a[1]);
     // The rafter under the fold. Under a hip it stands as far down as the faces fall away over its width.
-    const drop = SARK + SARK_DROP + RAFTER / 2 + (hip ? (RIM / 2) * facets[0]!.g * Math.SQRT1_2 : 0);
+    const drop = SARK + SARK_DROP + RAFTER / 2 + (hip ? (FOLD / 2) * facets[0]!.g * Math.SQRT1_2 : 0);
     let from = p.faces.length;
-    spar(p, level, [a[0], a[1], za - drop], [b[0], b[1], zb - drop], RIM, RAFTER / Math.hypot(1, (zb - za) / run), Z, [9, 10, 9, 11], 930, { segs: 2 });
-    for (const side of [...within, planeAt([0, 0, Math.min(...tops) - form.thick], [0, 0, -1])]) clip(p, side, null, from);
+    spar(p, level, [a[0], a[1], za - drop], [b[0], b[1], zb - drop], FOLD, RAFTER / Math.hypot(1, (zb - za) / run), Z, [9, 10, 9, 11], 930, { segs: 2 });
+    for (const side of [...within, planeAt([0, 0, lowest], [0, 0, -1])]) clip(p, side, null, from);
     from = p.faces.length;
     if (hip) {
-      // The roll that caps a hip, planed, out to the corner of the eave boards.
+      // The roll that caps a hip, planed, from the corner of the eave boards up the fold. Where the saddle begins it
+      // climbs onto it, and ends as high as the roll of the ridge's capping, whose end it and the next hip's close.
       const reach = facets.every((f) => f.kinds.includes("eave")) ? EAVE * Math.SQRT2 - 0.02 : 0;
-      timber(p, [a[0] - ((b[0] - a[0]) * reach) / run, a[1] - ((b[1] - a[1]) * reach) / run, za - (reach * (zb - za)) / run + 0.03], [b[0], b[1], zb + 0.03], 0.09, 0.06, Z, [1, 2, 1, 2], { chamfer: level === 0 ? 0.014 : 0, end: level === 0 ? [3, 1] : null });
-      for (const side of plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), kindOf(k) === "eave" ? EAVE : 0))) clip(p, side, null, from);
+      const on = (d: number, lift: number): Vec => [b[0] - ((b[0] - a[0]) * d) / run, b[1] - ((b[1] - a[1]) * d) / run, zb - (d * (zb - za)) / run + lift];
+      const kink = CAP.wide * Math.SQRT2;
+      const path = [on(run + reach, 0.03), on(kink, 0.03), [...on(-0.06, 0).slice(0, 2), zb + CAP.top + 0.012 + (0.06 * (CAP.top + 0.012 + (kink * (zb - za)) / run - 0.03)) / kink] as unknown as Vec];
+      if (level === 0) bent(p, path, 0.09, 0.06, Z, 1);
+      else for (const k of [0, 1]) timber(p, path[k]!, path[k + 1]!, 0.09, 0.06, Z, [1, 2, 1, 2], { chamfer: 0 });
+      // Cut to the sides, and level at the height of a ridge's own roll.
+      for (const side of [...plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), eaves[k] ? EAVE : 0)), planeAt([0, 0, zb + CAP.top + 0.035], Z)]) clip(p, side, null, from);
+      // The saddle at its high corner: the end of a ridge's capping, turned down each face to the fold. A ridge's
+      // trim butts its side, and with the hip beside it the three faces close the ridge's end.
+      const [d1, d2] = [plan[(fold + 1) % n]!, plan[(fold + n - 1) % n]!].map((q): Flat => [(q[0] - b[0]) / (2 * H), (q[1] - b[1]) / (2 * H)]);
+      const at = (i: number, j: number): Flat => [b[0] + d1![0] * i + d2![0] * j, b[1] + d1![1] * i + d2![1] * j];
+      const [near, far] = [0.001, CAP.wide];
+      const saddle = [at(near, near), at(far, near), at(far, far), at(near, far)];
+      const boards: SlabMap = (part, k) => ["boards", (q) => {
+        const [i, j] = [(q[0] - b[0]) * d1![0] + (q[1] - b[1]) * d1![1], (q[0] - b[0]) * d2![0] + (q[1] - b[1]) * d2![1]];
+        // Each face a board that runs along the side it falls to.
+        return part === "side" ? [(i + j) / 3, 5 / 12 - BOARD_ROLL_V + (q[2] - zb) / 3] : [(k === 0 ? j : i) / 3, (k === 0 ? 3 : 8) / 12 - BOARD_ROLL_V + (k === 0 ? i : j) / 3];
+      }];
+      slabOn(p, saddle, [zb + CAP.top, zb - CAP.drop, zb - CAP.drop, zb - CAP.drop], saddle.map((q) => Math.min(...facets.map((f) => heightOn(f, q))) - SARK_DROP), boards, 0);
     } else {
-      // The board that lines a valley, its ends square and just short of the corners.
-      const [t0, t1] = [0.14 / run, 1 - 0.14 / run];
+      // The board that lines a valley, from its low corner, where it is cut to the sides, to just short of its high one.
+      const [t0, t1] = [-0.2 / run, 1 - 0.14 / run];
       timber(p, [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0, za + (zb - za) * t0 + 0.03], [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1, za + (zb - za) * t1 + 0.03], 0.26, 0.036, Z, [8, 9, 8, 9], { chamfer: 0 });
+      for (const side of within) clip(p, side, null, from);
     }
   }
   facets.forEach((f, i) => {
     const k = Math.sqrt(1 + f.g * f.g);
     const spans = f.poly.map((q) => facetAt(f, q)[1]);
-    // Clear of the yield rings, their ends in the beams.
-    const sides = f.poly.map((a, s) => planeMoved(uprightPlane(a, f.poly[(s + 1) % f.poly.length]!), f.kinds[s] === "fold" ? -0.07 : -RIM_IN - 0.02));
+    // Their ends on the rim's inner faces, which are the yield rings.
+    const sides = f.poly.map((a, s) => planeMoved(uprightPlane(a, f.poly[(s + 1) % f.poly.length]!), f.kinds[s] === "fold" ? -0.07 : -RIM));
     for (const [j, a] of [0.75, 2.25].entries()) {
       // A common rafter up the slope, under each of the boards' nail lines.
       const from = p.faces.length;
