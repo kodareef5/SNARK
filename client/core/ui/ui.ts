@@ -26,7 +26,8 @@ import type { StoragePage } from "./storage.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { EmoteMenu } from "./emotes.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
-import { TravelScreen } from "./travel.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
+import { SCREENS } from "./screens-list.ts";
 import type { SiteLink } from "../travel.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL } from "../../../shared/net/protocol.ts";
 
@@ -47,8 +48,8 @@ export class Ui {
   readonly structure = new StructMenu();
   readonly emotes = new EmoteMenu();
   readonly naming = new NamePrompt();
-  /** The other servers of the cluster, opened at an obelisk's terminal. */
-  readonly travel = new TravelScreen();
+  /** The screens of SCREENS, made for this interface, in its order. */
+  readonly screens: readonly Screen[] = SCREENS.map((make) => make());
   /** The admin's tools, opened from the menu while the server shows creative mode. */
   readonly creativeScreen = new CreativeScreen();
   /** The session is in the creator, which is then the whole interface. */
@@ -97,6 +98,8 @@ export class Ui {
   private focusNext = 0;
   private menuShift = false;
   readonly settings = new Settings();
+  /** What the screens read, set before each call to them. */
+  private readonly ctx: ScreenCtx = { session: null, registry: null, palette: null, hud: null, settings: this.settings, focus: 0, inputDevice: 0, hear: (cue) => this.hear?.(cue) };
   /** The session has no body and chooses where to rise, so the mouse is free. */
   private dead = false;
   /** The app sets both once it has them. */
@@ -105,19 +108,52 @@ export class Ui {
   /** A console line this client answers itself, without the server: the answer, or null for a line to send. */
   local: ((line: string) => string | null) | null = null;
 
+  /** The screen of SCREENS by its name. */
+  screen<S extends Screen>(name: string): S {
+    for (const s of this.screens) if (s.name === name) return s as S;
+    throw new Error(`no screen is named ${name}`);
+  }
+
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    return this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
+    if (this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering) return true;
+    for (const s of this.screens) if (s.isOpen() && s.keyboard?.()) return true;
+    return false;
   }
 
   /** A text field is wanted: the shell of a touch device raises its keyboard within the press that asked. */
   get typing(): boolean {
-    return this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
+    if (this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering) return true;
+    for (const s of this.screens) if (s.isOpen() && s.typing?.()) return true;
+    return false;
   }
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !(this.debug?.holdsPointer ?? false);
+    for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
+    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !(this.debug?.holdsPointer ?? false);
+  }
+
+  /** Whether a screen of `group` is open. */
+  private openIn(group: string): boolean {
+    for (const s of this.screens) if (s.group === group && s.isOpen()) return true;
+    return false;
+  }
+
+  private closeGroup(group: string): void {
+    for (const s of this.screens) if (s.group === group && s.isOpen()) s.close(this.ctx);
+  }
+
+  /** The ctx with what this call knows. */
+  private at(session: ClientSession | null, hud?: HudModel): ScreenCtx {
+    const c = this.ctx;
+    c.session = session;
+    c.registry = this.registry;
+    c.palette = this.palette;
+    if (hud) c.hud = hud;
+    c.focus = this.menuFocus;
+    c.inputDevice = this.inputDevice;
+    return c;
   }
 
   /** Escape where no screen takes it: the debug bar's open drawer takes the pointer back first, else the menu opens. */
@@ -241,6 +277,7 @@ export class Ui {
       if (this.structure.key(code, down, repeat, session)) return true;
       // The emote menu likewise, and Z opens it from play.
       if (this.emotes.key(code, down, repeat, session)) return true;
+      for (const s of this.screens) if (s.isOpen() && s.key?.(code, down, repeat, this.at(session))) return true;
       if (code === "KeyZ" && this.wantsPointerLock && !this.creating) {
         if (down && !repeat) this.emotes.toggle();
         return true;
@@ -252,7 +289,7 @@ export class Ui {
         return true;
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
-      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options || this.travel.open))) {
+      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options || this.openIn("bag")))) {
         if (down && !repeat) {
           this.structure.close();
           // Opening one screen closes the others.
@@ -268,7 +305,7 @@ export class Ui {
           this.options = options;
           this.inspect = false;
           if (options) { this.menu = true; this.focusTo(KEY_MENU_BACK); }
-          this.travel.open = false;
+          this.closeGroup("bag");
           if (inventory) this.inventory.open = true;
           else this.inventory.close(session);
         }
@@ -356,13 +393,15 @@ export class Ui {
       return;
     }
     if (kind === 0 && key !== 0) this.hear?.("click");
+    // A node a screen of the list drew goes to that screen alone.
+    const owner = this.frame.find(key)?.owner ?? -1;
+    if (owner >= 0) return void this.screens[owner]!.pointer?.(kind, key, x, y, button, this.at(session));
     if (kind === 0 && !button && this.air.click(key, session)) return;
     if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.emotes.click(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
-    if (kind === 0 && this.travel.open && this.travel.click(key, session)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
 
@@ -380,6 +419,7 @@ export class Ui {
     else if (key === KEY_CHOOSE_FILTER) this.choosing.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
+    else for (const s of this.screens) if (s.text?.(key, value)) return;
   }
 
   build(aspect: number, hud: HudModel, session: ClientSession | null): void {
@@ -454,8 +494,7 @@ export class Ui {
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
       else if (this.air.open && session) this.air.build(f, session, this.menuFocus);
-      else if (this.travel.open && session) this.travel.build(f, session);
-      else {
+      else if (!this.buildModal(f, session, hud)) {
         this.inventory.build(f, session, this.registry, this.palette);
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
         if (session && !this.inventory.open) this.emotes.build(f);
@@ -475,5 +514,18 @@ export class Ui {
     if (session) this.console.absorb(session);
     this.console.build(f);
     if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }
+  }
+
+  /** Builds the first open modal screen of the list; false where none is open. */
+  private buildModal(f: UiFrame, session: ClientSession | null, hud: HudModel): boolean {
+    for (let i = 0; i < this.screens.length; i++) {
+      const s = this.screens[i]!;
+      if (s.layer !== "modal" || !s.isOpen()) continue;
+      f.owner = i;
+      s.build(f, this.at(session, hud));
+      f.owner = -1;
+      return true;
+    }
+    return false;
   }
 }

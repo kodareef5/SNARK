@@ -4,6 +4,7 @@ import { PAD_HOLDS, PAD_KEYS, PAD_TAPS } from "../../client/core/gamepad.ts";
 import { ANY_KEY, pressKey, type KeyRow } from "../../client/core/key-row.ts";
 import { KEY_ROWS } from "../../client/core/keys.ts";
 import { touchKey } from "../../client/core/touch.ts";
+import type { TravelScreen } from "../../client/core/ui/travel.ts";
 import { keyBinding } from "../../client/core/ui/controls-guide.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { BTN_MOD, BTN_PRONE } from "../../shared/sim/character.ts";
@@ -94,7 +95,7 @@ test("E turns a piece being placed before it takes or uses anything", () => {
   app.terminalAimed = 3;
   expect(press("KeyE")).toBe("build");
   expect(app.eggKept).toBe(false);
-  expect(app.ui.travel.open).toBe(false);
+  expect(app.ui.screen<TravelScreen>("travel").open).toBe(false);
 });
 
 test("E takes what lies there, then opens a terminal, then uses, then is the body's", () => {
@@ -102,11 +103,11 @@ test("E takes what lies there, then opens a terminal, then uses, then is the bod
   app.eggAimed = 7;
   app.terminalAimed = 3;
   expect(press("KeyE")).toBe("take");
-  expect(app.ui.travel.open).toBe(false);
+  expect(app.ui.screen<TravelScreen>("travel").open).toBe(false);
   app.eggAimed = -1;
   expect(press("KeyE")).toBe("terminal");
-  expect(app.ui.travel.open).toBe(true);
-  app.ui.travel.open = false;
+  expect(app.ui.screen<TravelScreen>("travel").open).toBe(true);
+  app.ui.screen<TravelScreen>("travel").open = false;
   app.terminalAimed = -1;
   // Aimed at a built piece the use key is kept back; aimed at nothing the body has it.
   app.aimed = 5;

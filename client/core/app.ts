@@ -80,7 +80,7 @@ import { glass } from "./ui/skin.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
-import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
+import { TRAVEL_REFRESH_MS, type TravelScreen } from "./ui/travel.ts";
 import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
 
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
@@ -567,7 +567,7 @@ export class App {
    */
   private travel(nowMs: number): void {
     const { page, session } = this;
-    const t = this.ui.travel;
+    const t = this.ui.screen<TravelScreen>("travel");
     if (!page || this.leaving) return;
     if (session.state === "active" && !this.arrived) {
       this.arrived = true;

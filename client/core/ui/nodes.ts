@@ -83,6 +83,8 @@ export interface UiNode {
   tint: number;
   /** Opacity of the whole node, 0 to 1. */
   alpha: number;
+  /** The index in SCREENS of the screen that drew it, or -1. */
+  owner: number;
 }
 
 export interface UiImage {
@@ -122,10 +124,13 @@ export class UiFrame {
   readonly images: (UiImage | null)[] = [null];
   /** The inventory pictures, or null where there are none: then every item shows its swatch. */
   icons: UiIcons | null = null;
+  /** Stamped on each node added: the screen being built (UiNode.owner). */
+  owner = -1;
 
   /** `aspect` is width over height, and `height` the canvas's in units (canvasHeight). */
   begin(aspect: number, height = CANVAS_HEIGHT): void {
     this.height = height;
+    this.owner = -1;
     // Never narrower than the narrowest layout, which a canvas taller than 720 reaches at less than 9 to 16.
     this.width = Math.max(MIN_WIDTH, Math.round(height * Math.min(aspect, MAX_ASPECT)));
     this.count = 0;
@@ -134,7 +139,7 @@ export class UiFrame {
   add(key: number, kind: number, x: number, y: number, w: number, h: number, style: number): UiNode {
     let n = this.nodes[this.count];
     if (!n) {
-      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", label: "", value: 0, step: .01, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1 };
+      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", label: "", value: 0, step: .01, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1, owner: -1 };
       this.nodes.push(n);
     }
     this.count++;
@@ -155,6 +160,7 @@ export class UiFrame {
     n.focus = false;
     n.tint = -1;
     n.alpha = 1;
+    n.owner = this.owner;
     return n;
   }
 

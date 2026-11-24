@@ -15,6 +15,7 @@ import { CHART_KEYS } from "./tactical.ts";
 import { T_FOLLOW, T_FOLLOW_ONE, T_MIC, T_SIC, T_STAY, T_STAY_ONE, T_USE, T_VIEW } from "./touch.ts";
 import { PLACEMENT_KEYS } from "./vehicle-placement.ts";
 import { VISOR_KEYS } from "./visor.ts";
+import type { TravelScreen } from "./ui/travel.ts";
 
 // F3 opens the debug bar's drawer and F8 saves what the bar holds, from any screen (debug/debug.ts).
 const DEBUG: KeyRow = {
@@ -72,7 +73,7 @@ const TERMINAL: KeyRow = {
   name: "terminal",
   keys: ["KeyE"],
   when: (c, _code, down, repeat) => down && !repeat && c.terminalAimed >= 0,
-  press: (c) => (c.ui.travel.openAt(c.terminalAimed), true),
+  press: (c) => (c.ui.screen<TravelScreen>("travel").openAt(c.terminalAimed), true),
 };
 
 // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
