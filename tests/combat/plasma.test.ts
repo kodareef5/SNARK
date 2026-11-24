@@ -24,7 +24,8 @@ import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { DMG_ENERGY } from "../../shared/sim/damage.ts";
 import { ACT_NONE } from "../../shared/sim/weapon.ts";
 import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
+import { lodSurface, parsePack } from "../../shared/pack/pack.ts";
+import { unpackMeshes } from "../../tools/pack/write.ts";
 import { paging } from "../../tools/build-client.ts";
 import { bootManifest, splitPack } from "../../tools/pack/split.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -249,10 +250,17 @@ for (const latencyMs of [40, 150]) {
 
 test("both streamed clients draw every plasma effect glowing from its first frame", () => {
   const whole = corePackBytes();
-  const { files, manifest } = splitPack(whole, "core", paging(reg, parsePack(whole)));
+  const original = parsePack(whole);
+  const { files, manifest } = splitPack(whole, "core", paging(reg, original));
   const boot = parsePack(files[manifest.boot]!.bytes);
   const effects = ["core:plasma_bolt", "core:plasma_flash", "core:plasma_burst"];
+  const unpacked = unpackMeshes(boot);
   for (const id of effects) {
+    const held = boot.header.meshes[boot.meshIndex.get(id)!]!.lods[0]!;
+    const source = original.header.meshes[original.meshIndex.get(id)!]!.lods[0]!;
+    expect(lodSurface(boot, held)).toEqual(lodSurface(original, source));
+    expect(boot.header.materials![held.sections![0]!]!.id).toBe("core:plasma/plasma");
+    expect(unpacked.find((mesh) => mesh.id === id)!.lods[0]!.normals).toBeDefined();
     const level = manifest.meshes.find((mesh) => mesh.id === id)!.levels[0]!;
     expect(level.file).toBe(manifest.boot);
     expect(level.parts.length).toBeGreaterThan(1);
