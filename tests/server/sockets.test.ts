@@ -91,7 +91,6 @@ test("a world hosts a server directory only when its operator asks, and a search
 
 test("a development server takes a socket and answers its own routes only for a browser that asked for this machine: localhost, an address, or its public address's host", async () => {
   const dir = clientFolder();
-  writeFileSync(join(dir, "sounds.html"), "<p>board</p>");
   const log = console.log;
   console.log = () => {};
   const servers = [startServer({ port: 0, clientDir: dir, dev: true }), startServer({ port: 0, clientDir: dir, dev: true, publicUrl: "https://Play.Example/miami" }), startServer({ port: 0, clientDir: dir })];
@@ -103,13 +102,13 @@ test("a development server takes a socket and answers its own routes only for a 
       ws.onerror = () => done(false);
     });
   const status = (port: number, name: string, path: string, method = "GET"): Promise<number> =>
-    fetch(`http://127.0.0.1:${port}${path}`, { method, headers: { host: `${name}:${port}` }, ...(method === "POST" ? { body: "{}" } : {}) }).then((r) => r.status);
+    fetch(`http://127.0.0.1:${port}${path}`, { method, redirect: "manual", headers: { host: `${name}:${port}` }, ...(method === "POST" ? { body: "{}" } : {}) }).then((r) => r.status);
   try {
     const [dev, named, plain] = servers.map((s) => s.port) as [number, number, number];
     expect([await open(dev, "localhost"), await open(dev, "127.0.0.1"), await open(dev, "[::1]"), await open(dev, "192.168.1.20"), await open(dev, "localhost", "/voice")]).toEqual([true, true, true, true, true]);
     // A site that pointed its name at this machine gets neither a socket nor the dev server's routes.
     expect([await open(dev, "rebound.example"), await open(dev, "rebound.example", "/voice"), await open(dev, "play.example")]).toEqual([false, false, false]);
-    expect([await status(dev, "rebound.example", "/__selfcheck", "POST"), await status(dev, "rebound.example", "/sounds.html"), await status(dev, "localhost", "/__selfcheck", "POST"), await status(dev, "localhost", "/sounds.html")]).toEqual([404, 404, 200, 200]);
+    expect([await status(dev, "rebound.example", "/__selfcheck", "POST"), await status(dev, "rebound.example", "/sounds.html"), await status(dev, "localhost", "/__selfcheck", "POST"), await status(dev, "localhost", "/sounds.html")]).toEqual([404, 404, 200, 308]);
     expect([await open(named, "play.example", "/miami/ws"), await open(named, "rebound.example", "/miami/ws")]).toEqual([true, false]);
     // A server that is not for development asks for its passwords whatever the name.
     expect(await open(plain, "rebound.example")).toBe(true);

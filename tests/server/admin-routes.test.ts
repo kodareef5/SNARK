@@ -20,6 +20,7 @@ import { Rules, changedSettings } from "../../server/settings/rules.ts";
 import { SurvivorActivity } from "../../server/survivor-activity.ts";
 import { readBases } from "../../client/core/admin/bases.ts";
 import { Harness } from "../fixtures/net.ts";
+import { builtSketch, Sketch } from "../fixtures/sketch.ts";
 
 /** A built page's folder, as far as the routes need one. */
 function pageDir(): string {
@@ -107,6 +108,25 @@ test("the cluster overview has live survivor positions and the same accepted cha
     expect(overview.positions).toEqual([{ name: "Ada", x: h.world.ents.x[c.ent], z: h.world.ents.z[c.ent] }]);
     expect(overview.chat).toEqual([{ at: expect.any(Number), channel: TEXT_GLOBAL, speaker: "Ada", text: "Hello from this world" }]);
     expect(await (await ask(gate, "/admin/chat.json"))!.json()).toEqual(overview.chat);
+  } finally {
+    h.host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("map district labels use the centers of the loaded buildings", async () => {
+  const h = new Harness();
+  const dir = pageDir();
+  try {
+    const a = new Sketch(1, 1, 8, 32, 160), b = new Sketch(1, 1, 8, 64, 208);
+    a.slab(0, 0, 1);
+    b.slab(0, 0, 1);
+    h.world.buildings = builtSketch([a, b]).more.buildings;
+    const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir, start: { tick: 0, wall: 0 } });
+    const gate: AdminGate = { dev: false, password: "pine", guesses: new Guesses(), tick: () => 0 };
+    const ask = asker(pages);
+    expect((await ask(gate, "/admin/map-context.json"))!.status).toBe(401);
+    expect(await (await ask(gate, "/admin/map-context.json", "pine"))!.json()).toEqual({ districts: [{ name: "Downtown", x: 48, z: 184 }] });
   } finally {
     h.host.shutdown();
     rmSync(dir, { recursive: true, force: true });

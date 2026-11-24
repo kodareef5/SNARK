@@ -13,6 +13,7 @@ export interface SiteLinks {
 
 /** A world as the start screen lists it, with the address a page goes to for it. The wiki's maps are found by `mapId`. */
 export interface SiteWorld {
+  id: number | "local";
   name: string;
   map: string;
   mapId: string;
@@ -22,7 +23,7 @@ export interface SiteWorld {
 }
 
 /** The first parts of a path the site answers itself, so no world may be reached at one. */
-const SITE_PATHS = new Set(["wiki", "assets", "source", "cluster"]);
+const SITE_PATHS = new Set(["wiki", "assets", "source", "cluster", "admin"]);
 
 /**
  * The path a server is reached at, from its public address (--public-url): "/miami" for https://play.example/miami and for
