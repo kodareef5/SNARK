@@ -28,7 +28,7 @@ test("a raptor earns domestic XP only after taming and keeps it with a new owner
     const from = pos(h, hunter.e);
     const prey = creature(h, "dodo", { x: from.x, z: from.z + 1.5 }, 51);
     const survival = h.host.survival;
-    survival.hurt(prey.rec, survival.value(prey.rec, V_HEALTH) - 1);
+    survival.hurt(prey.rec, survival.value(prey.rec, V_HEALTH) - 1, 0);
     h.host.creatures.mind.attack(hunter.e, prey.e);
     expect(until(h, () => !h.host.records.entOf.has(prey.rec.pid), 12)).toBe(true);
   };
