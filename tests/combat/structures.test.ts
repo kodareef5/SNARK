@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
-import { BLAST_MS } from "../../client/core/shots.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { dress } from "../../server/commands/combat.ts";
 import { ZONE_NONE } from "../../shared/anim/human.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, EVENT_BLAST, EVENT_HIT } from "../../shared/net/protocol.ts";
+import { SURFACE_GROUND } from "../../shared/net/rockets.ts";
 import { BTN_PRIMARY } from "../../shared/sim/character.ts";
 import { DMG_EXPLOSIVE } from "../../shared/sim/damage.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
@@ -241,8 +241,8 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   h.run(1400);
   expect(shots.bursts).toBe(1);
   expect([shots.thrownCount, live()]).toEqual([0, 0]);
-  // Where it lay, to the float an event carries a place in.
-  expect(s.events.filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, Math.abs(ev.z - lie.z) < 0.001])).toEqual([[6, true]]);
+  // Where it lay, to the 64th of a metre an event carries a place in, on the ground, and the grenade's own blast.
+  expect(s.events.filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, Math.abs(ev.z - lie.z) < 0.02, ev.item, ev.id, ev.surface])).toEqual([[6, true, id("grenade"), 0, SURFACE_GROUND]]);
   expect(h.host.combat.hits + h.host.combat.structureHits).toBe(0);
 
   const stone = structs.add(id("wall"), lie.x, at.y + 1.5, lie.z + 2.5, 0, 0, 1500);
@@ -289,8 +289,11 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   // The dummy behind the stone wall is within reach of the blast and shielded by the wall.
   expect(Math.hypot(ents.x[hidden.e]! - lie.x, ents.z[hidden.e]! - lie.z)).toBeLessThan(5);
   expect(health(hidden)).toBe(full);
-  // One hit event for each of the two walls and three bodies.
-  expect(s.events.filter((ev) => ev.kind === EVENT_HIT).length).toBe(5);
+  // One hit event for each of the three bodies, and one for the two walls together: what the blast did to both, where it was.
+  const reports = s.events.filter((ev) => ev.kind === EVENT_HIT);
+  expect(reports.length).toBe(4);
+  const walls = reports.filter((ev) => Math.abs(ev.x - lie.x) < 0.01 && Math.abs(ev.z - lie.z) < 0.01);
+  expect(walls.map((ev) => ev.damage)).toEqual([Math.round(1500 - hp(stone) + 3000 - hp(metal))]);
   lob();
   h.run(5600);
   expect(hp(stone)).toBe(0);
@@ -381,14 +384,15 @@ test("damage to something built is saved with it, and a client is shown a blast"
   const meshes = (): string[] => [...packet!.drawMesh.subarray(0, packet!.drawCount)].filter((_, d) => (packet!.drawFlags[d]! & DRAW_SKINNED) !== 0).map((m) => pack.header.meshes[m]!.id);
   app.controls.pitch = -0.6;
   run(4000);
-  expect(app.shots.blasts.length).toBe(0);
+  // The blast is the scene's fire now, a lobe mesh and not the cube, and is out when its fire's time has run.
+  const fire = app.shots.fire!;
+  expect(fire.alight).toBe(0);
   for (let n = 0; n < 60 && h.host.projectiles.bursts === 0; n++) run(1000 / 30);
   expect(h.host.projectiles.bursts).toBe(1);
   run(50);
-  expect(app.shots.blasts.length).toBe(1);
-  expect(meshes()).toContain("core:blast");
-  run(BLAST_MS + 100);
-  expect(app.shots.blasts.length).toBe(0);
+  expect([fire.alight, app.shots.blasts.length]).toEqual([1, 0]);
   expect(meshes()).not.toContain("core:blast");
+  run(3000);
+  expect(fire.alight).toBe(0);
   expect(structs.chunks[chunk]!.kind[ref & 0xffff] === 0 || structs.chunks[chunk]!.hp[ref & 0xffff]! < 9900).toBe(true);
 });

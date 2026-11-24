@@ -48,6 +48,7 @@ import type { CameraBody } from "../camera-body.ts";
 import { farPlane, type Camera } from "./camera.ts";
 import { Characters, riderFitScratch, seatScratch, type RiderFit, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { exhaustPhase } from "./suit-finish.ts";
+import { Blasts } from "./blasts.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import type { FarSource } from "./far.ts";
@@ -304,9 +305,25 @@ export class Scene {
   private readonly reachOfStatic: Float32Array;
   /** Per species. The size a newborn is drawn at, as a share of a grown one. */
   private readonly birthScale: Float32Array;
-  /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
-  shots: Shots | null = null;
+  /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. Given here, the shots find their meshes among this scene's assets. */
+  get shots(): Shots | null { return this.shotsDrawn; }
+  set shots(shots: Shots | null) {
+    this.shotsDrawn = shots;
+    if (shots) {
+      shots.bind(this.assets);
+      shots.fire = this.blasts;
+    }
+  }
+  private shotsDrawn: Shots | null = null;
   shotTick = 0;
+  /** The scene draws rocket flames, smoke and blasts. */
+  readonly blasts: Blasts;
+  /** Whether what burns is drawn, which a page turns off for a before and after (passes.ts "bursts"). */
+  get bursts(): boolean { return this.blasts.on; }
+  set bursts(on: boolean) {
+    this.blasts.on = on;
+    this.details.muting = !on;
+  }
   /** What assets there are and which are loaded. */
   readonly assets: Assets;
   private readonly trisOfMesh: readonly (readonly number[])[];
@@ -610,6 +627,7 @@ export class Scene {
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
+    this.blasts = new Blasts(reg, this.assets, this.put, this.details);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dust.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
@@ -897,6 +915,8 @@ export class Scene {
       ["ghost", this.placing],
       ["things", this.loose],
       ["details", { draw: (f) => this.showDetails(f.cam, f.remote) }],
+      // After the details, so fire is drawn over the dust and smoke round it.
+      ["blasts", { draw: (f) => this.blasts.draw(p, f.cam, f.now) }],
       [
         "own body",
         {
@@ -932,7 +952,9 @@ export class Scene {
     tireContacts.build(p, this.world);
     this.damage.build(cam, this.now);
     this.dust.build(cam, this.now);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count);
+    this.blasts.viewHeight = this.viewHeight;
+    this.blasts.cards(cam, this.now, this.own?.firstPerson);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count);
     const particles = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
@@ -945,7 +967,11 @@ export class Scene {
     streetLamps.write(p);
     const dust = p.detailCount;
     this.dust.write(p);
+    const smoke = p.detailCount;
+    this.blasts.write(p);
     const wheelsAndGlass = p.detailCount;
+    p.burstFirst = smoke;
+    p.burstCount = wheelsAndGlass - smoke;
     tireContacts.write(p);
     windscreens.write(p);
     // The damage numbers' cards, drawn last of all below, over the clouds too.
@@ -963,7 +989,8 @@ export class Scene {
     this.put.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
     this.put.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
     this.put.drawDetails(street, dust - street, DRAW_BLEND, streetLamps.passes(cam));
-    this.put.drawDetails(dust, wheelsAndGlass - dust, DRAW_BLEND, this.dust.passes(cam));
+    this.put.drawDetails(dust, smoke - dust, DRAW_BLEND, this.dust.passes(cam));
+    this.put.drawDetails(smoke, wheelsAndGlass - smoke, DRAW_BLEND, this.blasts.passes(cam));
     this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
     this.put.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.put.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);

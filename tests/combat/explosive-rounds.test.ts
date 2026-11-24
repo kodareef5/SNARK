@@ -9,6 +9,7 @@ import { FLARE_FALL, FLARE_TICKS } from "../../server/projectiles.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { EVENT_BLAST, EVENT_HIT } from "../../shared/net/protocol.ts";
+import { MADE_WOOD, SURFACE_BODY, SURFACE_BUILT, SURFACE_GROUND } from "../../shared/net/rockets.ts";
 import { BTN_PRIMARY, stanceEye } from "../../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_PIERCE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../../shared/sim/damage.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
@@ -131,7 +132,8 @@ test("a rocket ends on a wall and harms what is round it once each, the wall by 
   const events = s.events.length;
   fire(0, at.y + 1.5, 15);
   expect(h.host.projectiles.blasts - blasts).toBe(1);
-  expect(s.events.slice(events).filter((ev) => ev.kind === EVENT_BLAST).map((ev) => ev.far)).toEqual([7.5]);
+  // Its blast is told once: its reach, the round that blew, and that it went off on a wooden wall.
+  expect(s.events.slice(events).filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, ev.item, ev.id > 0, ev.surface, ev.made])).toEqual([[7.5, id("test_rocket"), true, SURFACE_BUILT, MADE_WOOD]]);
   // The wall takes 250 times 29.4, the table's 7,350 to wood, once.
   expect([h.host.combat.structureHits - walls, 10000 - hp(wall)]).toEqual([1, 7350]);
   // The dummy at its side, 2.7 m from the blast at its nearest, takes the falloff's share once; the others none.
@@ -162,14 +164,18 @@ test("a rocket that hits a body straight on does the blast's whole to it and no 
   expect([last.victim, last.damage, h.host.combat.hits - hits, h.host.projectiles.blasts]).toEqual([h.world.ents.pid[d], 250, 1, 1]);
   expect(full - health(d)).toBeCloseTo(250, 0);
   expect(s.events.slice(events).filter((ev) => ev.kind === EVENT_HIT).length).toBe(1);
+  expect(s.events.slice(events).filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.item, ev.id > 0, ev.surface])).toEqual([[id("test_rocket"), true, SURFACE_BODY]]);
   // The shell has no speed: its one ray ends on the ground before a dummy and goes off there, 3 m across.
   h.host.items.mint(rec, id("test_shell"), 2);
   h.run(2600);
   const e = dummy(6, 11);
   h.run(300);
   const before = health(e);
+  const shelled = s.events.length;
   fire(6, at.y, 9);
   expect(h.host.projectiles.blasts).toBe(2);
+  // A round that does not fly has no number, and its blast says the ground it ended on, its way out up.
+  expect(s.events.slice(shelled).filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.item, ev.id, ev.surface, ev.far, ev.vy > 0.999])).toEqual([[id("test_shell"), 0, SURFACE_GROUND, 3, true]]);
   expect(before - health(e)).toBeGreaterThan(0);
   expect(before - health(e)).toBeLessThan(100);
   // Into the sky it meets nothing and goes off nowhere.

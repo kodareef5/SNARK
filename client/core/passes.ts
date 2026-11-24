@@ -9,7 +9,7 @@
 
 import type { Tier } from "./assets/tiers.ts";
 import { HAND_NEAR } from "./render/hand.ts";
-import { DRAW_WATER, FRAME, ROOF_AT, type FramePacket } from "./render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DRAW_DETAILS, DRAW_FIRE, DRAW_WATER, FRAME, ROOF_AT, type FramePacket } from "./render/packet.ts";
 import { withoutGlass } from "./render/vehicle-glass.ts";
 
 /**
@@ -164,9 +164,11 @@ export const BENCH_TURN_MS = 15000;
  * "pools" draws the lamps' pool cards with no body's shadow in them (render/lamp.ts `poolShade`). "streets" draws the
  * ground's street and walk edges from its 2 m samples, stepped, as before they were drawn from the streets' lines
  * (render/streets.ts). "kerbs" draws the bent kerbs with none of their wear (render/bend.ts `bentWear`). "weather" draws
- * the walls with none of their weathering (world-surfaces.ts `weathered`), its masks made as ever.
+ * the walls with none of their weathering (world-surfaces.ts `weathered`), its masks made as ever. "bursts" draws nothing
+ * that burns (render/blasts.ts): no rocket's flame, smoke or glow, no blast's fire, and none of what a blast or a
+ * launcher threw up among the small details.
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather", "bursts"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -197,10 +199,11 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
 }
 
 /** The effects that live in how the scene builds a frame: what is hidden left out, the opaque draws nearest first, and the near city's meshes. */
-export function sceneWithout(scene: { hide: boolean; nearFirst: boolean; nearMesh: boolean }, off: ReadonlySet<Effect>): void {
+export function sceneWithout(scene: { hide: boolean; nearFirst: boolean; nearMesh: boolean; bursts?: boolean }, off: ReadonlySet<Effect>): void {
   scene.hide = !off.has("hide");
   scene.nearFirst = !off.has("order");
   scene.nearMesh = !off.has("nearmesh");
+  if (scene.bursts !== undefined) scene.bursts = !off.has("bursts");
 }
 
 /** The effects that live in a built frame: the haze, bodies' contact, what stands overhead, the facades, the edges and the road's wear in its block, the sea's detail, the hand-over's discard, bodies' layers and vehicles' glass in its draws. */
@@ -212,7 +215,12 @@ export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
   p.frame[FRAME.edgesOff] = (off.has("edges") ? 1 : 0) + (off.has("weather") ? 2 : 0);
   p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0) + (off.has("streets") ? 4 : 0) + (off.has("kerbs") ? 8 : 0);
+  const bursts = off.has("bursts");
+  // A blast's particles are drawn as nothing: cards of no size, in the draws they are in.
+  for (let n = 0; bursts && n < p.detailOwn; n++) if (p.detailTag[n] === 1) p.details.fill(0, n * DETAIL_FLOATS + DETAIL.along, n * DETAIL_FLOATS + DETAIL.floor);
   for (let d = 0; d < p.drawCount; d++) {
+    // Fire's draws and the draw of the rockets' smoke are of none.
+    if (bursts && ((p.drawFlags[d]! & DRAW_FIRE) !== 0 || ((p.drawFlags[d]! & DRAW_DETAILS) !== 0 && p.burstCount > 0 && p.drawFirst[d] === p.burstFirst))) p.drawInstances[d] = 0;
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;
     if (off.has("layers")) p.drawLayer[d] = 0;

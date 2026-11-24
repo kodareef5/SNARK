@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot (--share SHARE)); --zoom N magnifies the view N times.
+// Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --launcher all|N (--first, --look STEPS; tools/snap/launcher.ts), --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot (--share SHARE)); --zoom N magnifies the view N times.
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --hour H draws at that hour of the day. --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
 // with its landmarks; --moved 1 draws their moving statics at their second state (a yacht's sails set).
@@ -8,6 +8,7 @@
 // --orbit ROUND,DOWN,NOTCHES with --ride or --fight draws the scene from the orbit camera, swung round by degrees (tools/snap/orbit.ts).
 // --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 // --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
+// --blast LOOK (--surface WHAT, --at MS,MS) draws a blast at moments after it went off, and --rocket a rocket in flight (tools/snap/blast.ts).
 
 import { zoomed } from "../client/core/optics.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -79,6 +80,8 @@ import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
 import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from "./snap/ride.ts";
 import { orbitScene } from "./snap/orbit.ts";
+import { launcherScene } from "./snap/launcher.ts";
+import { blastSnap } from "./snap/blast.ts";
 import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
 import { saddleAsset, saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
@@ -1062,6 +1065,10 @@ if (import.meta.main) {
     const i = args.indexOf("--" + name);
     return i >= 0 ? args[i + 1] : undefined;
   };
+  if (args.includes("--blast") || args.includes("--rocket")) {
+    blastSnap(args, arg, provingView);
+    process.exit(0);
+  }
   const [w, h] = (arg("size") ?? "960x540").split("x").map(Number);
   // With --ride or --fight, the orbit camera once the scene is set (tools/snap/orbit.ts); a bare --orbit takes its defaults.
   const orbit = args.includes("--orbit") ? (arg("orbit")?.startsWith("--") === false ? arg("orbit")! : "") : null;
@@ -1359,6 +1366,7 @@ if (import.meta.main) {
     if (args.includes("--emotes")) emotesScene(view, arg("emotes") ?? "0", Number(arg("tick") ?? 2000), (Number(arg("face") ?? 180) * Math.PI) / 180);
     if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
     if (args.includes("--glide")) glideScene(view, Number(arg("tick") ?? 0), (Number(arg("face") ?? 150) * Math.PI) / 180);
+    if (args.includes("--launcher")) launcherScene(view, arg("launcher") ?? "all", (Number(arg("face") ?? 0) * Math.PI) / 180, args.includes("--first"), Number(arg("look") ?? 0), arg("item") ?? "core:rocket_launcher");
     if (saddles) {
       // In the colours its asset is reviewed in.
       const own = (await findAssets(source)).find((a) => a.id === species)?.spec;

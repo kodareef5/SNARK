@@ -172,9 +172,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // a90344f1 without them).
   // The supply drop's capsule (content/core.ts) moves the fixture's kind numbers: aec32f25 and f66c7b45 without it.
   // The things blocked out (content/items/blockouts.ts) and their box move them again: a0689849 without them.
-  expect(beforePlain).toBe("45ebac35");
+  // The launcher's and its round's stand-in meshes and the fire's cone and lobe move the mesh numbers: 45ebac35 without them.
+  expect(beforePlain).toBe("2469b535");
   // And 8a56e259 without them.
-  expect(hash).toBe("abaec19d");
+  // And abaec19d without the launcher's and the fire's.
+  expect(hash).toBe("787bba7d");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -201,8 +203,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // They were 71084b01 and 79c43231 until the same trailer mesh, and c8dc6d21 and eb1a0e91 until the soul balls'.
   // And 380c32ad and c2d8419d until the supply drop's capsule.
   // And 3bc3899d until the things blocked out and their box.
-  expect(saddled.beforePlain).toBe("72c44dd1");
+  // And 72c44dd1 until the launcher's and the fire's meshes.
+  expect(saddled.beforePlain).toBe("da3d705d");
   // And e2d31e0d until the things blocked out and their box.
-  expect(saddled.hash).toBe("8e058329");
+  // And 8e058329 until the launcher's and the fire's meshes.
+  expect(saddled.hash).toBe("bf469505");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

@@ -356,7 +356,7 @@ test("a survivor riding is carried, not walking: no steps, jumps or landings of 
 
 /** A combat event as the session reads one off the wire. */
 function combatEvent(kind: number, more: Partial<CombatEvent> = {}): CombatEvent {
-  return { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0, ...more };
+  return { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0, id: 0, own: false, surface: 0, made: 0, ...more };
 }
 
 /** The player's state as view.ts makes it, standing at (380, 380) with full vitals. */
@@ -379,6 +379,23 @@ test("a kill is heard once: the blow that killed and the kill the server credits
   update();
   expect(heard.filter((k) => k === "kill")).toEqual(["kill"]);
   expect(heard).toContain("hit/marker");
+});
+
+test("a shot told from past hearing, for its round's sake, has no report; one within hearing has", () => {
+  const a = new ActionSounds(reg, () => -1);
+  const heard: string[] = [];
+  const hear: Hear = (_o, key) => heard.push(KEYS[key]!.key);
+  const own = ownState();
+  const update = (): void => a.update(new RemoteSample(), own.x, own.y + 1.6, own.z, own, -1, 0, 1, () => false, hear, () => {});
+  update();
+  const cell = reg.index.get("core:plasma_cell")!;
+  // 280 m up the range a client is told of a bolt coming its way. One 280 m to the side is told nothing, so neither hears it.
+  a.absorb([combatEvent(EVENT_SHOT, { x: own.x, y: own.y + 1.5, z: own.z - 280, item: cell, flies: true })], [], 0);
+  update();
+  expect(heard).toEqual([]);
+  a.absorb([combatEvent(EVENT_SHOT, { x: own.x, y: own.y + 1.5, z: own.z - 240, item: cell, flies: true })], [], 0);
+  update();
+  expect(heard).toEqual(["fire/far"]);
 });
 
 test("a throw is heard as a throw, and a thrown bola, which is its own round, is not heard again as a shot", () => {

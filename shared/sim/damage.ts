@@ -2,13 +2,15 @@
 
 import type { DamageType } from "../content/defs.ts";
 
-export const DAMAGE_TYPES: readonly DamageType[] = ["melee", "pierce", "bullet", "fire", "explosive"];
+export const DAMAGE_TYPES: readonly DamageType[] = ["melee", "pierce", "bullet", "fire", "explosive", "energy"];
 export const DMG_MELEE = 0;
 export const DMG_PIERCE = 1;
 export const DMG_BULLET = 2;
 export const DMG_FIRE = 3;
 export const DMG_EXPLOSIVE = 4;
-export const DMG_COUNT = 5;
+/** A plasma bolt's. */
+export const DMG_ENERGY = 5;
+export const DMG_COUNT = 6;
 
 /** A piece covers a fifth of the body, so a hit on its part meets five times its rating. A full set of one kind stops the same either way. */
 export const PIECE_SCALE = 5;

@@ -258,7 +258,7 @@ export class App {
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
     void import("./ui/storage.ts").then((m) => (this.ui.storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
-    this.shots = new Shots(reg, pack);
+    this.shots = new Shots(reg);
     this.supply = new SupplyView(reg, pack);
     this.breaks = new BreakEffects(reg, pack.palette);
     // Whoever else follows structure rows adds itself the same way; each is told in the order it was added.

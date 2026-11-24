@@ -17,5 +17,7 @@
   "core/vehicles/patrol_sedan_salvaged",
   "core/vehicles/semi_salvaged",
   "core/vehicles/taxi_salvaged",
-  "core/vehicles/veloce_salvaged"
+  "core/vehicles/veloce_salvaged",
+  "core/items/weapons/plasma",
+  "core/items/weapons/launcher"
 ]

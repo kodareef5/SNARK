@@ -142,8 +142,18 @@ cue("whiz", "prop", "weapon", "world", "fire", "a hitscan shot's line passes wit
 cue("ricochet", "prop", "weapon", "world", "fire", "a hitscan shot ends on the world", { falls: ["core:weapon/ricochet"] });
 cue("stick", "prop", "hit", "world", "hook", "an arrow_stuck prop appears", { falls: ["core:weapon/stick"] });
 cue("impact/{material}", ["prop", "item"], "hit", "world", "fire", "a blow or a shot lands: EVENT_HIT for the attacker; a projectile's end; the struck thing's material", { falls: ["core:surface/impact/{material}"] });
-cue("blast/near", "prop", "weapon", "world", "fire", "EVENT_BLAST within 120 m", { falls: ["core:weapon/blast/near"] });
-cue("blast/far", "prop", "weapon", "world", "fire", "EVENT_BLAST beyond 120 m", { falls: ["core:weapon/blast/far"] });
+cue("blast/near", "prop", "weapon", "world", "fire", "EVENT_BLAST within 120 m, of anything but a rocket", { falls: ["core:weapon/blast/near"] });
+cue("blast/far", "prop", "weapon", "world", "fire", "EVENT_BLAST beyond 120 m, of anything but a rocket", { falls: ["core:weapon/blast/far"] });
+// A launcher and what it fires (planning/workstreams/rocket.md), from the explosion family's takes. A blast is heard as
+// late as its distance makes it.
+cue("launch", ["item", ...BODIES], "weapon", "world", "fire", "a round with a motor leaves its launcher: own: session.fired; others: EVENT_ROCKET just after it left", { falls: ["{owner}/launch", "core:explosion/rocket/launch"] });
+// No take of a rocket in flight exists yet: the supply capsule's jet stands in, played faster, until `rocket/fly` has one.
+cue("rocket/fly", "prop", "weapon", "world", "fire", "a round with a motor in flight, where it is", { loop: true, falls: ["core:explosion/rocket/fly", "core:supply/jet@1.3"] });
+cue("burst/rocket", "prop", "weapon", "world", "fire", "EVENT_BLAST of a rocket within 120 m: its crack", { falls: ["core:explosion/rocket/hit", "core:weapon/blast/near"] });
+cue("burst/fireball", "prop", "weapon", "world", "fire", "EVENT_BLAST of a rocket within 120 m: its fire", { falls: ["core:explosion/fireball"] });
+cue("burst/debris", "prop", "hit", "world", "fire", "EVENT_BLAST of a rocket or a grenade near: what it threw comes down", { falls: ["core:explosion/debris"] });
+cue("burst/shockwave", "prop", "weapon", "world", "fire", "EVENT_BLAST of a rocket close by: its wave passes the ear", { falls: ["core:explosion/shockwave"] });
+cue("burst/distant", "prop", "weapon", "world", "fire", "EVENT_BLAST of a rocket beyond 120 m", { falls: ["core:explosion/distant", "core:weapon/blast/far"] });
 cue("fuse", "prop", "weapon", "body", "hook", "a live grenade lies in view", { loop: true, falls: ["core:weapon/fuse"] });
 cue("bounce", "prop", "hit", "body", "waits:polish", "a live grenade's velocity turns", { falls: ["core:weapon/bounce"] });
 cue("zap", "prop", "weapon", "world", "hook", "a shock dart's buff on a body", { falls: ["core:weapon/zap"] });

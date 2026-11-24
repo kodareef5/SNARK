@@ -169,7 +169,8 @@ function pictures(shot: Shot, tier: string, W: number, H: number): [Picture, Pic
   raster.depthBits = 24;
   for (const meshed of [false, true]) {
     scene.nearMesh = meshed;
-    for (let f = 0; f < 60; f++) {
+    for (let f = 0; ; f++) {
+      if (f === 240) throw new Error(`${shot.name} on ${tier}: ${meshed ? "meshes" : "instances"} did not settle`);
       scene.now += 1000 / 60;
       const p = scene.build(cam, null);
       const done = f > 1 && p.uploads.length + p.assetUploads.length === 0 && scene.city!.stats.behind === 0 && scene.near!.stats.waiting === 0 && (!p.lit || scene.farShadow!.whole);
@@ -239,7 +240,8 @@ export function compareShot(shot: Shot, tier: string, W: number, H: number): Com
       continue;
     }
     const wa = distance(a, cam, split, i), wb = distance(b, cam, split, i);
-    const kind = Math.abs(wa - wb) <= same(cam, split, wa) ? "same" : wb > wa ? "farther" : "nearer";
+    const coplanar = wa === wb || (Number.isFinite(wa) && Math.abs(wa - wb) <= same(cam, split, wa));
+    const kind = coplanar ? "same" : wb > wa ? "farther" : "nearer";
     counts[kind]++;
     diff.set(kind === "same" ? [255, 200, 0, 255] : kind === "farther" ? [255, 0, 0, 255] : [0, 120, 255, 255], i * 4);
     const key = `${kind}: ${name(a, i)} / ${name(b, i)}`;

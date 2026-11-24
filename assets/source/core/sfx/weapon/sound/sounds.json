@@ -221,6 +221,20 @@
         {"file": "takes/zap/moss-pt-1700-01175.wav", "from": "moss", "start": 0.05, "end": 0.84}
       ]
     },
+    "fire/rifle_plasma": {
+      "range": 200, "level": -12, "vary": 0.6,
+      "takes": [
+        {"file": "takes/zap/moss-pt-1700-05175.wav", "from": "moss", "start": 0.05, "end": 0.5},
+        {"file": "takes/zap/moss-pt-1700-01175.wav", "from": "moss", "start": 0.05, "end": 0.5}
+      ]
+    },
+    "fire/pistol_plasma": {
+      "range": 150, "level": -15, "vary": 1.2,
+      "takes": [
+        {"file": "takes/zap/moss-pt-1700-05175.wav", "from": "moss", "start": 0.05, "end": 0.3},
+        {"file": "takes/zap/moss-pt-1700-01175.wav", "from": "moss", "start": 0.05, "end": 0.3}
+      ]
+    },
     "hit/head": {
       "range": 1, "level": -20, "vary": 0.3,
       "takes": [

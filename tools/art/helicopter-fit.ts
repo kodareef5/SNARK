@@ -1,5 +1,6 @@
 // Actual finest human/armor/hair vertices, skinned by the engine's bone matrices against the authored inner shell.
 import { readFileSync } from "node:fs";
+import { bodyMeshWithVentsClosed } from "./cruise-body.ts";
 import { writeBones } from "../../client/core/render/characters.ts";
 import { HELICOPTER_ART as H } from "../../content/vehicles/helicopter-art.ts";
 import { Pose } from "../../shared/anim/clip.ts";
@@ -71,7 +72,7 @@ function boxClearance(low: number[], high: number[]): number {
 }
 
 for(const sex of ['m','f']) {
- const selected=meshes.filter(m=>m.id.startsWith(`core:human_${sex}/`));
+ const selected = meshes.filter(m => bodyMeshWithVentsClosed(m.id, sex));
  const rig=pack.header.rigs.find(r=>r.id===`human_${sex}`)!; if(!rig)throw new Error('missing sex rig');
  const rest=Float32Array.from(rig.rest);
  // Between the sampled head looks, bound point motion by angle times radius. This covers continuous yaw/pitch too.

@@ -26,14 +26,16 @@ export function passSpread(frames: readonly number[][]): Record<string, { median
 /**
  * Of a run that drew every other frame with other effects off (`?ab=`), its frames' ms in order and which were the
  * others: each kind's median, and the median of each other frame less the mean of its own frames either side, which a
- * turning view and a card shared with other work change little; null where no frame was another's.
+ * turning view and a card shared with other work change little, and that difference's twentieth lowest of a hundred,
+ * which is what the effect's dearest frames cost; null where no frame was another's.
  */
-export function alternateSpread(frames: readonly number[], other: readonly boolean[]): { own: number; other: number; less: number } | null {
+export function alternateSpread(frames: readonly number[], other: readonly boolean[]): { own: number; other: number; less: number; least: number } | null {
   const med = (list: number[]): number => Math.round(list.sort((a, b) => a - b)[(list.length - 1) >> 1]! * 1000) / 1000;
   const less: number[] = [];
   for (let i = 1; i + 1 < frames.length; i++) if (other[i] && !other[i - 1] && !other[i + 1]) less.push(frames[i]! - (frames[i - 1]! + frames[i + 1]!) / 2);
   if (less.length === 0) return null;
-  return { own: med(frames.filter((_, i) => !other[i])), other: med(frames.filter((_, i) => other[i])), less: med(less) };
+  const least = Math.round(less.sort((a, b) => a - b)[Math.floor((less.length - 1) * 0.05)]! * 1000) / 1000;
+  return { own: med(frames.filter((_, i) => !other[i])), other: med(frames.filter((_, i) => other[i])), less: med(less), least };
 }
 
 /**

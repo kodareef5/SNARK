@@ -21,7 +21,7 @@ import { FarStore } from "../../client/core/farcells.ts";
 import { HeldTops } from "../../client/core/render/blocks.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { CITY_BUFFER, CITY_SLOTS } from "../../client/core/render/farcity.ts";
-import { DRAW_RANGED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_DETAILS, DRAW_RANGED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -129,6 +129,8 @@ function counted(scene: Scene, p: FramePacket): Counted {
   // Below NODE_BUFFERS a buffer is a chunk's of the near store.
   const near = (buffer: number): boolean => buffer !== TRANSIENT_BUFFER && buffer < NODE_BUFFERS;
   for (let d = 0; d < p.drawCount; d++) {
+    // Detail cards use their own instance data and leave the draw buffer at zero.
+    if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) continue;
     const b = p.drawBuffer[d]!;
     if (b === CITY_BUFFER && p.drawSlot[d]! < CITY_SLOTS) {
       c.blocks++;

@@ -123,6 +123,22 @@ export const DETAIL_WAKE = DETAIL_POOL | DETAIL_LIT | 4;
  * outlined in deep navy, the glyphs packed in its second colour's three bytes. Unlit and unfogged, as the HUD is.
  */
 export const DETAIL_DIGITS = DETAIL_POOL | 5;
+/**
+ * Light with no surface (shared/pack/details.ts `glow`): a soft disc of its first colour, as many times as bright as
+ * its grey byte is sixteenths, added over what is behind it and never hiding it.
+ */
+export const DETAIL_GLOW = DETAIL_POOL | 7;
+/**
+ * A thick puff of smoke worked out with no picture (shared/pack/details.ts `thick`), lit as a ball of smoke is, on the
+ * side the sun is: its second colour's first byte is its seed and its second how far it is torn, and its grey byte is
+ * how many times longer than wide its card is, in SMOKE_STEPS, past which it is a length of a rope of smoke.
+ */
+export const DETAIL_SMOKE = DETAIL_POOL | DETAIL_LIT | DETAIL_PUFF;
+export const SMOKE_STEPS = 16;
+/** A scorch (shared/pack/details.ts `stain`): an uneven patch of soot with rays, which takes light and gives none. Its second colour's first byte is its seed. */
+export const DETAIL_SCORCH = DETAIL_POOL | DETAIL_LIT | 3;
+/** The sixteenths of a DETAIL_GLOW particle's grey byte. */
+export const GLOW_STEPS = 16;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /**
@@ -145,6 +161,12 @@ export const DRAW_BENT = 65536;
  * shown, 1 a cold-blooded creature's, 2 a warm one's, 3 hot. The shell gives the code to `uHeat`.
  */
 export const DRAW_HEAT_SHIFT = 17;
+/**
+ * Fire (render/fire-light.ts): a rocket's flame or a blast's fireball, a draw of the mesh `core:fire_cone` or
+ * `core:fire_lobe` whose instances say where each is and how it burns. Its colour is light already weighed by how much
+ * of it shows, so it is blended as such, front faces alone.
+ */
+export const DRAW_FIRE = 1 << 19;
 export const HEAT_WORLD = 0;
 export const HEAT_COLD = 1;
 export const HEAT_WARM = 2;
@@ -818,6 +840,14 @@ export class FramePacket {
   readonly detailWords = new Uint32Array(this.details.buffer);
   /** The share of the screen the blended details cover, counted once a quad. */
   detailFill = 0;
+  /**
+   * What a page leaves out to price what burns (passes.ts "bursts"): the particles the details wrote themselves, the
+   * first `detailOwn`, each tagged 1 where a blast threw it up; and the run of cards that is the rockets' smoke and glows.
+   */
+  detailOwn = 0;
+  readonly detailTag = new Uint8Array(MAX_DETAILS);
+  burstFirst = 0;
+  burstCount = 0;
 
   /**
    * The states of the near chunks' pieces (pieces.ts), PIECE_KEYS texels a row and four bytes a texel, which the card
@@ -893,6 +923,7 @@ export class FramePacket {
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;
+    this.detailOwn = this.burstCount = 0;
   }
 }
 

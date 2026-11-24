@@ -40,6 +40,8 @@ export class Settings {
   keepPaused = false;
   /** Applies only if the server allows it. */
   damageNumbers = true;
+  /** A blast near, or the player's own launcher, shakes the view (view/shake.ts). */
+  viewShake = true;
   /** A multiple of the default. */
   sensitivity = 1;
   /**
@@ -111,7 +113,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused", "viewShake"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["zoomSensitivity", .5, 1.5], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
@@ -181,6 +183,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   // Shown in the Input group (ui/settings.ts SETTING_GROUPS) after the mouse's own.
   range("Zoom sensitivity","zoomSensitivity",ZOOM_SENSITIVITY_MIN,ZOOM_SENSITIVITY_MAX,.05),
   { label: "Debug bar", value: (s) => (s.debug ? "on" : "off"), step: (s) => void (s.debug = !s.debug) },
+  { label: "View shake", value: (s) => (s.viewShake ? "on" : "off"), step: (s) => void (s.viewShake = !s.viewShake) },
 ];
 
 /** `/debug` in chat or the console: the debug bar on or off. Returns what the console says. */

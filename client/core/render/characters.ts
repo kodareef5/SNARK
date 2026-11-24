@@ -28,9 +28,12 @@ import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
-import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
+import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, LAUNCHER_AT_MUZZLE, LAUNCHER_FETCHED, LAUNCHER_HOME, advanceHuman, humanPose, launcherReloadShare } from "../../../shared/anim/pose.ts";
+import { ROUND_HELD, ROUND_SLIDE } from "../../../shared/anim/authored.ts";
+import { wield } from "../../../shared/anim/wield.ts";
+import { HELD_ROUND } from "../../../shared/content/kinds/weapons.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
-import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
+import { ACT_COOL, ACT_NONE, ACT_RELOAD, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { MODE_FLYER, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose, creatureFootfallDomain, FOOTFALL_NONE, speciesAnim, type FootfallGait } from "../../../shared/anim/creature.ts";
@@ -64,6 +67,9 @@ import { PatrolLights } from "./patrol-lights.ts";
 import { solidOf } from "../../../shared/sim/vehicle-movers.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
+/** The places of a held item that has none. */
+const NO_POINTS = new Float32Array(9);
+
 export const BODY_RADIUS = BODY_REACH;
 /**
  * An outfit is heavy where its pieces' coarsest levels hold more than this many times the triangles of the body parts
@@ -104,8 +110,8 @@ function pastEdge(at: Float64Array, y: number, lean: number): number {
   const below = -(at[1]! + y);
   return below > 0 ? Math.max(0, at[2]! - below * lean) : 0;
 }
-/** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents and a held item. */
-const PARTS = SLOT_COUNT + 6;
+/** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents, a held item and its round. */
+const PARTS = SLOT_COUNT + 7;
 const PLAIN = defaultLook();
 
 /** Warm a small area of the living hide while keeping its inherited colour visible.
@@ -237,7 +243,19 @@ interface Worn {
 interface Held {
   mesh: number;
   bone: number;
+  /** Its content index, the places on it that Registry.heldHas says it has, and the mesh of the round drawn in it (-1 for none). */
+  item: number;
+  has: number;
+  round: number;
 }
+
+/** Bodies whose held item's places are kept from frame to frame (Characters.heldPoint). */
+const HELD_NOTES = 64;
+/** Kept for each: where it stood, then its item's muzzle, vent and round, each x, y and z in the world. */
+const NOTE_FLOATS = 12;
+/** Metres a shooter may stand from where its shot is said to have left, level and upright, to be taken for its shooter. */
+const SHOOTER_NEAR = 1.6;
+const SHOOTER_TALL = 2.6;
 
 interface BodyKind {
   /** Indexed by sex, or a single set. */
@@ -276,6 +294,9 @@ class Stride extends Gait {
   generation = -1;
   seen = 0;
   moved = -1;
+  /** A held item whose round is drawn in it (a launcher), and whether it has been seen to fire and not yet to load. */
+  tube = 0;
+  tubeEmpty = false;
   look: Uint8Array | null = null;
   scales: Float32Array | null = null;
   solved: Solved | null = null;
@@ -373,6 +394,14 @@ export class Characters {
   /** Per content index. */
   private readonly worn: (Worn | null)[];
   private readonly held: (Held | null)[];
+  /** The bodies posed holding an item with places on it: each one's id, the frame it was last posed in, and its floats. */
+  private readonly noteId = new Int32Array(HELD_NOTES);
+  private readonly noteFrame = new Int32Array(HELD_NOTES).fill(-9);
+  private readonly noteHas = new Uint8Array(HELD_NOTES);
+  private readonly noteAt = new Float64Array(HELD_NOTES * NOTE_FLOATS);
+  private notes = 0;
+  /** The rounds loaded in the viewer's own gun, which whoever knows them sets; below 0 while they are not known. */
+  ownRounds = -1;
   /** The meshes of a glider's two wings, -1 for one not there, or null where no glider has any. */
   private wings: { right: number; left: number } | null;
   /** 1 for each content index that is a saddle. */
@@ -507,9 +536,12 @@ export class Characters {
     });
     // Any item whose class gives it a held slot (shared/content/classes.ts) is drawn in the hand by its mesh there: a
     // weapon's code-made box, or a piece converted onto a prop bone (tools/art/build.ts, heldOn).
-    this.held = reg.defs.map((d) => {
+    this.held = reg.defs.map((d, item) => {
       const mesh = d?.type === "item" ? human(bind.own(d.id, "held")) : -1;
-      return mesh < 0 ? null : { mesh, bone: table.bone[mesh]! };
+      if (mesh < 0) return null;
+      // Its loaded round is its first ammunition's, as that flies.
+      const has = reg.heldHas[item]!, ammo = d?.type === "item" ? d.weapon?.ammo?.[0] : undefined;
+      return { mesh, bone: table.bone[mesh]!, item, has, round: (has & (1 << HELD_ROUND)) !== 0 && ammo ? bind.own(ammo, "shot") : -1 };
     });
     // The wings of the first glider that has them, one for each hand.
     this.wings = null;
@@ -1575,6 +1607,8 @@ export class Characters {
     if (!fallen && !seat && !vehicleSeat && st.react === 0) st.react = this.dead.humans.waiting(id, tick, facingOf((yaw / TAU) * 65536));
     // A body toppled or getting up lies against the facing it had then (shared/anim/reactions.ts).
     st.facing = yaw / TAU;
+    // Its hold is posed as its item says, which the server's hit test is given too (shared/anim/wield.ts).
+    wield(st, this.reg, gear ? gear[gearAt + GEAR_HELD]! : 0);
     // On one bone, a body toppled, getting up or waiting for its fall is drawn in the shared pose of the step it is at.
     const lying = this.sharedStep(onOne ? this.fallStep(onOne) : rigid && !fallen?.down && !seat && !vehicleSeat && !impaled ? lyingStep(st.react, tick) : -1), turnBy = this.turnBy;
     this.packet = p;
@@ -1757,6 +1791,107 @@ export class Characters {
     }
     const inHand = gear && !wings && !impaled && vehicleSeat?.weapons !== false ? this.held[gear[gearAt + GEAR_HELD]!] : null;
     if (inHand) this.queuePart(inHand.mesh, tint, tintAt, inHand.bone, unseen);
+    if (inHand && inHand.has !== 0 && !rigid) this.holding(p, inHand, st, tick, set.rest, first, id, own, unseen, x, y, z);
+    return true;
+  }
+
+  /**
+   * A body posed this frame holds an item with places on it: they are kept for heldPoint, and its round is drawn where it
+   * is: in the tube while loaded, in the off hand from the pouch to the muzzle, and sliding home from there.
+   */
+  private holding(p: FramePacket, h: Held, st: AnimState, tick: number, rest: Float32Array, first: number, id: number, own: boolean, unseen: boolean, x: number, y: number, z: number): void {
+    const bones = p.bones, reg = this.reg;
+    let n = -1, old = -1;
+    for (let k = 0; k < this.notes; k++) {
+      if (this.noteId[k] === id) { n = k; break; }
+      if (old < 0 && this.noteFrame[k]! < this.frame - 1) old = k;
+    }
+    if (n < 0) n = old >= 0 ? old : this.notes < HELD_NOTES ? this.notes++ : -1;
+    const m = (first + h.bone) * BONE_FLOATS, r = h.bone * 3;
+    if (n >= 0) {
+      this.noteId[n] = id;
+      this.noteFrame[n] = this.frame;
+      this.noteHas[n] = h.has;
+      const at = this.noteAt, o = n * NOTE_FLOATS;
+      at[o] = x + p.camX; at[o + 1] = y + p.camY; at[o + 2] = z + p.camZ;
+      for (let k = 0; k < 3; k++) {
+        // A vertex of the held mesh goes through its bone from where the bone rests, and so does a place on it.
+        const q = k * 3, pt = reg.heldPoints[h.item] ?? NO_POINTS, vx = rest[r]! + pt[q]!, vy = rest[r + 1]! + pt[q + 1]!, vz = rest[r + 2]! + pt[q + 2]!;
+        at[o + 3 + k * 3] = bones[m]! * vx + bones[m + 1]! * vy + bones[m + 2]! * vz + bones[m + 3]! + p.camX;
+        at[o + 4 + k * 3] = bones[m + 4]! * vx + bones[m + 5]! * vy + bones[m + 6]! * vz + bones[m + 7]! + p.camY;
+        at[o + 5 + k * 3] = bones[m + 8]! * vx + bones[m + 9]! * vy + bones[m + 10]! * vz + bones[m + 11]! + p.camZ;
+      }
+    }
+    if (h.round < 0) return;
+    // What is loaded is not told of another: its tube is empty from its shot until its reload pushes a round home.
+    const g = this.gaitOf(id), act = st.action & 7;
+    let e = act === ACT_NONE ? 0 : (tick - st.actionStart) % 256;
+    if (e < 0) e += 256;
+    if (e > 250) e = 0;
+    const share = act === ACT_RELOAD ? launcherReloadShare(st, e) : -1;
+    if (g.tube !== h.item) { g.tube = h.item; g.tubeEmpty = false; }
+    if (act === ACT_COOL || (share >= 0 && share < LAUNCHER_HOME)) g.tubeEmpty = true;
+    else if (share >= LAUNCHER_HOME) g.tubeEmpty = false;
+    const loaded = own && this.ownRounds >= 0 ? this.ownRounds > 0 || share >= LAUNCHER_HOME : !g.tubeEmpty;
+    if (unseen) return;
+    const q = HELD_ROUND * 3, pt = reg.heldPoints[h.item] ?? NO_POINTS;
+    if (share >= LAUNCHER_FETCHED && share < LAUNCHER_AT_MUZZLE) this.roundOn(p, h.round, first + B_PROP_L, rest[B_PROP_L * 3]!, rest[B_PROP_L * 3 + 1]!, rest[B_PROP_L * 3 + 2]! - ROUND_HELD, own, id);
+    else if (share >= LAUNCHER_AT_MUZZLE && share < LAUNCHER_HOME) {
+      const k = (share - LAUNCHER_AT_MUZZLE) / (LAUNCHER_HOME - LAUNCHER_AT_MUZZLE);
+      this.roundOn(p, h.round, first + h.bone, rest[r]! + pt[q]!, rest[r + 1]! + pt[q + 1]!, rest[r + 2]! + pt[q + 2]! + ROUND_SLIDE * (1 - k * k * (3 - 2 * k)), own, id);
+    } else if (loaded) this.roundOn(p, h.round, first + h.bone, rest[r]! + pt[q]!, rest[r + 1]! + pt[q + 1]!, rest[r + 2]! + pt[q + 2]!, own, id);
+  }
+
+  /** Queues the rigid mesh `mesh` as bone `bone` of this frame carries the point (vx, vy, vz) of its body's rest. */
+  private roundOn(p: FramePacket, mesh: number, bone: number, vx: number, vy: number, vz: number, own: boolean, id: number): void {
+    const first = this.room(p, 1, 1, false);
+    if (first < 0) return;
+    const b = p.bones, m = bone * BONE_FLOATS, o = first * BONE_FLOATS;
+    for (let row = 0; row < 3; row++) {
+      const i = m + row * 4;
+      b[o + row * 4] = b[i]!;
+      b[o + row * 4 + 1] = b[i + 1]!;
+      b[o + row * 4 + 2] = b[i + 2]!;
+      b[o + row * 4 + 3] = b[i]! * vx + b[i + 1]! * vy + b[i + 2]! * vz + b[i + 3]!;
+    }
+    showMaterials(this.assets, mesh, Math.sqrt(b[o + 3]! * b[o + 3]! + b[o + 7]! * b[o + 7]! + b[o + 11]! * b[o + 11]!), 1);
+    const n = this.count++;
+    this.key[n] = mesh * this.levels;
+    this.firstBone[n] = first;
+    this.region0[n] = 0;
+    this.colors.fill(0, n * 6, n * 6 + 6);
+    this.id[n] = id;
+    this.near[n] = own ? OWN : SEEN;
+    this.mask[n] = 0;
+    this.offset.fill(0, n * 3, n * 3 + 3);
+  }
+
+  /**
+   * Where place `which` (HELD_MUZZLE, HELD_VENT, HELD_ROUND) of the item body `id` holds is in the world, from its prop
+   * bone as it was last posed, into `out`. False for a body not posed in the last frame, or whose item has no such place.
+   */
+  heldPoint(id: number, which: number, out: Float64Array | number[]): boolean {
+    for (let k = 0; k < this.notes; k++) if (this.noteId[k] === id) return this.noted(k, which, out);
+    return false;
+  }
+
+  /** The same for whichever such body stood nearest under (x, y, z), a place its shot left from: its eye. */
+  heldNear(x: number, y: number, z: number, which: number, out: Float64Array | number[]): boolean {
+    let best = -1, near = SHOOTER_NEAR * SHOOTER_NEAR;
+    const at = this.noteAt;
+    for (let k = 0; k < this.notes; k++) {
+      const o = k * NOTE_FLOATS, dx = at[o]! - x, dy = y - at[o + 1]!, dz = at[o + 2]! - z, d = dx * dx + dz * dz;
+      if (d < near && dy > -0.5 && dy < SHOOTER_TALL && this.noteFrame[k]! >= this.frame - 1) { near = d; best = k; }
+    }
+    return best >= 0 && this.noted(best, which, out);
+  }
+
+  private noted(k: number, which: number, out: Float64Array | number[]): boolean {
+    if (this.noteFrame[k]! < this.frame - 1 || (this.noteHas[k]! & (1 << which)) === 0) return false;
+    const o = k * NOTE_FLOATS + 3 + which * 3;
+    out[0] = this.noteAt[o]!;
+    out[1] = this.noteAt[o + 1]!;
+    out[2] = this.noteAt[o + 2]!;
     return true;
   }
 
@@ -1883,14 +2018,15 @@ export class Characters {
    * Queues a rigid mesh that has its own position and direction, such as an arrow in the air. Its origin goes to (x, y, z)
    * relative to the camera and its +Z along the unit direction (dx, dy, dz), stretched `length` times along it and `wide`
    * times across. It is drawn through the bone path with one bone, which gives it a tilt and a size as well as a facing.
-   * `region0` is the palette colour of its first colour region, for a mesh that has one.
+   * `region0` is the palette colour of its first colour region, for a mesh that has one. `roll` turns it about its direction.
    * False when the frame has no room left, and then it is counted dropped.
    */
-  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1, region0 = 0): boolean {
+  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1, region0 = 0, roll = 0): boolean {
     const first = this.room(p, 1, 1);
     if (first < 0) return false;
     // Right is level and square to the direction. Up is the direction crossed with right, so the basis keeps its handedness.
     let rx = dz;
+    let ry = 0;
     let rz = -dx;
     const rl = Math.sqrt(rx * rx + rz * rz);
     if (rl < 1e-6) {
@@ -1900,16 +2036,22 @@ export class Characters {
       rx /= rl;
       rz /= rl;
     }
-    const ux = dy * rz;
-    const uy = dz * rx - dx * rz;
-    const uz = -dy * rx;
+    let ux = dy * rz;
+    let uy = dz * rx - dx * rz;
+    let uz = -dy * rx;
+    if (roll !== 0) {
+      // Rolled about its direction by `roll` radians: right and up turn into each other.
+      const c = Math.cos(roll), s = Math.sin(roll), ax = rx, az = rz;
+      rx = ax * c + ux * s; ry = uy * s; rz = az * c + uz * s;
+      ux = ux * c - ax * s; uy = uy * c; uz = uz * c - az * s;
+    }
     const o = first * BONE_FLOATS;
     const b = p.bones;
     b[o] = rx * wide;
     b[o + 1] = ux * wide;
     b[o + 2] = dx * length;
     b[o + 3] = x;
-    b[o + 4] = 0;
+    b[o + 4] = ry * wide;
     b[o + 5] = uy * wide;
     b[o + 6] = dy * length;
     b[o + 7] = y;

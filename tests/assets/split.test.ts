@@ -4,6 +4,8 @@ import { allClips } from "../../shared/pack/clips.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
 import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { Assets } from "../../client/core/assets/assets.ts";
+import { fireMeshes } from "../../tools/pack/fire.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
@@ -21,6 +23,20 @@ import { FAR_MESH } from "../../client/core/render/far.ts";
 import { fillSlot, slotsOf } from "../../shared/content/slots.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+
+test("rocket flames and blast lobes can draw before the first streamed page", () => {
+  const whole = buildPack(fireMeshes(), defaultPalette());
+  const reg = coreRegistry();
+  const { files, manifest } = splitPack(whole, "core", paging(reg, parsePack(whole)));
+  const boot = parsePack(files[manifest.boot]!.bytes);
+  const assets = new Assets(reg, boot, parseManifest(JSON.stringify(bootManifest(manifest))));
+  for (const name of ["core:fire_cone", "core:fire_lobe"]) {
+    const id = assets.table.find(name);
+    expect(assets.known(id)).toBe(true);
+    assets.want(id, 0, 10);
+    expect(assets.level(id, 0)).toBeGreaterThanOrEqual(0);
+  }
+});
 
 artTest("a split pack holds every level once, byte for byte, with the coarsest of each mesh in the boot file", () => {
   const whole = corePackBytes();

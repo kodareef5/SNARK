@@ -9,7 +9,7 @@ const G = 9.81;
 /** Metres a lying particle is lifted off the floor, so it does not flicker into it. */
 const LIFT = 0.012;
 /** Seconds over which a see-through particle comes in, so it is never seen to appear. */
-export const FADE_IN = 0.08;
+
 
 export class Pool {
   /** The most particles there is room for, and how many are alive: the first `count` of every array. */
@@ -28,6 +28,8 @@ export class Pool {
   readonly landed: Float32Array;
   /** The floor it lands on: a height, or NaN to follow the ground. */
   readonly plane: Float64Array;
+  /** The floor sampled at the last step for a flying particle. New and settled particles sample it when drawn. */
+  readonly ground: Float64Array;
   readonly size: Float32Array;
   /** Fraction of the authored card width, for foam drawn out along the hull wash. */
   readonly widthScale: Float32Array;
@@ -56,6 +58,7 @@ export class Pool {
     this.y = f64();
     this.z = f64();
     this.plane = f64();
+    this.ground = f64();
     this.vx = f32();
     this.vy = f32();
     this.vz = f32();
@@ -75,12 +78,14 @@ export class Pool {
     this.grey = new Uint8Array(room);
     this.colourA = new Uint32Array(room);
     this.colourB = new Uint32Array(room);
-    this.columns = [this.x, this.y, this.z, this.plane, this.vx, this.vy, this.vz, this.age, this.end, this.landed, this.size, this.widthScale, this.heading, this.pitch, this.phase, this.swayTo, this.effect, this.cell, this.flags, this.grey, this.colourA, this.colourB];
+    this.columns = [this.x, this.y, this.z, this.plane, this.ground, this.vx, this.vy, this.vz, this.age, this.end, this.landed, this.size, this.widthScale, this.heading, this.pitch, this.phase, this.swayTo, this.effect, this.cell, this.flags, this.grey, this.colourA, this.colourB];
   }
 
   /** Room for one more, its index, or -1. */
   take(): number {
-    return this.count < this.room ? this.count++ : -1;
+    if (this.count >= this.room) return -1;
+    this.ground[this.count] = NaN;
+    return this.count++;
   }
 
   /** Moves the last particle into `i`'s place. */
@@ -110,6 +115,7 @@ export class Pool {
         continue;
       }
       if (this.landed[i]! >= 0) {
+        this.ground[i] = NaN;
         i++;
         continue;
       }
@@ -138,6 +144,7 @@ export class Pool {
       const z = (this.z[i]! += vz * dt + sz);
       let y = (this.y[i]! += vy * dt);
       const floor = this.floor(i, x, z, hf);
+      this.ground[i] = floor;
       if (e.settle > 0 && y <= floor + LIFT && vy <= 0) {
         this.y[i] = floor + LIFT;
         this.landed[i] = age;
@@ -190,10 +197,10 @@ export class Pool {
     lying[o + 5] = nx * ay - ny * ax;
   }
 
-  /** How much of particle `i` shows, 0 to 1: coming in when it is see-through, and going over its effect's fade. */
+  /** How much of particle `i` shows, 0 to 1: coming in when it is see-through and no light, and going over its effect's fade. */
   shows(i: number, e: DetailEffect): number {
     const age = this.age[i]!;
     const out = e.fade > 0 ? Math.min(1, (this.end[i]! - age) / e.fade) : 1;
-    return e.pass === "blend" ? Math.min(out, age / FADE_IN) : out;
+    return e.pass === "blend" && !(e.glow > 0) ? Math.min(out, age / e.appear) : out;
   }
 }

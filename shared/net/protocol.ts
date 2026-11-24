@@ -676,7 +676,10 @@ export const EVENT_KILL = eventKind();
  * planning/reference/weapons-plan.md), and silenced 1 bit (its weapon has a silencer, and no flash is drawn: M10).
  */
 export const EVENT_SHOT = eventKind();
-/** BLAST, to clients nearby: position (3 x f32), reach f32 in metres. */
+/**
+ * BLAST, to clients nearby (shared/net/rockets.ts): where, the way out of what it went off on, its reach, the item that
+ * blew, its round's number (0 for none) and what it met.
+ */
 export const EVENT_BLAST = eventKind();
 /**
  * TAMED, to the new owner: entity handle u32, species content index u16, level u16, taming effectiveness u8 in percent (255
@@ -713,6 +716,19 @@ export const EVENT_COLLAPSE = eventKind();
 export const COLLAPSE_PIECES = 16;
 /** GROAN, to clients within 150 m: a building of the map has lost what carried it and is about to come down. Where it gave (3 x f32). */
 export const EVENT_GROAN = eventKind();
+/**
+ * BOLTS, to clients within hearing of a round's muzzle or sight of its way: the rounds that flew off this tick, in one
+ * message (shared/net/bolts.ts): a count u8, then each round's start, way, ammunition and the ticks since it left.
+ */
+export const EVENT_BOLTS = eventKind();
+/** Metres on the ground within which a shot is heard: a client told of one from further, for its round's sake, plays no report. */
+export const SHOT_HEARD = 260;
+/**
+ * ROCKET, to clients within hearing of a round that will go off where it ends, its shooter among them
+ * (shared/net/rockets.ts): its start, way, ammunition, number and the ticks since it left. One who comes within hearing of
+ * it later is told then. Its blast says its number.
+ */
+export const EVENT_ROCKET = eventKind();
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

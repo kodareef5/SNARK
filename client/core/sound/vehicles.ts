@@ -15,8 +15,8 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Hear } from "./bodies.ts";
 
-/** Plays a loop while `on`, keyed by `id`, at (x, y, z), or at the ear where `flat`. */
-export type Place = (id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean) => void;
+/** Plays a loop while `on`, keyed by `id`, at (x, y, z), or at the ear where `flat`. `fadeMs` is how long it takes to come up and go, where not the loops' own. */
+export type Place = (id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean, fadeMs?: number) => void;
 
 const LAYERS = ["idle", "low", "mid", "high"].map((r) => cueKey(`engine/${r}`));
 /** The engine's speed, as a share of its full speed, at which each layer is loudest, and how far either side it fades out. */

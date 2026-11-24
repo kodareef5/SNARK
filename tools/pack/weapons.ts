@@ -107,6 +107,10 @@ export function weaponMeshes(): SourceMesh[] {
     { id: "core:blast", lods: [build([[0, 0, 0, 0.5, 0.5, 0.5, 6]], null)] },
     // The tracer is a metre long along +Z from the origin, scaled to the length of the shot when drawn.
     { id: "core:tracer", lods: [build([[0, 0, 0.5, 0.006, 0.006, 0.5, 6]], null)] },
+    // Stand-ins the launcher's own art replaces (assets/source/core/items/weapons/launcher): a tube a metre long whose axis is
+    // 9 cm over the grip, and its round, 55 cm long with its origin at the tail.
+    held("core:rocket_launcher", B_PROP_R, [[0, 0.09, -0.01, 0.045, 0.045, 0.5, 11], [0, 0, 0, 0.016, 0.06, 0.02, DARK], [0, 0.01, 0.22, 0.014, 0.05, 0.016, DARK], [0.03, 0.17, 0.05, 0.02, 0.03, 0.06, SLATE]]),
+    { id: "core:rocket_round", lods: [build([[0, 0, 0.2, 0.03, 0.03, 0.2, 7], [0, 0, 0.47, 0.04, 0.04, 0.08, 7], [0, 0, 0.04, 0.07, 0.004, 0.05, METAL], [0, 0, 0.04, 0.004, 0.07, 0.05, METAL]], null)] },
     held("core:club", B_PROP_R, club()),
     held("core:slingshot", B_PROP_L, slingshot()),
     { id: "core:stone_shot", lods: [build([[0, 0, 0, 0.02, 0.017, 0.022, STONE], [0.006, 0.008, -0.004, 0.015, 0.014, 0.016, SLATE]], null)] },

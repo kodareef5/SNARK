@@ -1,0 +1,8 @@
+# This small asset ships in source-only checkouts.
+!launcher.snpk
+!tex/metal_base.png
+!tex/metal_normal.png
+!tex/metal_orm.png
+!tex/furniture_base.png
+!tex/furniture_normal.png
+!tex/furniture_orm.png

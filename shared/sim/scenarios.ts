@@ -5,7 +5,7 @@
 import { Pose } from "../anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../anim/human.ts";
 import { AnimState, CUE_LAND, CUE_NONE, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, DIR_STEPS, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
-import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "./weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN } from "./weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../anim/skeleton.ts";
 import { creaturePose, rayCreature, type CreatureAnim } from "../anim/creature.ts";
 import { shapeHalf, type Def, type ShapeDef } from "../content/defs.ts";
@@ -263,6 +263,13 @@ export function poseHash(anim: HumanAnim): string {
           if (n % 3 === 0) st.setAction(ACT_SWING, n % 2 === 0 ? HOLD_HANDS : HOLD_TOOL, Math.floor(tick) - (n % 17));
           else if (n % 5 === 1) st.setAction([ACT_DRAW, ACT_HOLD, ACT_RELOAD, ACT_COOL, ACT_NONE][n % 7 % 5]!, [HOLD_BOW, HOLD_RIFLE, HOLD_PISTOL][n % 3]!, Math.floor(tick) - (n % 11));
           else st.setAction(ACT_NONE, HOLD_HANDS, 0);
+          // Every other rifle's hold is a launcher's, which its item says and the word does not (shared/anim/wield.ts).
+          const tube = n % 2 === 0 && st.action >>> 3 === HOLD_RIFLE;
+          st.wields = tube ? POSE_LAUNCHER : POSE_PLAIN;
+          st.kick = tube ? 0.15625 : 0;
+          st.kickTicks = tube ? 9 : 0;
+          st.coolTicks = tube ? 3 : 0;
+          st.reloadTicks = tube ? 120 : 0;
           n++;
           humanPose(anim, st, tick, pose);
           solve(HUMAN, pose, solved);

@@ -573,7 +573,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // handles, 1615357347 until the city's broken forms (content/breaks) added theirs, and 563689127 until the wrecks'
   // stripped forms (content/vehicles/salvage.ts) added theirs. It was 3091927605 until every body's shell and the nine
   // bodies' stripped looks that only salvage leaves (content/vehicles/wrecks.ts SALVAGED_LOOKS) added their meshes.
-  expect(hash).toBe(2630567081);
+  // The launcher and its effects add mesh handles after the salvaged bodies.
+  expect(hash).toBe(2832364003);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of

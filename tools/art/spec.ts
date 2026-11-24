@@ -377,6 +377,8 @@ export interface PieceSpec {
 }
 
 export interface PiecesAsset {
+  /** Credit displayed in the game wiki entry of each of its pieces, for adapted models. */
+  readonly modelCredit?: string;
   readonly kind: "pieces";
   readonly source: { readonly scripts: readonly string[] } | { readonly bake: () => SourceMesh[] };
   /**

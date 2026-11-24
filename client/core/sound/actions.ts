@@ -6,18 +6,39 @@
 import { ZONE_HEAD, ZONE_NONE } from "../../../shared/anim/human.ts";
 import { AnimState } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { EVENT_BALL, EVENT_BLAST, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, EVENT_SHOT } from "../../../shared/net/protocol.ts";
+import { BURST_LOOKS } from "../../../shared/content/kinds/weapons.ts";
+import { TICK_RATE } from "../../../shared/coords.ts";
+import { EVENT_BALL, EVENT_BLAST, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, EVENT_ROCKET, EVENT_SHOT, SHOT_HEARD } from "../../../shared/net/protocol.ts";
+import { shotDir } from "../../../shared/sim/aim.ts";
+import { FLIGHT_TICKS, launchSpeed } from "../../../shared/sim/projectiles.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../../../shared/sim/entities.ts";
 import { V_FOOD, V_HEALTH, V_WATER, type Vitals } from "../../../shared/sim/vitals.ts";
-import { ACT_DRAW, ACT_EQUIP, ACT_RELOAD, ACT_SWING, FISTS, HOLD_NAMES, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW } from "../../../shared/sim/weapon.ts";
+import { ACT_DRAW, ACT_EQUIP, ACT_RELOAD, ACT_SWING, FISTS, HOLD_NAMES, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, POSE_LAUNCHER } from "../../../shared/sim/weapon.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
 import { WRECK } from "../../../shared/world/breaking.ts";
 import type { CombatEvent, LocalShot, RemoteSample } from "../session.ts";
 import type { Hear } from "./bodies.ts";
+import { SOUND_SPEED, STRIKE_LATEST } from "./supply.ts";
+import type { Place } from "./vehicles.ts";
 
 /** Within this many metres a blast is near, and past this many a shot is far. */
 const BLAST_NEAR = 120;
 const SHOT_FAR = 150;
+/** A rocket's blast throws debris and sends a wave that are heard within these many metres. */
+const DEBRIS_NEAR = 60;
+const WAVE_NEAR = 45;
+/** Seconds after a blast that what it threw is heard coming down. */
+const DEBRIS_AFTER = 0.35;
+/** Another's round told within this many ticks of leaving is heard to leave: one just fired is as old as the server looked back. */
+const LEFT_NOW = 16;
+/** The first of the loops' numbers that are flying rounds', and how many they turn through. */
+export const ROCKET_LOOPS = 900000;
+const ROCKET_LOOP_MOST = 1024;
+/** Milliseconds a flying round's loop takes to come up and go, and those the player's own may fly unnumbered. */
+const WHOOSH_FADE = 160;
+const UNTOLD_MS = 2000;
+const ROCKET = BURST_LOOKS.indexOf("rocket");
+const GRENADE = BURST_LOOKS.indexOf("grenade");
 /** A hitscan line that passes this near the ear whizzes. */
 const WHIZ = 4;
 /** Health below this share beats; food or water below this share growls. */
@@ -42,6 +63,13 @@ const K = {
   ricochet: cueKey("ricochet"),
   near: cueKey("blast/near"),
   blastFar: cueKey("blast/far"),
+  launch: cueKey("launch"),
+  fly: cueKey("rocket/fly"),
+  rocket: cueKey("burst/rocket"),
+  fireball: cueKey("burst/fireball"),
+  debris: cueKey("burst/debris"),
+  wave: cueKey("burst/shockwave"),
+  distant: cueKey("burst/distant"),
   marker: cueKey("hit/marker"),
   head: cueKey("hit/head"),
   kill: cueKey("kill"),
@@ -90,6 +118,22 @@ export interface OwnState {
 /** Plays a loop while `on`, keyed by `id`, at the ear. */
 export type Hold = (id: number, owner: number, key: number, level: number, on: boolean) => void;
 
+/** A round with a motor heard in flight: where and when it left by the frame's clock, its number (0 for the player's own until told) and its loop's. */
+interface Whoosh {
+  id: number;
+  own: boolean;
+  ammo: number;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  born: number;
+  until: number;
+  loop: number;
+}
+
 export class ActionSounds {
   private readonly events: CombatEvent[] = [];
   private readonly fired: LocalShot[] = [];
@@ -98,6 +142,9 @@ export class ActionSounds {
   /** The hold of the weapon that fires each kind of ammunition, by content index. */
   private readonly ammoHold: Int8Array;
   private readonly st = new AnimState();
+  private readonly dir = [0, 0, 0];
+  private readonly rockets: Whoosh[] = [];
+  private loops = 0;
   private readonly acts = new Map<number, number>();
   private act = 0;
   private actTicks = 0;
@@ -145,9 +192,10 @@ export class ActionSounds {
     return item > 0 && this.itemOwner[item]! >= 0 ? this.itemOwner[item]! : body;
   }
 
-  /** A gunshot: the gun's report, then its pump if it has one and a spent case for the player's own. */
-  private shot(h: number, item: number, survivor: number, x: number, y: number, z: number, flat: boolean, own: boolean, hear: Hear): void {
+  /** A gunshot: the gun's report, then its pump if it has one and a spent case for the player's own. A round with a motor is `launched` instead. */
+  private shot(h: number, item: number, survivor: number, x: number, y: number, z: number, flat: boolean, own: boolean, hear: Hear, launched = false): void {
     const o = this.ownerOf(item, survivor);
+    if (launched) return hear(o, K.launch, -1, x, y, z, 0, 1, flat);
     const gun = h === HOLD_RIFLE || h === HOLD_PISTOL;
     hear(o, gun ? FIRE[h]! : RELEASE[h]!, -1, x, y, z, 0, 1, flat);
     if (!gun) return;
@@ -162,14 +210,34 @@ export class ActionSounds {
     this.tamed += tamed;
   }
 
-  update(remote: RemoteSample, ex: number, ey: number, ez: number, own: OwnState, ownId: number, ui: number, survivor: number, isSurvivor: (kind: number) => boolean, hear: Hear, hold: Hold): void {
+  /** A round with a motor flies from (x, y, z), having left `ago` milliseconds back. */
+  private whoosh(id: number, own: boolean, ammo: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, ago: number): void {
+    const born = this.nowMs - ago;
+    this.loops = (this.loops + 1) % ROCKET_LOOP_MOST;
+    // It is heard to its reach, or for as long as a round with none flies.
+    const reach = this.reg.ammoReach[ammo]!, speed = Math.hypot(vx, vy, vz);
+    const flies = reach > 0 && speed > 0 ? Math.min(FLIGHT_TICKS / TICK_RATE, reach / speed) : FLIGHT_TICKS / TICK_RATE;
+    this.rockets.push({ id, own, ammo, x, y, z, vx, vy, vz, born, until: born + flies * 1000, loop: ROCKET_LOOPS + this.loops });
+  }
+
+  /** `place` plays a loop where something is; without it no flying round is heard. */
+  update(remote: RemoteSample, ex: number, ey: number, ez: number, own: OwnState, ownId: number, ui: number, survivor: number, isSurvivor: (kind: number) => boolean, hear: Hear, hold: Hold, place: Place | null = null): void {
     const sex = own.female ? 1 : 0;
+    const reg = this.reg;
     const holdOf = (item: number): number => (this.reg.weapon[item] ?? FISTS).hold;
     // ---- The player's own actions, as predicted.
     if (own.alive && (own.act !== this.act || own.actTicks < this.actTicks)) this.action(own.act, holdOf(own.held), this.ownerOf(own.held, survivor), -1, own.x, own.y, own.z, true, hear);
     this.act = own.act;
     this.actTicks = own.actTicks;
-    for (const f of this.fired) this.shot(this.ammoHold[f.ammo]! >= 0 ? this.ammoHold[f.ammo]! : holdOf(own.held), own.held, survivor, f.x, f.y, f.z, true, true, hear);
+    for (const f of this.fired) {
+      const motor = reg.ammoFlame[f.ammo]! > 0;
+      this.shot(this.ammoHold[f.ammo]! >= 0 ? this.ammoHold[f.ammo]! : holdOf(own.held), own.held, survivor, f.x, f.y, f.z, true, true, hear, motor);
+      if (!motor) continue;
+      // Its own is heard from when it is fired, along the ray the server will cast (shared/sim/aim.ts).
+      const d = this.dir, speed = launchSpeed(reg.ammoSpeed[f.ammo]!, f.draw);
+      shotDir(f.seed, 0, f.yaw, f.pitch, f.cone, d);
+      this.whoosh(0, true, f.ammo, f.x, f.y, f.z, d[0]! * speed, d[1]! * speed, d[2]! * speed, 0);
+    }
     this.fired.length = 0;
     // ---- Other survivors' actions, from their pose words. Their shots come as events.
     const seen = new Set<number>();
@@ -207,20 +275,63 @@ export class ActionSounds {
       } else if (e.kind === EVENT_SHOT) {
         // A thrown weapon that is its own round, the bola, was heard as it was thrown.
         if (this.reg.weapon[e.item]?.hold === HOLD_THROW) continue;
+        // One told for its round's sake, from past hearing on the ground, as the server measures it, has no report.
+        if (Math.hypot(e.x - ex, e.z - ez) > SHOT_HEARD) continue;
         const d = Math.hypot(e.x - ex, e.y - ey, e.z - ez);
         const h = this.ammoHold[e.item]! >= 0 ? this.ammoHold[e.item]! : HOLD_RIFLE;
         const gun = h === HOLD_RIFLE || h === HOLD_PISTOL;
         if (gun && d > SHOT_FAR) hear(survivor, K.far, -1, e.x, e.y, e.z, 0, 1, false);
         else this.shot(h, this.ammoWeapon[e.item]!, survivor, e.x, e.y, e.z, false, false, hear);
         if (!e.flies) this.line(e, ex, ey, ez, survivor, hear);
+      } else if (e.kind === EVENT_ROCKET) {
+        const motor = reg.ammoFlame[e.item]! > 0;
+        if (e.own) {
+          // The player's own was heard when it was fired, and takes the number: the newest of that ammunition with none.
+          let mine: Whoosh | undefined;
+          for (const r of this.rockets) if (r.own && r.id === 0 && r.ammo === e.item) mine = r;
+          if (mine) mine.id = e.id;
+          continue;
+        }
+        // One told again is the round already heard.
+        if (this.rockets.some((r) => r.id === e.id)) continue;
+        if (e.back < LEFT_NOW) {
+          const h = this.ammoHold[e.item]! >= 0 ? this.ammoHold[e.item]! : HOLD_RIFLE;
+          this.shot(h, this.ammoWeapon[e.item]!, survivor, e.x, e.y, e.z, false, false, hear, motor);
+        }
+        if (motor) this.whoosh(e.id, false, e.item, e.x, e.y, e.z, e.vx, e.vy, e.vz, (e.back * 1000) / TICK_RATE);
       } else if (e.kind === EVENT_BLAST) {
         const d = Math.hypot(e.x - ex, e.y - ey, e.z - ez);
-        hear(survivor, d <= BLAST_NEAR ? K.near : K.blastFar, -1, e.x, e.y, e.z, 0, 1, false);
+        // Its round is heard no more; and the blast is heard as late as sound takes to come.
+        if (e.id !== 0) for (let k = this.rockets.length - 1; k >= 0; k--) if (this.rockets[k]!.id === e.id) this.rockets.splice(k, 1);
+        const late = Math.min(STRIKE_LATEST, d / SOUND_SPEED);
+        const look = reg.burstLook[e.item] ?? 0;
+        if (look === ROCKET) {
+          if (d > BLAST_NEAR) hear(survivor, K.distant, -1, e.x, e.y, e.z, 0, 1, false, late);
+          else {
+            hear(survivor, K.rocket, -1, e.x, e.y, e.z, 0, 1, false, late);
+            hear(survivor, K.fireball, -1, e.x, e.y, e.z, 0, 0.8, false, late);
+            if (d <= WAVE_NEAR) hear(survivor, K.wave, -1, e.x, e.y, e.z, 0, 1 - 0.5 * (d / WAVE_NEAR), false, late);
+            if (d <= DEBRIS_NEAR) hear(survivor, K.debris, -1, e.x, e.y, e.z, 0, 0.8, false, late + DEBRIS_AFTER);
+          }
+        } else {
+          hear(survivor, d <= BLAST_NEAR ? K.near : K.blastFar, -1, e.x, e.y, e.z, 0, 1, false, late);
+          if (look === GRENADE && d <= DEBRIS_NEAR) hear(survivor, K.debris, -1, e.x, e.y, e.z, 0, 0.5, false, late + DEBRIS_AFTER);
+        }
       } else if (e.kind === EVENT_BALL) {
         hear(survivor, e.kill ? K.ballKeep : K.ballLoose, -1, e.x, e.y + e.vy / 2, e.z, 0, 1, false);
       }
     }
     this.events.length = 0;
+    // ---- Rounds with a motor, each where its flight has it now. One not asked for fades out by itself.
+    const rockets = this.rockets;
+    let kept = 0;
+    for (const r of rockets) {
+      if (this.nowMs >= r.until || (r.id === 0 && this.nowMs - r.born > UNTOLD_MS)) continue;
+      rockets[kept++] = r;
+      const t = (this.nowMs - r.born) / 1000;
+      place?.(r.loop, survivor, K.fly, r.x + r.vx * t, r.y + r.vy * t - 0.5 * reg.ammoGravity[r.ammo]! * t * t, r.z + r.vz * t, 1, true, false, WHOOSH_FADE);
+    }
+    rockets.length = kept;
     for (; this.tamed > 0; this.tamed--) hear(ui, K.tamed, -1, 0, 0, 0, 0, 1, true);
     // ---- The player's own state.
     const v = own.vitals;
@@ -253,6 +364,7 @@ export class ActionSounds {
   ahead(own: OwnState, ui: number, survivor: number, want: (owner: number, key: number) => void): void {
     const o = this.ownerOf(own.held, survivor);
     for (const k of IN_HAND[(this.reg.weapon[own.held] ?? FISTS).hold]!) want(o, k);
+    if (this.reg.holdPose[own.held] === POSE_LAUNCHER) want(o, K.launch);
     for (const k of LANDS) want(survivor, k);
     for (const k of MARKS) want(ui, k);
   }

@@ -410,8 +410,9 @@ const ALL: readonly Def[] = [
     torporDrain: 4,
   },
   // Damage multipliers by material, as in the reference game. The tiers differ in what can harm them, not in health.
-  { type: "material", id: "core:mat_thatch", takes: { melee: 1, fire: 4, explosive: 1 }, decayDays: 4 },
-  { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1 }, decayDays: 8 },
+  // Energy is a plasma bolt's, and ours: it burns through thatch and chars wood, and stone and metal shrug it off.
+  { type: "material", id: "core:mat_thatch", takes: { melee: 1, fire: 4, explosive: 1, energy: 1 }, decayDays: 4 },
+  { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1, energy: 0.25 }, decayDays: 8 },
   { type: "material", id: "core:mat_stone", takes: { explosive: 2.3325 }, decayDays: 12 },
   { type: "material", id: "core:mat_metal", takes: { explosive: 0.3008 }, decayDays: 16 },
   ...CITY_MATERIALS,

@@ -20,6 +20,7 @@ import { Glass, MARKED_MS } from "./glass.ts";
 import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticMost, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
 import { daylight } from "./render/laser.ts";
 import { Visor } from "./visor.ts";
+import { SHAKE_MOST, SHAKE_TOUCH } from "./view/shake.ts";
 
 /** Radians the view opens by at a glider's dive speed. */
 const GLIDE_FOV = (6 * Math.PI) / 180;
@@ -244,6 +245,13 @@ export class Sight implements FramePart {
     if (this.jolted.trauma > 0) {
       // A break near shakes the view for a moment; the look sent does not move.
       this.jolted.turn(nowMs, dt, f.ui.touch ? JOLT_TOUCH : JOLT, this.shook);
+      lookYaw += this.shook[0]!;
+      lookPitch += this.shook[1]!;
+    }
+    const shake = f.scene.blasts.shake;
+    if (settings.viewShake && shake.ringing(nowMs)) {
+      // A blast near, or the viewer's own launcher, shakes the view; the look sent does not move.
+      shake.turn(nowMs, f.ui.touch ? SHAKE_TOUCH : SHAKE_MOST, this.shook);
       lookYaw += this.shook[0]!;
       lookPitch += this.shook[1]!;
     }

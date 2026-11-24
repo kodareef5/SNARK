@@ -12,6 +12,8 @@ import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { handleIndex, makeHandle } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
+import { bolt, readBolt } from "../../shared/net/bolts.ts";
+import { blast, readBlast, readRocket, rocket } from "../../shared/net/rockets.ts";
 import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
 import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { AirCamera } from "./air-camera.ts";
@@ -88,7 +90,9 @@ import {
   EVENT_KILL,
   EVENT_NAME_BYTES,
   EVENT_SHOT,
+  EVENT_BOLTS,
   EVENT_BLAST,
+  EVENT_ROCKET,
   EVENT_COLLAPSE,
   EVENT_GROAN,
   EVENT_IMPACT,
@@ -385,8 +389,10 @@ const LOG_LINES = 200;
 /** Ticks a death the server told of is kept for the bodies drawn behind it. */
 const DIED_KEPT = 2 * TICK_RATE;
 
-/** Beyond this the oldest untaken event is dropped. */
+/** Shots and feedback each keep this many events between frames. */
 const MAX_EVENTS = 64;
+/** A delayed frame can receive both launches and blasts from a hundred players. */
+const MAX_ROCKET_EVENTS = 256;
 
 /** One S_EVENT as received. Fields its kind does not carry are zero. See EVENT_* in shared/net/protocol.ts. */
 export interface CombatEvent {
@@ -410,12 +416,15 @@ export interface CombatEvent {
   side: boolean;
   /** A shot from a weapon with a silencer: no flash is drawn. */
   silenced: boolean;
+  /** A round that flies: its weapon works under water, so it goes on there; and it is this client's own, told back to it (a throw). */
+  wet?: boolean;
+  mine?: boolean;
   /** Who killed this body, or what this body killed. */
   name: string;
   /**
-   * The killing item's content index (0 for bare hands), and the range in metres. For a blast, `far` is its reach. For a
-   * soul ball's (EVENT_BALL), (x, y, z) is the tame's feet, `far` its body's radius, `vy` its height, and `kill` whether it
-   * went in.
+   * The killing item's content index (0 for bare hands), and the range in metres. For a blast, `far` is its reach, `item`
+   * what blew (0 for none) and (vx, vy, vz) the unit way out of what it went off on. For a soul ball's (EVENT_BALL),
+   * (x, y, z) is the tame's feet, `far` its body's radius, `vy` its height, and `kill` whether it went in.
    */
   item: number;
   far: number;
@@ -435,6 +444,15 @@ export interface CombatEvent {
   back: number;
   rays: number;
   seed: number;
+  /**
+   * A round that goes off where it ends (EVENT_ROCKET) is read as a shot that flies, with its number here and whether it is
+   * the reader's `own`. Its blast (EVENT_BLAST) says the number again, 0 for a blast with no round, and what it met: a
+   * SURFACE_ and a MADE_ of shared/net/rockets.ts.
+   */
+  id: number;
+  own: boolean;
+  surface: number;
+  made: number;
 }
 
 /** A predicted shot of this client's own, from its eye. yaw and pitch are in input units. */
@@ -2074,7 +2092,20 @@ export class ClientSession {
 
   private event(r: BitReader): void {
     const kind = r.u8();
-    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0 };
+    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0, id: 0, own: false, surface: 0, made: 0 };
+    if (kind === EVENT_BOLTS) {
+      // The tick's rounds that fly, each read as the shot it is: its speed is its ammunition's, and `far` the metres it had gone if it has ended.
+      let last = 0;
+      for (let n = r.u8(); n > 0 && !r.overflow; n--) {
+        readBolt(r, last);
+        last = bolt.ammo;
+        const speed = (this.registry.ammoSpeed[bolt.ammo] ?? 0) * bolt.speed;
+        if (r.overflow || !(speed > 0)) break;
+        this.events.push({ ...ev, kind: EVENT_SHOT, x: bolt.x, y: bolt.y, z: bolt.z, item: bolt.ammo, flies: true, vx: bolt.dx * speed, vy: bolt.dy * speed, vz: bolt.dz * speed, back: bolt.back, silenced: bolt.silenced, far: bolt.ended, wet: bolt.wet, mine: bolt.mine });
+      }
+      this.trimEvents();
+      return;
+    }
     if (kind === EVENT_SHOT) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -2089,11 +2120,34 @@ export class ClientSession {
       ev.rays = r.u8();
       ev.seed = r.u32();
       ev.silenced = r.bool();
+    } else if (kind === EVENT_ROCKET) {
+      readRocket(r);
+      const speed = this.registry.ammoSpeed[rocket.ammo] ?? 0;
+      if (!(speed > 0)) return;
+      ev.x = rocket.x;
+      ev.y = rocket.y;
+      ev.z = rocket.z;
+      ev.item = rocket.ammo;
+      ev.flies = true;
+      ev.vx = rocket.dx * speed;
+      ev.vy = rocket.dy * speed;
+      ev.vz = rocket.dz * speed;
+      ev.back = rocket.age;
+      ev.id = rocket.id;
+      ev.own = rocket.own;
     } else if (kind === EVENT_BLAST) {
-      ev.x = r.f32();
-      ev.y = r.f32();
-      ev.z = r.f32();
-      ev.far = r.f32();
+      readBlast(r);
+      ev.x = blast.x;
+      ev.y = blast.y;
+      ev.z = blast.z;
+      ev.vx = blast.dx;
+      ev.vy = blast.dy;
+      ev.vz = blast.dz;
+      ev.far = blast.radius;
+      ev.item = blast.item;
+      ev.id = blast.id;
+      ev.surface = blast.surface;
+      ev.made = blast.made;
     } else if (kind === EVENT_BALL) {
       // A tame into a soul ball (`kill`: it left the world) or out of one: its feet, its body's radius and its height.
       ev.kill = r.bool();
@@ -2157,7 +2211,26 @@ export class ClientSession {
     } else return;
     if (r.overflow) return;
     this.events.push(ev);
-    if (this.events.length > MAX_EVENTS) this.events.shift();
+    this.trimEvents();
+  }
+
+  private trimEvents(): void {
+    const events = this.events;
+    if (events.length <= MAX_EVENTS) return;
+    let shots = 0, rockets = 0, feedback = 0;
+    let first = events.length;
+    // Keep the newest of each kind in arrival order for sound, shots and feedback.
+    for (let i = first - 1; i >= 0; i--) {
+      const ev = events[i]!;
+      if (ev.kind === EVENT_SHOT) {
+        if (++shots > MAX_EVENTS) continue;
+      } else if (ev.kind === EVENT_ROCKET || ev.kind === EVENT_BLAST) {
+        if (++rockets > MAX_ROCKET_EVENTS) continue;
+      } else if (++feedback > MAX_EVENTS) continue;
+      first--;
+      if (first !== i) events[first] = ev;
+    }
+    if (first > 0) events.splice(0, first);
   }
 
   private welcome(r: BitReader): void {

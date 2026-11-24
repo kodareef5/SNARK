@@ -2,9 +2,10 @@
 // only one of them has.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Clip } from "../../shared/anim/clip.ts";
+import { effectOf, type PackDetails } from "../../shared/pack/details.ts";
 import { detailsAtlas, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { artInstalled, BUNDLED_ART } from "./installed.ts";
 import { unpackMeshes, type SourceDetails, type SourceMesh } from "../pack/write.ts";
@@ -47,6 +48,23 @@ export interface SourceArt {
   finishes?: number[];
 }
 
+/** Blast recipes share the installed atlas. Existing cue sheets keep their effect indices. */
+function withBlastEffects(header: PackDetails, dir: string): PackDetails {
+  const file = join(dir, "blasts.json");
+  if (!existsSync(file)) return header;
+  const recipes: Record<string, Record<string, unknown>> = JSON.parse(readFileSync(file, "utf8"));
+  const effects = header.effects.slice();
+  const pictureOf = (name: string): number => header.pictures.findIndex((p) => p.id === `core:details/${name}`);
+  for (const [name, recipe] of Object.entries(recipes)) {
+    const id = `core:details/${name}`;
+    const effect = effectOf(id, recipe, pictureOf);
+    const index = effects.findIndex((e) => e.id === id);
+    if (index < 0) effects.push(effect);
+    else effects[index] = effect;
+  }
+  return { ...header, effects };
+}
+
 /** Where a landmark's assets are (tools/art/assets.ts landmarkOf). The core pack reads none of them. */
 export const LANDMARKS = join(SOURCE, "landmarks");
 
@@ -77,7 +95,7 @@ export function readPacks(dir: string = SOURCE): SourceArt {
     }
     if (pack.header.details) {
       claim("details", "", file);
-      out.details = { header: pack.header.details, atlas: detailsAtlas(pack).slice() };
+      out.details = { header: withBlastEffects(pack.header.details, dirname(file)), atlas: detailsAtlas(pack).slice() };
     }
   }
   return out;

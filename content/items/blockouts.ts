@@ -65,12 +65,6 @@ const MATTER: Def[] = [
   // That it passes most of a target's armour is not built.
   { type: "item", class: "ammo", id: id("arrow_metal"), label: "metal arrow", stack: 100, weight: 0.4, color: 2, ammo: { damage: 130, type: "pierce", speed: 70, gravity: 9.81, recover: 0.5, mesh: id("arrow") } },
   ...made("arrow_metal", "Metal arrow", 79, 35, 1, 5, [["thatch", 3], ["fiber", 3], ["ingot", 3], ["paste", 1], ["polymer", 1]], "fabricator", ["bow_compound"]),
-  // Rocket Propelled Grenade: weight 0.1, stacks to 100; "250 (7.5 meter radius)" as its own page has it, where the
-  // launcher's page says 1,800 a rocket and the text 1,400 to a creature with no saddle: the infobox's is taken, as the
-  // grenade's was. 40 gunpowder, 10 crystal, 20 paste, 10 polymer and 12 ingots at the fabricator in 1 s; level 87, 8
-  // points, after the grenade. It drops as it flies; how fast it flies is chosen.
-  { type: "item", class: "ammo", id: id("rocket"), label: "rocket propelled grenade", stack: 100, weight: 0.1, color: 7, ammo: { damage: 250, type: "explosive", speed: 60, gravity: 9.81, blast: 7.5 } },
-  ...made("rocket", "Rocket propelled grenade", 87, 8, 1, 1, [["gunpowder", 40], ["crystal", 10], ["paste", 20], ["polymer", 10], ["ingot", 12]], "fabricator", ["grenade"]),
   // Grappling Hook, a crossbow's bolt in ARK: weight 1, stacks to 10; 3 stone arrows, 1 paste, 9 ingots, 2 thatch and 35
   // fiber at the smithy in 1 s; level 47, 40 points, after the stone arrow and the crossbow. Inert: no weapon takes it,
   // and the line it would pull a survivor up is not built.
@@ -145,11 +139,6 @@ const ARMS: Def[] = [
   // it takes the silencer, flashlight and laser, as ARK's does, and no scope.
   { type: "item", class: "weapon", id: id("rifle_sniper"), label: "fabricated sniper rifle", stack: 1, weight: 25, color: 11, optic: { min: 4, max: 40, window: [0.96, 0.5], reticle: "mil" }, weapon: { kind: "gun", ammo: [id("round_advanced_sniper")], power: 1, clip: 8, reload: 4.24, interval: 1 / 3.3, uses: 70, fits: [id("silencer"), id("flashlight"), id("laser")], melee: BLOW, mesh: BOX, hold: "rifle", ...RIFLE_AIM } },
   ...made("rifle_sniper", "Fabricated sniper rifle", 83, 36, 1, 15, [["polymer", 115], ["ingot", 80], ["paste", 110]], "fabricator", ["rifle"]),
-  // Rocket Launcher: weight 20; a rocket every 4 s, and it "fires up to 20 rockets before breaking"; 80 polymer, 50
-  // ingots and 60 paste at the fabricator in 15 s; level 87, 32 points, after the longneck. Against what is built a
-  // rocket does 7,350 to wood where it does 250 to a body by its infobox. The homing missile is not blocked out.
-  { type: "item", class: "weapon", id: id("rocket_launcher"), label: "rocket launcher", stack: 1, weight: 20, color: 11, weapon: { kind: "gun", ammo: [id("rocket")], power: 1, clip: 1, reload: 4, structures: 7350 / 250, uses: 20, melee: BLOW, mesh: BOX, hold: "rifle", ...RIFLE_AIM } },
-  ...made("rocket_launcher", "Rocket launcher", 87, 32, 1, 15, [["polymer", 80], ["ingot", 50], ["paste", 60]], "fabricator", ["rifle"]),
 ];
 
 // ---- Instruments: held to look through or to read. A class of their own, a stub: carried, made and dropped, and

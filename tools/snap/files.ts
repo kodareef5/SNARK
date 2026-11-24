@@ -24,6 +24,7 @@ import { splitPack } from "../pack/split.ts";
 import { airMaterial, airTextures } from "../pack/air-support.ts";
 import { rgbaTexture, writeTextureFile } from "../pack/texture.ts";
 import { weaponMeshes } from "../pack/weapons.ts";
+import { fireMeshes } from "../pack/fire.ts";
 import { buildPack, type SourceMesh } from "../pack/write.ts";
 
 export const SNAP_CACHE = resolve(import.meta.dir, "../../.cache/snap");
@@ -112,7 +113,7 @@ export async function namedTextures(source: string = SOURCE): Promise<Map<string
 export function corePack(source: string = SOURCE, extra: SourceMesh[] = [], landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
   if (resolve(source) === resolve(SOURCE)) return buildCorePack(extra, landmarks);
   const art = readPacks(source);
-  const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
+  const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes(), ...fireMeshes()];
   return buildPack([...withArt(made, art.meshes), ...extra], defaultPalette(), [...art.clips, ...authoredClips()], art.rigs, art.details, landmarks);
 }
 

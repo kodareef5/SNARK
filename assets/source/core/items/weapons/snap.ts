@@ -5,6 +5,9 @@
 //   held2    the same, holding the shotgun, the flare gun, the grenade and the bola
 //   side     the first four from behind their right shoulders
 //   side2    the second four from behind their right shoulders
+//   held3    survivors holding the plasma rifle and the plasma pistol, from the front at three quarters
+//   side3    the same from behind their right shoulders
+//   bolt     the plasma bolt, lying as the projectile it is drawn as
 //   lying    each item lying on the grass as a bag of one shows it
 //   close    the revolver, the flare gun and the grenade lying, close
 //   flown    the arrow, the dart and the live grenade, lying as the projectiles they are drawn as
@@ -33,7 +36,7 @@ import { encodePng } from "../../../../../tools/snap/png.ts";
 const [W, H] = [1600, 900];
 /** A patch of grass beyond the plaza (the dodo's and the eggs' snaps stand there too). */
 const [CX, CZ] = [160, 360];
-const SHOTS = ["held", "held2", "side", "side2", "lying", "close", "flown"] as const;
+const SHOTS = ["held", "held2", "held3", "side", "side2", "side3", "lying", "close", "flown", "bolt"] as const;
 type Shot = (typeof SHOTS)[number];
 
 const args = process.argv.slice(2);
@@ -59,11 +62,16 @@ const HELD = [
   { item: "core:pistol", mesh: "core:flare_gun", hold: HOLD_PISTOL },
   { item: "core:grenade", mesh: "core:grenade", hold: HOLD_TOOL },
   { item: "core:hatchet", mesh: "core:bola", hold: HOLD_TOOL },
+  { item: "core:rifle_plasma", mesh: "core:rifle_plasma", hold: HOLD_RIFLE },
+  { item: "core:pistol_plasma", mesh: "core:pistol_plasma", hold: HOLD_PISTOL },
 ];
+/** Where each row of four begins in HELD, by the number its shot ends in. */
+const rowOf = (shot: string): number => (shot.endsWith("3") ? 8 : shot.endsWith("2") ? 4 : 0);
 /** Lying: each mesh drawn as a borrowed prop kind. */
 const LYING = ["core:bow/dropped", "core:crossbow/dropped", "core:rifle/dropped", "core:shotgun/dropped", "core:pistol/dropped",
   "core:flare_gun/dropped", "core:grenade/dropped", "core:bola/dropped"];
 const FLOWN = ["core:arrow", "core:dart", "core:grenade_thrown"];
+const BOLT = ["core:plasma_bolt"];
 /** The core content's prop kinds, every one drawn as one of these meshes. */
 const BORROWED = ["core:egg_dodo", "core:egg_raptor", "core:egg_parasaur", "core:cache", "core:bag", "core:feces", "core:corpse", "core:arrow_stuck",
   "core:grenade_live"];
@@ -162,16 +170,16 @@ for (const shot of shots) {
   const view = provingView(W, H, {}, files);
   view.scene.assets.tier = tierOf(tier);
   view.scene.viewHeight = H;
-  if (shot === "lying" || shot === "close" || shot === "flown") {
-    lyingRow(view, shot === "flown" ? FLOWN : LYING);
+  if (shot === "lying" || shot === "close" || shot === "flown" || shot === "bolt") {
+    lyingRow(view, shot === "flown" ? FLOWN : shot === "bolt" ? BOLT : LYING);
     if (shot === "close") aim(view, 0.62, 0.42, -0.42, 0.62, 0.0, 0.0, 0.7);
     else if (shot === "lying") aim(view, 0.0, 1.55, -1.25, 0.05, 0.0, 0.55, 0.95);
     else aim(view, 0.0, 0.45, -0.75, 0.0, 0.0, 0.0, 0.75);
-  } else if (shot === "side" || shot === "side2") {
-    heldRow(view, shot === "side" ? 0 : 4, shot === "side" ? 4 : 8);
+  } else if (shot.startsWith("side")) {
+    heldRow(view, rowOf(shot), rowOf(shot) + 4);
     aim(view, 1.3, 1.6, 2.3, -0.1, 1.0, 0, 0.8);
   } else {
-    heldRow(view, shot === "held" ? 0 : 4, shot === "held" ? 4 : 8);
+    heldRow(view, rowOf(shot), rowOf(shot) + 4);
     aim(view, -0.7, 1.45, -2.5, -0.15, 1.05, 0, 0.75);
   }
   settle(view);

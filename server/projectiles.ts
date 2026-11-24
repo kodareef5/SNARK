@@ -1,9 +1,13 @@
 // A shot is judged as its shooter saw it. A rifle round is one piece, tested against the bodies of Combat.viewTick.
 // An arrow flies one piece a tick. On the tick it is fired it first flies from the view tick up to now. A round with a blast
 // goes off where it ends, and one that carries a light (the flare) flies as a prop every client draws (weapons-plan.md, W6).
+// A round that flies and has a blast has a number: it is told by it (EVENT_ROCKET), and its blast says it.
 
 import { TAU } from "../shared/math/scalar.ts";
-import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
+import { BOLTS_MOST, BOLT_MINE, BOLT_SILENCED, BOLT_WET, packBolt, writeBolt } from "../shared/net/bolts.ts";
+import type { BitWriter } from "../shared/net/codec.ts";
+import { EVENT_BLAST, EVENT_BOLTS, EVENT_ROCKET, EVENT_SHOT, SHOT_HEARD, S_EVENT } from "../shared/net/protocol.ts";
+import { MADE_METAL, MADE_STONE, MADE_THATCH, MADE_UNKNOWN, MADE_WOOD, ROCKET_AGE_MOST, ROCKET_IDS, SURFACE_AIR, SURFACE_BODY, SURFACE_BUILT, SURFACE_GROUND, SURFACE_VEHICLE, SURFACE_WATER, writeBlast, writeRocket } from "../shared/net/rockets.ts";
 import { Rng } from "../shared/rng.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, shotDir, zeroUnits } from "../shared/sim/aim.ts";
 import { Body } from "../shared/sim/character.ts";
@@ -14,7 +18,7 @@ import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { QUALITY_MUL } from "../shared/sim/items.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, WATER_SPEED, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../shared/sim/projectiles.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
+import { HIT_NONE, HIT_STRUCTURE, HIT_TERRAIN, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { bodyAlong, seaHere } from "../shared/world/water.ts";
 import type { Combat, Source } from "./combat.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -32,7 +36,13 @@ export const STUCK_TICKS = 60 * TICK_RATE;
 const PICKUP_REACH = 1.2;
 const PICKUP_EVERY = 5;
 /** Clients within this many metres of a shot are sent it. */
-const HEARD = 260;
+const HEARD = SHOT_HEARD;
+/** Rounds kept to be told together. One more and those kept are told at once. */
+const TOLD_MOST = 1024;
+/** Clients within this many metres of the way a round flies are told of it too, however far its muzzle: it may be coming at them. */
+const SEEN = 100;
+/** The longest way taken for a round with no reach, in metres: past it a round is not looked for. */
+const WAY_MOST = 600;
 /** A stuck arrow stands this many metres back from what it hit. */
 const STAND_OUT = 0.06;
 const MAX_THROWN = 256;
@@ -53,6 +63,20 @@ export const FLARE_TICKS = 90 * TICK_RATE;
 const FLARE_KEEP = Math.pow(FLARE_DRIFT, 1 / TICK_RATE);
 /** A round that goes off on something stops this many metres short of it, so the blast is on the near side. */
 const BLAST_OUT = 0.05;
+/** Ticks between the times a numbered round looks for clients that have come within hearing of it. A power of two. */
+const LATE_EVERY = 8;
+/** A grenade this near over the ground goes off on it. */
+const GROUND_NEAR = 0.5;
+
+/** The MADE_ a structure's material or a node's says, by the word in its name. */
+function madeBy(name: string | undefined): number {
+  if (name === undefined) return MADE_UNKNOWN;
+  if (/thatch/.test(name)) return MADE_THATCH;
+  if (/wood|timber/.test(name)) return MADE_WOOD;
+  if (/stone|concrete|block|tile|plaster/.test(name)) return MADE_STONE;
+  if (/metal|steel|sheet/.test(name)) return MADE_METAL;
+  return MADE_UNKNOWN;
+}
 
 export interface ProjectilesContext {
   readonly world: ServerWorld;
@@ -81,11 +105,18 @@ interface Flying extends Flight {
   /** The last tick it may fly, and the tick it has been flown through. */
   until: number;
   flown: number;
+  /** The metres it has gone, and the metres at which it is gone (0 for one with no reach). */
+  gone: number;
+  reach: number;
   /** `wet` means its weapon works under water. `under` means it is under water now. */
   wet: boolean;
   under: boolean;
   /** Its weapon had a silencer: a survivor it hits is not shown its side. */
   silenced: boolean;
+  /** Its number if it goes off where it ends and is told by number, else 0. */
+  id: number;
+  /** The tick it left at, as its shooter saw it. */
+  born: number;
 }
 
 interface Thrown extends Flight {
@@ -134,6 +165,36 @@ export class Projectiles {
   onCloud: ((item: number, x: number, y: number, z: number, by: number) => void) | null = null;
   /** While `fling` sends a throw: `tell` tells the thrower too. */
   private toShooter = false;
+  /**
+   * The rounds that flew off since they were last told, told together (EVENT_BOLTS): where each left on the ground and
+   * where its way ends there; its start and way as the message says them; then its ammunition, the whole ticks since it
+   * left, what it is besides (BOLT_ bits), the metres it had gone if it has ended, the share of full speed it left at,
+   * whose it is (a client's id), and whether its shooter is told of it too.
+   */
+  private readonly told = new Float64Array(TOLD_MOST * 4);
+  private readonly toldEnded = new Float32Array(TOLD_MOST);
+  private readonly toldSpeed = new Float32Array(TOLD_MOST);
+  /** Whether the flight `fly` last ended met something: the ground, a wall, water or a body. One out of reach did not. */
+  private stopped = false;
+  private readonly toldPacked = new Uint32Array(TOLD_MOST * 5);
+  private readonly toldAmmo = new Uint16Array(TOLD_MOST);
+  private readonly toldBack = new Uint8Array(TOLD_MOST);
+  private readonly toldFlags = new Uint8Array(TOLD_MOST);
+  private readonly toldEcho = new Uint8Array(TOLD_MOST);
+  private readonly toldBy = new Int32Array(TOLD_MOST);
+  private toldCount = 0;
+  /** Numbered rounds, by number: whether one flies, its start and way as the message says them, and a byte a client slot told of it. */
+  private readonly numberFlies = new Uint8Array(ROCKET_IDS);
+  private readonly numberPacked = new Uint32Array(ROCKET_IDS * 5);
+  private numberTold: Uint8Array;
+  private toldWide: number;
+  private lastNumber = 0;
+  /** Numbered rounds that fly. */
+  private numbered = 0;
+  /** Per content kind: the MADE_ a structure or a node of it is. */
+  private readonly madeOf: Uint8Array;
+  /** What the round being ended met: the unit way out of it, and its SURFACE_ and MADE_. */
+  private readonly met = { nx: 0, ny: 1, nz: 0, surface: SURFACE_AIR, made: MADE_UNKNOWN };
   private readonly stuckKind: number;
   private readonly liveKind: number;
   private readonly flareKind: number;
@@ -144,8 +205,8 @@ export class Projectiles {
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
   /** A round's own, filled by `bring`, so the share its distance leaves it never reaches a blast. */
   private readonly round: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, far: 1 };
-  /** Where the last ray `cast` ended: the point, metres from its origin, the body it hit (-1 for none), its zone, the structure it met (-1 for none) and `on` as lastEnd's. */
-  private readonly at = { x: 0, y: 0, z: 0, t: 0, target: -1, zone: 0, panel: -1, built: -1, on: -1 };
+  /** Where the last ray `cast` ended: the point, metres from its origin, the body it hit (-1 for none), its zone, the structure it met (-1 for none), `on` as lastEnd's, and what castWorld said of the world it met. */
+  private readonly at = { x: 0, y: 0, z: 0, t: 0, target: -1, zone: 0, panel: -1, built: -1, on: -1, what: HIT_NONE, ref: 0, nx: 0, ny: 1, nz: 0 };
   /** Rays the last shot sent, and how many of them hit a body: for tests and measurement. */
   readonly lastShot = { rays: 0, hits: 0 };
 
@@ -159,6 +220,16 @@ export class Projectiles {
     this.liveKind = ctx.world.reg.index.get("core:grenade_live") ?? 0;
     this.flareKind = ctx.world.reg.index.get("core:flare_live") ?? 0;
     this.rng = new Rng(seed);
+    this.madeOf = Uint8Array.from(ctx.world.reg.defs, (d) => (d?.type === "structure" || d?.type === "node" ? madeBy(d.material) : MADE_UNKNOWN));
+    this.toldWide = ctx.game.clients.length;
+    this.numberTold = new Uint8Array(ROCKET_IDS * this.toldWide);
+    // A new connection has seen none of the rockets its slot was told about.
+    const forget = (c: Client): void => {
+      if (c.closed || this.numbered === 0 || c.id >= this.toldWide) return;
+      for (let at = c.id; at < this.numberTold.length; at += this.toldWide) this.numberTold[at] = 0;
+    };
+    ctx.game.sessions.onEnter.on(forget);
+    ctx.game.sessions.onPresence.on(forget);
   }
 
   get flyingCount(): number {
@@ -175,6 +246,11 @@ export class Projectiles {
 
   get flareCount(): number {
     return this.flares.length;
+  }
+
+  /** For tests: the number of flying round `i`, 0 for one that has none. */
+  numberAt(i: number): number {
+    return this.flying[i]!.id;
   }
 
   /** For tests. */
@@ -311,15 +387,21 @@ export class Projectiles {
       on = -2;
     }
     let built = -1;
+    const a = this.at;
     const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
+    a.what = what;
     if (what !== HIT_NONE) {
       reach = rayHit.t;
       on = -1;
       if (what === HIT_STRUCTURE) built = rayHit.ref;
+      // The cast of bodies that follows may cast the world again.
+      a.ref = rayHit.ref;
+      a.nx = rayHit.nx;
+      a.ny = rayHit.ny;
+      a.nz = rayHit.nz;
     }
     const target = combat.castBodies(self, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach, 0, view);
     const t = target >= 0 ? combat.t : reach;
-    const a = this.at;
     a.x = ox + d[0]! * t;
     a.y = oy + d[1]! * t;
     a.z = oz + d[2]! * t;
@@ -340,6 +422,12 @@ export class Projectiles {
     if (this.ctx.world.reg.ammoBlast[ammo]! > 0 && (a.target >= 0 || a.t < HITSCAN_RANGE)) {
       const out = a.target >= 0 ? 0 : Math.min(BLAST_OUT, a.t);
       const k = a.t > 0 ? out / a.t : 0;
+      // The way it came, for what it met.
+      const per = a.t > 0 ? 1 / a.t : 0;
+      const dx = (a.x - ox) * per, dy = (a.y - oy) * per, dz = (a.z - oz) * per;
+      if (a.target >= 0) this.metBody(a.target, dx, dy, dz);
+      else if (a.what !== HIT_NONE) this.metWorld(a.what, a.ref, a.nx, a.ny, a.nz, dx, dy, dz);
+      else this.meet(SURFACE_WATER, MADE_UNKNOWN, 0, 1, 0);
       this.ended(a.x, a.y, a.z, a.target >= 0 ? a.target : a.on);
       this.explode(rec, weapon, quality, ammo, 1, ox, oz, a.x - (a.x - ox) * k, a.y - (a.y - oy) * k, a.z - (a.z - oz) * k, a.target);
       return;
@@ -361,32 +449,142 @@ export class Projectiles {
     const now = world.tick;
     const sea = world.hf.waterAt(ox, oz);
     const wet = reg.weapon[weapon]?.wet ?? false;
-    const speed = launchSpeed(reg.ammoSpeed[ammo]!, draw) * (wet && oy < sea ? WATER_SPEED : 1);
+    const full = reg.ammoSpeed[ammo]!;
+    const speed = launchSpeed(full, draw) * (wet && oy < sea ? WATER_SPEED : 1);
+    const back = now - view;
     const f: Flying = {
       x: ox, y: oy, z: oz, vx: d[0]! * speed, vy: d[1]! * speed, vz: d[2]! * speed,
       gravity: reg.ammoGravity[ammo]!, ammo, weapon, quality, draw, by: rec.pid, self: c.ent, ox, oy, oz,
-      until: now + FLIGHT_TICKS, flown: now, wet, under: oy < sea, silenced,
+      until: now + FLIGHT_TICKS, flown: now, gone: 0, reach: reg.ammoReach[ammo]!, wet, under: oy < sea, silenced,
+      // One at full speed that will go off has a number, while there is one to give: its message says no other speed.
+      id: speed === full && reg.ammoBlast[ammo]! > 0 ? this.number() : 0, born: view,
     };
-    // Nearby clients get its launch state and fly their own copy from there.
-    const back = now - view;
-    this.tell(c, ox, oy, oz, ammo, true, f.vx, f.vy, f.vz, Math.round(back), 1, 0, silenced);
+    // A numbered round is told by its number, before it is flown: one that ends as it is flown here is told, then its blast.
+    const numbered = f.id !== 0;
+    if (numbered) this.tellRocket(c, f, d, back);
     // Fly it from the view tick to now, one tick's piece at a time, each against the bodies of that tick,
-    // then the leftover part of a tick.
+    // then the leftover part of a tick. One whose reach is shorter than that is spent on the way.
     const whole = Math.floor(back);
-    for (let j = 1; j <= whole; j++) if (!this.fly(f, view + j, 1)) return;
-    if (back - whole > 0.01 && !this.fly(f, now, back - whole)) return;
-    if (this.flying.length >= MAX_FLYING) this.flying.shift();
+    let flies = true;
+    for (let j = 1; j <= whole && flies; j++) flies = this.flyOn(f, view + j, 1);
+    if (flies && back - whole > 0.01) flies = this.flyOn(f, now, back - whole);
+    // Nearby clients get any other's launch state and fly their own copy from there, told with the tick's others. They
+    // are told the whole ticks it was flown, as a part of one is not tested to its end, and where it met something if it
+    // has, as no client's copy would find the bodies of then.
+    if (!numbered) this.keep(c, ox, oy, oz, d, ammo, whole, (silenced ? BOLT_SILENCED : 0) | (wet ? BOLT_WET : 0), !flies && this.stopped ? Math.max(f.gone, 0.1) : 0, speed, full);
+    if (!flies) return;
+    if (this.flying.length >= MAX_FLYING) {
+      const old = this.flying.shift()!;
+      this.spent(old);
+      this.free(old);
+    }
     this.flying.push(f);
+  }
+
+  /** Flies `f` as `fly` does, unless its time is up by tick `t`: then it is spent. Returns false, its number freed, if it is gone. */
+  private flyOn(f: Flying, t: number, share: number): boolean {
+    if (Math.floor(t) > f.until) this.spent(f);
+    else if (this.fly(f, t, share)) return true;
+    this.free(f);
+    return false;
+  }
+
+  /** A round is gone having met nothing: one with a blast goes off in the air where it is, so that whoever draws it ends it. */
+  private spent(f: Flying): void {
+    if (!(this.ctx.world.reg.ammoBlast[f.ammo]! > 0) || !Number.isFinite(f.x + f.y + f.z)) return;
+    this.ended(f.x, f.y, f.z, -1);
+    this.meet(SURFACE_AIR, MADE_UNKNOWN, 0, 1, 0);
+    this.explode(this.ctx.records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, f.x, f.y, f.z, -1, f.id);
+  }
+
+  /** The next number in turn that no flying round has, or 0 when every one is taken. */
+  private number(): number {
+    if (this.numbered >= ROCKET_IDS - 1) return 0;
+    let id = this.lastNumber;
+    do {
+      id = (id % (ROCKET_IDS - 1)) + 1;
+    } while (this.numberFlies[id] !== 0);
+    this.lastNumber = id;
+    this.numberFlies[id] = 1;
+    this.numbered++;
+    return id;
+  }
+
+  /** `f` flies no more: its number may be given again. */
+  private free(f: Flying): void {
+    if (f.id === 0) return;
+    this.numberFlies[f.id] = 0;
+    this.numbered--;
+    f.id = 0;
+  }
+
+  /** Tells a numbered round, `back` ticks after it left `c` along `d`, to all within hearing of its start and to `c` as its own: a thrower as any other. */
+  private tellRocket(c: Client, f: Flying, d: readonly number[], back: number): void {
+    for (const l of this.heard) l("shot", f.ox, f.oz, c.name, f.silenced);
+    const { world, game } = this.ctx;
+    const ents = world.ents;
+    if (game.clients.length > this.toldWide) this.widen(game.clients.length);
+    const row = f.id * this.toldWide;
+    const told = this.numberTold;
+    told.fill(0, row, row + this.toldWide);
+    packBolt(f.ox, f.oy, f.oz, d[0]!, d[1]!, d[2]!, this.numberPacked, f.id * 5);
+    for (const other of game.clients) {
+      if (!other?.active || other.closed) continue;
+      if (other !== c) {
+        const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
+        const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
+        if ((bx - f.ox) * (bx - f.ox) + (bz - f.oz) * (bz - f.oz) > HEARD * HEARD) continue;
+      }
+      told[row + other.id] = 1;
+      const w = game.begin(S_EVENT);
+      w.u8(EVENT_ROCKET);
+      writeRocket(w, this.numberPacked, f.id * 5, f.ammo, f.id, back, other === c && !this.toShooter);
+      game.endOwn(other);
+    }
+  }
+
+  /** Tells the numbered round `f` to each client that is now within hearing of where it is and has not been told of it. */
+  private tellLate(f: Flying, tick: number): void {
+    const age = tick - f.born;
+    if (age > ROCKET_AGE_MOST) return;
+    const { world, game } = this.ctx;
+    const ents = world.ents;
+    if (game.clients.length > this.toldWide) this.widen(game.clients.length);
+    const row = f.id * this.toldWide;
+    const told = this.numberTold;
+    for (const other of game.clients) {
+      if (!other?.active || other.closed || told[row + other.id] !== 0) continue;
+      const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
+      const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
+      if ((bx - f.x) * (bx - f.x) + (bz - f.z) * (bz - f.z) > HEARD * HEARD) continue;
+      told[row + other.id] = 1;
+      const w = game.begin(S_EVENT);
+      w.u8(EVENT_ROCKET);
+      writeRocket(w, this.numberPacked, f.id * 5, f.ammo, f.id, age, false);
+      game.endOwn(other);
+    }
+  }
+
+  /** The server was given room for more clients: each number's row of who was told grows to `wide`. */
+  private widen(wide: number): void {
+    const next = new Uint8Array(ROCKET_IDS * wide);
+    for (let id = 0; id < ROCKET_IDS; id++) next.set(this.numberTold.subarray(id * this.toldWide, (id + 1) * this.toldWide), id * wide);
+    this.numberTold = next;
+    this.toldWide = wide;
   }
 
   step(): void {
     const tick = this.ctx.world.tick;
+    // Rounds fired between ticks are told before they are flown on, so that none is told a tick it may have ended in.
+    this.tellKept();
     const flying = this.flying;
     let kept = 0;
     for (let i = 0; i < flying.length; i++) {
       const f = flying[i]!;
       // A shot fired this tick has already been flown up to now.
-      if (f.flown < tick && !(tick <= f.until && this.fly(f, tick, 1))) continue;
+      if (f.flown < tick && !this.flyOn(f, tick, 1)) continue;
+      // Each numbered round takes its own tick of the eight to look for new listeners.
+      if (f.id !== 0 && ((tick + f.id) & (LATE_EVERY - 1)) === 0) this.tellLate(f, tick);
       flying[kept++] = f;
     }
     flying.length = kept;
@@ -423,6 +621,86 @@ export class Projectiles {
       if (this.stands(s)) ents.destroy(s.ent);
     }
     if (tick % PICKUP_EVERY === 0 && stuck.length > 0) this.pickUp();
+    this.tellKept();
+  }
+
+  /** Keeps a round that left `c`'s body along the unit way `d` at `speed`, of its ammunition's `full`, to be told when the step ends. */
+  private keep(c: Client, ox: number, oy: number, oz: number, d: readonly number[], ammo: number, back: number, flags: number, ended: number, speed: number, full: number): void {
+    for (const l of this.heard) l("shot", ox, oz, c.name, (flags & BOLT_SILENCED) !== 0);
+    if (this.toldCount >= TOLD_MOST) this.tellKept();
+    const n = this.toldCount++;
+    const t = this.told;
+    // Its way on the ground: to where it ended, to its reach, or as far as a round with none is looked for.
+    const reach = this.ctx.world.reg.ammoReach[ammo]!;
+    const way = ended > 0 ? ended : reach > 0 ? reach : Math.min(WAY_MOST, (speed * FLIGHT_TICKS) / TICK_RATE);
+    t[n * 4] = ox;
+    t[n * 4 + 1] = oz;
+    t[n * 4 + 2] = ox + d[0]! * way;
+    t[n * 4 + 3] = oz + d[2]! * way;
+    this.toldEnded[n] = ended;
+    this.toldSpeed[n] = full > 0 && speed < full ? speed / full : 1;
+    packBolt(ox, oy, oz, d[0]!, d[1]!, d[2]!, this.toldPacked, n * 5);
+    this.toldAmmo[n] = ammo;
+    this.toldBack[n] = Math.min(255, Math.round(back));
+    this.toldFlags[n] = flags;
+    this.toldBy[n] = c.id;
+    this.toldEcho[n] = this.toShooter ? 1 : 0;
+  }
+
+  /**
+   * Tells each client the rounds kept that left within its hearing or fly within its sight, its own left out, in as few
+   * messages as hold them.
+   */
+  private tellKept(): void {
+    const count = this.toldCount;
+    if (count === 0) return;
+    this.toldCount = 0;
+    const { world, game } = this.ctx;
+    const ents = world.ents;
+    const t = this.told;
+    for (const other of game.clients) {
+      if (!other?.active || other.closed) continue;
+      const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
+      const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
+      let w: BitWriter | null = null;
+      let said = 0;
+      let last = 0;
+      for (let n = 0; n < count; n++) {
+        // Its own shooter draws its own, but for a throw, which it is told of as its own.
+        const mine = this.toldBy[n] === other.id;
+        if (mine && this.toldEcho[n] === 0) continue;
+        const ox = t[n * 4]!;
+        const oz = t[n * 4 + 1]!;
+        if ((bx - ox) * (bx - ox) + (bz - oz) * (bz - oz) > HEARD * HEARD) {
+          // Out of hearing: how near its way comes, as the nearest point of that way on the ground.
+          const wx = t[n * 4 + 2]! - ox;
+          const wz = t[n * 4 + 3]! - oz;
+          const along = wx * wx + wz * wz;
+          const share = along > 0 ? Math.max(0, Math.min(1, ((bx - ox) * wx + (bz - oz) * wz) / along)) : 0;
+          const nx = ox + wx * share - bx;
+          const nz = oz + wz * share - bz;
+          if (nx * nx + nz * nz > SEEN * SEEN) continue;
+        }
+        if (!w) {
+          w = game.begin(S_EVENT);
+          w.u8(EVENT_BOLTS);
+          w.u8(0);
+        }
+        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]!, this.toldFlags[n]! | (mine ? BOLT_MINE : 0), last, this.toldEnded[n]!, this.toldSpeed[n]!);
+        last = this.toldAmmo[n]!;
+        if (++said === BOLTS_MOST) {
+          // The count is the message's third byte, written last.
+          w.bytes()[2] = said;
+          game.endOwn(other);
+          w = null;
+          said = last = 0;
+        }
+      }
+      if (w) {
+        w.bytes()[2] = said;
+        game.endOwn(other);
+      }
+    }
   }
 
   /** Flies `f` for `share` of a tick, to tick `t`, which is now or a tick the history remembers. Returns false if it ended. */
@@ -432,10 +710,22 @@ export class Projectiles {
     f.flown = Math.floor(t);
     flyStep(f, f.gravity, dt);
     let length = piece.length;
-    if (!(length > 0)) return false;
+    this.stopped = false;
+    if (!(length > 0)) {
+      this.spent(f);
+      return false;
+    }
+    // The piece that reaches its reach is cut there, so that it ends at the same metre whenever it was fired.
+    const last = f.reach > 0 && f.gone + length >= f.reach;
+    if (last) length = f.reach - f.gone;
+    if (!(length > 0)) {
+      this.spent(f);
+      return false;
+    }
     const { x, y, z, dx, dy, dz } = piece;
     const hf = world.hf;
     const sea = hf.seaLevel;
+    const blast = world.reg.ammoBlast[f.ammo]! > 0;
     // At the surface a shot from a dry weapon stops. One from a wet weapon goes on, slowed.
     let splash = false;
     if (!f.under && y > sea && y + dy * length <= sea && seaHere(hf.water, x + (dx * (sea - y)) / dy, z + (dz * (sea - y)) / dy)) {
@@ -457,17 +747,23 @@ export class Projectiles {
       ends = true;
       splash = false;
       if (what === HIT_STRUCTURE) built = rayHit.ref;
-    }
+      // Read now: the cast of bodies that follows may cast the world again.
+      if (blast) this.metWorld(what, rayHit.ref, rayHit.nx, rayHit.ny, rayHit.nz, dx, dy, dz);
+    } else if (blast && splash) this.meet(SURFACE_WATER, MADE_UNKNOWN, 0, 1, 0);
     // Skip the shooter, if its entity slot still holds it.
     const shooter = (world.ents.flags[f.self]! & F_ALIVE) !== 0 && world.ents.pid[f.self] === f.by ? f.self : -1;
-    // A piece cut short by the world took that much less of the tick.
-    const target = combat.castBodies(shooter, x, y, z, dx, dy, dz, length, 0, t, (share * length) / piece.length);
-    const blast = world.reg.ammoBlast[f.ammo]! > 0;
+    // A piece cut short, by the world or by its reach, took that much less of the tick, and took it first: the bodies
+    // are met where they were until then, not where they went in what was left of the tick.
+    const took = (share * length) / piece.length;
+    const target = combat.castBodies(shooter, x, y, z, dx, dy, dz, length, 0, t - share + took, took);
     if (target >= 0) {
       const at = combat.t;
+      f.gone += at;
+      this.stopped = true;
       if (blast) {
         this.ended(x + dx * at, y + dy * at, z + dz * at, target);
-        this.explode(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, x + dx * at, y + dy * at, z + dz * at, target);
+        this.metBody(target, dx, dy, dz);
+        this.explode(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, x + dx * at, y + dy * at, z + dz * at, target, f.id);
       } else this.hit(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oy, f.oz, target, combat.zone, x + dx * at, y + dy * at, z + dz * at, f.silenced, combat.panel);
       return false;
     }
@@ -475,11 +771,13 @@ export class Projectiles {
       const hx = x + dx * length;
       const hy = y + dy * length;
       const hz = z + dz * length;
+      f.gone += length;
+      this.stopped = true;
       this.ended(hx, hy, hz, on);
       // A round with a blast goes off a little short of what it met, and the blast is the whole of its harm.
       if (blast) {
         const out = Math.min(BLAST_OUT, length);
-        this.explode(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, hx - dx * out, hy - dy * out, hz - dz * out, -1);
+        this.explode(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, hx - dx * out, hy - dy * out, hz - dz * out, -1, f.id);
         return false;
       }
       // A structure it hit takes the damage. If that destroyed it, the arrow has nothing to stand in.
@@ -488,6 +786,16 @@ export class Projectiles {
       if (on === -1 && !gone && this.rng.float() < world.reg.ammoRecover[f.ammo]!) this.stand(f.ammo, hx - dx * STAND_OUT, hy - dy * STAND_OUT, hz - dz * STAND_OUT, dx, dy, dz);
       return false;
     }
+    if (last) {
+      // Gone at its reach, having met nothing: one with a blast goes off there.
+      f.x = x + dx * length;
+      f.y = y + dy * length;
+      f.z = z + dz * length;
+      f.gone = f.reach;
+      this.spent(f);
+      return false;
+    }
+    f.gone += piece.length;
     flyEnd(f, f.gravity, dt);
     if (splash) {
       f.under = true;
@@ -495,7 +803,46 @@ export class Projectiles {
       f.vy *= WATER_SPEED;
       f.vz *= WATER_SPEED;
     } else if (f.under && f.y > hf.waterAt(f.x, f.z)) f.under = false;
-    return f.x >= 0 && f.z >= 0 && f.x <= world.hf.sizeX && f.z <= world.hf.sizeZ && f.y > -1000;
+    if (f.x >= 0 && f.z >= 0 && f.x <= world.hf.sizeX && f.z <= world.hf.sizeZ && f.y > -1000) return true;
+    this.spent(f);
+    return false;
+  }
+
+  /** Says what the round being ended met. A way out of no length is up. */
+  private meet(surface: number, made: number, nx: number, ny: number, nz: number): void {
+    const m = this.met;
+    const l = nx * nx + ny * ny + nz * nz;
+    const k = l > 1e-12 ? 1 / Math.sqrt(l) : 0;
+    m.surface = surface;
+    m.made = made;
+    m.nx = nx * k;
+    m.ny = k === 0 ? 1 : ny * k;
+    m.nz = nz * k;
+  }
+
+  /** The round being ended met body `target`, going along (dx, dy, dz): the way out is back the way it came. */
+  private metBody(target: number, dx: number, dy: number, dz: number): void {
+    const world = this.ctx.world;
+    this.meet(world.reg.vehicle[world.ents.kind[target]!] ? SURFACE_VEHICLE : SURFACE_BODY, MADE_UNKNOWN, -dx, -dy, -dz);
+  }
+
+  /** The round being ended met the world as castWorld said (`what`, `ref`, the way out), going along (dx, dy, dz). A tree or a rock is built if its kind says of what. */
+  private metWorld(what: number, ref: number, nx: number, ny: number, nz: number, dx: number, dy: number, dz: number): void {
+    const { world, combat } = this.ctx;
+    if (!(nx * nx + ny * ny + nz * nz > 0.25)) {
+      nx = -dx;
+      ny = -dy;
+      nz = -dz;
+    }
+    let surface = SURFACE_GROUND;
+    let made = MADE_UNKNOWN;
+    if (what !== HIT_TERRAIN) {
+      const store = what === HIT_STRUCTURE ? world.structs : world.nodes;
+      const placed = what === HIT_STRUCTURE ? combat.city.kindOf(ref) : 0;
+      made = this.madeOf[placed !== 0 ? placed : (store?.chunks[Math.floor(ref / 65536)]?.kind[ref & 0xffff] ?? 0)] ?? MADE_UNKNOWN;
+      if (what === HIT_STRUCTURE || made !== MADE_UNKNOWN) surface = SURFACE_BUILT;
+    }
+    this.meet(surface, made, nx, ny, nz);
   }
 
   private hit(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, target: number, zone: number, x: number, y: number, z: number, silenced = false, panel = -1): void {
@@ -538,30 +885,30 @@ export class Projectiles {
    * twice: `direct`, the body it struck, if any, takes it in full. Structures take it times the weapon's own factor
    * (`weapon.structures`, D435). A blast does not fall off with the distance the round flew.
    */
-  private explode(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oz: number, x: number, y: number, z: number, direct: number): void {
+  private explode(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oz: number, x: number, y: number, z: number, direct: number, id = 0): void {
     const radius = this.ctx.world.reg.ammoBlast[ammo]!;
     const src = this.bring(by, weapon, quality, ammo, draw, ox, oz);
     this.blasts++;
-    this.boom(x, y, z, radius, by && by.keyHash !== null ? by.name : null);
+    const m = this.met;
+    this.boom(x, y, z, radius, by && by.keyHash !== null ? by.name : null, undefined, ammo, m.surface, m.made, id, m.nx, m.ny, m.nz);
     this.ctx.combat.blast(src, x, y, z, radius, direct);
   }
 
-  /** Nearby listeners and the operator watching through a remote camera receive the blast. */
-  boom(x: number, y: number, z: number, radius: number, by: string | null = null, operator?: Client): void {
+  /** Nearby listeners and the operator watching through a remote camera receive the blast, with what blew, what it met and its round's number (shared/net/rockets.ts). */
+  boom(x: number, y: number, z: number, radius: number, by: string | null = null, operator?: Client, item = 0, surface = SURFACE_AIR, made = MADE_UNKNOWN, id = 0, nx = 0, ny = 1, nz = 0): void {
     for (const l of this.heard) l("blast", x, z, by, false);
     const { world, game } = this.ctx;
     const ents = world.ents;
+    const w = game.begin(S_EVENT);
+    w.u8(EVENT_BLAST);
+    writeBlast(w, x, y, z, nx, ny, nz, radius, item, id, surface, made);
     for (const other of game.clients) {
       if (!other?.active || other.closed) continue;
       const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
       const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
-      if (other !== operator && (bx - x) * (bx - x) + (bz - z) * (bz - z) > HEARD * HEARD) continue;
-      const w = game.begin(S_EVENT);
-      w.u8(EVENT_BLAST);
-      w.f32(x);
-      w.f32(y);
-      w.f32(z);
-      w.f32(radius);
+      // One told of the round is told its end however far off, or its copy would wait for a blast that never comes.
+      const knows = id !== 0 && other.id < this.toldWide && this.numberTold[id * this.toldWide + other.id] !== 0;
+      if (other !== operator && !knows && (bx - x) * (bx - x) + (bz - z) * (bz - z) > HEARD * HEARD) continue;
       game.endOwn(other);
     }
   }
@@ -691,7 +1038,7 @@ export class Projectiles {
   }
 
   private burst(g: Thrown): void {
-    const { world, records, combat } = this.ctx;
+    const { world, records } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     if ((ents.flags[g.ent]! & F_ALIVE) !== 0 && ents.gen[g.ent] === g.gen) ents.destroy(g.ent);
@@ -720,8 +1067,10 @@ export class Projectiles {
     const radius = reg.blast[g.item]!;
     this.bursts++;
     this.ended(g.x, g.y, g.z, -1);
-    this.boom(g.x, g.y, g.z, radius, src.by && src.by.keyHash !== null ? src.by.name : null);
-    combat.blast(src, g.x, g.y + 0.05, g.z, radius);
+    // At rest or a little over the ground it goes off on it, and else in the air.
+    const grounded = g.resting || castWorld(world, g.x, g.y + 0.05, g.z, 0, -1, 0, GROUND_NEAR + 0.05) !== HIT_NONE;
+    this.boom(g.x, g.y, g.z, radius, src.by && src.by.keyHash !== null ? src.by.name : null, undefined, g.item, grounded ? SURFACE_GROUND : SURFACE_AIR);
+    this.ctx.combat.blast(src, g.x, g.y + 0.05, g.z, radius);
   }
 
   private ended(x: number, y: number, z: number, on: number): void {

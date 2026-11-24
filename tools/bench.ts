@@ -24,12 +24,11 @@ import { createWorld, type ServerWorld } from "../server/world.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { STRUCT_UNITS, TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
-import { BitReader, BitWriter } from "../shared/net/codec.ts";
+import { SURFACE_BUILT } from "../shared/net/rockets.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
-import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, nextCommandSeq, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
+import { KEY_BYTES } from "../shared/net/protocol.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
-import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
 import { rollWild } from "../shared/sim/genome.ts";
@@ -74,6 +73,7 @@ import { benchPoses } from "./bench/poses.ts";
 import { benchRagdoll } from "./bench/ragdoll.ts";
 import { benchSound } from "./bench/sound.ts";
 import { benchCorpses } from "./bench/corpses.ts";
+import { benchBursts } from "./bench/bursts.ts";
 import { benchDetails } from "./bench/details.ts";
 import { benchDamageNumbers } from "./bench/damage-numbers.ts";
 import { benchShadow } from "./bench/shadow.ts";
@@ -85,6 +85,8 @@ import { benchParts } from "./bench/parts.ts";
 import { benchTransport } from "./bench/transport.ts";
 import { benchGpu } from "./bench/gpu.ts";
 import { benchUi } from "./bench/ui.ts";
+import { Bot } from "./bench/bot.ts";
+import { FIREFIGHT_GUNS, SHOT_ROUNDS, benchFirefight, benchShots } from "./bench/firefight.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -136,72 +138,6 @@ function buildBases(world: ServerWorld, reg: Registry): [number, number][] {
   const { centers, pieces } = benchBases(reg, world.hf);
   pieces.forEach((base, b) => base.forEach(([kind, x, y, z, yaw]) => world.structs.add(kind, x, y, z, yaw, 1 + b, 1000)));
   return centers;
-}
-
-/** A client that only does what the server can observe: says hello, sends inputs, acknowledges snapshots. */
-class Bot {
-  readonly end: LoopbackEnd;
-  private readonly inputs = new InputBuffer(64);
-  private readonly w = new BitWriter(256);
-  private readonly r = new BitReader();
-  private readonly rng: Rng;
-  private serverTick = 0;
-  private sent = 0;
-  private moveX = 0;
-  private moveZ = 0;
-  private yaw = 0;
-
-  constructor(net: LoopbackNet, name: string, contentHash: number, seed: number) {
-    this.rng = new Rng(seed);
-    this.end = net.connect();
-    this.end.onMessage = (_ch, data) => {
-      if (data[0] !== S_SNAPSHOT) return;
-      this.r.reset(data);
-      this.r.u8();
-      const tick = this.r.u32();
-      if (tick > this.serverTick) this.serverTick = tick;
-    };
-    const w = this.w;
-    const key = new Uint8Array(KEY_BYTES);
-    for (let i = 0; i < KEY_BYTES; i++) key[i] = this.rng.int(256);
-    writeHello(w, PROTOCOL_VERSION, contentHash, 0, name, 0, key, defaultLook());
-    this.end.send(CH_RELIABLE, w.bytes());
-  }
-
-  private seq = 0;
-
-  /** Sends the inventory screen's CMD_MOVE for a whole stack between two slots of the bot's inventory. */
-  move(from: number, to: number, item: number): void {
-    const w = this.w;
-    w.reset();
-    writeCommand(w, (this.seq = nextCommandSeq(this.seq)), CMD_MOVE);
-    w.bits(BOX_SELF, 1);
-    w.varint(from);
-    w.bits(BOX_SELF, 1);
-    w.varint(to);
-    w.u16(0);
-    w.u16(item);
-    this.end.send(CH_RELIABLE, w.bytes());
-  }
-
-  update(worldTick: number): void {
-    const target = (this.serverTick || worldTick) + 3;
-    if (target <= this.sent) return;
-    if (this.rng.int(45) === 0) {
-      this.moveX = this.rng.int(255) - 127;
-      this.moveZ = this.rng.int(255) - 127;
-      this.yaw = this.rng.int(65536);
-    }
-    let count = 0;
-    for (let t = Math.max(this.sent + 1, target - 3); t <= target; t++) {
-      this.inputs.set(t, this.moveX, this.moveZ, this.yaw, 0, this.rng.int(40) === 0 ? 1 : 0);
-      count++;
-    }
-    this.sent = target;
-    this.w.reset();
-    writeInputs(this.w, this.inputs, this.serverTick, target, count);
-    this.end.send(CH_UNRELIABLE, this.w.bytes());
-  }
 }
 
 // Settings are ARK's defaults, or those of the config folder named after --config, to hold a boosted server to the same budgets.
@@ -578,8 +514,63 @@ const pack = parsePack(buildCorePack());
   record("things built that 20 blasts damaged", host.combat.structureHits - builtBefore, "");
   record("one blast in a 2,000-piece base, median", percentile(blasts, 0.5), "ms", 1);
   record("one blast in a 2,000-piece base, worst", blasts[blasts.length - 1]!, "ms", 4);
+
+  // A rocket's blast in another base: half as far again, so more than twice the pieces, and what the shooter is sent of it.
+  const [rx, rz] = centers[1] ?? centers[0]!;
+  const ry = hf.heightAt(rx, rz) + 1;
+  const shooter = host.game.clients.find((c) => !!c?.active && c.ent >= 0)!;
+  const rocket = { ...src, by: host.records.byPid.get(shooter.pid) ?? null, x: rx, z: rz, item: k("rocket_launcher"), base: 250 };
+  const rocketAmmo = k("rocket");
+  const reach = reg.ammoBlast[rocketAmmo]!;
+  const hitBefore = host.combat.structureHits;
+  // Events ended for the shooter alone: each is a message of its own on the reliable line.
+  let toldShooter = 0;
+  const game = host.game as unknown as { endOwn(c: unknown): void };
+  const endOwn = game.endOwn;
+  game.endOwn = function (this: unknown, c: unknown): void {
+    if (c === shooter) toldShooter++;
+    endOwn.call(this, c);
+  };
+  const rockets: number[] = [];
+  for (let n = 0; n < 20; n++) {
+    const t = performance.now();
+    host.combat.blast(rocket, rx + n * 1.5 - 15, ry, rz + (n % 5) * 2 - 4, reach);
+    rockets.push(performance.now() - t);
+  }
+  game.endOwn = endOwn;
+  rockets.sort((a, b) => a - b);
+  record("things built that 20 rocket blasts damaged", host.combat.structureHits - hitBefore, "");
+  record("messages the shooter was sent for a rocket's blast, mean", toldShooter / 20, "", 1);
+  record("one rocket's blast in a 2,000-piece base, median", percentile(rockets, 0.5), "ms", 1);
+  record("one rocket's blast in a 2,000-piece base, worst", rockets[rockets.length - 1]!, "ms", 4);
+
+  // Each volley hits a fresh stone base across 36 m of its ground floor.
+  let base = BASE_TIERS.length + BASE_TIERS.indexOf("stone");
+  for (const count of [50, 100]) {
+    const times: number[] = [];
+    const before = host.combat.structureHits;
+    for (let pass = 0; pass < 5; pass++, base += BASE_TIERS.length) {
+      const [cx, cz] = centers[base]!;
+      const y = hf.heightAt(cx, cz) + 1;
+      const start = performance.now();
+      for (let n = 0; n < count; n++) {
+        const x = cx - 18 + (n % 10) * 4;
+        const z = cz - 18 + Math.floor(n / 10) * 4;
+        shots.boom(x, y, z, reach, null, undefined, rocketAmmo, SURFACE_BUILT);
+        host.combat.blast(rocket, x, y, z, reach);
+      }
+      times.push(performance.now() - start);
+    }
+    times.sort((a, b) => a - b);
+    record(`damage and messages for ${count} rocket impacts in one tick, median`, percentile(times, 0.5), "ms");
+    record(`damage and messages for ${count} rocket impacts in one tick, worst`, times[times.length - 1]!, "ms");
+    record(`pieces hit by ${count} rockets, mean`, (host.combat.structureHits - before) / times.length, "");
+  }
   record("items the ledger cannot account for", host.items.audit().length, "", 0);
 }
+
+// ---------------------------------------------------------------- firefight
+benchFirefight(section, record, host, centers[0]!, run, FIREFIGHT_GUNS);
 
 // ---------------------------------------------------------------- collapse
 section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching");
@@ -1105,6 +1096,9 @@ section("Client frame build (headless): 300 survivors in view, posed every frame
   record("frame build with them, 99th percentile", percentile(posed, 0.99), "ms", 8);
   record("draw calls", packet.drawCount, "", 400);
 }
+
+benchShots(section, record, scene, cam, { hf, structs: restored }, reg, pack, SHOT_ROUNDS);
+benchBursts(section, record, scene, cam, hf);
 
 section("Client frame build (headless): a breeding base in view, the 512 bodies a client is shown until it asks for more");
 {

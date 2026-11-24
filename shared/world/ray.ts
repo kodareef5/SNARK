@@ -82,23 +82,27 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
   // Only the part of the ray over the map, where the ground is drawn.
   let t0 = 0;
   let t1 = maxT;
-  for (let axis = 0; axis < 2; axis++) {
-    const o = axis === 0 ? ox : oz;
-    const d = axis === 0 ? dx : dz;
-    const size = axis === 0 ? hf.sizeX : hf.sizeZ;
-    if (d === 0) {
-      if (o < 0 || o > size) return Infinity;
-      continue;
+  const ex = ox + dx * maxT;
+  const ez = oz + dz * maxT;
+  if (ox < 0 || ox > hf.sizeX || oz < 0 || oz > hf.sizeZ || ex <= 0 || ex >= hf.sizeX || ez <= 0 || ez >= hf.sizeZ) {
+    for (let axis = 0; axis < 2; axis++) {
+      const o = axis === 0 ? ox : oz;
+      const d = axis === 0 ? dx : dz;
+      const size = axis === 0 ? hf.sizeX : hf.sizeZ;
+      if (d === 0) {
+        if (o < 0 || o > size) return Infinity;
+        continue;
+      }
+      let a = -o / d;
+      let b = (size - o) / d;
+      if (a > b) {
+        const s = a;
+        a = b;
+        b = s;
+      }
+      if (a > t0) t0 = a;
+      if (b < t1) t1 = b;
     }
-    let a = -o / d;
-    let b = (size - o) / d;
-    if (a > b) {
-      const s = a;
-      a = b;
-      b = s;
-    }
-    if (a > t0) t0 = a;
-    if (b < t1) t1 = b;
   }
   if (t0 > t1) return Infinity;
 
@@ -133,9 +137,7 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
     const h10 = hts[k + 1]!;
     const h01 = hts[k + nx]!;
     const h11 = hts[k + nx + 1]!;
-    let top = h00 > h10 ? h00 : h10;
-    if (h01 > top) top = h01;
-    if (h11 > top) top = h11;
+    const top = Math.max(h00, h10, h01, h11);
     // Over every corner at both ends, the ray is over the whole cell.
     if (qa <= top || qb <= top) {
       // Where the ray enters and leaves, in the cell's own coordinates.

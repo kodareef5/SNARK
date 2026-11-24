@@ -117,10 +117,11 @@ function agree(mine: readonly LocalShot[], told: readonly Told[]): void {
   for (let i = 0; i < mine.length; i++) {
     const { o, d } = rayOf(mine[i]!);
     const t = told[i]!;
-    expect(Math.hypot(t.ox - o[0]!, t.oy - o[1]!, t.oz - o[2]!)).toBeLessThan(0.01);
+    // A round that flies is told to others to 2 cm and a fiftieth of a degree (shared/net/bolts.ts): they draw it, and decide nothing by it.
+    expect(Math.hypot(t.ox - o[0]!, t.oy - o[1]!, t.oz - o[2]!)).toBeLessThan(t.flies ? 0.02 : 0.01);
     if (t.flies) {
       const speed = Math.hypot(t.ex, t.ey, t.ez);
-      expect(Math.hypot(t.ex / speed - d[0]!, t.ey / speed - d[1]!, t.ez / speed - d[2]!)).toBeLessThan(1e-5);
+      expect(Math.hypot(t.ex / speed - d[0]!, t.ey / speed - d[1]!, t.ez / speed - d[2]!)).toBeLessThan(3e-4);
     } else expect(offRay(o, d, [t.ex, t.ey, t.ez])).toBeLessThan(0.01);
   }
 }

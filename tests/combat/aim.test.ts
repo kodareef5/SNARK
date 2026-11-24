@@ -52,8 +52,8 @@ test("today's ranged weapons have a cone and a kick, chosen (DEV128 to DEV130), 
   expect(aim("shotgun")).toEqual([5, 3.75, 3, 0, 0, 0, 6, 8]);
   for (let i = 1; i < reg.defs.length; i++) {
     const w = reg.weapon[i];
-    // The blocked-out bow and guns take their kind's cone and kick (tests/items/blockouts.test.ts).
-    if (!w || ["core:bow", "core:crossbow", "core:rifle", "core:pistol", "core:shotgun", "core:bow_compound", "core:pistol_fabricated", "core:shotgun_pump", "core:rifle_assault", "core:rifle_sniper", "core:rocket_launcher"].includes(reg.ids[i]!)) continue;
+    // The blocked-out bow and guns take their kind's cone and kick (tests/items/blockouts.test.ts), and the plasma guns have their own.
+    if (!w || ["core:bow", "core:crossbow", "core:rifle", "core:pistol", "core:shotgun", "core:bow_compound", "core:pistol_fabricated", "core:shotgun_pump", "core:rifle_assault", "core:rifle_sniper", "core:rocket_launcher", "core:rifle_plasma", "core:pistol_plasma"].includes(reg.ids[i]!)) continue;
     expect([reg.ids[i], w.coneHip, w.recoilKick]).toEqual([reg.ids[i], undefined, undefined]);
   }
   // A cone that blooms must close again, and a kick must come back.

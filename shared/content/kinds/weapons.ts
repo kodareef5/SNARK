@@ -3,9 +3,9 @@
 
 import { TICK_RATE } from "../../coords.ts";
 import { DAMAGE_TYPES } from "../../sim/damage.ts";
-import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../../sim/weapon.ts";
+import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../../sim/weapon.ts";
 import type { Content } from "../defs.ts";
-import { f, f32, f64, paletteIndex, u16, u32, u8, type Checking, type Fields, type Kind } from "../kind.ts";
+import { f, f32, f64, list, paletteIndex, u16, u32, u8, type Checking, type Fields, type Kind } from "../kind.ts";
 import type { Registry } from "../registry.ts";
 import type { DamageType } from "./damage.ts";
 import type { ItemDef } from "./items.ts";
@@ -15,6 +15,15 @@ import { MAX_BURN_SECONDS } from "./stations.ts";
 const MELEE_REACH = 2.6;
 /** The longest any weapon timing may be, in ticks, which is what a body's act counter holds. */
 const MAX_ACT_TICKS = 250;
+
+/** How a blast is drawn, by what blew (client/core/render/blasts.ts). The first is for one that names none. */
+export const BURST_LOOKS = ["plain", "grenade", "rocket"] as const;
+export type BurstLook = (typeof BURST_LOOKS)[number];
+
+/** The places of Registry.heldPoints, in order, and their bits in Registry.heldHas. */
+export const HELD_MUZZLE = 0;
+export const HELD_VENT = 1;
+export const HELD_ROUND = 2;
 
 /** What an item that is a weapon or is fired has besides. */
 export interface WeaponFields {
@@ -98,6 +107,20 @@ export interface WeaponFacet {
    * inside it (none for smoke). The cloud reaches as far as its prop's radius.
    */
   readonly cloud?: { readonly prop: string; readonly seconds: number; readonly buff?: string };
+  /** A rifle's hold posed as a tube on the shoulder, with a reload that carries the round to its muzzle (shared/anim/pose.ts). */
+  readonly pose?: "launcher";
+  /** How far a shot throws the body's aim up, in degrees, and the seconds it takes to come back. Without one, every gun's small kick. */
+  readonly kick?: { readonly degrees: number; readonly seconds: number };
+  /**
+   * Places on its held mesh, in metres from the grip with +Z along it: where a shot leaves and its flash is drawn (without
+   * one, ahead of the eye), where its backblast leaves, and where its loaded round is drawn, which is also carried in the
+   * off hand through a reload.
+   */
+  readonly muzzle?: readonly [number, number, number];
+  readonly vent?: readonly [number, number, number];
+  readonly round?: readonly [number, number, number];
+  /** Thrown: how its blast is drawn. */
+  readonly burst?: BurstLook;
 }
 
 export interface AmmoFacet {
@@ -141,6 +164,17 @@ export interface AmmoFacet {
    * D436); until then the flare is its bright mesh.
    */
   readonly light?: { readonly reach: number; readonly color: number };
+  /** Metres a round that flies goes before it is gone, to the metre whenever it was fired. Without one it flies its ten seconds (FLIGHT_TICKS). */
+  readonly reach?: number;
+  /**
+   * A bolt of light: the mesh drawn where it leaves and the one drawn where it ends, each a metre across, and how many
+   * times its own size the bolt (`mesh`) and they are drawn. Its tail is drawn no longer than it has flown.
+   */
+  readonly bolt?: { readonly flash: string; readonly burst: string; readonly size: number };
+  /** A motor that burns as it flies: the metres of flame behind it. It leaves a trail of smoke. */
+  readonly motor?: { readonly flame: number };
+  /** How its blast is drawn. */
+  readonly burst?: BurstLook;
 }
 
 // The stubs inside the weapon and ammo facets are planning/reference/weapons-plan.md's, each flipped by its project.
@@ -188,6 +222,13 @@ export function weaponFaults(d: ItemDef, { errors, positive }: Checking): void {
     if (w.recoil && w.recoil.kick > 0 && !(w.recoil.recover > 0)) errors.push(`${d.id}: weapon.recoil that kicks must recover`);
     if (w.structures !== undefined && !(w.structures >= 0)) errors.push(`${d.id}: weapon.structures must not be negative`);
     if (w.pellets !== undefined && !(w.kind === "gun" && Number.isInteger(w.pellets) && w.pellets >= 1 && w.pellets <= 255)) errors.push(`${d.id}: weapon.pellets is a gun's, a whole number from 1 to 255`);
+    if (w.pose && w.hold !== "rifle") errors.push(`${d.id}: weapon.pose is a way a rifle's hold is posed`);
+    if (w.kick && !(w.kick.degrees >= 0 && w.kick.degrees <= 45 && w.kick.seconds > 0 && w.kick.seconds * TICK_RATE <= 60)) errors.push(`${d.id}: weapon.kick is from 0 to 45 degrees, over at most 2 seconds`);
+    if ((w.muzzle || w.vent || w.round) && w.kind !== "gun") errors.push(`${d.id}: weapon.muzzle, vent and round are a gun's`);
+    for (const [name, at] of [["muzzle", w.muzzle], ["vent", w.vent], ["round", w.round]] as const) {
+      if (at && !(at.length === 3 && at.every((v) => Math.abs(v) <= 4))) errors.push(`${d.id}: weapon.${name} is three metres from the grip, each within 4`);
+    }
+    if (w.burst !== undefined && !(w.kind === "thrown" && BURST_LOOKS.includes(w.burst))) errors.push(`${d.id}: weapon.burst is a thrown weapon's, one of ${BURST_LOOKS.join(", ")}`);
     if (w.cloud) {
       if (w.kind !== "thrown") errors.push(`${d.id}: only a thrown weapon bursts into a cloud`);
       positive(d, "weapon.cloud.seconds", w.cloud.seconds, MAX_BURN_SECONDS);
@@ -202,6 +243,20 @@ export function weaponFaults(d: ItemDef, { errors, positive }: Checking): void {
   if (am?.falloff && !(am.falloff.full >= 0 && am.falloff.none > am.falloff.full)) errors.push(`${d.id}: ammo.falloff is full from 0 metres or more, and none further than that`);
   if (am?.blast !== undefined) positive(d, "ammo.blast", am.blast, 100);
   if (am?.pierce !== undefined && !(am.pierce >= 0 && am.pierce <= 1)) errors.push(`${d.id}: ammo.pierce must be from 0 to 1`);
+  if (am?.reach !== undefined) {
+    positive(d, "ammo.reach", am.reach, 10000);
+    if (am.speed === undefined) errors.push(`${d.id}: ammo.reach is a round's that flies, at its ammo.speed`);
+  }
+  if (am?.bolt) {
+    // A bolt is short-lived by its nature: one with no reach would be drawn for ten seconds.
+    if (am.speed === undefined || am.reach === undefined) errors.push(`${d.id}: a bolt flies, at its ammo.speed, and no further than its ammo.reach`);
+    positive(d, "ammo.bolt.size", am.bolt.size, 100);
+  }
+  if (am?.motor) {
+    if (am.speed === undefined) errors.push(`${d.id}: a round with a motor flies, at its ammo.speed`);
+    positive(d, "ammo.motor.flame", am.motor.flame, 10);
+  }
+  if (am?.burst !== undefined && !(am.blast !== undefined && BURST_LOOKS.includes(am.burst))) errors.push(`${d.id}: ammo.burst is a round's with a blast, one of ${BURST_LOOKS.join(", ")}`);
   if (am?.light) {
     // A light is carried by a round that flies, as a prop, until it lands (W6).
     if (am.speed === undefined) errors.push(`${d.id}: a round that carries a light flies, at its ammo.speed`);
@@ -312,6 +367,24 @@ const columns = (n: number) => ({
    */
   ammoLight: f32(n),
   ammoLightColor: u8(n),
+  /** Per ammunition: the metres a round flies before it is gone, 0 for one that flies its ten seconds. */
+  ammoReach: f32(n),
+  /** Per ammunition: how many times its own size a bolt of light is drawn, 0 for a round that is not one. */
+  ammoBoltSize: f32(n),
+  /** Per ammunition: the metres of flame its motor burns, 0 for none. */
+  ammoFlame: f32(n),
+  /** Per item that blows: the index of its look in BURST_LOOKS. */
+  burstLook: u8(n),
+  /** Per weapon: how its hold is posed (POSE_), and its own kick in radians and the ticks it lasts (0 for every gun's). */
+  holdPose: u8(n),
+  kickAngle: f32(n),
+  kickTicks: u8(n),
+  /**
+   * Per weapon with places on its held mesh, nine numbers: its muzzle, its vent and its loaded round's place, x, y and z
+   * (HELD_MUZZLE, HELD_VENT, HELD_ROUND), and which of them it has, as bits of those three.
+   */
+  heldPoints: list<Float32Array>(n),
+  heldHas: u8(n),
 });
 
 export const weapons: Kind<ItemDef, ReturnType<typeof columns>> = {
@@ -334,6 +407,17 @@ export const weapons: Kind<ItemDef, ReturnType<typeof columns>> = {
       reg.structureMul[i] = d.weapon.structures ?? 1;
       reg.weaponPellets[i] = d.weapon.pellets ?? 0;
       if (d.weapon.cloud) reg.cloudTicks[i] = Math.max(1, Math.round(d.weapon.cloud.seconds * TICK_RATE));
+      reg.holdPose[i] = d.weapon.pose === "launcher" ? POSE_LAUNCHER : POSE_PLAIN;
+      if (d.weapon.kick) {
+        reg.kickAngle[i] = (d.weapon.kick.degrees * Math.PI) / 180;
+        reg.kickTicks[i] = Math.max(1, Math.round(d.weapon.kick.seconds * TICK_RATE));
+      }
+      [d.weapon.muzzle, d.weapon.vent, d.weapon.round].forEach((at, k) => {
+        if (!at) return;
+        (reg.heldPoints[i] ??= new Float32Array(9)).set(at, k * 3);
+        reg.heldHas[i] = reg.heldHas[i]! | (1 << k);
+      });
+      if (d.weapon.burst) reg.burstLook[i] = BURST_LOOKS.indexOf(d.weapon.burst);
     }
     if (d.ammo) {
       reg.ammoSpeed[i] = d.ammo.speed ?? 0;
@@ -350,6 +434,10 @@ export const weapons: Kind<ItemDef, ReturnType<typeof columns>> = {
       reg.ammoPierce[i] = d.ammo.pierce ?? 0;
       reg.ammoLight[i] = d.ammo.light?.reach ?? 0;
       reg.ammoLightColor[i] = d.ammo.light?.color ?? 0;
+      reg.ammoReach[i] = d.ammo.reach ?? 0;
+      reg.ammoBoltSize[i] = d.ammo.bolt?.size ?? 0;
+      reg.ammoFlame[i] = d.ammo.motor?.flame ?? 0;
+      if (d.ammo.burst) reg.burstLook[i] = BURST_LOOKS.indexOf(d.ammo.burst);
     }
     const hits = d.ammo ?? d.weapon;
     if (hits?.damage !== undefined) {
