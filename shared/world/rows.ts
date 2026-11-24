@@ -188,7 +188,7 @@ export class RowCoder {
    * empty slot says only that, and a row with a key goes by it, its frame defined first where the reader has not been told.
    * A row's short fields are gathered in `a`, `n` of its low bits, and go to the writer together.
    */
-  write(w: BitWriter, t: ChunkTable, s: number, inPlace: boolean, swapped: boolean, frames: Frames): void {
+  write(w: BitWriter, t: ChunkTable, s: number, stays: boolean, swapped: boolean, frames: Frames): void {
     const gap = s - this.slot - 1;
     this.slot = s;
     let a = 1;
@@ -200,7 +200,7 @@ export class RowCoder {
     }
     const kind = s < t.high ? t.kind[s]! : 0;
     const gid = t.fr !== null && kind !== 0 ? t.fr[s]! : 0;
-    const form = inPlace ? ROW_IN_PLACE : kind === 0 ? ROW_EMPTY : gid !== 0 ? ROW_KEYED : ROW_FREE;
+    const form = stays ? ROW_IN_PLACE : kind === 0 ? ROW_EMPTY : gid !== 0 ? ROW_KEYED : ROW_FREE;
     if (form === this.last) a |= 1 << n++;
     else {
       a |= form << (n + 1);

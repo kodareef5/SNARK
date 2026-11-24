@@ -564,8 +564,8 @@ export class Replication {
   }
 
   /** A row of a chunk message (S_CHUNK in shared/net/protocol.ts). In place, only its owner and health, and its kind if `swapped`. */
-  private row(w: BitWriter, t: ChunkTable, s: number, inPlace: boolean, swapped = false): void {
-    this.rows.write(w, t, s, inPlace, swapped, this.world.structs.frames);
+  private row(w: BitWriter, t: ChunkTable, s: number, stays: boolean, swapped = false): void {
+    this.rows.write(w, t, s, stays, swapped, this.world.structs.frames);
   }
 
   /** Runs of slots, each coded from where the one before ended. */

@@ -167,7 +167,7 @@ const FIELDS = {
   coarse: f("number", "its mesh's levels chosen as if it stood this many times as far off, 1 to 16: scenery of many alike"),
   colors: f("list", "the colours of its mesh's regions after the first, as a moored hull its vessel's"),
   half: f("vec3"),
-  shape: f("text", "SnapPoints", { refs: { "": "shape" } }),
+  shape: f("text", "its boxes and convex parts, and for a built piece its form", { refs: { "": "shape" } }),
   hp: f("number", "Health"),
   material: f("text", "StructureSettingsClass", { refs: { "": "material" } }),
   slots: f("number", "an inventory component"),

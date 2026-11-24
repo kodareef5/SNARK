@@ -26,8 +26,6 @@ export const NO_PIN = 0xffff;
 export const PIN_TRIES = 3;
 export const PIN_WAIT_TICKS = 30 * TICK_RATE;
 
-/** A damaged structure cannot be mended for this long. Three minutes, in ticks. */
-export const REPAIR_WAIT_TICKS = 180 * TICK_RATE;
 /** Metres from the eye to the piece's nearest face, roughly. */
 export const ACT_REACH = 4;
 

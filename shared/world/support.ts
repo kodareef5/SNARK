@@ -13,16 +13,15 @@
 // and one more wherever the lower piece is upright and does not carry (a railing). Every link is read from the cells the
 // piece's form relates to, by its class, layer, span and cells: a new form needs no rule here.
 //
-// A piece with no key (a thing, a piece the adoption shim left free) is judged the old way, by sockets and metres.
-// That half of this file is marked and goes with the shim.
+// A row with no key joins nothing and holds nothing. A thing (a box, a bed) rests on the ground or on the floor under its
+// middle. A built piece with no key stands only where a base's first piece would.
 
-import { STRUCT_UNITS, chunkAt } from "../coords.ts";
-import { KEY_FOUND, keyOfPose } from "./lattice/adopt.ts";
+import { STRUCT_UNITS } from "../coords.ts";
 import { FORM_LAYERS, HALF_SIDE_M, STOREY_LEVELS, type FormTable } from "./lattice/forms.ts";
-import { poseOf, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
+import { poseOf, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
 import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleStep, tupleWithin } from "./lattice/module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "./lattice/occupancy.ts";
-import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, ROLE_WALL, floorTop, frameAxes, makeSockets, overPiece, socketsFor, units, type PieceTables } from "./snap.ts";
+import { ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, floorTop, units, type PieceTables } from "./snap.ts";
 import { Found, type StructureStore } from "./structures.ts";
 
 /** The stability of a piece that stands by itself, for a material that says no other. */
@@ -40,14 +39,11 @@ export const FALL_MOST = 256;
 /** Metres on the flat a link moves support for each unit it costs, at most: a slab to the next is two for a side of 3 m. */
 const METRES_A_COST = (SIDE * HALF_SIDE_M) / COST_BESIDE;
 
-/** Horizontal metres a ceiling with no key may be from a piece that stands straight up. LOAD_REACH is the same for any other piece held sideways. */
-export const CEILING_REACH = 6.5;
-export const LOAD_REACH = 5;
 /** Lattice units. A pillar whose foot is at most this far above the ground stands on the ground. */
 const FOOT = STRUCT_UNITS / 4;
-/** Metres. A joined piece is at most two half-sides away, plus a little. */
+/** Metres. The middle of a floor a thing rests on is at most this far from the thing's. */
 const NEAR = 3.1;
-/** Metres a neighbour's box may fall short of a piece's height band by lattice rounding and still be looked at. */
+/** Metres a floor's box may fall short of a thing's foot by lattice rounding and still be looked at. */
 const BAND = 0.05;
 /** Work units to build one node, and each cell read for it costs a quarter more. A search step costs 1. 16,000 are about a millisecond. */
 export const COST_NODE = 6;
@@ -61,8 +57,6 @@ const LEAF = FORM_LAYERS.indexOf("leaf");
 const POST = FORM_LAYERS.indexOf("post");
 const FOOTING = FORM_LAYERS.indexOf("footing");
 
-const sockets = makeSockets();
-const axes = new Int32Array(4);
 const own = new Cells();
 const sides = new Cells();
 const faces = new Cells();
@@ -139,10 +133,9 @@ export class SupportNode {
   readonly cost: number[];
   /** A keyed piece: the slabs it hangs from, read when it is first asked about. */
   hosts: number[] | null = null;
-  /** A piece with no key: the links it stands directly on. For a door, its frame. */
+  /** A thing: the floors under its foot. */
   readonly under: number[];
-  /** With no key, whether it stands straight up: 0 not asked, 1 yes, 2 no. Valid only for the round in `round`. */
-  straight = 0;
+  /** The round its `lo` and `exact` are of. */
   round = 0;
   /** Id of the search that last visited it, and its cost from the piece asked about in that search. */
   seen = 0;
@@ -215,7 +208,6 @@ export class Support {
   private readonly heightAt: (x: number, z: number) => number;
   private readonly nodes = new Map<number, SupportNode>();
   private readonly near = new Found();
-  private readonly queue: SupportNode[] = [];
   private round = 1;
   private search = 0;
   /** Per kind: what a link from it adds where it is the lower piece, the stability it must keep, 1 if it stands anywhere and 2 if on the ground, and its most stability. */
@@ -244,7 +236,6 @@ export class Support {
   private reads = 0;
   /** Pieces counted as gone while wouldFall runs. */
   private readonly absent = new Set<number>();
-  private readonly tried: Frame[] = [];
   private readonly rows = new Found();
 
   constructor(structs: StructureStore, tables: SupportTables, heightAt: (x: number, z: number) => number) {
@@ -261,9 +252,13 @@ export class Support {
     let most = STABILITY;
     // Metres a piece of some form may reach past what its class does: a triangle from its corner, a wall along its further sides.
     let slack = 0;
-    for (let k = 0; forms && k < n && k < forms.cls.length; k++) {
-      const f = forms.def[k];
-      if (!f) continue;
+    for (let k = 0; k < n; k++) {
+      const f = forms && k < forms.cls.length ? forms.def[k] : null;
+      // A kind with no form is never in a base: where a row of it stands by itself is its role's to say.
+      if (!f) {
+        this.rooted[k] = tables.role[k] === ROLE_FOUNDATION ? 1 : tables.role[k] === ROLE_PILLAR ? 2 : 0;
+        continue;
+      }
       this.loose[k] = f.carries ? 0 : COST_LOOSE;
       this.need[k] = f.need ?? 0;
       this.rooted[k] = f.root === "always" ? 1 : f.root === "grounded" ? 2 : 0;
@@ -272,9 +267,9 @@ export class Support {
       if (f.cls === "triangle") this.plain = false;
       if (f.layer === "footing") this.footed = true;
       most = Math.max(most, this.cap[k]!);
-      let along = Math.abs(forms.atI[k]!);
-      for (const c of f.cells ?? []) along = Math.max(along, Math.abs(c[0] * SIDE - forms.atI[k]!));
-      slack = Math.max(slack, (Math.max(along, Math.abs(forms.atJ[k]!)) + (forms.cls[k] === CLS_TRIANGLE ? 1 : 0)) * HALF_SIDE_M);
+      let along = Math.abs(forms!.atI[k]!);
+      for (const c of f.cells ?? []) along = Math.max(along, Math.abs(c[0] * SIDE - forms!.atI[k]!));
+      slack = Math.max(slack, (Math.max(along, Math.abs(forms!.atJ[k]!)) + (forms!.cls[k] === CLS_TRIANGLE ? 1 : 0)) * HALF_SIDE_M);
     }
     this.capMost = most;
     for (let d = 0; d <= most; d++) {
@@ -283,7 +278,7 @@ export class Support {
       this.hungs.push([]);
     }
     // Links that cost nothing are followed by `over`. The rest move support METRES_A_COST for each unit, and each piece on the way its slack twice.
-    this.far = Math.max(CEILING_REACH, most * METRES_A_COST + (most + 1) * 2 * slack) + 0.1;
+    this.far = most * METRES_A_COST + (most + 1) * 2 * slack + 0.1;
   }
 
   /** Drops every cached node. Call when the world may have changed. */
@@ -638,40 +633,24 @@ export class Support {
   }
 
   /**
-   * Asked afresh by pose, for a piece already built (pass its ref as `self`) or one about to be. A kind that is not a
-   * building piece stands. The pose is given its key in each base it is a free slot of, as the adoption shim would: a
-   * pose says no turn of 30 or 60 degrees, so a piece turned so is asked about by its key (stabilityAt).
+   * Asked afresh of a piece that joins nothing, by its place in lattice units: one built (pass its ref as `self`) or about
+   * to be. A kind that is not a building piece stands. A built piece in a base is asked about by its key, as standsAt
+   * asks of one not yet there.
    */
-  stands(kind: number, x: number, y: number, z: number, yaw: number, self = -1): boolean {
+  stands(kind: number, x: number, y: number, z: number, self = -1): boolean {
     this.visited = 0;
     if (this.tables.role[kind]! < 0) return true;
     this.forget();
-    const { structs, forms } = this;
-    if (forms && forms.cls[kind]! >= 0) {
-      if (self >= 0 && structs.keyAt(self, key)) return this.standsNode(this.describe(kind, key.fr, key.k0, key.k1, self));
-      const { chunksX, chunksZ } = structs.dims;
-      const chunk = chunkAt(structs.dims, x / STRUCT_UNITS, z / STRUCT_UNITS);
-      const cx = chunk % chunksX;
-      const cz = (chunk - cx) / chunksX;
-      const tried = this.tried;
-      tried.length = 0;
-      let keyed = false;
-      for (let nz = Math.max(0, cz - 1); nz <= Math.min(chunksZ - 1, cz + 1); nz++) {
-        for (let nx = Math.max(0, cx - 1); nx <= Math.min(chunksX - 1, cx + 1); nx++) {
-          for (const f of structs.frames.listed(nz * chunksX + nx)) {
-            if (tried.includes(f)) continue;
-            tried.push(f);
-            if (keyOfPose(f, forms, kind, x, y, z, yaw, key) !== KEY_FOUND || !structs.fits(kind, f.gid, key.k0, key.k1)) continue;
-            poseOf(f, key.k0, key.k1, forms, kind, pose);
-            if (pose.x !== x || pose.y !== y || pose.z !== z || pose.yaw !== yaw) continue;
-            keyed = true;
-            if (this.standsNode(this.describe(kind, f.gid, key.k0, key.k1))) return true;
-          }
-        }
-      }
-      if (keyed) return false;
-    }
-    return this.standsNode(this.describeFree(kind, x, y, z, yaw, self));
+    if (self >= 0 && this.forms && this.structs.keyAt(self, key)) return this.standsNode(this.describe(kind, key.fr, key.k0, key.k1, self));
+    return this.standsNode(this.describeFree(kind, x, y, z, self));
+  }
+
+  /** Asked afresh: whether a piece of `kind` would stand in the slot (k0, k1) of frame `fr`, not yet built there. */
+  standsAt(kind: number, fr: number, k0: number, k1: number): boolean {
+    this.visited = 0;
+    if (!this.forms || this.forms.cls[kind]! < 0 || !this.structs.frames.get(fr)) return false;
+    this.forget();
+    return this.standsNode(this.describe(kind, fr, k0, k1));
   }
 
   /** Uses the cached nodes as they are. If `cut` is set afterwards, the question was given up (see `limit`). */
@@ -1029,15 +1008,12 @@ export class Support {
     return count;
   }
 
-  // ---------------------------------------------------------------------------------------------------------------
-  // Going away with the adoption shim: pieces with no key, judged by sockets and by reach in metres. A thing rests on a
-  // floor by `describeFree` until things have a rule of their own. Everything from here down is deleted with `inPlace`.
-  // A piece with no key is of turn class 0, so its sockets lie along frameAxes of its yaw alone.
+  // ---------------------------------------------------------------- rows with no key
 
-  /** Nodes made the old way, of any row a question about a piece with no key met. */
+  /** Nodes of rows with no key. */
   private readonly frees = new Map<number, SupportNode>();
 
-  /** The old node of the piece at `ref`, whether or not it has a key. Null as `node` is. */
+  /** The node of the row at `ref`, which has no key. Null as `node` is. */
   private free(ref: number): SupportNode | null {
     const known = this.frees.get(ref);
     if (known && this.alive(known)) return this.absent.size > 0 && this.absent.has(ref) ? null : known;
@@ -1049,150 +1025,59 @@ export class Support {
       return null;
     }
     this.made++;
-    const n = this.describeFree(t.kind[slot]!, units(t.x[slot]!), units(t.y[slot]!), units(t.z[slot]!), t.yaw[slot]!, ref);
+    const n = this.describeFree(t.kind[slot]!, units(t.x[slot]!), units(t.y[slot]!), units(t.z[slot]!), ref);
     this.frees.set(ref, n);
     return n;
   }
 
-  /** Builds the old node of a piece of `kind` at (x, y, z) lattice units facing `yaw`. `self` is its ref, or -1 for a piece not yet built. */
-  private describeFree(kind: number, x: number, y: number, z: number, yaw: number, self: number): SupportNode {
+  /**
+   * Builds the node of a piece of `kind` that joins nothing, at (x, y, z) lattice units. `self` is its ref, or -1 for one
+   * not yet built. A thing lists the floors whose top its foot is on, under its middle.
+   */
+  private describeFree(kind: number, x: number, y: number, z: number, self: number): SupportNode {
     const { structs, tables } = this;
     const role = tables.role[kind]!;
-    const half = units(tables.halfY[kind]!);
-    const door = tables.doorway[kind] === 1;
-    const hulls = tables.parts.hulls;
-    const links: number[] = [];
-    const under: number[] = [];
-    const over: number[] = [];
-    // A pillar's foot may be up to FOOT above the ground. A thing gets no such margin.
-    const ground = role === ROLE_PILLAR || role === ROLE_THING ? Math.ceil(this.heightAt(x / STRUCT_UNITS, z / STRUCT_UNITS) * STRUCT_UNITS) : 0;
-    const root = role === ROLE_FOUNDATION || (role === ROLE_PILLAR && y - half <= ground + FOOT) || (role === ROLE_THING && y - half <= ground);
+    if (role !== ROLE_THING) {
+      this.work += COST_NODE;
+      return new SupportNode(this, self, kind, role, x, y, z, this.rootAt(kind, x, y, z), 0, 0, 0, NONE, NONE, NONE, NONE, NONE);
+    }
+    const foot = y - units(tables.halfY[kind]!);
     const mx = x / STRUCT_UNITS;
     const mz = z / STRUCT_UNITS;
-    // A joined piece reaches into this one's own height: its socket is at most the two half heights away.
-    const n = structs.query(mx - NEAR, mz - NEAR, mx + NEAR, mz + NEAR, this.near, (y - half) / STRUCT_UNITS - BAND, (y + half) / STRUCT_UNITS + BAND);
-    const near = this.near.refs;
+    // A thing gets no margin over the ground, as a pillar's foot does.
+    const root = foot <= Math.ceil(this.heightAt(mx, mz) * STRUCT_UNITS);
+    const under: number[] = [];
+    const n = structs.query(mx - NEAR, mz - NEAR, mx + NEAR, mz + NEAR, this.near, foot / STRUCT_UNITS - BAND, foot / STRUCT_UNITS + BAND);
     // An entry the query passes over for its height counts a quarter of one it returns, so that work stays a measure of time.
-    this.work += COST_FREE + n + (structs.passed >> 2);
+    this.work += COST_NODE + n + (structs.passed >> 2);
     for (let i = 0; i < n; i++) {
-      const ref = near[i]!;
-      if (ref === self) continue;
-      const t = structs.chunks[Math.floor(ref / 65536)]!;
-      const slot = ref & 0xffff;
-      const ok = t.kind[slot]!;
-      const orole = tables.role[ok]!;
-      if (orole < 0) continue;
-      const ox = units(t.x[slot]!);
-      const oy = units(t.y[slot]!);
-      const oz = units(t.z[slot]!);
-      const ohalf = units(tables.halfY[ok]!);
-      // A thing joins nothing. It stands on the floor under its foot, if its middle is over that floor: over its box's top, or
-      // where its convex parts have their top (floorTop, which a thing that fell rests by).
-      if (orole === ROLE_THING) continue;
-      if (role === ROLE_THING) {
-        const sloped = hulls !== undefined && hulls.start[ok + 1]! > hulls.start[ok]!;
-        if ((orole === ROLE_FOUNDATION || orole === ROLE_CEILING) && (sloped ? floorTop(structs, tables, ref, x, z) === y - half : oy + ohalf === y - half && overPiece(ox, oz, t.yaw[slot]!, x, z))) {
-          links.push(ref);
-          under.push(ref);
-        }
-        continue;
-      }
-      // Either this piece sits in a socket of the other, or the other sits in a socket of this piece.
-      const onIt = inPlace(orole, ohalf, tables.doorway[ok] === 1, ox, oy, oz, t.yaw[slot]!, role, half, x, y, z);
-      let inMine = false;
-      if (!onIt) {
-        inMine = inPlace(role, half, door, x, y, z, yaw, orole, ohalf, ox, oy, oz);
-        if (!inMine) continue;
-      }
-      links.push(ref);
-      // A door stands on its frame. Any other piece stands on what its foot is on, except that a ceiling holds nothing straight up.
-      if (role === ROLE_DOOR ? onIt && orole === ROLE_WALL : onIt && orole !== ROLE_CEILING && oy + ohalf === y - half) under.push(ref);
-      // The same rule from below gives what stands on it.
-      if (orole === ROLE_DOOR ? role === ROLE_WALL : role !== ROLE_CEILING && y + half === oy - ohalf) {
-        if (inMine || (onIt && inPlace(role, half, door, x, y, z, yaw, orole, ohalf, ox, oy, oz))) over.push(ref);
-      }
+      const ref = this.near.refs[i]!;
+      if (ref !== self && this.floored(ref, x, z, foot)) under.push(ref);
     }
-    return new SupportNode(this, self, kind, role, x, y, z, root, 0, 0, 0, NONE, NONE, under, links, over);
+    return new SupportNode(this, self, kind, role, x, y, z, root, 0, 0, 0, NONE, NONE, under, under, NONE);
   }
 
+  /** Whether the row `ref` is a floor whose top is at `foot` under (x, z), all in lattice units. */
+  private floored(ref: number, x: number, z: number, foot: number): boolean {
+    if (this.absent.size > 0 && this.absent.has(ref)) return false;
+    const t = this.structs.chunks[Math.floor(ref / 65536)];
+    const slot = ref & 0xffff;
+    if (!t || slot >= t.high) return false;
+    const role = this.tables.role[t.kind[slot]!];
+    if (role !== ROLE_FOUNDATION && role !== ROLE_CEILING) return false;
+    // The box's top for a floor of boxes, and the top of the part under the point for one of convex parts.
+    return floorTop(this.structs, this.tables, ref, x, z) === foot;
+  }
+
+  /** Whether a row with no key stands: by itself, or for a thing, while a floor it rested on is still under it. */
   private askFree(n: SupportNode): boolean {
-    if (this.straight(n, 0)) return true;
-    if (this.cut || n.role === ROLE_DOOR || n.role === ROLE_THING) return false;
-    // Held sideways. Search its links for a piece that stands straight up within reach.
-    const reach = (n.role === ROLE_CEILING ? CEILING_REACH : LOAD_REACH) * STRUCT_UNITS;
-    const reach2 = reach * reach;
-    const queue = this.queue;
-    const search = ++this.search;
-    queue.length = 0;
-    n.seen = search;
-    queue.push(n);
-    for (let at = 0; at < queue.length; at++) {
-      const from = queue[at]!;
-      for (const ref of from.links) {
-        const o = this.free(ref);
-        if (this.cut) return false;
-        // A door holds nothing up, and the search does not pass through one.
-        if (!o || o.seen === search || o.role === ROLE_DOOR) continue;
-        o.seen = search;
-        const dx = o.x - n.x;
-        const dz = o.z - n.z;
-        if (dx * dx + dz * dz > reach2) continue;
-        this.visited++;
-        this.work++;
-        if (this.straight(o, 0)) return true;
-        if (this.cut) return false;
-        queue.push(o);
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Whether a piece stands by itself or directly on a piece that does. For a door, whether its frame is there. For a thing, whether
-   * the piece it was set on is there.
-   */
-  private straight(n: SupportNode, depth: number): boolean {
     if (n.root) return true;
-    if (n.round === this.round && n.straight !== 0) return n.straight === 1;
-    // Marked as not standing until known, so a ring of pieces cannot hold itself up. The depth cap is deeper than anything can be built.
-    n.round = this.round;
-    n.straight = 2;
-    if (depth > 400) return false;
+    const foot = n.y - units(this.tables.halfY[n.kind]!);
     for (const ref of n.under) {
-      const o = this.free(ref);
       this.work++;
-      if (o && (n.role === ROLE_DOOR || n.role === ROLE_THING || this.straight(o, depth + 1))) {
-        n.straight = 1;
-        return true;
-      }
-      // The question was cut, so nothing is known about this piece.
-      if (this.cut) {
-        n.straight = 0;
-        return false;
-      }
+      this.visited++;
+      if (this.floored(ref, n.x, n.z, foot)) return true;
     }
     return false;
   }
-}
-
-/** Work units to build one node the old way, as COST_NODE was when 16,000 units were first set to a millisecond. */
-const COST_FREE = 24;
-
-/** Whether a piece of role `b` at (bx, by, bz) sits in one of the sockets a piece of role `a` at (ax, ay, az) facing `ayaw` offers it. */
-function inPlace(a: number, ah: number, adoor: boolean, ax: number, ay: number, az: number, ayaw: number, b: number, bh: number, bx: number, by: number, bz: number): boolean {
-  // No socket is further up or down than the two half heights together.
-  const dy = by - ay;
-  if (dy > ah + bh || dy < -(ah + bh)) return false;
-  socketsFor(a, b, ah, bh, adoor, sockets);
-  if (sockets.n === 0) return false;
-  frameAxes(ayaw, axes);
-  const dx = bx - ax;
-  const dz = bz - az;
-  for (let k = 0; k < sockets.n; k++) {
-    if (sockets.dy[k] !== dy) continue;
-    const i = sockets.i[k]!;
-    const j = sockets.j[k]!;
-    if (i * axes[0]! + j * axes[2]! === dx && i * axes[1]! + j * axes[3]! === dz) return true;
-  }
-  return false;
 }
