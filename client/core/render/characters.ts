@@ -1,4 +1,6 @@
 import { skateDeckRotation } from "../../../shared/anim/skate.ts";
+import { caughtStrikeTick } from "./strike-contact.ts";
+import { ownArms, PunchGuard } from "./own-arms.ts";
 import { ImpactSprings } from "./impact-springs.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { survivorKind } from "../../../shared/sim/blockers.ts";
@@ -315,6 +317,8 @@ class Stride extends Gait {
   shownTick = Number.NaN;
   shownRigid = false;
   readonly grips = new RiderGrips();
+  punchGuard?: PunchGuard;
+  armRest?: Solved;
   /** A skater's move, trick and stance last posed, the pose drawn then, and the crossing from it to a new move. */
   skateKey = -1;
   skateLast: Pose | null = null;
@@ -326,6 +330,7 @@ class Stride extends Gait {
 /** Ticks a skater's pose takes to cross from one move to the next. */
 const SKATE_BLEND_TICKS = 3.6;
 
+const REST_POSE = new Pose(HUMAN_BONES);
 const STILL_GAIT = { phase: 0, speed: 0, domain: FOOTFALL_NONE } as const;
 
 /** A pose a body stands in while the frame has no bones to pose it: its rows about its origin, and its bones this frame. */
@@ -378,7 +383,9 @@ export class Characters {
   override: { id: number; clip: Clip; frame: number } | null = null;
   fresh = 0;
   /** The camera's pitch and half the height of its view, in radians, which the scene sets for the viewer's body (eyeRoom). */
-  readonly eye = { pitch: 0, half: 0 };
+  readonly eye = { pitch: 0, half: 35 * Math.PI / 180, aspect: 16 / 9, strikeAt: -Infinity };
+  /** The viewer's own origin under its eye, metres, as its body is posed. */
+  private eyeDrop = 0;
   /** Which of a vehicle's `hides` bones to hide, bit by bit, for the entity with this id; null hides none. */
   hiddenBones: ((kind: number, id: number) => number) | null = null;
   /** Set while the sun casts. Null leaves every body out of the shadows. */
@@ -1666,6 +1673,7 @@ export class Characters {
         this.posingId = id;
         // The proportions hits are judged on, which a seat's fit is worked out for (shared/anim/seat-fit.ts).
         this.standard = k.sets[0]!.rest;
+        this.eyeDrop = y;
         if (fallen?.down) fallenPose(fallen, fallen.x, fallen.y, fallen.z, fallen.yaw, set.rest, this.pose);
         else this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
         if (fallen && !fallen.down) blendFromFall(fallen, x + p.camX, y + p.camY, z + p.camZ, yaw, set.rest, fallen.risen, this.pose);
@@ -1946,6 +1954,16 @@ export class Characters {
     if (onFoot) lookJoints(set.rest, scales, this.joints);
     solve(HUMAN, this.pose, solved, set.rest, scales, onFoot ? this.joints : undefined);
     if (onFoot && scales) plantLookFeet(this.pose, solved, scales, set.rest);
+    if (upright) {
+      if (!g.armRest) {
+        g.armRest = new Solved(HUMAN_BONES);
+        solve(HUMAN, REST_POSE, g.armRest, set.rest, scales, this.joints);
+      }
+      const ahead = this.eyeRoom(solved, set.rest, this.eyeDrop);
+      const guard = g.punchGuard ??= new PunchGuard();
+      const armTick = caughtStrikeTick(st, tick, this.eye.strikeAt);
+      if (ownArms(this.pose, st, armTick, -this.eyeDrop, ahead, this.eye.pitch, g.phase, g.speed, guard, g.armRest.pos, this.eye.half, this.eye.aspect)) solve(HUMAN, this.pose, solved, set.rest, scales, this.joints);
+    } else g.punchGuard?.lower();
     if (rider?.profile && seat) fitRiderControls(this.pose, solved, set.rest, scales, rider.targets, steers, undefined, soles, grips);
     if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
   }
@@ -2178,6 +2196,7 @@ function scalesOf(g: Stride, view: Uint8Array, rest: Float32Array): Float32Array
   g.scales ??= new Float32Array(HUMAN_BONES * 3);
   for (let q = 0; q < LOOK_BYTES; q++) g.look[q] = view[q]!;
   lookScales(g.look, g.scales, rest);
+  g.armRest = undefined;
   return g.scales;
 }
 

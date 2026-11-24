@@ -4,10 +4,11 @@ import type { EngramDef, ItemDef, SpeciesDef } from "../../../shared/content/def
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_SPEND } from "../../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../../shared/sim/genome.ts";
+import { levelFraction, levelTable, xpText } from "../hud/level.ts";
 import type { ClientSession } from "../session.ts";
 import { itemLabel } from "./inventory.ts";
-import { K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
+import { K_BAR, K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
+import { S_BUTTON, S_LABEL, S_OXYGEN, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_CHAR_PANEL = 1100;
 export const KEY_CHAR_TITLE = 1101;
@@ -19,6 +20,8 @@ export const KEY_CHAR_TAB = 1104;
 export const KEY_CHAR_PAGE = 1107;
 /** Per stat: its line, then its "+" button. */
 export const KEY_CHAR_STAT = 1110;
+/** The bar under the title: how far the level is toward the next. Past the stats' keys. */
+export const KEY_CHAR_XP = 1140;
 /** Keys for a line and a button for each content index there can be. The two lists stand clear of every other key. */
 const LIST_KEYS = 2 * 65536;
 /** Per engram, in engramOrder: its line, then its button. */
@@ -76,8 +79,13 @@ export class CharacterScreen {
     const y0 = Math.round((f.height - h) / 2);
     const inner = w - PAD * 2;
     f.add(KEY_CHAR_PANEL, K_PANEL, x, y0, w, h, S_PANEL);
-    f.text(KEY_CHAR_TITLE, x + PAD, y0 + PAD, inner, S_TITLE, `Level ${p.level}  ${p.xp} xp`);
+    // The next level's threshold may have a fraction: rounded up, so it never reads as reached before it is.
+    const table = levelTable(reg), next = table?.[p.level];
+    const title = next === undefined ? `Level ${p.level} · ${xpText(p.xp)} xp` : `Level ${p.level} · ${xpText(p.xp)} / ${xpText(Math.ceil(next))} xp`;
+    f.text(KEY_CHAR_TITLE, x + PAD, y0 + PAD, inner, S_TITLE, fitText(title, inner, S_TITLE));
     let y = y0 + PAD + titleH;
+    f.add(KEY_CHAR_XP, K_BAR, x + PAD, y + 1, inner, 4, S_OXYGEN).value = levelFraction(table, p.level, p.xp);
+    y += 8;
     f.text(KEY_CHAR_POINTS, x + PAD, y, inner, S_LABEL, `${p.statPoints} stat points  ${p.engramPoints} engram points`);
     y += lh;
     const job = p.jobs[0];
@@ -98,9 +106,9 @@ export class CharacterScreen {
     const rows: { key: number; text: string; button: string; picture?: { key: number; owner: string } }[] = [];
     if (this.tab === TAB_STATS) {
       STAT_NAMES.forEach((name, i) => {
-        // Only stats a point can raise are listed. Torpidity is not one.
+        // Only stats a point can raise are listed. Torpidity is not one. A point adds its share of the stat as it began.
         const curve = species?.stats?.[name];
-        if (curve && curve[2] > 0) rows.push({ key: KEY_CHAR_STAT + i * 2, text: name, button: p.statPoints > 0 ? "+" : "" });
+        if (curve && curve[2] > 0) rows.push({ key: KEY_CHAR_STAT + i * 2, text: `${name}  +${Math.round(curve[2] * 1000) / 10}% a point`, button: p.statPoints > 0 ? "+" : "" });
       });
     } else if (this.tab === TAB_ENGRAMS) {
       engramOrder(reg, p.engrams).forEach((e, n) => {

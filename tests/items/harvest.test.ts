@@ -18,6 +18,7 @@ import { loadConfig } from "../../server/settings/config.ts";
 import { NODES_TOLD } from "../../server/harvest.ts";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { chunkCx } from "../../shared/coords.ts";
+import * as kit from "../kit/kit.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-harvest-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -332,11 +333,27 @@ test("experience earns levels, levels earn points, points buy stats and engrams,
   expect([have("core:stone"), have("core:wood"), have("core:thatch"), have("core:pick")]).toEqual([1, 0, 10, 2]);
   expect(rec.jobs.length).toBe(0);
   expect(s.progress.jobs.length).toBe(0);
-  expect(rec.xp).toBe(24); // two for each pick
+  expect(rec.xp).toBeCloseTo(23.2, 6);
   expect(items.inv(rec).dur[items.inv(rec).item.indexOf(id("core:pick"))]).toBe(60); // crafted at full durability
   expect(items.audit()).toEqual([]);
   expect(send(() => craft(s, makePick, 0))).toBe(RESULT_INVALID);
   expect(send(() => craft(s, id("core:stone")))).toBe(RESULT_INVALID);
+});
+
+test("crafting starter tools gives ARK's XP and shares half with a nearby tribemate", () => {
+  const { h, ada, me, at } = kit.camp({
+    tribe: "Crew", level: 2, items: { wood: 11, flint: 4, stone: 2, thatch: 20, fiber: 12 },
+  });
+  const bob = kit.survivor(h, "bob", { tribe: "Crew", at: { x: at.x + 3, z: at.z } });
+  const mate = kit.record(h, bob);
+  for (const [name, xp] of [["torch", 1.2], ["pick", 1.6], ["hatchet", 1.6], ["spear", 2.4]] as const) {
+    const was = me.xp, shared = mate.xp;
+    expect(kit.send(h, ada, CMD_LEARN, (w) => w.u16(kit.id(`engram-${name}`)))).toBe(RESULT_OK);
+    expect(kit.send(h, ada, CMD_CRAFT, (w) => (w.u16(kit.id(name)), w.u8(1)))).toBe(RESULT_OK);
+    expect(kit.until(h, () => kit.count(h, ada, name) === 1, 10)).toBe(true);
+    expect(me.xp - was).toBeCloseTo(xp, 6);
+    expect(mate.xp - shared).toBeCloseTo(xp / 2, 6);
+  }
 });
 
 test("a crafting job goes on across a restart, and waits when there is no room for what it makes", () => {

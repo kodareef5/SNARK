@@ -7,6 +7,7 @@ import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 import { frozenPack } from "../fixtures/pack.ts";
+import { camp, creature, id, pilot, press, record, ride, survivor, tame } from "../kit/kit.ts";
 
 function fixture(kind: string, across = 0) {
   const pack = frozenPack();
@@ -93,4 +94,32 @@ test("a mount's former rider receives no attack marker after normal dismount", (
     expect(h.host.combat.hits).toBeGreaterThan(before); expect(h.host.combat.last.by).toBe(f.rec.pid);
     h.run(100); expect(f.rider.events.filter(e => e.kind === EVENT_HIT)).toEqual([]);
   } finally { h.host.shutdown(); }
+});
+
+test("a mounted raptor harvests a corpse and shares XP with its rider and tribe", () => {
+  const { h, ada, me, at } = camp({ tribe: "Crew" });
+  const bob = survivor(h, "bob", { tribe: "Crew", at: { x: at.x + 8, z: at.z } });
+  const mount = tame(h, ada, "raptor", { saddled: true });
+  ride(h, ada, mount.e);
+  const eye = new Float64Array(3);
+  h.host.combat.eye(mount.e, eye);
+  const prey = creature(h, "dodo", { x: eye[0]!, z: eye[2]! + 1.5 });
+  h.host.survival.hurt(prey.rec, 1e6, 0);
+  h.run(2000);
+  const [body] = h.host.corpses.bodies.values();
+  expect(body).toBeDefined();
+  const middle = h.host.corpses.middle(body!);
+  h.host.combat.eye(mount.e, eye);
+  const dx = middle.x - eye[0]!, dz = middle.z - eye[2]!;
+  const controls = pilot(h, ada);
+  controls.yaw = Math.atan2(dx, dz);
+  controls.pitch = Math.atan2(middle.y - eye[1]!, Math.hypot(dx, dz));
+  h.run(200);
+  const mate = record(h, bob);
+  const mountXp = mount.rec.xp, riderXp = me.xp, mateXp = mate.xp;
+  press(h, ada, BTN_PRIMARY);
+  h.run(600);
+  const items = h.host.items.inv(mount.rec);
+  expect(items.total(id("hide")) + items.total(id("meat"))).toBeGreaterThan(0);
+  expect([mount.rec.xp - mountXp, ada.progress.xp - riderXp, bob.progress.xp - mateXp]).toEqual([1, 0.5, 0.5]);
 });

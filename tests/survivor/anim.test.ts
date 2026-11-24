@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { PoseBuilder } from "../../shared/anim/authored.ts";
 import { NO_CLIPS, Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import {
   B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_ARM_L, B_UPPER_ARM_R,
@@ -27,6 +28,27 @@ function solved(st: AnimState, tick: number, anim = coreAnim()): Solved {
 const y = (s: Solved, bone: number): number => s.pos[bone * 3 + 1]!;
 const z = (s: Solved, bone: number): number => s.pos[bone * 3 + 2]!;
 const x = (s: Solved, bone: number): number => s.pos[bone * 3]!;
+
+test("new arm and shoulder poses carry their children on both sides", () => {
+  const b = new PoseBuilder();
+  const want = new Solved(HUMAN_BONES), rotation = new Float64Array(4);
+  const check = (): void => {
+    solve(HUMAN, b.pose, want);
+    for (const bone of [B_HAND_R, B_FOOT_L, B_HAND_L, B_HEAD]) {
+      const joint = b.joint(bone);
+      b.rotation(bone, rotation, 0);
+      for (let k = 0; k < 3; k++) expect(joint[k]!).toBeCloseTo(want.pos[bone * 3 + k]!, 6);
+      for (let k = 0; k < 4; k++) expect(rotation[k]!).toBeCloseTo(want.rot[bone * 4 + k]!, 6);
+    }
+  };
+  const source = new PoseBuilder().turn(B_HIPS, 20, 30).aim(B_UPPER_ARM_R, 0, -1, 1);
+  b.from(source.pose).local(B_HAND_R, 15);
+  check();
+  b.turn(B_SHOULDER_L, -45).aim(B_UPPER_ARM_L, 1, -1, 0).straighten(B_HAND_L);
+  check();
+  b.from(new Pose(HUMAN_BONES)).level(B_HAND_R);
+  check();
+});
 
 test("quaternions turn the right way and compose in order", () => {
   const q = new Float64Array(4);
@@ -285,7 +307,7 @@ artTest("sampling a clip between frames and blending poses stay on the short way
 test("a pose state survives packing into the 32 bits that are replicated", () => {
   const a = new AnimState();
   const b = new AnimState();
-  for (const [mode, grounded, stance, speed, dir, pitch, action, start] of [[1, true, 0, 0, 0, 0, 0, 0], [2, false, 0, 15, 15, -31, 63, 255], [1, false, 2, 7, 9, 31, 37, 128], [1, true, 1, 3, 4, -1, 0, 7]] as const) {
+  for (const [mode, grounded, stance, speed, dir, pitch, action, start] of [[1, true, 0, 0, 0, 0, 0, 0], [2, false, 0, 15, 15, -31, 62, 255], [1, false, 2, 7, 9, 31, 37, 128], [1, true, 1, 3, 4, -1, 0, 7]] as const) {
     a.mode = mode;
     a.grounded = grounded;
     a.stance = stance;

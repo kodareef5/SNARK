@@ -31,6 +31,7 @@ import { VehicleContacts } from "./vehicle-contacts.ts";
 import { Entangle } from "./entangle.ts";
 import { Breeding } from "./breeding.ts";
 import { Emotes } from "./emote.ts";
+import { Experience } from "./experience.ts";
 import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
@@ -70,7 +71,7 @@ import { VehicleTrees } from "./vehicle-trees.ts";
 import { Progression } from "./progression.ts";
 import { JET_BOOTS, JET_CUIRASS, JET_HELMET, MODE_WALK, stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
-import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
+import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY, poseHold } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { walk, type System } from "./system.ts";
 import { Items } from "./items.ts";
@@ -774,6 +775,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   death.corpses = containers.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const emotes = new Emotes({ world, game });
+  const experience = new Experience({
+    world, records, game, progression,
+    awake: () => [creatures.awake, creatures.awakeCount],
+    mountOf: (rec) => {
+      const place = riding.occupancy.seatOf(rec.pid);
+      return place ? (records.byPid.get(place.host) ?? null) : null;
+    },
+    riderOf: (rec) => combat.riderOf?.(rec) ?? null,
+  });
   const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
   const balls = new Balls({
     world, game, records, items, rules, creatures, survival, buffs, taming, breeding, tribes, riding, carry, death, containers,
@@ -848,7 +858,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const e = records.entOf.get(mount.pid);
     return e === undefined ? null : (urban.riderOf(e) ?? riding.riderOf(e) ?? carry.carrierOf(e));
   };
-  if (harvest) harvest.riderOf = combat.riderOf;
   combat.damageModifier = rec => creatureTraits.damageOf(rec);
   combat.resistanceModifier = rec => creatureTraits.takenOf(rec);
   const impale = new CreatureImpale({ world, records, survival,
@@ -1855,7 +1864,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;
       const loaded = works ? inv.loaded[slot]! : 0;
       const ammo = works ? combat.ammoFor(rec, slot) : 0;
-      ents.hold[e] = arms >= 0 ? HOLD_CARRY : params.hold;
+      ents.hold[e] = arms >= 0 ? HOLD_CARRY : poseHold(params);
       ents.rounds[e] = loaded;
       ents.reloadTo[e] = works ? Math.min(params.clip, (ammo === inv.ammo[slot] ? loaded : 0) + (ammo !== 0 ? inv.total(ammo) : 0)) : 0;
       // A change of held item stops its action and starts the equip delay.
@@ -1933,6 +1942,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     { beforeStep: () => void (game.players.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
     carry,
     emotes,
+    experience,
     mark(PART.riders),
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat,

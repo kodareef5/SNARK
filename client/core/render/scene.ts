@@ -1091,6 +1091,7 @@ export class Scene {
     if (own && ch.has(own.kind)) {
       ch.eye.pitch = cam.pitch;
       ch.eye.half = cam.fovY / 2;
+      ch.eye.aspect = cam.aspect;
       let seat: VehicleSeatPose | undefined;
       let saddled = false, impaled = false;
       this.ownRiderFit.profile = 0;

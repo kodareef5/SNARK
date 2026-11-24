@@ -14,6 +14,7 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { IMPALE_SLOT, type Seat } from "../../shared/sim/seats.ts";
 import { supplyName } from "../../shared/sim/supply.ts";
+import { W_MELEE } from "../../shared/sim/weapon.ts";
 import { kindWords, type Buildings } from "../../shared/world/buildings.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
@@ -362,8 +363,14 @@ export class Prompts implements FramePart {
     // A node without a material is a bush, picked with the use key. Trees and rocks are struck. What is left of a used-up one is neither.
     const def = reg.defs[s.nodeField.standing(Math.floor(node / 65536), node & 0xffff)];
     if (def?.type !== "node") return "";
-    const what = def.id.slice(def.id.indexOf(":") + 1);
-    return def.material === undefined ? `E  pick ${what}` : `hold click  gather from ${what}`;
+    const what = def.id.slice(def.id.indexOf(":") + 1).replaceAll("_", " ");
+    if (def.material === undefined) return `E  pick ${what}`;
+    const weapon = reg.weapon[s.own.held];
+    if (!s.weaponsAllowed || s.own.glide !== 0 || (weapon && weapon.kind !== W_MELEE)) return "";
+    const reach = reg.reach[weapon ? s.own.held : s.own.kind]!;
+    if (best > reach) return `Move closer to gather from ${what}`;
+    const button = f.ui.touch ? "Attack" : f.ui.inputDevice === 1 ? "RT" : "LMB";
+    return `Hold ${button} to gather from ${what}`;
   }
 
   /** A saddled creature to ride: its steering seat if it is free, else a passenger's. */

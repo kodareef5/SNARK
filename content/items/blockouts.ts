@@ -83,7 +83,7 @@ const ARMS: Def[] = [
   // Torch: weight 1, melee 10, durability 40; 1 flint, 1 wood and 1 stone in the hand; level 1 and no points. It strikes.
   // Its light, its warmth and the fire it sets are not built.
   { type: "item", class: "weapon", id: id("torch"), stack: 1, weight: 1, color: 3, weapon: { kind: "melee", damage: 10, type: "melee", uses: 40, mesh: BOX, hold: "tool" } },
-  ...made("torch", "Torch", 1, 0, 1, 5, [["flint", 1], ["wood", 1], ["stone", 1]], undefined),
+  ...making("torch", "Torch", 1, 0, 1, 5, [["flint", 1], ["wood", 1], ["stone", 1]], 1.2),
   // Pike: weight 10, melee 50; durability 40 at 0.15 a use, 267 uses; 10 ingots, 10 wood and 20 hide at the smithy; level
   // 25, 10 points, after the spear. It is not thrown. Its reach, half a metre past the spear's, is chosen.
   { type: "item", class: "weapon", id: id("pike"), stack: 1, weight: 10, color: 2, weapon: { kind: "melee", damage: 50, type: "pierce", reach: 3.5, uses: 267, mesh: BOX, hold: "spear" } },
@@ -95,7 +95,7 @@ const ARMS: Def[] = [
   // Metal Pick and Metal Hatchet: weight 2, melee 32 and 40; durability 40 at 0.075 a use, 533 uses; 1 ingot (the
   // hatchet 8), 1 wood and 10 hide at the smithy; level 20, 6 points, the hatchet after the stone one. ARK gives no
   // number for how much more they gather than stone ones: 5 times bare hands, where a stone tool is 3, is chosen.
-  { type: "item", class: "weapon", id: id("pick_metal"), label: "metal pick", stack: 1, weight: 2, color: 2, tool: { on: "stone", power: 5, uses: 533 }, weapon: { kind: "melee", damage: 32, type: "melee", torpor: 0.5, uses: 533, mesh: BOX, hold: "tool" } },
+  { type: "item", class: "weapon", id: id("pick_metal"), label: "metal pick", stack: 1, weight: 2, color: 2, tool: { on: "stone", power: 5, uses: 533 }, weapon: { kind: "melee", damage: 32, type: "melee", torpor: 0.5, uses: 533, mesh: BOX, hold: "tool", swing: "pick" } },
   ...made("pick_metal", "Metal pick", 20, 6, 1, 5, [["ingot", 1], ["wood", 1], ["hide", 10]], "smithy"),
   { type: "item", class: "weapon", id: id("hatchet_metal"), label: "metal hatchet", stack: 1, weight: 2, color: 2, tool: { on: "wood", power: 5, uses: 533 }, weapon: { kind: "melee", damage: 40, type: "melee", uses: 533, mesh: BOX, hold: "tool" } },
   ...made("hatchet_metal", "Metal hatchet", 20, 6, 1, 5, [["ingot", 8], ["wood", 1], ["hide", 10]], "smithy", ["hatchet"]),

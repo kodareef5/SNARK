@@ -6,12 +6,12 @@ import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatIdentity, quatMul, quatMulConj, quatNlerp, quatRotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
 import { FlightJoints, footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
-import { B_FOOT_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_LOWER_ARM_L, B_LOWER_ARM_R, B_CHEST, B_HAND_L, B_HAND_R, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES } from "./human.ts";
+import { B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_PROP_L, B_PROP_R, B_FOOT_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_LOWER_ARM_L, B_LOWER_ARM_R, B_CHEST, B_HAND_L, B_HAND_R, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES } from "./human.ts";
 import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
 import { bootThrust, GLIDE_DIVING, GLIDE_FLARED, GLIDE_TRIM, JET_DASH, JET_FIST, JET_UP, JET_HOVER, JET_LIFT, MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
-import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, POSE_LAUNCHER, POSE_PLAIN, SWING_TICKS } from "../sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PICK, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN, SWING_TICKS } from "../sim/weapon.ts";
 import { cradle } from "./hold.ts";
 import { emotePose } from "./emote.ts";
 import { EMOTES, emoteClipId } from "./emotes.ts";
@@ -188,6 +188,9 @@ export function hurtStage(health: number, max: number): number {
   return health >= max * 0.5 ? 1 : health >= max * 0.25 ? 2 : 3;
 }
 
+/** In the word alone: a swing that is a pick's blow. No body's act is ever this (shared/sim/weapon.ts stops at ACT_COOL). */
+const ACT_PICK = 7;
+
 /** Everything a pose depends on besides the tick, as whole numbers. */
 export class AnimState {
   mode = MODE_WALK;
@@ -205,6 +208,8 @@ export class AnimState {
   /** The act (shared/sim/weapon.ts) in the low three bits, then the hold (HOLD_*) in three. actionStart is the low byte of the act's first tick. */
   action = 0;
   actionStart = 0;
+  /** A swing that is a pick's blow. The word says so with the act no body has, ACT_PICK, in place of the swing's. */
+  pick = false;
   /** Ticks added to the clock so that bodies are out of step. Not replicated. It comes from the entity's index (bodySeed). */
   seed = 0;
   /** A creature's cues, as the word CUE_BITS describes. */
@@ -275,7 +280,8 @@ export class AnimState {
         : this.mode === MODE_FLYER
         ? this.speed | ((this.bank & 15) << 4) | (ANIM_FLYING << 8) | ((this.climb & 3) << 10)
         : this.speed | (this.dir << 4) | (this.stance << 8) | (this.mode === MODE_SWIM ? 1 << 10 : 0) | (this.grounded ? 0 : 1 << 11);
-    return (motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (this.action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 6))) >>> 0;
+    const action = this.pick ? (this.action & ~7) | ACT_PICK : this.action;
+    return (motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 6))) >>> 0;
   }
 
   /** The cues as one word. A cue that is none stores a start of 0. */
@@ -287,9 +293,10 @@ export class AnimState {
     return ((this.out ? CUE_OUT : 0) | cue | layer | lasting) >>> 0;
   }
 
-  /** ACT_NONE stores a start of 0. */
+  /** ACT_NONE stores a start of 0. `hold` may carry HOLD_PICK (poseHold in shared/sim/weapon.ts). */
   setAction(act: number, hold: number, start: number): void {
     this.action = (act & 7) | ((hold & 7) << 3);
+    this.pick = act === ACT_SWING && (hold & HOLD_PICK) !== 0;
     this.actionStart = act === ACT_NONE ? 0 : start & 255;
   }
 
@@ -369,6 +376,8 @@ export class AnimState {
     const look = (word >>> ANIM_LOOK_SHIFT) & 63;
     this.pitch = look >= 32 ? look - 64 : look;
     this.action = (word >>> ANIM_ACTION_SHIFT) & 63;
+    this.pick = (this.action & 7) === ACT_PICK;
+    if (this.pick) this.action = (this.action & ~7) | ACT_SWING;
     this.actionStart = (word >>> (ANIM_ACTION_SHIFT + 6)) & 255;
   }
 
@@ -432,6 +441,14 @@ export class HumanAnim {
   readonly proneCrawl: Clip | null;
   readonly punch: Clip | null;
   readonly punchCross: Clip | null;
+  /** The blows of shared/anim/strikes.ts, and a tool as it is carried. */
+  readonly jab: Clip | null;
+  readonly cross: Clip | null;
+  readonly chopA: Clip | null;
+  readonly chopB: Clip | null;
+  readonly pickA: Clip | null;
+  readonly pickB: Clip | null;
+  readonly toolCarry: Clip | null;
   readonly toolSwing: Clip | null;
   readonly throwing: Clip | null;
   readonly bowReady: Clip | null;
@@ -484,6 +501,13 @@ export class HumanAnim {
     this.proneCrawl = find("human/prone_crawl");
     this.punch = find("human/punch");
     this.punchCross = find("human/punch_cross");
+    this.jab = find("human/jab");
+    this.cross = find("human/cross");
+    this.chopA = find("human/chop_a");
+    this.chopB = find("human/chop_b");
+    this.pickA = find("human/pick_a");
+    this.pickB = find("human/pick_b");
+    this.toolCarry = find("human/tool_carry");
     this.toolSwing = find("human/tool_swing");
     this.throwing = find("human/throw");
     this.bowReady = find("human/bow_ready");
@@ -572,9 +596,30 @@ const PITCH_HEAD = 0.3;
 const UPPER_FROM = B_SPINE;
 const UPPER_TO = B_UPPER_LEG_L;
 const HANDS_FROM = B_FINGERS_L;
-/** Ticks to blend a swing in and out. */
+/** Ticks to ease a swing in and out. A blow of shared/anim/strikes.ts leaves and meets its rest pose within them. */
 const SWING_IN = 2;
-const SWING_OUT = 3;
+const SWING_OUT = 4;
+/** A carried tool is on the right arm alone: the shoulder through the hand, then its fingers, prop and fingertips. */
+const CARRY_FROM = B_SHOULDER_R;
+const CARRY_TO = B_UPPER_LEG_L;
+
+/** 0 to 1, leaving and arriving level. */
+export function smooth(t: number): number {
+  return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+}
+
+/** Ticks since a state's act began, at `tick`. A pose drawn a moment before the act's first tick wraps above 250, and that counts as 0. */
+export function actElapsed(st: AnimState, tick: number): number {
+  if ((st.action & 7) === ACT_NONE) return 0;
+  let e = (tick - st.actionStart) % 256;
+  if (e < 0) e += 256;
+  return e > 250 ? 0 : e;
+}
+
+/** How much of a swing `e` ticks old is in the pose, 0 to 1. */
+export function swingShare(e: number): number {
+  return smooth(e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT);
+}
 
 /** Ticks for a bow to come up as the draw begins and go down after the shot, and for a gun to come down for loading. */
 const BOW_RAISE = 9;
@@ -852,10 +897,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   const act = st.action & 7;
   // Both hands are on a glider's handles, whatever the body had in them.
   const hold = st.glide && !st.grounded ? HOLD_HANDS : st.action >>> 3;
-  // Ticks since the act began. A pose drawn a moment before the act's first tick wraps above 250, and that counts as 0.
-  let e = act === ACT_NONE ? 0 : (tick - st.actionStart) % 256;
-  if (e < 0) e += 256;
-  if (e > 250) e = 0;
+  const e = actElapsed(st, tick);
   /** How far the arms are up and aimed, 0 to 1. Raised arms follow the whole look pitch, not only the spine's share. */
   let raised = 0;
   let kick = 0;
@@ -921,13 +963,30 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     }
   }
 
+  // A tool is carried with the forearm ahead, and comes up there as it is taken in hand. A swimmer and a crawler need the arm.
+  if (hold === HOLD_TOOL && anim.toolCarry && st.mode === MODE_WALK && (st.stance !== STANCE_PRONE || !st.grounded)) {
+    const up = act === ACT_EQUIP ? smooth(e / EQUIP_TICKS) : 1;
+    sampleClip(anim.toolCarry, 0, a);
+    blendPose(out, out, a, up, CARRY_FROM, CARRY_TO);
+    blendPose(out, out, a, up, B_FINGERS_R, B_PROP_L);
+    blendPose(out, out, a, up, B_PROP_R, B_FINGERTIPS_L);
+    blendPose(out, out, a, up, B_FINGERTIPS_R, HUMAN_BONES);
+  }
+
   if (act === ACT_SWING && hold !== HOLD_CARRY) {
-    const clip = hold === HOLD_HANDS ? ((st.actionStart & 1) !== 0 ? (anim.punchCross ?? anim.punch) : anim.punch) : hold === HOLD_THROW ? anim.throwing : anim.toolSwing;
-    const k = e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT;
+    // Fists and tools strike by turns: a jab then a cross, one chop then the other.
+    const odd = (st.actionStart & 1) !== 0;
+    const clip =
+      hold === HOLD_HANDS ? ((odd ? anim.cross : anim.jab) ?? (odd ? (anim.punchCross ?? anim.punch) : anim.punch))
+      : hold === HOLD_TOOL ? ((st.pick ? (odd ? anim.pickB : anim.pickA) : odd ? anim.chopB : anim.chopA) ?? anim.toolSwing)
+      : hold === HOLD_THROW ? anim.throwing : anim.toolSwing;
+    const k = swingShare(e);
     if (clip && k > 0) {
       sampleClip(clip, (e / SWING_TICKS) * (clip.frames - 1), a);
       blendPose(out, out, a, k, UPPER_FROM, UPPER_TO);
       blendPose(out, out, a, k, HANDS_FROM, HUMAN_BONES);
+      // A blow goes where the look does: the arms take the pitch the spine does not.
+      if (hold === HOLD_HANDS || hold === HOLD_TOOL) raised = k;
     }
   }
 

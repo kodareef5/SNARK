@@ -81,3 +81,11 @@ test("a city piece's rows are left to its cell, and other rows are heard as befo
   hears(k("core:wall_stone"), 0, 1, 0, 1, 100, 0, GONE_TAKEN);
   expect(run().map(([key]) => key)).toEqual(["place/stone", "hit/stone", "door/open/wood", "demolish"]);
 });
+
+test("tree and rock contacts play their own surface sounds once", () => {
+  const { build, run } = sounds();
+  build.nodeStrike(k("core:tree"), 1, 2, 3);
+  build.nodeStrike(k("core:rock"), 4, 5, 6);
+  expect(run().map(([key]) => key)).toEqual(["struck/wood", "struck/stone"]);
+  expect(run()).toEqual([]);
+});

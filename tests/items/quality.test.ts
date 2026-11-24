@@ -140,7 +140,7 @@ test("a blueprint makes its item in the hands with no engram, at its quality's c
   // Journeyman, 105 uses of 60 at 1.75, and four times the 2 experience, as ARK gives for the quality made.
   const made = slotOf(inv, hatchet);
   expect([inv.total(hatchet), inv.quality[made], inv.dur[made], inv.flags[bp], inv.quality[bp]]).toEqual([1, 3, 105, FLAG_BLUEPRINT, 3]);
-  expect(rec.xp - xp).toBeCloseTo(2 * QUALITY_CRAFT_XP[3]! * h.host.rules.num("XPMultiplier") * h.host.rules.num("CraftXPMultiplier"), 6);
+  expect(rec.xp - xp).toBeCloseTo(1.6 * QUALITY_CRAFT_XP[3]! * h.host.rules.num("XPMultiplier") * h.host.rules.num("CraftXPMultiplier"), 6);
   // The second unit started at once and took its share. Dropped, the blueprint is gone from the bag, so the third never starts.
   expect(inv.total(id("flint"))).toBe(3);
   expect(send(h, s, CMD_DROP, (w) => (w.varint(bp), w.u16(0), w.u16(hatchet)))).toBe(RESULT_OK);

@@ -109,6 +109,7 @@ async function start(): Promise<void> {
   };
   const choose = (key: string): void => {
     move = groups.flatMap((g) => g.moves).find((m) => m.key === key) ?? null;
+    actors.gear[GEAR_HELD] = move?.item ? reg.index.get(move.item) ?? 0 : 0;
     list.value = key;
     clip = null;
   };
@@ -196,7 +197,7 @@ async function start(): Promise<void> {
       if (now !== clip) {
         clip = now;
         if (clip) {
-          play.start(clip.frames, clip.loop);
+          play.start(clip.frames, clip.loop, move?.durationTicks);
           loop.checked = clip.loop;
         }
       }

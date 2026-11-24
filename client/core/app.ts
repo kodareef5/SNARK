@@ -51,6 +51,7 @@ import { isSkateboard } from "../../shared/sim/vehicle.ts";
 import { thrustersOf } from "../../shared/sim/vehicle-thrusters.ts";
 import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD } from "../../shared/sim/character.ts";
 import { CUE_HELD } from "../../shared/anim/pose.ts";
+import { FISTS, SWING_TICKS } from "../../shared/sim/weapon.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
 import { SeatedAim } from "./seated-aim.ts";
@@ -826,6 +827,17 @@ export class App {
       this.sounds = new code.Sounds(this.stream!.manifest, this.split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
       code.hearSession(session, this.sounds);
       this.ui.hear = (key) => this.sounds?.hearUi(code.cueKey(key));
+    }
+    const strike = session.strike;
+    session.strike = null;
+    if (strike && session.sessionState === SESSION_ALIVE && !session.airCamera.id && session.driving < 0) {
+      if (f.body.firstPerson && session.tickClock - strike.tick < 4) scene.characters.eye.strikeAt = session.tickClock;
+      // After this swing's recovery an old hit would kick the next swing.
+      if (session.tickClock - strike.tick < SWING_TICKS - FISTS.strikeTick && this.ui.settings.viewKick) this.sight.struck(f.nowMs);
+      if (strike.node && session.serverTick - strike.tick < SWING_TICKS) {
+        scene.details.nodeStrike(strike.node, strike.x, strike.y, strike.z, strike.tick, session.renderClock - session.remoteDelay);
+        this.sounds?.build.nodeStrike(strike.node, strike.x, strike.y, strike.z);
+      }
     }
     const trees = session.predictedTrees;
     if (trees) for (const event of trees.present()) {

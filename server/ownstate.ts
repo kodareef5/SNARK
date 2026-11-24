@@ -8,7 +8,7 @@
 // server/overhead.ts on its own clock.
 
 import type { BitWriter } from "../shared/net/codec.ts";
-import { OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_RULES, OWN_SLOTS, OWN_STATION, OWN_TRIBE, OWN_VITALS, OWN_VOICE } from "../shared/net/protocol.ts";
+import { OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_RULES, OWN_SLOTS, OWN_STATION, OWN_TRIBE, OWN_VITALS, OWN_VOICE, OWN_XP } from "../shared/net/protocol.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { EntityRecord } from "./records.ts";
 
@@ -17,7 +17,7 @@ import type { EntityRecord } from "./records.ts";
  * order protocol.ts declares them in, and tests compare the bytes. A kind not named here follows these, in protocol.ts's
  * order, so a new kind needs no line here.
  */
-const ORDER: readonly number[] = [OWN_LOOK, OWN_VITALS, OWN_SLOTS, OWN_RULES, OWN_VOICE, OWN_TRIBE, OWN_BUFFS, OWN_HELD, OWN_OPEN, OWN_STATION, OWN_MARKERS, OWN_PROGRESSION, OWN_RESPAWN];
+const ORDER: readonly number[] = [OWN_LOOK, OWN_VITALS, OWN_SLOTS, OWN_RULES, OWN_VOICE, OWN_TRIBE, OWN_BUFFS, OWN_HELD, OWN_OPEN, OWN_STATION, OWN_MARKERS, OWN_XP, OWN_PROGRESSION, OWN_RESPAWN];
 
 /** A kind that is sent whole whenever its version changes. */
 export interface OwnKind<V> {

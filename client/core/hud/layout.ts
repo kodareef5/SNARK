@@ -5,7 +5,7 @@ import { JET_FULL_SUIT } from "../../../shared/sim/character.ts";
 import type { HudModel } from "../hud.ts";
 import type { Settings } from "../settings.ts";
 import { lineHeight, type UiFrame } from "../ui/nodes.ts";
-import { S_TEXT } from "../ui/style.ts";
+import { S_HUD_KEY, S_TEXT } from "../ui/style.ts";
 import type { TouchPlan } from "../ui/touch.ts";
 import { MINIMAP_SIZE } from "./minimap.ts";
 import type { HudLayout } from "./widget.ts";
@@ -35,8 +35,11 @@ export function hotbarCell(f: UiFrame, slots: number): number {
 export function hotbarLeft(f: UiFrame, slots: number): number {
   return Math.round((f.width - (slots * (hotbarCell(f, slots) + 3) - 3)) / 2);
 }
+export function hotbarBottom(f: UiFrame): number {
+  return f.height - f.bottom - lineHeight(S_HUD_KEY) - 1;
+}
 export function hotbarTop(f: UiFrame, slots: number): number {
-  return f.height - f.bottom - MARGIN - hotbarCell(f, slots);
+  return hotbarBottom(f) - hotbarCell(f, slots);
 }
 
 /** A canvas narrower than this is a phone's upright, or a window as narrow: the minimap keeps the top right, and the readout keeps left of it. */

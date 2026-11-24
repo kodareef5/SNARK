@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { Readers } from "../../client/core/readers.ts";
 import { BitReader } from "../../shared/net/codec.ts";
-import { OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_PROGRESSION, OWN_RULES, OWN_SESSION, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, OWN_VOICE, S_OWN, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_PROGRESSION, OWN_RULES, OWN_SESSION, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, OWN_VOICE, OWN_XP, S_OWN, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -34,7 +34,7 @@ test("a registered kind of owner state is sent in its place, and when it changes
   h.run(400);
   // The kinds a survivor with nothing open is first sent, in the order they are written. A kind the order does not name is last.
   const first = sent.map((m) => m[0]!).filter((k) => k !== OWN_SESSION);
-  expect(first.slice(0, 11)).toEqual([OWN_LOOK, OWN_VITALS, OWN_SLOTS, OWN_RULES, OWN_VOICE, OWN_TRIBE, OWN_BUFFS, OWN_HELD, OWN_MARKERS, OWN_PROGRESSION, OWN_TEST]);
+  expect(first.slice(0, 12)).toEqual([OWN_LOOK, OWN_VITALS, OWN_SLOTS, OWN_RULES, OWN_VOICE, OWN_TRIBE, OWN_BUFFS, OWN_HELD, OWN_MARKERS, OWN_XP, OWN_PROGRESSION, OWN_TEST]);
   const mine = (list: number[][]): number[][] => list.filter((m) => m[0] === OWN_TEST);
   expect(mine(sent)).toEqual([[OWN_TEST, 7]]);
 
@@ -74,4 +74,19 @@ test("a session ignores a message and an owner kind that have no reader", () => 
   const r = new BitReader();
   r.reset(new Uint8Array([9]));
   expect([table.read(4, ada, r), table.read(3, ada, r), read]).toEqual([false, true, [9]]);
+});
+
+test("a gain of experience sends twelve bytes; a level sends the engrams and points too", () => {
+  const h = new Harness({}, 1, 30, { dev: true });
+  const ada = h.join("ada");
+  h.run(400);
+  h.say(ada, "enablecheats");
+  const sent = ownSent(h, 0);
+  h.say(ada, "addxp 2.5");
+  expect(sent.filter((m) => m[0] === OWN_XP || m[0] === OWN_PROGRESSION).map((m) => [m[0], m.length - 1])).toEqual([[OWN_XP, 12]]);
+  expect([ada.progress.xp, ada.progress.level]).toEqual([2.5, 1]);
+  sent.length = 0;
+  h.say(ada, "addxp 2.5");
+  expect(sent.filter((m) => m[0] === OWN_XP || m[0] === OWN_PROGRESSION).map((m) => m[0])).toEqual([OWN_XP, OWN_PROGRESSION]);
+  expect([ada.progress.xp, ada.progress.level, ada.progress.statPoints, ada.progress.engramPoints]).toEqual([5, 2, 1, 8]);
 });

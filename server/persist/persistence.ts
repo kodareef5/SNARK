@@ -115,6 +115,8 @@ export class Persistence {
   private callbacks: (() => void)[] = [];
   private cursor = 0;
   private savedAt = 0;
+  /** Each tracked body earns one tick toward the next position write per tick. */
+  private positionRemainder = 0;
   private checkpointAt = 0;
   private checkpointed = 0;
 
@@ -144,6 +146,7 @@ export class Persistence {
       this.records.nextSeq = Number(store.meta("next_seq"));
       this.records.nextTeam = Number(store.meta("next_team"));
     }
+    this.savedAt = world.tick;
     // The world holds the map's statics. What changed of them, and what was built, is laid over them.
     const structures = store.loadChunks(world.structs);
     this.dirtyChunks.clear();
@@ -336,6 +339,12 @@ export class Persistence {
     const callbacks = this.callbacks;
     this.callbacks = [];
 
+    const history = world.history;
+    // A clock jump earns at most a second of position writes in one commit.
+    const elapsed = Math.min(TICK_RATE, world.tick - this.savedAt);
+    const positionWork = this.positionRemainder + history.rows * elapsed;
+    const positions = Math.floor(positionWork / this.opts.positionTicks);
+    let cursor = this.cursor;
     try {
       store.transaction(() => {
         // A chunk's row is what differs from the map, and a chunk that stands as placed again loses its row.
@@ -355,15 +364,9 @@ export class Persistence {
           store.saveEntity(rec);
         }
         for (const pid of records.deleted) store.deleteEntity(pid);
-        // Positions go a slice at a time, over the bodies that can have moved: history tracks awake creatures and players'
-        // bodies. A creature that falls asleep is saved then (Creatures.sleep), so sleeping ones cost nothing here.
-        const history = world.history;
-        // At most a second's share at once, so a clock that jumps (a test, a benchmark) does not save every body in one commit.
-        const n = Math.ceil((history.rows * Math.min(TICK_RATE, world.tick - this.savedAt)) / this.opts.positionTicks);
-        this.savedAt = world.tick;
-        for (let i = 0; i < n; i++) {
-          if (this.cursor >= history.rows) this.cursor = 0;
-          const ent = history.tracked(this.cursor++);
+        for (let i = 0; i < positions; i++) {
+          if (cursor >= history.rows) cursor = 0;
+          const ent = history.tracked(cursor++);
           const pid = world.ents.pid[ent]!;
           if (pid === 0 || records.dirty.has(pid)) continue;
           const rec = records.byPid.get(pid);
@@ -398,6 +401,9 @@ export class Persistence {
       throw err;
     }
 
+    this.cursor = cursor;
+    this.positionRemainder = positionWork % this.opts.positionTicks;
+    this.savedAt = world.tick;
     // The dirty sets are cleared and the callbacks run only after the transaction succeeds.
     for (const chunk of this.dirtyChunks) {
       this.hurtChunks.delete(chunk);
