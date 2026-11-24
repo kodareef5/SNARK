@@ -13,11 +13,10 @@ import type { CarState, VehicleInput, VehicleSpec, VehicleState, VehicleStep, Ve
 
 const q = new Float64Array(4), up = new Float64Array(3), ahead = new Float64Array(3), local = new Float64Array(3), pointV = new Float64Array(3);
 interface Wheel { x: number; y: number; z: number; nx: number; ny: number; nz: number; load: number; offset: number; closing: number; front: boolean; surface: VehicleSurface }
-const wheels: Wheel[] = [];
 const command = (n: number, lo: number, hi: number): number => Number.isFinite(n) ? clamp(n, lo, hi) : 0;
 
 
-function wheelSupports(s: VehicleState, p: VehicleSpec, w: VehicleWorld, mass: number): void {
+function wheelSupports(s: VehicleState, p: VehicleSpec, w: VehicleWorld, mass: number, wheels: Wheel[]): void {
   wheels.length = 0;
   if (up[1]! < .15) return;
   const travel = p.suspensionTravel ?? .18, mount = p.wheelRadius + travel, gravity = p.gravity ?? 18;
@@ -71,6 +70,8 @@ export interface VehicleTick {
   throttle: number; steer: number; brake: number; gravity: number; mass: number; ix: number; iy: number; iz: number; massRatio: number;
   drivetrain: NonNullable<VehicleSpec["drivetrain"]>; thrusters: VehicleSpec["thrusters"]; restingContact: boolean; beforeFuel: number;
   startX: number; startY: number; startZ: number; startQx: number; startQy: number; startQz: number; startQw: number;
+  /** The tyres on the ground this substep: this tick's own, so a pair stepped together never reads the other's. */
+  wheels: Wheel[];
 }
 
 export function beginVehicleTick(s: ChassisState, input: VehicleInput, p: VehicleSpec, w: VehicleWorld): VehicleTick {
@@ -91,12 +92,12 @@ export function beginVehicleTick(s: ChassisState, input: VehicleInput, p: Vehicl
   if (thrusters) beginThrusterTick(s, input.pilot === false ? { throttle: 0, steer: 0 } : { boost: input.boost, burst: input.burst, throttle, steer }, thrusters);
   vehicleRotation(s, q);
   return { s: s as TickState, input, p, w, result, contacts, throttle, steer, brake, gravity, mass, ix, iy, iz, massRatio, drivetrain, thrusters, restingContact: false, beforeFuel,
-    startX: s.x, startY: s.y, startZ: s.z, startQx: q[0]!, startQy: q[1]!, startQz: q[2]!, startQw: q[3]! };
+    startX: s.x, startY: s.y, startZ: s.z, startQx: q[0]!, startQy: q[1]!, startQz: q[2]!, startQw: q[3]!, wheels: [] };
 }
 
 /** Substep `substep` of four. */
 export function vehicleSubstep(t: VehicleTick, substep: number): void {
-  const { s, input, p, w, result, contacts, throttle, steer, brake, gravity, mass, ix, iy, iz, massRatio, drivetrain, thrusters } = t, dt = TICK_DT / 4;
+  const { s, input, p, w, result, contacts, throttle, steer, brake, gravity, mass, ix, iy, iz, massRatio, drivetrain, thrusters, wheels } = t, dt = TICK_DT / 4;
   integrateVehiclePose(s, p, 0); vehicleRotation(s, q);
   if (substep === 0) separateVehicleOverlap(s, contacts);
   quatRotate(q, 0, 0, 1, 0, up, 0); quatRotate(q, 0, 0, 0, 1, ahead, 0);
@@ -106,7 +107,7 @@ export function vehicleSubstep(t: VehicleTick, substep: number): void {
   const forward = s.vx * ahead[0]! + s.vy * ahead[1]! + s.vz * ahead[2]!;
   const limit = p.maxSteer / (1 + square(Math.abs(forward) / (p.steerSpeed ?? 18)));
   s.steering = approach(s.steering, steer * limit, p.steerRate * (steer === 0 ? 1.35 : 1) * dt);
-  wheelSupports(s, p, w, mass);
+  wheelSupports(s, p, w, mass, wheels);
   s.grounded = wheels.some(wheel => wheel.load > mass * gravity * .01);
   const mechanical = stepDrivetrain(s, { throttle, forward, wheelRadius: p.wheelRadius, running: s.engineOn,
     disengaged: brake > 0 || input.handbrake || !s.grounded || water.immersion > .75, neutral: input.neutral === true }, drivetrain, dt);
@@ -208,7 +209,7 @@ export function vehicleSubstep(t: VehicleTick, substep: number): void {
 }
 
 export function endVehicleTick(t: VehicleTick): VehicleStep {
-  const { s, p, w, result, contacts, thrusters, beforeFuel, startX, startY, startZ, startQx, startQy, startQz, startQw } = t;
+  const { s, p, w, result, contacts, thrusters, beforeFuel, startX, startY, startZ, startQx, startQy, startQz, startQw, wheels } = t;
   if (thrusters) endThrusterTick(s, thrusters);
   if (!t.restingContact && wheels.length === 0 && len3(s.vx, s.vy, s.vz) < .4 && len3(s.pitchRate, s.yawRate, s.rollRate) < .4) {
     separateVehicleOverlap(s, contacts);
