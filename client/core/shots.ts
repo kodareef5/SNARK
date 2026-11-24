@@ -153,7 +153,7 @@ export class Shots {
         this.line(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, s.x + d[0]! * reach, s.y + d[1]! * reach, s.z + d[2]! * reach, nowMs);
       } else {
         const speed = launchSpeed(full, s.draw);
-        this.fly(world, s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, 0, silenced, nowMs);
+        this.fly(world, s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs);
       }
     }
     session.fired.length = 0;
@@ -220,7 +220,8 @@ export class Shots {
 
   /**
    * A round of `ammo` left (x, y, z) `back` ticks ago, as its shooter saw it. It is flown that far at once, against the world
-   * alone, so that it is drawn where the server's is and comes when its harm does; its own shooter's has `back` 0.
+   * alone, so that it is drawn where the server's is and comes when its harm does. `back` is -1 for its own shooter's,
+   * which leaves now from ahead of the eye.
    */
   private fly(world: CollisionWorld, x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number, back: number, silenced: boolean, nowMs: number): void {
     const mesh = this.meshOfAmmo[ammo] ?? -1;
@@ -230,8 +231,8 @@ export class Shots {
     if (lit >= 0 && !silenced) {
       const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
       // Another's leaves its eye, as the server said, so its flash is put ahead of that as its own shot's start is.
-      const ahead = back > 0 && speed > 0 ? AHEAD / speed : 0;
-      this.flash(x + vx * ahead, y + vy * ahead - (back > 0 ? BELOW : 0), z + vz * ahead, nowMs, lit, BOLT_FLASH * size, BOLT_FLASH_MS);
+      const ahead = back >= 0 && speed > 0 ? AHEAD / speed : 0;
+      this.flash(x + vx * ahead, y + vy * ahead - (back >= 0 ? BELOW : 0), z + vz * ahead, nowMs, lit, BOLT_FLASH * size, BOLT_FLASH_MS);
     }
     const f: Flying = { x, y, z, vx, vy, vz, gravity: this.reg.ammoGravity[ammo]!, mesh, ammo, left: this.reg.ammoFlightTicks[ammo]!, age: 0, flown: 0 };
     for (let k = 0; k < back; k++) if (!this.advance(f, world, null, nowMs)) return;

@@ -175,7 +175,9 @@ test("the fabricator makes the shock dart, the flashlight and laser, the poison 
   const makes = recipes;
   // The soul ball and its vault are ARK's Cryopod and Cryofridge, whose numbers tests/creatures/balls.test.ts holds. The
   // freight order is what an air support call spends (content/vehicles/air-freight.ts).
+  // The plasma guns and what they fire are ours, in place of ARK's Tek Replicator (tests/combat/plasma.test.ts).
   const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly", "soul_ball", "piece_soul_vault", "freight_order",
+    "rifle_plasma", "pistol_plasma", "plasma_cell", "plasma_charge",
     ...["hat", "shirt", "gloves", "pants", "boots"].map(piece => `meridian_${piece}`)].sort();
   expect([makes("fabricator"), makes("fabricator_lit")]).toEqual([expected, expected]);
   // The vault weighs 20 and stacks to 1 (Vault).

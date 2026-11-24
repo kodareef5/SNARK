@@ -111,7 +111,7 @@ artTest("the content hangs together: every engram can be reached, every thing th
   const weapons = items.filter((d) => d.weapon && !d.ball && !blocked.has(d.id));
   const balls = items.filter((d) => d.ball);
   expect(balls.map((d) => [d.id.slice(5), d.weapon?.kind, d.craft !== undefined, pack.header.meshes[pack.meshIndex.get(d.weapon!.mesh!)!]!.skeleton])).toEqual([["soul_ball", "thrown", true, "human"], ["soul_ball_full", "thrown", false, "human"]]);
-  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bola", "bow", "club", "crossbow", "flare_gun", "grenade", "grenade_poison", "grenade_smoke", "hatchet", "pick", "pistol", "rifle", "shotgun", "slingshot", "spear"]);
+  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bola", "bow", "club", "crossbow", "flare_gun", "grenade", "grenade_poison", "grenade_smoke", "hatchet", "pick", "pistol", "pistol_plasma", "rifle", "rifle_plasma", "shotgun", "slingshot", "spear"]);
   // Ammunition is made, or gathered as a slingshot's stone is.
   const gathered = new Set(reg.defs.flatMap((d) => (d?.type === "node" ? d.yields.map((y) => y.item) : [])));
   for (const d of weapons) {

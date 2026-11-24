@@ -1,6 +1,7 @@
 // The weapons program's contracts (planning/reference/weapons-plan.md, W0): the wire fields it added and the stubs later
 // projects build on.
 import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
+import { PLASMA } from "../../content/items/plasma.ts";
 import { expect, test } from "bun:test";
 import { CORE_CONTENT, CORE_PACK } from "../../content/core.ts";
 import { AMMO } from "../../content/items/ammo.ts";
@@ -96,7 +97,8 @@ test("every weapon and round today compiles as it did: no stub in its timings, a
   // W3's: only the shotgun's shell is shot, and falls off.
   const shot = new Set(["core:round_shotgun"]);
   // What is blocked out has numbers of its own, held by tests/items/blockouts.test.ts.
-  const blocked = new Set(BLOCKED_OUT);
+  // The plasma guns came after these contracts, with a reach and a look of their own (tests/combat/plasma.test.ts).
+  const blocked = new Set([...BLOCKED_OUT, ...PLASMA.filter((d) => d.type === "item").map((d) => d.id)]);
   for (let i = 1; i < reg.defs.length; i++) {
     if (blocked.has(reg.ids[i]!)) continue;
     const w = reg.weapon[i];

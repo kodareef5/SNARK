@@ -1,4 +1,4 @@
-// A round that flies, as it is told to those who see it (EVENT_BOLTS): 100 bits where EVENT_SHOT is 35 bytes, and a
+// A round that flies, as it is told to those who see it (EVENT_BOLTS): 99 bits where EVENT_SHOT is 35 bytes, and a
 // tick's rounds in one message. A client draws from it and decides nothing, so its start is to 2 cm and its way to a
 // fiftieth of a degree.
 
