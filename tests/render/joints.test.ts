@@ -135,3 +135,55 @@ for (const [recipe, what] of [[WOOD_JOINTED, "with no strips"], [WOOD, "with its
     });
   });
 }
+
+// Stone with its own joints: a quoin where its walls lie square, a pier of drums where they do not.
+
+/** Corners of stone walls by their ways, and the joint the client lays at each: none in a straight run, where stone's pattern runs on. */
+const STONE_JOINTED: readonly (readonly [name: string, joint: string | null, ways: readonly (readonly [way: number, left: boolean, storey?: number])[]])[] = [
+  ["walls 90", "joint_sq_stone", [[0, false], [90, true]]],
+  ["tee", "joint_sq_stone", [[0, false], [180, true], [90, true]]],
+  ["cross", "joint_sq_stone", [[0, false], [90, true], [180, true], [270, false]]],
+  ["two storeys", "joint_sq_stone", [[0, false], [90, true], [0, false, 1], [90, true, 1]]],
+  ["walls 180", null, [[0, false], [180, true]]],
+  ["walls 60", "joint_r21_stone", [[0, false], [60, true]]],
+  ["walls 120", "joint_r15_stone", [[0, false], [120, true]]],
+  ["walls 150", "joint_r15_stone", [[0, false], [150, true]]],
+];
+
+test("stone and its own joints closes every corner, square or not, and a straight run is as it was", () => {
+  // The recipe's walls and trims as the client lays and fits them (client/core/render/trims.ts).
+  const pack = piecesPack([...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, FORMS), ...trimShapes(STONE)]);
+  const laid: Junction[] = [];
+  const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
+    STONE_JOINTED.forEach(([name, , ways], k) => {
+      const storeys = name === "two storeys";
+      const [vx, vz] = [64 + (k % 4) * 32, 64 + Math.floor(k / 4) * 32];
+      const ends = ways.map(([way, left, storey]): WallEnd => ({ form: "wall", tier: "stone", way, left, storey: storey ?? 0 }));
+      laid.push(layJunction(structs, reg, baseAt(structs, vx, storeys ? FOUNDATION_THICK : 0, vz, 0), name, vx, vz, 0, ends, storeys ? "stone" : null));
+    });
+  });
+  bench.draw({ vertex: [64, 64] }, 1.5, 30, 20);
+  const got = drawn(bench.scene, { chunksX: 8, chunksZ: 8 }, pack, meshesOf(pack));
+  laid.forEach((j, k) => {
+    const [near, far, fought] = [bench.measure(j), bench.measure(j, COARSE, COARSE_VIEWS), fightsOf(round(got, j.vertex[0], j.vertex[1], 4.7))];
+    const here = round(got, j.vertex[0], j.vertex[1], 0.4);
+    const joints = here.filter((d) => d.trim && d.id.includes("joint")).map((d) => d.id.slice(5));
+    // The joint its walls' ways ask for stands there, one a storey; in a straight run none does.
+    expect([j.name, ...new Set(joints)]).toEqual([j.name, ...(STONE_JOINTED[k]![1] ? [STONE_JOINTED[k]![1]!] : [])]);
+    // No pixel shows through, no outside corner is open, near or from across a yard, and no two faces lie in one plane.
+    expect([j.name, near.leak, near.notch, far.leak, far.notch, fought.faces, fought.area]).toEqual([j.name, 0, 0, 0, 0, 0, 0]);
+    const walls = here.filter((d) => !d.trim && d.id === "core:wall_stone");
+    // How near the corner each wall's drawn end stands: pulled back by the yield band where a joint is, and on the corner itself in a run.
+    const reach = walls.map((d) => {
+      // Along the wall's own way from the corner, which its middle lies on.
+      const n = d.points.length / 3;
+      let [mx, mz] = [0, 0];
+      for (let v = 0; v < d.points.length; v += 3) [mx, mz] = [mx + (d.points[v]! - j.vertex[0]) / n, mz + (d.points[v + 2]! - j.vertex[1]) / n];
+      const l = Math.hypot(mx, mz);
+      let least = Infinity;
+      for (let v = 0; v < d.points.length; v += 3) least = Math.min(least, ((d.points[v]! - j.vertex[0]) * mx + (d.points[v + 2]! - j.vertex[1]) * mz) / l);
+      return Math.round(least * 1e4) / 1e4 || 0;
+    });
+    expect([j.name, ...new Set(reach)]).toEqual([j.name, STONE_JOINTED[k]![1] ? 0.1 : 0]);
+  });
+});

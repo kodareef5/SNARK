@@ -1889,14 +1889,15 @@ function gable(name: string, form: FormDef, level: number): Build | null {
     b.prism([[w.x0, w.foot - GAP], [foot, w.foot - GAP], [foot, under(foot)], [w.x0, under(w.x0)]], "z", -w.core, w.core, "masonry");
     layWall(b, w, [[...walling, leftOf(foot - 0.004)]], { facet: FACET, least: LEAST });
     for (const s of stones) dressedBlock(b, s, w.core);
-    dressedBlock(b, { front: footstone, back: footstone, rise: footstone.map(() => DRESSED) }, w.core);
+    // The footstone is cut at the ring it crosses: the gable's low end has no other corner there.
+    b.convex(block(footstone, footstone, 0.014, footstone.map(() => DRESSED), footstone.map(() => DRESSED), w.core), "dressed", throughUv());
     return done();
   }
   const outline: P2[] = [[w.x0, w.foot], [foot, w.foot], [foot, under(foot)], [w.x0, under(w.x0)]];
   if (level === 1) panel(b, w, { half: w.core + FACE, outline, regions: [[...walling, leftOf(foot)]], cells: (frame) => wallTiles(frame) });
   else panel(b, w, { half: w.half, outline, regions: [[...walling, leftOf(foot)]], cells: plainCells(b) });
   // The coping one dressed stone along the rake, and the footstone.
-  for (const profile of [[[w.x0, under(w.x0)], [foot, under(foot)], [foot, top(foot)], [w.x0, w.top]], footstone] as const) b.convex(loft("z", [[-w.core - DRESSED, profile], [w.core + DRESSED, profile]]), "dressed", throughUv(), true);
+  for (const [k, profile] of ([[[w.x0, under(w.x0)], [foot, under(foot)], [foot, top(foot)], [w.x0, w.top]], footstone] as const).entries()) b.convex(loft("z", [[-w.core - DRESSED, profile], [w.core + DRESSED, profile]]), "dressed", throughUv(), k === 0);
   void name;
   return done();
 }
@@ -2831,6 +2832,7 @@ function roof(form: FormDef, level: number): Build | null {
   const under = facets.map((f) => facetPlane(f, -SARK - SARK_DROP));
   const edge = insetPlan(plan, 0.004);
   const within = edge.map((a, k) => uprightPlane(a, edge[(k + 1) % n]!));
+  const floor = planeAt([0, 0, Math.min(...tops) - form.thick], [0, 0, -1]);
   plan.forEach((a, k) => {
     const c = plan[(k + 1) % n]!;
     const f = facetOf(k), kind = kindOf(k);
@@ -2848,8 +2850,8 @@ function roof(form: FormDef, level: number): Build | null {
       const [z0, z1] = [za - form.thick, za + (RIM_IN + RIM) * f.g];
       member(p, level, at(a, (z0 + z1) / 2), at(c, (z0 + z1) / 2), RIM, z1 - z0, [0, 0, 1], `rim ${k}`);
     }
-    // Under a hip a rim timber runs on past the fold, under the other face: it is cut to both.
-    for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!])]) clip(p, plane, null, from);
+    // Under a hip a rim timber runs on past the fold, under the other face: it is cut to both, and to the roof's own underside, which a hewn face strays past.
+    for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!]), floor]) clip(p, plane, null, from);
   });
   if (folded) {
     const [a, c] = [plan[(fold + 2) % n]!, plan[fold]!];
@@ -2859,7 +2861,7 @@ function roof(form: FormDef, level: number): Build | null {
     const drop = SARK + SARK_DROP + RAFTER / 2 + (hip ? (RIM / 2) * facets[0]!.g * Math.SQRT1_2 : 0);
     let from = p.faces.length;
     member(p, level, [a[0], a[1], za - drop], [c[0], c[1], zc - drop], RIM, RAFTER / Math.hypot(1, (zc - za) / run), [0, 0, 1], "fold");
-    for (const side of [...within, planeAt([0, 0, Math.min(...tops) - form.thick], [0, 0, -1])]) clip(p, side, null, from);
+    for (const side of [...within, floor]) clip(p, side, null, from);
     from = p.faces.length;
     if (hip) {
       // The dressed roll that caps a hip, out to the corner of the eave course.

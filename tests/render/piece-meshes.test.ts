@@ -531,3 +531,198 @@ test("the kit cuts a solid on a slant and closes it, and a ring on a slant loses
 });
 
 void planOf;
+
+// Stone: the forms past the first nine, and stone's trims.
+
+/** A stone roof's lowest course runs out as far as wood's, and stands as high over its plane: the two are built to one rule. */
+const STONE_EAVE = 0.3;
+const STONE_ROOF_PROUD = 0.09;
+/** What each new stone form's levels cost on 2026-11-24. A change may lower a number and may not raise one. */
+const STONE_NEW_MOST: Record<string, readonly number[]> = {
+  half_wall: [768, 224, 40, 12],
+  quarter_wall: [464, 144, 40, 12],
+  railing: [284, 236, 140, 36],
+  corner_pillar: [408, 52, 52, 12],
+  thin_pillar: [360, 52, 52, 12],
+  beam: [224, 76, 28, 12],
+  ramp: [1580, 520, 8, 8],
+  triangle_foundation: [584, 56, 8, 8],
+  triangle_ceiling: [636, 238, 62, 8],
+  quarter_foundation: [360, 44, 12, 12],
+  roof: [630, 236, 60, 12],
+  roof_hip: [1296, 480, 60, 12],
+  roof_valley: [990, 370, 60, 12],
+  triangle_roof: [844, 260, 44, 8],
+  triangle_roof_low: [794, 204, 44, 8],
+  sloped_wall_left: [462, 150, 48, 8],
+  sloped_wall_right: [462, 150, 48, 8],
+  fence_foundation: [252, 52, 28, 12],
+  trapdoor_frame: [556, 176, 104, 32],
+  trapdoor: [276, 136, 60, 12],
+  ladder: [208, 144, 84, 24],
+  double_doorway: [1572, 488, 116, 36, 12],
+  large_wall: [1412, 536, 88, 12],
+  gateway: [1120, 300, 52, 36, 12],
+  gate: [864, 276, 96, 12],
+};
+/** Stone's trims at each level on the same day, under what a trim may cost. */
+const STONE_TRIM_MOST: Record<string, readonly number[]> = { joint_sq: [132, 36, 12, 8], joint_r15: [116, 44, 12, 8], joint_r21: [116, 44, 12, 8], skirt: [104, 28, 8, 2], ridge: [50, 20, 8, 2] };
+
+const stonePlanned = Object.entries(PLANNED).map(([name, form]) => ({ name, form, shapes: levelsOf(STONE, name, form) }));
+
+test("every level of every new stone form lies in its form's box and the margin its kind is given", () => {
+  for (const { name, form, shapes } of stonePlanned) {
+    const box = colliderBox(form);
+    shapes.forEach((shape, level) => {
+      const over = [0, 0, 0, 0, 0, 0];
+      for (const p of shape.corners()) {
+        const at = [p[0], p[2], -p[1]];
+        for (let a = 0; a < 3; a++) {
+          over[a] = Math.max(over[a]!, box[a]! - at[a]!);
+          over[a + 3] = Math.max(over[a + 3]!, at[a]! - box[a + 3]!);
+        }
+        if (isRoof(form)) expect(at[1]! - roofHeight(form, at[0]!, at[2]!), `${name} level ${level} over its plane`).toBeLessThanOrEqual(STONE_ROOF_PROUD);
+      }
+      over.forEach((most, k) => {
+        const a = k % 3;
+        // A roof's eave course runs out past a low side. A wall, a beam, a railing and a footing end flat on their boxes, for a quoin to butt against. A leaf's fittings stand off it.
+        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? 0.002 : STONE_ROOF_PROUD) : STONE_EAVE + 0.001) : form.layer === "leaf" ? PROUD_LEAF : form.plane === "upright" && a === 0 ? 0 : STONE_PROUD;
+        expect(most, `${name} level ${level} past its ${k < 3 ? "least" : "most"} ${"xyz"[a]}`).toBeLessThanOrEqual(margin + 1e-9);
+      });
+    });
+  }
+});
+
+test("a textured level of a new stone form that yields has a ring on each plane it yields at, a triangle's three among them", () => {
+  for (const { name, form, shapes } of stonePlanned) {
+    const planes = [...yieldPlanes(form).map(([axis, at]) => ({ n: [0, 1, 2].map((a) => (a === axis ? 1 : 0)) as unknown as Vec, at, axis })), ...yieldSlants(form).map(([n, at]) => ({ n, at, axis: -1 }))];
+    if (form.yieldBand > 0 && form.plane !== "across") expect(planes.length, name).toBeGreaterThanOrEqual(form.plane === "upright" ? 2 : form.outline.length);
+    for (const { n, at, axis } of planes) {
+      shapes.slice(0, TEXTURED).forEach((shape, level) => {
+        let on = 0;
+        for (const f of shape.faces) {
+          const side = f.points.map((p) => dot(n, p) - at);
+          on += side.filter((d) => Math.abs(d) < 1e-7).length;
+          const slack = axis < 0 ? 3e-4 : 1e-6;
+          // Only what is pulled back whole crosses a ring: a stone, a block, a beam along it.
+          if (side.some((d) => d > slack) && side.some((d) => d < -slack)) expect(f.along, `${name} level ${level}: a ${f.mat} face crosses the ring at ${at}`).toBe(axis < 0 ? -2 : axis);
+        }
+        expect(on, `${name} level ${level}: corners on the ring at ${at}`).toBeGreaterThanOrEqual(4);
+      });
+    }
+  }
+});
+
+test("every new stone level is closed, looks outward and costs no more than a made piece may or than it did", () => {
+  const meshes = tierShapes(STONE, PLANNED);
+  expect(tierShapes(STONE, { ...FORMS, ...PLANNED }).length).toBe(Object.keys(FORMS).length + Object.keys(PLANNED).length);
+  for (const mesh of meshes) {
+    const most = STONE_NEW_MOST[mesh.id.slice(5, -6)]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(Math.min(most[level]!, MADE_PIECE_TRIANGLES[level]![1]));
+    });
+  }
+  const again = tierShapes(STONE, PLANNED);
+  expect(meshes.map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(again.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
+});
+
+test("a stone gable's two hands are each other in a mirror, point for point", () => {
+  const [left, right] = ["sloped_wall_left", "sloped_wall_right"].map((name) => stonePlanned.find((p) => p.name === name)!.shapes);
+  left!.forEach((shape, level) => {
+    const name = (p: Vec, flip: number): string => [flip * p[0], p[1], p[2]].map((c) => (Math.round(c * 1e6) / 1e6 || 0).toFixed(6)).join();
+    expect([...new Set(shape.corners().map((p) => name(p, -1)))].sort()).toEqual([...new Set(right![level]!.corners().map((p) => name(p, 1)))].sort());
+    expect(shape.triangles).toBe(right![level]!.triangles);
+  });
+});
+
+test("every stone wall, old and new, ends flat on its collider's ends at every level", () => {
+  for (const [name, form] of Object.entries({ ...FORMS, ...PLANNED } as Record<string, FormDef>)) {
+    if (form.layer !== "wall") continue;
+    const box = colliderBox(form);
+    levelsOf(STONE, name, form).forEach((shape, level) => {
+      const xs = shape.corners().map((p) => p[0]);
+      expect(Math.abs(Math.min(...xs) - box[0]), `${name} level ${level}, its -x end`).toBeLessThanOrEqual(1e-9);
+      expect(Math.abs(Math.max(...xs) - box[3]), `${name} level ${level}, its +x end`).toBeLessThanOrEqual(1e-9);
+    });
+  }
+});
+
+test("stone's trims are the five the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
+  const trims = trimShapes(STONE);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_stone", "core:joint_r15_stone", "core:joint_r21_stone", "core:skirt_stone", "core:ridge_stone"]);
+  for (const mesh of trims) {
+    const most = STONE_TRIM_MOST[mesh.id.slice(5, -6)]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(Math.min(most[level]!, TRIM_TRIANGLES[mesh.id.slice(5, -6)]![level]!));
+      expect([mesh.id, level, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0]);
+      if (lod.indices.length / 3 > 2) expect([mesh.id, level, s.holes]).toEqual([mesh.id, level, 0]);
+    });
+  }
+});
+
+test("a stone joint has a bed at each height it may be cut to, and what is over a bed lies inside the stone under it", () => {
+  // The most a joint's section reaches from its corner: a quoin's long stones to their arrises, and each pier's arrises.
+  const reach: Record<string, number> = { joint_sq: 0.165 * Math.SQRT2, joint_r15: 0.17, joint_r21: 0.22 };
+  for (const [name, shapes] of Object.entries(STONE.trims!())) {
+    if (!(name in reach)) continue;
+    shapes.slice(0, 2).forEach((shape, level) => {
+      const points = shape.corners();
+      // It stands on its corner from the level to a centimetre over a storey.
+      expect([name, level, Math.min(...points.map((p) => p[2])), Math.max(...points.map((p) => p[2]))]).toEqual([name, level, 0, 3.01]);
+      for (const p of points) expect(Math.hypot(p[0], p[1]), `${name} level ${level}`).toBeLessThanOrEqual(reach[name]! + 1e-9);
+      // A round pier past the finest level is one length, as wood's is: its picture is plain stone, which a squeeze does not show.
+      if (level === 1 && name !== "joint_sq") return;
+      for (const cut of [0.76, 1.51, 2.26]) {
+        // A ring at each height the client clamps it to (client/core/render/piece-fit.ts): n quarter storeys and a centimetre.
+        const ring = points.filter((p) => Math.abs(p[2] - cut) < 1e-9);
+        expect(ring.length, `${name} level ${level} at ${cut}`).toBeGreaterThanOrEqual(8);
+        // The stone that ends on the bed is as wide there as anything over it: clamped, the rest lies flat on its top.
+        const under = Math.max(...ring.map((p) => Math.max(Math.abs(p[0]), Math.abs(p[1]))));
+        const round = Math.max(...ring.map((p) => Math.hypot(p[0], p[1])));
+        for (const p of points) if (p[2] > cut) expect(name === "joint_sq" ? Math.max(Math.abs(p[0]), Math.abs(p[1])) : Math.hypot(p[0], p[1]), `${name} level ${level} over ${cut}`).toBeLessThanOrEqual((name === "joint_sq" ? under : round) + 1e-9);
+      }
+    });
+  }
+});
+
+test("a quoin holds a yielded stone wall's end inside it, and none of its faces lies in a wall's", () => {
+  // A wall's end pulled back by the yield band stands this far from the corner.
+  const wall = levelsOf(STONE, "wall", FORMS.wall);
+  const end = FORMS.wall.yieldBand;
+  for (const [level, shape] of STONE.trims!().joint_sq!.slice(0, 3).entries()) {
+    // All of the wall, its stones' faces and the crowns of its top course, lies this far from its middle at most.
+    const faces = Math.max(...wall[Math.min(level, wall.length - 1)]!.corners().map((p) => Math.abs(p[1])));
+    let upright = 0;
+    for (const f of shape.faces) {
+      const flat = [0, 1].find((a) => f.points.every((p) => Math.abs(p[a]! - f.points[0]![a]!) < 1e-9));
+      if (flat === undefined || new Set(f.points.map((p) => p[2])).size < 2) continue;
+      upright++;
+      const out = Math.abs(f.points[0]![flat]!);
+      // Each of its upright faces stands 3 cm or more past the wall's end, so the end is inside every stone of it, and a centimetre or more outside the wall's faces.
+      expect(out - end, `level ${level}`).toBeGreaterThanOrEqual(0.03 - 1e-9);
+      expect(out - faces, `level ${level}`).toBeGreaterThanOrEqual(0.01 - 1e-9);
+    }
+    expect(upright, `level ${level}`).toBeGreaterThanOrEqual(4);
+  }
+});
+
+test("a stone skirt hangs 2.4 m from just under a foundation's top, 0.12 m out, and turns each corner; a ridge lies along its line", () => {
+  const box = (name: string, level = 0): number[] => {
+    const p = trimShapes(STONE).find((m) => m.id === `core:${name}_stone`)!.lods[level]!.positions;
+    return [0, 1, 2].flatMap((a) => [Math.min(...Array.from({ length: p.length / 3 }, (_, v) => p[v * 3 + a]!)), Math.max(...Array.from({ length: p.length / 3 }, (_, v) => p[v * 3 + a]!))]).map((v) => Math.round(v * 1e4) / 1e4 || 0);
+  };
+  // In the engine's frame: +X along the side, +Y up from the foundation's top, +Z outward. Its top is 2 cm under the
+  // flags, and at each end it turns a quarter round the corner, 0.12 m past the side's own end at its foot.
+  expect(box("skirt")).toEqual([-1.62, 1.62, -2.4, -0.02, 0, 0.12]);
+  expect(box("skirt", 1)).toEqual([-1.62, 1.62, -2.4, -0.02, 0, 0.12]);
+  expect(box("skirt", 2)).toEqual([-1.5, 1.5, -2.4, -0.02, 0, 0.12]);
+  const ridge = box("ridge");
+  expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
+  expect(ridge[3]!).toBeLessThanOrEqual(0.13);
+  expect(Math.max(-ridge[4]!, ridge[5]!)).toBeLessThanOrEqual(0.22);
+});
