@@ -8,10 +8,11 @@
 //
 // And what the ball's light costs a lit surface (client/core/render/orb-light.ts): LIT full screen on a wall, with the
 // light's define and without, by night with the wall in its light, past its reach, and on a map with no orb. The gate
-// is 0.05 ms a megapixel.
+// is 0.05 ms a megapixel. And the shadow the ball casts (`orbShade` there): LIT with medium's defines and with high's, by
+// day, with the shadow's define and without.
 //
-//   bun tools/orb/cost.ts           both
-//   bun tools/orb/cost.ts --light   the light alone
+//   bun tools/orb/cost.ts           all
+//   bun tools/orb/cost.ts --light   the light and the shadow alone
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { ORB_FRAGMENT, OrbCast, writeOrb } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
@@ -87,12 +88,12 @@ void main() {
   vEdges = 0u;
 }`;
 
-/** The frame block by night, Core held, the eye at the ball's foot with its back to it, or on a map with no orb. */
-function nightFrame(orb: boolean): number[] {
+/** The frame block at an hour, Core held, the eye at the ball's foot with its back to it, or on a map with no orb. */
+function wallFrame(hour: number, orb: boolean): number[] {
   const f = new Float32Array(FRAME_FLOATS);
-  skyFrame(23, theSky(), f);
-  postFrame(f, TIERS[2]!, 23, 1080);
-  writeOrb(f, orb ? [{ ...SITE, z: -90 }] : [], [BLUE], 380.6, 23, 0, 0, 0, null, 0, 30, 2);
+  skyFrame(hour, theSky(), f);
+  postFrame(f, TIERS[2]!, hour, 1080);
+  writeOrb(f, orb ? [{ ...SITE, z: -90 }] : [], [BLUE], 380.6, hour, 0, 0, 0, null, 0, 30, 2);
   new OrbCast().step(f, 0);
   f[FRAME.eyeHeight] = 10;
   return [...f];
@@ -111,9 +112,17 @@ const lit = PROGRAMS.flat!(TIERS[2]!, "rgba", false, true), LIGHT = "#define ORB
 if (!lit.defines.includes(LIGHT)) throw new Error("high does not light by the orb");
 const KINDS = [["plain", ""], ["high", lit.defines.replace(LIGHT, "")]] as const;
 const CASES = [["off", false, true, 40], ["on, lit", true, true, 40], ["on, past its reach", true, true, 900], ["on, no orb", true, false, 40]] as const;
-const walls = KINDS.flatMap(([kind, defines]) => CASES.map(([name, on, orb, metres]) => ({ name: `${kind} ${name}`, vertex: withDefines(WALL, defines), fragment: withDefines(lit.fragment, (on ? LIGHT : "") + defines), samplers: lit.samplers, frame: nightFrame(orb), matrix, uniforms: { uSpan: [metres, 0] } })));
+const walls = KINDS.flatMap(([kind, defines]) => CASES.map(([name, on, orb, metres]) => ({ name: `${kind} ${name}`, vertex: withDefines(WALL, defines), fragment: withDefines(lit.fragment, (on ? LIGHT : "") + defines), samplers: lit.samplers, frame: wallFrame(23, orb), matrix, uniforms: { uSpan: [metres, 0] } })));
 if (!walls[1]!.fragment.includes("void orbSees(") || walls[0]!.fragment.includes(LIGHT)) throw new Error("the wall's texts are not LIT with the light and without");
-const t = await timeRuns(chrome, [...scenes, ...walls]);
+// The shadow: LIT with a tier's defines, with the shadow's and without, at ten in the morning.
+const SHADE = "#define ORB_SHADE\n";
+const SHADED = [TIERS[1]!, TIERS[2]!].flatMap((tier) => {
+  const text = PROGRAMS.flat!(tier, "rgba", false, tier.post !== null);
+  if (!text.defines.includes(SHADE)) throw new Error(`${tier.name} does not take the orb's shadow`);
+  return ([["off", false, true], ["on", true, true], ["on, no orb", true, false]] as const).map(([name, on, orb]) => ({ name: `shade ${tier.name} ${name}`, vertex: withDefines(WALL, text.defines), fragment: withDefines(text.fragment, on ? text.defines : text.defines.replace(SHADE, "")), samplers: text.samplers, frame: wallFrame(10, orb), matrix, uniforms: { uSpan: [40, 0] } }));
+});
+if (!SHADED[1]!.fragment.includes("return mapShadow(rel, normal) * orbShade(rel);") || SHADED[0]!.fragment.includes(SHADE)) throw new Error("the wall's texts are not LIT with the shadow and without");
+const t = await timeRuns(chrome, [...scenes, ...walls, ...SHADED]);
 if (scenes.length > 0) console.log(`full screen at 1,024 square on ${t.renderer}, ${t.timer ? "by timer query" : "by the clock"}, in ms a megapixel, at second ${STRIKE.toFixed(2)} of the eye's cycle (${VIEWS.map(([where, span]) => `${where}: a puck ${(0.4 / ((span / 1024) * Math.SQRT2)).toFixed(2)} pixels`).join("; ")}):`);
 for (const tier of scenes.length > 0 ? TIERS : []) {
   console.log(`  ${tier.name}`);
@@ -125,6 +134,15 @@ for (const [kind] of KINDS) {
   console.log(`  LIT with ${kind === "plain" ? "no other define" : "high's defines"}`);
   for (const [name] of CASES) {
     const ms = t[`${kind} ${name}`] as number;
+    console.log(`    ${name.padEnd(20)} ${ms.toFixed(4)}${name === "off" ? "" : `  ${ms >= off ? "+" : ""}${(ms - off).toFixed(4)}`}`);
+  }
+}
+console.log("the ball's shadow on a lit wall, the same, by day:");
+for (const tier of [TIERS[1]!, TIERS[2]!]) {
+  const off = t[`shade ${tier.name} off`] as number;
+  console.log(`  LIT with ${tier.name}'s defines`);
+  for (const name of ["off", "on", "on, no orb"]) {
+    const ms = t[`shade ${tier.name} ${name}`] as number;
     console.log(`    ${name.padEnd(20)} ${ms.toFixed(4)}${name === "off" ? "" : `  ${ms >= off ? "+" : ""}${(ms - off).toFixed(4)}`}`);
   }
 }

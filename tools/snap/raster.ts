@@ -35,7 +35,7 @@ const eyeBehind = [0, 0, 0], energy = [0, 0, 0];
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
-import { orbSees } from "../../client/core/render/orb-light.ts";
+import { orbSees, orbShade } from "../../client/core/render/orb-light.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
@@ -45,7 +45,7 @@ import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts"
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
-import { heatOfShown, LAYER_LEVELS, NEUTRAL, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, regionDyes, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { heatOfShown, LAYER_LEVELS, NEUTRAL, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, moonCasts, regionDyes, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
@@ -311,6 +311,12 @@ const opened = new Float64Array(3);
 const NOTHING = [0, 0, 0];
 
 /**
+ * The share of the casting light an orb's own shadow leaves a camera-relative point, as the lit programs' sunShadow
+ * takes it (orb-light.ts): the one shadow this renderer has, since it is worked out and not looked up in a map.
+ */
+const ballShade = (p: FramePacket, x: number, y: number, z: number): number => (p.lit && p.tier.shadows.size > 0 && p.tier.shadows.orb !== false ? orbShade(p.frame, x, y, z) : 1);
+
+/**
  * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it
  * is from the camera, and (nx, ny, nz) its face's normal. The ground is lit by its own normal, `smooth`, and where its
  * finish meets another, `other` is that one's tint and `share` how much of it is wanted (LIT_TERRAIN_FRAGMENT).
@@ -318,7 +324,7 @@ const NOTHING = [0, 0, 0];
  * `open` is the share of the sky's light the sky's openness leaves it (skyopen.ts), which its sheet's light from behind keeps.
  */
 function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null, roomOpen: RoomOpen | null = null, fixture = 0, made = 0): void {
-  const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
+  const dist = Math.sqrt(rx * rx + ry * ry + rz * rz), cast = ballShade(p, rx, ry, rz);
   // A near chunk's piece's wear rides over its material (pieces.ts): it is darker by its stage, as PIECE_SHADE has it.
   const wear = made >> WEAR_OVER_MADE, dim = wearShade(wear);
   made &= (1 << WEAR_OVER_MADE) - 1;
@@ -349,8 +355,8 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,share);
     }
     opened.set([worldOrm[0]! * open, worldOrm[1]!, worldOrm[2]!]);
-    lit(light, albedo, opened, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);
-    through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255);
+    lit(light, albedo, opened, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING, cast);
+    through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255, cast);
   } else if (fixture) {
     const twice = 2*(nx*eye[0]!+ny*eye[1]!+nz*eye[2]!);
     for (let c=0; c<3; c++) reflected[c] = twice*normal[c]!-eye[c]!;
@@ -371,7 +377,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     else skyLight(mirrored,p.frame,reflected);
     streetMirror(mirrored,p,reflected,rx,ry,rz,rough,share);
     opened[1] = rough;
-    lit(light,albedo,opened,normal,eye,p.frame,mirrored);
+    lit(light,albedo,opened,normal,eye,p.frame,mirrored,cast);
   } else if (sample) {
     const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light";
     let index = surfaceIndex(colorIndex, ground, city);
@@ -475,7 +481,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     if (finishShare) worldOrm[1] = glossRoughness(worldOrm[1]!,finishShare,p.frame[FRAME.streetLook]!);
     streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,finishShare);
     worldOrm[0]! *= open;
-    lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored);
+    lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored, cast);
     if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
       facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
       skyLight(facadeLight, p.frame, facadeSky);
@@ -488,7 +494,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       for (let c = 0; c < 3; c++) albedo[c]! *= DRY_ASPHALT.albedo;
     }
     opened.set([open, 1, 0]);
-    lit(light, albedo, opened, normal, eye, p.frame, NOTHING);
+    lit(light, albedo, opened, normal, eye, p.frame, NOTHING, cast);
   }
   shown(rgb, light, dist, p);
 }
@@ -1497,7 +1503,7 @@ export class Rasterizer {
               if ((flags & DETAIL_LIT) !== 0) {
                 lampSees(p.frame, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
                 orbSees(p.frame, p.tier.orb.light, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
-                lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
+                lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING, ballShade(p, rx, ry, rz));
               } else for (let c = 0; c < 3; c++) light[c] = albedo[c]! / exposure;
               shown(rgb, light, dist, p);
               for (let c = 0; c < 3; c++) rgb[c]! *= 255;
@@ -2361,7 +2367,8 @@ export class Rasterizer {
           }
           const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
           opened.set([mro[0]! * open, mro[1]!, mro[2]!]);
-          lit(light, albedo, opened, normal, eye, p.frame, mirrored);
+          const cast = ballShade(p, carried[0]!, carried[1]!, carried[2]!);
+          lit(light, albedo, opened, normal, eye, p.frame, mirrored, cast);
           for (let c=0; c<3; c++) light[c] = light[c]!*(1-coat)+mirrored[c]!*open*own*coat;
           if (specularLayer > 0) {
             let variance = 0;
@@ -2371,10 +2378,10 @@ export class Rasterizer {
               variance += dx*dx + dy*dy;
             }
             direct(light, p.frame, FRAME.sun, FRAME.sunColor, coatingF0, 1, 0.00104976 + Math.min(0.024, 0.16*variance),
-              opticalNormal, eye, Math.max(0.001, 1-edge), specularLayer);
+              opticalNormal, eye, Math.max(0.001, 1-edge), specularLayer * (moonCasts(p.frame) ? 1 : cast));
           }
           if (glass) for (let c = 0; c < 3; c++) light[c] = light[c]! + (mirrored[c]!*open - light[c]!)*Math.min(1, 2*glassBack);
-          through(light, albedo, mro, normal, p.frame, s.sheet);
+          through(light, albedo, mro, normal, p.frame, s.sheet, cast);
           bounce.fill(1);
           const glow = glowAt(s.emissive, dist);
           if (glow) for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * glow;

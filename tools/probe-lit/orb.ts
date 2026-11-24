@@ -3,10 +3,11 @@
 // off, and by the rasterizer through the scenes' twins. The shell is a box until the art has one: the program works a
 // pixel's place on the ball out from where it is, whatever mesh it is drawn on. Then the light the ball casts by night
 // (client/core/render/orb-light.ts): the ground and the plinth at its foot on medium with the light on, where the
-// rasterizer's picture with the light differs from its picture without.
+// rasterizer's picture with the light differs from its picture without. And the shadow it casts by day (`orbShade`
+// there), on medium as it is, held where the rasterizer's picture differs from its picture with no such shadow.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import "../../client/core/render/orb-late.ts";
 import { DRAW_ORB } from "../../client/core/render/packet.ts";
@@ -37,9 +38,13 @@ const pictures = new Map<string, { pixels: Uint8ClampedArray; where: Uint8Array 
 /** The light's frames: the scene held and where the eye stands south of the axis and over the ground, looking down at the foot. */
 const LIT: readonly (readonly [which: number, metres: number, up: number])[] = [[2, 200, 60], [4, 150, 25], [0, 320, 90]];
 const LIGHT_KEY = "orb-light";
-/** Levels of 255 the light must add to a pixel for it to be judged. */
+/** The shadow's frames: the hour, and where the eye stands from the axis (east, up, north) looking down across the shadow. */
+const SHADED: readonly (readonly [hour: number, x: number, up: number, z: number, yaw: number])[] = [[8, 250, 380, -420, -0.5], [12, 0, 150, -200, 0], [17, -250, 380, -420, 0.5]];
+const SHADE_KEY = "orb-shade";
+/** Levels of 255 the light or the shadow must change a pixel by for it to be judged. */
 const LIT_LEAST = 6;
-const lights: { pixels: Uint8ClampedArray; where: Uint8Array }[] = [];
+/** A frame held to the twin where a part of the orb's light changes the software picture. */
+const held: { key: string; frame: number; name: string; pixels: Uint8ClampedArray; where: Uint8Array }[] = [];
 
 export const orbCheck: LitCheck = {
   name: "orb scenes",
@@ -82,24 +87,20 @@ export const orbCheck: LitCheck = {
     // The light: medium's programs with ORB_LIGHT, the ground at the ball's foot, no halo and no shadow, at night.
     const ground = new Heightfield(dims, TERRAIN_CELL, 0, 1 / 64), plinth = { id: "core:orb/plinth", lods: [boxMesh([80, 3, 80], 5)] };
     const lightBytes = buildPack([...grayboxMeshes(CORE_CONTENT), { id: "core:orb/shell", lods: [boxMesh([78, 78, 78], 12)] }, plinth], defaultPalette()), lightPack = parsePack(lightBytes);
-    const medium = tierOf("medium"), view = (light: boolean) => {
+    const medium = tierOf("medium"), view = (tier: Tier, hour: number) => {
       const scene = new Scene({ dims, hf: ground, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), orbs: [SITE], tideEyes: [BLUE] }, reg, lightPack);
-      scene.assets.tier = { ...medium, orb: { ...medium.orb, light } };
+      scene.assets.tier = tier;
       scene.plainSky = true;
       scene.viewHeight = H;
       scene.orbGlow = false;
-      scene.hour = 23;
+      scene.hour = hour;
       scene.eyeSeconds = 380;
       return { scene, raster: new Rasterizer(W, H, lightPack, ground) };
     };
-    const on = view(true), off = view(false), cam = new Camera(), shot = new Shot(LIGHT_KEY, W, H, ground, lightBytes.slice());
+    const cam = new Camera();
     cam.aspect = W / H;
-    for (const [which, metres, up] of LIT) {
-      cam.x = SITE.x + 10;
-      cam.y = up;
-      cam.z = SITE.z - metres;
-      cam.pitch = -0.3;
-      on.scene.orbOnly = off.scene.orbOnly = which;
+    /** Draws the view with the part (`on`) and without, and holds the card's frame to the first where the two differ. */
+    const hold = (shot: Shot, on: ReturnType<typeof view>, off: ReturnType<typeof view>, name: string, file: string): void => {
       // A frame before the one read, for the card to have the tier's programs and the meshes by then.
       const first = on.scene.build(cam, null);
       on.raster.render(first);
@@ -107,16 +108,39 @@ export const orbCheck: LitCheck = {
       const p = on.scene.build(cam, null), q = off.scene.build(cam, null);
       on.raster.render(p);
       off.raster.render(q);
-      const where = new Uint8Array(W * H), lit = on.raster.color, dark = off.raster.color;
+      const where = new Uint8Array(W * H), with_ = on.raster.color, without = off.raster.color;
       for (let i = 0; i < where.length; i++) {
         const screen = on.raster.pickDraw[i]! >= 0 && (p.drawFlags[on.raster.pickDraw[i]!]! & DRAW_ORB) !== 0;
-        if (!screen && Math.max(lit[i * 4]! - dark[i * 4]!, lit[i * 4 + 1]! - dark[i * 4 + 1]!, lit[i * 4 + 2]! - dark[i * 4 + 2]!) >= LIT_LEAST) where[i] = 1;
+        if (!screen && Math.max(Math.abs(with_[i * 4]! - without[i * 4]!), Math.abs(with_[i * 4 + 1]! - without[i * 4 + 1]!), Math.abs(with_[i * 4 + 2]! - without[i * 4 + 2]!)) >= LIT_LEAST) where[i] = 1;
       }
       shot.add(p, true);
-      lights.push({ pixels: lit.slice(), where });
-      writeFileSync(resolve(out, `${LIGHT_KEY}-${ORB_SCENES[which]}-${metres}-software.png`), encodePng(W, H, lit));
+      held.push({ key: shot.key, frame: shot.frames.length - 1, name, pixels: with_.slice(), where });
+      writeFileSync(resolve(out, `${shot.key}-${file}-software.png`), encodePng(W, H, with_));
+    };
+    const lit = view({ ...medium, orb: { ...medium.orb, light: true } }, 23), unlit = view(medium, 23), light = new Shot(LIGHT_KEY, W, H, ground, lightBytes.slice());
+    for (const [which, metres, up] of LIT) {
+      cam.x = SITE.x + 10;
+      cam.y = up;
+      cam.z = SITE.z - metres;
+      cam.pitch = -0.3;
+      cam.yaw = 0;
+      lit.scene.orbOnly = unlit.scene.orbOnly = which;
+      hold(light, lit, unlit, `the light of ${ORB_SCENES[which]} on the ground from ${metres} m: pixels the light changes by ${LIT_LEAST} levels or more`, `${ORB_SCENES[which]}-${metres}`);
     }
-    return [...screens, shot];
+    // The shadow: medium as it is, by day, from over the ground beside the ball, with no cascades as every shot here.
+    const shaded = view(medium, 12), bare = view({ ...medium, shadows: { ...medium.shadows, orb: false } }, 12), shade = new Shot(SHADE_KEY, W, H, ground, lightBytes.slice());
+    shaded.scene.orbOnly = bare.scene.orbOnly = 1;
+    for (const [hour, x, up, z, yaw] of SHADED) {
+      cam.x = SITE.x + x;
+      cam.y = up;
+      cam.z = SITE.z + z;
+      cam.pitch = up > 200 ? -0.62 : -0.5;
+      cam.yaw = yaw;
+      shaded.scene.hour = bare.scene.hour = hour;
+      hold(shade, shaded, bare, `the ball's shadow at ${hour} h: pixels the shadow changes by ${LIT_LEAST} levels or more`, `${hour}h`);
+    }
+    return [...screens, light, shade];
+
   },
   judge(back) {
     const lines: string[] = [];
@@ -142,14 +166,14 @@ export const orbCheck: LitCheck = {
         lines.push(`${key} ${name}: ${s.points} pixels of screen, mean ${s.mean.toFixed(2)}/255, p95 ${s.p95}/255, worst ${s.worst}/255; ${pass ? "ok" : "FAIL"}`);
       });
     }
-    lights.forEach(({ pixels, where }, frame) => {
-      const [which, metres] = LIT[frame]!, name = `the light of ${ORB_SCENES[which]} on the ground from ${metres} m`, gpu = back.pixels(LIGHT_KEY, 2 * frame + 1);
+    for (const { key, frame, name, pixels, where } of held) {
+      const gpu = back.pixels(key, frame);
       if (!gpu) {
         ok = false;
-        lines.push(`${LIGHT_KEY} ${name}: no native readback`);
-        return;
+        lines.push(`${key} ${name}: no native readback`);
+        continue;
       }
-      writeFileSync(resolve(out, `${LIGHT_KEY}-${ORB_SCENES[which]}-${metres}-gpu.png`), encodePng(W, H, gpu));
+      writeFileSync(resolve(out, `${key}-${frame}-gpu.png`), encodePng(W, H, gpu));
       const error: number[] = [];
       // A pixel in from where the light's edge and a mesh's edge are, as the screen's are judged.
       for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
@@ -159,8 +183,8 @@ export const orbCheck: LitCheck = {
       }
       const s = spread(error), pass = s.points >= 500 && s.mean <= 2.5 && s.p95 <= 10;
       ok &&= pass;
-      lines.push(`${LIGHT_KEY} ${name}: ${s.points} pixels the light adds ${LIT_LEAST} levels or more to, mean ${s.mean.toFixed(2)}/255, p95 ${s.p95}/255, worst ${s.worst}/255; ${pass ? "ok" : "FAIL"}`);
-    });
+      lines.push(`${key} ${name}, ${s.points}: mean ${s.mean.toFixed(2)}/255, p95 ${s.p95}/255, worst ${s.worst}/255; ${pass ? "ok" : "FAIL"}`);
+    }
     return { ok, lines };
   },
 };

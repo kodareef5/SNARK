@@ -7,8 +7,8 @@ import { effectsOff, tierWithout } from "../../client/core/passes.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { ORB_CAST, ORB_MIRRORED, OrbCast, orbInStreet, orbMean, orbNight, orbPick, orbScene, writeOrb } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
-import { ORB_COLOUR, ORB_OVER, ORB_REACH, ORB_SEES_GLSL, orbCast, orbReach, orbSees } from "../../client/core/render/orb-light.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DRAW_DETAILS, DRAW_ORB, FRAME, FRAME_FLOATS, FramePacket, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
+import { ORB_COLOUR, ORB_OVER, ORB_REACH, ORB_SEES_GLSL, ORB_SHADE_GLSL, ORB_SHADE_LENGTH, ORB_SHADE_SOFT, orbCast, orbReach, orbSees, orbShade } from "../../client/core/render/orb-light.ts";
+import { CAST_AT, DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DRAW_DETAILS, DRAW_ORB, FRAME, FRAME_FLOATS, FramePacket, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
 import { POOL_REACH } from "../../client/core/render/passes/orb.ts";
 import { postFrame } from "../../client/core/render/post.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
@@ -445,4 +445,130 @@ test("high lights the ground and the plinth by the ball; with no orb nothing cha
   expect(bare.p.drawCount).toBe(bareOff.p.drawCount);
   expect(bare.p.detailCount).toBe(bareOff.p.detailCount);
   expect(bare.p.frame.subarray(ORB_AT, ORB_AT + ORB_LANES * 4).every((v) => v === 0)).toBe(true);
+});
+
+/** A point `along` metres down the ball's shadow from its middle and `off` metres to the side of the shadow's axis, in a block's frame. */
+function downLight(f: Float32Array, along: number, off: number): [number, number, number] {
+  const lx = f[CAST_AT]!, ly = f[CAST_AT + 1]!, lz = f[CAST_AT + 2]!, flat = Math.hypot(lx, lz);
+  // Across the light and level.
+  const sx = lz / flat, sz = -lx / flat;
+  return [f[ORB_AT]! - lx * along + sx * off, f[ORB_AT + 1]! - ly * along, f[ORB_AT + 2]! - lz * along + sz * off];
+}
+
+test("the ball's shadow is dark down the light from it, lit beside it, before it and past its length", () => {
+  for (const hour of [9, 12, 16]) {
+    const f = block(1, hour);
+    expect(f[CAST_AT + 3]).toBe(1);
+    // Down the light from the ball's middle, on the shadow's axis: dark from inside the ball to half the shadow's length.
+    for (const along of [0, 40, 78, 150, 400, 0.5 * ORB_SHADE_LENGTH - 1]) expect(orbShade(f, ...downLight(f, along, 0)), `${hour} h, ${along} m`).toBe(0);
+    // Toward the light from the ball, and well to the side of the shadow: all of the light.
+    for (const along of [-79, -90, -400]) expect(orbShade(f, ...downLight(f, along, 0))).toBe(1);
+    expect(orbShade(f, ...downLight(f, -79, 60))).toBe(1);
+    for (const along of [100, 600]) expect(orbShade(f, ...downLight(f, along, 78 + 20))).toBe(1);
+    // It fades over the second half of its length and is gone at its end.
+    let last = 0;
+    for (let along = 0.5 * ORB_SHADE_LENGTH; along <= ORB_SHADE_LENGTH; along += 25) {
+      const now = orbShade(f, ...downLight(f, along, 0));
+      expect(now).toBeGreaterThanOrEqual(last);
+      last = now;
+    }
+    expect(last).toBeCloseTo(1, 9);
+    expect([orbShade(f, ...downLight(f, ORB_SHADE_LENGTH + 1, 0)), orbShade(f, ...downLight(f, 5000, 0))]).toEqual([1, 1]);
+  }
+  // On the ground at noon: dark under the ball's overhang, lit a few metres out from under it.
+  const noon = block(1, 12), cx = noon[ORB_AT]!, gy = noon[ORB_AT + 1]! - SITE.centre, cz = noon[ORB_AT + 2]!;
+  expect(orbShade(noon, cx, gy, cz - 72)).toBeLessThan(0.05);
+  expect(orbShade(noon, cx, gy, cz - 120)).toBe(1);
+  // A map with no orb: all of the light everywhere.
+  const bare = block(1, 12, 380, 1, 0, 2, -400, []);
+  expect([orbShade(bare, 0, 0, 0), orbShade(bare, 0, -34, 300)]).toEqual([1, 1]);
+});
+
+test("the shadow's edge is soft, never steps back, and widens down the light", () => {
+  const f = block(1, 16);
+  /** The metres across the edge over which the light goes from a tenth to nine tenths, walking out from the axis. */
+  const edge = (along: number): number => {
+    let last = -1, from = NaN, to = NaN;
+    for (let off = 30; off <= 160; off += 0.05) {
+      const now = orbShade(f, ...downLight(f, along, off));
+      expect(now).toBeGreaterThanOrEqual(last);
+      if (Number.isNaN(from) && now >= 0.1) from = off;
+      if (Number.isNaN(to) && now >= 0.9) to = off;
+      last = now;
+    }
+    expect(last).toBe(1);
+    // The edge lies about the ball's outline.
+    expect(from).toBeLessThan(SITE.radius);
+    expect(to).toBeGreaterThan(SITE.radius);
+    return to - from;
+  };
+  const near = edge(100), far = edge(600);
+  expect(near).toBeGreaterThan(ORB_SHADE_SOFT);
+  expect(near).toBeLessThan(8);
+  expect(far).toBeGreaterThan(2 * near);
+  // No step along the light either, from before the ball into its shadow.
+  let last = 2, least = 1;
+  for (let along = -90; along <= 60; along += 0.05) {
+    const now = orbShade(f, ...downLight(f, along, 0));
+    expect(now).toBeLessThanOrEqual(last);
+    expect(last === 2 ? 0 : last - now).toBeLessThan(0.05);
+    last = now;
+    least = Math.min(least, now);
+  }
+  expect(least).toBe(0);
+});
+
+test("the shadow is the casting light's: the moon's by night, fainter at dusk, none when off", () => {
+  // By night the moon owns the cascades, and the ball's shadow lies down its light.
+  const night = block(1, NIGHT);
+  expect(night[CAST_AT + 3]).toBeGreaterThan(0.9);
+  expect(orbShade(night, ...downLight(night, 150, 0))).toBeCloseTo(1 - night[CAST_AT + 3]!, 6);
+  // As much as the light casts: half a shadow where it casts by half.
+  const dusk = block(1, 12);
+  dusk[CAST_AT + 3] = 0.5;
+  expect(orbShade(dusk, ...downLight(dusk, 150, 0))).toBe(0.5);
+  dusk[CAST_AT + 3] = 0;
+  expect(orbShade(dusk, ...downLight(dusk, 150, 0))).toBe(1);
+  // Every tier with shadows takes it, the sea's program too, in one branch; `orbshade` takes it out and nothing else.
+  expect(ORB_SHADE_GLSL.match(/\bif\b/g)).toEqual(["if"]);
+  expect(ORB_SHADE_GLSL).toContain("if (fOrb[0].w <= 0.0) return 1.0;");
+  expect(ORB_SHADE_GLSL).toContain(`${ORB_SHADE_LENGTH.toFixed(1)}, along)`);
+  for (const tier of TIERS) {
+    for (const name of ["flat", "terrain", "far", "surface", "details", "water", "sky"]) {
+      const text = PROGRAMS[name]!(tier, "rgba", false, tier.post !== null), off = PROGRAMS[name]!(tierWithout(tier, effectsOff("orbshade")), "rgba", false, tier.post !== null);
+      expect(text.defines.includes("#define ORB_SHADE\n"), `${tier.name} ${name}`).toBe(tier.lit && tier.shadows.size > 0 && name !== "sky");
+      expect([off.fragment, off.vertex, off.samplers, off.defines]).toEqual([text.fragment, text.vertex, text.samplers, text.defines.replace("#define ORB_SHADE\n", "")]);
+      if (tier.name !== "medium" || !text.defines.includes("ORB_SHADE")) continue;
+      const vertex = withDefines(text.vertex, text.defines), fragment = withDefines(text.fragment, text.defines);
+      expect(fragment).toContain("return mapShadow(rel, normal) * orbShade(rel);");
+      expect([...compileErrors(vertex), ...compileErrors(fragment), ...linkErrors(vertex, fragment)], name).toEqual([]);
+    }
+  }
+});
+
+test("the software render draws the ball's shadow on the ground; with no orb nothing changes", () => {
+  const picture = (tier: Tier, orbs: readonly OrbSite[] | null, hour: number): Uint8ClampedArray => {
+    const { scene, from, hf } = world(tier, orbs), raster = new Rasterizer(160, 90, pack(), hf);
+    scene.hour = hour;
+    scene.orbOnly = 1;
+    const cam = from(420, 380, -0.62);
+    cam.x -= 250;
+    cam.yaw = 0.5;
+    raster.render(scene.build(cam, null));
+    return raster.color.slice();
+  };
+  for (const name of ["medium", "high"]) {
+    const tier = tierOf(name), plain = tierWithout(tier, effectsOff("orbshade"));
+    // Late in the day the shadow lies long to the east of the ball: many of the ground's pixels are darker by it, and none lighter.
+    const on = picture(tier, [SITE], 17), off = picture(plain, [SITE], 17);
+    let darker = 0, lighter = 0;
+    for (let i = 0; i < on.length; i += 4) {
+      const d = on[i]! + on[i + 1]! + on[i + 2]! - off[i]! - off[i + 1]! - off[i + 2]!;
+      if (d < -30) darker++;
+      if (d > 0) lighter++;
+    }
+    expect(darker, name).toBeGreaterThan(300);
+    expect(lighter, name).toBe(0);
+    expect([...picture(tier, null, 17)]).toEqual([...picture(plain, null, 17)]);
+  }
 });

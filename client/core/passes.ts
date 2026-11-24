@@ -169,9 +169,9 @@ export const BENCH_TURN_MS = 15000;
  * launcher threw up among the small details. An orb's light by night comes off in its three parts: "orbglow" draws no
  * halo and no pool (render/passes/orb.ts), "orbmirror" leaves the ball out of the street's picture
  * (render/street-reflections.ts), and "orblight" draws the lit programs without its light, and the pool for it
- * (render/orb-light.ts).
+ * (render/orb-light.ts); "orbshade" draws them without the shadow the ball casts (`orbShade` there).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather", "bursts", "orbglow", "orbmirror", "orblight"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather", "bursts", "orbglow", "orbmirror", "orblight", "orbshade"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -197,6 +197,7 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
     if (off.has("light")) copy = { ...copy, post: null };
     if (off.has("bloom") && copy.post) copy = { ...copy, post: { ...copy.post, bloom: 0 } };
     if (off.has("orblight")) copy = { ...copy, orb: { ...copy.orb, light: false } };
+    if (off.has("orbshade")) copy = { ...copy, shadows: { ...copy.shadows, orb: false } };
     mine.set(key, copy);
   }
   return copy;
