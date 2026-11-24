@@ -109,3 +109,28 @@ iframe,
     width: 100%;
   }
 }
+.scene-categories { display: flex; gap: .55rem; flex-wrap: wrap; }
+.scene-categories [aria-pressed="true"] { color: #fff; background: #24588d; border-color: #24588d; }
+.scene-categories [aria-pressed="true"]:hover { background: #183e6b; }
+#studio-status { display: flex; gap: .8rem; align-items: center; }
+#studio-status:has(#notice:empty):has(#reload[hidden]) { display: none; }
+#studio-status p { margin: 0; }
+#view[data-category="loaders"] { background-image: url("/cluster/loader-poster.webp"); }
+#view[data-category="loaders"].tall { background-image: url("/cluster/loader-poster.webp?portrait"); }
+.wiki-preview {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+  overflow: hidden;
+  background: #edf2f7;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+}
+.wiki-preview img { display: block; width: 100%; height: auto; }
+#wiki-preview-note { margin: 1.25rem; color: var(--dim); text-align: center; }
+#recipe-detail { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .35rem .7rem; font-size: .9rem; }
+#recipe-detail dt { font-weight: 650; }
+#recipe-detail dd { margin: 0; overflow-wrap: anywhere; color: var(--dim); }
+#recipe-declaration { margin-bottom: .85rem; }
+#recipe-declaration summary { cursor: pointer; }
+#recipe-source { padding: .7rem; background: #edf2f7; overflow: auto; max-height: 26rem; font-size: .8rem; }

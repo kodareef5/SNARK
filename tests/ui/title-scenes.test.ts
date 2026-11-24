@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TitleScenes } from "../../server/admin/title-scenes.ts";
+import { DEFAULT_LOADER_SHOT, initialShots, type LoaderScene } from "../../shared/player-scenes.ts";
 import { OPENING_SHOT, validShot } from "../../shared/title-scene.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import type { Scene } from "../../client/core/render/scene.ts";
@@ -18,9 +20,10 @@ import { writeEyeSky } from "../../client/core/render/tide-eye.ts";
 import { FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
 import { heroMeshes, mountRex, shoreLight, shoreView } from "../../client/core/title-shore.ts";
 const picture = "data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA";
-const write = (store: TitleScenes, data: object) =>
+const loader = async (store: TitleScenes) => (await store.loader().json() as LoaderScene).shot;
+const write = (store: TitleScenes, data: object, category = "title") =>
   store.admin(
-    new Request("http://cluster/api", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }),
+    new Request(`http://cluster/api?category=${category}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }),
   );
 test("a cluster publishes camera and loading plates together, protects a newer edit and retains the public shot on restart", async () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-shots-")),
@@ -51,6 +54,59 @@ test("a cluster publishes camera and loading plates together, protects a newer e
     rmSync(dir, { recursive: true, force: true });
   }
 });
+test("title and loader publish their own composition and two frames", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-loader-shots-"));
+  const path = join(dir, "shots.sqlite");
+  const first = new TitleScenes(path), another = new TitleScenes(path);
+  const shot = { ...DEFAULT_LOADER_SHOT, id: "new-loader", subject: "rex" as const };
+  try {
+    expect(await loader(first)).toEqual(DEFAULT_LOADER_SHOT);
+    expect(first.loaderPoster(true).headers.get("location")).toBe("/title/loader-wynwood-portrait.webp");
+    expect((await write(first, { shot, revision: 0, publish: false, category: "title" }, "loaders")).status).toBe(400);
+    expect((await write(first, { shot, revision: 0, publish: false }, "wiki")).status).toBe(405);
+    expect((await write(first, { shot, revision: 0, publish: false }, "loaders")).status).toBe(200);
+    expect(await loader(another)).toEqual(DEFAULT_LOADER_SHOT);
+    expect((await write(another, { shot, revision: 0, publish: true, picture, portrait: picture }, "loaders")).status).toBe(409);
+    expect((await write(another, { shot, revision: 1, publish: true, picture }, "loaders")).status).toBe(400);
+    expect((await write(another, { shot, revision: 1, publish: true, picture, portrait: picture }, "loaders")).status).toBe(200);
+    expect((await write(first, { shot: OPENING_SHOT, revision: 0, publish: false })).status).toBe(200);
+    expect(await first.active().json()).toEqual(OPENING_SHOT);
+    expect(first.poster(true).headers.get("location")).toBe("/title/red-tide-portrait.webp");
+    const reopened = new TitleScenes(path);
+    try {
+      expect(await loader(reopened)).toEqual(shot);
+      expect(reopened.loaderPoster(false).headers.get("content-type")).toBe("image/webp");
+      expect(reopened.loaderPoster(true).status).toBe(200);
+    } finally { reopened.close(); }
+  } finally {
+    first.close();
+    another.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a stored catalogue adds new declarations without replacing edits", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-authored-shots-"));
+  const path = join(dir, "shots.sqlite");
+  const custom = { ...DEFAULT_LOADER_SHOT, name: "Operator crop", camera: { ...DEFAULT_LOADER_SHOT.camera, tilt: 12 } };
+  const saved = { revision: 7, active: custom.id, published: custom, shots: [custom] };
+  const db = new Database(path);
+  db.exec("CREATE TABLE title (id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, catalog TEXT NOT NULL, poster BLOB, portrait BLOB)");
+  db.query("INSERT INTO title VALUES (2, 7, ?, ?, ?)").run(JSON.stringify(saved), new Uint8Array(24).fill(7), new Uint8Array(24).fill(9));
+  db.close();
+  const store = new TitleScenes(path);
+  try {
+    const response = await store.admin(new Request("http://cluster/api?category=loaders"));
+    expect(await response.json()).toEqual({ ...saved, shots: [custom, ...initialShots("loaders").shots.filter((shot) => shot.id !== custom.id)] });
+    expect(await loader(store)).toEqual(custom);
+    expect(new Uint8Array(await store.loaderPoster(false).arrayBuffer())).toEqual(new Uint8Array(24).fill(7));
+    expect(new Uint8Array(await store.loaderPoster(true).arrayBuffer())).toEqual(new Uint8Array(24).fill(9));
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function beachCast() {
   const { hf, reg } = flatWorld(8);
   const eye = { name: "Wynwood", x: 3832, y: 5, z: 3712, yaw: 22790, radius: 64, color: "red", form: "sextant" } as const;

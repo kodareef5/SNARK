@@ -1,13 +1,22 @@
+import { initialShots, SCENE_CATEGORIES, type EditableSceneCategory, type SceneCategory, type ShotCatalog, type WikiSceneCatalog, type WikiSceneRecipe } from "../../shared/player-scenes.ts";
 import { CAMERA_FIELDS, OPENING_SHOT, type CameraField, type TitleShot } from "../../shared/title-scene.ts";
-type Catalog = { revision: number; active: string; published: TitleShot; shots: TitleShot[] };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const view = $("view"),
   frame = view.querySelector("iframe")!,
   list = $<HTMLSelectElement>("shots"),
-  name = $<HTMLInputElement>("name");
+  name = $<HTMLInputElement>("name"),
+  recipes = $<HTMLSelectElement>("recipes"),
+  picture = $<HTMLImageElement>("wiki-picture");
+const categoryButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-category]"));
+const endpoint = (value: SceneCategory): string => "/admin/scenes/api?category=" + value;
 const keys = Object.keys(CAMERA_FIELDS) as CameraField[],
   sliders = new Map<CameraField, HTMLInputElement>();
-let catalog: Catalog | null = null,
+let category: SceneCategory = "title",
+  catalog: ShotCatalog | null = null,
+  wiki: WikiSceneCatalog | null = null,
+  viewerReady = false,
+  loading = 0,
+  baseline = { ...OPENING_SHOT.camera },
   shot = structuredClone(OPENING_SHOT),
   paused = false,
   saving = false,
@@ -16,6 +25,7 @@ const notify = (m: string) => {
   $("notice").textContent = m;
 };
 function updateFrame() {
+  if (category === "wiki") return;
   frame.contentWindow?.postMessage({ source: "snark-title", preset: shot, paused }, location.origin);
 }
 function setCamera(k: CameraField, v: number) {
@@ -52,31 +62,146 @@ function edit() {
 }
 function select(s: TitleShot) {
   shot = structuredClone(s);
+  baseline = { ...shot.camera };
   changed = false;
   name.value = shot.name;
   list.value = shot.id;
   for (const k of keys) setCamera(k, shot.camera[k]);
   updateFrame();
 }
-function install(c: Catalog, id: string) {
+function actions() {
+  $<HTMLButtonElement>("publish").disabled = !catalog || !viewerReady || saving;
+  for (const action of ["save", "copy", "reset"]) $<HTMLButtonElement>(action).disabled = !catalog || saving;
+  for (const button of categoryButtons) button.disabled = saving;
+}
+
+function install(c: ShotCatalog, id: string) {
   catalog = c;
   list.replaceChildren(...c.shots.map((s) => new Option(s.name, s.id)));
-  $("published").textContent = "On the title · " + c.published.name;
+  $("published").textContent = (category === "loaders" ? "Published loader · " : "Published title · ") + c.published.name;
   select(c.shots.find((s) => s.id === id) ?? c.shots[0]!);
   $("reload").hidden = true;
+  actions();
 }
+
+function wikiFields(recipe: WikiSceneRecipe): [string, string][] {
+  const map = recipe.map.replace(/(^|-)([a-z])/g, (_, prefix: string, letter: string) => `${prefix ? " " : ""}${letter.toUpperCase()}`);
+  const where: [string, string][] = [["Map", map], ["Placement", recipe.route]];
+  if (recipe.kind === "shore") return [...where, ["Set", "Wynwood shore"], ["Sun hour", String(recipe.shot.camera.hour)], ["Frame", `${recipe.seconds} s`]];
+  if (recipe.kind === "section") {
+    const { actors, hour, landmark } = recipe.composition;
+    const cast = [...new Set(actors.map(([kind]) => kind.replaceAll("_", " ")))];
+    if (landmark) cast.push(landmark);
+    return [...where, ["Sun hour", String(hour)], ...(cast.length ? [["Cast", cast.join(", ")] as [string, string]] : [])];
+  }
+  return [...where, ["Sun hour", String(recipe.camera.hour)], ...(recipe.kind === "obelisk" ? [["Camera", recipe.camera.view] as [string, string]] : [])];
+}
+
+function selectRecipe() {
+  const recipe = wiki?.recipes.find(({ id }) => id === recipes.value);
+  const media = recipe ? wiki?.media[recipe.id] : undefined;
+  const image = media?.landscape;
+  const shown = !!image && /^\/wiki\/media\/[a-z0-9.-]+\.webp$/i.test(image.file);
+  const note = $("wiki-preview-note");
+  note.hidden = shown;
+  picture.hidden = !shown;
+  if (image && shown) {
+    picture.src = image.file;
+    picture.alt = recipe?.alt ?? "";
+    picture.width = image.width;
+    picture.height = image.height;
+  } else {
+    picture.removeAttribute("src");
+    note.textContent = recipe ? "Run bun run wiki to render this preview." : "Build the client to load Wiki recipes.";
+  }
+  $("recipe-description").textContent = recipe?.alt ?? "";
+  $("recipe-detail").replaceChildren(...(recipe ? wikiFields(recipe).flatMap(([label, value]) => {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = label;
+    dd.textContent = value;
+    return [dt, dd];
+  }) : []));
+  $("recipe-declaration").hidden = !recipe;
+  $("recipe-source").textContent = recipe ? JSON.stringify(recipe, null, 2) : "";
+  const link = $<HTMLAnchorElement>("recipe-page");
+  link.hidden = !shown || !recipe?.route.startsWith("/wiki/");
+  link.href = link.hidden ? "/wiki/" : recipe!.route;
+}
+
+function installWiki(c: WikiSceneCatalog) {
+  wiki = c;
+  const groups = new Map<string, HTMLOptGroupElement>();
+  for (const recipe of c.recipes) {
+    const label = recipe.kind === "city" ? "City galleries" : recipe.kind === "obelisk" ? "Obelisk galleries" : "Wiki sections";
+    let group = groups.get(label);
+    if (!group) {
+      group = document.createElement("optgroup");
+      group.label = label;
+      groups.set(label, group);
+    }
+    group.append(new Option(recipe.name, recipe.id));
+  }
+  recipes.replaceChildren(...groups.values());
+  selectRecipe();
+}
+
 async function load() {
+  const wanted = category, request = ++loading;
   try {
-    const r = await fetch("api", { cache: "no-store" });
-    if (!r.ok) throw Error("Could not open the shot library.");
-    const c: Catalog = await r.json();
-    install(c, c.active);
+    const r = await fetch(endpoint(wanted), { cache: "no-store" });
+    if (!r.ok) throw Error("Could not open the scene library.");
+    const data: unknown = await r.json();
+    if (request !== loading) return;
+    if (wanted === "wiki") installWiki(data as WikiSceneCatalog);
+    else {
+      const c = data as ShotCatalog;
+      install(c, c.active);
+    }
+    $("reload").hidden = true;
     notify("");
   } catch (e) {
-    notify(String(e));
+    if (request !== loading) return;
+    notify(e instanceof Error ? e.message : String(e));
     $("reload").hidden = false;
   }
 }
+
+function changeCategory(next: SceneCategory, first = false) {
+  if (saving || !first && next === category) return;
+  if (changed && !confirm("Discard unsaved changes to this shot?")) return;
+  category = next;
+  catalog = null;
+  changed = false;
+  for (const button of categoryButtons) button.setAttribute("aria-pressed", String(button.dataset.category === next));
+  const viewingWiki = next === "wiki";
+  $("live-monitor").hidden = $("editor-panel").hidden = viewingWiki;
+  $("wiki-monitor").hidden = $("wiki-panel").hidden = !viewingWiki;
+  if (viewingWiki) {
+    viewerReady = false;
+    delete view.dataset.ready;
+    frame.removeAttribute("src");
+    selectRecipe();
+  } else {
+    const initial = initialShots(next);
+    view.dataset.category = next;
+    if (!frame.hasAttribute("src")) {
+      $("playback").textContent = "Loading set…";
+      frame.src = "/flight.html?set=wynwood-shore";
+    }
+    list.replaceChildren(new Option(initial.published.name, initial.active));
+    select(initial.published);
+    $("published").textContent = "";
+    $("publish").textContent = next === "loaders" ? "Publish loader" : "Publish title";
+  }
+  const url = new URL(location.href);
+  if (next === "title") url.searchParams.delete("category");
+  else url.searchParams.set("category", next);
+  history.replaceState(null, "", url);
+  notify("Loading scene library…");
+  actions();
+  void load();
+}
+
 let sequence = 0,
   capture: { request: number; done: (value: string) => void } | null = null;
 function poster(portrait: boolean): Promise<string> {
@@ -97,10 +222,9 @@ function poster(portrait: boolean): Promise<string> {
     frame.contentWindow?.postMessage({ source: "snark-title", preset: shot, posterRequest: request, portrait }, location.origin);
   });
 }
-let viewerReady = false;
 async function save(publish: boolean) {
   if (publish && !viewerReady) { notify("Wait for the live preview before publishing."); return; }
-  if (!catalog || saving) return;
+  if (!catalog || category === "wiki" || saving) return;
   if (!name.value.trim()) {
     name.focus();
     notify("Give this shot a name.");
@@ -111,15 +235,15 @@ async function save(publish: boolean) {
   const snapshot = structuredClone(shot),
     id = snapshot.id;
   snapshot.name = name.value.trim();
-  $("save").setAttribute("disabled", "");
-  $("publish").setAttribute("disabled", "");
+  const target: EditableSceneCategory = category;
+  actions();
   try {
     const picture = publish ? await poster(false) : undefined;
     const portrait = publish ? await poster(true) : undefined;
-    const r = await fetch("api", {
+    const r = await fetch(endpoint(target), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ shot: snapshot, revision: catalog.revision, publish, picture, portrait }),
+      body: JSON.stringify({ category: target, shot: snapshot, revision: catalog.revision, publish, picture, portrait }),
     });
     const data = await r.json();
     if (!r.ok) {
@@ -127,14 +251,13 @@ async function save(publish: boolean) {
       throw Error(data.error ?? "Save failed.");
     }
     install(data, id);
-    notify(publish ? "Published. New title screens use this shot." : "Draft saved.");
+    notify(publish ? (target === "loaders" ? "Published for new loading screens." : "Published for new title screens.") : "Draft saved.");
   } catch (e) {
     notify(String(e));
   } finally {
     saving = false;
     document.querySelector("main")!.inert = false;
-    $("save").removeAttribute("disabled");
-    $<HTMLButtonElement>("publish").disabled = !viewerReady;
+    actions();
   }
 }
 name.oninput = () => {
@@ -165,7 +288,7 @@ $("save").onclick = () => void save(false);
 $("publish").onclick = () => void save(true);
 $("reload").onclick = () => void load();
 $("reset").onclick = () => {
-  for (const k of keys) setCamera(k, OPENING_SHOT.camera[k]);
+  for (const k of keys) setCamera(k, baseline[k]);
   edit();
 };
 $("pause").onclick = () => {
@@ -225,20 +348,28 @@ view.onkeydown = (e) => {
   }
 };
 addEventListener("message", (e) => {
-  if (e.origin !== location.origin || e.source !== frame.contentWindow || e.data?.source !== "snark-scene") return;
+  if (category === "wiki" || e.origin !== location.origin || e.source !== frame.contentWindow || e.data?.source !== "snark-scene") return;
   if (e.data.type === "poster" && capture?.request === e.data.request && typeof e.data.picture === "string") capture?.done(e.data.picture);
   if (e.data.type === "frame") updateFrame();
   if (e.data.type === "ready") {
     viewerReady = true;
     view.dataset.ready = "";
     $("playback").textContent = "Live · Miami";
-    $<HTMLButtonElement>("publish").disabled = false;
+    actions();
   }
   if (e.data.type === "failed") {
     viewerReady = false;
     delete view.dataset.ready;
     $("playback").textContent = "The renderer could not load. Reload the studio to retry.";
-    $<HTMLButtonElement>("publish").disabled = true;
+    actions();
   }
 });
-void load();
+recipes.onchange = selectRecipe;
+picture.onerror = () => {
+  picture.hidden = true;
+  $("wiki-preview-note").hidden = false;
+  $("wiki-preview-note").textContent = "This photo could not load. Rebuild the Wiki and reload the library.";
+};
+for (const button of categoryButtons) button.onclick = () => changeCategory(button.dataset.category as SceneCategory);
+const requested = new URLSearchParams(location.search).get("category") as SceneCategory;
+changeCategory(SCENE_CATEGORIES.includes(requested) ? requested : "title", true);
