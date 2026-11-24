@@ -1065,7 +1065,7 @@ const METAL_NEW_MOST: Record<string, readonly number[]> = {
   fence_foundation: [204, 108, 12],
   trapdoor_frame: [384, 216, 64, 32, 12],
   trapdoor: [296, 120, 48, 12],
-  ladder: [216, 104, 48, 24],
+  ladder: [216, 104, 48, 24, 12],
   double_doorway: [984, 320, 132, 28, 12],
   large_wall: [856, 168, 60, 12],
   gateway: [780, 300, 132, 28, 12],

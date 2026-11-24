@@ -718,7 +718,8 @@ function portal(form: FormDef, level: number): Shape | null {
  * two flanges the wall's thickness with a web set back between them and stiffeners across it on the sheets' joints;
  * the girder is two flanges over a web with a stiffener every sheet, and a marker stripe along its foot over the
  * opening. The outer flange is the band the gateway's end yields by. From 386 m it is a flat frame seen from both
- * faces: twelve triangles cannot be a closed frame, and a box would shut the opening.
+ * faces: twelve triangles cannot be a closed frame, and a box would shut the opening. Seen on edge it is nothing, half
+ * a pixel of what was there.
  */
 function gateway(form: FormDef, level: number): Shape | null {
   if (level > 4) return null;
@@ -735,7 +736,6 @@ function gateway(form: FormDef, level: number): Shape | null {
       const points = outline.map(([z, x]): Vec => [x, 0, z]);
       p.faces.push({ points, uvs: points.map(() => NO_UV), mat: "frame", tris: y < 0 ? tris : tris.flatMap((_, i) => (i % 3 === 0 ? [tris[i]!, tris[i + 2]!, tris[i + 1]!] : [])) });
     }
-    p.error = half;
     return p;
   }
   const band = form.yieldBand || POST;
@@ -1078,7 +1078,7 @@ function kerb(form: FormDef, level: number): Shape | null {
  * the wall by a bracket near each end of each stringer and one in its middle. It hangs on the wall's front, at -y.
  */
 function ladder(form: FormDef, level: number): Shape | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const p = new Shape();
   const [u0, v0, u1, v1] = outlineBox(form);
   const [half, foot, top] = [(u1 - u0) / 2, v0 - form.at[1], v1 - form.at[1]];
@@ -1086,6 +1086,8 @@ function ladder(form: FormDef, level: number): Shape | null {
   const [near, far] = [-(form.off ?? 0) + form.thick / 2, -(form.off ?? 0) - form.thick / 2];
   const [bar0, deep] = [0.024, Math.min(0.064, form.thick - 0.03)];
   const xs = half - bar0 / 2;
+  // From 386 m its two stringers, a twentieth of a pixel each, are one bar between them.
+  if (level === 4) return p.box([-2 * bar0, far + 0.004, foot], [2 * bar0, far + 0.004 + deep, top], tone("trim"));
   for (const s of [-1, 1]) p.box([s * xs - bar0 / 2, far + 0.004, foot], [s * xs + bar0 / 2, far + 0.004 + deep, top], tone("trim"));
   if (level === 3) return p;
   const count = Math.max(1, Math.round((top - foot) / 0.3));
