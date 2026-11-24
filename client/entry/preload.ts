@@ -1,6 +1,6 @@
 import { readHead, type MapHead, type MapPart } from "../../shared/world/mapfile.ts";
 import { firstFrameParts, partDistance } from "../core/map-first.ts";
-import { connectionHint, startupBudget, StartupQueue } from "./startup-budget.ts";
+import { connectionHint, constrainedConnection, startupBudget, StartupQueue } from "./startup-budget.ts";
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -107,6 +107,8 @@ export function stopPreloading(): void {
 
 addEventListener("pagehide", stopPreloading);
 document.addEventListener("visibilitychange", () => { if (document.hidden) stopPreloading(); });
+const connection = connectionHint();
+connection?.addEventListener?.("change", () => { if (constrainedConnection(connection)) stopPreloading(); });
 
 /** Start shared game files as soon as a world is selected. A slow connection spends no speculative bytes. */
 export async function preloadLaunch(base: string, signal: AbortSignal): Promise<void> {

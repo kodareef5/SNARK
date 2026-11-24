@@ -5,6 +5,7 @@ export interface ConnectionHint {
   effectiveType?: string;
   downlink?: number;
   rtt?: number;
+  addEventListener?(event: "change", changed: () => void): void;
 }
 
 export const connectionHint = (): ConnectionHint | undefined => (navigator as Navigator & { connection?: ConnectionHint }).connection;
@@ -15,7 +16,11 @@ export function constrainedConnection(hint?: ConnectionHint): boolean {
 }
 
 export function startupBudget(hint?: ConnectionHint): number {
-  return constrainedConnection(hint) ? 0 : (hint?.downlink ?? 0) >= 4 ? 4 * MIB : 2 * MIB;
+  return constrainedConnection(hint) ? 0 : (hint?.downlink ?? 0) >= 4 ? 4 * MIB : 3 * MIB;
+}
+
+export function survivorPreview(hint: ConnectionHint | undefined, hidden: boolean, requested: boolean): boolean {
+  return !hidden && (requested || !constrainedConnection(hint));
 }
 
 interface FileJob {

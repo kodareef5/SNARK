@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { constrainedConnection, startupBudget, StartupQueue } from "../../client/entry/startup-budget.ts";
+import { constrainedConnection, startupBudget, StartupQueue, survivorPreview } from "../../client/entry/startup-budget.ts";
 
 const file = (url: string, rank = 0, wireLimit = 24, decodedLimit = 64) => ({ url, rank, wireLimit, decodedLimit, keep: true });
 const signal = () => new AbortController().signal;
@@ -11,8 +11,19 @@ test("a constrained connection spends no speculative startup bytes", () => {
     expect(constrainedConnection(hint)).toBe(true);
     expect(startupBudget(hint)).toBe(0);
   }
-  expect(startupBudget()).toBe(2 * 1024 * 1024);
+  expect(startupBudget()).toBe(3 * 1024 * 1024);
   expect(startupBudget({ effectiveType: "4g", downlink: 10 })).toBe(4 * 1024 * 1024);
+});
+
+test("a survivor preview needs consent on a slow link and a visible tab", () => {
+  const hints = [{ saveData: true }, { effectiveType: "3g" }];
+  for (const hint of hints) {
+    expect(survivorPreview(hint, false, false)).toBe(false);
+    expect(survivorPreview(hint, false, true)).toBe(true);
+    expect(survivorPreview(hint, true, true)).toBe(false);
+  }
+  expect(survivorPreview(undefined, false, false)).toBe(true);
+  expect(survivorPreview(undefined, true, false)).toBe(false);
 });
 
 test("first-frame work takes priority and duplicate callers share one transfer", async () => {
