@@ -190,7 +190,7 @@ export class CityBreaks {
    * piece's material, of `type`, from the weapon `item`. `ranged` is a hit that flew there, which mines and salvages
    * nothing. Returns the damage done, and sets `left` and `broke`.
    */
-  hit(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number, ranged = false): number {
+  hit(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number, ranged: boolean, workScale: number): number {
     const { world, rules } = this.ctx;
     const reg = world.reg, structs = world.structs;
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
@@ -208,7 +208,7 @@ export class CityBreaks {
       if (type !== DMG_EXPLOSIVE || !(body > 0)) return 0;
       return hp - body > 0 ? this.keep(ref, mapKind, hp, hp - body) : this.fell(by, ref, false, x, y, z, hp);
     }
-    if (family === WRECK) return this.salvage(by, ref, mapKind, raw, type, item, x, y, z, ranged);
+    if (family === WRECK) return this.salvage(by, ref, mapKind, raw, type, item, x, y, z, ranged, workScale);
     if (form === FORM_HEAP) {
       if (type === DMG_MELEE) return ranged ? 0 : this.mine(by, ref, mapKind, item);
       // An explosive clears a heap, and what it held is lost.
@@ -472,13 +472,8 @@ export class CityBreaks {
     return struck;
   }
 
-  /**
-   * A hit lands on a wreck. A survivor's blow is work, a tool's power as on a heap: it strikes that share of a rung's
-   * health, over CityResistanceMultiplier, and the rung gives that share of what it holds, times WreckYieldMultiplier. Any other harm is by what the
-   * wreck's material takes, and gives nothing. A wreck is drawn as its rung's look, and with its last rung gone it is
-   * taken, its slot left the map's.
-   */
-  private salvage(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number, ranged: boolean): number {
+  /** Tool work follows the structure damage rules. A blast destroys its share of the wreck's contents. */
+  private salvage(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number, ranged: boolean, workScale: number): number {
     const { world, rules, items, progression } = this.ctx;
     const reg = world.reg, structs = world.structs;
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
@@ -489,8 +484,7 @@ export class CityBreaks {
     if (blow) {
       if (!rules.on("CityToolSalvage")) return 0;
       const tool = item !== 0 ? (reg.defs[item] as ItemDef).tool : undefined;
-      // A tougher city takes as many more blows, and gives the same.
-      harm = ((tool?.power ?? 1) * force * workHealth(reg, mapKind)) / rules.num("CityResistanceMultiplier");
+      harm = (tool?.power ?? 1) * force * workHealth(reg, mapKind) * workScale;
     }
     if (!(harm > 0)) return 0;
     // As the row keeps it, so the next blow's share starts where this one's ends.

@@ -7,6 +7,7 @@ import { DMG_MELEE } from "../../shared/sim/damage.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { GONE_BLAST, GONE_TAKEN } from "../../shared/world/structures.ts";
 import { ROCKET_REACH, city, rocket, type City } from "../fixtures/city.ts";
+import { listener } from "../fixtures/module.ts";
 import type { Harness } from "../fixtures/net.ts";
 import { count, put, record, survivor } from "../kit/kit.ts";
 
@@ -201,6 +202,25 @@ test("a stone that flew there is no blow of a tool, and a tougher city takes mor
   expect(c.id(other)).toBe(COMPACT);
   blows(c, bob.src, other, 1);
   expect([c.id(other), bob.has().slice(0, 4)]).toEqual([STRIPPED, [10, 4, 2, 4]]);
+});
+
+test("a wreck applies both resistance settings and the module damage scale once", () => {
+  const mod = listener("salvage", ["damage"]);
+  let scale = 1;
+  mod.heard.each = (e) => { e.data.scale = scale; };
+  const c = city([{ kind: COMPACT, x: 100, z: 100 }], 4, { modules: [mod.def] });
+  const { h } = c, car = c.refs[0]!, ada = hand(h, "ada");
+  const rules = h.host.rules;
+  expect(rules.assign("StructureResistanceMultiplier", "0.5", "console")).toBe("");
+  expect(rules.assign("CityResistanceMultiplier", "2", "console")).toBe("");
+  scale = 0.5;
+  expect(blows(c, ada.src, car, 1)).toBeCloseTo(8000 / 3 / 8 / 8, 2);
+  const hp = c.hp(car), xp = ada.rec.xp;
+  scale = 0;
+  expect([blows(c, ada.src, car, 1), c.hp(car), ada.rec.xp]).toEqual([0, hp, xp]);
+  scale = 0.5;
+  blows(c, ada.src, car, 63);
+  expect([c.id(car), ada.has().slice(0, 4)]).toEqual([STRIPPED, [10, 4, 2, 4]]);
 });
 
 test("a lesser look a map sets down itself is a plain piece: no tool works it, and a blast harms it as it did any wreck", () => {

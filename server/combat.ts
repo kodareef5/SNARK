@@ -1343,7 +1343,7 @@ export class Combat {
     let left: number;
     let done: number;
     if (placed !== 0) {
-      done = city.hit(src.by, ref, placed, harm.health, src.type, src.item, x, y, z, src.ranged === true);
+      done = city.hit(src.by, ref, placed, harm.health, src.type, src.item, x, y, z, src.ranged === true, hit.rule);
       if (!(done > 0)) return 0;
       left = city.left;
     } else if (city.held && !(before - harm.health > 0)) {
