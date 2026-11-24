@@ -481,11 +481,11 @@ test("the sphere light is strongest at the skin and gone at its reach", () => {
   // By the square of the distance from its middle near it, and nothing from its reach on.
   expect(facing(SITE.radius) / (1 - (SITE.radius / ORB_REACH) ** 2) ** 2).toBeCloseTo(0.25, 6);
   expect([facing(ORB_REACH), facing(ORB_REACH + 1), facing(5000)]).toEqual([0, 0, 0]);
-  // By the cosine of the face to the ball: nothing on a face turned away or edge on, half at sixty degrees.
-  const at = cz - SITE.radius - 40;
+  // By how much of the ball a face sees: nothing turned away, and edge on still the share its angular size gives.
+  const at = cz - SITE.radius - 40, size = SITE.radius / (SITE.radius + 40);
   expect(orbReach(f, cx, cy, at, 0, 0, -1)).toBe(0);
-  expect(orbReach(f, cx, cy, at, 0, 1, 0)).toBeCloseTo(0, 9);
-  expect(orbReach(f, cx, cy, at, 0, Math.sin(Math.PI / 3), 0.5) / orbReach(f, cx, cy, at, 0, 0, 1)).toBeCloseTo(0.5, 6);
+  expect(orbReach(f, cx, cy, at, 0, 1, 0) / orbReach(f, cx, cy, at, 0, 0, 1)).toBeCloseTo(size / (1 + size), 6);
+  expect(orbReach(f, cx, cy, at, 0, Math.sin(Math.PI / 3), 0.5) / orbReach(f, cx, cy, at, 0, 0, 1)).toBeCloseTo((0.5 + size) / (1 + size), 6);
   // The ground takes most at the foot, where the ball stands highest over it.
   const ground = (metres: number): number => orbReach(f, cx, cy - SITE.centre, cz - metres, 0, 1, 0);
   const foot = Math.sqrt(SITE.radius ** 2 - SITE.centre ** 2);
@@ -524,7 +524,7 @@ test("the ground takes the light on every lit tier, all else on high and ultra, 
   expect(tierWithout(tierOf("high"), effectsOff("orbglow,orbmirror")).orb).toMatchObject({ light: true, ground: true });
   // The twin's reach and lanes are the text's, and a map with no orb leaves at its first line.
   expect(ORB_SEES_GLSL).toContain(`/ ${ORB_REACH.toFixed(1)}`);
-  expect(ORB_SEES_GLSL).toContain("gOrb = fOrb[6].yzw * (s * s * w * w * max(dot(normal, d) / far, 0.0));");
+  expect(ORB_SEES_GLSL).toContain("gOrb = fOrb[6].yzw * (s * s * w * w * max((dot(normal, d) / far + s) / (1.0 + s), 0.0));");
   expect(ORB_SEES_GLSL.match(/\bif\b/g)).toEqual(["if"]);
   expect(ORB_SEES_GLSL).toContain("if (fOrb[0].w <= 0.0) return;");
   expect([ORB_COLOUR, ORB_SEEN]).toEqual([ORB_AT + 6 * 4 + 1, ORB_AT + 7 * 4]);

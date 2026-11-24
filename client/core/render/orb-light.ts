@@ -58,14 +58,16 @@ export function orbShade(frame: Numbers, x: number, y: number, z: number): numbe
 
 /**
  * The share of the orb's light a camera-relative point (x, y, z) with face normal `n` takes, 0 to 1: 1 on the skin on a
- * face turned to the ball's middle, less by the square of the distance, by the face's cosine, and nothing past its reach.
+ * face turned to the ball's middle, less by the square of the distance, by how much of the ball the face sees, and
+ * nothing past its reach.
  */
 export function orbReach(frame: Numbers, x: number, y: number, z: number, nx: number, ny: number, nz: number): number {
   const radius = frame[ORB_AT + 3]!;
   if (radius <= 0) return 0;
   const dx = frame[ORB_AT]! - x, dy = frame[ORB_AT + 1]! - y, dz = frame[ORB_AT + 2]! - z;
   const far = Math.max(Math.hypot(dx, dy, dz), radius), t = (far - radius) / ORB_REACH, s = radius / far, w = Math.max(1 - t * t, 0);
-  return s * s * w * w * Math.max((nx * dx + ny * dy + nz * dz) / far, 0);
+  // A ball this size is not a point: a face sees part of it until it is turned away by the ball's own angle.
+  return s * s * w * w * Math.max(((nx * dx + ny * dy + nz * dz) / far + s) / (1 + s), 0);
 }
 
 /** The orb's light on the point the software render is lighting, which `lit` (surface.ts) adds to what is not metal. */
@@ -84,7 +86,7 @@ void orbSees(vec3 rel, vec3 normal) {
   if (fOrb[0].w <= 0.0) return;
   vec3 d = fOrb[0].xyz - rel;
   float far = max(length(d), fOrb[0].w), t = (far - fOrb[0].w) / ${ORB_REACH.toFixed(1)}, s = fOrb[0].w / far, w = max(1.0 - t * t, 0.0);
-  gOrb = fOrb[6].yzw * (s * s * w * w * max(dot(normal, d) / far, 0.0));
+  gOrb = fOrb[6].yzw * (s * s * w * w * max((dot(normal, d) / far + s) / (1.0 + s), 0.0));
 }
 #endif
 `;

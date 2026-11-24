@@ -951,7 +951,7 @@ const MEAN_EASE = 0.15;
 /** The front of a change is a line of light: its share of the ball's skin. */
 const LEAD_SHARE = 0.0213;
 /** How many times the screen's own light the ball casts on what is round it. Tune it from real frames. */
-export const ORB_CAST = 3;
+export const ORB_CAST = 8;
 
 const ways = new Float32Array(MEAN_WAYS * 3);
 for (let i = 0; i < MEAN_WAYS; i++) {
