@@ -2370,7 +2370,8 @@ function joist(b: Build, from: P2, to: P2, wide: number, low: number, high: numb
   let sides: Side[] = [{ pts: rings[0]! }, { pts: rings[1]! }, ...rings[0]!.map((q, i) => ({ pts: [q, rings[0]![(i + 1) % 6]!, rings[1]![(i + 1) % 6]!, rings[1]![i]!] }))];
   const planes: Plane[] = ends.length > 0 ? ends.map(([at, out]) => [[at[0], 0, at[1]], [out[0], 0, out[1]]] as const) : [[[from[0], 0, from[1]], [-d[0], 0, -d[1]]], [[to[0], 0, to[1]], [d[0], 0, d[1]]]];
   for (const plane of planes) sides = clipSolid(sides, plane);
-  const grain: UvMap = (q) => [(q[0] * d[0] + q[2] * d[1]) / TILE + 0.5, (q[0] * across[0] + q[2] * across[1] + q[1]) / TILE + 0.5];
+  // Twice as far up as across: on neither of its cut arrises does the picture run to a line.
+  const grain: UvMap = (q) => [(q[0] * d[0] + q[2] * d[1]) / TILE + 0.5, (q[0] * across[0] + q[2] * across[1] + 2 * q[1]) / TILE + 0.5];
   b.convex(sides, "timber", () => grain);
 }
 
@@ -2784,6 +2785,15 @@ function slates(p: Shape, level: number, f: Facet, rise: number): void {
   for (const side of facetSides(f)) clip(p, side, null, from);
 }
 
+/**
+ * What closes a roof member where it is cut: its own material, the picture laid across two ways that no cut of a roof
+ * lies along both of, so it runs to a line on none. A cut's own face would carry on a narrow strip's.
+ */
+const cutOf = (mat: string) => (q: Vec): readonly [string, Uv] => [mat, [dot(q, CUT_ACROSS) / TILE, dot(q, CUT_UP) / TILE]];
+const CUT_AWAY = unit([Math.cos(0.3), Math.sin(0.3), 2]);
+const CUT_ACROSS = unit(cross(CUT_AWAY, [0, 0, 1]));
+const CUT_UP = cross(CUT_AWAY, CUT_ACROSS);
+
 /** The axis two points lie along, if they lie along one. */
 function axisOf(a: Vec, c: Vec): number | undefined {
   const moved = [0, 1, 2].filter((k) => Math.abs(c[k]! - a[k]!) > 1e-9);
@@ -2867,7 +2877,7 @@ function roof(form: FormDef, level: number): Build | null {
       const deep = form.thick - SARK + 0.06;
       const drop = SARK - 0.06 + deep / 2;
       member(p, level, at(a, za - drop), at(c, zc - drop), RIM, deep / Math.hypot(1, (zc - za) / l), [0, 0, 1], `rake ${k}`);
-      for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!]), floor]) clip(p, plane, null, from);
+      for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!]), floor]) clip(p, plane, cutOf("timber"), from);
       // A barge board in the side itself, from the boards down to the roof's underside: the roof's edge is closed
       // where no gable stands in it, and it lies inside the gable's stone where one does.
       const barge = form.thick - SARK - SARK_DROP;
@@ -2879,7 +2889,7 @@ function roof(form: FormDef, level: number): Build | null {
       member(p, level, at(a, (z0 + z1) / 2), at(c, (z0 + z1) / 2), RIM, z1 - z0, [0, 0, 1], `rim ${k}`);
     }
     // Under a hip a rim timber runs on past the fold, under the other face: it is cut to both, and to the roof's own underside, which a hewn face strays past.
-    for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!]), floor]) clip(p, plane, null, from);
+    for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!]), floor]) clip(p, plane, cutOf("timber"), from);
   });
   if (folded) {
     const [a, c] = [plan[(fold + 2) % n]!, plan[fold]!];
@@ -2889,13 +2899,13 @@ function roof(form: FormDef, level: number): Build | null {
     const drop = SARK + SARK_DROP + RAFTER / 2 + (hip ? (RIM / 2) * facets[0]!.g * Math.SQRT1_2 : 0);
     let from = p.faces.length;
     member(p, level, [a[0], a[1], za - drop], [c[0], c[1], zc - drop], RIM, RAFTER / Math.hypot(1, (zc - za) / run), [0, 0, 1], "fold");
-    for (const side of [...within, floor]) clip(p, side, null, from);
+    for (const side of [...within, floor]) clip(p, side, cutOf("timber"), from);
     from = p.faces.length;
     if (hip) {
       // The dressed roll that caps a hip, out to the corner of the eave course.
       const reach = facets.every((f) => f.kinds.includes("eave")) ? EAVE * Math.SQRT2 - 0.02 : 0;
       member(p, level, [a[0] - ((c[0] - a[0]) * reach) / run, a[1] - ((c[1] - a[1]) * reach) / run, za - (reach * (zc - za)) / run + 0.03], [c[0], c[1], zc + 0.03], 0.11, 0.06, [0, 0, 1], "roll", "dressed", 0.018);
-      for (const side of plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), kindOf(k) === "eave" ? EAVE : 0))) clip(p, side, null, from);
+      for (const side of plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), kindOf(k) === "eave" ? EAVE : 0))) clip(p, side, cutOf("dressed"), from);
     } else {
       // The gutter stone that lines a valley, its ends square and just short of the corners.
       const [t0, t1] = [0.14 / run, 1 - 0.14 / run];
@@ -2912,14 +2922,14 @@ function roof(form: FormDef, level: number): Build | null {
       const from = p.faces.length;
       const off = -(SARK + SARK_DROP + RAFTER / 2);
       member(p, level, onFacet(f, a, Math.min(...spans), off), onFacet(f, a, Math.max(...spans), off), 0.12, RAFTER / k, [0, 0, 1], `common ${i} ${j}`);
-      for (const side of sides) clip(p, side, null, from);
+      for (const side of sides) clip(p, side, cutOf("timber"), from);
     }
     if (level > 0 || !f.kinds.includes("eave")) return;
     // Rafter tails under the eave course, each narrower than the rafter of a roof that runs on below, so it lies inside it.
     const from = p.faces.length;
     for (const a of [0.055, 0.75, 2.25, 2.945]) member(p, 1, onFacet(f, a, -EAVE + 0.035, -0.054), onFacet(f, a, 0.02, -0.054), 0.085, 0.09, [0, 0, 1], `tail ${i} ${a}`);
     f.kinds.forEach((kind, s2) => {
-      if (kind !== "eave") clip(p, facetSides(f)[s2]!, null, from);
+      if (kind !== "eave") clip(p, facetSides(f)[s2]!, cutOf("timber"), from);
     });
   });
   return b;
