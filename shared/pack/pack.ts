@@ -26,6 +26,8 @@
 //   instance  20 bytes  f32 x, y, z   relative to the batch origin
 //                       u16 yaw       1/65536 turns
 //                       u8 x 6        palette index for each colour region
+//             A built piece's reads otherwise from its yaw on (client/core/render/piece-fit.ts): a slot of
+//             its draw's bases and a direction, three regions, a recipe material, a state and a fit.
 //
 //   clip      rot: each rotation as x, y, z of its axis times the tangent of a quarter of its angle, w >= 0, in
 //             1/CLIP_ROT_STEPS; by bone, by parameter, by frame, each less what the two frames before foretell (twice

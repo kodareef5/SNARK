@@ -2224,6 +2224,17 @@ export class Rasterizer {
           for (let i = 0; i < 3; i++) eye[i] = -carried[i]! / dist;
           dyed(albedo, base, s.tint, this.dyes, mask, mask2);
           if (s.pieceWear > 0) for (let i = 0; i < 3; i++) albedo[i]! *= wearShade(s.pieceWear);
+          // As SURFACE's PIECE_SPALL: past worn, lost to its core in patches where the tier reads the finishes in full.
+          if (s.pieceWear >= 2 && p.lit && p.tier.finish === "full") {
+            const n = Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!) * (back ? -1 : 1) || 1;
+            const lost = spalled(carried[0]! + p.camX, carried[1]! + p.camY, carried[2]! + p.camZ, carriedNormal[0]! / n, carriedNormal[1]! / n, carriedNormal[2]! / n, s.pieceWear);
+            if (lost[0]! > 0.5) {
+              albedo.set(SPALL_LINEAR);
+              mro.set([1, 1, 0]);
+              bump[0] = bump[1] = 128 / 255;
+            }
+            for (let i = 0; i < 3; i++) albedo[i]! *= 1 - SPALL_RIM * lost[1]!;
+          }
           if (s.layer) {
             sample(s.layer, u, v, spread, layer);
             wounded(albedo, mro, layer, s.level, wearLate(s.wear, carried[12]!, carried[13]!, carried[14]!));

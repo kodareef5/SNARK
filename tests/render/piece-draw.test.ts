@@ -3,17 +3,19 @@
 // is a row, where it will stand. The placing is measured by the rule the rasterizer shares with the vertex programs.
 
 import { expect, test } from "bun:test";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FLAT_MESH_VERTEX } from "../../client/core/render/glsl.ts";
 import { DRAW_PIECE, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { FIT_CLASS_SHIFT, FIT_SIZE_SHIFT, FIT_SQUARE, FIT_TRIANGLE, FIT_WALL, FrameTable, PIECE_FIT_AT, PIECE_FIT_GLSL, PIECE_FIT_PLACE, PIECE_FRAMED, PIECE_FRAMES, PIECE_STAGE, PIECE_STATE_AT, PieceFit, pieceWord, plainYaw } from "../../client/core/render/piece-fit.ts";
 import { stageOfHealth } from "../../client/core/render/piece-state.ts";
 import { WEAR_SHADE } from "../../client/core/render/pieces.ts";
+import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { DEPTH_VERTEX } from "../../client/core/render/shadowtext.ts";
-import { SURFACE_VERTEX } from "../../client/core/render/surface.ts";
+import { PIECE_SPALL_TEXT, SURFACE_VERTEX } from "../../client/core/render/surface.ts";
+import { SPALL_GLSL } from "../../client/core/render/world-surfaces.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { INSTANCE_BYTES, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -26,7 +28,8 @@ import { boxBase } from "../../tools/bench/base.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
 import { JointBench, SIDE, piecesPack } from "../../tools/pieces/joints.ts";
-import { PICK_STRUCTURE } from "../../tools/snap/raster.ts";
+import { PICK_ENTITY, PICK_STRUCTURE } from "../../tools/snap/raster.ts";
+import { Stage, squareMesh } from "../fixtures/stage.ts";
 import { baseAt, batchesOf, drawn, layJunction, putAt, turnedBy, type Drawn } from "../fixtures/trims.ts";
 import { Base, mixedHouse, row, turnedRegistry, turnedWorld } from "../fixtures/turned.ts";
 import type { TestWorld } from "../fixtures/world.ts";
@@ -343,4 +346,41 @@ test("a framed instance's word is its slot and its own +X among the basis's twel
   // A quarter turn more of yaw is three directions less; a turn class is one more.
   expect([pieceWord(0, 1000, 0), pieceWord(0, 1000 + 16384, 0), pieceWord(1, 2000 + 3 * 16384, 2), pieceWord(0, 1000, 1)]).toEqual([0, 9, 16 + 5, 1]);
   expect([plainYaw(1000, 0), plainYaw(6000, 1), plainYaw(100, 2)]).toEqual([1000, 6000 - 5461, 65536 + 100 - 10923]);
+});
+
+test("drawn with its materials a piece is darker a stage, and past worn it is lost to its core in patches where the tier reads the finishes in full", () => {
+  // A square 3 m across with a base colour of one grey, drawn as a piece at each stage: unframed, so by its yaw.
+  const pack = parsePack(buildPack([squareMesh("test:slab", 3, ["base"])], defaultPalette()));
+  const stage = new Stage(pack, 96, 96);
+  [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw] = [0, 1.5, 2.2, Math.PI];
+  stage.sun = [0, 0, 1];
+  const full = tierOf("high"), phone = forTouch(tierOf("high"), true);
+  const draw = (tier: typeof full, wear: number): number[] => {
+    stage.begin();
+    stage.packet.tier = tier;
+    stage.texture(0, "base", [Uint8Array.from([150, 150, 150, 255])]);
+    // Its last three regions are no colours: a material, its state, its fit.
+    stage.add("test:slab", 0, { x: 0, y: 0, z: 0, flags: DRAW_PIECE, regions: [0, 0, 0, 0, wear, 0] });
+    const px = stage.render();
+    const seen: number[] = [];
+    for (let i = 0; i < 96 * 96; i++) if (stage.raster.pickKind[i] === PICK_ENTITY) seen.push(px[i * 4]!);
+    return seen;
+  };
+  const mean = (v: number[]): number => v.reduce((a, b) => a + b, 0) / v.length;
+  const spread = (v: number[]): number => Math.max(...v) - Math.min(...v);
+  expect([full.finish, phone.finish]).toEqual(["full", "light"]);
+  for (const tier of [full, phone]) {
+    const [whole, worn, failing] = [draw(tier, 0), draw(tier, 1), draw(tier, 3)];
+    expect(whole.length).toBeGreaterThan(3000);
+    // Whole and worn are one grey each, the worn the darker.
+    expect([spread(whole) <= 2, spread(worn) <= 2, mean(worn) < mean(whole) - 2]).toEqual([true, true, true]);
+    // Failing: darker again everywhere, and on the full finish in two greys, its own and its core's.
+    expect(mean(failing)).toBeLessThan(mean(worn) - 2);
+    expect(spread(failing) > 8).toBe(tier === full);
+  }
+  // The programs say the same: the mask's text is in the textured fragment where the finishes are read in full, and nowhere else.
+  for (const [tier, has] of [[full, true], [phone, false], [tierOf("medium"), true]] as const) {
+    const text = PROGRAMS.surface!(tier, "bc");
+    expect([text.defines.includes("#define PIECE_SPALL\n"), text.fragment.includes(SPALL_GLSL), text.fragment.includes(PIECE_SPALL_TEXT)]).toEqual([has, has, false]);
+  }
 });

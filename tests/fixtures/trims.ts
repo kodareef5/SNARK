@@ -133,9 +133,9 @@ export interface Drawn extends Standing {
   points: Float64Array;
 }
 
-/** The near store's batches of built chunks, which the scene keeps to itself. */
+/** The near store's batches, by chunk. */
 export function batchesOf(scene: Scene): Map<number, ChunkBatch> {
-  return (scene as unknown as { nearStore: { batches: Map<number, ChunkBatch> } }).nearStore.batches;
+  return scene.batches;
 }
 
 /**

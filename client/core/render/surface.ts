@@ -453,6 +453,12 @@ export interface SurfaceVariant {
 export const SURFACE_ANY: SurfaceVariant = { dyed: true, drops: true, layered: false };
 
 /**
+ * In the fragment text, under PIECE_SPALL: where the spall mask's text goes, and how much darker its rim is. The
+ * programs put world-surfaces.ts's in (programs.ts), which this file cannot read: that file reads this one.
+ */
+export const PIECE_SPALL_TEXT = "PIECE_SPALL_TEXT", PIECE_SPALL_RIM = "PIECE_SPALL_RIM";
+
+/**
  * The vertex text. Its attributes 0 and 2 to 6 are the flat program's, `uSkin` is what `skinMode` gives, and `uUv` is
  * what the mesh's stored texture coordinates span (PackMesh.uv): 0, 0, 1, 1 for a mesh that does not say. A layered
  * one passes on where the vertex lies at rest in its mesh's bounds, -1 to 1, for the wear story (wear.ts).
@@ -817,7 +823,11 @@ in vec4 vWheel;
 uniform float uStreetMaterial, uOptics, uFrom;
 uniform vec4 uEffect;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
+uniform vec3 uWorldEye;
+${PIECE_SPALL_TEXT}
+#endif
+vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -880,7 +890,20 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   roofBounce(vRel, face, over);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
   // A built piece is darker by its stage (piece-fit.ts), as it is drawn flat.
-  albedo *= 1.0 - ${WEAR_SHADE} * max(-vWheel.w, 0.0);
+  float pieceWear = max(-vWheel.w, 0.0);
+  albedo *= 1.0 - ${WEAR_SHADE} * pieceWear;
+#ifdef PIECE_SPALL
+  // Past worn it is lost to its core in patches, by the mask a city piece is (world-surfaces.ts spalled).
+  if (pieceWear > 1.5) {
+    vec2 lost = spalled(vRel + uWorldEye, face, int(pieceWear + 0.5));
+    if (lost.x > 0.5) {
+      albedo = SPALL_COLOUR;
+      mro = vec3(1.0, 1.0, 0.0);
+      n = face;
+    }
+    albedo *= 1.0 - PIECE_SPALL_RIM * lost.y;
+  }
+#endif
   // The fractional quarter of the material code carries the static vehicle's weather exposure.
   float age = fract(uStreetMaterial)*4.0;
   bool burntSheet = int(uStreetMaterial) == ${BURNT_SHEET};
