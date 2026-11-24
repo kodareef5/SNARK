@@ -10,7 +10,7 @@ from salvaged import build
 OFF = (
     "Engine cover", "Trailing deck edge", "Lower bumper insert", "Rolled exhaust tip", "Rear license plate",
     "Full width rear light", "Rear direction lamp", "headlight optic", "lamp_edge optic", "projector optic", "Position arc", "Front marker",
-    "Radiator grille", "Grille rib", "Inlet blade", "Fixed quarter glass", "Windscreen", "Wiper",
+    "Radiator grille", "Grille rib", "Inlet blade", "Fixed quarter glass", "Windscreen", "Pane of Roof and screens", "Wiper",
     "Seat", "Bucket cushion", "Checked seat back", "Integrated head restraint",
     "Analog dial", "Gauge bezel", "Instrument brow", "Dash", "Media stack", "Radio", "Climate knob", "Console", "Shift", "Gear lever", "Tunnel rail", "Steering column",
 )

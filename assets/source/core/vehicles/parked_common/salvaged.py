@@ -22,11 +22,14 @@ from parked import VEHICLES, _copied, _drop, _joined, _low, _model, _on, _turn
 
 PART = "part:"
 BOXED = PART + "in a box"
+PANE = "Pane of "
 
 
 def _named(o, name):
-    group = o.vertex_groups.new(name=PART + name)
-    group.add(list(range(len(o.data.vertices))), 1, "REPLACE")
+    # A part with a face of glass also goes by "Pane of" its name: a pane made under the name of the panel it is in.
+    glazed = any(m is not None and m.name == "t_glass" for m in o.data.materials)
+    for called in [name] + ([PANE + name] if glazed else []):
+        o.vertex_groups.new(name=PART + called).add(list(range(len(o.data.vertices))), 1, "REPLACE")
     return o
 
 
@@ -43,7 +46,7 @@ def _name_parts():
 def _made_as(o):
     """The names of the parts joined into `o`, or none where it is one part still and goes by its own name."""
     made = [g.name for g in o.vertex_groups if g.name.startswith(PART)]
-    return made if len(made) > 1 else []
+    return made if sum(1 for g in made if not g.startswith(PART + PANE)) > 1 else []
 
 
 def _own(o):
@@ -57,7 +60,9 @@ def _take(objs, names):
         return
     match = re.compile("|".join(f"(?:{n})" for n in names))
     for o in list(objs):
-        if not _made_as(o) and match.match(_own(o)):
+        # One part still goes by its own name, and a glazed one as a pane too.
+        pane = o.vertex_groups.get(PART + PANE + _own(o)) is not None
+        if not _made_as(o) and (match.match(_own(o)) or (pane and match.match(PANE + _own(o)))):
             objs.remove(o)
             bpy.data.objects.remove(o)
     for o in list(objs):
