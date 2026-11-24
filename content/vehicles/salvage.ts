@@ -35,8 +35,8 @@ export function wreckSalvage(rungs: readonly Rung[], size: WreckSize, looks = ru
   const groups = Array.from({ length: n }, (_, at) => (at < n - 1 ? [rungs[at]!] : rungs.slice(n - 1)));
   const gives = (group: readonly Rung[]) => {
     const sum = new Map<string, number>();
-    for (const r of group) for (const y of GIVES[r]) sum.set(y.item, (sum.get(y.item) ?? 0) + y.count);
-    return [...sum].map(([item, count]) => ({ item, count: Math.round(count * by) }));
+    for (const r of group) for (const y of GIVES[r]) sum.set(y.item, (sum.get(y.item) ?? 0) + Math.round(y.count * by));
+    return [...sum].map(([item, count]) => ({ item, count }));
   };
   return { work: (WORK * by * rungs.length) / n, rungs: groups.map((group) => ({ gives: gives(group) })) };
 }

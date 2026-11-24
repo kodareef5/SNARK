@@ -243,9 +243,10 @@ const columns = (n: number) => ({
    * none. Every kind of a set holds the one table. Read it with `formKind`.
    */
   formKinds: list<Uint16Array>(n),
-  /** Per wreck a map places: the work one of its rungs takes, and what each rung gives, an item's index and a count. 0 and null for everything else. */
+  /** The work each rung takes, or zero for anything but a wreck. */
   salvageWork: f32(n),
-  salvageYield: list<readonly (readonly { readonly item: number; readonly count: number }[])[]>(n),
+  /** Each item has its count in this rung and its total in all earlier rungs. */
+  salvageYield: list<readonly (readonly { readonly item: number; readonly count: number; readonly before: number }[])[]>(n),
 });
 
 /** The break set each name is, numbered from 1 in the order of the names. */
@@ -376,7 +377,21 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.salvage) reg.salvageWork[i] = d.salvage.work;
   },
   link(d, i, reg) {
-    if (d.salvage) reg.salvageYield[i] = d.salvage.rungs.map((r) => r.gives.map((y) => ({ item: reg.index.get(y.item)!, count: y.count })));
+    if (d.salvage) {
+      const totals = new Map<number, number>();
+      reg.salvageYield[i] = d.salvage.rungs.map((rung) => {
+        const counts = new Map<number, number>();
+        for (const y of rung.gives) {
+          const item = reg.index.get(y.item)!;
+          counts.set(item, (counts.get(item) ?? 0) + y.count);
+        }
+        return [...counts].map(([item, count]) => {
+          const before = totals.get(item) ?? 0;
+          totals.set(item, before + count);
+          return { item, count, before };
+        });
+      });
+    }
     if (d.material !== undefined) reg.structMaterial[i] = reg.index.get(d.material)!;
     if (d.opens !== undefined) reg.opens[i] = reg.index.get(d.opens)!;
     if (d.lights !== undefined) reg.lights[i] = reg.index.get(d.lights)!;

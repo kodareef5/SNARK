@@ -489,6 +489,7 @@ export class CityBreaks {
     if (!(harm > 0)) return 0;
     // As the row keeps it, so the next blow's share starts where this one's ends.
     const left = Math.fround(Math.max(0, hp - harm));
+    if (left === hp) return 0;
     const rungs = reg.salvageYield[mapKind]!;
     if (blow) {
       const all = rules.num("WreckYieldMultiplier");
@@ -496,7 +497,7 @@ export class CityBreaks {
         const [was, now] = [rungShare(reg, mapKind, r, hp), rungShare(reg, mapKind, r, left)];
         if (now === was) continue;
         for (const y of rungs[r]!) {
-          const n = Math.floor(y.count * all * now + 1e-9) - Math.floor(y.count * all * was + 1e-9);
+          const n = Math.floor((y.before + y.count * now) * all + 1e-9) - Math.floor((y.before + y.count * was) * all + 1e-9);
           if (n > 0) items?.mint(by, y.item, n, 0, 0, -1, "harvest");
         }
       }
