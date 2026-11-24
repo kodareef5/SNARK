@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /** Builds the operator pages separately from the playable client and its art. */
@@ -6,6 +6,11 @@ export async function buildAdmin(dist: string): Promise<void> {
   const client = resolve(import.meta.dir, "../client");
   const out = join(dist, "admin");
   mkdirSync(out, { recursive: true });
+  const emblem = join(client, "entry/media/snark-emblem.webp");
+  if (existsSync(emblem)) {
+    mkdirSync(join(dist, "title"), { recursive: true });
+    copyFileSync(emblem, join(dist, "title/snark-emblem.webp"));
+  }
   const entries = ["shell", "cluster", "admin", "settings", "cast", "loadouts", "first-frame", "board"];
   const result = await Bun.build({
     entrypoints: [...entries.map(name => join(client, "admin", name + ".ts")), join(client, "drops/drops.ts")],
