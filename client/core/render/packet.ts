@@ -307,7 +307,7 @@ export const MAX_TIRE_CONTACTS = 8;
 export const DROP_STREAKS = 4;
 export const DROP_LANES = DROP_STREAKS * 2 + 3;
 /** The vec4 lanes of the orb's section (`orb`). */
-export const ORB_LANES = 7;
+export const ORB_LANES = 8;
 
 /** A section of the frame block: its name, the first of FRAME_BLOCK's members it holds, and its floats, whole vec4s. */
 export interface FrameSection {
@@ -542,7 +542,8 @@ export const MADE_AT = SECTION.made;
  * the nearest shows a picture. Its centre from the eye and its radius (0 for none); its heading's cosine and sine, the
  * scene's clock and the clock of the scene before; the scene, the one before, how far the change has crossed and the
  * screen's level; where it looks and the blue eye's power; the way to the sun and how full the tide is; where a change
- * starts and how hard lightning strikes; which strike it is. Directions but the centre are in the orb's own frame.
+ * starts and how hard lightning strikes; which strike it is, and the colour of the light it casts by night
+ * (orb-light.ts); what the street's picture holds for it (ORB_OVER). Directions but the centre are in the orb's own frame.
  */
 export const ORB_AT = SECTION.orb;
 export const OPTIC_NONE = 0;

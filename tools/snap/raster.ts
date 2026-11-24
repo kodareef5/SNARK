@@ -35,6 +35,7 @@ const eyeBehind = [0, 0, 0], energy = [0, 0, 0];
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
+import { orbSees } from "../../client/core/render/orb-light.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
@@ -970,6 +971,8 @@ export class Rasterizer {
     const p = this.packet;
     // The street lamp's light on the pixel, which `lit` adds, as a lit program's sunShadow finds it (lamp.ts).
     lampSees(p.frame, rx, ry, rz, nx, ny, nz);
+    // An orb's light on it, where the tier's lit programs take it (orb-light.ts).
+    orbSees(p.frame, p.lit && p.tier.orb.light, rx, ry, rz, nx, ny, nz);
     const contact = (ground || stands) && p.tier.contact ? contactAt(p.frame, rx, ry, rz, nx, ny, nz) : 1;
     const roofs = p.lit && p.tier.roofs && this.roofSide > 0;
     if (ground) return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0) * (roofs ? roofOpen(this.roof, this.roofSide, p.frame, rx, rz, 0, 1, 0, 0) : 1);
@@ -1493,6 +1496,7 @@ export class Rasterizer {
               [eye[0], eye[1], eye[2]] = [vx, vy, vz];
               if ((flags & DETAIL_LIT) !== 0) {
                 lampSees(p.frame, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
+                orbSees(p.frame, p.tier.orb.light, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
                 lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
               } else for (let c = 0; c < 3; c++) light[c] = albedo[c]! / exposure;
               shown(rgb, light, dist, p);
