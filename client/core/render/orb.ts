@@ -5,7 +5,8 @@
 //
 // Close up the picture is LED pucks on a brick grid of rings with a dark trellis between; a change of scene is a front
 // that crosses the skin and shows one scene or the other at a pixel, never both; and the screen's level follows the
-// frame's exposure, so it reads at noon and blooms at night.
+// frame's exposure, so it reads at noon and blooms at night. By night the ball lights what is round it in the colour of
+// what it shows (OrbCast, orb-light.ts), and stands in the street's picture as a disc of it (orbInStreet).
 //
 // Everything is written twice: GLSL for the program `orb` (programs.ts), and the same arithmetic in TypeScript for the
 // software renderer (tools/snap/raster.ts), the tests and the contact sheet (tools/orb/sheet.ts). This file comes after
@@ -967,7 +968,9 @@ export class OrbCast {
   step(frame: Float32Array, now: number): void {
     const shown = this.shown, mean = this.mean;
     shown[0] = shown[1] = shown[2] = 0;
-    if (!(frame[ORB_AT + 3]! > 0)) {
+    const exposure = frame[FRAME.exposure]!, level = frame[ORB_AT + 11]! * orbNight(exposure, frame[SUN + 1]!);
+    // No orb, by day or dark: nothing is read, and the next frame it casts takes the mean whole.
+    if (!(frame[ORB_AT + 3]! > 0) || !(level > 0)) {
       this.last = -Infinity;
       return;
     }
@@ -984,7 +987,6 @@ export class OrbCast {
     meanOf(this.wanted, this.parts, frame);
     const k = still || dt > 1 ? 1 : 1 - Math.exp(-dt / MEAN_EASE);
     this.last = now;
-    const exposure = frame[FRAME.exposure]!, level = frame[ORB_AT + 11]! * orbNight(exposure, frame[SUN + 1]!);
     for (let c = 0; c < 3; c++) {
       mean[c] = mean[c]! + (this.wanted[c]! - mean[c]!) * k;
       shown[c] = mean[c]! * level;

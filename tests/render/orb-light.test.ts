@@ -178,7 +178,7 @@ function orbDraws(scene: Scene, p: FramePacket): { meshes: number; cards: number
   return { meshes, cards, glows };
 }
 
-test("halo and pool add two draws at the most, and none by day, switched off or with no orb", () => {
+test("halo and pool add two draws at most, and none by day, switched off or orbless", () => {
   for (const name of ["lowpoly", "medium", "high"]) {
     const { scene, from } = world(tierOf(name));
     for (const metres of [100, 250, 330, 384, 420, 500, 700, 1500, 3000]) {
@@ -305,7 +305,7 @@ test("the street's picture holds the ball as a disc of its light where it stands
   expect(covered).toBeLessThan((1.3 * Math.PI * half * half) / (pixel * pixel * Math.cos(lift + half)));
 });
 
-test("the picture holds no ball out of range, under its horizon, by day or switched off", () => {
+test("the picture holds no ball out of range, under its horizon, by day or when off", () => {
   const dark = (p: FramePacket): boolean => {
     const pixels = p.street!.pixels;
     for (let n = pixels.length / 2 + 3; n < pixels.length; n += 4) if (pixels[n] !== 0) return false;
@@ -338,7 +338,7 @@ test("the picture holds no ball out of range, under its horizon, by day or switc
   expect(pixels.some((v) => v !== 0)).toBe(true);
 });
 
-test("the sphere light is strongest at the skin, falls with distance and is gone at its reach", () => {
+test("the sphere light is strongest at the skin and gone at its reach", () => {
   const f = block(2, NIGHT, 380, 1, 0, 2, -400), cx = f[ORB_AT]!, cy = f[ORB_AT + 1]!, cz = f[ORB_AT + 2]!;
   /** A point `metres` from the skin toward the eye's side, level with the middle, facing the ball. */
   const facing = (metres: number): number => orbReach(f, cx, cy, cz - SITE.radius - metres, 0, 0, 1);
@@ -367,7 +367,7 @@ test("the sphere light is strongest at the skin, falls with distance and is gone
   expect(orbReach(block(2, NIGHT, 380, 1, 0, 2, -400, []), 0, 0, 0, 0, 0, 1)).toBe(0);
 });
 
-test("the software render adds the orb's light to what is not metal, where the tier takes it", () => {
+test("the software render adds the orb's light where the tier takes it, not to metal", () => {
   const f = block(2, NIGHT, 380, 1, 0, 2, -200);
   new OrbCast().step(f, 0);
   const n = [0, 0, 1], v = [0, 0, -1], grey = [0.5, 0.5, 0.5], sky = [0, 0, 0], plain = new Float64Array(3), lighted = new Float64Array(3), metal = new Float64Array(3), bare = new Float64Array(3);
@@ -390,7 +390,7 @@ test("the software render adds the orb's light to what is not metal, where the t
   orbCast.fill(0);
 });
 
-test("the lit programs take the light on high and ultra alone, in one branch, and compile", () => {
+test("the lit programs take the light on high and ultra alone, in one branch", () => {
   expect(TIERS.map((t) => t.orb.light)).toEqual([false, false, true, true]);
   expect(tierWithout(tierOf("high"), effectsOff("orblight")).orb.light).toBe(false);
   expect(tierWithout(tierOf("high"), effectsOff("orbglow,orbmirror")).orb.light).toBe(true);
@@ -419,7 +419,7 @@ test("the lit programs take the light on high and ultra alone, in one branch, an
   }
 });
 
-test("high lights the ground and walls by the ball; a map with no orb draws as it did", () => {
+test("high lights the ground and the plinth by the ball; with no orb nothing changes", () => {
   const picture = (tier: Tier, orbs: readonly OrbSite[] | null, hour = NIGHT, glow = true): { color: Uint8ClampedArray; p: FramePacket } => {
     const { scene, from, hf } = world(tier, orbs), raster = new Rasterizer(160, 90, pack(), hf);
     scene.hour = hour;
