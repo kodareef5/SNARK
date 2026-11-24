@@ -39,6 +39,7 @@ import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_
 import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
 import { storeRows } from "./bench/store.ts";
+import { claimsRows } from "./bench/claims.ts";
 import { benchTactical } from "./bench/tactical.ts";
 import { benchBreaking } from "./bench/breaking.ts";
 import { benchCensus } from "./bench/census.ts";
@@ -988,6 +989,7 @@ section("Restart under other settings: the save of the sizing target, every time
 
 // ---------------------------------------------------------------- entity store
 storeRows(section, record);
+claimsRows(section, record);
 
 // ---------------------------------------------------------------- client frame
 section("Client frame build (headless): standing 60 m from a 2,000-piece base of wood, of stone and of thatch, on medium, levels drawn with their materials");
