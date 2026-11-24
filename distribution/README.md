@@ -26,7 +26,9 @@ The linked files are read-only, because writing into one would change it in ever
 
 `bun run check` installs missing or newly pinned art itself when the machine already holds the archives, and downloads nothing. A run that skipped tests for missing art fails with `NOT A GATE`. Where the art is not installed at all, `bun run check -- --no-art` lets those tests skip and says how many did.
 
-To host the game, run `bun run build`, build a map for each city, and start a server for each as [the server's notes](../server/README.md) describe. Run `bun run wiki` after the client and maps are built to also host [the wiki](../planning/reference/wiki.md).
+To host the game, run `bun run build`, build a map for each city, and start a server for each as [the server's notes](../server/README.md) describe.
+
+To add the wiki, install Chrome or Chromium with WebGL 2 and put `cwebp` on your path. Run `bun run wiki` after building the client and maps. Miami supplies the section scenes, and each supported city map adds its own gallery. The build caches the photos in `.cache/wiki/photographs` and writes the site to `client/dist/wiki`. Open `/wiki/` on the game server to read it.
 
 ## Packing
 
