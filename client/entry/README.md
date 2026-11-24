@@ -32,7 +32,7 @@ bun tools/build-entry.ts client/dist
 
 Chrome renders the live map, Pteranodon, saddle and rider from the built asset packs. FFmpeg encodes the stills and fallback loop in `client/entry/media`. Omit `--video` to retake only the stills. Use `--out` to review replacements in another directory first. The normal client build also packages this media. The route coordinates, light and shot times live in `client/core/title-route.ts`. The camera and native actor arrangement live in `client/entry/flight.ts`.
 
-The region pass takes a native aerial picture at each public spawn. The card gallery also uses the map teams’ saved camera views in each city’s `reports/world1` directory. The build sizes those images for the browser.
+The region pass takes a native aerial picture at each public spawn. The gallery uses checked-in spawn photographs and any local camera reports. For an installed city map, the game build reads its header to draw a north-up chart and crops the local terrain for spawn points that have no photograph.
 
 ## The wiki's studio
 

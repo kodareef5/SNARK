@@ -490,8 +490,8 @@ function render() {
   } else if (screen === "spawn") {
     const points = data?.spawns ?? [], point = points[spawn], art = mapArt(selected?.mapId, selected?.map);
     const pins = points.map((p, i) => `<button type="button" class="pin" aria-label="${esc(p.name)}" title="${esc(p.name)}" data-action="place" data-index="${i}" aria-pressed="${i === spawn}" style="left:${(1 - p.x / data!.width) * 100}%;top:${(1 - p.z / data!.height) * 100}%"></button>`).join("");
-    const places = chart
-      ? `<div class="chart" ${art?.overview ? `style="background-image:url('${esc(art.overview)}')"` : ""}>${pins}</div>`
+    const places = chart && art?.overview && data
+      ? `<div class="chart" style="aspect-ratio:${data.width / data.height};background-image:url('${esc(art.overview)}')">${pins}</div>`
       : regionTiles(points, art, spawn, data?.width ?? 1, data?.height ?? 1);
     html = panel("Choose a spawn", `<div class="spawn-current"><div><p class="context">${esc(draft)} · ${esc(selected?.map)}</p><strong>${esc(point?.name ?? "No spawn selected")}</strong></div>
       ${art?.overview ? `<div class="chips" role="group" aria-label="Spawn view">${button("places", "Places", "chip", `aria-pressed="${!chart}"`)}${button("chart", "Map", "chip", `aria-pressed="${chart}"`)}</div>` : ""}</div>${places}`,
