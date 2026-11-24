@@ -415,10 +415,13 @@ export const FRAME_PIECES = BAND_PIECES;
 export const LAID_SHARE = 1 / 16;
 /**
  * A mesh that draws other than one made of what stands would is made again once its chunk has stood unchanged QUIET_MS,
- * or sooner where the faces it keeps and draws pass KEPT_SHARE of those it shows or the kinds standing in for pieces it
- * lacks pass STAND_INS; never within REMAKE_MS of its chunk's last.
+ * or after SETTLED_MS where the faces it keeps and draws pass KEPT_SHARE of those it shows or the kinds standing in for
+ * pieces it lacks pass STAND_INS; never within REMAKE_MS of its chunk's last. A building coming down changes its chunk
+ * every wave, so no mesh is made while its pieces are in the air. Under changes that never stop, QUIET_MS out of date
+ * stands for settled.
  */
 export const QUIET_MS = 5000;
+export const SETTLED_MS = 1000;
 export const REMAKE_MS = 10000;
 export const KEPT_SHARE = 0.25;
 export const STAND_INS = 24;
@@ -478,6 +481,8 @@ export interface NearChunk {
   row: number;
   /** Whether its mesh draws other than one made of what stands now would. */
   stale: boolean;
+  /** When its mesh first came to draw other than what stands, in the scene's milliseconds. */
+  since: number;
   /** When what stands in it last changed, and when its mesh was last made, in the scene's milliseconds. */
   changed: number;
   made: number;
@@ -747,7 +752,7 @@ export class NearCity {
     }
     if (!c) {
       const n = city.in(chunk);
-      c = { mine: new Uint8Array(n), form: new Uint16Array(n), drawn: new Uint8Array(n), worn: new Uint8Array(n), seen: -1, mesh: null, shape: -1, version: 0, frame: 0, far: 0, row: 0, stale: false, changed: this.now, made: -Infinity, standIns: 0, next: null };
+      c = { mine: new Uint8Array(n), form: new Uint16Array(n), drawn: new Uint8Array(n), worn: new Uint8Array(n), seen: -1, mesh: null, shape: -1, version: 0, frame: 0, far: 0, row: 0, stale: false, since: 0, changed: this.now, made: -Infinity, standIns: 0, next: null };
       this.chunks.set(chunk, c);
       this.ring.delete(chunk);
     }
@@ -937,6 +942,7 @@ export class NearCity {
       } else this.mended(c, m, s);
     }
     if (!m) return;
+    if (!c.stale) c.since = this.now;
     c.stale = true;
     c.standIns = this.standIns(chunk, c, m, city);
   }
@@ -991,6 +997,7 @@ export class NearCity {
         else if (was === 0 && this.states.bit(c.row, PIECE_SLOTS + g) === 1) {
           this.states.set(c.row, PIECE_SLOTS + g, 0);
           for (let e = m!.groupFirst[g]!; e < m!.groupFirst[g + 1]!; e++) open(m!, chunk, city, first + m!.groupSlots[e]!);
+          if (!c.stale) c.since = this.now;
           c.stale = true;
           c.changed = this.now;
         }
@@ -1114,7 +1121,10 @@ export class NearCity {
   private due(c: NearChunk): boolean {
     const m = c.mesh!;
     if (!c.stale || this.now - c.made < REMAKE_MS) return false;
-    return this.now - c.changed >= QUIET_MS || m.opened > m.shown * KEPT_SHARE || c.standIns > STAND_INS;
+    const still = this.now - c.changed;
+    if (still >= QUIET_MS) return true;
+    // Under changes that never stop, a mesh this long out of date is made again all the same.
+    return (still >= SETTLED_MS || this.now - c.since >= QUIET_MS) && (m.opened > m.shown * KEPT_SHARE || c.standIns > STAND_INS);
   }
 
   /**
@@ -1181,6 +1191,7 @@ export class NearCity {
       }
     }
     c.stale = stale;
+    c.since = this.now;
     c.standIns = this.standIns(chunk, c, m, city);
   }
 

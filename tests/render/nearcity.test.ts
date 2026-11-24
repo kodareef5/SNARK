@@ -5,7 +5,7 @@
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, NearCity, NearMaking, REMAKE_MS, nearMeshSlot, pieceWeight } from "../../client/core/render/nearcity.ts";
+import { FRAME_PIECES, KEPT_SHARE, LAID_SHARE, MESH_SLOT, NearCity, NearMaking, QUIET_MS, REMAKE_MS, SETTLED_MS, nearMeshSlot, pieceWeight } from "../../client/core/render/nearcity.ts";
 import { PIECE_KEYED, PIECE_KEYS } from "../../client/core/render/pieces.ts";
 import { FIXTURE_IRON, FIXTURE_PAINT, SIGN_ENAMEL, fixtureFace, fixtureKind } from "../../client/core/render/street-finish.ts";
 import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
@@ -466,6 +466,41 @@ test("under 50 changes a tick for 330 ticks no chunk goes without its mesh, and 
   expect(remade).toBeGreaterThan(0);
   expect(remade).toBe([...madeAt.values()].reduce((n, at) => n + at.length, 0));
   for (const at of madeAt.values()) expect([at.length, at[0]! >= REMAKE_MS]).toEqual([1, true]);
+});
+
+test("a chunk that loses pieces every 8 ticks has no mesh made until it has stood a second unchanged", () => {
+  const w = nearClient(smallCity());
+  const { cam, hf, city, structs, scene } = w;
+  const near = scene.near!;
+  [cam.x, cam.z, cam.y, cam.yaw] = [290, 290, hf.heightAt(290, 290) + 1.7, 0.6];
+  w.follow(290, 290);
+  near.pieces = Infinity;
+  for (let f = 0; f < 4; f++) w.frame();
+  near.pieces = FRAME_PIECES;
+  // Past REMAKE_MS, so only the chunk's own changes hold a mesh back.
+  while (scene.now < REMAKE_MS + 500) w.frame();
+  const chunk = [...structs.held].sort((a, b) => city.in(b) - city.in(a))[0]!;
+  const slots = Array.from({ length: city.in(chunk) }, (_, s) => s).filter((s) => structs.chunks[chunk]!.kind[s] !== 0);
+  const per = Math.ceil(slots.length / 12);
+  // A building coming down: ten waves two frames a tick apart take most of the chunk, far past what a mesh may keep.
+  let remade = 0, last = 0;
+  for (let wave = 0; wave < 10; wave++) {
+    for (let n = 0; n < per; n++) w.remove(chunk, slots.pop()!);
+    last = scene.now;
+    for (let f = 0; f < 16; f++) {
+      w.frame();
+      remade += near.stats.remade;
+    }
+  }
+  const m = near.chunk(chunk)!.mesh!;
+  expect(m.opened).toBeGreaterThan(m.shown * KEPT_SHARE);
+  expect(remade).toBe(0);
+  // Then it is made once it has settled, well before the five seconds a mesh within what it may keep waits.
+  while (remade === 0 && scene.now < last + QUIET_MS) {
+    w.frame();
+    remade += near.stats.remade;
+  }
+  expect([remade, scene.now - last >= SETTLED_MS, scene.now - last < QUIET_MS - 1000]).toEqual([1, true, true]);
 });
 
 test("a border crossed makes no more in a frame than a frame's pieces", () => {

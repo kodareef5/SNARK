@@ -159,12 +159,15 @@ export function benchFragments(section: Section, record: Row): void {
   near.pieces = 400;
   scene.city!.makeMs = 2;
   const tick = (): number => (scene.now / 1000) * TICK_RATE;
-  let draws = 0, bones = 0, sets = 0;
+  let draws = 0, bones = 0, sets = 0, parts = [0, 0, 0];
   const frame = (list: Rubble[] = []): number => {
     const t = performance.now();
     falling.absorb(list, scene.now, cam.x, cam.y, cam.z, tick());
+    const t1 = performance.now();
     falling.step(scene.now, tick());
+    const t2 = performance.now();
     const p = w.frame();
+    parts = [t1 - t, t2 - t1, performance.now() - t2];
     draws = p.drawCount;
     bones = p.boneCount;
     sets = 0;
@@ -219,7 +222,20 @@ export function benchFragments(section: Section, record: Row): void {
   record("a rocket: of those draws, the fragments' at most", mostSets, "", scene.assets.tier.breaks.draws);
   record("a rocket: bones at most", mostBones, "");
 
-  // 1,024 pieces of the nine chunks fall in one tick, a storey's worth of support lost under them.
+  // A wave of a falling tower as a server paces it: two storeys' worth, 140 pieces that break, in one tick.
+  for (let f = 0; f < 60 * 14; f++) frame();
+  const calm = median(Array.from({ length: 60 }, () => frame()));
+  const paced: Rubble[] = [];
+  for (const s of Array.from({ length: city.in(chunk) }, (_, k) => k).filter(whole).slice(0, 140)) {
+    paced.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: x, oy: hf.heightAt(x, z), oz: z, tick: Math.floor(tick()), radius: 0, into: 0, map: t.kind[s]! });
+    w.remove(chunk, s);
+  }
+  const pacedCount = paced.length, pacedFrame = frame(paced);
+  const pacedAfter = Array.from({ length: 8 }, () => frame());
+  record(`a collapse's wave, ${pacedCount} pieces that break in one tick: the frame they go in over a still one`, Math.max(0, pacedFrame - calm), "ms");
+  record("a collapse's wave: the 8 frames to the next wave over a still one, median", Math.max(0, median(pacedAfter) - calm), "ms");
+
+  // 1,024 pieces of the nine chunks fall in one tick, more than a server sends at once: the client's caps are what holds.
   for (let f = 0; f < 60 * 14; f++) frame();
   const settled = median(Array.from({ length: 60 }, () => frame())), settledDraws = draws;
   const round: number[] = [];
@@ -233,17 +249,24 @@ export function benchFragments(section: Section, record: Row): void {
   }
   const pieces = list.length;
   const wave = frame(list);
+  const waveParts = parts;
+  let worstParts = parts, worstAt = 0;
   const during: number[] = [];
   mostDraws = mostBones = mostSets = 0;
   let shown = 0;
   for (let f = 0; f < 180; f++) {
     during.push(frame());
+    if (during[f]! >= Math.max(...during)) [worstParts, worstAt] = [parts, f];
     mostDraws = Math.max(mostDraws, draws);
     mostBones = Math.max(mostBones, bones);
     mostSets = Math.max(mostSets, sets);
     shown = Math.max(shown, falling.count);
   }
   record(`${pieces} pieces in one tick, fragments on: the frame they go in over a still one`, Math.max(0, wave - settled), "ms");
+  record("the wave's frame: taking the pieces in", waveParts[0]!, "ms");
+  record("the wave's frame: moving them", waveParts[1]!, "ms");
+  record("the wave's frame: the frame's own work", waveParts[2]!, "ms");
+  record(`the worst frame after, ${worstAt + 1} frames on: its own work, the far city made in it here and by a worker in a browser`, worstParts[2]!, "ms");
   record("the wave: the three seconds after it over a still frame, median", Math.max(0, median(during) - settled), "ms");
   record("the wave: the same in the worst frame", Math.max(0, Math.max(...during) - settled), "ms");
   record("the wave: pieces shown falling at most", shown, "", scene.assets.tier.breaks.pieces);
