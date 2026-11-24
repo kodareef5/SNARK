@@ -1,4 +1,4 @@
-// The ways a vehicle moves. A family is one file under families/ and one line in FAMILIES: what its content must hold
+// The ways a vehicle moves. A family is one file under families/ and one line in `families()`: what its content must hold
 // and how its body steps. Content picks one with `movement`; a vehicle with none is wheeled.
 
 import type { CollisionWorld } from "../world/collide.ts";
@@ -55,14 +55,23 @@ export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> 
 /** The one place a row is widened to take any definition: a family only ever gets definitions its `is` accepts. */
 const family = <D extends VehicleDefinition>(row: VehicleFamily<D>): VehicleFamily => row as unknown as VehicleFamily;
 
-export const FAMILIES: readonly VehicleFamily[] = [
-  family(WHEELED),
-  family(ROTOR),
-  family(BOAT),
-];
+let rows: readonly VehicleFamily[] | null = null;
+
+/**
+ * The families, in order. The list is made when first asked for, not as this file loads: a family's own file imports
+ * code that leads back here, and may be the first a process loads.
+ */
+export function families(): readonly VehicleFamily[] {
+  return rows ??= [
+    family(WHEELED),
+    family(ROTOR),
+    family(BOAT),
+  ];
+}
 
 /** The family of `d`, or null for a movement no family has. */
 export function familyOf(d: VehicleDefinition): VehicleFamily | null {
-  for (let i = 0; i < FAMILIES.length; i++) if (FAMILIES[i]!.is(d)) return FAMILIES[i]!;
+  const list = families();
+  for (let i = 0; i < list.length; i++) if (list[i]!.is(d)) return list[i]!;
   return null;
 }
