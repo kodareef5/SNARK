@@ -4,6 +4,7 @@
 // sets one down with y the ground and its yaw along the street (tools/mapworld/ruins.ts).
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../../shared/content/defs.ts";
 import { COMPACT_SPECIES } from "./compact.ts";
+import { rungsOf, wreckFormDef, wreckSalvage, wreckWhole, type Rung, type WreckSize } from "./salvage.ts";
 import fitted from "./abandoned-bounds.json" with { type: "json" };
 import tanker from "./tanker-wreck-bounds.json" with { type: "json" };
 
@@ -106,8 +107,23 @@ const colourOf = (l: StreetLook, paint?: string): number => paint ? STREET_PAINT
 // The tanker's salvage is its own content; the street only sets it down.
 const OURS = STREET_LOOKS.filter((l) => l.body !== "tanker");
 const SHAPES: readonly ShapeDef[] = OURS.map((l) => ({ type: "shape", id: shapeOf(l), role: "thing", boxes: l.boxes }));
+
+/** Bodies larger than a car, which give and take more (salvage.ts). */
+const SIZES: Readonly<Record<string, WreckSize>> = { caravan: "van", panel_van: "van", patrol_jeep: "van", monster_truck: "van", bus: "heavy", semi: "heavy" };
+/** The rungs a look has left: a burnt one is the compact's unpainted. */
+const rungs = (l: StreetLook): readonly Rung[] =>
+  rungsOf(l.body === "compact" && !l.painted ? "burnt" : l.mesh.endsWith("_stripped") ? "stripped" : l.mesh.endsWith("_roof") ? "roof" : "stopped");
+/** The look a salvaged one takes once stripped: its body's stripped look, where it stands where it stopped and has one. */
+const strippedOf = (l: StreetLook): StreetLook | undefined => OURS.find((o) => o.mesh === `${l.mesh}_stripped`);
+
 const STATICS: readonly StructureDef[] = OURS.flatMap((l) => STREET_KINDS[l.mesh]!.map(({ id, paint }): StructureDef => ({
   type: "structure", class: "static", id, mesh: l.mesh, shape: shapeOf(l), half: shapeHalf(l.boxes),
   color: colourOf(l, paint), hp: l.body === "bus" || l.body === "semi" ? 16000 : 8000, material: "core:mat_metal",
+  breaks: wreckWhole(l.mesh), salvage: wreckSalvage(rungs(l), SIZES[l.body] ?? "car"),
 })));
-export const WRECKS: readonly Def[] = [...SHAPES, ...STATICS];
+/** A look's lesser looks, each one kind whatever the paint (salvage.ts). */
+const FORMS: readonly StructureDef[] = OURS.flatMap((l) => {
+  const to = strippedOf(l);
+  return to ? [wreckFormDef(l.mesh, "stripped", { mesh: to.mesh, shape: shapeOf(to), half: shapeHalf(to.boxes), color: colourOf(l, l.painted ? paintsOf(l)[0] : undefined) })] : [];
+});
+export const WRECKS: readonly Def[] = [...SHAPES, ...STATICS, ...FORMS];

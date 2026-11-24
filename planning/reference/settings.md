@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 594 of them: 227 take effect,
+is listed here, 595 of them: 228 take effect,
 177 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -187,6 +187,7 @@ the admin's settings page may change a setting without a restart.
 | `CityRegrowClearDistance` | 256 | Metres. Nothing of the map returns while a survivor is this near it. *Ours. Past the 192 m a client is sent pieces within, so none sees one return.* | yes |
 | `CityBreaksPerMinute` | 600 | The most pieces of the map one survivor may break in a minute: each change of form, fall or emptied slot counts one, a mount's against its rider. Past it, that survivor's hits on the map do nothing until it refills, evenly through the minute. *Ours.* | yes |
 | `RubbleYieldMultiplier` | 1 | What a heap gives when mined. Higher is more. HarvestAmountMultiplier does not apply to a heap. *Ours.* | yes |
+| `WreckYieldMultiplier` | 1 | What a street's wreck gives when salvaged. Higher is more. HarvestAmountMultiplier does not apply to a wreck. *Ours.* | yes |
 
 ### Game.ini `[/script/shootergame.shootergamemode]`
 

@@ -8,10 +8,11 @@ import { join } from "node:path";
 import type { Source } from "../../server/combat.ts";
 import { FORM_HEAP, FORM_OPEN, FORM_WHOLE } from "../../shared/content/breaks.ts";
 import { cycleTicks } from "../../shared/sim/clock.ts";
+import { DMG_MELEE } from "../../shared/sim/damage.ts";
 import { city, rocket, type City } from "../fixtures/city.ts";
 import { Harness } from "../fixtures/net.ts";
 import { Sketch, sketchCity, sketchId, type SketchCity } from "../fixtures/sketch.ts";
-import { put, survivor } from "../kit/kit.ts";
+import { put, record, survivor } from "../kit/kit.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-regrow-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -177,6 +178,25 @@ test("a broken piece of no building returns by the same clock, and a healed chun
   expect([h.host.cityRegrow.chunks, whole(c, c.refs), h.host.cityRegrow.kept]).toEqual([1, true, 0]);
   h.run(2500);
   expect(saved()).toBe(0);
+});
+
+test("a salvaged wreck returns whole as the map placed it, by its chunk's clock", () => {
+  const kind = "core:compact_abandoned_white";
+  const c = city([{ kind, x: 40, z: 40 }, { kind, x: 50, z: 40 }]);
+  const [taken, stripped] = c.refs as [number, number];
+  const { h } = c;
+  expect(h.host.rules.assign("CityRegrowDays", "0", "console")).toBe("");
+  const pick: Source = { by: record(h, survivor(h, "ada")), x: 0, z: 0, item: h.reg.index.get("core:pick_metal")!, base: 32, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: 0 };
+  for (let k = 0; k < 24; k++) h.host.combat.hitStructure(pick, taken, 40, 0.5, 40);
+  for (let k = 0; k < 8; k++) h.host.combat.hitStructure(pick, stripped, 50, 0.5, 40);
+  expect([c.id(taken), c.id(stripped)]).toEqual(["", "core:zzzzzzzwreck_compact_abandoned_stripped"]);
+  // She stands at the map's middle, over 100 m off: near enough to hold them back until the distance is less.
+  period(h, 30);
+  ticks(c, 60);
+  expect(c.id(taken)).toBe("");
+  expect(h.host.rules.assign("CityRegrowClearDistance", "50", "console")).toBe("");
+  ticks(c, 60);
+  expect([c.id(taken), c.id(stripped), whole(c, c.refs)]).toEqual([kind, kind, true]);
 });
 
 test("a building's last harm is saved with the world, and it returns on that clock after a restart", () => {

@@ -11,8 +11,11 @@ export const FORM_WHOLE = 0, FORM_BREACH_A = 1, FORM_BREACH_B = 2, FORM_OPEN = 3
 /** Variants a form is cut in. A piece's place picks one, so neighbours are not alike. */
 export const BREAK_VARIANTS = 4;
 
-/** What a piece does in its building. Their order is their number in the registry's column, and 0 is a piece that never breaks. */
-export const BREAK_FAMILIES = ["none", "slab", "pier", "beam", "bar", "wall", "panel", "parapet", "window", "store", "curtain", "clad", "balcony", "deck", "roof", "shell", "interior"] as const;
+/**
+ * What a piece does in its building. Their order is their number in the registry's column, and 0 is a piece that never
+ * breaks. A wreck is no building's: a street's car, which a survivor salvages (StructureDef.salvage).
+ */
+export const BREAK_FAMILIES = ["none", "slab", "pier", "beam", "bar", "wall", "panel", "parapet", "window", "store", "curtain", "clad", "balcony", "deck", "roof", "shell", "interior", "wreck"] as const;
 export type BreakFamily = (typeof BREAK_FAMILIES)[number];
 
 /**

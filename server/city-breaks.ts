@@ -3,6 +3,7 @@
 // neither form nor stage is kept and told to no client. A piece is breached at a third of its body's health, opened at
 // none, and at none again falls: to its heap where it rests on something, else to nothing. What a building's piece rests
 // on, and what comes down once it carries no more, is its building's to say (`support`, server/city-collapse.ts).
+// A street's wreck is salvaged instead: a survivor's blows take it down its rungs, and each rung gives what it holds.
 
 import { BREAK_FAMILIES, FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_HUNG, FORM_OPEN, FORM_WHOLE, formKind } from "../shared/content/breaks.ts";
 import type { ItemDef, MaterialDef } from "../shared/content/defs.ts";
@@ -10,7 +11,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { DAMAGE_TYPES, DMG_EXPLOSIVE, DMG_MELEE } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { capsuleBox, capsuleFree } from "../shared/world/collide.ts";
-import { OPEN_SHARE, bodyHealth, breachAt, breachHealth, formOf, heapAt, heapHealth, paned, shows, variantAt } from "../shared/world/breaking.ts";
+import { OPEN_SHARE, WRECK, bodyHealth, breachAt, breachHealth, formOf, heapAt, heapHealth, paned, rungAt, rungKind, rungShare, shows, variantAt, workHealth } from "../shared/world/breaking.ts";
 import { frame, frameOf } from "../shared/world/frame.ts";
 import { Found, GONE_BLAST, GONE_DESTROYED, GONE_TAKEN, type Leaves } from "../shared/world/structures.ts";
 import type { Items } from "./items.ts";
@@ -203,6 +204,7 @@ export class CityBreaks {
       if (type !== DMG_EXPLOSIVE || !(body > 0)) return 0;
       return hp - body > 0 ? this.keep(ref, mapKind, hp, hp - body) : this.fell(by, ref, false, x, y, z, hp);
     }
+    if (family === WRECK) return this.salvage(by, ref, mapKind, raw, type, item, x, y, z);
     if (form === FORM_HEAP) {
       if (type === DMG_MELEE) return this.mine(by, ref, mapKind, item);
       // An explosive clears a heap, and what it held is lost.
@@ -428,6 +430,65 @@ export class CityBreaks {
   }
 
   /**
+   * A hit lands on a wreck. A survivor's blow is work, a tool's power as on a heap: it strikes that share of a rung's
+   * health, and the rung gives that share of what it holds, times WreckYieldMultiplier. Any other harm is by what the
+   * wreck's material takes, and gives nothing. A wreck is drawn as its rung's look, and with its last rung gone it is
+   * taken, its slot left the map's.
+   */
+  private salvage(by: EntityRecord | null, ref: number, mapKind: number, raw: number, type: number, item: number, x: number, y: number, z: number): number {
+    const { world, rules, items, progression } = this.ctx;
+    const reg = world.reg, structs = world.structs;
+    const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
+    const hp = t.hp[slot]!;
+    const blow = type === DMG_MELEE && by !== null && by.kind === this.ctx.survivor;
+    let harm = raw * (reg.structTakes[mapKind]?.[type] ?? 0);
+    const force = rules.num("PlayerHarvestingDamageMultiplier");
+    if (blow) {
+      if (!rules.on("CityToolSalvage")) return 0;
+      const tool = item !== 0 ? (reg.defs[item] as ItemDef).tool : undefined;
+      harm = (tool?.power ?? 1) * force * workHealth(reg, mapKind);
+    }
+    if (!(harm > 0)) return 0;
+    // As the row keeps it, so the next blow's share starts where this one's ends.
+    const left = Math.fround(Math.max(0, hp - harm));
+    const rungs = reg.salvageYield[mapKind]!;
+    if (blow) {
+      const all = rules.num("WreckYieldMultiplier");
+      for (let r = 0; r < rungs.length; r++) {
+        const [was, now] = [rungShare(reg, mapKind, r, hp), rungShare(reg, mapKind, r, left)];
+        if (now === was) continue;
+        for (const y of rungs[r]!) {
+          const n = Math.floor(y.count * all * now + 1e-9) - Math.floor(y.count * all * was + 1e-9);
+          if (n > 0) items?.mint(by, y.item, n, 0, 0, -1, "harvest");
+        }
+      }
+      progression?.addXp(by, HEAP_XP * force, XP_HARVEST);
+    }
+    const rung = rungAt(reg, mapKind, left);
+    if (rung >= rungs.length) {
+      if (!blow) return this.fell(by, ref, false, x, y, z, hp);
+      this.onHarm?.(ref);
+      this.spend(by);
+      this.left = 0;
+      const refs = this.refs;
+      refs[0] = ref;
+      structs.breakMany(refs, 1, GONE_TAKEN, null, 0, 0, 0, world.tick);
+      return hp;
+    }
+    this.onHarm?.(ref);
+    this.left = left;
+    const kind = rungKind(reg, mapKind, rung);
+    if (kind !== t.kind[slot]) {
+      structs.swap(ref, kind, left);
+      this.spend(by);
+    } else {
+      structs.wear(ref, left);
+      this.silent++;
+    }
+    return hp - left;
+  }
+
+  /**
    * A body rams the city piece `ref` at (x, y, z) with `energy` joules. Panes go first, at glass's figure. With its
    * material's energy for a half left over, a whole piece is breached in the half struck, and a breached one opened.
    * Concrete that bears is never rammed through. Returns the joules the piece took, 0 if it stands as it was.
@@ -436,7 +497,8 @@ export class CityBreaks {
     const { world, rules } = this.ctx;
     const reg = world.reg, structs = world.structs;
     const mapKind = this.kindOf(ref);
-    if (mapKind === 0 || reg.breakFamily[mapKind] === 0 || !rules.on("AllowCityDamage") || !rules.on("CityRamming")) return 0;
+    // A wreck stops what rams it, as it did.
+    if (mapKind === 0 || reg.breakFamily[mapKind] === 0 || reg.breakFamily[mapKind] === WRECK || !rules.on("AllowCityDamage") || !rules.on("CityRamming")) return 0;
     const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
     const form = formOf(reg, t.kind[slot]!);
     if (form !== FORM_WHOLE && form !== FORM_BREACH_A && form !== FORM_BREACH_B) return 0;

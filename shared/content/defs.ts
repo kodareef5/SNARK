@@ -23,7 +23,7 @@ export type { PieceRole, ShapeBox, ShapeDef, ShapeLook } from "./kinds/shapes.ts
 export { PIECE_ROLES, shapeHalf } from "./kinds/shapes.ts";
 export type { SpawnsDef } from "./kinds/spawns.ts";
 export type { CreatureAttackDef, CreatureChargeDef, CreatureCombatFacet, CreatureHarvestFacet, CreatureModeDef, FlyFacet, SpeciesDef } from "./kinds/species.ts";
-export type { MotionFacet, PartPlacement, StructureDef } from "./kinds/structures.ts";
+export type { BreaksFacet, MotionFacet, PartPlacement, SalvageFacet, StructureDef } from "./kinds/structures.ts";
 export type { AmmoFacet, WeaponFacet } from "./kinds/weapons.ts";
 
 /** A definition of any kind in the list (kinds.ts): what the kinds' hooks are given. */

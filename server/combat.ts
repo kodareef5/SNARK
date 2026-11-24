@@ -34,7 +34,7 @@ import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
 import { capsuleHull, hullPush } from "../shared/world/convex.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
-import { isHeap } from "../shared/world/breaking.ts";
+import { WRECK, isHeap } from "../shared/world/breaking.ts";
 import { Found } from "../shared/world/structures.ts";
 import type { Buffs } from "./buffs.ts";
 import { CityBreaks } from "./city-breaks.ts";
@@ -1323,8 +1323,9 @@ export class Combat {
     hit.takes = placed !== 0 ? 1 : takes[src.type]!;
     // The weapon's own factor against what is built (D435): the grenade's 175 to a body is the Table of explosives' 788 to wood.
     hit.structures = world.reg.structureMul[src.item] ?? 1;
-    // A structure is spared as its owning tribe would be, and a city piece as a tribe's that stands near it. A heap is anyone's to mine.
-    const mined = placed !== 0 && src.type === DMG_MELEE && isHeap(world.reg, t.kind[slot]!);
+    // A structure is spared as its owning tribe would be, and a city piece as a tribe's that stands near it. A heap is
+    // anyone's to mine, and a street's wreck anyone's to salvage.
+    const mined = placed !== 0 && src.type === DMG_MELEE && (isHeap(world.reg, t.kind[slot]!) || world.reg.breakFamily[placed] === WRECK);
     if (placed !== 0) hit.rule = city.capped(src.by) || (!mined && city.spares(src.by, ref, placed, src.type)) ? 0 : (this.dealt(src.by) * rules.num("StructureResistanceMultiplier")) / rules.num("CityResistanceMultiplier");
     else hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * rules.num("StructureResistanceMultiplier");
     const bus = this.ctx.bus;

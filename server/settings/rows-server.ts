@@ -352,7 +352,8 @@ new Sheet(SERVER_ROWS, "snark", "City")
   .f("CityRegrowDays", 7, "Days of the game's clock after a building of the map was last harmed before it returns whole, as the map placed it. It returns only while no survivor is within CityRegrowClearDistance, nothing a tribe built stands in it, no body is where a piece would return and it is not coming down. Broken pieces of no building return the same way. 0 brings nothing back.", live({ live: true, max: 3650, note: "Ours. A building is the unit, so a tower never returns half." }))
   .f("CityRegrowClearDistance", 256, "Metres. Nothing of the map returns while a survivor is this near it.", live({ live: true, min: 0, max: 16384, note: "Ours. Past the 192 m a client is sent pieces within, so none sees one return." }))
   .f("CityBreaksPerMinute", 600, "The most pieces of the map one survivor may break in a minute: each change of form, fall or emptied slot counts one, a mount's against its rider. Past it, that survivor's hits on the map do nothing until it refills, evenly through the minute.", live({ live: true, min: 1, max: 100000, note: "Ours." }))
-  .f("RubbleYieldMultiplier", 1, "What a heap gives when mined. Higher is more. HarvestAmountMultiplier does not apply to a heap.", live({ live: true, public: true, note: "Ours." }));
+  .f("RubbleYieldMultiplier", 1, "What a heap gives when mined. Higher is more. HarvestAmountMultiplier does not apply to a heap.", live({ live: true, public: true, note: "Ours." }))
+  .f("WreckYieldMultiplier", 1, "What a street's wreck gives when salvaged. Higher is more. HarvestAmountMultiplier does not apply to a wreck.", live({ live: true, public: true, note: "Ours." }));
 
 const c = new Sheet(SERVER_ROWS, "cli", "Command line");
 c.flag("UseDynamicConfig", "The live file is read, and read again while the server runs.", live({ live: true }))

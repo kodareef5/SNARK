@@ -23,6 +23,14 @@ export interface CityPiece {
   readonly yaw?: number;
 }
 
+/** Anything else a map sets down, by its kind's id, its place on the ground at (x, z): a street's wreck. */
+export interface CityThing {
+  readonly kind: string;
+  readonly x: number;
+  readonly z: number;
+  readonly yaw?: number;
+}
+
 export interface City {
   readonly h: Harness;
   /** The map's file, for another server started on it. */
@@ -41,11 +49,15 @@ export interface City {
 }
 
 /** The ground of a flat map is at 0. `chunks` is the map's side; the spawn is in its middle. `more` is what else the map holds. */
-export function city(pieces: readonly CityPiece[], chunks = 4, host: HostOptions = {}, game: Partial<GameOptions> = {}, more: Partial<MapData> = {}): City {
+export function city(pieces: readonly (CityPiece | CityThing)[], chunks = 4, host: HostOptions = {}, game: Partial<GameOptions> = {}, more: Partial<MapData> = {}): City {
   const reg = coreRegistry();
   // A store only to ask how far under its place each kind's foot is.
   const feet = new StructureStore({ chunksX: 1, chunksZ: 1 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts).low;
   const statics: MapStatic[] = pieces.map((p) => {
+    if ("kind" in p) {
+      if (!reg.index.has(p.kind)) throw new Error(`no kind ${p.kind}`);
+      return { kind: p.kind, x: p.x, y: 0, z: p.z, yaw: p.yaw ?? 0 };
+    }
     const kind = ruinKind(p.shape, p.finish);
     if (!reg.index.has(kind)) throw new Error(`the kit has no ${p.shape} in ${p.finish}`);
     return { kind, x: p.x, y: (p.up ?? 0) - feet[reg.index.get(kind)!]!, z: p.z, yaw: p.yaw ?? 0 };

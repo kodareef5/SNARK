@@ -2,7 +2,7 @@
 // the kind the map placed, whether its panes stand, which of its cuts it wears, and which half a point is in.
 // A city piece is a row in a map slot owned by nobody. Its health is measured against the map's kind, whatever form its row holds.
 
-import { BREAK_FAMILIES, BREAK_VARIANTS, FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_WHOLE, formKind } from "../content/breaks.ts";
+import { BREAK_FAMILIES, BREAK_VARIANTS, FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_OPEN, FORM_WHOLE, formKind } from "../content/breaks.ts";
 import type { Registry } from "../content/registry.ts";
 import { STRUCT_UNITS } from "../coords.ts";
 import { hullPoint } from "./convex.ts";
@@ -99,3 +99,36 @@ export function breachAt(reg: Registry, kind: number, yaw: number, dx: number, d
 
 /** The form `kind` is: FORM_WHOLE for a kind that is no broken form. */
 export const formOf = (reg: Registry, kind: number): number => (reg.breakSet[kind] !== 0 ? reg.breakForm[kind]! : FORM_WHOLE);
+
+/** A street's wreck, which is salvaged a rung at a time and never breaks as a building's piece does. */
+export const WRECK = BREAK_FAMILIES.indexOf("wreck");
+/** A rung this near an end, as a share of it, is at that end: health is kept in 32 bits, and a rung's blows must add up. */
+const RUNG_SLACK = 1e-4;
+
+/** How many rungs' worth of the health of a wreck the map placed as `mapKind` is gone at health `hp`. */
+const rungsGone = (reg: Registry, mapKind: number, hp: number): number => ((reg.maxHp[mapKind]! - hp) * reg.salvageYield[mapKind]!.length) / reg.maxHp[mapKind]!;
+
+/** The health one unit of work strikes from a wreck the map placed as `mapKind`: a rung's health over a rung's work. */
+export const workHealth = (reg: Registry, mapKind: number): number => reg.maxHp[mapKind]! / (reg.salvageYield[mapKind]!.length * reg.salvageWork[mapKind]!);
+
+/** The share of rung `rung` of a wreck placed as `mapKind` that is struck away at health `hp`, from 0 to 1. */
+export function rungShare(reg: Registry, mapKind: number, rung: number, hp: number): number {
+  const share = rungsGone(reg, mapKind, hp) - rung;
+  return share < RUNG_SLACK ? 0 : share > 1 - RUNG_SLACK ? 1 : share;
+}
+
+/** The rung a wreck placed as `mapKind` is on at health `hp`: 0 from full health, and its count of rungs once every one is struck away. */
+export function rungAt(reg: Registry, mapKind: number, hp: number): number {
+  const rung = Math.floor(rungsGone(reg, mapKind, hp) + RUNG_SLACK);
+  return rung < 0 ? 0 : Math.min(rung, reg.salvageYield[mapKind]!.length);
+}
+
+/**
+ * The kind a wreck placed as `mapKind` is on `rung`: its lesser looks in the order it takes them (stripped, then a shell),
+ * the last it has on every rung past them, and itself where it has none.
+ */
+export function rungKind(reg: Registry, mapKind: number, rung: number): number {
+  if (rung <= 0) return mapKind;
+  const stripped = formKind(reg, mapKind, FORM_BREACH_A, 0), shell = formKind(reg, mapKind, FORM_OPEN, 0);
+  return (rung === 1 ? stripped || shell : shell || stripped) || mapKind;
+}

@@ -16,6 +16,7 @@ const reg = compiled.registry!;
 /** An id this work added: a form's kind or shape, or one of the city's materials. */
 const added = (id: string): boolean => id.startsWith("core:zzzzzzbreak") || id.startsWith("core:zzzzzzmat_");
 /** The skate park's pieces (content/skate-park.ts), new beside the forms: built by players, and in no map, by id or index. */
+const wreckForm = (id: string): boolean => id.startsWith("core:zzzzzzzwreck_");
 const skatePark = (id: string): boolean => id.startsWith("core:zzzzzzskate_");
 const variants = Array.from({ length: BREAK_VARIANTS }, (_, v) => v);
 const shapeOf = (id: string): ShapeDef => reg.defs[reg.index.get(id)!] as ShapeDef;
@@ -41,7 +42,7 @@ test("the content compiles with every form in it, within a 16-bit index", () => 
 test("no id there was before the forms has its index moved by them", () => {
   // The registry numbers definitions from 1 in the order of their ids.
   const ids = CORE_CONTENT.map((d) => d.id);
-  const before = ids.filter((id) => !added(id) && !skatePark(id)).sort();
+  const before = ids.filter((id) => !added(id) && !skatePark(id) && !wreckForm(id)).sort();
   expect(before.length).toBeLessThan(CORE_CONTENT.length);
   const moved = before.filter((id, at) => reg.index.get(id) !== at + 1);
   expect(moved).toEqual([]);
@@ -53,6 +54,11 @@ test("no id there was before the forms has its index moved by them", () => {
   const park = ids.filter(skatePark);
   expect(park.length).toBeGreaterThan(0);
   expect(park.filter((id) => reg.index.get(id)! < most)).toEqual([]);
+  // A wreck's lesser looks are newer still, and take the last indices of all.
+  const last = Math.max(...park.map((id) => reg.index.get(id)!));
+  const wrecks = ids.filter(wreckForm);
+  expect(wrecks.length).toBeGreaterThan(0);
+  expect(wrecks.filter((id) => reg.index.get(id)! < last)).toEqual([]);
 });
 
 test("each form of each breaking shape in each variant is a static kind of its own shape, with no finish", () => {

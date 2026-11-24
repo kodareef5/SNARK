@@ -26,7 +26,8 @@ export const FAMILY_RULES: Readonly<Record<Family, Rule>> = {
   store: { tough: 1, bears: ALWAYS }, deck: { tough: 1.5, bears: ALWAYS },
   // Four storeys of wall in one piece, which stays solid when opened.
   shell: { tough: 4, bears: ALWAYS },
-  none: { tough: 1, bears: NEVER },
+  // A street's wreck is no ruin shape: its health is its kind's own (content/vehicles/wrecks.ts).
+  none: { tough: 1, bears: NEVER }, wreck: { tough: 1, bears: NEVER },
 };
 
 const each = <F extends Family>(family: F, names: readonly RuinShape[]): Partial<Record<RuinShape, Family>> => Object.fromEntries(names.map((n) => [n, family]));

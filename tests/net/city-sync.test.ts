@@ -3,11 +3,14 @@
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
+import type { Source } from "../../server/combat.ts";
 import { FORM_BREACH_A, FORM_HEAP, FORM_OPEN, FORM_WHOLE } from "../../shared/content/breaks.ts";
 import { S_CHUNK } from "../../shared/net/protocol.ts";
+import { DMG_MELEE } from "../../shared/sim/damage.ts";
 import { STAGE_WHOLE, STAGE_WORN, heapHealth, stageOf } from "../../shared/world/breaking.ts";
 import { GONE_BLAST, type StructureStore } from "../../shared/world/structures.ts";
 import { GRENADE_REACH, ROCKET_REACH, city, grenade, rifle, rocket, type City } from "../fixtures/city.ts";
+import { record } from "../kit/kit.ts";
 
 /** Slots of `chunks` that differ between the two stores: in kind, place, turn or owner, and in health too if `health`. */
 function differ(structs: StructureStore, held: StructureStore, chunks: readonly number[], health = true): number {
@@ -97,6 +100,29 @@ test("a form swap is sent in place and is under 20 bytes", () => {
   expect(differ(h.world.structs, ada.world!.structs, chunks)).toBe(0);
   // Nothing fell, so nothing is queued to fall.
   expect(ada.rubble.length).toBe(0);
+});
+
+test("a wreck's rung is one small row in place, and blows within a rung are told to nobody", () => {
+  const c = city([{ kind: "core:compact_abandoned_white", x: 120, z: 120 }]);
+  const car = c.refs[0]!;
+  const { h } = c;
+  const ada = h.join("ada");
+  const chunks = settled(c, ada);
+  const sent = watch(c, 0);
+  const rec = record(h, ada);
+  const pick: Source = { by: rec, x: 120, z: 119, item: h.reg.index.get("core:pick_metal")!, base: 32, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: 0 };
+  for (let k = 0; k < 7; k++) h.host.combat.hitStructure(pick, car, 120, 0.5, 120);
+  h.run(200);
+  expect(sent()).toEqual([]);
+  h.host.combat.hitStructure(pick, car, 120, 0.5, 120);
+  h.run(200);
+  const sizes = sent();
+  expect([c.id(car), sizes.length, sizes[0]! < 20]).toEqual(["core:zzzzzzzwreck_compact_abandoned_stripped", 1, true]);
+  expect(differ(h.world.structs, ada.world!.structs, chunks)).toBe(0);
+  // Cut up, it is taken: a batch with no cause to show, and nothing falls.
+  for (let k = 0; k < 16; k++) h.host.combat.hitStructure(pick, car, 120, 0.5, 120);
+  h.run(200);
+  expect([c.id(car), differ(h.world.structs, ada.world!.structs, chunks, false), ada.rubble.length]).toEqual(["", 0, 0]);
 });
 
 test("a blast reaches a client as one batch a chunk with its centre and radius", () => {

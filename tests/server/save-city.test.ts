@@ -73,3 +73,34 @@ test("a saved world loads to the same forms, heaps and health", () => {
   expect(was - t.hp[worn & 0xffff]!).toBeCloseTo(788 * 2.33, 0);
   again.host.shutdown();
 });
+
+test("a salvaged wreck is saved as what differs from the map, and is salvaged on from there", () => {
+  const db = join(dir, "wrecks.db");
+  const kind = "core:compact_abandoned_white";
+  const c = city([{ kind, x: 40, z: 40 }, { kind, x: 40, z: 200 }, { kind, x: 200, z: 40 }, { kind, x: 200, z: 200 }], 4, { dbPath: db });
+  const [stripped, worn, taken, untouched] = c.refs as [number, number, number, number];
+  const { h } = c;
+  const pick = (on: Harness): Source => ({ by: record(on, survivor(on, "ada")), x: 0, z: 0, item: on.reg.index.get("core:pick_metal")!, base: 32, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: 0 });
+  const src = pick(h);
+  const blows = (ref: number, n: number): void => { for (let k = 0; k < n; k++) h.host.combat.hitStructure(src, ref, c.at(ref).x, 0.5, c.at(ref).z); };
+  blows(stripped, 8);
+  blows(worn, 3);
+  blows(taken, 24);
+  expect([c.id(stripped), c.id(worn), Math.round(c.hp(worn)), c.id(taken)]).toEqual(["core:zzzzzzzwreck_compact_abandoned_stripped", kind, 7000, ""]);
+  h.run(2500);
+  const before = tables(h.world.structs);
+  const rows = h.host.persistence!.store.db.query("SELECT chunk, length(data) AS n FROM chunk_structs ORDER BY chunk").all() as { chunk: number; n: number }[];
+  // A chunk a wreck: the three that differ are saved, in a few bytes each.
+  expect(rows.map((r) => r.chunk)).toEqual([stripped, worn, taken].map((ref) => Math.floor(ref / 65536)).sort((a, b) => a - b));
+  expect(rows.every((r) => r.n < 16) && !rows.some((r) => r.chunk === Math.floor(untouched / 65536))).toBe(true);
+  h.host.shutdown();
+
+  const again = new Harness({}, 1, 30, { dev: true, dbPath: db, map: c.map });
+  expect(tables(again.world.structs)).toEqual(before);
+  // Blows told to nobody were kept: five more strip the worn one.
+  const more = pick(again);
+  for (let k = 0; k < 5; k++) again.host.combat.hitStructure(more, worn, 40, 0.5, 200);
+  const t = again.world.structs.chunks[Math.floor(worn / 65536)]!;
+  expect(again.reg.ids[t.kind[worn & 0xffff]!]).toBe("core:zzzzzzzwreck_compact_abandoned_stripped");
+  again.host.shutdown();
+});

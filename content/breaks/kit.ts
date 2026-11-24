@@ -23,6 +23,7 @@ const DRAWN: Readonly<Record<Family, readonly [Finish, string]>> = {
   panel: ["concrete", "concrete"], parapet: ["limestucco", "block"], window: ["limestucco", "block and glass"], store: ["limestucco", "concrete, glass, sheet"],
   curtain: ["limestone", "steel, glass, concrete spandrel"], clad: ["concrete", "concrete"], balcony: ["limestucco", "concrete"], deck: ["concrete", "concrete"],
   roof: ["clay", "tile on timber"], shell: ["concrete", "concrete"], interior: ["limestone", "plaster on timber"], none: ["concrete", "concrete"],
+  wreck: ["steel", "steel"],
 };
 
 interface Stood { readonly bounds: Rect; readonly part: Part; readonly origin: Corner }
