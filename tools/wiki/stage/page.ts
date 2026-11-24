@@ -143,6 +143,8 @@ async function start() {
     tops: { tops, maker }, landmarks: content?.landmarks,
   };
   const tier = tierOf("high");
+  // A map with an orb is photographed with its screen on.
+  if (head.orbs?.length) await import("../../../client/core/render/orb-late.ts");
   const renderer = new GlRenderer(canvas, pack, hf, assets, null);
   const scene = new Scene(world, reg, pack, { manifest: assets, port: new WorkerPort(assets, "assets", tier.diskBytes, null) });
   scene.assets.tier = tier;
