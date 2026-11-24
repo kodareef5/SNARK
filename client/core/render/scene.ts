@@ -266,6 +266,9 @@ export class Scene {
    */
   get hide(): boolean { return this.occlusion.on; }
   set hide(on: boolean) { this.occlusion.on = on; }
+  /** Whether the bases' own walls and ceilings hide what is behind them (base-occluders.ts). Off for a before and after. */
+  get plating(): boolean { return this.nearStore.plating; }
+  set plating(on: boolean) { this.nearStore.plating = on; }
   get nearFirst(): boolean {
     return this.put.nearFirst;
   }
