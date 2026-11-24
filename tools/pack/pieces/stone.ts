@@ -1852,7 +1852,7 @@ const FOOTSTONE = 0.72;
  * one footstone the whole height. Its top is its outline's own, to the last bit. It is built high at its -x end, and
  * the other hand is that one in a mirror.
  */
-function gable(name: string, form: FormDef, level: number): Build | null {
+function gable(form: FormDef, level: number): Build | null {
   if (level > 3) return null;
   const w = wallBox(form);
   const b = new Build();
@@ -1898,7 +1898,6 @@ function gable(name: string, form: FormDef, level: number): Build | null {
   else panel(b, w, { half: w.half, outline, regions: [[...walling, leftOf(foot)]], cells: plainCells(b) });
   // The coping one dressed stone along the rake, and the footstone.
   for (const [k, profile] of ([[[w.x0, under(w.x0)], [foot, under(foot)], [foot, top(foot)], [w.x0, w.top]], footstone] as const).entries()) b.convex(loft("z", [[-w.core - DRESSED, profile], [w.core + DRESSED, profile]]), "dressed", throughUv(), k === 0);
-  void name;
   return done();
 }
 
@@ -2928,17 +2927,16 @@ function column(form: FormDef, level: number): Build | null {
   }
   const r = w * 0.86;
   const [base, cap] = [foot + 0.26, top - 0.2];
-  const dressed = (key: string, tall: number): ((n: Vec) => UvMap) => {
+  const dressed = (key: string): ((n: Vec) => UvMap) => {
     const g = rng("column", key);
     const shift: P2 = [g.uniform(0, 1), g.uniform(0, 1)];
-    void tall;
     return (n) => straight(n, undefined, shift);
   };
   /** A solid through rings of eight corners, its upright faces between `round` stations shaded as one round surface. */
   const turned = (stations: readonly (readonly [number, P2[]])[], round: readonly number[], key: string): void => {
     const sides = loft("y", stations);
     const n = 8;
-    b.convex(sides.map((side, k) => (k >= 2 && round.includes(Math.floor((k - 2) / n)) ? { ...side, smooth: true } : side)), "dressed", dressed(key, 0));
+    b.convex(sides.map((side, k) => (k >= 2 && round.includes(Math.floor((k - 2) / n)) ? { ...side, smooth: true } : side)), "dressed", dressed(key));
   };
   const ch = level === 0 ? 0.014 : 0;
   // The base and the cap: square blocks, their arrises cut, the cap drawn in to the shaft under it.
@@ -3305,8 +3303,8 @@ const PLANNED: Readonly<Record<string, (name: string, form: FormDef, level: numb
   quarter_wall: lowWall,
   fence_foundation: (_, form, level) => footing(form, level),
   beam: (_, form, level) => archBeam(form, level),
-  sloped_wall_left: gable,
-  sloped_wall_right: gable,
+  sloped_wall_left: (_, form, level) => gable(form, level),
+  sloped_wall_right: (_, form, level) => gable(form, level),
   double_doorway: wideDoorway,
   large_wall: tallWall,
   gateway: gatehouse,
