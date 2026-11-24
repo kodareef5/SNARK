@@ -202,7 +202,7 @@ export function benchFragments(section: Section, record: Row): void {
       structs.put(chunk, s, to, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, 0, 1, ++version);
     }
     const kind = t.kind[s0]!, yaw = t.yaw[s0]!, into = heapAt(reg, kind, ox, oy, oz);
-    const gone: Rubble = { kind, x: ox, y: oy, z: oz, yaw, cause: GONE_BLAST, ox, oy: oy - 1, oz, tick: Math.floor(tick()), radius: 7.5, into, map: kind };
+    const gone: Rubble = { kind, x: ox, y: oy, z: oz, yaw, tw: -1, cause: GONE_BLAST, ox, oy: oy - 1, oz, tick: Math.floor(tick()), radius: 7.5, into, map: kind };
     if (into !== 0) structs.put(chunk, s0, into, ox, oy, oz, yaw, 0, 24, ++version);
     else structs.put(chunk, s0, 0, 0, 0, 0, 0, 0, 0, ++version);
     structs.setVersion(chunk, version);
@@ -227,7 +227,7 @@ export function benchFragments(section: Section, record: Row): void {
   const calm = median(Array.from({ length: 60 }, () => frame()));
   const paced: Rubble[] = [];
   for (const s of Array.from({ length: city.in(chunk) }, (_, k) => k).filter(whole).slice(0, 140)) {
-    paced.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: x, oy: hf.heightAt(x, z), oz: z, tick: Math.floor(tick()), radius: 0, into: 0, map: t.kind[s]! });
+    paced.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, tw: -1, cause: GONE_FELL, ox: x, oy: hf.heightAt(x, z), oz: z, tick: Math.floor(tick()), radius: 0, into: 0, map: t.kind[s]! });
     w.remove(chunk, s);
   }
   const pacedCount = paced.length, pacedFrame = frame(paced);
@@ -244,7 +244,7 @@ export function benchFragments(section: Section, record: Row): void {
   const all = round.flatMap((c) => Array.from({ length: city.in(c) }, (_, s) => [c, s] as const)).filter(([c, s]) => structs.chunks[c]!.kind[s] === mapKind(c, s) && structs.chunks[c]!.kind[s] !== 0);
   for (let n = 0; n < 1024 && all.length > 0; n++) {
     const [c, s] = all.splice(rng.int(all.length), 1)[0]!, tc = structs.chunks[c]!;
-    list.push({ kind: tc.kind[s]!, x: tc.x[s]!, y: tc.y[s]!, z: tc.z[s]!, yaw: tc.yaw[s]!, cause: GONE_FELL, ox: x, oy: hf.heightAt(x, z), oz: z, tick: Math.floor(tick()), radius: 0, into: 0, map: reg.breakSet[tc.kind[s]!] !== 0 ? tc.kind[s]! : 0 });
+    list.push({ kind: tc.kind[s]!, x: tc.x[s]!, y: tc.y[s]!, z: tc.z[s]!, yaw: tc.yaw[s]!, tw: -1, cause: GONE_FELL, ox: x, oy: hf.heightAt(x, z), oz: z, tick: Math.floor(tick()), radius: 0, into: 0, map: reg.breakSet[tc.kind[s]!] !== 0 ? tc.kind[s]! : 0 });
     w.remove(c, s);
   }
   const pieces = list.length;

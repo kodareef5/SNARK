@@ -32,7 +32,7 @@ function broken(reg: Registry, kind: number, cause: number, up = 0, yaw = 5000):
   const probe = sets.rubble(kind, kind, x, 0, z)!, n = probe.groups.length;
   const y = up - (probe.boxes[n * 6 + 1]! - probe.boxes[n * 6 + 4]!);
   const set = sets.rubble(kind, kind, x, y, z)!;
-  return { cause, x, y, z, yaw, ox: x - 2.5, oy: up + 1, oz: z - 1.5, radius: cause === GONE_BLAST ? 7.5 : 0, wait: 0, under: 0, set };
+  return { cause, x, y, z, yaw, tw: -1, ox: x - 2.5, oy: up + 1, oz: z - 1.5, radius: cause === GONE_BLAST ? 7.5 : 0, wait: 0, under: 0, set };
 }
 
 /** The corners of the box round group `g` of a break's set, as a pose puts them in the world. */
@@ -53,7 +53,7 @@ function fallingCity(n = 4) {
   const falling = (w.scene.falling = new Falling(w.reg.halfY, (x, z) => w.hf.heightAt(x, z), { reg: w.reg, structs: w.structs, mapKind: (chunk, slot) => w.structs.mapKind(chunk, slot) }));
   const t = w.structs.chunks[w.chunk]!;
   /** The piece in `slot` as a removal's rubble tells of it. */
-  const rubble = (slot: number, cause: number, tick: number, more: Partial<Rubble> = {}): Rubble => ({ kind: t.kind[slot]!, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, cause, ox: t.x[slot]! - 1, oy: 1, oz: t.z[slot]! - 3, tick, radius: cause === GONE_BLAST ? 7.5 : 0, into: 0, map: w.placed(slot), ...more });
+  const rubble = (slot: number, cause: number, tick: number, more: Partial<Rubble> = {}): Rubble => ({ kind: t.kind[slot]!, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, tw: -1, cause, ox: t.x[slot]! - 1, oy: 1, oz: t.z[slot]! - 3, tick, radius: cause === GONE_BLAST ? 7.5 : 0, into: 0, map: w.placed(slot), ...more });
   const mine = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => fragmentSlot(p.drawSlot[d]!));
   return { ...w, falling, t, rubble, mine, stats: (w.scene as unknown as { looseEntities: { fragmentStats: { fine: number; coarse: number; bones: number; draws: number } } }).looseEntities.fragmentStats };
 }
@@ -272,7 +272,7 @@ test("a wave of pieces keeps to its tier's pieces, bones and draws", () => {
   // 1,280 pieces of a tower falling, in view, 40 a storey: more than any tier keeps.
   const wave = (tick: number): Rubble[] => Array.from({ length: 1280 }, (_, i): Rubble => {
     const x = w.t.x[0]! + (i % 8) * 4, y = 2 + Math.floor(i / 40) * 3, z = w.t.z[0]! + 6 + (Math.floor(i / 8) % 5) * 4;
-    return { kind: kinds[i % kinds.length]!, x, y, z, yaw: (i % 4) * 16384, cause: GONE_FELL, ox: w.t.x[0]! + 14, oy: 0, oz: w.t.z[0]! + 14, tick, radius: 0, into: 0, map: kinds[i % kinds.length]! };
+    return { kind: kinds[i % kinds.length]!, x, y, z, yaw: (i % 4) * 16384, tw: -1, cause: GONE_FELL, ox: w.t.x[0]! + 14, oy: 0, oz: w.t.z[0]! + 14, tick, radius: 0, into: 0, map: kinds[i % kinds.length]! };
   });
   [w.cam.y, w.cam.z, w.cam.pitch] = [40, w.cam.z - 60, 0.1];
   let clock = 1000;

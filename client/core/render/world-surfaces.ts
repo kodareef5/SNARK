@@ -12,7 +12,7 @@ import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/text
 import type { Tier } from "../assets/tiers.ts";
 import { WEIGHT } from "../assets/residency.ts";
 import { REGION_BASE, defaultPalette } from "../../../shared/pack/palette.ts";
-import { PIECE_MADE_BITS, PIECE_STAGE } from "./piece-fit.ts";
+import { FACE_PLAIN, FACE_WEARS, PIECE_MADE_BITS, PIECE_STAGE } from "./piece-fit.ts";
 import { PIECE_MADE, PIECE_WEAR, PIECE_WEAR_SHIFT, WEAR_OVER_MADE } from "./pieces.ts";
 import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
@@ -310,6 +310,48 @@ const madeBase = new Float64Array(4), madeRelief = new Float64Array(4), madeBase
 /** Metres across the cells of the noise that says where a made material's second copy shows, in its tiles; and of its mottle's two noises. */
 const MOTTLE = [2.3, 0.9] as const;
 /**
+ * A built piece's pixel, for a material read in the piece's own frame: where it is from the piece's origin along the
+ * piece's own axes, metres; the cosine and sine its +X is turned by (piece-fit.ts); and its bits, as ownVertex packs
+ * them over a face's material and wear: PIECE_OWN, PIECE_PLAIN where the face keeps clear of joints and rivets,
+ * PIECE_FIXED where its colour is the mesh's and not the piece's, and from PIECE_SEED its instance's seed.
+ */
+export interface PiecePixel { x: number; y: number; z: number; c: number; s: number; bits: number }
+export const PIECE_OWN = 1, PIECE_PLAIN = 2, PIECE_FIXED = 4, PIECE_SEED = 3, PIECE_SEEDS = 4096;
+/** Where ownVertex puts those bits in vMade, over the material's five and the wear's three. */
+export const PIECE_OVER_WEAR = 8;
+/** A sheet's own light either way, its own lean, and the share of sheets left in primer, on a piece. */
+const PIECE_TONE = 0.16, PIECE_TILT = 0.045, PIECE_PRIMED = 0.008;
+/** The paint's hold rust begins under on a sound sheet, how far a sheet's own measure takes that down, and the band it comes on over. */
+const PIECE_RUST = [1.08, 0.75] as const, PIECE_RUST_BAND = 0.06;
+/** Red oxide primer and rust, as light. */
+const PIECE_PRIMER = [0.12, 0.04, 0.028] as const, PIECE_RUSTED = [0.1, 0.04, 0.018] as const;
+/**
+ * The height a piece's material has for its edges' chips (edged), about which two noises of the piece's own move it,
+ * a thumb and a hand across: an arris is bare along about half its length, and seldom more than a centimetre in.
+ */
+const PIECE_CHIP = [0.625, 0.09, 0.11] as const, PIECE_CHIP_GRAIN = [0.012, 0.11] as const;
+/** What a chip of a piece's edge shows: steel worn dull, its light, roughness and metal, where a city's bare metal is bright. */
+const PIECE_BARE = [0.2, 0.21, 0.225, 0.5, 0.6] as const;
+/**
+ * A piece's face of normal (nx, ny, nz) as its weathering takes it, into `out`: the piece's own axis nearest the normal,
+ * turned into the world. A card finds a face's normal from one pixel to the next, and a wall at 45 degrees would
+ * choose the way its weathering runs by that noise; this is the same at every pixel of the face.
+ */
+export function ownFace(piece: PiecePixel, nx: number, ny: number, nz: number, out: number[]): number[] {
+  const ox = piece.c * nx - piece.s * nz, oz = piece.s * nx + piece.c * nz, ax = Math.abs(ox), ay = Math.abs(ny), az = Math.abs(oz);
+  const x = ay >= Math.max(ax, az) || ax <= az ? 0 : Math.sign(ox), z = ay >= Math.max(ax, az) || ax > az ? 0 : Math.sign(oz);
+  out[0] = piece.c * x + piece.s * z;
+  out[1] = ay >= Math.max(ax, az) ? Math.sign(ny) : 0;
+  out[2] = piece.c * z - piece.s * x;
+  return out;
+}
+/** A piece's seed from its instance's three floats as stored: no eye moves it. As ownVertex's. */
+export function pieceSeed(x: number, y: number, z: number): number {
+  let h = (Math.imul(x, 2654435761) ^ Math.imul(y, 2246822519) ^ Math.imul(z, 3266489917)) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+  return h >>> 20;
+}
+/**
  * How far a made material's second copy is moved, in its tiles (pinned in texgen/layers.ts MADE_READS): by whole units of its courses and ribs, so that its
  * joints and ribs meet themselves, and any way where it has none.
  */
@@ -332,10 +374,21 @@ export const madeFar = (r: MaterialRecipe): number => Math.min(r.metres, 4 * Mat
  * the higher showing, and the world's own mottle lies over both, so no tile is seen twice alike. A roof's ribs run
  * down its fall.
  */
-function made(k: number, id: number, axis: number, x: number, y: number, z: number, nx: number, nz: number, footprint: number, slots: Numbers, masks: WorldSample, patch: number): void {
-  const f = finishes[id]!, r = MADE_READS[k - 1]!, m = r.metres, turn = axis === 1 && Math.abs(nx) > Math.abs(nz);
+function made(k: number, id: number, axis: number, x: number, y: number, z: number, nx: number, nz: number, footprint: number, slots: Numbers, masks: WorldSample, patch: number, piece: PiecePixel | null = null): void {
+  const f = finishes[id]!, r = MADE_READS[k - 1]!, m = r.metres, turn = !piece && axis === 1 && Math.abs(nx) > Math.abs(nz);
+  const seed = piece ? piece.bits >> PIECE_SEED : 0;
+  // A built piece reads it in its own metres, and its mottle a seed's way off.
+  if (piece) {
+    x = piece.x + (seed & 63) * 1.7;
+    y = piece.y + ((seed >> 3) & 63) * 1.7;
+    z = piece.z + (seed >> 6) * 1.7;
+  }
   const wu = axis === 0 ? z : x, wv = axis === 1 ? z : -y;
-  const u = (turn ? wv : wu) / m, v = (turn ? wu : wv) / m;
+  let u = (turn ? wv : wu) / m, v = (turn ? wu : wv) / m;
+  if (piece) {
+    u = (axis === 0 ? piece.z : piece.x) / m;
+    v = (axis === 1 ? piece.z : -piece.y) / m;
+  }
   const spread = Math.log2(Math.max(footprint / m, 1e-9));
   const t = slots[(k - 1) * MADE_FLOATS + 1]! * (1 - clamp((Math.log2(Math.max(footprint / r.far, 1e-9)) - WORLD_FAR) / WORLD_FAR_BAND));
   for (let c = 0; c < 4; c++) maps.base[c] = f.base[c]!;
@@ -343,9 +396,35 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   maps.mro[3] = 0.5;
   maps.lean[0] = maps.lean[1] = 0;
   maps.patch = patch;
+  if (piece) maps.base[3] = 1 / f.palette;
   if (t <= 0) return;
   const layer = slots[(k - 1) * MADE_FLOATS]!, shift = r.shift;
-  const second = clamp((surfaceNoise((wu * WORLD_PATCH) / m + 5.3, (wv * WORLD_PATCH) / m + 1.7) - 0.35) / 0.3), share = second * second * (3 - 2 * second);
+  const second = piece ? 0 : clamp((surfaceNoise((wu * WORLD_PATCH) / m + 5.3, (wv * WORLD_PATCH) / m + 1.7) - 0.35) / 0.3);
+  let share = second * second * (3 - 2 * second), flipU = 1, flipV = 1, tiltU = 0, tiltV = 0, sheet = 1, rusts = 0, primed = 0;
+  if (piece) {
+    const own = ((seed >> 9) & 7) / 7;
+    if ((piece.bits & PIECE_PLAIN) !== 0) {
+      // Folded to and fro across the middle of the tile, so no joint or rivet falls on it.
+      const fu = fract((u + (seed & 31) * 0.37) / (2 * r.plain)), fv = fract((v + (seed & 31) * 0.37) / (2 * r.plain));
+      flipU = fu < 0.5 ? -1 : 1;
+      flipV = fv < 0.5 ? -1 : 1;
+      u = (1 - r.plain) / 2 + r.plain * Math.abs(2 * fu - 1);
+      v = (1 - r.plain) / 2 + r.plain * Math.abs(2 * fv - 1);
+      rusts = 0.6 * PIECE_RUST[1] * own;
+    } else {
+      // Each sheet by a hash of its place in the piece and the piece's seed: mirrored or not, its tone, its rust, its lean.
+      const cu = Math.floor(u), h = surfaceHash(cu + seed, Math.floor(v) + (seed >> 5)), rr = fract(h * 64);
+      if (h < 0.5) {
+        flipU = -1;
+        u = 2 * cu + 1 - u;
+      }
+      sheet = 1 + PIECE_TONE * (fract(h * 8) - 0.5);
+      rusts = PIECE_RUST[1] * rr * rr * (0.35 + 0.65 * own);
+      tiltU = (fract(h * 512) - 0.5) * PIECE_TILT;
+      tiltV = (fract(h * 4096) - 0.5) * PIECE_TILT;
+      primed = (piece.bits & PIECE_FIXED) === 0 && fract(h * 32768) < PIECE_PRIMED ? 1 : 0;
+    }
+  }
   madeBase.fill(0);
   madeRelief.fill(0);
   if (share < 1) {
@@ -373,6 +452,22 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   maps.lean[1] = turn ? -lx : ly;
   scales.rough += (1 - scales.rough) * t;
   scales.bump += (1 - scales.bump) * t;
+  if (piece) {
+    // Rust where the paint's hold is under the sheet's measure, a sheet in primer, and no dye on either.
+    const edge = PIECE_RUST[0] - rusts, rust = smooth(edge - PIECE_RUST_BAND, edge + PIECE_RUST_BAND, 1 - madeBase[3]!) * t, light = 2 * madeBase[1]! * mottle;
+    for (let c = 0; c < 3; c++) {
+      const painted = maps.base[c]! * (1 + (sheet - 1) * t), bare = painted + (PIECE_PRIMER[c]! * light - painted) * primed * t;
+      maps.base[c] = bare + (PIECE_RUSTED[c]! * (0.5 + 2 * madeBase[1]!) * mottle * (1.5 - smooth(edge, edge + 0.3, 1 - madeBase[3]!)) - bare) * rust;
+    }
+    maps.base[3] = ((1 - primed * t) * (1 - rust)) / f.palette;
+    maps.mro[1] = maps.mro[1]! + (0.92 - maps.mro[1]!) * rust;
+    maps.lean[0] = lx * flipU + tiltU * t;
+    maps.lean[1] = ly * flipV + tiltV * t;
+    // Its height is what its edges' chips are cut by, in the finish's own measure.
+    const chip = PIECE_CHIP[0] + PIECE_CHIP[1] * (surfaceNoise(wu / PIECE_CHIP_GRAIN[0], wv / PIECE_CHIP_GRAIN[0]) - 0.5) + PIECE_CHIP[2] * (surfaceNoise(wu / PIECE_CHIP_GRAIN[1], wv / PIECE_CHIP_GRAIN[1]) - 0.5);
+    maps.mro[3] = maps.mro[3]! + (chip - maps.mro[3]!) * t;
+    return;
+  }
   scales.height += (r.relief - scales.height) * t;
   coatLost.coat = r.coat ? t : 0;
 }
@@ -459,9 +554,9 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
  */
 export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Numbers, index: number, x: number, y: number, z: number,
   nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null, early = 0,
-  wears = 0, slots: Numbers | null = null, masks: WorldSample | null = null): number {
+  wears = 0, slots: Numbers | null = null, masks: WorldSample | null = null, piece: PiecePixel | null = null): number {
   const f = finishes[index]!;
-  const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
+  let axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
   const metres = finishMetres(index, city);
   const u = (axis === 0 ? z : x) / metres, v = (axis === 1 ? z : -y) / metres;
   const spread = Math.log2(Math.max(footprint / metres, 1e-9));
@@ -477,7 +572,14 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   scales.rough = f.rough;
   scales.bump = f.bump;
   scales.height = f.height;
-  if (wears > 0 && slots && masks && !light && (!MADE_READS[wears - 1]!.lies || (axis === 1 && ny > 0))) made(wears, index, axis, x, y, z, nx, nz, footprint, slots, masks, secondShare(u, v));
+  const wearing = wears > 0 && slots !== null && masks !== null && !light && (!MADE_READS[wears - 1]!.lies || (axis === 1 && ny > 0));
+  const own = wearing && piece !== null && (piece.bits & PIECE_OWN) !== 0 ? piece : null;
+  if (own) {
+    // The face's normal in the piece's frame chooses the way it is read.
+    const ax = Math.abs(own.c * nx - own.s * nz), az = Math.abs(own.s * nx + own.c * nz);
+    axis = Math.abs(ny) >= Math.max(ax, az) ? 1 : ax > az ? 0 : 2;
+  }
+  if (wearing) made(wears, index, axis, x, y, z, nx, nz, footprint, slots!, masks!, secondShare(u, v), own);
   else finishMaps(index, u, v, spread, sample, light, tangent, depth, early);
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
   const stain = light ? 0 : 0.75 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.25 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
@@ -494,7 +596,13 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   const lz = Math.sqrt(Math.max(0, 1 - lx * lx - ly * ly));
   const bx = lx * k, by = ly * k;
   let ox = (smooth ? smooth[0]! : nx) * lz, oy = (smooth ? smooth[1]! : ny) * lz, oz = (smooth ? smooth[2]! : nz) * lz;
-  if (axis === 1) { ox += bx; oz -= by; } else if (axis === 0) { oz += bx; oy += by; } else { ox += bx; oy += by; }
+  if (own) {
+    // The lean is in the piece's frame, and turns with the piece.
+    const ex = axis === 0 ? 0 : bx, ey = axis === 1 ? 0 : by, ez = axis === 1 ? -by : axis === 0 ? bx : 0;
+    ox += own.c * ex + own.s * ez;
+    oy += ey;
+    oz += own.c * ez - own.s * ex;
+  } else if (axis === 1) { ox += bx; oz -= by; } else if (axis === 0) { oz += bx; oy += by; } else { ox += bx; oy += by; }
   const length = Math.sqrt(ox * ox + oy * oy + oz * oz);
   normal[0] = ox / length;
   normal[1] = oy / length;
@@ -657,7 +765,7 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
  * lighter over a little more. All fade as a pixel grows wider than the arris. `line` keeps only the wear (medium's).
  */
 export function edged(albedo: Out, orm: Out, normal: Out, index: number, dist: number, ox: number, oy: number, oz: number, painted: number,
-  x: number, y: number, z: number, footprint: number, city: Numbers, line: boolean): void {
+  x: number, y: number, z: number, footprint: number, city: Numbers, line: boolean, piece = false): void {
   const [wear, chip, shows] = edgings[index]!, f = finishes[index]!, height = (painted - f.lift) / f.height;
   const round = EDGE_ROUND * (0.6 + 0.8 * surfaceNoise(x / 0.37 + z / 0.53, y / 0.41));
   const worn = (1 - smooth(0, round * 2.5, dist)) * wear * (1 - smooth(round, round * 4, footprint));
@@ -673,13 +781,13 @@ export function edged(albedo: Out, orm: Out, normal: Out, index: number, dist: n
   const near = 1 - smooth(0, round * 3, dist), top = 0.15 + 0.45 * near;
   const chipped = near > 0 ? (1 - smooth(top - 0.04, top, height)) * chip * seen : 0;
   if (chipped <= 0) return;
-  const grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3;
+  const grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3, dull = piece && shows === 2;
   for (let c = 0; c < 3; c++) {
-    const bare = shows === 0 ? albedo[c]! * 0.8 : shows === 1 ? [0.3, 0.29, 0.27][c]! * city[c]! : shows === 2 ? [0.56, 0.57, 0.58][c]! : shows === 3 ? grey * 1.3 : albedo[c]! * 1.25;
+    const bare = dull ? PIECE_BARE[c]! : shows === 0 ? albedo[c]! * 0.8 : shows === 1 ? [0.3, 0.29, 0.27][c]! * city[c]! : shows === 2 ? [0.56, 0.57, 0.58][c]! : shows === 3 ? grey * 1.3 : albedo[c]! * 1.25;
     albedo[c] = albedo[c]! + (bare - albedo[c]!) * chipped;
   }
-  orm[1] = orm[1]! + ((shows === 2 ? 0.45 : 1) - orm[1]!) * chipped;
-  if (shows === 2) orm[2] = orm[2]! + (1 - orm[2]!) * chipped;
+  orm[1] = orm[1]! + ((dull ? PIECE_BARE[3] : shows === 2 ? 0.45 : 1) - orm[1]!) * chipped;
+  if (shows === 2) orm[2] = orm[2]! + ((dull ? PIECE_BARE[4] : 1) - orm[2]!) * chipped;
 }
 
 /**
@@ -1011,7 +1119,7 @@ export function worldVertex(vertex: string): string {
   const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, false));
   const lookup = `#ifdef STREET_FINISH\nuniform float uFixture;\nflat out int vFixture;\n${fixtureShader()}\n#endif\nflat out int vSurface;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
   const light = "  vColor = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));\n";
-  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  vFixture = fixtureFace(fixture,i,l);\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n${light}  vRel = p;`);
+  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  vFixture = fixtureFace(fixture,i,l);\n#endif\n  vSurface = SURFACE_IDS[int(${vertex.includes("uniform float uPiece;") ? `uPiece > 0.5 && (aBone & ${FACE_WEARS}u) != 0u ? iRegA.x : i` : "i"})];\n${light}  vRel = p;`);
 }
 
 /**
@@ -1067,13 +1175,34 @@ export function spalled(x: number, y: number, z: number, nx: number, ny: number,
   return out;
 }
 
+/**
+ * A built piece's vMade: its own byte's material on a face in its own colour or one its mesh says wears it (FACE_WEARS),
+ * its stage over that, and over both the bits a read in its own frame needs (PiecePixel). Its vPlace is its +X's cosine
+ * and sine, which pieceFit gives: a piece has no facade to place.
+ */
+const PIECE_MADE_TEXT = `  if (uPiece > 0.5) {
+    bool region = aColor >= ${REGION_BASE}u;
+    uint wears = region || (aBone & ${FACE_WEARS}u) != 0u ? iRegA.w & ${PIECE_MADE_BITS}u : 0u;
+    uint h = floatBitsToUint(iPos.x) * 2654435761u ^ floatBitsToUint(iPos.y) * 2246822519u ^ floatBitsToUint(iPos.z) * 3266489917u;
+    h = (h ^ (h >> 15u)) * 2246822519u;
+    vMade = int(wears | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | ((aBone & ${FACE_PLAIN}u) << ${PIECE_OVER_WEAR + 1 - 7}u) | (region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));
+  }
+`;
+const PIECE_TURN_TEXT = `  if (uPiece > 0.5) {
+    float turn = iYaw * 6.283185307, ts = sin(turn), tc = cos(turn);
+    vec3 tl = l;
+    pieceFit(tl, ts, tc);
+    vPlace = vec2(tc, ts);
+  }
+`;
+
 export function ownVertex(vertex: string): string {
   if (!vertex.includes("out vec3 vRel;") || !vertex.includes("  vRel = p;")) throw new Error("ownVertex: not a flat mesh vertex text");
   // A near chunk's material is its piece's state's (pieces.ts); an instance's its last two regions (MADE_MARK), where its mesh's colour is the instance's.
   // A built piece's is in its own byte, under its stage (piece-fit.ts).
   return vertex.replace("out vec3 vRel;", "out vec3 vRel;\nout vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nflat out int vMade;\nuniform vec3 uWorldEye;")
-    .replace("  vRel = p;", `  vMade = aPiece != 0u ? int((aColor == ${SPALL_PALETTE}u ? 0u : piece.a & ${PIECE_MADE}u) | (((piece.r >> ${PIECE_WEAR_SHIFT}u) & ${PIECE_WEAR}u) << ${WEAR_OVER_MADE}u)) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n  if (uPiece > 0.5) vMade = int((aColor >= ${REGION_BASE}u ? iRegA.w & ${PIECE_MADE_BITS}u : 0u) | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u));\n  vRel = p;`)
-    .replace("  vRel = p;", "  vOwn = l;\n  vPlace = floor((iPos + uOffset + uWorldEye).xz * 4.0 + 0.5);\n  vFace = vec2(float(aBone & 1u), float((aBone >> 1u) & 1u));\n  vEdges = uSkin > 0.5 ? 0u : (aBone >> 2u) & 15u;\n  vRel = p;");
+    .replace("  vRel = p;", `  vMade = aPiece != 0u ? int((aColor == ${SPALL_PALETTE}u ? 0u : piece.a & ${PIECE_MADE}u) | (((piece.r >> ${PIECE_WEAR_SHIFT}u) & ${PIECE_WEAR}u) << ${WEAR_OVER_MADE}u)) : uSkin > -0.5 && uSkin < 0.5 && aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;\n${PIECE_MADE_TEXT}  vRel = p;`)
+    .replace("  vRel = p;", "  vOwn = l;\n  vPlace = floor((iPos + uOffset + uWorldEye).xz * 4.0 + 0.5);\n  vFace = vec2(float(aBone & 1u), float((aBone >> 1u) & 1u));\n  vEdges = uSkin > 0.5 ? 0u : (aBone >> 2u) & 15u;\n" + PIECE_TURN_TEXT + "  vRel = p;");
 }
 
 /** The tints whose finish differs on the desert's ground (content/surfaces.ts surfaceIndex): its open land, all of one finish. */
@@ -1222,17 +1351,40 @@ bool worldSharp = false;
 uniform highp sampler2DArray uTexgen;
 uniform float uTexgenReady;
 int worldMade = 0;
+// A built piece's pixel in its own frame, its +X's cosine and sine, and its bits (ownVertex): own frame, plain, a fixed colour, then its seed.
+vec3 worldOwn = vec3(0.0);
+vec2 worldTurn = vec2(1.0, 0.0);
+int worldPiece = 0;
+vec3 ownOf(vec3 v) { return vec3(worldTurn.x * v.x - worldTurn.y * v.z, v.y, worldTurn.y * v.x + worldTurn.x * v.z); }
+// A piece's face as its weathering takes it: the piece's own axis nearest its normal, in the world, the same at every pixel of it.
+vec3 ownFace(vec3 n) {
+  vec3 o = ownOf(n), a = abs(o);
+  o = a.y >= max(a.x, a.z) ? vec3(0.0, sign(o.y), 0.0) : a.x > a.z ? vec3(sign(o.x), 0.0, 0.0) : vec3(0.0, 0.0, sign(o.z));
+  return vec3(worldTurn.x * o.x + worldTurn.y * o.z, o.y, worldTurn.x * o.z - worldTurn.y * o.x);
+}
 // How much of a coat the pixel wears (made), and how much of its plaster is lost (weathered): a coat's relief goes with it.
 float worldCoat = 0.0, worldLost = 0.0;
 const float MK[${MADE_READS.length + 1}] = float[${MADE_READS.length + 1}](0.0, ${MADE_READS.map((r) => (r.coat ? "1.0" : "0.0")).join(", ")});
 const vec4 MD[${MADE_READS.length + 1}] = vec4[${MADE_READS.length + 1}](vec4(1.0), ${MADE_READS.map((r) => `vec4(${fl(r.metres)}, ${fl(r.relief)}, ${fl(r.far)}, ${fl(r.mottle)})`).join(", ")});
 const vec2 MS[${MADE_READS.length + 1}] = vec2[${MADE_READS.length + 1}](vec2(0.0), ${MADE_READS.map((r) => `vec2(${r.shift.map(fl).join(", ")})`).join(", ")});
+const float MQ[${MADE_READS.length + 1}] = float[${MADE_READS.length + 1}](1.0, ${MADE_READS.map((r) => fl(r.plain)).join(", ")});
 const bool ML[${MADE_READS.length + 1}] = bool[${MADE_READS.length + 1}](false, ${MADE_READS.map((r) => String(r.lies)).join(", ")});
-void made(int k, int id, int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy, vec2 qf, out vec4 base, out vec4 mro, out vec2 bump, out float tone, inout vec3 scales) {
+bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy, vec2 qf, out vec4 base, out vec4 mro, out vec2 bump, out float tone, inout vec3 scales) {
   float m = MD[k].x;
   vec4 s = fMade[k * 2 - 2];
   vec3 ph = fMade[k * 2 - 1].xyz, p = rel + uWorldEye;
-  bool turn = axis == 1 && abs(face.x) > abs(face.z);
+  bool turn = axis == 1 && abs(face.x) > abs(face.z), own = (worldPiece & 1) != 0;
+  int seed = worldPiece >> 3;
+  if (own) {
+    vec3 on = abs(ownOf(face));
+    axis = on.y >= max(on.x, on.z) ? 1 : on.x > on.z ? 0 : 2;
+    turn = false;
+    rel = worldOwn;
+    dpx = ownOf(dpx);
+    dpy = ownOf(dpy);
+    ph = vec3(0.0);
+    p = worldOwn + vec3(float(seed & 63), float((seed >> 3) & 63), float(seed >> 6)) * 1.7;
+  }
   vec2 q = axis == 1 ? rel.xz / m + ph.xz : axis == 0 ? vec2(rel.z / m + ph.z, -rel.y / m - ph.y) : vec2(rel.x / m + ph.x, -rel.y / m - ph.y);
   vec2 w = axis == 1 ? p.xz : axis == 0 ? vec2(p.z, -p.y) : vec2(p.x, -p.y);
   vec2 dx = (axis == 1 ? dpx.xz : axis == 0 ? vec2(dpx.z, -dpx.y) : vec2(dpx.x, -dpx.y)) / m;
@@ -1248,9 +1400,34 @@ void made(int k, int id, int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy, vec2
   base = WB[id];
   mro = WO[id];
   bump = vec2(0.0);
-  if (t <= 0.0) return;
-  float share = clamp((surfaceNoise(w * ${fl(WORLD_PATCH)} / m + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
+  if (own) base.a = 1.0 / WT[id].w;
+  if (t <= 0.0) return own;
+  float share = own ? 0.0 : clamp((surfaceNoise(w * ${fl(WORLD_PATCH)} / m + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
   share = share * share * (3.0 - 2.0 * share);
+  vec2 flip = vec2(1.0), tilt = vec2(0.0);
+  float sheet = 1.0, rusts = 0.0, primed = 0.0;
+  if (own) {
+    if ((worldPiece & 2) != 0) {
+      vec2 f = fract((q + float(seed & 31) * 0.37) / (2.0 * MQ[k]));
+      flip = vec2(f.x < 0.5 ? -1.0 : 1.0, f.y < 0.5 ? -1.0 : 1.0);
+      q = (1.0 - MQ[k]) / 2.0 + MQ[k] * abs(2.0 * f - 1.0);
+      rusts = ${fl(0.6 * PIECE_RUST[1])} * float((seed >> 9) & 7) / 7.0;
+    } else {
+      vec2 c = floor(q);
+      float h = surfaceHash(ivec2(c) + ivec2(seed, seed >> 5));
+      if (h < 0.5) {
+        flip.x = -1.0;
+        q.x = 2.0 * c.x + 1.0 - q.x;
+      }
+      sheet = 1.0 + ${fl(PIECE_TONE)} * (fract(h * 8.0) - 0.5);
+      float r = fract(h * 64.0);
+      rusts = ${fl(PIECE_RUST[1])} * r * r * (0.35 + 0.65 * float((seed >> 9) & 7) / 7.0);
+      tilt = (vec2(fract(h * 512.0), fract(h * 4096.0)) - 0.5) * ${fl(PIECE_TILT)};
+      primed = (worldPiece & 4) == 0 && fract(h * 32768.0) < ${fl(PIECE_PRIMED)} ? 1.0 : 0.0;
+    }
+    dx *= flip;
+    dy *= flip;
+  }
   vec4 b = vec4(0.0), r = vec4(0.0);
   if (share < 1.0) {
     b = textureGrad(uTexgen, vec3(q, s.x), dx, dy);
@@ -1267,8 +1444,20 @@ void made(int k, int id, int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy, vec2
   mro = mix(mro, vec4(mro.r * min(1.0, 0.8 + 0.4 * r.a), r.b, mro.b, r.a), t);
   bump = (r.rg - 0.5) * 2.0 * t;
   if (turn) bump = -bump.yx;
+  if (own) {
+    float edge = ${fl(PIECE_RUST[0])} - rusts, rust = smoothstep(edge - ${fl(PIECE_RUST_BAND)}, edge + ${fl(PIECE_RUST_BAND)}, 1.0 - b.a) * t;
+    base.rgb = mix(base.rgb * mix(1.0, sheet, t), vec3(${PIECE_PRIMER.map(fl).join(", ")}) * 2.0 * b.g * mottle, primed * t);
+    base.rgb = mix(base.rgb, vec3(${PIECE_RUSTED.map(fl).join(", ")}) * (0.5 + 2.0 * b.g) * mottle * (1.5 - smoothstep(edge, edge + 0.3, 1.0 - b.a)), rust);
+    base.a = (1.0 - primed * t) * (1.0 - rust) / WT[id].w;
+    mro.g = mix(mro.g, 0.92, rust);
+    mro.a = mix(mro.a, ${fl(PIECE_CHIP[0])} + ${fl(PIECE_CHIP[1])} * (surfaceNoise(w / ${fl(PIECE_CHIP_GRAIN[0])}) - 0.5) + ${fl(PIECE_CHIP[2])} * (surfaceNoise(w / ${fl(PIECE_CHIP_GRAIN[1])}) - 0.5), t);
+    bump = bump * flip + tilt * t;
+    scales = mix(scales, vec3(1.0, 1.0, scales.z), t);
+    return true;
+  }
   scales = mix(scales, vec3(1.0, 1.0, MD[k].y), t);
   worldCoat = MK[k] * t;
+  return false;
 }
 #endif
 // Returns the height in millimetres with the finish's lift.
@@ -1291,7 +1480,8 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
 #endif
   vec3 scales = vec3(f.z, f.y, WM[id].z);
 #ifdef WORLD_WEATHER
-  if (worldMade > 0 && (!ML[worldMade] || (axis == 1 && face.y > 0.0))) made(worldMade, id, axis, face, rel, dpx, dpy, q, base, mro, bump, tone, scales);
+  bool own = false;
+  if (worldMade > 0 && (!ML[worldMade] || (axis == 1 && face.y > 0.0))) own = made(worldMade, id, axis, face, rel, dpx, dpy, q, base, mro, bump, tone, scales);
   else
 #endif
   finishMaps(id, q, dx, dy, view, depth, base, mro, bump, tone);
@@ -1310,7 +1500,11 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   albedo *= (1.0+(macro-0.5)*0.5-stain*weather*0.5)*(1.0+(tone-0.5)*WS[id])*(1.0-wet*0.28)*mix(vec3(1.0),vec3(0.55,0.75,0.35),growth);
   float z = sqrt(max(0.0, 1.0 - dot(bump, bump)));
   bump *= scales.y*uSurfaceCity[2].x;
-  n = normalize(n * z + (axis==1 ? vec3(bump.x,0.0,-bump.y) : axis==0 ? vec3(0.0,bump.y,bump.x) : vec3(bump.x,bump.y,0.0)));
+  vec3 lean = axis==1 ? vec3(bump.x,0.0,-bump.y) : axis==0 ? vec3(0.0,bump.y,bump.x) : vec3(bump.x,bump.y,0.0);
+#ifdef WORLD_WEATHER
+  if (own) lean = vec3(worldTurn.x * lean.x + worldTurn.y * lean.z, lean.y, worldTurn.x * lean.z - worldTurn.y * lean.x);
+#endif
+  n = normalize(n * z + lean);
   orm = vec3(mro.r,clamp(mro.g*scales.x-wet*0.35,0.12,1.0),mro.b*f.w);
   worldSharp = orm.y < ${fl(WORLD_SHARP)};
   return mro.a * scales.z + WM[id].w;
@@ -1425,10 +1619,11 @@ void edged(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec2 face, u
   float chipped = near > 0.0 ? (1.0 - smoothstep(top - 0.04, top, height)) * e.y * seen : 0.0;
   if (chipped > 0.0) {
     float grey = (albedo.r + albedo.g + albedo.b) / 3.0;
-    vec3 bare = e.z == 0.0 ? albedo * 0.8 : e.z == 1.0 ? vec3(0.3, 0.29, 0.27) * uSurfaceCity[0].rgb : e.z == 2.0 ? vec3(0.56, 0.57, 0.58) : e.z == 3.0 ? vec3(grey * 1.3) : albedo * 1.25;
+    bool dull = worldPiece > 0 && e.z == 2.0;
+    vec3 bare = dull ? vec3(${PIECE_BARE.slice(0, 3).map(fl).join(", ")}) : e.z == 0.0 ? albedo * 0.8 : e.z == 1.0 ? vec3(0.3, 0.29, 0.27) * uSurfaceCity[0].rgb : e.z == 2.0 ? vec3(0.56, 0.57, 0.58) : e.z == 3.0 ? vec3(grey * 1.3) : albedo * 1.25;
     albedo = mix(albedo, bare, chipped);
-    orm.y = mix(orm.y, e.z == 2.0 ? 0.45 : 1.0, chipped);
-    if (e.z == 2.0) orm.z = mix(orm.z, 1.0, chipped);
+    orm.y = mix(orm.y, dull ? ${fl(PIECE_BARE[3])} : e.z == 2.0 ? 0.45 : 1.0, chipped);
+    if (e.z == 2.0) orm.z = mix(orm.z, dull ? ${fl(PIECE_BARE[4])} : 1.0, chipped);
   }
 #endif
 }

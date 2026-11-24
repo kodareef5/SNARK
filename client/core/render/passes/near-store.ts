@@ -12,6 +12,7 @@ import { bendOf } from "../../../../shared/world/mapfile.ts";
 import { SIZE_UNITS } from "../../../../shared/world/nodes.ts";
 import type { ChunkTable, StructureStore } from "../../../../shared/world/structures.ts";
 import type { Assets } from "../../assets/assets.ts";
+import { BasePlates, PLATE_NONE } from "../base-occluders.ts";
 import { coverScale, crownScale, leavesAt, thinning, type FrameBudget } from "../budget.ts";
 import type { Camera } from "../camera.ts";
 import type { Casting } from "../casting.ts";
@@ -186,6 +187,8 @@ export interface ChunkBatch {
   /** The chunks round it whose pieces its trims turn on, a bit each, and the sum of their tables' `placed` when it was built. */
   borders: number;
   borderSum: number;
+  /** What its built pieces hide, as these instances draw them (base-occluders.ts): hide.ts OCCLUDER numbers a plate. */
+  plates: Float64Array;
 }
 
 /** What the near store reads of the registry and the pack, each made once by the scene (Scene's fields of the same names). */
@@ -243,6 +246,12 @@ export class NearStore implements Pass {
   /** Bytes of the chunks' instance buffers on the card, and as reserved under INSTANCES. */
   private instanceBytes = 0;
   private instancesReserved = 0;
+  /** The chunks whose built pieces in view were every one drawn this frame, and have plates: what they hide may be left out. */
+  readonly plated: number[] = [];
+  /** Finds a chunk's plates. `plating` false leaves `plated` empty, for a before and after. */
+  readonly plates: BasePlates;
+  plating = true;
+  private readonly platable: (kind: number) => boolean;
   /** Chunks of the near store whose mesh has a draw this frame; per chunk that casts, its casters from and to and its shadow's box. */
   readonly meshDrawn = new Set<number>();
   readonly chunkCasts: number[] = [];
@@ -341,6 +350,8 @@ export class NearStore implements Pass {
       if (other !== 0 && this.meshOfKind[k] !== this.meshOfKind[other]) this.twinOf[this.meshOfKind[k]!] = this.meshOfKind[other]!;
     }
     this.pieces = new PieceLooks(reg, this.meshOfKind, this.regionsOfKind, table.count, looks.missing);
+    this.plates = new BasePlates(reg);
+    this.platable = (kind) => this.meshOfKind[kind] !== looks.missing && this.meshOfKind[kind] !== HIDDEN && this.assets.known(this.meshOfKind[kind]!);
     this.trims = new Trims(reg, (id) => table.find(id), this.pieces);
     this.cover = new CrownCover(world.dims);
     this.coverLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, treeOf: this.treeOf, side: table.side, low: table.low, high: table.high, hidden: (ref) => this.hiddenNodes.has(ref) };
@@ -358,6 +369,7 @@ export class NearStore implements Pass {
     if (this.hiddenChanged.size > 0) this.cover.stale = true;
     this.hiddenChanged.clear();
     this.meshDrawn.clear();
+    this.plated.length = 0;
     this.chunkCasts.length = 0;
     this.later.length = 0;
   }
@@ -513,7 +525,10 @@ export class NearStore implements Pass {
       // From outside air a chunk's interior is neither seen nor seen to cast: only its shell is drawn and cast.
       const all = batch.blocks === batch.cells || batch.exposing > 0 || batch.holed >= 0 || batch.rooms!.near(cam.x, cam.y, cam.z, reach);
       const ox = x0 - cam.x, oy = -cam.y, oz = z0 - cam.z;
+      const left = p.skipped + p.dropped;
       if (seen) this.ranges(cam, batch, id, dist, ox, oy, oz, cam.passes(ax, ay, az, bx, by, bz), all);
+      // Its plates hide only while every piece of it in view is drawn: a level not yet on the card leaves a wall out.
+      if (seen && this.plating && batch.plates.length > 0 && p.skipped + p.dropped === left) this.plated.push(id);
       // A chunk's mesh is drawn once the frame knows what hides what, by its cells in view that are not hidden.
       if (seen && batch.mesh && this.meshCells(cam, batch, ox, oy, oz) > 0) {
         this.meshDrawn.add(id);
@@ -552,6 +567,7 @@ export class NearStore implements Pass {
     if (b.frames) this.packet.frameTables.delete(id);
     this.instanceBytes -= b.onCard;
     this.batches.delete(id);
+    if (id < NODE_BUFFERS) this.trims.forget(id);
   }
 
   /** The sum of `placed` of the tables of the chunks round `chunk` that `borders` names (trims.ts borderBit). */
@@ -1049,8 +1065,8 @@ export class NearStore implements Pass {
       while (i < b.meshAt && t.kind[slots[i]!] === kinds[i]) i++;
       if (i === b.meshAt) break;
       const slot = slots[i]!, kind = t.kind[slot]!, was = kinds[i]!;
-      // A trim is its piece's: one whose piece changed is laid out again.
-      if (moves === 16 || kind === 0 || meshOf[kind] === HIDDEN || (b.trimmed !== null && b.trimmed[i] === 1)) return false;
+      // A trim is its piece's: one whose piece changed is laid out again. So is a piece that is, or was, a plate.
+      if (moves === 16 || kind === 0 || meshOf[kind] === HIDDEN || (b.trimmed !== null && b.trimmed[i] === 1) || this.plates.plate[kind] !== PLATE_NONE || this.plates.plate[was] !== PLATE_NONE) return false;
       let q = 0, to = -1;
       while (ranges[q * 3 + 1]! + ranges[q * 3 + 2]! <= i) q++;
       for (let r = 0; r < ranges.length; r += 3) if (ranges[r] === meshOf[kind]) to = r / 3;
@@ -1291,6 +1307,7 @@ export class NearStore implements Pass {
       trimAt: trimCount > 0 ? new Uint32Array(trimCount) : null,
       borders: trims?.borders ?? 0,
       borderSum: trims && trims.borders !== 0 ? this.bordering(store, chunk, trims.borders) : 0,
+      plates: NO_PLATES,
       shape: t.shape,
       placed: t.placed,
       unknown: ranges.filter((m, k) => k % 3 === 0 && !this.assets.known(m)),
@@ -1415,6 +1432,7 @@ export class NearStore implements Pass {
       b.cellReach[this.cursor[mesh]! * cells + cell] = Math.max(b.cellReach[this.cursor[mesh]! * cells + cell]!, most);
     }
     if (b.trimAt) this.layTrims(b, trims!, t, chunk, colorOf, x0, z0, blocks);
+    if (frames) b.plates = this.plates.of(t, store.frames, b.at, data, inside ? shell! : null, this.platable);
     b.ownZone.set(zone);
     b.ownBox[0] = b.minX;
     b.ownBox[1] = b.minY;
@@ -1435,7 +1453,7 @@ export class NearStore implements Pass {
 
   /** Writes a chunk's trims after its pieces: each an instance of its mesh in its piece's block, coloured and staged as its piece, held in its cell's boxes. */
   private layTrims(b: ChunkBatch, trims: TrimLayout, t: ChunkTable, chunk: number, colorOf: Uint8Array, x0: number, z0: number, blocks: number): void {
-    const w = new InstanceWriter(b.data), blockAt = this.blockAt, cells = b.cells, frames = b.frames!;
+    const w = new InstanceWriter(b.data), blockAt = this.blockAt, cells = b.cells, frames = b.frames!, data = b.data, regions = this.regionsOfKind;
     for (let k = 0; k < trims.count; k++) {
       const s = trims.owner[k]!, block = blockAt[s]!;
       if (block === UNDRAWN) continue;
@@ -1443,8 +1461,9 @@ export class NearStore implements Pass {
       const i = this.cellCursor[mesh * blocks + block]!++;
       const x = trims.x[k]!, y = trims.y[k]!, z = trims.z[k]!, yaw = trims.yaw[k]!, tw = trims.tw[k]!, at = frames.slotOf(yaw);
       w.set(i, x - x0, y, z - z0, 0, colorOf[dye]!);
-      b.data.set(this.regionsOfKind.subarray(dye * 5, dye * 5 + 2), i * INSTANCE_BYTES + 15);
-      writePiece(b.data, i, at < 0 ? plainYaw(yaw, tw) : pieceWord(at, yaw, tw), this.pieces.made[dye]!, (at < 0 ? 0 : PIECE_FRAMED) | this.pieces.stage(t, s), trims.cut[k]!);
+      data[i * INSTANCE_BYTES + 15] = regions[dye * 5]!;
+      data[i * INSTANCE_BYTES + 16] = regions[dye * 5 + 1]!;
+      writePiece(data, i, at < 0 ? plainYaw(yaw, tw) : pieceWord(at, yaw, tw), this.pieces.made[dye]!, (at < 0 ? 0 : PIECE_FRAMED) | this.pieces.stage(t, s), trims.cut[k]!);
       b.slots[i] = s;
       b.kinds[i] = kind;
       b.trimmed![i] = 1;
@@ -1570,6 +1589,8 @@ export class NearStore implements Pass {
 }
 
 /** Sets boxes of six, least then most, to hold nothing. */
+const NO_PLATES = new Float64Array(0);
+
 function emptyBoxes(box: Float32Array): void {
   for (let k = 0; k < box.length; k += 6) {
     box.fill(Infinity, k, k + 3);

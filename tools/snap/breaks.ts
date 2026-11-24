@@ -82,7 +82,7 @@ export function breakScene(pieces: readonly Piece[], width: number, height: numb
     blast(slot: number, x: number, up: number, z: number): void {
       const kind = t.kind[slot]!, [px, py, pz, yaw] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!];
       const into = heapAt(reg, kind, px, py, pz);
-      rubble.push({ kind, x: px, y: py, z: pz, yaw, cause: GONE_BLAST, ox: X0 + x, oy: up, oz: Z0 + z, tick: Math.floor(ticks()), radius: 7.5, into, map: v.structs.mapKind(CHUNK, slot) });
+      rubble.push({ kind, x: px, y: py, z: pz, yaw, tw: -1, cause: GONE_BLAST, ox: X0 + x, oy: up, oz: Z0 + z, tick: Math.floor(ticks()), radius: 7.5, into, map: v.structs.mapKind(CHUNK, slot) });
       if (into !== 0) v.structs.put(CHUNK, slot, into, px, py, pz, yaw, 0, 24, ++version);
       else v.structs.put(CHUNK, slot, 0, 0, 0, 0, 0, 0, 0, ++version);
       v.structs.setVersion(CHUNK, version);

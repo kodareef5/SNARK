@@ -1,9 +1,13 @@
 // Rows for support and stability by themselves (shared/world/support.ts): the house of the collapse section of
 // tools/bench.ts asked and brought down with no server round it, a 30-storey tower, and one pass over a 20,000-piece
 // base. `bun tools/bench/support.ts` runs these alone; `bun run bench` does not. The collapse here runs once, cold:
-// its steps are held to their budgets by the collapse section of tools/bench.ts.
+// its steps are held to their budgets by the collapse section of tools/bench.ts. Last, a hut, the house and a base of
+// 20,000 come down at the server's pace (server/build.ts), with how many of their pieces a client would have in the air.
 
+import { FALL_GRAVITY, FRONT_MS_PER_METRE, MAX_WAIT_MS } from "../../client/core/rubble.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { COLLAPSE_WORK, WAVE_TICKS, fallMost } from "../../server/build.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { Collapse } from "../../shared/world/collapse.ts";
 import { Found, GONE_FELL, StructureStore } from "../../shared/world/structures.ts";
@@ -15,8 +19,7 @@ type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 const DIMS = { chunksX: 8, chunksZ: 8 };
-/** server/build.ts's COLLAPSE_WORK. */
-const WORK = 16000;
+const WORK = COLLAPSE_WORK;
 const median = (v: number[]): number => [...v].sort((a, b) => a - b)[v.length >> 1] ?? 0;
 
 export function supportRows(section: Section, record: Row): void {
@@ -146,6 +149,77 @@ export function supportRows(section: Section, record: Row): void {
     record("pieces it found standing", standing, "");
     out = new Int8Array(0);
   }
+
+  // Every foundation goes at once, and the rest falls as server/build.ts steps it: a removal every WAVE_TICKS, each of
+  // at most fallMost pieces. A piece is in the air from its removal and its wait behind the front (client/core/rubble.ts)
+  // until the ground has it.
+  const down = (title: string, build: (structs: StructureStore) => number[], budget: number | null): void => {
+    section(title);
+    const structs = make();
+    const ground = build(structs);
+    record("pieces", structs.count, "");
+    const collapse = new Collapse(structs, reg, flat);
+    const t = structs.chunks[Math.floor(ground[0]! / 65536)]!;
+    const [ox, oy, oz] = [t.x[ground[0]! & 0xffff]!, t.y[ground[0]! & 0xffff]!, t.z[ground[0]! & 0xffff]!];
+    /** Each fallen piece: the tick it went, how far from where the collapse began, and the seconds its drop takes. */
+    const fell: number[] = [];
+    let tick = 1;
+    structs.onRemove = (ref, cause) => {
+      if (cause !== GONE_FELL) return void collapse.gone(ref);
+      const c = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
+      fell.push(tick, Math.sqrt((c.x[slot]! - ox) ** 2 + (c.y[slot]! - oy) ** 2 + (c.z[slot]! - oz) ** 2), Math.sqrt((2 * (c.y[slot]! + reg.halfY[c.kind[slot]!]!)) / FALL_GRAVITY));
+    };
+    for (const ref of ground) structs.damage(ref, 1e9, 1);
+    const steps: number[] = [];
+    const sizes: number[] = [];
+    const chunks = new Map<number, number>();
+    const versions = structs.chunks.map((c) => c?.version ?? 0);
+    let [first, last, fellAt] = [-1, -1, -WAVE_TICKS];
+    for (tick = 2; collapse.busy && tick < 100000; tick++) {
+      if (tick - fellAt < WAVE_TICKS) continue;
+      const t0 = performance.now();
+      const n = collapse.step(WORK, tick, fallMost(collapse.made));
+      steps.push(performance.now() - t0);
+      if (n === 0) continue;
+      sizes.push(n);
+      fellAt = last = tick;
+      if (first < 0) first = tick;
+      structs.chunks.forEach((c, k) => {
+        if (c && c.version !== versions[k]) chunks.set(k, (chunks.get(k) ?? 0) + 1);
+        versions[k] = c?.version ?? 0;
+      });
+    }
+    // In the air: from its removal's tick and its place behind that removal's front, for as long as its drop takes.
+    const nearest = new Map<number, number>();
+    for (let k = 0; k < fell.length; k += 3) nearest.set(fell[k]!, Math.min(nearest.get(fell[k]!) ?? Infinity, fell[k + 1]!));
+    const starts: number[] = [];
+    const ends: number[] = [];
+    for (let k = 0; k < fell.length; k += 3) {
+      const from = (fell[k]! / TICK_RATE) * 1000 + Math.min(MAX_WAIT_MS, (fell[k + 1]! - nearest.get(fell[k]!)!) * FRONT_MS_PER_METRE);
+      starts.push(from);
+      ends.push(from + fell[k + 2]! * 1000);
+    }
+    starts.sort((a, b) => a - b);
+    ends.sort((a, b) => a - b);
+    let most = 0;
+    for (let k = 0, gone = 0; k < starts.length; k++) {
+      while (ends[gone]! <= starts[k]!) gone++;
+      most = Math.max(most, k + 1 - gone);
+    }
+    const seconds = (last - first + 1) / TICK_RATE;
+    record("pieces that fell", collapse.fallen, "");
+    record("pieces left standing", structs.count, "", 0);
+    record("removals", sizes.length, "");
+    record("ticks from the first piece to the last", last - first + 1, "", budget);
+    record("most pieces in one removal", Math.max(...sizes), "", 256);
+    record("pieces a second, first to last", collapse.fallen / seconds, "");
+    record("most in the air at once for a client that shows them all", most, "");
+    record("most removals of one chunk in a second", Math.max(...chunks.values()) / Math.max(1, seconds), "", TICK_RATE / WAVE_TICKS);
+    record("collapse work in a step, worst", Math.max(...steps), "ms", 3);
+  };
+  down("Collapse at the server's pace: a hut of 128", (structs) => house(structs, 2, 4).ground, 15);
+  down("Collapse at the server's pace: the house of 1,512", (structs) => house(structs, 3).ground, 45);
+  down("Collapse at the server's pace: a base of 20,000", (structs) => layBase(structs, boxBase(reg, "stone", 190, 0, 190, 40, 3, 20000), 9000, 100).slice(0, 1600), 300);
 }
 
 if (import.meta.main) {
