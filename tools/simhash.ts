@@ -81,6 +81,10 @@ export function nodeHash(): string {
   return scenarios.nodeHash(core());
 }
 
+export function latticeHash(): string {
+  return scenarios.latticeHash();
+}
+
 export function waterHash(ticks = 3000): string {
   return scenarios.waterHash(core(), ticks);
 }
@@ -89,4 +93,4 @@ export function collisionHashes(): string {
   return [carChassisTrace().hash, cityDriveTrace().hash, boatContactTrace().hash, corpseMotionTrace(), humanFallTrace(false), humanFallTrace(true), reactionTrace()].join(" ");
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash() + " " + collisionHashes());
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash() + " " + collisionHashes() + " " + latticeHash());
