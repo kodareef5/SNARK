@@ -18,7 +18,7 @@ import { rungKind } from "../../shared/world/breaking.ts";
 import { HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { GONE_BLAST, GONE_TAKEN } from "../../shared/world/structures.ts";
 import { GRENADE_REACH, city, grenade } from "../fixtures/city.ts";
-import { record } from "../kit/kit.ts";
+import { put, record } from "../kit/kit.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry(), palette = defaultPalette();
@@ -220,4 +220,25 @@ test("splash sparks land on the wreck and blast debris keeps the explosion's cen
   const debris = ada.rubble.find((r) => r.kind === BLUE)!;
   expect([debris.cause, debris.ox, debris.oz, debris.radius]).toEqual([GONE_BLAST, x, z, GRENADE_REACH]);
   expect(debris.oy).toBeCloseTo(y, 1);
+});
+
+test("a blast reports both wrecks in one hit at the nearer wreck", () => {
+  const c = city([
+    { kind: reg.ids[RED]!, x: 128, z: 122, yaw: 16384 },
+    { kind: reg.ids[BLUE]!, x: 128, z: 131, yaw: 16384 },
+  ]);
+  const { h } = c;
+  const client = h.join("miner");
+  h.run(400);
+  put(h, client, { x: 90, z: 90 });
+  const before = c.refs.map((ref) => c.hp(ref));
+  h.host.combat.blast({ ...grenade(h.reg), by: record(h, client) }, 128, 0.6, 127, GRENADE_REACH);
+  h.run(200);
+  const damage = c.refs.map((ref, index) => before[index]! - c.hp(ref));
+  const hits = client.events.filter((event) => event.kind === EVENT_HIT && event.zone === ZONE_NONE);
+  expect(damage.every((d) => d > 0)).toBe(true);
+  expect(hits).toHaveLength(1);
+  expect(hits[0]!.struck).toBe(BLUE);
+  expect(hits[0]!.z).toBeGreaterThan(127);
+  expect(Math.abs(hits[0]!.damage - damage[0]! - damage[1]!)).toBeLessThanOrEqual(1);
 });
