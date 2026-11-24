@@ -848,7 +848,8 @@ test("a house that comes down: whoever watches is told of it as a few removals a
   const waves = h.host.build.collapse.waves;
   run(2500);
   expect([ours(structs), h.host.build.pending, h.host.build.fallen]).toEqual([0, 0, pieces - N * N]);
-  expect(h.host.build.collapse.waves - waves).toBeGreaterThan(1);
+  // A house this size is judged within one tick's work now, so it may fall as one wave.
+  expect(h.host.build.collapse.waves - waves).toBeGreaterThan(0);
   // Removing row by row would cost at least four bytes a row. Each client got the collapse for under two.
   expect([ours(s.world!.structs), ours(bob.world!.structs), same(s), same(bob)]).toEqual([0, 0, true, true]);
   const each = (h.server.stats.chunkBytes - sent) / 2;
