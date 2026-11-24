@@ -102,10 +102,10 @@
 .investigation input[type="checkbox"] { width: 16px; height: 16px; }
 .investigation input[type="search"], .investigation input[type="datetime-local"], .investigation select { color-scheme: light; }
 
-#map { position: relative; background: #0a1522; aspect-ratio: 16 / 10; min-height: 320px; max-height: min(49vh,470px); cursor: grab; touch-action: none; overflow: hidden; }
+#map { position: relative; width: 100%; height: clamp(320px, 46vh, 460px); background: #e0e9ef; cursor: grab; touch-action: none; overflow: hidden; }
 #map:focus-visible { outline-offset: -3px; }
 #map.dragging { cursor: grabbing; }
-#mapcanvas { position: absolute; width: 100%; height: 100%; }
+#mapcanvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 #loading {
   position: absolute;
   left: 50%;
@@ -188,7 +188,18 @@
 .investigation .strip canvas { display: block; width: 100%; height: 100px; }
 .investigation .empty .strip { display: none; }
 .investigation .tip { position: absolute; z-index: 2; pointer-events: none; border: 1px solid var(--inv-line); border-radius: 5px; padding: 4px 8px; color: #eff4f8; background: #101924; font-size: .78rem; max-width: 245px; }
+.investigation .retained-range { padding: 8px 14px; color: var(--inv-muted); font-size: .81rem; }
+.investigation .retained-track { position: relative; display: flex; align-items: center; height: 24px; margin: 3px 0; }
+.investigation .retained-track::before { position: absolute; inset: 8px 0; border-radius: 6px; background: #e5eaf0; content: ""; }
+#focus-window { position: absolute; inset: 8px auto 8px 0; background: #83abd8; border-radius: 4px; pointer-events: none; }
+#retained { position: relative; appearance: none; width: 100%; height: 24px; background: transparent; border: 0; margin: 0; cursor: ew-resize; }
+#retained::-webkit-slider-thumb { appearance: none; width: 10px; height: 18px; border-radius: 3px; background: var(--inv-accent); }
+#retained::-moz-range-thumb { width: 10px; height: 18px; border: 0; border-radius: 3px; background: var(--inv-accent); }
+.investigation .range-ends { display: flex; justify-content: space-between; gap: 10px; font-variant-numeric: tabular-nums; }
+.investigation .range-ends time:last-child { text-align: right; }
+.investigation .empty .retained-range { display: none; }
 .investigation .replay-slider { display: flex; gap: 14px; align-items: center; padding: 8px 14px; }
+.investigation .replay-slider > span { font-size: .81rem; color: var(--inv-muted); }
 .investigation .replay-slider input[type="range"] { flex: 1; min-height: 27px; }
 #playhead { min-width: 4em; color: var(--inv-muted); font-variant-numeric: tabular-nums; font-size: .83rem; text-align: right; }
 .item-controls label { display: grid; gap: 5px; flex: 1 1 14rem; min-width: 0; font-size: .85rem; }
@@ -245,7 +256,7 @@
 }
 @media (max-width: 600px) {
   .investigation-head { align-items: start; flex-direction: column; gap: 8px; }
-  #map { min-height: 275px; aspect-ratio: 4 / 5; max-height: 62vh; }
+  #map { height: clamp(300px, 43svh, 410px); }
   .investigation .wide { display: none; }
   .investigation .charts, .investigation .detail-grid { grid-template-columns: minmax(0,1fr); }
   .investigation .replay-slider { align-items: start; flex-direction: column; gap: 3px; }

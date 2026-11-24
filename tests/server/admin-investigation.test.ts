@@ -3,6 +3,7 @@ import { framed, CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import type { LogMark } from "../../shared/survivor-log.ts";
 import type { MapHead, MapPart } from "../../shared/world/mapfile.ts";
 import { DEFAULT_LAYERS, nextEvent, readInvestigation, windowEvents, writeInvestigation } from "../../client/core/admin/investigation.ts";
+import { mapLabelBox } from "../../client/core/admin/map-labels.ts";
 import { Recall } from "../../client/core/admin/recall.ts";
 import { streetsInView } from "../../client/core/admin/street-view.ts";
 import { Timeline } from "../../client/core/admin/timeline.ts";
@@ -91,4 +92,27 @@ test("returning to a cached window keeps a pending old seek from replacing it", 
   release([]);
   expect(await old).toBe(false);
   expect(r.windowFor(t)).toBe(cached);
+});
+
+test("map labels stay within the viewport and clear higher-priority marks", () => {
+  const edge = { left: 5, top: 5, right: 280, bottom: 180 };
+  const controls = { left: 236, top: 6, right: 280, bottom: 125 };
+  const first = mapLabelBox(227, 60, 63, edge, [controls]);
+  expect(first).toEqual({ left: 146, top: 51, right: 217, bottom: 69 });
+  const second = mapLabelBox(227, 60, 63, edge, [controls, first!]);
+  expect(second).toBeNull();
+  expect(mapLabelBox(10, 171, 400, edge, [])).toBeNull();
+});
+
+test("the retained history navigator pans without scrubbing within the focus", () => {
+  const t = new Timeline();
+  t.setSpan(1000, 901_000);
+  t.show(721_000, 901_000);
+  t.seek(801_000);
+  t.focus(821_000);
+  expect([t.start, t.end, t.at]).toEqual([721_000, 901_000, 801_000]);
+  t.focus(301_000);
+  expect([t.start, t.end, t.at]).toEqual([211_000, 391_000, 301_000]);
+  t.seek(321_000);
+  expect([t.start, t.end, t.at]).toEqual([211_000, 391_000, 321_000]);
 });
