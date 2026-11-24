@@ -25,7 +25,7 @@ import { CLS_CORNERS, CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, DIRECTIONS
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "../../../shared/world/lattice/occupancy.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import { DRAW_PIECE } from "./packet.ts";
-import { FIT_ENDS, PIECE_END_IN, PIECE_END_SHIFT } from "./piece-fit.ts";
+import { FIT_ENDS, PIECE_END_IN, PIECE_END_RUN, PIECE_END_SHIFT } from "./piece-fit.ts";
 import type { PieceLooks } from "./piece-state.ts";
 
 /** Each tier's rank, the highest at a corner giving its joint, and whether its walls run on through a straight run with no joint. */
@@ -1090,8 +1090,8 @@ export class Trims {
   /**
    * The turn at the end of a skirt or an eave whose side leaves its corner by the way `from`, the open ground lying
    * round from it toward `sense` (1 toward +Z): how many twelfths of a turn the ground is wide, as piece-fit.ts reads
-   * it, or 0 where it is half a turn or the slab beyond it has no such trim to meet. The corner's faces are in `faces`,
-   * and for an eave its edges in `spokes`.
+   * it, or 0 where the slab beyond it has no such trim to meet. The corner's faces are in `faces`, and for an eave its
+   * edges in `spokes`.
    */
   private turn(gid: number, from: number, sense: number, skirt: boolean): number {
     const store = this.store, occ = store.occupied, faces = this.faces, spokes = this.spokes;
@@ -1105,9 +1105,9 @@ export class Trims {
         if (ref < 0) continue;
         const kind = store.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!, what = this.sidesOf[kind]!, tier = this.tierOf[kind]!;
         if (skirt && what !== SIDES_SKIRT) continue;
-        if (n === DIRECTIONS / 2 || tier < 0) return 0;
+        if (tier < 0) return 0;
         if (skirt ? this.tiers[tier]!.skirt < 0 : what !== SIDES_EAVE || this.tiers[tier]!.eave < 0 || spokes.k0[b] === 0 || !this.eaved(gid, spokes.k0[b]!, spokes.k1[b]!, keyLvl(spokes.k1[b]!), ref)) return 0;
-        return n > DIRECTIONS / 2 ? n - DIRECTIONS / 2 : PIECE_END_IN | (DIRECTIONS / 2 - n);
+        return n === DIRECTIONS / 2 ? PIECE_END_RUN : n > DIRECTIONS / 2 ? n - DIRECTIONS / 2 : PIECE_END_IN | (DIRECTIONS / 2 - n);
       }
     }
     return 0;

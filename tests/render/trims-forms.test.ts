@@ -240,9 +240,9 @@ test("skirts meet on the plane that halves each corner: outside, inside, and rou
   expect(box(skirts("one")).map((v, k) => r2(v - (k % 2 === 0 ? one.x : one.z)))).toEqual([-0.12, -0.12, 3.12, 3.12]);
   for (const d of skirts("one")) expect(r2(Math.max(d.hi[0]! - d.lo[0]!, d.hi[2]! - d.lo[2]!))).toBe(3.24);
   // The L: eight skirts. The two at its inside corner are cut back there (an inside quarter turn), the four ends in its
-  // two straight runs are left as made, and every other end is run on.
+  // two straight runs are laid square on their sides' ends, and every other end is run on.
   const inside = PIECE_END_IN | 3;
-  expect(turns("ell")).toEqual(["0,3", "0,3", "3,0", "3,0", "3,3", "3,3", `${inside},3`, `3,${inside}`].sort());
+  expect(turns("ell")).toEqual(["6,3", "6,3", "3,6", "3,6", "3,3", "3,3", `${inside},3`, `3,${inside}`].sort());
   // A triangle: three skirts, each end turned a third of a turn.
   expect(turns("tri")).toEqual(["4,4", "4,4", "4,4"]);
   // The square under a triangle: three skirts on the square and two on the triangle; a twelfth where they meet, a third at the point.
@@ -282,9 +282,9 @@ test("a tier with an eave has one on each open side of a ceiling, and a tier wit
   const wood = b.wood!;
   const sides = eaves("wood").map((d) => [r2((d.lo[0]! + d.hi[0]!) / 2 - wood.x), r2((d.lo[2]! + d.hi[2]!) / 2 - wood.z), ...turnsOf(d)]).sort((p, q) => p[0]! - q[0]! || p[1]! - q[1]!);
   // Each hangs a ceiling's depth from its top and stands 0.30 m out. At the south-west and north-west corners two meet
-  // on the corner's plane; in the run along the south side and at the ends by the wall and the roof they end as made.
+  // on the corner's plane; in the run along the south side they end square, and by the wall and the roof as made.
   expect(eaves("wood").map((d) => [r2(d.lo[1]! - 3), r2(d.hi[1]! - 3)])).toEqual(eaves("wood").map(() => [2.75, 3]));
-  expect(sides).toEqual([[-0.15, 1.5, 3, 3], [1.35, -0.15, 0, 3], [1.35, 3.15, 3, 0], [4.5, -0.15, 0, 0]]);
+  expect(sides).toEqual([[-0.15, 1.5, 3, 3], [1.35, -0.15, 6, 3], [1.35, 3.15, 3, 0], [4.5, -0.15, 0, 6]]);
   // The ceilings still give way to the walls under them, with or without an eave.
   expect([yieldOf(all, refs.wood0!), yieldOf(all, refs.wood1!)]).toEqual([yieldOf(all, refs.metal0!), yieldOf(all, refs.metal1!)]);
   expect(yieldOf(all, refs.wood0!)).toBe(12);

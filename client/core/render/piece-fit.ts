@@ -17,8 +17,9 @@
 // end of its first, and along its first; size 1 is half a side. No class and no size: bits 0 to 3 the quarter storeys
 // a trim is cut off at, 0 for its full height. No class and size 1 (FIT_ENDS), a trim that lies along a side, its +Z
 // the way out: bits 0 to 3 the turn at its -X end, and the state byte has its +X end's. A turn is the twelfths of a
-// turn the corner there is past straight, 1 to 5, with PIECE_END_IN where it is an inside corner: the end is laid on
-// the plane that halves the corner, so two trims meet on it. 0 leaves the end as the mesh has it.
+// turn the corner there is past straight, 1 to 5, with PIECE_END_IN where it is an inside corner, or PIECE_END_RUN in a
+// straight run: the end is laid on the plane that halves the corner, so two trims meet on it. 0 leaves the end as the
+// mesh has it.
 
 import { YAW_UNITS } from "../../../shared/coords.ts";
 import { HALF_SIDE } from "../../../shared/world/frame.ts";
@@ -61,6 +62,8 @@ export const FIT_ENDS = 1 << FIT_SIZE_SHIFT;
 /** Where a trim's +X end's turn is in its state byte, and the bit of a turn that says the corner is an inside one. */
 export const PIECE_END_SHIFT = 3;
 export const PIECE_END_IN = 8;
+/** The turn of an end that meets the next trim in a straight run: it is laid square on the side's own end. */
+export const PIECE_END_RUN = 6;
 /** Metres from a side's end within which a trim's point is its end's, and is laid on the corner's plane. */
 export const END_SNAP = 0.005;
 /** A point this far inside a triangle's ring, or nearer its side, keeps its place by that side when another side gives way. */
@@ -171,7 +174,7 @@ vec2 pieceAxis(int k, int d) {
 }
 float pieceEnd(uint turn) {
   uint n = turn & 7u;
-  float run = n == 1u ? ${END_RUNS[1]!.toFixed(5)} : n == 2u ? ${END_RUNS[2]!.toFixed(5)} : n == 3u ? 1.0 : n == 4u ? ${END_RUNS[4]!.toFixed(5)} : ${END_RUNS[5]!.toFixed(5)};
+  float run = n == 1u ? ${END_RUNS[1]!.toFixed(5)} : n == 2u ? ${END_RUNS[2]!.toFixed(5)} : n == 3u ? 1.0 : n == 4u ? ${END_RUNS[4]!.toFixed(5)} : n == 5u ? ${END_RUNS[5]!.toFixed(5)} : 0.0;
   return (turn & ${PIECE_END_IN}u) != 0u ? -run : run;
 }
 void pieceFit(inout vec3 l, inout float s, inout float c) {
@@ -339,7 +342,7 @@ const Y = [0, 0];
 
 /** `pieceEnd` of the text: how far along a turned end runs for each metre out, back toward the trim's middle for an inside corner. */
 function endRun(turn: number): number {
-  const n = turn & 7, run = END_RUNS[n >= 1 && n <= 4 ? n : 5]!;
+  const n = turn & 7, run = n >= 1 && n <= 5 ? END_RUNS[n]! : 0;
   return (turn & PIECE_END_IN) !== 0 ? -run : run;
 }
 

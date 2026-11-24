@@ -299,6 +299,51 @@ function holding(tris: readonly Tri[], o: readonly number[], d: readonly number[
   return -inside;
 }
 
+/** Metres along the ray from `o` along `d` to its first crossing of `t`, from either side, or Infinity. */
+function crossing(t: Tri, o: readonly number[], d: readonly number[]): number {
+  const [e1x, e1y, e1z, e2x, e2y, e2z] = [t[3] - t[0], t[4] - t[1], t[5] - t[2], t[6] - t[0], t[7] - t[1], t[8] - t[2]];
+  const [px, py, pz] = [d[1]! * e2z - d[2]! * e2y, d[2]! * e2x - d[0]! * e2z, d[0]! * e2y - d[1]! * e2x];
+  const det = e1x * px + e1y * py + e1z * pz;
+  if (Math.abs(det) < 1e-14) return Infinity;
+  const [sx, sy, sz] = [o[0]! - t[0], o[1]! - t[1], o[2]! - t[2]];
+  const u = (sx * px + sy * py + sz * pz) / det;
+  if (u < 0 || u > 1) return Infinity;
+  const [qx, qy, qz] = [sy * e1z - sz * e1y, sz * e1x - sx * e1z, sx * e1y - sy * e1x];
+  const v = (d[0]! * qx + d[1]! * qy + d[2]! * qz) / det;
+  if (v < 0 || u + v > 1) return Infinity;
+  const far = (e2x * qx + e2y * qy + e2z * qz) / det;
+  return far > 0 ? far : Infinity;
+}
+
+/**
+ * How many lines of sight from above meet one of `front` before one of `under` that lies on the same line: a joint seen
+ * standing out of a roof's top. The lines come down on a grid `step` apart within `reach` of (x, z), straight and leaning
+ * a third of a right angle each of four ways. A joint seen beside the roof, with no roof behind it, is not counted.
+ */
+export function showsOver(front: readonly Standing[], under: readonly Standing[], x: number, z: number, reach = 0.5, step = 0.02): number {
+  const top = Math.max(...front.map((p) => p.hi[1]!), ...under.map((p) => p.hi[1]!)) + 1;
+  const near = (p: Standing): Tri[] => p.tris.filter((t) => Math.min(t[0], t[3], t[6]) < x + reach + 3 && Math.max(t[0], t[3], t[6]) > x - reach - 3 && Math.min(t[2], t[5], t[8]) < z + reach + 3 && Math.max(t[2], t[5], t[8]) > z - reach - 3);
+  const [fronts, unders] = [front.flatMap(near), under.flatMap(near)];
+  const lean = Math.tan(Math.PI / 6);
+  let seen = 0;
+  for (const [lx, lz] of [[0, 0], [lean, 0], [-lean, 0], [0, lean], [0, -lean]] as const) {
+    const d = [lx, -1, lz];
+    for (let gx = x - reach; gx <= x + reach + 1e-9; gx += step) {
+      for (let gz = z - reach; gz <= z + reach + 1e-9; gz += step) {
+        // Aimed at the grid's point at the joints' own height, so a leaning line still comes down by the corner.
+        const drop = top - (front[0]?.hi[1] ?? 0);
+        const o = [gx - lx * drop, top, gz - lz * drop];
+        let first = Infinity, roof = Infinity;
+        for (const t of fronts) first = Math.min(first, crossing(t, o, d));
+        if (first === Infinity) continue;
+        for (const t of unders) roof = Math.min(roof, crossing(t, o, d));
+        if (roof !== Infinity && first < roof - 1e-6) seen++;
+      }
+    }
+  }
+  return seen;
+}
+
 export interface Fights {
   /** Pairs of pieces and the ways their faces look in which they share more than FIGHT_AREA. */
   faces: number;
