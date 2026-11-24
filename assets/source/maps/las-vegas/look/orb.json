@@ -18,6 +18,14 @@
     {"name": "orb-sign-night", "hour": 23, "x": 0, "z": 0, "up": 40, "fromSpawn": "Welcome to Fabulous Las Vegas Sign", "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
     {"name": "orb-foot-night", "hour": 23, "up": 1.7, "x": -24.7, "z": -162.1, "look": [64.8, -199.8, 75], "eyeSeconds": 560, "holdPhase": true, "obelisk": "Sphere"},
     {"name": "orb-foot-noon", "hour": 12, "up": 1.7, "x": -24.7, "z": -162.1, "look": [64.8, -199.8, 75], "eyeSeconds": 300, "holdPhase": true, "obelisk": "Sphere"},
-    {"name": "orb-cap-dusk", "hour": 18.6, "over": 116, "x": 58.8, "z": -199.8, "look": [-335.2, -49.8, 20], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"}
+    {"name": "orb-cap-dusk", "hour": 18.6, "over": 116, "x": 58.8, "z": -199.8, "look": [-335.2, -49.8, 20], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
+    {"name": "orb-level-noon", "hour": 12, "x": 0, "z": 0, "up": 1.7, "fromSpawn": "Sphere", "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
+    {"name": "orb-level-far-noon", "hour": 12, "up": 30, "x": -213.5, "z": -82.6, "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
+    {"name": "orb-level-dusk", "hour": 18.6, "x": 0, "z": 0, "up": 1.7, "fromSpawn": "Sphere", "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
+    {"name": "orb-level-far-dusk", "hour": 18.6, "up": 30, "x": -213.5, "z": -82.6, "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
+    {"name": "orb-level-night", "hour": 23, "x": 0, "z": 0, "up": 1.7, "fromSpawn": "Sphere", "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
+    {"name": "orb-level-far-night", "hour": 23, "up": 30, "x": -213.5, "z": -82.6, "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
+    {"name": "orb-level-dawn", "hour": 6, "x": 0, "z": 0, "up": 1.7, "fromSpawn": "Sphere", "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"},
+    {"name": "orb-level-far-dawn", "hour": 6, "up": 30, "x": -213.5, "z": -82.6, "look": [64.8, -199.8, 45], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Sphere"}
   ]
 }
