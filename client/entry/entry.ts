@@ -422,7 +422,7 @@ function survivors(): { content: string; primary: string } {
   return {
     primary,
     content: (chosen && chosen.dead ? '<p class="lead">Choose a respawn point after entering the world.</p>' : "")
-      + '<div class="roster-grid">' + (loadingWorld ? "<p>Finding survivors…</p>" : cards || "<p>No survivors yet.</p>") + '</div>'
+      + '<div class="roster-grid">' + (loadingWorld ? "" : cards || "<p>No survivors yet.</p>") + '</div>'
       + '<div class="support">'
       + (chosen ? button("new", "Create a survivor", "quiet") : "")
       + button(fromWorld ? "link" : "link-world", "Link this browser", "quiet")
@@ -801,12 +801,12 @@ root.addEventListener("click", async (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-action]");
   if (!b || (connecting && b.dataset.action !== "back")) return;
   connecting = true;
-  const actionId = ++actionVersion, screenAt = screen;
+  const actionId = ++actionVersion;
   notice = "";
   try {
     await action(b.dataset.action!, b);
   } catch (err) {
-    if (screen !== screenAt || actionId !== actionVersion) return;
+    if (actionId !== actionVersion) return;
     notice = (err as Error).message;
     const msg = root.querySelector(".message");
     if (msg) msg.textContent = notice;
@@ -843,10 +843,12 @@ root.addEventListener("keydown", (e) => {
 });
 document.querySelector(".brand")?.addEventListener("click", (e) => {
   e.preventDefault();
+  actionVersion++;
+  connecting = false;
   nav("title");
 });
 addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && screen !== "title") void action("back", root);
+  if (e.key === "Escape" && screen !== "title") root.querySelector<HTMLButtonElement>("button.back")?.click();
 });
 async function discoverSurvivors() {
   await worldsRefresh();

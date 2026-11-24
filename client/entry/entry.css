@@ -198,6 +198,7 @@ button.quiet:hover:enabled, button.back:hover:enabled, .entry-shell > footer but
   text-decoration: underline;
   text-underline-offset: .2em;
 }
+.entry-shell > footer button { min-height: 29px; }
 button.back { padding-inline: 0; white-space: nowrap; }
 button.secondary, button.chip {
   background: #111d26ad;
