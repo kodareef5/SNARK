@@ -510,6 +510,18 @@ export class StructureStore {
   /** Called with a structure's ref and cause before it is removed, while its row can still be read. Authority only. */
   onRemove: ((ref: number, cause: number) => void) | null = null;
 
+  /** Called as a piece with an owner is set down (`by` 1) or goes (-1), and once each way when one changes owner. (x, z) is as its row holds it. */
+  onOwned: ((kind: number, x: number, z: number, owner: number, by: number) => void) | null = null;
+
+  /** Gives the piece in `slot` to `to`, which may be nobody. */
+  private own(t: ChunkTable, slot: number, to: number): void {
+    const was = t.owner[slot]!;
+    if (was === to) return;
+    if (was !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, was, -1);
+    t.owner[slot] = to;
+    if (to !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, to, 1);
+  }
+
   /** `stamp` is the caller's clock. Authority only. */
   remove(ref: number, cause = GONE_TAKEN, stamp = 0): boolean {
     const chunk = Math.floor(ref / 65536);
@@ -690,7 +702,7 @@ export class StructureStore {
       const was = t.kind[slot]!;
       if (was === kind) {
         // Its health or its owner alone: the grid and what is drawn stand.
-        t.owner[slot] = 0;
+        this.own(t, slot, 0);
         t.hp[slot] = hp;
         this.tally(t, slot, true);
         t.mod[slot] = t.version;
@@ -756,7 +768,7 @@ export class StructureStore {
         if (!any) t.version++;
         any = true;
         const was = this.differsAt(t, slot);
-        t.owner[slot] = to;
+        this.own(t, slot, to);
         this.tally(t, slot, was);
         t.mod[slot] = t.version;
         t.touch(slot, 0);
@@ -778,7 +790,7 @@ export class StructureStore {
     if (kind !== 0 && there && t.kind[slot] === kind) {
       // The same piece in the same place: only its health or owner changed, so the grid and what is drawn stand.
       const was = this.differsAt(t, slot);
-      t.owner[slot] = owner;
+      this.own(t, slot, owner);
       t.hp[slot] = hp;
       this.tally(t, slot, was);
       t.mod[slot] = mod;
@@ -1003,6 +1015,7 @@ export class StructureStore {
       t.yaw[slot] = yaw;
     }
     t.owner[slot] = owner;
+    if (owner !== 0) this.onOwned?.(kind, t.x[slot]!, t.z[slot]!, owner, 1);
     t.hp[slot] = hp;
     this.tally(t, slot, was);
     t.mod[slot] = mod;
@@ -1034,6 +1047,7 @@ export class StructureStore {
   private erase(chunk: number, t: ChunkTable, slot: number, mod: number, inPlace = false): void {
     if (!inPlace) t.placed++;
     this.unlink(chunk, t, slot);
+    if (t.owner[slot] !== 0) this.onOwned?.(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.owner[slot]!, -1);
     // Empty slots hold zeros, so equal tables are equal byte for byte. A map's slot keeps its place and turn, which are the map's.
     const was = this.differsAt(t, slot);
     t.kind[slot] = 0;
