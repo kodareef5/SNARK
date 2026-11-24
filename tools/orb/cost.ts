@@ -1,7 +1,10 @@
 // What an orb's screen costs a GPU: each scene drawn full screen at 1,024 square in Chrome on this machine's card by
 // timer query, seven rounds, the median, in ms a megapixel (tools/probe-lit/sky.ts timeRuns), on each tier's defines.
-// The screen is the ball's skin seen from 25 m, where a puck is three pixels, and from 2 km, where it is plain. The gate
-// is 0.5 ms with the ball filling a 1080p view on high: 0.24 ms a megapixel.
+// The screen is the ball's skin seen near, where a puck is four and a half pixels and drawn in full; from across the
+// street, where a pixel is wider than a puck and the picture is plain but whole; and far, where a pixel is 22 m and the
+// scenes have dropped all they drop. The instant is one of the blue eye's strikes with the eye at power, when Storm
+// draws its bolt and every scene works out the most. The gate is 0.5 ms with the ball filling a 1080p view on high:
+// 0.24 ms a megapixel.
 //
 // And what the ball's light costs a lit surface (client/core/render/orb-light.ts): LIT full screen on a wall, with the
 // light's define and without, by night with the wall in its light, past its reach, and on a map with no orb. The gate
@@ -12,7 +15,7 @@
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { ORB_FRAGMENT, OrbCast, writeOrb } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
-import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
+import { FRAME, FRAME_FLOATS, ORB_AT } from "../../client/core/render/packet.ts";
 import { postFrame } from "../../client/core/render/post.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";
@@ -39,10 +42,24 @@ function frame(which: number): number[] {
   const f = new Float32Array(FRAME_FLOATS);
   skyFrame(23, theSky(), f);
   postFrame(f, TIERS[2]!, 23, 1080);
-  writeOrb(f, [SITE], [BLUE], 380.6, 23, 0, 0, 0, null, 0, 30, which);
+  writeOrb(f, [SITE], [BLUE], STRIKE, 23, 0, 0, 0, null, 0, 30, which);
   f[FRAME.eyeHeight] = 10;
   return [...f];
 }
+
+/** The second of the blue eye's cycle at which it strikes hardest, the eye at power: found, so it stays one if the eye's clock is retimed. */
+const STRIKE = ((): number => {
+  const f = new Float32Array(FRAME_FLOATS);
+  let best = 0, at = 0;
+  for (let seconds = 360; seconds < 480; seconds += 0.02) {
+    writeOrb(f, [SITE], [BLUE], seconds, 23, 0, 0, 0, null, 0, 30, 3);
+    if (f[ORB_AT + 23]! > best) [best, at] = [f[ORB_AT + 23]!, seconds];
+  }
+  if (best < 0.5) throw new Error("the blue eye does not strike in its cycle");
+  return at;
+})();
+/** Metres across the screen at each view, and the pixels a puck (0.4 m) then spans by the program's own measure. */
+const VIEWS = [["near", 64], ["mid", 320], ["far", 16000]] as const;
 
 /** A wall full screen, facing the eye from `uSpan.x` metres ahead of it, as the sky's timing page has LIT's: plain grey, with no finish, facade or wear. */
 const WALL = `#version 300 es
@@ -86,7 +103,7 @@ if (!chrome) throw new Error("no Chrome to measure in");
 const matrix = [...look(0, 0, 1)];
 const scenes = process.argv.includes("--light") ? [] : TIERS.flatMap((tier) => {
   const text = PROGRAMS.orb!(tier, "rgba", false, tier.post !== null);
-  return ORB_SCENES.flatMap((scene, which) => [["near", 320], ["far", 16000]].map(([where, span]) => ({ name: `${tier.name} ${scene} ${where}`, vertex: SKIN, fragment: withDefines(text.fragment, text.defines), samplers: {}, frame: frame(which), matrix, uniforms: { uSpan: [span as number, 0] } })));
+  return ORB_SCENES.flatMap((scene, which) => VIEWS.map(([where, span]) => ({ name: `${tier.name} ${scene} ${where}`, vertex: SKIN, fragment: withDefines(text.fragment, text.defines), samplers: {}, frame: frame(which), matrix, uniforms: { uSpan: [span, 0] } })));
 });
 if (scenes.length > 0 && scenes[0]!.fragment.indexOf(ORB_FRAGMENT.slice(-200)) < 0) throw new Error("the program's text is not the orb's");
 // LIT with no define but the light's, and with all of high's: each with the light and without, so the two differ by it alone.
@@ -97,10 +114,10 @@ const CASES = [["off", false, true, 40], ["on, lit", true, true, 40], ["on, past
 const walls = KINDS.flatMap(([kind, defines]) => CASES.map(([name, on, orb, metres]) => ({ name: `${kind} ${name}`, vertex: withDefines(WALL, defines), fragment: withDefines(lit.fragment, (on ? LIGHT : "") + defines), samplers: lit.samplers, frame: nightFrame(orb), matrix, uniforms: { uSpan: [metres, 0] } })));
 if (!walls[1]!.fragment.includes("void orbSees(") || walls[0]!.fragment.includes(LIGHT)) throw new Error("the wall's texts are not LIT with the light and without");
 const t = await timeRuns(chrome, [...scenes, ...walls]);
-if (scenes.length > 0) console.log(`full screen at 1,024 square on ${t.renderer}, ${t.timer ? "by timer query" : "by the clock"}, in ms a megapixel (near: pucks at three pixels; far: the ball small):`);
+if (scenes.length > 0) console.log(`full screen at 1,024 square on ${t.renderer}, ${t.timer ? "by timer query" : "by the clock"}, in ms a megapixel, at second ${STRIKE.toFixed(2)} of the eye's cycle (${VIEWS.map(([where, span]) => `${where}: a puck ${(0.4 / ((span / 1024) * Math.SQRT2)).toFixed(2)} pixels`).join("; ")}):`);
 for (const tier of scenes.length > 0 ? TIERS : []) {
   console.log(`  ${tier.name}`);
-  for (const scene of ORB_SCENES) console.log(`    ${scene.padEnd(8)} near ${(t[`${tier.name} ${scene} near`] as number).toFixed(3)}  far ${(t[`${tier.name} ${scene} far`] as number).toFixed(3)}`);
+  for (const scene of ORB_SCENES) console.log(`    ${scene.padEnd(8)} ${VIEWS.map(([where]) => `${where} ${(t[`${tier.name} ${scene} ${where}`] as number).toFixed(3)}`).join("  ")}`);
 }
 console.log(`the ball's light on a lit wall, LIT full screen at 1,024 square on ${t.renderer}, ${t.timer ? "by timer query" : "by the clock"}, in ms a megapixel (the gate is 0.05 more than off):`);
 for (const [kind] of KINDS) {
