@@ -22,6 +22,8 @@ import { NodeField, nodeForms, scatterNodes, type NodeSpot } from "../world/node
 import { StructureStore } from "../world/structures.ts";
 import { MapWater } from "../world/water.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../world/snap.ts";
+import { basisOf, classAxis, twOf, worldOf, yawOf } from "../world/lattice/basis.ts";
+import { canon, canonical, dotSign, edgesOverlap, elementCorners, exact, facesOverlap, key0, key1, orient, tupleSet, tupleStep } from "../world/lattice/module.ts";
 
 /** A tuning with an entry of every kind and numbers that do not come out even, as a server's settings might produce. */
 export const FIXED_TUNING: Tuning = {
@@ -427,6 +429,64 @@ export function snapHash(reg: Registry): string {
       pickSnap(structs, reg, kinds[rng.int(kinds.length)]!, pose.x / 512 + rng.range(-3, 3), pose.y / 512 + 6, pose.z / 512 + rng.range(-3, 3), 0, -1, 0, -1, 6, false, aim);
       mix(aim.target);
       for (let k = 0; k < aim.count; k++) mix(aim.order[k]!);
+    }
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Walks the lattice of a base at many frame yaws, and hashes each frame's whole-number vectors, where each step lands in
+ * the world, the axis of a piece along it, the key of the element named there, and whether that element overlaps the last
+ * one. Equal hashes mean a client derives the poses and the refusals its server does.
+ */
+export function latticeHash(): string {
+  const rng = new Rng(3301);
+  const basis = new Int32Array(8);
+  const at = new Int32Array(2);
+  const m = new Int32Array(4);
+  const anchor = new Int32Array(4);
+  const corners = new Int32Array(32);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  const mix = (v: number): void => {
+    h1 = Math.imul(h1 ^ (v | 0), 0x01000193);
+    h2 = Math.imul(h2 + (v | 0), 0x85ebca6b) ^ (h2 >>> 13);
+  };
+  for (let trial = 0; trial < 2000; trial++) {
+    const yaw = rng.int(65536);
+    basisOf(yaw, basis);
+    for (const v of basis) mix(v);
+    tupleSet(m, 0, 0, 0, 0, 0);
+    let last = 0;
+    let lastN = 0;
+    for (let step = 0; step < 40; step++) {
+      const d = rng.int(12);
+      tupleStep(m, 0, d, 1 + rng.int(2), m, 0);
+      worldOf(basis, rng.int(4096), rng.int(4096), m, 0, at, 0);
+      mix(at[0]!);
+      mix(at[1]!);
+      classAxis(yawOf(yaw, d), twOf(d), at, 0);
+      mix(at[0]!);
+      mix(at[1]!);
+      const cls = 1 + rng.int(3);
+      canonical(cls, m, 0, d, anchor, 0);
+      mix(key0(cls, anchor[0]!, anchor[1]!, anchor[2]!));
+      mix(key1(anchor[3]!, rng.int(511) - 255, canon.dir, rng.int(6), canon.turn, 0));
+      // This element against the one before it, which is kept in the other half of `corners`.
+      const here = 16 - last;
+      const n = elementCorners(cls, anchor, 0, canon.dir, corners, here);
+      if (step > 0) {
+        mix(orient(corners, last, corners, last + 4, corners, here));
+        mix(exact.a);
+        mix(exact.b);
+        mix(dotSign(corners, last, corners, last + 4, corners, here + 4));
+        mix(exact.a);
+        mix(exact.b);
+        if (n === 2 && lastN === 2) mix(edgesOverlap(corners, last, corners, here) ? 1 : 0);
+        else if (n > 2 && lastN > 2) mix(facesOverlap(corners, last, lastN, corners, here, n) ? 1 : 0);
+      }
+      last = here;
+      lastN = n;
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
