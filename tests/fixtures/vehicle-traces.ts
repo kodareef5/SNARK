@@ -1,8 +1,10 @@
 // Every way a vehicle moves, driven through the shared step that the server and the client's prediction both run: a car,
 // a helicopter and its autopilot, a skateboard, a semi with its trailer, and a boat. Each tick every field of the body
-// that a later tick reads, and what the step reported, is written by name as the bytes of its number, so a change that
-// moves one bit shows where it began. `bun tests/fixtures/vehicle-traces.ts` prints one line a tick;
-// `bun tools/vehicle-traces.ts` compares two versions of the code (planning/workstreams/vehicle-families.md).
+// that a later tick reads, what the step reported, and the body's bytes on the wire are written by name, each number as
+// its bytes, so a change that moves one bit shows where it began. `bun tests/fixtures/vehicle-traces.ts` prints a line
+// a tick; `bun tools/vehicle-traces.ts` compares two versions of the code (planning/workstreams/vehicle-families.md).
+
+import { createHash } from "node:crypto";
 
 import { BOAT_VEHICLE } from "../../content/vehicles/boat.ts";
 import { COMPACT_VEHICLE } from "../../content/vehicles/compact.ts";
@@ -19,6 +21,8 @@ import { Heightfield } from "../../shared/world/heightfield.ts";
 import { hitKind } from "../../shared/world/bends.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { flatWorld } from "./world.ts";
+import { BitWriter } from "../../shared/net/codec.ts";
+import { writeBody } from "../../shared/net/protocol.ts";
 
 /** One tick of one course: its name, the tick, and each field as written by `code`. */
 export type TraceLine = [course: string, tick: number, fields: Record<string, string>];
@@ -45,6 +49,8 @@ function flatten(name: string, v: unknown, out: Record<string, string>): void {
   else if (v && typeof v === "object") for (const key of Object.keys(v).sort()) flatten(`${name}.${key}`, (v as Record<string, unknown>)[key], out);
 }
 
+const wire = new BitWriter(4096);
+
 /** What of a body a later tick reads, and what the last step reported. */
 function fields(bodies: Record<string, Body>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -52,6 +58,10 @@ function fields(bodies: Record<string, Body>): Record<string, string> {
     for (const key of ["x", "y", "z", "vx", "vy", "vz", "yaw", "mode", "grounded", "fuel", "steering", "wheelAngle"] as const) flatten(`${who}.${key}`, b[key], out);
     for (const key of Object.keys(b).sort()) if (key.startsWith("vehicle")) flatten(`${who}.${key}`, b[key as keyof Body], out);
     if (b.skate) flatten(`${who}.skate`, b.skate, out);
+    // The body as the wire carries it to every client, which a change of state must not change unasked.
+    wire.reset();
+    writeBody(wire, b);
+    out[`${who}.wire`] = Array.from(wire.bytes(), (x) => x.toString(16).padStart(2, "0")).join("");
   }
   flatten("step", vehicleStep, out);
   flatten("landSpeed", stepOut.landSpeed, out);
@@ -166,6 +176,13 @@ export function vehicleTraces(line: (l: TraceLine) => void): void {
       line(["boat", tick, fields({ boat: b })]);
     }
   }
+}
+
+/** Every course in one hash, which tools/simhash.ts compares between JavaScriptCore and V8. */
+export function vehicleTracesHash(): string {
+  const hash = createHash("sha256");
+  vehicleTraces((l) => hash.update(JSON.stringify(l)));
+  return hash.digest("hex");
 }
 
 if (import.meta.main) vehicleTraces((l) => console.log(JSON.stringify(l)));
