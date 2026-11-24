@@ -7,13 +7,14 @@
 //   bun tools/pieces/fort.ts metal --new      lit-new-metal.png: every form past the first nine, close to, on high
 //   bun tools/pieces/fort.ts metal --look x,y,z,metres,around,above   one view of the fort, of the base's own point
 //   --turn 17   the base's yaw in degrees (197 unless given); --hour 15 the hour
+//   --pack FILE the tier's pack, where it is not the one under assets/source: var/pieces/metal.snpk
 //
-// The forms past the first nine have no kinds yet, so each is given one here, of its tier's material and colour, and
-// its row for a form: nothing of this is content. The pieces are the tier's pack under assets/source: build it first.
-// With --source DIR the game is that tree's art and the world's finishes alone, the rest grey boxes: a tree that holds
-// only the tier's folder keeps the run small, where every picture of the game is over ten gigabytes.
+// The forms past the first nine may have no kinds yet, so each that has none is given one here, of its tier's material
+// and colour, and its row for a form: nothing of this is content. The game drawn is the tier's pack and the world's
+// finishes alone, the rest grey boxes, from a tree of its own under .cache/lit: with every picture of the game a run
+// is over 10 GB, and so it is not offered. A run is 15 seconds and under a gigabyte.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { forTouch, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FRAME } from "../../client/core/render/packet.ts";
@@ -25,7 +26,8 @@ import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { formHalf, setForm, type FormDef } from "../../shared/world/lattice/forms.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { provingView, type ProvingView } from "../snap.ts";
-import { SNAP_CACHE, corePack, gameFiles, rgbaOf, splitWithTextures, type GameFiles } from "../snap/files.ts";
+import { SOURCE } from "../art/source.ts";
+import { SNAP_CACHE, corePack, rgbaOf, splitWithTextures, type GameFiles } from "../snap/files.ts";
 import { HAS_SURFACES, worldMaterials, worldSurfaceMeshes } from "../surfaces/build.ts";
 import { Canvas } from "./sheet.ts";
 import { fortKeys } from "./village.ts";
@@ -61,12 +63,22 @@ export function registry(tier: string): Registry {
   return made.registry;
 }
 
-/** The game of the art under `source` and the world's finishes: what a piece of a tier with no pictures needs to be drawn as a client draws it. */
-export function lean(source: string): GameFiles {
+/**
+ * The game of one tier's pack and the world's finishes: what a piece of a tier with no pictures needs to be drawn as a
+ * client draws it. The pack and the tier's asset are set in a tree of their own, as deep as the art's, so the asset's
+ * own imports hold.
+ */
+export function lean(tier: string, pack: string): GameFiles {
+  if (!existsSync(pack)) throw new Error(`${pack} is not built: bun run art -- core:${tier}, or --pack FILE`);
+  const source = resolve(".cache/lit");
+  const dir = join(source, "core/structures", tier);
+  mkdirSync(dir, { recursive: true });
+  copyFileSync(join(SOURCE, "core/structures", tier, "asset.ts"), join(dir, "asset.ts"));
+  copyFileSync(pack, join(dir, `${tier}.snpk`));
   const [meshes, materials] = HAS_SURFACES ? [worldSurfaceMeshes(), worldMaterials()] : [[], []];
   return splitWithTextures(corePack(source, meshes), (t) => {
     const k = meshes.findIndex((mesh) => mesh.textures!.some((own) => own.id === t.id));
-    if (k < 0) throw new Error(`texture ${t.id} is no finish's: ${source} must hold art with no pictures of its own`);
+    if (k < 0) throw new Error(`texture ${t.id} is no finish's: this draws a tier with no pictures of its own`);
     return rgbaOf(materials[k]!, t.role, t.top, SNAP_CACHE);
   });
 }
@@ -159,7 +171,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
   // The sun stands to the world's +Z: a base turned 197 degrees shows it its front, 17 degrees off the grid.
   const turn = Number(value("turn") ?? 197);
   mkdirSync(out, { recursive: true });
-  const files = value("source") ? lean(resolve(value("source")!)) : await gameFiles();
+  const files = lean(name, resolve(value("pack") ?? join(SOURCE, "core/structures", name, `${name}.snpk`)));
   const sheet = (file: string, title: string, shots: readonly { label: string; px: Uint8ClampedArray }[], across: number): void => {
     const [gap, head] = [6, 30];
     const canvas = new Canvas(gap + across * (W + gap), head + Math.ceil(shots.length / across) * (H + gap));
