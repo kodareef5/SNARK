@@ -42,6 +42,11 @@ function rowOf(structs: StructureStore, ref: number): number[] {
   return [t.kind[s]!, Math.round(t.x[s]! * U), Math.round(t.y[s]! * U), Math.round(t.z[s]! * U), t.yaw[s]!];
 }
 
+/** A row's frame and key, zeros for a row with none. */
+function keyOf(structs: StructureStore, ref: number): number[] {
+  return structs.keyAt(ref, key) ? [key.fr, key.k0, key.k1] : [0, 0, 0];
+}
+
 /** Sets `piece` down in socket `k` of `target` by its pose alone, as the server does today. */
 function join(w: TestWorld, target: number, piece: string, k: number, turn = 0, owner = 7): number {
   const kind = w.kind(`core:${piece}_wood`);
@@ -370,23 +375,114 @@ test("rows put before their base's first piece are keyed once it has come", () =
   recount(client.structs, client.reg, f);
   client.structs.dropChunk(f.chunks[0]!);
   expect([client.structs.frames.count, client.structs.occupied.size, client.structs.count]).toEqual([0, 0, 0]);
-  // A chunk's table taken out for keeping takes its rows out of the frame, and put back they are keyed again by their poses.
+  // A chunk's table taken out for keeping takes its rows out of the frame with their keys, and put back they are in it by them.
   const ss = server.structs;
   const base = ss.frames.get(ss.frameAt(refs[1]!))!;
   const [west, east] = [...base.chunks].sort((p, q) => p - q) as [number, number];
   const inWest = base.rows[base.chunks.indexOf(west)]!;
   const kept = ss.detach(west)!;
-  expect([base.live, base.chunks, ss.occupied.size, kept.fr!.some((gid) => gid !== 0)]).toEqual([live.length - 1 - inWest, [east], live.length - 1 - inWest, false]);
+  expect([base.live, base.chunks, ss.occupied.size, kept.fr!.filter((gid) => gid === base.gid).length, kept.away!.map((d) => d.gid)]).toEqual([live.length - 1 - inWest, [east], live.length - 1 - inWest, inWest, [base.gid]]);
   ss.attach(west, kept);
   for (const ref of live) if (ref !== refs[4]) expect(sound(ss, server.reg, ref)).toBe(base.gid);
   expect([ss.frames.count, base.live, ss.occupied.size]).toEqual([1, live.length - 1, live.length - 1]);
-  // With both tables out the frame is gone, and the first table back makes one of its own numbering.
+  // With both tables out the frame is gone, and the first table back makes it again as it was, under its own number.
+  const [origin, keys] = [[base.ox, base.oy, base.oz, base.yaw, base.team], live.map((ref) => keyOf(ss, ref))];
   const tables = [ss.detach(west)!, ss.detach(east)!];
   expect([ss.frames.count, ss.occupied.size, ss.count]).toEqual([0, 0, 0]);
   ss.attach(east, tables[1]!);
   ss.attach(west, tables[0]!);
-  ss.setVersion(west, tables[0]!.version);
-  expect([ss.frames.count, ss.occupied.size, ss.count, ss.frameAt(refs[1]!) > base.gid]).toEqual([1, live.length - 1, live.length - 1, true]);
+  const again = ss.frames.get(base.gid)!;
+  expect([ss.frames.count, ss.occupied.size, ss.count, again === base, tables[0]!.away]).toEqual([1, live.length - 1, live.length - 1, false, null]);
+  expect([[again.ox, again.oy, again.oz, again.yaw, again.team], live.map((ref) => keyOf(ss, ref))]).toEqual([origin, keys]);
+  for (const ref of live) if (ref !== refs[4]) expect(sound(ss, server.reg, ref)).toBe(base.gid);
+});
+
+test("rows put by their keys are one base in the sender's frame whatever their order, and a row put free is left free", () => {
+  const server = flatWorld(4);
+  const refs = house(server, 9000, 61, 100);
+  const ss = server.structs;
+  const base = ss.frames.get(ss.frameAt(refs[0]!))!;
+  for (const order of [1, -1]) {
+    const client = flatWorld(4);
+    const cs = client.structs;
+    // The frame is made first under the sender's number, as a definition or a save's table gives it.
+    cs.frames.make(base.ox, base.oy, base.oz, base.yaw, base.team, base.gid);
+    for (const ref of order > 0 ? refs : [...refs].reverse()) {
+      const [chunk, slot] = [Math.floor(ref / 65536), ref & 0xffff];
+      const t = ss.chunks[chunk]!;
+      const [fr, k0, k1] = keyOf(ss, ref) as [number, number, number];
+      if (fr === 0) {
+        cs.put(chunk, slot, t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, 7, 1, 1, 0);
+        continue;
+      }
+      const at = cs.keyedPose(chunk, t.kind[slot]!, fr, k0, k1)!;
+      cs.put(chunk, slot, t.kind[slot]!, at.x / U, at.y / U, at.z / U, at.yaw, 7, 1, 1, fr, k0, k1);
+    }
+    for (const ref of refs) {
+      expect([rowOf(cs, ref), keyOf(cs, ref)]).toEqual([rowOf(ss, ref), keyOf(ss, ref)]);
+      if (keyOf(cs, ref)[0] !== 0) sound(cs, client.reg, ref);
+    }
+    const f = cs.frames.get(base.gid)!;
+    expect([cs.frames.count, f.live, f.roots, cs.occupied.size]).toEqual([1, base.live, base.roots, ss.occupied.size]);
+    // A foundation put with no key makes no frame, where the shim would have made it one.
+    const kind = client.kind("core:foundation_wood");
+    cs.put(0, 0, kind, 20, 1, 20, 77, 7, 1, 1, 0);
+    expect([cs.frameAt(0), cs.frames.count]).toEqual([0, 1]);
+    cs.put(0, 1, kind, 30, 1, 30, 77, 7, 1, 1);
+    expect([cs.frameAt(1) > base.gid, cs.frames.count]).toEqual([true, 2]);
+    // No pose for a frame that is not made, a key of another form's slot, or a place in another chunk.
+    const wall = refs.find((ref) => rowOf(ss, ref)[0] === client.kind("core:wall_wood"))!;
+    const [fr, k0, k1] = keyOf(ss, wall) as [number, number, number];
+    const chunk = Math.floor(wall / 65536);
+    expect([cs.keyedPose(chunk, rowOf(ss, wall)[0]!, fr + 50, k0, k1), cs.keyedPose(chunk, kind, fr, k0, k1), cs.keyedPose(chunk + 1, rowOf(ss, wall)[0]!, fr, k0, k1)]).toEqual([null, null, null]);
+  }
+});
+
+test("a row put in a cell a stale row still has takes the cell, and the stale row loses its key", () => {
+  const w = flatWorld(4);
+  const refs = house(w, 0, 100, 100);
+  const structs = w.structs;
+  const stale = refs.find((ref) => rowOf(structs, ref)[0] === w.kind("core:wall_wood"))!;
+  const [fr, k0, k1] = keyOf(structs, stale) as [number, number, number];
+  const [chunk, slot] = [Math.floor(stale / 65536), stale & 0xffff];
+  const t = structs.chunks[chunk]!;
+  const f = structs.frames.get(fr)!;
+  const [live, entries] = [f.live, structs.occupied.size];
+  // As a client is told: the piece that took the place first, in a later slot, and only then that the old one went.
+  const fresh = chunk * 65536 + t.high;
+  structs.put(chunk, t.high, t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, 7, 1, t.version, fr, k0, k1);
+  expect([keyOf(structs, stale), keyOf(structs, fresh), sound(structs, w.reg, fresh), f.live, structs.occupied.size]).toEqual([[0, 0, 0], [fr, k0, k1], fr, live, entries]);
+  structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, t.version);
+  expect([sound(structs, w.reg, fresh), f.live, structs.occupied.size]).toEqual([fr, live, entries]);
+  // The same row told again keeps its key, and told with another takes that one.
+  structs.put(chunk, t.high - 1, t.kind[t.high - 1]!, t.x[t.high - 1]!, t.y[t.high - 1]!, t.z[t.high - 1]!, t.yaw[t.high - 1]!, 7, 1, t.version, fr, k0, k1);
+  expect([keyOf(structs, fresh), f.live, structs.occupied.size]).toEqual([[fr, k0, k1], live, entries]);
+  // The last row of a frame put out by the row that takes its cell: the frame stands, with that row.
+  const lone = flatWorld(4);
+  const one = lone.structs.add(lone.kind("core:foundation_wood"), 100, 1, 100, 0, 7, 1);
+  const [g, a, b] = keyOf(lone.structs, one) as [number, number, number];
+  const u = lone.structs.chunks[Math.floor(one / 65536)]!;
+  lone.structs.put(Math.floor(one / 65536), 5, u.kind[0]!, u.x[0]!, u.y[0]!, u.z[0]!, u.yaw[0]!, 7, 1, 1, g, a, b);
+  expect([keyOf(lone.structs, one), lone.structs.frames.count, lone.structs.frames.get(g)!.live, sound(lone.structs, lone.reg, Math.floor(one / 65536) * 65536 + 5)]).toEqual([[0, 0, 0], 1, 1, g]);
+});
+
+test("a table put back gives up the keys of rows whose cells were taken while it was away", () => {
+  const w = flatWorld(4);
+  const refs = house(w, 9000, 61, 100);
+  const ss = w.structs;
+  const base = ss.frames.get(ss.frameAt(refs[1]!))!;
+  const [west, east] = [...base.chunks].sort((p, q) => p - q) as [number, number];
+  const moved = refs.find((ref) => Math.floor(ref / 65536) === west && ss.frameAt(ref) === base.gid)!;
+  const key = keyOf(ss, moved);
+  const kind = rowOf(ss, moved)[0]!;
+  const kept = ss.detach(west)!;
+  // Its cell goes to a row of the other chunk's table while it is away: a row put there by that key, wherever it stands.
+  const t = ss.chunks[east]!;
+  const slot = t.high;
+  ss.put(east, slot, kind, t.x[0]!, t.y[0]!, t.z[0]!, t.yaw[0]!, 7, 100, t.version, key[0]!, key[1]!, key[2]!);
+  expect(ss.refAt(key[0]!, key[1]!, key[2]!)).toBe(east * 65536 + slot);
+  ss.attach(west, kept);
+  expect([keyOf(ss, moved), ss.refAt(key[0]!, key[1]!, key[2]!), rowOf(ss, moved)[0]]).toEqual([[0, 0, 0], east * 65536 + slot, kind]);
 });
 
 const T = FOUNDATION_THICK / 2;

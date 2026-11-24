@@ -36,13 +36,10 @@
 //                            the map are set first, then rows, then removals. A removal leaves alone any row newer
 //                            than itself. A row for a slot just taken from the map is in place where a piece
 //                            still stands in it.
-//                            A row: 1 bit set if its slot follows the last row's, else the gap less one varint; in
-//                            place 1 bit, then kind changed 1 bit and if set its kind (named u16), then owner
-//                            (named varint) and health; else kind (named u16, 0 for an empty
-//                            slot, which ends the row), x and z 15 bits each (1/512 m from the chunk's corner),
-//                            height 1 bit set if it is the last full row's, else svarint from it (1/512 m, from 0
-//                            for the first), yaw (named u16), owner (named varint), health. Health is 1 bit set for
-//                            the kind's most, else f32 for a piece nobody owns and a stage u8 for an owned one
+//                            A row is laid out in shared/world/rows.ts: in place with its owner and health alone, an
+//                            empty slot, a free row by its pose, or a keyed row by its frame and key, the frame
+//                            defined with the first row that names it to the session. Health is 1 bit set for the
+//                            kind's most, else f32 for a piece nobody owns and a stage u8 for an owned one
 //                            (healthStage). A value named is 0 and its place among those the message
 //                            named before (as few bits as their count needs), or 1 and the value; see Named.
 //     CHUNK_DROP reliable    chunk u16. The client may keep the chunk's rows aside and say so when near again (CMD_HAVE).
