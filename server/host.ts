@@ -1556,6 +1556,16 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const rec = records.byPid.get(world.ents.pid[actor]!);
     if (rec && stunned >= 0) { buffs.give(rec, stunned, 0, SKATE_STUMBLE_SECONDS); refreshBody(rec); }
   };
+  // A body thrown into a survivor standing in its way may stagger them, or knock them down too, as whoever threw it may.
+  falls.onStrike = (e, dv, dx, dz, up, byPid) => {
+    const by = byPid ? records.byPid.get(byPid) ?? null : null, victim = records.byPid.get(world.ents.pid[e]!);
+    if (!victim || !combat.mayShove(by, victim)) return;
+    if (reactions.shove(e, dv, dx, dz, up, by !== null) !== TIER_FALL) return;
+    const ents = world.ents;
+    ents.vx[e] = ents.vx[e]! + dx * dv * 0.6;
+    ents.vz[e] = ents.vz[e]! + dz * dv * 0.6;
+    knockDown(e, dz * 2, 0.3, -dx * 2, by);
+  };
   falls.onUp = (body, up, way, facing) => {
     const rec = records.byPid.get(world.ents.pid[body]!);
     if (rec && stunned >= 0) buffs.give(rec, stunned, 0, GET_UP_SECONDS);
