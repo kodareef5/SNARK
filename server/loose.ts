@@ -202,7 +202,7 @@ export class Loose {
     src.quality = QUALITY_MUL[f.quality] ?? 1;
     src.base = HARM_BASE + b.shape.mass * speed * HARM_PER;
     const zone = combat.zone;
-    combat.land(src, target, zone, px + (dx / length) * at, py + (dy / length) * at, pz + (dz / length) * at, Math.sqrt((px - f.ox) * (px - f.ox) + (pz - f.oz) * (pz - f.oz)));
+    combat.land(src, target, zone, px + (dx / length) * at, py + (dy / length) * at, pz + (dz / length) * at, Math.sqrt((px - f.ox) * (px - f.ox) + (pz - f.oz) * (pz - f.oz)), undefined, true, combat.panel);
     // It falls back off what it struck, most of its speed spent.
     const v = b.v;
     v[0] = -v[0]! * OFF_BODY;

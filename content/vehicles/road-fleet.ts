@@ -5,6 +5,7 @@ import { TANKER } from "./tanker.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import type { EmergencyLamp, VehicleDoor, VehicleSeat, VehicleSpec, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { COMPACT, COMPACT_SPECIES, COMPACT_VEHICLE } from "./compact.ts";
+import { CONCEPT003_ART } from "./concept003-art.ts";
 import { PATROL_JEEP_ART } from "./patrol-jeep-art.ts";
 import { PATROL_SEDAN_ART } from "./patrol-sedan-art.ts";
 import { FASTBACK_ART } from "./fastback-art.ts";
@@ -64,9 +65,11 @@ interface Trim {
   readonly slots: number;
   readonly payload: number;
   readonly beltline: number;
+  readonly paintOnly?: boolean;
   readonly extraSeats?: readonly VehicleSeat[];
   readonly extraDoors?: readonly VehicleDoor[];
   readonly cargoDoor?: number;
+  readonly breakablePanels?: WheelVehicleDefinition["breakablePanels"];
   readonly shotPanels?: WheelVehicleDefinition["shotPanels"];
   readonly emergencyLights?: readonly EmergencyLamp[];
   readonly nozzles?: WheelVehicleDefinition["nozzles"];
@@ -88,6 +91,7 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
       ...(trim.extraSeats ?? []),
     ],
     doors: [...COMPACT_VEHICLE.doors, ...(trim.extraDoors ?? [])],
+    ...(trim.breakablePanels ? { breakablePanels: trim.breakablePanels } : {}),
     ...(trim.shotPanels ? { shotPanels: trim.shotPanels } : {}),
     ...(trim.emergencyLights ? { emergencyLights: trim.emergencyLights } : {}),
     ...(trim.nozzles ? { nozzles: trim.nozzles } : {}),
@@ -98,7 +102,7 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
     color: trim.paints[0]!, radius: halfWidth, height, eyeHeight: at.camera_driver[1],
     mass: spec.mass!, slots: trim.slots,
     stats: { health: [trim.health, 0, 0], stamina: [spec.fuelCapacity, 0, 0], weight: [trim.payload, 0, 0] },
-    regions: [{ name: "Paint", colors: trim.paints.map(c => [c, 1] as const) }, ...COMPACT_SPECIES.regions!.slice(1)],
+    regions: [{ name: "Paint", colors: trim.paints.map(c => [c, 1] as const) }, ...(trim.paintOnly ? [null, null, null, null, null] : COMPACT_SPECIES.regions!.slice(1))],
   };
 }
 
@@ -182,7 +186,29 @@ const zephyr = roadCar(ZEPHYR_ART, "sports_car", {
   ...sports, mass: 1700, frontDriveShare: 0, rearGrip: 2.22, downforce: 1.9, steerSpeed: 31, maxForward: 63, thrusters: ZEPHYR_THRUSTERS,
 }, { aliases: ["zephyr", "flying_car"], paints: [34, 230, 232, 90, 29], health: 860, slots: 12, payload: 180, beltline: .79, nozzles: ZEPHYR_NOZZLES });
 
+const conceptSeats = CONCEPT003_ART.anchors;
+const concept003 = roadCar(CONCEPT003_ART, "car", {
+  ...COMPACT, mass: 1610, brake: 16, clearance: .12,
+  bodyBoxes: [
+    { at: [0, .52, 1.78], half: [1.09, .40, .82] },
+    { at: [0, .77, -.12], half: [1.10, .65, 1.12] },
+    { at: [0, .61, -1.67], half: [1.09, .49, .44] },
+  ],
+}, {
+  aliases: ["concept003", "concept_car_003"], paints: [232, 90, 46, 29, 103], health: 900,
+  slots: 12, payload: 250, paintOnly: true, beltline: .29, breakablePanels: CONCEPT003_ART.breakablePanels,
+  extraSeats: [
+    { id: "rear_left", anchor: conceptSeats.seat_rear_left, entry: conceptSeats.approach_rear_left, door: 2 },
+    { id: "rear_right", anchor: conceptSeats.seat_rear_right, entry: conceptSeats.approach_rear_right, door: 3 },
+    { id: "rear_center", anchor: conceptSeats.seat_rear_center, entry: conceptSeats.approach_rear_right, door: 3 },
+  ],
+  extraDoors: [
+    { bone: "door_rear_left", axis: [0, 1, 0], open: -1.1, openTicks: 6, closeTicks: 10 },
+    { bone: "door_rear_right", axis: [0, 1, 0], open: 1.1, openTicks: 6, closeTicks: 10 },
+  ],
+});
+
 export const ROAD_FLEET = [COMPACT_SPECIES, fastback, veloce, berlinetta, panelVan, caravan, patrolSedan, patrolJeep, TANKER, BUS.species, SEMI.species,
-  streetCar("monster_truck").species, streetCar("muscle_car").species, streetCar("taxi").species, zephyr] as const;
+  streetCar("monster_truck").species, streetCar("muscle_car").species, streetCar("taxi").species, zephyr, concept003] as const;
 /** The fleet bodies that are only ever spawned by hand, never parked by a fixture or a city. */
 export const SPAWN_ONLY: ReadonlySet<string> = new Set([zephyr.id]);

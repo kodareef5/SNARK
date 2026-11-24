@@ -30,7 +30,7 @@ export function seedUrbanRoads(host: Host, completeExisting = false): number {
 }
 
 /** The street cars park in front beside the patrol pair, in 4.5 m steps east of the spawn. */
-const STREET_BAYS: Readonly<Record<string, number>> = { "core:monster_truck": -1.5, "core:muscle_car": 1.5, "core:taxi": -2.5 };
+const STREET_BAYS: Readonly<Record<string, number>> = { "core:monster_truck": -1.5, "core:muscle_car": 1.5, "core:taxi": -2.5, "core:concept003": 2.5 };
 
 /** A pair of bays per road frame, facing the spawn. A persisted model keeps its bay identity after being driven away. */
 export function seedRoadFleet(host: Host): number {

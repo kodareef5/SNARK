@@ -38,6 +38,7 @@ import { Occupancy, type OccupancyAction, type OccupancyApproval, type Occupancy
 import type { EntityRecord, Records } from './records.ts';
 import { Seating, type Point } from './seating.ts';
 import { RestingBeat } from './vehicle-rest.ts';
+import { damagePanel, missingDoor, savedPanels } from "./vehicle-panels.ts";
 import type { ServerWorld } from './world.ts';
 
 interface UrbanContext {
@@ -286,6 +287,10 @@ export class Urban {
       }
       ents.storeBody(e, this.body);
     }
+    if (definition.breakablePanels) {
+      const rec = this.ctx.records.byPid.get(pid);
+      if (rec) ents.vehicleMissingPanels[ents.vrow[e]!] = savedPanels(rec);
+    }
     if (isWheelVehicle(definition) && definition.emergencyLights) ents.vehicleLightMode[ents.vrow[e]!] = (this.ctx.records.byPid.get(pid)?.extra.get(PATROL_LAMPS)?.[0] ?? 0) & 3;
     ents.vehiclePayloadMass[ents.vrow[e]!] = Math.fround(this.payloadMass(e));
     this.health.set(pid, this.ctx.records.byPid.get(pid)?.vitals?.at(V_HEALTH, world.tick) ?? 0);
@@ -293,6 +298,22 @@ export class Urban {
     world.history.track(e);
     this.save(e);
     return true;
+  }
+
+  hitPanel(e: number, index: number, damage: number): void {
+    const { world, records } = this.ctx, ents = world.ents, pid = ents.pid[e]!;
+    const record = records.byPid.get(pid), def = this.hosts.get(pid)?.definition;
+    if (!record || !def?.breakablePanels?.[index]) return;
+    this.touchBody(e);
+    const row = ents.vrow[e]!;
+    ents.vehicleMissingPanels[row] = damagePanel(record, def, index, damage);
+    const door = def.breakablePanels[index]!.door;
+    if (door !== undefined && missingDoor(def, door, ents.vehicleMissingPanels[row]!)) {
+      ents.vehicleDoors[row] = withVehicleDoor(ents.vehicleDoors[row]!, door, 0);
+      const held = this.held.get(pid);
+      if (held) for (const [actor, open] of held) if (open === door) held.delete(actor);
+    }
+    records.dirty.add(pid);
   }
 
   setLightMode(e: number, mode: number): void {
@@ -1223,6 +1244,7 @@ export class Urban {
       const opening = this.opening.get(pid) ?? 0;
       let doors = ents.vehicleDoors[ents.vrow[e]!]!;
       for (let d = 0; d < host.definition.doors.length; d++) {
+        if (missingDoor(host.definition, d, ents.vehicleMissingPanels[ents.vrow[e]!]!)) continue;
         const door = host.definition.doors[d]!, was = vehicleDoor(doors, d);
         doors = withVehicleDoor(doors, d, (opening & (1 << d)) !== 0 ? Math.min(1, was + 1 / door.openTicks) : Math.max(0, was - 1 / door.closeTicks));
       }
@@ -1249,7 +1271,9 @@ export class Urban {
   toggleDoor(actor: number): boolean {
     const place = this.occupancy.seatOf(actor), host = place ? this.hosts.get(place.host) : undefined;
     const door = host?.definition.seats.find((seat) => seat.id === place!.seat)?.door;
-    if (!place || door === undefined) return false;
+    if (!place || !host || door === undefined) return false;
+    const ents = this.ctx.world.ents;
+    if (missingDoor(host.definition, door, ents.vehicleMissingPanels[ents.vrow[host.entity]!]!)) return false;
     let byActor = this.held.get(place.host);
     if (byActor?.has(actor)) {
       byActor.delete(actor);

@@ -680,7 +680,7 @@ interface Start {
 /** The levels a tier draws a mesh at beyond its finest, each from where it begins: the coarsest level whose error the tier lets pass is drawn. */
 function startsOf(s: Subject, tier: (typeof TIERS)[number]): Start[] {
   const header = s.pack.header.meshes[s.index]!;
-  const starts = levelStarts(header.lods.map((l, level) => (level === 0 ? 0 : l.error)), header.half[1] * 2, tier);
+  const starts = levelStarts(header.lods.map((l, level) => (level === 0 ? 0 : l.error)), header.half[1] * 2, tier, header.id);
   return starts.flatMap((st, level) => (st === null || st.from === 0 ? [] : [{ level, distance: st.from, tall: st.tall, textured: tier.texture > 0 && level < s.flat }]));
 }
 

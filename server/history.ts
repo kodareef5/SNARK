@@ -1,6 +1,8 @@
 // Where every moving entity was over the last half second. A shot is judged against where its target was when the shooter saw it.
 // Only players and awake creatures have rows. A sleeping creature has none, because it has not moved.
 
+import type { Registry } from "../shared/content/registry.ts";
+import { blendDoors } from "../shared/sim/vehicle-panels.ts";
 import { F_ALIVE, GEAR_WORN, wider, type EntityStore } from "../shared/sim/entities.ts";
 
 /** Ticks kept, a power of two. A tick is recorded after it is stepped, so while it steps these are the ticks before it, past REWIND_TICKS (server/combat.ts). */
@@ -24,6 +26,7 @@ export class Past {
   cue = 0;
   /** Mechanical attitude is sparse in History; ordinary creatures do not allocate a second ring. */
   pitch = 0; roll = 0; qx = 0; qy = 0; qz = 0; qw = 1; steering = 0;
+  doors = 0; missingPanels = 0;
   seat = 0; seatGen = 0; seatSlot = 0; saddle = 0; hostKind = 0;
   hostX = 0; hostY = 0; hostZ = 0; hostYaw = 0; hostAnim = 0; hostCue = 0;
   hostQx = 0; hostQy = 0; hostQz = 0; hostQw = 1; hostSteering = 0; hostEpoch = 0;
@@ -85,9 +88,12 @@ export class Past {
     this.pitch = ents.vehiclePitch[v]!; this.roll = ents.vehicleRoll[v]!;
     this.qx = ents.vehicleQx[v]!; this.qy = ents.vehicleQy[v]!; this.qz = ents.vehicleQz[v]!; this.qw = ents.vehicleQw[v]!;
     this.steering = ents.steering[v]!;
+    this.doors = ents.vehicleDoors[v]!; this.missingPanels = ents.vehicleMissingPanels[v]!;
   }
 
   blendVehicle(other: Past, k: number): void {
+    this.doors = blendDoors(this.doors, other.doors, k);
+    if (k >= .5) this.missingPanels = other.missingPanels;
     this.pitch += (other.pitch - this.pitch) * k; this.roll += (other.roll - this.roll) * k;
     this.steering += (other.steering - this.steering) * k;
     const sign = this.qx * other.qx + this.qy * other.qy + this.qz * other.qz + this.qw * other.qw < 0 ? -1 : 1;
@@ -120,6 +126,7 @@ export class History {
    * change seldom, so a body without any keeps none. Each is told of by `cued`.
    */
   private readonly cues = new Map<number, Uint32Array>();
+  private readonly panels = new Map<number, Uint32Array>();
   private readonly vehicles = new Map<number, Float32Array>();
   private readonly seats = new Map<number, Float64Array>();
   /** Tokens exist only for queried/teleported tracked bodies; untrack retires them with the history row. */
@@ -132,7 +139,10 @@ export class History {
   private currentTravel = 0;
   private travelDirty = false;
 
-  constructor(ents: EntityStore, capacity = 256) {
+  private readonly kinds?: Registry["vehicle"];
+
+  constructor(ents: EntityStore, capacity = 256, kinds?: Registry["vehicle"]) {
+    this.kinds = kinds;
     this.ents = ents;
     this.rowOf = new Int32Array(ents.cap).fill(-1);
     this.travelled = new Float64Array(capacity);
@@ -160,7 +170,7 @@ export class History {
 
   get bytes(): number {
     return this.capacity * HISTORY_TICKS * ROW_BYTES + this.rowOf.byteLength + this.travelled.byteLength + this.travelGen.byteLength + this.travel.byteLength
-      + this.vehicles.size * HISTORY_TICKS * VEHICLE_FIELDS.length * 4 + this.seats.size * HISTORY_TICKS * SEAT_FIELDS.length * 8;
+      + this.panels.size * HISTORY_TICKS * 8 + this.vehicles.size * HISTORY_TICKS * VEHICLE_FIELDS.length * 4 + this.seats.size * HISTORY_TICKS * SEAT_FIELDS.length * 8;
   }
 
   /** The entity in row `r`, for `r` below `rows`: an awake creature or a player's body. */
@@ -197,6 +207,7 @@ export class History {
     if (r < 0) return;
     this.cues.delete(e);
     this.vehicles.delete(e);
+    this.panels.delete(e);
     this.seats.delete(e);
     this.motionEpochs.delete(e);
     this.travelled[r] = 0;
@@ -353,6 +364,9 @@ export class History {
     const vehicle = this.vehicles.get(e);
     if (vehicle) for (let field = 0; field < VEHICLE_FIELDS.length; field++) out[VEHICLE_FIELDS[field]!] = vehicle[(tick & MASK) * VEHICLE_FIELDS.length + field]!;
     else out.vehicleFrom(ents, e);
+    const panels = this.panels.get(e);
+    out.doors = panels?.[(tick & MASK) * 2] ?? 0;
+    out.missingPanels = panels?.[(tick & MASK) * 2 + 1] ?? 0;
     const seat = this.seats.get(e);
     if (seat) for (let field = 0; field < SEAT_FIELDS.length; field++) out[SEAT_FIELDS[field]!] = seat[(tick & MASK) * SEAT_FIELDS.length + field]!;
     else { out.seat = out.seatGen = out.seatSlot = out.saddle = out.hostEpoch = 0; }
@@ -387,6 +401,14 @@ export class History {
     if (ents.vehicle[ents.vrow[e]!]) {
       let ring = this.vehicles.get(e);
       current.vehicleFrom(ents, e);
+      if (this.kinds?.[ents.kind[e]!]?.breakablePanels) {
+        let panels = this.panels.get(e);
+        if (current.doors || current.missingPanels || panels) {
+          if (!panels) this.panels.set(e, panels = new Uint32Array(HISTORY_TICKS * 2));
+          panels[(i & MASK) * 2] = current.doors;
+          panels[(i & MASK) * 2 + 1] = current.missingPanels;
+        }
+      }
       if (!ring) {
         ring = new Float32Array(HISTORY_TICKS * VEHICLE_FIELDS.length);
         for (let tick = 0; tick < HISTORY_TICKS; tick++) for (let field = 0; field < VEHICLE_FIELDS.length; field++) ring[tick * VEHICLE_FIELDS.length + field] = current[VEHICLE_FIELDS[field]!]!;

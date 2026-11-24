@@ -1,5 +1,5 @@
 // Native Host + TCP loopback + ClientSession traffic. Public APIs only; no private prediction maps or render hooks.
-// bun tools/bench/vehicle-traffic.ts [fixed|changing|burst|all] [seed=61] [rtt=320] [on|off|paired=on]
+// bun tools/bench/vehicle-traffic.ts [fixed|changing|burst|all] [seed=61] [rtt=320] [on|off|paired=on] [vehicle=core:compact]
 // Five oncoming driven cars pass a driver. Measure displayed movement per actual frame against authority speed,
 // not the tautologically continuous before/after reconcile endpoint. CPU/browser performance is not measured here.
 import { RemoteSample, type ClientSession } from '../../client/core/session.ts';
@@ -10,16 +10,16 @@ import { flatMap } from '../../tests/fixtures/map.ts';
 import { Harness } from '../../tests/fixtures/net.ts';
 
 export type TrafficCase = 'fixed' | 'changing' | 'burst';
-export interface TrafficOptions { kind: TrafficCase; seed: number; rtt: number; prediction?: boolean }
+export interface TrafficOptions { kind: TrafficCase; seed: number; rtt: number; prediction?: boolean; species?: string }
 let map: ReturnType<typeof writeMap> | undefined;
-export function trafficTrial({ kind, seed, rtt, prediction = true }: TrafficOptions) {
+export function trafficTrial({ kind, seed, rtt, prediction = true, species = "core:compact" }: TrafficOptions) {
   const h = new Harness({ maxClients: 8 }, seed, 60, { dev: true, clips: NO_CLIPS, rigs: [], wild: false, map: map ??= writeMap(flatMap(4)) });
   try {
     const link = { tcp: true, latencyMs: (kind === 'changing' ? 80 : rtt) / 2, jitterMs: 10, loss: kind === 'burst' ? .02 : 0, burstMs: kind === 'burst' ? 80 : 0 };
     const driver = h.join('driver', link), others = Array.from({ length: 5 }, (_, i) => h.join(`traffic-${i}`, link));
     h.run(4000); const a = h.world.ents;
     const seat = (session: ClientSession, x: number, z: number, yaw: number): number => {
-      const c = h.client(session)!, car = h.host.spawnVehicle('core:compact', x, z, 0, yaw), side = yaw ? -1 : 1;
+      const c = h.client(session)!, car = h.host.spawnVehicle(species, x, z, 0, yaw), side = yaw ? -1 : 1;
       if (car < 0) throw new Error('traffic car did not spawn');
       a.setPosition(c.ent, x + side * 1.6, a.y[car]!, z + side * .12); h.world.history.discontinuity(c.ent);
       if (h.host.urban.mount(c, car) !== RESULT_OK) throw new Error('traffic driver did not board');
@@ -70,7 +70,7 @@ export function trafficTrial({ kind, seed, rtt, prediction = true }: TrafficOpti
       }
     }
     if (seen.some(n => n < 500) || movingSamples < 1800) throw new Error(`missing/nonmoving traffic samples: ${seen} / ${movingSamples}`);
-    return { kind, seed, rtt, prediction, frames, samples: Array.from(seen), movingSamples, jumpsOver30cm: jumps, maxExcessM: maxExcess,
+    return { species, kind, seed, rtt, prediction, frames, samples: Array.from(seen), movingSamples, jumpsOver30cm: jumps, maxExcessM: maxExcess,
       maxStepM: maxStep, stillFrames: still, longestHoldMs: longestHold, maxFromAuthorityM: maxFromAuthority, maxFromOrdinaryM: maxFromOrdinary,
       jumpsByPhase, maxByPhase, ownCorrections: driver.stats.corrections - corrections, undecodable: driver.stats.undecodable };
   } finally { h.host.shutdown(); }
@@ -80,5 +80,5 @@ if (import.meta.main) {
   if (!['fixed', 'changing', 'burst', 'all'].includes(which) || !Number.isInteger(seed) || !(rtt >= 0 && rtt <= 1000)) throw new Error('invalid traffic arguments');
   const mode = process.argv[5] ?? 'on'; if (!['on', 'off', 'paired'].includes(mode)) throw new Error('invalid prediction comparison');
   for (const kind of (which === 'all' ? ['fixed', 'changing', 'burst'] : [which]) as TrafficCase[])
-    for (const prediction of mode === 'paired' ? [true, false] : [mode === 'on']) console.log(JSON.stringify(trafficTrial({ kind, seed, rtt, prediction })));
+    for (const prediction of mode === 'paired' ? [true, false] : [mode === 'on']) console.log(JSON.stringify(trafficTrial({ kind, seed, rtt, prediction, species: process.argv[6] })));
 }

@@ -11,7 +11,7 @@ export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3, LENS = 4, ENAMEL_ARMOR = 
 export const DROP_LIGHT = 9, DROP_GLOW = 10;
 const materials = new Map<string, number>();
 for (const part of [
-  "berlinetta/coachwork", "bus/livery", "compact/body", "compact_abandoned/body",
+  "berlinetta/coachwork", "bus/livery", "compact/body", "compact_abandoned/body", "concept003/coachwork",
   "fastback/enamel", "monster_truck/livery", "muscle_car/livery", "patrol_jeep/patrol", "patrol_sedan/cruiser",
   "road_van/coach", "semi/livery", "tanker/livery", "tanker_wrecks/livery", "taxi/livery", "veloce/coachwork",
   "zephyr/coachwork",
@@ -45,6 +45,7 @@ const exposure = new Map<string, number>();
 for (const [age, models] of [
   [0.32, ["box_trailer"]],
   [0.55, ["compact_abandoned", "compact_abandoned_roof", "compact_abandoned_stripped", "tanker_abandoned",
+    "concept003_abandoned", "concept003_abandoned_stripped",
     "berlinetta_abandoned", "bus_abandoned", "caravan_abandoned", "caravan_abandoned_stripped", "fastback_abandoned",
     "fastback_abandoned_roof", "fastback_abandoned_stripped", "monster_truck_abandoned", "muscle_car_abandoned",
     "panel_van_abandoned", "panel_van_abandoned_stripped", "patrol_jeep_abandoned", "patrol_sedan_abandoned", "semi_abandoned",

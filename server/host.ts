@@ -682,6 +682,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.players.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by),
     mayDisplaceRider: (by, vehicle, rider) => combat.vehicleDisplaces(by, vehicle, rider),
   });
+  combat.onPanelHit.on((target, panel, damage) => urban.hitPanel(target, panel, damage));
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),

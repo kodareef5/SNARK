@@ -49,6 +49,7 @@ import { BONE_FLOATS, DRAW_HEAT_SHIFT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRA
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 import { MARINE_STORIES, ROAD_STORIES, WEAR_KEY, wearOf } from "./wear.ts";
 import { TireContacts } from "./tire-contact.ts";
+import { FallingDoors } from "./falling-doors.ts";
 import { Windscreens } from "./windscreens.ts";
 import { RotorBlur } from "./rotor-blur.ts";
 import { CameraBody } from "../camera-body.ts";
@@ -156,6 +157,7 @@ interface VehicleRig {
   wheels: Int16Array;
   rotors: Int16Array;
   doors: Int16Array;
+  panels: Int16Array;
   slideOffsets?: Float32Array;
   steer: number;
   drives: { bone: number; axis: readonly [number, number, number]; ratio: number; spin: boolean }[];
@@ -174,6 +176,7 @@ export interface VehicleRenderPose {
   groundPitch?: number; groundRoll?: number; rideOffset?: number; grounded?: boolean;
   /** Each door's open share, 8 bits a door (shared/sim/vehicle-body.ts vehicleDoor). */
   doors?: number;
+  missingPanels?: number;
   lightMode?: number;
   /** A thruster car's packed state (shared/sim/vehicle-thrusters.ts): which nozzles blow. */
   thrust?: number;
@@ -322,6 +325,7 @@ export class Characters {
   /** Directed gaze on a mounted actor, in radians relative to the saddle. */
   seatedHeadTurn = 0;
   readonly tireContacts = new TireContacts();
+  private readonly fallingDoors = new FallingDoors();
   readonly windscreens = new Windscreens();
   readonly rotorBlur = new RotorBlur();
   readonly patrolLights = new PatrolLights();
@@ -557,7 +561,7 @@ export class Characters {
       });
       const wreck = bind.own(d.id, "wreck");
       const flatColors = d.class === "creature" && d.regions ? Uint8Array.from(d.regions, (r) => r?.colors[0]?.[0] ?? 0) : null;
-      return { flatColors, heat: kindHeat(reg, i), wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
+      return { flatColors, heat: kindHeat(reg, i), wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.bodyError[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -661,7 +665,7 @@ export class Characters {
     out.qx = vehicle.qx; out.qy = vehicle.qy; out.qz = vehicle.qz; out.qw = vehicle.qw;
     out.rotorRpm = vehicle.rotorRpm; out.rotorPhase = vehicle.rotorPhase; out.engineCondition = vehicle.engineCondition; out.rotorCondition = vehicle.rotorCondition;
     out.engineRpm = vehicle.engineRpm; out.engineOn = vehicle.engineOn; out.hullCondition = vehicle.hullCondition; out.flooding = vehicle.flooding;
-    out.groundPitch = vehicle.groundPitch; out.groundRoll = vehicle.groundRoll; out.rideOffset = vehicle.rideOffset; out.grounded = vehicle.grounded; out.doors = vehicle.doors;
+    out.groundPitch = vehicle.groundPitch; out.groundRoll = vehicle.groundRoll; out.rideOffset = vehicle.rideOffset; out.grounded = vehicle.grounded; out.doors = vehicle.doors; out.missingPanels = vehicle.missingPanels;
     out.definition = seat; out.x = at[0]!; out.y = at[1]!; out.z = at[2]!; out.yaw = yaw; out.driver = seat.driver === true;
     out.steer = def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer;
     out.skateMove = vehicle.skateMove; out.skateTrick = vehicle.skateTrick; out.crouch = vehicle.crouch; out.switched = vehicle.switched; out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
@@ -820,7 +824,7 @@ export class Characters {
    * `st` says it is doing and whether it is `seated` astride: as it is posed doing that, standing still, at tick 0. Made
    * once, the first time it is asked for. A vehicle stands in its rest pose.
    */
-  private standIn(kind: number, set: number, st: AnimState, seated: boolean, impaled = false, rider?: RiderFit, foot = -1, hand = -1): StandIn {
+  private standIn(kind: number, set: number, st: AnimState, seated: boolean, impaled = false, rider?: RiderFit, foot = -1, hand = -1, missingPanels = 0): StandIn {
     const c = this.creatures[kind];
     // A survivor in a whole-body emote (sitting, lying, dancing) stands in at the middle of it.
     const emote = !c && !seated && !impaled ? emoteOf(st.emote) : null;
@@ -842,7 +846,7 @@ export class Characters {
       this.emoteStandIns.set(key, (e = { rows, solved, counted: -1, written: -1, first: 0 }));
       return e;
     }
-    const doing = c?.vehicle ? 0 : this.standState(st, seated, impaled);
+    const doing = c?.vehicle ? missingPanels : this.standState(st, seated, impaled);
     const of = (this.standIns[kind * 2 + set] ??= []);
     // Content indices are 16-bit and seats at most 16: this numeric key stays exactly representable and bounded by content.
     const fitKey = this.standKey(kind, set, rider?.profile ?? 0, doing);
@@ -877,6 +881,7 @@ export class Characters {
     }
     const rows = new Float32Array((solved.pos.length / 3) * BONE_FLOATS);
     writeBones(rows, 0, solved, rest, null, 0, 0, 0, 0);
+    if (c?.vehicle && missingPanels) hidePanels(rows, 0, c.vehicle.panels, missingPanels);
     s = { rows, solved, counted: -1, written: -1, first: 0 };
     if (rider?.profile) {
       if (!feet) this.riderStandIns.set(foot, feet = new Map());
@@ -898,7 +903,7 @@ export class Characters {
    * The bones the pose a body would stand in takes, the first time this frame it is asked for, and 0 after: what a frame
    * short of bones keeps for those it leaves unposed (Scene). `seated` as add() is given a saddle seat.
    */
-  standInBones(kind: number, look: Uint8Array | null, lookAt: number, st: AnimState, seated: boolean, impaled = false, profile = 0, gear: Uint16Array | null = null, gearAt = 0): number {
+  standInBones(kind: number, look: Uint8Array | null, lookAt: number, st: AnimState, seated: boolean, impaled = false, profile = 0, gear: Uint16Array | null = null, gearAt = 0, missingPanels = 0): number {
     const k = this.kinds[kind];
     if (!k && !this.creatures[kind]) return 0;
     const set = k ? this.setOf(k, look, lookAt) : 0;
@@ -915,7 +920,7 @@ export class Characters {
       counted.add(key);
       return HUMAN_BONES;
     }
-    const s = this.standIn(kind, set, st, seated && k !== null, impaled);
+    const s = this.standIn(kind, set, st, seated && k !== null, impaled, undefined, -1, -1, missingPanels);
     if (s.counted === this.frame || s.written === this.frame) return 0;
     s.counted = this.frame;
     return s.rows.length / BONE_FLOATS;
@@ -1008,7 +1013,7 @@ export class Characters {
     const saddled = saddle !== 0 && this.saddle[saddle] === 1 && c.saddled >= 0;
     const worn = saddle === 0 || saddled ? -1 : (c.worn.get(saddle) ?? -1);
     this.packet = p;
-    const standing = rigid ? this.standIn(kind, 0, st, false) : null;
+    const standing = rigid ? this.standIn(kind, 0, st, false, false, undefined, -1, -1, vehicle?.missingPanels) : null;
     const stand = standing ? this.standInAt(p, standing) : -1;
     const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : rig.bones, worn >= 0 ? 2 : 1, !unseen);
     if (first < 0) {
@@ -1083,6 +1088,9 @@ export class Characters {
           } else c.oriented.pos[b * 3 + 1]! -= droop;
         }
         writeBones(p.bones, first * BONE_FLOATS, c.oriented, rig.rest, null, x, y, z, 0, size);
+        if (vehicle?.missingPanels) hidePanels(p.bones, first, v.panels, vehicle.missingPanels);
+        if (!unseen && v.def.breakablePanels) this.fallingDoors.draw(p, first, v.def.breakablePanels, v.panels, v.doors,
+          id, kind, this.frame, this.clock, vehicle?.missingPanels ?? 0, x, y, z);
         if (!unseen && p.tier.contact && isWheelVehicle(v.def) && Math.hypot(x,y,z) < 16 + v.def.spec.halfLength * size) {
           this.tireContacts.consider(p, first, v.wheels, rig.rest, v.def.spec.wheelRadius * size);
         }
@@ -1097,7 +1105,7 @@ export class Characters {
       if (!unseen) this.keepHead(c, solved, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
     }
     const def = c.vehicle?.def;
-    if (def && !unseen && !st.dead) this.windscreens.add(p, first, def.id, id, st.hurt);
+    if (def && !unseen && !st.dead) this.windscreens.add(p, first, def.id, id, st.hurt, vehicle?.missingPanels, rigid ? undefined : c.vehicle?.panels);
     if (!unseen && vehicle?.lightMode && def && isWheelVehicle(def) && def.emergencyLights) {
       this.patrolLights.add(p, first, def.emergencyLights, vehicle.lightMode, tick, id, size);
     }
@@ -1323,6 +1331,7 @@ export class Characters {
     this.count = 0;
     this.tireContacts.begin();
     this.windscreens.begin();
+    this.fallingDoors.begin(this.frame + 1);
     this.rotorBlur.begin();
     this.patrolLights.begin();
     this.thrusterPlumes.begin();
@@ -1932,7 +1941,15 @@ function vehicleRig(def: VehicleDefinition | null, names: readonly string[]): Ve
       if (joint && bone(joint.bone) >= 0) drives.push({ ...joint, bone: bone(joint.bone), spin: kind === "propeller" });
     }
   }
-  return { def, drives, ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
+  return { def, drives, panels: Int16Array.from(def.breakablePanels ?? [], p => bone(p.bone)), ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
+}
+
+function hidePanels(rows: Float32Array, first: number, bones: Int16Array, missing: number): void {
+  for (let i = 0; i < bones.length; i++) {
+    if (!(missing & (1 << i)) || bones[i]! < 0) continue;
+    const start = (first + bones[i]!) * BONE_FLOATS;
+    rows.fill(0, start, start + BONE_FLOATS);
+  }
 }
 
 function orientSolved(source: Solved, rotation: Float64Array, out: Solved): void {

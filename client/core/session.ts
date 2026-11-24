@@ -121,9 +121,10 @@ import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequant
 import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
-import { isSkateboard, MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
+import { blendDoors } from "../../shared/sim/vehicle-panels.ts";
+import { isSkateboard } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
-import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode } from "../../shared/sim/vehicle-body.ts";
+import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode, unpackVehicleMissingPanels } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim, zeroUnits } from "../../shared/sim/aim.ts";
@@ -252,6 +253,7 @@ export class RemoteSample {
   readonly vehicleDoors = new Uint32Array(MAX_VIEW);
   readonly vehicleGear = new Int8Array(MAX_VIEW);
   readonly vehicleRpm = new Float32Array(MAX_VIEW);
+  readonly vehicleMissingPanels = new Uint16Array(MAX_VIEW);
   readonly vehicleLightMode = new Uint8Array(MAX_VIEW);
   /** A thruster car's packed thruster state (shared/sim/vehicle-thrusters.ts), from its rotor word. */
   readonly vehicleThrust = new Uint32Array(MAX_VIEW);
@@ -1086,6 +1088,7 @@ export class ClientSession {
     out.vehicleGear[n] = unpackVehicleGear(drive);
     out.vehicleRpm[n] = unpackVehicleRpm(drive);
     out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
+    out.vehicleMissingPanels[n] = unpackVehicleMissingPanels(a && k < .5 ? a.vehicleDrive[i]! : drive);
     out.vehicleLightMode[n] = unpackVehicleLightMode(drive);
     if (a) {
       const oldDrive = a.vehicleDrive[i]!;
@@ -1109,12 +1112,7 @@ export class ClientSession {
       out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(oldRide) + (out.vehicleGroundRoll[n]! - unpackVehicleGroundRoll(oldRide)) * k;
       out.vehicleRideOffset[n] = unpackVehicleRideOffset(oldRide) + (out.vehicleRideOffset[n]! - unpackVehicleRideOffset(oldRide)) * k;
       out.vehicleGrounded[n] = vehicleRideGrounded(k < .5 ? oldRide : ride) ? 1 : 0;
-      let doors = 0;
-      for (let d = 0; d < MAX_VEHICLE_DOORS; d++) {
-        const was = vehicleDoor(a.vehicleDoors[i]!, d);
-        doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
-      }
-      out.vehicleDoors[n] = doors;
+      out.vehicleDoors[n] = blendDoors(a.vehicleDoors[i]!, b.vehicleDoors[j]!, k);
       out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
       out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;
       out.vehicleShifting[n] = vehicleShifting(k < .5 ? oldDrive : drive) ? 1 : 0;
@@ -2461,7 +2459,7 @@ function noVehicle(out: RemoteSample, n: number): void {
   out.vehicleDoors[n] = 0; out.vehicleRotorcraft[n] = 0; out.vehicleBoat[n] = 0;
   out.vehicleHullCondition[n] = 1; out.vehicleFlooding[n] = 0;
   out.vehicleRotorRpm[n] = 0; out.vehicleRotorPhase[n] = 0; out.vehicleFuel[n] = 0; out.vehicleEngineCondition[n] = 0; out.vehicleRotorCondition[n] = 0; out.vehicleEngineOn[n] = 0;
-  out.vehicleLightMode[n] = 0; out.vehicleThrust[n] = 0; out.vehicleGear[n] = -1; out.vehicleRpm[n] = 0; out.vehicleShifting[n] = 0;
+  out.vehicleMissingPanels[n] = 0; out.vehicleLightMode[n] = 0; out.vehicleThrust[n] = 0; out.vehicleGear[n] = -1; out.vehicleRpm[n] = 0; out.vehicleShifting[n] = 0;
   out.vehicleQx[n] = 0; out.vehicleQy[n] = 0; out.vehicleQz[n] = 0; out.vehicleQw[n] = 1;
 }
 

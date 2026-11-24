@@ -321,10 +321,24 @@ export function flock(server: ReturnType<typeof startServer>): number {
   return n;
 }
 
+/** Park in clear street spaces ahead of the held camera, starting six metres from it. */
+function parkFleet(server: ReturnType<typeof startServer>, species: string, cars: number): void {
+  const world = server.host.world;
+  const [x, , z] = placeOf([world.hf.sizeX / 2, world.hf.sizeZ / 2], world.hf, CITY_PLACES.canyon);
+  let parked = 0;
+  for (let back = 6; back <= 180; back += 6) {
+    for (const side of [-1.8, 1.8, -5.4, 5.4, -9, 9]) {
+      if (server.host.spawnVehicle(species, x - back, z + side, 0, side < 0 ? 1.57 : -1.57) >= 0) parked++;
+      if (parked === cars) return;
+    }
+  }
+  throw new Error(`Only ${parked} of ${cars} ${species} cars fit on the benchmark street`);
+}
+
 const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.window ? ` in ${r.window.join("x")}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}${r.hour !== undefined ? `, at ${r.hour}:00` : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
-async function measure(runs: Run[], times: number, say: (line: string) => void): Promise<Map<string, Record<string, any>[]>> {
+async function measure(runs: Run[], times: number, say: (line: string) => void, fleet?: { species: string; cars: number; image?: string }): Promise<Map<string, Record<string, any>[]>> {
   const out = new Map<string, Record<string, any>[]>();
   const dist = process.env.CLIENT_DIR ?? mkdtempSync(join(tmpdir(), "snark-gpu-client-"));
   if (!process.env.CLIENT_DIR) await buildClientApart({ stress: true, dist, quick: true });
@@ -358,6 +372,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
       for (const p of basePieces(BASE_PIECES)) add(p.id, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw);
     }
     if (scene === "flock") flock(server);
+    if (scene === "city" && fleet) parkFleet(server, fleet.species, fleet.cars);
     // One profile a scene: the asset cache is warm after the first run, and the page joins as the same survivor.
     const profile = mkdtempSync(join(tmpdir(), "snark-gpu-"));
     // A run with no hour of its own is held at the hour the scene's server began at.
@@ -386,6 +401,10 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
           await page.send("Profiler.start");
           await Bun.sleep(PROFILE_MS);
           writeFileSync(join(process.env.GPU_PROFILE, `${nameOf(r)}.cpuprofile`), JSON.stringify((await page.send("Profiler.stop")).profile));
+        }
+        if (result && fleet?.image) {
+          const image = await page.send("Page.captureScreenshot", { format: "png" });
+          writeFileSync(fleet.image, Buffer.from(image.data, "base64"));
         }
         page.close();
         if (hold) clearInterval(hold);
@@ -531,6 +550,24 @@ export async function benchGpu(section: Section, record: Row, times = 1): Promis
 
 if (import.meta.main) {
   if (!CHROME) throw new Error("no Chrome: set CHROME");
+  // bun tools/bench/gpu.ts fleet core:concept003 50 high [street.png]
+  if (process.argv[2] === "fleet") {
+    const [, , , species, count = "50", tier = "high", image] = process.argv;
+    const cars = Number(count);
+    if (!species || !Number.isInteger(cars) || cars < 1 || cars > 50 || !["lowpoly", "medium", "high", "ultra"].includes(tier)) {
+      throw new Error("Expected fleet, species id, 1 to 50 cars, graphics tier and optional screenshot path");
+    }
+    if (!existsSync(CITY_MAP)) throw new Error("Set CITY_MAP to the Miami map file");
+    const run: Run = { scene: "city", view: "canyon", tier, scale: 1, window: [1920, 1167], hour: 12 };
+    const reports = await measure([run], 1, console.log, { species, cars, image });
+    const report = reports.get(nameOf(run))?.[0];
+    if (!report) throw new Error("The fleet page did not report a measured frame");
+    console.log(JSON.stringify({ species, cars, tier, effectiveTier: report.tier?.name, canvas: report.canvas, renderer: report.renderer,
+      frames: report.frames, frameMs: report.frameMs, buildAndSubmitMs: report.buildAndSubmitMs, gpuMs: report.gpuMs,
+      draws: report.drawCalls, triangles: report.triangles, sceneScale: report.share, casts: report.turn?.castTriangles,
+      card: report.card, waited: report.waited }));
+    process.exit(0);
+  }
   const times = Number(process.argv[2] ?? 3);
   // Each word after the runs is a row's first words, or a row's whole name ended with "$"; a bar parts several in one word.
   const only = process.argv.slice(3).flatMap((o) => o.split("|"));

@@ -285,9 +285,14 @@ export function buildAsset(asset: Asset): Built {
       else scripted(spec.source.scripts, { out: glb });
       convertModel({ ...asset, spec }, glb, out);
     } else if (spec.kind === "pieces") {
-      const files = Object.fromEntries(piecesOf(spec).map((p) => [p.object, join(dir, `${p.object}.glb`)]));
-      scripted(spec.source.scripts, { pieces: files });
-      convertPieces({ ...asset, spec }, files, out);
+      if ("bake" in spec.source) {
+        out.meshes.push(...spec.source.bake());
+        for (const mesh of out.meshes) out.lines.push(`${mesh.id}: triangles ${triangles(mesh)}`);
+      } else {
+        const files = Object.fromEntries(piecesOf(spec).map((p) => [p.object, join(dir, `${p.object}.glb`)]));
+        scripted(spec.source.scripts, { pieces: files });
+        convertPieces({ ...asset, spec }, files, out);
+      }
     } else if (spec.kind === "sky" || spec.kind === "water") {
       convertSky({ ...asset, spec }, out);
     } else if (spec.kind === "details") {
