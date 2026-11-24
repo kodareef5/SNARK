@@ -38,7 +38,7 @@ const TIER = "lowpoly";
 /** Where a junction is looked at from: degrees round it and degrees above level. */
 export const VIEWS: readonly (readonly [number, number])[] = [0, 1, 2, 3, 4, 5, 6, 7].flatMap((k) => [[7 + 45 * k, 5], [7 + 45 * k, 50]] as const);
 
-/** The art tiers' pieces as their packs hold them. Metal has none and stays the content's boxes. */
+/** The painted tiers' pieces as their packs hold them. Metal's are its recipe's, which needs no pictures (tools/pack/pieces/metal.ts bakeMetal). */
 export function tierMeshes(tiers: readonly string[] = ["thatch", "wood", "stone"]): SourceMesh[] {
   return tiers.flatMap((tier) => unpackMeshes(parsePack(new Uint8Array(readFileSync(join(SOURCE, "core/structures", tier, `${tier}.snpk`))))));
 }

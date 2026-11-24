@@ -7,6 +7,7 @@ import { COUNTS, JointBench, countsOf, piecesPack, registry, tierMeshes } from "
 import { JUNCTIONS, TIERS, tierJunction, type TierName } from "../../tools/pieces/layout.ts";
 import { tierShapes } from "../../tools/pack/pieces/tier.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
+import { bakeMetal } from "../../tools/pack/pieces/metal.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 import { test } from "../fixtures/needs-art.ts";
 
@@ -58,5 +59,19 @@ test("wood as its recipe makes it meets no worse than the wood it replaces", () 
   const meshes = meshesOf(pack);
   for (const j of laid) {
     hold(countsOf(bench, j, meshes), AT_MOST.wood[j.name]!, `recipe wood ${j.name}`);
+  }
+});
+
+test("metal as its recipe makes it meets no worse than the boxes it replaces", () => {
+  // The recipe's meshes need no pictures and no pack: they stand in for the grey boxes, whose counts AT_MOST holds.
+  const pack = piecesPack([...tierMeshes(), ...bakeMetal(FORMS)]);
+  const laid = lay()[TIERS.indexOf("metal")]!;
+  const bench = new JointBench(pack, laid);
+  const meshes = meshesOf(pack);
+  for (const j of laid) {
+    const counted = countsOf(bench, j, meshes);
+    hold(counted, AT_MOST.metal[j.name]!, `recipe metal ${j.name}`);
+    // A corner's open notch is the boxes' own to the pixel, until joints are drawn there.
+    expect([j.name, counted[0], counted[1]]).toEqual([j.name, 0, AT_MOST.metal[j.name]![1]!]);
   }
 });
