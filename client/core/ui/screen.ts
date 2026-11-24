@@ -115,3 +115,44 @@ export interface Screen {
 
 /** A row of SCREENS: makes the screen once for each `Ui`. */
 export type ScreenRow = () => Screen;
+
+/** Where a part draws: the room its host leaves it under the host's tabs. */
+export interface PartBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * A part of a host screen: one of its tabs, written in a file of its own. It draws with keys of its own from 0, and its
+ * host turns them into the frame's keys (`PartKeys`), so two parts never agree on numbers between them.
+ */
+export interface ScreenPart {
+  readonly name: string;
+  /** Its tab's words. */
+  readonly label: string;
+  build(f: UiFrame, at: PartBox, k: PartKeys, c: ScreenCtx): void;
+  /** `local` is the part's own key. True if it used the event. */
+  pointer?(kind: number, local: number, x: number, y: number, button: number, c: ScreenCtx): boolean;
+}
+
+/** Keys a host gives each part: the first for its tab, then PART_KEYS - 1 of the part's own. */
+export const PART_KEYS = 1000;
+
+/** A part's keys in its host's frame. */
+export class PartKeys {
+  base = 0;
+  /** The frame's key for the part's own key `local`. */
+  key(local: number): number {
+    if (!(local >= 0 && local < PART_KEYS - 1)) throw new Error(`a part's keys run from 0 to ${PART_KEYS - 2}, not ${local}`);
+    return this.base + 1 + local;
+  }
+}
+
+/** Which part of a host's, whose parts' keys start at `from`, a frame key is: its index and its own key (-1 its tab). */
+export function partOf(key: number, from: number, parts: number): { index: number; local: number } | null {
+  const index = Math.floor((key - from) / PART_KEYS);
+  if (key < from || index >= parts) return null;
+  return { index, local: key - from - index * PART_KEYS - 1 };
+}

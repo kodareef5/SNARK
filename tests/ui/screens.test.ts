@@ -3,7 +3,8 @@ import { HudModel } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import type { CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_EMOTE_BUTTON, type EmoteMenu } from "../../client/core/ui/emotes.ts";
-import type { Screen } from "../../client/core/ui/screen.ts";
+import type { Screen, ScreenPart } from "../../client/core/ui/screen.ts";
+import { S_BUTTON } from "../../client/core/ui/style.ts";
 import type { ChoosingScreen } from "../../client/core/ui/choosing.ts";
 import type { CreatorScreen } from "../../client/core/ui/creator.ts";
 import type { StructMenu } from "../../client/core/ui/structure.ts";
@@ -13,7 +14,7 @@ import { flatWorld } from "../fixtures/world.ts";
 import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
-import { baseKey } from "../../client/core/ui/nodes.ts";
+import { K_BUTTON, baseKey } from "../../client/core/ui/nodes.ts";
 import { Chart } from "../../client/core/tactical.ts";
 import { KEY_MAP_IMAGE, type MapScreen } from "../../client/core/ui/screens.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
@@ -275,4 +276,37 @@ test("every page of the menu draws inside the menu's bands", () => {
     expect(nodes.length, name).toBeGreaterThan(0);
     for (const n of nodes) expect(inBands(menu, n.key), `${name} drew key ${n.key}`).toBe(true);
   }
+});
+
+test("two parts both drawing their own key 1 show as two tabs, and each click reaches the part that drew it", () => {
+  const ui = new Ui(), { session } = fakeSession();
+  const sheet = ui.screen<CharacterScreen>("character");
+  const pressed: string[] = [];
+  /** A part as another file would write it: one button at its own key 1, which says its name. */
+  const part = (name: string): ScreenPart => ({
+    name,
+    label: name,
+    build(f, at, k) {
+      const b = f.add(k.key(1), K_BUTTON, at.x, at.y, at.w, 30, S_BUTTON);
+      b.text = `${name} button`;
+      b.interactive = true;
+    },
+    pointer(kind, local) {
+      if (kind === 0) pressed.push(`${name} ${local}`);
+      return true;
+    },
+  });
+  sheet.parts.push(part("Brands"), part("Tribe"));
+  sheet.open = true;
+  let nodes = drawn(ui, sheet, session);
+  const tabs = nodes.filter((n) => n.text === "Brands" || n.text === "Tribe");
+  expect(tabs.map((n) => n.text)).toEqual(["Brands", "Tribe"]);
+  for (const name of ["Brands", "Tribe"]) {
+    ui.pointer(0, tabs.find((n) => n.text === name)!.key, 0, 0, 0, session);
+    nodes = drawn(ui, sheet, session);
+    const button = nodes.find((n) => n.text === `${name} button`)!;
+    for (const n of nodes) expect(inBands(sheet, n.key), `key ${n.key}`).toBe(true);
+    ui.pointer(0, button.key, 0, 0, 0, session);
+  }
+  expect(pressed).toEqual(["Brands 1", "Tribe 1"]);
 });
