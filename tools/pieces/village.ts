@@ -45,8 +45,8 @@ function step(a: Tuple, d: number, sides = 1): Tuple {
   return [m[4]!, m[5]!, m[6]!, m[7]!];
 }
 
-/** The pieces of the village in the frame of a base at the origin, of `tier`. A trim is set down by hand, as the client would lay it. */
-export function village(tier: string): Placed[] {
+/** What sets pieces of `tier` down in a base at the origin by their slots, and the pieces set down so far. */
+function builder(tier: string) {
   const forms = makeFormTable(NAMES.length + 1);
   NAMES.forEach((name, k) => setForm(forms, k + 1, ALL[name]!));
   const frame = new Frame(1, 0, Math.round(FLOOR * STRUCT_UNITS), 0, 0, 0);
@@ -70,6 +70,12 @@ export function village(tier: string): Placed[] {
   const edge = (name: string, a: Tuple, d: number, lvl: number, flip = false): void => put(name, CLS_EDGE, a, d, lvl, flip ? (d + 6) % 12 : d);
   const tri = (name: string, a: Tuple, d: number, lvl: number, corner = 0): void => put(name, CLS_TRIANGLE, a, d, lvl, (d + 4 * corner) % 12);
   const post = (name: string, a: Tuple, lvl: number): void => put(name, CLS_VERTEX, a, 0, lvl, 0);
+  return { out, put, square, edge, tri, post };
+}
+
+/** The pieces of the village in the frame of a base at the origin, of `tier`. A trim is set down by hand, as the client would lay it. */
+export function village(tier: string): Placed[] {
+  const { out, put, square, edge, tri, post } = builder(tier);
 
   // The house: two cells square, a bay of three triangles at its west end.
   const bay = step(at(0, 0), 5);
@@ -127,5 +133,119 @@ export function village(tier: string): Placed[] {
   edge("gateway", at(5, 1), 3, 0, true);
   edge("gate", at(5, 1), 3, 0, true);
   edge("half_wall", at(5, 2), 3, 0, true);
+  return out;
+}
+
+/**
+ * A hamlet of the few forms a first tier has: a hut of one room under a pitched roof with a fenced yard before it, a
+ * longhouse of three bays with a hipped end, a house in an L whose roofs meet in a valley, a hut of two storeys, and
+ * one whose roof is pitched over a flat ceiling. With `joints`, a corner pole stands at each corner where walls end.
+ */
+export const HAMLET_SHOTS: readonly VillageShot[] = [
+  ["the hut and its yard from before its door", [1.5, 2.4, 1.5], 6.2, 215, 20],
+  ["the longhouse and its hipped end", [15, 2.6, 3], 9.6, 150, 22],
+  ["the house in an L and the valley its roofs meet in", [31.5, 2.6, 1.5], 8.6, 135, 28],
+  ["the roofs of the L from above", [31.5, 4, 1.5], 8.4, 150, 62],
+  ["the hut of two storeys, and the roof over a flat ceiling", [45, 3.8, 3], 8.2, 200, 14],
+  ["an eave, a gable and the ridge, close", [-0.2, 4, 1.6], 3, 222, 8],
+  ["under the roof: rafters, battens and the gable inside", [1.5, 3.6, 3], 3, 100, -32],
+  ["the hip's eaves at their corner, close", [20.6, 3.5, 0.4], 3.2, 140, 12],
+  ["the valley, close", [33.4, 4.2, 0.4], 3.4, 132, 40],
+  ["a flat ceiling's eaves under a storey and under a roof, close", [45, 3.5, -0.2], 4.4, 196, 4],
+];
+
+export function hamlet(tier: string, joints = false): Placed[] {
+  const { out, square, edge } = builder(tier);
+  const corners = new Set<string>();
+  /** A wall-family piece on the edge from (i, j) along +X or +Z, facing out of what it closes, and its two corners. */
+  const wall = (name: string, i: number, j: number, d: 0 | 3, lvl: number, flip: boolean): void => {
+    edge(name, at(i, j), d, lvl, flip);
+    if (/^(wall|doorframe|half_wall)$/.test(name)) for (const end of [0, 1]) corners.add(`${i + (d === 0 ? end : 0)},${j + (d === 3 ? end : 0)},${lvl}`);
+  };
+  const ridge = (x: number, z: number, lvl: number, along: 0 | 3): void => void out.push({ id: `core:ridge_${tier}`, x, y: FLOOR + lvl * 0.75 + 1.5, z, yaw: along === 0 ? 0 : 16384 });
+  /** Walls round the cells from (i0, j0) to (i1, j1), one storey from `lvl`, with a doorway in the south side's first cell. */
+  const ring = (i0: number, j0: number, i1: number, j1: number, lvl: number, door = true): void => {
+    for (let i = i0; i < i1; i++) {
+      wall(door && i === i0 ? "doorframe" : "wall", i, j0, 0, lvl, true);
+      wall("wall", i, j1, 0, lvl, false);
+    }
+    for (let j = j0; j < j1; j++) {
+      wall("wall", i0, j, 3, lvl, false);
+      wall("wall", i1, j, 3, lvl, true);
+    }
+    if (door) edge("door_open", at(i0, j0), 0, lvl, true);
+  };
+  /** Two slopes to a ridge along +X over the cells of column i, rows j and j + 1, with a gable at the west end, the east or neither. */
+  const span = (i: number, j: number, lvl: number, west: boolean, east: boolean): void => {
+    square("roof", i, j, lvl, 0);
+    square("roof", i, j + 1, lvl, 6);
+    ridge(i * 3 + 1.5, (j + 1) * 3, lvl, 0);
+    if (west) {
+      edge("sloped_wall_right", at(i, j), 3, lvl);
+      edge("sloped_wall_left", at(i, j + 1), 3, lvl);
+    }
+    if (east) {
+      edge("sloped_wall_left", at(i + 1, j), 3, lvl, true);
+      edge("sloped_wall_right", at(i + 1, j + 1), 3, lvl, true);
+    }
+  };
+
+  // The hut: one room of two cells under two slopes, a gable at each end, and a yard before its door.
+  for (const j of [-1, 0, 1]) square("foundation", 0, j, 0);
+  ring(0, 0, 1, 2, 0);
+  span(0, 0, 4, true, true);
+  wall("half_wall", 0, -1, 3, 0, false);
+  wall("railing", 0, -1, 0, 0, true);
+  wall("railing", 1, -1, 3, 0, true);
+
+  // The longhouse: three bays to a ridge, a gable at its west end and two hips at its east.
+  for (let i = 3; i < 7; i++) for (const j of [0, 1]) square("foundation", i, j, 0);
+  ring(3, 0, 7, 2, 0);
+  for (let i = 3; i < 6; i++) span(i, 0, 4, i === 3, false);
+  square("roof_hip", 6, 0, 4, 0);
+  square("roof_hip", 6, 1, 4, 3);
+
+  // The house in an L: a wing to the east and a wing to the south, their ridges meeting over the corner.
+  const o = 9;
+  const cells: [number, number][] = [[0, -1], [1, -1], [0, 0], [1, 0], [0, 1], [1, 1], [2, 0], [2, 1]];
+  for (const [i, j] of cells) square("foundation", o + i, j, 0);
+  for (const i of [0, 1]) wall("wall", o + i, -1, 0, 0, true);
+  wall("wall", o + 2, -1, 3, 0, true);
+  wall("doorframe", o + 2, 0, 0, 0, true);
+  edge("door_open", at(o + 2, 0), 0, 0, true);
+  for (const j of [0, 1]) wall("wall", o + 3, j, 3, 0, true);
+  for (const i of [0, 1, 2]) wall("wall", o + i, 2, 0, 0, false);
+  for (const j of [-1, 0, 1]) wall("wall", o, j, 3, 0, false);
+  square("roof_valley", o + 1, 0, 4, 0);
+  square("roof_hip", o, 1, 4, 6);
+  square("roof", o + 1, 1, 4, 6);
+  square("roof", o, 0, 4, 9);
+  span(o + 2, 0, 4, false, true);
+  square("roof", o, -1, 4, 9);
+  square("roof", o + 1, -1, 4, 3);
+  ridge((o + 1) * 3 + 1.5, 3, 4, 0);
+  ridge((o + 1) * 3, -1.5, 4, 3);
+  ridge((o + 1) * 3, 1.5, 4, 3);
+  edge("sloped_wall_left", at(o, -1), 0, 4, true);
+  edge("sloped_wall_right", at(o + 1, -1), 0, 4, true);
+
+  // The hut of two storeys: a flat ceiling for the floor between them, and the pitched roof on the upper walls.
+  const t = 13.5;
+  for (const j of [0, 1]) square("foundation", t, j, 0);
+  ring(t, 0, t + 1, 2, 0);
+  for (const j of [0, 1]) square("ceiling", t, j, 4);
+  ring(t, 0, t + 1, 2, 4, false);
+  span(t, 0, 8, true, true);
+
+  // The hut whose roof is pitched over a flat ceiling: both hang from the top of its walls.
+  for (const j of [0, 1]) square("foundation", t + 2, j, 0);
+  ring(t + 2, 0, t + 3, 2, 0);
+  for (const j of [0, 1]) square("ceiling", t + 2, j, 4);
+  span(t + 2, 0, 4, true, true);
+
+  if (joints) for (const c of corners) {
+    const [i, j, lvl] = c.split(",").map(Number) as [number, number, number];
+    out.push({ id: `core:joint_sq_${tier}`, x: i * 3, y: FLOOR + lvl * 0.75, z: j * 3, yaw: 0 });
+  }
   return out;
 }

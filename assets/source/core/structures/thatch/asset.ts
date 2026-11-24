@@ -3,10 +3,11 @@
 // its id. model.py, pieces.py and kit.py are what the recipe was ported from, kept until every tier is made this way.
 
 import { FORMS } from "../../../../../content/building/forms.ts";
+import type { FormDef } from "../../../../../shared/world/lattice/forms.ts";
 import { MADE_PIECE_TRIANGLES } from "../../../../../tools/art/check.ts";
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
-import { THATCH, THATCH_FORMS, THATCH_SOLIDS } from "../../../../../tools/pack/pieces/thatch.ts";
+import { THATCH, THATCH_FORMS, THATCH_JOINTED, THATCH_SOLIDS } from "../../../../../tools/pack/pieces/thatch.ts";
 import { bakeTier } from "../../../../../tools/pack/pieces/tier.ts";
 import type { SourceMesh } from "../../../../../tools/pack/write.ts";
 
@@ -33,15 +34,17 @@ const MATERIALS = {
   earth: picture("earth", { tiles: 1.5 }),
 };
 const TOP = 2048;
-const THATCHED = Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]));
+const THATCHED: Readonly<Record<string, FormDef>> = Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]));
 
 /**
- * The bodies of thatch and of the door are their cut-out pictures drawn whole. Each is a material of its own that
- * names its twin's textures, so a pack holds the pictures once and only the tips are drawn cut out.
+ * The tier's meshes for `forms`, and its trims with them where asked; without `posts`, as its walls are once joints
+ * are drawn. The bodies of thatch and of the door are their
+ * cut-out pictures drawn whole: each is a material of its own that names its twin's textures, so a pack holds the
+ * pictures once and only the tips are drawn cut out.
  */
-function bake(): SourceMesh[] {
+export function bakeThatch(forms: Readonly<Record<string, FormDef>>, trims = false, posts = true): SourceMesh[] {
   const solids = Object.fromEntries(Object.entries(THATCH_SOLIDS).map(([solid, twin]) => [solid, { ...MATERIALS[twin as keyof typeof MATERIALS], cutout: false }]));
-  const meshes = bakeTier(THATCH, THATCHED, import.meta.dir, { ...MATERIALS, ...solids }, TOP);
+  const meshes = bakeTier(posts ? THATCH : THATCH_JOINTED, forms, import.meta.dir, { ...MATERIALS, ...solids }, TOP, trims);
   for (const mesh of meshes) {
     for (const t of mesh.textures ?? []) for (const [solid, twin] of Object.entries(THATCH_SOLIDS)) t.id = t.id.replace(`core:thatch/${solid}/`, `core:thatch/${twin}/`);
   }
@@ -50,7 +53,7 @@ function bake(): SourceMesh[] {
 
 export default {
   kind: "pieces",
-  source: { bake },
+  source: { bake: () => bakeThatch(THATCHED) },
   // Each level is built for its distance and states how far it lies from the finest; the check prints what it measures.
   pieces: Object.entries(THATCHED).map(([name, form]) => ({ id: `core:${name}_thatch`, object: name, errors: statedErrors(THATCH, name, form) })),
   materials: MATERIALS,
