@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { PAD_HOLDS, PAD_KEYS, PAD_TAPS } from "../../client/core/gamepad.ts";
+import { PAD_BUILD, PAD_HOLDS, PAD_KEYS, PAD_TAPS } from "../../client/core/gamepad.ts";
 import { ANY_KEY, pressKey, type KeyRow } from "../../client/core/key-row.ts";
 import { KEY_ROWS } from "../../client/core/keys.ts";
 import { touchKey } from "../../client/core/touch.ts";
@@ -63,7 +63,9 @@ test("rows that want the same key stand in the order the keys were always tried 
     ["glass mark", "visor", "KeyN"],
     ["visor", "body", "KeyN"],
     ["build", "chart", "ArrowUp"],
-    ["build", "take", "KeyE"],
+    ["build cancel", "interface", "Escape"],
+    ["build", "follow: one", "KeyT"],
+    ["build", "arms full", "KeyX"],
     ["build", "door or throw", "KeyQ"],
     ["build", "body", "KeyR"],
     ["shift", "body", "ShiftLeft"],
@@ -87,14 +89,27 @@ test("the body's buttons are the last row, so no row after it is shadowed", () =
   expect(KEY_ROWS[KEY_ROWS.length - 1]!.name).toBe("body");
 });
 
-test("E turns a piece being placed before it takes or uses anything", () => {
+test("with a piece in hand E still takes, opens and uses, and R turns the piece", () => {
   const { app, press } = playing();
   app.builder.active = true;
   app.eggAimed = 7;
-  app.terminalAimed = 3;
-  expect(press("KeyE")).toBe("build");
-  expect(app.eggKept).toBe(false);
-  expect(app.ui.travel.open).toBe(false);
+  expect(press("KeyE")).toBe("take");
+  app.eggAimed = -1;
+  app.aimed = 5;
+  expect(press("KeyE")).toBe("use");
+  app.aimed = -1;
+  expect(press("KeyE")).toBe("body");
+  expect([press("KeyR"), press("KeyT"), press("KeyX")]).toEqual(["build", "build", "build"]);
+});
+
+test("a finger's cancel puts the piece away, and the keyboard's Escape still opens the menu", () => {
+  const { app } = playing();
+  app.builder.active = true;
+  expect(app.key("Escape", true, false, 2)).toBe(true);
+  expect(app.ui.menu).toBe(false);
+  app.key("Escape", false, false, 2);
+  app.key("Escape", true);
+  expect(app.ui.menu).toBe(true);
 });
 
 test("E takes what lies there, then opens a terminal, then uses, then is the body's", () => {
@@ -187,7 +202,7 @@ test("a screen that has the keyboard gets every key, and the page types it", () 
 test("a touch button or a pad button a row names presses that row's key", () => {
   for (const row of KEY_ROWS) {
     for (const [code, button] of Object.entries(row.touch ?? {})) expect(touchKey(button), `${row.name} touch ${button}`).toBe(code);
-    for (const [code, button] of Object.entries(row.pad ?? {})) expect([PAD_KEYS[button], PAD_TAPS[button], PAD_HOLDS[button]], `${row.name} pad ${button}`).toContain(code);
+    for (const [code, button] of Object.entries(row.pad ?? {})) expect([PAD_KEYS[button], PAD_TAPS[button], PAD_HOLDS[button], PAD_BUILD[button]], `${row.name} pad ${button}`).toContain(code);
   }
 });
 

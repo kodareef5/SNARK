@@ -101,30 +101,30 @@ test("a piece in hand is shown where it would go and set down there: on open gro
   expect(place()).toBe(RESULT_OBSTRUCTED);
   b.cycle = 0;
 
-  // R cycles the wall through doorframe, windowframe and wall. E turns it about.
+  // T cycles the wall through doorframe, windowframe and wall. R turns it about.
   hold(s, "wall");
   preview(h, s, pilot, b);
   expect([b.kind, b.problem]).toEqual([id("wall_wood"), 0]);
   const facing = b.pose.yaw;
-  b.key("KeyR", true, false, 0, h.reg);
+  b.key("KeyT", true, false, 0, h.reg);
   preview(h, s, pilot, b);
   expect(b.kind).toBe(id("doorframe_wood"));
-  b.key("KeyE", true, false, 0, h.reg);
+  b.key("KeyR", true, false, 0, h.reg);
   preview(h, s, pilot, b);
   expect(b.pose.yaw).toBe((facing + 32768) & 0xffff);
-  b.key("KeyR", true, false, 0, h.reg);
+  b.key("KeyT", true, false, 0, h.reg);
   preview(h, s, pilot, b);
   expect(b.kind).toBe(id("windowframe_wood"));
-  b.key("KeyR", true, false, 0, h.reg);
-  b.key("KeyR", true, false, 0, h.reg);
+  b.key("KeyT", true, false, 0, h.reg);
+  b.key("KeyT", true, false, 0, h.reg);
   preview(h, s, pilot, b);
   expect(b.kind).toBe(id("doorframe_wood"));
   expect(place()).toBe(RESULT_OK);
   const frame = h.host.build.last;
   expect(rowOf(frame)[0]).toBe(id("doorframe_wood"));
   expect(rowOf(frame)[2]! / U).toBeCloseTo(rowOf(first)[2]! / U + FOUNDATION_THICK / 2 + WALL_HEIGHT / 2, 6);
-  expect(["KeyE", "KeyQ", "KeyR", "ArrowUp", "ArrowDown"].map((k) => b.key(k, false, false, 0, h.reg))).toEqual([true, true, true, true, true]);
-  expect(b.key("KeyW", true, false, 0, h.reg)).toBe(false);
+  expect(["KeyT", "KeyQ", "KeyR", "ArrowUp", "ArrowDown"].map((k) => b.key(k, false, false, 0, h.reg))).toEqual([true, true, true, true, true]);
+  expect(["KeyW", "KeyE"].map((k) => b.key(k, true, false, 0, h.reg))).toEqual([false, false]);
 
   // Looking away from every structure, a wall has nothing to join.
   pilot.yaw = Math.PI;
@@ -142,7 +142,7 @@ test("a piece in hand is shown where it would go and set down there: on open gro
   b.key("KeyQ", false, false, 5450, h.reg);
   expect(b.free).toBe(true);
   for (let k = 0; k < 3; k++) b.key("ArrowUp", true, false, 0, h.reg);
-  b.key("KeyE", true, false, 0, h.reg);
+  b.key("KeyR", true, false, 0, h.reg);
   preview(h, s, pilot, b, 5500);
   expect(b.problem).toBe(0);
   expect(b.pose.y / U + FOUNDATION_THICK / 2).toBeCloseTo(s.own.y + 0.125 + 3 / 8, 2);
@@ -369,8 +369,8 @@ test("what is shown is what is built: over two thousand looks with every piece, 
     pilot.pitch = rng.range(-1.3, 0.2);
     h.run(70);
     now += 400;
-    for (let k = rng.int(3); k > 0; k--) b.key("KeyE", true, false, now, h.reg);
     for (let k = rng.int(3); k > 0; k--) b.key("KeyR", true, false, now, h.reg);
+    for (let k = rng.int(3); k > 0; k--) b.key("KeyT", true, false, now, h.reg);
     if (rng.int(3) === 0) {
       b.key("KeyQ", true, false, now, h.reg);
       b.key("KeyQ", false, false, now + 50, h.reg);
@@ -518,7 +518,7 @@ test("in the whole client: the piece in hand is drawn where it would go, the but
     return n;
   };
   expect(blended()).toBe(1);
-  expect(app.ui.frame.find(KEY_AMMO)!.text).toContain("E turn");
+  expect(app.ui.frame.find(KEY_AMMO)!.text).toContain("R turn");
   expect(app.ui.frame.find(KEY_PROMPT)).toBeNull();
   const hits = h.host.combat.hits;
   app.mouseButton(0, true);
@@ -530,13 +530,13 @@ test("in the whole client: the piece in hand is drawn where it would go, the but
   app.key("Digit2", true);
   packet = run(300)!;
   expect([ghost.kind, ghost.color]).toEqual([id("wall_wood"), GHOST_OK]);
-  expect(app.key("KeyR", true)).toBe(true);
-  app.key("KeyR", false);
+  expect(app.key("KeyT", true)).toBe(true);
+  app.key("KeyT", false);
   packet = run(100)!;
   expect(ghost.kind).toBe(id("doorframe_wood"));
   const yaw = ghost.yaw;
-  expect(app.key("KeyE", true)).toBe(true);
-  app.key("KeyE", false);
+  expect(app.key("KeyR", true)).toBe(true);
+  app.key("KeyR", false);
   run(100);
   expect(ghost.yaw).toBe((yaw + 32768) & 0xffff);
   app.mouseButton(0, true);

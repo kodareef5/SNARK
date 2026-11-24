@@ -1,13 +1,14 @@
 // Works out each frame where the building piece in hand would go (shared/world/snap.ts) and whether it may,
 // so a ghost can show it. The server checks all of it again when asked.
 
-import { G_BUILD, type KeyRow } from "./key-row.ts";
-import { T_LOWER, T_RAISE, T_ROTATE, T_SNAP } from "./touch.ts";
+import { G_BUILD, type KeyContext, type KeyRow } from "./key-row.ts";
+import { T_CANCEL, T_FOLLOW_ONE, T_LOWER, T_RAISE, T_RELOAD, T_SNAP } from "./touch.ts";
 import type { StructureDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { CMD_PLACE, RESULT_FAR, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_FAR, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
+import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ON_TOP, ROLE_THING, makeAim, obstructed, pickSnap, poseAt, freePose, restPose, tooHigh, turnsOf, type Pose } from "../../shared/world/snap.ts";
@@ -17,6 +18,8 @@ import type { ClientSession } from "./session.ts";
 const NO_TARGET = 0xffffffff;
 /** Holding Q this long toggles free placement. */
 const HOLD_MS = 350;
+/** A piece put away is hidden at once, and shown again if the server has not agreed by then. */
+const AWAY_MS = 1000;
 /** Palette indices for the ghost. */
 export const GHOST_OK = 16;
 export const GHOST_BAD = 8;
@@ -61,6 +64,16 @@ export class Builder {
   /** The last question support was asked (kind, pose, the store's shapes) and its answer, 1 if it stands. */
   private readonly stood = new Float64Array(7).fill(-1);
   private qDownAt = -1;
+  /** The structure the look is on within BUILD_REACH, or -1: what a pick takes. */
+  looked = -1;
+  /** The hotbar slot put away and when, until the server agrees. */
+  private awaySlot = -1;
+  private awayAt = 0;
+  /** The form a pick asked for, taken once its item is in hand. */
+  private wantItem = 0;
+  private wantVariant = 0;
+  /** Wheel travel not yet a whole notch. */
+  private wheel = 0;
   private refusal = "";
   private refusalUntil = 0;
   private asked = 0;
@@ -70,17 +83,21 @@ export class Builder {
     const inv = session.inventory;
     const slot = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.hotbar + session.held : -1;
     const item = slot >= 0 && inv!.count[slot]! > 0 ? inv!.item[slot]! : 0;
-    const forms = reg.places[item] ?? null;
+    if (this.awaySlot >= 0 && (session.held !== this.awaySlot || nowMs - this.awayAt >= AWAY_MS)) this.awaySlot = -1;
+    const forms = this.awaySlot >= 0 ? null : (reg.places[item] ?? null);
     this.active = forms !== null;
     if (!forms) {
       this.item = 0;
       this.notice = "";
+      this.looked = -1;
       return;
     }
     if (item !== this.item) {
       this.item = item;
       this.variant = this.turn = this.cycle = this.lift = 0;
       this.free = false;
+      if (item === this.wantItem) this.variant = this.wantVariant;
+      this.wantItem = 0;
     }
     if (this.qDownAt >= 0 && nowMs - this.qDownAt >= HOLD_MS) {
       this.free = !this.free;
@@ -90,7 +107,7 @@ export class Builder {
     this.kind = kind;
     const structs = world.structs;
     const hit = castWorld(world, ox, oy, oz, dx, dy, dz, BUILD_REACH);
-    const looked = hit === HIT_STRUCTURE ? rayHit.ref : -1;
+    const looked = (this.looked = hit === HIT_STRUCTURE ? rayHit.ref : -1);
     const aim = this.aim;
     pickSnap(structs, reg, kind, ox, oy, oz, dx, dy, dz, looked, rayHit.t, hit === HIT_TERRAIN, aim);
     let problem = 0;
@@ -153,17 +170,67 @@ export class Builder {
       if (!down) this.qDownAt = -1;
       return true;
     }
-    if (code !== "KeyE" && code !== "KeyR" && code !== "ArrowUp" && code !== "ArrowDown") return false;
+    if (code !== "KeyR" && code !== "KeyT" && code !== "ArrowUp" && code !== "ArrowDown") return false;
     if (!down) return true;
-    if (code === "KeyE" && !repeat) {
-      // In a place the piece turns as many ways as its role allows. On open ground it turns by quarters.
-      const ways = this.target >= 0 && !this.onTop ? turnsOf(reg.role[this.kind]!) : 4;
-      this.turn = (this.turn + 1) % ways;
-    } else if (code === "KeyR" && !repeat) {
+    if (code === "KeyR" && !repeat) this.rotate(1, reg);
+    else if (code === "KeyT" && !repeat) {
       this.variant++;
       this.turn = 0;
     } else if (code === "ArrowUp") this.lift = Math.min(LIFT_MAX, this.lift + 1);
     else if (code === "ArrowDown") this.lift = Math.max(LIFT_MIN, this.lift - 1);
+    return true;
+  }
+
+  /** Turns the piece `by` steps: in a place as many ways as its role allows, on open ground by quarters. */
+  rotate(by: number, reg: Registry): void {
+    const ways = this.target >= 0 && !this.onTop ? turnsOf(reg.role[this.kind]!) : 4;
+    this.turn = (((this.turn + by) % ways) + ways) % ways;
+  }
+
+  /** The mouse wheel's notches, which turn the piece one step a whole notch. */
+  scroll(notches: number, reg: Registry): void {
+    this.wheel += notches;
+    const steps = Math.trunc(this.wheel);
+    if (steps === 0) return;
+    this.wheel -= steps;
+    this.rotate(steps, reg);
+  }
+
+  /** Puts the piece in hand away, as the held slot's own key does. */
+  putAway(session: ClientSession, nowMs: number): void {
+    if (!this.active || session.held < 0) return;
+    if (session.command(CMD_SELECT, (w: BitWriter) => w.u8(255)) === 0) return;
+    this.awaySlot = session.held;
+    this.awayAt = nowMs;
+    this.active = false;
+  }
+
+  /**
+   * Takes in hand the item that places the built piece `ref`, in that piece's form: from the hotbar, else from the bag
+   * into the held slot. False if it is no piece or none is carried.
+   */
+  pick(session: ClientSession, reg: Registry, ref = this.looked): boolean {
+    const inv = session.inventory;
+    const t = ref >= 0 ? session.world?.structs.chunks[Math.floor(ref / 65536)] : undefined;
+    if (!this.active || !inv || !t || inv.hotbar < 0 || session.held < 0) return false;
+    const kind = t.kind[ref & 0xffff]!;
+    const item = reg.pieceItem[kind]!;
+    const variant = item !== 0 ? reg.places[item]!.indexOf(kind) : -1;
+    if (variant < 0) return false;
+    if (item === this.item) {
+      [this.variant, this.turn] = [variant, 0];
+      return true;
+    }
+    const held = inv.hotbar + session.held;
+    let from = -1;
+    for (let k = 0; k < inv.cap && from < 0; k++) if (inv.item[k] === item && inv.count[k]! > 0 && k >= inv.hotbar && k < inv.hotbar + HOTBAR_SLOTS) from = k;
+    if (from >= 0) session.command(CMD_SELECT, (w: BitWriter) => w.u8(from - inv.hotbar));
+    else {
+      for (let k = 0; k < inv.cap && from < 0; k++) if (inv.item[k] === item && inv.count[k]! > 0) from = k;
+      if (from < 0) return false;
+      session.command(CMD_MOVE, (w: BitWriter) => (w.bits(BOX_SELF, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(held), w.u16(0), w.u16(item)));
+    }
+    [this.wantItem, this.wantVariant] = [item, variant];
     return true;
   }
 
@@ -209,21 +276,45 @@ export class Builder {
   }
 }
 
+/** With a piece in hand and on foot, in play: when building's rows apply. */
+const building = (c: KeyContext): boolean => c.builder.active && c.session.driving < 0 && c.ui.wantsPointerLock;
+
+// Before any screen has the key: a finger's Cancel, which presses Escape, puts the piece away. The keyboard's Escape goes on to the menu.
+export const BUILD_FIRST_KEYS: readonly KeyRow[] = [{
+  name: "build cancel",
+  keys: ["Escape"],
+  touch: { Escape: T_CANCEL },
+  when: (c) => building(c),
+  press(c, _code, down, repeat, source) {
+    if (source !== 2) return undefined;
+    if (down && !repeat) c.builder.putAway(c.session, c.nowMs);
+    return true;
+  },
+}];
+
 // While a piece is being placed its keys are the builder's (Builder.key). The guide's Build tab is these words.
 export const BUILD_KEYS: readonly KeyRow[] = [{
   name: "build",
-  keys: ["KeyQ", "KeyE", "KeyR", "ArrowUp", "ArrowDown"],
-  touch: { KeyE: T_ROTATE, KeyQ: T_SNAP, ArrowUp: T_RAISE, ArrowDown: T_LOWER },
-  pad: { KeyE: 3, KeyR: 2 },
+  keys: ["KeyQ", "KeyR", "KeyT", "KeyX", "ArrowUp", "ArrowDown"],
+  touch: { KeyR: T_RELOAD, KeyT: T_FOLLOW_ONE, KeyQ: T_SNAP, ArrowUp: T_RAISE, ArrowDown: T_LOWER },
+  pad: { KeyX: 1, KeyT: 3, KeyQ: 14, ArrowUp: 12, ArrowDown: 13 },
   guide: [
     { code: "KeyQ", group: G_BUILD, title: "Next snap point / thruster flip", detail: "Tap to cycle snaps. Hold to toggle free placement. At the wheel of a thruster car (the Zephyr), on or just off the ground, flip: hold W for a front flip, S for a back flip, A or D for a barrel roll, or nothing for a kickflip; its nozzles catch it on its wheels. G flips too." },
     { code: "KeyQ", group: G_BUILD, title: "Next snap point", detail: "Tap to cycle snaps. Hold to toggle free placement.", sheet: G_BUILD },
-    { code: "KeyE", group: G_BUILD, title: "Rotate", detail: "Rotate the active building preview.", sheet: G_BUILD },
-    { code: "KeyR", group: G_BUILD, title: "Next variant", detail: "Cycle the active building piece variants.", sheet: G_BUILD },
+    { code: "KeyR", group: G_BUILD, title: "Rotate", detail: "Rotate the active building preview. The mouse wheel turns it either way.", sheet: G_BUILD },
+    { code: "KeyT", group: G_BUILD, title: "Next form", detail: "Cycle the piece in hand through its forms: wall, doorframe, windowframe.", sheet: G_BUILD },
+    { code: "KeyX", group: G_BUILD, title: "Put away", detail: "Put the piece in hand away. The right mouse button does too.", sheet: G_BUILD },
+    { code: "KeyE", group: G_BUILD, title: "Use / piece menu", detail: "Tap to use what you look at. Hold on a built piece to mend it, take it back or take it down.", sheet: G_BUILD },
     { code: "ArrowUp", group: G_BUILD, title: "Raise preview", sheet: G_BUILD },
     { code: "ArrowDown", group: G_BUILD, title: "Lower preview", sheet: G_BUILD },
     { code: "Mouse0", group: G_BUILD, title: "Place", sheet: G_BUILD },
+    { code: "Mouse1", group: G_BUILD, title: "Pick piece", detail: "Take in hand the piece that builds what you look at, if you carry one.", sheet: G_BUILD },
+    { code: "Mouse2", group: G_BUILD, title: "Put away", sheet: G_BUILD },
   ],
-  when: (c) => c.builder.active,
-  press: (c, code, down, repeat) => c.builder.key(code, down, repeat, c.nowMs, c.reg) || undefined,
+  when: (c) => building(c),
+  press(c, code, down, repeat) {
+    if (code !== "KeyX") return c.builder.key(code, down, repeat, c.nowMs, c.reg) || undefined;
+    if (down && !repeat) c.builder.putAway(c.session, c.nowMs);
+    return true;
+  },
 }];

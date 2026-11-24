@@ -19,7 +19,8 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
-import { HIT_NONE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
+import { BUILD_REACH } from "../../shared/world/snap.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { BreakEffects, HEARD_RUMBLE, hearStructures } from "./break-effects.ts";
 import { Controls } from "./controls.ts";
@@ -199,6 +200,7 @@ export class App {
   private readonly touchTarget: TouchTarget = {
     key: (code, down) => { this.key(code, down, false, 2); }, mouse: (button, down) => this.mouseButton(button, down, 2),
     move: (x, z) => this.controls.touchMove(x, z), look: (dx, dy) => this.look(dx, dy),
+    longPress: (x, y) => this.pickAt(x, y),
   };
   /** What the screen's edges take from each side, in CSS pixels: left, top, right, bottom. The shell sets them. */
   readonly insets = [0, 0, 0, 0];
@@ -242,6 +244,8 @@ export class App {
       get airMarking() { return app.ui.air.marking; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
+      get building() { return app.builder.active && app.session.driving < 0; },
+      rotate: (by) => this.builder.rotate(by, this.reg),
       zoom: (notches, alt) => void this.zoomBy(notches, alt),
       adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
@@ -367,9 +371,16 @@ export class App {
 
   mouseButton(button: number, down: boolean, source = 0): void {
     if (down && source !== 1) this.ui.inputDevice = source;
-    // The middle button holds a helmet's visor up (visor.ts).
+    const building = this.builder.active && this.session.driving < 0 && this.ui.wantsPointerLock;
+    // The middle button holds a helmet's visor up (visor.ts). With a piece in hand it picks the built piece looked at.
     if (button === 1) {
-      this.visor.held = down && this.ui.wantsPointerLock;
+      if (building && down) this.builder.pick(this.session, this.reg);
+      else this.visor.held = down && this.ui.wantsPointerLock;
+      return;
+    }
+    // The mouse's own secondary button puts the piece in hand away. A pad's aim and a finger's do not.
+    if (button === 2 && building && source === 0) {
+      if (down) this.builder.putAway(this.session, this.nowMs);
       return;
     }
     if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
@@ -389,6 +400,14 @@ export class App {
     this.controls.mouseButton(button, down, source);
   }
 
+  /** A finger held still on the view at (x, y) canvas units: with a piece in hand, picks the built piece under it. */
+  private pickAt(x: number, y: number): void {
+    const world = this.session.world, b = this.builder, frame = this.ui.frame;
+    if (!world || !b.active || this.session.driving >= 0 || !this.ui.wantsPointerLock) return;
+    this.cam.ray(x / Math.max(frame.width, 1), y / Math.max(frame.height, 1), this.dir);
+    if (castWorld(world, this.cam.x, this.cam.y, this.cam.z, this.dir[0]!, this.dir[1]!, this.dir[2]!, BUILD_REACH + 4) === HIT_STRUCTURE) b.pick(this.session, this.reg, rayHit.ref);
+  }
+
   gamepads(pads: readonly (PadSample | null)[], now: number): void {
     if (this.steer) this.pad.update(pads, now, this.padTarget);
   }
@@ -406,6 +425,11 @@ export class App {
   wheel(deltaY: number, mode = 0): boolean {
     if (!this.ui.wantsPointerLock) return false;
     const notches = mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100;
+    // With a piece in hand the wheel turns it, and is no sight's zoom.
+    if (this.builder.active && this.session.driving < 0) {
+      this.builder.scroll(notches, this.reg);
+      return true;
+    }
     return this.zoomBy(notches) || this.orbit.wheel(notches);
   }
 
@@ -945,7 +969,7 @@ export class App {
   private fillHud(f: AppFrame): void {
     const session = this.session, hud = this.hud, cam = this.cam, c = this.controls, alive = f.alive, nowMs = f.nowMs;
     const fill = this.hudFill, body = f.body;
-    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active;
+    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active; f.device = this.ui.inputDevice;
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
