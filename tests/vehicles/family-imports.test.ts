@@ -10,7 +10,7 @@ const FIRST = [
 ];
 /** Loads `file` first, then asks every family of the stock vehicles, so the list is made after it. */
 const script = (file: string) =>
-  `await import("./${file}"); const { familyOf } = await import("./shared/sim/families.ts"); const { COMPACT_VEHICLE } = await import("./content/vehicles/compact.ts"); if (familyOf(COMPACT_VEHICLE)?.name !== "wheeled") throw new Error("no family"); console.log("ok");`;
+  `await import(${JSON.stringify(`./${file}`)}); const { familyOf } = await import("./shared/sim/families.ts"); const { COMPACT_VEHICLE } = await import("./content/vehicles/compact.ts"); if (familyOf(COMPACT_VEHICLE)?.name !== "wheeled") throw new Error("no family"); console.log("ok");`;
 
 const node = Bun.which("node");
 const nodeMajor = node ? Number((Bun.spawnSync([node, "--version"]).stdout.toString().match(/v(\d+)/) ?? [])[1]) : 0;
