@@ -205,6 +205,23 @@ test("a rocket is told to its shooter as its own and to others by number, and bu
   expect(h.host.items.audit()).toEqual([]);
 });
 
+test("a rocket's blast past hearing is still told to those told of the rocket", () => {
+  const { h, s, at, ents, shots, launch, step, land } = range();
+  const mine = tap(h, s);
+  // A little up, so it flies on over the ground, and its shooter goes well aside while it does.
+  launch(at.x, at.y + 17, at.z + 100);
+  expect(mine.rockets.length).toBe(1);
+  step();
+  h.say(s, `tp ${(at.x + 150).toFixed(3)} ${at.z.toFixed(3)}`);
+  land();
+  const me = h.ent(s);
+  const b = mine.blasts[0]!;
+  expect(mine.blasts.map((k) => k.id)).toEqual([mine.rockets[0]!.id]);
+  // Further off than any blast is heard from.
+  expect(Math.hypot(b.x - ents.x[me]!, b.z - ents.z[me]!)).toBeGreaterThan(260);
+  expect(shots.blasts).toBe(1);
+});
+
 test("one who comes within hearing of a flying rocket is told of it once, with its age then", () => {
   const { h, s, friends, at, shots, launch, land } = range("eve");
   const eve = friends[0]!;

@@ -924,7 +924,9 @@ export class Projectiles {
       if (!other?.active || other.closed) continue;
       const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
       const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
-      if (other !== operator && (bx - x) * (bx - x) + (bz - z) * (bz - z) > HEARD * HEARD) continue;
+      // One told of the round is told its end however far off, or its copy would wait for a blast that never comes.
+      const knows = id !== 0 && other.id < this.toldWide && this.numberTold[id * this.toldWide + other.id] !== 0;
+      if (other !== operator && !knows && (bx - x) * (bx - x) + (bz - z) * (bz - z) > HEARD * HEARD) continue;
       const w = game.begin(S_EVENT);
       w.u8(EVENT_BLAST);
       writeBlast(w, x, y, z, nx, ny, nz, radius, item, id, surface, made);
