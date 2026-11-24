@@ -11,7 +11,7 @@ import { HudModel, fillHotbar } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_CHAR_ENGRAM_PICTURE, KEY_CHAR_RECIPE_PICTURE, KEY_CHAR_TAB, TAB_ENGRAMS, TAB_MAKE, engramOrder, type CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
-import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
+import { KEY_INV_SLOT, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { K_IMAGE, K_PANEL } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
@@ -150,7 +150,7 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
     const ui = new Ui();
     ui.screen<CharacterScreen>("character").page = page;
     if (pictures) new Icons(manifest, reg.defs, "assets", () => new Uint8ClampedArray(ICON_SIZE * ICON_SIZE * 4)).install(ui.frame);
-    [ui.registry, ui.palette, ui.inventory.open, ui.screen<CharacterScreen>("character").open, ui.screen<CharacterScreen>("character").tab] = [reg, pack.palette, true, character, tab];
+    [ui.registry, ui.palette, ui.screen<InventoryScreen>("inventory").open, ui.screen<CharacterScreen>("character").open, ui.screen<CharacterScreen>("character").tab] = [reg, pack.palette, true, character, tab];
     const hud = new HudModel();
     fillHotbar(hud, inv, 0, reg, pack.palette);
     ui.build(16 / 9, hud, session);
@@ -190,7 +190,7 @@ test("the session bun run snap -- --ui draws the interface from builds the bag, 
   session.inventory.set(0, reg.index.get("core:berry")!, 24, 0, 0, 9000);
   const built = (bag: boolean, tab: number): Ui => {
     const ui = new Ui();
-    [ui.registry, ui.palette, ui.inventory.open, ui.screen<CharacterScreen>("character").open, ui.screen<CharacterScreen>("character").tab] = [reg, pack.palette, bag, !bag, tab];
+    [ui.registry, ui.palette, ui.screen<InventoryScreen>("inventory").open, ui.screen<CharacterScreen>("character").open, ui.screen<CharacterScreen>("character").tab] = [reg, pack.palette, bag, !bag, tab];
     ui.build(16 / 9, new HudModel(), session);
     return ui;
   };

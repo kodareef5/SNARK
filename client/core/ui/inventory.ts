@@ -7,12 +7,13 @@ import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
 import { makeHandle } from "../../../shared/ids.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_NO_SUPPORT, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT, CMD_VEHICLE, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL } from "../../../shared/net/protocol.ts";
 import { VEHICLE_FUEL_PER_GASOLINE, VEHICLE_REPAIR_BILL, VEHICLE_REPAIR_STEP } from "../../../shared/sim/vehicle-maintenance.ts";
 import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
 import { RemoteSample, type ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, fitText, lineHeight, wrapText, type UiFrame } from "./nodes.ts";
-import { KEY_STATION_VIEW, StationPanel } from "./station.ts";
+import { KEY_STATION_PANEL, KEY_STATION_SLOTS, KEY_STATION_VIEW, StationPanel } from "./station.ts";
 import { TakeAll } from "./take-all.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
 
@@ -98,7 +99,13 @@ export function itemLabel(reg: Registry, item: number): string {
   return def?.label ?? reg.ids[item]!.slice(reg.ids[item]!.indexOf(":") + 1);
 }
 
-export class InventoryScreen {
+export class InventoryScreen implements Screen {
+  readonly name = "inventory";
+  readonly layer = "modal";
+  readonly group = "bag";
+  readonly hotkey = "KeyI";
+  readonly catchAll = true;
+  readonly bands = [{ from: KEY_OPEN_ORDER, count: KEY_OPEN_SLOT + 300 - KEY_OPEN_ORDER }, { from: KEY_STATION_PANEL, count: KEY_STATION_SLOTS + 100 - KEY_STATION_PANEL }, { from: KEY_VEHICLE_SERVICE, count: KEY_OPEN_TAKE_ALL + 1 - KEY_VEHICLE_SERVICE }];
   open = false;
   /** Take all, while it is still asking for stacks. */
   readonly taking = new TakeAll();
@@ -112,8 +119,26 @@ export class InventoryScreen {
   private serviceHandle = 0;
   private serviceFeedback = "";
 
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  show(): void {
+    this.open = true;
+  }
+
+  result(seq: number, code: number, c: ScreenCtx): void {
+    this.answer(seq, code, c.session?.tickClock ?? 0);
+  }
+
+  pointer(kind: number, key: number, _x: number, _y: number, button: number, c: ScreenCtx): boolean {
+    if (!c.session) return false;
+    this.press(kind, key, button, c.session);
+    return true;
+  }
+
   /** The server's answer to a command of this session's, for whichever of the screen's asks it was. */
-  result(seq: number, code: number, tick: number): void {
+  answer(seq: number, code: number, tick: number): void {
     this.serviceResult(seq, code);
     this.taking.result(seq, code, tick);
   }
@@ -160,7 +185,12 @@ export class InventoryScreen {
   }
 
   /** Also closes the open container. */
-  close(session: ClientSession | null): void {
+  close(c: ScreenCtx): void {
+    this.shut(c.session);
+  }
+
+  /** Closes it, and closes the container the server has open. */
+  shut(session: ClientSession | null): void {
     this.open = false;
     this.serviceSeq = 0; this.serviceFeedback = "";
     this.held = -1;
@@ -169,7 +199,7 @@ export class InventoryScreen {
   }
 
   /** `kind` is 0 for down, 1 for up, 2 for move. */
-  pointer(kind: number, key: number, button: number, session: ClientSession): void {
+  press(kind: number, key: number, button: number, session: ClientSession): void {
     const at = this.where(key, session);
     const box = at < 0 ? BOX_SELF : Math.floor(at / 1000);
     let slot = at < 0 ? -1 : at % 1000;
@@ -191,7 +221,7 @@ export class InventoryScreen {
       return;
     }
     if (kind === 0 && key === KEY_INV_DEPLOY && this.heldBox === BOX_SELF && this.held >= 0 && this.registry?.vehicleDeploy[session.inventory?.item[this.held] ?? 0]) {
-      this.onDeploy?.(this.held); if (this.onDeploy) this.close(session); return;
+      this.onDeploy?.(this.held); if (this.onDeploy) this.shut(session); return;
     }
     const subject = this.service ? null : session.subject;
     if (kind === 0 && subject?.owned && subject.id >= 0 && key >= KEY_OPEN_ORDER && key <= KEY_OPEN_UNSADDLE) {
@@ -322,14 +352,20 @@ export class InventoryScreen {
     // Only a carried item can be used, but in an open creature's inventory a torpor dose is fed to it and a saddle put on.
     const onCreature = (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0 || (this.registry?.saddleFits[inv.item[slot]!] ?? 0) !== 0;
     if (box === BOX_SELF && this.registry?.vehicleDeploy[inv.item[slot]!] && !(inv.flags[slot]! & FLAG_BLUEPRINT)) {
-      this.onDeploy?.(slot); if (this.onDeploy) this.close(session);
+      this.onDeploy?.(slot); if (this.onDeploy) this.shut(session);
     } else if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
     else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && onCreature) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
     this.held = -1;
   }
 
   /** A container the server has just opened brings the screen up with it. True on the frame it does. */
-  absorb(session: ClientSession | null): boolean {
+  absorb(c: ScreenCtx): boolean {
+    this.touch = c.inputDevice === 2;
+    return this.opened(c.session);
+  }
+
+  /** True on the frame a container the server opened brings the screen up. */
+  private opened(session: ClientSession | null): boolean {
     const isOpen = !!session?.open, opened = isOpen && !this.hadOpen;
     if (opened) {
       this.open = true;
@@ -339,8 +375,12 @@ export class InventoryScreen {
     return opened;
   }
 
-  build(f: UiFrame, session: ClientSession | null, reg: Registry | null, palette: Uint8Array | null): void {
-    this.absorb(session);
+  build(f: UiFrame, c: ScreenCtx): void {
+    this.draw(f, c.session, c.registry, c.palette);
+  }
+
+  draw(f: UiFrame, session: ClientSession | null, reg: Registry | null, palette: Uint8Array | null): void {
+    this.opened(session);
     if (session) this.taking.update(session);
     const own = session?.inventory;
     if (!this.open || !own || !session || !reg) return;

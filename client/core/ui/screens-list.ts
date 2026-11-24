@@ -7,6 +7,7 @@ import { CharacterScreen } from "./character.ts";
 import { ChoosingScreen } from "./choosing.ts";
 import { CreatorScreen } from "./creator.ts";
 import { EmoteMenu } from "./emotes.ts";
+import { InventoryScreen } from "./inventory.ts";
 import { MapScreen } from "./screens.ts";
 import { StructMenu } from "./structure.ts";
 import { TravelScreen } from "./travel.ts";
@@ -18,6 +19,7 @@ export const SCREENS: readonly ScreenRow[] = [
   () => new EmoteMenu(),
   () => new MapScreen(),
   () => new TravelScreen(),
+  () => new InventoryScreen(),
   () => new StructMenu(),
   () => new AirRadio(),
 ];

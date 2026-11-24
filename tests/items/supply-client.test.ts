@@ -4,7 +4,7 @@
 
 import { expect } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { KEY_INV_SLOT, KEY_OPEN_SLOT, KEY_OPEN_TAKE_ALL } from "../../client/core/ui/inventory.ts";
+import { KEY_INV_SLOT, KEY_OPEN_SLOT, KEY_OPEN_TAKE_ALL, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { TAKE_ONLY } from "../../server/own.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { RESULT_BUSY, TEXT_NOTICE } from "../../shared/net/protocol.ts";
@@ -86,7 +86,7 @@ artTest("the whole client: a drop's shaft from near and from far, its capsule in
   run(400);
   expect([s.progress.level >= 35, app.hud.prompt]).toEqual([true, "E  open Purple Works drop"]);
   tap("KeyE");
-  expect([s.open?.name, s.open?.takeOnly, d.opened, app.ui.inventory.open]).toEqual(["Purple Works drop", true, true, true]);
+  expect([s.open?.name, s.open?.takeOnly, d.opened, app.ui.screen<InventoryScreen>("inventory").open]).toEqual(["Purple Works drop", true, true, true]);
   expect(app.ui.frame.nodes.find((n) => n.key === KEY_OPEN_TAKE_ALL)?.text).toBe("Take all");
   const inside = s.open!.inventory;
   const mine = s.inventory!;
@@ -96,28 +96,28 @@ artTest("the whole client: a drop's shaft from near and from far, its capsule in
   // A right click on a stack takes it into the first free slot of the bag.
   const first = used()[0]!;
   const what = inside.item[first]!;
-  app.ui.inventory.pointer(0, KEY_OPEN_SLOT + first * 3, 2, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_SLOT + first * 3, 2, s);
   run(300);
   expect([inside.item[first], mine.item[0], inside.used()]).toEqual([0, what, held - 1]);
   // A stack picked up and put down on one of hers it does not join goes to a free slot: a box that only gives does not swap.
   const second = used()[0]!;
   const other = inside.item[second]!;
-  app.ui.inventory.pointer(0, KEY_OPEN_SLOT + second * 3, 0, s);
-  app.ui.inventory.pointer(0, KEY_INV_SLOT + 0 * 3, 0, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_SLOT + second * 3, 0, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_INV_SLOT + 0 * 3, 0, s);
   run(300);
   expect([mine.item[0], mine.item[1], inside.used()]).toEqual([what, other, held - 2]);
   // Putting one of hers in is refused by the server, which says why.
   const from = s.logVersion;
-  app.ui.inventory.pointer(0, KEY_INV_SLOT + 0 * 3, 0, s);
-  app.ui.inventory.pointer(0, KEY_OPEN_SLOT + first * 3, 0, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_INV_SLOT + 0 * 3, 0, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_SLOT + first * 3, 0, s);
   run(300);
   expect([mine.item[0], inside.used(), s.log.slice(-(s.logVersion - from)).filter((l) => l.channel === TEXT_NOTICE).map((l) => l.text)]).toEqual([what, held - 2, [TAKE_ONLY]]);
   // Take all: the rest, and it shuts and leaves.
   const corrections = s.stats.corrections;
-  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_TAKE_ALL, 0, s);
   run(900);
   expect([mine.used(), s.open, h.host.records.byPid.has(d.pid), d.left > 0, row().left, s.stats.corrections - corrections]).toEqual([held, null, false, true, d.left, 0]);
-  if (app.ui.inventory.open) tap("KeyI");
+  if (app.ui.screen<InventoryScreen>("inventory").open) tap("KeyI");
   stand(X - 20, Z - 20, X, Z, 0.5);
   run(1200);
   expect([app.supply.stateOf(row()), app.supply.capsules]).toEqual([POSE_LEAVING, 1]);
@@ -159,13 +159,13 @@ artTest("take all takes all: twenty stacks and more leave a capsule at one press
   const mine = s.inventory!;
   const before = mine.used();
   expect(mine.bag - before).toBeGreaterThanOrEqual(a.held);
-  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
-  expect(app.ui.inventory.taking.busy).toBe(true);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_TAKE_ALL, 0, s);
+  expect(app.ui.screen<InventoryScreen>("inventory").taking.busy).toBe(true);
   run(1500);
   // Everything is hers, the capsule shut on being emptied and is leaving, and the server had room for all she asked.
-  expect([mine.used() - before, s.open, app.ui.inventory.taking.busy, h.host.records.byPid.has(a.d.pid), a.d.left > 0, busy, items.audit()]).toEqual([a.held, null, false, false, true, 0, []]);
+  expect([mine.used() - before, s.open, app.ui.screen<InventoryScreen>("inventory").taking.busy, h.host.records.byPid.has(a.d.pid), a.d.left > 0, busy, items.audit()]).toEqual([a.held, null, false, false, true, 0, []]);
   // With room for five stacks and no more, she takes five, and the rest stays in a capsule that stays open.
-  if (app.ui.inventory.open) tap("KeyI");
+  if (app.ui.screen<InventoryScreen>("inventory").open) tap("KeyI");
   const free = (): number => mine.bag - mine.used();
   expect(items.mint(me, bow, free() - 5)).toBe(mine.bag - mine.used() - 5);
   run(300);
@@ -173,27 +173,27 @@ artTest("take all takes all: twenty stacks and more leave a capsule at one press
   const b = landed(700, 660);
   tap("KeyE");
   expect(s.open?.inventory.used()).toBe(b.held);
-  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_TAKE_ALL, 0, s);
   run(1500);
-  expect([free(), s.open?.inventory.used(), app.ui.inventory.taking.busy, items.inv(b.box).used(), b.d.left, busy, items.audit()]).toEqual([0, b.held - 5, false, b.held - 5, 0, 0, []]);
+  expect([free(), s.open?.inventory.used(), app.ui.screen<InventoryScreen>("inventory").taking.busy, items.inv(b.box).used(), b.d.left, busy, items.audit()]).toEqual([0, b.held - 5, false, b.held - 5, 0, 0, []]);
   // Room is made for all the rest, and she presses again; one more stack comes to the capsule as she does, which
   // this press was not begun on. The press takes what it began on and is done, with the capsule still open.
   const left = b.held - 5;
   for (let k = 0; k < left; k++) expect(items.burn(me, mine.bag - 1 - k, mine.count[mine.bag - 1 - k]!, true)).toBe(true);
   run(300);
   expect(free()).toBe(left);
-  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_TAKE_ALL, 0, s);
   expect(items.mint(b.box, bow, 1)).toBe(1);
   run(1500);
-  expect([free(), s.open?.inventory.used(), app.ui.inventory.taking.busy, busy]).toEqual([0, 1, false, 0]);
+  expect([free(), s.open?.inventory.used(), app.ui.screen<InventoryScreen>("inventory").taking.busy, busy]).toEqual([0, 1, false, 0]);
   // She drops one of the stacks it took and presses once more. A press that is done holds no slot of the bag against
   // the next: the last stack is hers, and the capsule, emptied, shuts and goes.
   expect(items.burn(me, mine.bag - 1, mine.count[mine.bag - 1]!, true)).toBe(true);
   run(300);
   expect(free()).toBe(1);
-  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
+  app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_TAKE_ALL, 0, s);
   run(900);
-  expect([free(), s.open, app.ui.inventory.taking.busy, b.d.left > 0, busy]).toEqual([0, null, false, true, 0]);
+  expect([free(), s.open, app.ui.screen<InventoryScreen>("inventory").taking.busy, b.d.left > 0, busy]).toEqual([0, null, false, true, 0]);
   expect(items.audit()).toEqual([]);
   h.host.shutdown();
 });

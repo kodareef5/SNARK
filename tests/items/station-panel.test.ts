@@ -291,7 +291,7 @@ test("on every window shape the panel sits beside the inventory or, on a phone's
       if (icons) f.icons = { place: (n) => ((n.image = 1), true) };
       screen.open = true;
       f.begin(aspect);
-      screen.build(f, session, reg, null);
+      screen.draw(f, session, reg, null);
       check(f, `${name} icons=${icons}`);
       // The panel shows a page of twelve where the canvas has room for it, with the pager under it.
       const phone = aspect < 1;
@@ -299,14 +299,14 @@ test("on every window shape the panel sits beside the inventory or, on a phone's
       if (!phone) expect([f.find(row(0)) !== null, f.find(KEY_STATION_PAGE + 2)!.interactive, f.find(KEY_STATION_PANEL)!.x >= f.find(KEY_OPEN_PANEL)!.x + f.find(KEY_OPEN_PANEL)!.w], name).toEqual([true, true, true]);
       if (!phone) continue;
       // On a phone the button shows the panel alone, in the inventory's place, and its own button goes back to the slots.
-      screen.pointer(0, KEY_STATION_VIEW, 0, session);
+      screen.press(0, KEY_STATION_VIEW, 0, session);
       f.begin(aspect);
-      screen.build(f, session, reg, null);
+      screen.draw(f, session, reg, null);
       check(f, `${name} alone icons=${icons}`);
       expect([f.find(KEY_OPEN_PANEL), f.find(KEY_INV_PANEL), f.find(KEY_STATION_PANEL) !== null, f.find(row(0)) !== null, icons === (f.find(row(0, RECIPE_PICTURE)) !== null)]).toEqual([null, null, true, true, true]);
-      screen.pointer(0, KEY_STATION_SLOTS, 0, session);
+      screen.press(0, KEY_STATION_SLOTS, 0, session);
       f.begin(aspect);
-      screen.build(f, session, reg, null);
+      screen.draw(f, session, reg, null);
       expect([f.find(KEY_OPEN_PANEL) !== null, f.find(KEY_STATION_PANEL)]).toEqual([true, null]);
     }
   }
@@ -343,11 +343,11 @@ test("through the server: the panel's button lights the oven and its line change
     const f = new UiFrame();
     const build = (): UiFrame => {
       f.begin(16 / 9);
-      screen.build(f, s, s.registry, null);
+      screen.draw(f, s, s.registry, null);
       return f;
     };
     expect([text(build(), KEY_STATION_FIRE), text(f, KEY_STATION_LIGHT)]).toEqual(["out", "Light"]);
-    screen.pointer(0, KEY_STATION_LIGHT, 0, s);
+    screen.press(0, KEY_STATION_LIGHT, 0, s);
     h.run(300);
     // Lit: the oven is its burning kind, and two pieces of 2 s each burn until 4 s after it was lit.
     expect([code, s.station!.kind, rec.kind, s.station!.out]).toEqual([P.RESULT_OK, lit, lit, rec.fire!.out]);
@@ -355,13 +355,13 @@ test("through the server: the panel's button lights the oven and its line change
     expect(text(f, KEY_STATION_LIGHT)).toBe("Put out");
     // The blueprint (apprentice: 3 berries a loaf) is the first row, then the loaf (2 berries): 4 of them from 9 berries.
     expect([text(f, row(0)), text(f, row(1)), text(f, row(1, RECIPE_STATUS))]).toEqual([`apprentice loaf blueprint: ${blueprintCost(2, 2)} berry`, "loaf: 2 berry", "can make 4"]);
-    screen.pointer(0, row(1, RECIPE_MAKE), 0, s);
+    screen.press(0, row(1, RECIPE_MAKE), 0, s);
     h.run(300);
     expect([code, rec.jobs.map((j) => [j.item, j.left, j.bp]), text(build(), KEY_STATION_JOB)]).toEqual([P.RESULT_OK, [[loaf, 1, undefined]], text(f, KEY_STATION_JOB)]);
     h.run(1500);
     // While it burns, the fire makes crumbs by itself from the berries in it, 3 a second (S1's lanes), so it is given more.
     h.host.items.mint(rec, id(reg, "berry"), 9);
-    screen.pointer(0, row(0, RECIPE_MAKE), 0, s);
+    screen.press(0, row(0, RECIPE_MAKE), 0, s);
     h.run(300);
     expect([code, rec.jobs.map((j) => [j.item, j.bp])]).toEqual([P.RESULT_OK, [[loaf, 2]]]);
     h.run(2000);
@@ -399,7 +399,7 @@ test("on S2's fabricator: off with no gasoline the button is greyed; turned on f
     const f = new UiFrame();
     const build = (): UiFrame => {
       f.begin(16 / 9);
-      screen.build(f, s, s.registry, null);
+      screen.draw(f, s, s.registry, null);
       return f;
     };
     const rowOf = (item: number): number => {
@@ -408,7 +408,7 @@ test("on S2's fabricator: off with no gasoline the button is greyed; turned on f
     };
     build();
     while (rowOf(polymer) < 0 && f.find(KEY_STATION_PAGE + 2)?.interactive) {
-      screen.pointer(0, KEY_STATION_PAGE + 2, 0, s);
+      screen.press(0, KEY_STATION_PAGE + 2, 0, s);
       build();
     }
     const p = rowOf(polymer);
@@ -418,14 +418,14 @@ test("on S2's fabricator: off with no gasoline the button is greyed; turned on f
     h.run(300);
     build();
     expect(f.find(KEY_STATION_LIGHT)!.interactive).toBe(true);
-    screen.pointer(0, KEY_STATION_LIGHT, 0, s);
+    screen.press(0, KEY_STATION_LIGHT, 0, s);
     h.run(300);
     build();
     expect([code, s.station!.kind, text(f, KEY_STATION_LIGHT), text(f, row(p, RECIPE_STATUS))]).toEqual([P.RESULT_OK, on, "Turn off", "can make 2"]);
     expect(text(f, KEY_STATION_FIRE)).toMatch(/^burns for 1[45]:\d\d$/);
     // One polymer asked for, and turned off in the same moment: the unit pauses with its 2 s left, and the gasoline is lost.
-    screen.pointer(0, row(p, RECIPE_MAKE), 0, s);
-    screen.pointer(0, KEY_STATION_LIGHT, 0, s);
+    screen.press(0, row(p, RECIPE_MAKE), 0, s);
+    screen.press(0, KEY_STATION_LIGHT, 0, s);
     h.run(300);
     build();
     expect([s.station!.kind, rec.inv!.total(id(core, "gasoline")), text(f, KEY_STATION_FIRE), text(f, KEY_STATION_JOB)]).toEqual([off, 0, "off: no gasoline in it", "making polymer x1: needs fuel, 2 s left"]);

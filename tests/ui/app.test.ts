@@ -3,7 +3,7 @@ import { App, MEASURED_VOLUME } from "../../client/core/app.ts";
 import { KEY_CONSOLE_INPUT, KEY_CONSOLE_ROW } from "../../client/core/ui/console.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_TALKER, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
-import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
+import { KEY_INV_SLOT, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { KEY_SETTINGS_MIC, KEY_SETTINGS_TAB } from "../../client/core/ui/settings.ts";
 import { KEY_MENU_OPEN, KEY_MENU_RESUME } from "../../client/core/ui/menu.ts";
 import { BTN_JUMP, BTN_MELEE } from "../../shared/sim/character.ts";
@@ -465,7 +465,7 @@ test("controller releases survive an inventory screen, and hiding the minimap st
   pad.buttons[7]!.pressed=true; app.gamepads([pad],0);
   expect(app.controls.buttons).not.toBe(0);
   app.key("KeyI",true); app.gamepads([pad],16);
-  expect(app.ui.inventory.open).toBe(true); expect(app.controls.buttons).toBe(0);
+  expect(app.ui.screen<InventoryScreen>("inventory").open).toBe(true); expect(app.controls.buttons).toBe(0);
   app.key("KeyI",true); app.gamepads([pad],32);
   expect(app.controls.buttons).toBe(0);
   pad.buttons[7]!.pressed=false; app.gamepads([pad],48);

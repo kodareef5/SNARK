@@ -44,8 +44,11 @@ export interface Screen {
   readonly bands: readonly { readonly from: number; readonly count: number }[];
   /** Whether it is up this frame. */
   isOpen(): boolean;
-  /** Each frame, open or not, before any screen builds: a screen the session opens reads the session here. */
-  absorb?(c: ScreenCtx): void;
+  /**
+   * Each frame, open or not, before any screen builds: a screen the session opens reads the session here. True when it
+   * came up by itself this frame, which shuts every other open modal screen.
+   */
+  absorb?(c: ScreenCtx): boolean | void;
   /** Brings it up by its hotkey. Without one only its own file opens it. */
   show?(c: ScreenCtx): void;
   close(c: ScreenCtx): void;
@@ -53,6 +56,8 @@ export interface Screen {
   keepsPointer?: boolean;
   /** A press on it makes no click sound, as on a map that is dragged. */
   quiet?: boolean;
+  /** While open, a press on what no listed screen drew comes to it too, so a drag can end anywhere. */
+  catchAll?: boolean;
   /** A field of it has the keyboard: keys type and do not drive the body. */
   keyboard?(): boolean;
   /** While open it holds the keys from the body, though no field types: they come to its `key`. */

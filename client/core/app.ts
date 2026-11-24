@@ -80,6 +80,7 @@ import { glass } from "./ui/skin.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";
 import type { StructMenu } from "./ui/structure.ts";
 import type { AirRadio } from "./ui/air-support.ts";
+import type { InventoryScreen } from "./ui/inventory.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_REFRESH_MS, type TravelScreen } from "./ui/travel.ts";
@@ -279,9 +280,8 @@ export class App {
       this.scene.details.nodeBreak(nodeSpot.kind, chunk * 256 + index, nodeSpot.x, nodeSpot.y, nodeSpot.z,
         session.renderClock - session.remoteDelay, field.forms.size[form]! / 64);
     };
-    this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
+    this.ui.screen<InventoryScreen>("inventory").onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
-      this.ui.inventory.result(seq, code, session.tickClock);
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.

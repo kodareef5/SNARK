@@ -13,7 +13,6 @@ import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls
 import { CONTROL_GROUPS } from "./controls-guide.ts";
 import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE, menuLink, unmuteButton } from "./menu.ts";
 import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
-import { InventoryScreen } from "./inventory.ts";
 import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
@@ -33,7 +32,6 @@ export class Ui {
   readonly frame = new UiFrame();
   readonly console = new ConsoleState();
   readonly chat = new ChatState();
-  readonly inventory = new InventoryScreen();
   readonly naming = new NamePrompt();
   /** The screens of SCREENS, made for this interface, in its order. */
   readonly screens: readonly Screen[] = SCREENS.map((make) => make());
@@ -121,7 +119,7 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
-    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.options && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
+    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.options && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Whether a screen of `group` is open. */
@@ -153,9 +151,9 @@ export class Ui {
     for (const s of this.screens) s.result?.(seq, code, this.ctx);
   }
 
-  /** Shuts every open modal screen of the list, as one of the bag opens over them. */
-  private closeModals(): void {
-    for (const s of this.screens) if (s.layer === "modal" && s.isOpen()) s.close(this.ctx);
+  /** Shuts every open modal screen of the list but `keep`, as one of the bag opens over them. */
+  private closeModals(c: ScreenCtx = this.ctx, keep: Screen | null = null): void {
+    for (const s of this.screens) if (s !== keep && s.layer === "modal" && s.isOpen()) s.close(c);
   }
 
   /** The ctx with what this call knows. */
@@ -308,22 +306,19 @@ export class Ui {
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
       const hot = this.hotkeyed("bag", code);
-      if (code === "KeyI" || code === "KeyO" || hot || (code === "Escape" && (this.inventory.open || this.options || this.openIn("bag")))) {
+      if (code === "KeyO" || hot || (code === "Escape" && (this.options || this.openIn("bag")))) {
         if (down && !repeat) {
           // Opening one screen closes the others.
           const listed = hot && !hot.isOpen() ? hot : null;
           const options = code === "KeyO" && !this.options;
-          const inventory = code === "KeyI" && !this.inventory.open;
-          const opened = listed ? listed.name : options ? "options" : inventory ? "inventory" : "";
-          const shut = this.openNameIn("bag") || (this.options ? "options" : this.inventory.open ? "inventory" : "");
+          const opened = listed ? listed.name : options ? "options" : "";
+          const shut = this.openNameIn("bag") || (this.options ? "options" : "");
           this.hear?.(opened !== "" ? `screen/${opened}/open` : `screen/${shut || "inventory"}/close`);
           this.options = options;
           this.inspect = false;
           if (options) { this.menu = true; this.focusTo(KEY_MENU_BACK); }
-          this.closeModals();
+          this.closeModals(this.at(session));
           listed?.show?.(this.at(session));
-          if (inventory) this.inventory.open = true;
-          else this.inventory.close(session);
         }
         return true;
       }
@@ -420,7 +415,7 @@ export class Ui {
       return;
     }
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
-    if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
+    for (const s of this.screens) if (s.catchAll && s.isOpen()) s.pointer?.(kind, key, x, y, button, this.at(session));
   }
 
   input(key: number, value: string): void {
@@ -445,11 +440,11 @@ export class Ui {
     if (this.settings.debug) this.debug?.reserve(f);
     const layer = this.touch ? this.layer : null;
     const plan = layer ? layer.touchPlan(f, this.settings.muted, this.canTalk) : null;
-    this.inventory.touch = this.touch;
     this.touchShown = 0;
     this.creating = session?.sessionState === SESSION_CREATING;
     this.dead = session?.sessionState === SESSION_DEAD;
-    for (const s of this.screens) s.absorb?.(this.at(session, hud));
+    // A screen that came up by itself, as the inventory does with a container the server opens, shuts the others.
+    for (const s of this.screens) if (s.absorb?.(this.at(session, hud))) this.closeModals(this.ctx, s);
     // A survivor still in the creator has no vitals, no position and nothing to aim at.
     if (session) this.chat.absorb(session);
     if (session && (this.creating || this.dead)) this.chat.wait(session.serverTick);
@@ -488,8 +483,6 @@ export class Ui {
     if (this.creative && !session?.creative) { this.creative = false; this.focusTo(KEY_MENU_RESUME); }
     const creative = this.menu && this.creative && !this.console.open && !this.chat.open;
     if (session) this.creativeScreen.pump(session, creative);
-    // A container the server opens brings the inventory up over any screen of the list.
-    if (this.inventory.absorb(session)) this.closeModals();
     if (!this.console.open && !this.chat.open) {
       if (this.menu) {
         if (this.options) {
@@ -501,9 +494,7 @@ export class Ui {
           if (!f.find(this.menuFocus)?.interactive && !this.focusNext) this.focusTo(this.creativeScreen.first(session));
         } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);
       } else if (this.options) buildSettings(f, this.settings, hud.micLevel);
-      else if (!this.buildModal(f, session, hud)) {
-        this.inventory.build(f, session, this.registry, this.palette);
-      }
+      else this.buildModal(f, session, hud);
     }
     // The name prompt goes over every other screen, but under the console.
     if (session && this.registry && !this.creating) {

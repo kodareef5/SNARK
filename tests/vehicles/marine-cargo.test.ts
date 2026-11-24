@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { KEY_INV_SLOT, KEY_OPEN_SLOT, KEY_VEHICLE_REFUEL, KEY_VEHICLE_SERVICE } from "../../client/core/ui/inventory.ts";
+import { KEY_INV_SLOT, KEY_OPEN_SLOT, KEY_VEHICLE_REFUEL, KEY_VEHICLE_SERVICE, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { makeHandle } from "../../shared/ids.ts";
 import { RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
@@ -55,7 +55,7 @@ test("F services unclaimed flagship cargo at the dock and in passenger seats, wi
     expect(h.host.vehicles.inspect(c, handle)).toBe(RESULT_OK);
     ents.setPosition(c.ent, x + 30, .55, z); c.ownDirty = true;
     run(150); expect(s.open).toBeNull();
-    app.ui.inventory.close(s);
+    app.ui.screen<InventoryScreen>("inventory").shut(s);
 
     // The second occupant opens their host's inventory while looking away from the hull.
     const helm = new App(h.join("skipper", {}, { manual: true }), h.reg, corePack());
@@ -78,7 +78,7 @@ test("F services unclaimed flagship cargo at the dock and in passenger seats, wi
     h.host.survival.hurt(boat, 50000, 0); run(150);
     const wreck = [...h.host.corpses.bodies.values()].find(b => b.kind === kind)!;
     expect(wreck.rec.pid).not.toBe(boat.pid);
-    app.ui.inventory.close(s); dock(); app.controls.yaw = 0; app.controls.pitch = -.61; run(150);
+    app.ui.screen<InventoryScreen>("inventory").shut(s); dock(); app.controls.yaw = 0; app.controls.pitch = -.61; run(150);
     const wreckHandle = makeHandle(wreck.e, ents.gen[wreck.e]!);
     open();
     expect(c.open).toBe(wreck.rec.pid);

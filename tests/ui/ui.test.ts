@@ -11,7 +11,7 @@ import { bindTextInput } from "../../client/core/ui/events.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_SELF_ARROW, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
-import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
+import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN } from "../../client/core/ui/screens.ts";
 import { KEY_CHOOSE_FILTER, KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE, type ChoosingScreen } from "../../client/core/ui/choosing.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder, type CharacterScreen } from "../../client/core/ui/character.ts";
@@ -125,8 +125,8 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       const ui = newUi();
       ui.registry = reg;
       ui.console.open = consoleOpen;
-      ui.inventory.open = true;
-      ui.inventory.hover = 3;
+      ui.screen<InventoryScreen>("inventory").open = true;
+      ui.screen<InventoryScreen>("inventory").hover = 3;
       for (let i = 0; i < 60; i++) ui.console.print(`line ${i} ` + "word ".repeat(i));
       ui.console.edit("x".repeat(200));
       for (let i = 0; i < 30; i++) ui.chat.print(TEXT_NOTICE + (i % 4), `ada: ${"W".repeat(i * 5)} and so on`, 1000);
@@ -493,19 +493,19 @@ test("the inventory screen turns clicks into commands and never changes anything
   // While it is closed clicks do nothing. I opens it, which frees the mouse, and the keyboard still walks.
   ui.pointer(0, key(0), 0, 0, 0, session);
   expect(ui.key("KeyI", true, false, session)).toBe(true);
-  expect(ui.inventory.open).toBe(true);
+  expect(ui.screen<InventoryScreen>("inventory").open).toBe(true);
   expect(ui.wantsPointerLock).toBe(false);
   expect(ui.captureKeyboard).toBe(false);
   expect(ui.key("KeyW", true, false, session)).toBe(false);
 
   // A click on a stack then on an empty slot sends one move of the whole stack, naming the item the client thinks it is moving.
   ui.pointer(0, key(0), 0, 0, 0, session);
-  expect(ui.inventory.held).toBe(0);
+  expect(ui.screen<InventoryScreen>("inventory").held).toBe(0);
   expect(sent.length).toBe(0);
   ui.pointer(0, key(7), 0, 0, 0, session);
   expect(sent.map((c) => c.op)).toEqual([CMD_MOVE]);
   expect(decode(sent[0]!.bytes)).toEqual([0, 0, 0, 7, 0, stone]);
-  expect(ui.inventory.held).toBe(-1);
+  expect(ui.screen<InventoryScreen>("inventory").held).toBe(-1);
   expect(inv.count[0]).toBe(80); // the mirror waits for the server
 
   // Middle click picks up half. Putting a stack back on its own slot cancels. An empty slot cannot be picked up.
@@ -516,7 +516,7 @@ test("the inventory screen turns clicks into commands and never changes anything
   ui.pointer(0, key(0), 0, 0, 0, session);
   ui.pointer(0, key(20), 0, 0, 0, session);
   expect(sent.length).toBe(2);
-  expect(ui.inventory.held).toBe(-1);
+  expect(ui.screen<InventoryScreen>("inventory").held).toBe(-1);
 
   // Right click uses the item, and does nothing on an empty slot.
   ui.pointer(0, key(5), 0, 0, 2, session);
@@ -529,13 +529,13 @@ test("the inventory screen turns clicks into commands and never changes anything
   ui.pointer(0, key(5), 0, 0, 0, session);
   inv.set(5, 0, 0, 0, 0, 0);
   ui.build(16 / 9, new HudModel(), session);
-  expect(ui.inventory.held).toBe(-1);
+  expect(ui.screen<InventoryScreen>("inventory").held).toBe(-1);
   ui.pointer(2, key(0), 0, 0, 0, session);
   ui.build(16 / 9, new HudModel(), session);
   expect(ui.frame.find(KEY_INV_INFO)!.text).toBe("stone x80  40.0 kg");
   expect(ui.frame.find(key(0) + 1)!.text).toBe("ston");
   expect(ui.key("Escape", true, false, session)).toBe(true);
-  expect(ui.inventory.open).toBe(false);
+  expect(ui.screen<InventoryScreen>("inventory").open).toBe(false);
   expect(ui.wantsPointerLock).toBe(true);
 });
 
@@ -852,7 +852,7 @@ test("the chat box: a key for each channel, Tab to change it, Enter to say the l
   // Every other key is typing, the console's key included, and none of it reaches the body.
   for (const code of ["KeyW", "Backquote", "Slash", "Insert", "KeyI", "Digit1", "Space"]) expect(ui.key(code, true, false, session)).toBe(false);
   expect(ui.console.open).toBe(false);
-  expect(ui.inventory.open).toBe(false);
+  expect(ui.screen<InventoryScreen>("inventory").open).toBe(false);
   ui.input(KEY_CHAT_INPUT, "  hello there  ");
   ui.build(16 / 9, hud, session);
   expect(ui.frame.find(KEY_CHAT_INPUT)!.text).toBe("  hello there  ");
@@ -1112,7 +1112,7 @@ test("a container with more slots than there is room for is turned through a pag
     ui.registry = reg;
     ui.build(aspect, fullHud(), session);
     const f = ui.frame;
-    expect(ui.inventory.open, name).toBe(true);
+    expect(ui.screen<InventoryScreen>("inventory").open, name).toBe(true);
     const check = (): void => {
       for (let i = 0; i < f.count; i++) {
         const n = f.nodes[i]!;
@@ -1129,13 +1129,13 @@ test("a container with more slots than there is room for is turned through a pag
     expect([here, of > 1, f.find(KEY_OPEN_SLOT + 1) !== null]).toEqual([1, true, true]);
     // Back from the first page stays there, and forward stops at the last.
     ui.pointer(0, KEY_OPEN_PAGE, 0, 0, 0, session);
-    expect(ui.inventory.page).toBe(0);
+    expect(ui.screen<InventoryScreen>("inventory").page).toBe(0);
     for (let k = 0; k < of + 2; k++) ui.pointer(0, KEY_OPEN_PAGE + 2, 0, 0, 0, session);
-    expect(ui.inventory.page).toBe(of - 1);
+    expect(ui.screen<InventoryScreen>("inventory").page).toBe(of - 1);
     ui.build(aspect, fullHud(), session);
     check();
     expect(f.find(KEY_OPEN_PAGE + 1)!.text).toBe(`${of} / ${of}`);
-    const size = (ui.inventory as unknown as { pageSize: number }).pageSize;
+    const size = (ui.screen<InventoryScreen>("inventory") as unknown as { pageSize: number }).pageSize;
     expect(per).toBeLessThanOrEqual(size);
     const place = 349 - (of - 1) * size;
     // Slot 349's seven berries show at its place on this page. Moved from there to the survivor's first slot, the command names slot 349.
@@ -1146,9 +1146,9 @@ test("a container with more slots than there is room for is turned through a pag
     expect([sent[0]!.op, r.bits(1), r.varint(), r.bits(1), r.varint()]).toEqual([CMD_MOVE, 1, 349, 0, 0]);
     // A box that fits has no pages.
     Object.assign(session, { open: { name: "storage box", inventory: new Inventory(15) } });
-    ui.inventory.page = 3;
+    ui.screen<InventoryScreen>("inventory").page = 3;
     ui.build(aspect, fullHud(), session);
-    expect([f.find(KEY_OPEN_PAGE), ui.inventory.page]).toEqual([null, 0]);
+    expect([f.find(KEY_OPEN_PAGE), ui.screen<InventoryScreen>("inventory").page]).toEqual([null, 0]);
   }
 });
 
@@ -1199,7 +1199,7 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     }
     // A letter key is typing. It does not reach the body or another screen.
     expect(ui.key("KeyI", true, false, session)).toBe(false);
-    expect(ui.inventory.open).toBe(false);
+    expect(ui.screen<InventoryScreen>("inventory").open).toBe(false);
     ui.input(KEY_NAME_INPUT, "Blue");
     expect(ui.key("Enter", true, false, session)).toBe(true);
     // Closing the inventory told the server the creature was shut, which was the third command sent.

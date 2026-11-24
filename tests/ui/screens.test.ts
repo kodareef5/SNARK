@@ -20,6 +20,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { emptyAirSupport } from "../../shared/sim/air-support.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const hf = buildProvingHeightfield();
@@ -94,6 +95,12 @@ const opens: Record<string, (ui: Ui, session: ClientSession) => { s: Screen; shu
     const s = ui.screen<AirRadio>("air");
     s.open = true;
     return { s, shut: () => s.close() };
+  },
+  inventory: (ui, session) => {
+    session.inventory!.set(0, reg.index.get("core:stone")!, 5, 0, 0, 0);
+    const s = ui.screen<InventoryScreen>("inventory");
+    s.open = true;
+    return { s, shut: () => s.shut(session) };
   },
   choosing: (ui, session) => {
     Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 0, respawnPoints: [{ kind: 0, name: "Beach", x: 10, z: 10, readyAt: 0 }, { kind: 1, name: "Bed", x: 40, z: 30, readyAt: 0 }] });
@@ -170,7 +177,7 @@ test("a screen of no group opens by its hotkey only from play, and the bag opens
   expect(emotes.open).toBe(true);
   drawn(ui, emotes, session);
   ui.key("KeyI", true, false, session);
-  expect([emotes.open, ui.inventory.open]).toEqual([false, true]);
+  expect([emotes.open, ui.screen<InventoryScreen>("inventory").open]).toEqual([false, true]);
   // Z does nothing for the emotes while the inventory has the pointer.
   ui.key("KeyZ", true, false, session);
   expect(emotes.open).toBe(false);

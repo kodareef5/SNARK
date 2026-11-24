@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
-import { KEY_OPEN_TAKE_ALL } from "../../client/core/ui/inventory.ts";
+import { KEY_OPEN_TAKE_ALL, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -155,19 +155,19 @@ if (import.meta.main) {
     run(400);
     must("it is open, and her client knows it is only taken from", session.open?.name === "Blue Arms drop" && session.open.takeOnly === true && d.opened);
     // The bag opens with it.
-    if (!app.ui.inventory.open) tap("KeyI");
+    if (!app.ui.screen<InventoryScreen>("inventory").open) tap("KeyI");
     run(300);
     const held = session.open!.inventory.used();
     shoot("open", `the capsule open beside her bag, holding ${held} stacks, with Take all at its head`);
     must("Take all is offered", app.ui.frame.nodes.some((n) => n.key === KEY_OPEN_TAKE_ALL && n.text === "Take all"));
     const before = { mine: session.inventory!.used(), corrections: session.stats.corrections };
-    app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, session);
+    app.ui.screen<InventoryScreen>("inventory").press(0, KEY_OPEN_TAKE_ALL, 0, session);
     run(900);
     must(`she has all ${held} stacks`, session.inventory!.used() === before.mine + held);
     must("the capsule is gone and its drop is leaving", !h.host.records.byPid.has(d.pid) && d.left > 0 && session.open === null && session.supply.rows[0]!.left === d.left);
     // Before she is moved again, which is a correction of its own.
     must(`the prediction agreed while she opened and emptied it (${session.stats.corrections - before.corrections} corrections)`, session.stats.corrections === before.corrections);
-    if (app.ui.inventory.open) tap("KeyI");
+    if (app.ui.screen<InventoryScreen>("inventory").open) tap("KeyI");
     stand(X - 20, Z - 20, X, Z, 0.5);
     run(1500);
     shoot("leaving", "twenty metres off as it goes: the capsule shut and climbing, its shaft fading");

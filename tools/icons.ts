@@ -22,6 +22,7 @@ import { corePack, namedTextures, rgbaOf } from "./snap/files.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./snap/font.ts";
 import { encodePng } from "./snap/png.ts";
 import { drawUi } from "./snap/ui.ts";
+import type { InventoryScreen } from "../client/core/ui/inventory.ts";
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -172,7 +173,7 @@ if (args.includes("--inventory")) {
   screen("inventory", (ui, hud) => {
     const inv = stocked();
     fillHotbar(hud, inv, 0, reg, pack.palette);
-    ui.inventory.open = true;
+    ui.screen<InventoryScreen>("inventory").open = true;
     return standIn(inv);
   });
 }

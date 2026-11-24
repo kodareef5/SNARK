@@ -27,6 +27,7 @@ import { ROOF_RISE, ROOF_THICK, hullRegistry } from "../fixtures/hulls.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 import type { StructMenu } from "../../client/core/ui/structure.ts";
+import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -463,7 +464,7 @@ test("in the whole client: a box is named with the key that opens it; another tr
   expect(app.ui.screen<StructMenu>("structure").pad).toBe(STRUCT_USE);
   for (const code of ["Digit2", "Digit5", "Digit8", "Digit0"]) app.key(code, true);
   run(300);
-  expect([s.open?.name, s.open?.inventory.total(id("flint")), app.ui.inventory.open, app.ui.screen<StructMenu>("structure").open]).toEqual(["storage box", 12, true, false]);
+  expect([s.open?.name, s.open?.inventory.total(id("flint")), app.ui.screen<InventoryScreen>("inventory").open, app.ui.screen<StructMenu>("structure").open]).toEqual(["storage box", 12, true, false]);
   // The client remembers the PIN that worked and sends it with the next use.
   app.key("Escape", true);
   run(300);

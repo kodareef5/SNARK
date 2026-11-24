@@ -11,7 +11,7 @@ import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_SEND, KEY_CHAT_T
 import { TEXT_GLOBAL, TEXT_MOTD } from "../../shared/net/protocol.ts";
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
 import { KEY_HOTBAR, KEY_MINIMAP, KEY_PROMPT, KEY_VITAL } from "../../client/core/ui/hud.ts";
-import { KEY_INV_ACTION, KEY_INV_HALF, KEY_INV_INFO, KEY_INV_SLOT, KEY_INV_USE } from "../../client/core/ui/inventory.ts";
+import { KEY_INV_ACTION, KEY_INV_HALF, KEY_INV_INFO, KEY_INV_SLOT, KEY_INV_USE, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { KEY_MENU, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
 import { KEY_MAP_IMAGE } from "../../client/core/ui/screens.ts";
@@ -182,9 +182,9 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   app.pointer(0, KEY_TOUCH_BUTTON + T_BAG, 0, 0, 0, 3);
   app.pointer(1, KEY_TOUCH_BUTTON + T_BAG, 0, 0, 0, 3);
   run(50);
-  expect([app.ui.inventory.open, f.find(KEY_ZONE_MOVE), f.find(KEY_TOUCH_BUTTON + T_ATTACK)]).toEqual([true, null, null]);
+  expect([app.ui.screen<InventoryScreen>("inventory").open, f.find(KEY_ZONE_MOVE), f.find(KEY_TOUCH_BUTTON + T_ATTACK)]).toEqual([true, null, null]);
   // Each screen has a way out in the corner that covers none of its own controls, on every phone.
-  for (const [button, open] of [[T_BAG, () => app.ui.inventory.open], [T_CHARACTER, () => app.ui.screen<CharacterScreen>("character").open], [T_MAP, () => app.ui.opened("map")]] as const) for (const [name, w, hh] of PHONES) {
+  for (const [button, open] of [[T_BAG, () => app.ui.screen<InventoryScreen>("inventory").open], [T_CHARACTER, () => app.ui.screen<CharacterScreen>("character").open], [T_MAP, () => app.ui.opened("map")]] as const) for (const [name, w, hh] of PHONES) {
     if (!open()) { app.key(button === T_CHARACTER ? "KeyP" : button === T_MAP ? "KeyM" : "KeyI", true, false, 2); h.run(50, (now) => app.frame(now, w, hh)); }
     h.run(50, (now) => app.frame(now, w, hh));
     const close = f.find(KEY_TOUCH_BUTTON + T_CLOSE)!, where = `${name}, screen ${button}`;
@@ -194,7 +194,7 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   app.pointer(0, KEY_TOUCH_BUTTON + T_CLOSE, 0, 0, 0, 3);
   app.pointer(1, KEY_TOUCH_BUTTON + T_CLOSE, 0, 0, 0, 3);
   run(50);
-  expect([app.ui.opened("map"), app.ui.inventory.open, app.ui.screen<CharacterScreen>("character").open, f.find(KEY_TOUCH_BUTTON + T_CLOSE)]).toEqual([false, false, false, null]);
+  expect([app.ui.opened("map"), app.ui.screen<InventoryScreen>("inventory").open, app.ui.screen<CharacterScreen>("character").open, f.find(KEY_TOUCH_BUTTON + T_CLOSE)]).toEqual([false, false, false, null]);
   expect(f.find(KEY_ZONE_MOVE)).not.toBeNull();
   // The menu: everything held is let go, and the layer is gone until it is resumed.
   app.pointer(0, KEY_ZONE_MOVE, 150, 350, 0, 1);
@@ -246,7 +246,7 @@ test("the bag by touch: a stack picked up is used with Use, and Half puts down h
   press(KEY_HOTBAR);
   press(KEY_TOUCH_BUTTON + T_BAG);
   const f = app.ui.frame, slot = (s: number): number => KEY_INV_SLOT + s * 3;
-  expect([app.ui.inventory.open, f.find(KEY_INV_USE) !== null, f.find(KEY_INV_HALF)!.text, f.find(KEY_INV_INFO)!.text]).toEqual([true, true, "Half", "press a stack to pick it up"]);
+  expect([app.ui.screen<InventoryScreen>("inventory").open, f.find(KEY_INV_USE) !== null, f.find(KEY_INV_HALF)!.text, f.find(KEY_INV_INFO)!.text]).toEqual([true, true, "Half", "press a stack to pick it up"]);
   // The row's six buttons stand side by side, with their words whole.
   const row = [KEY_INV_USE, KEY_INV_HALF, KEY_INV_ACTION, KEY_INV_ACTION + 3].map((k) => f.find(k)!);
   for (let i = 1; i < row.length; i++) expect(row[i]!.x).toBeGreaterThanOrEqual(row[i - 1]!.x + row[i - 1]!.w);
@@ -254,10 +254,10 @@ test("the bag by touch: a stack picked up is used with Use, and Half puts down h
   // Eat a berry: pick the stack up, then Use.
   const berries = app.session.inventory!.item.indexOf(h.reg.index.get("core:berry")!), food = h.host.survival.value(rec, V_FOOD);
   press(slot(berries));
-  expect(app.ui.inventory.held).toBe(berries);
+  expect(app.ui.screen<InventoryScreen>("inventory").held).toBe(berries);
   press(KEY_INV_USE);
   run(300);
-  expect([inv.count[berries], app.ui.inventory.held]).toEqual([4, -1]);
+  expect([inv.count[berries], app.ui.screen<InventoryScreen>("inventory").held]).toEqual([4, -1]);
   expect(h.host.survival.value(rec, V_FOOD)).toBeGreaterThan(food + 1.4);
   // Half of the hundred stones to an empty slot.
   const stones = app.session.inventory!.item.indexOf(h.reg.index.get("core:stone")!), empty = app.session.inventory!.item.indexOf(0, 12);
@@ -270,7 +270,7 @@ test("the bag by touch: a stack picked up is used with Use, and Half puts down h
   expect([inv.count[stones], inv.count[empty]]).toEqual([50, 50]);
   // Nothing picked up, Use and Half do nothing.
   press(KEY_INV_USE); press(KEY_INV_HALF);
-  expect(app.ui.inventory.held).toBe(-1);
+  expect(app.ui.screen<InventoryScreen>("inventory").held).toBe(-1);
   // A mouse's screen has no such buttons, and its hint names its buttons.
   app.key("KeyW", true); app.key("KeyW", false);
   run(60);

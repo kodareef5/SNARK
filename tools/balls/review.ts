@@ -20,6 +20,7 @@ import { corePack, namedTextures, rgbaOf, splitWithTextures } from "../snap/file
 import { encodePng } from "../snap/png.ts";
 import { Rasterizer } from "../snap/raster.ts";
 import { drawUi } from "../snap/ui.ts";
+import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
 
 function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
   if (!(packet.uploads.length + packet.drops.length + packet.assetUploads.length + packet.assetDrops.length + packet.texUploads.length + packet.texDrops.length)) return;
@@ -144,8 +145,8 @@ if (import.meta.main) {
     must(`the inventory's line names it and its charge ("${line}")`, /^soul ball holds Bitey, raptor, level \d+; (30|29) days left$/.test(line));
     tap("KeyI");
     run(300);
-    app.ui.inventory.hoverBox = 0;
-    app.ui.inventory.hover = inv.hotbar;
+    app.ui.screen<InventoryScreen>("inventory").hoverBox = 0;
+    app.ui.screen<InventoryScreen>("inventory").hover = inv.hotbar;
     run(100);
     shoot("inventory", "the bag open, the pointer on the full ball: the line at the foot says what it holds and the charge it has left");
     tap("KeyI");
