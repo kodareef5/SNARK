@@ -679,7 +679,7 @@ const DOOR_ROWS = [10, 3, 7, 0, 4] as const;
  * on the back; strap hinges on knuckles, a latch and a pull on the front. The front is -y, the side it opens toward,
  * and it hangs on its left edge. Open, it is the same door a quarter turn round its hinge.
  */
-function door(form: FormDef, level: number): Shape | null {
+function door(form: FormDef, level: number, pair = false): Shape | null {
   if (level > 3) return null;
   const p = new Shape();
   const [u0, v0, u1, v1] = outlineBox(form);
@@ -694,11 +694,14 @@ function door(form: FormDef, level: number): Shape | null {
     return done();
   }
   const rng = new PyRandom(700);
-  if (level < 2) {
+  // From 19 m a pair's boards are one panel each leaf, as a door's are from 60 m.
+  if (level < (pair ? 1 : 2)) {
     const ws = widths(rng, wide, DOOR_ROWS.length, 0.16);
     const edges = [-hw];
     for (const w of ws) edges.push(edges[edges.length - 1]! + w);
-    const zs = level === 0 ? [0, 1, 2, 3, 4].map((i) => -hh + (hh * 2 * i) / 4) : [-hh, hh];
+    // One of a pair has a ring fewer up each board: the two are one piece, and must cost no more than one may.
+    const lengths = pair ? 3 : 4;
+    const zs = level === 0 ? Array.from({ length: lengths + 1 }, (_, i) => -hh + (hh * 2 * i) / lengths) : [-hh, hh];
     // Each inner edge wanders, the same for the boards either side of it, with a gap between.
     const still = zs.map(() => 0);
     const wander = [still, ...edges.slice(1, -1).map(() => zs.map(() => (level === 0 ? rng.uniform(-0.007, 0.007) : 0))), still];
@@ -756,7 +759,8 @@ function door(form: FormDef, level: number): Shape | null {
   if (level < 2) {
     // A latch bar over a keeper, and a D-shaped pull below it.
     const [zl, xl] = [0.02, 0.38];
-    p.box([xl, -0.046, zl - 0.012], [hw + 0.012, front + 0.004, zl + 0.012], iron("x", "strap", xl));
+    // The latch bar runs past a single door's edge into its keeper, and stops short of a pair's meeting edge.
+    p.box([xl, -0.046, zl - 0.012], [hw + (pair ? -0.004 : 0.012), front + 0.004, zl + 0.012], iron("x", "strap", xl));
     p.box([xl - 0.03, -0.044, zl - 0.04], [xl + 0.01, front + 0.004, zl + 0.04], iron("x", "plate", xl - 0.03));
     p.box([0.47, -0.042, zp - 0.12], [0.53, front + 0.004, zp + 0.12], iron("x", "plate", 0.47));
     for (const dz of [-0.08, 0.08]) p.box([0.488, -0.075, zp + dz - 0.011], [0.512, -0.04, zp + dz + 0.011], iron("y", "strap", -0.075));
@@ -765,6 +769,26 @@ function door(form: FormDef, level: number): Shape | null {
   }
   if (level === 0) p.ring([0.5, 0.025, zp - 0.03], 0.045, 0.008, iron("x", "strap", 0.4));
   return done();
+}
+
+/**
+ * A double door: the door's own leaf hung on the doorway's left jamb, and the same leaf in a mirror on its right. Open,
+ * each is that leaf a quarter turn round on its own jamb, as an open door is: the row's `pair` is the mirror.
+ */
+function doubleDoor(form: FormDef, level: number): Shape | null {
+  const [u0, v0, u1, v1] = outlineBox(form);
+  const open = form.plane === "across";
+  const wide = open ? u1 - u0 : (u1 - u0) / 2;
+  // One leaf as a door's row has it: about its own middle shut, and open by where its thickness stands from the pair's middle.
+  const row: FormDef = { ...form, outline: [[-wide / 2, v0], [wide / 2, v0], [wide / 2, v1], [-wide / 2, v1]], ...(open ? { off: (form.off ?? 0) - form.at[0] } : {}) };
+  const leaf = (): Shape | null => {
+    const p = door(row, level, true);
+    return p && !open ? place(p, (q) => [q[0] - wide / 2, q[1], q[2]]) : p;
+  };
+  const [left, right] = [leaf(), leaf()];
+  if (!left || !right) return null;
+  left.faces.push(...mirror(right, 0).faces);
+  return left;
 }
 
 /**
@@ -1415,10 +1439,19 @@ function hatch(form: FormDef, level: number): Shape | null {
   if (level > 3) return null;
   const p = new Shape();
   const [u0, v0, u1, v1] = outlineBox(form);
-  const [x0, x1, y0, y1] = [u0 - form.at[0] + HATCH_CLEAR, u1 - form.at[0] - HATCH_CLEAR, -(v1 - form.at[2]) + HATCH_CLEAR, -(v0 - form.at[2]) - HATCH_CLEAR];
-  const top = form.thick / 2 - 0.004;
+  // The open row is the leaf hanging: its outline is the leaf's thickness along the hinge side, and its `thick` the leaf's length.
+  const open = v1 - v0 < form.thick;
+  const [thick, far] = open ? [v1 - v0, v0 + form.thick] : [form.thick, v1];
+  const [x0, x1, y0, y1] = [u0 - form.at[0] + HATCH_CLEAR, u1 - form.at[0] - HATCH_CLEAR, -(far - form.at[2]) + HATCH_CLEAR, -(v0 - form.at[2]) - HATCH_CLEAR];
+  const top = thick / 2 - 0.004;
   const bottom = top - 0.045;
-  if (level === 3) return p.box([x0, y0, bottom], [x1, y1, top], tone("deck"));
+  // It turns down on the line half its thickness in from its hinge side, at the middle of its thickness: the one line the shut row's box turns into the open one's on.
+  const hinge = -(v0 - form.at[2]) - thick / 2;
+  const done = (): Shape => (open ? p.move((q) => [q[0], hinge - q[2], q[1] - hinge]) : p);
+  if (level === 3) {
+    p.box([x0, y0, bottom], [x1, y1, top], tone("deck"));
+    return done();
+  }
   const rng = new PyRandom(1400);
   const count = 6;
   if (level < 2) {
@@ -1439,8 +1472,8 @@ function hatch(form: FormDef, level: number): Shape | null {
       p.loft(rings, (_, i, k) => ["deck", uv(rings[i]![k]!)], (i, k) => ["deck", [0.1 + (rings[i]![k]![2] - top) / 3, uv(rings[i]![k]!)[1]]]);
     }
   } else p.box([x0, y0, bottom], [x1, y1, top], custom("deck", (_, q) => [(q[1] - y0) / 3, (q[0] - x0) / 3]));
-  // Two ledges under the boards, across them.
-  const rails = [y0 + 0.3, y1 - 0.3] as const;
+  // Two ledges under the boards, across them: far enough in that the open leaf's hang clear under its frame.
+  const rails = [y0 + 0.33, y1 - 0.33] as const;
   rails.forEach((y, i) => member(p, level, [x0 + 0.03, y, bottom - 0.02], [x1 - 0.03, y, bottom - 0.02], 0.16, 0.04, Z, [3 + 8 * i, 4 + 8 * i, 3 + 8 * i, 4 + 8 * i], null, 1410 + i, ROUGH * 0.4));
   if (level < 2) {
     // Strap hinges from the hinge side, tapering to a spade tip, each on a knuckle at the leaf's edge.
@@ -1460,7 +1493,7 @@ function hatch(form: FormDef, level: number): Shape | null {
       place(p, (q) => [q[0], py + 0.02 - q[2], top + 0.011 + q[1]], from);
     }
   }
-  return p;
+  return done();
 }
 
 /**
@@ -1751,15 +1784,35 @@ function gateway(form: FormDef, level: number): Shape | null {
  */
 function gate(form: FormDef, level: number): Shape | null {
   if (level > 3) return null;
-  const f = frameOf(form);
   const p = new Shape();
+  const [u0, v0, u1, v1] = outlineBox(form);
+  // The open row is one leaf across the edge, with its pair: the gate is two of its width.
+  const open = form.plane === "across";
+  const f = { hx: open ? u1 - u0 : (u1 - u0) / 2, foot: v0 - form.at[1], top: v1 - form.at[1] };
   const half = form.thick / 2;
-  if (level === 3) return p.box([-f.hx, -half, f.foot], [f.hx, half, f.top], tone("boards"));
+  /** Which leaf the faces from `from` on are of: each turns on its own jamb when the gate stands open. */
+  const hung: [from: number, to: number, hinge: number][] = [];
+  const done = (): Shape => {
+    if (!open) return p;
+    // A quarter turn about the line the shut row's box turns into the open one's on, as an open door's; the other leaf in a mirror.
+    const off = (form.off ?? 0) - form.at[0];
+    for (const [from, to, hinge] of hung) for (const face of p.faces.slice(from, to)) face.points = face.points.map((q): Vec => (hinge < 0 ? [q[1] + off, -q[0] - f.hx, q[2]] : [-q[1] - off, q[0] - f.hx, q[2]]));
+    return p;
+  };
+  if (level === 3) {
+    if (!open) return p.box([-f.hx, -half, f.foot], [f.hx, half, f.top], tone("boards"));
+    for (const s of [-1, 1]) {
+      hung.push([p.faces.length, p.faces.length + 6, s]);
+      p.box([Math.min(0, s * f.hx), -half, f.foot], [Math.max(0, s * f.hx), half, f.top], tone("boards"));
+    }
+    return done();
+  }
   const [front, back] = [-half, -half + 0.055];
   const [foot, top] = [f.foot + 0.02, f.top - 0.015];
   const leaves = gateLeaves(f.hx - 0.012, foot, top, 2, 0.25, 3, 0.45);
   const rng = new PyRandom(2200);
   for (const [n, leaf] of leaves.entries()) {
+    const first = p.faces.length;
     if (level === 0) {
       leaf.boards.forEach(([x0, x1], j) => {
         const row = DOOR_ROWS[(j + 2 * n) % DOOR_ROWS.length]!;
@@ -1789,14 +1842,14 @@ function gate(form: FormDef, level: number): Shape | null {
       const [ta, tb] = [0.22 / l, 1 - 0.22 / l];
       spar(p, level, [a[0] + dx * ta, back + 0.035, a[1] + dz * ta], [a[0] + dx * tb, back + 0.035, a[1] + dz * tb], 0.16, 0.07, Y, [1 + 5 * i, 1 + 5 * i, 2 + 5 * i, 2 + 5 * i], 2230 + 2 * n + i, { segs: 1, rough: ROUGH * 0.5 });
     });
-  }
-  if (level < 2) {
-    // The bar across the back, in an iron bracket on each leaf.
+    // The iron bracket the bar lies in.
     const z = foot + 1.25;
-    spar(p, level, [-1.6, back + 0.08 + 0.045, z], [1.6, back + 0.08 + 0.045, z], 0.09, 0.15, Z, [8, 9, 8, 9], 2240, { segs: 1, rough: ROUGH * 0.5, end: [2, 0] });
-    if (level === 0) for (const x of [-1.1, 1.1]) p.box([x - 0.04, back + 0.07, z - 0.1], [x + 0.04, back + 0.08 + 0.097, z + 0.085], iron("z", "plate", z - 0.1));
+    if (level === 0) p.box([leaf.hinge * 1.1 - 0.04, back + 0.07, z - 0.1], [leaf.hinge * 1.1 + 0.04, back + 0.08 + 0.097, z + 0.085], iron("z", "plate", z - 0.1));
+    hung.push([first, p.faces.length, leaf.hinge]);
   }
-  return p;
+  // The bar across the back of the shut gate. It is lifted out to open it.
+  if (level < 2 && !open) spar(p, level, [-1.6, back + 0.08 + 0.045, foot + 1.25], [1.6, back + 0.08 + 0.045, foot + 1.25], 0.09, 0.15, Z, [8, 9, 8, 9], 2240, { segs: 1, rough: ROUGH * 0.5, end: [2, 0] });
+  return done();
 }
 
 // Trims: what the client draws where pieces meet (client/core/render/trims.ts). A joint stands on its corner from the
@@ -1947,12 +2000,16 @@ const PLANNED: Readonly<Record<string, (form: FormDef, level: number, strips: bo
   fence_foundation: footing,
   gateway,
   gate,
+  gate_open: gate,
+  double_door: doubleDoor,
+  double_door_open: doubleDoor,
   ladder,
   ramp,
   triangle_foundation: triFoundation,
   triangle_ceiling: triCeiling,
   trapdoor_frame: hatchFrame,
   trapdoor: hatch,
+  trapdoor_open: hatch,
   quarter_foundation: foundation,
   corner_pillar: pillar,
   thin_pillar: pillar,

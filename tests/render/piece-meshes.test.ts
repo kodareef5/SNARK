@@ -2,7 +2,7 @@
 // own numbers, so it must lie in the form's collider, carry the ring it yields at, and keep to the piece budget.
 
 import { expect, test } from "bun:test";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS, FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES, measureSurface } from "../../tools/art/check.ts";
 import { Carved, Shape, clip, dot, planeAt, slice, type Vec } from "../../tools/pack/pieces/kit.ts";
 import { TEXTURED, colliderBox, levelsOf, planOf, yieldPlanes, yieldSlants } from "../../tools/pack/pieces/lod.ts";
@@ -453,6 +453,40 @@ test("every new wood level is closed, looks outward and costs no more than a mad
   }
   const again = tierShapes(WOOD, PLANNED);
   expect(meshes.map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(again.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
+});
+
+/** The rows past the 25: the leaves stood open, and the double door. What each costs in wood, as the planned forms' table has theirs. */
+const WOOD_LEAVES_MOST: Record<string, readonly number[]> = {
+  trapdoor_open: [420, 204, 36, 12],
+  double_door: [1512, 440, 96, 24],
+  double_door_open: [1512, 440, 96, 24],
+  gate_open: [1184, 288, 96, 24],
+};
+
+test("wood's open leaves and its double door are closed, within their rows' boxes and a leaf's margin, and under budget", () => {
+  const rows: Record<string, FormDef> = Object.fromEntries(Object.keys(WOOD_LEAVES_MOST).map((name) => [name, (ALL_FORMS as Record<string, FormDef>)[name]!]));
+  for (const mesh of tierShapes(WOOD, rows)) {
+    const name = mesh.id.slice(5, -5);
+    const most = WOOD_LEAVES_MOST[name]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(Math.min(most[level]!, MADE_PIECE_TRIANGLES[level]![1]));
+    });
+    // Each leaf of a pair in its own box: the row's box holds both and the air between them.
+    const box = colliderBox(rows[name]!);
+    for (const shape of levelsOf(WOOD, name, rows[name]!)) for (const p of shape.corners()) {
+      const at = [p[0], p[2], -p[1]];
+      for (let a = 0; a < 3; a++) expect(Math.max(box[a]! - at[a]!, at[a]! - box[a + 3]!), `${name} along ${"xyz"[a]}`).toBeLessThanOrEqual(PROUD_LEAF);
+      const pair = rows[name]!.pair;
+      if (pair !== undefined) expect(Math.abs(at[0]!), `${name}: between its leaves`).toBeGreaterThanOrEqual(box[3]! - rows[name]!.thick - PROUD_LEAF);
+    }
+  }
+  // An open hatch is the shut one and a gate's open leaves are its shut ones, less the bar that is lifted out.
+  const count = (name: string): number => levelsOf(WOOD, name, (ALL_FORMS as Record<string, FormDef>)[name]!)[0]!.triangles;
+  expect([count("trapdoor_open"), count("double_door_open")]).toEqual([count("trapdoor"), count("double_door")]);
+  expect(count("gate") - count("gate_open")).toBe(28);
 });
 
 test("a sloped wall's two hands are each other in a mirror, point for point", () => {

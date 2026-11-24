@@ -3,9 +3,9 @@
 // Each piece is set down by its collider's origin and a turn, as a base's lattice would set it.
 
 import { expect, test } from "bun:test";
-import { ALL_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS, formBoxes } from "../../content/building/forms.ts";
 import type { FormDef } from "../../shared/world/lattice/forms.ts";
-import { TEXTURED, levelsOf } from "../../tools/pack/pieces/lod.ts";
+import { TEXTURED, levelsOf, type TierRecipe } from "../../tools/pack/pieces/lod.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
 
 const ALL: Record<string, FormDef> = ALL_FORMS;
@@ -220,6 +220,70 @@ test("a wood roof's sides are as deep as its slab: a gable, the wall under its e
     expect(met.eave, `level ${level}: over the eave wall`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
     expect(met.high, `level ${level}: at a wall past the high side`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
     expect(met.through, `level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+/** Metres a leaf's iron may stand in its frame: a hinge's knuckle is on the jamb's own face, and its pin in the jamb as a pintle is. */
+const HINGE_IN = 0.04;
+
+/**
+ * An open leaf against its shut one and its frame, in any tier. The line a leaf turns on is the one line its shut
+ * row's box turns a quarter on to become its open row's: for a pair, each leaf on its own. The most any corner of the
+ * open mesh lies from the nearest corner of the shut mesh so turned, and the deepest any lies inside the frame's boxes.
+ */
+function leafTurned(recipe: TierRecipe, shut: string, open: string, frame: string, level: number): { off: number; inFrame: number; extra: number } {
+  const [s, o, host] = [ALL[shut]!, ALL[open]!, ALL[frame]!];
+  // A level's corners in its slot's frame: x along, y up, z out.
+  const corners = (name: string, form: FormDef): number[][] => {
+    const shapes = levelsOf(recipe, name, form);
+    return shapes[Math.min(level, shapes.length - 1)]!.corners().map((p) => [p[0] + form.at[0], p[2] + form.at[1], -p[1] + form.at[2]]);
+  };
+  const turned: number[][] = [];
+  if (s.plane === "flat") {
+    // A hatch: about the line along X half its thickness in from the open row's side and half its thickness down.
+    const [c, d] = [-s.thick / 2, o.outline[2]![1] + s.thick / 2];
+    for (const p of corners(shut, s)) turned.push([p[0]!, c - (p[2]! - d), d + (p[1]! - c)]);
+  } else {
+    // A door: about the upright line the row's numbers give, at its hung edge. A pair's other leaf turns the other way about that line in the pair's mirror.
+    const edge = Math.min(...s.outline.map((q) => q[0]));
+    const [a, b] = [((o.off ?? 0) + edge) / 2, ((o.off ?? 0) - edge) / 2];
+    for (const p of corners(shut, s)) {
+      if (o.pair === undefined || p[0]! <= o.pair + 1e-9) turned.push([a + b - p[2]!, p[1]!, b + p[0]! - a]);
+      if (o.pair !== undefined && p[0]! >= o.pair - 1e-9) turned.push([2 * o.pair - (a + b - p[2]!), p[1]!, b + (2 * o.pair - p[0]!) - a]);
+    }
+  }
+  const key = (p: readonly number[], dx = 0, dy = 0, dz = 0): string => `${Math.round(p[0]! * 1e3) + dx},${Math.round(p[1]! * 1e3) + dy},${Math.round(p[2]! * 1e3) + dz}`;
+  const cells = new Map<string, number[][]>();
+  for (const p of turned) cells.set(key(p), [...(cells.get(key(p)) ?? []), p]);
+  const boxes = formBoxes(host).map((box) => [0, 1, 2].map((k) => [box.at[k]! + host.at[k]! - box.half[k]!, box.at[k]! + host.at[k]! + box.half[k]!] as const));
+  const out = { off: 0, inFrame: 0, extra: 0 };
+  const mine = corners(open, o);
+  out.extra = mine.length - turned.length;
+  for (const p of mine) {
+    let near = Infinity;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (const q of cells.get(key(p, dx, dy, dz)) ?? []) near = Math.min(near, Math.hypot(p[0]! - q[0]!, p[1]! - q[1]!, p[2]! - q[2]!));
+    out.off = Math.max(out.off, near);
+    for (const box of boxes) out.inFrame = Math.max(out.inFrame, Math.min(...box.map(([lo, hi], k) => Math.min(p[k]! - lo, hi - p[k]!))));
+  }
+  return out;
+}
+
+/** Each open leaf with its shut one and the frame it hangs in. */
+const LEAVES: readonly (readonly [shut: string, open: string, frame: string])[] = [["door", "door_open", "doorframe"], ["trapdoor", "trapdoor_open", "trapdoor_frame"], ["double_door", "double_door_open", "double_doorway"], ["gate", "gate_open", "gateway"]];
+
+test("an open wood leaf is its shut one turned a quarter on its hinge line, and stands clear of its frame", () => {
+  const said: string[] = [];
+  for (const [shut, open, frame] of LEAVES) {
+    for (let level = 0; level < 4; level++) {
+      const met = leafTurned(WOOD, shut, open, frame, level);
+      said.push(`wood ${open} level ${level}: ${(met.off * 1000).toFixed(3)} mm from its shut leaf turned, ${(Math.max(0, met.inFrame) * 1000).toFixed(1)} mm in its frame`);
+      // The same boards and iron, to a millimetre: only a gate's bar, which is lifted out, is not on the open one.
+      // Past the pictures a shut gate is one box and an open one two, which have corners where the leaves part.
+      if (level < TEXTURED) expect(met.off, `${open} level ${level}: from its shut leaf turned on the hinge line`).toBeLessThanOrEqual(0.001);
+      if (level < TEXTURED) expect(met.extra, `${open} level ${level}: nothing the shut leaf has not`).toBeLessThanOrEqual(0);
+      expect(met.inFrame, `${open} level ${level}: in its frame`).toBeLessThanOrEqual(HINGE_IN);
+    }
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
