@@ -150,7 +150,6 @@ export const DOWNLOAD_ROW = 10;
 
 export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Damage numbers", value: (s) => (s.damageNumbers ? "on" : "off"), step: (s) => void (s.damageNumbers = !s.damageNumbers) },
-  { label: "View kick", value: (s) => (s.viewKick ? "on" : "off"), step: (s) => void (s.viewKick = !s.viewKick) },
   range("Mouse sensitivity","sensitivity",SENSITIVITY_MIN,SENSITIVITY_MAX,.1),
   range("Field of view","fov",FOV_MIN,FOV_MAX,5),
   volume("Voice volume","voiceVolume"),
@@ -184,6 +183,8 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   // Shown in the Input group (ui/settings.ts SETTING_GROUPS) after the mouse's own.
   range("Zoom sensitivity","zoomSensitivity",ZOOM_SENSITIVITY_MIN,ZOOM_SENSITIVITY_MAX,.05),
   { label: "Debug bar", value: (s) => (s.debug ? "on" : "off"), step: (s) => void (s.debug = !s.debug) },
+  // Shown in the Input group, after the zoom's.
+  { label: "View kick", value: (s) => (s.viewKick ? "on" : "off"), step: (s) => void (s.viewKick = !s.viewKick) },
 ];
 
 /** `/debug` in chat or the console: the debug bar on or off. Returns what the console says. */
