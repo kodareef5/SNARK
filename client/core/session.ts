@@ -13,6 +13,8 @@ import { handleIndex, makeHandle } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
 import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
+import { AirCamera } from "./air-camera.ts";
+import { airFeedView, type AirFeedView } from "./air-feed.ts";
 import { VehiclePrediction } from "./vehicle-prediction.ts";
 import { VehicleCorrection } from "./vehicle-correction.ts";
 import { newerCorpseMotion, readCorpseMotion, type CorpseMotion } from "../../shared/net/corpse.ts";
@@ -101,6 +103,8 @@ import {
   S_TUNING,
   S_MOTION,
   S_SUPPLY,
+  S_AIR_SUPPORT,
+  CMD_AIR_SUPPORT,
   S_WELCOME,
   REJECT_TRAVEL,
   TICKET_BYTES,
@@ -113,12 +117,13 @@ import {
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
+import { AIR_ACTION, emptyAirSupport, readAirSupport, type AirSupportView } from "../../shared/sim/air-support.ts";
 import { readSupply, type SupplyList } from "../../shared/sim/supply.ts";
 import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { BTN_JUMP, BTN_SECONDARY, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_AIR_REMOTE, BTN_JUMP, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { blendDoors } from "../../shared/sim/vehicle-panels.ts";
@@ -451,6 +456,42 @@ export class ClientSession {
   /** The supply drops live on the map as the server last told them (S_SUPPLY), whole, and a count raised each time it does. */
   supply: SupplyList = { tiers: [], classes: [], rows: [] };
   supplyVersion = 0;
+  airSupport = emptyAirSupport();
+  readonly airCamera = Object.assign(new AirCamera(), { alphaOf: () => this.alpha });
+  private readonly feedView = airFeedView();
+
+  /**
+   * The drone this page flies, as its feed shows it (air-feed.ts): its bay, fuel and signal, its camera and its speed.
+   * The signal is the server's, falling with the distance from the rack it flew from.
+   */
+  get airFeed(): AirFeedView {
+    const v = this.feedView, air = this.airSupport, pose = this.airCamera.sample(this.renderClock);
+    let drone = null;
+    for (let i = 0; pose && air.flight && i < air.drones.length; i++) if (air.drones[i]!.id === air.flight) drone = air.drones[i]!;
+    v.active = pose !== null && drone !== null;
+    if (!pose || !drone) return v;
+    v.bay = drone.bay;
+    v.fuel = drone.fuel;
+    // The server counts the link from the drone's rack (AirDroneRange).
+    v.signal = drone.signal;
+    v.x = pose.x; v.y = pose.y; v.z = pose.z; v.yaw = pose.yaw; v.pitch = pose.pitch;
+    v.speed = Math.hypot(pose.vx, pose.vz);
+    return v;
+  }
+
+  airCommand(action: number, target = 0, bay = 0, ground?: { x: number; z: number; yaw: number }): number {
+    if (action === AIR_ACTION.ground && !ground) return 0;
+    return this.command(CMD_AIR_SUPPORT, (w) => {
+      w.u8(action);
+      w.u32(target);
+      w.u8(bay);
+      if (action === AIR_ACTION.ground && ground) {
+        w.f32(ground.x);
+        w.f32(ground.z);
+        w.f32(ground.yaw);
+      }
+    });
+  }
   /** Every moving static's state as the server last told it (S_MOTION), by ref: all after a welcome, then each as it is thrown. */
   readonly motions = new Map<number, MotionState>();
   /** Sparse exact launch/resume state, keyed by generation-qualified entity handle. Kept across packet/snapshot ordering. */
@@ -868,6 +909,10 @@ export class ClientSession {
       if (this.smoothX * this.smoothX + this.smoothY * this.smoothY + this.smoothZ * this.smoothZ < 1e-8) this.smoothX = this.smoothY = this.smoothZ = 0;
     }
 
+    if (this.airCamera.id) {
+      moveX = moveZ = 0;
+      buttons = BTN_AIR_REMOTE | (buttons & BTN_SPRINT);
+    }
     const qx = Math.round(clamp1(moveX) * 127);
     const qz = Math.round(clamp1(moveZ) * 127);
     const qyaw = Math.round((yaw / TAU) * YAW_UNITS) & 0xffff;
@@ -945,7 +990,7 @@ export class ClientSession {
   private holdGround(): void {
     this.recenterNodes();
     // Knocked down, the body lies where the server's ragdoll has it, and is predicted again once it gets up.
-    const held = this.groundHeld() && (this.own.mflags & MF_DOWN) === 0;
+    const held = !this.airCamera.id && this.groundHeld() && (this.own.mflags & MF_DOWN) === 0;
     if (held && !this.predicting && this.latestSnapshot > 0 && this.latestSnapshot < this.simTick) {
       this.predicting = true;
       this.told.copy(this.own);
@@ -969,6 +1014,15 @@ export class ClientSession {
       if (d < best && view.id[i] !== own && view.id[i] !== this.driving) [best, near] = [d, `${this.registry.defs[view.kind[i]!]?.id ?? view.kind[i]} ${d.toFixed(1)} m`];
     }
     return { whole: this.whole[chunk] === 1, rows: world.structs.chunks[chunk]?.live ?? 0, statics: this.staticKinds !== null, near };
+  }
+
+  /** The server's air support view: the drone camera sets itself right from it. */
+  receiveAir(view: AirSupportView): void {
+    this.airCamera.receive(view, this.inputs, this.simTick);
+  }
+
+  get mapFocus(): ClientSession["place"] {
+    return this.airCamera.sample(this.renderClock) ?? this.place;
   }
 
   private groundHeld(): boolean {
@@ -1169,6 +1223,13 @@ export class ClientSession {
   private step(t: number, pilot = true): void {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
+    const remote = (inp.buttons[i]! & BTN_AIR_REMOTE) !== 0;
+    if (remote) {
+      this.airCamera.step(t, inp.yaw[i]!, inp.pitch[i]!, inp.buttons[i]!);
+      this.bodies[t & (HISTORY - 1)]!.copy(this.own);
+      this.bodyTick[t & (HISTORY - 1)] = t;
+      return;
+    }
     const buttons = inp.buttons[i]!;
     // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
     const vehicle = this.registry.vehicle[this.own.kind];
@@ -1177,7 +1238,9 @@ export class ClientSession {
     if (vehicle) {
       this.contactBefore.copy(this.own);
       this.vehicleTrees?.begin(t, this.treeDriver);
-      stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined);
+      if (!this.vehicleContacts?.stepTowing(t, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, pilot, this.vehicleTrees ?? undefined)) {
+        stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined);
+      }
       this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
     }
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
@@ -1423,6 +1486,17 @@ export class ClientSession {
       },
     });
     messages.add({
+      kind: S_AIR_SUPPORT,
+      read(s, r) {
+        const view = readAirSupport(r);
+        if (view && view.tick >= s.airSupport.tick) {
+          if (s.airSupport.flight !== view.flight) s.tapped = 0;
+          s.airSupport = view;
+          s.receiveAir(view);
+        }
+      },
+    });
+    messages.add({
       kind: S_SUPPLY,
       read(s, r) {
         const told = readSupply(r);
@@ -1542,7 +1616,8 @@ export class ClientSession {
     const world = this.world;
     if (!field || !world) return;
     const { dims, hf } = world;
-    const chunk = chunkAt(dims, this.own.x, this.own.z);
+    const focus = this.mapFocus ?? this.own;
+    const chunk = chunkAt(dims, focus.x, focus.z);
     if (chunk === this.nodeChunk && hf.changes.length === this.nodeSeen) return;
     [this.nodeChunk, this.nodeSeen] = [chunk, hf.changes.length];
     const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;

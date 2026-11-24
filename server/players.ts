@@ -26,8 +26,9 @@ import {
   readInputs,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE } from "../shared/net/transport.ts";
-import { BTN_JUMP, BTN_SECONDARY, Body, stepBody, stepOut } from "../shared/sim/character.ts";
+import { BTN_AIR_REMOTE, BTN_JUMP, BTN_SECONDARY, Body, stepBody, stepOut } from "../shared/sim/character.ts";
 import { stepVehicleBody } from "../shared/sim/vehicle-body.ts";
+import type { VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { cancelCreatureAction, creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../shared/sim/weapon.ts";
 import { stepAim } from "../shared/sim/aim.ts";
@@ -82,6 +83,15 @@ export interface PlayersContext {
   readonly replication: { askView(c: Client, r: BitReader): number; takeStatics(c: Client): number };
 }
 
+/** A camera a session looks through from away from its body: a drone it flies (server/air-flight.ts). */
+export interface RemoteEye {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly pitch: number;
+}
+
 export class Players {
   private readonly world: ServerWorld;
   private readonly clients: readonly (Client | null)[];
@@ -110,6 +120,12 @@ export class Players {
   readonly onVehicleStep = new Signal<[e: number]>();
   /** The host adds resource contacts around this same shared vehicle step. */
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
+  /** Steps a tractor with the trailer on its fifth wheel (server/hitches.ts); false leaves the single step. */
+  pairStep: ((e: number, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, pilot: boolean) => boolean) | null = null;
+  /** A remote operator's input belongs to its aircraft while the survivor stays in place. */
+  remoteInput: ((c: Client, tick: number) => boolean) | null = null;
+  /** Where a remote operator's camera is while it flies, radians for its turn and tilt: what its look and its marks start from. */
+  remoteEye: ((c: Client) => RemoteEye | null) | null = null;
   /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
   readonly feet: ServerFootContacts;
   /** Bodies a walker cannot walk through (server/blocking.ts). */
@@ -198,6 +214,13 @@ export class Players {
       c.stepped[T & (INPUT_WINDOW - 1)] = c.heldButtons;
       c.steppedAt[T & (INPUT_WINDOW - 1)] = T;
       c.lateFrom = T - TICK_RATE;
+      const remote = this.remoteInput?.(c, T) || (c.heldButtons & BTN_AIR_REMOTE) !== 0;
+      if (remote) {
+        c.heldX = c.heldZ = c.heldButtons = c.carried = 0;
+        c.heldYaw = c.body.yaw;
+        c.heldPitch = c.ent >= 0 ? ents.pitch[c.ent]! : 0;
+        c.heldFineYaw = c.heldFinePitch = 0;
+      }
       c.edges();
       if (c.ent >= 0 && ents.seatSlot[c.ent] === IMPALE_SLOT && ents.seat[c.ent] !== 0) {
         c.heldButtons = c.pressed = 0;
@@ -220,8 +243,9 @@ export class Players {
         // Who sits in a seat of a car or a saddle and does not steer it is held there; a carried body has no seat slot.
         const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 && ents.gen[parent] === ents.seatGen[e];
         if (vehicle) {
-          const quiet = c.closed || T - c.inputAt > VEHICLE_HOLD_TICKS;
-          this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
+          const quiet = remote || c.closed || T - c.inputAt > VEHICLE_HOLD_TICKS;
+          const moveX = quiet ? 0 : c.heldX, moveZ = quiet ? 0 : c.heldZ, buttons = quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons;
+          if (!this.pairStep?.(e, b, moveX, moveZ, buttons, vehicle, !quiet)) this.vehicleStep(world, b, moveX, moveZ, buttons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
           this.footBefore.copy(b);
@@ -244,7 +268,7 @@ export class Players {
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.
           // Both hands are on an open glider, which stows what they held as a cabin does.
-          const stowed = b.glide !== 0 || (passenger && (ents.seatSlot[e] === IMPALE_SLOT || world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false));
+          const stowed = remote || b.glide !== 0 || (passenger && (ents.seatSlot[e] === IMPALE_SLOT || world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false));
           if (stowed) { b.act = ACT_NONE; b.actTicks = 0; }
           // Hits are resolved later, once every body has moved.
           stepAction(b, stowed ? 0 : c.heldButtons, stowed ? 0 : c.pressed, stowed ? FISTS : world.reg.weapon[b.held] ?? FISTS);

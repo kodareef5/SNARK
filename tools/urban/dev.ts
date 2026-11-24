@@ -1,3 +1,4 @@
+import { writeAirYard } from "./air-yard.ts";
 import { writeVehicleYard } from "./tanker-yard.ts";
 // The ordinary game with a local test drive near spawn. --fleet parks the road fleet in their own save.
 import { existsSync, mkdirSync } from "node:fs";
@@ -43,12 +44,14 @@ if(import.meta.main){
   else if (!existsSync(resolve(clientDir, "assets/manifest.json"))) throw new Error("Run without --built to prepare the client.");
   const folder=value("--config")??DEV_CONFIG,{rules,report}=loadConfigFolder(folder,args);
   for(const line of formatReport(report,rules))console.log(line);
+  const air = args.includes("--air-support");
   const layout = cars ? "cars" : freight ? "freight" : tanker ? "tanker" : undefined;
-  const yard = cars ? "street-yard" : freight ? "freight-yard" : tanker ? "tanker-yard" : fleet ? "road-fleet" : "urban-v1";
+  const yard = air ? "air-freight" : cars ? "street-yard" : freight ? "freight-yard" : tanker ? "tanker-yard" : fleet ? "road-fleet" : "urban-v1";
   const dbPath = resolve(value("--db") ?? resolve(root, "var", yard, "world.db"));
   mkdirSync(dirname(dbPath), { recursive: true });
   const live = liveFileOf(folder);
-  const map = value("--map") ?? (layout ? writeVehicleYard(resolve(root, "var", yard, "course.snmp"), layout) : undefined);
+  const course = resolve(root, "var", yard, "course.snmp");
+  const map = value("--map") ?? (air ? writeAirYard(course) : layout ? writeVehicleYard(course, layout) : undefined);
   const server=startServer({clientDir,dev:true,hostname:value("--host")??"127.0.0.1",port:Number(value("--port")??process.env.PORT??8787),dbPath,config:rules,...(live?{live}:{}),...(map?{map:resolve(map)}:{})});
   try {
     if (freight || cars) {
@@ -65,7 +68,9 @@ if(import.meta.main){
       if(![...records.byPid.values()].some(r=>r.kind===kind) && server.host.spawnVehicle("core:tanker",world.spawn.x-2.8,world.spawn.z+3,0,0)<0)
         throw new Error("Could not park the tanker beside the yard entrance");
     } else if (fleet) console.log(`Parked ${seedRoadFleet(server.host)} fleet models near spawn.`);
-    else seedUrbanVehicles(server.host);
+    else if (!air) seedUrbanVehicles(server.host);
+    // The freight yard is for trying the feature: its calls are free.
+    if (air) server.host.setSetting("AirSupportOrderRequired", "False");
     const roads = seedUrbanRoads(server.host);
     if (roads) console.log(`Added ${roads} native paving pieces southeast of spawn.`);
   } catch (error) {

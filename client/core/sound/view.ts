@@ -38,6 +38,7 @@ export function soundView(session: ClientSession, sky: SkyClock | null = null): 
       engrams: session.progress.engrams.length,
     },
     vehicle: !alive ? -1 : session.driving >= 0 ? session.driving : own.seat > 0 ? own.seat - 1 : -1,
+    airSupport: session.airSupport,
     // The supply drops are heard at the tick they are drawn at.
     supply: { list: session.supply, tick: session.tickClock },
     hour: sky ? sky.hour : hourOfDay(session.serverTick, session.dayOffset, session.clock),

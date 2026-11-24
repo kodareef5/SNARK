@@ -676,6 +676,13 @@ export class Combat {
    * bodies at, now or one the history remembers. `sweep` is the ticks the ray took to cover `maxT`, for a segment of
    * a flight, and each body is then met where it was along the way.
    */
+  /** `castBodies`, passing through entity `spare` as well as `self`: a drone leaving its own rack. */
+  castBodiesBesides(spare: number, self: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+    const was = this.spare;
+    this.spare = spare;
+    try { return this.castBodies(self, ox, oy, oz, dx, dy, dz, maxT); } finally { this.spare = was; }
+  }
+
   castBodies(self: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, width = 0, at = this.ctx.world.tick, sweep = 0): number {
     const world = this.ctx.world;
     const ents = world.ents;

@@ -3,6 +3,7 @@
 // real picture is drawn by `bun run build` and looked at with `bun run icons`.
 
 import { expect, test } from "bun:test";
+import { emptyAirSupport } from "../../shared/sim/air-support.ts";
 import { IMAGE_ICONS, Icons } from "../../client/core/assets/icons.ts";
 import { Binding } from "../../client/core/assets/bind.ts";
 import { AssetTable } from "../../client/core/assets/table.ts";
@@ -144,7 +145,7 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   inv.set(inv.hotbar, id("core:pick"), 1, 0, 0, 0);
   inv.set(inv.hotbar + 1, id("core:stone"), 30, 0, 0, 0);
   const engrams = reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : []));
-  const session = { inventory: inv, held: 0, tamed: [], serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" }, progress: { level: 99, xp: 0, statPoints: 0, engramPoints: 0, jobs: [], engrams }, ownKind: id("core:survivor") } as unknown as ClientSession;
+  const session = { airSupport: emptyAirSupport(), inventory: inv, held: 0, tamed: [], serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" }, progress: { level: 99, xp: 0, statPoints: 0, engramPoints: 0, jobs: [], engrams }, ownKind: id("core:survivor") } as unknown as ClientSession;
   const frame = (pictures: boolean, character: boolean, page = 0, tab = TAB_MAKE): Ui => {
     const ui = new Ui();
     ui.sheet.page = page;

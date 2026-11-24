@@ -4,7 +4,8 @@
 import { K_BAR, K_BUTTON, K_DIAL, K_HOLD, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
 import { bindTextInput, type UiEvents } from "../core/ui/events.ts";
 import { STYLES } from "../core/ui/style.ts";
-const LENS = ["none", "radial-gradient(closest-side,#0000 99%,#000 100%)", "radial-gradient(circle closest-side at 28.4% 50%,#0000 99%,#000 100%),radial-gradient(circle closest-side at 71.6% 50%,#0000 99%,#000 100%)"];
+const LENS = ["none", "radial-gradient(closest-side,#0000 99%,#000 100%)", "radial-gradient(circle closest-side at 28.4% 50%,#0000 99%,#000 100%),radial-gradient(circle closest-side at 71.6% 50%,#0000 99%,#000 100%)",
+  "repeating-linear-gradient(#0000 0 2px,#000 2px 3px)", "radial-gradient(farthest-corner,#0000 45%,#000 100%)"];
 
 interface Bound {
   el: HTMLElement;

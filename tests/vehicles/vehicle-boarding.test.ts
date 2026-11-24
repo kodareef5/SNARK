@@ -31,7 +31,7 @@ import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
-const KINDS = reg.ids.filter((_, k) => !!reg.vehicle[k]);
+const KINDS = reg.ids.filter((_, k) => !!reg.vehicle[k]?.seats.length);
 /** The quay's top and the sea's surface, a dock's top over it and its edge's gap to a hull, a swimmer's feet under it. */
 const QUAY = .6, SEA = 0, DOCK = .8, GAP = .4, SWIM = SEA - 1.35;
 const LAND = { x: 96, z: 120 }, BERTH = { x: 330, z: 256 };

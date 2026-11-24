@@ -135,6 +135,12 @@ export function touchBar(f: UiFrame, t: TouchPlay, mapX: number, mapY: number, m
   return shown;
 }
 
+/** The drone flies forward on its own. The right thumb steers and the left toggles boost. */
+export function touchDrone(f: UiFrame, t: TouchPlay): number {
+  t.rim = false;
+  return button(f, t, T_SHIFT, f.left + MARGIN + BUTTON / 2, f.height - f.bottom - MARGIN - BUTTON / 2, BUTTON, P_ROUND, I_SPRINT, "Boost", t.shifted);
+}
+
 /** The way out of a screen a finger opened, in the top right, over it: what Escape is to a keyboard. Returns its bit. */
 export function touchClose(f: UiFrame, t: TouchPlay): number {
   return button(f, t, T_CLOSE, f.width - f.right - MARGIN - BAR / 2, f.top + MARGIN + BAR / 2, BAR, P_SQUARE, I_CANCEL, "Close");

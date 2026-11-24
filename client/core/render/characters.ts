@@ -158,6 +158,8 @@ interface VehicleRig {
   rotors: Int16Array;
   doors: Int16Array;
   panels: Int16Array;
+  /** The bones of `def.hides`, -1 where the rig lacks one. */
+  hides: Int16Array;
   slideOffsets?: Float32Array;
   steer: number;
   drives: { bone: number; axis: readonly [number, number, number]; ratio: number; spin: boolean }[];
@@ -341,6 +343,8 @@ export class Characters {
   fresh = 0;
   /** The camera's pitch and half the height of its view, in radians, which the scene sets for the viewer's body (eyeRoom). */
   readonly eye = { pitch: 0, half: 0 };
+  /** Which of a vehicle's `hides` bones to hide, bit by bit, for the entity with this id; null hides none. */
+  hiddenBones: ((kind: number, id: number) => number) | null = null;
   /** Set while the sun casts. Null leaves every body out of the shadows. */
   shadows: BodyShadows | null = null;
   private readonly kinds: (BodyKind | null)[];
@@ -1043,6 +1047,7 @@ export class Characters {
           if (door.slide) {
             const offsets = v.slideOffsets!;
             offsets[b * 3] = door.slide.outward * Math.min(1, fraction * 5);
+            offsets[b * 3 + 1] = (door.slide.up ?? 0) * fraction;
             offsets[b * 3 + 2] = door.slide.along * Math.max(0, (fraction - .2) / .8);
           } else quatAxis(rig.a.rot, b * 4, door.axis[0], door.axis[1], door.axis[2], fraction * door.open);
         }
@@ -1091,6 +1096,13 @@ export class Characters {
         if (vehicle?.missingPanels) hidePanels(p.bones, first, v.panels, vehicle.missingPanels);
         if (!unseen && v.def.breakablePanels) this.fallingDoors.draw(p, first, v.def.breakablePanels, v.panels, v.doors,
           id, kind, this.frame, this.clock, vehicle?.missingPanels ?? 0, x, y, z);
+        // Bones game state hides, as a rack's launched drones, shrink to nothing.
+        const hidden = v.hides.length ? this.hiddenBones?.(kind, id) ?? 0 : 0;
+        for (let h = 0; h < v.hides.length; h++) {
+          const b = v.hides[h]!;
+          if (b < 0 || (hidden & (1 << h)) === 0) continue;
+          for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) p.bones[(first + b) * BONE_FLOATS + row * 4 + col]! *= 1e-4;
+        }
         if (!unseen && p.tier.contact && isWheelVehicle(v.def) && Math.hypot(x,y,z) < 16 + v.def.spec.halfLength * size) {
           this.tireContacts.consider(p, first, v.wheels, rig.rest, v.def.spec.wheelRadius * size);
         }
@@ -1941,7 +1953,7 @@ function vehicleRig(def: VehicleDefinition | null, names: readonly string[]): Ve
       if (joint && bone(joint.bone) >= 0) drives.push({ ...joint, bone: bone(joint.bone), spin: kind === "propeller" });
     }
   }
-  return { def, drives, panels: Int16Array.from(def.breakablePanels ?? [], p => bone(p.bone)), ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
+  return { def, drives, panels: Int16Array.from(def.breakablePanels ?? [], p => bone(p.bone)), ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), hides: Int16Array.from(def.hides ?? [], bone), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
 }
 
 function hidePanels(rows: Float32Array, first: number, bones: Int16Array, missing: number): void {

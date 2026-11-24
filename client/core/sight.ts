@@ -152,7 +152,7 @@ export class Sight implements FramePart {
   step(f: AppFrame): void {
     this.f = f;
     const session = f.session, hud = f.hud, shown = f.sight, c = f.controls, cam = f.cam, reg = f.reg, view = f.view, world = f.world, nowMs = f.nowMs, dt = f.dt;
-    const alive = f.alive, a = session.alpha, passenger = f.passenger, move = f.move;
+    const alive = f.alive && !session.airCamera.id, a = session.alpha, passenger = f.passenger, move = f.move;
     // The view turns with the kick and, through a scope, with the sway, as a shot does (shared/sim/aim.ts), so the middle of
     // the view is where the next shot is pointed. The look the input sends stays the player's own.
     const gun = alive && session.weaponsAllowed ? (reg.weapon[session.own.held] ?? null) : null;
@@ -240,7 +240,8 @@ export class Sight implements FramePart {
     shown.visorMode = this.visor.mode;
     shown.visorDigital = visorUp && this.visor.digital;
     shown.visorRange = this.visor.range;
-    this.visor.frame(f.scene.optic, daylight(f.sky.hour));
+    // A drone's feed fills the optic while one is flown (air-feed.ts).
+    if (!session.airCamera.id) this.visor.frame(f.scene.optic, daylight(f.sky.hour));
     if (shown.scope && gun) {
       const pace = Math.hypot(session.own.vx, session.own.vz) / Math.max(1, move?.walkSpeed ?? 1);
       const kick = gun.recoilKick ? (session.own.kick * KICK_UNIT * UNIT_RADIANS) / ((gun.recoilKick * PI) / 180) : 0;

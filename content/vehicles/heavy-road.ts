@@ -75,6 +75,7 @@ function heavyRoad(name: "bus" | "semi") {
       ...TANKER_VEHICLE.spec,
       axles,
       // The low fifth wheel behind the cab, the enclosed cab and the bonnet ahead of it.
+      ...(!bus ? { fifthWheel: [0, 1.22, -2.6] as const } : {}),
       ...(!bus ? { bodyBoxes: [
         { at: [0, .74, 0], half: [1.22, .50, 4.32] },
         { at: [0, 2.225, .575], half: [1.06, 1.10, 1.465] },

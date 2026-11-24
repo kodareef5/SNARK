@@ -4,9 +4,9 @@
 // health and food, an unconscious wild one's torpor and taming, another tribe's name.
 
 import { CUE_DEAD, CUE_MATING_SHIFT, MATING_STEPS } from "../shared/anim/pose.ts";
-import { chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
+import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
 import type { BitWriter } from "../shared/net/codec.ts";
-import { MAX_NAME_BYTES, OWN_OVERHEAD, SESSION_ALIVE, SESSION_SPECTATING } from "../shared/net/protocol.ts";
+import { DRONE_LOOK, MAX_NAME_BYTES, OWN_OVERHEAD, SESSION_ALIVE, SESSION_SPECTATING } from "../shared/net/protocol.ts";
 import { SentView } from "../shared/net/view.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { stanceEye } from "../shared/sim/character.ts";
@@ -157,19 +157,29 @@ export class Overhead {
 
   /**
    * The creature under `c`'s aim within LOOK_RANGE, or through a sight as far as its gaze reaches among the chunks round it
-   * and those of its cone, unless the world or another body is in the way, or -1.
+   * and those of its cone, or under the middle of a flown drone's camera within DRONE_LOOK, unless the world or another body
+   * is in the way, or -1.
    */
   lookedAt(c: Client): number {
     const { world, game } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     const from = c.drive >= 0 ? c.drive : c.ent;
-    const ox = ents.x[from]!;
-    const oy = ents.y[from]! + stanceEye(reg.move[ents.kind[from]!]!, ents.stance[from]!);
-    const oz = ents.z[from]!;
     const d = this.dir;
-    lookDirection(c.heldYaw, c.heldPitch, d);
-    const range = Math.max(LOOK_RANGE, this.reach(c));
+    // A drone flown looks from its camera along its middle, as far as DRONE_LOOK.
+    const eye = game.players.remoteEye?.(c) ?? null;
+    let ox: number, oy: number, oz: number;
+    if (eye) {
+      ox = eye.x; oy = eye.y; oz = eye.z;
+      const cp = Math.cos(eye.pitch);
+      d[0] = Math.sin(eye.yaw) * cp; d[1] = Math.sin(eye.pitch); d[2] = Math.cos(eye.yaw) * cp;
+    } else {
+      ox = ents.x[from]!;
+      oy = ents.y[from]! + stanceEye(reg.move[ents.kind[from]!]!, ents.stance[from]!);
+      oz = ents.z[from]!;
+      lookDirection(c.heldYaw, c.heldPitch, d);
+    }
+    const range = eye ? DRONE_LOOK : Math.max(LOOK_RANGE, this.reach(c));
     let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, range) === HIT_NONE ? range : rayHit.t;
     let hit = -1;
     const dims = world.dims;
@@ -177,7 +187,9 @@ export class Overhead {
     const hx = chunkCx(dims, home);
     const hz = chunkCz(dims, home);
     const near = range + 4;
-    const cone = range > LOOK_RANGE && game.replication.cone ? game.replication.cone(c) : null;
+    const cone = !eye && range > LOOK_RANGE && game.replication.cone ? game.replication.cone(c) : null;
+    // A drone's ring is as far as it looks, and no wider than the view its page is sent.
+    const ring = eye ? Math.min(Math.ceil(near / CHUNK_SIZE), Math.max(1, game.opts.entityRadius)) : 1;
     const test = (chunk: number): void => {
       for (let i = ents.chunkHead[chunk]!; i >= 0; i = ents.next[i]!) {
         if (i === c.ent || i === from || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
@@ -194,8 +206,8 @@ export class Overhead {
         }
       }
     };
-    for (let cz = hz - 1; cz <= hz + 1; cz++) {
-      for (let cx = hx - 1; cx <= hx + 1; cx++) if (cx >= 0 && cz >= 0 && cx < dims.chunksX && cz < dims.chunksZ) test(cz * dims.chunksX + cx);
+    for (let cz = hz - ring; cz <= hz + ring; cz++) {
+      for (let cx = hx - ring; cx <= hx + ring; cx++) if (cx >= 0 && cz >= 0 && cx < dims.chunksX && cz < dims.chunksZ) test(cz * dims.chunksX + cx);
     }
     for (let k = 0; cone && k < cone.count; k++) test(cone.chunks[k]!);
     return hit >= 0 && (ents.flags[hit]! & F_PLAYER) === 0 && (ents.cue[hit]! & CUE_DEAD) === 0 ? hit : -1;

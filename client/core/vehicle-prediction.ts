@@ -5,11 +5,11 @@ import { makeHandle } from '../../shared/ids.ts';
 import { quatNlerp } from '../../shared/math/quat.ts';
 import { contactBody, contactProxy, contactRelevant, contactHorizon, contactReach, type ContactProxy, type ContactSnapshot } from '../../shared/net/contact.ts';
 import { Body, BTN_JUMP } from '../../shared/sim/character.ts';
-import { stepVehicleBody } from '../../shared/sim/vehicle-body.ts';
+import { stepHitchedBodies, stepVehicleBody } from '../../shared/sim/vehicle-body.ts';
 import { dynamicState, DynamicScratch, resolveDynamicContact, type DynamicBody, type DynamicResult, type DynamicState } from '../../shared/sim/vehicle-dynamic.ts';
 import { integrateVehiclePose, vehicleMassProperties } from '../../shared/sim/vehicle-rigid.ts';
 import type { PredictedTrees } from './vehicle-trees.ts';
-import { isSkateboard, type VehicleDefinition } from '../../shared/sim/vehicle.ts';
+import { isSkateboard, isWheelVehicle, type VehicleDefinition, type VehicleWorld } from '../../shared/sim/vehicle.ts';
 import { groundUnder, type CollisionWorld } from '../../shared/world/collide.ts';
 import { SKATER_HEIGHT, VehiclePairQueries } from '../../shared/world/vehicle-pair.ts';
 import type { RemoteSample } from './session.ts';
@@ -94,8 +94,8 @@ export class VehiclePrediction {
     for (let i = 0; i < snapshot.count; i++) {
       const fact = snapshot.rows[i]!;
       if (!this.registry.move[fact.kind] || fact.vehicle !== !!this.registry.vehicle[fact.kind] ||
-          def && !contactRelevant(own!, fact, contactReach(def), fact.vehicle ? 1.5 : .5)) continue;
-      const physical = !def || contactRelevant(own!, fact, contactReach(def));
+          def && !fact.hitched && !contactRelevant(own!, fact, contactReach(def), fact.vehicle ? 1.5 : .5)) continue;
+      const physical = !def || fact.hitched || contactRelevant(own!, fact, contactReach(def));
       let p = this.proxies.get(fact.handle);
       const fresh = !p, teleport = !!p && p.fact.epoch !== fact.epoch;
       if (!p) {
@@ -207,12 +207,13 @@ export class VehiclePrediction {
       const other = this.registry.vehicle[p.fact.kind] ?? undefined;
       this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height, 0, SKATER_HEIGHT);
       while (p.tick < tick) { this.advance(p, other); p.tick++; }
+      if (p.fact.hitched) continue;
     }
     this.used.clear();
     for (let iteration = 0; iteration < 4; iteration++) {
       let first: Proxy | undefined, firstTime = Infinity;
       for (const [target, p] of this.proxies) {
-        if (target === handle || this.used.has(target) || !p.physical || !this.live(p, tick)) continue;
+        if (target === handle || p.fact.hitched || this.used.has(target) || !p.physical || !this.live(p, tick)) continue;
         const other = this.registry.vehicle[p.fact.kind] ?? undefined;
         this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height, 0, SKATER_HEIGHT);
         const hit = this.pair.sweep();
@@ -250,6 +251,30 @@ export class VehiclePrediction {
     body.vx = s.vx; body.vy = s.vy; body.vz = s.vz;
     body.vehiclePitchRate = s.pitchRate; body.vehicleYawRate = s.yawRate; body.vehicleRollRate = s.rollRate;
     if (body.vy > .01) body.grounded = false;
+  }
+
+  /**
+   * The trailer on the driver's fifth wheel steps in the same tick as the driver's own body, as the server steps the
+   * pair. False when there is none to step, and the caller steps the body alone.
+   */
+  stepTowing(tick: number, body: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, pilot: boolean, ownTrees?: VehicleWorld): boolean {
+    if (!isWheelVehicle(def) || !def.spec.fifthWheel || tick - this.snapshotTick > 12) return false;
+    let p: Proxy | undefined;
+    for (const q of this.proxies.values()) if (q.fact.hitched && q.physical && this.live(q, tick)) { p = q; break; }
+    const trailer = p && this.registry.vehicle[p.fact.kind];
+    if (!p || !trailer || !isWheelVehicle(trailer) || !trailer.spec.kingpin) return false;
+    while (p.tick < tick - 1) { this.advance(p, trailer); p.tick++; }
+    const s = p.body.state, native = p.native;
+    Object.assign(p.body.prior, s);
+    native.x = s.x; native.y = s.y; native.z = s.z; native.vx = s.vx; native.vy = s.vy; native.vz = s.vz;
+    native.vehiclePitchRate = s.pitchRate; native.vehicleYawRate = s.yawRate; native.vehicleRollRate = s.rollRate;
+    native.vehicleQx = s.qx; native.vehicleQy = s.qy; native.vehicleQz = s.qz; native.vehicleQw = s.qw;
+    native.vehicle = true; native.mode = 1;
+    stepHitchedBodies(this.world, body, moveX, moveZ, buttons, def, native, trailer, pilot, ownTrees);
+    contactBody(native, s);
+    p.tick = tick;
+    this.stats.steps++;
+    return true;
   }
 
   private advance(p: Proxy, def: VehicleDefinition | undefined): void {
@@ -325,7 +350,7 @@ export class VehiclePrediction {
   draw(out: RemoteSample, index: number, alpha: number, tick: number): void {
     const handle = makeHandle(out.id[index]!, out.gen[index]!), p = this.proxies.get(handle);
     if (!p || !p.fact.vehicle) return;
-    if (!this.trafficLead || !this.live(p, tick)) {
+    if (!p.fact.hitched && !this.trafficLead || !this.live(p, tick)) {
       if (!p.visual) { if (!p.active) this.proxies.delete(handle); return; }
       if (!p.withdrawing) {
         p.withdrawing = true; p.exit = 1; p.exitQ.set(p.dq);
@@ -349,9 +374,11 @@ export class VehiclePrediction {
       }
       if (!p.visual) {
         p.visual = true;
-        if (p.fadeIn) { p.sx = out.x[index]! - x; p.sy = out.y[index]! - y; p.sz = out.z[index]! - z; }
+        // A trailer on the driver's fifth wheel is shown where it rides, not eased in from where it was last seen.
+        const fade = p.fadeIn && !p.fact.hitched;
+        if (fade) { p.sx = out.x[index]! - x; p.sy = out.y[index]! - y; p.sz = out.z[index]! - z; }
         p.correction.captureQuaternion(out.vehicleQx[index]!, out.vehicleQy[index]!, out.vehicleQz[index]!, out.vehicleQw[index]!);
-        p.correction.reconcileQuaternion(b.qx, b.qy, b.qz, b.qw, p.fadeIn); p.fadeIn = true;
+        p.correction.reconcileQuaternion(b.qx, b.qy, b.qz, b.qw, fade); p.fadeIn = true;
       }
       out.x[index] = x + p.sx; out.y[index] = y + p.sy; out.z[index] = z + p.sz;
       this.drawQ[0] = b.qx; this.drawQ[1] = b.qy; this.drawQ[2] = b.qz; this.drawQ[3] = b.qw; p.correction.apply(this.drawQ);

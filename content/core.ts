@@ -1,3 +1,4 @@
+import { AIR_CARRIER, AIR_TRAILER, FREIGHT_ORDER, SURVEY_DRONE } from "./vehicles/air-freight.ts";
 import { BOX_TRAILER } from "./vehicles/box-trailer.ts";
 import { TANKER_WRECKS } from "./vehicles/tanker-wrecks.ts";
 // Colours are palette indices. See shared/pack/palette.ts.
@@ -434,6 +435,10 @@ const ALL: readonly Def[] = [
   ...WRECKS,
   ...TANKER_WRECKS,
   ...BOX_TRAILER,
+  AIR_TRAILER,
+  AIR_CARRIER,
+  SURVEY_DRONE,
+  ...FREIGHT_ORDER,
   ...HARBOUR_WRECKS,
   ...DOCKS,
   ...STREET,

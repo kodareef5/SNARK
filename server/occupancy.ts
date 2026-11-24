@@ -101,7 +101,7 @@ export class Occupancy {
   /** Definitions are registered once. Recycled runtime hosts must be removed first. */
   addHost(pid: number, hostHandle: number, seats: readonly OccupancySeat[]): void {
     if (!positive(pid) || !handle(hostHandle) || this.hosts.has(pid) ||
-      this.hosts.size >= this.limits.maxHosts || seats.length < 1 || seats.length > MAX_SEATS) {
+      this.hosts.size >= this.limits.maxHosts || seats.length > MAX_SEATS) {
       throw new Error('Invalid or duplicate occupancy host');
     }
     const states = new Map<string, SeatState>();

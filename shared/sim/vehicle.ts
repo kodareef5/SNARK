@@ -22,6 +22,10 @@ export interface VehicleHullSpec {
 export interface VehicleSpec extends VehicleHullSpec {
   /** Separate solid sections for an open chassis, in local metres and within the broadphase envelope. */
   readonly bodyBoxes?: readonly VehicleCollisionBox[];
+  /** A tractor's coupling point on its fifth wheel, local metres (vehicle-hitch.ts). */
+  readonly fifthWheel?: readonly [number, number, number];
+  /** A trailer's kingpin, local metres. Its axles then carry only part of its weight. */
+  readonly kingpin?: readonly [number, number, number];
   readonly halfWidth: number;
   readonly halfLength: number;
   readonly height: number;
@@ -82,8 +86,8 @@ export type VehicleDoor = {
   readonly open: number;
   readonly slide?: never;
 } | {
-  /** Signed local X and Z travel in metres. */
-  readonly slide: { readonly outward: number; readonly along: number };
+  /** Signed local X, Z and (optionally) Y travel in metres: a door slides, a landing leg cranks up. */
+  readonly slide: { readonly outward: number; readonly along: number; readonly up?: number };
   readonly axis?: never;
   readonly open?: never;
 });
@@ -118,6 +122,8 @@ interface VehicleDefinitionBase {
   readonly steeringWheel?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
   /** Ticks a door action takes: getting in, getting out, pulling a driver out. */
   readonly actionTicks: number;
+  /** Bones the game may hide for a while, by state the vehicle does not carry itself: a rack's launched drones. */
+  readonly hides?: readonly string[];
   /** Metres up from the ground to where the body shell ends and the open cabin begins: a shot above it reaches whoever sits inside. */
   readonly beltline: number;
   /** Each entry has one bit in the replicated missing-panel mask. */
@@ -147,6 +153,8 @@ export interface WheelVehicleDefinition extends VehicleDefinitionBase {
   /** Local X of the aisle from a shared passenger entrance to its rows. */
   readonly passengerAisle?: number;
   readonly spec: VehicleSpec;
+  /** A trailer's spec while it rides a fifth wheel: its landing legs up, its kingpin on the tractor. */
+  readonly towed?: VehicleSpec;
 }
 
 /** A spinning rigid part, with its physical disc in the chassis frame. Phase is main-rotor phase times ratio. */
@@ -334,6 +342,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
     if (d.frame !== undefined && !["car", "sports_car", "van", "off_road", "skateboard"].includes(d.frame)) throw new Error("invalid road vehicle frame");
     validateVehicleSpec(d.spec, isSkateboard(d));
+    if (d.towed) validateVehicleSpec(d.towed);
     if (d.passengerAisle !== undefined && (!Number.isFinite(d.passengerAisle) || Math.abs(d.passengerAisle) >= d.spec.halfWidth)) throw new Error("passenger aisle outside cabin");
   }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
@@ -347,7 +356,8 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   for (const door of d.doors) {
     const validMotion = door.slide
       ? door.axis === undefined && door.open === undefined && Number.isFinite(door.slide.outward) && Math.abs(door.slide.outward) <= .5 &&
-        Number.isFinite(door.slide.along) && Math.abs(door.slide.along) > 0 && Math.abs(door.slide.along) <= 3
+        Number.isFinite(door.slide.along) && Math.abs(door.slide.along) <= 3 && (door.slide.up === undefined || Number.isFinite(door.slide.up) && Math.abs(door.slide.up) <= 2) &&
+        (Math.abs(door.slide.along) > 0 || Math.abs(door.slide.up ?? 0) > 0)
       : vec(door.axis) && Number.isFinite(door.open) && Math.abs(door.open!) <= Math.PI;
     if (!bone(door.bone) || !validMotion ||
       !Number.isInteger(door.openTicks) || door.openTicks < 1 || door.openTicks > 255 ||
@@ -388,7 +398,8 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
     if (panel.length !== 4 || panel.some(point => point.length !== 3 || !point.every(Number.isFinite))) throw new Error("invalid vehicle cabin panel");
   }
   if (!Number.isFinite(d.beltline) || d.beltline <= d.spec.clearance || d.beltline > d.spec.height) throw new Error("invalid vehicle belt line");
-  validateSeats(d.seats, d.doors.length, "vehicle");
+  // A vehicle nobody rides has no seats: a trailer is towed, a freight carrier flies itself.
+  if (!(Array.isArray(d.seats) && d.seats.length === 0)) validateSeats(d.seats, d.doors.length, "vehicle");
 }
 
 /** Physical surface values, independent of terrain palette or art material names. */
@@ -480,7 +491,7 @@ export function validateVehicleSpec(s: VehicleSpec, skateboard = false): void {
     if (!Number.isFinite(s[key])) throw new Error(`missing or invalid vehicle ${key}`);
   }
   const zero = new Set([...(skateboard ? ["fuelCapacity", "fuelPerSecond", "maxReverse"] : []), "yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
-  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && key !== "bodyBoxes" && key !== "thrusters" && value !== undefined &&
+  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && key !== "bodyBoxes" && key !== "thrusters" && key !== "fifthWheel" && key !== "kingpin" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
   if (s.bodyBoxes !== undefined) {
     const limits = [s.halfWidth, s.height, s.halfLength];
@@ -492,7 +503,8 @@ export function validateVehicleSpec(s: VehicleSpec, skateboard = false): void {
   if (s.axles && (s.axles.length < 2 || s.axles.length > 8 ||
     s.axles.some((a,i) => !Number.isFinite(a.z) || Math.abs(a.z) >= s.halfLength || (i > 0 && a.z >= s.axles![i-1]!.z) ||
       !(a.track > 0 && a.track <= 2*s.halfWidth && a.loadShare > 0 && a.loadShare < 1)) ||
-    Math.abs(s.axles.reduce((sum,a) => sum+a.loadShare, 0)-1) > .0001)) throw new Error("invalid vehicle axle geometry or load");
+    (s.kingpin ? s.axles.reduce((sum,a) => sum+a.loadShare, 0) > 1.0001 : Math.abs(s.axles.reduce((sum,a) => sum+a.loadShare, 0)-1) > .0001))) throw new Error("invalid vehicle axle geometry or load");
+  for (const point of [s.fifthWheel, s.kingpin]) if (point !== undefined && (!Array.isArray(point) || point.length !== 3 || !point.every(Number.isFinite))) throw new Error("invalid vehicle coupling point");
   if (s.mass !== undefined && (s.mass < (skateboard ? 1 : 50) || s.mass > 1000000)) throw new Error("invalid vehicle mass");
   if ((s.frontDriveShare ?? 0) > 1 || (s.downforce ?? 0) > 10) throw new Error("invalid vehicle axle split or downforce");
   if (s.drivetrain !== undefined) validateDrivetrainSpec(s.drivetrain);

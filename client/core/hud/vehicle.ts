@@ -109,7 +109,7 @@ export class Dash implements FramePart {
 
   step(f: AppFrame): void {
     const session = f.session, c = f.controls, world = f.world, car = f.car, t = this.telemetry;
-    if (f.alive && car && session.driving >= 0) {
+    if (f.alive && car && session.driving >= 0 && !session.airCamera.id) {
       t.board = isSkateboard(car);
       if (t.board) {
         const b = session.own, s = b.skate;

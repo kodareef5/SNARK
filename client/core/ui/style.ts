@@ -23,12 +23,17 @@ export interface Style {
 
 export const LENS_ROUND = 1;
 export const LENS_TWIN = 2;
+/** Not a lens: the fill only on every third line (LENS_SCAN), or deepening from none in the middle to whole in the corners (LENS_VIGNETTE). */
+export const LENS_SCAN = 3;
+export const LENS_VIGNETTE = 4;
 
 /** Advance of one character and height of one line, as multiples of the font size. */
 export const CHAR_ADVANCE = 0.6;
 export const LINE_HEIGHT = 1.35;
 
 const style = (fill: number, ink: number, font = 13, align = 0, shadow = false): Style => ({ fill, ink, font, align, shadow, sans: true });
+/** Words in the monospace face over the world, as a camera's feed prints them. */
+const mono = (ink: number, font: number, align: number): Style => ({ fill: 0, ink, font, align, shadow: true, sans: false });
 
 export const S_TEXT = 0;
 export const S_LABEL = 1;
@@ -129,6 +134,24 @@ export const S_SKATE_BAD = 78;
 export const S_SKATE_TRICK = 79;
 /** The special meter's bar. */
 export const S_SKATE_METER = 80;
+/** A drone feed's readouts (hud/air-feed.ts): set left, right and in the middle, large, small, the REC mark, a warning. */
+export const S_FEED = 81;
+export const S_FEED_RIGHT = 82;
+export const S_FEED_MID = 83;
+export const S_FEED_BIG = 84;
+export const S_FEED_SMALL = 85;
+export const S_FEED_REC = 86;
+export const S_FEED_WARN = 87;
+/** A feed's tracking box's words (hud/tracks.ts): its name by how it stands to the viewer, and its line under. */
+export const S_TRACK_TRIBE = 88;
+export const S_TRACK_WILD = 89;
+export const S_TRACK_OTHER = 90;
+export const S_TRACK_NOTE = 91;
+/** The black of a tier with no finishing pass under a feed (hud/air-feed.ts): in scanlines, and toward the corners. */
+export const S_SCANLINES = 92;
+export const S_VIGNETTE = 93;
+/** A feed's small words set to the left. */
+export const S_FEED_SMALL_LEFT = 94;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -212,4 +235,18 @@ export const STYLES: readonly Style[] = [
   /* S_SKATE_BAD */ style(0, 0xff6f5e, 24, 1, true),
   /* S_SKATE_TRICK */ style(0, 0xffd36a, 13, 0, true),
   /* S_SKATE_METER */ style(0x00000066, 0xffd36a),
+  /* S_FEED */ mono(0xe9f3f7, 13, 0),
+  /* S_FEED_RIGHT */ mono(0xe9f3f7, 13, 2),
+  /* S_FEED_MID */ mono(0xe9f3f7, 13, 1),
+  /* S_FEED_BIG */ mono(0xf4fbfd, 17, 1),
+  /* S_FEED_SMALL */ mono(0xb9cdd4, 11, 1),
+  /* S_FEED_REC */ mono(0xff4a3d, 13, 0),
+  /* S_FEED_WARN */ mono(0xffb04a, 14, 1),
+  /* S_TRACK_TRIBE */ mono(0x9ee8a2, 11, 0),
+  /* S_TRACK_WILD */ mono(0xf4f4f0, 11, 0),
+  /* S_TRACK_OTHER */ mono(0xf2a860, 11, 0),
+  /* S_TRACK_NOTE */ mono(0xc4d3d8, 10, 0),
+  /* S_SCANLINES */ { ...style(0x000000ff, 0xffffff), lens: LENS_SCAN },
+  /* S_VIGNETTE */ { ...style(0x000000ff, 0xffffff), lens: LENS_VIGNETTE },
+  /* S_FEED_SMALL_LEFT */ mono(0xb9cdd4, 11, 0),
 ];

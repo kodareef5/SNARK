@@ -61,6 +61,15 @@ export function helicopterPlacement(world: CollisionWorld, x: number, y: number,
 }
 
 
+/** Whether an aircraft in level flight at (x, y, z) meets nothing solid. */
+export function helicopterAirspace(world: CollisionWorld, x: number, y: number, z: number, yaw: number, def: RotorVehicleDefinition): boolean {
+  if (![x, y, z, yaw].every(Number.isFinite)) return false;
+  const state = createHelicopter(def.spec, x, y, z, yaw);
+  vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0 }, q);
+  state.qx = q[0]!; state.qy = q[1]!; state.qz = q[2]!; state.qw = q[3]!;
+  return helicopterWorld(world).blocked(state, state, def) === null;
+}
+
 export interface HelicopterFrame {
   readonly x: number; readonly y: number; readonly z: number; readonly yaw: number;
   readonly pitch: number; readonly roll: number;

@@ -34,7 +34,7 @@ import { Emotes } from "./emote.ts";
 import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
-import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
+import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
 import { Balls } from "./balls.ts";
 import { Eggs } from "./eggs.ts";
@@ -105,6 +105,9 @@ import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
+import { AirSupport } from "./air-support.ts";
+import { helicopterAirspace } from "../shared/world/helicopter.ts";
+import { Hitches } from "./hitches.ts";
 import { Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
 import { builtinLoadouts } from "../content/loadouts.ts";
@@ -247,6 +250,9 @@ export interface Host {
   readonly carReturn: CarReturn | null;
   /** Supply drops, and the drop book they are rolled from (server/supply.ts). */
   readonly supply: Supply;
+  readonly airSupport: AirSupport;
+  /** Trailers on fifth wheels (server/hitches.ts). */
+  readonly hitches: Hitches;
   readonly supplyBook: BookStore;
   /** The loadouts new survivors are given, kept beside the save (server/loadout/store.ts). */
   readonly loadoutBook: LoadoutStore;
@@ -531,7 +537,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const def = reg.vehicle[kind]!;
     const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z)) : groundUnder(world.hf, x, z, def.spec.halfWidth));
     if (!Number.isFinite(y) || [start.hull, start.engine, start.rotor, start.fuel].some(n => n !== undefined && (!Number.isFinite(n) || n < 0 || n > 1))) return -1;
-    if ((isRotorVehicle(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
+    if (start.airborne && isRotorVehicle(def)) { if (!helicopterAirspace(world, x, y, z, yaw, def)) return -1; }
+    else if ((isRotorVehicle(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
     const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
@@ -692,11 +699,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   });
   containers.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
+  const hitches = new Hitches({ world, game, records, urban });
+  game.players.pairStep = (e, b, x, z, buttons, def, pilot) => hitches.step(e, b, x, z, buttons, def, pilot);
+  urban.pairStep = game.players.pairStep;
+  urban.towedBy = e => hitches.tractorOf(e);
   game.players.onVehicleStep.on(e => urban.impact(e));
   survival.onRated.on((rec) => { if (reg.vehicle[rec.kind]) urban.rated(rec.pid); });
   game.players.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
-    world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
+    world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair), linked: (a, b) => hitches.linked(a, b) || airSupport.joined(world.ents.pid[a]!, world.ents.pid[b]!), towing: e => hitches.trailerOf(e),
     // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
     struck: (body) => knockDown(body),
     parkingBrake: e => urban.parkingBrake(e),
@@ -756,11 +767,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // A sight's cone widens its session's view and holds what it is on awake (server/gaze.ts, D1079).
   // A look through a sight tells what it is on as far as the sight's gaze reaches (D1082).
   overhead.reach = (c) => gaze.lookReach(c);
-  const gaze = new Gaze({ world, records, items, game, spot: (team, e, until) => tactical.spot(team, e, until), wake: (chunk, delta) => {
+  const wakeView = (chunk: number, delta: number): void => {
     creatures.watch(chunk, delta, woke);
     if (woke.length > 0) settled.bodies += settle(world, woke, relocated);
     woke.length = 0;
-  } });
+  };
+  const gaze = new Gaze({ world, records, items, game, spot: (team, e, until) => tactical.spot(team, e, until), wake: wakeView });
   const hurt = new Hurt({ world, records, survival, deadlines });
   creatures.onAdopt.on((_e, rec) => hurt.follow(rec));
   taming.bred = (rec) => breeding.subject(rec);
@@ -1270,6 +1282,39 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   recrate();
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
+  hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
+  persistence?.sidecar("hitches", hitches.saved);
+  const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, items, wake: wakeView,
+    spawn: (id, at, team, opts = {}) => {
+      const def = reg.vehicle[reg.index.get(id) ?? 0];
+      const e = parkVehicle(id, at.x, at.z, team, at.yaw, "air freight", { y: at.y, airborne: !!def && isRotorVehicle(def) });
+      if (e < 0) return e;
+      const rec = records.byPid.get(world.ents.pid[e]!)!;
+      // Health is the content's most, cut down to what the settings give it.
+      if (opts.health !== undefined && rec.vitals) {
+        const have = rec.vitals.at(V_HEALTH, world.tick) / 1e6;
+        if (opts.health < have) survival.add(rec, V_HEALTH, opts.health - have);
+        // What it is built with is its baseline, not a blow: its engine and rotors stay whole.
+        urban.initialized(e);
+      }
+      const ents = world.ents, v = ents.vrow[e]!;
+      ents.vehicleQx[v] = Math.fround(at.qx); ents.vehicleQy[v] = Math.fround(at.qy); ents.vehicleQz[v] = Math.fround(at.qz); ents.vehicleQw[v] = Math.fround(at.qw);
+      ents.setPosition(e, at.x, at.y, at.z);
+      urban.syncAfterContact(e);
+      return e;
+    },
+    discard: e => {
+      const pid = world.ents.pid[e]!;
+      hitches.release(pid);
+      persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid);
+    },
+  });
+  game.handle(CMD_AIR_SUPPORT, (c, r) => airSupport.command(c, r));
+  urban.autopilot = (e, b) => airSupport.pilot(e, b);
+  urban.external = e => airSupport.flights.flies(world.ents.pid[e]!) || airSupport.carries(world.ents.pid[e]!);
+  urban.doorsHeld = () => airSupport.doors();
+  airSupport.begin(persistence && !loaded!.fresh ? persistence.store.meta("air-support") as string | null : null);
+  persistence?.sidecar("air-support", airSupport.saved);
   build.keepClear = (x, z) => supply.buildFault(x, z);
   // Cast's people and planned stories are kept a minute at a time; its bodies never are (a start sweeps them).
   castHost.cast.load(persistence && !loaded!.fresh ? (persistence.store.meta("cast") as string | null) : null);
@@ -1788,6 +1833,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     mark(PART.life),
     // Riders move with their mounts before combat aims at either.
     urban,
+    { step: () => hitches.latch() },
+    { step: (tick) => airSupport.step(tick) },
     riding,
     { beforeStep: () => void (game.players.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
     carry,
@@ -1833,6 +1880,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ...(harvest ? [{ replicate: (c: Client) => harvest.sync(c) }] : []),
     { replicate: (c) => tactical.sync(c) },
     { replicate: (c) => supply.sync(c) },
+    { replicate: (c) => airSupport.sync(c) },
     { snapshot: (c, view) => corpseReplication.sync(c, view) },
   ];
   const tick = walk(systems);
@@ -1883,6 +1931,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     spawner,
     carReturn,
     supply,
+    airSupport,
+    hitches,
     supplyBook,
     loadoutBook,
     loadouts,

@@ -299,6 +299,28 @@ new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
   .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }))
   .i("FarRadius", FAR_RADIUS, "Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none.", live({ live: true, max: 16384, note: "Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published." }));
 
+new Sheet(SERVER_ROWS, "snark", "Vehicles")
+  .b("AirSupportEnabled", true, "Allow new freight carrier calls from a semi.", live({ live: true, public: true }))
+  .b("AirSupportOrderRequired", true, "Each freight call spends one Air freight order from the caller's inventory. False makes calls free. Its recipe and level are set with ConfigOverrideItemCraftingCosts and OverrideNamedEngramEntries (core:freight_order).", live({ live: true, public: true }))
+  .i("AirSupportTrailers", 1, "Drone trailers a tribe may have at once, delivered or on their way; a survivor with no tribe counts alone. Recalling one frees its place. 0 is no limit.", live({ live: true, min: 0, max: 50 }))
+  .f("AirSupportCooldown", 90, "Seconds between accepted freight calls from the same rig.", live({ live: true, min: 0, max: 86400 }))
+  .f("AirCarrierSpeed", 70, "Metres a second the freight carrier cruises at; above 60 it flies nose down at full cruise.", live({ live: true, min: 10, max: 90 }))
+  .f("AirCarrierHealth", 900, "Health a freight carrier takes off with. Gunfire and blasts bring it down; a load it holds falls with it.", live({ live: true, min: 1, max: 20000 }))
+  .f("AirDroneHealth", 60, "Health a launched drone has. A shot or a blast that takes it brings it down.", live({ live: true, min: 1, max: 2000 }))
+  .f("AirDroneRange", 1200, "Metres from its rack a drone's link reaches. The picture breaks up toward the edge and the link drops past it.", live({ live: true, min: 50, max: 8000 }))
+  .f("AirSupportEta", 40, "Seconds of flight out of sight the carrier starts from, at its cruising speed, at most 3 km away.", live({ live: true, min: 5, max: 300 }))
+  .f("AirSupportWait", 90, "Seconds a carrier can wait for the handoff at a rig.", live({ live: true, min: 3, max: 3600 }))
+  .f("AirSupportStop", 2, "Seconds the driver must hold still before delivery.", live({ live: true, min: 0.25, max: 30 }))
+  .f("AirSupportReach", 10, "Metres from the rack that its owner can operate it.", live({ live: true, min: 2, max: 40 }))
+  .i("AirSupportStock", 6, "Loaded bays on a new six-bay rack.", live({ live: true, min: 1, max: 6 }))
+  .f("AirDroneFuel", 45, "Fuel units in a freshly launched drone.", live({ live: true, min: 1, max: 600 }))
+  .f("AirDroneBurn", 1, "Fuel units consumed per second at cruise.", live({ live: true, min: 0.05, max: 100 }))
+  .f("AirDroneBoostBurn", 2.5, "Total fuel units consumed per second during boost.", live({ live: true, min: 0.05, max: 100 }))
+  .f("AirDroneSpeed", 22, "Drone cruise speed in metres per second.", live({ live: true, min: 3, max: 90 }))
+  .f("AirDroneTurnRate", 100, "Maximum change of flight direction in degrees per second.", live({ live: true, min: 10, max: 360 }))
+  .f("AirDroneDamage", 180, "Base game damage from one drone payload.", live({ live: true, min: 0, max: 5000 }))
+  .f("AirDroneRadius", 5, "Game payload radius in metres.", live({ live: true, min: 1, max: 30 }));
+
 /** A surface's grip: a car on it takes the new value at once, and its driver's page with it. */
 const grip = live({ live: true, public: true, min: 0.1, max: GRIP_MOST, note: "Ours. ARK has no cars." });
 new Sheet(SERVER_ROWS, "snark", "Vehicles")

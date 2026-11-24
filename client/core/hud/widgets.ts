@@ -2,6 +2,7 @@
 // read what an earlier one filled. A new widget is a file beside this one and a line here.
 
 import { ACTION } from "./action.ts";
+import { FEED } from "./air-feed.ts";
 import { BUFFS } from "./buffs.ts";
 import { COMPASS } from "./compass.ts";
 import { CROSSHAIR } from "./crosshair.ts";
@@ -17,6 +18,7 @@ import { RESTART } from "./restart.ts";
 import { HOLO_TINT, SIGHT } from "./sight.ts";
 import { SKATE } from "./skate.ts";
 import { STATE, WORDS } from "./state.ts";
+import { TRACKS } from "./tracks.ts";
 import { VEHICLE } from "./vehicle.ts";
 import { VITALS } from "./vitals.ts";
 import { VOICE } from "./voice.ts";
@@ -30,6 +32,8 @@ export const HUD_WIDGETS: readonly HudWidget<any>[] = [
   DOTS,
   SIGHT,
   MARKS,
+  TRACKS,
+  FEED,
   READOUT,
   VOICE,
   MINIMAP,

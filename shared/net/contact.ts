@@ -17,11 +17,13 @@ export const CONTACT_MECHANICAL = ['vehicleYaw', 'vehiclePitch', 'vehicleRoll', 
 const neutral = new Body();
 export interface ContactProxy {
   handle: number; epoch: number; kind: number; response: DynamicResponse; vehicle: boolean; grounded: boolean; parkingBrake: boolean;
+  /** The trailer on the driver's own fifth wheel: stepped with it, never met as a contact. */
+  hitched: boolean;
   /** Public nominal mass, not the target's inventory/flooding-dependent authoritative mass. */
   mass: number; radius: number; height: number; state: DynamicState; body: Body;
 }
 export function contactProxy(): ContactProxy {
-  return { handle: 0, epoch: 0, kind: 0, response: 'dynamic', vehicle: false, grounded: false, parkingBrake: false,
+  return { handle: 0, epoch: 0, kind: 0, response: 'dynamic', vehicle: false, grounded: false, parkingBrake: false, hitched: false,
     mass: 1, radius: .4, height: 1.8, state: dynamicState(), body: new Body() };
 }
 export function publicContactBody(source: Body, out: Body): void {
@@ -68,7 +70,7 @@ export function contactBody(b: Body, s: DynamicState): void {
 function writeProxy(w: BitWriter, p: ContactProxy): void {
   w.u32(p.handle); w.u32(p.epoch); w.u16(p.kind);
   w.bits(p.response === 'fixed' ? 2 : p.response === 'protected' ? 1 : 0, 2);
-  w.bool(p.vehicle); w.bool(p.grounded); if (p.vehicle) w.bool(p.parkingBrake);
+  w.bool(p.vehicle); w.bool(p.grounded); if (p.vehicle) { w.bool(p.parkingBrake); w.bool(p.hitched); }
   // Shapes use the authority's doubles: rounding a capsule changes grazing-contact and wall separation results.
   w.f64(p.mass); w.f64(p.radius); w.f64(p.height);
   for (const key of CONTACT_LINEAR) w.f32(p.body[key]);
@@ -112,7 +114,7 @@ export function readContacts(r: BitReader, out: ContactSnapshot, tick: number, s
     const response = r.bits(2);
     if (response > 2) return false;
     p.response = response === 2 ? 'fixed' : response === 1 ? 'protected' : 'dynamic';
-    p.vehicle = r.bool(); p.grounded = r.bool(); p.parkingBrake = p.vehicle && r.bool();
+    p.vehicle = r.bool(); p.grounded = r.bool(); p.parkingBrake = p.vehicle && r.bool(); p.hitched = p.vehicle && r.bool();
     p.mass = r.f64(); p.radius = r.f64(); p.height = r.f64();
     b.copy(neutral); b.kind = p.kind; b.vehicle = p.vehicle; b.grounded = p.grounded;
     for (const key of CONTACT_LINEAR) b[key] = r.f32();
