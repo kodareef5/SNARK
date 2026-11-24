@@ -4,7 +4,7 @@
 import type { Belief } from "./belief.ts";
 
 export interface Signal {
-  kind: "danger" | "critical" | "need" | "addressed" | "noticed";
+  kind: "danger" | "critical" | "need" | "addressed" | "overheard" | "noticed";
   /** 0 (ignorable) to 1 (act now). */
   urgency: number;
   /** An entity id it is about, if there is one. */
@@ -59,19 +59,23 @@ export const body: Monitor = (b) => {
   return out;
 };
 
-/** Lines said to the character: by its name, or by someone whose word it follows. */
+/** Lines in the chats the character reads: said to it (by its name, or by someone whose word it follows), or only
+ * overheard (said to everyone, or to someone else: a call for help, a question, news), which a player reads too. Its own
+ * lines, coming back to it, are neither. */
 export const social: Monitor = (b, ctx) => {
   const out: Signal[] = [];
-  const name = ctx.name.toLowerCase();
+  const me = ctx.name.toLowerCase();
+  const named = new RegExp(`(^|[^a-z0-9])${me.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i");
   for (const l of b.chat) {
     if (l.read) continue;
-    const named = l.text.toLowerCase().includes(name);
+    l.read = true;
+    if (l.from.toLowerCase() === me) continue;
     const owner = ctx.owners.some((o) => o.toLowerCase() === l.from.toLowerCase());
     // Spoken close by, by an owner, it is said to the character even without its name (as one speaks to a companion).
     const near = l.channel === "voice" && (l.voice?.distance ?? 99) <= 15;
-    if (!named && !(owner && (l.channel !== "voice" || near))) continue;
-    l.read = true;
-    out.push({ kind: "addressed", urgency: owner ? 0.8 : 0.6, detail: { from: l.from, text: l.text, channel: l.channel, owner, ...(l.from_id ? { from_id: l.from_id } : {}), ...(l.voice ? { voice: l.voice } : {}) } });
+    const detail = { from: l.from, text: l.text, channel: l.channel, owner, ...(l.from_id ? { from_id: l.from_id } : {}), ...(l.voice ? { voice: l.voice } : {}) };
+    if (named.test(l.text) || (owner && (l.channel !== "voice" || near))) out.push({ kind: "addressed", urgency: owner ? 0.8 : 0.6, detail });
+    else out.push({ kind: "overheard", urgency: 0.3, detail });
   }
   return out;
 };

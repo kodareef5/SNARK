@@ -1,7 +1,7 @@
 // The mock world's side of the grunt protocol: its capabilities and limits, on the shared endpoint (grunt/endpoint.ts).
 
 import { Endpoint } from "../../grunt/endpoint.ts";
-import type { Capabilities, Limits } from "../../grunt/protocol.ts";
+import type { Capabilities, GameInfo, Limits } from "../../grunt/protocol.ts";
 import { BUILDING } from "./structures.ts";
 import { EMOTE_SPECS, ASSIST, TICK_MS, VOICE_RANGE, type World } from "./world.ts";
 
@@ -21,7 +21,7 @@ export const CAPABILITIES: Capabilities = {
 
 /** The mock world on the protocol: a map channel where it has ground. */
 export class GameEndpoint extends Endpoint {
-  constructor(world: World, game = { name: "mock", version: "0", world: "beach" }) {
+  constructor(world: World, game: GameInfo = { name: "mock", version: "0", world: "beach", ...(world.about ? { about: world.about } : {}) }) {
     super(world, {
       capabilities: () => (world.terrain ? { ...CAPABILITIES, channels: [...CAPABILITIES.channels, "map"] } : CAPABILITIES),
       limits: LIMITS, game, tickMs: TICK_MS,

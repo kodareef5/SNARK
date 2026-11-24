@@ -87,6 +87,8 @@ client                                      game
               "act_per_s": 20, "command_memory_s": 600 } }
 ```
 
+- `game.about`, if given, is what a new player is told of the world before they set foot in it: the sort of game, the
+  place, who else is in it. It describes; it never instructs.
 - `frame` says how positions are given. Angles are always the protocol's (below), whatever the game's own.
 - `limits` are the game's: a client stays within them and the game enforces them.
 
@@ -189,7 +191,9 @@ columns west to east. `heights`, if asked with `{ "heights": true }`, is a row-m
 "rows": [...], "legend": { ".": "walkable", "=": "road", "~": "deep_water", "-": "shallow_water", "#": "blocked" },
 "known": "full" | "explored" }`. Asked with `cell` (metres a letter; a game may give coarser) and `radius` (metres
 about the character a game may keep to on a big map). `known` says whether it is the whole map or, under fog, what
-the character has explored. It shows what a player's map shows: water, roads, slopes too steep, buildings and bases.
+the character has explored. It shows what a player's map shows: water, roads, slopes too steep, buildings and bases. `places`, if the game has them, are the
+named places its map shows: `[{ "name": "red obelisk", "kind": "obelisk", "x": 1200, "z": -400, "about": "..." }]`,
+those within the radius and any seen from anywhere.
 
 **`inventory`**: `{ "slots": [{ "slot": 0, "item": "wood", "count": 40, "uses": null }], "capacity": 30,
 "weight": [31.5, 120], "hotbar": [1, 4, null, ...], "open": null, "craftable": [...], "crafting": [...] }`. While a

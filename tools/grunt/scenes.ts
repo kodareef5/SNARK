@@ -2,7 +2,7 @@
 
 import { BLUEPRINTS } from "../../grunt/blueprints.ts";
 import { compile } from "../../grunt/layout.ts";
-import type { EntityKind } from "../../grunt/protocol.ts";
+import type { EntityKind, MapPlace } from "../../grunt/protocol.ts";
 import { BUILDING } from "./structures.ts";
 import { Terrain, type TerrainSpec } from "./terrain.ts";
 import { type CharacterSetup, World } from "./world.ts";
@@ -35,6 +35,10 @@ export interface Scene {
   terrain?: TerrainSpec;
   /** Bases already standing: a library blueprint, its middle at x, z, its front facing a side, in a tier. */
   bases?: { blueprint: string; x: number; z: number; facing?: "n" | "e" | "s" | "w"; tier?: string }[];
+  /** Named places on the map screen (it needs terrain to have a map). */
+  places?: MapPlace[];
+  /** What the game tells a new player of the world (welcome's game.about). */
+  about?: string;
 }
 
 const KIND: Record<SceneThing["type"], EntityKind> = {
@@ -68,6 +72,8 @@ export function makeWorld(scene: Scene = {}): World {
     for (let t = 0; t < turns; t++) [ox, oz] = [-oz, ox];
     w.raise({ anchor: { at: [b.x - ox, b.z - oz], turns }, pieces: laid.pieces.map((p) => ({ ...p, item: kit[p.form]! })) });
   }
+  w.places = scene.places ?? [];
+  w.about = scene.about ?? "";
   w.setup(scene.me ?? {});
   return w;
 }
