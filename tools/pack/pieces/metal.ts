@@ -34,6 +34,7 @@ const NUT = 0.019; // half a nut across its flats
 const PROUD = 0.012; // a nut stands this far off its member
 const DECK = 0.04; // a floor's plate
 const FLOOR = 0.25; // a floor's depth, which a pillar's head stands under
+const RIM = 0.115; // a floor's rim beam: the band its side yields by, and a lip that stays when it does
 type Cell = readonly [number, number];
 type Mat = "plate" | "frame" | "trim" | "bolt" | "dark" | "nosing";
 
@@ -277,10 +278,11 @@ function foundation(form: FormDef, level: number): Shape | null {
 }
 
 /**
- * Deck plate on three joists inside a rim; the underside of the deck is the ceiling of the room below. The rim lies
- * wholly in the band a ceiling's side yields by, a little narrower, so its inner face is not in the plane of the wall's
- * under it. The deck is cut by all four rings; the rim's long beams and the joists are prisms along what they span,
- * which a ring leaves whole: pulled back, each is shorter.
+ * Deck plate on three joists inside a rim; the underside of the deck is the ceiling of the room below. The rim reaches
+ * 15 mm in past the band a ceiling's side yields by: a side that yields folds the rest of it onto its ring, which is
+ * the plane of the inner face of the wall under it, and that lip keeps the rim's own inner face out of that plane. The
+ * deck and the rim are cut by the rings; the rim's long beams and the joists are prisms along what they span, which a
+ * ring across them leaves whole: pulled back, each is shorter.
  */
 function ceiling(form: FormDef, level: number): Shape | null {
   if (level > 3) return null;
@@ -288,7 +290,7 @@ function ceiling(form: FormDef, level: number): Shape | null {
   const [top, bottom] = [form.thick / 2, -form.thick / 2 + 0.01];
   if (level === 3) return p.box([-H, -H, bottom], [H, H, top], slab("plate", "trim", "plate"));
   const under = top - DECK;
-  const rim = 0.085;
+  const rim = RIM;
   const [x0, x1] = [-H, H];
   const deck = (z0: number, z1: number): void => void p.box([x0, -H, z0], [x1, H, z1], slab("plate", "trim", "plate"));
   if (level === 2) {
@@ -832,7 +834,7 @@ function gate(form: FormDef, level: number): Shape | null {
     // The drop bar across the back, in a keeper on each leaf.
     const z = f.foot + 1.3;
     p.box([-f.hx * 0.55, half, z - 0.07], [f.hx * 0.55, half + 0.04, z + 0.07], tone("trim"));
-    for (const x of [-f.hx * 0.4, f.hx * 0.4]) p.box([x - 0.05, half - 0.004, z - 0.1], [x + 0.05, half + 0.045, z + 0.1], tone("bolt"));
+    for (const x of [-f.hx * 0.4, f.hx * 0.4]) p.box([x - 0.05, half - 0.004, z - 0.1], [x + 0.05, half + 0.044, z + 0.1], tone("bolt"));
   }
   return p;
 }
@@ -1131,7 +1133,7 @@ function hatchFrame(form: FormDef, level: number): Shape | null {
   for (const [x0, x1] of [[-H, outer[0]![0]], [outer[2]![0], H]] as const) bar(p, [x0, outer[0]![1], under], [x1, outer[2]![1], top], sides, 0);
   for (let k = 0; k < 4; k++) p.extrude([inner[k]!, inner[(k + 1) % 4]!, outer[(k + 1) % 4]!, outer[k]!], "z", under, top, tone("nosing"));
   // The ceiling's rim: two beams the whole side and two between them.
-  const rim = 0.085;
+  const rim = RIM;
   for (const s of [-1, 1]) {
     const [y0, y1] = s < 0 ? [-H, -H + rim] : [H - rim, H];
     bar(p, [-H, y0, bottom], [H, y1, under + 0.004], tone("trim"), 0);
@@ -1139,8 +1141,9 @@ function hatchFrame(form: FormDef, level: number): Shape | null {
   }
   const trim = 0.07;
   for (const [x0, x1] of [[hx0 - trim, hx0], [hx1, hx1 + trim]] as const) bar(p, [x0, -H + rim - 0.004, bottom + 0.012], [x1, H - rim + 0.004, under + 0.004], tone("trim"), 1);
+  if (level > 0) return p;
   for (const [y0, y1] of [[hy0 - trim, hy0], [hy1, hy1 + trim]] as const) p.box([hx0, y0, bottom + 0.012], [hx1, y1, under + 0.004], tone("trim"));
-  if (level === 0) {
+  {
     for (const s of [-1, 1]) for (const at of [-1.125, -0.375, 0.375, 1.125]) nut(p, [at, s * (H - rim), (bottom + under) / 2], [0, -s, 0], 0.018, 0.01);
     for (const x of [hx0 - trim / 2, hx1 + trim / 2]) for (const y of [hy0 - 0.25, hy1 + 0.25]) nut(p, [x, y, bottom + 0.012], [0, 0, -1], 0.016, 0.01);
   }
@@ -1324,7 +1327,7 @@ function triCeiling(form: FormDef, level: number): Shape | null {
   const band = form.yieldBand || MARGIN;
   triDeck(p, plan, under, top, band, "plate");
   const g: Flat = [plan.reduce((sum, q) => sum + q[0], 0) / n, plan.reduce((sum, q) => sum + q[1], 0) / n];
-  const rim = Math.min(0.085, band);
+  const rim = band + RIM - 0.1;
   const all = sidesOf(plan);
   for (const side of all) {
     const from = p.faces.length;
@@ -1336,7 +1339,8 @@ function triCeiling(form: FormDef, level: number): Shape | null {
   const [x0, x1, y0, y1] = [Math.min(...plan.map((q) => q[0])), Math.max(...plan.map((q) => q[0])), Math.min(...plan.map((q) => q[1])), Math.max(...plan.map((q) => q[1]))];
   const within = inset(plan, band);
   for (let x = Math.ceil((x0 + 0.3) / GRID) * GRID; x < x1 - 0.3; x += GRID) {
-    // A flange under a web, and past the finest level one bar.
+    // A flange under a web; past the finest level one bar, and none under the middle joint.
+    if (level > 0 && Math.abs(x - (x0 + x1) / 2) < 1e-9) continue;
     for (const [w, z0, z1] of level === 0 ? ([[0.05, bottom + 0.012, bottom + 0.04], [0.015, bottom + 0.035, under + 0.004]] as const) : ([[0.03, bottom + 0.012, under + 0.004]] as const)) {
       const from = p.faces.length;
       p.box([x - w, y0 - 0.1, z0], [x + w, y1 + 0.1, z1], tone("trim"));
@@ -1440,7 +1444,7 @@ function roof(form: FormDef, level: number): Shape | null {
   else {
     slabOn(p, plan, tops.map((h) => h + SHEET), DECK + SHEET, decked, fold);
     // The rim: a beam inside each side, the slab's whole depth under the deck, mitred at the corners.
-    const rim = inset(plan, Math.min(0.085, band));
+    const rim = inset(plan, band + RIM - 0.1);
     plan.forEach((a, k) => {
       const j = (k + 1) % n, kind = side[k]!.kind;
       onFacet(p, side[k]!.facet, [a, plan[j]!, rim[j]!, rim[k]!], -DECK, form.thick - DECK, "trim", kind === "rake" ? undefined : axisOf(a, plan[j]!));
@@ -1523,6 +1527,8 @@ function roof(form: FormDef, level: number): Shape | null {
 const JOINT_RINGS = [0.76, 1.51, 2.26] as const;
 const JOINT_HIGH = 3;
 const JOINT_CAP = 0.01;
+/** How far a joint's foot is sunk under its level, into the floor it stands on. */
+const JOINT_SUNK = 0.004;
 /** Half the width of the square joint: a centimetre past a wall's faces, so none of its faces lies in one of theirs. */
 const JOINT_HALF = FACE + 0.01;
 
@@ -1535,16 +1541,17 @@ function cornerPost(level: number): Shape {
   const h = JOINT_HALF;
   if (level === 3) {
     const three = Array.from({ length: 3 }, (_, k): Cell => [Math.cos((2 * Math.PI * k) / 3) * h * 1.6, Math.sin((2 * Math.PI * k) / 3) * h * 1.6]);
-    return p.extrude(three, "z", 0, JOINT_HIGH + JOINT_CAP, tone("frame"));
+    return p.extrude(three, "z", -JOINT_SUNK, JOINT_HIGH + JOINT_CAP, tone("frame"));
   }
-  if (level === 2) return p.box([-h, -h, 0], [h, h, JOINT_HIGH + JOINT_CAP], tone("frame"));
-  p.box([-h, -h, 0], [h, h, JOINT_HIGH], tone("frame"));
+  if (level === 2) return p.box([-h, -h, -JOINT_SUNK], [h, h, JOINT_HIGH + JOINT_CAP], tone("frame"));
+  // Its foot is a hair under its level and its shaft ends a hair under the storey, so no face of it lies in a wall's foot or top.
+  p.box([-h, -h, -JOINT_SUNK], [h, h, JOINT_HIGH - 0.006], tone("frame"));
   // Each collar by how far it stands off the shaft, its top at the height it is under.
-  const collars: readonly (readonly [number, number])[] = [[JOINT_RINGS[0], 0.024], [JOINT_RINGS[1], 0.016], [JOINT_RINGS[2], 0.016], [JOINT_HIGH, 0.008]];
+  const collars: readonly (readonly [number, number])[] = [[JOINT_RINGS[0], 0.024], [JOINT_RINGS[1], 0.016], [JOINT_RINGS[2], 0.016], [JOINT_HIGH - 0.01, 0.008]];
   for (const [z, out] of level === 0 ? collars : collars.filter(([z]) => z !== JOINT_RINGS[2])) p.box([-h - out, -h - out, z - 0.1], [h + out, h + out, z], tone("trim"));
   if (level === 1) return p;
-  p.box([-h - 0.03, -h - 0.03, 0], [h + 0.03, h + 0.03, 0.03], tone("trim"));
-  p.box([-h + 0.02, -h + 0.02, JOINT_HIGH - 0.005], [h - 0.02, h - 0.02, JOINT_HIGH + JOINT_CAP], tone("trim"));
+  p.box([-h - 0.03, -h - 0.03, -JOINT_SUNK - 0.002], [h + 0.03, h + 0.03, 0.03], tone("trim"));
+  p.box([-h + 0.02, -h + 0.02, JOINT_HIGH - 0.02], [h - 0.02, h - 0.02, JOINT_HIGH + JOINT_CAP], tone("trim"));
   for (const [z, out] of [collars[0]!, collars[1]!, collars[3]!]) {
     for (const [nx, ny] of [[1, 0], [0, 1], [-1, 0], [0, -1]] as const) stud(p, [nx * (h + out), ny * (h + out), z - 0.05], [nx, ny, 0], 0.02, 0.008);
   }
@@ -1553,24 +1560,20 @@ function cornerPost(level: number): Shape {
 
 /**
  * A joint where walls meet off the square: a twelve-sided tube `reach` from the corner to each arris, an arris `turn`
- * round from +x, with a bolted flange under each of the two lower heights it may be cut to and a base plate.
+ * round from +x, with a flange under each of the two lower heights it may be cut to and a base plate.
  */
 function tubePost(level: number, reach: number, turn: number): Shape {
   const p = new Shape();
   const ring = (r: number, sides = 12): Cell[] => Array.from({ length: sides }, (_, k): Cell => [Math.cos(turn + (2 * Math.PI * k) / sides) * r, Math.sin(turn + (2 * Math.PI * k) / sides) * r]);
-  if (level === 3) return p.extrude(ring(reach * 1.25, 3), "z", 0, JOINT_HIGH + JOINT_CAP, tone("trim"));
+  if (level === 3) return p.extrude(ring(reach * 1.25, 3), "z", -JOINT_SUNK, JOINT_HIGH + JOINT_CAP, tone("trim"));
   if (level === 2) {
     const c = reach * Math.cos(Math.PI / 12) * 0.96;
-    return p.box([-c, -c, 0], [c, c, JOINT_HIGH + JOINT_CAP], tone("trim"));
+    return p.box([-c, -c, -JOINT_SUNK], [c, c, JOINT_HIGH + JOINT_CAP], tone("trim"));
   }
-  p.extrude(ring(reach), "z", 0, JOINT_HIGH + JOINT_CAP, tone("trim"));
+  p.extrude(ring(reach), "z", -JOINT_SUNK, JOINT_HIGH + JOINT_CAP, tone("trim"));
   if (level === 1) return p;
   for (const z of [JOINT_RINGS[0], JOINT_RINGS[1]]) p.extrude(ring(reach + 0.022), "z", z - 0.035, z, tone("trim"));
-  p.box([-reach - 0.012, -reach - 0.012, 0], [reach + 0.012, reach + 0.012, 0.03], tone("trim"));
-  for (const k of [1, 7]) {
-    const t = turn + (2 * Math.PI * (k + 0.5)) / 12, out = reach * Math.cos(Math.PI / 12);
-    stud(p, [Math.cos(t) * out, Math.sin(t) * out, JOINT_HIGH - 0.12], [Math.cos(t), Math.sin(t), 0], 0.018, 0.009);
-  }
+  p.box([-reach - 0.012, -reach - 0.012, -JOINT_SUNK - 0.002], [reach + 0.012, reach + 0.012, 0.03], tone("trim"));
   return p;
 }
 
