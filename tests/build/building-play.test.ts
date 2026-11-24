@@ -642,7 +642,9 @@ test("in the whole client: the piece in hand is drawn where it would go, the but
   app.key("KeyR", false);
   run(100);
   expect(ghost.yaw).toBe((yaw + 32768) & 0xffff);
+  // A wall goes down when the button comes up: held, it would be the first of a row.
   app.mouseButton(0, true);
+  app.mouseButton(0, false);
   run(300);
   expect(h.host.build.placed).toBe(2);
   // The place just filled is no longer offered: the ghost has gone on to one that is free.

@@ -9,9 +9,11 @@ import { REFUSED } from "../../client/core/predict-build.ts";
 import { KEY_BUILD_SAYS } from "../../client/core/hud/hotbar.ts";
 import { DRAW_BLEND, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { SLOT_EDGE_MESH, SLOT_SQUARE_MESH } from "../../client/core/render/passes/ghost.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, T_ATTACK, T_CANCEL } from "../../client/core/touch.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
+import * as touchLayer from "../../client/core/ui/touch.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_SELF, CMD_MOVE, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_WAIT } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -351,4 +353,200 @@ test("a frame of the preview costs little beside a base of 2,000 pieces and of 2
       expect(rows.get(`${pieces}: ${piece}: the other slots' marks in that, median`)!).toBeLessThan(0.1);
     }
   }
+});
+
+test("held and swept, the place button lays a row: previewed, counted off the hotbar, sent as one command when let go", () => {
+  const { h, app, s, run, aim, click, text, built, tap, ghost, b } = client(["piece_foundation_wood"], 60, 9);
+  const kind = id("foundation_wood");
+  const ox = s.own.x, oy = s.own.y, oz = s.own.z;
+  app.key("Digit1", true);
+  aim(ox, oy, oz + 4);
+  run(500);
+  click();
+  run(500);
+  expect(h.host.build.placed).toBe(1);
+  // The button goes down on the place beside the first, and nothing is sent while it is held.
+  aim(ox + 2, oy, oz + 4);
+  run(100);
+  expect([ghost.x - ox, ghost.z - oz, b.problem]).toEqual([3, 4, 0]);
+  app.mouseButton(0, true);
+  const row = b.row, marks = app.scene!.predicted;
+  const pieces = (): string[] => Array.from(marks.marks.slice(0, marks.marked), (m) => (m.kind === kind ? `${m.x - ox},${m.z - oz},${m.color}` : "")).filter((m) => m !== "");
+  let p = run(100);
+  expect([row.on, row.n, row.ok, app.predict.entries.length, built(p, kind)]).toEqual([true, 1, 1, 0, 1]);
+  // Swept out along the ground, the row grows a piece for each side the look passes, each drawn where it would stand.
+  aim(ox + 9.5, oy, oz + 4);
+  p = run(100);
+  expect([row.ok, text(KEY_BUILD_SAYS), app.hud.hotbar[0]!.number]).toEqual([3, "Row of 3, of 8 carried   Stability 4 of 4 at least", "5"]);
+  expect([ghost.x - ox, ghost.color, pieces()]).toEqual([3, GHOST_OK, [`6,4,${GHOST_OK}`, `9,4,${GHOST_OK}`]]);
+  // Swept back, it shortens. A look that trembles on the line between two lengths changes nothing.
+  aim(ox + 6.5, oy, oz + 4);
+  run(100);
+  expect(row.ok).toBe(2);
+  let changes = 0;
+  for (let f = 0; f < 60; f++) {
+    aim(ox + 8.0 + 0.1 * Math.sin(f * 1.7), oy, oz + 4);
+    run(1000 / 60);
+    if (row.ok !== 2) changes++;
+  }
+  expect(changes).toBe(0);
+  // A row longer than the stack stops at the stack.
+  aim(ox + 60, oy, oz + 4);
+  run(200);
+  expect([row.ok, row.n, app.hud.hotbar[0]!.number, pieces().length]).toEqual([8, 8, "0", 7]);
+  // The right button gives the row up: nothing was sent, and the piece is still in hand.
+  app.mouseButton(2, true);
+  app.mouseButton(2, false);
+  app.mouseButton(0, false);
+  p = run(300);
+  expect([row.on, b.active, h.host.build.placed, app.predict.entries.length, app.hud.hotbar[0]!.number, pieces()]).toEqual([false, true, 1, 0, "8", []]);
+  // So does X, which only with no row put the piece away.
+  aim(ox + 2, oy, oz + 4);
+  run(100);
+  app.mouseButton(0, true);
+  aim(ox + 9.5, oy, oz + 4);
+  run(100);
+  expect(row.ok).toBe(3);
+  tap("KeyX");
+  app.mouseButton(0, false);
+  run(300);
+  expect([row.on, b.active, h.host.build.placed]).toEqual([false, true, 1]);
+  // Let go, the row is one command: its pieces are drawn as built in the next frame and stand after one answer.
+  aim(ox + 2, oy, oz + 4);
+  run(100);
+  app.mouseButton(0, true);
+  aim(ox + 12.5, oy, oz + 4);
+  run(100);
+  expect(row.ok).toBe(4);
+  app.mouseButton(0, false);
+  p = run(1);
+  expect([app.predict.entries.length, new Set(app.predict.entries.map((e) => e.seq)).size, app.predict.entries.map((e) => e.index), built(p, kind), app.hud.hotbar[0]!.number]).toEqual([4, 1, [0, 1, 2, 3], 5, "4"]);
+  for (let f = 0; f < 60; f++) expect(built(run(1000 / 60), kind)).toBe(5);
+  expect([h.host.build.placed, h.host.build.refused, app.predict.entries.length, s.inventory!.total(id("piece_foundation_wood"))]).toEqual([5, 0, 0, 4]);
+  expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a row stops at the first piece that would not stand, shown refused with its reason, and the rest go down", () => {
+  const { h, app, s, run, aim, click, text, ghost, b } = client(["piece_foundation_wood", "piece_wall_wood", "piece_ceiling_wood"], 0, 20);
+  const ox = s.own.x, oy = s.own.y, oz = s.own.z, top = oy + 0.125;
+  const row = b.row, marks = app.scene!.predicted;
+  const pieces = (along: "x" | "z"): string[] => Array.from(marks.marks.slice(0, marks.marked), (m) => (m.kind !== 0 ? `${(along === "x" ? m.x - ox : m.z - oz)}:${m.color}` : "")).filter((m) => m !== "");
+  app.key("Digit1", true);
+  aim(ox, oy, oz + 4);
+  run(300);
+  click();
+  run(300);
+  aim(ox + 2, oy, oz + 4);
+  run(100);
+  app.mouseButton(0, true);
+  aim(ox + 13.5, oy, oz + 4);
+  run(100);
+  app.mouseButton(0, false);
+  run(300);
+  expect(h.host.build.placed).toBe(5);
+  // Walls along the far side of the five foundations, swept on past the last: the sixth has nothing to join.
+  app.key("Digit2", true);
+  aim(ox, top, oz + 5.4);
+  run(300);
+  expect([ghost.kind, ghost.x - ox, ghost.z - oz]).toEqual([id("wall_wood"), 0, 5.5]);
+  app.mouseButton(0, true);
+  aim(ox + 22, top, oz + 5.4);
+  run(100);
+  expect([row.n, row.ok, row.code, text(KEY_PROMPT), text(KEY_BUILD_SAYS)]).toEqual([8, 5, RESULT_NO_SNAP, "It must join something built", "Row of 5, of 20 carried   Stability 4 of 4 at least"]);
+  expect(pieces("x")).toEqual([`3:${GHOST_OK}`, `6:${GHOST_OK}`, `9:${GHOST_OK}`, `12:${GHOST_OK}`, `15:${GHOST_BAD}`]);
+  app.mouseButton(0, false);
+  run(300);
+  expect([h.host.build.placed, h.host.build.refused]).toEqual([10, 0]);
+  // Floors from the first wall's top back over the builder's head: the second is at the last step that stands, the third would fall.
+  app.key("Digit3", true);
+  aim(ox, top + 2.9, oz + 5.3);
+  run(300);
+  expect([ghost.kind, ghost.z - oz, b.stability]).toEqual([id("ceiling_wood"), 4, 3]);
+  app.mouseButton(0, true);
+  aim(ox, top + 3, oz - 9);
+  run(100);
+  expect([row.ok, row.code, text(KEY_PROMPT), text(KEY_BUILD_SAYS)]).toEqual([2, RESULT_NO_SUPPORT, "Nothing would hold it up", "Row of 2, of 20 carried   Stability 1 of 4 at least"]);
+  expect(pieces("z")).toEqual([`1:${GHOST_WARN}`, `-2:${GHOST_BAD}`]);
+  app.mouseButton(0, false);
+  run(300);
+  expect([h.host.build.placed, h.host.build.refused, app.predict.entries.length]).toEqual([12, 0, 0]);
+  expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a finger held on Place and dragged, and a pad's trigger held while the look moves, lay rows as the mouse does", () => {
+  const { h, app, s, run, aim, click, b } = client(["piece_foundation_wood"], 0, 20);
+  app.ui.layer = touchLayer;
+  const ox = s.own.x, oy = s.own.y, oz = s.own.z;
+  app.key("Digit1", true);
+  aim(ox, oy, oz + 4);
+  run(300);
+  click();
+  run(300);
+  // A finger: down on Place, dragged to the right, which turns the look as a drag on the view does, and lifted.
+  aim(ox + 2, oy, oz + 4);
+  run(100);
+  const place = KEY_TOUCH_BUTTON + T_ATTACK;
+  app.pointer(0, KEY_ZONE_LOOK, 700, 300, 0, 1);
+  app.pointer(1, KEY_ZONE_LOOK, 700, 300, 0, 1);
+  run(50);
+  expect(app.ui.frame.find(place)).not.toBeNull();
+  app.pointer(0, place, 600, 300, 0, 1);
+  run(100);
+  expect([app.ui.touch, b.row.on, b.row.ok, h.host.build.placed]).toEqual([true, true, 1, 1]);
+  const yaw = app.controls.yaw;
+  for (let x = 600; x >= 440; x -= 10) {
+    app.pointer(2, place, x, 300, 0, 1);
+    run(1000 / 60);
+  }
+  expect(app.controls.yaw).toBeGreaterThan(yaw);
+  const swept = b.row.ok;
+  expect(swept).toBeGreaterThan(1);
+  app.pointer(1, place, 440, 300, 0, 1);
+  run(300);
+  expect([b.row.on, h.host.build.placed]).toEqual([false, 1 + swept]);
+  // A finger's Cancel gives a row up, and only with none puts the piece away.
+  aim(ox, oy, oz + 6);
+  run(100);
+  app.pointer(0, place, 600, 300, 0, 1);
+  run(50);
+  expect(b.row.on).toBe(true);
+  app.pointer(0, KEY_TOUCH_BUTTON + T_CANCEL, 10, 10, 0, 2);
+  app.pointer(1, KEY_TOUCH_BUTTON + T_CANCEL, 10, 10, 0, 2);
+  app.pointer(1, place, 600, 300, 0, 1);
+  run(300);
+  expect([b.row.on, b.active, h.host.build.placed]).toEqual([false, true, 1 + swept]);
+  // A pad: the right trigger held while the look moves, then let go. B gives a row up.
+  const pad = { connected: true, mapping: "standard", axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+  let at = h.now;
+  app.gamepads([pad], (at += 16));
+  aim(ox, oy, oz + 6);
+  run(100);
+  at = h.now;
+  pad.buttons[7]!.pressed = true;
+  app.gamepads([pad], (at += 16));
+  expect(b.row.on).toBe(true);
+  aim(ox, oy, oz + 13);
+  run(100);
+  const far = b.row.ok;
+  expect(far).toBeGreaterThan(1);
+  at = h.now;
+  pad.buttons[1]!.pressed = true;
+  app.gamepads([pad], (at += 16));
+  pad.buttons[1]!.pressed = pad.buttons[7]!.pressed = false;
+  app.gamepads([pad], (at += 16));
+  run(300);
+  expect([b.row.on, b.active, h.host.build.placed]).toEqual([false, true, 1 + swept]);
+  aim(ox, oy, oz + 6);
+  run(100);
+  at = h.now;
+  pad.buttons[7]!.pressed = true;
+  app.gamepads([pad], (at += 16));
+  aim(ox, oy, oz + 13);
+  run(100);
+  at = h.now;
+  pad.buttons[7]!.pressed = false;
+  app.gamepads([pad], (at += 16));
+  run(300);
+  expect(h.host.build.placed).toBe(1 + swept + far);
+  expect(h.host.items.audit()).toEqual([]);
 });

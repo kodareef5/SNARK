@@ -412,7 +412,8 @@ export class App {
     }
     // The mouse's own secondary button puts the piece in hand away. A pad's aim and a finger's do not.
     if (button === 2 && building && source === 0) {
-      if (down) this.builder.putAway(this.session, this.nowMs);
+      // A row being dragged is given up; with none, the piece is put away.
+      if (down && !this.builder.cancel()) this.builder.putAway(this.session, this.nowMs);
       return;
     }
     if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
@@ -421,8 +422,10 @@ export class App {
       return;
     }
     if (button === 0 && this.builder.active) {
-      // A place already asked for is not asked for twice. A piece the preview finds nothing wrong with is drawn at once.
-      if (down) this.builder.setDown(this.session, this.reg, this.nowMs);
+      // A place already asked for is not asked for twice. A piece the preview finds nothing wrong with is drawn at once:
+      // one that goes down in rows when the button comes up, with the row the look swept out meanwhile.
+      if (down) this.builder.press(this.session, this.reg, this.nowMs);
+      else this.builder.release(this.session, this.reg, this.nowMs);
       return;
     }
     // The button that would strike throws what is in the arms, where the body looks.
@@ -1007,7 +1010,8 @@ export class App {
     const session = this.session, hud = this.hud, cam = this.cam, c = this.controls, alive = f.alive, nowMs = f.nowMs;
     const fill = this.hudFill, body = f.body;
     f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active; f.device = this.ui.inputDevice;
-    f.spendItem = this.builder.inHand; f.spend = this.predict.pending(f.spendItem);
+    // The count shows without the pieces on their way down, and without a dragged row's while it is held.
+    f.spendItem = this.builder.inHand; f.spend = this.predict.pending(f.spendItem) + (this.builder.row.on ? this.builder.row.ok : 0);
     f.buildSays = this.builder.active ? this.builder.says() : "";
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
@@ -1071,6 +1075,12 @@ export class App {
       ghost.yaw = b.pose.yaw;
       ghost.tw = b.tw;
       ghost.color = b.color;
+    }
+    // A row being dragged: each piece after the first in the colour of how it would stand, and the one that would not in the refused colour.
+    const row = b.row;
+    if (b.active && row.on) {
+      for (let i = 1; i < row.ok; i++) marks.piece(row.kind, row.x[i]!, row.y[i]!, row.z[i]!, row.yaw[i]!, row.tw[i]!, b.colorOf(row.stab[i]!));
+      if (row.code !== 0 && row.ok > 0) marks.piece(row.kind, row.x[row.ok]!, row.y[row.ok]!, row.z[row.ok]!, row.yaw[row.ok]!, row.tw[row.ok]!, GHOST_BAD);
     }
     // The slot it would go in, and faintly the others the look offers.
     if (b.active && b.slotMark.cls >= 0) {

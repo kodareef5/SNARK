@@ -3,6 +3,7 @@
 // a row of 32 dragged out. `bun tools/bench/preview.ts` runs these alone; `bun run bench` does not.
 
 import { Builder } from "../../client/core/build.ts";
+import { PredictBuild } from "../../client/core/predict-build.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -35,7 +36,7 @@ export function previewRows(section: Section, record: Row): void {
     // The builder stands outside the south wall, at its middle, with walls in hand.
     const own = { x: 190 + side * 1.5, y: 0, z: 186 };
     const inventory = { hotbar: 0, cap: 10, version: 1, count: new Uint16Array(10).fill(100), item: new Uint16Array(10).fill(item("wall")), total: () => 100 };
-    const session = { inventory, held: 0, handChanging: false, tribe: { team: TEAM }, own, ownKind: reg.index.get("core:human")!, ownHandle: 1, world } as unknown as ClientSession;
+    const session = { command: () => 0, inventory, held: 0, handChanging: false, tribe: { team: TEAM }, own, ownKind: reg.index.get("core:survivor")!, ownHandle: 1, world } as unknown as ClientSession;
     const b = new Builder();
     const dir = [0, 0, 0];
     let frame = 0;
@@ -65,6 +66,18 @@ export function previewRows(section: Section, record: Row): void {
       for (let f = 0; f < 1200; f++) plain.push(step(0.5 * Math.sin(f / 37), -0.25 + 0.35 * Math.sin(f / 23)));
       b.showOthers = true;
       record(`${name}: the other slots' marks in that, median`, median(sweeping) - median(plain), "ms", 0.1);
+    }
+    // A row of foundations dragged out along the base's south side, as far as the look will take it.
+    b.predict = new PredictBuild();
+    own.z = 184;
+    for (let f = 0; f < 3; f++) step(0, -0.35);
+    if (b.press(session, reg, frame * 16) === -1) {
+      const dragging: number[] = [];
+      for (let f = 0; f < 240; f++) dragging.push(step(Math.min(1.5, f / 120), Math.min(-0.012, -0.35 + f / 500)));
+      record("a row dragged out: pieces that would stand", b.row.ok, "");
+      record("a row dragged out: a frame, median", median(dragging), "ms");
+      record("a row dragged out: a frame, worst", Math.max(...dragging), "ms");
+      b.cancel();
     }
   }
 }

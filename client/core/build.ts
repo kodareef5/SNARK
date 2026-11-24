@@ -8,20 +8,20 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { handleIndex } from "../../shared/ids.ts";
-import { PLACE_JOIN, PLACE_NEW, PLACE_REST, writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
+import { PLACE_JOIN, PLACE_NEW, PLACE_REST, PLACE_RUN_MOST, writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
 import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, RESULT_TERRAIN, RESULT_TOO_HIGH, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
-import { levelY, worldOf, yawOf } from "../../shared/world/lattice/basis.ts";
-import { HALF_SIDE_M } from "../../shared/world/lattice/forms.ts";
-import type { Frame } from "../../shared/world/lattice/frames.ts";
-import { SIDE, elementCorners, keyAnchor, keyCls, keyDir, keyLvl } from "../../shared/world/lattice/module.ts";
-import { PLACE_REACH, candidates, choose, makeCandidates, makeVerdict, validate, validateFree, type Site } from "../../shared/world/lattice/place.ts";
+import { dirVector, levelY, worldOf, yawOf } from "../../shared/world/lattice/basis.ts";
+import { FORM_LAYERS, HALF_SIDE_M } from "../../shared/world/lattice/forms.ts";
+import type { Frame, LatticeKey } from "../../shared/world/lattice/frames.ts";
+import { CLS_EDGE, CLS_SQUARE, SIDE, dirTurn, elementCorners, keyAnchor, keyCls, keyDir, keyLvl } from "../../shared/world/lattice/module.ts";
+import { PLACE_REACH, SWITCH_MARGIN, candidates, choose, makeCandidates, makeVerdict, runKey, validate, validateFree, type Site } from "../../shared/world/lattice/place.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ROLE_THING, enemyGap, enemyGapFound, freePose, restPose, type Pose } from "../../shared/world/snap.ts";
 import { STABILITY, Support } from "../../shared/world/support.ts";
-import { BuildView, PROVISIONAL } from "./build-view.ts";
-import { ASKED, type Asking, type PredictBuild } from "./predict-build.ts";
+import { BuildView, PROVISIONAL, type Overlaid } from "./build-view.ts";
+import { ASKED, PREDICT_MOST, type Asking, type PredictBuild } from "./predict-build.ts";
 import type { ClientSession } from "./session.ts";
 import { structName } from "./ui/structure.ts";
 
@@ -55,6 +55,16 @@ const OTHERS_SEEN = 16;
 const OTHERS_A_FRAME = 1;
 /** How see-through the other slots' marks are, 0 to 1. */
 export const OTHERS_FADE = 0.55;
+
+/** Pieces one row may have, and how many of a row are judged anew in one frame. */
+export const ROW_MOST = PLACE_RUN_MOST;
+const ROW_A_FRAME = 8;
+/** Metres along the look that a row is swept to at most, and metres round a row's piece that the view must hold. */
+const ROW_LOOK = 110;
+const ROW_NEED = 16;
+/** The layers whose pieces go down in rows: floors and foundations, walls, and what a fence stands on. */
+const ROW_LAYERS: readonly number[] = [FORM_LAYERS.indexOf("slab"), FORM_LAYERS.indexOf("wall"), FORM_LAYERS.indexOf("footing")];
+const stepKey: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 
 /** A slot's outline: its class (a CLS_ of the lattice, -1 for none), its middle in metres and its turn in wire units. */
 export interface SlotMark {
@@ -213,6 +223,23 @@ export class Builder {
   /** The pieces not yet answered for that the piece shown joins or stands on. */
   private readonly on: number[] = [];
   private readonly off: number[] = [];
+  /**
+   * The row being dragged out from the slot the place button went down on: its first slot with its turn, the direction it
+   * runs, the `n` pieces the sweep asks for and the `ok` of them that would stand, each one's pose and stability. `code`
+   * is why piece `ok` would not, and its pose is there too. `have` is how many of the piece are carried and not yet spent.
+   */
+  readonly row = { on: false, fr: 0, k0: 0, k1: 0, kind: 0, item: 0, variant: 0, dir: 0, n: 1, ok: 0, code: 0, have: 0, x: new Float64Array(ROW_MOST + 1), y: new Float64Array(ROW_MOST + 1), z: new Float64Array(ROW_MOST + 1), yaw: new Uint16Array(ROW_MOST + 1), tw: new Uint8Array(ROW_MOST + 1), stab: new Int8Array(ROW_MOST + 1), k0s: new Uint32Array(ROW_MOST + 1), k1s: new Uint32Array(ROW_MOST + 1) };
+  /** The directions the row may run, what its pieces stand on that is not answered for, and what it was last judged for: its direction, the world's shapes and the predicted pieces' stamp. */
+  private readonly rowDirs: number[] = [];
+  private readonly rowOn: number[] = [];
+  private readonly rowFor = [-1, -1, -1];
+  /** The row's pieces that would stand, as the view is shown them, so each next one is judged with those before it. */
+  private readonly trial: Overlaid[] = Array.from({ length: ROW_MOST }, (_, i) => ({ id: -1 - i, kind: 0, mode: PLACE_JOIN, fr: 0, k0: 0, k1: 0, x: 0, y: 0, z: 0, yaw: 0 }));
+  /** What the view is shown over the rows, when it was last put together and from what. */
+  private readonly over: Overlaid[] = [];
+  private overStamp = 0;
+  private readonly overFor = [-1, -1, -1];
+  private rowGen = 0;
   /** Whether `offered` is of the look as it is now. */
   private joining = false;
   /** Slots judged for their marks: what they were judged for, then each one's frame and key, whether it is fine, and its pose. */
@@ -288,7 +315,23 @@ export class Builder {
       this.sites.length = 0;
     }
     const view = this.view;
-    view.update(x, z, this.predict?.live ?? NO_PIECES, this.predict?.stamp ?? 0, team, this.predict?.taken);
+    // Over the rows: the pieces set down that are not rows yet, then a dragged row's pieces that would stand.
+    const live = this.predict?.live ?? NO_PIECES;
+    const r = this.row;
+    const trial = r.on ? r.ok : 0;
+    const f = this.overFor;
+    if (f[0] !== (this.predict?.stamp ?? 0) || f[1] !== trial || f[2] !== this.rowGen) {
+      [f[0], f[1], f[2]] = [this.predict?.stamp ?? 0, trial, this.rowGen];
+      this.over.length = 0;
+      for (const o of live) this.over.push(o);
+      for (let i = 0; i < trial; i++) {
+        const t = this.trial[i]!;
+        [t.kind, t.fr, t.k0, t.k1] = [r.kind, r.fr, r.k0s[i]!, r.k1s[i]!];
+        this.over.push(t);
+      }
+      this.overStamp++;
+    }
+    view.update(x, z, this.over, this.overStamp, team, this.predict?.taken);
     return view.ready(x - VIEW_NEED, z - VIEW_NEED, x + VIEW_NEED, z + VIEW_NEED) ? view.world : world;
   }
 
@@ -306,6 +349,7 @@ export class Builder {
       this.notice = "";
       this.looked = -1;
       this.from[0] = NaN;
+      this.row.on = false;
       if (this.view && nowMs - this.activeAt >= VIEW_IDLE_MS) {
         this.view = null;
         this.sites.length = 0;
@@ -331,6 +375,16 @@ export class Builder {
     const team = session.tribe.team;
     const seen = (this.seen = this.look(world, reg, ox, oz, team));
     const have = inv!.count[slot]! - (this.predict ? this.predict.pending(item) : (this.pending?.(item) ?? 0));
+    const r = this.row;
+    if (r.on && (r.item !== item || r.kind !== kind)) this.cancel();
+    if (r.on) {
+      // A row is being dragged: its first slot is kept, and the look says how far it runs and which way.
+      r.have = have;
+      this.others = 0;
+      this.drag(session, seen, world, reg, team, ox, oy, oz, dx, dy, dz);
+      this.notice = nowMs < this.refusalUntil ? this.refusal : this.words;
+      return;
+    }
     // Nothing the preview is worked out from has changed: it stands as it is.
     const from = this.from;
     const now = [ox, oy, oz, dx, dy, dz, yaw, kind, this.turn, this.free ? 1 : 0, this.lift, seen === world ? 0 : 1, seen.structs.shapes, world.structs.shapes, this.predict?.stamp ?? 0, team, have, item, this.view!.version];
@@ -438,6 +492,149 @@ export class Builder {
     }
   }
 
+  /** Whether pieces of `kind` go down in rows: whole pieces of one cell on a side or a square, of a layer that runs. */
+  private runs(reg: Registry, kind: number): boolean {
+    const forms = reg.forms;
+    const cls = forms.cls[kind]!;
+    return (cls === CLS_EDGE || cls === CLS_SQUARE) && forms.size[kind] === SIDE && forms.def[kind]!.cells === undefined && ROW_LAYERS.includes(forms.layer[kind]!);
+  }
+
+  /**
+   * The place button went down. A piece that goes down in rows, fine where it is shown, begins a row there, which
+   * `release` sends; any other is set down at once, as `setDown` does. Returns what `setDown` does, or -1 for a row begun.
+   */
+  press(session: ClientSession, reg: Registry, nowMs: number): number {
+    const predict = this.predict;
+    const p = this.pose;
+    const view = this.view !== null && this.seen === this.view.world ? this.view : null;
+    if (!this.active || this.mode !== PLACE_JOIN || this.problem !== 0 || !view || !predict || !this.runs(reg, this.kind) || predict.covers(p.x / STRUCT_UNITS, p.y / STRUCT_UNITS, p.z / STRUCT_UNITS)) return this.setDown(session, reg, nowMs);
+    const r = this.row;
+    const k1 = this.keyed(reg);
+    [r.on, r.fr, r.k0, r.k1, r.kind, r.item, r.variant] = [true, this.slot.fr, this.slot.k0, k1, this.kind, this.item, this.variant % reg.places[this.item]!.length];
+    [r.n, r.ok, r.code, r.dir] = [1, 1, 0, keyDir(k1)];
+    [r.x[0], r.y[0], r.z[0], r.yaw[0], r.tw[0], r.stab[0], r.k0s[0], r.k1s[0]] = [p.x / STRUCT_UNITS, p.y / STRUCT_UNITS, p.z / STRUCT_UNITS, p.yaw, this.tw, this.stability, r.k0, k1];
+    // A side's pieces run along it either way; a square's along either of its sides, either way.
+    this.rowDirs.length = 0;
+    for (let q = 0; q < 12; q += keyCls(r.k0) === CLS_EDGE ? 6 : 3) this.rowDirs.push(dirTurn(r.dir, q));
+    this.rowOn.length = 0;
+    this.rowOn.push(...this.on);
+    [this.rowFor[0], this.rowFor[1], this.rowFor[2]] = [r.dir, session.world?.structs.shapes ?? -1, predict.stamp];
+    this.rowGen++;
+    return -1;
+  }
+
+  /** Gives up the row being dragged. False if there was none. */
+  cancel(): boolean {
+    if (!this.row.on) return false;
+    this.row.on = false;
+    this.rowGen++;
+    this.from[0] = NaN;
+    return true;
+  }
+
+  /**
+   * The place button came up: the row dragged out goes as one command, its pieces that would stand, and each is handed to
+   * `predict` to be drawn at once. Returns the command's sequence number, -1 for one held back, 0 if nothing was asked.
+   */
+  release(session: ClientSession, reg: Registry, nowMs: number): number {
+    const r = this.row;
+    const predict = this.predict;
+    if (!this.cancel() || !predict) return 0;
+    if (r.ok === 0) {
+      if (this.words !== "") this.say(this.words, nowMs);
+      return 0;
+    }
+    const held = r.fr >= PROVISIONAL;
+    const { variant, fr, k0, k1, ok, dir } = r;
+    const seq = held ? 0 : (this.asked = session.command(CMD_PLACE, (w: BitWriter) => writeJoin(w, variant, fr, k0, k1, ok, dir)));
+    if (!held && seq === 0) return 0;
+    for (let i = 0; i < ok; i++) {
+      const at: Asking = { mode: PLACE_JOIN, variant, fr, k0: r.k0s[i]!, k1: r.k1s[i]!, on: this.rowOn, index: i, count: ok, step: dir, tw: r.tw[i]! };
+      predict.add(seq, r.kind, r.item, r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!, nowMs, at);
+    }
+    return held ? -1 : seq;
+  }
+
+  /**
+   * A frame of the row being dragged: the look, met with the first slot's level, says which way the row runs and how many
+   * pieces; each is judged in order as the server will judge it, with those before it in place, a few a frame. The way and
+   * the count are kept until the look has gone past the next by the margin a slot is kept by.
+   */
+  private drag(session: ClientSession, seen: CollisionWorld, world: CollisionWorld, reg: Registry, team: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): void {
+    const r = this.row;
+    const view = this.view!;
+    const predict = this.predict!;
+    // While the view is being read the row stands as it was.
+    if (seen === world) return;
+    const f = seen.structs.frames.get(r.fr);
+    if (!f) {
+      [r.ok, r.code, this.problem] = [0, RESULT_NO_SNAP, RESULT_NO_SNAP];
+      this.words = BUILD_REASONS[RESULT_NO_SNAP]!;
+      return;
+    }
+    const at = this.slotMark;
+    slotMarkOf(f, r.k0, r.k1, at);
+    // Where the look meets the slot's level, from above it or from under it; a look that never does runs the row far out.
+    let t = Math.abs(dy) > 1e-4 ? (at.y - oy) / dy : ROW_LOOK;
+    if (!(t > 0 && t < ROW_LOOK)) t = ROW_LOOK;
+    const px = ox + dx * t - at.x;
+    const pz = oz + dz * t - at.z;
+    const side = SIDE * HALF_SIDE_M;
+    let best = r.dir;
+    let most = -Infinity;
+    let along = 0;
+    let ux = 0;
+    let uz = 0;
+    for (const d of this.rowDirs) {
+      dirVector(f.basis, d, point, 0);
+      const len = Math.hypot(point[0]!, point[1]!);
+      const a = (px * point[0]! + pz * point[1]!) / len;
+      if (d === r.dir) [along, ux, uz] = [a, point[0]! / len, point[1]! / len];
+      if (a > most) [most, best] = [a, d];
+    }
+    if (best !== r.dir && most > along + SWITCH_MARGIN) {
+      dirVector(f.basis, best, point, 0);
+      const len = Math.hypot(point[0]!, point[1]!);
+      [r.dir, along, ux, uz, r.n] = [best, most, point[0]! / len, point[1]! / len, 1];
+    }
+    // One more piece once the look is past the next slot's near edge by the margin, one fewer once it is back past it by as much.
+    const more = 1 + Math.floor((along + side / 2 - SWITCH_MARGIN) / side);
+    const fewer = 1 + Math.floor((along + side / 2 + SWITCH_MARGIN) / side);
+    const n = more > r.n ? more : fewer < r.n ? fewer : r.n;
+    r.n = Math.max(1, Math.min(ROW_MOST, r.have, PREDICT_MOST - predict.entries.length, n));
+    const judgedFor = this.rowFor;
+    const shapes = world.structs.shapes;
+    if (judgedFor[0] !== r.dir || judgedFor[1] !== shapes || judgedFor[2] !== predict.stamp) {
+      [judgedFor[0], judgedFor[1], judgedFor[2]] = [r.dir, shapes, predict.stamp];
+      [r.ok, r.code] = [0, 0];
+      this.rowGen++;
+    }
+    if (r.ok >= r.n) [r.ok, r.code] = [r.n, 0];
+    const by = this.by;
+    for (let left = ROW_A_FRAME; r.ok < r.n && r.code === 0 && left > 0; left--) {
+      const i = r.ok;
+      // The pieces before it lie in the view while it is judged, and the view holds whole the ground it stands on.
+      const mx = at.x + ux * side * i;
+      const mz = at.z + uz * side * i;
+      view.reach(mx - ROW_NEED, mz - ROW_NEED, mx + ROW_NEED, mz + ROW_NEED);
+      if (this.look(world, reg, ox, oz, team) === world || !view.ready(mx - ROW_NEED, mz - ROW_NEED, mx + ROW_NEED, mz + ROW_NEED)) break;
+      const { site, support } = this.siteFor(seen);
+      const code = runKey(r.k0, r.k1, r.dir, i, stepKey) ? validate(site, r.kind, team, r.fr, stepKey.k0, stepKey.k1, i === 0 ? ox : NaN, oy, oz, this.verdict) : RESULT_NO_SNAP;
+      const q = this.verdict.pose;
+      [r.x[i], r.y[i], r.z[i], r.yaw[i], r.tw[i], r.k0s[i], r.k1s[i]] = [q.x / STRUCT_UNITS, q.y / STRUCT_UNITS, q.z / STRUCT_UNITS, q.yaw, q.tw, stepKey.k0, stepKey.k1];
+      if (code !== RESULT_OK) {
+        r.code = code;
+        [by.detail, by.a, by.b] = code === RESULT_NO_SNAP ? [PLACED_NONE, 0, 0] : [this.verdict.detail, this.verdict.a, this.verdict.b];
+        break;
+      }
+      r.stab[i] = support.stabilityAt(r.kind, r.fr, stepKey.k0, stepKey.k1);
+      r.ok++;
+    }
+    this.problem = r.ok === 0 ? r.code : 0;
+    this.words = r.code === 0 ? "" : buildReason(reg, session, r.code, by, undefined, seen.structs);
+    if (r.ok > 0) this.stability = r.stab[0]!;
+  }
+
   /**
    * Marks the other slots the look offers that the piece may go in, the nearest first: each judged once as the server
    * would judge it from anywhere, a few new ones a frame, and left out while the builder's own body stands in it.
@@ -511,7 +708,18 @@ export class Builder {
 
   /** What the hotbar's line says of the piece shown: how well it would stand. "" with nothing to say. */
   says(): string {
+    const r = this.row;
+    if (r.on && r.ok > 0) {
+      let least = this.stabilityMost;
+      for (let i = 0; i < r.ok; i++) least = Math.min(least, r.stab[i]!);
+      return `Row of ${r.ok}, of ${r.have} carried   Stability ${least} of ${this.stabilityMost} at least`;
+    }
     return this.problem === 0 && this.stability >= 0 ? `Stability ${this.stability} of ${this.stabilityMost}` : "";
+  }
+
+  /** The palette colour a piece of stability `stab` that stands is shown in. */
+  colorOf(stab: number): number {
+    return stab >= 0 && stab < STABLE_FROM ? GHOST_WARN : GHOST_OK;
   }
 
   /** The shown slot's second word with the piece's turn in it: as many turns as its form has. */
@@ -698,7 +906,7 @@ export const BUILD_FIRST_KEYS: readonly KeyRow[] = [{
       return true;
     }
     if (source !== 2) return undefined;
-    if (down && !repeat) c.builder.putAway(c.session, c.nowMs);
+    if (down && !repeat && !c.builder.cancel()) c.builder.putAway(c.session, c.nowMs);
     return true;
   },
 }];
@@ -718,14 +926,15 @@ export const BUILD_KEYS: readonly KeyRow[] = [{
     { code: "KeyE", group: G_BUILD, title: "Use / piece menu", detail: "Tap to use what you look at. Hold on a built piece to mend it, take it back or take it down.", sheet: G_BUILD },
     { code: "ArrowUp", group: G_BUILD, title: "Raise preview", sheet: G_BUILD },
     { code: "ArrowDown", group: G_BUILD, title: "Lower preview", sheet: G_BUILD },
-    { code: "Mouse0", group: G_BUILD, title: "Place", sheet: G_BUILD },
+    { code: "Mouse0", group: G_BUILD, title: "Place / drag a row", detail: "Click to set the piece down. Hold and sweep the look to lay floors, foundations or walls in a row of up to 32, set down when you let go. X or the right button gives the row up.", sheet: G_BUILD },
     { code: "Mouse1", group: G_BUILD, title: "Pick piece", detail: "Take in hand the piece that builds what you look at, if you carry one.", sheet: G_BUILD },
     { code: "Mouse2", group: G_BUILD, title: "Put away", sheet: G_BUILD },
   ],
   when: (c) => building(c),
   press(c, code, down, repeat) {
     if (code !== "KeyX") return c.builder.key(code, down, repeat, c.nowMs, c.reg) || undefined;
-    if (down && !repeat) c.builder.putAway(c.session, c.nowMs);
+    // A row being dragged is given up; with none, the piece is put away.
+    if (down && !repeat && !c.builder.cancel()) c.builder.putAway(c.session, c.nowMs);
     return true;
   },
 }];
