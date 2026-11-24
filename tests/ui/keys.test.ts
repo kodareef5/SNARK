@@ -102,6 +102,13 @@ test("with a piece in hand E still takes, opens and uses, and R turns the piece"
   expect([press("KeyR"), press("KeyT"), press("KeyX")]).toEqual(["build", "build", "build"]);
 });
 
+test("at a wheel a piece in hand takes no key, so Q and R are the vehicle's", () => {
+  const { app, press } = playing();
+  app.builder.active = true;
+  app.session.driving = 5;
+  expect([press("KeyQ"), press("KeyR"), press("KeyX")]).toEqual(["body", "body", "body"]);
+});
+
 test("a finger's cancel puts the piece away, and the keyboard's Escape still opens the menu", () => {
   const { app } = playing();
   app.builder.active = true;

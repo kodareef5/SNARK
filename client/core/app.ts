@@ -314,7 +314,7 @@ export class App {
 
   /** Takes back the piece last set down, through its pickup. */
   undo(): void {
-    if (this.predict.undo(this.session) === 0 && !this.predict.undoable) this.builder.say("Nothing to undo", this.nowMs);
+    if (this.predict.undo(this.session) === 0) this.builder.say("Nothing to undo", this.nowMs);
   }
 
   /** The name of the body with entity index `entity` as the last sample has it: its own, or its kind's; "" for one not in view. */

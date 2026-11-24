@@ -330,6 +330,10 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   look(5);
   run(300);
   expect([ghost.kind, ghost.color, text(KEY_AMMO)]).toEqual([id("foundation_wood"), GHOST_OK, BUILD_HINT]);
+  // Nothing has been set down yet, and Z says so.
+  tap("KeyZ");
+  run(50);
+  expect(text(KEY_PROMPT)).toBe("Nothing to undo");
   const yaw = ghost.yaw, y = ghost.y;
   expect(app.wheel(100)).toBe(true);
   run(50);
@@ -387,7 +391,7 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   const frame = h.host.build.last;
   expect(h.world.structs.chunks[Math.floor(frame / 65536)]!.kind[frame & 0xffff]).toBe(id("doorframe_wood"));
 
-  // Z takes the last piece back, and then the one before it; with nothing left it says so.
+  // Z takes the last piece back, and is not the emotes' key while a piece is in hand.
   expect(tap("KeyZ")).toBe(true);
   run(300);
   expect([h.host.build.pickedUp, s.inventory!.total(id("piece_wall_wood")), app.ui.emotes.open]).toEqual([1, 6, false]);

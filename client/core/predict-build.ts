@@ -158,13 +158,13 @@ export class PredictBuild {
 
   /**
    * Takes back the last piece this survivor placed, through the pickup every piece has. A piece still unanswered is
-   * taken back when its answer comes. Returns the command's sequence number, or 0 if nothing was sent.
+   * taken back when its answer comes: -1 is returned for that. Else the command's sequence number, or 0 with nothing to take back.
    */
   undo(session: ClientSession): number {
     const waiting = this.entries.findLast((q) => q.state === ASKED && !q.undo);
     if (waiting) {
       waiting.undo = true;
-      return 0;
+      return -1;
     }
     const structs = session.world?.structs;
     while (this.done.length > 0) {
