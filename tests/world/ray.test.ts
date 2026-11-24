@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Rng } from "../../shared/rng.ts";
-import { HIT_NONE, HIT_STRUCTURE, HIT_TERRAIN, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NONE, HIT_STRUCTURE, HIT_TERRAIN, castWorld, lookDirection, rayBox, rayGround, rayHit } from "../../shared/world/ray.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { flatWorld, provingWorld } from "../fixtures/world.ts";
 
@@ -78,6 +78,20 @@ test("world rays stop at the ground and at structures, whichever is nearer, and 
   lookDirection(0, -8192, d); // 45 degrees down
   expect(castWorld(w, 100, 1.6, 100, d[0]!, d[1]!, d[2]!, 50)).toBe(HIT_TERRAIN);
   expect(rayHit.t).toBeCloseTo(1.6 * Math.SQRT2, 2);
+});
+
+test("terrain rays only meet ground inside the map, including its edges", () => {
+  const { hf } = flatWorld();
+  const d = Math.SQRT1_2;
+  for (const sign of [-1, 1]) {
+    const edge = sign > 0 ? 0 : hf.sizeX;
+    const outside = edge - 2 * sign;
+    expect(rayGround(hf, outside, 4, 16, d * sign, -d, 0, 10)).toBeCloseTo(4 / d, 12);
+    expect(rayGround(hf, outside, 1, 16, d * sign, -d, 0, 10)).toBeCloseTo(2 / d, 12);
+    expect(rayGround(hf, edge + 2 * sign, 4, 16, -d * sign, -d, 0, 10)).toBe(Infinity);
+    expect(rayGround(hf, edge, 1, 16, 0, -1, 0, 4)).toBe(1);
+    expect(rayGround(hf, outside, 1, 16, 0, -1, 0, 4)).toBe(Infinity);
+  }
 });
 
 test("terrain rays on the proving ground agree with walking along the ray in small steps", () => {
