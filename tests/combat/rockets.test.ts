@@ -252,6 +252,51 @@ test("one who comes within hearing of a flying rocket is told of it once, with i
   expect(hers.blasts.map((b) => b.id)).toEqual([number]);
 });
 
+test("a reconnect sees a rocket already shown to its old connection", () => {
+  const { h, friends, at, shots, launch, land } = range("eve");
+  const eve = friends[0]!;
+  const original = h.client(eve)!;
+  const old = tap(h, eve);
+  launch(at.x, at.y + 100, at.z + 5);
+  const id = shots.numberAt(0);
+  expect(old.rockets.map((r) => r.id)).toEqual([id]);
+  eve.close();
+  const again = h.join("eve");
+  h.run(500);
+  expect(h.client(again)).toBe(original);
+  land();
+  h.run(100);
+  const seen = again.events.filter((e) => e.kind === EVENT_ROCKET && e.id === id);
+  expect(seen.length).toBe(1);
+  expect(seen[0]!.back).toBeGreaterThan(0);
+  expect(again.events.filter((e) => e.kind === EVENT_BLAST && e.id === id).length).toBe(1);
+});
+
+test("a replacement connection cannot inherit a distant blast from its slot", () => {
+  const { h, friends, at, shots, launch, land } = range("eve", "bea");
+  const eve = friends[0]!;
+  const bea = friends[1]!;
+  h.server.opts.lingerTicks = 0;
+  const { sizeX, sizeZ } = h.world.hf;
+  const farX = at.x > sizeX / 2 ? 8 : sizeX - 8;
+  const farZ = at.z > sizeZ / 2 ? 8 : sizeZ - 8;
+  h.say(bea, `tp ${farX} ${farZ}`);
+  bea.close();
+  const slot = h.client(eve)!.id;
+  const old = tap(h, eve);
+  launch(at.x, at.y + 100, at.z + 5);
+  const id = shots.numberAt(0);
+  expect(old.rockets.map((r) => r.id)).toEqual([id]);
+  eve.close();
+  const back = h.join("bea");
+  h.run(500);
+  expect(h.client(back)!.id).toBe(slot);
+  expect(Math.hypot(back.own.x - at.x, back.own.z - at.z)).toBeGreaterThan(300);
+  land();
+  h.run(100);
+  expect(back.events.filter((e) => e.id === id && (e.kind === EVENT_ROCKET || e.kind === EVENT_BLAST))).toEqual([]);
+});
+
 test("a blast says its rocket's number, what it went off on and the way out of it", () => {
   const { h, s, at, ents, shots, dummy, launch, land } = range();
   const told = tap(h, s);
