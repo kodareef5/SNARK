@@ -1264,6 +1264,7 @@ export class Rasterizer {
       if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
       // A near chunk's mesh is drawn by its pieces' states: the nine rows its chunk is given (pieces.ts).
       const rows = (p.pieceRowOf.get(p.drawBuffer[d]!) ?? 0) * 9;
+      const tint = p.drawTint[d * 2]!;
       for (let t = from; t < end; t += 3) {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
@@ -1272,6 +1273,8 @@ export class Rasterizer {
         // As ownVertex's vMade: a near chunk's piece's material, but on a face in the core's colour, and over it its wear.
         this.made = word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
+        // As FLAT_MESH_VERTEX's uTint: a piece about to be built is one colour.
+        if (tint > 0) color = tint - 1;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.edgeFlags = this.onStatic ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
         const fixture = fixtureFace(packedFixture ? lod.bones[last]! >>> 6 : meshFixture, color, lod.positions[last*3+1]!, lod.positions[last*3+2]!);
@@ -1994,7 +1997,7 @@ export class Rasterizer {
           if (blend) {
             // A landmark's see-through draw shows its finish's share (shared/pack/finish.ts), as LIT_MESH_FRAGMENT has it.
             const share = this.finishRow > 0 ? this.finish.pixels[((2 * this.finishRow - 1) * 256 + colorIndex) * 4 + 3]! : 0;
-            const alpha = this.finishRow === 0 ? WATER_ALPHA : p.lit && share > 0 ? share / 255 : 1;
+            const alpha = (this.finishRow === 0 ? WATER_ALPHA : p.lit && share > 0 ? share / 255 : 1) * (this.drawing >= 0 ? 1 - p.drawTint[this.drawing * 2 + 1]! : 1);
             this.color[o] = this.color[o]! + (cr - this.color[o]!) * alpha;
             this.color[o + 1] = this.color[o + 1]! + (cg - this.color[o + 1]!) * alpha;
             this.color[o + 2] = this.color[o + 2]! + (cb - this.color[o + 2]!) * alpha;

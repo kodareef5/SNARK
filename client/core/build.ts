@@ -7,33 +7,69 @@ import type { StructureDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_FAR, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
+import { handleIndex } from "../../shared/ids.ts";
+import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
-import type { CollisionWorld } from "../../shared/world/collide.ts";
+import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
-import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ON_TOP, ROLE_THING, makeAim, obstructed, pickSnap, poseAt, freePose, restPose, tooHigh, turnsOf, type Pose } from "../../shared/world/snap.ts";
+import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ON_TOP, ROLE_THING, enemyGap, enemyGapFound, makeAim, obstructed, obstruction, pickSnap, poseAt, freePose, restPose, tooHigh, turnsOf, type Pose } from "../../shared/world/snap.ts";
 import { Support } from "../../shared/world/support.ts";
 import type { ClientSession } from "./session.ts";
+import { structName } from "./ui/structure.ts";
 
 const NO_TARGET = 0xffffffff;
 /** Holding Q this long toggles free placement. */
 const HOLD_MS = 350;
 /** A piece put away is hidden at once, and shown again if the server has not agreed by then. */
 const AWAY_MS = 1000;
+/** Metres. These match the server's REACH, BODY_SLACK, ENEMY_FOUNDATION and ENEMY_PILLAR (server/build.ts). */
+export const PLACE_REACH = BUILD_REACH + 3;
+const BODY_SLACK = 0.1;
+export const ENEMY_FOUNDATION = 50;
+export const ENEMY_PILLAR = 10;
 /** Palette indices for the ghost. */
 export const GHOST_OK = 16;
 export const GHOST_BAD = 8;
 
-/** Keyed by the RESULT_ code from the local check or the server. */
+/** Keyed by the RESULT_ code from the local check or the server: what is said where no cause is known. */
 export const BUILD_REASONS: Readonly<Record<number, string>> = {
   [RESULT_OBSTRUCTED]: "Something is in the way",
+  [RESULT_BODY]: "Someone is in the way",
   [RESULT_TOO_HIGH]: "Too far above the ground",
   [RESULT_NO_SUPPORT]: "Nothing would hold it up",
   [RESULT_ENEMY_NEAR]: "Too near another tribe's foundation",
   [RESULT_NOT_YOURS]: "That is not your tribe's",
   [RESULT_NO_SNAP]: "It must join something built",
   [RESULT_FAR]: "Too far away",
+  [RESULT_SHORT]: "You have none left",
+  [RESULT_FULL]: "This area holds no more pieces",
 };
+
+/** What stands in a piece's way, as S_PLACED tells it and the preview finds it: a PLACED_ detail and its numbers. */
+export interface Blocker {
+  detail: number;
+  a: number;
+  b: number;
+}
+
+/**
+ * Why a piece may not go where it was asked, naming the cause where one is known: the piece or the body in the way, or
+ * the metres to another tribe's foundation. `nameOf` gives a body's name by its entity index, "" for one not in view.
+ */
+export function buildReason(reg: Registry, session: ClientSession, code: number, by: Blocker, nameOf?: (entity: number) => string): string {
+  if (code === RESULT_OBSTRUCTED && by.detail === PLACED_STRUCTURE) {
+    const t = session.world?.structs.chunks[Math.floor(by.a / 65536)];
+    const kind = t && (by.a & 0xffff) < t.high ? t.kind[by.a & 0xffff]! : 0;
+    if (kind !== 0) return `Blocked by ${structName(reg, kind)}`;
+  }
+  if (code === RESULT_BODY && by.detail === PLACED_ENTITY) {
+    if (by.a === handleIndex(session.ownHandle)) return "You are standing in the way";
+    const name = nameOf?.(by.a) ?? "";
+    if (name !== "") return `Blocked by ${name}`;
+  }
+  if (code === RESULT_ENEMY_NEAR && by.detail === PLACED_METRES) return `${by.a} m from another tribe's ${by.b <= ENEMY_PILLAR ? "pillar" : "foundation"}; ${by.b} needed`;
+  return BUILD_REASONS[code] ?? "It cannot be built there";
+}
 
 export class Builder {
   /** A building piece is in hand. */
@@ -44,6 +80,12 @@ export class Builder {
   problem = 0;
   /** The server's last refusal for a moment, else the current problem. */
   notice = "";
+  /** What is in the way of the piece where it is shown, for `problem`. */
+  readonly by: Blocker = { detail: PLACED_NONE, a: 0, b: 0 };
+  /** How many of an item have been set down and not yet taken from the inventory (PredictBuild.pending). */
+  pending: ((item: number) => number) | null = null;
+  /** The item in hand that places a piece, or 0. */
+  get inHand(): number { return this.item; }
   /** cycle picks among the nearest places. free means the piece joins nothing. */
   variant = 0;
   turn = 0;
@@ -63,6 +105,11 @@ export class Builder {
   private supportOf: unknown = null;
   /** The last question support was asked (kind, pose, the store's shapes) and its answer, 1 if it stands. */
   private readonly stood = new Float64Array(7).fill(-1);
+  /** The same for the other tribes' foundations near: the place, the team and the store's shapes, then 1 if one is too near, its metres and what it needs. */
+  private readonly near = new Float64Array(7).fill(-1);
+  /** The problem and its cause the notice was last worded for. */
+  private readonly worded = [-1, -1, -1, -1];
+  private words = "";
   private qDownAt = -1;
   /** The structure the look is on within BUILD_REACH, or -1: what a pick takes. */
   looked = -1;
@@ -135,13 +182,26 @@ export class Builder {
       if (!aim.ground || (reg.defs[kind] as StructureDef).floor === true || !freePose((x, z) => world.hf.heightAt(x, z), reg, kind, aim.px, aim.pz, this.freeYaw, this.lift, this.pose)) problem = RESULT_NO_SNAP;
     }
     const p = this.pose;
+    const by = this.by;
+    by.detail = PLACED_NONE;
     if (problem === 0) {
       const px = p.x / STRUCT_UNITS;
       const py = p.y / STRUCT_UNITS;
       const pz = p.z / STRUCT_UNITS;
-      if (tooHigh((x, z) => world.hf.heightAt(x, z), reg, kind, p)) problem = RESULT_TOO_HIGH;
-      else if (obstructed(structs, reg.parts, kind, px, py, pz, p.yaw)) problem = RESULT_OBSTRUCTED;
-      else {
+      const own = session.own;
+      // In the server's order, so the first thing wrong here is the one it would name.
+      if ((px - ox) ** 2 + (py - oy) ** 2 + (pz - oz) ** 2 > PLACE_REACH * PLACE_REACH) problem = RESULT_FAR;
+      else if (tooHigh((x, z) => world.hf.heightAt(x, z), reg, kind, p)) problem = RESULT_TOO_HIGH;
+      else if (obstructed(structs, reg.parts, kind, px, py, pz, p.yaw)) {
+        problem = RESULT_OBSTRUCTED;
+        [by.detail, by.a] = [PLACED_STRUCTURE, obstruction.ref];
+      } else if (capsuleKind(reg.parts, kind, px, py, pz, p.yaw, own.x, own.y, own.z, reg.bodyRadius[session.ownKind]!, reg.bodyHeight[session.ownKind]!, BODY_SLACK)) {
+        problem = RESULT_BODY;
+        [by.detail, by.a] = [PLACED_ENTITY, handleIndex(session.ownHandle)];
+      } else if (this.enemyNear(structs, reg, session.tribe.team, px, pz)) {
+        problem = RESULT_ENEMY_NEAR;
+        [by.detail, by.a, by.b] = [PLACED_METRES, Math.floor(this.near[5]!), this.near[6]!];
+      } else {
         if (this.supportOf !== structs) {
           this.supportOf = structs;
           this.support = new Support(structs, reg, (x, z) => world.hf.heightAt(x, z));
@@ -156,8 +216,27 @@ export class Builder {
         if (s[6] === 0) problem = RESULT_NO_SUPPORT;
       }
     }
+    // Every one carried is already on its way down.
+    if (problem !== RESULT_NO_SNAP && inv!.count[slot]! - (this.pending?.(item) ?? 0) <= 0) problem = RESULT_SHORT;
     this.problem = problem;
-    this.notice = nowMs < this.refusalUntil ? this.refusal : (BUILD_REASONS[problem] ?? "");
+    const w = this.worded;
+    if (w[0] !== problem || w[1] !== by.detail || w[2] !== by.a || w[3] !== by.b) {
+      [w[0], w[1], w[2], w[3]] = [problem, by.detail, by.a, by.b];
+      this.words = problem === 0 ? "" : buildReason(reg, session, problem, by);
+    }
+    this.notice = nowMs < this.refusalUntil ? this.refusal : this.words;
+  }
+
+  /** Whether another tribe's foundation or pillar stands too near (x, z), asked again only when the place or any piece's has changed. */
+  private enemyNear(structs: CollisionWorld["structs"], reg: Registry, team: number, x: number, z: number): boolean {
+    const n = this.near;
+    if (n[0] !== x || n[1] !== z || n[2] !== team || n[3] !== structs.shapes) {
+      n[0] = x; n[1] = z; n[2] = team; n[3] = structs.shapes;
+      n[4] = enemyGap(structs, reg.role, team, x, z, ENEMY_FOUNDATION, ENEMY_PILLAR) ? 1 : 0;
+      n[5] = enemyGapFound.metres;
+      n[6] = enemyGapFound.needs;
+    }
+    return n[4] === 1;
   }
 
   /** Returns true if building took the key. */
@@ -236,7 +315,7 @@ export class Builder {
 
   /** Returns the command's sequence number, or 0 if nothing was sent. */
   place(session: ClientSession, reg: Registry): number {
-    if (!this.active || this.problem === RESULT_NO_SNAP) return 0;
+    if (!this.active || this.problem === RESULT_NO_SNAP || this.problem === RESULT_SHORT) return 0;
     const forms = reg.places[this.item]!;
     const variant = this.variant % forms.length;
     const target = this.target;
@@ -271,7 +350,21 @@ export class Builder {
       this.cycle = 0;
       return;
     }
-    this.refusal = BUILD_REASONS[code] ?? "It cannot be built there";
+    this.say(BUILD_REASONS[code] ?? "It cannot be built there", nowMs);
+  }
+
+  /** The server's own answer to placement `seq` (S_PLACED), which names what stopped it. The result that follows then says nothing more. */
+  answered(seq: number, code: number, reason: string, nowMs: number): void {
+    if (seq === this.asked) {
+      this.asked = 0;
+      if (code === RESULT_OK) this.cycle = 0;
+    }
+    if (code !== RESULT_OK) this.say(reason, nowMs);
+  }
+
+  /** Words under the crosshair for a moment, in place of the preview's own. */
+  say(words: string, nowMs: number): void {
+    this.refusal = words;
     this.refusalUntil = nowMs + 2500;
   }
 }
@@ -279,13 +372,19 @@ export class Builder {
 /** With a piece in hand and on foot, in play: when building's rows apply. */
 const building = (c: KeyContext): boolean => c.builder.active && c.session.driving < 0 && c.ui.wantsPointerLock;
 
-// Before any screen has the key: a finger's Cancel, which presses Escape, puts the piece away. The keyboard's Escape goes on to the menu.
+// Before any screen has the key: Z takes the last piece back, where it else opens the emotes; and a finger's Cancel, which
+// presses Escape, puts the piece away. The keyboard's Escape goes on to the menu.
 export const BUILD_FIRST_KEYS: readonly KeyRow[] = [{
   name: "build cancel",
-  keys: ["Escape"],
+  keys: ["Escape", "KeyZ"],
   touch: { Escape: T_CANCEL },
-  when: (c) => building(c),
-  press(c, _code, down, repeat, source) {
+  guide: [{ code: "KeyZ", group: G_BUILD, title: "Undo", detail: "Take back the piece you set down last, while it can still be picked up.", sheet: G_BUILD }],
+  when: (c) => building(c) && !c.ui.emotes.open,
+  press(c, code, down, repeat, source) {
+    if (code === "KeyZ") {
+      if (down && !repeat) c.undo();
+      return true;
+    }
     if (source !== 2) return undefined;
     if (down && !repeat) c.builder.putAway(c.session, c.nowMs);
     return true;

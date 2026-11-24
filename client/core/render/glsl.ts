@@ -233,6 +233,7 @@ layout(location=6) in uint aBone;
 uniform mat4 uViewProj;
 uniform vec3 uOffset, uCenter, uHalf;
 uniform float uSkin;
+uniform float uTint;
 uniform sampler2D uPalette;
 uniform highp sampler2D uBones;
 out vec3 vRel;
@@ -255,6 +256,7 @@ ${BEND_PLACE}    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uO
   }
   uint i = aColor;
   if (i >= ${REGION_BASE}u) { uint r = i - ${REGION_BASE}u; i = r < 4u ? iRegA[r] : iRegB[r - 4u]; }
+  if (uTint > 0.5) i = uint(uTint) - 1u;
   vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;
 ${PIECE_SHADE}  vRel = p;
   gl_Position = uViewProj * vec4(p, 1.0);

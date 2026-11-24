@@ -26,6 +26,8 @@ export const TRANSIENT_BUFFER = 0xffffffff;
  * camera that ultra's 8 km view reaches, sixteen marker beams, and a piece about to be built.
  */
 export const MAX_WATER_TILES = 289;
+/** Pieces set down and awaited a frame may show as built (passes/ghost.ts). */
+export const MAX_PREDICTED = 32;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
@@ -760,6 +762,11 @@ export class FramePacket {
    */
   readonly drawEffect = new Float32Array(MAX_DRAWS * 4);
   /**
+   * Two numbers a flat draw: a palette colour plus 1 that every vertex takes in place of its own, 0 for none; and the
+   * share of a see-through draw's alpha it has lost, 0 for none. A piece about to be built, fine or refused (passes/ghost.ts).
+   */
+  readonly drawTint = new Float32Array(MAX_DRAWS * 2);
+  /**
    * For a DRAW_TEXTURED draw of bodies that are hurt or dead, whose material has a layer on the card: the level its layer
    * is drawn at, in LAYER_LEVELS of the whole (surface.ts `wounded`). 0 for any other, which reads no layer.
    */
@@ -795,9 +802,9 @@ export class FramePacket {
   readonly streetKinds = new Uint8Array(STREET_TILES_FRAME * STREET_TILE_BYTES);
 
   transientCount = 0;
-  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
+  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_PREDICTED + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
   /** Entity slot index of each transient instance, for picking. */
-  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED);
+  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_PREDICTED + MAX_FALLING + MAX_SKINNED);
 
   /** Bones of every body drawn this frame, BONE_FLOATS each. */
   boneCount = 0;
@@ -897,6 +904,7 @@ export class FramePacket {
     this.drawHand.fill(0);
     this.drawSwap.fill(0);
     this.drawEffect.fill(0);
+    this.drawTint.fill(0);
     this.drawLayer.fill(0);
     this.drawWear.fill(0);
     this.drawCount = 0;

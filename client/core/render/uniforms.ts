@@ -214,7 +214,9 @@ export const LAYER_ROWS: readonly UniformRow[] = [
 export const FLAT_ROWS: readonly UniformRow[] = [
   one("uFixture", AT_DRAW, (c) => c.p.drawFixture[c.d]!),
   one("uSolid", AT_DRAW, (c) => ((c.flags & DRAW_PLAIN) !== 0 || (c.p.lit && (c.flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + c.finishRow[c.mesh]! : 1)),
-  one("uAlpha", AT_DRAW, (c) => ((c.flags & DRAW_BLEND) !== 0 && c.finishRow[c.mesh] === 0 ? WATER_ALPHA : 1), SEND_1F, 1),
+  one("uAlpha", AT_DRAW, (c) => ((c.flags & DRAW_BLEND) !== 0 && c.finishRow[c.mesh] === 0 ? WATER_ALPHA : 1) * (1 - c.p.drawTint[c.d * 2 + 1]!), SEND_1F, 1),
+  // A piece about to be built is one colour, whatever its mesh's own (packet.ts drawTint).
+  one("uTint", AT_DRAW, (c) => c.p.drawTint[c.d * 2]!),
 ];
 
 /** What a caster gives the depth programs: how its vertices are placed, and cut out, what cuts it. */
