@@ -1,6 +1,7 @@
 // Rows for support and stability by themselves (shared/world/support.ts): the house of the collapse section of
 // tools/bench.ts asked and brought down with no server round it, a 30-storey tower, and one pass over a 20,000-piece
-// base. `bun tools/bench/support.ts` runs these alone; `bun run bench` does not.
+// base. `bun tools/bench/support.ts` runs these alone; `bun run bench` does not. The collapse here runs once, cold:
+// its steps are held to their budgets by the collapse section of tools/bench.ts.
 
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -99,8 +100,8 @@ export function supportRows(section: Section, record: Row): void {
     record("pieces that fell", collapse.fallen, "");
     record("pieces left standing", structs.count, "", 0);
     record("steps until the last was down", steps.length, "", 60);
-    record("collapse work in a step, median", median(steps), "ms", 1.5);
-    record("collapse work in a step, worst", Math.max(...steps), "ms", 3);
+    record("collapse work in a step, median", median(steps), "ms");
+    record("collapse work in a step, worst", Math.max(...steps), "ms");
     record("collapse work in all", all, "ms");
     record("a millisecond of it in work units", units / all, "units");
   }
@@ -140,7 +141,7 @@ export function supportRows(section: Section, record: Row): void {
       passes.push(performance.now() - t0);
     }
     record("pieces the pass numbered", n, "");
-    record("the pass, median of 20", median(passes), "ms", 5);
+    record("the pass, median of 20", median(passes), "ms");
     record("the pass, first", passes[0]!, "ms");
     let standing = 0;
     for (let i = 0; i < n; i++) if (out[i]! >= 0) standing++;

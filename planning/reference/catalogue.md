@@ -204,9 +204,9 @@ ARK's names: `role` is the snap type; `form` is snap points and the piece's size
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `material` | StructureSettings and its tier | built | `takes` | `decayDays`, `health`, `ram`, `heap` | 12 |
+| `material` | StructureSettings and its tier | built | `takes` | `decayDays`, `health`, `ram`, `heap`, `stability` | 12 |
 
-- **`material`** on shelf `materials`. What each type of damage does to what is built of it, and how long it lasts unvisited. A city material also says the health of one half of a piece, the energy that rams through one, and what its heap gives.
+- **`material`** on shelf `materials`. What each type of damage does to what is built of it, and how long it lasts unvisited. It may say how firmly a piece of it stands by itself, which is how far it may be built out from what holds it. A city material also says the health of one half of a piece, the energy that rams through one, and what its heap gives.
 
 ARK's names: `takes` is the structure settings' damage by type; `decayDays` is DecayDestructionPeriodMultiplier.
 

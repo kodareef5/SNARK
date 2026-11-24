@@ -24,6 +24,7 @@ touch rule, ASTC, 24-bit depth, 16 texture units, no timer queries.
 | C | counts and bytes on Miami as built that day (`187f1213`, map version 5, with the cruise ship), on a busy machine (load 6 to 25), so no times | 2026-11-17 | `d45f43da` |
 | Dnnn | the measurement its decision records | | |
 | W | the wire lane's rows, on a Linux box (Core i9-13980HX, 32 cores, Bun 1.4.3) at load 5 to 20 from other work: bytes, and milliseconds of a modelled link's own time, neither of which load moves | 2026-11-24 | `build/wire` |
+| S | the support lane's rows, on the same Linux box at load 9 to 11 from other lanes and a second bench: `bun run bench` once for the house's collapse, where the tick at the target was 17.7 ms and the fight's 44 to 50; `bun tools/bench/support.ts` for the rest. Counts do not move with load; times are high | 2026-11-24 | `build/support` |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time, the three soaks the governor's tests replay in `tests/fixtures/device-reports` | 2026-11-15, 16 | |
 
 Rows without a code are E. Counts and bytes do not move with load; times from M are
@@ -154,8 +155,10 @@ are in [networking](../architecture/networking.md).
 | Fly 2,000 arrows, median, 99th; a blast in a 2,000-piece base, median, worst | 0.54, 1.40 to 1.44; 0.10, 1.25 to 1.29 ms | 2, 4; 1, 4 |
 | Brawl, median, 99th; siege, added to the tick | 5.30 to 5.51, 6.61 to 6.89; 0.15 to 0.19 ms | 8, 16; none |
 | Siege: chunk writes in 10 s; commit median; commit writing the chunk | 10; 0.08 to 0.09; 0.75 to 2.89 ms | 11; 4; 10 |
-| Collapse of 1,512 pieces: ticks to the last; work a tick, median, worst | 29; 0.78 to 0.80, 0.96 to 1.01 ms | 60; 1.5, 3 |
-| The same: whole tick, worst; ask whether a piece stands | 12.8 to 18.2; 0.031 ms | 16; 0.1 |
+| Collapse of 1,512 pieces (S): ticks to the last; removals; work a tick, median, worst | 12; 7; 1.11, 1.49 ms | 60; none; 1.5, 3 |
+| The same (S): ask whether a piece stands; its stability; the top floor of 30 storeys | 0.008; 0.004; 0.019 ms | 0.1 each |
+| The same: whole tick, worst | not measured since support read keys: 100 ms in S, in a fight whose own ticks were 44 to 50 ms and 70 to 115 at the 99th | 16 |
+| A base of 20,000 pieces, every stability in one pass (S) | 8.2 to 9.6 ms | |
 | Voice: relay for a second of 100 talking; who hears whom, median, worst | 3.9 to 4.1; 0.22, 0.28 to 0.31 ms | 20; 0.5, 2 |
 | Breeding base: tick median before and with it; 99th; look for pairs, median, worst | 7.96 to 8.13, 8.39 to 8.67; 10.2 to 15.9; 0.12, 0.16 ms | 1.5 × before + 0.5; 16; 0.5, 2 |
 | Breeding base, worst tick while 150 females lay | 11.4 to 16.4 ms | 33.3 |
@@ -165,6 +168,11 @@ are in [networking](../architecture/networking.md).
 | 500 hunters round a wall: path cells in the busiest tick | 1,000 | 1,000 |
 | A hundred dodos killed at once: bodies made and laid; their falls, a tick, median, worst; ticks until all lie still | 0.92 to 1.04; 0.56, 0.62 ms; 31 | 15; 3, 10; 300 |
 | The hundred at rest, worst tick; a swing's search among them; a blow's yield | 0.021 to 0.022; 0.023; 0.002 ms | 0.5; 0.05; 0.05 |
+
+The S rows are the support lane's ([build-support](../workstreams/build-support.md)). The old rule, on the same
+box by `bun tools/bench/support.ts` before it: a question 0.032 ms, the top floor of 30 storeys 0.054 ms, the house
+down in 30 steps of 1.12 ms. In the reference bench it was 29 ticks, 0.78 to 0.80 ms a tick, and a whole tick of 12.8
+to 18.2 ms at worst. A wave now removes 165 to 350 pieces where it removed about 47.
 
 ### Saves and starts
 
