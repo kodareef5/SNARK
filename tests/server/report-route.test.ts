@@ -69,7 +69,7 @@ test("a world that keeps notes takes one from an admin's session through the fro
   const at = `http://127.0.0.1:${front.port}/miami/__report`;
   let session: ClientSession | null = null;
   try {
-    expect(frontPasses("POST", "/miami/__report")).toBe(true);
+    expect(frontPasses("POST", "/__report")).toBe(true);
     for (let k = 0; k < 200 && (await fetch(at, { headers: tunnel })).status === 503; k++) await Bun.sleep(50);
     expect((await fetch(at, { headers: tunnel })).status).toBe(204);
     // The build's weighing of the first frame is the admin pages' to show (server/admin/routes.ts).

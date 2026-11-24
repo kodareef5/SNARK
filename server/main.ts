@@ -29,7 +29,8 @@ import { serveFile } from "./files.ts";
 import { clientAddress } from "./front.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
-import { adminAsked, refused as refuseAdmin, type AdminGate } from "./admin/gate.ts";
+import { adminAsked, type AdminGate } from "./admin/gate.ts";
+import { adminSite, oldAdminPage } from "./admin/site.ts";
 import { TickMeter } from "./admin/meter.ts";
 import { PART, type TickParts } from "./admin/parts.ts";
 import { AdminPages, adminTerrain } from "./admin/routes.ts";
@@ -356,7 +357,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash);
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
-  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.sessions.cheatGuesses, tick: () => host.world.tick };
+  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.sessions.cheatGuesses, tick: () => host.world.tick, world: host.cluster?.world };
   const meter = new TickMeter(() => gaugesOf(host));
   const playFile = opts.dev && opts.play ? join(opts.play, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.jsonl`) : "";
   const play = playFile ? new PlayLog(host.game, (line) => (mkdirSync(opts.play!, { recursive: true }), appendFileSync(playFile, line + "\n"))) : null;
@@ -421,12 +422,12 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const worlds = (requestHost: string, access=false): SiteWorld[] => {
     const c = host.cluster;
     const map = mapLabel(registry, host.world.mapId);
-    const all: Omit<Destination, "world" | "why">[] = c ? [c.here(), ...c.destinations()].sort((a, b) => a.world - b.world) : [{ name: host.rules.text("SessionName") || map, map, mapId: host.world.mapId, port: server.port ?? 0, url: base, players: host.game.playerCount, max: host.game.opts.maxClients }];
+    const all: (Omit<Destination, "world" | "why"> & { world: SiteWorld["id"] })[] = c ? [c.here(), ...c.destinations()].sort((a, b) => a.world - b.world) : [{ world: "local", name: host.rules.text("SessionName") || map, map, mapId: host.world.mapId, port: server.port ?? 0, url: base, players: host.game.playerCount, max: host.game.opts.maxClients }];
     const straight = Number(/:(\d+)$/.exec(requestHost)?.[1] ?? 0) === server.port;
     const locks=new Map(access&&c ? c.folder.announcements().map(a=>[a.port,a.password]) : []);
     return all.map(w=>{
       const password=w.port===server.port ? !!host.game.opts.password : locks.get(w.port);
-      return {name:w.name,map:w.map,mapId:w.mapId,address:c ? worldAddress(w,requestHost,straight) : base + "/",players:w.players,max:w.max,...(access && password!==undefined ? {password}: {})};
+      return {id:w.world,name:w.name,map:w.map,mapId:w.mapId,address:c ? worldAddress(w,requestHost,straight) : base + "/",players:w.players,max:w.max,...(access && password!==undefined ? {password}: {})};
     });
   };
   /**
@@ -456,31 +457,24 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       const url = new URL(req.url);
       const answered = opts.routes?.(req, url);
       if (answered) return answered;
-      // The cluster shell uses public discovery. Every private request goes through the target world's own admin gate.
       const clusterPath = url.pathname;
       if (clusterPath === "/cluster/title-poster.webp" || clusterPath === "/cluster/title-scene.json") {
         if (req.method !== "GET") return new Response(null, { status: 405, headers: { Allow: "GET" } });
         return clusterPath.endsWith(".webp") ? titleScenes.poster(url.searchParams.has("portrait")) : titleScenes.active();
       }
-      if (clusterPath === "/cluster/admin/scenes/" || clusterPath === "/cluster/admin/scenes/api") {
-        const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
-        const gate = !opts.dev || namesThisMachine(req.headers.get("host"), named) ? board : { ...board, dev: false };
-        const denied = refuseAdmin(req, who, gate);
-        if (denied) return denied;
-        if (clusterPath.endsWith("/api")) {
-          if (!originAllowed(req.headers.get("origin"), req.headers.get("host"), "")) return entryReply({ error: "Open the studio on this cluster." }, 403);
-          return titleScenes.admin(req);
-        }
-        return serveFile(clientDir, req, "/admin/scene-studio.html");
-      }
-      if (clusterPath === "/cluster/admin") return new Response(null, { status: 308, headers: { location: `/cluster/admin/${url.search}` } });
-      if (clusterPath === "/cluster/admin/") return serveFile(clientDir, req, "/admin/cluster.html");
-      if (clusterPath === "/cluster/admin/cluster.js" || clusterPath === "/cluster/admin/cluster.js.map") {
-        return serveFile(clientDir, req, clusterPath.slice("/cluster".length));
-      }
+      const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
+      const local = !opts.dev || namesThisMachine(req.headers.get("host"), named);
+      const gate = local ? board : { ...board, dev: false };
+      const id = host.cluster?.world ?? "local";
+      const siteAdmin = adminSite(req, url, {
+        dir: clientDir, base, port: srv.port ?? 0, id, who, gate,
+        destinations: () => host.cluster?.destinations() ?? [],
+        scenes: (call) => originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
+          ? titleScenes.admin(call) : entryReply({ error: "Open the studio on this cluster." }, 403),
+      });
+      if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);
       if (at === "slash") return new Response(null, { status: 308, headers: { location: `${base}/${url.search}` } });
-      const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
       if (path === "/directory") return listings ? listings.answer(req, who) : new Response("this world hosts no server directory", { status: 404 });
       const same = alike(path, req.headers.get("host") ?? "");
       if (same) return same;
@@ -490,7 +484,6 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         return adminAsked(path) ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
       }
       // A development server's own routes and its sockets are for a browser that asked for this machine (namesThisMachine).
-      const local = !opts.dev || namesThisMachine(req.headers.get("host"), named);
       if (path === "/survivors") {
         if (!local || !originAllowed(req.headers.get("origin"),req.headers.get("host"),"")) return entryReply({error:"Use this world’s own address"},403);
         return access.answer(req,who);
@@ -544,7 +537,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         measured(result);
         return new Response("ok");
       }
-      const gate = local ? board : { ...board, dev: false };
+      const old = oldAdminPage(req, path, id, who, gate);
+      if (old) return old;
       const sounds = soundBoard(req, who, gate, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
       if (sounds) return sounds;
       const page = admin.answer(req, who, gate, path);

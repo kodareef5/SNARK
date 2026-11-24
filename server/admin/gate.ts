@@ -14,6 +14,7 @@ export interface AdminGate {
   password: string | null;
   guesses: Guesses;
   tick: () => number;
+  world?: number;
 }
 
 /** Null where the admin pages may be shown, else the answer that says why not. */
@@ -30,7 +31,8 @@ export function refused(req: Request, who: string, gate: AdminGate): Response | 
   } catch {
     given = null;
   }
-  const ask = new Response("the admin pages ask for the server's admin password (any name will do)", { status: 401, headers: { "www-authenticate": 'Basic realm="SNARK admin", charset="UTF-8"' } });
+  const realm = gate.world === undefined ? "SNARK admin" : `SNARK admin world ${gate.world}`;
+  const ask = new Response("the admin pages ask for the server's admin password (any name will do)", { status: 401, headers: { "www-authenticate": `Basic realm="${realm}", charset="UTF-8"` } });
   if (given === null) return ask;
   if (!sameSecret(given.slice(given.indexOf(":") + 1), gate.password)) {
     gate.guesses.wrong(who, gate.tick());

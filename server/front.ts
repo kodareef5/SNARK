@@ -14,31 +14,35 @@
 import type { ServerWebSocket } from "bun";
 import { resolve } from "node:path";
 import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG } from "../shared/net/transport.ts";
+import { worldAdminPage } from "./admin/site.ts";
 import { ClusterFolder, LIVE_MS, type Announcement } from "./cluster/folder.ts";
 import { serveFile } from "./files.ts";
-import { pathOf } from "./site.ts";
+import { pathOf, placeOf } from "./site.ts";
 
-/**
- * A world the front sends to: the path it is reached at ("" for the root of a host), its port on this machine, and where
- * its built client and its map's parts are, where it says.
- */
+const WORLD_POSTS = new Set([
+  "/survivors", "/directory", "/__play", "/__report", "/__debug",
+  "/admin/cast", "/admin/settings", "/admin/stop",
+  "/admin/loadouts/book", "/admin/loadouts/reset", "/admin/loadouts/apply",
+  "/admin/supply/book", "/admin/supply/reset", "/admin/supply/restore", "/admin/supply/call",
+  "/admin/supply/land", "/admin/supply/cancel", "/admin/supply/ark",
+]);
 
-/** Whether the front passes a request on to a world: any read, and the writes a world takes behind its own gate (its
- * survivors, its directory, play, a bug report, the debug bar's ask, its admin page's Cast panel, its drop book's acts) and
- * the cluster's scene studio. */
+/** The front passes reads, registered writes at a world's path, and the site's scene editor. */
 export function frontPasses(method: string, path: string): boolean {
   if (method === "GET" || method === "HEAD") return true;
-  if ((method === "POST" || method === "OPTIONS") && /\/(survivors|directory|__play|__report|__debug|admin\/cast)$/.test(path)) return true;
-  // The drop book's page changes its world's book and calls test drops (server/admin/supply-routes.ts): its acts and no
-  // other path under a world's admin pages.
-  if (method === "POST" && /\/admin\/supply\/[a-z]+$/.test(path)) return true;
-  return method === "POST" && path === "/cluster/admin/scenes/api";
+  return method === "OPTIONS" ? path === "/directory" : method === "POST" && WORLD_POSTS.has(path);
 }
 
+function sitePost(path: string): boolean {
+  return path === "/admin/scenes/api" || path === "/cluster/admin/scenes/api";
+}
+
+/** A world's mount, port and where to read its built files. */
 export interface FrontWorld {
   world: number;
   path: string;
   port: number;
+  authority?: string;
   files?: Announcement["files"];
 }
 
@@ -51,7 +55,9 @@ export function frontWorlds(all: readonly Announcement[], now: number): FrontWor
   for (const a of all) {
     if (a.at <= now - LIVE_MS || a.port === 0) continue;
     try {
-      out.push({ world: a.world, path: pathOf(a.url), port: a.port, ...(a.files ? { files: a.files } : {}) });
+      const path = pathOf(a.url);
+      const authority = /^https?:\/\//i.test(a.url) ? new URL(a.url).host : undefined;
+      out.push({ world: a.world, path, port: a.port, ...(authority ? { authority } : {}), ...(a.files ? { files: a.files } : {}) });
     } catch {
       // Its own server refused that address as it started, so it is not running with it.
     }
@@ -60,11 +66,15 @@ export function frontWorlds(all: readonly Announcement[], now: number): FrontWor
 }
 
 /**
- * Where a request for `pathname` goes: to the world with the longest path it falls under, the path itself included (that
- * world sends it on with its slash), and else, for the site, to the lowest world reached at a path, which answers the site,
- * or failing one the lowest of all. Null when none is running.
+ * World admin pages go by id. Other routes go to the longest matching mount, then the lowest mounted world or first world.
  */
-export function frontRoute(worlds: readonly FrontWorld[], pathname: string): FrontWorld | null {
+export function frontRoute(worlds: readonly FrontWorld[], pathname: string, authority?: string): FrontWorld | null {
+  const admin = worldAdminPage(pathname);
+  if (admin) {
+    const host = authority?.toLowerCase();
+    const reachable = host ? worlds.filter((w) => !w.authority || w.authority === host) : worlds;
+    return reachable.find((w) => w.world === admin.id) ?? reachable.find((w) => w.path !== "") ?? reachable[0] ?? null;
+  }
   let best: FrontWorld | null = null;
   for (const w of worlds) if (w.path.length > (best?.path.length ?? 0) && (pathname === w.path || pathname.startsWith(`${w.path}/`))) best = w;
   return best ?? worlds.find((w) => w.path !== "") ?? worlds[0] ?? null;
@@ -187,9 +197,12 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
     ...(hostname ? { hostname } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
-      if (!frontPasses(req.method, url.pathname)) return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
-      const to = frontRoute(worlds(), url.pathname);
+      const to = frontRoute(worlds(), url.pathname, req.headers.get("host") ?? url.host);
       if (!to) return new Response("no world of this cluster is running", { status: 503, headers: { "retry-after": "10" } });
+      const { at, path } = placeOf(to.path, url.pathname);
+      const allowed = req.method === "GET" || req.method === "HEAD" ||
+        (at === "world" && frontPasses(req.method, path)) || (req.method === "POST" && sitePost(url.pathname));
+      if (!allowed) return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
       // The world believes who the client is from a proxy on its own machine (clientAddress).
       const peer = srv.requestIP(req)?.address ?? "";
       const was = req.headers.get("x-forwarded-for");
