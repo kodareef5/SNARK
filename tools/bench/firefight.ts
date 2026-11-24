@@ -253,7 +253,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     record(`${label}: downstream per listener, all firing`, median(a.kb), "KB/s");
     // What a shot costs, by part. The parts nest in the launch and in the step, so they are timed in a run of their own.
     const ms: Record<string, number> = {};
-    const undo = [timed(shots, "launch", ms), timed(shots, "aim", ms), timed(shots, "tell", ms), timed(shots, "tellRocket", ms), timed(shots, "step", ms), timed(combat, "castBodies", ms), timed(combat, "land", ms), timed(combat, "eye", ms)];
+    const undo = [timed(shots, "launch", ms), timed(shots, "aim", ms), timed(shots, "tell", ms), timed(shots, "tellRocket", ms), timed(shots, "keep", ms), timed(shots, "tellKept", ms), timed(shots, "step", ms), timed(combat, "castBodies", ms), timed(combat, "land", ms), timed(combat, "eye", ms)];
     const before = shots.fired;
     hold(a.gun, FIGHTERS, 300, null);
     for (const u of undo) u();
@@ -262,8 +262,8 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     record(`${label}: of a shot, its aim and its eye`, each("aim") + each("eye"), "us");
     record(`${label}: of a shot, the bodies cast against`, each("castBodies"), "us");
     record(`${label}: of a shot, its landing`, each("land"), "us");
-    // A round that goes off where it ends is told by its number, at once.
-    record(`${label}: of a shot, the telling`, each("tell") + each("tellRocket"), "us");
+    record(`${label}: preparing or sending a launch`, each("tell") + each("tellRocket") + each("keep"), "us");
+    record(`${label}: sending queued bolts per tick`, ms.tellKept! / 300, "ms");
     record(`${label}: flying rounds stepped, a tick`, ms.step! / 300, "ms");
     clear();
   }
@@ -329,7 +329,6 @@ export function benchShots(section: Section, record: Row, scene: Scene, cam: Cam
       let id = 0;
       const blasts = round.blasts ?? 0;
       const from = scene.now + 60000;
-      shots.fire = scene.blasts;
       for (let f = 0; f < FRAMES * 2; f++) {
         if (f === FRAMES) {
           Bun.gc(true);
@@ -373,7 +372,7 @@ export function benchShots(section: Section, record: Row, scene: Scene, cam: Cam
         cpu += used;
       }
       Bun.gc(true);
-      retained.push(heapStats().objectCount - objects);
+      retained.push(Math.max(0, heapStats().objectCount - objects));
       undo();
       for (const shot of shots.flying) if (shot.lit) scene.blasts.end(shot.key, scene.now);
     }

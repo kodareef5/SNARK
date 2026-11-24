@@ -17,6 +17,7 @@ import { compileContent } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../shared/sim/items.ts";
 import { ICON_CACHE, assetFraming, drawIcons, iconPng, iconSheets, iconSubjects, type DrawnIcons, type TextureSource } from "./pack/icons.ts";
+import { standInSession } from "./snap.ts";
 import { corePack, namedTextures, rgbaOf } from "./snap/files.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./snap/font.ts";
 import { encodePng } from "./snap/png.ts";
@@ -123,9 +124,15 @@ console.log(`${join(out, "icons.png")}\n${drawn.report.items} items, ${drawn.rep
 
 /** A survivor's stand-in, to draw a screen without a server. */
 function standIn(inv: Inventory | null): ClientSession {
-  const engrams = reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : []));
-  const progress = { level: 30, xp: 12000, statPoints: 0, engramPoints: 4, jobs: [], engrams };
-  return { inventory: inv, held: 0, tamed: [], serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" }, progress, ownKind: reg.index.get("core:survivor") ?? 0 } as unknown as ClientSession;
+  const session = standInSession(reg);
+  session.inventory = inv;
+  session.held = 0;
+  session.ownKind = reg.index.get("core:survivor") ?? 0;
+  session.progress.level = 30;
+  session.progress.xp = 12000;
+  session.progress.engramPoints = 4;
+  session.progress.engrams = reg.defs.flatMap((d, k) => d?.type === "engram" ? [k] : []);
+  return session;
 }
 
 /** A screen as a page of `ui` draws it, 1280 by 720, with the pictures' sheets filled in. */

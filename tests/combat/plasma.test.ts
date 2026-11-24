@@ -709,6 +709,36 @@ test("on any screen a bolt passes over another who lies down or lies dead, and e
   expect(reach(STANCE_STAND, true)).toBeGreaterThan(60);
 });
 
+test("a grazing bolt hits the nearer body from either direction", () => {
+  const h = new Harness({}, 5, 30, { dev: true, map: writeMap(flatMap(48)) });
+  const x = 24 * CHUNK_SIZE, z = x - 600;
+  const kind = id("survivor"), radius = h.reg.bodyRadius[kind]!;
+  for (const alongX of [false, true]) for (const sign of [-1, 1]) for (const gap of [0, 0.01]) {
+    const { shots, events, own, others, quarter, shot } = shotsAlone(h, x, z);
+    others.count = 2;
+    for (let i = 0; i < others.count; i++) {
+      const along = sign * (6 - 2 * i);
+      others.kind[i] = kind;
+      others.x[i] = x + (alongX ? along : 0);
+      others.z[i] = z + (alongX ? 0 : along);
+      others.y[i] = own.y;
+    }
+    events.push(shot({
+      x: alongX ? x : x + radius + gap, z: alongX ? z + radius + gap : z, mine: true,
+      vx: alongX ? sign * 240 : 0, vz: alongX ? 0 : sign * 240,
+    }));
+    quarter();
+    if (gap === 0) {
+      expect(shots.bursts).toHaveLength(1);
+      const hit = shots.bursts[0]!;
+      expect(alongX ? hit.x - x : hit.z - z).toBeCloseTo(sign * (4 - radius), 5);
+    } else {
+      expect(shots.bursts).toHaveLength(0);
+      expect(shots.flying).toHaveLength(1);
+    }
+  }
+});
+
 test("between ticks a bolt is never drawn past its reach, nor past a wall it is about to meet", () => {
   const h = new Harness({}, 5, 30, { dev: true, map: writeMap(flatMap(48)) });
   h.run(100);
