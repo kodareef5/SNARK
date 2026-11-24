@@ -26,6 +26,11 @@ export interface TierRecipe {
   readonly tones: Readonly<Record<string, readonly [number, number, number]>>;
   /** Level `level` of a form, or null past its last. */
   split(name: string, form: FormDef, level: number): Shape | null;
+  /**
+   * What is drawn where its pieces meet and is no piece, each by its name with every level: `joint_sq`, `joint_r15`,
+   * `joint_r21`, `skirt` and `ridge`, as client/core/render/trims.ts finds them. A trim is cut nowhere.
+   */
+  trims?(): Record<string, Shape[]>;
 }
 
 /** Where a form yields: the planes, as an axis of the recipe's frame and a place on it, a ring of vertices lies in. */

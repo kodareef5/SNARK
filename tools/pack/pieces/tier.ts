@@ -10,6 +10,7 @@ import type { MaterialSpec } from "../../art/spec.ts";
 import { baker, painted } from "../bake.ts";
 import { spanOf } from "../surface.ts";
 import type { SourceLod, SourceMesh } from "../write.ts";
+import type { Shape } from "./kit.ts";
 import { TEXTURED, errorOf, flatLevels, levelsOf, type TierRecipe } from "./lod.ts";
 
 /** A tier's meshes with no materials, every level in flat colours: the shapes alone, which need no pictures. */
@@ -18,18 +19,27 @@ export function tierShapes(recipe: TierRecipe, forms: Readonly<Record<string, Fo
   return Object.entries(forms).map(([name, form]) => ({ id: `core:${name}_${recipe.name}`, lods: flatLevels(recipe, name, form, palette) }));
 }
 
+/** A tier's trims with no materials, as `tierShapes` gives its forms: joints, skirt and ridge, by the names the client finds them under. */
+export function trimShapes(recipe: TierRecipe): SourceMesh[] {
+  const palette = defaultPalette();
+  const colour = (mat: string): number => nearestColour(palette, ...(recipe.tones[mat] ?? recipe.tones[mat.replace(/_b$/, "")]!) as [number, number, number]);
+  return Object.entries(recipe.trims?.() ?? {}).map(([name, shapes]) => ({ id: `core:${name}_${recipe.name}`, lods: shapes.map((shape, level) => ({ ...shape.lod(null, colour), ...(level > 0 ? { error: errorOf(shape, level) } : {}) })) }));
+}
+
 /**
- * A tier's meshes as its pack holds them. `materials` are the tier's, by the names its recipe gives them, their
+ * A tier's meshes as its pack holds them. With `trims`, the recipe's trims follow its forms. `materials` are the tier's, by the names its recipe gives them, their
  * pictures under `dir`, no wider than `top` pixels.
  */
-export function bakeTier(recipe: TierRecipe, forms: Readonly<Record<string, FormDef>>, dir: string, materials: Readonly<Record<string, MaterialSpec>>, top: number): SourceMesh[] {
+export function bakeTier(recipe: TierRecipe, forms: Readonly<Record<string, FormDef>>, dir: string, materials: Readonly<Record<string, MaterialSpec>>, top: number, trims = false): SourceMesh[] {
   const palette = defaultPalette();
   const made = new Map<string, Described>(Object.entries(materials).map(([name, spec]) => [name, describe({ name, id: `core:${recipe.name}/${name}`, spec, dir }, top, palette)]));
   for (const d of made.values()) if (d.faults.length > 0) throw new Error(d.faults.join("; "));
   // Flat, a material is the colour read off its pictures, and a tone only flat levels have is the recipe's own.
   const tone = (mat: string): number => made.get(mat)?.flat ?? nearestColour(palette, ...(recipe.tones[mat]!) as [number, number, number]);
-  const meshes = Object.entries(forms).map(([name, form]): SourceMesh => {
-    const shapes = levelsOf(recipe, name, form);
+  // A form's levels are the recipe's, cut where the form yields. A trim's are the recipe's as they come.
+  const pieces: [string, Shape[]][] = Object.entries(forms).map(([name, form]) => [name, levelsOf(recipe, name, form)]);
+  if (trims) pieces.push(...Object.entries(recipe.trims?.() ?? {}));
+  const meshes = pieces.map(([name, shapes]): SourceMesh => {
     // The materials a piece is drawn with, in the order its finest level first uses them.
     const names = [...new Set(shapes.slice(0, TEXTURED).flatMap((s) => s.faces.map((f) => f.mat)))];
     if (names.length > MOST_SECTIONS) throw new Error(`${recipe.name} ${name} is drawn with ${names.join(", ")}, and a level may be drawn with ${MOST_SECTIONS}`);

@@ -996,39 +996,51 @@ function carried(f: Face): (p: Vec) => Uv {
 export function clip(shape: Shape, plane: Plane, cap?: ((p: Vec) => readonly [string, Uv]) | null, from = 0): Shape {
   const [n] = plane;
   const sides = parted(shape, plane, from, false);
-  // Two solids that touched along the plane leave a side each way, which closes nothing.
+  // Two solids that touched along the plane leave a side each way, which closes nothing. Points are told apart to
+  // the last bit: a solid's own faces make the same point at an edge, and two solids that meet at a point do not.
+  const name = (q: Vec): string => q.join();
   const waiting = new Map<string, { a: Vec; b: Vec; of: Face }[]>();
   for (const s of sides) {
-    const met = waiting.get(`${pointKey(s.b)}|${pointKey(s.a)}`);
+    const met = waiting.get(`${name(s.b)}|${name(s.a)}`);
     if (met && met.length > 0) met.pop();
-    else waiting.set(`${pointKey(s.a)}|${pointKey(s.b)}`, [...(waiting.get(`${pointKey(s.a)}|${pointKey(s.b)}`) ?? []), s]);
+    else waiting.set(`${name(s.a)}|${name(s.b)}`, [...(waiting.get(`${name(s.a)}|${name(s.b)}`) ?? []), s]);
   }
-  const left = [...waiting.values()].flat();
   const starts = new Map<string, { a: Vec; b: Vec; of: Face }[]>();
-  for (const s of left) starts.set(pointKey(s.a), [...(starts.get(pointKey(s.a)) ?? []), s]);
+  let left = 0;
+  for (const s of [...waiting.values()].flat()) {
+    starts.set(name(s.a), [...(starts.get(name(s.a)) ?? []), s]);
+    left++;
+  }
   // The plane's own two axes, so a loop that goes round against the clock in them looks the plane's way.
   const e1 = unit(cross(Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], n)), e2 = cross(n, e1);
   const loops: { flat: Flat[]; of: Face; area: number }[] = [];
   const back = new Map<Flat, Vec>();
-  for (const first of left) {
-    if (!starts.get(pointKey(first.a))?.includes(first)) continue;
-    const flat: Flat[] = [];
-    let longest = first, most = 0;
-    for (let s: typeof first | undefined = first; s; ) {
-      const list = starts.get(pointKey(s.a))!;
-      list.splice(list.indexOf(s), 1);
+  const close = (ring: { a: Vec; b: Vec; of: Face }[]): void => {
+    if (ring.length < 3) return;
+    const flat = ring.map((s): Flat => {
       const q: Flat = [dot(s.a, e1), dot(s.a, e2)];
       back.set(q, s.a);
-      flat.push(q);
-      const size = length(faceNormal(s.of.points));
-      if (size > most) [most, longest] = [size, s];
-      const next: typeof first | undefined = starts.get(pointKey(s.b))?.[0];
-      if (!next && pointKey(s.b) !== pointKey(first.a)) throw new Error("clip: a solid is not closed where the plane cuts it");
-      s = next;
+      return q;
+    });
+    const of = ring.reduce((best, s) => (length(faceNormal(s.of.points)) > length(faceNormal(best.of.points)) ? s : best), ring[0]!).of;
+    loops.push({ flat, of, area: flat.reduce((sum, q, i) => sum + q[0] * flat[(i + 1) % flat.length]![1] - flat[(i + 1) % flat.length]![0] * q[1], 0) });
+  };
+  while (left > 0) {
+    // Walk from any side left. Coming back to a point already passed closes a loop, and the walk goes on from there.
+    const path: { a: Vec; b: Vec; of: Face }[] = [];
+    let at = [...starts.entries()].find(([, list]) => list.length > 0)![0];
+    for (;;) {
+      const s = starts.get(at)?.pop();
+      if (!s) {
+        if (path.length > 0) throw new Error("clip: a solid is not closed where the plane cuts it");
+        break;
+      }
+      left--;
+      path.push(s);
+      at = name(s.b);
+      const seen = path.findIndex((q) => name(q.a) === at);
+      if (seen >= 0) close(path.splice(seen));
     }
-    if (flat.length < 3) continue;
-    const area = flat.reduce((sum, q, i) => sum + q[0] * flat[(i + 1) % flat.length]![1] - flat[(i + 1) % flat.length]![0] * q[1], 0);
-    loops.push({ flat, of: longest.of, area });
   }
   const inside = (q: Flat, ring: readonly Flat[]): boolean => {
     let hit = false;
@@ -1100,9 +1112,10 @@ export type SlabMap = (part: "top" | "under" | "side", k: number) => readonly [s
  * A solid over the convex `outline`, (x, y) corners going round against the clock as seen from above, between a top at
  * `top[k]` over corner k and an underside: `under` metres under that, measured upright, or at its own height at each
  * corner. Its sides are upright. A roof's face, a ramp, a wedge. Four corners not in one plane are folded on the
- * diagonal through corner `fold`, as a hip or a valley is; a side with no height is left out.
+ * diagonal through corner `fold`, as a hip or a valley is; a side with no height is left out. With `along`, it is the
+ * same all the way along that axis and `cut` leaves it whole across it.
  */
-export function slabOn(shape: Shape, outline: readonly Flat[], top: readonly number[], under: number | readonly number[], mapping: SlabMap, fold = 0): Shape {
+export function slabOn(shape: Shape, outline: readonly Flat[], top: readonly number[], under: number | readonly number[], mapping: SlabMap, fold = 0, along?: number): Shape {
   const n = outline.length;
   const high = outline.map(([x, y], k): Vec => [x, y, top[k]!]);
   const low = outline.map(([x, y], k): Vec => [x, y, typeof under === "number" ? top[k]! - under : under[k]!]);
@@ -1122,6 +1135,7 @@ export function slabOn(shape: Shape, outline: readonly Flat[], top: readonly num
     const j = (k + 1) % n;
     face([low[k]!, low[j]!, high[j]!, high[k]!], "side", k);
   }
+  if (along !== undefined) for (const f of faces) f.along = along;
   return (shape as unknown as { solid(faces: Face[]): Shape }).solid(faces);
 }
 
