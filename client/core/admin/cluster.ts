@@ -1,5 +1,5 @@
 // The cluster dashboard's discovery and per-world reads. Each world authorizes its own data, and credentials are sent
-// only to worlds on this origin. A new sign-in invalidates any reads still in flight.
+// only to the chosen world on this origin. Clearing sign-ins invalidates private reads still in flight.
 
 import { ADMIN_TERRAIN_SIDE, type AdminChatLine, type AdminOverview } from "../../../shared/admin.ts";
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
@@ -113,7 +113,8 @@ export function publicGround(head: MapHead): Uint8ClampedArray<ArrayBuffer> {
 export class ClusterAdmin {
   readonly worlds = new Map<string, ClusterWorld>();
   discovered = false;
-  private authorization = "";
+  private authorization = new WeakMap<ClusterWorld, string>();
+  private signingIn: ClusterWorld | null = null;
   private run = 0;
   private busy = false;
   private readonly get: Fetch;
@@ -128,20 +129,40 @@ export class ClusterAdmin {
   }
 
   get signedIn(): boolean {
-    return this.authorization !== "";
+    return [...this.worlds.values()].some((card) => this.authorization.has(card));
   }
 
-  signIn(auth: string): void {
-    this.authorization = auth;
+  get authenticating(): boolean {
+    return this.signingIn !== null;
+  }
+
+  async signIn(key: string, auth: string): Promise<void> {
+    const card = this.worlds.get(key);
+    const api = card?.admin.api;
+    if (!card || !api || !card.locked || !auth || this.signingIn) return;
+    this.signingIn = card;
+    this.busy = true;
+    const run = ++this.run;
+    const accepted = await this.loadProtected(card, (file) => this.get(api + file, auth), run);
+    if (this.run !== run) return;
+    if (accepted) this.authorization.set(card, auth);
+    card.locked = !accepted;
+    this.signingIn = null;
+    this.busy = false;
+  }
+
+  signOut(): void {
     this.run++;
     this.busy = false;
     for (const card of this.worlds.values()) {
-      if (!card.admin.api) continue;
+      if (!this.authorization.has(card) && card !== this.signingIn) continue;
       card.locked = false;
       if (!card.publicGround) card.publicAt = 0;
       clearMap(card);
       unavailable(card, "Connecting", "Loading map…");
     }
+    this.signingIn = null;
+    this.authorization = new WeakMap();
   }
 
   totals(): { players: number; max: number; locked: number } {
@@ -173,19 +194,20 @@ export class ClusterAdmin {
     if (this.busy) return false;
     this.busy = true;
     const run = ++this.run;
-    this.discovered = false;
+    let discovered = false;
     try {
       const reply = await this.get("/worlds.json");
       if (reply.status === 200) {
         const worlds = await reply.json() as ClusterSiteWorld[];
         if (this.run !== run) return false;
         this.discover(worlds);
-        this.discovered = true;
+        discovered = true;
       }
     } catch {
       // Keep the last known world list and retry discovery.
     }
     if (this.run !== run) return false;
+    this.discovered = discovered;
     await Promise.all([...this.worlds.values()].map((world) => this.refreshWorld(world, run)));
     if (this.run !== run) return false;
     this.busy = false;
@@ -212,35 +234,40 @@ export class ClusterAdmin {
   private async refreshWorld(card: ClusterWorld, run: number): Promise<void> {
     const api = card.admin.api;
     if (!api) return;
-    const get = (file: string): Promise<AdminResponse> => this.get(api + file, this.authorization);
+    const auth = this.authorization.get(card);
+    const get = (file: string): Promise<AdminResponse> => this.get(api + file, auth);
     if (!card.locked) await this.loadProtected(card, get, run);
     if (this.view !== "overview" || this.run !== run) return;
     await this.loadPublicGround(card, run);
     if (this.run === run && card.overview && !card.publicGround) await this.loadGround(card, get, run);
   }
 
-  private async loadProtected(card: ClusterWorld, get: Fetch, run: number): Promise<void> {
+  private async loadProtected(card: ClusterWorld, get: Fetch, run: number): Promise<boolean> {
     try {
       const reply = await get(this.view === "chat" ? "chat.json" : "overview.json");
-      if (this.run !== run) return;
+      if (this.run !== run) return false;
       if (reply.status === 401 || reply.status === 429) {
+        this.authorization.delete(card);
         card.locked = true;
         clearMap(card);
+        const purpose = this.view === "chat" ? "Sign in to read this world's chat." : "Sign in to see live positions and health.";
+        const note = this.signingIn === card ? "The password was rejected." : purpose;
         unavailable(card, reply.status === 429 ? "Rate limited" : "Locked",
-          reply.status === 429 ? "Wait a while before trying to sign in again." : "Sign in to see live positions and health.");
-        return;
+          reply.status === 429 ? "Wait a while before trying to sign in again." : note);
+        return false;
       }
       if (reply.status !== 200) {
         clearMap(card);
         unavailable(card, "Unavailable", reply.status === 404 ? "World admin is unavailable." : `World admin answered ${reply.status}.`);
-        return;
+        return false;
       }
       const body = await reply.json();
-      if (this.run !== run) return;
+      if (this.run !== run) return false;
       if (this.view === "chat") {
         card.messages = body as AdminChatLine[];
         card.status = "Connected";
-        return;
+        card.cover = "";
+        return true;
       }
       const overview = body as AdminOverview;
       if (card.groundRun !== overview.stats.world.startedAt) {
@@ -253,11 +280,13 @@ export class ClusterAdmin {
       card.status = "Connected";
       card.cover = "";
       await this.loadBases(card, get, run, overview.stats.map);
+      return this.run === run;
     } catch {
       if (this.run === run) {
         clearMap(card);
         unavailable(card, "Unavailable", "The world did not answer.");
       }
+      return false;
     }
   }
 
