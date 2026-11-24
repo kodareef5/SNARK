@@ -895,9 +895,9 @@ function throughBlock(b: Build, { front, back, rise }: Through, mat: string, gra
 }
 
 /** A wall, a doorframe or a windowframe with every stone a solid of its own. */
-function wallFine(o: Opening | null): Build {
+function wallFine(o: Opening | null, rings: [number, number][]): Build {
   const b = new Build();
-  b.rings = [[0, -H + T], [0, H - T]];
+  b.rings = rings;
   if (!o) b.box([-H, -H - GAP, -CORE], [H, H - GAP, CORE], "masonry");
   else {
     // The core: two posts a centimetre back from the jamb stones, and what is above and below the opening.
@@ -930,6 +930,8 @@ interface Sheet {
  * them. The rim has corners on the yield rings, so its outline is exact where an end is pulled back.
  */
 function sheet(b: Build, o: Opening | null, { cells, half, whole }: Sheet): void {
+  // The rim has a corner on each yield ring, which the build is told of; a flat level is told of none.
+  const rings = b.rings.map(([, at]) => at);
   const from = b.shape.faces.length;
   const [topV, footV] = [whole ? 0 : GAP, TILE];
   // What is left of the face round the opening, as boxes: over it the whole width, beside it, and under a window.
@@ -940,8 +942,6 @@ function sheet(b: Build, o: Opening | null, { cells, half, whole }: Sheet): void
   for (const frame of [FRONT, BACK]) tiles(b, frame.out(half - CORE), cells(frame), regions);
   const [y0, y1] = [H - footV, H - topV];
   const through = (a: P2, c: P2, out: Vec, mat = "masonry", grain?: string): void => b.flat([[a[0], a[1], half], [c[0], c[1], half], [c[0], c[1], -half], [a[0], a[1], -half]], out, mat, straight(out, grain));
-  // The rim has a corner on each yield ring, but for a flat level, which has none.
-  const rings = whole ? [] : [-H + T, H - T];
   const runs = (x0: number, x1: number, y: number, out: Vec): void => {
     const xs = [x0, ...rings.filter((x) => x > x0 && x < x1), x1];
     for (let i = 0; i + 1 < xs.length; i++) through([xs[i]!, y], [xs[i + 1]!, y], out);
@@ -973,10 +973,10 @@ function frameTiles(o: Opening): Tile[] {
   return out;
 }
 
-/** A wall-family piece with each face one flat sheet, every stone a cell of it shaded as its crown. */
-function wallSheet(o: Opening | null): Build {
+/** A wall-family piece with each face one flat sheet, every stone a cell of it shaded as the stone it is. */
+function wallSheet(o: Opening | null, rings: [number, number][]): Build {
   const b = new Build();
-  b.rings = [[0, -H + T], [0, H - T]];
+  b.rings = rings;
   sheet(b, o, { cells: (frame) => [...wallTiles(frame, beside(o)), ...(o ? frameTiles(o) : [])], half: CORE + FACE });
   if (!o) return b;
   // The jamb stones and the lintel stand proud of the sheet as plain blocks.
@@ -987,11 +987,12 @@ function wallSheet(o: Opening | null): Build {
 }
 
 /** A wall-family piece as a plain solid that wears the pictures: its walling whole, the jambs a column each side, the lintel over them. */
-function wallPlain(o: Opening | null): Build {
+function wallPlain(o: Opening | null, rings: [number, number][]): Build {
   const b = new Build();
+  b.rings = rings;
   // Cut at the yield rings, so no cell crosses one.
   const strips = (u0: number, u1: number, v0: number, v1: number): Tile[] => {
-    const us = [u0, ...[T, TILE - T].filter((u) => u > u0 + 1e-9 && u < u1 - 1e-9), u1];
+    const us = [u0, ...rings.map(([, at]) => at + H).filter((u) => u > u0 + 1e-9 && u < u1 - 1e-9), u1];
     return us.slice(1).map((u, i) => ({ poly: cell(us[i]!, u, v0, v1), mat: "masonry" }));
   };
   sheet(b, o, {
@@ -1030,9 +1031,10 @@ function wallFar(o: Opening): Build {
 
 function wallFamily(name: string, form: FormDef, level: number): Build | null {
   const o = openingOf(name, form);
-  if (level === 0) return wallFine(o);
-  if (level === 1) return wallSheet(o);
-  if (level === 2) return wallPlain(o);
+  const rings = yieldPlanes(form);
+  if (level === 0) return wallFine(o, rings);
+  if (level === 1) return wallSheet(o, rings);
+  if (level === 2) return wallPlain(o, rings);
   if (level === 3 && o) return wallFar(o);
   if (level > (o ? 4 : 3)) return null;
   const b = new Build();
