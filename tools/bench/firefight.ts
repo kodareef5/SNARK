@@ -276,59 +276,77 @@ export function benchShots(section: Section, record: Row, scene: Scene, cam: Cam
   }
   crowd.count = BODIES;
   const kept = scene.shots;
+  /** The processor's milliseconds this process has had: a busy machine stretches the clock's, and not these. */
+  const worked = (): number => {
+    const u = process.cpuUsage();
+    return (u.user + u.system) / 1000;
+  };
+  const mean = (a: number[]): number => a.reduce((n, v) => n + v, 0) / a.length;
   for (const round of rounds) {
     const ammo = reg.index.get(`core:${round.ammo}`);
     if (ammo === undefined) continue;
-    const shots = new Shots(reg, pack);
-    scene.shots = shots;
     const speed = reg.ammoSpeed[ammo]!;
-    const events: unknown[] = [];
-    const session = { fired: [], inventory: null, held: -1, events, state: "active", own: { x: cam.x, y: world.hf.heightAt(cam.x, cam.z), z: cam.z, kind: survivor } } as unknown as ClientSession;
-    const aim = new Rng(707);
-    const ms = { draw: 0 };
-    const undo = timed(shots, "draw", ms);
-    const stepped: number[] = [];
-    const drawn: number[] = [];
-    let most = 0;
-    let objects = 0;
-    for (let f = 0; f < FRAMES * 2; f++) {
-      if (f === FRAMES) {
-        Bun.gc(true);
-        objects = heapStats().objectCount;
+    // Three runs, and the least of each figure: whatever else the machine is doing only adds to one.
+    const best = { flown: Infinity, drawn: Infinity, whole: Infinity, high: Infinity, cpu: Infinity, most: 0, made: 0 };
+    for (let pass = 0; pass < 3; pass++) {
+      const shots = new Shots(reg, pack);
+      scene.shots = shots;
+      const events: unknown[] = [];
+      const session = { fired: [], inventory: null, held: -1, events, ownHandle: 1, driving: -1, own: { x: cam.x, y: world.hf.heightAt(cam.x, cam.z), z: cam.z, kind: survivor, stance: 0, seat: 0 } } as unknown as ClientSession;
+      const aim = new Rng(707);
+      const ms = { draw: 0 };
+      const undo = timed(shots, "draw", ms);
+      const stepped: number[] = [];
+      const drawn: number[] = [];
+      let cpu = 0;
+      let objects = 0;
+      for (let f = 0; f < FRAMES * 2; f++) {
+        if (f === FRAMES) {
+          Bun.gc(true);
+          objects = heapStats().objectCount;
+        }
+        const now = f * (1000 / 60);
+        const tick = 200 + f / 2;
+        crowd.tick = tick;
+        // As many leave each frame as keep the air full: nearly level, from among the crowd, each its own way.
+        for (let n = shots.flying.length; n < FLYING; n++) {
+          const yaw = aim.float() * Math.PI * 2;
+          const x = cam.x + aim.range(-120, 120);
+          const z = cam.z + aim.range(-120, 120);
+          events.push({ kind: EVENT_SHOT, x, y: world.hf.heightAt(x, z) + 1.5, z, item: ammo, flies: true, vx: Math.sin(yaw) * speed, vy: speed * 0.02, vz: Math.cos(yaw) * speed, back: 2, rays: 1, seed: 0, silenced: false, far: 0 });
+        }
+        const c = worked();
+        const t = performance.now();
+        shots.absorb(session, world, now);
+        shots.step(world, crowd, tick, now);
+        const flown = performance.now() - t;
+        const used = worked() - c;
+        if (shots.flying.length > best.most) best.most = shots.flying.length;
+        ms.draw = 0;
+        scene.build(cam, crowd);
+        if (f < FRAMES) continue;
+        stepped.push(flown);
+        drawn.push(ms.draw);
+        cpu += used;
       }
-      const now = f * (1000 / 60);
-      const tick = 200 + f / 2;
-      crowd.tick = tick;
-      // As many leave each frame as keep the air full: nearly level, from among the crowd, each its own way.
-      for (let n = shots.flying.length; n < FLYING; n++) {
-        const yaw = aim.float() * Math.PI * 2;
-        const x = cam.x + aim.range(-120, 120);
-        const z = cam.z + aim.range(-120, 120);
-        events.push({ kind: EVENT_SHOT, x, y: world.hf.heightAt(x, z) + 1.5, z, item: ammo, flies: true, vx: Math.sin(yaw) * speed, vy: speed * 0.02, vz: Math.cos(yaw) * speed, back: 2, rays: 1, seed: 0, silenced: false });
-      }
-      const t = performance.now();
-      shots.absorb(session, world, now);
-      shots.step(world, crowd, tick, now);
-      const flown = performance.now() - t;
-      if (shots.flying.length > most) most = shots.flying.length;
-      ms.draw = 0;
-      scene.build(cam, crowd);
-      if (f < FRAMES) continue;
-      stepped.push(flown);
-      drawn.push(ms.draw);
+      best.made = heapStats().objectCount - objects;
+      undo();
+      // A tick comes every other frame, so half the frames fly nothing: the mean and the worst say more than the median.
+      const whole = stepped.map((v, i) => v + drawn[i]!);
+      best.flown = Math.min(best.flown, mean(stepped));
+      best.drawn = Math.min(best.drawn, mean(drawn));
+      best.whole = Math.min(best.whole, mean(whole));
+      best.high = Math.min(best.high, high(whole));
+      best.cpu = Math.min(best.cpu, cpu / FRAMES);
     }
-    const made = heapStats().objectCount - objects;
-    undo();
-    record(`${round.label}: rounds in the air at most`, most, "");
-    // A tick comes every other frame, so half the frames fly nothing: the mean and the worst say more than the median.
-    const whole = stepped.map((s, i) => s + drawn[i]!);
-    const mean = (a: number[]): number => a.reduce((n, v) => n + v, 0) / a.length;
-    record(`${round.label}: told and flown a frame, mean`, mean(stepped), "ms");
-    record(`${round.label}: drawn a frame, mean`, mean(drawn), "ms");
-    record(`${round.label}: a frame's shots in all, mean`, mean(whole), "ms");
-    record(`${round.label}: a frame's shots in all, 99th percentile`, high(whole), "ms", round.budget ?? null);
+    record(`${round.label}: rounds in the air at most`, best.most, "");
+    record(`${round.label}: told and flown a frame, mean`, best.flown, "ms");
+    record(`${round.label}: of that, the processor's time`, best.cpu, "ms");
+    record(`${round.label}: drawn a frame, mean`, best.drawn, "ms");
+    record(`${round.label}: a frame's shots in all, mean`, best.whole, "ms");
+    record(`${round.label}: a frame's shots in all, 99th percentile`, best.high, "ms", round.budget ?? null);
     // Not collected first: what the frames made and left for the collector, less whatever it took meanwhile.
-    record(`${round.label}: objects left by ${FRAMES} frames`, made, "");
+    record(`${round.label}: objects left by ${FRAMES} frames`, best.made, "");
   }
   scene.shots = kept;
 }

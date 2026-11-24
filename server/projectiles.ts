@@ -3,7 +3,7 @@
 // goes off where it ends, and one that carries a light (the flare) flies as a prop every client draws (weapons-plan.md, W6).
 
 import { TAU } from "../shared/math/scalar.ts";
-import { BOLTS_MOST, packBolt, writeBolt } from "../shared/net/bolts.ts";
+import { BOLTS_MOST, BOLT_MINE, BOLT_SILENCED, BOLT_WET, packBolt, writeBolt } from "../shared/net/bolts.ts";
 import type { BitWriter } from "../shared/net/codec.ts";
 import { EVENT_BLAST, EVENT_BOLTS, EVENT_SHOT, SHOT_HEARD, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
@@ -148,8 +148,8 @@ export class Projectiles {
   /**
    * The rounds that flew off since they were last told, told together (EVENT_BOLTS): where each left on the ground and
    * where its way ends there; its start and way as the message says them; then its ammunition, the whole ticks since it
-   * left, its silencer, the metres it had gone if it has ended, the share of full speed it left at, and whose it is (a
-   * client's id, or -1 for one its shooter is told too).
+   * left, what it is besides (BOLT_ bits), the metres it had gone if it has ended, the share of full speed it left at,
+   * whose it is (a client's id), and whether its shooter is told of it too.
    */
   private readonly told = new Float64Array(TOLD_MOST * 4);
   private readonly toldEnded = new Float32Array(TOLD_MOST);
@@ -159,7 +159,8 @@ export class Projectiles {
   private readonly toldPacked = new Uint32Array(TOLD_MOST * 5);
   private readonly toldAmmo = new Uint16Array(TOLD_MOST);
   private readonly toldBack = new Uint8Array(TOLD_MOST);
-  private readonly toldSilenced = new Uint8Array(TOLD_MOST);
+  private readonly toldFlags = new Uint8Array(TOLD_MOST);
+  private readonly toldEcho = new Uint8Array(TOLD_MOST);
   private readonly toldBy = new Int32Array(TOLD_MOST);
   private toldCount = 0;
   private readonly stuckKind: number;
@@ -406,7 +407,7 @@ export class Projectiles {
     // Nearby clients get its launch state and fly their own copy from there, told with the tick's others. They are told
     // the whole ticks it was flown, as a part of one is not tested to its end, and where it met something if it has, as no
     // client's copy would find the bodies of then.
-    this.keep(c, ox, oy, oz, d, ammo, whole, silenced, !flies && this.met ? Math.max(f.gone, 0.1) : 0, speed, full);
+    this.keep(c, ox, oy, oz, d, ammo, whole, (silenced ? BOLT_SILENCED : 0) | (wet ? BOLT_WET : 0), !flies && this.met ? Math.max(f.gone, 0.1) : 0, speed, full);
     if (!flies) return;
     if (this.flying.length >= MAX_FLYING) this.flying.shift();
     this.flying.push(f);
@@ -462,8 +463,8 @@ export class Projectiles {
   }
 
   /** Keeps a round that left `c`'s body along the unit way `d` at `speed`, of its ammunition's `full`, to be told when the step ends. */
-  private keep(c: Client, ox: number, oy: number, oz: number, d: readonly number[], ammo: number, back: number, silenced: boolean, ended: number, speed: number, full: number): void {
-    for (const l of this.heard) l("shot", ox, oz, c.name, silenced);
+  private keep(c: Client, ox: number, oy: number, oz: number, d: readonly number[], ammo: number, back: number, flags: number, ended: number, speed: number, full: number): void {
+    for (const l of this.heard) l("shot", ox, oz, c.name, (flags & BOLT_SILENCED) !== 0);
     if (this.toldCount >= TOLD_MOST) this.tellKept();
     const n = this.toldCount++;
     const t = this.told;
@@ -479,8 +480,9 @@ export class Projectiles {
     packBolt(ox, oy, oz, d[0]!, d[1]!, d[2]!, this.toldPacked, n * 5);
     this.toldAmmo[n] = ammo;
     this.toldBack[n] = Math.min(255, Math.round(back));
-    this.toldSilenced[n] = silenced ? 1 : 0;
-    this.toldBy[n] = this.toShooter ? -1 : c.id;
+    this.toldFlags[n] = flags;
+    this.toldBy[n] = c.id;
+    this.toldEcho[n] = this.toShooter ? 1 : 0;
   }
 
   /**
@@ -502,7 +504,9 @@ export class Projectiles {
       let said = 0;
       let last = 0;
       for (let n = 0; n < count; n++) {
-        if (this.toldBy[n] === other.id) continue;
+        // Its own shooter draws its own, but for a throw, which it is told of as its own.
+        const mine = this.toldBy[n] === other.id;
+        if (mine && this.toldEcho[n] === 0) continue;
         const ox = t[n * 4]!;
         const oz = t[n * 4 + 1]!;
         if ((bx - ox) * (bx - ox) + (bz - oz) * (bz - oz) > HEARD * HEARD) {
@@ -520,7 +524,7 @@ export class Projectiles {
           w.u8(EVENT_BOLTS);
           w.u8(0);
         }
-        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]!, this.toldSilenced[n] === 1, last, this.toldEnded[n]!, this.toldSpeed[n]!);
+        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]!, this.toldFlags[n]! | (mine ? BOLT_MINE : 0), last, this.toldEnded[n]!, this.toldSpeed[n]!);
         last = this.toldAmmo[n]!;
         if (++said === BOLTS_MOST) {
           // The count is the message's third byte, written last.

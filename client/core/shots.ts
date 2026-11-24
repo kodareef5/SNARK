@@ -6,7 +6,9 @@ import type { ItemDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { EVENT_BALL, EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
-import { FLIGHT_TICKS, HITSCAN_RANGE, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
+import { AnimState } from "../../shared/anim/pose.ts";
+import { STANCE_STAND, stanceHeight } from "../../shared/sim/character.ts";
+import { FLIGHT_TICKS, HITSCAN_RANGE, WATER_SPEED, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
@@ -69,6 +71,21 @@ interface Flying extends Flight {
   oz: number;
   /** Its own shooter's, which does not meet the body it left. */
   own: boolean;
+  /** Its weapon works under water, so it goes on there, slowed; and whether it is under water now. */
+  wet: boolean;
+  under: boolean;
+  /**
+   * Its next piece, looked along when its last was flown (`look`, then `bodies`): the metres of it free of the ground,
+   * a wall, the water, its reach and the bodies drawn; the metres of it that may be drawn; and what is at the end of the
+   * free part: something it meets, the end of its reach, or the water it goes on into.
+   */
+  clear: number;
+  lead: number;
+  met: boolean;
+  gone: boolean;
+  splash: boolean;
+  /** It has just left, and its first piece has not been tested against the bodies drawn. */
+  fresh: boolean;
 }
 
 interface Tracer {
@@ -116,8 +133,13 @@ export class Shots {
   private now = 0;
   private meshOfAmmo!: Int32Array;
   private tracerMesh = -1;
-  /** The client's own body as last absorbed, which another's round may meet: its feet and its kind, 0 while it is not in the world. */
-  private readonly me = { x: 0, y: 0, z: 0, kind: 0 };
+  /**
+   * The client's own body as last absorbed, which another's round may meet: its feet, how wide it is and how tall as it
+   * stands, crouches or lies. No width while it has none in the world to meet: spectating, dead, or sat in something.
+   */
+  private readonly me = { x: 0, y: 0, z: 0, r: 0, h: 0 };
+  /** A body's state as it is sent, read to find how tall it stands (`tall`). */
+  private readonly posed = new AnimState();
   /** The scene's assets, once it has named them (`bind`), and every mesh a shot is drawn with: few and small, and kept asked for. */
   private assets: Assets | null = null;
   private kept: number[] = [];
@@ -163,10 +185,13 @@ export class Shots {
     const fitted = held >= 0 ? inv!.attach[held]! : 0;
     const silenced = fitted !== 0 && (reg.defs[fitted] as ItemDef | null)?.attachment === "silencer";
     const me = this.me;
-    me.x = session.own.x;
-    me.y = session.own.y;
-    me.z = session.own.z;
-    me.kind = session.state === "active" ? session.own.kind : 0;
+    const own = session.own;
+    const move = reg.move[own.kind];
+    me.x = own.x;
+    me.y = own.y;
+    me.z = own.z;
+    me.r = move && session.ownHandle !== 0 && session.driving < 0 && own.seat === 0 ? reg.bodyRadius[own.kind]! : 0;
+    me.h = move ? stanceHeight(move, own.stance) : 0;
     for (const s of session.fired) {
       // Its own shot leaves along the server's ray: the same aim, cone and seed (shared/sim/aim.ts).
       const full = reg.ammoSpeed[s.ammo]!;
@@ -187,7 +212,7 @@ export class Shots {
         this.line(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, s.x + d[0]! * reach, s.y + d[1]! * reach, s.z + d[2]! * reach, nowMs);
       } else {
         const speed = launchSpeed(full, s.draw);
-        this.fly(world, s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs);
+        this.fly(world, s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, d[0]! * speed, d[1]! * speed, d[2]! * speed, s.ammo, -1, silenced, nowMs, 0, reg.weapon[s.weapon]?.wet ?? false, true);
       }
     }
     session.fired.length = 0;
@@ -210,7 +235,7 @@ export class Shots {
         events[kept++] = ev;
         continue;
       }
-      if (ev.flies) this.fly(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.item, ev.back, ev.silenced, nowMs, ev.far);
+      if (ev.flies) this.fly(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.item, ev.back, ev.silenced, nowMs, ev.far, ev.wet ?? false, ev.mine ?? false);
       else if (ev.rays > 1) {
         // The first ray's way stands for the muzzle's, as a silencer hides the flash of any shot.
         if (!ev.silenced) {
@@ -255,11 +280,12 @@ export class Shots {
 
   /**
    * A round of `ammo` left (x, y, z) `back` ticks ago, as its shooter saw it. The server has flown it that far already
-   * and met nothing, so it is moved that far at once and tested against nothing: it is then drawn where the server's is
-   * and comes when its harm does. One the server flew to its end in that time is told with the metres it had gone,
-   * `ended`, and bursts there. `back` is -1 for its own shooter's, which leaves now from ahead of the eye.
+   * and met no body, so it is flown that far at once against the world alone: it is then drawn where the server's is and
+   * comes when its harm does. One the server flew to its end in that time is told with the metres it had gone, `ended`,
+   * and bursts there. `back` is -1 for one that leaves now from ahead of the eye. `mine` is this client's own, which
+   * does not meet its own body: its own shot, or its throw told back to it.
    */
-  private fly(world: CollisionWorld, x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number, back: number, silenced: boolean, nowMs: number, ended = 0): void {
+  private fly(world: CollisionWorld, x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number, back: number, silenced: boolean, nowMs: number, ended = 0, wet = false, mine = false): void {
     const mesh = this.meshOfAmmo[ammo] ?? -1;
     if (mesh < 0) return;
     const size = this.reg.ammoBoltSize[ammo]!;
@@ -270,22 +296,24 @@ export class Shots {
       const ahead = back >= 0 ? AHEAD / speed : 0;
       this.flash(x + vx * ahead, y + vy * ahead - (back >= 0 ? BELOW : 0), z + vz * ahead, nowMs, lit, BOLT_FLASH * size, BOLT_FLASH_MS, vx / speed, vy / speed, vz / speed);
     }
-    const f: Flying = { x, y, z, vx, vy, vz, gravity: this.reg.ammoGravity[ammo]!, mesh, ammo, left: FLIGHT_TICKS, age: 0, flown: 0, reach: this.reg.ammoReach[ammo]!, ox: x, oz: z, own: back < 0 };
-    // One that ended is flown to its end however many ticks that takes: `back` is whole ticks, and its end was within one more.
+    const f: Flying = {
+      x, y, z, vx, vy, vz, gravity: this.reg.ammoGravity[ammo]!, mesh, ammo, left: FLIGHT_TICKS, age: 0, flown: 0, reach: this.reg.ammoReach[ammo]!, ox: x, oz: z,
+      own: mine, wet, under: y < world.hf.waterAt(x, z), clear: 0, lead: 0, met: false, gone: false, splash: false, fresh: true,
+    };
+    // The ticks the server flew are flown on its word: it met nothing in them, so only the water a wet round goes on
+    // into is looked for. One that ended is flown to its end however many ticks that takes: `back` is whole ticks, and
+    // its end was within one more.
+    this.look(f, world, back <= 0);
     for (let k = 0; k < (ended > 0 ? back + 2 : back); k++) {
       flyStep(f, f.gravity);
-      const { length } = piece;
-      if (!(length > 0) || --f.left < 0) return;
-      if (ended > 0 && f.flown + length >= ended) {
+      if (ended > 0 && f.flown + piece.length >= ended) {
         this.end(f, piece.x, piece.y, piece.z, piece.dx, piece.dy, piece.dz, ended - f.flown, nowMs);
         return;
       }
-      if (f.reach > 0 && f.flown + length >= f.reach) return;
-      flyEnd(f, f.gravity);
-      f.age++;
-      f.flown += length;
+      if (!this.advance(f, world, null, nowMs, false)) return;
     }
     if (ended > 0) return;
+    if (back > 0) this.look(f, world, true);
     if (this.flying.length >= MAX_FLYING) this.flying.shift();
     this.flying.push(f);
   }
@@ -326,41 +354,78 @@ export class Shots {
   }
 
   /**
-   * Flies `f` one tick. False when it ended: out of reach, or on the ground, a wall, water or, where `remote` is given and
-   * sorted, a drawn body. A bolt of light that ended on something bursts there.
+   * How tall body `i` of `remote` stands to a shot, as it is drawn: one that crouches or lies is as low as that, one
+   * knocked out lies, and a dead one is met by nothing, as the server meets none.
    */
-  private advance(f: Flying, world: CollisionWorld, remote: RemoteSample | null, nowMs: number): boolean {
+  private tall(remote: RemoteSample, i: number, kind: number): number {
+    const move = this.reg.move[kind]!;
+    const st = this.posed;
+    st.unpack(remote.anim[i]!, remote.cue[i]!);
+    if (st.dead) return 0;
+    if (st.out) return move.proneHeight > 0 ? move.proneHeight : this.reg.bodyHeight[kind]!;
+    return st.stance !== STANCE_STAND && move.crouchHeight > 0 ? stanceHeight(move, st.stance) : this.reg.bodyHeight[kind]!;
+  }
+
+  /**
+   * Looks along the piece `f` flies next, as the server flies it: how far it is free of its reach, the water and the
+   * world, and what is there. A round is never drawn further along a piece than it was found free, by this and by
+   * `bodies`. Not `whole`, it is a piece the server has flown and met nothing in: its reach and, for a round that goes
+   * on under water, the water are all that is looked for.
+   */
+  private look(f: Flying, world: CollisionWorld, whole: boolean): void {
     flyStep(f, f.gravity);
     let length = piece.length;
     const { x, y, z, dx, dy, dz } = piece;
-    if (--f.left < 0 || !(length > 0)) return false;
+    f.met = f.splash = false;
     // The piece that reaches its reach is cut there, as the server cuts it.
-    const last = f.reach > 0 && f.flown + length >= f.reach;
-    if (last) length = f.reach - f.flown;
-    if (!(length > 0)) return false;
-    const sea = world.hf.seaLevel;
-    let ends = false;
-    if (y > sea && y + dy * length <= sea && seaHere(world.hf.water, x + (dx * (sea - y)) / dy, z + (dz * (sea - y)) / dy)) {
-      length = (sea - y) / dy;
-      ends = true;
+    f.gone = !(length > 0) || (f.reach > 0 && f.flown + length >= f.reach);
+    if (f.gone) length = length > 0 ? Math.max(0, f.reach - f.flown) : 0;
+    let wet = false;
+    if (!f.under && length > 0 && (whole || f.wet)) {
+      const sea = world.hf.seaLevel;
+      if (y > sea && y + dy * length <= sea && seaHere(world.hf.water, x + (dx * (sea - y)) / dy, z + (dz * (sea - y)) / dy)) {
+        length = (sea - y) / dy;
+        wet = true;
+      }
+      const lake = bodyAlong(world.hf.water, x, y, z, dx, dy, dz, length);
+      if (lake <= length) {
+        length = lake;
+        wet = true;
+      }
     }
-    const lake = bodyAlong(world.hf.water, x, y, z, dx, dy, dz, length);
-    if (lake <= length) {
-      length = lake;
-      ends = true;
+    // At the surface one from a dry weapon stops. One from a wet weapon goes on, slowed.
+    if (wet) {
+      f.met = !f.wet;
+      f.splash = f.wet;
     }
-    if (castWorld(world, x, y, z, dx, dy, dz, length) !== HIT_NONE) {
+    if (whole && length > 0 && castWorld(world, x, y, z, dx, dy, dz, length) !== HIT_NONE) {
       length = rayHit.t;
-      ends = true;
+      f.met = true;
+      f.splash = false;
     }
-    // Another's round meets the client's own body, which is not among those it is sent.
+    f.clear = length;
+    // One that goes on into the water flies its whole piece, as the server moves it.
+    f.lead = f.splash && !f.gone ? piece.length : length;
+  }
+
+  /**
+   * Cuts the piece `f` flies next, already looked along, at the first body in it: the client's own, which is not among
+   * those it is sent, and the drawn bodies of `remote`, which must be sorted. They are met where they are drawn now, a
+   * tick before the round is there: near enough for a picture, and it lets the round be drawn no further than the body.
+   */
+  private bodies(f: Flying, remote: RemoteSample | null): void {
+    f.fresh = false;
+    let length = f.clear;
+    if (!(length > 0)) return;
+    flyStep(f, f.gravity);
+    const { x, y, z, dx, dy, dz } = piece;
+    let met = false;
     const me = this.me;
-    if (!f.own && me.kind !== 0) {
-      const r = this.reg.bodyRadius[me.kind]!;
-      const t = rayBox(x, y, z, dx, dy, dz, me.x - r, me.y, me.z - r, me.x + r, me.y + this.reg.bodyHeight[me.kind]!, me.z + r);
+    if (!f.own && me.r > 0) {
+      const t = rayBox(x, y, z, dx, dy, dz, me.x - me.r, me.y, me.z - me.r, me.x + me.r, me.y + me.h, me.z + me.r);
       if (t < length) {
         length = t;
-        ends = true;
+        met = true;
       }
     }
     if (remote) {
@@ -382,23 +447,54 @@ export class Shots {
             const kind = remote.kind[i]!;
             const r = reg.bodyRadius[kind]!;
             if (near && (remote.x[i]! - f.ox) * (remote.x[i]! - f.ox) + (remote.z[i]! - f.oz) * (remote.z[i]! - f.oz) < (r + SHOOTER) * (r + SHOOTER)) continue;
-            const t = rayBox(x, y, z, dx, dy, dz, remote.x[i]! - r, remote.y[i]!, remote.z[i]! - r, remote.x[i]! + r, remote.y[i]! + reg.bodyHeight[kind]!, remote.z[i]! + r);
+            // As tall as its kind stands first: few are in the way at all, and only one that is has its stance read.
+            const full = reg.bodyHeight[kind]!;
+            let t = rayBox(x, y, z, dx, dy, dz, remote.x[i]! - r, remote.y[i]!, remote.z[i]! - r, remote.x[i]! + r, remote.y[i]! + full, remote.z[i]! + r);
+            if (!(t < length)) continue;
+            const tall = this.tall(remote, i, kind);
+            if (!(tall > 0)) continue;
+            if (tall < full) t = rayBox(x, y, z, dx, dy, dz, remote.x[i]! - r, remote.y[i]!, remote.z[i]! - r, remote.x[i]! + r, remote.y[i]! + tall, remote.z[i]! + r);
             if (t < length) {
               length = t;
-              ends = true;
+              met = true;
             }
           }
         }
       }
     }
-    if (ends) {
-      this.end(f, x, y, z, dx, dy, dz, length, nowMs);
+    if (!met) return;
+    f.clear = length;
+    if (length < f.lead) f.lead = length;
+    f.met = true;
+    f.splash = false;
+  }
+
+  /**
+   * Flies `f` one tick along the piece it last looked along. False when it ended: out of reach, or on what was found
+   * in that piece. One that ended on something bursts there, if it is a bolt of light. When `live`, its next piece is
+   * tested against the bodies drawn. A round flown at once to where the server has it is not `live`: the server met no
+   * body on that way.
+   */
+  private advance(f: Flying, world: CollisionWorld, remote: RemoteSample | null, nowMs: number, live: boolean): boolean {
+    if (--f.left < 0) return false;
+    flyStep(f, f.gravity);
+    const whole = piece.length;
+    if (f.met) {
+      this.end(f, piece.x, piece.y, piece.z, piece.dx, piece.dy, piece.dz, f.clear, nowMs);
       return false;
     }
-    if (last) return false;
+    if (f.gone) return false;
     flyEnd(f, f.gravity);
     f.age++;
-    f.flown += length;
+    f.flown += whole;
+    if (f.splash) {
+      f.under = true;
+      f.vx *= WATER_SPEED;
+      f.vy *= WATER_SPEED;
+      f.vz *= WATER_SPEED;
+    } else if (f.under && f.y > world.hf.waterAt(f.x, f.z)) f.under = false;
+    this.look(f, world, live);
+    if (live) this.bodies(f, remote);
     return true;
   }
 
@@ -425,10 +521,14 @@ export class Shots {
     const whole = Math.floor(tick);
     // After a clock jump, do not catch up tick by tick.
     if (this.tick < 0 || whole - this.tick > 8 || whole < this.tick) this.tick = whole - 1;
-    if (this.tick < whole && remote && this.flying.length > 0) this.sort(remote);
+    // One that left since the last step has its first piece tested now, before it is drawn.
+    let fresh = false;
+    for (const f of this.flying) if (f.fresh) fresh = true;
+    if ((this.tick < whole || fresh) && remote && this.flying.length > 0) this.sort(remote);
+    if (fresh) for (const f of this.flying) if (f.fresh) this.bodies(f, remote);
     for (; this.tick < whole; this.tick++) {
       let kept = 0;
-      for (const f of this.flying) if (this.advance(f, world, remote, nowMs)) this.flying[kept++] = f;
+      for (const f of this.flying) if (this.advance(f, world, remote, nowMs, true)) this.flying[kept++] = f;
       this.flying.length = kept;
     }
   }
@@ -454,14 +554,18 @@ export class Shots {
     }
     const ahead = (tick - Math.floor(tick)) * TICK_DT;
     for (const f of this.flying) {
-      const x = f.x + f.vx * ahead - cam.x;
-      const y = f.y + f.vy * ahead - cam.y;
-      const z = f.z + f.vz * ahead - cam.z;
       const speed = Math.sqrt(f.vx * f.vx + f.vy * f.vy + f.vz * f.vz);
-      if (!(speed > 0) || !cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) continue;
+      if (!(speed > 0)) continue;
+      // Between ticks it is drawn along its next piece, and no further than that was found free: not past a wall, the
+      // water or its reach, which the next tick ends it at.
+      const along = Math.min(speed * ahead, f.lead) / speed;
+      const x = f.x + f.vx * along - cam.x;
+      const y = f.y + f.vy * along - cam.y;
+      const z = f.z + f.vz * along - cam.z;
+      if (!cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) continue;
       // A bolt of light is its head with a tail behind it, no longer than it has flown.
       const size = this.reg.ammoBoltSize[f.ammo]!;
-      const tail = size > 0 ? Math.max(0.2 * size, Math.min(BOLT_TAIL * size, f.flown + speed * ahead)) : 1;
+      const tail = size > 0 ? Math.max(0.2 * size, Math.min(BOLT_TAIL * size, f.flown + speed * along)) : 1;
       if (!ch.loose(p, f.mesh, x, y, z, f.vx / speed, f.vy / speed, f.vz / speed, tail, size > 0 ? size : 1)) return;
     }
     // A blast is a flash that swells from a quarter of its reach to most of it.

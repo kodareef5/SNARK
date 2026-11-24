@@ -407,6 +407,9 @@ export interface CombatEvent {
   side: boolean;
   /** A shot from a weapon with a silencer: no flash is drawn. */
   silenced: boolean;
+  /** A round that flies: its weapon works under water, so it goes on there; and it is this client's own, told back to it (a throw). */
+  wet?: boolean;
+  mine?: boolean;
   /** Who killed this body, or what this body killed. */
   name: string;
   /**
@@ -2080,7 +2083,7 @@ export class ClientSession {
         last = bolt.ammo;
         const speed = (this.registry.ammoSpeed[bolt.ammo] ?? 0) * bolt.speed;
         if (r.overflow || !(speed > 0)) break;
-        this.events.push({ ...ev, kind: EVENT_SHOT, x: bolt.x, y: bolt.y, z: bolt.z, item: bolt.ammo, flies: true, vx: bolt.dx * speed, vy: bolt.dy * speed, vz: bolt.dz * speed, back: bolt.back, silenced: bolt.silenced, far: bolt.ended });
+        this.events.push({ ...ev, kind: EVENT_SHOT, x: bolt.x, y: bolt.y, z: bolt.z, item: bolt.ammo, flies: true, vx: bolt.dx * speed, vy: bolt.dy * speed, vz: bolt.dz * speed, back: bolt.back, silenced: bolt.silenced, far: bolt.ended, wet: bolt.wet, mine: bolt.mine });
         if (this.events.length > MAX_EVENTS) this.events.shift();
       }
       return;
