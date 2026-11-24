@@ -26,7 +26,7 @@ The linked files are read-only, because writing into one would change it in ever
 
 `bun run check` installs missing or newly pinned art itself when the machine already holds the archives, and downloads nothing. A run that skipped tests for missing art fails with `NOT A GATE`. Where the art is not installed at all, `bun run check -- --no-art` lets those tests skip and says how many did.
 
-To host the game, build the client and the wiki (`bun run build`, `bun run wiki`), build a map for each city, and start a server for each as [the server's notes](../server/README.md) describe.
+To host the game, run `bun run build`, build a map for each city, and start a server for each as [the server's notes](../server/README.md) describe. Run `bun run wiki` after the client and maps are built to also host [the wiki](../planning/reference/wiki.md).
 
 ## Packing
 

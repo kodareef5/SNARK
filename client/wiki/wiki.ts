@@ -3,83 +3,109 @@
 // the cluster behind it runs.
 
 import { findRows, mapTransform, type SearchRow } from "../core/wiki/filter.ts";
-import { takeSamples } from "../core/wiki/sound.ts";
+import { wireAudio } from "./audio.ts";
+import { wireModels } from "./model.ts";
+import { setupTamingTools } from "./taming.ts";
 import { liveMaps, worldPath, type LiveWorld, type ServerSaid } from "../core/wiki/world.ts";
 
 const all = <T extends Element>(selector: string, root: ParentNode = document): T[] => [...root.querySelectorAll<T>(selector)];
 
-// A sound's takes are fetched at the first press of one (client/core/wiki/sound.ts). One sound plays at a time: the button
-// pressed, `playing`, shows it sounding (aria-pressed) from when `source` starts until it ends or is stopped.
-let audio: AudioContext | null = null;
-let playing: HTMLElement | null = null;
-let source: AudioBufferSourceNode | null = null;
-const decoded = new Map<string, Promise<AudioBuffer[]>>();
-
-const takes = async (row: HTMLElement): Promise<AudioBuffer[]> => (await takeSamples(row.dataset, fetch)).map((s) => {
-  const b = new AudioBuffer({ length: s.length, numberOfChannels: 1, sampleRate: Number(row.dataset.rate) });
-  b.copyToChannel(s, 0);
-  return b;
-});
-
-/** Stops the take sounding, and the music but `keep`. */
-function hush(keep?: EventTarget | null): void {
-  for (const a of all<HTMLAudioElement>("audio")) if (a !== keep) a.pause();
-  playing?.setAttribute("aria-pressed", "false");
-  source?.stop();
-  [playing, source] = [null, null];
+const sidebar = document.querySelector<HTMLDetailsElement>("[data-sidebar]");
+if (sidebar) {
+  const narrow = matchMedia("(max-width: 52rem)");
+  const resize = (): void => { sidebar.open = !narrow.matches; };
+  resize();
+  narrow.addEventListener("change", resize);
 }
 
+wireAudio();
+wireModels();
+
 document.addEventListener("click", (event) => {
-  const button = (event.target as Element).closest<HTMLElement>("[data-k]");
-  const row = button?.closest<HTMLElement>("[data-takes]");
-  if (button && row) {
-    const again = playing === button;
-    hush();
-    if (again) return;
-    audio ??= new AudioContext();
-    void audio.resume();
-    playing = button;
-    const key = `${row.dataset.file}@${row.dataset.at}`;
-    if (!decoded.has(key)) decoded.set(key, takes(row));
-    decoded.get(key)!.then((list) => {
-      if (playing !== button || source) return;
-      source = new AudioBufferSourceNode(audio!, { buffer: list[Number(button.dataset.k)]! });
-      source.connect(audio!.destination);
-      source.onended = (e) => source === e.target && hush();
-      source.start();
-      button.setAttribute("aria-pressed", "true");
-    }, () => {
-      decoded.delete(key);
-      button.classList.add("failed");
-    });
-  }
   const copy = (event.target as Element).closest<HTMLButtonElement>("[data-copy]");
-  if (copy) {
-    const text = document.getElementById(copy.dataset.copy!)?.textContent ?? "";
-    navigator.clipboard.writeText(text).then(() => (copy.textContent = "Copied"), () => (copy.textContent = "Select it to copy"));
-  }
+  const code = copy?.dataset.copy && document.getElementById(copy.dataset.copy);
+  if (!copy || !code) return;
+  const select = (): void => {
+    const range = document.createRange();
+    range.selectNodeContents(code);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    copy.textContent = "Selected";
+  };
+  if (navigator.clipboard) {
+    void navigator.clipboard.writeText(code.textContent ?? "").then(() => (copy.textContent = "Copied"), select);
+  } else select();
 });
-document.addEventListener("play", (event) => hush(event.target), true);
+
+for (const directory of all<HTMLElement>("[data-directory]")) {
+  const tools = directory.querySelector<HTMLElement>("[data-directory-tools]")!;
+  const selects = all<HTMLSelectElement>("[data-filter]", tools);
+  if (!selects.length) continue;
+  const rows = all<HTMLTableRowElement>("[data-directory-row]", directory).map((row) => ({
+    row, fields: JSON.parse(row.dataset.directoryRow!) as Record<string, string>,
+  }));
+  const count = tools.querySelector<HTMLElement>("[data-directory-count]")!;
+  const update = (): void => {
+    let visible = 0;
+    for (const { row, fields } of rows) {
+      row.hidden = selects.some((item) => item.value && item.value !== fields[item.dataset.filter!]);
+      if (!row.hidden) visible++;
+    }
+    count.textContent = visible ? `${visible} ${visible === 1 ? "entry" : "entries"}` : "No entries match these filters.";
+  };
+  tools.hidden = false;
+  tools.addEventListener("change", update);
+  update();
+}
 
 // The search page asks for the index once, as the first letter is typed or a query arrives in its address.
 for (const list of all<HTMLOListElement>("[data-search]")) {
   const input = document.querySelector<HTMLInputElement>("main .find input")!;
+  const note = document.querySelector<HTMLElement>("[data-search-note]")!;
   let rows: Promise<SearchRow[]> | null = null;
+  let revision = 0;
   const show = async (): Promise<void> => {
-    rows ??= fetch(list.dataset.search!).then((r) => r.json() as Promise<SearchRow[]>);
-    const found = findRows(await rows, input.value);
-    list.replaceChildren(...found.map(([label, path, group, picture]) => {
-      const li = document.createElement("li");
-      const a = li.appendChild(document.createElement("a"));
-      a.href = path;
-      if (picture) Object.assign(a.appendChild(document.createElement("img")), { src: picture, alt: "", loading: "lazy", width: 48, height: 36 });
-      a.append(label);
-      li.appendChild(document.createElement("small")).textContent = group;
-      return li;
-    }));
-    if (input.value && found.length === 0) list.textContent = "Nothing in the wiki is called that.";
+    const request = ++revision;
+    const query = input.value.trim();
+    if (!query) {
+      list.replaceChildren();
+      note.textContent = "";
+      return;
+    }
+    rows ??= fetch(list.dataset.search!).then((response) => {
+      if (!response.ok) throw new Error("Search index unavailable");
+      return response.json() as Promise<SearchRow[]>;
+    });
+    try {
+      const found = findRows(await rows, query);
+      if (request !== revision) return;
+      note.textContent = found.length ? `${found.length} ${found.length === 1 ? "result" : "results"}` : "No results. Try a name or game ID.";
+      list.replaceChildren(...found.map(([label, path, group, picture]) => {
+        const li = document.createElement("li");
+        const a = li.appendChild(document.createElement("a"));
+        a.href = path;
+        if (picture) Object.assign(a.appendChild(document.createElement("img")), { src: picture, alt: "", loading: "lazy", width: 48, height: 36 });
+        a.append(label);
+        li.appendChild(document.createElement("small")).textContent = group;
+        return li;
+      }));
+    } catch {
+      rows = null;
+      if (request !== revision) return;
+      list.replaceChildren();
+      note.textContent = "Search could not load. Press Search to try again.";
+    }
   };
-  input.value = new URLSearchParams(location.search).get("q") ?? "";
+  const query = new URLSearchParams(location.search);
+  input.value = query.get("q") ?? "";
+  input.form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (input.value.trim()) query.set("q", input.value.trim());
+    else query.delete("q");
+    history.replaceState(null, "", query.size ? `?${query}` : location.pathname);
+    void show();
+  });
   input.addEventListener("input", () => void show());
   if (input.value) void show();
 }
@@ -88,7 +114,12 @@ for (const list of all<HTMLOListElement>("[data-search]")) {
 const kept = ((): string | null => { try { return sessionStorage.getItem("world"); } catch { return null; } })();
 const world = worldPath(location.search, document.referrer, location.origin, kept);
 try { sessionStorage.setItem("world", world); } catch { /* Without storage each page asks by its own address. */ }
-void fetch(`${world}/settings.json`, { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then(async (said: ServerSaid | null) => {
+const needsSettings = !!document.querySelector("[data-taming], [data-figure], [data-setting]");
+const settings = needsSettings
+  ? fetch(`${world}/settings.json`, { cache: "no-cache" }).then((r) => r.ok ? r.json() as Promise<ServerSaid> : null).catch(() => null)
+  : Promise.resolve(null);
+setupTamingTools(settings);
+void settings.then(async (said) => {
   if (!said?.settings || Object.keys(said.settings).length === 0) return;
   const { changed, rated, settingText, settingsLine, tamingRows } = await import("../core/wiki/rates.ts");
   const kinds = new Set<string>();
@@ -121,12 +152,15 @@ if (lists.length) void fetch("/worlds.json", { cache: "no-cache" }).then((r) => 
 // A map moves under a drag and zooms by its buttons, the wheel with ctrl, and the keys; its layers show by their boxes.
 for (const view of all<HTMLElement>("[data-atlas]")) {
   const plane = view.querySelector<HTMLElement>(".plane")!;
+  const ground = plane.querySelector<HTMLImageElement>(".ground")!;
   let at = { zoom: 1, x: 0, y: 0 };
   let drag: { id: number; x: number; y: number; from: typeof at } | null = null;
   const draw = (): void => {
     at = mapTransform(at.zoom, at.x, at.y, view.clientWidth, view.clientHeight);
     plane.style.transform = `translate(${at.x}px, ${at.y}px) scale(${at.zoom})`;
     view.style.setProperty("--zoom", String(at.zoom));
+    const displayed = `${Math.ceil(view.clientWidth * at.zoom)}px`;
+    if (ground.sizes !== displayed) ground.sizes = displayed;
   };
   const zoom = (by: number): void => {
     const z = Math.max(1, Math.min(8, at.zoom * by));
@@ -172,42 +206,47 @@ for (const view of all<HTMLElement>("[data-atlas]")) {
     }
   };
   const asked = new URLSearchParams(location.search).get("show");
-  for (const box of all<HTMLInputElement>("[data-show]", atlas)) {
-    if (box.dataset.show === asked) box.checked = true;
+  const boxes = all<HTMLInputElement>("[data-show]", atlas);
+  for (const box of boxes) {
+    if (box.dataset.show === asked) {
+      box.checked = true;
+      const group = box.closest("details");
+      if (group) group.open = true;
+    }
     box.addEventListener("change", () => show(box));
     show(box);
   }
+  const panel = atlas.querySelector<HTMLElement>(".layers")!;
+  panel.querySelector<HTMLElement>(".layer-tools")!.hidden = false;
+  const filter = panel.querySelector<HTMLInputElement>("[data-layer-filter]")!;
+  const groups = all<HTMLDetailsElement>("details", panel);
+  const options = all<HTMLElement>("[data-layer-choice]", panel);
+  const note = panel.querySelector<HTMLElement>("[data-layer-note]")!;
+  let openBeforeFilter: boolean[] = [];
+  const filterLayers = (): void => {
+    const query = filter.value.trim().toLowerCase();
+    if (query && !openBeforeFilter.length) openBeforeFilter = groups.map((group) => group.open);
+    for (const option of options) option.hidden = !option.dataset.layerChoice!.toLowerCase().includes(query);
+    for (const [index, group] of groups.entries()) {
+      group.hidden = !!query && !group.querySelector("[data-layer-choice]:not([hidden])");
+      if (query) group.open = !group.hidden;
+      else if (openBeforeFilter.length) group.open = openBeforeFilter[index]!;
+    }
+    if (!query) openBeforeFilter = [];
+    note.textContent = query && options.every((option) => option.hidden) ? "No layers match." : "";
+  };
+  filter.addEventListener("input", filterLayers);
+  panel.querySelector("[data-layer-reset]")!.addEventListener("click", () => {
+    filter.value = "";
+    filterLayers();
+    for (const box of boxes) {
+      box.checked = box.defaultChecked;
+      show(box);
+    }
+    if (asked) {
+      const url = new URL(location.href);
+      url.searchParams.delete("show");
+      history.replaceState(null, "", url);
+    }
+  });
 }
-
-// "View in 3D" puts the game's own studio (client/entry/studio.ts) over an entry's picture, one at a time. The picture comes
-// back, with a note, if the studio says it cannot draw here or has not drawn within 45 s.
-let shown: { figure: HTMLElement; frame: HTMLIFrameElement; timer: number } | null = null;
-function closeView(note = ""): void {
-  if (!shown) return;
-  const { figure, frame, timer } = shown;
-  [shown, frame.src] = [null, "about:blank"];
-  clearTimeout(timer);
-  frame.remove();
-  figure.classList.remove("in3d");
-  const b = figure.querySelector<HTMLButtonElement>("[data-view]")!;
-  b.setAttribute("aria-expanded", "false");
-  if (note) b.insertAdjacentHTML("afterend", `<p class="note">${note}</p>`);
-}
-document.addEventListener("click", (event) => {
-  const b = (event.target as Element).closest<HTMLButtonElement>("[data-view]");
-  const figure = b?.closest<HTMLElement>("figure");
-  if (!b || !figure) return;
-  const again = shown?.figure === figure;
-  closeView();
-  if (again) return;
-  const frame = Object.assign(document.createElement("iframe"), { src: b.dataset.view!, title: `${b.dataset.label} in 3D`, className: "studio", allow: "fullscreen" });
-  figure.prepend(frame);
-  figure.classList.add("in3d");
-  b.setAttribute("aria-expanded", "true");
-  shown = { figure, frame, timer: window.setTimeout(() => closeView("The 3D view did not start."), 45_000) };
-});
-addEventListener("message", (event) => {
-  if (event.origin !== location.origin || event.data?.source !== "snark-studio" || event.source !== shown?.frame.contentWindow) return;
-  if (event.data.type === "ready") clearTimeout(shown!.timer);
-  else closeView("3D could not be shown in this browser.");
-});

@@ -913,6 +913,10 @@ export interface ModelShot {
   floor?: number;
   /** Lit as the lit tiers light, which is the default, or as low poly. */
   lit?: boolean;
+  /** Forward, up and left components of the key light in the camera's frame. */
+  keyLight?: readonly [number, number, number];
+  /** Model-only camera roll and a neutral key, fill and reflected lights. */
+  studio?: { roll?: number; exposure?: number };
   /** How many times nearer the picture is than the ball: the view narrowed from where the ball puts the camera, so near and far parts keep their sizes. */
   zoom?: number;
   /** The level of the hurt and decay layer of each material that has one, in LAYER_LEVELS (client/core/render/surface.ts); 0 for none. Its texture must be on the card. */
@@ -968,6 +972,7 @@ export class ModelView {
     cam.z = shot.centre[2] + far * Math.cos(a) * Math.cos(e);
     cam.yaw = a + Math.PI;
     cam.pitch = -e;
+    cam.roll = shot.studio?.roll ?? 0;
     cam.near = Math.max(0.05, far - shot.radius * 1.5);
     cam.far = far + shot.radius * 1.5;
     if (shot.perspective) cam.fovY = shot.perspective.fovY;
@@ -979,7 +984,8 @@ export class ModelView {
     p.camY = cam.y;
     p.camZ = cam.z;
     // Toward the camera, up, and to the camera's left.
-    const sun = [Math.sin(a) * 0.55 - Math.cos(a) * 0.4, 0.75, Math.cos(a) * 0.55 + Math.sin(a) * 0.4];
+    const [front, up, left] = shot.keyLight ?? [0.55, 0.75, 0.4];
+    const sun = [Math.sin(a) * front - Math.cos(a) * left, up, Math.cos(a) * front + Math.sin(a) * left];
     const length = Math.hypot(sun[0]!, sun[1]!, sun[2]!);
     for (let k = 0; k < 3; k++) p.sun[k] = sun[k]! / length;
     p.lit = shot.lit ?? true;
@@ -988,6 +994,16 @@ export class ModelView {
       p.frame.set(p.sun, FRAME.sun);
       // The background is painted where nothing is drawn, so the dome need not be: as under water, the clear colour is.
       p.frame[FRAME.eyeHeight] = -1;
+      if (shot.studio) {
+        p.frame.set([0.94, 0.91, 0.87], FRAME.sunColor);
+        p.frame.set([Math.cos(a) * 0.82, 0.4, -Math.sin(a) * 0.82], FRAME.moon);
+        p.frame.set([0.31, 0.34, 0.36], FRAME.moonColor);
+        p.frame.set([0.40, 0.42, 0.44], FRAME.skyAbove);
+        p.frame.set([0.20, 0.21, 0.21], FRAME.skyBelow);
+        for (const field of [FRAME.skySide, FRAME.skySun, FRAME.skyAlong]) p.frame.fill(0, field, field + 3);
+        p.frame[FRAME.skyScale] = 1.18;
+        p.frame[FRAME.exposure] = shot.studio.exposure ?? 0.93;
+      }
     }
     if (shot.rig) {
       writeBones(p.bones, 0, shot.rig.solved, shot.rig.rest, null, -cam.x, -cam.y, -cam.z, 0);

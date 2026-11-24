@@ -3,6 +3,7 @@
 // the trees, rocks and plants they gather from, the statuses that act on a body, and the landmarks maps place.
 // Everything is derived, so a definition added to the content has its entry, and its links both ways, with no edit here.
 
+import type { ManifestMesh } from "../../shared/pack/manifest.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { LANDMARKS } from "../../content/landmarks/index.ts";
 import { rated, tamingRows, type TamingInput } from "../../client/core/wiki/rates.ts";
@@ -97,6 +98,15 @@ const TEMPER = { hunts: "Aggressive", defends: "Neutral", flees: "Passive" } as 
 const ITEM_GROUPS: Readonly<Record<string, string>> = {
   resource: "Resource", consumable: "Consumable", weapon: "Weapon", ammo: "Ammunition", attachment: "Attachment",
   armor: "Armor", saddle: "Saddle", vehicle: "Vehicle", egg: "Egg", feces: "Feces", structure: "Structure",
+};
+const PLACEMENT: Readonly<Record<ShapeDef["role"], string>> = {
+  foundation: "Place on the ground or snap to a foundation.",
+  wall: "Snap to the edge of a foundation or ceiling, or stack on a wall.",
+  ceiling: "Snap to a wall, pillar, foundation, or ceiling.",
+  pillar: "Place on the ground or snap to a supporting piece.",
+  door: "Snap into a doorway.",
+  stairs: "Snap to a foundation or ceiling.",
+  thing: "Place on the ground or on a level floor.",
 };
 const STRUCTURE_GROUPS: Readonly<Record<string, string>> = { piece: "Building", container: "Storage", station: "Crafting station", bed: "Bed" };
 /** A node is grouped by what works it; one with no material is picked by hand. */
@@ -325,6 +335,10 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     }
     if (d.ammo && !w) fact("Damage", `${num(d.ammo.damage)}${d.ammo.pellets ? ` × ${d.ammo.pellets} pellets` : ""} ${d.ammo.type}`);
     if (first) {
+      const shape = first.shape ? byId.get(first.shape) : undefined;
+      if (first.floor) fact("Placement", "Place on a level foundation or ceiling.");
+      else if (shape?.type === "shape") fact("Placement", PLACEMENT[shape.role]);
+      else fact("Placement", PLACEMENT.thing);
       fact("Health", num(first.hp));
       const size = first.half.map((h) => num(h * 2, 1)).join(" × ");
       fact("Size", `${size} m`);
@@ -365,7 +379,7 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     // The first individual a node names is its usual one.
     const variant = d.variants?.[0]?.mesh;
     const mesh = variant && has(variant) ? variant : d.mesh === "box" ? d.id : d.mesh;
-    const e = entry(d.id, "resources", labelOf(d), d.material === undefined ? "Picked by hand" : (NODE_GROUPS[d.material] ?? sentence(d.material)), has(mesh) ? { meshes: [mesh], colors: [], body: true, sides: 1 } : null);
+    const e = entry(d.id, "resources", labelOf(d), d.material === undefined ? "Picked by hand" : (NODE_GROUPS[d.material] ?? sentence(d.material)), has(mesh) ? { meshes: [mesh], colors: [d.color], body: true, sides: 1 } : null);
     const fact = facts(e);
     const working = tools.filter((t) => t.tool!.on === d.material);
     if (d.material === undefined) fact("Gathered", "By hand, with the use key");
@@ -464,4 +478,31 @@ export function namesOf(entries: readonly Entry[], defs: readonly Def[] = CORE_C
   const out = new Map(defs.filter((d) => d.type === "node" || d.type === "structure").map((d) => [d.id, labelOf(d)]));
   for (const e of entries) out.set(e.id, e.label);
   return out;
+}
+
+/** Use a placed model where it has detail, including the lit form of a station. */
+export function itemPortraitEntries(entries: readonly Entry[], defs: readonly Def[], meshes: readonly ManifestMesh[]): Entry[] {
+  const definitions = new Map(defs.map((d) => [d.id, d]));
+  const built = new Map(meshes.map((mesh) => [mesh.id, mesh]));
+  const meshOf = (structure: StructureDef): string => structure.mesh === "shape" || structure.mesh === "box" ? structure.id : structure.mesh;
+  const hasDetail = (structure: StructureDef, mesh: string): boolean => {
+    const level = built.get(mesh)?.levels[0];
+    return !!level && (structure.class === "piece" || level.tris > 12 || !!level.sections?.length);
+  };
+  return entries.map((entry) => {
+    if (entry.kind !== "items" || !entry.picture) return entry;
+    const item = definitions.get(entry.id);
+    if (item?.type !== "item" || !item.places?.length) return entry;
+    const mesh = entry.picture.meshes[0]!;
+    const places = item.places.map((id) => definitions.get(id)).filter((d): d is StructureDef => d?.type === "structure");
+    const shown = places.find((d) => meshOf(d) === mesh);
+    if (!shown || hasDetail(shown, mesh)) return entry;
+    const variants = places.flatMap((d) => [d, d.lights ? definitions.get(d.lights) : undefined]);
+    for (const d of variants) {
+      if (d?.type !== "structure") continue;
+      const other = meshOf(d);
+      if (hasDetail(d, other)) return { ...entry, picture: { meshes: [other], colors: [d.color], body: false } };
+    }
+    return { ...entry, picture: null };
+  });
 }

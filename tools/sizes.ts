@@ -205,8 +205,7 @@ const WIKI_BUDGETS: Record<string, number> = {
   "wiki: the heaviest page before it can be read": 400 * KB,
   "wiki: its largest picture": 320 * KB,
   "wiki: its largest card's picture": 64 * KB,
-  // Fetched only when "View in 3D" is pressed (D894): the studio's page and script, and what it draws with before the
-  // subject's own meshes come: the manifest, the boot pack, the content, the sky and the font.
+  // The studio fetches its bootstrap after View in 3D, before streaming the subject.
   "wiki: what the studio fetches before it draws": 1200 * KB,
 };
 
@@ -233,23 +232,40 @@ export function weighWiki(dist: string): boolean {
     }
     return bytes;
   };
-  const eager = (html: string): number =>
-    [...html.matchAll(/<img\b[^>]*?\ssrc="([^"]+)"[^>]*>/g)].filter((m) => !m[0].includes('loading="lazy"')).reduce((n, m) => n + sent(m[1]!), 0);
+  const eager = (html: string): number => {
+    const fetched = new Set<string>();
+    const icon = html.match(/<link rel="icon" href="(\/[^"]+)"/)?.[1];
+    if (icon) fetched.add(icon);
+    for (const [element] of html.matchAll(/<picture\b[^>]*>[\s\S]*?<\/picture>|<img\b[^>]*>/g)) {
+      if (element.includes('loading="lazy"')) continue;
+      const src = element.match(/\ssrc="([^"]+)"/)?.[1];
+      if (!src) continue;
+      let largest = src;
+      for (const match of element.matchAll(/\ssrcset="([^"]+)"/g)) {
+        for (const candidate of match[1]!.split(",")) {
+          const address = candidate.trim().split(/\s+/)[0]!;
+          if (sent(address) > sent(largest)) largest = address;
+        }
+      }
+      fetched.add(largest);
+    }
+    return [...fetched].reduce((bytes, address) => bytes + sent(address), 0);
+  };
   const pages = [...new Bun.Glob("wiki/**/index.html").scanSync({ cwd: dist })].map((p): [string, number] => {
     const html = readFileSync(join(dist, p), "utf8");
     return [p, sent(p) + fixed(html) + eager(html)];
   });
-  const media = [...new Bun.Glob("wiki/media/*.png").scanSync({ cwd: dist })].map((f): [string, number] => [f, sent(f)]);
+  const media = [...new Bun.Glob("wiki/media/*.{png,webp}").scanSync({ cwd: dist })].map((f): [string, number] => [f, sent(f)]);
   const most = (list: [string, number][]): [string, number] => list.reduce((a, b) => (b[1] > a[1] ? b : a), ["", 0]);
   const media3d = existsSync(join(dist, "entry-media.json")) ? (JSON.parse(readFileSync(join(dist, "entry-media.json"), "utf8")) as Record<string, string | null>) : {};
-  const studio = ["studio.html", "studio.js", "assets/manifest.json", "title/barlow.ttf", media3d.boot, media3d.content, media3d.sky]
+  const studio = ["studio.html", "studio.js", "entry-media.json", "assets/manifest.json", media3d.boot, media3d.studioContent ?? media3d.content, media3d.sky]
     .filter((f): f is string => !!f && existsSync(join(dist, f)))
     .reduce((n, f) => n + sent(f), 0);
   const rows: [string, [string, number]][] = [
     ["wiki: the heaviest page before it can be read", most(pages)],
     ["wiki: what the studio fetches before it draws", ["studio.html", studio]],
     ["wiki: its largest picture", most(media)],
-    ["wiki: its largest card's picture", most(media.filter(([f]) => f.endsWith(".card.png")))],
+    ["wiki: its largest card's picture", most(media.filter(([f]) => /[.-](?:card|cover)\./.test(f)))],
   ];
   let ok = true;
   for (const [name, [what, value]] of rows) {

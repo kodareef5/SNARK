@@ -14,6 +14,7 @@ import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.t
 import { Base } from "../mapworld/base.ts";
 import { workFolder } from "../maps/work.ts";
 import { place } from "./files.ts";
+import type { Image } from "./html.ts";
 import { indexedPng } from "./quantize.ts";
 import { scaled, type Picture } from "./posters.ts";
 
@@ -23,6 +24,7 @@ const CACHE = join(ROOT, ".cache/wiki/maps");
 const SIDES = [768, 640, 512];
 const GROUND_BYTES = 240 * 1024;
 const CARD = 240;
+const GROUND_SMALL = 416;
 /** Squares along the longer side of a resource's picture: one for every 32 m of an 8 km map. */
 const GRID = 254;
 /** The overlays are drawn in a box this many units wide, and as deep as the map's proportions make it. */
@@ -60,7 +62,7 @@ export interface Atlas {
   label: string;
   /** The map's extent, west to east and north to south. */
   metres: [number, number];
-  ground: Picture;
+  ground: Image;
   card: Picture;
   resources: Layer[];
   creatures: Layer[];
@@ -202,6 +204,7 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
       }
       return png;
     });
+    const groundSmall = picture("ground-small", () => ground(palette, map, GROUND_SMALL));
     const card = picture("card", () => {
       const g = ground(palette, map, SIDES.at(-1)!);
       return scaled(g.rgba, g.width, g.height, CARD);
@@ -292,7 +295,7 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
       slug,
       label: def.label ?? slug,
       metres: [sizeX, sizeZ],
-      ground: groundPicture,
+      ground: { ...groundPicture, small: groundSmall },
       card,
       resources,
       creatures,

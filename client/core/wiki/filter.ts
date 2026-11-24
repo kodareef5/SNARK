@@ -1,7 +1,7 @@
 // The wiki's search and map view, decided here so that they are tested without a page.
 
 /** A row of the search index: label, path, group, and the picture of its card or "". */
-export type SearchRow = readonly [label: string, path: string, group: string, picture: string];
+export type SearchRow = readonly [label: string, path: string, group: string, picture: string, id?: string, keywords?: string];
 
 const fold = (text: string): string => text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
 
@@ -9,16 +9,21 @@ export function searchTerms(query: string): string[] {
   return fold(query).trim().split(/\s+/).filter(Boolean);
 }
 
-/** The rows every term is in, those whose label begins with the first term first. */
+/** Exact names and game IDs lead results with every search term. */
 export function findRows(rows: readonly SearchRow[], query: string): SearchRow[] {
   const terms = searchTerms(query);
   if (terms.length === 0) return [];
-  const hits = rows.filter((r) => {
-    const text = fold(`${r[0]} ${r[2]}`);
-    return terms.every((t) => text.includes(t));
+  const exact = terms.join(" ");
+  const matches = rows.flatMap((row) => {
+    const [label, , group, , id = "", keywords = ""] = row;
+    const name = fold(label);
+    const key = fold(id);
+    const text = `${name} ${key} ${fold(group)} ${fold(keywords)}`;
+    if (!terms.every((term) => text.includes(term))) return [];
+    const rank = name === exact || key === exact ? 0 : name.startsWith(exact) ? 1 : name.startsWith(terms[0]!) ? 2 : 3;
+    return [{ row, rank }];
   });
-  const starts = (r: SearchRow): number => (fold(r[0]).startsWith(terms[0]!) ? 0 : 1);
-  return hits.sort((a, b) => starts(a) - starts(b) || a[0].localeCompare(b[0]));
+  return matches.sort((a, b) => a.rank - b.rank || a.row[0].localeCompare(b.row[0])).map(({ row }) => row);
 }
 
 /** A zoom from 1 to 8 and a pan that keeps the map over the view. */

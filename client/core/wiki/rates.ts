@@ -80,24 +80,32 @@ export interface TamingInput {
   readonly doses: readonly (readonly [torpor: number, seconds: number])[];
 }
 
+const wildDifficulty = (s: ServerSaid): number => difficulty(value(s, "DifficultyOffset"), value(s, "OverrideOfficialDifficulty"));
+
+export function tamingMaximum(s: ServerSaid = AT_DEFAULTS): number {
+  return wildLevel(30, wildDifficulty(s));
+}
+
 /** The levels a taming table is given at: 1 and each fifth of the way to the most a wild creature is on the server. */
 export function tamingLevels(s: ServerSaid = AT_DEFAULTS): number[] {
-  const d = difficulty(value(s, "DifficultyOffset"), value(s, "OverrideOfficialDifficulty"));
+  const d = wildDifficulty(s);
   return [...new Set([1, 6, 12, 18, 24, 30].map((step, k) => (k === 0 ? 1 : wildLevel(step, d))))];
 }
 
-/** Each level's torpor, how long it stays down, each food fed alone (how many, how long) and each dose that keeps it down. */
-export function tamingRows(t: TamingInput, s: ServerSaid = AT_DEFAULTS): string[][] {
+/** Torpor, time until waking, the pieces and time for each food, and each dose that keeps it down. */
+export function tamingRow(t: TamingInput, level: number, s: ServerSaid = AT_DEFAULTS): string[] {
   const speed = value(s, "TamingSpeedMultiplier");
-  return tamingLevels(s).map((level) => {
-    const most = torporAt(t.torpor[0], t.torpor[1], level - 1);
-    const drain = drainAt(t.torpor[2], level - 1);
-    const eats = t.eats.map(([affinity, food]) => {
-      const pieces = piecesNeeded(t.p, level, affinity, speed);
-      return { pieces, seconds: tameSeconds(t.p, pieces, food) };
-    });
-    const longest = Math.max(...eats.map((e) => e.seconds));
-    const kept = t.doses.map(([torpor, seconds]) => String(narcoticsNeeded(most, drain, longest, torpor, seconds)));
-    return [String(level), num(most, 0), time(most / drain), ...eats.map((e) => `${e.pieces} in ${time(e.seconds)}`), ...kept];
+  const most = torporAt(t.torpor[0], t.torpor[1], level - 1);
+  const drain = drainAt(t.torpor[2], level - 1);
+  const eats = t.eats.map(([affinity, food]) => {
+    const pieces = piecesNeeded(t.p, level, affinity, speed);
+    return { pieces, seconds: tameSeconds(t.p, pieces, food) };
   });
+  const longest = Math.max(...eats.map((e) => e.seconds));
+  const kept = t.doses.map(([torpor, seconds]) => String(narcoticsNeeded(most, drain, longest, torpor, seconds)));
+  return [String(level), num(most, 0), time(most / drain), ...eats.map((e) => `${e.pieces} in ${time(e.seconds)}`), ...kept];
+}
+
+export function tamingRows(t: TamingInput, s: ServerSaid = AT_DEFAULTS): string[][] {
+  return tamingLevels(s).map((level) => tamingRow(t, level, s));
 }

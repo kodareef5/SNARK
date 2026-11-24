@@ -220,7 +220,7 @@ export class IconPainter {
   }
 
   /** RGBA, `size` by `size`, not premultiplied: the colour of what covers a pixel and how much of it is covered. */
-  draw(mesh: number, colors: readonly number[], framing: IconFraming | null = null): Uint8Array {
+  draw(mesh: number, colors: readonly number[], framing: IconFraming | null = null, keyLight?: readonly [number, number, number]): Uint8Array {
     const shot = iconShot(this.pack, mesh, framing);
     const wanted = this.texturesOf(mesh);
     let textured = wanted !== null;
@@ -234,7 +234,7 @@ export class IconPainter {
       this.view.texture(t, tex.role, tex.pictures);
       this.sent.add(t);
     }
-    this.view.draw({ mesh, level: 0, around: shot.around, above: shot.above, centre: shot.centre, radius: shot.radius, ...(shot.zoom !== 1 ? { zoom: shot.zoom } : {}), rig: null, colors, textured });
+    this.view.draw({ mesh, level: 0, around: shot.around, above: shot.above, centre: shot.centre, radius: shot.radius, ...(shot.zoom !== 1 ? { zoom: shot.zoom } : {}), rig: null, colors, textured, keyLight });
     return this.shrink(shot.roll);
   }
 

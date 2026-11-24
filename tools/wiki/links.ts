@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { BASE, SOURCE } from "./html.ts";
 
-const ADDRESS = /\s(?:href|src|data-src|data-file|data-search)="(\/[^"]*)"/g;
+const ADDRESS = /\s(?:href|src|data-src|data-file|data-search|data-view|data-model-file|action)="(\/[^"]*)"/g;
 /** The start screen, or a server's own game at the root of its host, and the page the source link goes to (server/main.ts). */
 const SITE = new Set(["/", SOURCE]);
 
@@ -13,8 +13,12 @@ const SITE = new Set(["/", SOURCE]);
 export function checkLinks(pages: ReadonlyMap<string, string>, dist: string): void {
   const missing = new Set<string>();
   for (const [path, html] of pages) {
-    for (const m of html.matchAll(ADDRESS)) {
-      const address = decodeURIComponent(m[1]!.split(/[?#]/)[0]!.replaceAll("&amp;", "&"));
+    const paths = [...html.matchAll(ADDRESS)].map((match) => match[1]!);
+    for (const match of html.matchAll(/\ssrcset="([^"]+)"/g)) {
+      for (const candidate of match[1]!.split(",")) paths.push(candidate.trim().split(/\s+/)[0]!);
+    }
+    for (const url of paths) {
+      const address = decodeURIComponent(url.split(/[?#]/)[0]!.replaceAll("&amp;", "&"));
       if (address.split("/").some((p) => p === "..")) missing.add(`${path}: ${address}`);
       else if (SITE.has(address)) continue;
       else if (address.endsWith("/") ? !address.startsWith(BASE) || !pages.has(address.slice(BASE.length)) : !existsSync(join(dist, address))) missing.add(`/${path} names ${address}`);

@@ -8,7 +8,6 @@ import { inflateSync } from "node:zlib";
 import { CONTROL_GROUPS } from "../../client/core/ui/controls-guide.ts";
 import { findRows, mapTransform, type SearchRow } from "../../client/core/wiki/filter.ts";
 import { RATE_DEFAULTS, changed, rated, tamingLevels, tamingRows } from "../../client/core/wiki/rates.ts";
-import { takeRange, takeSamples } from "../../client/core/wiki/sound.ts";
 import { liveMaps, worldPath, type LiveWorld, type ServerSaid } from "../../client/core/wiki/world.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { LANDMARKS } from "../../content/landmarks/index.ts";
@@ -186,10 +185,23 @@ test("every page is whole HTML, names only what it has, and writes what the cont
   const resource = entries.find((e) => e.kind === "resources")!;
   try {
     const card = { file: "/wiki/media/raptor.card.png", width: 240, height: 180 };
+    const portrait = { file: "/wiki/media/shore-portrait.webp", width: 720, height: 1280 };
+    const wide = { file: "/wiki/media/shore.webp", width: 1600, height: 900, small: card };
     const site: Site = {
-      assets: { css: "/wiki/a.css", js: "/wiki/a.js", search: "/wiki/s.json", font: "/assets/f.ttf", revision: "abc" },
+      assets: { css: "/wiki/a.css", js: "/wiki/a.js", search: "/wiki/s.json", font: "/assets/f.ttf", revision: "abc", logo: { ...card, file: "/title/snark-emblem.webp" } },
+      scenes: new Map([
+        ["", { picture: wide, portrait, caption: "The shore", alt: "A mounted survivor on the shore" }],
+        ["guides/getting-started/", { picture: card, caption: "First tools", alt: "A survivor with a pick" }],
+        ["footer", { picture: card, caption: "", alt: "Rex faces the Red Obelisk" }],
+      ]),
+      itemGroups: new Map([["Building", { picture: card, members: [byId("core:piece_foundation_wood")] }]]),
+      places: new Map([["miami", [
+        { ...card, kind: "city", alt: "Miami skyline", caption: "Miami from the harbour" },
+        { ...card, kind: "obelisk", name: "sextant", alt: "Red Obelisk", caption: "Red Obelisk at sunset" },
+      ]]]),
       entries: entries.map((e) => (e.id === "core:raptor" ? { ...e, label: '<img src=x onerror="bad()">' } : e)),
       pictures: new Map([["core:raptor", { views: [card], card }], [resource.id, { views: [card], card }]]),
+      models: new Map([["core:raptor", { url: "/studio.html?id=core%3Araptor", descriptor: "/wiki/m.json" }]]),
       credits: new Map([["core:raptor", "Model and motion: from a CC0 1.0 pack."]]),
       atlases: [
         { id: "core:miami", slug: "miami", label: "Miami", metres: [8128, 8128], ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [{ of: "koru", name: "koru", x: 400, y: 500 }], districts: [], sources: [] },
@@ -207,13 +219,28 @@ test("every page is whole HTML, names only what it has, and writes what the cont
       names: namesOf(entries),
     };
     const pages = renderWiki(site);
-    for (const f of ["wiki/a.css", "wiki/a.js", "wiki/s.json", "assets/f.ttf", "wiki/media/raptor.card.png", "assets/core.snsd", "assets/hud-font-license.txt"]) {
+    for (const f of [portrait.file, wide.file, "title/snark-emblem.webp", "studio.html", "wiki/m.json", "wiki/a.css", "wiki/a.js", "wiki/s.json", "assets/f.ttf", "wiki/media/raptor.card.png", "assets/core.snsd", "assets/hud-font-license.txt"]) {
       const file = join(dist, f);
       mkdirSync(join(file, ".."), { recursive: true });
       writeFileSync(file, "");
     }
     expect(() => checkLinks(pages, dist)).not.toThrow();
-    // A creature's picture opens its model in the game's studio (D894); a resource's, which has no one model, does not.
+    expect(pages.get("")).toContain('src="/title/snark-emblem.webp"');
+    expect(pages.get("")).toContain(`<source media="(max-width: 35rem)" srcset="${portrait.file}"`);
+    expect(pages.get("")).toContain(`class="hero-art" src="${wide.file}" srcset="${card.file} 240w, ${wide.file} 1600w"`);
+    expect(pages.get("")).toContain('class="find nav-find"');
+    expect(pages.get("guides/getting-started/")).toContain('<header class="section-banner photo-cover">');
+    expect(pages.get("items/group/building/")).toContain('<figure class="group-plate">');
+    expect(pages.get("")).toContain('class="footer-art"');
+    expect(pages.get("creatures/raptor/")).toContain('<a href="/wiki/creatures/" class="current">');
+    expect(pages.get("guides/getting-started/")).toContain('alt="A survivor with a pick"');
+    expect(pages.get("items/group/building/")).toContain('<figcaption>Wooden foundation</figcaption>');
+    expect(pages.get("maps/miami/")).toContain('<h2>Obelisks</h2>');
+    expect(pages.get("maps/")).toContain('href="/wiki/maps/miami/#photo-sextant"');
+    expect(pages.get("maps/miami/")).toContain('<figure id="photo-sextant">');
+    expect(pages.get("maps/miami/")).toContain('class="ground"');
+    expect(() => checkLinks(new Map([["", '<source srcset="/wiki/media/raptor.card.png 240w, /wiki/missing.webp 1600w">']]), dist)).toThrow("/wiki/missing.webp");
+    // The viewer uses the generated model descriptor.
     const raptor3d = [...pages.entries()].find(([path]) => path.startsWith("creatures/raptor"))![1];
     expect(raptor3d.match(/data-view="[^"]*"/g)).toEqual(['data-view="/studio.html?id=core%3Araptor"']);
     const grown = [...pages.entries()].find(([path]) => path.startsWith(`resources/${resource.id.split(":")[1]}`))![1];
@@ -232,7 +259,7 @@ test("every page is whole HTML, names only what it has, and writes what the cont
     expect(pages.get("maps/reno/")).toContain('style="aspect-ratio:12032 / 8000"');
     expect(pages.get("maps/reno/")).toContain('<svg class="marks" viewBox="0 0 1000 664.9"');
     expect(pages.get("maps/")).toContain("<small>12 by 8 km</small>");
-    expect(pages.get("landmarks/koru/")).toContain('<h2>Where it stands</h2><ul class="places"><li><a href="/wiki/maps/miami/?show=landmarks">Miami</a>');
+    expect(pages.get("landmarks/koru/")).toContain('<h2>Where to find it</h2><ul class="places"><li><a href="/wiki/maps/miami/?show=landmarks">Miami</a>');
     const raptor = pages.get("creatures/raptor/")!;
     expect(raptor).toContain("&lt;img src=x onerror=&quot;bad()&quot;&gt;");
     expect(raptor).not.toContain("<img src=x");
@@ -244,13 +271,14 @@ test("every page is whole HTML, names only what it has, and writes what the cont
     expect(pages.get("creatures/pteranodon/")).toContain('<span data-figure="hatch" data-v="');
     expect(pages.get("creatures/pteranodon/")).toContain("<table data-taming=");
     expect(pages.get("settings/")).toContain('<td data-setting="TamingSpeedMultiplier">1</td>');
-    expect(pages.get("")).toContain("Not in the wiki: maps still being made: Tampa.");
+    expect(pages.get("about/")).toContain("maps still being made · Tampa");
+    expect(pages.get("items/piece_foundation_wood/")).toContain("Place on the ground or snap to a foundation.");
     expect(pages.get("controls/")).toContain("get in or out of a seat");
     // The vehicles' page sets them side by side under their cards, each name of a row a link to its page.
     const fleet = pages.get("vehicles/")!;
-    expect([...fleet.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1])).toEqual(["On the road", "On the water", "In the air"]);
-    expect(fleet.indexOf('<div class="cards">')).toBeLessThan(fleet.indexOf("<h2>On the road</h2>"));
-    expect(fleet).toContain('<th><a href="/wiki/vehicles/helicopter/">Helicopter</a>, <a href="/wiki/vehicles/helicopter_police/">Helicopter police</a>, <a href="/wiki/vehicles/helicopter_rescue/">Helicopter rescue</a></th>');
+    expect([...fleet.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1])).toEqual(["Compare vehicles", "On the road", "On the water", "In the air"]);
+    expect(fleet.indexOf('<table class="directory">')).toBeLessThan(fleet.indexOf("<h2>On the road</h2>"));
+    expect(fleet).toContain('<th scope="row"><a href="/wiki/vehicles/helicopter/">Helicopter</a>, <a href="/wiki/vehicles/helicopter_police/">Helicopter police</a>, <a href="/wiki/vehicles/helicopter_rescue/">Helicopter rescue</a></th>');
     expect(pages.get("vehicles/needle/")).toContain("<h2>How it handles</h2>");
     expect(() => checkLinks(new Map([["a/", '<a href="/wiki/b/">b</a>']]), dist)).toThrow("names /wiki/b/");
     // The site's own pages are answered by the server; any other page outside the wiki is not there.
@@ -272,8 +300,7 @@ test("the front page and the maps page list every map, and read from a server sa
   });
   const cardsOf = (html: string) => [...html.matchAll(/<div class="card map" data-map="([^"]+)">.*?<\/a><\/div>/g)].map((m) => [m[1]!, m[0]] as const);
   for (const path of ["", "maps/"]) expect([path, cardsOf(pages.get(path)!).map(([id]) => id)]).toEqual([path, atlases.map((a) => a.id)]);
-  // The creatures and vehicles on the front page are a selection, and it says so.
-  expect(pages.get("")).toContain('<h2>The creatures and vehicles met most</h2><div class="cards"></div><p class="note"><a href="/wiki/creatures/">Every creature</a> · <a href="/wiki/vehicles/">Every vehicle</a></p>');
+  expect(pages.get("")).toContain('<a href="/wiki/creatures/">Browse creatures</a>');
   // A cluster of two worlds on Las Vegas, and one on a map this build has no page for.
   const worlds: LiveWorld[] = [
     { name: "Vegas <Night>", map: "Las Vegas", mapId: "core:las-vegas", address: "/vegas/", players: 3, max: 70 },
@@ -291,18 +318,10 @@ test("the front page and the maps page list every map, and read from a server sa
   expect(liveMaps(own("tampa"), worlds, false)).toBe('<div class="note" data-map="core:tampa"><span class="live">Not running here</span></div>');
 });
 
-test("a press asks for a sound's takes alone, by range of the game's file, and gets each take's samples", async () => {
-  const row = { file: "/assets/core.snsd", at: "100", takes: "3:5 2:7" };
-  expect(takeRange(row)).toEqual({ from: 100, to: 111, sizes: [{ samples: 3, bytes: 5 }, { samples: 2, bytes: 7 }] });
-  const asked: string[] = [];
-  const get = async (url: string, init: { headers: Record<string, string> }) => (asked.push(`${url} ${init.headers.range}`), { status: 200, arrayBuffer: async () => new ArrayBuffer(0) });
-  await expect(takeSamples(row, get)).rejects.toThrow("the server sent 200 for a range of /assets/core.snsd");
-  expect(asked).toEqual(["/assets/core.snsd bytes=100-111"]);
-});
-
 test("search ranks a label that begins with the query first; the map stays over its view", () => {
-  const rows: SearchRow[] = [["Raptor saddle", "/a/", "Saddle", ""], ["Raptor", "/b/", "Creature", ""], ["Pistol", "/c/", "Weapon", ""]];
+  const rows: SearchRow[] = [["Raptor saddle", "/a/", "Saddle", ""], ["Raptor", "/b/", "Creature", "", "core:raptor"], ["Pistol", "/c/", "Weapon", ""]];
   expect(findRows(rows, "rap").map((r) => r[0])).toEqual(["Raptor", "Raptor saddle"]);
+  expect(findRows(rows, "core:raptor").map((r) => r[0])).toEqual(["Raptor"]);
   expect(findRows(rows, "saddle rap").map((r) => r[0])).toEqual(["Raptor saddle"]);
   expect(findRows(rows, " ")).toEqual([]);
   // Every match is listed, however many.

@@ -3,6 +3,10 @@ import { buildMapGallery } from "./title/maps.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
+import { CORE_CONTENT } from "../content/core.ts";
+import { BENT_SECTIONS } from "../content/bends.ts";
+import type { Def } from "../shared/content/defs.ts";
+import { partHash } from "./pack/manifest.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 
 /** The title and the downloadable archive use the same releases, newest first. */
@@ -21,6 +25,17 @@ export function titleReleases(text: string, version: string) {
   });
   if (releases[0]!.version !== "v" + version) throw Error("The first changelog release must match the package version.");
   return releases;
+}
+
+/** The studio's small scene has neither city buildings nor their collision shapes. */
+export function studioContent(defs: readonly Def[]): Def[] {
+  const omitted = new Set(BENT_SECTIONS.map((d) => d.id));
+  for (const def of defs) {
+    if (def.type !== "structure" || !def.breaks) continue;
+    omitted.add(def.id);
+    if (def.shape) omitted.add(def.shape);
+  }
+  return defs.filter((def) => !omitted.has(def.id));
 }
 
 /** The title has its own small initial bundle. The title, the wiki model viewer, and the admin camera studio open their native views on demand. */
@@ -67,9 +82,14 @@ export async function buildEntry(dist: string): Promise<void> {
   }
   buildMapGallery(maps, titles, media);
   const theme = "assets/music/dawn/theme.opus";
+  const studio = new TextEncoder().encode(JSON.stringify(studioContent(CORE_CONTENT)));
+  const studioFile = `assets/studio-content.${partHash(studio)}.json`;
+  writeFileSync(join(dist, studioFile), studio);
+  writeFileSync(join(dist, studioFile + ".br"), brotliCompressSync(studio));
   const data = {
     music: existsSync(join(dist, theme)) && statSync(join(dist, theme)).size <= 2 * 1024 * 1024 ? theme : null,
     content: named("content."),
+    studioContent: studioFile,
     sky: named("sky."),
     boot: "assets/" + manifest.files[manifest.boot]!.name,
     font: font ? "assets/" + font : null,

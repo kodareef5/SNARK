@@ -1,26 +1,43 @@
-// A sound's takes as the wiki's page plays them: where they lie in the game's sound file, from what the sound's row says,
-// asked for by range alone at the first press, and decoded as the game decodes them.
+// The wiki plays one take from the game's sound pack at a time.
 
-/** The bytes from `from` to `to`, both in, and each take's samples and bytes in order. */
-export function takeRange(row: { at?: string; takes?: string }): { from: number; to: number; sizes: { samples: number; bytes: number }[] } {
-  const sizes = (row.takes ?? "").split(" ").map((t) => {
-    const [samples, bytes] = t.split(":").map(Number);
-    return { samples: samples!, bytes: bytes! };
-  });
-  const from = Number(row.at);
-  return { from, to: from + sizes.reduce((n, t) => n + t.bytes, 0) - 1, sizes };
+interface SoundRow {
+  file?: string;
+  at?: string;
+  takes?: string;
 }
 
-/** What the page's fetch is asked and answers, as far as a range of a file goes. */
-export type Get = (url: string, init: { headers: Record<string, string> }) => Promise<{ status: number; arrayBuffer(): Promise<ArrayBuffer> }>;
+/** The selected take's inclusive byte range and decoded sample count. */
+export function takeRange(row: SoundRow, index: number): { from: number; to: number; samples: number } {
+  const takes = row.takes?.split(" ") ?? [];
+  const picked = takes[index];
+  if (!picked) throw new Error("The sound has no such take.");
+  const [samples = 0, bytes = 0] = picked.split(":").map(Number);
+  const from = takes.slice(0, index).reduce((offset, take) => offset + Number(take.split(":")[1]), Number(row.at));
+  const to = from + bytes - 1;
+  if (![from, to, samples].every(Number.isSafeInteger) || from < 0 || to < from || samples < 1) throw new Error("The take has an invalid range.");
+  return { from, to, samples };
+}
 
-/** Each take of a sound's row, as samples. */
-export async function takeSamples(row: { file?: string; at?: string; takes?: string }, get: Get): Promise<Float32Array<ArrayBuffer>[]> {
-  const { from, to, sizes } = takeRange(row);
-  const answer = await get(row.file!, { headers: { range: `bytes=${from}-${to}` } });
-  if (answer.status !== 206) throw new Error(`the server sent ${answer.status} for a range of ${row.file}`);
-  const { decodeTakes } = await import("../../../shared/pack/sound.ts");
-  const samples = decodeTakes(new Uint8Array(await answer.arrayBuffer()), sizes);
-  if (!samples) throw new Error(`${row.file} at ${from} does not decode`);
-  return samples;
+interface SoundReply {
+  status: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  body?: { cancel(): Promise<void> } | null;
+}
+
+type Get = (url: string, init: { headers: Record<string, string> }) => Promise<SoundReply>;
+
+export async function takeSamples(row: SoundRow, index: number, get: Get): Promise<Float32Array<ArrayBuffer>> {
+  if (!row.file) throw new Error("The sound file is missing.");
+  const { from, to, samples } = takeRange(row, index);
+  const answer = await get(row.file, { headers: { range: `bytes=${from}-${to}` } });
+  if (answer.status !== 206) {
+    void answer.body?.cancel().catch(() => {});
+    throw new Error(`The server sent ${answer.status} for a range of ${row.file}.`);
+  }
+  const data = new Uint8Array(await answer.arrayBuffer());
+  if (data.length !== to - from + 1) throw new Error(`The take at ${from} has the wrong length.`);
+  const { decodeTake } = await import("../../../shared/pack/sound.ts");
+  const decoded = new Float32Array(samples);
+  if (!decodeTake(data, samples, decoded)) throw new Error(`The take at ${from} could not be decoded.`);
+  return decoded;
 }

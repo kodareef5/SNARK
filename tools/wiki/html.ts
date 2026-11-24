@@ -17,50 +17,77 @@ export interface Assets {
   css: string;
   js: string;
   search: string;
-  /** The game's files the pages share: its font and its interface sheet. */
   font: string;
+  logo?: Image;
   revision: string;
 }
 
-const NAV: readonly (readonly [string, string])[] = [
-  ["creatures", "Creatures"],
-  ["items", "Items"],
-  ["resources", "Resources"],
-  ["engrams", "Engrams"],
-  ["vehicles", "Vehicles"],
-  ["maps", "Maps"],
-  ["controls", "Controls"],
-  ["sounds", "Sounds"],
-  ["commands", "Commands"],
-];
+const NAV = [
+  ["", [["", "Home"], ["guides", "Guides"], ["maps", "Maps"]]],
+  ["Reference", [["reference", "Overview"], ["creatures", "Creatures"], ["items", "Items"], ["resources", "Resources"], ["vehicles", "Vehicles"], ["characters", "Characters"], ["landmarks", "Landmarks"], ["statuses", "Status effects"], ["engrams", "Engrams"]]],
+  ["Media", [["sounds", "Sounds"], ["music", "Music"]]],
+  ["Server & controls", [["server", "Overview"], ["controls", "Controls"], ["commands", "Console commands"], ["settings", "Server settings"]]],
+] as const;
+
+export function sectionId(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+export function contents(sections: readonly (readonly [id: string, label: string])[]): string {
+  return sections.length > 1
+    ? `<nav class="contents" aria-label="On this page"><b>On this page</b><ul>${sections.map(([id, label]) => `<li><a href="#${esc(id)}">${esc(label)}</a></li>`).join("")}</ul></nav>`
+    : "";
+}
+
+export function trail(links: readonly (readonly [path: string, label: string])[]): string {
+  return `<nav class="trail" aria-label="Breadcrumb"><ol><li><a href="${BASE}">Wiki</a></li>${links.map(([path, label]) => `<li><a href="${path}">${esc(label)}</a></li>`).join("")}</ol></nav>`;
+}
 
 /** The game's code, which the site around the worlds answers (server/main.ts). */
 export const SOURCE = "/source/";
 
-export function page(a: Assets, title: string, here: string, body: string): string {
-  const nav = NAV.map(([path, label]) => `<a href="${BASE}${path}/"${path === here ? ' aria-current="page"' : ""}>${label}</a>`).join("") + `<a href="${SOURCE}">Source</a>`;
+export function page(a: Assets, title: string, here: string, path: string, body: string, footer?: { picture: Image; alt: string; caption?: string }): string {
+  const nav = NAV.map(([label, links]) => {
+    const rows = links.map(([key, text]) => {
+      const route = key ? `${key}/` : "";
+      const active = path === route ? ' aria-current="page"' : key !== "" && key === here ? ' class="current"' : "";
+      return `<li><a href="${BASE}${route}"${active}>${esc(text)}</a></li>`;
+    }).join("");
+    return `<div class="nav-group">${label ? `<p>${esc(label)}</p>` : ""}<ul>${rows}</ul></div>`;
+  }).join("");
+  const search = here === "search" ? "" : `<form class="find nav-find" action="${BASE}search/" role="search"><label class="visually-hidden" for="site-search">Search the wiki</label><input id="site-search" name="q" type="search" placeholder="Search the wiki" required><button type="submit" aria-label="Search"><span class="search-icon" aria-hidden="true"></span></button></form>`;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<link rel="icon" href="data:,">
-<title>${esc(title)} · Wiki</title>
-${a.font ? `<link rel="preload" href="${a.font}" as="font" type="font/ttf" crossorigin>` : ""}
+<meta name="color-scheme" content="light">
+<link rel="icon" href="${a.logo?.file ?? "data:,"}">
+<title>${title === "SNARK Wiki" ? title : `${esc(title)} · SNARK Wiki`}</title>
 <link rel="stylesheet" href="${a.css}">
 <script type="module" src="${a.js}"></script>
 </head>
 <body>
-<header class="top">
-<a class="home" href="${BASE}">Wiki</a>
-<nav>${nav}</nav>
-<form class="find" action="${BASE}search/" role="search"><input name="q" aria-label="Search the wiki" placeholder="Search"></form>
-</header>
-<main>
+<a class="skip" href="#main">Skip to content</a>
+<aside class="sidebar">
+<details data-sidebar open>
+<summary><span class="wordmark">SNARK <span>Wiki</span></span><span class="menu-label">Menu</span></summary>
+<a class="site-brand wordmark" href="${BASE}" aria-label="SNARK Wiki home">SNARK <span>Wiki</span></a>
+${search}
+<nav aria-label="Main navigation">${nav}</nav>
+</details>
+<a class="mobile-search" href="${BASE}search/" aria-label="Search the wiki"><span class="search-icon" aria-hidden="true"></span></a>
+</aside>
+<main id="main" tabindex="-1">
 ${body}
 </main>
-<footer>Made from the game's build ${esc(a.revision)}. <a href="${BASE}settings/">Server settings</a> · <a href="${BASE}credits/">Credits</a></footer>
+<footer id="site-footer">
+${footer ? img(footer.picture, footer.alt, true, "footer-art", "(min-width: 52rem) 55vw, 100vw") : ""}
+<div class="footer-inner"><a class="wordmark" href="${BASE}">SNARK <span>Wiki</span></a>
+<nav aria-label="Wiki information"><a href="${BASE}about/">About</a><a href="${BASE}credits/">Credits</a><a href="${SOURCE}">Source code</a></nav>
+<small>Build ${esc(a.revision)}</small></div>
+${footer ? fullPhoto(footer.picture, footer.caption || footer.alt) : ""}
+</footer>
 </body>
 </html>
 `;
@@ -73,10 +100,17 @@ export interface Image {
   file: string;
   width: number;
   height: number;
+  small?: Image;
 }
 
-export const img = (p: Image, alt: string, lazy = true, cls = ""): string =>
-  `<img${cls ? ` class="${cls}"` : ""} src="${esc(p.file)}" width="${p.width}" height="${p.height}" alt="${esc(alt)}"${lazy ? ' loading="lazy"' : ""}>`;
+export function img(p: Image, alt: string, lazy = true, cls = "", sizes = "100vw"): string {
+  const responsive = p.small ? ` srcset="${esc(p.small.file)} ${p.small.width}w, ${esc(p.file)} ${p.width}w" sizes="${esc(sizes)}"` : "";
+  return `<img${cls ? ` class="${cls}"` : ""} src="${esc(p.file)}"${responsive} width="${p.width}" height="${p.height}" alt="${esc(alt)}"${lazy ? ' loading="lazy"' : ""}>`;
+}
+
+export function fullPhoto(picture: Image, subject: string): string {
+  return `<a class="photo-open" href="${esc(picture.file)}" aria-label="Open full photograph of ${esc(subject)}" title="Open photograph">⤢</a>`;
+}
 
 /** Links to the pages of a list `count` long, `size` a page: the first at `path`, the others under `path`page/. */
 export function pager(path: string, count: number, size: number, at: number): string {
