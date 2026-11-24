@@ -6,7 +6,7 @@
 // With `--blast` it then says what a rocket's blast 8 m off adds to a frame of 1,920 by 1,080 on medium: the blast is
 // played headless, each frame's fire and cards are measured in pixels as the card would fill them, every one whole and
 // none hidden, and each kind's pixels are priced at its ms a megapixel. It is a sum of measured parts and not a frame
-// timed in the game: that takes the bench page setting a blast off (`?bench=1&ab=bursts`), which no page does yet.
+// timed in the game. The GPU benchmark also triggers a blast in the browser (`tools/bench/gpu.ts`).
 //
 //   bun tools/bench/fire-cost.ts [--blast]
 
@@ -199,7 +199,7 @@ export function burning(p: FramePacket, fovY: number, width: number, height: num
 }
 
 /** A rocket's blast 8 m off on medium, played headless: what its fire and cards add to a frame of 1,920 by 1,080, by `cost`, at its peak and four seconds on. */
-async function blastFrame(cost: FireCost): Promise<void> {
+async function blastFrame(cost: FireCost): Promise<boolean> {
   const { provingView } = await import("../snap.ts");
   const { blastSeed } = await import("../../shared/net/rockets.ts");
   const [W, H] = [1920, 1080];
@@ -235,25 +235,31 @@ async function blastFrame(cost: FireCost): Promise<void> {
     lies = now.parts.scorch * cost.ms["scorch card"]!;
     after = now.all - lies;
   }
+  const peakFits = peak.all - before <= 1;
+  const settled = after - before <= 0.05;
   const mp = (v: number): string => v.toFixed(2);
   console.log(`a rocket's blast 8 m off, medium, ${W} by ${H} (${((W * H) / 1e6).toFixed(2)} megapixels), every lobe counted whole and every card for what of it is over the ground:`);
   console.log(`  before it                      ${before.toFixed(3)} ms`);
-  console.log(`  at its peak, ${String(Math.round(at)).padStart(4)} ms in        ${peak.all.toFixed(3)} ms  (megapixels: lobes ${mp(peak.parts.lobe)}, smoke ${mp(peak.parts.smoke)}, dust ${mp(peak.parts.dust)}, glow ${mp(peak.parts.glow)}, scorch ${mp(peak.parts.scorch)})${peak.all - before <= 1 ? "" : "  MISS (at most 1 ms added)"}`);
-  console.log(`  four seconds on                ${after.toFixed(3)} ms${after - before <= 0.05 ? "" : "  MISS (back to before)"}`);
+  console.log(`  at its peak, ${String(Math.round(at)).padStart(4)} ms in        ${peak.all.toFixed(3)} ms  (megapixels: lobes ${mp(peak.parts.lobe)}, smoke ${mp(peak.parts.smoke)}, dust ${mp(peak.parts.dust)}, glow ${mp(peak.parts.glow)}, scorch ${mp(peak.parts.scorch)})${peakFits ? "" : "  MISS (at most 1 ms added)"}`);
+  console.log(`  four seconds on                ${after.toFixed(3)} ms${settled ? "" : "  MISS (back to before)"}`);
   console.log(`  its scorch, which stays        ${lies.toFixed(3)} ms`);
   console.log(`  the ledger's fill at most      ${fill.toFixed(3)} screens (the tier's ${scene.assets.tier.details.fill})`);
+  return peakFits && settled;
 }
 
 if (import.meta.main) {
   const cost = await fireCost();
   console.log(`full screen at 1,024 square on ${cost.renderer}, blended, ${cost.timer ? "by timer query" : "by the clock"}, in ms a megapixel:`);
   const jet = cost.ms.jet!;
+  let passed = jet > 0 && Number.isFinite(jet);
   for (const [name, ms] of Object.entries(cost.ms)) {
     if (name.startsWith("links")) continue;
     const most = name === "jet" || name.endsWith("card") ? 0 : name.startsWith("flame") ? FLAME_MOST : LOBE_MOST;
-    console.log(`  ${name.padEnd(22)} ${ms.toFixed(4)}${most ? `  ${(ms / jet).toFixed(2)} times the jet (at most ${most})${ms / jet <= most ? "" : "  MISS"}` : ""}`);
+    const fits = most === 0 || ms / jet <= most;
+    if (!fits) passed = false;
+    console.log(`  ${name.padEnd(22)} ${ms.toFixed(4)}${most ? `  ${(ms / jet).toFixed(2)} times the jet (at most ${most})${fits ? "" : "  MISS"}` : ""}`);
   }
   console.log(`  the fire program's own texts link on it, as medium, high with a light target and low poly have them, and the details' texts as each has them`);
-  if (process.argv.includes("--blast")) await blastFrame(cost);
-  process.exit(0);
+  if (process.argv.includes("--blast") && !(await blastFrame(cost))) passed = false;
+  process.exit(passed ? 0 : 1);
 }
