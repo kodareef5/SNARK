@@ -12,7 +12,7 @@
 // (tools/snap/raster.ts) and the tests, which run the GLSL's own text against it.
 
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
-import { NOISE_GLSL, tiled } from "../texgen/noise.ts";
+import { tiled, TILED_GLSL } from "../tiled-noise.ts";
 import { FRAME, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 
@@ -498,9 +498,6 @@ vec4 lobeLight(float u, float v, float facing, float lift, float age, float heat
   return vec4(cover * (fireShown(hot.r) * more + lobeDark(tone, lr) * dim), cover * (fireShown(hot.g) * more + lobeDark(tone, lg) * dim), cover * (blue * more + lobeDark(tone, lb) * dim), cover * (${f(FIRE_HIDES)} + ${f(SOOT_HIDES - FIRE_HIDES)} * soot));
 }
 `;
-
-/** Only what the lobe's noise reads of the engine's (texgen/noise.ts): its hash, `wrapi`, `ease` and `tiled`. */
-const TILED_GLSL = NOISE_GLSL.slice(0, NOISE_GLSL.indexOf("float fbm("));
 
 /**
  * The vertex text of the fire program. It reads a flat mesh's vertices and the instance's twenty bytes as any flat draw's
